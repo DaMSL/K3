@@ -254,12 +254,6 @@ mId = return
 symEqual :: K3 Symbol -> K3 Symbol -> Bool
 symEqual (getSID -> s) (getSID -> s') = s == s'
 
-strip f n =
-  case n @~ f of
-    Nothing -> n
-    Just x  -> strip f (n @- x)
-
-
 -- map over symbols and effects, starting at an effect
 mapEff :: Monad m => (K3 Effect -> m (K3 Effect)) -> (K3 Symbol -> m (K3 Symbol)) -> K3 Effect -> m (K3 Effect)
 mapEff effFn symFn eff = modifyTree (wrapEffFn effFn symFn) eff
@@ -321,7 +315,7 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
     addMissingDecl n = case n @~ isDSymbol of
                          Just ds@(DSymbol s) -> do
                            s' <- liftM DSymbol $ numberSyms s
-                           return (n @- ds @+ s')
+                           return (stripAnno isDSymbol n  @+ s')
                          _ -> return n
 
     -- Handle lifted/unlifted attributes without symbols
@@ -437,7 +431,7 @@ runAnalysisEnv env prog = flip evalState env $
         addSym i ss = do
           sym <- symbolM i PGlobal ss
           insertGlobalM i sym
-          return $ (strip isDSymbol n) @+ DSymbol sym
+          return $ stripAnno isDSymbol n @+ DSymbol sym
 
     handleExprs :: K3 Expression -> MEnv (K3 Expression)
     handleExprs n = mapIn1RebuildTree pre sideways handleExpr n
@@ -628,11 +622,11 @@ runAnalysisEnv env prog = flip evalState env $
         fixupAll n = fixupExprEff n >>= fixupExprSym
 
         fixupExprSym n@(getESymbol -> Just s)  =
-          liftM (\x -> (n @- ESymbol s) @+ ESymbol x) $ mapSym mId fixupSym s
+          liftM (\x -> stripAnno isESymbol n @+ ESymbol x) $ mapSym mId fixupSym s
         fixupExprSym n = return n
 
         fixupExprEff n@(getEEffect -> Just e)  =
-          liftM (\x -> (n @- EEffect e) @+ EEffect x) $ mapEff mId fixupSym e
+          liftM (\x -> stripAnno isEEffect n @+ EEffect x) $ mapEff mId fixupSym e
         fixupExprEff n = return n
 
         -- Any unbound globals should be translated
@@ -644,7 +638,7 @@ runAnalysisEnv env prog = flip evalState env $
     -- Common procedure for adding back the symbols, effects and children
     addEffSymCh :: Maybe (K3 Effect) -> Maybe (K3 Symbol) -> [K3 Expression] -> K3 Expression -> K3 Expression
     addEffSymCh eff sym ch n =
-      let n'   = strip (\x -> isEEffect x || isESymbol x) n
+      let n'   = stripAnno (\x -> isEEffect x || isESymbol x) n
           n''  = maybe n'  ((@+) n'  . EEffect) eff
           n''' = maybe n'' ((@+) n'' . ESymbol) sym
       in replaceCh n''' ch

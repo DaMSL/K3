@@ -13,7 +13,6 @@ import qualified Data.Map as Map
 import Data.Map(Map)
 import Data.Maybe
 import Data.List(foldl')
-import Debug.Trace(trace)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common

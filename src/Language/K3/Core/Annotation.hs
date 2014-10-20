@@ -17,6 +17,8 @@ module Language.K3.Core.Annotation (
     children,
     replaceCh,
     replaceTag,
+    replaceAnnos,
+    stripAnno,
     details,
     tna,
     tnc
@@ -156,6 +158,12 @@ replaceCh (Node x _) ch = Node x ch
 -- | Replace node type
 replaceTag :: K3 a -> a -> K3 a
 replaceTag (Node (_ :@: anns) ch) tg = Node (tg :@: anns) ch
+
+replaceAnnos :: K3 a -> [Annotation a] -> K3 a
+replaceAnnos (Node (n :@: _) ch) as = Node (n :@: as) ch
+
+-- | Remove all annotations of a certain kind
+stripAnno f n@(Node (_ :@: as) _) = replaceAnnos n $ filter (not . f) as
 
 -- | Get all elements: tag, children, annotations
 details :: K3 a -> (a, [K3 a], [Annotation a])
