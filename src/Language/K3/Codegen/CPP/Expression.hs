@@ -139,9 +139,6 @@ inline e@(tag &&& annotations -> (EConstant (CEmpty t), as)) = case annotationCo
 
 inline (tag -> EConstant c) = constant c >>= \c' -> return ([], R.Literal c')
 
---inline e@(tag -> EVariable "registerPeerChangeTrigger") = do
---    return ([], R.Variable $ R.Name "HELLO_ITS_PAUL")
-
 -- If a variable was declared as mutable it's been reified as a shared_ptr, and must be
 -- dereferenced.
 inline e@(tag -> EVariable v)
@@ -215,13 +212,13 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
 
 inline (tag &&& children -> (EOperate OApp, [
     (tag &&& children -> (EVariable "registerPeerChangeTrigger", [])),
-    (trig@(tag -> EVariable tName)) ]))
+    (tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addressExpr])) ]))
   = do
-    (te, _)  <- inline trig
+    (addrE, addrV) <- inline addressExpr
     trigList  <- triggers <$> get
     let (_, trigId) = fromMaybe (error $ "For peer change trigger, failed to find " ++ tName ++ " in trigger list") $
                       tName `lookup` trigList
-    return ([], R.Call (R.Variable $ R.Name "registerPeerChangeTrigger") [R.Variable $ R.Name $ show trigId])
+    return (addrE, R.Call (R.Variable $ R.Name "registerPeerChangeTrigger") [R.Call (R.Variable $ R.Name "make_tuple") [R.Variable $ R.Name $ show trigId, addrV] ])
 
 inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do
     -- Inline both function and argument for call.

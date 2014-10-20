@@ -130,11 +130,17 @@ initDeclId = "initDecls"
 helloId :: Identifier
 helloId = "sayHello"
 
+goodbyeId :: Identifier
+goodbyeId = "sayGoodbye"
+
 initDeclFn :: K3 Expression
 initDeclFn = EC.variable initDeclId
 
 helloFn :: K3 Expression
 helloFn = EC.variable helloId
+
+goodbyeFn :: K3 Expression
+goodbyeFn = EC.variable goodbyeId
 
 roleId :: Identifier
 roleId = "role"
@@ -344,6 +350,7 @@ declareBuiltins d
             mkGlobal initId unitFnT $ Just atInitE
           , mkGlobal exitId unitFnT $ Just atExitE
           , mkGlobal helloId addrFnT $ Nothing
+          , mkGlobal goodbyeId strFnT $ Nothing
           , mkTrigger peerUpdaterId peerChangeT peerJoinE
          ]
 
@@ -354,7 +361,9 @@ declareBuiltins d
                     EC.applyMany helloFn [EC.tuple [EC.variable "me_id", EC.variable "me" ]]
                     ]
 
-        atExitE = EC.lambda "_" $ EC.tuple []
+        atExitE = EC.lambda "_" $ --EC.tuple $
+          EC.block [EC.applyMany goodbyeFn [EC.variable "me_id"]
+                    ]
 
         peerJoinE = EC.lambda "args" $
           EC.bindAs (EC.variable "args") (BTuple ["join", "new_peers"]) $
@@ -366,7 +375,6 @@ declareBuiltins d
                                 EC.applyMany (EC.project op (EC.variable "peers")) [EC.variable "p"]
                             ]
                     ]
-            
 
         idT      = TC.string
         progArgT = TC.tuple [qualifyT argT, qualifyT paramsT]
@@ -384,6 +392,7 @@ declareBuiltins d
         --mkRUnitFnT rt = TC.function TC.unit rt
         unitFnT       = TC.function TC.unit TC.unit
         addrFnT       = TC.function (TC.tuple [TC.string, TC.address]) TC.unit
+        strFnT        = TC.function TC.string TC.unit
         peerChangeT   = TC.tuple [TC.bool, (mkCollection [("name", TC.string)]) ]
         --peerChangeT   = TC.tuple [TC.bool, (TC.collection (TC.record [("name", TC.string)]) @+ TAnnotation "Collection") ]
 
