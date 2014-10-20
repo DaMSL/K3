@@ -213,28 +213,15 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
            , R.Lambda capture [(arg, hintedArgType)] True Nothing body'
            )
 
---inline (tag &&& children ->
---    (EOperate OApp, [
---        (tag &&& children -> (_, [])),
---        (tag &&& children -> (EVariable _, _)),
---        (tag &&& children -> (EVariable _, _))
---      ]
---     )) = do
---inline (tag &&& children -> (EOperate OApp, (tag &&& children -> (EVariable funcName, _)) : xs ))= do
-    --(te, _) <- inline trig
-    --trigList <- triggers <$> get
-    --let (_, trigId) = fromMaybe (error $ "Failed to find trigger " ++ tName ++ " in trigger list") $
-    --                 tName `lookup` trigList
-    --return ([], R.Call (R.Variable $ R.Name "ITS_ME_AGAIN!") [R.Variable $ R.Name $ show trigId])
 inline (tag &&& children -> (EOperate OApp, [
-    (tag &&& children -> (EVariable registerPeerChangeTriggerId, _)),
+    (tag &&& children -> (EVariable "registerPeerChangeTrigger", [])),
     (trig@(tag -> EVariable tName)) ]))
   = do
     (te, _)  <- inline trig
     trigList  <- triggers <$> get
-    let (_, trigId) = fromMaybe (error $ "Failed to find trigger " ++ tName ++ " in trigger list") $
+    let (_, trigId) = fromMaybe (error $ "For peer change trigger, failed to find " ++ tName ++ " in trigger list") $
                       tName `lookup` trigList
-    return ([], R.Call (R.Variable $ R.Name registerPeerChangeTriggerId) [R.Variable $ R.Name $ show trigId])
+    return ([], R.Call (R.Variable $ R.Name "registerPeerChangeTrigger") [R.Variable $ R.Name $ show trigId])
 
 inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do
     -- Inline both function and argument for call.
