@@ -3,6 +3,10 @@
 
 #include <cstring>
 #include <memory>
+#include <vector>
+
+#include "boost/serialization/array.hpp"
+#include "boost/functional/hash.hpp"
 
 char* strdup(const char*);
 
@@ -118,9 +122,12 @@ namespace K3 {
     void serialize(archive& a, const unsigned int) {
       a & boost::serialization::make_array(buffer, strlen(buffer));
     }
+
    private:
     char* buffer;
   };
+
+  std::size_t hash_value(const K3::base_string&);
 }
 
 #endif
