@@ -3,6 +3,10 @@
 
 #include <cstring>
 #include <memory>
+#include <vector>
+
+#include "boost/serialization/array.hpp"
+#include "boost/functional/hash.hpp"
 
 char* strdup(const char*);
 
@@ -32,7 +36,12 @@ namespace K3 {
       delete [] buffer;
     }
 
-    base_string& operator =(base_string other) {
+    base_string& operator =(const base_string& other) {
+      *this = base_string { other };
+      return *this;
+    }
+
+    base_string& operator =(base_string&& other) {
       swap(*this, other);
       return *this;
     }
@@ -52,32 +61,32 @@ namespace K3 {
       return strlen(buffer);
     }
 
-    char* c_str() {
+    const char* c_str() const {
       return buffer;
     }
 
     // Comparisons
-    bool operator ==(const base_string& other) {
+    bool operator ==(const base_string& other) const {
       return strcmp(buffer, other.buffer) == 0;
     }
 
-    bool operator !=(const base_string& other) {
+    bool operator !=(const base_string& other) const {
       return strcmp(buffer, other.buffer) != 0;
     }
 
-    bool operator <=(const base_string& other) {
+    bool operator <=(const base_string& other) const {
       return strcmp(buffer, other.buffer) <= 0;
     }
 
-    bool operator <(const base_string& other) {
+    bool operator <(const base_string& other) const {
       return strcmp(buffer, other.buffer) < 0;
     }
 
-    bool operator >=(const base_string& other) {
+    bool operator >=(const base_string& other) const {
       return strcmp(buffer, other.buffer) >= 0;
     }
 
-    bool operator >(const base_string& other) {
+    bool operator >(const base_string& other) const {
       return strcmp(buffer, other.buffer) > 0;
     }
 
@@ -96,9 +105,29 @@ namespace K3 {
       return base_string(buffer + from, to - from);
     }
 
+    // Stream Operators
+    friend std::ostream& operator <<(std::ostream& out, const K3::base_string& s) {
+      return out << s.c_str();
+    }
+
+    char* begin() const {
+      return buffer;
+    }
+
+    char* end() const {
+      return buffer + strlen(buffer);
+    }
+
+    template <class archive>
+    void serialize(archive& a, const unsigned int) {
+      a & boost::serialization::make_array(buffer, strlen(buffer));
+    }
+
    private:
     char* buffer;
   };
+
+  std::size_t hash_value(const K3::base_string&);
 }
 
 #endif

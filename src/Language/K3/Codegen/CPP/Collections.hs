@@ -93,7 +93,8 @@ composite name ans = do
                        [] False serializeStatements)
 
     let patcherFnDefn
-            = R.FunctionDefn (R.Name "patch") [("_input", R.Primitive R.PString), ("_c", R.Reference selfType)]
+            = R.FunctionDefn (R.Name "patch") [ ("_input", R.Named $ R.Qualified (R.Name "std") (R.Name "string"))
+                                              , ("_c", R.Reference selfType)]
               (Just $ R.Named $ R.Name "static void") [] False
               [R.Ignore $
                 R.Call (
@@ -228,7 +229,7 @@ record (sort -> ids) = do
 
     let oneFieldParserAction f
             = R.Lambda [R.RefCapture (Just  ("_record", Nothing))]
-              [("_partial", R.Primitive R.PString)] False Nothing
+              [("_partial", R.Named $ R.Qualified (R.Name "std") (R.Name "string"))] False Nothing
               [R.Ignore $ doPatchInvocation f]
 
     let oneFieldParserDecl f
@@ -273,7 +274,8 @@ record (sort -> ids) = do
               ]
 
     let patcherFnDefn
-            = R.FunctionDefn (R.Name "patch") [("_input", R.Primitive R.PString), ("_record", R.Reference recordType)]
+            = R.FunctionDefn (R.Name "patch") [ ("_input", R.Named $ R.Qualified (R.Name "std") (R.Name "string"))
+                                              , ("_record", R.Reference recordType)]
               (Just $ R.Named $ R.Name "static void") [] False
               ([shallowDecl] ++ allFieldParserDecls ++ [fieldParserDecl, recordParserDecl, R.Ignore parseInvocation])
 

@@ -159,7 +159,10 @@ namespace K3 {
 
     std::string rtos(double d);
 
-    string slice_string(const string& s, int i, int n);
+    template <class S> S slice_string(const S& s, int x, int y) {
+      return s.substr(x, y);
+    }
+
 
     // Split a std::string by substrings
     Seq<R_elem<std::string>> splitString(const std::string&, const std::string&);

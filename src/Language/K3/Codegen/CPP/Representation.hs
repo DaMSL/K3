@@ -91,7 +91,7 @@ instance Stringifiable Primitive where
     stringify PBool = "bool"
     stringify PInt = "int"
     stringify PDouble = "double"
-    stringify PString = stringify (Qualified (Name "std") $ Name "string")
+    stringify PString = stringify (Qualified (Name "K3") $ Name "base_string")
 
 data Type
     = Const Type
