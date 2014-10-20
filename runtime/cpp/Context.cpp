@@ -47,8 +47,8 @@ std::map<int, std::string> __k3_context::__trigger_names;
 std::map<int, shared_ptr<Dispatcher>> __k3_context::__clonable_dispatchers;
 
 
-unit_t __k3_context::registerPeerChangeTrigger(TriggerId trigger, Address me)
+unit_t __k3_context::registerPeerChangeTrigger(std::tuple<TriggerId, Address> args)
 {
-    __engine.registerPeerChangeTrigger(trigger, me);
+    __engine.registerPeerChangeTrigger(std::get<0>(args), std::get<1>(args));
 }
 }

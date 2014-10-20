@@ -335,8 +335,7 @@ declareBuiltins d
           , mkGlobal "registerSocketAcceptTrigger" (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing
           , mkGlobal "registerSocketDataTrigger"   (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing
           , mkGlobal "registerSocketCloseTrigger"  (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing
-          --, mkGlobal "registerPeerChangeTrigger"   (mkCurriedFnT [TC.trigger peerChangeT, TC.address, TC.unit]) Nothing
-          --mkGlobal "registerPeerChangeTrigger"   (TC.function  (TC.trigger peerChangeT) TC.unit) Nothing
+          , mkGlobal "registerPeerChangeTrigger"   (TC.function (TC.tuple [TC.trigger peerChangeT, TC.address]) TC.unit) Nothing
          ]
 
         peerDecls = [
@@ -357,7 +356,7 @@ declareBuiltins d
         atInitE = EC.lambda "_" $
           EC.block [EC.applyMany initDeclFn [EC.unit],
                     EC.applyMany roleFn [EC.unit],
-                    --EC.applyMany registerPeerChangeFn [ EC.variable peerUpdaterId, EC.variable "me" ],
+                    EC.applyMany registerPeerChangeFn [EC.tuple [ EC.variable peerUpdaterId, EC.variable "me" ]],
                     EC.applyMany helloFn [EC.tuple [EC.variable "me_id", EC.variable "me" ]]
                     ]
 

@@ -22,7 +22,7 @@ namespace K3 {
 
     unit_t sayHello(std::tuple<const PeerId&, Address> data);
     unit_t sayGoodbye(const PeerId& peer);
-    unit_t registerPeerChangeTrigger(TriggerId trigger, Address me);
+    unit_t registerPeerChangeTrigger(std::tuple<TriggerId, Address> args);
 
     static std::string __get_trigger_name(int trig_id);
     static shared_ptr<Dispatcher> __get_clonable_dispatcher(int trig_id);
