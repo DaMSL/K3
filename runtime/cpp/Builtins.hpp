@@ -160,7 +160,7 @@ namespace K3 {
     string slice_string(const string& s, int i, int n);
 
     // Split a std::string by substrings
-    F<Seq<R_elem<std::string> >(const std::string&)> splitString(const std::string& s);
+    Seq<R_elem<std::string>> splitString(const std::string&, const std::string&);
   };
 
 

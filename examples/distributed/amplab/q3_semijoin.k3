@@ -5,12 +5,12 @@ include "Core/Builtins.k3"
 
 declare master: address = 127.0.0.1:30001
 declare peer_seq : collection {addr: address} @ {Seq}
-declare peer_by_hash: string -> address = \s -> (
-  let i = (hash s) % (peer_seq.size ()) in
-  (peer_seq.at i).addr
-)
 
-declare peer_count: int = 0
+declare index_by_hash: string -> int = \s -> (
+  let n = peer_seq.size () in
+  let h = (hash s) in
+  ((h % n) + n) % n
+)
 
 declare start_ms : mut int
 declare end_ms : mut int
@@ -48,7 +48,7 @@ typedef Source_ip_to_aggs = {key: string, value: {prSum: int, prCount: int, arSu
 
 typedef Source_ip_to_aggs_C = collection  {key: string, value: {prSum: int, prCount: int, arSum: real}} @ Map
 
-declare partial_aggs : collection {key: address, value: Source_ip_to_aggs_C} @ Map
+declare partial_aggs : collection {key: int, value: Source_ip_to_aggs_C} @ Map
 
 
 declare merged_partials : Source_ip_to_aggs_C
@@ -66,7 +66,7 @@ trigger q3_local : () = \_ -> (
     then (
       let ip = uv.sourceIP in
       let url = uv.destURL in
-      let a = peer_by_hash ip in
+      let a = index_by_hash ip in
       case partial_aggs.lookup {key: a, value: empty_source_ip_to_aggs_C} of
       { Some aggs ->
         case rankingsMap.lookup {key: url, value: 0} of
@@ -108,7 +108,7 @@ trigger q3_local : () = \_ -> (
     )
     else ()
   );
-  partial_aggs.iterate (\kv -> (merge, kv.key) <- kv.value);
+  partial_aggs.iterate (\kv -> (merge, (peer_seq.at kv.key).addr) <- kv.value);
   peers.iterate (\p -> (count_merges, p.addr) <- ())
 )
 

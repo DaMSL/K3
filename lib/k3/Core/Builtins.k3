@@ -3,7 +3,7 @@ include "Annotation/Seq.k3"
 
 // TODO: implement in haskell backend:
 // 1. target string 2. split text
-//@:CArgs 2
+@:CArgs 2
 declare splitString : string -> string -> collection { elem: string } @ {Seq}
 
 // TODO: move to String.k3

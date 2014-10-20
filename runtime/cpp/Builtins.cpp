@@ -130,8 +130,7 @@ namespace K3 {
   }
 
   // Split a string by substrings
-  F<Seq<R_elem<string> >(const string&)> __string_context::splitString(const string& s) {
-    return [&] (const string& splitter) {
+  Seq<R_elem<string>> __string_context::splitString(const string& s, const string& splitter) {
       std::vector<string> words;
       boost::split(words, s, boost::is_any_of(splitter), boost::token_compress_on);
 
@@ -143,7 +142,6 @@ namespace K3 {
         results.insert(elem);
       }
       return results;
-    };
   }
 
 } // namespace K3
