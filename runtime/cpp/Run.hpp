@@ -8,7 +8,7 @@
 
 namespace K3 {
   template <class context>
-  void runProgram(std::vector<string> peer_strs, bool simulation, string log_level) {
+  void runProgram(std::vector<string> peer_strs, bool simulation, string log_level, std::string name, bool directory_master, std::string directory_upstream) {
     if (simulation) {
       // All peers share a single engine 
       Engine engine;
@@ -16,11 +16,11 @@ namespace K3 {
     
       for (auto& s : peer_strs) {
         auto gc = make_shared<context>(engine);
-        gc->__patch(parse_bindings(s));
+        gc->__patch(parse_bindings(s, name));
         contexts[gc->me] = gc;
       }
       SystemEnvironment se = defaultEnvironment(getAddrs(contexts));
-      engine.configure(simulation, se, make_shared<DefaultInternalCodec>(), log_level);
+      engine.configure(simulation, se, make_shared<DefaultInternalCodec>(), log_level, directory_master, directory_upstream);
       processRoles(contexts);
       engine.runEngine(make_shared<virtualizing_message_processor>(contexts));
     }
@@ -35,10 +35,10 @@ namespace K3 {
         ctxt_map contexts;
         e_ptr engine = make_shared<Engine>(); 
         auto gc = make_shared<context>(*engine);
-        gc->__patch(parse_bindings(s));
+        gc->__patch(parse_bindings(s, name));
         contexts[gc->me] = gc;
         SystemEnvironment se = defaultEnvironment(getAddrs(contexts));
-        engine->configure(simulation, se, make_shared<DefaultInternalCodec>(), log_level);
+        engine->configure(simulation, se, make_shared<DefaultInternalCodec>(), log_level, directory_master, directory_upstream);
         processRoles(contexts);
         auto t = tuple<e_ptr, ctxt_map>(engine, contexts);
         engines.push_back(t);
