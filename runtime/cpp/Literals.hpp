@@ -20,6 +20,8 @@ using std::pair;
 namespace K3 {
   namespace qi = boost::spirit::qi;
 
+  template <class T> void do_patch(string, T&);
+
   template <class iterator>
   class shallow: public qi::grammar<iterator, qi::space_type, string()> {
    public:
@@ -111,23 +113,24 @@ namespace K3 {
     }
   };
 
-  template <> struct patcher<K3::base_string> {
-    static void patch(string s, K3::base_string st) {
-      string s2(st.c_str());
-      patch(s, s2);
-    }
-  };
-
   template <> struct patcher<string> {
     static void patch(string s, string& t) {
       string r;
 
       if (qi::parse(begin(s), end(s), ('"' >> *(('\\' >> qi::char_) | (qi::char_ - '"')) >> '"'), r)) {
         t = r;
-      } else if 
+      } else if
         (qi::parse(begin(s), end(s), ('\'' >> *(('\\' >> qi::char_) | (qi::char_ - '\'')) >> '\''), r)) {
         t = r;
       }
+    }
+  };
+
+  template <> struct patcher<K3::base_string> {
+    static void patch(string s, K3::base_string& t) {
+      string r;
+      patcher<string>::patch(s, r);
+      t = r;
     }
   };
 
