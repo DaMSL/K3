@@ -81,7 +81,8 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
                      []
     let patchDecl = R.FunctionDefn (R.Name "__patch")
                     [("bindings", R.Named $ R.Qualified (R.Name "std") $ R.Specialized
-                                    [R.Primitive R.PString, R.Primitive R.PString] $ R.Name "map")]
+                                    [ R.Named $ R.Qualified (R.Name "std") (R.Name "string")
+                                    , R.Named $ R.Qualified (R.Name "std") (R.Name "string")] $ R.Name "map")]
                     (Just R.Void) [] False (map popPatch patchables')
 
     dispatchPop <- generateDispatchPopulation
@@ -204,6 +205,7 @@ requiredIncludes = return
                    , "boost/multi_index/composite_key.hpp"
 
                    , "BaseTypes.hpp"
+                   , "BaseString.hpp"
                    , "Common.hpp"
                    , "Context.hpp"
                    , "Dispatch.hpp"
@@ -280,10 +282,11 @@ prettifyName = R.Name "__prettify"
 genPrettify :: CPPGenM R.Definition
 genPrettify = do
    currentS <- get
-   body    <- genBody $ showables currentS
+   -- body    <- genBody $ showables currentS
+   let body = [R.Return $ R.Initialization result_type []]
    return $ R.FunctionDefn prettifyName [] (Just result_type) [] False body
  where
-   p_string = R.Primitive R.PString
+   p_string = R.Named $ R.Qualified (R.Name "std") (R.Name "string")
    result_type  = R.Named $ R.Qualified (R.Name "std") (R.Specialized [p_string, p_string] (R.Name "map"))
    result  = "result"
 
