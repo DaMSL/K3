@@ -106,6 +106,14 @@ namespace K3 {
       return out << s.c_str();
     }
 
+    char* begin() const {
+      return buffer;
+    }
+
+    char* end() const {
+      return buffer + strlen(buffer);
+    }
+
     template <class archive>
     void serialize(archive& a, const unsigned int) {
       a & boost::serialization::make_array(buffer, strlen(buffer));
