@@ -101,6 +101,11 @@ namespace K3 {
       return base_string(buffer + from, to - from);
     }
 
+    // Stream Operators
+    friend std::ostream& operator <<(std::ostream& out, const K3::base_string& s) {
+      return out << s.c_str();
+    }
+
     template <class archive>
     void serialize(archive& a, const unsigned int) {
       a & boost::serialization::make_array(buffer, strlen(buffer));
