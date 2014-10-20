@@ -57,7 +57,7 @@ namespace K3 {
       return strlen(buffer);
     }
 
-    char* c_str() {
+    const char* c_str() const {
       return buffer;
     }
 
