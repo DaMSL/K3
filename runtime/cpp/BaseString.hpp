@@ -101,6 +101,10 @@ namespace K3 {
       return base_string(buffer + from, to - from);
     }
 
+    template <class archive>
+    void serialize(archive& a, const unsigned int) {
+      a & boost::serialization::make_array(buffer, strlen(buffer));
+    }
    private:
     char* buffer;
   };
