@@ -24,7 +24,7 @@ namespace K3 {
     virtual ~Resolver() = default;
 
     virtual void sayHello(PeerId myId, Address me) = 0;
-    virtual void sayGoodbye() = 0;
+    virtual void sayGoodbye(PeerId myId) = 0;
     virtual Address lookup(const PeerId& id) = 0;
   };
 
@@ -43,7 +43,6 @@ namespace K3 {
       }
     };
 
-    PeerId myID; // Should probably not be here, should be fetched from somewhere else
     boost::thread subscription_listener;
 
     bool subscription_started;
@@ -64,7 +63,7 @@ namespace K3 {
     virtual ~RedisResolver();
 
     virtual void sayHello(PeerId myID, Address me) override;
-    virtual void sayGoodbye() override;
+    virtual void sayGoodbye(PeerId myID) override;
 
     virtual Address lookup(const PeerId& id) override;
   };

@@ -38,6 +38,11 @@ unit_t __k3_context::sayHello(std::tuple<const PeerId&, Address> data) {
     __engine.sayHello(std::get<0>(data), std::get<1>(data));
 }
 
+unit_t __k3_context::sayGoodbye(const PeerId& peer)
+{
+    __engine.sayGoodbye(peer);
+}
+
 std::map<int, std::string> __k3_context::__trigger_names;
 std::map<int, shared_ptr<Dispatcher>> __k3_context::__clonable_dispatchers;
 

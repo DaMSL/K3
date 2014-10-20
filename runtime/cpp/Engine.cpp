@@ -4,6 +4,7 @@
 using namespace boost::log;
 using namespace boost::log::trivial;
 using boost::thread;
+using std::make_unique;
 
 namespace K3 {
 
@@ -423,6 +424,10 @@ namespace K3 {
     void Engine::sayHello(const PeerId& myId, Address myAddress)
     {
         resolver->sayHello(myId, myAddress);
+    }
+    void Engine::sayGoodbye(const PeerId& myId)
+    {
+        resolver->sayGoodbye(myId);
     }
     void Engine::registerPeerChangeTrigger(TriggerId trigger, Address me)
     {

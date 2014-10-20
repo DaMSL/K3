@@ -273,7 +273,6 @@ void K3::RedisResolver::startSlave(const std::string& upstream)
 void K3::RedisResolver::sayHello(PeerId myID, Address me)
 {
   const std::string my_address = addressHost(me) + " " + std::to_string(addressPort(me));
-  this->myID = myID;
 
   std::vector<std::string> master_location = redisGetMasterAddress(LOCALHOST);
   std::string& master_address = master_location.at(0);
@@ -324,7 +323,7 @@ void K3::RedisResolver::sayHello(PeerId myID, Address me)
   cv.notify_all();
 }
 
-void K3::RedisResolver::sayGoodbye()
+void K3::RedisResolver::sayGoodbye(PeerId myID)
 {
   std::vector<std::string> master_location = redisGetMasterAddress(LOCALHOST);
   std::string& master_address = master_location.at(0);
@@ -400,10 +399,6 @@ void K3::RedisResolver::subscriptionWork()
     }
     else if (command == GOODBYE)
     {
-      if (peer == myID)
-      {
-        return;
-      }
       {
         boost::unique_lock<boost::mutex> lock(mutex);
         directory.erase(peer);

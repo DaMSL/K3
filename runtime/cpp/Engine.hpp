@@ -19,6 +19,7 @@
 namespace K3 {
 
   namespace Net = K3::Asio;
+  using std::unique_ptr;
 
   //-------------------
   // Utility functions
@@ -347,6 +348,7 @@ namespace K3 {
     IOMode ioMode(string k3Mode);
 
     void sayHello(const PeerId& myId, Address my_address);
+    void sayGoodbye(const PeerId& myId);
     void registerPeerChangeTrigger(TriggerId trigger, Address me);
   protected:
     bool                            log_enabled;

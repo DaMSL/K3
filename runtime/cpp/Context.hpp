@@ -21,6 +21,7 @@ namespace K3 {
     virtual unit_t processRole(const unit_t&) = 0;
 
     unit_t sayHello(std::tuple<const PeerId&, Address> data);
+    unit_t sayGoodbye(const PeerId& peer);
     unit_t registerPeerChangeTrigger(TriggerId trigger, Address me);
 
     static std::string __get_trigger_name(int trig_id);
