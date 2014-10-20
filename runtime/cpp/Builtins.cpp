@@ -124,11 +124,6 @@ namespace K3 {
     return to_string(d);
   }
 
-
-  string __string_context::slice_string(const string&s, int i, int n) {
-    return s.substr(i,n);
-  }
-
   // Split a string by substrings
   F<Seq<R_elem<string> >(const string&)> __string_context::splitString(const string& s) {
     return [&] (const string& splitter) {
