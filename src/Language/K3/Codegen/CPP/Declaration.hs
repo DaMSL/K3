@@ -216,6 +216,7 @@ genLoader suf (children -> [_,f]) name = do
                            , R.Variable $ R.Name "c"
                            , readRecordFn
                            ]
+            , R.Return $ R.Initialization R.Unit []
             ]
  where
    typeMap :: K3 Type -> R.Expression -> R.Expression
