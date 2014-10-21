@@ -117,6 +117,7 @@ library
         Language.K3.Transform.Profiling,
         Language.K3.Transform.RemoveROBinds,
         Language.K3.Transform.Simplification,
+        Language.K3.Transform.TriggerSymbols,
         Language.K3.Transform.Writeback,
         Language.K3.Analysis.CArgs,
         Language.K3.Analysis.Effect,
