@@ -44,7 +44,11 @@ declaration (tag -> DGlobal i (tag &&& children -> (TFunction, [ta, tr]))
     cta <- genCType ta
     ctr <- genCType tr
 
-    cbody <- reify RReturn body
+    let nrvoHint = case (e @~ \case { EOpt (ReturnMoveHint _) -> True; _ -> False }) of
+                     Just (EOpt (ReturnMoveHint b)) -> b
+                     _ -> False
+
+    cbody <- reify (RReturn nrvoHint) body
 
     addForward $ R.FunctionDecl (R.Name i) [cta] ctr
 
@@ -75,7 +79,11 @@ declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children
 
     let argumentType' = if readOnly then R.Const (R.Reference argumentType) else argumentType
 
-    body' <- reify RReturn body
+    let nrvoHint = case (e @~ \case { EOpt (ReturnMoveHint _) -> True; _ -> False }) of
+                     Just (EOpt (ReturnMoveHint b)) -> b
+                     _ -> False
+
+    body' <- reify (RReturn nrvoHint) body
     return [templatize $ R.FunctionDefn (R.Name i) [(x, argumentType')] (Just returnType) [] False body']
 
 -- Global scalars.
