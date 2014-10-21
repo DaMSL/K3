@@ -46,53 +46,17 @@ class StlDS {
 
   // Constructors:
   // Default Constructor
-  StlDS()
-    : container()
-  { }
-
-
-  // Copy Constructor
-  StlDS(const StlDS& other)
-    : container(other.container)
-  { }
-
-  // Move Constructor
-  StlDS(StlDS&& other)
-    : container(std::move(other.container))
-  { }
+  StlDS(): container() {}
 
   // Copy Constructor from container
-  StlDS(const Container& con)
-    : container(con)
-  { }
+  StlDS(const Container& con): container(con) {}
 
   // Move Constructor from container
-  StlDS(Container&& con)
-    : container(std::move(con))
-  { }
+  StlDS(Container&& con): container(std::move(con)) {}
 
   // Construct from (container) iterators
   template<typename Iterator>
-  StlDS(Iterator begin, Iterator end)
-    : container(begin,end)
-  {}
-
-  ~StlDS() {
-  }
-
-  // Assign Operators:
-  // Copy Assign Operator
-  StlDS& operator=(const StlDS& other) {
-    container = other.container;
-    return *this;
-  }
-
-  // Move Assign Operator
-  StlDS& operator=(StlDS&& other) {
-    // Proxy to the move assign operator of the container
-    container = std::move(other.container);
-    return *this;
-  }
+  StlDS(Iterator begin, Iterator end): container(begin,end) {}
 
   // Maybe return the first element in the ds
   shared_ptr<Elem> peek(unit_t) const {
@@ -228,6 +192,7 @@ class StlDS {
           if (accs.find(key) == accs.end()) {
             accs[key] = init;
           }
+
           accs[key] = folder(std::move(accs[key]))(elem);
        }
 
@@ -297,83 +262,30 @@ using SetDS = StlDS<Derived, unordered_set, Elem>;
 template <template <typename> class Derived, class Elem>
 using SortedDS = StlDS<Derived, std::multiset, Elem>;
 
-template <template <typename> class Derived, class Elem>
+template <template <class> class Derived, class Elem>
 using VectorDS = StlDS<Derived, std::vector, Elem>;
 
 
 // The Colllection variants inherit functionality from a dataspace.
 // Each variant may also add extra functionality.
 template <class Elem>
-class Collection : public VectorDS<Collection, Elem> {
-  typedef VectorDS<Collection, Elem> Super;
+class Collection: public VectorDS<K3::Collection, Elem> {
+  using Super = VectorDS<K3::Collection, Elem>;
 
  public:
-  // Constructors:
-  // Default:
-  Collection() : VectorDS<Collection, Elem>() { }
-
-  // Copy:
-  Collection(const Collection& c): VectorDS<Collection, Elem>(c) { }
-
-  // Move:
-  Collection(Collection&& c): VectorDS<Collection, Elem>(std::move(c)) { }
-
-  // Assign operators:
-  // Copy:
-  Collection& operator=(const Collection& other) {
-    VectorDS<Collection, Elem>::operator=(other);
-    return *this;
-  }
-
-  // Move:
-  Collection& operator=(Collection&& other) {
-    VectorDS<Collection, Elem>::operator=(std::move(other));
-    return *this;
-  }
-
-  // Superclass constructors: (for conversion from Super to this-type)
-  // Copy:
-  Collection(const VectorDS<Collection, Elem>& c): VectorDS<Collection, Elem>(c) { }
-
-  // Move:
-  Collection(VectorDS<Collection, Elem>&& c): VectorDS<Collection, Elem>(std::move(c)) { }
-
+  Collection(): Super() {}
+  Collection(const Super& c): Super(c) { }
+  Collection(Super&& c): Super(std::move(c)) { }
 };
 
 template <class Elem>
-class Set : public SetDS<Set, Elem> {
-  typedef SetDS<Set, Elem> Super;
+class Set : public SetDS<K3::Set, Elem> {
+  using Super = SetDS<K3::Set, Elem>;
 
  public:
-  // Constructors:
-  // Default:
-  Set() : SetDS<Set, Elem>() { }
-
-  // Copy:
-  Set(const Set& c): SetDS<Set, Elem>(c) { }
-
-  // Move:
-  Set(Set&& c): SetDS<Set, Elem>(std::move(c)) { }
-
-  // Assign operators:
-  // Copy:
-  Set& operator=(const Set& other) {
-    SetDS<Set, Elem>::operator=(other);
-    return *this;
-  }
-
-  // Move:
-  Set& operator=(Set&& other) {
-    SetDS<Set, Elem>::operator=(std::move(other));
-    return *this;
-  }
-
-  // Superclass constructors: (for conversion from Super to this-type)
-  // Copy:
-  Set(const SetDS<Set, Elem>& c): SetDS<Set, Elem>(c) { }
-
-  // Move:
-  Set(SetDS<Set, Elem>&& c): SetDS<Set, Elem>(std::move(c)) { }
+  Set(): Super() {}
+  Set(const Super& c): Super(c) { }
+  Set(Super&& c): Super(std::move(c)) { }
 
   // Set specific functions
   bool member(const Elem& e) {
@@ -422,39 +334,12 @@ class Set : public SetDS<Set, Elem> {
 };
 
 template <class Elem>
-class Seq : public ListDS<Seq, Elem> {
-  typedef ListDS<Seq, Elem> Super;
-
+class Seq : public ListDS<K3::Seq, Elem> {
+  using Super = ListDS<K3::Seq, Elem>;
  public:
-  // Constructors:
-  // Default:
-  Seq() : ListDS<Seq, Elem>() { }
-
-  // Copy:
-  Seq(const Seq& c): ListDS<Seq, Elem>(c) { }
-
-  // Move:
-  Seq(Seq&& c): ListDS<Seq, Elem>(std::move(c)) { }
-
-  // Assign operators:
-  // Copy:
-  Seq& operator=(const Seq& other) {
-    ListDS<Seq, Elem>::operator=(other);
-    return *this;
-  }
-
-  // Move:
-  Seq& operator=(Seq&& other) {
-    ListDS<Seq, Elem>::operator=(std::move(other));
-    return *this;
-  }
-
-  // Superclass constructors: (for conversion from Super to this-type)
-  // Copy:
-  Seq(const ListDS<Seq, Elem>& c): ListDS<Seq, Elem>(c) { }
-
-  // Move:
-  Seq(ListDS<Seq, Elem>&& c): ListDS<Seq, Elem>(std::move(c)) { }
+  Seq(): Super() { }
+  Seq(const Super& c): Super(c) { }
+  Seq(Super&& c): Super(std::move(c)) { }
 
   // Seq specific functions
   Seq sort(F<F<int(Elem)>(Elem)> comp) {
@@ -478,39 +363,15 @@ class Seq : public ListDS<Seq, Elem> {
 };
 
 template <class Elem>
-class Sorted : public SortedDS<Sorted, Elem> {
-  typedef SortedDS<Sorted, Elem> Super;
+class Sorted: public SortedDS<K3::Sorted, Elem> {
+  using Super = SortedDS<K3::Sorted, Elem>;
 
  public:
   // Constructors:
   // Default:
-  Sorted() : SortedDS<Sorted, Elem>() { }
-
-  // Copy:
-  Sorted(const Sorted& c): SortedDS<Sorted, Elem>(c) { }
-
-  // Move:
-  Sorted(Sorted&& c): SortedDS<Sorted, Elem>(std::move(c)) { }
-
-  // Assign operators:
-  // Copy:
-  Sorted& operator=(const Sorted& other) {
-    SortedDS<Sorted, Elem>::operator=(other);
-    return *this;
-  }
-
-  // Move:
-  Sorted& operator=(Sorted&& other) {
-    SortedDS<Sorted, Elem>::operator=(std::move(other));
-    return *this;
-  }
-
-  // Superclass constructors: (for conversion from Super to this-type)
-  // Copy:
-  Sorted(const SortedDS<Sorted, Elem>& c): SortedDS<Sorted, Elem>(c) { }
-
-  // Move:
-  Sorted(SortedDS<Sorted, Elem>&& c): SortedDS<Sorted, Elem>(std::move(c)) { }
+  Sorted(): Super() { }
+  Sorted(const Super& c): Super(c) { }
+  Sorted(Super&& c): Super(std::move(c)) { }
 
   // Sorted specific functions
   std::shared_ptr<Elem> min() {
@@ -586,50 +447,13 @@ class Map {
   typedef R ElemType;
 
   // Default Constructor
-  Map()
-    : container()
-  {  }
-
-  // Copy Constructor
-  Map(const Map& other)
-    : container(other.container)
-  { }
-
-  // Move Constructor
-  Map(Map&& other)
-    : container(std::move(other.container))
-  { }
-
-  // Copy Constructor from container
-  Map(const unordered_map<Key,Value>& con)
-    : container(con)
-  { }
-
-  // Move Constructor from container
-  Map(unordered_map<Key, Value>&& con)
-    : container(std::move(con))
-  { }
+  Map(): container() {}
+  Map(const unordered_map<Key,Value>& con): container(con) {}
+  Map(unordered_map<Key, Value>&& con): container(std::move(con)) {}
 
   // Construct from (container) iterators
   template<typename Iterator>
-  Map(Iterator begin, Iterator end)
-    : container(begin,end)
-  {}
-
-  ~Map() { }
-
-  // Copy Assign Operator
-  Map& operator=(const Map& other) {
-    container = other.container;
-    return *this;
-  }
-
-  // Move Assign Operator
-  Map& operator=(Map&& other) {
-    container = std::move(other.container);
-    //other.container = NULL;
-    return *this;
-  }
+  Map(Iterator begin, Iterator end): container(begin,end) {}
 
   // DS Operations:
   // Maybe return the first element in the DS
@@ -829,39 +653,13 @@ class Map {
 }; // class Map
 
 template <class Elem>
-class Vector : public VectorDS<Vector, Elem> {
-  typedef VectorDS<Vector, Elem> Super;
+class Vector: public VectorDS<K3::Vector, Elem> {
+  using Super = VectorDS<K3::Vector, Elem>;
 
  public:
-  // Constructors:
-  // Default:
-  Vector() : VectorDS<Vector, Elem>() { }
-
-  // Copy:
-  Vector(const Vector& c): VectorDS<Vector, Elem>(c) { }
-
-  // Move:
-  Vector(Vector&& c): VectorDS<Vector, Elem>(std::move(c)) { }
-
-  // Assign operators:
-  // Copy:
-  Vector& operator=(const Vector& other) {
-    VectorDS<Vector, Elem>::operator=(other);
-    return *this;
-  }
-
-  // Move:
-  Vector& operator=(Vector&& other) {
-    VectorDS<Vector, Elem>::operator=(std::move(other));
-    return *this;
-  }
-
-  // Superclass constructors: (for conversion from Super to this-type)
-  // Copy:
-  Vector(const VectorDS<Vector, Elem>& c): VectorDS<Vector, Elem>(c) { }
-
-  // Move:
-  Vector(VectorDS<Vector, Elem>&& c): VectorDS<Vector, Elem>(std::move(c)) { }
+  Vector(): Super() {}
+  Vector(const Super& c): Super(c) {}
+  Vector(Super&& c): Super(std::move(c)) {}
 
   template<typename Fun>
   auto map(Fun f) -> Vector<R_elem<RT<Fun, Elem>>> {
@@ -975,54 +773,14 @@ class MultiIndex {
 
   Container container;
 
-  // Defaul
-  MultiIndex()
-    : container()
-  { }
-
-  // Copy
-  MultiIndex(const MultiIndex& other)
-    : container(other.container)
-  { }
-
-
-  // Move Constructor
-  MultiIndex(MultiIndex&& other)
-    : container(std::move(other.container))
-  { }
-
-  // Copy Constructor from container
-  MultiIndex(const Container& con)
-    : container(con)
-  { }
-
-  // Move Constructor from container
-  MultiIndex(Container&& con)
-    : container(std::move(con))
-  { }
+  // Default
+  MultiIndex(): container() {}
+  MultiIndex(const Container& con): container(con) {}
+  MultiIndex(Container&& con): container(std::move(con)) {}
 
   // Construct from (container) iterators
   template<typename Iterator>
-  MultiIndex(Iterator begin, Iterator end)
-    : container(begin,end)
-  {}
-
-  ~MultiIndex() {}
-
-  // Assign Operators:
-  // Copy Assign Operator
-  MultiIndex& operator=(const MultiIndex& other) {
-    container = other.container;
-    return *this;
-  }
-
-  // Move Assign Operator
-  MultiIndex& operator=(MultiIndex&& other) {
-    // Proxy to the move assign operator of the container
-    container = std::move(other.container);
-    return *this;
-  }
-
+  MultiIndex(Iterator begin, Iterator end): container(begin,end) {}
 
   // Maybe return the first element in the ds
   shared_ptr<Elem> peek(unit_t) const {
@@ -1265,6 +1023,5 @@ template <typename... Args>
 std::size_t hash_value(K3::MultiIndex<Args...> const& b) {
   return hash_collection(b);
 }
-
 
 #endif
