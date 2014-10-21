@@ -22,7 +22,8 @@ module Language.K3.Analysis.Effects.InsertEffects (
   applyLambda,
   applyLambdaEnv,
   runConsolidatedAnalysis,
-  substGlobals
+  substGlobalsE,
+  substGlobalsD
 )
 where
 
@@ -821,21 +822,28 @@ applyLambda sArg sLam =
     subEff _ _ n = return n
 
 -- Fix up an expression's effect and symbol
-substGlobals :: K3 Expression -> MEnv (K3 Expression)
-substGlobals node = fixupAll node
+substGlobalsE :: EffectEnv -> K3 Expression -> K3 Expression
+substGlobalsE env node = flip evalState env $ fixupEffE node >>= fixupSymE
   where
-    fixupAll n = fixupExprEff n >>= fixupExprSym
-
-    fixupExprSym n@(getESymbol -> Just s)  =
+    fixupSymE n@(getESymbol -> Just s)  =
       liftM (\x -> stripAnno isESymbol n @+ ESymbol x) $ mapSym mId fixupSym s
-    fixupExprSym n = return n
-
-    fixupExprEff n@(getEEffect -> Just e)  =
+    fixupSymE n = return n
+    fixupEffE n@(getEEffect -> Just e)  =
       liftM (\x -> stripAnno isEEffect n @+ EEffect x) $ mapEff mId fixupSym e
-    fixupExprEff n = return n
+    fixupEffE n = return n
 
-    -- Any unbound globals should be translated
-    fixupSym :: K3 Symbol -> MEnv (K3 Symbol)
-    fixupSym (tag -> Symbol i (PTemporary TUnbound)) = lookupGlobalM i
-    fixupSym s = return s
+substGlobalsD :: EffectEnv -> K3 Expression -> K3 Expression
+substGlobalsD env node = flip evalState env $ fixupEffD node >>= fixupSymD
+  where
+    fixupSymD n@(getESymbol -> Just s)  =
+      liftM (\x -> stripAnno isESymbol n @+ ESymbol x) $ mapSym mId fixupSym s
+    fixupSymD n = return n
+    fixupEffD n@(getEEffect -> Just e)  =
+      liftM (\x -> stripAnno isEEffect n @+ EEffect x) $ mapEff mId fixupSym e
+    fixupEffD n = return n
+
+-- Any unbound globals should be translated
+fixupSym :: K3 Symbol -> MEnv (K3 Symbol)
+fixupSym (tag -> Symbol i (PTemporary TUnbound)) = lookupGlobalM i
+fixupSym s = return s
 

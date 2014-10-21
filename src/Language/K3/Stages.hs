@@ -106,6 +106,9 @@ addEnv f (prog, env) = case f prog of
                          Right x -> Right (x, env)
                          Left s  -> Left s
 
+addEnvRet :: (EffectEnv -> K3 Declaration -> K3 Declaration) -> ProgramTransform
+addEnvRet f (prog, menv) = maybe (Left "missing effect environment") (\env -> Right (f env prog, Just env)) menv
+
 withProperties :: ProgramTransform -> ProgramTransform
 withProperties transformF p = addEnv inferProgramUsageProperties p >>= transformF 
 
@@ -145,8 +148,8 @@ cgPasses :: Int -> [ProgramTransform]
 cgPasses 1 = [inferFreshEffects,
               addEitherEnv Purity.runPurity,
               addEitherEnv CArgs.runAnalysis,
-              addEitherEnv writebackOpt, 
-              addEitherEnv lambdaFormOptD
+              addEnvRet writebackOpt, 
+              addEnvRet lambdaFormOptD
              ]
 cgPasses _ = [addEitherEnv InsertMembers.runAnalysis,
               addEitherEnv CArgs.runAnalysis
