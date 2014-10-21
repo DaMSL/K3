@@ -147,8 +147,8 @@ namespace K3 {
       Seq<R_elem<string>> results;
       auto &c = results.getContainer();
       c.resize(words.size());
-      for (const auto &elem : words) {
-        results.insert(elem);
+      for (auto &elem : words) {
+        results.insert(R_elem<string>{std::move(elem)});
       }
       return results;
   }

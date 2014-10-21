@@ -1,0 +1,9 @@
+include "Core/Builtins.k3"
+
+control Profile[lbl : label]
+  ?e => let start = now_int () in
+        let result = $.[e] in
+        let end = now_int () in
+        let elapsed_str = concat ":" (itos (end - start)) in
+          print (concat $[|(exprLabel 'lbl)|] elapsed_str);
+          result
