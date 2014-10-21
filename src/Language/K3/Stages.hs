@@ -1,7 +1,9 @@
+{-# LANGUAGE TupleSections #-}
 -- | High-level API to K3 toolchain stages.
 module Language.K3.Stages where
 
 import Control.Monad
+import Control.Arrow (first, second)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
@@ -10,14 +12,17 @@ import Language.K3.Core.Utils
 
 import Language.K3.Analysis.Properties
 import Language.K3.Analysis.HMTypes.Inference
+import Language.K3.Analysis.Effects.InsertEffects(EffectEnv)
 import qualified Language.K3.Analysis.Effects.InsertEffects as Effects
 import qualified Language.K3.Analysis.Effects.Purity        as Purity
+import qualified Language.K3.Analysis.InsertMembers         as InsertMembers
+import qualified Language.K3.Analysis.CArgs                 as CArgs
 
 import Language.K3.Transform.Simplification
 import Language.K3.Transform.Writeback
 import Language.K3.Transform.LambdaForms
 
-type ProgramTransform = K3 Declaration -> Either String (K3 Declaration)
+type ProgramTransform = (K3 Declaration, Maybe EffectEnv) -> Either String (K3 Declaration, Maybe EffectEnv)
 
 isAnyETypeAnn :: Annotation Expression -> Bool
 isAnyETypeAnn a = isETypeOrBound a || isEQType a
@@ -53,28 +58,28 @@ stripAllProperties = stripDeclAnnotations isDProperty isEProperty (const False)
 
 {- High-level passes -}
 inferTypes :: ProgramTransform
-inferTypes prog = translateProgramTypes =<< inferProgramTypes prog
+inferTypes (prog, e) = liftM (, e) $ inferProgramTypes prog >>= translateProgramTypes
 
 inferEffects :: ProgramTransform
-inferEffects prog = return $ Effects.runConsolidatedAnalysis prog
+inferEffects (prog, _) = return $ second Just $ Effects.runConsolidatedAnalysis prog
 
 inferTypesAndEffects :: ProgramTransform
-inferTypesAndEffects p = inferEffects =<< inferTypes p
+inferTypesAndEffects p = inferTypes p >>= inferEffects 
 
 inferFreshTypes :: ProgramTransform
-inferFreshTypes = inferTypes . stripTypeAnns
+inferFreshTypes = inferTypes . first stripTypeAnns
 
 inferFreshEffects :: ProgramTransform
-inferFreshEffects = inferEffects . stripEffectAnns
+inferFreshEffects = inferEffects . first stripEffectAnns
 
 inferFreshTypesAndEffects :: ProgramTransform
-inferFreshTypesAndEffects = inferTypesAndEffects . stripTypeAndEffectAnns
+inferFreshTypesAndEffects = inferTypesAndEffects . first stripTypeAndEffectAnns
 
 withTypecheck :: ProgramTransform -> ProgramTransform
-withTypecheck transformF prog = transformF =<< inferTypes prog
+withTypecheck transformF prog = inferTypes prog >>= transformF
 
 withEffects :: ProgramTransform -> ProgramTransform
-withEffects transformF prog = transformF =<< inferEffects prog
+withEffects transformF prog = inferEffects prog >>= transformF 
 
 withTypeAndEffects :: ProgramTransform -> ProgramTransform
 withTypeAndEffects transformF prog = transformF =<< inferEffects =<< inferTypes prog
@@ -91,32 +96,43 @@ wrapTypeAndEffects transformF prog =
   inferFreshTypesAndEffects =<< withTypeAndEffects transformF prog
 -}
 
+-- Add an environment for functions that return only a program
+
+addEitherEnv :: (K3 Declaration -> K3 Declaration) -> ProgramTransform
+addEitherEnv f (prog, env) = Right (f prog, env)
+
+addEnv :: (K3 Declaration -> Either String (K3 Declaration)) -> ProgramTransform
+addEnv f (prog, env) = case f prog of
+                         Right x -> Right (x, env)
+                         Left s  -> Left s
+
 withProperties :: ProgramTransform -> ProgramTransform
-withProperties transformF prog = transformF =<< inferProgramUsageProperties prog
+withProperties transformF p = addEnv inferProgramUsageProperties p >>= transformF 
 
 withRepair :: String -> ProgramTransform -> ProgramTransform
-withRepair msg transformF prog = return . repairProgram msg =<< transformF prog
+withRepair msg transformF prog = liftM (first $ repairProgram msg) $ transformF prog
 
 withPasses :: [ProgramTransform] -> ProgramTransform
 withPasses passes prog = foldM (flip ($!)) prog passes
 
 simplify :: ProgramTransform
-simplify prog = do
+simplify (prog, env) = do
   prog1 <- foldProgramConstants prog
-  prog2 <- return $ betaReductionOnProgram prog1
-  eliminateDeadProgramCode prog2
+  let prog2 = betaReductionOnProgram prog1
+  prog3 <- eliminateDeadProgramCode prog2
+  return (prog3, env)
 
 simplifyWCSE :: ProgramTransform
-simplifyWCSE prog = commonProgramSubexprElim =<< simplify prog
+simplifyWCSE p = simplify p >>= addEnv commonProgramSubexprElim 
 
 streamFusion :: ProgramTransform
-streamFusion = withProperties $ \p -> fuseProgramTransformers =<< inferFusableProgramApplies p
+streamFusion = withProperties $ \p -> addEnv inferFusableProgramApplies p >>= addEnv fuseProgramTransformers 
 
-runPasses :: [ProgramTransform] -> K3 Declaration -> Either String (K3 Declaration)
-runPasses = withPasses
+runPasses :: [ProgramTransform] -> K3 Declaration -> Either String (K3 Declaration, Maybe EffectEnv)
+runPasses passes d = withPasses passes (d, Nothing)
 
 effectPasses :: [ProgramTransform]
-effectPasses = [return . Purity.runPurity]
+effectPasses = [addEitherEnv Purity.runPurity]
 
 optPasses :: [ProgramTransform]
 optPasses = map prepareOpt [ (simplify,         "opt-simplify-prefuse")
@@ -125,11 +141,19 @@ optPasses = map prepareOpt [ (simplify,         "opt-simplify-prefuse")
   where prepareOpt (f,i) =
           withPasses $ [inferFreshTypesAndEffects] ++ effectPasses ++ [withRepair i f]
 
-cgPasses :: [ProgramTransform]
-cgPasses = [return . writebackOpt, return . lambdaFormOptD]
+cgPasses :: Int -> [ProgramTransform]
+cgPasses 1 = [inferFreshEffects,
+              addEitherEnv Purity.runPurity,
+              addEitherEnv CArgs.runAnalysis,
+              addEitherEnv writebackOpt, 
+              addEitherEnv lambdaFormOptD
+             ]
+cgPasses _ = [addEitherEnv InsertMembers.runAnalysis,
+              addEitherEnv CArgs.runAnalysis
+             ]
 
-runOptPasses :: K3 Declaration -> Either String (K3 Declaration)
+runOptPasses :: K3 Declaration -> Either String (K3 Declaration, Maybe EffectEnv)
 runOptPasses prog = runPasses optPasses $ stripTypeAndEffectAnns prog
 
-runCGPasses :: K3 Declaration -> Either String (K3 Declaration)
-runCGPasses prog = runPasses (map (\f -> (\p -> f p >>= inferEffects)) cgPasses) prog
+runCGPasses :: K3 Declaration -> Int -> Either String (K3 Declaration)
+runCGPasses prog lvl = liftM fst $ runPasses (cgPasses lvl) prog

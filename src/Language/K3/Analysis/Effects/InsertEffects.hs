@@ -14,14 +14,15 @@
 --  TODO: lambda needs to filter effects for closure/formal args
 
 module Language.K3.Analysis.Effects.InsertEffects (
-  Env,
+  EffectEnv,
   preprocessBuiltins,
   runAnalysis,
   runAnalysisEnv,
   buildEnv,
   applyLambda,
   applyLambdaEnv,
-  runConsolidatedAnalysis
+  runConsolidatedAnalysis,
+  substGlobals
 )
 where
 
@@ -50,30 +51,30 @@ import qualified Language.K3.Analysis.InsertMembers as IM
 type GlobalEnv = Map Identifier (K3 Symbol)
 type LocalEnv  = Map Identifier [K3 Symbol]
 
-data Env = Env {
+data EffectEnv = EffectEnv {
                 globalEnv :: GlobalEnv,
                 count :: Int,
                 bindEnv :: LocalEnv
                }
 
-startEnv :: Env
-startEnv = Env {
+startEnv :: EffectEnv
+startEnv = EffectEnv {
              globalEnv=Map.empty,
              count = 1,
              bindEnv=Map.empty
            }
 
-insertGlobal :: Identifier -> K3 Symbol -> Env -> Env
+insertGlobal :: Identifier -> K3 Symbol -> EffectEnv -> EffectEnv
 insertGlobal i s env = env {globalEnv=Map.insert i s $ globalEnv env}
 
-getId :: Env -> (Int, Env)
+getId :: EffectEnv -> (Int, EffectEnv)
 getId env = (count env, env {count = 1 + count env})
 
-insertBind :: Identifier -> K3 Symbol -> Env -> Env
+insertBind :: Identifier -> K3 Symbol -> EffectEnv -> EffectEnv
 insertBind i s env =
   env {bindEnv=Map.insertWith (++) i [s] $ bindEnv env}
 
-deleteBind :: Identifier -> Env -> Env
+deleteBind :: Identifier -> EffectEnv -> EffectEnv
 deleteBind i env =
   let m  = bindEnv env
       m' = case Map.lookup i m of
@@ -84,37 +85,37 @@ deleteBind i env =
   in
   env {bindEnv=m'}
 
-clearBinds :: Env -> Env
+clearBinds :: EffectEnv -> EffectEnv
 clearBinds env = env {bindEnv=Map.empty}
 
 emptyClosure :: ClosureInfo
 emptyClosure = ([],[],[])
 
 -- Lookup either in the bind environment or the global environment
-lookupBindInner :: Identifier -> Env -> Maybe (K3 Symbol)
+lookupBindInner :: Identifier -> EffectEnv -> Maybe (K3 Symbol)
 lookupBindInner i env =
   case Map.lookup i $ bindEnv env of
     Nothing -> lookupGlobalInner i env
     s       -> liftM head s
 
-lookupGlobalInner :: Identifier -> Env -> Maybe (K3 Symbol)
+lookupGlobalInner :: Identifier -> EffectEnv -> Maybe (K3 Symbol)
 lookupGlobalInner i env = Map.lookup i $ globalEnv env
-    
+
 lookupBindInnerM :: Identifier -> MEnv (Maybe (K3 Symbol))
 lookupBindInnerM i = do
   env <- get
   return $ lookupBindInner i env
 
 
-lookupBind :: Identifier -> Env -> K3 Symbol
+lookupBind :: Identifier -> EffectEnv -> K3 Symbol
 lookupBind i env = fromMaybe err $ lookupBindInner i env
   where err = error $ "failed to find " ++ i ++ " in environment"
 
-lookupGlobal :: Identifier -> Env -> K3 Symbol
+lookupGlobal :: Identifier -> EffectEnv -> K3 Symbol
 lookupGlobal i env = fromMaybe err $ lookupGlobalInner i env
   where err = error $ "failed to find " ++ i ++ " in global environment"
 
-type MEnv = State Env
+type MEnv = State EffectEnv
 
 insertGlobalM :: Identifier -> K3 Symbol -> MEnv ()
 insertGlobalM i s = modify $ insertGlobal i s
@@ -296,7 +297,7 @@ wrapSymFn effFn symFn n =
 -- Fill in the effect symbols missing in any builtins
 -- Number any existing symbols with SIDs and FIDs
 -- This must be called before effects are lifted into the expression tree
-preprocessBuiltins :: K3 Declaration -> (K3 Declaration, Env)
+preprocessBuiltins :: K3 Declaration -> (K3 Declaration, EffectEnv)
 preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl prog
   where
     addMissingDecl :: K3 Declaration -> MEnv(K3 Declaration)
@@ -313,7 +314,7 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
 
     -- If we have a symbol, number it
     addMissingDecl n = case n @~ isDSymbol of
-                         Just ds@(DSymbol s) -> do
+                         Just (DSymbol s) -> do
                            s' <- liftM DSymbol $ numberSyms s
                            return (stripAnno isDSymbol n  @+ s')
                          _ -> return n
@@ -399,20 +400,20 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
 ----- Actual effect insertion ------
 -- Requires an environment built up by the preprocess phase
 
-runAnalysis :: K3 Declaration -> K3 Declaration
+runAnalysis :: K3 Declaration -> (K3 Declaration, EffectEnv)
 runAnalysis = runAnalysisEnv startEnv
 
-runConsolidatedAnalysis :: K3 Declaration -> K3 Declaration
-runConsolidatedAnalysis d = let (p, env) = preprocessBuiltins d in runAnalysisEnv env (IM.runAnalysis p)
+runConsolidatedAnalysis :: K3 Declaration -> (K3 Declaration, EffectEnv)
+runConsolidatedAnalysis d =
+  let (p, env) = preprocessBuiltins d in
+  runAnalysisEnv env $ IM.runAnalysis p
 
-runAnalysisEnv :: Env -> K3 Declaration -> K3 Declaration
-runAnalysisEnv env prog = flip evalState env $
+runAnalysisEnv :: EffectEnv -> K3 Declaration -> (K3 Declaration, EffectEnv)
+runAnalysisEnv env prog = flip runState env $
   -- for cyclic scope, add temporaries for all globals
   addAllGlobals prog >>=
   -- actual modification of AST (no need to decorate declarations here)
-  mapProgram handleDecl mId handleExprs Nothing >>=
-  -- fix up any globals that couldn't be looked up due to cyclic scope
-  mapProgram handleDecl mId fixUpExprs Nothing
+  mapProgram handleDecl mId handleExprs Nothing
 
   where
     -- Add all globals and decorate tree
@@ -615,25 +616,6 @@ runAnalysisEnv env prog = flip evalState env $
       eff <- combineEffSeq $ map getEEffect ch
       return $ addEffSymCh eff Nothing ch n
 
-    -- Post-processing for cyclic scope
-    fixUpExprs :: K3 Expression -> MEnv (K3 Expression)
-    fixUpExprs node = modifyTree fixupAll node
-      where
-        fixupAll n = fixupExprEff n >>= fixupExprSym
-
-        fixupExprSym n@(getESymbol -> Just s)  =
-          liftM (\x -> stripAnno isESymbol n @+ ESymbol x) $ mapSym mId fixupSym s
-        fixupExprSym n = return n
-
-        fixupExprEff n@(getEEffect -> Just e)  =
-          liftM (\x -> stripAnno isEEffect n @+ EEffect x) $ mapEff mId fixupSym e
-        fixupExprEff n = return n
-
-        -- Any unbound globals should be translated
-        fixupSym :: K3 Symbol -> MEnv (K3 Symbol)
-        fixupSym (tag -> Symbol i (PTemporary TUnbound)) = lookupGlobalM i
-        fixupSym s = return s
-
     ------ Utilities ------
     -- Common procedure for adding back the symbols, effects and children
     addEffSymCh :: Maybe (K3 Effect) -> Maybe (K3 Symbol) -> [K3 Expression] -> K3 Expression -> K3 Expression
@@ -743,7 +725,7 @@ combineSymApply l a = combineSym PApply [l,a]
 
 
 -- Build a global environment for using state monad functions dynamically
-buildEnv :: K3 Declaration -> Env
+buildEnv :: K3 Declaration -> EffectEnv
 buildEnv n' = snd $ flip runState startEnv $
                addAllGlobals n' >>
                mapProgram handleDecl mId highestExprId Nothing n'
@@ -790,7 +772,7 @@ buildEnv n' = snd $ flip runState startEnv $
                         Nothing      -> c
       put $ env {count=maxCount}
 
-applyLambdaEnv :: Env -> K3 Symbol -> K3 Symbol -> (Maybe (K3 Effect, K3 Symbol), Env)
+applyLambdaEnv :: EffectEnv -> K3 Symbol -> K3 Symbol -> (Maybe (K3 Effect, K3 Symbol), EffectEnv)
 applyLambdaEnv env sArg sLam = flip runState env $ applyLambda sArg sLam
 
 -- If the symbol is a global, substitute from the global environment
@@ -837,3 +819,23 @@ applyLambda sArg sLam =
         x <- applyLambda sA sL
         return $ maybe n fst x
     subEff _ _ n = return n
+
+-- Fix up an expression's effect and symbol
+substGlobals :: K3 Expression -> MEnv (K3 Expression)
+substGlobals node = fixupAll node
+  where
+    fixupAll n = fixupExprEff n >>= fixupExprSym
+
+    fixupExprSym n@(getESymbol -> Just s)  =
+      liftM (\x -> stripAnno isESymbol n @+ ESymbol x) $ mapSym mId fixupSym s
+    fixupExprSym n = return n
+
+    fixupExprEff n@(getEEffect -> Just e)  =
+      liftM (\x -> stripAnno isEEffect n @+ EEffect x) $ mapEff mId fixupSym e
+    fixupExprEff n = return n
+
+    -- Any unbound globals should be translated
+    fixupSym :: K3 Symbol -> MEnv (K3 Symbol)
+    fixupSym (tag -> Symbol i (PTemporary TUnbound)) = lookupGlobalM i
+    fixupSym s = return s
+
