@@ -25,7 +25,6 @@ import Language.K3.Analysis.HMTypes.Inference
 -- import Language.K3.Analysis.Properties
 import qualified Language.K3.Analysis.Effects.InsertEffects as Effects
 import qualified Language.K3.Analysis.Effects.Purity        as Pure
-import qualified Language.K3.Analysis.InsertMembers   as InsertMembers
 
 import qualified Language.K3.Transform.Normalization  as Normalization
 import qualified Language.K3.Transform.Simplification as Simplification
@@ -115,13 +114,11 @@ run opts = do
     analyzer EffectNormalization x = first Normalization.normalizeProgram x
     analyzer FoldConstants x       = wrapEither Simplification.foldProgramConstants x
     --old: analyzer Effects x             = wrapEither analyzeEffects . wrapEither quickTypecheck $ x
-    analyzer Effects (p,s) = 
-      let (p',env) = Effects.preprocessBuiltins p
-          p'' = Effects.runAnalysisEnv env $ InsertMembers.runAnalysis p'
-      in (p'', s)
-    analyzer DeadCodeElimination x = wrapEither (Simplification.eliminateDeadProgramCode . Effects.runAnalysis) x
+    analyzer Effects x             = first (fst . Effects.runConsolidatedAnalysis) x
+    analyzer DeadCodeElimination x =
+      wrapEither (Simplification.eliminateDeadProgramCode . fst . Effects.runConsolidatedAnalysis) x
     analyzer Profiling x           = first (cleanGeneration "profiling" . Profiling.addProfiling) x
-    analyzer Purity x              = first (Pure.runPurity . Effects.runAnalysis) x
+    analyzer Purity x              = first (Pure.runPurity . fst . Effects.runConsolidatedAnalysis) x
     analyzer ReadOnlyBinds x       = first (cleanGeneration "ro_binds" . RemoveROBinds.transform) x
     analyzer a (p,s)               = (p, unwords [s, "unhandled analysis", show a])
 

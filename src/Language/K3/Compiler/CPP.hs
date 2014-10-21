@@ -25,11 +25,6 @@ import Language.K3.Analysis.HMTypes.Inference (inferProgramTypes, translateProgr
 import qualified Language.K3.Codegen.Imperative as I
 import qualified Language.K3.Codegen.CPP as CPP
 
-import qualified Language.K3.Analysis.Effects.InsertEffects as InsertEffects
-import qualified Language.K3.Analysis.InsertMembers as InsertMembers
-import qualified Language.K3.Analysis.CArgs as CArgs
-import qualified Language.K3.Analysis.Effects.Purity as Purity
-
 import Language.K3.Stages ( runCGPasses )
 
 import Language.K3.Driver.Options
@@ -65,32 +60,17 @@ typecheckStage _ cOpts prog = prefixError "Type error:" $ return $ if useSubType
 
     quickTypecheck =  inferProgramTypes prog >>= translateProgramTypes
 
-applyAnalyses :: CompileOptions -> K3 Declaration -> K3 Declaration
-applyAnalyses cOpts prog = foldl (flip ($)) prog (requiredAnalyses (optimizationLevel cOpts))
-
-requiredAnalyses :: Maybe OptimizationLevel -> [K3 Declaration -> K3 Declaration]
-requiredAnalyses l =
-  case l of Nothing -> analysesO0
-            Just O1 -> analysesO1
-  where
-    -- CArgs is mandatory for CPP codegen, and depends on InsertMembers
-    analysesO0 = [InsertMembers.runAnalysis, CArgs.runAnalysis]
-    analysesO1 = [InsertEffects.runConsolidatedAnalysis, Purity.runPurity, CArgs.runAnalysis]
-
 applyOptimizations :: CompileOptions -> K3 Declaration -> K3 Declaration
-applyOptimizations cOpts prog = case optimizationLevel cOpts of
-  Nothing -> prog
-  -- TODO: simple flag for now
-  -- runCGPasses could take a list of required optimization passes
-  -- for the various levels of optimization
-  Just _  -> either (error "Invalid result from runCGPasses") id $ runCGPasses prog
+applyOptimizations cOpts prog = 
+  let lvl = maybe 0 (const 1) $ optimizationLevel cOpts in
+  either (\s -> error $ "Invalid result from runCGPasses: "++ s) id $ runCGPasses prog lvl
 
 cppCodegenStage :: CompilerStage (K3 Declaration) ()
 cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $ genCPP irRes
   where
     (irRes, initSt)      = I.runImperativeM (I.declaration typedProgram) I.defaultImperativeS
 
-    preprocess = (applyOptimizations copts) . (applyAnalyses copts)
+    preprocess = applyOptimizations copts 
 
     genCPP (Right cppIr) = outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt)
                            (CPP.stringifyProgram $ preprocess cppIr)
