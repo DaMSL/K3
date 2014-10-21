@@ -19,4 +19,7 @@ data OptHint
     -- | Partitioning of a function's closure capture into whether it wants the closure to be
     -- referenced, moved or copied.
     | CaptHint (S.Set Identifier, S.Set Identifier, S.Set Identifier)
+
+    -- | Whether or not a function's return value must be manually moved.
+    | ReturnMoveHint Bool
   deriving (Eq, Ord, Read, Show)
