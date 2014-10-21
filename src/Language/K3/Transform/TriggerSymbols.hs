@@ -4,7 +4,6 @@
 module Language.K3.Transform.TriggerSymbols where
 
 import Data.Tree
-import Debug.Trace
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
@@ -39,9 +38,9 @@ triggerSymbols prog = do
         trackSideways shadowed _ n                  = return (shadowed, replicate (length (children n) - 1) shadowed)
 
         rewriteTrigVar trigSyms shadowed ch e@(tag -> EVariable i)
-          | i `notElem` shadowed = case lookup i trigSyms of
-                                     Nothing  -> trace ("Not found for " ++ i) return $ replaceCh e ch
-                                     Just sym -> trace ("Found for " ++ i) $ return $ EC.variable $ symId i
+          | i `notElem` shadowed = return $ case lookup i trigSyms of
+                                              Nothing  -> replaceCh e ch
+                                              Just _   -> EC.variable $ symId i
 
         rewriteTrigVar _ _ ch e = return $ replaceCh e ch
 

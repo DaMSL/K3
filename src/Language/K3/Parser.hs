@@ -342,7 +342,7 @@ typeQualifier = typeError "qualifier" $ choice [keyword "immut" >> return TImmut
 {- Type terms -}
 tTerm :: TypeParser
 tTerm = TSpan <-> (//) attachComment <$> comment False
-              <*> choice [ tPrimitive, tOption, tIndirection,
+              <*> choice [ tPrimitive, tOption, tIndirection, tTrigger,
                            tTupleOrNested, tRecord, tCollection,
                            tBuiltIn, tDeclared ]
   where attachComment t cmt = t @+ (TSyntax cmt)
@@ -370,6 +370,9 @@ tOption = typeExprError "option" $ tQNested TC.option "option"
 
 tIndirection :: TypeParser
 tIndirection = typeExprError "indirection" $ tQNested TC.indirection "ind"
+
+tTrigger :: TypeParser
+tTrigger = typeExprError "trigger" $ TC.trigger <$> (keyword "trigger" *> typeExpr)
 
 tTupleOrNested :: TypeParser
 tTupleOrNested = choice [try unit, try (parens $ nestErr $ clean <$> typeExpr), parens $ tupErr tTuple]
@@ -500,7 +503,7 @@ eCString = EC.constant . CString <$> stringLiteral
 
 eVariable :: ExpressionParser
 eVariable = exprError "variable" $ parserWithPMode $ \pMode -> mkVar pMode <$> identifier
-  where mkVar Normal ('\'':t) = EC.constant $ CString t
+  where mkVar Normal ('\'':t) = EC.applyMany resolveFn [EC.constant $ CString t]
         mkVar _      i = EC.variable i
 
 {- Complex literals -}

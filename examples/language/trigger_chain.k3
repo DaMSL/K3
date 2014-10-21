@@ -1,0 +1,9 @@
+declare someAddr : address = 127.0.0.1:40000
+
+trigger foo : () = \_ -> (bar, someAddr) <- {nt:baz, dest: someAddr, v: 5}
+
+trigger bar : {nt: trigger string, dest: address, v: int} = \x -> (
+   (x.nt, x.dest) <- "foo" 
+)
+
+trigger baz : string = \_ -> ()

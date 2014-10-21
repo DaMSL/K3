@@ -10,7 +10,9 @@ module Language.K3.Parser.ProgramBuilder (
   bindSource,
   mkRunSourceE,
   mkRunSinkE,
-  declareBuiltins
+  declareBuiltins,
+
+  resolveFn
 ) where
 
 import Control.Applicative
@@ -101,6 +103,8 @@ registerSocketCloseTriggerFn = EC.variable "registerSocketCloseTrigger"
 registerSocketDataTriggerFn :: K3 Expression
 registerSocketDataTriggerFn = EC.variable "registerSocketDataTrigger"
 
+resolveFn :: K3 Expression
+resolveFn = EC.variable "resolve"
 
 {- Top-level functions -}
 initId :: Identifier
@@ -127,8 +131,6 @@ roleFnId = "processRole"
 roleFn :: K3 Expression
 roleFn = EC.variable roleFnId
 
-replace_children :: K3 a -> [K3 a] -> K3 a
-replace_children (Node n _) nc = Node n nc
 
 {- Declaration construction -}
 builtinGlobal :: Identifier -> K3 Type -> Maybe (K3 Expression) -> K3 Declaration
@@ -297,7 +299,7 @@ mkRunSinkE n = EC.applyMany (EC.variable $ ciName n) [EC.unit]
 -- TODO: at_exit function body
 declareBuiltins :: K3 Declaration -> K3 Declaration
 declareBuiltins d
-  | DRole n <- tag d, n == defaultRoleName = replace_children d new_children
+  | DRole n <- tag d, n == defaultRoleName = replaceCh d new_children
   | otherwise = d
   where new_children = runtimeDecls ++ peerDecls ++ (children d) ++ topLevelDecls
 
