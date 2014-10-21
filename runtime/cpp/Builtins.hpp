@@ -54,7 +54,7 @@ namespace K3 {
     double randomFraction(unit_t);
 
     template <class T>
-    int hash(T x) {
+    int hash(const T& x) {
       // We implement hash_value for all of our types.
       // for ordered containers, so we may as well delegate to that.
       return static_cast<int>(hash_value(x));
