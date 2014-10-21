@@ -18,9 +18,10 @@ import qualified Language.K3.Analysis.Effects.Purity        as Purity
 import qualified Language.K3.Analysis.InsertMembers         as InsertMembers
 import qualified Language.K3.Analysis.CArgs                 as CArgs
 
+import Language.K3.Transform.LambdaForms
+import Language.K3.Transform.NRVOMove
 import Language.K3.Transform.Simplification
 import Language.K3.Transform.Writeback
-import Language.K3.Transform.LambdaForms
 
 type ProgramTransform = (K3 Declaration, Maybe EffectEnv) -> Either String (K3 Declaration, Maybe EffectEnv)
 
@@ -64,7 +65,7 @@ inferEffects :: ProgramTransform
 inferEffects (prog, _) = return $ second Just $ Effects.runConsolidatedAnalysis prog
 
 inferTypesAndEffects :: ProgramTransform
-inferTypesAndEffects p = inferTypes p >>= inferEffects 
+inferTypesAndEffects p = inferTypes p >>= inferEffects
 
 inferFreshTypes :: ProgramTransform
 inferFreshTypes = inferTypes . first stripTypeAnns
@@ -79,7 +80,7 @@ withTypecheck :: ProgramTransform -> ProgramTransform
 withTypecheck transformF prog = inferTypes prog >>= transformF
 
 withEffects :: ProgramTransform -> ProgramTransform
-withEffects transformF prog = inferEffects prog >>= transformF 
+withEffects transformF prog = inferEffects prog >>= transformF
 
 withTypeAndEffects :: ProgramTransform -> ProgramTransform
 withTypeAndEffects transformF prog = transformF =<< inferEffects =<< inferTypes prog
@@ -110,7 +111,7 @@ addEnvRet :: (EffectEnv -> K3 Declaration -> K3 Declaration) -> ProgramTransform
 addEnvRet f (prog, menv) = maybe (Left "missing effect environment") (\env -> Right (f env prog, Just env)) menv
 
 withProperties :: ProgramTransform -> ProgramTransform
-withProperties transformF p = addEnv inferProgramUsageProperties p >>= transformF 
+withProperties transformF p = addEnv inferProgramUsageProperties p >>= transformF
 
 withRepair :: String -> ProgramTransform -> ProgramTransform
 withRepair msg transformF prog = liftM (first $ repairProgram msg) $ transformF prog
@@ -126,10 +127,10 @@ simplify (prog, env) = do
   return (prog3, env)
 
 simplifyWCSE :: ProgramTransform
-simplifyWCSE p = simplify p >>= addEnv commonProgramSubexprElim 
+simplifyWCSE p = simplify p >>= addEnv commonProgramSubexprElim
 
 streamFusion :: ProgramTransform
-streamFusion = withProperties $ \p -> addEnv inferFusableProgramApplies p >>= addEnv fuseProgramTransformers 
+streamFusion = withProperties $ \p -> addEnv inferFusableProgramApplies p >>= addEnv fuseProgramTransformers
 
 runPasses :: [ProgramTransform] -> K3 Declaration -> Either String (K3 Declaration, Maybe EffectEnv)
 runPasses passes d = withPasses passes (d, Nothing)
@@ -148,8 +149,9 @@ cgPasses :: Int -> [ProgramTransform]
 cgPasses 1 = [inferFreshEffects,
               addEitherEnv Purity.runPurity,
               addEitherEnv CArgs.runAnalysis,
-              addEnvRet writebackOpt, 
-              addEnvRet lambdaFormOptD
+              addEnvRet writebackOpt,
+              addEnvRet lambdaFormOptD,
+              addEnvRet nrvoMoveOpt
              ]
 cgPasses _ = [addEitherEnv InsertMembers.runAnalysis,
               addEitherEnv CArgs.runAnalysis
