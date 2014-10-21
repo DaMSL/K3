@@ -1,6 +1,8 @@
 include "Annotation/Collection.k3"
 include "Annotation/Map.k3"
 include "Core/Builtins.k3"
+include "Core/Profile.k3"
+
 
 @:CArgs 2
 declare stringLoader: string -> collection {elem:string} @ { Seq } -> ()
@@ -9,7 +11,6 @@ declare dataFiles : collection {path: string} @ {Collection}
 
 // Constants
 declare master: address = 127.0.0.1:40000
-declare x: mut int = 3
 
 // Globals
 declare peers_ready: mut int = 0
@@ -52,15 +53,14 @@ declare get_line : string -> () = \line -> (
        {None   -> url_count.insert {key:r.elem, value:1}}
    )))
 )
-
 trigger local : () = \_ -> (
-  inputData.iterate (\s -> get_line s.elem);
+  ((inputData.iterate (\s -> get_line s.elem)) @Profile(lbl=[# iterate_get_line]) );
   url_count.iterate (\v ->
     url_counts_partial.insert {sourcePage:cur_page, destPage:v.key, count:v.value});
-  let url_counts_total = url_counts_partial.groupBy
+  let url_counts_total = (url_counts_partial.groupBy
     (\v -> v.destPage)
     (\acc -> \v -> acc + v.count)
-    0
+    0) @Profile(lbl=[# url_counts_groupBy])
   in
   (aggregate, master) <- url_counts_total
 )
