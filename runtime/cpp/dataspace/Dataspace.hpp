@@ -17,6 +17,7 @@
 #include <boost/lambda/lambda.hpp>
 
 #include "Common.hpp"
+#include "BaseTypes.hpp"
 
 namespace K3 {
 
