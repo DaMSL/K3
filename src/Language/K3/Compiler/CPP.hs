@@ -25,10 +25,6 @@ import Language.K3.Analysis.HMTypes.Inference (inferProgramTypes, translateProgr
 import qualified Language.K3.Codegen.Imperative as I
 import qualified Language.K3.Codegen.CPP as CPP
 
-import qualified Language.K3.Analysis.Effects.InsertEffects as InsertEffects
-import qualified Language.K3.Analysis.InsertMembers as InsertMembers
-import qualified Language.K3.Analysis.CArgs as CArgs
-import qualified Language.K3.Analysis.Effects.Purity as Purity
 import Language.K3.Transform.TriggerSymbols
 
 import Language.K3.Stages ( runCGPasses )
@@ -65,20 +61,6 @@ typecheckStage _ cOpts prog = prefixError "Type error:" $ return $ if useSubType
     (typeErrors, _, typedProgram) = typecheckProgram prog
 
     quickTypecheck =  inferProgramTypes prog >>= translateProgramTypes
-
-applyAnalyses :: CompileOptions -> K3 Declaration -> K3 Declaration
-applyAnalyses cOpts prog = foldl (flip ($)) prog (requiredAnalyses (optimizationLevel cOpts))
-
-requiredAnalyses :: Maybe OptimizationLevel -> [K3 Declaration -> K3 Declaration]
-requiredAnalyses l =
-  case l of Nothing -> analysesO0
-            Just O1 -> analysesO1
-  where
-    -- CArgs is mandatory for CPP codegen, and depends on InsertMembers
-    -- Trigger symbols is mandatory as well.
-    analysesO0 = [InsertMembers.runAnalysis, CArgs.runAnalysis]
-    analysesO1 = [InsertEffects.runConsolidatedAnalysis, Purity.runPurity, CArgs.runAnalysis ]
-
 
 applyOptimizations :: CompileOptions -> K3 Declaration -> K3 Declaration
 applyOptimizations cOpts prog = 
