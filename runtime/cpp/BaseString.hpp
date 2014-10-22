@@ -120,7 +120,16 @@ namespace K3 {
 
     template <class archive>
     void serialize(archive& a, const unsigned int) {
-      a & boost::serialization::make_array(buffer, strlen(buffer));
+      int len;
+      if (archive::is_saving::value) {
+        len = strlen(buffer);
+      }
+      a & len;
+      if (archive::is_loading::value) {
+        buffer = new char[len + 1];
+        buffer[len] = 0;
+      }
+      a & boost::serialization::make_array(buffer, len);
     }
 
    private:
