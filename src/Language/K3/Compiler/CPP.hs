@@ -81,12 +81,9 @@ requiredAnalyses l =
 
 
 applyOptimizations :: CompileOptions -> K3 Declaration -> K3 Declaration
-applyOptimizations cOpts prog = case optimizationLevel cOpts of
-  Nothing -> prog
-  -- TODO: simple flag for now
-  -- runCGPasses could take a list of required optimization passes
-  -- for the various levels of optimization
-  Just _  -> either (error "Invalid result from runCGPasses") id $ runCGPasses prog
+applyOptimizations cOpts prog = 
+  let lvl = maybe 0 (const 1) $ optimizationLevel cOpts in
+  either (\s -> error $ "Invalid result from runCGPasses: "++ s) id $ runCGPasses prog lvl
 
 cppCodegenStage :: CompilerStage (K3 Declaration) ()
 cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $ genCPP irRes
@@ -96,7 +93,7 @@ cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $
 
     (irRes, initSt)      = I.runImperativeM (I.declaration prog') I.defaultImperativeS
 
-    preprocess = (applyOptimizations copts) . (applyAnalyses copts)
+    preprocess = applyOptimizations copts 
 
     genCPP (Right cppIr) = outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt)
                            (CPP.stringifyProgram $ preprocess cppIr)
