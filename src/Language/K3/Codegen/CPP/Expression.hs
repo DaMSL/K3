@@ -44,8 +44,9 @@ data RContext
     = RForget
 
     -- | Indicates that the calling context is a C++ function, in which case the result may be
-    -- 'returned' from the callee.
-    | RReturn
+    -- 'returned' from the callee. A true payload indicates that the return value needs to be
+    -- manually move wrapped
+    | RReturn { moveReturn :: Bool }
 
     -- | Indicates that the calling context requires the callee's result to be stored in a variable
     -- of a pre-specified name.
@@ -56,7 +57,7 @@ data RContext
 
 instance Show RContext where
     show RForget = "RForget"
-    show RReturn = "RReturn"
+    show (RReturn b) = "RReturn " ++ show b
     show (RName i) = "RName \"" ++ i ++ "\""
     show (RSplice _) = "RSplice <opaque>"
 
@@ -203,7 +204,12 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
                                               [R.Variable $ R.Name s])) cMove
     let copyCapture = S.map (\s -> R.ValueCapture $ Just (s, Nothing)) cCopy
     let capture = thisCapture : (S.toList $ S.unions [refCapture, moveCapture, copyCapture])
-    body' <- reify RReturn body
+
+    let nrvoHint = case (e @~ \case { EOpt (ReturnMoveHint _) -> True; _ -> False }) of
+                     Just (EOpt (ReturnMoveHint b)) -> b
+                     _ -> False
+
+    body' <- reify (RReturn nrvoHint) body
     -- TODO: Handle `mutable' arguments.
     let hintedArgType = if readOnly then R.Const (R.Reference ta) else ta
     return ( []
@@ -370,7 +376,7 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
             BRecord iis -> [genRecordAssign g k v | (k, v) <- iis, isWriteBound v]
 
     (bindBody, k) <- case r of
-        RReturn -> do
+        RReturn _ -> do
             g' <- genSym
             te <- getKType e
             de <- cDecl te g'
@@ -399,6 +405,7 @@ reify r e = do
     reification <- case r of
         RForget -> return []
         RName k -> return [R.Assignment (R.Variable $ R.Name k) value]
-        RReturn -> return [R.Return value]
+        RReturn True -> return [R.Return $ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "move")) [value]]
+        RReturn False -> return [R.Return value]
         RSplice _ -> throwE $ CPPGenE "Unsupported reification by splice."
     return $ effects ++ reification

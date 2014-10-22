@@ -27,6 +27,7 @@ import Language.K3.Core.Declaration
 
 import Language.K3.Analysis.Effects.Common
 import Language.K3.Analysis.Effects.Core
+import Language.K3.Analysis.Effects.InsertEffects(EffectEnv, substGlobalsE)
 
 import Language.K3.Transform.Hints
 
@@ -38,6 +39,7 @@ instance (Ord a) => GHC.Exts.IsList (S.Set a) where
 
 pattern TAC t as cs = Node (t :@: as) cs
 
+findScope :: K3 Effect -> K3 Effect
 findScope f@(tag -> FScope _ _) = f
 findScope (children -> fs) = findScope (last fs)
 
@@ -56,20 +58,22 @@ conflicts f k = conflictsWR f || any (flip hasWrite f) kk
         = conflictsWR first || conflictsWR second || (hasWrite k first && any (flip hasRead second) kk)
     conflictsWR (children -> cs) = any conflictsWR cs
 
-writebackOpt :: K3 Declaration -> K3 Declaration
-writebackOpt (TAC (DGlobal i t me) as cs) = TAC (DGlobal i t (writebackOptE <$> me)) as cs
-writebackOpt (TAC (DTrigger i t e) as cs) = TAC (DTrigger i t (writebackOptE e)) as cs
-writebackOpt (TAC (DRole n) as cs) = TAC (DRole n) as (map writebackOpt cs)
-writebackOpt t = t
+writebackOpt :: EffectEnv -> K3 Declaration -> K3 Declaration
+writebackOpt env (TAC (DGlobal i t me) as cs) = TAC (DGlobal  i t (writebackOptE env <$> me)) as cs
+writebackOpt env (TAC (DTrigger i t e) as cs) = TAC (DTrigger i t (writebackOptE env e))      as cs
+writebackOpt env (TAC (DRole n) as cs)        = TAC (DRole n) as $ map (writebackOpt env) cs
+writebackOpt _ t = t
 
-writebackOptE :: K3 Expression -> K3 Expression
-writebackOptE g@(TAC t@(EBindAs _) as cs) = TAC t (constructBindHint g : as) (map writebackOptE cs)
-writebackOptE g@(TAC t@(ECaseOf _) as cs) = TAC t (constructBindHint g : as) (map writebackOptE cs)
-writebackOptE (TAC t as cs) = TAC t as (map writebackOptE cs)
+writebackOptE :: EffectEnv -> K3 Expression -> K3 Expression
+writebackOptE env g@(TAC t@(EBindAs _) as cs) = TAC t (constructBindHint (substGlobalsE env g) : as) $
+                                                   map (writebackOptE env) cs
+writebackOptE env g@(TAC t@(ECaseOf _) as cs) = TAC t (constructBindHint (substGlobalsE env g) : as) $
+                                                   map (writebackOptE env) cs
+writebackOptE env (TAC t as cs)               = TAC t as $ map (writebackOptE env) cs
 
 constructBindHint :: K3 Expression -> Annotation Expression
-constructBindHint g = (EOpt $ BindHint (symIDs refBound, [], symIDs writeBound))
+constructBindHint g = EOpt $ BindHint (symIDs refBound, [], symIDs writeBound)
   where
     (tag &&& children ->  (FScope newSymbols _, cs)) = findScope $ let (EEffect k) = fromJust $ g @~ isEEffect in k
     (writeBound, refBound) = if null cs then ([], S.fromList newSymbols)
-                             else (S.partition (conflicts $ head cs) $ S.fromList newSymbols)
+                             else S.partition (conflicts $ head cs) $ S.fromList newSymbols

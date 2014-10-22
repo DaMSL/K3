@@ -114,6 +114,7 @@ library
         Language.K3.Transform.Hints,
         Language.K3.Transform.LambdaForms,
         Language.K3.Transform.Normalization,
+        Language.K3.Transform.NRVOMove,
         Language.K3.Transform.Profiling,
         Language.K3.Transform.RemoveROBinds,
         Language.K3.Transform.Simplification,
