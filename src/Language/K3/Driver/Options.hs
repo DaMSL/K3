@@ -115,6 +115,7 @@ data TransformMode
     | Profiling
     | Purity
     | ReadOnlyBinds
+    | TriggerSymbols
   deriving (Eq, Read, Show)
 
 data OptimizationLevel = O1 deriving (Eq, Read, Show)
@@ -168,7 +169,7 @@ modeOptions = subparser (
 
 -- | Print mode flags
 printModeOpt :: Parser PrintMode
-printModeOpt = (astPrintOpt <|> syntaxPrintOpt)
+printModeOpt = astPrintOpt <|> syntaxPrintOpt
 
 astPrintOpt :: Parser PrintMode
 astPrintOpt = flag' PrintAST (   long "ast"
@@ -425,6 +426,7 @@ transformMode   =  wrap <$> conflictsOpt
               <|> wrap <$> profilingOpt
               <|> wrap <$> purityOpt
               <|> wrap <$> readOnlyBindOpts
+              <|> wrap <$> trigSymOpt
   where
     wrap x = [x]
 
@@ -498,6 +500,11 @@ readOnlyBindOpts :: Parser TransformMode
 readOnlyBindOpts = flag' ReadOnlyBinds
                 (   long "frobinds"
                  <> (help $ "Remove read-only binds"))
+
+trigSymOpt :: Parser TransformMode
+trigSymOpt = flag' TriggerSymbols
+                (   long "ftriggersymbols"
+                 <> (help $ "Generate integer symbols for triggers in the program"))
 
 -- | Information printing options.
 informOptions :: Parser InfoSpec

@@ -29,6 +29,7 @@ import qualified Language.K3.Analysis.Effects.InsertEffects as InsertEffects
 import qualified Language.K3.Analysis.InsertMembers as InsertMembers
 import qualified Language.K3.Analysis.CArgs as CArgs
 import qualified Language.K3.Analysis.Effects.Purity as Purity
+import Language.K3.Transform.TriggerSymbols
 
 import Language.K3.Stages ( runCGPasses )
 
@@ -74,8 +75,10 @@ requiredAnalyses l =
             Just O1 -> analysesO1
   where
     -- CArgs is mandatory for CPP codegen, and depends on InsertMembers
+    -- Trigger symbols is mandatory as well.
     analysesO0 = [InsertMembers.runAnalysis, CArgs.runAnalysis]
-    analysesO1 = [InsertEffects.runConsolidatedAnalysis, Purity.runPurity, CArgs.runAnalysis]
+    analysesO1 = [InsertEffects.runConsolidatedAnalysis, Purity.runPurity, CArgs.runAnalysis ]
+
 
 applyOptimizations :: CompileOptions -> K3 Declaration -> K3 Declaration
 applyOptimizations cOpts prog = case optimizationLevel cOpts of
@@ -88,7 +91,10 @@ applyOptimizations cOpts prog = case optimizationLevel cOpts of
 cppCodegenStage :: CompilerStage (K3 Declaration) ()
 cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $ genCPP irRes
   where
-    (irRes, initSt)      = I.runImperativeM (I.declaration typedProgram) I.defaultImperativeS
+    --attach trigger symbols. TODO: mangle names before applying this transformation.
+    prog' = either error id $ triggerSymbols typedProgram
+
+    (irRes, initSt)      = I.runImperativeM (I.declaration prog') I.defaultImperativeS
 
     preprocess = (applyOptimizations copts) . (applyAnalyses copts)
 
