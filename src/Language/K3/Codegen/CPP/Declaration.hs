@@ -81,16 +81,30 @@ declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children
 -- Global scalars.
 declaration d@(tag -> DGlobal i t me) = do
     globalType <- genCType t
-    globalInit <- maybe (return []) (reify $ RName i) me
-
-    addInitialization globalInit
-    when (tag t == TCollection) $ addComposite (namedTAnnotations $ annotations t)
-
     let pinned = isJust $ d @~ (\case { DProperty "Pinned" Nothing -> True; _ -> False })
-    if pinned then modify (\s -> s { staticGlobals = (i, t) : (staticGlobals s) } ) else return ()
-
     let globalType' = if pinned then R.Static globalType else globalType
 
+    -- Need to declare static members outside of class scope
+    let staticGlobalDecl = [R.Forward $ R.ScalarDecl
+                             (R.Qualified (R.Name "__global_context") (R.Name i))
+                             globalType
+                             Nothing
+                           | pinned]
+
+    addStaticDeclaration staticGlobalDecl
+
+    -- Initialize the variable.
+    let rName = RName $ if pinned then "__global_context::" ++ i else i
+    globalInit <- maybe (return []) (reify rName) me
+
+    -- Add to proper initialization list
+    let addFn = if pinned then addStaticInitialization else addInitialization
+    addFn globalInit
+
+    -- Add any annotation to the state
+    when (tag t == TCollection) $ addComposite (namedTAnnotations $ annotations t)
+
+    -- Return the class-scope-declaration
     return [R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name i) globalType' Nothing]
 
 -- Triggers are implementationally identical to functions returning unit, except they also generate

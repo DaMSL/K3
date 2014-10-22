@@ -236,12 +236,10 @@ inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@
         classInst = R.Forward $ R.ScalarDecl (R.Name "d") R.Inferred
                       (Just $ R.Call (R.Variable $ R.Specialized [R.Named className]
                                            (R.Qualified (R.Name "std" )$ R.Name "make_shared")) [vv])
-        (_, trigId) = fromMaybe (error $ "Failed to find trigger " ++ tName ++ " in trigger list") $
-                         tName `lookup` trigList
     return (concat [te, ae, ve]
                  ++ [ classInst
                     , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine") (R.Name "send")) [
-                                    av, R.Variable (R.Name $ show trigId), R.Variable (R.Name "d")
+                                    av, R.Variable (R.Name $ tName), R.Variable (R.Name "d")
                                    ]
                     ]
              , R.Initialization R.Unit [])

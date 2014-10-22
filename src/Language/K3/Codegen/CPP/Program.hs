@@ -38,11 +38,10 @@ transitionCPPGenS is = defaultCPPGenS
     { globals    = convert $ I.globals is
     , patchables = map mangleReservedId $ I.patchables is
     , showables  = convert $ I.showables is
-    , triggers   = add_numbers $ convert $ I.triggers is
+    , triggers   = convert $ I.triggers is
     }
   where
     convert = map (first mangleReservedId)
-    add_numbers l = zipWith (\(x,t) i -> (x,(t,i))) l [0..length l]
 
 stringifyProgram :: K3 Declaration -> CPPGenM Doc
 stringifyProgram d = vsep . map R.stringify <$> program d
@@ -223,29 +222,28 @@ requiredIncludes = return
 
 
 definePinnedGlobals :: CPPGenM [R.Statement]
-definePinnedGlobals =
-  staticGlobals <$> get >>= mapM defineGlobal
-  where
-    defineGlobal (i, t) = do
-      gType <- genCType t
-      return $ R.Forward $ R.ScalarDecl (R.Qualified (R.Name "__global_context") (R.Name i)) gType Nothing
+definePinnedGlobals = staticDeclarations <$> get
+
+idOfTrigger :: Identifier -> Identifier
+idOfTrigger t = "__" ++ unmangleReservedId t ++ "_tid"
 
 generateStaticContextMembers :: CPPGenM [R.Statement]
 generateStaticContextMembers = do
   triggerS <- triggers <$> get
+  initializations <- staticInitializations <$> get
   names <- mapM assignTrigName triggerS
   dispatchers <- mapM assignClonableDispatcher triggerS
-  return $ names ++ dispatchers
+  return $ initializations ++ names ++ dispatchers
   where
-    assignTrigName (tName, (_, tNum)) = do
-      let i = R.Literal $ R.LInt tNum
+    assignTrigName (tName, _) = do
+      let i = R.Variable $ R.Qualified (R.Name "__global_context") (R.Name (idOfTrigger tName))
       let nameStr = R.Literal $ R.LString tName
       let table = R.Variable $ R.Qualified (R.Name "__k3_context") (R.Name "__trigger_names")
       return $ R.Assignment (R.Subscript table i) nameStr
 
-    assignClonableDispatcher (_, (tType, tNum)) = do
+    assignClonableDispatcher (tName, tType) = do
       kType <- genCType tType
-      let i = R.Literal $ R.LInt tNum
+      let i = R.Variable $ R.Qualified (R.Name "__global_context") (R.Name (idOfTrigger tName))
       let table = R.Variable $ R.Qualified (R.Name "__k3_context") (R.Name "__clonable_dispatchers")
       let dispatcher = R.Call
                          (R.Variable $ R.Specialized [R.Named $ R.Specialized [kType] (R.Name "ValDispatcher")] (R.Name "make_shared"))
@@ -259,10 +257,10 @@ generateDispatchPopulation = do
   mapM genDispatch triggerS
   where
      table = R.Variable $ R.Name "dispatch_table"
-     genDispatch (tName, (tType, tNum)) = do
+     genDispatch (tName, tType) = do
        kType <- genCType tType
 
-       let i = R.Literal $ R.LInt tNum
+       let i = R.Variable $ R.Name (idOfTrigger tName)
 
        let dispatchWrapper = R.Lambda
                              [R.ValueCapture $ Just ("this", Nothing)]

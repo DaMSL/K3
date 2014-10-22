@@ -44,5 +44,5 @@ triggerSymbols prog = do
 
         rewriteTrigVar _ _ ch e = return $ replaceCh e ch
 
-        mkSyms trigSyms = map (\(n,i) -> DC.global (symId n) TC.int $ Just $ EC.constant $ CInt i) trigSyms
+        mkSyms trigSyms = map (\(n,i) -> (DC.global (symId n) TC.int $ Just $ EC.constant $ CInt i) @+ (DProperty "Pinned" Nothing) ) trigSyms
         symId n = "__" ++ n ++ "_tid"

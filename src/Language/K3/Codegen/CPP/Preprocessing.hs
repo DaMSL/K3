@@ -19,6 +19,12 @@ mangleReservedId :: Identifier -> Identifier
 mangleReservedId i | i `elem` cppReservedNames = mangleName i
 mangleReservedId i = i
 
+-- Remove the last character, remangle, check for a match.
+-- Used temporarily, until we can move name mangling before
+-- trigger-symbol generation
+unmangleReservedId :: Identifier -> Identifier
+unmangleReservedId i = let attempt = mangleReservedId $ init i in if attempt == i then init i else i
+
 mangleReservedNames :: K3 Declaration -> K3 Declaration
 mangleReservedNames (Node (DGlobal i t me :@: as) cs)
     | i `elem` cppReservedNames = Node (DGlobal (mangleName i) t mme :@: as) mcs

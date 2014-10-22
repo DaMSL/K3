@@ -43,15 +43,15 @@ data CPPGenS = CPPGenS {
         -- | Code necessary to initialize global declarations.
         initializations :: [R.Statement],
 
+        staticDeclarations    :: [R.Statement],
+        staticInitializations :: [R.Statement],
+
         -- | Forward declarations for constructs as a result of cyclic scope.
         forwards :: [R.Declaration],
 
         -- | The global variables declared, for use in exclusion during λ-capture. Needs to be
         -- supplied ahead-of-time, due to cyclic scoping.
         globals  :: [(Identifier, K3 Type)],
-
-        -- | Static global variables that must be defined outside of class-scope
-        staticGlobals :: [(Identifier, K3 Type)],
 
         patchables :: [Identifier],
 
@@ -69,7 +69,7 @@ data CPPGenS = CPPGenS {
         composites :: S.Set (S.Set Identifier),
 
         -- | List of triggers declared in a program, used to populate the dispatch table.
-        triggers :: [(Identifier, (K3 Type, Int))],
+        triggers :: [(Identifier, K3 Type)],
 
         -- | The serialization method to use.
         serializationMethod :: SerializationMethod
@@ -78,7 +78,7 @@ data CPPGenS = CPPGenS {
 
 -- | The default code generation state.
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 [] [] [] []  [] [] M.empty M.empty S.empty [] BoostSerialization
+defaultCPPGenS = CPPGenS 0 [] [] [] [] []  [] [] M.empty M.empty S.empty [] BoostSerialization
 
 refreshCPPGenS :: CPPGenM ()
 refreshCPPGenS = do
@@ -98,6 +98,12 @@ addForward r = modify (\s -> s { forwards = r : forwards s })
 
 addInitialization :: [R.Statement] -> CPPGenM ()
 addInitialization ss = modify (\s -> s { initializations = initializations s ++ ss })
+
+addStaticInitialization :: [R.Statement] -> CPPGenM ()
+addStaticInitialization ss = modify (\s -> s { staticInitializations = staticInitializations s ++ ss })
+
+addStaticDeclaration :: [R.Statement] -> CPPGenM ()
+addStaticDeclaration ss = modify (\s -> s { staticDeclarations = staticDeclarations s ++ ss })
 
 -- | Add an annotation to the code generation state.
 addAnnotation :: Identifier -> [AnnMemDecl] -> CPPGenM ()
