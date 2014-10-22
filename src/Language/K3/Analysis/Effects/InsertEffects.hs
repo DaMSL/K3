@@ -584,13 +584,12 @@ runAnalysisEnv env prog = flip runState env $
       -- Check in the type system for a function in a collection
       case (e @~ isEType, n @~ isEType) of
         (Just (EType(tag -> TCollection)), Just (EType(tag -> TFunction))) ->
-          -- We can't have effects here -- we only have symbols
           case getESymbol n of
             Just nSym -> do
               eSym  <- getOrGenSymbol e
               -- Substitute for 'self' and 'content'
               nSym' <- mapSym mId (subSelf eSym) nSym
-              return $ addEffSymCh Nothing (Just nSym') ch n
+              return $ addEffSymCh (getEEffect e) (Just nSym') ch n
 
             _   -> trace (show n) $ error $ "Missing symbol for projection of " ++ i
 
