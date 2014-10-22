@@ -200,43 +200,60 @@ getOrGenSymbol n = case getESymbol n of
                      Just i  -> return i
 
 -- Create a closure of symbols read, written, or applied that are relevant to the current env
-createClosure :: K3 Effect -> MEnv ClosureInfo
-createClosure n = liftM nubTuple $ foldTree addClosureEff emptyClosure n
+createClosure :: Maybe (K3 Effect) -> Maybe (K3 Symbol) -> MEnv ClosureInfo
+createClosure mEff mSym = liftM nubTuple $ do
+  acc  <- case mSym of
+           Nothing  -> return emptyClosure
+           Just sym -> addClosureSym emptyClosure sym
+  case mEff of
+    Nothing  -> return acc
+    Just eff -> addClosureEff acc eff
   where
     nubTuple (a,b,c) = (nub a, nub b, nub c)
 
     addClosureEff :: ClosureInfo -> K3 Effect -> MEnv ClosureInfo
     addClosureEff acc (tag -> FRead s)     = do
-      (a,b,c) <- foldTree addClosureSym acc s
-      s'      <- getClosureSyms s
+      (a,b,c) <- addClosureSym acc s
+      s'      <- getClosureSyms [] s
       return (s' ++ a,b,c)
     addClosureEff acc (tag -> FWrite s)    = do
-      (a,b,c) <- foldTree addClosureSym acc s
-      s'      <- getClosureSyms s
+      (a,b,c) <- addClosureSym acc s
+      s'      <- getClosureSyms [] s
       return (a, s' ++ b, c)
     addClosureEff acc (tag -> FApply s s') = do
-      acc'    <- foldTree addClosureSym acc  s
-      (a,b,c) <- foldTree addClosureSym acc' s'
-      s''     <- getClosureSyms s'
+      acc'    <- addClosureSym acc  s
+      (a,b,c) <- addClosureSym acc' s'
+      s''     <- getClosureSyms [] s'
       return (a, b, s'' ++ c)
-    addClosureEff acc _ = return acc
+    -- Try to be efficient by reusing results from previous scopes
+    addClosureEff (a', b', c') (tag -> FScope _ cl@(a,b,c)) | cl /= emptyClosure = do
+      a'' <- unite a
+      b'' <- unite b
+      c'' <- unite c
+      return (a'' ++ a', b'' ++ b', c'' ++ c')
+      where unite x = foldrM (flip getClosureSyms) [] x
+    addClosureEff acc n = foldrM (flip addClosureEff) acc $ children n
 
-    addClosureSym acc (tag -> Symbol _ (PLambda _ eff)) = foldTree addClosureEff acc eff 
-    addClosureSym acc _ = return acc
+    addClosureSym acc n@(tag -> Symbol _ (PLambda _ eff)) = do
+      acc' <- foldrM (flip addClosureSym) acc $ children n
+      addClosureEff acc' eff
+    addClosureSym acc n = foldrM (flip addClosureSym) acc $ children n
 
-    getClosureSyms :: K3 Symbol -> MEnv [K3 Symbol]
-    getClosureSyms (tag -> Symbol _ (PTemporary TTemp))    = return []
-    getClosureSyms (tag -> Symbol _ (PTemporary TUnbound)) = return []
-    getClosureSyms s@(tnc -> (Symbol i _, ch)) = do
+    -- The method for searching for valid symbols
+    getClosureSyms acc (tag -> Symbol _ (PTemporary TTemp))    = return acc
+    getClosureSyms acc (tag -> Symbol _ (PTemporary TUnbound)) = return acc
+    getClosureSyms acc s@(tnc -> (Symbol i _, ch)) = do
       x <- lookupBindInnerM i
       case x of
-        Just (tag -> Symbol _ (PTemporary TTemp))    -> return []
-        Just (tag -> Symbol _ (PTemporary TUnbound)) -> return []
-        Just (tag -> Symbol _ PGlobal) -> return []
-        Just s' | s `symEqual` s' -> return [s']
-        _ ->
-          -- if we haven't found a match, it might be deeper in the tree
-          liftM concat $ mapM getClosureSyms ch
+        Just (tag -> Symbol _ (PTemporary TTemp))    -> return acc
+        Just (tag -> Symbol _ (PTemporary TUnbound)) -> return acc
+        Just (tag -> Symbol _ PGlobal) -> return acc
+        Just s' | s `symEqual` s' -> return $ s:acc
+        -- These 2 symbols' children aren't really further provenances
+        Just (tag -> Symbol _ (PLambda _ _)) -> return acc
+        Just (tag -> Symbol _ PApply)        -> return acc
+        _ -> -- if we haven't found a match, it might be deeper in the tree
+          foldrM (flip getClosureSyms) acc ch
 
 addAllGlobals :: K3 Declaration -> MEnv (K3 Declaration)
 addAllGlobals node = mapProgram preHandleDecl mId mId Nothing node
@@ -507,14 +524,13 @@ runAnalysisEnv env prog = flip runState env $
       bindSym <- lookupBindM i
       deleteBindM i
       let eEff = getEEffect e
-          eSym = maybeToList $ getESymbol e
+          eSym = getESymbol e
+          eSymL = maybeToList eSym
       -- Create a closure for the lambda by finding every read/written/applied closure variable
-      closure <- case eEff of
-                   Nothing -> return emptyClosure
-                   Just e' -> createClosure e'
+      closure <- createClosure eEff eSym
       -- Create a gensym for the lambda, containing the effects of the child, and leading to the symbols
       eScope  <- addFID $ scope [bindSym] closure $ maybeToList eEff
-      lSym    <- genSym (PLambda i eScope) eSym
+      lSym    <- genSym (PLambda i eScope) eSymL
       return $ addEffSymCh Nothing (Just lSym) ch n
 
     -- For collection attributes, we need to create and apply a lambda
