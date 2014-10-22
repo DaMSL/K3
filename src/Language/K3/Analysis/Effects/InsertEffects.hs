@@ -587,8 +587,10 @@ runAnalysisEnv env prog = flip runState env $
           case getESymbol n of
             Just nSym -> do
               eSym  <- getOrGenSymbol e
-              -- Substitute for 'self' and 'content'
-              nSym' <- mapSym mId (subSelf eSym) nSym
+              -- Leave a marker to substitute for 'self' and 'content'
+              -- Doing this here will break sharing in the tree
+              nSym' <- genSymTemp TSubstitute [nSym, eSym]
+              -- nSym' <- return nSym
               return $ addEffSymCh (getEEffect e) (Just nSym') ch n
 
             _   -> trace (show n) $ error $ "Missing symbol for projection of " ++ i
@@ -596,10 +598,6 @@ runAnalysisEnv env prog = flip runState env $
         _ -> do -- not a collection member function
           nSym <- genSym (PProject i) $ maybeToList $ getESymbol e
           return $ addEffSymCh (getEEffect e) (Just nSym) ch n
-      where
-        subSelf s n'@(tag -> Symbol "self" PVar)    = return $ replaceCh n' [s]
-        subSelf s n'@(tag -> Symbol "content" PVar) = return $ replaceCh n' [s]
-        subSelf _ n' = return n'
 
     -- handle seq (last symbol)
     handleExpr ch n@(tag -> EOperate OSeq) = do
@@ -840,7 +838,12 @@ substGlobalsD env node = flip evalState env $ fixupEffD node >>= fixupSymD
     fixupEffD n = return n
 
 -- Any unbound globals should be translated
+-- We also substitute for self and content in projections
 fixupSym :: K3 Symbol -> MEnv (K3 Symbol)
-fixupSym (tag -> Symbol i (PTemporary TUnbound)) = lookupGlobalM i
+fixupSym (tag -> Symbol i (PTemporary TUnbound))                    = lookupGlobalM i
+fixupSym (tnc -> (Symbol _ (PTemporary TSubstitute), [nSym, eSym])) = mapSym mId (subSelf eSym) nSym
+  where
+    subSelf s n'@(tag -> Symbol "self" PVar)    = return $ replaceCh n' [s]
+    subSelf s n'@(tag -> Symbol "content" PVar) = return $ replaceCh n' [s]
+    subSelf _ n'                                = return n'
 fixupSym s = return s
-
