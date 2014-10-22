@@ -158,22 +158,8 @@ namespace K3 {
   }
 
   // Split a string by substrings
-  Seq<R_elem<string_impl>> __string_context::splitString(const string_impl& s, const string_impl& splitter) {
-      
-      Seq<R_elem<string_impl>> results;
-      R_elem<string_impl> rec; 
-      char * pch;
-      // TODO: avoid this copy. need a char* not a const char * for first arg to strtok
-      std::string str = s;
-      pch = strtok (&str[0], splitter.c_str());
-      while (pch != NULL)
-      {
-        rec.elem = string_impl(pch);
-        results.insert(rec);
-        pch = strtok (NULL, splitter.c_str());
-      }
-
-      return results;
+  Seq<R_elem<string_impl>> __string_context::splitString(string_impl s, const string_impl& splitter) {
+    return s.splitString(splitter);
   }
 
 } // namespace K3

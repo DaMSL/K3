@@ -37,8 +37,6 @@ std::size_t hash_value(T const& t) {
 
 namespace K3 {
 
-  // String implementation
-  typedef K3::base_string string_impl;
 
   // Standard context for common builtins that use a handle to the engine (via inheritance)
   class __standard_context : public __k3_context {
@@ -172,7 +170,7 @@ namespace K3 {
 
 
     // Split a string by substrings
-    Seq<R_elem<string_impl>> splitString(const string_impl&, const string_impl&);
+    Seq<R_elem<string_impl>> splitString(string_impl, const string_impl&);
   };
 
 

@@ -8,6 +8,9 @@
 #include "boost/serialization/array.hpp"
 #include "boost/functional/hash.hpp"
 
+#include "Common.hpp"
+#include "dataspace/Dataspace.hpp"
+
 char* strdup(const char*);
 
 namespace K3 {
@@ -103,6 +106,22 @@ namespace K3 {
       }
 
       return base_string(buffer + from, to - from);
+    }
+
+    // Modifies this string.
+    Seq<R_elem<string_impl>> splitString(const string_impl& splitter) {
+      Seq<R_elem<string_impl>> results;
+      R_elem<string_impl> rec;
+      char * pch;
+      pch = strtok (buffer, splitter.c_str());
+      while (pch != NULL)
+      {
+        rec.elem = string_impl(pch);
+        results.insert(rec);
+        pch = strtok (NULL, splitter.c_str());
+      }
+
+      return results;
     }
 
     // Stream Operators

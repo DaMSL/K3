@@ -44,7 +44,7 @@ declare get_line : string -> () = \line -> (
   let sp = splitString line " " in  
   let sp_end = now_int () in 
   (split_time = split_time + (sp_end - sp_start));
-  ((if slice_string line 0 4 == "http" and sp.size () == 5 then
+  ((if slice_string (sp.at 0).elem 0 4 == "http" and sp.size () == 5 then
      cur_page = (sp.at 0).elem;
      url_count.iterate(\v ->
        url_counts_partial.insert

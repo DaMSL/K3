@@ -29,6 +29,9 @@ namespace K3 {
   using std::tuple;
   using std::make_tuple;
 
+  // String implementation
+  class base_string;
+  typedef K3::base_string string_impl;
   template <class r> using F = std::function<r>;
   typedef std::string Identifier;
   typedef int TriggerId;
