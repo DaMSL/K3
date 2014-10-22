@@ -1,7 +1,6 @@
 #include <functional>
 #include <string>
 
-#include "re2/re2.h"
 #include "Common.hpp"
 #include "Engine.hpp"
 #include "BaseTypes.hpp"
@@ -79,10 +78,11 @@ namespace K3 {
   }
 
   // TODO fix copies related to base_str / std::sring conversion
-  F<Collection<R_elem<string_impl>>(const string_impl &)> __standard_context::regex_matcher(const string_impl& regex) {
+  F<Collection<R_elem<string_impl>>(const string_impl &)> __string_context::regex_matcher(const string_impl& regex) {
     auto pattern = make_shared<RE2>(regex);
     return [pattern] (const string_impl& in_str) {
-      re2::StringPiece input(static_cast<std::string>(in_str));
+      std::string str = in_str;
+      re2::StringPiece input(str);
       Collection<R_elem<string_impl>> results;
       std::string s;
       while(RE2::FindAndConsume(&input, *pattern, &s)) {
@@ -92,6 +92,22 @@ namespace K3 {
     };
 
   }
+
+  Collection<R_elem<string_impl>> __string_context::regex_matcher_q4(const string_impl& in_str) {
+    if (!pattern) {
+      pattern = make_shared<RE2>("(?P<url>https?://[^\\s]+)");
+    }
+    std::string str = in_str;
+    re2::StringPiece input(str);
+    Collection<R_elem<string_impl>> results;
+    std::string s;
+    while(RE2::FindAndConsume(&input, *pattern, &s)) {
+      results.insert(string_impl(s));
+    }
+    return results;
+
+  }
+
   Vector<R_elem<double>> __standard_context::zeroVector(int i) {
     Vector<R_elem<double>> result;
     auto& c = result.getContainer();
@@ -132,7 +148,9 @@ namespace K3 {
 
   // TODO: more efficient implementation.
   string_impl __string_context::concat(string_impl s1, string_impl s2) {
-    return string_impl(static_cast<std::string>(s1) + static_cast<std::string>(s2));
+    std::string ss1 = s1;
+    std::string ss2 = s2;
+    return string_impl(ss1 + ss2);
   }
 
   string_impl __string_context::rtos(double d) {
@@ -146,7 +164,7 @@ namespace K3 {
       R_elem<string_impl> rec; 
       char * pch;
       // TODO: avoid this copy. need a char* not a const char * for first arg to strtok
-      std::string str = static_cast<std::string>(s);
+      std::string str = s;
       pch = strtok (&str[0], splitter.c_str());
       while (pch != NULL)
       {

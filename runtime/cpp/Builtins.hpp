@@ -9,7 +9,9 @@
 #include <string>
 #include <functional>
 
+#include "re2/re2.h"
 #include "strtk.hpp"
+
 #include "BaseTypes.hpp"
 #include "BaseString.hpp"
 #include "Common.hpp"
@@ -113,7 +115,6 @@ namespace K3 {
         return unit_t {};
       }
 
-    F<Collection<R_elem<string_impl>>(const string_impl &)> regex_matcher(const string_impl&);
     Vector<R_elem<double>> zeroVector(int i);
     Vector<R_elem<double>> randomVector(int i);
 
@@ -154,12 +155,16 @@ namespace K3 {
 
   class __string_context {
     public:
+    shared_ptr<RE2> pattern;
     __string_context();
 
     string_impl concat(string_impl s1, string_impl s2);
     string_impl itos(int i);
 
     string_impl rtos(double d);
+
+    F<Collection<R_elem<string_impl>>(const string_impl &)> regex_matcher(const string_impl&);
+    Collection<R_elem<string_impl>> regex_matcher_q4(const string_impl&);
 
     template <class S> S slice_string(const S& s, int x, int y) {
       return s.substr(x, y);

@@ -16,6 +16,7 @@ declare slice_string : string -> int -> int -> string
 
 // TODO: move to String.k3
 declare regex_matcher : string -> (string -> collection {elem: string} @ Collection)
+declare regex_matcher_q4 : string -> collection {elem: string} @ Collection
 
 // TODO: move to Time.k3
 declare now_int : () -> int
