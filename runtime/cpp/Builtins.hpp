@@ -102,7 +102,7 @@ namespace K3 {
     unit_t rkLoaderMap(string_impl file, K3::Map<R_key_value<string_impl,int>>& c)  {
         // TODO: adopt new data-loader
         //R_key_value<string_impl, int> rec;
-	//int foo; 
+	//int foo;
         //strtk::for_each_line(file, [&] (const string_impl& str)   {
         //  if (strtk::parse(str, ",", rec.key, rec.value, foo)) {
         //    c.insert(rec);
@@ -171,6 +171,8 @@ namespace K3 {
 
     // Split a string by substrings
     Seq<R_elem<string_impl>> splitString(string_impl, const string_impl&);
+    string_impl takeUntil(const string_impl& s, const string_impl& splitter);
+    int countChar(const string_impl& s, const string_impl& splitter);
   };
 
 

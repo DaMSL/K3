@@ -6,6 +6,12 @@ include "Annotation/Seq.k3"
 @:CArgs 2
 declare splitString : string -> string -> collection { elem: string } @ {Seq}
 
+@:CArgs 2
+declare takeUntil : string -> string -> string
+
+@:CArgs 2
+declare countChar : string -> string -> int
+
 // TODO: move to String.k3
 @:CArgs 2
 declare concat : string -> string -> string

@@ -162,4 +162,32 @@ namespace K3 {
     return s.splitString(splitter);
   }
 
+  // Splitter is a single char for now
+  string_impl __string_context::takeUntil(const string_impl& s, const string_impl& splitter) {
+      char * pch;
+      char delim = splitter.c_str()[0];
+      const char* buf = s.c_str();
+      int n = 0;
+      while ((*buf != 0) && (*buf != delim)) {
+        buf++;
+        n++;
+      }
+      return string_impl(buf, n);
+
+  }
+
+  // Splitter is a single char for now
+  int __string_context::countChar(const string_impl& s, const string_impl& splitter) {
+      char * pch;
+      char delim = splitter.c_str()[0];
+      const char* buf = s.c_str();
+      int n = 0;
+      while ((*buf != 0)) {
+        buf++;
+        if (*buf == delim) {
+          n++;
+        }
+      }
+      return n;
+  }
 } // namespace K3
