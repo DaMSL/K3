@@ -10,7 +10,6 @@
 #include "Builtins.hpp"
 
 namespace K3 {
-  using std::string;
   using std::endl;
   using std::to_string;
 
@@ -20,23 +19,23 @@ namespace K3 {
     : __k3_context(__engine)
   {}
 
-  unit_t __standard_context::openBuiltin(string ch_id, string builtin_ch_id, string fmt) {
+  unit_t __standard_context::openBuiltin(string_impl ch_id, string_impl builtin_ch_id, string_impl fmt) {
     __engine.openBuiltin(ch_id, builtin_ch_id);
     return unit_t();
   }
 
 
-  unit_t __standard_context::openFile(string ch_id, string path, string fmt, string mode) {
+  unit_t __standard_context::openFile(string_impl ch_id, string_impl path, string_impl fmt, string_impl mode) {
     IOMode iomode = __engine.ioMode(mode);
     __engine.openFile(ch_id, path, iomode);
     return unit_t();
   }
 
-  unit_t __standard_context::openSocket(string ch_id, Address a, string fmt, string mode) {
+  unit_t __standard_context::openSocket(string_impl ch_id, Address a, string_impl fmt, string_impl mode) {
     throw std::runtime_error("Not implemented: openSocket");
   }
 
-  unit_t __standard_context::close(string chan_id) {
+  unit_t __standard_context::close(string_impl chan_id) {
       __engine.close(chan_id);
       return unit_t();
   }
@@ -61,7 +60,7 @@ namespace K3 {
     throw std::runtime_error("Not implemented: get_max_int");
   }
 
-  unit_t __standard_context::print(string message) {
+  unit_t __standard_context::print(string_impl message) {
     std::cout << message << endl;
     return unit_t();
   }
@@ -79,14 +78,15 @@ namespace K3 {
     throw std::runtime_error("Not implemented: sleep");
   }
 
-  F<Collection<R_elem<string>>(const string &)> __standard_context::regex_matcher(const string& regex) {
+  // TODO fix copies related to base_str / std::sring conversion
+  F<Collection<R_elem<string_impl>>(const string_impl &)> __standard_context::regex_matcher(const string_impl& regex) {
     auto pattern = make_shared<RE2>(regex);
-    return [pattern] (const string& in_str) {
-      re2::StringPiece input(in_str);
-      Collection<R_elem<string>> results;
-      string s;
+    return [pattern] (const string_impl& in_str) {
+      re2::StringPiece input(static_cast<std::string>(in_str));
+      Collection<R_elem<string_impl>> results;
+      std::string s;
       while(RE2::FindAndConsume(&input, *pattern, &s)) {
-        results.insert(s);
+        results.insert(string_impl(s));
       }
       return results;
     };
@@ -126,30 +126,35 @@ namespace K3 {
 
   // String operations:
   __string_context::__string_context() {}
-  string __string_context::itos(int i) {
-    return to_string(i);
+  string_impl __string_context::itos(int i) {
+    return string_impl(to_string(i));
   }
 
-  string __string_context::concat(string s1, string s2) {
-    return s1 + s2;
+  // TODO: more efficient implementation.
+  string_impl __string_context::concat(string_impl s1, string_impl s2) {
+    return string_impl(static_cast<std::string>(s1) + static_cast<std::string>(s2));
   }
 
-  string __string_context::rtos(double d) {
-    return to_string(d);
+  string_impl __string_context::rtos(double d) {
+    return string_impl(to_string(d));
   }
 
   // Split a string by substrings
-  Seq<R_elem<string>> __string_context::splitString(const string& s, const string& splitter) {
-      std::vector<string> words;
-      boost::split(words, s, boost::is_any_of(splitter), boost::token_compress_on);
-
-      // Transfer to R_elems
-      Seq<R_elem<string>> results;
-      auto &c = results.getContainer();
-      c.resize(words.size());
-      for (auto &elem : words) {
-        results.insert(R_elem<string>{std::move(elem)});
+  Seq<R_elem<string_impl>> __string_context::splitString(const string_impl& s, const string_impl& splitter) {
+      
+      Seq<R_elem<string_impl>> results;
+      R_elem<string_impl> rec; 
+      char * pch;
+      // TODO: avoid this copy. need a char* not a const char * for first arg to strtok
+      std::string str = static_cast<std::string>(s);
+      pch = strtok (&str[0], splitter.c_str());
+      while (pch != NULL)
+      {
+        rec.elem = string_impl(pch);
+        results.insert(rec);
+        pch = strtok (NULL, splitter.c_str());
       }
+
       return results;
   }
 
