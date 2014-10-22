@@ -201,21 +201,28 @@ getOrGenSymbol n = case getESymbol n of
 
 -- Create a closure of symbols read, written, or applied that are relevant to the current env
 createClosure :: K3 Effect -> MEnv ClosureInfo
-createClosure n = liftM nubTuple $ foldTree addClosure ([],[],[]) n
+createClosure n = liftM nubTuple $ foldTree addClosureEff emptyClosure n
   where
     nubTuple (a,b,c) = (nub a, nub b, nub c)
 
-    addClosure :: ClosureInfo -> K3 Effect -> MEnv ClosureInfo
-    addClosure (a,b,c) (tag -> FRead s)     = do
-      s' <- getClosureSyms s
+    addClosureEff :: ClosureInfo -> K3 Effect -> MEnv ClosureInfo
+    addClosureEff acc (tag -> FRead s)     = do
+      (a,b,c) <- foldTree addClosureSym acc s
+      s'      <- getClosureSyms s
       return (s' ++ a,b,c)
-    addClosure (a,b,c) (tag -> FWrite s)    = do
-      s' <- getClosureSyms s
+    addClosureEff acc (tag -> FWrite s)    = do
+      (a,b,c) <- foldTree addClosureSym acc s
+      s'      <- getClosureSyms s
       return (a, s' ++ b, c)
-    addClosure (a,b,c) (tag -> FApply s s') = do
-      s'' <- getClosureSyms s'
-      handleApply (a, b, s'' ++ c) s
-    addClosure acc     _                    = return acc
+    addClosureEff acc (tag -> FApply s s') = do
+      acc'    <- foldTree addClosureSym acc  s
+      (a,b,c) <- foldTree addClosureSym acc' s'
+      s''     <- getClosureSyms s'
+      return (a, b, s'' ++ c)
+    addClosureEff acc _ = return acc
+
+    addClosureSym acc (tag -> Symbol _ (PLambda _ eff)) = foldTree addClosureEff acc eff 
+    addClosureSym acc _ = return acc
 
     getClosureSyms :: K3 Symbol -> MEnv [K3 Symbol]
     getClosureSyms (tag -> Symbol _ (PTemporary TTemp))    = return []
@@ -230,14 +237,6 @@ createClosure n = liftM nubTuple $ foldTree addClosure ([],[],[]) n
         _ ->
           -- if we haven't found a match, it might be deeper in the tree
           liftM concat $ mapM getClosureSyms ch
-
-
-
-    handleApply :: ClosureInfo -> K3 Symbol -> MEnv ClosureInfo
-    handleApply acc (tag -> Symbol _ (PLambda _ eff))  = foldTree addClosure acc eff
-    handleApply acc (tnc -> (Symbol _ PSet, ch)) = foldrM (flip handleApply) acc ch
-    handleApply acc _ = return acc
-
 
 addAllGlobals :: K3 Declaration -> MEnv (K3 Declaration)
 addAllGlobals node = mapProgram preHandleDecl mId mId Nothing node
@@ -258,14 +257,13 @@ symEqual (getSID -> s) (getSID -> s') = s == s'
 
 -- map over symbols and effects, starting at an effect
 mapEff :: Monad m => (K3 Effect -> m (K3 Effect)) -> (K3 Symbol -> m (K3 Symbol)) -> K3 Effect -> m (K3 Effect)
-mapEff effFn symFn eff = modifyTree (wrapEffFn effFn symFn) eff
+mapEff effFn symFn eff = modifyTree (wrapMapEffFn effFn symFn) eff
 
--- map over symbols and effects, starting at a symbol
 mapSym :: Monad m => (K3 Effect -> m (K3 Effect)) -> (K3 Symbol -> m (K3 Symbol)) -> K3 Symbol -> m (K3 Symbol)
-mapSym effFn symFn sym = modifyTree (wrapSymFn effFn symFn) sym
+mapSym effFn symFn sym = modifyTree (wrapMapSymFn effFn symFn) sym
 
-wrapEffFn :: Monad m => (K3 Effect -> m (K3 Effect)) -> (K3 Symbol -> m (K3 Symbol)) -> K3 Effect -> m (K3 Effect)
-wrapEffFn effFn symFn n =
+wrapMapEffFn :: Monad m => (K3 Effect -> m (K3 Effect)) -> (K3 Symbol -> m (K3 Symbol)) -> K3 Effect -> m (K3 Effect)
+wrapMapEffFn effFn symFn n =
   case tag n of
     FRead s -> do
       s' <- mapSym effFn symFn s
@@ -285,8 +283,8 @@ wrapEffFn effFn symFn n =
       effFn $ replaceTag n $ FApply sL' sA'
     _ -> effFn n
 
-wrapSymFn :: Monad m => (K3 Effect -> m (K3 Effect)) -> (K3 Symbol -> m (K3 Symbol)) -> K3 Symbol -> m (K3 Symbol)
-wrapSymFn effFn symFn n =
+wrapMapSymFn :: Monad m => (K3 Effect -> m (K3 Effect)) -> (K3 Symbol -> m (K3 Symbol)) -> K3 Symbol -> m (K3 Symbol)
+wrapMapSymFn effFn symFn n =
   case tag n of
     Symbol x (PLambda y e) -> do
       e' <- mapEff effFn symFn e
