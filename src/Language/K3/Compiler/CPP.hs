@@ -71,6 +71,7 @@ cppCodegenStage :: CompilerStage (K3 Declaration) ()
 cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $ genCPP irRes
   where
     --attach trigger symbols. TODO: mangle names before applying this transformation.
+    -- TODO move this into core. Must happen before imperative generation.
     prog' = either error id $ triggerSymbols typedProgram
 
     (irRes, initSt)      = I.runImperativeM (I.declaration prog') I.defaultImperativeS
