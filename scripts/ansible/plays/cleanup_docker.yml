@@ -1,0 +1,16 @@
+  - name: block until all containers have completed 
+    command: docker wait {{docker_image}}_{{item}}
+    with_sequence: start=40000 end={{40000+numprocs-1}}
+    ignore_errors: yes
+
+  - name: create local directories for the results
+    local_action: shell mkdir -p {{results_dir}}
+    sudo: no
+    
+  - name: retreive the results from each host
+    sudo: no 
+    synchronize: mode=pull src={{data_dir}}  dest={{results_dir}}/{{ip}}
+
+  - name: cleanup remote folders
+    shell: rm -rf {{data_dir}} {{setup_dir}}
+    with_sequence: start=0 end={{numprocs-1}}

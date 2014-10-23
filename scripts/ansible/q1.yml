@@ -1,6 +1,6 @@
 - hosts: target_hosts
   tasks:
-    - include: deploy_k3.yml
+    - include: plays/deploy_k3.yml
       vars:
         app_name: amplab_q1
         binary: /tmp/q1

@@ -54,6 +54,10 @@ RUN wget --no-verbose http://download.nanomsg.org/nanomsg-0.3-beta.tar.gz && \
     make && make install && \
     rm -rf /software/nanomsg/build
 
+# Install libre2
+RUN add-apt-repository -y ppa:pi-rho/security
+RUN apt-get update
+RUN apt-get install -y libre2-dev
 
 # Clone K3-Core, K3-Driver, K3-Mosaic from Git
 RUN mkdir -p /k3/K3-Core /k3/K3-Driver /k3/K3-Mosaic && \
