@@ -31,27 +31,34 @@ declare url_regex : mut collection {elem:string} @ {Collection}
 declare cur_page : mut string = "NONE"
 
 declare url_counts_partial :
-  collection {sourcePage:string, destPage:string, count:int} @ {Collection} 
+  collection {sourcePage:string, destPage:string, count:int} @ {Collection}
 
-declare matcher : (string -> collection {elem: string} @ Collection) = (\s -> (regex_matcher "(?P<url>https?://[^\\\\s]+)") s)
+// FIXME: cant declare this global function
+//declare matcher : (string -> collection {elem: string} @ Collection) = regex_matcher "(?P<url>https?://[^\\\\s]+)"
+
+declare regex_time : mut int = 0
+declare split_time : mut int = 0
 
 declare get_line : string -> () = \line -> (
-  let sp = splitString line " " in  
-  ((if slice_string line 0 4 == "http" and sp.size () == 5 then
-     cur_page = (sp.at 0).elem;
+
+  ((if slice_string line 0 4 == "http" and (countChar line " ") == 5 then
+     cur_page = (takeUntil line " ");
      url_count.iterate(\v ->
        url_counts_partial.insert
          {sourcePage:cur_page, destPage:v.key, count:v.value});
      // Empty url_count
      url_count = empty {key: string, value: int} @Map
    else ());
-   ((url_regex = matcher line);
+   (let re_start = now_int () in
+   ((url_regex = regex_matcher_q4 line);
+   let re_end = now_int () in
+   regex_time = regex_time + (re_end - re_start);
    url_regex.iterate (\r ->
      // lookup ignores value
      case url_count.lookup {key: r.elem, value: 0}  of
        {Some x -> url_count.insert {key:r.elem, value:x.value + 1} }
        {None   -> url_count.insert {key:r.elem, value:1}}
-   )))
+   ))))
 )
 trigger local : () = \_ -> (
   ((inputData.iterate (\s -> get_line s.elem)) @Profile(lbl=[# iterate_get_line]) );
@@ -81,6 +88,8 @@ trigger aggregate : collection {key: string, value: int} @ {Collection} = \newVa
        elapsed_ms = end_ms - start_ms;
        print (concat "Elapsed: " (itos elapsed_ms));
        print (concat "Num results: " (itos (url_counts_agg.size ())));
+       print (concat "Split time: " (itos split_time));
+       print (concat "Regex time: " (itos regex_time));
        peers.iterate (\p -> (shutdown, p.addr) <- ())
   else ()
 )

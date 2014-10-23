@@ -9,10 +9,11 @@
 #include <string>
 #include <functional>
 
-
-
+#include "re2/re2.h"
 #include "strtk.hpp"
+
 #include "BaseTypes.hpp"
+#include "BaseString.hpp"
 #include "Common.hpp"
 #include "dataspace/Dataspace.hpp"
 
@@ -36,18 +37,19 @@ std::size_t hash_value(T const& t) {
 
 namespace K3 {
 
+
   // Standard context for common builtins that use a handle to the engine (via inheritance)
   class __standard_context : public __k3_context {
     public:
     __standard_context(Engine& engine);
 
-    unit_t openBuiltin(string ch_id, string builtin_ch_id, string fmt);
+    unit_t openBuiltin(string_impl ch_id, string_impl builtin_ch_id, string_impl fmt);
 
-    unit_t openFile(string ch_id, string path, string fmt, string mode);
+    unit_t openFile(string_impl ch_id, string_impl path, string_impl fmt, string_impl mode);
 
-    unit_t openSocket(string ch_id, Address a, string fmt, string mode);
+    unit_t openSocket(string_impl ch_id, Address a, string_impl fmt, string_impl mode);
 
-    unit_t close(std::string chan_id);
+    unit_t close(string_impl chan_id);
 
     int random(int n);
 
@@ -75,13 +77,13 @@ namespace K3 {
 
     int get_max_int(unit_t);
 
-    unit_t print(std::string message);
+    unit_t print(string_impl message);
 
 
     // TODO, implement, sharing code with prettify()
     template <class T>
-    std::string show(T t) {
-      return std::string("TODO: implement show()");
+    string_impl show(T t) {
+      return string_impl("TODO: implement show()");
     }
 
     template <class T>
@@ -97,26 +99,25 @@ namespace K3 {
     unit_t sleep(int n);
 
     // TODO move to seperate context
-    unit_t rkLoaderMap(string file, K3::Map<R_key_value<std::string,int>>& c)  {
-
-           R_key_value<std::string, int> rec;
-	   int foo; 
-        strtk::for_each_line(file, [&] (const std::string& str)   {
-          if (strtk::parse(str, ",", rec.key, rec.value, foo)) {
-            c.insert(rec);
-          } else {
-            std::cout << ("Failed to parse a row!\n");
-          }
-        });
+    unit_t rkLoaderMap(string_impl file, K3::Map<R_key_value<string_impl,int>>& c)  {
+        // TODO: adopt new data-loader
+        //R_key_value<string_impl, int> rec;
+	//int foo;
+        //strtk::for_each_line(file, [&] (const string_impl& str)   {
+        //  if (strtk::parse(str, ",", rec.key, rec.value, foo)) {
+        //    c.insert(rec);
+        //  } else {
+        //    std::cout << ("Failed to parse a row!\n");
+        //  }
+        //});
         return unit_t {};
       }
 
-    F<Collection<R_elem<string>>(const string &)> regex_matcher(const string&);
     Vector<R_elem<double>> zeroVector(int i);
     Vector<R_elem<double>> randomVector(int i);
 
     template <template<typename S> class C, class V>
-    unit_t loadVector(string filepath, C<R_elem<V>>& c) {
+    unit_t loadVector(string_impl filepath, C<R_elem<V>>& c) {
       std::string line;
       std::ifstream infile(filepath);
       while (std::getline(infile, line)){
@@ -152,20 +153,26 @@ namespace K3 {
 
   class __string_context {
     public:
+    shared_ptr<RE2> pattern;
     __string_context();
 
-    std::string concat(string s1, string s2);
-    std::string itos(int i);
+    string_impl concat(string_impl s1, string_impl s2);
+    string_impl itos(int i);
 
-    std::string rtos(double d);
+    string_impl rtos(double d);
+
+    F<Collection<R_elem<string_impl>>(const string_impl &)> regex_matcher(const string_impl&);
+    Collection<R_elem<string_impl>> regex_matcher_q4(const string_impl&);
 
     template <class S> S slice_string(const S& s, int x, int y) {
       return s.substr(x, y);
     }
 
 
-    // Split a std::string by substrings
-    Seq<R_elem<std::string>> splitString(const std::string&, const std::string&);
+    // Split a string by substrings
+    Seq<R_elem<string_impl>> splitString(string_impl, const string_impl&);
+    string_impl takeUntil(const string_impl& s, const string_impl& splitter);
+    int countChar(const string_impl& s, const string_impl& splitter);
   };
 
 

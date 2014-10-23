@@ -20,11 +20,12 @@ data EffectKind
 data instance Annotation EffectKind = KAnnotation deriving (Eq, Read, Show)
 
 data TempType
-    = TAlias    -- The temporary is an alias
-    | TSub      -- The temporary is a subtype of the next element
-    | TIndirect -- The temporary is an indirection
-    | TUnbound  -- Unbound global
-    | TTemp     -- The temp has no connection to any other element
+    = TAlias      -- The temporary is an alias
+    | TSub        -- The temporary is a subtype of the next element
+    | TIndirect   -- The temporary is an indirection
+    | TUnbound    -- Unbound global
+    | TTemp       -- The temp has no connection to any other element
+    | TSubstitute -- A projection requires a substitution
     deriving (Eq, Ord, Read, Show)
 
 data Provenance

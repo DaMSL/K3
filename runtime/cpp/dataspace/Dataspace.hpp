@@ -17,6 +17,7 @@
 #include <boost/lambda/lambda.hpp>
 
 #include "Common.hpp"
+#include "BaseTypes.hpp"
 
 namespace K3 {
 
@@ -153,7 +154,7 @@ class StlDS {
 
   // Produce a new ds by mapping a function over this ds
   template<typename Fun>
-  auto map(Fun f) -> Derived<R_elem<RT<Fun, Elem>>> {
+  auto map(Fun f) -> Derived<R_elem<RT<Fun, Elem>>> const {
     Derived<Elem> result;
     for (const Elem &e : container) {
       result.insert( R_elem<RT<Fun, Elem>>{ f(e) } ); // Copies e (f is pass by value), then move inserts
@@ -163,7 +164,7 @@ class StlDS {
 
   // Create a new DS consisting of elements from this ds that satisfy the predicate
   template<typename Fun>
-  Derived<Elem> filter(Fun predicate) {
+  Derived<Elem> filter(Fun predicate) const {
     Derived<Elem> result;
     for (const Elem &e : container) {
       if (predicate(e)) {
@@ -175,14 +176,14 @@ class StlDS {
 
   // Fold a function over this ds
   template<typename Fun, typename Acc>
-  Acc fold(Fun f, Acc acc) {
+  Acc fold(Fun f, Acc acc) const {
     for (const Elem &e : container) { acc = f(std::move(acc))(e); }
     return acc;
   }
 
   // Group By
   template<typename F1, typename F2, typename Z>
-  Derived<R_key_value<RT<F1, Elem>,Z>> groupBy(F1 grouper, F2 folder, const Z& init) {
+  Derived<R_key_value<RT<F1, Elem>,Z>> groupBy(F1 grouper, F2 folder, const Z& init) const {
        // Create a map to hold partial results
        typedef RT<F1, Elem> K;
        unordered_map<K, Z> accs;
@@ -208,7 +209,7 @@ class StlDS {
   }
 
   template <class Fun>
-  auto ext(Fun expand) -> Derived<typename RT<Fun, Elem>::ElemType> {
+  auto ext(Fun expand) -> Derived<typename RT<Fun, Elem>::ElemType> const {
     typedef typename RT<Fun, Elem>::ElemType T;
     Derived<T> result;
     for (const Elem& elem : container) {
@@ -288,12 +289,12 @@ class Set : public SetDS<K3::Set, Elem> {
   Set(Super&& c): Super(std::move(c)) { }
 
   // Set specific functions
-  bool member(const Elem& e) {
+  bool member(const Elem& e) const {
     auto it = std::find(Super::getConstContainer().begin(), Super::getConstContainer().end(), e);
     return (it != Super::getConstContainer().end());
   }
 
-  bool isSubsetOf(const Set<Elem>& other) {
+  bool isSubsetOf(const Set<Elem>& other) const {
     for (const auto &x : Super::getConstContainer()) {
       if (!other.member(x)) { return false; }
     }
@@ -301,7 +302,7 @@ class Set : public SetDS<K3::Set, Elem> {
   }
 
   // TODO union is a reserved word
-  Set union1(const Set<Elem>& other) {
+  Set union1(const Set<Elem>& other) const {
     Set<Elem> result;
     for (const auto &x : Super::getConstContainer()) {
       result.insert(x);
@@ -312,7 +313,7 @@ class Set : public SetDS<K3::Set, Elem> {
     return result;
   }
 
-  Set intersect(const Set<Elem>& other) {
+  Set intersect(const Set<Elem>& other) const {
     Set<Elem> result;
     for (const auto &x : Super::getConstContainer()) {
       if(other.member(x)) {
@@ -322,7 +323,7 @@ class Set : public SetDS<K3::Set, Elem> {
     return result;
   }
 
-  Set difference(const Set<Elem>& other) {
+  Set difference(const Set<Elem>& other) const {
     Set<Elem> result;
     for (const auto &x : Super::getConstContainer()) {
       if(!other.member(x)) {
@@ -353,7 +354,7 @@ class Seq : public ListDS<K3::Seq, Elem> {
     return Seq(Super(std::move(l)));
   }
 
-  Elem at(int i) {
+  Elem at(int i) const {
     auto& l = Super::getConstContainer();
     auto it = l.begin();
     std::advance(it, i);
@@ -374,7 +375,7 @@ class Sorted: public SortedDS<K3::Sorted, Elem> {
   Sorted(Super&& c): Super(std::move(c)) { }
 
   // Sorted specific functions
-  std::shared_ptr<Elem> min() {
+  std::shared_ptr<Elem> min() const {
      const auto& x = Super::getConstContainer();
      auto it = std::min_element(x.begin(), x.end());
      std::shared_ptr<Elem> result = nullptr;
@@ -385,7 +386,7 @@ class Sorted: public SortedDS<K3::Sorted, Elem> {
      return result;
   }
 
-  std::shared_ptr<Elem> max() {
+  std::shared_ptr<Elem> max() const {
      const auto& x = Super::getConstContainer();
      auto it = std::max_element(x.begin(), x.end());
      std::shared_ptr<Elem> result = nullptr;
@@ -396,7 +397,7 @@ class Sorted: public SortedDS<K3::Sorted, Elem> {
      return result;
   }
 
-  std::shared_ptr<Elem> lowerBound(const Elem& e) {
+  std::shared_ptr<Elem> lowerBound(const Elem& e) const {
     const auto& x = Super::getConstContainer();
     auto it = std::lower_bound(x.begin(), x.end(), e);
     std::shared_ptr<Elem> result = nullptr;
@@ -407,7 +408,7 @@ class Sorted: public SortedDS<K3::Sorted, Elem> {
     return result;
   }
 
-  std::shared_ptr<Elem> upperBound(const Elem& e) {
+  std::shared_ptr<Elem> upperBound(const Elem& e) const {
     const auto& x = Super::getConstContainer();
     auto it = std::upper_bound(x.begin(), x.end(), e);
     std::shared_ptr<Elem> result = nullptr;
@@ -418,7 +419,7 @@ class Sorted: public SortedDS<K3::Sorted, Elem> {
     return result;
   }
 
-  Sorted slice(const Elem& a, const Elem& b) {
+  Sorted slice(const Elem& a, const Elem& b) const {
     const auto& x = Super::getConstContainer();
     Sorted<Elem> result;
     for (Elem e : x) {
@@ -510,7 +511,7 @@ class Map {
   }
 
   template<typename Fun, typename Acc>
-  Acc fold(Fun f, Acc acc) {
+  Acc fold(Fun f, Acc acc) const {
     for (const std::pair<Key, Value>& p : container) {
       acc = f(std::move(acc))(R {p.first, p.second});
     }
@@ -518,7 +519,7 @@ class Map {
   }
 
   template<typename Fun>
-  auto map(Fun f) -> Map< RT<Fun, R> > {
+  auto map(Fun f) -> Map< RT<Fun, R> > const {
     Map< RT<Fun,R> > result;
     for (const std::pair<Key,Value>& p : container) {
       result.insert( f(R {p.first, p.second}) );
@@ -538,7 +539,7 @@ class Map {
   }
 
   template <typename Fun>
-  Map<R> filter(Fun predicate) {
+  Map<R> filter(Fun predicate) const {
     Map<R> result;
     for (const std::pair<Key,Value>& p : container) {
       R rec;
@@ -551,7 +552,7 @@ class Map {
     return result;
   }
 
-  tuple<Map, Map> split(const unit_t&) {
+  tuple<Map, Map> split(const unit_t&) const {
     // Find midpoint
     const size_t size = container.size();
     const size_t half = size / 2;
@@ -575,7 +576,7 @@ class Map {
   }
 
   template<typename F1, typename F2, typename Z>
-  Map< R_key_value< RT<F1, R>,Z >> groupBy(F1 grouper, F2 folder, const Z& init) {
+  Map< R_key_value< RT<F1, R>,Z >> groupBy(F1 grouper, F2 folder, const Z& init) const {
     // Create a map to hold partial results
     typedef RT<F1, R> K;
     unordered_map<K, Z> accs;
@@ -596,7 +597,7 @@ class Map {
 
   // TODO optimize copies. lots of record building here.
   template <class Fun>
-  auto ext(Fun expand) -> Map < typename RT<Fun, R>::ElemType > {
+  auto ext(Fun expand) -> Map < typename RT<Fun, R>::ElemType > const {
     typedef typename RT<Fun, R>::ElemType T;
     Map<T> result;
     for (const auto& it : container) {
@@ -611,7 +612,7 @@ class Map {
   int size(unit_t) const { return container.size(); }
 
   // lookup ignores the value of the argument
-  shared_ptr<R> lookup(const R& r) {
+  shared_ptr<R> lookup(const R& r) const {
       auto it = container.find(r.key);
       if (it != container.end()) {
         return std::make_shared<R>(it->first, it->second );
@@ -662,12 +663,12 @@ class Vector: public VectorDS<K3::Vector, Elem> {
   Vector(Super&& c): Super(std::move(c)) {}
 
   template<typename Fun>
-  auto map(Fun f) -> Vector<R_elem<RT<Fun, Elem>>> {
+  auto map(Fun f) -> Vector<R_elem<RT<Fun, Elem>>> const {
     return Vector<R_elem<RT<Fun, Elem>>>(Super::map(f));
   }
 
   // TODO bounds checking
-  Elem at(int i) {
+  Elem at(int i) const {
     auto& vec = Super::getConstContainer();
     return vec[i];
   }
@@ -728,6 +729,7 @@ class Vector: public VectorDS<K3::Vector, Elem> {
     }
     return d;
   }
+
   double distance(const Vector<Elem>& other) const {
     double d = 0;
     auto& vec = Super::getConstContainer();
@@ -873,7 +875,7 @@ class MultiIndex {
 
   // Produce a new ds by mapping a function over this ds
   template<typename Fun>
-  auto map(Fun f) -> MultiIndex<R_elem<RT<Fun, Elem>>> {
+  auto map(Fun f) -> MultiIndex<R_elem<RT<Fun, Elem>>> const {
     MultiIndex<R_elem<RT<Fun, Elem>>> result;
     for (const Elem &e : container) {
       result.insert( R_elem<RT<Fun, Elem>>{ f(e) } ); // Copies e (f is pass by value), then move inserts
@@ -883,7 +885,7 @@ class MultiIndex {
 
   // Create a new DS consisting of elements from this ds that satisfy the predicate
   template<typename Fun>
-  MultiIndex<Elem, Indexes...> filter(Fun predicate) {
+  MultiIndex<Elem, Indexes...> filter(Fun predicate) const {
     MultiIndex<Elem, Indexes...> result;
     for (const Elem &e : container) {
       if (predicate(e)) {
@@ -895,7 +897,7 @@ class MultiIndex {
 
   // Fold a function over this ds
   template<typename Fun, typename Acc>
-  Acc fold(Fun f, const Acc& init_acc) {
+  Acc fold(Fun f, const Acc& init_acc) const {
     Acc acc = init_acc;
     for (const Elem &e : container) { acc = f(std::move(acc))(e); }
     return acc;
@@ -903,7 +905,7 @@ class MultiIndex {
 
   // Group By
   template<typename F1, typename F2, typename Z>
-  MultiIndex<R_key_value<RT<F1, Elem>,Z>> groupBy(F1 grouper, F2 folder, const Z& init) {
+  MultiIndex<R_key_value<RT<F1, Elem>,Z>> groupBy(F1 grouper, F2 folder, const Z& init) const {
        // Create a map to hold partial results
        typedef RT<F1, Elem> K;
        unordered_map<K, Z> accs;
@@ -927,7 +929,7 @@ class MultiIndex {
   }
 
   template <class Fun>
-  auto ext(Fun expand) -> MultiIndex<typename RT<Fun, Elem>::ElemType> {
+  auto ext(Fun expand) -> MultiIndex<typename RT<Fun, Elem>::ElemType> const {
     typedef typename RT<Fun, Elem>::ElemType T;
     MultiIndex<T> result;
     for (const Elem& elem : container) {
@@ -956,7 +958,7 @@ class MultiIndex {
   }
 
   template <class Index, class Key>
-  shared_ptr<Elem> lookup_with_index(const Index& index, Key key) {
+  shared_ptr<Elem> lookup_with_index(const Index& index, Key key) const {
     const auto& it = index.find(key);
 
     shared_ptr<Elem> result;
@@ -968,7 +970,7 @@ class MultiIndex {
   }
 
   template <class Index, class Key>
-  MultiIndex<Elem, Indexes...> slice_with_index(const Index& index, Key a, Key b) {
+  MultiIndex<Elem, Indexes...> slice_with_index(const Index& index, Key a, Key b) const {
     MultiIndex<Elem, Indexes...> result;
     std::pair<typename Index::iterator, typename Index::iterator> p = index.range(a <= boost::lambda::_1, b >= boost::lambda::_1);
     for (typename Index::iterator it = p.first; it != p.second; it++) {

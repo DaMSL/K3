@@ -2,6 +2,6 @@ include "Annotation/Vector.k3"
 
 // Vector Utilities
 @:CArgs 2
-declare loadVector : string -> collection {elem: collection {elem: real} @ {Vector} } -> ()
+declare loadVector : string -> collection {elem: collection {elem: real} @ {Vector} } @Seq -> ()
 declare zeroVector : int -> collection {elem: real} @ {Vector}
 declare randomVector : int -> collection {elem: real} @ {Vector}

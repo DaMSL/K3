@@ -6,6 +6,12 @@ include "Annotation/Seq.k3"
 @:CArgs 2
 declare splitString : string -> string -> collection { elem: string } @ {Seq}
 
+@:CArgs 2
+declare takeUntil : string -> string -> string
+
+@:CArgs 2
+declare countChar : string -> string -> int
+
 // TODO: move to String.k3
 @:CArgs 2
 declare concat : string -> string -> string
@@ -16,6 +22,7 @@ declare slice_string : string -> int -> int -> string
 
 // TODO: move to String.k3
 declare regex_matcher : string -> (string -> collection {elem: string} @ Collection)
+declare regex_matcher_q4 : string -> collection {elem: string} @ Collection
 
 // TODO: move to Time.k3
 declare now_int : () -> int

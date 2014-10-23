@@ -8,6 +8,9 @@
 #include "boost/serialization/array.hpp"
 #include "boost/functional/hash.hpp"
 
+#include "Common.hpp"
+#include "dataspace/Dataspace.hpp"
+
 char* strdup(const char*);
 
 namespace K3 {
@@ -105,6 +108,22 @@ namespace K3 {
       return base_string(buffer + from, to - from);
     }
 
+    // Modifies this string.
+    Seq<R_elem<string_impl>> splitString(const string_impl& splitter) {
+      Seq<R_elem<string_impl>> results;
+      R_elem<string_impl> rec;
+      char * pch;
+      pch = strtok (buffer, splitter.c_str());
+      while (pch != NULL)
+      {
+        rec.elem = string_impl(pch);
+        results.insert(rec);
+        pch = strtok (NULL, splitter.c_str());
+      }
+
+      return results;
+    }
+
     // Stream Operators
     friend std::ostream& operator <<(std::ostream& out, const K3::base_string& s) {
       return out << s.c_str();
@@ -120,7 +139,16 @@ namespace K3 {
 
     template <class archive>
     void serialize(archive& a, const unsigned int) {
-      a & boost::serialization::make_array(buffer, strlen(buffer));
+      int len;
+      if (archive::is_saving::value) {
+        len = strlen(buffer);
+      }
+      a & len;
+      if (archive::is_loading::value) {
+        buffer = new char[len + 1];
+        buffer[len] = 0;
+      }
+      a & boost::serialization::make_array(buffer, len);
     }
 
    private:
