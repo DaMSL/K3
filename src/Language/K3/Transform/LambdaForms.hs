@@ -56,4 +56,16 @@ lambdaFormOptE env ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c
                          else ( symIDs $ S.fromList $ cRead \\ cWritten
                               , symIDs $ S.fromList cMove
                               , symIDs $ S.fromList $ cCopy ++ cApplied))
+lambdaFormOptE env ds (Node (EOperate OSeq :@: as) [a, b])
+    = Node (EOperate OSeq :@: as) [lambdaFormOptE env (b:ds) a, lambdaFormOptE env ds b]
+lambdaFormOptE env ds (Node (EOperate OApp :@: as) [f, x])
+    = Node (EOperate OApp :@: as) [lambdaFormOptE env (x:ds) f, lambdaFormOptE env ds x]
+lambdaFormOptE env ds (Node (EIfThenElse :@: as) [i, t, e])
+    = Node (EIfThenElse :@: as) [lambdaFormOptE env (t:e:ds) i, lambdaFormOptE env ds t, lambdaFormOptE env ds e]
+lambdaFormOptE env ds (Node (ELetIn i :@: as) [e, b])
+    = Node (ELetIn i :@: as) [lambdaFormOptE env (b:ds) e, lambdaFormOptE env ds b]
+lambdaFormOptE env ds (Node (ECaseOf x :@: as) [e, s, n])
+    = Node (ECaseOf x :@: as) [lambdaFormOptE env (s:n:ds) e, lambdaFormOptE env ds s, lambdaFormOptE env ds n]
+lambdaFormOptE env ds (Node (EBindAs b :@: as) [i, e])
+    = Node (EBindAs b :@: as) [lambdaFormOptE env (e:ds) i, lambdaFormOptE env ds e]
 lambdaFormOptE env ds (Node (t :@: as) cs) = Node (t :@: as) (map (lambdaFormOptE env ds) cs)
