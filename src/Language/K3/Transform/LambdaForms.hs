@@ -3,12 +3,11 @@
 
 module Language.K3.Transform.LambdaForms where
 
-import Prelude hiding (any)
+import Prelude hiding (any, elem, notElem)
 
 import Control.Applicative
 
 import Data.Foldable
-import Data.List ((\\), partition)
 import Data.Maybe
 import Data.Tree
 
@@ -38,24 +37,29 @@ lambdaFormOptD _ t = t
 lambdaFormOptE :: EffectEnv -> [K3 Expression] -> K3 Expression -> K3 Expression
 lambdaFormOptE env ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c:as)) [lambdaFormOptE env ds b]
   where
-    ESymbol symbol@(tag -> (Symbol _ (PLambda _ (Node (FScope [binding] closure :@: _) effects))))
+    ESymbol (tag -> (Symbol _ (PLambda _ (tag -> FScope [binding] (cRead, cWritten, cApplied)))))
         = fromJust $ substGlobalsE env e @~ isESymbol
-    (cRead, cWritten, cApplied) = closure
 
-    getEffects :: K3 Expression -> Maybe (K3 Effect)
-    getEffects g = fmap (\(EEffect f) -> f) $ g @~ (\case { EEffect _ -> True; _ -> False })
+    moveable = null ds
 
-    moveable x' = not $ any ((||) <$> hasWrite x' <*> hasRead x') $ mapMaybe getEffects ds
+    funcHint
+        | binding `elem` cWritten = False
+        | binding `elem` cRead && binding `notElem` cWritten && binding `notElem` cApplied = True
+        | binding `elem` cApplied = True
+        | otherwise = False
 
-    (cMove, cCopy) = partition moveable cWritten
+    captHint = foldl' captHint' (S.empty, S.empty, S.empty) $ cRead ++ cWritten ++ cApplied
 
-    a = EOpt $ FuncHint (not $ hasWriteInFunction binding symbol)
-    c = EOpt $ CaptHint (if null effects then ( symIDs $ S.fromList cRead
-                                              , S.empty
-                                              , symIDs $ S.fromList (cWritten ++ cApplied))
-                         else ( symIDs $ S.fromList $ cRead \\ cWritten
-                              , symIDs $ S.fromList cMove
-                              , symIDs $ S.fromList $ cCopy ++ cApplied))
+    captHint' (cref, move, copy) s
+        | s === binding = (cref, move, copy)
+        | moveable && (s `elem` cWritten || s `elem` cApplied) = (cref, S.insert s move, copy)
+        | moveable = (S.insert s cref, move, copy)
+        | s `elem` cWritten = (cref, move, S.insert s copy)
+        | otherwise = (S.insert s cref, move, copy)
+
+    a = EOpt $ FuncHint funcHint
+    c = EOpt $ CaptHint $ let (cref, move, copy) = captHint in (symIDs cref, symIDs move, symIDs copy)
+
 lambdaFormOptE env ds (Node (EOperate OSeq :@: as) [a, b])
     = Node (EOperate OSeq :@: as) [lambdaFormOptE env (b:ds) a, lambdaFormOptE env ds b]
 lambdaFormOptE env ds (Node (EOperate OApp :@: as) [f, x])
