@@ -4,11 +4,9 @@ env:
   - CABALVER=1.20
 install:
   - cd /k3/K3-Core
-  - git clone https://github.com/DaMSL/K3-Core.git .
+  - git pull
   - cd /k3/K3-Driver
-  - git clone https://github.com/DaMSL/K3-Driver.git .
-  - cabal sandbox init
-  - cabal sandbox add-source /k3/K3-Core
+  - git pull
 script:
   - pwd
   - cd /k3/K3-Driver
