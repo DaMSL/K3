@@ -1,33 +1,17 @@
-build_environment: Ubuntu 14.04
+build_image: damsl/k3-base
 env:
   - GHCVER=7.8.3
   - CABALVER=1.20
-before_install:
-  - sudo apt-add-repository -y ppa:hvr/ghc
-  - sudo apt-add-repository -y ppa:boost-latest/ppa
-  - sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-  - sudo apt-get update -qq
-  - sudo apt-get install -qq gcc-4.9 clang-3.3 boost1.55 
-  - sudo apt-get install -qq cabal-install-$CABALVER ghc-$GHCVER
-  - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 20
-  - export PATH=/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:$PATH
-  # install nanomsg
-  - wget http://download.nanomsg.org/nanomsg-0.3-beta.tar.gz
-  - tar -xvzf nanomsg-0.3-beta.tar.gz
-  - mkdir -p ~/software/nanomsg
-  - ./nanomsg-0.3-beta/configure --prefix ~/software/nanomsg && make && make install  
 install:
-  - cabal install cabal-install && cabal --version
-  - export PATH=~/.cabal/bin:$PATH
-  - mkdir ../K3-Driver
-  - cd ../K3-Driver
+  - cd /k3/K3-Core
+  - git clone https://github.com/DaMSL/K3-Core.git .
+  - cd /k3/K3-Driver
   - git clone https://github.com/DaMSL/K3-Driver.git .
   - cabal sandbox init
-  - cabal sandbox add-source ../K3-Core
-  - sudo pip install six
+  - cabal sandbox add-source /k3/K3-Core
 script:
-  - ls ~/software/nanomsg/include
-  - cd ../K3-Driver
+  - pwd
+  - cd /k3/K3-Driver
   - cabal install --only-dependencies --disable-documentation
   - cabal configure
   - cabal build
