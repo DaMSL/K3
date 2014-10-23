@@ -13,16 +13,14 @@ declare my_peers : collection { _r1_ : address, _r2_ : string, _r3_ : string} @ 
 declare pmap_input : collection {
   key:string, value:collection { key:int, value:int } @ { Seq } } @ { Seq } =
   {| key:string, value:collection { key:int, value:int } @ { Seq } |
-  {key:"ATIMESD_mT1", value:{| key:int, value:int |
-   {key:0, value:32}|} @ { Seq }},
-  {key:"ATIMESD_mT1_mR1", value:{| key:int, value:int | {key:0, value:8},
-   {key:1, value:4}|} @ { Seq }},
-  {key:"ATIMESD_mS1", value:{| key:int, value:int |
-   {key:0, value:32}|} @ { Seq }},
-  {key:"ATIMESD_mS2", value:{| key:int, value:int |
-   {key:0, value:32}|} @ { Seq }},
-  {key:"ATIMESD_mR1", value:{| key:int, value:int |
-   {key:0, value:32}|} @ { Seq }}|} @ { Seq }
+  {key:"__SQL_SUM_AGGREGATE_1_mS1", value:{| key:int, value:int |
+   {key:0, value:16}|} @ { Seq }},
+  {key:"__SQL_SUM_AGGREGATE_1_mR1", value:{| key:int, value:int |
+   {key:0, value:16}|} @ { Seq }},
+  {key:"__SQL_SUM_AGGREGATE_2_mS3", value:{| key:int, value:int |
+   {key:0, value:16}|} @ { Seq }},
+  {key:"__SQL_SUM_AGGREGATE_2_mR1", value:{| key:int, value:int |
+   {key:0, value:16}|} @ { Seq }}|} @ { Seq }
 
 declare __map_ids__ : collection { _r1_:int, _r2_:string, _r3_:int
   } @ { Collection } = {| _r1_:int, _r2_:string, _r3_:int |
