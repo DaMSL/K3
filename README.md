@@ -1,7 +1,7 @@
 K3/core
 ==========
 
-[![Build Status](https://travis-ci.org/DaMSL/K3-Core.svg?branch=master)](https://travis-ci.org/DaMSL/K3-Core)
+[![Build Status](https://api.shippable.com/projects/543afdb77a7fb11eaa64eaec/badge?branchName=master)](https://app.shippable.com/projects/543afdb77a7fb11eaa64eaec/builds/latest)
 [![Stories in Ready](https://badge.waffle.io/damsl/k3-core.png?label=ready&title=Ready)](https://waffle.io/damsl/k3-core)
 
 K3 is a programming language for building large-scale **_data systems_**. Hadoop, Spark, Storm and Graphlab are all examples of such systems. We aim to provide a high-level, declarative way of exploring the design space and tradeoffs in these systems, enabling the construction of specialized, efficient, data processing tools.
