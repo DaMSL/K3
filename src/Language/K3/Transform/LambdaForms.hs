@@ -59,7 +59,11 @@ lambdaFormOptE env ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c
 lambdaFormOptE env ds (Node (EOperate OSeq :@: as) [a, b])
     = Node (EOperate OSeq :@: as) [lambdaFormOptE env (b:ds) a, lambdaFormOptE env ds b]
 lambdaFormOptE env ds (Node (EOperate OApp :@: as) [f, x])
-    = Node (EOperate OApp :@: as) [lambdaFormOptE env (x:ds) f, lambdaFormOptE env ds x]
+    = Node (EOperate OApp :@: as) [lambdaFormOptE env (x:ds) f, (lambdaFormOptE env ds x) @+ a]
+  where
+    moveable = null ds
+    passHint = not moveable
+    a = EOpt $ PassHint passHint
 lambdaFormOptE env ds (Node (EIfThenElse :@: as) [i, t, e])
     = Node (EIfThenElse :@: as) [lambdaFormOptE env (t:e:ds) i, lambdaFormOptE env ds t, lambdaFormOptE env ds e]
 lambdaFormOptE env ds (Node (ELetIn i :@: as) [e, b])
