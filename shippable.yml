@@ -7,6 +7,8 @@ install:
   - git pull
   - cd /k3/K3-Driver
   - git pull
+  - cd /k3/K3-Mosaic
+  - git pull
 script:
   - pwd
   - cd /k3/K3-Driver
@@ -14,6 +16,6 @@ script:
   - cabal configure
   - cabal build
     #- scripts/tests/tests.py -l scripts/tests/passed_tests.txt
-  - ./compile.sh ../K3-Core/examples/fibonacci.k3
+  - ./compile.sh ../K3-Core/examples/algorithms/fibonacci.k3
   - ./compile.sh ../K3-Core/examples/distributed/amplab/q1.k3
     #- ./compile.sh ../K3-Core/examples/distributed/amplab/q2.k3
