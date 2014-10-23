@@ -200,8 +200,9 @@ getOrGenSymbol n = case getESymbol n of
                      Just i  -> return i
 
 -- Create a closure of symbols read, written, or applied that are relevant to the current env
-createClosure :: Maybe (K3 Effect) -> Maybe (K3 Symbol) -> MEnv ClosureInfo
-createClosure mEff mSym = liftM nubTuple $ do
+-- @scopeOpt: optimize using other scopes
+createClosure :: Bool -> Maybe (K3 Effect) -> Maybe (K3 Symbol) -> MEnv ClosureInfo
+createClosure scopeOpt -> mEff mSym = liftM nubTuple $ do
   acc  <- case mSym of
            Nothing  -> return emptyClosure
            Just sym -> addClosureSym emptyClosure sym
@@ -226,7 +227,7 @@ createClosure mEff mSym = liftM nubTuple $ do
       s''     <- getClosureSyms [] s'
       return (a, b, s'' ++ c)
     -- Try to be efficient by reusing results from previous scopes
-    addClosureEff (a', b', c') (tag -> FScope _ cl@(a,b,c)) | cl /= emptyClosure = do
+    addClosureEff (a', b', c') (tag -> FScope _ cl@(a,b,c)) | cl /= emptyClosure && optScope = do
       a'' <- unite a
       b'' <- unite b
       c'' <- unite c
@@ -302,6 +303,36 @@ wrapMapEffFn effFn symFn n =
 
 wrapMapSymFn :: Monad m => (K3 Effect -> m (K3 Effect)) -> (K3 Symbol -> m (K3 Symbol)) -> K3 Symbol -> m (K3 Symbol)
 wrapMapSymFn effFn symFn n =
+  case tag n of
+    Symbol x (PLambda y e) -> do
+      e' <- mapEff effFn symFn e
+      symFn $ replaceTag n $ Symbol x $ PLambda y e'
+    _ -> symFn n
+
+-- fold over symbols and effects
+foldEff :: Monad m => (a -> K3 Effect -> m a) -> (a -> K3 Symbol -> m a) -> a -> K3 Effect -> m a
+foldEff effFn symFn zero eff = foldTree (wrapFoldEffFn effFn symFn) zero eff
+
+foldSym :: Monad m => (a -> K3 Effect -> m a) -> (a -> K3 Symbol -> m a) -> a -> K3 Symbol -> m a
+foldSym effFn symFn zero sym = foldTree (wrapFoldSymFn effFn symFn) zero sym
+
+wrapFoldEffFn :: Monad m => (a -> K3 Effect -> m a) -> (a -> K3 Symbol -> m a) -> a -> K3 Effect -> m a
+wrapFoldEffFn effFn symFn zero n =
+  case tag n of
+    FRead s -> do
+      acc <- foldSym effFn symFn zero s
+      effFn acc n
+    FWrite s -> do
+      acc <- foldSym effFn symFn zero s
+      effFn acc n
+    FApply sL sA -> do
+      acc  <- foldSym effFn symFn zero sL
+      acc' <- foldSym effFn symFn acc sL
+      effFn acc' n
+    _ -> effFn zero n
+
+wrapFoldSymFn :: Monad m => (K3 Effect -> m (K3 Effect)) -> (K3 Symbol -> m (K3 Symbol)) -> K3 Symbol -> m (K3 Symbol)
+wrapFoldSymFn effFn symFn n =
   case tag n of
     Symbol x (PLambda y e) -> do
       e' <- mapEff effFn symFn e
@@ -528,7 +559,7 @@ runAnalysisEnv env1 prog = flip runState env1 $
       -- Temporary substituted exp for closure creation
       env     <- get
       let eSubst = substGlobalsE env e
-      closure <- createClosure (getEEffect eSubst) (getESymbol eSubst)
+      closure <- createClosure True (getEEffect eSubst) (getESymbol eSubst)
       deleteBindM i
       -- Create a gensym for the lambda, containing the effects of the child, and leading to the symbols
       eScope  <- addFID $ scope [bindSym] closure $ maybeToList eEff
@@ -737,55 +768,6 @@ combineSymSet = combineSym PSet
 combineSymApply :: Maybe (K3 Symbol) -> Maybe (K3 Symbol) -> MEnv (Maybe (K3 Symbol))
 combineSymApply l a = combineSym PApply [l,a]
 
-
--- Build a global environment for using state monad functions dynamically
-buildEnv :: K3 Declaration -> EffectEnv
-buildEnv n' = snd $ flip runState startEnv $
-               addAllGlobals n' >>
-               mapProgram handleDecl mId highestExprId Nothing n'
-  where
-    handleDecl n@(tag -> DGlobal i _ _)  = possibleInsert n i
-    handleDecl n@(tag -> DTrigger i _ _) = possibleInsert n i
-    handleDecl n = return n
-
-    possibleInsert n i = do
-      highestDeclId n
-      case n @~ isDSymbol of
-        Just (DSymbol s) -> do
-          insertGlobalM i s
-          return n
-        _          -> return n
-    highestDeclId n =
-      case n @~ isDSymbol of
-        Just (DSymbol s) -> highestSymId s
-        _ -> return ()
-
-    highestExprId n = do
-      case n @~ isESymbol of
-        Just (ESymbol s) -> highestSymId s
-        _ -> return ()
-      case n @~ isEEffect of
-        Just (EEffect e) -> highestEffId e >> return n
-        _ -> return n
-
-    highestSymId :: K3 Symbol -> MEnv ()
-    highestSymId n = do
-      env <- get
-      let c = count env
-          maxCount = case n @~ isSID of
-                       Just (SID x) -> max x c
-                       Nothing      -> c
-      put $ env {count=maxCount}
-
-    highestEffId :: K3 Effect -> MEnv ()
-    highestEffId n = do
-      env <- get
-      let c = count env
-          maxCount = case n @~ isFID of
-                        Just (FID x) -> max x c
-                        Nothing      -> c
-      put $ env {count=maxCount}
-
 applyLambdaEnv :: EffectEnv -> K3 Symbol -> K3 Symbol -> (Maybe (K3 Effect, K3 Symbol), EffectEnv)
 applyLambdaEnv env sArg sLam = flip runState env $ applyLambda sArg sLam
 
@@ -817,24 +799,24 @@ applyLambda sArg sLam =
 
       _ -> return Nothing
 
-  where
-    -- Substitute a symbol: old, new, symbol in which to replace
-    subSym :: K3 Symbol -> K3 Symbol -> K3 Symbol -> MEnv (K3 Symbol)
-    subSym s s' n@(tag -> Symbol _ PVar) | n `symEqual` s = return $ replaceCh n [s']
-    -- Apply: recurse (we already substituted into the children)
-    subSym _ _ n@(tnc -> (Symbol _ PApply, [sL, sA])) = do
-        x <- applyLambda sA sL
-        return $ maybe n snd x
-    subSym _ _ n = return n
+-- Substitute a symbol for another in a symbol: old, new, symbol in which to replace
+subSym :: K3 Symbol -> K3 Symbol -> K3 Symbol -> MEnv (K3 Symbol)
+subSym s s' n@(tag -> Symbol _ PVar) | n `symEqual` s = return $ replaceCh n [s']
+-- Apply: recurse (we already substituted into the children)
+subSym _ _ n@(tnc -> (Symbol _ PApply, [sL, sA])) = do
+    x <- applyLambda sA sL
+    return $ maybe n snd x
+subSym _ _ n = return n
 
-    -- Substitute one symbol for another in an effect
-    subEff :: K3 Symbol -> K3 Symbol -> K3 Effect -> MEnv (K3 Effect)
-    subEff _ _ n@(tag -> FApply sL sA) = do
-        x <- applyLambda sA sL
-        return $ maybe n fst x
-    subEff _ _ n = return n
+-- Substitute one symbol for another in an effect
+subEff :: K3 Symbol -> K3 Symbol -> K3 Effect -> MEnv (K3 Effect)
+subEff _ _ n@(tag -> FApply sL sA) = do
+    x <- applyLambda sA sL
+    return $ maybe n fst x
+subEff _ _ n = return n
 
 -- Fix up an expression's effect and symbol
+-- By substituting globals and projections in 
 substGlobalsE :: EffectEnv -> K3 Expression -> K3 Expression
 substGlobalsE env node = flip evalState env $ fixupEffE node >>= fixupSymE
   where
@@ -865,3 +847,5 @@ fixupSym (tnc -> (Symbol _ (PTemporary TSubstitute), [nSym, eSym])) = mapSym mId
     subSelf s n'@(tag -> Symbol "content" PVar) = return $ replaceCh n' [s]
     subSelf _ n'                                = return n'
 fixupSym s = return s
+
+-- Query whether certain symbols are read, written, applied
