@@ -425,7 +425,7 @@ runConsolidatedAnalysis d =
   runAnalysisEnv env $ IM.runAnalysis p
 
 runAnalysisEnv :: EffectEnv -> K3 Declaration -> (K3 Declaration, EffectEnv)
-runAnalysisEnv env prog = flip runState env $
+runAnalysisEnv env1 prog = flip runState env1 $
   -- for cyclic scope, add temporaries for all globals
   addAllGlobals prog >>=
   -- actual modification of AST (no need to decorate declarations here)
@@ -523,14 +523,16 @@ runAnalysisEnv env prog = flip runState env $
     handleExpr ch@[e] n@(tag -> ELambda i) = do
       bindSym <- lookupBindM i
       let eEff = getEEffect e
-          eSym = getESymbol e
-          eSymL = maybeToList eSym
+          eSym = maybeToList $ getESymbol e
       -- Create a closure for the lambda by finding every read/written/applied closure variable
-      closure <- createClosure eEff eSym
+      -- Temporary substituted exp for closure creation
+      env     <- get
+      let eSubst = substGlobalsE env e
+      closure <- createClosure (getEEffect eSubst) (getESymbol eSubst)
       deleteBindM i
       -- Create a gensym for the lambda, containing the effects of the child, and leading to the symbols
       eScope  <- addFID $ scope [bindSym] closure $ maybeToList eEff
-      lSym    <- genSym (PLambda i eScope) eSymL
+      lSym    <- genSym (PLambda i eScope) eSym
       return $ addEffSymCh Nothing (Just lSym) ch n
 
     -- For collection attributes, we need to create and apply a lambda
