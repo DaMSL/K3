@@ -15,6 +15,14 @@ declare master: address = 127.0.0.1:40000
 // Globals
 declare peers_ready: mut int = 0
 declare peers_finished: mut int = 0
+declare peer_seq : collection {addr: address} @ {Seq}
+
+
+declare index_by_hash: string -> int = \s -> (
+  let n = peer_seq.size () in
+  let h = (hash s) in
+  ((h % n) + n) % n
+)
 
 // Time
 declare start_ms : mut int = 0
@@ -64,12 +72,22 @@ trigger local : () = \_ -> (
   ((inputData.iterate (\s -> get_line s.elem)) @Profile(lbl=[# iterate_get_line]) );
   url_count.iterate (\v ->
     url_counts_partial.insert {sourcePage:cur_page, destPage:v.key, count:v.value});
+
   let url_counts_total = (url_counts_partial.groupBy
     (\v -> v.destPage)
     (\acc -> \v -> acc + v.count)
     0) @Profile(lbl=[# url_counts_groupBy])
   in
-  (aggregate, master) <- url_counts_total
+
+  let url_counts_by_peer = url_counts_total.groupBy
+    (\v -> index_by_hash v.key)
+    (\acc -> \v -> ((acc.insert v); acc))
+    empty {key: string, value: int} @Collection
+  in
+
+  url_counts_by_peer.iterate (\v ->
+   (aggregate, (peer_seq.at v.key).addr) <- v.value
+  )
 )
 
 declare url_counts_agg : collection {key: string, value: int} @ {Map}
@@ -108,6 +126,7 @@ trigger ready : () = \_ -> (
 )
 
 trigger load_all : () = \_ -> (
+   peers.iterate (\p -> peer_seq.insert p);
    dataFiles.iterate (\e -> stringLoader e.path inputData);
   ((ready, master) <- ())
 )

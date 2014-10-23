@@ -21,8 +21,12 @@ declare dataFiles : collection {path: string} @ Collection
 declare peers_seq : collection {addr: address} @ {Seq}
 
 declare master: address = 127.0.0.1:40000
-declare index_by_hash: string -> int = \s -> (hash s) % (peers_seq.size ())
 
+declare index_by_hash: string -> int = \s -> (
+  let n = peer_seq.size () in
+  let h = (hash s) in
+  ((h % n) + n) % n
+)
 declare x: mut int = 3
 
 // Globals
