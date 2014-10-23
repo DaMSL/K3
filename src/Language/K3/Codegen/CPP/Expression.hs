@@ -220,9 +220,15 @@ inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) 
     -- Inline both function and argument for call.
     (fe, fv) <- inline f
     (aes, avs) <- unzip <$> mapM inline as
-    c <- call fv avs
+    c <- call fv (movedArgs avs)
     return (fe ++ concat aes, c)
   where
+    movedArgs args = [ if noMove
+                           then arg
+                           else R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "move")) [arg]
+                     | arg <- args
+                     | EOpt (PassHint noMove) <- passHints
+                     ]
     call fn@(R.Variable n) args =
       if isJust $ f @~ CArgs.isErrorFn
         then do
@@ -231,6 +237,10 @@ inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) 
           return $ R.Call (R.Variable $ R.Specialized [returnType] n) args
         else return $ R.Call fn args
     call fn args = return $ R.Call fn args
+
+    getPassHint c = fromMaybe (EOpt (PassHint True)) (c @~ \case { EOpt (PassHint _) -> True; _ -> False})
+    passHints = map getPassHint as
+
 
 inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
     (te, _)  <- inline trig
