@@ -522,12 +522,12 @@ runAnalysisEnv env prog = flip runState env $
     -- A new scope will be created at application
     handleExpr ch@[e] n@(tag -> ELambda i) = do
       bindSym <- lookupBindM i
-      deleteBindM i
       let eEff = getEEffect e
           eSym = getESymbol e
           eSymL = maybeToList eSym
       -- Create a closure for the lambda by finding every read/written/applied closure variable
       closure <- createClosure eEff eSym
+      deleteBindM i
       -- Create a gensym for the lambda, containing the effects of the child, and leading to the symbols
       eScope  <- addFID $ scope [bindSym] closure $ maybeToList eEff
       lSym    <- genSym (PLambda i eScope) eSymL

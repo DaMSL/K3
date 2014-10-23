@@ -1,9 +1,3 @@
-
-
-
-
-
-
 #ifndef K3_RUNTIME_BASETYPES_H
 #define K3_RUNTIME_BASETYPES_H
 

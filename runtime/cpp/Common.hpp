@@ -194,6 +194,15 @@ namespace K3 {
     void logAt(boost::log::trivial::severity_level lvl, const char* msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
   }; // Class LogMT
 
+  // Hashing
+  template <class T>
+  std::size_t hash_value(T const& t) {
+    boost::hash<T> hasher;
+    return hasher(t);
+  }
+  template <>
+  std::size_t hash_value<K3::base_string>(const K3::base_string&);
+
 } // namespace K3
 
 #endif

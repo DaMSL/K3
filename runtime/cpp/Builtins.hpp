@@ -20,23 +20,17 @@
 
 // Hashing:
 namespace boost {
-  template<>
-  struct hash<boost::asio::ip::address> {
-    size_t operator()(boost::asio::ip::address const& a) const {
-      return hash_value(a.to_string());
-    }
-  };
 
-}
+template<>
+struct hash<boost::asio::ip::address> {
+  size_t operator()(boost::asio::ip::address const& a) const {
+    return hash_value(a.to_string());
+  }
+};
 
-template <class T>
-std::size_t hash_value(T const& t) {
-  boost::hash<T> hasher;
-  return hasher(t);
-}
+} // boost
 
 namespace K3 {
-
 
   // Standard context for common builtins that use a handle to the engine (via inheritance)
   class __standard_context : public __k3_context {
