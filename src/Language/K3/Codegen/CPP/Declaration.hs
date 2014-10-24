@@ -148,6 +148,48 @@ declaration _ = return []
 -- declaration (tag -> DDataAnnotation i _ amds) = addAnnotation i amds >> return empty
 -- declaration _ = return empty
 
+-- Generate a lambda to parse a csv string. of type string -> tuple
+genCsvParser :: K3 Type -> CPPGenM (Maybe R.Expression)
+genCsvParser (tag &&& children -> (TTuple, ts)) = do
+  cts <- mapM genCType ts
+  let fields = concatMap (uncurry readField) (zip ts [0,1..])
+  return $ Just $ R.Lambda
+                    []
+                    [("str", R.Named $ R.Qualified (R.Name "std") (R.Name "string"))]
+                    False
+                    Nothing
+                    ( [iss_decl, iss_str, tup_decl cts, token_decl] ++ fields ++ [R.Return tup])
+  where
+
+   iss_decl = R.Forward $ R.ScalarDecl (R.Name "iss") (R.Named $ R.Qualified (R.Name "std") (R.Name "istringstream")) Nothing
+   iss_str  = R.Ignore $ R.Call (R.Project iss (R.Name "str")) [R.Variable $ R.Name "str"]
+   token_decl = R.Forward $ R.ScalarDecl (R.Name "token") (R.Named $ R.Qualified (R.Name "std") (R.Name "string")) Nothing
+   iss = R.Variable $ R.Name "iss"
+   token = R.Variable $ R.Name "token"
+   tup_decl cts = R.Forward $ R.ScalarDecl (R.Name "tup") (R.Tuple cts) Nothing
+   tup = R.Variable $ R.Name "tup"
+
+   readField :: K3 Type -> Int -> [R.Statement]
+   readField t i = [ R.Ignore getline
+                   , R.Assignment (get i) (typeMap t cstr)
+                   ]
+
+   cstr = R.Call (R.Project token (R.Name "c_str")) []
+   get i = R.Call
+               (R.Variable $ R.Qualified (R.Name "std") (R.Specialized [R.Named $ R.Name (show i)] (R.Name "get")))
+               [tup]
+
+   getline = R.Call
+               (R.Variable $ R.Qualified (R.Name "std") (R.Name "getline"))
+               [iss, token, R.Literal $ R.LChar ","]
+
+   typeMap :: K3 Type -> R.Expression -> R.Expression
+   typeMap (tag -> TInt) e = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "atoi"))
+                             [e]
+   typeMap (tag -> TReal) e = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "atof"))
+                              [e]
+   typeMap (tag -> _) x = x
+genCsvParser _ = return Nothing
 
 -- -- Generated Builtins
 -- -- Interface for source builtins.
@@ -190,9 +232,14 @@ genDoRead suf typ name = do
     let source_name =  stripSuffix suf name
     let result_dec  = R.Forward $ R.ScalarDecl (R.Name "result") ret_type Nothing
     let read_result = R.Dereference $ R.Call (R.Project (R.Variable $ R.Name "__engine") (R.Name "doReadExternal")) [R.Literal $ R.LString source_name]
-    let do_patch    = R.Ignore $ R.Call (R.Variable $ R.Name "do_patch") [read_result, R.Variable $ R.Name "result"]
+    reader <- genCsvParser $ last $ children typ
+    let patch = case reader of
+                  Nothing -> [] -- TODO: throw a c++ level error?
+                  Just x ->  [ R.Assignment (R.Variable $ R.Name "result") (R.Call x [read_result]) ]
     return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")]
-      (Just ret_type) [] False [result_dec, do_patch, R.Return $ R.Variable $ R.Name "result"]
+      (Just ret_type) [] False ([result_dec] ++ patch ++ [R.Return $ R.Variable $ R.Name "result"])
+
+
 
 -- TODO: Loader is not quite valid K3. The collection should be passed by indirection so we are not working with a copy
 -- (since the collection is technically passed-by-value)
