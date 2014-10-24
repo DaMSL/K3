@@ -156,7 +156,7 @@ class StlDS {
 
   // Produce a new ds by mapping a function over this ds
   template<typename Fun>
-  auto map(Fun f) -> Derived<R_elem<RT<Fun, Elem>>> const {
+  auto map(Fun f) const -> Derived<R_elem<RT<Fun, Elem>>>  {
     Derived<Elem> result;
     for (const Elem &e : container) {
       result.insert( R_elem<RT<Fun, Elem>>{ f(e) } ); // Copies e (f is pass by value), then move inserts
@@ -211,7 +211,7 @@ class StlDS {
   }
 
   template <class Fun>
-  auto ext(Fun expand) -> Derived<typename RT<Fun, Elem>::ElemType> const {
+  auto ext(Fun expand) const -> Derived<typename RT<Fun, Elem>::ElemType> {
     typedef typename RT<Fun, Elem>::ElemType T;
     Derived<T> result;
     for (const Elem& elem : container) {
@@ -525,7 +525,7 @@ class Map {
   }
 
   template<typename Fun>
-  auto map(Fun f) -> Map< RT<Fun, R> > const {
+  auto map(Fun f) const -> Map< RT<Fun, R> > {
     Map< RT<Fun,R> > result;
     for (const std::pair<Key,Value>& p : container) {
       result.insert( f(R {p.first, p.second}) );
@@ -603,7 +603,7 @@ class Map {
 
   // TODO optimize copies. lots of record building here.
   template <class Fun>
-  auto ext(Fun expand) -> Map < typename RT<Fun, R>::ElemType > const {
+  auto ext(Fun expand) const -> Map < typename RT<Fun, R>::ElemType >  {
     typedef typename RT<Fun, R>::ElemType T;
     Map<T> result;
     for (const auto& it : container) {
@@ -667,11 +667,6 @@ class Vector: public VectorDS<K3::Vector, Elem> {
   Vector(): Super() {}
   Vector(const Super& c): Super(c) {}
   Vector(Super&& c): Super(std::move(c)) {}
-
-  template<typename Fun>
-  auto map(Fun f) -> Vector<R_elem<RT<Fun, Elem>>> const {
-    return Vector<R_elem<RT<Fun, Elem>>>(Super::map(f));
-  }
 
   // TODO bounds checking
   Elem at(int i) const {
