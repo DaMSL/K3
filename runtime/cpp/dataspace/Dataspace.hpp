@@ -452,7 +452,7 @@ class Map {
 
   template <class Pair>
   ElemType elemToRecord(const Pair& e) const { return R {e.first, e.second}; }
-  
+
   // Default Constructor
   Map(): container() {}
   Map(const unordered_map<Key,Value>& con): container(con) {}

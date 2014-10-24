@@ -16,8 +16,8 @@ namespace K3 {
 
   string_impl prettify_int(int i) {
     return string_impl(std::to_string(i));
-  }  
- 
+  }
+
   string_impl prettify_real(double d) {
     return string_impl(std::to_string(d));
   }
@@ -27,7 +27,7 @@ namespace K3 {
   }
 
   string_impl prettify_address(const K3::Address& s) {
-    return string_impl(K3::addressAsString(s)); 
+    return string_impl(K3::addressAsString(s));
   }
 
   template<class F>
@@ -51,12 +51,12 @@ namespace K3 {
   string_impl prettify_indirection(std::shared_ptr<T> o, F f) {
     std::ostringstream oss;
     if (o) {
-      oss << "Ind " << f(*o);  
+      oss << "Ind " << f(*o);
     }
     else {
       oss << "nullptr";
     }
-    
+
     return string_impl(oss.str());
   }
 
@@ -78,7 +78,7 @@ namespace K3 {
     const auto& con = c.getConstContainer();
     oss << "[";
     for (auto elem : con) {
-      oss << f(c.elemToRecord(elem));	    
+      oss << f(c.elemToRecord(elem));
       i++;
       oss << ",";
       if (i == 10) {

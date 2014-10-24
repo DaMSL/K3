@@ -342,7 +342,7 @@ prettifyExpr base_t e =
    oss_decl = R.Forward $ R.ScalarDecl (R.Name "oss") (R.Named $ R.Name "ostringstream") Nothing
    oss_concat = R.Binary "<<"
    oss = (R.Variable $ R.Name "oss")
- 
+
    singleton = replicate 1
    lit_string  = R.Literal . R.LString
    std_string s = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "string")) [lit_string s]
@@ -355,14 +355,14 @@ prettifyExpr base_t e =
 
    -- Option
    opt ct = do
-       f <- wrap_inner ct 
+       f <- wrap_inner ct
        return $ call_prettify "option" [e, f]
 
    -- Indirection
    ind_to_string ct = do
        f <- wrap_inner ct
        return $ call_prettify "indirection" [e, f]
-   
+
    -- TODO
    -- Tuple
    tup_to_string cts = do
@@ -371,13 +371,13 @@ prettifyExpr base_t e =
        --cs     <- mapM (\(ct,i) -> prettifyExpr ct (get_tup i e)) ct_is --show each element in tuple
        --commad <- return $ L.intersperse (lit_string ",") cs -- comma seperate
        --return $ stringConcat (foldl stringConcat (lit_string "(") commad) (lit_string ")") -- stringConcat
-   
+
    -- Record
    rec_to_string ids cts = do
        cType  <- genCType base_t
        ct_ids <- return $ zip cts ids
        let x = R.Variable $ R.Name "x"
-       let out = oss_decl 
+       let out = oss_decl
        cs     <- mapM (\(ct,field) -> prettifyExpr ct (project field x) >>= \v -> return $ (oss_concat oss (oss_concat (std_string $ field ++ ":") v ))) ct_ids
        done   <- return $ map R.Ignore $ L.intersperse (oss_concat oss (lit_string  ",")) cs
        let front = R.Ignore $ oss_concat oss (lit_string "{")
@@ -387,8 +387,8 @@ prettifyExpr base_t e =
        let body = [oss_decl, front] ++ done ++ [end, ret]
        let f =  R.Lambda [] [("x", cType)] False Nothing body
        return $ call_prettify "record" [e, f]
-  
+
    -- Collection
    coll_to_string t et = do
-       f <- wrap_inner et 
+       f <- wrap_inner et
        return $ call_prettify "collection" [e, f]
