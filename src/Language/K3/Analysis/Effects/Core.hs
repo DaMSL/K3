@@ -35,6 +35,7 @@ data Provenance
     | PProject Identifier -- Created by projections
     | PLet
     | PCase
+    | PScope [K3 Symbol] ClosureInfo
     -- A symbol can be 'applied' to produce effects and a new symbol
     | PLambda Identifier (K3 Effect)
     -- A symbol application only generates symbols
