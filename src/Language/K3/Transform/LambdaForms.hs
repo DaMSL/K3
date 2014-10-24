@@ -11,6 +11,7 @@ import Data.Foldable
 import Data.Maybe
 import Data.Tree
 
+import qualified Data.Map as M
 import qualified Data.Set as S
 
 import Language.K3.Core.Common
@@ -21,7 +22,7 @@ import Language.K3.Core.Expression
 
 import Language.K3.Analysis.Effects.Common
 import Language.K3.Analysis.Effects.Core
-import Language.K3.Analysis.Effects.InsertEffects(EffectEnv, substGlobalsE)
+import Language.K3.Analysis.Effects.InsertEffects(EffectEnv(..), substGlobalsE, symRWAQuery)
 
 import Language.K3.Transform.Hints
 
@@ -40,7 +41,11 @@ lambdaFormOptE env ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c
     ESymbol (tag -> (Symbol _ (PLambda _ (tag -> FScope [binding] (cRead, cWritten, cApplied)))))
         = fromJust $ substGlobalsE env e @~ isESymbol
 
-    moveable = null ds
+    getEffects e = (\(EEffect f) -> f) <$> e @~ (\case { EEffect _ -> True; _ -> False })
+
+    fs = mapMaybe getEffects ds
+    moveable = not $ any (\f -> let (r, w, a) = symRWAQuery f [binding] env
+                                in binding `elem` r || binding `elem` w) fs
 
     funcHint
         | binding `elem` cWritten = False
