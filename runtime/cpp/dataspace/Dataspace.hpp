@@ -59,6 +59,8 @@ class StlDS {
   template<typename Iterator>
   StlDS(Iterator begin, Iterator end): container(begin,end) {}
 
+  Elem elemToRecord(const Elem& e) const { return e; }
+
   // Maybe return the first element in the ds
   shared_ptr<Elem> peek(unit_t) const {
     shared_ptr<Elem> res;
@@ -439,6 +441,7 @@ class Sorted: public SortedDS<K3::Sorted, Elem> {
 template<class R>
 class Map {
 
+
   using Key = typename R::KeyType;
   using Value = typename R::ValueType;
   using iterator_type = typename unordered_map<Key,Value>::iterator;
@@ -447,6 +450,9 @@ class Map {
  public:
   typedef R ElemType;
 
+  template <class Pair>
+  ElemType elemToRecord(const Pair& e) const { return R {e.first, e.second}; }
+  
   // Default Constructor
   Map(): container() {}
   Map(const unordered_map<Key,Value>& con): container(con) {}

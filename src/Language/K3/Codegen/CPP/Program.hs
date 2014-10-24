@@ -166,6 +166,7 @@ requiredAliases = return
                   [ (Right (R.Qualified (R.Name "K3" )$ R.Name "unit_t"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Address"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Engine"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "string_impl"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Options"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "ValDispatcher"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Dispatcher"), Nothing)
@@ -214,6 +215,7 @@ requiredIncludes = return
                    , "Serialization.hpp"
                    , "Builtins.hpp"
                    , "Run.hpp"
+                   , "Prettify.hpp"
 
                    , "dataspace/Dataspace.hpp"
 
@@ -280,8 +282,8 @@ prettifyName = R.Name "__prettify"
 genPrettify :: CPPGenM R.Definition
 genPrettify = do
    currentS <- get
-   -- body    <- genBody $ showables currentS
-   let body = [R.Return $ R.Initialization result_type []]
+   body    <- genBody $ showables currentS
+   --let body = [R.Return $ R.Initialization result_type []]
    return $ R.FunctionDefn prettifyName [] (Just result_type) [] False body
  where
    p_string = R.Named $ R.Qualified (R.Name "std") (R.Name "string")
@@ -315,13 +317,13 @@ prettifyExpr :: K3 Type -> R.Expression -> CPPGenM R.Expression
 prettifyExpr base_t e =
  case base_t of
    -- non-nested:
-   (tag -> TBool)     -> return to_string
-   (tag -> TByte)     -> return to_string
-   (tag -> TInt)      -> return to_string
-   (tag -> TReal)     -> return to_string
-   (tag -> TString)   -> return e
-   (tag -> TAddress)  -> return $ R.Call (R.Variable $ R.Qualified (R.Name "K3") (R.Name "addressAsString")) [e]
-   (tag -> TFunction) -> return $ lit_string "<opaque_function>"
+   (tag -> TBool)     -> return $ call_prettify "bool" [e]
+   (tag -> TByte)     -> return $ call_prettify "byte" [e]
+   (tag -> TInt)      -> return $ call_prettify "int" [e]
+   (tag -> TReal)     -> return $ call_prettify "real" [e]
+   (tag -> TString)   -> return $ call_prettify "string" [e]
+   (tag -> TAddress)  -> return $ call_prettify "address" [e]
+   (tag -> TFunction) -> return $ call_prettify "function" [e]
    -- nested:
    ((tag &&& children) -> (TOption, [t]))      -> opt t
    ((tag &&& children) -> (TIndirection, [t])) -> ind_to_string t
@@ -331,6 +333,16 @@ prettifyExpr base_t e =
    _                                           -> return $ lit_string "Cant Show!"
  where
    -- Utils
+   call_prettify x exp =  R.Call (R.Variable (R.Qualified (R.Name "K3") (R.Name $ "prettify_" ++ x))) exp
+   wrap_inner t = do
+     cType <- genCType t
+     inner <- prettifyExpr t (R.Variable $ R.Name "x")
+     return $ R.Lambda [] [("x", cType)] False Nothing [R.Return $ inner]
+
+   oss_decl = R.Forward $ R.ScalarDecl (R.Name "oss") (R.Named $ R.Name "ostringstream") Nothing
+   oss_concat = R.Binary "<<"
+   oss = (R.Variable $ R.Name "oss")
+ 
    singleton = replicate 1
    lit_string  = R.Literal . R.LString
    std_string s = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "string")) [lit_string s]
@@ -343,38 +355,40 @@ prettifyExpr base_t e =
 
    -- Option
    opt ct = do
-       cType <- genCType base_t
-       inner <- prettifyExpr ct (R.Dereference (R.Variable $ R.Name "x"))
-       return $ wrap (singleton $ R.IfThenElse (R.Variable $ R.Name "x") [R.Return $ stringConcat (std_string "Some ") inner] [R.Return $ std_string "None"]) [] e (R.Const $ R.Reference cType)
+       f <- wrap_inner ct 
+       return $ call_prettify "option" [e, f]
+
    -- Indirection
    ind_to_string ct = do
-       inner <- prettifyExpr ct (R.Dereference e)
-       return $ stringConcat (lit_string "Ind ") inner
+       f <- wrap_inner ct
+       return $ call_prettify "indirection" [e, f]
+   
+   -- TODO
    -- Tuple
    tup_to_string cts = do
-       ct_is  <- return $ zip cts ([0..] :: [Integer])
-       cs     <- mapM (\(ct,i) -> prettifyExpr ct (get_tup i e)) ct_is --show each element in tuple
-       commad <- return $ L.intersperse (lit_string ",") cs -- comma seperate
-       return $ stringConcat (foldl stringConcat (lit_string "(") commad) (lit_string ")") -- stringConcat
+       return $ call_prettify "tuple" [e]
+       --ct_is  <- return $ zip cts ([0..] :: [Integer])
+       --cs     <- mapM (\(ct,i) -> prettifyExpr ct (get_tup i e)) ct_is --show each element in tuple
+       --commad <- return $ L.intersperse (lit_string ",") cs -- comma seperate
+       --return $ stringConcat (foldl stringConcat (lit_string "(") commad) (lit_string ")") -- stringConcat
+   
    -- Record
    rec_to_string ids cts = do
+       cType  <- genCType base_t
        ct_ids <- return $ zip cts ids
-       cs     <- mapM (\(ct,field) -> prettifyExpr ct (project field e) >>= \v -> return $ stringConcat (std_string $ field ++ ":") v) ct_ids
-       done   <- return $ L.intersperse (lit_string ",") cs
-       return $ stringConcat (foldl stringConcat (lit_string "{") done) (lit_string "}")
+       let x = R.Variable $ R.Name "x"
+       let out = oss_decl 
+       cs     <- mapM (\(ct,field) -> prettifyExpr ct (project field x) >>= \v -> return $ (oss_concat oss (oss_concat (std_string $ field ++ ":") v ))) ct_ids
+       done   <- return $ map R.Ignore $ L.intersperse (oss_concat oss (lit_string  ",")) cs
+       let front = R.Ignore $ oss_concat oss (lit_string "{")
+       let end = R.Ignore $ oss_concat oss (lit_string "}")
+       let str = R.Call (R.Project oss (R.Name "str")) []
+       let ret = R.Return $ R.Call (R.Variable $ R.Name "string_impl") [str]
+       let body = [oss_decl, front] ++ done ++ [end, ret]
+       let f =  R.Lambda [] [("x", cType)] False Nothing body
+       return $ call_prettify "record" [e, f]
+  
    -- Collection
    coll_to_string t et = do
-       cColType <- genCType t
-       cEType <- genCType et
-       rvar <- return $ R.ScalarDecl (R.Name "oss") (R.Named $ R.Qualified (R.Name "std") (R.Name "ostringstream")) Nothing
-       e_name <- return $ R.Name "elem"
-       v    <- prettifyExpr et (R.Variable e_name)
-       svar <- return $ R.ScalarDecl (R.Name "s") (R.Primitive R.PString) (Just v)
-       lambda_body <- return [R.Forward svar, R.Ignore $ R.Binary "<<" (R.Variable $ R.Name "oss") (ossConcat (R.Variable $ R.Name "s") $ lit_string ","), R.Return $ R.Initialization (R.Named $ R.Name "unit_t") []]
-       fun <- return $ R.Lambda
-                [R.RefCapture (Just ("oss", Nothing))]
-                [("elem", R.Const $ R.Reference cEType)] False Nothing lambda_body
-       iter <- return $ R.Call (R.Project (R.Variable $ R.Name "x") (R.Name "iterate")) [fun]
-       result <- return $ R.Return $ stringConcat (lit_string "[") (R.Call (R.Project (R.Variable $ R.Name "oss") (R.Name "str")) [])
-       -- wrap in lambda, then call it
-       return $ wrap [R.Forward rvar, R.Ignore iter, result] [] e (cColType)
+       f <- wrap_inner et 
+       return $ call_prettify "collection" [e, f]
