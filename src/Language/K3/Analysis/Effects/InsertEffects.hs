@@ -14,7 +14,7 @@
 --  TODO: lambda needs to filter effects for closure/formal args
 
 module Language.K3.Analysis.Effects.InsertEffects (
-  EffectEnv,
+  EffectEnv(..),
   preprocessBuiltins,
   runAnalysis,
   runAnalysisEnv,
