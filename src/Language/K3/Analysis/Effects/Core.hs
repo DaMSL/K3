@@ -42,13 +42,16 @@ data Provenance
     | PApply
     -- Any of the children of PSet can occur
     | PSet
+    | PChoice -- One of the cases must be chosen ie. they're exclusive
     -- The following can be roots
     | PVar
     | PTemporary TempType
     | PGlobal
   deriving (Eq, Ord, Read, Show)
 
-data Symbol = Symbol Identifier Provenance deriving (Eq, Ord, Read, Show)
+data Symbol = Symbol Identifier Provenance 
+            | SymId Int 
+            deriving (Eq, Ord, Read, Show)
 
 data instance Annotation Symbol = SID Int deriving (Eq, Ord, Read, Show)
 
@@ -67,6 +70,7 @@ data Effect
     | FSeq
     | FSet   -- Set of effects, all of which are possible
     | FLoop  -- a flattened loop. can only happen in a foreign function
+    | FEffId Int
   deriving (Eq, Ord, Read, Show)
 
 data instance Annotation Effect = FID Int deriving (Eq, Ord, Read, Show)

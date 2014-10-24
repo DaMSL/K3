@@ -48,20 +48,26 @@ import Language.K3.Analysis.Effects.Constructors
 
 import qualified Language.K3.Analysis.InsertMembers as IM
 
-type GlobalEnv = Map Identifier (K3 Symbol)
-type LocalEnv  = Map Identifier [K3 Symbol]
+type GlobalEnv  = Map Identifier (K3 Symbol)
+type LocalEnv   = Map Identifier [K3 Symbol]
+type SymbolMap  = IntMap (K3 Symbol)
+type EffectMap  = IntMap (K3 Effect)
 
 data EffectEnv = EffectEnv {
                 globalEnv :: GlobalEnv,
                 count :: Int,
-                bindEnv :: LocalEnv
+                bindEnv :: LocalEnv,
+                symEnv :: SymbolMap,
+                effEnv :: EffectMap
                }
 
 startEnv :: EffectEnv
 startEnv = EffectEnv {
              globalEnv=Map.empty,
              count = 1,
-             bindEnv=Map.empty
+             bindEnv=Map.empty,
+             symEnv=IntMap.empty,
+             effEnv=IntMap.empty
            }
 
 insertGlobal :: Identifier -> K3 Symbol -> EffectEnv -> EffectEnv
@@ -115,6 +121,18 @@ lookupGlobal :: Identifier -> EffectEnv -> K3 Symbol
 lookupGlobal i env = fromMaybe err $ lookupGlobalInner i env
   where err = error $ "failed to find " ++ i ++ " in global environment"
 
+lookupEffect :: Int -> EffectEnv -> Maybe (K3 Effect)
+lookupEffect i env = IntMap.lookup i $ effEnv env
+
+lookupSymbol :: Int -> EffectEnv -> Maybe (K3 Symbol)
+lookupSymbol i env = IntMap.lookup i $ symEnv env
+
+insertEffect :: Int -> K3 Effect -> EffectEnv -> EffectEnv
+insertEffect i e env = env {effEnv=IntMap.insert i e $ effEnv env}
+
+insertSymbol :: Int -> K3 Symbol -> EffectEnv -> EffectEnv
+insertSymbol i s env = env {symEnv=IntMap.insert i s $ symEnv env}
+
 type MEnv = State EffectEnv
 
 insertGlobalM :: Identifier -> K3 Symbol -> MEnv ()
@@ -146,8 +164,36 @@ getIdM = do
   put e'
   return i
 
+lookupEffectM :: Int -> MEnv (Maybe (K3 Effect))
+lookupEffectM i = liftM (lookupEffect i) get
+
+lookupSymbolM :: Int -> MEnv (Maybe (K3 Symbol))
+lookupSymbolM i = liftM (lookupSymbol i) get
+
+insertEffectM :: Int -> K3 Effect -> MEnv ()
+insertEffectM i e = modify $ addEffect i e
+
+insertSymbolM :: Int -> K3 Symbol -> MEnv ()
+insertSymbolM i s = modify $ addSymbol i s
+
+-- Shallow substitution
+expandEff :: K3 Effect -> MEnv (K3 Effect)
+expandEff (FEffId i) = liftM (fromMaybe $ error $ "effect " ++ show i ++ " not in environment") $ lookupEffectM i
+expandEff eff        = return eff
+
+expandSym :: K3 Symbol -> MEnv (K3 Symbol)
+expandSym (SymId i)  = liftM (fromMaybe $ error $ "symbol " ++ show i ++ " not in environment") $ lookupSymbolM i
+expandSym sym        = return sym
+
 singleton :: a -> [a]
 singleton x = [x]
+
+-- Create an effect and add it to the map
+genEff :: K3 Effect -> MEnv (K3 Effect)
+genEff eff = do
+  i <- getIdM
+  insertEffectM i $ eff @+ FID i
+  return $ FEffId i
 
 -- Add an id to an effect
 addFID :: K3 Effect -> MEnv (K3 Effect)
@@ -169,13 +215,15 @@ symbolM :: Identifier -> Provenance -> [K3 Symbol] -> MEnv (K3 Symbol)
 symbolM name prov ch = do
   i <- getIdM
   let s = symbol name prov @+ SID i
-  return $ replaceCh s ch
+  insertSymbolM i $ replaceCh s ch
+  return $ SymId i
 
 genSym :: Provenance -> [K3 Symbol] -> MEnv (K3 Symbol)
-genSym p ch = do
+genSym prov ch = do
    i <- getIdM
-   let s = symbol ("sym_"++show i) p @+ SID i
-   return $ replaceCh s ch
+   let s = symbol ("sym_"++show i) prov @+ SID i
+   insertSymbolM i $ replaceCh s ch
+   return $ SymId i
 
 genSymTemp :: TempType -> [K3 Symbol] -> MEnv (K3 Symbol)
 genSymTemp tempType = genSym $ PTemporary tempType
@@ -183,14 +231,24 @@ genSymTemp tempType = genSym $ PTemporary tempType
 getEEffect :: K3 Expression -> Maybe (K3 Effect)
 getEEffect n = case n @~ isEEffect of
                  Just (EEffect e) -> Just e
-                 Nothing          -> Nothing
-                 _                -> error "unexpected"
+                 _                -> Nothing
 
 getESymbol :: K3 Expression -> Maybe (K3 Symbol)
 getESymbol n = case n @~ isESymbol of
                  Just (ESymbol e) -> Just e
-                 Nothing          -> Nothing
-                 _                -> error "unexpected"
+                 _                -> Nothing
+
+getEEffectFull :: K3 Expression -> MEnv (Maybe (K3 Effect))
+getEEffectFull n = case getEEffect n of
+                     Nothing         -> return Nothing
+                     Just (FEffId i) -> lookupEffectM i
+                     e               -> return e
+
+getESymbolFull :: K3 Expression -> MEnv (Maybe (K3 Symbol))
+getESymbolFull n = case getESymbol n of
+                     Nothing         -> return Nothing
+                     Just (SymId i)  -> lookupSymbolM i
+                     e               -> return e
 
 -- If we don't have a symbol, we automatically gensym one
 getOrGenSymbol :: K3 Expression -> MEnv (K3 Symbol)
@@ -349,7 +407,7 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
     addMissingDecl n = case n @~ isDSymbol of
                          Just (DSymbol s) -> do
                            s' <- liftM DSymbol $ numberSyms s
-                           return (stripAnno isDSymbol n  @+ s')
+                           return (stripAnno isDSymbol n @+ s')
                          _ -> return n
 
     -- Handle lifted/unlifted attributes without symbols
@@ -416,18 +474,18 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
     -- @addSelf: add a r/w to 'self' (for attributes)
     createSym addSelf subSym' nm = do
       sym   <- symbolM nm PVar []
-      r     <- addFID $ read sym
-      w     <- addFID $ write sym
+      r     <- genEff $ read sym
+      w     <- genEff $ write sym
       seq'  <- if addSelf then do
-               selfSym <- symbolM "self" PVar []
-               rSelf <- addFID $ read selfSym
-               wSelf <- addFID $ write selfSym
-               return [Just w, Just r, Just wSelf, Just rSelf]
-             else
-               return [Just w, Just r]
+                 selfSym <- symbolM "self" PVar []
+                 rSelf   <- genEff $ read selfSym
+                 wSelf   <- genEff $ write selfSym
+                 return [Just w, Just r, Just wSelf, Just rSelf]
+               else
+                 return [Just w, Just r]
       seq'' <- combineEffSeq seq'
-      lp    <- addFID $ loop $ fromMaybe (error "createSym") seq''
-      sc    <- addFID $ scope [sym] emptyClosure [lp]
+      lp    <- genEff $ loop $ fromMaybe (error "createSym") seq''
+      sc    <- genEff $ scope [sym] emptyClosure [lp]
       genSym (PLambda nm sc) subSym'
 
 ----- Actual effect insertion ------
@@ -514,13 +572,13 @@ runAnalysisEnv env1 prog = flip runState env1 $
 
     handleExpr _ n@(tag -> EVariable i) = do
       sym <- lookupBindM i
-      eff <- addFID $ read sym
+      eff <- genEff $ read sym
       return $ addEffSymCh (Just eff) (Just sym) [] n
 
     -- An assignment generates a write, and no symbol
     handleExpr ch@[e] n@(tag -> EAssign i) = do
       sym    <- lookupBindM i
-      w      <- addFID $ write sym
+      w      <- genEff $ write sym
       -- Add the write to any existing child effects
       nEff   <- combineEffSeq [getEEffect e, Just w]
       return $ addEffSymCh nEff Nothing ch n
@@ -547,7 +605,7 @@ runAnalysisEnv env1 prog = flip runState env1 $
       closure <- createClosure True (getEEffect eSubst) (getESymbol eSubst)
       deleteBindM i
       -- Create a gensym for the lambda, containing the effects of the child, and leading to the symbols
-      eScope  <- addFID $ scope [bindSym] closure $ maybeToList eEff
+      eScope  <- genEff $ scope [bindSym] closure $ maybeToList eEff
       lSym    <- genSym (PLambda i eScope) eSym
       return $ addEffSymCh Nothing (Just lSym) ch n
 
@@ -565,7 +623,7 @@ runAnalysisEnv env1 prog = flip runState env1 $
       case getESymbol l of
         Nothing   -> error $ "failed to find symbol at lambda: " ++ show n
         Just lSym -> do
-          appE    <- addFID $ apply lSym aSym
+          appE    <- genEff $ apply lSym aSym
           fullEff <- combineEffSeq [seqE, Just appE]
           fullSym <- combineSymApply (Just lSym) (Just aSym)
           return $ addEffSymCh fullEff fullSym ch n
@@ -591,7 +649,7 @@ runAnalysisEnv env1 prog = flip runState env1 $
       -- peel off until we get to a scope we know
       fullSym <- peelSymbol [] $ getESymbol e
       let eEff = maybe [] singleton $ getEEffect e
-      bScope  <- addFID $ scope bindSyms emptyClosure eEff
+      bScope  <- genEff $ scope bindSyms emptyClosure eEff
       fullEff <- combineEffSeq [getEEffect bind, Just bScope]
       return $ addEffSymCh fullEff (Just fullSym) ch n
 
@@ -601,7 +659,7 @@ runAnalysisEnv env1 prog = flip runState env1 $
       deleteBindM i -- remove bind from env
       -- Wrap some in a scope
       let someEff = maybeToList $ getEEffect some
-      scopeEff <- addFID $ scope [bindSym] emptyClosure someEff
+      scopeEff <- genEff $ scope [bindSym] emptyClosure someEff
       -- Conservative approximation
       setEff   <- combineEffSet [getEEffect none, Just scopeEff]
       combSym  <- combineSymSet [getESymbol some, getESymbol none]
@@ -617,7 +675,7 @@ runAnalysisEnv env1 prog = flip runState env1 $
       bindSym <- lookupBindM i
       deleteBindM i -- remove bind from env
       let eEff = maybeToList $ getEEffect e
-      scopeEff <- addFID $ scope [bindSym] emptyClosure eEff
+      scopeEff <- genEff $ scope [bindSym] emptyClosure eEff
       fullEff  <- combineEffSeq [getEEffect l, Just scopeEff]
       -- peel off symbols until we get to ones in our outer scope
       fullSym  <- peelSymbol [] $ getESymbol e
@@ -737,7 +795,7 @@ combineEff constF es =
   case filter isJust es of
     []  -> return Nothing
     [e] -> return e
-    es' -> liftM Just $ addFID $ constF $ map (fromMaybe $ error "combineEff") es'
+    es' -> liftM Just $ genEff $ constF $ map (fromMaybe $ error "combineEff") es'
 
 combineEffSet :: [Maybe (K3 Effect)] -> MEnv (Maybe (K3 Effect))
 combineEffSet = combineEff set
