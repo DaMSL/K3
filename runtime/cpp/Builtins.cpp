@@ -167,6 +167,9 @@ namespace K3 {
       char * pch;
       char delim = splitter.c_str()[0];
       const char* buf = s.c_str();
+      if (!buf) {
+        return string_impl();
+      }
       int n = 0;
       while ((*buf != 0) && (*buf != delim)) {
         buf++;
@@ -181,6 +184,9 @@ namespace K3 {
       char * pch;
       char delim = splitter.c_str()[0];
       const char* buf = s.c_str();
+      if (!buf) {
+        return 0;
+      }
       int n = 0;
       while ((*buf != 0)) {
         buf++;
