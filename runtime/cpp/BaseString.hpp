@@ -30,22 +30,19 @@ class base_string {
   base_string(const char* b): buffer(strdup(b)) {}
   base_string(const std::string& s) : buffer(strdup(s.c_str())) {}
 
-  base_string(const char* from, std::size_t count) {
-    buffer = new char[count + 1];
-    strncpy(buffer, from, count);
-    buffer[count] = 0;
+  base_string(const char* from, std::size_t count): base_string() {
+    if (count) {
+      buffer = new char[count + 1];
+      strncpy(buffer, from, count);
+      buffer[count] = 0;
+    }
   }
 
   ~base_string() {
     delete [] buffer;
   }
 
-  base_string& operator =(const base_string& other) {
-    *this = base_string { other };
-    return *this;
-  }
-
-  base_string& operator =(base_string&& other) {
+  base_string& operator =(base_string other) {
     swap(*this, other);
     return *this;
   }
@@ -61,8 +58,12 @@ class base_string {
   }
 
   // Accessors
-  std::size_t length() {
-    return strlen(buffer);
+  std::size_t length() const {
+    if (buffer) {
+      return strlen(buffer);
+    }
+
+    return 0;
   }
 
   const char* c_str() const {
@@ -96,7 +97,7 @@ class base_string {
 
   // Operations
   base_string substr(std::size_t from, std::size_t to) const {
-    auto n = strlen(buffer);
+    auto n = length();
 
     if (from > n) {
       from = n;
@@ -127,7 +128,11 @@ class base_string {
 
   // Stream Operators
   friend std::ostream& operator <<(std::ostream& out, const K3::base_string& s) {
-    return out << s.c_str();
+    if (buffer) {
+      return out << s.c_str();
+    }
+
+    return out;
   }
 
   char* begin() const {
@@ -135,24 +140,28 @@ class base_string {
   }
 
   char* end() const {
-    return buffer + strlen(buffer);
+    return buffer + length();
   }
 
   template <class archive>
   void serialize(archive& a, const unsigned int) {
-    int len;
+    std::size_t len;
     if (archive::is_saving::value) {
-      len = strlen(buffer);
+      len = length();
     }
     a & len;
     if (archive::is_loading::value) {
-      buffer = new char[len + 1];
-      buffer[len] = 0;
+      if (len) {
+        buffer = new char[len + 1];
+        buffer[len] = 0;
+      } else {
+        buffer = 0;
+      }
     }
     a & boost::serialization::make_array(buffer, len);
   }
 
-  private:
+ private:
   char* buffer;
 };
 
