@@ -128,7 +128,7 @@ class base_string {
 
   // Stream Operators
   friend std::ostream& operator <<(std::ostream& out, const K3::base_string& s) {
-    if (buffer) {
+    if (s.buffer) {
       return out << s.c_str();
     }
 
