@@ -18,12 +18,12 @@ module Language.K3.Analysis.Effects.InsertEffects (
   preprocessBuiltins,
   runAnalysis,
   runAnalysisEnv,
-  buildEnv,
   applyLambda,
   applyLambdaEnv,
   runConsolidatedAnalysis,
   substGlobalsE,
-  substGlobalsD
+  substGlobalsD,
+  symRWAQuery 
 )
 where
 
@@ -200,9 +200,9 @@ getOrGenSymbol n = case getESymbol n of
                      Just i  -> return i
 
 -- Create a closure of symbols read, written, or applied that are relevant to the current env
--- @scopeOpt: optimize using other scopes
+-- @optScope: optimize using other scopes
 createClosure :: Bool -> Maybe (K3 Effect) -> Maybe (K3 Symbol) -> MEnv ClosureInfo
-createClosure scopeOpt -> mEff mSym = liftM nubTuple $ do
+createClosure optScope mEff mSym = liftM nubTuple $ do
   acc  <- case mSym of
            Nothing  -> return emptyClosure
            Just sym -> addClosureSym emptyClosure sym
@@ -303,36 +303,6 @@ wrapMapEffFn effFn symFn n =
 
 wrapMapSymFn :: Monad m => (K3 Effect -> m (K3 Effect)) -> (K3 Symbol -> m (K3 Symbol)) -> K3 Symbol -> m (K3 Symbol)
 wrapMapSymFn effFn symFn n =
-  case tag n of
-    Symbol x (PLambda y e) -> do
-      e' <- mapEff effFn symFn e
-      symFn $ replaceTag n $ Symbol x $ PLambda y e'
-    _ -> symFn n
-
--- fold over symbols and effects
-foldEff :: Monad m => (a -> K3 Effect -> m a) -> (a -> K3 Symbol -> m a) -> a -> K3 Effect -> m a
-foldEff effFn symFn zero eff = foldTree (wrapFoldEffFn effFn symFn) zero eff
-
-foldSym :: Monad m => (a -> K3 Effect -> m a) -> (a -> K3 Symbol -> m a) -> a -> K3 Symbol -> m a
-foldSym effFn symFn zero sym = foldTree (wrapFoldSymFn effFn symFn) zero sym
-
-wrapFoldEffFn :: Monad m => (a -> K3 Effect -> m a) -> (a -> K3 Symbol -> m a) -> a -> K3 Effect -> m a
-wrapFoldEffFn effFn symFn zero n =
-  case tag n of
-    FRead s -> do
-      acc <- foldSym effFn symFn zero s
-      effFn acc n
-    FWrite s -> do
-      acc <- foldSym effFn symFn zero s
-      effFn acc n
-    FApply sL sA -> do
-      acc  <- foldSym effFn symFn zero sL
-      acc' <- foldSym effFn symFn acc sL
-      effFn acc' n
-    _ -> effFn zero n
-
-wrapFoldSymFn :: Monad m => (K3 Effect -> m (K3 Effect)) -> (K3 Symbol -> m (K3 Symbol)) -> K3 Symbol -> m (K3 Symbol)
-wrapFoldSymFn effFn symFn n =
   case tag n of
     Symbol x (PLambda y e) -> do
       e' <- mapEff effFn symFn e
@@ -768,55 +738,55 @@ combineSymSet = combineSym PSet
 combineSymApply :: Maybe (K3 Symbol) -> Maybe (K3 Symbol) -> MEnv (Maybe (K3 Symbol))
 combineSymApply l a = combineSym PApply [l,a]
 
-applyLambdaEnv :: EffectEnv -> K3 Symbol -> K3 Symbol -> (Maybe (K3 Effect, K3 Symbol), EffectEnv)
-applyLambdaEnv env sArg sLam = flip runState env $ applyLambda sArg sLam
+applyLambdaEnv :: EffectEnv -> K3 Symbol -> K3 Symbol -> Maybe (K3 Effect, K3 Symbol)
+applyLambdaEnv env l a = flip evalState env $ applyLambda l a
 
 -- If the symbol is a global, substitute from the global environment
 -- Apply (substitute) a symbol into a lambda symbol, generating effects and a new symbol
 -- If we return Nothing, we cannot apply yet because of a missing lambda
 applyLambda :: K3 Symbol -> K3 Symbol -> MEnv (Maybe (K3 Effect, K3 Symbol))
-applyLambda sArg sLam =
-    case tnc sLam of
-      (Symbol _ (PLambda _ (tnc -> (FScope [sOld] _, [lamEff]))), [chSym]) -> do
-        -- Dummy substitute into the argument, in case there's an application there
-        -- Any effects won't be substituted in and will be visible outside
-        sArg'   <- mapSym (subEff sOld sOld) (subSym sOld sOld) sArg
-        -- Substitute into the old effects and symbol
-        e'      <- mapEff (subEff sOld sArg') (subSym sOld sArg') lamEff
-        chSym'  <- mapSym (subEff sOld sArg') (subSym sOld sArg') chSym
-        return $ Just (e', chSym')
+applyLambda sLam sArg =
+  case tnc sLam of
+    (Symbol _ (PLambda _ (tnc -> (FScope [sOld] _, [lamEff]))), [chSym]) -> do
+      -- Dummy substitute into the argument, in case there's an application there
+      -- Any effects won't be substituted in and will be visible outside
+      sArg'   <- mapSym (subEff sOld sOld) (subSym sOld sOld) sArg
+      -- Substitute into the old effects and symbol
+      e'      <- mapEff (subEff sOld sArg') (subSym sOld sArg') lamEff
+      chSym'  <- mapSym (subEff sOld sArg') (subSym sOld sArg') chSym
+      return $ Just (e', chSym')
 
-      (Symbol _ PGlobal, [ch]) -> applyLambda sArg ch
+    (Symbol _ PGlobal, [ch]) -> applyLambda ch sArg
 
-      -- For a set 'lambda', we need to combine results
-      (Symbol _ PSet, ch)      -> do
-        xs <- mapM (applyLambda sArg) ch
-        let (es, ss) = unzip $ catMaybes xs
-            (es', ss') = (map Just es, map Just ss)
-        sSet <- combineSymSet ss'
-        eSet <- combineEffSet es'
-        return $ Just (fromJust eSet, fromJust sSet)
+    -- For a set 'lambda', we need to combine results
+    (Symbol _ PSet, ch)      -> do
+      xs <- mapM (flip applyLambda sArg) ch
+      let (es, ss) = unzip $ catMaybes xs
+          (es', ss') = (map Just es, map Just ss)
+      sSet <- combineSymSet ss'
+      eSet <- combineEffSet es'
+      return $ Just (fromJust eSet, fromJust sSet)
 
-      _ -> return Nothing
+    _ -> return Nothing
 
 -- Substitute a symbol for another in a symbol: old, new, symbol in which to replace
 subSym :: K3 Symbol -> K3 Symbol -> K3 Symbol -> MEnv (K3 Symbol)
 subSym s s' n@(tag -> Symbol _ PVar) | n `symEqual` s = return $ replaceCh n [s']
 -- Apply: recurse (we already substituted into the children)
 subSym _ _ n@(tnc -> (Symbol _ PApply, [sL, sA])) = do
-    x <- applyLambda sA sL
+    x <- applyLambda sL sA
     return $ maybe n snd x
 subSym _ _ n = return n
 
 -- Substitute one symbol for another in an effect
 subEff :: K3 Symbol -> K3 Symbol -> K3 Effect -> MEnv (K3 Effect)
 subEff _ _ n@(tag -> FApply sL sA) = do
-    x <- applyLambda sA sL
+    x <- applyLambda sL sA
     return $ maybe n fst x
 subEff _ _ n = return n
 
 -- Fix up an expression's effect and symbol
--- By substituting globals and projections in 
+-- By substituting globals and projections in
 substGlobalsE :: EffectEnv -> K3 Expression -> K3 Expression
 substGlobalsE env node = flip evalState env $ fixupEffE node >>= fixupSymE
   where
@@ -849,3 +819,22 @@ fixupSym (tnc -> (Symbol _ (PTemporary TSubstitute), [nSym, eSym])) = mapSym mId
 fixupSym s = return s
 
 -- Query whether certain symbols are read, written, applied
+symRWAQuery :: K3 Effect -> [K3 Symbol] -> EffectEnv -> ClosureInfo
+symRWAQuery eff syms env = flip evalState env $ do
+  clearBindsM
+  -- Use the symbols as a bind environment
+  mapM_ addToEnv syms
+  -- Substitute for globals and self
+  eff'  <- mapEff mId fixupSym eff
+  -- Substitute any lambdas inside
+  eff'' <- mapEff (subEff (head syms) (head syms)) mId eff'
+  -- Get the general closure
+  createClosure False (Just eff'') Nothing
+  where
+    -- For superstructure, we add parents
+    addToEnv s@(tnc -> (Symbol i (PRecord _),  ch)) = insertBindM i s >> mapM_ addToEnv ch
+    addToEnv s@(tnc -> (Symbol i (PTuple _),   ch)) = insertBindM i s >> mapM_ addToEnv ch
+    addToEnv s@(tnc -> (Symbol i (PProject _), ch)) = insertBindM i s >> mapM_ addToEnv ch
+    -- Otherwise, we just add the individual symbol
+    addToEnv s@(tag -> Symbol i _)                  = insertBindM i s
+
