@@ -70,8 +70,17 @@ lambdaFormOptE env ds (Node (EOperate OSeq :@: as) [a, b])
 lambdaFormOptE env ds (Node (EOperate OApp :@: as) [f, x])
     = Node (EOperate OApp :@: as) [lambdaFormOptE env (x:ds) f, (lambdaFormOptE env ds x) @+ a]
   where
-    moveable = null ds
-    passHint = not moveable
+    getEffects e = (\(EEffect f) -> f) <$> e @~ (\case { EEffect _ -> True; _ -> False })
+    getSymbol e = (\(ESymbol f) -> f) <$> e @~ (\case { ESymbol _ -> True; _ -> False })
+
+    isGlobal (tag -> EVariable i) = M.member i (globalEnv env)
+    isGlobal _ = False
+
+    fs = mapMaybe getEffects ds
+    argument = getSymbol x
+    moveable g = not $ any (\f -> let (r, w, a) = symRWAQuery f [g] env
+                                in g `elem` r || g `elem` w) fs
+    passHint = isGlobal x || argument == Nothing || not (moveable $ fromJust argument)
     a = EOpt $ PassHint passHint
 lambdaFormOptE env ds (Node (EIfThenElse :@: as) [i, t, e])
     = Node (EIfThenElse :@: as) [lambdaFormOptE env (t:e:ds) i, lambdaFormOptE env ds t, lambdaFormOptE env ds e]
