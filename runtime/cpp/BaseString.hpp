@@ -31,7 +31,7 @@ class base_string {
   base_string(const std::string& s) : buffer(strdup(s.c_str())) {}
 
   base_string(const char* from, std::size_t count): base_string() {
-    if (count) {
+    if (from && count) {
       buffer = new char[count + 1];
       strncpy(buffer, from, count);
       buffer[count] = 0;
@@ -54,7 +54,7 @@ class base_string {
 
   // Conversions
   operator std::string() const {
-    return std::string(buffer);
+    return std::string(buffer ? buffer : "");
   }
 
   // Accessors
@@ -72,31 +72,35 @@ class base_string {
 
   // Comparisons
   bool operator ==(const base_string& other) const {
-    return strcmp(buffer, other.buffer) == 0;
+    return strcmp(buffer ? buffer : "", other.buffer ? other.buffer : "") == 0;
   }
 
   bool operator !=(const base_string& other) const {
-    return strcmp(buffer, other.buffer) != 0;
+    return strcmp(buffer ? buffer : "", other.buffer ? other.buffer : "") != 0;
   }
 
   bool operator <=(const base_string& other) const {
-    return strcmp(buffer, other.buffer) <= 0;
+    return strcmp(buffer ? buffer : "", other.buffer ? other.buffer : "") <= 0;
   }
 
   bool operator <(const base_string& other) const {
-    return strcmp(buffer, other.buffer) < 0;
+    return strcmp(buffer ? buffer : "", other.buffer ? other.buffer : "") < 0;
   }
 
   bool operator >=(const base_string& other) const {
-    return strcmp(buffer, other.buffer) >= 0;
+    return strcmp(buffer ? buffer : "", other.buffer ? other.buffer : "") >= 0;
   }
 
   bool operator >(const base_string& other) const {
-    return strcmp(buffer, other.buffer) > 0;
+    return strcmp(buffer ? buffer : "", other.buffer ? other.buffer : "") > 0;
   }
 
   // Operations
   base_string substr(std::size_t from, std::size_t to) const {
+    if (!buffer) {
+      return base_string();
+    }
+
     auto n = length();
 
     if (from > n) {
@@ -113,6 +117,10 @@ class base_string {
   // Modifies this string.
   Seq<R_elem<string_impl>> splitString(const string_impl& splitter) {
     Seq<R_elem<string_impl>> results;
+    if (!buffer) {
+      return results;
+    }
+
     R_elem<string_impl> rec;
     char * pch;
     pch = strtok (buffer, splitter.c_str());
@@ -151,6 +159,13 @@ class base_string {
     }
     a & len;
     if (archive::is_loading::value) {
+      // Possibly extraneous:
+      // Buffer might always be null when loading
+      // since this base_str was just constructed
+      if(buffer) {
+        delete [] buffer;
+      }
+
       if (len) {
         buffer = new char[len + 1];
         buffer[len] = 0;
