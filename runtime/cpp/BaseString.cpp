@@ -15,8 +15,10 @@ namespace K3 {
   template<>
   std::size_t hash_value<K3::base_string>(const K3::base_string& s) {
     std::size_t seed = 0;
-    for (auto& i: s) {
-      boost::hash_combine(seed, i);
+    if (s.length() > 0) {
+      for (auto& i: s) {
+        boost::hash_combine(seed, i);
+      }
     }
     return seed;
   }
