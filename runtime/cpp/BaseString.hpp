@@ -173,7 +173,9 @@ class base_string {
         buffer = 0;
       }
     }
-    a & boost::serialization::make_array(buffer, len);
+    if (buffer) {
+      a & boost::serialization::make_array(buffer, len);
+    }
   }
 
  private:

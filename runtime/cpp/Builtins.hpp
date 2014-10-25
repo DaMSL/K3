@@ -94,18 +94,26 @@ namespace K3 {
 
     // TODO move to seperate context
     unit_t rkLoaderMap(string_impl file, K3::Map<R_key_value<string_impl,int>>& c)  {
-        // TODO: adopt new data-loader
-        //R_key_value<string_impl, int> rec;
-	//int foo;
-        //strtk::for_each_line(file, [&] (const string_impl& str)   {
-        //  if (strtk::parse(str, ",", rec.key, rec.value, foo)) {
-        //    c.insert(rec);
-        //  } else {
-        //    std::cout << ("Failed to parse a row!\n");
-        //  }
-        //});
+        // Buffers
+        std::string tmp_buffer;
+        R_key_value<string_impl, int> rec;
+        // Infile
+        std::ifstream in;
+        in.open(file);
+
+        // Parse by line
+        while(!in.eof()) {
+          std::getline(in, tmp_buffer, ',');
+          rec.key = tmp_buffer;
+          std::getline(in, tmp_buffer, ',');
+          rec.value = std::atoi(tmp_buffer.c_str());
+          // ignore last value
+          std::getline(in, tmp_buffer);
+          c.insert(rec);
+        }
+
         return unit_t {};
-      }
+    }
 
     Vector<R_elem<double>> zeroVector(int i);
     Vector<R_elem<double>> randomVector(int i);
