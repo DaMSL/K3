@@ -44,8 +44,7 @@ lambdaFormOptE env ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c
     getEffects e = (\(EEffect f) -> f) <$> e @~ (\case { EEffect _ -> True; _ -> False })
 
     fs = mapMaybe getEffects ds
-    moveable = not $ any (\f -> let (r, w, a) = symRWAQuery f [binding] env
-                                in binding `elem` r || binding `elem` w) fs
+    moveable g = not $ any (\f -> let (r, w, a) = symRWAQuery f [g] env in g `elem` r || g `elem` w) fs
 
     funcHint
         | binding `elem` cWritten = False
@@ -57,8 +56,8 @@ lambdaFormOptE env ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c
 
     captHint' (cref, move, copy) s
         | s === binding = (cref, move, copy)
-        | moveable && (s `elem` cWritten || s `elem` cApplied) = (cref, S.insert s move, copy)
-        | moveable = (S.insert s cref, move, copy)
+        | moveable s && (s `elem` cWritten || s `elem` cApplied) = (cref, S.insert s move, copy)
+        | moveable s = (S.insert s cref, move, copy)
         | s `elem` cWritten = (cref, move, S.insert s copy)
         | otherwise = (S.insert s cref, move, copy)
 
