@@ -35,7 +35,6 @@ import Data.Map(Map)
 import Data.List(nub, delete)
 import qualified Data.Map as Map
 import Data.Foldable hiding (mapM_, any, all, concatMap, concat)
-import Debug.Trace(trace)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -238,14 +237,16 @@ createClosure optScope mEff mSym = liftM nubTuple $ do
     addClosureSym acc n@(tag -> Symbol _ (PLambda _ eff)) = do
       acc' <- foldrM (flip addClosureSym) acc $ children n
       addClosureEff acc' eff
+    addClosureSym acc (tag -> Symbol _ PLet) | not optScope = return acc
     addClosureSym acc n = foldrM (flip addClosureSym) acc $ children n
 
     -- The method for searching for valid symbols
     getClosureSyms acc (tag -> Symbol _ (PTemporary TTemp))    = return acc
     getClosureSyms acc (tag -> Symbol _ (PTemporary TUnbound)) = return acc
     getClosureSyms acc s@(tnc -> (Symbol i _, ch)) = do
-      x <- lookupBindInnerM i
+      x <- if not optScope then (return $ Just s) else lookupBindInnerM i
       case x of
+        Just (tag -> Symbol _ PLet) | not optScope -> return acc
         Just (tag -> Symbol _ (PTemporary TTemp))    -> return acc
         Just (tag -> Symbol _ (PTemporary TUnbound)) -> return acc
         Just (tag -> Symbol _ PGlobal) -> return acc
@@ -636,7 +637,7 @@ runAnalysisEnv env1 prog = flip runState env1 $
               -- nSym' <- return nSym
               return $ addEffSymCh (getEEffect e) (Just nSym') ch n
 
-            _   -> trace (show n) $ error $ "Missing symbol for projection of " ++ i
+            _   -> error $ "Missing symbol for projection of " ++ i
 
         _ -> do -- not a collection member function
           nSym <- genSym (PProject i) $ maybeToList $ getESymbol e
