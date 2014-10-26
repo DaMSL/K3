@@ -19,7 +19,10 @@ class base_string {
   public:
   // Constructors/Destructors/Assignment.
 
-  base_string(): buffer(nullptr) {}
+  base_string(): buffer(nullptr) {
+    buffer = new char[1];
+    buffer[0] = 0;
+  }
 
   base_string(const base_string& other): buffer(strdup(other.buffer)) {}
 
