@@ -1,5 +1,6 @@
-control Plus2
+control Plus2 {
   ?e => $.[e] + 2
+}
 
 declare x : mut int = 0
 trigger t : () = \_ -> ( x = ( x + 1 ) @Plus2 )

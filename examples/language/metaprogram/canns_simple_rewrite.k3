@@ -1,5 +1,6 @@
-control Plus2
+control Plus2 {
   x + 1 => x + 2
+}
 
 declare x : mut int = 0
 trigger t : () = \_ -> ( x = ( x + 1 ) @Plus2 )

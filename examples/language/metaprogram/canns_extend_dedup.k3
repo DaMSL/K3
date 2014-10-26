@@ -1,7 +1,8 @@
-control PlusVW
+control PlusVW {
   ?e => $.[e] + (v * w)
      +> { declare v : int = 10
           declare w : int = 100 }
+}
 
 declare x : mut int = 0
 trigger t : () = \_ -> ( x = ( (x + 1)@PlusVW + (x + 4)@PlusVW ) )

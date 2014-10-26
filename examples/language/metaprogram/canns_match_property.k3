@@ -1,6 +1,7 @@
-control Match[lbl : label]
+control Match[lbl : label] {
   ?e @:Prop => $[lbl]_matched = true; $.[e]
   +> { declare $[lbl]_matched : mut bool = false }
+}
 
 declare x : mut int = 0
 
