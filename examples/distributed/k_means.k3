@@ -173,7 +173,7 @@ trigger maximize: () = \_ -> (
   aggregates.iterate (\x ->
     means.insert
       {  key: x.key
-      ,  value: x.value.sum.map (\e -> (1.0 / x.value.count) * e.elem)  // scalar * vector
+      ,  value: x.value.sum.scalarMult (1.0 / x.value.count)
       }
   );
 
