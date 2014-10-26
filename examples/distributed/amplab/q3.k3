@@ -1,223 +1,204 @@
 include "Annotation/Collection.k3"
+include "Annotation/Seq.k3"
 include "Annotation/Map.k3"
-include "Core/CppBuiltins.k3"
+include "Core/Builtins.k3"
 
 declare master: address = 127.0.0.1:30001
-declare peer_by_hash: string -> address
-declare peer_count: int = 0
+declare peer_seq : collection {addr: address} @ {Seq}
 
-declare insert_with: forall a, b. collection { key: a, value: b } @ { Map } -> a -> b -> (b -> b) -> ()
-declare modify_with: forall a, b. collection { key: a, value: b } @ { Map } -> a -> b -> (b -> ()) -> ()
+declare index_by_hash: string -> int = \s -> (
+  let n = peer_seq.size () in
+  let h = (hash s) in
+  ((h % n) + n) % n
+)
 
-declare getAt: forall a, b. collection { key: a, value: b } @ { Map } -> a -> (b -> ()) -> () = \c -> \a -> \f ->
-    case lookup c a of
-        { Some k -> f k }
-        { None -> () }
+declare start_ms : mut int
+declare end_ms : mut int
+declare elapsed_ms : mut int
 
-// Raw Data
-
-declare user_visits: collection {
+typedef uv_record = {
     sourceIP: string,
     destURL: string,
-    visitDate: int,
+    visitDate: string,
     adRevenue: real,
     userAgent: string,
     countryCode: string,
     languageCode: string,
     searchWord: string,
     duration: int
-} @ { Collection }
+}
 
-declare rankings: collection {
+declare user_visits: collection uv_record @ { Collection }
+
+typedef rankings_record = {
     pageURL: string,
     pageRank: int,
     avgDuration: int
-} @ { Collection }
+}
 
-// Phase #1: Partition data items by join key.
+typedef rk_map_record = {key: string, value: int}
+//key: pageURL, value: pageRank
+@:Pinned
+declare rankingsMap : collection rk_map_record @ Map
 
-declare uv_partitions: collection {
-    key: string,
-    value: collection {
-        key: string,
-        value: real
-    } @ { Map }
-} @ { Map }
+declare empty_source_ip_to_aggs_C : collection  {key: string, value: {prSum: int, prCount: int, arSum: real}} @ Map
+declare empty_aggs : {prSum: int, prCount: int, arSum: real}
 
-trigger uv_partition: () = \_ -> (
-    // Partition `user_vists' by destURL, store partitions in `uv_partitions'.
-    // Also project out attributes not necessary for further computation.
-    (user_visits.iterate (
-        \u -> modify_with uv_partitions u.destURL
-                (empty { key: string, value: real } @ { Map })
-                (\v -> insert_with v u.sourceIP 0.0 (\w -> w + u.adRevenue))
-    ));
+typedef Source_ip_to_aggs = {key: string, value: {prSum: int, prCount: int, arSum: real}}
 
-    // Send partitions to peers by hashing `destURL'.
-    (uv_partitions.iterate (
-        \up -> (uv_partition_receive, peer_by_hash up.key) <- up
-    ));
+typedef Source_ip_to_aggs_C = collection  {key: string, value: {prSum: int, prCount: int, arSum: real}} @ Map
 
-    // Notify all peers that we've sent out all user_visits partitions.
-    (peers.iterate (\a -> (uv_partitions_received, a.addr) <- ()))
+declare partial_aggs : collection {key: int, value: Source_ip_to_aggs_C} @ Map
+
+
+declare merged_partials : Source_ip_to_aggs_C
+
+declare date_lb : string = "1980-01-01"
+declare date_ub : string = "1990-01-01"
+declare valid_date : string -> bool = \i -> (i <= date_ub and i >= date_lb)
+
+declare flag : mut bool = false
+declare flag2 : mut bool = false
+
+trigger q3_local : () = \_ -> (
+  user_visits.iterate (\uv ->
+    if (valid_date uv.visitDate)
+    then (
+      let ip = uv.sourceIP in
+      let url = uv.destURL in
+      let a = index_by_hash ip in
+      case partial_aggs.lookup {key: a, value: empty_source_ip_to_aggs_C} of
+      { Some aggs ->
+        case rankingsMap.lookup {key: url, value: 0} of
+        {Some r ->
+          case (aggs.value.lookup {key: ip, value: empty_aggs}) of
+          {Some pa_v ->
+             aggs.value.insert
+             {key: ip,
+              value: {prSum: pa_v.value.prSum + r.value,
+                      prCount: pa_v.value.prCount + 1,
+                      arSum: pa_v.value.arSum + uv.adRevenue
+                      }
+              }
+          }
+          { None ->
+              aggs.value.insert {key: ip, value: {prSum: r.value, prCount: 1, arSum: uv.adRevenue} }
+          };
+
+          partial_aggs.insert {key: a, value: aggs.value}
+
+        }
+        { None -> () }
+      }
+      { None ->
+        case rankingsMap.lookup {key: url, value: 0} of
+        {Some r ->
+          partial_aggs.insert
+          {key: a, value:
+            {|key: string, value: {prSum: int, prCount: int, arSum: real}|
+              {key: ip, value: {prSum: r.value, prCount: 1, arSum: uv.adRevenue} }
+            |} @ Map
+          }
+
+        }
+        { None -> () }
+      }
+
+
+    )
+    else ()
+  );
+  partial_aggs.iterate (\kv -> (merge, (peer_seq.at kv.key).addr) <- kv.value);
+  peers.iterate (\p -> (count_merges, p.addr) <- ())
 )
 
-declare rk_partitions: collection {
-    key: string,
-    value: {
-        pageRank_total: real,
-        pageRank_count: real
+trigger merge : Source_ip_to_aggs_C = \aggs_map -> (
+  aggs_map.iterate (\kv ->
+    case merged_partials.lookup {key: kv.key, value: kv.value} of
+    {Some agg ->
+      merged_partials.insert
+        {key: kv.key,
+         value:
+          {prSum: agg.value.prSum + kv.value.prSum,
+           prCount: agg.value.prCount + kv.value.prCount,
+           arSum: agg.value.arSum + kv.value.arSum
+          }
+        }
     }
-} @ { Map }
+    {None -> merged_partials.insert kv}
 
-trigger rk_partition: () = \_ -> (
-    // Partition `rankings' by `pageURL', store partitions in `rk_partitions'.
-    // Also project out attributes not necessary for further computation.
-    (rankings.iterate (
-        \r -> insert_with rk_partitions r.pageURL
-                { pageRank_total: 0.0, pageRank_count: 0.0 }
-                (\v -> {pageRank_total: v.pageRank_total + r.pageRank,
-                        pageRank_count: v.pageRank_count + 1})
-    ));
 
-    // Send partitions to peers by hashing `pageURL'.
-    (rk_partitions.iterate (
-        \rp -> (rk_partition_receive, peer_by_hash rp.key) <- rp
-    ));
-
-    // Notify all peers that we've sent out all rankings partitions.
-    (peers.iterate (\a -> (rk_partitions_received, a.addr) <- ()))
+  )
 )
 
-declare uv_candidates: collection {
-    key: string,
-    value: collection {
-        key: string,
-        value: real
-    } @ { Map }
-} @ { Map }
+declare merged_peers : mut int = 0
 
-// Receive `user_visit' partition.
-trigger uv_partition_receive: {
-    key: string,
-    value: collection {
-        key: string,
-        value: real
-    } @ { Map }
-} = \up ->
-    modify_with uv_candidates up.key
-        (empty { key: string, value: real } @ { Map })
-        (\v -> up.value.iterate (\uc -> insert_with v uc.key 0.0 (\w -> w + 0.0)))
+trigger count_merges : () = \_ -> (
+  merged_peers = merged_peers + 1;
+  if merged_peers == (peers.size ())
+  then ((find_local_max, me) <- ())
+  else ()
 
-declare uv_received: mut int = 0
-declare rk_received: mut int = 0
-
-trigger uv_partitions_received: () = \_ -> (
-    ((uv_received = uv_received + 1);
-     (if uv_received == peer_count and rk_received == peer_count then (do_groupBy, me) <- () else ())))
-
-declare rk_candidates: collection {
-    key: string,
-    value: {
-        pageRank_total: real,
-        pageRank_count: real
-    }
-} @ { Map }
-
-trigger rk_partition_receive: {
-    key: string,
-    value: {
-        pageRank_total: real,
-        pageRank_count: real
-    }
-} = \rp -> (
-    insert_with rk_candidates rp.key
-        { pageRank_total: 0, pageRank_count: 0 }
-        (\v -> {pageRank_total: v.pageRank_total + rp.value.pageRank_total,
-                pageRank_count: v.pageRank_count + 1}))
-
-trigger rk_partitions_received: () = \_ -> (
-    ((rk_received = rk_received + 1);
-     (if uv_received == peer_count and rk_received == peer_count then (do_groupBy, me) <- () else ())))
-
-declare local_group: collection {
-    key: string,
-    value: {
-        pageRank_total: real,
-        pageRank_count: real,
-        adRevenue_total: real
-    }
-} @ { Map }
-
-// Local groupBy computation
-trigger do_groupBy: () = \_ -> (
-    (uv_candidates.iterate (\uc ->
-        let rk = case lookup rk_candidates uc.key of
-                    { Some r -> r }
-                    { None -> { pageRank_total: 0, pageRank_count: 0 } }
-        in uc.value.iterate (
-            \sar -> local_group.insert
-                        {key: sar.key,
-                         value: {pageRank_total: rk.pageRank_total,
-                                 pageRank_count: rk.pageRank_count,
-                                 adRevenue_total: sar.value}}
-        )));
-
-    (local_group.iterate (\g -> (global_group, peer_by_hash g.key) <- g));
-    (peers.iterate (\p -> (global_group_receive, p.addr) <- ())))
-
-declare global_groups: collection {
-    key: string,
-    value: {
-        pageRank_total: real,
-        pageRank_count: real,
-        adRevenue_total: real
-    }
-} @ { Map }
-
-trigger global_group: {
-    key: string,
-    value: {
-        pageRank_total: real,
-        pageRank_count: real,
-        adRevenue_total: real
-    }
-} = \g -> global_groups.insert g
-
-declare global_received: mut int = 0
-trigger global_group_receive: () = \_ -> (
-    (global_received = global_received + 1);
-    (if global_received == peer_count then ((do_global_groupBy, me) <- ()) else ()))
-
-declare global_groupBy_result: collection {
-    key: string,
-    value: {
-        pageRank_total: real,
-        pageRank_count: real,
-        adRevenue_total: real
-    }
-} @ { Map }
-
-trigger do_global_groupBy: () = \_ -> (global_groups.iterate ( \r ->
-    (insert_with global_groupBy_result r.key
-        { pageRank_total: 0.0, pageRank_count: 0.0, adRevenue_total: 0.0 }
-        (\w -> {pageRank_total: w.pageRank_total + r.value.pageRank_total,
-                pageRank_count: w.pageRank_count + r.value.pageRank_count,
-                adRevenue_total: w.adRevenue_total + r.value.adRevenue_total})));
-
-    ((global_max, master) <- (global_groupBy_result.fold
-        (\a -> \r -> if r.value.adRevenue_total > a.adRevenue_total
-                        then {sourceIP: r.key,
-                              pageRank_avg: r.value.pageRank_total / r.value.pageRank_count,
-                              adRevenue_total: r.value.adRevenue_total}
-                        else a)
-        { sourceIP: "", pageRank_avg: 0.0, adRevenue_total: 0.0}))
 )
 
-// Final global max aggregation.
-declare max_result: mut { sourceIP: string, adRevenue_total: real, pageRank_avg: real}
-    = { sourceIP: "", pageRank_avg: 0.0, adRevenue_total: 0.0 }
-trigger global_max: { sourceIP: string, pageRank_avg: real, adRevenue_total: real } = \r ->
-    if r.adRevenue_total > max_result.adRevenue_total
-        then max_result = r
-        else ()
+declare local_max : mut Source_ip_to_aggs
+
+trigger find_local_max : () = \_ -> (
+  merged_partials.iterate (\kv ->
+    if (kv.value.arSum > local_max.value.arSum)
+    then (local_max = kv)
+    else ()
+  );
+  (find_global_max, master) <- local_max
+)
+
+declare peers_done : mut int = 0
+declare global_max : mut Source_ip_to_aggs
+
+trigger find_global_max :  Source_ip_to_aggs = \kv -> (
+  (if (kv.value.arSum > global_max.value.arSum)
+  then (global_max = kv)
+  else ());
+  peers_done = peers_done + 1;
+  if (peers_done == peers.size ())
+  then ((finished, master) <- ())
+  else ()
+)
+
+trigger finished : () = \_ -> (
+  end_ms = now_int ();
+  elapsed_ms = end_ms - start_ms;
+  print (concat "Elapsed: " (itos elapsed_ms));
+  print (concat "Global max.key: " global_max.key);
+  peers.iterate (\p -> (shutdown, p.addr) <- ())
+)
+
+declare peers_ready : mut int = 0
+trigger ready: () = \_ -> (
+  peers_ready = peers_ready + 1;
+  if peers_ready == peers.size ()
+  then (start_ms = now_int (); peers.iterate (\p -> (q3_local, p.addr) <- ()) )
+  else ()
+)
+
+declare uvFiles : collection {path: string} @Collection
+@:{CArgs 2}
+declare uvLoader: string -> collection uv_record @Collection -> ()
+
+@:CArgs 2
+declare rkLoaderMap : string -> collection rk_map_record @Map  -> ()
+declare rkFiles : collection {path: string} @Collection
+
+trigger loadAll : () = \_ -> (
+  peers.iterate (\p -> peer_seq.insert p);
+  uvFiles.iterate (\e -> uvLoader e.path user_visits);
+  rkFiles.iterate (\e -> rkLoaderMap e.path rankingsMap);
+  ((ready, master) <- ())
+)
+
+trigger shutdown : () = \_ -> (
+  haltEngine ()
+)
+
+source rows : () = value ()
+feed rows |> loadAll
