@@ -700,6 +700,11 @@ class Vector: public VectorDS<K3::Vector, Elem> {
     return copy;
   }
 
+  Vector<Elem> add(Vector<Elem>&& other) const {
+    other.inPlaceAdd(*this);
+    return other;
+  }
+
   unit_t inPlaceSub(const Vector<Elem>& other) {
     auto& vec = Super::getContainer();
     auto& other_vec = other.getConstContainer();
@@ -710,13 +715,31 @@ class Vector: public VectorDS<K3::Vector, Elem> {
       vec[i].elem -= other_vec[i].elem;
     }
 
-    return unit_t{};
+    return unit_t {};
+  }
+
+  unit_t inPlaceSubFrom(const Vector<Elem>& other) {
+    auto& vec = Super::getContainer();
+    auto& other_vec = other.getConstContainer();
+    if (vec.size() != other_vec.size()) {
+      throw std::runtime_error("Vector inPlaceSub size mismatch");
+    }
+    for (int i =0; i < vec.size(); i++) {
+      vec[i].elem = other_vec[i].elem - vec[i].elem;
+    }
+
+    return unit_t {};
   }
 
   Vector<Elem> sub(const Vector<Elem>& other) const {
     auto copy = Vector<Elem>(*this);
     copy.inPlaceSub(other);
     return copy;
+  }
+
+  Vector<Elem> sub(Vector<Elem>&& other) const {
+    other.inPlaceSubFrom(*this);
+    return other;
   }
 
   double dot(const Vector<Elem>& other) const {
