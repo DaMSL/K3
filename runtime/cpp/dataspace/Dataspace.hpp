@@ -709,6 +709,8 @@ class Vector: public VectorDS<K3::Vector, Elem> {
     for (int i =0; i < vec.size(); i++) {
       vec[i].elem -= other_vec[i].elem;
     }
+
+    return unit_t{};
   }
 
   Vector<Elem> sub(const Vector<Elem>& other) const {
@@ -760,6 +762,16 @@ class Vector: public VectorDS<K3::Vector, Elem> {
     return oss.str();
   }
 
+  Vector<Elem> scalarMult(double c) const {
+    auto result = Vector<Elem>();
+    auto& vector = result.getContainer();
+    vector.resize(this->size(unit_t{}));
+    for (auto i = 0; i < this->size(unit_t{}); ++i) {
+      vector[i].elem *= c;
+    }
+
+    return result;
+  }
 };
 
 template <typename Elem, typename... Indexes>

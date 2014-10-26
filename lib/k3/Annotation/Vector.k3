@@ -47,6 +47,9 @@ annotation Vector given type a{
   provides lifted distance: self -> real
     with effects \other -> [R[self]; R[other]]
 
+  provides lifted scalarMult: real -> self
+    with effects \x -> R[self]
+
   provides lifted toString : () -> string
     with effects \_ -> R[self]
 }
