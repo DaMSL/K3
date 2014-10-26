@@ -1,0 +1,5 @@
+control WaitOnBarrier[id : label, cnt : expr] {
+  ?e => ( $[id]_cnt = $[id]_cnt + 1;
+          if $[id]_cnt == $[cnt] then $.[e] else () )
+     +> { declare $[id]_cnt : mut int = 0 }
+}

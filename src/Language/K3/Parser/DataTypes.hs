@@ -103,7 +103,8 @@ data MPEmbedding = MPENull  Identifier
                  | MPEHProg String
                  deriving (Eq, Ord, Read, Show)
 
-type EmbeddingParser a = K3Parser (Either MPEmbedding (K3 a))
+type   EmbeddingParser a = K3Parser (Either [MPEmbedding] a)
+type K3EmbeddingParser a = EmbeddingParser (K3 a)
 
 
 {- Language definition constants -}
@@ -209,17 +210,17 @@ spliceEmbedding = embeddingCtor =<< ((,,) <$> spliceSyms <*> spliceBody <*> char
     embeddingCtor (_,   Right expr, _) = return $ MPEHProg expr
 
 
-idFromParts :: K3Parser (Either [MPEmbedding] Identifier)
+idFromParts :: EmbeddingParser Identifier
 idFromParts = choice [try (Left <$> identParts), Right <$> identifier]
 
-typeEmbedding :: EmbeddingParser Type
-typeEmbedding = choice [try (Left <$> spliceEmbedding), Right . TC.declaredVar <$> identifier]
+typeEmbedding :: K3EmbeddingParser Type
+typeEmbedding = choice [try (Left <$> identParts), Right . TC.declaredVar <$> identifier]
 
-exprEmbedding :: EmbeddingParser Expression
-exprEmbedding = choice [try (Left <$> spliceEmbedding), Right . EC.variable <$> identifier]
+exprEmbedding :: K3EmbeddingParser Expression
+exprEmbedding = choice [try (Left <$> identParts), Right . EC.variable <$> identifier]
 
-literalEmbedding :: EmbeddingParser Literal
-literalEmbedding = choice [try (Left <$> spliceEmbedding), Right . LC.string <$> many anyChar]
+literalEmbedding :: K3EmbeddingParser Literal
+literalEmbedding = choice [try (Left <$> identParts), Right . LC.string <$> many anyChar]
 
 
 {- Comments -}

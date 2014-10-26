@@ -278,15 +278,15 @@ mpAnnotationMember = mpAnnMemDecl <$> (keyword "for" *> parseInMode Normal ident
 -- | Control annotation parsing
 dControlAnnotation :: DeclParser
 dControlAnnotation = namedIdentifier "control annotation" "control" $ rule
-  where rule x = mkCtrlAnn <$> x <*> option [] spliceParameterDecls
-                                 <*> some pattern <*> (extensions $ keyword "shared")
+  where rule x = mkCtrlAnn <$> x <*> option [] spliceParameterDecls <*> braces body
+        body           = (,) <$> some pattern <*> (extensions $ keyword "shared")
         pattern        = (,,) <$> patternE <*> (symbol "=>" *> rewriteE) <*> (extensions $ symbol "+>")
-        extensions pfx = concat <$> option [] (pfx *> braces (many extensionD))
+        extensions pfx = concat <$> option [] (try $ pfx *> braces (many extensionD))
         rewriteE       = cleanExpr =<< parseInMode Splice expr
         patternE       = cleanExpr =<< parseInMode SourcePattern expr
         extensionD     = mapM cleanDecl =<< parseInMode Splice declaration
 
-        mkCtrlAnn n svars rw exts = DC.generator $ mpCtrlAnnotation n svars rw exts
+        mkCtrlAnn n svars (rw, exts) = DC.generator $ mpCtrlAnnotation n svars rw exts
 
         cleanExpr e = return $ stripExprAnnotations eAnnFilter tAnnFilter e
         cleanDecl d = return $ stripDeclAnnotations dAnnFilter eAnnFilter tAnnFilter d
@@ -460,7 +460,7 @@ eTerm = do
     prjWithAnnotations p = (,) <$> asSourcePattern (,) (,Nothing) p <*> withAnnotations eCAnnotations
 
     asSourcePattern pctor ctor p = parserWithPMode $ \case
-      SourcePattern -> pctor <$> p <*> optional (colon *> typeExpr)
+      SourcePattern -> pctor <$> p <*> optional (try $ colon *> typeExpr)
       _ -> ctor <$> p
 
     attachPType e tOpt = maybe e ((e @+) . EPType) tOpt
@@ -728,7 +728,7 @@ lAddress = litError "address" $ LC.address <$> ipAddress <* colon <*> port
 
 {- Attachments -}
 withAnnotations :: K3Parser [Annotation a] -> K3Parser [Annotation a]
-withAnnotations p = try $ option [] (symbol "@" *> p)
+withAnnotations p = option [] (try $ symbol "@" *> p)
 
 tAnnotations :: Maybe SpliceEnv -> K3Parser [Annotation Type]
 tAnnotations sEnv = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
@@ -774,7 +774,7 @@ optWithProperties asPrefix prop tree = withPropertiesF asPrefix prop tree attach
   where attachOpt treeOpt anns = maybe Nothing (\t -> Just $ foldl (@+) t anns) treeOpt
 
 optionalProperties :: K3Parser [Annotation a] -> K3Parser (Maybe [Annotation a])
-optionalProperties p = try $ optional (symbol "@:" *> p)
+optionalProperties p = optional (try $ symbol "@:" *> p)
 
 properties :: (Identifier -> Maybe (K3 Literal) -> Annotation a) -> K3Parser [Annotation a]
 properties ctor = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)

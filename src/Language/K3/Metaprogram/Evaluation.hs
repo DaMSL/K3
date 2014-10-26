@@ -373,34 +373,45 @@ expectLiteralSplicer :: String -> LiteralGenerator
 expectLiteralSplicer i = generatorWithSCtxt $ \sctxt -> liftParser i literalEmbedding >>= evalLiteralSplice sctxt
 
 evalIdPartsSplice :: SpliceContext -> Either [MPEmbedding] Identifier -> GeneratorM Identifier
-evalIdPartsSplice sctxt (Left l)  = return . concat =<< mapM (evalIdSplice sctxt) l
-evalIdPartsSplice _ (Right i) = return i
-
-evalIdSplice :: SpliceContext -> MPEmbedding -> GeneratorM Identifier
-evalIdSplice sctxt m = evalEmbedding sctxt m >>= \case
+evalIdPartsSplice sctxt (Left ml) = evalSumEmbedding sctxt ml >>= \case
   SLabel i -> return i
-  _ -> spliceFail "Invalid splice identifier embedding"
+  _ -> spliceFail $ "Invalid splice identifier embedding " ++ show ml
 
-evalTypeSplice :: SpliceContext -> Either MPEmbedding (K3 Type) -> TypeGenerator
-evalTypeSplice sctxt (Left m) = evalEmbedding sctxt m >>= \case
-    SType t -> return t
-    _ -> spliceFail "Invalid splice type value"
+evalIdPartsSplice _  (Right i) = return i
+
+evalTypeSplice :: SpliceContext -> Either [MPEmbedding] (K3 Type) -> TypeGenerator
+evalTypeSplice sctxt (Left ml) = evalSumEmbedding sctxt ml >>= \case
+    SType t  -> return t
+    SLabel i -> return $ TC.declaredVar i
+    _ -> spliceFail $ "Invalid splice type value " ++ show ml
 
 evalTypeSplice _ (Right t) = return t
 
-evalExprSplice :: SpliceContext -> Either MPEmbedding (K3 Expression) -> ExprGenerator
-evalExprSplice sctxt (Left m) = evalEmbedding sctxt m >>= \case
-    SExpr e -> return e
-    _ -> spliceFail "Invalid splice expression value"
+evalExprSplice :: SpliceContext -> Either [MPEmbedding] (K3 Expression) -> ExprGenerator
+evalExprSplice sctxt (Left ml) = evalSumEmbedding sctxt ml >>= \case
+    SExpr e  -> return e
+    SLabel i -> return $ EC.variable i
+    _ -> spliceFail $ "Invalid splice expression value " ++ show ml
 
 evalExprSplice _ (Right e) = return e
 
-evalLiteralSplice :: SpliceContext -> Either MPEmbedding (K3 Literal) -> LiteralGenerator
-evalLiteralSplice sctxt (Left m) = evalEmbedding sctxt m >>= \case
+evalLiteralSplice :: SpliceContext -> Either [MPEmbedding] (K3 Literal) -> LiteralGenerator
+evalLiteralSplice sctxt (Left ml) = evalSumEmbedding sctxt ml >>= \case
     SLiteral l -> return l
-    _ -> spliceFail "Invalid splice literal value"
+    _ -> spliceFail $ "Invalid splice literal value " ++ show ml
 
 evalLiteralSplice _ (Right l) = return l
+
+evalSumEmbedding :: SpliceContext -> [MPEmbedding] -> GeneratorM SpliceValue
+evalSumEmbedding sctxt l = maybe sumError return =<< foldM concatSpliceVal Nothing l
+  where sumError = spliceFail $ "Inconsistent splice parts " ++ show l
+
+        concatSpliceVal Nothing se           = evalEmbedding sctxt se >>= return . Just
+        concatSpliceVal (Just (SLabel i)) se = evalEmbedding sctxt se >>= doConcat (SLabel i)
+        concatSpliceVal (Just _) _           = sumError
+
+        doConcat (SLabel i) (SLabel j) = return . Just . SLabel $ i ++ j
+        doConcat _ _ = sumError
 
 evalEmbedding :: SpliceContext -> MPEmbedding -> GeneratorM SpliceValue
 evalEmbedding _ (MPENull i) = return $ SLabel i
