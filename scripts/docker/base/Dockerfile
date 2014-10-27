@@ -13,17 +13,19 @@ ENV LANG en_US.UTF-8
 ENV LANGUAGE en_US.UTF-8
 ENV LC_ALL en_US.UTF-8
 
-## Install Clang 3.4, Boost and utilities
+## Install Clang 3.5, Boost and utilities
 RUN apt-get install -y \
+      linux-tools-3.13.0-32-generic libc6-dbg \
       wget vim emacs make git mercurial \
       zlib1g-dev libreadline6 libreadline6-dev libncurses5-dev libgmp-dev \
-      clang-3.4 libboost1.55-all-dev 
+      clang-3.5 libbz2-dev
 
 
 # Install and configure GCC 4.9
 RUN add-apt-repository ppa:ubuntu-toolchain-r/test
 RUN apt-get update
 RUN apt-get install -y gcc-4.9
+RUN apt-get install -y libstdc++-4.9-dev
 RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 20
 
 # Install decent vim configuration
@@ -35,11 +37,18 @@ RUN git clone https://github.com/tpope/vim-sensible.git /root/.vim/bundle
 # Install ocaml
 RUN apt-get install -y ocaml opam camlp4-extra
 
+RUN mkdir -p /software/boost-1.56 && \
+    cd /software/boost-1.56 && \
+    wget --no-verbose http://downloads.sourceforge.net/boost/boost_1_56_0.tar.bz2 && \
+    tar xvfj boost_1_56_0.tar.bz2 && \
+    cd /software/boost-1.56/boost_1_56_0 && \
+    ./bootstrap.sh --without-libraries=python --prefix=/usr && ./b2 stage threading=multi link=shared && ./b2 install threading=multi link=shared
+
 # Install GHC and cabal
 WORKDIR /
-RUN wget --no-verbose http://www.haskell.org/platform/download/2014.2.0.0/haskell-platform-2014.2.0.0-unknown-linux-x86_64.tar.gz
-RUN tar xvf haskell-platform-2014.2.0.0-unknown-linux-x86_64.tar.gz
-RUN /usr/local/haskell/ghc-7.8.3-x86_64/bin/activate-hs && \
+RUN wget --no-verbose http://www.haskell.org/platform/download/2014.2.0.0/haskell-platform-2014.2.0.0-unknown-linux-x86_64.tar.gz && \
+    tar xvf haskell-platform-2014.2.0.0-unknown-linux-x86_64.tar.gz && \
+    /usr/local/haskell/ghc-7.8.3-x86_64/bin/activate-hs && \
     cabal update && \
     cabal install cabal-install
 
@@ -55,9 +64,9 @@ RUN wget --no-verbose http://download.nanomsg.org/nanomsg-0.3-beta.tar.gz && \
     rm -rf /software/nanomsg/build
 
 # Install libre2
-RUN add-apt-repository -y ppa:pi-rho/security
-RUN apt-get update
-RUN apt-get install -y libre2-dev
+RUN add-apt-repository -y ppa:pi-rho/security && \
+    apt-get update && \
+    apt-get install -y libre2-dev
 
 # Clone K3-Core, K3-Driver, K3-Mosaic from Git
 RUN mkdir -p /k3/K3-Core /k3/K3-Driver /k3/K3-Mosaic && \
