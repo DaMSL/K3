@@ -1,19 +1,7 @@
 include "Annotation/Collection.k3"
 include "Annotation/Map.k3"
 include "Core/Builtins.k3"
-
-@:CArgs 2
-declare dataLoader : string -> collection {
-    sourceIP: string,
-    destURL: string,
-    visitDate: string,
-    adRevenue: real,
-    userAgent: string,
-    countryCode: string,
-    languageCode: string,
-    searchWord: string,
-    duration: int
-    } @ { Collection } -> ()
+include "Core/Loaders.k3"
 
 declare dataFiles : collection {path: string} @ Collection
 
@@ -37,14 +25,7 @@ declare master_peers_finished: mut int = 0
 // Data
 declare local_uservisits: collection {
     adRevenue: real,
-    countryCode: string,
-    destURL: string,
-    duration: int,
-    languageCode: string,
-    searchWord: string,
-    sourceIP: string,
-    userAgent: string,
-    visitDate: string
+    sourceIP: string
     } @ { Collection }
 
 declare local_q2_results: mut collection {key: string, value: real} @ { Map }
@@ -136,7 +117,7 @@ trigger ready : () = \_ -> (
 
 trigger load_all : () = \_ -> (
   peers.iterate (\i -> peers_seq.insert i);
-  (dataFiles.iterate (\e -> dataLoader e.path local_uservisits));
+  (dataFiles.iterate (\e -> loadQ2 e.path local_uservisits));
   ((ready, master) <- ())
 )
 

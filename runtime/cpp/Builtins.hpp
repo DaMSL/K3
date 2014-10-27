@@ -32,6 +32,17 @@ struct hash<boost::asio::ip::address> {
 
 namespace K3 {
 
+  template <class C, class F>
+  void read_records(std::istream& in, C& container, F read_record) {
+
+    std::string tmp_buffer;
+    while (!in.eof()) {
+      container.insert(read_record(in, tmp_buffer));
+    }
+
+    return;
+  }
+
   // Standard context for common builtins that use a handle to the engine (via inheritance)
   class __standard_context : public __k3_context {
     public:
@@ -93,7 +104,7 @@ namespace K3 {
     unit_t sleep(int n);
 
     // TODO move to seperate context
-    unit_t rkLoaderMap(string_impl file, K3::Map<R_key_value<string_impl,int>>& c)  {
+    unit_t loadRKQ3(string_impl file, K3::Map<R_key_value<string_impl,int>>& c)  {
         // Buffers
         std::string tmp_buffer;
         R_key_value<string_impl, int> rec;
@@ -115,6 +126,91 @@ namespace K3 {
         return unit_t {};
     }
 
+   template <template<typename S> class C, template <typename ...> class R>
+   unit_t loadQ1(string_impl filepath, C<R<int, string_impl>>& c) {
+        std::ifstream _in;
+        _in.open(filepath);
+        K3::read_records(_in, c, [] (std::istream& in, std::string& tmp_buffer)   {
+          R<int, string_impl> record;
+          // Get pageURL
+          std::getline(in, tmp_buffer, ',');
+          record.pageURL = tmp_buffer;
+          // Get pageRank
+          std::getline(in, tmp_buffer, ',');
+          record.pageRank = std::atoi(tmp_buffer.c_str());
+          // Ignore avgDuration
+          std::getline(in, tmp_buffer);
+          //record.avgDuration = std::atoi(tmp_buffer.c_str());
+          return record;
+        });
+        return unit_t {};
+   }
+
+
+   template <template<typename S> class C, template <typename ...> class R>
+   unit_t loadQ2(string_impl filepath, C<R<double, string_impl>>& c) {
+        std::ifstream _in;
+        _in.open(filepath);
+        K3::read_records(_in, c, [] (std::istream& in, std::string& tmp_buffer)   {
+          R<double, string_impl> record;
+          // Get sourceIP
+          std::getline(in, tmp_buffer, ',');
+          record.sourceIP = tmp_buffer;
+
+          // Ignore until adRevenue
+          std::getline(in, tmp_buffer, ',');
+          //record.destURL = tmp_buffer;
+          std::getline(in, tmp_buffer, ',');
+          //record.visitDate = tmp_buffer;
+
+          // Get adRevenue
+          std::getline(in, tmp_buffer, ',');
+          record.adRevenue = std::atof(tmp_buffer.c_str());
+
+          // Ignore the rest
+          std::getline(in, tmp_buffer, ',');
+          //record.userAgent = tmp_buffer;
+          std::getline(in, tmp_buffer, ',');
+          //record.countryCode = tmp_buffer;
+          std::getline(in, tmp_buffer, ',');
+          //record.languageCode = tmp_buffer;
+          std::getline(in, tmp_buffer, ',');
+          //record.searchWord = tmp_buffer;
+          std::getline(in, tmp_buffer);
+          //record.duration = std::atoi(tmp_buffer.c_str());
+          return record;
+        });
+        return unit_t {};
+   }
+
+   template <template<typename S> class C, template <typename ...> class R>
+   unit_t loadUVQ3(string_impl filepath, C<R<double, string_impl, string_impl, string_impl>>& c) {
+        std::ifstream _in;
+        _in.open(filepath);
+        K3::read_records(_in, c, [] (std::istream& in, std::string& tmp_buffer)   {
+          R<double, string_impl, string_impl, string_impl> record;
+          std::getline(in, tmp_buffer, ',');
+          record.sourceIP = tmp_buffer;
+          std::getline(in, tmp_buffer, ',');
+          record.destURL = tmp_buffer;
+          std::getline(in, tmp_buffer, ',');
+          record.visitDate = tmp_buffer;
+          std::getline(in, tmp_buffer, ',');
+          record.adRevenue = std::atof(tmp_buffer.c_str());
+          std::getline(in, tmp_buffer, ',');
+          //record.userAgent = tmp_buffer;
+          std::getline(in, tmp_buffer, ',');
+          //record.countryCode = tmp_buffer;
+          std::getline(in, tmp_buffer, ',');
+          //record.languageCode = tmp_buffer;
+          std::getline(in, tmp_buffer, ',');
+          //record.searchWord = tmp_buffer;
+          std::getline(in, tmp_buffer);
+          //record.duration = std::atoi(tmp_buffer.c_str());
+          return record;
+        });
+        return unit_t {};
+   }
     Vector<R_elem<double>> zeroVector(int i);
     Vector<R_elem<double>> randomVector(int i);
 
@@ -205,16 +301,6 @@ namespace K3 {
   };
 
 
-  template <class C, class F>
-  void read_records(std::istream& in, C& container, F read_record) {
-
-    std::string tmp_buffer;
-    while (!in.eof()) {
-      container.insert(read_record(in, tmp_buffer));
-    }
-
-    return;
-  }
 
 } // namespace K3
 

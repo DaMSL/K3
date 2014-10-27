@@ -2,6 +2,7 @@ include "Annotation/Collection.k3"
 include "Annotation/Seq.k3"
 include "Annotation/Map.k3"
 include "Core/Builtins.k3"
+include "Core/Loaders.k3"
 
 declare master: address = 127.0.0.1:30001
 declare peer_seq : collection {addr: address} @ {Seq}
@@ -20,12 +21,7 @@ typedef uv_record = {
     sourceIP: string,
     destURL: string,
     visitDate: string,
-    adRevenue: real,
-    userAgent: string,
-    countryCode: string,
-    languageCode: string,
-    searchWord: string,
-    duration: int
+    adRevenue: real
 }
 
 declare user_visits: collection uv_record @ { Collection }
@@ -182,17 +178,13 @@ trigger ready: () = \_ -> (
 )
 
 declare uvFiles : collection {path: string} @Collection
-@:{CArgs 2}
-declare uvLoader: string -> collection uv_record @Collection -> ()
 
-@:CArgs 2
-declare rkLoaderMap : string -> collection rk_map_record @Map  -> ()
 declare rkFiles : collection {path: string} @Collection
 
 trigger loadAll : () = \_ -> (
   peers.iterate (\p -> peer_seq.insert p);
-  uvFiles.iterate (\e -> uvLoader e.path user_visits);
-  rkFiles.iterate (\e -> rkLoaderMap e.path rankingsMap);
+  uvFiles.iterate (\e -> loadUVQ3 e.path user_visits);
+  rkFiles.iterate (\e -> loadRKQ3 e.path rankingsMap);
   ((ready, master) <- ())
 )
 
