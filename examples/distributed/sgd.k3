@@ -4,14 +4,18 @@ include "Core/Builtins.k3"
 include "Core/CppBuiltins.k3"
 
 declare master: address = 127.0.0.1:40000
-declare num_peers: mut int = 1
 declare peers_ready: mut int = 0
 declare iterations_remaining: mut int = 10
 declare dimensionality: int = 2
+declare dataFile : mut string
 
 declare start_ms: mut int
 declare end_ms: mut int
 declare elapsed_ms: mut int
+declare time_stats: mut {iter_count: int, iter_time_sum: real}
+declare iter_start: mut int
+declare iter_end: mut int
+
 
 // Hyperparameters
 declare step_size: mut real = 0.1
@@ -22,7 +26,7 @@ declare aggregates: mut {count: int, sum: collection {elem: real} @Vector }
 
 // All Nodes:
 declare parameters: mut collection {elem: real} @Vector
-declare data: collection { elem: collection {elem: real}@Vector, class_label: real } @ { Collection }
+declare data: collection { elem: collection {elem: real}@Vector, class_label: real } @ { Seq }
 
 // SVM Loss at 1 point.
 declare svm_loss : collection {elem: real} @Vector  -> real -> real = \x -> \y -> (
@@ -64,9 +68,11 @@ declare update_parameters: collection {elem: real} @Vector  -> real -> () = \poi
 
 // Print results
 declare print_results : () -> () = \_ -> (
+  let avg_iter_time = (time_stats.iter_time_sum / time_stats.iter_count) in
   end_ms = now_int ();
   elapsed_ms = end_ms - start_ms;
-  print (itos elapsed_ms)
+  print (concat "Elapsed: " (itos elapsed_ms));
+  print (concat "Avg Time per Iteration: " (rtos avg_iter_time))
 )
 
 // Run SGD on local dataset.
@@ -76,7 +82,8 @@ declare print_results : () -> () = \_ -> (
 trigger local_sgd : collection {elem: real} @Vector  = \new_params -> (
   (parameters = new_params);
   (data.iterate (\d -> update_parameters d.elem d.class_label));
-  (aggregate, master) <- parameters
+  (aggregate, master) <- parameters;
+  step_size = 0.95 * step_size
 )
 
 // Barrier: Stash local aggregates until all peers are finished. Then maximize.
@@ -85,7 +92,7 @@ trigger aggregate : collection {elem: real} @Vector  = \local_params -> (
   let new_count = 1 + aggregates.count
   in (
     aggregates = {count: new_count, sum: new_sum};
-    if new_count == num_peers
+    if new_count == (peers.size ())
     then (maximize,master) <- ()
     else ()
   )
@@ -99,12 +106,16 @@ trigger maximize : () = \_ -> (
   parameters = (aggregates.sum).scalarMult (1.0 / aggregates.count);
   print "Loss:";
   print (rtos (svm_loss_avg ()));
-  step_size = 0.95 * step_size;
   aggregates = {count:0, sum: (zeroVector dimensionality)};
+  iter_end = now_int();
+  time_stats = {iter_count: time_stats.iter_count + 1, iter_time_sum: time_stats.iter_time_sum + (iter_end - iter_start)};
   iterations_remaining = iterations_remaining - 1;
   if iterations_remaining == 0
   then (print_results (); peers.iterate (\p -> (shutdown, p.addr) <- ()))
-  else peers.iterate (\p -> (local_sgd, p.addr) <- parameters)
+  else (
+    iter_start = now_int (); 
+    peers.iterate (\p -> (local_sgd, p.addr) <- parameters)
+  )
 )
 
 // TODO: random instead of zero
@@ -113,12 +124,13 @@ trigger start : () = \_ -> (
   aggregates = {count:0, sum: zeroVector dimensionality};
   start_ms = now_int ();
   parameters = zeroVector dimensionality;
+  iter_start = now_int ();
   peers.iterate (\p -> (local_sgd, p.addr) <- parameters)
 )
 
 trigger ready : () = \_ -> (
   (peers_ready = peers_ready + 1);
-  (if peers_ready == num_peers
+  (if peers_ready == (peers.size ())
    then (start, master) <- ()
    else ()
   )
@@ -128,9 +140,8 @@ trigger shutdown : () = \_ -> haltEngine ()
 
 // TODO: fix loader
 trigger load_all : () = \_ -> (
-  ()
-  //LoaderVectorLabel "/Users/joshwheeler/foo.lvector" data;
-  //(ready, master) <- ()
+  loadVectorLabel dataFile data;
+  (ready, master) <- ()
 )
 
 source points : () = value ()
