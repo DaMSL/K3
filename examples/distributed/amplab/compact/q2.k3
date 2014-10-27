@@ -1,0 +1,84 @@
+include "Annotation/Collection.k3"
+include "Annotation/Map.k3"
+include "AmplabBDB.k3"
+
+typedef uv_record = {
+    sourceIP     : string,
+    destURL      : string,
+    visitDate    : string,
+    adRevenue    : real,
+    userAgent    : string,
+    countryCode  : string,
+    languageCode : string,
+    searchWord   : string,
+    duration     : int
+}
+
+typedef uv_bag = collection uv_record @Collection
+
+typedef adRevByIp = collection {key:string, value:real} @Collection
+
+@:CArgs 2
+declare dataLoader : string -> uv_bag -> ()
+
+declare slice_length : mut int = 3
+
+// Data
+declare local_uservisits : uv_bag
+declare local_q2_results : mut collection {key: string, value: real} @Map
+
+declare agg_vals  : mut adRevByIp
+declare peer_aggs : mut collection {key: int, value: adRevByIp} @Collection
+
+// Perform the query on the local dataset. (Filter and project.)
+// Store the results in memory.
+trigger q2_local : () = \_ -> (
+  ( agg_vals =
+      local_uservisits.groupBy
+       (\r -> slice_string r.sourceIP 0 slice_length) //TODO index by 0 or 1?
+       (\acc -> \r -> acc + r.adRevenue)
+       0.0
+    ) @Profile(lbl=[# agg_vals], tag=[$ "Agg vals time"]);
+
+  // Group by destination peer address
+  ( peer_aggs =
+      agg_vals.groupBy
+        (\v -> index_by_hash v.key)
+        (\acc -> \v -> (acc.insert(v); acc))
+        (empty {key: string, value: real} @ {Collection})
+    ) @Profile(lbl=[# peer_aggs], tag=[$ "Peer aggs"]);
+
+  peer_aggs.iterate (\v ->
+    (aggregate, (peers_seq.at v.key).addr) <- v.value );
+
+  // Send punctuation: we're done
+  peers.iterate(\p -> (peer_barrier, p.addr) <- ())
+)
+
+trigger aggregate : adRevByIp = \vals -> (
+  ( vals.iterate (
+      \v -> case local_q2_results.lookup {key: v.key, value: 0.0}  of
+          { Some kv -> local_q2_results.insert { key: v.key, value: kv.value + v.value } }
+          { None    -> local_q2_results.insert v }
+    )
+  ) @Profile(lbl=[# aggregate], tag=[$ "Aggregate time"])
+)
+
+trigger peer_barrier : () = \_ -> (
+  ( (() @:Result) @AmplabBenchmark
+  ) @OnCounter(id=[# peers_finished], eq=[$ peers.size()])
+)
+
+trigger start : () = \_ -> (() @:Start) @AmplabBenchmark(
+  queryTrigger       = [$ q2_local],
+  loadExpr           = [$ dataFiles.iterate (\e -> dataLoader e.path local_uservisits)],
+  preLoadExpr        = [$ peers.iterate (\i -> peers_seq.insert i)],
+  preReadyExpr       = [$ ()],
+  finishArgT         = [: ()],
+  preTestFinishExpr  = [$ (\_ -> ())],
+  preFinishExpr      = [$ ()],
+  preShutdownExpr    = [$ print (concat "Num local results: " (itos (local_q2_results.size ())))]
+)
+
+source rows : () = value ()
+feed rows |> start

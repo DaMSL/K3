@@ -137,7 +137,10 @@ k3Keywords = [
     "self", "structure", "horizon", "content", "forall",
 
     {- Metaprogramming keywords -}
-    "label", "expr", "decl", "literal", "labeltype", "shared"
+    "control", "label", "expr", "decl", "literal", "labeltype", "shared",
+
+    {- Syntactic sugar keywords -}
+    "typedef"
   ]
 
 {- Style definitions for parsers library -}

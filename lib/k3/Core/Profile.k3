@@ -1,20 +1,31 @@
 include "Core/Builtins.k3"
 
-control Profile[lbl : label] {
-  ?e => let start = now_int () in
-        let result = $.[e] in
-        let end = now_int () in
-        let elapsed_str = concat ":" (itos (end - start)) in
-          print (concat $[|(exprLabel 'lbl)|] elapsed_str);
+control Profile[lbl : label, tag : expr] {
+  ?e => let start       = now_int () in
+        let result      = $.[e] in
+        let end         = now_int () in
+        let elapsed_str = end - start in
+        let tag         = concat (concat $[tag] $[|(exprLabel 'lbl)|]) ":" in
+          print (concat tag (itos elapsed_str));
           result
 }
 
-control GlobalProfile[lbl : label] {
+control OnProfile[f : expr] {
+  ?e => let start   = now_int () in
+        let result  = $.[e] in
+        let end     = now_int () in
+        let elapsed = end - start in
+          $[f] elapsed;
+          result
+}
+
+control Time[lbl : label, tag : expr] {
   ?e @:StartTimer => $[lbl]_start_ms = now_int(); $.[e]
   ?e @:StopTimer  => let result        = $.[e] in
+                     let tag           = concat (concat $[tag] $[|(exprLabel 'lbl)|]) ":" in
                      $[lbl]_end_ms     = now_int();
                      $[lbl]_elapsed_ms = $[lbl]_end_ms - $[lbl]_start_ms;
-                     print (concat $[|(exprLabel 'lbl)|] (itos $[lbl]_elapsed_ms));
+                     print (concat tag (itos $[lbl]_elapsed_ms));
                      result
 
   shared { declare $[lbl]_start_ms   : mut int = 0

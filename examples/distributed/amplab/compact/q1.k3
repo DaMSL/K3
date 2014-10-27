@@ -1,24 +1,19 @@
 include "Annotation/Collection.k3"
-include "Core/Builtins.k3"
-include "Core/Barrier.k3"
-include "Core/Profile.k3"
+include "AmplabBDB.k3"
+
+typedef rk_bag = collection { pageURL : string, pageRank : int, avgDuration : int } @Collection
 
 // Generate a builtin to load data into a collection
 @:CArgs 2
-declare dataLoader: string -> collection {pageURL: string,pageRank: int, avgDuration: int} @Collection -> ()
-declare dataFiles : collection {path: string} @Collection
+declare dataLoader: string -> rk_bag -> ()
 
 // Globals
-declare master: address = 127.0.0.1:40000
-declare x: mut int = 10 //pageRank threshold for the select statement
-declare num_results: mut int = 0
+declare x           : mut int = 10 //pageRank threshold for the select statement
+declare num_results : mut int = 0
 
 // Data
-declare local_rankings: collection {pageRank: int, pageURL: string, avgDuration: int} @Collection
-declare local_q1_results: collection {pageRank: int, pageURL: string} @Collection
-
-// Dummy trigger to warm up connections
-trigger hello : () = \_ -> ()
+declare local_rankings   : rk_bag
+declare local_q1_results : collection {pageRank: int, pageURL: string} @Collection
 
 // Perform the query on the local dataset. (Filter and project.)
 // Store the results in memory.
@@ -28,38 +23,20 @@ trigger q1_local: () = \_ -> (
     then local_q1_results.insert ({pageRank: row.pageRank, pageURL: row.pageURL})
     else ()
   );
-  (finished, master) <- (local_q1_results.size ())
+  let ignore = ((local_q1_results.size ()) @:Result) @AmplabBenchmark
+  in ()
 )
 
-// Signal to the master that a peer has finished the query locally.
-trigger finished: int = \num_peer_results -> (
-  num_results = num_results + num_peer_results;
-  (((print (concat "# Results: " (itos num_results));
-     peers.iterate (\p -> (shutdown, p.addr) <- ()))
-       @:StopTimer)
-       @GlobalProfile(lbl=[# query])
-  ) @WaitOnBarrier(id=[# peers_finished], cnt=[$ peers.size()])
-)
-
-trigger shutdown: () = \_ -> (
-  haltEngine ()
-)
-
-// Signal to the master that a peer is ready.
-// Once all peers are ready, the master will start the query.
-trigger ready: () = \_ -> (
-  ( // Establish connections before starting the timer
-    peers.iterate (\p -> (hello, p.addr) <- ());
-    ((peers.iterate (\p -> (q1_local, p.addr) <- ()))
-        @:StartTimer)
-        @GlobalProfile(lbl=[# query])
-  ) @WaitOnBarrier(id=[# peers_ready], cnt=[$ peers.size()])
-)
-
-trigger load_all: () = \_ -> (
-  (dataFiles.iterate (\e -> dataLoader e.path local_rankings)) @Profile(lbl=[# loader]);
-  ((ready, master) <- ())
+trigger start : () = \_ -> (() @:Start) @AmplabBenchmark(
+  queryTrigger       = [$ q1_local],
+  loadExpr           = [$ dataFiles.iterate (\e -> dataLoader e.path local_rankings)],
+  preLoadExpr        = [$ ()],
+  preReadyExpr       = [$ peers.iterate (\p -> (hello, p.addr) <- ())],
+  finishArgT         = [: int],
+  preTestFinishExpr  = [$ (\num_peer_results -> num_results = num_results + num_peer_results)],
+  preFinishExpr      = [$ print (concat "# Results: " (itos num_results))],
+  preShutdownExpr    = [$ ()]
 )
 
 source rows: () = value ()
-feed rows |> load_all
+feed rows |> start
