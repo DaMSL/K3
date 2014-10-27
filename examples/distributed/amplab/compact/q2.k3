@@ -2,20 +2,6 @@ include "Annotation/Collection.k3"
 include "Annotation/Map.k3"
 include "AmplabBDB.k3"
 
-typedef uv_record = {
-    sourceIP     : string,
-    destURL      : string,
-    visitDate    : string,
-    adRevenue    : real,
-    userAgent    : string,
-    countryCode  : string,
-    languageCode : string,
-    searchWord   : string,
-    duration     : int
-}
-
-typedef uv_bag = collection uv_record @Collection
-
 typedef adRevByIp = collection {key:string, value:real} @Collection
 
 @:CArgs 2

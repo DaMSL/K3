@@ -1,8 +1,6 @@
 include "Annotation/Collection.k3"
 include "AmplabBDB.k3"
 
-typedef rk_bag = collection { pageURL : string, pageRank : int, avgDuration : int } @Collection
-
 // Generate a builtin to load data into a collection
 @:CArgs 2
 declare dataLoader: string -> rk_bag -> ()

@@ -92,16 +92,27 @@ parseK3 noFeed includePaths s = do
   searchPaths   <- if null includePaths then getSearchPath else return includePaths
   subFiles      <- processIncludes searchPaths (lines s) []
   fileContents  <- (trace (unwords ["subfiles:", show subFiles]) $ mapM readFile subFiles) >>= return . (++ [s])
-  return $ fst <$> foldr chainValidParse (Right $ (DC.role defaultRoleName [], True)) fileContents
+  let parseE = foldl chainValidParse (return (DC.role defaultRoleName [], True, Nothing)) fileContents
+  case parseE of
+    Left msg -> return $ Left msg
+    Right (prog, _, _) -> return $ Right prog
   where
-    chainValidParse c parse = parse >>= parseAndCompose c
-    parseAndCompose src (p, asTopLevel) =
-      parseAtLevel asTopLevel src >>= return . flip ((,) `on` (tag &&& children)) p >>= \case
+    chainValidParse parse src = parse >>= parseAndCompose src
+
+    parseAndCompose src (prog, asTopLevel, parseEnvOpt) = do
+      (prog', nEnv) <- parseAtLevel asTopLevel parseEnvOpt src
+      let (ptnc', ptnc) = ((,) `on` (tag &&& children)) prog' prog
+      case (ptnc', ptnc) of
         ((DRole n, ch), (DRole n2, ch2))
-          | n == defaultRoleName && n == n2 -> return (DC.role n $ ch++ch2, False || noFeed)
+          | n == defaultRoleName && n == n2 -> return (DC.role n $ ch++ch2, False || noFeed, Just $ nEnv)
           | otherwise                       -> programError
         _                                   -> programError
-    parseAtLevel asTopLevel = stringifyError . runK3Parser Nothing (program $ not asTopLevel || noFeed)
+
+    parseAtLevel asTopLevel parseEnvOpt src = stringifyError $ flip (runK3Parser parseEnvOpt) src $ do
+        decl <- program $ not asTopLevel || noFeed
+        env  <- P.getState
+        return (decl, env)
+
     programError = Left "Invalid program, expected top-level role."
 
 
