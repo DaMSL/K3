@@ -4,6 +4,8 @@ include "Annotation/Seq.k3"
 include "Core/Builtins.k3"
 include "Core/CppBuiltins.k3"
 
+typedef feature_vector = collection { elem: real } @ { Vector }
+
 // Constants
 declare k: int
 declare dimensionality: int = 3
@@ -17,13 +19,13 @@ declare requests: mut int = 0
 
 // Sequence of data points. Each point represented as a vector
 declare data: collection {
-  elem: collection {elem: real} @ {Vector}
+  elem: feature_vector
 } @ {Seq}
 
 // Collection of (k) means. Each mean has an integer key, and a value represented as a vector.
 declare means: mut collection {
   key: int,
-  value: collection {elem: real} @ {Vector}
+  value: feature_vector
 } @ {Collection}
 
 
@@ -32,7 +34,7 @@ declare aggregates: mut collection {
   key: int,
   value: {
     count: int,
-    sum: collection {elem: real} @ {Vector}
+    sum: feature_vector
   }
 } @ {Map}
 
@@ -89,7 +91,7 @@ declare start: () -> () = \_ -> (
 )
 
 // Returns the key of the nearest current mean for the provided point
-declare nearest_mean: collection {elem: real} @ {Vector} -> int = (\p ->
+declare nearest_mean: feature_vector -> int = (\p ->
   case means.peek() of
     { Some first_mean ->
         let nearest = means.fold (\acc -> \curr_mean ->
@@ -106,7 +108,7 @@ declare nearest_mean: collection {elem: real} @ {Vector} -> int = (\p ->
 )
 
 // Merge a collection of partial aggregates into the global state
-declare merge_results: collection {key: int, value: {count: int, sum: collection {elem: real} @ {Vector} }} @ {Seq} -> () = \peer_aggs -> (
+declare merge_results: collection {key: int, value: {count: int, sum: feature_vector}} @ {Seq} -> () = \peer_aggs -> (
   requests = requests -1;
   peer_aggs.iterate (\v ->
     case aggregates.lookup v of
@@ -142,7 +144,7 @@ trigger ready: () = \_ -> (
 
 // Given the new means, assign each data point to the nearest.
 // Keeping a running aggregate of the sum and count for each mean.
-trigger assign: collection { key: int, value: collection {elem: real} @ {Vector}} @ {Collection} = \new_means -> (
+trigger assign: collection { key: int, value: feature_vector} @ {Collection} = \new_means -> (
   // update state
   means = new_means;
 
@@ -158,7 +160,7 @@ trigger assign: collection { key: int, value: collection {elem: real} @ {Vector}
   in (aggregate, master) <- aggs
 )
 
-trigger aggregate: collection {key: int, value: {count: int, sum: collection {elem: real} @ {Vector} }} @ {Seq} = \peer_aggs -> (
+trigger aggregate: collection {key: int, value: {count: int, sum: feature_vector}} @ {Seq} = \peer_aggs -> (
   merge_results peer_aggs;
   if requests == 0
     then (maximize, master) <- ()
@@ -173,7 +175,7 @@ trigger maximize: () = \_ -> (
   aggregates.iterate (\x ->
     means.insert
       {  key: x.key
-      ,  value: x.value.sum.map (\e -> (1.0 / x.value.count) * e.elem)  // scalar * vector
+      ,  value: x.value.sum.scalarMult (1.0 / x.value.count)
       }
   );
 
