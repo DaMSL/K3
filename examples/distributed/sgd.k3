@@ -4,7 +4,6 @@ include "Core/Builtins.k3"
 include "Core/CppBuiltins.k3"
 
 declare master: address = 127.0.0.1:40000
-declare num_peers: mut int = 1
 declare peers_ready: mut int = 0
 declare iterations_remaining: mut int = 10
 declare dimensionality: int = 2
@@ -86,7 +85,7 @@ trigger aggregate : collection {elem: real} @Vector  = \local_params -> (
   let new_count = 1 + aggregates.count
   in (
     aggregates = {count: new_count, sum: new_sum};
-    if new_count == num_peers
+    if new_count == (peers.size ())
     then (maximize,master) <- ()
     else ()
   )
@@ -119,7 +118,7 @@ trigger start : () = \_ -> (
 
 trigger ready : () = \_ -> (
   (peers_ready = peers_ready + 1);
-  (if peers_ready == num_peers
+  (if peers_ready == (peers.size ())
    then (start, master) <- ()
    else ()
   )
