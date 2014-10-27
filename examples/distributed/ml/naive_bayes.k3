@@ -6,6 +6,11 @@ include "Core/CppBuiltins.k3"
 include "Core/Barrier.k3"
 include "Core/Profile.k3"
 
+/* K3 reimplementation of Spark ML-Lib's Naive Bayes from:
+   https://github.com/apache/spark/blob/master/mllib/ \
+     src/main/scala/org/apache/spark/mllib/classification/NaiveBayes.scala
+*/
+
 typedef feature_vector = collection { elem: real } @ { Vector }
 typedef data_elem      = { elem: feature_vector, lbl: int }
 typedef agg_elem       = { key : int, value : {count: int, sum_vector: feature_vector} }
@@ -27,25 +32,25 @@ declare num_features : int  = 3
 declare lambda       : real = 1.0
 declare nf_times_l   : real = num_features * lambda
 
-declare local_doc_cnt : mut int = 0
-declare globl_doc_cnt : mut int = 0
+declare local_obs_cnt : mut int = 0
+declare globl_obs_cnt : mut int = 0
 
 declare master : address = 127.0.0.1:40000
 
 trigger train_local : () = \_ -> (
   let peer_aggregates =
     data.groupBy (\r -> r.lbl)
-                 (\acc -> (\r -> ( local_doc_cnt = local_doc_cnt + 1;
+                 (\acc -> (\r -> ( local_obs_cnt = local_obs_cnt + 1;
                                    {count: acc.count + 1, sum_vector: acc.sum_vector.add r.elem}
                  )))
                  {count: 0, sum_vector: zeroVector num_features}
   in
-  (merge_trainings, master) <- (local_doc_cnt, peer_aggregates)
+  (merge_trainings, master) <- (local_obs_cnt, peer_aggregates)
 )
 
 trigger merge_trainings : (int, collection agg_elem @Seq) = \aggs_and_count -> (
-  bind aggs_and_count as (ldc, peer_aggs) in
-  ( globl_doc_cnt = globl_doc_cnt + ldc;
+  bind aggs_and_count as (cnt, peer_aggs) in
+  ( globl_obs_cnt = globl_obs_cnt + cnt;
     peer_aggs.iterate (\v ->
       case aggregated.lookup v of
        { Some a ->
@@ -63,7 +68,7 @@ trigger merge_trainings : (int, collection agg_elem @Seq) = \aggs_and_count -> (
 
 declare build_model : () -> () = \_ -> (
   let num_labels   = aggregated.size () in
-  let pi_log_denom = log (globl_doc_cnt + (num_labels * lambda)) in
+  let pi_log_denom = log (globl_obs_cnt + (num_labels * lambda)) in
 
   model = aggregated.map (\kv ->
     let pi              = (log (kv.value.count + lambda)) - pi_log_denom in
