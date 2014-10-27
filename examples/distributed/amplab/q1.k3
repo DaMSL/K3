@@ -67,7 +67,7 @@ trigger ready: () = \_ -> (
   then (
     // Establish connections before starting the timer
     peers.iterate (\p -> (hello, p.addr) <- ());
-    start_ms = now_int (); 
+    start_ms = now_int ();
     peers.iterate (\p -> (q1_local, p.addr) <- ())
   )
   else ()
