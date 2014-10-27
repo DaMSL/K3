@@ -805,9 +805,8 @@ class Vector: public VectorDS<K3::Vector, Elem> {
   }
 
   Vector<Elem> scalarMult(double c) const {
-    auto result = Vector<Elem>();
+    auto result = Vector<Elem>(*this);
     auto& vec = result.getContainer();
-    vec.resize(this->size(unit_t{}));
 
     #pragma clang loop vectorize(enable) interleave(enable)
     for (auto i = 0; i < vec.size(); ++i) {
