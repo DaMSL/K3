@@ -139,6 +139,33 @@ namespace K3 {
 
     }
 
+    template <template<typename S> class C, template <typename ...> class R, class V>
+    unit_t loadVectorLabel(string_impl filepath, C<R<double,V>>& c) {
+      std::string line;
+      std::ifstream infile(filepath);
+      while (std::getline(infile, line)){
+        char * prev;
+        char * pch;
+        pch = strtok(&line[0],",");
+        V v;
+        double label;
+        while (pch != NULL) {
+          prev = pch;
+          pch = strtok(NULL,",");
+          if (pch) { // was not last
+            R_elem<double> rec;
+            rec.elem = std::atof(prev);
+            v.insert(rec);
+          }
+          else { // was last
+            label = std::atof(prev);
+          }
+        }
+        R<double, V> rec2 {label, v};
+        c.insert(rec2);
+      }
+      return unit_t();
+    }
   };
 
   // Utilities:

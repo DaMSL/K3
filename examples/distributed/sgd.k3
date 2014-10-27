@@ -8,6 +8,7 @@ declare num_peers: mut int = 1
 declare peers_ready: mut int = 0
 declare iterations_remaining: mut int = 10
 declare dimensionality: int = 2
+declare dataFile : mut string
 
 declare start_ms: mut int
 declare end_ms: mut int
@@ -22,7 +23,7 @@ declare aggregates: mut {count: int, sum: collection {elem: real} @Vector }
 
 // All Nodes:
 declare parameters: mut collection {elem: real} @Vector
-declare data: collection { elem: collection {elem: real}@Vector, class_label: real } @ { Collection }
+declare data: collection { elem: collection {elem: real}@Vector, class_label: real } @ { Seq }
 
 // SVM Loss at 1 point.
 declare svm_loss : collection {elem: real} @Vector  -> real -> real = \x -> \y -> (
@@ -128,9 +129,8 @@ trigger shutdown : () = \_ -> haltEngine ()
 
 // TODO: fix loader
 trigger load_all : () = \_ -> (
-  ()
-  //LoaderVectorLabel "/Users/joshwheeler/foo.lvector" data;
-  //(ready, master) <- ()
+  loadVectorLabel dataFile data;
+  (ready, master) <- ()
 )
 
 source points : () = value ()
