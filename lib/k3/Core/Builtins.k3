@@ -60,6 +60,19 @@ declare randomFraction : () -> real
 // Polymorphic hash function
 declare hash : forall a . a -> int
 
+
+////////////////////////
+//
+// Math functions
+// TODO: implement in backends
+
+declare log : real -> real
+declare exp : real -> real
+declare sin : real -> real
+declare cos : real -> real
+declare tan : real -> real
+
+
 ////////////////////////
 //
 // Collection builtins
