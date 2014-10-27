@@ -181,7 +181,7 @@ genCsvParser (tag &&& children -> (TTuple, ts)) = do
 
    getline = R.Call
                (R.Variable $ R.Qualified (R.Name "std") (R.Name "getline"))
-               [iss, token, R.Literal $ R.LChar ","]
+               [iss, token, R.Literal $ R.LChar "|"]
 
    typeMap :: K3 Type -> R.Expression -> R.Expression
    typeMap (tag -> TInt) e = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "atoi"))
