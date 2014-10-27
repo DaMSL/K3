@@ -4,6 +4,27 @@ include "Core/Builtins.k3"
 include "Core/Barrier.k3"
 include "Core/Profile.k3"
 
+typedef uv_record = {
+    sourceIP     : string,
+    destURL      : string,
+    visitDate    : string,
+    adRevenue    : real,
+    userAgent    : string,
+    countryCode  : string,
+    languageCode : string,
+    searchWord   : string,
+    duration     : int
+}
+
+typedef rk_record = {
+    pageURL     : string,
+    pageRank    : int,
+    avgDuration : int
+}
+
+typedef uv_bag = collection uv_record @Collection
+typedef rk_bag = collection rk_record @Collection
+
 declare peers_seq : collection {addr: address} @Seq
 
 declare index_by_hash : string -> int = (\s -> (
