@@ -12,6 +12,10 @@ declare dataFile : mut string
 declare start_ms: mut int
 declare end_ms: mut int
 declare elapsed_ms: mut int
+declare time_stats: mut {iter_count: int, iter_time_sum: real}
+declare iter_start: mut int
+declare iter_end: mut int
+
 
 // Hyperparameters
 declare step_size: mut real = 0.1
@@ -64,9 +68,11 @@ declare update_parameters: collection {elem: real} @Vector  -> real -> () = \poi
 
 // Print results
 declare print_results : () -> () = \_ -> (
+  let avg_iter_time = (time_stats.iter_time_sum / time_stats.iter_count) in
   end_ms = now_int ();
   elapsed_ms = end_ms - start_ms;
-  print (itos elapsed_ms)
+  print (concat "Elapsed: " (itos elapsed_ms));
+  print (concat "Avg Time per Iteration: " (rtos avg_iter_time))
 )
 
 // Run SGD on local dataset.
@@ -101,10 +107,15 @@ trigger maximize : () = \_ -> (
   print (rtos (svm_loss_avg ()));
   step_size = 0.95 * step_size;
   aggregates = {count:0, sum: (zeroVector dimensionality)};
+  iter_end = now_int();
+  time_stats = {iter_count: time_stats.iter_count + 1, iter_time_sum: time_stats.iter_time_sum + (iter_end - iter_start)};
   iterations_remaining = iterations_remaining - 1;
   if iterations_remaining == 0
   then (print_results (); peers.iterate (\p -> (shutdown, p.addr) <- ()))
-  else peers.iterate (\p -> (local_sgd, p.addr) <- parameters)
+  else (
+    iter_start = now_int (); 
+    peers.iterate (\p -> (local_sgd, p.addr) <- parameters)
+  )
 )
 
 // TODO: random instead of zero
@@ -113,6 +124,7 @@ trigger start : () = \_ -> (
   aggregates = {count:0, sum: zeroVector dimensionality};
   start_ms = now_int ();
   parameters = zeroVector dimensionality;
+  iter_start = now_int ();
   peers.iterate (\p -> (local_sgd, p.addr) <- parameters)
 )
 
