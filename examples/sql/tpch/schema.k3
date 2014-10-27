@@ -1,0 +1,158 @@
+typedef lineitem_r = {
+      orderkey         : int,
+      partkey          : int,
+      suppkey          : int,
+      linenumber       : int,
+      quantity         : real,
+      extendedprice    : real,
+      discount         : real,
+      tax              : real,
+      returnflag       : string,
+      linestatus       : string,
+      shipdate         : int,
+      commitdate       : int,
+      receiptdate      : int,
+      shipinstruct     : string,
+      shipmode         : string,
+      comments         : string
+    }
+
+typedef customer_r = {
+      custkey          : int,
+      name             : string,
+      address          : string,
+      nationkey        : int,
+      phone            : string,
+      acctbal          : real,
+      mktsegment       : string,
+      comments         : string
+    }
+
+typedef orders_r = {
+      orderkey         : int,
+      custkey          : int,
+      orderstatus      : string,
+      totalprice       : real,
+      orderdate        : int,
+      orderpriority    : string,
+      clerk            : string,
+      shippriority     : int,
+      comments         : string
+    }
+
+typedef supplier_r = {
+      suppkey          : int,
+      name             : string,
+      address          : string,
+      nationkey        : int,
+      phone            : string,
+      acctbal          : real,
+      comments         : string
+    }
+
+typedef partsupp_r = {
+      partkey          : int,
+      suppkey          : int,
+      availqty         : int,
+      supplycost       : real,
+      comments         : string
+    }
+
+typedef part_r = {
+      partkey          : int,
+      name             : string,
+      mfgr             : string,
+      brand            : string,
+      type             : string,
+      p_size           : int,
+      container        : string,
+      retailprice      : real,
+      comments         : string
+    }
+
+typedef nation_r = {
+      nationkey        : int,
+      name             : string,
+      regionkey        : int,
+      comments         : string
+    }
+
+typedef region_r = {
+      regionkey        : int,
+      name             : string,
+      comments         : string
+    }
+
+typedef tpch_agenda_r = {
+      oid              : int,
+      schema           : string,
+      event            : int,
+      acctbal          : real,
+      address          : string,
+      availqty         : int,
+      brand            : string,
+      clerk            : string,
+      comments         : string,
+      commitdate       : int,
+      container        : string,
+      custkey          : int,
+      discount         : real,
+      extendedprice    : real,
+      linenumber       : int,
+      linestatus       : string,
+      mfgr             : string,
+      mktsegment       : string,
+      name             : string,
+      nationkey        : int,
+      orderdate        : int,
+      orderkey         : int,
+      orderpriority    : string,
+      orderstatus      : string,
+      partkey          : int,
+      phone            : string,
+      quantity         : real,
+      receiptdate      : int,
+      regionkey        : int,
+      retailprice      : real,
+      returnflag       : string,
+      shipdate         : int,
+      shipinstruct     : string,
+      shipmode         : string,
+      shippriority     : int,
+      d_size           : int,
+      suppkey          : int,
+      supplycost       : real,
+      tax              : real,
+      totalprice       : real,
+      type             : string
+    }
+
+typedef lineitem_bag    = collection lineitem_r    @Collection
+typedef customer_bag    = collection customer_r    @Collection
+typedef orders_bag      = collection orders_r      @Collection
+typedef supplier_bag    = collection supplier_r    @Collection
+typedef partsupp_bag    = collection partsupp_r    @Collection
+typedef part_bag        = collection part_r        @Collection
+typedef nation_bag      = collection nation_r      @Collection
+typedef region_bag      = collection region_r      @Collection
+typedef tpch_agenda_bag = collection tpch_agenda_r @Collection
+
+typedef lineitem_seq    = collection lineitem_r    @Seq
+typedef customer_seq    = collection customer_r    @Seq
+typedef orders_seq      = collection orders_r      @Seq
+typedef supplier_seq    = collection supplier_r    @Seq
+typedef partsupp_seq    = collection partsupp_r    @Seq
+typedef part_seq        = collection part_r        @Seq
+typedef nation_seq      = collection nation_r      @Seq
+typedef region_seq      = collection region_r      @Seq
+typedef tpch_agenda_seq = collection tpch_agenda_r @Seq
+
+typedef lineitem_vec    = collection lineitem_r    @Vector
+typedef customer_vec    = collection customer_r    @Vector
+typedef orders_vec      = collection orders_r      @Vector
+typedef supplier_vec    = collection supplier_r    @Vector
+typedef partsupp_vec    = collection partsupp_r    @Vector
+typedef part_vec        = collection part_r        @Vector
+typedef nation_vec      = collection nation_r      @Vector
+typedef region_vec      = collection region_r      @Vector
+typedef tpch_agenda_vec = collection tpch_agenda_r @Vector
