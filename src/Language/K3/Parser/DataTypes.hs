@@ -57,6 +57,7 @@ type DefaultEntries    = [(Identifier, Identifier)]
 -}
 type TAEnv        = Map Identifier (Map Int [K3 Type])
 data TypeAliasEnv = TypeAliasEnv Int TAEnv
+                  deriving (Eq, Ord, Read, Show)
 
 {-| Parser environment type.
     This includes two scoped frames, one for source metadata, and another as a
@@ -70,6 +71,7 @@ type ParserEnv    = [EnvFrame]
     them out of the standard type, expression and declaration ASTs.
 -}
 data ParseMode = Normal | Splice | SourcePattern
+               deriving (Eq, Ord, Read, Show)
 
 {-| Parsing state.
     This includes a parse mode, a UID counter, a list of generated declarations,
