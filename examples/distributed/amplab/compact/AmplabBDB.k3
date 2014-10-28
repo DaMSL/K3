@@ -3,6 +3,7 @@ include "Annotation/Seq.k3"
 include "Core/Builtins.k3"
 include "Core/Barrier.k3"
 include "Core/Profile.k3"
+include "Core/Messaging.k3"
 
 typedef uv_record = {
     sourceIP     : string,
@@ -24,6 +25,8 @@ typedef rk_record = {
 
 typedef uv_bag = collection uv_record @Collection
 typedef rk_bag = collection rk_record @Collection
+
+declare ignore : forall a. a -> () = \_ -> ()
 
 declare peers_seq : collection {addr: address} @Seq
 

@@ -54,27 +54,12 @@ trigger q4_local : () = \_ -> (
     url_counts_partial.insert {sourcePage:cur_page, destPage:v.key, count:v.value});
 
   // Local groupBy
-  let url_counts_total = (url_counts_partial.groupBy
-    (\v -> v.destPage)
-    (\acc -> \v -> acc + v.count)
-    0) @Profile(lbl=[# url_counts_groupBy], tag=[$ "Url group-by time"])
-  in
-
-  // groupBy peer
-  let url_counts_by_peer = ((url_counts_total.groupBy
-      (\v -> index_by_hash v.key)
-      (\acc -> \v -> ((acc.insert v); acc))
-      empty {key: string, value: int} @Collection)
-    @Profile(lbl=[# group_by_peer], tag=[$ "Peer group-by time"]))
-  in
-
-  // send to peer for global aggregation
-  url_counts_by_peer.iterate (\v ->
-   (aggregate, (peers_seq.at v.key).addr) <- v.value
-  );
-
-  // send punctutaion
-  peers.iterate (\p -> (peer_barrier, p.addr) <- ())
+  (ignore
+     (( url_counts_partial.groupBy (\v -> v.destPage)
+                                   (\acc -> \v -> acc + v.count)
+                                   0
+     ) @Profile(lbl=[# url_counts_groupBy], tag=[$ "Url group-by time"])
+     ) @SendPartitionByKey(dest_trg=[$ aggregate], barrier_trg=[$ peer_barrier]))
 )
 
 trigger aggregate : collection {key: string, value: int} @ {Collection} = \newVals -> (

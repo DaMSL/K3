@@ -96,7 +96,7 @@ parseK3 noFeed includePaths s = do
   let parseE       = foldl chainValidParse (return (DC.role defaultRoleName [], Nothing)) fileContents
   case parseE of
     Left msg -> return $ Left msg
-    Right (prog, finalEnvOpt) -> return $ Right prog
+    Right (prog, _) -> return $ Right prog
   where
     chainValidParse parse (asDriver, src) = parse >>= parseAndCompose src asDriver
 
@@ -106,7 +106,6 @@ parseK3 noFeed includePaths s = do
       case (ptnc', ptnc) of
         ((DRole n, ch), (DRole n2, ch2))
           | n == defaultRoleName && n == n2 -> return (DC.role n $ ch++ch2, Just $ nEnv)
-          | otherwise                       -> programError
         _                                   -> programError
 
     parseAtLevel asDriver parseEnvOpt src =

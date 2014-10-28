@@ -78,8 +78,7 @@ trigger q3_local : () = \_ -> (
     )
     else ()
   );
-  partial_aggs.iterate (\kv -> (merge, (peers_seq.at kv.key).addr) <- kv.value);
-  peers.iterate (\p -> (count_merges, p.addr) <- ())
+  ignore partial_aggs @SendByKey(dest_trg=[$ merge], barrier_trg=[$ count_merges])
 )
 
 trigger merge : aggs_by_ip_map = \aggs_map -> (

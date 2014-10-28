@@ -7,38 +7,22 @@ typedef adRevByIp = collection {key:string, value:real} @Collection
 @:CArgs 2
 declare dataLoader : string -> uv_bag -> ()
 
-declare slice_length : mut int = 3
-
 // Data
 declare local_uservisits : uv_bag
 declare local_q2_results : mut collection {key: string, value: real} @Map
 
-declare agg_vals  : mut adRevByIp
-declare peer_aggs : mut collection {key: int, value: adRevByIp} @Collection
+declare slice_length : mut int = 3
 
-// Perform the query on the local dataset. (Filter and project.)
-// Store the results in memory.
+// Perform the query on the local dataset (local group by on ad revenue).
+// Then, group by destination peer address and send.
 trigger q2_local : () = \_ -> (
-  ( agg_vals =
-      local_uservisits.groupBy
-       (\r -> slice_string r.sourceIP 0 slice_length) //TODO index by 0 or 1?
-       (\acc -> \r -> acc + r.adRevenue)
-       0.0
-    ) @Profile(lbl=[# agg_vals], tag=[$ "Agg vals time"]);
-
-  // Group by destination peer address
-  ( peer_aggs =
-      agg_vals.groupBy
-        (\v -> index_by_hash v.key)
-        (\acc -> \v -> (acc.insert(v); acc))
-        (empty {key: string, value: real} @ {Collection})
-    ) @Profile(lbl=[# peer_aggs], tag=[$ "Peer aggs"]);
-
-  peer_aggs.iterate (\v ->
-    (aggregate, (peers_seq.at v.key).addr) <- v.value );
-
-  // Send punctuation: we're done
-  peers.iterate(\p -> (peer_barrier, p.addr) <- ())
+  (ignore
+    (( local_uservisits.groupBy
+         (\r -> slice_string r.sourceIP 0 slice_length) //TODO index by 0 or 1?
+         (\acc -> \r -> acc + r.adRevenue)
+         0.0
+      ) @Profile(lbl=[# agg_vals], tag=[$ "Agg vals time"])
+      ) @SendPartitionByKey(dest_trg=[$ aggregate], barrier_trg=[$ peer_barrier]))
 )
 
 trigger aggregate : adRevByIp = \vals -> (

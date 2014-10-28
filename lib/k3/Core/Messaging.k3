@@ -1,0 +1,20 @@
+control SendByKey[dest_trg : expr, barrier_trg : expr] {
+  ?e => ( $.[e].iterate (\v ->
+            ($[dest_trg], (peers_seq.at v.key).addr) <- v.value );
+
+          // Send punctuation: we're done
+          peers.iterate(\p -> ($[barrier_trg], p.addr) <- ()) )
+}
+
+// TODO: refactor once we have nested control annotations.
+control SendPartitionByKey[dest_trg : expr, barrier_trg : expr] {
+  ?e => ( (($.[e].groupBy
+             (\v -> index_by_hash v.key)
+             (\acc -> \v -> ((acc.insert v); acc))
+             empty {key: string, value: int} @Collection
+           )
+           .iterate (\v ->
+              ($[dest_trg], (peers_seq.at v.key).addr) <- v.value ));
+
+          peers.iterate (\p -> ($[barrier_trg], p.addr) <- ()) )
+}

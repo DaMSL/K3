@@ -21,8 +21,7 @@ trigger q1_local: () = \_ -> (
     then local_q1_results.insert ({pageRank: row.pageRank, pageURL: row.pageURL})
     else ()
   );
-  let ignore = ((local_q1_results.size ()) @:Result) @AmplabBenchmark
-  in ()
+  ignore ((local_q1_results.size ()) @:Result) @AmplabBenchmark
 )
 
 trigger start : () = \_ -> (() @:Start) @AmplabBenchmark(
