@@ -11,27 +11,23 @@
 #include "Common.hpp"
 #include "dataspace/Dataspace.hpp"
 
-char* strdup(const char*);
+char* dupstr(const char*) throw ();
 
 namespace K3 {
 
 class base_string {
   public:
   // Constructors/Destructors/Assignment.
+  base_string(): buffer(nullptr) {}
 
-  base_string(): buffer(nullptr) {
-    buffer = new char[1];
-    buffer[0] = 0;
-  }
-
-  base_string(const base_string& other): buffer(strdup(other.buffer)) {}
+  base_string(const base_string& other): buffer(dupstr(other.buffer)) {}
 
   base_string(base_string&& other): base_string() {
     swap(*this, other);
   }
 
-  base_string(const char* b): buffer(strdup(b)) {}
-  base_string(const std::string& s) : buffer(strdup(s.c_str())) {}
+  base_string(const char* b): buffer(dupstr(b)) {}
+  base_string(const std::string& s) : buffer(dupstr(s.c_str())) {}
 
   base_string(const char* from, std::size_t count): base_string() {
     if (from && count) {
@@ -42,10 +38,19 @@ class base_string {
   }
 
   ~base_string() {
-    delete [] buffer;
+    if (buffer) {
+      delete [] buffer;
+    }
+    buffer = 0;
   }
 
-  base_string& operator =(base_string other) {
+  base_string& operator =(const base_string& other) {
+    base_string temp(other);
+    swap(*this, temp);
+    return *this;
+  }
+
+  base_string& operator =(base_string&& other) {
     swap(*this, other);
     return *this;
   }
@@ -167,6 +172,7 @@ class base_string {
       // since this base_str was just constructed
       if(buffer) {
         delete [] buffer;
+	buffer = 0;
       }
 
       if (len) {
