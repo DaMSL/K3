@@ -91,25 +91,27 @@ parseK3 :: Bool -> [FilePath] -> String -> IO (Either String (K3 Declaration))
 parseK3 noFeed includePaths s = do
   searchPaths   <- if null includePaths then getSearchPath else return includePaths
   subFiles      <- processIncludes searchPaths (lines s) []
-  fileContents  <- (trace (unwords ["subfiles:", show subFiles]) $ mapM readFile subFiles) >>= return . (++ [s])
-  let parseE = foldl chainValidParse (return (DC.role defaultRoleName [], True, Nothing)) fileContents
+  subFileCtnts  <- trace (unwords ["subfiles:", show subFiles]) $ mapM readFile subFiles
+  let fileContents = map (False,) subFileCtnts ++ [(True,s)]
+  let parseE       = foldl chainValidParse (return (DC.role defaultRoleName [], Nothing)) fileContents
   case parseE of
     Left msg -> return $ Left msg
-    Right (prog, _, _) -> return $ Right prog
+    Right (prog, finalEnvOpt) -> return $ Right prog
   where
-    chainValidParse parse src = parse >>= parseAndCompose src
+    chainValidParse parse (asDriver, src) = parse >>= parseAndCompose src asDriver
 
-    parseAndCompose src (prog, asTopLevel, parseEnvOpt) = do
-      (prog', nEnv) <- parseAtLevel asTopLevel parseEnvOpt src
+    parseAndCompose src asDriver (prog, parseEnvOpt) = do
+      (prog', nEnv) <- parseAtLevel asDriver parseEnvOpt src
       let (ptnc', ptnc) = ((,) `on` (tag &&& children)) prog' prog
       case (ptnc', ptnc) of
         ((DRole n, ch), (DRole n2, ch2))
-          | n == defaultRoleName && n == n2 -> return (DC.role n $ ch++ch2, False || noFeed, Just $ nEnv)
+          | n == defaultRoleName && n == n2 -> return (DC.role n $ ch++ch2, Just $ nEnv)
           | otherwise                       -> programError
         _                                   -> programError
 
-    parseAtLevel asTopLevel parseEnvOpt src = stringifyError $ flip (runK3Parser parseEnvOpt) src $ do
-        decl <- program $ not asTopLevel || noFeed
+    parseAtLevel asDriver parseEnvOpt src =
+      stringifyError $ flip (runK3Parser parseEnvOpt) src $ do
+        decl <- program $ not asDriver || noFeed
         env  <- P.getState
         return (decl, env)
 
