@@ -485,6 +485,16 @@ class Map {
     return unit_t();
   }
 
+  template <class F>
+  unit_t insert_with(R rec, F f) {
+    auto existing = container.find(rec.key);
+    if (existing == std::end(container)) {
+      container[rec.key] = rec.value;
+    } else {
+      container[rec.key] = f(existing->value, rec.value);
+    }
+  }
+
   unit_t erase(const R& rec) {
     iterator_type it;
     it = container.find(rec.key);
