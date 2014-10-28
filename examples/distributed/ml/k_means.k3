@@ -4,13 +4,15 @@ include "Annotation/Seq.k3"
 include "Core/Builtins.k3"
 include "Core/CppBuiltins.k3"
 
-typedef feature_vector = collection { elem: real } @ { Vector }
+typedef feature_vector  = collection { elem: real } @Vector
+typedef centroid_agg    = { key: int, value: { count: int, sum: feature_vector } }
+typedef centroids_stats = collection centroid_stats @Vector
 
 // Constants
 declare k: int
 declare dimensionality: int = 3
 declare master: address
-declare dataFiles: collection { path: string } @ { Collection }
+declare dataFiles: collection { path: string } @Collection
 
 // Global vars
 declare iterations_remaining: mut int = 5
@@ -18,26 +20,13 @@ declare peers_ready: mut int = 0
 declare requests: mut int = 0
 
 // Sequence of data points. Each point represented as a vector
-declare data: collection {
-  elem: feature_vector
-} @ {Seq}
+declare data: collection { elem: feature_vector } @Seq
 
 // Collection of (k) means. Each mean has an integer key, and a value represented as a vector.
-declare means: mut collection {
-  key: int,
-  value: feature_vector
-} @ {Collection}
-
+declare means: mut collection { key: int, value: feature_vector} @Collection
 
 // Collection of partial aggregates for each mean.
-declare aggregates: mut collection {
-  key: int,
-  value: {
-    count: int,
-    sum: feature_vector
-  }
-} @ {Map}
-
+declare aggregates: mut centroid_stats
 
 // Timing
 declare times: collection {ms: int} @ {Seq}
@@ -69,9 +58,7 @@ declare broadcastMeans: () -> () = \_ -> (
 )
 
 declare printMeans: () -> () = \_ -> (
-  means.iterate (\kv ->
-    print (kv.value.toString ())
-  )
+  means.iterate (\kv -> print (kv.value.toString ())
 )
 
 // Initialize the means and send out the initial broadcast
@@ -95,12 +82,12 @@ declare nearest_mean: feature_vector -> int = (\p ->
   case means.peek() of
     { Some first_mean ->
         let nearest = means.fold (\acc -> \curr_mean ->
-          let dist = p.distance curr_mean.value
-          in
-            if dist < acc.distance
-            then {mean: curr_mean, distance: dist}
-            else acc
-        ) {mean: first_mean, distance: p.distance first_mean.value}
+          if acc.skip then acc
+          else let dist = p.distance curr_mean.value in
+                 if dist < acc.distance
+                 then {mean: curr_mean, distance: dist, skip: false}
+                 else acc
+        ) {mean: first_mean, distance: p.distance first_mean.value, skip: true}
         in
           nearest.mean.key
     }
@@ -117,8 +104,7 @@ declare merge_results: collection {key: int, value: {count: int, sum: feature_ve
           { key: v.key,
             value: { count: v.value.count + a.value.count,
                      sum:   v.value.sum.add a.value.sum
-                   }
-          }
+          } }
      }
      { None -> aggregates.insert v }
   )
@@ -149,12 +135,9 @@ trigger assign: collection { key: int, value: feature_vector} @ {Collection} = \
   means = new_means;
 
   // compute aggregate statistics:
-  let aggs = data.groupBy
-    (\p -> nearest_mean p.elem)
-    (\sc -> \p ->
-      {count: sc.count + 1, sum: sc.sum.add p.elem}
-    )
-    {count: 0, sum: zeroVector dimensionality}
+  let aggs = data.groupBy (\p -> nearest_mean p.elem)
+                          (\sc -> \p -> {count: sc.count + 1, sum: sc.sum.add p.elem})
+                          {count: 0, sum: zeroVector dimensionality}
 
   // return results to master
   in (aggregate, master) <- aggs
