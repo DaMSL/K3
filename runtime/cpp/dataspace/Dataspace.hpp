@@ -759,7 +759,7 @@ class Vector: public VectorDS<K3::Vector, Elem> {
 
     #pragma clang loop vectorize(enable) interleave(enable)
     for(int i = 0; i < vec.size(); i++) {
-      d += vec[i].elem + other_vec[i].elem;
+      d += vec[i].elem * other_vec[i].elem;
     }
     return d;
   }
