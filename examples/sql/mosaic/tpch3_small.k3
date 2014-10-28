@@ -1,3 +1,23 @@
+declare maxi : { key:int, value:int } -> int
+
+declare maxif : { key:int, value:real } -> int
+
+declare reciprocali : int -> real
+
+declare reciprocal : real -> real
+
+declare regex_match : { key:string, value:string } -> real
+
+declare maxi : { key:int, value:int } -> int
+
+declare maxif : { key:int, value:real } -> int
+
+declare reciprocali : int -> real
+
+declare reciprocal : real -> real
+
+declare regex_match : { key:string, value:string } -> real
+
 declare error : () -> unknown
 
 declare __map_ids__ : collection { _r1_:int, _r2_:string, _r3_:int
@@ -3520,8 +3540,8 @@ _r5_:int, _r6_:string, _r7_:real, _r8_:string, _r9_:string
           ((_r1_ == vid and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
         ORDERS_ORDERDATE) and _r2_ == ORDERS_ORDERKEY)) in case (slice.peek 
       ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4}
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4 + __prod_ret__2};
@@ -3601,8 +3621,8 @@ _r5_:int, _r6_:string, _r7_:real, _r8_:string, _r9_:string
                                                ORDERS_ORDERDATE) and _r2_ ==
                                                QUERY3_mLINEITEMLINEITEM_ORDERKEY))
                                                in case (slice.peek ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4}
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4 + __prod_ret__3};
@@ -4502,8 +4522,8 @@ _r5_:int, _r6_:string, _r7_:real, _r8_:string, _r9_:string
           ((_r1_ == vid and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
         ORDERS_ORDERDATE) and _r2_ == ORDERS_ORDERKEY)) in case (slice.peek 
       ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4}
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4 + __prod_ret__5};
@@ -4591,8 +4611,8 @@ _r5_:int, _r6_:string, _r7_:real, _r8_:string, _r9_:string
                                                ORDERS_ORDERDATE) and _r2_ ==
                                                QUERY3_mLINEITEMLINEITEM_ORDERKEY))
                                                in case (slice.peek ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4}
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4 + __prod_ret__7};
@@ -9729,8 +9749,8 @@ _r12_:int, _r13_:int, _r14_:int, _r15_:string, _r16_:string, _r17_:string
                                                 == ORDERS_ORDERDATE) and _r2_
                                                 == LINEITEM_ORDERKEY)) in case
       (slice.peek ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4}
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4 + __prod_ret__27};
@@ -9887,8 +9907,8 @@ _r12_:int, _r13_:int, _r14_:int, _r15_:string, _r16_:string, _r17_:string
                                                 == ORDERS_ORDERDATE) and _r2_
                                                 == LINEITEM_ORDERKEY)) in case
       (slice.peek ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4,
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4,
                            _r6_:sl5} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4, _r6_:sl5}
@@ -9982,8 +10002,8 @@ _r12_:int, _r13_:int, _r14_:int, _r15_:string, _r16_:string, _r17_:string
                                                 == ORDERS_ORDERDATE) and _r2_
                                                 == LINEITEM_ORDERKEY)) in case
       (slice.peek ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4,
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4,
                            _r6_:sl5} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4, _r6_:sl5}
@@ -11162,8 +11182,8 @@ _r12_:int, _r13_:int, _r14_:int, _r15_:string, _r16_:string, _r17_:string
                                                 == ORDERS_ORDERDATE) and _r2_
                                                 == LINEITEM_ORDERKEY)) in case
       (slice.peek ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4}
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4 + __prod_ret__33};
@@ -11310,8 +11330,8 @@ _r12_:int, _r13_:int, _r14_:int, _r15_:string, _r16_:string, _r17_:string
                                                 == ORDERS_ORDERDATE) and _r2_
                                                 == LINEITEM_ORDERKEY)) in case
       (slice.peek ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4,
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4,
                            _r6_:sl5} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4, _r6_:sl5}
@@ -11405,8 +11425,8 @@ _r12_:int, _r13_:int, _r14_:int, _r15_:string, _r16_:string, _r17_:string
                                                 == ORDERS_ORDERDATE) and _r2_
                                                 == LINEITEM_ORDERKEY)) in case
       (slice.peek ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4,
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4,
                            _r6_:sl5} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4, _r6_:sl5}
