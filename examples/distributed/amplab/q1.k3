@@ -1,9 +1,7 @@
 include "Annotation/Collection.k3"
 include "Core/Builtins.k3"
+include "Core/Loaders.k3"
 
-// Generate a builtin to load data into a collection
-@:CArgs 2
-declare dataLoader: string -> collection {pageURL: string,pageRank: int, avgDuration: int} @ { Collection } -> ()
 declare dataFiles : collection {path: string} @ Collection
 
 // Constants
@@ -16,8 +14,8 @@ declare peers_finished: mut int = 0
 declare num_results: mut int = 0
 
 // Data
-declare local_rankings: collection {pageRank: int, pageURL: string, avgDuration: int} @ { Collection }
-declare local_q1_results: collection {pageRank: int, pageURL: string} @ { Collection }
+declare local_rankings: collection {pageRank: int, pageURL: string} @ { Collection }
+declare local_q1_results: mut collection {pageRank: int, pageURL: string} @ { Collection }
 
 // Time
 declare start_ms: mut int = 0
@@ -34,11 +32,7 @@ trigger hello : () = \_ -> ()
 // Perform the query on the local dataset. (Filter and project.)
 // Store the results in memory.
 trigger q1_local: () = \_ -> (
-  local_rankings.iterate (\row ->
-    if row.pageRank > x
-    then local_q1_results.insert ({pageRank: row.pageRank, pageURL: row.pageURL})
-    else ()
-  );
+  local_q1_results = local_rankings.filter (\row -> row.pageRank > x);
   (finished, master) <- (local_q1_results.size ())
 )
 
@@ -76,7 +70,7 @@ trigger ready: () = \_ -> (
 trigger load_all: () = \_ -> (
   load_start_ms = now_int ();
   dataFiles.iterate (\e ->
-    dataLoader e.path local_rankings
+    loadQ1 e.path local_rankings
   );
   load_end_ms = now_int ();
   load_elapsed_ms = load_end_ms - load_start_ms;
