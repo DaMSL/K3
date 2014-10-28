@@ -1,3 +1,31 @@
+declare maxi : { key:int, value:int } -> int
+
+declare maxif : { key:int, value:real } -> int
+
+declare reciprocali : int -> real
+
+declare reciprocal : real -> real
+
+declare regex_match : { key:string, value:string } -> real
+
+declare substring : { _r1_:string, _r2_:int, _r3_:int } -> string
+
+declare date_part : { _r1_:string, _r2_:int, _r3_:int } -> string
+
+declare maxi : { key:int, value:int } -> int
+
+declare maxif : { key:int, value:real } -> int
+
+declare reciprocali : int -> real
+
+declare reciprocal : real -> real
+
+declare regex_match : { key:string, value:string } -> real
+
+declare substring : { _r1_:string, _r2_:int, _r3_:int } -> string
+
+declare date_part : { _r1_:string, _r2_:int, _r3_:int } -> string
+
 declare error : () -> unknown
 
 declare __map_ids__ : collection { _r1_:int, _r2_:string, _r3_:int
@@ -3520,8 +3548,8 @@ _r5_:int, _r6_:string, _r7_:real, _r8_:string, _r9_:string
           ((_r1_ == vid and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
         ORDERS_ORDERDATE) and _r2_ == ORDERS_ORDERKEY)) in case (slice.peek 
       ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4}
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4 + __prod_ret__2};
@@ -3601,8 +3629,8 @@ _r5_:int, _r6_:string, _r7_:real, _r8_:string, _r9_:string
                                                ORDERS_ORDERDATE) and _r2_ ==
                                                QUERY3_mLINEITEMLINEITEM_ORDERKEY))
                                                in case (slice.peek ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4}
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4 + __prod_ret__3};
@@ -4502,8 +4530,8 @@ _r5_:int, _r6_:string, _r7_:real, _r8_:string, _r9_:string
           ((_r1_ == vid and _r4_ == ORDERS_SHIPPRIORITY) and _r3_ ==
         ORDERS_ORDERDATE) and _r2_ == ORDERS_ORDERKEY)) in case (slice.peek 
       ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4}
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4 + __prod_ret__5};
@@ -4591,8 +4619,8 @@ _r5_:int, _r6_:string, _r7_:real, _r8_:string, _r9_:string
                                                ORDERS_ORDERDATE) and _r2_ ==
                                                QUERY3_mLINEITEMLINEITEM_ORDERKEY))
                                                in case (slice.peek ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4}
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4 + __prod_ret__7};
@@ -9729,8 +9757,8 @@ _r12_:int, _r13_:int, _r14_:int, _r15_:string, _r16_:string, _r17_:string
                                                 == ORDERS_ORDERDATE) and _r2_
                                                 == LINEITEM_ORDERKEY)) in case
       (slice.peek ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4}
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4 + __prod_ret__27};
@@ -9887,8 +9915,8 @@ _r12_:int, _r13_:int, _r14_:int, _r15_:string, _r16_:string, _r17_:string
                                                 == ORDERS_ORDERDATE) and _r2_
                                                 == LINEITEM_ORDERKEY)) in case
       (slice.peek ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4,
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4,
                            _r6_:sl5} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4, _r6_:sl5}
@@ -9982,8 +10010,8 @@ _r12_:int, _r13_:int, _r14_:int, _r15_:string, _r16_:string, _r17_:string
                                                 == ORDERS_ORDERDATE) and _r2_
                                                 == LINEITEM_ORDERKEY)) in case
       (slice.peek ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4,
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4,
                            _r6_:sl5} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4, _r6_:sl5}
@@ -11162,8 +11190,8 @@ _r12_:int, _r13_:int, _r14_:int, _r15_:string, _r16_:string, _r17_:string
                                                 == ORDERS_ORDERDATE) and _r2_
                                                 == LINEITEM_ORDERKEY)) in case
       (slice.peek ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4}
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4 + __prod_ret__33};
@@ -11310,8 +11338,8 @@ _r12_:int, _r13_:int, _r14_:int, _r15_:string, _r16_:string, _r17_:string
                                                 == ORDERS_ORDERDATE) and _r2_
                                                 == LINEITEM_ORDERKEY)) in case
       (slice.peek ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4,
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4,
                            _r6_:sl5} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4, _r6_:sl5}
@@ -11405,8 +11433,8 @@ _r12_:int, _r13_:int, _r14_:int, _r15_:string, _r16_:string, _r17_:string
                                                 == ORDERS_ORDERDATE) and _r2_
                                                 == LINEITEM_ORDERKEY)) in case
       (slice.peek ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4,
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4,
                            _r6_:sl5} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2, _r4_:sl3, _r5_:sl4, _r6_:sl5}
@@ -15606,9 +15634,9 @@ trigger switch_main : {
 _r1_:string, _r2_:int, _r3_:string, _r4_:string, _r5_:int, _r6_:string,
 _r7_:real, _r8_:string, _r9_:string, _r10_:int, _r11_:int, _r12_:int,
 _r13_:int, _r14_:real, _r15_:real, _r16_:real, _r17_:real, _r18_:string,
-_r19_:string, _r20_:string, _r21_:string, _r22_:string, _r23_:string,
-_r24_:string, _r25_:string, _r26_:int, _r27_:int, _r28_:string, _r29_:real,
-_r30_:string, _r31_:string, _r32_:string, _r33_:int, _r34_:string
+_r19_:string, _r20_:int, _r21_:int, _r22_:int, _r23_:string, _r24_:string,
+_r25_:string, _r26_:int, _r27_:int, _r28_:string, _r29_:real, _r30_:int,
+_r31_:string, _r32_:string, _r33_:int, _r34_:string
 }
 =
   (\_b1_ -> 
@@ -15633,9 +15661,9 @@ _r30_:string, _r31_:string, _r32_:string, _r33_:int, _r34_:string
   then
     (insert_ORDERS, me)<- {_r1_:insert_ORDERS_arg0, _r2_:insert_ORDERS_arg1,
                            _r3_:insert_ORDERS_arg2, _r4_:insert_ORDERS_arg3,
-                           _r5_:insert_ORDERS_arg4, _r6_:insert_ORDERS_arg5,
-                           _r7_:insert_ORDERS_arg6, _r8_:insert_ORDERS_arg7,
-                           _r9_:insert_ORDERS_arg8}
+                           _r5_:parse_sql_date insert_ORDERS_arg4,
+                           _r6_:insert_ORDERS_arg5, _r7_:insert_ORDERS_arg6,
+                           _r8_:insert_ORDERS_arg7, _r9_:insert_ORDERS_arg8}
   else
     if trigger_id == "insert_LINEITEM"
     then
@@ -15649,9 +15677,9 @@ _r30_:string, _r31_:string, _r32_:string, _r33_:int, _r34_:string
                                _r8_:insert_LINEITEM_arg7,
                                _r9_:insert_LINEITEM_arg8,
                                _r10_:insert_LINEITEM_arg9,
-                               _r11_:insert_LINEITEM_arg10,
-                               _r12_:insert_LINEITEM_arg11,
-                               _r13_:insert_LINEITEM_arg12,
+                               _r11_:parse_sql_date insert_LINEITEM_arg10,
+                               _r12_:parse_sql_date insert_LINEITEM_arg11,
+                               _r13_:parse_sql_date insert_LINEITEM_arg12,
                                _r14_:insert_LINEITEM_arg13,
                                _r15_:insert_LINEITEM_arg14,
                                _r16_:insert_LINEITEM_arg15}
@@ -15672,9 +15700,9 @@ source s1 : {
 _r1_:string, _r2_:int, _r3_:string, _r4_:string, _r5_:int, _r6_:string,
 _r7_:real, _r8_:string, _r9_:string, _r10_:int, _r11_:int, _r12_:int,
 _r13_:int, _r14_:real, _r15_:real, _r16_:real, _r17_:real, _r18_:string,
-_r19_:string, _r20_:string, _r21_:string, _r22_:string, _r23_:string,
-_r24_:string, _r25_:string, _r26_:int, _r27_:int, _r28_:string, _r29_:real,
-_r30_:string, _r31_:string, _r32_:string, _r33_:int, _r34_:string
+_r19_:string, _r20_:int, _r21_:int, _r22_:int, _r23_:string, _r24_:string,
+_r25_:string, _r26_:int, _r27_:int, _r28_:string, _r29_:real, _r30_:int,
+_r31_:string, _r32_:string, _r33_:int, _r34_:string
 } = file "tpch3_small.csv" k3
 feed s1 |> switch_main
 

@@ -2016,8 +2016,8 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                                                                    ATIMESD_mRR_B))
                                                                    in case
       (slice.peek ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2} in 
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2}
             {_r1_:sl0, _r2_:sl1, _r3_:sl2 + __prod_ret__2};
@@ -2528,8 +2528,8 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                                                                    ATIMESD_mRR_B))
                                                                    in case
       (slice.peek ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2} in 
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2}
             {_r1_:sl0, _r2_:sl1, _r3_:sl2 + __prod_ret__7};
@@ -4632,8 +4632,8 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                                                                     ATIMESD_mTT_C))
                                                                     in case
       (slice.peek ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2} in 
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2}
             {_r1_:sl0, _r2_:sl1, _r3_:sl2 + __prod_ret__14};
@@ -5147,8 +5147,8 @@ _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
                                                                     ATIMESD_mTT_C))
                                                                     in case
       (slice.peek ()) of
-      {Some content -> (
-          bind content as {_r1_:sl0, _r2_:sl1, _r3_:sl2} in 
+      {Some slice_d -> (
+          bind slice_d as {_r1_:sl0, _r2_:sl1, _r3_:sl2} in 
           acc.update
             {_r1_:sl0, _r2_:sl1, _r3_:sl2}
             {_r1_:sl0, _r2_:sl1, _r3_:sl2 + __prod_ret__18};

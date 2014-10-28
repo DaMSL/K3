@@ -1,7 +1,6 @@
 #include "BaseString.hpp"
 
-// Apparently, strdup isn't a standard function, and isn't in <cstring>
-char* strdup(const char *s) throw () {
+char* dupstr(const char *s) throw () {
   if (!s) {
     return nullptr;
   }
