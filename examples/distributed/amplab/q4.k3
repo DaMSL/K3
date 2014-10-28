@@ -62,8 +62,9 @@ declare get_line : string -> () = \line -> (
    ))))
 )
 trigger local : () = \_ -> (
-  // Apply udf to each line, piping results into url_counts_partial 
-  ((inputData.iterate (\s -> get_line s.elem)) @Profile(lbl=[# iterate_get_line]) );
+  // Apply udf to each line, piping results into url_counts_partial
+  ((inputData.iterate (\s -> get_line s.elem))
+      @Profile(lbl=[# iterate_get_line], tag=[$ "Input scan time:"]) );
   url_count.iterate (\v ->
     url_counts_partial.insert {sourcePage:cur_page, destPage:v.key, count:v.value});
 
@@ -72,14 +73,15 @@ trigger local : () = \_ -> (
   let url_counts_total = (url_counts_partial.groupBy
     (\v -> v.destPage)
     (\acc -> \v -> acc + v.count)
-    0) @Profile(lbl=[# url_counts_groupBy])
+    0) @Profile(lbl=[# url_counts_groupBy], tag=[$ "Url count time"])
   in
 
   // groupBy peer
   let url_counts_by_peer = ((url_counts_total.groupBy
     (\v -> index_by_hash v.key)
     (\acc -> \v -> ((acc.insert v); acc))
-    empty {key: string, value: int} @Collection) @Profile(lbl=[# group_by_peer]))
+    empty {key: string, value: int} @Collection)
+      @Profile(lbl=[# group_by_peer], tag=[$ "Send partition time"]))
   in
 
   // send to peer for global aggregation
@@ -94,7 +96,7 @@ trigger local : () = \_ -> (
 declare url_counts_agg : collection {key: string, value: int} @ {Map}
 
 trigger aggregate : collection {key: string, value: int} @ {Collection} = \newVals -> (
-  let start = now_int () in  
+  let start = now_int () in
   newVals.iterate (\v ->
     // lookup ignores value
     case url_counts_agg.lookup {key: v.key, value: 0} of
