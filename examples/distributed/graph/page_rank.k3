@@ -12,7 +12,27 @@ declare graph: collection { key: vertex, value: collection { elem: vertex } @ { 
 declare state: mut collection { key: vertex, value: page_rank } @ { Map }
 declare outgoing: mut collection { key: vertex, value: page_rank } @ { Map }
 
-declare aggregate_and_send_by_peer: collection { key: vertex, value: page_rank } @ { Map } -> () = \_ -> ()
+declare peer_by_vertex: vertex -> address = \_ -> me
+
+declare aggregate_and_send_by_peer: collection { key: vertex, value: page_rank } @ { Map } -> () = \c -> (
+    let grouped = c.groupBy
+                    (\r -> peer_by_vertex r.key)
+                    (\a -> \r ->
+                      let singleton = empty { elem: page_rank } @ { Collection }
+                      in (
+                           singleton.insert {elem: r.value};
+                           a.insert_with
+                             { key: r.key, value: singleton }
+                             (\e -> \n -> e.value.insert { elem: r.value });
+                           a
+                      )
+                    )
+                    empty {
+                      key: vertex,
+                      value: collection {elem: page_rank } @ { Collection }
+                    } @ { Map }
+    in grouped.iterate (\r -> (gather, r.key) <- r.value)
+)
 
 trigger scatter: () = \_ -> (
   outgoing = empty { key: vertex, value: page_rank } @ { Map };
