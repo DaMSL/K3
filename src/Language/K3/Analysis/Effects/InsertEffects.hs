@@ -470,9 +470,10 @@ mapSym effFn symFn sym = wrapMapSymFn effFn symFn sym
 
 wrapMapEffFn :: (K3 Effect -> MEnv (K3 Effect)) -> (K3 Symbol -> MEnv (K3 Symbol)) -> K3 Effect -> MEnv (K3 Effect)
 wrapMapEffFn effFn symFn n' = do
-  n  <- expandEffM n'
-  ch <- mapM (wrapMapEffFn effFn symFn) $ children n
-  n2 <- case tag n of
+  n2  <- expandEffM n'
+  ch <- mapM (wrapMapEffFn effFn symFn) $ children n2
+  let n = replaceCh n2 ch
+  n3 <- case tag n of
           FRead s -> do
             s' <- doMap s
             effFn $ replaceTag n $ FRead s'
@@ -493,15 +494,15 @@ wrapMapEffFn effFn symFn n' = do
             sA' <- doMap sA
             effFn $ replaceTag n $ FApply sL' sA'
           _ -> effFn n
-  let n3 = replaceCh n2 ch
   updateEffM n' n3
   where doMap = mapSym effFn symFn
 
 wrapMapSymFn :: (K3 Effect -> MEnv (K3 Effect)) -> (K3 Symbol -> MEnv (K3 Symbol)) -> K3 Symbol -> MEnv (K3 Symbol)
 wrapMapSymFn effFn symFn n' = do
-  n  <- expandSymM n'
-  ch <- mapM (wrapMapSymFn effFn symFn) $ children n
-  n2 <- case tag n of
+  n2  <- expandSymM n'
+  ch <- mapM (wrapMapSymFn effFn symFn) $ children n2
+  let n = replaceCh n2 ch
+  n3 <- case tag n of
           Symbol x (PScope ss (Right (xs,ys,zs))) -> do
             ss' <- mapM (mapSym effFn symFn) ss
             xs' <- mapM (mapSym effFn symFn) xs
@@ -515,7 +516,6 @@ wrapMapSymFn effFn symFn n' = do
             e' <- mapEff effFn symFn e
             symFn $ replaceTag n $ Symbol x $ PLambda y e'
           _ -> symFn n
-  let n3 = replaceCh n2 ch
   updateSymM n' n3
 
 -------- Preprocessing phase --------
@@ -645,7 +645,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
   -- update closures
   p4 <- mapProgram mId mId substClosureExprs Nothing p3
   p4' <- expandProg p4
-  trace (pretty p4') $ return p4
+  -- trace (pretty p4') $ return p4
   return p4
   where
     -- Add all globals and decorate tree
@@ -1017,6 +1017,13 @@ applyLambda sLam' sArg = do
                     ([ch], FScope s cl) -> mapSym (subEff $ Just (sOld, sArg')) (subSym $ Just (sOld, sArg')) ch >>=
                                            genSym (PScope s cl) . singleton
                     (_, _)              -> genSymTemp TTemp []
+      -- For debugging
+      sLam2 <- expandSymDeepM sLam
+      sArg2 <- expandSymDeepM sArg'
+      lamEff2 <- expandEffDeepM lamEff''
+      chSym2 <- expandSymDeepM chSym'
+      --trace ("applied lambda: \n"++pretty sLam2++"\nto arg: \n"++pretty sArg2++"\nresult effect: \n"++pretty lamEff2++"\nresult symbol: \n"++pretty chSym2) $ return $ Just (lamEff', chSym')
+      -- For debugging
       return $ Just (lamEff', chSym')
 
     (Symbol _ PGlobal, [ch])  -> applyLambda ch sArg
