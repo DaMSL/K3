@@ -9,6 +9,9 @@ import Language.K3.Analysis.Effects.Core
 symbol :: Identifier -> Provenance -> K3 Symbol
 symbol i prov = Node (Symbol i prov :@: []) []
 
+symId :: Int -> K3 Symbol
+symId i = Node (SymId i :@: []) []
+
 -- Effects --
 
 read :: K3 Symbol -> K3 Effect
@@ -31,3 +34,6 @@ set xs = Node (FSeq :@: []) xs
 
 loop :: K3 Effect -> K3 Effect
 loop x = Node (FLoop :@: []) [x]
+
+effId :: Int -> K3 Effect
+effId i = Node (FEffId i :@: []) []
