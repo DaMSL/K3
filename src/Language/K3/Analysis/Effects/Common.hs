@@ -10,7 +10,6 @@ import Control.Arrow ((&&&))
 import Data.Foldable
 import Data.Monoid
 import Data.Maybe
-import Data.Tree
 
 import qualified Data.Set as S
 

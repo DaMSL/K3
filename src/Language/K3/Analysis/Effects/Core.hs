@@ -67,6 +67,7 @@ data Effect
     | FScope [K3 Symbol] ClosureInfo
     -- An effect application only generates effects
     | FApply (K3 Symbol) (K3 Symbol)
+    | FIO
     | FSeq
     | FSet   -- Set of effects, all of which are possible
     | FLoop  -- a flattened loop. can only happen in a foreign function

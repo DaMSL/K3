@@ -180,11 +180,11 @@ insertSymbolM i s = modify $ insertSymbol i s
 
 -- Shallow substitution of symbol/effects id from env
 expandEffM :: K3 Effect -> MEnv (K3 Effect)
-expandEffM (tag -> FEffId i) = liftM (fromMaybe $ error $ "effect " ++ show i ++ " not in environment") $ lookupEffectM i
+expandEffM (tag -> FEffId i) = liftM (fromMaybe $ error $ "effect " ++ show i ++ " not in environment") (lookupEffectM i) >>= expandEffM
 expandEffM eff               = return eff
 
 expandSymM :: K3 Symbol -> MEnv (K3 Symbol)
-expandSymM (tag -> SymId i)  = liftM (fromMaybe $ error $ "symbol " ++ show i ++ " not in environment") $ lookupSymbolM i
+expandSymM (tag -> SymId i)  = liftM (fromMaybe $ error $ "symbol " ++ show i ++ " not in environment") (lookupSymbolM i) >>= expandSymM
 expandSymM sym               = return sym
 
 expandEff :: EffectEnv -> K3 Effect -> K3 Effect
@@ -192,6 +192,40 @@ expandEff env eff = flip evalState env $ expandEffM eff
 
 expandSym :: EffectEnv -> K3 Symbol -> K3 Symbol
 expandSym env sym = flip evalState env $ expandSymM sym
+
+expandEffDeepM :: K3 Effect -> MEnv (K3 Effect)
+expandEffDeepM eff = do
+  eff' <- expandEffM eff
+  tg   <- case tag eff' of
+             FRead s  -> liftM FRead  $ exSym s
+             FWrite s -> liftM FWrite $ exSym s
+             FScope ss (a,b,c) -> liftM2 FScope (exSyms ss) $ liftM3 (,,) (exSyms a) (exSyms b) (exSyms c)
+             FApply s s' -> liftM2 FApply (exSym s) (exSym s')
+             x -> return x
+  let eff'' = replaceTag eff' tg
+  handleCh eff''
+  where
+    handleCh eff'@(children -> ch) = do
+      ch'  <- mapM expandEffDeepM ch
+      return $ replaceCh eff' ch'
+    exSym  = expandSymDeepM
+    exSyms = mapM expandSymDeepM
+
+expandSymDeepM :: K3 Symbol -> MEnv (K3 Symbol)
+expandSymDeepM sym@(children -> ch) = do
+  sym' <- expandSymM sym
+  tg   <- case tag sym' of
+             Symbol i (PScope ss (a,b,c)) -> liftM (Symbol i) $ liftM2 PScope (exSyms ss) $ liftM3 (,,) (exSyms a) (exSyms b) (exSyms c)
+             Symbol i (PLambda i' e)      -> liftM (Symbol i . PLambda i') (expandEffDeepM e)
+             x -> return x
+  let sym'' = replaceTag sym' tg
+  handleCh sym''
+  where
+    handleCh sym'@(children -> ch) = do
+      ch'  <- mapM expandSymDeepM ch
+      return $ replaceCh sym' ch'
+    exSym  = expandSymDeepM
+    exSyms = mapM expandSymDeepM
 
 -- Shortcuts for expandeffect & expandSym
 eE :: EffectEnv -> K3 Effect -> K3 Effect
@@ -202,7 +236,6 @@ eS = expandSym
 
 -- Update symbols/effects: old, new, whether they're ids or not
 updateEffM :: K3 Effect -> K3 Effect -> MEnv (K3 Effect)
-updateEffM e@(tag -> FEffId _) e'@(tag -> FEffId _) = error $ "don't update "++show e++" with "++show e'++". No GC!"
 updateEffM e@(tag -> FEffId i) e' = insertEffectM i e' >> return e
 updateEffM _ e@(tag -> FEffId _)  = return e
 updateEffM _ e  = do
@@ -212,7 +245,6 @@ updateEffM _ e  = do
   return $ effId i @+ FID i
 
 updateSymM :: K3 Symbol -> K3 Symbol -> MEnv (K3 Symbol)
-updateSymM e@(tag -> SymId _) e'@(tag -> SymId _) = error $ "don't update "++show e++" with "++show e'++". No GC!"
 updateSymM e@(tag -> SymId i) e' = insertSymbolM i e' >> return e
 updateSymM _ e@(tag -> SymId _)  = return e
 updateSymM _ e  = do
@@ -564,9 +596,10 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
   -- actual modification of AST (no need to decorate declarations here)
   p' <- mapProgram handleDecl mId handleExprs Nothing p
   -- apply all lambdas in the effect/sym env
-  applyLambdasInSymEnv
-  applyLambdasInEffEnv
-  return p'
+  -- applyLambdasInSymEnv
+  -- applyLambdasInEffEnv
+  p'' <- mapProgram mId mId applyLambdaExprs Nothing p'
+  return p''
   where
     -- Add all globals and decorate tree
     handleDecl :: K3 Declaration -> MEnv (K3 Declaration)
@@ -755,7 +788,26 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       eff   <- combineEffSeq $ map getEEffect ch
       return $ addEffSymCh eff chSym ch n
 
+    handleExpr ch n@(tag -> EOperate OSnd) = do
+      eff  <- genEff fio
+      eff' <- combineEffSeq $ map getEEffect ch ++ [Just eff]
+      return $ addEffSymCh eff' Nothing ch n
+
     handleExpr ch n = genericExpr ch n
+
+    -- Final pass: go over the tree and apply all lambdas
+    applyLambdaExprs n = modifyTree applyLambdaExpr n
+
+    applyLambdaExpr n = do
+      let mSym = getESymbol n
+          mEff = getEEffect n
+      mSym' <- case mSym of
+                 Nothing -> return Nothing
+                 Just s  -> liftM Just $ mapSym (subEff Nothing) (subSym Nothing) s
+      mEff' <- case mEff of
+                 Nothing -> return Nothing
+                 Just s  -> liftM Just $ mapEff (subEff Nothing) (subSym Nothing) s
+      return $ addEffSym mEff' mSym' n
 
     -- Rather than going over the tree again, just use the effect env
     -- We collect the ids of all apply's, and then apply them
@@ -802,7 +854,12 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       case app of
         Nothing -> error $
           "failed to apply lambda: l: " ++ show l' ++ "\na: "++ show a'
-        Just x  -> return x
+        Just x@(e,s)  -> do
+          s'  <- expandSymDeepM s
+          e'  <- expandEffDeepM e
+          l'' <- expandSymDeepM l
+          trace ("applied "++show l''++"\nto "++show a'++"\nto make "++show s'++"\nand to make "++show e') $
+            return x
 
     -- Generic case: combineEff effects, ignore symbols
     genericExpr ch n = do
@@ -811,12 +868,17 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
 
     ------ Utilities ------
     -- Common procedure for adding back the symbols, effects and children
-    addEffSymCh :: Maybe (K3 Effect) -> Maybe (K3 Symbol) -> [K3 Expression] -> K3 Expression -> K3 Expression
-    addEffSymCh eff sym ch n =
+    addEffSym :: Maybe (K3 Effect) -> Maybe (K3 Symbol) -> K3 Expression -> K3 Expression
+    addEffSym eff sym n =
       let n'   = stripAnno (\x -> isEEffect x || isESymbol x) n
           n''  = maybe n'  ((@+) n'  . EEffect) eff
           n''' = maybe n'' ((@+) n'' . ESymbol) sym
-      in replaceCh n''' ch
+      in n'''
+
+    addEffSymCh :: Maybe (K3 Effect) -> Maybe (K3 Symbol) -> [K3 Expression] -> K3 Expression -> K3 Expression
+    addEffSymCh eff sym ch n =
+      let n'   = addEffSym eff sym n
+      in replaceCh n' ch
 
     -- TODO: from here -----
 
