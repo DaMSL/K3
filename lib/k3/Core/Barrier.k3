@@ -3,3 +3,9 @@ control OnCounter[id : label, eq : expr] {
           if $[id]_cnt == $[eq] then $.[e] else () )
      +> { declare $[id]_cnt : mut int = 0 }
 }
+
+control OnCounterReset[id : label, eq : expr] {
+  ?e => ( $[id]_cnt = $[id]_cnt + 1;
+          if $[id]_cnt == $[eq] then ($.[e]; $[id]_cnt = 0) else () )
+     +> { declare $[id]_cnt : mut int = 0 }
+}
