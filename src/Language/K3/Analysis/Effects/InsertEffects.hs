@@ -795,7 +795,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
 
     handleExpr ch n = genericExpr ch n
 
-    -- Final pass: go over the tree and apply all lambdas
+    -- go over the tree and apply all lambdas
     applyLambdaExprs n = modifyTree applyLambdaExpr n
 
     applyLambdaExpr n = do
@@ -808,58 +808,6 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
                  Nothing -> return Nothing
                  Just s  -> liftM Just $ mapEff (subEff Nothing) (subSym Nothing) s
       return $ addEffSym mEff' mSym' n
-
-    -- Rather than going over the tree again, just use the effect env
-    -- We collect the ids of all apply's, and then apply them
-    applyLambdasInEffEnv = do
-      env <- get
-      -- find all ids that have applies
-      let ids = IntMap.foldWithKey addApply [] $ effEnv env
-      mapM_ doApplyEff ids
-      where
-        addApply i (tag -> FApply _ _) acc = i:acc
-        addApply i _                   acc = acc
-
-        doApplyEff i = do
-          s <- lookupEffectM i
-          case s of
-            Just (tag -> FApply l a) -> do
-              eff  <- liftM fst $ handleBothApps l a
-              eff' <- expandEffM eff
-              insertEffectM i eff'
-            _ -> error "unexpected"
-
-    applyLambdasInSymEnv = do
-      env <- get
-      -- find all ids that have applies
-      let ids = IntMap.foldWithKey addApply [] $ symEnv env
-      mapM_ doApplySym ids
-      where
-        addApply i (tag -> Symbol _ PApply) acc = i:acc
-        addApply i _                        acc = acc
-
-        doApplySym i = do
-          s <- lookupSymbolM i
-          case s of
-            Just (tnc -> (Symbol _ PApply, [l, a])) -> do
-              sym  <- liftM snd $ handleBothApps l a
-              sym' <- expandSymM sym
-              insertSymbolM i sym'
-            _ -> error "unexpected"
-
-    handleBothApps l a = do
-      app <- applyLambda l a
-      l'  <- expandSymM l
-      a'  <- expandSymM a
-      case app of
-        Nothing -> error $
-          "failed to apply lambda: l: " ++ show l' ++ "\na: "++ show a'
-        Just x@(e,s)  -> do
-          s'  <- expandSymDeepM s
-          e'  <- expandEffDeepM e
-          l'' <- expandSymDeepM l
-          trace ("applied "++show l''++"\nto "++show a'++"\nto make "++show s'++"\nand to make "++show e') $
-            return x
 
     -- Generic case: combineEff effects, ignore symbols
     genericExpr ch n = do
