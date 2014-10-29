@@ -13,8 +13,9 @@ declare graph: mut collection { key: vertex, value: collection { elem: vertex } 
 declare state: mut collection { key: vertex, value: page_rank } @ { Map }
 declare outgoing: mut collection { key: vertex, value: page_rank } @ { Map }
 
-declare peer_by_vertex: vertex -> address = \_ -> me
 declare data_file: string = ""
+
+declare peer_by_vertex: vertex -> int = \v -> (v % peers.size ())
 
 declare aggregate_and_send_by_peer: collection { key: vertex, value: page_rank } @ { Map } -> () = \c -> (
     let grouped = c.groupBy
@@ -33,7 +34,11 @@ declare aggregate_and_send_by_peer: collection { key: vertex, value: page_rank }
                       key: vertex,
                       value: collection {elem: page_rank } @ { Collection }
                     } @ { Map }
-    in grouped.iterate (\r -> (gather, r.key) <- r.value)
+
+    in grouped.iterate (\r -> let a = case peers.at r.key of
+                                        { Some n -> n.addr }
+                                        { None -> me }
+                              in (gather, a) <- r.value)
 )
 
 trigger scatter: () = \_ -> (
