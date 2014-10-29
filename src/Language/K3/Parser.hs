@@ -873,7 +873,7 @@ effLambda = mkLambda <$> readLambda <*> choice [Left <$> try effLambda, Right <$
         mkLambda :: String -> Either (K3 F.Symbol) [K3 F.Effect] -> K3 F.Symbol
         mkLambda i (Left s)  = FC.lambda i (mkScope i []) $ Just s
         mkLambda i (Right e) = FC.lambda i (mkScope i e) Nothing
-        mkScope i ch = FC.scope [FC.symbol i F.PVar] ([], [], []) $ termAsSeq ch
+        mkScope i ch = FC.scope [FC.symbol i F.PVar] (Right ([], [], [])) $ termAsSeq ch
         termAsSeq []  = []
         termAsSeq [x] = [x]
         termAsSeq xs  = [FC.seq xs]

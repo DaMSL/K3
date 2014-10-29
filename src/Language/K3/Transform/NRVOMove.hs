@@ -34,7 +34,7 @@ nrvoMoveOptE env e@(TAC (ELambda i) as cs) = TAC (ELambda i) (a:as) (map (nrvoMo
   where
     a = EOpt $ ReturnMoveHint nrvoMovePermitted
     nrvoMovePermitted = not (null rs) && elem (head rs) (argSymbol:captureSymbols)
-    ESymbol ((tag &&& children) . eS env -> (Symbol _ (PLambda _ (tag . eE env -> FScope [argSymbol] closure)), rs))
+    ESymbol ((tag &&& children) . eS env -> (Symbol _ (PLambda _ (tag . eE env -> FScope [argSymbol] (Right closure))), rs))
         = fromJust $ e @~ isESymbol
     captureSymbols = let (cR, cW, cA) = closure in cR ++ cW ++ cA
 

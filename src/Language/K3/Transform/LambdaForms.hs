@@ -38,7 +38,7 @@ lambdaFormOptD _ t = t
 lambdaFormOptE :: EffectEnv -> [K3 Expression] -> K3 Expression -> K3 Expression
 lambdaFormOptE env ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c:as)) [lambdaFormOptE env ds b]
   where
-    ESymbol (tag . eS env -> (Symbol _ (PLambda _ (tag . eE env -> FScope [binding] (cRead, cWritten, cApplied)))))
+    ESymbol (tag . eS env -> (Symbol _ (PLambda _ (tag . eE env -> FScope [binding] (Right(cRead, cWritten, cApplied))))))
         = fromJust $ e @~ isESymbol
 
     getEffects e' = (\(EEffect f) -> f) <$> e' @~ (\case { EEffect _ -> True; _ -> False })

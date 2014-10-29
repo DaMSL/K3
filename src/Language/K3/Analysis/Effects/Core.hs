@@ -5,6 +5,7 @@
 module Language.K3.Analysis.Effects.Core where
 
 import Data.Tree
+import Data.Map hiding (null)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -35,7 +36,7 @@ data Provenance
     | PProject Identifier -- Created by projections
     | PLet
     | PCase
-    | PScope [K3 Symbol] ClosureInfo
+    | PScope [K3 Symbol] MaybeClosure
     -- A symbol can be 'applied' to produce effects and a new symbol
     | PLambda Identifier (K3 Effect)
     -- A symbol application only generates symbols
@@ -59,12 +60,13 @@ isSID :: Annotation Symbol -> Bool
 isSID _ = True
 
 type ClosureInfo = ([K3 Symbol], [K3 Symbol], [K3 Symbol])
+type MaybeClosure = Either (Map Identifier [K3 Symbol], Maybe(K3 Effect), Maybe(K3 Symbol)) ClosureInfo
 
 data Effect
     = FRead (K3 Symbol)
     | FWrite (K3 Symbol)
     -- bound, read, written, applied within the scope
-    | FScope [K3 Symbol] ClosureInfo
+    | FScope [K3 Symbol] MaybeClosure
     -- An effect application only generates effects
     | FApply (K3 Symbol) (K3 Symbol)
     | FIO
@@ -102,7 +104,7 @@ instance Pretty (K3 Effect) where
         then terminalShift sym
         else nonTerminalShift sym ++ drawSubTrees ch)
 
-  prettyLines (Node (FScope syms (rd,wr,app) :@: as) ch) =
+  prettyLines (Node (FScope syms (Right (rd,wr,app)) :@: as) ch) =
     ["FScope " ++ drawAnnotations as]
       ++ (concatMap (shift "+- " "|  " . prettyLines) syms)
       ++ (concatMap (shift "+R " "|  " . prettyLines) rd)

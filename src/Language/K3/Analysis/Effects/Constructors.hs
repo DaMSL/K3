@@ -24,7 +24,7 @@ read sym = Node (FRead sym :@: []) []
 write :: K3 Symbol -> K3 Effect
 write sym = Node (FWrite sym :@: []) []
 
-scope :: [K3 Symbol] -> ([K3 Symbol], [K3 Symbol], [K3 Symbol]) -> [K3 Effect] -> K3 Effect
+scope :: [K3 Symbol] -> MaybeClosure -> [K3 Effect] -> K3 Effect
 scope syms closure es = Node (FScope syms closure :@: []) es
 
 apply :: K3 Symbol -> K3 Symbol -> K3 Effect

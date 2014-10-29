@@ -199,7 +199,8 @@ expandEffDeepM eff = do
   tg   <- case tag eff' of
              FRead s  -> liftM FRead  $ exSym s
              FWrite s -> liftM FWrite $ exSym s
-             FScope ss (a,b,c) -> liftM2 FScope (exSyms ss) $ liftM3 (,,) (exSyms a) (exSyms b) (exSyms c)
+             FScope ss (Right (a,b,c)) -> liftM2 FScope (exSyms ss) $ liftM Right $ liftM3 (,,) (exSyms a) (exSyms b) (exSyms c)
+             FScope ss x -> liftM2 FScope (exSyms ss) (return x)
              FApply s s' -> liftM2 FApply (exSym s) (exSym s')
              x -> return x
   let eff'' = replaceTag eff' tg
@@ -215,7 +216,8 @@ expandSymDeepM :: K3 Symbol -> MEnv (K3 Symbol)
 expandSymDeepM sym@(children -> ch) = do
   sym' <- expandSymM sym
   tg   <- case tag sym' of
-             Symbol i (PScope ss (a,b,c)) -> liftM (Symbol i) $ liftM2 PScope (exSyms ss) $ liftM3 (,,) (exSyms a) (exSyms b) (exSyms c)
+             Symbol i (PScope ss (Right (a,b,c))) -> liftM (Symbol i) $ liftM2 PScope (exSyms ss) $ liftM Right $ liftM3 (,,) (exSyms a) (exSyms b) (exSyms c)
+             Symbol i (PScope ss x)       -> liftM (Symbol i) $ liftM2 PScope (exSyms ss) (return x)
              Symbol i (PLambda i' e)      -> liftM (Symbol i . PLambda i') (expandEffDeepM e)
              x -> return x
   let sym'' = replaceTag sym' tg
@@ -355,7 +357,7 @@ createClosure optScope mEff mSym = liftM nubTuple $ do
           s''     <- getClosureSyms [] s'
           return (a, b, s'' ++ c)
         -- Try to be efficient by reusing results from previous scopes
-        ((a', b', c'), FScope _ cl@(a,b,c)) | cl /= emptyClosure && optScope -> do
+        ((a', b', c'), FScope _ (Right cl@(a,b,c))) | cl /= emptyClosure && optScope -> do
           a'' <- unite a
           b'' <- unite b
           c'' <- unite c
@@ -442,12 +444,15 @@ wrapMapEffFn effFn symFn n' = do
           FWrite s -> do
             s' <- doMap s
             effFn $ replaceTag n $ FWrite s'
-          FScope ss (xs,ys,zs) -> do
+          FScope ss (Right (xs,ys,zs)) -> do
             ss' <- mapM doMap ss
             xs' <- mapM doMap xs
             ys' <- mapM doMap ys
             zs' <- mapM doMap zs
-            effFn $ replaceTag n $ FScope ss' (xs', ys', zs')
+            effFn $ replaceTag n $ FScope ss' (Right (xs', ys', zs'))
+          FScope ss x -> do
+            ss' <- mapM doMap ss
+            effFn $ replaceTag n $ FScope ss' x
           FApply sL sA -> do
             sL' <- doMap sL
             sA' <- doMap sA
@@ -460,12 +465,15 @@ wrapMapSymFn :: (K3 Effect -> MEnv (K3 Effect)) -> (K3 Symbol -> MEnv (K3 Symbol
 wrapMapSymFn effFn symFn n' = do
   n  <- expandSymM n'
   n''<- case tag n of
-          Symbol x (PScope ss (xs,ys,zs)) -> do
+          Symbol x (PScope ss (Right (xs,ys,zs))) -> do
             ss' <- mapM (mapSym effFn symFn) ss
             xs' <- mapM (mapSym effFn symFn) xs
             ys' <- mapM (mapSym effFn symFn) ys
             zs' <- mapM (mapSym effFn symFn) zs
-            symFn $ replaceTag n $ Symbol x (PScope ss' (xs', ys', zs'))
+            symFn $ replaceTag n $ Symbol x (PScope ss' (Right (xs', ys', zs')))
+          Symbol x (PScope ss y) -> do
+            ss' <- mapM (mapSym effFn symFn) ss
+            symFn $ replaceTag n $ Symbol x (PScope ss' y)
           Symbol x (PLambda y e) -> do
             e' <- mapEff effFn symFn e
             symFn $ replaceTag n $ Symbol x $ PLambda y e'
@@ -574,7 +582,7 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
                  return [Just w, Just r]
       seq'' <- combineEffSeq seq'
       lp    <- genEff $ loop $ fromMaybe (error "createConservativeSym") seq''
-      sc    <- genEff $ scope [sym] emptyClosure [lp]
+      sc    <- genEff $ scope [sym] (Right emptyClosure) [lp]
       genSym (PLambda nm sc) subSym'
 
 ----- Actual effect insertion ------
@@ -591,15 +599,13 @@ runConsolidatedAnalysis d =
 runAnalysisEnv :: EffectEnv -> K3 Declaration -> (K3 Declaration, EffectEnv)
 runAnalysisEnv env1 prog = flip runState env1 $ do
   -- for cyclic scope, add temporaries for all globals
-  p  <- addAllGlobals prog
-  env <- get
+  p1 <- addAllGlobals prog
   -- actual modification of AST (no need to decorate declarations here)
-  p' <- mapProgram handleDecl mId handleExprs Nothing p
-  -- apply all lambdas in the effect/sym env
-  -- applyLambdasInSymEnv
-  -- applyLambdasInEffEnv
-  p'' <- mapProgram mId mId applyLambdaExprs Nothing p'
-  return p''
+  p2 <- mapProgram handleDecl mId handleExprs Nothing p1
+  -- apply all lambdas
+  p3 <- mapProgram mId mId applyLambdaExprs Nothing p2
+  -- update closures
+  mapProgram mId mId substClosureExprs Nothing p3
   where
     -- Add all globals and decorate tree
     handleDecl :: K3 Declaration -> MEnv (K3 Declaration)
@@ -692,11 +698,10 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       bindSym <- lookupBindM i
       let eEff = getEEffect e
           eSym = maybeToList $ getESymbol e
-      -- Create a closure for the lambda by finding every read/written/applied closure variable
-      closure <- createClosure True (getEEffect e) (getESymbol e)
-      deleteBindM i
       -- Create a gensym for the lambda, containing the effects of the child, and leading to the symbols
-      eScope  <- genEff $ scope [bindSym] closure $ maybeToList eEff
+      env     <- get
+      eScope  <- genEff $ scope [bindSym] (Left (bindEnv env, getEEffect e, getESymbol e)) $ maybeToList eEff
+      deleteBindM i
       lSym    <- genSym (PLambda i eScope) eSym
       return $ addEffSymCh Nothing (Just lSym) ch n
 
@@ -729,7 +734,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       -- peel off until we get to a scope we know
       fullSym <- peelSymbol [] $ getESymbol e
       let eEff = maybe [] singleton $ getEEffect e
-      bScope  <- genEff $ scope bindSyms emptyClosure eEff
+      bScope  <- genEff $ scope bindSyms (Right emptyClosure) eEff
       fullEff <- combineEffSeq [getEEffect bind, Just bScope]
       return $ addEffSymCh fullEff (Just fullSym) ch n
 
@@ -739,7 +744,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       deleteBindM i -- remove bind from env
       -- Wrap some in a scope
       let someEff = maybeToList $ getEEffect some
-      scopeEff <- genEff $ scope [bindSym] emptyClosure someEff
+      scopeEff <- genEff $ scope [bindSym] (Right emptyClosure) someEff
       -- Conservative approximation
       setEff   <- combineEffSet [getEEffect none, Just scopeEff]
       combSym  <- combineSymSet [getESymbol some, getESymbol none]
@@ -755,7 +760,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       bindSym <- lookupBindM i
       deleteBindM i -- remove bind from env
       let eEff = maybeToList $ getEEffect e
-      scopeEff <- genEff $ scope [bindSym] emptyClosure eEff
+      scopeEff <- genEff $ scope [bindSym] (Right emptyClosure) eEff
       fullEff  <- combineEffSeq [getEEffect l, Just scopeEff]
       -- peel off symbols until we get to ones in our outer scope
       fullSym  <- peelSymbol [] $ getESymbol e
@@ -808,6 +813,27 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
                  Nothing -> return Nothing
                  Just s  -> liftM Just $ mapEff (subEff Nothing) (subSym Nothing) s
       return $ addEffSym mEff' mSym' n
+
+    -- go over the tree and calculate all closures
+    substClosureExprs n = modifyTree substClosureExpr n
+
+    substClosureExpr n = do
+      let mSym = getESymbol n
+          mEff = getEEffect n
+      mSym' <- case mSym of
+                 Nothing -> return Nothing
+                 Just s  -> liftM Just $ mapSym doSubEff mId s
+      mEff' <- case mEff of
+                 Nothing -> return Nothing
+                 Just s  -> liftM Just $ mapEff doSubEff mId s
+      return $ addEffSym mEff' mSym' n
+        where
+          doSubEff :: K3 Effect -> MEnv (K3 Effect)
+          doSubEff n@(tnc -> (FScope s (Left (binds, eff, sym)), ch)) = do
+            modify (\env -> env {bindEnv=binds})
+            closure <- createClosure True eff sym
+            return $ replaceTag n $ FScope s (Right closure)
+          doSubEff n = return n
 
     -- Generic case: combineEff effects, ignore symbols
     genericExpr ch n = do

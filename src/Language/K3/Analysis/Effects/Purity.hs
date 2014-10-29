@@ -66,7 +66,7 @@ runPurityE env (Node (ERecord ids :@: as) cs)
 runPurityE env e@(Node (ELambda x :@: as) cs)
     = Node (ELambda x :@: ([EProperty "Pure" Nothing | isPure] ++ as)) $ map (runPurityE env) cs
   where
-    ESymbol (tag . eS env -> (Symbol _ (PLambda _ (tnc . eE env -> (FScope bindings closure, effects)))))
+    ESymbol (tag . eS env -> (Symbol _ (PLambda _ (tnc . eE env -> (FScope bindings (Right closure), effects)))))
         = fromJust $ e @~ isESymbol
 
     isPure = noGlobalReads && noGlobalWrites && noIndirections && readOnlyNonLocalScalars
