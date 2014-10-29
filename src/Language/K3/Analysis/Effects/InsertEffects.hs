@@ -47,8 +47,11 @@ import Language.K3.Core.Type
 
 import Language.K3.Analysis.Effects.Core
 import Language.K3.Analysis.Effects.Constructors
+import Language.K3.Utils.Pretty(pretty)
 
 import qualified Language.K3.Analysis.InsertMembers as IM
+
+debug = True
 
 type GlobalEnv  = Map Identifier (K3 Symbol)
 type LocalEnv   = Map Identifier [K3 Symbol]
@@ -229,6 +232,37 @@ expandSymDeepM sym@(children -> ch) = do
     exSym  = expandSymDeepM
     exSyms = mapM expandSymDeepM
 
+expandProg :: K3 Declaration -> MEnv (K3 Declaration)
+expandProg n = mapProgram mId mId expandExprs Nothing n
+
+expandExprs :: K3 Expression -> MEnv (K3 Expression)
+expandExprs n = modifyTree expandExpr n
+  where
+    expandExpr :: K3 Expression -> MEnv (K3 Expression)
+    expandExpr n = do
+      let e = getEEffect n
+          s = getESymbol n
+      e' <- case e of
+              Nothing  -> return Nothing
+              Just eff -> liftM Just $ expandEffDeepM eff
+      s' <- case s of
+              Nothing  -> return Nothing
+              Just sym -> liftM Just $ expandSymDeepM sym
+      return $ addEffSym e' s' n
+
+-- Common procedure for adding back the symbols, effects and children
+addEffSym :: Maybe (K3 Effect) -> Maybe (K3 Symbol) -> K3 Expression -> K3 Expression
+addEffSym eff sym n =
+  let n'   = stripAnno (\x -> isEEffect x || isESymbol x) n
+      n''  = maybe n'  ((@+) n'  . EEffect) eff
+      n''' = maybe n'' ((@+) n'' . ESymbol) sym
+  in n'''
+
+addEffSymCh :: Maybe (K3 Effect) -> Maybe (K3 Symbol) -> [K3 Expression] -> K3 Expression -> K3 Expression
+addEffSymCh eff sym ch n =
+  let n'   = addEffSym eff sym n
+  in replaceCh n' ch
+
 -- Shortcuts for expandeffect & expandSym
 eE :: EffectEnv -> K3 Effect -> K3 Effect
 eE = expandEff
@@ -240,7 +274,7 @@ eS = expandSym
 updateEffM :: K3 Effect -> K3 Effect -> MEnv (K3 Effect)
 updateEffM e@(tag -> FEffId i) e' = insertEffectM i e' >> return e
 updateEffM _ e@(tag -> FEffId _)  = return e
-updateEffM _ e  = do
+updateEffM e e' = {- trace ("bad update: \n"++show e++"\n to: \n"++show e') $-} do
   i <- getIdM
   let e' = stripAnno isFID e
   insertEffectM i $ e' @+ FID i
@@ -249,7 +283,7 @@ updateEffM _ e  = do
 updateSymM :: K3 Symbol -> K3 Symbol -> MEnv (K3 Symbol)
 updateSymM e@(tag -> SymId i) e' = insertSymbolM i e' >> return e
 updateSymM _ e@(tag -> SymId _)  = return e
-updateSymM _ e  = do
+updateSymM e e' = {- trace ("bad update: \n"++show e++"\n to: \n"++show e') $-} do
   i <- getIdM
   let e' = stripAnno isSID e
   insertSymbolM i $ e' @+ SID i
@@ -276,8 +310,8 @@ addSID sym = do
   i <- getIdM
   return $ sym @+ SID i
 
-getSID :: K3 Symbol -> Int
-getSID sym = maybe (error "no SID found") extract $ sym @~ isSID
+getSID :: K3 Symbol -> Maybe Int
+getSID sym = liftM extract $ sym @~ isSID
   where extract (SID i) = i
 
 -- Generate a symbol
@@ -425,7 +459,7 @@ mId :: Monad m => a -> m a
 mId = return
 
 symEqual :: K3 Symbol -> K3 Symbol -> Bool
-symEqual (getSID -> s)    (getSID -> s')    = s == s'
+symEqual (getSID -> s) (getSID -> s')    = s == s'
 
 -- map over symbols and effects, starting at an effect
 mapEff :: (K3 Effect -> MEnv (K3 Effect)) -> (K3 Symbol -> MEnv (K3 Symbol)) -> K3 Effect -> MEnv (K3 Effect)
@@ -603,9 +637,12 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
   -- actual modification of AST (no need to decorate declarations here)
   p2 <- mapProgram handleDecl mId handleExprs Nothing p1
   -- apply all lambdas
-  p3 <- mapProgram mId mId applyLambdaExprs Nothing p2
+  p3 <- mapProgram handleDecl mId applyLambdaExprs Nothing p2
   -- update closures
-  mapProgram mId mId substClosureExprs Nothing p3
+  p4 <- mapProgram mId mId substClosureExprs Nothing p3
+  p4' <- expandProg p4
+  --trace (pretty p4') $ return p4
+  return p4
   where
     -- Add all globals and decorate tree
     handleDecl :: K3 Declaration -> MEnv (K3 Declaration)
@@ -822,10 +859,12 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
           mEff = getEEffect n
       mSym' <- case mSym of
                  Nothing -> return Nothing
-                 Just s  -> liftM Just $ mapSym doSubEff mId s
+                 Just (s@(tag -> SymId _)) -> liftM Just $ mapSym doSubEff mId s
+                 -- Just s  -> trace ("sym in tree:"++show s) $ liftM Just $ mapSym doSubEff mId s
       mEff' <- case mEff of
                  Nothing -> return Nothing
-                 Just s  -> liftM Just $ mapEff doSubEff mId s
+                 Just (s@(tag -> FEffId _))  -> liftM Just $ mapEff doSubEff mId s
+                 -- Just s  -> trace ("esym in tree:"++show s) $ liftM Just $ mapEff doSubEff mId s
       return $ addEffSym mEff' mSym' n
         where
           doSubEff :: K3 Effect -> MEnv (K3 Effect)
@@ -841,18 +880,6 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       return $ addEffSymCh eff Nothing ch n
 
     ------ Utilities ------
-    -- Common procedure for adding back the symbols, effects and children
-    addEffSym :: Maybe (K3 Effect) -> Maybe (K3 Symbol) -> K3 Expression -> K3 Expression
-    addEffSym eff sym n =
-      let n'   = stripAnno (\x -> isEEffect x || isESymbol x) n
-          n''  = maybe n'  ((@+) n'  . EEffect) eff
-          n''' = maybe n'' ((@+) n'' . ESymbol) sym
-      in n'''
-
-    addEffSymCh :: Maybe (K3 Effect) -> Maybe (K3 Symbol) -> [K3 Expression] -> K3 Expression -> K3 Expression
-    addEffSymCh eff sym ch n =
-      let n'   = addEffSym eff sym n
-      in replaceCh n' ch
 
     -- TODO: from here -----
 
