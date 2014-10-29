@@ -142,9 +142,7 @@ inline (tag -> EConstant c) = constant c >>= \c' -> return ([], R.Literal c')
 
 -- If a variable was declared as mutable it's been reified as a shared_ptr, and must be
 -- dereferenced.
-inline e@(tag -> EVariable v)
-    | isJust $ e @~ (\case { EMutable -> True; _ -> False }) = return ([], R.Dereference (R.Variable $ R.Name v))
-    | otherwise = return ([], R.Variable $ R.Name v)
+inline e@(tag -> EVariable v) = return ([], R.Variable $ R.Name v)
 
 inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
     (e, v) <- inline c
