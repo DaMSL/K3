@@ -298,6 +298,16 @@ class Collection: public VectorDS<K3::Collection, Elem> {
   Collection(): Super() {}
   Collection(const Super& c): Super(c) { }
   Collection(Super&& c): Super(std::move(c)) { }
+
+  shared_ptr<Elem> at(int i) const {
+    auto& c = Super::getConstContainer();
+    if (i < c.size()) {
+      return std::make_shared<Elem>(c[i]);
+    } else {
+      return nullptr;
+    }
+  }
+
 };
 
 template <class Elem>

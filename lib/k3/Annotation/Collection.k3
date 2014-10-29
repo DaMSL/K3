@@ -51,4 +51,8 @@ annotation Collection given type a, b
   provides lifted ext : (content -> collection {elem : a} @ {Collection})
                          -> collection {elem : a} @ {Collection}
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
+
+  @:Transformer
+  provides lifted at: int -> option content
+    with effects \i -> [R[i]; R[self]]
 }
