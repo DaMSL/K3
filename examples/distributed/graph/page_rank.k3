@@ -1,24 +1,35 @@
 include "Annotation/Collection.k3"
 include "Annotation/Map.k3"
+include "Core/Loaders.k3"
+include "Core/Barrier.k3"
+include "Core/Builtins.k3"
 
 typedef vertex = int
 typedef page_rank = real
 
 declare vertex_count: int = 1
-declare iterations: int = 30
-declare iterations_remaining: int = iterations
+declare iterations: mut int = 5
+declare damping_factor: real = 0.5
 
-declare table: collection { key: vertex, value: vertex } @ { Map }
+declare table: collection { key: vertex, value: vertex } @ { Collection }
 declare graph: mut collection { key: vertex, value: collection { elem: vertex } @ { Collection }} @ { Map }
 declare state: mut collection { key: vertex, value: page_rank } @ { Map }
 declare outgoing: mut collection { key: vertex, value: page_rank } @ { Map }
+declare active: collection { key: vertex, value: bool } @ { Map }
+declare batched: mut collection {
+                       key: int,
+                       value: collection {
+                                key: vertex,
+                                value: collection { elem: page_rank } @ { Collection }
+                              } @ { Map }
+                       } @ { Map }
 
 declare data_file: string = ""
 
 declare peer_by_vertex: vertex -> int = \v -> (v % peers.size ())
 
 declare aggregate_and_send_by_peer: collection { key: vertex, value: page_rank } @ { Map } -> () = \c -> (
-    let grouped = c.groupBy
+    batched = c.groupBy
                     (\r -> peer_by_vertex r.key)
                     (\a -> \r ->
                       let singleton = empty { elem: page_rank } @ { Collection }
@@ -33,9 +44,9 @@ declare aggregate_and_send_by_peer: collection { key: vertex, value: page_rank }
                     empty {
                       key: vertex,
                       value: collection {elem: page_rank } @ { Collection }
-                    } @ { Map }
+                    } @ { Map };
 
-    in grouped.iterate (\r -> let a = case peers.at r.key of
+    batched.iterate (\r -> let a = case peers.at r.key of
                                         { Some n -> n.addr }
                                         { None -> me }
                               in (gather, a) <- r.value)
@@ -44,34 +55,52 @@ declare aggregate_and_send_by_peer: collection { key: vertex, value: page_rank }
 trigger scatter: () = \_ -> (
   outgoing = empty { key: vertex, value: page_rank } @ { Map };
   state.iterate (\s ->
+    let f = case active.lookup { key: s.key, value: false } of { Some x -> x.value } { None -> false } in
+    if not f then () else (
     let neighbours = graph.lookup { key: s.key, value: empty { elem: vertex } @ { Collection }}
     in case neighbours of
          { Some ns -> let out_degree = ns.value.size () in
-                        ns.value.iterate (\n -> outgoing.insert {
+                        ns.value.iterate (\n -> outgoing.insert_with {
                           key: n.elem,
-                          value: ((0.15 / vertex_count) + 0.85 * s.value) / out_degree
-                        })
+                          value: (((1 - damping_factor) / vertex_count) + damping_factor * s.value) / out_degree
+                        } (\a -> \e -> { key: a.key, value: a.value + e.value }))
          }
          { None -> () }
-  );
+  ));
+  (active.iterate (\s -> active.insert {key: s.key, value: false }));
   aggregate_and_send_by_peer outgoing
 )
 
 trigger gather: collection { key: vertex, value: collection { elem: page_rank } @ { Collection }} @ { Map } = \message_map -> (
-  state = empty { key: vertex, value: real } @ { Map };
-  message_map.iterate (\r ->
-    let local_sum = r.value.fold (\a -> \x -> a + x.elem) 0
+  message_map.iterate (\r -> (
+    case active.lookup { key: r.key, value: false } of
+       { Some f -> if not (f.value)
+                     then (
+                       state.insert { key: r.key, value: 0.0 };
+                       active.insert { key: r.key, value: true }
+                     ) else ()
+       } { None -> () };
+    let local_sum = r.value.fold (\a -> \x -> a + x.elem) 0.0
     in state.insert_with { key: r.key, value: local_sum } (\a -> \b -> { key: r.key, value: a.value + b.value})
-  )
+  ));
+  (iterations = iterations - 1;
+   if iterations > 0 then (scatter, me) <- () else (haltEngine ())) @ { OnCounterReset(id=[# gather], eq=[$ peers.size ()]) }
 )
-
-@:CArgs 2
-declare graphLoader: string -> collection { key: vertex, value: vertex } @ { Map } -> ()
 
 trigger load_all: () = \_ -> (
   graphLoader data_file table;
-  graph = table.groupBy
-                  (\r -> r.key)
-                  (\a -> \e -> (a.insert { elem: e.value }; a))
-                  empty { elem: vertex } @ { Collection }
+  table.iterate (\r ->
+    case graph.lookup { key: r.key, value: empty { elem: int } @ { Collection }} of
+      { Some c -> (c.value.insert { elem: r.value }; graph.insert c) }
+      { None -> (
+          let e = empty { elem: vertex } @ { Collection }
+          in (e.insert { elem: r.value }; graph.insert { key: r.key, value: e })
+      )}
+  );
+  graph.iterate (\r -> (state.insert { key: r.key, value: (1.0) };
+                        active.insert { key: r.key, value: true }));
+  (scatter, me) <- ()
 )
+
+source s1: () = value ()
+feed s1 |> load_all
