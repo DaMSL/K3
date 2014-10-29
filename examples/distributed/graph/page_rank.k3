@@ -23,7 +23,7 @@ declare aggregate_and_send_by_peer: collection { key: vertex, value: page_rank }
                            singleton.insert {elem: r.value};
                            a.insert_with
                              { key: r.key, value: singleton }
-                             (\e -> \n -> e.value.insert { elem: r.value });
+                             (\e -> \n -> (e.value.insert { elem: r.value }; e));
                            a
                       )
                     )
