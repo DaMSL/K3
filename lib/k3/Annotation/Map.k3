@@ -6,6 +6,7 @@ annotation Map given type a,b {
   provides lifted insert  : content -> ()
     with effects \elem -> [R[self]; R[elem]; W[self]]
 
+  @:CArgs 2
   provides lifted insert_with: content -> (content -> content -> content) -> ()
     with effects \elem -> \f -> [R[self]; R[elem]; W[self]]
 
