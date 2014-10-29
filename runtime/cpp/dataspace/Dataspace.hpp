@@ -510,7 +510,7 @@ class Map {
     if (existing == std::end(container)) {
       container[rec.key] = rec.value;
     } else {
-      container[rec.key] = f(existing->value, rec.value);
+      container[rec.key] = f(existing, rec);
     }
   }
 
