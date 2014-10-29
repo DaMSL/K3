@@ -49,8 +49,8 @@ data Provenance
     | PGlobal
   deriving (Eq, Ord, Read, Show)
 
-data Symbol = Symbol Identifier Provenance 
-            | SymId Int 
+data Symbol = Symbol Identifier Provenance
+            | SymId Int
             deriving (Eq, Ord, Read, Show)
 
 data instance Annotation Symbol = SID Int deriving (Eq, Ord, Read, Show)

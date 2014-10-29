@@ -522,13 +522,13 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
     symOfFunction' :: Bool -> K3 Type -> Int -> MEnv [K3 Symbol]
     symOfFunction' addSelf (tnc -> (TFunction, [_, ret])) i = do
       s  <- symOfFunction' addSelf ret $ i + 1
-      s' <- createSym (addSelf && i==1) s $ "__"++show i
+      s' <- createConservativeSym (addSelf && i==1) s $ "__"++show i
       return [s']
     symOfFunction' _ _ _ = return []
 
     -- Create a default conservative symbol for the function
     -- @addSelf: add a r/w to 'self' (for attributes)
-    createSym addSelf subSym' nm = do
+    createConservativeSym addSelf subSym' nm = do
       sym   <- symbolM nm PVar []
       r     <- genEff $ read sym
       w     <- genEff $ write sym
@@ -540,7 +540,7 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
                else
                  return [Just w, Just r]
       seq'' <- combineEffSeq seq'
-      lp    <- genEff $ loop $ fromMaybe (error "createSym") seq''
+      lp    <- genEff $ loop $ fromMaybe (error "createConservativeSym") seq''
       sc    <- genEff $ scope [sym] emptyClosure [lp]
       genSym (PLambda nm sc) subSym'
 
@@ -556,12 +556,15 @@ runConsolidatedAnalysis d =
   runAnalysisEnv env $ IM.runAnalysis p
 
 runAnalysisEnv :: EffectEnv -> K3 Declaration -> (K3 Declaration, EffectEnv)
-runAnalysisEnv env1 prog = flip runState env1 $
+runAnalysisEnv env1 prog = flip runState env1 $ do
   -- for cyclic scope, add temporaries for all globals
-  addAllGlobals prog >>=
+  p  <- addAllGlobals prog
   -- actual modification of AST (no need to decorate declarations here)
-  mapProgram handleDecl mId handleExprs Nothing
-
+  p' <- mapProgram handleDecl mId handleExprs Nothing p
+  -- apply all lambdas in the effect/sym env
+  applyLambdasInSymEnv
+  applyLambdasInEffEnv
+  return p'
   where
     -- Add all globals and decorate tree
     handleDecl :: K3 Declaration -> MEnv (K3 Declaration)
@@ -676,15 +679,10 @@ runAnalysisEnv env1 prog = flip runState env1 $
       case getESymbol l of
         Nothing   -> error $ "failed to find symbol at lambda: " ++ show n
         Just lSym -> do
-          app <- applyLambda lSym aSym
-          lSym' <- expandSymM lSym
-          aSym' <- expandSymM aSym
-          case app of
-            Nothing           -> error $ "failed to apply lambda: lSym: " ++ show lSym' ++ "\naSym: "++ show aSym' ++ "\nn:" ++ show n
-            Just (appE, appS) -> do
-              fullEff <- combineEffSeq [seqE, Just appE]
-              return $ addEffSymCh fullEff (Just appS) ch n
-
+          appE    <- genEff $ apply lSym aSym
+          fullEff <- combineEffSeq [seqE, Just appE]
+          fullSym <- combineSymApply (Just lSym) (Just aSym)
+          return $ addEffSymCh fullEff fullSym ch n
     -- Bind
     handleExpr ch@[bind,e] n@(tag -> EBindAs b) = do
       let iProvs = extractBindData b
@@ -756,6 +754,53 @@ runAnalysisEnv env1 prog = flip runState env1 $
       return $ addEffSymCh eff chSym ch n
 
     handleExpr ch n = genericExpr ch n
+
+    -- Rather than going over the tree again, just use the effect env
+    -- We collect the ids of all apply's, and then apply them
+    applyLambdasInEffEnv = do
+      env <- get
+      -- find all ids that have applies
+      let ids = IntMap.foldWithKey addApply [] $ effEnv env
+      mapM_ doApplyEff ids
+      where
+        addApply i (tag -> FApply _ _) acc = i:acc
+        addApply i _                   acc = acc
+
+        doApplyEff i = do
+          s <- lookupEffectM i
+          case s of
+            Just (tag -> FApply l a) -> do
+              eff  <- liftM fst $ handleBothApps l a
+              eff' <- expandEffM eff
+              insertEffectM i eff'
+            _ -> error "unexpected"
+
+    applyLambdasInSymEnv = do
+      env <- get
+      -- find all ids that have applies
+      let ids = IntMap.foldWithKey addApply [] $ symEnv env
+      mapM_ doApplySym ids
+      where
+        addApply i (tag -> Symbol _ PApply) acc = i:acc
+        addApply i _                        acc = acc
+
+        doApplySym i = do
+          s <- lookupSymbolM i
+          case s of
+            Just (tnc -> (Symbol _ PApply, [l, a])) -> do
+              sym  <- liftM snd $ handleBothApps l a
+              sym' <- expandSymM sym
+              insertSymbolM i sym'
+            _ -> error "unexpected"
+
+    handleBothApps l a = do
+      app <- applyLambda l a
+      l'  <- expandSymM l
+      a'  <- expandSymM a
+      case app of
+        Nothing -> error $
+          "failed to apply lambda: l: " ++ show l' ++ "\na: "++ show a'
+        Just x  -> return x
 
     -- Generic case: combineEff effects, ignore symbols
     genericExpr ch n = do
