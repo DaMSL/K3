@@ -6,7 +6,7 @@ include "Core/CppBuiltins.k3"
 
 typedef feature_vector  = collection { elem: real } @Vector
 typedef centroid_agg    = { key: int, value: { count: int, sum: feature_vector } }
-typedef centroids_stats = collection centroid_stats @Vector
+typedef centroids_stats = collection centroid_agg @Map
 
 // Constants
 declare k: int
@@ -26,7 +26,7 @@ declare data: collection { elem: feature_vector } @Seq
 declare means: mut collection { key: int, value: feature_vector} @Collection
 
 // Collection of partial aggregates for each mean.
-declare aggregates: mut centroid_stats
+declare aggregates: mut centroids_stats
 
 // Timing
 declare times: collection {ms: int} @ {Seq}
@@ -58,14 +58,14 @@ declare broadcastMeans: () -> () = \_ -> (
 )
 
 declare printMeans: () -> () = \_ -> (
-  means.iterate (\kv -> print (kv.value.toString ())
+  means.iterate (\kv -> print (kv.value.toString ()))
 )
 
 // Initialize the means and send out the initial broadcast
 // For now_int, we use the first k data points.
 declare start: () -> () = \_ -> (
   (range k).iterate (\i ->
-    means.insert {key: i.i +1, value: (data.at i.i).elem}
+    means.insert {key: i.i, value: (data.at i.i).elem}
   );
 
   // Log initial means
