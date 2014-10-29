@@ -38,6 +38,7 @@ namespace K3 {
     std::string tmp_buffer;
     while (!in.eof()) {
       container.insert(read_record(in, tmp_buffer));
+      in >> std::ws;
     }
 
     return;
