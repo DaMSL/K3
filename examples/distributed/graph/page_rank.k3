@@ -1,0 +1,39 @@
+include "Annotation/Collection.k3"
+include "Annotation/Map.k3"
+
+typedef vertex = int
+typedef page_rank = real
+
+declare vertex_count: int = 1
+declare iterations: int = 30
+declare iterations_remaining: int = iterations
+
+declare graph: collection { key: vertex, value: collection { elem: vertex } @ { Collection }} @ { Map }
+declare state: mut collection { key: vertex, value: page_rank } @ { Map }
+declare outgoing: mut collection { key: vertex, value: page_rank } @ { Map }
+
+declare aggregate_and_send_by_peer: collection { key: vertex, value: page_rank } @ { Map } -> () = \_ -> ()
+
+trigger scatter: () = \_ -> (
+  outgoing = empty { key: vertex, value: page_rank } @ { Map };
+  state.iterate (\s ->
+    let neighbours = graph.lookup { key: s.key, value: empty { elem: vertex } @ { Collection }}
+    in case neighbours of
+         { Some ns -> let out_degree = ns.value.size () in
+                        ns.value.iterate (\n -> outgoing.insert {
+                          key: n.elem,
+                          value: ((0.15 / vertex_count) + 0.85 * s.value) / out_degree
+                        })
+         }
+         { None -> () }
+  );
+  aggregate_and_send_by_peer outgoing
+)
+
+trigger gather: collection { key: vertex, value: collection { elem: page_rank } @ { Collection }} @ { Map } = \message_map -> (
+  state = empty { key: vertex, value: real } @ { Map };
+  message_map.iterate (\r ->
+    let local_sum = r.value.fold (\a -> \x -> a + x.elem) 0
+    in state.insert_with { key: r.key, value: local_sum } (\a -> \b -> { key: r.key, value: a.value + b.value})
+  )
+)
