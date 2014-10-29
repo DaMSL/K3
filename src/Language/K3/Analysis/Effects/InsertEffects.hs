@@ -463,15 +463,16 @@ symEqual (getSID -> s) (getSID -> s')    = s == s'
 
 -- map over symbols and effects, starting at an effect
 mapEff :: (K3 Effect -> MEnv (K3 Effect)) -> (K3 Symbol -> MEnv (K3 Symbol)) -> K3 Effect -> MEnv (K3 Effect)
-mapEff effFn symFn eff = modifyTree (wrapMapEffFn effFn symFn) eff
+mapEff effFn symFn eff = wrapMapEffFn effFn symFn eff
 
 mapSym :: (K3 Effect -> MEnv (K3 Effect)) -> (K3 Symbol -> MEnv (K3 Symbol)) -> K3 Symbol -> MEnv (K3 Symbol)
-mapSym effFn symFn sym = modifyTree (wrapMapSymFn effFn symFn) sym
+mapSym effFn symFn sym = wrapMapSymFn effFn symFn sym
 
 wrapMapEffFn :: (K3 Effect -> MEnv (K3 Effect)) -> (K3 Symbol -> MEnv (K3 Symbol)) -> K3 Effect -> MEnv (K3 Effect)
 wrapMapEffFn effFn symFn n' = do
   n  <- expandEffM n'
-  n''<- case tag n of
+  ch <- mapM (wrapMapEffFn effFn symFn) $ children n
+  n2 <- case tag n of
           FRead s -> do
             s' <- doMap s
             effFn $ replaceTag n $ FRead s'
@@ -492,13 +493,15 @@ wrapMapEffFn effFn symFn n' = do
             sA' <- doMap sA
             effFn $ replaceTag n $ FApply sL' sA'
           _ -> effFn n
-  updateEffM n' n''
+  let n3 = replaceCh n2 ch
+  updateEffM n' n3
   where doMap = mapSym effFn symFn
 
 wrapMapSymFn :: (K3 Effect -> MEnv (K3 Effect)) -> (K3 Symbol -> MEnv (K3 Symbol)) -> K3 Symbol -> MEnv (K3 Symbol)
 wrapMapSymFn effFn symFn n' = do
   n  <- expandSymM n'
-  n''<- case tag n of
+  ch <- mapM (wrapMapSymFn effFn symFn) $ children n
+  n2 <- case tag n of
           Symbol x (PScope ss (Right (xs,ys,zs))) -> do
             ss' <- mapM (mapSym effFn symFn) ss
             xs' <- mapM (mapSym effFn symFn) xs
@@ -512,7 +515,8 @@ wrapMapSymFn effFn symFn n' = do
             e' <- mapEff effFn symFn e
             symFn $ replaceTag n $ Symbol x $ PLambda y e'
           _ -> symFn n
-  updateSymM n' n''
+  let n3 = replaceCh n2 ch
+  updateSymM n' n3
 
 -------- Preprocessing phase --------
 --
@@ -641,7 +645,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
   -- update closures
   p4 <- mapProgram mId mId substClosureExprs Nothing p3
   p4' <- expandProg p4
-  --trace (pretty p4') $ return p4
+  trace (pretty p4') $ return p4
   return p4
   where
     -- Add all globals and decorate tree
