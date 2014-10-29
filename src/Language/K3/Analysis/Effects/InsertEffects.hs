@@ -35,7 +35,8 @@ import qualified Data.Map as Map
 import Data.IntMap(IntMap)
 import qualified Data.IntMap as IntMap
 import Data.List(nub, delete)
-import Data.Foldable hiding (mapM_, any, all, concatMap, concat)
+import Data.Foldable hiding (mapM_, any, all, concatMap, concat, elem)
+import Debug.Trace(trace)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -448,23 +449,22 @@ preprocessBuiltins :: K3 Declaration -> (K3 Declaration, EffectEnv)
 preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl prog
   where
     addMissingDecl :: K3 Declaration -> MEnv(K3 Declaration)
-
-    addMissingDecl n@(tag -> (DDataAnnotation i t attrs)) = do
-      attrs' <- mapM handleAttrs attrs
-      return $ replaceTag n $ DDataAnnotation i t attrs'
-
-    -- A global without an effect symbol
-    addMissingDecl n@(tag -> (DGlobal _ t@(tag -> TFunction) Nothing))
-      | isNothing (n @~ isDSymbol) = do
-        s <- symOfFunction False t
-        return $ n @+ DSymbol s
-
-    -- If we have a symbol, number it
-    addMissingDecl n = case n @~ isDSymbol of
-                         Just (DSymbol s) -> do
-                           s' <- liftM DSymbol $ numberSyms s
-                           return (stripAnno isDSymbol n @+ s')
-                         _ -> return n
+    addMissingDecl n =
+      case (tag n, n @~ isDSymbol) of
+        (DDataAnnotation i t attrs, _) -> do
+          attrs' <- mapM handleAttrs attrs
+          return $ replaceTag n $ DDataAnnotation i t attrs'
+        -- A global without an effect symbol
+        (DGlobal _ t@(tag -> TFunction) Nothing, Nothing) -> handleFunctions t
+        (DGlobal _ t@(tag -> TForall _) Nothing, Nothing) -> handleFunctions t
+        -- If we have a symbol, number it
+        (_, Just (DSymbol s)) -> do
+          s' <- liftM DSymbol $ numberSyms s
+          return $ stripAnno isDSymbol n @+ s'
+        _ -> return n
+      where handleFunctions t = do
+              s <- symOfFunction False t
+              return $ n @+ DSymbol s
 
     -- Handle lifted/unlifted attributes without symbols
     handleAttrs :: AnnMemDecl -> MEnv AnnMemDecl
@@ -476,7 +476,7 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
     -- If we have a sumbol, number it
     handleAttrs (Lifted x y z u as) = liftM (Lifted x y z u) $ handleAttrsInner as
 
-    handleAttrs (Attribute x y t@(tag -> TFunction) Nothing annos)
+    handleAttrs (Attribute x y t Nothing annos)
       | isNothing (find isDSymbol annos) = do
           s <- symOfFunction True t
           return $ Attribute x y t Nothing $ DSymbol s:annos
@@ -520,6 +520,7 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
     symOfFunction addSelf t = liftM head $ symOfFunction' addSelf t 1
 
     symOfFunction' :: Bool -> K3 Type -> Int -> MEnv [K3 Symbol]
+    symOfFunction' a (tnc -> (TForall _,   [ch])) i = symOfFunction' a ch i
     symOfFunction' addSelf (tnc -> (TFunction, [_, ret])) i = do
       s  <- symOfFunction' addSelf ret $ i + 1
       s' <- createConservativeSym (addSelf && i==1) s $ "__"++show i
@@ -559,6 +560,7 @@ runAnalysisEnv :: EffectEnv -> K3 Declaration -> (K3 Declaration, EffectEnv)
 runAnalysisEnv env1 prog = flip runState env1 $ do
   -- for cyclic scope, add temporaries for all globals
   p  <- addAllGlobals prog
+  env <- get
   -- actual modification of AST (no need to decorate declarations here)
   p' <- mapProgram handleDecl mId handleExprs Nothing p
   -- apply all lambdas in the effect/sym env
