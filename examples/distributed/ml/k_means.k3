@@ -82,7 +82,7 @@ declare nearest_mean: feature_vector -> int = (\p ->
   case means.peek() of
     { Some first_mean ->
         let nearest = means.fold (\acc -> \curr_mean ->
-          if acc.skip then acc
+          if acc.skip then {mean: acc.mean, distance: acc.distance, skip: false}
           else let dist = p.distance curr_mean.value in
                  if dist < acc.distance
                  then {mean: curr_mean, distance: dist, skip: false}
