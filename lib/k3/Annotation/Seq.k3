@@ -47,6 +47,13 @@ annotation Seq given type a,b
       \gbF -> \gaccF -> \z ->
         [R[self]; R[z]; ([R[content]; gbF content; gaccF content])*]
 
+  @:{Transformer, CArgs 4}
+  provides lifted groupByContiguous : (content -> a) -> (b -> content -> b) -> b -> int
+                             -> collection { key : a, value : b } @ {Seq}
+    with effects
+      \gbF -> \gaccF -> \z -> \s ->
+        [R[self]; R[z]; ([R[content]; gbF content; gaccF content])*]
+
   @:Transformer
   provides lifted ext     : (content -> collection {elem : a} @ {Seq})
                              -> collection {elem : a} @ {Seq}

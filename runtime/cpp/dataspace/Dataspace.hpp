@@ -210,6 +210,25 @@ class StlDS {
       return result;
   }
 
+  template <class G, class F, class Z>
+  Derived<R_key_value<RT<G, Elem>, Z>> groupByContiguous(G grouper, F folder, const Z& zero, const int& size) const {
+    auto table = std::vector<Z>(size, zero);
+    for (const auto& elem: container) {
+      auto key = grouper(elem);
+      table[key] = folder(std::move(table[key]))(elem);
+    }
+
+    // Build the R_key_value records and insert them into result
+    Derived<R_key_value<RT<G, Elem>,Z>> result;
+    for (auto i = 0; i < table.size(); ++i) {
+      // move out of the map as we iterate
+      result.insert(R_key_value<int, Z>{i, std::move(table[i])});
+
+    }
+
+    return result;
+  }
+
   template <class Fun>
   auto ext(Fun expand) const -> Derived<typename RT<Fun, Elem>::ElemType> {
     typedef typename RT<Fun, Elem>::ElemType T;

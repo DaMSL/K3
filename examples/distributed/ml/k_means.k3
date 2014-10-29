@@ -135,9 +135,12 @@ trigger assign: collection { key: int, value: feature_vector} @ {Collection} = \
   means = new_means;
 
   // compute aggregate statistics:
-  let aggs = data.groupBy (\p -> nearest_mean p.elem)
-                          (\sc -> \p -> {count: sc.count + 1, sum: sc.sum.add p.elem})
-                          {count: 0, sum: zeroVector dimensionality}
+  let aggs = data.groupByContiguous
+    (\p -> nearest_mean p.elem)
+    (\sc -> \p ->
+      {count: sc.count + 1, sum: sc.sum.add p.elem}
+    )
+    {count: 0, sum: zeroVector dimensionality} k
 
   // return results to master
   in (aggregate, master) <- aggs
