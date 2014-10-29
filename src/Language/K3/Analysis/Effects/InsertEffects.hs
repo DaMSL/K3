@@ -36,7 +36,7 @@ import Data.IntMap(IntMap)
 import qualified Data.IntMap as IntMap
 import Data.List(nub, delete)
 import Data.Foldable hiding (mapM_, any, all, concatMap, concat, elem)
-import Debug.Trace(trace)
+-- import Debug.Trace(trace)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -47,11 +47,9 @@ import Language.K3.Core.Type
 
 import Language.K3.Analysis.Effects.Core
 import Language.K3.Analysis.Effects.Constructors
-import Language.K3.Utils.Pretty(pretty)
+-- import Language.K3.Utils.Pretty(pretty)
 
 import qualified Language.K3.Analysis.InsertMembers as IM
-
-debug = True
 
 type GlobalEnv  = Map Identifier (K3 Symbol)
 type LocalEnv   = Map Identifier [K3 Symbol]
@@ -122,10 +120,6 @@ lookupBind :: Identifier -> EffectEnv -> K3 Symbol
 lookupBind i env = fromMaybe err $ lookupBindInner i env
   where err = error $ "failed to find " ++ i ++ " in environment"
 
-lookupGlobal :: Identifier -> EffectEnv -> K3 Symbol
-lookupGlobal i env = fromMaybe err $ lookupGlobalInner i env
-  where err = error $ "failed to find " ++ i ++ " in global environment"
-
 lookupEffect :: Int -> EffectEnv -> Maybe (K3 Effect)
 lookupEffect i env = IntMap.lookup i $ effEnv env
 
@@ -156,11 +150,6 @@ lookupBindM :: Identifier -> MEnv (K3 Symbol)
 lookupBindM i = do
   env <- get
   return $ lookupBind i env
-
-lookupGlobalM :: Identifier -> MEnv (K3 Symbol)
-lookupGlobalM i = do
-  env <- get
-  return $ lookupGlobal i env
 
 getIdM :: MEnv Int
 getIdM = do
@@ -196,6 +185,7 @@ expandEff env eff = flip evalState env $ expandEffM eff
 expandSym :: EffectEnv -> K3 Symbol -> K3 Symbol
 expandSym env sym = flip evalState env $ expandSymM sym
 
+{- --for debugging
 expandEffDeepM :: K3 Effect -> MEnv (K3 Effect)
 expandEffDeepM eff = do
   eff' <- expandEffM eff
@@ -216,7 +206,7 @@ expandEffDeepM eff = do
     exSyms = mapM expandSymDeepM
 
 expandSymDeepM :: K3 Symbol -> MEnv (K3 Symbol)
-expandSymDeepM sym@(children -> ch) = do
+expandSymDeepM sym = do
   sym' <- expandSymM sym
   tg   <- case tag sym' of
              Symbol i (PScope ss (Right (a,b,c))) -> liftM (Symbol i) $ liftM2 PScope (exSyms ss) $ liftM Right $ liftM3 (,,) (exSyms a) (exSyms b) (exSyms c)
@@ -229,9 +219,10 @@ expandSymDeepM sym@(children -> ch) = do
     handleCh sym'@(children -> ch) = do
       ch'  <- mapM expandSymDeepM ch
       return $ replaceCh sym' ch'
-    exSym  = expandSymDeepM
     exSyms = mapM expandSymDeepM
+-}
 
+{- -- For debugging
 expandProg :: K3 Declaration -> MEnv (K3 Declaration)
 expandProg n = mapProgram mId mId expandExprs Nothing n
 
@@ -249,6 +240,7 @@ expandExprs n = modifyTree expandExpr n
               Nothing  -> return Nothing
               Just sym -> liftM Just $ expandSymDeepM sym
       return $ addEffSym e' s' n
+-}
 
 -- Common procedure for adding back the symbols, effects and children
 addEffSym :: Maybe (K3 Effect) -> Maybe (K3 Symbol) -> K3 Expression -> K3 Expression
@@ -274,19 +266,19 @@ eS = expandSym
 updateEffM :: K3 Effect -> K3 Effect -> MEnv (K3 Effect)
 updateEffM e@(tag -> FEffId i) e' = insertEffectM i e' >> return e
 updateEffM _ e@(tag -> FEffId _)  = return e
-updateEffM e e' = {- trace ("bad update: \n"++show e++"\n to: \n"++show e') $-} do
+updateEffM _ e' = {- trace ("bad update: \n"++show e++"\n to: \n"++show e') $-} do
   i <- getIdM
-  let e' = stripAnno isFID e
-  insertEffectM i $ e' @+ FID i
+  let e2 = stripAnno isFID e'
+  insertEffectM i $ e2 @+ FID i
   return $ effId i @+ FID i
 
 updateSymM :: K3 Symbol -> K3 Symbol -> MEnv (K3 Symbol)
 updateSymM e@(tag -> SymId i) e' = insertSymbolM i e' >> return e
 updateSymM _ e@(tag -> SymId _)  = return e
-updateSymM e e' = {- trace ("bad update: \n"++show e++"\n to: \n"++show e') $-} do
+updateSymM _ s' = {- trace ("bad update: \n"++show e++"\n to: \n"++show e') $-} do
   i <- getIdM
-  let e' = stripAnno isSID e
-  insertSymbolM i $ e' @+ SID i
+  let s2 = stripAnno isSID s'
+  insertSymbolM i $ s2 @+ SID i
   return $ symId i @+ SID i
 
 singleton :: a -> [a]
@@ -341,18 +333,6 @@ getESymbol :: K3 Expression -> Maybe (K3 Symbol)
 getESymbol n = case n @~ isESymbol of
                  Just (ESymbol e) -> Just e
                  _                -> Nothing
-
-getEEffectFull :: K3 Expression -> MEnv (Maybe (K3 Effect))
-getEEffectFull n = case getEEffect n of
-                     Nothing                -> return Nothing
-                     Just (tag -> FEffId i) -> lookupEffectM i
-                     e                      -> return e
-
-getESymbolFull :: K3 Expression -> MEnv (Maybe (K3 Symbol))
-getESymbolFull n = case getESymbol n of
-                     Nothing                -> return Nothing
-                     Just (tag -> SymId i)  -> lookupSymbolM i
-                     s                      -> return s
 
 -- If we don't have a symbol, we automatically gensym one
 getOrGenSymbol :: K3 Expression -> MEnv (K3 Symbol)
@@ -644,7 +624,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
   p3 <- mapProgram handleDecl mId applyLambdaExprs Nothing p2
   -- update closures
   p4 <- mapProgram mId mId substClosureExprs Nothing p3
-  p4' <- expandProg p4
+  -- p4' <- expandProg p4
   -- trace (pretty p4') $ return p4
   return p4
   where
@@ -816,6 +796,9 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
             Just nSym -> do
               eSym  <- getOrGenSymbol e
               nSym' <- mapSym mId (subSelf eSym) nSym
+              -- for debugging
+              -- nSym2 <- expandSymDeepM nSym'
+              -- trace (show nSym2) $
               return $ addEffSymCh (getEEffect e) (Just nSym') ch n
 
             _   -> error $ "Missing symbol for projection of " ++ i
@@ -863,20 +846,20 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
           mEff = getEEffect n
       mSym' <- case mSym of
                  Nothing -> return Nothing
-                 Just (s@(tag -> SymId _)) -> liftM Just $ mapSym doSubEff mId s
+                 Just s  -> liftM Just $ mapSym doSubEff mId s
                  -- Just s  -> trace ("sym in tree:"++show s) $ liftM Just $ mapSym doSubEff mId s
       mEff' <- case mEff of
                  Nothing -> return Nothing
-                 Just (s@(tag -> FEffId _))  -> liftM Just $ mapEff doSubEff mId s
+                 Just s  -> liftM Just $ mapEff doSubEff mId s
                  -- Just s  -> trace ("esym in tree:"++show s) $ liftM Just $ mapEff doSubEff mId s
       return $ addEffSym mEff' mSym' n
         where
           doSubEff :: K3 Effect -> MEnv (K3 Effect)
-          doSubEff n@(tnc -> (FScope s (Left (binds, eff, sym)), ch)) = do
+          doSubEff n'@(tag -> FScope s (Left (binds, eff, sym))) = do
             modify (\env -> env {bindEnv=binds})
             closure <- createClosure True eff sym
-            return $ replaceTag n $ FScope s (Right closure)
-          doSubEff n = return n
+            return $ replaceTag n' $ FScope s (Right closure)
+          doSubEff n' = return n'
 
     -- Generic case: combineEff effects, ignore symbols
     genericExpr ch n = do
@@ -1018,12 +1001,13 @@ applyLambda sLam' sArg = do
                                            genSym (PScope s cl) . singleton
                     (_, _)              -> genSymTemp TTemp []
       -- For debugging
+      {-
       sLam2 <- expandSymDeepM sLam
       sArg2 <- expandSymDeepM sArg'
       lamEff2 <- expandEffDeepM lamEff''
       chSym2 <- expandSymDeepM chSym'
-      --trace ("applied lambda: \n"++pretty sLam2++"\nto arg: \n"++pretty sArg2++"\nresult effect: \n"++pretty lamEff2++"\nresult symbol: \n"++pretty chSym2) $ return $ Just (lamEff', chSym')
-      -- For debugging
+      trace ("applied lambda: \n"++pretty sLam2++"\nto arg: \n"++pretty sArg2++"\nresult effect: \n"++pretty lamEff2++"\nresult symbol: \n"++pretty chSym2) $ return $ Just (lamEff', chSym')
+      -}
       return $ Just (lamEff', chSym')
 
     (Symbol _ PGlobal, [ch])  -> applyLambda ch sArg
