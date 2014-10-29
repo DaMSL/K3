@@ -10,3 +10,6 @@ declare loadUVQ3: string -> collection {sourceIP: string, destURL: string, visit
 
 @:CArgs 2
 declare loadRKQ3 : string -> collection {key: string, value: int} @Map  -> ()
+
+@:CArgs 2
+declare graphLoader: string -> collection { key: int, value: int } @ { Collection } -> ()
