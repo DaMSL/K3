@@ -510,8 +510,10 @@ class Map {
     if (existing == std::end(container)) {
       container[rec.key] = rec.value;
     } else {
-      container[rec.key] = f(existing, rec);
+      container[rec.key] = f(ElemType { existing->first, existing->second })(rec).value;
     }
+
+    return unit_t {};
   }
 
   unit_t erase(const R& rec) {
