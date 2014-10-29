@@ -48,8 +48,11 @@ annotation Vector given type a{
     with effects \other -> [R[self]; R[other]]
 
   provides lifted scalarMult: real -> self
-    with effects \x -> R[self]
+    with effects \x -> [R[self]; R[x]]
 
+  provides lifted inPlaceScalarMult: real -> ()
+    with effects \x -> [R[self]; R[x]; W[self]]
+  
   provides lifted toString : () -> string
     with effects \_ -> R[self]
 }

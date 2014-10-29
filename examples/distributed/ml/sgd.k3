@@ -51,7 +51,7 @@ declare svm_gradient : collection {elem: real} @Vector   -> real -> collection {
   in
     if flag > 1
     then parameters.scalarMult lambda
-    else (parameters.scalarMult lambda).sub (x.scalarMult y)
+    else (parameters.scalarMult lambda).sub (x.scalarMult y)  
 )
 
 // Compute the gradient at a single point.
@@ -62,7 +62,8 @@ declare point_gradient: collection {elem: real} @Vector  -> real -> collection {
 
 // Update parameters based on a single point
 declare update_parameters: collection {elem: real} @Vector  -> real -> () = \point -> \class_label -> (
-  let update = (point_gradient point class_label).scalarMult step_size in
+  let update = (point_gradient point class_label) in 
+  update.inPlaceScalarMult step_size;
   parameters.inPlaceSub update
 )
 
@@ -104,8 +105,8 @@ trigger aggregate : collection {elem: real} @Vector  = \local_params -> (
 // Average local parameters from each peer, then start a new iteration.
 trigger maximize : () = \_ -> (
   parameters = (aggregates.sum).scalarMult (1.0 / aggregates.count);
-  print "Loss:";
-  print (rtos (svm_loss_avg ()));
+  //print "Loss:";
+  //print (rtos (svm_loss_avg ()));
   aggregates = {count:0, sum: (zeroVector dimensionality)};
   iter_end = now_int();
   time_stats = {iter_count: time_stats.iter_count + 1, iter_time_sum: time_stats.iter_time_sum + (iter_end - iter_start)};
