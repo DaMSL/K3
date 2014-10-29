@@ -8,11 +8,13 @@ declare vertex_count: int = 1
 declare iterations: int = 30
 declare iterations_remaining: int = iterations
 
-declare graph: collection { key: vertex, value: collection { elem: vertex } @ { Collection }} @ { Map }
+declare table: collection { key: vertex, value: vertex } @ { Map }
+declare graph: mut collection { key: vertex, value: collection { elem: vertex } @ { Collection }} @ { Map }
 declare state: mut collection { key: vertex, value: page_rank } @ { Map }
 declare outgoing: mut collection { key: vertex, value: page_rank } @ { Map }
 
 declare peer_by_vertex: vertex -> address = \_ -> me
+declare data_file: string = ""
 
 declare aggregate_and_send_by_peer: collection { key: vertex, value: page_rank } @ { Map } -> () = \c -> (
     let grouped = c.groupBy
@@ -56,4 +58,15 @@ trigger gather: collection { key: vertex, value: collection { elem: page_rank } 
     let local_sum = r.value.fold (\a -> \x -> a + x.elem) 0
     in state.insert_with { key: r.key, value: local_sum } (\a -> \b -> { key: r.key, value: a.value + b.value})
   )
+)
+
+@:CArgs 2
+declare graphLoader: string -> collection { key: vertex, value: vertex } @ { Map } -> ()
+
+trigger load_all: () = \_ -> (
+  graphLoader data_file table;
+  graph = table.groupBy
+                  (\r -> r.key)
+                  (\a -> \e -> (a.insert { elem: e.value }; a))
+                  empty { elem: vertex } @ { Collection }
 )
