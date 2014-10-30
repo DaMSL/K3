@@ -1,0 +1,15 @@
+create procedure slev(w_id integer not null, d_id smallint not null, threshold integer not null)
+{
+   select d_next_o_id as o_id from district where d_w_id=w_id and district.d_id=d_id;
+
+   table items(id integer not null);
+
+   select index as ol_o_id from sequence(o_id-20,o_id-1) {
+      select index as ol_number from sequence(1,20) {
+         select ol_i_id from orderline where ol_w_id=w_id and ol_d_id=d_id and orderline.ol_o_id=ol_o_id and orderline.ol_number=ol_number else { break; }
+         insert into items
+            select ol_i_id from stock
+            where s_w_id=w_id and s_i_id=ol_i_id and s_quantity<threshold;
+      }
+   }
+};

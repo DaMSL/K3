@@ -1,0 +1,19 @@
+create procedure delivery(w_id integer not null, o_carrier_id integer not null, datetime timestamp not null)
+{
+   select index as d_id from sequence(1,10) {
+      select min(no_o_id) as o_id from neworder where no_w_id=w_id and no_d_id=d_id else { continue; }
+      delete from neworder where no_w_id=w_id and no_d_id=d_id and no_o_id=o_id;
+
+      select o_ol_cnt,o_c_id from "order" o where o_w_id=w_id and o_d_id=d_id and o.o_id=o_id else { continue; }
+      update "order" set o_carrier_id=o_carrier_id where o_w_id=w_id and o_d_id=d_id and "order".o_id=o_id;
+
+      var ol_total numeric(6,2) not null=0;
+      select index as ol_number from sequence(1,o_ol_cnt) {
+         select ol_amount from orderline where ol_w_id=w_id and ol_d_id=d_id and ol_o_id=o_id and orderline.ol_number=ol_number;
+         ol_total=ol_total+ol_amount;
+         update orderline set ol_delivery_d=datetime where ol_w_id=w_id and ol_d_id=d_id and ol_o_id=o_id and orderline.ol_number=ol_number;
+      }
+
+      update customer set c_balance=c_balance+ol_total where c_w_id=w_id and c_d_id=d_id and c_id=o_c_id;
+   }
+};

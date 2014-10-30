@@ -1,0 +1,119 @@
+create function urand("min" integer not null,"max" integer not null) integer not null
+{
+   return random("max"-"min"+1)+"min";
+};
+
+create function urandexcept("min" integer not null,"max" integer not null,v integer not null) integer not null
+{
+   if ("max"<="min")
+      return "min";
+   var r=random("max"-"min")+"min";
+   if (r>=v)
+      return r+1; else
+      return r;
+};
+
+create procedure newOrderRandom(now timestamp not null,w_id integer not null)
+{
+   var d_id=urand(1,10);
+   var c_id=nurand(1023,1,3000);
+   var ol_cnt=urand(5,15);
+
+   table orders(line_number integer not null,supware integer not null,itemid integer not null,qty integer not null);
+   select index from sequence(1,ol_cnt) {
+      var supware=w_id;
+      if (urand(1,100)=1)
+         supware=urandexcept(1,warehouses,w_id);
+      var itemid=nurand(8191,1,100000);
+      if (index=ol_cnt) if (urand(1,100)=1)
+         itemid=0; -- invalid item due to user error
+      var qty=urand(1,10);
+      insert into orders values(index,supware,itemid,qty);
+   }
+   newOrder(w_id,d_id,c_id,orders,now);
+};
+
+create procedure paymentRandom(now timestamp not null,w_id integer not null)
+{
+   var d_id=urand(1,10);
+   var c_w_id=w_id;
+   var c_d_id=d_id;
+   if (urand(1,100)>85) {
+      c_w_id=urandexcept(1,warehouses,w_id);
+      c_d_id=urand(1,10);
+   }
+   var h_amount=randomnumeric62(1.00,5000.00);
+   var h_date=now;
+
+   if (urand(1,100)<=60) {
+      paymentByName(w_id,d_id,c_w_id,c_d_id,genName(nurand(255,0,999)),h_date,h_amount,now);
+   } else {
+      paymentById(w_id,d_id,c_w_id,c_d_id,nurand(1023,1,3000),h_date,h_amount,now);
+   }
+};
+
+create procedure ostatRandom(w_id integer not null)
+{
+   var d_id=urand(1,10);
+
+   if (urand(1,100)<=60) {
+      ostatByName(w_id,d_id,genName(nurand(255,0,999)));
+   } else {
+      ostatById(w_id,d_id,nurand(1023,1,3000));
+   }
+};
+
+create procedure deliveryRandom(now timestamp not null,w_id integer not null)
+{
+   var carrier_id=urand(1,10);
+   delivery(w_id,carrier_id,now);
+};
+
+create procedure slevRandom(w_id integer not null)
+{
+   var d_id=urand(1,10);
+   var threshold=urand(10,20);
+
+   slev(w_id,d_id,threshold);
+};
+
+create function partitionedOltp(now timestamp not null,w_id integer not null) integer not null
+{
+   var choice=urand(1,1000);
+
+   -- Payment?
+   if (choice<=430) {
+      paymentRandom(now,w_id);
+      return 1;
+   }
+   choice=choice-430;
+
+   -- Order status?
+   if (choice<=40) {
+      ostatRandom(w_id);
+      return 2;
+   }
+   choice=choice-40;
+
+   -- Delivery?
+   if (choice<=45) {
+      deliveryRandom(now,w_id);
+      return 3;
+   }
+   choice=choice-45;
+
+   -- Stock level?
+   if (choice<=40) {
+      slevRandom(w_id);
+      return 40;
+   }
+
+   -- Default to new order
+   newOrderRandom(now,w_id);
+   return 0;
+};
+
+create function oltp(now timestamp not null) integer not null
+{
+   return partitionedOltp(now,urand(1,warehouses));
+};
