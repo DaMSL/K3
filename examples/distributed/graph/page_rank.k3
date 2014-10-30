@@ -10,6 +10,7 @@ typedef page_rank = real
 declare vertex_count: int = 1
 declare iterations: mut int = 5
 declare damping_factor: real = 0.5
+declare master: address
 
 declare table: collection { key: vertex, value: vertex } @ { Collection }
 declare graph: mut collection { key: vertex, value: collection { elem: vertex } @ { Collection }} @ { Map }
@@ -103,6 +104,18 @@ trigger load_all: () = \_ -> (
   graph.iterate (\r -> (state.insert { key: r.key, value: (1.0) }));
   (ready, master) <- ()
 )
+
+trigger go: () = \_ -> scatter ()
+
+trigger ready: () = \_ -> (
+  if master == me
+  then ((peers.iterate (\p -> (go, p.addr) <- ())) @ { OnCounter(id=[# ready], eq=[$ peers.size ()]) }) else ()
+)
+
+
+trigger stop: () = \_ -> (
+  state.iterate (\s -> (print (itos s.key); print (rtos s.value)));
+  haltEngine ()
 )
 
 source s1: () = value ()
