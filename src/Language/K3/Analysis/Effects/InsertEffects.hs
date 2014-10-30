@@ -35,7 +35,7 @@ import qualified Data.Map as Map
 import Data.IntMap(IntMap)
 import qualified Data.IntMap as IntMap
 import Data.List(nub, delete)
-import Data.Foldable hiding (mapM_, any, all, concatMap, concat, elem)
+import Data.Foldable hiding (and, mapM_, any, all, concatMap, concat, elem)
 -- import Debug.Trace(trace)
 
 import Language.K3.Core.Annotation
@@ -275,22 +275,36 @@ occursSym _ _    _                     = return ()
 
 -- Update symbols/effects: old, new, whether they're ids or not
 updateEffM :: K3 Effect -> K3 Effect -> MEnv (K3 Effect)
-updateEffM e@(tag -> FEffId i) e' = if e `effEqual` e' then return e else insertEffectM i e' >> return e
-updateEffM _ e@(tag -> FEffId _)  = return e
-updateEffM _ e' = {- trace ("bad update: \n"++show e++"\n to: \n"++show e') $-} do
-  i <- getIdM
-  let e2 = stripAnno isFID e'
-  insertEffectM i $ e2 @+ FID i
-  return $ effId i @+ FID i
+updateEffM e@(tag -> FEffId i) e' = insertEffectM i e' >> return e
+updateEffM _  e@(tag -> FEffId _) = return e
+updateEffM e@(getFID -> Just i) e' = insertEffectM i (stripAnno isFID e' @+ FID i) >> return (effId i @+ FID i)
+updateEffM e e'@(getFID -> Just i) = insertEffectM i e' >> return (effId i @+ FID i)
+updateEffM e e' = error $ "can't do the update: "++show e++"\n and also:"++show e'
 
 updateSymM :: K3 Symbol -> K3 Symbol -> MEnv (K3 Symbol)
-updateSymM e@(tag -> SymId i) e' = if e `symEqual` e' then return e else insertSymbolM i e' >> return e
-updateSymM _ e@(tag -> SymId _)  = return e
-updateSymM _ s' = {- trace ("bad update: \n"++show e++"\n to: \n"++show e') $-} do
-  i <- getIdM
-  let s2 = stripAnno isSID s'
-  insertSymbolM i $ s2 @+ SID i
+updateSymM s@(tag -> SymId i) s' = insertSymbolM i s' >> return s
+updateSymM _ s@(tag -> SymId _)  = return s
+updateSymM s@(getSID -> Just i) s' = insertSymbolM i (stripAnno isSID s' @+ SID i) >> return (symId i @+ SID i)
+updateSymM e e'@(getSID -> Just i) = insertSymbolM i e' >> return (symId i @+ SID i)
+updateSymM e e' = error $ "can't do the update: "++show e++"\n and also:"++show e'
+
+-- In contrast to updateXM, Give a symbol a new id and put it in the environment
+duplicateSymM :: K3 Symbol -> MEnv (K3 Symbol)
+duplicateSymM s = do
+  s2 <- expandSymM s
+  let s' = stripAnno isSID s2
+  i  <- getIdM
+  insertSymbolM i (s' @+ SID i)
   return $ symId i @+ SID i
+
+-- Give an effect a new id and put it in the environment
+duplicateEffM :: K3 Effect -> MEnv (K3 Effect)
+duplicateEffM e = do
+  e2 <- expandEffM e
+  let e' = stripAnno isFID e2
+  i  <- getIdM
+  insertEffectM i (e' @+ FID i)
+  return $ effId i @+ FID i
 
 singleton :: a -> [a]
 singleton x = [x]
@@ -453,6 +467,9 @@ addAllGlobals node = mapProgram preHandleDecl mId mId Nothing node
 mId :: Monad m => a -> m a
 mId = return
 
+mIdNone :: Monad m => a -> m (Maybe a)
+mIdNone _ = return Nothing
+
 symEqual :: K3 Symbol -> K3 Symbol -> Bool
 symEqual (getSID -> s) (getSID -> s')    = s == s'
 
@@ -460,61 +477,105 @@ effEqual :: K3 Effect -> K3 Effect -> Bool
 effEqual (getFID -> e) (getFID -> e')    = e == e'
 
 -- map over symbols and effects, starting at an effect
-mapEff :: (K3 Effect -> MEnv (K3 Effect)) -> (K3 Symbol -> MEnv (K3 Symbol)) -> K3 Effect -> MEnv (K3 Effect)
-mapEff effFn symFn eff = wrapMapEffFn effFn symFn eff
+-- @inplace: modify the tree in-place. If false, create new symbols/effects for the new parts
+-- @functions: return a value if modified, otherwise nothing
 
-mapSym :: (K3 Effect -> MEnv (K3 Effect)) -> (K3 Symbol -> MEnv (K3 Symbol)) -> K3 Symbol -> MEnv (K3 Symbol)
-mapSym effFn symFn sym = wrapMapSymFn effFn symFn sym
+-- Generic version of map for both effects and symbols
+mapGen expandFn chMapFn processFn updateFn duplicateFn inPlace n' = do
+    n2@(children -> ch) <- expandFn n'
+    (ch', noch) <- getNew chMapFn ch
+    let n = replaceCh n2 ch'
+    mn <- processFn n noch
+    case mn of
+      Nothing           -> return Nothing
+      Just n3 | inPlace -> liftM Just $ updateFn n' n3
+      Just n3           -> liftM Just $ duplicateFn n3
 
-wrapMapEffFn :: (K3 Effect -> MEnv (K3 Effect)) -> (K3 Symbol -> MEnv (K3 Symbol)) -> K3 Effect -> MEnv (K3 Effect)
-wrapMapEffFn effFn symFn n' = do
-  n2  <- expandEffM n'
-  ch <- mapM (wrapMapEffFn effFn symFn) $ children n2
-  let n = replaceCh n2 ch
-  n3 <- case tag n of
+getNew :: (K3 a -> MEnv (Maybe (K3 a))) -> [K3 a] -> MEnv ([K3 a], Bool)
+getNew f l = do
+  ml <- mapM f l
+  return (zipWith fromMaybe l ml, all isNothing ml)
+
+mapEff :: Bool -> (K3 Effect -> MEnv (Maybe(K3 Effect))) -> (K3 Symbol -> MEnv (Maybe(K3 Symbol))) -> K3 Effect -> MEnv (K3 Effect)
+mapEff inPlace effFn symFn n = do
+  mn <- mapEffInner inPlace effFn symFn n
+  return $ fromMaybe n mn
+
+mapEffInner :: Bool -> (K3 Effect -> MEnv (Maybe(K3 Effect))) -> (K3 Symbol -> MEnv (Maybe(K3 Symbol))) -> K3 Effect -> MEnv (Maybe (K3 Effect))
+mapEffInner inPlace effFn symFn =
+  mapGen expandEffM mapEff' processNode updateEffM duplicateEffM inPlace
+    where
+      mapSym' = mapSymInner inPlace effFn symFn
+      mapEff' = mapEffInner inPlace effFn symFn
+      processNode n noch =
+        case tag n of
           FRead s -> do
-            s' <- doMap s
-            effFn $ replaceTag n $ FRead s'
+            ([s'], nos) <- getNew mapSym' [s]
+            let n3 = replaceTag n $ FRead s'
+            mn <- effFn n3
+            return $ if noch && nos then mn else Just $ fromMaybe n3 mn
           FWrite s -> do
-            s' <- doMap s
-            effFn $ replaceTag n $ FWrite s'
+            ([s'], nos) <- getNew mapSym' [s]
+            let n3 = replaceTag n $ FWrite s'
+            mn <- effFn n3
+            return $ if noch && nos then mn else Just $ fromMaybe n3 mn
           FScope ss (Right (xs,ys,zs)) -> do
-            ss' <- mapM doMap ss
-            xs' <- mapM doMap xs
-            ys' <- mapM doMap ys
-            zs' <- mapM doMap zs
-            effFn $ replaceTag n $ FScope ss' (Right (xs', ys', zs'))
+            (ss', noss) <- getNew mapSym' ss
+            (xs', noxs) <- getNew mapSym' xs
+            (ys', noys) <- getNew mapSym' ys
+            (zs', nozs) <- getNew mapSym' zs
+            let n3 = replaceTag n $ FScope ss' (Right (xs', ys', zs'))
+            mn <- effFn n3
+            return $ if and [noch,noss,noxs,noys,nozs] then mn else Just $ fromMaybe n3 mn
           FScope ss x -> do
-            ss' <- mapM doMap ss
-            effFn $ replaceTag n $ FScope ss' x
+            (ss', noss) <- getNew mapSym' ss
+            let n3 = replaceTag n $ FScope ss' x
+            mn <- effFn n3
+            return $ if noch && noss then mn else Just $ fromMaybe n3 mn
           FApply sL sA -> do
-            sL' <- doMap sL
-            sA' <- doMap sA
-            effFn $ replaceTag n $ FApply sL' sA'
-          _ -> effFn n
-  updateEffM n' n3
-  where doMap = mapSym effFn symFn
+            ([sL'], nosl) <- getNew mapSym' [sL]
+            ([sA'], nosa) <- getNew mapSym' [sA]
+            let n3 = replaceTag n $ FApply sL' sA'
+            mn <- effFn n3
+            return $ if and [noch,nosl,nosa] then mn else Just $ fromMaybe n3 mn
+          _ -> do
+            mn <- effFn n
+            return $ if noch then mn else Just $ fromMaybe n mn
 
-wrapMapSymFn :: (K3 Effect -> MEnv (K3 Effect)) -> (K3 Symbol -> MEnv (K3 Symbol)) -> K3 Symbol -> MEnv (K3 Symbol)
-wrapMapSymFn effFn symFn n' = do
-  n2  <- expandSymM n'
-  ch <- mapM (wrapMapSymFn effFn symFn) $ children n2
-  let n = replaceCh n2 ch
-  n3 <- case tag n of
+mapSym :: Bool -> (K3 Effect -> MEnv (Maybe(K3 Effect))) -> (K3 Symbol -> MEnv (Maybe(K3 Symbol))) -> K3 Symbol -> MEnv (K3 Symbol)
+mapSym inPlace effFn symFn n = do
+  mn <-mapSymInner inPlace effFn symFn n
+  return $ fromMaybe n mn
+
+mapSymInner :: Bool -> (K3 Effect -> MEnv (Maybe(K3 Effect))) -> (K3 Symbol -> MEnv (Maybe(K3 Symbol))) -> K3 Symbol -> MEnv (Maybe(K3 Symbol))
+mapSymInner inPlace effFn symFn =
+  mapGen expandSymM mapSym' processNode updateSymM duplicateSymM inPlace
+  where
+      mapSym' = mapSymInner inPlace effFn symFn
+      mapEff' = mapEffInner inPlace effFn symFn
+      processNode n noch =
+        case tag n of
           Symbol x (PScope ss (Right (xs,ys,zs))) -> do
-            ss' <- mapM (mapSym effFn symFn) ss
-            xs' <- mapM (mapSym effFn symFn) xs
-            ys' <- mapM (mapSym effFn symFn) ys
-            zs' <- mapM (mapSym effFn symFn) zs
-            symFn $ replaceTag n $ Symbol x (PScope ss' (Right (xs', ys', zs')))
+            (ss', noss) <- getNew mapSym' ss
+            (xs', noxs) <- getNew mapSym' xs
+            (ys', noys) <- getNew mapSym' ys
+            (zs', nozs) <- getNew mapSym' zs
+            let n3 = replaceTag n $ Symbol x (PScope ss' (Right (xs', ys', zs')))
+            mn <- symFn n3
+            return $ if and [noch,noss,noxs,noys,nozs] then mn else Just $ fromMaybe n3 mn
           Symbol x (PScope ss y) -> do
-            ss' <- mapM (mapSym effFn symFn) ss
-            symFn $ replaceTag n $ Symbol x (PScope ss' y)
+            (ss', noss) <- getNew mapSym' ss
+            let n3 = replaceTag n $ Symbol x (PScope ss' y)
+            mn <- symFn n3
+            return $ if noch && noss then mn else Just $ fromMaybe n3 mn
           Symbol x (PLambda y e) -> do
-            e' <- mapEff effFn symFn e
-            symFn $ replaceTag n $ Symbol x $ PLambda y e'
-          _ -> symFn n
-  updateSymM n' n3
+            ([e'], noe) <- getNew mapEff' [e]
+            let n3 = replaceTag n $ Symbol x $ PLambda y e'
+            mn <- symFn n3
+            return $ if noch && noe then mn else Just $ fromMaybe n3 mn
+          _ -> do
+            mn <- symFn n
+            return $ if noch then mn else Just $ fromMaybe n mn
 
 -------- Preprocessing phase --------
 --
@@ -573,22 +634,23 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
 
     -- Number existing symbols/effects
     numberSyms s = do
-      s' <- mapSym addNumEff addNumSym s
+      s' <- mapSym True addNumEff addNumSym s
       clearBindsM  -- binds are only temporary here
       return s'
 
     -- For symbols, we only need a very simple binding pattern
+    -- We bind variables so that inside the effect, we refer to the same symbols
     addNumSym s@(tag -> Symbol i PVar) = do
       l <- lookupBindInnerM i
       case l of
         Nothing -> do
           s' <- addSID s
           insertBindM i s'
-          return s'
-        Just s' -> return s'
-    addNumSym s = addSID s
+          return $ Just s'
+        s' -> return s'
+    addNumSym s = liftM Just $ addSID s
 
-    addNumEff = addFID
+    addNumEff = liftM Just . addFID
 
     -- Create a symbol for a function based on type
     -- If we're an attribute, we need to also write to self
@@ -813,7 +875,9 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
           case getESymbol n of
             Just nSym -> do
               eSym  <- getOrGenSymbol e
-              nSym' <- mapSym mId (subSelf eSym) nSym
+              -- Make sure to substitute self without destructive updates
+              -- In essence, we're making fresh copies of the parts we change
+              nSym' <- mapSym False mIdNone (subSelf eSym) nSym
               -- for debugging
               -- nSym2 <- expandSymDeepM nSym'
               -- trace (show nSym2) $
@@ -825,9 +889,9 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
           nSym <- genSym (PProject i) $ maybeToList $ getESymbol e
           return $ addEffSymCh (getEEffect e) (Just nSym) ch n
       where
-        subSelf s n'@(tag -> Symbol "self" PVar)    = return $ replaceCh n' [s]
-        subSelf s n'@(tag -> Symbol "content" PVar) = return $ replaceCh n' [s]
-        subSelf _ n'                                = return n'
+        subSelf s n'@(tag -> Symbol "self" PVar)    = return $ Just $ replaceCh n' [s]
+        subSelf s n'@(tag -> Symbol "content" PVar) = return $ Just $ replaceCh n' [s]
+        subSelf _ n'                                = return Nothing
 
     -- handle seq (last symbol)
     handleExpr ch n@(tag -> EOperate OSeq) = do
@@ -850,10 +914,11 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
           mEff = getEEffect n
       mSym' <- case mSym of
                  Nothing -> return Nothing
-                 Just s  -> liftM Just $ mapSym (subEff Nothing) (subSym Nothing) s
+                            -- Make sure to do a non-destructive substitution
+                 Just s  -> liftM Just $ mapSym False (subEff Nothing) (subSym Nothing) s
       mEff' <- case mEff of
                  Nothing -> return Nothing
-                 Just s  -> liftM Just $ mapEff (subEff Nothing) (subSym Nothing) s
+                 Just s  -> liftM Just $ mapEff False (subEff Nothing) (subSym Nothing) s
       return $ addEffSym mEff' mSym' n
 
     -- go over the tree and calculate all closures
@@ -864,20 +929,19 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
           mEff = getEEffect n
       mSym' <- case mSym of
                  Nothing -> return Nothing
-                 Just s  -> liftM Just $ mapSym doSubEff mId s
+                 Just s  -> liftM Just $ mapSym True doSubEff mIdNone s
                  -- Just s  -> trace ("sym in tree:"++show s) $ liftM Just $ mapSym doSubEff mId s
       mEff' <- case mEff of
                  Nothing -> return Nothing
-                 Just s  -> liftM Just $ mapEff doSubEff mId s
+                 Just s  -> liftM Just $ mapEff True doSubEff mIdNone s
                  -- Just s  -> trace ("esym in tree:"++show s) $ liftM Just $ mapEff doSubEff mId s
       return $ addEffSym mEff' mSym' n
         where
-          doSubEff :: K3 Effect -> MEnv (K3 Effect)
           doSubEff n'@(tag -> FScope s (Left (binds, eff, sym))) = do
             modify (\env -> env {bindEnv=binds})
             closure <- createClosure True eff sym
-            return $ replaceTag n' $ FScope s (Right closure)
-          doSubEff n' = return n'
+            return $ Just $ replaceTag n' $ FScope s (Right closure)
+          doSubEff n' = return Nothing
 
     -- Generic case: combineEff effects, ignore symbols
     genericExpr ch n = do
@@ -1009,13 +1073,13 @@ applyLambda sLam' sArg = do
     (Symbol _ (PLambda _ lamEff@(tag . eE env -> FScope [sOld] _)), chSym) -> do
       -- Dummy substitute into the argument, in case there's an application there
       -- Any effects won't be substituted in and will be visible outside
-      sArg'    <- mapSym (subEff Nothing) (subSym Nothing) sArg
+      sArg'    <- mapSym False (subEff Nothing) (subSym Nothing) sArg
       -- Substitute into the old effects and symbol
-      lamEff'  <- mapEff (subEff $ Just (sOld, sArg')) (subSym $ Just (sOld, sArg')) lamEff
+      lamEff'  <- mapEff False (subEff $ Just (sOld, sArg')) (subSym $ Just (sOld, sArg')) lamEff
       lamEff'' <- expandEffM lamEff'
       chSym'   <- case (chSym, tag lamEff'') of
                     -- Lift the scope of the effect and put it in a pscope after substituting in
-                    ([ch], FScope s cl) -> mapSym (subEff $ Just (sOld, sArg')) (subSym $ Just (sOld, sArg')) ch >>=
+                    ([ch], FScope s cl) -> mapSym False (subEff $ Just (sOld, sArg')) (subSym $ Just (sOld, sArg')) ch >>=
                                            genSym (PScope s cl) . singleton
                     (_, _)              -> genSymTemp TTemp []
       -- For debugging
@@ -1052,22 +1116,26 @@ applyLambda sLam' sArg = do
 
 -- Substitute a symbol for another in a symbol: old, new, symbol in which to replace
 -- NOTE: We assume the effects and symbols here don't need the environment
-subSym :: Maybe (K3 Symbol, K3 Symbol) -> K3 Symbol -> MEnv (K3 Symbol)
-subSym (Just (s, s')) n@(tag -> Symbol _ PVar) | n `symEqual` s = return $ replaceCh n [s']
+subSym :: Maybe (K3 Symbol, K3 Symbol) -> K3 Symbol -> MEnv (Maybe(K3 Symbol))
+subSym (Just (s, s')) n@(tag -> Symbol _ PVar) | n `symEqual` s = return $ Just $ replaceCh n [s']
 -- Apply: recurse (we already substituted into the children)
 subSym _ n@(tnc -> (Symbol _ PApply, [sL, sA])) = do
-    x <- applyLambda sL sA
-    return $ maybe n snd x
-subSym _ n = return n
+  m <- applyLambda sL sA
+  case m of
+    Nothing -> return Nothing
+    Just m' -> return $ Just $ snd m'
+subSym _ n = return Nothing
 
 -- Substitute one symbol for another in an effect
 -- mapSym already handled sL and sA
 -- NOTE: We assume the effects and symbols here don't need the environment
-subEff :: Maybe (K3 Symbol, K3 Symbol) -> K3 Effect -> MEnv (K3 Effect)
+subEff :: Maybe (K3 Symbol, K3 Symbol) -> K3 Effect -> MEnv (Maybe(K3 Effect))
 subEff _ n@(tag -> FApply sL sA) = do
-    x <- applyLambda sL sA
-    return $ maybe n fst x
-subEff _ n = return n
+  m <- applyLambda sL sA
+  case m of
+    Nothing -> return Nothing
+    Just m' -> return $ Just $ fst m'
+subEff _ n = return Nothing
 
 -- Query whether certain symbols are read, written, applied
 symRWAQuery :: K3 Effect -> [K3 Symbol] -> EffectEnv -> ClosureInfo
@@ -1076,7 +1144,7 @@ symRWAQuery eff syms env = flip evalState env $ do
   -- Use the symbols as a bind environment
   mapM_ addToEnv syms
   -- Substitute any lambdas inside
-  eff' <- mapEff (subEff Nothing) mId eff
+  eff' <- mapEff False (subEff Nothing) (subSym Nothing) eff
   -- Get the general closure
   createClosure False (Just eff') Nothing
   where
