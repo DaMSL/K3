@@ -104,6 +104,38 @@ namespace K3 {
 
     unit_t sleep(int n);
 
+    template <template <class> class M, template <class> class C, template <typename ...> class R>
+    unit_t loadGraph(string_impl filepath, M<R<int, C<R_elem<int>>>>& c) {
+      std::string tmp_buffer;
+      std::ifstream in(filepath);
+
+      int source;
+      std::size_t position;
+      while (!in.eof()) {
+	C<R_elem<int>> edge_list;
+
+	std::size_t start = 0;
+	std::size_t end = start;
+	std::getline(in, tmp_buffer);
+
+	end = tmp_buffer.find(",", start);
+	source = std::atoi(tmp_buffer.substr(start, end - start).c_str());
+
+	start = end + 1;
+
+	while (end != std::string::npos) {
+	  end = tmp_buffer.find(",", start);
+	  edge_list.insert(R_elem<int>(std::atoi(tmp_buffer.substr(start, end - start).c_str())));
+	  start = end + 1;
+	}
+
+	c.insert(R<int, C<R_elem<int>>> { source, std::move(edge_list)});
+	in >> std::ws;
+      }
+
+      return unit_t {};
+    }
+
     // TODO move to seperate context
     unit_t loadRKQ3(string_impl file, K3::Map<R_key_value<string_impl,int>>& c)  {
         // Buffers
@@ -127,7 +159,7 @@ namespace K3 {
         return unit_t {};
     }
 
-   template <template<typename S> class C, template <typename ...> class R>
+   template <template <class> class C, template <typename ...> class R>
    unit_t loadQ1(string_impl filepath, C<R<int, string_impl>>& c) {
         std::ifstream _in;
         _in.open(filepath);

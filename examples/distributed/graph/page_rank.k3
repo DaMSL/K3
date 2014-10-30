@@ -99,18 +99,10 @@ trigger gather: collection { key: vertex, value: collection { elem: page_rank } 
 )
 
 trigger load_all: () = \_ -> (
-  graphLoader data_file table;
-  table.iterate (\r ->
-    case graph.lookup { key: r.key, value: empty { elem: int } @ { Collection }} of
-      { Some c -> (c.value.insert { elem: r.value }; graph.insert c) }
-      { None -> (
-          let e = empty { elem: vertex } @ { Collection }
-          in (e.insert { elem: r.value }; graph.insert { key: r.key, value: e })
-      )}
-  );
-  graph.iterate (\r -> (state.insert { key: r.key, value: (1.0) };
-                        active.insert { key: r.key, value: true }));
-  (scatter, me) <- ()
+  loadGraph data_file graph;
+  graph.iterate (\r -> (state.insert { key: r.key, value: (1.0) }));
+  (ready, master) <- ()
+)
 )
 
 source s1: () = value ()
