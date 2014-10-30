@@ -5,7 +5,7 @@ include "Annotation/Vector.k3"
 declare loadVector : string -> collection {elem: collection {elem: real} @ {Vector} } @Seq -> ()
 
 @:CArgs 2
-declare loadVectorLabel : string -> collection {elem: collection {elem: real} @ {Vector}, class_label: real } @Seq -> ()
+declare loadVectorLabel : int -> string -> collection {elem: collection {elem: real} @ {Vector}, class_label: real } @Collection -> ()
 
 declare zeroVector : int -> collection {elem: real} @ {Vector}
 
