@@ -64,7 +64,7 @@ declare aggregate_and_send_by_peer: collection { key: vertex, value: page_rank }
     )
 )
 
-trigger scatter: () = \_ -> (
+declare scatter: () -> () = \_ -> (
   outgoing = empty { key: vertex, value: page_rank } @ { Map };
   state.iterate (\s -> state.insert {
                                key: s.key,
@@ -72,8 +72,6 @@ trigger scatter: () = \_ -> (
                              }
   );
   state.iterate (\s ->
-    let f = case active.lookup { key: s.key, value: false } of { Some x -> x.value } { None -> false } in
-    if not f then () else (
     let neighbours = graph.lookup { key: s.key, value: empty { elem: vertex } @ { Collection }}
     in case neighbours of
          { Some ns -> let out_degree = ns.value.size ()
@@ -83,25 +81,20 @@ trigger scatter: () = \_ -> (
                          } (\a -> \e -> { key: a.key, value: a.value + e.value }))
          }
          { None -> () }
-  ));
-  (active.iterate (\s -> active.insert {key: s.key, value: false }));
-  aggregate_and_send_by_peer outgoing
+  );
+  iterations = iterations - 1;
+  if iterations > 0
+    then ( state.iterate (\s -> state.insert { key: s.key, value: 0.0 })
+         ; aggregate_and_send_by_peer outgoing
+         ) else (stop, me) <- ()
 )
 
 trigger gather: collection { key: vertex, value: collection { elem: page_rank } @ { Collection }} @ { Map } = \message_map -> (
   message_map.iterate (\r -> (
-    case active.lookup { key: r.key, value: false } of
-       { Some f -> if not (f.value)
-                     then (
-                       state.insert { key: r.key, value: 0.0 };
-                       active.insert { key: r.key, value: true }
-                     ) else ()
-       } { None -> () };
     let local_sum = r.value.fold (\a -> \x -> a + x.elem) 0.0
     in state.insert_with { key: r.key, value: local_sum } (\a -> \b -> { key: r.key, value: a.value + b.value})
   ));
-  (iterations = iterations - 1;
-   if iterations > 0 then (scatter, me) <- () else (haltEngine ())) @ { OnCounterReset(id=[# gather], eq=[$ peers.size ()]) }
+  (scatter ()) @ { OnCounterReset(id=[# gather], eq=[$ peers.size ()]) }
 )
 
 trigger load_all: () = \_ -> (
