@@ -7,7 +7,7 @@ declare master: address = 127.0.0.1:40000
 declare peers_ready: mut int = 0
 declare iterations_remaining: mut int = 10
 declare dimensionality: int = 2
-declare dataFile : mut string
+declare dataFiles: collection {path: string} @Collection
 
 declare start_ms: mut int
 declare end_ms: mut int
@@ -141,7 +141,7 @@ trigger shutdown : () = \_ -> haltEngine ()
 
 // TODO: fix loader
 trigger load_all : () = \_ -> (
-  loadVectorLabel dataFile data;
+  dataFiles.iterate (\f -> loadVectorLabel f.path data);
   (ready, master) <- ()
 )
 
