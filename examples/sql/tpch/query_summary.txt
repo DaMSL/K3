@@ -1,0 +1,24 @@
+TPC-H query summary
+
+1:  filter
+2:  filter, 5-join, sort, limit
+3:  filter, 3-join, group by agg, sort, limit
+4:  filter, correlated-joinable subquery, group by agg, sort
+5:  filter, 6-join, group by agg, sort
+6:  filter, aggregate
+7:  (filter, 6-join) as subquery, group by agg, sort
+8:  (filter, 8-join) as subquery, group by agg, sort
+9:  (regex filter, 6-join) as subquery, group by agg, sort
+10: filter, 4-join, group by agg, sort, limit
+11: filter, 3-join, group by agg, having (filter, 3 join, agg) subquery, sort
+12: filter, 2-join, group by agg w/ expr, sort
+13: (regex filter, 2-join, group by agg) as subquery, group by agg, sort
+14: filter, 2-join, agg w/ expr
+15: (filter, group by agg) common query, filter agg subquery, 2-join, sort
+16: filter, member subquery, 2-join, group by agg, sort
+17: filter, filter agg subquery, 2-join, agg
+18: filter (group by, having) subquery, 3-join, group by agg, sort, limit
+19: complex disjunction, 2-join, agg
+20: filter, filter (filter (filter agg subquery) subquery) subquery, 2-join, sort
+21: filter, exists correlated subquery, 4-join, group by, sort, limit
+22: (filter, agg uncorrelated and exists correlated subquery) subquery, group by agg, sort
