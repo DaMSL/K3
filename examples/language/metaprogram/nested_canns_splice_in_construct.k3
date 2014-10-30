@@ -1,16 +1,16 @@
 control A[lbl : label] {
-  ?e => $.[e] + ($[lbl]_x @B(lbl=lbl))
+  ?e => $.[e] + ($[lbl]_x @B(lbl=lbl, extra=[$ 7]))
      +> { declare $[lbl]_x : int = 5 }
 }
 
-control B[lbl : label] {
-  ?e => $.[e] + ($[lbl]_y @C(lbl=[# $[lbl]_inner_splice]))
+control B[lbl : label, extra : expr] {
+  ?e => $.[e] + ($[lbl]_y @C(lbl=[# $[lbl]_inner_splice], extra=[$ 53 + $[extra] ]))
      +> { declare $[lbl]_y : int = 10 }
 }
 
-control C[lbl : label] {
+control C[lbl : label, extra : expr] {
   ?e => $.[e] + $[lbl]_z
-     +> { declare $[lbl]_z : int = 20 }
+     +> { declare $[lbl]_z : int = 20 + $[extra] }
 }
 
 declare m : mut int = 0

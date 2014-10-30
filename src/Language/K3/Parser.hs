@@ -841,7 +841,7 @@ svTerm = choice $ map try [sVar, sLabel, sType, sExpr, sDecl, sLiteral, sLabelTy
     wrap l r p = between (symbol l) (symbol r) p
 
 spliceParameter :: K3Parser (Maybe (Identifier, SpliceValue))
-spliceParameter = try ((\a b -> Just (a,b)) <$> identifier <* symbol "=" <*> svTerm)
+spliceParameter = try ((\a b -> Just (a,b)) <$> identifier <* symbol "=" <*> parseInMode Splice svTerm)
 
 contextualizedSpliceParameter :: Maybe SpliceEnv -> K3Parser (Maybe (Identifier, SpliceValue))
 contextualizedSpliceParameter sEnvOpt = choice [try fromContext, spliceParameter]
