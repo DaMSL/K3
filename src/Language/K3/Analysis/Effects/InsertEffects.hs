@@ -262,9 +262,20 @@ eE = expandEff
 eS :: EffectEnv -> K3 Symbol -> K3 Symbol
 eS = expandSym
 
+-- Occurs check
+occursEff :: Int -> K3 Effect -> K3 Effect -> MEnv ()
+occursEff n occE e | occE `effEqual` e = error $ "Failed occurs check, step "++show n
+occursEff n occE (tag -> FEffId i)   = liftM fromJust (lookupEffectM i) >>= occursEff (n+1) occE
+occursEff _ _    _                     = return ()
+
+occursSym :: Int -> K3 Symbol -> K3 Symbol -> MEnv ()
+occursSym n occS s | occS `symEqual` s = error $ "Failed occurs check, step "++show n
+occursSym n occS (tag -> SymId i)    = liftM fromJust (lookupSymbolM i) >>= occursSym (n+1) occS
+occursSym _ _    _                     = return ()
+
 -- Update symbols/effects: old, new, whether they're ids or not
 updateEffM :: K3 Effect -> K3 Effect -> MEnv (K3 Effect)
-updateEffM e@(tag -> FEffId i) e' = insertEffectM i e' >> return e
+updateEffM e@(tag -> FEffId i) e' = if e `effEqual` e' then return e else insertEffectM i e' >> return e
 updateEffM _ e@(tag -> FEffId _)  = return e
 updateEffM _ e' = {- trace ("bad update: \n"++show e++"\n to: \n"++show e') $-} do
   i <- getIdM
@@ -273,7 +284,7 @@ updateEffM _ e' = {- trace ("bad update: \n"++show e++"\n to: \n"++show e') $-} 
   return $ effId i @+ FID i
 
 updateSymM :: K3 Symbol -> K3 Symbol -> MEnv (K3 Symbol)
-updateSymM e@(tag -> SymId i) e' = insertSymbolM i e' >> return e
+updateSymM e@(tag -> SymId i) e' = if e `symEqual` e' then return e else insertSymbolM i e' >> return e
 updateSymM _ e@(tag -> SymId _)  = return e
 updateSymM _ s' = {- trace ("bad update: \n"++show e++"\n to: \n"++show e') $-} do
   i <- getIdM
@@ -305,6 +316,10 @@ addSID sym = do
 getSID :: K3 Symbol -> Maybe Int
 getSID sym = liftM extract $ sym @~ isSID
   where extract (SID i) = i
+
+getFID :: K3 Effect -> Maybe Int
+getFID sym = liftM extract $ sym @~ isFID
+  where extract (FID i) = i
 
 -- Generate a symbol
 symbolM :: Identifier -> Provenance -> [K3 Symbol] -> MEnv (K3 Symbol)
@@ -440,6 +455,9 @@ mId = return
 
 symEqual :: K3 Symbol -> K3 Symbol -> Bool
 symEqual (getSID -> s) (getSID -> s')    = s == s'
+
+effEqual :: K3 Effect -> K3 Effect -> Bool
+effEqual (getFID -> e) (getFID -> e')    = e == e'
 
 -- map over symbols and effects, starting at an effect
 mapEff :: (K3 Effect -> MEnv (K3 Effect)) -> (K3 Symbol -> MEnv (K3 Symbol)) -> K3 Effect -> MEnv (K3 Effect)
