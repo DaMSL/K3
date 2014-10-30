@@ -43,13 +43,24 @@ declare aggregate_and_send_by_peer: collection { key: vertex, value: page_rank }
                     )
                     empty {
                       key: vertex,
-                      value: collection {elem: page_rank } @ { Collection }
+                      value: collection { elem: page_rank } @ { Collection }
                     } @ { Map };
 
-    batched.iterate (\r -> let a = case peers.at r.key of
-                                        { Some n -> n.addr }
-                                        { None -> me }
-                              in (gather, a) <- r.value)
+    (range (peers.size ())).iterate (\i ->
+      case batched.lookup { key: i.i
+                          , value: empty { key: vertex
+                                         , value: collection { elem: page_rank } @ Collection
+                                         } @ { Map }
+                          } of
+        { Some b -> case peers.at i.i of
+                      { Some p -> (gather, p.addr) <- b.value }
+                      { None ->  () } }
+        { None -> case peers.at i.i of
+                      { Some p -> ((gather, p.addr) <- empty { key: vertex
+                                                             , value: collection { elem: page_rank } @ Collection
+                                                             } @ { Map } ) }
+                      { None -> () } }
+    )
 )
 
 trigger scatter: () = \_ -> (
