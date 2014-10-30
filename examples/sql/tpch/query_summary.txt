@@ -1,6 +1,6 @@
 TPC-H query summary
 
-1:  filter
+1:  filter, aggregate
 2:  filter, 5-join, sort, limit
 3:  filter, 3-join, group by agg, sort, limit
 4:  filter, correlated-joinable subquery, group by agg, sort

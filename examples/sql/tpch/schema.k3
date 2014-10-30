@@ -1,86 +1,86 @@
 typedef lineitem_r = {
-      orderkey         : int,
-      partkey          : int,
-      suppkey          : int,
-      linenumber       : int,
-      quantity         : real,
-      extendedprice    : real,
-      discount         : real,
-      tax              : real,
-      returnflag       : string,
-      linestatus       : string,
-      shipdate         : int,
-      commitdate       : int,
-      receiptdate      : int,
-      shipinstruct     : string,
-      shipmode         : string,
-      comments         : string
+      l_orderkey         : int,
+      l_partkey          : int,
+      l_suppkey          : int,
+      l_linenumber       : int,
+      l_quantity         : real,
+      l_extendedprice    : real,
+      l_discount         : real,
+      l_tax              : real,
+      l_returnflag       : string,
+      l_linestatus       : string,
+      l_shipdate         : int,
+      l_commitdate       : int,
+      l_receiptdate      : int,
+      l_shipinstruct     : string,
+      l_shipmode         : string,
+      l_comments         : string
     }
 
 typedef customer_r = {
-      custkey          : int,
-      name             : string,
-      address          : string,
-      nationkey        : int,
-      phone            : string,
-      acctbal          : real,
-      mktsegment       : string,
-      comments         : string
+      c_custkey          : int,
+      c_name             : string,
+      c_address          : string,
+      c_nationkey        : int,
+      c_phone            : string,
+      c_acctbal          : real,
+      c_mktsegment       : string,
+      c_comments         : string
     }
 
 typedef orders_r = {
-      orderkey         : int,
-      custkey          : int,
-      orderstatus      : string,
-      totalprice       : real,
-      orderdate        : int,
-      orderpriority    : string,
-      clerk            : string,
-      shippriority     : int,
-      comments         : string
+      o_orderkey         : int,
+      o_custkey          : int,
+      o_orderstatus      : string,
+      o_totalprice       : real,
+      o_orderdate        : int,
+      o_orderpriority    : string,
+      o_clerk            : string,
+      o_shippriority     : int,
+      o_comments         : string
     }
 
 typedef supplier_r = {
-      suppkey          : int,
-      name             : string,
-      address          : string,
-      nationkey        : int,
-      phone            : string,
-      acctbal          : real,
-      comments         : string
+      s_suppkey          : int,
+      s_name             : string,
+      s_address          : string,
+      s_nationkey        : int,
+      s_phone            : string,
+      s_acctbal          : real,
+      s_comments         : string
     }
 
 typedef partsupp_r = {
-      partkey          : int,
-      suppkey          : int,
-      availqty         : int,
-      supplycost       : real,
-      comments         : string
+      ps_partkey          : int,
+      ps_suppkey          : int,
+      ps_availqty         : int,
+      ps_supplycost       : real,
+      ps_comments         : string
     }
 
 typedef part_r = {
-      partkey          : int,
-      name             : string,
-      mfgr             : string,
-      brand            : string,
-      type             : string,
-      p_size           : int,
-      container        : string,
-      retailprice      : real,
-      comments         : string
+      p_partkey          : int,
+      p_name             : string,
+      p_mfgr             : string,
+      p_brand            : string,
+      p_type             : string,
+      p_p_size           : int,
+      p_container        : string,
+      p_retailprice      : real,
+      p_comments         : string
     }
 
 typedef nation_r = {
-      nationkey        : int,
-      name             : string,
-      regionkey        : int,
-      comments         : string
+      n_nationkey        : int,
+      n_name             : string,
+      n_regionkey        : int,
+      n_comments         : string
     }
 
 typedef region_r = {
-      regionkey        : int,
-      name             : string,
-      comments         : string
+      r_regionkey        : int,
+      r_name             : string,
+      r_comments         : string
     }
 
 typedef tpch_agenda_r = {

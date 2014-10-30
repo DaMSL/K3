@@ -1,0 +1,48 @@
+control TPCHBenchmark[queryTrigger       : expr,
+                      loadExpr           : expr,
+                      preLoadExpr        : expr,
+                      preReadyExpr       : expr,
+                      finishArgT         : type,
+                      preTestFinishExpr  : expr,
+                      preFinishExpr      : expr,
+                      preShutdownExpr    : expr]
+{
+  ?e @:Result => (finished, master) <- $.[e]
+  ?e @:Start  => (load_all, me)     <- $.[e]
+    +> {
+      declare master    : address = 127.0.0.1:40000
+      declare dataFiles : collection {path: string} @Collection
+
+      // Dummy trigger to warm up connections
+      trigger hello : () = \_ -> ()
+
+      trigger shutdown : () = \_ -> (
+        $[preShutdownExpr];
+        haltEngine ()
+      )
+
+      // Signal to the master that a peer has finished the query locally.
+      trigger finished : $[finishArgT] = \finishArg -> (
+        ($[preTestFinishExpr] finishArg);
+        ((( $[preFinishExpr];
+            peers.iterate (\p -> (shutdown, p.addr) <- ()))
+              @:StopTimer) @Time(lbl=[# query], tag=[$ "Query time"])
+        ) @OnCounter(id=[# query_done], eq=[$ peers.size()])
+      )
+
+      // Signal to the master that a peer is ready.
+      // Once all peers are ready, the master will start the query.
+      trigger ready : () = \_ -> (
+        ( $[preReadyExpr];
+          ((peers.iterate (\p -> ($[queryTrigger], p.addr) <- ()))
+              @:StartTimer) @Time(lbl=[# query], tag=[$ "Query time"])
+        ) @OnCounter(id=[# peers_ready], eq=[$ peers.size()])
+      )
+
+      trigger load_all : () = \_ -> (
+        $[preLoadExpr];
+        ($[loadExpr]) @Profile(lbl=[# loader], tag=[$ "Load time"]);
+        ((ready, master) <- ())
+      )
+    }
+}
