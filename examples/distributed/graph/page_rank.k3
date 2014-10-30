@@ -66,16 +66,21 @@ declare aggregate_and_send_by_peer: collection { key: vertex, value: page_rank }
 
 trigger scatter: () = \_ -> (
   outgoing = empty { key: vertex, value: page_rank } @ { Map };
+  state.iterate (\s -> state.insert {
+                               key: s.key,
+                               value: (((1 - damping_factor)) + damping_factor * s.value)
+                             }
+  );
   state.iterate (\s ->
     let f = case active.lookup { key: s.key, value: false } of { Some x -> x.value } { None -> false } in
     if not f then () else (
     let neighbours = graph.lookup { key: s.key, value: empty { elem: vertex } @ { Collection }}
     in case neighbours of
-         { Some ns -> let out_degree = ns.value.size () in
-                        ns.value.iterate (\n -> outgoing.insert_with {
-                          key: n.elem,
-                          value: (((1 - damping_factor) / vertex_count) + damping_factor * s.value) / out_degree
-                        } (\a -> \e -> { key: a.key, value: a.value + e.value }))
+         { Some ns -> let out_degree = ns.value.size ()
+                      in ns.value.iterate (\n -> outgoing.insert_with {
+                           key: n.elem,
+                           value: s.value / out_degree
+                         } (\a -> \e -> { key: a.key, value: a.value + e.value }))
          }
          { None -> () }
   ));
