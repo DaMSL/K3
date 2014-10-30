@@ -223,7 +223,7 @@ namespace K3 {
         char * pch;
         pch = strtok(&line[0],",");
         V v;
-        while (pch != NULL) {
+        while (pch) {
           R_elem<double> rec;
           rec.elem = std::atof(pch);
           v.insert(rec);
@@ -237,31 +237,35 @@ namespace K3 {
     }
 
     template <template<typename S> class C, template <typename ...> class R, class V>
-    unit_t loadVectorLabel(string_impl filepath, C<R<double,V>>& c) {
-      std::string line;
-      std::ifstream infile(filepath);
-      while (std::getline(infile, line)){
-        char * prev;
-        char * pch;
-        pch = strtok(&line[0],",");
-        V v;
-        double label;
-        while (pch != NULL) {
-          prev = pch;
-          pch = strtok(NULL,",");
-          if (pch) { // was not last
-            R_elem<double> rec;
-            rec.elem = std::atof(prev);
-            v.insert(rec);
+    unit_t loadVectorLabel(int dims, string_impl filepath, C<R<double,V>>& c) {
+
+        // Buffers
+        std::string tmp_buffer;
+        R<double,V>  rec;
+        // Infile
+        std::ifstream in;
+        in.open(filepath);
+
+        // Parse by line
+        while(!in.eof()) {
+          V v;
+          R_elem<double> r;
+          for (int j = 0; j < dims; j++) {
+            std::getline(in, tmp_buffer, ',');
+            r.elem = std::atof(tmp_buffer.c_str());
+            v.insert(r);
           }
-          else { // was last
-            label = std::atof(prev);
-          }
+          std::getline(in, tmp_buffer, ',');
+          rec.class_label = std::atof(tmp_buffer.c_str());
+          rec.elem = v;
+          c.insert(rec);
+
+          in >> std::ws;
         }
-        R<double, V> rec2 {label, v};
-        c.insert(rec2);
-      }
-      return unit_t();
+
+        return unit_t {};
+
+
     }
   };
 
