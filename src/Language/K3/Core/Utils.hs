@@ -36,6 +36,8 @@ module Language.K3.Core.Utils
 , mapProgram
 , foldExpression
 , mapExpression
+, mapAnnotation
+, mapExprAnnotation
 
 , foldReturnExpression
 , foldMapReturnExpression
@@ -388,6 +390,34 @@ mapExpression :: (Monad m)
 mapExpression exprF prog = foldProgram returnPair returnPair wrapExprF Nothing () prog >>= return . snd
   where returnPair a b = return (a,b)
         wrapExprF a e = exprF e >>= return . (a,)
+
+-- | Map a function over all program annotations.
+mapAnnotation :: (Applicative m, Monad m)
+              => (Annotation Declaration -> m (Annotation Declaration))
+              -> (Annotation Expression  -> m (Annotation Expression))
+              -> (Annotation Type        -> m (Annotation Type))
+              -> K3 Declaration
+              -> m (K3 Declaration)
+mapAnnotation declF exprF typeF = mapProgram onDecl onMem onExpr (Just onType)
+  where onDecl d = nodeF declF d
+        onMem (Lifted    p n t eOpt anns) = Lifted    p n <$> onType t <*> maybe (return Nothing) (\e -> onExpr e >>= return . Just) eOpt <*> mapM declF anns
+        onMem (Attribute p n t eOpt anns) = Attribute p n <$> onType t <*> maybe (return Nothing) (\e -> onExpr e >>= return . Just) eOpt <*> mapM declF anns
+        onMem (MAnnotation p n anns)      = mapM declF anns >>= \nanns -> return $ MAnnotation p n nanns
+
+        onExpr e = modifyTree (nodeF exprF) e
+        onType t = modifyTree (nodeF typeF) t
+        nodeF f (Node (tg :@: anns) ch) = mapM f anns >>= \nanns -> return $ Node (tg :@: nanns) ch
+
+mapExprAnnotation :: (Monad m)
+                  => (Annotation Expression  -> m (Annotation Expression))
+                  -> (Annotation Type        -> m (Annotation Type))
+                  -> K3 Expression
+                  -> m (K3 Expression)
+mapExprAnnotation exprF typeF = modifyTree (onNode chainType)
+  where chainType (EType t) = modifyTree (onNode typeF) t >>= exprF . EType
+        chainType a = exprF a
+        onNode f (Node (tg :@: anns) ch) = mapM f anns >>= \nanns -> return $ Node (tg :@: nanns) ch
+
 
 -- | Fold a function and accumulator over all return expressions in the program.
 --

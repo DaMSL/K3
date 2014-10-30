@@ -10,6 +10,7 @@ import Control.Applicative
 import Control.Arrow
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.State
 
 import Data.Either
 import Data.Functor.Identity
@@ -61,7 +62,7 @@ evalMetaprogram evalOpts analyzeFOpt repairFOpt mp =
   where
     synthesizedProg = do
       localLog $ generatorInput mp
-      pWithDataAnns  <- mpGenerators mp
+      pWithDataAnns  <- runMpGenerators mp
       pWithMDataAnns <- applyDAnnGens pWithDataAnns
       pWithDADecls   <- modifyGDeclsF $ \gd -> addDecls gd pWithMDataAnns
       analyzedP      <- analyzeF pWithDADecls
@@ -107,8 +108,8 @@ defaultMetaRepair p = return $ repairProgram "metaprogram" p
 nullMetaAnalysis :: K3 Declaration -> GeneratorM (K3 Declaration)
 nullMetaAnalysis p = return p
 
-mpGenerators :: K3 Declaration -> GeneratorM (K3 Declaration)
-mpGenerators mp = mapTree evalMPDecl mp
+runMpGenerators :: K3 Declaration -> GeneratorM (K3 Declaration)
+runMpGenerators mp = mapTree evalMPDecl mp
   where
     evalMPDecl :: [K3 Declaration] -> K3 Declaration -> GeneratorM (K3 Declaration)
     evalMPDecl ch d@(tag -> DGenerator (MPDataAnnotation n [] tvars (partitionEithers -> ([], annMems)))) =
@@ -190,26 +191,35 @@ applyDAnnGens mp = mapProgram applyDAnnDecl applyDAnnMemDecl applyDAnnExprTree (
     rebuildNodeWithAnns (Node (t :@: _) ch) anns = return $ Node (t :@: anns) ch
 
 applyDAnnotation :: AnnotationCtor a -> Identifier -> SpliceEnv -> GeneratorM (Annotation a)
-applyDAnnotation aCtor annId sEnv = generatorWithGEnv $ \gEnv ->
-    maybe (spliceLookupErr annId) (expectSpliceAnnotation . ($ sEnv)) $ lookupDSPGenE annId gEnv
+applyDAnnotation aCtor annId sEnv = do
+    st <- get
+    let gEnv  = getGeneratorEnv st
+    let sCtxt = getSpliceContext st
+    let nsEnv = chaseBindings sCtxt sEnv
+    let postSCtxt = pushSCtxt nsEnv sCtxt
+    maybe (spliceLookupErr annId)
+          (expectSpliceAnnotation postSCtxt . ($ nsEnv))
+          $ lookupDSPGenE annId gEnv
 
-  where expectSpliceAnnotation (SRDecl p) = do
-          decl <- p
-          case tag decl of
-            DDataAnnotation n _ _ -> modifyGDeclsF_ (Right . addDGenDecl annId decl) >> return (aCtor n)
-            _ -> throwG $ boxToString $ ["Invalid data annotation splice"] %+ prettyLines decl
+  where
+    expectSpliceAnnotation sctxt (SRDecl p) = do
+      decl <- p
+      case tag decl of
+        DDataAnnotation n _ _ -> do
+          ndecl <- bindDAnnVars sctxt decl
+          modifyGDeclsF_ (Right . addDGenDecl annId ndecl) >> return (aCtor n)
 
-        expectSpliceAnnotation _ = throwG "Invalid data annotation splice"
+        _ -> throwG $ boxToString $ ["Invalid data annotation splice"] %+ prettyLines decl
 
-        spliceLookupErr n = throwG $ unwords ["Could not find data macro", n]
+    expectSpliceAnnotation _ _ = throwG "Invalid data annotation splice"
+
+    spliceLookupErr n = throwG $ unwords ["Could not find data macro", n]
 
 
 applyCAnnGens :: K3 Declaration -> GeneratorM (K3 Declaration)
-applyCAnnGens mp = mapProgram applyCAnnDecl applyCAnnMemDecl applyCAnnExprTree Nothing mp
+applyCAnnGens mp = mapExpression applyCAnnExprTree mp
   where
-    applyCAnnDecl      d = return d
-    applyCAnnMemDecl mem = return mem
-    applyCAnnExprTree  e = mapTree applyCAnnExpr e
+    applyCAnnExprTree e = mapTree applyCAnnExpr e
 
     -- TODO: think about propagation of annotations between rewrites.
     -- Currently we preserve all non-control annotations, but clearly this is rewrite-dependent.
@@ -224,25 +234,55 @@ applyCAnnGens mp = mapProgram applyCAnnDecl applyCAnnMemDecl applyCAnnExprTree N
 
 applyCAnnotation :: K3 Expression -> Identifier -> SpliceEnv -> ExprGenerator
 applyCAnnotation targetE cAnnId sEnv = do
+   st <- get
+   let gEnv      = getGeneratorEnv st
+   let sCtxt     = getSpliceContext st
+   let nsEnv     = chaseBindings sCtxt sEnv
+   let postSCtxt = pushSCtxt nsEnv sCtxt
    localLog $ "Applying control annotation " ++ cAnnId
-   generatorWithGEnv $ \gEnv ->
-     maybe (spliceLookupErr cAnnId) (\g -> injectRewrite $ g targetE sEnv) $ lookupERWGenE cAnnId gEnv
+              ++ " in "    ++ show sCtxt
+              ++ " with "  ++ show nsEnv
+   maybe (spliceLookupErr cAnnId)
+         (\g -> injectRewrite postSCtxt $ g targetE nsEnv)
+         $ lookupERWGenE cAnnId gEnv
 
   where
-    injectRewrite (SRExpr p) = localLog debugPassThru >> p
+    injectRewrite sctxt (SRExpr p) = localLog debugPassThru >> p >>= bindEAnnVars sctxt
 
-    injectRewrite (SRRewrite p) = do
+    injectRewrite sctxt (SRRewrite p) = do
       (rewriteE, decls) <- p
-      localLog (debugRewrite rewriteE)
-      modifyGDeclsF_ (Right . addCGenDecls cAnnId decls) >> return rewriteE
+      rewriteESub       <- bindEAnnVars sctxt rewriteE
+      declsSub          <- mapM (bindDAnnVars sctxt) decls
+      localLog (debugRewrite rewriteESub)
+      modifyGDeclsF_ (Right . addCGenDecls cAnnId declsSub) >> return rewriteESub
 
-    injectRewrite _ = throwG "Invalid control annotation rewrite"
+    injectRewrite _ _ = throwG "Invalid control annotation rewrite"
 
     debugPassThru   = unwords ["Passed on generator", cAnnId]
     debugRewrite  e = boxToString $ [unwords ["Generator", cAnnId, "rewrote as "]] %+ prettyLines e
 
     spliceLookupErr n = throwG $ unwords ["Could not find control macro", n]
 
+
+chaseBindings :: SpliceContext -> SpliceEnv -> SpliceEnv
+chaseBindings sctxt senv = Map.map chase senv
+  where chase (SVar i) = maybe (SVar i) chase $ lookupSCtxt i sctxt
+        chase x = x
+
+-- TODO: handle LApplyGen in DProperty
+bindDAnnVars :: (Applicative m, Monad m) => SpliceContext -> K3 Declaration -> m (K3 Declaration)
+bindDAnnVars sctxt d = mapAnnotation return (subEApply sctxt) (subTApply sctxt) d
+
+bindEAnnVars :: (Monad m) => SpliceContext -> K3 Expression -> m (K3 Expression)
+bindEAnnVars sctxt e = mapExprAnnotation (subEApply sctxt) (subTApply sctxt) e
+
+subEApply :: (Monad m) => SpliceContext -> Annotation Expression -> m (Annotation Expression)
+subEApply sctxt (EApplyGen c n csenv) = return $ EApplyGen c n (chaseBindings sctxt csenv)
+subEApply _ a = return a
+
+subTApply :: (Monad m) => SpliceContext -> Annotation Type -> m (Annotation Type)
+subTApply sctxt (TApplyGen n csenv) = return $ TApplyGen n (chaseBindings sctxt csenv)
+subTApply _ a = return a
 
 
 {- Splice-checking -}
@@ -373,14 +413,14 @@ expectLiteralSplicer :: String -> LiteralGenerator
 expectLiteralSplicer i = generatorWithSCtxt $ \sctxt -> liftParser i literalEmbedding >>= evalLiteralSplice sctxt
 
 evalIdPartsSplice :: SpliceContext -> Either [MPEmbedding] Identifier -> GeneratorM Identifier
-evalIdPartsSplice sctxt (Left ml) = evalSumEmbedding sctxt ml >>= \case
+evalIdPartsSplice sctxt (Left ml) = evalSumEmbedding "identifier" sctxt ml >>= \case
   SLabel i -> return i
   _ -> spliceFail $ "Invalid splice identifier embedding " ++ show ml
 
 evalIdPartsSplice _  (Right i) = return i
 
 evalTypeSplice :: SpliceContext -> Either [MPEmbedding] (K3 Type) -> TypeGenerator
-evalTypeSplice sctxt (Left ml) = evalSumEmbedding sctxt ml >>= \case
+evalTypeSplice sctxt (Left ml) = evalSumEmbedding "type" sctxt ml >>= \case
     SType t  -> return t
     SLabel i -> return $ TC.declaredVar i
     _ -> spliceFail $ "Invalid splice type value " ++ show ml
@@ -388,7 +428,7 @@ evalTypeSplice sctxt (Left ml) = evalSumEmbedding sctxt ml >>= \case
 evalTypeSplice _ (Right t) = return t
 
 evalExprSplice :: SpliceContext -> Either [MPEmbedding] (K3 Expression) -> ExprGenerator
-evalExprSplice sctxt (Left ml) = evalSumEmbedding sctxt ml >>= \case
+evalExprSplice sctxt (Left ml) = evalSumEmbedding "expr" sctxt ml >>= \case
     SExpr e  -> return e
     SLabel i -> return $ EC.variable i
     _ -> spliceFail $ "Invalid splice expression value " ++ show ml
@@ -396,15 +436,15 @@ evalExprSplice sctxt (Left ml) = evalSumEmbedding sctxt ml >>= \case
 evalExprSplice _ (Right e) = return e
 
 evalLiteralSplice :: SpliceContext -> Either [MPEmbedding] (K3 Literal) -> LiteralGenerator
-evalLiteralSplice sctxt (Left ml) = evalSumEmbedding sctxt ml >>= \case
+evalLiteralSplice sctxt (Left ml) = evalSumEmbedding "literal" sctxt ml >>= \case
     SLiteral l -> return l
     _ -> spliceFail $ "Invalid splice literal value " ++ show ml
 
 evalLiteralSplice _ (Right l) = return l
 
-evalSumEmbedding :: SpliceContext -> [MPEmbedding] -> GeneratorM SpliceValue
-evalSumEmbedding sctxt l = maybe sumError return =<< foldM concatSpliceVal Nothing l
-  where sumError = spliceFail $ "Inconsistent splice parts " ++ show l
+evalSumEmbedding :: String -> SpliceContext -> [MPEmbedding] -> GeneratorM SpliceValue
+evalSumEmbedding tg sctxt l = maybe sumError return =<< foldM concatSpliceVal Nothing l
+  where sumError = spliceFail $ "Inconsistent " ++ tg ++ " splice parts " ++ show l ++ " " ++ show sctxt
 
         concatSpliceVal Nothing se           = evalEmbedding sctxt se >>= return . Just
         concatSpliceVal (Just (SLabel i)) se = evalEmbedding sctxt se >>= doConcat (SLabel i)

@@ -756,7 +756,8 @@ lAnnotations sEnv = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
 
 dAnnotationUse :: Maybe SpliceEnv -> AnnotationCtor a -> ApplyAnnCtor a -> K3Parser (Annotation a)
 dAnnotationUse sEnvOpt aCtor apCtor = try mpOrAnn
-  where mpOrAnn = mkMpOrAnn =<< ((,) <$> identifier <*> option [] (parens $ commaSep1 $ contextualizedSpliceParameter sEnvOpt))
+  where mpOrAnn   = mkMpOrAnn =<< ((,) <$> identifier <*> annParams)
+        annParams = option [] (parens $ commaSep1 $ contextualizedSpliceParameter sEnvOpt)
         mkMpOrAnn (n, [])    = return $ aCtor n
         mkMpOrAnn (n,params) = return $ apCtor n $ mkSpliceEnv $ catMaybes params
 
@@ -847,6 +848,7 @@ contextualizedSpliceParameter sEnvOpt = choice [try fromContext, spliceParameter
   where
     fromContext = mkCtxtVal sEnvOpt <$> identifier <*> optional (symbol "=" *> contextParams)
     contextParams = try (Left <$> identifier) <|> try (Right <$> (brackets $ commaSep1 identifier))
+      -- ^ TODO: this prevents us from matching against an SVar. Generalize.
 
     mkCtxtVal Nothing _ _                     = Nothing
     mkCtxtVal (Just sEnv) a Nothing           = mkCtxtLt sEnv a >>= return . (a,)
