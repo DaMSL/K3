@@ -187,6 +187,13 @@ generateInExtendedSpliceEnv i spliceValue g = do
    modifySCtxtF_ $ Right . removeSCtxt i
    return r
 
+generateInSpliceCtxt :: SpliceContext -> GeneratorM a -> GeneratorM a
+generateInSpliceCtxt ctxtExt g = generatorWithSCtxt $ \ctxtBefore -> do
+   modifySCtxtF_ $ \ctxt -> Right $ concatCtxt ctxt ctxtExt
+   r <- g
+   modifySCtxtF_ $ \_ -> Right $ ctxtBefore
+   return r
+
 
 {- Generator environment accessors -}
 lookupDGenE :: Identifier -> GeneratorEnv -> Maybe K3Generator

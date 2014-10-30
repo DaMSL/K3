@@ -191,6 +191,9 @@ pushSCtxt senv ctxt = senv:ctxt
 popSCtxt :: SpliceContext -> SpliceContext
 popSCtxt = tail
 
+concatCtxt :: SpliceContext -> SpliceContext -> SpliceContext
+concatCtxt a b = a ++ b
+
 {- Splice environment helpers -}
 spliceVIdSym :: Identifier
 spliceVIdSym = "identifier"

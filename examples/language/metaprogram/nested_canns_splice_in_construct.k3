@@ -1,0 +1,20 @@
+control A[lbl : label] {
+  ?e => $.[e] + ($[lbl]_x @B(lbl=lbl))
+     +> { declare $[lbl]_x : int = 5 }
+}
+
+control B[lbl : label] {
+  ?e => $.[e] + ($[lbl]_y @C(lbl=[# $[lbl]_inner_splice]))
+     +> { declare $[lbl]_y : int = 10 }
+}
+
+control C[lbl : label] {
+  ?e => $.[e] + $[lbl]_z
+     +> { declare $[lbl]_z : int = 20 }
+}
+
+declare m : mut int = 0
+trigger t : () = \_ -> m = (3 @A(lbl=[# nested_test]))
+
+source s1 : () = value ()
+feed s1 |> t

@@ -43,7 +43,7 @@ import Language.K3.Analysis.HMTypes.Inference hiding ( localLog, localLogAction 
 import Language.K3.Utils.Pretty
 
 traceLogging :: Bool
-traceLogging = False
+traceLogging = True
 
 localLog :: (Functor m, Monad m) => String -> m ()
 localLog = logVoid traceLogging
@@ -192,10 +192,8 @@ applyDAnnGens mp = mapProgram applyDAnnDecl applyDAnnMemDecl applyDAnnExprTree (
 
 applyDAnnotation :: AnnotationCtor a -> Identifier -> SpliceEnv -> GeneratorM (Annotation a)
 applyDAnnotation aCtor annId sEnv = do
-    st <- get
-    let gEnv  = getGeneratorEnv st
-    let sCtxt = getSpliceContext st
-    let nsEnv = chaseBindings sCtxt sEnv
+    (gEnv, sCtxt) <- get >>= return . (getGeneratorEnv &&& getSpliceContext)
+    nsEnv         <- evalBindings sCtxt sEnv
     let postSCtxt = pushSCtxt nsEnv sCtxt
     maybe (spliceLookupErr annId)
           (expectSpliceAnnotation postSCtxt . ($ nsEnv))
@@ -234,10 +232,8 @@ applyCAnnGens mp = mapExpression applyCAnnExprTree mp
 
 applyCAnnotation :: K3 Expression -> Identifier -> SpliceEnv -> ExprGenerator
 applyCAnnotation targetE cAnnId sEnv = do
-   st <- get
-   let gEnv      = getGeneratorEnv st
-   let sCtxt     = getSpliceContext st
-   let nsEnv     = chaseBindings sCtxt sEnv
+   (gEnv, sCtxt) <- get >>= return . (getGeneratorEnv &&& getSpliceContext)
+   nsEnv         <- evalBindings sCtxt sEnv
    let postSCtxt = pushSCtxt nsEnv sCtxt
    localLog $ "Applying control annotation " ++ cAnnId
               ++ " in "    ++ show sCtxt
@@ -264,25 +260,35 @@ applyCAnnotation targetE cAnnId sEnv = do
     spliceLookupErr n = throwG $ unwords ["Could not find control macro", n]
 
 
-chaseBindings :: SpliceContext -> SpliceEnv -> SpliceEnv
-chaseBindings sctxt senv = Map.map chase senv
-  where chase (SVar i) = maybe (SVar i) chase $ lookupSCtxt i sctxt
+evalBindings :: SpliceContext -> SpliceEnv -> GeneratorM SpliceEnv
+evalBindings sctxt senv = evalMap (generateInSpliceCtxt sctxt) senv
+  where eval sv@(SVar  _)   = let csv = chase sv in if csv == sv then return sv else eval csv
+        eval (SLabel   i)   = spliceIdentifier i  >>= return . SLabel
+        eval (SType    t)   = spliceType t        >>= return . SType
+        eval (SExpr    e)   = spliceExpression e  >>= return . SExpr
+        eval (SDecl    d)   = spliceDeclaration d >>= return . SDecl
+        eval (SLiteral l)   = spliceLiteral l     >>= return . SLiteral
+        eval (SRecord  nvs) = evalMap id nvs >>= return . SRecord
+        eval (SList    svs) = mapM eval svs >>= return . SList
+
+        evalMap f m = mapM (\(k,v) -> f (eval v) >>= return . (k,)) (Map.toList m) >>= return . Map.fromList
+        chase (SVar i) = maybe (SVar i) chase $ lookupSCtxt i sctxt
         chase x = x
 
 -- TODO: handle LApplyGen in DProperty
-bindDAnnVars :: (Applicative m, Monad m) => SpliceContext -> K3 Declaration -> m (K3 Declaration)
-bindDAnnVars sctxt d = mapAnnotation return (subEApply sctxt) (subTApply sctxt) d
+bindDAnnVars :: SpliceContext -> K3 Declaration -> DeclGenerator
+bindDAnnVars sctxt d = mapAnnotation return (evalEApply sctxt) (evalTApply sctxt) d
 
-bindEAnnVars :: (Monad m) => SpliceContext -> K3 Expression -> m (K3 Expression)
-bindEAnnVars sctxt e = mapExprAnnotation (subEApply sctxt) (subTApply sctxt) e
+bindEAnnVars :: SpliceContext -> K3 Expression -> ExprGenerator
+bindEAnnVars sctxt e = mapExprAnnotation (evalEApply sctxt) (evalTApply sctxt) e
 
-subEApply :: (Monad m) => SpliceContext -> Annotation Expression -> m (Annotation Expression)
-subEApply sctxt (EApplyGen c n csenv) = return $ EApplyGen c n (chaseBindings sctxt csenv)
-subEApply _ a = return a
+evalEApply :: SpliceContext -> Annotation Expression -> GeneratorM (Annotation Expression)
+evalEApply sctxt (EApplyGen c n csenv) = evalBindings sctxt csenv >>= return . EApplyGen c n
+evalEApply _ a = return a
 
-subTApply :: (Monad m) => SpliceContext -> Annotation Type -> m (Annotation Type)
-subTApply sctxt (TApplyGen n csenv) = return $ TApplyGen n (chaseBindings sctxt csenv)
-subTApply _ a = return a
+evalTApply :: SpliceContext -> Annotation Type -> GeneratorM (Annotation Type)
+evalTApply sctxt (TApplyGen n csenv) = evalBindings sctxt csenv >>= return . TApplyGen n
+evalTApply _ a = return a
 
 
 {- Splice-checking -}
@@ -456,10 +462,10 @@ evalSumEmbedding tg sctxt l = maybe sumError return =<< foldM concatSpliceVal No
 evalEmbedding :: SpliceContext -> MPEmbedding -> GeneratorM SpliceValue
 evalEmbedding _ (MPENull i) = return $ SLabel i
 
-evalEmbedding sctxt (MPEPath var path) = maybe evalErr (flip matchPath path) $ lookupSCtxt var sctxt
+evalEmbedding sctxt em@(MPEPath var path) = maybe evalErr (flip matchPath path) $ lookupSCtxt var sctxt
   where matchPath v [] = return v
         matchPath v (h:t) = maybe evalErr (flip matchPath t) $ spliceRecordField v h
-        evalErr = spliceIdPathFail var path "lookup failed"
+        evalErr = spliceIdPathFail var path $ unwords ["lookup failed", "(", show em, ")"]
 
 evalEmbedding sctxt (MPEHProg expr) = evalHaskellProg sctxt expr
 
