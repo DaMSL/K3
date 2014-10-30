@@ -13,3 +13,6 @@ declare loadRKQ3 : string -> collection {key: string, value: int} @Map  -> ()
 
 @:CArgs 2
 declare graphLoader: string -> collection { key: int, value: int } @ { Collection } -> ()
+
+@:CArgs 2
+declare loadGraph: string -> collection { key: int, value: collection { elem: int } @ Collection  } @ Map  -> ()
