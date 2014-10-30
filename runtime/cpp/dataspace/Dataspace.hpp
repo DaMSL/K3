@@ -515,12 +515,14 @@ class Map {
   }
 
   template <class F>
-  unit_t insert_with(R rec, F f) {
+  unit_t insert_with(const R& rec, F f) {
     auto existing = container.find(rec.key);
     if (existing == std::end(container)) {
       container[rec.key] = rec.value;
     } else {
-      container[rec.key] = f(ElemType { existing->first, existing->second })(rec).value;
+      container[rec.key] = f(std::move(ElemType{
+	    std::move(existing->first),
+	    std::move(existing->second)}))(rec).value;
     }
 
     return unit_t {};
