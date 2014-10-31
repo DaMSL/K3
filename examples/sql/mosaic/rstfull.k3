@@ -46,95 +46,153 @@ declare ATIMESD : ind collection {
   {key:__init_vid__, value:0}|} @ { Collection }
 
 declare ATIMESD_mT1 : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare ATIMESD_mT1_mR1 : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
+  } @ { Collection } = ind empty {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
   } @ { Collection }
 
 declare ATIMESD_mS1 : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare ATIMESD_mS2 : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare ATIMESD_mR1 : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_ATIMESD_mT1_s0_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_ATIMESD_mT1_mR1_s2_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
+  } @ { Collection } = ind empty {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
   } @ { Collection }
 
 declare map_ATIMESD_mT1_s3_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_ATIMESD_mT1_mR1_s5_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
+  } @ { Collection } = ind empty {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
   } @ { Collection }
 
 declare map_ATIMESD_mS1_s6_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_ATIMESD_mS2_s6_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_ATIMESD_mS1_s7_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_ATIMESD_mS2_s9_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_ATIMESD_mS1_s10_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_ATIMESD_mS2_s10_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_ATIMESD_mS1_s11_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_ATIMESD_mS2_s13_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_ATIMESD_mR1_s14_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_ATIMESD_mT1_mR1_s15_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
+  } @ { Collection } = ind empty {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
   } @ { Collection }
 
 declare map_ATIMESD_mR1_s17_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_ATIMESD_mT1_mR1_s18_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
+  } @ { Collection } = ind empty {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int
   } @ { Collection }
 
 declare map_ATIMESD_mS2_s24_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_ATIMESD_mS2_s26_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_ATIMESD_mS1_s28_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_ATIMESD_mS1_s30_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_ATIMESD_mS2_s32_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_ATIMESD_mS2_s34_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_ATIMESD_mS1_s36_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_ATIMESD_mS1_s38_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare __stmt_cntrs__ : collection {

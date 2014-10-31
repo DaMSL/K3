@@ -52,163 +52,259 @@ declare __init_vid__ : { _r1_:int, _r2_:int, _r3_:int } =
 
 declare QUERY3 : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
+  _r5_:real } @ { Collection } = ind empty {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
   _r5_:real } @ { Collection }
 
 declare QUERY3_mLINEITEM1 : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int, _r5_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int, _r5_:int
   } @ { Collection }
 
 declare QUERY3_mLINEITEM1_mCUSTOMER2 : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
+  _r5_:int, _r6_:int } @ { Collection } = ind empty {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
   _r5_:int, _r6_:int } @ { Collection }
 
 declare QUERY3_mORDERS1 : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare QUERY3_mORDERS3 : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real } @ { Collection }
 
 declare QUERY3_mORDERS6 : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real } @ { Collection }
 
 declare QUERY3_mCUSTOMER2 : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
+  _r5_:int, _r6_:real } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
   _r5_:int, _r6_:real } @ { Collection }
 
 declare QUERY3_mCUSTOMER4 : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
+  _r5_:int, _r6_:real } @ { Collection } = ind empty {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
   _r5_:int, _r6_:real } @ { Collection }
 
 declare map_QUERY3_mCUSTOMER2_s0_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
+  _r5_:int, _r6_:real } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
   _r5_:int, _r6_:real } @ { Collection }
 
 declare map_QUERY3_mCUSTOMER4_s0_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
+  _r5_:int, _r6_:real } @ { Collection } = ind empty {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
   _r5_:int, _r6_:real } @ { Collection }
 
 declare map_QUERY3_mLINEITEM1_mCUSTOMER2_s1_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
+  _r5_:int, _r6_:int } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
   _r5_:int, _r6_:int } @ { Collection }
 
 declare map_QUERY3_mCUSTOMER2_s3_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
+  _r5_:int, _r6_:real } @ { Collection } = ind empty {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
   _r5_:int, _r6_:real } @ { Collection }
 
 declare map_QUERY3_mCUSTOMER4_s3_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
+  _r5_:int, _r6_:real } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
   _r5_:int, _r6_:real } @ { Collection }
 
 declare map_QUERY3_mLINEITEM1_mCUSTOMER2_s4_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
+  _r5_:int, _r6_:int } @ { Collection } = ind empty {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
   _r5_:int, _r6_:int } @ { Collection }
 
 declare map_QUERY3_mORDERS1_s6_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_QUERY3_mORDERS3_s6_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real } @ { Collection }
 
 declare map_QUERY3_mORDERS6_s6_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real } @ { Collection }
 
 declare map_QUERY3_mORDERS1_s7_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_QUERY3_mORDERS3_s9_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real } @ { Collection }
 
 declare map_QUERY3_mORDERS6_s10_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real } @ { Collection }
 
 declare map_QUERY3_mORDERS1_s11_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_QUERY3_mORDERS3_s11_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real } @ { Collection }
 
 declare map_QUERY3_mORDERS6_s11_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real } @ { Collection }
 
 declare map_QUERY3_mORDERS1_s12_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_QUERY3_mORDERS3_s14_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real } @ { Collection }
 
 declare map_QUERY3_mORDERS6_s15_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real } @ { Collection }
 
 declare map_QUERY3_mLINEITEM1_s16_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int, _r5_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int, _r5_:int
   } @ { Collection }
 
 declare map_QUERY3_mLINEITEM1_mCUSTOMER2_s19_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
+  _r5_:int, _r6_:int } @ { Collection } = ind empty {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
   _r5_:int, _r6_:int } @ { Collection }
 
 declare map_QUERY3_mLINEITEM1_mCUSTOMER2_s20_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
+  _r5_:int, _r6_:int } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
   _r5_:int, _r6_:int } @ { Collection }
 
 declare map_QUERY3_mLINEITEM1_s21_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int, _r5_:int
+  } @ { Collection } = ind empty {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int, _r5_:int
   } @ { Collection }
 
 declare map_QUERY3_mLINEITEM1_mCUSTOMER2_s24_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
+  _r5_:int, _r6_:int } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
   _r5_:int, _r6_:int } @ { Collection }
 
 declare map_QUERY3_mLINEITEM1_mCUSTOMER2_s25_buf : ind collection {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
+  _r5_:int, _r6_:int } @ { Collection } = ind empty {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int, _r4_:int,
   _r5_:int, _r6_:int } @ { Collection }
 
 declare map_QUERY3_mORDERS3_s36_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real } @ { Collection }
 
 declare map_QUERY3_mORDERS6_s36_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real } @ { Collection }
 
 declare map_QUERY3_mORDERS3_s38_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real } @ { Collection }
 
 declare map_QUERY3_mORDERS6_s38_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real } @ { Collection }
 
 declare map_QUERY3_mORDERS1_s40_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_QUERY3_mORDERS1_s42_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_QUERY3_mORDERS1_s44_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_QUERY3_mORDERS1_s46_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_QUERY3_mORDERS3_s48_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real } @ { Collection }
 
 declare map_QUERY3_mORDERS6_s48_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real } @ { Collection }
 
 declare map_QUERY3_mORDERS3_s50_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real } @ { Collection }
 
 declare map_QUERY3_mORDERS6_s50_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:real } @ { Collection }
 
 declare map_QUERY3_mORDERS1_s52_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_QUERY3_mORDERS1_s54_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_QUERY3_mORDERS1_s56_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map_QUERY3_mORDERS1_s58_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare __stmt_cntrs__ : collection {
