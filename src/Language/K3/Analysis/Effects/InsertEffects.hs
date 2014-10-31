@@ -820,10 +820,17 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       case getESymbol l of
         Nothing   -> error $ "failed to find symbol at lambda: " ++ show n
         Just lSym -> do
-          appE    <- genEff $ apply lSym aSym
-          fullEff <- combineEffSeq [seqE, Just appE]
-          fullSym <- combineSymApply (Just lSym) (Just aSym)
-          return $ addEffSymCh fullEff fullSym ch n
+          mapp   <- applyLambda lSym aSym
+          case mapp of
+            Nothing -> do
+              appE    <- genEff $ apply lSym aSym
+              fullEff <- combineEffSeq [seqE, Just appE]
+              fullSym <- combineSymApply (Just lSym) (Just aSym)
+              return $ addEffSymCh fullEff fullSym ch n
+            Just (resE, resS) -> do
+              fullEff <- combineEffSeq [seqE, Just resE]
+              return $ addEffSymCh fullEff (Just resS) ch n
+
     -- Bind
     handleExpr ch@[bind,e] n@(tag -> EBindAs b) = do
       let iProvs = extractBindData b
