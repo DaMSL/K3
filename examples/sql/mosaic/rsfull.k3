@@ -5493,13 +5493,11 @@ trigger node_dummy : int
 =
   (\x ->  ())
 
-trigger switch_main : {
-_r1_:string, _r2_:int, _r3_:int, _r4_:int, _r5_:int
-}
+trigger switch_main : 
+(string, int, int, int, int)
 =
   (\_b1_ -> 
-    bind _b1_ as {_r1_:trigger_id, _r2_:insert_R_arg0, _r3_:insert_R_arg1,
-                  _r4_:insert_S_arg0, _r5_:insert_S_arg1} in if trigger_id ==
+   bind _b1_ as (trigger_id, insert_R_arg0, insert_R_arg1, insert_S_arg0, insert_S_arg1) in if trigger_id ==
                                                                "insert_S"
                                                              then
                                                                (insert_S, me)<- {
@@ -5514,7 +5512,6 @@ _r1_:string, _r2_:int, _r3_:int, _r4_:int, _r5_:int
                                                                    value:insert_R_arg1}
                                                                else ())
 
-source s1 : { _r1_:string, _r2_:int, _r3_:int, _r4_:int, _r5_:int
-} = file "rs.csv" k3
+source s1 : (string, int, int, int, int) = file "rs.csv" k3
 feed s1 |> switch_main
 
