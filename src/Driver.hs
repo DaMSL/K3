@@ -119,7 +119,7 @@ run opts = do
     analyzer DeadCodeElimination x =
       wrapEither (Simplification.eliminateDeadProgramCode . fst . Effects.runConsolidatedAnalysis) x
     analyzer Profiling x           = first (cleanGeneration "profiling" . Profiling.addProfiling) x
-    analyzer Purity x              = first (Pure.runPurity . fst . Effects.runConsolidatedAnalysis) x
+    analyzer Purity x              = first ((\(d,e) -> Pure.runPurity e d) . Effects.runConsolidatedAnalysis) x
     analyzer ReadOnlyBinds x       = first (cleanGeneration "ro_binds" . RemoveROBinds.transform) x
     analyzer TriggerSymbols x      = wrapEither TriggerSymbols.triggerSymbols x
     analyzer a (p,s)               = (p, unwords [s, "unhandled analysis", show a])
