@@ -19,10 +19,6 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Type
 import Language.K3.Core.Literal
 
-import Language.K3.Core.Constructor.Type       as TC
-import Language.K3.Core.Constructor.Literal    as LC
-import Language.K3.Core.Constructor.Expression as EC
-
 import Language.K3.Utils.Pretty
 
 {-| Metaprograms, as a parsing-time AST.
@@ -223,54 +219,3 @@ mkRecordSpliceEnv ids tl = mkSpliceEnv $ map mkSpliceEnvEntry $ zip ids tl
 -- | Splice environment merge, favoring elements in the RHS operand.
 mergeSpliceEnv :: SpliceEnv -> SpliceEnv -> SpliceEnv
 mergeSpliceEnv = Map.unionWith (\_ v -> v)
-
-{- Splice value operations -}
-concatLabel :: SpliceValue -> SpliceValue -> SpliceValue
-concatLabel (SLabel a) (SLabel b) = SLabel $ a ++ b
-concatLabel _ _ = error "Invalid splice labels"
-
-concatLabels :: SpliceValue -> SpliceValue
-concatLabels (SList vs) = foldl concatLabel (SLabel "") vs
-concatLabels _ = error "Invalid splice value container for concatLabels"
-
-mkRecord :: SpliceValue -> SpliceValue
-mkRecord (SList vs) = maybe err (SType . TC.record) $ mapM mkRecField vs
-  where mkRecField v = do
-          (SLabel n) <- ltLabel v
-          (SType t)  <- ltType v
-          return (n,t)
-        err = error "Invalid splice container elements for mkRecord"
-
-mkRecord _ = error "Invalid splice value container for mkRecord"
-
-mkTuple :: SpliceValue -> SpliceValue
-mkTuple (SList vs) = maybe err (SType . TC.tuple) $ mapM asType vs
-  where asType (SType t) = Just t
-        asType _ = Nothing
-        err = error "Invalid splice container elements for mkTuple"
-
-mkTuple _ = error "Invalid splice value container for mkTuple"
-
-listLabels :: SpliceValue -> SpliceValue
-listLabels (SList vs) = maybe err SList $ mapM ltLabel vs
-  where err = error "Invalid splice container elements for listLabels"
-
-listLabels _ = error "Invalid splice value container for listLabels"
-
-listTypes :: SpliceValue -> SpliceValue
-listTypes (SList vs) = maybe err SList $ mapM ltType vs
-  where err = error "Invalid splice container elements for listTypes"
-
-listTypes _ = error "Invalid splice value container for listTypes"
-
-literalLabel :: SpliceValue -> SpliceValue
-literalLabel (SLabel i) = SLiteral $ LC.string i
-literalLabel _ = error "Invalid splice label for literalLabel"
-
-literalType :: SpliceValue -> SpliceValue
-literalType (SType t) = SLiteral . LC.string $ show t
-literalType _ = error "Invalid splice label for literalType"
-
-exprLabel :: SpliceValue -> SpliceValue
-exprLabel (SLabel i) = SExpr $ EC.constant $ CString i
-exprLabel _ = error "Invalid splice label for exprLabel"

@@ -30,7 +30,7 @@ import Language.K3.Core.Metaprogram
 import Language.K3.Metaprogram.DataTypes
 
 metaHK3TraceLogging :: Bool
-metaHK3TraceLogging = False
+metaHK3TraceLogging = True
 
 localLog :: (Functor m, Monad m) => String -> m ()
 localLog = logVoid metaHK3TraceLogging

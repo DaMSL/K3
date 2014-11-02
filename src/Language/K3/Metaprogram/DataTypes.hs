@@ -242,7 +242,9 @@ defaultMPEvalOptions = MPEvalOptions dInterpArgs dSearchPaths dLoadPaths dImport
   where
     dInterpArgs  = ["-package-db", ".cabal-sandbox/x86_64-windows-ghc-7.8.3-packages.conf.d"]
     dSearchPaths = [".", "../K3-Core/src"]
-    dLoadPaths   = ["Language.K3.Core.Metaprogram"]
+    dLoadPaths   = [ "Language.K3.Core.Metaprogram"
+                   , "Language.K3.Metaprogram.Primitives.Values"
+                   , "Language.K3.Metaprogram.Primitives.Distributed" ]
     dImportPaths = [ "Prelude"
                    , "Data.Map"
                    , "Data.Tree"
@@ -251,7 +253,9 @@ defaultMPEvalOptions = MPEvalOptions dInterpArgs dSearchPaths dLoadPaths dImport
                    , "Language.K3.Core.Type"
                    , "Language.K3.Core.Expression"
                    , "Language.K3.Core.Declaration"
-                   , "Language.K3.Core.Metaprogram" ]
+                   , "Language.K3.Core.Metaprogram"
+                   , "Language.K3.Metaprogram.Primitives.Values"
+                   , "Language.K3.Metaprogram.Primitives.Distributed" ]
 
 initializeInterpreter :: MPEvalOptions -> Interpreter ()
 initializeInterpreter evalOpts = do
@@ -259,4 +263,4 @@ initializeInterpreter evalOpts = do
   void $  HI.loadModules $ (mpLoadPaths evalOpts)
   void $  HI.setImports $ (mpImportPaths evalOpts)
   mods <- HI.getLoadedModules
-  logVoid False $ ("Loaded: " ++ show mods)
+  logVoid True $ ("Loaded: " ++ show mods)

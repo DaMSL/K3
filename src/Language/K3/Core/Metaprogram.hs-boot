@@ -68,13 +68,3 @@ addSpliceE         :: Identifier -> SpliceValue -> SpliceEnv -> SpliceEnv
 emptySpliceEnv     :: SpliceEnv
 mkSpliceEnv        :: [(Identifier, SpliceValue)] -> SpliceEnv
 mergeSpliceEnv     :: SpliceEnv -> SpliceEnv -> SpliceEnv
-
-{- Splice value operations -}
-concatLabel  :: SpliceValue -> SpliceValue -> SpliceValue
-concatLabels :: SpliceValue -> SpliceValue
-mkRecord     :: SpliceValue -> SpliceValue
-mkTuple      :: SpliceValue -> SpliceValue
-listLabels   :: SpliceValue -> SpliceValue
-listTypes    :: SpliceValue -> SpliceValue
-literalLabel :: SpliceValue -> SpliceValue
-literalType  :: SpliceValue -> SpliceValue

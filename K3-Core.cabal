@@ -91,6 +91,8 @@ library
         Language.K3.Metaprogram.DataTypes,
         Language.K3.Metaprogram.Evaluation,
         Language.K3.Metaprogram.MetaHK3,
+        Language.K3.Metaprogram.Primitives.Values,
+        Language.K3.Metaprogram.Primitives.Distributed,
         Language.K3.Interpreter.Data.Types,
         Language.K3.Interpreter.Data.Instances,
         Language.K3.Interpreter.Data.Accessors,

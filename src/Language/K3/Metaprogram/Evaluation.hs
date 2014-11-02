@@ -43,7 +43,7 @@ import Language.K3.Analysis.HMTypes.Inference hiding ( localLog, localLogAction 
 import Language.K3.Utils.Pretty
 
 traceLogging :: Bool
-traceLogging = True
+traceLogging = False
 
 localLog :: (Functor m, Monad m) => String -> m ()
 localLog = logVoid traceLogging
