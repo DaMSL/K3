@@ -136,7 +136,7 @@ runPasses :: [ProgramTransform] -> K3 Declaration -> Either String (K3 Declarati
 runPasses passes d = withPasses passes (d, Nothing)
 
 effectPasses :: [ProgramTransform]
-effectPasses = [addEitherEnv Purity.runPurity]
+effectPasses = [addEnvRet Purity.runPurity]
 
 optPasses :: [ProgramTransform]
 optPasses = map prepareOpt [ (simplify,         "opt-simplify-prefuse")
@@ -147,7 +147,7 @@ optPasses = map prepareOpt [ (simplify,         "opt-simplify-prefuse")
 
 cgPasses :: Int -> [ProgramTransform]
 cgPasses 1 = [inferFreshEffects,
-              addEitherEnv Purity.runPurity,
+              addEnvRet Purity.runPurity,
               addEitherEnv CArgs.runAnalysis,
               addEnvRet writebackOpt,
               addEnvRet lambdaFormOptD,

@@ -1,4 +1,34 @@
-declare error : () -> unknown
+declare maxi : { key:int, value:int } -> int
+
+declare maxif : { key:int, value:real } -> int
+
+declare reciprocali : int -> real
+
+declare reciprocal : real -> real
+
+declare regex_match : { key:string, value:string } -> real
+
+declare substring : { _r1_:string, _r2_:int, _r3_:int } -> string
+
+declare date_part : { key:string, value:int } -> int
+
+declare load_csv : string -> unknown
+
+declare maxi : { key:int, value:int } -> int
+
+declare maxif : { key:int, value:real } -> int
+
+declare reciprocali : int -> real
+
+declare reciprocal : real -> real
+
+declare regex_match : { key:string, value:string } -> real
+
+declare substring : { _r1_:string, _r2_:int, _r3_:int } -> string
+
+declare date_part : { key:string, value:int } -> int
+
+declare load_csv : string -> unknown
 
 declare __map_ids__ : collection { _r1_:int, _r2_:string, _r3_:int
   } @ { Collection } = {| _r1_:int, _r2_:string, _r3_:int |
@@ -24,9 +54,13 @@ declare __SQL_SUM_AGGREGATE_1 : ind collection {
   {key:__init_vid__, value:0}|} @ { Collection }
 
 declare __SQL_SUM_AGGREGATE_1_mS1 : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare __SQL_SUM_AGGREGATE_1_mR1 : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare __SQL_SUM_AGGREGATE_2 : ind collection {
@@ -35,45 +69,73 @@ declare __SQL_SUM_AGGREGATE_2 : ind collection {
   {key:__init_vid__, value:0}|} @ { Collection }
 
 declare __SQL_SUM_AGGREGATE_2_mS3 : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare __SQL_SUM_AGGREGATE_2_mR1 : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map___SQL_SUM_AGGREGATE_1_mS1_s0_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map___SQL_SUM_AGGREGATE_1_mS1_s2_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map___SQL_SUM_AGGREGATE_2_mS3_s2_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map___SQL_SUM_AGGREGATE_1_mS1_s4_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map___SQL_SUM_AGGREGATE_1_mS1_s6_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map___SQL_SUM_AGGREGATE_2_mS3_s6_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map___SQL_SUM_AGGREGATE_1_mR1_s8_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map___SQL_SUM_AGGREGATE_2_mR1_s10_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map___SQL_SUM_AGGREGATE_1_mR1_s10_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map___SQL_SUM_AGGREGATE_1_mR1_s12_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map___SQL_SUM_AGGREGATE_2_mR1_s14_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare map___SQL_SUM_AGGREGATE_1_mR1_s14_buf : ind collection {
+  _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int
+  } @ { Collection } = ind empty {
   _r1_:{ _r1_:int, _r2_:int, _r3_:int }, _r2_:int, _r3_:int } @ { Collection }
 
 declare __stmt_cntrs__ : collection {

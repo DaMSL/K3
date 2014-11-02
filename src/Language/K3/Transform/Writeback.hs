@@ -27,7 +27,7 @@ import Language.K3.Core.Declaration
 
 import Language.K3.Analysis.Effects.Common
 import Language.K3.Analysis.Effects.Core
-import Language.K3.Analysis.Effects.InsertEffects(EffectEnv, substGlobalsE)
+import Language.K3.Analysis.Effects.InsertEffects(EffectEnv, eE, eS)
 
 import Language.K3.Transform.Hints
 
@@ -39,9 +39,9 @@ instance (Ord a) => GHC.Exts.IsList (S.Set a) where
 
 pattern TAC t as cs = Node (t :@: as) cs
 
-findScope :: K3 Effect -> K3 Effect
-findScope f@(tag -> FScope _ _) = f
-findScope (children -> fs) = findScope (last fs)
+findScope :: EffectEnv -> K3 Effect -> K3 Effect
+findScope env f@(tag . eE env -> FScope _ _) = f
+findScope env (children . eE env -> fs) = findScope env (last fs)
 
 symIDs :: S.Set (K3 Symbol) -> S.Set Identifier
 symIDs = S.map (\(tag -> Symbol i _) -> i)
@@ -49,14 +49,14 @@ symIDs = S.map (\(tag -> Symbol i _) -> i)
 -- | Determine whether or not a given symbol has a read/write/superstructure conflict in the given
 -- effect tree. To conflict, the symbol's superstructure must be read after the symbol was written
 -- to, or the superstructure was written anywhere.
-conflicts :: K3 Effect -> K3 Symbol -> Bool
-conflicts f k = conflictsWR f || any (flip hasWrite f) kk
+conflicts :: EffectEnv -> K3 Effect -> K3 Symbol -> Bool
+conflicts env f k = conflictsWR f || any (`hasWrite` f) kk
   where
     kk = S.delete k $ anySuperStructure k
 
-    conflictsWR (tag &&& children -> (FSeq, [first, second]))
-        = conflictsWR first || conflictsWR second || (hasWrite k first && any (flip hasRead second) kk)
-    conflictsWR (children -> cs) = any conflictsWR cs
+    conflictsWR (tnc . eE env -> (FSeq, [first, second]))
+        = conflictsWR first || conflictsWR second || (hasWrite k first && any (`hasRead` second) kk)
+    conflictsWR (children . eE env -> cs) = any conflictsWR cs
 
 writebackOpt :: EffectEnv -> K3 Declaration -> K3 Declaration
 writebackOpt env (TAC (DGlobal i t me) as cs) = TAC (DGlobal  i t (writebackOptE env <$> me)) as cs
@@ -65,15 +65,16 @@ writebackOpt env (TAC (DRole n) as cs)        = TAC (DRole n) as $ map (writebac
 writebackOpt _ t = t
 
 writebackOptE :: EffectEnv -> K3 Expression -> K3 Expression
-writebackOptE env g@(TAC t@(EBindAs _) as cs) = TAC t (constructBindHint (substGlobalsE env g) : as) $
+writebackOptE env g@(TAC t@(EBindAs _) as cs) = TAC t (constructBindHint env g : as) $
                                                    map (writebackOptE env) cs
-writebackOptE env g@(TAC t@(ECaseOf _) as cs) = TAC t (constructBindHint (substGlobalsE env g) : as) $
+writebackOptE env g@(TAC t@(ECaseOf _) as cs) = TAC t (constructBindHint env g : as) $
                                                    map (writebackOptE env) cs
 writebackOptE env (TAC t as cs)               = TAC t as $ map (writebackOptE env) cs
 
-constructBindHint :: K3 Expression -> Annotation Expression
-constructBindHint g = EOpt $ BindHint (symIDs refBound, [], symIDs writeBound)
+constructBindHint :: EffectEnv -> K3 Expression -> Annotation Expression
+constructBindHint env g = EOpt $ BindHint (symIDs refBound, [], symIDs writeBound)
   where
-    (tag &&& children ->  (FScope newSymbols _, cs)) = findScope $ let (EEffect k) = fromJust $ g @~ isEEffect in k
+    (tnc . eE env ->  (FScope newSymbols _, cs)) =
+        findScope env $ let (EEffect k) = fromJust $ g @~ isEEffect in k
     (writeBound, refBound) = if null cs then ([], S.fromList newSymbols)
-                             else S.partition (conflicts $ head cs) $ S.fromList newSymbols
+                             else S.partition (conflicts env $ head cs) $ S.fromList newSymbols

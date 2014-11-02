@@ -863,18 +863,25 @@ contextualizedSpliceParameter sEnvOpt = choice [try fromContext, spliceParameter
 
 {- Effect signatures -}
 effectSignature :: K3Parser (Identifier -> [Annotation Declaration])
-effectSignature = mkSigAnn <$> (keyword "with" *> keyword "effects" *> (sepBy1 effTerm $ symbol "|"))
-  where mkSigAnn s n = [DSymbol $ mkTopLevelSym n s]
-        mkTopLevelSym n s = replaceCh (FC.symbol n $ F.PSet) $ catMaybes $ map mkPLambda $ concat s
-        mkPLambda f@(tag -> F.FScope [sym] _ ) | F.Symbol i _ <- tag sym = Just $ FC.symbol i $ F.PLambda i f
-                                               | otherwise = Nothing
-        mkPLambda _ = Nothing
+effectSignature = mkSigAnn <$> (keyword "with" *> keyword "effects" *> (sepBy1 effLambda $ symbol "|"))
+  where mkSigAnn s n       = [DSymbol $ mkTopLevelSym n s]
+        mkTopLevelSym n ss = replaceCh (FC.symbol n $ F.PSet) ss
+
+effLambda :: K3Parser (K3 F.Symbol)
+effLambda = mkLambda <$> readLambda <*> choice [Left <$> try effLambda, Right <$> try effTerm]
+  where readLambda = choice [iArrow "fun", iArrowS "\\"]
+        mkLambda :: String -> Either (K3 F.Symbol) [K3 F.Effect] -> K3 F.Symbol
+        mkLambda i (Left s)  = FC.lambda i (mkScope i []) $ Just s
+        mkLambda i (Right e) = FC.lambda i (mkScope i e) Nothing
+        mkScope i ch = FC.scope [FC.symbol i F.PVar] (Right ([], [], [])) $ termAsSeq ch
+        termAsSeq []  = []
+        termAsSeq [x] = [x]
+        termAsSeq xs  = [FC.seq xs]
 
 effTerm :: K3Parser [K3 F.Effect]
-effTerm = (choice $ map try [effRead, effWrite, effLambda, effApply, effSeq, effLoop]) <?> "effect term"
+effTerm = choice (map try [effRead, effWrite, effApply, effSeq, effLoop]) <?> "effect term"
   where effRead   = map FC.read  <$> varList "R" effSymbol
         effWrite  = map FC.write <$> varList "W" effSymbol
-        effLambda = mkScope  <$> choice [iArrow "fun", iArrowS "\\"] <*> effTerm
         effApply  = (\a b -> [FC.apply a b]) <$> effSymbol <*> effSymbol
         effSeq    = (:[]) . FC.seq . concat <$> brackets (semiSep1 effTerm)
         effLoop   = (\eff -> [FC.loop $ termAsSeq eff]) <$> (parens effTerm) <* symbol "*"
@@ -883,8 +890,6 @@ effTerm = (choice $ map try [effRead, effWrite, effLambda, effApply, effSeq, eff
                         <$> (identifier <|> (keyword "self"    >> return "self")
                                         <|> (keyword "content" >> return "content")))
                         <?> "effect symbol"
-
-        mkScope i ch = [FC.scope [FC.symbol i F.PVar] ([], [], []) $ [termAsSeq ch]]
         termAsSeq t = if length t == 1 then head t else FC.seq t
         varList pfx parser = string pfx *> brackets (commaSep1 parser)
 
