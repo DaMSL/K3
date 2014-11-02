@@ -63,7 +63,7 @@ class StlDS {
 
   // Maybe return the first element in the ds
   shared_ptr<Elem> peek(unit_t) const {
-    shared_ptr<Elem> res;
+    shared_ptr<Elem> res(nullptr);
     const_iterator_type it = container.begin();
     if (it != container.end()) {
       res = std::make_shared<Elem>(*it);
@@ -96,20 +96,13 @@ class StlDS {
 
   // Update by move
   // Find v in the container. Insert (by move) v2 in its position. Erase v.
-  unit_t update(const Elem& v, const Elem&& v2) {
+  unit_t update(const Elem& v, Elem&& v2) {
     iterator_type it;
     it = std::find(container.begin(), container.end(), v);
     if (it != container.end()) {
-      container.insert(it, v2);
-      container.erase(it);
+      *it = v2;
     }
     return unit_t();
-  }
-
-  // Update by copy
-  unit_t update(const Elem& v, const Elem& v2) {
-    // Copy v2, then update by move
-    return update(v, Elem(v2));
   }
 
   // Return the number of elements in this ds
@@ -494,7 +487,7 @@ class Map {
   // DS Operations:
   // Maybe return the first element in the DS
   shared_ptr<R> peek(const unit_t&) const {
-    shared_ptr<R> res;
+    shared_ptr<R> res(nullptr);
     const_iterator_type it = container.begin();
     if (it != container.end()) {
       res = std::make_shared<R>();
@@ -537,23 +530,12 @@ class Map {
     return unit_t();
   }
 
-  unit_t update(const R& rec1, const R& rec2) {
+  unit_t update(const R& rec1, R&& rec2) {
     iterator_type it;
     it = container.find(rec1.key);
     if (it != container.end()) {
       if (rec1.value == it->second) {
         container[rec2.key] = rec2.value;
-      }
-    }
-    return unit_t();
-  }
-
-  unit_t update(const R& rec1, const R&& rec2) {
-    iterator_type it;
-    it = container.find(rec1.key);
-    if (it != container.end()) {
-      if (rec1.value == it->second) {
-        container[rec2.key] = std::move(rec2.value);
       }
     }
     return unit_t();
@@ -885,7 +867,7 @@ class MultiIndex {
 
   // Maybe return the first element in the ds
   shared_ptr<Elem> peek(unit_t) const {
-    shared_ptr<Elem> res;
+    shared_ptr<Elem> res(nullptr);
     auto it = container.begin();
     if (it != container.end()) {
       res = std::make_shared<Elem>(*it);
@@ -917,19 +899,12 @@ class MultiIndex {
 
   // Update by move
   // Find v in the container. Insert (by move) v2 in its position. Erase v.
-  unit_t update(const Elem& v, const Elem&& v2) {
+  unit_t update(const Elem& v, Elem&& v2) {
     auto it = std::find(container.begin(), container.end(), v);
     if (it != container.end()) {
-      container.insert(it, v2);
-      container.erase(it);
+      *it = v2;
     }
     return unit_t();
-  }
-
-  // Update by copy
-  unit_t update(const Elem& v, const Elem& v2) {
-    // Copy v2, then update by move
-    return update(v, Elem(v2));
   }
 
   // Return the number of elements in this ds
