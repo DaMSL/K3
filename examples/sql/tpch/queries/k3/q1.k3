@@ -52,7 +52,7 @@ declare order_agg : {elem : q1_result_r} -> {elem : q1_result_r} -> int =
 trigger q1_local : () = \_ -> (
   (ignore
     (( lineitem
-        .filter  (\r -> (strcmp r.shipdate "1998-12-01") <= 0) // TODO: strcmp
+        .filter  (\r -> (strcmp r.l_shipdate "1998-12-01") <= 0) // TODO: strcmp
         .groupBy (\r -> (r.l_returnflag, r.l_linestatus)) accum_agg init_agg
         .map     finalize_agg
         .sort    order_agg
