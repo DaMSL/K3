@@ -47,18 +47,6 @@ namespace K3 {
     throw std::runtime_error("Not implemented: random");
   }
 
-  int __standard_context::truncate(double n) {
-    throw std::runtime_error("Not implemented: truncate");
-  }
-
-  double  __standard_context::real_of_int(int n) {
-    throw std::runtime_error("Not implemented: real_of_int");
-  }
-
-  int  __standard_context::get_max_int(unit_t) {
-    throw std::runtime_error("Not implemented: get_max_int");
-  }
-
   unit_t __standard_context::print(string_impl message) {
     std::cout << message << endl;
     return unit_t();
