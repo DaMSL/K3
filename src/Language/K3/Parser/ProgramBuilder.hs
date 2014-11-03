@@ -107,18 +107,6 @@ resolveFn :: K3 Expression
 resolveFn = EC.variable "resolve"
 
 {- Top-level functions -}
-initId :: Identifier
-initId = "atInit"
-
-exitId :: Identifier
-exitId = "atExit"
-
-initDeclId :: Identifier
-initDeclId = "initDecls"
-
-initDeclFn :: K3 Expression
-initDeclFn = EC.variable initDeclId
-
 roleId :: Identifier
 roleId = "role"
 
@@ -158,10 +146,7 @@ processInitsAndRoles (Node t c) endpointBQGs roleDefaults = Node t $ c ++ initia
         matchSink _ = False
 
         initializerFns =
-            [ builtinGlobal initDeclId (qualifyT unitFnT)
-                $ Just . qualifyE $ mkInitDeclBody sinkEndpoints,
-
-              builtinGlobal roleFnId (qualifyT unitFnT)
+            [ builtinGlobal roleFnId (qualifyT unitFnT)
                 $ Just . qualifyE $ mkRoleBody sourceEndpoints roleDefaults ]
 
         mkInitDeclBody sinks = EC.lambda "_" $ EC.block $ foldl sinkInitE [] sinks
@@ -301,7 +286,7 @@ declareBuiltins :: K3 Declaration -> K3 Declaration
 declareBuiltins d
   | DRole n <- tag d, n == defaultRoleName = replaceCh d new_children
   | otherwise = d
-  where new_children = runtimeDecls ++ peerDecls ++ (children d) ++ topLevelDecls
+  where new_children = runtimeDecls ++ peerDecls ++ (children d)
 
         runtimeDecls = [
           mkGlobal "registerFileDataTrigger"     (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing,
@@ -315,16 +300,6 @@ declareBuiltins d
           mkGlobal peersId peersT     Nothing,
           mkGlobal argsId  progArgT   Nothing,
           mkGlobal roleId  TC.string  Nothing]
-
-        topLevelDecls = [
-          mkGlobal initId unitFnT $ Just atInitE,
-          mkGlobal exitId unitFnT $ Just atExitE ]
-
-        atInitE = EC.lambda "_" $
-          EC.block [EC.applyMany initDeclFn [EC.unit],
-                    EC.applyMany roleFn [EC.unit]]
-
-        atExitE = EC.lambda "_" $ EC.tuple []
 
         idT      = TC.string
         progArgT = TC.tuple [qualifyT argT, qualifyT paramsT]
