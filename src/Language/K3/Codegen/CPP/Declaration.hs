@@ -103,7 +103,7 @@ declaration d@(tag -> DGlobal i t me) = do
 
     -- Initialize the variable.
     let rName = RName $ if pinned then "__global_context::" ++ i else i
-    globalInit <- maybe (return []) (reify rName) me
+    globalInit <- maybe (return []) (liftM (addSetCheck pinned i) . reify rName) me
 
     -- Add to proper initialization list
     let addFn = if pinned then addStaticInitialization else addInitialization
@@ -112,8 +112,20 @@ declaration d@(tag -> DGlobal i t me) = do
     -- Add any annotation to the state
     when (tag t == TCollection) $ addComposite (namedTAnnotations $ annotations t)
 
-    -- Return the class-scope-declaration
-    return [R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name i) globalType' Nothing]
+    -- Return the class-scope-declaration including the set variable if needed
+    let setOp = if pinned || isNothing me then [] else
+                  [R.GlobalDefn $ R.Forward $ R.ScalarDecl
+                    (R.Name $ setName i) (R.Primitive R.PBool) (Just $ R.Literal $ R.LBool False)]
+
+    return $ (R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name i) globalType' Nothing):setOp
+      where
+        setName n = "__"++n++"_set"
+        addSetCheck pinned n f = if pinned then f else
+          [R.IfThenElse
+            (R.Unary "!" $ R.Variable $ R.Name $ setName n)
+            (f ++ [R.Assignment (R.Variable $ R.Name $ setName n) (R.Literal $ R.LBool True)])
+            []]
+
 
 -- Triggers are implementationally identical to functions returning unit, except they also generate
 -- dispatch wrappers.
