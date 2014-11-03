@@ -73,7 +73,7 @@ class StlDS {
 
   template <class T>
   unit_t insert(T &&e) {
-    container.insert(container.end(), std::move(std::forward<T>(e)));
+    container.insert(container.end(), std::forward<T>(e));
     return unit_t();
   }
 
