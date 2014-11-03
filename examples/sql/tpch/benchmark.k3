@@ -11,7 +11,15 @@ control TPCHBenchmark[queryTrigger       : expr,
   ?e @:Start  => (load_all, me)     <- $.[e]
     +> {
       declare master    : address = 127.0.0.1:40000
+
+      // Generic, single relation dataset
       declare dataFiles : collection {path: string} @Collection
+
+      // Relation-specific datasets
+      declare lineitemFiles : collection {path : string} @Collection
+      declare customerFiles : collection {path : string} @Collection
+      declare ordersFiles   : collection {path : string} @Collection
+
 
       // Dummy trigger to warm up connections
       trigger hello : () = \_ -> ()
