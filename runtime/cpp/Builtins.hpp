@@ -7,6 +7,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <climits>
 #include <functional>
 
 #include "re2/re2.h"
@@ -77,11 +78,11 @@ namespace K3 {
       return result;
     }
 
-    int truncate(double n);
+    int truncate(double n) { return (int)n; }
 
-    double real_of_int(int n);
+    double real_of_int(int n) { return (double)n; }
 
-    int get_max_int(unit_t);
+    int get_max_int(unit_t) { return INT_MAX; }
 
     unit_t print(string_impl message);
 

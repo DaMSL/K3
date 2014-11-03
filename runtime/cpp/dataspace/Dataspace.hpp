@@ -63,7 +63,7 @@ class StlDS {
 
   // Maybe return the first element in the ds
   shared_ptr<Elem> peek(unit_t) const {
-    shared_ptr<Elem> res;
+    shared_ptr<Elem> res(nullptr);
     const_iterator_type it = container.begin();
     if (it != container.end()) {
       res = std::make_shared<Elem>(*it);
@@ -71,16 +71,10 @@ class StlDS {
     return res;
   }
 
-   // Insert by move
-  unit_t insert(Elem &&e) {
-    container.insert(container.end(), std::move(e));
+  template <class T>
+  unit_t insert(T &&e) {
+    container.insert(container.end(), std::forward<T>(e));
     return unit_t();
-  }
-
-  // Insert by copy
-  unit_t insert(const Elem& e) {
-    // Create a copy, then delegate to a insert-by-move
-    return insert(Elem(e));
   }
 
   // If v is found in the container, proxy a call to erase on the container.
@@ -94,28 +88,18 @@ class StlDS {
     return unit_t();
   }
 
-  // Update by move
-  // Find v in the container. Insert (by move) v2 in its position. Erase v.
-  unit_t update(const Elem& v, const Elem&& v2) {
+  template <class T>
+  unit_t update(const Elem& v, T&& v2) {
     iterator_type it;
     it = std::find(container.begin(), container.end(), v);
     if (it != container.end()) {
-      container.insert(it, v2);
-      container.erase(it);
+      *it = std::forward<T>(v2);
     }
     return unit_t();
   }
 
-  // Update by copy
-  unit_t update(const Elem& v, const Elem& v2) {
-    // Copy v2, then update by move
-    return update(v, Elem(v2));
-  }
-
   // Return the number of elements in this ds
-  int size(const unit_t&) const {
-    return container.size();
-  }
+  int size(const unit_t&) const { return container.size(); }
 
   // Return a new DS with data from this and other
   Derived<Elem> combine(StlDS other) const {
@@ -204,9 +188,7 @@ class StlDS {
       for(auto& it : accs) {
         // move out of the map as we iterate
         result.insert(R_key_value<K, Z>{std::move(it.first), std::move(it.second)});
-
       }
-
       return result;
   }
 
@@ -223,9 +205,7 @@ class StlDS {
     for (auto i = 0; i < table.size(); ++i) {
       // move out of the map as we iterate
       result.insert(R_key_value<int, Z>{i, std::move(table[i])});
-
     }
-
     return result;
   }
 
@@ -238,7 +218,6 @@ class StlDS {
         result.insert(std::move(elem2));
       }
     }
-
     return result;
   }
 
@@ -271,18 +250,11 @@ class StlDS {
   void serialize(Archive &ar, const unsigned int version) {
     ar & container;
   }
-
 };
 
 // Various DS's achieved through typedefs
 template <template <typename> class Derived, class Elem>
 using ListDS = StlDS<Derived, std::list, Elem>;
-
-template <template <typename> class Derived, class Elem>
-using SetDS = StlDS<Derived, unordered_set, Elem>;
-
-template <template <typename> class Derived, class Elem>
-using SortedDS = StlDS<Derived, std::multiset, Elem>;
 
 template <template <class> class Derived, class Elem>
 using VectorDS = StlDS<Derived, std::vector, Elem>;
@@ -310,60 +282,250 @@ class Collection: public VectorDS<K3::Collection, Elem> {
 
 };
 
+// StlDS provides the basic Collection transformers via generic implementations
+// that should work with any STL container.
 template <class Elem>
-class Set : public SetDS<K3::Set, Elem> {
-  using Super = SetDS<K3::Set, Elem>;
+class Set {
+  // Iterator Types:
+  typedef unordered_set<Elem> Container;
+  typedef typename Container::const_iterator const_iterator_type;
+  typedef typename Container::iterator iterator_type;
 
- public:
-  Set(): Super() {}
-  Set(const Super& c): Super(c) { }
-  Set(Super&& c): Super(std::move(c)) { }
+  public:
+  // Expose the element type with a public typedef  ( needed in ext() ):
+  typedef Elem ElemType;
+
+  // Constructors:
+  // Default Constructor
+  Set(): container() {}
+
+  // Copy Constructor from container
+  Set(const Container& con): container(con) {}
+
+  // Move Constructor from container
+  Set(Container&& con): container(std::move(con)) {}
+
+  // Construct from (container) iterators
+  template<typename Iterator>
+  Set(Iterator begin, Iterator end): container(begin,end) {}
+
+  Elem elemToRecord(const Elem& e) const { return e; }
+
+  shared_ptr<Elem> peek(unit_t) const {
+    shared_ptr<Elem> res(nullptr);
+    const_iterator_type it = container.begin();
+    if (it != container.end()) {
+      res = std::make_shared<Elem>(*it);
+    }
+    return res;
+  }
+
+  template <class T>
+  unit_t insert(T &&e) {
+    container.insert(std::forward<T>(e));
+    return unit_t();
+  }
+
+  unit_t erase(const Elem& v) {
+    container.erase(v);
+    return unit_t();
+  }
+
+  template <class T>
+  unit_t update(const Elem& v, T&& v2) {
+    container.erase(v);
+    container.insert(std::forward<T>(v2));
+    return unit_t();
+  }
+
+  // Return the number of elements
+  int size(const unit_t&) const {
+    return container.size();
+  }
+
+  Set<Elem> combine(const Set<Elem> other) const {
+    // copy this DS
+    Set<Elem> result(*this);
+    // move insert each element of the other.
+    // this is okay since we are working with a copy
+    for (Elem &e : other.container) {
+      result.insert(std::move(e));
+    }
+    return result;
+  }
+
+  // Split the set at its midpoint
+  tuple<Set<Elem>, Set<Elem>> split(const unit_t&) const {
+    // Find midpoint
+    const size_t size = container.size();
+    const size_t half = size / 2;
+    // Setup iterators
+    const_iterator_type beg = container.begin();
+    const_iterator_type mid = container.begin();
+    std::advance(mid, half);
+    const_iterator_type end = container.end();
+    // Construct from iterators
+    return std::make_tuple(Set(beg,mid), Set(mid,end));
+  }
+
+  // Apply a function to each element of this ds
+  template<typename Fun>
+  unit_t iterate(Fun f) const {
+    for (const Elem& e : container) {
+      f(e);
+    }
+    return unit_t();
+  }
+
+  // Produce a new set by mapping a function over this set
+  template<typename Fun>
+  auto map(Fun f) const -> Set<R_elem<RT<Fun, Elem>>>  {
+    Set<Elem> result;
+    for (const Elem &e : container) {
+      result.insert(R_elem<RT<Fun, Elem>>{f(e)}); // Copies e (f is pass by value), then move inserts
+    }
+    return result;
+  }
+
+  // Create a new set consisting of elements from this set that satisfy the predicate
+  template<typename Fun>
+  Set<Elem> filter(Fun predicate) const {
+    Set<Elem> result;
+    for (const Elem &e : container) {
+      if (predicate(e)) {
+        result.insert(e);
+      }
+    }
+    return result;
+  }
+
+  // Fold a function over this ds
+  template<typename Fun, typename Acc>
+  Acc fold(Fun f, Acc acc) const {
+    for (const Elem &e : container) { acc = f(std::move(acc))(e); }
+    return acc;
+  }
+
+  // Group By
+  template<typename F1, typename F2, typename Z>
+  Set<R_key_value<RT<F1, Elem>,Z>> groupBy(F1 grouper, F2 folder, const Z& init) const {
+       // Create a map to hold partial results
+       typedef RT<F1, Elem> K;
+       unordered_map<K, Z> accs;
+
+       for (const auto& elem : container) {
+          K key = grouper(elem);
+          if (accs.find(key) == accs.end()) {
+            accs[key] = init;
+          }
+
+          accs[key] = folder(std::move(accs[key]))(elem);
+       }
+
+      // Build the R_key_value records and insert them into result
+      Set<R_key_value<RT<F1, Elem>,Z>> result;
+      for(auto& it : accs) {
+        // move out of the map as we iterate
+        result.insert(R_key_value<K, Z>{std::move(it.first), std::move(it.second)});
+      }
+      return result;
+  }
+
+  template <class G, class F, class Z>
+  Set<R_key_value<RT<G, Elem>, Z>> groupByContiguous(G grouper, F folder, const Z& zero, const int& size) const {
+    auto table = std::vector<Z>(size, zero);
+    for (const auto& elem: container) {
+      auto key = grouper(elem);
+      table[key] = folder(std::move(table[key]))(elem);
+    }
+    // Build the R_key_value records and insert them into result
+    Set<R_key_value<RT<G, Elem>,Z>> result;
+    for (auto i = 0; i < table.size(); ++i) {
+      // move out of the map as we iterate
+      result.insert(R_key_value<int, Z>{i, std::move(table[i])});
+    }
+    return result;
+  }
+
+  template <class Fun>
+  auto ext(Fun expand) const -> Set<typename RT<Fun, Elem>::ElemType> {
+    typedef typename RT<Fun, Elem>::ElemType T;
+    Set<T> result;
+    for (const Elem& elem : container) {
+      for (T& elem2 : expand(elem).container) {
+        result.insert(std::move(elem2));
+      }
+    }
+    return result;
+  }
+
+  bool operator==(const Set<Elem>& other) const {
+    return container == other.container;
+  }
+
+  bool operator!=(const Set<Elem>& other) const {
+    return container != other.container;
+  }
+
+  bool operator<(const Set<Elem>& other) const {
+    return container < other.container;
+  }
+
+  bool operator>(const Set<Elem>& other) const {
+    return container < other.container;
+  }
 
   // Set specific functions
   bool member(const Elem& e) const {
-    auto it = std::find(Super::getConstContainer().begin(), Super::getConstContainer().end(), e);
-    return (it != Super::getConstContainer().end());
+    auto it = std::find(getConstContainer().begin(), getConstContainer().end(), e);
+    return (it != getConstContainer().end());
   }
 
   bool isSubsetOf(const Set<Elem>& other) const {
-    for (const auto &x : Super::getConstContainer()) {
+    for (const auto &x : getConstContainer()) {
       if (!other.member(x)) { return false; }
     }
     return true;
   }
 
-  // TODO union is a reserved word
-  Set union1(const Set<Elem>& other) const {
+  // union is a reserved word
+  Set<Elem> union1(const Set<Elem>& other) const {
     Set<Elem> result;
-    for (const auto &x : Super::getConstContainer()) {
-      result.insert(x);
-    }
-    for (const auto &x : other.getConstContainer()) {
-      result.insert(x);
+    for (const auto &x : getConstContainer())       { result.insert(x); }
+    for (const auto &x : other.getConstContainer()) { result.insert(x); }
+    return result;
+  }
+
+  Set<Elem> intersect(const Set<Elem>& other) const {
+    Set<Elem> result;
+    for (const auto &x : getConstContainer()) {
+      if(other.member(x)) { result.insert(x); }
     }
     return result;
   }
 
-  Set intersect(const Set<Elem>& other) const {
+  Set<Elem> difference(const Set<Elem>& other) const {
     Set<Elem> result;
-    for (const auto &x : Super::getConstContainer()) {
-      if(other.member(x)) {
-        result.insert(x);
-      }
+    for (const auto &x : getConstContainer()) {
+      if(!other.member(x)) { result.insert(x); }
     }
     return result;
   }
 
-  Set difference(const Set<Elem>& other) const {
-    Set<Elem> result;
-    for (const auto &x : Super::getConstContainer()) {
-      if(!other.member(x)) {
-        result.insert(x);
-      }
-    }
-    return result;
+  Container& getContainer() { return container; }
+
+  // Return a constant reference to the container
+  const Container& getConstContainer() const {return container;}
+
+  Container container;
+
+ private:
+  friend class boost::serialization::access;
+  template<class Archive>
+  void serialize(Archive &ar, const unsigned int version) {
+    ar & container;
   }
-};
+}; // class Set
 
 template <class Elem>
 class Seq : public ListDS<K3::Seq, Elem> {
@@ -394,64 +556,240 @@ class Seq : public ListDS<K3::Seq, Elem> {
 
 };
 
+// StlDS provides the basic Collection transformers via generic implementations
+// that should work with any STL container.
 template <class Elem>
-class Sorted: public SortedDS<K3::Sorted, Elem> {
-  using Super = SortedDS<K3::Sorted, Elem>;
+class Sorted {
+  // Iterator Types:
+  typedef std::multiset<Elem> Container;
+  using const_iterator_type = typename Container::const_iterator;
+  using iterator_type       = typename Container::iterator;
 
- public:
+  public:
+  // Expose the element type with a public typedef  ( needed in ext() ):
+  typedef Elem ElemType;
+
   // Constructors:
-  // Default:
-  Sorted(): Super() { }
-  Sorted(const Super& c): Super(c) { }
-  Sorted(Super&& c): Super(std::move(c)) { }
+  // Default Constructor
+  Sorted(): container() {}
+
+  // Copy Constructor from container
+  Sorted(const Container& con): container(con) {}
+
+  // Move Constructor from container
+  Sorted(Container&& con): container(std::move(con)) {}
+
+  // Construct from (container) iterators
+  template<typename Iterator>
+  Sorted(Iterator begin, Iterator end): container(begin,end) {}
+
+  Elem elemToRecord(const Elem& e) const { return e; }
+
+  // Maybe return the first element in the ds
+  shared_ptr<Elem> peek(unit_t) const {
+    shared_ptr<Elem> res(nullptr);
+    const_iterator_type it = container.begin();
+    if (it != container.end()) {
+      res = std::make_shared<Elem>(*it);
+    }
+    return res;
+  }
+
+   // Insert by move
+  template <class T>
+  unit_t insert(T &&e) {
+    container.insert(std::forward<T>(e));
+    return unit_t();
+  }
+
+  // If v is found in the container, proxy a call to erase on the container.
+  // Behavior depends on the container's erase implementation
+  unit_t erase(const Elem& v) {
+    container.erase(v);
+    return unit_t();
+  }
+
+  // Update by move
+  template <class T>
+  unit_t update(const Elem& v, T&& v2) {
+    container.erase(v);
+    container.insert(std::forward<T>(v2));
+    return unit_t();
+  }
+
+  // Return the number of elements in this ds
+  int size(const unit_t&) const { return container.size(); }
+
+  Sorted<Elem> combine(Sorted<Elem> other) const {
+    // copy this DS
+    Sorted<Elem> result;
+    result = Sorted<Elem>(*this);
+    // move insert each element of the other.
+    // this is okay since we are working with a copy
+    for (Elem &e : other.container) {
+      result.insert(std::move(e));
+    }
+    return result;
+  }
+
+  // Split the ds at its midpoint
+  tuple<Sorted<Elem>, Sorted<Elem>> split(const unit_t&) const {
+    const size_t midpoint = container.size() / 2;
+    const_iterator_type beg = container.begin();
+    const_iterator_type mid = container.begin();
+    std::advance(mid, midpoint);
+    const_iterator_type end = container.end();
+    return std::make_tuple(Sorted<Elem>(beg, mid), Sorted<Elem>(mid, end));
+  }
+
+  // Apply a function to each element of this ds
+  template<typename Fun>
+  unit_t iterate(Fun f) const {
+    for (const Elem& e : container) { f(e); }
+    return unit_t();
+  }
+
+
+  // Produce a new ds by mapping a function over this ds
+  template<typename Fun>
+  auto map(Fun f) const -> Sorted<R_elem<RT<Fun, Elem>>>  {
+    Sorted<Elem> result;
+    for (const Elem &e : container) {
+      result.insert(R_elem<RT<Fun, Elem>>{f(e)}); // Copies e (f is pass by value), then move inserts
+    }
+    return result;
+  }
+
+  // Create a new DS consisting of elements from this ds that satisfy the predicate
+  template<typename Fun>
+  Sorted<Elem> filter(Fun predicate) const {
+    Sorted<Elem> result;
+    for (const Elem &e : container) {
+      if (predicate(e)) { result.insert(e); }
+    }
+    return result;
+  }
+
+  // Fold a function over this ds
+  template<typename Fun, typename Acc>
+  Acc fold(Fun f, Acc acc) const {
+    for (const Elem &e : container) { acc = f(std::move(acc))(e); }
+    return acc;
+  }
+
+  // Group By
+  template<typename F1, typename F2, typename Z>
+  Sorted<R_key_value<RT<F1, Elem>,Z>> groupBy(F1 grouper, F2 folder, const Z& init) const {
+       // Create a map to hold partial results
+       typedef RT<F1, Elem> K;
+       unordered_map<K, Z> accs;
+
+       for (const auto& elem : container) {
+          K key = grouper(elem);
+          if (accs.find(key) == accs.end()) {
+            accs[key] = init;
+          }
+
+          accs[key] = folder(std::move(accs[key]))(elem);
+       }
+      // Build the R_key_value records and insert them into result
+      Sorted<R_key_value<RT<F1, Elem>,Z>> result;
+      for(auto& it : accs) {
+        // move out of the map as we iterate
+        result.insert(R_key_value<K, Z>{std::move(it.first), std::move(it.second)});
+      }
+      return result;
+  }
+
+  template <class G, class F, class Z>
+  Sorted<R_key_value<RT<G, Elem>, Z>> groupByContiguous(G grouper, F folder, const Z& zero, const int& size) const {
+    auto table = std::vector<Z>(size, zero);
+    for (const auto& elem: container) {
+      auto key = grouper(elem);
+      table[key] = folder(std::move(table[key]))(elem);
+    }
+
+    // Build the R_key_value records and insert them into result
+    Sorted<R_key_value<RT<G, Elem>,Z>> result;
+    for (auto i = 0; i < table.size(); ++i) {
+      // move out of the map as we iterate
+      result.insert(R_key_value<int, Z>{i, std::move(table[i])});
+    }
+    return result;
+  }
+
+  template <class Fun>
+  auto ext(Fun expand) const -> Sorted<typename RT<Fun, Elem>::ElemType> {
+    typedef typename RT<Fun, Elem>::ElemType T;
+    Sorted<T> result;
+    for (const Elem& elem : container) {
+      for (T& elem2 : expand(elem).container) {
+        result.insert(std::move(elem2));
+      }
+    }
+    return result;
+  }
+
+  bool operator==(const Sorted<Elem>& other) const {
+    return container == other.container;
+  }
+
+  bool operator!=(const Sorted<Elem>& other) const {
+    return container != other.container;
+  }
+
+  bool operator<(const Sorted<Elem>& other) const {
+    return container < other.container;
+  }
+
+  bool operator>(const Sorted<Elem>& other) const {
+    return container < other.container;
+  }
 
   // Sorted specific functions
   std::shared_ptr<Elem> min() const {
-     const auto& x = Super::getConstContainer();
-     auto it = std::min_element(x.begin(), x.end());
-     std::shared_ptr<Elem> result = nullptr;
+     // begin is the smallest element
+     const auto& x = getConstContainer();
+     auto it = x.begin();
+     std::shared_ptr<Elem> result(nullptr);
      if (it != x.end()) {
        result = std::make_shared<Elem>(*it);
      }
-
      return result;
   }
 
   std::shared_ptr<Elem> max() const {
-     const auto& x = Super::getConstContainer();
-     auto it = std::max_element(x.begin(), x.end());
-     std::shared_ptr<Elem> result = nullptr;
-     if (it != x.end()) {
+     const auto& x = getConstContainer();
+     auto it = x.rbegin();
+     std::shared_ptr<Elem> result(nullptr);
+     if (it != x.rend()) {
       result = std::make_shared<Elem>(*it);
      }
-
      return result;
   }
 
   std::shared_ptr<Elem> lowerBound(const Elem& e) const {
-    const auto& x = Super::getConstContainer();
-    auto it = std::lower_bound(x.begin(), x.end(), e);
-    std::shared_ptr<Elem> result = nullptr;
+    const auto& x = getConstContainer();
+    auto it = x.lower_bound(e);
+    std::shared_ptr<Elem> result(nullptr);
     if (it != x.end()) {
       result = std::make_shared<Elem>(*it);
     }
-
     return result;
   }
 
   std::shared_ptr<Elem> upperBound(const Elem& e) const {
-    const auto& x = Super::getConstContainer();
-    auto it = std::upper_bound(x.begin(), x.end(), e);
-    std::shared_ptr<Elem> result = nullptr;
+    const auto& x = getConstContainer();
+    auto it = x.upper_bound(e);
+    std::shared_ptr<Elem> result(nullptr);
     if (it != x.end()) {
       result = std::make_shared<Elem>(*it);
     }
-
     return result;
   }
 
-  Sorted slice(const Elem& a, const Elem& b) const {
-    const auto& x = Super::getConstContainer();
+  Sorted<Elem> slice(const Elem& a, const Elem& b) const {
+    const auto& x = getConstContainer();
     Sorted<Elem> result;
     for (Elem e : x) {
       if (e >= a && e <= b) {
@@ -463,13 +801,25 @@ class Sorted: public SortedDS<K3::Sorted, Elem> {
     }
     return result;
   }
-};
 
+  std::multiset<Elem>& getContainer() { return container; }
+
+  // Return a constant reference to the container
+  const std::multiset<Elem>& getConstContainer() const {return container;}
+
+  std::multiset<Elem> container;
+
+ private:
+  friend class boost::serialization::access;
+  template<class Archive>
+  void serialize(Archive &ar, const unsigned int version) {
+    ar & container;
+  }
+}; // Class Sorted
 
 // TODO reorder functions to match the others
 template<class R>
 class Map {
-
 
   using Key = typename R::KeyType;
   using Value = typename R::ValueType;
@@ -494,7 +844,7 @@ class Map {
   // DS Operations:
   // Maybe return the first element in the DS
   shared_ptr<R> peek(const unit_t&) const {
-    shared_ptr<R> res;
+    shared_ptr<R> res(nullptr);
     const_iterator_type it = container.begin();
     if (it != container.end()) {
       res = std::make_shared<R>();
@@ -521,8 +871,8 @@ class Map {
       container[rec.key] = rec.value;
     } else {
       container[rec.key] = f(std::move(ElemType{
-	    std::move(existing->first),
-	    std::move(existing->second)}))(rec).value;
+      std::move(existing->first),
+      std::move(existing->second)}))(rec).value;
     }
 
     return unit_t {};
@@ -543,17 +893,6 @@ class Map {
     if (it != container.end()) {
       if (rec1.value == it->second) {
         container[rec2.key] = rec2.value;
-      }
-    }
-    return unit_t();
-  }
-
-  unit_t update(const R& rec1, const R&& rec2) {
-    iterator_type it;
-    it = container.find(rec1.key);
-    if (it != container.end()) {
-      if (rec1.value == it->second) {
-        container[rec2.key] = std::move(rec2.value);
       }
     }
     return unit_t();
@@ -885,7 +1224,7 @@ class MultiIndex {
 
   // Maybe return the first element in the ds
   shared_ptr<Elem> peek(unit_t) const {
-    shared_ptr<Elem> res;
+    shared_ptr<Elem> res(nullptr);
     auto it = container.begin();
     if (it != container.end()) {
       res = std::make_shared<Elem>(*it);
@@ -917,19 +1256,12 @@ class MultiIndex {
 
   // Update by move
   // Find v in the container. Insert (by move) v2 in its position. Erase v.
-  unit_t update(const Elem& v, const Elem&& v2) {
+  unit_t update(const Elem& v, Elem&& v2) {
     auto it = std::find(container.begin(), container.end(), v);
     if (it != container.end()) {
-      container.insert(it, v2);
-      container.erase(it);
+      *it = std::forward<Elem>(v2);
     }
     return unit_t();
-  }
-
-  // Update by copy
-  unit_t update(const Elem& v, const Elem& v2) {
-    // Copy v2, then update by move
-    return update(v, Elem(v2));
   }
 
   // Return the number of elements in this ds
@@ -1114,6 +1446,15 @@ std::size_t hash_value(K3::Map<Elem> const& b) {
   return hash_collection(b);
 }
 
+template <class Elem>
+std::size_t hash_value(K3::Set<Elem> const& b) {
+  return hash_collection(b);
+}
+
+template <class Elem>
+std::size_t hash_value(K3::Sorted<Elem> const& b) {
+  return hash_collection(b);
+}
 
 template <class Elem>
 std::size_t hash_value(K3::Vector<Elem> const& b) {
