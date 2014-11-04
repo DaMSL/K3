@@ -39,7 +39,7 @@ declare consolidated_outgoing: mut collection { key: int
                                               } @ Map
 declare active: collection { key: vertex, value: bool } @ { Map }
 
-declare data_file: string = ""
+declare dataFiles: collection {path: string} @Collection
 
 declare peer_by_vertex: vertex -> int = \v -> (v % peers.size ())
 
@@ -112,7 +112,7 @@ declare reset_timer: () -> () = \_ -> (
 )
 
 trigger load_all: () = \_ -> (
-  loadGraph data_file graph;
+  dataFiles.iterate (\x -> loadGraph x.path graph);
   graph.iterate (\r -> (state.insert { key: r.key, value: (1.0) }));
   (ready, master) <- ()
 )
@@ -126,7 +126,6 @@ trigger ready: () = \_ -> (
 
 
 trigger stop: () = \_ -> (
-  state.iterate (\s -> (print (itos s.key); print (rtos s.value)));
   printStats ();
   haltEngine ()
 )
