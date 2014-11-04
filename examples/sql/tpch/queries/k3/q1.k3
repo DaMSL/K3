@@ -40,6 +40,22 @@ declare accum_agg : q1_agg -> lineitem_r -> q1_agg = \acc -> \r ->
   , count_order    : acc.count_order    + 1
   }
 
+
+declare merge_agg : {key: (string, string), value: q1_agg} -> {key: (string, string), value: q1_agg} -> {key: (string, string), value: q1_agg} = \a -> \b -> (
+  { key: a.key
+  , value:
+      { sum_qty        : a.value.sum_qty        + b.value.sum_qty
+      , sum_base_price : a.value.sum_base_price + b.value.sum_base_price
+      , sum_disc_price : a.value.sum_disc_price + b.value.sum_disc_price
+      , sum_charge     : a.value.sum_charge     + b.value.sum_charge
+      , avg_qty_sum    : a.value.avg_qty_sum    + b.value.avg_qty_sum
+      , avg_price_sum  : a.value.avg_price_sum  + b.value.avg_price_sum
+      , avg_disc_sum   : a.value.avg_disc_sum   + b.value.avg_disc_sum
+      , count_order    : a.value.count_order    + b.value.count_order
+      }
+  }
+)
+
 declare finalize_agg : {key: (string, string), value: q1_agg} -> q1_result_r = \r ->
   bind r.key as (retflag, linestat) in
   { l_returnflag   : retflag
@@ -52,6 +68,9 @@ declare finalize_agg : {key: (string, string), value: q1_agg} -> q1_result_r = \
   , avg_price      : r.value.avg_price_sum / r.value.count_order
   , avg_disc       : r.value.avg_disc_sum  / r.value.count_order
   , count_order    : r.value.count_order }
+
+
+
 
 declare order_agg : {elem : q1_result_r} -> {elem : q1_result_r} -> int =
   \a -> \b -> let strdiff = strcomp a.elem.l_returnflag b.elem.l_returnflag
