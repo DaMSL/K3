@@ -46,6 +46,9 @@ data CPPGenS = CPPGenS {
         staticDeclarations    :: [R.Statement],
         staticInitializations :: [R.Statement],
 
+        -- | User-defined global initializations
+        globalInitializations :: [R.Statement],
+
         -- | Forward declarations for constructs as a result of cyclic scope.
         forwards :: [R.Declaration],
 
@@ -53,7 +56,7 @@ data CPPGenS = CPPGenS {
         -- supplied ahead-of-time, due to cyclic scoping.
         globals  :: [(Identifier, K3 Type)],
 
-        patchables :: [Identifier],
+        patchables :: [(Identifier, Bool)], -- Whether we need to set
 
         showables :: [(Identifier, K3 Type)],
 
@@ -78,7 +81,7 @@ data CPPGenS = CPPGenS {
 
 -- | The default code generation state.
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 [] [] [] [] []  [] [] M.empty M.empty S.empty [] BoostSerialization
+defaultCPPGenS = CPPGenS 0 [] [] [] [] [] [] [] [] M.empty M.empty S.empty [] BoostSerialization
 
 refreshCPPGenS :: CPPGenM ()
 refreshCPPGenS = do
@@ -98,6 +101,9 @@ addForward r = modify (\s -> s { forwards = r : forwards s })
 
 addInitialization :: [R.Statement] -> CPPGenM ()
 addInitialization ss = modify (\s -> s { initializations = initializations s ++ ss })
+
+addGlobalInitialization :: [R.Statement] -> CPPGenM ()
+addGlobalInitialization ss = modify (\s -> s { globalInitializations = globalInitializations s ++ ss })
 
 addStaticInitialization :: [R.Statement] -> CPPGenM ()
 addStaticInitialization ss = modify (\s -> s { staticInitializations = staticInitializations s ++ ss })

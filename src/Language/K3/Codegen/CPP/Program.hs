@@ -36,7 +36,7 @@ import qualified Language.K3.Codegen.CPP.Representation as R
 transitionCPPGenS :: I.ImperativeS -> CPPGenS
 transitionCPPGenS is = defaultCPPGenS
     { globals    = convert $ I.globals is
-    , patchables = map mangleReservedId $ I.patchables is
+    , patchables = convert $ I.patchables is
     , showables  = convert $ I.showables is
     , triggers   = convert $ I.triggers is
     }
@@ -52,9 +52,13 @@ program :: K3 Declaration -> CPPGenM [R.Definition]
 program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
     -- Process the program, accumulate global state.
     programDefns <- concat <$> mapM declaration decls
+
+    globalInits <- globalInitializations <$> get
+    let initDeclDefn = R.FunctionDefn (R.Name "initDecls") [("_", R.Unit)] (Just R.Unit) [] False
+                         (globalInits ++ [R.Return (R.Initialization R.Unit [])])
     -- Generate program preamble.
     includeDefns <- map R.IncludeDefn <$> requiredIncludes
-    aliasDefns <- map (R.GlobalDefn . R.Forward . uncurry R.UsingDecl) <$> requiredAliases
+    aliasDefns   <- map (R.GlobalDefn . R.Forward . uncurry R.UsingDecl) <$> requiredAliases
     compositeDefns <- do
         currentComposites <- composites <$> get
         currentAnnotations <- annotationMap <$> get
@@ -71,13 +75,18 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
 
     patchables' <- patchables <$> get
 
-    let popPatch p = R.IfThenElse (R.Binary ">"
-                                        (R.Call (R.Project (R.Variable $ R.Name "bindings") (R.Name "count"))
-                                          [R.Literal $ R.LString p])
-                                        (R.Literal $ R.LInt 0))
-                     [R.Ignore $ R.Call (R.Variable $ R.Name "do_patch")
-                       [R.Subscript (R.Variable $ R.Name "bindings") (R.Literal $ R.LString p), R.Variable $ R.Name p]]
-                     []
+    let popPatch (p, setP) =
+          R.IfThenElse
+           (R.Binary ">"
+             (R.Call (R.Project (R.Variable $ R.Name "bindings") (R.Name "count"))
+               [R.Literal $ R.LString p])
+             (R.Literal $ R.LInt 0))
+           ([R.Ignore $ R.Call (R.Variable $ R.Name "do_patch")
+             [R.Subscript (R.Variable $ R.Name "bindings") (R.Literal $ R.LString p),
+               R.Variable $ R.Name p]] ++
+             [R.Assignment
+               (R.Variable $ R.Name $ "__"++p++"_set__") (R.Literal $ R.LBool True) | setP])
+           []
     let patchDecl = R.FunctionDefn (R.Name "__patch")
                     [("bindings", R.Named $ R.Qualified (R.Name "std") $ R.Specialized
                                     [ R.Named $ R.Qualified (R.Name "std") (R.Name "string")
@@ -116,7 +125,7 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
                            [R.Primitive R.PInt, R.Function [R.Named $ R.Name "void*"] R.Void] (R.Name "map"))
                      Nothing
 
-    let contextDefns = [contextConstructor] ++ programDefns  ++ [prettify, patchDecl, dispatchDecl]
+    let contextDefns = [contextConstructor] ++ programDefns  ++ [initDeclDefn] ++ [prettify, patchDecl, dispatchDecl]
     let contextClassDefn = R.ClassDefn contextName []
                              [ R.Named $ R.Qualified (R.Name "K3") $ R.Name "__standard_context"
                              , R.Named $ R.Qualified (R.Name "K3") $ R.Name "__string_context"

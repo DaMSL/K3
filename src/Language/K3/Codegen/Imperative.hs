@@ -36,10 +36,12 @@ import Language.K3.Core.Type
 
 type ImperativeE = ()
 
+type SetFlag = Bool
+
 data ImperativeS = ImperativeS {
         globals :: [(Identifier, K3 Type)],
         triggers :: [(Identifier, K3 Type)],
-        patchables :: [Identifier],
+        patchables :: [(Identifier, SetFlag)],
         showables  :: [(Identifier, K3 Type)],
         mutables :: [Identifier]
     }
@@ -69,8 +71,8 @@ addGlobal i t = modify $ \s -> s { globals = (i, t) : globals s }
 addTrigger :: Identifier -> K3 Type -> ImperativeM ()
 addTrigger i t = modify $ \s -> s { triggers = (i, t) : triggers s }
 
-addPatchable :: Identifier -> ImperativeM ()
-addPatchable i = modify $ \s -> s { patchables  = i : patchables s }
+addPatchable :: Identifier -> Bool -> ImperativeM ()
+addPatchable i setFlag = modify $ \s -> s { patchables  = (i, setFlag) : patchables s }
 
 -- | Add a new showable variable
 addShowable :: Identifier -> K3 Type -> ImperativeM ()
@@ -88,14 +90,16 @@ isFunction _ = False
 declaration :: K3 Declaration -> ImperativeM (K3 Declaration)
 declaration (Node t@(DGlobal i y Nothing :@: _) cs) = do
     addGlobal i y
-    unless (isFunction y) (addPatchable i >> addShowable i y)
+    unless (isFunction y) (addPatchable i False >> addShowable i y)
     Node t <$> mapM declaration cs
 declaration (Node (DGlobal i t (Just e) :@: as) cs) = do
     addGlobal i t
-    unless (isFunction t) (addPatchable i >> addShowable i t)
+    unless (isFunction t || isTid i t) (addPatchable i True >> addShowable i t)
     me' <- expression e
     cs' <- mapM declaration cs
     return $ Node (DGlobal i t (Just me') :@: as) cs'
+    where isTid i (tag -> TInt) | drop (length i - 4) i == "_tid" = True
+          isTid _ _ = False
 declaration (Node (DTrigger i t e :@: as) cs) = do
     addGlobal i t
     addTrigger i t

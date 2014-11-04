@@ -106,7 +106,7 @@ declaration d@(tag -> DGlobal i t me) = do
     globalInit <- maybe (return []) (liftM (addSetCheck pinned i) . reify rName) me
 
     -- Add to proper initialization list
-    let addFn = if pinned then addStaticInitialization else addInitialization
+    let addFn = if pinned then addStaticInitialization else addGlobalInitialization
     addFn globalInit
 
     -- Add any annotation to the state
@@ -119,7 +119,7 @@ declaration d@(tag -> DGlobal i t me) = do
 
     return $ (R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name i) globalType' Nothing):setOp
       where
-        setName n = "__"++n++"_set"
+        setName n = "__"++n++"_set__"
         addSetCheck pinned n f = if pinned then f else
           [R.IfThenElse
             (R.Unary "!" $ R.Variable $ R.Name $ setName n)

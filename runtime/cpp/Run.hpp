@@ -17,6 +17,7 @@ namespace K3 {
       for (auto& s : peer_strs) {
         auto gc = make_shared<context>(engine);
         gc->__patch(parse_bindings(s));
+        gc->initDecls(unit_t {});
         contexts[gc->me] = gc;
       }
       SystemEnvironment se = defaultEnvironment(getAddrs(contexts));
