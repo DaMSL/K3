@@ -1,13 +1,8 @@
-declare index_by_hash : forall a. a -> int = (\s -> (
-  let n = peers.size () in
-  let h = (hash s) in
-  ((h % n) + n) % n
-))
-
-control TPCHBenchmark[queryTrigger       : expr,
+control TPCHBenchmark[nodes              : expr,
                       loadExpr           : expr,
                       preLoadExpr        : expr,
                       preReadyExpr       : expr,
+                      onReadyExpr        : expr,
                       finishArgT         : type,
                       preTestFinishExpr  : expr,
                       preFinishExpr      : expr,
@@ -26,6 +21,11 @@ control TPCHBenchmark[queryTrigger       : expr,
       declare customerFiles : collection {path : string} @Collection
       declare ordersFiles   : collection {path : string} @Collection
 
+      declare index_by_hash : forall a. a -> int = (\s -> (
+        let n = $[nodes].size () in
+        let h = (hash s) in
+        ((h % n) + n) % n
+      ))
 
       // Dummy trigger to warm up connections
       trigger hello : () = \_ -> ()
@@ -39,18 +39,17 @@ control TPCHBenchmark[queryTrigger       : expr,
       trigger finished : $[finishArgT] = \finishArg -> (
         ($[preTestFinishExpr] finishArg);
         ((( $[preFinishExpr];
-            peers.iterate (\p -> (shutdown, p.addr) <- ()))
+            $[nodes].iterate (\p -> (shutdown, p.addr) <- ()))
               @:StopTimer) @Time(lbl=[# query], tag=[$ "Query time"])
-        ) @OnCounter(id=[# query_done], eq=[$ peers.size()])
+        ) @OnCounter(id=[# query_done], eq=[$ $[nodes].size()])
       )
 
       // Signal to the master that a peer is ready.
-      // Once all peers are ready, the master will start the query.
+      // Once all nodes are ready, the master will start the query.
       trigger ready : () = \_ -> (
         ( $[preReadyExpr];
-          ((peers.iterate (\p -> ($[queryTrigger], p.addr) <- ()))
-              @:StartTimer) @Time(lbl=[# query], tag=[$ "Query time"])
-        ) @OnCounter(id=[# peers_ready], eq=[$ peers.size()])
+          (( $[onReadyExpr] @:StartTimer) @Time(lbl=[# query], tag=[$ "Query time"])
+          ) @OnCounter(id=[#  nodes_ready], eq=[$ $[nodes].size()]))
       )
 
       trigger load_all : () = \_ -> (
