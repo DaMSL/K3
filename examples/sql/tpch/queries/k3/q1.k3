@@ -5,7 +5,7 @@ include "Core/Barrier.k3"
 include "tpch/benchmark.k3"
 include "tpch/schema.k3"
 include "tpch/loader.k3"
-include "Transformers.k3"
+include "Distributed/Transformers.k3"
 
 typedef q1_agg = { sum_qty: real, sum_base_price: real, sum_disc_price: real, sum_charge: real
                  , avg_qty_sum : real, avg_price_sum : real, avg_disc_sum : real, count_order : int }
