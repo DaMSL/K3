@@ -37,6 +37,7 @@ namespace K3 {
         e_ptr engine = make_shared<Engine>(); 
         auto gc = make_shared<context>(*engine);
         gc->__patch(parse_bindings(s));
+        gc->initDecls(unit_t {});
         contexts[gc->me] = gc;
         SystemEnvironment se = defaultEnvironment(getAddrs(contexts));
         engine->configure(simulation, se, make_shared<DefaultInternalCodec>(), log_level);
