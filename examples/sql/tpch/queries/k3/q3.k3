@@ -1,0 +1,156 @@
+include "Annotation/Collection.k3"
+include "tpch/benchmark.k3"
+
+/**********************
+* SQL query
+***********************
+select top 10
+        l_orderkey,
+        sum(l_extendedprice * (1 - l_discount)) as revenue,
+        o_orderdate,
+        o_shippriority
+from
+        customer,
+        orders,
+        lineitem
+where
+        c_mktsegment = 'BUILDING'
+        and c_custkey = o_custkey
+        and l_orderkey = o_orderkey
+        and o_orderdate < date '1995-03-15'
+        and l_shipdate > date '1995-03-15'
+group by
+        l_orderkey,
+        o_orderdate,
+        o_shippriority
+order by
+        revenue desc,
+        o_orderdate
+****************************/
+
+
+declare lineitem : lineitem_bag
+declare customer : customer_bag
+declare orders   : orders_bag
+
+// Final result.
+typedef lior_epd_by_ods_r     = {key : {ok: int, od: string, sp: string}, value: real}
+typedef lior_epd_by_ods_map   = collection lior_epd_by_ods_r @Map
+
+declare q3_result : lior_epd_by_ods_map
+
+// Intermediates for Q3 plans.
+typedef li_epd_by_ok_r  = {key: int , value: real }  // l_orderkey => l_extendedprice * (1 - l_discount)
+typedef or_cos_by_ok_r  = {key: int , value: {o_custkey : int, o_orderdate : string, o_shippriority : int} }
+
+typedef lineitem_epd_by_orderkey_bag = collection li_epd_by_ok_r @Collection
+typedef lineitem_epd_by_orderkey_map = collection li_epd_by_ok_r @Map
+
+typedef orders_cos_by_orderkey_bag   = collection or_cos_by_ok_r @Collection
+typedef orders_cos_by_orderkey_map   = collection or_cos_by_ok_r @Map
+
+typedef lior_epdods_by_ck_r   = {key: int, value : lior_epd_by_ods_map }
+typedef lior_epdods_by_ck_map = collection lior_epdods_by_ck_r @Map
+
+typedef cs_ck_bag = collection {c_custkey : int} @Collection
+
+// Plan intermediates.
+declare li_epd_by_ok_map : lineitem_epd_by_orderkey_map
+declare lior_epdods_map  : lior_epdods_by_ck_map
+
+// Needed only for pipelining
+//declare or_cos_by_ok_map : orders_cos_by_orderkey_map
+
+declare merge_li_epd_by_ok : li_epd_by_ok_r -> li_epd_by_ok_r -> li_epd_by_ok_r =
+  \a -> \b -> {key : a.key, value : a.value + b.value}
+
+declare merge_li_epd_by_ods : li_epd_by_ods_r -> li_epd_by_ods_r -> li_epd_by_ods_r =
+  \a -> \b -> {key : a.key, value : a.value + b.value}
+
+declare merge_lior_r : lior_epdods_by_ck_r -> lior_epdods_by_ck_r -> lior_epdods_by_ck_r =
+  \a -> \b -> {key : a.key, value : a.value.fold (\acc -> \r -> acc.insert_with r merge_lior_epd_by_ods) b.value}
+
+declare acc_li_epd_by_ods : lior_epd_by_ods_map -> li_epd_by_ods_r -> lior_epd_by_ods_map =
+  \acc -> \r -> ((acc.insert_with r merge_li_epd_by_ods); acc)
+
+// Distributed plan: dist. hash-join on li-or, broadcast semi-join on lior-cs.
+trigger phase1_scan : () = \_ -> (
+  (ignore (
+    lineitem.filter  (\l -> l.l_shipdate > "1995-03-15" )
+            .groupBy (\l -> l.l_orderkey)
+                     (\acc -> \l -> acc + (l.l_extendedprice * (1 - l.l_discount)))
+                     0.0
+  ) @SendPartitionByKey(dest_trg=[$ phase2_build_lior], barrier_trg=[$ phase2_li_peer_barrier])) ;
+
+  // We can use a map instead of a group-by since orders are unique on o_orderkey.
+  (ignore (
+    orders.filter  (\o -> o.o_orderdate < "1995-03-15" )
+          .map     (\o -> { key   : o.o_orderkey
+                          , value : { o_orderdate    : o.o_orderdate
+                                    , o_custkey      : o.o_custkey
+                                    , o_shippriority : o.o_shippriority} })
+  ) @SendPartitionByKey(dest_trg=[$ phase2_probe_lior], barrier_trg=[$ phase2_ord_peer_barrier]))
+)
+
+trigger phase2_build_lior : lineitem_epd_by_orderkey_bag = \vals -> (
+  // Merge with lineitem map.
+  vals.iterate (\li_r -> li_epd_by_ok_map.insert_with li_r merge_li_epd_by_ok)
+)
+
+trigger phase2_li_peer_barrier : () = \_ -> (
+  print "Lineitem-orders join finished lineitem build."
+)
+
+trigger phase2_probe_lior : orders_cos_by_orderkey_bag = \vals -> (
+  // Probe lineitem map.
+  vals.iterate (\o ->
+    case li_epd_by_ok_map.lookup o.orderkey of
+      { Some li -> lior_epdods_map.insert_with
+                    { key: o.o_custkey
+                    , value: {|key : {ok: int, od: string, sp: string}, value: real
+                              | { key   : {ok: o.o_orderkey, od: o.o_orderdate, sp: o.o_shippriority }
+                                , value : li.value }
+                              |} @Map }
+                    merge_lior_r
+      }
+      { None   -> ()  }
+  )
+)
+
+trigger phase2_ord_peer_barrier : () = \_ -> (
+  print "Lineitem-orders join finished orders probe." ;
+
+  // Broadcast customers to all peers with li-or buckets for semi-join.
+  let building_customers = customer.filter  (\c -> ( c.c_mktsegment == "BUILDING" )
+                                   .map     (\c -> { c_custkey = c.c_custkey })
+  in
+  peers.iterate (\p -> (phase3_probe_liorcs, p.addr) <- building_customers)
+)
+
+// TODO: sort and limit on q3_result
+trigger phase3_probe_liorcs : cs_ck_bag = \vals -> (
+  vals.iterate (\v ->
+       case lior_epdods_map.lookup v.c_custkey of
+       { Some lior_map -> q3_result = lior_map.fold acc_li_epd_by_ods q3_result }
+       { None -> () }
+    ) ;
+  ( (() @:Result) @TPCHBenchmark
+  ) @OnCounter(id=[# phase3_done], eq=[$ peers.size()])
+)
+
+trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
+  queryTrigger       = [$ phase1_scan],
+  loadExpr           = [$ ( lineitemFiles.iterate (\e -> lineitemLoader e.path lineitem);
+                            customerFiles.iterate (\e -> customerLoader e.path customer);
+                            ordersFiles.iterate   (\e -> ordersLoader   e.path orders)
+                          ) ],
+  preLoadExpr        = [$ ()],
+  preReadyExpr       = [$ ()],
+  finishArgT         = [: ()],
+  preTestFinishExpr  = [$ (\_ -> ())],
+  preFinishExpr      = [$ (print (concat "Q3 num results:" q3_result.size()))],
+  preShutdownExpr    = [$ ()]
+)
+
+source rows : () = value ()
+feed rows |> start
