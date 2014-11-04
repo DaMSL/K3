@@ -1,0 +1,96 @@
+include "Core/Barrier.k3"
+include "Core/Messaging.k3"
+
+control DistributedGroupBy [ lbl         : label
+                           , peer_next   : expr
+                           , next        : expr
+                           , nodes       : expr
+                           , merge       : expr
+                           , coordinator : expr ]
+{
+  ignore ( ?e.groupBy ?groupF ?aggF ?accE )
+     => $[nodes].iterate (\p -> ($[lbl]_local, p.addr) <- ())
+     +> {
+          declare $[lbl]_result : $::[e]
+
+          trigger $[lbl]_local : () = \_ -> (
+            (ignore ( $.[e].groupBy $.[groupF] $.[aggF] $.[accE]
+            ) @SendPartitionByKey(dest_trg=[$ $[lbl]_merge], barrier_trg=[$ $[lbl]_peer_barrier]))
+          )
+
+          trigger $[lbl]_merge : $::[e] = \partials -> (
+            partials.iterate (
+              \v -> $[lbl]_result.insert_with v
+                      (\a -> \b -> {key:a.key, value: $[merge] a.value b.value})
+            )
+          )
+
+          trigger $[lbl]_peer_barrier : () = \_ -> (
+            ( $[peer_next] $[lbl]_result ;
+              ( $[lbl]_global_barrier, $[coordinator] ) <- ()
+            ) @OnCounter(id=[# $[lbl]_peer_done], eq=[$ $[nodes].size()])
+          )
+
+          trigger $[lbl]_global_barrier : () = \_ -> (
+            ( $[next]
+            ) @OnCounter(id=[# $[lbl]_done], eq=[$ $[nodes].size()])
+          )
+        }
+}
+
+
+control DistributedHashJoin [ lbl             : label
+                            , lhs_query       : expr
+                            , rhs_query       : expr
+                            , lhs_build_merge : expr
+                            , rhs_probe_merge : expr
+                            , peer_next       : expr
+                            , next            : expr
+                            , coordinator     : expr
+                            , lhs_build_ty    : type
+                            , rhs_probe_ty    : type
+                            ]
+{
+  () => ( (ignore (
+              $[lhs_query]
+            ) @SendPartitionByKey(dest_trg=[$ $[lbl]_build_lhs], barrier_trg=[$ $[lbl]_lhs_peer_barrier]))
+        )
+
+     +> {
+        trigger $[lbl]_build_lhs : $[lhs_build_ty] = \vals -> (
+          vals.iterate $[lhs_build_merge]
+        )
+
+        trigger $[lbl]_peer_barrier : () = \_ -> (
+          print "Hash join LHS finished build." ;
+          ( peers.iterate (\p -> ($[lbl]_rhs_scan, p.addr) <- ())
+          ) @OnCounter(id=[# $[lbl]_peer_build_done], eq=[$ peers.size() ])
+        )
+
+        trigger $[lbl]_rhs_scan : () = \_ -> (
+          (( ignore (
+              $[rhs_query]
+            ) @SendPartitionByKey(dest_trg=[$ $[lbl]_probe_rhs], barrier_trg=[$ $[lbl]_rhs_peer_barrier]))
+          ) @OnCounter(id=[# $[lbl]_lhs_done], eq=[$ peers.size() ])
+        )
+
+        trigger $[lbl]_probe_rhs : $[rhs_probe_ty] = \vals -> (
+          // Probe lineitem map.
+          vals.iterate $[rhs_probe_merge]
+        )
+
+        trigger $[lbl]_rhs_peer_barrier : () = \_ -> (
+          ( print "Hash join RHS finished probe." ;
+            $[peer_next] ;
+            ($[lbl]_global_barrier, $[coordinator]) <- ()
+          ) @OnCounter(id=[# $[lbl]_rhs_done], eq=[$ peers.size() ])
+        )
+
+        trigger $[lbl]_global_barrier : () = \_ -> (
+          ( print "Hash join done." ;
+            $[next]
+          ) @OnCounter(id=[# $[lbl]_join_done], eq=[$ peers.size() ])
+
+        )
+     }
+}
