@@ -1,5 +1,7 @@
+include "Annotation/Collection.k3"
 include "Annotation/Map.k3"
 include "Core/Barrier.k3"
+include "Core/Builtins.k3"
 include "Core/Messaging.k3"
 
 control DistributedGroupBy [ lbl             : label
@@ -69,7 +71,7 @@ control DistributedHashJoin [ lbl             : label
           vals.iterate $[lhs_build_merge]
         )
 
-        trigger $[lbl]_peer_barrier : () = \_ -> (
+        trigger $[lbl]_lhs_peer_barrier : () = \_ -> (
           print "Hash join LHS finished build." ;
           ( $[nodes].iterate (\p -> ($[lbl]_rhs_scan, p.addr) <- ())
           ) @OnCounter(id=[# $[lbl]_peer_build_done], eq=[$ $[nodes].size() ])
