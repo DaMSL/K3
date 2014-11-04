@@ -10,11 +10,11 @@ control DistributedGroupBy [ lbl             : label
                            , nodes           : expr ]
 {
   ignore ( (?e.groupBy ?groupF ?aggF ?accE) : collection ?t )
-     => $[nodes].iterate (\p -> ($[lbl]_local, p.addr) <- ())
+     => $[nodes].iterate (\p -> ($[lbl]_scan, p.addr) <- ())
      +> {
           declare $[lbl]_result : collection $::[t] @Map
 
-          trigger $[lbl]_local : () = \_ -> (
+          trigger $[lbl]_scan : () = \_ -> (
             (ignore ( $.[e].groupBy $.[groupF] $.[aggF] $.[accE]
             ) @SendPartitionByKey( dest_trg    = [$ $[lbl]_merge]
                                  , barrier_trg = [$ $[lbl]_peer_barrier]
@@ -55,14 +55,16 @@ control DistributedHashJoin [ lbl             : label
                             , rhs_probe_ty    : type
                             ]
 {
-  () => ( (ignore (
-              $[lhs_query]
+  () => $[nodes].iterate (\p -> ($[lbl]_lhs_scan, p.addr) <- ())
+     +> {
+        trigger $[lbl]_lhs_scan : () = \_ -> (
+          (ignore
+            ( $[lhs_query]
             ) @SendPartitionByKey( dest_trg    = [$ $[lbl]_build_lhs]
                                  , barrier_trg = [$ $[lbl]_lhs_peer_barrier]
                                  , nodes       = nodes))
         )
 
-     +> {
         trigger $[lbl]_build_lhs : $[lhs_build_ty] = \vals -> (
           vals.iterate $[lhs_build_merge]
         )
@@ -74,11 +76,11 @@ control DistributedHashJoin [ lbl             : label
         )
 
         trigger $[lbl]_rhs_scan : () = \_ -> (
-          (( ignore (
-              $[rhs_query]
-            ) @SendPartitionByKey( dest_trg    = [$ $[lbl]_probe_rhs]
-                                 , barrier_trg = [$ $[lbl]_rhs_peer_barrier]
-                                 , nodes       = nodes))
+          (( ignore
+              ( $[rhs_query]
+              ) @SendPartitionByKey( dest_trg    = [$ $[lbl]_probe_rhs]
+                                   , barrier_trg = [$ $[lbl]_rhs_peer_barrier]
+                                   , nodes       = nodes))
           ) @OnCounter(id=[# $[lbl]_lhs_done], eq=[$ $[nodes].size() ])
         )
 
