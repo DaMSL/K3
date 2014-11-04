@@ -140,8 +140,8 @@ class StlDS {
 
   // Produce a new ds by mapping a function over this ds
   template<typename Fun>
-  auto map(Fun f) const -> Derived<R_elem<RT<Fun, Elem>>>  {
-    Derived<Elem> result;
+  auto map(Fun f) const -> Derived<R_elem<RT<Fun, Elem>>>  const {
+    Derived<R_elem<RT<Fun, Elem>>> result;
     for (const Elem &e : container) {
       result.insert( R_elem<RT<Fun, Elem>>{ f(e) } ); // Copies e (f is pass by value), then move inserts
     }

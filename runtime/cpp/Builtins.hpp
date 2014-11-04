@@ -99,6 +99,11 @@ namespace K3 {
       return *((T *) nullptr);
     }
 
+    template <class T>
+    unit_t ignore(T t) {
+      return unit_t();
+    }
+
     unit_t haltEngine(unit_t);
 
     unit_t drainEngine(unit_t);

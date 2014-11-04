@@ -23,7 +23,7 @@ typedef q1_result_r = { l_returnflag   : string
 typedef q1_result = collection {elem : q1_result_r} @Seq
 
 // TODO
-declare strcmp : string -> string -> int
+declare strcomp : string -> string -> int = \x -> \y -> 0
 declare ignore : forall a . a -> ()
 
 declare lineitem : lineitem_seq
@@ -54,13 +54,13 @@ declare finalize_agg : {key: (string, string), value: q1_agg} -> q1_result_r = \
   , count_order    : r.value.count_order }
 
 declare order_agg : {elem : q1_result_r} -> {elem : q1_result_r} -> int =
-  \a -> \b -> let strdiff = strcmp a.elem.l_returnflag b.elem.l_returnflag
+  \a -> \b -> let strdiff = strcomp a.elem.l_returnflag b.elem.l_returnflag
               in if strdiff <> 0 then strdiff
-                 else strcmp a.elem.l_linestatus b.elem.l_linestatus
+                 else strcomp a.elem.l_linestatus b.elem.l_linestatus
 
 trigger q1_local : () = \_ -> (
   ignore
-    (((let a = lineitem.filter (\r -> (strcmp r.l_shipdate "1998-12-01") <= 0) in
+    (((let a = lineitem.filter (\r -> (strcomp r.l_shipdate "1998-12-01") <= 0) in
     let b = a.groupBy (\r -> (r.l_returnflag, r.l_linestatus)) accum_agg init_agg in
     let c = b.map finalize_agg in
     c.sort order_agg
