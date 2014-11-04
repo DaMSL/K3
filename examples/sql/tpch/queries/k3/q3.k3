@@ -80,16 +80,7 @@ trigger phase1_scan : () = \_ -> (
             .groupBy (\l -> l.l_orderkey)
                      (\acc -> \l -> acc + (l.l_extendedprice * (1 - l.l_discount)))
                      0.0
-  ) @SendPartitionByKey(dest_trg=[$ phase2_build_lior], barrier_trg=[$ phase2_li_peer_barrier])) ;
-
-  // We can use a map instead of a group-by since orders are unique on o_orderkey.
-  (ignore (
-    orders.filter  (\o -> o.o_orderdate < "1995-03-15" )
-          .map     (\o -> { key   : o.o_orderkey
-                          , value : { o_orderdate    : o.o_orderdate
-                                    , o_custkey      : o.o_custkey
-                                    , o_shippriority : o.o_shippriority} })
-  ) @SendPartitionByKey(dest_trg=[$ phase2_probe_lior], barrier_trg=[$ phase2_ord_peer_barrier]))
+  ) @SendPartitionByKey(dest_trg=[$ phase2_build_lior], barrier_trg=[$ phase2_li_peer_barrier]))
 )
 
 trigger phase2_build_lior : lineitem_epd_by_orderkey_bag = \vals -> (
@@ -98,10 +89,25 @@ trigger phase2_build_lior : lineitem_epd_by_orderkey_bag = \vals -> (
 )
 
 trigger phase2_li_peer_barrier : () = \_ -> (
-  print "Lineitem-orders join finished lineitem build."
+  print "Lineitem-orders join finished lineitem build." ;
+  ( peers.iterate (\p -> (phase3_scan, p.addr) <- ())
+  ) @OnCounter(id=[# phase2_peer_build_done], eq=[$ peers.size() ])
 )
 
-trigger phase2_probe_lior : orders_cos_by_orderkey_bag = \vals -> (
+trigger phase3_scan : () = \_ -> (
+  (
+    // We can use a map instead of a group-by since orders are unique on o_orderkey.
+    (ignore (
+      orders.filter  (\o -> o.o_orderdate < "1995-03-15" )
+            .map     (\o -> { key   : o.o_orderkey
+                            , value : { o_orderdate    : o.o_orderdate
+                                      , o_custkey      : o.o_custkey
+                                      , o_shippriority : o.o_shippriority} })
+    ) @SendPartitionByKey(dest_trg=[$ phase3_probe_lior], barrier_trg=[$ phase3_ord_peer_barrier]))
+  ) @OnCounter(id=[# phase2_done], eq=[$ peers.size() ])
+)
+
+trigger phase3_probe_lior : orders_cos_by_orderkey_bag = \vals -> (
   // Probe lineitem map.
   vals.iterate (\o ->
     case li_epd_by_ok_map.lookup o.orderkey of
@@ -117,32 +123,32 @@ trigger phase2_probe_lior : orders_cos_by_orderkey_bag = \vals -> (
   )
 )
 
-trigger phase2_ord_peer_barrier : () = \_ -> (
-  print "Lineitem-orders join finished orders probe." ;
-
-  // Broadcast customers to all peers with li-or buckets for semi-join.
-  let building_customers = customer.filter  (\c -> ( c.c_mktsegment == "BUILDING" )
-                                   .map     (\c -> { c_custkey = c.c_custkey })
-  in
-  peers.iterate (\p -> (phase3_probe_liorcs, p.addr) <- building_customers)
+trigger phase3_ord_peer_barrier : () = \_ -> (
+  ( print "Lineitem-orders join finished orders probe." ;
+    // Broadcast customers to all peers with li-or buckets for semi-join.
+    let building_customers = customer.filter  (\c -> ( c.c_mktsegment == "BUILDING" )
+                                     .map     (\c -> { c_custkey = c.c_custkey })
+    in
+    peers.iterate (\p -> (phase4_probe_liorcs, p.addr) <- building_customers)
+  ) @OnCounter(id=[# phase3_done ], eq=[$ peers.size() ])
 )
 
 // TODO: sort and limit on q3_result
-trigger phase3_probe_liorcs : cs_ck_bag = \vals -> (
+trigger phase4_probe_liorcs : cs_ck_bag = \vals -> (
   vals.iterate (\v ->
        case lior_epdods_map.lookup v.c_custkey of
        { Some lior_map -> q3_result = lior_map.fold acc_li_epd_by_ods q3_result }
        { None -> () }
     ) ;
   ( (() @:Result) @TPCHBenchmark
-  ) @OnCounter(id=[# phase3_done], eq=[$ peers.size()])
+  ) @OnCounter(id=[# phase4_done], eq=[$ peers.size()])
 )
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
   queryTrigger       = [$ phase1_scan],
   loadExpr           = [$ ( lineitemFiles.iterate (\e -> lineitemLoader e.path lineitem);
-                            customerFiles.iterate (\e -> customerLoader e.path customer);
-                            ordersFiles.iterate   (\e -> ordersLoader   e.path orders)
+                            ordersFiles.iterate   (\e -> ordersLoader   e.path orders);
+                            customerFiles.iterate (\e -> customerLoader e.path customer)
                           ) ],
   preLoadExpr        = [$ ()],
   preReadyExpr       = [$ ()],
