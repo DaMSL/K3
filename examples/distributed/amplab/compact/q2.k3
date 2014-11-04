@@ -22,7 +22,9 @@ trigger q2_local : () = \_ -> (
          (\acc -> \r -> acc + r.adRevenue)
          0.0
       ) @Profile(lbl=[# agg_vals], tag=[$ "Agg vals time"])
-      ) @SendPartitionByKey(dest_trg=[$ aggregate], barrier_trg=[$ peer_barrier]))
+      ) @SendPartitionByKey( dest_trg    = [$ aggregate]
+                           , barrier_trg = [$ peer_barrier]
+                           , nodes       = [$ peers ]))
 )
 
 trigger aggregate : adRevByIp = \vals -> (

@@ -5,6 +5,7 @@ include "Core/Barrier.k3"
 include "tpch/benchmark.k3"
 include "tpch/schema.k3"
 include "tpch/loader.k3"
+include "Transformers.k3"
 
 typedef q1_agg = { sum_qty: real, sum_base_price: real, sum_disc_price: real, sum_charge: real
                  , avg_qty_sum : real, avg_price_sum : real, avg_disc_sum : real, count_order : int }
@@ -20,14 +21,15 @@ typedef q1_result_r = { l_returnflag   : string
                       , avg_disc       : real
                       , count_order    : int }
 
-typedef q1_result = collection {elem : q1_result_r} @Seq
+typedef q1_result = collection q1_result_r @Collection
+
+declare lineitem    : lineitem_bag
+declare init_agg    : q1_agg
+declare peer_result : mut q1_result
 
 // TODO
 declare strcomp : string -> string -> int = \x -> \y -> 0
 declare ignore : forall a . a -> ()
-
-declare lineitem : lineitem_seq
-declare init_agg : q1_agg
 
 declare accum_agg : q1_agg -> lineitem_r -> q1_agg = \acc -> \r ->
   { sum_qty        : acc.sum_qty        + r.l_quantity
@@ -40,19 +42,15 @@ declare accum_agg : q1_agg -> lineitem_r -> q1_agg = \acc -> \r ->
   , count_order    : acc.count_order    + 1
   }
 
-
-declare merge_agg : {key: (string, string), value: q1_agg} -> {key: (string, string), value: q1_agg} -> {key: (string, string), value: q1_agg} = \a -> \b -> (
-  { key: a.key
-  , value:
-      { sum_qty        : a.value.sum_qty        + b.value.sum_qty
-      , sum_base_price : a.value.sum_base_price + b.value.sum_base_price
-      , sum_disc_price : a.value.sum_disc_price + b.value.sum_disc_price
-      , sum_charge     : a.value.sum_charge     + b.value.sum_charge
-      , avg_qty_sum    : a.value.avg_qty_sum    + b.value.avg_qty_sum
-      , avg_price_sum  : a.value.avg_price_sum  + b.value.avg_price_sum
-      , avg_disc_sum   : a.value.avg_disc_sum   + b.value.avg_disc_sum
-      , count_order    : a.value.count_order    + b.value.count_order
-      }
+declare merge_agg : q1_agg -> q1_agg -> q1_agg= \a -> \b -> (
+  { sum_qty        : a.sum_qty        + b.sum_qty
+  , sum_base_price : a.sum_base_price + b.sum_base_price
+  , sum_disc_price : a.sum_disc_price + b.sum_disc_price
+  , sum_charge     : a.sum_charge     + b.sum_charge
+  , avg_qty_sum    : a.avg_qty_sum    + b.avg_qty_sum
+  , avg_price_sum  : a.avg_price_sum  + b.avg_price_sum
+  , avg_disc_sum   : a.avg_disc_sum   + b.avg_disc_sum
+  , count_order    : a.count_order    + b.count_order
   }
 )
 
@@ -70,35 +68,40 @@ declare finalize_agg : {key: (string, string), value: q1_agg} -> q1_result_r = \
   , count_order    : r.value.count_order }
 
 
-
-
 declare order_agg : {elem : q1_result_r} -> {elem : q1_result_r} -> int =
   \a -> \b -> let strdiff = strcomp a.elem.l_returnflag b.elem.l_returnflag
               in if strdiff <> 0 then strdiff
                  else strcomp a.elem.l_linestatus b.elem.l_linestatus
 
-trigger q1_local : () = \_ -> (
-  ignore
-    (((let a = lineitem.filter (\r -> (strcomp r.l_shipdate "1998-12-01") <= 0) in
-    let b = a.groupBy (\r -> (r.l_returnflag, r.l_linestatus)) accum_agg init_agg in
-    let c = b.map finalize_agg in
-    c.sort order_agg
-
-      ) @Profile(lbl=[# worker], tag=[$ "Worker time"])
-      ) @:Result) @TPCHBenchmark
+trigger t : () = \_ -> (
+  (ignore
+    ((lineitem.filter  (\r -> (strcomp r.l_shipdate "1998-12-01") <= 0))
+              .groupBy (\r -> (r.l_returnflag, r.l_linestatus))
+                       accum_agg
+                       init_agg)
+  ) @DistributedGroupBy(
+      lbl         = [# groupby],
+      peer_next   = [$ (\x -> ((x.iterate (\kv -> peer_result.insert (finalize_agg kv)));
+                               ((() @:Result) @TPCHBenchmark))) ],
+      next        = [$ ()],
+      merge       = [$ merge_agg],
+      coordinator = [$ master],
+      nodes       = [$ peers] )
 )
 
-declare global_result : q1_result
+trigger q1_local : () = \_ -> ()
 
-trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
-  queryTrigger       = [$ q1_local],
-  loadExpr           = [$ dataFiles.iterate (\e -> lineitemLoader e.path lineitem)],
-  preLoadExpr        = [$ ()],
-  preReadyExpr       = [$ ()],
-  finishArgT         = [: collection {elem : q1_result_r} @Seq],
-  preTestFinishExpr  = [$ (\vals -> vals.iterate (\e -> global_result.insert e))],
-  preFinishExpr      = [$ print (concat "Num results: " (itos (global_result.size ())))],
-  preShutdownExpr    = [$ ()]
+trigger start : () = \_ -> (
+  (() @:Start) @TPCHBenchmark(
+    queryTrigger       = [$ q1_local],
+    loadExpr           = [$ dataFiles.iterate (\e -> lineitemLoader e.path lineitem)],
+    preLoadExpr        = [$ ()],
+    preReadyExpr       = [$ ()],
+    finishArgT         = [: ()],
+    preTestFinishExpr  = [$ (\_ -> ())],
+    preFinishExpr      = [$ ()],
+    preShutdownExpr    = [$ ()]
+  )
 )
 
 source rows : () = value ()

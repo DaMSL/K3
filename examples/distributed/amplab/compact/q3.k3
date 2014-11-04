@@ -78,7 +78,7 @@ trigger q3_local : () = \_ -> (
     )
     else ()
   );
-  ignore partial_aggs @SendByKey(dest_trg=[$ merge], barrier_trg=[$ count_merges])
+  ignore partial_aggs @SendByKey(dest_trg=[$ merge], barrier_trg=[$ count_merges], nodes = [$ peers])
 )
 
 trigger merge : aggs_by_ip_map = \aggs_map -> (

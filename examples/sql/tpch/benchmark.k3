@@ -1,3 +1,9 @@
+declare index_by_hash : forall a. a -> int = (\s -> (
+  let n = peers.size () in
+  let h = (hash s) in
+  ((h % n) + n) % n
+))
+
 control TPCHBenchmark[queryTrigger       : expr,
                       loadExpr           : expr,
                       preLoadExpr        : expr,

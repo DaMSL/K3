@@ -59,7 +59,9 @@ trigger q4_local : () = \_ -> (
                                    (\acc -> \v -> acc + v.count)
                                    0
      ) @Profile(lbl=[# url_counts_groupBy], tag=[$ "Url group-by time"])
-     ) @SendPartitionByKey(dest_trg=[$ aggregate], barrier_trg=[$ peer_barrier]))
+     ) @SendPartitionByKey( dest_trg    = [$ aggregate]
+                          , barrier_trg = [$ peer_barrier]
+                          , nodes       = [$ peers]))
 )
 
 trigger aggregate : collection {key: string, value: int} @ {Collection} = \newVals -> (
