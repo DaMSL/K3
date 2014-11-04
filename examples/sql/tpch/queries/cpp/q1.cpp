@@ -435,7 +435,7 @@ namespace K3 {
           })];
           qi::rule<string::iterator,
           qi::space_type> _field = _acctbal | _address | _availqty | _brand | _clerk | _comments | _commitdate | _container | _custkey | _d_size | _discount | _event | _extendedprice | _linenumber | _linestatus | _mfgr | _mktsegment | _name | _nationkey | _oid | _orderdate | _orderkey | _orderpriority | _orderstatus | _partkey | _phone | _quantity | _receiptdate | _regionkey | _retailprice | _returnflag | _schema | _shipdate | _shipinstruct | _shipmode | _shippriority | _suppkey | _supplycost | _tax | _totalprice | _type2;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -501,7 +501,7 @@ namespace K3 {
             do_patch(_partial, _record.addr);
           })];
           qi::rule<string::iterator, qi::space_type> _field = _addr;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -552,7 +552,7 @@ namespace K3 {
             do_patch(_partial, _record.arg);
           })];
           qi::rule<string::iterator, qi::space_type> _field = _arg;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -692,7 +692,7 @@ namespace K3 {
           })];
           qi::rule<string::iterator,
           qi::space_type> _field = _avg_disc | _avg_price | _avg_qty | _count_order | _l_linestatus | _l_returnflag | _sum_base_price | _sum_charge | _sum_disc_price | _sum_qty;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -816,7 +816,7 @@ namespace K3 {
           })];
           qi::rule<string::iterator,
           qi::space_type> _field = _avg_disc_sum | _avg_price_sum | _avg_qty_sum | _count_order | _sum_base_price | _sum_charge | _sum_disc_price | _sum_qty;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -937,7 +937,7 @@ namespace K3 {
           })];
           qi::rule<string::iterator,
           qi::space_type> _field = _c_acctbal | _c_address | _c_comments | _c_custkey | _c_mktsegment | _c_name | _c_nationkey | _c_phone;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -990,7 +990,7 @@ namespace K3 {
             do_patch(_partial, _record.elem);
           })];
           qi::rule<string::iterator, qi::space_type> _field = _elem;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -1048,7 +1048,7 @@ namespace K3 {
             do_patch(_partial, _record.value);
           })];
           qi::rule<string::iterator, qi::space_type> _field = _key | _value;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -1243,7 +1243,7 @@ namespace K3 {
           })];
           qi::rule<string::iterator,
           qi::space_type> _field = _l_comments | _l_commitdate | _l_discount | _l_extendedprice | _l_linenumber | _l_linestatus | _l_orderkey | _l_partkey | _l_quantity | _l_receiptdate | _l_returnflag | _l_shipdate | _l_shipinstruct | _l_shipmode | _l_suppkey | _l_tax;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -1331,7 +1331,7 @@ namespace K3 {
           })];
           qi::rule<string::iterator,
           qi::space_type> _field = _n_comments | _n_name | _n_nationkey | _n_regionkey;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -1462,7 +1462,7 @@ namespace K3 {
           })];
           qi::rule<string::iterator,
           qi::space_type> _field = _o_clerk | _o_comments | _o_custkey | _o_orderdate | _o_orderkey | _o_orderpriority | _o_orderstatus | _o_shippriority | _o_totalprice;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -1593,7 +1593,7 @@ namespace K3 {
           })];
           qi::rule<string::iterator,
           qi::space_type> _field = _p_brand | _p_comments | _p_container | _p_mfgr | _p_name | _p_p_size | _p_partkey | _p_retailprice | _p_type;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -1647,7 +1647,7 @@ namespace K3 {
             do_patch(_partial, _record.path);
           })];
           qi::rule<string::iterator, qi::space_type> _field = _path;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -1742,7 +1742,7 @@ namespace K3 {
           })];
           qi::rule<string::iterator,
           qi::space_type> _field = _ps_availqty | _ps_comments | _ps_partkey | _ps_suppkey | _ps_supplycost;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -1813,7 +1813,7 @@ namespace K3 {
             do_patch(_partial, _record.r_regionkey);
           })];
           qi::rule<string::iterator, qi::space_type> _field = _r_comments | _r_name | _r_regionkey;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -1920,7 +1920,7 @@ namespace K3 {
           })];
           qi::rule<string::iterator,
           qi::space_type> _field = _s_acctbal | _s_address | _s_comments | _s_name | _s_nationkey | _s_phone | _s_suppkey;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -2022,11 +2022,6 @@ public K3::__time_context {
       std::tuple<_Collection<R_arg<K3::base_string>>, _Collection<R_key_value<K3::base_string,
       K3::base_string>>> args;
       K3::base_string role;
-      auto strcomp(K3::base_string x)  {
-        return [this] (K3::base_string y) mutable  {
-          return 0;
-        };
-      }
       _Seq<R_l_comments_l_commitdate_l_discount_l_extendedprice_l_linenumber_l_linestatus_l_orderkey_l_partkey_l_quantity_l_receiptdate_l_returnflag_l_shipdate_l_shipinstruct_l_shipmode_l_suppkey_l_tax<K3::base_string,
       K3::base_string, double, double, int, K3::base_string, int, int, double, K3::base_string,
       K3::base_string, K3::base_string, K3::base_string, K3::base_string, int, double>> lineitem;
@@ -2079,11 +2074,11 @@ public K3::__time_context {
         double>>& b) mutable  {
           {
             int strdiff;
-            strdiff = strcomp(std::move((a.elem).l_returnflag))(std::move((b.elem).l_returnflag));
+            strdiff = strcomp(std::move((a.elem).l_returnflag), std::move((b.elem).l_returnflag));
             if (strdiff != (0)) {
               return strdiff;
             } else {
-              return strcomp(std::move((a.elem).l_linestatus))(std::move((b.elem).l_linestatus));
+              return strcomp(std::move((a.elem).l_linestatus), std::move((b.elem).l_linestatus));
             }
           }
         };
@@ -2108,7 +2103,7 @@ public K3::__time_context {
               K3::base_string, double, double, int, K3::base_string, int, int, double,
               K3::base_string, K3::base_string, K3::base_string, K3::base_string, K3::base_string,
               int, double>& r) mutable  {
-                return strcomp(std::move(r.l_shipdate))("1998-12-01") <= (0);
+                return strcomp(std::move(r.l_shipdate), "1998-12-01") <= (0);
               }));
               {
                 _Seq<R_key_value<std::tuple<K3::base_string, K3::base_string>,
@@ -2193,35 +2188,35 @@ public K3::__time_context {
           R_l_comments_l_commitdate_l_discount_l_extendedprice_l_linenumber_l_linestatus_l_orderkey_l_partkey_l_quantity_l_receiptdate_l_returnflag_l_shipdate_l_shipinstruct_l_shipmode_l_suppkey_l_tax<K3::base_string,
           K3::base_string, double, double, int, K3::base_string, int, int, double, K3::base_string,
           K3::base_string, K3::base_string, K3::base_string, K3::base_string, int, double> record;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_orderkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_partkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_suppkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_linenumber = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_quantity = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_extendedprice = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_discount = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_tax = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_returnflag = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_linestatus = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_shipdate = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_commitdate = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_receiptdate = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_shipinstruct = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_shipmode = tmp_buffer;
           std::getline(in, tmp_buffer);
           record.l_comments = tmp_buffer;
@@ -2239,19 +2234,19 @@ public K3::__time_context {
           R_c_acctbal_c_address_c_comments_c_custkey_c_mktsegment_c_name_c_nationkey_c_phone<double,
           K3::base_string, K3::base_string, int, K3::base_string, K3::base_string, int,
           K3::base_string> record;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.c_custkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.c_name = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.c_address = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.c_nationkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.c_phone = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.c_acctbal = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.c_mktsegment = tmp_buffer;
           std::getline(in, tmp_buffer);
           record.c_comments = tmp_buffer;
@@ -2269,21 +2264,21 @@ public K3::__time_context {
           R_o_clerk_o_comments_o_custkey_o_orderdate_o_orderkey_o_orderpriority_o_orderstatus_o_shippriority_o_totalprice<K3::base_string,
           K3::base_string, int, K3::base_string, int, K3::base_string, K3::base_string, int,
           double> record;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.o_orderkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.o_custkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.o_orderstatus = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.o_totalprice = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.o_orderdate = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.o_orderpriority = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.o_clerk = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.o_shippriority = std::atoi(tmp_buffer.c_str());
           std::getline(in, tmp_buffer);
           record.o_comments = tmp_buffer;
@@ -2299,17 +2294,17 @@ public K3::__time_context {
         K3::read_records(_in, c, [] (std::istream& in, std::string& tmp_buffer)   {
           R_s_acctbal_s_address_s_comments_s_name_s_nationkey_s_phone_s_suppkey<double,
           K3::base_string, K3::base_string, K3::base_string, int, K3::base_string, int> record;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.s_suppkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.s_name = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.s_address = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.s_nationkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.s_phone = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.s_acctbal = std::atof(tmp_buffer.c_str());
           std::getline(in, tmp_buffer);
           record.s_comments = tmp_buffer;
@@ -2325,13 +2320,13 @@ public K3::__time_context {
         K3::read_records(_in, c, [] (std::istream& in, std::string& tmp_buffer)   {
           R_ps_availqty_ps_comments_ps_partkey_ps_suppkey_ps_supplycost<int, K3::base_string, int,
           int, double> record;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.ps_partkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.ps_suppkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.ps_availqty = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.ps_supplycost = std::atof(tmp_buffer.c_str());
           std::getline(in, tmp_buffer);
           record.ps_comments = tmp_buffer;
@@ -2349,21 +2344,21 @@ public K3::__time_context {
           R_p_brand_p_comments_p_container_p_mfgr_p_name_p_p_size_p_partkey_p_retailprice_p_type<K3::base_string,
           K3::base_string, K3::base_string, K3::base_string, K3::base_string, int, int, double,
           K3::base_string> record;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.p_partkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.p_name = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.p_mfgr = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.p_brand = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.p_type = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.p_p_size = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.p_container = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.p_retailprice = std::atof(tmp_buffer.c_str());
           std::getline(in, tmp_buffer);
           record.p_comments = tmp_buffer;
@@ -2379,11 +2374,11 @@ public K3::__time_context {
         K3::read_records(_in, c, [] (std::istream& in, std::string& tmp_buffer)   {
           R_n_comments_n_name_n_nationkey_n_regionkey<K3::base_string, K3::base_string, int,
           int> record;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.n_nationkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.n_name = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.n_regionkey = std::atoi(tmp_buffer.c_str());
           std::getline(in, tmp_buffer);
           record.n_comments = tmp_buffer;
@@ -2397,9 +2392,9 @@ public K3::__time_context {
         _in.open(file);
         K3::read_records(_in, c, [] (std::istream& in, std::string& tmp_buffer)   {
           R_r_comments_r_name_r_regionkey<K3::base_string, K3::base_string, int> record;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.r_regionkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.r_name = tmp_buffer;
           std::getline(in, tmp_buffer);
           record.r_comments = tmp_buffer;
@@ -2425,85 +2420,85 @@ public K3::__time_context {
           K3::base_string, int, K3::base_string, double, K3::base_string, int, double,
           K3::base_string, K3::base_string, K3::base_string, K3::base_string, K3::base_string, int,
           int, double, double, double, K3::base_string> record;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.oid = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.schema = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.event = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.acctbal = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.address = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.availqty = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.brand = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.clerk = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.comments = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.commitdate = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.container = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.custkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.discount = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.extendedprice = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.linenumber = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.linestatus = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.mfgr = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.mktsegment = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.name = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.nationkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.orderdate = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.orderkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.orderpriority = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.orderstatus = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.partkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.phone = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.quantity = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.receiptdate = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.regionkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.retailprice = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.returnflag = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.shipdate = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.shipinstruct = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.shipmode = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.shippriority = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.d_size = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.suppkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.supplycost = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.tax = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.totalprice = std::atof(tmp_buffer.c_str());
           std::getline(in, tmp_buffer);
           record.type2 = tmp_buffer;

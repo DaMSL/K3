@@ -104,6 +104,25 @@ namespace K3 {
       return unit_t();
     }
 
+    // TODO add a member to base_string, call that instead
+    int strcomp(string_impl s1, string_impl s2) {
+      const char* c1 = s1.c_str();
+      const char* c2 = s2.c_str();
+      if (c1 && c2) {
+        return strcmp(c1,c2);
+      }
+      else if(c1) {
+        return 1;
+      }
+      else if(c2) {
+        return -1;
+      }
+      else {
+        return 0;
+      }
+
+    }
+
     unit_t haltEngine(unit_t);
 
     unit_t drainEngine(unit_t);

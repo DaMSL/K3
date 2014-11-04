@@ -1,4 +1,5 @@
 include "Annotation/Collection.k3"
+include "tpch/schema.k3"
 include "tpch/benchmark.k3"
 
 /**********************
@@ -36,8 +37,9 @@ declare orders   : orders_bag
 // Final result.
 typedef lior_epd_by_ods_r     = {key : {ok: int, od: string, sp: string}, value: real}
 typedef lior_epd_by_ods_map   = collection lior_epd_by_ods_r @Map
+typedef lior_epd_by_ods_seq   = collection lior_epd_by_ods_r @Seq
 
-declare q3_result : lior_epd_by_ods_map
+declare q3_result : lior_epd_by_ods_seq
 
 // Intermediates for Q3 plans.
 typedef li_epd_by_ok_r  = {key: int , value: real }  // l_orderkey => l_extendedprice * (1 - l_discount)
@@ -132,6 +134,8 @@ trigger phase3_ord_peer_barrier : () = \_ -> (
     peers.iterate (\p -> (phase4_probe_liorcs, p.addr) <- building_customers)
   ) @OnCounter(id=[# phase3_done ], eq=[$ peers.size() ])
 )
+)
+
 
 // TODO: sort and limit on q3_result
 trigger phase4_probe_liorcs : cs_ck_bag = \vals -> (
