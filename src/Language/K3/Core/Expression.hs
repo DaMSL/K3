@@ -244,6 +244,14 @@ isEPType :: Annotation Expression -> Bool
 isEPType (EPType _) = True
 isEPType _          = False
 
+isEAnyType :: Annotation Expression -> Bool
+isEAnyType (EType   _) = True
+isEAnyType (ETypeLB _) = True
+isEAnyType (ETypeUB _) = True
+isEAnyType (EQType  _) = True
+isEAnyType (EPType  _) = True
+isEAnyType _           = False
+
 isEEffect :: Annotation Expression -> Bool
 isEEffect (EEffect _) = True
 isEEffect _           = False

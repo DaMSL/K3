@@ -550,7 +550,7 @@ eRecord = exprError "record" $ EC.record <$> braces idQExprList
 eEmpty :: ExpressionParser
 eEmpty = exprError "empty" $ mkEmpty <$> (typedEmpty >>= attachAnnotations)
   where mkEmpty (e, a) = foldl (@+) e a
-        typedEmpty = EC.empty <$> (keyword "empty" *> tRecord)
+        typedEmpty = EC.empty <$> (keyword "empty" *> choice [tRecord, tDeclared])
         attachAnnotations e@(tag -> EConstant (CEmpty t@(tag -> TRecord ids))) =
           withAnnotations (eAnnotations $ Just $ mkRecordSpliceEnv ids $ children t) >>= return . (e,)
         attachAnnotations e = withAnnotations (eAnnotations Nothing) >>= return . (e,)

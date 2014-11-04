@@ -18,6 +18,8 @@ import Data.List
 import qualified Data.Map as Map
 import Data.Tree
 
+import Debug.Trace
+
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
@@ -513,16 +515,18 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
                              -> Maybe SpliceEnv
     matchTypesAndAnnotations anns1 anns2 sEnv = case (find isEType anns1, find isEPType anns2) of
       (Just (EType ty), Just (EPType pty)) ->
-          if   matchAnnotations ignoreUIDSpan anns1 anns2
+          if   matchAnnotations (\x -> ignoreUIDSpan x && ignoreTypes x) anns1 anns2
           then matchType ty pty >>= return . mergeSpliceEnv sEnv
           else Nothing
 
-      (_, _) -> if matchAnnotations ignoreUIDSpan anns1 anns2 then Just sEnv else Nothing
+      (_, _) -> if matchAnnotations (\x -> ignoreUIDSpan x && ignoreTypes x) anns1 anns2
+                then Just sEnv else Nothing
 
     typeRepr (EType ty) = [(spliceVTSym, SType ty)]
     typeRepr _ = []
 
     ignoreUIDSpan a = not (isEUID a || isESpan a)
+    ignoreTypes   a = not $ isEAnyType a
 
     debugMatchPVar i =
       unwords ["isPatternVariable", show i, ":", show $ isPatternVariable i]
@@ -536,7 +540,9 @@ matchType t patT = matchTree matchTag t patT emptySpliceEnv
               let extend n =
                     if null n then Nothing
                     else Just . (True,) $ addSpliceE n (spliceRecord [(spliceVTSym, SType t1)]) sEnv
-              in maybe Nothing extend $ patternVariable i
+              in do
+                   localLog $ debugMatchPVar i
+                   maybe Nothing extend $ patternVariable i
 
         matchTag sEnv t1@(tag -> x) t2@(tag -> y)
           | x == y && matchMutability t1 t2 = Just (False, sEnv)
@@ -544,13 +550,19 @@ matchType t patT = matchTree matchTag t patT emptySpliceEnv
 
         matchMutability t1 t2 = (t1 @~ isTQualified) == (t2 @~ isTQualified)
 
+        debugMatchPVar i =
+          unwords ["isPatternVariable", show i, ":", show $ isPatternVariable i]
+
 
 -- | Match two annotation sets. For now this does not introduce any bindings,
 --   rather it ensures that the second set of annotations are a subset of the first.
 --   Thus matching acts as a constraint on the presence of annotation and properties
 --   in any rewrite rules fired.
-matchAnnotations :: (Eq (Annotation a)) => (Annotation a -> Bool) -> [Annotation a] -> [Annotation a] -> Bool
-matchAnnotations a2FilterF a1 a2 = all (`elem` a1) $ filter a2FilterF a2
+matchAnnotations :: (Eq (Annotation a), Show (Annotation a))
+                 => (Annotation a -> Bool) -> [Annotation a] -> [Annotation a] -> Bool
+matchAnnotations a2FilterF a1 a2 =
+  trace (unwords ["Match annotations:", show a1, show $ filter a2FilterF a2])
+    $ all (`elem` a1) $ filter a2FilterF a2
 
 
 exprPatternMatcher :: [TypedSpliceVar] -> [PatternRewriteRule] -> [K3 Declaration] -> K3Generator
