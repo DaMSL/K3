@@ -560,9 +560,7 @@ matchType t patT = matchTree matchTag t patT emptySpliceEnv
 --   in any rewrite rules fired.
 matchAnnotations :: (Eq (Annotation a), Show (Annotation a))
                  => (Annotation a -> Bool) -> [Annotation a] -> [Annotation a] -> Bool
-matchAnnotations a2FilterF a1 a2 =
-  trace (unwords ["Match annotations:", show a1, show $ filter a2FilterF a2])
-    $ all (`elem` a1) $ filter a2FilterF a2
+matchAnnotations a2FilterF a1 a2 = all (`elem` a1) $ filter a2FilterF a2
 
 
 exprPatternMatcher :: [TypedSpliceVar] -> [PatternRewriteRule] -> [K3 Declaration] -> K3Generator
