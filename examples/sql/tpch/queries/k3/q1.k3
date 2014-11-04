@@ -73,9 +73,9 @@ declare order_agg : {elem : q1_result_r} -> {elem : q1_result_r} -> int =
               in if strdiff <> 0 then strdiff
                  else strcomp a.elem.l_linestatus b.elem.l_linestatus
 
-trigger t : () = \_ -> (
+trigger q1 : () = \_ -> (
   (ignore
-    ((lineitem.filter  (\r -> (strcomp r.l_shipdate "1998-12-01") <= 0))
+    ((lineitem.filter  (\r -> r.l_shipdate <= "1998-12-01"))
               .groupBy (\r -> (r.l_returnflag, r.l_linestatus))
                        accum_agg
                        init_agg)
@@ -89,14 +89,13 @@ trigger t : () = \_ -> (
       nodes       = [$ peers] )
 )
 
-trigger q1_local : () = \_ -> ()
-
 trigger start : () = \_ -> (
   (() @:Start) @TPCHBenchmark(
-    queryTrigger       = [$ q1_local],
+    nodes              = [$ peers],
     loadExpr           = [$ dataFiles.iterate (\e -> lineitemLoader e.path lineitem)],
     preLoadExpr        = [$ ()],
     preReadyExpr       = [$ ()],
+    onReadyExpr        = [$ (q1, me) <- ()],
     finishArgT         = [: ()],
     preTestFinishExpr  = [$ (\_ -> ())],
     preFinishExpr      = [$ ()],
