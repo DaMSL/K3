@@ -1,5 +1,10 @@
 include "Annotation/Collection.k3"
+include "Annotation/Seq.k3"
+include "Core/Profile.k3"
+include "Core/Barrier.k3"
 include "tpch/benchmark.k3"
+include "tpch/schema.k3"
+include "tpch/loader.k3"
 
 typedef q1_agg = { sum_qty: real, sum_base_price: real, sum_disc_price: real, sum_charge: real
                  , avg_qty_sum : real, avg_price_sum : real, avg_disc_sum : real, count_order : int }
@@ -17,6 +22,10 @@ typedef q1_result_r = { l_returnflag   : string
 
 typedef q1_result = collection {elem : q1_result_r} @Seq
 
+// TODO
+declare strcomp : string -> string -> int = \x -> \y -> 0
+declare ignore : forall a . a -> ()
+
 declare lineitem : lineitem_seq
 declare init_agg : q1_agg
 
@@ -24,7 +33,7 @@ declare accum_agg : q1_agg -> lineitem_r -> q1_agg = \acc -> \r ->
   { sum_qty        : acc.sum_qty        + r.l_quantity
   , sum_base_price : acc.sum_base_price + r.l_extendedprice
   , sum_disc_price : acc.sum_disc_price + (r.l_extendedprice * (1 - r.l_discount))
-  , sum_charge     : acc.sum_charge     + (r.l_extendedprice * (1 - l_discount) * (1 + l_tax))
+  , sum_charge     : acc.sum_charge     + (r.l_extendedprice * (1 - r.l_discount) * (1 + r.l_tax))
   , avg_qty_sum    : acc.avg_qty_sum    + r.l_quantity
   , avg_price_sum  : acc.avg_price_sum  + r.l_extendedprice
   , avg_disc_sum   : acc.avg_disc_sum   + r.l_discount
@@ -35,27 +44,27 @@ declare finalize_agg : {key: (string, string), value: q1_agg} -> q1_result_r = \
   bind r.key as (retflag, linestat) in
   { l_returnflag   : retflag
   , l_linestatus   : linestat
-  , sum_qty        : r.sum_qty
-  , sum_base_price : r.sum_base_price
-  , sum_disc_price : r.sum_disc_price
-  , sum_charge     : r.sum_charge
-  , avg_qty        : r.avg_qty_sum   / r.count_order
-  , avg_price      : r.avg_price_sum / r.count_order
-  , avg_disc       : r.avg_disc      / r.count_order
-  , count_order    : r.count_order }
+  , sum_qty        : r.value.sum_qty
+  , sum_base_price : r.value.sum_base_price
+  , sum_disc_price : r.value.sum_disc_price
+  , sum_charge     : r.value.sum_charge
+  , avg_qty        : r.value.avg_qty_sum   / r.value.count_order
+  , avg_price      : r.value.avg_price_sum / r.value.count_order
+  , avg_disc       : r.value.avg_disc_sum  / r.value.count_order
+  , count_order    : r.value.count_order }
 
 declare order_agg : {elem : q1_result_r} -> {elem : q1_result_r} -> int =
-  \a -> \b -> let strdiff = strcmp a.elem.l_returnflag b.elem.l_returnflag
-              in if rdiff <> 0 then rdiff
-                 else strcmp a.elem.l_linestatus b.elem.l_linestatus
+  \a -> \b -> let strdiff = strcomp a.elem.l_returnflag b.elem.l_returnflag
+              in if strdiff <> 0 then strdiff
+                 else strcomp a.elem.l_linestatus b.elem.l_linestatus
 
 trigger q1_local : () = \_ -> (
-  (ignore
-    (( lineitem
-        .filter  (\r -> (strcmp r.l_shipdate "1998-12-01") <= 0) // TODO: strcmp
-        .groupBy (\r -> (r.l_returnflag, r.l_linestatus)) accum_agg init_agg
-        .map     finalize_agg
-        .sort    order_agg
+  ignore
+    (((let a = lineitem.filter (\r -> (strcomp r.l_shipdate "1998-12-01") <= 0) in
+    let b = a.groupBy (\r -> (r.l_returnflag, r.l_linestatus)) accum_agg init_agg in
+    let c = b.map finalize_agg in
+    c.sort order_agg
+
       ) @Profile(lbl=[# worker], tag=[$ "Worker time"])
       ) @:Result) @TPCHBenchmark
 )
@@ -64,12 +73,12 @@ declare global_result : q1_result
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
   queryTrigger       = [$ q1_local],
-  loadExpr           = [$ dataFiles.iterate (\e -> dataLoader e.path lineitem)],
+  loadExpr           = [$ dataFiles.iterate (\e -> lineitemLoader e.path lineitem)],
   preLoadExpr        = [$ ()],
   preReadyExpr       = [$ ()],
   finishArgT         = [: collection {elem : q1_result_r} @Seq],
-  preTestFinishExpr  = [$ (\vals -> vals.iterate (\e -> global_results.insert e))],
-  preFinishExpr      = [$ print (concat "Num results: " (itos (global_results.size ())))],
+  preTestFinishExpr  = [$ (\vals -> vals.iterate (\e -> global_result.insert e))],
+  preFinishExpr      = [$ print (concat "Num results: " (itos (global_result.size ())))],
   preShutdownExpr    = [$ ()]
 )
 

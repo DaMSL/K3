@@ -1,7 +1,7 @@
 include "tpch/schema.k3"
 
 @:CArgs 2
-declare lineitemLoader : string -> lineitem_bag -> ()
+declare lineitemLoader : string -> lineitem_seq -> ()
 
 @:CArgs 2
 declare customerLoader : string -> customer_bag -> ()
