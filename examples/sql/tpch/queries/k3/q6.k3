@@ -11,8 +11,8 @@ declare q6_result : mut real = 0.0
 trigger q6_local : () = \_ -> (
   (ignore
     ((( (lineitem
-        .filter  (\r ->     ( strcomp r.l_shipdate "1994-01-01" ) >= 0
-                        and ( strcomp r.l_shipdate "1995-01-01" ) < 0
+        .filter  (\r ->     ( r.l_shipdate >= "1994-01-01" )
+                        and ( r.l_shipdate < "1995-01-01" )
                         and ( r.l_discount >= ( 0.06 - 0.01 ) )
                         and ( r.l_discount <= ( 0.06 + 0.01 ) )
                         and ( r.l_quantity < 24 )

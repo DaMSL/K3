@@ -105,7 +105,7 @@ namespace K3 {
     }
 
     // TODO add a member to base_string, call that instead
-    int strcomp(string_impl s1, string_impl s2) {
+    int strcomp(const string_impl& s1,const string_impl& s2) {
       const char* c1 = s1.c_str();
       const char* c2 = s2.c_str();
       if (c1 && c2) {
