@@ -4,18 +4,16 @@ include "Core/Barrier.k3"
 include "Core/Builtins.k3"
 include "Core/Messaging.k3"
 
-control DistributedGroupBy [ lbl             : label
-                           , peer_next       : expr
-                           , next            : expr
-                           , merge           : expr
-                           , coordinator     : expr
-                           , nodes           : expr ]
+control DistributedGroupByGeneric [ lbl             : label
+                                  , peer_next       : expr
+                                  , next            : expr
+                                  , merge           : expr
+                                  , coordinator     : expr
+                                  , nodes           : expr ]
 {
   ignore ( (?e.groupBy ?groupF ?aggF ?accE) : collection ?t )
      => $[nodes].iterate (\p -> ($[lbl]_scan, p.addr) <- ())
      +> {
-          declare $[lbl]_result : collection $::[t] @Map
-
           trigger $[lbl]_scan : () = \_ -> (
             (ignore ( $.[e].groupBy $.[groupF] $.[aggF] $.[accE]
             ) @SendPartitionByKey( dest_trg    = [$ $[lbl]_merge]
@@ -25,13 +23,11 @@ control DistributedGroupBy [ lbl             : label
 
           // Note: SendByPartitionKey always uses a @Collection for the wire type.
           trigger $[lbl]_merge : collection $::[t] @Collection = \partials -> (
-            partials.iterate (
-              \v -> $[lbl]_result.insert_with v
-                      (\a -> \b -> {key:a.key, value: $[merge] a.value b.value}))
+            partials.iterate (\v -> $[merge] v)
           )
 
           trigger $[lbl]_peer_barrier : () = \_ -> (
-            ( $[peer_next] $[lbl]_result ;
+            ( $[peer_next] ;
               ( $[lbl]_global_barrier, $[coordinator] ) <- ()
             ) @OnCounter(id=[# $[lbl]_peer_done], eq=[$ $[nodes].size()])
           )
@@ -41,6 +37,28 @@ control DistributedGroupBy [ lbl             : label
             ) @OnCounter(id=[# $[lbl]_done], eq=[$ $[nodes].size()])
           )
         }
+}
+
+control DistributedGroupBy [ lbl             : label
+                           , peer_next       : expr
+                           , next            : expr
+                           , merge           : expr
+                           , coordinator     : expr
+                           , nodes           : expr ]
+{
+  ignore ( (?e.groupBy ?groupF ?aggF ?accE) : collection ?t )
+     => (ignore ($.[e].groupBy $.[groupF] $.[aggF] $.[accE]))
+          @DistributedGroupByGeneric(
+              lbl         = lbl
+            , peer_next   = [$ $[peer_next] $[lbl]_result ]
+            , next        = next
+            , merge       = [$ (\v ->
+                                  $[lbl]_result.insert_with v (\a -> \b ->
+                                    {key:a.key, value: $[merge] a.value b.value}))
+                            ]
+            , coordinator = coordinator
+            , nodes       = nodes )
+     +> { declare $[lbl]_result : mut collection $::[t] @Map }
 }
 
 
