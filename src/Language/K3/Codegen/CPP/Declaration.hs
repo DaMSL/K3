@@ -209,7 +209,8 @@ genCsvParser _ = return Nothing
 source_builtin_map :: [(String, (String -> K3 Type -> String -> CPPGenM R.Definition))]
 source_builtin_map = [("HasRead", genHasRead),
                       ("Read", genDoRead),
-                      ("Loader",genLoader)]
+                      ("Loader",genLoader ","),
+                      ("PLoader", genLoader "|")]
 
 source_builtins :: [String]
 source_builtins = map fst source_builtin_map
@@ -255,8 +256,8 @@ genDoRead suf typ name = do
 
 -- TODO: Loader is not quite valid K3. The collection should be passed by indirection so we are not working with a copy
 -- (since the collection is technically passed-by-value)
-genLoader :: String -> K3 Type -> String -> CPPGenM R.Definition
-genLoader suf (children -> [_,f]) name = do
+genLoader :: String -> String -> K3 Type -> String -> CPPGenM R.Definition
+genLoader sep suf (children -> [_,f]) name = do
  (colType, recType) <- return $ getColType f
  cColType <- genCType colType
  cRecType <- genCType recType
@@ -268,7 +269,7 @@ genLoader suf (children -> [_,f]) name = do
  let readField f t b = [ R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "getline")) $
                                 [ R.Variable (R.Name "in")
                                 , R.Variable (R.Name "tmp_buffer")
-                                ] ++ [R.Literal (R.LChar ",") | not b]
+                                ] ++ [R.Literal (R.LChar sep) | not b]
                    , R.Assignment (R.Project (R.Variable $ R.Name "record") (R.Name f))
                                   (typeMap t $ R.Variable $ R.Name "tmp_buffer")
                    ]
