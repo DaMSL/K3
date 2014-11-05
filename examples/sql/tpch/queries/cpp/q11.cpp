@@ -1880,7 +1880,7 @@ public K3::__time_context {
           _Collection<R_elem<int>> german_ids;
           german_ids = (nation.filter(std::move([this] (const R_n_comments_n_name_n_nationkey_n_regionkey<K3::base_string,
           K3::base_string, int, int>& n) mutable  {
-            return (n.n_name) == ("germany");
+            return (n.n_name) == ("GERMANY");
           }))).map(std::move([this] (const R_n_comments_n_name_n_nationkey_n_regionkey<K3::base_string,
           K3::base_string, int, int>& n) mutable  {
             return n.n_nationkey;
