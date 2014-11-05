@@ -435,7 +435,7 @@ namespace K3 {
           })];
           qi::rule<string::iterator,
           qi::space_type> _field = _acctbal | _address | _availqty | _brand | _clerk | _comments | _commitdate | _container | _custkey | _d_size | _discount | _event | _extendedprice | _linenumber | _linestatus | _mfgr | _mktsegment | _name | _nationkey | _oid | _orderdate | _orderkey | _orderpriority | _orderstatus | _partkey | _phone | _quantity | _receiptdate | _regionkey | _retailprice | _returnflag | _schema | _shipdate | _shipinstruct | _shipmode | _shippriority | _suppkey | _supplycost | _tax | _totalprice | _type2;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -501,7 +501,7 @@ namespace K3 {
             do_patch(_partial, _record.addr);
           })];
           qi::rule<string::iterator, qi::space_type> _field = _addr;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -552,7 +552,7 @@ namespace K3 {
             do_patch(_partial, _record.arg);
           })];
           qi::rule<string::iterator, qi::space_type> _field = _arg;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -671,7 +671,7 @@ namespace K3 {
           })];
           qi::rule<string::iterator,
           qi::space_type> _field = _c_acctbal | _c_address | _c_comments | _c_custkey | _c_mktsegment | _c_name | _c_nationkey | _c_phone;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -731,7 +731,7 @@ namespace K3 {
             do_patch(_partial, _record.value);
           })];
           qi::rule<string::iterator, qi::space_type> _field = _key | _value;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -926,7 +926,7 @@ namespace K3 {
           })];
           qi::rule<string::iterator,
           qi::space_type> _field = _l_comments | _l_commitdate | _l_discount | _l_extendedprice | _l_linenumber | _l_linestatus | _l_orderkey | _l_partkey | _l_quantity | _l_receiptdate | _l_returnflag | _l_shipdate | _l_shipinstruct | _l_shipmode | _l_suppkey | _l_tax;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -989,7 +989,7 @@ namespace K3 {
             do_patch(_partial, _record.l_suppkey);
           })];
           qi::rule<string::iterator, qi::space_type> _field = _l_epd | _l_suppkey;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -1072,7 +1072,7 @@ namespace K3 {
           })];
           qi::rule<string::iterator,
           qi::space_type> _field = _n_comments | _n_name | _n_nationkey | _n_regionkey;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -1131,7 +1131,7 @@ namespace K3 {
             do_patch(_partial, _record.n_regionkey);
           })];
           qi::rule<string::iterator, qi::space_type> _field = _n_name | _n_regionkey;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -1262,7 +1262,7 @@ namespace K3 {
           })];
           qi::rule<string::iterator,
           qi::space_type> _field = _o_clerk | _o_comments | _o_custkey | _o_orderdate | _o_orderkey | _o_orderpriority | _o_orderstatus | _o_shippriority | _o_totalprice;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -1393,7 +1393,7 @@ namespace K3 {
           })];
           qi::rule<string::iterator,
           qi::space_type> _field = _p_brand | _p_comments | _p_container | _p_mfgr | _p_name | _p_p_size | _p_partkey | _p_retailprice | _p_type;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -1447,7 +1447,7 @@ namespace K3 {
             do_patch(_partial, _record.path);
           })];
           qi::rule<string::iterator, qi::space_type> _field = _path;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -1542,7 +1542,7 @@ namespace K3 {
           })];
           qi::rule<string::iterator,
           qi::space_type> _field = _ps_availqty | _ps_comments | _ps_partkey | _ps_suppkey | _ps_supplycost;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -1613,7 +1613,7 @@ namespace K3 {
             do_patch(_partial, _record.r_regionkey);
           })];
           qi::rule<string::iterator, qi::space_type> _field = _r_comments | _r_name | _r_regionkey;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -1720,7 +1720,7 @@ namespace K3 {
           })];
           qi::rule<string::iterator,
           qi::space_type> _field = _s_acctbal | _s_address | _s_comments | _s_name | _s_nationkey | _s_phone | _s_suppkey;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };
@@ -1781,7 +1781,7 @@ namespace K3 {
             do_patch(_partial, _record.s_suppkey);
           })];
           qi::rule<string::iterator, qi::space_type> _field = _s_nationkey | _s_suppkey;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % (',') >> ('}');
           qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
         }
   };

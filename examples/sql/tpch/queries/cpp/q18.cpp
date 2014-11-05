@@ -2089,8 +2089,7 @@ public K3::__time_context {
           return unit_t {};
         }
       }
-      unit_t lineitemLoader(string file,
-      _Collection<R_l_comments_l_commitdate_l_discount_l_extendedprice_l_linenumber_l_linestatus_l_orderkey_l_partkey_l_quantity_l_receiptdate_l_returnflag_l_shipdate_l_shipinstruct_l_shipmode_l_suppkey_l_tax<K3::base_string,
+      unit_t lineitemLoader(string file, _Collection<R_l_comments_l_commitdate_l_discount_l_extendedprice_l_linenumber_l_linestatus_l_orderkey_l_partkey_l_quantity_l_receiptdate_l_returnflag_l_shipdate_l_shipinstruct_l_shipmode_l_suppkey_l_tax<K3::base_string,
       K3::base_string, double, double, int, K3::base_string, int, int, double, K3::base_string,
       K3::base_string, K3::base_string, K3::base_string, K3::base_string, int, double>>& c)  {
         std::ifstream _in;
@@ -2099,35 +2098,35 @@ public K3::__time_context {
           R_l_comments_l_commitdate_l_discount_l_extendedprice_l_linenumber_l_linestatus_l_orderkey_l_partkey_l_quantity_l_receiptdate_l_returnflag_l_shipdate_l_shipinstruct_l_shipmode_l_suppkey_l_tax<K3::base_string,
           K3::base_string, double, double, int, K3::base_string, int, int, double, K3::base_string,
           K3::base_string, K3::base_string, K3::base_string, K3::base_string, int, double> record;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_orderkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_partkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_suppkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_linenumber = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_quantity = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_extendedprice = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_discount = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_tax = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_returnflag = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_linestatus = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_shipdate = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_commitdate = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_receiptdate = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_shipinstruct = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.l_shipmode = tmp_buffer;
           std::getline(in, tmp_buffer);
           record.l_comments = tmp_buffer;
@@ -2145,19 +2144,19 @@ public K3::__time_context {
           R_c_acctbal_c_address_c_comments_c_custkey_c_mktsegment_c_name_c_nationkey_c_phone<double,
           K3::base_string, K3::base_string, int, K3::base_string, K3::base_string, int,
           K3::base_string> record;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.c_custkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.c_name = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.c_address = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.c_nationkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.c_phone = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.c_acctbal = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.c_mktsegment = tmp_buffer;
           std::getline(in, tmp_buffer);
           record.c_comments = tmp_buffer;
@@ -2175,21 +2174,21 @@ public K3::__time_context {
           R_o_clerk_o_comments_o_custkey_o_orderdate_o_orderkey_o_orderpriority_o_orderstatus_o_shippriority_o_totalprice<K3::base_string,
           K3::base_string, int, K3::base_string, int, K3::base_string, K3::base_string, int,
           double> record;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.o_orderkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.o_custkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.o_orderstatus = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.o_totalprice = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.o_orderdate = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.o_orderpriority = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.o_clerk = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.o_shippriority = std::atoi(tmp_buffer.c_str());
           std::getline(in, tmp_buffer);
           record.o_comments = tmp_buffer;
@@ -2205,17 +2204,17 @@ public K3::__time_context {
         K3::read_records(_in, c, [] (std::istream& in, std::string& tmp_buffer)   {
           R_s_acctbal_s_address_s_comments_s_name_s_nationkey_s_phone_s_suppkey<double,
           K3::base_string, K3::base_string, K3::base_string, int, K3::base_string, int> record;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.s_suppkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.s_name = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.s_address = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.s_nationkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.s_phone = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.s_acctbal = std::atof(tmp_buffer.c_str());
           std::getline(in, tmp_buffer);
           record.s_comments = tmp_buffer;
@@ -2231,13 +2230,13 @@ public K3::__time_context {
         K3::read_records(_in, c, [] (std::istream& in, std::string& tmp_buffer)   {
           R_ps_availqty_ps_comments_ps_partkey_ps_suppkey_ps_supplycost<int, K3::base_string, int,
           int, double> record;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.ps_partkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.ps_suppkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.ps_availqty = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.ps_supplycost = std::atof(tmp_buffer.c_str());
           std::getline(in, tmp_buffer);
           record.ps_comments = tmp_buffer;
@@ -2255,21 +2254,21 @@ public K3::__time_context {
           R_p_brand_p_comments_p_container_p_mfgr_p_name_p_p_size_p_partkey_p_retailprice_p_type<K3::base_string,
           K3::base_string, K3::base_string, K3::base_string, K3::base_string, int, int, double,
           K3::base_string> record;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.p_partkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.p_name = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.p_mfgr = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.p_brand = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.p_type = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.p_p_size = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.p_container = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.p_retailprice = std::atof(tmp_buffer.c_str());
           std::getline(in, tmp_buffer);
           record.p_comments = tmp_buffer;
@@ -2285,11 +2284,11 @@ public K3::__time_context {
         K3::read_records(_in, c, [] (std::istream& in, std::string& tmp_buffer)   {
           R_n_comments_n_name_n_nationkey_n_regionkey<K3::base_string, K3::base_string, int,
           int> record;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.n_nationkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.n_name = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.n_regionkey = std::atoi(tmp_buffer.c_str());
           std::getline(in, tmp_buffer);
           record.n_comments = tmp_buffer;
@@ -2303,9 +2302,9 @@ public K3::__time_context {
         _in.open(file);
         K3::read_records(_in, c, [] (std::istream& in, std::string& tmp_buffer)   {
           R_r_comments_r_name_r_regionkey<K3::base_string, K3::base_string, int> record;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.r_regionkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.r_name = tmp_buffer;
           std::getline(in, tmp_buffer);
           record.r_comments = tmp_buffer;
@@ -2331,85 +2330,85 @@ public K3::__time_context {
           K3::base_string, int, K3::base_string, double, K3::base_string, int, double,
           K3::base_string, K3::base_string, K3::base_string, K3::base_string, K3::base_string, int,
           int, double, double, double, K3::base_string> record;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.oid = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.schema = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.event = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.acctbal = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.address = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.availqty = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.brand = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.clerk = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.comments = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.commitdate = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.container = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.custkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.discount = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.extendedprice = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.linenumber = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.linestatus = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.mfgr = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.mktsegment = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.name = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.nationkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.orderdate = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.orderkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.orderpriority = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.orderstatus = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.partkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.phone = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.quantity = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.receiptdate = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.regionkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.retailprice = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.returnflag = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.shipdate = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.shipinstruct = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.shipmode = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.shippriority = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.d_size = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.suppkey = std::atoi(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.supplycost = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.tax = std::atof(tmp_buffer.c_str());
-          std::getline(in, tmp_buffer, ',');
+          std::getline(in, tmp_buffer, '|');
           record.totalprice = std::atof(tmp_buffer.c_str());
           std::getline(in, tmp_buffer);
           record.type2 = tmp_buffer;
