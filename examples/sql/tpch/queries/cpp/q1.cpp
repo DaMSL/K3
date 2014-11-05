@@ -2041,11 +2041,6 @@ public K3::__time_context {
       _Collection<R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
       double, double, int, K3::base_string, K3::base_string, double, double, double,
       double>> peer_result;
-      auto strcomp(K3::base_string x)  {
-        return [this] (K3::base_string y) mutable  {
-          return 0;
-        };
-      }
       auto accum_agg(const R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
       double, double, int, double, double, double, double>& acc)  {
         return [this,
@@ -2106,11 +2101,11 @@ public K3::__time_context {
         double>>& b) mutable  {
           {
             int strdiff;
-            strdiff = strcomp(std::move((a.elem).l_returnflag))(std::move((b.elem).l_returnflag));
+            strdiff = strcomp(std::move((a.elem).l_returnflag),std::move((b.elem).l_returnflag));
             if (strdiff != (0)) {
               return strdiff;
             } else {
-              return strcomp(std::move((a.elem).l_linestatus))(std::move((b.elem).l_linestatus));
+              return strcomp(std::move((a.elem).l_linestatus),std::move((b.elem).l_linestatus));
             }
           }
         };
