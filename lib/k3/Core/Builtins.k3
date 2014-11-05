@@ -20,6 +20,9 @@ declare concat : string -> string -> string
 @:CArgs 3
 declare slice_string : string -> int -> int -> string
 
+@:CArgs 2
+declare strcomp : string -> string -> int
+
 // TODO: move to String.k3
 declare regex_matcher : string -> (string -> collection {elem: string} @ Collection)
 declare regex_matcher_q4 : string -> collection {elem: string} @ Collection

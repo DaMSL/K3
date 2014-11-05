@@ -27,9 +27,6 @@ declare lineitem    : lineitem_bag
 declare init_agg    : q1_agg
 declare peer_result : mut q1_result
 
-// TODO
-declare strcomp : string -> string -> int = \x -> \y -> 0
-declare ignore : forall a . a -> ()
 
 declare accum_agg : q1_agg -> lineitem_r -> q1_agg = \acc -> \r ->
   { sum_qty        : acc.sum_qty        + r.l_quantity
