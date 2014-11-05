@@ -12,6 +12,8 @@ declare times: collection {ms: int} @ {Seq}
 declare start_ms: mut int = 0
 declare end_ms: mut int = 0
 
+declare vertex_count: mut int = 0
+
 declare start_timer: () -> () = \_ -> (
   start_ms = 0;
   end_ms = 0;
@@ -21,10 +23,10 @@ declare start_timer: () -> () = \_ -> (
 declare printStats: () -> () = \_ -> (
   let s = times.fold (\a -> \t -> a + t.ms) 0 in
   let avg = (1.0 / times.size()) * s in
-  print (concat "Avg time per iteration: " (rtos avg))
+  print (concat "Avg time per iteration: " (rtos avg));
+  print (concat "Total vertex count: " (itos vertex_count))
 )
 
-declare vertex_count: int = 1
 declare iterations: mut int = 5
 declare damping_factor: real = 0.5
 declare master: address
@@ -114,12 +116,13 @@ declare reset_timer: () -> () = \_ -> (
 trigger load_all: () = \_ -> (
   dataFiles.iterate (\x -> loadGraph x.path graph);
   graph.iterate (\r -> (state.insert { key: r.key, value: (1.0) }));
-  (ready, master) <- ()
+  (ready, master) <- (graph.size ())
 )
 
 trigger go: () = \_ -> scatter ()
 
-trigger ready: () = \_ -> (
+trigger ready: int = \i -> (
+  vertex_count = vertex_count + i;
   if master == me
   then ((peers.iterate (\p -> (go, p.addr) <- ())) @ { OnCounter(id=[# ready], eq=[$ peers.size ()]) }) else ()
 )

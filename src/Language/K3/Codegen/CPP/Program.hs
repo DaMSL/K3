@@ -297,7 +297,7 @@ genPrettify = do
  where
    p_string = R.Named $ R.Qualified (R.Name "std") (R.Name "string")
    result_type  = R.Named $ R.Qualified (R.Name "std") (R.Specialized [p_string, p_string] (R.Name "map"))
-   result  = "result"
+   result  = "__result"
 
    genBody  :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
    genBody n_ts = do

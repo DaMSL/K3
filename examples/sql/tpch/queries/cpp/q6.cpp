@@ -1687,9 +1687,7 @@ public K3::__time_context {
         K3::base_string, double, double, int, K3::base_string, int, int, double, K3::base_string,
         K3::base_string, K3::base_string, K3::base_string, K3::base_string, int,
         double> r) mutable  {
-          return strcomp(std::move(r.l_shipdate),
-          "1994-01-01") >= (0) && strcomp(std::move(r.l_shipdate),
-          "1995-01-01") < (0) && (r.l_discount) >= (6.0e-2) - (1.0e-2) && (r.l_discount) <= (6.0e-2) + (1.0e-2) && (r.l_quantity) < (24);
+          return r.l_shipdate >= "1994-01-01" && r.l_shipdate < "1995-01-01" && (r.l_discount) >= (0.05) && (r.l_discount) <= (0.07) && (r.l_quantity) < (24);
         }))).fold(std::move([this] (const double& acc) mutable  {
           return [this,
           &acc] (const R_l_comments_l_commitdate_l_discount_l_extendedprice_l_linenumber_l_linestatus_l_orderkey_l_partkey_l_quantity_l_receiptdate_l_returnflag_l_shipdate_l_shipinstruct_l_shipmode_l_suppkey_l_tax<K3::base_string,
