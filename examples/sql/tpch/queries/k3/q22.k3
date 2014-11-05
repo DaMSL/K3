@@ -41,6 +41,7 @@ order by cntrycode
 *     filter customer
 ****************************/
 
+declare master   : address = 127.0.0.1:4000
 declare customer : customer_bag
 declare orders   : orders_bag
 
@@ -83,15 +84,16 @@ trigger customer_subagg_local : () = \_ -> (
   in (customer_subagg_final, master) <- c_acctbal_agg
 )
 
-trigger customer_subagg_final : {sum:real, cnt:int} = \partial -> (
+trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
+(
   c_acc_acctbal = { sum: c_acc_acctbal.sum + partial.sum
-                  , cnt: c_acc_acctbal.cnt + partial.cnt }
+                  , cnt: c_acc_acctbal.cnt + partial.cnt } ;
+
   ( c_avg_acctbal = c_acc_acctbal.sum / c_acc_acctbal.cnt ;
 
     print "Computed customer avg acctbal." ;
-    peers.iterate (\p -> (customer_set_avg_acctbal, p.addr) <- c_avg_acctbal)
+    peers.iterate (\p -> (customer_set_avg_acctbal, p.addr) <- c_avg_acctbal) ;
 
-    // TODO: substring
     () @DistributedHashJoin(
           lbl       = [# co ]
 
@@ -111,7 +113,7 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial -> (
                                            empty {cntrycode: string, c_acctbal: real} @Collection
                       ]
 
-        , lhs_build_merge = [$ (\o -> o_ck.insert_with o (\_ -> \_ -> ())) ]
+        , lhs_build_merge = [$ (\o -> o_ck.insert_with o (\a -> \b -> {key: a.key, value: ()})) ]
 
         , rhs_probe_merge = [$
             (\c ->
@@ -126,7 +128,7 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial -> (
 
         , peer_next       = [$ print "OR-CS join finished customer probe." ;
                                (q22_final_aggregate, master) <- c_nt_by_cc ;
-                               ((() @:Result) @TPCHBenchmark)
+                               ((() @:Result) @TPCHBenchmarkWithoutMaster)
                             ]
 
         , next            = [$ print "OR-CS join all nodes finished." ]
@@ -149,7 +151,7 @@ trigger q22_final_aggregate : c_nt_by_cc_map = \vals -> (
   ) @OnCounter(id=[# q22_aggregate_done], eq=[$ peers.size()])
 )
 
-trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
+trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes              = [$ peers ],
   loadExpr           = [$ ( ordersFiles.iterate   (\e -> ordersLoader   e.path orders);
                             customerFiles.iterate (\e -> customerLoader e.path customer)
