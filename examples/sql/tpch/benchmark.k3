@@ -3,7 +3,8 @@ include "Core/Barrier.k3"
 include "Core/Profile.k3"
 
 declare ignore    : forall a. a -> () = \_ -> ()
-control TPCHBenchmark[nodes              : expr,
+control TPCHBenchmarkWithoutMaster
+                     [nodes              : expr,
                       loadExpr           : expr,
                       preLoadExpr        : expr,
                       preReadyExpr       : expr,
@@ -16,8 +17,6 @@ control TPCHBenchmark[nodes              : expr,
   ?e @:Result => (finished, master) <- $.[e]
   ?e @:Start  => (load_all, me)     <- $.[e]
     +> {
-      declare master    : address = 127.0.0.1:40000
-
       // Generic, single relation dataset
       declare dataFiles : collection {path: string} @Collection
 
@@ -68,4 +67,27 @@ control TPCHBenchmark[nodes              : expr,
         ((ready, master) <- ())
       )
     }
+}
+
+control TPCHBenchmark[nodes              : expr,
+                      loadExpr           : expr,
+                      preLoadExpr        : expr,
+                      preReadyExpr       : expr,
+                      onReadyExpr        : expr,
+                      finishArgT         : type,
+                      preTestFinishExpr  : expr,
+                      preFinishExpr      : expr,
+                      preShutdownExpr    : expr]
+{
+  ?e => ($.[e]) @TPCHBenchmarkWithoutMaster(
+                      nodes             = nodes
+                    , loadExpr          = loadExpr
+                    , preLoadExpr       = preLoadExpr
+                    , preReadyExpr      = preReadyExpr
+                    , onReadyExpr       = onReadyExpr
+                    , finishArgT        = finishArgT
+                    , preTestFinishExpr = preTestFinishExpr
+                    , preFinishExpr     = preFinishExpr
+                    , preShutdownExpr   = preShutdownExpr )
+     +> { declare master : address = 127.0.0.1:40000 }
 }
