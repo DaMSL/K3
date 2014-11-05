@@ -43,7 +43,7 @@ declare nation   : nation_bag
 // Partsupp is much bigger than supplier
 
 // suppkey -> partkey -> value_mult_sum
-typedef p_by_partkey_t     =  {key: int, value: int}
+typedef p_by_partkey_t     =  {key: int, value: real}
 typedef p_by_partkey_map_t =  collection p_by_partkey_t @ Map
 typedef p_by_suppkey_t     = {key: int , value: p_by_partkey_map_t }
 typedef p_by_suppkey_map_t = collection p_by_suppkey_t @ Map
@@ -57,7 +57,7 @@ typedef s_by_suppkey_col_t = collection s_by_suppkey_t @ Collection
 declare s_by_suppkey_map : s_by_suppkey_map_t
 
 // nationkey -> [(partkey, calcval)]
-typedef ps_inner_t = {key: int, value: int}
+typedef ps_inner_t = {key: int, value: real}
 typedef ps_inner_col_t = collection ps_inner_t @ Collection
 typedef ps_inner_map_t = collection ps_inner_t @ Map
 typedef ps_t = {key: int, value: ps_inner_map_t}
@@ -66,9 +66,9 @@ declare ps_map : ps_map_t
 
 typedef n_bag  = collection {elem : int} @ Collection
 
-typedef result_t = collection {key : int, value: int} @ Map
+typedef result_t = collection {key : int, value: real} @ Map
 declare result : mut result_t
-declare total : mut int = 0
+declare total : mut real = 0
 
 declare combine_maps : p_by_suppkey_t -> p_by_suppkey_t -> p_by_suppkey_t =
   (\a -> \b ->
