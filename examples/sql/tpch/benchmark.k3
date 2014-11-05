@@ -25,6 +25,11 @@ control TPCHBenchmark[nodes              : expr,
       declare lineitemFiles : collection {path : string} @Collection
       declare customerFiles : collection {path : string} @Collection
       declare ordersFiles   : collection {path : string} @Collection
+      declare supplierFiles : collection {path : string} @Collection
+      declare partFiles     : collection {path : string} @Collection
+      declare partsuppFiles : collection {path : string} @Collection
+      declare nationFiles   : collection {path : string} @Collection
+      declare regionFiles   : collection {path : string} @Collection
 
       declare index_by_hash : forall a. a -> int = (\s -> (
         let n = $[nodes].size () in
