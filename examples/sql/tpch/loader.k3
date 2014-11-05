@@ -1,28 +1,28 @@
 include "tpch/schema.k3"
 
 @:CArgs 2
-declare lineitemLdr : string -> lineitem_bag -> ()
+declare lineitemLoaderP : string -> lineitem_bag -> ()
 
 @:CArgs 2
-declare customerLdr : string -> customer_bag -> ()
+declare customerLoaderP : string -> customer_bag -> ()
 
 @:CArgs 2
-declare ordersLdr : string -> orders_bag -> ()
+declare ordersLoaderP : string -> orders_bag -> ()
 
 @:CArgs 2
-declare supplierLdr : string -> supplier_bag -> ()
+declare supplierLoaderP : string -> supplier_bag -> ()
 
 @:CArgs 2
-declare partsuppLdr : string -> partsupp_bag -> ()
+declare partsuppLoaderP : string -> partsupp_bag -> ()
 
 @:CArgs 2
-declare partLdr : string -> part_bag -> ()
+declare partLoaderP : string -> part_bag -> ()
 
 @:CArgs 2
-declare nationLdr : string -> nation_bag -> ()
+declare nationLoaderP : string -> nation_bag -> ()
 
 @:CArgs 2
-declare regionLdr : string -> region_bag -> ()
+declare regionLoaderP : string -> region_bag -> ()
 
 @:CArgs 2
-declare tpchAgendaLdr : string -> tpch_agenda_bag -> ()
+declare tpchAgendaLoaderP : string -> tpch_agenda_bag -> ()

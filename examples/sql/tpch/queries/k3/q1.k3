@@ -89,7 +89,7 @@ trigger q1 : () = \_ -> (
 trigger start : () = \_ -> (
   (() @:Start) @TPCHBenchmark(
     nodes              = [$ peers],
-    loadExpr           = [$ dataFiles.iterate (\e -> lineitemLoader e.path lineitem)],
+    loadExpr           = [$ dataFiles.iterate (\e -> lineitemLoaderP e.path lineitem)],
     preLoadExpr        = [$ ()],
     preReadyExpr       = [$ ()],
     onReadyExpr        = [$ (q1, me) <- ()],

@@ -146,9 +146,9 @@ trigger loc_probe_rhs : cs_ck_bag = \vals -> (
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
   nodes              = [$ peers ],
-  loadExpr           = [$ ( lineitemFiles.iterate (\e -> lineitemLoader e.path lineitem);
-                            ordersFiles.iterate   (\e -> ordersLoader   e.path orders);
-                            customerFiles.iterate (\e -> customerLoader e.path customer)
+  loadExpr           = [$ ( lineitemFiles.iterate (\e -> lineitemLoaderP e.path lineitem);
+                            ordersFiles.iterate   (\e -> ordersLoaderP  e.path orders);
+                            customerFiles.iterate (\e -> customerLoaderP e.path customer)
                           ) ],
   preLoadExpr        = [$ ()],
   preReadyExpr       = [$ ()],

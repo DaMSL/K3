@@ -170,9 +170,9 @@ trigger calc_result : () = \_ -> (
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
   nodes              = [$ peers ],
-  loadExpr           = [$ ( supplierFiles.iterate (\e -> supplierLdr e.path supplier);
-                            partsuppFiles.iterate (\e -> partsuppLdr e.path partsupp);
-                            nationFiles.iterate   (\e -> nationLdr   e.path nation)
+  loadExpr           = [$ ( supplierFiles.iterate (\e -> supplierLoaderP e.path supplier);
+                            partsuppFiles.iterate (\e -> partsuppLoaderP e.path partsupp);
+                            nationFiles.iterate   (\e -> nationLoaderP   e.path nation)
                           ) ],
   preLoadExpr        = [$ ()],
   preReadyExpr       = [$ ()],

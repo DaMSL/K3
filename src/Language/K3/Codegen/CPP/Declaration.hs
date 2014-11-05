@@ -210,7 +210,7 @@ source_builtin_map :: [(String, (String -> K3 Type -> String -> CPPGenM R.Defini
 source_builtin_map = [("HasRead", genHasRead),
                       ("Read", genDoRead),
                       ("Loader",genLoader ","),
-                      ("PLoader", genLoader "|")]
+                      ("LoaderP", genLoader "|")]
 
 source_builtins :: [String]
 source_builtins = map fst source_builtin_map
@@ -319,5 +319,5 @@ genLoader sep suf (children -> [_,f]) name = do
 
    type_mismatch = error "Invalid type for Loader function. Should Be String -> Collection R -> ()"
 
-genLoader _ _ _ =  error "Invalid type for Loader function."
+genLoader _ _ _ _ =  error "Invalid type for Loader function."
 
