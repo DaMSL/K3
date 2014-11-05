@@ -2826,13 +2826,13 @@ public K3::__time_context {
             ostringstream oss;
             oss << ("{");
             oss << std::string("key:") << K3::prettify_string(x.key);
-            oss << (",");
+            oss << ("|");
             oss << std::string("value:") << K3::prettify_record(x.value, [] (R_nc_tab<int,
             double> x)   {
               ostringstream oss;
               oss << ("{");
               oss << std::string("nc:") << K3::prettify_int(x.nc);
-              oss << (",");
+              oss << ("|");
               oss << std::string("tab:") << K3::prettify_real(x.tab);
               oss << ("}");
               return string_impl(oss.str());
@@ -2848,13 +2848,13 @@ public K3::__time_context {
             ostringstream oss;
             oss << ("{");
             oss << std::string("key:") << K3::prettify_string(x.key);
-            oss << (",");
+            oss << ("|");
             oss << std::string("value:") << K3::prettify_record(x.value, [] (R_nc_tab<int,
             double> x)   {
               ostringstream oss;
               oss << ("{");
               oss << std::string("nc:") << K3::prettify_int(x.nc);
-              oss << (",");
+              oss << ("|");
               oss << std::string("tab:") << K3::prettify_real(x.tab);
               oss << ("}");
               return string_impl(oss.str());
@@ -2868,7 +2868,7 @@ public K3::__time_context {
             ostringstream oss;
             oss << ("{");
             oss << std::string("key:") << K3::prettify_int(x.key);
-            oss << (",");
+            oss << ("|");
             oss << std::string("value:") << K3::prettify_tuple(x.value);
             oss << ("}");
             return string_impl(oss.str());
@@ -2879,7 +2879,7 @@ public K3::__time_context {
           ostringstream oss;
           oss << ("{");
           oss << std::string("sum:") << K3::prettify_real(x.sum);
-          oss << (",");
+          oss << ("|");
           oss << std::string("cnt:") << K3::prettify_int(x.cnt);
           oss << ("}");
           return string_impl(oss.str());
@@ -2891,7 +2891,7 @@ public K3::__time_context {
             ostringstream oss;
             oss << ("{");
             oss << std::string("key:") << K3::prettify_string(x.key);
-            oss << (",");
+            oss << ("|");
             oss << std::string("value:") << K3::prettify_tuple(x.value);
             oss << ("}");
             return string_impl(oss.str());
@@ -2908,21 +2908,21 @@ public K3::__time_context {
             ostringstream oss;
             oss << ("{");
             oss << std::string("o_orderkey:") << K3::prettify_int(x.o_orderkey);
-            oss << (",");
+            oss << ("|");
             oss << std::string("o_custkey:") << K3::prettify_int(x.o_custkey);
-            oss << (",");
+            oss << ("|");
             oss << std::string("o_orderstatus:") << K3::prettify_string(x.o_orderstatus);
-            oss << (",");
+            oss << ("|");
             oss << std::string("o_totalprice:") << K3::prettify_real(x.o_totalprice);
-            oss << (",");
+            oss << ("|");
             oss << std::string("o_orderdate:") << K3::prettify_string(x.o_orderdate);
-            oss << (",");
+            oss << ("|");
             oss << std::string("o_orderpriority:") << K3::prettify_string(x.o_orderpriority);
-            oss << (",");
+            oss << ("|");
             oss << std::string("o_clerk:") << K3::prettify_string(x.o_clerk);
-            oss << (",");
+            oss << ("|");
             oss << std::string("o_shippriority:") << K3::prettify_int(x.o_shippriority);
-            oss << (",");
+            oss << ("|");
             oss << std::string("o_comments:") << K3::prettify_string(x.o_comments);
             oss << ("}");
             return string_impl(oss.str());
@@ -2939,19 +2939,19 @@ public K3::__time_context {
             ostringstream oss;
             oss << ("{");
             oss << std::string("c_custkey:") << K3::prettify_int(x.c_custkey);
-            oss << (",");
+            oss << ("|");
             oss << std::string("c_name:") << K3::prettify_string(x.c_name);
-            oss << (",");
+            oss << ("|");
             oss << std::string("c_address:") << K3::prettify_string(x.c_address);
-            oss << (",");
+            oss << ("|");
             oss << std::string("c_nationkey:") << K3::prettify_int(x.c_nationkey);
-            oss << (",");
+            oss << ("|");
             oss << std::string("c_phone:") << K3::prettify_string(x.c_phone);
-            oss << (",");
+            oss << ("|");
             oss << std::string("c_acctbal:") << K3::prettify_real(x.c_acctbal);
-            oss << (",");
+            oss << ("|");
             oss << std::string("c_mktsegment:") << K3::prettify_string(x.c_mktsegment);
-            oss << (",");
+            oss << ("|");
             oss << std::string("c_comments:") << K3::prettify_string(x.c_comments);
             oss << ("}");
             return string_impl(oss.str());
