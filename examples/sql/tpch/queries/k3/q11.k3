@@ -1,7 +1,7 @@
 include "Distributed/Transformers.k3"
-include "Annotation/Collection.k3"
-include "Annotation/Map.k3"
 include "tpch/schema.k3"
+include "tpch/benchmark.k3"
+include "tpch/loader.k3"
 
 /**********************
 * sql query
@@ -44,7 +44,7 @@ declare nation   : nation_bag
 
 // suppkey -> partkey -> value_mult_sum
 typedef p_by_partkey_t     =  {key: int, value: int}
-typedef p_by_partkey_map_t =  collection {key: int, value: int} @ Map
+typedef p_by_partkey_map_t =  collection p_by_partkey_t @ Map
 typedef p_by_suppkey_t     = {key: int , value: p_by_partkey_map_t }
 typedef p_by_suppkey_map_t = collection p_by_suppkey_t @ Map
 typedef p_by_suppkey_col_t = collection p_by_suppkey_t @ Collection
@@ -59,40 +59,47 @@ declare s_by_suppkey_map : s_by_suppkey_map_t
 // nationkey -> [(partkey, calcval)]
 typedef ps_inner_t = {key: int, value: int}
 typedef ps_inner_col_t = collection ps_inner_t @ Collection
-typedef ps_t = {key: int, value: ps_inner_col_t}
+typedef ps_inner_map_t = collection ps_inner_t @ Map
+typedef ps_t = {key: int, value: ps_inner_map_t}
 typedef ps_map_t = collection ps_t @ Map
 declare ps_map : ps_map_t
 
 typedef n_bag  = collection {elem : int} @ Collection
 
 typedef result_t = collection {key : int, value: int} @ Map
-declare result : result_t
-declare total : int = 0
+declare result : mut result_t
+declare total : mut int = 0
+
+declare combine_maps : p_by_suppkey_t -> p_by_suppkey_t -> p_by_suppkey_t =
+  (\a -> \b ->
+    let a2 = b.value.fold
+      (\acc -> \x -> (acc.insert_with x
+        (\z -> \y -> {key: z.key, value: z.value + y.value});
+        acc))
+      a.value
+    in
+    { key : a.key , value: a2})
 
 trigger partsupp_supplier : () = \_ -> (
   () @DistributedHashJoin
         ( lbl       = [# sp ]
         , lhs_query = [$ partsupp.groupBy (\p -> p.ps_suppkey )
-                                          (\acc -> \p ->
-                                            (acc.insert
-                                              { key:   p.ps_partkey
-                                              , value: p.ps_availqty * p.ps_supplycost }); acc )
+                                          (\acc1 -> \p ->
+                                           (acc1.insert
+                                           { key:   p.ps_partkey
+                                           , value: p.ps_availqty * p.ps_supplycost }; acc1))
                                           empty p_by_partkey_t @ Map
                       ]
 
         , rhs_query = [$
-            supplier.groupby (\s   -> s.s_suppkey )
-                             (\acc -> \s ->
-                               (acc.insert
-                                 { nk : s.nationkey }); acc )
+            supplier.groupBy (\s   -> s.s_suppkey )
+                             (\acc2 -> \s ->
+                               (acc2.insert
+                                 { nk : s.s_nationkey }; acc2) )
                              empty { nk : int } @Collection
                       ]
 
-        , lhs_build_merge = [$ (\p -> p_by_suppkey_map.insert_with p
-                                  (\a -> \b -> { key :  a.key
-                                               , value: a.value.insert_with b.value
-                                                    (\x -> \y -> x + y); a.value}
-                                ))]
+        , lhs_build_merge = [$ (\p -> p_by_suppkey_map.insert_with p combine_maps)]
 
         , rhs_probe_merge = [$
             (\s ->
@@ -103,8 +110,7 @@ trigger partsupp_supplier : () = \_ -> (
                                 (\sval ->
                                   ps_map.insert_with
                                     {key: sval.nk, value: p.value}
-                                    (\a -> \b ->
-                                      {key: a.key, value: a.value.combine b.value}))}
+                                    combine_maps)}
                   { None -> () }
               )]
 
@@ -129,15 +135,14 @@ trigger nation_trig : () = \_ -> (
 
 trigger ps_probe_rhs : n_bag = \ns -> (
   ns.iterate (\n ->
-    case (ps_map.lookup {key:n.elem, value: empty ps_inner_col_t}) of
+    case (ps_map.lookup {key:n.elem, value: empty ps_inner_t @ Map}) of
       { Some ps ->
-        ps.iterate (\n' ->
-          bind acc' as (accold, total) in
-          result.insertWith n' (\a -> \b -> {key: a.key, value: a.value + b.value})
-          total = total + n'.value) }
+        ps.value.iterate (\m ->
+          (result.insert_with m (\a -> \b -> {key: a.key, value: a.value + b.value});
+          total = total + m.value)) }
       { None    -> () });
-  let total' = total * 0.0001 in
-  result = result.filter (\x -> x.value > total')
+  let total2 = total * 0.0001 in
+  result = result.filter (\x -> x.value > total2);
   ( (() @:Result) @TPCHBenchmark
   ) @OnCounter(id=[# loc_done], eq=[$ peers.size()])
 )
@@ -145,7 +150,7 @@ trigger ps_probe_rhs : n_bag = \ns -> (
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
   nodes              = [$ peers ],
   loadExpr           = [$ ( supplierFiles.iterate (\e -> supplierLoader e.path supplier);
-                            partsuppFiles.iterate (\e -> partsuppLoader e.path parsupp);
+                            partsuppFiles.iterate (\e -> partsuppLoader e.path partsupp);
                             nationFiles.iterate   (\e -> nationLoader   e.path nation)
                           ) ],
   preLoadExpr        = [$ ()],
