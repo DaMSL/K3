@@ -1,4 +1,7 @@
+include "Distributed/Transformers.k3"
+include "tpch/schema.k3"
 include "tpch/benchmark.k3"
+include "tpch/loader.k3"
 
 /**********************
 * SQL query
@@ -41,8 +44,6 @@ order by
 *   l-o-c-s-n-r
 ****************************/
 
-declare master   : address = 127.0.0.1:40000
-
 declare lineitem : lineitem_bag
 declare orders   : orders_bag
 declare customer : customer_bag
@@ -57,21 +58,14 @@ typedef q5_r_by_n_map   = collection q5_r_by_n_r @Map
 declare q5_result : q5_r_by_n_map
 
 // Intermediates for Q5 plans.
-typedef li_se_r       = {l_suppkey : int, l_edp : real}
+typedef li_se_r       = {l_suppkey : int, l_epd : real}
 typedef li_se_bag     = collection li_se_r @Collection
-typedef li_se_by_o_r  = {key : int, value : {l_suppkey : int, l_edp : real} }
+typedef li_se_by_o_r  = {key : int, value : {l_suppkey : int, l_epd : real} }
 typedef li_cse_by_o_r = {key : int, value : li_se_bag}
-typedef li_ose_bag    = collection li_se_by_o_r  @Collection
 typedef li_ocse_map   = collection li_cse_by_o_r @Map
 
-typedef or_c_by_o_r = {key : int, value : int }
-typedef or_oc_bag   = collection or_c_by_o_r @Collection
-
 typedef lior_cse_by_ck_r   = {key: int, value: li_se_bag}
-typedef lior_cse_by_ck_map = collection lior_se_by_ck_r @Map
-
-typedef cu_cn_r   = {key : int, value : int}
-typedef cu_cn_bag = collection cu_cn_r @Collection
+typedef lior_cse_by_ck_map = collection lior_cse_by_ck_r @Map
 
 typedef loc_epd_by_sn_r   = {key : {s_suppkey : int, s_nationkey : int}, value : real}
 typedef loc_epd_by_sn_map = collection loc_epd_by_sn_r @Map
@@ -80,7 +74,7 @@ typedef locs_epd_by_nk_r   = {key : int, value: real}
 typedef locs_epd_by_nk_map = collection locs_epd_by_nk_r @Map
 
 typedef locsn_nepd_by_rk_r   = {key : int, value: collection {key: string, value: real} @Map}
-typedef locsn_nepd_by_rk_map = collection locs_epd_by_nk_r @Map
+typedef locsn_nepd_by_rk_map = collection locsn_nepd_by_rk_r @Map
 
 typedef locsnr_epd_by_n_r   = {key : string, value: real}
 typedef locsnr_epd_by_n_map = collection locsnr_epd_by_n_r @Map
@@ -132,30 +126,37 @@ trigger q5_lo_start : () = \_ -> (
                                  acc))
                              empty {l_suppkey : int, l_epd : real} @Collection ]
 
-        , rhs_query = [$ orders.filter  (\o ->     o.o_orderdate >= "1994-01-01"
-                                               and o.o_orderdate >= "1995-01-01" )
-                               .groupBy (\o -> o.o_orderkey)
-                                        (\_ -> \o -> o.o_custkey)
-                                        0 ]
+        , rhs_query = [$ (orders.filter  (\o ->     o.o_orderdate >= "1994-01-01"
+                                                and o.o_orderdate >= "1995-01-01" ))
+                                .groupBy (\o -> o.o_orderkey)
+                                         (\_ -> \o -> o.o_custkey)
+                                         0 ]
 
         , lhs_build_merge = [$ (\li -> lior_build.insert_with li merge_lior_build) ]
 
         , rhs_probe_merge = [$
             (\o ->
-              case lior_build.lookup o.key of
+              case lior_build.lookup
+                     { key: o.key
+                     , value: empty {l_suppkey : int, l_epd : real} @Collection }
+              of
               { Some li -> lior_cse_by_ck.insert_with { key: o.value, value: li.value }
                                                       merge_lior_cse_by_ck_r
               }
               { None   -> ()  }
               )]
 
-        , peer_next       = [$ print "LI-OR join finished orders probe." ;
-                               (q5_loc_start, me) <- ()
-                            ]
-        , next            = [$ print "LI-OR join all nodes finished." ]
+        , peer_next       = [$ print "LI-OR join finished orders probe."]
+        , next            = [$ print "LI-OR join all nodes finished." ;
+                               (q5_loc_start, master) <- () ]
         , coordinator     = [$ master]
-        , lhs_build_ty    = [: collection {key : int, value : {l_suppkey : int, l_edp : real} } @Collection ]
-        , rhs_probe_ty    = [: collection {key : int, value : int }                             @Collection ]
+        , nodes           = [$ peers ]
+        , lhs_build_ty    = [: collection
+                                 { key : int
+                                 , value : collection {l_suppkey : int, l_epd : real} @Collection
+                                 } @Collection
+                            ]
+        , rhs_probe_ty    = [: collection {key : int, value : int } @Collection ]
         )
 )
 
@@ -163,30 +164,34 @@ trigger q5_loc_start : () = \_ -> (
   () @DistributedHashJoin
         ( lbl       = [# loc ]
         , lhs_query = [$ lior_cse_by_ck ]
-        , rhs_query = [$ customer.groupBy (\c -> c.c_custkey)
-                                          (\acc -> \c -> c.c_nationkey)
-                                          0 ]
+        , rhs_query = [$ customer.fold
+                            (\acc -> \c -> ((acc.insert {key: c.c_custkey, value: c.c_nationkey}); acc))
+                            empty {key: int, value: int} @Collection
+                      ]
         , lhs_build_merge = [$ (\li -> loc_build.insert_with li merge_lior_cse_by_ck_r) ]
         , rhs_probe_merge = [$
             (\c ->
-              case loc_build.lookup c.key of
+              case loc_build.lookup
+                     { key: c.key
+                     , value: empty {l_suppkey : int, l_epd : real} @Collection }
+              of
               { Some lo -> ((lo.value.groupBy (\lo_r -> {s_suppkey : lo_r.l_suppkey, s_nationkey: c.value})
-                                              (\acc -> \lo_r -> acc.l_epd + lo_r.l_epd )
+                                              (\acc -> \lo_r -> acc + lo_r.l_epd )
                                               0.0)
                                      .iterate (\kv -> loc_epd_by_sn.insert_with kv merge_epd_by_sn_r))
               }
               { None   -> ()  }
               )]
 
-        , peer_next       = [$ print "LI-OR-CS join finished customer probe." ;
-                               (q5_locs_start, me) <- ()
-                            ]
-        , next            = [$ print "LI-OR-CS join all nodes finished." ]
+        , peer_next       = [$ print "LI-OR-CS join finished customer probe." ]
+        , next            = [$ print "LI-OR-CS join all nodes finished." ;
+                               (q5_locs_start, master) <- () ]
         , coordinator     = [$ master]
+        , nodes           = [$ peers ]
         , lhs_build_ty    = [: collection
                                 { key   : int
-                                , value : collection {l_suppkey : int, l_edp : real} @Collection
-                                } @Map ]
+                                , value : collection {l_suppkey : int, l_epd : real} @Collection
+                                } @Collection ]
         , rhs_probe_ty    = [: collection {key : int, value : int } @Collection ]
         )
 )
@@ -195,9 +200,9 @@ trigger q5_locs_start : () = \_ -> (
   () @DistributedHashJoin
         ( lbl       = [# locs ]
         , lhs_query = [$ loc_epd_by_sn ]
-        , rhs_query = [$ supplier.groupBy (\s -> s.s_suppkey)
-                                          (\acc -> \s -> s.s_nationkey)
-                                          0 ]
+        , rhs_query = [$ supplier.fold
+                           (\acc -> \s -> ((acc.insert {key: s.s_suppkey, value : s.s_nationkey}); acc))
+                           empty {key: int, value : int} @Collection ]
         , lhs_build_merge = [$ (\epd_by_sn -> locs_build.insert_with epd_by_sn merge_epd_by_sn_r) ]
         , rhs_probe_merge = [$
             (\s ->
@@ -208,12 +213,12 @@ trigger q5_locs_start : () = \_ -> (
               { None   -> ()  }
               )]
 
-        , peer_next       = [$ print "LI-OR-CS-SUP join finished supplier probe." ;
-                               (q5_locsn_start, me) <- ()
-                            ]
-        , next            = [$ print "LI-OR-CS-SUP join all nodes finished." ]
+        , peer_next       = [$ print "LI-OR-CS-SUP join finished supplier probe." ]
+        , next            = [$ print "LI-OR-CS-SUP join all nodes finished." ;
+                               (q5_locsn_start, master) <- () ]
         , coordinator     = [$ master]
-        , lhs_build_ty    = [: collection {key : {s_suppkey : int, s_nationkey : int}, value : real} @Map ]
+        , nodes           = [$ peers ]
+        , lhs_build_ty    = [: collection {key : {s_suppkey : int, s_nationkey : int}, value : real} @Collection ]
         , rhs_probe_ty    = [: collection {key : int, value : int } @Collection ]
         )
 )
@@ -222,30 +227,35 @@ trigger q5_locsn_start : () = \_ -> (
   () @DistributedHashJoin
         ( lbl       = [# locsn ]
         , lhs_query = [$ locs_epd_by_nk ]
-        , rhs_query = [$ nation.groupBy (\n -> n.n_nationkey)
-                                        (\acc -> \n -> n.n_name)
-                                        "" ]
+
+        , rhs_query = [$ nation.fold
+                           (\acc -> \n ->
+                             ((acc.insert { key: n.n_nationkey
+                                          , value: {n_regionkey: n.n_regionkey, n_name: n.n_name}});
+                               acc))
+                           empty {key: int, value: {n_regionkey: int, n_name: string}} @Collection ]
+
         , lhs_build_merge = [$ (\epd_by_nk -> locsn_build.insert_with epd_by_nk merge_epd_by_nk_r) ]
         , rhs_probe_merge = [$
             (\n ->
-              case locsn_build.lookup n.n_nationkey of
+              case locsn_build.lookup {key: n.key, value: 0.0} of
               { Some locs -> locsn_nepd_by_rk.insert_with
-                               { key: n.n_regionkey
+                               { key: n.value.n_regionkey
                                , value: {| key:string, value:real
-                                         | {key: n.n_name, value: locs.value}
+                                         | {key: n.value.n_name, value: locs.value}
                                          |} @Map }
                                merge_nepd_by_rk_r
               }
               { None   -> ()  }
               )]
 
-        , peer_next       = [$ print "LI-OR-CS-SUP-NT join finished nation probe." ;
-                               (q5_locsnr_start, me) <- ()
-                            ]
-        , next            = [$ print "LI-OR-CS-SUP-NT join all nodes finished." ]
+        , peer_next       = [$ print "LI-OR-CS-SUP-NT join finished nation probe." ]
+        , next            = [$ print "LI-OR-CS-SUP-NT join all nodes finished." ;
+                               (q5_locsnr_start, master) <- () ]
         , coordinator     = [$ master]
-        , lhs_build_ty    = [: collection {key : {s_suppkey : int, s_nationkey : int}, value : real} @Map ]
-        , rhs_probe_ty    = [: collection {key : int, value : string } @Collection ]
+        , nodes           = [$ peers ]
+        , lhs_build_ty    = [: collection {key : int, value : real} @Collection ]
+        , rhs_probe_ty    = [: collection {key : int, value : {n_regionkey: int, n_name: string} } @Collection ]
         )
 )
 
@@ -253,13 +263,15 @@ trigger q5_locsnr_start : () = \_ -> (
   () @DistributedHashJoin
         ( lbl       = [# locsnr ]
         , lhs_query = [$ locsn_nepd_by_rk ]
-        , rhs_query = [$ region.filter  (\r -> r.r_name == "ASIA")
-                               .fold    (\acc -> \r -> acc.insert {key : r.r_regionkey, value: ()})
-                                        empty {key: int, value: ()} @Collection ]
+        , rhs_query = [$ (region.filter  (\r -> r.r_name == "ASIA"))
+                                .fold    (\acc -> \r -> ((acc.insert {key : r.r_regionkey, value: ()}); acc))
+                                         empty {key: int, value: ()} @Collection ]
         , lhs_build_merge = [$ (\nepd_by_rk -> locsnr_build.insert_with nepd_by_rk merge_nepd_by_rk_r) ]
         , rhs_probe_merge = [$
             (\r ->
-              case locsnr_build.lookup r.r_regionkey of
+              case locsnr_build.lookup
+                      {key: r.key, value: empty {key: string, value: real} @Map}
+              of
               { Some locsn -> locsn.value.iterate (\kv -> locsnr_epd_by_n.insert_with kv merge_nepd_r) }
               { None       -> ()  }
               )]
@@ -269,7 +281,8 @@ trigger q5_locsnr_start : () = \_ -> (
                                ((() @:Result) @TPCHBenchmark) ]
         , next            = [$ print "LI-OR-CS-SUP-NT-RG join all nodes finished." ]
         , coordinator     = [$ master]
-        , lhs_build_ty    = [: collection {key : int, value : collection {key:string, value:real} @Map } @Map ]
+        , nodes           = [$ peers ]
+        , lhs_build_ty    = [: collection {key : int, value : collection {key:string, value:real} @Map } @Collection ]
         , rhs_probe_ty    = [: collection {key : int, value : () } @Collection ]
         )
 )
@@ -279,20 +292,20 @@ trigger q5_result_aggregate : q5_r_by_n_map = \vals -> (
 )
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
-  queryTrigger       = [$ q5_lo_start],
+  nodes              = [$ peers],
   loadExpr           = [$ ( lineitemFiles.iterate (\e -> lineitemLoader e.path lineitem);
                             ordersFiles.iterate   (\e -> ordersLoader   e.path orders);
                             customerFiles.iterate (\e -> customerLoader e.path customer);
                             supplierFiles.iterate (\e -> supplierLoader e.path supplier);
                             nationFiles.iterate   (\e -> nationLoader   e.path nation);
                             regionFiles.iterate   (\e -> regionLoader   e.path region)
-
                           ) ],
   preLoadExpr        = [$ ()],
   preReadyExpr       = [$ ()],
+  onReadyExpr        = [$ (q5_lo_start, me) <- ()],
   finishArgT         = [: ()],
   preTestFinishExpr  = [$ (\_ -> ())],
-  preFinishExpr      = [$ (print (concat "Q5 num results:" q5_result.size()))],
+  preFinishExpr      = [$ (print (concat "Q5 num results:" (itos (q5_result.size()))))],
   preShutdownExpr    = [$ ()]
 )
 
