@@ -241,19 +241,20 @@ inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) 
 
 
 inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
+    d <- genSym
     (te, _)  <- inline trig
     (ae, av)  <- inline addr
     (ve, vv)  <- inline val
     trigList  <- triggers <$> get
     trigTypes <- getKType val >>= genCType
     let className = R.Specialized [trigTypes] (R.Qualified (R.Name "K3" )$ R.Name "ValDispatcher")
-        classInst = R.Forward $ R.ScalarDecl (R.Name "d") R.Inferred
+        classInst = R.Forward $ R.ScalarDecl (R.Name d) R.Inferred
                       (Just $ R.Call (R.Variable $ R.Specialized [R.Named className]
                                            (R.Qualified (R.Name "std" )$ R.Name "make_shared")) [vv])
     return (concat [te, ae, ve]
                  ++ [ classInst
                     , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine") (R.Name "send")) [
-                                    av, R.Variable (R.Name $ tName), R.Variable (R.Name "d")
+                                    av, R.Variable (R.Name $ tName), R.Variable (R.Name d)
                                    ]
                     ]
              , R.Initialization R.Unit [])
