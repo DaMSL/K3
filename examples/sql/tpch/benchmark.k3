@@ -2,6 +2,7 @@ include "Annotation/Collection.k3"
 include "Core/Barrier.k3"
 include "Core/Profile.k3"
 
+declare ignore    : forall a. a -> () = \_ -> ()
 control TPCHBenchmark[nodes              : expr,
                       loadExpr           : expr,
                       preLoadExpr        : expr,
@@ -16,7 +17,6 @@ control TPCHBenchmark[nodes              : expr,
   ?e @:Start  => (load_all, me)     <- $.[e]
     +> {
       declare master    : address = 127.0.0.1:40000
-      declare ignore    : forall a. a -> () = \_ -> ()
 
       // Generic, single relation dataset
       declare dataFiles : collection {path: string} @Collection

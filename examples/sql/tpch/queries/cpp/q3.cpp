@@ -565,272 +565,6 @@ std::size_t hash_value(const R_arg<_T0>& r)  {
   return hasher(std::tie(r.arg));
 }
 #endif
-#ifndef K3_R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty_hash_value
-#define K3_R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty_hash_value
-template <class _T0, class _T1, class _T2, class _T3, class _T4, class _T5, class _T6, class _T7,
-class _T8, class _T9>
-class R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty {
-  public:
-      R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty(): avg_disc(),
-      avg_price(), avg_qty(), count_order(), l_linestatus(), l_returnflag(), sum_base_price(),
-      sum_charge(), sum_disc_price(), sum_qty()  {}
-      template <class __T0, class __T1, class __T2, class __T3, class __T4, class __T5, class __T6,
-      class __T7, class __T8, class __T9>
-      R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty(__T0&& _avg_disc,
-      __T1&& _avg_price, __T2&& _avg_qty, __T3&& _count_order, __T4&& _l_linestatus,
-      __T5&& _l_returnflag, __T6&& _sum_base_price, __T7&& _sum_charge, __T8&& _sum_disc_price,
-      __T9&& _sum_qty): avg_disc(std::forward<__T0>(_avg_disc)),
-      avg_price(std::forward<__T1>(_avg_price)), avg_qty(std::forward<__T2>(_avg_qty)),
-      count_order(std::forward<__T3>(_count_order)),
-      l_linestatus(std::forward<__T4>(_l_linestatus)),
-      l_returnflag(std::forward<__T5>(_l_returnflag)),
-      sum_base_price(std::forward<__T6>(_sum_base_price)),
-      sum_charge(std::forward<__T7>(_sum_charge)),
-      sum_disc_price(std::forward<__T8>(_sum_disc_price)), sum_qty(std::forward<__T9>(_sum_qty))  {}
-      bool operator==(const R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty<_T0,
-      _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9>& __other) const {
-        return avg_disc == (__other.avg_disc) && avg_price == (__other.avg_price) && avg_qty == (__other.avg_qty) && count_order == (__other.count_order) && l_linestatus == (__other.l_linestatus) && l_returnflag == (__other.l_returnflag) && sum_base_price == (__other.sum_base_price) && sum_charge == (__other.sum_charge) && sum_disc_price == (__other.sum_disc_price) && sum_qty == (__other.sum_qty);
-      }
-      bool operator!=(const R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty<_T0,
-      _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9>& __other) const {
-        return std::tie(avg_disc, avg_price, avg_qty, count_order, l_linestatus, l_returnflag,
-        sum_base_price, sum_charge, sum_disc_price, sum_qty) != std::tie(__other.avg_disc,
-        __other.avg_price, __other.avg_qty, __other.count_order, __other.l_linestatus,
-        __other.l_returnflag, __other.sum_base_price, __other.sum_charge, __other.sum_disc_price,
-        __other.sum_qty);
-      }
-      bool operator<(const R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty<_T0,
-      _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9>& __other) const {
-        return std::tie(avg_disc, avg_price, avg_qty, count_order, l_linestatus, l_returnflag,
-        sum_base_price, sum_charge, sum_disc_price, sum_qty) < std::tie(__other.avg_disc,
-        __other.avg_price, __other.avg_qty, __other.count_order, __other.l_linestatus,
-        __other.l_returnflag, __other.sum_base_price, __other.sum_charge, __other.sum_disc_price,
-        __other.sum_qty);
-      }
-      bool operator>(const R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty<_T0,
-      _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9>& __other) const {
-        return std::tie(avg_disc, avg_price, avg_qty, count_order, l_linestatus, l_returnflag,
-        sum_base_price, sum_charge, sum_disc_price, sum_qty) > std::tie(__other.avg_disc,
-        __other.avg_price, __other.avg_qty, __other.count_order, __other.l_linestatus,
-        __other.l_returnflag, __other.sum_base_price, __other.sum_charge, __other.sum_disc_price,
-        __other.sum_qty);
-      }
-      template <class archive>
-      void serialize(archive& _archive, const unsigned int _version)  {
-        _archive & avg_disc;
-        _archive & avg_price;
-        _archive & avg_qty;
-        _archive & count_order;
-        _archive & l_linestatus;
-        _archive & l_returnflag;
-        _archive & sum_base_price;
-        _archive & sum_charge;
-        _archive & sum_disc_price;
-        _archive & sum_qty;
-      }
-      _T0 avg_disc;
-      _T1 avg_price;
-      _T2 avg_qty;
-      _T3 count_order;
-      _T4 l_linestatus;
-      _T5 l_returnflag;
-      _T6 sum_base_price;
-      _T7 sum_charge;
-      _T8 sum_disc_price;
-      _T9 sum_qty;
-};
-#endif
-namespace K3 {
-  template <class _T0, class _T1, class _T2, class _T3, class _T4, class _T5, class _T6, class _T7,
-  class _T8, class _T9>
-  class patcher<R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty<_T0,
-  _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9>> {
-    public:
-        static void patch(std::string _input,
-        R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty<_T0,
-        _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9>& _record)  {
-          shallow<string::iterator> _shallow;
-          qi::rule<string::iterator,
-          qi::space_type> _avg_disc = (qi::lit("avg_disc") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
-            do_patch(_partial, _record.avg_disc);
-          })];
-          qi::rule<string::iterator,
-          qi::space_type> _avg_price = (qi::lit("avg_price") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
-            do_patch(_partial, _record.avg_price);
-          })];
-          qi::rule<string::iterator,
-          qi::space_type> _avg_qty = (qi::lit("avg_qty") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
-            do_patch(_partial, _record.avg_qty);
-          })];
-          qi::rule<string::iterator,
-          qi::space_type> _count_order = (qi::lit("count_order") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
-            do_patch(_partial, _record.count_order);
-          })];
-          qi::rule<string::iterator,
-          qi::space_type> _l_linestatus = (qi::lit("l_linestatus") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
-            do_patch(_partial, _record.l_linestatus);
-          })];
-          qi::rule<string::iterator,
-          qi::space_type> _l_returnflag = (qi::lit("l_returnflag") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
-            do_patch(_partial, _record.l_returnflag);
-          })];
-          qi::rule<string::iterator,
-          qi::space_type> _sum_base_price = (qi::lit("sum_base_price") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
-            do_patch(_partial, _record.sum_base_price);
-          })];
-          qi::rule<string::iterator,
-          qi::space_type> _sum_charge = (qi::lit("sum_charge") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
-            do_patch(_partial, _record.sum_charge);
-          })];
-          qi::rule<string::iterator,
-          qi::space_type> _sum_disc_price = (qi::lit("sum_disc_price") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
-            do_patch(_partial, _record.sum_disc_price);
-          })];
-          qi::rule<string::iterator,
-          qi::space_type> _sum_qty = (qi::lit("sum_qty") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
-            do_patch(_partial, _record.sum_qty);
-          })];
-          qi::rule<string::iterator,
-          qi::space_type> _field = _avg_disc | _avg_price | _avg_qty | _count_order | _l_linestatus | _l_returnflag | _sum_base_price | _sum_charge | _sum_disc_price | _sum_qty;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
-          qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
-        }
-  };
-}
-#ifndef K3_R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty
-#define K3_R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty
-template <class _T0, class _T1, class _T2, class _T3, class _T4, class _T5, class _T6, class _T7,
-class _T8, class _T9>
-std::size_t hash_value(const R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty<_T0,
-_T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9>& r)  {
-  boost::hash<std::tuple<_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9>> hasher;
-  return hasher(std::tie(r.avg_disc, r.avg_price, r.avg_qty, r.count_order, r.l_linestatus,
-  r.l_returnflag, r.sum_base_price, r.sum_charge, r.sum_disc_price, r.sum_qty));
-}
-#endif
-#ifndef K3_R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty_hash_value
-#define K3_R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty_hash_value
-template <class _T0, class _T1, class _T2, class _T3, class _T4, class _T5, class _T6, class _T7>
-class R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty {
-  public:
-      R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty(): avg_disc_sum(),
-      avg_price_sum(), avg_qty_sum(), count_order(), sum_base_price(), sum_charge(),
-      sum_disc_price(), sum_qty()  {}
-      template <class __T0, class __T1, class __T2, class __T3, class __T4, class __T5, class __T6,
-      class __T7>
-      R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty(__T0&& _avg_disc_sum,
-      __T1&& _avg_price_sum, __T2&& _avg_qty_sum, __T3&& _count_order, __T4&& _sum_base_price,
-      __T5&& _sum_charge, __T6&& _sum_disc_price,
-      __T7&& _sum_qty): avg_disc_sum(std::forward<__T0>(_avg_disc_sum)),
-      avg_price_sum(std::forward<__T1>(_avg_price_sum)),
-      avg_qty_sum(std::forward<__T2>(_avg_qty_sum)), count_order(std::forward<__T3>(_count_order)),
-      sum_base_price(std::forward<__T4>(_sum_base_price)),
-      sum_charge(std::forward<__T5>(_sum_charge)),
-      sum_disc_price(std::forward<__T6>(_sum_disc_price)), sum_qty(std::forward<__T7>(_sum_qty))  {}
-      bool operator==(const R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<_T0,
-      _T1, _T2, _T3, _T4, _T5, _T6, _T7>& __other) const {
-        return avg_disc_sum == (__other.avg_disc_sum) && avg_price_sum == (__other.avg_price_sum) && avg_qty_sum == (__other.avg_qty_sum) && count_order == (__other.count_order) && sum_base_price == (__other.sum_base_price) && sum_charge == (__other.sum_charge) && sum_disc_price == (__other.sum_disc_price) && sum_qty == (__other.sum_qty);
-      }
-      bool operator!=(const R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<_T0,
-      _T1, _T2, _T3, _T4, _T5, _T6, _T7>& __other) const {
-        return std::tie(avg_disc_sum, avg_price_sum, avg_qty_sum, count_order, sum_base_price,
-        sum_charge, sum_disc_price, sum_qty) != std::tie(__other.avg_disc_sum,
-        __other.avg_price_sum, __other.avg_qty_sum, __other.count_order, __other.sum_base_price,
-        __other.sum_charge, __other.sum_disc_price, __other.sum_qty);
-      }
-      bool operator<(const R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<_T0,
-      _T1, _T2, _T3, _T4, _T5, _T6, _T7>& __other) const {
-        return std::tie(avg_disc_sum, avg_price_sum, avg_qty_sum, count_order, sum_base_price,
-        sum_charge, sum_disc_price, sum_qty) < std::tie(__other.avg_disc_sum, __other.avg_price_sum,
-        __other.avg_qty_sum, __other.count_order, __other.sum_base_price, __other.sum_charge,
-        __other.sum_disc_price, __other.sum_qty);
-      }
-      bool operator>(const R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<_T0,
-      _T1, _T2, _T3, _T4, _T5, _T6, _T7>& __other) const {
-        return std::tie(avg_disc_sum, avg_price_sum, avg_qty_sum, count_order, sum_base_price,
-        sum_charge, sum_disc_price, sum_qty) > std::tie(__other.avg_disc_sum, __other.avg_price_sum,
-        __other.avg_qty_sum, __other.count_order, __other.sum_base_price, __other.sum_charge,
-        __other.sum_disc_price, __other.sum_qty);
-      }
-      template <class archive>
-      void serialize(archive& _archive, const unsigned int _version)  {
-        _archive & avg_disc_sum;
-        _archive & avg_price_sum;
-        _archive & avg_qty_sum;
-        _archive & count_order;
-        _archive & sum_base_price;
-        _archive & sum_charge;
-        _archive & sum_disc_price;
-        _archive & sum_qty;
-      }
-      _T0 avg_disc_sum;
-      _T1 avg_price_sum;
-      _T2 avg_qty_sum;
-      _T3 count_order;
-      _T4 sum_base_price;
-      _T5 sum_charge;
-      _T6 sum_disc_price;
-      _T7 sum_qty;
-};
-#endif
-namespace K3 {
-  template <class _T0, class _T1, class _T2, class _T3, class _T4, class _T5, class _T6, class _T7>
-  class patcher<R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<_T0,
-  _T1, _T2, _T3, _T4, _T5, _T6, _T7>> {
-    public:
-        static void patch(std::string _input,
-        R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<_T0,
-        _T1, _T2, _T3, _T4, _T5, _T6, _T7>& _record)  {
-          shallow<string::iterator> _shallow;
-          qi::rule<string::iterator,
-          qi::space_type> _avg_disc_sum = (qi::lit("avg_disc_sum") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
-            do_patch(_partial, _record.avg_disc_sum);
-          })];
-          qi::rule<string::iterator,
-          qi::space_type> _avg_price_sum = (qi::lit("avg_price_sum") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
-            do_patch(_partial, _record.avg_price_sum);
-          })];
-          qi::rule<string::iterator,
-          qi::space_type> _avg_qty_sum = (qi::lit("avg_qty_sum") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
-            do_patch(_partial, _record.avg_qty_sum);
-          })];
-          qi::rule<string::iterator,
-          qi::space_type> _count_order = (qi::lit("count_order") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
-            do_patch(_partial, _record.count_order);
-          })];
-          qi::rule<string::iterator,
-          qi::space_type> _sum_base_price = (qi::lit("sum_base_price") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
-            do_patch(_partial, _record.sum_base_price);
-          })];
-          qi::rule<string::iterator,
-          qi::space_type> _sum_charge = (qi::lit("sum_charge") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
-            do_patch(_partial, _record.sum_charge);
-          })];
-          qi::rule<string::iterator,
-          qi::space_type> _sum_disc_price = (qi::lit("sum_disc_price") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
-            do_patch(_partial, _record.sum_disc_price);
-          })];
-          qi::rule<string::iterator,
-          qi::space_type> _sum_qty = (qi::lit("sum_qty") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
-            do_patch(_partial, _record.sum_qty);
-          })];
-          qi::rule<string::iterator,
-          qi::space_type> _field = _avg_disc_sum | _avg_price_sum | _avg_qty_sum | _count_order | _sum_base_price | _sum_charge | _sum_disc_price | _sum_qty;
-          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
-          qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
-        }
-  };
-}
-#ifndef K3_R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty
-#define K3_R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty
-template <class _T0, class _T1, class _T2, class _T3, class _T4, class _T5, class _T6, class _T7>
-std::size_t hash_value(const R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<_T0,
-_T1, _T2, _T3, _T4, _T5, _T6, _T7>& r)  {
-  boost::hash<std::tuple<_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7>> hasher;
-  return hasher(std::tie(r.avg_disc_sum, r.avg_price_sum, r.avg_qty_sum, r.count_order,
-  r.sum_base_price, r.sum_charge, r.sum_disc_price, r.sum_qty));
-}
-#endif
 #ifndef K3_R_c_acctbal_c_address_c_comments_c_custkey_c_mktsegment_c_name_c_nationkey_c_phone_hash_value
 #define K3_R_c_acctbal_c_address_c_comments_c_custkey_c_mktsegment_c_name_c_nationkey_c_phone_hash_value
 template <class _T0, class _T1, class _T2, class _T3, class _T4, class _T5, class _T6, class _T7>
@@ -950,6 +684,121 @@ _T1, _T2, _T3, _T4, _T5, _T6, _T7>& r)  {
   boost::hash<std::tuple<_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7>> hasher;
   return hasher(std::tie(r.c_acctbal, r.c_address, r.c_comments, r.c_custkey, r.c_mktsegment,
   r.c_name, r.c_nationkey, r.c_phone));
+}
+#endif
+#ifndef K3_R_c_custkey_hash_value
+#define K3_R_c_custkey_hash_value
+template <class _T0>
+class R_c_custkey {
+  public:
+      R_c_custkey(): c_custkey()  {}
+      R_c_custkey(const _T0& _c_custkey): c_custkey(_c_custkey)  {}
+      R_c_custkey(_T0&& _c_custkey): c_custkey(std::move(_c_custkey))  {}
+      bool operator==(const R_c_custkey<_T0>& __other) const {
+        return c_custkey == (__other.c_custkey);
+      }
+      bool operator!=(const R_c_custkey<_T0>& __other) const {
+        return std::tie(c_custkey) != std::tie(__other.c_custkey);
+      }
+      bool operator<(const R_c_custkey<_T0>& __other) const {
+        return std::tie(c_custkey) < std::tie(__other.c_custkey);
+      }
+      bool operator>(const R_c_custkey<_T0>& __other) const {
+        return std::tie(c_custkey) > std::tie(__other.c_custkey);
+      }
+      template <class archive>
+      void serialize(archive& _archive, const unsigned int _version)  {
+        _archive & c_custkey;
+      }
+      _T0 c_custkey;
+};
+#endif
+namespace K3 {
+  template <class _T0>
+  class patcher<R_c_custkey<_T0>> {
+    public:
+        static void patch(std::string _input, R_c_custkey<_T0>& _record)  {
+          shallow<string::iterator> _shallow;
+          qi::rule<string::iterator,
+          qi::space_type> _c_custkey = (qi::lit("c_custkey") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
+            do_patch(_partial, _record.c_custkey);
+          })];
+          qi::rule<string::iterator, qi::space_type> _field = _c_custkey;
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
+          qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
+        }
+  };
+}
+#ifndef K3_R_c_custkey
+#define K3_R_c_custkey
+template <class _T0>
+std::size_t hash_value(const R_c_custkey<_T0>& r)  {
+  boost::hash<std::tuple<_T0>> hasher;
+  return hasher(std::tie(r.c_custkey));
+}
+#endif
+#ifndef K3_R_ck_od_sp_hash_value
+#define K3_R_ck_od_sp_hash_value
+template <class _T0, class _T1, class _T2>
+class R_ck_od_sp {
+  public:
+      R_ck_od_sp(): ck(), od(), sp()  {}
+      template <class __T0, class __T1, class __T2>
+      R_ck_od_sp(__T0&& _ck, __T1&& _od, __T2&& _sp): ck(std::forward<__T0>(_ck)),
+      od(std::forward<__T1>(_od)), sp(std::forward<__T2>(_sp))  {}
+      bool operator==(const R_ck_od_sp<_T0, _T1, _T2>& __other) const {
+        return ck == (__other.ck) && od == (__other.od) && sp == (__other.sp);
+      }
+      bool operator!=(const R_ck_od_sp<_T0, _T1, _T2>& __other) const {
+        return std::tie(ck, od, sp) != std::tie(__other.ck, __other.od, __other.sp);
+      }
+      bool operator<(const R_ck_od_sp<_T0, _T1, _T2>& __other) const {
+        return std::tie(ck, od, sp) < std::tie(__other.ck, __other.od, __other.sp);
+      }
+      bool operator>(const R_ck_od_sp<_T0, _T1, _T2>& __other) const {
+        return std::tie(ck, od, sp) > std::tie(__other.ck, __other.od, __other.sp);
+      }
+      template <class archive>
+      void serialize(archive& _archive, const unsigned int _version)  {
+        _archive & ck;
+        _archive & od;
+        _archive & sp;
+      }
+      _T0 ck;
+      _T1 od;
+      _T2 sp;
+};
+#endif
+namespace K3 {
+  template <class _T0, class _T1, class _T2>
+  class patcher<R_ck_od_sp<_T0, _T1, _T2>> {
+    public:
+        static void patch(std::string _input, R_ck_od_sp<_T0, _T1, _T2>& _record)  {
+          shallow<string::iterator> _shallow;
+          qi::rule<string::iterator,
+          qi::space_type> _ck = (qi::lit("ck") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
+            do_patch(_partial, _record.ck);
+          })];
+          qi::rule<string::iterator,
+          qi::space_type> _od = (qi::lit("od") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
+            do_patch(_partial, _record.od);
+          })];
+          qi::rule<string::iterator,
+          qi::space_type> _sp = (qi::lit("sp") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
+            do_patch(_partial, _record.sp);
+          })];
+          qi::rule<string::iterator, qi::space_type> _field = _ck | _od | _sp;
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
+          qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
+        }
+  };
+}
+#ifndef K3_R_ck_od_sp
+#define K3_R_ck_od_sp
+template <class _T0, class _T1, class _T2>
+std::size_t hash_value(const R_ck_od_sp<_T0, _T1, _T2>& r)  {
+  boost::hash<std::tuple<_T0, _T1, _T2>> hasher;
+  return hasher(std::tie(r.ck, r.od, r.sp));
 }
 #endif
 #ifndef K3_R_elem_hash_value
@@ -1478,6 +1327,70 @@ _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8>& r)  {
   r.o_orderpriority, r.o_orderstatus, r.o_shippriority, r.o_totalprice));
 }
 #endif
+#ifndef K3_R_od_ok_sp_hash_value
+#define K3_R_od_ok_sp_hash_value
+template <class _T0, class _T1, class _T2>
+class R_od_ok_sp {
+  public:
+      R_od_ok_sp(): od(), ok(), sp()  {}
+      template <class __T0, class __T1, class __T2>
+      R_od_ok_sp(__T0&& _od, __T1&& _ok, __T2&& _sp): od(std::forward<__T0>(_od)),
+      ok(std::forward<__T1>(_ok)), sp(std::forward<__T2>(_sp))  {}
+      bool operator==(const R_od_ok_sp<_T0, _T1, _T2>& __other) const {
+        return od == (__other.od) && ok == (__other.ok) && sp == (__other.sp);
+      }
+      bool operator!=(const R_od_ok_sp<_T0, _T1, _T2>& __other) const {
+        return std::tie(od, ok, sp) != std::tie(__other.od, __other.ok, __other.sp);
+      }
+      bool operator<(const R_od_ok_sp<_T0, _T1, _T2>& __other) const {
+        return std::tie(od, ok, sp) < std::tie(__other.od, __other.ok, __other.sp);
+      }
+      bool operator>(const R_od_ok_sp<_T0, _T1, _T2>& __other) const {
+        return std::tie(od, ok, sp) > std::tie(__other.od, __other.ok, __other.sp);
+      }
+      template <class archive>
+      void serialize(archive& _archive, const unsigned int _version)  {
+        _archive & od;
+        _archive & ok;
+        _archive & sp;
+      }
+      _T0 od;
+      _T1 ok;
+      _T2 sp;
+};
+#endif
+namespace K3 {
+  template <class _T0, class _T1, class _T2>
+  class patcher<R_od_ok_sp<_T0, _T1, _T2>> {
+    public:
+        static void patch(std::string _input, R_od_ok_sp<_T0, _T1, _T2>& _record)  {
+          shallow<string::iterator> _shallow;
+          qi::rule<string::iterator,
+          qi::space_type> _od = (qi::lit("od") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
+            do_patch(_partial, _record.od);
+          })];
+          qi::rule<string::iterator,
+          qi::space_type> _ok = (qi::lit("ok") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
+            do_patch(_partial, _record.ok);
+          })];
+          qi::rule<string::iterator,
+          qi::space_type> _sp = (qi::lit("sp") >> (':') >> _shallow)[([&_record] (std::string _partial)   {
+            do_patch(_partial, _record.sp);
+          })];
+          qi::rule<string::iterator, qi::space_type> _field = _od | _ok | _sp;
+          qi::rule<string::iterator, qi::space_type> _parser = ('{') >> _field % ('|') >> ('}');
+          qi::phrase_parse(std::begin(_input), std::end(_input), _parser, qi::space);
+        }
+  };
+}
+#ifndef K3_R_od_ok_sp
+#define K3_R_od_ok_sp
+template <class _T0, class _T1, class _T2>
+std::size_t hash_value(const R_od_ok_sp<_T0, _T1, _T2>& r)  {
+  boost::hash<std::tuple<_T0, _T1, _T2>> hasher;
+  return hasher(std::tie(r.od, r.ok, r.sp));
+}
+#endif
 #ifndef K3_R_p_brand_p_comments_p_container_p_mfgr_p_name_p_p_size_p_partkey_p_retailprice_p_type_hash_value
 #define K3_R_p_brand_p_comments_p_container_p_mfgr_p_name_p_p_size_p_partkey_p_retailprice_p_type_hash_value
 template <class _T0, class _T1, class _T2, class _T3, class _T4, class _T5, class _T6, class _T7,
@@ -1989,23 +1902,30 @@ public K3::__time_context {
         dispatch_table[__load_all_tid] = [this] (void* payload)   {
           load_all(*(static_cast<unit_t*>(payload)));
         };
+        dispatch_table[__lo_rhs_scan_tid] = [this] (void* payload)   {
+          lo_rhs_scan(*(static_cast<unit_t*>(payload)));
+        };
+        dispatch_table[__lo_rhs_peer_barrier_tid] = [this] (void* payload)   {
+          lo_rhs_peer_barrier(*(static_cast<unit_t*>(payload)));
+        };
+        dispatch_table[__lo_probe_rhs_tid] = [this] (void* payload)   {
+          lo_probe_rhs(*(static_cast<_Collection<R_key_value<int, R_ck_od_sp<int, K3::base_string,
+          int>>>*>(payload)));
+        };
+        dispatch_table[__lo_lhs_scan_tid] = [this] (void* payload)   {
+          lo_lhs_scan(*(static_cast<unit_t*>(payload)));
+        };
+        dispatch_table[__lo_lhs_peer_barrier_tid] = [this] (void* payload)   {
+          lo_lhs_peer_barrier(*(static_cast<unit_t*>(payload)));
+        };
+        dispatch_table[__lo_global_barrier_tid] = [this] (void* payload)   {
+          lo_global_barrier(*(static_cast<unit_t*>(payload)));
+        };
+        dispatch_table[__lo_build_lhs_tid] = [this] (void* payload)   {
+          lo_build_lhs(*(static_cast<_Collection<R_key_value<int, double>>*>(payload)));
+        };
         dispatch_table[__hello_tid] = [this] (void* payload)   {
           hello(*(static_cast<unit_t*>(payload)));
-        };
-        dispatch_table[__groupby_scan_tid] = [this] (void* payload)   {
-          groupby_scan(*(static_cast<unit_t*>(payload)));
-        };
-        dispatch_table[__groupby_peer_barrier_tid] = [this] (void* payload)   {
-          groupby_peer_barrier(*(static_cast<unit_t*>(payload)));
-        };
-        dispatch_table[__groupby_merge_tid] = [this] (void* payload)   {
-          groupby_merge(*(static_cast<_Collection<R_key_value<std::tuple<K3::base_string,
-          K3::base_string>,
-          R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-          double, double, int, double, double, double, double>>>*>(payload)));
-        };
-        dispatch_table[__groupby_global_barrier_tid] = [this] (void* payload)   {
-          groupby_global_barrier(*(static_cast<unit_t*>(payload)));
         };
         dispatch_table[__finished_tid] = [this] (void* payload)   {
           finished(*(static_cast<unit_t*>(payload)));
@@ -2013,18 +1933,29 @@ public K3::__time_context {
         dispatch_table[__start_tid] = [this] (void* payload)   {
           start(*(static_cast<unit_t*>(payload)));
         };
-        dispatch_table[__q1_tid] = [this] (void* payload)   {
-          q1(*(static_cast<unit_t*>(payload)));
+        dispatch_table[__loc_probe_rhs_tid] = [this] (void* payload)   {
+          loc_probe_rhs(*(static_cast<_Collection<R_elem<R_c_custkey<int>>>*>(payload)));
+        };
+        dispatch_table[__lineitem_orders_customer_tid] = [this] (void* payload)   {
+          lineitem_orders_customer(*(static_cast<unit_t*>(payload)));
+        };
+        dispatch_table[__lineitem_orders_tid] = [this] (void* payload)   {
+          lineitem_orders(*(static_cast<unit_t*>(payload)));
         };
       }
-      static int __q1_tid;
+      static int __lineitem_orders_tid;
+      static int __lineitem_orders_customer_tid;
+      static int __loc_probe_rhs_tid;
       static int __start_tid;
       static int __finished_tid;
-      static int __groupby_global_barrier_tid;
-      static int __groupby_merge_tid;
-      static int __groupby_peer_barrier_tid;
-      static int __groupby_scan_tid;
       static int __hello_tid;
+      static int __lo_build_lhs_tid;
+      static int __lo_global_barrier_tid;
+      static int __lo_lhs_peer_barrier_tid;
+      static int __lo_lhs_scan_tid;
+      static int __lo_probe_rhs_tid;
+      static int __lo_rhs_peer_barrier_tid;
+      static int __lo_rhs_scan_tid;
       static int __load_all_tid;
       static int __ready_tid;
       static int __shutdown_tid;
@@ -2036,91 +1967,97 @@ public K3::__time_context {
       _Collection<R_l_comments_l_commitdate_l_discount_l_extendedprice_l_linenumber_l_linestatus_l_orderkey_l_partkey_l_quantity_l_receiptdate_l_returnflag_l_shipdate_l_shipinstruct_l_shipmode_l_suppkey_l_tax<K3::base_string,
       K3::base_string, double, double, int, K3::base_string, int, int, double, K3::base_string,
       K3::base_string, K3::base_string, K3::base_string, K3::base_string, int, double>> lineitem;
-      R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-      double, double, int, double, double, double, double> init_agg;
-      _Collection<R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-      double, double, int, K3::base_string, K3::base_string, double, double, double,
-      double>> peer_result;
-      auto strcomp(K3::base_string x)  {
-        return [this] (K3::base_string y) mutable  {
-          return 0;
+      _Collection<R_c_acctbal_c_address_c_comments_c_custkey_c_mktsegment_c_name_c_nationkey_c_phone<double,
+      K3::base_string, K3::base_string, int, K3::base_string, K3::base_string, int,
+      K3::base_string>> customer;
+      _Collection<R_o_clerk_o_comments_o_custkey_o_orderdate_o_orderkey_o_orderpriority_o_orderstatus_o_shippriority_o_totalprice<K3::base_string,
+      K3::base_string, int, K3::base_string, int, K3::base_string, K3::base_string, int,
+      double>> orders;
+      _Map<R_key_value<R_od_ok_sp<K3::base_string, int, int>, double>> q3_peer_result;
+      _Map<R_key_value<int, double>> li_epd_by_ok_map;
+      _Map<R_key_value<int, _Map<R_key_value<R_od_ok_sp<K3::base_string, int, int>,
+      double>>>> lior_epdods_map;
+      auto merge_li_epd_by_ok(const R_key_value<int, double>& a)  {
+        return [this, &a] (const R_key_value<int, double>& b) mutable  {
+          return R_key_value<int, double> {a.key, (a.value) + (b.value)};
         };
       }
-      auto accum_agg(const R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-      double, double, int, double, double, double, double>& acc)  {
-        return [this,
-        &acc] (const R_l_comments_l_commitdate_l_discount_l_extendedprice_l_linenumber_l_linestatus_l_orderkey_l_partkey_l_quantity_l_receiptdate_l_returnflag_l_shipdate_l_shipinstruct_l_shipmode_l_suppkey_l_tax<K3::base_string,
-        K3::base_string, double, double, int, K3::base_string, int, int, double, K3::base_string,
-        K3::base_string, K3::base_string, K3::base_string, K3::base_string, int,
-        double>& r) mutable  {
-          return R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-          double, double, int, double, double, double, double> {(acc.avg_disc_sum) + (r.l_discount),
-          (acc.avg_price_sum) + (r.l_extendedprice), (acc.avg_qty_sum) + (r.l_quantity),
-          (acc.count_order) + (1), (acc.sum_base_price) + (r.l_extendedprice),
-          (acc.sum_charge) + (r.l_extendedprice) * ((1) - (r.l_discount)) * ((1) + (r.l_tax)),
-          (acc.sum_disc_price) + (r.l_extendedprice) * ((1) - (r.l_discount)),
-          (acc.sum_qty) + (r.l_quantity)};
+      auto merge_lior_epd_by_ods(const R_key_value<R_od_ok_sp<K3::base_string, int, int>,
+      double>& a)  {
+        return [this, &a] (const R_key_value<R_od_ok_sp<K3::base_string, int, int>,
+        double>& b) mutable  {
+          return R_key_value<R_od_ok_sp<K3::base_string, int, int>, double> {a.key,
+          (a.value) + (b.value)};
         };
       }
-      auto merge_agg(const R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-      double, double, int, double, double, double, double>& a)  {
-        return [this,
-        &a] (const R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-        double, double, int, double, double, double, double>& b) mutable  {
-          return R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-          double, double, int, double, double, double, double> {(a.avg_disc_sum) + (b.avg_disc_sum),
-          (a.avg_price_sum) + (b.avg_price_sum), (a.avg_qty_sum) + (b.avg_qty_sum),
-          (a.count_order) + (b.count_order), (a.sum_base_price) + (b.sum_base_price),
-          (a.sum_charge) + (b.sum_charge), (a.sum_disc_price) + (b.sum_disc_price),
-          (a.sum_qty) + (b.sum_qty)};
+      auto merge_lior_r(const R_key_value<int, _Map<R_key_value<R_od_ok_sp<K3::base_string, int,
+      int>, double>>>& a)  {
+        return [this, a = std::move(a)] (const R_key_value<int,
+        _Map<R_key_value<R_od_ok_sp<K3::base_string, int, int>, double>>>& b) mutable  {
+          return R_key_value<int, _Map<R_key_value<R_od_ok_sp<K3::base_string, int, int>,
+          double>>> {a.key,
+          (a.value).fold(std::move([this] (_Map<R_key_value<R_od_ok_sp<K3::base_string, int, int>,
+          double>> acc) mutable  {
+            return [this, acc = std::move(acc)] (const R_key_value<R_od_ok_sp<K3::base_string, int,
+            int>, double>& r) mutable  {
+              acc.insert_with(std::move(r), std::bind(&__global_context::merge_lior_epd_by_ods, std::ref(*this), std::placeholders::_1));
+              return std::move(acc);
+            };
+          }), std::move(b.value))};
         };
       }
-      R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-      double, double, int, K3::base_string, K3::base_string, double, double, double,
-      double> finalize_agg(const R_key_value<std::tuple<K3::base_string, K3::base_string>,
-      R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-      double, double, int, double, double, double, double>>& r)  {
-        std::tuple<K3::base_string, K3::base_string> __0;
-        __0 = r.key;
-        {
-          auto& retflag = std::get<0>(__0);
-          auto& linestat = std::get<1>(__0);
-          R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-          double, double, int, K3::base_string, K3::base_string, double, double, double,
-          double> __1;
-          __1 = R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-          double, double, int, K3::base_string, K3::base_string, double, double, double,
-          double> {((r.value).avg_disc_sum) / ((r.value).count_order),
-          ((r.value).avg_price_sum) / ((r.value).count_order),
-          ((r.value).avg_qty_sum) / ((r.value).count_order), (r.value).count_order, linestat,
-          retflag, (r.value).sum_base_price, (r.value).sum_charge, (r.value).sum_disc_price,
-          (r.value).sum_qty};
-          return __1;
-        }
-      }
-      auto order_agg(const R_elem<R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-      double, double, int, K3::base_string, K3::base_string, double, double, double, double>>& a)  {
-        return [this,
-        &a] (const R_elem<R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-        double, double, int, K3::base_string, K3::base_string, double, double, double,
-        double>>& b) mutable  {
-          {
-            int strdiff;
-            strdiff = strcomp(std::move((a.elem).l_returnflag))(std::move((b.elem).l_returnflag));
-            if (strdiff != (0)) {
-              return strdiff;
-            } else {
-              return strcomp(std::move((a.elem).l_linestatus))(std::move((b.elem).l_linestatus));
-            }
-          }
-        };
-      }
-      unit_t q1(unit_t _)  {
+      unit_t lineitem_orders(unit_t _)  {
         return peers.iterate(std::move([this] (const R_addr<Address>& p) mutable  {
           auto d = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
-          __engine.send(p.addr, __groupby_scan_tid, d);
+          __engine.send(p.addr, __lo_lhs_scan_tid, d);
           return unit_t {};
         }));
+      }
+      unit_t lineitem_orders_customer(unit_t _)  {
+        {
+          _Collection<R_elem<R_c_custkey<int>>> building_customers;
+          building_customers = (customer.filter(std::move([this] (const R_c_acctbal_c_address_c_comments_c_custkey_c_mktsegment_c_name_c_nationkey_c_phone<double,
+          K3::base_string, K3::base_string, int, K3::base_string, K3::base_string, int,
+          K3::base_string>& c) mutable  {
+            return (c.c_mktsegment) == ("BUILDING");
+          }))).map(std::move([this] (const R_c_acctbal_c_address_c_comments_c_custkey_c_mktsegment_c_name_c_nationkey_c_phone<double,
+          K3::base_string, K3::base_string, int, K3::base_string, K3::base_string, int,
+          K3::base_string>& c) mutable  {
+            return R_c_custkey<int> {c.c_custkey};
+          }));
+          return peers.iterate(std::move([this,
+          &building_customers] (const R_addr<Address>& p) mutable  {
+            auto d = std::make_shared<K3::ValDispatcher<_Collection<R_elem<R_c_custkey<int>>>>>(building_customers);
+            __engine.send(p.addr, __loc_probe_rhs_tid, d);
+            return unit_t {};
+          }));
+        }
+      }
+      unit_t loc_probe_rhs(const _Collection<R_elem<R_c_custkey<int>>>& vals)  {
+        vals.iterate(std::move([this] (const R_elem<R_c_custkey<int>>& v) mutable  {
+          shared_ptr<R_key_value<int, _Map<R_key_value<R_od_ok_sp<K3::base_string, int, int>,
+          double>>>> __0;
+          __0 = lior_epdods_map.lookup(R_key_value<int, _Map<R_key_value<R_od_ok_sp<K3::base_string,
+          int, int>, double>>> {(v.elem).c_custkey, _Map<R_key_value<R_od_ok_sp<K3::base_string,
+          int, int>, double>> {}});
+          if (__0) {
+            auto& lo_r = *(__0);
+            return (lo_r.value).iterate(std::move([this] (const R_key_value<R_od_ok_sp<K3::base_string,
+            int, int>, double>& kv) mutable  {
+              return q3_peer_result.insert_with(std::move(kv), std::bind(&__global_context::merge_lior_epd_by_ods, std::ref(*this), std::placeholders::_1));
+            }));
+          } else {
+            return unit_t {};
+          }
+        }));
+        loc_done_cnt = loc_done_cnt + (1);
+        if (loc_done_cnt == peers.size(unit_t {})) {
+          auto d = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
+          __engine.send(master, __finished_tid, d);
+          return unit_t {};
+        } else {
+          return unit_t {};
+        }
       }
       unit_t start(unit_t _)  {
         auto d = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
@@ -2469,11 +2406,12 @@ public K3::__time_context {
         });
         return unit_t {};
       }
+      template <class a>
+      unit_t ignore(a _)  {
+        return unit_t {};
+      }
       _Collection<R_path<K3::base_string>> customerFiles;
       _Collection<R_path<K3::base_string>> dataFiles;
-      _Map<R_key_value<std::tuple<K3::base_string, K3::base_string>,
-      R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-      double, double, int, double, double, double, double>>> groupby_result;
       template <class a>
       int index_by_hash(a s)  {
         {
@@ -2487,6 +2425,8 @@ public K3::__time_context {
         }
       }
       _Collection<R_path<K3::base_string>> lineitemFiles;
+      int loc_done_cnt;
+      bool __loc_done_cnt_set__ = false;
       Address master;
       bool __master_set__ = false;
       _Collection<R_path<K3::base_string>> ordersFiles;
@@ -2516,103 +2456,72 @@ public K3::__time_context {
           return unit_t {};
         }
       }
-      unit_t groupby_global_barrier(unit_t _)  {
-        groupby_done_cnt = groupby_done_cnt + (1);
-        if (groupby_done_cnt == peers.size(unit_t {})) {
-          return unit_t {};
-        } else {
-          return unit_t {};
-        }
+      unit_t hello(unit_t _)  {
+        return unit_t {};
       }
-      unit_t groupby_merge(const _Collection<R_key_value<std::tuple<K3::base_string,
-      K3::base_string>,
-      R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-      double, double, int, double, double, double, double>>>& partials)  {
-        return partials.iterate(std::move([this] (const R_key_value<std::tuple<K3::base_string,
-        K3::base_string>,
-        R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-        double, double, int, double, double, double, double>>& v) mutable  {
-          return groupby_result.insert_with(std::move(v),
-          std::move([this] (const R_key_value<std::tuple<K3::base_string, K3::base_string>,
-          R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-          double, double, int, double, double, double, double>>& a) mutable  {
-            return [this, &a] (const R_key_value<std::tuple<K3::base_string, K3::base_string>,
-            R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-            double, double, int, double, double, double, double>>& b) mutable  {
-              return R_key_value<std::tuple<K3::base_string, K3::base_string>,
-              R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-              double, double, int, double, double, double, double>> {a.key,
-              merge_agg(std::move(a.value))(std::move(b.value))};
-            };
-          }));
+      unit_t lo_build_lhs(const _Collection<R_key_value<int, double>>& vals)  {
+        return vals.iterate(std::move([this] (const R_key_value<int, double>& li) mutable  {
+          return li_epd_by_ok_map.insert_with(std::move(li), std::bind(&__global_context::merge_li_epd_by_ok, std::ref(*this), std::placeholders::_1));
         }));
       }
-      unit_t groupby_peer_barrier(unit_t _)  {
-        groupby_peer_done_cnt = groupby_peer_done_cnt + (1);
-        if (groupby_peer_done_cnt == peers.size(unit_t {})) {
-          [this] (const _Map<R_key_value<std::tuple<K3::base_string, K3::base_string>,
-          R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-          double, double, int, double, double, double, double>>>& x) mutable  {
-            x.iterate(std::move([this] (const R_key_value<std::tuple<K3::base_string,
-            K3::base_string>,
-            R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-            double, double, int, double, double, double, double>>& kv) mutable  {
-              return peer_result.insert(std::move(finalize_agg(std::move(kv))));
-            }));
-            auto d = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
-            __engine.send(master, __finished_tid, d);
-            return unit_t {};
-          }(groupby_result);
-          auto d = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
-          __engine.send(master, __groupby_global_barrier_tid, d);
-          return unit_t {};
+      unit_t lo_global_barrier(unit_t _)  {
+        lo_join_done_cnt = lo_join_done_cnt + (1);
+        if (lo_join_done_cnt == peers.size(unit_t {})) {
+          print("Hash join done.");
+          return print("LI-OR join all nodes finished.");
         } else {
           return unit_t {};
         }
       }
-      unit_t groupby_scan(unit_t _)  {
+      unit_t lo_lhs_peer_barrier(unit_t _)  {
+        print("Hash join LHS finished build.");
+        lo_peer_build_done_cnt = lo_peer_build_done_cnt + (1);
+        if (lo_peer_build_done_cnt == peers.size(unit_t {})) {
+          return peers.iterate(std::move([this] (const R_addr<Address>& p) mutable  {
+            auto d = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
+            __engine.send(p.addr, __lo_rhs_scan_tid, d);
+            return unit_t {};
+          }));
+        } else {
+          return unit_t {};
+        }
+      }
+      unit_t lo_lhs_scan(unit_t _)  {
         (((lineitem.filter(std::move([this] (const R_l_comments_l_commitdate_l_discount_l_extendedprice_l_linenumber_l_linestatus_l_orderkey_l_partkey_l_quantity_l_receiptdate_l_returnflag_l_shipdate_l_shipinstruct_l_shipmode_l_suppkey_l_tax<K3::base_string,
         K3::base_string, double, double, int, K3::base_string, int, int, double, K3::base_string,
         K3::base_string, K3::base_string, K3::base_string, K3::base_string, int,
-        double>& r) mutable  {
-          return (r.l_shipdate) <= ("1998-12-01");
+        double>& l) mutable  {
+          return (l.l_shipdate) > ("1995-03-15");
         }))).groupBy(std::move([this] (const R_l_comments_l_commitdate_l_discount_l_extendedprice_l_linenumber_l_linestatus_l_orderkey_l_partkey_l_quantity_l_receiptdate_l_returnflag_l_shipdate_l_shipinstruct_l_shipmode_l_suppkey_l_tax<K3::base_string,
         K3::base_string, double, double, int, K3::base_string, int, int, double, K3::base_string,
         K3::base_string, K3::base_string, K3::base_string, K3::base_string, int,
-        double>& r) mutable  {
-          return make_tuple(r.l_returnflag, r.l_linestatus);
-        }), std::bind(&__global_context::accum_agg, std::ref(*this), std::placeholders::_1),
-        init_agg)).groupBy(std::move([this] (const R_key_value<std::tuple<K3::base_string,
-        K3::base_string>,
-        R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-        double, double, int, double, double, double, double>>& v) mutable  {
+        double>& l) mutable  {
+          return l.l_orderkey;
+        }), std::move([this] (const double& acc) mutable  {
+          return [this,
+          &acc] (const R_l_comments_l_commitdate_l_discount_l_extendedprice_l_linenumber_l_linestatus_l_orderkey_l_partkey_l_quantity_l_receiptdate_l_returnflag_l_shipdate_l_shipinstruct_l_shipmode_l_suppkey_l_tax<K3::base_string,
+          K3::base_string, double, double, int, K3::base_string, int, int, double, K3::base_string,
+          K3::base_string, K3::base_string, K3::base_string, K3::base_string, int,
+          double>& l) mutable  {
+            return acc + (l.l_extendedprice) * ((1) - (l.l_discount));
+          };
+        }), 0.0)).groupBy(std::move([this] (const R_key_value<int, double>& v) mutable  {
           return index_by_hash(std::move(v.key));
-        }), std::move([this] (_Collection<R_key_value<std::tuple<K3::base_string, K3::base_string>,
-        R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-        double, double, int, double, double, double, double>>> acc) mutable  {
-          return [this, acc = std::move(acc)] (const R_key_value<std::tuple<K3::base_string,
-          K3::base_string>,
-          R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-          double, double, int, double, double, double, double>>& v) mutable  {
+        }), std::move([this] (_Collection<R_key_value<int, double>> acc) mutable  {
+          return [this, acc = std::move(acc)] (const R_key_value<int, double>& v) mutable  {
             acc.insert(std::move(v));
             return std::move(acc);
           };
-        }), _Collection<R_key_value<std::tuple<K3::base_string, K3::base_string>,
-        R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-        double, double, int, double, double, double,
-        double>>> {})).iterate(std::move([this] (const R_key_value<int,
-        _Collection<R_key_value<std::tuple<K3::base_string, K3::base_string>,
-        R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-        double, double, int, double, double, double, double>>>>& v) mutable  {
-          shared_ptr<R_addr<Address>> __2;
-          __2 = peers.at(std::move(v.key));
-          if (__2) {
-            auto& p = *(__2);
-            auto d = std::make_shared<K3::ValDispatcher<_Collection<R_key_value<std::tuple<K3::base_string,
-            K3::base_string>,
-            R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-            double, double, int, double, double, double, double>>>>>(v.value);
-            __engine.send(p.addr, __groupby_merge_tid, d);
+        }), _Collection<R_key_value<int,
+        double>> {})).iterate(std::move([this] (const R_key_value<int, _Collection<R_key_value<int,
+        double>>>& v) mutable  {
+          shared_ptr<R_addr<Address>> __1;
+          __1 = peers.at(std::move(v.key));
+          if (__1) {
+            auto& p = *(__1);
+            auto d = std::make_shared<K3::ValDispatcher<_Collection<R_key_value<int,
+            double>>>>(v.value);
+            __engine.send(p.addr, __lo_build_lhs_tid, d);
             return unit_t {};
           } else {
             return error<unit_t>(unit_t {});
@@ -2620,12 +2529,101 @@ public K3::__time_context {
         }));
         return ignore(std::move(peers.iterate(std::move([this] (const R_addr<Address>& p) mutable  {
           auto d = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
-          __engine.send(p.addr, __groupby_peer_barrier_tid, d);
+          __engine.send(p.addr, __lo_lhs_peer_barrier_tid, d);
           return unit_t {};
         }))));
       }
-      unit_t hello(unit_t _)  {
-        return unit_t {};
+      unit_t lo_probe_rhs(const _Collection<R_key_value<int, R_ck_od_sp<int, K3::base_string,
+      int>>>& vals)  {
+        return vals.iterate(std::move([this] (const R_key_value<int, R_ck_od_sp<int,
+        K3::base_string, int>>& o) mutable  {
+          shared_ptr<R_key_value<int, double>> __2;
+          __2 = li_epd_by_ok_map.lookup(R_key_value<int, double> {o.key, 0.0});
+          if (__2) {
+            auto& li = *(__2);
+            _Map<R_key_value<R_od_ok_sp<K3::base_string, int, int>, double>> __3;
+            {
+              _Map<R_key_value<R_od_ok_sp<K3::base_string, int, int>, double>> __collection;
+              __collection = _Map<R_key_value<R_od_ok_sp<K3::base_string, int, int>, double>> {};
+              __collection.insert(R_key_value<R_od_ok_sp<K3::base_string, int, int>,
+              double> {R_od_ok_sp<K3::base_string, int, int> {(o.value).od, o.key, (o.value).sp},
+              li.value});
+              __3 = __collection;
+            }
+            return lior_epdods_map.insert_with(R_key_value<int,
+            _Map<R_key_value<R_od_ok_sp<K3::base_string, int, int>, double>>> {(o.value).ck, __3},
+            std::bind(&__global_context::merge_lior_r, std::ref(*this), std::placeholders::_1));
+          } else {
+            return unit_t {};
+          }
+        }));
+      }
+      unit_t lo_rhs_peer_barrier(unit_t _)  {
+        lo_rhs_done_cnt = lo_rhs_done_cnt + (1);
+        if (lo_rhs_done_cnt == peers.size(unit_t {})) {
+          print("Hash join RHS finished probe.");
+          print("LI-OR join finished orders probe.");
+          auto d = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
+          __engine.send(me, __lineitem_orders_customer_tid, d);
+          auto d2 = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
+          __engine.send(master, __lo_global_barrier_tid, d2);
+          return unit_t {};
+        } else {
+          return unit_t {};
+        }
+      }
+      unit_t lo_rhs_scan(unit_t _)  {
+        lo_lhs_done_cnt = lo_lhs_done_cnt + (1);
+        if (lo_lhs_done_cnt == peers.size(unit_t {})) {
+          (((orders.filter(std::move([this] (const R_o_clerk_o_comments_o_custkey_o_orderdate_o_orderkey_o_orderpriority_o_orderstatus_o_shippriority_o_totalprice<K3::base_string,
+          K3::base_string, int, K3::base_string, int, K3::base_string, K3::base_string, int,
+          double>& o) mutable  {
+            return (o.o_orderdate) < ("1995-03-15");
+          }))).fold(std::move([this] (_Collection<R_key_value<int, R_ck_od_sp<int, K3::base_string,
+          int>>> acc) mutable  {
+            return [this,
+            acc = std::move(acc)] (const R_o_clerk_o_comments_o_custkey_o_orderdate_o_orderkey_o_orderpriority_o_orderstatus_o_shippriority_o_totalprice<K3::base_string,
+            K3::base_string, int, K3::base_string, int, K3::base_string, K3::base_string, int,
+            double>& o) mutable  {
+              acc.insert(R_key_value<int, R_ck_od_sp<int, K3::base_string, int>> {o.o_orderkey,
+              R_ck_od_sp<int, K3::base_string, int> {o.o_custkey, o.o_orderdate,
+              o.o_shippriority}});
+              return std::move(acc);
+            };
+          }), _Collection<R_key_value<int, R_ck_od_sp<int, K3::base_string,
+          int>>> {})).groupBy(std::move([this] (const R_key_value<int, R_ck_od_sp<int,
+          K3::base_string, int>>& v) mutable  {
+            return index_by_hash(std::move(v.key));
+          }), std::move([this] (_Collection<R_key_value<int, R_ck_od_sp<int, K3::base_string,
+          int>>> acc) mutable  {
+            return [this, acc = std::move(acc)] (const R_key_value<int, R_ck_od_sp<int,
+            K3::base_string, int>>& v) mutable  {
+              acc.insert(std::move(v));
+              return std::move(acc);
+            };
+          }), _Collection<R_key_value<int, R_ck_od_sp<int, K3::base_string,
+          int>>> {})).iterate(std::move([this] (const R_key_value<int, _Collection<R_key_value<int,
+          R_ck_od_sp<int, K3::base_string, int>>>>& v) mutable  {
+            shared_ptr<R_addr<Address>> __4;
+            __4 = peers.at(std::move(v.key));
+            if (__4) {
+              auto& p = *(__4);
+              auto d = std::make_shared<K3::ValDispatcher<_Collection<R_key_value<int,
+              R_ck_od_sp<int, K3::base_string, int>>>>>(v.value);
+              __engine.send(p.addr, __lo_probe_rhs_tid, d);
+              return unit_t {};
+            } else {
+              return error<unit_t>(unit_t {});
+            }
+          }));
+          return ignore(std::move(peers.iterate(std::move([this] (const R_addr<Address>& p) mutable  {
+            auto d = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
+            __engine.send(p.addr, __lo_rhs_peer_barrier_tid, d);
+            return unit_t {};
+          }))));
+        } else {
+          return unit_t {};
+        }
       }
       unit_t load_all(unit_t _)  {
         {
@@ -2633,8 +2631,14 @@ public K3::__time_context {
           start = now_int(unit_t {});
           {
             unit_t result;
-            result = dataFiles.iterate(std::move([this] (R_path<K3::base_string> e) mutable  {
+            lineitemFiles.iterate(std::move([this] (R_path<K3::base_string> e) mutable  {
               return lineitemLoader(std::move(e.path), lineitem);
+            }));
+            ordersFiles.iterate(std::move([this] (R_path<K3::base_string> e) mutable  {
+              return ordersLoader(std::move(e.path), orders);
+            }));
+            result = customerFiles.iterate(std::move([this] (R_path<K3::base_string> e) mutable  {
+              return customerLoader(std::move(e.path), customer);
             }));
             {
               int end;
@@ -2660,7 +2664,7 @@ public K3::__time_context {
         if (nodes_ready_cnt == peers.size(unit_t {})) {
           query_start_ms = now_int(unit_t {});
           auto d = std::make_shared<K3::ValDispatcher<unit_t>>(unit_t {});
-          __engine.send(me, __q1_tid, d);
+          __engine.send(me, __lineitem_orders_tid, d);
           return unit_t {};
         } else {
           return unit_t {};
@@ -2669,10 +2673,14 @@ public K3::__time_context {
       unit_t shutdown_(unit_t _)  {
         return haltEngine(unit_t {});
       }
-      int groupby_done_cnt;
-      bool __groupby_done_cnt_set__ = false;
-      int groupby_peer_done_cnt;
-      bool __groupby_peer_done_cnt_set__ = false;
+      int lo_join_done_cnt;
+      bool __lo_join_done_cnt_set__ = false;
+      int lo_lhs_done_cnt;
+      bool __lo_lhs_done_cnt_set__ = false;
+      int lo_peer_build_done_cnt;
+      bool __lo_peer_build_done_cnt_set__ = false;
+      int lo_rhs_done_cnt;
+      bool __lo_rhs_done_cnt_set__ = false;
       int nodes_ready_cnt;
       bool __nodes_ready_cnt_set__ = false;
       int query_done_cnt;
@@ -2684,17 +2692,29 @@ public K3::__time_context {
       int query_start_ms;
       bool __query_start_ms_set__ = false;
       unit_t initDecls(unit_t _)  {
+        if (!(__loc_done_cnt_set__)) {
+          loc_done_cnt = 0;
+          __loc_done_cnt_set__ = true;
+        }
         if (!(__master_set__)) {
           master = make_address("127.0.0.1", 40000);
           __master_set__ = true;
         }
-        if (!(__groupby_done_cnt_set__)) {
-          groupby_done_cnt = 0;
-          __groupby_done_cnt_set__ = true;
+        if (!(__lo_join_done_cnt_set__)) {
+          lo_join_done_cnt = 0;
+          __lo_join_done_cnt_set__ = true;
         }
-        if (!(__groupby_peer_done_cnt_set__)) {
-          groupby_peer_done_cnt = 0;
-          __groupby_peer_done_cnt_set__ = true;
+        if (!(__lo_lhs_done_cnt_set__)) {
+          lo_lhs_done_cnt = 0;
+          __lo_lhs_done_cnt_set__ = true;
+        }
+        if (!(__lo_peer_build_done_cnt_set__)) {
+          lo_peer_build_done_cnt = 0;
+          __lo_peer_build_done_cnt_set__ = true;
+        }
+        if (!(__lo_rhs_done_cnt_set__)) {
+          lo_rhs_done_cnt = 0;
+          __lo_rhs_done_cnt_set__ = true;
         }
         if (!(__nodes_ready_cnt_set__)) {
           nodes_ready_cnt = 0;
@@ -2725,8 +2745,10 @@ public K3::__time_context {
         result["query_elapsed_ms"] = K3::prettify_int(query_elapsed_ms);
         result["query_done_cnt"] = K3::prettify_int(query_done_cnt);
         result["nodes_ready_cnt"] = K3::prettify_int(nodes_ready_cnt);
-        result["groupby_peer_done_cnt"] = K3::prettify_int(groupby_peer_done_cnt);
-        result["groupby_done_cnt"] = K3::prettify_int(groupby_done_cnt);
+        result["lo_rhs_done_cnt"] = K3::prettify_int(lo_rhs_done_cnt);
+        result["lo_peer_build_done_cnt"] = K3::prettify_int(lo_peer_build_done_cnt);
+        result["lo_lhs_done_cnt"] = K3::prettify_int(lo_lhs_done_cnt);
+        result["lo_join_done_cnt"] = K3::prettify_int(lo_join_done_cnt);
         result["ordersFiles"] = K3::prettify_collection(ordersFiles,
         [] (R_path<K3::base_string> x)   {
           return K3::prettify_record(x, [] (R_path<K3::base_string> x)   {
@@ -2738,51 +2760,13 @@ public K3::__time_context {
           });
         });
         result["master"] = K3::prettify_address(master);
+        result["loc_done_cnt"] = K3::prettify_int(loc_done_cnt);
         result["lineitemFiles"] = K3::prettify_collection(lineitemFiles,
         [] (R_path<K3::base_string> x)   {
           return K3::prettify_record(x, [] (R_path<K3::base_string> x)   {
             ostringstream oss;
             oss << ("{");
             oss << std::string("path:") << K3::prettify_string(x.path);
-            oss << ("}");
-            return string_impl(oss.str());
-          });
-        });
-        result["groupby_result"] = K3::prettify_collection(groupby_result,
-        [] (R_key_value<std::tuple<K3::base_string, K3::base_string>,
-        R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-        double, double, int, double, double, double, double>> x)   {
-          return K3::prettify_record(x, [] (R_key_value<std::tuple<K3::base_string,
-          K3::base_string>,
-          R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-          double, double, int, double, double, double, double>> x)   {
-            ostringstream oss;
-            oss << ("{");
-            oss << std::string("key:") << K3::prettify_tuple(x.key);
-            oss << (",");
-            oss << std::string("value:") << K3::prettify_record(x.value,
-            [] (R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-            double, double, int, double, double, double, double> x)   {
-              ostringstream oss;
-              oss << ("{");
-              oss << std::string("sum_qty:") << K3::prettify_real(x.sum_qty);
-              oss << (",");
-              oss << std::string("sum_base_price:") << K3::prettify_real(x.sum_base_price);
-              oss << (",");
-              oss << std::string("sum_disc_price:") << K3::prettify_real(x.sum_disc_price);
-              oss << (",");
-              oss << std::string("sum_charge:") << K3::prettify_real(x.sum_charge);
-              oss << (",");
-              oss << std::string("avg_qty_sum:") << K3::prettify_real(x.avg_qty_sum);
-              oss << (",");
-              oss << std::string("avg_price_sum:") << K3::prettify_real(x.avg_price_sum);
-              oss << (",");
-              oss << std::string("avg_disc_sum:") << K3::prettify_real(x.avg_disc_sum);
-              oss << (",");
-              oss << std::string("count_order:") << K3::prettify_int(x.count_order);
-              oss << ("}");
-              return string_impl(oss.str());
-            });
             oss << ("}");
             return string_impl(oss.str());
           });
@@ -2806,61 +2790,137 @@ public K3::__time_context {
             return string_impl(oss.str());
           });
         });
-        result["peer_result"] = K3::prettify_collection(peer_result,
-        [] (R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-        double, double, int, K3::base_string, K3::base_string, double, double, double,
-        double> x)   {
-          return K3::prettify_record(x,
-          [] (R_avg_disc_avg_price_avg_qty_count_order_l_linestatus_l_returnflag_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-          double, double, int, K3::base_string, K3::base_string, double, double, double,
-          double> x)   {
+        result["lior_epdods_map"] = K3::prettify_collection(lior_epdods_map, [] (R_key_value<int,
+        _Map<R_key_value<R_od_ok_sp<K3::base_string, int, int>, double>>> x)   {
+          return K3::prettify_record(x, [] (R_key_value<int,
+          _Map<R_key_value<R_od_ok_sp<K3::base_string, int, int>, double>>> x)   {
             ostringstream oss;
             oss << ("{");
-            oss << std::string("l_returnflag:") << K3::prettify_string(x.l_returnflag);
+            oss << std::string("key:") << K3::prettify_int(x.key);
             oss << (",");
-            oss << std::string("l_linestatus:") << K3::prettify_string(x.l_linestatus);
-            oss << (",");
-            oss << std::string("sum_qty:") << K3::prettify_real(x.sum_qty);
-            oss << (",");
-            oss << std::string("sum_base_price:") << K3::prettify_real(x.sum_base_price);
-            oss << (",");
-            oss << std::string("sum_disc_price:") << K3::prettify_real(x.sum_disc_price);
-            oss << (",");
-            oss << std::string("sum_charge:") << K3::prettify_real(x.sum_charge);
-            oss << (",");
-            oss << std::string("avg_qty:") << K3::prettify_real(x.avg_qty);
-            oss << (",");
-            oss << std::string("avg_price:") << K3::prettify_real(x.avg_price);
-            oss << (",");
-            oss << std::string("avg_disc:") << K3::prettify_real(x.avg_disc);
-            oss << (",");
-            oss << std::string("count_order:") << K3::prettify_int(x.count_order);
+            oss << std::string("value:") << K3::prettify_collection(x.value,
+            [] (R_key_value<R_od_ok_sp<K3::base_string, int, int>, double> x)   {
+              return K3::prettify_record(x, [] (R_key_value<R_od_ok_sp<K3::base_string, int, int>,
+              double> x)   {
+                ostringstream oss;
+                oss << ("{");
+                oss << std::string("key:") << K3::prettify_record(x.key,
+                [] (R_od_ok_sp<K3::base_string, int, int> x)   {
+                  ostringstream oss;
+                  oss << ("{");
+                  oss << std::string("ok:") << K3::prettify_int(x.ok);
+                  oss << (",");
+                  oss << std::string("od:") << K3::prettify_string(x.od);
+                  oss << (",");
+                  oss << std::string("sp:") << K3::prettify_int(x.sp);
+                  oss << ("}");
+                  return string_impl(oss.str());
+                });
+                oss << (",");
+                oss << std::string("value:") << K3::prettify_real(x.value);
+                oss << ("}");
+                return string_impl(oss.str());
+              });
+            });
             oss << ("}");
             return string_impl(oss.str());
           });
         });
-        result["init_agg"] = K3::prettify_record(init_agg,
-        [] (R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-        double, double, int, double, double, double, double> x)   {
-          ostringstream oss;
-          oss << ("{");
-          oss << std::string("sum_qty:") << K3::prettify_real(x.sum_qty);
-          oss << (",");
-          oss << std::string("sum_base_price:") << K3::prettify_real(x.sum_base_price);
-          oss << (",");
-          oss << std::string("sum_disc_price:") << K3::prettify_real(x.sum_disc_price);
-          oss << (",");
-          oss << std::string("sum_charge:") << K3::prettify_real(x.sum_charge);
-          oss << (",");
-          oss << std::string("avg_qty_sum:") << K3::prettify_real(x.avg_qty_sum);
-          oss << (",");
-          oss << std::string("avg_price_sum:") << K3::prettify_real(x.avg_price_sum);
-          oss << (",");
-          oss << std::string("avg_disc_sum:") << K3::prettify_real(x.avg_disc_sum);
-          oss << (",");
-          oss << std::string("count_order:") << K3::prettify_int(x.count_order);
-          oss << ("}");
-          return string_impl(oss.str());
+        result["li_epd_by_ok_map"] = K3::prettify_collection(li_epd_by_ok_map, [] (R_key_value<int,
+        double> x)   {
+          return K3::prettify_record(x, [] (R_key_value<int, double> x)   {
+            ostringstream oss;
+            oss << ("{");
+            oss << std::string("key:") << K3::prettify_int(x.key);
+            oss << (",");
+            oss << std::string("value:") << K3::prettify_real(x.value);
+            oss << ("}");
+            return string_impl(oss.str());
+          });
+        });
+        result["q3_peer_result"] = K3::prettify_collection(q3_peer_result,
+        [] (R_key_value<R_od_ok_sp<K3::base_string, int, int>, double> x)   {
+          return K3::prettify_record(x, [] (R_key_value<R_od_ok_sp<K3::base_string, int, int>,
+          double> x)   {
+            ostringstream oss;
+            oss << ("{");
+            oss << std::string("key:") << K3::prettify_record(x.key, [] (R_od_ok_sp<K3::base_string,
+            int, int> x)   {
+              ostringstream oss;
+              oss << ("{");
+              oss << std::string("ok:") << K3::prettify_int(x.ok);
+              oss << (",");
+              oss << std::string("od:") << K3::prettify_string(x.od);
+              oss << (",");
+              oss << std::string("sp:") << K3::prettify_int(x.sp);
+              oss << ("}");
+              return string_impl(oss.str());
+            });
+            oss << (",");
+            oss << std::string("value:") << K3::prettify_real(x.value);
+            oss << ("}");
+            return string_impl(oss.str());
+          });
+        });
+        result["orders"] = K3::prettify_collection(orders,
+        [] (R_o_clerk_o_comments_o_custkey_o_orderdate_o_orderkey_o_orderpriority_o_orderstatus_o_shippriority_o_totalprice<K3::base_string,
+        K3::base_string, int, K3::base_string, int, K3::base_string, K3::base_string, int,
+        double> x)   {
+          return K3::prettify_record(x,
+          [] (R_o_clerk_o_comments_o_custkey_o_orderdate_o_orderkey_o_orderpriority_o_orderstatus_o_shippriority_o_totalprice<K3::base_string,
+          K3::base_string, int, K3::base_string, int, K3::base_string, K3::base_string, int,
+          double> x)   {
+            ostringstream oss;
+            oss << ("{");
+            oss << std::string("o_orderkey:") << K3::prettify_int(x.o_orderkey);
+            oss << (",");
+            oss << std::string("o_custkey:") << K3::prettify_int(x.o_custkey);
+            oss << (",");
+            oss << std::string("o_orderstatus:") << K3::prettify_string(x.o_orderstatus);
+            oss << (",");
+            oss << std::string("o_totalprice:") << K3::prettify_real(x.o_totalprice);
+            oss << (",");
+            oss << std::string("o_orderdate:") << K3::prettify_string(x.o_orderdate);
+            oss << (",");
+            oss << std::string("o_orderpriority:") << K3::prettify_string(x.o_orderpriority);
+            oss << (",");
+            oss << std::string("o_clerk:") << K3::prettify_string(x.o_clerk);
+            oss << (",");
+            oss << std::string("o_shippriority:") << K3::prettify_int(x.o_shippriority);
+            oss << (",");
+            oss << std::string("o_comments:") << K3::prettify_string(x.o_comments);
+            oss << ("}");
+            return string_impl(oss.str());
+          });
+        });
+        result["customer"] = K3::prettify_collection(customer,
+        [] (R_c_acctbal_c_address_c_comments_c_custkey_c_mktsegment_c_name_c_nationkey_c_phone<double,
+        K3::base_string, K3::base_string, int, K3::base_string, K3::base_string, int,
+        K3::base_string> x)   {
+          return K3::prettify_record(x,
+          [] (R_c_acctbal_c_address_c_comments_c_custkey_c_mktsegment_c_name_c_nationkey_c_phone<double,
+          K3::base_string, K3::base_string, int, K3::base_string, K3::base_string, int,
+          K3::base_string> x)   {
+            ostringstream oss;
+            oss << ("{");
+            oss << std::string("c_custkey:") << K3::prettify_int(x.c_custkey);
+            oss << (",");
+            oss << std::string("c_name:") << K3::prettify_string(x.c_name);
+            oss << (",");
+            oss << std::string("c_address:") << K3::prettify_string(x.c_address);
+            oss << (",");
+            oss << std::string("c_nationkey:") << K3::prettify_int(x.c_nationkey);
+            oss << (",");
+            oss << std::string("c_phone:") << K3::prettify_string(x.c_phone);
+            oss << (",");
+            oss << std::string("c_acctbal:") << K3::prettify_real(x.c_acctbal);
+            oss << (",");
+            oss << std::string("c_mktsegment:") << K3::prettify_string(x.c_mktsegment);
+            oss << (",");
+            oss << std::string("c_comments:") << K3::prettify_string(x.c_comments);
+            oss << ("}");
+            return string_impl(oss.str());
+          });
         });
         result["lineitem"] = K3::prettify_collection(lineitem,
         [] (R_l_comments_l_commitdate_l_discount_l_extendedprice_l_linenumber_l_linestatus_l_orderkey_l_partkey_l_quantity_l_receiptdate_l_returnflag_l_shipdate_l_shipinstruct_l_shipmode_l_suppkey_l_tax<K3::base_string,
@@ -2942,13 +3002,21 @@ public K3::__time_context {
           do_patch(bindings["nodes_ready_cnt"], nodes_ready_cnt);
           __nodes_ready_cnt_set__ = true;
         }
-        if (bindings.count("groupby_peer_done_cnt") > (0)) {
-          do_patch(bindings["groupby_peer_done_cnt"], groupby_peer_done_cnt);
-          __groupby_peer_done_cnt_set__ = true;
+        if (bindings.count("lo_rhs_done_cnt") > (0)) {
+          do_patch(bindings["lo_rhs_done_cnt"], lo_rhs_done_cnt);
+          __lo_rhs_done_cnt_set__ = true;
         }
-        if (bindings.count("groupby_done_cnt") > (0)) {
-          do_patch(bindings["groupby_done_cnt"], groupby_done_cnt);
-          __groupby_done_cnt_set__ = true;
+        if (bindings.count("lo_peer_build_done_cnt") > (0)) {
+          do_patch(bindings["lo_peer_build_done_cnt"], lo_peer_build_done_cnt);
+          __lo_peer_build_done_cnt_set__ = true;
+        }
+        if (bindings.count("lo_lhs_done_cnt") > (0)) {
+          do_patch(bindings["lo_lhs_done_cnt"], lo_lhs_done_cnt);
+          __lo_lhs_done_cnt_set__ = true;
+        }
+        if (bindings.count("lo_join_done_cnt") > (0)) {
+          do_patch(bindings["lo_join_done_cnt"], lo_join_done_cnt);
+          __lo_join_done_cnt_set__ = true;
         }
         if (bindings.count("ordersFiles") > (0)) {
           do_patch(bindings["ordersFiles"], ordersFiles);
@@ -2957,11 +3025,12 @@ public K3::__time_context {
           do_patch(bindings["master"], master);
           __master_set__ = true;
         }
+        if (bindings.count("loc_done_cnt") > (0)) {
+          do_patch(bindings["loc_done_cnt"], loc_done_cnt);
+          __loc_done_cnt_set__ = true;
+        }
         if (bindings.count("lineitemFiles") > (0)) {
           do_patch(bindings["lineitemFiles"], lineitemFiles);
-        }
-        if (bindings.count("groupby_result") > (0)) {
-          do_patch(bindings["groupby_result"], groupby_result);
         }
         if (bindings.count("dataFiles") > (0)) {
           do_patch(bindings["dataFiles"], dataFiles);
@@ -2969,11 +3038,20 @@ public K3::__time_context {
         if (bindings.count("customerFiles") > (0)) {
           do_patch(bindings["customerFiles"], customerFiles);
         }
-        if (bindings.count("peer_result") > (0)) {
-          do_patch(bindings["peer_result"], peer_result);
+        if (bindings.count("lior_epdods_map") > (0)) {
+          do_patch(bindings["lior_epdods_map"], lior_epdods_map);
         }
-        if (bindings.count("init_agg") > (0)) {
-          do_patch(bindings["init_agg"], init_agg);
+        if (bindings.count("li_epd_by_ok_map") > (0)) {
+          do_patch(bindings["li_epd_by_ok_map"], li_epd_by_ok_map);
+        }
+        if (bindings.count("q3_peer_result") > (0)) {
+          do_patch(bindings["q3_peer_result"], q3_peer_result);
+        }
+        if (bindings.count("orders") > (0)) {
+          do_patch(bindings["orders"], orders);
+        }
+        if (bindings.count("customer") > (0)) {
+          do_patch(bindings["customer"], customer);
         }
         if (bindings.count("lineitem") > (0)) {
           do_patch(bindings["lineitem"], lineitem);
@@ -2997,54 +3075,73 @@ public K3::__time_context {
   protected:
       std::map<int, std::function<void(void*)>> dispatch_table;
 };
-int __global_context::__q1_tid;
+int __global_context::__lineitem_orders_tid;
+int __global_context::__lineitem_orders_customer_tid;
+int __global_context::__loc_probe_rhs_tid;
 int __global_context::__start_tid;
 int __global_context::__finished_tid;
-int __global_context::__groupby_global_barrier_tid;
-int __global_context::__groupby_merge_tid;
-int __global_context::__groupby_peer_barrier_tid;
-int __global_context::__groupby_scan_tid;
 int __global_context::__hello_tid;
+int __global_context::__lo_build_lhs_tid;
+int __global_context::__lo_global_barrier_tid;
+int __global_context::__lo_lhs_peer_barrier_tid;
+int __global_context::__lo_lhs_scan_tid;
+int __global_context::__lo_probe_rhs_tid;
+int __global_context::__lo_rhs_peer_barrier_tid;
+int __global_context::__lo_rhs_scan_tid;
 int __global_context::__load_all_tid;
 int __global_context::__ready_tid;
 int __global_context::__shutdown_tid;
 int main(int argc, char** argv)  {
-  __global_context::__q1_tid = 0;
-  __global_context::__start_tid = 1;
-  __global_context::__finished_tid = 2;
-  __global_context::__groupby_global_barrier_tid = 3;
-  __global_context::__groupby_merge_tid = 4;
-  __global_context::__groupby_peer_barrier_tid = 5;
-  __global_context::__groupby_scan_tid = 6;
-  __global_context::__hello_tid = 7;
-  __global_context::__load_all_tid = 8;
-  __global_context::__ready_tid = 9;
-  __global_context::__shutdown_tid = 10;
+  __global_context::__lineitem_orders_tid = 0;
+  __global_context::__lineitem_orders_customer_tid = 1;
+  __global_context::__loc_probe_rhs_tid = 2;
+  __global_context::__start_tid = 3;
+  __global_context::__finished_tid = 4;
+  __global_context::__hello_tid = 5;
+  __global_context::__lo_build_lhs_tid = 6;
+  __global_context::__lo_global_barrier_tid = 7;
+  __global_context::__lo_lhs_peer_barrier_tid = 8;
+  __global_context::__lo_lhs_scan_tid = 9;
+  __global_context::__lo_probe_rhs_tid = 10;
+  __global_context::__lo_rhs_peer_barrier_tid = 11;
+  __global_context::__lo_rhs_scan_tid = 12;
+  __global_context::__load_all_tid = 13;
+  __global_context::__ready_tid = 14;
+  __global_context::__shutdown_tid = 15;
   __k3_context::__trigger_names[__global_context::__shutdown_tid] = "shutdown_";
   __k3_context::__trigger_names[__global_context::__ready_tid] = "ready";
   __k3_context::__trigger_names[__global_context::__load_all_tid] = "load_all";
+  __k3_context::__trigger_names[__global_context::__lo_rhs_scan_tid] = "lo_rhs_scan";
+  __k3_context::__trigger_names[__global_context::__lo_rhs_peer_barrier_tid] = "lo_rhs_peer_barrier";
+  __k3_context::__trigger_names[__global_context::__lo_probe_rhs_tid] = "lo_probe_rhs";
+  __k3_context::__trigger_names[__global_context::__lo_lhs_scan_tid] = "lo_lhs_scan";
+  __k3_context::__trigger_names[__global_context::__lo_lhs_peer_barrier_tid] = "lo_lhs_peer_barrier";
+  __k3_context::__trigger_names[__global_context::__lo_global_barrier_tid] = "lo_global_barrier";
+  __k3_context::__trigger_names[__global_context::__lo_build_lhs_tid] = "lo_build_lhs";
   __k3_context::__trigger_names[__global_context::__hello_tid] = "hello";
-  __k3_context::__trigger_names[__global_context::__groupby_scan_tid] = "groupby_scan";
-  __k3_context::__trigger_names[__global_context::__groupby_peer_barrier_tid] = "groupby_peer_barrier";
-  __k3_context::__trigger_names[__global_context::__groupby_merge_tid] = "groupby_merge";
-  __k3_context::__trigger_names[__global_context::__groupby_global_barrier_tid] = "groupby_global_barrier";
   __k3_context::__trigger_names[__global_context::__finished_tid] = "finished";
   __k3_context::__trigger_names[__global_context::__start_tid] = "start";
-  __k3_context::__trigger_names[__global_context::__q1_tid] = "q1";
+  __k3_context::__trigger_names[__global_context::__loc_probe_rhs_tid] = "loc_probe_rhs";
+  __k3_context::__trigger_names[__global_context::__lineitem_orders_customer_tid] = "lineitem_orders_customer";
+  __k3_context::__trigger_names[__global_context::__lineitem_orders_tid] = "lineitem_orders";
   __k3_context::__clonable_dispatchers[__global_context::__shutdown_tid] = make_shared<ValDispatcher<unit_t>>();
   __k3_context::__clonable_dispatchers[__global_context::__ready_tid] = make_shared<ValDispatcher<unit_t>>();
   __k3_context::__clonable_dispatchers[__global_context::__load_all_tid] = make_shared<ValDispatcher<unit_t>>();
+  __k3_context::__clonable_dispatchers[__global_context::__lo_rhs_scan_tid] = make_shared<ValDispatcher<unit_t>>();
+  __k3_context::__clonable_dispatchers[__global_context::__lo_rhs_peer_barrier_tid] = make_shared<ValDispatcher<unit_t>>();
+  __k3_context::__clonable_dispatchers[__global_context::__lo_probe_rhs_tid] = make_shared<ValDispatcher<_Collection<R_key_value<int,
+  R_ck_od_sp<int, K3::base_string, int>>>>>();
+  __k3_context::__clonable_dispatchers[__global_context::__lo_lhs_scan_tid] = make_shared<ValDispatcher<unit_t>>();
+  __k3_context::__clonable_dispatchers[__global_context::__lo_lhs_peer_barrier_tid] = make_shared<ValDispatcher<unit_t>>();
+  __k3_context::__clonable_dispatchers[__global_context::__lo_global_barrier_tid] = make_shared<ValDispatcher<unit_t>>();
+  __k3_context::__clonable_dispatchers[__global_context::__lo_build_lhs_tid] = make_shared<ValDispatcher<_Collection<R_key_value<int,
+  double>>>>();
   __k3_context::__clonable_dispatchers[__global_context::__hello_tid] = make_shared<ValDispatcher<unit_t>>();
-  __k3_context::__clonable_dispatchers[__global_context::__groupby_scan_tid] = make_shared<ValDispatcher<unit_t>>();
-  __k3_context::__clonable_dispatchers[__global_context::__groupby_peer_barrier_tid] = make_shared<ValDispatcher<unit_t>>();
-  __k3_context::__clonable_dispatchers[__global_context::__groupby_merge_tid] = make_shared<ValDispatcher<_Collection<R_key_value<std::tuple<K3::base_string,
-  K3::base_string>,
-  R_avg_disc_sum_avg_price_sum_avg_qty_sum_count_order_sum_base_price_sum_charge_sum_disc_price_sum_qty<double,
-  double, double, int, double, double, double, double>>>>>();
-  __k3_context::__clonable_dispatchers[__global_context::__groupby_global_barrier_tid] = make_shared<ValDispatcher<unit_t>>();
   __k3_context::__clonable_dispatchers[__global_context::__finished_tid] = make_shared<ValDispatcher<unit_t>>();
   __k3_context::__clonable_dispatchers[__global_context::__start_tid] = make_shared<ValDispatcher<unit_t>>();
-  __k3_context::__clonable_dispatchers[__global_context::__q1_tid] = make_shared<ValDispatcher<unit_t>>();
+  __k3_context::__clonable_dispatchers[__global_context::__loc_probe_rhs_tid] = make_shared<ValDispatcher<_Collection<R_elem<R_c_custkey<int>>>>>();
+  __k3_context::__clonable_dispatchers[__global_context::__lineitem_orders_customer_tid] = make_shared<ValDispatcher<unit_t>>();
+  __k3_context::__clonable_dispatchers[__global_context::__lineitem_orders_tid] = make_shared<ValDispatcher<unit_t>>();
   Options opt;
   if (opt.parse(argc, argv)) {
     return 0;
