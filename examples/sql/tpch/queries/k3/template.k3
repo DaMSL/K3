@@ -1,0 +1,32 @@
+include "Distributed/Transformers.k3"
+include "tpch/schema.k3"
+include "tpch/benchmark.k3"
+include "tpch/loader.k3"
+
+/**********************
+* SQL query
+***********************
+***********************/
+
+declare lineitem : lineitem_bag
+declare customer : customer_bag
+declare orders   : orders_bag
+
+
+trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
+  nodes              = [$ peers ],
+  loadExpr           = [$ ( lineitemFiles.iterate (\e -> lineitemLoader e.path lineitem);
+                            ordersFiles.iterate   (\e -> ordersLoader   e.path orders);
+                            customerFiles.iterate (\e -> customerLoader e.path customer)
+                          ) ],
+  preLoadExpr        = [$ ()],
+  preReadyExpr       = [$ ()],
+  onReadyExpr        = [$ (lineitem_orders, me) <- ()],
+  finishArgT         = [: ()],
+  preTestFinishExpr  = [$ (\_ -> ())],
+  preFinishExpr      = [$ ()],
+  preShutdownExpr    = [$ ()]
+)
+
+source rows : () = value ()
+feed rows |> start
