@@ -41,9 +41,9 @@ order by
 ****************************
 * Plan:
 * group by
-*   join c
-*     join (filter . group l)
-*           o
+*   join customer
+*     join orders
+*          (filter . group lineitem)
 ****************************/
 
 declare lineitem : lineitem_bag
