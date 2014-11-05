@@ -153,8 +153,8 @@ trigger q22_final_aggregate : c_nt_by_cc_map = \vals -> (
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes              = [$ peers ],
-  loadExpr           = [$ ( ordersFiles.iterate   (\e -> ordersLoader   e.path orders);
-                            customerFiles.iterate (\e -> customerLoader e.path customer)
+  loadExpr           = [$ ( ordersFiles.iterate   (\e -> ordersLdr   e.path orders);
+                            customerFiles.iterate (\e -> customerLdr e.path customer)
                           ) ],
   preLoadExpr        = [$ ()],
   preReadyExpr       = [$ ()],
