@@ -203,12 +203,12 @@ trigger q5_locs_start : () = \_ -> (
         ( lbl       = [# locs ]
         , lhs_query = [$ loc_epd_by_sn ]
         , rhs_query = [$ supplier.fold
-                           (\acc -> \s -> ((acc.insert {key: s.s_suppkey, value : s.s_nationkey}); acc))
-                           empty {key: int, value : int} @Collection ]
+                           (\acc -> \s -> ((acc.insert {key: {s_suppkey: s.s_suppkey, s_nationkey: s.s_nationkey}, value : ()}); acc))
+                           empty {key: {s_suppkey:int, s_nationkey: int}, value: ()} @Collection ]
         , lhs_build_merge = [$ (\epd_by_sn -> locs_build.insert_with epd_by_sn merge_epd_by_sn_r) ]
         , rhs_probe_merge = [$
             (\s ->
-              case locs_build.lookup {key: {s_suppkey: s.key, s_nationkey: s.value}, value: 0.0} of
+              case locs_build.lookup {key: s.key, value: 0.0} of
               { Some loc -> locs_epd_by_nk.insert_with
                               {key: loc.key.s_nationkey, value: loc.value} merge_epd_by_nk_r
               }
@@ -221,7 +221,7 @@ trigger q5_locs_start : () = \_ -> (
         , coordinator     = [$ master]
         , nodes           = [$ peers ]
         , lhs_build_ty    = [: collection {key : {s_suppkey : int, s_nationkey : int}, value : real} @Collection ]
-        , rhs_probe_ty    = [: collection {key : int, value : int } @Collection ]
+        , rhs_probe_ty    = [: collection {key : {s_suppkey : int, s_nationkey : int}, value : ()  } @Collection ]
         )
 )
 
