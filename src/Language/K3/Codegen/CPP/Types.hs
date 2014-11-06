@@ -54,7 +54,7 @@ data CPPGenS = CPPGenS {
 
         -- | The global variables declared, for use in exclusion during λ-capture. Needs to be
         -- supplied ahead-of-time, due to cyclic scoping.
-        globals  :: [(Identifier, K3 Type)],
+        globals  :: [(Identifier, (K3 Type, Bool))], -- Whether it's a builtin
 
         patchables :: [(Identifier, Bool)], -- Whether we need to set
 
@@ -75,13 +75,16 @@ data CPPGenS = CPPGenS {
         triggers :: [(Identifier, K3 Type)],
 
         -- | The serialization method to use.
-        serializationMethod :: SerializationMethod
+        serializationMethod :: SerializationMethod,
+
+        -- | Used to know if a global is fully applied
+        applyLevel :: Int
 
     } deriving Show
 
 -- | The default code generation state.
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 [] [] [] [] [] [] [] [] M.empty M.empty S.empty [] BoostSerialization
+defaultCPPGenS = CPPGenS 0 [] [] [] [] [] [] [] [] M.empty M.empty S.empty [] BoostSerialization 0
 
 refreshCPPGenS :: CPPGenM ()
 refreshCPPGenS = do
@@ -126,3 +129,9 @@ addRecord i its = modify (\s -> s { recordMap = M.insert i its (recordMap s) })
 data SerializationMethod
     = BoostSerialization
   deriving (Eq, Read, Show)
+
+incApplyLevel :: CPPGenM ()
+incApplyLevel = modify (\env -> env {applyLevel = applyLevel env + 1})
+
+resetApplyLevel :: CPPGenM ()
+resetApplyLevel = modify (\env -> env {applyLevel = 0})

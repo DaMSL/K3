@@ -165,6 +165,7 @@ data Expression
     = Binary Identifier Expression Expression
     | Call Expression [Expression]
     | Dereference Expression
+    | TakeReference Expression
     | Initialization Type [Expression]
     | Lambda [Capture] [(Identifier, Type)] IsMutable (Maybe Type) [Statement]
     | Literal Literal
@@ -179,6 +180,7 @@ instance Stringifiable Expression where
         = binaryParens op a (stringify a) <+> fromString op <+> binaryParens op b (stringify b)
     stringify (Call e as) = stringify e <> parens (commaSep $ map stringify as)
     stringify (Dereference e) = fromString "*" <> parens (stringify e)
+    stringify (TakeReference e) = fromString "&" <> parens (stringify e)
     stringify (Initialization t es) = stringify t <+> braces (commaSep $ map stringify es)
     stringify (Lambda cs as mut rt bd) = cs' <+> as' <+> mut' <+> rt' <+> bd'
       where

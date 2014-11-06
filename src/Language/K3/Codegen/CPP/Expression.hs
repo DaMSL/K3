@@ -142,7 +142,24 @@ inline (tag -> EConstant c) = constant c >>= \c' -> return ([], R.Literal c')
 
 -- If a variable was declared as mutable it's been reified as a shared_ptr, and must be
 -- dereferenced.
-inline e@(tag -> EVariable v) = return ([], R.Variable $ R.Name v)
+-- Add this binding to global functions. TODO: handle shadowing by locals
+inline e@(tag -> EVariable v) = do
+  env <- get
+  resetApplyLevel
+  let cargs = CArgs.eCArgs e
+  -- Check if we have a function, and not a builtin
+  case lookup v (globals env) of
+    Just (tag -> TFunction, False) | applyLevel env < cargs -> return ([], addBind v cargs)
+    Just (tag -> TForall _, False) | applyLevel env < cargs -> return ([], addBind v cargs)
+    _                              -> return ([], defVar)
+  where
+    defVar = R.Variable $ R.Name v
+    addBind x n = R.Call stdBind [addContext x, stdRefThis, placeHolder n]
+
+    stdBind = R.Variable $ R.Qualified (R.Name "std") (R.Name "bind")
+    addContext x = R.Variable $ R.Qualified (R.Name "&__global_context") $ R.Name x
+    stdRefThis = R.Call (R.Variable (R.Qualified (R.Name "std") $ R.Name "ref")) [R.Dereference $ R.Variable $ R.Name "this"]
+    placeHolder i = R.Variable $ R.Qualified (R.Qualified (R.Name "std") $ R.Name "placeholders") $ R.Name $ "_"++show i
 
 inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
     (e, v) <- inline c
@@ -177,6 +194,7 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     return (ae ++ be, bv)
 
 inline e@(tag &&& children -> (ELambda arg, [body])) = do
+    resetApplyLevel
     let (EOpt (FuncHint readOnly)) = fromMaybe (EOpt (FuncHint False))
                                      (e @~ \case { EOpt (FuncHint _) -> True; _ -> False})
 
@@ -216,6 +234,7 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
 
 inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do
     -- Inline both function and argument for call.
+    incApplyLevel
     (fe, fv) <- inline f
     (aes, avs) <- unzip <$> mapM inline as
     c <- call fv (movedArgs avs)

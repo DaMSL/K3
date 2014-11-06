@@ -37,9 +37,10 @@ import Language.K3.Core.Type
 type ImperativeE = ()
 
 type SetFlag = Bool
+type IsBuiltIn = Bool
 
 data ImperativeS = ImperativeS {
-        globals :: [(Identifier, K3 Type)],
+        globals :: [(Identifier, (K3 Type, IsBuiltIn))],
         triggers :: [(Identifier, K3 Type)],
         patchables :: [(Identifier, SetFlag)],
         showables  :: [(Identifier, K3 Type)],
@@ -65,8 +66,8 @@ withMutable i m = do
         [] -> left ()
     return result
 
-addGlobal :: Identifier -> K3 Type -> ImperativeM ()
-addGlobal i t = modify $ \s -> s { globals = (i, t) : globals s }
+addGlobal :: Identifier -> K3 Type -> IsBuiltIn -> ImperativeM ()
+addGlobal i t b = modify $ \s -> s { globals = (i, (t, b)) : globals s }
 
 addTrigger :: Identifier -> K3 Type -> ImperativeM ()
 addTrigger i t = modify $ \s -> s { triggers = (i, t) : triggers s }
@@ -89,11 +90,12 @@ isFunction _ = False
 
 declaration :: K3 Declaration -> ImperativeM (K3 Declaration)
 declaration (Node t@(DGlobal i y Nothing :@: _) cs) = do
-    addGlobal i y
-    unless (isFunction y) (addPatchable i False >> addShowable i y)
+    let isF = isFunction y
+    addGlobal i y isF
+    unless isF (addPatchable i False >> addShowable i y)
     Node t <$> mapM declaration cs
 declaration (Node (DGlobal i t (Just e) :@: as) cs) = do
-    addGlobal i t
+    addGlobal i t False
     unless (isFunction t || isTid i t) (addPatchable i True >> addShowable i t)
     me' <- expression e
     cs' <- mapM declaration cs
@@ -101,14 +103,14 @@ declaration (Node (DGlobal i t (Just e) :@: as) cs) = do
     where isTid i (tag -> TInt) | drop (length i - 4) i == "_tid" = True
           isTid _ _ = False
 declaration (Node (DTrigger i t e :@: as) cs) = do
-    addGlobal i t
+    addGlobal i t False
     addTrigger i t
     ne' <- expression e
     cs' <- mapM declaration cs
     return $ Node (DTrigger i t ne' :@: as) cs'
 declaration t@(tag -> DDataAnnotation _ _ amds) = do
     forM_ amds $ \case
-        Lifted Provides j u _ _ -> addGlobal j u
+        Lifted Provides j u _ _ -> addGlobal j u False
         _ -> return ()
     let (Node t' cs') = t in Node t' <$> mapM declaration cs'
 declaration (Node t cs) = Node t <$> mapM declaration cs
