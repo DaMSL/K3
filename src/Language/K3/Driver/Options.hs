@@ -76,7 +76,7 @@ data CompileOptions = CompileOptions
                       , cppOptions   :: String
                       , coTransform  :: TransformOptions
                       , useSubTypes  :: Bool
-                      , optimizationLevel     :: Maybe OptimizationLevel
+                      , optimizationLevel  :: OptimizationLevel
                       }
   deriving (Eq, Read, Show)
 
@@ -118,7 +118,7 @@ data TransformMode
     | TriggerSymbols
   deriving (Eq, Read, Show)
 
-data OptimizationLevel = O1 deriving (Eq, Read, Show)
+type OptimizationLevel = Int
 
 -- | Logging and information output options.
 data InfoSpec = InfoSpec { logging   :: LoggerOptions
@@ -431,11 +431,13 @@ transformMode   =  wrap <$> conflictsOpt
     wrap x = [x]
 
 
-optimizationOpt :: Parser (Maybe OptimizationLevel)
-optimizationOpt = optional o1Opt
-
-o1Opt :: Parser OptimizationLevel
-o1Opt = flag' O1 (long "O1" <> help "Optimization Level 1")
+optimizationOpt :: Parser OptimizationLevel
+optimizationOpt = option auto
+        (  long "optimize"
+        <> short 'O'
+        <> metavar "OPTIMIZE"
+        <> value 0
+        <> help "Optimization level")
 
 conflictsOpt :: Parser TransformMode
 conflictsOpt = flag' Conflicts (   long "fconflicts"

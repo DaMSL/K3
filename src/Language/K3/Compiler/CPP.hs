@@ -64,7 +64,7 @@ typecheckStage _ cOpts prog = prefixError "Type error:" $ return $ if useSubType
 
 applyOptimizations :: CompileOptions -> K3 Declaration -> K3 Declaration
 applyOptimizations cOpts prog = 
-  let lvl = maybe 0 (const 1) $ optimizationLevel cOpts in
+  let lvl = optimizationLevel cOpts in
   either (\s -> error $ "Invalid result from runCGPasses: "++ s) id $ runCGPasses prog lvl
 
 cppCodegenStage :: CompilerStage (K3 Declaration) ()
