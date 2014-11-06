@@ -24,19 +24,20 @@ import Language.K3.Analysis.Effects.Common
 import Language.K3.Analysis.Effects.Core
 import Language.K3.Analysis.Effects.InsertEffects(EffectEnv(..), symRWAQuery, eE, eS)
 
+import Language.K3.Transform.Common
 import Language.K3.Transform.Hints
 
 symIDs :: EffectEnv -> S.Set (K3 Symbol) -> S.Set Identifier
 symIDs env = S.map (\(tag . eS env -> Symbol i _) -> i)
 
-lambdaFormOptD :: EffectEnv -> K3 Declaration -> K3 Declaration
-lambdaFormOptD env (Node (DGlobal i t me :@: as) cs) = Node (DGlobal  i t (lambdaFormOptE env [] <$> me) :@: as) cs
-lambdaFormOptD env (Node (DTrigger i t e :@: as) cs) = Node (DTrigger i t (lambdaFormOptE env [] e)      :@: as) cs
-lambdaFormOptD env (Node (DRole n :@: as) cs)        = Node (DRole n :@: as) $ map (lambdaFormOptD env) cs
-lambdaFormOptD _ t = t
+lambdaFormOptD :: TransformConfig -> EffectEnv -> K3 Declaration -> K3 Declaration
+lambdaFormOptD c env (Node (DGlobal i t me :@: as) cs) = Node (DGlobal  i t (lambdaFormOptE c env [] <$> me) :@: as) cs
+lambdaFormOptD c env (Node (DTrigger i t e :@: as) cs) = Node (DTrigger i t (lambdaFormOptE c env [] e)      :@: as) cs
+lambdaFormOptD c env (Node (DRole n :@: as) cs)        = Node (DRole n :@: as) $ map (lambdaFormOptD c env) cs
+lambdaFormOptD _ _ t = t
 
-lambdaFormOptE :: EffectEnv -> [K3 Expression] -> K3 Expression -> K3 Expression
-lambdaFormOptE env ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c:as)) [lambdaFormOptE env ds b]
+lambdaFormOptE :: TransformConfig -> EffectEnv -> [K3 Expression] -> K3 Expression -> K3 Expression
+lambdaFormOptE conf env ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c:as)) [lambdaFormOptE conf env ds b]
   where
     ESymbol (tag . eS env -> (Symbol _ (PLambda _ (tag . eE env -> FScope [binding] (Right(cRead, cWritten, cApplied))))))
         = fromJust $ e @~ isESymbol
@@ -48,26 +49,27 @@ lambdaFormOptE env ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c
 
     funcHint
         | binding `elem` cWritten = False
-        | binding `elem` cRead && binding `notElem` cWritten && binding `notElem` cApplied = True
         | binding `elem` cApplied = True
+        | binding `elem` cRead = True
         | otherwise = False
 
     captHint = foldl' captHint' (S.empty, S.empty, S.empty) $ cRead ++ cWritten ++ cApplied
 
     captHint' (cref, move, copy) s
-        | s === binding = (cref, move, copy)
-        | moveable s && (s `elem` cWritten || s `elem` cApplied) = (cref, S.insert s move, copy)
-        | moveable s = (S.insert s cref, move, copy)
-        | s `elem` cWritten = (cref, move, S.insert s copy)
-        | otherwise = (S.insert s cref, move, copy)
+        | s === binding                                    = (cref, move, copy)
+        | moveable s && s `elem` cApplied && optMoves conf = (cref, S.insert s move, copy)
+        | s `notElem` cWritten && optRefs conf             = (S.insert s cref, move, copy)
+        | moveable s && optMoves conf                      = (cref, S.insert s move, copy)
+        | otherwise                                        = (cref, move, S.insert s copy)
 
-    a = EOpt $ FuncHint funcHint
-    c = EOpt $ CaptHint $ let (cref, move, copy) = captHint in (symIDs env cref, symIDs env move, symIDs env copy)
+    a = EOpt $ FuncHint $ funcHint && optRefs conf
+    c = EOpt $ CaptHint $ let (cref, move, copy) = captHint
+                          in (symIDs env cref, symIDs env move, symIDs env copy)
 
-lambdaFormOptE env ds (Node (EOperate OSeq :@: as) [a, b])
-    = Node (EOperate OSeq :@: as) [lambdaFormOptE env (b:ds) a, lambdaFormOptE env ds b]
-lambdaFormOptE env ds (Node (EOperate OApp :@: as) [f', x])
-    = Node (EOperate OApp :@: as) [lambdaFormOptE env (x:ds) f', (lambdaFormOptE env ds x) @+ a]
+lambdaFormOptE c env ds (Node (EOperate OSeq :@: as) [a, b])
+    = Node (EOperate OSeq :@: as) [lambdaFormOptE c env (b:ds) a, lambdaFormOptE c env ds b]
+lambdaFormOptE c env ds (Node (EOperate OApp :@: as) [f', x])
+    = Node (EOperate OApp :@: as) [lambdaFormOptE c env (x:ds) f', (lambdaFormOptE c env ds x) @+ a]
   where
     getEffects e = (\(EEffect f) -> f) <$> e @~ (\case { EEffect _ -> True; _ -> False })
     getSymbol e = (\(ESymbol f) -> f) <$> e @~ (\case { ESymbol _ -> True; _ -> False })
@@ -81,12 +83,12 @@ lambdaFormOptE env ds (Node (EOperate OApp :@: as) [f', x])
                                 in g `elem` r || g `elem` w) fs
     passHint = isGlobal x || argument == Nothing || not (moveable $ fromJust argument)
     a = EOpt $ PassHint passHint
-lambdaFormOptE env ds (Node (EIfThenElse :@: as) [i, t, e])
-    = Node (EIfThenElse :@: as) [lambdaFormOptE env (t:e:ds) i, lambdaFormOptE env ds t, lambdaFormOptE env ds e]
-lambdaFormOptE env ds (Node (ELetIn i :@: as) [e, b])
-    = Node (ELetIn i :@: as) [lambdaFormOptE env (b:ds) e, lambdaFormOptE env ds b]
-lambdaFormOptE env ds (Node (ECaseOf x :@: as) [e, s, n])
-    = Node (ECaseOf x :@: as) [lambdaFormOptE env (s:n:ds) e, lambdaFormOptE env ds s, lambdaFormOptE env ds n]
-lambdaFormOptE env ds (Node (EBindAs b :@: as) [i, e])
-    = Node (EBindAs b :@: as) [lambdaFormOptE env (e:ds) i, lambdaFormOptE env ds e]
-lambdaFormOptE env ds (Node (t :@: as) cs) = Node (t :@: as) (map (lambdaFormOptE env ds) cs)
+lambdaFormOptE c env ds (Node (EIfThenElse :@: as) [i, t, e])
+    = Node (EIfThenElse :@: as) [lambdaFormOptE c env (t:e:ds) i, lambdaFormOptE c env ds t, lambdaFormOptE c env ds e]
+lambdaFormOptE c env ds (Node (ELetIn i :@: as) [e, b])
+    = Node (ELetIn i :@: as) [lambdaFormOptE c env (b:ds) e, lambdaFormOptE c env ds b]
+lambdaFormOptE c env ds (Node (ECaseOf x :@: as) [e, s, n])
+    = Node (ECaseOf x :@: as) [lambdaFormOptE c env (s:n:ds) e, lambdaFormOptE c env ds s, lambdaFormOptE c env ds n]
+lambdaFormOptE c env ds (Node (EBindAs b :@: as) [i, e])
+    = Node (EBindAs b :@: as) [lambdaFormOptE c env (e:ds) i, lambdaFormOptE c env ds e]
+lambdaFormOptE c env ds (Node (t :@: as) cs) = Node (t :@: as) (map (lambdaFormOptE c env ds) cs)

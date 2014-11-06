@@ -17,6 +17,15 @@ import Language.K3.Core.Utils
 
 import qualified Language.K3.Core.Constructor.Expression as EC
 
+-- Configuration for many transformations at once
+data TransformConfig = TransformConfig { optRefs :: Bool
+                                       , optMoves :: Bool
+                                       }
+
+defaultTransConfig = TransformConfig True True
+noRefsTransConfig  = defaultTransConfig { optRefs = False }
+noMovesTransConfig  = defaultTransConfig { optMoves = False }
+
 -- | Substitute all occurrences of a variable with an expression in the specified target expression.
 substituteImmutBinding :: Identifier -> K3 Expression -> K3 Expression -> K3 Expression
 substituteImmutBinding i iExpr expr =

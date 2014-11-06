@@ -78,13 +78,20 @@ data CPPGenS = CPPGenS {
         serializationMethod :: SerializationMethod,
 
         -- | Used to know if a global is fully applied
-        applyLevel :: Int
+        applyLevel :: Int,
+
+        -- | Whether to optimize const refs
+        optRefs :: Bool,
+
+        -- | Whether to optimize moves
+        optMoves :: Bool
+
 
     } deriving Show
 
 -- | The default code generation state.
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 [] [] [] [] [] [] [] [] M.empty M.empty S.empty [] BoostSerialization 0
+defaultCPPGenS = CPPGenS 0 [] [] [] [] [] [] [] [] M.empty M.empty S.empty [] BoostSerialization 0 False False
 
 refreshCPPGenS :: CPPGenM ()
 refreshCPPGenS = do

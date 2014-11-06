@@ -22,6 +22,7 @@ import Language.K3.Transform.LambdaForms
 import Language.K3.Transform.NRVOMove
 import Language.K3.Transform.Simplification
 import Language.K3.Transform.Writeback
+import Language.K3.Transform.Common
 
 type ProgramTransform = (K3 Declaration, Maybe EffectEnv) -> Either String (K3 Declaration, Maybe EffectEnv)
 
@@ -146,11 +147,27 @@ optPasses = map prepareOpt [ (simplify,         "opt-simplify-prefuse")
           withPasses $ [inferFreshTypesAndEffects] ++ effectPasses ++ [withRepair i f]
 
 cgPasses :: Int -> [ProgramTransform]
+-- no moves
+cgPasses 3 = [inferFreshEffects,
+              addEnvRet Purity.runPurity,
+              addEitherEnv CArgs.runAnalysis,
+              addEnvRet writebackOpt,
+              addEnvRet (lambdaFormOptD noMovesTransConfig),
+              addEnvRet nrvoMoveOpt
+             ]
+-- no refs
+cgPasses 2 = [inferFreshEffects,
+              addEnvRet Purity.runPurity,
+              addEitherEnv CArgs.runAnalysis,
+              addEnvRet writebackOpt,
+              addEnvRet (lambdaFormOptD noRefsTransConfig),
+              addEnvRet nrvoMoveOpt
+             ]
 cgPasses 1 = [inferFreshEffects,
               addEnvRet Purity.runPurity,
               addEitherEnv CArgs.runAnalysis,
               addEnvRet writebackOpt,
-              addEnvRet lambdaFormOptD,
+              addEnvRet (lambdaFormOptD defaultTransConfig),
               addEnvRet nrvoMoveOpt
              ]
 cgPasses _ = [addEitherEnv InsertMembers.runAnalysis,
