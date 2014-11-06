@@ -44,6 +44,8 @@ order by
 *   l-o-c-s-n-r
 ****************************/
 
+declare master : address
+
 declare lineitem : lineitem_bag
 declare orders   : orders_bag
 declare customer : customer_bag
@@ -278,7 +280,7 @@ trigger q5_locsnr_start : () = \_ -> (
 
         , peer_next       = [$ print "LI-OR-CS-SUP-NT-RG join finished region probe." ;
                                (q5_result_aggregate, master) <- locsnr_epd_by_n ;
-                               ((() @:Result) @TPCHBenchmark) ]
+                               ((() @:Result) @TPCHBenchmarkWithoutMaster) ]
         , next            = [$ print "LI-OR-CS-SUP-NT-RG join all nodes finished." ]
         , coordinator     = [$ master]
         , nodes           = [$ peers ]
@@ -291,7 +293,7 @@ trigger q5_result_aggregate : q5_r_by_n_map = \vals -> (
   vals.iterate (\kv -> q5_result.insert_with kv merge_nepd_r)
 )
 
-trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
+trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes              = [$ peers],
   loadExpr           = [$ ( lineitemFiles.iterate (\e -> lineitemLoaderP e.path lineitem);
                             ordersFiles.iterate   (\e -> ordersLoaderP   e.path orders);
