@@ -91,7 +91,7 @@ trigger lineitem_having : () = \_ -> (
                           print "LI shuffle done." ;
                           li_having_result = result.filter (\okq -> okq.value > 300)
                         )) ],
-      next        = [$ (lineitem_orders, me) <- () ],
+      next        = [$ (print "LI shuffle all nodes finished"; (lineitem_orders, me) <- ()) ],
       merge       = [$ (\a -> \b -> a + b)],
       coordinator = [$ master],
       nodes       = [$ peers] )
@@ -101,13 +101,11 @@ trigger lineitem_having : () = \_ -> (
 // join as a distributed group-by on orders, with probes and intermediate
 // construction occurring in the merge trigger.
 trigger lineitem_orders : () = \_ -> (
-  (ignore (orders.fold (\acc -> \o ->
-                          ((acc.insert { key   : o.o_orderkey
-                                       , value : { o_custkey    : o.o_custkey
-                                                 , o_orderdate  : o.o_orderdate
-                                                 , o_totalprice : o.o_totalprice }})
-                            ; acc))
-                       empty o_cdt_by_ok_r @Collection)
+  (ignore (orders.groupBy (\o -> o.o_orderkey)
+                          (\acc -> \o -> { o_custkey    : o.o_custkey
+                                         , o_orderdate  : o.o_orderdate
+                                         , o_totalprice : o.o_totalprice })
+                          {o_custkey:0, o_orderdate:"", o_totalprice:0.0})
   ) @DistributedGroupByGeneric(
       lbl         = [# lo ],
       peer_next   = [$ print "LI-OR shuffle done." ],
