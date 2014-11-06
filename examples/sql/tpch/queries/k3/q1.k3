@@ -7,6 +7,8 @@ include "tpch/schema.k3"
 include "tpch/benchmark.k3"
 include "tpch/loader.k3"
 
+declare master : address
+
 typedef q1_agg = { sum_qty: real, sum_base_price: real, sum_disc_price: real, sum_charge: real
                  , avg_qty_sum : real, avg_price_sum : real, avg_disc_sum : real, count_order : int }
 
@@ -79,7 +81,7 @@ trigger q1 : () = \_ -> (
   ) @DistributedGroupBy(
       lbl         = [# groupby],
       peer_next   = [$ (\x -> ((x.iterate (\kv -> peer_result.insert (finalize_agg kv)));
-                               ((() @:Result) @TPCHBenchmark))) ],
+                               ((() @:Result) @TPCHBenchmarkWithoutMaster))) ],
       next        = [$ ()],
       merge       = [$ merge_agg],
       coordinator = [$ master],
@@ -87,7 +89,7 @@ trigger q1 : () = \_ -> (
 )
 
 trigger start : () = \_ -> (
-  (() @:Start) @TPCHBenchmark(
+  (() @:Start) @TPCHBenchmarkWithoutMaster(
     nodes              = [$ peers],
     loadExpr           = [$ dataFiles.iterate (\e -> lineitemLoaderP e.path lineitem)],
     preLoadExpr        = [$ ()],

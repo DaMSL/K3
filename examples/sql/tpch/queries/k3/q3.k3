@@ -30,6 +30,7 @@ order by
         o_orderdate
 ****************************/
 
+declare master : address
 
 declare lineitem : lineitem_bag
 declare customer : customer_bag
@@ -140,11 +141,11 @@ trigger loc_probe_rhs : cs_ck_bag = \vals -> (
        { Some lo_r -> lo_r.value.iterate (\kv -> q3_peer_result.insert_with kv merge_lior_epd_by_ods) }
        { None -> () }
     ) ;
-  ( (() @:Result) @TPCHBenchmark
+  ( (() @:Result) @TPCHBenchmarkWithoutMaster
   ) @OnCounter(id=[# loc_done], eq=[$ peers.size()])
 )
 
-trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
+trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes              = [$ peers ],
   loadExpr           = [$ ( lineitemFiles.iterate (\e -> lineitemLoaderP e.path lineitem);
                             ordersFiles.iterate   (\e -> ordersLoaderP  e.path orders);
