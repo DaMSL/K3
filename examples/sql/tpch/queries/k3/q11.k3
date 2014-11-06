@@ -29,7 +29,7 @@ group by
                         where
                                 ps_suppkey = s_suppkey
                                 and s_nationkey = n_nationkey
-                                and n_name = 'germany'
+                                and n_name = 'GERMANY'
                 )
 order by
         "value" desc
@@ -121,10 +121,10 @@ trigger partsupp_supplier : () = \_ -> (
                   { None -> () }
               )]
 
-        , peer_next       = [$ print "PS-S join finished orders probe." ;
-                               (nation_trig, me) <- ()
+        , peer_next       = [$ print "PS-S join finished orders probe."]
+        , next            = [$ print "PS-S join all nodes finished." ;
+                               peers.iterate (\p -> (nation_trig, p.addr) <- ())
                             ]
-        , next            = [$ print "PS-S join all nodes finished." ]
         , coordinator     = [$ master]
         , nodes          = [$ peers ]
         , lhs_build_ty    = [: p_by_suppkey_col_t]
@@ -134,7 +134,7 @@ trigger partsupp_supplier : () = \_ -> (
 
 trigger nation_trig : () = \_ -> (
   // Broadcast nation to all peers
-  let german_ids = (nation.filter (\n -> n.n_name == "germany"))
+  let german_ids = (nation.filter (\n -> n.n_name == "GERMANY"))
                           .map (\n -> n.n_nationkey)
   in
   peers.iterate (\p -> (ps_probe_rhs, p.addr) <- german_ids)
@@ -148,10 +148,7 @@ trigger ps_probe_rhs : n_bag = \ns -> (
           (unfiltered_result.insert_with m (\a -> \b -> {key: a.key, value: a.value + b.value});
           local_total = local_total + m.value)) }
       { None    -> () });
-  global_total = global_total + local_total;
-  received_totals = received_totals + 1;
-  peers.iterate (\p -> (add_totals, p.addr) <- local_total);
-  if received_totals >= num_peers then (calc_result, me) <- () else ()
+  peers.iterate (\p -> (add_totals, p.addr) <- local_total)
 )
 
 trigger add_totals : real = \t -> (
