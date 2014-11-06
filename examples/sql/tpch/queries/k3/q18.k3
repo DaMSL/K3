@@ -66,6 +66,8 @@ typedef lo_q_by_odt_r     = {key : {ok: int, od: string, tp: real}, value : real
 typedef lo_odtq_by_ck_r   = {key :int, value : collection lo_q_by_odt_r @Map}
 typedef lo_odtq_by_ck_map = collection lo_odtq_by_ck_r @Map
 
+declare master : address
+
 declare lo_odtq_by_ck  : lo_odtq_by_ck_map
 declare loc_build      : lo_odtq_by_ck_map
 declare loc_q_by_ncodt : loc_q_by_ncodt_map
@@ -184,11 +186,11 @@ trigger loc_aggregate : loc_q_by_ncodt_bag = \vals -> (
 
 trigger log_aggregate_peer_barrier : () = \_ -> (
   ( print "Query 18 done." ;
-    ((() @:Result) @TPCHBenchmark)
+    ((() @:Result) @TPCHBenchmarkWithoutMaster)
   ) @OnCounter(id=[# loc_aggregate_done], eq=[$ peers.size()])
 )
 
-trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
+trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes              = [$ peers ],
   loadExpr           = [$ ( lineitemFiles.iterate (\e -> lineitemLoaderP e.path lineitem);
                             ordersFiles.iterate   (\e -> ordersLoaderP   e.path orders);
