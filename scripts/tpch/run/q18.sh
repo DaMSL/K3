@@ -1,1 +1,1 @@
-__build/A -l 1 -p me:<127.0.0.1:20000>, master:<127.0.0.1:20000>, peers:[{addr:<127.0.0.1:20000>}], lineitemFiles:[{path:"./data/100m/lineitem.tbl"}], ordersFiles:[{path:"./data/100m/orders.tbl"}], customerFiles:[{path:"./data/100m/customer.tbl"}], role:"rows"
+__build/A -l 1 -p 'me:<127.0.0.1:20000>, master:<127.0.0.1:20000>, peers:[{addr:<127.0.0.1:20000>}], lineitemFiles:[{path:"./data/100m/lineitem.tbl"}], ordersFiles:[{path:"./data/100m/orders.tbl"}], customerFiles:[{path:"./data/100m/customer.tbl"}], role:"rows"'
