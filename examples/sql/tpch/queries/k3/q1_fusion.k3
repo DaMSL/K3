@@ -76,11 +76,11 @@ declare order_agg : {elem : q1_result_r} -> {elem : q1_result_r} -> int =
 
 trigger q1 : () = \_ -> (
   (ignore
-    ((lineitem.groupBy (\r -> if r.l_shipdate <= "1998-09-02" then index_by_hash (r.l_returnflag, r.l_linestatus)
-                              else 0)
+    ((lineitem.groupBy (\r -> if r.l_shipdate <= "1998-09-02" then (r.l_returnflag, r.l_linestatus)
+                              else ("", ""))
                        accum_agg
                        init_agg)
-  ) @DistributedGroupByNoHash(
+  )) @DistributedGroupBy(
       lbl         = [# groupby],
       peer_next   = [$ (\x -> ((x.iterate (\kv -> peer_result.insert (finalize_agg kv)));
                                ((() @:Result) @TPCHBenchmarkWithoutMaster))) ],
