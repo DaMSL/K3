@@ -129,7 +129,7 @@ trigger q5_lo_start : () = \_ -> (
                              empty {l_suppkey : int, l_epd : real} @Collection ]
 
         , rhs_query = [$ (orders.filter  (\o ->     o.o_orderdate >= "1994-01-01"
-                                                and o.o_orderdate >= "1995-01-01" ))
+                                                and o.o_orderdate <  "1995-01-01" ))
                                 .groupBy (\o -> o.o_orderkey)
                                          (\_ -> \o -> o.o_custkey)
                                          0 ]
