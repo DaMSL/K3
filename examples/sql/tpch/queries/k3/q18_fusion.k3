@@ -1,0 +1,208 @@
+include "Distributed/Transformers.k3"
+include "tpch/schema.k3"
+include "tpch/benchmark.k3"
+include "tpch/loader.k3"
+
+/**********************
+* SQL query
+***********************
+select top 100
+        c_name,
+        c_custkey,
+        o_orderkey,
+        o_orderdate,
+        o_totalprice,
+        sum(l_quantity)
+from
+        customer,
+        orders,
+        lineitem
+where
+        o_orderkey in (
+                select
+                        l_orderkey
+                from
+                        lineitem
+                group by
+                        l_orderkey having
+                                sum(l_quantity) > 300
+        )
+        and c_custkey = o_custkey
+        and o_orderkey = l_orderkey
+group by
+        c_name,
+        c_custkey,
+        o_orderkey,
+        o_orderdate,
+        o_totalprice
+order by
+        o_totalprice desc,
+        o_orderdate
+****************************
+* Plan:
+* group by
+*   join customer
+*     join orders
+*          (filter . group lineitem)
+****************************/
+
+declare lineitem : lineitem_bag
+declare customer : customer_bag
+declare orders   : orders_bag
+
+// Final result.
+typedef loc_q_by_ncodt_r   = { key: {nm:string, ck:int, ok:int, od:string, tp:real}, value: real}
+typedef loc_q_by_ncodt_bag = collection loc_q_by_ncodt_r @Collection
+typedef loc_q_by_ncodt_map = collection loc_q_by_ncodt_r @Map
+
+declare q18_peer_result : loc_q_by_ncodt_map
+
+// Q18 intermediates.
+typedef o_cdt_by_ok_r = {key : int, value : { o_custkey    : int
+                                            , o_orderdate  : string
+                                            , o_totalprice : real}}
+
+typedef lo_q_by_odt_r     = {key : {ok: int, od: string, tp: real}, value : real}
+typedef lo_odtq_by_ck_r   = {key :int, value : collection lo_q_by_odt_r @Map}
+typedef lo_odtq_by_ck_map = collection lo_odtq_by_ck_r @Map
+
+declare master : address
+
+declare lo_odtq_by_ck  : lo_odtq_by_ck_map
+declare loc_build      : lo_odtq_by_ck_map
+declare loc_q_by_ncodt : loc_q_by_ncodt_map
+
+declare merge_q_by_odt_r : lo_q_by_odt_r -> lo_q_by_odt_r -> lo_q_by_odt_r
+  = \a -> \b -> {key: a.key, value: a.value + b.value}
+
+declare merge_odtq_by_ck_r : lo_odtq_by_ck_r -> lo_odtq_by_ck_r -> lo_odtq_by_ck_r
+  = \a -> \b -> {key: a.key, value: a.value.fold (\acc -> \r -> ((acc.insert_with r merge_q_by_odt_r); acc)) b.value}
+
+declare merge_q_by_ncodt_r : loc_q_by_ncodt_r -> loc_q_by_ncodt_r -> loc_q_by_ncodt_r
+  = \a -> \b -> {key: a.key, value: a.value + b.value}
+
+trigger lineitem_having : () = \_ -> (
+  (ignore (lineitem.groupBy (\li -> li.l_orderkey)
+                            (\acc -> \li -> acc + li.l_quantity)
+                            0.0)
+  ) @DistributedGroupBy(
+      lbl         = [# li_having],
+      peer_next   = [$ (\result -> (
+                          print "LI shuffle done." ;
+                          li_having_result = result
+                        )) ],
+      next        = [$ (print "LI shuffle all nodes finished"; (lineitem_orders, me) <- ()) ],
+      merge       = [$ (\a -> \b -> a + b)],
+      coordinator = [$ master],
+      nodes       = [$ peers] )
+)
+
+// Since lineitem is already partitioned by orderkey, we can implement the
+// join as a distributed group-by on orders, with probes and intermediate
+// construction occurring in the merge trigger.
+trigger lineitem_orders : () = \_ -> (
+  (ignore (orders.groupBy (\o -> o.o_orderkey)
+                          (\acc -> \o -> { o_custkey    : o.o_custkey
+                                         , o_orderdate  : o.o_orderdate
+                                         , o_totalprice : o.o_totalprice })
+                          {o_custkey:0, o_orderdate:"", o_totalprice:0.0})
+  ) @DistributedGroupByGeneric(
+      lbl         = [# lo ],
+      peer_next   = [$ print "LI-OR shuffle done." ],
+      next        = [$ (lineitem_orders_customer, me) <- () ],
+      merge       = [$ (\o ->
+                          case li_having_result.lookup {key: o.key, value: 0.0} of
+                          {Some li -> if li.value <= 300 then () else
+                                       lo_odtq_by_ck.insert_with
+                                        {key: o.value.o_custkey
+                                        , value: {| key: {ok:int, od:string, tp:real}, value: real
+                                                  | { key: { ok: o.key
+                                                           , od: o.value.o_orderdate
+                                                           , tp: o.value.o_totalprice }
+                                                    , value: li.value}
+                                                  |} @Map
+                                        }
+                                        merge_odtq_by_ck_r
+                          }
+                          {None -> ()})],
+      coordinator = [$ master],
+      nodes       = [$ peers] )
+)
+
+trigger lineitem_orders_customer : () = \_ -> (
+  () @DistributedHashJoin
+        ( lbl       = [# loc ]
+        , lhs_query = [$ lo_odtq_by_ck]
+        , rhs_query = [$ customer.fold (\acc -> \c ->
+                                          ((acc.insert {key: c.c_custkey, value: c.c_name})
+                                           ; acc))
+                                       empty {key: int, value: string} @Collection
+                      ]
+
+        , lhs_build_merge = [$ (\lo -> loc_build.insert_with lo merge_odtq_by_ck_r) ]
+        , rhs_probe_merge = [$
+            (\c ->
+                case loc_build.lookup { key: c.key
+                                      , value: empty { key   : {ok: int, od: string, tp: real}
+                                                     , value : real } @Map}
+                of
+                  { Some lo -> lo.value.iterate (\kv ->
+                                 loc_q_by_ncodt.insert_with
+                                   { key: { nm: c.value
+                                          , ck: c.key
+                                          , ok: kv.key.ok
+                                          , od: kv.key.od
+                                          , tp: kv.key.tp }
+                                   , value: kv.value }
+                                   merge_q_by_ncodt_r
+                               )
+                  }
+                  { None -> ()  }
+              ) ]
+
+        , peer_next       = [$ print "LI-OR-CS join finished customer probe." ;
+                               (ignore
+                                 ( loc_q_by_ncodt
+                                 ) @SendPartitionByKey( dest_trg     = [$ loc_aggregate]
+                                                      , barrier_trg  = [$ log_aggregate_peer_barrier]
+                                                      , nodes        = [$ peers])
+                                ) ]
+        , next            = [$ print "LI-OR-CS join all nodes finished." ]
+        , coordinator     = [$ master]
+        , nodes           = [$ peers]
+        , lhs_build_ty    = [: collection
+                                 {key : int
+                                 , value : collection { key: {ok:int, od:string, tp:real}
+                                                      , value: real} @Map
+                                 } @Collection ]
+        , rhs_probe_ty    = [: collection {key : int, value : string} @Collection ]
+        )
+)
+
+trigger loc_aggregate : loc_q_by_ncodt_bag = \vals -> (
+  vals.iterate (\kv -> q18_peer_result.insert_with kv merge_q_by_ncodt_r)
+)
+
+trigger log_aggregate_peer_barrier : () = \_ -> (
+  ( print "Query 18 done." ;
+    ((() @:Result) @TPCHBenchmarkWithoutMaster)
+  ) @OnCounter(id=[# loc_aggregate_done], eq=[$ peers.size()])
+)
+
+trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
+  nodes              = [$ peers ],
+  loadExpr           = [$ ( lineitemFiles.iterate (\e -> lineitemLoaderP e.path lineitem);
+                            ordersFiles.iterate   (\e -> ordersLoaderP   e.path orders);
+                            customerFiles.iterate (\e -> customerLoaderP e.path customer)
+                          ) ],
+  preLoadExpr        = [$ ()],
+  preReadyExpr       = [$ ()],
+  onReadyExpr        = [$ (lineitem_having, me) <- ()],
+  finishArgT         = [: ()],
+  preTestFinishExpr  = [$ (\_ -> ())],
+  preFinishExpr      = [$ ()],
+  preShutdownExpr    = [$ ()]
+)
+
+source rows : () = value ()
+feed rows |> start
