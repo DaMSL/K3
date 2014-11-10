@@ -1,0 +1,17 @@
+- hosts: target_hosts
+  tasks:
+    - include: plays/deploy_k3.yml
+      vars:
+        app_name: sgd
+        binary: /tmp/sgd_new
+        log_enabled: false
+        numprocs: 16
+        k3_variables:
+          master: "<192.168.0.40:40000>" 
+          role: '"points"'
+          dimensionality: 32
+          iterations_remaining: 10
+        data_files:
+          - name: "dataFiles"
+            num: 1024
+            prefix: "/local/data/sgd_100G/sgd"

@@ -2,14 +2,13 @@
   tasks:
     - include: plays/deploy_k3.yml
       vars:
-        app_name: q2
-        binary: /tmp/q2
+        app_name: amplab_q4
+        binary: /tmp/q4final
         numprocs: 16
         k3_variables:
-          x: "8"
           master: "<192.168.0.41:40000>" # TODO, just set to first peer?
           role: '"rows"'
         data_files:
           - name: "dataFiles"
-            num: 512
-            prefix: "/local/data/amplab/1024/uservisits/uservisits"
+            num: 1024
+            prefix: "/local/data/amplab/1024/crawl/crawl"

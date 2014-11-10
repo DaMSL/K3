@@ -1,7 +1,7 @@
   # Define Constants
   - name: Define constants
     set_fact:
-      peers: "[ {%- for key in play_hosts -%} {% for i in range(numprocs) %} {addr: <{{ hostvars[key].ip }}:{{40000 + i}}> }{%- if not loop.last %},{% endif %} {%- endfor %} {%- if not loop.last %},{% endif %}{%- endfor %}]"
+      peers: "[ {%- for key in play_hosts -%} {% for i in range(numprocs) %} {addr:<{{ hostvars[key].ip }}:{{40000 + i}}>}{%- if not loop.last -%},{%- endif -%} {%- endfor -%} {%- if not loop.last %},{%- endif -%}{%- endfor %}]"
       setup_dir: /local/deploy/k3_{{app_name}}/setup/
       data_dir: /local/deploy/k3_{{app_name}}/data/
       docker_image: k3_{{app_name}}
@@ -19,10 +19,10 @@
     copy: src={{binary}} dest={{setup_dir}}k3
   
   - name: copy the Dockerfile to the remote host
-    copy: src=files/Dockerfile dest={{setup_dir}}
+    copy: src=Dockerfile dest={{setup_dir}}
   
   - name: copy the run script to the remote host
-    copy: src=files/run_k3.sh dest={{setup_dir}}
+    copy: src=run_k3.sh dest={{setup_dir}}
   
 
   # docker cleanup

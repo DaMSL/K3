@@ -3,7 +3,7 @@
     include: setup_docker.yml
 
   - name: run the binary in a docker container
-    shell: docker run -d --net=host --name="{{docker_image}}_{{40000 + (item|int)}}" -v {{data_dir}}{{40000 + (item|int)}}:/app_data -v /local:/local {{docker_image}} run_k3  -p 'peers:{{peers}},me:<{{ip}}:{{40000 + (item|int)}}>,{% for key, value in k3_variables.iteritems()|list -%}{{key}}:{{value}}{% if not loop.last %},{% endif %} {%- endfor %},{% for file in data_files -%} {{file.name}}{{colon}} [{% for i in range(file.num) -%} {% if (i % (num_peers|int)) == ((peer*(numprocs|int))+(item|int)) -%} {% if i >= (num_peers|int) %} , {% endif %} { path{{colon}} "{{file.prefix}}{{"%04d" | format(i|int)}}" } {% endif %} {%- endfor %} ]{%- endfor %}'
+    shell: docker run -d --net=host --name="{{docker_image}}_{{40000 + (item|int)}}" -v {{data_dir}}{{40000 + (item|int)}}:/app_data -v /local:/local {{docker_image}} run_k3 {%- if log_enabled %} -l 1 {% endif %} -p 'peers:{{peers}},me:<{{ip}}:{{40000 + (item|int)}}>,{% for key, value in k3_variables.iteritems()|list -%}{{key}}:{{value}}{% if not loop.last %},{% endif %} {%- endfor %},{% for file in data_files -%} {{file.name}}{{colon}} [{% for i in range(file.num) -%} {% if (i % (num_peers|int)) == ((peer*(numprocs|int))+(item|int)) -%} {% if i >= (num_peers|int) %} , {% endif %} { path{{colon}} "{{file.prefix}}{{"%04d" | format(i|int)}}" } {% endif %} {%- endfor %} ] {%- if not loop.last -%} , {%- endif -%} {%- endfor %}'
     with_sequence: start=0 end={{numprocs-1}}
   
   - name: Cleanup Docker
