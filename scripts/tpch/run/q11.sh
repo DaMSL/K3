@@ -1,0 +1,1 @@
+__build/A -l 1 -p 'me:<127.0.0.1:20000>, master:<127.0.0.1:20000>, peers:[{addr:<127.0.0.1:20000>}], partsuppFiles:[{path:"./data/100m/partsupp.tbl"}], supplierFiles:[{path:"./data/100m/supplier.tbl"}], nationFiles:[{path:"./data/100m/nation.tbl"}], role:"rows"'
