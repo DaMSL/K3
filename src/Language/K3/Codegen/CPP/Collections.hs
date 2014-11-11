@@ -192,6 +192,7 @@ record (sort -> ids) = do
                      | i <- ids
                      | t <- templateVars
                      ]
+
     let serializeMember m = R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive") (R.Variable $ R.Name m)
 
     let serializeStatements = map serializeMember ids
@@ -209,92 +210,64 @@ record (sort -> ids) = do
     let members = constructors ++ comparators ++ [serializeFn] ++ fieldDecls
 
     let recordStructDefn
-            = R.GuardedDefn ("K3_" ++ recordName ++ "_hash_value") $
+            = R.GuardedDefn ("K3_" ++ recordName) $
                 R.TemplateDefn (zip templateVars (repeat Nothing)) $
                  R.ClassDefn (R.Name recordName) [] [] members [] []
 
-    let shallowDecl = R.Forward $ R.ScalarDecl (R.Name "_shallow")
-                      (R.Named $ R.Specialized [R.Named $ R.Qualified (R.Name "string") (R.Name "iterator")]
-                            (R.Name "shallow")) Nothing
-
-    let doPatchInvocation f = R.Call (R.Variable $ R.Name "do_patch")
-                              [R.Variable $ R.Name "_partial", R.Project (R.Variable $ R.Name "_record") (R.Name f)]
-
-    let oneFieldParserDefn f
-            = foldl1 (R.Binary ">>")
-              [ R.Call (R.Variable $ R.Qualified (R.Name "qi") (R.Name "lit")) [R.Literal $ R.LString f]
-              , R.Literal (R.LChar ":")
-              , R.Variable (R.Name "_shallow")
-              ]
-
-    let oneFieldParserAction f
-            = R.Lambda [R.RefCapture (Just  ("_record", Nothing))]
-              [("_partial", R.Named $ R.Qualified (R.Name "std") (R.Name "string"))] False Nothing
-              [R.Ignore $ doPatchInvocation f]
-
-    let oneFieldParserDecl f
-            = R.Forward $ R.ScalarDecl (R.Name $ "_" ++ f)
-              (R.Named $ R.Specialized
-                    [ R.Named $ R.Qualified (R.Name "string") (R.Name "iterator")
-                    , R.Named $ R.Qualified (R.Name "qi") (R.Name "space_type")
-                    ]
-               (R.Qualified (R.Name "qi") (R.Name "rule")))
-              (Just $ R.Subscript (oneFieldParserDefn f) (oneFieldParserAction f))
-
-    let allFieldParserDecls = map oneFieldParserDecl ids
-
-    let fieldParserDecl
-            = R.Forward $ R.ScalarDecl (R.Name "_field")
-              (R.Named $ R.Specialized
-                    [ R.Named $ R.Qualified (R.Name "string") (R.Name "iterator")
-                    , R.Named $ R.Qualified (R.Name "qi") (R.Name "space_type")
-                    ]
-               (R.Qualified (R.Name "qi") (R.Name "rule")))
-              (Just $ foldl1 (R.Binary "|") [R.Variable (R.Name $ "_" ++ f) | f <- ids])
-
-    let recordParserDecl
-            = R.Forward $ R.ScalarDecl (R.Name "_parser")
-              (R.Named $ R.Specialized
-                    [ R.Named $ R.Qualified (R.Name "string") (R.Name "iterator")
-                    , R.Named $ R.Qualified (R.Name "qi") (R.Name "space_type")
-                    ]
-               (R.Qualified (R.Name "qi") (R.Name "rule")))
-              (Just $ foldl1 (R.Binary ">>")
-                                   [ R.Literal (R.LChar "{")
-                                   , R.Binary "%" (R.Variable $ R.Name "_field") (R.Literal $ R.LChar ",")
-                                   , R.Literal (R.LChar "}")
-                                   ])
-
-    let parseInvocation
-            = R.Call (R.Variable $ R.Qualified (R.Name "qi") (R.Name "phrase_parse"))
-              [ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "begin")) [R.Variable $ R.Name "_input"]
-              , R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [R.Variable $ R.Name "_input"]
-              , R.Variable (R.Name "_parser")
-              , R.Variable (R.Qualified (R.Name "qi") $ R.Name "space")
-              ]
-
-    let patcherFnDefn
-            = R.FunctionDefn (R.Name "patch") [ ("_input", R.Named $ R.Qualified (R.Name "std") (R.Name "string"))
-                                              , ("_record", R.Reference recordType)]
-              (Just $ R.Named $ R.Name "static void") [] False
-              ([shallowDecl] ++ allFieldParserDecls ++ [fieldParserDecl, recordParserDecl, R.Ignore parseInvocation])
-
-    let patcherStructDefn
-            = R.NamespaceDefn "K3" [
-                        R.TemplateDefn (zip templateVars (repeat Nothing))
-                             (R.ClassDefn (R.Name "patcher") [recordType] [] [patcherFnDefn] [] [])
-                             ]
     let hashStructDefn
             = R.GuardedDefn ("K3_" ++ recordName) $ R.TemplateDefn (zip templateVars (repeat Nothing)) $
                 R.FunctionDefn (R.Name "hash_value")
-                  [("r", R.Const $ R.Reference recordType)] (Just $ R.Named $ R.Qualified (R.Name "std") (R.Name "size_t"))
-                  [] False
-                      [R.Forward $ R.ScalarDecl (R.Name "hasher")
-                        (R.Named $ R.Qualified (R.Name "boost") (R.Specialized [R.Tuple [R.Named $ R.Name t | t <- templateVars]] (R.Name "hash"))) Nothing,
-                       R.Return $ R.Call (R.Variable $ R.Name "hasher") [tieOther "r"]]
+                  [("r", R.Const $ R.Reference recordType)]
+                  (Just $ R.Named $ R.Qualified (R.Name "std") (R.Name "size_t"))
+                  [] False [ R.Forward $ R.ScalarDecl (R.Name "hasher")
+                             (R.Named $ R.Qualified (R.Name "boost")
+                              (R.Specialized [R.Tuple [R.Named $ R.Name t | t <- templateVars]]
+                                    (R.Name "hash"))) Nothing
+                           , R.Return $ R.Call (R.Variable $ R.Name "hasher") [tieOther "r"]
+                           ]
 
+    let yamlStructDefn = R.NamespaceDefn "YAML"
+                         [ R.TemplateDefn (zip templateVars (repeat Nothing)) $
+                            R.ClassDefn (R.Name "convert") [recordType] []
+                             [ R.FunctionDefn (R.Name "encode")
+                                 [("r", R.Const $ R.Reference $ recordType)]
+                                 (Just $ R.Static $ R.Named $ R.Name "Node") [] False
+                                 ([R.Forward $ R.ScalarDecl (R.Name "node") (R.Named $ R.Name "Node") Nothing] ++
+                                  [R.Assignment (R.Subscript
+                                                      (R.Variable $ R.Name "node")
+                                                      (R.Literal $ R.LString field))
+                                                (R.Call
+                                                      (R.Variable $ R.Qualified (R.Specialized [R.Named $ R.Name fieldType] $ R.Name "convert") (R.Name "encode"))
+                                                      [R.Project (R.Variable $ R.Name "r") (R.Name field)])
+                                  | field <- ids | fieldType <- templateVars
+                                  ] ++ [R.Return $ R.Variable $ R.Name "node"])
+                             , R.FunctionDefn (R.Name "decode")
+                                 [ ("node", R.Const $ R.Reference $ R.Named $ R.Name "Node")
+                                 , ("r", R.Reference recordType)
+                                 ] (Just $ R.Static $ R.Primitive $ R.PBool) [] False
+                                 ([ R.IfThenElse (R.Unary "!" $ R.Call (R.Project
+                                                                            (R.Variable $ R.Name "node")
+                                                                            (R.Name "IsMap")) [])
+                                     [R.Return $ R.Literal $ R.LBool False] []
+                                 ] ++
+                                 [ R.IfThenElse (R.Subscript
+                                                      (R.Variable $ R.Name "node")
+                                                      (R.Literal $ R.LString field))
+                                     [ R.Assignment
+                                         (R.Project (R.Variable $ R.Name "r") (R.Name field))
+                                         (R.Call (R.Project
+                                                   (R.Subscript
+                                                         (R.Variable $ R.Name "node")
+                                                         (R.Literal $ R.LString field))
+                                                   (R.Specialized [R.Named $ R.Name templateVar] $ R.Name "as")) [])
+                                     ] []
+                                 | field <- ids | templateVar <- templateVars
+                                 ] ++ [R.Return $ R.Literal $ R.LBool True])
+                             ]
+                             [] []
+                         ]
 
-    return [recordStructDefn, patcherStructDefn, hashStructDefn]
+    return [recordStructDefn, yamlStructDefn, hashStructDefn]
 
 reservedAnnotations :: [Identifier]
 reservedAnnotations = ["Collection", "External", "Seq", "Set", "Sorted", "Map", "Vector", "MultiIndex"]
