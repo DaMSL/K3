@@ -56,7 +56,7 @@ data CPPGenS = CPPGenS {
         -- supplied ahead-of-time, due to cyclic scoping.
         globals  :: [(Identifier, (K3 Type, Bool))], -- Whether it's a builtin
 
-        patchables :: [(Identifier, Bool)], -- Whether we need to set
+        patchables :: [(Identifier, (K3 Type, Bool))], -- Whether we need to set
 
         showables :: [(Identifier, K3 Type)],
 
