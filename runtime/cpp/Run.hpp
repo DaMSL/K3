@@ -5,21 +5,36 @@
 #include "Context.hpp"
 #include <map>
 #include <boost/thread/thread.hpp>
-
+#include "serialization/yaml.hpp"
 namespace K3 {
   template <class context>
   void runProgram(std::vector<string> peer_strs, bool simulation, string log_level) {
+    std::vector<std::string> configurations;
+
+    for (auto p: peer_strs) {
+      if (p.size() > 0 && p[0] != '{') {
+        for (auto d: YAML::LoadAllFromFile(p)) {
+          YAML::Emitter out;
+          out << d;
+          configurations.push_back(std::string {out.c_str()});
+        }
+      } else {
+        configurations.push_back(p);
+      }
+    }
+
     if (simulation) {
-      // All peers share a single engine 
+      // All peers share a single engine
       Engine engine;
       std::map<Address, shared_ptr<__k3_context>> contexts;
-    
-      for (auto& s : peer_strs) {
+
+      for (auto& s: configurations) {
         auto gc = make_shared<context>(engine);
-        gc->__patch(parse_bindings(s));
+        gc->__patch(s);
         gc->initDecls(unit_t {});
         contexts[gc->me] = gc;
       }
+
       SystemEnvironment se = defaultEnvironment(getAddrs(contexts));
       engine.configure(simulation, se, make_shared<DefaultInternalCodec>(), log_level);
       processRoles(contexts);
@@ -29,14 +44,13 @@ namespace K3 {
     else {
       typedef std::map<Address, shared_ptr<__k3_context>> ctxt_map;
       typedef shared_ptr<Engine> e_ptr;
-      std::list<tuple<e_ptr, ctxt_map>> engines; 
-     
-      for (auto& s : peer_strs) {
-	std::cout << "Engine for this string: " << s << std::endl;
+      std::list<tuple<e_ptr, ctxt_map>> engines;
+
+      for (auto& s: configurations) {
         ctxt_map contexts;
-        e_ptr engine = make_shared<Engine>(); 
+        e_ptr engine = make_shared<Engine>();
         auto gc = make_shared<context>(*engine);
-        gc->__patch(parse_bindings(s));
+        gc->__patch(s);
         gc->initDecls(unit_t {});
         contexts[gc->me] = gc;
         SystemEnvironment se = defaultEnvironment(getAddrs(contexts));
@@ -48,7 +62,7 @@ namespace K3 {
 
        using boost::thread;
        using boost::thread_group;
-       auto l = std::list<shared_ptr<thread>>(); 
+       auto l = std::list<shared_ptr<thread>>();
        for (auto& t : engines) {
          auto engine = get<0>(t);
          auto contexts = get<1>(t);
@@ -60,7 +74,7 @@ namespace K3 {
          th->join();
        }
     }
-    
+
   }
 
 } //Namespace K3
