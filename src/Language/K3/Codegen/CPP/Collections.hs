@@ -92,30 +92,37 @@ composite name ans = do
                        (Just $ R.Named $ R.Name "void")
                        [] False serializeStatements)
 
-    let patcherFnDefn
-            = R.FunctionDefn (R.Name "patch") [ ("_input", R.Named $ R.Qualified (R.Name "std") (R.Name "string"))
-                                              , ("_c", R.Reference selfType)]
-              (Just $ R.Named $ R.Name "static void") [] False
-              [R.Ignore $
-                R.Call (
-                  R.Variable $ R.Qualified
-                  (R.Specialized [R.Parameter name, R.Parameter "__CONTENT"] (R.Name "collection_patcher"))
-                  (R.Name "patch"))
-                     [R.Variable $ R.Name "_input", R.Variable $ R.Name "_c"]
-              ]
-
-    let patcherStructDefn
-            = R.NamespaceDefn "K3" [
-                      R.TemplateDefn [("__CONTENT", Nothing)]
-                           (R.ClassDefn (R.Name "patcher") [selfType] [] [patcherFnDefn] [] [])
-                     ]
-
     let addnDefns = indexDefns
     let methods = [defaultConstructor, superConstructor, superMoveConstructor, serializeFn]
     let collectionClassDefn = R.TemplateDefn [("__CONTENT", Nothing)]
              (R.ClassDefn (R.Name name) [] (map R.Named baseClasses) methods [] [])
 
-    return [collectionClassDefn, patcherStructDefn]
+    let parent = head baseClasses
+
+    let yamlStructDefn = R.NamespaceDefn "YAML"
+                         [ R.TemplateDefn [("__CONTENT", Nothing)] $
+                            R.ClassDefn (R.Name "convert") [selfType] []
+                             [ R.FunctionDefn (R.Name "encode")
+                                 [("c", R.Const $ R.Reference $ selfType)]
+                                 (Just $ R.Static $ R.Named $ R.Name "Node") [] False
+                                 [R.Return $ R.Call
+                                       (R.Variable $ R.Qualified
+                                             (R.Specialized [R.Named $ parent] (R.Name "convert"))
+                                             (R.Name "encode"))
+                                       [R.Variable $ R.Name "c"]]
+                             , R.FunctionDefn (R.Name "decode")
+                                 [ ("node", R.Const $ R.Reference $ R.Named $ R.Name "Node")
+                                 , ("c", R.Reference selfType)
+                                 ] (Just $ R.Static $ R.Primitive $ R.PBool) [] False
+                                 [R.Return $ R.Call
+                                       (R.Variable $ R.Qualified
+                                             (R.Specialized [R.Named $ parent] (R.Name "convert"))
+                                             (R.Name "decode"))
+                                       [R.Variable $ R.Name "node", R.Variable $ R.Name "c"]]
+                             ]
+                             [] []
+                         ]
+    return [collectionClassDefn, yamlStructDefn]
 
 record :: [Identifier] -> CPPGenM [R.Definition]
 record (sort -> ids) = do
