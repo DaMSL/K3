@@ -58,7 +58,7 @@ namespace YAML {
 
     static bool decode(const Node& node, boost::asio::ip::address& a) {
       try {
-        a.from_string(node.as<std::string>());
+        a = boost::asio::ip::address::from_string(node.as<std::string>());
         return true;
       } catch (YAML::TypedBadConversion<std::string> e) {
         return false;
