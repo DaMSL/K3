@@ -102,6 +102,35 @@ class StlDS {
   // Return the number of elements in this ds
   int size(const unit_t&) const { return container.size(); }
 
+  using iterator = typename Container::iterator;
+  using const_iterator = typename Container::const_iterator;
+  using reverse_iterator = typename Container::reverse_iterator;
+
+  // Iterators
+  iterator begin() {
+    return std::begin(container);
+  }
+
+  iterator end() {
+    return std::end(container);
+  }
+
+  const_iterator cbegin() {
+    return std::end(container);
+  }
+
+  const_iterator cend() {
+    return std::end(container);
+  }
+
+  reverse_iterator rbegin() {
+    return container.rbegin();
+  }
+
+  reverse_iterator rend() {
+    return container.rend();
+  }
+
   // Return a new DS with data from this and other
   Derived<Elem> combine(StlDS other) const {
     // copy this DS
