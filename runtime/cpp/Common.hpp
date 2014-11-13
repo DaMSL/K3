@@ -48,16 +48,6 @@ namespace K3 {
   enum class Builtin { Stdin, Stdout, Stderr };
   enum class IOMode  { Read, Write, Append, ReadWrite };
 
-  class unit_t {
-    public:
-    template <class archive>
-    void serialize(archive&, const unsigned int) {}
-    bool operator==(const unit_t&) const { return true; }
-    bool operator!=(const unit_t&) const { return false; }
-    bool operator<(const unit_t&) const { return false; }
-    bool operator>(const unit_t&) const { return false; }
-  };
-
   //---------------
   // Addresses.
 
