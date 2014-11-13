@@ -3,6 +3,7 @@ include "Core/Builtins.k3"
 include "Core/Loaders.k3"
 
 declare dataFiles : collection {path: string} @ Collection
+declare outputFile : mut string
 
 // Constants
 declare master: address = 127.0.0.1:40000
@@ -16,6 +17,9 @@ declare num_results: mut int = 0
 // Data
 declare local_rankings: collection {pageRank: int, pageURL: string} @ { Collection }
 declare local_q1_results: mut collection {pageRank: int, pageURL: string} @ { Collection }
+
+@:CArgs 2
+declare resultLogger : string -> collection {pageRank: int, pageURL: string} @Collection -> string -> ()
 
 // Time
 declare start_ms: mut int = 0
@@ -31,9 +35,12 @@ trigger hello : () = \_ -> ()
 
 // Perform the query on the local dataset. (Filter and project.)
 // Store the results in memory.
+// Notify master that we have finished.
+// Store the output on disk
 trigger q1_local: () = \_ -> (
   local_q1_results = local_rankings.filter (\row -> row.pageRank > x);
-  (finished, master) <- (local_q1_results.size ())
+  (finished, master) <- (local_q1_results.size ());
+  resultLogger outputFile local_q1_results "|"
 )
 
 // Signal to the master that a peer has finished the query locally.

@@ -269,6 +269,20 @@ namespace K3 {
         });
         return unit_t {};
    }
+
+   template <class C, class F>
+   unit_t logHelper(string_impl filepath, const C& c, F f, string_impl sep) {
+     std::ofstream outfile;
+     outfile.open(filepath);
+     auto& container = c.getConstContainer();
+     for (auto& elem : container) {
+       f(outfile, elem, sep);
+       outfile << "\n";
+     }
+     outfile.close();
+     return unit_t();
+
+   }
     Vector<R_elem<double>> zeroVector(int i);
     Vector<R_elem<double>> randomVector(int i);
 

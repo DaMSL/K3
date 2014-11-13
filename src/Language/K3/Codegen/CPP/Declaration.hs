@@ -210,7 +210,8 @@ source_builtin_map :: [(String, (String -> K3 Type -> String -> CPPGenM R.Defini
 source_builtin_map = [("HasRead", genHasRead),
                       ("Read", genDoRead),
                       ("Loader",genLoader ","),
-                      ("LoaderP", genLoader "|")]
+                      ("LoaderP", genLoader "|"),
+                      ("Logger", genLogger)]
 
 source_builtins :: [String]
 source_builtins = map fst source_builtin_map
@@ -321,3 +322,47 @@ genLoader sep suf (children -> [_,f]) name = do
 
 genLoader _ _ _ _ =  error "Invalid type for Loader function."
 
+
+genLogger :: String -> K3 Type -> String -> CPPGenM R.Definition
+genLogger _ (children -> [_,f]) name = do
+  (colType, recType) <- getColType
+  let (fields,_) = getRecFields recType
+  let fieldLogs = map (log . proj) fields
+  let allLogs = L.intersperse (seperate $ R.Variable $ R.Name "sep") fieldLogs
+  cRecType <- genCType recType
+  cColType <- genCType colType
+  let printRecordFn = R.Lambda []
+                    [ ("file", R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "ofstream"))
+                    , ("elem", R.Const $ R.Reference cRecType)
+                    , ("sep", R.Const $ R.Reference $ R.Named $ R.Name "string")
+                    ] False Nothing (map R.Ignore allLogs)
+
+  return $ R.FunctionDefn (R.Name name)
+             [("file", R.Named $ R.Name "string")
+             , ("c", R.Reference cColType)
+             ,("sep", R.Const $ R.Reference $ R.Named $ R.Name "string")]
+             (Just $ R.Named $ R.Name "unit_t") [] False
+             [ R.Return $ R.Call (R.Variable $ R.Name "logHelper")
+                            [ R.Variable $ R.Name "file"
+                            , R.Variable $ R.Name "c"
+                            , printRecordFn
+                            , R.Variable $ R.Name "sep"
+                            ]
+             ]
+
+  where
+   proj i = R.Project (R.Variable $ R.Name "elem") (R.Name i)
+   log = R.Binary "<<" (R.Variable $ R.Name "file")
+   seperate s = log s
+   getColType = case children f of
+                  ([c,_])  -> case children c of
+                                [r] -> return (c, r)
+                                _   -> type_mismatch
+                  _        -> type_mismatch
+
+   getRecFields (tag &&& children -> (TRecord ids, cs))  = (ids, cs)
+   getRecFields _ = error "Cannot get fields for non-record type"
+
+   type_mismatch = error "Invalid type for Logger function. Must be a flat-record of ints, reals, and strings"
+
+genLogger _ _ _ = error "Error: Invalid type for Logger function. Must be a flat-record of ints, reals, and strings"

@@ -402,14 +402,8 @@ prettifyExpr base_t e =
    oss_concat = R.Binary "<<"
    oss = (R.Variable $ R.Name "oss")
 
-   singleton = replicate 1
    lit_string  = R.Literal . R.LString
    std_string s = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "string")) [lit_string s]
-   wrap stmnts cap expr t = R.Call (R.Lambda cap [("x", t)] False Nothing stmnts) [expr]
-   to_string = R.Call (R.Variable (R.Qualified (R.Name "std") (R.Name "to_string"))) [e]
-   stringConcat = R.Binary "+"
-   ossConcat = R.Binary "<<"
-   get_tup i expr = R.Call (R.Variable $ R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")) [expr]
    project field n = R.Project n (R.Name field)
 
    -- Option
@@ -424,19 +418,12 @@ prettifyExpr base_t e =
 
    -- TODO
    -- Tuple
-   tup_to_string cts = do
-       return $ call_prettify "tuple" [e]
-       --ct_is  <- return $ zip cts ([0..] :: [Integer])
-       --cs     <- mapM (\(ct,i) -> prettifyExpr ct (get_tup i e)) ct_is --show each element in tuple
-       --commad <- return $ L.intersperse (lit_string ",") cs -- comma seperate
-       --return $ stringConcat (foldl stringConcat (lit_string "(") commad) (lit_string ")") -- stringConcat
-
+   tup_to_string _ = return $ call_prettify "tuple" [e]
    -- Record
    rec_to_string ids cts = do
        cType  <- genCType base_t
-       ct_ids <- return $ zip cts ids
+       let ct_ids = zip cts ids
        let x = R.Variable $ R.Name "x"
-       let out = oss_decl
        cs     <- mapM (\(ct,field) -> prettifyExpr ct (project field x) >>= \v -> return $ (oss_concat oss (oss_concat (std_string $ field ++ ":") v ))) ct_ids
        done   <- return $ map R.Ignore $ L.intersperse (oss_concat oss (lit_string  ",")) cs
        let front = R.Ignore $ oss_concat oss (lit_string "{")

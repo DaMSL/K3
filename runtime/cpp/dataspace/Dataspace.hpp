@@ -1472,10 +1472,15 @@ namespace YAML {
   struct convert<K3::Collection<E>> {
     static Node encode(const K3::Collection<E>& c) {
       Node node;
-      for (auto i: c.getConstContainer()) {
-        node.push_back(convert<E>::encode(i));
+      auto container = c.getConstContainer();
+      if (container.size() > 0 ) {
+        for (auto i: container) {
+          node.push_back(convert<E>::encode(i));
+        }
       }
-
+      else {
+        node = YAML::Load("[]");
+      }
       return node;
     }
 
@@ -1492,10 +1497,15 @@ namespace YAML {
   struct convert<K3::Vector<E>> {
     static Node encode(const K3::Vector<E>& c) {
       Node node;
-      for (auto i: c.getConstContainer()) {
-        node.push_back(convert<E>::encode(i));
+      auto container = c.getConstContainer();
+      if (container.size() > 0) {
+        for (auto i: container) {
+          node.push_back(convert<E>::encode(i));
+        }
       }
-
+      else {
+        node = YAML::Load("[]");
+      }
       return node;
     }
 
@@ -1512,8 +1522,14 @@ namespace YAML {
   struct convert<K3::Seq<E>> {
     static Node encode(const K3::Seq<E>& c) {
       Node node;
-      for (auto i: c.getConstContainer()) {
-        node.push_back(convert<E>::encode(i));
+      auto container = c.getConstContainer();
+      if (container.size() > 0) {
+        for (auto i: container) {
+          node.push_back(convert<E>::encode(i));
+        }
+      }
+      else {
+        node = YAML::Load("[]");
       }
 
       return node;
@@ -1532,8 +1548,14 @@ namespace YAML {
   struct convert<K3::Map<R>> {
     static Node encode(const K3::Map<R>& c) {
       Node node;
-      for (auto i: c.getConstContainer()) {
-        node.push_back(convert<R>::encode(R { i.first, i.second }));
+      auto container = c.getConstContainer();
+      if (container.size() > 0) {
+        for (auto i: container) {
+          node.push_back(convert<R>::encode(R{i.first, i.second}));
+        }
+      }
+      else {
+        node = YAML::Load("[]");
       }
 
       return node;
