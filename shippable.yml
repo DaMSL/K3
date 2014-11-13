@@ -2,6 +2,7 @@ build_image: damsl/k3-vanilla
 env:
   - GHCVER=7.8.3
   - CABALVER=1.20
+
 install:
   - cd /k3/K3-Core
   - git pull
@@ -9,6 +10,7 @@ install:
   - git pull
   - cd /k3/K3-Mosaic
   - git pull
+
 script:
   - cd /k3/K3-Driver
   - cabal install --only-dependencies --disable-documentation
@@ -18,3 +20,10 @@ script:
   - ./compile.sh ../K3-Core/examples/algorithms/fibonacci.k3
   - ./compile.sh ../K3-Core/examples/distributed/amplab/q1.k3
     #- ./compile.sh ../K3-Core/examples/distributed/amplab/q2.k3
+
+notifications:
+     email:
+         recipients:
+             - k3-developers@googlegroups.com
+         on_success: change
+         on_failure: always
