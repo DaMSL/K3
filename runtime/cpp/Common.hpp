@@ -52,20 +52,20 @@ namespace K3 {
     public:
     template <class archive>
     void serialize(archive&, const unsigned int) {}
-    bool operator==(const unit_t& r) const { return true; }
-    bool operator!=(const unit_t& r) const { return false; }
-    bool operator<(const unit_t& r) const { return false; }
-    bool operator>(const unit_t& r) const { return false; }
+    bool operator==(const unit_t&) const { return true; }
+    bool operator!=(const unit_t&) const { return false; }
+    bool operator<(const unit_t&) const { return false; }
+    bool operator>(const unit_t&) const { return false; }
   };
 
   //---------------
   // Addresses.
 
-  static inline Address make_address(const std::string& host, unsigned short port)   {
+  inline Address make_address(const std::string& host, unsigned short port)   {
     return Address(boost::asio::ip::address::from_string(host), port);
   }
 
-  static inline Address make_address(const char* host, unsigned short port) {
+  inline Address make_address(const char* host, unsigned short port) {
     return Address(boost::asio::ip::address::from_string(host), port);
   }
 
@@ -79,29 +79,29 @@ namespace K3 {
   inline int addressPort(const Address& addr) { return std::get<1>(addr); }
   inline int addressPort(Address&& addr) { return std::get<1>(std::forward<Address>(addr)); }
 
-  static inline std::string addressAsString(const Address& addr) {
+  inline std::string addressAsString(const Address& addr) {
     return addressHost(addr) + ":" + std::to_string(addressPort(addr));
   }
 
-  static inline std::string addressAsString(Address&& addr) {
+  inline std::string addressAsString(Address&& addr) {
     return addressHost(std::forward<Address>(addr))
             + ":" + std::to_string(addressPort(std::forward<Address>(addr)));
   }
 
-  static inline Address internalSendAddress(const Address& addr) {
+  inline Address internalSendAddress(const Address& addr) {
     return make_address(addressHost(addr), addressPort(addr)+1);
   }
 
-  static inline Address internalSendAddress(Address&& addr) {
+  inline Address internalSendAddress(Address&& addr) {
     return make_address(addressHost(std::forward<Address>(addr)),
                         addressPort(std::forward<Address>(addr))+1);
   }
 
-  static inline Address externalSendAddress(const Address& addr) {
+  inline Address externalSendAddress(const Address& addr) {
     return make_address(addressHost(addr), addressPort(addr)+2);
   }
 
-  static inline Address externalSendAddress(Address&& addr) {
+  inline Address externalSendAddress(Address&& addr) {
     return make_address(addressHost(std::forward<Address>(addr)),
                         addressPort(std::forward<Address>(addr))+2);
   }
@@ -125,7 +125,7 @@ namespace K3 {
     return s_env;
   }
 
-  static inline SystemEnvironment defaultEnvironment(std::list<Address> addrs) {
+  inline SystemEnvironment defaultEnvironment(std::list<Address> addrs) {
     SystemEnvironment s_env;
     for (Address addr : addrs) {
       PeerBootstrap bootstrap = PeerBootstrap();
@@ -134,17 +134,17 @@ namespace K3 {
     return s_env;
   }
 
-  static inline SystemEnvironment defaultEnvironment() {
+  inline SystemEnvironment defaultEnvironment() {
     return defaultEnvironment(defaultAddress);
   }
 
-  static inline std::list<Address> deployedNodes(const SystemEnvironment& sysEnv) {
+  inline std::list<Address> deployedNodes(const SystemEnvironment& sysEnv) {
     std::list<Address> r;
     for (auto x : sysEnv) { r.push_back(x.first); }
     return std::move(r);
   }
 
-  static inline bool isDeployedNode(const SystemEnvironment& sysEnv, Address addr) {
+  inline bool isDeployedNode(const SystemEnvironment& sysEnv, Address addr) {
     return sysEnv.find(addr) != sysEnv.end();
   }
 
@@ -169,14 +169,16 @@ namespace K3 {
   public:
     typedef severity_channel_logger<boost::log::trivial::severity_level,std::string> logger;
 
-    LogST(std::string chan) : logger(boost::log::keywords::channel = chan), Log(boost::log::trivial::severity_level::info) {}
-    LogST(std::string chan, boost::log::trivial::severity_level lvl) : logger(boost::log::keywords::channel = chan), Log(lvl) {}
+    LogST(std::string chan): logger(boost::log::keywords::channel = chan),
+                             Log(boost::log::trivial::severity_level::info) {}
+    LogST(std::string chan, boost::log::trivial::severity_level lvl): logger(boost::log::keywords::channel = chan),
+                                                                      Log(lvl) {}
 
     void log(const std::string& msg) { BOOST_LOG_SEV(*this, defaultLevel) << msg; }
     void log(const char* msg) { BOOST_LOG_SEV(*this, defaultLevel) << msg; }
 
     void logAt(boost::log::trivial::severity_level lvl, const std::string& msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
-    void logAt(boost::log::trivial::severity_level lvl, const char& msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
+    void logAt(boost::log::trivial::severity_level lvl, const char* msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
   };
 
   class LogMT : public boost::log::sources::severity_channel_logger_mt<boost::log::trivial::severity_level,std::string>, public Log
