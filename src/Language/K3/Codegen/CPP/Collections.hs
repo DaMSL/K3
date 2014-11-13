@@ -222,7 +222,7 @@ record (sort -> ids) = do
                  R.ClassDefn (R.Name recordName) [] [] members [] []
 
     let hashStructDefn
-            = R.GuardedDefn ("K3_" ++ recordName) $ R.TemplateDefn (zip templateVars (repeat Nothing)) $
+            = R.GuardedDefn ("K3_" ++ recordName ++ "_hash_value") $ R.TemplateDefn (zip templateVars (repeat Nothing)) $
                 R.FunctionDefn (R.Name "hash_value")
                   [("r", R.Const $ R.Reference recordType)]
                   (Just $ R.Named $ R.Qualified (R.Name "std") (R.Name "size_t"))
