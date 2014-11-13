@@ -248,7 +248,7 @@ class StlDS {
  private:
   friend class boost::serialization::access;
   template<class Archive>
-  void serialize(Archive &ar, const unsigned int version) {
+  void serialize(Archive &ar) {
     ar & container;
   }
 };
@@ -523,7 +523,7 @@ class Set {
  private:
   friend class boost::serialization::access;
   template<class Archive>
-  void serialize(Archive &ar, const unsigned int version) {
+  void serialize(Archive &ar) {
     ar & container;
   }
 }; // class Set
@@ -813,7 +813,7 @@ class Sorted {
  private:
   friend class boost::serialization::access;
   template<class Archive>
-  void serialize(Archive &ar, const unsigned int version) {
+  void serialize(Archive &ar) {
     ar & container;
   }
 }; // Class Sorted
@@ -1036,7 +1036,7 @@ class Map {
   private:
   friend class boost::serialization::access;
   template<class Archive>
-  void serialize(Archive &ar, const unsigned int version) {
+  void serialize(Archive &ar) {
     ar & container;
   }
 
@@ -1421,7 +1421,7 @@ class MultiIndex {
  private:
   friend class boost::serialization::access;
   template<class Archive>
-  void serialize(Archive &ar, const unsigned int version) {
+  void serialize(Archive &ar) {
     ar & container;
   }
 
