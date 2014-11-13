@@ -1598,6 +1598,26 @@ namespace YAML {
       return true;
     }
   };
+
+  template <class E>
+  struct convert<K3::Set<E>> {
+    static Node encode(const K3::Set<E>& c) {
+      Node node;
+      for (auto i: c.getConstContainer()) {
+        node.push_back(convert<E>::encode(i));
+      }
+
+      return node;
+    }
+
+    static bool decode(const Node& node, K3::Set<E>& c) {
+      for (auto& i: node) {
+        c.insert(i.as<E>());
+      }
+
+      return true;
+    }
+  };
 }
 
 #endif
