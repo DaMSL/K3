@@ -96,7 +96,7 @@ namespace K3 {
     template <class T>
     T error(unit_t) {
       throw std::runtime_error("Error. Terminating");
-      return *((T *) nullptr);
+      return T();
     }
 
     template <class T>
