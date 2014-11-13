@@ -92,7 +92,7 @@ void load(archive& ar, asio::ip::address& ip, unsigned int version) {
 // For std::shared_ptr
 template<class archive, class T>
 void save(archive& ar, const std::shared_ptr<T>& sp, unsigned int version) {
-  T* p = sp.get();  
+  T* p = sp.get();
   ar << p;
 }
 
@@ -116,7 +116,7 @@ inline void serialize(
     std::shared_ptr<T>& t,
     const unsigned int file_version
 ){
-    split_free(ar, t, file_version); 
+    split_free(ar, t, file_version);
 }
 }} // namespaces
 

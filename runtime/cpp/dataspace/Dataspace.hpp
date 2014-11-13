@@ -18,6 +18,7 @@
 
 #include "Common.hpp"
 #include "BaseTypes.hpp"
+#include "yaml-cpp/yaml.h"
 
 namespace K3 {
 
@@ -1464,6 +1465,88 @@ std::size_t hash_value(K3::Vector<Elem> const& b) {
 template <typename... Args>
 std::size_t hash_value(K3::MultiIndex<Args...> const& b) {
   return hash_collection(b);
+}
+
+namespace YAML {
+  template <class E>
+  struct convert<K3::Collection<E>> {
+    static Node encode(const K3::Collection<E>& c) {
+      Node node;
+      for (auto i: c.getConstContainer()) {
+        node.push_back(convert<E>::encode(i));
+      }
+
+      return node;
+    }
+
+    static bool decode(const Node& node, K3::Collection<E>& c) {
+      for (auto& i: node) {
+        c.insert(i.as<E>());
+      }
+
+      return true;
+    }
+  };
+
+  template <class E>
+  struct convert<K3::Vector<E>> {
+    static Node encode(const K3::Vector<E>& c) {
+      Node node;
+      for (auto i: c.getConstContainer()) {
+        node.push_back(convert<E>::encode(i));
+      }
+
+      return node;
+    }
+
+    static bool decode(const Node& node, K3::Vector<E>& c) {
+      for (auto& i: node) {
+        c.insert(i.as<E>());
+      }
+
+      return true;
+    }
+  };
+
+  template <class E>
+  struct convert<K3::Seq<E>> {
+    static Node encode(const K3::Seq<E>& c) {
+      Node node;
+      for (auto i: c.getConstContainer()) {
+        node.push_back(convert<E>::encode(i));
+      }
+
+      return node;
+    }
+
+    static bool decode(const Node& node, K3::Seq<E>& c) {
+      for (auto& i: node) {
+        c.insert(i.as<E>());
+      }
+
+      return true;
+    }
+  };
+
+  template <class R>
+  struct convert<K3::Map<R>> {
+    static Node encode(const K3::Map<R>& c) {
+      Node node;
+      for (auto i: c.getConstContainer()) {
+        node.push_back(convert<R>::encode(R { i.first, i.second }));
+      }
+
+      return node;
+    }
+
+    static bool decode(const Node& node, K3::Map<R>& c) {
+      for (auto& i: node) {
+        c.insert(i.as<R>());
+      }
+
+      return true;
+    }
+  };
 }
 
 #endif

@@ -17,7 +17,7 @@ namespace K3 {
 
     virtual void __dispatch(int, void *) = 0;
     virtual std::map<std::string, std::string> __prettify() = 0;
-    virtual void __patch(std::map<string, string>) = 0;
+    virtual void __patch(std::string) = 0;
     virtual unit_t processRole(const unit_t&) = 0;
 
     static std::string __get_trigger_name(int trig_id);
@@ -34,7 +34,7 @@ namespace K3 {
     std::map<Address, shared_ptr<__k3_context>> contexts;
     for (auto& s : peer_strs) {
       auto gc = make_shared<context>(engine);
-      gc->__patch(parse_bindings(s));
+      gc->__patch(s);
       std::cout << addressAsString(gc->me) << std::endl;
       contexts[gc->me] = gc;
     }

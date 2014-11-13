@@ -75,23 +75,54 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
 
     patchables' <- patchables <$> get
 
-    let popPatch (p, setP) =
-          R.IfThenElse
-           (R.Binary ">"
-             (R.Call (R.Project (R.Variable $ R.Name "bindings") (R.Name "count"))
-               [R.Literal $ R.LString p])
-             (R.Literal $ R.LInt 0))
-           ([R.Ignore $ R.Call (R.Variable $ R.Name "do_patch")
-             [R.Subscript (R.Variable $ R.Name "bindings") (R.Literal $ R.LString p),
-               R.Variable $ R.Name p]] ++
-             [R.Assignment
-               (R.Variable $ R.Name $ "__"++p++"_set__") (R.Literal $ R.LBool True) | setP])
-           []
-    let patchDecl = R.FunctionDefn (R.Name "__patch")
-                    [("bindings", R.Named $ R.Qualified (R.Name "std") $ R.Specialized
-                                    [ R.Named $ R.Qualified (R.Name "std") (R.Name "string")
-                                    , R.Named $ R.Qualified (R.Name "std") (R.Name "string")] $ R.Name "map")]
-                    (Just R.Void) [] False (map popPatch patchables')
+    patchables'' <- forM patchables' $ \(i, (t, f)) -> genCType t >>= \ct -> return (i, (ct, f))
+
+    let yamlStructDefn = R.NamespaceDefn "YAML"
+                         [ R.TemplateDefn [] $ R.ClassDefn (R.Name "convert") [R.Named contextName] []
+                             [ R.FunctionDefn (R.Name "encode")
+                                 [("context", R.Const $ R.Reference $ R.Named contextName)]
+                                 (Just $ R.Static $ R.Named $ R.Name "Node") [] False
+                                 ([R.Forward $ R.ScalarDecl (R.Name "_node") (R.Named $ R.Name "Node") Nothing] ++
+                                  [R.Assignment (R.Subscript
+                                                      (R.Variable $ R.Name "_node")
+                                                      (R.Literal $ R.LString field))
+                                                (R.Call
+                                                      (R.Variable $ R.Qualified
+                                                            (R.Specialized [fieldType] (R.Name "convert"))
+                                                            (R.Name "encode"))
+                                                      [R.Project (R.Variable $ R.Name "context") (R.Name field)])
+                                  | (field, (fieldType, _)) <- patchables''
+                                  ] ++ [R.Return (R.Variable $ R.Name "_node")])
+                             , R.FunctionDefn (R.Name "decode")
+                                 [ ("node", R.Const $ R.Reference $ R.Named $ R.Name "Node")
+                                 , ("context", R.Reference $ R.Named contextName)
+                                 ] (Just $ R.Static $ R.Primitive $ R.PBool) [] False
+                                 ([ R.IfThenElse (R.Unary "!" $ R.Call (R.Project
+                                                                            (R.Variable $ R.Name "node")
+                                                                            (R.Name "IsMap")) [])
+                                     [R.Return $ R.Literal $ R.LBool False] []
+                                 ] ++
+                                 [ R.IfThenElse (R.Subscript
+                                                      (R.Variable $ R.Name "node")
+                                                      (R.Literal $ R.LString field))
+                                     ([ R.Assignment
+                                         (R.Project (R.Variable $ R.Name "context") (R.Name field))
+                                         (R.Call (R.Project
+                                                   (R.Subscript
+                                                         (R.Variable $ R.Name "node")
+                                                         (R.Literal $ R.LString field))
+                                                   (R.Specialized [fieldType] $ R.Name "as")) [])
+                                     ] ++
+                                     [ R.Assignment (R.Project (R.Variable $ R.Name "context")
+                                                          (R.Name $ "__" ++ field ++ "_set__"))
+                                                    (R.Literal $ R.LBool True)
+                                     | setF
+                                     ]) []
+                                 | (field, (fieldType, setF)) <- patchables''
+                                 ] ++ [R.Return $ R.Literal $ R.LBool True])
+                             ]
+                             [] []
+                         ]
 
     dispatchPop <- generateDispatchPopulation
 
@@ -125,7 +156,24 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
                            [R.Primitive R.PInt, R.Function [R.Named $ R.Name "void*"] R.Void] (R.Name "map"))
                      Nothing
 
-    let contextDefns = [contextConstructor] ++ programDefns  ++ [initDeclDefn] ++ [prettify, patchDecl, dispatchDecl]
+    let patchFn = R.FunctionDefn (R.Qualified contextName (R.Name "__patch"))
+                  [("s", R.Named $ R.Qualified (R.Name "std") (R.Name "string"))]
+                  (Just R.Void) [] False
+                  [ R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "YAML") $ R.Qualified (R.Specialized
+                                                         [R.Named contextName]
+                                                         (R.Name "convert"))
+                                       (R.Name "decode"))
+                               [ R.Call (R.Variable $ R.Qualified (R.Name "YAML") (R.Name "Load"))
+                                            [R.Variable $ R.Name "s"]
+                               , R.Dereference (R.Variable $ R.Name "this")]
+                  ]
+
+    let patchFnDecl = R.GlobalDefn $ R.Forward $ R.FunctionDecl (R.Name "__patch")
+                      [R.Named $ R.Qualified (R.Name "std") (R.Name "string")] R.Void
+
+    let contextDefns = [contextConstructor] ++ programDefns  ++ [initDeclDefn] ++
+                       [patchFnDecl, prettify, dispatchDecl]
+
     let contextClassDefn = R.ClassDefn contextName []
                              [ R.Named $ R.Qualified (R.Name "K3") $ R.Name "__standard_context"
                              , R.Named $ R.Qualified (R.Name "K3") $ R.Name "__string_context"
@@ -137,7 +185,8 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
     mainFn <- main
 
     -- Return all top-level definitions.
-    return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ concat compositeDefns ++ [contextClassDefn] ++ pinned ++ mainFn
+    return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ concat compositeDefns ++
+               [contextClassDefn] ++ pinned ++ [yamlStructDefn, patchFn] ++ mainFn
 
 program _ = throwE $ CPPGenE "Top-level declaration construct must be a Role."
 
@@ -185,7 +234,6 @@ requiredAliases = return
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "runProgram"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "SystemEnvironment"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "processRoles"), Nothing)
-                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "do_patch"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "defaultEnvironment"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "createContexts"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "getAddrs"), Nothing)
@@ -222,6 +270,7 @@ requiredIncludes = return
                    , "MessageProcessor.hpp"
                    , "Literals.hpp"
                    , "Serialization.hpp"
+                   , "serialization/yaml.hpp"
                    , "Builtins.hpp"
                    , "Run.hpp"
                    , "Prettify.hpp"
@@ -229,6 +278,7 @@ requiredIncludes = return
                    , "dataspace/Dataspace.hpp"
 
                    , "strtk.hpp"
+                   , "yaml-cpp/yaml.h"
                    ]
 
 

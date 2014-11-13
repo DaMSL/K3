@@ -5,6 +5,8 @@
 #include <memory>
 #include <vector>
 
+#include "yaml-cpp/yaml.h"
+
 #include "boost/serialization/array.hpp"
 #include "boost/functional/hash.hpp"
 
@@ -192,5 +194,26 @@ class base_string {
 };
 
 } // namespace K3
+
+namespace YAML {
+  template <>
+  struct convert<K3::base_string> {
+    static Node encode(const K3::base_string& s) {
+      Node node;
+      node = std::string(s.c_str());
+      return node;
+    }
+
+    static bool decode(const Node& node, K3::base_string& s) {
+      try {
+        auto t = node.as<std::string>();
+        s = K3::base_string(t);
+        return true;
+      } catch (YAML::TypedBadConversion<std::string> e) {
+        return false;
+      }
+    }
+  };
+}
 
 #endif
