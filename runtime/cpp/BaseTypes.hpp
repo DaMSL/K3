@@ -124,7 +124,7 @@ class R_key_value {
       R_key_value(R_key_value<_T0, _T1>&& __other): key(std::move(__other.key)),
       value(std::move(__other.value))  {}
       template <class archive>
-      void serialize(archive& _archive)  {
+      void serialize(archive& _archive, const unsigned int)  {
         _archive & key;
         _archive & value;
       }
