@@ -11,7 +11,6 @@
 #include <functional>
 
 #include "re2/re2.h"
-#include "strtk.hpp"
 
 #include "BaseTypes.hpp"
 #include "BaseString.hpp"

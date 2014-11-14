@@ -276,7 +276,6 @@ requiredIncludes = return
 
                    , "dataspace/Dataspace.hpp"
 
-                   , "strtk.hpp"
                    , "yaml-cpp/yaml.h"
                    ]
 
