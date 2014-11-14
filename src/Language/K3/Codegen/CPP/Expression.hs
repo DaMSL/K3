@@ -1,5 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ParallelListComp #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -12,6 +13,7 @@ import Data.Functor
 import Data.List (nub, sortBy, (\\))
 import Data.Maybe
 import Data.Ord (comparing)
+import Data.Tree
 
 import Safe
 
@@ -88,6 +90,11 @@ functionType :: K3 Expression -> Maybe (K3 Type)
 functionType e = case e @~ \case { EType _ -> True; _ -> False } of
     Just (EType t@(tag -> TFunction)) -> Just t
     _ -> Nothing
+
+
+-- | Patterns
+-- TODO: Check for transformer property.
+pattern Fold c <- Node (EProject "fold" :@: _) [c]
 
 -- | Realization of unary operators.
 unarySymbol :: Operator -> CPPGenM Identifier
@@ -206,7 +213,7 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
                                 let fvs = nub $ filter (/= arg) $ freeVariables body
                                 return $ (S.empty, S.empty, S.fromList $ fvs \\ globVals)
 
-    (ta, tr) <- getKType e >>= \case
+    (ta, _) <- getKType e >>= \case
         (tag &&& children -> (TFunction, [ta, tr])) -> do
             ta' <- genCInferredType ta
             tr' <- genCInferredType tr
@@ -231,6 +238,29 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
     return ( []
            , R.Lambda capture [(arg, hintedArgType)] True Nothing body'
            )
+
+inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, [Fold c, f, z]))) = do
+  (ce, cv) <- inline c
+  (fe, fv) <- inline f
+  (ze, zv) <- inline z
+
+  g <- genSym
+  acc <- genSym
+
+  zt <- getKType z
+  accType <- genCType zt
+
+  let loopInit = [R.Forward $ R.ScalarDecl (R.Name acc) accType (Just zv)]
+  let loopBody =
+          [ R.Assignment (R.Variable $ R.Name acc) $
+              R.Call
+                (R.Call fv
+                  [ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "move"))
+                    [R.Variable $ R.Name acc]
+                  ]) [R.Variable $ R.Name g]
+          ]
+  let loop = R.ForEach g R.Inferred cv (R.Block loopBody)
+  return (ce ++ fe ++ ze ++ loopInit ++ [loop], (R.Variable $ R.Name acc))
 
 inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do
     -- Inline both function and argument for call.
