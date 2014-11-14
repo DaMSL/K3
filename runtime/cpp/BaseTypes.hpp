@@ -9,21 +9,21 @@ class unit_t {
   public:
   template <class archive>
   void serialize(archive&, const unsigned int) {}
-  bool operator==(const unit_t& r) const { return true; }
-  bool operator!=(const unit_t& r) const { return false; }
-  bool operator<(const unit_t& r) const { return false; }
-  bool operator>(const unit_t& r) const { return false; }
+  bool operator==(const unit_t&) const { return true; }
+  bool operator!=(const unit_t&) const { return false; }
+  bool operator<(const unit_t&) const { return false; }
+  bool operator>(const unit_t&) const { return false; }
 };
 
 namespace YAML {
   template <>
-  class convert<unit_t> {
+  struct convert<unit_t> {
     public:
-        static Node encode(const unit_t& r)  {
+        static Node encode(const unit_t&)  {
           Node node;
           return node;
         }
-        static bool decode(const Node& node, unit_t& r)  {
+        static bool decode(const Node&, unit_t&)  {
           return true;
         }
   };
