@@ -17,8 +17,16 @@ script:
   - cabal configure
   - cabal build
     #- scripts/tests/tests.py -l scripts/tests/passed_tests.txt
-  - ./compile.sh ../K3-Core/examples/algorithms/fibonacci.k3
-  - ./compile.sh ../K3-Core/examples/distributed/amplab/q1.k3
+    # Compile fibonacci.k3
+  - ./compile.sh -O1 ../K3-Core/examples/algorithms/fibonacci.k3
+  - ./clean.sh
+    # Compile rsfull.k3
+  - ./compile.sh ../K3-Core/examples/sql/mosaic/rsfull.k3
+  - ./clean.sh
+    # Compile amplab q1.k3 and run tests
+  - ./compile.sh -O1 ../K3-Core/examples/distributed/amplab/q1.k3
+  - __build/A -p ./scripts/tests/cpp/sql/q1/peers.yml
+  - ./scripts/tests/cpp/sql/check_result.sh /k3/K3-Driver/scripts/tests/cpp/sql/q1/
     #- ./compile.sh ../K3-Core/examples/distributed/amplab/q2.k3
 
 notifications:

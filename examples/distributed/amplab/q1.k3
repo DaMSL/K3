@@ -19,7 +19,7 @@ declare local_rankings: collection {pageRank: int, pageURL: string} @ { Collecti
 declare local_q1_results: mut collection {pageRank: int, pageURL: string} @ { Collection }
 
 @:CArgs 2
-declare resultLogger : string -> collection {pageRank: int, pageURL: string} @Collection -> string -> ()
+declare resultLogger : string -> collection {pageURL: string, pageRank: int} @Collection -> string -> ()
 
 // Time
 declare start_ms: mut int = 0
