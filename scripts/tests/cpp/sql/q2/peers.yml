@@ -1,0 +1,22 @@
+---
+me:  [127.0.0.1,40000]
+master: [127.0.0.1, 40000]
+peers: 
+  - addr: [127.0.0.1, 40000]
+  - addr: [127.0.0.1, 50000]
+dataFiles:
+  - path: /local/data/amplab/1024/uservisits/uservisits0000
+outFile: /results/q2_1.csv
+x: 8
+role: rows
+---
+me:  [127.0.0.1,50000]
+master: [127.0.0.1, 40000]
+peers: 
+  - addr: [127.0.0.1, 40000]
+  - addr: [127.0.0.1, 50000]
+dataFiles:
+  - path: /local/data/amplab/1024/uservisits/uservisits0001
+outFile: /results/q2_2.csv
+x: 8
+role: rows
