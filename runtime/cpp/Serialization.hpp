@@ -77,13 +77,13 @@ namespace boost { namespace serialization {
 
 // For asio ip address we don't have access to the member, so we'll do a separate save and load
 template<class archive>
-void save(archive& ar, const asio::ip::address& ip, unsigned int version) {
+void save(archive& ar, const asio::ip::address& ip, unsigned int) {
   std::string s = ip.to_string();
   ar << s;
 }
 
 template<class archive>
-void load(archive& ar, asio::ip::address& ip, unsigned int version) {
+void load(archive& ar, asio::ip::address& ip, unsigned int) {
   std::string s;
   ar >> s;
   ip.from_string(s);
@@ -91,13 +91,13 @@ void load(archive& ar, asio::ip::address& ip, unsigned int version) {
 
 // For std::shared_ptr
 template<class archive, class T>
-void save(archive& ar, const std::shared_ptr<T>& sp, unsigned int version) {
+void save(archive& ar, const std::shared_ptr<T>& sp, unsigned int) {
   T* p = sp.get();
   ar << p;
 }
 
 template<class archive, class T>
-void load(archive& ar, std::shared_ptr<T>& sp, unsigned int version) {
+void load(archive& ar, std::shared_ptr<T>& sp, unsigned int) {
   T* p;
   ar >> p;
   sp = std::shared_ptr<T>(p);
