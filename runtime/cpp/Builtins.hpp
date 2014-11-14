@@ -47,7 +47,7 @@ namespace K3 {
   // Standard context for common builtins that use a handle to the engine (via inheritance)
   class __standard_context : public __k3_context {
     public:
-    __standard_context(Engine& engine);
+    __standard_context(Engine&);
 
     unit_t openBuiltin(string_impl ch_id, string_impl builtin_ch_id, string_impl fmt);
 
