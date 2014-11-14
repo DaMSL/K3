@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS k3_result;
 CREATE TABLE k3_result (
   substr text,
   sum double precision
