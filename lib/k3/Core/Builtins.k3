@@ -62,7 +62,7 @@ declare randomFraction : () -> real
 
 // Polymorphic hash function
 declare hash : forall a . a -> int
-
+  with effects \x -> R[x]
 
 ////////////////////////
 //
