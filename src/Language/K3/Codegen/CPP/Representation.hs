@@ -234,6 +234,7 @@ data Statement
     | Forward Declaration
     | IfThenElse Expression [Statement] [Statement]
     | Ignore Expression
+    | Pragma String
     | Return Expression
   deriving (Eq, Ord, Read, Show)
 
@@ -248,6 +249,7 @@ instance Stringifiable Statement where
               <> (if (null es) then empty else
                       (space <> "else" <+> hangBrace (vsep $ map stringify es)))
     stringify (Ignore e) = stringify e <> semi
+    stringify (Pragma s) = "#pragma" <+> fromString s
     stringify (Return e) = "return" <+> stringify e <> semi
 
 type IsConst = Bool
