@@ -22,6 +22,7 @@ import qualified Data.Set as S
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Expression
+import Language.K3.Core.Literal
 import Language.K3.Core.Type
 import Language.K3.Core.Utils
 
@@ -244,6 +245,24 @@ inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, [Fold c, f
   (fe, fv) <- inline f
   (ze, zv) <- inline z
 
+  let vectorizePragma = case e @~ (\case { EProperty "Vectorize" _ -> True; _ -> False }) of
+                          Nothing -> []
+                          Just (EProperty _ Nothing) -> [R.Pragma "clang vectorize(enable)"]
+                          Just (EProperty _ (Just (tag -> LInt i))) ->
+                              [ R.Pragma "clang loop vectorize(enable)"
+                              , R.Pragma $ "clang loop vectorize_width(" ++ show i ++ ")"
+                              ]
+
+  let interleavePragma = case e @~ (\case { EProperty "Interleave" _ -> True; _ -> False }) of
+                           Nothing -> []
+                           Just (EProperty _ Nothing) -> [R.Pragma "clang interleave(enable)"]
+                           Just (EProperty _ (Just (tag -> LInt i))) ->
+                               [ R.Pragma "clang loop interleave(enable)"
+                               , R.Pragma $ "clang loop interleave_count(" ++ show i ++ ")"
+                               ]
+
+  let loopPragmas = concat [vectorizePragma, interleavePragma]
+
   g <- genSym
   acc <- genSym
 
@@ -260,7 +279,7 @@ inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, [Fold c, f
                   ]) [R.Variable $ R.Name g]
           ]
   let loop = R.ForEach g R.Inferred cv (R.Block loopBody)
-  return (ce ++ fe ++ ze ++ loopInit ++ [loop], (R.Variable $ R.Name acc))
+  return (ce ++ fe ++ ze ++ loopInit ++ loopPragmas ++ [loop], (R.Variable $ R.Name acc))
 
 inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do
     -- Inline both function and argument for call.
