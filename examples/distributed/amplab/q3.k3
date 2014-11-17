@@ -161,11 +161,26 @@ trigger find_global_max :  Source_ip_to_aggs = \kv -> (
   else ()
 )
 
+typedef Source_ip_to_aggs = {key: string, value: {prSum: int, prCount: int, arSum: real}}
+declare outFile: string
+declare q3_result: collection {sourceIP: string, totalRevenue: real, avgPageRank: real} @Collection
+@:CArgs 3
+declare q3Logger : string -> collection {sourceIP: string, totalRevenue: real, avgPageRank: real} @Collection -> string -> ()
+
+declare logOutput: () -> () = \_ -> (
+  q3_result.insert {sourceIP: global_max.key, 
+                    totalRevenue: global_max.value.arSum, 
+                    avgPageRank: (1.0 * global_max.value.prSum) / global_max.value.prCount
+                   };
+  q3Logger outFile q3_result "|"
+)
+
 trigger finished : () = \_ -> (
   end_ms = now_int ();
   elapsed_ms = end_ms - start_ms;
   print (concat "Elapsed: " (itos elapsed_ms));
   print (concat "Global max.key: " global_max.key);
+  logOutput ();
   peers.iterate (\p -> (shutdown, p.addr) <- ())
 )
 

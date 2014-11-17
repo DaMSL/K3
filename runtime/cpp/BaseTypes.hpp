@@ -2,7 +2,33 @@
 #define K3_RUNTIME_BASETYPES_H
 
 #include "boost/functional/hash.hpp"
+#include "serialization/yaml.hpp"
 // Basic types needed by our builtin libraries
+
+class unit_t {
+  public:
+  template <class archive>
+  void serialize(archive&, const unsigned int) {}
+  bool operator==(const unit_t&) const { return true; }
+  bool operator!=(const unit_t&) const { return false; }
+  bool operator<(const unit_t&) const { return false; }
+  bool operator>(const unit_t&) const { return false; }
+};
+
+namespace YAML {
+  template <>
+  struct convert<unit_t> {
+    public:
+        static Node encode(const unit_t&)  {
+          Node node;
+          return node;
+        }
+        static bool decode(const Node&, unit_t&)  {
+          return true;
+        }
+  };
+}
+
 
 #ifndef K3_R_addr
 #define K3_R_addr
@@ -98,7 +124,7 @@ class R_key_value {
       R_key_value(R_key_value<_T0, _T1>&& __other): key(std::move(__other.key)),
       value(std::move(__other.value))  {}
       template <class archive>
-      void serialize(archive& _archive, const unsigned int _version)  {
+      void serialize(archive& _archive, const unsigned int)  {
         _archive & key;
         _archive & value;
       }

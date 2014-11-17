@@ -11,7 +11,6 @@
 #include <functional>
 
 #include "re2/re2.h"
-#include "strtk.hpp"
 
 #include "BaseTypes.hpp"
 #include "BaseString.hpp"
@@ -48,7 +47,7 @@ namespace K3 {
   // Standard context for common builtins that use a handle to the engine (via inheritance)
   class __standard_context : public __k3_context {
     public:
-    __standard_context(Engine& engine);
+    __standard_context(Engine&);
 
     unit_t openBuiltin(string_impl ch_id, string_impl builtin_ch_id, string_impl fmt);
 
@@ -96,7 +95,7 @@ namespace K3 {
     template <class T>
     T error(unit_t) {
       throw std::runtime_error("Error. Terminating");
-      return *((T *) nullptr);
+      return T();
     }
 
     template <class T>

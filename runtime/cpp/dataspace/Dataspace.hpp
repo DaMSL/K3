@@ -102,6 +102,35 @@ class StlDS {
   // Return the number of elements in this ds
   int size(const unit_t&) const { return container.size(); }
 
+  using iterator = typename Container::iterator;
+  using const_iterator = typename Container::const_iterator;
+  using reverse_iterator = typename Container::reverse_iterator;
+
+  // Iterators
+  iterator begin() {
+    return std::begin(container);
+  }
+
+  iterator end() {
+    return std::end(container);
+  }
+
+  const_iterator cbegin() {
+    return std::end(container);
+  }
+
+  const_iterator cend() {
+    return std::end(container);
+  }
+
+  reverse_iterator rbegin() {
+    return container.rbegin();
+  }
+
+  reverse_iterator rend() {
+    return container.rend();
+  }
+
   // Return a new DS with data from this and other
   Derived<Elem> combine(StlDS other) const {
     // copy this DS
@@ -248,7 +277,7 @@ class StlDS {
  private:
   friend class boost::serialization::access;
   template<class Archive>
-  void serialize(Archive &ar, const unsigned int version) {
+  void serialize(Archive &ar, const unsigned int) {
     ar & container;
   }
 };
@@ -523,7 +552,7 @@ class Set {
  private:
   friend class boost::serialization::access;
   template<class Archive>
-  void serialize(Archive &ar, const unsigned int version) {
+  void serialize(Archive &ar, const unsigned int) {
     ar & container;
   }
 }; // class Set
@@ -813,7 +842,7 @@ class Sorted {
  private:
   friend class boost::serialization::access;
   template<class Archive>
-  void serialize(Archive &ar, const unsigned int version) {
+  void serialize(Archive &ar, const unsigned int) {
     ar & container;
   }
 }; // Class Sorted
@@ -1036,7 +1065,7 @@ class Map {
   private:
   friend class boost::serialization::access;
   template<class Archive>
-  void serialize(Archive &ar, const unsigned int version) {
+  void serialize(Archive &ar, const unsigned int) {
     ar & container;
   }
 
@@ -1421,7 +1450,7 @@ class MultiIndex {
  private:
   friend class boost::serialization::access;
   template<class Archive>
-  void serialize(Archive &ar, const unsigned int version) {
+  void serialize(Archive &ar, const unsigned int) {
     ar & container;
   }
 
@@ -1564,6 +1593,26 @@ namespace YAML {
     static bool decode(const Node& node, K3::Map<R>& c) {
       for (auto& i: node) {
         c.insert(i.as<R>());
+      }
+
+      return true;
+    }
+  };
+
+  template <class E>
+  struct convert<K3::Set<E>> {
+    static Node encode(const K3::Set<E>& c) {
+      Node node;
+      for (auto i: c.getConstContainer()) {
+        node.push_back(convert<E>::encode(i));
+      }
+
+      return node;
+    }
+
+    static bool decode(const Node& node, K3::Set<E>& c) {
+      for (auto& i: node) {
+        c.insert(i.as<E>());
       }
 
       return true;

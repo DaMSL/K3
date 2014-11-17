@@ -1,4 +1,4 @@
-build_image: damsl/k3-vanilla
+build_image: damsl/k3-tests
 env:
   - GHCVER=7.8.3
   - CABALVER=1.20
@@ -12,13 +12,36 @@ install:
   - git pull
 
 script:
+  - service postgresql start
   - cd /k3/K3-Driver
   - cabal install --only-dependencies --disable-documentation
   - cabal configure
   - cabal build
     #- scripts/tests/tests.py -l scripts/tests/passed_tests.txt
-  - ./compile.sh ../K3-Core/examples/algorithms/fibonacci.k3
-  - ./compile.sh ../K3-Core/examples/distributed/amplab/q1.k3
+    # Fibonacci:
+  - ./compile.sh -O1 ../K3-Core/examples/algorithms/fibonacci.k3
+  - ./clean.sh
+    # RS Full:
+  - ./compile.sh ../K3-Core/examples/sql/mosaic/rsfull.k3
+  - ./clean.sh
+    # RS Full w/ Optimization
+  - ./compile.sh -O1 ../K3-Core/examples/sql/mosaic/rsfull.k3
+  - ./clean.sh
+    # Amplab q1 w/ test:
+  - ./compile.sh -O1 ../K3-Core/examples/distributed/amplab/q1.k3
+  - __build/A -p ./scripts/tests/cpp/sql/q1/peers.yml
+  - ./scripts/tests/cpp/sql/check_result.sh /k3/K3-Driver/scripts/tests/cpp/sql/q1/
+  - ./clean.sh
+    # Amplab q2 w/ test:
+  - ./compile.sh -O1 ../K3-Core/examples/distributed/amplab/q2.k3
+  - __build/A -p ./scripts/tests/cpp/sql/q2/peers.yml
+  - ./scripts/tests/cpp/sql/check_result.sh /k3/K3-Driver/scripts/tests/cpp/sql/q2/
+  - ./clean.sh
+    # Amplab q3 w/ test, using pre-generated code until we fix std::move issues:
+  - cp ../K3-Core/examples/distributed/amplab/q3.cpp __build/
+  - ./compile.sh -2 ../K3-Core/examples/distributed/amplab/q3.k3
+  - __build/A -p ./scripts/tests/cpp/sql/q3/peers.yml
+  - ./scripts/tests/cpp/sql/check_result.sh /k3/K3-Driver/scripts/tests/cpp/sql/q3/
     #- ./compile.sh ../K3-Core/examples/distributed/amplab/q2.k3
 
 notifications:

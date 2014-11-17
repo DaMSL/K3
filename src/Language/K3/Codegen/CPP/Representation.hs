@@ -230,21 +230,26 @@ instance Stringifiable Declaration where
 data Statement
     = Assignment Expression Expression
     | Block [Statement]
+    | ForEach Identifier Type Expression Statement
     | Forward Declaration
     | IfThenElse Expression [Statement] [Statement]
     | Ignore Expression
+    | Pragma String
     | Return Expression
   deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Statement where
     stringify (Assignment a e) = stringify a <+> equals <+> stringify e <> semi
     stringify (Block ss) = hangBrace (vsep [stringify s | s <- ss])
+    stringify (ForEach i t e s)
+        = "for" <+> parens (stringify t <+> fromString i <> colon <+> stringify e) <+> stringify s
     stringify (Forward d) = stringify d <> semi
     stringify (IfThenElse p ts es) =
         "if" <+> parens (stringify p) <+> hangBrace (vsep $ map stringify ts)
               <> (if (null es) then empty else
                       (space <> "else" <+> hangBrace (vsep $ map stringify es)))
     stringify (Ignore e) = stringify e <> semi
+    stringify (Pragma s) = "#pragma" <+> fromString s
     stringify (Return e) = "return" <+> stringify e <> semi
 
 type IsConst = Bool
