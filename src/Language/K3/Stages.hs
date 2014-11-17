@@ -1,9 +1,12 @@
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE ViewPatterns #-}
+
 -- | High-level API to K3 toolchain stages.
 module Language.K3.Stages where
 
 import Control.Monad
 import Control.Arrow (first, second)
+import Data.Functor.Identity
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
@@ -12,6 +15,7 @@ import Language.K3.Core.Utils
 
 import Language.K3.Analysis.Properties
 import Language.K3.Analysis.HMTypes.Inference
+import Language.K3.Analysis.Effects.Core
 import Language.K3.Analysis.Effects.InsertEffects(EffectEnv)
 import qualified Language.K3.Analysis.Effects.InsertEffects as Effects
 import qualified Language.K3.Analysis.Effects.Purity        as Purity
@@ -39,8 +43,18 @@ isAnyETypeOrEffectAnn a = isAnyETypeAnn a || isAnyEEffectAnn a
 stripTypeAnns :: K3 Declaration -> K3 Declaration
 stripTypeAnns = stripDeclAnnotations (const False) isAnyETypeAnn (const False)
 
+resetEffectAnns :: K3 Declaration -> K3 Declaration
+resetEffectAnns p = runIdentity $ mapMaybeAnnotation resetF idF idF p
+  where idF = return . Just
+        resetF (DSymbol s@(tag -> SymId _)) = return $
+          case s @~ isSDeclared of
+            Just (SDeclared s') -> Just $ DSymbol s'
+            _ -> Nothing
+        resetF a = return $ Just a
+
 stripEffectAnns :: K3 Declaration -> K3 Declaration
-stripEffectAnns = stripDeclAnnotations (const False) isAnyEEffectAnn (const False)
+stripEffectAnns p = resetEffectAnns $
+  stripDeclAnnotations (const False) isAnyEEffectAnn (const False) p
 
 -- | Effects-related metadata removal, including user-specified effect signatures.
 stripAllEffectAnns :: K3 Declaration -> K3 Declaration
@@ -48,7 +62,8 @@ stripAllEffectAnns = stripDeclAnnotations isDSymbol isAnyEEffectAnn (const False
 
 -- | Single-pass composition of type and effect removal.
 stripTypeAndEffectAnns :: K3 Declaration -> K3 Declaration
-stripTypeAndEffectAnns = stripDeclAnnotations (const False) isAnyETypeOrEffectAnn (const False)
+stripTypeAndEffectAnns p = resetEffectAnns $
+  stripDeclAnnotations (const False) isAnyETypeOrEffectAnn (const False) p
 
 -- | Single-pass variant removing all effect annotations.
 stripAllTypeAndEffectAnns :: K3 Declaration -> K3 Declaration
@@ -86,20 +101,7 @@ withEffects transformF prog = inferEffects prog >>= transformF
 withTypeAndEffects :: ProgramTransform -> ProgramTransform
 withTypeAndEffects transformF prog = transformF =<< inferEffects =<< inferTypes prog
 
-{-
-wrapTypecheck :: ProgramTransform -> ProgramTransform
-wrapTypecheck transformF prog = inferFreshTypes =<< withTypecheck transformF prog
-
-wrapEffects :: ProgramTransform -> ProgramTransform
-wrapEffects transformF prog = inferFreshEffects =<< withEffects transformF prog
-
-wrapTypeAndEffects :: ProgramTransform -> ProgramTransform
-wrapTypeAndEffects transformF prog =
-  inferFreshTypesAndEffects =<< withTypeAndEffects transformF prog
--}
-
 -- Add an environment for functions that return only a program
-
 addEitherEnv :: (K3 Declaration -> K3 Declaration) -> ProgramTransform
 addEitherEnv f (prog, env) = Right (f prog, env)
 
@@ -124,14 +126,15 @@ simplify :: ProgramTransform
 simplify (prog, env) = do
   prog1 <- foldProgramConstants prog
   let prog2 = betaReductionOnProgram prog1
-  prog3 <- eliminateDeadProgramCode prog2
-  return (prog3, env)
+  --prog3 <- eliminateDeadProgramCode prog2
+  return (prog2, env)
 
 simplifyWCSE :: ProgramTransform
 simplifyWCSE p = simplify p >>= addEnv commonProgramSubexprElim
 
 streamFusion :: ProgramTransform
-streamFusion = withProperties $ \p -> addEnv inferFusableProgramApplies p >>= addEnv fuseProgramTransformers
+streamFusion = withProperties $ \p -> addEnv encodeTransformers p >>= addEnv fuseProgramFoldTransformers
+--streamFusion = withProperties $ \p -> addEnv inferFusableProgramApplies p >>= addEnv fuseProgramTransformers
 
 runPasses :: [ProgramTransform] -> K3 Declaration -> Either String (K3 Declaration, Maybe EffectEnv)
 runPasses passes d = withPasses passes (d, Nothing)
@@ -140,9 +143,9 @@ effectPasses :: [ProgramTransform]
 effectPasses = [addEnvRet Purity.runPurity]
 
 optPasses :: [ProgramTransform]
-optPasses = map prepareOpt [ (simplify,         "opt-simplify-prefuse")
-                           , (streamFusion,     "opt-fuse")
-                           , (simplify,         "opt-simplify-final") ]
+optPasses = map prepareOpt [ (simplify,         "opt-simplify-prefuse") ]
+                           --, (streamFusion,     "opt-fuse") ]
+                           --, (simplify,         "opt-simplify-final") ]
   where prepareOpt (f,i) =
           withPasses $ [inferFreshTypesAndEffects] ++ effectPasses ++ [withRepair i f]
 
