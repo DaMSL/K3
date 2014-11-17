@@ -6,6 +6,7 @@ module Language.K3.Driver.Options where
 import Control.Applicative
 import Options.Applicative
 
+import Data.List
 import Data.List.Split
 import Data.Maybe
 
@@ -30,6 +31,7 @@ data Options = Options {
     , paths     :: PathOptions
     , input     :: FilePath
     , noFeed    :: Bool
+    , noMP      :: Bool
     , mpOpts    :: Maybe MetaprogramOptions
     }
   deriving (Eq, Read, Show)
@@ -49,8 +51,16 @@ data PrintMode
 
 -- | Parsing options.
 data ParseOptions = ParseOptions { parsePrintMode :: PrintMode,
-                                   poTransform :: TransformOptions}
+                                   poStages       :: ParseStageOptions,
+                                   poTransform    :: TransformOptions }
                     deriving (Eq, Read, Show)
+
+-- | Stage options used for parse-only mode.
+type ParseStageOptions = [ParseStage]
+
+data ParseStage = PSOptimization
+                | PSCodegen
+                deriving (Eq, Ord, Read, Show)
 
 -- | Metaprogramming options
 data MetaprogramOptions
@@ -116,7 +126,7 @@ data TransformMode
     | Purity
     | ReadOnlyBinds
     | TriggerSymbols
-  deriving (Eq, Read, Show)
+  deriving (Eq, Ord, Read, Show)
 
 type OptimizationLevel = Int
 
@@ -179,9 +189,17 @@ syntaxPrintOpt :: Parser PrintMode
 syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
                                     <> help "Print syntax output" )
 
+parseStageOpt :: Parser ParseStageOptions
+parseStageOpt = nub . concat <$> many parseStage
+
+parseStage :: Parser [ParseStage]
+parseStage = ((:[]) <$> pstageOpt) <|> ((:[]) <$> pstageCG)
+  where pstageOpt = flag' PSOptimization ( long "fpopt" <> help "Parse with an optimization pass" )
+        pstageCG  = flag' PSCodegen      ( long "fpcg"  <> help "Parse with a codegen pass" )
+
 -- | Parse mode
 parseOptions :: Parser Mode
-parseOptions = Parse <$> (ParseOptions <$> printModeOpt <*> transformOptions)
+parseOptions = Parse <$> (ParseOptions <$> printModeOpt <*> parseStageOpt <*> transformOptions)
 
 -- | Transformation options
 transformOptions :: Parser TransformOptions
@@ -553,6 +571,11 @@ noFeedOpt = switch (
        long "nofeed"
     <> help "Process a program, ignoring data feeds." )
 
+noMPOpt :: Parser Bool
+noMPOpt = switch (
+       long "nometaprogram"
+    <> help "Process a program, skipping metaprogram evaluation." )
+
 inputOptions :: Parser [FilePath]
 inputOptions = fileOrStdin <$> (many $ argument str (
         metavar "FILE"
@@ -567,9 +590,10 @@ programOptions = mkOptions <$> modeOptions
                            <*> informOptions
                            <*> pathOptions
                            <*> noFeedOpt
+                           <*> noMPOpt
                            <*> metaprogramOptions
                            <*> inputOptions
-    where mkOptions m i p nf mp is = Options m i p (last is) nf mp
+    where mkOptions m i p nf nmp mp is = Options m i p (last is) nf nmp mp
 
 {- Instance definitions -}
 

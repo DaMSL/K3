@@ -4,6 +4,7 @@ import Control.Monad
 import Control.Arrow (first)
 import Data.Char
 import Data.List(foldl')
+import Debug.Trace
 
 import qualified Options.Applicative as Options
 import Options.Applicative((<>), (<*>))
@@ -20,9 +21,8 @@ import Language.K3.Metaprogram.Evaluation
 
 import Language.K3.Analysis.Interpreter.BindAlias
 import Language.K3.Analysis.AnnotationGraph
--- import Language.K3.Analysis.Effect
 import Language.K3.Analysis.HMTypes.Inference
--- import Language.K3.Analysis.Properties
+
 import qualified Language.K3.Analysis.Effects.InsertEffects as Effects
 import qualified Language.K3.Analysis.Effects.Purity        as Pure
 
@@ -31,7 +31,10 @@ import qualified Language.K3.Transform.Simplification as Simplification
 import qualified Language.K3.Transform.Profiling      as Profiling
 import qualified Language.K3.Transform.RemoveROBinds  as RemoveROBinds
 import qualified Language.K3.Transform.TriggerSymbols as TriggerSymbols
+
 import Language.K3.Transform.Common(cleanGeneration)
+
+import Language.K3.Stages
 
 import Language.K3.Driver.Batch
 import Language.K3.Driver.Common
@@ -55,12 +58,20 @@ run opts = do
   parseResult  <- parseK3Input (noFeed opts) (includes $ paths opts) (input opts)
   case parseResult of
     Left err      -> parseError err
-    Right parsedP -> evalMetaprogram (metaprogramOpts $ mpOpts opts) Nothing Nothing parsedP
-                       >>= either spliceError (dispatch $ mode opts)
+    Right parsedP -> if noMP opts then dispatch (mode opts) parsedP
+                     else metaprogram opts parsedP
 
   where
+    metaprogram :: Options -> K3 Declaration -> IO ()
+    metaprogram opts' p = do
+      mp <- evalMetaprogram (metaprogramOpts $ mpOpts opts') Nothing Nothing p
+      either spliceError (dispatch $ mode opts') mp
+
     dispatch :: Mode -> K3 Declaration -> IO ()
-    dispatch (Parse popts) p = analyzeThenPrint popts p
+    dispatch (Parse popts) p = if not $ null $ poStages popts
+                                then runStagesThenPrint popts p
+                                else analyzeThenPrint popts p
+
     dispatch (Compile c)   p = compile c p
     dispatch (Interpret i) p = interpret i p
     dispatch (Typecheck t) p = case chooseTypechecker t p of
@@ -99,6 +110,13 @@ run opts = do
     printer PrintAST    = putStrLn . pretty
     printer PrintSyntax = either syntaxError putStrLn . programS
 
+    runStagesThenPrint popts prog = do
+      let sprogE = foldM (\p (stg, f) -> if stg `elem` (poStages popts) then f p else Right p)
+                        prog
+                        [ (PSOptimization, (\p -> runOptPasses p >>= return . fst))
+                        , (PSCodegen, flip runCGPasses 3)]
+      either putStrLn (printer (parsePrintMode popts) . stripAllProperties . stripTypeAndEffectAnns) sprogE
+
     analyzeThenPrint popts prog = do
       let (p, str) = transform (poTransform popts) prog
       printer (parsePrintMode popts) p
@@ -106,23 +124,27 @@ run opts = do
 
       -- Using arrow combinators to make this simpler
       -- first/second passes the other part of the pair straight through
-    --analyzer Conflicts x           = first getAllConflicts x
-    --analyzer Tasks x               = first getAllTasks x
-    --analyzer ProgramTasks (p,s)    = (p, s ++ show (getProgramTasks p))
-    analyzer ProxyPaths x          = first labelBindAliases x
+    analyzer :: TransformMode -> (K3 Declaration, String) -> (K3 Declaration, String)
+    --analyzer Conflicts x                   = first getAllConflicts x
+    --analyzer Tasks x                       = first getAllTasks x
+    --analyzer ProgramTasks (p,s)            = (p, s ++ show (getProgramTasks p))
+    analyzer ProxyPaths x                  = first labelBindAliases x
     analyzer AnnotationProvidesGraph (p,s) = (p, s ++ show (providesGraph p))
-    analyzer FlatAnnotations (p,s) = (p, s ++ show (flattenAnnotations p))
-    analyzer EffectNormalization x = first Normalization.normalizeProgram x
-    analyzer FoldConstants x       = wrapEither Simplification.foldProgramConstants x
-    --old: analyzer Effects x             = wrapEither analyzeEffects . wrapEither quickTypecheck $ x
-    analyzer Effects x             = first (fst . Effects.runConsolidatedAnalysis) x
-    analyzer DeadCodeElimination x =
+    analyzer FlatAnnotations (p,s)         = (p, s ++ show (flattenAnnotations p))
+    analyzer EffectNormalization x         = first Normalization.normalizeProgram x
+    analyzer FoldConstants x               = wrapEither Simplification.foldProgramConstants x
+
+    analyzer Effects (p,s) = let (np,fenv) = Effects.runConsolidatedAnalysis p
+                             in (Effects.expandProgram fenv np, s)
+
+    analyzer DeadCodeElimination x  =
       wrapEither (Simplification.eliminateDeadProgramCode . fst . Effects.runConsolidatedAnalysis) x
-    analyzer Profiling x           = first (cleanGeneration "profiling" . Profiling.addProfiling) x
-    analyzer Purity x              = first ((\(d,e) -> Pure.runPurity e d) . Effects.runConsolidatedAnalysis) x
-    analyzer ReadOnlyBinds x       = first (cleanGeneration "ro_binds" . RemoveROBinds.transform) x
-    analyzer TriggerSymbols x      = wrapEither TriggerSymbols.triggerSymbols x
-    analyzer a (p,s)               = (p, unwords [s, "unhandled analysis", show a])
+
+    analyzer Profiling x      = first (cleanGeneration "profiling" . Profiling.addProfiling) x
+    analyzer Purity x         = first ((\(d,e) -> Pure.runPurity e d) . Effects.runConsolidatedAnalysis) x
+    analyzer ReadOnlyBinds x  = first (cleanGeneration "ro_binds" . RemoveROBinds.transform) x
+    analyzer TriggerSymbols x = wrapEither TriggerSymbols.triggerSymbols x
+    analyzer a (p,s)          = (p, unwords [s, "unhandled analysis", show a])
 
     -- Option handling utilities
     metaprogramOpts (Just mpo) =
