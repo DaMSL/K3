@@ -28,6 +28,7 @@ import Data.Map ( Map )
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Tree
+import Debug.Trace
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -114,12 +115,17 @@ type TMEnv = [(Identifier, (QPType, Bool))]
 -- | A type variable environment.
 data TVEnv = TVEnv QTVarId (Map QTVarId (K3 QType)) deriving Show
 
+-- | A cyclic variable environment (tracks whether an identifer uses cyclic scope).
+type TCEnv = Map Identifier Bool
+
 -- | A type inference environment.
 data TIEnv = TIEnv {
-               tenv   :: TEnv,
-               taenv  :: TAEnv,
-               tdvenv :: TDVEnv,
-               tvenv  :: TVEnv
+               tenv    :: TEnv,
+               taenv   :: TAEnv,
+               tdvenv  :: TDVEnv,
+               tvenv   :: TVEnv,
+               tcyclic :: TEnv,
+               tcenv   :: TCEnv
             }
 
 -- | The type inference monad
@@ -139,6 +145,11 @@ text env x t = (x,t) : env
 
 tdel :: TEnv -> Identifier -> TEnv
 tdel env x = deleteBy ((==) `on` fst) (x, QPType [] tint) env
+
+-- Return entries in env2 different, and not present in from env1
+tdiff :: TEnv -> TEnv -> (TEnv, TEnv)
+tdiff env1 env2 = partition (\(i,_) -> maybe False (const True) $ lookup i env1)
+                    $ filter (`notElem` env1) env2
 
 
 {- TAEnv helpers -}
@@ -167,13 +178,26 @@ tdvext env x v = (x,v) : env
 tdvdel :: TDVEnv -> Identifier -> TDVEnv
 tdvdel env x = deleteBy ((==) `on` fst) (x,-1) env
 
+{- Cyclic metadata helpers -}
+tcenv0 :: TCEnv
+tcenv0 = Map.empty
+
+tclkup :: TCEnv -> Identifier -> Either String Bool
+tclkup env x = maybe err Right $ Map.lookup x env
+  where err = Left $ "Unbound cyclic scope info in environment: " ++ x
+
+tcext :: TCEnv -> Identifier -> Bool -> TCEnv
+tcext env x c = Map.insert x c env
+
 {- TIEnv helpers -}
 tienv0 :: TIEnv
 tienv0 = TIEnv {
-           tenv = tenv0,
-           taenv = taenv0,
-           tdvenv = tdvenv0,
-           tvenv = tvenv0
+           tenv    = tenv0,
+           taenv   = taenv0,
+           tdvenv  = tdvenv0,
+           tvenv   = tvenv0,
+           tcyclic = tenv0,
+           tcenv   = tcenv0
          }
 
 -- | Modifiers.
@@ -189,6 +213,12 @@ mtidve f env = env {tdvenv = f $ tdvenv env}
 mtive :: (TVEnv -> TVEnv) -> TIEnv -> TIEnv
 mtive f env = env {tvenv = f $ tvenv env}
 
+mtice :: (TCEnv -> TCEnv) -> TIEnv -> TIEnv
+mtice f env = env {tcenv = f $ tcenv env}
+
+mticyce :: (TEnv -> TEnv) -> TIEnv -> TIEnv
+mticyce f env = env {tcyclic = f $ tcyclic env}
+
 tilkupe :: TIEnv -> Identifier -> Either String QPType
 tilkupe env x = tlkup (tenv env) x
 
@@ -198,6 +228,9 @@ tilkupa env x = talkup (taenv env) x
 tilkupdv :: TIEnv -> Identifier -> Either String (K3 QType)
 tilkupdv env x = tdvlkup (tdvenv env) x
 
+tilkupc :: TIEnv -> Identifier -> Either String Bool
+tilkupc env x = tclkup (tcenv env) x
+
 tiexte :: TIEnv -> Identifier -> QPType -> TIEnv
 tiexte env x t = env {tenv=text (tenv env) x t}
 
@@ -206,6 +239,9 @@ tiexta env x ate = env {taenv=taext (taenv env) x ate}
 
 tiextdv :: TIEnv -> Identifier -> QTVarId -> TIEnv
 tiextdv env x v = env {tdvenv=tdvext (tdvenv env) x v}
+
+tiextc :: TIEnv -> Identifier -> Bool -> TIEnv
+tiextc env x cyc = env {tcenv=tcext (tcenv env) x cyc}
 
 tidele :: TIEnv -> Identifier -> TIEnv
 tidele env i = env {tenv=tdel (tenv env) i}
@@ -295,6 +331,33 @@ occurs v t tve = acyclicOccurs [] t
         acyclicOccurs _ _ = False
 
 
+{- Cyclic environment helpers -}
+resetCyclicEnv :: TIEnv -> TIEnv
+resetCyclicEnv env = env {tenv = tenv0, tcyclic = tenv env}
+
+popCyclicEnv :: TIEnv -> (TEnv, TEnv, TIEnv)
+popCyclicEnv env = (tenv env, tcyclic env, env {tenv = tcyclic env})
+
+-- Given the original linear type and cyclic type envs, restore them
+-- while pushing any changes in the new cyclic type env to the linear type env.
+pushCyclicEnv :: TEnv -> TEnv -> TIEnv -> TIEnv
+pushCyclicEnv te tc env =
+  let replace acc (i,t) = map (\(i',t') -> if i == i' then (i,t) else (i',t')) acc
+      (tcnew, tcdiff)   = tdiff tc $ tenv env
+      nte               = (foldl replace te tcdiff) ++ tcnew
+  in env {tenv = nte, tcyclic = tenv env}
+
+withCyclicEnv :: Identifier -> TInfM a -> TInfM a
+withCyclicEnv n m = do
+  (te, tce, env) <- get >>= return . popCyclicEnv
+  put env
+  r <- m
+  env' <- get
+  nte  <- either left (return . text te n) $ tilkupe env' n
+  put $ pushCyclicEnv nte tce env'
+  return r
+
+
 {- TInfM helpers -}
 
 runTInfM :: TIEnv -> TInfM a -> (Either String a, TIEnv)
@@ -310,6 +373,7 @@ liftEitherM = either left return
 
 getTVE :: TInfM TVEnv
 getTVE = get >>= return . tvenv
+
 
 -- Allocate a fresh type variable
 newtv :: TInfM (K3 QType)
@@ -857,7 +921,8 @@ inferProgramTypes :: K3 Declaration -> Either String (K3 Declaration)
 inferProgramTypes prog = do
     (_, initEnv) <- let (a,b) = runTInfM tienv0 $ initializeTypeEnv
                     in a >>= return . (, b)
-    (nProg, finalEnv) <- let (a,b) = runTInfM initEnv $ mapProgram declF annMemF exprF Nothing prog
+    (nProg, finalEnv) <- let m     = mapProgramWithDecl declF annMemF exprF Nothing prog
+                             (a,b) = runTInfM (resetCyclicEnv initEnv) m
                          in a >>= return . (, b)
     localLog $ "Final type environment"
     localLog $ pretty finalEnv
@@ -879,11 +944,15 @@ inferProgramTypes prog = do
     uniqueErr s n = left $ unwords ["Invalid unique", s, "identifier:", n]
 
     initDeclF :: K3 Declaration -> TInfM (K3 Declaration)
-    initDeclF d@(tag -> DGlobal n t _) =
-      withUnique n $ qpType t >>= \qpt -> modify (\env -> tiexte env n qpt) >> return d
+    initDeclF d@(tag -> DGlobal n t _) = withUnique n $ do
+      qpt <- qpType t
+      modify (\env -> tiextc (tiexte env n qpt) n $ isTFunction t)
+      return d
 
-    initDeclF d@(tag -> DTrigger n t _) =
-      withUnique n $ trigType t >>= \qpt -> modify (\env -> tiexte env n qpt) >> return d
+    initDeclF d@(tag -> DTrigger n t _) = withUnique n $ do
+        qpt <- trigType t
+        modify (\env -> tiextc (tiexte env n qpt) n True)
+        return d
       where trigType x = qType x >>= \qt -> return (ttrg qt) >>= monomorphize
 
     initDeclF d@(tag -> DDataAnnotation n tdeclvars mems) = withUniqueA n $ mkAnnMemEnv >> return d
@@ -907,7 +976,7 @@ inferProgramTypes prog = do
                      -> TInfM (Maybe (K3 Expression))
     unifyInitializer n qptE eOpt = do
       qpt <- case qptE of
-              Left (Nothing)   -> get >>= \env -> liftEitherM (tilkupe env n)
+              Left Nothing     -> get >>= \env -> liftEitherM (tilkupe env n)
               Left (Just qpt') -> modify (\env -> tiexte env n qpt') >> return qpt'
               Right qpt'       -> return qpt'
 
@@ -921,8 +990,16 @@ inferProgramTypes prog = do
 
         Nothing -> return Nothing
 
+    asCyclic :: Identifier -> TInfM a -> TInfM a
+    asCyclic n m = do
+      cyclic <- get >>= return . flip tilkupc n
+      case cyclic of
+        Left err -> left err
+        Right True -> withCyclicEnv n m
+        Right _    -> m
+
     declF :: K3 Declaration -> TInfM (K3 Declaration)
-    declF d@(tag -> DGlobal n t eOpt) = do
+    declF d@(tag -> DGlobal n t eOpt) = asCyclic n $ do
       qptE <- if isTFunction t then return (Left Nothing)
                                else (qpType t >>= return . Left . Just)
       if isTEndpoint t
@@ -930,14 +1007,15 @@ inferProgramTypes prog = do
         else unifyInitializer n qptE eOpt >>= \neOpt ->
                return $ (Node (DGlobal n t neOpt :@: annotations d) $ children d)
 
-    declF d@(tag -> DTrigger n t e) =
-      get >>= \env -> liftEitherM (tilkupe env n) >>= \(QPType qtvars qt) ->
-        case tag qt of
-          QTCon QTTrigger ->
-            let nqptE = Right $ QPType qtvars $ tfun (head $ children qt) tunit
-            in unifyInitializer n nqptE (Just e) >>= \neOpt ->
-                 return $ maybe d (\ne -> Node (DTrigger n t ne :@: annotations d) $ children d) neOpt
-          _ -> trigTypeErr n
+    declF d@(tag -> DTrigger n t e) = asCyclic n $ do
+      env <- get
+      QPType qtvars qt <- liftEitherM (tilkupe env n)
+      case tag qt of
+        QTCon QTTrigger ->
+          let nqptE = Right $ QPType qtvars $ tfun (head $ children qt) tunit
+          in unifyInitializer n nqptE (Just e) >>= \neOpt ->
+               return $ maybe d (\ne -> Node (DTrigger n t ne :@: annotations d) $ children d) neOpt
+        _ -> trigTypeErr n
 
     declF d@(tag -> DDataAnnotation n tvars mems) =
         get >>= \env -> liftEitherM (tilkupa env n) >>= chkAnnMemEnv >>= \nmems ->
@@ -959,11 +1037,18 @@ inferProgramTypes prog = do
 
     declF d = return d
 
-    annMemF :: AnnMemDecl -> TInfM AnnMemDecl
-    annMemF mem = return mem
+    annMemF :: K3 Declaration -> AnnMemDecl -> TInfM AnnMemDecl
+    annMemF _ mem = return mem
 
-    exprF :: K3 Expression -> TInfM (K3 Expression)
-    exprF e = inferExprTypes e
+    exprF :: K3 Declaration -> K3 Expression -> TInfM (K3 Expression)
+    exprF d e = case nameOfDecl d of
+      Just n  -> asCyclic n $ inferExprTypes e
+      Nothing -> inferExprTypes e
+
+    nameOfDecl :: K3 Declaration -> Maybe Identifier
+    nameOfDecl (tag -> DGlobal n _ _)  = Just n
+    nameOfDecl (tag -> DTrigger n _ _) = Just n
+    nameOfDecl _ = Nothing
 
     mkErrorF :: K3 Expression -> (String -> String) -> (String -> String)
     mkErrorF e f s = spanAsString ++ f s
@@ -1490,10 +1575,12 @@ translateQType spanOpt qt = mapTree translateWithMutability qt
 {- Instances -}
 instance Pretty TIEnv where
   prettyLines e =
-    ["TEnv: "]   %$ (indent 2 $ prettyLines $ tenv   e) ++
-    ["TAEnv: "]  %$ (indent 2 $ prettyLines $ taenv  e) ++
-    ["TDVEnv: "] %$ (indent 2 $ prettyLines $ tdvenv e) ++
-    ["TVEnv: "]  %$ (indent 2 $ prettyLines $ tvenv  e)
+    ["TEnv: "]    %$ (indent 2 $ prettyLines $ tenv    e) ++
+    ["TAEnv: "]   %$ (indent 2 $ prettyLines $ taenv   e) ++
+    ["TDVEnv: "]  %$ (indent 2 $ prettyLines $ tdvenv  e) ++
+    ["TVEnv: "]   %$ (indent 2 $ prettyLines $ tvenv   e) ++
+    ["TCyclic: "] %$ (indent 2 $ prettyLines $ tcyclic e) ++
+    ["TCEnv: "]   %$ (indent 2 $ prettyLines $ tcenv   e)
 
 instance Pretty TEnv where
   prettyLines te = prettyPairList te
@@ -1510,6 +1597,9 @@ instance Pretty TDVEnv where
 instance Pretty TVEnv where
   prettyLines (TVEnv n m) = ["# vars: " ++ show n] ++
                             (Map.foldlWithKey (\acc k v -> acc ++ prettyPair (k,v)) [] m)
+
+instance Pretty TCEnv where
+  prettyLines tce = Map.foldlWithKey (\acc k v -> acc ++ [k ++ " => " ++ show v]) [] tce
 
 instance Pretty (QPType, Bool) where
   prettyLines (a,b) = (if b then ["(Lifted) "] else ["(Attr) "]) %+ prettyLines a

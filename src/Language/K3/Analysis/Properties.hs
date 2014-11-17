@@ -25,7 +25,7 @@ type NamedEnv a = [(Identifier, a)]
 type PList = [(Identifier, Maybe (K3 Literal))]
 type PEnv  = NamedEnv PList
 type PAEnv = NamedEnv PEnv
-type PIEnv = (PEnv, PAEnv)
+data PIEnv = PIEnv { penv :: PEnv, paenv :: PAEnv }
 type PInfM = EitherT String (State PIEnv)
 
 {- NamedEnv helpers -}
@@ -103,37 +103,37 @@ padelm env x y = snd $
 
 {- PIEnv helpers -}
 pienv0 :: PIEnv
-pienv0 = (penv0, paenv0)
+pienv0 = PIEnv {penv=penv0, paenv=paenv0}
 
 pilkupe :: PIEnv -> Identifier -> Either String PList
-pilkupe (pe, _) = plkup pe
+pilkupe env = plkup $ penv env
 
 pilkupa :: PIEnv -> Identifier -> Either String PEnv
-pilkupa (_, pa) = palkup pa
+pilkupa env = palkup $ paenv env
 
 piexte :: PIEnv -> Identifier -> PList -> PIEnv
-piexte (pe, pa) i pl = (pext pe i pl, pa)
+piexte env i pl = env {penv=pext (penv env) i pl}
 
 piextep :: PIEnv -> Identifier -> Identifier -> Maybe (K3 Literal) -> PIEnv
-piextep (pe, pa) i j p = (pextp pe i j p, pa)
+piextep env i j p = env {penv=pextp (penv env) i j p}
 
 piexta :: PIEnv -> Identifier -> PEnv -> PIEnv
-piexta (pe, pa) i ape = (pe, paext pa i ape)
+piexta env i ape = env {paenv=paext (paenv env) i ape}
 
 piextam :: PIEnv -> Identifier -> Identifier -> PList -> PIEnv
-piextam (pe, pa) i j pl = (pe, paextm pa i j pl)
+piextam env i j pl = env {paenv=paextm (paenv env) i j pl}
 
 pidele :: PIEnv -> Identifier -> PIEnv
-pidele (pe, pa) i = (pdel pe i, pa)
+pidele env i = env {penv=pdel (penv env) i}
 
 pidelep :: PIEnv -> Identifier -> Identifier -> PIEnv
-pidelep (pe, pa) i j = (pdelp pe i j, pa)
+pidelep env i j = env {penv=pdelp (penv env) i j}
 
 pidela :: PIEnv -> Identifier -> PIEnv
-pidela (pe, pa) i = (pe, padel pa i)
+pidela env i = env {paenv=padel (paenv env) i}
 
 pidelam :: PIEnv -> Identifier -> Identifier -> PIEnv
-pidelam (pe, pa) i j = (pe, padelm pa i j)
+pidelam env i j = env {paenv=padelm (paenv env) i j}
 
 
 {- PInfM helpers -}
@@ -149,14 +149,12 @@ inferProgramUsageProperties prog =
     let (result, initEnv) = runPInfM pienv0 $ mapProgram initDeclF return return Nothing prog
     in result >> (fst $ runPInfM initEnv $ mapProgram declF annMemF exprF Nothing prog)
   where
-        initDeclF d@(tag &&& annotations -> (DGlobal n t _, anns)) | isTFunction t = extDeclProps n anns >> return d
+        initDeclF d@(tag &&& annotations -> (DGlobal n _ _, anns))  = extDeclProps n anns >> return d
         initDeclF d@(tag &&& annotations -> (DTrigger n _ _, anns)) = extDeclProps n anns >> return d
         initDeclF d@(tag -> DDataAnnotation n _ mems) = extAnnProps n mems >> return d
         initDeclF d = return d
 
-        declF d@(tag &&& annotations -> (DGlobal n t _, anns)) | not (isTFunction t) = extDeclProps n anns >> return d
-        declF d = return d
-
+        declF   d = return d
         annMemF m = return m
         exprF   e = inferExprUsageProperties e
 
