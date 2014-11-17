@@ -56,8 +56,8 @@ data ImperativeExpression
 -- | Constant expression values.
 data Constant
     = CBool    Bool
-    | CInt     Int
     | CByte    Word8
+    | CInt     Int
     | CReal    Double
     | CString  String
     | CNone    NoneMutability

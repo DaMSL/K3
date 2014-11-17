@@ -32,10 +32,14 @@ module Language.K3.Core.Utils
 , foldIn1RebuildTree
 , foldMapIn1RebuildTree
 
+, foldProgramWithDecl
 , foldProgram
+, mapProgramWithDecl
 , mapProgram
 , foldExpression
 , mapExpression
+
+, mapMaybeAnnotation
 , mapAnnotation
 , mapExprAnnotation
 
@@ -43,6 +47,7 @@ module Language.K3.Core.Utils
 , foldMapReturnExpression
 , mapReturnExpression
 
+, defaultExpression
 , freeVariables
 , bindingVariables
 , modifiedVariables
@@ -66,6 +71,7 @@ import Control.Arrow
 import Control.Monad
 import Data.Functor.Identity
 import Data.List
+import Data.Maybe
 import Data.Tree
 
 import Language.K3.Core.Annotation
@@ -73,6 +79,11 @@ import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
+
+import qualified Language.K3.Core.Constructor.Expression as EC
+
+import Language.K3.Utils.Pretty hiding ( wrap )
+
 import Language.Haskell.TH hiding ( Type )
 
 -- * Generated routines
@@ -316,6 +327,53 @@ foldMapIn1RebuildTree preCh1F postCh1F allChF tdAcc n@(Node _ ch) = do
   where rcr = foldMapIn1RebuildTree preCh1F postCh1F allChF
 
 -- | Fold a declaration and expression reducer and accumulator over the given program.
+foldProgramWithDecl :: (Monad m)
+                    => (a -> K3 Declaration -> m (a, K3 Declaration))
+                    -> (a -> K3 Declaration -> AnnMemDecl     -> m (a, AnnMemDecl))
+                    -> (a -> K3 Declaration -> K3 Expression  -> m (a, K3 Expression))
+                    -> Maybe (a -> K3 Declaration -> K3 Type  -> m (a, K3 Type))
+                    -> a -> K3 Declaration
+                    -> m (a, K3 Declaration)
+foldProgramWithDecl declF annMemF exprF typeFOpt a prog = foldRebuildTree rebuildDecl a prog
+  where
+    rebuildDecl acc ch d@(tag &&& annotations -> (DGlobal i t eOpt, anns)) = do
+      (acc2, nt)    <- onType acc d t
+      (acc3, neOpt) <- rebuildInitializer acc2 d eOpt
+      declF acc3 $ Node (DGlobal i nt neOpt :@: anns) ch
+
+    rebuildDecl acc ch d@(tag &&& annotations -> (DTrigger i t e, anns)) = do
+      (acc2, nt) <- onType acc d t
+      (acc3, ne) <- exprF acc2 d e
+      declF acc3 $ Node (DTrigger i nt ne :@: anns) ch
+
+    rebuildDecl acc ch d@(tag &&& annotations -> (DDataAnnotation i tVars mems, anns)) = do
+      (acc2, nMems) <- foldM (rebuildAnnMem d) (acc, []) mems
+      declF acc2 $ Node (DDataAnnotation i tVars nMems :@: anns) ch
+
+    rebuildDecl acc ch (Node t _) = declF acc $ Node t ch
+
+    rebuildAnnMem d (acc, memAcc) (Lifted p n t eOpt anns) =
+      rebuildMem d acc memAcc t eOpt $ \(nt, neOpt) -> Lifted p n nt neOpt anns
+
+    rebuildAnnMem d (acc, memAcc) (Attribute p n t eOpt anns) =
+      rebuildMem d acc memAcc t eOpt $ \(nt, neOpt) -> Attribute p n nt neOpt anns
+
+    rebuildAnnMem d (acc, memAcc) (MAnnotation p n anns) = do
+      (acc2, nMem) <- annMemF acc d $ MAnnotation p n anns
+      return (acc2, memAcc ++ [nMem])
+
+    rebuildMem d acc memAcc t eOpt rebuildF = do
+      (acc2, nt) <- onType acc d t
+      (acc3, neOpt) <- rebuildInitializer acc2 d eOpt
+      (acc4, nMem)  <- annMemF acc3 d $ rebuildF (nt, neOpt)
+      return (acc4, memAcc ++ [nMem])
+
+    rebuildInitializer acc d eOpt =
+      maybe (return (acc, Nothing)) (\e -> exprF acc d e >>= return . fmap Just) eOpt
+
+    onType acc d t = maybe (return (acc,t)) (\f -> f acc d t) typeFOpt
+
+-- | Variant of the foldProgramWithDecl function, ignoring the parent declaration.
 foldProgram :: (Monad m)
             => (a -> K3 Declaration -> m (a, K3 Declaration))
             -> (a -> AnnMemDecl     -> m (a, AnnMemDecl))
@@ -323,45 +381,25 @@ foldProgram :: (Monad m)
             -> Maybe (a -> K3 Type  -> m (a, K3 Type))
             -> a -> K3 Declaration
             -> m (a, K3 Declaration)
-foldProgram declF annMemF exprF typeFOpt a prog = foldRebuildTree rebuildDecl a prog
-  where
-    rebuildDecl acc ch (tag &&& annotations -> (DGlobal i t eOpt, anns)) = do
-      (acc2, nt)    <- onType acc t
-      (acc3, neOpt) <- rebuildInitializer acc2 eOpt
-      declF acc3 $ Node (DGlobal i nt neOpt :@: anns) ch
+foldProgram declF annMemF exprF typeFOpt a prog =
+  foldProgramWithDecl declF (ignore2 annMemF) (ignore2 exprF) (ignore2Opt typeFOpt) a prog
+  where ignore2 f = \x _ y -> f x y
+        ignore2Opt fOpt = maybe Nothing (\f -> Just $ \x _ y -> f x y) fOpt
 
-    rebuildDecl acc ch (tag &&& annotations -> (DTrigger i t e, anns)) = do
-      (acc2, nt) <- onType acc t
-      (acc3, ne) <- exprF acc2 e
-      declF acc3 $ Node (DTrigger i nt ne :@: anns) ch
-
-    rebuildDecl acc ch (tag &&& annotations -> (DDataAnnotation i tVars mems, anns)) = do
-      (acc2, nMems) <- foldM rebuildAnnMem (acc, []) mems
-      declF acc2 $ Node (DDataAnnotation i tVars nMems :@: anns) ch
-
-    rebuildDecl acc ch (Node t _) = declF acc $ Node t ch
-
-    rebuildAnnMem (acc, memAcc) (Lifted p n t eOpt anns) =
-      rebuildMem acc memAcc t eOpt $ \(nt, neOpt) -> Lifted p n nt neOpt anns
-
-    rebuildAnnMem (acc, memAcc) (Attribute p n t eOpt anns) =
-      rebuildMem acc memAcc t eOpt $ \(nt, neOpt) -> Attribute p n nt neOpt anns
-
-    rebuildAnnMem (acc, memAcc) (MAnnotation p n anns) = do
-      (acc2, nMem) <- annMemF acc $ MAnnotation p n anns
-      return (acc2, memAcc ++ [nMem])
-
-    rebuildMem acc memAcc t eOpt rebuildF = do
-      (acc2, nt) <- onType acc t
-      (acc3, neOpt) <- rebuildInitializer acc2 eOpt
-      (acc4, nMem)  <- annMemF acc3 $ rebuildF (nt, neOpt)
-      return (acc4, memAcc ++ [nMem])
-
-    rebuildInitializer acc eOpt =
-      maybe (return (acc, Nothing)) (\e -> exprF acc e >>= return . fmap Just) eOpt
-
-    onType acc t = maybe (return (acc,t)) (\f -> f acc t) typeFOpt
-
+-- | Fold a declaration, expression and annotation member transformer over the given program.
+--   This variant uses transformer functions that require the containing declaration.
+mapProgramWithDecl :: (Monad m)
+                   => (K3 Declaration -> m (K3 Declaration))
+                   -> (K3 Declaration -> AnnMemDecl     -> m AnnMemDecl)
+                   -> (K3 Declaration -> K3 Expression  -> m (K3 Expression))
+                   -> Maybe (K3 Declaration -> K3 Type  -> m (K3 Type))
+                   -> K3 Declaration
+                   -> m (K3 Declaration)
+mapProgramWithDecl declF annMemF exprF typeFOpt prog = do
+    (_, r) <- foldProgramWithDecl (wrap declF) (wrap2 annMemF) (wrap2 exprF) (maybe Nothing (Just . wrap2) $ typeFOpt) () prog
+    return r
+  where wrap  f _ x   = f x >>= return . ((), )
+        wrap2 f _ d x = f d x >>= return . ((), )
 
 -- | Fold a declaration, expression and annotation member transformer over the given program.
 mapProgram :: (Monad m)
@@ -391,22 +429,35 @@ mapExpression exprF prog = foldProgram returnPair returnPair wrapExprF Nothing (
   where returnPair a b = return (a,b)
         wrapExprF a e = exprF e >>= return . (a,)
 
--- | Map a function over all program annotations.
+-- | Map a function over all program annotations, filtering null returns.
+mapMaybeAnnotation :: (Applicative m, Monad m)
+                   => (Annotation Declaration -> m (Maybe (Annotation Declaration)))
+                   -> (Annotation Expression  -> m (Maybe (Annotation Expression)))
+                   -> (Annotation Type        -> m (Maybe (Annotation Type)))
+                   -> K3 Declaration
+                   -> m (K3 Declaration)
+mapMaybeAnnotation declF exprF typeF = mapProgram onDecl onMem onExpr (Just onType)
+  where onDecl d = nodeF declF d
+        onMem (Lifted    p n t eOpt anns) = memF (Lifted    p n) t eOpt anns
+        onMem (Attribute p n t eOpt anns) = memF (Attribute p n) t eOpt anns
+        onMem (MAnnotation p n anns)      = mapM declF anns >>= \nanns -> return $ MAnnotation p n $ catMaybes nanns
+
+        memF ctor t eOpt anns = ctor <$> onType t
+                                     <*> maybe (return Nothing) (\e -> onExpr e >>= return . Just) eOpt
+                                     <*> (mapM declF anns >>= return . catMaybes)
+
+        onExpr e = modifyTree (nodeF exprF) e
+        onType t = modifyTree (nodeF typeF) t
+        nodeF f (Node (tg :@: anns) ch) = mapM f anns >>= \nanns -> return $ Node (tg :@: catMaybes nanns) ch
+
 mapAnnotation :: (Applicative m, Monad m)
               => (Annotation Declaration -> m (Annotation Declaration))
               -> (Annotation Expression  -> m (Annotation Expression))
               -> (Annotation Type        -> m (Annotation Type))
               -> K3 Declaration
               -> m (K3 Declaration)
-mapAnnotation declF exprF typeF = mapProgram onDecl onMem onExpr (Just onType)
-  where onDecl d = nodeF declF d
-        onMem (Lifted    p n t eOpt anns) = Lifted    p n <$> onType t <*> maybe (return Nothing) (\e -> onExpr e >>= return . Just) eOpt <*> mapM declF anns
-        onMem (Attribute p n t eOpt anns) = Attribute p n <$> onType t <*> maybe (return Nothing) (\e -> onExpr e >>= return . Just) eOpt <*> mapM declF anns
-        onMem (MAnnotation p n anns)      = mapM declF anns >>= \nanns -> return $ MAnnotation p n nanns
-
-        onExpr e = modifyTree (nodeF exprF) e
-        onType t = modifyTree (nodeF typeF) t
-        nodeF f (Node (tg :@: anns) ch) = mapM f anns >>= \nanns -> return $ Node (tg :@: nanns) ch
+mapAnnotation declF exprF typeF = mapMaybeAnnotation (wrap declF) (wrap exprF) (wrap typeF)
+  where wrap f a = f a >>= return . Just
 
 mapExprAnnotation :: (Monad m)
                   => (Annotation Expression  -> m (Annotation Expression))
@@ -492,6 +543,43 @@ mapReturnExpression onReturnF nonReturnF expr =
 
 {- Expression utilities -}
 
+defaultExpression :: K3 Type -> Either String (K3 Expression)
+defaultExpression typ = mapTree mkExpr typ
+  where mkExpr _ t@(tag -> TBool)   = withQualifier t $ EC.constant $ CBool False
+        mkExpr _ t@(tag -> TByte)   = withQualifier t $ EC.constant $ CByte 0
+        mkExpr _ t@(tag -> TInt)    = withQualifier t $ EC.constant $ CInt  0
+        mkExpr _ t@(tag -> TReal)   = withQualifier t $ EC.constant $ CReal 0.0
+        mkExpr _ t@(tag -> TNumber) = withQualifier t $ EC.constant $ CInt  0
+        mkExpr _ t@(tag -> TString) = withQualifier t $ EC.constant $ CString ""
+
+        mkExpr [e] t@(tag -> TOption) = let nm = case e @~ isEQualified of
+                                                   Just EMutable -> NoneMut
+                                                   _ -> NoneImmut
+                                        in withQualifier t $ EC.constant $ CNone nm
+
+        mkExpr [e] t@(tag -> TIndirection) = withQualifier t $ EC.indirect e
+        mkExpr ch t@(tag -> TTuple)        = withQualifier t $ EC.tuple ch
+        mkExpr ch t@(tag -> TRecord ids)   = withQualifier t $ EC.record $ zip ids ch
+
+        mkExpr _ t@(tag -> TCollection) = withQualifier t $
+          foldl (@+) (EC.empty $ head $ children t) $ extractTCAnns $ annotations t
+
+        mkExpr _ (tag -> TFunction) = Left "Cannot create a default expression for a function"
+
+        mkExpr _ t@(tag -> TAddress) = withQualifier t $
+          EC.address (EC.constant $ CString "127.0.0.1") (EC.constant $ CInt 40000)
+
+        mkExpr _ t = Left $ boxToString $ ["Cannot create a default expression for: "] %+ prettyLines t
+
+        extractTCAnns as = concatMap extract as
+          where extract (TAnnotation i) = [EAnnotation i]
+                extract _ = []
+
+        withQualifier t e = case t @~ isTQualified of
+                             Just TMutable -> return $ EC.mut e
+                             Just TImmutable -> return $ EC.immut e
+                             _ -> return $ e
+
 -- | Retrieves all free variables in an expression.
 freeVariables :: K3 Expression -> [Identifier]
 freeVariables expr = either (const []) id $ foldMapTree extractVariable [] expr
@@ -524,6 +612,7 @@ modifiedVariables expr = either (const []) id $ foldMapTree extractVariable [] e
 --   (such as UIDs, spans, etc.)
 compareWithoutAnnotations :: K3 Expression -> K3 Expression -> Bool
 compareWithoutAnnotations e1 e2 = stripAllExprAnnotations e1 == stripAllExprAnnotations e2
+
 
 {- Annotation cleaning -}
 
