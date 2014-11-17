@@ -1,0 +1,24 @@
+---
+me:  [127.0.0.1,40000]
+master: [127.0.0.1, 40000]
+peers: 
+  - addr: [127.0.0.1, 40000]
+  - addr: [127.0.0.1, 50000]
+dataFiles:
+  - path: /local/data/amplab/1024/rankings/rankings0000
+outputFile: /results/q1_1.csv
+x: 1000
+role: rows
+---
+me:  [127.0.0.1,50000]
+master: [127.0.0.1, 40000]
+peers: 
+  - addr: [127.0.0.1, 40000]
+  - addr: [127.0.0.1, 50000]
+dataFiles:
+  - path: /local/data/amplab/1024/rankings/rankings0001
+outputFile: /results/q1_2.csv
+x: 1000
+role: rows
+
+
