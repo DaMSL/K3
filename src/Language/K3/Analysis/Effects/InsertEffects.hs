@@ -23,7 +23,8 @@ module Language.K3.Analysis.Effects.InsertEffects (
   runConsolidatedAnalysis,
   symRWAQuery,
   eE,
-  eS
+  eS,
+  expandProgram
 )
 where
 
@@ -185,7 +186,7 @@ expandEff env eff = flip evalState env $ expandEffM eff
 expandSym :: EffectEnv -> K3 Symbol -> K3 Symbol
 expandSym env sym = flip evalState env $ expandSymM sym
 
-{- --for debugging
+{- --for debugging -}
 expandEffDeepM :: K3 Effect -> MEnv (K3 Effect)
 expandEffDeepM eff = do
   eff' <- expandEffM eff
@@ -220,9 +221,12 @@ expandSymDeepM sym = do
       ch'  <- mapM expandSymDeepM ch
       return $ replaceCh sym' ch'
     exSyms = mapM expandSymDeepM
--}
+{--}
 
-{- -- For debugging
+{- -- For debugging -}
+expandProgram :: EffectEnv -> K3 Declaration -> K3 Declaration
+expandProgram env p = fst $ runState (expandProg p) env
+
 expandProg :: K3 Declaration -> MEnv (K3 Declaration)
 expandProg n = mapProgram mId mId expandExprs Nothing n
 
@@ -240,7 +244,7 @@ expandExprs n = modifyTree expandExpr n
               Nothing  -> return Nothing
               Just sym -> liftM Just $ expandSymDeepM sym
       return $ addEffSym e' s' n
--}
+{--}
 
 -- Common procedure for adding back the symbols, effects and children
 addEffSym :: Maybe (K3 Effect) -> Maybe (K3 Symbol) -> K3 Expression -> K3 Expression
@@ -288,7 +292,7 @@ updateSymM s@(getSID -> Just i) s' = insertSymbolM i (stripAnno isSID s' @+ SID 
 updateSymM e e'@(getSID -> Just i) = insertSymbolM i e' >> return (symId i @+ SID i)
 updateSymM e e' = error $ "can't do the update: "++show e++"\n and also:"++show e'
 
--- In contrast to updateXM, Give a symbol a new id and put it in the environment
+-- In contrast to updateXM, give a symbol a new id and put it in the environment
 duplicateSymM :: K3 Symbol -> MEnv (K3 Symbol)
 duplicateSymM s = do
   s2 <- expandSymM s
@@ -480,7 +484,17 @@ effEqual (getFID -> e) (getFID -> e')    = e == e'
 -- @inplace: modify the tree in-place. If false, create new symbols/effects for the new parts
 -- @functions: return a value if modified, otherwise nothing
 
+type MapExpandF  a = K3 a -> MEnv (K3 a)
+type MapChF      a = K3 a -> MEnv (Maybe (K3 a))
+type MapProcessF a = K3 a -> Bool -> MEnv (Maybe (K3 a))
+type MapUpdateF  a = K3 a -> K3 a -> MEnv (K3 a)
+type MapDupF     a = K3 a -> MEnv (K3 a)
+type MOptEffF      = K3 Effect -> MEnv (Maybe (K3 Effect))
+type MOptSymF      = K3 Symbol -> MEnv (Maybe (K3 Symbol))
+
 -- Generic version of map for both effects and symbols
+mapGen :: MapExpandF a -> MapChF a -> MapProcessF a -> MapUpdateF a -> MapDupF a
+       -> Bool -> K3 a -> MEnv (Maybe (K3 a))
 mapGen expandFn chMapFn processFn updateFn duplicateFn inPlace n' = do
     n2@(children -> ch) <- expandFn n'
     (ch', noch) <- getNew chMapFn ch
@@ -496,12 +510,12 @@ getNew f l = do
   ml <- mapM f l
   return (zipWith fromMaybe l ml, all isNothing ml)
 
-mapEff :: Bool -> (K3 Effect -> MEnv (Maybe(K3 Effect))) -> (K3 Symbol -> MEnv (Maybe(K3 Symbol))) -> K3 Effect -> MEnv (K3 Effect)
+mapEff :: Bool -> MOptEffF -> MOptSymF -> K3 Effect -> MEnv (K3 Effect)
 mapEff inPlace effFn symFn n = do
   mn <- mapEffInner inPlace effFn symFn n
   return $ fromMaybe n mn
 
-mapEffInner :: Bool -> (K3 Effect -> MEnv (Maybe(K3 Effect))) -> (K3 Symbol -> MEnv (Maybe(K3 Symbol))) -> K3 Effect -> MEnv (Maybe (K3 Effect))
+mapEffInner :: Bool -> MOptEffF -> MOptSymF -> K3 Effect -> MEnv (Maybe (K3 Effect))
 mapEffInner inPlace effFn symFn =
   mapGen expandEffM mapEff' processNode updateEffM duplicateEffM inPlace
     where
@@ -542,12 +556,12 @@ mapEffInner inPlace effFn symFn =
             mn <- effFn n
             return $ if noch then mn else Just $ fromMaybe n mn
 
-mapSym :: Bool -> (K3 Effect -> MEnv (Maybe(K3 Effect))) -> (K3 Symbol -> MEnv (Maybe(K3 Symbol))) -> K3 Symbol -> MEnv (K3 Symbol)
+mapSym :: Bool -> MOptEffF -> MOptSymF -> K3 Symbol -> MEnv (K3 Symbol)
 mapSym inPlace effFn symFn n = do
-  mn <-mapSymInner inPlace effFn symFn n
+  mn <- mapSymInner inPlace effFn symFn n
   return $ fromMaybe n mn
 
-mapSymInner :: Bool -> (K3 Effect -> MEnv (Maybe(K3 Effect))) -> (K3 Symbol -> MEnv (Maybe(K3 Symbol))) -> K3 Symbol -> MEnv (Maybe(K3 Symbol))
+mapSymInner :: Bool -> MOptEffF -> MOptSymF -> K3 Symbol -> MEnv (Maybe (K3 Symbol))
 mapSymInner inPlace effFn symFn =
   mapGen expandSymM mapSym' processNode updateSymM duplicateSymM inPlace
   where
@@ -585,7 +599,7 @@ mapSymInner inPlace effFn symFn =
 preprocessBuiltins :: K3 Declaration -> (K3 Declaration, EffectEnv)
 preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl prog
   where
-    addMissingDecl :: K3 Declaration -> MEnv(K3 Declaration)
+    addMissingDecl :: K3 Declaration -> MEnv (K3 Declaration)
     addMissingDecl n =
       case (tag n, n @~ isDSymbol) of
         (DDataAnnotation i t attrs, _) -> do
@@ -596,7 +610,7 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
         (DGlobal _ t@(tag -> TForall _) Nothing, Nothing) -> handleFunctions t
         -- If we have a symbol, number it
         (_, Just (DSymbol s)) -> do
-          s' <- liftM DSymbol $ numberSyms s
+          s' <- liftM (\ns -> DSymbol $ ns @+ SDeclared s) $ numberSyms s
           return $ stripAnno isDSymbol n @+ s'
         _ -> return n
       where handleFunctions t = do
@@ -627,7 +641,7 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
     handleAttrsInner as =
       case find isDSymbol as of
         Just ds@(DSymbol s) -> do
-          s' <- liftM DSymbol $ numberSyms s
+          s' <- liftM (\ns -> DSymbol $ ns @+ SDeclared s) $ numberSyms s
           let as' = delete ds as
           return $ s':as'
         _ -> return as
@@ -767,7 +781,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
 
     sideways _ (children -> ch) = doNothings (length ch - 1)
 
-    -- A variable access looks up in the environemnt and generates a read
+    -- A variable access looks up in the environment and generates a read
     -- It also creates a symbol
     handleExpr :: [K3 Expression] -> K3 Expression -> MEnv (K3 Expression)
 

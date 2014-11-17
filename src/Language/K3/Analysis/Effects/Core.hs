@@ -4,8 +4,9 @@
 -- | Data Representations for K3 Effects
 module Language.K3.Analysis.Effects.Core where
 
+import Data.List
+import Data.Map hiding (null, partition)
 import Data.Tree
-import Data.Map hiding (null)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -54,10 +55,17 @@ data Symbol = Symbol Identifier Provenance
             | SymId Int
             deriving (Eq, Ord, Read, Show)
 
-data instance Annotation Symbol = SID Int deriving (Eq, Ord, Read, Show)
+data instance Annotation Symbol = SID Int
+                                | SDeclared (K3 Symbol)
+                                deriving (Eq, Ord, Read, Show)
 
 isSID :: Annotation Symbol -> Bool
-isSID _ = True
+isSID (SID _) = True
+isSID _ = False
+
+isSDeclared :: Annotation Symbol -> Bool
+isSDeclared (SDeclared _) = True
+isSDeclared _ = False
 
 type ClosureInfo = ([K3 Symbol], [K3 Symbol], [K3 Symbol])
 type MaybeClosure = Either (Map Identifier [K3 Symbol], Maybe(K3 Effect), Maybe(K3 Symbol)) ClosureInfo
@@ -84,12 +92,20 @@ isFID _ = True
 
 instance Pretty (K3 Symbol) where
   prettyLines (Node (Symbol i (PLambda j eff) :@: as) ch) =
-    ["Symbol " ++ i ++ " PLambda " ++ j ++ " " ++ drawAnnotations as] ++
-      (if null ch
-        then terminalShift eff
-        else nonTerminalShift eff ++ drawSubTrees ch)
+    let (annStr, pAnnStrs) = drawSymAnnotations as in
+    ["Symbol " ++ i ++ " PLambda " ++ j ++ " " ++ annStr] ++ ["|"]
+    ++ (if null pAnnStrs then [] else (shift "+- " "|  " pAnnStrs) ++ ["|"])
+    ++ (if null ch
+         then terminalShift eff
+         else nonTerminalShift eff ++ drawSubTrees ch)
 
-  prettyLines (Node (tg :@: as) ch) = (show tg ++ drawAnnotations as) : drawSubTrees ch
+  prettyLines (Node (tg :@: as) ch) =
+    let (annStr, pAnnStrs) = drawSymAnnotations as in
+    [show tg ++ annStr]
+      ++ (if null pAnnStrs then []
+          else ["|"] ++ if null ch then (shift "`- " "   " pAnnStrs)
+                                   else (shift "+- " "|  " pAnnStrs))
+      ++ (if not $ null ch then ["|"] else []) ++ drawSubTrees ch
 
 instance Pretty (K3 Effect) where
   prettyLines (Node (FRead  sym :@: as) ch) =
@@ -105,11 +121,12 @@ instance Pretty (K3 Effect) where
         else nonTerminalShift sym ++ drawSubTrees ch)
 
   prettyLines (Node (FScope syms (Right (rd,wr,app)) :@: as) ch) =
+    let pfx = if null ch then " " else "|" in
     ["FScope " ++ drawAnnotations as]
-      ++ (concatMap (shift "+- " "|  " . prettyLines) syms)
-      ++ (concatMap (shift "+R " "|  " . prettyLines) rd)
-      ++ (concatMap (shift "+W " "|  " . prettyLines) wr)
-      ++ (concatMap (shift "+A " "|  " . prettyLines) app)
+      ++ (concatMap (shift "+- " (pfx ++ "  ") . prettyLines) syms)
+      ++ (concatMap (shift "+R " (pfx ++ "  ") . prettyLines) rd)
+      ++ (concatMap (shift "+W " (pfx ++ "  ") . prettyLines) wr)
+      ++ (concatMap (shift "+A " (pfx ++ "  ") . prettyLines) app)
       ++ drawSubTrees ch
 
   prettyLines (Node (FApply fSym argSym :@: as) ch) =
@@ -119,3 +136,12 @@ instance Pretty (K3 Effect) where
         else nonTerminalShift fSym ++ nonTerminalShift argSym ++ drawSubTrees ch)
 
   prettyLines (Node (tg :@: as) ch) = (show tg ++ drawAnnotations as) : drawSubTrees ch
+
+drawSymAnnotations :: [Annotation Symbol] -> (String, [String])
+drawSymAnnotations as =
+  let (sdeclAnns, anns) = partition isSDeclared as
+      prettySymAnns  = concatMap drawSDeclAnnotation sdeclAnns
+  in (drawAnnotations anns, prettySymAnns)
+
+  where drawSDeclAnnotation (SDeclared s) = ["SDeclared "] %+ prettyLines s
+        drawSDeclAnnotation _ = error "Invalid symbol annotation"
