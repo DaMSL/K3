@@ -22,7 +22,7 @@ import Language.K3.Utils.Pretty
 testProgram :: String
 testProgram = unlines $ [
     "include \"Annotation/Collection.k3\""
-  , simpleProg
+  , mapMapGroupByProg
   ]
 
 streamableProg :: String
@@ -325,17 +325,24 @@ simpleProg = "\
   \ "
 
 doPurity :: K3 Declaration -> K3 Declaration
-doPurity p = runPurity $ runConsolidatedAnalysis p
+doPurity p = let (np,e) = runConsolidatedAnalysis p
+             in runPurity e np
 
-doFusionInference :: K3 Declaration -> Either String (K3 Declaration)
-doFusionInference p = do
-  pWithProp <- inferProgramUsageProperties (doPurity p)
-  inferFusableProgramApplies pWithProp
-  --pWithFuse <- inferFusableProgramApplies pWithProp
-  --fuseProgramTransformers pWithFuse
+doTransformerEncode :: K3 Declaration -> Either String (K3 Declaration)
+doTransformerEncode p = do
+  np <- inferProgramUsageProperties $ doPurity p
+  ep <- encodeTransformers np
+  fuseProgramFoldTransformers ep
+
+--doFusionInference :: K3 Declaration -> Either String (K3 Declaration)
+--doFusionInference p = do
+--  pWithProp <- inferProgramUsageProperties (doPurity p)
+--  inferFusableProgramApplies pWithProp
+--  --pWithFuse <- inferFusableProgramApplies pWithProp
+--  --fuseProgramTransformers pWithFuse
 
 doOptimization :: K3 Declaration -> Either String (K3 Declaration)
-doOptimization p = return {-. stripAllProperties-} . stripAllTypeAndEffectAnns =<< runOptPasses p
+doOptimization p = return {-. stripAllProperties-} . stripAllTypeAndEffectAnns . fst =<< runOptPasses p
 
 main :: IO ()
 main = do
@@ -346,5 +353,5 @@ main = do
     Right parsedP -> do
       progE <- evalMetaprogram Nothing Nothing Nothing parsedP
       (flip $ either $ putStrLn . show) progE $ \p ->
-        (flip $ either putStrLn) (doFusionInference p)  $ \fp ->
+        (flip $ either putStrLn) (doTransformerEncode p)  $ \fp ->
           putStrLn $ pretty fp
