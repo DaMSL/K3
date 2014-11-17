@@ -24,6 +24,9 @@ script:
     # RS Full:
   - ./compile.sh ../K3-Core/examples/sql/mosaic/rsfull.k3
   - ./clean.sh
+    # RS Full w/ Optimization
+  - ./compile.sh -O1 ../K3-Core/examples/sql/mosaic/rsfull.k3
+  - ./clean.sh
     # Amplab q1 w/ test:
   - ./compile.sh -O1 ../K3-Core/examples/distributed/amplab/q1.k3
   - __build/A -p ./scripts/tests/cpp/sql/q1/peers.yml
