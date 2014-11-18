@@ -108,19 +108,27 @@ class StlDS {
 
   // Iterators
   iterator begin() {
-    return std::begin(container);
+    return container.begin();
   }
 
   iterator end() {
-    return std::end(container);
+    return container.end();
   }
 
-  const_iterator cbegin() {
-    return std::end(container);
+  iterator begin() const {
+    return container.cbegin();
   }
 
-  const_iterator cend() {
-    return std::end(container);
+  iterator end() const {
+    return container.cend();
+  }
+
+  const_iterator cbegin() const {
+    return container.cbegin();
+  }
+
+  const_iterator cend() const {
+    return container.cend();
   }
 
   reverse_iterator rbegin() {
