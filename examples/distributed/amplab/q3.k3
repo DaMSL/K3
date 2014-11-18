@@ -168,8 +168,8 @@ declare q3_result: collection {sourceIP: string, totalRevenue: real, avgPageRank
 declare q3Logger : string -> collection {sourceIP: string, totalRevenue: real, avgPageRank: real} @Collection -> string -> ()
 
 declare logOutput: () -> () = \_ -> (
-  q3_result.insert {sourceIP: global_max.key, 
-                    totalRevenue: global_max.value.arSum, 
+  q3_result.insert {sourceIP: global_max.key,
+                    totalRevenue: global_max.value.arSum,
                     avgPageRank: (1.0 * global_max.value.prSum) / global_max.value.prCount
                    };
   q3Logger outFile q3_result "|"
