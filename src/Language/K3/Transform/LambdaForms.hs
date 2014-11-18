@@ -6,6 +6,7 @@ module Language.K3.Transform.LambdaForms where
 import Prelude hiding (any, elem, notElem)
 
 import Control.Applicative
+import Control.Arrow
 
 import Data.Foldable
 import Data.Maybe
@@ -30,6 +31,20 @@ import Language.K3.Transform.Hints
 symIDs :: EffectEnv -> S.Set (K3 Symbol) -> S.Set Identifier
 symIDs env = S.map (\(tag . eS env -> Symbol i _) -> i)
 
+isDerivedFromGlobal :: EffectEnv -> K3 Symbol -> Bool
+isDerivedFromGlobal _ (tag -> Symbol _ PGlobal) = True
+isDerivedFromGlobal _ (tag -> Symbol _ (PTemporary TUnbound)) = True
+isDerivedFromGlobal env (tag &&& children -> (Symbol _ (PRecord _), cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (Symbol _ (PTuple _), cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (Symbol _ PIndirection, cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (Symbol _ (PProject _), cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (Symbol _ PCase, cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (Symbol _ PApply, cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (Symbol _ PSet, cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (Symbol _ PVar, cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env s@(tag -> SymId i) = isDerivedFromGlobal env (eS env s)
+isDerivedFromGlobal _ _ = False
+
 lambdaFormOptD :: TransformConfig -> EffectEnv -> K3 Declaration -> K3 Declaration
 lambdaFormOptD c env (Node (DGlobal i t me :@: as) cs) = Node (DGlobal  i t (lambdaFormOptE c env [] <$> me) :@: as) cs
 lambdaFormOptD c env (Node (DTrigger i t e :@: as) cs) = Node (DTrigger i t (lambdaFormOptE c env [] e)      :@: as) cs
@@ -45,7 +60,8 @@ lambdaFormOptE conf env ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@:
     getEffects e' = (\(EEffect f) -> f) <$> e' @~ (\case { EEffect _ -> True; _ -> False })
 
     fs = mapMaybe getEffects ds
-    moveable g = not $ any (\f -> let (r, w, _) = symRWAQuery f [g] env in g `elem` r || g `elem` w) fs
+    moveable (eS env -> g) = not (isDerivedFromGlobal env g) &&
+                             not (any (\f -> let (r, w, _) = symRWAQuery f [g] env in g `elem` r || g `elem` w) fs)
 
     funcHint
         | binding `elem` cWritten = False
@@ -79,12 +95,16 @@ lambdaFormOptE c env ds (Node (EOperate OApp :@: as) [f', x])
 
     fs = mapMaybe getEffects ds
     argument = getSymbol x
-    moveable g = not $ any (\f -> let (r, w, _) = symRWAQuery f [g] env
-                                in g `elem` r || g `elem` w) fs
+    moveable (eS env -> g) = not (isDerivedFromGlobal env g) &&
+                             not (any (\f -> let (r, w, _) = symRWAQuery f [g] env in g `elem` r || g `elem` w) fs)
+
     passHint = isGlobal x || argument == Nothing || not (moveable $ fromJust argument)
     a = EOpt $ PassHint passHint
 lambdaFormOptE c env ds (Node (EIfThenElse :@: as) [i, t, e])
-    = Node (EIfThenElse :@: as) [lambdaFormOptE c env (t:e:ds) i, lambdaFormOptE c env ds t, lambdaFormOptE c env ds e]
+    = Node (EIfThenElse :@: as) [ lambdaFormOptE c env (t:e:ds) i
+                                , lambdaFormOptE c env ds t
+                                , lambdaFormOptE c env ds e
+                                ]
 lambdaFormOptE c env ds (Node (ELetIn i :@: as) [e, b])
     = Node (ELetIn i :@: as) [lambdaFormOptE c env (b:ds) e, lambdaFormOptE c env ds b]
 lambdaFormOptE c env ds (Node (ECaseOf x :@: as) [e, s, n])
