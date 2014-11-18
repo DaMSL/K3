@@ -69,11 +69,12 @@ runPurityE env e@(Node (ELambda x :@: as) cs)
     ESymbol (tag . eS env -> (Symbol _ (PLambda _ (tnc . eE env -> (FScope bindings (Right closure), effects)))))
         = fromJust $ e @~ isESymbol
 
-    isPure = noGlobalReads && noGlobalWrites && noIndirections && readOnlyNonLocalScalars
+    isPure = noIO && noGlobalReads && noGlobalWrites && noIndirections && readOnlyNonLocalScalars
 
     nonLocals = let (cRead, cWritten, cApplied)
                         = closure in S.fromList $ bindings ++ concat [cRead, cWritten, cApplied]
 
+    noIO           = not $ any hasIO effects
     noGlobalReads  = not $ any isGlobal $ S.unions $ map readSet  effects
     noGlobalWrites = not $ any isGlobal $ S.unions $ map writeSet effects
     noIndirections = not $ any isIndirection nonLocals
