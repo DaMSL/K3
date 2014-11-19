@@ -5,8 +5,6 @@ module Language.K3.Analysis.Effects.Common where
 
 import Prelude hiding (any)
 
-import Control.Arrow ((&&&))
-
 import Data.Foldable
 import Data.Monoid
 import Data.Maybe
@@ -19,8 +17,9 @@ import Language.K3.Analysis.Effects.Core
 (===) :: K3 Symbol -> K3 Symbol -> Bool
 s === k = (fromJust (k @~ isSID) == fromJust (s @~ isSID))
 
+-- TODO: these functions probably need to be fixed up
 equalAlias :: K3 Symbol -> K3 Symbol -> Bool
-equalAlias s (tnc -> (Symbol _ PVar, [k])) | s === k = True
+equalAlias s (tnc -> (Symbol _ PVar _ _, [k])) | s === k = True
 equalAlias _ _ = False
 
 readSet :: K3 Effect -> S.Set (K3 Symbol)
@@ -47,19 +46,19 @@ hasWrite _ (children -> []) = False
 hasWrite s (children -> cs) = any (hasWrite s) cs
 
 hasReadInFunction :: K3 Symbol -> K3 Symbol -> Bool
-hasReadInFunction s (tnc -> (Symbol _ PSet, cs)) = any (hasReadInFunction s) cs
-hasReadInFunction s (tnc -> (Symbol _ (PLambda _ f), [])) = hasRead s f
-hasReadInFunction s (tnc -> (Symbol _ (PLambda _ f), cs))
+hasReadInFunction s (tnc -> (Symbol _ PSet _ _, cs)) = any (hasReadInFunction s) cs
+hasReadInFunction s (tnc -> (Symbol _ (PLambda f) _ _, [])) = hasRead s f
+hasReadInFunction s (tnc -> (Symbol _ (PLambda f) _ _, cs))
     = hasRead s f || any (hasReadInFunction s) cs
-hasReadInFunction s (tnc -> ((Symbol _ PApply), [f, k]))
+hasReadInFunction s (tnc -> (Symbol _ PApply _ _, [f, k]))
     = hasReadInFunction s f || (s === k && hasReadInFunction k f)
 hasReadInFunction _ _ = False
 
 hasWriteInFunction :: K3 Symbol -> K3 Symbol -> Bool
-hasWriteInFunction s (tnc -> (Symbol _ PSet, cs)) = any (hasWriteInFunction s) cs
-hasWriteInFunction s (tnc -> (Symbol _ (PLambda _ f), [])) = hasWrite s f
-hasWriteInFunction s (tnc -> (Symbol _ (PLambda _ f), cs))
+hasWriteInFunction s (tnc -> (Symbol _ PSet _ _, cs)) = any (hasWriteInFunction s) cs
+hasWriteInFunction s (tnc -> (Symbol _ (PLambda f) _ _, [])) = hasWrite s f
+hasWriteInFunction s (tnc -> (Symbol _ (PLambda f) _ _, cs))
     = hasWrite s f || any (hasWriteInFunction s) cs
-hasWriteInFunction s (tnc -> ((Symbol _ PApply), [f, k]))
+hasWriteInFunction s (tnc -> (Symbol _ PApply _ _, [f, k]))
     = hasWriteInFunction s f || (s === k && hasWriteInFunction k f)
 hasWriteInFunction _ _ = False

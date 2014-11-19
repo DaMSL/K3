@@ -102,7 +102,7 @@ insertLambdaLayer env = env {bindEnv=Map.map (LambdaLayer Nothing:) $ bindEnv en
 -- Also removes the introduced variable
 removeLambdaLayer :: EffectEnv -> (EffectEnv, K3 Symbol)
 removeLambdaLayer env =
-  let syms =  $ catMaybes $ map (getLambdaLayer . head . snd) $ Map.toList $ bindEnv env
+  let syms =  catMaybes $ map (getLambdaLayer . head . snd) $ Map.toList $ bindEnv env
       env' = Map.map tailIfLambda $ bindEnv env
   in (env', syms)
   where
@@ -143,7 +143,7 @@ lookupBindInnerM i = do
   s   <- lookupBindInner i env
   case s of
     Just (LocalSym s:_)      -> return $ Just s
-    Just (ss@(LamdaLayer:_)) -> do
+    Just (ss@(LambdaLayer:_)) -> do
       (syms, rest) <- makeClosureSyms ss
       insertBindM i $ syms++rest
       return $ head syms
@@ -158,11 +158,6 @@ lookupBindInnerM i = do
     makeClosureSyms (LocalSym s:rest) = return ([s], rest)
     makeClosureSyms _ = error "unexpected missing LocalSym"
 
-
-lookupBind :: Identifier -> EffectEnv -> K3 Symbol
-lookupBind i env =
-fromMaybe err $ lookupBindInner i env
-  where err = error $ "failed to find " ++ i ++ " in environment"
 
 lookupEffect :: Int -> EffectEnv -> Maybe (K3 Effect)
 lookupEffect i env = IntMap.lookup i $ effEnv env
@@ -265,8 +260,8 @@ expandSymDeepM sym = do
   sym' <- expandSymM sym
   tg   <- case tag sym' of
              Symbol i (PScope ss (Right (a,b,c))) -> liftM (Symbol i) $ liftM2 PScope (exSyms ss) $ liftM Right $ liftM3 (,,) (exSyms a) (exSyms b) (exSyms c)
-             Symbol i (PScope ss x)       -> liftM (Symbol i) $ liftM2 PScope (exSyms ss) (return x)
-             Symbol i (PLambda i' e)      -> liftM (Symbol i . PLambda i') (expandEffDeepM e)
+             Symbol i (PScope ss x) -> liftM (Symbol i) $ liftM2 PScope (exSyms ss) (return x)
+             Symbol i (PLambda e)   -> liftM (Symbol i . PLambda) $ expandEffDeepM e
              x -> return x
   let sym'' = replaceTag sym' tg
   handleCh sym''
@@ -479,7 +474,7 @@ createClosure mEff mSym = liftM nubTuple $ do
     addClosureSym acc n' = do
       n <- expandSymM n'
       case tag n of
-         Symbol _ (PLambda _ eff) -> do
+         Symbol _ (PLambda eff) -> do
            acc' <- foldrM (flip addClosureSym) acc $ children n
            addClosureEff acc' eff
 
@@ -504,7 +499,7 @@ createClosure mEff mSym = liftM nubTuple $ do
                 Symbol _ PGlobal _ _           -> return acc
                 _ | n `symEqual` x             -> return $ n':acc
                 -- These 2 symbols' children aren't really further provenances
-                Symbol _ (PLambda _ _) _ _     -> return acc
+                Symbol _ (PLambda _) _ _     -> return acc
                 Symbol _ PApply _ _            -> return acc
                 -- If we have copy semantics, abort search
                 Symbol _ _ HasCopy _           -> return acc
@@ -614,22 +609,9 @@ mapSymInner inPlace effFn symFn =
       mapEff' = mapEffInner inPlace effFn symFn
       processNode n noch =
         case tag n of
-          Symbol x (PScope ss (Right (xs,ys,zs))) -> do
-            (ss', noss) <- getNew mapSym' ss
-            (xs', noxs) <- getNew mapSym' xs
-            (ys', noys) <- getNew mapSym' ys
-            (zs', nozs) <- getNew mapSym' zs
-            let n3 = replaceTag n $ Symbol x (PScope ss' (Right (xs', ys', zs')))
-            mn <- symFn n3
-            return $ if and [noch,noss,noxs,noys,nozs] then mn else Just $ fromMaybe n3 mn
-          Symbol x (PScope ss y) -> do
-            (ss', noss) <- getNew mapSym' ss
-            let n3 = replaceTag n $ Symbol x (PScope ss' y)
-            mn <- symFn n3
-            return $ if noch && noss then mn else Just $ fromMaybe n3 mn
-          Symbol x (PLambda y e) -> do
+          Symbol x (PLambda e) -> do
             ([e'], noe) <- getNew mapEff' [e]
-            let n3 = replaceTag n $ Symbol x $ PLambda y e'
+            let n3 = replaceTag n $ Symbol x $ PLambda e'
             mn <- symFn n3
             return $ if noch && noe then mn else Just $ fromMaybe n3 mn
           _ -> do
@@ -740,7 +722,7 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
       seq'' <- combineEffSeq seq'
       lp    <- genEff $ loop $ fromMaybe (error "createConservativeSym") seq''
       sc    <- genEff $ scope [sym] [lp]
-      genSym (PLambda nm sc) HasCopy NoWriteback subSym'
+      genSym (PLambda sc) HasCopy NoWriteback subSym'
 
 ----- Actual effect insertion ------
 -- Requires an environment built up by the preprocess phase
@@ -863,9 +845,9 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
           eSym = maybeToList $ getESymbol e
       -- Create a gensym for the lambda, containing the effects of the child, and leading to the symbols
       env     <- get
-      eScope  <- genEff $ scope [bindSym] (Left (bindEnv env, getEEffect e, getESymbol e)) $ maybeToList eEff
+      eScope  <- genEff $ scope (bindSym : closureSyms) $ maybeToList eEff
       deleteBindM i
-      lSym    <- genSym (PLambda i closureSyms eScope) HasCopy NoWriteback eSym
+      lSym    <- genSym (PLambda eScope) HasCopy NoWriteback eSym
       return $ addEffSymCh Nothing (Just lSym) ch n
 
     -- For collection attributes, we need to create and apply a lambda
@@ -1066,7 +1048,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
     tempOfSym (Just p', s) = do
       p <- expandSymM p'
       case tag p of
-        Symbol _ PLet a         -> genSymTemp TAlias [s]
+        Symbol _ PLet a         -> genSymTemp TDirect [s]
         Symbol _ PIndirection a -> genSymTemp TIndirect [s]
         Symbol _ (PRecord _) a  -> genSymTemp TSub [s]
         Symbol _ (PTuple _) a   -> genSymTemp TSub [s]
@@ -1118,12 +1100,12 @@ applyLambda sLam' sArg = do
   env  <- get
   sLam <- expandSymM sLam'
   case tnc sLam of
-    (Symbol _ (PLambda _ lamEff@(tag . eE env -> FScope (sOld:_))) isAlias, chSym) -> do
+    (Symbol _ (PLambda lamEff@(tag . eE env -> FScope (sOld:_))) hasCopy hasWb, chSym) -> do
       -- Dummy substitute into the argument, in case there's an application there
       -- Any effects won't be substituted in and will be visible outside
       sArg'    <- mapSym False (subEff Nothing) (subSym Nothing) sArg
       -- Substitute into the old effects and symbol
-      lamEff'  <- mapEff False (subEff $ Just (sOld, sArg', isAlias)) (subSym $ Just (sOld, sArg', isAlias)) lamEff
+      lamEff'  <- mapEff False (subEff $ Just (sOld, sArg', hasCopy, hasWb)) (subSym $ Just (sOld, sArg', hasCopy, hasWb)) lamEff
       lamEff'' <- expandEffM lamEff'
       chSym'   <- case (chSym, tag lamEff'') of
                     ([ch], FScope s) -> mapSym False (subEff $ Just (sOld, sArg', isAlias))

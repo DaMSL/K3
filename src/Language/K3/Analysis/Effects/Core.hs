@@ -51,13 +51,11 @@ data Provenance
     | PGlobal
   deriving (Eq, Ord, Read, Show)
 
--- Unless we mark with IsAlias, we assume separation semantics
-data HasCopy = HasCopy | NoCopy
-                 deriving (Eq, Ord, Read, Show)
-data HasWriteback = HasWriteback | NoWriteback
-                      deriving (Eq, Ord, Read, Show)
-
-data Symbol = Symbol Identifier Provenance HasCopy HasWriteback
+data Symbol = Symbol { symIdent :: Identifier
+                     , symProv :: Provenance
+                     , symHasCopy :: Bool
+                     , symHasWb :: Bool
+                     }
             | SymId Int
             deriving (Eq, Ord, Read, Show)
 
@@ -88,13 +86,10 @@ isFID _ = True
 
 
 instance Pretty (K3 Symbol) where
-  prettyLines (Node (Symbol i (PLambda j cl eff) cp _ :@: as) ch) =
-    ["Symbol " ++ i ++ " PLambda " ++ j ++ " " ++ show cp ++ " " ++ drawAnnotations as] ++
-      (case (cl, ch) of
-        ([], []) -> terminalShift eff
-        ([], _)  -> nonTerminalShift eff ++ drawSubTrees ch
-        (_,  []) -> drawSubTrees cl ++ terminalShift eff
-        (_,  _ ) -> drawSubTrees cl ++ nonTerminalShift eff ++ drawSubTrees ch)
+  prettyLines (Node (Symbol i (PLambda eff) cp _ :@: as) ch) =
+    ["Symbol " ++ i ++ " PLambda " ++ show cp ++ " " ++ drawAnnotations as] ++
+      (if null ch then terminalShift eff 
+         else nonTerminalShift eff ++ drawSubTrees ch)
 
   prettyLines (Node (tg :@: as) ch) = (show tg ++ drawAnnotations as) : drawSubTrees ch
 
