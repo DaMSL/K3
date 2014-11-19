@@ -8,7 +8,7 @@ import Language.K3.Core.Annotation
 import Language.K3.Analysis.Effects.Core
 
 symbol :: Identifier -> Provenance -> Bool -> Bool -> K3 Symbol
-symbol i prov hasCopy hasWb = Node (Symbol {symIdent=i, symProv=prov, symHasCopy=hasCopy, symHasWb=hasWb} :@: []) []
+symbol i prov hasCopy hasWb = Node (Symbol {symIdent=i, symProv=prov, symHasCopy=hasCopy, symHasWb=hasWb, symLambdaChoice=0} :@: []) []
 
 lambda :: Identifier -> K3 Effect -> Maybe (K3 Symbol) -> K3 Symbol
 lambda i eff subLam = replaceCh (symbol i (PLambda eff) True False) $ maybeToList subLam

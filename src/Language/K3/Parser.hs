@@ -865,7 +865,7 @@ contextualizedSpliceParameter sEnvOpt = choice [try fromContext, spliceParameter
 effectSignature :: K3Parser (Identifier -> [Annotation Declaration])
 effectSignature = mkSigAnn <$> (keyword "with" *> keyword "effects" *> (sepBy1 effLambda $ symbol "|"))
   where mkSigAnn s n       = [DSymbol $ mkTopLevelSym n s]
-        mkTopLevelSym n ss = replaceCh (FC.symbol n F.PSet False False) ss
+        mkTopLevelSym n ss = replaceCh (FC.symbol n F.PChoice False False) ss
 
 effLambda :: K3Parser (K3 F.Symbol)
 effLambda = mkLambda <$> readLambda <*> choice [Left <$> try effLambda, Right <$> try effTerm]

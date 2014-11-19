@@ -19,7 +19,7 @@ s === k = (fromJust (k @~ isSID) == fromJust (s @~ isSID))
 
 -- TODO: these functions probably need to be fixed up
 equalAlias :: K3 Symbol -> K3 Symbol -> Bool
-equalAlias s (tnc -> (Symbol _ PVar _ _, [k])) | s === k = True
+equalAlias s (tnc -> (Symbol {symProv=PVar}, [k])) | s === k = True
 equalAlias _ _ = False
 
 readSet :: K3 Effect -> S.Set (K3 Symbol)
@@ -46,19 +46,19 @@ hasWrite _ (children -> []) = False
 hasWrite s (children -> cs) = any (hasWrite s) cs
 
 hasReadInFunction :: K3 Symbol -> K3 Symbol -> Bool
-hasReadInFunction s (tnc -> (Symbol _ PSet _ _, cs)) = any (hasReadInFunction s) cs
-hasReadInFunction s (tnc -> (Symbol _ (PLambda f) _ _, [])) = hasRead s f
-hasReadInFunction s (tnc -> (Symbol _ (PLambda f) _ _, cs))
+hasReadInFunction s (tnc -> (Symbol {symProv=PSet}, cs)) = any (hasReadInFunction s) cs
+hasReadInFunction s (tnc -> (Symbol {symProv=PLambda f}, [])) = hasRead s f
+hasReadInFunction s (tnc -> (Symbol {symProv=PLambda f}, cs))
     = hasRead s f || any (hasReadInFunction s) cs
-hasReadInFunction s (tnc -> (Symbol _ PApply _ _, [f, k]))
+hasReadInFunction s (tnc -> (Symbol {symProv=PApply}, [f, k]))
     = hasReadInFunction s f || (s === k && hasReadInFunction k f)
 hasReadInFunction _ _ = False
 
 hasWriteInFunction :: K3 Symbol -> K3 Symbol -> Bool
-hasWriteInFunction s (tnc -> (Symbol _ PSet _ _, cs)) = any (hasWriteInFunction s) cs
-hasWriteInFunction s (tnc -> (Symbol _ (PLambda f) _ _, [])) = hasWrite s f
-hasWriteInFunction s (tnc -> (Symbol _ (PLambda f) _ _, cs))
+hasWriteInFunction s (tnc -> (Symbol {symProv=PSet}, cs)) = any (hasWriteInFunction s) cs
+hasWriteInFunction s (tnc -> (Symbol {symProv=PLambda f}, [])) = hasWrite s f
+hasWriteInFunction s (tnc -> (Symbol {symProv=PLambda f}, cs))
     = hasWrite s f || any (hasWriteInFunction s) cs
-hasWriteInFunction s (tnc -> (Symbol _ PApply _ _, [f, k]))
+hasWriteInFunction s (tnc -> (Symbol {symProv=PApply}, [f, k]))
     = hasWriteInFunction s f || (s === k && hasWriteInFunction k f)
 hasWriteInFunction _ _ = False

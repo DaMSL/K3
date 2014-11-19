@@ -55,6 +55,8 @@ data Symbol = Symbol { symIdent :: Identifier
                      , symProv :: Provenance
                      , symHasCopy :: Bool
                      , symHasWb :: Bool
+                     -- Which lambda version to apply. On a choice symbol (default=0)
+                     , symLambdaChoice :: Int
                      }
             | SymId Int
             deriving (Eq, Ord, Read, Show)
@@ -86,7 +88,7 @@ isFID _ = True
 
 
 instance Pretty (K3 Symbol) where
-  prettyLines (Node (Symbol i (PLambda eff) cp _ :@: as) ch) =
+  prettyLines (Node (Symbol {symIdent=i, symProv=PLambda eff, symHasCopy=cp} :@: as) ch) =
     ["Symbol " ++ i ++ " PLambda " ++ show cp ++ " " ++ drawAnnotations as] ++
       (if null ch then terminalShift eff 
          else nonTerminalShift eff ++ drawSubTrees ch)
