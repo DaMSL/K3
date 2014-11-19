@@ -37,6 +37,7 @@ library
         haskell-src-exts-qq,
         hint <= 0.4.2.0,
         hslogger,
+        hssqlppp,
         mtl,
         network,
         network-transport,
@@ -49,6 +50,7 @@ library
         split,
         SafeSemaphore,
         template-haskell,
+        text,
         time,
         transformers,
         unordered-containers,
@@ -197,6 +199,7 @@ library
         Language.K3.TypeSystem.Data.ConstraintSet.Queries,
         Language.K3.TypeSystem.Data.Result,
         Language.K3.Codegen.CPP.Representation,
+        Language.K3.Codegen.KTrace.KTraceDB,
         Language.K3.Stages
 
     ghc-options: -Wall -fno-warn-orphans -O2
