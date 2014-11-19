@@ -20,13 +20,13 @@ data EffectKind
 
 data instance Annotation EffectKind = KAnnotation deriving (Eq, Read, Show)
 
+-- Temporaries represent missing symbols or return values
+-- For now, we assume all return values are copied back (according to semantics)
 data TempType
-    = TAlias      -- The temporary is an alias
+    = TDirect     -- The temporary leads directly to its child symbol
     | TSub        -- The temporary is a subtype of the next element
     | TIndirect   -- The temporary is an indirection
-    | TUnbound    -- Unbound global
     | TTemp       -- The temp has no connection to any other element
-    | TSubstitute -- A projection requires a substitution
     deriving (Eq, Ord, Read, Show)
 
 data Provenance
@@ -36,9 +36,10 @@ data Provenance
     | PProject Identifier -- Created by projections
     | PLet
     | PCase
-    | PScope [K3 Symbol] MaybeClosure
+    | PClosure
     -- A symbol can be 'applied' to produce effects and a new symbol
-    | PLambda Identifier (K3 Effect)
+    -- 2nd field is closure
+    | PLambda (K3 Effect)
     -- A symbol application only generates symbols
     | PApply
     -- Any of the children of PSet can occur
@@ -50,7 +51,13 @@ data Provenance
     | PGlobal
   deriving (Eq, Ord, Read, Show)
 
-data Symbol = Symbol Identifier Provenance
+-- Unless we mark with IsAlias, we assume separation semantics
+data HasCopy = HasCopy | NoCopy
+                 deriving (Eq, Ord, Read, Show)
+data HasWriteback = HasWriteback | NoWriteback
+                      deriving (Eq, Ord, Read, Show)
+
+data Symbol = Symbol Identifier Provenance HasCopy HasWriteback
             | SymId Int
             deriving (Eq, Ord, Read, Show)
 
@@ -60,13 +67,11 @@ isSID :: Annotation Symbol -> Bool
 isSID _ = True
 
 type ClosureInfo = ([K3 Symbol], [K3 Symbol], [K3 Symbol])
-type MaybeClosure = Either (Map Identifier [K3 Symbol], Maybe(K3 Effect), Maybe(K3 Symbol)) ClosureInfo
 
 data Effect
     = FRead (K3 Symbol)
     | FWrite (K3 Symbol)
-    -- bound, read, written, applied within the scope
-    | FScope [K3 Symbol] MaybeClosure
+    | FScope [K3 Symbol]
     -- An effect application only generates effects
     | FApply (K3 Symbol) (K3 Symbol)
     | FIO
@@ -83,11 +88,13 @@ isFID _ = True
 
 
 instance Pretty (K3 Symbol) where
-  prettyLines (Node (Symbol i (PLambda j eff) :@: as) ch) =
-    ["Symbol " ++ i ++ " PLambda " ++ j ++ " " ++ drawAnnotations as] ++
-      (if null ch
-        then terminalShift eff
-        else nonTerminalShift eff ++ drawSubTrees ch)
+  prettyLines (Node (Symbol i (PLambda j cl eff) cp _ :@: as) ch) =
+    ["Symbol " ++ i ++ " PLambda " ++ j ++ " " ++ show cp ++ " " ++ drawAnnotations as] ++
+      (case (cl, ch) of
+        ([], []) -> terminalShift eff
+        ([], _)  -> nonTerminalShift eff ++ drawSubTrees ch
+        (_,  []) -> drawSubTrees cl ++ terminalShift eff
+        (_,  _ ) -> drawSubTrees cl ++ nonTerminalShift eff ++ drawSubTrees ch)
 
   prettyLines (Node (tg :@: as) ch) = (show tg ++ drawAnnotations as) : drawSubTrees ch
 
@@ -104,12 +111,9 @@ instance Pretty (K3 Effect) where
         then terminalShift sym
         else nonTerminalShift sym ++ drawSubTrees ch)
 
-  prettyLines (Node (FScope syms (Right (rd,wr,app)) :@: as) ch) =
+  prettyLines (Node (FScope syms :@: as) ch) =
     ["FScope " ++ drawAnnotations as]
       ++ (concatMap (shift "+- " "|  " . prettyLines) syms)
-      ++ (concatMap (shift "+R " "|  " . prettyLines) rd)
-      ++ (concatMap (shift "+W " "|  " . prettyLines) wr)
-      ++ (concatMap (shift "+A " "|  " . prettyLines) app)
       ++ drawSubTrees ch
 
   prettyLines (Node (FApply fSym argSym :@: as) ch) =
