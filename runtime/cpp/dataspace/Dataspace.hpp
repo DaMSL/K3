@@ -858,47 +858,39 @@ class Sorted {
 // TODO reorder functions to match the others
 template<class R>
 class Map {
-
   using Key = typename R::KeyType;
-  using Value = typename R::ValueType;
-  using iterator_type = typename unordered_map<Key,Value>::iterator;
-  using const_iterator_type = typename unordered_map<Key, Value>::const_iterator;
 
- public:
-  typedef R ElemType;
-
-  template <class Pair>
-  ElemType elemToRecord(const Pair& e) const { return R {e.first, e.second}; }
-
+  public:
   // Default Constructor
   Map(): container() {}
-  Map(const unordered_map<Key,Value>& con): container(con) {}
-  Map(unordered_map<Key, Value>&& con): container(std::move(con)) {}
+  Map(const unordered_map<Key,R>& con): container(con) {}
+  Map(unordered_map<Key, R>&& con): container(std::move(con)) {}
 
   // Construct from (container) iterators
   template<typename Iterator>
   Map(Iterator begin, Iterator end): container(begin,end) {}
 
+  template <class Pair>
+  R elemToRecord(const Pair& e) const { return e.second; }
+
   // DS Operations:
   // Maybe return the first element in the DS
   shared_ptr<R> peek(const unit_t&) const {
     shared_ptr<R> res(nullptr);
-    const_iterator_type it = container.begin();
+    auto it = container.begin();
     if (it != container.end()) {
-      res = std::make_shared<R>();
-      res->key = it->first;
-      res->value = it->second;
+      res = std::make_shared<R>(it->second);
     }
     return res;
   }
 
   unit_t insert(const R& rec) {
-    container[rec.key] = rec.value;
+    container[rec.key] = rec;
     return unit_t();
   }
 
   unit_t insert(R&& rec) {
-    container[rec.key] = std::move(rec.value);
+    container[rec.key] = std::move(rec);
     return unit_t();
   }
 
@@ -906,40 +898,35 @@ class Map {
   unit_t insert_with(const R& rec, F f) {
     auto existing = container.find(rec.key);
     if (existing == std::end(container)) {
-      container[rec.key] = rec.value;
+      container[rec.key] = rec;
     } else {
-      container[rec.key] = f(std::move(ElemType{
-      std::move(existing->first),
-      std::move(existing->second)}))(rec).value;
+      container[rec.key] = f(std::move(existing->second))(rec);
     }
 
     return unit_t {};
   }
 
   unit_t erase(const R& rec) {
-    iterator_type it;
-    it = container.find(rec.key);
-    if (it != container.end() && it->second == rec.value) {
+    auto it = container.find(rec.key);
+    if (it != container.end()) {
         container.erase(it);
     }
     return unit_t();
   }
 
   unit_t update(const R& rec1, const R& rec2) {
-    iterator_type it;
-    it = container.find(rec1.key);
+    auto it = container.find(rec1.key);
     if (it != container.end()) {
-      if (rec1.value == it->second) {
-        container[rec2.key] = rec2.value;
-      }
+        container.erase(it);
+        container[rec2.key] = rec2;
     }
     return unit_t();
   }
 
   template<typename Fun, typename Acc>
   Acc fold(Fun f, Acc acc) const {
-    for (const std::pair<Key, Value>& p : container) {
-      acc = f(std::move(acc))(R {p.first, p.second});
+    for (const auto& p : container) {
+      acc = f(std::move(acc))(p.second);
     }
     return acc;
   }
@@ -947,19 +934,16 @@ class Map {
   template<typename Fun>
   auto map(Fun f) const -> Map< RT<Fun, R> > {
     Map< RT<Fun,R> > result;
-    for (const std::pair<Key,Value>& p : container) {
-      result.insert( f(R {p.first, p.second}) );
+    for (const auto& p : container) {
+      result.insert( f(p.second) );
     }
     return result;
   }
 
   template <typename Fun>
   unit_t iterate(Fun f) const {
-    for (const std::pair<Key,Value>& p : container) {
-      R rec;
-      rec.key = p.first;
-      rec.value = p.second;
-      f(R{p.first, p.second});
+    for (const auto& p : container) {
+      f(p.second);
     }
     return unit_t();
   }
@@ -967,12 +951,9 @@ class Map {
   template <typename Fun>
   Map<R> filter(Fun predicate) const {
     Map<R> result;
-    for (const std::pair<Key,Value>& p : container) {
-      R rec;
-      rec.key = p.first;
-      rec.value = p.second;
-      if (predicate(rec)) {
-        result.insert(std::move(rec));
+    for (const auto& p : container) {
+      if (predicate(p.second)) {
+        result.insert(p.second);
       }
     }
     return result;
@@ -983,10 +964,10 @@ class Map {
     const size_t size = container.size();
     const size_t half = size / 2;
     // Setup iterators
-    const_iterator_type beg = container.begin();
-    const_iterator_type mid = container.begin();
+    auto beg = container.begin();
+    auto mid = container.begin();
     std::advance(mid, half);
-    const_iterator_type end = container.end();
+    auto end = container.end();
     // Construct DS from iterators
     return std::make_tuple(Map(beg, mid),Map(mid, end));
   }
@@ -995,7 +976,7 @@ class Map {
     // copy this DS
     Map result = Map(*this);
     // copy other DS
-    for (const std::pair<Key,Value>& p: other.container) {
+    for (const auto& p: other.container) {
       result.container[p.first] = p.second;
     }
     return result;
@@ -1008,27 +989,28 @@ class Map {
     unordered_map<K, Z> accs;
 
     for (const auto& it : container) {
-      R rec = R{it.first, it.second};
-      K key = grouper(rec);
+      K key = grouper(it.second);
       if (accs.find(key) == accs.end()) {
         accs[key] = init;
       }
-      accs[key] = folder(std::move(accs[key]))(std::move(rec));
+      accs[key] = folder(std::move(accs[key]))(it.second);
     }
 
-    // Force a move from accs into a mapDS
-    Map<R_key_value<K,Z>> result(std::move(accs));
+    // TODO more efficient implementation?
+    Map<R_key_value<K,Z>> result;
+    for (const auto& it : container) {
+      result.insert(it.second);
+    }
     return result;
   }
 
-  // TODO optimize copies. lots of record building here.
   template <class Fun>
   auto ext(Fun expand) const -> Map < typename RT<Fun, R>::ElemType >  {
     typedef typename RT<Fun, R>::ElemType T;
     Map<T> result;
     for (const auto& it : container) {
-      for (auto& it2 : expand(R{it.first, it.second}).container) {
-        result.insert(R{std::move(it.first), std::move(it.second)});
+      for (auto& it2 : expand(it.second).container) {
+        result.insert(it2.second);
       }
     }
 
@@ -1041,7 +1023,7 @@ class Map {
   shared_ptr<R> lookup(const R& r) const {
       auto it = container.find(r.key);
       if (it != container.end()) {
-        return std::make_shared<R>(it->first, it->second );
+        return std::make_shared<R>(it->second);
       } else {
         return nullptr;
       }
@@ -1063,12 +1045,12 @@ class Map {
     return container > other.container;
   }
 
-  unordered_map<Key, Value>& getContainer() { return container; }
+  unordered_map<Key, R>& getContainer() { return container; }
 
-  const unordered_map<Key, Value>& getConstContainer() const { return container; }
+  const unordered_map<Key, R>& getConstContainer() const { return container; }
 
  protected:
-  unordered_map<Key,Value> container;
+  unordered_map<Key,R> container;
 
   private:
   friend class boost::serialization::access;
@@ -1588,7 +1570,7 @@ namespace YAML {
       auto container = c.getConstContainer();
       if (container.size() > 0) {
         for (auto i: container) {
-          node.push_back(convert<R>::encode(R{i.first, i.second}));
+          node.push_back(convert<R>::encode(i.second));
         }
       }
       else {
