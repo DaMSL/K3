@@ -64,9 +64,11 @@ runPurityE env (Node (ETuple :@: as) cs) = Node (ETuple :@: guardAddPureAll cs' 
 runPurityE env (Node (ERecord ids :@: as) cs)
     = Node (ERecord ids :@: guardAddPureAll cs' as) cs' where cs' = map (runPurityE env) cs
 runPurityE env e@(Node (ELambda x :@: as) cs)
-    = Node (ELambda x :@: ([EProperty "Pure" Nothing | isPure] ++ as)) $ map (runPurityE env) cs
+    = Node (ELambda x :@: (EProperty "Pure" Nothing : [EProperty "FPure" Nothing | isPure] ++ as))
+        $ map (runPurityE env) cs
   where
-    ESymbol (tag . eS env -> (Symbol _ (PLambda _ (tnc . eE env -> (FScope bindings (Right closure), effects)))))
+    ESymbol (tag . eS env -> (Symbol _ (PLambda _ (
+              tnc . eE env -> (FScope bindings (Right closure), map (expandEffDeep env) -> effects)))))
         = fromJust $ e @~ isESymbol
 
     isPure = noIO && noGlobalReads && noGlobalWrites && noIndirections && readOnlyNonLocalScalars
@@ -105,11 +107,18 @@ runPurityE env e@(Node (ELambda x :@: as) cs)
     isScalar (findSymbolType -> Just (tag -> TCollection)) = False
     isScalar _ = True
 
-runPurityE env (Node (EOperate OApp :@: as) cs)
-    = Node (EOperate OApp :@: guardAddPureAll cs' as) cs' where cs' = map (runPurityE env) cs
+runPurityE env (Node (EOperate OApp :@: as) [f, x])
+    = let f' = runPurityE env f
+          x' = runPurityE env x
+          as' = case f' @~ (\case { EProperty "FPure" Nothing -> True; _ -> False }) of
+                  Nothing -> as
+                  Just fp -> (pureE:as)
+      in Node (EOperate OApp :@: as') [f', x']
 runPurityE env (Node (EOperate OSnd :@: as) cs) = Node (EOperate OSnd :@: as) $ map (runPurityE env) cs
-runPurityE env (Node (EOperate op :@: as) cs) = Node (EOperate op :@: (pureE:as)) $ map (runPurityE env) cs
-runPurityE env (Node (EProject i :@: as) [c]) = Node (EProject i :@: (guardAddPure c' as)) [c'] where c' = runPurityE env c
+runPurityE env (Node (EOperate op :@: as) cs) = Node (EOperate op :@: (guardAddPureAll cs' as)) cs'
+  where cs' = map (runPurityE env) cs
+runPurityE env (Node (EProject i :@: as) [c]) = Node (EProject i :@: (guardAddPure c' as)) [c']
+  where c' = runPurityE env c
 runPurityE env (Node (ELetIn i :@: as) cs)
     = Node (ELetIn i :@: guardAddPureAll cs' as) cs' where cs' = map (runPurityE env) cs
 runPurityE env (Node (EAssign i :@: as) cs) = Node (EAssign i :@: as) $ map (runPurityE env) cs
