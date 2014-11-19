@@ -1,0 +1,10 @@
+declare x : mut int = 0
+
+trigger t : () = \_ -> (
+  (\_ -> (t2, me) <- 1) (); x = 100
+)
+
+trigger t2 : int = \i -> x = i
+
+source s1 : () = value ()
+feed s1 |> t
