@@ -27,7 +27,7 @@ import Language.K3.Core.Declaration
 
 import Language.K3.Analysis.Effects.Common
 import Language.K3.Analysis.Effects.Core
-import Language.K3.Analysis.Effects.InsertEffects(EffectEnv, eE, eS)
+import Language.K3.Analysis.Effects.InsertEffects(EffectEnv, eE, eS, expandEffDeep)
 
 import Language.K3.Transform.Hints
 
@@ -50,7 +50,7 @@ symIDs = S.map (\(tag -> Symbol i _) -> i)
 -- effect tree. To conflict, the symbol's superstructure must be read after the symbol was written
 -- to, or the superstructure was written anywhere.
 conflicts :: EffectEnv -> K3 Effect -> K3 Symbol -> Bool
-conflicts env f k = conflictsWR f || any (`hasWrite` f) kk
+conflicts env (expandEffDeep env -> f) k = conflictsWR f || any (`hasWrite` f) kk
   where
     kk = S.delete k $ anySuperStructure k
 
