@@ -18,10 +18,10 @@ module Language.K3.Core.Type (
     isTImmutable,
     isTMutable,
     isTAnnotation,
-
-    namedTAnnotations,
+    isTPrimitive,
     isTFunction,
-    isTEndpoint
+    isTEndpoint,
+    namedTAnnotations
 ) where
 
 import Control.Arrow
@@ -195,10 +195,8 @@ isTAnnotation :: Annotation Type -> Bool
 isTAnnotation (TAnnotation _) = True
 isTAnnotation _               = False
 
-namedTAnnotations :: [Annotation Type] -> [Identifier]
-namedTAnnotations anns = map extractId $ filter isTAnnotation anns
-  where extractId (TAnnotation n) = n
-        extractId _ = error "Invalid named annotation"
+isTPrimitive :: K3 Type -> Bool
+isTPrimitive (tag -> t) = t `elem` [TBool, TByte, TInt, TReal, TNumber, TString]
 
 -- | Matches polymorphic and monomorphic functions.
 isTFunction :: K3 Type -> Bool
@@ -211,3 +209,10 @@ isTEndpoint :: K3 Type -> Bool
 isTEndpoint (tag -> TSource) = True
 isTEndpoint (tag -> TSink)   = True
 isTEndpoint _ = False
+
+-- | Extract named annotations
+namedTAnnotations :: [Annotation Type] -> [Identifier]
+namedTAnnotations anns = map extractId $ filter isTAnnotation anns
+  where extractId (TAnnotation n) = n
+        extractId _ = error "Invalid named annotation"
+
