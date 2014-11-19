@@ -25,7 +25,8 @@ equalAlias _ _ = False
 
 hasIO :: K3 Effect -> Bool
 hasIO (tag -> FIO) = True
-hasIO (children -> cs) = any hasIO cs
+hasIO (children -> []) = False
+hasIO e@(children -> cs) = any hasIO cs
 
 readSet :: K3 Effect -> S.Set (K3 Symbol)
 readSet (tag -> FRead s) = S.singleton s
