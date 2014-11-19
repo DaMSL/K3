@@ -24,7 +24,9 @@ module Language.K3.Analysis.Effects.InsertEffects (
   symRWAQuery,
   eE,
   eS,
-  expandProgram
+  expandProgram,
+  expandEffDeep,
+  expandSymDeep
 )
 where
 
@@ -186,7 +188,12 @@ expandEff env eff = flip evalState env $ expandEffM eff
 expandSym :: EffectEnv -> K3 Symbol -> K3 Symbol
 expandSym env sym = flip evalState env $ expandSymM sym
 
-{- --for debugging -}
+expandEffDeep :: EffectEnv -> K3 Effect -> K3 Effect
+expandEffDeep env eff = flip evalState env $ expandEffDeepM eff
+
+expandSymDeep :: EffectEnv -> K3 Symbol -> K3 Symbol
+expandSymDeep env sym = flip evalState env $ expandSymDeepM sym
+
 expandEffDeepM :: K3 Effect -> MEnv (K3 Effect)
 expandEffDeepM eff = do
   eff' <- expandEffM eff
@@ -221,9 +228,7 @@ expandSymDeepM sym = do
       ch'  <- mapM expandSymDeepM ch
       return $ replaceCh sym' ch'
     exSyms = mapM expandSymDeepM
-{--}
 
-{- -- For debugging -}
 expandProgram :: EffectEnv -> K3 Declaration -> K3 Declaration
 expandProgram env p = fst $ runState (expandProg p) env
 
