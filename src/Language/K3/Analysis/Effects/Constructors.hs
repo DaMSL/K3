@@ -14,7 +14,7 @@ lambda :: Identifier -> K3 Effect -> Maybe (K3 Symbol) -> K3 Symbol
 lambda i eff subLam = replaceCh (symbol i (PLambda eff) True False) $ maybeToList subLam
 
 symId :: Int -> K3 Symbol
-symId i = Node (SymId i :@: []) []
+symId i = Node (SymId i :@: [SID i]) []
 
 -- Effects --
 
@@ -43,4 +43,4 @@ fio :: K3 Effect
 fio = Node (FIO :@: []) []
 
 effId :: Int -> K3 Effect
-effId i = Node (FEffId i :@: []) []
+effId i = Node (FEffId i :@: [FID i]) []
