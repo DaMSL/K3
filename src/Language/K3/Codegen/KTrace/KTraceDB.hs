@@ -46,9 +46,11 @@ mkGlobalsSchema g = CreateTable eA (Name eA [Nmc "Globals"]) (mkAttrs g) []
 
 mkEventTraceSchema :: Triggers -> Statement
 mkEventTraceSchema _ = CreateTable eA (Name eA [Nmc "Events"]) (mkAttrs logAttrs) []
-  where logAttrs = [ ("time", "date")
-                   , ("peer", "text")
-                   , ("level","text") ]
+  where logAttrs = [ ("time",    "date")
+                   , ("peer",    "text")
+                   , ("level",   "text")
+                   , ("trigger", "text")
+                   , ("entry",   "text") ]
 
 schemaType :: K3 Type -> Either String (Maybe String)
 schemaType t | isTPrimitive t =
