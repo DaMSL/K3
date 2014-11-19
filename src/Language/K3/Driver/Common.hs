@@ -26,6 +26,9 @@ defaultOutputFile = Just "a.out"
 defaultBuildDir :: Maybe FilePath
 defaultBuildDir = Just "__build"
 
+defaultRuntimeDir :: FilePath
+defaultRuntimeDir = "runtime"
+
 -- | Helper for resolving standard input.
 openFileOrStdIn :: String -> IO Handle
 openFileOrStdIn "-" = return stdin

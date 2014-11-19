@@ -238,6 +238,7 @@ runtimePathOpt :: Parser FilePath
 runtimePathOpt = strOption (
                        short   'r'
                     <> long    "runtime"
+                    <> value   defaultRuntimeDir
                     <> help    "Specify runtime path"
                     <> metavar "RUNTIME" )
 
