@@ -39,10 +39,10 @@ lambdaFormOptD _ _ t = t
 lambdaFormOptE :: TransformConfig -> EffectEnv -> [K3 Expression] -> K3 Expression -> K3 Expression
 lambdaFormOptE conf env ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c:as)) [lambdaFormOptE conf env ds b]
   where
-    ESymbol (tag . eS env -> (Symbol _ (PLambda _ (tag . eE env -> FScope [binding] (Right(cRead, cWritten, cApplied))))))
+    ESymbol (tag . eS env -> Symbol {symProv=PLambda (tag . eE env -> FScope [binding])})
         = fromJust $ e @~ isESymbol
 
-    getEffects e' = (\(EEffect f) -> f) <$> e' @~ (\case { EEffect _ -> True; _ -> False })
+    getEffects e' = (\(EEffect f) -> f) <$> e' @~ isEEffect
 
     fs = mapMaybe getEffects ds
     moveable g = not $ any (\f -> let (r, w, _) = symRWAQuery f [g] env in g `elem` r || g `elem` w) fs

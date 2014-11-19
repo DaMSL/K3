@@ -23,7 +23,9 @@ module Language.K3.Analysis.Effects.InsertEffects (
   runConsolidatedAnalysis,
   symRWAQuery,
   eE,
-  eS
+  eS,
+  -- Unlikely to be used
+  applyLambdaExprs
 )
 where
 
@@ -340,15 +342,15 @@ occursSym _ _    _                     = return ()
 updateEffM :: K3 Effect -> K3 Effect -> MEnv (K3 Effect)
 updateEffM e@(tag -> FEffId i) e' = insertEffectM i e' >> return e
 updateEffM _  e@(tag -> FEffId _) = return e
-updateEffM e@(getFID -> Just i) e' = insertEffectM i (stripAnno isFID e' @+ FID i) >> return (effId i @+ FID i)
-updateEffM e e'@(getFID -> Just i) = insertEffectM i e' >> return (effId i @+ FID i)
+updateEffM (getFID -> Just i) e' = insertEffectM i (stripAnno isFID e' @+ FID i) >> return (effId i @+ FID i)
+updateEffM _ e'@(getFID -> Just i) = insertEffectM i e' >> return (effId i @+ FID i)
 updateEffM e e' = error $ "can't do the update: "++show e++"\n and also:"++show e'
 
 updateSymM :: K3 Symbol -> K3 Symbol -> MEnv (K3 Symbol)
 updateSymM s@(tag -> SymId i) s' = insertSymbolM i s' >> return s
 updateSymM _ s@(tag -> SymId _)  = return s
-updateSymM s@(getSID -> Just i) s' = insertSymbolM i (stripAnno isSID s' @+ SID i) >> return (symId i @+ SID i)
-updateSymM e e'@(getSID -> Just i) = insertSymbolM i e' >> return (symId i @+ SID i)
+updateSymM (getSID -> Just i) s' = insertSymbolM i (stripAnno isSID s' @+ SID i) >> return (symId i @+ SID i)
+updateSymM _ e'@(getSID -> Just i) = insertSymbolM i e' >> return (symId i @+ SID i)
 updateSymM e e' = error $ "can't do the update: "++show e++"\n and also:"++show e'
 
 -- In contrast to updateXM, Give a symbol a new id and put it in the environment
@@ -854,7 +856,6 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       let eEff = getEEffect e
           eSym = maybeToList $ getESymbol e
       -- Create a gensym for the lambda, containing the effects of the child, and leading to the symbols
-      env     <- get
       eScope  <- genEff $ scope (bindSym : closureSyms) $ maybeToList eEff
       deleteBindM i
       lSym    <- genSym (PLambda eScope) True False eSym
@@ -952,7 +953,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       where
         subSelf s n'@(tag -> Symbol {symIdent="self", symProv=PVar})    = return $ Just $ replaceCh n' [s]
         subSelf s n'@(tag -> Symbol {symIdent="content", symProv=PVar}) = return $ Just $ replaceCh n' [s]
-        subSelf _ n'                                = return Nothing
+        subSelf _ _                                                     = return Nothing
 
     -- handle seq (last symbol)
     handleExpr ch n@(tag -> EOperate OSeq) = do
