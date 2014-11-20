@@ -238,6 +238,7 @@ requiredAliases = return
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "createContexts"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "getAddrs"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "DefaultInternalCodec"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "currentTime"), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "make_tuple" ), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "make_shared" ), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "shared_ptr" ), Nothing)
@@ -322,14 +323,32 @@ generateDispatchPopulation = do
        kType <- genCType tType
 
        let i = R.Variable $ R.Name (idOfTrigger tName)
-
+       
+       let engine = R.Project (R.Dereference $ R.Variable $ R.Name "this") (R.Name "__engine")
+       let ctDecl = R.Forward $ R.ScalarDecl (R.Name "ct") R.Inferred
+                      (Just $ R.Call (R.Variable $ R.Name "currentTime") [])
+       let encoded_payload = R.Call (R.Variable $ R.Specialized [kType] (R.Name "K3::serialization::json::encode"))
+                               [R.Variable $ R.Name "v"]
        let dispatchWrapper = R.Lambda
                              [R.ValueCapture $ Just ("this", Nothing)]
                              [("payload", R.Named $ R.Name "void*")] False Nothing
-                             [R.Ignore $ R.Call (R.Variable $ R.Name tName)
-                                   [R.Dereference $ R.Call (R.Variable $ R.Specialized [R.Pointer kType] $
-                                                             R.Name "static_cast")
-                                    [R.Variable $ R.Name "payload"]]]
+                             [ ctDecl 
+                             , R.Forward $ R.ScalarDecl (R.Name "v") R.Inferred 
+                                 (Just $ R.Dereference $ R.Call (R.Variable $ R.Specialized [R.Pointer kType] $
+                                                             R.Name "static_cast") [R.Variable $ R.Name "payload"])
+                             , R.Ignore $ R.Call (R.Variable $ R.Name tName)
+                                   [R.Variable $ R.Name "v"]
+                             , R.IfThenElse (R.Call (R.Project engine (R.Name "logEnabled")) [])
+                                 [ R.Ignore $ R.Call ((R.Project engine) (R.Name "logJson"))
+                                    [ R.Variable $ R.Name "ct"
+                                    , R.Variable $ R.Name "me"
+                                    , R.Literal $ R.LString tName
+                                    , encoded_payload 
+                                    , R.Call (R.Variable $ R.Name "__jsonify") []
+                                    ] 
+                                 ]
+                                 []
+                             ]
 
        return $ R.Assignment (R.Subscript table i) dispatchWrapper
 
