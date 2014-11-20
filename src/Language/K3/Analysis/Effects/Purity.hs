@@ -66,22 +66,19 @@ runPurityE env (Node (ERecord ids :@: as) cs)
 runPurityE env e@(Node (ELambda x :@: as) cs)
     = Node (ELambda x :@: ([EProperty "Pure" Nothing | isPure] ++ as)) $ map (runPurityE env) cs
   where
-    ESymbol (tag . eS env -> (Symbol _ (PLambda _ (tnc . eE env -> (FScope bindings (Right closure), effects)))))
+    ESymbol (tag . eS env -> (Symbol { symProv = PLambda (tnc . eE env -> (FScope bindings, effects))}))
         = fromJust $ e @~ isESymbol
 
     isPure = noGlobalReads && noGlobalWrites && noIndirections && readOnlyNonLocalScalars
 
-    nonLocals = let (cRead, cWritten, cApplied)
-                        = closure in S.fromList $ bindings ++ concat [cRead, cWritten, cApplied]
-
     noGlobalReads  = not $ any isGlobal $ S.unions $ map readSet  effects
     noGlobalWrites = not $ any isGlobal $ S.unions $ map writeSet effects
-    noIndirections = not $ any isIndirection nonLocals
-    readOnlyNonLocalScalars = all isScalar $ S.intersection nonLocals (S.unions $ map writeSet effects)
+    noIndirections = not $ any isIndirection bindings
+    readOnlyNonLocalScalars = all isScalar $ S.intersection (S.fromList bindings) (S.unions $ map writeSet effects)
 
     isGlobal :: K3 Symbol -> Bool
-    isGlobal (tag . eS env -> Symbol _ PGlobal) = True
-    isGlobal (tnc . eS env -> (Symbol _ (PProject _), ps)) = any isGlobal ps
+    isGlobal (tag . eS env -> Symbol {symProv = PGlobal}) = True
+    isGlobal (tnc . eS env -> (Symbol {symProv = PProject _}, ps)) = any isGlobal ps
     isGlobal _ = False
 
     findSymbolType = fmap getKType . getFirst . flip findSymbolExpr e
