@@ -522,14 +522,13 @@ createClosure mEff mSym = liftM nubTuple $ do
     -- Add the effect of scope
     addScopeEff :: K3 Symbol -> ClosureInfo -> MEnv ClosureInfo
     addScopeEff n' (r,w,a) = do
-      n <- expandSymM n'
-      let r' = case tag n of
-                 Symbol {symHasCopy=True} -> n':r
-                 _ -> r
-      let w' = case tag n of
-                 Symbol {symHasWb=True} -> n':w
-                 _ -> w
-      return (r', w', a)
+      n  <- expandSymM n'
+      (r', w') <- case tag n of
+                    Symbol {symHasCopy=True, symHasWb=True} -> (\a -> (a, a)) <$> getClosureSyms [] n'
+                    Symbol {symHasCopy=True}                -> (,[]) <$> getClosureSyms [] n'
+                    Symbol {symHasWb=True}                  -> ([],) <$> getClosureSyms [] n'
+                    _                                       -> return ([], [])
+      return (r'++r, w'++w, a)
 
 
     addClosureSym acc n' = do
@@ -547,7 +546,7 @@ createClosure mEff mSym = liftM nubTuple $ do
       case tag n of
         SymId _                       -> error "unexpected symId1"
         -- Don't bother with temporaries (for now)
-        Symbol {symProv=PGlobal}    -> return acc
+        Symbol {symProv=PGlobal}      -> return acc
         Symbol {symProv=PTemporary _} -> return acc
         Symbol {symIdent=i}           -> do
           x' <- lookupBindInnerM i
@@ -1266,7 +1265,8 @@ symRWAQuery eff syms env = flip evalState env $ do
   -- Substitute any lambdas inside
   eff' <- mapEff False (subEff Nothing) (subSym Nothing) eff
   -- Get the general closure
-  createClosure (Just eff') Nothing
+  cl <- createClosure (Just eff') Nothing
+  return cl
   where
     -- For superstructure, we add parents
     addToEnv s' = do
