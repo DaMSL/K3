@@ -36,7 +36,7 @@ nrvoMoveOptE env e@(TAC (ELambda i) as cs) = TAC (ELambda i) (a:as) (map (nrvoMo
     a = EOpt $ ReturnMoveHint nrvoMovePermitted
     nrvoMovePermitted = not (null rs) && elem (head rs) bindings
     ESymbol ((tag &&& children) . eS env
-                 -> (Symbol { symProv = PLambda (eE env -> Node (FScope bindings) es) }, rs))
+                 -> (Symbol { symProv = PLambda (eE env -> Node (FScope bindings :@: _) _) }, rs))
         = fromJust $ e @~ isESymbol
 
 nrvoMoveOptE env (TAC t as cs) = TAC t as (map (nrvoMoveOptE env) cs)
