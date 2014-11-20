@@ -51,7 +51,7 @@ namespace K3
     }
 
     map<string, string> json_bindings(Address) override {
-      throw std::runtime_error("Json bindinds not implemented for Native MP"); 
+      throw std::runtime_error("Json bindinds not implemented for Native MP");
     }
    private:
     EnvStrFunction _get_env;

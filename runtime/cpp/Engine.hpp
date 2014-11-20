@@ -332,8 +332,8 @@ namespace K3 {
             stream << "TRACE" << "|";
             stream << trig << "|";
             stream << msg_contents << "|";
-            
-            // Global state 
+
+            // Global state
             for (const auto& tup : env) {
                stream << tup.second;
               if (i < s-1) {
