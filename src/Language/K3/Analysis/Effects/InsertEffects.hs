@@ -612,16 +612,9 @@ type MOptEffF      = K3 Effect -> MEnv (Maybe (K3 Effect))
 type MOptSymF      = K3 Symbol -> MEnv (Maybe (K3 Symbol))
 
 -- Generic version of map for both effects and symbols
-mapGen :: (a1 -> MEnv (K3 a))
-       -> (K3 a -> MEnv (Maybe (K3 a)))
-       -> (K3 a -> Bool -> MEnv (Maybe t))
-       -> (a1 -> t -> MEnv a1)
-       -> (t -> MEnv a1)
-       -> (a1 -> Int)
-       -> (Int -> a1)
-       -> Bool
-       -> a1
-       -> MEnv (Maybe a1)
+-- Generic version of map for both effects and symbols
+mapGen :: MapExpandF a -> MapChF a -> MapProcessF a -> MapUpdateF a -> MapDupF a
+       -> (K3 a -> Int) -> (Int -> K3 a) -> Bool -> K3 a -> MEnv (Maybe (K3 a))
 mapGen expandFn chMapFn processFn updateFn duplicateFn getIdFn mkIdFn inPlace n' =
   if inPlace then processNode $ updateFn n'
     else do
@@ -657,7 +650,7 @@ getNew f l = do
 
 -- @inPlace: whether we should do destructive updates (modifying in the tree) or create
 -- new duplicated values
-mapEff :: Bool -> (K3 Effect -> MEnv (Maybe(K3 Effect))) -> (K3 Symbol -> MEnv (Maybe(K3 Symbol))) -> K3 Effect -> MEnv (K3 Effect)
+mapEff :: Bool -> MOptEffF -> MOptSymF -> K3 Effect -> MEnv (K3 Effect)
 mapEff inPlace effFn symFn n = do
   -- Create a unique assignment map for this mapping, if needed
   addAssignLevelM

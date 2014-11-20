@@ -76,7 +76,7 @@ isFID _ = True
 instance Pretty (K3 Symbol) where
   prettyLines (Node (Symbol {symIdent=i, symProv=PLambda eff, symHasCopy=cp} :@: as) ch) =
     ["Symbol " ++ i ++ " PLambda " ++ show cp ++ " " ++ drawAnnotations as] ++
-      (if null ch then terminalShift eff 
+      (if null ch then terminalShift eff
          else nonTerminalShift eff ++ drawSubTrees ch)
 
   prettyLines (Node (tg :@: as) ch) = (show tg ++ drawAnnotations as) : drawSubTrees ch
