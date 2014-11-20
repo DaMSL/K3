@@ -66,7 +66,7 @@ namespace K3 {
     // Messaging.
 
     // TODO: rvalue-ref overload for value argument.
-    void Engine::send(Address addr, TriggerId triggerId, shared_ptr<Dispatcher> disp)
+    void Engine::send(Address addr, TriggerId triggerId, shared_ptr<Dispatcher> disp, Address src)
     {
       if (deployment) {
         bool local_address = isDeployedNode(*deployment, addr);
@@ -75,12 +75,12 @@ namespace K3 {
         if (shortCircuit) {
           // Directly enqueue.
           // TODO: ensure we avoid copying the dispatcher
-          Message msg(addr, triggerId, disp);
+          Message msg(addr, triggerId, disp,src);
           queues->enqueue(msg);
           control->messageAvail();
 
         } else {
-          RemoteMessage rMsg(addr, triggerId, disp->pack());
+          RemoteMessage rMsg(addr, triggerId, disp->pack(), src);
 
           // Get connection and send a message on it.
           Identifier eid = connectionId(addr);
