@@ -17,6 +17,7 @@ namespace K3 {
 
     virtual void __dispatch(int, void *) = 0;
     virtual std::map<std::string, std::string> __prettify() = 0;
+    virtual std::map<std::string, std::string> __jsonify() = 0;
     virtual void __patch(std::string) = 0;
     virtual unit_t processRole(const unit_t&) = 0;
 

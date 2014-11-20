@@ -72,6 +72,7 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
     inits <- initializations <$> get
 
     prettify <- genPrettify
+    jsonify <- genJsonify
 
     patchables' <- patchables <$> get
 
@@ -172,7 +173,7 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
                       [R.Named $ R.Qualified (R.Name "std") (R.Name "string")] R.Void
 
     let contextDefns = [contextConstructor] ++ programDefns  ++ [initDeclDefn] ++
-                       [patchFnDecl, prettify, dispatchDecl]
+                       [patchFnDecl, prettify, jsonify, dispatchDecl]
 
     let contextClassDefn = R.ClassDefn contextName []
                              [ R.Named $ R.Qualified (R.Name "K3") $ R.Name "__standard_context"
@@ -270,6 +271,7 @@ requiredIncludes = return
                    , "Literals.hpp"
                    , "Serialization.hpp"
                    , "serialization/yaml.hpp"
+                   , "serialization/json.hpp"
                    , "Builtins.hpp"
                    , "Run.hpp"
                    , "Prettify.hpp"
@@ -330,6 +332,44 @@ generateDispatchPopulation = do
                                     [R.Variable $ R.Name "payload"]]]
 
        return $ R.Assignment (R.Subscript table i) dispatchWrapper
+
+
+genJsonify :: CPPGenM R.Definition
+genJsonify = do
+   currentS <- get
+   body    <- genBody $ showables currentS
+   --let body = [R.Return $ R.Initialization result_type []]
+   return $ R.FunctionDefn (R.Name "__jsonify") [] (Just result_type) [] False body
+  where
+   genBody  :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
+   genBody n_ts = do
+     result_decl <- return $ R.Forward $ R.ScalarDecl (R.Name result) result_type Nothing
+     inserts     <- genInserts n_ts
+     return_st   <- return $ R.Return $ R.Variable $ R.Name result
+     return $ (result_decl : inserts) ++ [return_st]
+   
+   -- Insert key-value pairs into the map
+   genInserts :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
+   genInserts n_ts' = do
+     -- Don't include unit vars
+     let n_ts      = filter (not . isTUnit . snd) n_ts'
+         names     = map fst n_ts
+         name_vars = map (R.Variable . R.Name) names
+         new_nts   = zip name_vars $ map snd n_ts
+         lhs_exprs = map (\x -> R.Subscript (R.Variable $ R.Name result) (R.Literal $ R.LString x)) names
+     rhs_exprs  <- mapM (\(n,t) -> jsonifyExpr t n) new_nts
+     return $ zipWith R.Assignment lhs_exprs rhs_exprs
+     where
+       isTUnit (tnc -> (TTuple, [])) = True
+       isTUnit _ = False
+
+       jsonifyExpr t n = do
+         cType <- genCType t 
+         return $ R.Call (R.Variable $ R.Specialized [cType] (R.Name "K3::serialization::json::encode")) [n]
+
+   p_string = R.Named $ R.Qualified (R.Name "std") (R.Name "string")
+   result_type  = R.Named $ R.Qualified (R.Name "std") (R.Specialized [p_string, p_string] (R.Name "map"))
+   result  = "__result"
 
 -- Generate a function to help print the current environment (global vars and their values).
 -- Currently, this function returns a map from string (variable name) to string (string representation of value)

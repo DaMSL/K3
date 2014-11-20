@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "yaml-cpp/yaml.h"
+#include "rapidjson/document.h"
 
 #include "boost/serialization/array.hpp"
 #include "boost/functional/hash.hpp"
@@ -194,6 +195,18 @@ class base_string {
 };
 
 } // namespace K3
+
+namespace JSON {
+  template <> struct convert<K3::base_string> {
+    template <class Allocator> 
+    static rapidjson::Value encode(const K3::base_string& from, Allocator& al) {
+      Value v;
+      v.SetString(from.c_str(), al); 
+      return v;
+    }
+
+  };
+}
 
 namespace YAML {
   template <>

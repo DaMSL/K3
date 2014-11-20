@@ -14,6 +14,11 @@ namespace K3 {
       list<Address> processAddrs = deployedNodes(sys_env);
       Address initialAddress;
 
+      // TODO log file as parameter
+      if (log_enabled) {
+        log_stream = std::ofstream("k3_log.dsv");
+      }
+
       if (!processAddrs.empty()) {
         initialAddress = processAddrs.front();
       } else {
@@ -163,6 +168,21 @@ namespace K3 {
              logAt(trivial::trace, "  " + id + " = " + val);
           }
        }
+      
+       // JSON Log
+       if (log_enabled) {
+          std::map<std::string, std::string> env = mp->json_bindings(next_message->address());
+          auto s = env.size();
+          int i = 0;          
+          for (const auto& tup : env) {
+            log_stream << tup.second;
+            if (i < s-1) {
+              log_stream << "|";
+            }
+            i++;
+          }
+          log_stream << std::endl;
+       }
 
         return res;
 
@@ -177,6 +197,34 @@ namespace K3 {
       MPStatus curr_status = init_st;
       MPStatus next_status;
       logAt(trivial::trace, "Starting the Message Processing Loop");
+      if(log_enabled) {
+          //TODO handle multiple peers! single file per peer probably easiest
+          std::map<std::string, std::string> env = mp->json_bindings(deployedNodes(*deployment).front());
+          auto s = env.size();
+          int i = 0;          
+          // Header 
+          for (const auto& tup : env) {
+            log_stream << tup.first;
+            if (i < s-1) {
+              log_stream << "|";
+            }
+            i++;
+          }
+          log_stream << std::endl;
+
+          i = 0;
+          // Initial Values 
+          for (const auto& tup : env) {
+            log_stream << tup.second;
+            if (i < s-1) {
+              log_stream << "|";
+            }
+            i++;
+          }
+          log_stream << std::endl;
+      }
+      
+
       while(true) {
         switch (curr_status) {
 
