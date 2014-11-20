@@ -326,9 +326,10 @@ namespace K3 {
             int i = 0;
             auto& stream = *log_streams[peer];
 
-            // timestamp, Peer, trig_name, msg_contents
+            // timestamp, Peer, level, trig_name, msg_contents
             stream << time << "|";
             stream << K3::serialization::json::encode<Address>(peer) << "|";
+            stream << "TRACE" << "|";
             stream << trig << "|";
             stream << msg_contents << "|";
             
