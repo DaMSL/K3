@@ -141,8 +141,12 @@ k3Keywords = [
     {- Metaprogramming keywords -}
     "control", "label", "expr", "decl", "literal", "labeltype", "shared",
 
+    {- Effect signature keywords -}
+    "with", "symbol", "effects", "return",
+
     {- Syntactic sugar keywords -}
     "typedef"
+
   ]
 
 {- Style definitions for parsers library -}
