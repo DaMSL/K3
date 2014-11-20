@@ -33,7 +33,7 @@ import qualified Language.K3.Transform.TriggerSymbols as TriggerSymbols
 
 import Language.K3.Transform.Common(cleanGeneration)
 
-import Language.K3.Codegen.KTrace.KTraceDB ( mkProgramTraceSchema )
+import Language.K3.Codegen.KTrace.KTraceDB ( kTrace )
 import Language.K3.Stages
 
 import Language.K3.Driver.Batch
@@ -84,7 +84,7 @@ run opts = do
       putStrLn str
       case map toLower $ outLanguage cOpts of
         "cpp"     -> CPPC.compile opts cOpts p
-        "ktrace"  -> either putStrLn putStrLn $ mkProgramTraceSchema p
+        "ktrace"  -> either putStrLn putStrLn $ kTrace (kTraceOptions cOpts) p
         _         -> error $ outLanguage cOpts ++ " compilation not supported."
         --"haskell" -> HaskellC.compile opts cOpts p
 
@@ -108,7 +108,7 @@ run opts = do
     transform ts prog = foldl' (flip analyzer) (prog, "") ts
 
     -- Print out the program
-    printer PrintAST    = putStrLn . pretty
+    printer PrintAST    = putStrLn . pretty . stripTypeAndEffectAnns
     printer PrintSyntax = either syntaxError putStrLn . programS
 
     runStagesThenPrint popts prog = do

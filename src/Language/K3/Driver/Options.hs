@@ -76,16 +76,17 @@ data TypecheckOptions
 
 -- | Compilation options datatype.
 data CompileOptions = CompileOptions
-                      { outLanguage  :: String
-                      , programName  :: String
-                      , runtimePath  :: FilePath
-                      , outputFile   :: Maybe FilePath
-                      , buildDir     :: Maybe FilePath
-                      , ccCmd        :: CPPCompiler
-                      , ccStage      :: CPPStages
-                      , cppOptions   :: String
-                      , coTransform  :: TransformOptions
-                      , useSubTypes  :: Bool
+                      { outLanguage        :: String
+                      , programName        :: String
+                      , runtimePath        :: FilePath
+                      , outputFile         :: Maybe FilePath
+                      , buildDir           :: Maybe FilePath
+                      , ccCmd              :: CPPCompiler
+                      , ccStage            :: CPPStages
+                      , cppOptions         :: String
+                      , kTraceOptions      :: [(String, String)]
+                      , coTransform        :: TransformOptions
+                      , useSubTypes        :: Bool
                       , optimizationLevel  :: OptimizationLevel
                       }
   deriving (Eq, Read, Show)
@@ -216,6 +217,7 @@ compileOptions = fmap Compile $ CompileOptions
                             <*> ccCmdOpt
                             <*> ccStageOpt
                             <*> cppOpt
+                            <*> ktraceOpt
                             <*> transformOptions
                             <*> noQuickTypesOpt
                             <*> optimizationOpt
@@ -291,6 +293,14 @@ allStagesFlag = flag' AllStages (long "allstages" <> help "Compile all stages")
 
 cppOpt :: Parser String
 cppOpt = strOption $ long "cpp-flags" <> help "Specify CPP Flags" <> metavar "CPPFLAGS" <> value ""
+
+ktraceOpt :: Parser [(String, String)]
+ktraceOpt = keyValList "" <$> strOption (
+                 long "ktrace-flags"
+              <> help "Specify KTrace Flags"
+              <> metavar "KTRACEFLAGS"
+              <> value ""
+            )
 
 includeOpt :: Parser FilePath
 includeOpt = strOption (
