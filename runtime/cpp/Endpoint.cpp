@@ -269,7 +269,8 @@ namespace K3
         shared_ptr<Subscribers> s = it->second;
         if (s) {
           for (tuple<Address, TriggerId> t : *s) {
-            sendFn(get<0>(t), get<1>(t), payload);
+            // TODO we need to add the source of the message (4th argument)
+            sendFn(get<0>(t), get<1>(t), payload, defaultAddress);
           }
         }
       }

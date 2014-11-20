@@ -104,17 +104,29 @@ namespace K3 {
         for (; *scanner != ','; ++scanner);
         string::const_iterator id_it = scanner++;
 
+        for (; *scanner != ':'; ++scanner);
+        string::const_iterator src_it = scanner++;
+
+        for (; *scanner != ','; ++scanner);
+        string::const_iterator src_port_it = scanner++;
+ 
+        // Dest host
         string host = string(begin(v), host_it);
         unsigned short port(std::stoul(string(host_it + 1, port_it)));
+        // Trig id
         TriggerId id(std::stoi(string(port_it + 1, id_it)));
-        string contents(id_it + 1, end(v));
+        // Source host
+        string src = string(id_it + 1, src_it);
+        unsigned short src_port(std::stoul(string(src_it + 1, src_port_it)));
+        //Payload
+        string contents(src_port_it + 1, end(v));
 
-        return RemoteMessage(make_address(host, port), id, contents);
+        return RemoteMessage(make_address(host, port), id, contents, make_address(src, src_port));
       }
 
       Value AbstractDefaultInternalCodec::show_message(const RemoteMessage& m) {
         ostringstream os;
-        os << addressAsString(m.address()) << "," << m.id() << "," << m.contents();
+        os << addressAsString(m.address()) << "," << m.id() << "," << addressAsString(m.source()) << "," << m.contents();
         string s = os.str();
         return s;
       }
