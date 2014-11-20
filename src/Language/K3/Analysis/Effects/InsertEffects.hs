@@ -42,7 +42,7 @@ import Data.IntMap(IntMap)
 import qualified Data.IntMap as IntMap
 import Data.List(nub, delete)
 import Data.Foldable hiding (and, mapM_, any, all, concatMap, concat, elem)
--- import Debug.Trace(trace)
+import Debug.Trace(trace)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -53,9 +53,11 @@ import Language.K3.Core.Type
 
 import Language.K3.Analysis.Effects.Core
 import Language.K3.Analysis.Effects.Constructors
--- import Language.K3.Utils.Pretty(pretty)
+import Language.K3.Utils.Pretty(pretty)
 
 import qualified Language.K3.Analysis.InsertMembers as IM
+
+debugTrace = False
 
 data LocalSym = LocalSym (K3 Symbol) | LambdaLayer (Maybe (K3 Symbol))
 
@@ -545,6 +547,7 @@ createClosure mEff mSym = liftM nubTuple $ do
       case tag n of
         SymId _                       -> error "unexpected symId1"
         -- Don't bother with temporaries (for now)
+        Symbol {symProv=PGlobal _}    -> return acc
         Symbol {symProv=PTemporary _} -> return acc
         Symbol {symIdent=i}           -> do
           x' <- lookupBindInnerM i
@@ -862,10 +865,12 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
   -- actual modification of AST (no need to decorate declarations here)
   p2 <- mapProgram handleDecl mId handleExprs Nothing p1
   -- apply all lambdas
-  -- p3 <- mapProgram handleDecl mId applyLambdaExprs Nothing p2
-  -- p4' <- expandProg p4
-  -- trace (pretty p4') $ return p4
-  return p2
+  if debugTrace then do
+    p3 <- mapProgram handleDecl mId applyLambdaExprs Nothing p2
+    p4 <- expandProg p3
+    trace (pretty p4) $ return p2
+    else
+      return p2
   where
 
     handleExprs :: K3 Expression -> MEnv (K3 Expression)
