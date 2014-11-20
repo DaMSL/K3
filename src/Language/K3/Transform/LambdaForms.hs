@@ -28,7 +28,7 @@ import Language.K3.Transform.Common
 import Language.K3.Transform.Hints
 
 symIDs :: EffectEnv -> S.Set (K3 Symbol) -> S.Set Identifier
-symIDs env = S.map (\(tag . eS env -> Symbol i _) -> i)
+symIDs env = S.map (symIdent . tag . eS env)
 
 lambdaFormOptD :: TransformConfig -> EffectEnv -> K3 Declaration -> K3 Declaration
 lambdaFormOptD c env (Node (DGlobal i t me :@: as) cs) = Node (DGlobal  i t (lambdaFormOptE c env [] <$> me) :@: as) cs
@@ -39,13 +39,15 @@ lambdaFormOptD _ _ t = t
 lambdaFormOptE :: TransformConfig -> EffectEnv -> [K3 Expression] -> K3 Expression -> K3 Expression
 lambdaFormOptE conf env ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c:as)) [lambdaFormOptE conf env ds b]
   where
-    ESymbol (tag . eS env -> Symbol {symProv=PLambda (tag . eE env -> FScope [binding])})
+    ESymbol (tag . eS env -> Symbol {symProv=PLambda (eE env -> Node (FScope bindings@(binding:closure) :@: _) [be])})
         = fromJust $ e @~ isESymbol
 
     getEffects e' = (\(EEffect f) -> f) <$> e' @~ isEEffect
 
     fs = mapMaybe getEffects ds
     moveable g = not $ any (\f -> let (r, w, _) = symRWAQuery f [g] env in g `elem` r || g `elem` w) fs
+
+    (cRead, cWritten, cApplied) = symRWAQuery be bindings env
 
     funcHint
         | binding `elem` cWritten = False
