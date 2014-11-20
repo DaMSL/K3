@@ -343,6 +343,7 @@ namespace K3 {
     IOMode ioMode(string k3Mode);
   protected:
     bool                            log_enabled;
+    std::ofstream                   log_stream;
     shared_ptr<EngineConfiguration> config;
     shared_ptr<EngineControl>       control;
     shared_ptr<SystemEnvironment>   deployment;

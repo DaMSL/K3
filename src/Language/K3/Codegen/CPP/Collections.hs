@@ -122,7 +122,27 @@ composite name ans = do
                              ]
                              [] []
                          ]
-    return [collectionClassDefn, yamlStructDefn]
+    
+    let jsonStructDefn = R.NamespaceDefn "JSON"
+                         [ R.TemplateDefn [("__CONTENT", Nothing)] $
+                            R.ClassDefn (R.Name "convert") [selfType] []
+                             [ R.TemplateDefn [("Allocator", Nothing)] $ 
+                               R.FunctionDefn (R.Name "encode")
+                                 [("c", R.Const $ R.Reference $ selfType)
+                                 ,("al", R.Reference $ R.Named $ R.Name "Allocator")
+                                 ] 
+                                 (Just $ R.Static $ R.Named $ R.Name "rapidjson::Value") [] False
+                                 [R.Return $ R.Call
+                                       (R.Variable $ R.Qualified
+                                             (R.Specialized [R.Named $ parent] (R.Name "convert"))
+                                             (R.Name "encode"))
+                                       [R.Variable $ R.Name "c",
+                                        R.Variable $ R.Name "al"]
+                                ]
+                             ]
+                             [] []
+                         ]
+    return [collectionClassDefn, yamlStructDefn, jsonStructDefn]
 
 record :: [Identifier] -> CPPGenM [R.Definition]
 record (sort -> ids) = do
@@ -274,7 +294,50 @@ record (sort -> ids) = do
                              [] []
                          ]
 
-    return [recordStructDefn, yamlStructDefn, hashStructDefn]
+    let addField (name,typ) = R.Call (R.Project (R.Variable $ R.Name "inner") (R.Name "AddMember"))
+                                [ R.Literal $ R.LString name
+                                , R.Call (R.Variable $ R.Qualified (R.Specialized [R.Named $ R.Name typ] (R.Name "convert")) (R.Name "encode"))
+                                   [R.Project (R.Variable $ R.Name "r") (R.Name name), R.Variable $ R.Name "al"]
+                                , R.Variable $ R.Name "al"
+                                ]
+   
+
+    let jsonStructDefn =   R.NamespaceDefn "JSON" 
+                           [R.TemplateDefn (zip templateVars (repeat Nothing)) $
+                           R.ClassDefn (R.Name "convert") [recordType] []
+                           [
+                           R.TemplateDefn [("Allocator", Nothing)] (R.FunctionDefn (R.Name "encode")
+                           [("r", R.Const $ R.Reference recordType)
+                           ,("al", R.Reference $ R.Named $ R.Name "Allocator")  
+                           ]
+                           (Just $ R.Static $ R.Named $ R.Name "rapidjson::Value") [] False
+                           (
+                            [R.Forward $ R.UsingDecl (Left (R.Name "rapidjson")) Nothing] ++ 
+                            [R.Forward $ R.ScalarDecl (R.Name "val") (R.Named $ R.Name "Value") Nothing] ++
+                            [R.Forward $ R.ScalarDecl (R.Name "inner") (R.Named $ R.Name "Value") Nothing ] ++ 
+                            [R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "val") (R.Name "SetObject")) [] ] ++
+                            [R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "inner") (R.Name "SetObject")) [] ] ++
+                            [R.Ignore $ addField tup | tup <- zip ids templateVars] ++
+                            [R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "val") (R.Name "AddMember"))
+                              [R.Literal $ R.LString "type"
+                              , R.Call (R.Variable $ R.Name "Value") 
+                                [R.Literal $ R.LString "record"]
+                              , R.Variable $ R.Name "al"
+                              ]
+                            ] ++ 
+                            [R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "val") (R.Name "AddMember"))
+                              [R.Literal $ R.LString "value"
+                              , R.Call 
+                                  (R.Project (R.Variable $ R.Name "inner") (R.Name "Move"))
+                                  []
+                              , R.Variable $ R.Name "al"
+                              ] 
+                            ] ++ 
+                            [R.Return $ R.Variable $ R.Name "val"] 
+                           ))
+                            ] [] []
+                            ]
+    return [recordStructDefn, jsonStructDefn, yamlStructDefn, hashStructDefn]
 
 reservedAnnotations :: [Identifier]
 reservedAnnotations = ["Collection", "External", "Seq", "Set", "Sorted", "Map", "Vector", "MultiIndex"]

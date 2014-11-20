@@ -69,6 +69,11 @@ namespace K3 {
     }
 
     template <class T>
+    string_impl toJson(const T& in) {
+      return K3::serialization::json::encode<T>(in);
+    }
+
+    template <class T>
     T range(int i) {
       T result;
       for (int j = 0; j < i; j++) {
