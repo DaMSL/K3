@@ -25,32 +25,24 @@ import Language.K3.Core.Utils
 
 import Language.K3.Utils.Pretty
 
-
-type Globals     = [(Identifier, String)]  -- Global variable name and type
-type Triggers    = [(Identifier, String)]  -- Trigger name and type
+type TypedAttrs  = [(Identifier, String)]
+type Globals     = TypedAttrs  -- Global variable name and type
+type Triggers    = TypedAttrs  -- Trigger name and type
 data SchemaState = SchemaState { triggers :: Triggers, globals :: Globals }
+
+fieldPadLength :: Int
+fieldPadLength = 15
 
 emptySchemaState :: SchemaState
 emptySchemaState = SchemaState [] []
 
 mkAttrs :: [(Identifier, String)] -> [AttributeDef]
-mkAttrs = map (mk . (first $ pad 15))
+mkAttrs = map (mk . (first $ pad fieldPadLength))
   where mk (i,t) = AttributeDef eA (Nmc i) (SimpleTypeName eA t) Nothing []
         pad l s = s ++ replicate (l - length s) ' '
 
 eA :: HA.Annotation
 eA = emptyAnnotation
-
-mkGlobalsSchema :: Globals -> Statement
-mkGlobalsSchema g = CreateTable eA (Name eA [Nmc "Globals"]) (mkAttrs g) []
-
-mkEventTraceSchema :: Triggers -> Statement
-mkEventTraceSchema _ = CreateTable eA (Name eA [Nmc "Events"]) (mkAttrs logAttrs) []
-  where logAttrs = [ ("time",    "date")
-                   , ("peer",    "text")
-                   , ("level",   "text")
-                   , ("trigger", "text")
-                   , ("entry",   "text") ]
 
 schemaType :: K3 Type -> Either String (Maybe String)
 schemaType t | isTPrimitive t =
@@ -65,20 +57,70 @@ schemaType t | isTPrimitive t =
              | isTFunction t = Right Nothing
              | otherwise = Right . Just $ "json"
 
-mkProgramTraceSchema :: K3 Declaration -> Either String String
-mkProgramTraceSchema prog = do
-    (progSt, _) <- foldProgram schematize fId fId Nothing emptySchemaState prog
-    return $ printStatements [ mkGlobalsSchema $ sortBy (compare `on` fst) $ globals progSt
-                             , mkEventTraceSchema $ triggers progSt ]
+schematize :: SchemaState -> K3 Declaration -> Either String (SchemaState, K3 Declaration)
+schematize st d@(tag -> DGlobal n t _) = do
+  t' <- schemaType t
+  return $ maybe (st,d) (\t'' -> (,d) $ st { globals  = globals st ++ [(n, t'')] }) t'
+
+schematize st d@(tag -> DTrigger n t _) = do
+  t' <- schemaType t
+  return $ maybe (st,d) (\t'' -> (,d) $ st { triggers = triggers st ++ [(n, t'')] }) t'
+
+schematize st d = return (st, d)
+
+createTable :: String -> TypedAttrs -> Statement
+createTable name attrs = CreateTable eA (Name eA [Nmc name]) (mkAttrs attrs) []
+
+extractProgramState :: K3 Declaration -> Either String SchemaState
+extractProgramState prog = do
+  (progSt, _) <- foldProgram schematize fId fId Nothing emptySchemaState prog
+  return progSt
+  where fId a b = return (a,b)
+
+mkGlobalsSchema :: Globals -> Statement
+mkGlobalsSchema attrs = createTable "Globals" attrs
+
+mkEventTraceSchema :: Triggers -> Statement
+mkEventTraceSchema _ = createTable "Events" logAttrs
+  where logAttrs = [ ("time",    "date")
+                   , ("peer",    "text")
+                   , ("level",   "text")
+                   , ("trigger", "text")
+                   , ("sender",  "text")
+                   , ("entry",  " text") ]
+
+mkResultSchema :: [Identifier] -> K3 Declaration -> Either String String
+mkResultSchema vars prog = do
+  progSt <- extractProgramState prog
+  return $ printStatements $ [createTable "Results" $ filter (\(i,_) -> i `elem` vars) $ globals progSt]
+
+mkFlatSingletonResultSchema :: Identifier -> K3 Declaration -> Either String String
+mkFlatSingletonResultSchema i prog = do
+  (fieldsOpt, _) <- foldProgram onGlobal fId fId Nothing Nothing prog
+  case fieldsOpt of
+    Just fields -> do
+      idSqlT <- mapM (\(n,t) -> schemaType t >>= maybe schemaErr (return . (n,))) fields
+      return $ printStatements $ [createTable "Results" idSqlT]
+    Nothing -> noIdFoundErr
 
   where fId a b = return (a,b)
-        schematize st d@(tag -> DGlobal n t _) = do
-          t' <- schemaType t
-          return $ maybe (st,d) (\t'' -> (,d) $ st { globals  = globals st ++ [(n, t'')] }) t'
+        onGlobal acc d@(tag -> DGlobal n t@(tnc -> (TCollection,[(getFlatRecord -> Just fields)])) _)
+          | n == i = return (Just fields, d)
+          | otherwise = return (acc, d)
+        onGlobal acc d = return (acc, d)
 
-        schematize st d@(tag -> DTrigger n t _) = do
-          t' <- schemaType t
-          return $ maybe (st,d) (\t'' -> (,d) $ st { triggers = triggers st ++ [(n, t'')] }) t'
+        getFlatRecord (tnc -> (TRecord ids, ch)) = if all isTPrimitive ch
+                                                   then Just $ zip ids ch else Nothing
+        getFlatRecord _ = Nothing
 
-        schematize st d = return (st, d)
+        schemaErr = Left $
+          "Invalid flat record field type construction while creating result schema"
 
+        noIdFoundErr = Left $ unwords
+          ["Could not find a flat collection named ", i, "while creating result schema"]
+
+mkProgramTraceSchema :: K3 Declaration -> Either String String
+mkProgramTraceSchema prog = do
+    progSt <- extractProgramState prog
+    return $ printStatements [ mkGlobalsSchema $ sortBy (compare `on` fst) $ globals progSt
+                             , mkEventTraceSchema $ triggers progSt ]
