@@ -5,7 +5,6 @@
 module Language.K3.Analysis.Effects.Core where
 
 import Data.Tree
-import Data.Map hiding (null)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
