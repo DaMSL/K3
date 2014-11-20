@@ -102,8 +102,8 @@ parseK3 noFeed includePaths s = do
 
     parseAndCompose src asDriver (prog, parseEnvOpt) = do
       (prog', nEnv) <- parseAtLevel asDriver parseEnvOpt src
-      let (ptnc', ptnc) = ((,) `on` (tag &&& children)) prog' prog
-      case (ptnc', ptnc) of
+      let (ptnc, ptnc') = ((,) `on` (tag &&& children)) prog prog'
+      case (ptnc, ptnc') of
         ((DRole n, ch), (DRole n2, ch2))
           | n == defaultRoleName && n == n2 -> return (DC.role n $ ch++ch2, Just $ nEnv)
         _                                   -> programError
