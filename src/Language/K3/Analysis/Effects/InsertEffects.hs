@@ -547,7 +547,7 @@ createClosure mEff mSym = liftM nubTuple $ do
       case tag n of
         SymId _                       -> error "unexpected symId1"
         -- Don't bother with temporaries (for now)
-        Symbol {symProv=PGlobal _}    -> return acc
+        Symbol {symProv=PGlobal}    -> return acc
         Symbol {symProv=PTemporary _} -> return acc
         Symbol {symIdent=i}           -> do
           x' <- lookupBindInnerM i
