@@ -10,25 +10,7 @@ import Data.Tree
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
-
 import Language.K3.Utils.Pretty
-
-data EffectKind
-    = FAtom
-    | FSymbol
-    | FFunction
-  deriving (Eq, Read, Show)
-
-data instance Annotation EffectKind = KAnnotation deriving (Eq, Read, Show)
-
--- Temporaries represent missing symbols or return values
--- For now, we assume all return values are copied back (according to semantics)
-data TempType
-    = TDirect     -- The temporary leads directly to its child symbol
-    | TSub        -- The temporary is a subtype of the next element
-    | TIndirect   -- The temporary is an indirection
-    | TTemp       -- The temp has no connection to any other element
-    deriving (Eq, Ord, Read, Show)
 
 data Provenance
     = PRecord Identifier
@@ -38,17 +20,14 @@ data Provenance
     | PLet
     | PCase
     | PClosure
-    -- A symbol can be 'applied' to produce effects and a new symbol
-    -- 2nd field is closure
     | PLambda (K3 Effect)
-    -- A symbol application only generates symbols
-    | PApply
-    -- Any of the children of PSet can occur
-    | PSet
-    | PChoice -- One of the cases must be chosen ie. they're exclusive
+    | PApply       -- A symbol application only extracts the child symbols
+    | PSet         -- Non-deterministic (if-then-else or case)
+    | PChoice      -- One of the cases must be chosen ie. they're exclusive
+    | PDerived     -- A symbol derived from its children e.g. x + y ==> [x;y]
     -- The following can be roots
     | PVar
-    | PTemporary TempType
+    | PTemporary   -- A local leading to no lineage of interest
     | PGlobal
   deriving (Eq, Ord, Read, Show)
 
@@ -56,8 +35,7 @@ data Symbol = Symbol { symIdent :: Identifier
                      , symProv :: Provenance
                      , symHasCopy :: Bool
                      , symHasWb :: Bool
-                     -- Which lambda version to apply. On a choice symbol (default=0)
-                     , symLambdaChoice :: Int
+                     , symLambdaChoice :: Int  -- Which lambda version to apply, from a PChoice (default=0)
                      }
             | SymId Int
             deriving (Eq, Ord, Read, Show)
