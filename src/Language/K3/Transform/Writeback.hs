@@ -40,11 +40,11 @@ instance (Ord a) => GHC.Exts.IsList (S.Set a) where
 pattern TAC t as cs = Node (t :@: as) cs
 
 findScope :: EffectEnv -> K3 Effect -> K3 Effect
-findScope env f@(tag . eE env -> FScope _ _) = f
+findScope env f@(tag . eE env -> FScope _) = f
 findScope env (children . eE env -> fs) = findScope env (last fs)
 
-symIDs :: S.Set (K3 Symbol) -> S.Set Identifier
-symIDs = S.map (\(tag -> Symbol i _) -> i)
+symIDs :: EffectEnv -> S.Set (K3 Symbol) -> S.Set Identifier
+symIDs env = S.map (symIdent . tag . eS env)
 
 -- | Determine whether or not a given symbol has a read/write/superstructure conflict in the given
 -- effect tree. To conflict, the symbol's superstructure must be read after the symbol was written
@@ -72,9 +72,9 @@ writebackOptE env g@(TAC t@(ECaseOf _) as cs) = TAC t (constructBindHint env g :
 writebackOptE env (TAC t as cs)               = TAC t as $ map (writebackOptE env) cs
 
 constructBindHint :: EffectEnv -> K3 Expression -> Annotation Expression
-constructBindHint env g = EOpt $ BindHint (symIDs refBound, [], symIDs writeBound)
+constructBindHint env g = EOpt $ BindHint (symIDs env refBound, [], symIDs env writeBound)
   where
-    (tnc . eE env ->  (FScope newSymbols _, cs)) =
+    (tnc . eE env ->  (FScope newSymbols, cs)) =
         findScope env $ let (EEffect k) = fromJust $ g @~ isEEffect in k
     (writeBound, refBound) = if null cs then ([], S.fromList newSymbols)
                              else S.partition (conflicts env $ head cs) $ S.fromList newSymbols

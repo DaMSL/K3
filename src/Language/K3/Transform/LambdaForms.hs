@@ -23,25 +23,24 @@ import Language.K3.Core.Expression
 
 import Language.K3.Analysis.Effects.Common
 import Language.K3.Analysis.Effects.Core
-import Language.K3.Analysis.Effects.InsertEffects(EffectEnv(..), symRWAQuery, eE, eS)
+import Language.K3.Analysis.Effects.InsertEffects
 
 import Language.K3.Transform.Common
 import Language.K3.Transform.Hints
 
 symIDs :: EffectEnv -> S.Set (K3 Symbol) -> S.Set Identifier
-symIDs env = S.map (\(tag . eS env -> Symbol i _) -> i)
+symIDs env = S.map (symIdent . tag . eS env)
 
 isDerivedFromGlobal :: EffectEnv -> K3 Symbol -> Bool
-isDerivedFromGlobal _ (tag -> Symbol _ PGlobal) = True
-isDerivedFromGlobal _ (tag -> Symbol _ (PTemporary TUnbound)) = True
-isDerivedFromGlobal env (tag &&& children -> (Symbol _ (PRecord _), cs)) = any (isDerivedFromGlobal env) cs
-isDerivedFromGlobal env (tag &&& children -> (Symbol _ (PTuple _), cs)) = any (isDerivedFromGlobal env) cs
-isDerivedFromGlobal env (tag &&& children -> (Symbol _ PIndirection, cs)) = any (isDerivedFromGlobal env) cs
-isDerivedFromGlobal env (tag &&& children -> (Symbol _ (PProject _), cs)) = any (isDerivedFromGlobal env) cs
-isDerivedFromGlobal env (tag &&& children -> (Symbol _ PCase, cs)) = any (isDerivedFromGlobal env) cs
-isDerivedFromGlobal env (tag &&& children -> (Symbol _ PApply, cs)) = any (isDerivedFromGlobal env) cs
-isDerivedFromGlobal env (tag &&& children -> (Symbol _ PSet, cs)) = any (isDerivedFromGlobal env) cs
-isDerivedFromGlobal env (tag &&& children -> (Symbol _ PVar, cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal _ (tag -> symProv -> PGlobal) = True
+isDerivedFromGlobal env (tag &&& children -> (symProv -> (PRecord _), cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (symProv -> (PTuple _), cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (symProv -> PIndirection, cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (symProv -> (PProject _), cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (symProv -> PCase, cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (symProv -> PApply, cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (symProv -> PSet, cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (symProv -> PVar, cs)) = any (isDerivedFromGlobal env) cs
 isDerivedFromGlobal env s@(tag -> SymId i) = isDerivedFromGlobal env (eS env s)
 isDerivedFromGlobal _ _ = False
 
@@ -54,14 +53,17 @@ lambdaFormOptD _ _ t = t
 lambdaFormOptE :: TransformConfig -> EffectEnv -> [K3 Expression] -> K3 Expression -> K3 Expression
 lambdaFormOptE conf env ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c:as)) [lambdaFormOptE conf env ds b]
   where
-    ESymbol (tag . eS env -> (Symbol _ (PLambda _ (tag . eE env -> FScope [binding] (Right(cRead, cWritten, cApplied))))))
+    ESymbol (tag . eS env -> Symbol {symProv=PLambda (eE env -> Node (FScope bindings@(binding:closure) :@: _) [be])})
         = fromJust $ e @~ isESymbol
 
-    getEffects e' = (\(EEffect f) -> f) <$> e' @~ (\case { EEffect _ -> True; _ -> False })
+    getEffects e' = (\(EEffect f) -> f) <$> e' @~ isEEffect
 
     fs = mapMaybe getEffects ds
-    moveable (eS env -> g) = not (isDerivedFromGlobal env g) &&
-                             not (any (\f -> let (r, w, _) = symRWAQuery f [g] env in g `elem` r || g `elem` w) fs)
+    moveable (expandSymDeep env -> g) = not (isDerivedFromGlobal env g) &&
+                                        not (any (\f -> let (r, w, _) = symRWAQuery f [g] env
+                                                        in g `elem` r || g `elem` w) fs)
+
+    (cRead, cWritten, cApplied) = symRWAQuery be bindings env
 
     funcHint
         | binding `elem` cWritten = False
@@ -69,7 +71,7 @@ lambdaFormOptE conf env ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@:
         | binding `elem` cRead = True
         | otherwise = False
 
-    captHint = foldl' captHint' (S.empty, S.empty, S.empty) $ cRead ++ cWritten ++ cApplied
+    captHint = foldl' captHint' (S.empty, S.empty, S.empty) $ filter (not . isDerivedFromGlobal env . expandSymDeep env) $ cRead ++ cWritten ++ cApplied
 
     captHint' (cref, move, copy) s
         | s === binding                                    = (cref, move, copy)
@@ -95,8 +97,9 @@ lambdaFormOptE c env ds (Node (EOperate OApp :@: as) [f', x])
 
     fs = mapMaybe getEffects ds
     argument = getSymbol x
-    moveable (eS env -> g) = not (isDerivedFromGlobal env g) &&
-                             not (any (\f -> let (r, w, _) = symRWAQuery f [g] env in g `elem` r || g `elem` w) fs)
+    moveable (expandSymDeep env -> g) = not (isDerivedFromGlobal env g) &&
+                                        not (any (\f -> let (r, w, _) = symRWAQuery f [g] env
+                                                        in g `elem` r || g `elem` w) fs)
 
     passHint = isGlobal x || argument == Nothing || not (moveable $ fromJust argument)
     a = EOpt $ PassHint passHint

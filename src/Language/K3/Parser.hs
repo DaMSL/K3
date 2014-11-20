@@ -865,7 +865,7 @@ contextualizedSpliceParameter sEnvOpt = choice [try fromContext, spliceParameter
 effectSignature :: K3Parser (Identifier -> [Annotation Declaration])
 effectSignature = mkSigAnn <$> (keyword "with" *> keyword "effects" *> (sepBy1 effLambda $ symbol "|"))
   where mkSigAnn s n       = [DSymbol $ mkTopLevelSym n s]
-        mkTopLevelSym n ss = replaceCh (FC.symbol n $ F.PSet) ss
+        mkTopLevelSym n ss = replaceCh (FC.symbol n F.PChoice False False) ss
 
 effLambda :: K3Parser (K3 F.Symbol)
 effLambda = mkLambda <$> readLambda <*> choice [Left <$> try effLambda, Right <$> try effTerm]
@@ -873,7 +873,7 @@ effLambda = mkLambda <$> readLambda <*> choice [Left <$> try effLambda, Right <$
         mkLambda :: String -> Either (K3 F.Symbol) [K3 F.Effect] -> K3 F.Symbol
         mkLambda i (Left s)  = FC.lambda i (mkScope i []) $ Just s
         mkLambda i (Right e) = FC.lambda i (mkScope i e) Nothing
-        mkScope i ch = FC.scope [FC.symbol i F.PVar] (Right ([], [], [])) $ termAsSeq ch
+        mkScope i ch = FC.scope [FC.symbol i F.PVar True False] $ termAsSeq ch
         termAsSeq []  = []
         termAsSeq [x] = [x]
         termAsSeq xs  = [FC.seq xs]
@@ -886,10 +886,11 @@ effTerm = choice (map try [effRead, effWrite, effApply, effSeq, effLoop]) <?> "e
         effSeq    = (:[]) . FC.seq . concat <$> brackets (semiSep1 effTerm)
         effLoop   = (\eff -> [FC.loop $ termAsSeq eff]) <$> (parens effTerm) <* symbol "*"
 
-        effSymbol = (flip FC.symbol F.PVar
+        effSymbol = (mkVar
                         <$> (identifier <|> (keyword "self"    >> return "self")
                                         <|> (keyword "content" >> return "content")))
                         <?> "effect symbol"
+        mkVar i = FC.symbol i F.PVar True False 
         termAsSeq t = if length t == 1 then head t else FC.seq t
         varList pfx parser = string pfx *> brackets (commaSep1 parser)
 
