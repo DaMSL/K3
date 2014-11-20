@@ -323,7 +323,7 @@ generateDispatchPopulation = do
        kType <- genCType tType
 
        let i = R.Variable $ R.Name (idOfTrigger tName)
-       
+
        let engine = R.Project (R.Dereference $ R.Variable $ R.Name "this") (R.Name "__engine")
        let ctDecl = R.Forward $ R.ScalarDecl (R.Name "ct") R.Inferred
                       (Just $ R.Call (R.Variable $ R.Name "currentTime") [])
@@ -332,8 +332,8 @@ generateDispatchPopulation = do
        let dispatchWrapper = R.Lambda
                              [R.ValueCapture $ Just ("this", Nothing)]
                              [("payload", R.Named $ R.Name "void*")] False Nothing
-                             [ ctDecl 
-                             , R.Forward $ R.ScalarDecl (R.Name "v") R.Inferred 
+                             [ ctDecl
+                             , R.Forward $ R.ScalarDecl (R.Name "v") R.Inferred
                                  (Just $ R.Dereference $ R.Call (R.Variable $ R.Specialized [R.Pointer kType] $
                                                              R.Name "static_cast") [R.Variable $ R.Name "payload"])
                              , R.Ignore $ R.Call (R.Variable $ R.Name tName)
@@ -343,9 +343,9 @@ generateDispatchPopulation = do
                                     [ R.Variable $ R.Name "ct"
                                     , R.Variable $ R.Name "me"
                                     , R.Literal $ R.LString tName
-                                    , encoded_payload 
+                                    , encoded_payload
                                     , R.Call (R.Variable $ R.Name "__jsonify") []
-                                    ] 
+                                    ]
                                  ]
                                  []
                              ]
@@ -366,7 +366,7 @@ genJsonify = do
      inserts     <- genInserts n_ts
      return_st   <- return $ R.Return $ R.Variable $ R.Name result
      return $ (result_decl : inserts) ++ [return_st]
-   
+
    -- Insert key-value pairs into the map
    genInserts :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
    genInserts n_ts' = do
@@ -383,7 +383,7 @@ genJsonify = do
        isTUnit _ = False
 
        jsonifyExpr t n = do
-         cType <- genCType t 
+         cType <- genCType t
          return $ R.Call (R.Variable $ R.Specialized [cType] (R.Name "K3::serialization::json::encode")) [n]
 
    p_string = R.Named $ R.Qualified (R.Name "std") (R.Name "string")

@@ -170,7 +170,7 @@ namespace K3 {
              logAt(trivial::trace, "  " + id + " = " + val);
           }
        }
-      
+
 
         return res;
 
