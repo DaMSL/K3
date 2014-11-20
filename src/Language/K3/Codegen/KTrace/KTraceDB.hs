@@ -10,6 +10,7 @@ module Language.K3.Codegen.KTrace.KTraceDB where
 
 import Control.Arrow
 import Data.List
+import Data.List.Split
 import Data.Function
 
 import Database.HsSqlPpp.Ast
@@ -104,7 +105,7 @@ mkFlatSingletonResultSchema i prog = do
     Nothing -> noIdFoundErr
 
   where fId a b = return (a,b)
-        onGlobal acc d@(tag -> DGlobal n t@(tnc -> (TCollection,[(getFlatRecord -> Just fields)])) _)
+        onGlobal acc d@(tag -> DGlobal n (tnc -> (TCollection,[(getFlatRecord -> Just fields)])) _)
           | n == i = return (Just fields, d)
           | otherwise = return (acc, d)
         onGlobal acc d = return (acc, d)
@@ -124,3 +125,10 @@ mkProgramTraceSchema prog = do
     progSt <- extractProgramState prog
     return $ printStatements [ mkGlobalsSchema $ sortBy (compare `on` fst) $ globals progSt
                              , mkEventTraceSchema $ triggers progSt ]
+
+kTrace :: [(String, String)] -> K3 Declaration -> Either String String
+kTrace opts prog = return . unlines =<< sequence
+                     [ mkProgramTraceSchema prog
+                     , onOpt "flat-result-var" (\v -> mkFlatSingletonResultSchema v prog)
+                     , onOpt "result-vars"     (\v -> mkResultSchema (splitOn "," v) prog) ]
+  where onOpt key onValF = maybe (return "") onValF $ lookup key opts
