@@ -20,6 +20,7 @@ import Language.K3.Transform.Hints
 
 pattern TAC t as cs = Node (t :@: as) cs
 
+-- Determine if we can perform move compensation for Named Return-Value Optimization (NRVO).
 nrvoMoveOpt :: EffectEnv -> K3 Declaration -> K3 Declaration
 nrvoMoveOpt = nrvoMoveOptD
 
@@ -33,9 +34,9 @@ nrvoMoveOptE :: EffectEnv -> K3 Expression -> K3 Expression
 nrvoMoveOptE env e@(TAC (ELambda i) as cs) = TAC (ELambda i) (a:as) (map (nrvoMoveOptE env) cs)
   where
     a = EOpt $ ReturnMoveHint nrvoMovePermitted
-    nrvoMovePermitted = not (null rs) && elem (head rs) (argSymbol:captureSymbols)
-    ESymbol ((tag &&& children) . eS env -> (Symbol _ (PLambda _ (tag . eE env -> FScope [argSymbol] (Right closure))), rs))
+    nrvoMovePermitted = not (null rs) && elem (head rs) bindings
+    ESymbol ((tag &&& children) . eS env
+                 -> (Symbol { symProv = PLambda (eE env -> Node (FScope bindings) es) }, rs))
         = fromJust $ e @~ isESymbol
-    captureSymbols = let (cR, cW, cA) = closure in cR ++ cW ++ cA
 
 nrvoMoveOptE env (TAC t as cs) = TAC t as (map (nrvoMoveOptE env) cs)
