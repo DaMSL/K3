@@ -7,6 +7,7 @@
 #include <map>
 #include <exception>
 #include <tuple>
+#include <ctime>
 
 #include "Common.hpp"
 #include "Endpoint.hpp"
@@ -26,6 +27,13 @@ namespace K3 {
     return std::string("__") + "_listener_" + addressAsString(addr);
   }
 
+  static inline std::string currentTime() {
+    time_t now = time(0);
+    tm *ltm = localtime(&now);
+    std::ostringstream oss;
+    oss << ltm->tm_hour << ":" << ltm->tm_min << ":" << ltm->tm_sec;
+    return oss.str();
+  }
   //---------------
   // Configuration
 
@@ -312,6 +320,29 @@ namespace K3 {
       // }
     }
 
+    // JSON logging
+    void logJson(std::string time, Address peer, std::string trig, std::string msg_contents, std::map<std::string, std::string> env) {
+            auto s = env.size();
+            int i = 0;
+            auto& stream = *log_streams[peer];
+
+            // timestamp, Peer, trig_name, msg_contents
+            stream << time << "|";
+            stream << K3::serialization::json::encode<Address>(peer) << "|";
+            stream << trig << "|";
+            stream << msg_contents << "|";
+            
+            // Global state 
+            for (const auto& tup : env) {
+               stream << tup.second;
+              if (i < s-1) {
+                stream << "|";
+              }
+              i++;
+            }
+            stream << std::endl;
+    }
+
     //-------------------
     // Engine statistics.
 
@@ -341,9 +372,11 @@ namespace K3 {
 
     // Converts a K3 channel mode into a native file descriptor mode.
     IOMode ioMode(string k3Mode);
+
+    bool logEnabled() { return log_enabled; }
   protected:
     bool                            log_enabled;
-    std::ofstream                   log_stream;
+    std::map<Address, std::shared_ptr<std::ofstream>> log_streams;
     shared_ptr<EngineConfiguration> config;
     shared_ptr<EngineControl>       control;
     shared_ptr<SystemEnvironment>   deployment;
