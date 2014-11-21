@@ -34,7 +34,7 @@ where
 
 import Prelude hiding (read, seq)
 import Control.Monad.State.Lazy
-import Control.Applicative ((<$>))
+import Control.Applicative ((<$>), (<*>))
 import Data.Maybe
 import Data.Map(Map)
 import qualified Data.Map as Map
@@ -553,7 +553,6 @@ createClosure mEff mSym = liftM nubTuple $ do
         SymId _                       -> error "unexpected symId1"
         -- Don't bother with temporaries (for now)
         Symbol {symProv=PGlobal}      -> return acc
-        Symbol {symProv=PTemporary _} -> return acc
         Symbol {symIdent=i}           -> do
           x' <- lookupBindInnerM i
           case x' of
@@ -562,7 +561,6 @@ createClosure mEff mSym = liftM nubTuple $ do
             Just x'' -> do
               x  <- expandSymM x''
               case tag x of
-                Symbol {symProv=PTemporary _} -> return acc
                 Symbol {symProv=PGlobal}      -> return acc
                 _ | n `symEqual` x            -> return $ n':acc
                 -- These 2 symbols' children aren't really further provenances
@@ -970,16 +968,16 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       case getESymbol l of
         Nothing   -> error $ "failed to find symbol at lambda: " ++ show n
         Just lSym -> do
-          mapp   <- applyLambda lSym aSym
-          case mapp of
-            Nothing -> do
+          -- mapp   <- applyLambda lSym aSym
+          -- case mapp of
+            -- Nothing -> do
               appE    <- genEff $ apply lSym aSym
               fullEff <- combineEffSeq [seqE, Just appE]
               fullSym <- combineSymApply (Just lSym) (Just aSym)
               return $ addEffSymCh fullEff fullSym ch n
-            Just (resE, resS) -> do
-              fullEff <- combineEffSeq [seqE, Just resE]
-              return $ addEffSymCh fullEff (Just resS) ch n
+            -- Just (resE, resS) -> do
+            --  fullEff <- combineEffSeq [seqE, Just resE]
+            --  return $ addEffSymCh fullEff (Just resS) ch n
 
     -- Bind
     handleExpr ch@[bind,e] n@(tag -> EBindAs b) = do
@@ -990,7 +988,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       -- Remove binds from env
       mapM_ deleteBindM ids
       -- peel off until we get to a scope we know
-      fullSym <- symInBind [] $ getESymbol e
+      fullSym <- symInBind $ getESymbol e
       let eEff = maybe [] singleton $ getEEffect e
       bScope  <- genEff $ scope bindSyms eEff
       fullEff <- combineEffSeq [getEEffect bind, Just bScope]
@@ -1007,9 +1005,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       setEff   <- combineEffSet [getEEffect none, Just scopeEff]
       combSym  <- combineSymSet [getESymbol some, getESymbol none]
       -- peel off symbols until we get ones in our outer scope
-      -- for case, we need to special-case, making sure that the particular symbol
-      -- is always gensymed away
-      fullSym  <- symInBind [bindSym] combSym
+      fullSym  <- symInBind combSym
       fullEff  <- combineEffSeq [getEEffect e, setEff]
       return $ addEffSymCh fullEff (Just fullSym) ch n
 
@@ -1021,7 +1017,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       scopeEff <- genEff $ scope [bindSym] eEff
       fullEff  <- combineEffSeq [getEEffect l, Just scopeEff]
       -- peel off symbols until we get to ones in our outer scope
-      fullSym  <- symInBind [] $ getESymbol e
+      fullSym  <- symInBind $ getESymbol e
       return $ addEffSymCh fullEff (Just fullSym) ch n
 
     -- Projection
@@ -1061,9 +1057,21 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       eff' <- combineEffSeq $ map getEEffect ch ++ [Just eff]
       return $ addEffSymCh eff' Nothing ch n
 
+    -- Handle all derived expressions
+    handleExpr ch n@(tag -> ESome)      = derivedExpr ch n
+    handleExpr ch n@(tag -> EIndirect)  = derivedExpr ch n
+    handleExpr ch n@(tag -> ETuple)     = derivedExpr ch n
+    handleExpr ch n@(tag -> ERecord _)  = derivedExpr ch n
+    -- All remaining operates are derivations
+    handleExpr ch n@(tag -> EOperate _) = derivedExpr ch n
+
     handleExpr ch n = genericExpr ch n
 
-    -- go over the tree and calculate all closures
+    derivedExpr ch n = do
+      eff <- combineEffSeq $ map getEEffect ch
+      sym <- combineSymDerived $ map getESymbol ch
+      return $ addEffSymCh eff sym ch n
+
     -- Generic case: combineEff effects, ignore symbols
     genericExpr ch n = do
       eff <- combineEffSeq $ map getEEffect ch
@@ -1100,24 +1108,23 @@ symInBind (Just sym) = do
       n <- expandSymM n'
       let i = symIdent $ tag n
       -- Particular provenances that are ok with deleting children
-      let canRemoveCh = symProv n `elem` [PSet, PChoice, PDerived]
+      let canRemoveCh = symProv (tag n) `elem` [PSet, PChoice, PDerived]
       -- If we don't find the symbol it may be deeper
       s <- lookupBindInnerM i
-      let b = symEqual <$> s <*> Just n -- Double check, maybe monad
-      if isJust s && b then
+      if isJust s && fromJust s `symEqual` n then
         -- We found a match
         return $ Unchanged n'
-      else do
-        -- Search the children
-        rs <- mapM loop $ children n
-        if all isDeleted rs || null rs then return Deleted    -- Delete this branch
-        else if all isUnchanged rs then return $ Unchanged n' -- Keep this branch as is
-        else do                                               -- Keep some children
-          ch' <- concat <$> mapM (extractOrTemp canRemoveCh) rs
-          let n2 = replaceCh n ch'
-          -- Save to the environment
-          n3 <- duplicateSymM n2
-          return $ Changed n3
+        else do
+          -- Search the children
+          rs <- mapM loop $ children n
+          if all isDeleted rs || null rs then return Deleted    -- Delete this branch
+            else if all isUnchanged rs then return $ Unchanged n' -- Keep this branch as is
+              else do                                               -- Keep some children
+                ch' <- concat <$> mapM (extractOrTemp canRemoveCh) rs
+                let n2 = replaceCh n ch'
+                -- Save to the environment
+                n3 <- duplicateSymM n2
+                return $ Changed n3
       where
         extractOrTemp _ (Changed x)   = return [x]
         extractOrTemp _ (Unchanged x) = return [x]
@@ -1140,26 +1147,28 @@ combineEffSeq :: [Maybe (K3 Effect)] -> MEnv (Maybe (K3 Effect))
 combineEffSeq = combineEff seq
 
 -- combineSym symbols into 1 symbol
-combineSym :: Provenance -> [Maybe (K3 Symbol)] -> MEnv (Maybe (K3 Symbol))
-combineSym p ss =
+combineSym :: Bool -> Provenance -> [Maybe (K3 Symbol)] -> MEnv (Maybe (K3 Symbol))
+combineSym okToDelete p ss =
   -- if there's no subsymbol at all, just gensym a temp
   if all (Nothing ==) ss then
-    liftM Just $ genSymTemp TTemp []
+    liftM Just genSymTemp
   -- if we have some symbols, we must preserve them
   else do
-    ss' <- mapM maybeGen ss
+    ss' <- concat <$> mapM maybeGen ss
     case ss' of
       [s] -> return $ Just s
       _   -> liftM Just $ genSym p False False ss'
     where
-      maybeGen (Just s) = return s
-      maybeGen Nothing  = genSymTemp TTemp []
+      maybeGen (Just s) = return [s]
+      maybeGen Nothing  | okToDelete = return []
+      maybeGen Nothing  = singleton <$> genSymTemp
 
 combineSymSet :: [Maybe (K3 Symbol)] -> MEnv (Maybe (K3 Symbol))
-combineSymSet = combineSym PSet
-
+combineSymSet = combineSym True PSet
 combineSymApply :: Maybe (K3 Symbol) -> Maybe (K3 Symbol) -> MEnv (Maybe (K3 Symbol))
-combineSymApply l a = combineSym PApply [l,a]
+combineSymApply l a = combineSym False PApply [l,a]
+combineSymDerived :: [Maybe (K3 Symbol)] -> MEnv (Maybe (K3 Symbol))
+combineSymDerived = combineSym True PDerived
 
 applyLambdaEnv :: EffectEnv -> K3 Symbol -> K3 Symbol -> Maybe (K3 Effect, K3 Symbol)
 applyLambdaEnv env l a = flip evalState env $ applyLambda l a
@@ -1172,19 +1181,16 @@ applyLambda sLam' sArg = do
   env  <- get
   sLam <- expandSymM sLam'
   case tnc sLam of
-    (Symbol {symProv=PLambda lamEff@(tag . eE env -> FScope (sOld:_)), symHasCopy=hasCopy}, chSym) -> do
+    (Symbol {symProv=PLambda lamEff@(tag . eE env -> FScope (sOld:_)), symHasCopy=hasCopy}, [chSym]) -> do
       -- Dummy substitute into the argument, in case there's an application there
       -- Any effects won't be substituted in and will be visible outside
       sArg'    <- mapSym False (subEff Nothing) (subSym Nothing) sArg
       -- Substitute into the old effects and symbol
       lamEff'  <- mapEff False (subEff $ Just (sOld, sArg', hasCopy))
                                (subSym $ Just (sOld, sArg', hasCopy)) lamEff
-      lamEff'' <- expandEffM lamEff'
       -- Substitute into the child (result symbol)
-      chSym'   <- case (chSym, tag lamEff'') of
-                    ([ch], FScope _) -> mapSym False (subEff $ Just (sOld, sArg', hasCopy))
-                                                     (subSym $ Just (sOld, sArg', hasCopy)) ch
-                    _                -> genSymTemp TTemp []
+      chSym'   <- mapSym False (subEff $ Just (sOld, sArg', hasCopy))
+                               (subSym $ Just (sOld, sArg', hasCopy)) chSym
       -- For debugging
       {-
       sLam2 <- expandSymDeepM sLam
@@ -1196,6 +1202,7 @@ applyLambda sLam' sArg = do
       return $ Just (lamEff', chSym')
 
     (Symbol {symProv=PGlobal}, [ch])  -> applyLambda ch sArg
+    (Symbol {symProv=PDirect}, [ch])  -> applyLambda ch sArg
 
     -- For a set 'lambda', we need to combine results
     (Symbol {symProv=PSet}, ch)      -> do
@@ -1207,7 +1214,7 @@ applyLambda sLam' sArg = do
       return $ Just (fromMaybe (error "applyLambda: 1st") eSet, fromMaybe (error "applyLambda: 2nd") sSet)
 
     -- For now, have only 1 choice
-    (Symbol {symProv=PChoice}, [ch]) -> applyLambda ch sArg
+    (Symbol {symProv=PChoice}, ch:_) -> applyLambda ch sArg
 
     _ -> return Nothing
 
@@ -1260,4 +1267,3 @@ symRWAQuery eff syms env = flip evalState env $ do
 
 -- Only reads query
 -- Modified-before e1 -> e2 -> [Symbol] -> bool
--- Temp can be one symbol
