@@ -22,6 +22,9 @@ type QueryM = StateT QueryS Identity
 runQueryM :: QueryM a -> QueryS -> (a, QueryS)
 runQueryM = runState
 
+evalQueryM :: QueryM a -> QueryS -> a
+evalQueryM = evalState
+
 getEnv :: QueryM EffectEnv
 getEnv = get
 
