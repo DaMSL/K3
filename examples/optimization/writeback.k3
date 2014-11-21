@@ -1,0 +1,35 @@
+// Should elide both copy and writeback for bind.
+declare a: ind mut int = ind mut 0
+declare x: () =
+  bind a as ind b in
+    b = 2
+
+// All of the following examples should have field q -> n be aliased always, variations are only on
+// p -> m.
+
+//Should elide both copy and writeback: No access on superstructure is safe.
+declare r: mut { p: mut int, q: mut int } = { p: mut 0, q: mut 1 }
+declare y: () =
+  bind r as { p: m, q: n } in
+    m = 2
+
+// Should still elide both copy and writeback: Read access on superstructure *before* write to
+// substructure is safe.
+declare z: () =
+  bind r as { p: m, q: n } in
+    let x = r in ();
+    m = 2
+
+// Should *not* be able to elide copy or writeback: Read access on superstructure after write to
+// substructure is unsafe.
+declare w: () =
+  bind r as { p: m, q: n } in
+    m = 2;
+    let x = r in ()
+
+// Should *not* be able to elide copy or writeback: Write access on superstructure anywhere is
+// unsafe.
+declare v: () =
+  bind r as { p: m, q: n } in
+    r = { p: 1, q: 2 };
+    m = 2
