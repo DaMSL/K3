@@ -1,3 +1,5 @@
+{-# LANGUAGE ViewPatterns #-}
+
 -- | High-level effect queries.
 module Language.K3.Analysis.Effects.Queries where
 
@@ -5,7 +7,14 @@ import Control.Applicative
 import Control.Arrow
 import Control.Monad.State
 
+import Data.Traversable
+
+import Control.Monad.Identity
+
+import Language.K3.Core.Annotation
+
 import Language.K3.Analysis.Effects.Core
+import Language.K3.Analysis.Effects.InsertEffects
 
 type QueryS = EffectEnv
 type QueryM = StateT QueryS Identity
@@ -13,8 +22,8 @@ type QueryM = StateT QueryS Identity
 runQueryM :: QueryM a -> QueryS -> (a, QueryS)
 runQueryM = runState
 
-genEnv :: QueryM EffectEnv
-genEnv = get
+getEnv :: QueryM EffectEnv
+getEnv = get
 
 eSM :: K3 Symbol -> QueryM (K3 Symbol)
 eSM s = eS <$> getEnv <*> pure s
@@ -22,15 +31,18 @@ eSM s = eS <$> getEnv <*> pure s
 eEM :: K3 Effect -> QueryM (K3 Effect)
 eEM e = eE <$> getEnv <*> pure e
 
+(===) :: K3 Symbol -> K3 Symbol -> Bool
+(===) = symEqual
+
 isIsolated :: K3 Symbol -> QueryM Bool
 isIsolated s = case s of
-  (tag -> SymId _) -> isIsolated <$> eSM s
-  (tag -> symHasCopy -> b) -> b
+  (tag -> SymId _) -> eSM s >>= isIsolated
+  (tag -> symHasCopy -> b) -> return b
 
 isWrittenBack :: K3 Symbol -> QueryM Bool
 isWrittenBack s = case s of
-  (tag -> SymId _) -> isWrittenBack <$> eSM s
-  (tag -> symHasWb -> b) -> b
+  (tag -> SymId _) -> eSM s >>= isWrittenBack
+  (tag -> symHasWb -> b) -> return b
 
 -- | Is this symbol a global?
 --
@@ -38,7 +50,7 @@ isWrittenBack s = case s of
 isGlobal :: K3 Symbol -> QueryM Bool
 isGlobal s = case s of
   -- Expand symbols first.
-  (tag -> SymId _) -> isGlobal <$> eSM s
+  (tag -> SymId _) -> eSM s >>= isGlobal
 
   -- A global is a global.
   (tag -> symProv -> PGlobal) -> return True
@@ -58,7 +70,7 @@ isGlobal s = case s of
 isDerivedGlobal :: K3 Symbol -> QueryM Bool
 isDerivedGlobal s = case s of
   -- Expand symbols first.
-  (tag -> SymId _) -> isDerivedGlobal <$> eSM s
+  (tag -> SymId _) -> eSM s >>= isDerivedGlobal
 
   -- A global is derived from a global.
   (tag -> symProv -> PGlobal) -> return True
@@ -75,7 +87,7 @@ isDerivedIndirectlyFrom s t = case s of
   _ | s === t -> return True
 
   -- Any other check requires source symbol alone to be expanded.
-  (tag -> SymId _) -> isDerivedIndirectlyFrom <$> eSM s <*> pure t
+  (tag -> SymId _) -> eSM s >>= flip isDerivedIndirectlyFrom t
 
   -- =s= is derived from =t= if any ancestor of =s= is derived from =t=.
   (children -> ss) -> or <$> traverse (flip isDerivedIndirectlyFrom t) ss
@@ -89,13 +101,13 @@ isDerivedDirectlyFrom s t = case s of
   _ | s === t -> return True
 
   -- Any other check requires the source symbol to be expanded.
-  (tag -> SymId _) -> isDerivedDirectlyFrom <$> eSM s <*> pure t
+  (tag -> SymId _) -> eSM s >>= flip isDerivedDirectlyFrom t
 
   -- If the given symbol is isolated, it is not derived directly from anything.
   (tag -> symHasCopy -> True) -> return False
 
   -- If the symbol is not isolated, it may be derived directly from any of its ancestors.
-  (chidren -> ss) -> or <$> traverse (flip isDerivedDirectlyFrom t) ss
+  (children -> ss) -> or <$> traverse (flip isDerivedDirectlyFrom t) ss
 
 -- | Does the given effect perform a read on the given symbol?
 --
@@ -103,7 +115,7 @@ isDerivedDirectlyFrom s t = case s of
 doesReadOn :: K3 Effect -> K3 Symbol -> QueryM Bool
 doesReadOn e s = case e of
   -- Expand effect first.
-  (tag -> FEffId _) -> doesReadOn <$> eEM e <*> pure s
+  (tag -> FEffId _) -> eEM e >>= flip doesReadOn s
 
   -- A read effect on a symbol which is derived directly from the given symbol is a read on the
   -- given symbol.
@@ -115,10 +127,10 @@ doesReadOn e s = case e of
   --
   -- If the scope introduces a binding derived /without aliasing/ from the given symbol, no read
   -- registers here; one /may/ register later if the aliased symbol itself is read.
-  (tag &&& children -> (FScope [ss], es))
-      -> or <$> traverse (flip doesReadOn s) es
-      || or <$> traverse (\q -> (&&) <$> isIsolated q
-                                     <*> (or <$> traverse (flip isDerivedDirectlyFrom s) (children q)))
+  (tag &&& children -> (FScope ss, es)) ->
+    (||) <$> (or <$> traverse (flip doesReadOn s) es)
+         <*> (or <$> traverse (\q -> (&&) <$> isIsolated q
+                                          <*> (or <$> traverse (flip isDerivedDirectlyFrom s) (children q))) ss)
 
   -- Otherwise, the given effect performs a read on the given symbol if any of its constituent
   -- effects do.
@@ -130,19 +142,19 @@ doesReadOn e s = case e of
 doesWriteOn :: K3 Effect -> K3 Symbol -> QueryM Bool
 doesWriteOn e s = case e of
   -- Expand effect first.
-  (tag -> FEffId _) -> doesWriteOn <$> eEM e <*> pure s
+  (tag -> FEffId _) -> eEM e >>= flip doesWriteOn s
 
   -- A write effect on a symbol which is derived directly from the given symbol is a write on the
   -- given symbol.
-  (tag -> FWrite q) -> return $ isDerivedDirectlyFrom q s
+  (tag -> FWrite q) -> isDerivedDirectlyFrom q s
 
   -- A scope does a write on the given symbol if:
   --   - It does a write on the given symbol.
   --   - It does a write-back on any symobl derived through a copy from the given symbol.
-  (tag &&& children -> (FScope [ss], es))
-      -> or <$> traverse (flip doesWriteOn s) es
-      || or <$> traverse (\q -> (&&) <$> isWrittenBack q
-                                     <*> (or <$> traverse (flip isDerivedDirectlyFrom s) (children q)))
+  (tag &&& children -> (FScope ss, es)) ->
+      (||) <$> (or <$> traverse (flip doesWriteOn s) es)
+           <*> (or <$> traverse (\q -> (&&) <$> isWrittenBack q
+                                            <*> (or <$> traverse (flip isDerivedDirectlyFrom s) (children q))) ss)
 
   -- Otherwise, the given effect performs a read on the given symbol if any of its constituent
   -- effects do.

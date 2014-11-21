@@ -28,13 +28,14 @@ module Language.K3.Analysis.Effects.InsertEffects (
   expandEffDeep,
   expandSymDeep,
   occursEff,
-  occursSym
+  occursSym,
+  symEqual
 )
 where
 
 import Prelude hiding (read, seq)
 import Control.Monad.State.Lazy
-import Control.Applicative ((<$>), (<*>))
+import Control.Applicative ((<$>))
 import Data.Maybe
 import Data.Map(Map)
 import qualified Data.Map as Map
