@@ -448,7 +448,7 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
                                   | (i, v) <- iis]
 
     let bindWriteback = case b of
-            BIndirection i -> [ R.Assignment (R.Dereference g) (R.Variable $ R.Name i) | not (isWriteBound i)]
+            BIndirection i -> [ R.Assignment (R.Dereference g) (R.Variable $ R.Name i) | isWriteBound i]
             BTuple is -> [genTupleAssign g n i | i <- is, isWriteBound i | n <- [0..]]
             BRecord iis -> [genRecordAssign g k v | (k, v) <- iis, isWriteBound v]
 
