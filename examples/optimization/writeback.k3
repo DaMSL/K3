@@ -31,5 +31,5 @@ declare w: () =
 // unsafe.
 declare v: () =
   bind r as { p: m, q: n } in
-    r = { p: 1, q: 2 };
+    r = { p: mut 1, q: mut 2 };
     m = 2
