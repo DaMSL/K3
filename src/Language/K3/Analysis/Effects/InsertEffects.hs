@@ -1,5 +1,7 @@
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE ViewPatterns #-}
+
 -- | Insertion of effects into the expression/declaration tree
 --
 --   We rely on the fact that we run after typechecking and after
