@@ -19,7 +19,7 @@ namespace K3 {
       public:
         virtual Value pack() const = 0;
         virtual void unpack(const Value &msg) = 0;
-      virtual void call_dispatch(__k3_context&, int) = 0;
+        virtual void call_dispatch(__k3_context&, int, const Address&) = 0;
         virtual Dispatcher* clone() = 0;
         virtual ~Dispatcher() {}
     };
@@ -37,8 +37,8 @@ namespace K3 {
 
         Value pack() const { return BoostSerializer::pack<T>(_arg); }
 
-        void call_dispatch(__k3_context& context, int trigger_id) {
-	  context.__dispatch(trigger_id, static_cast<void*>(&_arg));
+        void call_dispatch(__k3_context& context, int trigger_id, const Address& src) {
+	  context.__dispatch(trigger_id, static_cast<void*>(&_arg), src);
         }
 
         T _arg;

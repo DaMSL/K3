@@ -321,16 +321,17 @@ namespace K3 {
     }
 
     // JSON logging
-    void logJson(std::string time, Address peer, std::string trig, std::string msg_contents, std::map<std::string, std::string> env) {
+    void logJson(std::string time, const Address& peer, std::string trig, std::string msg_contents, std::map<std::string, std::string> env, const Address& msgSource) {
             auto s = env.size();
             int i = 0;
             auto& stream = *log_streams[peer];
 
-            // timestamp, Peer, level, trig_name, msg_contents
+            // timestamp, Peer, level, trig_name, sourcePeer, msg_contents
             stream << time << "|";
             stream << K3::serialization::json::encode<Address>(peer) << "|";
             stream << "TRACE" << "|";
             stream << trig << "|";
+            stream << K3::serialization::json::encode<Address>(msgSource) << "|";
             stream << msg_contents << "|";
 
             // Global state
