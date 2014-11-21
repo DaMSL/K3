@@ -145,16 +145,22 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
                              (inits ++ dispatchPop)
 
     let dispatchDecl = R.FunctionDefn (R.Name "__dispatch")
-                       [("trigger_id", R.Primitive R.PInt), ("payload", R.Named $ R.Name "void*")]
+                       [ ("trigger_id", R.Primitive R.PInt)
+                       , ("payload", R.Named $ R.Name "void*")
+                       , ("source",  R.Const $ R.Reference $ R.Named $ R.Name "Address")
+                       ]
                        (Just R.Void) [] False
                        [R.Ignore $ R.Call
                          (R.Subscript (R.Variable $ R.Name "dispatch_table") (R.Variable $ R.Name "trigger_id"))
-                         [R.Variable $ R.Name "payload"]
+                         [R.Variable $ R.Name "payload", R.Variable $ R.Name "source"]
                        ]
     let dispatchTableDecl  = R.GlobalDefn $ R.Forward $ R.ScalarDecl
                      (R.Name "dispatch_table")
                      (R.Named $ R.Qualified (R.Name "std") $ R.Specialized
-                           [R.Primitive R.PInt, R.Function [R.Named $ R.Name "void*"] R.Void] (R.Name "map"))
+                           [R.Primitive R.PInt, 
+                             R.Function 
+                               [R.Named $ R.Name "void*", R.Const $ R.Reference $ R.Named $ R.Name "Address"] 
+                            R.Void] (R.Name "map"))
                      Nothing
 
     let patchFn = R.FunctionDefn (R.Qualified contextName (R.Name "__patch"))
@@ -331,7 +337,11 @@ generateDispatchPopulation = do
                                [R.Variable $ R.Name "v"]
        let dispatchWrapper = R.Lambda
                              [R.ValueCapture $ Just ("this", Nothing)]
-                             [("payload", R.Named $ R.Name "void*")] False Nothing
+                             [ ("payload", R.Named $ R.Name "void*")
+                             , ("source", R.Const $ R.Reference $ R.Named $ R.Name "Address")
+                             ]
+                             
+                             False Nothing
                              [ ctDecl
                              , R.Forward $ R.ScalarDecl (R.Name "v") R.Inferred
                                  (Just $ R.Dereference $ R.Call (R.Variable $ R.Specialized [R.Pointer kType] $
@@ -345,6 +355,7 @@ generateDispatchPopulation = do
                                     , R.Literal $ R.LString tName
                                     , encoded_payload
                                     , R.Call (R.Variable $ R.Name "__jsonify") []
+                                    , R.Variable $ R.Name "source"
                                     ]
                                  ]
                                  []

@@ -94,7 +94,7 @@ namespace K3
 
     LoopStatus process(Message msg) {
       try {
-	msg.dispatcher()->call_dispatch(*contexts[msg.address()], msg.id());
+	msg.dispatcher()->call_dispatch(*contexts[msg.address()], msg.id(), msg.source());
       } catch(std::out_of_range e) {
         return LoopStatus::Error;
       }
