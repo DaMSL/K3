@@ -464,8 +464,14 @@ genSym prov hasCopy hasWb ch = do
    insertSymbolM i $ replaceCh s ch
    return $ symId i
 
-genSymTemp :: TempType -> [K3 Symbol] -> MEnv (K3 Symbol)
-genSymTemp tempType = genSym (PTemporary tempType) True False
+genSymTemp :: MEnv (K3 Symbol)
+genSymTemp = genSym PTemporary True False []
+
+genSymDerived :: [K3 Symbol] -> MEnv (K3 Symbol)
+genSymDerived = genSym PDerived True False
+
+genSymDirect :: K3 Symbol -> MEnv (K3 Symbol)
+genSymDirect = genSym PDirect True False . singleton
 
 getEEffect :: K3 Expression -> Maybe (K3 Effect)
 getEEffect n = case n @~ isEEffect of
@@ -480,7 +486,7 @@ getESymbol n = case n @~ isESymbol of
 -- If we don't have a symbol, we automatically gensym one
 getOrGenSymbol :: K3 Expression -> MEnv (K3 Symbol)
 getOrGenSymbol n = case getESymbol n of
-                     Nothing -> genSymTemp TTemp []
+                     Nothing -> genSymTemp
                      Just i  -> return i
 
 -- Create a closure of symbols read, written, or applied that are relevant to the current env
@@ -984,7 +990,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       -- Remove binds from env
       mapM_ deleteBindM ids
       -- peel off until we get to a scope we know
-      fullSym <- peelSymbol [] $ getESymbol e
+      fullSym <- symInBind [] $ getESymbol e
       let eEff = maybe [] singleton $ getEEffect e
       bScope  <- genEff $ scope bindSyms eEff
       fullEff <- combineEffSeq [getEEffect bind, Just bScope]
@@ -1003,7 +1009,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       -- peel off symbols until we get ones in our outer scope
       -- for case, we need to special-case, making sure that the particular symbol
       -- is always gensymed away
-      fullSym  <- peelSymbol [bindSym] combSym
+      fullSym  <- symInBind [bindSym] combSym
       fullEff  <- combineEffSeq [getEEffect e, setEff]
       return $ addEffSymCh fullEff (Just fullSym) ch n
 
@@ -1015,7 +1021,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       scopeEff <- genEff $ scope [bindSym] eEff
       fullEff  <- combineEffSeq [getEEffect l, Just scopeEff]
       -- peel off symbols until we get to ones in our outer scope
-      fullSym  <- peelSymbol [] $ getESymbol e
+      fullSym  <- symInBind [] $ getESymbol e
       return $ addEffSymCh fullEff (Just fullSym) ch n
 
     -- Projection
@@ -1063,81 +1069,60 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       eff <- combineEffSeq $ map getEEffect ch
       return $ addEffSymCh eff Nothing ch n
 
-    ------ Utilities ------
+------ Utilities ------
 
-    -- TODO: from here -----
+-- Data type for symInBind
+data Changed a = Changed a | Unchanged a | Deleted
 
-    -- If necessary, remove layers of symbols to get to those just above the bind symbols
-    -- This function assumes that the direct bindsymbols have only one child each
-    -- @exclude: always delete this particular symbol (for CaseOf)
-    peelSymbol :: [K3 Symbol] -> Maybe (K3 Symbol) -> MEnv (K3 Symbol)
-    peelSymbol _ Nothing = genSymTemp TTemp []
-    peelSymbol excludes (Just sym) =
-      loops Nothing sym >>= symOfSymList
+isDeleted :: Changed a -> Bool
+isDeleted Deleted = True
+isDeleted _ = False
+isChanged :: Changed a -> Bool
+isChanged (Changed _) = True
+isChanged _ = False
+isUnchanged :: Changed a -> Bool
+isUnchanged (Unchanged _) = True
+isUnchanged _ = False
+
+-- Keep only symbol paths that originate in the bind envrionment
+symInBind :: Maybe (K3 Symbol) -> MEnv (K3 Symbol)
+symInBind Nothing    = genSymTemp
+symInBind (Just sym) = do
+  s' <- loop sym
+  case s' of
+    Deleted      -> genSymTemp
+    Changed s'   -> genSymDirect s'
+    Unchanged s' -> genSymDirect s'
+  where
+    -- Returns whether the symbol tree led to something in the env
+    loop :: K3 Symbol -> MEnv (Changed (K3 Symbol))
+    loop n' = do
+      n <- expandSymM n'
+      let i = symIdent $ tag n
+      -- Particular provenances that are ok with deleting children
+      let canRemoveCh = symProv n `elem` [PSet, PChoice, PDerived]
+      -- If we don't find the symbol it may be deeper
+      s <- lookupBindInnerM i
+      let b = symEqual <$> s <*> Just n -- Double check, maybe monad
+      if isJust s && b then
+        -- We found a match
+        return $ Unchanged n'
+      else do
+        -- Search the children
+        rs <- mapM loop $ children n
+        if all isDeleted rs || null rs then return Deleted    -- Delete this branch
+        else if all isUnchanged rs then return $ Unchanged n' -- Keep this branch as is
+        else do                                               -- Keep some children
+          ch' <- concat <$> mapM (extractOrTemp canRemoveCh) rs
+          let n2 = replaceCh n ch'
+          -- Save to the environment
+          n3 <- duplicateSymM n2
+          return $ Changed n3
       where
-        -- Sending last symbol along allows us to know which kind of temporary to make
-        loops :: Maybe (K3 Symbol) -> K3 Symbol -> MEnv [(Maybe (K3 Symbol), K3 Symbol)]
-        loops mLast n' = do
-          n <- expandSymM n'
-          case tnc n of
-            -- Applys require that we check their children and include the apply instead
-            (Symbol {symProv=PApply}, [lam, arg]) -> do
-              lS <- loops Nothing lam
-              lA <- loops Nothing arg
-              case (lS, lA) of
-                -- If both arguments are local, elide the Apply
-                ([], []) -> return []
-                -- Otherwise, keep the apply and its possible tree
-                _        -> do
-                  s  <- symOfSymList lS
-                  s' <- symOfSymList lA
-                  return [(Nothing, replaceCh n [s, s'])]
-
-            -- Sets need to be kept if they refer to anything important
-            (Symbol {symProv=PSet}, ch) -> do
-              lCh <- mapM (loops (Just n')) ch
-              -- If all children are local, elide
-              if all ([] ==) lCh then return [] else do
-                ss <- mapM symOfSymList lCh
-                return [(Nothing, replaceCh n ss)]
-
-            (Symbol {symIdent=i}, ch) ->
-              -- Check for exclusion. Terminate this branch if we match
-              if any (n `symEqual`) excludes then return []
-              else do
-                -- If we don't find the symbol in the environment, it's beneath our scope
-                -- So continue to look in the children
-                s <- lookupBindInnerM i
-                case s of
-                  Nothing -> doLoops
-                  -- If we find a match, something is in our scope so report back
-                  -- Just make sure it's really equivalent
-                  Just s'  -> if s' `symEqual` n then return [(mLast, n')]
-                              else doLoops
-
-              where doLoops = liftM concat $ mapM (loops $ Just n') ch
-
-            (_, _) -> error "unexpected"
-
-
-    -- Convert a list of symbols to a combination symbol (if possible)
-    -- Also take care of creating the right temporaries based on the last symbol found leading
-    -- to the particular symbol
-    symOfSymList :: [(Maybe (K3 Symbol), K3 Symbol)] -> MEnv (K3 Symbol)
-    symOfSymList []               = genSymTemp TTemp []
-    -- Anything else just gets a pure temporary
-    symOfSymList [x]              = tempOfSym x
-    symOfSymList syms             = mapM tempOfSym syms >>= genSym PSet False False
-
-    tempOfSym (Nothing, s) = genSymTemp TTemp [s]
-    tempOfSym (Just p', s) = do
-      p <- expandSymM p'
-      case tag p of
-        Symbol {symProv=PLet}         -> genSymTemp TDirect [s]
-        Symbol {symProv=PIndirection} -> genSymTemp TIndirect [s]
-        Symbol {symProv=PRecord _}    -> genSymTemp TSub [s]
-        Symbol {symProv=PTuple _}     -> genSymTemp TSub [s]
-        _                             -> genSymTemp TTemp [s]
+        extractOrTemp _ (Changed x)   = return [x]
+        extractOrTemp _ (Unchanged x) = return [x]
+        extractOrTemp True  Deleted   = return []
+        extractOrTemp False Deleted   = singleton <$> genSymTemp
 
 ---- Utilities to work with effects dynamically
 
@@ -1273,3 +1258,6 @@ symRWAQuery eff syms env = flip evalState env $ do
         Symbol {symIdent=i} -> insertBindM i s'
         SymId _                -> error "unexpected symId2"
 
+-- Only reads query
+-- Modified-before e1 -> e2 -> [Symbol] -> bool
+-- Temp can be one symbol

@@ -25,6 +25,7 @@ data Provenance
     | PSet         -- Non-deterministic (if-then-else or case)
     | PChoice      -- One of the cases must be chosen ie. they're exclusive
     | PDerived     -- A symbol derived from its children e.g. x + y ==> [x;y]
+    | PDirect      -- A temporary representation that's a direct path to its child
     -- The following can be roots
     | PVar
     | PTemporary   -- A local leading to no lineage of interest
