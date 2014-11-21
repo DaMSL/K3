@@ -27,7 +27,8 @@ import Language.K3.Core.Declaration
 
 import Language.K3.Analysis.Effects.Common
 import Language.K3.Analysis.Effects.Core
-import Language.K3.Analysis.Effects.InsertEffects(EffectEnv, eE, eS, expandEffDeep)
+import Language.K3.Analysis.Effects.InsertEffects(EffectEnv, eE, eS, expandEffDeep, expandSymDeep)
+import Language.K3.Analysis.Effects.Queries
 
 import Language.K3.Transform.Hints
 
@@ -50,12 +51,14 @@ symIDs env = S.map (symIdent . tag . eS env)
 -- effect tree. To conflict, the symbol's superstructure must be read after the symbol was written
 -- to, or the superstructure was written anywhere.
 conflicts :: EffectEnv -> K3 Effect -> K3 Symbol -> Bool
-conflicts env (expandEffDeep env -> f) k = conflictsWR f || any (`hasWrite` f) kk
+conflicts env (expandEffDeep env -> f) (expandSymDeep env -> k)
+    = traceShow (k, kk) $ conflictsWR f || any (\q -> evalQueryM (doesWriteOn f q) env) kk
   where
     kk = S.delete k $ anySuperStructure k
 
-    conflictsWR (tnc . eE env -> (FSeq, [first, second]))
-        = conflictsWR first || conflictsWR second || (hasWrite k first && any (`hasRead` second) kk)
+    conflictsWR (eE env -> tnc -> (FSeq, [first, second]))
+        = conflictsWR first || conflictsWR second ||
+          (evalQueryM (doesWriteOn first k) env && any (\s -> evalQueryM (doesReadOn second s) env) kk)
     conflictsWR (children . eE env -> cs) = any conflictsWR cs
 
 writebackOpt :: EffectEnv -> K3 Declaration -> K3 Declaration
@@ -74,7 +77,6 @@ writebackOptE env (TAC t as cs)               = TAC t as $ map (writebackOptE en
 constructBindHint :: EffectEnv -> K3 Expression -> Annotation Expression
 constructBindHint env g = EOpt $ BindHint (symIDs env refBound, [], symIDs env writeBound)
   where
-    (tnc . eE env ->  (FScope newSymbols, cs)) =
-        findScope env $ let (EEffect k) = fromJust $ g @~ isEEffect in k
-    (writeBound, refBound) = if null cs then ([], S.fromList newSymbols)
-                             else S.partition (conflicts env $ head cs) $ S.fromList newSymbols
+    (eE env -> tnc -> (FScope bs, es)) = findScope env $ let (EEffect k) = fromJust $ g @~ isEEffect in k
+    (writeBound, refBound) = if null es then ([], S.fromList bs)
+                             else S.partition (conflicts env $ head es) $ S.fromList bs
