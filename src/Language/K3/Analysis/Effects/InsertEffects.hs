@@ -1172,6 +1172,7 @@ combineSym p ss =
 
 combineSymSet :: [Maybe (K3 Symbol)] -> MEnv (Maybe (K3 Symbol))
 combineSymSet = combineSym PSet
+
 combineSymApply :: Maybe (K3 Symbol) -> Maybe (K3 Symbol) -> MEnv (Maybe (K3 Symbol))
 combineSymApply l a = combineSym PApply [l,a]
 

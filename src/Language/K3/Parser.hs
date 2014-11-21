@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE TupleSections #-}
@@ -291,8 +292,8 @@ mpAnnotationMember = mpAnnMemDecl <$> (keyword "for" *> parseInMode Normal ident
 dControlAnnotation :: DeclParser
 dControlAnnotation = namedIdentifier "control annotation" "control" $ rule
   where rule x = mkCtrlAnn <$> x <*> option [] spliceParameterDecls <*> braces body
-        body           = (,) <$> some pattern <*> (extensions $ keyword "shared")
-        pattern        = (,,) <$> patternE <*> (symbol "=>" *> rewriteE) <*> (extensions $ symbol "+>")
+        body           = (,) <$> some cpattern <*> (extensions $ keyword "shared")
+        cpattern       = (,,) <$> patternE <*> (symbol "=>" *> rewriteE) <*> (extensions $ symbol "+>")
         extensions pfx = concat <$> option [] (try $ pfx *> braces (many extensionD))
         rewriteE       = cleanExpr =<< parseInMode Splice expr
         patternE       = cleanExpr =<< parseInMode SourcePattern expr
@@ -863,9 +864,15 @@ contextualizedSpliceParameter sEnvOpt = choice [try fromContext, spliceParameter
 
 {- Effect signatures -}
 effectSignature :: K3Parser (Identifier -> [Annotation Declaration])
-effectSignature = mkSigAnn <$> (keyword "with" *> keyword "effects" *> (sepBy1 effLambda $ symbol "|"))
-  where mkSigAnn s n       = [DSymbol $ mkTopLevelSym n s]
-        mkTopLevelSym n ss = replaceCh (FC.symbol n F.PChoice False False) ss
+effectSignature = mkSigAnn =<< (keyword "with" *> keyword "effects" *> effSig)
+  where
+    effSig    = (,) <$> (sepBy1 effLambda $ symbol "|") <*> optional returnSig
+    returnSig = keyword "return" *> effReturn
+
+    mkSigAnn (s, rOpt)       = mkTopLevelSym (s, rOpt) >>= \f -> return (\n -> [DSymbol $ f n])
+    mkTopLevelSym (ss, rOpt) = do
+      nss <- maybe (return ss) (\ret -> mapM (attachReturn ret) ss) rOpt
+      return $ \n -> replaceCh (FC.symbol n F.PChoice False False) nss
 
 effLambda :: K3Parser (K3 F.Symbol)
 effLambda = mkLambda <$> readLambda <*> choice [Left <$> try effLambda, Right <$> try effTerm]
@@ -890,9 +897,41 @@ effTerm = choice (map try [effRead, effWrite, effApply, effSeq, effLoop]) <?> "e
                         <$> (identifier <|> (keyword "self"    >> return "self")
                                         <|> (keyword "content" >> return "content")))
                         <?> "effect symbol"
-        mkVar i = FC.symbol i F.PVar True False 
+        mkVar i = FC.symbol i F.PVar True False
         termAsSeq t = if length t == 1 then head t else FC.seq t
         varList pfx parser = string pfx *> brackets (commaSep1 parser)
+
+effReturn :: K3Parser (K3 F.Symbol)
+effReturn = mkDerived <$> commaSep1 rRet
+  where
+    rRet = choice [rVar, rPrj, rRec, rTup, rInd]
+    rVar = (mkVar <$> (identifier <|> (keyword "self"    >> return "self")
+                                  <|> (keyword "content" >> return "content")))
+              <?> "return symbol"
+    rPrj = mkPrj <$> rRet <*> (dot        *> identifier)
+    rRec = mkRec <$> rRet <*> (colon      *> identifier)
+    rTup = mkTup <$> rRet <*> (symbol "#" *> integer)
+    rInd = mkInd <$> (symbol "!" *> rRet)
+
+    mkDerived s = replaceCh (FC.symbol "return" F.PDerived True False) s
+    mkVar     i = FC.symbol i F.PVar True False
+    mkPrj   s n = mkSym ("__prj" ++ n)   (F.PProject n) [s]
+    mkRec   s n = mkSym ("__rec" ++ n)   (F.PRecord  n) [s]
+    mkTup   s i = mkSym ("__" ++ show i) (F.PTuple   i) [s]
+    mkInd     s = mkSym "__ind" F.PIndirection [s]
+    mkSym i e c = replaceCh (FC.symbol i e True False) c
+
+pattern PLambdaSym eff ch <-
+  Node ((F.Symbol _ (F.PLambda (tag -> F.FScope [(tag -> F.Symbol _ eff _ _ _)])) _ _ _) :@: _) ch
+
+attachReturn :: K3 F.Symbol -> K3 F.Symbol -> K3Parser (K3 F.Symbol)
+attachReturn ret sym = rcrLambda sym
+  where rcrLambda s@(PLambdaSym F.PVar []) = return $ replaceCh s [ret]
+        rcrLambda s@(PLambdaSym (F.PLambda _) [lam]) = do
+          nch <- rcrLambda lam
+          return $ replaceCh s [nch]
+
+        rcrLambda _ = P.parserFail "Invalid effect signature lambda while attaching return symbol"
 
 
 {- Identifiers and their list forms -}
