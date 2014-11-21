@@ -53,7 +53,7 @@ lambdaFormOptD _ _ t = t
 lambdaFormOptE :: TransformConfig -> EffectEnv -> [K3 Expression] -> K3 Expression -> K3 Expression
 lambdaFormOptE conf env ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c:as)) [lambdaFormOptE conf env ds b]
   where
-    ESymbol (tag . eS env -> Symbol {symProv=PLambda (eE env -> Node (FScope bindings@(binding:closure) :@: _) [be])})
+    ESymbol (eS env -> tag -> symProv -> PLambda (eE env -> Node (FScope bindings@(binding:closure) :@: _) bes))
         = fromJust $ e @~ isESymbol
 
     getEffects e' = (\(EEffect f) -> f) <$> e' @~ isEEffect
@@ -63,7 +63,7 @@ lambdaFormOptE conf env ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@:
                                         not (any (\f -> let (r, w, _) = symRWAQuery f [g] env
                                                         in g `elem` r || g `elem` w) fs)
 
-    (cRead, cWritten, cApplied) = symRWAQuery be bindings env
+    (cRead, cWritten, cApplied) = if null bes then ([], [], []) else symRWAQuery (head bes) bindings env
 
     funcHint
         | binding `elem` cWritten = False
@@ -71,7 +71,8 @@ lambdaFormOptE conf env ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@:
         | binding `elem` cRead = True
         | otherwise = False
 
-    captHint = foldl' captHint' (S.empty, S.empty, S.empty) $ filter (not . isDerivedFromGlobal env . expandSymDeep env) $ cRead ++ cWritten ++ cApplied
+    captHint = foldl' captHint' (S.empty, S.empty, S.empty) $
+               filter (not . isDerivedFromGlobal env . expandSymDeep env) $ cRead ++ cWritten ++ cApplied
 
     captHint' (cref, move, copy) s
         | s === binding                                    = (cref, move, copy)
