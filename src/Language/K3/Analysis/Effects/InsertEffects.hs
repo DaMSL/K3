@@ -80,22 +80,21 @@ type EffectMap  = IntMap (K3 Effect)
 type AssignMap  = [IntMap Int]
 
 data EffectEnv = EffectEnv {
-                globalEnv :: GlobalEnv,
-                count :: Int,
-                bindEnv :: LocalEnv,
-                symEnv :: SymbolMap,
-                effEnv :: EffectMap,
-                -- Locally used for maps
-                assignMap :: AssignMap
-               }
+                   count     :: Int,
+                   globalEnv :: GlobalEnv,
+                   bindEnv   :: LocalEnv,
+                   symEnv    :: SymbolMap,
+                   effEnv    :: EffectMap,
+                   assignMap :: AssignMap -- Locally used for maps
+                 }
 
 startEnv :: EffectEnv
 startEnv = EffectEnv {
-             globalEnv=Map.empty,
-             count = 1,
-             bindEnv=Map.empty,
-             symEnv=IntMap.empty,
-             effEnv=IntMap.empty,
+             count     = 1,
+             globalEnv = Map.empty,
+             bindEnv   = Map.empty,
+             symEnv    = IntMap.empty,
+             effEnv    = IntMap.empty,
              assignMap = []
            }
 
@@ -1085,9 +1084,11 @@ data Changed a = Changed a | Unchanged a | Deleted
 isDeleted :: Changed a -> Bool
 isDeleted Deleted = True
 isDeleted _ = False
+
 isChanged :: Changed a -> Bool
 isChanged (Changed _) = True
 isChanged _ = False
+
 isUnchanged :: Changed a -> Bool
 isUnchanged (Unchanged _) = True
 isUnchanged _ = False
@@ -1114,17 +1115,17 @@ symInBind (Just sym) = do
       if isJust s && fromJust s `symEqual` n then
         -- We found a match
         return $ Unchanged n'
-        else do
-          -- Search the children
-          rs <- mapM loop $ children n
-          if all isDeleted rs || null rs then return Deleted    -- Delete this branch
-            else if all isUnchanged rs then return $ Unchanged n' -- Keep this branch as is
-              else do                                               -- Keep some children
-                ch' <- concat <$> mapM (extractOrTemp canRemoveCh) rs
-                let n2 = replaceCh n ch'
-                -- Save to the environment
-                n3 <- duplicateSymM n2
-                return $ Changed n3
+      else do
+        -- Search the children
+        rs <- mapM loop $ children n
+        if all isDeleted rs || null rs then return Deleted    -- Delete this branch
+        else if all isUnchanged rs then return $ Unchanged n' -- Keep this branch as is
+        else do                                               -- Keep some children
+          ch' <- concat <$> mapM (extractOrTemp canRemoveCh) rs
+          let n2 = replaceCh n ch'
+          -- Save to the environment
+          n3 <- duplicateSymM n2
+          return $ Changed n3
       where
         extractOrTemp _ (Changed x)   = return [x]
         extractOrTemp _ (Unchanged x) = return [x]
@@ -1165,8 +1166,10 @@ combineSym okToDelete p ss =
 
 combineSymSet :: [Maybe (K3 Symbol)] -> MEnv (Maybe (K3 Symbol))
 combineSymSet = combineSym True PSet
+
 combineSymApply :: Maybe (K3 Symbol) -> Maybe (K3 Symbol) -> MEnv (Maybe (K3 Symbol))
 combineSymApply l a = combineSym False PApply [l,a]
+
 combineSymDerived :: [Maybe (K3 Symbol)] -> MEnv (Maybe (K3 Symbol))
 combineSymDerived = combineSym True PDerived
 
