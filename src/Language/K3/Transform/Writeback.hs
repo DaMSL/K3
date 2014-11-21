@@ -52,7 +52,7 @@ symIDs env = S.map (symIdent . tag . eS env)
 -- to, or the superstructure was written anywhere.
 conflicts :: EffectEnv -> K3 Effect -> K3 Symbol -> Bool
 conflicts env (expandEffDeep env -> f) (expandSymDeep env -> k)
-    = traceShow (k, kk) $ conflictsWR f || any (\q -> evalQueryM (doesWriteOn f q) env) kk
+    = conflictsWR f || any (\q -> evalQueryM (doesWriteOn f q) env) kk
   where
     kk = S.delete k $ anySuperStructure k
 
