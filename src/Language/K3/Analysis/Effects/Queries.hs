@@ -22,6 +22,9 @@ type QueryM = StateT QueryS Identity
 runQueryM :: QueryM a -> QueryS -> (a, QueryS)
 runQueryM = runState
 
+evalQueryM :: QueryM a -> QueryS -> a
+evalQueryM = evalState
+
 getEnv :: QueryM EffectEnv
 getEnv = get
 
@@ -38,6 +41,11 @@ isIsolated :: K3 Symbol -> QueryM Bool
 isIsolated s = case s of
   (tag -> SymId _) -> eSM s >>= isIsolated
   (tag -> symHasCopy -> b) -> return b
+
+isMoved :: K3 Symbol -> QueryM Bool
+isMoved s = case s of
+  (tag -> SymId _) -> eSM s >>= isMoved
+  (tag -> symHasMove -> b) -> return b
 
 isWrittenBack :: K3 Symbol -> QueryM Bool
 isWrittenBack s = case s of
@@ -125,11 +133,11 @@ doesReadOn e s = case e of
   --   - It does a read on the given symbol.
   --   - It needs to populate one of its bindings with the given symbol.
   --
-  -- If the scope introduces a binding derived /without aliasing/ from the given symbol, no read
+  -- If the scope introduces a binding derived /with aliasing/ from the given symbol, no read
   -- registers here; one /may/ register later if the aliased symbol itself is read.
   (tag &&& children -> (FScope ss, es)) ->
     (||) <$> (or <$> traverse (flip doesReadOn s) es)
-         <*> (or <$> traverse (\q -> (&&) <$> isIsolated q
+         <*> (or <$> traverse (\q -> (&&) <$> ((||) <$> isIsolated q <*> isMoved q)
                                           <*> (or <$> traverse (flip isDerivedDirectlyFrom s) (children q))) ss)
 
   -- Otherwise, the given effect performs a read on the given symbol if any of its constituent
@@ -153,7 +161,7 @@ doesWriteOn e s = case e of
   --   - It does a write-back on any symobl derived through a copy from the given symbol.
   (tag &&& children -> (FScope ss, es)) ->
       (||) <$> (or <$> traverse (flip doesWriteOn s) es)
-           <*> (or <$> traverse (\q -> (&&) <$> isWrittenBack q
+           <*> (or <$> traverse (\q -> (&&) <$> ((||) <$> isWrittenBack q <*> isMoved q)
                                             <*> (or <$> traverse (flip isDerivedDirectlyFrom s) (children q))) ss)
 
   -- Otherwise, the given effect performs a read on the given symbol if any of its constituent
