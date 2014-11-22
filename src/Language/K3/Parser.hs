@@ -515,7 +515,7 @@ eCString :: ExpressionParser
 eCString = EC.constant . CString <$> stringLiteral
 
 eVariable :: ExpressionParser
-eVariable = exprError "variable" $ parserWithPMode $ \pMode -> mkVar pMode <$> identifier
+eVariable = exprError "variable" $ parserWithPMode $ \mode -> mkVar mode <$> identifier
   where mkVar Normal ('\'':t) = EC.applyMany resolveFn [EC.constant $ CString t]
         mkVar _      i = EC.variable i
 
@@ -894,35 +894,37 @@ effTerm asAttrMem = choice (map try [effRead, effWrite, effApply, effSeq, effLoo
         effSeq    = (:[]) . FC.seq . concat <$> brackets (semiSep1 $ effTerm asAttrMem)
         effLoop   = (\eff -> [FC.loop $ termAsSeq eff]) <$> (parens $ effTerm asAttrMem) <* symbol "*"
 
-        effSymbol = (mkVar
-                        <$> (identifier <|> (keyword "self"    >> return "self")
-                                        <|> (keyword "content" >> return "content")
-                                        <|> (keyword "fresh"   >> return "fresh")))
+        effSymbol = (mkVar <$> (identifier <|> (keyword "self"    >> return "self")
+                                           <|> (keyword "content" >> return "content")))
                         <?> "effect symbol"
-        mkVar "fresh" = FC.symbol "fresh" F.PTemporary False True False -- TODO: fresh symbol?
         mkVar i = let copyFlag = if i == "self" then False else True
                   in FC.symbol i F.PVar False copyFlag False
         termAsSeq t = if length t == 1 then head t else FC.seq t
         varList pfx parser = string pfx *> brackets (commaSep1 parser)
 
 effReturn :: K3Parser (K3 F.Symbol)
-effReturn = mkDerived <$> commaSep1 rRet
+effReturn = choice [rRet, rDerived]
   where
-    rRet = choice [rVar, rPrj, rRec, rTup, rInd]
-    rVar = (mkVar <$> (identifier <|> (keyword "self"    >> return "self")
-                                  <|> (keyword "content" >> return "content")))
+    rRet  = choice [rVar, rPrj, rRec, rTup, rInd]
+    rVar  = (mkVar =<< (identifier <|> (keyword "self"    >> return "self")
+                                   <|> (keyword "content" >> return "content")
+                                   <|> (keyword "fresh"   >> return "fresh")))
               <?> "return symbol"
-    rPrj = mkPrj <$> rRet <*> (dot        *> identifier)
-    rRec = mkRec <$> rRet <*> (colon      *> identifier)
-    rTup = mkTup <$> rRet <*> (symbol "#" *> integer)
-    rInd = mkInd <$> (symbol "!" *> rRet)
+    rPrj  = mkPrj <$> rRet <*> (dot        *> identifier)
+    rRec  = mkRec <$> rRet <*> (colon      *> identifier)
+    rTup  = mkTup <$> rRet <*> (symbol "#" *> integer)
+    rInd  = mkInd <$> (symbol "!" *> rRet)
+    rDerived = mkDerived <$> (symbol "~" *> choice [rRet >>= return . (:[]), commaSep1 rRet])
 
     mkDerived s = replaceCh (FC.symbol "return" F.PDerived False True False) s
-    mkVar     i = FC.symbol i F.PVar False True False
-    mkPrj   s n = mkSym ("__prj" ++ n)   (F.PProject n) [s]
-    mkRec   s n = mkSym ("__rec" ++ n)   (F.PRecord  n) [s]
-    mkTup   s i = mkSym ("__" ++ show i) (F.PTuple   i) [s]
-    mkInd     s = mkSym "__ind" F.PIndirection [s]
+
+    mkVar "fresh" = withEffectID (\eid -> FC.symbol ("fresh"++ show eid) F.PTemporary False True False)
+    mkVar       i = return $ FC.symbol i F.PVar False True False
+
+    mkPrj   s n = mkSym ("prj_" ++ n)      (F.PProject n) [s]
+    mkRec   s n = mkSym ("rec_" ++ n)      (F.PRecord  n) [s]
+    mkTup   s i = mkSym ("tup_" ++ show i) (F.PTuple   i) [s]
+    mkInd     s = mkSym "ind" F.PIndirection [s]
     mkSym i e c = replaceCh (FC.symbol i e False True False) c
 
 pattern PLambdaSym eff ch <-
