@@ -16,3 +16,10 @@ declare add: int -> int -> int = \a -> \v -> a + v
 // Should accept outer argument by value, inner argument by constant reference, and move outer
 // argument into closure.
 declare accumulate: collection { x: int } @ { Collection }-> int -> int = \d -> \w -> ((d.insert { x: w }); w)
+
+declare hash: int -> int = \x -> x + 1
+
+// Should *not* move argument into function, used downstream.
+declare let_downstream: int -> () = \q ->
+  let h = hash q in
+    let u = q in ()

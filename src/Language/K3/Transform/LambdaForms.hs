@@ -159,10 +159,9 @@ lambdaFormOptE (Node (EOperate OApp :@: as) [f, x]) = do
   let argument = getSymbol x
   let moveable (expandSymDeep env -> g) = not (isDerivedFromGlobal env g) &&
                                           not (any (\f -> let (r, w, _) = effectSCategories f [g] env
-                                                          in g `elem` r || g `elem` w) fs)
+                                                          in g `elemSymbol` r || g `elemSymbol` w) fs)
 
-  argIsGlobal <- maybe (return True) isGlobal argument
-  let passHint = argIsGlobal || (maybe True (not . moveable) argument)
+  let passHint = maybe True (not . moveable) argument
   let a = EOpt $ PassHint passHint
 
   return $ Node (EOperate OApp :@: as) [f', x' @+ a]
