@@ -1172,8 +1172,8 @@ combineEffSeq :: [Maybe (K3 Effect)] -> MEnv (Maybe (K3 Effect))
 combineEffSeq = combineEff seq
 
 -- combineSym symbols into 1 symbol
-combineSym :: Bool -> Provenance -> [Maybe (K3 Symbol)] -> MEnv (Maybe (K3 Symbol))
-combineSym okToDelete p ss =
+combineSym :: Bool -> Bool -> Provenance -> [Maybe (K3 Symbol)] -> MEnv (Maybe (K3 Symbol))
+combineSym okToDelete okToCollapse p ss =
   -- if there's no subsymbol at all, just gensym a temp
   if all (Nothing ==) ss then
     liftM Just genSymTemp
@@ -1181,7 +1181,7 @@ combineSym okToDelete p ss =
   else do
     ss' <- concat <$> mapM maybeGen ss
     case ss' of
-      [s] -> return $ Just s
+      [s] | okToCollapse -> return $ Just s
       _   -> liftM Just $ genSym p False False False ss'
     where
       maybeGen (Just s) = return [s]
@@ -1189,13 +1189,13 @@ combineSym okToDelete p ss =
       maybeGen Nothing  = singleton <$> genSymTemp
 
 combineSymSet :: [Maybe (K3 Symbol)] -> MEnv (Maybe (K3 Symbol))
-combineSymSet = combineSym True PSet
+combineSymSet = combineSym True True PSet
 
 combineSymApply :: Maybe (K3 Symbol) -> Maybe (K3 Symbol) -> MEnv (Maybe (K3 Symbol))
-combineSymApply l a = combineSym False PApply [l,a]
+combineSymApply l a = combineSym False False PApply [l,a]
 
 combineSymDerived :: [Maybe (K3 Symbol)] -> MEnv (Maybe (K3 Symbol))
-combineSymDerived = combineSym True PDerived
+combineSymDerived = combineSym True False PDerived
 
 applyLambdaEnv :: EffectEnv -> K3 Symbol -> K3 Symbol -> Maybe (K3 Effect, K3 Symbol)
 applyLambdaEnv env l a = flip evalState env $ applyLambda l a
