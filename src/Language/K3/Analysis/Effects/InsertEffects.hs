@@ -31,11 +31,18 @@ module Language.K3.Analysis.Effects.InsertEffects (
   expandSymDeep,
   occursEff,
   occursSym,
-  symEqual
+  symEqual,
+
+  SymbolCategories(..),
+  applyEffLambdas,
+  applyEffLambdasEnv,
+  categorizeEffectSymbols,
+  matchEffectSymbols
 )
 where
 
 import Prelude hiding (read, seq)
+import Control.Arrow hiding (loop)
 import Control.Monad.State.Lazy
 import Control.Applicative ((<$>))
 import Data.Maybe
@@ -444,8 +451,9 @@ addSID sym = do
   return $ sym @+ SID i
 
 getSID :: K3 Symbol -> Maybe Int
-getSID sym = liftM extract $ sym @~ isSID
-  where extract (SID i) = i
+getSID sym = maybe Nothing extract $ sym @~ isSID
+  where extract (SID i) = Just i
+        extract _ = Nothing
 
 getFID :: K3 Effect -> Maybe Int
 getFID sym = liftM extract $ sym @~ isFID
@@ -491,87 +499,93 @@ getOrGenSymbol n = case getESymbol n of
                      Nothing -> genSymTemp
                      Just i  -> return i
 
--- Create a closure of symbols read, written, or applied that are relevant to the current env
-createClosure :: Maybe (K3 Effect) -> Maybe (K3 Symbol) -> MEnv ClosureInfo
-createClosure mEff mSym = liftM nubTuple $ do
-  acc  <- case mSym of
-           Nothing  -> return emptyClosure
-           Just sym -> addClosureSym emptyClosure sym
-  case mEff of
-    Nothing  -> return acc
-    Just eff -> addClosureEff acc eff
+-- Partitions symbols by whether they participate in reads, writes,
+-- function application or scopes
+data SymbolCategories = SymbolCategories { readSyms    :: [K3 Symbol]
+                                         , writeSyms   :: [K3 Symbol]
+                                         , appliedSyms :: [K3 Symbol]
+                                         , boundSyms   :: [K3 Symbol] }
+
+categorizeEffectSymbols :: K3 Effect -> MEnv SymbolCategories
+categorizeEffectSymbols eff = categorizeEff emptySymbols eff >>= return . nubSymbols
   where
-    nubTuple (a,b,c) = (nub a, nub b, nub c)
+    emptySymbols = SymbolCategories [] [] [] []
+    nubSymbols (SymbolCategories a b c d) = SymbolCategories (nub a) (nub b) (nub c) (nub d)
 
-    addClosureEff :: ClosureInfo -> K3 Effect -> MEnv ClosureInfo
-    addClosureEff acc n' = do
-      n <- expandEffM n'
-      case tag n of
-        FRead s -> do
-          (a,b,c) <- addClosureSym acc s
-          s'      <- getClosureSyms [] s
-          return (s' ++ a,b,c)
-        FWrite s -> do
-          (a,b,c) <- addClosureSym acc s
-          s'      <- getClosureSyms [] s
-          return (a, s' ++ b, c)
-        FApply s s' -> do
-          acc'    <- addClosureSym acc  s
-          (a,b,c) <- addClosureSym acc' s'
-          s''     <- getClosureSyms [] s'
-          return (a, b, s'' ++ c)
-        FScope ss -> do
-          acc' <- foldrM (flip addClosureEff) acc $ children n
-          -- Add effects for scope behavior
-          foldrM addScopeEff acc' ss
-        -- Generic case
-        _ -> foldrM (flip addClosureEff) acc $ children n
+    categorizeEff acc e = foldTree (\acc' e' -> expandEffM e' >>= catEff acc') acc e
+    categorizeSym acc s = foldTree (\acc' s' -> expandSymM s' >>= catSym acc') acc s
 
-    -- Add the effect of scope
-    addScopeEff :: K3 Symbol -> ClosureInfo -> MEnv ClosureInfo
-    addScopeEff n' (r,w,a) = do
-      n  <- expandSymM n'
-      (r', w') <- case tag n of
-                    Symbol {symHasCopy=True, symHasWb=True} -> (\a -> (a, a)) <$> getClosureSyms [] n'
-                    Symbol {symHasCopy=True}                -> (,[]) <$> getClosureSyms [] n'
-                    Symbol {symHasWb=True}                  -> ([],) <$> getClosureSyms [] n'
-                    _                                       -> return ([], [])
-      return (r'++r, w'++w, a)
+    catEff :: SymbolCategories -> K3 Effect -> MEnv SymbolCategories
+    catEff acc (tag -> FRead  s)    = categorizeSym acc s >>= \nacc -> return $ nacc {readSyms  = readSyms acc  ++ [s]}
+    catEff acc (tag -> FWrite s)    = categorizeSym acc s >>= \nacc -> return $ nacc {writeSyms = writeSyms acc ++ [s]}
+    catEff acc (tag -> FApply s s') = categorizeSym acc s >>= flip categorizeSym s' >>= \nacc -> return $ nacc {appliedSyms = appliedSyms acc ++ [s']}
+    catEff acc (tag -> FScope ss)   = return $ acc {boundSyms = boundSyms acc ++ ss}
+    catEff acc _ = return acc
+
+    catSym :: SymbolCategories -> K3 Symbol -> MEnv SymbolCategories
+    catSym acc (tag -> Symbol {symProv=PLambda e}) = categorizeEff acc e
+    catSym acc _ = return acc
+
+-- Expand and filter symbols given a set of symbols of interest.
+-- Bound symbols are transferred to the read and write symbol sets based
+-- on their materialization metadata.
+matchEffectSymbols :: [K3 Symbol] -> SymbolCategories -> MEnv SymbolCategories
+matchEffectSymbols querySyms (SymbolCategories rs ws as bs) = do
+    qSyms      <- mkQueryMap querySyms
+    frs        <- matchQuerySyms qSyms rs
+    fws        <- matchQuerySyms qSyms ws
+    fas        <- matchQuerySyms qSyms as
+    (brs, bws) <- materializeSyms qSyms bs
+    return $ SymbolCategories (frs++brs) (fws++bws) fas []
+  where
+    -- For superstructure, we add parents as symbols of interest.
+    mkQueryMap :: [K3 Symbol] -> MEnv [(Identifier, K3 Symbol)]
+    mkQueryMap syms = mapM (\s -> expandSymM s >>= idAndSym s) syms >>= return . concat . catMaybes
+
+    idAndSym :: K3 Symbol -> K3 Symbol -> MEnv (Maybe [(Identifier, K3 Symbol)])
+    idAndSym s xs@(tag -> Symbol {symIdent=i, symProv=PRecord _})  = idAndSymCh xs >>= catSyms (Just [(i,s)])
+    idAndSym s xs@(tag -> Symbol {symIdent=i, symProv=PTuple _})   = idAndSymCh xs >>= catSyms (Just [(i,s)])
+    idAndSym s xs@(tag -> Symbol {symIdent=i, symProv=PProject _}) = idAndSymCh xs >>= catSyms (Just [(i,s)])
+    idAndSym s (tag -> Symbol {symIdent=i}) = return $ Just [(i,s)]
+    idAndSym _ _ = return Nothing
+
+    idAndSymCh xs = expandSymCh (children xs) >>= mapM (uncurry idAndSym)
+    expandSymCh sl = mapM (\s -> expandSymM s >>= return . (s,)) sl
+    catSyms opt optL = return $ Just $ concat $ catMaybes $ optL ++ [opt]
+
+    matchQuerySyms :: [(Identifier, K3 Symbol)] -> [K3 Symbol] -> MEnv [K3 Symbol]
+    matchQuerySyms qSyms s =
+      foldM (foldTree (\acc s' -> expandSymM s' >>= matchSym qSyms acc s')) [] s
+
+    matchSym :: [(Identifier, K3 Symbol)] -> [K3 Symbol] -> K3 Symbol -> K3 Symbol -> MEnv [K3 Symbol]
+    matchSym _ _ _ (tag -> SymId _) = error "unexpected symId1"
+    matchSym _ acc _ (tag -> Symbol {symProv=PGlobal}) = return acc
+    matchSym qSyms acc s xs@(tag -> Symbol {symIdent=i}) = case lookup i qSyms of
+      Just qs -> do
+        xqs <- expandSymM qs
+        case tag xqs of
+          Symbol {symProv = PGlobal} -> return acc
+          _ | xs `symEqual` xqs      -> return $ s:acc
+          _ -> return acc
+
+      Nothing -> return acc
+
+    matchSym _ acc _ _ = return acc
+
+    materializeSyms qSyms s = foldM (\acc s' -> expandSymM s' >>= matBoundSym qSyms acc s') ([],[]) s
+
+    matBoundSym qSyms (rSyms,wSyms) s (tag -> Symbol {symHasCopy=True, symHasWb=True}) =
+      matchQuerySyms qSyms [s] >>= return . ((rSyms ++) &&& (wSyms ++))
+
+    matBoundSym qSyms (rSyms,wSyms) s (tag -> Symbol {symHasCopy=True}) =
+      matchQuerySyms qSyms [s] >>= return . (,wSyms) . (rSyms ++)
+
+    matBoundSym qSyms (rSyms,wSyms) s (tag -> Symbol {symHasWb=True}) =
+      matchQuerySyms qSyms [s] >>= return . (rSyms,) . (wSyms ++)
+
+    matBoundSym _ acc _ _ = return acc
 
 
-    addClosureSym acc n' = do
-      n <- expandSymM n'
-      case tag n of
-         Symbol {symProv=PLambda eff} -> do
-           acc' <- foldrM (flip addClosureSym) acc $ children n
-           addClosureEff acc' eff
-
-         _ -> foldrM (flip addClosureSym) acc $ children n
-
-    -- The method for searching for valid symbols
-    getClosureSyms acc n' = do
-      n <- expandSymM n'
-      case tag n of
-        SymId _                       -> error "unexpected symId1"
-        -- Don't bother with temporaries (for now)
-        Symbol {symProv=PGlobal}      -> return acc
-        Symbol {symIdent=i}           -> do
-          x' <- lookupBindInnerM i
-          case x' of
-            -- if we haven't found a match, it might be deeper in the symbol tree
-            Nothing  -> foldrM (flip getClosureSyms) acc $ children n
-            Just x'' -> do
-              x  <- expandSymM x''
-              case tag x of
-                Symbol {symProv=PGlobal}      -> return acc
-                _ | n `symEqual` x            -> return $ n':acc
-                -- These 2 symbols' children aren't really further provenances
-                Symbol {symProv=PLambda _}    -> return acc
-                Symbol {symProv=PApply}       -> return acc
-                -- If we have copy semantics, abort search
-                Symbol {symHasCopy=True}     -> return acc
-                -- if we haven't found a match, it might be deeper in the tree
-                _ -> foldrM (flip getClosureSyms) acc $ children n
 
 addAllGlobals :: K3 Declaration -> MEnv (K3 Declaration)
 addAllGlobals node = mapProgram preHandleDecl mId mId Nothing node
@@ -1100,15 +1114,15 @@ isUnchanged _ = False
 symInBind :: Maybe (K3 Symbol) -> MEnv (K3 Symbol)
 symInBind Nothing    = genSymTemp
 symInBind (Just sym) = do
-  s' <- loop sym
+  s' <- loop' sym
   case s' of
-    Deleted      -> genSymTemp
-    Changed s'   -> genSymDirect s'
-    Unchanged s' -> genSymDirect s'
+    Deleted       -> genSymTemp
+    Changed s''   -> genSymDirect s''
+    Unchanged s'' -> genSymDirect s''
   where
     -- Returns whether the symbol tree led to something in the env
-    loop :: K3 Symbol -> MEnv (Changed (K3 Symbol))
-    loop n' = do
+    loop' :: K3 Symbol -> MEnv (Changed (K3 Symbol))
+    loop' n' = do
       n <- expandSymM n'
       let i = symIdent $ tag n
       -- Particular provenances that are ok with deleting children
@@ -1120,7 +1134,7 @@ symInBind (Just sym) = do
         return $ Unchanged n'
       else do
         -- Search the children
-        rs <- mapM loop $ children n
+        rs <- mapM loop' $ children n
         if all isDeleted rs || null rs then return Deleted    -- Delete this branch
         else if all isUnchanged rs then return $ Unchanged n' -- Keep this branch as is
         else do                                               -- Keep some children
@@ -1226,7 +1240,7 @@ applyLambda sLam' sArg = do
 
 -- Substitute a symbol for another in a symbol: old, new, symbol in which to replace
 -- NOTE: We assume the effects and symbols here don't need the environment
-subSym :: Maybe (K3 Symbol, K3 Symbol, Bool) -> K3 Symbol -> MEnv (Maybe(K3 Symbol))
+subSym :: Maybe (K3 Symbol, K3 Symbol, Bool) -> K3 Symbol -> MEnv (Maybe (K3 Symbol))
 subSym (Just (s, s', hasCopy)) n@(tag -> t@(Symbol {symProv=PVar})) | n `symEqual` s =
     return $ Just $ flip replaceTag (t {symHasCopy=hasCopy}) $ replaceCh n [s']
 -- Apply: recurse (we already substituted into the children)
@@ -1240,7 +1254,7 @@ subSym _ _ = return Nothing
 -- Substitute one symbol for another in an effect
 -- mapSym already handled sL and sA
 -- NOTE: We assume the effects and symbols here don't need the environment
-subEff :: Maybe (K3 Symbol, K3 Symbol, Bool) -> K3 Effect -> MEnv (Maybe(K3 Effect))
+subEff :: Maybe (K3 Symbol, K3 Symbol, Bool) -> K3 Effect -> MEnv (Maybe (K3 Effect))
 subEff _ (tag -> FApply sL sA) = do
   m <- applyLambda sL sA
   case m of
@@ -1248,16 +1262,114 @@ subEff _ (tag -> FApply sL sA) = do
     Just m' -> return $ Just $ fst m'
 subEff _ _ = return Nothing
 
+applyEffLambdas :: K3 Effect -> MEnv (K3 Effect)
+applyEffLambdas eff = mapEff False (subEff Nothing) (subSym Nothing) eff
+
+applyEffLambdasEnv :: EffectEnv -> K3 Effect -> K3 Effect
+applyEffLambdasEnv env eff =
+  flip evalState env $ mapEff False (subEff Nothing) (subSym Nothing) eff
+
 -- Query whether certain symbols are read, written, applied
+symRWAQuery :: K3 Effect -> [K3 Symbol] -> EffectEnv -> ClosureInfo
+symRWAQuery eff syms env = flip evalState env $ do
+  clearBindsM
+  eff' <- applyEffLambdas eff
+  SymbolCategories r w a _ <- categorizeEffectSymbols eff' >>= matchEffectSymbols syms
+  return (r, w, a)
+
+{-
+-- Create a closure of symbols read, written, or applied that are relevant to the current env
+createClosure :: Maybe (K3 Effect) -> Maybe (K3 Symbol) -> MEnv ClosureInfo
+createClosure mEff mSym = liftM nubTuple $ do
+  acc  <- case mSym of
+           Nothing  -> return emptyClosure
+           Just sym -> addClosureSym emptyClosure sym
+  case mEff of
+    Nothing  -> return acc
+    Just eff -> addClosureEff acc eff
+  where
+    nubTuple (a,b,c) = (nub a, nub b, nub c)
+
+    addClosureEff :: ClosureInfo -> K3 Effect -> MEnv ClosureInfo
+    addClosureEff acc n' = do
+      n <- expandEffM n'
+      case tag n of
+        FRead s -> do
+          (a,b,c) <- addClosureSym acc s
+          s'      <- getClosureSyms [] s
+          return (s' ++ a,b,c)
+        FWrite s -> do
+          (a,b,c) <- addClosureSym acc s
+          s'      <- getClosureSyms [] s
+          return (a, s' ++ b, c)
+        FApply s s' -> do
+          acc'    <- addClosureSym acc  s
+          (a,b,c) <- addClosureSym acc' s'
+          s''     <- getClosureSyms [] s'
+          return (a, b, s'' ++ c)
+        FScope ss -> do
+          acc' <- foldrM (flip addClosureEff) acc $ children n
+          -- Add effects for scope behavior
+          foldrM addScopeEff acc' ss
+        -- Generic case
+        _ -> foldrM (flip addClosureEff) acc $ children n
+
+    -- Add the effect of scope
+    addScopeEff :: K3 Symbol -> ClosureInfo -> MEnv ClosureInfo
+    addScopeEff n' (r,w,a) = do
+      n  <- expandSymM n'
+      (r', w') <- case tag n of
+                    Symbol {symHasCopy=True, symHasWb=True} -> (id &&& id) <$> getClosureSyms [] n'
+                    Symbol {symHasCopy=True}                -> (,[]) <$> getClosureSyms [] n'
+                    Symbol {symHasWb=True}                  -> ([],) <$> getClosureSyms [] n'
+                    _                                       -> return ([], [])
+      return (r'++r, w'++w, a)
+
+
+    addClosureSym acc n' = do
+      n <- expandSymM n'
+      case tag n of
+         Symbol {symProv=PLambda eff} -> do
+           acc' <- foldrM (flip addClosureSym) acc $ children n
+           addClosureEff acc' eff
+
+         _ -> foldrM (flip addClosureSym) acc $ children n
+
+    -- The method for searching for valid symbols
+    getClosureSyms acc n' = do
+      n <- expandSymM n'
+      case tag n of
+        SymId _                       -> error "unexpected symId1"
+        -- Don't bother with temporaries (for now)
+        Symbol {symProv=PGlobal}      -> return acc
+        Symbol {symIdent=i}           -> do
+          x' <- lookupBindInnerM i
+          case x' of
+            -- if we haven't found a match, it might be deeper in the symbol tree
+            Nothing  -> foldrM (flip getClosureSyms) acc $ children n
+            Just x'' -> do
+              x  <- expandSymM x''
+              case tag x of
+                Symbol {symProv=PGlobal}      -> return acc
+                _ | n `symEqual` x            -> return $ n':acc
+                -- These 2 symbols' children aren't really further provenances
+                Symbol {symProv=PLambda _}    -> return acc
+                Symbol {symProv=PApply}       -> return acc
+                -- If we have copy semantics, abort search
+                Symbol {symHasCopy=True}     -> return acc
+                -- if we haven't found a match, it might be deeper in the tree
+                _ -> foldrM (flip getClosureSyms) acc $ children n
+
 symRWAQuery :: K3 Effect -> [K3 Symbol] -> EffectEnv -> ClosureInfo
 symRWAQuery eff syms env = flip evalState env $ do
   clearBindsM
   -- Use the symbols as a bind environment
   mapM_ addToEnv syms
   -- Substitute any lambdas inside
-  eff' <- mapEff False (subEff Nothing) (subSym Nothing) eff
+  eff' <- applyEffLambdas eff
   -- Get the general closure
-  cl <- createClosure (Just eff') Nothing
+  --cl <- createClosure (Just eff') Nothing
+  categorizeEffectSymbols eff' >>= matchEffectSymbols syms
   return cl
   where
     -- For superstructure, we add parents
@@ -1270,6 +1382,7 @@ symRWAQuery eff syms env = flip evalState env $ do
         -- Otherwise, we just add the individual symbol
         Symbol {symIdent=i} -> insertBindM i s'
         SymId _                -> error "unexpected symId2"
+-}
 
 -- Only reads query
 -- Modified-before e1 -> e2 -> [Symbol] -> bool
