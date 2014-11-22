@@ -499,8 +499,7 @@ getOrGenSymbol n = case getESymbol n of
                      Nothing -> genSymTemp
                      Just i  -> return i
 
--- Partitions symbols by whether they participate in reads, writes,
--- function application or scopes
+-- Categorizes symbols by whether they participate in reads, writes, function application or scopes.
 data SymbolCategories = SymbolCategories { readSyms    :: [K3 Symbol]
                                          , writeSyms   :: [K3 Symbol]
                                          , appliedSyms :: [K3 Symbol]
