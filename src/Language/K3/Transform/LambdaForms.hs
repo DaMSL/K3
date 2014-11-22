@@ -107,24 +107,25 @@ lambdaFormOptE e@(Node (ELambda x :@: as) [b]) = do
           | binding `elem` cRead = True
           | otherwise = False
 
-  let captHint' (cref, move, copy) s
-          | moveable s && s `elem` cApplied && optMoves conf = (cref, S.insert s move, copy)
-          | s `notElem` cWritten && optRefs conf             = (S.insert s cref, move, copy)
-          | moveable s && optMoves conf                      = (cref, S.insert s move, copy)
-          | otherwise                                        = (cref, move, S.insert s copy)
+  let parent = head . children
 
-  let captHint = foldl' captHint' (S.empty, S.empty, S.empty) $
-                 concatMap (\(expandSymDeep env -> symbol)
+  let captHint' (cref, move, copy) s
+          | moveable (parent s) && s `elem` cApplied && optMoves conf
+              = toggleCopy s >> toggleMove s >> return (cref, S.insert (parent s) move, copy)
+          | s `notElem` cWritten && optRefs conf
+              = toggleCopy s >> return (S.insert (parent s) cref, move, copy)
+          | moveable (parent s) && optMoves conf
+              = toggleCopy s >> toggleMove s >> return (cref, S.insert (parent s) move, copy)
+          | otherwise                                                 = return (cref, move, S.insert (parent s) copy)
+
+  captHint <- foldM captHint' (S.empty, S.empty, S.empty) $
+                 mapMaybe (\(expandSymDeep env -> symbol)
                                 -> case symbol of
-                                     (tag -> symProv -> PClosure) -> children symbol
-                                     _ -> []) bindings
+                                     (tag -> symProv -> PClosure) -> Just symbol
+                                     _ -> Nothing) bindings
 
 
   let (aliased, moved, _) = captHint
-
-  -- Toggle environment bits for future queries.
-  mapM_ toggleCopy aliased
-  mapM_ toggleMove moved
 
   let a = EOpt $ FuncHint $ funcHint && optRefs conf
   let c = EOpt $ CaptHint $ let (cref, move, copy) = captHint
