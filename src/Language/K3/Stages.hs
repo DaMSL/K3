@@ -155,7 +155,7 @@ cgPasses 3 = [inferFreshEffects,
               transformEnvF Purity.runPurity,
               transformF    CArgs.runAnalysis,
               transformEnvF writebackOpt,
-              transformEnvF (lambdaFormOptD noMovesTransConfig),
+              transformEnvF (lambdaFormOpt noMovesTransConfig),
               transformEnvF nrvoMoveOpt
              ]
 
@@ -164,7 +164,7 @@ cgPasses 2 = [inferFreshEffects,
               transformEnvF Purity.runPurity,
               transformF    CArgs.runAnalysis,
               transformEnvF writebackOpt,
-              transformEnvF (lambdaFormOptD noRefsTransConfig),
+              transformEnvF (lambdaFormOpt noRefsTransConfig),
               transformEnvF nrvoMoveOpt
              ]
 
@@ -172,7 +172,7 @@ cgPasses 1 = [inferFreshEffects,
               transformEnvF Purity.runPurity,
               transformF    CArgs.runAnalysis,
               transformEnvF writebackOpt,
-              transformEnvF (lambdaFormOptD defaultTransConfig),
+              transformEnvF (lambdaFormOpt defaultTransConfig),
               transformEnvF nrvoMoveOpt
              ]
 
