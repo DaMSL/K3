@@ -176,7 +176,7 @@ dGlobal :: DeclParser
 dGlobal = namedDecl "state" "declare" $ rule . (mkGlobal <$>)
   where
     rule x = x <* colon <*> polymorphicTypeExpr <*> optional equateExpr
-                                                <*> optional effectSignature
+                                                <*> optional (effectSignature False)
 
     mkGlobal n qte eOpt eSigOpt =
       let glob = DC.global n qte (propagateQualifier qte eOpt) in
@@ -244,7 +244,7 @@ annotationMember :: K3Parser AnnMemDecl
 annotationMember = memberError $ mkMember <$> annotatedRule
   where
     rule          = (,,) <$> polarity <*> (choice $ map uidOver [liftedOrAttribute, subAnnotation])
-                                      <*> optional effectSignature
+                                      <*> optional (effectSignature True)
     annotatedRule = wrapInComments $ spanned $ flip (,) <$> optionalProperties dProperties <*> rule
 
     liftedOrAttribute = mkLA  <$> optional (keyword "lifted")
@@ -863,10 +863,10 @@ contextualizedSpliceParameter sEnvOpt = choice [try fromContext, spliceParameter
 
 
 {- Effect signatures -}
-effectSignature :: K3Parser (Identifier -> [Annotation Declaration])
-effectSignature = mkSigAnn =<< (keyword "with" *> keyword "effects" *> effSig)
+effectSignature :: Bool -> K3Parser (Identifier -> [Annotation Declaration])
+effectSignature asAttrMem = mkSigAnn =<< (keyword "with" *> keyword "effects" *> effSig)
   where
-    effSig    = (,) <$> (sepBy1 effLambda $ symbol "|") <*> optional returnSig
+    effSig    = (,) <$> (sepBy1 (effLambda asAttrMem) $ symbol "|") <*> optional returnSig
     returnSig = keyword "return" *> effReturn
 
     mkSigAnn (s, rOpt)       = mkTopLevelSym (s, rOpt) >>= \f -> return (\n -> [DSymbol $ f n])
@@ -874,30 +874,36 @@ effectSignature = mkSigAnn =<< (keyword "with" *> keyword "effects" *> effSig)
       nss <- maybe (return ss) (\ret -> mapM (attachReturn ret) ss) rOpt
       return $ \n -> replaceCh (FC.symbol n F.PChoice False False False) nss
 
-effLambda :: K3Parser (K3 F.Symbol)
-effLambda = mkLambda <$> readLambda <*> choice [Left <$> try effLambda, Right <$> try effTerm]
+effLambda :: Bool -> K3Parser (K3 F.Symbol)
+effLambda asAttrMem = mkLambda <$> readLambda <*> choice [ Left <$> try (effLambda asAttrMem)
+                                                         , Right <$> try (effTerm asAttrMem) ]
   where readLambda = choice [iArrow "fun", iArrowS "\\"]
         mkLambda :: String -> Either (K3 F.Symbol) [K3 F.Effect] -> K3 F.Symbol
         mkLambda i (Left s)  = FC.lambda i (mkScope i []) $ Just s
         mkLambda i (Right e) = FC.lambda i (mkScope i e) Nothing
-        mkScope i ch = FC.scope [FC.symbol i F.PVar False True False] $ termAsSeq ch
+        selfSym = let s = replaceCh (FC.symbol "self" F.PClosure False False False)
+                                    [FC.symbol "self" F.PVar     False False False]
+                  in if asAttrMem then [s] else []
+        mkScope i ch = FC.scope ([FC.symbol i F.PVar False True False] ++ selfSym) $ termAsSeq ch
         termAsSeq []  = []
         termAsSeq [x] = [x]
         termAsSeq xs  = [FC.seq xs]
 
-effTerm :: K3Parser [K3 F.Effect]
-effTerm = choice (map try [effRead, effWrite, effApply, effSeq, effLoop]) <?> "effect term"
+effTerm :: Bool -> K3Parser [K3 F.Effect]
+effTerm asAttrMem = choice (map try [effRead, effWrite, effApply, effSeq, effLoop]) <?> "effect term"
   where effRead   = map FC.read  <$> varList "R" effSymbol
         effWrite  = map FC.write <$> varList "W" effSymbol
         effApply  = (\a b -> [FC.apply a b]) <$> effSymbol <*> effSymbol
-        effSeq    = (:[]) . FC.seq . concat <$> brackets (semiSep1 effTerm)
-        effLoop   = (\eff -> [FC.loop $ termAsSeq eff]) <$> (parens effTerm) <* symbol "*"
+        effSeq    = (:[]) . FC.seq . concat <$> brackets (semiSep1 $ effTerm asAttrMem)
+        effLoop   = (\eff -> [FC.loop $ termAsSeq eff]) <$> (parens $ effTerm asAttrMem) <* symbol "*"
 
         effSymbol = (mkVar
                         <$> (identifier <|> (keyword "self"    >> return "self")
                                         <|> (keyword "content" >> return "content")))
                         <?> "effect symbol"
-        mkVar i = FC.symbol i F.PVar False True False
+        mkVar i =
+          let copyFlag = if i == "self" then False else True
+          in FC.symbol i F.PVar False copyFlag False
         termAsSeq t = if length t == 1 then head t else FC.seq t
         varList pfx parser = string pfx *> brackets (commaSep1 parser)
 

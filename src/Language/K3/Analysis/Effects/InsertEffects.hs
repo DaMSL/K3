@@ -548,8 +548,7 @@ matchEffectSymbols querySyms (SymbolCategories rs ws as bs) = do
     idAndSym s (tag -> Symbol {symIdent=i}) = return $ Just [(i,s)]
     idAndSym _ _ = return Nothing
 
-    idAndSymCh xs = expandSymCh (children xs) >>= mapM (uncurry idAndSym)
-    expandSymCh sl = mapM (\s -> expandSymM s >>= return . (s,)) sl
+    idAndSymCh xs = mapM (\s -> expandSymM s >>= return . (s,)) (children xs) >>= mapM (uncurry idAndSym)
     catSyms opt optL = return $ Just $ concat $ catMaybes $ optL ++ [opt]
 
     matchQuerySyms :: [(Identifier, K3 Symbol)] -> [K3 Symbol] -> MEnv [K3 Symbol]
@@ -574,6 +573,9 @@ matchEffectSymbols querySyms (SymbolCategories rs ws as bs) = do
     materializeSyms qSyms s = foldM (\acc s' -> expandSymM s' >>= matBoundSym qSyms acc s') ([],[]) s
 
     matBoundSym qSyms (rSyms,wSyms) s (tag -> Symbol {symHasCopy=True, symHasWb=True}) =
+      matchQuerySyms qSyms [s] >>= return . ((rSyms ++) &&& (wSyms ++))
+
+    matBoundSym qSyms (rSyms,wSyms) s (tag -> Symbol {symHasMove=True}) =
       matchQuerySyms qSyms [s] >>= return . ((rSyms ++) &&& (wSyms ++))
 
     matBoundSym qSyms (rSyms,wSyms) s (tag -> Symbol {symHasCopy=True}) =
