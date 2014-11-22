@@ -1271,8 +1271,7 @@ applyEffLambdasEnv env eff =
 
 -- Query whether certain symbols are read, written, applied
 symRWAQuery :: K3 Effect -> [K3 Symbol] -> EffectEnv -> ClosureInfo
-symRWAQuery eff syms env = flip evalState env $ do
-  clearBindsM
+symRWAQuery eff syms env = flip evalState (env {bindEnv = Map.empty}) $ do
   eff' <- applyEffLambdas eff
   SymbolCategories r w a _ <- categorizeEffectSymbols eff' >>= matchEffectSymbols syms
   return (r, w, a)
