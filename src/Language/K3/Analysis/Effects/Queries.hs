@@ -188,7 +188,8 @@ doesWriteOn e s = case e of
 
   -- A scope does a write on the given symbol if:
   --   - It does a write on the given symbol.
-  --   - It does a write-back on any symobl derived through a copy from the given symbol.
+  --   - It does a write-back on any symbol derived through a copy from the given symbol.
+  --   - It does a move initialization of a symbol derived from the given symbol.
   (tag &&& children -> (FScope ss, es)) ->
       (||) <$> (or <$> traverse (flip doesWriteOn s) es)
            <*> (or <$> traverse (\q -> (&&) <$> ((||) <$> isWrittenBack q <*> isMoved q)
