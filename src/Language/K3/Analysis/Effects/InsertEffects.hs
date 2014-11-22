@@ -512,19 +512,22 @@ categorizeEffectSymbols eff = categorizeEff emptySymbols eff >>= return . nubSym
     emptySymbols = SymbolCategories [] [] [] []
     nubSymbols (SymbolCategories a b c d) = SymbolCategories (nub a) (nub b) (nub c) (nub d)
 
-    categorizeEff acc e = expandEffDeepM e >>= foldTree catEff acc
-    categorizeSym acc s = expandSymDeepM s >>= foldTree catSym acc
+    categorizeEff acc e = expandEffM e >>= catEff acc
+    categorizeSym acc s = expandSymM s >>= catSym acc
+
+    --categorizeEff acc e = expandEffDeepM e >>= foldTree catEff acc
+    --categorizeSym acc s = expandSymDeepM s >>= foldTree catSym acc
 
     catEff :: SymbolCategories -> K3 Effect -> MEnv SymbolCategories
-    catEff acc (tag -> FRead  s)    = categorizeSym acc s >>= \nacc -> return $ nacc {readSyms  = readSyms  nacc ++ [s]}
-    catEff acc (tag -> FWrite s)    = categorizeSym acc s >>= \nacc -> return $ nacc {writeSyms = writeSyms nacc ++ [s]}
-    catEff acc (tag -> FApply s s') = categorizeSym acc s >>= flip categorizeSym s' >>= \nacc -> return $ nacc {appliedSyms = appliedSyms nacc ++ [s']}
-    catEff acc (tag -> FScope ss)   = return $ acc {boundSyms = boundSyms acc ++ ss}
-    catEff acc _ = return acc
+    catEff acc   (tag -> FRead  s)    = categorizeSym acc s >>= \nacc -> return $ nacc {readSyms  = readSyms  nacc ++ [s]}
+    catEff acc   (tag -> FWrite s)    = categorizeSym acc s >>= \nacc -> return $ nacc {writeSyms = writeSyms nacc ++ [s]}
+    catEff acc   (tag -> FApply s s') = categorizeSym acc s >>= flip categorizeSym s' >>= \nacc -> return $ nacc {appliedSyms = appliedSyms nacc ++ [s']}
+    catEff acc s@(tag -> FScope ss)   = foldM categorizeEff (acc {boundSyms = boundSyms acc ++ ss}) $ children s
+    catEff acc s = foldM categorizeEff acc $ children s
 
     catSym :: SymbolCategories -> K3 Symbol -> MEnv SymbolCategories
-    catSym acc (tag -> Symbol {symProv=PLambda e}) = categorizeEff acc e
-    catSym acc _ = return acc
+    catSym acc s@(tag -> Symbol {symProv=PLambda e}) = foldM categorizeSym acc (children s) >>= flip categorizeEff e
+    catSym acc s = foldM categorizeSym acc $ children s
 
 -- Expand and filter symbols given a set of symbols of interest.
 -- Bound symbols are transferred to the read and write symbol sets based
@@ -532,9 +535,9 @@ categorizeEffectSymbols eff = categorizeEff emptySymbols eff >>= return . nubSym
 matchEffectSymbols :: [K3 Symbol] -> SymbolCategories -> MEnv SymbolCategories
 matchEffectSymbols querySyms (SymbolCategories rs ws as bs) = do
     qSyms      <- mkQueryMap querySyms
-    frs        <- matchQuerySyms qSyms rs
-    fws        <- matchQuerySyms qSyms ws
-    fas        <- matchQuerySyms qSyms as
+    frs        <- matchQuerySyms qSyms [] rs
+    fws        <- matchQuerySyms qSyms [] ws
+    fas        <- matchQuerySyms qSyms [] as
     (brs, bws) <- materializeSyms qSyms bs
     return $ SymbolCategories (nub $ frs++brs) (nub $ fws++bws) (nub fas) []
   where
@@ -552,39 +555,40 @@ matchEffectSymbols querySyms (SymbolCategories rs ws as bs) = do
     idAndSymCh xs = mapM (\s -> expandSymM s >>= return . (s,)) (children xs) >>= mapM (uncurry idAndSym)
     catSyms opt optL = return $ Just $ concat $ catMaybes $ optL ++ [opt]
 
-    matchQuerySyms :: [(Identifier, K3 Symbol)] -> [K3 Symbol] -> MEnv [K3 Symbol]
-    matchQuerySyms qSyms s =
-      foldM (\acc s' -> expandSymDeepM s' >>=
-        foldTree (\acc' s'' -> expandSymM s'' >>= matchSym qSyms acc' s'') acc) [] s
+    matchQuerySyms :: [(Identifier, K3 Symbol)] -> [K3 Symbol] -> [K3 Symbol] -> MEnv [K3 Symbol]
+    matchQuerySyms qSyms acc s = foldM (\acc' s' -> expandSymM s' >>= matchSym qSyms acc' s') acc s
 
     matchSym :: [(Identifier, K3 Symbol)] -> [K3 Symbol] -> K3 Symbol -> K3 Symbol -> MEnv [K3 Symbol]
     matchSym _ _ _ (tag -> SymId _) = error "unexpected symId1"
     matchSym _ acc _ (tag -> Symbol {symProv=PGlobal}) = return acc
+    -- Continue down the tree if we do not find a match.
     matchSym qSyms acc s xs@(tag -> Symbol {symIdent=i}) = case lookup i qSyms of
+      Nothing -> matchQuerySyms qSyms acc $ children xs
       Just qs -> do
         xqs <- expandSymM qs
         case tag xqs of
           Symbol {symProv = PGlobal} -> return acc
           _ | xs `symEqual` xqs      -> return $ s:acc
-          _ -> return acc
+          Symbol {symProv=PLambda _} -> return acc  -- These 2 symbols' children aren't really further provenances
+          Symbol {symProv=PApply}    -> return acc
+          Symbol {symHasCopy=True}   -> return acc  -- If we have copy semantics, abort search
+          _ -> matchQuerySyms qSyms acc $ children xs
 
-      Nothing -> return acc
-
-    matchSym _ acc _ _ = return acc
+    matchSym qSyms acc _ xs = matchQuerySyms qSyms acc $ children xs
 
     materializeSyms qSyms s = foldM (\acc s' -> expandSymM s' >>= matBoundSym qSyms acc s') ([],[]) s
 
     matBoundSym qSyms (rSyms,wSyms) s (tag -> Symbol {symHasCopy=True, symHasWb=True}) =
-      matchQuerySyms qSyms [s] >>= return . ((rSyms ++) &&& (wSyms ++))
+      matchQuerySyms qSyms [] [s] >>= return . ((rSyms ++) &&& (wSyms ++))
 
     matBoundSym qSyms (rSyms,wSyms) s (tag -> Symbol {symHasMove=True}) =
-      matchQuerySyms qSyms [s] >>= return . ((rSyms ++) &&& (wSyms ++))
+      matchQuerySyms qSyms [] [s] >>= return . ((rSyms ++) &&& (wSyms ++))
 
     matBoundSym qSyms (rSyms,wSyms) s (tag -> Symbol {symHasCopy=True}) =
-      matchQuerySyms qSyms [s] >>= return . (,wSyms) . (rSyms ++)
+      matchQuerySyms qSyms [] [s] >>= return . (,wSyms) . (rSyms ++)
 
     matBoundSym qSyms (rSyms,wSyms) s (tag -> Symbol {symHasWb=True}) =
-      matchQuerySyms qSyms [s] >>= return . (rSyms,) . (wSyms ++)
+      matchQuerySyms qSyms [] [s] >>= return . (rSyms,) . (wSyms ++)
 
     matBoundSym _ acc _ _ = return acc
 
@@ -1276,12 +1280,19 @@ applyEffLambdasEnv env eff =
 symRWAQuery :: K3 Effect -> [K3 Symbol] -> EffectEnv -> ClosureInfo
 symRWAQuery eff syms env = flip evalState (env {bindEnv = Map.empty}) $ do
   eff' <- applyEffLambdas eff
-  SymbolCategories r w a _ <- categorizeEffectSymbols eff' >>= matchEffectSymbols syms
-  return (r, w, a)
-  --where
-  --  debugEffect (env, edbg) categories =
-  --    boxToString $ ["Effect"]  %$ (prettyLines $ expandEffDeep env edbg)
-  --                              %$ prettyLines categories
+  if True then do
+    cats <- categorizeEffectSymbols eff'
+    cats2@(SymbolCategories r w a _) <- trace (debugEffect (env, eff') cats) $ matchEffectSymbols syms cats
+    trace (debugEffect (env, eff') cats2) $ return (r, w, a)
+
+  else do
+    SymbolCategories r w a _ <- categorizeEffectSymbols eff' >>= matchEffectSymbols syms
+    return (r, w, a)
+
+  where
+    debugEffect (env, edbg) categories =
+      boxToString $ ["Effect"]  %$ (prettyLines $ expandEffDeep env edbg)
+                                %$ prettyLines categories
 
 
 {-
