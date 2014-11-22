@@ -82,10 +82,12 @@ transformE :: (K3 Declaration -> Either String (K3 Declaration)) -> ProgramTrans
 transformE f (prog, menv) = f prog >>= return . (, menv)
 
 transformEnvF :: (EffectEnv -> K3 Declaration -> K3 Declaration) -> ProgramTransform
-transformEnvF f (prog, menv) = maybe (Left "missing effect environment") (\env -> Right (f env prog, Just env)) menv
+transformEnvF _ (_, Nothing)     = Left "missing effect environment"
+transformEnvF f (prog, Just env) = Right (f env prog, Just env)
 
 transformEnvE :: (EffectEnv -> K3 Declaration -> Either String (K3 Declaration)) -> ProgramTransform
-transformEnvE f (prog, menv) = maybe (Left "missing effect environment") (\env -> f env prog >>= return . (, menv)) menv
+transformEnvE _ (_, Nothing)     = Left "missing effect environment"
+transformEnvE f (prog, Just env) = f env prog >>= return . (, Just env)
 
 {- High-level passes -}
 inferTypes :: ProgramTransform

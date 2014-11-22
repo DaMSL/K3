@@ -103,18 +103,10 @@ lambdaFormOptE e@(Node (ELambda x :@: as) [b]) = do
   let fs = mapMaybe getEffects ds
   let (ESymbol (eS env -> tnc -> (symProv -> PLambda (eE env -> fc@(Node (FScope bindings@(binding:closure) :@: _) bes)), returnSymbols))) = fromJust $ e @~ isESymbol
   let  moveable (expandSymDeep env -> g) = not (isDerivedFromGlobal env g) &&
-                                           not (any (\f -> let (r, w, _) = symRWAQuery f [g] env
+                                           not (any (\f -> let (r, w, _) = effectSCategories f [g] env
                                                            in g `elemSymbol` r || g `elemSymbol` w) fs)
 
-  let (cRead'', cWritten'', cApplied'') = symRWAQuery fc bindings env
-
-  let (cRead', cWritten', cApplied') = case returnSymbols of
-                                         [eS env -> tag -> symProv -> PLambda innerScope]
-                                             -> symRWAQuery innerScope bindings env
-                                         _ -> ([], [], [])
-
-  let (cRead, cWritten, cApplied)
-          = (nub $ cRead' ++ cRead'', nub $ cWritten' ++ cWritten'', nub $ cApplied' ++ cApplied'')
+  let (cRead, cWritten, cApplied) = exprSCategories e env
 
   let parent = head . children
 
@@ -166,7 +158,7 @@ lambdaFormOptE (Node (EOperate OApp :@: as) [f, x]) = do
   let fs = mapMaybe getEffects ds
   let argument = getSymbol x
   let moveable (expandSymDeep env -> g) = not (isDerivedFromGlobal env g) &&
-                                          not (any (\f -> let (r, w, _) = symRWAQuery f [g] env
+                                          not (any (\f -> let (r, w, _) = effectSCategories f [g] env
                                                           in g `elem` r || g `elem` w) fs)
 
   argIsGlobal <- maybe (return True) isGlobal argument

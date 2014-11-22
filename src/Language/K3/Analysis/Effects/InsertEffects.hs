@@ -1,4 +1,5 @@
 {-# LANGUAGE DoAndIfThenElse #-}
+{-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -23,10 +24,10 @@ module Language.K3.Analysis.Effects.InsertEffects (
   applyLambda,
   applyLambdaEnv,
   runConsolidatedAnalysis,
-  symRWAQuery,
   eE,
   eS,
   expandProgram,
+  expandExpression,
   expandEffDeep,
   expandSymDeep,
   occursEff,
@@ -37,7 +38,9 @@ module Language.K3.Analysis.Effects.InsertEffects (
   applyEffLambdas,
   applyEffLambdasEnv,
   categorizeEffectSymbols,
-  matchEffectSymbols
+  matchEffectSymbols,
+  effectSCategories,
+  exprSCategories
 )
 where
 
@@ -326,11 +329,29 @@ expandSymDeepM sym = do
 expandProgram :: EffectEnv -> K3 Declaration -> K3 Declaration
 expandProgram env p = fst $ runState (expandProg p) env
 
+expandExpression :: EffectEnv -> K3 Expression -> K3 Expression
+expandExpression env e = fst $ runState (expandExprs e) env
+
 expandProg :: K3 Declaration -> MEnv (K3 Declaration)
 expandProg n =
   -- Apply all lambda expressions
   mapProgram handleDecl mId applyLambdaExprs Nothing n >>=
   mapProgram mId mId expandExprs Nothing
+
+expandExprs :: K3 Expression -> MEnv (K3 Expression)
+expandExprs n' = modifyTree expandExpr n'
+  where
+    expandExpr :: K3 Expression -> MEnv (K3 Expression)
+    expandExpr n = do
+      let e = getEEffect n
+          s = getESymbol n
+      e' <- case e of
+              Nothing  -> return Nothing
+              Just eff -> liftM Just $ expandEffDeepM eff
+      s' <- case s of
+              Nothing  -> return Nothing
+              Just sym -> liftM Just $ expandSymDeepM sym
+      return $ addEffSym e' s' n
 
 -- go over the tree and apply all lambdas
 applyLambdaExprs :: K3 Expression -> MEnv (K3 Expression)
@@ -348,22 +369,6 @@ applyLambdaExpr n = do
               Nothing -> return Nothing
               Just s  -> liftM Just $ mapEff False (subEff Nothing) (subSym Nothing) s
   return $ addEffSym mEff' mSym' n
-
-
-expandExprs :: K3 Expression -> MEnv (K3 Expression)
-expandExprs n' = modifyTree expandExpr n'
-  where
-    expandExpr :: K3 Expression -> MEnv (K3 Expression)
-    expandExpr n = do
-      let e = getEEffect n
-          s = getESymbol n
-      e' <- case e of
-              Nothing  -> return Nothing
-              Just eff -> liftM Just $ expandEffDeepM eff
-      s' <- case s of
-              Nothing  -> return Nothing
-              Just sym -> liftM Just $ expandSymDeepM sym
-      return $ addEffSym e' s' n
 
 -- Common procedure for adding back the symbols, effects and children
 addEffSym :: Maybe (K3 Effect) -> Maybe (K3 Symbol) -> K3 Expression -> K3 Expression
@@ -498,101 +503,6 @@ getOrGenSymbol :: K3 Expression -> MEnv (K3 Symbol)
 getOrGenSymbol n = case getESymbol n of
                      Nothing -> genSymTemp
                      Just i  -> return i
-
--- Categorizes symbols by whether they participate in reads, writes, function application or scopes.
-data SymbolCategories = SymbolCategories { readSyms    :: [K3 Symbol]
-                                         , writeSyms   :: [K3 Symbol]
-                                         , appliedSyms :: [K3 Symbol]
-                                         , boundSyms   :: [K3 Symbol] }
-
-categorizeEffectSymbols :: K3 Effect -> MEnv SymbolCategories
-categorizeEffectSymbols eff = categorizeEff emptySymbols eff >>= return . nubSymbols
-
-  where
-    emptySymbols = SymbolCategories [] [] [] []
-    nubSymbols (SymbolCategories a b c d) = SymbolCategories (nub a) (nub b) (nub c) (nub d)
-
-    categorizeEff acc e = expandEffM e >>= catEff acc
-    categorizeSym acc s = expandSymM s >>= catSym acc
-
-    --categorizeEff acc e = expandEffDeepM e >>= foldTree catEff acc
-    --categorizeSym acc s = expandSymDeepM s >>= foldTree catSym acc
-
-    catEff :: SymbolCategories -> K3 Effect -> MEnv SymbolCategories
-    catEff acc   (tag -> FRead  s)    = categorizeSym acc s >>= \nacc -> return $ nacc {readSyms  = readSyms  nacc ++ [s]}
-    catEff acc   (tag -> FWrite s)    = categorizeSym acc s >>= \nacc -> return $ nacc {writeSyms = writeSyms nacc ++ [s]}
-    catEff acc   (tag -> FApply s s') = categorizeSym acc s >>= flip categorizeSym s' >>= \nacc -> return $ nacc {appliedSyms = appliedSyms nacc ++ [s']}
-    catEff acc s@(tag -> FScope ss)   = foldM categorizeEff (acc {boundSyms = boundSyms acc ++ ss}) $ children s
-    catEff acc s = foldM categorizeEff acc $ children s
-
-    catSym :: SymbolCategories -> K3 Symbol -> MEnv SymbolCategories
-    catSym acc s@(tag -> Symbol {symProv=PLambda e}) = foldM categorizeSym acc (children s) >>= flip categorizeEff e
-    catSym acc s = foldM categorizeSym acc $ children s
-
--- Expand and filter symbols given a set of symbols of interest.
--- Bound symbols are transferred to the read and write symbol sets based
--- on their materialization metadata.
-matchEffectSymbols :: [K3 Symbol] -> SymbolCategories -> MEnv SymbolCategories
-matchEffectSymbols querySyms (SymbolCategories rs ws as bs) = do
-    qSyms      <- mkQueryMap querySyms
-    frs        <- matchQuerySyms qSyms [] rs
-    fws        <- matchQuerySyms qSyms [] ws
-    fas        <- matchQuerySyms qSyms [] as
-    (brs, bws) <- materializeSyms qSyms bs
-    return $ SymbolCategories (nub $ frs++brs) (nub $ fws++bws) (nub fas) []
-  where
-    -- For superstructure, we add parents as symbols of interest.
-    mkQueryMap :: [K3 Symbol] -> MEnv [(Identifier, K3 Symbol)]
-    mkQueryMap syms = mapM (\s -> expandSymM s >>= idAndSym s) syms >>= return . concat . catMaybes
-
-    idAndSym :: K3 Symbol -> K3 Symbol -> MEnv (Maybe [(Identifier, K3 Symbol)])
-    idAndSym s xs@(tag -> Symbol {symIdent=i, symProv=PRecord _})  = idAndSymCh xs >>= catSyms (Just [(i,s)])
-    idAndSym s xs@(tag -> Symbol {symIdent=i, symProv=PTuple _})   = idAndSymCh xs >>= catSyms (Just [(i,s)])
-    idAndSym s xs@(tag -> Symbol {symIdent=i, symProv=PProject _}) = idAndSymCh xs >>= catSyms (Just [(i,s)])
-    idAndSym s (tag -> Symbol {symIdent=i}) = return $ Just [(i,s)]
-    idAndSym _ _ = return Nothing
-
-    idAndSymCh xs = mapM (\s -> expandSymM s >>= return . (s,)) (children xs) >>= mapM (uncurry idAndSym)
-    catSyms opt optL = return $ Just $ concat $ catMaybes $ optL ++ [opt]
-
-    matchQuerySyms :: [(Identifier, K3 Symbol)] -> [K3 Symbol] -> [K3 Symbol] -> MEnv [K3 Symbol]
-    matchQuerySyms qSyms acc s = foldM (\acc' s' -> expandSymM s' >>= matchSym qSyms acc' s') acc s
-
-    matchSym :: [(Identifier, K3 Symbol)] -> [K3 Symbol] -> K3 Symbol -> K3 Symbol -> MEnv [K3 Symbol]
-    matchSym _ _ _ (tag -> SymId _) = error "unexpected symId1"
-    matchSym _ acc _ (tag -> Symbol {symProv=PGlobal}) = return acc
-    -- Continue down the tree if we do not find a match.
-    matchSym qSyms acc s xs@(tag -> Symbol {symIdent=i}) = case lookup i qSyms of
-      Nothing -> matchQuerySyms qSyms acc $ children xs
-      Just qs -> do
-        xqs <- expandSymM qs
-        case tag xqs of
-          Symbol {symProv = PGlobal} -> return acc
-          _ | xs `symEqual` xqs      -> return $ s:acc
-          Symbol {symProv=PLambda _} -> return acc  -- These 2 symbols' children aren't really further provenances
-          Symbol {symProv=PApply}    -> return acc
-          Symbol {symHasCopy=True}   -> return acc  -- If we have copy semantics, abort search
-          _ -> matchQuerySyms qSyms acc $ children xs
-
-    matchSym qSyms acc _ xs = matchQuerySyms qSyms acc $ children xs
-
-    materializeSyms qSyms s = foldM (\acc s' -> expandSymM s' >>= matBoundSym qSyms acc s') ([],[]) s
-
-    matBoundSym qSyms (rSyms,wSyms) s (tag -> Symbol {symHasCopy=True, symHasWb=True}) =
-      matchQuerySyms qSyms [] [s] >>= return . ((rSyms ++) &&& (wSyms ++))
-
-    matBoundSym qSyms (rSyms,wSyms) s (tag -> Symbol {symHasMove=True}) =
-      matchQuerySyms qSyms [] [s] >>= return . ((rSyms ++) &&& (wSyms ++))
-
-    matBoundSym qSyms (rSyms,wSyms) s (tag -> Symbol {symHasCopy=True}) =
-      matchQuerySyms qSyms [] [s] >>= return . (,wSyms) . (rSyms ++)
-
-    matBoundSym qSyms (rSyms,wSyms) s (tag -> Symbol {symHasWb=True}) =
-      matchQuerySyms qSyms [] [s] >>= return . (rSyms,) . (wSyms ++)
-
-    matBoundSym _ acc _ _ = return acc
-
-
 
 addAllGlobals :: K3 Declaration -> MEnv (K3 Declaration)
 addAllGlobals node = mapProgram preHandleDecl mId mId Nothing node
@@ -1276,9 +1186,115 @@ applyEffLambdasEnv :: EffectEnv -> K3 Effect -> K3 Effect
 applyEffLambdasEnv env eff =
   flip evalState env $ mapEff False (subEff Nothing) (subSym Nothing) eff
 
+-- Categorizes symbols by whether they participate in reads, writes, function application or scopes.
+data SymbolCategories = SymbolCategories { readSyms    :: [K3 Symbol]
+                                         , writeSyms   :: [K3 Symbol]
+                                         , appliedSyms :: [K3 Symbol]
+                                         , boundSyms   :: [K3 Symbol] }
+
+instance Pretty SymbolCategories where
+  prettyLines (SymbolCategories r w a b) =
+         ["Reads"]   %$ concatMap prettyLines r
+      %$ ["Writes"]  %$ concatMap prettyLines w
+      %$ ["Applies"] %$ concatMap prettyLines a
+      %$ ["Bounds"]  %$ concatMap prettyLines b
+
+{-
+addCategories :: SymbolCategories -> SymbolCategories -> SymbolCategories
+addCategories (SymbolCategories r w a b) (SymbolCategories r2 w2 a2 b2) =
+  SymbolCategories (nub $ r++r2) (nub $ w++w2) (nub $ a++a2) (nub $ b++b2)
+-}
+
+categorizeEffectSymbols :: K3 Effect -> MEnv SymbolCategories
+categorizeEffectSymbols eff = categorizeEff emptySymbols eff >>= return . nubSymbols
+
+  where
+    emptySymbols = SymbolCategories [] [] [] []
+    nubSymbols (SymbolCategories a b c d) = SymbolCategories (nub a) (nub b) (nub c) (nub d)
+
+    categorizeEff acc e = expandEffM e >>= catEff acc
+    categorizeSym acc s = expandSymM s >>= catSym acc
+
+    --categorizeEff acc e = expandEffDeepM e >>= foldTree catEff acc
+    --categorizeSym acc s = expandSymDeepM s >>= foldTree catSym acc
+
+    catEff :: SymbolCategories -> K3 Effect -> MEnv SymbolCategories
+    catEff acc   (tag -> FRead  s)    = categorizeSym acc s >>= \nacc -> return $ nacc {readSyms  = readSyms  nacc ++ [s]}
+    catEff acc   (tag -> FWrite s)    = categorizeSym acc s >>= \nacc -> return $ nacc {writeSyms = writeSyms nacc ++ [s]}
+    catEff acc   (tag -> FApply s s') = categorizeSym acc s >>= flip categorizeSym s' >>= \nacc -> return $ nacc {appliedSyms = appliedSyms nacc ++ [s']}
+    catEff acc s@(tag -> FScope ss)   = foldM categorizeEff (acc {boundSyms = boundSyms acc ++ ss}) $ children s
+    catEff acc s = foldM categorizeEff acc $ children s
+
+    catSym :: SymbolCategories -> K3 Symbol -> MEnv SymbolCategories
+    catSym acc s@(tag -> Symbol {symProv=PLambda e}) = foldM categorizeSym acc (children s) >>= flip categorizeEff e
+    catSym acc s = foldM categorizeSym acc $ children s
+
+-- Expand and filter symbols given a set of symbols of interest.
+-- Bound symbols are transferred to the read and write symbol sets based
+-- on their materialization metadata.
+matchEffectSymbols :: [K3 Symbol] -> SymbolCategories -> MEnv SymbolCategories
+matchEffectSymbols querySyms (SymbolCategories rs ws as bs) = do
+    qSyms      <- mkQueryMap querySyms
+    frs        <- matchQuerySyms qSyms [] rs
+    fws        <- matchQuerySyms qSyms [] ws
+    fas        <- matchQuerySyms qSyms [] as
+    (brs, bws) <- materializeSyms qSyms bs
+    return $ SymbolCategories (nub $ frs++brs) (nub $ fws++bws) (nub fas) []
+  where
+    -- For superstructure, we add parents as symbols of interest.
+    mkQueryMap :: [K3 Symbol] -> MEnv [(Identifier, K3 Symbol)]
+    mkQueryMap syms = mapM (\s -> expandSymM s >>= idAndSym s) syms >>= return . concat . catMaybes
+
+    idAndSym :: K3 Symbol -> K3 Symbol -> MEnv (Maybe [(Identifier, K3 Symbol)])
+    idAndSym s xs@(tag -> Symbol {symIdent=i, symProv=PRecord _})  = idAndSymCh xs >>= catSyms (Just [(i,s)])
+    idAndSym s xs@(tag -> Symbol {symIdent=i, symProv=PTuple _})   = idAndSymCh xs >>= catSyms (Just [(i,s)])
+    idAndSym s xs@(tag -> Symbol {symIdent=i, symProv=PProject _}) = idAndSymCh xs >>= catSyms (Just [(i,s)])
+    idAndSym s (tag -> Symbol {symIdent=i}) = return $ Just [(i,s)]
+    idAndSym _ _ = return Nothing
+
+    idAndSymCh xs = mapM (\s -> expandSymM s >>= return . (s,)) (children xs) >>= mapM (uncurry idAndSym)
+    catSyms opt optL = return $ Just $ concat $ catMaybes $ optL ++ [opt]
+
+    matchQuerySyms :: [(Identifier, K3 Symbol)] -> [K3 Symbol] -> [K3 Symbol] -> MEnv [K3 Symbol]
+    matchQuerySyms qSyms acc s = foldM (\acc' s' -> expandSymM s' >>= matchSym qSyms acc' s') acc s
+
+    matchSym :: [(Identifier, K3 Symbol)] -> [K3 Symbol] -> K3 Symbol -> K3 Symbol -> MEnv [K3 Symbol]
+    matchSym _ _ _ (tag -> SymId _) = error "unexpected symId1"
+    matchSym _ acc _ (tag -> Symbol {symProv=PGlobal}) = return acc
+    -- Continue down the tree if we do not find a match.
+    matchSym qSyms acc s xs@(tag -> Symbol {symIdent=i}) = case lookup i qSyms of
+      Nothing -> matchQuerySyms qSyms acc $ children xs
+      Just qs -> do
+        xqs <- expandSymM qs
+        case tag xqs of
+          Symbol {symProv = PGlobal} -> return acc
+          _ | xs `symEqual` xqs      -> return $ s:acc
+          Symbol {symProv=PLambda _} -> return acc  -- These 2 symbols' children aren't really further provenances
+          Symbol {symProv=PApply}    -> return acc
+          Symbol {symHasCopy=True}   -> return acc  -- If we have copy semantics, abort search
+          _ -> matchQuerySyms qSyms acc $ children xs
+
+    matchSym qSyms acc _ xs = matchQuerySyms qSyms acc $ children xs
+
+    materializeSyms qSyms s = foldM (\acc s' -> expandSymM s' >>= matBoundSym qSyms acc s') ([],[]) s
+
+    matBoundSym qSyms (rSyms,wSyms) s (tag -> Symbol {symHasCopy=True, symHasWb=True}) =
+      matchQuerySyms qSyms [] [s] >>= return . ((rSyms ++) &&& (wSyms ++))
+
+    matBoundSym qSyms (rSyms,wSyms) s (tag -> Symbol {symHasMove=True}) =
+      matchQuerySyms qSyms [] [s] >>= return . ((rSyms ++) &&& (wSyms ++))
+
+    matBoundSym qSyms (rSyms,wSyms) s (tag -> Symbol {symHasCopy=True}) =
+      matchQuerySyms qSyms [] [s] >>= return . (,wSyms) . (rSyms ++)
+
+    matBoundSym qSyms (rSyms,wSyms) s (tag -> Symbol {symHasWb=True}) =
+      matchQuerySyms qSyms [] [s] >>= return . (rSyms,) . (wSyms ++)
+
+    matBoundSym _ acc _ _ = return acc
+
 -- Query whether certain symbols are read, written, applied
-symRWAQuery :: K3 Effect -> [K3 Symbol] -> EffectEnv -> ClosureInfo
-symRWAQuery eff syms env = flip evalState (env {bindEnv = Map.empty}) $ do
+effectSCategories :: K3 Effect -> [K3 Symbol] -> EffectEnv -> ClosureInfo
+effectSCategories eff syms env = flip evalState (env {bindEnv = Map.empty}) $ do
   eff' <- applyEffLambdas eff
   if True then do
     cats <- categorizeEffectSymbols eff'
@@ -1290,9 +1306,28 @@ symRWAQuery eff syms env = flip evalState (env {bindEnv = Map.empty}) $ do
     return (r, w, a)
 
   where
-    debugEffect (env, edbg) categories =
-      boxToString $ ["Effect"]  %$ (prettyLines $ expandEffDeep env edbg)
+    debugEffect (env', edbg) categories =
+      boxToString $ ["Effect"]  %$ (prettyLines $ expandEffDeep env' edbg)
                                 %$ prettyLines categories
+
+-- Variant of the above function that can be used with expressions.
+-- This additionally handles retrieving both lambda and closure
+-- construction effects, when applied to lambdas.
+exprSCategories :: K3 Expression -> EffectEnv -> ClosureInfo
+exprSCategories e env =
+  case (tag e, e @~ isEEffect, e @~ isESymbol) of
+    (ELambda _, Nothing, Just (ESymbol (eS env -> tnc -> (symProv -> PLambda eff, chSym))))
+      | FScope bindings <- tag $ eE env eff ->
+      let (r,w,a)    = effectSCategories eff bindings env
+          (r2,w2,a2) = case chSym of
+                         [symProv . tag . eS env -> PLambda eff2]
+                           -> effectSCategories eff2 bindings env
+                         _ -> emptyClosure
+      in (nub $ r ++ r2, nub $ w ++ w2, nub $ a ++ a2)
+
+    (_, Just (EEffect eff), Just (ESymbol sym)) -> effectSCategories eff [sym] env
+    (_, _, _) -> error $ "Invalid effect and symbol in exprSCategories on:\n"
+                       ++ pretty (expandExpression env e)
 
 
 {-
@@ -1404,10 +1439,3 @@ symRWAQuery eff syms env = flip evalState env $ do
 
 -- Only reads query
 -- Modified-before e1 -> e2 -> [Symbol] -> bool
-
-instance Pretty SymbolCategories where
-  prettyLines (SymbolCategories r w a b) =
-         ["Reads"]   %$ concatMap prettyLines r
-      %$ ["Writes"]  %$ concatMap prettyLines w
-      %$ ["Applies"] %$ concatMap prettyLines a
-      %$ ["Bounds"]  %$ concatMap prettyLines b
