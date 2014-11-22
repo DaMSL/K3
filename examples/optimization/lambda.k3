@@ -1,0 +1,18 @@
+include "Annotation/Collection.k3"
+
+// Should accept argument by constant reference.
+declare read_only: int -> int = \x -> x + 1
+
+// Should accept argument by value.
+declare read_write: collection { x: int } @ { Collection } -> int = \c -> ((c.insert {x: 5}); 5)
+
+// Should move argument into function, even though function takes its argument by const&.
+declare plus_two: int -> int = \x -> plus_two (plus_two x)
+
+// Should accept both arguments by constant reference, and capture outer argument by reference in
+// inner lambda.
+declare add: int -> int -> int = \a -> \v -> a + v
+
+// Should accept outer argument by value, inner argument by constant reference, and move outer
+// argument into closure.
+declare accumulate: collection { x: int } @ { Collection }-> int -> int = \c -> \v -> ((c.insert { x: v }); v)
