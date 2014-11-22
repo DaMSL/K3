@@ -15,4 +15,4 @@ declare add: int -> int -> int = \a -> \v -> a + v
 
 // Should accept outer argument by value, inner argument by constant reference, and move outer
 // argument into closure.
-declare accumulate: collection { x: int } @ { Collection }-> int -> int = \c -> \v -> ((c.insert { x: v }); v)
+declare accumulate: collection { x: int } @ { Collection }-> int -> int = \d -> \w -> ((d.insert { x: w }); w)
