@@ -33,26 +33,26 @@ instance EffectMonad QueryM where
   getEnv = get
   modifyEnv = modify
 
-eSM :: K3 Symbol -> QueryM (K3 Symbol)
+eSM :: EffectMonad m => K3 Symbol -> m (K3 Symbol)
 eSM s = eS <$> getEnv <*> pure s
 
-eEM :: K3 Effect -> QueryM (K3 Effect)
+eEM :: EffectMonad m => K3 Effect -> m (K3 Effect)
 eEM e = eE <$> getEnv <*> pure e
 
 (===) :: K3 Symbol -> K3 Symbol -> Bool
 (===) = symEqual
 
-isIsolated :: K3 Symbol -> QueryM Bool
+isIsolated :: EffectMonad m => K3 Symbol -> m Bool
 isIsolated s = case s of
   (tag -> SymId _) -> eSM s >>= isIsolated
   (tag -> symHasCopy -> b) -> return b
 
-isMoved :: K3 Symbol -> QueryM Bool
+isMoved :: EffectMonad m => K3 Symbol -> m Bool
 isMoved s = case s of
   (tag -> SymId _) -> eSM s >>= isMoved
   (tag -> symHasMove -> b) -> return b
 
-isWrittenBack :: K3 Symbol -> QueryM Bool
+isWrittenBack :: EffectMonad m => K3 Symbol -> m Bool
 isWrittenBack s = case s of
   (tag -> SymId _) -> eSM s >>= isWrittenBack
   (tag -> symHasWb -> b) -> return b
@@ -60,7 +60,7 @@ isWrittenBack s = case s of
 -- | Is this symbol a global?
 --
 -- This query is materialization-aware.
-isGlobal :: K3 Symbol -> QueryM Bool
+isGlobal :: EffectMonad m => K3 Symbol -> m Bool
 isGlobal s = case s of
   -- Expand symbols first.
   (tag -> SymId _) -> eSM s >>= isGlobal
@@ -80,7 +80,7 @@ isGlobal s = case s of
 -- | Is this symbol derived from a global?
 --
 -- This query is materialization-agnostic.
-isDerivedGlobal :: K3 Symbol -> QueryM Bool
+isDerivedGlobal :: EffectMonad m => K3 Symbol -> m Bool
 isDerivedGlobal s = case s of
   -- Expand symbols first.
   (tag -> SymId _) -> eSM s >>= isDerivedGlobal
@@ -94,7 +94,7 @@ isDerivedGlobal s = case s of
 -- | Is =s= derived from =t=?
 --
 -- This query is materialization-agnostic.
-isDerivedIndirectlyFrom :: K3 Symbol -> K3 Symbol -> QueryM Bool
+isDerivedIndirectlyFrom :: EffectMonad m => K3 Symbol -> K3 Symbol -> m Bool
 isDerivedIndirectlyFrom s t = case s of
   -- A symbol is derived from itself. This does not require either symbol to be expanded.
   _ | s === t -> return True
@@ -108,7 +108,7 @@ isDerivedIndirectlyFrom s t = case s of
 -- | Is =s= derived /directly/ from =t=?
 --
 -- This query is materialization-aware
-isDerivedDirectlyFrom :: K3 Symbol -> K3 Symbol -> QueryM Bool
+isDerivedDirectlyFrom :: EffectMonad m => K3 Symbol -> K3 Symbol -> m Bool
 isDerivedDirectlyFrom s t = case s of
   -- A symbol is derived directly from itself.
   _ | s === t -> return True
@@ -125,7 +125,7 @@ isDerivedDirectlyFrom s t = case s of
 -- | Does the given effect perform a read on the given symbol?
 --
 -- This query is materialization-aware.
-doesReadOn :: K3 Effect -> K3 Symbol -> QueryM Bool
+doesReadOn :: EffectMonad m => K3 Effect -> K3 Symbol -> m Bool
 doesReadOn e s = case e of
   -- Expand effect first.
   (tag -> FEffId _) -> eEM e >>= flip doesReadOn s
@@ -152,7 +152,7 @@ doesReadOn e s = case e of
 -- | Does the given effect perform a write on the given symbol?
 --
 -- This query is materialization-aware.
-doesWriteOn :: K3 Effect -> K3 Symbol -> QueryM Bool
+doesWriteOn :: EffectMonad m => K3 Effect -> K3 Symbol -> m Bool
 doesWriteOn e s = case e of
   -- Expand effect first.
   (tag -> FEffId _) -> eEM e >>= flip doesWriteOn s
