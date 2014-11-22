@@ -67,7 +67,13 @@ downstreams :: LFM [K3 Expression]
 downstreams = get >>= \(_, ds, _) -> return ds
 
 withExtraDownstreams :: [K3 Expression] -> LFM a -> LFM a
-withExtraDownstreams ds = withState $ \(e, ds', tc) -> (e, ds ++ ds', tc)
+withExtraDownstreams ds m = do
+  (env, ds', tc) <- get
+  put (env, ds ++ ds', tc)
+  a <- m
+  (env', _, tc') <- get
+  put (env', ds', tc')
+  return a
 
 transformConfig :: LFM TransformConfig
 transformConfig = get >>= \(_, _, tc) -> return tc
