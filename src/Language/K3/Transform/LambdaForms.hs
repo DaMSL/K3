@@ -17,6 +17,8 @@ import Data.Traversable
 import Data.Maybe
 import Data.Tree
 
+import Data.List (nub)
+
 import qualified Data.Map as M
 import qualified Data.Set as S
 
@@ -26,7 +28,6 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 
-import Language.K3.Analysis.Effects.Common
 import Language.K3.Analysis.Effects.Core
 import Language.K3.Analysis.Effects.InsertEffects
 import Language.K3.Analysis.Effects.Queries
@@ -100,38 +101,43 @@ lambdaFormOptE e@(Node (ELambda x :@: as) [b]) = do
   ds <- downstreams
   conf <- transformConfig
   let fs = mapMaybe getEffects ds
-  let (ESymbol (eS env -> tag -> symProv -> PLambda (eE env -> fc@(Node (FScope bindings@(binding:closure) :@: _) bes)))) = fromJust $ e @~ isESymbol
+  let (ESymbol (eS env -> tnc -> (symProv -> PLambda (eE env -> fc@(Node (FScope bindings@(binding:closure) :@: _) bes)), returnSymbols))) = fromJust $ e @~ isESymbol
   let  moveable (expandSymDeep env -> g) = not (isDerivedFromGlobal env g) &&
                                            not (any (\f -> let (r, w, _) = symRWAQuery f [g] env
-                                                           in g `elem` r || g `elem` w) fs)
+                                                           in g `elemSymbol` r || g `elemSymbol` w) fs)
 
-  let (cRead, cWritten, cApplied) = symRWAQuery fc bindings env
+  let (cRead'', cWritten'', cApplied'') = symRWAQuery fc bindings env
 
-  let funcHint
-          | binding `elem` cWritten = False
-          | binding `elem` cApplied = True
-          | binding `elem` cRead = True
-          | otherwise = False
+  let (cRead', cWritten', cApplied') = case returnSymbols of
+                                         [eS env -> tag -> symProv -> PLambda innerScope]
+                                             -> symRWAQuery innerScope bindings env
+                                         _ -> ([], [], [])
+
+  let (cRead, cWritten, cApplied)
+          = (nub $ cRead' ++ cRead'', nub $ cWritten' ++ cWritten'', nub $ cApplied' ++ cApplied'')
 
   let parent = head . children
 
+  let funcHint
+          | binding `elemSymbol` cWritten = False
+          | binding `elemSymbol` cApplied = True
+          | binding `elemSymbol` cRead = True
+          | otherwise = False
+
   let captHint' (cref, move, copy) s
-          | moveable (parent s) && s `elem` cApplied && optMoves conf
+          | moveable (parent s) && s `elemSymbol` cApplied && optMoves conf
               = toggleCopy s >> toggleMove s >> return (cref, S.insert (parent s) move, copy)
-          | s `notElem` cWritten && optRefs conf
+          | s `notElemSymbol` cWritten && optRefs conf
               = toggleCopy s >> return (S.insert (parent s) cref, move, copy)
           | moveable (parent s) && optMoves conf
               = toggleCopy s >> toggleMove s >> return (cref, S.insert (parent s) move, copy)
-          | otherwise                                                 = return (cref, move, S.insert (parent s) copy)
+          | otherwise = return (cref, move, S.insert (parent s) copy)
 
   captHint <- foldM captHint' (S.empty, S.empty, S.empty) $
                  mapMaybe (\(expandSymDeep env -> symbol)
                                 -> case symbol of
                                      (tag -> symProv -> PClosure) -> Just symbol
                                      _ -> Nothing) bindings
-
-
-  let (aliased, moved, _) = captHint
 
   let a = EOpt $ FuncHint $ funcHint && optRefs conf
   let c = EOpt $ CaptHint $ let (cref, move, copy) = captHint

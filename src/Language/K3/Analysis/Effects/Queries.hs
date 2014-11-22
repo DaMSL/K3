@@ -9,6 +9,8 @@ import Control.Applicative
 import Control.Arrow
 import Control.Monad.State
 
+import Data.List (find)
+import Data.Maybe (isJust)
 import Data.Traversable
 import Data.Tree
 
@@ -46,6 +48,12 @@ eEM e = eE <$> getEnv <*> pure e
 
 (===) :: K3 Symbol -> K3 Symbol -> Bool
 (===) = symEqual
+
+elemSymbol :: K3 Symbol -> [K3 Symbol] -> Bool
+elemSymbol x xs = isJust $ find (=== x) xs
+
+notElemSymbol :: K3 Symbol -> [K3 Symbol] -> Bool
+notElemSymbol x xs = not $ elemSymbol x xs
 
 isIsolated :: EffectMonad m => K3 Symbol -> m Bool
 isIsolated s = case s of
