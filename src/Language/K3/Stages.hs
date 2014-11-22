@@ -155,7 +155,7 @@ cgPasses 3 = [inferFreshEffects,
               addEnvRet Purity.runPurity,
               addEitherEnv CArgs.runAnalysis,
               addEnvRet writebackOpt,
-              addEnvRet (lambdaFormOptD noMovesTransConfig),
+              addEnvRet (lambdaFormOpt noMovesTransConfig),
               addEnvRet nrvoMoveOpt
              ]
 -- no refs
@@ -163,14 +163,14 @@ cgPasses 2 = [inferFreshEffects,
               addEnvRet Purity.runPurity,
               addEitherEnv CArgs.runAnalysis,
               addEnvRet writebackOpt,
-              addEnvRet (lambdaFormOptD noRefsTransConfig),
+              addEnvRet (lambdaFormOpt noRefsTransConfig),
               addEnvRet nrvoMoveOpt
              ]
 cgPasses 1 = [inferFreshEffects,
               addEnvRet Purity.runPurity,
               addEitherEnv CArgs.runAnalysis,
               addEnvRet writebackOpt,
-              addEnvRet (lambdaFormOptD defaultTransConfig),
+              addEnvRet (lambdaFormOpt defaultTransConfig),
               addEnvRet nrvoMoveOpt
              ]
 cgPasses _ = [addEitherEnv InsertMembers.runAnalysis,
