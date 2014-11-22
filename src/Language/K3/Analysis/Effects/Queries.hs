@@ -25,8 +25,13 @@ runQueryM = runState
 evalQueryM :: QueryM a -> QueryS -> a
 evalQueryM = evalState
 
-getEnv :: QueryM EffectEnv
-getEnv = get
+class (Functor m, Applicative m, Monad m) => EffectMonad m where
+  getEnv :: m EffectEnv
+  modifyEnv :: (EffectEnv -> EffectEnv) -> m ()
+
+instance EffectMonad QueryM where
+  getEnv = get
+  modifyEnv = modify
 
 eSM :: K3 Symbol -> QueryM (K3 Symbol)
 eSM s = eS <$> getEnv <*> pure s
