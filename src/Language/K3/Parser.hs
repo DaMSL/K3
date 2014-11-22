@@ -872,7 +872,7 @@ effectSignature = mkSigAnn =<< (keyword "with" *> keyword "effects" *> effSig)
     mkSigAnn (s, rOpt)       = mkTopLevelSym (s, rOpt) >>= \f -> return (\n -> [DSymbol $ f n])
     mkTopLevelSym (ss, rOpt) = do
       nss <- maybe (return ss) (\ret -> mapM (attachReturn ret) ss) rOpt
-      return $ \n -> replaceCh (FC.symbol n F.PChoice False False) nss
+      return $ \n -> replaceCh (FC.symbol n F.PChoice False False False) nss
 
 effLambda :: K3Parser (K3 F.Symbol)
 effLambda = mkLambda <$> readLambda <*> choice [Left <$> try effLambda, Right <$> try effTerm]
@@ -880,7 +880,7 @@ effLambda = mkLambda <$> readLambda <*> choice [Left <$> try effLambda, Right <$
         mkLambda :: String -> Either (K3 F.Symbol) [K3 F.Effect] -> K3 F.Symbol
         mkLambda i (Left s)  = FC.lambda i (mkScope i []) $ Just s
         mkLambda i (Right e) = FC.lambda i (mkScope i e) Nothing
-        mkScope i ch = FC.scope [FC.symbol i F.PVar True False] $ termAsSeq ch
+        mkScope i ch = FC.scope [FC.symbol i F.PVar False True False] $ termAsSeq ch
         termAsSeq []  = []
         termAsSeq [x] = [x]
         termAsSeq xs  = [FC.seq xs]
@@ -897,7 +897,7 @@ effTerm = choice (map try [effRead, effWrite, effApply, effSeq, effLoop]) <?> "e
                         <$> (identifier <|> (keyword "self"    >> return "self")
                                         <|> (keyword "content" >> return "content")))
                         <?> "effect symbol"
-        mkVar i = FC.symbol i F.PVar True False
+        mkVar i = FC.symbol i F.PVar False True False
         termAsSeq t = if length t == 1 then head t else FC.seq t
         varList pfx parser = string pfx *> brackets (commaSep1 parser)
 
@@ -913,13 +913,13 @@ effReturn = mkDerived <$> commaSep1 rRet
     rTup = mkTup <$> rRet <*> (symbol "#" *> integer)
     rInd = mkInd <$> (symbol "!" *> rRet)
 
-    mkDerived s = replaceCh (FC.symbol "return" F.PDerived True False) s
-    mkVar     i = FC.symbol i F.PVar True False
+    mkDerived s = replaceCh (FC.symbol "return" F.PDerived False True False) s
+    mkVar     i = FC.symbol i F.PVar False True False
     mkPrj   s n = mkSym ("__prj" ++ n)   (F.PProject n) [s]
     mkRec   s n = mkSym ("__rec" ++ n)   (F.PRecord  n) [s]
     mkTup   s i = mkSym ("__" ++ show i) (F.PTuple   i) [s]
     mkInd     s = mkSym "__ind" F.PIndirection [s]
-    mkSym i e c = replaceCh (FC.symbol i e True False) c
+    mkSym i e c = replaceCh (FC.symbol i e False True False) c
 
 pattern PLambdaSym eff ch <-
   Node ((F.Symbol _ (F.PLambda (tag -> F.FScope [(tag -> F.Symbol _ eff _ _ _ _)])) _ _ _ _) :@: _) ch

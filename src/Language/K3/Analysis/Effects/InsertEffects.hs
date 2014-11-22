@@ -182,7 +182,7 @@ lookupBindInnerM i = do
     -- Each closure symbol points to the next
     initClosureSyms ((LambdaLayer Nothing):xs) = do
       (n, s, rest)  <- initClosureSyms xs
-      s'            <- genSym PClosure True False [s]
+      s'            <- genSym PClosure False True False [s]
       return ((LambdaLayer (Just s')):n, s', rest)
     initClosureSyms ((n@(LocalSym s)):rest)  = return ([n], s, rest)
     initClosureSyms (n@(LambdaLayer (Just s)):rest) = return ([n], s, rest)
@@ -460,28 +460,28 @@ getFID sym = liftM extract $ sym @~ isFID
   where extract (FID i) = i
 
 -- Generate a symbol
-symbolM :: Identifier -> Provenance -> Bool -> Bool -> [K3 Symbol] -> MEnv (K3 Symbol)
-symbolM name prov hasCopy hasWb ch = do
+symbolM :: Identifier -> Provenance -> Bool -> Bool -> Bool -> [K3 Symbol] -> MEnv (K3 Symbol)
+symbolM name prov hasMove hasCopy hasWb ch = do
   i <- getIdM
-  let s = symbol name prov hasCopy hasWb @+ SID i
+  let s = symbol name prov hasMove hasCopy hasWb @+ SID i
   insertSymbolM i $ replaceCh s ch
   return $ symId i
 
-genSym :: Provenance -> Bool -> Bool -> [K3 Symbol] -> MEnv (K3 Symbol)
-genSym prov hasCopy hasWb ch = do
+genSym :: Provenance -> Bool -> Bool -> Bool -> [K3 Symbol] -> MEnv (K3 Symbol)
+genSym prov hasMove hasCopy hasWb ch = do
    i <- getIdM
-   let s = symbol ("sym_"++show i) prov hasCopy hasWb @+ SID i
+   let s = symbol ("sym_"++show i) prov hasMove hasCopy hasWb @+ SID i
    insertSymbolM i $ replaceCh s ch
    return $ symId i
 
 genSymTemp :: MEnv (K3 Symbol)
-genSymTemp = genSym PTemporary True False []
+genSymTemp = genSym PTemporary False True False []
 
 genSymDerived :: [K3 Symbol] -> MEnv (K3 Symbol)
-genSymDerived = genSym PDerived True False
+genSymDerived = genSym PDerived False True False
 
 genSymDirect :: K3 Symbol -> MEnv (K3 Symbol)
-genSymDirect = genSym PDirect True False . singleton
+genSymDirect = genSym PDirect False True False . singleton
 
 getEEffect :: K3 Expression -> Maybe (K3 Effect)
 getEEffect n = case n @~ isEEffect of
@@ -603,8 +603,8 @@ addAllGlobals node = mapProgram preHandleDecl mId mId Nothing node
 
     preHandleDecl n = return n
 
-    addGeni i     = symbolM i PGlobal False False []  >>= insertGlobalM i
-    addGlobal i s = symbolM i PGlobal False False [s] >>= insertGlobalM i
+    addGeni i     = symbolM i PGlobal False False False []  >>= insertGlobalM i
+    addGlobal i s = symbolM i PGlobal False False False [s] >>= insertGlobalM i
 
 mId :: Monad m => a -> m a
 mId = return
@@ -826,11 +826,11 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
     -- Create a default conservative symbol for the function
     -- @addSelf: add a r/w to 'self' (for attributes)
     createConservativeSym addSelf subSym' nm = do
-      sym   <- symbolM nm PVar True False []
+      sym   <- symbolM nm PVar False True False []
       r     <- genEff $ read sym
       w     <- genEff $ write sym
       seq'  <- if addSelf then do
-                 selfSym <- symbolM "self" PVar False False []
+                 selfSym <- symbolM "self" PVar False False False []
                  rSelf   <- genEff $ read selfSym
                  wSelf   <- genEff $ write selfSym
                  return [Just w, Just r, Just wSelf, Just rSelf]
@@ -839,7 +839,7 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
       seq'' <- combineEffSeq seq'
       lp    <- genEff $ loop $ fromMaybe (error "createConservativeSym") seq''
       sc    <- genEff $ scope [sym] [lp]
-      genSym (PLambda sc) True False subSym'
+      genSym (PLambda sc) False True False subSym'
 
 ----- Actual effect insertion ------
 -- Requires an environment built up by the preprocess phase
@@ -865,7 +865,7 @@ handleDecl n =
                   _                 -> addSym i []
 
     addSym i ss = do
-      sym <- symbolM i PGlobal False False ss
+      sym <- symbolM i PGlobal False False False ss
       insertGlobalM i sym
       return $ stripAnno isDSymbol n @+ DSymbol sym
 
@@ -898,7 +898,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
     pre :: K3 Expression -> K3 Expression -> MEnv ()
     pre _ (tag -> ELambda i) = do
       -- Add to the environment
-      sym  <- symbolM i PVar True False []
+      sym  <- symbolM i PVar False True False []
       -- Insert a lambda layer into the local environment
       insertLambdaLayerM
       -- Only insert the new binding now (so we don't create a lamda layer on it)
@@ -911,20 +911,20 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
     -- We take the first child's symbol and bind to it
     sideways ch1 (tag -> ELetIn i) = do
       chSym <- getOrGenSymbol ch1
-      s     <- symbolM i PLet True False [chSym]
+      s     <- symbolM i PLet False True False [chSym]
       return [insertBindM i s]
 
     -- We take the first child's symbol and bind to it
     sideways ch1 (tag -> EBindAs b) = do
       chSym <- getOrGenSymbol ch1
       let iProvs = extractBindData b
-      syms <- mapM (\(i, prov) -> liftM (i,) $ symbolM i prov True True [chSym]) iProvs
+      syms <- mapM (\(i, prov) -> liftM (i,) $ symbolM i prov False True True [chSym]) iProvs
       return [mapM_ (uncurry insertBindM) syms]
 
     -- We take the first child's symbol and bind to it
     sideways ch1 (tag -> ECaseOf i) = do
       chSym <- getOrGenSymbol ch1
-      s     <- symbolM i PLet True True [chSym]
+      s     <- symbolM i PLet False True True [chSym]
       return [insertBindM i s, deleteBindM i, insertBindM i s]
 
     sideways _ (children -> ch) = doNothings (length ch - 1)
@@ -966,7 +966,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       -- Create a gensym for the lambda, containing the effects of the child, and leading to the symbols
       eScope  <- genEff $ scope (bindSym : closureSyms) $ maybeToList eEff
       deleteBindM i
-      lSym    <- genSym (PLambda eScope) True False eSym
+      lSym    <- genSym (PLambda eScope) False True False eSym
       return $ addEffSymCh Nothing (Just lSym) ch n
 
     -- For collection attributes, we need to create and apply a lambda
@@ -1054,7 +1054,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
             _   -> error $ "Missing symbol for projection of " ++ i
 
         _ -> do -- not a collection member function
-          nSym <- genSym (PProject i) False False $ maybeToList $ getESymbol e
+          nSym <- genSym (PProject i) False False False $ maybeToList $ getESymbol e
           return $ addEffSymCh (getEEffect e) (Just nSym) ch n
       where
         subSelf s n'@(tag -> Symbol {symIdent="self", symProv=PVar})    = return $ Just $ replaceCh n' [s]
@@ -1174,7 +1174,7 @@ combineSym okToDelete p ss =
     ss' <- concat <$> mapM maybeGen ss
     case ss' of
       [s] -> return $ Just s
-      _   -> liftM Just $ genSym p False False ss'
+      _   -> liftM Just $ genSym p False False False ss'
     where
       maybeGen (Just s) = return [s]
       maybeGen Nothing  | okToDelete = return []

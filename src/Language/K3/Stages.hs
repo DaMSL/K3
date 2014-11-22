@@ -158,6 +158,7 @@ cgPasses 3 = [inferFreshEffects,
               transformEnvF (lambdaFormOptD noMovesTransConfig),
               transformEnvF nrvoMoveOpt
              ]
+
 -- no refs
 cgPasses 2 = [inferFreshEffects,
               transformEnvF Purity.runPurity,
@@ -166,6 +167,7 @@ cgPasses 2 = [inferFreshEffects,
               transformEnvF (lambdaFormOptD noRefsTransConfig),
               transformEnvF nrvoMoveOpt
              ]
+
 cgPasses 1 = [inferFreshEffects,
               transformEnvF Purity.runPurity,
               transformF    CArgs.runAnalysis,
@@ -173,6 +175,7 @@ cgPasses 1 = [inferFreshEffects,
               transformEnvF (lambdaFormOptD defaultTransConfig),
               transformEnvF nrvoMoveOpt
              ]
+
 cgPasses _ = [transformF InsertMembers.runAnalysis,
               transformF CArgs.runAnalysis
              ]
