@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE ViewPatterns #-}
 
 -- | High-level effect queries.
@@ -8,6 +10,9 @@ import Control.Arrow
 import Control.Monad.State
 
 import Data.Traversable
+import Data.Tree
+
+import qualified Data.IntMap as M
 
 import Control.Monad.Identity
 
@@ -56,6 +61,26 @@ isWrittenBack :: EffectMonad m => K3 Symbol -> m Bool
 isWrittenBack s = case s of
   (tag -> SymId _) -> eSM s >>= isWrittenBack
   (tag -> symHasWb -> b) -> return b
+
+getSID :: K3 Symbol -> Int
+getSID s = case s @~ isSID of
+             Nothing -> error "Absent SID"
+             Just (SID i) -> i
+
+toggleCopy :: EffectMonad m => K3 Symbol -> m ()
+toggleCopy s = modifyEnv $ (\e -> e {
+                 symEnv = (M.adjust (\(Node (t :@: a) cs) -> Node (t {
+                   symHasCopy = not (symHasCopy t) } :@: a) cs) (getSID s)) (symEnv e)})
+
+toggleMove :: EffectMonad m => K3 Symbol -> m ()
+toggleMove s = modifyEnv $ (\e -> e {
+                 symEnv = (M.adjust (\(Node (t :@: a) cs) -> Node (t {
+                   symHasMove = not (symHasMove t) } :@: a) cs) (getSID s)) (symEnv e)})
+
+toggleWb :: EffectMonad m => K3 Symbol -> m ()
+toggleWb s = modifyEnv $ (\e -> e {
+                 symEnv = (M.adjust (\(Node (t :@: a) cs) -> Node (t {
+                   symHasWb = not (symHasWb t) } :@: a) cs) (getSID s)) (symEnv e)})
 
 -- | Is this symbol a global?
 --
