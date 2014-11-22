@@ -1296,19 +1296,22 @@ matchEffectSymbols querySyms (SymbolCategories rs ws as bs) = do
 effectSCategories :: K3 Effect -> [K3 Symbol] -> EffectEnv -> ClosureInfo
 effectSCategories eff syms env = flip evalState (env {bindEnv = Map.empty}) $ do
   eff' <- applyEffLambdas eff
-  if True then do
+  if False then do
     cats <- categorizeEffectSymbols eff'
-    cats2@(SymbolCategories r w a _) <- trace (debugEffect (env, eff') cats) $ matchEffectSymbols syms cats
-    trace (debugEffect (env, eff') cats2) $ return (r, w, a)
+    debuggedCats <- debugEffect eff' cats
+    cats2@(SymbolCategories r w a _) <- trace debuggedCats $ matchEffectSymbols syms cats
+    debuggedCats2 <- debugEffect eff' cats2
+    trace debuggedCats2 $ return (r, w, a)
 
   else do
     SymbolCategories r w a _ <- categorizeEffectSymbols eff' >>= matchEffectSymbols syms
     return (r, w, a)
 
   where
-    debugEffect (env', edbg) categories =
-      boxToString $ ["Effect"]  %$ (prettyLines $ expandEffDeep env' edbg)
-                                %$ prettyLines categories
+    debugEffect edbg categories = do
+      deepEff <- expandEffDeepM edbg
+      return $ boxToString $ ["Effect"]  %$ prettyLines deepEff
+                                         %$ prettyLines categories
 
 -- Variant of the above function that can be used with expressions.
 -- This additionally handles retrieving both lambda and closure
