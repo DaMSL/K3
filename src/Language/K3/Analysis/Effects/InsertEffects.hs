@@ -63,7 +63,7 @@ import Language.K3.Core.Type
 
 import Language.K3.Analysis.Effects.Core
 import Language.K3.Analysis.Effects.Constructors
-import Language.K3.Utils.Pretty(pretty)
+import Language.K3.Utils.Pretty
 
 import qualified Language.K3.Analysis.InsertMembers as IM
 
@@ -512,11 +512,11 @@ categorizeEffectSymbols eff = categorizeEff emptySymbols eff >>= return . nubSym
     emptySymbols = SymbolCategories [] [] [] []
     nubSymbols (SymbolCategories a b c d) = SymbolCategories (nub a) (nub b) (nub c) (nub d)
 
-    categorizeEff acc e = expandEffM e >>= foldTree (\acc' e' -> expandEffM e' >>= catEff acc') acc
-    categorizeSym acc s = expandSymM s >>= foldTree (\acc' s' -> expandSymM s' >>= catSym acc') acc
+    categorizeEff acc e = expandEffDeepM e >>= foldTree catEff acc
+    categorizeSym acc s = expandSymDeepM s >>= foldTree catSym acc
 
     catEff :: SymbolCategories -> K3 Effect -> MEnv SymbolCategories
-    catEff acc (tag -> FRead  s)    = categorizeSym acc s >>= \nacc -> return $ nacc {readSyms  = readSyms nacc  ++ [s]}
+    catEff acc (tag -> FRead  s)    = categorizeSym acc s >>= \nacc -> return $ nacc {readSyms  = readSyms  nacc ++ [s]}
     catEff acc (tag -> FWrite s)    = categorizeSym acc s >>= \nacc -> return $ nacc {writeSyms = writeSyms nacc ++ [s]}
     catEff acc (tag -> FApply s s') = categorizeSym acc s >>= flip categorizeSym s' >>= \nacc -> return $ nacc {appliedSyms = appliedSyms nacc ++ [s']}
     catEff acc (tag -> FScope ss)   = return $ acc {boundSyms = boundSyms acc ++ ss}
@@ -536,7 +536,7 @@ matchEffectSymbols querySyms (SymbolCategories rs ws as bs) = do
     fws        <- matchQuerySyms qSyms ws
     fas        <- matchQuerySyms qSyms as
     (brs, bws) <- materializeSyms qSyms bs
-    return $ SymbolCategories (frs++brs) (fws++bws) fas []
+    return $ SymbolCategories (nub $ frs++brs) (nub $ fws++bws) (nub fas) []
   where
     -- For superstructure, we add parents as symbols of interest.
     mkQueryMap :: [K3 Symbol] -> MEnv [(Identifier, K3 Symbol)]
@@ -554,7 +554,8 @@ matchEffectSymbols querySyms (SymbolCategories rs ws as bs) = do
 
     matchQuerySyms :: [(Identifier, K3 Symbol)] -> [K3 Symbol] -> MEnv [K3 Symbol]
     matchQuerySyms qSyms s =
-      foldM (foldTree (\acc s' -> expandSymM s' >>= matchSym qSyms acc s')) [] s
+      foldM (\acc s' -> expandSymDeepM s' >>=
+        foldTree (\acc' s'' -> expandSymM s'' >>= matchSym qSyms acc' s'') acc) [] s
 
     matchSym :: [(Identifier, K3 Symbol)] -> [K3 Symbol] -> K3 Symbol -> K3 Symbol -> MEnv [K3 Symbol]
     matchSym _ _ _ (tag -> SymId _) = error "unexpected symId1"
@@ -1277,6 +1278,11 @@ symRWAQuery eff syms env = flip evalState (env {bindEnv = Map.empty}) $ do
   eff' <- applyEffLambdas eff
   SymbolCategories r w a _ <- categorizeEffectSymbols eff' >>= matchEffectSymbols syms
   return (r, w, a)
+  --where
+  --  debugEffect (env, edbg) categories =
+  --    boxToString $ ["Effect"]  %$ (prettyLines $ expandEffDeep env edbg)
+  --                              %$ prettyLines categories
+
 
 {-
 -- Create a closure of symbols read, written, or applied that are relevant to the current env
@@ -1387,3 +1393,10 @@ symRWAQuery eff syms env = flip evalState env $ do
 
 -- Only reads query
 -- Modified-before e1 -> e2 -> [Symbol] -> bool
+
+instance Pretty SymbolCategories where
+  prettyLines (SymbolCategories r w a b) =
+         ["Reads"]   %$ concatMap prettyLines r
+      %$ ["Writes"]  %$ concatMap prettyLines w
+      %$ ["Applies"] %$ concatMap prettyLines a
+      %$ ["Bounds"]  %$ concatMap prettyLines b
