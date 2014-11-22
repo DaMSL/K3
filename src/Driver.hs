@@ -4,6 +4,7 @@ import Control.Monad
 import Control.Arrow (first)
 import Data.Char
 import Data.List(foldl')
+import Data.Tuple
 
 import qualified Options.Applicative as Options
 import Options.Applicative((<>), (<*>))
@@ -139,7 +140,7 @@ run opts = do
                              in (Effects.expandProgram fenv np, s)
 
     analyzer DeadCodeElimination x  =
-      wrapEither (Simplification.eliminateDeadProgramCode . fst . Effects.runConsolidatedAnalysis) x
+      wrapEither (uncurry Simplification.eliminateDeadProgramCode . swap . Effects.runConsolidatedAnalysis) x
 
     analyzer Profiling x      = first (cleanGeneration "profiling" . Profiling.addProfiling) x
     analyzer Purity x         = first ((\(d,e) -> Pure.runPurity e d) . Effects.runConsolidatedAnalysis) x

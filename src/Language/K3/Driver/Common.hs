@@ -15,7 +15,7 @@ defaultPrompt = "k3> "
 
 {- Defaults -}
 defaultOutLanguage :: String
-defaultOutLanguage = "haskell"
+defaultOutLanguage = "cpp"
 
 defaultProgramName :: String
 defaultProgramName = "A"
