@@ -76,8 +76,8 @@ run opts = do
     dispatch (Compile c)   p = compile c p
     dispatch (Interpret i) p = interpret i p
     dispatch (Typecheck t) p = case chooseTypechecker t p of
-      Left s   -> putStrLn s          >> putStrLn "ERROR"
-      Right p' -> printer PrintAST p' >> putStrLn "SUCCESS"
+      Left s   -> putStrLn s                        >> putStrLn "ERROR"
+      Right p' -> printer (PrintAST False False) p' >> putStrLn "SUCCESS"
 
     -- Compilation dispatch.
     compile cOpts prog = do
@@ -109,8 +109,12 @@ run opts = do
     transform ts prog = foldl' (flip analyzer) (prog, "") ts
 
     -- Print out the program
-    printer PrintAST    = putStrLn . pretty . stripTypeAndEffectAnns
-    printer PrintSyntax = either syntaxError putStrLn . programS
+    printer (PrintAST st se) = let preF = if st && se then stripTypeAndEffectAnns
+                                          else if st then stripTypeAnns
+                                          else if se then stripEffectAnns
+                                          else id
+                               in putStrLn . pretty . preF
+    printer PrintSyntax    = either syntaxError putStrLn . programS
 
     runStagesThenPrint popts prog = do
       let sprogE = foldM (\p (stg, f) -> if stg `elem` (poStages popts) then f p else Right p)
