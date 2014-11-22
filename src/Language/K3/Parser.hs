@@ -881,8 +881,7 @@ effLambda asAttrMem = mkLambda <$> readLambda <*> choice [ Left <$> try (effLamb
         mkLambda :: String -> Either (K3 F.Symbol) [K3 F.Effect] -> K3 F.Symbol
         mkLambda i (Left s)  = FC.lambda i (mkScope i []) $ Just s
         mkLambda i (Right e) = FC.lambda i (mkScope i e) Nothing
-        selfSym = let s = replaceCh (FC.symbol "self" F.PClosure False False False)
-                                    [FC.symbol "self" F.PVar     False False False]
+        selfSym = let s = FC.symbol "self" F.PClosure False False False
                   in if asAttrMem then [s] else []
         mkScope i ch = FC.scope ([FC.symbol i F.PVar False True False] ++ selfSym) $ termAsSeq ch
         termAsSeq []  = []
@@ -899,11 +898,12 @@ effTerm asAttrMem = choice (map try [effRead, effWrite, effApply, effSeq, effLoo
 
         effSymbol = (mkVar
                         <$> (identifier <|> (keyword "self"    >> return "self")
-                                        <|> (keyword "content" >> return "content")))
+                                        <|> (keyword "content" >> return "content")
+                                        <|> (keyword "fresh"   >> return "fresh")))
                         <?> "effect symbol"
-        mkVar i =
-          let copyFlag = if i == "self" then False else True
-          in FC.symbol i F.PVar False copyFlag False
+        mkVar "fresh" = FC.symbol i F.PTemporary False True False -- TODO: fresh symbol?
+        mkVar i = let copyFlag = if i == "self" then False else True
+                  in FC.symbol i F.PVar False copyFlag False
         termAsSeq t = if length t == 1 then head t else FC.seq t
         varList pfx parser = string pfx *> brackets (commaSep1 parser)
 

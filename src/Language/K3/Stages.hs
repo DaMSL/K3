@@ -107,19 +107,19 @@ inferFreshTypesAndEffects :: ProgramTransform
 inferFreshTypesAndEffects = inferTypesAndEffects . first stripTypeAndEffectAnns
 
 withTypecheck :: ProgramTransform -> ProgramTransform
-withTypecheck transformF prog = inferTypes prog >>= transformF
+withTypecheck f prog = inferTypes prog >>= f
 
 withEffects :: ProgramTransform -> ProgramTransform
-withEffects transformF prog = inferEffects prog >>= transformF
+withEffects f prog = inferEffects prog >>= f
 
 withTypeAndEffects :: ProgramTransform -> ProgramTransform
-withTypeAndEffects transformF prog = transformF =<< inferEffects =<< inferTypes prog
+withTypeAndEffects f prog = f =<< inferEffects =<< inferTypes prog
 
 withProperties :: ProgramTransform -> ProgramTransform
-withProperties transformF p = transformE inferProgramUsageProperties p >>= transformF
+withProperties f p = transformE inferProgramUsageProperties p >>= f
 
 withRepair :: String -> ProgramTransform -> ProgramTransform
-withRepair msg transformF prog = liftM (first $ repairProgram msg) $ transformF prog
+withRepair msg f prog = liftM (first $ repairProgram msg) $ f prog
 
 withPasses :: [ProgramTransform] -> ProgramTransform
 withPasses passes prog = foldM (flip ($!)) prog passes
