@@ -24,15 +24,17 @@ module Language.K3.Analysis.Effects.InsertEffects (
   applyLambda,
   applyLambdaEnv,
   runConsolidatedAnalysis,
-  eE,
-  eS,
-  expandProgram,
-  expandExpression,
-  expandEffDeep,
-  expandSymDeep,
+
   occursEff,
   occursSym,
   symEqual,
+
+  eE,
+  eS,
+  expandEffDeep,
+  expandSymDeep,
+  expandProgram,
+  expandExpression,
 
   SymbolCategories(..),
   applyEffLambdas,
@@ -1214,9 +1216,6 @@ categorizeEffectSymbols eff = categorizeEff emptySymbols eff >>= return . nubSym
 
     categorizeEff acc e = expandEffM e >>= catEff acc
     categorizeSym acc s = expandSymM s >>= catSym acc
-
-    --categorizeEff acc e = expandEffDeepM e >>= foldTree catEff acc
-    --categorizeSym acc s = expandSymDeepM s >>= foldTree catSym acc
 
     catEff :: SymbolCategories -> K3 Effect -> MEnv SymbolCategories
     catEff acc   (tag -> FRead  s)    = categorizeSym acc s >>= \nacc -> return $ nacc {readSyms  = readSyms  nacc ++ [s]}
