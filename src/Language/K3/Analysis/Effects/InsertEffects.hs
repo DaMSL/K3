@@ -507,12 +507,13 @@ data SymbolCategories = SymbolCategories { readSyms    :: [K3 Symbol]
 
 categorizeEffectSymbols :: K3 Effect -> MEnv SymbolCategories
 categorizeEffectSymbols eff = categorizeEff emptySymbols eff >>= return . nubSymbols
+
   where
     emptySymbols = SymbolCategories [] [] [] []
     nubSymbols (SymbolCategories a b c d) = SymbolCategories (nub a) (nub b) (nub c) (nub d)
 
-    categorizeEff acc e = foldTree (\acc' e' -> expandEffM e' >>= catEff acc') acc e
-    categorizeSym acc s = foldTree (\acc' s' -> expandSymM s' >>= catSym acc') acc s
+    categorizeEff acc e = expandEffM e >>= foldTree (\acc' e' -> expandEffM e' >>= catEff acc') acc
+    categorizeSym acc s = expandSymM s >>= foldTree (\acc' s' -> expandSymM s' >>= catSym acc') acc
 
     catEff :: SymbolCategories -> K3 Effect -> MEnv SymbolCategories
     catEff acc (tag -> FRead  s)    = categorizeSym acc s >>= \nacc -> return $ nacc {readSyms  = readSyms nacc  ++ [s]}
