@@ -922,7 +922,7 @@ effReturn = mkDerived <$> commaSep1 rRet
     mkSym i e c = replaceCh (FC.symbol i e True False) c
 
 pattern PLambdaSym eff ch <-
-  Node ((F.Symbol _ (F.PLambda (tag -> F.FScope [(tag -> F.Symbol _ eff _ _ _)])) _ _ _) :@: _) ch
+  Node ((F.Symbol _ (F.PLambda (tag -> F.FScope [(tag -> F.Symbol _ eff _ _ _ _)])) _ _ _ _) :@: _) ch
 
 attachReturn :: K3 F.Symbol -> K3 F.Symbol -> K3Parser (K3 F.Symbol)
 attachReturn ret sym = rcrLambda sym

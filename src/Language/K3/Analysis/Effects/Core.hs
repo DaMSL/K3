@@ -34,6 +34,7 @@ data Provenance
 
 data Symbol = Symbol { symIdent :: Identifier
                      , symProv :: Provenance
+                     , symHasMove :: Bool
                      , symHasCopy :: Bool
                      , symHasWb :: Bool
                      , symLambdaChoice :: Int  -- Which lambda version to apply, from a PChoice (default=0)
