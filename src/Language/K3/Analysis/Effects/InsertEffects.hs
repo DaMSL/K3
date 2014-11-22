@@ -515,9 +515,9 @@ categorizeEffectSymbols eff = categorizeEff emptySymbols eff >>= return . nubSym
     categorizeSym acc s = foldTree (\acc' s' -> expandSymM s' >>= catSym acc') acc s
 
     catEff :: SymbolCategories -> K3 Effect -> MEnv SymbolCategories
-    catEff acc (tag -> FRead  s)    = categorizeSym acc s >>= \nacc -> return $ nacc {readSyms  = readSyms acc  ++ [s]}
-    catEff acc (tag -> FWrite s)    = categorizeSym acc s >>= \nacc -> return $ nacc {writeSyms = writeSyms acc ++ [s]}
-    catEff acc (tag -> FApply s s') = categorizeSym acc s >>= flip categorizeSym s' >>= \nacc -> return $ nacc {appliedSyms = appliedSyms acc ++ [s']}
+    catEff acc (tag -> FRead  s)    = categorizeSym acc s >>= \nacc -> return $ nacc {readSyms  = readSyms nacc  ++ [s]}
+    catEff acc (tag -> FWrite s)    = categorizeSym acc s >>= \nacc -> return $ nacc {writeSyms = writeSyms nacc ++ [s]}
+    catEff acc (tag -> FApply s s') = categorizeSym acc s >>= flip categorizeSym s' >>= \nacc -> return $ nacc {appliedSyms = appliedSyms nacc ++ [s']}
     catEff acc (tag -> FScope ss)   = return $ acc {boundSyms = boundSyms acc ++ ss}
     catEff acc _ = return acc
 
