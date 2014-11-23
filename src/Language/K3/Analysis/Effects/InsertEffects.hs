@@ -55,7 +55,9 @@ import Data.Map(Map)
 import qualified Data.Map as Map
 import Data.IntMap(IntMap)
 import qualified Data.IntMap as IntMap
-import Data.List(nub, delete)
+import Data.IntSet(IntSet)
+import qualified Data.IntSet as IntSet
+import Data.List(delete)
 import Data.Foldable hiding (and, mapM_, any, all, concatMap, concat, elem)
 import Debug.Trace(trace)
 
@@ -1179,6 +1181,10 @@ applyEffLambdasEnv :: EffectEnv -> K3 Effect -> K3 Effect
 applyEffLambdasEnv env eff =
   flip evalState env $ mapEff False (subEff Nothing) (subSym Nothing) eff
 
+-- Special nub for symbols (for efficiency)
+nubSyms :: [K3 Symbol] -> [K3 Symbol]
+nubSyms ss = map symId $ IntSet.toList $ IntSet.fromList $ map (fromJust . getSID) ss
+
 -- Categorizes symbols by whether they participate in reads, writes, function application or scopes.
 data SymbolCategories = SymbolCategories { readSyms    :: [K3 Symbol]
                                          , writeSyms   :: [K3 Symbol]
@@ -1200,13 +1206,13 @@ emptyCategories = SymbolCategories [] [] [] [] False
 
 addCategories :: SymbolCategories -> SymbolCategories -> SymbolCategories
 addCategories (SymbolCategories r w a b io1) (SymbolCategories r2 w2 a2 b2 io2) =
-  SymbolCategories (nub $ r++r2) (nub $ w++w2) (nub $ a++a2) (nub $ b++b2) (io1 || io2)
+  SymbolCategories (nubSyms $ r++r2) (nubSyms $ w++w2) (nubSyms $ a++a2) (nubSyms $ b++b2) (io1 || io2)
 
 categorizeEffectSymbols :: K3 Effect -> MEnv SymbolCategories
 categorizeEffectSymbols eff = categorizeEff emptyCategories eff >>= return . nubSymbols
 
   where
-    nubSymbols (SymbolCategories a b c d e) = SymbolCategories (nub a) (nub b) (nub c) (nub d) e
+    nubSymbols (SymbolCategories a b c d e) = SymbolCategories (nubSyms a) (nubSyms b) (nubSyms c) (nubSyms d) e
 
     categorizeEff acc e = expandEffM e >>= catEff acc
     categorizeSym acc s = expandSymM s >>= catSym acc
@@ -1233,7 +1239,7 @@ matchEffectSymbols querySyms (SymbolCategories rs ws as bs io) = do
     fws        <- matchQuerySyms qSyms [] ws
     fas        <- matchQuerySyms qSyms [] as
     (brs, bws) <- materializeSyms qSyms bs
-    return $ SymbolCategories (nub $ frs++brs) (nub $ fws++bws) (nub fas) [] io
+    return $ SymbolCategories (nubSyms $ frs++brs) (nubSyms $ fws++bws) (nubSyms fas) [] io
   where
     -- For superstructure, we add parents as symbols of interest.
     mkQueryMap :: [K3 Symbol] -> MEnv [(Identifier, K3 Symbol)]
