@@ -1329,7 +1329,6 @@ exprSCategories e env =
       in addCategories sc1 sc2
 
     (_, Just (EEffect eff), _) -> allEffects eff
-    (EAssign _, Just (EEffect eff), _) -> allEffects eff
     (EConstant _, _, _) -> emptyCategories
     (ETuple, _, _) | null (children e) -> emptyCategories
     (_, _, _) -> error $ "Invalid effect and symbol in exprSCategories on:\n"
