@@ -939,14 +939,9 @@ class Map {
     return const_iterator(container.cend());
   }
 
-  unit_t insert(const R& rec) {
-    container[rec.key] = rec;
-    return unit_t();
-  }
-
-  unit_t insert(R&& rec) {
-    container[rec.key] = std::move(rec);
-    return unit_t();
+  template <class Q>
+  unit_t insert(Q&& q) {
+    container[q.key] = std::forward<Q>(q);
   }
 
   template <class F>
