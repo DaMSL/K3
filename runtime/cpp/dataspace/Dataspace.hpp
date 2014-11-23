@@ -1048,8 +1048,8 @@ class Map {
 
     // TODO more efficient implementation?
     Map<R_key_value<K,Z>> result;
-    for (const auto& it : container) {
-      result.insert(it.second);
+    for (auto&& it : accs) {
+      result.insert(std::move(R_key_value<K, Z> {std::move(it.first), std::move(it.second)}));
     }
     return result;
   }
