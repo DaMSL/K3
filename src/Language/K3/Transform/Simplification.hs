@@ -41,6 +41,8 @@ import Language.K3.Interpreter.Data.Types
 
 import Language.K3.Utils.Pretty
 
+import Language.K3.Analysis.Effects.InsertEffects
+
 traceLogging :: Bool
 traceLogging = False
 

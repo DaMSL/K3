@@ -1190,37 +1190,38 @@ applyEffLambdasEnv env eff =
 data SymbolCategories = SymbolCategories { readSyms    :: [K3 Symbol]
                                          , writeSyms   :: [K3 Symbol]
                                          , appliedSyms :: [K3 Symbol]
-                                         , boundSyms   :: [K3 Symbol] }
+                                         , boundSyms   :: [K3 Symbol]
+                                         , doesIO      :: Bool
+                                         }
 
 instance Pretty SymbolCategories where
-  prettyLines (SymbolCategories r w a b) =
+  prettyLines (SymbolCategories r w a b io) =
          ["Reads"]   %$ concatMap prettyLines r
       %$ ["Writes"]  %$ concatMap prettyLines w
       %$ ["Applies"] %$ concatMap prettyLines a
       %$ ["Bounds"]  %$ concatMap prettyLines b
+      %$ ["Does IO"] %$ [show io]
 
-{-
+emptyCategories :: SymbolCategories
+emptyCategories = SymbolCategories [] [] [] [] False
+
 addCategories :: SymbolCategories -> SymbolCategories -> SymbolCategories
-addCategories (SymbolCategories r w a b) (SymbolCategories r2 w2 a2 b2) =
-  SymbolCategories (nub $ r++r2) (nub $ w++w2) (nub $ a++a2) (nub $ b++b2)
--}
+addCategories (SymbolCategories r w a b io1) (SymbolCategories r2 w2 a2 b2 io2) =
+  SymbolCategories (nub $ r++r2) (nub $ w++w2) (nub $ a++a2) (nub $ b++b2) (io1 || io2)
 
 categorizeEffectSymbols :: K3 Effect -> MEnv SymbolCategories
-categorizeEffectSymbols eff = categorizeEff emptySymbols eff >>= return . nubSymbols
+categorizeEffectSymbols eff = categorizeEff emptyCategories eff >>= return . nubSymbols
 
   where
-    emptySymbols = SymbolCategories [] [] [] []
-    nubSymbols (SymbolCategories a b c d) = SymbolCategories (nub a) (nub b) (nub c) (nub d)
+    nubSymbols (SymbolCategories a b c d e) = SymbolCategories (nub a) (nub b) (nub c) (nub d) e
 
     categorizeEff acc e = expandEffM e >>= catEff acc
     categorizeSym acc s = expandSymM s >>= catSym acc
 
-    --categorizeEff acc e = expandEffDeepM e >>= foldTree catEff acc
-    --categorizeSym acc s = expandSymDeepM s >>= foldTree catSym acc
-
     catEff :: SymbolCategories -> K3 Effect -> MEnv SymbolCategories
     catEff acc   (tag -> FRead  s)    = categorizeSym acc s >>= \nacc -> return $ nacc {readSyms  = readSyms  nacc ++ [s]}
     catEff acc   (tag -> FWrite s)    = categorizeSym acc s >>= \nacc -> return $ nacc {writeSyms = writeSyms nacc ++ [s]}
+    catEff acc   (tag -> FIO)         = return $ acc { doesIO = True }
     catEff acc   (tag -> FApply s s') = categorizeSym acc s >>= flip categorizeSym s' >>= \nacc -> return $ nacc {appliedSyms = appliedSyms nacc ++ [s']}
     catEff acc s@(tag -> FScope ss)   = foldM categorizeEff (acc {boundSyms = boundSyms acc ++ ss}) $ children s
     catEff acc s = foldM categorizeEff acc $ children s
@@ -1233,13 +1234,13 @@ categorizeEffectSymbols eff = categorizeEff emptySymbols eff >>= return . nubSym
 -- Bound symbols are transferred to the read and write symbol sets based
 -- on their materialization metadata.
 matchEffectSymbols :: [K3 Symbol] -> SymbolCategories -> MEnv SymbolCategories
-matchEffectSymbols querySyms (SymbolCategories rs ws as bs) = do
+matchEffectSymbols querySyms (SymbolCategories rs ws as bs io) = do
     qSyms      <- mkQueryMap querySyms
     frs        <- matchQuerySyms qSyms [] rs
     fws        <- matchQuerySyms qSyms [] ws
     fas        <- matchQuerySyms qSyms [] as
     (brs, bws) <- materializeSyms qSyms bs
-    return $ SymbolCategories (nub $ frs++brs) (nub $ fws++bws) (nub fas) []
+    return $ SymbolCategories (nub $ frs++brs) (nub $ fws++bws) (nub fas) [] io
   where
     -- For superstructure, we add parents as symbols of interest.
     mkQueryMap :: [K3 Symbol] -> MEnv [(Identifier, K3 Symbol)]
@@ -1293,20 +1294,17 @@ matchEffectSymbols querySyms (SymbolCategories rs ws as bs) = do
     matBoundSym _ acc _ _ = return acc
 
 -- Query whether certain symbols are read, written, applied
-effectSCategories :: K3 Effect -> [K3 Symbol] -> EffectEnv -> ClosureInfo
+effectSCategories :: K3 Effect -> [K3 Symbol] -> EffectEnv -> SymbolCategories
 effectSCategories eff syms env = flip evalState (env {bindEnv = Map.empty}) $ do
   eff' <- applyEffLambdas eff
-  if False then do
+  if True then do
     cats <- categorizeEffectSymbols eff'
     debuggedCats <- debugEffect eff' cats
-    cats2@(SymbolCategories r w a _) <- trace debuggedCats $ matchEffectSymbols syms cats
+    cats2@sc <- trace debuggedCats $ matchEffectSymbols syms cats
     debuggedCats2 <- debugEffect eff' cats2
-    trace debuggedCats2 $ return (r, w, a)
+    trace debuggedCats2 $ return sc
 
-  else do
-    SymbolCategories r w a _ <- categorizeEffectSymbols eff' >>= matchEffectSymbols syms
-    return (r, w, a)
-
+  else categorizeEffectSymbols eff' >>= matchEffectSymbols syms
   where
     debugEffect edbg categories = do
       deepEff <- expandEffDeepM edbg
@@ -1316,22 +1314,27 @@ effectSCategories eff syms env = flip evalState (env {bindEnv = Map.empty}) $ do
 -- Variant of the above function that can be used with expressions.
 -- This additionally handles retrieving both lambda and closure
 -- construction effects, when applied to lambdas.
-exprSCategories :: K3 Expression -> EffectEnv -> ClosureInfo
+exprSCategories :: K3 Expression -> EffectEnv -> SymbolCategories
 exprSCategories e env =
-  case (tag e, e @~ isEEffect, e @~ isESymbol) of
+  trace (pretty e) $ case (tag e, e @~ isEEffect, e @~ isESymbol) of
     (ELambda _, Nothing, Just (ESymbol (eS env -> tnc -> (symProv -> PLambda eff, chSym))))
       | FScope bindings <- tag $ eE env eff ->
-      let (r,w,a)    = effectSCategories eff bindings env
-          (r2,w2,a2) = case chSym of
+      let sc1    = effectSCategories eff bindings env
+          sc2    = case chSym of
                          [symProv . tag . eS env -> PLambda eff2]
                            -> effectSCategories eff2 bindings env
-                         _ -> emptyClosure
-      in (nub $ r ++ r2, nub $ w ++ w2, nub $ a ++ a2)
+                         _ -> emptyCategories
+      in addCategories sc1 sc2
 
-    (_, Just (EEffect eff), Just (ESymbol sym)) -> effectSCategories eff [sym] env
+    (_, Just (EEffect eff), _) -> allEffects eff
+    (EAssign _, Just (EEffect eff), _) -> allEffects eff
+    (EConstant _, _, _) -> emptyCategories
+    (ETuple, _, _) | null (children e) -> emptyCategories
     (_, _, _) -> error $ "Invalid effect and symbol in exprSCategories on:\n"
                        ++ pretty (expandExpression env e)
 
+  where
+    allEffects eff = evalState (categorizeEffectSymbols eff) env
 
 {-
 -- Create a closure of symbols read, written, or applied that are relevant to the current env
