@@ -129,7 +129,7 @@ withPasses passes prog = foldM (flip ($!)) prog passes
 simplify :: ProgramTransform
 simplify p = transformE foldProgramConstants p
               >>= transformEnvF betaReductionOnProgram
-              -- >>= transformEnvE eliminateDeadProgramCode
+              >>= transformEnvE eliminateDeadProgramCode
 
 simplifyWCSE :: ProgramTransform
 simplifyWCSE p = simplify p >>= transformEnvE commonProgramSubexprElim
