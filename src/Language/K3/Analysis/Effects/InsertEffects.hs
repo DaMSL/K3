@@ -793,13 +793,12 @@ runAnalysisEnv :: EffectEnv -> K3 Declaration -> (K3 Declaration, EffectEnv)
 runAnalysisEnv env1 prog = flip runState env1 $ do
   -- for cyclic scope, add temporaries for all globals
   p1 <- addAllGlobals prog
-  -- actual modification of AST (no need to decorate declarations here)
+  -- actual modification of AST
   p2 <- mapProgram handleDecl mId handleExprs Nothing p1
-  -- apply all lambdas
   if debugTrace then do
-    p3 <- mapProgram handleDecl mId applyLambdaExprs Nothing p2
-    p4 <- expandProg p3
-    trace (pretty p4) $ return p2
+    -- If we want to debug, we need to expand the program deeply
+    p3 <- expandProg p2
+    trace (pretty p3) $ return p2
     else
       return p2
   where
@@ -819,7 +818,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
     pre _ (tag -> ELambda i) = do
       -- Add to the environment
       sym  <- symbolM i PVar False True False []
-      -- Insert a lambda layer into the local environment
+      -- Insert a lambda layer into the local environment, which will trap any closure access
       insertLambdaLayerM
       -- Only insert the new binding now (so we don't create a lamda layer on it)
       insertBindM i sym
@@ -834,14 +833,12 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       s     <- symbolM i PLet False True False [chSym]
       return [insertBindM i s]
 
-    -- We take the first child's symbol and bind to it
     sideways ch1 (tag -> EBindAs b) = do
       chSym <- getOrGenSymbol ch1
       let iProvs = extractBindData b
       syms <- mapM (\(i, prov) -> liftM (i,) $ symbolM i prov False True True [chSym]) iProvs
       return [mapM_ (uncurry insertBindM) syms]
 
-    -- We take the first child's symbol and bind to it
     sideways ch1 (tag -> ECaseOf i) = do
       chSym <- getOrGenSymbol ch1
       s     <- symbolM i PLet False True True [chSym]
@@ -849,10 +846,10 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
 
     sideways _ (children -> ch) = doNothings (length ch - 1)
 
-    -- A variable access looks up in the environment and generates a read
-    -- It also creates a symbol
     handleExpr :: [K3 Expression] -> K3 Expression -> MEnv (K3 Expression)
 
+    -- A variable access looks up in the environment and generates a read
+    -- It also creates a symbol
     handleExpr _ n@(tag -> EVariable i) = do
       sym <- lookupBindM i
       eff <- genEff $ read sym
@@ -866,36 +863,31 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       nEff   <- combineEffSeq [getEEffect e, Just w]
       return $ addEffSymCh nEff Nothing ch n
 
-    -- For ifThenElse be pessimistic: include effects and symbols of both paths
+    -- For IfThenElse be pessimistic: include effects and symbols of both paths
     handleExpr ch@[p,t,f] n@(tag -> EIfThenElse) = do
       tfEff <- combineEffSet [getEEffect t, getEEffect f]
-      -- combineEff with predicate effects
+      -- combine effects with predicate effects
       nEff  <- combineEffSeq [getEEffect p, tfEff]
-      -- combineEff path symbols into a new symbol
+      -- combine path symbols into a new symbol
       nSym  <- combineSymSet [getESymbol t, getESymbol f]
       return $ addEffSymCh nEff nSym ch n
 
     -- ELambda wraps up the child effect and sticks it in a symbol, but has no effect per se
-    -- A new scope will be created at application
     handleExpr ch@[e] n@(tag -> ELambda i) = do
       bindSym     <- lookupBindM i
-      -- Retrieve the results of the lambda layer
+      -- Retrieve the captured closures from the lambda layer
       closureSyms <- removeLambdaLayerM
       let eEff = getEEffect e
           eSym = maybeToList $ getESymbol e
-      -- Create a gensym for the lambda, containing the effects of the child, and leading to the symbols
+      -- Create a gensym for the lambda, containing the effects of the child, and leading to the return symbol
+      -- The scope contains both the bound variable and the closure symbols
       eScope  <- genEff $ scope (bindSym : closureSyms) $ maybeToList eEff
       deleteBindM i
       lSym    <- genSym (PLambda eScope) False True False eSym
       return $ addEffSymCh Nothing (Just lSym) ch n
 
-    -- For collection attributes, we need to create and apply a lambda
-    -- containing 'self'
-    -- NOTE: We assume that the effect for this function has been inserted locally
-    --       on the project
-
     -- On application, Apply creates a scope and substitutes into it
-    -- We only create the effect of apply here
+    -- However, we don't substitute until query time
     handleExpr ch@[l,a] n@(tag -> EOperate OApp) = do
       seqE    <- combineEffSeq [getEEffect l, getEEffect a]
       -- Create the effect of application
@@ -903,6 +895,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       case getESymbol l of
         Nothing   -> error $ "failed to find symbol at lambda: " ++ show n
         Just lSym -> do
+          -- If we ever want to apply directly in the tree, uncomment the commented parts
           -- mapp   <- applyLambda lSym aSym
           -- case mapp of
             -- Nothing -> do
@@ -922,7 +915,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       bindSyms <- mapM lookupBindM ids
       -- Remove binds from env
       mapM_ deleteBindM ids
-      -- peel off until we get to a scope we know
+      -- Edit the return symbol to only mention relevant symbol paths
       fullSym <- symInBind $ getESymbol e
       let eEff = maybe [] singleton $ getEEffect e
       bScope  <- genEff $ scope bindSyms eEff
@@ -939,7 +932,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       -- Conservative approximation
       setEff   <- combineEffSet [getEEffect none, Just scopeEff]
       combSym  <- combineSymSet [getESymbol some, getESymbol none]
-      -- peel off symbols until we get ones in our outer scope
+      -- Edit the return symbol to only mention relevant symbol paths
       fullSym  <- symInBind combSym
       fullEff  <- combineEffSeq [getEEffect e, setEff]
       return $ addEffSymCh fullEff (Just fullSym) ch n
@@ -951,24 +944,20 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       let eEff = maybeToList $ getEEffect e
       scopeEff <- genEff $ scope [bindSym] eEff
       fullEff  <- combineEffSeq [getEEffect l, Just scopeEff]
-      -- peel off symbols until we get to ones in our outer scope
+      -- Edit the return symbol to only mention relevant symbol paths
       fullSym  <- symInBind $ getESymbol e
       return $ addEffSymCh fullEff (Just fullSym) ch n
 
     -- Projection
     handleExpr ch@[e] n@(tag -> EProject i) =
-      -- Check in the type system for a function in a collection
+      -- Check in the type system for a lifted attribute
       case (e @~ isEType, n @~ isEType) of
         (Just (EType(tag -> TCollection)), Just (EType(tag -> TFunction))) ->
           case getESymbol n of
             Just nSym -> do
               eSym  <- getOrGenSymbol e
-              -- Make sure to substitute self without destructive updates
-              -- In essence, we're making fresh copies of the parts we change
+              -- We make a fresh clone of the function, substituting self
               nSym' <- mapSym False mIdNone (subSelf eSym) nSym
-              -- for debugging
-              -- nSym2 <- expandSymDeepM nSym'
-              -- trace (show nSym2) $
               return $ addEffSymCh (getEEffect e) (Just nSym') ch n
 
             _   -> error $ "Missing symbol for projection of " ++ i
@@ -981,7 +970,7 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
         subSelf s n'@(tag -> Symbol {symIdent="content", symProv=PVar}) = return $ Just $ replaceCh n' [s]
         subSelf _ _                                                     = return Nothing
 
-    -- handle seq (last symbol)
+    -- handle seq (use the last symbol of the sequence)
     handleExpr ch n@(tag -> EOperate OSeq) = do
       let chSym = getESymbol $ last ch
       eff   <- combineEffSeq $ map getEEffect ch
@@ -992,12 +981,12 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
       eff' <- combineEffSeq $ map getEEffect ch ++ [Just eff]
       return $ addEffSymCh eff' Nothing ch n
 
-    -- Handle all derived expressions
+    -- Handle all PDerived expressions
     handleExpr ch n@(tag -> ESome)      = derivedExpr ch n
     handleExpr ch n@(tag -> EIndirect)  = derivedExpr ch n
     handleExpr ch n@(tag -> ETuple)     = derivedExpr ch n
     handleExpr ch n@(tag -> ERecord _)  = derivedExpr ch n
-    -- All remaining operates are derivations
+    -- All remaining operates use PDerived
     handleExpr ch n@(tag -> EOperate _) = derivedExpr ch n
 
     handleExpr ch n = genericExpr ch n
@@ -1086,7 +1075,7 @@ combineEffSeq = combineEff seq
 -- combineSym symbols into 1 symbol
 combineSym :: Bool -> Bool -> Provenance -> [Maybe (K3 Symbol)] -> MEnv (Maybe (K3 Symbol))
 combineSym okToDelete okToCollapse p ss =
-  -- if there's no subsymbol at all, just gensym a temp
+  -- if there's no symbol at all, just gensym a temp
   if all (Nothing ==) ss then
     liftM Just genSymTemp
   -- if we have some symbols, we must preserve them
@@ -1112,9 +1101,9 @@ combineSymDerived = combineSym True False PDerived
 applyLambdaEnv :: EffectEnv -> K3 Symbol -> K3 Symbol -> Maybe (K3 Effect, K3 Symbol)
 applyLambdaEnv env l a = flip evalState env $ applyLambda l a
 
--- If the symbol is a global, substitute from the global environment
--- Apply (substitute) a symbol into a lambda symbol, generating effects and a new symbol
--- If we return Nothing, we cannot apply yet because of a missing lambda
+-- Lambda application
+-- Apply (substitute) a symbol into a lambda symbol, releasing effects and generating a new symbol
+-- If we return Nothing, we cannot apply yet because of missing data
 applyLambda :: K3 Symbol -> K3 Symbol -> MEnv (Maybe (K3 Effect, K3 Symbol))
 applyLambda sLam' sArg = do
   env  <- get
@@ -1143,7 +1132,7 @@ applyLambda sLam' sArg = do
     (Symbol {symProv=PGlobal}, [ch])  -> applyLambda ch sArg
     (Symbol {symProv=PDirect}, [ch])  -> applyLambda ch sArg
 
-    -- For a set 'lambda', we need to combine results
+    -- For a PSet 'lambda', we need to combine results
     (Symbol {symProv=PSet}, ch)      -> do
       xs <- mapM (`applyLambda` sArg) ch
       let (es, ss) = unzip $ catMaybes xs
@@ -1152,17 +1141,16 @@ applyLambda sLam' sArg = do
       eSet <- combineEffSet es'
       return $ Just (fromMaybe (error "applyLambda: 1st") eSet, fromMaybe (error "applyLambda: 2nd") sSet)
 
-    -- For now, have only 1 choice
+    -- For now, always take the 1st choice, but eventually we'll need to support choosing
     (Symbol {symProv=PChoice}, ch:_) -> applyLambda ch sArg
 
     _ -> return Nothing
 
--- Substitute a symbol for another in a symbol: old, new, symbol in which to replace
--- NOTE: We assume the effects and symbols here don't need the environment
+-- Substitute a symbol for another in a symbol: (old, new, hasCopy), symbol in which to replace
 subSym :: Maybe (K3 Symbol, K3 Symbol, Bool) -> K3 Symbol -> MEnv (Maybe (K3 Symbol))
 subSym (Just (s, s', hasCopy)) n@(tag -> t@(Symbol {symProv=PVar})) | n `symEqual` s =
     return $ Just $ flip replaceTag (t {symHasCopy=hasCopy}) $ replaceCh n [s']
--- Apply: recurse (we already substituted into the children)
+-- Apply: perform the new application (we already substituted into the children for any old application)
 subSym _ (tnc -> (Symbol {symProv=PApply}, [sL, sA])) = do
   m <- applyLambda sL sA
   case m of
@@ -1172,7 +1160,6 @@ subSym _ _ = return Nothing
 
 -- Substitute one symbol for another in an effect
 -- mapSym already handled sL and sA
--- NOTE: We assume the effects and symbols here don't need the environment
 subEff :: Maybe (K3 Symbol, K3 Symbol, Bool) -> K3 Effect -> MEnv (Maybe (K3 Effect))
 subEff _ (tag -> FApply sL sA) = do
   m <- applyLambda sL sA
@@ -1319,6 +1306,9 @@ effectSCategories eff syms env = flip evalState (env {bindEnv = Map.empty}) $ do
 exprSCategories :: K3 Expression -> EffectEnv -> SymbolCategories
 exprSCategories e env =
   trace (pretty e) $ case (tag e, e @~ isEEffect, e @~ isESymbol) of
+    -- The effects returned for the lambda are its deferred effects, which includes the effects
+    -- in its body as well as any internal closure constructions effects (nested lambdas)
+    -- Closure construction effects of this lambda are NOT provided (the information is not available locally)
     (ELambda _, Nothing, Just (ESymbol (eS env -> tnc -> (symProv -> PLambda eff, chSym))))
       | FScope bindings <- tag $ eE env eff ->
       let sc1    = effectSCategories eff bindings env
@@ -1336,113 +1326,3 @@ exprSCategories e env =
 
   where
     allEffects eff = evalState (categorizeEffectSymbols eff) env
-
-{-
--- Create a closure of symbols read, written, or applied that are relevant to the current env
-createClosure :: Maybe (K3 Effect) -> Maybe (K3 Symbol) -> MEnv ClosureInfo
-createClosure mEff mSym = liftM nubTuple $ do
-  acc  <- case mSym of
-           Nothing  -> return emptyClosure
-           Just sym -> addClosureSym emptyClosure sym
-  case mEff of
-    Nothing  -> return acc
-    Just eff -> addClosureEff acc eff
-  where
-    nubTuple (a,b,c) = (nub a, nub b, nub c)
-
-    addClosureEff :: ClosureInfo -> K3 Effect -> MEnv ClosureInfo
-    addClosureEff acc n' = do
-      n <- expandEffM n'
-      case tag n of
-        FRead s -> do
-          (a,b,c) <- addClosureSym acc s
-          s'      <- getClosureSyms [] s
-          return (s' ++ a,b,c)
-        FWrite s -> do
-          (a,b,c) <- addClosureSym acc s
-          s'      <- getClosureSyms [] s
-          return (a, s' ++ b, c)
-        FApply s s' -> do
-          acc'    <- addClosureSym acc  s
-          (a,b,c) <- addClosureSym acc' s'
-          s''     <- getClosureSyms [] s'
-          return (a, b, s'' ++ c)
-        FScope ss -> do
-          acc' <- foldrM (flip addClosureEff) acc $ children n
-          -- Add effects for scope behavior
-          foldrM addScopeEff acc' ss
-        -- Generic case
-        _ -> foldrM (flip addClosureEff) acc $ children n
-
-    -- Add the effect of scope
-    addScopeEff :: K3 Symbol -> ClosureInfo -> MEnv ClosureInfo
-    addScopeEff n' (r,w,a) = do
-      n  <- expandSymM n'
-      (r', w') <- case tag n of
-                    Symbol {symHasCopy=True, symHasWb=True} -> (id &&& id) <$> getClosureSyms [] n'
-                    Symbol {symHasCopy=True}                -> (,[]) <$> getClosureSyms [] n'
-                    Symbol {symHasWb=True}                  -> ([],) <$> getClosureSyms [] n'
-                    _                                       -> return ([], [])
-      return (r'++r, w'++w, a)
-
-
-    addClosureSym acc n' = do
-      n <- expandSymM n'
-      case tag n of
-         Symbol {symProv=PLambda eff} -> do
-           acc' <- foldrM (flip addClosureSym) acc $ children n
-           addClosureEff acc' eff
-
-         _ -> foldrM (flip addClosureSym) acc $ children n
-
-    -- The method for searching for valid symbols
-    getClosureSyms acc n' = do
-      n <- expandSymM n'
-      case tag n of
-        SymId _                       -> error "unexpected symId1"
-        -- Don't bother with temporaries (for now)
-        Symbol {symProv=PGlobal}      -> return acc
-        Symbol {symIdent=i}           -> do
-          x' <- lookupBindInnerM i
-          case x' of
-            -- if we haven't found a match, it might be deeper in the symbol tree
-            Nothing  -> foldrM (flip getClosureSyms) acc $ children n
-            Just x'' -> do
-              x  <- expandSymM x''
-              case tag x of
-                Symbol {symProv=PGlobal}      -> return acc
-                _ | n `symEqual` x            -> return $ n':acc
-                -- These 2 symbols' children aren't really further provenances
-                Symbol {symProv=PLambda _}    -> return acc
-                Symbol {symProv=PApply}       -> return acc
-                -- If we have copy semantics, abort search
-                Symbol {symHasCopy=True}     -> return acc
-                -- if we haven't found a match, it might be deeper in the tree
-                _ -> foldrM (flip getClosureSyms) acc $ children n
-
-symRWAQuery :: K3 Effect -> [K3 Symbol] -> EffectEnv -> ClosureInfo
-symRWAQuery eff syms env = flip evalState env $ do
-  clearBindsM
-  -- Use the symbols as a bind environment
-  mapM_ addToEnv syms
-  -- Substitute any lambdas inside
-  eff' <- applyEffLambdas eff
-  -- Get the general closure
-  --cl <- createClosure (Just eff') Nothing
-  categorizeEffectSymbols eff' >>= matchEffectSymbols syms
-  return cl
-  where
-    -- For superstructure, we add parents
-    addToEnv s' = do
-      s <- expandSymM s'
-      case tag s of
-        Symbol {symIdent=i, symProv=PRecord _}   -> insertBindM i s' >> mapM_ addToEnv (children s)
-        Symbol {symIdent=i, symProv=PTuple _}    -> insertBindM i s' >> mapM_ addToEnv (children s)
-        Symbol {symIdent=i, symProv=PProject _}  -> insertBindM i s' >> mapM_ addToEnv (children s)
-        -- Otherwise, we just add the individual symbol
-        Symbol {symIdent=i} -> insertBindM i s'
-        SymId _                -> error "unexpected symId2"
--}
-
--- Only reads query
--- Modified-before e1 -> e2 -> [Symbol] -> bool
