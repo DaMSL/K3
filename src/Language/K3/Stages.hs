@@ -30,15 +30,6 @@ import Language.K3.Transform.Common
 
 type ProgramTransform = (K3 Declaration, Maybe EffectEnv) -> Either String (K3 Declaration, Maybe EffectEnv)
 
-isAnyETypeAnn :: Annotation Expression -> Bool
-isAnyETypeAnn a = isETypeOrBound a || isEQType a
-
-isAnyEEffectAnn :: Annotation Expression -> Bool
-isAnyEEffectAnn a = isEEffect a || isESymbol a
-
-isAnyETypeOrEffectAnn :: Annotation Expression -> Bool
-isAnyETypeOrEffectAnn a = isAnyETypeAnn a || isAnyEEffectAnn a
-
 {- Annotation cleanup methods -}
 stripTypeAnns :: K3 Declaration -> K3 Declaration
 stripTypeAnns = stripDeclAnnotations (const False) isAnyETypeAnn (const False)
