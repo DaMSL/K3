@@ -192,6 +192,9 @@ getFusionLineageE e = case e @~ isEFusionLineage of
 readOnly :: EffectEnv -> K3 Expression -> Bool
 readOnly env e = let SymbolCategories _ w _ _ io = exprSCategories e env in null w && not io
 
+noWrites :: EffectEnv -> K3 Expression -> Bool
+noWrites env e = let SymbolCategories _ w _ _ _ = exprSCategories e env in null w
+
 -- | Constant folding
 type FoldedExpr = Either String (Either Value (K3 Expression))
 
@@ -660,7 +663,8 @@ commonSubexprElim env expr = do
                                   foldl (addCandidateIfLCA subAcc) [] filteredCands
 
               candTreeNode    = Node (uid, localCands) $ concat ctCh
-              nStrippedExpr   = Node (tag t :@: (filter isEQualified $ annotations t)) $ concat sExprCh
+              nStrippedExpr   = Node (tag t :@: (filter ((||) <$> isEQualified <*> isAnyETypeOrEffectAnn)
+                                                            $ annotations t)) $ concat sExprCh
               propagatedExprs = if readOnly env n then (concat subAcc)++[nStrippedExpr] else []
           in
           return $ ([candTreeNode], [nStrippedExpr], propagatedExprs)
@@ -676,7 +680,8 @@ commonSubexprElim env expr = do
                         -> Either String ([CandidateTree], [K3 Expression], [K3 Expression])
     leafTreeAccumulator e = do
       ctNode <- leafCandidateNode e
-      return $ ([ctNode], [Node (tag e :@: (filter isEQualified $ annotations e)) []], [])
+      return $ ([ctNode], [Node (tag e :@: (filter ((||) <$> isEQualified <*> isAnyETypeOrEffectAnn)
+                                                            $ annotations e)) []], [])
 
     leafCandidateNode :: K3 Expression -> Either String CandidateTree
     leafCandidateNode e = case e @~ isEUID of
@@ -710,7 +715,7 @@ commonSubexprElim env expr = do
         pruneCandidates :: Candidates -> [CandidateTree] -> CandidateTree
                         -> Either String CandidateTree
         pruneCandidates candAcc ch (Node (uid, cands) _) =
-          let used = filter (`elem` candAcc) cands
+          let used = filter (\p@(e, _) -> elem p candAcc && noWrites env e) cands
               nUid = if null used then UID $ -1 else uid
           in return $ Node (nUid, used) ch
 
@@ -821,7 +826,7 @@ encodeTransformerExprs env expr = modifyTree encode expr >>= modifyTree markCont
     mkFold1 e@(PPrjApp cE fId fAs fArg appAs) = do
       accE           <- mkAccumE e
       (nfAs', nfArg) <- mkIndepAccF fId fAs fArg
-      let nfAs = markPureTransformer nfAs' appAs
+      let nfAs = markPureTransformer nfAs' fArg
       let (nApp1As, nApp2As) = (markTAppChain appAs, markTAppChain [])
       return $ PPrjApp2 cE "fold" nfAs nfArg accE nApp1As nApp2As
 
@@ -833,7 +838,7 @@ encodeTransformerExprs env expr = modifyTree encode expr >>= modifyTree markCont
                         fArg1@(streamableTransformerArg -> streamable) fArg2
                         app1As app2As)
       = let nfAs' = fAs++[pFusionSpec (if streamable then (ICondN,IndepTr) else (Open,DepTr))]
-            nfAs  = markPureTransformer nfAs' app2As
+            nfAs  = markPureTransformer nfAs' fArg1
         in return $ PPrjApp2 cE fId nfAs fArg1 fArg2 app1As app2As
 
     mkFold2 e = return e
@@ -844,7 +849,8 @@ encodeTransformerExprs env expr = modifyTree encode expr >>= modifyTree markCont
             (accE, valueT)  <- mkGBAccumE e
             rAccE           <- mkAccumE e
             (nfAs', nfArg1) <- mkGBAccumF valueT fAs fArg1 fArg2 fArg3
-            let nfAs                       = markPureTransformer nfAs' app3As
+            let nfAs                       = nfAs' ++ if readOnly env fArg1 && readOnly env fArg2
+                                                      then [pPureTransformer] else [pImpureTransformer]
             let (nApp1As, nApp2As)         = (markTAppChain app1As, markTAppChain app2As)
             let buildE                     = PPrjApp2 cE "fold" nfAs nfArg1 accE nApp1As nApp2As
             let copyF                      = mkAccF (\_ e -> e) (\_ _ e -> e)
@@ -931,9 +937,8 @@ encodeTransformerExprs env expr = modifyTree encode expr >>= modifyTree markCont
 
     markTAppChain as = cleanAnns $ nub $ as ++ [pTAppChain]
 
-    markPureTransformer as asWithEffect = cleanAnns $ nub $
-      if any isEPure asWithEffect then as ++ [pPureTransformer]
-                                  else as ++ [pImpureTransformer]
+    markPureTransformer as e = cleanAnns $ nub $
+      if readOnly env e then as ++ [pPureTransformer] else as ++ [pImpureTransformer]
 
     propagateRecType ias as = nub $ as ++ (if any isEOElemRec ias then [pIElemRec] else [])
 
