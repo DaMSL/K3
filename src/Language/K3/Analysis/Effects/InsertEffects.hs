@@ -733,19 +733,21 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
     -- Create a symbol for a function based on type
     -- If we're an attribute, we need to also write to self
     symOfFunction :: Bool -> K3 Type -> MEnv (K3 Symbol)
-    symOfFunction addSelf t = liftM head $ symOfFunction' addSelf t 1
+    symOfFunction addSelf t = symOfFunction' addSelf t 1 []
 
-    symOfFunction' :: Bool -> K3 Type -> Int -> MEnv [K3 Symbol]
-    symOfFunction' a (tnc -> (TForall _,   [ch])) i = symOfFunction' a ch i
-    symOfFunction' addSelf (tnc -> (TFunction, [_, ret])) i = do
-      s  <- symOfFunction' addSelf ret $ i + 1
-      s' <- createConservativeSym (addSelf && i==1) s $ "__"++show i
-      return [s']
-    symOfFunction' _ _ _ = return []
+    symOfFunction' :: Bool -> K3 Type -> Int -> [K3 Symbol] -> MEnv (K3 Symbol)
+    symOfFunction' a (tnc -> (TForall _,   [ch])) i accSyms = symOfFunction' a ch i accSyms
+    symOfFunction' addSelf (tnc -> (TFunction, [_, ret])) i accSyms = do
+      (s', symId) <- createConservativeSym (addSelf && i==1) $ "__"++show i
+      s <- symOfFunction' addSelf ret (i + 1) (accSyms++[symId])
+      s' [s]
+    symOfFunction' addSelf _ _ accSyms =
+      symbolM "self" PVar False False False [] >>=
+      \self -> genSymDerived $ self:accSyms
 
     -- Create a default conservative symbol for the function
     -- @addSelf: add a r/w to 'self' (for attributes)
-    createConservativeSym addSelf subSym' nm = do
+    createConservativeSym addSelf nm = do
       sym   <- symbolM nm PVar False True False []
       r     <- genEff $ read sym
       w     <- genEff $ write sym
@@ -759,7 +761,8 @@ preprocessBuiltins prog = flip runState startEnv $ modifyTree addMissingDecl pro
       seq'' <- combineEffSeq seq'
       lp    <- genEff $ loop $ fromMaybe (error "createConservativeSym") seq''
       sc    <- genEff $ scope [sym] [lp]
-      genSym (PLambda sc) False True False subSym'
+      let s = genSym (PLambda sc) False True False
+      return (s, sym)
 
 ----- Actual effect insertion ------
 -- Requires an environment built up by the preprocess phase
@@ -1109,16 +1112,16 @@ applyLambda sLam' sArg = do
   env  <- get
   sLam <- expandSymM sLam'
   case tnc sLam of
-    (Symbol {symProv=PLambda lamEff@(tag . eE env -> FScope (sOld:_)), symHasCopy=hasCopy}, [chSym]) -> do
+    (Symbol {symProv=PLambda lamEff@(tag . eE env -> FScope (sOld:_)), symHasCopy=hasCopy, symHasMove=hasMove}, [chSym]) -> do
       -- Dummy substitute into the argument, in case there's an application there
       -- Any effects won't be substituted in and will be visible outside
       sArg'    <- mapSym False (subEff Nothing) (subSym Nothing) sArg
       -- Substitute into the old effects and symbol
-      lamEff'  <- mapEff False (subEff $ Just (sOld, sArg', hasCopy))
-                               (subSym $ Just (sOld, sArg', hasCopy)) lamEff
+      lamEff'  <- mapEff False (subEff $ Just (sOld, sArg', hasCopy, hasMove))
+                               (subSym $ Just (sOld, sArg', hasCopy, hasMove)) lamEff
       -- Substitute into the child (result symbol)
-      chSym'   <- mapSym False (subEff $ Just (sOld, sArg', hasCopy))
-                               (subSym $ Just (sOld, sArg', hasCopy)) chSym
+      chSym'   <- mapSym False (subEff $ Just (sOld, sArg', hasCopy, hasMove))
+                               (subSym $ Just (sOld, sArg', hasCopy, hasMove)) chSym
       -- For debugging
       {-
       sLam2 <- expandSymDeepM sLam
@@ -1147,9 +1150,9 @@ applyLambda sLam' sArg = do
     _ -> return Nothing
 
 -- Substitute a symbol for another in a symbol: (old, new, hasCopy), symbol in which to replace
-subSym :: Maybe (K3 Symbol, K3 Symbol, Bool) -> K3 Symbol -> MEnv (Maybe (K3 Symbol))
-subSym (Just (s, s', hasCopy)) n@(tag -> t@(Symbol {symProv=PVar})) | n `symEqual` s =
-    return $ Just $ flip replaceTag (t {symHasCopy=hasCopy}) $ replaceCh n [s']
+subSym :: Maybe (K3 Symbol, K3 Symbol, Bool, Bool) -> K3 Symbol -> MEnv (Maybe (K3 Symbol))
+subSym (Just (s, s', hasCopy, hasMove)) n@(tag -> t@(Symbol {symProv=PVar})) | n `symEqual` s =
+    return $ Just $ flip replaceTag (t {symHasCopy=hasCopy, symHasMove=hasMove}) $ replaceCh n [s']
 -- Apply: perform the new application (we already substituted into the children for any old application)
 subSym _ (tnc -> (Symbol {symProv=PApply}, [sL, sA])) = do
   m <- applyLambda sL sA
@@ -1160,7 +1163,7 @@ subSym _ _ = return Nothing
 
 -- Substitute one symbol for another in an effect
 -- mapSym already handled sL and sA
-subEff :: Maybe (K3 Symbol, K3 Symbol, Bool) -> K3 Effect -> MEnv (Maybe (K3 Effect))
+subEff :: Maybe (K3 Symbol, K3 Symbol, Bool, Bool) -> K3 Effect -> MEnv (Maybe (K3 Effect))
 subEff _ (tag -> FApply sL sA) = do
   m <- applyLambda sL sA
   case m of
