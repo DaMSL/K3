@@ -103,10 +103,11 @@ lambdaFormOptE e@(Node (ELambda x :@: as) [b]) = do
   let fs = mapMaybe getEffects ds
   let (ESymbol (eS env -> tnc -> (symProv -> PLambda (eE env -> fc@(Node (FScope bindings@(binding:closure) :@: _) bes)), returnSymbols))) = fromJust $ e @~ isESymbol
   let  moveable (expandSymDeep env -> g) = not (isDerivedFromGlobal env g) &&
-                                           not (any (\f -> let (r, w, _) = effectSCategories f [g] env
+                                           not (any (\f -> let SymbolCategories r w _ _ _
+                                                                 = effectSCategories f [g] env
                                                            in g `elemSymbol` r || g `elemSymbol` w) fs)
 
-  let (cRead, cWritten, cApplied) = exprSCategories e env
+  let SymbolCategories cRead cWritten cApplied _ _ = exprSCategories e env
 
   let parent = head . children
 
@@ -158,9 +159,9 @@ lambdaFormOptE (Node (EOperate OApp :@: as) [f, x]) = do
   let fs = mapMaybe getEffects ds
   let argument = getSymbol x
   let moveable (expandSymDeep env -> g) = not (isDerivedFromGlobal env g) &&
-                                          not (any (\f -> let (r, w, _) = effectSCategories f [g] env
-                                                          in g `elemSymbol` r || g `elemSymbol` w) fs)
-
+                                           not (any (\f -> let SymbolCategories r w _ _ _
+                                                                 = effectSCategories f [g] env
+                                                           in g `elemSymbol` r || g `elemSymbol` w) fs)
   let passHint = maybe True (not . moveable) argument
   let a = EOpt $ PassHint passHint
 

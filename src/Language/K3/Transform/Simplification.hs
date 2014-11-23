@@ -41,6 +41,8 @@ import Language.K3.Interpreter.Data.Types
 
 import Language.K3.Utils.Pretty
 
+import Language.K3.Analysis.Effects.InsertEffects
+
 traceLogging :: Bool
 traceLogging = False
 
@@ -187,10 +189,8 @@ getFusionLineageE e = case e @~ isEFusionLineage of
   _ -> Nothing
 
 {- Effect queries -}
--- TODO
 readOnly :: EffectEnv -> K3 Expression -> Bool
-readOnly env e = undefined
-
+readOnly env e = let SymbolCategories _ w _ _ io = exprSCategories e env in null w && not io
 
 -- | Constant folding
 type FoldedExpr = Either String (Either Value (K3 Expression))
