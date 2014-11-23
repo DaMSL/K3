@@ -884,39 +884,44 @@ class Map {
     return res;
   }
 
-  class iterator: public std::iterator<std::forward_iterator_tag, R> {
+  template <class I>
+  class map_iterator: public std::iterator<std::forward_iterator_tag, R> {
     using container = unordered_map<Key, R>;
     using reference = typename std::iterator<std::forward_iterator_tag, R>::reference;
    public:
-    iterator(typename container::iterator _i): i(_i) {}
+    template <class _I>
+    map_iterator(_I&& _i): i(std::forward<_I>(_i)) {}
 
-    iterator& operator ++() {
+    map_iterator& operator ++() {
       ++i;
       return *this;
     }
 
 
-    iterator operator ++(int) {
-      iterator t = *this;
+    map_iterator operator ++(int) {
+      map_iterator t = *this;
       *this++;
       return t;
     }
 
-    reference operator *() {
+    auto operator *() {
       return i->second;
     }
 
-    bool operator ==(const iterator& other) {
+    bool operator ==(const map_iterator& other) {
       return i == other.i;
     }
 
-    bool operator !=(const iterator& other) {
+    bool operator !=(const map_iterator& other) {
       return i != other.i;
     }
 
    private:
-    typename container::iterator i;
+    I i;
   };
+
+  using iterator = map_iterator<typename unordered_map<Key, R>::iterator>;
+  using const_iterator = map_iterator<typename unordered_map<Key, R>::const_iterator>;
 
   iterator begin() {
     return iterator(container.begin());
@@ -926,12 +931,12 @@ class Map {
     return iterator(container.end());
   }
 
-  iterator begin() const {
-    return iterator(container.cbegin());
+  const_iterator begin() const {
+    return const_iterator(container.cbegin());
   }
 
-  iterator end() const {
-    return iterator(container.cend());
+  const_iterator end() const {
+    return const_iterator(container.cend());
   }
 
   unit_t insert(const R& rec) {
