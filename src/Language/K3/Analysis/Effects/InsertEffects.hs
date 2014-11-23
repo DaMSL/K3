@@ -73,6 +73,7 @@ import Language.K3.Utils.Pretty
 import qualified Language.K3.Analysis.InsertMembers as IM
 
 debugTrace = False
+debugQueries = False
 
 data LocalSym = LocalSym (K3 Symbol) | LambdaLayer (Maybe (K3 Symbol))
 
@@ -1289,7 +1290,7 @@ matchEffectSymbols querySyms (SymbolCategories rs ws as bs io) = do
 effectSCategories :: K3 Effect -> [K3 Symbol] -> EffectEnv -> SymbolCategories
 effectSCategories eff syms env = flip evalState (env {bindEnv = Map.empty}) $ do
   eff' <- applyEffLambdas eff
-  if True then do
+  if debugQueries then do
     cats <- categorizeEffectSymbols eff'
     debuggedCats <- debugEffect eff' cats
     cats2@sc <- trace debuggedCats $ matchEffectSymbols syms cats
@@ -1308,7 +1309,7 @@ effectSCategories eff syms env = flip evalState (env {bindEnv = Map.empty}) $ do
 -- construction effects, when applied to lambdas.
 exprSCategories :: K3 Expression -> EffectEnv -> SymbolCategories
 exprSCategories e env =
-  trace (pretty e) $ case (tag e, e @~ isEEffect, e @~ isESymbol) of
+  case (tag e, e @~ isEEffect, e @~ isESymbol) of
     -- The effects returned for the lambda are its deferred effects, which includes the effects
     -- in its body as well as any internal closure constructions effects (nested lambdas)
     -- Closure construction effects of this lambda are NOT provided (the information is not available locally)
