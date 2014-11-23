@@ -1212,11 +1212,11 @@ categorizeEffectSymbols eff = categorizeEff emptyCategories eff >>= return . nub
     categorizeSym acc s = expandSymM s >>= catSym acc
 
     catEff :: SymbolCategories -> K3 Effect -> MEnv SymbolCategories
-    catEff acc   (tag -> FRead  s)    = categorizeSym acc s >>= \nacc -> return $ nacc {readSyms  = readSyms  nacc ++ [s]}
-    catEff acc   (tag -> FWrite s)    = categorizeSym acc s >>= \nacc -> return $ nacc {writeSyms = writeSyms nacc ++ [s]}
+    catEff acc   (tag -> FRead  s)    = categorizeSym acc s >>= \nacc -> return $ nacc {readSyms  = s:readSyms  nacc}
+    catEff acc   (tag -> FWrite s)    = categorizeSym acc s >>= \nacc -> return $ nacc {writeSyms = s:writeSyms nacc}
     catEff acc   (tag -> FIO)         = return $ acc { doesIO = True }
-    catEff acc   (tag -> FApply s s') = categorizeSym acc s >>= flip categorizeSym s' >>= \nacc -> return $ nacc {appliedSyms = appliedSyms nacc ++ [s']}
-    catEff acc s@(tag -> FScope ss)   = foldM categorizeEff (acc {boundSyms = boundSyms acc ++ ss}) $ children s
+    catEff acc   (tag -> FApply s s') = categorizeSym acc s >>= flip categorizeSym s' >>= \nacc -> return $ nacc {appliedSyms = s':appliedSyms nacc}
+    catEff acc s@(tag -> FScope ss)   = foldM categorizeEff (acc {boundSyms = ss++boundSyms acc}) $ children s
     catEff acc s = foldM categorizeEff acc $ children s
 
     catSym :: SymbolCategories -> K3 Symbol -> MEnv SymbolCategories
