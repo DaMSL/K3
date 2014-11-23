@@ -860,7 +860,7 @@ template<class R>
 class Map {
   using Key = typename R::KeyType;
 
-  public:
+ public:
   // Default Constructor
   Map(): container() {}
   Map(const unordered_map<Key,R>& con): container(con) {}
@@ -882,6 +882,56 @@ class Map {
       res = std::make_shared<R>(it->second);
     }
     return res;
+  }
+
+  class iterator: public std::iterator<std::forward_iterator_tag, R> {
+    using container = unordered_map<Key, R>;
+    using reference = typename std::iterator<std::forward_iterator_tag, R>::reference;
+   public:
+    iterator(typename container::iterator _i): i(_i) {}
+
+    iterator& operator ++() {
+      ++i;
+      return *this;
+    }
+
+
+    iterator operator ++(int) {
+      iterator t = *this;
+      *this++;
+      return t;
+    }
+
+    reference operator *() {
+      return i->second;
+    }
+
+    bool operator ==(const iterator& other) {
+      return i == other.i;
+    }
+
+    bool operator !=(const iterator& other) {
+      return i != other.i;
+    }
+
+   private:
+    typename container::iterator i;
+  };
+
+  iterator begin() {
+    return iterator(container.begin());
+  }
+
+  iterator end() {
+    return iterator(container.end());
+  }
+
+  iterator begin() const {
+    return iterator(container.cbegin());
+  }
+
+  iterator end() const {
+    return iterator(container.cend());
   }
 
   unit_t insert(const R& rec) {
