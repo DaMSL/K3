@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE TupleSections #-}
@@ -175,7 +176,7 @@ dGlobal :: DeclParser
 dGlobal = namedDecl "state" "declare" $ rule . (mkGlobal <$>)
   where
     rule x = x <* colon <*> polymorphicTypeExpr <*> optional equateExpr
-                                                <*> optional effectSignature
+                                                <*> optional (effectSignature False)
 
     mkGlobal n qte eOpt eSigOpt =
       let glob = DC.global n qte (propagateQualifier qte eOpt) in
@@ -243,7 +244,7 @@ annotationMember :: K3Parser AnnMemDecl
 annotationMember = memberError $ mkMember <$> annotatedRule
   where
     rule          = (,,) <$> polarity <*> (choice $ map uidOver [liftedOrAttribute, subAnnotation])
-                                      <*> optional effectSignature
+                                      <*> optional (effectSignature True)
     annotatedRule = wrapInComments $ spanned $ flip (,) <$> optionalProperties dProperties <*> rule
 
     liftedOrAttribute = mkLA  <$> optional (keyword "lifted")
@@ -291,8 +292,8 @@ mpAnnotationMember = mpAnnMemDecl <$> (keyword "for" *> parseInMode Normal ident
 dControlAnnotation :: DeclParser
 dControlAnnotation = namedIdentifier "control annotation" "control" $ rule
   where rule x = mkCtrlAnn <$> x <*> option [] spliceParameterDecls <*> braces body
-        body           = (,) <$> some pattern <*> (extensions $ keyword "shared")
-        pattern        = (,,) <$> patternE <*> (symbol "=>" *> rewriteE) <*> (extensions $ symbol "+>")
+        body           = (,) <$> some cpattern <*> (extensions $ keyword "shared")
+        cpattern       = (,,) <$> patternE <*> (symbol "=>" *> rewriteE) <*> (extensions $ symbol "+>")
         extensions pfx = concat <$> option [] (try $ pfx *> braces (many extensionD))
         rewriteE       = cleanExpr =<< parseInMode Splice expr
         patternE       = cleanExpr =<< parseInMode SourcePattern expr
@@ -514,7 +515,7 @@ eCString :: ExpressionParser
 eCString = EC.constant . CString <$> stringLiteral
 
 eVariable :: ExpressionParser
-eVariable = exprError "variable" $ parserWithPMode $ \pMode -> mkVar pMode <$> identifier
+eVariable = exprError "variable" $ parserWithPMode $ \mode -> mkVar mode <$> identifier
   where mkVar Normal ('\'':t) = EC.applyMany resolveFn [EC.constant $ CString t]
         mkVar _      i = EC.variable i
 
@@ -862,36 +863,81 @@ contextualizedSpliceParameter sEnvOpt = choice [try fromContext, spliceParameter
 
 
 {- Effect signatures -}
-effectSignature :: K3Parser (Identifier -> [Annotation Declaration])
-effectSignature = mkSigAnn <$> (keyword "with" *> keyword "effects" *> (sepBy1 effLambda $ symbol "|"))
-  where mkSigAnn s n       = [DSymbol $ mkTopLevelSym n s]
-        mkTopLevelSym n ss = replaceCh (FC.symbol n $ F.PSet) ss
+effectSignature :: Bool -> K3Parser (Identifier -> [Annotation Declaration])
+effectSignature asAttrMem = mkSigAnn =<< (keyword "with" *> keyword "effects" *> effSig)
+  where
+    effSig    = (,) <$> (sepBy1 (effLambda asAttrMem) $ symbol "|") <*> optional returnSig
+    returnSig = keyword "return" *> effReturn
 
-effLambda :: K3Parser (K3 F.Symbol)
-effLambda = mkLambda <$> readLambda <*> choice [Left <$> try effLambda, Right <$> try effTerm]
+    mkSigAnn (s, rOpt)       = mkTopLevelSym (s, rOpt) >>= \f -> return (\n -> [DSymbol $ f n])
+    mkTopLevelSym (ss, rOpt) = do
+      nss <- maybe (return ss) (\ret -> mapM (attachReturn ret) ss) rOpt
+      return $ \n -> replaceCh (FC.symbol n F.PChoice False False False) nss
+
+effLambda :: Bool -> K3Parser (K3 F.Symbol)
+effLambda asAttrMem = mkLambda <$> readLambda <*> choice [ Left <$> try (effLambda asAttrMem)
+                                                         , Right <$> try (effTerm asAttrMem) ]
   where readLambda = choice [iArrow "fun", iArrowS "\\"]
         mkLambda :: String -> Either (K3 F.Symbol) [K3 F.Effect] -> K3 F.Symbol
         mkLambda i (Left s)  = FC.lambda i (mkScope i []) $ Just s
         mkLambda i (Right e) = FC.lambda i (mkScope i e) Nothing
-        mkScope i ch = FC.scope [FC.symbol i F.PVar] (Right ([], [], [])) $ termAsSeq ch
+        mkScope i ch = FC.scope [FC.symbol i F.PVar False True False] $ termAsSeq ch
         termAsSeq []  = []
         termAsSeq [x] = [x]
         termAsSeq xs  = [FC.seq xs]
 
-effTerm :: K3Parser [K3 F.Effect]
-effTerm = choice (map try [effRead, effWrite, effApply, effSeq, effLoop]) <?> "effect term"
+effTerm :: Bool -> K3Parser [K3 F.Effect]
+effTerm asAttrMem = choice (map try [effRead, effWrite, effApply, effSeq, effLoop]) <?> "effect term"
   where effRead   = map FC.read  <$> varList "R" effSymbol
         effWrite  = map FC.write <$> varList "W" effSymbol
         effApply  = (\a b -> [FC.apply a b]) <$> effSymbol <*> effSymbol
-        effSeq    = (:[]) . FC.seq . concat <$> brackets (semiSep1 effTerm)
-        effLoop   = (\eff -> [FC.loop $ termAsSeq eff]) <$> (parens effTerm) <* symbol "*"
+        effSeq    = (:[]) . FC.seq . concat <$> brackets (semiSep1 $ effTerm asAttrMem)
+        effLoop   = (\eff -> [FC.loop $ termAsSeq eff]) <$> (parens $ effTerm asAttrMem) <* symbol "*"
 
-        effSymbol = (flip FC.symbol F.PVar
-                        <$> (identifier <|> (keyword "self"    >> return "self")
-                                        <|> (keyword "content" >> return "content")))
+        effSymbol = (mkVar <$> (identifier <|> (keyword "self"    >> return "self")
+                                           <|> (keyword "content" >> return "content")))
                         <?> "effect symbol"
+        mkVar i = let copyFlag = if i == "self" then False else True
+                  in FC.symbol i F.PVar False copyFlag False
         termAsSeq t = if length t == 1 then head t else FC.seq t
         varList pfx parser = string pfx *> brackets (commaSep1 parser)
+
+effReturn :: K3Parser (K3 F.Symbol)
+effReturn = choice [rRet, rDerived]
+  where
+    rRet  = choice [rVar, rPrj, rRec, rTup, rInd]
+    rVar  = (mkVar =<< (identifier <|> (keyword "self"    >> return "self")
+                                   <|> (keyword "content" >> return "content")
+                                   <|> (keyword "fresh"   >> return "fresh")))
+              <?> "return symbol"
+    rPrj  = mkPrj <$> rRet <*> (dot        *> identifier)
+    rRec  = mkRec <$> rRet <*> (colon      *> identifier)
+    rTup  = mkTup <$> rRet <*> (symbol "#" *> integer)
+    rInd  = mkInd <$> (symbol "!" *> rRet)
+    rDerived = mkDerived <$> (symbol "~" *> choice [rRet >>= return . (:[]), commaSep1 rRet])
+
+    mkDerived s = replaceCh (FC.symbol "return" F.PDerived False True False) s
+
+    mkVar "fresh" = withEffectID (\eid -> FC.symbol ("fresh"++ show eid) F.PTemporary False True False)
+    mkVar       i = return $ FC.symbol i F.PVar False True False
+
+    mkPrj   s n = mkSym ("prj_" ++ n)      (F.PProject n) [s]
+    mkRec   s n = mkSym ("rec_" ++ n)      (F.PRecord  n) [s]
+    mkTup   s i = mkSym ("tup_" ++ show i) (F.PTuple   i) [s]
+    mkInd     s = mkSym "ind" F.PIndirection [s]
+    mkSym i e c = replaceCh (FC.symbol i e False True False) c
+
+pattern PLambdaSym eff ch <-
+  Node ((F.Symbol _ (F.PLambda (tag -> F.FScope [(tag -> F.Symbol _ eff _ _ _ _)])) _ _ _ _) :@: _) ch
+
+attachReturn :: K3 F.Symbol -> K3 F.Symbol -> K3Parser (K3 F.Symbol)
+attachReturn ret sym = rcrLambda sym
+  where rcrLambda s@(PLambdaSym F.PVar []) = return $ replaceCh s [ret]
+        rcrLambda s@(PLambdaSym (F.PLambda _) [lam]) = do
+          nch <- rcrLambda lam
+          return $ replaceCh s [nch]
+
+        rcrLambda _ = P.parserFail "Invalid effect signature lambda while attaching return symbol"
 
 
 {- Identifiers and their list forms -}

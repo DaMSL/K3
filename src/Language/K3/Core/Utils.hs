@@ -585,6 +585,7 @@ freeVariables :: K3 Expression -> [Identifier]
 freeVariables expr = either (const []) id $ foldMapTree extractVariable [] expr
   where
     extractVariable chAcc (tag -> EVariable n) = return $ concat chAcc ++ [n]
+    extractVariable chAcc (tag -> EAssign i)   = return $ concat chAcc ++ [i]
     extractVariable chAcc (tag -> ELambda n)   = return $ filter (/= n) $ concat chAcc
     extractVariable chAcc (tag -> EBindAs b)   = return $ filter (`notElem` bindingVariables b) $ concat chAcc
     extractVariable chAcc (tag -> ELetIn i)    = return $ filter (/= i) $ concat chAcc

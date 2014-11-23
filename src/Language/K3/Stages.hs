@@ -30,15 +30,6 @@ import Language.K3.Transform.Common
 
 type ProgramTransform = (K3 Declaration, Maybe EffectEnv) -> Either String (K3 Declaration, Maybe EffectEnv)
 
-isAnyETypeAnn :: Annotation Expression -> Bool
-isAnyETypeAnn a = isETypeOrBound a || isEQType a
-
-isAnyEEffectAnn :: Annotation Expression -> Bool
-isAnyEEffectAnn a = isEEffect a || isESymbol a
-
-isAnyETypeOrEffectAnn :: Annotation Expression -> Bool
-isAnyETypeOrEffectAnn a = isAnyETypeAnn a || isAnyEEffectAnn a
-
 {- Annotation cleanup methods -}
 stripTypeAnns :: K3 Declaration -> K3 Declaration
 stripTypeAnns = stripDeclAnnotations (const False) isAnyETypeAnn (const False)
@@ -73,6 +64,22 @@ stripAllTypeAndEffectAnns = stripDeclAnnotations isDSymbol isAnyETypeOrEffectAnn
 stripAllProperties :: K3 Declaration -> K3 Declaration
 stripAllProperties = stripDeclAnnotations isDProperty isEProperty (const False)
 
+{- Transform constructors -}
+-- Add an environment for functions that return only a program
+transformF :: (K3 Declaration -> K3 Declaration) -> ProgramTransform
+transformF f (prog, menv) = Right (f prog, menv)
+
+transformE :: (K3 Declaration -> Either String (K3 Declaration)) -> ProgramTransform
+transformE f (prog, menv) = f prog >>= return . (, menv)
+
+transformEnvF :: (EffectEnv -> K3 Declaration -> K3 Declaration) -> ProgramTransform
+transformEnvF _ (_, Nothing)     = Left "missing effect environment"
+transformEnvF f (prog, Just env) = Right (f env prog, Just env)
+
+transformEnvE :: (EffectEnv -> K3 Declaration -> Either String (K3 Declaration)) -> ProgramTransform
+transformEnvE _ (_, Nothing)     = Left "missing effect environment"
+transformEnvE f (prog, Just env) = f env prog >>= return . (, Just env)
+
 {- High-level passes -}
 inferTypes :: ProgramTransform
 inferTypes (prog, e) = liftM (, e) $ inferProgramTypes prog >>= translateProgramTypes
@@ -93,54 +100,40 @@ inferFreshTypesAndEffects :: ProgramTransform
 inferFreshTypesAndEffects = inferTypesAndEffects . first stripTypeAndEffectAnns
 
 withTypecheck :: ProgramTransform -> ProgramTransform
-withTypecheck transformF prog = inferTypes prog >>= transformF
+withTypecheck f prog = inferTypes prog >>= f
 
 withEffects :: ProgramTransform -> ProgramTransform
-withEffects transformF prog = inferEffects prog >>= transformF
+withEffects f prog = inferEffects prog >>= f
 
 withTypeAndEffects :: ProgramTransform -> ProgramTransform
-withTypeAndEffects transformF prog = transformF =<< inferEffects =<< inferTypes prog
-
--- Add an environment for functions that return only a program
-addEitherEnv :: (K3 Declaration -> K3 Declaration) -> ProgramTransform
-addEitherEnv f (prog, env) = Right (f prog, env)
-
-addEnv :: (K3 Declaration -> Either String (K3 Declaration)) -> ProgramTransform
-addEnv f (prog, env) = case f prog of
-                         Right x -> Right (x, env)
-                         Left s  -> Left s
-
-addEnvRet :: (EffectEnv -> K3 Declaration -> K3 Declaration) -> ProgramTransform
-addEnvRet f (prog, menv) = maybe (Left "missing effect environment") (\env -> Right (f env prog, Just env)) menv
+withTypeAndEffects f prog = f =<< inferEffects =<< inferTypes prog
 
 withProperties :: ProgramTransform -> ProgramTransform
-withProperties transformF p = addEnv inferProgramUsageProperties p >>= transformF
+withProperties f p = transformE inferProgramUsageProperties p >>= f
 
 withRepair :: String -> ProgramTransform -> ProgramTransform
-withRepair msg transformF prog = liftM (first $ repairProgram msg) $ transformF prog
+withRepair msg f prog = liftM (first $ repairProgram msg) $ f prog
 
 withPasses :: [ProgramTransform] -> ProgramTransform
 withPasses passes prog = foldM (flip ($!)) prog passes
 
 simplify :: ProgramTransform
-simplify (prog, env) = do
-  prog1 <- foldProgramConstants prog
-  let prog2 = betaReductionOnProgram prog1
-  --prog3 <- eliminateDeadProgramCode prog2
-  return (prog2, env)
+simplify p = transformE foldProgramConstants p
+              >>= transformEnvF betaReductionOnProgram
+              >>= transformEnvE eliminateDeadProgramCode
 
 simplifyWCSE :: ProgramTransform
-simplifyWCSE p = simplify p >>= addEnv commonProgramSubexprElim
+simplifyWCSE p = simplify p >>= transformEnvE commonProgramSubexprElim
 
 streamFusion :: ProgramTransform
-streamFusion = withProperties $ \p -> addEnv encodeTransformers p >>= addEnv fuseProgramFoldTransformers
---streamFusion = withProperties $ \p -> addEnv inferFusableProgramApplies p >>= addEnv fuseProgramTransformers
+streamFusion = withProperties $ \p ->
+  transformEnvE encodeTransformers p >>= transformEnvE fuseProgramFoldTransformers
 
 runPasses :: [ProgramTransform] -> K3 Declaration -> Either String (K3 Declaration, Maybe EffectEnv)
 runPasses passes d = withPasses passes (d, Nothing)
 
 effectPasses :: [ProgramTransform]
-effectPasses = [addEnvRet Purity.runPurity]
+effectPasses = [transformEnvF Purity.runPurity]
 
 optPasses :: [ProgramTransform]
 optPasses = map prepareOpt [ (simplify,         "opt-simplify-prefuse") ]
@@ -152,29 +145,32 @@ optPasses = map prepareOpt [ (simplify,         "opt-simplify-prefuse") ]
 cgPasses :: Int -> [ProgramTransform]
 -- no moves
 cgPasses 3 = [inferFreshEffects,
-              addEnvRet Purity.runPurity,
-              addEitherEnv CArgs.runAnalysis,
-              addEnvRet writebackOpt,
-              addEnvRet (lambdaFormOptD noMovesTransConfig),
-              addEnvRet nrvoMoveOpt
+              transformEnvF Purity.runPurity,
+              transformF    CArgs.runAnalysis,
+              transformEnvF writebackOpt,
+              transformEnvF (lambdaFormOpt noMovesTransConfig),
+              transformEnvF nrvoMoveOpt
              ]
+
 -- no refs
 cgPasses 2 = [inferFreshEffects,
-              addEnvRet Purity.runPurity,
-              addEitherEnv CArgs.runAnalysis,
-              addEnvRet writebackOpt,
-              addEnvRet (lambdaFormOptD noRefsTransConfig),
-              addEnvRet nrvoMoveOpt
+              transformEnvF Purity.runPurity,
+              transformF    CArgs.runAnalysis,
+              transformEnvF writebackOpt,
+              transformEnvF (lambdaFormOpt noRefsTransConfig),
+              transformEnvF nrvoMoveOpt
              ]
+
 cgPasses 1 = [inferFreshEffects,
-              addEnvRet Purity.runPurity,
-              addEitherEnv CArgs.runAnalysis,
-              addEnvRet writebackOpt,
-              addEnvRet (lambdaFormOptD defaultTransConfig),
-              addEnvRet nrvoMoveOpt
+              transformEnvF Purity.runPurity,
+              transformF    CArgs.runAnalysis,
+              transformEnvF writebackOpt,
+              transformEnvF (lambdaFormOpt defaultTransConfig),
+              transformEnvF nrvoMoveOpt
              ]
-cgPasses _ = [addEitherEnv InsertMembers.runAnalysis,
-              addEitherEnv CArgs.runAnalysis
+
+cgPasses _ = [transformF InsertMembers.runAnalysis,
+              transformF CArgs.runAnalysis
              ]
 
 runOptPasses :: K3 Declaration -> Either String (K3 Declaration, Maybe EffectEnv)

@@ -33,11 +33,15 @@ import qualified Language.K3.Core.Constructor.Expression as EC
 import qualified Language.K3.Core.Constructor.Type       as TC
 import qualified Language.K3.Core.Constructor.Literal    as LC
 
+import Language.K3.Analysis.Effects.InsertEffects ( EffectEnv(..) )
+
 import Language.K3.Transform.Common
 import Language.K3.Interpreter.Data.Accessors
 import Language.K3.Interpreter.Data.Types
 
 import Language.K3.Utils.Pretty
+
+import Language.K3.Analysis.Effects.InsertEffects
 
 traceLogging :: Bool
 traceLogging = False
@@ -184,6 +188,12 @@ getFusionLineageE e = case e @~ isEFusionLineage of
   Just ann -> getFusionLineage ann
   _ -> Nothing
 
+{- Effect queries -}
+readOnly :: EffectEnv -> K3 Expression -> Bool
+readOnly env e = let SymbolCategories _ w _ _ io = exprSCategories e env in null w && not io
+
+noWrites :: EffectEnv -> K3 Expression -> Bool
+noWrites env e = let SymbolCategories _ w _ _ _ = exprSCategories e env in null w
 
 -- | Constant folding
 type FoldedExpr = Either String (Either Value (K3 Expression))
@@ -445,24 +455,26 @@ stringOp op a b =
 --   Furthermore, this only applies to direct lambda invocations, rather than
 --   on general function values (i.e., including applications through bnds
 --   and substructure). For the latter case, we must inline and defunctionalize first.
-betaReductionOnProgram :: K3 Declaration -> K3 Declaration
-betaReductionOnProgram prog = runIdentity $ mapExpression betaReduction prog
+betaReductionOnProgram :: EffectEnv -> K3 Declaration -> K3 Declaration
+betaReductionOnProgram eenv prog = runIdentity $ mapExpression (betaReduction eenv) prog
 
-betaReduction :: K3 Expression -> Identity (K3 Expression)
-betaReduction expr = mapTree reduce expr
+betaReduction :: EffectEnv -> K3 Expression -> Identity (K3 Expression)
+betaReduction env expr = mapTree reduce expr
   where
     reduce ch n@(tag -> ELetIn i) = reduceOnOccurrences n ch i (head ch) $ last ch
     reduce ch n@(PAppLam i bodyE argE lamAs appAs) = reduceOnOccurrences n ch i argE bodyE
     reduce ch n = rebuildNode n ch
 
-    reduceOnOccurrences n ch i ie e = case ie @~ isEPure of
-      Just _ -> let occurrences = length $ filter (== i) $ freeVariables e in
-                if occurrences <= 1
-                  then betaReduction $ substituteImmutBinding i ie e
-                  else rebuildNode n ch
-      Nothing -> rebuildNode n ch
+    reduceOnOccurrences n ch i ie e =
+      if readOnly env ie then
+        let occurrences = length $ filter (== i) $ freeVariables e in
+        if occurrences <= 1
+          then betaReduction env $ substituteImmutBinding i ie e
+          else rebuildNode n ch
+      else rebuildNode n ch
 
     rebuildNode (Node t _) ch = return $ Node t ch
+
 
 -- | Effect-aware dead code elimination.
 --   Currently this only operates on expressions, and does not prune
@@ -480,16 +492,16 @@ betaReduction expr = mapTree reduce expr
 --        if a then (if a then b else c) else d => if a then b else d
 --        case x of { Some j -> case x of { Some k -> l } { None -> m }} { None -> n }
 --          => case x of { Some j -> l } { None -> n }
-eliminateDeadProgramCode :: K3 Declaration -> Either String (K3 Declaration)
-eliminateDeadProgramCode = mapExpression eliminateDeadCode
+eliminateDeadProgramCode :: EffectEnv -> K3 Declaration -> Either String (K3 Declaration)
+eliminateDeadProgramCode env prog = mapExpression (eliminateDeadCode env) prog
 
-eliminateDeadCode :: K3 Expression -> Either String (K3 Expression)
-eliminateDeadCode expr = mapTree pruneExpr expr
+eliminateDeadCode :: EffectEnv -> K3 Expression -> Either String (K3 Expression)
+eliminateDeadCode env expr = mapTree pruneExpr expr
   where
     -- Unused, effect-free binding.
     pruneExpr ch n@(tag -> ELetIn  i) =
       let vars = freeVariables $ last ch in
-      if maybe False (const $ i `notElem` vars) $ (head ch) @~ isEPure
+      if readOnly env (head ch) && i `notElem` vars
         then return $ last ch
         else rebuildNode n ch
 
@@ -498,22 +510,22 @@ eliminateDeadCode expr = mapTree pruneExpr expr
       case b of
         BRecord ijs ->
           let nBinder = filter (\(_,j) -> j `elem` vars) ijs in
-          if maybe False (const $ null nBinder) $ (head ch) @~ isEPure
+          if readOnly env (head ch) && null nBinder
             then return $ last ch
             else return $ Node (EBindAs (BRecord $ nBinder) :@: annotations n) ch
         _ -> rebuildNode n ch
 
     pruneExpr ch n@(tag -> EOperate OSeq) =
-        case (head ch) @~ isEPure of
-          Nothing -> rebuildNode n ch
-          Just _  -> return $ last ch
+        if readOnly env (head ch)
+          then return $ last ch
+          else rebuildNode n ch
 
     pruneExpr ch n = case replaceCh n ch of
 
       -- Immediate record construction and projection, provided all other record fields are pure.
       (PPrjRec fId ids fieldsE _ _) ->
         flip (maybe $ rebuildNode n ch) (elemIndex fId ids) $ \i ->
-          if all isJust $ map ((@~ isEPure) . snd) $ filter ((/= fId) . fst) $ zip ids ch
+          if and $ map (readOnly env . snd) $ filter ((/= fId) . fst) $ zip ids ch
             then return $ fieldsE !! i
             else rebuildNode n ch
 
@@ -528,7 +540,9 @@ eliminateDeadCode expr = mapTree pruneExpr expr
                $ zip ids fieldsE
 
       -- Immediate option bindings
-      e@(PCaseOf (PSome sE optAs) j someE noneE cAs) -> return $ maybe e (const someE) $ sE @~ isEPure
+      e@(PCaseOf (PSome sE optAs) j someE noneE cAs) ->
+        return $ if readOnly env sE then someE else e
+
       (PCaseOf (PNone _ _) j someE noneE cAs) -> return $ noneE
 
       -- Branch unnesting for case-of/if-then-else combinations (case-of-case, etc.)
@@ -560,6 +574,7 @@ eliminateDeadCode expr = mapTree pruneExpr expr
     rebuildNode n ch = return $ Node (tag n :@: annotations n) ch
 
     stripUIDSpanE = filter (not . \a -> isEUID a || isESpan a)
+
 
 -- | Effect-aware common subexpression elimination.
 --
@@ -607,11 +622,11 @@ type CandidateTree     = Tree (UID, Candidates)
 type Substitution      = (UID, K3 Expression, Int)
 type NamedSubstitution = (UID, Identifier, K3 Expression, Int)
 
-commonProgramSubexprElim :: K3 Declaration -> Either String (K3 Declaration)
-commonProgramSubexprElim prog = mapExpression commonSubexprElim prog
+commonProgramSubexprElim :: EffectEnv -> K3 Declaration -> Either String (K3 Declaration)
+commonProgramSubexprElim env prog = mapExpression (commonSubexprElim env) prog
 
-commonSubexprElim :: K3 Expression -> Either String (K3 Expression)
-commonSubexprElim expr = do
+commonSubexprElim :: EffectEnv -> K3 Expression -> Either String (K3 Expression)
+commonSubexprElim env expr = do
     cTree <- buildCandidateTree expr
     pTree <- pruneCandidateTree cTree
     substituteCandidates pTree
@@ -636,18 +651,21 @@ commonSubexprElim expr = do
       case x of
         EUID uid ->
           let (ctCh, sExprCh, subAcc) = unzip3 chAccs
-              bnds      = case tag t of
-                                ELambda i -> [[i]]
-                                ELetIn  i -> [[], [i]]
-                                ECaseOf j -> [[], [j], []]
-                                EBindAs b -> [[], bindingVariables b]
-                                _         -> repeat []
-              filteredCands = nub $ concatMap filterOpenCandidates $ zip bnds subAcc
-              localCands    = sortBy ((flip compare) `on` snd) $
-                                foldl (addCandidateIfLCA subAcc) [] filteredCands
-              candTreeNode  = Node (uid, localCands) $ concat ctCh
-              nStrippedExpr = Node (tag t :@: (filter isEQualified $ annotations t)) $ concat sExprCh
-              propagatedExprs = maybe [] (const $ (concat subAcc)++[nStrippedExpr]) $ n @~ isEPure
+              bnds = case tag t of
+                           ELambda i -> [[i]]
+                           ELetIn  i -> [[], [i]]
+                           ECaseOf j -> [[], [j], []]
+                           EBindAs b -> [[], bindingVariables b]
+                           _         -> repeat []
+
+              filteredCands   = nub $ concatMap filterOpenCandidates $ zip bnds subAcc
+              localCands      = sortBy ((flip compare) `on` snd) $
+                                  foldl (addCandidateIfLCA subAcc) [] filteredCands
+
+              candTreeNode    = Node (uid, localCands) $ concat ctCh
+              nStrippedExpr   = Node (tag t :@: (filter ((||) <$> isEQualified <*> isAnyETypeOrEffectAnn)
+                                                            $ annotations t)) $ concat sExprCh
+              propagatedExprs = if readOnly env n then (concat subAcc)++[nStrippedExpr] else []
           in
           return $ ([candTreeNode], [nStrippedExpr], propagatedExprs)
 
@@ -662,7 +680,8 @@ commonSubexprElim expr = do
                         -> Either String ([CandidateTree], [K3 Expression], [K3 Expression])
     leafTreeAccumulator e = do
       ctNode <- leafCandidateNode e
-      return $ ([ctNode], [Node (tag e :@: (filter isEQualified $ annotations e)) []], [])
+      return $ ([ctNode], [Node (tag e :@: (filter ((||) <$> isEQualified <*> isAnyETypeOrEffectAnn)
+                                                            $ annotations e)) []], [])
 
     leafCandidateNode :: K3 Expression -> Either String CandidateTree
     leafCandidateNode e = case e @~ isEUID of
@@ -696,7 +715,7 @@ commonSubexprElim expr = do
         pruneCandidates :: Candidates -> [CandidateTree] -> CandidateTree
                         -> Either String CandidateTree
         pruneCandidates candAcc ch (Node (uid, cands) _) =
-          let used = filter (`elem` candAcc) cands
+          let used = filter (\p@(e, _) -> elem p candAcc && noWrites env e) cands
               nUid = if null used then UID $ -1 else uid
           in return $ Node (nUid, used) ch
 
@@ -770,11 +789,11 @@ streamableTransformerArg :: K3 Expression -> Bool
 streamableTransformerArg (PStreamableTransformerArg _ _ _ _) = True
 streamableTransformerArg _ = False
 
-encodeTransformers :: K3 Declaration -> Either String (K3 Declaration)
-encodeTransformers prog = mapExpression encodeTransformerExprs prog
+encodeTransformers :: EffectEnv -> K3 Declaration -> Either String (K3 Declaration)
+encodeTransformers env prog = mapExpression (encodeTransformerExprs env) prog
 
-encodeTransformerExprs :: K3 Expression -> Either String (K3 Expression)
-encodeTransformerExprs expr = modifyTree encode expr >>= modifyTree markContent
+encodeTransformerExprs :: EffectEnv -> K3 Expression -> Either String (K3 Expression)
+encodeTransformerExprs env expr = modifyTree encode expr >>= modifyTree markContent
   where
     encode e@(PPrjApp _ fId fAs _ _)
       | unaryTransformer fId && any isETransformer fAs
@@ -807,7 +826,7 @@ encodeTransformerExprs expr = modifyTree encode expr >>= modifyTree markContent
     mkFold1 e@(PPrjApp cE fId fAs fArg appAs) = do
       accE           <- mkAccumE e
       (nfAs', nfArg) <- mkIndepAccF fId fAs fArg
-      let nfAs = markPureTransformer nfAs' appAs
+      let nfAs = markPureTransformer nfAs' fArg
       let (nApp1As, nApp2As) = (markTAppChain appAs, markTAppChain [])
       return $ PPrjApp2 cE "fold" nfAs nfArg accE nApp1As nApp2As
 
@@ -819,7 +838,7 @@ encodeTransformerExprs expr = modifyTree encode expr >>= modifyTree markContent
                         fArg1@(streamableTransformerArg -> streamable) fArg2
                         app1As app2As)
       = let nfAs' = fAs++[pFusionSpec (if streamable then (ICondN,IndepTr) else (Open,DepTr))]
-            nfAs  = markPureTransformer nfAs' app2As
+            nfAs  = markPureTransformer nfAs' fArg1
         in return $ PPrjApp2 cE fId nfAs fArg1 fArg2 app1As app2As
 
     mkFold2 e = return e
@@ -830,7 +849,8 @@ encodeTransformerExprs expr = modifyTree encode expr >>= modifyTree markContent
             (accE, valueT)  <- mkGBAccumE e
             rAccE           <- mkAccumE e
             (nfAs', nfArg1) <- mkGBAccumF valueT fAs fArg1 fArg2 fArg3
-            let nfAs                       = markPureTransformer nfAs' app3As
+            let nfAs                       = nfAs' ++ if readOnly env fArg1 && readOnly env fArg2
+                                                      then [pPureTransformer] else [pImpureTransformer]
             let (nApp1As, nApp2As)         = (markTAppChain app1As, markTAppChain app2As)
             let buildE                     = PPrjApp2 cE "fold" nfAs nfArg1 accE nApp1As nApp2As
             let copyF                      = mkAccF (\_ e -> e) (\_ _ e -> e)
@@ -917,9 +937,8 @@ encodeTransformerExprs expr = modifyTree encode expr >>= modifyTree markContent
 
     markTAppChain as = cleanAnns $ nub $ as ++ [pTAppChain]
 
-    markPureTransformer as asWithEffect = cleanAnns $ nub $
-      if any isEPure asWithEffect then as ++ [pPureTransformer]
-                                  else as ++ [pImpureTransformer]
+    markPureTransformer as e = cleanAnns $ nub $
+      if readOnly env e then as ++ [pPureTransformer] else as ++ [pImpureTransformer]
 
     propagateRecType ias as = nub $ as ++ (if any isEOElemRec ias then [pIElemRec] else [])
 
@@ -929,12 +948,12 @@ encodeTransformerExprs expr = modifyTree encode expr >>= modifyTree markContent
     accumEerr   e = Left . boxToString $ ["Invalid accumulator construction on: "] %$ prettyLines e
 
 
-fuseProgramFoldTransformers :: K3 Declaration -> Either String (K3 Declaration)
-fuseProgramFoldTransformers prog =
-  mapExpression fuseFoldTransformers prog >>= return . repairProgram "fusion"
+fuseProgramFoldTransformers :: EffectEnv -> K3 Declaration -> Either String (K3 Declaration)
+fuseProgramFoldTransformers env prog =
+  mapExpression (fuseFoldTransformers env) prog >>= return . repairProgram "fusion"
 
-fuseFoldTransformers :: K3 Expression -> Either String (K3 Expression)
-fuseFoldTransformers expr = mapTree (flip $ curry fuse) expr
+fuseFoldTransformers :: EffectEnv -> K3 Expression -> Either String (K3 Expression)
+fuseFoldTransformers env expr = mapTree (flip $ curry fuse) expr
   where
     repeatE e = fuse $ (id &&& children) e
     repeatM m = m >>= fuse . (id &&& children)
@@ -1293,7 +1312,7 @@ fuseFoldTransformers expr = mapTree (flip $ curry fuse) expr
 
       in return $ EC.lambda i $ EC.lambda j $ EC.caseOf lookupE ci someE noneE
 
-    simplifyLambda e = runIdentity $ betaReduction e
+    simplifyLambda e = runIdentity $ betaReduction env e
 
     -- Fusion spec helpers
     updateFusionSpec as spec = filter (not . isEFusionSpec) as ++ [pFusionSpec spec]

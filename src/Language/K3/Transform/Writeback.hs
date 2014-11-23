@@ -27,7 +27,8 @@ import Language.K3.Core.Declaration
 
 import Language.K3.Analysis.Effects.Common
 import Language.K3.Analysis.Effects.Core
-import Language.K3.Analysis.Effects.InsertEffects(EffectEnv, eE, eS, expandEffDeep)
+import Language.K3.Analysis.Effects.InsertEffects(EffectEnv, eE, eS, expandEffDeep, expandSymDeep)
+import Language.K3.Analysis.Effects.Queries
 
 import Language.K3.Transform.Hints
 
@@ -40,22 +41,24 @@ instance (Ord a) => GHC.Exts.IsList (S.Set a) where
 pattern TAC t as cs = Node (t :@: as) cs
 
 findScope :: EffectEnv -> K3 Effect -> K3 Effect
-findScope env f@(tag . eE env -> FScope _ _) = f
+findScope env f@(tag . eE env -> FScope _) = f
 findScope env (children . eE env -> fs) = findScope env (last fs)
 
-symIDs :: S.Set (K3 Symbol) -> S.Set Identifier
-symIDs = S.map (\(tag -> Symbol i _) -> i)
+symIDs :: EffectEnv -> S.Set (K3 Symbol) -> S.Set Identifier
+symIDs env = S.map (symIdent . tag . eS env)
 
 -- | Determine whether or not a given symbol has a read/write/superstructure conflict in the given
 -- effect tree. To conflict, the symbol's superstructure must be read after the symbol was written
 -- to, or the superstructure was written anywhere.
 conflicts :: EffectEnv -> K3 Effect -> K3 Symbol -> Bool
-conflicts env (expandEffDeep env -> f) k = conflictsWR f || any (`hasWrite` f) kk
+conflicts env (expandEffDeep env -> f) (expandSymDeep env -> k)
+    = conflictsWR f || any (\q -> evalQueryM (doesWriteOn f q) env) kk
   where
     kk = S.delete k $ anySuperStructure k
 
-    conflictsWR (tnc . eE env -> (FSeq, [first, second]))
-        = conflictsWR first || conflictsWR second || (hasWrite k first && any (`hasRead` second) kk)
+    conflictsWR (eE env -> tnc -> (FSeq, [first, second]))
+        = conflictsWR first || conflictsWR second ||
+          (evalQueryM (doesWriteOn first k) env && any (\s -> evalQueryM (doesReadOn second s) env) kk)
     conflictsWR (children . eE env -> cs) = any conflictsWR cs
 
 writebackOpt :: EffectEnv -> K3 Declaration -> K3 Declaration
@@ -72,9 +75,8 @@ writebackOptE env g@(TAC t@(ECaseOf _) as cs) = TAC t (constructBindHint env g :
 writebackOptE env (TAC t as cs)               = TAC t as $ map (writebackOptE env) cs
 
 constructBindHint :: EffectEnv -> K3 Expression -> Annotation Expression
-constructBindHint env g = EOpt $ BindHint (symIDs refBound, [], symIDs writeBound)
+constructBindHint env g = EOpt $ BindHint (symIDs env refBound, [], symIDs env writeBound)
   where
-    (tnc . eE env ->  (FScope newSymbols _, cs)) =
-        findScope env $ let (EEffect k) = fromJust $ g @~ isEEffect in k
-    (writeBound, refBound) = if null cs then ([], S.fromList newSymbols)
-                             else S.partition (conflicts env $ head cs) $ S.fromList newSymbols
+    (eE env -> tnc -> (FScope bs, es)) = findScope env $ let (EEffect k) = fromJust $ g @~ isEEffect in k
+    (writeBound, refBound) = if null es then ([], S.fromList bs)
+                             else S.partition (conflicts env $ head es) $ S.fromList bs

@@ -1,0 +1,193 @@
+include "Annotation/Collection.k3"
+
+typedef MyC = collection {a:int} @Collection
+declare c : MyC
+declare d : MyC
+declare e : mut int = 0
+declare f : MyC -> bool = \_ -> true
+
+trigger streamable : () = \_ -> (
+  let x = ((c.map (\r -> r.a + 1))
+             .map (\r -> r.elem + 2))
+             .fold (\z -> \r ->
+                      if true then (z.insert {a:r.elem}; z)
+                      else if true then z
+                      else (z.insert {a:r.elem}; z))
+                (empty {a:int} @Collection)
+  in
+  c.insert {a:5}; c.iterate (\_ -> ())
+)
+
+trigger nonStreamable : () = \_ -> (
+  let x = ((c.map (\r -> r.a + 1))
+             .map (\r -> r.elem + 1))
+             .fold (\z -> \r ->
+                      if f z then (z.insert {a:r.elem}; z)
+                      else if true then z
+                      else (z.insert {a:r.elem}; z))
+                (empty {a:int} @Collection)
+  in
+  c.insert {a:5}; c.iterate (\_ -> ())
+)
+
+trigger complex : () = \_ -> (
+  let x = (((c.fold (\z -> \r ->
+                      if true
+                      then (z.insert {a:r.a+5}; z)
+                      else z)
+                    (empty {a:int} @Collection))
+            .map (\r -> r.a + 1))
+            .map (\r -> r.elem + 1))
+            .fold (\z -> \r ->
+                      if true then (z.insert {a:r.elem+5}; z)
+                      else if true then z
+                      else (z.insert {a:r.elem}; z))
+                (empty {a:int} @Collection)
+  in
+  c.insert {a:5}; c.iterate (\_ -> ())
+)
+
+trigger mapMap : () = \_ -> (
+  let x = ((c.map (\r -> r.a + 1))
+             .map (\r -> r.elem + 2))
+  in
+  c.insert {a:5}; c.iterate (\_ -> ())
+)
+
+trigger mapFilter : () = \_ -> (
+  let x = ((c.map    (\r -> r.a + 1))
+             .filter (\r -> r.elem > 5))
+  in
+  c.insert {a:5}; c.iterate (\_ -> ())
+)
+
+trigger mapIterate : () = \_ -> (
+  c.insert {a:5};
+  ((c.map     (\r -> r.a + 1))
+     .iterate (\r -> if r.elem > 5 then () else ()))
+)
+
+trigger mapFold : () = \_ -> (
+  c.insert {a:5};
+  ((c.map  (\r -> r.a + 1))
+     .fold (\acc -> \r -> if r.elem > 5 then () else ()) ())
+)
+
+trigger mapMapMap : () = \_ -> (
+  let x = (((c.map (\r -> r.a + 1))
+              .map (\r -> r.elem + 2))
+              .map (\r -> r.elem + 3))
+  in
+  c.insert {a:5}; c.iterate (\_ -> ())
+)
+
+trigger foldMap : () = \_ -> (
+  let x = ((c.fold (\acc -> \r ->
+                     if true then (acc.insert {a:r.a+1}; acc)
+                     else acc)
+                   (empty {a:int} @Collection))
+              .map (\r -> r.a+2))
+  in
+  c.insert {a:5}; c.iterate (\_ -> ())
+)
+
+trigger foldFilter : () = \_ -> (
+  let x = ((c.fold (\acc -> \r ->
+                     if true then (acc.insert {a:r.a+1}; acc)
+                     else acc)
+                   (empty {a:int} @Collection))
+              .filter (\r -> r.a > 2))
+  in
+  c.insert {a:5}; c.iterate (\_ -> ())
+)
+
+trigger foldIterate : () = \_ -> (
+  c.insert {a:5};
+  ((c.fold (\acc -> \r ->
+             if true then (acc.insert {a:r.a+1}; acc)
+             else acc)
+           (empty {a:int} @Collection))
+     .iterate (\r -> e = r.a))
+)
+
+trigger foldMapMap : () = \_ -> (
+  let x = (((c.fold (\acc -> \r ->
+                      if true then (acc.insert {a:r.a+1}; acc)
+                      else acc)
+                    (empty {a:int} @Collection))
+               .map (\r -> r.a+2))
+               .map (\r -> r.elem+3))
+  in
+  c.insert {a:5}; c.iterate (\_ -> ())
+)
+
+trigger mapGroupBy : () = \_ -> (
+  let x = ((c.map     (\r -> r.a + 1))
+             .groupBy (\r -> r.elem + 2)
+                      (\acc -> \r -> acc + 1)
+                      0)
+  in
+  c.insert {a:5}
+)
+
+trigger mapMapGroupBy : () = \_ -> (
+  let x = (((c.map     (\r -> r.a + 1))
+              .map     (\r -> r.elem + 2))
+              .groupBy (\r -> r.elem + 3)
+                       (\acc -> \r -> acc + 1)
+                       0)
+  in
+  c.insert {a:5}
+)
+
+trigger groupByMapMap : () = \_ -> (
+  let x = (((c.groupBy (\r -> r.a + 3)
+                       (\acc -> \r -> acc + 1)
+                       0)
+              .map     (\r -> r.value + 1))
+              .map     (\r -> r.elem + 2))
+  in
+  c.insert {a:5}
+)
+
+trigger foldGroupBy : () = \_ -> (
+  let x = ((c.fold    (\acc -> \r -> (acc.insert {a:r.a+1}; acc))
+                      (empty {a:int} @Collection))
+             .groupBy (\r -> r.a + 2)
+                      (\acc -> \r -> acc + 1)
+                      0)
+  in
+  c.insert {a:5}
+)
+
+trigger groupByFold : () = \_ -> (
+  let x = ((c.groupBy (\r -> r.a + 2)
+                      (\acc -> \r -> acc + 1)
+                      0)
+             .fold    (\acc -> \r -> (acc.insert {a:r.value+1}; acc))
+                      (empty {a:int} @Collection))
+  in
+  c.insert {a:5}
+)
+
+trigger groupByFoldMap : () = \_ -> (
+  let x = ((c.groupBy (\r -> r.a + 2)
+                      (\acc -> \r -> acc + 1)
+                      0)
+             .fold    (\acc -> \r -> (acc.insert {a:r.value+1}; acc))
+                      (empty {a:int} @Collection))
+             .map     (\r -> r.a + 4)
+  in
+  c.insert {a:5}
+)
+
+trigger groupByFoldMapMap : () = \_ -> (
+  (((((c.groupBy (\r -> r.a + 2)
+                 (\acc -> \r -> acc + 1)
+                 0)
+        .fold    (\acc -> \r -> (acc.insert {a:r.value+1}; acc))
+                 (empty {a:int} @Collection))
+        .map     (\r -> r.a + 4))
+        .map     (\r -> r.elem + 7))
+        .iterate (\r -> ()))
+)

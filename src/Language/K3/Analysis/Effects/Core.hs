@@ -10,25 +10,7 @@ import Data.Tree
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
-
 import Language.K3.Utils.Pretty
-
-data EffectKind
-    = FAtom
-    | FSymbol
-    | FFunction
-  deriving (Eq, Read, Show)
-
-data instance Annotation EffectKind = KAnnotation deriving (Eq, Read, Show)
-
-data TempType
-    = TAlias      -- The temporary is an alias
-    | TSub        -- The temporary is a subtype of the next element
-    | TIndirect   -- The temporary is an indirection
-    | TUnbound    -- Unbound global
-    | TTemp       -- The temp has no connection to any other element
-    | TSubstitute -- A projection requires a substitution
-    deriving (Eq, Ord, Read, Show)
 
 data Provenance
     = PRecord Identifier
@@ -37,21 +19,26 @@ data Provenance
     | PProject Identifier -- Created by projections
     | PLet
     | PCase
-    | PScope [K3 Symbol] MaybeClosure
-    -- A symbol can be 'applied' to produce effects and a new symbol
-    | PLambda Identifier (K3 Effect)
-    -- A symbol application only generates symbols
-    | PApply
-    -- Any of the children of PSet can occur
-    | PSet
-    | PChoice -- One of the cases must be chosen ie. they're exclusive
+    | PClosure
+    | PLambda (K3 Effect)
+    | PApply       -- A symbol application only extracts the child symbols
+    | PSet         -- Non-deterministic (if-then-else or case)
+    | PChoice      -- One of the cases must be chosen ie. they're exclusive
+    | PDerived     -- A symbol derived from its children e.g. x + y ==> [x;y]
+    | PDirect      -- A temporary representation that's a direct path to its child
     -- The following can be roots
     | PVar
-    | PTemporary TempType
+    | PTemporary   -- A local leading to no lineage of interest
     | PGlobal
   deriving (Eq, Ord, Read, Show)
 
-data Symbol = Symbol Identifier Provenance
+data Symbol = Symbol { symIdent :: Identifier
+                     , symProv :: Provenance
+                     , symHasMove :: Bool
+                     , symHasCopy :: Bool
+                     , symHasWb :: Bool
+                     , symLambdaChoice :: Int  -- Which lambda version to apply, from a PChoice (default=0)
+                     }
             | SymId Int
             deriving (Eq, Ord, Read, Show)
 
@@ -68,13 +55,11 @@ isSDeclared (SDeclared _) = True
 isSDeclared _ = False
 
 type ClosureInfo = ([K3 Symbol], [K3 Symbol], [K3 Symbol])
-type MaybeClosure = Either (Map Identifier [K3 Symbol], Maybe(K3 Effect), Maybe(K3 Symbol)) ClosureInfo
 
 data Effect
     = FRead (K3 Symbol)
     | FWrite (K3 Symbol)
-    -- bound, read, written, applied within the scope
-    | FScope [K3 Symbol] MaybeClosure
+    | FScope [K3 Symbol]
     -- An effect application only generates effects
     | FApply (K3 Symbol) (K3 Symbol)
     | FIO
@@ -91,21 +76,12 @@ isFID _ = True
 
 
 instance Pretty (K3 Symbol) where
-  prettyLines (Node (Symbol i (PLambda j eff) :@: as) ch) =
-    let (annStr, pAnnStrs) = drawSymAnnotations as in
-    ["Symbol " ++ i ++ " PLambda " ++ j ++ " " ++ annStr] ++ ["|"]
-    ++ (if null pAnnStrs then [] else (shift "+- " "|  " pAnnStrs) ++ ["|"])
-    ++ (if null ch
-         then terminalShift eff
+  prettyLines (Node (Symbol {symIdent=i, symProv=PLambda eff, symHasCopy=cp} :@: as) ch) =
+    ["Symbol " ++ i ++ " PLambda " ++ show cp ++ " " ++ drawAnnotations as] ++
+      (if null ch then terminalShift eff
          else nonTerminalShift eff ++ drawSubTrees ch)
 
-  prettyLines (Node (tg :@: as) ch) =
-    let (annStr, pAnnStrs) = drawSymAnnotations as in
-    [show tg ++ annStr]
-      ++ (if null pAnnStrs then []
-          else ["|"] ++ if null ch then (shift "`- " "   " pAnnStrs)
-                                   else (shift "+- " "|  " pAnnStrs))
-      ++ (if not $ null ch then ["|"] else []) ++ drawSubTrees ch
+  prettyLines (Node (tg :@: as) ch) = (show tg ++ drawAnnotations as) : drawSubTrees ch
 
 instance Pretty (K3 Effect) where
   prettyLines (Node (FRead  sym :@: as) ch) =
@@ -120,13 +96,9 @@ instance Pretty (K3 Effect) where
         then terminalShift sym
         else nonTerminalShift sym ++ drawSubTrees ch)
 
-  prettyLines (Node (FScope syms (Right (rd,wr,app)) :@: as) ch) =
-    let pfx = if null ch then " " else "|" in
+  prettyLines (Node (FScope syms :@: as) ch) =
     ["FScope " ++ drawAnnotations as]
-      ++ (concatMap (shift "+- " (pfx ++ "  ") . prettyLines) syms)
-      ++ (concatMap (shift "+R " (pfx ++ "  ") . prettyLines) rd)
-      ++ (concatMap (shift "+W " (pfx ++ "  ") . prettyLines) wr)
-      ++ (concatMap (shift "+A " (pfx ++ "  ") . prettyLines) app)
+      ++ (concatMap (shift "+- " "|  " . prettyLines) syms)
       ++ drawSubTrees ch
 
   prettyLines (Node (FApply fSym argSym :@: as) ch) =
