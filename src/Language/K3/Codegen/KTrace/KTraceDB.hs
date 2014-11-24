@@ -92,7 +92,7 @@ mkEventTraceSchema _ = createTable "Messages" $ keyAttrs ++ logAttrs
   where logAttrs =   [ ("trigger",     "text")
                      , ("source_peer", "text")
                      , ("contents",    "text")
-                     , ("time"    ,    "date")]
+                     , ("time"    ,    "text")]
 
 
 mkResultSchema :: [Identifier] -> K3 Declaration -> Either String String
