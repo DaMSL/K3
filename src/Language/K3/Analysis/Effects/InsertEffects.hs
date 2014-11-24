@@ -201,7 +201,7 @@ lookupBindInnerM i = do
     -- Each closure symbol points to the next
     initClosureSyms ((LambdaLayer Nothing):xs) = do
       (n, s, rest)  <- initClosureSyms xs
-      s'            <- genSym PClosure False True False [s]
+      s'            <- (symIdent . tag) <$> expandSymM s >>= \i -> symbolM i PClosure False True False [s]
       return ((LambdaLayer (Just s')):n, s', rest)
     initClosureSyms ((n@(LocalSym s)):rest)  = return ([n], s, rest)
     initClosureSyms (n@(LambdaLayer (Just s)):rest) = return ([n], s, rest)
