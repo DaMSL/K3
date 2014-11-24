@@ -98,7 +98,7 @@ coverSpans :: Span -> Span -> Span
 coverSpans (Span n l1 c1 _ _) (Span _ _ _ l2 c2) = Span n l1 c1 l2 c2
 coverSpans s@(Span _ _ _ _ _) (GeneratedSpan _)  = s
 coverSpans (GeneratedSpan _) s@(Span _ _ _ _ _)  = s
-coverSpans (GeneratedSpan s1) (GeneratedSpan s2) = GeneratedSpan (s1++", "++s2)
+coverSpans (GeneratedSpan s1) (GeneratedSpan s2) = GeneratedSpan $ s1++", "++s2
 
 -- | Left extension of a span.
 prefixSpan :: Int -> Span -> Span

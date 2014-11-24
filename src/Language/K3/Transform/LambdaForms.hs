@@ -1,16 +1,23 @@
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Transform.LambdaForms where
 
-import Prelude hiding (any, elem, notElem)
+import Prelude hiding (any, elem, notElem, concatMap, sequence, mapM, mapM_)
 
 import Control.Applicative
 import Control.Arrow
+import Control.Monad.Identity hiding (sequence, mapM, mapM_)
+import Control.Monad.State hiding (sequence, mapM, mapM_)
 
 import Data.Foldable
+import Data.Traversable
 import Data.Maybe
 import Data.Tree
+
+import Data.List (nub)
 
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -21,94 +28,164 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 
-import Language.K3.Analysis.Effects.Common
 import Language.K3.Analysis.Effects.Core
-import Language.K3.Analysis.Effects.InsertEffects(EffectEnv(..), symRWAQuery, eE, eS)
+import Language.K3.Analysis.Effects.InsertEffects
+import Language.K3.Analysis.Effects.Queries
 
 import Language.K3.Transform.Common
 import Language.K3.Transform.Hints
 
 symIDs :: EffectEnv -> S.Set (K3 Symbol) -> S.Set Identifier
-symIDs env = S.map (\(tag . eS env -> Symbol i _) -> i)
+symIDs env = S.map (symIdent . tag . eS env)
 
 isDerivedFromGlobal :: EffectEnv -> K3 Symbol -> Bool
-isDerivedFromGlobal _ (tag -> Symbol _ PGlobal) = True
-isDerivedFromGlobal _ (tag -> Symbol _ (PTemporary TUnbound)) = True
-isDerivedFromGlobal env (tag &&& children -> (Symbol _ (PRecord _), cs)) = any (isDerivedFromGlobal env) cs
-isDerivedFromGlobal env (tag &&& children -> (Symbol _ (PTuple _), cs)) = any (isDerivedFromGlobal env) cs
-isDerivedFromGlobal env (tag &&& children -> (Symbol _ PIndirection, cs)) = any (isDerivedFromGlobal env) cs
-isDerivedFromGlobal env (tag &&& children -> (Symbol _ (PProject _), cs)) = any (isDerivedFromGlobal env) cs
-isDerivedFromGlobal env (tag &&& children -> (Symbol _ PCase, cs)) = any (isDerivedFromGlobal env) cs
-isDerivedFromGlobal env (tag &&& children -> (Symbol _ PApply, cs)) = any (isDerivedFromGlobal env) cs
-isDerivedFromGlobal env (tag &&& children -> (Symbol _ PSet, cs)) = any (isDerivedFromGlobal env) cs
-isDerivedFromGlobal env (tag &&& children -> (Symbol _ PVar, cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal _ (tag -> symProv -> PGlobal) = True
+isDerivedFromGlobal env (tag &&& children -> (symProv -> (PRecord _), cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (symProv -> (PTuple _), cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (symProv -> PIndirection, cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (symProv -> (PProject _), cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (symProv -> PCase, cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (symProv -> PApply, cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (symProv -> PSet, cs)) = any (isDerivedFromGlobal env) cs
+isDerivedFromGlobal env (tag &&& children -> (symProv -> PVar, cs)) = any (isDerivedFromGlobal env) cs
 isDerivedFromGlobal env s@(tag -> SymId i) = isDerivedFromGlobal env (eS env s)
 isDerivedFromGlobal _ _ = False
 
-lambdaFormOptD :: TransformConfig -> EffectEnv -> K3 Declaration -> K3 Declaration
-lambdaFormOptD c env (Node (DGlobal i t me :@: as) cs) = Node (DGlobal  i t (lambdaFormOptE c env [] <$> me) :@: as) cs
-lambdaFormOptD c env (Node (DTrigger i t e :@: as) cs) = Node (DTrigger i t (lambdaFormOptE c env [] e)      :@: as) cs
-lambdaFormOptD c env (Node (DRole n :@: as) cs)        = Node (DRole n :@: as) $ map (lambdaFormOptD c env) cs
-lambdaFormOptD _ _ t = t
+type LFS = (EffectEnv, [K3 Expression], TransformConfig)
+type LFM = StateT LFS Identity
 
-lambdaFormOptE :: TransformConfig -> EffectEnv -> [K3 Expression] -> K3 Expression -> K3 Expression
-lambdaFormOptE conf env ds e@(Node (ELambda x :@: as) [b]) = Node (ELambda x :@: (a:c:as)) [lambdaFormOptE conf env ds b]
-  where
-    ESymbol (tag . eS env -> (Symbol _ (PLambda _ (tag . eE env -> FScope [binding] (Right(cRead, cWritten, cApplied))))))
-        = fromJust $ e @~ isESymbol
+runLFM :: LFM a -> LFS -> (a, LFS)
+runLFM = runState
 
-    getEffects e' = (\(EEffect f) -> f) <$> e' @~ (\case { EEffect _ -> True; _ -> False })
+evalLFM :: LFM a -> LFS -> a
+evalLFM = evalState
 
-    fs = mapMaybe getEffects ds
-    moveable (eS env -> g) = not (isDerivedFromGlobal env g) &&
-                             not (any (\f -> let (r, w, _) = symRWAQuery f [g] env in g `elem` r || g `elem` w) fs)
+instance EffectMonad LFM where
+  getEnv = get >>= \(e, _, _) -> return e
+  modifyEnv f = modify (\(e, ds, tc) -> (f e, ds, tc))
 
-    funcHint
-        | binding `elem` cWritten = False
-        | binding `elem` cApplied = True
-        | binding `elem` cRead = True
-        | otherwise = False
+downstreams :: LFM [K3 Expression]
+downstreams = get >>= \(_, ds, _) -> return ds
 
-    captHint = foldl' captHint' (S.empty, S.empty, S.empty) $ cRead ++ cWritten ++ cApplied
+withExtraDownstreams :: [K3 Expression] -> LFM a -> LFM a
+withExtraDownstreams ds m = do
+  (env, ds', tc) <- get
+  put (env, ds ++ ds', tc)
+  a <- m
+  (env', _, tc') <- get
+  put (env', ds', tc')
+  return a
 
-    captHint' (cref, move, copy) s
-        | s === binding                                    = (cref, move, copy)
-        | moveable s && s `elem` cApplied && optMoves conf = (cref, S.insert s move, copy)
-        | s `notElem` cWritten && optRefs conf             = (S.insert s cref, move, copy)
-        | moveable s && optMoves conf                      = (cref, S.insert s move, copy)
-        | otherwise                                        = (cref, move, S.insert s copy)
+transformConfig :: LFM TransformConfig
+transformConfig = get >>= \(_, _, tc) -> return tc
 
-    a = EOpt $ FuncHint $ funcHint && optRefs conf
-    c = EOpt $ CaptHint $ let (cref, move, copy) = captHint
-                          in (symIDs env cref, symIDs env move, symIDs env copy)
+lambdaFormOpt :: TransformConfig -> EffectEnv -> K3 Declaration -> K3 Declaration
+lambdaFormOpt tc env d = evalLFM (lambdaFormOptD d) (env, [], tc)
 
-lambdaFormOptE c env ds (Node (EOperate OSeq :@: as) [a, b])
-    = Node (EOperate OSeq :@: as) [lambdaFormOptE c env (b:ds) a, lambdaFormOptE c env ds b]
-lambdaFormOptE c env ds (Node (EOperate OApp :@: as) [f', x])
-    = Node (EOperate OApp :@: as) [lambdaFormOptE c env (x:ds) f', (lambdaFormOptE c env ds x) @+ a]
-  where
-    getEffects e = (\(EEffect f) -> f) <$> e @~ (\case { EEffect _ -> True; _ -> False })
-    getSymbol e = (\(ESymbol f) -> f) <$> e @~ (\case { ESymbol _ -> True; _ -> False })
+lambdaFormOptD :: K3 Declaration -> LFM (K3 Declaration)
+lambdaFormOptD (Node (DGlobal i t me :@: as) cs) = do
+  me' <- sequence $ lambdaFormOptE <$> me
+  return $ Node (DGlobal  i t me' :@: as) cs
 
-    isGlobal (tag -> EVariable i) = M.member i (globalEnv env)
-    isGlobal _ = False
+lambdaFormOptD (Node (DTrigger i t e :@: as) cs) = do
+  e' <- lambdaFormOptE e
+  return $ Node (DTrigger i t e' :@: as) cs
 
-    fs = mapMaybe getEffects ds
-    argument = getSymbol x
-    moveable (eS env -> g) = not (isDerivedFromGlobal env g) &&
-                             not (any (\f -> let (r, w, _) = symRWAQuery f [g] env in g `elem` r || g `elem` w) fs)
+lambdaFormOptD (Node (DRole n :@: as) cs) = Node (DRole n :@: as) <$> mapM lambdaFormOptD cs
+lambdaFormOptD t = return t
 
-    passHint = isGlobal x || argument == Nothing || not (moveable $ fromJust argument)
-    a = EOpt $ PassHint passHint
-lambdaFormOptE c env ds (Node (EIfThenElse :@: as) [i, t, e])
-    = Node (EIfThenElse :@: as) [ lambdaFormOptE c env (t:e:ds) i
-                                , lambdaFormOptE c env ds t
-                                , lambdaFormOptE c env ds e
-                                ]
-lambdaFormOptE c env ds (Node (ELetIn i :@: as) [e, b])
-    = Node (ELetIn i :@: as) [lambdaFormOptE c env (b:ds) e, lambdaFormOptE c env ds b]
-lambdaFormOptE c env ds (Node (ECaseOf x :@: as) [e, s, n])
-    = Node (ECaseOf x :@: as) [lambdaFormOptE c env (s:n:ds) e, lambdaFormOptE c env ds s, lambdaFormOptE c env ds n]
-lambdaFormOptE c env ds (Node (EBindAs b :@: as) [i, e])
-    = Node (EBindAs b :@: as) [lambdaFormOptE c env (e:ds) i, lambdaFormOptE c env ds e]
-lambdaFormOptE c env ds (Node (t :@: as) cs) = Node (t :@: as) (map (lambdaFormOptE c env ds) cs)
+lambdaFormOptE :: K3 Expression -> LFM (K3 Expression)
+lambdaFormOptE e@(Node (ELambda x :@: as) [b]) = do
+  b' <- lambdaFormOptE b
+  env <- getEnv
+  ds <- downstreams
+  conf <- transformConfig
+  let fs = mapMaybe getEffects ds
+  let (ESymbol (eS env -> tnc -> (symProv -> PLambda (eE env -> fc@(Node (FScope bindings@(binding:closure) :@: _) bes)), returnSymbols))) = fromJust $ e @~ isESymbol
+  let  moveable (expandSymDeep env -> g) = not (isDerivedFromGlobal env g) &&
+                                           not (any (\f -> let SymbolCategories r w _ _ _
+                                                                 = effectSCategories f [g] env
+                                                           in g `elemSymbol` r || g `elemSymbol` w) fs)
+
+  let SymbolCategories cRead cWritten cApplied _ _ = exprSCategories False e env
+
+  let parent = head . children
+
+  let funcHint
+          | binding `elemSymbol` cWritten = False
+          | binding `elemSymbol` cApplied = True
+          | binding `elemSymbol` cRead = True
+          | otherwise = False
+
+  let captHint' (cref, move, copy) s
+          | moveable (parent s) && s `elemSymbol` cApplied && optMoves conf
+              = toggleCopy s >> toggleMove s >> return (cref, S.insert (parent s) move, copy)
+          | s `notElemSymbol` cWritten && optRefs conf
+              = toggleCopy s >> return (S.insert (parent s) cref, move, copy)
+          | moveable (parent s) && optMoves conf
+              = toggleCopy s >> toggleMove s >> return (cref, S.insert (parent s) move, copy)
+          | otherwise = return (cref, move, S.insert (parent s) copy)
+
+  captHint <- foldM captHint' (S.empty, S.empty, S.empty) $
+                 mapMaybe (\(expandSymDeep env -> symbol)
+                                -> case symbol of
+                                     (tag -> symProv -> PClosure) -> Just symbol
+                                     _ -> Nothing) bindings
+
+  let a = EOpt $ FuncHint $ funcHint && optRefs conf
+  let c = EOpt $ CaptHint $ let (cref, move, copy) = captHint
+                            in (symIDs env cref, symIDs env move, symIDs env copy)
+
+  return $ Node (ELambda x :@: (a:c:as)) [b']
+ where
+  getEffects e' = (\(EEffect f) -> f) <$> e' @~ isEEffect
+
+lambdaFormOptE (Node (EOperate OSeq :@: as) [a, b]) = do
+  a' <- withExtraDownstreams [b] $ lambdaFormOptE a
+  b' <- lambdaFormOptE b
+  return $ Node (EOperate OSeq :@: as) [a', b']
+
+lambdaFormOptE (Node (EOperate OApp :@: as) [f, x]) = do
+  f' <- withExtraDownstreams [x] $ lambdaFormOptE f
+  x' <- lambdaFormOptE x
+
+  env <- getEnv
+
+  let getEffects e = (\(EEffect f) -> f) <$> e @~ (\case { EEffect _ -> True; _ -> False })
+  let getSymbol e = (\(ESymbol f) -> f) <$> e @~ (\case { ESymbol _ -> True; _ -> False })
+
+  ds <- downstreams
+
+  let fs = mapMaybe getEffects ds
+  let argument = getSymbol x
+  let moveable (expandSymDeep env -> g) = not (isDerivedFromGlobal env g) &&
+                                           not (any (\f -> let SymbolCategories r w _ _ _
+                                                                 = effectSCategories f [g] env
+                                                           in g `elemSymbol` r || g `elemSymbol` w) fs)
+  let passHint = maybe True (not . moveable) argument
+  let a = EOpt $ PassHint passHint
+
+  return $ Node (EOperate OApp :@: as) [f', x' @+ a]
+
+lambdaFormOptE (Node (EIfThenElse :@: as) [i, t, e]) = do
+  i' <- withExtraDownstreams [t, e] $ lambdaFormOptE i
+  t' <- lambdaFormOptE t
+  e' <- lambdaFormOptE e
+  return $ Node (EIfThenElse :@: as) [i', t', e']
+
+lambdaFormOptE (Node (ELetIn i :@: as) [e, b]) = do
+  e' <- withExtraDownstreams [b] $ lambdaFormOptE e
+  b' <- lambdaFormOptE b
+  return $ Node (ELetIn i :@: as) [e', b']
+
+lambdaFormOptE (Node (ECaseOf x :@: as) [e, s, n]) = do
+  e' <- withExtraDownstreams [s, n] $ lambdaFormOptE e
+  s' <- lambdaFormOptE s
+  n' <- lambdaFormOptE n
+  return $ Node (ECaseOf x :@: as) [e', s', n']
+
+lambdaFormOptE (Node (EBindAs b :@: as) [i, e]) = do
+  i' <- withExtraDownstreams [e] $ lambdaFormOptE i
+  e' <- lambdaFormOptE e
+  return $ Node (EBindAs b :@: as) [i', e']
+lambdaFormOptE (Node (t :@: as) cs) = Node (t :@: as) <$> mapM lambdaFormOptE cs

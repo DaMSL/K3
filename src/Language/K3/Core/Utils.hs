@@ -64,6 +64,16 @@ module Language.K3.Core.Utils
 , onProgramUID
 , maxProgramUID
 , minProgramUID
+
+, stripComments
+, stripTypeAnns
+, resetEffectAnns
+, stripEffectAnns
+, stripAllEffectAnns
+, stripTypeAndEffectAnns
+, stripAllTypeAndEffectAnns
+, stripAllProperties
+
 ) where
 
 import Control.Applicative
@@ -81,6 +91,8 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
 import qualified Language.K3.Core.Constructor.Expression as EC
+
+import Language.K3.Analysis.Effects.Core
 
 import Language.K3.Utils.Pretty hiding ( wrap )
 
@@ -585,6 +597,7 @@ freeVariables :: K3 Expression -> [Identifier]
 freeVariables expr = either (const []) id $ foldMapTree extractVariable [] expr
   where
     extractVariable chAcc (tag -> EVariable n) = return $ concat chAcc ++ [n]
+    extractVariable chAcc (tag -> EAssign i)   = return $ concat chAcc ++ [i]
     extractVariable chAcc (tag -> ELambda n)   = return $ filter (/= n) $ concat chAcc
     extractVariable chAcc (tag -> EBindAs b)   = return $ filter (`notElem` bindingVariables b) $ concat chAcc
     extractVariable chAcc (tag -> ELetIn i)    = return $ filter (/= i) $ concat chAcc
@@ -655,15 +668,15 @@ stripTypeAnnotations tStripF t = runIdentity $ mapTree strip t
 
 -- | Strips all annotations from a declaration deeply.
 stripAllDeclAnnotations :: K3 Declaration -> K3 Declaration
-stripAllDeclAnnotations = stripDeclAnnotations (const False) (const False) (const False)
+stripAllDeclAnnotations = stripDeclAnnotations (const True) (const True) (const True)
 
 -- | Strips all annotations from an expression deeply.
 stripAllExprAnnotations :: K3 Expression -> K3 Expression
-stripAllExprAnnotations = stripExprAnnotations (const False) (const False)
+stripAllExprAnnotations = stripExprAnnotations (const True) (const True)
 
 -- | Strips all annotations from a type deeply.
 stripAllTypeAnnotations :: K3 Type -> K3 Type
-stripAllTypeAnnotations = stripTypeAnnotations (const False)
+stripAllTypeAnnotations = stripTypeAnnotations (const True)
 
 
 {-| Tree repair utilities -}
@@ -727,3 +740,40 @@ maxProgramUID d = fst $ onProgramUID maxUID (UID (minBound :: Int)) d
 minProgramUID :: K3 Declaration -> UID
 minProgramUID d = fst $ onProgramUID minUID (UID (maxBound :: Int)) d
   where minUID (UID a) (UID b) = UID $ min a b
+
+{- Annotation removal -}
+stripComments :: K3 Declaration -> K3 Declaration
+stripComments = stripDeclAnnotations isDSyntax isESyntax (const False)
+
+stripTypeAnns :: K3 Declaration -> K3 Declaration
+stripTypeAnns = stripDeclAnnotations (const False) isAnyETypeAnn (const False)
+
+resetEffectAnns :: K3 Declaration -> K3 Declaration
+resetEffectAnns p = runIdentity $ mapMaybeAnnotation resetF idF idF p
+  where idF = return . Just
+        resetF (DSymbol s@(tag -> SymId _)) = return $
+          case s @~ isSDeclared of
+            Just (SDeclared s') -> Just $ DSymbol s'
+            _ -> Nothing
+        resetF a = return $ Just a
+
+stripEffectAnns :: K3 Declaration -> K3 Declaration
+stripEffectAnns p = resetEffectAnns $
+  stripDeclAnnotations (const False) isAnyEEffectAnn (const False) p
+
+-- | Effects-related metadata removal, including user-specified effect signatures.
+stripAllEffectAnns :: K3 Declaration -> K3 Declaration
+stripAllEffectAnns = stripDeclAnnotations isDSymbol isAnyEEffectAnn (const False)
+
+-- | Single-pass composition of type and effect removal.
+stripTypeAndEffectAnns :: K3 Declaration -> K3 Declaration
+stripTypeAndEffectAnns p = resetEffectAnns $
+  stripDeclAnnotations (const False) isAnyETypeOrEffectAnn (const False) p
+
+-- | Single-pass variant removing all effect annotations.
+stripAllTypeAndEffectAnns :: K3 Declaration -> K3 Declaration
+stripAllTypeAndEffectAnns = stripDeclAnnotations isDSymbol isAnyETypeOrEffectAnn (const False)
+
+-- | Removes all properties from a program.
+stripAllProperties :: K3 Declaration -> K3 Declaration
+stripAllProperties = stripDeclAnnotations isDProperty isEProperty (const False)

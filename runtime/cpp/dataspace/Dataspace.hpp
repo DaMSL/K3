@@ -866,7 +866,7 @@ template<class R>
 class Map {
   using Key = typename R::KeyType;
 
-  public:
+ public:
   // Default Constructor
   Map(): container() {}
   Map(const unordered_map<Key,R>& con): container(con) {}
@@ -890,14 +890,64 @@ class Map {
     return res;
   }
 
-  unit_t insert(const R& rec) {
-    container[rec.key] = rec;
-    return unit_t();
+  template <class I>
+  class map_iterator: public std::iterator<std::forward_iterator_tag, R> {
+    using container = unordered_map<Key, R>;
+    using reference = typename std::iterator<std::forward_iterator_tag, R>::reference;
+   public:
+    template <class _I>
+    map_iterator(_I&& _i): i(std::forward<_I>(_i)) {}
+
+    map_iterator& operator ++() {
+      ++i;
+      return *this;
+    }
+
+
+    map_iterator operator ++(int) {
+      map_iterator t = *this;
+      *this++;
+      return t;
+    }
+
+    auto operator *() {
+      return i->second;
+    }
+
+    bool operator ==(const map_iterator& other) {
+      return i == other.i;
+    }
+
+    bool operator !=(const map_iterator& other) {
+      return i != other.i;
+    }
+
+   private:
+    I i;
+  };
+
+  using iterator = map_iterator<typename unordered_map<Key, R>::iterator>;
+  using const_iterator = map_iterator<typename unordered_map<Key, R>::const_iterator>;
+
+  iterator begin() {
+    return iterator(container.begin());
   }
 
-  unit_t insert(R&& rec) {
-    container[rec.key] = std::move(rec);
-    return unit_t();
+  iterator end() {
+    return iterator(container.end());
+  }
+
+  const_iterator begin() const {
+    return const_iterator(container.cbegin());
+  }
+
+  const_iterator end() const {
+    return const_iterator(container.cend());
+  }
+
+  template <class Q>
+  unit_t insert(Q&& q) {
+    container[q.key] = std::forward<Q>(q);
   }
 
   template <class F>
@@ -1004,8 +1054,8 @@ class Map {
 
     // TODO more efficient implementation?
     Map<R_key_value<K,Z>> result;
-    for (const auto& it : container) {
-      result.insert(it.second);
+    for (auto&& it : accs) {
+      result.insert(std::move(R_key_value<K, Z> {std::move(it.first), std::move(it.second)}));
     }
     return result;
   }

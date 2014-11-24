@@ -1052,10 +1052,10 @@ inferProgramTypes prog = do
 
     mkErrorF :: K3 Expression -> (String -> String) -> (String -> String)
     mkErrorF e f s = spanAsString ++ f s
-      where spanAsString = let spans = mapMaybe getSpan $ annotations e
-                           in if null spans
+      where spanAsString = let uidSpans = filter (\a -> isESpan a || isEUID a) $ annotations e
+                           in if null uidSpans
                                 then (boxToString $ ["["] %+ prettyLines e %+ ["]"])
-                                else unwords ["[", show $ head spans, "] "]
+                                else show uidSpans
 
     memLookupErr  n = left $ "No annotation member in initial environment: " ++ n
     trigTypeErr   n = left $ "Invlaid trigger declaration type for: " ++ n
@@ -1317,10 +1317,12 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     textual    op = op `elem` [OConcat]
 
     mkErrorF :: K3 Expression -> (String -> String) -> (String -> String)
-    mkErrorF e f s = spanAsString ++ f s
-      where spanAsString = let spans = mapMaybe getSpan $ annotations e
-                           in if null spans then (boxToString $ ["["] %+ prettyLines e %+ ["]"])
-                                            else unwords ["[", show $ head spans, "] "]
+    mkErrorF e f s = uidSpanAsString ++ f s
+      where uidSpanAsString =
+              let uidSpans = filter (\a -> isESpan a || isEUID a) $ annotations e
+              in if null uidSpans
+                    then (boxToString $ ["["] %+ prettyLines e %+ ["]"])
+                    else show uidSpans
 
     -- | Error printing functions for unification cases
     assignErrF i = (("Invalid assignment to " ++ i ++ ": ") ++)

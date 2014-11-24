@@ -222,6 +222,10 @@ isEProperty :: Annotation Expression -> Bool
 isEProperty (EProperty _ _) = True
 isEProperty _               = False
 
+isESyntax :: Annotation Expression -> Bool
+isESyntax (ESyntax _) = True
+isESyntax _ = False
+
 isEApplyGen :: Annotation Expression -> Bool
 isEApplyGen (EApplyGen _ _ _) = True
 isEApplyGen _ = False
@@ -259,6 +263,15 @@ isEEffect _           = False
 isESymbol :: Annotation Expression -> Bool
 isESymbol (ESymbol _) = True
 isESymbol _           = False
+
+isAnyETypeAnn :: Annotation Expression -> Bool
+isAnyETypeAnn a = isETypeOrBound a || isEQType a
+
+isAnyEEffectAnn :: Annotation Expression -> Bool
+isAnyEEffectAnn a = isEEffect a || isESymbol a
+
+isAnyETypeOrEffectAnn :: Annotation Expression -> Bool
+isAnyETypeOrEffectAnn a = isAnyETypeAnn a || isAnyEEffectAnn a
 
 namedEAnnotations :: [Annotation Expression] -> [Identifier]
 namedEAnnotations anns = map extractId $ filter isEAnnotation anns
