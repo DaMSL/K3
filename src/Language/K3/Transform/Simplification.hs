@@ -1020,31 +1020,35 @@ fuseFoldTransformers env expr = do
         = case fuseAccF fArg1 gArg1 fAs gAs of
             Right (Just (ngAs, ngArg1)) -> do
               let r = PPrjApp2 cE "fold" (cleanElemAnns ngAs) ngArg1 gArg2 oApp1As oApp2As
-              return (True, debugFusionStep ngArg1 r)
+              return (True, debugFusionStep fAs gAs ngArg1 r)
 
             Right Nothing -> return $ (False, uncurry replaceCh nch)
             Left err -> Left err
 
       where cleanElemAnns as = filter (\a -> not $ isEIElemRec a) as
-            debugFusionStep ngArg1 e =
-              flip trace e $ unlines [ "Fused:" ++ showFusion fAs gAs, pretty $ stripAllExprAnnotations ngArg1 ]
 
     fuse nch@(PApp _ _ (any isETAppChain -> True), _)   = return $ (False, uncurry replaceCh nch)
     fuse nch@(PPrj _ _ (any isETransformer -> True), _) = return $ (False, uncurry replaceCh nch)
     fuse nch = return $ (False, uncurry replaceCh nch)
 
+    debugFusionStep fAs gAs ngArg1 e = flip trace e $
+      unlines [ "Fused:" ++ showFusion fAs gAs, pretty $ stripAllExprAnnotations ngArg1 ]
+
+    debugFusionMatching lAccF rAccF lAs rAs r =
+      if True then r
+      else let pp e   = pretty $ stripAllExprAnnotations e
+               onFail = unlines ["Fail", pp lAccF, pp rAccF]
+           in trace (unwords ["Fusing:", showFusion lAs rAs
+                             , either id (maybe onFail (const "Success")) r]) r
+
     fuseAccF lAccF rAccF
              lAs@(getFusionSpecA -> Just (lfCls, ltCls))
              rAs@(getFusionSpecA -> Just (rfCls, rtCls))
       =
-        (\r -> let pp e   = pretty $ stripAllExprAnnotations e
-                   onFail = unlines ["Fail", pp lAccF, pp rAccF]
-               in trace (unwords ["Fusing:", showFusion lAs rAs
-                                 , either id (maybe onFail (const "Success")) r]) r) $
+        debugFusionMatching lAccF rAccF lAs rAs $
         case (lfCls, rfCls) of
           -- Fusion for {UCond, ICond1} x {UCond, ICond1} cases
           --
-          -- TODO: PSUCond cases => UCond
           (UCond, UCond) | nonDepTr ltCls && nonDepTr rtCls ->
             case (lAccF, rAccF) of
               (PUCond li lj lfE lfArg, PUCond ri rj rfE rfArg) -> do
@@ -1052,28 +1056,56 @@ fuseFoldTransformers env expr = do
                 return $ Just $ (updateFusionSpec rAs (UCond, promoteTCls ltCls rtCls),) $
                   mkAccF li lj composedE (\_ _ e -> e)
 
+              -- These two cases preserve the UCond structure, provided beta reduction
+              -- is able to inline the 'lE' expression into the 'rE' expression.
+              -- TODO: use a property to indicate to beta reduction that it should always
+              -- inline the argument (rather than in cost-based fashion).
+              (PChainLambda1 li lj lE lAs1 lAs2, PUCond ri rj rfE rfArg) -> do
+                let rE = mkAccE (PVar ri []) $ EC.applyMany rfE [rfArg]
+                nf <- chainCondNRightOpen li lj lE lAs1 lAs2 lAs ri rj rE [] [] rAs
+                return $ Just $ (updateFusionSpec rAs (UCond, promoteTCls ltCls rtCls), nf)
+
+              (PChainLambda1 li lj lE lAs1 lAs2, PSUCond ri rj rE) -> do
+                let rE' = mkAccE (PVar ri []) rE
+                nf <- chainCondNRightOpen li lj lE lAs1 lAs2 lAs ri rj rE' [] [] rAs
+                return $ Just $ (updateFusionSpec rAs (UCond, promoteTCls ltCls rtCls), nf)
+
+              -- General UCond fusion. We have no assurances the UCond structure is preserved.
               (PChainLambda1 li lj lE lAs1 lAs2, PChainLambda1 ri rj rE rAs1 rAs2) -> do
                 nf <- chainCondNRightOpen li lj lE lAs1 lAs2 lAs ri rj rE rAs1 rAs2 rAs
                 return $ Just $ (updateFusionSpec rAs (ICondN, promoteTCls ltCls rtCls), nf)
 
               (_, _) -> Right Nothing
 
-          -- TODO: PSICond1 / PSUCond cases => ICond1
           (UCond, ICond1) | nonDepTr ltCls && nonDepTr rtCls ->
             case (lAccF, rAccF) of
+              -- TODO: this duplicates lfE/lfArg, thus is not safe it has effects.
               (PUCond li lj lfE lfArg, PICond1 ri rj rpE rpArg rtE) -> do
                 composedP <- chainFunctions lj lfE lfArg lAs rj rpE rpArg rAs
                 composedT <- chainFunRight lj lfE lfArg lAs rj rtE rAs
                 return $ Just $ (updateFusionSpec rAs (ICond1, promoteTCls ltCls rtCls),) $
                   mkCondAccF li lj composedT composedP
 
+              -- These two cases preserve the ICond1 structure, provided beta reduction
+              -- is able to inline the 'lE' expression into the 'rE' expression.
+              (PChainLambda1 li lj lE lAs1 lAs2, PICond1 ri rj rpE rpArg rtE) -> do
+                let riV = EC.variable ri
+                let rE  = EC.ifThenElse (EC.applyMany rpE [rpArg]) (mkAccE riV rtE) riV
+                nf <- chainCondNRightOpen li lj lE lAs1 lAs2 lAs ri rj rE [] [] rAs
+                return $ Just $ (updateFusionSpec rAs (ICond1, promoteTCls ltCls rtCls), nf)
+
+              (PChainLambda1 li lj lE lAs1 lAs2, PSICond1 ri rj rpE rtE) -> do
+                let riV = EC.variable ri
+                let rE  = EC.ifThenElse rpE (mkAccE riV rtE) riV
+                nf <- chainCondNRightOpen li lj lE lAs1 lAs2 lAs ri rj rE [] [] rAs
+                return $ Just $ (updateFusionSpec rAs (ICond1, promoteTCls ltCls rtCls), nf)
+
               (PChainLambda1 li lj lE lAs1 lAs2, PChainLambda1 ri rj rE rAs1 rAs2) -> do
                 nf <- chainCondNRightOpen li lj lE lAs1 lAs2 lAs ri rj rE rAs1 rAs2 rAs
                 return $ Just $ (updateFusionSpec rAs (ICondN, promoteTCls ltCls rtCls), nf)
 
               (_, _) -> Right Nothing
 
-          -- TODO: PSICond1 / PSUCond cases => ICond1
           (ICond1, UCond) | nonDepTr ltCls && nonDepTr rtCls ->
             case (lAccF, rAccF) of
               (PICond1 li lj lpE lpArg ltE, PUCond ri rj rfE rfArg) -> do
@@ -1081,6 +1113,23 @@ fuseFoldTransformers env expr = do
                 composedT <- chainFunLeft lj ltE lAs rj rfE rfArg rAs
                 return $ Just $ (updateFusionSpec rAs (ICond1, promoteTCls ltCls rtCls),) $
                   mkCondAccF li lj composedT idP
+
+              -- Structure-preserving handling of PSICond1 and PSUCond.
+              (PSICond1 li lj lpE ltE, PUCond ri rj rfE rfArg) -> do
+                composedT <- chainFunLeft lj ltE lAs rj rfE rfArg rAs
+                return $ Just $ (updateFusionSpec rAs (ICond1, promoteTCls ltCls rtCls),) $
+                  mkCondAccF li lj composedT lpE
+
+              (PICond1 li lj lpE lpArg ltE, PSUCond ri rj rvE) -> do
+                idP       <- mkIdF False lpE lpArg
+                composedT <- chainValues lj ltE lAs rj rvE rAs
+                return $ Just $ (updateFusionSpec rAs (ICond1, promoteTCls ltCls rtCls),) $
+                  mkCondAccF li lj composedT idP
+
+              (PSICond1 li lj lpE ltE, PSUCond ri rj rvE) -> do
+                composedT <- chainValues lj ltE lAs rj rvE rAs
+                return $ Just $ (updateFusionSpec rAs (ICond1, promoteTCls ltCls rtCls),) $
+                  mkCondAccF li lj composedT lpE
 
               (PChainLambda1 li lj lE lAs1 lAs2, PChainLambda1 ri rj rE rAs1 rAs2) -> do
                 nf <- chainCondNRightOpen li lj lE lAs1 lAs2 lAs ri rj rE rAs1 rAs2 rAs
@@ -1092,10 +1141,31 @@ fuseFoldTransformers env expr = do
           (ICond1, ICond1) | nonDepTr ltCls && nonDepTr rtCls ->
             case (lAccF, rAccF) of
               (PICond1 li lj lpE lpArg ltE, PICond1 ri rj rpE rpArg rtE) -> do
-                composedP <- chainFunctions lj lpE lpArg lAs rj rpE rpArg rAs
-                composedT <- chainValues lj ltE lAs rj rtE rAs
+                let innerF     = mkCondAccF ri rj rtE $ EC.applyMany rpE [rpArg]
+                let chainInner = EC.applyMany innerF [EC.variable li, ltE]
+                let callOuterP = EC.applyMany lpE [lpArg]
                 return $ Just $ (updateFusionSpec rAs (ICond1, promoteTCls ltCls rtCls),) $
-                  mkCondAccF li lj composedT composedP
+                  mkCondAccF li lj chainInner callOuterP
+
+              -- Structure-preserving PSICond1 cases
+              (PSICond1 li lj lpE ltE, PICond1 ri rj rpE rpArg rtE) -> do
+                let innerF     = mkCondAccF ri rj rtE $ EC.applyMany rpE [rpArg]
+                let chainInner = EC.applyMany innerF [EC.variable li, ltE]
+                return $ Just $ (updateFusionSpec rAs (ICond1, promoteTCls ltCls rtCls),) $
+                  mkCondAccF li lj chainInner lpE
+
+              (PICond1 li lj lpE lpArg ltE, PSICond1 ri rj rpE rtE) -> do
+                let innerF     = mkCondAccF ri rj rtE rpE
+                let chainInner = EC.applyMany innerF [EC.variable li, ltE]
+                let callOuterP = EC.applyMany lpE [lpArg]
+                return $ Just $ (updateFusionSpec rAs (ICond1, promoteTCls ltCls rtCls),) $
+                  mkCondAccF li lj chainInner callOuterP
+
+              (PSICond1 li lj lpE ltE, PSICond1 ri rj rpE rtE) -> do
+                let innerF     = mkCondAccF ri rj rtE rpE
+                let chainInner = EC.applyMany innerF [EC.variable li, ltE]
+                return $ Just $ (updateFusionSpec rAs (ICond1, promoteTCls ltCls rtCls),) $
+                  mkCondAccF li lj chainInner lpE
 
               (PChainLambda1 li lj lE lAs1 lAs2, PChainLambda1 ri rj rE rAs1 rAs2) -> do
                 nf <- chainCondNRightOpen li lj lE lAs1 lAs2 lAs ri rj rE rAs1 rAs2 rAs
@@ -1358,25 +1428,17 @@ fuseFoldTransformers env expr = do
 
     chainCondN li lj lE accumF lAs1 lAs2 lAs rAs = do
       promote <- promoteRecType lAs rAs
-      let (_,nlE) = mapAccumulation (accumF promote) (\x -> trace "chainRetF" x) li lE
-      return $! debugChainCondN li lE nlE $! PChainLambda1 li lj nlE lAs1 lAs2
-      where debugChainCondN i lE nlE e =
-              flip trace e $ unlines [unwords ["Called mapAccumulation", i], pretty lE, pretty nlE]
+      let (_,nlE) = mapAccumulation (accumF promote) (\x -> x) li lE
+      return $ PChainLambda1 li lj nlE lAs1 lAs2
 
     chainCondNRightOpen li lj lE lAs1 lAs2 lAs ri rj rE rAs1 rAs2 rAs =
       let (liV, riV) = (EC.variable li, EC.variable ri)
           accumF promote e = case e of
             (PPrjAppVarSeq ((== li) -> True) "insert" v) ->
-              debugChainCondNRightOpen "matched"  $
               EC.applyMany (PChainLambda1 ri rj rE rAs1 rAs2)
                            [liV, if promote then elemE v else v]
-            _ ->
-              debugChainCondNRightOpen "no match" $
-              e
-      in trace "Called chainCondNRightOpen" $ chainCondN li lj lE accumF lAs1 lAs2 lAs rAs
-      where debugChainCondNRightOpen msg e =
-              let prefix = unwords ["chainCondNRightOpen", msg, ":", showFusion lAs rAs]
-              in flip trace e $ unlines [prefix, pretty e]
+            _ -> e
+      in chainCondN li lj lE accumF lAs1 lAs2 lAs rAs
 
     mkIdF promote lf larg =
       let fE = EC.applyMany lf [larg]
@@ -1416,10 +1478,11 @@ fuseFoldTransformers env expr = do
 
     promoteRecType lAs rAs = Right False
 
+    mkAccE accE eE = PSeq (PPrjApp accE "insert" [] eE []) accE []
+
     mkAccF aVarId eVarId insertElemE bodyF =
-      let (aVar, eVar) = (EC.variable aVarId, EC.variable eVarId) in
-      EC.lambda aVarId $ EC.lambda eVarId $
-        bodyF aVar eVar $ PSeq (EC.applyMany (EC.project "insert" aVar) [insertElemE]) aVar []
+      let (aVar, eVar) = (EC.variable aVarId, EC.variable eVarId)
+      in PChainLambda1 aVarId eVarId (bodyF aVar eVar $ mkAccE aVar insertElemE) [] []
 
     mkCondAccF aVarId eVarId insertElemE condE =
       mkAccF aVarId eVarId insertElemE
@@ -1615,62 +1678,8 @@ pattern PPrjAppVarSeq i prjId arg <-
 
 pattern PChainLambda1 i j bodyE iAs jAs = PLam i (PLam j bodyE jAs) iAs
 
-pattern PChainPrjApp1 cE fId gId fArg gArg fAs iAppAs gAs oAppAs =
-  PPrjApp (PPrjApp cE fId fAs fArg iAppAs) gId gAs gArg oAppAs
-
-pattern PChainPrjApp1Pair cE fId gId fArg gArg fAs iAppAs gAs oAppAs <-
-  (PApp _ _ oAppAs, [PPrj (PPrjApp cE fId fAs fArg iAppAs) gId gAs, gArg])
-
-pattern PChainPrjApp2 cE fId gId fArg gArg1 gArg2 fAs iAppAs gAs oApp1As oApp2As =
-  PApp (PChainPrjApp1 cE fId gId fArg gArg1 fAs iAppAs gAs oApp1As) gArg2 oApp2As
-
-pattern PChainPrjApp2Pair cE fId gId fArg gArg1 gArg2 fAs iAppAs gAs oApp1As oApp2As <-
-  (PApp _ _ oApp2As
-  , [PChainPrjApp1 cE fId gId fArg gArg1 fAs iAppAs gAs oApp1As, gArg2])
-
-pattern PChainPrjApp3 cE fId gId fArg gArg1 gArg2 gArg3 fAs iAppAs gAs oApp1As oApp2As oApp3As =
-  PApp (PChainPrjApp2 cE fId gId fArg gArg1 gArg2 fAs iAppAs gAs oApp1As oApp2As) gArg3 oApp3As
-
-pattern PChainPrjApp3Pair cE fId gId fArg gArg1 gArg2 gArg3 fAs iAppAs gAs oApp1As oApp2As oApp3As <-
-  (PApp _ _ oApp3As
-  , [PChainPrjApp2 cE fId gId fArg gArg1 gArg2 fAs iAppAs gAs oApp1As oApp2As, gArg3])
-
-pattern PBinChainPrjApp1 cE fId gId fArg1 fArg2 gArg fAs iApp1As iApp2As gAs oAppAs =
-  PPrjApp (PPrjApp2 cE fId fAs fArg1 fArg2 iApp1As iApp2As) gId gAs gArg oAppAs
-
-pattern PBinChainPrjApp2 cE fId gId fArg1 fArg2 gArg1 gArg2 fAs iApp1As iApp2As gAs oApp1As oApp2As =
-  PApp (PBinChainPrjApp1 cE fId gId fArg1 fArg2 gArg1 fAs iApp1As iApp2As gAs oApp1As) gArg2 oApp2As
-
-pattern PBinChainPrjApp3 cE fId gId fArg1 fArg2 gArg1 gArg2 gArg3 fAs iApp1As iApp2As gAs oApp1As oApp2As oApp3As =
-  PApp (PBinChainPrjApp2 cE fId gId fArg1 fArg2 gArg1 gArg2 fAs iApp1As iApp2As gAs oApp1As oApp2As) gArg3 oApp3As
-
-pattern PAnyStream1 fE argE appAs <-
-  PApp fE argE (id &&& (\e -> any isEStreamable e || any isEStream e) -> (appAs, True))
-
-pattern PAnyStream2 fE arg1E arg2E app1As app2As <-
-  PApp (PAnyStream1 fE arg1E app1As) arg2E app2As
-
-pattern PAnyStream3 fE arg1E arg2E arg3E app1As app2As app3As <-
-  PApp (PAnyStream2 fE arg1E arg2E app1As app2As) arg3E app3As
-
-pattern PUnstream1 fE argE appAs <-
-  PApp fE argE (id &&& any isEUnstream -> (appAs, True))
-
-pattern PUnstream2 fE arg1E arg2E app1As app2As <-
-  PApp (PUnstream1 fE arg1E app1As) arg2E app2As
-
-pattern PUnstream3 fE arg1E arg2E arg3E app1As app2As app3As <-
-  PApp (PUnstream2 fE arg1E arg2E app1As app2As) arg3E app3As
-
 pattern PStreamableTransformerArg i j iAs jAs <-
   PChainLambda1 i j (inferAccumulation i -> True) iAs jAs
-
-pattern PStreamableTransformerPair cE fId bodyE i j arg2E iAs jAs fAs iAppAs oAppAs <-
-  (PApp _ _ (id &&& any isETAppChain -> (oAppAs, True))
-  , [PApp (PPrj cE fId fAs)
-          (PChainLambda1 i j bodyE iAs jAs)
-          (id &&& any isEStreamable -> (iAppAs, True))
-    , arg2E])
 
 pattern PPrjApp2Chain cE fId gId fArg1 fArg2 gArg1 gArg2 fAs iApp1As iApp2As gAs oApp1As oApp2As =
   PPrjApp2 (PPrjApp2 cE fId fAs fArg1 fArg2 iApp1As iApp2As) gId gAs gArg1 gArg2 oApp1As oApp2As
@@ -1678,7 +1687,6 @@ pattern PPrjApp2Chain cE fId gId fArg1 fArg2 gArg1 gArg2 fAs iApp1As iApp2As gAs
 pattern PPrjApp2ChainCh cE fId gId fArg1 fArg2 gArg1 gArg2 fAs iApp1As iApp2As gAs oApp1As oApp2As <-
   (PApp _ _ oApp2As
   , [PPrjApp (PPrjApp2 cE fId fAs fArg1 fArg2 iApp1As iApp2As) gId gAs gArg1 oApp1As, gArg2])
-
 
 {- Fusion accumulator patterns -}
 pattern PUCond i j fE fArg <-
@@ -1694,6 +1702,13 @@ pattern PSUCond i j vE <-
 pattern PICond1 i j pE pArg tE <-
   PChainLambda1 i j
     (PIfThenElse (PApp pE pArg _)
+                 (PSeq (PPrjApp (PVar ((== i) -> True) _) "insert" _ tE _)
+                       (PVar ((== i) -> True) _) _)
+                 (PVar ((== i) -> True) _) _) _ _
+
+pattern PSICond1 i j pE tE <-
+  PChainLambda1 i j
+    (PIfThenElse pE
                  (PSeq (PPrjApp (PVar ((== i) -> True) _) "insert" _ tE _)
                        (PVar ((== i) -> True) _) _)
                  (PVar ((== i) -> True) _) _) _ _
