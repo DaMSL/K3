@@ -334,8 +334,7 @@ namespace K3 {
             event_stream << trig << "|";
             event_stream << K3::serialization::json::encode<Address>(msgSource) << "|";
             event_stream << msg_contents << "|";
-            event_stream << time << "|";
-            event_stream << std::endl;
+            event_stream << time << std::endl;
 
             // Log Global state
             auto& global_stream = std::get<1>(*log_streams[peer]);
@@ -345,12 +344,15 @@ namespace K3 {
             auto s = env.size();
             for (const auto& tup : env) {
                global_stream << tup.second;
+               std::cout << tup.first;
               if (i < s-1) {
                 global_stream << "|";
+                std::cout << "|";
               }
               i++;
             }
             global_stream << std::endl;
+            std::cout << std::endl;
     }
 
     void logResult(shared_ptr<MessageProcessor>& mp) {
@@ -424,6 +426,7 @@ namespace K3 {
     bool                            log_enabled;
     // Tuple of (eventLog, globalsLog)
     std::map<Address, std::shared_ptr<std::tuple<std::ofstream, std::ofstream>>> log_streams;
+    string                          log_path;
     string                          result_var;
     string                          result_path;
 

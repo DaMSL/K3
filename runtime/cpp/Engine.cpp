@@ -8,10 +8,13 @@ using boost::thread;
 namespace K3 {
 
     void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec,
-                           string log_path, string result_v, string result_p) {
+                           string log_p, string result_v, string result_p) {
       internal_codec = _internal_codec;
       log_enabled = false;
-      if (log_path != "") { log_enabled = true; }
+      if (log_p != "") { log_enabled = true; }
+      auto dir = log_p != "" ? log_p : ".";
+      log_path = dir;
+
       result_var = result_v;
       result_path = result_p;
 
@@ -20,9 +23,8 @@ namespace K3 {
 
       if (log_enabled) {
         for (const auto& addr : processAddrs) {
-          auto dir = log_path != "" ? log_path : ".";
-          auto s1 = dir + "/" + addressAsString(addr) + "_Messages.dsv";
-          auto s2 = dir + "/" + addressAsString(addr) + "_Globals.dsv";
+          auto s1 = log_path + "/" + addressAsString(addr) + "_Messages.dsv";
+          auto s2 = log_path + "/" + addressAsString(addr) + "_Globals.dsv";
           log_streams[addr] = make_shared<std::tuple<std::ofstream, std::ofstream>>(s1, s2);
         }
       }
