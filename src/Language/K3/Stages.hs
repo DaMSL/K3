@@ -53,53 +53,36 @@ transformEnvE :: TrEE -> ProgramTransform
 transformEnvE _ (_, Nothing)     = Left "missing effect environment"
 transformEnvE f (prog, Just env) = f env prog >>= return . (, Just env)
 
+fixpointTransform :: ProgramTransform -> ProgramTransform
+fixpointTransform f p = do
+  np <- f p
+  if fst np == fst p then return np
+  else fixpointTransform f np
+
+fixpointTransformI :: [ProgramTransform] -> ProgramTransform -> ProgramTransform
+fixpointTransformI interF f p = do
+  np <- f p
+  if fst np == fst p then return np
+  else foldM (flip ($)) np interF >>= fixpointTransformI interF f
+
 fixpointF :: TrF -> ProgramTransform
-fixpointF f p = do
-  np <- transformF f p
-  if fst np /= fst p then do
-    np' <- inferFreshTypesAndEffects np
-    fixpointF f np'
-  else return np
+fixpointF f = fixpointTransform $ transformF f
 
 fixpointE :: TrE -> ProgramTransform
-fixpointE f p = do
-  np <- transformE f p
-  if fst np /= fst p then do
-    np' <- inferFreshTypesAndEffects np
-    fixpointE f np'
-  else return np
+fixpointE f = fixpointTransform $ transformE f
 
 fixpointEnvF :: TrEF -> ProgramTransform
-fixpointEnvF f p = do
-  np <- transformEnvF f p
-  if fst np /= fst p then do
-    np' <- inferFreshTypesAndEffects np
-    fixpointEnvF f np'
-  else return np
+fixpointEnvF f = fixpointTransform $ transformEnvF f
 
 fixpointEnvE :: TrEE -> ProgramTransform
-fixpointEnvE f p = do
-  np <- transformEnvE f p
-  if fst np /= fst p then do
-    np' <- inferFreshTypesAndEffects np
-    fixpointEnvE f np'
-  else return np
+fixpointEnvE f = fixpointTransform $ transformEnvE f
 
-fixpointIEnvF :: TrEF -> [ProgramTransform] -> ProgramTransform
-fixpointIEnvF f interF p = do
-  np <- transformEnvF f p
-  if fst np /= fst p then do
-    np' <- foldM (flip ($)) np interF
-    fixpointIEnvF f interF np'
-  else return np
+-- Fixpoint constructors with intermediate transformations between rounds.
+fixpointIEnvF :: [ProgramTransform] -> TrEF -> ProgramTransform
+fixpointIEnvF interF f = fixpointTransformI interF $ transformEnvF f
 
-fixpointIEnvE :: TrEE -> [ProgramTransform] -> ProgramTransform
-fixpointIEnvE f interF p = do
-  np <- transformEnvE f p
-  if fst np /= fst p then do
-    np' <- foldM (flip ($)) np interF
-    fixpointIEnvE f interF np'
-  else return np
+fixpointIEnvE :: [ProgramTransform] -> TrEE -> ProgramTransform
+fixpointIEnvE interF f = fixpointTransformI interF $ transformEnvE f
 
 {- High-level passes -}
 inferTypes :: ProgramTransform
@@ -139,9 +122,10 @@ withPasses :: [ProgramTransform] -> ProgramTransform
 withPasses passes prog = foldM (flip ($!)) prog passes
 
 simplify :: ProgramTransform
-simplify p =  transformE foldProgramConstants p
-                >>= transformEnvF betaReductionOnProgram
-                >>= transformEnvE eliminateDeadProgramCode
+simplify = fixpointTransform $ simplifyChain
+  where simplifyChain p = transformE foldProgramConstants p
+                            >>= transformEnvF betaReductionOnProgram
+                            >>= transformEnvE eliminateDeadProgramCode
 
 simplifyWCSE :: ProgramTransform
 simplifyWCSE p = simplify p >>= transformEnvE commonProgramSubexprElim
@@ -150,8 +134,8 @@ simplifyWCSE p = simplify p >>= transformEnvE commonProgramSubexprElim
 -- locally infer effects on expressions.
 streamFusion :: ProgramTransform
 streamFusion = withProperties $ \p -> transformEnvE encodeTransformers p >>= fusionFixpoint
-  where fusionFixpoint = fixpointIEnvE fuseProgramFoldTransformers
-                            [inferFreshTypesAndEffects, transformEnvF betaReductionOnProgram]
+  where fusionFixpoint = fixpointIEnvE fusionInterF fuseProgramFoldTransformers
+        fusionInterF   = [inferFreshTypesAndEffects, simplify]
 
 runPasses :: [ProgramTransform] -> K3 Declaration -> Either String (K3 Declaration, Maybe EffectEnv)
 runPasses passes d = withPasses passes (d, Nothing)
