@@ -13,6 +13,9 @@ declare plus_two: int -> int = \x -> plus_two (plus_two x)
 // inner lambda.
 declare add: int -> int -> int = \a -> \v -> a + v
 
+// Should accept both arguments by reference, and capture everything by reference
+trigger let_lambda: int = \p -> (\a -> \v -> let x = a + v + p in ()) 1 2
+
 // Should accept outer argument by value, inner argument by constant reference, and move outer
 // argument into closure.
 declare accumulate: collection { x: int } @ { Collection }-> int -> int = \d -> \w -> ((d.insert { x: w }); w)
