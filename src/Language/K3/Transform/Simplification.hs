@@ -1141,31 +1141,35 @@ fuseFoldTransformers env expr = do
           (ICond1, ICond1) | nonDepTr ltCls && nonDepTr rtCls ->
             case (lAccF, rAccF) of
               (PICond1 li lj lpE lpArg ltE, PICond1 ri rj rpE rpArg rtE) -> do
+                let liV        = EC.variable li
                 let innerF     = mkCondAccF ri rj rtE $ EC.applyMany rpE [rpArg]
-                let chainInner = EC.applyMany innerF [EC.variable li, ltE]
+                let chainInner = EC.applyMany innerF [liV, ltE]
                 let callOuterP = EC.applyMany lpE [lpArg]
                 return $ Just $ (updateFusionSpec rAs (ICond1, promoteTCls ltCls rtCls),) $
-                  mkCondAccF li lj chainInner callOuterP
+                  PChainLambda1 li lj (EC.ifThenElse callOuterP chainInner liV) [] []
 
               -- Structure-preserving PSICond1 cases
               (PSICond1 li lj lpE ltE, PICond1 ri rj rpE rpArg rtE) -> do
+                let liV        = EC.variable li
                 let innerF     = mkCondAccF ri rj rtE $ EC.applyMany rpE [rpArg]
-                let chainInner = EC.applyMany innerF [EC.variable li, ltE]
+                let chainInner = EC.applyMany innerF [liV, ltE]
                 return $ Just $ (updateFusionSpec rAs (ICond1, promoteTCls ltCls rtCls),) $
-                  mkCondAccF li lj chainInner lpE
+                  PChainLambda1 li lj (EC.ifThenElse lpE chainInner liV) [] []
 
               (PICond1 li lj lpE lpArg ltE, PSICond1 ri rj rpE rtE) -> do
+                let liV        = EC.variable li
                 let innerF     = mkCondAccF ri rj rtE rpE
-                let chainInner = EC.applyMany innerF [EC.variable li, ltE]
+                let chainInner = EC.applyMany innerF [liV, ltE]
                 let callOuterP = EC.applyMany lpE [lpArg]
                 return $ Just $ (updateFusionSpec rAs (ICond1, promoteTCls ltCls rtCls),) $
-                  mkCondAccF li lj chainInner callOuterP
+                  PChainLambda1 li lj (EC.ifThenElse callOuterP chainInner liV) [] []
 
               (PSICond1 li lj lpE ltE, PSICond1 ri rj rpE rtE) -> do
+                let liV        = EC.variable li
                 let innerF     = mkCondAccF ri rj rtE rpE
-                let chainInner = EC.applyMany innerF [EC.variable li, ltE]
+                let chainInner = EC.applyMany innerF [liV, ltE]
                 return $ Just $ (updateFusionSpec rAs (ICond1, promoteTCls ltCls rtCls),) $
-                  mkCondAccF li lj chainInner lpE
+                  PChainLambda1 li lj (EC.ifThenElse lpE chainInner liV) [] []
 
               (PChainLambda1 li lj lE lAs1 lAs2, PChainLambda1 ri rj rE rAs1 rAs2) -> do
                 nf <- chainCondNRightOpen li lj lE lAs1 lAs2 lAs ri rj rE rAs1 rAs2 rAs

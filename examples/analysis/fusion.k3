@@ -56,6 +56,13 @@ trigger complex : () = \_ -> (
   c.insert {a:5}; c.iterate (\_ -> ())
 )
 
+trigger filterFilterFilter : () = \_ -> (
+  (resultCA, 127.0.0.1:40000) <-
+    (((c.filter (\r -> r.a >  10))
+        .filter (\r -> r.a <  20))
+        .filter (\r -> r.a == 16))
+)
+
 trigger mapMap : () = \_ -> (
   (resultC, 127.0.0.1:40000) <-
     ((c.map (\r -> r.a + 1))
@@ -186,6 +193,7 @@ trigger groupByFoldMapMap : () = \_ -> (
         .map     (\r -> r.elem + 7))
         .iterate (\r -> (result, 127.0.0.1:40000) <- r))
 )
+
 
 trigger result    : {elem : int}                                    = \_ -> ()
 trigger resultC   : collection {elem : int} @Collection             = \_ -> ()
