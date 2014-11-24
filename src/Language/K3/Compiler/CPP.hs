@@ -63,7 +63,7 @@ typecheckStage _ cOpts prog = prefixError "Type error:" $ return $ if useSubType
     quickTypecheck =  inferProgramTypes prog >>= translateProgramTypes
 
 applyOptimizations :: CompileOptions -> K3 Declaration -> K3 Declaration
-applyOptimizations cOpts prog = 
+applyOptimizations cOpts prog =
   let lvl = optimizationLevel cOpts in
   either (\s -> error $ "Invalid result from runCGPasses: "++ s) id $ runCGPasses prog lvl
 
@@ -76,7 +76,7 @@ cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $
 
     (irRes, initSt)      = I.runImperativeM (I.declaration prog') I.defaultImperativeS
 
-    preprocess = applyOptimizations copts 
+    preprocess = applyOptimizations copts
 
     genCPP (Right cppIr) = outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt)
                            (CPP.stringifyProgram $ preprocess cppIr)
