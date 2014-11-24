@@ -7,7 +7,6 @@ declare d : MyC
 declare e : mut int = 0
 declare f : MyC -> bool = \_ -> true
 
-/*
 trigger groupByEncode : () = \_ -> (
   let x = c.groupBy (\r -> r.a + 2)
                     (\acc -> \r -> acc + 1)
@@ -56,7 +55,6 @@ trigger complex : () = \_ -> (
   in
   c.insert {a:5}; c.iterate (\_ -> ())
 )
-*/
 
 trigger mapMap : () = \_ -> (
   (resultC, 127.0.0.1:40000) <-
@@ -64,7 +62,6 @@ trigger mapMap : () = \_ -> (
        .map (\r -> r.elem + 2))
 )
 
-/*
 trigger mapFilter : () = \_ -> (
   (resultC, 127.0.0.1:40000) <-
     ((c.map    (\r -> r.a + 1))
@@ -115,7 +112,6 @@ trigger foldIterate : () = \_ -> (
      .iterate (\r -> e = r.a))
 )
 
-// TODO: only one loop is fused here.
 trigger foldMapMap : () = \_ -> (
   (resultC, 127.0.0.1:40000) <-
     (((c.fold (\acc -> \r ->
@@ -126,7 +122,6 @@ trigger foldMapMap : () = \_ -> (
         .map (\r -> r.elem+3))
 )
 
-// TODO: no optimization is performed here
 trigger mapGroupBy : () = \_ -> (
   (resultCKV, 127.0.0.1:40000) <-
     ((c.map     (\r -> r.a + 1))
@@ -135,7 +130,6 @@ trigger mapGroupBy : () = \_ -> (
                 0)
 )
 
-// TODO: does not fully push map into group-by
 trigger mapMapGroupBy : () = \_ -> (
   (resultCKV, 127.0.0.1:40000) <-
     (((c.map     (\r -> r.a + 1))
@@ -148,17 +142,16 @@ trigger mapMapGroupBy : () = \_ -> (
 trigger groupByMapMap : () = \_ -> (
   (resultC, 127.0.0.1:40000) <-
     (((c.groupBy (\r -> r.a + 3)
-                         (\acc -> \r -> acc + 1)
-                         0)
+                 (\acc -> \r -> acc + 1)
+                 0)
         .map     (\r -> r.value + 1))
         .map     (\r -> r.elem + 2))
 )
 
-// TODO
 trigger foldGroupBy : () = \_ -> (
   (resultCKV, 127.0.0.1:40000) <-
     ((c.fold    (\acc -> \r -> (acc.insert {a:r.a+1}; acc))
-                        (empty {a:int} @Collection))
+                (empty {a:int} @Collection))
        .groupBy (\r -> r.a + 2)
                 (\acc -> \r -> acc + 1)
                 0)
@@ -173,7 +166,6 @@ trigger groupByFold : () = \_ -> (
                 (empty {a:int} @Collection))
 )
 
-// TODO: Debug
 trigger groupByFoldMap : () = \_ -> (
   (resultC, 127.0.0.1:40000) <-
     ((c.groupBy (\r -> r.a + 2)
@@ -194,7 +186,6 @@ trigger groupByFoldMapMap : () = \_ -> (
         .map     (\r -> r.elem + 7))
         .iterate (\r -> (result, 127.0.0.1:40000) <- r))
 )
-*/
 
 trigger result    : {elem : int}                                    = \_ -> ()
 trigger resultC   : collection {elem : int} @Collection             = \_ -> ()

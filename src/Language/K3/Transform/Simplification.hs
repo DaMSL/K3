@@ -473,10 +473,13 @@ betaReduction env expr = mapTree reduce expr
 
     reduceOnOccurrences n ch i ie e =
       if readOnly False env ie then
-        let occurrences = length $ filter (== i) $ freeVariables e in
-        if occurrences <= 3
-          then betaReduction env $ substituteImmutBinding i ie e
-          else rebuildNode n ch
+        case tag ie of
+          EConstant _ -> betaReduction env $ substituteImmutBinding i ie e
+          EVariable _ -> betaReduction env $ substituteImmutBinding i ie e
+          _ -> let occurrences = length $ filter (== i) $ freeVariables e in
+               if occurrences <= 3
+                 then betaReduction env $ substituteImmutBinding i ie e
+                 else rebuildNode n ch
       else rebuildNode n ch
 
     rebuildNode (Node t _) ch = return $ Node t ch
@@ -1034,11 +1037,14 @@ fuseFoldTransformers env expr = do
              lAs@(getFusionSpecA -> Just (lfCls, ltCls))
              rAs@(getFusionSpecA -> Just (rfCls, rtCls))
       =
-        (\r -> trace (unwords ["Fusing:", showFusion lAs rAs
-                                 , either id (maybe "Fail" (const "Success")) r]) r) $
+        (\r -> let pp e   = pretty $ stripAllExprAnnotations e
+                   onFail = unlines ["Fail", pp lAccF, pp rAccF]
+               in trace (unwords ["Fusing:", showFusion lAs rAs
+                                 , either id (maybe onFail (const "Success")) r]) r) $
         case (lfCls, rfCls) of
           -- Fusion for {UCond, ICond1} x {UCond, ICond1} cases
           --
+          -- TODO: PSUCond cases => UCond
           (UCond, UCond) | nonDepTr ltCls && nonDepTr rtCls ->
             case (lAccF, rAccF) of
               (PUCond li lj lfE lfArg, PUCond ri rj rfE rfArg) -> do
@@ -1052,6 +1058,7 @@ fuseFoldTransformers env expr = do
 
               (_, _) -> Right Nothing
 
+          -- TODO: PSICond1 / PSUCond cases => ICond1
           (UCond, ICond1) | nonDepTr ltCls && nonDepTr rtCls ->
             case (lAccF, rAccF) of
               (PUCond li lj lfE lfArg, PICond1 ri rj rpE rpArg rtE) -> do
@@ -1066,6 +1073,7 @@ fuseFoldTransformers env expr = do
 
               (_, _) -> Right Nothing
 
+          -- TODO: PSICond1 / PSUCond cases => ICond1
           (ICond1, UCond) | nonDepTr ltCls && nonDepTr rtCls ->
             case (lAccF, rAccF) of
               (PICond1 li lj lpE lpArg ltE, PUCond ri rj rfE rfArg) -> do
@@ -1080,6 +1088,7 @@ fuseFoldTransformers env expr = do
 
               (_, _) -> Right Nothing
 
+          -- TODO: PSICond1 cases
           (ICond1, ICond1) | nonDepTr ltCls && nonDepTr rtCls ->
             case (lAccF, rAccF) of
               (PICond1 li lj lpE lpArg ltE, PICond1 ri rj rpE rpArg rtE) -> do
@@ -1115,6 +1124,10 @@ fuseFoldTransformers env expr = do
                 nf <- chainCondRightOpen li lj lpE lpArg ltE lAs ri ri rE rAs1 rAs2 rAs
                 return $ Just $ (updateFusionSpec rAs (ICondN, promoteTCls ltCls rtCls), nf)
 
+              (PChainLambda1 li lj lE lAs1 lAs2, PChainLambda1 ri rj rE rAs1 rAs2) -> do
+                nf <- chainCondNRightOpen li lj lE lAs1 lAs2 lAs ri rj rE rAs1 rAs2 rAs
+                return $ Just $ (updateFusionSpec rAs (ICondN, promoteTCls ltCls rtCls), nf)
+
               (_, _) -> Right Nothing
 
           (ICondN, UCond) | nonDepTr ltCls && nonDepTr rtCls ->
@@ -1130,6 +1143,10 @@ fuseFoldTransformers env expr = do
                 in do
                   nf <- chainCondN li lj lE accumF lAs1 lAs2 lAs rAs
                   return $ Just $ (updateFusionSpec rAs (ICondN, promoteTCls ltCls rtCls), nf)
+
+              (PChainLambda1 li lj lE lAs1 lAs2, PChainLambda1 ri rj rE rAs1 rAs2) -> do
+                nf <- chainCondNRightOpen li lj lE lAs1 lAs2 lAs ri rj rE rAs1 rAs2 rAs
+                return $ Just $ (updateFusionSpec rAs (ICondN, promoteTCls ltCls rtCls), nf)
 
               (_, _) -> Right Nothing
 
@@ -1147,6 +1164,10 @@ fuseFoldTransformers env expr = do
                   nf <- chainCondN li lj lE accumF lAs1 lAs2 lAs rAs
                   return $ Just $ (updateFusionSpec rAs (ICondN, promoteTCls ltCls rtCls), nf)
 
+              (PChainLambda1 li lj lE lAs1 lAs2, PChainLambda1 ri rj rE rAs1 rAs2) -> do
+                nf <- chainCondNRightOpen li lj lE lAs1 lAs2 lAs ri rj rE rAs1 rAs2 rAs
+                return $ Just $ (updateFusionSpec rAs (ICondN, promoteTCls ltCls rtCls), nf)
+
               (_, _) -> Right Nothing
 
           (ICondN, ICondN) | nonDepTr ltCls && nonDepTr rtCls ->
@@ -1162,21 +1183,24 @@ fuseFoldTransformers env expr = do
           --
           (UCond, DCond2) | nonDepTr ltCls && nonDepTr rtCls ->
             case (lAccF, rAccF) of
-              (PUCond li lj lfE lfArg, PDCond2 ri rj rci rdlV rgbF raccF rzE) -> do
-                let (liV, le) = (EC.variable li, EC.applyMany lfE [lfArg])
-                nrF     <- mkGBAccumF ri rj rci rdlV rgbF raccF rzE
-                promote <- promoteRecType lAs rAs
-                return $ Just $ (updateFusionSpec rAs (DCond2, promoteTCls ltCls rtCls),) $
-                  PChainLambda1 li lj
-                    (EC.applyMany nrF [liV, if promote then elemE le else le]) [] []
+              (PUCond li lj lfE lfArg, PDCond2 ri rj rlke rci rdlV rgbF raccF rzE) ->
+                let lE = EC.applyMany lfE [lfArg] in
+                chainValDCond2 li lj lE [] [] ri rj rci rzE (Right (rlke, rdlV, rgbF, raccF)) lAs rAs ltCls rtCls
 
-              (_, _) -> trace "fuse ucond-dcond2 no match" $ Right Nothing
+              (PChainLambda1 li lj lE lAs1 lAs2, PDCond2 ri rj rlke rci rdlV rgbF raccF rzE) -> do
+                chainValDCond2 li lj lE lAs1 lAs2 ri rj rci rzE (Right (rlke, rdlV, rgbF, raccF)) lAs rAs ltCls rtCls
 
+              (PChainLambda1 li lj lE lAs1 lAs2, PSDCond2 ri rj rci rentryE rsvE rnkE rzE) -> do
+                chainValDCond2 li lj lE lAs1 lAs2 ri rj rci rzE (Left (rentryE, rsvE, rnkE)) lAs rAs ltCls rtCls
+
+              (_, _) -> Right Nothing
+
+          -- TODO: PCL1-PDCond2, PICond1-PSDCond2, PCL1-PSDCond2 cases
           (ICond1, DCond2) | nonDepTr ltCls && nonDepTr rtCls ->
             case (lAccF, rAccF) of
-              (PICond1 li lj lpE lpArg ltE, PDCond2 ri rj rci rdlV rgbF raccF rzE) -> do
+              (PICond1 li lj lpE lpArg ltE, PDCond2 ri rj rlke rci rdlV rgbF raccF rzE) -> do
                 let liV = EC.variable li
-                nrF     <- mkGBAccumF ri rj rci rdlV rgbF raccF rzE
+                nrF     <- mkGBAccumF ri rj rci rzE (Right (rlke, rdlV, rgbF, raccF))
                 promote <- promoteRecType lAs rAs
                 return $ Just $ (updateFusionSpec rAs (ICond1, DepTr),) $
                   PChainLambda1 li lj
@@ -1186,16 +1210,17 @@ fuseFoldTransformers env expr = do
 
               (_, _) -> Right Nothing
 
+          -- TODO: PSDCond2 case
           (ICondN, DCond2) | nonDepTr ltCls && nonDepTr rtCls ->
             case (lAccF, rAccF) of
-              (PChainLambda1 li lj lE lAs1 lAs2, PDCond2 ri rj rci rdlV rgbF raccF rzE) ->
+              (PChainLambda1 li lj lE lAs1 lAs2, PDCond2 ri rj rlke rci rdlV rgbF raccF rzE) ->
                 let liV = EC.variable li
                     accumF nrF promote e = case e of
                       (PPrjAppVarSeq ((== li) -> True) "insert" v) ->
                         EC.applyMany nrF [liV, if promote then elemE v else v]
                       _ -> e
                 in do
-                  nrF <- mkGBAccumF ri rj rci rdlV rgbF raccF rzE
+                  nrF <- mkGBAccumF ri rj rci rzE (Right (rlke, rdlV, rgbF, raccF))
                   nf  <- chainCondN li lj lE (accumF nrF) lAs1 lAs2 lAs rAs
                   return $ Just $ (updateFusionSpec rAs (ICondN, DepTr), nf)
 
@@ -1209,14 +1234,14 @@ fuseFoldTransformers env expr = do
           -- If condition is on keys alone, lift the condition.
           --(DCond2, ICond1) | nonDepTr ltCls && rtCls == IdTr ->
           --  case (lAccF, rAccF) of
-          --    (PDCond2 li lj lci ldlV lgbF laccF lzE
+          --    (PDCond2 li lj llke lci ldlV lgbF laccF lzE
           --    , PICond1 ri rj rpE@(PLam rpi rpBodyE _) rpArg@(PVar ((== rj) -> True) _) rtE)
           --      | xxxKeyOnly rpBodyE ->
           --        let (liV, ljV) = (EC.variable li, EC.variable lj)
           --            lE = EC.ifThenElse
           --                    (EC.applyMany (EC.lambda rj $ EC.applyMany rpE [rpArg])
           --                                  [EC.record [("key", EC.applyMany lgbF ljV)]])
-          --                    (EC.applyMany (mkGBAccumF li lj lci ldlV lgbF laccF lzE)
+          --                    (EC.applyMany (mkGBAccumF li lj lci lzE (Right (llke, ldlV, lgbF, laccF)))
           --                                  [liV, ljV])
           --                    liV
           --            nf = EC.lambda li $ EC.lambda lj lE
@@ -1280,6 +1305,12 @@ fuseFoldTransformers env expr = do
         return $ Just $ (updateFusionSpec rAs (nAccCls, promoteTCls ltCls rtCls), nf)
 
       (_, _) -> Right Nothing
+
+    chainValDCond2 li lj lE lAs1 lAs2 ri rj rci rzE rbgParams lAs rAs ltCls rtCls = do
+      let liV = EC.variable li
+      PChainLambda1 ri' rj' rE' rAs1 rAs2 <- mkGBAccumF ri rj rci rzE rbgParams
+      nf <- chainCondNRightOpen li lj lE lAs1 lAs2 lAs ri' rj' rE' rAs1 rAs2 rAs
+      return $ Just $ (updateFusionSpec rAs (DCond2, promoteTCls ltCls rtCls), nf)
 
 
     -- Expression construction utilities
@@ -1394,26 +1425,47 @@ fuseFoldTransformers env expr = do
       mkAccF aVarId eVarId insertElemE
         $ \aVar _ accumE -> EC.ifThenElse condE accumE aVar
 
-    mkGBAccumF i j ci dlV gbE accFE zE =
-      let iV  = EC.variable i
-          jV  = EC.variable j
-          ciV = EC.variable ci
+    mkGBAccumF i j ci zE gbParams =
+      let iV   = EC.variable i
+          jV   = EC.variable j
+          ciV  = EC.variable ci
 
-          lookupE = EC.applyMany (EC.project "lookup" iV)
-                                 [EC.record [("key", EC.applyMany gbE [jV])
-                                            ,("value", dlV)]]
+          (entryEOpt, lookupE, someE, noneE) = case gbParams of
+            Left (enE, svE, nkE) ->
+              let lookupE = EC.applyMany (EC.project "lookup" iV) [enE]
 
-          someE = PSeq (EC.applyMany (EC.project "insert" iV)
-                          [EC.record
-                            [("key", EC.project "key" ciV)
-                            ,("value", EC.applyMany accFE [EC.project "value" ciV, jV])]])
-                       iV []
+                  someE = PSeq (EC.applyMany (EC.project "insert" iV)
+                                  [EC.record
+                                    [("key", EC.project "key" ciV)
+                                    ,("value", svE)]])
+                               iV []
 
-          noneE = PSeq (EC.applyMany (EC.project "insert" iV)
-                          [EC.record [("key", EC.project "key" ciV), ("value", zE)]])
-                       iV []
+                  noneE = PSeq (EC.applyMany (EC.project "insert" iV)
+                                  [EC.record [("key", nkE), ("value", zE)]])
+                               iV []
+              in (Nothing, lookupE, someE, noneE)
 
-      in return $ EC.lambda i $ EC.lambda j $ EC.caseOf lookupE ci someE noneE
+            Right (lke, dlV, gbE, accFE) ->
+              let lkeV     = EC.variable lke
+                  entryE   = EC.record [("key", EC.applyMany gbE [jV]), ("value", dlV)]
+                  lookupE  = EC.applyMany (EC.project "lookup" iV) [lkeV]
+
+                  someE = PSeq (EC.applyMany (EC.project "insert" iV)
+                                  [EC.record
+                                    [("key", EC.project "key" ciV)
+                                    ,("value", EC.applyMany accFE [EC.project "value" ciV, jV])]])
+                               iV []
+
+                  noneE = PSeq (EC.applyMany (EC.project "insert" iV)
+                                  [EC.record [("key", EC.project "key" lkeV), ("value", zE)]])
+                               iV []
+              in (Just (lke, entryE), lookupE, someE, noneE)
+
+      in
+      return $ EC.lambda i $ EC.lambda j $ case entryEOpt of
+        Just (lke, entryE) -> EC.letIn lke entryE $ EC.caseOf lookupE ci someE noneE
+        Nothing -> EC.caseOf lookupE ci someE noneE
+
 
     simplifyLambda e = runIdentity $ betaReduction env e
 
@@ -1442,9 +1494,11 @@ mapAccumulation onAccumF onRetVarF i expr = runIdentity $ do
     doInference =
       foldMapReturnExpression trackBindings debugReturnAsAccumulator independentF (False, False) (Left False) expr
 
-    debugReturnAsAccumulator tdAcc chAcc e = do
-      (rst, e') <- returnAsAccumulator tdAcc chAcc e
-      flip trace (return (rst, e')) $! unlines [unwords ["RAA", i, show tdAcc, show rst], pretty e, pretty e']
+    debugReturnAsAccumulator tdAcc chAcc e =
+      if True then returnAsAccumulator tdAcc chAcc e
+      else do
+        (rst, e') <- returnAsAccumulator tdAcc chAcc e
+        flip trace (return (rst, e')) $! unlines [unwords ["RAA", i, show tdAcc, show rst], pretty e, pretty e']
 
     trackBindings sp@(shadowed, _) (PPrjAppVarSeq j "insert" v)
       | i == j && not shadowed && notAccessedIn v
@@ -1470,11 +1524,17 @@ mapAccumulation onAccumF onRetVarF i expr = runIdentity $ do
     -- TODO: test in-place modification property
     returnAsAccumulator (shadowed, _) _ e@(PPrjAppVarSeq j "insert" v)
       | i == j && not shadowed && notAccessedIn v =
-          trace ("onAccumF " ++ pretty e) $ return (Right True, onAccumF e)
+          if True then return (Right True, onAccumF e)
+          else trace ("onAccumF " ++ pretty e) $ return (Right True, onAccumF e)
 
     returnAsAccumulator (shadowed, protected) _ e@(tag -> EVariable j)
-      | i == j && not shadowed = if protected then trace ("onSkipE " ++ pretty e)   $ return (Left True, e)
-                                              else trace ("onRetVarF " ++ pretty e) $ return (Left True, onRetVarF e)
+      | i == j && not shadowed =
+        if True then
+          if protected then return (Left True, e)
+                       else return (Left True, onRetVarF e)
+        else
+          if protected then trace ("onSkipE " ++ pretty e)   $ return (Left True, e)
+                       else trace ("onRetVarF " ++ pretty e) $ return (Left True, onRetVarF e)
 
     returnAsAccumulator _ (onReturnBranch [0]   -> isAccum) e@(tag -> ELambda _)     = return (isAccum, e)
     returnAsAccumulator _ (onReturnBranch [0]   -> isAccum) e@(tag -> EOperate OApp) = return (isAccum, e)
@@ -1490,7 +1550,8 @@ mapAccumulation onAccumF onRetVarF i expr = runIdentity $ do
     -- TODO: replace with testing effects/symbol.
     notAccessedIn e =
       let r = i `notElem` (freeVariables e)
-      in trace (unlines [unwords ["NAI", i, show r], pretty e]) r
+      in if True then r
+                 else trace (unlines [unwords ["NAI", i, show r], pretty e]) r
 
     onIndepR l = if any not $ rights l then Right False else Left False
 
@@ -1527,6 +1588,7 @@ pattern PTup         fieldsE tAs   = Node (ETuple        :@: tAs)   fieldsE
 pattern PSome sE optAs = Node (ESome :@: optAs) [sE]
 pattern PNone nm optAs = Node (EConstant (CNone nm) :@: optAs) []
 
+pattern PLetIn       srcE i   bodyE lAs          = Node (ELetIn  i     :@: lAs) [srcE, bodyE]
 pattern PBindAs      srcE bnd bodyE bAs          = Node (EBindAs bnd   :@: bAs) [srcE, bodyE]
 pattern PCaseOf      caseE varId someE noneE cAs = Node (ECaseOf varId :@: cAs) [caseE, someE, noneE]
 pattern PIfThenElse  pE tE eE cAs                = Node (EIfThenElse   :@: cAs) [pE, tE, eE]
@@ -1617,6 +1679,18 @@ pattern PPrjApp2ChainCh cE fId gId fArg1 fArg2 gArg1 gArg2 fAs iApp1As iApp2As g
   (PApp _ _ oApp2As
   , [PPrjApp (PPrjApp2 cE fId fAs fArg1 fArg2 iApp1As iApp2As) gId gAs gArg1 oApp1As, gArg2])
 
+
+{- Fusion accumulator patterns -}
+pattern PUCond i j fE fArg <-
+  PChainLambda1 i j
+    (PSeq (PPrjApp (PVar ((== i) -> True) _) "insert" _ (PApp fE fArg _) _)
+          (PVar ((== i) -> True) _) _) _ _
+
+pattern PSUCond i j vE <-
+  PChainLambda1 i j
+    (PSeq (PPrjApp (PVar ((== i) -> True) _) "insert" _ vE _)
+          (PVar ((== i) -> True) _) _) _ _
+
 pattern PICond1 i j pE pArg tE <-
   PChainLambda1 i j
     (PIfThenElse (PApp pE pArg _)
@@ -1624,23 +1698,39 @@ pattern PICond1 i j pE pArg tE <-
                        (PVar ((== i) -> True) _) _)
                  (PVar ((== i) -> True) _) _) _ _
 
-pattern PDCond2 i j ci dlV gbF accF zE <-
+pattern PDCond2 i j lke ci dlV gbF accF zE <-
   PChainLambda1 i j
-    (PCaseOf (PPrjApp (PVar ((== i) -> True) _) "lookup" _
-                      (PRec ["key", "value"] [PApp gbF (PVar ((== j) -> True) _) _, dlV] _) _)
-             ci
-             (PSeq (PPrjApp (PVar ((== i) -> True) _) "insert" _
-                            (PRec ["key", "value"]
-                                  [(PPrj (PVar ((== ci) -> True) _) "key" _)
-                                  ,(PApp2 accF (PPrj (PVar ((== ci) -> True) _) "value" _)
-                                               (PVar ((== j) -> True) _) _ _)]
-                            _) _)
-                   (PVar ((== i) -> True) _) _)
-             (PSeq (PPrjApp (PVar ((== i) -> True) _) "insert" _ zE _)
-                   (PVar ((== i) -> True) _) _)
-             _) _ _
+    (PLetIn
+      (PRec ["key", "value"] [PApp gbF (PVar ((== j) -> True) _) _, dlV] _)
+      lke
+      (PCaseOf (PPrjApp (PVar ((== i) -> True) _) "lookup" _
+                        (PVar ((== lke) -> True) _) _)
+               ci
+               (PSeq (PPrjApp (PVar ((== i) -> True) _) "insert" _
+                              (PRec ["key", "value"]
+                                    [(PPrj (PVar ((== ci) -> True) _) "key" _)
+                                    ,(PApp2 accF (PPrj (PVar ((== ci) -> True) _) "value" _)
+                                                 (PVar ((== j) -> True) _) _ _)]
+                              _) _)
+                     (PVar ((== i) -> True) _) _)
+               (PSeq (PPrjApp (PVar ((== i) -> True) _) "insert" _
+                              (PRec ["key", "value"]
+                                    [(PPrj (PVar ((== lke) -> True) _) "key" _), zE] _) _)
+                     (PVar ((== i) -> True) _) _)
+               _)
+      _) _ _
 
-pattern PUCond i j fE fArg <-
+pattern PSDCond2 i j ci entryE svE nkE zE <-
   PChainLambda1 i j
-    (PSeq (PPrjApp (PVar ((== i) -> True) _) "insert" _ (PApp fE fArg _) _)
-          (PVar ((== i) -> True) _) _) _ _
+    (PCaseOf (PPrjApp (PVar ((== i) -> True) _) "lookup" _ entryE _)
+              ci
+              (PSeq (PPrjApp (PVar ((== i) -> True) _) "insert" _
+                             (PRec ["key", "value"]
+                                   [(PPrj (PVar ((== ci) -> True) _) "key" _), svE]
+                             _) _)
+                    (PVar ((== i) -> True) _) _)
+              (PSeq (PPrjApp (PVar ((== i) -> True) _) "insert" _
+                             (PRec ["key", "value"]
+                                   [nkE, zE] _) _)
+                    (PVar ((== i) -> True) _) _)
+              _) _ _
