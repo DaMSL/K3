@@ -201,7 +201,12 @@ namespace JSON {
     template <class Allocator> 
     static rapidjson::Value encode(const K3::base_string& from, Allocator& al) {
       Value v;
-      v.SetString(from.c_str(), al); 
+      if (from.c_str()) {
+        v.SetString(from.c_str(), al); 
+      }
+      else {
+        v.SetString("", al);
+      }
       return v;
     }
 

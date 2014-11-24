@@ -161,12 +161,14 @@ namespace K3 {
       bool simulation,
       SystemEnvironment& sys_env,
       shared_ptr<InternalCodec> _internal_codec,
-      string log_level
+      string log_level,
+      string result_v,
+      string result_p
     ): LogMT("Engine") {
-      configure(simulation, sys_env, _internal_codec, log_level);
+      configure(simulation, sys_env, _internal_codec, log_level, result_v, result_p);
     }
 
-    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level);
+    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level, string result_var, string result_path);
 
     //-----------
     // Messaging.
@@ -323,26 +325,51 @@ namespace K3 {
     // JSON logging
     void logJson(std::string time, const Address& peer, std::string trig, std::string msg_contents, std::map<std::string, std::string> env, const Address& msgSource) {
             auto s = env.size();
+            auto& event_stream = std::get<0>(*log_streams[peer]);
+
+            // Log message Event:
+            // message_id, dest_peer, trigger_name
+            // source_peer, contents, timestamp
+            event_stream << message_counter << "|";
+            event_stream << K3::serialization::json::encode<Address>(peer) << "|";
+            event_stream << trig << "|";
+            event_stream << K3::serialization::json::encode<Address>(msgSource) << "|";
+            event_stream << msg_contents << "|";
+            event_stream << time << "|";
+            event_stream << std::endl;
+
+            // Log Global state
+            auto& global_stream = std::get<1>(*log_streams[peer]);
+            global_stream << message_counter << "|";
+            global_stream << K3::serialization::json::encode<Address>(peer) << "|";
             int i = 0;
-            auto& stream = *log_streams[peer];
-
-            // timestamp, Peer, level, trig_name, sourcePeer, msg_contents
-            stream << time << "|";
-            stream << K3::serialization::json::encode<Address>(peer) << "|";
-            stream << "TRACE" << "|";
-            stream << trig << "|";
-            stream << K3::serialization::json::encode<Address>(msgSource) << "|";
-            stream << msg_contents << "|";
-
-            // Global state
             for (const auto& tup : env) {
-               stream << tup.second;
+               global_stream << tup.second;
               if (i < s-1) {
-                stream << "|";
+                global_stream << "|";
               }
               i++;
             }
-            stream << std::endl;
+            global_stream << std::endl;
+    }
+
+    void logResult(shared_ptr<MessageProcessor>& mp) {
+      if (result_var != "") {
+        auto n = nodes();
+        for (const auto& a : n) {
+          auto dir = result_path != "" ? result_path : ".";
+          auto s = dir + "/" + addressAsString(a) + "Result.txt";
+          std::ofstream ofs;
+          ofs.open(s);
+          auto m = mp->json_bindings(a);
+          if (m.count( result_var ) != 0) {
+            ofs << m[result_var] << std::endl;
+          }
+          else {
+            throw std::runtime_error("Cannot log result variable, does not exist: " + result_var);
+          }
+        }
+      }
     }
 
     //-------------------
@@ -377,8 +404,6 @@ namespace K3 {
 
     bool logEnabled() { return log_enabled; }
   protected:
-    bool                            log_enabled;
-    std::map<Address, std::shared_ptr<std::ofstream>> log_streams;
     shared_ptr<EngineConfiguration> config;
     shared_ptr<EngineControl>       control;
     shared_ptr<SystemEnvironment>   deployment;
@@ -394,6 +419,16 @@ namespace K3 {
     // Listeners tracked by the engine.
     shared_ptr<Listeners>           listeners;
     unsigned                        collectionCount;
+
+    // Log info
+    bool                            log_enabled;
+    // Tuple of (eventLog, globalsLog)
+    std::map<Address, std::shared_ptr<std::tuple<std::ofstream, std::ofstream>>> log_streams;
+    string                          result_var;
+    string                          result_path;
+
+
+    unsigned int                    message_counter;
 
     void logMessageLoop(string s);
 

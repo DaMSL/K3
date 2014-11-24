@@ -1,6 +1,8 @@
 include "Annotation/Collection.k3"
 declare final : mut int = 0
 
+declare logthis: collection {id: int, name: string} @Collection
+
 trigger start : int = \n -> (fibonacci, me) <- (n, 0, 1)
 
 trigger fibonacci : (immut int, immut int, immut int) = \x ->

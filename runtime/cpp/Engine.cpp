@@ -1,23 +1,30 @@
 #include "Engine.hpp"
 
+
 using namespace boost::log;
 using namespace boost::log::trivial;
 using boost::thread;
 
 namespace K3 {
 
-    void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level) {
+    void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec,
+                           string log_path, string result_v, string result_p) {
       internal_codec = _internal_codec;
-      std::cout << "Engine log level: " << log_level << std::endl;
       log_enabled = false;
-      if (log_level != "") { log_enabled = true; }
+      if (log_path != "") { log_enabled = true; }
+      result_var = result_v;
+      result_path = result_p;
+
       list<Address> processAddrs = deployedNodes(sys_env);
       Address initialAddress;
 
       if (log_enabled) {
+
         for (const auto& addr : processAddrs) {
-          auto s = addressAsString(addr);
-          log_streams[addr] = make_shared<std::ofstream>(s);
+          auto dir = log_path != "" ? log_path : ".";
+          auto s1 = dir + "/" + addressAsString(addr) + "_Messages.dsv";
+          auto s2 = dir + "/" + addressAsString(addr) + "_Globals.dsv";
+          log_streams[addr] = make_shared<std::tuple<std::ofstream, std::ofstream>>(s1, s2);
         }
       }
 
@@ -36,6 +43,7 @@ namespace K3 {
       endpoints    = shared_ptr<EndpointState>(new EndpointState());
       listeners    = shared_ptr<Listeners>(new Listeners());
       collectionCount   = 0;
+      message_counter = 0;
 
       if ( simulation ) {
         // Simulation engine initialization.
@@ -145,6 +153,7 @@ namespace K3 {
       shared_ptr<Message> next_message = queues->dequeue();
 
       if (next_message) {
+        message_counter++;
         // Log Message
         if (log_enabled) {
           std::string target = next_message->target();
@@ -238,6 +247,7 @@ namespace K3 {
       // workers->setId(1);
 
       runMessages(mp, mp->status());
+      logResult(mp);
     }
 
     // Return a new thread running runEngine()

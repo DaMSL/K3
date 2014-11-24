@@ -209,10 +209,7 @@ main = do
 
     let runProgram = R.Ignore $ R.Call
                        (R.Variable $ R.Specialized [R.Named $ R.Name "__global_context"] (R.Name "runProgram"))
-                       [ (R.Project (R.Variable $ R.Name "opt") (R.Name "peer_strings"))
-                       , (R.Project (R.Variable $ R.Name "opt") (R.Name "simulation"))
-                       , (R.Project (R.Variable $ R.Name "opt") (R.Name "log_level") )
-                       ]
+                       [ R.Variable $ R.Name "opt" ]
 
     return [
         R.FunctionDefn (R.Name "main") [("argc", R.Primitive R.PInt), ("argv", R.Named (R.Name "char**"))]
@@ -380,19 +377,14 @@ genJsonify = do
 
    -- Insert key-value pairs into the map
    genInserts :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
-   genInserts n_ts' = do
-     -- Don't include unit vars
-     let n_ts      = filter (not . isTUnit . snd) n_ts'
-         names     = map fst n_ts
+   genInserts n_ts = do
+     let names     = map fst n_ts
          name_vars = map (R.Variable . R.Name) names
          new_nts   = zip name_vars $ map snd n_ts
          lhs_exprs = map (\x -> R.Subscript (R.Variable $ R.Name result) (R.Literal $ R.LString x)) names
      rhs_exprs  <- mapM (\(n,t) -> jsonifyExpr t n) new_nts
      return $ zipWith R.Assignment lhs_exprs rhs_exprs
      where
-       isTUnit (tnc -> (TTuple, [])) = True
-       isTUnit _ = False
-
        jsonifyExpr t n = do
          cType <- genCType t
          return $ R.Call (R.Variable $ R.Specialized [cType] (R.Name "K3::serialization::json::encode")) [n]

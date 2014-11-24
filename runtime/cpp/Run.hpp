@@ -8,7 +8,14 @@
 #include "serialization/yaml.hpp"
 namespace K3 {
   template <class context>
-  void runProgram(std::vector<string> peer_strs, bool simulation, string log_level) {
+  void runProgram(Options opt) {
+
+    std::vector<string> peer_strs = opt.peer_strings;
+    bool simulation = opt.simulation;
+    std::string log_path = opt.log_path;
+    std::string result_var = opt.result_var;
+    std::string result_path = opt.result_path;
+
     std::vector<std::string> configurations;
 
     for (auto p: peer_strs) {
@@ -36,7 +43,7 @@ namespace K3 {
       }
 
       SystemEnvironment se = defaultEnvironment(getAddrs(contexts));
-      engine.configure(simulation, se, make_shared<DefaultInternalCodec>(), log_level);
+      engine.configure(simulation, se, make_shared<DefaultInternalCodec>(), log_path, result_var, result_path);
       processRoles(contexts);
       engine.runEngine(make_shared<virtualizing_message_processor>(contexts));
     }
@@ -54,7 +61,7 @@ namespace K3 {
         gc->initDecls(unit_t {});
         contexts[gc->me] = gc;
         SystemEnvironment se = defaultEnvironment(getAddrs(contexts));
-        engine->configure(simulation, se, make_shared<DefaultInternalCodec>(), log_level);
+        engine->configure(simulation, se, make_shared<DefaultInternalCodec>(), log_path, result_var, result_path);
         processRoles(contexts);
         auto t = tuple<e_ptr, ctxt_map>(engine, contexts);
         engines.push_back(t);
