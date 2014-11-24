@@ -19,6 +19,8 @@ import Safe
 
 import qualified Data.Set as S
 
+import Language.K3.Analysis.Effects.Core
+
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Expression
@@ -150,7 +152,8 @@ inline (tag -> EConstant c) = constant c >>= \c' -> return ([], R.Literal c')
 
 -- If a variable was declared as mutable it's been reified as a shared_ptr, and must be
 -- dereferenced.
--- Add this binding to global functions. TODO: handle shadowing by locals
+--
+-- Add this binding to global functions.
 inline e@(tag -> EVariable v) = do
   env <- get
   resetApplyLevel
@@ -161,8 +164,9 @@ inline e@(tag -> EVariable v) = do
     Just (tag -> TForall _, False) | applyLevel env < cargs -> return ([], addBind v cargs)
     _                              -> return ([], defVar)
   where
+    isGlobal = isJust $ e @~ \case { EOpt GlobalHint -> True; _ -> False }
     defVar = R.Variable $ R.Name v
-    addBind x n = R.Call stdBind [addContext x, stdRefThis, placeHolder n]
+    addBind x n = if isGlobal then R.Call stdBind [addContext x, stdRefThis, placeHolder n] else defVar
 
     stdBind = R.Variable $ R.Qualified (R.Name "std") (R.Name "bind")
     addContext x = R.Variable $ R.Qualified (R.Name "&__global_context") $ R.Name x
