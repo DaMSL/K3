@@ -19,7 +19,6 @@ namespace K3 {
       Address initialAddress;
 
       if (log_enabled) {
-
         for (const auto& addr : processAddrs) {
           auto dir = log_path != "" ? log_path : ".";
           auto s1 = dir + "/" + addressAsString(addr) + "_Messages.dsv";

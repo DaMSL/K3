@@ -324,7 +324,6 @@ namespace K3 {
 
     // JSON logging
     void logJson(std::string time, const Address& peer, std::string trig, std::string msg_contents, std::map<std::string, std::string> env, const Address& msgSource) {
-            auto s = env.size();
             auto& event_stream = std::get<0>(*log_streams[peer]);
 
             // Log message Event:
@@ -343,6 +342,7 @@ namespace K3 {
             global_stream << message_counter << "|";
             global_stream << K3::serialization::json::encode<Address>(peer) << "|";
             int i = 0;
+            auto s = env.size();
             for (const auto& tup : env) {
                global_stream << tup.second;
               if (i < s-1) {

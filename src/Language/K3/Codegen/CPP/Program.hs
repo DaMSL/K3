@@ -385,6 +385,9 @@ genJsonify = do
      rhs_exprs  <- mapM (\(n,t) -> jsonifyExpr t n) new_nts
      return $ zipWith R.Assignment lhs_exprs rhs_exprs
      where
+       isTUnit (tnc -> (TTuple, [])) = True
+       isTUnit _ = False
+
        jsonifyExpr t n = do
          cType <- genCType t
          return $ R.Call (R.Variable $ R.Specialized [cType] (R.Name "K3::serialization::json::encode")) [n]
