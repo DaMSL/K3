@@ -45,7 +45,7 @@ data Mode
   deriving (Eq, Read, Show)
 
 data PrintMode
-    = PrintAST    { stripEffects :: Bool, stripTypes :: Bool }
+    = PrintAST    { stripEffects :: Bool, stripTypes :: Bool, stripCmts :: Bool }
     | PrintSyntax
   deriving (Eq, Read, Show)
 
@@ -189,7 +189,9 @@ astPrintOpt = extract . keyValList "" <$> strOption (
                 <> help "Print AST output"
                 <> metavar "PRINT-AST-FLAGS"
               )
-   where extract l = PrintAST (isJust $ lookup "notypes" l) (isJust $ lookup "noeffects" l)
+   where extract l = PrintAST (maybe False read $ lookup "notypes" l)
+                              (maybe False read $ lookup "noeffects" l)
+                              (maybe False read $ lookup "nocomments" l)
 
 syntaxPrintOpt :: Parser PrintMode
 syntaxPrintOpt = flag' PrintSyntax (   long "syntax"

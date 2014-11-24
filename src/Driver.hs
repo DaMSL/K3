@@ -4,6 +4,7 @@ import Control.Monad
 import Control.Arrow (first)
 import Data.Char
 import Data.List(foldl')
+import Data.Maybe
 import Data.Tuple
 
 import qualified Options.Applicative as Options
@@ -11,6 +12,7 @@ import Options.Applicative((<>), (<*>))
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
+import Language.K3.Core.Utils
 
 import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
@@ -76,8 +78,8 @@ run opts = do
     dispatch (Compile c)   p = compile c p
     dispatch (Interpret i) p = interpret i p
     dispatch (Typecheck t) p = case chooseTypechecker t p of
-      Left s   -> putStrLn s                        >> putStrLn "ERROR"
-      Right p' -> printer (PrintAST False False) p' >> putStrLn "SUCCESS"
+      Left s   -> putStrLn s                              >> putStrLn "ERROR"
+      Right p' -> printer (PrintAST False False False) p' >> putStrLn "SUCCESS"
 
     -- Compilation dispatch.
     compile cOpts prog = do
@@ -109,12 +111,16 @@ run opts = do
     transform ts prog = foldl' (flip analyzer) (prog, "") ts
 
     -- Print out the program
-    printer (PrintAST st se) = let preF = if st && se then stripTypeAndEffectAnns
-                                          else if st then stripTypeAnns
-                                          else if se then stripEffectAnns
-                                          else id
-                               in putStrLn . pretty . preF
-    printer PrintSyntax    = either syntaxError putStrLn . programS
+    printer (PrintAST st se sc) p =
+      let filterF = catMaybes $
+                     [if st && se then Just stripTypeAndEffectAnns
+                      else if st  then Just stripTypeAnns
+                      else if se  then Just stripEffectAnns
+                      else Nothing]
+                      ++ [if sc then Just stripComments else Nothing]
+      in putStrLn . pretty $ foldl (flip ($)) p filterF
+
+    printer PrintSyntax p = either syntaxError putStrLn $ programS p
 
     runStagesThenPrint popts prog = do
       let sprogE = foldM (\p (stg, f) -> if stg `elem` (poStages popts) then f p else Right p)
