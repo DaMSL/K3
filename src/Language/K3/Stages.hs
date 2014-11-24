@@ -1,3 +1,4 @@
+{-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -6,16 +7,14 @@ module Language.K3.Stages where
 
 import Control.Monad
 import Control.Arrow (first, second)
-import Data.Functor.Identity
+import Debug.Trace
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
-import Language.K3.Core.Expression
 import Language.K3.Core.Utils
 
 import Language.K3.Analysis.Properties
 import Language.K3.Analysis.HMTypes.Inference
-import Language.K3.Analysis.Effects.Core
 import Language.K3.Analysis.Effects.InsertEffects(EffectEnv)
 import qualified Language.K3.Analysis.Effects.InsertEffects as Effects
 import qualified Language.K3.Analysis.Effects.Purity        as Purity
@@ -28,57 +27,79 @@ import Language.K3.Transform.Simplification
 import Language.K3.Transform.Writeback
 import Language.K3.Transform.Common
 
+import Language.K3.Utils.Pretty
+
 type ProgramTransform = (K3 Declaration, Maybe EffectEnv) -> Either String (K3 Declaration, Maybe EffectEnv)
 
-{- Annotation cleanup methods -}
-stripTypeAnns :: K3 Declaration -> K3 Declaration
-stripTypeAnns = stripDeclAnnotations (const False) isAnyETypeAnn (const False)
-
-resetEffectAnns :: K3 Declaration -> K3 Declaration
-resetEffectAnns p = runIdentity $ mapMaybeAnnotation resetF idF idF p
-  where idF = return . Just
-        resetF (DSymbol s@(tag -> SymId _)) = return $
-          case s @~ isSDeclared of
-            Just (SDeclared s') -> Just $ DSymbol s'
-            _ -> Nothing
-        resetF a = return $ Just a
-
-stripEffectAnns :: K3 Declaration -> K3 Declaration
-stripEffectAnns p = resetEffectAnns $
-  stripDeclAnnotations (const False) isAnyEEffectAnn (const False) p
-
--- | Effects-related metadata removal, including user-specified effect signatures.
-stripAllEffectAnns :: K3 Declaration -> K3 Declaration
-stripAllEffectAnns = stripDeclAnnotations isDSymbol isAnyEEffectAnn (const False)
-
--- | Single-pass composition of type and effect removal.
-stripTypeAndEffectAnns :: K3 Declaration -> K3 Declaration
-stripTypeAndEffectAnns p = resetEffectAnns $
-  stripDeclAnnotations (const False) isAnyETypeOrEffectAnn (const False) p
-
--- | Single-pass variant removing all effect annotations.
-stripAllTypeAndEffectAnns :: K3 Declaration -> K3 Declaration
-stripAllTypeAndEffectAnns = stripDeclAnnotations isDSymbol isAnyETypeOrEffectAnn (const False)
-
--- | Removes all properties from a program.
-stripAllProperties :: K3 Declaration -> K3 Declaration
-stripAllProperties = stripDeclAnnotations isDProperty isEProperty (const False)
-
 {- Transform constructors -}
+
+type TrF  = K3 Declaration -> K3 Declaration
+type TrE  = K3 Declaration -> Either String (K3 Declaration)
+type TrEF = EffectEnv -> K3 Declaration -> K3 Declaration
+type TrEE = EffectEnv -> K3 Declaration -> Either String (K3 Declaration)
+
 -- Add an environment for functions that return only a program
-transformF :: (K3 Declaration -> K3 Declaration) -> ProgramTransform
+transformF :: TrF -> ProgramTransform
 transformF f (prog, menv) = Right (f prog, menv)
 
-transformE :: (K3 Declaration -> Either String (K3 Declaration)) -> ProgramTransform
+transformE :: TrE -> ProgramTransform
 transformE f (prog, menv) = f prog >>= return . (, menv)
 
-transformEnvF :: (EffectEnv -> K3 Declaration -> K3 Declaration) -> ProgramTransform
+transformEnvF :: TrEF -> ProgramTransform
 transformEnvF _ (_, Nothing)     = Left "missing effect environment"
 transformEnvF f (prog, Just env) = Right (f env prog, Just env)
 
-transformEnvE :: (EffectEnv -> K3 Declaration -> Either String (K3 Declaration)) -> ProgramTransform
+transformEnvE :: TrEE -> ProgramTransform
 transformEnvE _ (_, Nothing)     = Left "missing effect environment"
 transformEnvE f (prog, Just env) = f env prog >>= return . (, Just env)
+
+fixpointF :: TrF -> ProgramTransform
+fixpointF f p = do
+  np <- transformF f p
+  if fst np /= fst p then do
+    np' <- inferFreshTypesAndEffects np
+    fixpointF f np'
+  else return np
+
+fixpointE :: TrE -> ProgramTransform
+fixpointE f p = do
+  np <- transformE f p
+  if fst np /= fst p then do
+    np' <- inferFreshTypesAndEffects np
+    fixpointE f np'
+  else return np
+
+fixpointEnvF :: TrEF -> ProgramTransform
+fixpointEnvF f p = do
+  np <- transformEnvF f p
+  if fst np /= fst p then do
+    np' <- inferFreshTypesAndEffects np
+    fixpointEnvF f np'
+  else return np
+
+fixpointEnvE :: TrEE -> ProgramTransform
+fixpointEnvE f p = do
+  np <- transformEnvE f p
+  if fst np /= fst p then do
+    np' <- inferFreshTypesAndEffects np
+    fixpointEnvE f np'
+  else return np
+
+fixpointIEnvF :: TrEF -> [ProgramTransform] -> ProgramTransform
+fixpointIEnvF f interF p = do
+  np <- transformEnvF f p
+  if fst np /= fst p then do
+    np' <- foldM (flip ($)) np interF
+    fixpointIEnvF f interF np'
+  else return np
+
+fixpointIEnvE :: TrEE -> [ProgramTransform] -> ProgramTransform
+fixpointIEnvE f interF p = do
+  np <- transformEnvE f p
+  if fst np /= fst p then do
+    np' <- foldM (flip ($)) np interF
+    fixpointIEnvE f interF np'
+  else return np
 
 {- High-level passes -}
 inferTypes :: ProgramTransform
@@ -118,16 +139,19 @@ withPasses :: [ProgramTransform] -> ProgramTransform
 withPasses passes prog = foldM (flip ($!)) prog passes
 
 simplify :: ProgramTransform
-simplify p = transformE foldProgramConstants p
-              >>= transformEnvF betaReductionOnProgram
-              >>= transformEnvE eliminateDeadProgramCode
+simplify p =  transformE foldProgramConstants p
+                >>= transformEnvF betaReductionOnProgram
+                >>= transformEnvE eliminateDeadProgramCode
 
 simplifyWCSE :: ProgramTransform
 simplifyWCSE p = simplify p >>= transformEnvE commonProgramSubexprElim
 
+-- TODO: remove whole-program fixpoint once we have the ability to
+-- locally infer effects on expressions.
 streamFusion :: ProgramTransform
-streamFusion = withProperties $ \p ->
-  transformEnvE encodeTransformers p >>= transformEnvE fuseProgramFoldTransformers
+streamFusion = withProperties $ \p -> transformEnvE encodeTransformers p >>= fusionFixpoint
+  where fusionFixpoint = fixpointIEnvE fuseProgramFoldTransformers
+                            [inferFreshTypesAndEffects, transformEnvF betaReductionOnProgram]
 
 runPasses :: [ProgramTransform] -> K3 Declaration -> Either String (K3 Declaration, Maybe EffectEnv)
 runPasses passes d = withPasses passes (d, Nothing)
@@ -136,9 +160,9 @@ effectPasses :: [ProgramTransform]
 effectPasses = [transformEnvF Purity.runPurity]
 
 optPasses :: [ProgramTransform]
-optPasses = map prepareOpt [ (simplify,         "opt-simplify-prefuse") ]
-                           --, (streamFusion,     "opt-fuse") ]
-                           --, (simplify,         "opt-simplify-final") ]
+optPasses = map prepareOpt [ (simplify,         "opt-simplify-prefuse")
+                           , (streamFusion,     "opt-fuse")
+                           , (simplify,         "opt-simplify-final") ]
   where prepareOpt (f,i) =
           withPasses $ [inferFreshTypesAndEffects] ++ effectPasses ++ [withRepair i f]
 

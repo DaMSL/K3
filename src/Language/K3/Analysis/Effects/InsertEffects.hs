@@ -37,12 +37,15 @@ module Language.K3.Analysis.Effects.InsertEffects (
   expandExpression,
 
   SymbolCategories(..),
+  addCategories,
+  expandCategories,
   applyEffLambdas,
   applyEffLambdasEnv,
   categorizeEffectSymbols,
   matchEffectSymbols,
   effectSCategories,
-  exprSCategories
+  exprSCategories,
+  bindingSCategories
 )
 where
 
@@ -59,7 +62,6 @@ import Data.IntSet(IntSet)
 import qualified Data.IntSet as IntSet
 import Data.List(delete)
 import Data.Foldable hiding (and, mapM_, any, all, concatMap, concat, elem)
-import Debug.Trace(trace)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -74,8 +76,17 @@ import Language.K3.Utils.Pretty
 
 import qualified Language.K3.Analysis.InsertMembers as IM
 
-debugTrace = False
-debugQueries = False
+enableDebugging :: Bool
+enableDebugging = False
+
+traceLogging :: Bool
+traceLogging = False
+
+localLog :: (Functor m, Monad m) => String -> m ()
+localLog = logVoid traceLogging
+
+localLogAction :: (Functor m, Monad m) => (Maybe a -> Maybe String) -> m a -> m a
+localLogAction = logAction traceLogging
 
 data LocalSym = LocalSym (K3 Symbol) | LambdaLayer (Maybe (K3 Symbol))
 
@@ -801,12 +812,11 @@ runAnalysisEnv env1 prog = flip runState env1 $ do
   p1 <- addAllGlobals prog
   -- actual modification of AST
   p2 <- mapProgram handleDecl mId handleExprs Nothing p1
-  if debugTrace then do
+  if enableDebugging then
     -- If we want to debug, we need to expand the program deeply
-    p3 <- expandProg p2
-    trace (pretty p3) $ return p2
-    else
-      return p2
+    localLogAction (maybe Nothing (Just . pretty)) (expandProg p2) >> return p2
+  else
+    return p2
   where
 
     handleExprs :: K3 Expression -> MEnv (K3 Expression)
@@ -1075,6 +1085,7 @@ combineEff constF es =
 
 combineEffSet :: [Maybe (K3 Effect)] -> MEnv (Maybe (K3 Effect))
 combineEffSet = combineEff set
+
 combineEffSeq :: [Maybe (K3 Effect)] -> MEnv (Maybe (K3 Effect))
 combineEffSeq = combineEff seq
 
@@ -1131,7 +1142,11 @@ applyLambda sLam' sArg = do
       sArg2 <- expandSymDeepM sArg'
       lamEff2 <- expandEffDeepM lamEff''
       chSym2 <- expandSymDeepM chSym'
-      trace ("applied lambda: \n"++pretty sLam2++"\nto arg: \n"++pretty sArg2++"\nresult effect: \n"++pretty lamEff2++"\nresult symbol: \n"++pretty chSym2) $ return $ Just (lamEff', chSym')
+      logVoid ("applied lambda: \n"      ++ pretty sLam2
+                ++ "\nto arg: \n"        ++ pretty sArg2
+                ++ "\nresult effect: \n" ++ pretty lamEff2
+                ++ "\nresult symbol: \n" ++ pretty chSym2)
+      return $ Just (lamEff', chSym')
       -}
       return $ Just (lamEff', chSym')
 
@@ -1207,6 +1222,10 @@ emptyCategories = SymbolCategories [] [] [] [] False
 addCategories :: SymbolCategories -> SymbolCategories -> SymbolCategories
 addCategories (SymbolCategories r w a b io1) (SymbolCategories r2 w2 a2 b2 io2) =
   SymbolCategories (nubSyms $ r++r2) (nubSyms $ w++w2) (nubSyms $ a++a2) (nubSyms $ b++b2) (io1 || io2)
+
+expandCategories :: EffectEnv -> SymbolCategories -> SymbolCategories
+expandCategories env (SymbolCategories r w a b io) = SymbolCategories (d r) (d w) (d a) (d b) io
+  where d symList = map (expandSymDeep env) symList
 
 categorizeEffectSymbols :: K3 Effect -> MEnv SymbolCategories
 categorizeEffectSymbols eff = categorizeEff emptyCategories eff >>= return . nubSymbols
@@ -1295,38 +1314,46 @@ matchEffectSymbols querySyms (SymbolCategories rs ws as bs io) = do
 -- Query whether certain symbols are read, written, applied
 effectSCategories :: K3 Effect -> [K3 Symbol] -> EffectEnv -> SymbolCategories
 effectSCategories eff syms env = flip evalState (env {bindEnv = Map.empty}) $ do
-  eff' <- applyEffLambdas eff
-  if debugQueries then do
-    cats <- categorizeEffectSymbols eff'
-    debuggedCats <- debugEffect eff' cats
-    cats2@sc <- trace debuggedCats $ matchEffectSymbols syms cats
-    debuggedCats2 <- debugEffect eff' cats2
-    trace debuggedCats2 $ return sc
-
-  else categorizeEffectSymbols eff' >>= matchEffectSymbols syms
+  eff'  <- applyEffLambdas eff
+  cats  <- debugCategories eff' $ categorizeEffectSymbols eff'
+  cats2 <- debugCategories eff' $ matchEffectSymbols syms cats
+  return cats2
   where
-    debugEffect edbg categories = do
-      deepEff <- expandEffDeepM edbg
-      return $ boxToString $ ["Effect"]  %$ prettyLines deepEff
-                                         %$ prettyLines categories
+    debugCategories edbg catsm =
+      if enableDebugging then do
+        deepEdbg <- expandEffDeepM edbg
+        localLogAction (maybe Nothing (Just . prettyEffCat deepEdbg)) catsm
+      else catsm
+
+    prettyEffCat eff cats = boxToString $ ["Effect"]  %$ prettyLines eff %$ prettyLines cats
+
+-- The effects returned for the lambda are its deferred effects, which includes the effects
+-- in its body as well as any internal closure constructions effects (nested lambdas)
+-- Closure construction effects of this lambda are NOT provided (the information is not available locally)
+lambdaEffects :: Bool -> EffectEnv -> K3 Effect -> [K3 Symbol] -> SymbolCategories
+lambdaEffects skipArg env eff chSym
+  | FScope bindings' <- tag $ eE env eff
+  , bindings <- if skipArg then safeTail bindings' else bindings'
+  = let sc1 = effectSCategories eff bindings env
+        sc2 = case chSym of
+                [symProv . tag . eS env -> PLambda eff2]
+                  -> effectSCategories eff2 bindings env
+                _ -> emptyCategories
+    in addCategories sc1 sc2
+
+  where safeTail [] = []
+        safeTail l = tail l
+
+lambdaEffects _ _ _ _ = error "Invalid effect and child symbol in computing lambda effects."
 
 -- Variant of the above function that can be used with expressions.
 -- This additionally handles retrieving both lambda and closure
 -- construction effects, when applied to lambdas.
-exprSCategories :: K3 Expression -> EffectEnv -> SymbolCategories
-exprSCategories e env =
+exprSCategories :: Bool -> K3 Expression -> EffectEnv -> SymbolCategories
+exprSCategories skipArg e env =
   case (tag e, e @~ isEEffect, e @~ isESymbol) of
-    -- The effects returned for the lambda are its deferred effects, which includes the effects
-    -- in its body as well as any internal closure constructions effects (nested lambdas)
-    -- Closure construction effects of this lambda are NOT provided (the information is not available locally)
-    (ELambda _, Nothing, Just (ESymbol (eS env -> tnc -> (symProv -> PLambda eff, chSym))))
-      | FScope bindings <- tag $ eE env eff ->
-      let sc1    = effectSCategories eff bindings env
-          sc2    = case chSym of
-                         [symProv . tag . eS env -> PLambda eff2]
-                           -> effectSCategories eff2 bindings env
-                         _ -> emptyCategories
-      in addCategories sc1 sc2
+    (ELambda _, Nothing, Just (ESymbol (eS env -> tnc -> (symProv -> PLambda eff, chSym)))) ->
+      lambdaEffects skipArg env eff chSym
 
     (_, Just (EEffect eff), _) -> allEffects eff
     (EConstant _, _, _) -> emptyCategories
@@ -1336,3 +1363,30 @@ exprSCategories e env =
 
   where
     allEffects eff = evalState (categorizeEffectSymbols eff) env
+
+bindingSCategories :: Bool -> K3 Expression -> EffectEnv -> SymbolCategories
+bindingSCategories skipArg e env =
+  case (tag e, e @~ isEEffect, e @~ isESymbol) of
+    (ELambda _, Nothing, Just (ESymbol (eS env -> tnc -> (symProv -> PLambda eff, chSym)))) ->
+      lambdaEffects skipArg env eff chSym
+
+    (ELetIn  i, Just (EEffect eff), Just (ESymbol sym)) -> unaryBinding eff
+    (EBindAs b, Just (EEffect eff), Just (ESymbol sym)) -> unaryBinding eff
+    (ECaseOf c, Just (EEffect eff), Just (ESymbol sym)) -> caseBinding  eff
+    (_, _, _) -> error "Invalid binding expression for effect computation"
+
+  where
+    unaryBinding eff = let (scopeEff, bindings) = decomposeUnaryBinding eff
+                       in effectSCategories scopeEff bindings env
+
+    decomposeUnaryBinding (eE env -> tnc -> (FSeq, (last -> tnc -> (FScope bindings, [eff])))) = (eff, bindings)
+    decomposeUnaryBinding (eE env -> tnc -> (FScope bindings, [eff])) = (eff, bindings)
+    decomposeUnaryBinding _ = error "Invalid unary binding"
+
+    caseBinding eff = let (scopeEff, bindings) = decomposeCaseBinding eff
+                      in effectSCategories scopeEff bindings env
+
+    decomposeCaseBinding (eE env -> tnc -> (FSeq, (last -> tnc -> (FSet, (head -> tnc -> (FScope bindings, [eff])))))) = (eff, bindings)
+    decomposeCaseBinding (eE env -> tnc -> (FSeq, (last -> tnc -> (FScope bindings, [eff])))) = (eff, bindings)
+    decomposeCaseBinding (eE env -> tnc -> (FSet, (head -> tnc -> (FScope bindings, [eff])))) = (eff, bindings)
+    decomposeCaseBinding _ = error "Invalid case binding"

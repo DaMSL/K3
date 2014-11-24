@@ -222,6 +222,10 @@ isEProperty :: Annotation Expression -> Bool
 isEProperty (EProperty _ _) = True
 isEProperty _               = False
 
+isESyntax :: Annotation Expression -> Bool
+isESyntax (ESyntax _) = True
+isESyntax _ = False
+
 isEApplyGen :: Annotation Expression -> Bool
 isEApplyGen (EApplyGen _ _ _) = True
 isEApplyGen _ = False

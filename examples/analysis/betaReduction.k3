@@ -18,5 +18,11 @@ trigger t3 : int = \a -> (
     in (x = f a; x = f 5)
   )
 
+// Should inline the let, the lambda and the a, b arguments.
+trigger t4 : () = \_ -> (
+  let f = \a -> \b -> (((\c -> \d -> c + c + d + d) a) b)
+  in (x = f 1 2)
+)
+
 source s1 : int = value 5
 feed s1 |> t1

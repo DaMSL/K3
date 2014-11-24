@@ -107,7 +107,7 @@ lambdaFormOptE e@(Node (ELambda x :@: as) [b]) = do
                                                                  = effectSCategories f [g] env
                                                            in g `elemSymbol` r || g `elemSymbol` w) fs)
 
-  let SymbolCategories cRead cWritten cApplied _ _ = exprSCategories e env
+  let SymbolCategories cRead cWritten cApplied _ _ = exprSCategories False e env
 
   let parent = head . children
 

@@ -22,8 +22,13 @@ data TransformConfig = TransformConfig { optRefs :: Bool
                                        , optMoves :: Bool
                                        }
 
+defaultTransConfig :: TransformConfig
 defaultTransConfig = TransformConfig True True
+
+noRefsTransConfig :: TransformConfig
 noRefsTransConfig  = defaultTransConfig { optRefs = False }
+
+noMovesTransConfig :: TransformConfig
 noMovesTransConfig  = defaultTransConfig { optMoves = False }
 
 -- | Substitute all occurrences of a variable with an expression in the specified target expression.
