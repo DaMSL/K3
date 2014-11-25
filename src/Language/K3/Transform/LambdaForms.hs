@@ -157,11 +157,18 @@ lambdaFormOptE (Node (EOperate OApp :@: as) [f, x]) = do
 
   let fs = mapMaybe getEffects ds
   let argument = getSymbol x
-  let moveable (expandSymDeep env -> g) = not (isDerivedFromGlobal env g) &&
-                                           not (any (\f -> let SymbolCategories r w _ _ _
-                                                                 = effectSCategories f [g] env
-                                                           in g `elemSymbol` r || g `elemSymbol` w) fs)
-  let passHint = maybe True (not . moveable) argument
+
+  let isDerivedFromAnyOf p qs = or <$> mapM (isDerivedDirectlyFrom p) qs
+
+  let moveable (expandSymDeep env -> g) = do
+        derivedGlobal <- isDerivedGlobal g
+        isDerivedEffected <- or <$> mapM (\f -> let SymbolCategories r w _ _ _ = effectSCategories f [g] env in
+                                                isDerivedFromAnyOf g (r ++ w)) fs
+        return $ not derivedGlobal && not isDerivedEffected
+
+  passHint <- case argument of
+                Nothing -> return True
+                Just s -> not <$> moveable s
   let a = EOpt $ PassHint passHint
 
   return $ Node (EOperate OApp :@: as) [f', x' @+ a]
