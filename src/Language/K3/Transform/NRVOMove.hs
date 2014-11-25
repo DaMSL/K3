@@ -15,6 +15,7 @@ import Language.K3.Core.Expression
 
 import Language.K3.Analysis.Effects.Core
 import Language.K3.Analysis.Effects.InsertEffects
+import Language.K3.Analysis.Effects.Queries
 
 import Language.K3.Transform.Hints
 
@@ -31,6 +32,11 @@ nrvoMoveOptD env (TAC (DRole n) as cs) = TAC (DRole n) as (map (nrvoMoveOptD env
 nrvoMoveOptD _ t = t
 
 nrvoMoveOptE :: EffectEnv -> K3 Expression -> K3 Expression
+nrvoMoveOptE env e@(TAC (EVariable v) as cs) = TAC (EVariable v) (as' ++ as) cs
+  where
+    ESymbol s = fromJust $ e@~ isESymbol
+    as' = [EOpt GlobalHint | evalQueryM (isGlobal s) env]
+
 nrvoMoveOptE env e@(TAC (ELambda i) as cs) = TAC (ELambda i) (a:as) (map (nrvoMoveOptE env) cs)
   where
     a = EOpt $ ReturnMoveHint nrvoMovePermitted

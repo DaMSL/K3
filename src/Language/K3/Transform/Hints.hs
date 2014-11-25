@@ -22,4 +22,6 @@ data OptHint
 
     -- | Whether or not a function's return value must be manually moved.
     | ReturnMoveHint Bool
+
+    | GlobalHint
   deriving (Eq, Ord, Read, Show)

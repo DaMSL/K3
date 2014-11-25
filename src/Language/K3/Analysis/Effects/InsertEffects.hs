@@ -201,7 +201,7 @@ lookupBindInnerM i = do
     -- Each closure symbol points to the next
     initClosureSyms ((LambdaLayer Nothing):xs) = do
       (n, s, rest)  <- initClosureSyms xs
-      s'            <- genSym PClosure False True False [s]
+      s'            <- (symIdent . tag) <$> expandSymM s >>= \i -> symbolM i PClosure False True False [s]
       return ((LambdaLayer (Just s')):n, s', rest)
     initClosureSyms ((n@(LocalSym s)):rest)  = return ([n], s, rest)
     initClosureSyms (n@(LambdaLayer (Just s)):rest) = return ([n], s, rest)
@@ -1261,27 +1261,30 @@ matchEffectSymbols querySyms (SymbolCategories rs ws as bs io) = do
     return $ SymbolCategories (nubSyms $ frs++brs) (nubSyms $ fws++bws) (nubSyms fas) [] io
   where
     -- For superstructure, we add parents as symbols of interest.
-    mkQueryMap :: [K3 Symbol] -> MEnv [(Identifier, K3 Symbol)]
-    mkQueryMap syms = mapM (\s -> expandSymM s >>= idAndSym s) syms >>= return . concat . catMaybes
+    mkQueryMap :: [K3 Symbol] -> MEnv SymbolMap
+    mkQueryMap syms = mapM (\s -> expandSymM s >>= idAndSym s) syms >>= return . IntMap.unions
 
-    idAndSym :: K3 Symbol -> K3 Symbol -> MEnv (Maybe [(Identifier, K3 Symbol)])
-    idAndSym s xs@(tag -> Symbol {symIdent=i, symProv=PRecord _})  = idAndSymCh xs >>= catSyms (Just [(i,s)])
-    idAndSym s xs@(tag -> Symbol {symIdent=i, symProv=PTuple _})   = idAndSymCh xs >>= catSyms (Just [(i,s)])
-    idAndSym s xs@(tag -> Symbol {symIdent=i, symProv=PProject _}) = idAndSymCh xs >>= catSyms (Just [(i,s)])
-    idAndSym s (tag -> Symbol {symIdent=i}) = return $ Just [(i,s)]
-    idAndSym _ _ = return Nothing
+    idAndSym :: K3 Symbol -> K3 Symbol -> MEnv SymbolMap
+    idAndSym s xs@(tag -> Symbol {symProv=PRecord _})
+        = IntMap.union (IntMap.fromList [(getSID_ xs, s)]) <$> idAndSymCh xs
+    idAndSym s xs@(tag -> Symbol {symProv=PTuple _})
+        = IntMap.union (IntMap.fromList [(getSID_ xs, s)]) <$> idAndSymCh xs
+    idAndSym s xs@(tag -> Symbol {symProv=PProject _})
+        = IntMap.union (IntMap.fromList [(getSID_ xs, s)]) <$> idAndSymCh xs
+    idAndSym s xs@(tag -> Symbol {symIdent=i}) = return (IntMap.fromList [(getSID_ xs, s)])
+    idAndSym _ _ = return IntMap.empty
 
-    idAndSymCh xs = mapM (\s -> expandSymM s >>= return . (s,)) (children xs) >>= mapM (uncurry idAndSym)
-    catSyms opt optL = return $ Just $ concat $ catMaybes $ optL ++ [opt]
+    idAndSymCh xs = mapM (\s -> expandSymM s >>= return . (s,)) (children xs)
+                                             >>= mapM (uncurry idAndSym)
+                                             >>= return . IntMap.unions
 
-    matchQuerySyms :: [(Identifier, K3 Symbol)] -> [K3 Symbol] -> [K3 Symbol] -> MEnv [K3 Symbol]
+    matchQuerySyms :: SymbolMap -> [K3 Symbol] -> [K3 Symbol] -> MEnv [K3 Symbol]
     matchQuerySyms qSyms acc s = foldM (\acc' s' -> expandSymM s' >>= matchSym qSyms acc' s') acc s
 
-    matchSym :: [(Identifier, K3 Symbol)] -> [K3 Symbol] -> K3 Symbol -> K3 Symbol -> MEnv [K3 Symbol]
-    matchSym _ _ _ (tag -> SymId _) = error "unexpected symId1"
+    matchSym :: SymbolMap -> [K3 Symbol] -> K3 Symbol -> K3 Symbol -> MEnv [K3 Symbol]
     matchSym _ acc _ (tag -> Symbol {symProv=PGlobal}) = return acc
     -- Continue down the tree if we do not find a match.
-    matchSym qSyms acc s xs@(tag -> Symbol {symIdent=i}) = case lookup i qSyms of
+    matchSym qSyms acc s xs = case IntMap.lookup (getSID_ xs) qSyms of
       Nothing -> matchQuerySyms qSyms acc $ children xs
       Just qs -> do
         xqs <- expandSymM qs
@@ -1291,9 +1294,12 @@ matchEffectSymbols querySyms (SymbolCategories rs ws as bs io) = do
           Symbol {symProv=PLambda _} -> return acc  -- These 2 symbols' children aren't really further provenances
           Symbol {symProv=PApply}    -> return acc
           Symbol {symHasCopy=True}   -> return acc  -- If we have copy semantics, abort search
+          Symbol {symHasMove=True}   -> return acc  -- If we have move semantics, same deal
           _ -> matchQuerySyms qSyms acc $ children xs
 
     matchSym qSyms acc _ xs = matchQuerySyms qSyms acc $ children xs
+
+    getSID_ = fromJust . getSID
 
     materializeSyms qSyms s = foldM (\acc s' -> expandSymM s' >>= matBoundSym qSyms acc s') ([],[]) s
 
