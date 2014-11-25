@@ -3,6 +3,9 @@
 
 using namespace boost::log;
 using namespace boost::log::trivial;
+using std::shared_ptr;
+using std::tuple;
+using std::ofstream;
 using boost::thread;
 
 namespace K3 {
@@ -25,7 +28,7 @@ namespace K3 {
         for (const auto& addr : processAddrs) {
           auto s1 = log_path + "/" + addressAsString(addr) + "_Messages.dsv";
           auto s2 = log_path + "/" + addressAsString(addr) + "_Globals.dsv";
-          log_streams[addr] = make_shared<std::tuple<std::ofstream, std::ofstream>>(s1, s2);
+          log_streams[addr] = make_tuple(make_shared<ofstream>(s1), make_shared<ofstream>(s2));
         }
       }
 

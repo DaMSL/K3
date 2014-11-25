@@ -20,6 +20,9 @@ namespace K3 {
 
   namespace Net = K3::Asio;
 
+    using std::shared_ptr;
+    using std::tuple;
+    using std::ofstream;
   //-------------------
   // Utility functions
 
@@ -324,7 +327,7 @@ namespace K3 {
 
     // JSON logging
     void logJson(std::string time, const Address& peer, std::string trig, std::string msg_contents, std::map<std::string, std::string> env, const Address& msgSource) {
-            auto& event_stream = std::get<0>(*log_streams[peer]);
+            auto& event_stream = *std::get<0>(log_streams[peer]);
 
             // Log message Event:
             // message_id, dest_peer, trigger_name
@@ -337,7 +340,7 @@ namespace K3 {
             event_stream << time << std::endl;
 
             // Log Global state
-            auto& global_stream = std::get<1>(*log_streams[peer]);
+            auto& global_stream = *std::get<1>(log_streams[peer]);
             global_stream << message_counter << "|";
             global_stream << K3::serialization::json::encode<Address>(peer) << "|";
             int i = 0;
@@ -425,7 +428,8 @@ namespace K3 {
     // Log info
     bool                            log_enabled;
     // Tuple of (eventLog, globalsLog)
-    std::map<Address, std::shared_ptr<std::tuple<std::ofstream, std::ofstream>>> log_streams;
+    
+    std::map<Address, tuple<shared_ptr<ofstream>, shared_ptr<ofstream>>> log_streams;
     string                          log_path;
     string                          result_var;
     string                          result_path;
