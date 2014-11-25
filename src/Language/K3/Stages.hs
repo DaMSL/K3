@@ -135,7 +135,7 @@ simplifyWCSE p = simplify p >>= transformEnvE commonProgramSubexprElim
 streamFusion :: ProgramTransform
 streamFusion = withProperties $ \p -> transformEnvE encodeTransformers p >>= fusionFixpoint
   where fusionFixpoint = fixpointIEnvE fusionInterF fuseProgramFoldTransformers
-        fusionInterF   = [inferFreshTypesAndEffects, transformEnvF betaReductionOnProgram]
+        fusionInterF   = [inferFreshTypesAndEffects, transformEnvF betaReductionOnProgram, inferFreshTypesAndEffects]
 
 runPasses :: [ProgramTransform] -> K3 Declaration -> Either String (K3 Declaration, Maybe EffectEnv)
 runPasses passes d = withPasses passes (d, Nothing)
