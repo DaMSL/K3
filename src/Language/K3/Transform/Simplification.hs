@@ -584,6 +584,15 @@ eliminateDeadCode env expr = mapTree pruneExpr expr
                               (PIfThenElse ieE otE oeE $ stripUIDSpanE oAs)
                               iAs
 
+      -- Condition aggregation for equivalent sub-branches
+      (PIfThenElse opE (PIfThenElse ipE itE ieV@(PVar i ivAs) iAs) (PVar ((== i) -> True) _) oAs) ->
+        let npE = EC.binop OAnd opE ipE in
+        rcr $ PIfThenElse npE itE (PVar i $ stripUIDSpanE ivAs) $ stripUIDSpanE oAs
+
+      (PIfThenElse opE otV@(PVar i ivAs) (PIfThenElse ipE (PVar ((== i) -> True) _) ieE iAs) oAs) ->
+        let npE = EC.binop OOr opE ipE in
+        rcr $ PIfThenElse npE (PVar i $ stripUIDSpanE ivAs) ieE $ stripUIDSpanE oAs
+
       e -> return e
 
     rebuildNode n@(tag -> EConstant _) _ = return n
@@ -1258,7 +1267,7 @@ fuseFoldTransformers env expr = do
           (UCond, DCond2) | nonDepTr ltCls && nonDepTr rtCls ->
             case (lAccF, rAccF) of
               (PUCond li lj lfE lfArg, PDCond2 ri rj rlke rci rdlV rgbF raccF rzE) ->
-                let lE = EC.applyMany lfE [lfArg] in
+                let lE = mkAccE (EC.variable li) $ EC.applyMany lfE [lfArg] in
                 chainValDCond2 li lj lE [] [] ri rj rci rzE (Right (rlke, rdlV, rgbF, raccF)) lAs rAs ltCls rtCls
 
               (PChainLambda1 li lj lE lAs1 lAs2, PDCond2 ri rj rlke rci rdlV rgbF raccF rzE) -> do
