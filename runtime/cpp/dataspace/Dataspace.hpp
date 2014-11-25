@@ -962,6 +962,18 @@ class Map {
     return unit_t {};
   }
 
+  template <class F, class G>
+  unit_t upsert_with(const R& rec, F f, G g) {
+    auto existing = container.find(rec.key);
+    if (existing == std::end(container)) {
+      container[rec.key] = f(unit_t {});
+    } else {
+      container[rec.key] = g(std::move(existing->second));
+    }
+
+    return unit_t {};
+  }
+
   unit_t erase(const R& rec) {
     auto it = container.find(rec.key);
     if (it != container.end()) {
