@@ -33,8 +33,8 @@ import qualified Language.K3.Core.Constructor.Expression as EC
 import qualified Language.K3.Core.Constructor.Type       as TC
 import qualified Language.K3.Core.Constructor.Literal    as LC
 
-import Language.K3.Analysis.Effects.InsertEffects ( EffectEnv(..), SymbolCategories(..)
-                                                  , exprSCategories, expandCategories, expandExpression )
+import Language.K3.Analysis.Effects.InsertEffects
+import Language.K3.Analysis.Effects.Core hiding (PVar)
 
 import Language.K3.Transform.Common
 import Language.K3.Interpreter.Data.Accessors
@@ -193,12 +193,13 @@ getFusionLineageE e = case e @~ isEFusionLineage of
   Just ann -> getFusionLineage ann
   _ -> Nothing
 
-{- Effect queries -}
+-- Effect queries
 readOnly :: Bool -> EffectEnv -> K3 Expression -> Bool
-readOnly skipArg env e = let SymbolCategories _ w _ _ io = exprSCategories skipArg e env in null w && not io
+readOnly skipArg env e = let SymbolCategories _ w _ _ io = exprSCategories (Just skipArg) e env in null w && not io
 
 noWrites :: Bool -> EffectEnv -> K3 Expression -> Bool
-noWrites skipArg env e = let SymbolCategories _ w _ _ _ = exprSCategories skipArg e env in null w
+noWrites skipArg env e = let SymbolCategories _ w _ _ _ = exprSCategories (Just skipArg) e env in null w
+
 
 -- | Constant folding
 type FoldedExpr = Either String (Either Value (K3 Expression))
@@ -882,7 +883,7 @@ encodeTransformerExprs env expr = modifyTree encode expr -- >>= modifyTree markC
         where debugInferredFold e nfAs@(getFusionSpecA -> Just cls) fArg1 = return $
                 flip trace e $
                   unlines [ unwords ["Fold function effects"]
-                          , pretty $ expandCategories env $ exprSCategories True fArg1 env
+                          , pretty $ expandCategories env $ exprSCategories (Just True) fArg1 env
                           , unwords ["Inferred fold:", show streamable, show cls]
                           , pretty e ]
               debugInferredFold _ _ _ = Left "Invalid fusion-fold construction"
