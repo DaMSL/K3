@@ -5,8 +5,7 @@
 
 module Language.K3.Transform.LambdaForms where
 
-import Prelude hiding (any, elem, notElem, concatMap, sequence, mapM, mapM_)
-
+import Prelude hiding (any, elem, notElem, concatMap, sequence, mapM, mapM_, or)
 import Control.Applicative
 import Control.Arrow
 import Control.Monad.Identity hiding (sequence, mapM, mapM_)
@@ -107,7 +106,7 @@ lambdaFormOptE e@(Node (ELambda x :@: as) [b]) = do
                                                                  = effectSCategories f [g] env
                                                            in g `elemSymbol` r || g `elemSymbol` w) fs)
 
-  let SymbolCategories cRead cWritten cApplied _ _ = exprSCategories False e env
+  let SymbolCategories cRead cWritten cApplied _ _ = exprSCategories Nothing e env
 
   let parent = head . children
 
