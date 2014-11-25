@@ -155,26 +155,26 @@ cgPasses :: Int -> [ProgramTransform]
 cgPasses 3 = [inferFreshEffects,
               transformEnvF Purity.runPurity,
               transformF    CArgs.runAnalysis,
-              transformEnvF writebackOpt,
-              transformEnvF (lambdaFormOpt noMovesTransConfig),
-              transformEnvF nrvoMoveOpt
+              transformEnvF nrvoMoveOpt,
+              writebackOptPT,
+              transformEnvF (lambdaFormOpt noMovesTransConfig)
              ]
 
 -- no refs
 cgPasses 2 = [inferFreshEffects,
               transformEnvF Purity.runPurity,
               transformF    CArgs.runAnalysis,
-              transformEnvF writebackOpt,
-              transformEnvF (lambdaFormOpt noRefsTransConfig),
-              transformEnvF nrvoMoveOpt
+              transformEnvF nrvoMoveOpt,
+              writebackOptPT,
+              transformEnvF (lambdaFormOpt noRefsTransConfig)
              ]
 
 cgPasses 1 = [inferFreshEffects,
               transformEnvF Purity.runPurity,
               transformF    CArgs.runAnalysis,
-              transformEnvF writebackOpt,
-              transformEnvF (lambdaFormOpt defaultTransConfig),
-              transformEnvF nrvoMoveOpt
+              transformEnvF nrvoMoveOpt,
+              writebackOptPT,
+              transformEnvF (lambdaFormOpt defaultTransConfig)
              ]
 
 cgPasses _ = [transformF InsertMembers.runAnalysis,
