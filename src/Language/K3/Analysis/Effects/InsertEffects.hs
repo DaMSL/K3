@@ -1336,10 +1336,13 @@ effectSCategories eff syms env = flip evalState (env {bindEnv = Map.empty}) $ do
 -- The effects returned for the lambda are its deferred effects, which includes the effects
 -- in its body as well as any internal closure constructions effects (nested lambdas)
 -- Closure construction effects of this lambda are NOT provided (the information is not available locally)
-lambdaEffects :: Bool -> EffectEnv -> K3 Effect -> [K3 Symbol] -> SymbolCategories
+lambdaEffects :: Maybe Bool -> EffectEnv -> K3 Effect -> [K3 Symbol] -> SymbolCategories
 lambdaEffects skipArg env eff chSym
   | FScope bindings' <- tag $ eE env eff
-  , bindings <- if skipArg then safeTail bindings' else bindings'
+  , bindings <- case skipArg of
+                  Just True -> safeTail bindings'
+                  Just False -> safeHead bindings'
+                  Nothing -> bindings'
   = let sc1 = effectSCategories eff bindings env
         sc2 = case chSym of
                 [symProv . tag . eS env -> PLambda eff2]
@@ -1350,12 +1353,15 @@ lambdaEffects skipArg env eff chSym
   where safeTail [] = []
         safeTail l = tail l
 
+        safeHead [] = []
+        safeHead (x:xs) = [x]
+
 lambdaEffects _ _ _ _ = error "Invalid effect and child symbol in computing lambda effects."
 
 -- Variant of the above function that can be used with expressions.
 -- This additionally handles retrieving both lambda and closure
 -- construction effects, when applied to lambdas.
-exprSCategories :: Bool -> K3 Expression -> EffectEnv -> SymbolCategories
+exprSCategories :: Maybe Bool -> K3 Expression -> EffectEnv -> SymbolCategories
 exprSCategories skipArg e env =
   case (tag e, e @~ isEEffect, e @~ isESymbol) of
     (ELambda _, Nothing, Just (ESymbol (eS env -> tnc -> (symProv -> PLambda eff, chSym)))) ->
@@ -1370,7 +1376,7 @@ exprSCategories skipArg e env =
   where
     allEffects eff = evalState (categorizeEffectSymbols eff) env
 
-bindingSCategories :: Bool -> K3 Expression -> EffectEnv -> SymbolCategories
+bindingSCategories :: Maybe Bool -> K3 Expression -> EffectEnv -> SymbolCategories
 bindingSCategories skipArg e env =
   case (tag e, e @~ isEEffect, e @~ isESymbol) of
     (ELambda _, Nothing, Just (ESymbol (eS env -> tnc -> (symProv -> PLambda eff, chSym)))) ->
