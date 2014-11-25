@@ -20,6 +20,12 @@
 #include "BaseTypes.hpp"
 #include "yaml-cpp/yaml.h"
 
+#include "serialization/json.hpp"
+#include "rapidjson/document.h"
+#include "rapidjson/writer.h"
+#include "rapidjson/stringbuffer.h"
+
+
 namespace K3 {
 
 // Utility to give the return type of a Function F expecting an Element E as an argument:
@@ -1535,6 +1541,120 @@ template <typename... Args>
 std::size_t hash_value(K3::MultiIndex<Args...> const& b) {
   return hash_collection(b);
 }
+
+
+namespace JSON {
+
+  using namespace rapidjson;
+  template <class E>
+  struct convert<K3::Collection<E>> {
+    template <class Allocator>
+    static Value encode(const K3::Collection<E>& c, Allocator& al) {
+     Value v;
+     v.SetObject();
+     v.AddMember("type", Value("Collection"), al);
+     Value inner;
+     inner.SetArray();
+     for (const auto& e : c.getConstContainer()) {
+       inner.PushBack(convert<E>::encode(e, al), al);
+     }
+     v.AddMember("value", inner.Move(), al);
+     return v;
+    }
+
+  };
+
+  template <class E>
+  struct convert<K3::Seq<E>> {
+    template <class Allocator>
+    static Value encode(const K3::Seq<E>& c, Allocator& al) {
+     Value v;
+     v.SetObject();
+     v.AddMember("type", Value("Seq"), al);
+     Value inner;
+     inner.SetArray();
+     for (const auto& e : c.getConstContainer()) {
+       inner.PushBack(convert<E>::encode(e, al), al);
+     }
+     v.AddMember("value", inner.Move(), al);
+     return v;
+    }
+
+  };
+
+  template <class E>
+  struct convert<K3::Set<E>> {
+    template <class Allocator>
+    static Value encode(const K3::Set<E>& c, Allocator& al) {
+     Value v;
+     v.SetObject();
+     v.AddMember("type", Value("Set"), al);
+     Value inner;
+     inner.SetArray();
+     for (const auto& e : c.getConstContainer()) {
+       inner.PushBack(convert<E>::encode(e, al), al);
+     }
+     v.AddMember("value", inner.Move(), al);
+     return v;
+    }
+
+  };
+
+  template <class E>
+  struct convert<K3::Sorted<E>> {
+    template <class Allocator>
+    static Value encode(const K3::Sorted<E>& c, Allocator& al) {
+     Value v;
+     v.SetObject();
+     v.AddMember("type", Value("Sorted"), al);
+     Value inner;
+     inner.SetArray();
+     for (const auto& e : c.getConstContainer()) {
+       inner.PushBack(convert<E>::encode(e, al), al);
+     }
+     v.AddMember("value", inner.Move(), al);
+     return v;
+    }
+
+  };
+
+  template <class E>
+  struct convert<K3::Vector<E>> {
+    template <class Allocator>
+    static Value encode(const K3::Vector<E>& c, Allocator& al) {
+     Value v;
+     v.SetObject();
+     v.AddMember("type", Value("Vector"), al);
+     Value inner;
+     inner.SetArray();
+     for (const auto& e : c.getConstContainer()) {
+       inner.PushBack(convert<E>::encode(e, al), al);
+     }
+     v.AddMember("value", inner.Move(), al);
+     return v;
+    }
+
+  };
+
+  template <class E>
+  struct convert<K3::Map<E>> {
+    template <class Allocator>
+    static Value encode(const K3::Map<E>& c, Allocator& al) {
+     Value v;
+     v.SetObject();
+     v.AddMember("type", Value("Map"), al);
+     Value inner;
+     inner.SetArray();
+     for (const auto& e : c.getConstContainer()) {
+       inner.PushBack(convert<E>::encode(e.second, al), al);
+     }
+     v.AddMember("value", inner.Move(), al);
+     return v;
+    }
+
+  };
+}
+
 
 namespace YAML {
   template <class E>

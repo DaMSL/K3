@@ -1,18 +1,36 @@
 #include "Engine.hpp"
 
+
 using namespace boost::log;
 using namespace boost::log::trivial;
+using std::shared_ptr;
+using std::tuple;
+using std::ofstream;
 using boost::thread;
 
 namespace K3 {
 
-    void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level) {
+    void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec,
+                           string log_p, string result_v, string result_p) {
       internal_codec = _internal_codec;
-      std::cout << "Engine log level: " << log_level << std::endl;
       log_enabled = false;
-      if (log_level != "") { log_enabled = true; }
+      if (log_p != "") { log_enabled = true; }
+      auto dir = log_p != "" ? log_p : ".";
+      log_path = dir;
+
+      result_var = result_v;
+      result_path = result_p;
+
       list<Address> processAddrs = deployedNodes(sys_env);
       Address initialAddress;
+
+      if (log_enabled) {
+        for (const auto& addr : processAddrs) {
+          auto s1 = log_path + "/" + addressAsString(addr) + "_Messages.dsv";
+          auto s2 = log_path + "/" + addressAsString(addr) + "_Globals.dsv";
+          log_streams[addr] = make_tuple(make_shared<ofstream>(s1), make_shared<ofstream>(s2));
+        }
+      }
 
       if (!processAddrs.empty()) {
         initialAddress = processAddrs.front();
@@ -29,6 +47,7 @@ namespace K3 {
       endpoints    = shared_ptr<EndpointState>(new EndpointState());
       listeners    = shared_ptr<Listeners>(new Listeners());
       collectionCount   = 0;
+      message_counter = 0;
 
       if ( simulation ) {
         // Simulation engine initialization.
@@ -59,7 +78,7 @@ namespace K3 {
     // Messaging.
 
     // TODO: rvalue-ref overload for value argument.
-    void Engine::send(Address addr, TriggerId triggerId, shared_ptr<Dispatcher> disp)
+    void Engine::send(Address addr, TriggerId triggerId, shared_ptr<Dispatcher> disp, Address src)
     {
       if (deployment) {
         bool local_address = isDeployedNode(*deployment, addr);
@@ -68,12 +87,12 @@ namespace K3 {
         if (shortCircuit) {
           // Directly enqueue.
           // TODO: ensure we avoid copying the dispatcher
-          Message msg(addr, triggerId, disp);
+          Message msg(addr, triggerId, disp,src);
           queues->enqueue(msg);
           control->messageAvail();
 
         } else {
-          RemoteMessage rMsg(addr, triggerId, disp->pack());
+          RemoteMessage rMsg(addr, triggerId, disp->pack(), src);
 
           // Get connection and send a message on it.
           Identifier eid = connectionId(addr);
@@ -138,6 +157,7 @@ namespace K3 {
       shared_ptr<Message> next_message = queues->dequeue();
 
       if (next_message) {
+        message_counter++;
         // Log Message
         if (log_enabled) {
           std::string target = next_message->target();
@@ -164,6 +184,7 @@ namespace K3 {
           }
        }
 
+
         return res;
 
       } else {
@@ -177,6 +198,7 @@ namespace K3 {
       MPStatus curr_status = init_st;
       MPStatus next_status;
       logAt(trivial::trace, "Starting the Message Processing Loop");
+
       while(true) {
         switch (curr_status) {
 
@@ -229,6 +251,7 @@ namespace K3 {
       // workers->setId(1);
 
       runMessages(mp, mp->status());
+      logResult(mp);
     }
 
     // Return a new thread running runEngine()

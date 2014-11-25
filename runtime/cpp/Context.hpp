@@ -15,8 +15,9 @@ namespace K3 {
    public:
     __k3_context(Engine& e): __engine(e) {}
 
-    virtual void __dispatch(int, void *) = 0;
+    virtual void __dispatch(int, void *, const Address&) = 0;
     virtual std::map<std::string, std::string> __prettify() = 0;
+    virtual std::map<std::string, std::string> __jsonify() = 0;
     virtual void __patch(std::string) = 0;
     virtual unit_t processRole(const unit_t&) = 0;
 

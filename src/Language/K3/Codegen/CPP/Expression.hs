@@ -326,7 +326,7 @@ inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@
     return (concat [te, ae, ve]
                  ++ [ classInst
                     , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine") (R.Name "send")) [
-                                    av, R.Variable (R.Name $ tName), R.Variable (R.Name d)
+                                    av, R.Variable (R.Name $ tName), R.Variable (R.Name d), R.Variable (R.Name "me")
                                    ]
                     ]
              , R.Initialization R.Unit [])

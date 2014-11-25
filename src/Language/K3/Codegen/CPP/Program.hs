@@ -72,6 +72,7 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
     inits <- initializations <$> get
 
     prettify <- genPrettify
+    jsonify <- genJsonify
 
     patchables' <- patchables <$> get
 
@@ -144,16 +145,22 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
                              (inits ++ dispatchPop)
 
     let dispatchDecl = R.FunctionDefn (R.Name "__dispatch")
-                       [("trigger_id", R.Primitive R.PInt), ("payload", R.Named $ R.Name "void*")]
+                       [ ("trigger_id", R.Primitive R.PInt)
+                       , ("payload", R.Named $ R.Name "void*")
+                       , ("source",  R.Const $ R.Reference $ R.Named $ R.Name "Address")
+                       ]
                        (Just R.Void) [] False
                        [R.Ignore $ R.Call
                          (R.Subscript (R.Variable $ R.Name "dispatch_table") (R.Variable $ R.Name "trigger_id"))
-                         [R.Variable $ R.Name "payload"]
+                         [R.Variable $ R.Name "payload", R.Variable $ R.Name "source"]
                        ]
     let dispatchTableDecl  = R.GlobalDefn $ R.Forward $ R.ScalarDecl
                      (R.Name "dispatch_table")
                      (R.Named $ R.Qualified (R.Name "std") $ R.Specialized
-                           [R.Primitive R.PInt, R.Function [R.Named $ R.Name "void*"] R.Void] (R.Name "map"))
+                           [R.Primitive R.PInt, 
+                             R.Function 
+                               [R.Named $ R.Name "void*", R.Const $ R.Reference $ R.Named $ R.Name "Address"] 
+                            R.Void] (R.Name "map"))
                      Nothing
 
     let patchFn = R.FunctionDefn (R.Qualified contextName (R.Name "__patch"))
@@ -172,7 +179,7 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
                       [R.Named $ R.Qualified (R.Name "std") (R.Name "string")] R.Void
 
     let contextDefns = [contextConstructor] ++ programDefns  ++ [initDeclDefn] ++
-                       [patchFnDecl, prettify, dispatchDecl]
+                       [patchFnDecl, prettify, jsonify, dispatchDecl]
 
     let contextClassDefn = R.ClassDefn contextName []
                              [ R.Named $ R.Qualified (R.Name "K3") $ R.Name "__standard_context"
@@ -202,10 +209,7 @@ main = do
 
     let runProgram = R.Ignore $ R.Call
                        (R.Variable $ R.Specialized [R.Named $ R.Name "__global_context"] (R.Name "runProgram"))
-                       [ (R.Project (R.Variable $ R.Name "opt") (R.Name "peer_strings"))
-                       , (R.Project (R.Variable $ R.Name "opt") (R.Name "simulation"))
-                       , (R.Project (R.Variable $ R.Name "opt") (R.Name "log_level") )
-                       ]
+                       [ R.Variable $ R.Name "opt" ]
 
     return [
         R.FunctionDefn (R.Name "main") [("argc", R.Primitive R.PInt), ("argv", R.Named (R.Name "char**"))]
@@ -237,6 +241,7 @@ requiredAliases = return
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "createContexts"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "getAddrs"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "DefaultInternalCodec"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "currentTime"), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "make_tuple" ), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "make_shared" ), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "shared_ptr" ), Nothing)
@@ -270,6 +275,7 @@ requiredIncludes = return
                    , "Literals.hpp"
                    , "Serialization.hpp"
                    , "serialization/yaml.hpp"
+                   , "serialization/json.hpp"
                    , "Builtins.hpp"
                    , "Run.hpp"
                    , "Prettify.hpp"
@@ -321,15 +327,74 @@ generateDispatchPopulation = do
 
        let i = R.Variable $ R.Name (idOfTrigger tName)
 
+       let engine = R.Project (R.Dereference $ R.Variable $ R.Name "this") (R.Name "__engine")
+       let ctDecl = R.Forward $ R.ScalarDecl (R.Name "ct") R.Inferred
+                      (Just $ R.Call (R.Variable $ R.Name "currentTime") [])
+       let encoded_payload = R.Call (R.Variable $ R.Specialized [kType] (R.Name "K3::serialization::json::encode"))
+                               [R.Variable $ R.Name "v"]
        let dispatchWrapper = R.Lambda
                              [R.ValueCapture $ Just ("this", Nothing)]
-                             [("payload", R.Named $ R.Name "void*")] False Nothing
-                             [R.Ignore $ R.Call (R.Variable $ R.Name tName)
-                                   [R.Dereference $ R.Call (R.Variable $ R.Specialized [R.Pointer kType] $
-                                                             R.Name "static_cast")
-                                    [R.Variable $ R.Name "payload"]]]
+                             [ ("payload", R.Named $ R.Name "void*")
+                             , ("source", R.Const $ R.Reference $ R.Named $ R.Name "Address")
+                             ]
+                             
+                             False Nothing
+                             [ ctDecl
+                             , R.Forward $ R.ScalarDecl (R.Name "v") R.Inferred
+                                 (Just $ R.Dereference $ R.Call (R.Variable $ R.Specialized [R.Pointer kType] $
+                                                             R.Name "static_cast") [R.Variable $ R.Name "payload"])
+                             , R.Ignore $ R.Call (R.Variable $ R.Name tName)
+                                   [R.Variable $ R.Name "v"]
+                             , R.IfThenElse (R.Call (R.Project engine (R.Name "logEnabled")) [])
+                                 [ R.Ignore $ R.Call ((R.Project engine) (R.Name "logJson"))
+                                    [ R.Variable $ R.Name "ct"
+                                    , R.Variable $ R.Name "me"
+                                    , R.Literal $ R.LString tName
+                                    , encoded_payload
+                                    , R.Call (R.Variable $ R.Name "__jsonify") []
+                                    , R.Variable $ R.Name "source"
+                                    ]
+                                 ]
+                                 []
+                             ]
 
        return $ R.Assignment (R.Subscript table i) dispatchWrapper
+
+
+genJsonify :: CPPGenM R.Definition
+genJsonify = do
+   currentS <- get
+   body    <- genBody $ showables currentS
+   --let body = [R.Return $ R.Initialization result_type []]
+   return $ R.FunctionDefn (R.Name "__jsonify") [] (Just result_type) [] False body
+  where
+   genBody  :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
+   genBody n_ts = do
+     result_decl <- return $ R.Forward $ R.ScalarDecl (R.Name result) result_type Nothing
+     inserts     <- genInserts n_ts
+     return_st   <- return $ R.Return $ R.Variable $ R.Name result
+     return $ (result_decl : inserts) ++ [return_st]
+
+   -- Insert key-value pairs into the map
+   genInserts :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
+   genInserts n_ts = do
+     let names     = map fst n_ts
+         name_vars = map (R.Variable . R.Name) names
+         new_nts   = zip name_vars $ map snd n_ts
+         lhs_exprs = map (\x -> R.Subscript (R.Variable $ R.Name result) (R.Literal $ R.LString x)) names
+     rhs_exprs  <- mapM (\(n,t) -> jsonifyExpr t n) new_nts
+     return $ zipWith R.Assignment lhs_exprs rhs_exprs
+     where
+       isTUnit (tnc -> (TTuple, [])) = True
+       isTUnit _ = False
+
+       jsonifyExpr t n = do
+         cType <- genCType t
+         return $ R.Call (R.Variable $ R.Specialized [cType] (R.Name "K3::serialization::json::encode")) [n]
+
+   p_string = R.Named $ R.Qualified (R.Name "std") (R.Name "string")
+   result_type  = R.Named $ R.Qualified (R.Name "std") (R.Specialized [p_string, p_string] (R.Name "map"))
+   result  = "__result"
 
 -- Generate a function to help print the current environment (global vars and their values).
 -- Currently, this function returns a map from string (variable name) to string (string representation of value)

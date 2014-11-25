@@ -7,6 +7,7 @@
 #include <map>
 #include <exception>
 #include <tuple>
+#include <ctime>
 
 #include "Common.hpp"
 #include "Endpoint.hpp"
@@ -19,6 +20,9 @@ namespace K3 {
 
   namespace Net = K3::Asio;
 
+    using std::shared_ptr;
+    using std::tuple;
+    using std::ofstream;
   //-------------------
   // Utility functions
 
@@ -26,6 +30,13 @@ namespace K3 {
     return std::string("__") + "_listener_" + addressAsString(addr);
   }
 
+  static inline std::string currentTime() {
+    time_t now = time(0);
+    tm *ltm = localtime(&now);
+    std::ostringstream oss;
+    oss << ltm->tm_hour << ":" << ltm->tm_min << ":" << ltm->tm_sec;
+    return oss.str();
+  }
   //---------------
   // Configuration
 
@@ -153,32 +164,34 @@ namespace K3 {
       bool simulation,
       SystemEnvironment& sys_env,
       shared_ptr<InternalCodec> _internal_codec,
-      string log_level
+      string log_level,
+      string result_v,
+      string result_p
     ): LogMT("Engine") {
-      configure(simulation, sys_env, _internal_codec, log_level);
+      configure(simulation, sys_env, _internal_codec, log_level, result_v, result_p);
     }
 
-    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level);
+    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level, string result_var, string result_path);
 
     //-----------
     // Messaging.
 
     // TODO: rvalue-ref overload for value argument.
-    void send(Address addr, TriggerId triggerId, shared_ptr<Dispatcher> d);
+    void send(Address addr, TriggerId triggerId, shared_ptr<Dispatcher> d, Address source);
 
     // TODO: avoid destructing tuple here
     void send(Message& m) {
-      send(m.address(), m.id(), m.dispatcher());
+      send(m.address(), m.id(), m.dispatcher(), m.source());
     }
 
     void send(shared_ptr<Message> m) {
-      send(m->address(), m->id(), m->dispatcher());
+      send(m->address(), m->id(), m->dispatcher(), m->source());
     }
 
     // TODO: Replace with use of std::bind.
     SendFunctionPtr sendFunction() {
-      return [this](Address a, TriggerId i, shared_ptr<Value> v)
-          { send(RemoteMessage(a, i, *v).toMessage()); };
+      return [this](Address a, TriggerId i, shared_ptr<Value> v, Address src)
+          { send(RemoteMessage(a, i, *v, src).toMessage()); };
     }
 
     //---------------------------------------
@@ -312,6 +325,58 @@ namespace K3 {
       // }
     }
 
+    // JSON logging
+    void logJson(std::string time, const Address& peer, std::string trig, std::string msg_contents, std::map<std::string, std::string> env, const Address& msgSource) {
+            auto& event_stream = *std::get<0>(log_streams[peer]);
+
+            // Log message Event:
+            // message_id, dest_peer, trigger_name
+            // source_peer, contents, timestamp
+            event_stream << message_counter << "|";
+            event_stream << K3::serialization::json::encode<Address>(peer) << "|";
+            event_stream << trig << "|";
+            event_stream << K3::serialization::json::encode<Address>(msgSource) << "|";
+            event_stream << msg_contents << "|";
+            event_stream << time << std::endl;
+
+            // Log Global state
+            auto& global_stream = *std::get<1>(log_streams[peer]);
+            global_stream << message_counter << "|";
+            global_stream << K3::serialization::json::encode<Address>(peer) << "|";
+            int i = 0;
+            auto s = env.size();
+            for (const auto& tup : env) {
+               global_stream << tup.second;
+               std::cout << tup.first;
+              if (i < s-1) {
+                global_stream << "|";
+                std::cout << "|";
+              }
+              i++;
+            }
+            global_stream << std::endl;
+            std::cout << std::endl;
+    }
+
+    void logResult(shared_ptr<MessageProcessor>& mp) {
+      if (result_var != "") {
+        auto n = nodes();
+        for (const auto& a : n) {
+          auto dir = result_path != "" ? result_path : ".";
+          auto s = dir + "/" + addressAsString(a) + "_Result.txt";
+          std::ofstream ofs;
+          ofs.open(s);
+          auto m = mp->json_bindings(a);
+          if (m.count( result_var ) != 0) {
+            ofs << m[result_var] << std::endl;
+          }
+          else {
+            throw std::runtime_error("Cannot log result variable, does not exist: " + result_var);
+          }
+        }
+      }
+    }
+
     //-------------------
     // Engine statistics.
 
@@ -341,8 +406,9 @@ namespace K3 {
 
     // Converts a K3 channel mode into a native file descriptor mode.
     IOMode ioMode(string k3Mode);
+
+    bool logEnabled() { return log_enabled; }
   protected:
-    bool                            log_enabled;
     shared_ptr<EngineConfiguration> config;
     shared_ptr<EngineControl>       control;
     shared_ptr<SystemEnvironment>   deployment;
@@ -358,6 +424,18 @@ namespace K3 {
     // Listeners tracked by the engine.
     shared_ptr<Listeners>           listeners;
     unsigned                        collectionCount;
+
+    // Log info
+    bool                            log_enabled;
+    // Tuple of (eventLog, globalsLog)
+    
+    std::map<Address, tuple<shared_ptr<ofstream>, shared_ptr<ofstream>>> log_streams;
+    string                          log_path;
+    string                          result_var;
+    string                          result_path;
+
+
+    unsigned int                    message_counter;
 
     void logMessageLoop(string s);
 

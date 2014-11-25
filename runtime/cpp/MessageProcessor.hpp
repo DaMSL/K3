@@ -35,6 +35,7 @@ namespace K3
       LoopStatus status() { return _status; };
 
       virtual map<string, string> bindings(Address) = 0;
+      virtual map<string, string> json_bindings(Address) = 0;
     private:
       LoopStatus _status;
   };
@@ -49,6 +50,9 @@ namespace K3
       return _get_env();
     }
 
+    map<string, string> json_bindings(Address) override {
+      throw std::runtime_error("Json bindinds not implemented for Native MP");
+    }
    private:
     EnvStrFunction _get_env;
   };
@@ -90,7 +94,7 @@ namespace K3
 
     LoopStatus process(Message msg) {
       try {
-	msg.dispatcher()->call_dispatch(*contexts[msg.address()], msg.id());
+	msg.dispatcher()->call_dispatch(*contexts[msg.address()], msg.id(), msg.source());
       } catch(std::out_of_range e) {
         return LoopStatus::Error;
       }
@@ -102,6 +106,9 @@ namespace K3
       return contexts[a]->__prettify();
     }
 
+    std::map<std::string, std::string> json_bindings(Address a) override {
+      return contexts[a]->__jsonify();
+    }
    private:
     std::map<Address, shared_ptr<__k3_context>> contexts;
   };

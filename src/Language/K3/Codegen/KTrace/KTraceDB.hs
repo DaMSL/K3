@@ -56,6 +56,7 @@ schemaType t | isTPrimitive t =
                    TString -> Right . Just $ "varchar"
                    _       -> Left $ boxToString $ ["Invalid primitive K3 type: "] %+ prettyLines t
              | isTFunction t = Right Nothing
+             | isTEndpoint t = Right Nothing
              | otherwise = Right . Just $ "json"
 
 schematize :: SchemaState -> K3 Declaration -> Either String (SchemaState, K3 Declaration)
@@ -78,17 +79,21 @@ extractProgramState prog = do
   return progSt
   where fId a b = return (a,b)
 
+-- Key for joining Globals and Messages
+-- Prefixed with _ to help avoid name clashes with global vars
+keyAttrs :: [(String, String)]
+keyAttrs = [("_mess_id", "int"), ("_dest_peer", "text")]
+
 mkGlobalsSchema :: Globals -> Statement
-mkGlobalsSchema attrs = createTable "Globals" attrs
+mkGlobalsSchema attrs = createTable "Globals" $ keyAttrs ++ attrs
 
 mkEventTraceSchema :: Triggers -> Statement
-mkEventTraceSchema _ = createTable "Events" logAttrs
-  where logAttrs = [ ("time",    "date")
-                   , ("peer",    "text")
-                   , ("level",   "text")
-                   , ("trigger", "text")
-                   , ("sender",  "text")
-                   , ("entry",  " text") ]
+mkEventTraceSchema _ = createTable "Messages" $ keyAttrs ++ logAttrs
+  where logAttrs =   [ ("trigger",     "text")
+                     , ("source_peer", "text")
+                     , ("contents",    "text")
+                     , ("time"    ,    "text")]
+
 
 mkResultSchema :: [Identifier] -> K3 Declaration -> Either String String
 mkResultSchema vars prog = do

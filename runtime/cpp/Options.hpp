@@ -17,7 +17,9 @@ class Options {
 
     vector<string> peer_strings;
     bool simulation = false;
-    string log_level = "";
+    string log_path = "";
+    string result_var;
+    string result_path;
 };
 
 }
