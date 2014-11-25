@@ -121,11 +121,11 @@ class StlDS {
     return container.end();
   }
 
-  iterator begin() const {
+  const_iterator begin() const {
     return container.cbegin();
   }
 
-  iterator end() const {
+  const_iterator end() const {
     return container.cend();
   }
 
