@@ -360,7 +360,7 @@ namespace K3 {
         auto n = nodes();
         for (const auto& a : n) {
           auto dir = result_path != "" ? result_path : ".";
-          auto s = dir + "/" + addressAsString(a) + "Result.txt";
+          auto s = dir + "/" + addressAsString(a) + "_Result.txt";
           std::ofstream ofs;
           ofs.open(s);
           auto m = mp->json_bindings(a);
