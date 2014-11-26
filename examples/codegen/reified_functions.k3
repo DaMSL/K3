@@ -1,0 +1,4 @@
+// Should produce a std::function<unit_t(int)> with a gen-symmed name.
+trigger t: () = \_ ->
+  (let x = 5 in
+    (\y -> let u = (y + x) in ())) 2
