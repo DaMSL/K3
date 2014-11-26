@@ -66,22 +66,6 @@ instance Show RContext where
     show (RName i) = "RName \"" ++ i ++ "\""
     show (RSplice _) = "RSplice <opaque>"
 
-attachTemplateVars :: Identifier -> K3 Expression -> [(Identifier, K3 Type)] -> CPPGenM R.Name
-attachTemplateVars v e g
-    | isJust (lookup v g) && isJust (functionType e)
-        = do
-            signatureType <- case fromJust (lookup v g) of
-                                  t@(tag -> TFunction) -> return t
-                                  (tag &&& children -> (TForall _, [t'])) -> return t'
-                                  _ -> throwE $ CPPGenE "Unreachable Error."
-            let ts = snd . unzip . dedup $ matchTrees signatureType $
-                       fromMaybe (error "attachTemplateVars: expected just") $ functionType e
-            cts <- mapM genCType ts
-            return $ if null cts
-               then R.Name v
-               else R.Specialized cts $ R.Name v
-    | otherwise = return $ R.Name v
-
 dedup :: [(Identifier, a)] -> [(Identifier, a)]
 dedup = foldl (\ds (t, u) -> if isJust (lookup t ds) then ds else ds ++ [(t, u)]) []
 
@@ -133,20 +117,12 @@ constant (CNone _) = return R.LNullptr
 constant c = throwE $ CPPGenE $ "Invalid Constant Form " ++ show c
 
 cDecl :: K3 Type -> Identifier -> CPPGenM [R.Statement]
-cDecl (tag &&& children -> (TFunction, [ta, tr])) i = do
-    ctr <- genCType tr
-    cta <- genCType ta
-    return [R.Forward $ R.FunctionDecl (R.Name i) [cta] ctr]
-cDecl t i = do
-    ct <- genCType t
-    return [R.Forward $ R.ScalarDecl (R.Name i) ct Nothing]
+cDecl t i = genCType t >>= \ct -> return [R.Forward $ R.ScalarDecl (R.Name i) ct Nothing]
 
 inline :: K3 Expression -> CPPGenM ([R.Statement], R.Expression)
 inline e@(tag &&& annotations -> (EConstant (CEmpty t), as)) = case annotationComboIdE as of
     Nothing -> throwE $ CPPGenE $ "No Viable Annotation Combination for Empty " ++ show e
-    Just ac -> do
-        ct <- genCType t
-        return ([], R.Initialization (R.Collection ac ct) [])
+    Just ac -> genCType t >>= \ct -> return ([], R.Initialization (R.Collection ac ct) [])
 
 inline (tag -> EConstant c) = constant c >>= \c' -> return ([], R.Literal c')
 
@@ -270,10 +246,7 @@ inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, [Fold c, f
   g <- genSym
   acc <- genSym
 
-  zt <- getKType z
-  accType <- genCType zt
-
-  let loopInit = [R.Forward $ R.ScalarDecl (R.Name acc) accType (Just zv)]
+  let loopInit = [R.Forward $ R.ScalarDecl (R.Name acc) R.Inferred (Just zv)]
   let loopBody =
           [ R.Assignment (R.Variable $ R.Name acc) $
               R.Call
@@ -282,7 +255,7 @@ inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, [Fold c, f
                     [R.Variable $ R.Name acc]
                   ]) [R.Variable $ R.Name g]
           ]
-  let loop = R.ForEach g R.Inferred cv (R.Block loopBody)
+  let loop = R.ForEach g (R.Const $ R.Reference $ R.Inferred) cv (R.Block loopBody)
   return (ce ++ fe ++ ze ++ loopInit ++ loopPragmas ++ [loop], (R.Variable $ R.Name acc))
 
 inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do

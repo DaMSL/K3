@@ -121,11 +121,11 @@ class StlDS {
     return container.end();
   }
 
-  iterator begin() const {
+  const_iterator begin() const {
     return container.cbegin();
   }
 
-  iterator end() const {
+  const_iterator end() const {
     return container.cend();
   }
 
@@ -957,6 +957,18 @@ class Map {
       container[rec.key] = rec;
     } else {
       container[rec.key] = f(std::move(existing->second))(rec);
+    }
+
+    return unit_t {};
+  }
+
+  template <class F, class G>
+  unit_t upsert_with(const R& rec, F f, G g) {
+    auto existing = container.find(rec.key);
+    if (existing == std::end(container)) {
+      container[rec.key] = f(unit_t {});
+    } else {
+      container[rec.key] = g(std::move(existing->second));
     }
 
     return unit_t {};

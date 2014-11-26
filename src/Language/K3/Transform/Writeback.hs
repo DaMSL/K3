@@ -44,8 +44,8 @@ findScope :: EffectEnv -> K3 Effect -> K3 Effect
 findScope env f@(tag . eE env -> FScope _) = f
 findScope env (children . eE env -> fs) = findScope env (last fs)
 
-symIDs :: EffectEnv -> S.Set (K3 Symbol) -> S.Set Identifier
-symIDs env = S.map (symIdent . tag . eS env)
+symIDs :: S.Set (K3 Symbol) -> QueryM (S.Set Identifier)
+symIDs ss = getEnv >>= \env -> return $ S.map (symIdent . tag . eS env) ss
 
 -- | Determine whether or not a given symbol has a read/write/superstructure conflict in the given
 -- effect tree. To conflict, the symbol's superstructure must be read after the symbol was written
@@ -61,22 +61,47 @@ conflicts env (expandEffDeep env -> f) (expandSymDeep env -> k)
           (evalQueryM (doesWriteOn first k) env && any (\s -> evalQueryM (doesReadOn second s) env) kk)
     conflictsWR (children . eE env -> cs) = any conflictsWR cs
 
-writebackOpt :: EffectEnv -> K3 Declaration -> K3 Declaration
-writebackOpt env (TAC (DGlobal i t me) as cs) = TAC (DGlobal  i t (writebackOptE env <$> me)) as cs
-writebackOpt env (TAC (DTrigger i t e) as cs) = TAC (DTrigger i t (writebackOptE env e))      as cs
-writebackOpt env (TAC (DRole n) as cs)        = TAC (DRole n) as $ map (writebackOpt env) cs
-writebackOpt _ t = t
+writebackOptPT :: (K3 Declaration, Maybe EffectEnv) -> Either String (K3 Declaration, Maybe EffectEnv)
+writebackOptPT (d, me) = maybe (Left "No effect argument given to writebackPT")
+                      (\e -> let (d', e') = runQueryM (writebackOptD d) e in Right (d', Just e')) me
 
-writebackOptE :: EffectEnv -> K3 Expression -> K3 Expression
-writebackOptE env g@(TAC t@(EBindAs _) as cs) = TAC t (constructBindHint env g : as) $
-                                                   map (writebackOptE env) cs
-writebackOptE env g@(TAC t@(ECaseOf _) as cs) = TAC t (constructBindHint env g : as) $
-                                                   map (writebackOptE env) cs
-writebackOptE env (TAC t as cs)               = TAC t as $ map (writebackOptE env) cs
+writebackOptD :: K3 Declaration -> QueryM (K3 Declaration)
 
-constructBindHint :: EffectEnv -> K3 Expression -> Annotation Expression
-constructBindHint env g = EOpt $ BindHint (symIDs env refBound, [], symIDs env writeBound)
-  where
-    (eE env -> tnc -> (FScope bs, es)) = findScope env $ let (EEffect k) = fromJust $ g @~ isEEffect in k
-    (writeBound, refBound) = if null es then ([], S.fromList bs)
-                             else S.partition (conflicts env $ head es) $ S.fromList bs
+writebackOptD (TAC (DGlobal i t me) as cs) = do
+  me' <- case me of
+           Nothing -> return Nothing
+           Just e -> Just <$> writebackOptE e
+  return $ TAC (DGlobal  i t me') as cs
+
+writebackOptD (TAC (DTrigger i t e) as cs)
+    = writebackOptE e >>= \e' -> return $ TAC (DTrigger i t e') as cs
+
+writebackOptD (TAC (DRole n) as cs) = TAC (DRole n) as <$> mapM writebackOptD cs
+writebackOptD t = return t
+
+writebackOptE :: K3 Expression -> QueryM (K3 Expression)
+writebackOptE g@(TAC t@(EBindAs _) as cs) = do
+  cs' <- mapM writebackOptE cs
+  bindHint <- constructBindHint g
+  return $ TAC t (bindHint:as) cs'
+
+writebackOptE g@(TAC t@(ECaseOf _) as cs) = do
+  cs' <- mapM writebackOptE cs
+  bindHint <- constructBindHint g
+  return $ TAC t (bindHint:as) cs'
+
+writebackOptE (TAC t as cs) = TAC t as <$> mapM writebackOptE cs
+
+constructBindHint :: K3 Expression -> QueryM (Annotation Expression)
+constructBindHint g = do
+  env <- getEnv
+  let (EEffect k) = fromJust $ g @~ isEEffect
+  let (eE env -> tnc -> (FScope bs, es)) = findScope env k
+  let (writeBound, refBound) = if null es
+                               then ([], S.fromList bs)
+                               else S.partition (conflicts env $ head es) (S.fromList bs)
+
+  forM_ refBound (\s -> toggleCopy s >> toggleWb s)
+  rb <- symIDs refBound
+  wb <- symIDs writeBound
+  return $ EOpt $ BindHint (rb, [], wb)

@@ -40,7 +40,7 @@ nrvoMoveOptE env e@(TAC (EVariable v) as cs) = TAC (EVariable v) (as' ++ as) cs
 nrvoMoveOptE env e@(TAC (ELambda i) as cs) = TAC (ELambda i) (a:as) (map (nrvoMoveOptE env) cs)
   where
     a = EOpt $ ReturnMoveHint nrvoMovePermitted
-    nrvoMovePermitted = not (null rs) && elem (head rs) bindings
+    nrvoMovePermitted = not (null rs) && (any (\q -> evalQueryM (isDerivedDirectlyFrom (head rs) q) env) bindings)
     ESymbol ((tag &&& children) . eS env
                  -> (Symbol { symProv = PLambda (eE env -> Node (FScope bindings :@: _) _) }, rs))
         = fromJust $ e @~ isESymbol

@@ -10,6 +10,10 @@ annotation Map given type a,b {
   provides lifted insert_with: content -> (content -> content -> content) -> ()
     with effects \elem -> \f -> [R[self]; R[elem]; f content; W[self]]
 
+  @:CArgs 3
+  provides lifted upsert_with: content -> (() -> content) -> (content -> content) -> ()
+    with effects \elem -> \f -> \g -> [R[self]; R[elem]; f content; g content; W[self]]
+
   provides lifted erase  : content -> ()
     with effects \elem -> [R[self]; R[elem]; W[self]]
 

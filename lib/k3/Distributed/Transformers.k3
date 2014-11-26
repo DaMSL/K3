@@ -23,7 +23,7 @@ control DistributedGroupByGeneric [ lbl             : label
 
           // Note: SendByPartitionKey always uses a @Collection for the wire type.
           trigger $[lbl]_merge : collection $::[t] @Collection = \partials -> (
-            partials.iterate (\v -> $[merge] v)
+            partials.iterate (\w -> $[merge] w)
           )
 
           trigger $[lbl]_peer_barrier : () = \_ -> (

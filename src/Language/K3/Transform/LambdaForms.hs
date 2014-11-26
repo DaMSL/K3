@@ -100,13 +100,13 @@ lambdaFormOptE e@(Node (ELambda x :@: as) [b]) = do
   ds <- downstreams
   conf <- transformConfig
   let fs = mapMaybe getEffects ds
-  let (ESymbol (eS env -> tnc -> (symProv -> PLambda (eE env -> fc@(Node (FScope bindings@(binding:closure) :@: _) bes)), returnSymbols))) = fromJust $ e @~ isESymbol
+  let (ESymbol fsym@(eS env -> tnc -> (symProv -> PLambda (eE env -> fc@(Node (FScope bindings@(binding:closure) :@: _) bes)), returnSymbols))) = fromJust $ e @~ isESymbol
   let  moveable (expandSymDeep env -> g) = not (isDerivedFromGlobal env g) &&
                                            not (any (\f -> let SymbolCategories r w _ _ _
                                                                  = effectSCategories f [g] env
                                                            in g `elemSymbol` r || g `elemSymbol` w) fs)
 
-  let SymbolCategories cRead cWritten cApplied _ _ = exprSCategories Nothing e env
+  let SymbolCategories cRead cWritten cApplied _ _ = exprSCategories (Just True) e env
 
   let parent = head . children
 
@@ -116,7 +116,10 @@ lambdaFormOptE e@(Node (ELambda x :@: as) [b]) = do
           | binding `elemSymbol` cRead = True
           | otherwise = False
 
+  when funcHint (toggleCopy fsym)
+
   let captHint' (cref, move, copy) s
+          | s === binding = return (cref, move, copy)
           | moveable (parent s) && s `elemSymbol` cApplied && optMoves conf
               = toggleCopy s >> toggleMove s >> return (cref, S.insert (parent s) move, copy)
           | s `notElemSymbol` cWritten && optRefs conf

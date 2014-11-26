@@ -73,7 +73,10 @@ genCType (tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
         Nothing -> return $ R.Named (R.Specialized [ct] $ R.Name "Collection")
         Just i' -> return $ R.Named (R.Specialized [ct] $ R.Name i')
 genCType (tag -> TAddress) = return R.Address
-genCType (tag &&& children -> (TFunction, [_, _])) = return R.Inferred
+genCType (tag &&& children -> (TFunction, [ta, tr])) = do
+  cta <- genCType ta
+  ctr <- genCType tr
+  return $ R.Function [cta] ctr
 
 genCType (tag &&& children -> (TForall _, [t])) = genCType t
 genCType (tag -> TDeclaredVar i) = return $ R.Named (R.Name $ map toUpper i)

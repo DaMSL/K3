@@ -502,7 +502,7 @@ genSymDerived :: [K3 Symbol] -> MEnv (K3 Symbol)
 genSymDerived = genSym PDerived False True False
 
 genSymDirect :: K3 Symbol -> MEnv (K3 Symbol)
-genSymDirect = genSym PDirect False True False . singleton
+genSymDirect = genSym PDirect False False False . singleton
 
 getEEffect :: K3 Expression -> Maybe (K3 Effect)
 getEEffect n = case n @~ isEEffect of
