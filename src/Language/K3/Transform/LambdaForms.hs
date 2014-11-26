@@ -106,7 +106,7 @@ lambdaFormOptE e@(Node (ELambda x :@: as) [b]) = do
                                                                  = effectSCategories f [g] env
                                                            in g `elemSymbol` r || g `elemSymbol` w) fs)
 
-  let SymbolCategories cRead cWritten cApplied _ _ = exprSCategories Nothing e env
+  let SymbolCategories cRead cWritten cApplied _ _ = exprSCategories (Just True) e env
 
   let parent = head . children
 
@@ -117,6 +117,7 @@ lambdaFormOptE e@(Node (ELambda x :@: as) [b]) = do
           | otherwise = False
 
   let captHint' (cref, move, copy) s
+          | s === binding = return (cref, move, copy)
           | moveable (parent s) && s `elemSymbol` cApplied && optMoves conf
               = toggleCopy s >> toggleMove s >> return (cref, S.insert (parent s) move, copy)
           | s `notElemSymbol` cWritten && optRefs conf
