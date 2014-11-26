@@ -255,7 +255,7 @@ inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, [Fold c, f
                     [R.Variable $ R.Name acc]
                   ]) [R.Variable $ R.Name g]
           ]
-  let loop = R.ForEach g R.Inferred cv (R.Block loopBody)
+  let loop = R.ForEach g (R.Const $ R.Reference $ R.Inferred) cv (R.Block loopBody)
   return (ce ++ fe ++ ze ++ loopInit ++ loopPragmas ++ [loop], (R.Variable $ R.Name acc))
 
 inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do
