@@ -37,7 +37,7 @@ script:
   - __build/A -p ./scripts/tests/cpp/sql/q2/peers.yml
   - ./scripts/tests/cpp/sql/check_result.sh /k3/K3-Driver/scripts/tests/cpp/sql/q2/
   - ./clean.sh
-    # Amplab q3 w/ test, using pre-generated code until we fix std::move issues:
+    # Amplab q3 w/ test
   - ./compile.sh -O1 ../K3-Core/examples/distributed/amplab/q3.k3
   - __build/A -p ./scripts/tests/cpp/sql/q3/peers.yml
   - ./scripts/tests/cpp/sql/check_result.sh /k3/K3-Driver/scripts/tests/cpp/sql/q3/

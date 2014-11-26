@@ -96,23 +96,26 @@ extractProgramState prog = do
   return progSt
   where fId a b = return (a,b)
 
-mkLoader :: String -> TypedAttrs -> Either String Statement
-mkLoader name idSqlT = fnStmts >>= return . createFunction name loaderParams loaderReturnT
+mkLoader :: String -> TypedAttrs -> [String]
+mkLoader name idSqlt = ["create or replace function " ++ name
+                 , "(" ++ concat (intersperse "," (map mkArg loaderParams)) ++ ")"
+                 , "returns void as $$"
+                 , "declare jsonVar json;"
+                 , "begin"
+                 , "drop table if exists temp_" ++ name ++ ";"
+                 , "create temporary table temp_" ++ name ++ " (logEntry json);"
+                 , "execute format('copy temp_" ++ name ++ " from ''%s'' ', filename);"
+                 , "select logEntry into jsonVar FROM temp_" ++ name ++ " limit 1;"
+                 , "insert into " ++ resultsTable ++ " select " ++ loaderFields idSqlt ++ " from json_array_elements(jsonVar->'value') as R(t);"
+                 , "end;"
+                 , "$$ language plpgsql volatile;"
+                 ]
   where
-    fnStmts = createPlpgsqlStatements (loaderBody idSqlT)
-                >>= return . PlpgsqlFnBody eA . Block eA Nothing []
-
-    loaderParams     = [("table", "text"), ("filename", "text")]
+    mkArg (n,t) = n ++ " " ++ t
+    loaderParams     = [("filename", "text")]
     loaderReturnT    = "void"
     loaderAttr       = "logEntry"
-    loaderTemp       = "temp_" ++ name
-    loaderFields idT = intercalate "," $ map (\(i,_) -> loaderAttr ++ "->" ++ "''" ++ i ++ "''") idT
-
-    loaderBody (loaderFields -> fields) = concat [
-         "execute 'drop table if exists " ++ loaderTemp ++ "';"
-       , "execute 'create temporary unlogged table " ++ loaderTemp ++ " ( " ++ loaderAttr ++ " json )';"
-       , "execute format('copy %s from ''%s''', table, filename);"
-       , "execute format('insert into %s select " ++ fields ++ " from " ++ loaderTemp ++ "', table);" ]
+    loaderFields idT = intercalate "," $ map (\(i,t) -> "(t#>>" ++ "'{value," ++ i ++ "}')::" ++ t) idT
 
 {- Constants -}
 -- Key for joining Globals and Messages
@@ -147,22 +150,16 @@ mkEventTraceSchema _ = createTable msgsTable $ keyAttrs ++ logAttrs
                      , ("time"    ,    "text")]
 
 
-mkResultSchema :: [Identifier] -> K3 Declaration -> Either String String
-mkResultSchema vars prog = do
-  progSt   <- extractProgramState prog
-  varAttrs <- return $ filter (\(i,_) -> i `elem` vars) $ globals progSt
-  loaderFn <- mkLoader loadResultsFn varAttrs
-  return $ printStatements $ [createTable resultsTable varAttrs, loaderFn]
-
 mkFlatSingletonResultSchema :: Identifier -> K3 Declaration -> Either String String
 mkFlatSingletonResultSchema i prog = do
   (fieldsOpt, _) <- foldProgram onGlobal fId fId Nothing Nothing prog
   case fieldsOpt of
     Just fields -> do
       idSqlT   <- mapM (\(n,t) -> schemaType t >>= maybe schemaErr (return . (n,))) fields
-      loaderFn <- mkLoader (loadFlatResultsFn i) idSqlT
-      return $ printStatements [ createTable resultsTable idSqlT, loaderFn ]
-
+      loaderFn <- return $ mkLoader (loadFlatResultsFn i) idSqlT
+      ast      <- return $  printStatements [ createTable resultsTable idSqlT ]
+      manual   <- return $ unlines loaderFn
+      return $ unlines [ast, manual]
     Nothing -> noIdFoundErr
 
   where fId a b = return (a,b)
@@ -191,8 +188,7 @@ mkLoadCalls iOpt catalogFile = do
   where
     mkLoaderCall filePath = unwords [
         "select" , (maybe loadResultsFn loadFlatResultsFn iOpt)
-                 , "(" , "'" ++ resultsTable ++ "'"
-                 , "," , "'" ++ filePath ++ "'"
+                 , "(" , "'" ++ filePath ++ "'"
                  , ");" ]
 
 mkProgramTraceSchema :: K3 Declaration -> Either String String
@@ -206,7 +202,6 @@ kTrace :: [(String, String)] -> K3 Declaration -> Either String String
 kTrace opts prog = return . unlines =<< sequence
                      [ mkProgramTraceSchema prog
                      , onOpt "flat-result-var" (\v -> mkFlatSingletonResultSchema v prog)
-                     , onOpt "result-vars"     (\v -> mkResultSchema (splitOn "," v) prog)
                      , onOpt "files"           (\v -> mkLoadCalls (opt "flat-result-var") v) ]
   where
     onOpt key onValF = maybe (return "") onValF $ lookup key opts
