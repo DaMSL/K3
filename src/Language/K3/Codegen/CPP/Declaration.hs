@@ -134,32 +134,6 @@ declaration (tag -> DDataAnnotation i _ amds) = addAnnotation i amds >> return [
 declaration (tag -> DRole _) = throwE $ CPPGenE "Roles below top-level are deprecated."
 declaration _ = return []
 
---declaration (tag -> DGlobal i _ _) | "register" `L.isPrefixOf` i = return []
-
--- declaration (tag &&& children -> (DRole _, cs)) = do
---     subDecls <- vsep . punctuate line <$> mapM declaration cs
---     currentS <- get
---     i <- genCType T.unit >>= \ctu ->
---         return $ ctu <+> text "initGlobalDecls" <> parens empty <+> hangBrace (initializations currentS <> text "return unit_t();")
---     let amp = annotationMap currentS
---     compositeDecls <- forM (S.toList $ S.filter (not . S.null) $ composites currentS) $ \(S.toList -> als) ->
---         composite (annotationComboId als) [(a, M.findWithDefault [] a amp) | a <- als]
---     recordDecls <- forM (M.toList $ recordMap currentS) $
---                      \(_, unzip -> (ids, _)) -> record ids
---     tablePop <- generateDispatchPopulation
-
---     newS <- get
-
---     return $ vsep $ punctuate line $
---                [text "using K3::Collection;"]
---             ++ forwards newS
---             ++ compositeDecls
---             ++ recordDecls
---             ++ [subDecls, i, tablePop]
-
--- declaration (tag -> DDataAnnotation i _ amds) = addAnnotation i amds >> return empty
--- declaration _ = return empty
-
 -- Generate a lambda to parse a csv string. of type string -> tuple
 genCsvParser :: K3 Type -> CPPGenM (Maybe R.Expression)
 genCsvParser (tag &&& children -> (TTuple, ts)) = do
