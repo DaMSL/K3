@@ -599,8 +599,8 @@ freeVariables expr = either (const []) id $ foldMapTree extractVariable [] expr
     extractVariable chAcc (tag -> EVariable n) = return $ concat chAcc ++ [n]
     extractVariable chAcc (tag -> EAssign i)   = return $ concat chAcc ++ [i]
     extractVariable chAcc (tag -> ELambda n)   = return $ filter (/= n) $ concat chAcc
-    extractVariable chAcc (tag -> EBindAs b)   = return $ filter (`notElem` bindingVariables b) $ concat chAcc
-    extractVariable chAcc (tag -> ELetIn i)    = return $ filter (/= i) $ concat chAcc
+    extractVariable chAcc (tag -> EBindAs b)   = return $ (chAcc !! 0) ++ (filter (`notElem` bindingVariables b) $ chAcc !! 1)
+    extractVariable chAcc (tag -> ELetIn i)    = return $ (chAcc !! 0) ++ (filter (/= i) $ chAcc !! 1)
     extractVariable chAcc (tag -> ECaseOf i)   = return $ let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
     extractVariable chAcc _                    = return $ concat chAcc
 
@@ -616,8 +616,8 @@ modifiedVariables expr = either (const []) id $ foldMapTree extractVariable [] e
   where
     extractVariable chAcc (tag -> EAssign n)   = return $ concat chAcc ++ [n]
     extractVariable chAcc (tag -> ELambda n)   = return $ filter (/= n) $ concat chAcc
-    extractVariable chAcc (tag -> EBindAs b)   = return $ filter (`notElem` bindingVariables b) $ concat chAcc
-    extractVariable chAcc (tag -> ELetIn i)    = return $ filter (/= i) $ concat chAcc
+    extractVariable chAcc (tag -> EBindAs b)   = return $ (chAcc !! 0) ++ (filter (`notElem` bindingVariables b) $ chAcc !! 1)
+    extractVariable chAcc (tag -> ELetIn i)    = return $ (chAcc !! 0) ++ (filter (/= i) $ chAcc !! 1)
     extractVariable chAcc (tag -> ECaseOf i)   = return $ let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
     extractVariable chAcc _                    = return $ concat chAcc
 
