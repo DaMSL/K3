@@ -79,6 +79,7 @@ library
         Language.K3.Utils.Logger.Generators,
         Language.K3.Utils.Logger.Operations,
         Language.K3.Utils.Pretty,
+        Language.K3.Utils.PrettyText,
         Language.K3.Utils.Pretty.Syntax,
         Language.K3.Utils.TemplateHaskell.Reduce,
         Language.K3.Utils.TemplateHaskell.ReduceM,
