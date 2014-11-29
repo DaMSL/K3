@@ -11,29 +11,35 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Utils.Pretty
 
-type PPtr = Int
+import Data.Text ( Text )
+import qualified Data.Text as T
+import qualified Language.K3.Utils.PrettyText as PT
+
+type PPtr   = Int
+type VarLoc = (Identifier, UID)
 
 data Provenance =
     -- Atoms
       PFVar        Identifier
-    | PBVar        PPtr
+    | PBVar        VarLoc PPtr
     | PTemporary   -- A local leading to no lineage of interest
 
     -- Terms
     | PGlobal      Identifier
-    | PRecord      Identifier Identifier
-    | PTuple       Identifier Integer
-    | PIndirection Identifier
-    | PProject     Identifier -- Created by projections
-    | PLet         Identifier
-    | PCase        Identifier
+    | PSet                              -- Non-deterministic (if-then-else or case)
+    | PChoice                           -- One of the cases must be chosen ie. they're exclusive
+    | PDerived                          -- A value derived from named children e.g. x + y ==> [x;y]
+    | PData        (Maybe [Identifier]) -- A value derived from a data constructor (optionally with named comoonents)
+    | PRecord      Identifier
+    | PTuple       Int
+    | PIndirection
+    | POption
     | PLambda      Identifier
     | PClosure
-    | PApply       -- A symbol application only extracts the child symbols
-    | PSet         -- Non-deterministic (if-then-else or case)
-    | PChoice      -- One of the cases must be chosen ie. they're exclusive
-    | PDerived     -- A symbol derived from its children e.g. x + y ==> [x;y]
-    | PDirect      -- A temporary representation that's a direct path to its child
+    | PApply                  -- The lambda, argument, and return value provenances of the application.
+    | PProject     Identifier -- The source of the projection, and the provenance of the projected value if available.
+    | PAssign      Identifier -- The provenance of the expression used for assignment.
+    | PSend                   -- The provenance of the value being sent.
   deriving (Eq, Ord, Read, Show)
 
 data instance Annotation Provenance = PID PPtr
@@ -63,4 +69,23 @@ drawPAnnotations as =
   in (drawAnnotations anns, prettyPrAnns)
 
   where drawPDeclAnnotation (PDeclared p) = ["PDeclared "] %+ prettyLines p
+        drawPDeclAnnotation _ = error "Invalid provenance annotation"
+
+
+instance PT.Pretty (K3 Provenance) where
+  prettyLines (Node (tg :@: as) ch) =
+    let (aTxt, chATxt) = drawPAnnotationsT as
+    in [T.append (T.pack $ show tg) aTxt]
+         ++ (let (p,l) = if null ch then (T.pack "`- ", T.pack "   ")
+                                    else (T.pack "+- ", T.pack "|  ")
+             in PT.shift p l chATxt)
+         ++ PT.drawSubTrees ch
+
+drawPAnnotationsT :: [Annotation Provenance] -> (Text, [Text])
+drawPAnnotationsT as =
+  let (pdeclAnns, anns) = partition isPDeclared as
+      prettyPrAnns      = concatMap drawPDeclAnnotation pdeclAnns
+  in (PT.drawAnnotations anns, prettyPrAnns)
+
+  where drawPDeclAnnotation (PDeclared p) = [T.pack "PDeclared "] PT.%+ PT.prettyLines p
         drawPDeclAnnotation _ = error "Invalid provenance annotation"

@@ -36,6 +36,11 @@ import Language.K3.Core.Common
 
 import Language.K3.Utils.Pretty
 
+import Data.Text ( Text )
+import qualified Data.Text as T
+import qualified Language.K3.Utils.PrettyText as PT
+
+
 -- | Cycle-breaking import for metaprogramming
 import {-# SOURCE #-} Language.K3.Core.Metaprogram ( SpliceEnv )
 
@@ -135,39 +140,6 @@ data instance Annotation Type
   deriving (Eq, Ord, Read, Show)
 
 
-instance HasUID (Annotation Type) where
-  getUID (TUID u) = Just u
-  getUID _        = Nothing
-
-instance HasSpan (Annotation Type) where
-  getSpan (TSpan s) = Just s
-  getSpan _         = Nothing
-
-instance Pretty (K3 Type) where
-    prettyLines (Node (TTuple :@: as) []) = ["TUnit" ++ drawAnnotations as]
-
-    prettyLines (Node (TForall tvdecls :@: as) ts) =
-        let ds = case tvdecls of
-                  []     -> []
-                  (x:xs) -> ("|" : nonTerminalShift x ++ drawSubTrees xs)
-        in ["TForall " ++ drawAnnotations as] ++ ds ++ drawSubTrees ts
-
-    prettyLines (Node (TExternallyBound tvdecls :@: as) ts) =
-        let ds = case tvdecls of
-                  []     -> []
-                  (x:xs) -> ("|" : nonTerminalShift x ++ drawSubTrees xs)
-        in ["TExternallyBound " ++ drawAnnotations as] ++ ds ++ drawSubTrees ts
-
-    prettyLines (Node (t :@: as) ts) = (show t ++ drawAnnotations as) : drawSubTrees ts
-
-instance Pretty TypeVarDecl where
-    prettyLines (TypeVarDecl i mlbtExpr mubtExpr) =
-      (if isNothing mlbtExpr then [] else
-          prettyLines (fromJust mlbtExpr) %+ ["=<"]) %+
-      [i] %+
-      (if isNothing mubtExpr then [] else
-          ["<="] %+ prettyLines (fromJust mubtExpr))
-
 {- Type annotation predicates -}
 
 isTSpan :: Annotation Type -> Bool
@@ -215,4 +187,66 @@ namedTAnnotations :: [Annotation Type] -> [Identifier]
 namedTAnnotations anns = map extractId $ filter isTAnnotation anns
   where extractId (TAnnotation n) = n
         extractId _ = error "Invalid named annotation"
+
+
+{- Type instances -}
+instance HasUID (Annotation Type) where
+  getUID (TUID u) = Just u
+  getUID _        = Nothing
+
+instance HasSpan (Annotation Type) where
+  getSpan (TSpan s) = Just s
+  getSpan _         = Nothing
+
+instance Pretty (K3 Type) where
+    prettyLines (Node (TTuple :@: as) []) = ["TUnit" ++ drawAnnotations as]
+
+    prettyLines (Node (TForall tvdecls :@: as) ts) =
+        let ds = case tvdecls of
+                  []     -> []
+                  (x:xs) -> ("|" : nonTerminalShift x ++ drawSubTrees xs)
+        in ["TForall " ++ drawAnnotations as] ++ ds ++ drawSubTrees ts
+
+    prettyLines (Node (TExternallyBound tvdecls :@: as) ts) =
+        let ds = case tvdecls of
+                  []     -> []
+                  (x:xs) -> ("|" : nonTerminalShift x ++ drawSubTrees xs)
+        in ["TExternallyBound " ++ drawAnnotations as] ++ ds ++ drawSubTrees ts
+
+    prettyLines (Node (t :@: as) ts) = (show t ++ drawAnnotations as) : drawSubTrees ts
+
+instance Pretty TypeVarDecl where
+    prettyLines (TypeVarDecl i mlbtExpr mubtExpr) =
+      (if isNothing mlbtExpr then [] else
+          prettyLines (fromJust mlbtExpr) %+ ["=<"]) %+
+      [i] %+
+      (if isNothing mubtExpr then [] else
+          ["<="] %+ prettyLines (fromJust mubtExpr))
+
+
+{- PrettyText instances -}
+instance PT.Pretty (K3 Type) where
+    prettyLines (Node (TTuple :@: as) []) = [T.append (T.pack "TUnit") $ PT.drawAnnotations as]
+
+    prettyLines (Node (TForall tvdecls :@: as) ts) =
+        let ds = case tvdecls of
+                  []     -> []
+                  (x:xs) -> (T.pack "|" : PT.nonTerminalShift x ++ PT.drawSubTrees xs)
+        in [T.append (T.pack "TForall ") $ PT.drawAnnotations as] ++ ds ++ PT.drawSubTrees ts
+
+    prettyLines (Node (TExternallyBound tvdecls :@: as) ts) =
+        let ds = case tvdecls of
+                  []     -> []
+                  (x:xs) -> (T.pack "|" : PT.nonTerminalShift x ++ PT.drawSubTrees xs)
+        in [T.append (T.pack "TExternallyBound ") $ PT.drawAnnotations as] ++ ds ++ PT.drawSubTrees ts
+
+    prettyLines (Node (t :@: as) ts) = (T.append (T.pack $ show t) $ PT.drawAnnotations as) : PT.drawSubTrees ts
+
+instance PT.Pretty TypeVarDecl where
+    prettyLines (TypeVarDecl i mlbtExpr mubtExpr) =
+      (if isNothing mlbtExpr then [] else
+          PT.prettyLines (fromJust mlbtExpr) PT.%+ [T.pack "=<"]) PT.%+
+      [T.pack i] PT.%+
+      (if isNothing mubtExpr then [] else
+          [T.pack "<="] PT.%+ PT.prettyLines (fromJust mubtExpr))
 

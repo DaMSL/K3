@@ -84,6 +84,8 @@ import Data.List
 import Data.Maybe
 import Data.Tree
 
+import Debug.Trace
+
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
@@ -251,9 +253,9 @@ biFoldMapRebuildTree tdF buF tdAcc buAcc n@(Node _ ch) = do
 --   environments based on the type of the first child.
 mapIn1RebuildTree :: (Monad m)
                   => (Tree a -> Tree a -> m ())
-                  -> (Tree a -> Tree a -> m [m ()])
-                  -> ([Tree a] -> Tree a -> m (Tree a))
-                  -> Tree a -> m (Tree a)
+                  -> (Tree b -> Tree a -> m [m ()])
+                  -> ([Tree b] -> Tree a -> m (Tree b))
+                  -> Tree a -> m (Tree b)
 mapIn1RebuildTree _ _ allChF n@(Node _ []) = allChF [] n
 mapIn1RebuildTree preCh1F postCh1F allChF n@(Node _ ch) = do
     preCh1F (head ch) n
@@ -284,11 +286,11 @@ mapIn1RebuildTree preCh1F postCh1F allChF n@(Node _ ch) = do
 --   passed through siblings with those that skip accumulator propagation.
 --   Finally, the traversal takes a post-order accumulator and children transformation function.
 foldIn1RebuildTree :: (Monad m)
-                   => (b -> Tree a -> Tree a -> m b)
-                   -> (b -> Tree a -> Tree a -> m (b, [Bool]))
-                   -> (b -> b -> m b)
-                   -> (b -> [Tree a] -> Tree a -> m (b, Tree a))
-                   -> b -> Tree a -> m (b, Tree a)
+                   => (c -> Tree a -> Tree a -> m c)
+                   -> (c -> Tree b -> Tree a -> m (c, [Bool]))
+                   -> (c -> c -> m c)
+                   -> (c -> [Tree b] -> Tree a -> m (c, Tree b))
+                   -> c -> Tree a -> m (c, Tree b)
 foldIn1RebuildTree _ _ _ allChF acc n@(Node _ []) = allChF acc [] n
 foldIn1RebuildTree preCh1F postCh1F mergeF allChF acc n@(Node _ ch) = do
     nAcc                 <- preCh1F acc (head ch) n
@@ -321,10 +323,10 @@ foldIn1RebuildTree preCh1F postCh1F mergeF allChF acc n@(Node _ ch) = do
 -- allChF:   The all-child function takes the post child's single accumulator, the processed children,
 --           and the node, and returns a new tree.
 foldMapIn1RebuildTree :: (Monad m)
-                  => (b -> Tree a -> Tree a -> m b)
-                  -> (b -> Tree a -> Tree a -> m (b, [b]))
-                  -> (b -> [Tree a] -> Tree a -> m (Tree a))
-                  -> b -> Tree a -> m (Tree a)
+                  => (c -> Tree a -> Tree a -> m c)
+                  -> (c -> Tree b -> Tree a -> m (c, [c]))
+                  -> (c -> [Tree b] -> Tree a -> m (Tree b))
+                  -> c -> Tree a -> m (Tree b)
 foldMapIn1RebuildTree _ _ allChF tdAcc n@(Node _ []) = allChF tdAcc [] n
 foldMapIn1RebuildTree preCh1F postCh1F allChF tdAcc n@(Node _ ch) = do
     nCh1Acc        <- preCh1F tdAcc (head ch) n
