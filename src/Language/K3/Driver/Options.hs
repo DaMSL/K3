@@ -119,6 +119,7 @@ data TransformMode
     | ProxyPaths
     | AnnotationProvidesGraph
     | FlatAnnotations
+    | Provenance
     | Effects
     | EffectNormalization
     | FoldConstants
@@ -454,6 +455,7 @@ transformMode   =  wrap <$> conflictsOpt
               <|> wrap <$> proxyPathsOpt
               <|> wrap <$> annProvOpt
               <|> wrap <$> flatAnnOpt
+              <|> wrap <$> provenanceOpt
               <|> wrap <$> effectOpt
               <|> wrap <$> normalizationOpt
               <|> wrap <$> foldConstantsOpt
@@ -498,6 +500,10 @@ annProvOpt = flag' AnnotationProvidesGraph (   long "fprovides-graph"
 flatAnnOpt :: Parser TransformMode
 flatAnnOpt = flag' FlatAnnotations (   long "fflat-annotations"
                                     <> help "Print bind paths for bind expressions" )
+
+provenanceOpt :: Parser TransformMode
+provenanceOpt = flag' Provenance (   long "fprovenance"
+                                  <> help "Print program provenance")
 
 effectOpt :: Parser TransformMode
 effectOpt = flag' Effects (   long "feffects"

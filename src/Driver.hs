@@ -25,6 +25,7 @@ import Language.K3.Analysis.Interpreter.BindAlias
 import Language.K3.Analysis.AnnotationGraph
 import Language.K3.Analysis.HMTypes.Inference
 
+import qualified Language.K3.Analysis.Provenance.Inference  as Provenance
 import qualified Language.K3.Analysis.Effects.InsertEffects as Effects
 import qualified Language.K3.Analysis.Effects.Purity        as Pure
 
@@ -145,6 +146,7 @@ run opts = do
     analyzer FlatAnnotations (p,s)         = (p, s ++ show (flattenAnnotations p))
     analyzer EffectNormalization x         = first Normalization.normalizeProgram x
     analyzer FoldConstants x               = wrapEither Simplification.foldProgramConstants x
+    analyzer Provenance x                  = wrapEither Provenance.inferProgramProvenance x
 
     analyzer Effects (p,s) = let (np,fenv) = Effects.runConsolidatedAnalysis p
                              in (Effects.expandProgram fenv np, s)
