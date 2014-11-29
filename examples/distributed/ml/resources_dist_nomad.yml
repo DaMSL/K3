@@ -1,0 +1,18 @@
+role: points
+me: [127.0.0.1,41000]
+dataFiles: [{path: /opt/samar_codes/nomadA_1.txt}]
+peers: [{addr: [127.0.0.1,42000]},{addr: [127.0.0.1,43000]} ]
+---
+role: points
+peers: [{addr: [127.0.0.1,41000]},{addr: [127.0.0.1,43000]} ]
+me: [127.0.0.1,42000]
+dataFiles: [{path: /opt/samar_codes/nomadA_2.txt}]
+---
+role: points
+peers: [{addr: [127.0.0.1,41000]},{addr: [127.0.0.1,42000]} ]
+me: [127.0.0.1,43000]
+dataFiles: [{path: /opt/samar_codes/nomadA_3.txt}]
+---
+role: master
+peers: [{addr: [127.0.0.1,41000]},{addr: [127.0.0.1,42000]}, {addr: [127.0.0.1,43000]} ]
+me: [127.0.0.1,40000]
