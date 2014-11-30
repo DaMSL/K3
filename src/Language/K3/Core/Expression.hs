@@ -4,7 +4,34 @@
 {-# LANGUAGE ViewPatterns #-}
 
 -- | Expressions in K3.
-module Language.K3.Core.Expression where
+module Language.K3.Core.Expression (
+  Expression(..),
+  ImperativeExpression(..),
+  Constant(..),
+  Operator(..),
+  Binder(..),
+  Annotation(..)
+
+  , isESpan
+  , isEQualified
+  , isEUID
+  , isEAnnotation
+  , isEProperty
+  , isESyntax
+  , isEApplyGen
+  , isEType
+  , isETypeOrBound
+  , isEQType
+  , isEPType
+  , isEAnyType
+  , isEProvenance
+  , isEEffect
+  , isESymbol
+  , isAnyETypeAnn
+  , isAnyEEffectAnn
+  , isAnyETypeOrEffectAnn
+  , namedEAnnotations
+) where
 
 import Data.List
 import Data.Tree
@@ -306,7 +333,7 @@ ntShift = PT.shift (T.pack "+- ") (T.pack "|  ")
 tShift :: [Text] -> [Text]
 tShift = PT.shift (T.pack "`- ") (T.pack "   ")
 
-tTA :: Bool -> String -> [Annotation Declaration] -> [Text]
+tTA :: Bool -> String -> [Annotation Expression] -> [Text]
 tTA asTerm s as =
   let (annTxt, pAnnTxt) = drawExprAnnotationsT as in
   aPipe [T.append (T.pack s) annTxt]
@@ -348,13 +375,12 @@ drawExprAnnotationsT as =
       prettyEffectAnnsConcat  = foldl (\a b -> a PT.%$ [T.pack "|"] PT.%$ b) [] prettyEffectAnnsL
       prettyEffectAnnsShifted =
         if null prettyEffectAnnsL then []
-        else    (concatMap (\e -> (PT.shift (T.pack "+- ") (T.pack "|  ") e) ++ [T.pack "|"])
-                           $ init prettyEffectAnnsL)
-             ++ (PT.shift (T.pack "`- ") (T.pack "   ") $ last prettyEffectAnnsL)
+        else    (concatMap (aPipe . ntShift) $ init prettyEffectAnnsL)
+             ++ (tShift $ last prettyEffectAnnsL)
 
       prettyAnns = if null prettyTypeAnns || null prettyEffectAnnsL
                      then prettyTypeAnns ++ prettyEffectAnnsConcat
-                     else prettyTypeAnnsPrefixed ++ [T.pack "|"] ++ prettyEffectAnnsShifted
+                     else aPipe prettyTypeAnnsPrefixed ++ prettyEffectAnnsShifted
 
   in (PT.drawAnnotations anns', prettyAnns)
 
@@ -362,7 +388,7 @@ drawExprAnnotationsT as =
   where drawETypeAnnotationT (ETypeLB t) = [T.pack "ETypeLB "] PT.%+ PT.prettyLines t
         drawETypeAnnotationT (ETypeUB t) = [T.pack "ETypeUB "] PT.%+ PT.prettyLines t
         drawETypeAnnotationT (EType   t) = [T.pack "EType   "] PT.%+ PT.prettyLines t
-        drawETypeAnnotationT (EQType  t) = [T.pack "EQType  "] PT.%+ PT.prettyLines t
+        drawETypeAnnotationT (EQType  t) = [T.pack "EQType  "] PT.%+ (map T.pack $ prettyLines t)
         drawETypeAnnotationT (EPType  t) = [T.pack "EPType  "] PT.%+ PT.prettyLines t
         drawETypeAnnotationT _ = error "Invalid argument to drawETypeAnnotation"
 

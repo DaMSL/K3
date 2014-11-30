@@ -84,8 +84,6 @@ import Data.List
 import Data.Maybe
 import Data.Tree
 
-import Debug.Trace
-
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
