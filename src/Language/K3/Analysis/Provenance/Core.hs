@@ -37,6 +37,7 @@ data Provenance =
     | PLambda      Identifier
     | PClosure
     | PApply                  -- The lambda, argument, and return value provenances of the application.
+    | PMaterialize [VarLoc]   -- A materialized return value scope, denoting the presence of escaping bound variables.
     | PProject     Identifier -- The source of the projection, and the provenance of the projected value if available.
     | PAssign      Identifier -- The provenance of the expression used for assignment.
     | PSend                   -- The provenance of the value being sent.

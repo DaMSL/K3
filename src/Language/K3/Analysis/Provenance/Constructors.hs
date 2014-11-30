@@ -28,18 +28,23 @@ ptemp = leaf $ PTemporary
 pglobal :: Identifier -> K3 Provenance -> K3 Provenance
 pglobal i p = sing p $ PGlobal i
 
-pset :: [K3 Provenance] -> K3 Provenance
-pset ch = Node (PSet :@: []) $ nub $ concatMap flatCh ch
-  where flatCh (tnc -> (PSet, gch)) = gch
+simplifyChildren :: (Provenance -> Bool) -> [K3 Provenance] -> [K3 Provenance]
+simplifyChildren tagF ch = nub $ filter (\p -> tag p /= PTemporary) $ concatMap flatCh ch
+  where flatCh (tnc -> (tagF -> True, gch)) = gch
         flatCh p = [p]
+
+pset :: [K3 Provenance] -> K3 Provenance
+pset ch = mkNode $ simplifyChildren (== PSet) ch
+  where mkNode []  = ptemp
+        mkNode chl = Node (PSet :@: []) chl
 
 pchoice :: [K3 Provenance] -> K3 Provenance
 pchoice ch = Node (PChoice :@: []) ch
 
 pderived :: [K3 Provenance] -> K3 Provenance
-pderived ch = Node (PDerived :@: []) $ nub $ concatMap flatCh ch
-  where flatCh (tnc -> (PDerived, gch)) = gch
-        flatCh p = [p]
+pderived ch = mkNode $ simplifyChildren (== PDerived) ch
+  where mkNode []  = ptemp
+        mkNode chl = Node (PDerived :@: []) chl
 
 pdata :: Maybe [Identifier] -> [K3 Provenance] -> K3 Provenance
 pdata idsOpt ch = Node (PData idsOpt :@: []) ch
@@ -64,6 +69,9 @@ pclosure v = sing v $ PClosure
 
 papply :: K3 Provenance -> K3 Provenance -> K3 Provenance -> K3 Provenance
 papply f a r = Node (PApply :@: []) [f, a, r]
+
+pmaterialize :: [VarLoc] -> K3 Provenance -> K3 Provenance
+pmaterialize vl p = Node (PMaterialize vl :@: []) [p]
 
 pproject :: Identifier -> K3 Provenance -> Maybe (K3 Provenance) -> K3 Provenance
 pproject i psrc pvOpt = Node (PProject i :@: []) $ [psrc] ++ maybe [] (:[]) pvOpt

@@ -382,50 +382,13 @@ pilkupcM :: Int -> PInfM [Identifier]
 pilkupcM n = get >>= liftEitherM . flip pilkupc n
 
 
--- | Compute the lambda closure environment by tracking free variables at lambdas.
---   This is a one-pass bottom-up implementation.
-extractLambdaClosures :: K3 Declaration -> Either Text PLCEnv
-extractLambdaClosures p = foldExpression lambdaClosure plcenv0 p >>= return . fst
-  where
-    lambdaClosure :: PLCEnv -> K3 Expression -> Either Text (PLCEnv, K3 Expression) 
-    lambdaClosure lcAcc expr = do
-      (lcenv,_) <- biFoldMapTree bind extract [] (plcenv0, []) expr
-      return $ (plcunions [lcAcc, lcenv], expr)
-
-    bind :: [Identifier] -> K3 Expression -> Either Text ([Identifier], [[Identifier]])
-    bind l (tag -> ELambda i) = return (l, [i:l])
-    bind l (tag -> ELetIn  i) = return (l, [l, i:l])
-    bind l (tag -> EBindAs b) = return (l, [l, bindingVariables b ++ l])
-    bind l (tag -> ECaseOf i) = return (l, [l, i:l, l])
-    bind l (children -> ch)   = return (l, replicate (length ch) l)
-
-    extract :: [Identifier] -> [(PLCEnv, [Identifier])] -> K3 Expression -> Either Text (PLCEnv, [Identifier])
-    extract _ chAcc (tag -> EVariable i) = rt chAcc (++[i])
-    extract _ chAcc (tag -> EAssign i)   = rt chAcc (++[i])
-    extract l (concatLc -> (lcAcc,chAcc)) e@(tag -> ELambda n) = extendLc lcAcc e $ filter (onlyLocals n l) $ concat chAcc
-    extract _ (concatLc -> (lcAcc,chAcc))   (tag -> EBindAs b) = return . (lcAcc,) $ (chAcc !! 0) ++ (filter (`notElem` bindingVariables b) $ chAcc !! 1)
-    extract _ (concatLc -> (lcAcc,chAcc))   (tag -> ELetIn i)  = return . (lcAcc,) $ (chAcc !! 0) ++ (filter (/= i) $ chAcc !! 1)
-    extract _ (concatLc -> (lcAcc,chAcc))   (tag -> ECaseOf i) = return . (lcAcc,) $ let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
-    extract _ chAcc _ = rt chAcc id
-
-    onlyLocals n l i = i /= n && i `elem` l
-
-    concatLc :: [(PLCEnv, [Identifier])] -> (PLCEnv, [[Identifier]])
-    concatLc subAcc = let (x,y) = unzip subAcc in (plcunions x, y)
-
-    extendLc :: PLCEnv -> K3 Expression -> [Identifier] -> Either Text (PLCEnv, [Identifier])
-    extendLc lcenv e ids = case e @~ isEUID of
-      Just (EUID (UID i)) -> return $ (plcext lcenv i ids, ids)
-      _ -> Left $ PT.boxToString $ [T.pack "No UID found on lambda"] %$ PT.prettyLines e
-
-    rt subAcc f = return $ second (f . concat) $ concatLc subAcc
-
 inferProgramProvenance :: K3 Declaration -> Either String (K3 Declaration)
 inferProgramProvenance p = do
-  lcenv <- liftEitherTM $ extractLambdaClosures p
+  lcenv <- lambdaClosures p
   let (npE,initEnv) = runPInfM (pienv0 lcenv) (globalsProv p)
-  np <- liftEitherTM npE
-  liftEitherTM $ fst $ runPInfM initEnv $ mapExpression inferExprProvenance np
+  np  <- liftEitherTM npE
+  np' <- liftEitherTM $ fst $ runPInfM initEnv $ mapExpression inferExprProvenance np
+  liftEitherTM $ simplifyExprProvenance np'
 
   where
     liftEitherTM = either (Left . T.unpack) Right
@@ -520,17 +483,25 @@ inferProvenance expr = mapIn1RebuildTree topdown sideways inferAndSave expr
 
     -- Return a papply with three children: the lambda, argument, and return value provenance.
     infer [lp, argp] e@(tag -> EOperate OApp) = do
-      lp'  <- chaseApply [] lp
-      case tnc lp' of
-        (PLambda i, [bp]) -> do
-          ip <- uidOf e >>= \u -> pifreshbpM (i,u) argp
-          rp <- pisubM i ip bp
-          return $ papply lp argp rp
+      argp'   <- chaseAppArg argp
+      manyLp  <- chaseApply [] lp
+      manyLp' <- flip mapM manyLp $ \lp' ->
+                    case tnc lp' of
+                      (PLambda i, [bp]) -> do
+                        vl <- varloc e i
+                        ip <- pifreshbpM vl argp'
+                        rp <- pisubM i ip bp
+                        return $ papply lp argp $ pmaterialize [vl] rp
 
-        -- Handle recursive functions and forward declarations by using an opaque return value.
-        (PBVar _ _, _) -> return $ papply lp argp ptemp
+                      -- Handle recursive functions and forward declarations
+                      -- by using an opaque return value.
+                      (PBVar _ _, _) -> return $ papply lp argp ptemp
 
-        _ -> appLambdaErr e lp'
+                      _ -> appLambdaErr e lp'
+      case manyLp' of
+        []  -> appLambdaErr e lp
+        [p] -> return p
+        _   -> return $ pset manyLp'
 
     infer [psrc] (tnc -> (EProject i, [esrc])) = 
       case esrc @~ isEType of
@@ -546,14 +517,24 @@ inferProvenance expr = mapIn1RebuildTree topdown sideways inferAndSave expr
             _ -> prjErr esrc
         _ -> prjErr esrc
 
-    infer pch   (tag -> EIfThenElse)   = return $ pset pch
+    infer pch   (tag -> EIfThenElse)   = return $ pset $ tail pch
     infer pch   (tag -> EOperate OSeq) = return $ last pch
     infer [p]   (tag -> EAssign i)     = return $ passign i p
     infer [_,p] (tag -> EOperate OSnd) = return $ psend p
 
-    infer [_,lb]  (tag -> ELetIn  i) = pideleM i >> return lb
-    infer [_,bb]  (tag -> EBindAs b) = mapM_ pideleM (bindingVariables b) >> return bb
-    infer [_,s,n] (tag -> ECaseOf _) = return $ pset [s,n]
+    infer [_,lb]  e@(tag -> ELetIn  i) = do
+      void $ pideleM i
+      vl <- varloc e i
+      return $ pmaterialize [vl] lb
+
+    infer [_,bb]  e@(tag -> EBindAs b) = do
+      void $ mapM_ pideleM $ bindingVariables b
+      vls <- mapM (varloc e) $ bindingVariables b
+      return $ pmaterialize vls bb
+
+    infer [_,s,n] e@(tag -> ECaseOf i) = do
+      vl <- varloc e i
+      return $ pset [pmaterialize [vl] s, n]
 
     -- Data constructors.
     infer pch (tag -> ESome)       = return $ pdata Nothing pch
@@ -585,17 +566,25 @@ inferProvenance expr = mapIn1RebuildTree topdown sideways inferAndSave expr
     unwrapClosure p = errorM $ PT.boxToString $ [T.pack "Invalid closure variable "] %+ PT.prettyLines p
 
     -- TODO: this does not handle PSet, e.g., when applying the return value of an if-then-else
-    chaseApply _ p@(tag -> PLambda _) = return p
+    chaseApply _ p@(tag -> PLambda _) = return [p]
 
     chaseApply path p@(tag -> PBVar _ i) 
-      | i `elem` path = return p
+      | i `elem` path = return [p]
       | otherwise     = pichaseM p >>= chaseApply (i:path)
 
-    chaseApply path (tnc -> (PApply, [_,_,r]))   = chaseApply path r
-    chaseApply path (tnc -> (PProject _, [_,r])) = chaseApply path r
-    chaseApply path (tnc -> (PGlobal _, [r]))    = chaseApply path r
-    chaseApply path (tnc -> (PChoice, r:_))      = chaseApply path r
+    chaseApply path (tnc -> (PApply, [_,_,r]))     = chaseApply path r
+    chaseApply path (tnc -> (PMaterialize _, [r])) = chaseApply path r
+    chaseApply path (tnc -> (PClosure, [r]))       = chaseApply path r
+    chaseApply path (tnc -> (PProject _, [_,r]))   = chaseApply path r
+    chaseApply path (tnc -> (PGlobal _, [r]))      = chaseApply path r
+    chaseApply path (tnc -> (PChoice, r:_))        = chaseApply path r -- TODO: for now we use the first choice.
+    chaseApply path (tnc -> (PSet, rl))            = mapM (chaseApply path) rl >>= return . concat
     chaseApply _ p = errorM $ PT.boxToString $ [T.pack "Invalid application or lambda: "] %$ PT.prettyLines p
+
+    chaseAppArg (tnc -> (PApply, [_,_,r]))     = chaseAppArg r
+    chaseAppArg p = return p
+
+    varloc e i = uidOf e >>= \u -> return (i,u)
 
     freshM i u p = void $ pifreshM i u p
 
@@ -644,7 +633,26 @@ provOfType args t | isTFunction t =
 provOfType [] _   = return ptemp
 provOfType args _ = return $ pderived $ map pfvar args
 
+-- | Replaces PApply provenance nodes with their return value (instead of a triple of lambda, arg, rv).
+--   Also, simplifies PSet and PDerived nodes on these applies after substitution has been performed.
+simplifyProvenance :: K3 Provenance -> Either Text (K3 Provenance)
+simplifyProvenance p = modifyTree simplify p
+  where simplify (tnc -> (PApply, [_,_,r])) = return r
+        -- Rebuilding PSet and PDerived will filter all temporaries. 
+        simplify (tnc -> (PSet, ch))     = return $ pset ch 
+        simplify (tnc -> (PDerived, ch)) = return $ pderived ch
+        simplify p' = return p'
 
+-- | Simplifies applies on all provenance trees attached to an expression.
+simplifyExprProvenance :: K3 Declaration -> Either Text (K3 Declaration)
+simplifyExprProvenance d = mapExpression simplifyExpr d
+  where simplifyExpr e = modifyTree simplifyProvAnn e
+        simplifyProvAnn e@((@~ isEProvenance) -> Just (EProvenance p)) = do
+          np <- simplifyProvenance p
+          return $ (e @<- (filter (not . isEProvenance) $ annotations e)) @+ (EProvenance np)
+        simplifyProvAnn e = return e
+
+{- Provenance environment pretty printing -}
 instance Pretty PIEnv where
   prettyLines (PIEnv c p e a cl ep) =
     [T.pack $ "PCnt: " ++ show c] ++
