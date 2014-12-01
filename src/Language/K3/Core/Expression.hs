@@ -48,6 +48,7 @@ import Language.K3.Core.Literal
 
 import Language.K3.Analysis.HMTypes.DataTypes
 import Language.K3.Analysis.Provenance.Core
+import qualified Language.K3.Analysis.SEffects.Core as S
 import Language.K3.Analysis.Effects.Core hiding ( Provenance(..) )
 
 import Language.K3.Transform.Hints
@@ -149,6 +150,8 @@ data instance Annotation Expression
     | EEffect     (K3 Effect)
     | ESymbol     (K3 Symbol)
     | EProvenance (K3 Provenance)
+    | ESEffect    (K3 S.Effect)
+    | EFStructure (K3 S.Effect)
     | EOpt        OptHint
     | EType       (K3 Type)
     | EQType      (K3 QType)
@@ -235,6 +238,14 @@ isEProvenance :: Annotation Expression -> Bool
 isEProvenance (EProvenance _) = True
 isEProvenance _               = False
 
+isESEffect :: Annotation Expression -> Bool
+isESEffect (ESEffect _) = True
+isESEffect _            = False
+
+isEFStructure :: Annotation Expression -> Bool
+isEFStructure (EFStructure _) = True
+isEFStructure _               = False
+
 isEEffect :: Annotation Expression -> Bool
 isEEffect (EEffect _) = True
 isEEffect _           = False
@@ -247,7 +258,7 @@ isAnyETypeAnn :: Annotation Expression -> Bool
 isAnyETypeAnn a = isETypeOrBound a || isEQType a
 
 isAnyEEffectAnn :: Annotation Expression -> Bool
-isAnyEEffectAnn a = isEProvenance a || isEEffect a || isESymbol a
+isAnyEEffectAnn a = isEProvenance a || isESEffect a || isEFStructure a || isEEffect a || isESymbol a
 
 isAnyETypeOrEffectAnn :: Annotation Expression -> Bool
 isAnyETypeOrEffectAnn a = isAnyETypeAnn a || isAnyEEffectAnn a
@@ -278,7 +289,7 @@ instance Pretty (K3 Expression) where
 drawExprAnnotations :: [Annotation Expression] -> (String, [String])
 drawExprAnnotations as =
   let (typeAnns, anns)    = partition (\a -> isETypeOrBound a || isEQType a || isEPType a) as
-      (effectAnns, anns') = partition (\a -> isEProvenance a || isEEffect a || isESymbol a) anns
+      (effectAnns, anns') = partition isAnyEEffectAnn anns
       prettyTypeAnns = case typeAnns of
                          []         -> []
                          [EType t]  -> drawETypeAnnotation $ EType t
@@ -315,6 +326,8 @@ drawExprAnnotations as =
         drawETypeAnnotation _ = error "Invalid argument to drawETypeAnnotation"
 
         drawEEffectAnnotations (EProvenance p) = ["EProvenance "] %+ prettyLines p
+        drawEEffectAnnotations (ESEffect e)    = ["ESEffect "]    %+ prettyLines e
+        drawEEffectAnnotations (EFStructure e) = ["EFStructure "] %+ prettyLines e
         drawEEffectAnnotations (EEffect e)     = ["EEffect "]     %+ prettyLines e
         drawEEffectAnnotations (ESymbol s)     = ["ESymbol "]     %+ prettyLines s
         drawEEffectAnnotations _ = error "Invalid effect annotation"
@@ -393,6 +406,8 @@ drawExprAnnotationsT as =
         drawETypeAnnotationT _ = error "Invalid argument to drawETypeAnnotation"
 
         drawEEffectAnnotationsT (EProvenance p) = [T.pack "EProvenance "] PT.%+ PT.prettyLines p
+        drawEEffectAnnotationsT (ESEffect e)    = [T.pack "ESEffect "]    PT.%+ PT.prettyLines e
+        drawEEffectAnnotationsT (EFStructure e) = [T.pack "EFStructure "] PT.%+ PT.prettyLines e
         drawEEffectAnnotationsT (EEffect e)     = [T.pack "EEffect "]     PT.%+ (map T.pack $ prettyLines e)
         drawEEffectAnnotationsT (ESymbol s)     = [T.pack "ESymbol "]     PT.%+ (map T.pack $ prettyLines s)
         drawEEffectAnnotationsT _ = error "Invalid effect annotation"

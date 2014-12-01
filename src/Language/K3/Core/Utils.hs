@@ -326,21 +326,21 @@ foldIn1RebuildTree preCh1F postCh1F mergeF allChF acc n@(Node _ ch) = do
 --           and the node, and returns a new tree.
 foldMapIn1RebuildTree :: (Monad m)
                   => (c -> Tree a -> Tree a -> m c)
-                  -> (c -> Tree b -> Tree a -> m (c, [c]))
-                  -> (c -> [Tree b] -> Tree a -> m (Tree b))
-                  -> c -> Tree a -> m (Tree b)
-foldMapIn1RebuildTree _ _ allChF tdAcc n@(Node _ []) = allChF tdAcc [] n
-foldMapIn1RebuildTree preCh1F postCh1F allChF tdAcc n@(Node _ ch) = do
-    nCh1Acc        <- preCh1F tdAcc (head ch) n
-    nc1            <- rcr nCh1Acc $ head ch
-    (nAcc, chAccs) <- postCh1F nCh1Acc nc1 n
+                  -> (c -> d -> Tree b -> Tree a -> m (c, [c]))
+                  -> (c -> [d] -> [Tree b] -> Tree a -> m (d, Tree b))
+                  -> c -> d -> Tree a -> m (d, Tree b)
+foldMapIn1RebuildTree _ _ allChF tdAcc buAcc n@(Node _ []) = allChF tdAcc [buAcc] [] n
+foldMapIn1RebuildTree preCh1F postCh1F allChF tdAcc buAcc n@(Node _ ch) = do
+    nCh1Acc          <- preCh1F tdAcc (head ch) n
+    (nCh1BuAcc, nc1) <- rcr nCh1Acc $ head ch
+    (nAcc, chAccs)   <- postCh1F nCh1Acc nCh1BuAcc nc1 n
     if length chAccs /= (length $ tail ch)
       then fail "Invalid foldMapIn1RebuildTree accumulation"
       else do
-        nRestCh <- zipWithM rcr chAccs $ tail ch
-        allChF nAcc (nc1:nRestCh) n
+        (chBuAcc, nRestCh) <- zipWithM rcr chAccs (tail ch) >>= return . unzip
+        allChF nAcc (nCh1BuAcc:chBuAcc) (nc1:nRestCh) n
 
-  where rcr = foldMapIn1RebuildTree preCh1F postCh1F allChF
+  where rcr a b = foldMapIn1RebuildTree preCh1F postCh1F allChF a buAcc b
 
 -- | Fold a declaration and expression reducer and accumulator over the given program.
 foldProgramWithDecl :: (Monad m)

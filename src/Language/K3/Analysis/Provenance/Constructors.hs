@@ -19,8 +19,8 @@ sing ch p = Node (p :@: []) [ch]
 pfvar :: Identifier -> K3 Provenance
 pfvar n = leaf $ PFVar n
 
-pbvar :: VarLoc -> PPtr -> K3 Provenance
-pbvar vl i = leaf $ PBVar vl i
+pbvar :: PMatVar -> K3 Provenance
+pbvar mv = leaf $ PBVar mv
 
 ptemp :: K3 Provenance
 ptemp = leaf $ PTemporary
@@ -67,11 +67,11 @@ plambda i p = sing p $ PLambda i
 pclosure :: K3 Provenance -> K3 Provenance
 pclosure v = sing v $ PClosure
 
-papply :: K3 Provenance -> K3 Provenance -> K3 Provenance -> K3 Provenance
-papply f a r = Node (PApply :@: []) [f, a, r]
+papply :: Maybe PMatVar -> K3 Provenance -> K3 Provenance -> K3 Provenance -> K3 Provenance
+papply mvOpt f a r = Node (PApply mvOpt :@: []) [f, a, r]
 
-pmaterialize :: [VarLoc] -> K3 Provenance -> K3 Provenance
-pmaterialize vl p = Node (PMaterialize vl :@: []) [p]
+pmaterialize :: [PMatVar] -> K3 Provenance -> K3 Provenance
+pmaterialize mvl p = Node (PMaterialize mvl :@: []) [p]
 
 pproject :: Identifier -> K3 Provenance -> Maybe (K3 Provenance) -> K3 Provenance
 pproject i psrc pvOpt = Node (PProject i :@: []) $ [psrc] ++ maybe [] (:[]) pvOpt

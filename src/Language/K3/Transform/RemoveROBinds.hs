@@ -88,7 +88,9 @@ type BindMap = Map String (String, String)
 transformExpr :: K3 Expression -> K3 Expression
 transformExpr e = evalState computation 1
   where
-    computation = foldMapIn1RebuildTree sendProjection ch1SendProjection handleNode Map.empty e
+    computation =
+      foldMapIn1RebuildTree sendProjection ch1SendProjection handleNode Map.empty () e
+        >>= return . snd
 
     -- For the first child, we always send the same set we already have, since the first child
     -- of a bind does not get the bind's assignment
@@ -106,15 +108,15 @@ transformExpr e = evalState computation 1
 
     -- Send down a union of the current ro-set and the one found at this node (if any)
     -- Let, case and bind capture in the 2nd child's context only
-    ch1SendProjection :: BindMap -> K3 Expression -> K3 Expression -> State Int (BindMap, [BindMap])
-    ch1SendProjection acc _ (details -> (ELetIn nm, ch, _))  = removeFromMap [nm] acc ch
-    ch1SendProjection acc _ (details -> (ECaseOf nm, ch, _)) = removeFromMap [nm] acc ch
+    ch1SendProjection :: BindMap -> () -> K3 Expression -> K3 Expression -> State Int (BindMap, [BindMap])
+    ch1SendProjection acc _ _ (details -> (ELetIn nm, ch, _))  = removeFromMap [nm] acc ch
+    ch1SendProjection acc _ _ (details -> (ECaseOf nm, ch, _)) = removeFromMap [nm] acc ch
 
     -- These binds are unhandled for this modification, and can only capture ids
-    ch1SendProjection acc _ (details -> (EBindAs (BIndirection nm), ch, _)) = removeFromMap [nm] acc ch
-    ch1SendProjection acc _ (details -> (EBindAs (BTuple ids), ch, _)) = removeFromMap ids acc ch
+    ch1SendProjection acc _ _ (details -> (EBindAs (BIndirection nm), ch, _)) = removeFromMap [nm] acc ch
+    ch1SendProjection acc _ _ (details -> (EBindAs (BTuple ids), ch, _)) = removeFromMap ids acc ch
 
-    ch1SendProjection acc _ (details -> (EBindAs (BRecord idNames), chs, annos)) | isJust (annos @~ isROBAnno) = do
+    ch1SendProjection acc _ _ (details -> (EBindAs (BRecord idNames), chs, annos)) | isJust (annos @~ isROBAnno) = do
       num <- get
       put $ num + 1
       let roIds = getROBval $ annos @~ isROBAnno
@@ -126,18 +128,18 @@ transformExpr e = evalState computation 1
           acc'     = (acc `Map.difference` bindIds) `Map.union` roIds'
       return (acc', replicateCh chs acc') -- send to all the other children
 
-    ch1SendProjection acc _ (Node _ ch) = return (acc, replicateCh ch acc)
+    ch1SendProjection acc _ _ (Node _ ch) = return (acc, replicateCh ch acc)
 
     -- Tranform variable accesses -> projections
-    handleNode :: Monad m => BindMap -> [K3 Expression] -> K3 Expression -> m (K3 Expression)
-    handleNode acc _  (tag -> EVariable nm) | nm `Map.member` acc =
+    handleNode :: Monad m => BindMap -> [()] -> [K3 Expression] -> K3 Expression -> m ((), K3 Expression)
+    handleNode acc _ _  (tag -> EVariable nm) | nm `Map.member` acc =
       let (proj, var) = fromMaybe (error "unexpected") $ nm `Map.lookup` acc
-      in return $ immut $ project proj $ variable var
+      in return . ((),) $ immut $ project proj $ variable var
 
     -- We may need a let to replace our bind.
     -- If some non-RO bindings remain, we need to keep them as well
-    handleNode acc [ch1, ch2]
-      (details -> (EBindAs (BRecord idNames), _, annos)) | isJust $ annos @~ isROBAnno = return addLet
+    handleNode acc _ [ch1, ch2]
+      (details -> (EBindAs (BRecord idNames), _, annos)) | isJust $ annos @~ isROBAnno = return . ((),) $ addLet
       where
         roIds = getROBval $ annos @~ isROBAnno
         -- Lookup our saved newId
@@ -149,6 +151,6 @@ transformExpr e = evalState computation 1
           in if null remain then ch2
              else Node (EBindAs (BRecord remain) :@: annos) [variable nm, ch2]
 
-    handleNode _ ch (Node x _) = return $ Node x ch
+    handleNode _ _ ch (Node x _) = return . ((),) $ Node x ch
 
 

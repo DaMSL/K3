@@ -15,13 +15,14 @@ import Data.Text ( Text )
 import qualified Data.Text as T
 import qualified Language.K3.Utils.PrettyText as PT
 
-type PPtr   = Int
-type VarLoc = (Identifier, UID)
+type PPtr    = Int
+data PMatVar = PMatVar {pmvn :: Identifier, pmvloc :: UID, pmvptr :: PPtr}
+             deriving (Eq, Ord, Read, Show)
 
 data Provenance =
     -- Atoms
       PFVar        Identifier
-    | PBVar        VarLoc PPtr
+    | PBVar        PMatVar
     | PTemporary   -- A local leading to no lineage of interest
 
     -- Terms
@@ -36,20 +37,16 @@ data Provenance =
     | POption
     | PLambda      Identifier
     | PClosure
-    | PApply                  -- The lambda, argument, and return value provenances of the application.
-    | PMaterialize [VarLoc]   -- A materialized return value scope, denoting the presence of escaping bound variables.
-    | PProject     Identifier -- The source of the projection, and the provenance of the projected value if available.
-    | PAssign      Identifier -- The provenance of the expression used for assignment.
-    | PSend                   -- The provenance of the value being sent.
+    | PApply       (Maybe PMatVar) -- The lambda, argument, and return value provenances of the application.
+                                   -- The apply also tracks any provenance variable binding needed for the lambda.
+    | PMaterialize [PMatVar]       -- A materialized return value scope, denoting provenance varibles bound in the child.
+    | PProject     Identifier      -- The source of the projection, and the provenance of the projected value if available.
+    | PAssign      Identifier      -- The provenance of the expression used for assignment.
+    | PSend                        -- The provenance of the value being sent.
   deriving (Eq, Ord, Read, Show)
 
-data instance Annotation Provenance = PID PPtr
-                                    | PDeclared (K3 Provenance)
+data instance Annotation Provenance = PDeclared (K3 Provenance)
                                     deriving (Eq, Ord, Read, Show)
-
-isPID :: Annotation Provenance -> Bool
-isPID (PID _) = True
-isPID _ = False
 
 isPDeclared :: Annotation Provenance -> Bool
 isPDeclared (PDeclared _) = True

@@ -28,21 +28,23 @@ triggerSymbols prog = do
         accIdF acc v = return (acc, v)
         idF        v = return v
 
-        exprF trigSyms e = foldMapIn1RebuildTree trackLambda trackSideways (rewriteTrigVar trigSyms) [] e
+        exprF trigSyms e = foldMapIn1RebuildTree trackLambda trackSideways (rewriteTrigVar trigSyms) [] () e
+                             >>= return . snd
+
         trackLambda   shadowed _ (tag -> ELambda i) = return $ shadowed ++ [i]
         trackLambda   shadowed _ _                  = return shadowed
 
-        trackSideways shadowed _ (tag -> ELetIn  i) = return (shadowed, [shadowed ++ [i]])
-        trackSideways shadowed _ (tag -> EBindAs i) = return (shadowed, [shadowed ++ bindingVariables i])
-        trackSideways shadowed _ (tag -> ECaseOf i) = return (shadowed, [shadowed ++ [i], shadowed])
-        trackSideways shadowed _ n                  = return (shadowed, replicate (length (children n) - 1) shadowed)
+        trackSideways shadowed _ _ (tag -> ELetIn  i) = return (shadowed, [shadowed ++ [i]])
+        trackSideways shadowed _ _ (tag -> EBindAs i) = return (shadowed, [shadowed ++ bindingVariables i])
+        trackSideways shadowed _ _ (tag -> ECaseOf i) = return (shadowed, [shadowed ++ [i], shadowed])
+        trackSideways shadowed _ _ n                  = return (shadowed, replicate (length (children n) - 1) shadowed)
 
-        rewriteTrigVar trigSyms shadowed ch e@(tag -> EVariable i)
-          | i `notElem` shadowed = return $ case lookup i trigSyms of
-                                              Nothing  -> replaceCh e ch
-                                              Just _   -> EC.variable $ symId i
+        rewriteTrigVar trigSyms shadowed _ ch e@(tag -> EVariable i)
+          | i `notElem` shadowed = return . ((),) $ case lookup i trigSyms of
+                                                      Nothing  -> replaceCh e ch
+                                                      Just _   -> EC.variable $ symId i
 
-        rewriteTrigVar _ _ ch e = return $ replaceCh e ch
+        rewriteTrigVar _ _ _ ch e = return . ((),) $ replaceCh e ch
 
         mkSyms trigSyms = map (\(n,i) -> (DC.global (symId n) TC.int $ Just $ EC.constant $ CInt i) @+ (DProperty "Pinned" Nothing) ) trigSyms
         symId n = "__" ++ n ++ "_tid"
