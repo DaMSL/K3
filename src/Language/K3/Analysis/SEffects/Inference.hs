@@ -23,6 +23,8 @@ import Data.IntMap ( IntMap )
 import qualified Data.Map    as Map
 import qualified Data.IntMap as IntMap
 
+import Debug.Trace
+
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
@@ -84,7 +86,7 @@ data FIEnv = FIEnv {
                fppenv  :: FPPEnv,
                flcenv  :: FLCEnv,
                efmap   :: EFMap,
-               fcase   :: (FMatVar, PMatVar)  -- Temporary storage for case variables.
+               fcase   :: [(FMatVar, PMatVar)]  -- Temporary storage stack for case variables.
             }
 
 -- | The effects inference monad
@@ -215,8 +217,7 @@ flclkup env x = maybe err Right $ IntMap.lookup x env
 
 {- FIEnv helpers -}
 fienv0 :: FPPEnv -> FLCEnv -> FIEnv
-fienv0 ppenv lcenv = FIEnv 0 fpenv0 fenv0 faenv0 fpbenv0 ppenv lcenv efmap0 mvs
-  where mvs = (FMatVar "" (UID (-1)) (-1), PMatVar "" (UID (-1)) (-1))
+fienv0 ppenv lcenv = FIEnv 0 fpenv0 fenv0 faenv0 fpbenv0 ppenv lcenv efmap0 []
 
 -- | Modifiers.
 mfiee :: (FEnv -> FEnv) -> FIEnv -> FIEnv
@@ -268,13 +269,13 @@ fiextm env e f s = let efmapE = efext (efmap env) e f s
 filkupc :: FIEnv -> Int -> Either Text [Identifier]
 filkupc env i = flclkup (flcenv env) i
 
-figetcase :: FIEnv -> Either Text (FMatVar, PMatVar)
-figetcase env = case fcase env of
-  (FMatVar "" _ _, PMatVar "" _ _) -> Left $ T.pack "Uninitialized case matvar"
-  f -> return f
+fipopcase :: FIEnv -> Either Text ((FMatVar, PMatVar), FIEnv)
+fipopcase env = case fcase env of
+  [] -> Left $ T.pack "Uninitialized case matvar"
+  h:t -> return (h, env {fcase=t})
 
-fisetcase :: FIEnv -> (FMatVar, PMatVar) -> FIEnv
-fisetcase env mvs = env {fcase=mvs}
+fipushcase :: FIEnv -> (FMatVar, PMatVar) -> FIEnv
+fipushcase env mvs = env {fcase=mvs:(fcase env)}
 
 
 {- Fresh pointer and binding construction. -}
@@ -418,7 +419,9 @@ filkupepM :: Identifier -> FInfM (K3 Provenance)
 filkupepM n = get >>= liftEitherM . flip filkupep n
 
 fiextepM :: Identifier -> K3 Provenance -> FInfM ()
-fiextepM n f = get >>= \env -> return (fiextep env n f) >>= put
+fiextepM n f = get >>= \env -> return (debug n "res_val" $ fiextep env n f) >>= put
+  where debug n m r | n == m = trace ("Effects bound provvar " ++ n) r
+        debug _ _ r = r
 
 fidelepM :: Identifier -> FInfM ()
 fidelepM n = get >>= \env -> return (fidelep env n) >>= put
@@ -453,11 +456,11 @@ fmapProvM provF f = liftEitherM $ fmapProv provF f
 filkupcM :: Int -> FInfM [Identifier]
 filkupcM n = get >>= liftEitherM . flip filkupc n
 
-figetcaseM :: () -> FInfM (FMatVar, PMatVar)
-figetcaseM _ = get >>= liftEitherM . figetcase
+fipopcaseM :: () -> FInfM (FMatVar, PMatVar)
+fipopcaseM _ = get >>= liftEitherM . fipopcase >>= \(cmvs,env) -> put env >> return cmvs
 
-fisetcaseM :: (FMatVar, PMatVar) -> FInfM ()
-fisetcaseM mv = get >>= return . flip fisetcase mv >>= put
+fipushcaseM :: (FMatVar, PMatVar) -> FInfM ()
+fipushcaseM mv = get >>= return . flip fipushcase mv >>= put
 
 
 {- Analysis entrypoint -}
@@ -554,7 +557,7 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
     sideways :: FInfM () -> Maybe (K3 Effect) -> K3 Effect -> K3 Expression -> FInfM (FInfM (), [FInfM ()])
     sideways m _ rf e@(tag -> ELetIn  i) = m >> do
       case (head $ children e) @~ isEType of
-        Just (EType t) -> uidOf e >>= \u -> srt [freshM e i u t rf]
+        Just (EType t) -> uidOf e >>= \u -> srt [freshM False e i u t rf]
         _ -> tAnnErr e
 
     sideways m _ rf e@(tag -> ECaseOf i) = m >> do
@@ -563,7 +566,7 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
         Just (EType t) -> srt [freshOptM e i u t rf, setcaseM i >> popVars i]
         _ -> tAnnErr e
 
-      where setcaseM j = ((,) <$> (filkupeM j >>= fmv) <*> (filkupepM j >>= pmv)) >>= fisetcaseM
+      where setcaseM j = ((,) <$> (filkupeM j >>= fmv) <*> (filkupepM j >>= pmv)) >>= fipushcaseM
 
     sideways m _ rf e@(tag -> EBindAs b) = m >> do
       u <- uidOf e
@@ -660,7 +663,7 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
                                     rf)
 
     infer m [oef,sef,nef] [_,snf,rnf] e@(tag -> ECaseOf _) = m >> do
-      (cfmv, cpmv) <- figetcaseM ()
+      (cfmv, cpmv) <- fipopcaseM ()
       rt e (Just fnone, fscope [cfmv] (fromJust $ finit [oef])
                                       (fset $ catMaybes [sef, nef])
                                       (fset [fwrite $ pbvar cpmv, fnone])
@@ -691,21 +694,30 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
     subEff _ (tnc -> (FData _, ch)) = return ch
     subEff tl _ = return $ replicate (length tl) fnone
 
-    freshM e i u t f =
+    freshM asCase e i u t f =
       case e @~ isEProvenance of
         Just (EProvenance (tag -> PMaterialize mvs)) -> do
           mapM_ (\mv -> fiextepM (pmvn mv) (pbvar mv)) mvs
           forceLambdaEff t f >>= void . fifreshM i u
+
+        Just (EProvenance (tnc -> (PSet, (safeHead -> Just (tag -> PMaterialize mvs))))) | asCase -> do
+          trace (unlines [unwords ["Fresh as case ", i, show asCase, show mvs], T.unpack $ PT.pretty f])
+            $ mapM_ (\mv -> fiextepM (pmvn mv) (pbvar mv)) mvs
+          forceLambdaEff t f >>= void . fifreshM i u
+
         _ -> matErr e
 
-    freshOptM e i u (PTOption et) f = subIEff (0 :: Int) f >>= freshM e i u et
+      where safeHead []    = Nothing
+            safeHead (h:_) = Just h
+
+    freshOptM e i u (PTOption et) f = subIEff (0 :: Int) f >>= freshM True e i u et
     freshOptM _ _ _ t _ = optTErrM t
 
-    freshIndM e i u (PTIndirection et) f = subIEff (0 :: Int) f >>= freshM e i u et
+    freshIndM e i u (PTIndirection et) f = subIEff (0 :: Int) f >>= freshM False e i u et
     freshIndM _ _ _ t _ = indTErrM t
 
-    mkTupFresh e u ((_,n),t,f) = freshM e n u t f
-    mkRecFresh e u ((_,d),t,f) = freshM e d u t f
+    mkTupFresh e u ((_,n),t,f) = freshM False e n u t f
+    mkRecFresh e u ((_,d),t,f) = freshM False e d u t f
 
     freshTupM e u (PTTuple tl) f bi = do
       subf <- subEff tl f

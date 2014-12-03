@@ -71,7 +71,7 @@ data PIEnv = PIEnv {
                paenv   :: PAEnv,
                plcenv  :: PLCEnv,
                epmap   :: EPMap,
-               pcase   :: PMatVar   -- Temporary storage for case variables.
+               pcase   :: [PMatVar]   -- Temporary storage stack for case variables.
             }
 
 -- | The type inference monad
@@ -171,7 +171,7 @@ epext epm e p = case e @~ isEUID of
 
 {- PIEnv helpers -}
 pienv0 :: PLCEnv -> PIEnv
-pienv0 lcenv = PIEnv 0 ppenv0 penv0 paenv0 lcenv epmap0 $ PMatVar "" (UID (-1)) (-1)
+pienv0 lcenv = PIEnv 0 ppenv0 penv0 paenv0 lcenv epmap0 []
 
 -- | Modifiers.
 mpiee :: (PEnv -> PEnv) -> PIEnv -> PIEnv
@@ -217,13 +217,13 @@ piextm env e p = let epmapE = epext (epmap env) e p
 pilkupc :: PIEnv -> Int -> Either Text [Identifier]
 pilkupc env i = plclkup (plcenv env) i
 
-pigetcase :: PIEnv -> Either Text PMatVar
-pigetcase env = case pcase env of
-  PMatVar "" (UID (-1)) (-1) -> Left $ T.pack "Uninitialized case matvar"
-  p -> return p
+pipopcase :: PIEnv -> Either Text (PMatVar, PIEnv)
+pipopcase env = case pcase env of
+  [] -> Left $ T.pack "Uninitialized case matvar stack"
+  h:t -> return (h, env {pcase=t})
 
-pisetcase :: PIEnv -> PMatVar -> PIEnv
-pisetcase env mv = env {pcase=mv}
+pipushcase :: PIEnv -> PMatVar -> PIEnv
+pipushcase env mv = env {pcase=mv:(pcase env)}
 
 
 {- Fresh pointer and binding construction. -}
@@ -386,11 +386,11 @@ pisubM i rep p = get >>= liftEitherM . (\env -> pisub env i rep p)
 pilkupcM :: Int -> PInfM [Identifier]
 pilkupcM n = get >>= liftEitherM . flip pilkupc n
 
-pigetcaseM :: () -> PInfM PMatVar
-pigetcaseM _ = get >>= liftEitherM . pigetcase
+pipopcaseM :: () -> PInfM PMatVar
+pipopcaseM _ = get >>= liftEitherM . pipopcase >>= \(mv,env) -> put env >> return mv
 
-pisetcaseM :: PMatVar -> PInfM ()
-pisetcaseM mv = get >>= return . flip pisetcase mv >>= put
+pipushcaseM :: PMatVar -> PInfM ()
+pipushcaseM mv = get >>= return . flip pipushcase mv >>= put
 
 
 {- Analysis entry point -}
@@ -504,7 +504,7 @@ inferProvenance expr = mapIn1RebuildTree topdown sideways infer expr
     sideways p e@(tag -> ELetIn  i) = uidOf e >>= \u -> return [freshM i u p]
     sideways p e@(tag -> ECaseOf i) = do
       u <- uidOf e
-      return [freshM i u $ poption p, pilkupeM i >>= pmv >>= pisetcaseM >> pideleM i]
+      return [freshM i u $ poption p, pilkupeM i >>= pmv >>= pipushcaseM >> pideleM i]
 
     sideways p e@(tag -> EBindAs b) = do
       u <- uidOf e
@@ -575,7 +575,7 @@ inferProvenance expr = mapIn1RebuildTree topdown sideways infer expr
       return bb
 
     infer [_,s,n] e@(tag -> ECaseOf _) = do
-      casemv <- pigetcaseM ()
+      casemv <- pipopcaseM ()
       void $ piextmM e $ pset [pmaterialize [casemv] s, n]
       return $ pset [s,n]
 
