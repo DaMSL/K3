@@ -120,6 +120,7 @@ data TransformMode
     | AnnotationProvidesGraph
     | FlatAnnotations
     | Provenance
+    | SEffects
     | Effects
     | EffectNormalization
     | FoldConstants
@@ -456,6 +457,7 @@ transformMode   =  wrap <$> conflictsOpt
               <|> wrap <$> annProvOpt
               <|> wrap <$> flatAnnOpt
               <|> wrap <$> provenanceOpt
+              <|> wrap <$> seffectOpt
               <|> wrap <$> effectOpt
               <|> wrap <$> normalizationOpt
               <|> wrap <$> foldConstantsOpt
@@ -504,6 +506,10 @@ flatAnnOpt = flag' FlatAnnotations (   long "fflat-annotations"
 provenanceOpt :: Parser TransformMode
 provenanceOpt = flag' Provenance (   long "fprovenance"
                                   <> help "Print program provenance")
+
+seffectOpt :: Parser TransformMode
+seffectOpt = flag' SEffects (   long "fseffects"
+                             <> help "Print simpler program effects")
 
 effectOpt :: Parser TransformMode
 effectOpt = flag' Effects (   long "feffects"
