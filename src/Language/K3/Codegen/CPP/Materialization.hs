@@ -62,7 +62,7 @@ occursIn wide b a
       (tag -> PBVar mv) -> do
              decision <- getDecision (pmvloc mv) (pmvn mv)
              if inD decision == Referenced || inD decision == ConstReferenced
-               then -- TODO: Grab pointer out of environment and continue occurs check.
+               then fromMaybe (error "Dangling provenance pointer") (pLookup $ pmvptr mv) >>= occursIn wide b
                else return False
 
       -- Something occurs in substructure if it occurs in any superstructure, and wide effects are
