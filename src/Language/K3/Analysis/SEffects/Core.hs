@@ -33,7 +33,8 @@ data Effect
                                -- post-body execution effects, and result effect structure.
     | FLambda      Identifier  -- Lambda effects have three effect children: closure construction effects,
                                -- deferred execution effects and deferred effect structure.
-    | FApply       (Maybe FMatVar)  -- Application effect nodes have two children: result execution effects,
+    | FApply       (Maybe FMatVar)  -- Application effect nodes have three children: 
+                                    -- initializer execution effects, result execution effects,
                                     -- and a result effect structure.
     | FSet                          -- Set of effects, all of which are possible.
     | FSeq

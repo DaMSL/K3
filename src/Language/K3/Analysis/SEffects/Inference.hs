@@ -611,12 +611,12 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
             imv  <- fmv ifbv
             nbef <- fisubM i ifbv bef >>= fmapProvM (subpfvar i $ pbvar amv)
             nbrf <- fisubM i ifbv brf >>= fmapProvM (subpfvar i $ pbvar amv)
-            let apprf = fapply (Just imv) (fromJust $ finit $ ef ++ [Just nbef]) nbrf
+            let apprf = fapply (Just imv) (fromJust $ finit ef) (fromJust $ finit [Just nbef]) nbrf
             return $ (Just fnone, apprf)
 
           -- Handle recursive functions and forward declarations
           -- by using an opaque return value.
-          (FBVar _, _) -> return $ (Just fnone, fapply Nothing (fromJust $ finit ef) fnone)
+          (FBVar _, _) -> return $ (Just fnone, fapply Nothing (fromJust $ finit ef) fnone fnone)
 
           _ -> applyLambdaErr e)
 
@@ -731,7 +731,7 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
 
     freshRecM _ _ _ t _ = recTErrM t
 
-    chaseAppArg (tnc -> (FApply _, [_,sf])) = chaseAppArg sf
+    chaseAppArg (tnc -> (FApply _, [_,_,sf])) = chaseAppArg sf
     chaseAppArg sf = return sf
 
     chaseAppLambda _ _ f@(tag -> FLambda _) = return [f]
@@ -739,7 +739,7 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
       | i `elem` path = return [f]
       | otherwise     = fichaseM f >>= chaseAppLambda e (i:path)
 
-    chaseAppLambda e path (tnc -> (FApply _, [_,sf])) = chaseAppLambda e path sf
+    chaseAppLambda e path (tnc -> (FApply _, [_,_,sf])) = chaseAppLambda e path sf
     chaseAppLambda e path (tnc -> (FSet, rfl))        = mapM (chaseAppLambda e path) rfl >>= return . concat
     chaseAppLambda e _ f = errorM $ PT.boxToString $ [T.pack "Invalid application or lambda: "]
                                                    %$ PT.prettyLines f
