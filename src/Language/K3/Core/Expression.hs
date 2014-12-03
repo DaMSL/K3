@@ -40,6 +40,8 @@ import Data.Tree
 import Data.Typeable
 import Data.Word (Word8)
 
+import qualified Data.Map as M
+
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Analysis
 import Language.K3.Core.Annotation.Codegen
@@ -54,6 +56,7 @@ import qualified Language.K3.Analysis.SEffects.Core as S
 import Language.K3.Analysis.Effects.Core hiding ( Provenance(..) )
 
 import Language.K3.Transform.Hints
+import qualified Language.K3.Codegen.CPP.Materialization.Hints as Z
 
 import Language.K3.Utils.Pretty
 
@@ -155,6 +158,7 @@ data instance Annotation Expression
     | ESEffect    (K3 S.Effect)
     | EFStructure (K3 S.Effect)
     | EOpt        OptHint
+    | EMaterialization (M.Map Identifier Z.Decision)
     | EType       (K3 Type)
     | EQType      (K3 QType)
     | ETypeLB     (K3 Type)
