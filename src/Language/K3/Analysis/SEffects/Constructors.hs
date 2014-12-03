@@ -36,24 +36,24 @@ fio = leaf FIO
 fdata :: Maybe [Identifier] -> [K3 Effect] -> K3 Effect
 fdata idOpt ch = Node (FData idOpt :@: []) ch
 
-fscope :: [FMatVar] -> K3 Effect -> K3 Effect -> K3 Effect
-fscope mv initf f = Node (FScope mv :@: []) [initf, f]
+fscope :: [FMatVar] -> K3 Effect -> K3 Effect -> K3 Effect -> K3 Effect -> K3 Effect
+fscope mv prebef bef postbef sf = Node (FScope mv :@: []) [prebef, bef, postbef,sf]
 
 flambda :: Identifier -> K3 Effect -> K3 Effect -> K3 Effect -> K3 Effect
 flambda i cl ef sf = Node (FLambda i :@: [])  [cl, ef, sf]
 
-fapply :: Maybe FMatVar -> K3 Effect -> K3 Effect -> K3 Effect -> K3 Effect -> K3 Effect
-fapply mvOpt l a ef sf = Node (FApply mvOpt :@: []) [l, a, ef, sf]
+fapply :: Maybe FMatVar -> K3 Effect -> K3 Effect -> K3 Effect
+fapply mvOpt ef sf = Node (FApply mvOpt :@: []) [ef, sf]
 
 simplifyChildren :: (Effect -> Bool) -> [K3 Effect] -> [K3 Effect]
 simplifyChildren tagF ch = nub $ filter (\p -> tag p /= FNone) $ concatMap flatCh ch
   where flatCh (tnc -> (tagF -> True, gch)) = gch
         flatCh p = [p]
 
+-- Note: we cannot blindly eliminate fnones, otherwise this incorrectly represents scenarios
+-- of two paths, only one of which has any concrete effects (e.g., writeback in case-of expressions)
 fset :: [K3 Effect] -> K3 Effect
-fset ch = mkNode $ simplifyChildren (== FSet) ch
-  where mkNode []  = fnone
-        mkNode chl = Node (FSet :@: []) chl
+fset ch = Node (FSet :@: []) $ nub ch
 
 fseq :: [K3 Effect] -> K3 Effect
 fseq ch = mkNode $ simplifyChildren (== FSeq) ch

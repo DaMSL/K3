@@ -84,7 +84,7 @@ data FIEnv = FIEnv {
                fppenv  :: FPPEnv,
                flcenv  :: FLCEnv,
                efmap   :: EFMap,
-               fcase   :: FMatVar   -- Temporary storage for case variables.
+               fcase   :: (FMatVar, PMatVar)  -- Temporary storage for case variables.
             }
 
 -- | The effects inference monad
@@ -215,7 +215,8 @@ flclkup env x = maybe err Right $ IntMap.lookup x env
 
 {- FIEnv helpers -}
 fienv0 :: FPPEnv -> FLCEnv -> FIEnv
-fienv0 ppenv lcenv = FIEnv 0 fpenv0 fenv0 faenv0 fpbenv0 ppenv lcenv efmap0 $ FMatVar "" (UID (-1)) (-1)
+fienv0 ppenv lcenv = FIEnv 0 fpenv0 fenv0 faenv0 fpbenv0 ppenv lcenv efmap0 mvs
+  where mvs = (FMatVar "" (UID (-1)) (-1), PMatVar "" (UID (-1)) (-1))
 
 -- | Modifiers.
 mfiee :: (FEnv -> FEnv) -> FIEnv -> FIEnv
@@ -267,13 +268,13 @@ fiextm env e f s = let efmapE = efext (efmap env) e f s
 filkupc :: FIEnv -> Int -> Either Text [Identifier]
 filkupc env i = flclkup (flcenv env) i
 
-figetcase :: FIEnv -> Either Text FMatVar
+figetcase :: FIEnv -> Either Text (FMatVar, PMatVar)
 figetcase env = case fcase env of
-  FMatVar "" (UID (-1)) (-1) -> Left $ T.pack "Uninitialized case matvar"
+  (FMatVar "" _ _, PMatVar "" _ _) -> Left $ T.pack "Uninitialized case matvar"
   f -> return f
 
-fisetcase :: FIEnv -> FMatVar -> FIEnv
-fisetcase env mv = env {fcase=mv}
+fisetcase :: FIEnv -> (FMatVar, PMatVar) -> FIEnv
+fisetcase env mvs = env {fcase=mvs}
 
 
 {- Fresh pointer and binding construction. -}
@@ -452,10 +453,10 @@ fmapProvM provF f = liftEitherM $ fmapProv provF f
 filkupcM :: Int -> FInfM [Identifier]
 filkupcM n = get >>= liftEitherM . flip filkupc n
 
-figetcaseM :: () -> FInfM FMatVar
+figetcaseM :: () -> FInfM (FMatVar, PMatVar)
 figetcaseM _ = get >>= liftEitherM . figetcase
 
-fisetcaseM :: FMatVar -> FInfM ()
+fisetcaseM :: (FMatVar, PMatVar) -> FInfM ()
 fisetcaseM mv = get >>= return . flip fisetcase mv >>= put
 
 
@@ -466,7 +467,6 @@ inferProgramEffects ppenv p =  do
   let (npE, initEnv) = runFInfM (fienv0 ppenv lcenv) (globalsEff p)
   np  <- liftEitherTM npE
   np' <- liftEitherTM $ fst $ runFInfM initEnv $ mapExpression inferExprEffects np
-  --liftEitherTM $ simplifyExprEffects np'
   return np'
 
   where
@@ -560,8 +560,10 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
     sideways m _ rf e@(tag -> ECaseOf i) = m >> do
       u <- uidOf e
       case (head $ children e) @~ isEType of
-        Just (EType t) -> srt [freshOptM e i u t rf, filkupeM i >>= fmv >>= fisetcaseM >> fideleM i]
+        Just (EType t) -> srt [freshOptM e i u t rf, setcaseM i >> popVars i]
         _ -> tAnnErr e
+
+      where setcaseM j = ((,) <$> (filkupeM j >>= fmv) <*> (filkupepM j >>= pmv)) >>= fisetcaseM
 
     sideways m _ rf e@(tag -> EBindAs b) = m >> do
       u <- uidOf e
@@ -576,7 +578,6 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
 
     sideways m _ _ (children -> ch) = m >> (srt $ replicate (length ch - 1) iu)
 
-    -- TODO: effect map (efmap) extension
     infer :: FInfM () -> [Maybe (K3 Effect)] -> [K3 Effect] -> K3 Expression -> FInfM (Maybe (K3 Effect), K3 Effect)
     infer m _ _ e@(tag -> EConstant _) = m >> rt e (Nothing, fnone)
     infer m _ _ e@(tag -> EVariable i) = m >> ((\f p -> (Just (fread p), f)) <$> filkupeM i <*> filkupepM i) >>= rt e
@@ -606,12 +607,12 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
             imv  <- fmv ifbv
             nbef <- fisubM i ifbv bef >>= fmapProvM (subpfvar i $ pbvar amv)
             nbrf <- fisubM i ifbv brf >>= fmapProvM (subpfvar i $ pbvar amv)
-            let apprf = fapply (Just imv) lrf arf (fromJust $ finit $ ef ++ [Just nbef]) nbrf
+            let apprf = fapply (Just imv) (fromJust $ finit $ ef ++ [Just nbef]) nbrf
             return $ (Just fnone, apprf)
 
           -- Handle recursive functions and forward declarations
           -- by using an opaque return value.
-          (FBVar _, _) -> return $ (Just fnone, fapply Nothing lrf arf (fromJust $ finit ef) fnone)
+          (FBVar _, _) -> return $ (Just fnone, fapply Nothing (fromJust $ finit ef) fnone)
 
           _ -> applyLambdaErr e)
 
@@ -643,21 +644,26 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
     infer m [pe,te,ee] [_,tr,er] e@(tag -> EIfThenElse) =
       m >> rt e (finit [pe, Just $ fset $ catMaybes [te, ee]], fset [tr,er])
 
-    -- TODO: think through propagation of body execution effects without
-    -- initializer execution effects. This results in reordering.
     infer m [initef,bef] [_,rf] e@(tag -> ELetIn  i) = m >> do
       mv <- filkupeM i >>= fmv
       popVars i
-      rt e (finit [bef], fscope [mv] (maybe fnone id $ finit [initef]) rf)
+      rt e (Just fnone, fscope [mv] (fromJust $ finit [initef]) (fromJust $ finit [bef]) fnone rf)
 
     infer m [initef,bef] [_,rf] e@(tag -> EBindAs b) = m >> do
-      mvs <- mapM filkupeM (bindingVariables b) >>= mapM fmv
+      fmvs <- mapM filkupeM (bindingVariables b) >>= mapM fmv
+      pmvs <- mapM filkupepM (bindingVariables b) >>= mapM pmv
       mapM_ popVars (bindingVariables b)
-      rt e (finit [bef], fscope mvs (maybe fnone id $ finit [initef]) rf)
+      rt e (Just fnone, fscope fmvs (fromJust $ finit [initef])
+                                    (fromJust $ finit [bef])
+                                    (fseq $ map (fwrite . pbvar) pmvs)
+                                    rf)
 
     infer m [oef,sef,nef] [_,snf,rnf] e@(tag -> ECaseOf _) = m >> do
-      casemv <- figetcaseM ()
-      rt e (finit [oef], fscope [casemv] (fset $ catMaybes [sef, nef]) (fset [snf, rnf]))
+      (cfmv, cpmv) <- figetcaseM ()
+      rt e (Just fnone, fscope [cfmv] (fromJust $ finit [oef])
+                                      (fset $ catMaybes [sef, nef])
+                                      (fset [fwrite $ pbvar cpmv, fnone])
+                                      (fset [snf, rnf]))
     
     infer m _ _ e@(tag -> EAddress) = m >> rt e (Nothing, fnone)
 
@@ -730,6 +736,9 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
     fmv (tag -> FBVar mv) = return mv
     fmv f = errorM $ PT.boxToString $ [T.pack "Invalid effect bound var: "] %$ PT.prettyLines f
 
+    pmv (tag -> PBVar mv) = return mv
+    pmv p = errorM $ PT.boxToString $ [T.pack "Invalid provenance bound var: "] %$ PT.prettyLines p
+
     inferErr e = errorM $ PT.boxToString $ [T.pack "Could not infer effects for "] %$ PT.prettyLines e
 
     matErr   e = errorM $ PT.boxToString $ [T.pack "No materialization on: "]    %+ PT.prettyLines e
@@ -761,38 +770,6 @@ effectsOfType args t | isTFunction t =
 
 effectsOfType [] _   = return fnone
 effectsOfType args _ = return $ floop $ fseq $ concatMap (\i -> [fread $ pfvar i, fwrite $ pfvar i]) args
-
-simplifyStructureEffects :: K3 Effect -> Either Text (K3 Effect, K3 Effect)
-simplifyStructureEffects f = undefined
-
-simplifyExprEffects :: K3 Declaration -> Either Text (K3 Declaration)
-simplifyExprEffects d = mapExpression simplifyExpr d
-  where simplifyExpr e = modifyTree simplifyEffectsAnn e
-
-        -- Introduce an fscope at application points on only the effect structure.
-        simplifyEffectsAnn e@(tag -> EOperate OApp) = do
-          ef <- seffectsOf e
-          sf@(tag -> FApply mvOpt) <- fstructureOf e
-          (nef, nsf) <- simplifyStructureEffects sf
-          return $ ((e @<- (filter (not . simplerEffectsAnn) $ annotations e))
-                       @+ (ESEffect $ fseq [ef, nef]))
-                       @+ (EFStructure $ maybe nsf (\mv -> fscope [mv] nef nsf) mvOpt)
-
-        simplifyEffectsAnn e = do
-          ef <- seffectsOf e
-          sf <- fstructureOf e
-          (nef, nsf) <- simplifyStructureEffects sf
-          return $ ((e @<- (filter (not . simplerEffectsAnn) $ annotations e))
-                       @+ (ESEffect $ fseq [ef, nef]))
-                       @+ (EFStructure nsf)
-
-        simplerEffectsAnn a = isEFStructure a || isESEffect a
-
-        seffectsOf   e = maybe (annErrE e) (\case {(ESEffect    f) -> return f; _ -> annErrE e}) $ e @~ isESEffect
-        fstructureOf e = maybe (annErrS e) (\case {(EFStructure f) -> return f; _ -> annErrS e}) $ e @~ isEFStructure
-
-        annErrE e = Left $ PT.boxToString $ [T.pack "No execution effect annotation on"] %$ PT.prettyLines e
-        annErrS e = Left $ PT.boxToString $ [T.pack "No effect structure annotation on"] %$ PT.prettyLines e
 
 
 -- | Computes execution effects and effect structure for a collection field member.
