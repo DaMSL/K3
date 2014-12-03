@@ -48,7 +48,31 @@ materializationD :: K3 Declaration -> MaterializationM (K3 Declaration)
 materializationD = undefined
 
 materializationE :: K3 Expression -> MaterializationM (K3 Expression)
-materializationE = undefined
+materializationE e
+  = case e of
+      (tag &&& children -> (EOperate OApp, [f, x])) -> do
+             f' <- withLocalDS [x] (materializationE f)
+             x' <- materializationE x
+
+             let argIdent = case tag (getProvenance f') of
+                              PLambda p -> p
+                              _ -> error "Unexpected provenance on function."
+
+             fDecision <- dLookup (getUID f') argIdent
+
+             decision <- if inD fDecision == Referenced || inD fDecision == ConstReferenced
+                           then return fDecision
+                           else do
+                             moveable <- isMoveableNow x'
+
+                             return $ if moveable then (Decision Moved Moved) else (Decision Copied Copied)
+
+             setDecision (getUID e) argIdent decision
+
+             allDecisions <- dLookupAll
+             return $ Node (tag e :@: (EMaterialization allDecisions : annotations e)) [f', x']
+
+      _  -> Node (tag e :@: annotations e) <$> mapM materializationE (children e)
 
 -- Queries
 
