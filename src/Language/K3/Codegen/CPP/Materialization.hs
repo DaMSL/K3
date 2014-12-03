@@ -31,6 +31,14 @@ type Table = I.Map (M.Map Identifier Decision)
 type MaterializationS = (Table, PIEnv, [K3 Expression])
 type MaterializationM = StateT MaterializationS Identity
 
+-- State Accessors
+
+dLookup :: UID -> Identifier -> MaterializationM Decision
+dLookup u i = get >>= \(t, _, _) -> fromMaybe defaultDecision (I.lookup u t >>= M.lookup i)
+
+pLookup :: PPtr -> MaterializationM (K3 Provenance)
+pLookup p = get >>= \(_, e, _) -> fromMaybe (error "Dangling provenance pointer") (I.lookup p e)
+
 -- Table Construction/Attachment
 
 runMaterializationM :: MaterializationM a -> MaterializationS -> (a, MaterializationS)
@@ -60,9 +68,9 @@ occursIn wide b a
       -- Something occurs in a bound variable if it occurs in anything that was used to initialize
       -- that bound variable, and that bound variable was initialized using a non-isolating method.
       (tag -> PBVar mv) -> do
-             decision <- getDecision (pmvloc mv) (pmvn mv)
+             decision <- dLookup (pmvloc mv) (pmvn mv)
              if inD decision == Referenced || inD decision == ConstReferenced
-               then fromMaybe (error "Dangling provenance pointer") (pLookup $ pmvptr mv) >>= occursIn wide b
+               then pLookup (pmvptr mv) >>= occursIn wide b
                else return False
 
       -- Something occurs in substructure if it occurs in any superstructure, and wide effects are
