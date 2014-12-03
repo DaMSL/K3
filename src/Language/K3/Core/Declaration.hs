@@ -18,8 +18,9 @@ module Language.K3.Core.Declaration (
     isDUID,
     isDSpan,
     isDProperty,
+    isDSyntax,
     isDSymbol,
-    isDSyntax
+    isDProvenance
 ) where
 
 import Data.List
@@ -32,7 +33,9 @@ import Language.K3.Core.Common
 import Language.K3.Core.Expression
 import Language.K3.Core.Literal
 import Language.K3.Core.Type
-import Language.K3.Analysis.Effects.Core
+
+import Language.K3.Analysis.Provenance.Core
+import Language.K3.Analysis.Effects.Core hiding ( Provenance )
 
 import Language.K3.Utils.Pretty
 
@@ -89,12 +92,13 @@ type PatternRewriteRule = (K3 Expression, K3 Expression, [K3 Declaration])
 
 -- | Annotations on Declarations.
 data instance Annotation Declaration
-    = DSpan     Span
-    | DUID      UID
-    | DProperty Identifier (Maybe (K3 Literal))
-    | DSyntax   SyntaxAnnotation
-    | DConflict UnorderedConflict  -- TODO: organize into categories.
-    | DSymbol   (K3 Symbol)
+    = DSpan       Span
+    | DUID        UID
+    | DProperty   Identifier (Maybe (K3 Literal))
+    | DSyntax     SyntaxAnnotation
+    | DConflict   UnorderedConflict  -- TODO: organize into categories.
+    | DSymbol     (K3 Symbol)
+    | DProvenance (K3 Provenance)
   deriving (Eq, Ord, Read, Show)
 
 -- | Unordered Data Conflicts (between triggers)
@@ -125,6 +129,10 @@ isDSyntax _           = False
 isDSymbol :: Annotation Declaration -> Bool
 isDSymbol (DSymbol _) = True
 isDSymbol _           = False
+
+isDProvenance :: Annotation Declaration -> Bool
+isDProvenance (DProvenance _) = True
+isDProvenance _               = False
 
 {- Utils -}
 -- Given top level role declaration, return list of all trigger ids in the AST

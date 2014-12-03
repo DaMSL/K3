@@ -25,6 +25,8 @@ module Language.K3.Core.Expression (
   , isEPType
   , isEAnyType
   , isEProvenance
+  , isESEffect
+  , isEFStructure
   , isEEffect
   , isESymbol
   , isAnyETypeAnn
