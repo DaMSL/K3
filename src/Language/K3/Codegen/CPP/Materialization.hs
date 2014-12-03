@@ -36,8 +36,36 @@ type MaterializationM = StateT MaterializationS Identity
 dLookup :: UID -> Identifier -> MaterializationM Decision
 dLookup u i = get >>= \(t, _, _) -> fromMaybe defaultDecision (I.lookup u t >>= M.lookup i)
 
+dLookupAll :: UID -> Identifier -> MaterializationM (M.Map Identifier Decision)
+dLookupAll u = get >>= \(t, _, _) -> I.findWithDefault M.empty u t
+
 pLookup :: PPtr -> MaterializationM (K3 Provenance)
 pLookup p = get >>= \(_, e, _) -> fromMaybe (error "Dangling provenance pointer") (I.lookup p e)
+
+-- A /very/ rough approximation of ReaderT's ~local~ for StateT.
+withLocalDS :: [K3 Expression] -> MaterializationM a -> MaterializationM a
+withLocalDS nds m = do
+  (t, e, ds) <- get
+  put (t, e, (nds ++ ds))
+  r <- m
+  (t', e', _) <- get
+  put (t', e', ds)
+  return r
+
+getUID :: K3 Expression -> UID
+getUID e = let EUID u = fromMaybe (error "No UID on expression.")
+                        (e @~ \case { EUID _ -> True; _ -> False }) in u
+
+getProvenance :: K3 Expression -> K3 Provenance
+getProvenance e = let EProvenance p = fromMaybe (error "No provenance on expression.")
+                                      (e @~ \case { EProvenance _ -> True; _ -> False}) in p
+
+getEffects :: K3 Expression -> K3 Effect
+getEffects e = let EEffect ff = fromMaybe (error "No effects on expression.")
+                                (e @~ \case { EEffect _ -> True; _ -> False }) in f
+
+setDecision :: UID -> Identifier -> Decision -> MaterializationM ()
+setDecision u i d = modify $ \(t, e, ds) -> (I.insertWith (M.insert i d) u t, e, ds)
 
 -- Table Construction/Attachment
 
