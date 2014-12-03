@@ -58,6 +58,7 @@ fset ch = Node (FSet :@: []) $ nub ch
 fseq :: [K3 Effect] -> K3 Effect
 fseq ch = mkNode $ simplifyChildren (== FSeq) ch
   where mkNode []  = fnone
+        mkNode [x] = x
         mkNode chl = Node (FSeq :@: []) chl
 
 floop :: K3 Effect -> K3 Effect

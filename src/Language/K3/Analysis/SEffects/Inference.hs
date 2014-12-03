@@ -481,8 +481,8 @@ inferProgramEffects ppenv p =  do
       mapProgram declEff return return Nothing nd
 
     -- Add self-referential effect pointers to every global for cyclic scope.
-    rcrDeclEff d@(tag -> DGlobal  n _ _) = uidOf d >>= \u -> fifreshsM n u >> return d
-    rcrDeclEff d@(tag -> DTrigger n _ _) = uidOf d >>= \u -> fifreshsM n u >> return d
+    rcrDeclEff d@(tag -> DGlobal  n _ _) = uidOf d >>= \u -> fifreshsM n u >> declProv d n >> return d
+    rcrDeclEff d@(tag -> DTrigger n _ _) = uidOf d >>= \u -> fifreshsM n u >> declProv d n >> return d
     rcrDeclEff d@(tag -> DDataAnnotation n _ mems) = mapM freshMems mems >>= fifreshAsM n . catMaybes >> return d
     rcrDeclEff d = return d
 
@@ -490,20 +490,20 @@ inferProgramEffects ppenv p =  do
     freshMems m@(Attribute   Provides mn mt _ mas) = memUID m mas >>= \u -> return (Just (mn, u, False, isTFunction mt))
     freshMems _ = return Nothing
 
+    declProv d n = void $ provOf d >>= fiextepM n
+
     -- Infer based on initializer, and update effect pointer.
     declEff :: K3 Declaration -> FInfM (K3 Declaration)
     declEff d@(tag -> DGlobal n t eOpt) = do
       u <- uidOf d
       f <- maybe (effectsOfType [] t) inferEffects eOpt
       void $ fistoreM n u f
-      void $ provOf d >>= fiextepM n
       return d
 
     declEff d@(tag -> DTrigger n _ e) = do
       u <- uidOf d
       f <- inferEffects e
       void $ fistoreM n u f
-      void $ provOf d >>= fiextepM n
       return d
 
     declEff d@(tag -> DDataAnnotation n _ mems) = mapM inferMems mems >>= fistoreaM n . catMaybes >> return d
@@ -595,10 +595,11 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
 
     infer m ef [lrf,arf] e@(tag -> EOperate OApp) = m >> do
       amv      <- provOf e >>= \case
-                                  (tag -> PApply (Just mv)) -> return mv
+                                  (tag -> PApply (Just mv))  -> return mv
+                                  (tag -> PMaterialize [mv]) -> return mv
                                   p -> applyMVErr p
       arf'     <- chaseAppArg arf
-      manyLrf  <- chaseAppLambda [] lrf
+      manyLrf  <- chaseAppLambda e [] lrf
 
       (manyEf, manyLrf') <-
         return . unzip =<< (flip mapM manyLrf $ \lrf' -> case tnc lrf' of
@@ -718,17 +719,20 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
 
     freshRecM _ _ _ t _ = recTErrM t
 
-    chaseAppArg (tnc -> (FApply _, [_,_,_,sf])) = chaseAppArg sf
+    chaseAppArg (tnc -> (FApply _, [_,sf])) = chaseAppArg sf
     chaseAppArg sf = return sf
 
-    chaseAppLambda _ f@(tag -> FLambda _) = return [f]
-    chaseAppLambda path f@(tag -> FBVar (fmvptr -> i))
+    chaseAppLambda _ _ f@(tag -> FLambda _) = return [f]
+    chaseAppLambda e path f@(tag -> FBVar (fmvptr -> i))
       | i `elem` path = return [f]
-      | otherwise     = fichaseM f >>= chaseAppLambda (i:path)
+      | otherwise     = fichaseM f >>= chaseAppLambda e (i:path)
 
-    chaseAppLambda path (tnc -> (FApply _, [_,_,_,sf])) = chaseAppLambda path sf
-    chaseAppLambda path (tnc -> (FSet, rfl))            = mapM (chaseAppLambda path) rfl >>= return . concat
-    chaseAppLambda _ f = errorM $ PT.boxToString $ [T.pack "Invalid application or lambda: "] %$ PT.prettyLines f
+    chaseAppLambda e path (tnc -> (FApply _, [_,sf])) = chaseAppLambda e path sf
+    chaseAppLambda e path (tnc -> (FSet, rfl))        = mapM (chaseAppLambda e path) rfl >>= return . concat
+    chaseAppLambda e _ f = errorM $ PT.boxToString $ [T.pack "Invalid application or lambda: "]
+                                                   %$ PT.prettyLines f
+                                                   %$ [T.pack "on"]
+                                                   %$ PT.prettyLines e
 
     subpfvar i p (tag -> PFVar j) | i == j = return p
     subpfvar _ _ p = return p
@@ -764,12 +768,15 @@ effectsOfType args t | isTFunction t =
    case tnc t of
     (TForall _, [ch])      -> effectsOfType args ch
     (TFunction, [_, retT]) -> let a = mkArg (length args + 1)
-                              in effectsOfType (args++[a]) retT >>= \ef -> return (flambda a fnone ef fnone)
+                              in effectsOfType (args++[a]) retT-- >>= \ef -> return (flambda a fnone ef fnone)
     _ -> errorM $ PT.boxToString $ [T.pack "Invalid function type"] %+ PT.prettyLines t
   where mkArg i = "__arg" ++ show i
 
 effectsOfType [] _   = return fnone
-effectsOfType args _ = return $ floop $ fseq $ concatMap (\i -> [fread $ pfvar i, fwrite $ pfvar i]) args
+effectsOfType args _ = return $ foldl lam (flambda (last args) fnone ef fnone) $ init args
+  where 
+    lam rfacc a = flambda a fnone fnone rfacc
+    ef = floop $ fseq $ concatMap (\i -> [fread $ pfvar i, fwrite $ pfvar i]) args
 
 
 -- | Computes execution effects and effect structure for a collection field member.
