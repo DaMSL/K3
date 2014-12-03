@@ -198,6 +198,9 @@ piextp env x p = env {ppenv=ppext (ppenv env) x p}
 pidelp :: PIEnv -> Int -> PIEnv
 pidelp env i = env {ppenv=ppdel (ppenv env) i}
 
+pilkupa :: PIEnv -> Identifier -> Identifier -> Either Text (K3 Provenance)
+pilkupa env x y = palkup (paenv env) x y
+
 pilkupas :: PIEnv -> Identifier -> Either Text PMEnv
 pilkupas env x = palkups (paenv env) x
 
@@ -353,6 +356,9 @@ piexteM n p = get >>= \env -> return (piexte env n p) >>= put
 pideleM :: Identifier -> PInfM ()
 pideleM n = get >>= \env -> return (pidele env n) >>= put
 
+pilkupaM :: Identifier -> Identifier -> PInfM (K3 Provenance)
+pilkupaM n m = get >>= liftEitherM . (\env -> pilkupa env n m)
+
 pilkupasM :: Identifier -> PInfM PMEnv
 pilkupasM n = get >>= liftEitherM . flip pilkupas n
 
@@ -388,16 +394,21 @@ pisetcaseM mv = get >>= return . flip pisetcase mv >>= put
 
 
 {- Analysis entry point -}
-inferProgramProvenance :: K3 Declaration -> Either String (K3 Declaration)
+inferProgramProvenance :: K3 Declaration -> Either String (K3 Declaration, PPEnv)
 inferProgramProvenance p = do
   lcenv <- lambdaClosures p
-  let (npE,initEnv) = runPInfM (pienv0 lcenv) (globalsProv p)
-  np  <- liftEitherTM npE
-  np' <- liftEitherTM $ fst $ runPInfM initEnv $ mapExpression inferExprProvenance np
-  liftEitherTM $ simplifyExprProvenance np'
+  let (npE, finalEnv) = runPInfM (pienv0 lcenv) $ doInference p
+  rnp <- liftEitherTM npE
+  return (rnp, ppenv finalEnv)
 
   where
     liftEitherTM = either (Left . T.unpack) Right
+
+    doInference p' = do
+      np   <- globalsProv p'
+      np'  <- mapExpression inferExprProvenance np
+      np'' <- simplifyExprProvenance np'
+      markGlobals np''
 
     -- TODO: handle provenance annotations from the parser.
     globalsProv :: K3 Declaration -> PInfM (K3 Declaration)
@@ -432,16 +443,38 @@ inferProgramProvenance p = do
     declProv d@(tag -> DDataAnnotation n _ mems) = mapM inferMems mems >>= pistoreaM n . catMaybes >> return d
     declProv d = return d
 
-    inferMems m@(Lifted      Provides mn mt meOpt mas) = memUID m mas >>= \u -> inferMember True  mn mt meOpt u
-    inferMems m@(Attribute   Provides mn mt meOpt mas) = memUID m mas >>= \u -> inferMember False mn mt meOpt u
+    inferMems m@(Lifted    Provides mn mt meOpt mas) = memUID m mas >>= \u -> inferMember True  mn mt meOpt u
+    inferMems m@(Attribute Provides mn mt meOpt mas) = memUID m mas >>= \u -> inferMember False mn mt meOpt u
     inferMems _ = return Nothing
 
     inferMember lifted mn mt meOpt u = do
       mp <- maybe (provOfType [] mt) inferProvenance meOpt
       return $ Just (mn,u,mp,lifted)
 
+    markGlobals = mapProgram markGlobal return return Nothing
+    markGlobal d@(tag -> DGlobal  n _ eOpt) = maybe (pilkupeM n) provOf eOpt >>= \p' -> return (d @+ (DProvenance p'))
+    markGlobal d@(tag -> DTrigger _ _ e)    = provOf e >>= \p' -> return (d @+ (DProvenance p'))
+    
+    markGlobal d@(tag -> DDataAnnotation n tvars mems) =
+      mapM (markMems n) mems >>= \nmems -> return (replaceTag d $ DDataAnnotation n tvars nmems)
+
+    markGlobal d = return d
+
+    markMems n (Lifted Provides mn mt meOpt mas) =
+      maybe (pilkupaM n mn) provOf meOpt >>=
+        \p' -> return (Lifted Provides mn mt meOpt $ mas ++ [DProvenance p'])
+
+    markMems n (Attribute Provides mn mt meOpt mas) =
+      maybe (pilkupaM n mn) provOf meOpt >>=
+        \p' -> return (Attribute Provides mn mt meOpt $ mas ++ [DProvenance p'])
+
+    markMems _ m = return m
+
     uidOf  n = maybe (uidErr n) (\case {(DUID u) -> return u ; _ ->  uidErr n}) $ n @~ isDUID
     uidErr n = errorM $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines n
+
+    provOf  n = maybe (provErr n) (\case {(EProvenance p') -> return p'; _ ->  provErr n}) $ n @~ isEProvenance
+    provErr n = errorM $ PT.boxToString $ [T.pack "No provenance found on "] %+ PT.prettyLines n
 
     memUID memDecl as = case filter isDUID as of
                           [DUID u] -> return u
@@ -647,7 +680,7 @@ provOfType args _ = return $ pderived $ map pfvar args
 
 -- | Replaces PApply provenance nodes with their return value (instead of a triple of lambda, arg, rv).
 --   Also, simplifies PSet and PDerived nodes on these applies after substitution has been performed.
-simplifyProvenance :: K3 Provenance -> Either Text (K3 Provenance)
+simplifyProvenance :: K3 Provenance -> PInfM (K3 Provenance)
 simplifyProvenance p = modifyTree simplify p
   where simplify (tnc -> (PApply _, [_,_,r])) = return r
         -- Rebuilding PSet and PDerived will filter all temporaries. 
@@ -656,7 +689,7 @@ simplifyProvenance p = modifyTree simplify p
         simplify p' = return p'
 
 -- | Simplifies applies on all provenance trees attached to an expression.
-simplifyExprProvenance :: K3 Declaration -> Either Text (K3 Declaration)
+simplifyExprProvenance :: K3 Declaration -> PInfM (K3 Declaration)
 simplifyExprProvenance d = mapExpression simplifyExpr d
   where simplifyExpr e = modifyTree simplifyProvAnn e
         simplifyProvAnn e@(tag &&& (@~ isEProvenance) -> (EOperate OApp, Just (EProvenance p@(tag -> PApply mvOpt)))) = do

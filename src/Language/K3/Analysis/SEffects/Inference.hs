@@ -466,7 +466,8 @@ inferProgramEffects ppenv p =  do
   let (npE, initEnv) = runFInfM (fienv0 ppenv lcenv) (globalsEff p)
   np  <- liftEitherTM npE
   np' <- liftEitherTM $ fst $ runFInfM initEnv $ mapExpression inferExprEffects np
-  liftEitherTM $ simplifyExprEffects np'
+  --liftEitherTM $ simplifyExprEffects np'
+  return np'
 
   where
     liftEitherTM = either (Left . T.unpack) Right
@@ -495,12 +496,14 @@ inferProgramEffects ppenv p =  do
       u <- uidOf d
       f <- maybe (effectsOfType [] t) inferEffects eOpt
       void $ fistoreM n u f
+      void $ provOf d >>= fiextepM n
       return d
 
     declEff d@(tag -> DTrigger n _ e) = do
       u <- uidOf d
       f <- inferEffects e
       void $ fistoreM n u f
+      void $ provOf d >>= fiextepM n
       return d
 
     declEff d@(tag -> DDataAnnotation n _ mems) = mapM inferMems mems >>= fistoreaM n . catMaybes >> return d
@@ -516,6 +519,9 @@ inferProgramEffects ppenv p =  do
 
     uidOf  n = maybe (uidErr n) (\case {(DUID u) -> return u ; _ ->  uidErr n}) $ n @~ isDUID
     uidErr n = errorM $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines n
+
+    provOf  d = maybe (provErr d) (\case {(DProvenance p') ->  return p'; _ -> provErr d}) $ d @~ isDProvenance
+    provErr d = errorM $ PT.boxToString $ [T.pack "No provenance found on "] %+ PT.prettyLines d
 
     memUID memDecl as = case filter isDUID as of
                           [DUID u] -> return u
@@ -572,19 +578,19 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
 
     -- TODO: effect map (efmap) extension
     infer :: FInfM () -> [Maybe (K3 Effect)] -> [K3 Effect] -> K3 Expression -> FInfM (Maybe (K3 Effect), K3 Effect)
-    infer m _ _ (tag -> EConstant _) = m >> return (Nothing, fnone)
-    infer m _ _ (tag -> EVariable i) = m >> ((\f p -> (Just (fread p), f)) <$> filkupeM i <*> filkupepM i)
+    infer m _ _ e@(tag -> EConstant _) = m >> rt e (Nothing, fnone)
+    infer m _ _ e@(tag -> EVariable i) = m >> ((\f p -> (Just (fread p), f)) <$> filkupeM i <*> filkupepM i) >>= rt e
     
-    infer m ef rf (tag -> ESome)       = m >> return (finit ef, fdata Nothing    rf)
-    infer m ef rf (tag -> EIndirect)   = m >> return (finit ef, fdata Nothing    rf)
-    infer m ef rf (tag -> ETuple)      = m >> return (finit ef, fdata Nothing    rf)
-    infer m ef rf (tag -> ERecord ids) = m >> return (finit ef, fdata (Just ids) rf)
+    infer m ef rf e@(tag -> ESome)       = m >> rt e (finit ef, fdata Nothing    rf)
+    infer m ef rf e@(tag -> EIndirect)   = m >> rt e (finit ef, fdata Nothing    rf)
+    infer m ef rf e@(tag -> ETuple)      = m >> rt e (finit ef, fdata Nothing    rf)
+    infer m ef rf e@(tag -> ERecord ids) = m >> rt e (finit ef, fdata (Just ids) rf)
     
     infer m ef [rf] e@(tag -> ELambda i) = m >> do
       UID u <- uidOf e
       clv   <- filkupcM u
       clf   <- mapM filkupepM clv >>= mapM (return . fread)
-      return (Just fnone, flambda i (fseq clf) (fseq $ catMaybes ef) rf)
+      rt e (Just fnone, flambda i (fseq clf) (fseq $ catMaybes ef) rf)
 
     infer m ef [lrf,arf] e@(tag -> EOperate OApp) = m >> do
       amv      <- provOf e >>= \case
@@ -610,50 +616,56 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
           _ -> applyLambdaErr e)
 
       case manyLrf' of
-        [] -> applyLambdaErr e
-        [rf] -> return (finit $ manyEf, rf)
-        _ ->  return (finit $ manyEf, fset manyLrf')
+        []   -> applyLambdaErr e
+        [rf] -> rt e (finit $ manyEf, rf)
+        _    -> rt e (finit $ manyEf, fset manyLrf')
 
-    infer m ef [rf] (tnc -> (EProject i, [esrc])) = m >> do
+    infer m ef [rf] e@(tnc -> (EProject i, [esrc])) = m >> do
       psrc <- provOf esrc
       case esrc @~ isEType of
         Just (EType t) ->
           case tag t of
-            TCollection -> collectionMemberEffect i ef esrc t psrc
+            TCollection -> collectionMemberEffect i ef esrc t psrc >>= rt e
             TRecord ids ->
               case tnc rf of
                 (FData _, fdch) -> do
                   idx <- maybe (memErr i esrc) return $ elemIndex i ids
-                  return (finit ef, fdch !! idx)
-                (_,_) -> return (finit ef, fnone)
+                  rt e (finit ef, fdch !! idx)
+                (_,_) -> rt e (finit ef, fnone)
             _ -> prjErr esrc
         _ -> prjErr esrc
 
-    infer m ef _      (tag -> EAssign i)     = m >> filkupepM i >>= \p ->return (finit $ ef ++ [Just $ fwrite p], fnone)
-    infer m ef _      (tag -> EOperate OSnd) = m >> return (finit $ ef ++ [Just fio], fnone)
-    infer m ef [_,rf] (tag -> EOperate OSeq) = m >> return (finit ef, rf)
-    infer m ef _      (tag -> EOperate _)    = m >> return (finit ef, fnone)
+    infer m ef _      e@(tag -> EAssign i)     = m >> filkupepM i >>= \p -> rt e (finit $ ef ++ [Just $ fwrite p], fnone)
+    infer m ef _      e@(tag -> EOperate OSnd) = m >> rt e (finit $ ef ++ [Just fio], fnone)
+    infer m ef [_,rf] e@(tag -> EOperate OSeq) = m >> rt e (finit ef, rf)
+    infer m ef _      e@(tag -> EOperate _)    = m >> rt e (finit ef, fnone)
 
-    infer m [p,t,e] [_,tr,er] (tag -> EIfThenElse) = m >> return (finit [p, Just $ fset $ catMaybes [t, e]], fset [tr,er])
+    infer m [pe,te,ee] [_,tr,er] e@(tag -> EIfThenElse) =
+      m >> rt e (finit [pe, Just $ fset $ catMaybes [te, ee]], fset [tr,er])
 
-    infer m [initef,bef] [_,rf] (tag -> ELetIn  i) = m >> do
+    -- TODO: think through propagation of body execution effects without
+    -- initializer execution effects. This results in reordering.
+    infer m [initef,bef] [_,rf] e@(tag -> ELetIn  i) = m >> do
       mv <- filkupeM i >>= fmv
       popVars i
-      return (finit [bef], fscope [mv] (maybe fnone id $ finit [initef]) rf)
+      rt e (finit [bef], fscope [mv] (maybe fnone id $ finit [initef]) rf)
 
-    infer m [initef,bef] [_,rf] (tag -> EBindAs b) = m >> do
+    infer m [initef,bef] [_,rf] e@(tag -> EBindAs b) = m >> do
       mvs <- mapM filkupeM (bindingVariables b) >>= mapM fmv
       mapM_ popVars (bindingVariables b)
-      return (finit [bef], fscope mvs (maybe fnone id $ finit [initef]) rf)
+      rt e (finit [bef], fscope mvs (maybe fnone id $ finit [initef]) rf)
 
-    infer m [oef,sef,nef] [_,snf,rnf] (tag -> ECaseOf _) = m >> do
+    infer m [oef,sef,nef] [_,snf,rnf] e@(tag -> ECaseOf _) = m >> do
       casemv <- figetcaseM ()
-      return (finit [oef], fscope [casemv] (fset $ catMaybes [sef, nef]) (fset [snf, rnf]))
+      rt e (finit [oef], fscope [casemv] (fset $ catMaybes [sef, nef]) (fset [snf, rnf]))
     
-    infer m _ _ (tag -> EAddress) = m >> return (Nothing, fnone)
+    infer m _ _ e@(tag -> EAddress) = m >> rt e (Nothing, fnone)
 
     -- TODO: unhandled cases: ESelf, EImperative
     infer m _ _ e = m >> inferErr e
+
+    rt e r@(Nothing, rf) = fiextmM e fnone rf >> return r
+    rt e r@(Just ef, rf) = fiextmM e ef rf    >> return r
 
     finit ef = Just $ fseq $ catMaybes ef
     popVars i = fideleM i >> fidelepM i
@@ -750,8 +762,38 @@ effectsOfType args t | isTFunction t =
 effectsOfType [] _   = return fnone
 effectsOfType args _ = return $ floop $ fseq $ concatMap (\i -> [fread $ pfvar i, fwrite $ pfvar i]) args
 
+simplifyStructureEffects :: K3 Effect -> Either Text (K3 Effect, K3 Effect)
+simplifyStructureEffects f = undefined
+
 simplifyExprEffects :: K3 Declaration -> Either Text (K3 Declaration)
-simplifyExprEffects p = undefined
+simplifyExprEffects d = mapExpression simplifyExpr d
+  where simplifyExpr e = modifyTree simplifyEffectsAnn e
+
+        -- Introduce an fscope at application points on only the effect structure.
+        simplifyEffectsAnn e@(tag -> EOperate OApp) = do
+          ef <- seffectsOf e
+          sf@(tag -> FApply mvOpt) <- fstructureOf e
+          (nef, nsf) <- simplifyStructureEffects sf
+          return $ ((e @<- (filter (not . simplerEffectsAnn) $ annotations e))
+                       @+ (ESEffect $ fseq [ef, nef]))
+                       @+ (EFStructure $ maybe nsf (\mv -> fscope [mv] nef nsf) mvOpt)
+
+        simplifyEffectsAnn e = do
+          ef <- seffectsOf e
+          sf <- fstructureOf e
+          (nef, nsf) <- simplifyStructureEffects sf
+          return $ ((e @<- (filter (not . simplerEffectsAnn) $ annotations e))
+                       @+ (ESEffect $ fseq [ef, nef]))
+                       @+ (EFStructure nsf)
+
+        simplerEffectsAnn a = isEFStructure a || isESEffect a
+
+        seffectsOf   e = maybe (annErrE e) (\case {(ESEffect    f) -> return f; _ -> annErrE e}) $ e @~ isESEffect
+        fstructureOf e = maybe (annErrS e) (\case {(EFStructure f) -> return f; _ -> annErrS e}) $ e @~ isEFStructure
+
+        annErrE e = Left $ PT.boxToString $ [T.pack "No execution effect annotation on"] %$ PT.prettyLines e
+        annErrS e = Left $ PT.boxToString $ [T.pack "No effect structure annotation on"] %$ PT.prettyLines e
+
 
 -- | Computes execution effects and effect structure for a collection field member.
 --   TODO: much like its counterpart with provenance, this method recomputes the effect rather
