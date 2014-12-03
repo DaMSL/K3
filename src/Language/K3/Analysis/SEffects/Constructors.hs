@@ -36,14 +36,14 @@ fio = leaf FIO
 fdata :: Maybe [Identifier] -> [K3 Effect] -> K3 Effect
 fdata idOpt ch = Node (FData idOpt :@: []) ch
 
-fscope :: FMatVar -> K3 Effect -> K3 Effect
-fscope mv f = sing f $ FScope mv 
+fscope :: [FMatVar] -> K3 Effect -> K3 Effect -> K3 Effect
+fscope mv initf f = Node (FScope mv :@: []) [initf, f]
 
-flambda :: Identifier -> K3 Effect -> K3 Effect -> K3 Effect
-flambda i cl f = Node (FLambda i :@: [])  [cl, f]
+flambda :: Identifier -> K3 Effect -> K3 Effect -> K3 Effect -> K3 Effect
+flambda i cl ef sf = Node (FLambda i :@: [])  [cl, ef, sf]
 
-fapply :: K3 Effect -> K3 Effect -> K3 Effect -> K3 Effect
-fapply l a r = Node (FApply :@: []) [l, a, r]
+fapply :: Maybe FMatVar -> K3 Effect -> K3 Effect -> K3 Effect -> K3 Effect -> K3 Effect
+fapply mvOpt l a ef sf = Node (FApply mvOpt :@: []) [l, a, ef, sf]
 
 simplifyChildren :: (Effect -> Bool) -> [K3 Effect] -> [K3 Effect]
 simplifyChildren tagF ch = nub $ filter (\p -> tag p /= FNone) $ concatMap flatCh ch
@@ -60,8 +60,8 @@ fseq ch = mkNode $ simplifyChildren (== FSeq) ch
   where mkNode []  = fnone
         mkNode chl = Node (FSeq :@: []) chl
 
-floop :: [K3 Effect] -> K3 Effect
-floop ch = Node (FLoop :@: []) ch
+floop :: K3 Effect -> K3 Effect
+floop f = sing f $ FLoop
 
 fnone :: K3 Effect
 fnone = leaf FNone

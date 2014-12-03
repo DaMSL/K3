@@ -9,6 +9,7 @@
 -- | Effect analysis for K3 programs.
 module Language.K3.Analysis.SEffects.Inference where
 
+import Control.Applicative
 import Control.Arrow hiding ( left )
 import Control.Monad.State
 import Control.Monad.Trans.Either
@@ -349,6 +350,7 @@ fichase fienv cf = aux [] cf
                                                 | otherwise = filkupp fienv i >>= aux (i:path)
         aux _ f = return f
 
+-- TODO: substitute provenance var as well as effect var.
 -- Capture-avoiding substitution of any free variable with the given identifier.
 fisub :: FIEnv -> Identifier -> K3 Effect -> K3 Effect -> Either Text (K3 Effect)
 fisub fienv i df sf = acyclicSub [] sf
@@ -365,6 +367,13 @@ fisub fienv i df sf = acyclicSub [] sf
     acyclicSub _ f@(tag -> FLambda j) | i == j = return f
 
     acyclicSub path n@(Node _ ch) = mapM (acyclicSub path) ch >>= return . replaceCh n 
+
+-- Apply a function to every provenance node in an effect tree.
+fmapProv :: (K3 Provenance -> Either Text (K3 Provenance)) -> K3 Effect -> Either Text (K3 Effect)
+fmapProv provF f = modifyTree onProv f
+  where onProv (tag -> FRead p)  = provF p >>= return . fread
+        onProv (tag -> FWrite p) = provF p >>= return . fwrite
+        onProv f' = return f'
 
 
 {- FInfM helpers -}
@@ -436,6 +445,9 @@ fichaseM f = get >>= liftEitherM . flip fichase f
 
 fisubM :: Identifier -> K3 Effect -> K3 Effect -> FInfM (K3 Effect)
 fisubM i ref f = get >>= liftEitherM . (\env -> fisub env i ref f)
+
+fmapProvM :: (K3 Provenance -> Either Text (K3 Provenance)) -> K3 Effect -> FInfM (K3 Effect)
+fmapProvM provF f = liftEitherM $ fmapProv provF f
 
 filkupcM :: Int -> FInfM [Identifier]
 filkupcM n = get >>= liftEitherM . flip filkupc n
@@ -515,46 +527,136 @@ inferExprEffects :: K3 Expression -> FInfM (K3 Expression)
 inferExprEffects expr = inferEffects expr >> substituteEffects expr
 
 inferEffects :: K3 Expression -> FInfM (K3 Effect)
-inferEffects expr = foldMapIn1RebuildTree topdown undefined undefined {-sideways infer-} () Nothing expr
+inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
                       >>= return . snd
   where
     iu = return ()
     uidOf  e = maybe (uidErr e) (\case {(EUID u) -> return u ; _ ->  uidErr e}) $ e @~ isEUID
     uidErr e = errorM $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines e
 
-    topdown _ _ e@(tag -> ELambda i) = fiexteM i (ffvar i) >> fiextepM i (pfvar i)
-    topdown _ _ _ = iu
+    provOf  e = maybe (provErr e) (\case {(EProvenance p) ->  return p; _ -> provErr e}) $ e @~ isEProvenance
+    provErr e = errorM $ PT.boxToString $ [T.pack "No provenance found on "] %+ PT.prettyLines e
+
+    topdown m _ (tag -> ELambda i) = m >> fiexteM i (ffvar i) >> fiextepM i (pfvar i) >> return iu
+    topdown m _ _ = m >> return iu
+
+    srt = return . (iu,)
 
     -- Effect bindings reference lambda effects where necessary to ensure
     -- defferred effect inlining for function values.
     -- Bindings are introduced based on types.
-    {-
-    sideways _ ef rf e@(tag -> ELetIn  i) =
+    sideways :: FInfM () -> Maybe (K3 Effect) -> K3 Effect -> K3 Expression -> FInfM (FInfM (), [FInfM ()])
+    sideways m _ rf e@(tag -> ELetIn  i) = m >> do
       case (head $ children e) @~ isEType of
-        Just (EType t) -> uidOf e >>= \u -> return [freshM e i u t rf]
+        Just (EType t) -> uidOf e >>= \u -> srt [freshM e i u t rf]
         _ -> tAnnErr e
 
-    sideways _ ef rf e@(tag -> ECaseOf i) = do
+    sideways m _ rf e@(tag -> ECaseOf i) = m >> do
       u <- uidOf e
       case (head $ children e) @~ isEType of
-        Just (EType t) -> return [freshOptM e i u t rf, filkupeM i >>= fmv >>= fisetcaseM >> fideleM i]
+        Just (EType t) -> srt [freshOptM e i u t rf, filkupeM i >>= fmv >>= fisetcaseM >> fideleM i]
         _ -> tAnnErr e
 
-    sideways _ ef rf e@(tag -> EBindAs b) = do
+    sideways m _ rf e@(tag -> EBindAs b) = m >> do
       u <- uidOf e
       case (head $ children e) @~ isEType of
         Just (EType t) ->
           case b of
-            BIndirection i -> return [freshIndM e i u t rf]
-            BTuple is      -> return . (:[]) $ freshTupM e u t rf $ zip [0..length is -1] is
-            BRecord ivs    -> return . (:[]) $ freshRecM e u t rf ivs
+            BIndirection i -> srt [freshIndM e i u t rf]
+            BTuple is      -> srt . (:[]) $ freshTupM e u t rf $ zip [0..length is -1] is
+            BRecord ivs    -> srt . (:[]) $ freshRecM e u t rf ivs
 
         _ -> tAnnErr e
 
-    sideways _ _ _ (children -> ch) = return $ replicate (length ch - 1) iu
-    -}
+    sideways m _ _ (children -> ch) = m >> (srt $ replicate (length ch - 1) iu)
 
-    infer _ e = inferErr e
+    -- TODO: effect map (efmap) extension
+    infer :: FInfM () -> [Maybe (K3 Effect)] -> [K3 Effect] -> K3 Expression -> FInfM (Maybe (K3 Effect), K3 Effect)
+    infer m _ _ (tag -> EConstant _) = m >> return (Nothing, fnone)
+    infer m _ _ (tag -> EVariable i) = m >> ((\f p -> (Just (fread p), f)) <$> filkupeM i <*> filkupepM i)
+    
+    infer m ef rf (tag -> ESome)       = m >> return (finit ef, fdata Nothing    rf)
+    infer m ef rf (tag -> EIndirect)   = m >> return (finit ef, fdata Nothing    rf)
+    infer m ef rf (tag -> ETuple)      = m >> return (finit ef, fdata Nothing    rf)
+    infer m ef rf (tag -> ERecord ids) = m >> return (finit ef, fdata (Just ids) rf)
+    
+    infer m ef [rf] e@(tag -> ELambda i) = m >> do
+      UID u <- uidOf e
+      clv   <- filkupcM u
+      clf   <- mapM filkupepM clv >>= mapM (return . fread)
+      return (Just fnone, flambda i (fseq clf) (fseq $ catMaybes ef) rf)
+
+    infer m ef [lrf,arf] e@(tag -> EOperate OApp) = m >> do
+      amv      <- provOf e >>= \case
+                                  (tag -> PApply (Just mv)) -> return mv
+                                  p -> applyMVErr p
+      arf'     <- chaseAppArg arf
+      manyLrf  <- chaseAppLambda [] lrf
+
+      (manyEf, manyLrf') <-
+        return . unzip =<< (flip mapM manyLrf $ \lrf' -> case tnc lrf' of
+          (FLambda i, [_,bef,brf]) -> do
+            ifbv <- uidOf e >>= \u -> fifreshbpM i u arf'
+            imv  <- fmv ifbv
+            nbef <- fisubM i ifbv bef >>= fmapProvM (subpfvar i $ pbvar amv)
+            nbrf <- fisubM i ifbv brf >>= fmapProvM (subpfvar i $ pbvar amv)
+            let apprf = fapply (Just imv) lrf arf (fromJust $ finit $ ef ++ [Just nbef]) nbrf
+            return $ (Just fnone, apprf)
+
+          -- Handle recursive functions and forward declarations
+          -- by using an opaque return value.
+          (FBVar _, _) -> return $ (Just fnone, fapply Nothing lrf arf (fromJust $ finit ef) fnone)
+
+          _ -> applyLambdaErr e)
+
+      case manyLrf' of
+        [] -> applyLambdaErr e
+        [rf] -> return (finit $ manyEf, rf)
+        _ ->  return (finit $ manyEf, fset manyLrf')
+
+    infer m ef [rf] (tnc -> (EProject i, [esrc])) = m >> do
+      psrc <- provOf esrc
+      case esrc @~ isEType of
+        Just (EType t) ->
+          case tag t of
+            TCollection -> collectionMemberEffect i ef esrc t psrc
+            TRecord ids ->
+              case tnc rf of
+                (FData _, fdch) -> do
+                  idx <- maybe (memErr i esrc) return $ elemIndex i ids
+                  return (finit ef, fdch !! idx)
+                (_,_) -> return (finit ef, fnone)
+            _ -> prjErr esrc
+        _ -> prjErr esrc
+
+    infer m ef _      (tag -> EAssign i)     = m >> filkupepM i >>= \p ->return (finit $ ef ++ [Just $ fwrite p], fnone)
+    infer m ef _      (tag -> EOperate OSnd) = m >> return (finit $ ef ++ [Just fio], fnone)
+    infer m ef [_,rf] (tag -> EOperate OSeq) = m >> return (finit ef, rf)
+    infer m ef _      (tag -> EOperate _)    = m >> return (finit ef, fnone)
+
+    infer m [p,t,e] [_,tr,er] (tag -> EIfThenElse) = m >> return (finit [p, Just $ fset $ catMaybes [t, e]], fset [tr,er])
+
+    infer m [initef,bef] [_,rf] (tag -> ELetIn  i) = m >> do
+      mv <- filkupeM i >>= fmv
+      popVars i
+      return (finit [bef], fscope [mv] (maybe fnone id $ finit [initef]) rf)
+
+    infer m [initef,bef] [_,rf] (tag -> EBindAs b) = m >> do
+      mvs <- mapM filkupeM (bindingVariables b) >>= mapM fmv
+      mapM_ popVars (bindingVariables b)
+      return (finit [bef], fscope mvs (maybe fnone id $ finit [initef]) rf)
+
+    infer m [oef,sef,nef] [_,snf,rnf] (tag -> ECaseOf _) = m >> do
+      casemv <- figetcaseM ()
+      return (finit [oef], fscope [casemv] (fset $ catMaybes [sef, nef]) (fset [snf, rnf]))
+    
+    infer m _ _ (tag -> EAddress) = m >> return (Nothing, fnone)
+
+    -- TODO: unhandled cases: ESelf, EImperative
+    infer m _ _ e = m >> inferErr e
+
+    finit ef = Just $ fseq $ catMaybes ef
+    popVars i = fideleM i >> fidelepM i
 
     matchLambdaEff f@(tag -> FLambda _) = return $ Just f
     matchLambdaEff f@(tag -> FFVar _)   = return $ Just f
@@ -598,6 +700,21 @@ inferEffects expr = foldMapIn1RebuildTree topdown undefined undefined {-sideways
 
     freshRecM _ _ _ t _ = recTErrM t
 
+    chaseAppArg (tnc -> (FApply _, [_,_,_,sf])) = chaseAppArg sf
+    chaseAppArg sf = return sf
+
+    chaseAppLambda _ f@(tag -> FLambda _) = return [f]
+    chaseAppLambda path f@(tag -> FBVar (fmvptr -> i))
+      | i `elem` path = return [f]
+      | otherwise     = fichaseM f >>= chaseAppLambda (i:path)
+
+    chaseAppLambda path (tnc -> (FApply _, [_,_,_,sf])) = chaseAppLambda path sf
+    chaseAppLambda path (tnc -> (FSet, rfl))            = mapM (chaseAppLambda path) rfl >>= return . concat
+    chaseAppLambda _ f = errorM $ PT.boxToString $ [T.pack "Invalid application or lambda: "] %$ PT.prettyLines f
+
+    subpfvar i p (tag -> PFVar j) | i == j = return p
+    subpfvar _ _ p = return p
+
     fmv (tag -> FBVar mv) = return mv
     fmv f = errorM $ PT.boxToString $ [T.pack "Invalid effect bound var: "] %$ PT.prettyLines f
 
@@ -610,6 +727,13 @@ inferEffects expr = foldMapIn1RebuildTree topdown undefined undefined {-sideways
     tupTErrM t = errorM $ PT.boxToString $ [T.pack "Invalid tuple type: "]       %+ PT.prettyLines t
     recTErrM t = errorM $ PT.boxToString $ [T.pack "Invalid record type: "]      %+ PT.prettyLines t
 
+    applyMVErr     p = errorM $ PT.boxToString $ [T.pack "Invalid apply provenance: "] %+ PT.prettyLines p
+    applyLambdaErr e = errorM $ PT.boxToString $ [T.pack "Invalid apply lambda: "] %+ PT.prettyLines e
+    prjErr         e = errorM $ PT.boxToString $ [T.pack "Invalid type on "] %+ PT.prettyLines e
+    memErr       i e = errorM $ PT.boxToString $ [T.unwords $ map T.pack ["Failed to project", i, "from"]]
+                                               %$ PT.prettyLines e
+
+
 substituteEffects :: K3 Expression -> FInfM (K3 Expression)
 substituteEffects expr = modifyTree injectEffects expr
   where injectEffects e = filkupmM e >>= \(f,s) -> return ((e @+ ESEffect f) @+ EFStructure s)
@@ -619,15 +743,34 @@ effectsOfType args t | isTFunction t =
    case tnc t of
     (TForall _, [ch])      -> effectsOfType args ch
     (TFunction, [_, retT]) -> let a = mkArg (length args + 1)
-                              in effectsOfType (args++[a]) retT >>= return . flambda a fnone
+                              in effectsOfType (args++[a]) retT >>= \ef -> return (flambda a fnone ef fnone)
     _ -> errorM $ PT.boxToString $ [T.pack "Invalid function type"] %+ PT.prettyLines t
   where mkArg i = "__arg" ++ show i
 
 effectsOfType [] _   = return fnone
-effectsOfType args _ = return $ fseq $ concatMap (\i -> [fread $ pfvar i, fwrite $ pfvar i]) args
+effectsOfType args _ = return $ floop $ fseq $ concatMap (\i -> [fread $ pfvar i, fwrite $ pfvar i]) args
 
 simplifyExprEffects :: K3 Declaration -> Either Text (K3 Declaration)
 simplifyExprEffects p = undefined
+
+-- | Computes execution effects and effect structure for a collection field member.
+--   TODO: much like its counterpart with provenance, this method recomputes the effect rather
+--   using a cached result. 
+collectionMemberEffect :: Identifier -> [Maybe (K3 Effect)] -> K3 Expression -> K3 Type -> K3 Provenance
+                       -> FInfM (Maybe (K3 Effect), K3 Effect)
+collectionMemberEffect i ef esrc t psrc =
+  let annIds = namedTAnnotations $ annotations t in do
+    memsEnv <- mapM filkupasM annIds >>= return . Map.unions
+    (mrf, lifted) <- maybe memErr return $ Map.lookup i memsEnv
+    mrf' <- fmapProvM (subpself psrc) mrf
+    if not lifted then attrErr else return $ (Just $ fseq $ catMaybes ef, mrf')
+
+  where
+    subpself p (tag -> PFVar "self") = return p
+    subpself _ p = return p
+
+    memErr  = errorM $ PT.boxToString $ [T.unwords $ map T.pack ["Unknown projection of ", i, "on"]]           %+ PT.prettyLines esrc
+    attrErr = errorM $ PT.boxToString $ [T.unwords $ map T.pack ["Invalid attribute projection of ", i, "on"]] %+ PT.prettyLines esrc
 
 {- Pattern synonyms for inference -}
 pattern PTOption et <- Node (TOption :@: _) [et]

@@ -28,10 +28,13 @@ data Effect
     | FWrite       (K3 Provenance)
     | FIO
     | FData        (Maybe [Identifier]) -- An effect container, to support structural matching for lambda effects.
-    | FScope       FMatVar
-    | FLambda      Identifier  -- Lambda effects have two effect children, for closure construction and application.
-    | FApply                   -- Application effect nodes have three children: lambda, argument and result effect.
-    | FSet                     -- Set of effects, all of which are possible.
+    | FScope       [FMatVar]   -- Materialization point for the given FMatVars. This has two children:
+                               -- initialization execution effects and result effect structure.
+    | FLambda      Identifier  -- Lambda effects have three effect children: closure construction effects,
+                               -- deferred execution effects and deferred effect structure.
+    | FApply       (Maybe FMatVar)  -- Application effect nodes have four children: lambda and argument effect structures,
+                                    -- result execution effects, and a result effect structure.
+    | FSet                          -- Set of effects, all of which are possible.
     | FSeq
     | FLoop                    -- A repetitive effect. Can only happen in a foreign function
     | FNone                    -- Null effect
