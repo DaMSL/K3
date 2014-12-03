@@ -93,3 +93,6 @@ isWrittenIn = undefined
 
 isMoveableIn :: K3 Expression -> K3 Expression -> MaterializationM Bool
 isMoveableIn x c = undefined
+
+isMoveableNow :: K3 Expression -> MaterializationM Bool
+isMoveableNow x = get >>= \(_, _, ds) -> anyM (isMoveableIn x) ds
