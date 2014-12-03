@@ -1,24 +1,33 @@
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ViewPatterns #-}
+
 -- | Machinery for making decisions about C++ level materialization for K3.
 module Language.K3.Codegen.CPP.Materialization where
 
+import Control.Applicative
+import Control.Arrow
+
 import Control.Monad.Identity (Identity(..), runIdentity)
-import Control.Monad.State (StateT(..), MonadState(..), runState)
+import Control.Monad.State (StateT(..), MonadState(..), modify, runState)
+
+import Language.K3.Analysis.Provenance.Core
+import Language.K3.Analysis.Provenance.Inference (PIEnv(..))
+
+import Language.K3.Analysis.SEffects.Core
+
+import Language.K3.Codegen.CPP.Materialization.Hints
+
+import Data.Functor
+import Data.Maybe (fromMaybe)
+import Data.Tree
 
 import qualified Data.Map as M
 import qualified Data.IntMap as I
 
-import Language.K3.Core.Common
-
-data Method
-  = ConstReferenced
-  | Referenced
-  | Moved
-  | Copied
- deriving (Eq, Read, Show)
-
--- Decisions as pertaining to an identifier at a given expression specify how the binding is to be
--- populated (initialized), and how it is to be written back (finalized, if necessary).
-data Decision = Decision { inD :: Method, outD :: Method } deriving (Eq, Read, Show)
+import Language.K3.Core.Annotation
+import Language.K3.Core.Declaration
+import Language.K3.Core.Expression
+import Language.K3.Core.Common hiding (getUID)
 
 -- The most conservative decision is to initialize a new binding by copying its initializer, and to
 -- finalize it by copying it back. There might be a strictly better strategy, but this is the
@@ -26,21 +35,21 @@ data Decision = Decision { inD :: Method, outD :: Method } deriving (Eq, Read, S
 defaultDecision :: Decision
 defaultDecision = Decision { inD = Copied, outD = Copied }
 
-type Table = I.Map (M.Map Identifier Decision)
+type Table = I.IntMap (M.Map Identifier Decision)
 
 type MaterializationS = (Table, PIEnv, [K3 Expression])
 type MaterializationM = StateT MaterializationS Identity
 
 -- State Accessors
 
-dLookup :: UID -> Identifier -> MaterializationM Decision
-dLookup u i = get >>= \(t, _, _) -> fromMaybe defaultDecision (I.lookup u t >>= M.lookup i)
+dLookup :: Int -> Identifier -> MaterializationM Decision
+dLookup u i = get >>= \(t, _, _) -> return $ fromMaybe defaultDecision (I.lookup u t >>= M.lookup i)
 
-dLookupAll :: UID -> Identifier -> MaterializationM (M.Map Identifier Decision)
-dLookupAll u = get >>= \(t, _, _) -> I.findWithDefault M.empty u t
+dLookupAll :: Int -> MaterializationM (M.Map Identifier Decision)
+dLookupAll u = get >>= \(t, _, _) -> return (I.findWithDefault M.empty u t)
 
 pLookup :: PPtr -> MaterializationM (K3 Provenance)
-pLookup p = get >>= \(_, e, _) -> fromMaybe (error "Dangling provenance pointer") (I.lookup p e)
+pLookup p = get >>= \(_, e, _) -> return (fromMaybe (error "Dangling provenance pointer") (I.lookup p (ppenv e)))
 
 -- A /very/ rough approximation of ReaderT's ~local~ for StateT.
 withLocalDS :: [K3 Expression] -> MaterializationM a -> MaterializationM a
@@ -52,8 +61,8 @@ withLocalDS nds m = do
   put (t', e', ds)
   return r
 
-getUID :: K3 Expression -> UID
-getUID e = let EUID u = fromMaybe (error "No UID on expression.")
+getUID :: K3 Expression -> Int
+getUID e = let EUID (UID u) = fromMaybe (error "No UID on expression.")
                         (e @~ \case { EUID _ -> True; _ -> False }) in u
 
 getProvenance :: K3 Expression -> K3 Provenance
@@ -61,16 +70,19 @@ getProvenance e = let EProvenance p = fromMaybe (error "No provenance on express
                                       (e @~ \case { EProvenance _ -> True; _ -> False}) in p
 
 getEffects :: K3 Expression -> K3 Effect
-getEffects e = let EEffect ff = fromMaybe (error "No effects on expression.")
+getEffects e = let ESEffect f = fromMaybe (error "No effects on expression.")
                                 (e @~ \case { EEffect _ -> True; _ -> False }) in f
 
-setDecision :: UID -> Identifier -> Decision -> MaterializationM ()
-setDecision u i d = modify $ \(t, e, ds) -> (I.insertWith (M.insert i d) u t, e, ds)
+setDecision :: Int -> Identifier -> Decision -> MaterializationM ()
+setDecision u i d = modify $ \(t, e, ds) -> (I.insertWith M.union u (M.singleton i d) t, e, ds)
+
+pmvloc' :: PMatVar -> Int
+pmvloc' pmv = let UID u = pmvloc pmv in u
 
 -- Table Construction/Attachment
 
 runMaterializationM :: MaterializationM a -> MaterializationS -> (a, MaterializationS)
-runMaterializationM = runIdentity . runStateT
+runMaterializationM m s = runIdentity $ runStateT m s
 
 materializationD :: K3 Declaration -> MaterializationM (K3 Declaration)
 materializationD = undefined
@@ -97,7 +109,7 @@ materializationE e
 
              setDecision (getUID e) argIdent decision
 
-             allDecisions <- dLookupAll
+             allDecisions <- dLookupAll (getUID e)
              return $ Node (tag e :@: (EMaterialization allDecisions : annotations e)) [f', x']
 
       _  -> Node (tag e :@: annotations e) <$> mapM materializationE (children e)
@@ -105,7 +117,7 @@ materializationE e
 -- Queries
 
 anyM :: (Functor m, Applicative m, Monad m) => (a -> m Bool) -> [a] -> m Bool
-anyM f xs = or <$> mapM xs
+anyM f xs = or <$> mapM f xs
 
 -- Determine if a piece of provenance 'occurs in' another. The answer can be influenced by 'width
 -- flag', determining whether or not the provenance of superstructure occurs in the provenance of
@@ -115,12 +127,12 @@ occursIn wide b a
   = case a of
 
       -- Everything occurs in itself.
-      _ | a == b = True
+      _ | a == b -> return True
 
       -- Something occurs in a bound variable if it occurs in anything that was used to initialize
       -- that bound variable, and that bound variable was initialized using a non-isolating method.
       (tag -> PBVar mv) -> do
-             decision <- dLookup (pmvloc mv) (pmvn mv)
+             decision <- dLookup (pmvloc' mv) (pmvn mv)
              if inD decision == Referenced || inD decision == ConstReferenced
                then pLookup (pmvptr mv) >>= occursIn wide b
                else return False
@@ -135,7 +147,7 @@ occursIn wide b a
 
       -- TODO: Add more intelligent handling of substructure + PData combinations.
 
-      _ -> False
+      _ -> return False
 
 isReadIn :: K3 Expression -> K3 Expression -> MaterializationM Bool
 isReadIn = undefined
