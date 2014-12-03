@@ -28,7 +28,7 @@ defaultDecision = Decision { inD = Copied, outD = Copied }
 
 type Table = I.Map (M.Map Identifier Decision)
 
-type MaterializationS = (Table, PIEnv)
+type MaterializationS = (Table, PIEnv, [K3 Expression])
 type MaterializationM = StateT MaterializationS Identity
 
 -- Table Construction/Attachment
