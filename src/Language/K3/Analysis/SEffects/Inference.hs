@@ -34,6 +34,7 @@ import Language.K3.Core.Utils
 
 import Language.K3.Analysis.Provenance.Core
 import Language.K3.Analysis.Provenance.Constructors
+import Language.K3.Analysis.Provenance.Inference()
 
 import Language.K3.Analysis.SEffects.Core
 import Language.K3.Analysis.SEffects.Constructors
@@ -422,9 +423,7 @@ filkupepM :: Identifier -> FInfM (K3 Provenance)
 filkupepM n = get >>= liftEitherM . flip filkupep n
 
 fiextepM :: Identifier -> K3 Provenance -> FInfM ()
-fiextepM n f = get >>= \env -> return (debug n "res_val" $ fiextep env n f) >>= put
-  where debug n m r | n == m = trace ("Effects bound provvar " ++ n) r
-        debug _ _ r = r
+fiextepM n f = get >>= \env -> return (fiextep env n f) >>= put
 
 fidelepM :: Identifier -> FInfM ()
 fidelepM n = get >>= \env -> return (fidelep env n) >>= put
@@ -839,9 +838,6 @@ instance Pretty (IntMap (K3 Effect)) where
 instance Pretty (IntMap (K3 Effect, K3 Effect)) where
   prettyLines fp = IntMap.foldlWithKey (\acc k (u,v) -> acc ++ prettyTriple k u v) [] fp
 
-instance Pretty (IntMap (K3 Provenance)) where
-  prettyLines fpp = IntMap.foldlWithKey (\acc k v -> acc ++ prettyPair (k,v)) [] fpp
-
 instance Pretty FEnv where
   prettyLines fe = Map.foldlWithKey (\acc k v -> acc ++ prettyFrame k v) [] fe
     where prettyFrame k v = concatMap prettyPair $ flip zip v $ replicate (length v) k
@@ -851,13 +847,6 @@ instance Pretty FAEnv where
 
 instance Pretty FMEnv where
   prettyLines fm = Map.foldlWithKey (\acc k v -> acc ++ prettyPair (k, fst v)) [] fm
-
-instance Pretty FPBEnv where
-  prettyLines fpbe = Map.foldlWithKey (\acc k v -> acc ++ prettyFrame k v) [] fpbe
-    where prettyFrame k v = concatMap prettyPair $ flip zip v $ replicate (length v) k
-
-instance Pretty FLCEnv where
-  prettyLines flc = IntMap.foldlWithKey (\acc k v -> acc ++ [T.pack $ show k ++ " => " ++ show v]) [] flc
 
 prettyPair :: (Show a, Pretty b) => (a,b) -> [Text]
 prettyPair (a,b) = [T.pack $ show a ++ " => "] %+ PT.prettyLines b

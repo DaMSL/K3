@@ -64,9 +64,6 @@ poption p = sing p $ POption
 plambda :: Identifier -> K3 Provenance -> K3 Provenance
 plambda i p = sing p $ PLambda i
 
-pclosure :: K3 Provenance -> K3 Provenance
-pclosure v = sing v $ PClosure
-
 papply :: Maybe PMatVar -> K3 Provenance -> K3 Provenance -> K3 Provenance -> K3 Provenance
 papply mvOpt f a r = Node (PApply mvOpt :@: []) [f, a, r]
 

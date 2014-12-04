@@ -6,7 +6,18 @@
 {-# LANGUAGE ViewPatterns #-}
 
 -- | Provenance (i.e., dataflow) analysis for K3 programs.
-module Language.K3.Analysis.Provenance.Inference where
+module Language.K3.Analysis.Provenance.Inference (
+  PIEnv(..),
+  PEnv,
+  PAEnv,
+  PMEnv,
+  PPEnv,
+  PLCEnv,
+  EPMap,
+  PInfM,
+
+  inferProgramProvenance
+) where
 
 import Control.Arrow hiding ( left )
 import Control.Monad.State
@@ -302,22 +313,51 @@ pichase pienv cp = aux [] cp
         aux _ p = return p
 
 -- Capture-avoiding substitution of any free variable with the given identifier.
-pisub :: PIEnv -> Identifier -> K3 Provenance -> K3 Provenance -> Either Text (K3 Provenance)
-pisub pienv i dp sp = acyclicSub [] sp
+pisub :: PIEnv -> Identifier -> K3 Provenance -> K3 Provenance -> Either Text (K3 Provenance, PIEnv)
+pisub pienv i dp sp = acyclicSub pienv emptyPtrSubs [] sp >>= \(renv, _, rp) -> return (rp, renv)
   where
-    acyclicSub _ (tag -> PFVar j) | i == j = return dp
+    acyclicSub env subs _ (tag -> PFVar j) | i == j = return (env, subs, dp)
 
-    acyclicSub path p@(tag -> PBVar (pmvptr -> j))
-      | j `elem` path = return p
-      | otherwise     = pilkupp pienv j >>= acyclicSub (j:path)
+    acyclicSub env subs path p@(tag -> PBVar mv@(pmvptr -> j))
+      | j `elem` path   = return (env, subs, p)
+      | isPtrSub subs j = getPtrSub subs j >>= return . (env, subs,)
+      | otherwise       = pilkupp env j >>= subPtrIfDifferent env subs (j:path) mv
 
     -- TODO: we can short-circuit descending into the body if we
     -- are willing to stash the expression uid in a PLambda, using
     -- this uid to lookup i's presence in our precomputed closures.
-    acyclicSub _ p@(tag -> PLambda j) | i == j = return p
+    acyclicSub env subs _ p@(tag -> PLambda j) | i == j = return (env, subs, p)
 
-    acyclicSub path n@(Node _ ch) = mapM (acyclicSub path) ch >>= return . replaceCh n 
+    -- Avoid descent into materialization points of shadowed variables.
+    acyclicSub env subs _ p@(tag -> PMaterialize mvs) | i `elem` map pmvn mvs = return (env, subs, p)
 
+    acyclicSub env subs path n@(Node _ ch) = do
+      (nenv,nsubs,nch) <- foldM (rcr path) (env, subs, []) ch
+      return (nenv, nsubs, replaceCh n nch)
+
+    rcr path (eacc,sacc,chacc) c = acyclicSub eacc sacc path c >>= \(e,s,nc) -> return (e,s,chacc++[nc])
+
+    -- Preserve original pointer p unless any substitution actually occurred.
+    -- We preserve sharing for the original pointer when substituting in deep structures containing PFVar i.
+    -- This is implemented by creating a new pointer environment entry for the substitution, and
+    -- then to track and apply pointer substitutions for PBVars referring to the old entry.
+    -- This method is not tail-recursive.
+    subPtrIfDifferent env subs path mv p = do
+      (nenv, nsubs, np) <- acyclicSub env subs path p
+      if p == np then return (nenv, nsubs, pbvar mv) else addPtrSub nenv nsubs mv np
+
+    -- Pointer substitutions, as a map of old PPtr => new PMatVar
+    emptyPtrSubs   = IntMap.empty
+    isPtrSub  ps j = IntMap.member j ps
+    getPtrSub ps j = maybe (lookupErr j) (return . pbvar) $ IntMap.lookup j ps
+    addPtrSub env ps mv p =
+      let (np, nenv) = pifresh env (pmvn mv) (pmvloc mv) p in 
+      case tag np of
+        PBVar nmv -> return (nenv, IntMap.insert (pmvptr mv) nmv ps, np)
+        _ -> freshErr np
+
+    lookupErr j = Left $ T.pack $ "Could not find pointer substitution for " ++ show j
+    freshErr  p = Left $ PT.boxToString $ [T.pack "Invalid fresh PBVar result "] %$ PT.prettyLines p
 
 {- PInfM helpers -}
 
@@ -356,6 +396,15 @@ piexteM n p = get >>= \env -> return (piexte env n p) >>= put
 pideleM :: Identifier -> PInfM ()
 pideleM n = get >>= \env -> return (pidele env n) >>= put
 
+pilkuppM :: Int -> PInfM (K3 Provenance)
+pilkuppM n = get >>= liftEitherM . flip pilkupp n
+
+piextpM :: Int -> K3 Provenance -> PInfM ()
+piextpM n p = get >>= \env -> return (piextp env n p) >>= put
+
+pidelpM :: Int -> PInfM ()
+pidelpM n = get >>= \env -> return (pidelp env n) >>= put
+
 pilkupaM :: Identifier -> Identifier -> PInfM (K3 Provenance)
 pilkupaM n m = get >>= liftEitherM . (\env -> pilkupa env n m)
 
@@ -381,7 +430,7 @@ pichaseM :: K3 Provenance -> PInfM (K3 Provenance)
 pichaseM p = get >>= liftEitherM . flip pichase p
 
 pisubM :: Identifier -> K3 Provenance -> K3 Provenance -> PInfM (K3 Provenance)
-pisubM i rep p = get >>= liftEitherM . (\env -> pisub env i rep p)
+pisubM i rep p = get >>= liftEitherM . (\env -> pisub env i rep p) >>= \(p',nenv) -> put nenv >> return p'
 
 pilkupcM :: Int -> PInfM [Identifier]
 pilkupcM n = get >>= liftEitherM . flip pilkupc n
@@ -596,21 +645,17 @@ inferProvenance expr = mapIn1RebuildTree topdown sideways infer expr
     rt e p = piextmM e p >> return p
 
     -- | Closure variable management
-    pushClosure ((@~ isEUID) -> Just (EUID (UID i))) = do
-      clv <- pilkupcM i
-      mapM_ (\n -> pilkupeM n >>= \p -> pideleM n >> piexteM n (pclosure p)) clv
-
+    pushClosure ((@~ isEUID) -> Just (EUID u@(UID i))) = pilkupcM i >>= mapM_ (liftClosureVar u)
     pushClosure e = errorM $ PT.boxToString $ [T.pack "Invalid UID on "] %+ PT.prettyLines e
 
-    popClosure ((@~ isEUID) -> Just (EUID (UID i))) = do
-      clv <- pilkupcM i
-      mapM_ (\n -> pilkupeM n >>= \p -> pideleM n >> unwrapClosure p >>= piexteM n) clv
-
+    popClosure ((@~ isEUID) -> Just (EUID (UID i))) = pilkupcM i >>= mapM_ lowerClosureVar
     popClosure e = errorM $ PT.boxToString $ [T.pack "Invalid UID on "] %+ PT.prettyLines e
 
-    unwrapClosure (tnc -> (PClosure, [p])) = return p
-    unwrapClosure p = errorM $ PT.boxToString $ [T.pack "Invalid closure variable "] %+ PT.prettyLines p
+    liftClosureVar  u n = pilkupeM n >>= \p -> pideleM n >> freshM n u p
+    lowerClosureVar   n = pilkupeM n >>= \p -> pideleM n >> unwrapClosure p >>= piexteM n
 
+    unwrapClosure (tag -> PBVar mv) = pilkuppM (pmvptr mv)
+    unwrapClosure p = errorM $ PT.boxToString $ [T.pack "Invalid closure variable "] %+ PT.prettyLines p
 
     chaseApply _  p@(tag -> PLambda _) = return [p]
     chaseApply path p@(tag -> PBVar (pmvptr -> i))
@@ -619,7 +664,6 @@ inferProvenance expr = mapIn1RebuildTree topdown sideways infer expr
 
     chaseApply path (tnc -> (PApply _, [_,_,r]))   = chaseApply path r
     chaseApply path (tnc -> (PMaterialize _, [r])) = chaseApply path r
-    chaseApply path (tnc -> (PClosure, [r]))       = chaseApply path r
     chaseApply path (tnc -> (PProject _, [_,r]))   = chaseApply path r
     chaseApply path (tnc -> (PGlobal _, [r]))      = chaseApply path r
     chaseApply path (tnc -> (PChoice, r:_))        = chaseApply path r -- TODO: for now we use the first choice.
