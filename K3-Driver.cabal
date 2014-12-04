@@ -26,6 +26,7 @@ executable k3
         readline,
         shake,
         split,
+        text,
         transformers,
         ansi-wl-pprint,
 

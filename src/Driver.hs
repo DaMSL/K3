@@ -18,6 +18,9 @@ import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
+import qualified Data.Text                    as T
+import qualified Language.K3.Utils.PrettyText as PT
+
 import Language.K3.Metaprogram.DataTypes
 import Language.K3.Metaprogram.Evaluation
 
@@ -148,19 +151,19 @@ run opts = do
     analyzer EffectNormalization x         = first Normalization.normalizeProgram x
     analyzer FoldConstants x               = wrapEither Simplification.foldProgramConstants x
     
-    analyzer Provenance x = flip wrapEither x $ \p -> do
-      (np,_) <- Provenance.inferProgramProvenance p
-      return np
+    analyzer Provenance x = flip wrapEitherS x $ \p str -> do
+      (np, ppenv) <- Provenance.inferProgramProvenance p
+      return $ (np, str ++ (T.unpack $ PT.pretty ppenv))
     
     analyzer SEffects x = flip wrapEither x $ \p -> do
       (np, ppenv) <- Provenance.inferProgramProvenance p
       SEffects.inferProgramEffects ppenv np
 
-    analyzer Effects (p,s) = let (np,fenv) = Effects.runConsolidatedAnalysis p
-                             in (Effects.expandProgram fenv np, s)
+    analyzer Effects x = flip first x $
+      (uncurry Effects.expandProgram . swap . Effects.runConsolidatedAnalysis)
 
-    analyzer DeadCodeElimination x  =
-      wrapEither (uncurry Simplification.eliminateDeadProgramCode . swap . Effects.runConsolidatedAnalysis) x
+    analyzer DeadCodeElimination x  = flip wrapEither x $
+      (uncurry Simplification.eliminateDeadProgramCode . swap . Effects.runConsolidatedAnalysis)
 
     analyzer Profiling x      = first (cleanGeneration "profiling" . Profiling.addProfiling) x
     analyzer Purity x         = first ((\(d,e) -> Pure.runPurity e d) . Effects.runConsolidatedAnalysis) x
@@ -181,6 +184,10 @@ run opts = do
     wrapEither f (p, str) = case f p of
       Left s   -> (p, str++s)
       Right p' -> (p', str)
+
+    wrapEitherS f (p, str) = case f p str of
+      Left s          -> (p, str++s)
+      Right (p',str') -> (p', str')
 
     parseError  s = putStrLn $ "Could not parse input: " ++ s
     spliceError s = putStrLn $ "Could not process metaprogram: " ++ s
