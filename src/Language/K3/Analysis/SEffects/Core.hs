@@ -51,6 +51,14 @@ isFDeclared _ = False
 
 
 instance Pretty (K3 Effect) where
+  prettyLines (Node (FRead  p :@: as) _) = 
+    let (aStr, chAStr) = drawFAnnotations as 
+    in ["FRead " ++ aStr] %+ prettyLines p ++ shift "`- " "   " chAStr
+
+  prettyLines (Node (FWrite p :@: as) _) =
+    let (aStr, chAStr) = drawFAnnotations as 
+    in ["FWrite " ++ aStr] %+ prettyLines p ++ shift "`- " "   " chAStr
+
   prettyLines (Node (tg :@: as) ch) =
     let (aStr, chAStr) = drawFAnnotations as
     in [show tg ++ aStr]
@@ -69,6 +77,16 @@ drawFAnnotations as =
 
 
 instance PT.Pretty (K3 Effect) where
+  prettyLines (Node (FRead  p :@: as) _) = 
+    let (aTxt, chATxt) = drawFAnnotationsT as
+    in [T.append (T.pack "FRead ") aTxt] PT.%+ PT.prettyLines p
+       ++ (PT.shift (T.pack "`- ") (T.pack "   ") chATxt)
+
+  prettyLines (Node (FWrite p :@: as) _) =
+    let (aTxt, chATxt) = drawFAnnotationsT as
+    in [T.append (T.pack "FWrite ") aTxt] PT.%+ PT.prettyLines p
+       ++ (PT.shift (T.pack "`- ") (T.pack "   ") chATxt)
+
   prettyLines (Node (tg :@: as) ch) =
     let (aTxt, chATxt) = drawFAnnotationsT as
     in [T.append (T.pack $ show tg) aTxt]

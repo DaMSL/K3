@@ -266,6 +266,9 @@ fiextm :: FIEnv -> K3 Expression -> K3 Effect -> K3 Effect -> Either Text FIEnv
 fiextm env e f s = let efmapE = efext (efmap env) e f s
                    in either Left (\nep -> Right $ env {efmap=nep}) efmapE
 
+filkuppp :: FIEnv -> Int -> Either Text (K3 Provenance)
+filkuppp env x = fpplkup (fppenv env) x
+
 filkupc :: FIEnv -> Int -> Either Text [Identifier]
 filkupc env i = flclkup (flcenv env) i
 
@@ -452,6 +455,9 @@ fisubM i ref f = get >>= liftEitherM . (\env -> fisub env i ref f)
 
 fmapProvM :: (K3 Provenance -> Either Text (K3 Provenance)) -> K3 Effect -> FInfM (K3 Effect)
 fmapProvM provF f = liftEitherM $ fmapProv provF f
+
+filkupppM :: Int -> FInfM (K3 Provenance)
+filkupppM n = get >>= liftEitherM . flip filkuppp n
 
 filkupcM :: Int -> FInfM [Identifier]
 filkupcM n = get >>= liftEitherM . flip filkupc n
@@ -655,11 +661,11 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
 
     infer m [initef,bef] [_,rf] e@(tag -> EBindAs b) = m >> do
       fmvs <- mapM filkupeM (bindingVariables b) >>= mapM fmv
-      pmvs <- mapM filkupepM (bindingVariables b) >>= mapM pmv
+      ps   <- mapM filkupepM (bindingVariables b) >>= mapM pmv >>= mapM (filkupppM . pmvptr)
       mapM_ popVars (bindingVariables b)
       rt e (Just fnone, fscope fmvs (fromJust $ finit [initef])
                                     (fromJust $ finit [bef])
-                                    (fseq $ map (fwrite . pbvar) pmvs)
+                                    (fseq $ map fwrite ps)
                                     rf)
 
     infer m [oef,sef,nef] [_,snf,rnf] e@(tag -> ECaseOf _) = m >> do

@@ -225,12 +225,13 @@ instance Pretty AnnMemDecl where
 
 drawDeclAnnotations :: [Annotation Declaration] -> (String, [String])
 drawDeclAnnotations as =
-  let (symAnns, anns) = partition isDSymbol as
-      prettyDeclAnns  = concatMap drawDSymbolAnnotation symAnns
+  let (prettyAnns, anns) = partition (\a -> isDSymbol a || isDProvenance a) as
+      prettyDeclAnns     = concatMap drawDAnnotation prettyAnns
   in (drawAnnotations anns, prettyDeclAnns)
 
-  where drawDSymbolAnnotation (DSymbol s) = ["DSymbol "] %+ prettyLines s
-        drawDSymbolAnnotation _ = error "Invalid symbol annotation"
+  where drawDAnnotation (DSymbol s)     = ["DSymbol "]     %+ prettyLines s
+        drawDAnnotation (DProvenance p) = ["DProvenance "] %+ prettyLines p
+        drawDAnnotation _ = error "Invalid symbol annotation"
 
 {- PrettyText instance -}
 tPipe :: Text
@@ -308,9 +309,10 @@ instance PT.Pretty AnnMemDecl where
 
 drawDeclAnnotationsT :: [Annotation Declaration] -> (Text, [Text])
 drawDeclAnnotationsT as =
-  let (symAnns, anns) = partition isDSymbol as
-      prettyDeclAnns  = concatMap drawDSymbolAnnotationT symAnns
+  let (prettyAnns, anns) = partition (\a -> isDSymbol a || isDProvenance a) as
+      prettyDeclAnns  = concatMap drawDAnnotationT prettyAnns
   in (PT.drawAnnotations anns, prettyDeclAnns)
 
-  where drawDSymbolAnnotationT (DSymbol s) = map T.pack $ ["DSymbol "] %+ prettyLines s
-        drawDSymbolAnnotationT _ = error "Invalid symbol annotation"
+  where drawDAnnotationT (DSymbol s)     = map T.pack $ ["DSymbol "] %+ prettyLines s
+        drawDAnnotationT (DProvenance p) = [T.pack "DProvenance "] PT.%+ PT.prettyLines p
+        drawDAnnotationT _               = error "Invalid symbol annotation"

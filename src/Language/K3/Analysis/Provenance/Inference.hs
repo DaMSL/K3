@@ -452,8 +452,8 @@ inferProgramProvenance p = do
       return $ Just (mn,u,mp,lifted)
 
     markGlobals = mapProgram markGlobal return return Nothing
-    markGlobal d@(tag -> DGlobal  n _ eOpt) = maybe (pilkupeM n) provOf eOpt >>= \p' -> return (d @+ (DProvenance p'))
-    markGlobal d@(tag -> DTrigger _ _ e)    = provOf e >>= \p' -> return (d @+ (DProvenance p'))
+    markGlobal d@(tag -> DGlobal  n _ eOpt) = maybe (pilkupeM n) (globalProvOf n) eOpt >>= \p' -> return (d @+ (DProvenance p'))
+    markGlobal d@(tag -> DTrigger n _ e)    = globalProvOf n e >>= \p' -> return (d @+ (DProvenance p'))
     
     markGlobal d@(tag -> DDataAnnotation n tvars mems) =
       mapM (markMems n) mems >>= \nmems -> return (replaceTag d $ DDataAnnotation n tvars nmems)
@@ -473,8 +473,9 @@ inferProgramProvenance p = do
     uidOf  n = maybe (uidErr n) (\case {(DUID u) -> return u ; _ ->  uidErr n}) $ n @~ isDUID
     uidErr n = errorM $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines n
 
-    provOf  n = maybe (provErr n) (\case {(EProvenance p') -> return p'; _ ->  provErr n}) $ n @~ isEProvenance
-    provErr n = errorM $ PT.boxToString $ [T.pack "No provenance found on "] %+ PT.prettyLines n
+    globalProvOf n e = provOf e >>= return . pglobal n
+    provOf  e = maybe (provErr e) (\case {(EProvenance p') -> return p'; _ ->  provErr e}) $ e @~ isEProvenance
+    provErr e = errorM $ PT.boxToString $ [T.pack "No provenance found on "] %+ PT.prettyLines e
 
     memUID memDecl as = case filter isDUID as of
                           [DUID u] -> return u
