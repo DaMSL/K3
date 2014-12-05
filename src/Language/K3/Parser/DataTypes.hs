@@ -148,7 +148,7 @@ k3Keywords = [
     "control", "label", "expr", "decl", "literal", "labeltype", "shared",
 
     {- Effect signature keywords -}
-    "with", "symbol", "effects", "return", "fresh",
+    "with", "symbol", "effects", "return", "fresh", "none",
 
     {- Syntactic sugar keywords -}
     "typedef"

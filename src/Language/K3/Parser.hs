@@ -66,8 +66,10 @@ import Language.K3.Parser.Operator
 import Language.K3.Parser.ProgramBuilder
 import Language.K3.Parser.Preprocessor
 
-import qualified Language.K3.Analysis.Effects.Core         as F
-import qualified Language.K3.Analysis.Effects.Constructors as FC
+import qualified Language.K3.Analysis.Provenance.Core         as P
+import qualified Language.K3.Analysis.Provenance.Constructors as PC
+import qualified Language.K3.Analysis.SEffects.Core           as FS
+import qualified Language.K3.Analysis.SEffects.Constructors   as FSC
 
 import qualified Language.K3.Utils.Pretty.Syntax as S
 
@@ -182,7 +184,7 @@ dGlobal = namedDecl "state" "declare" $ rule . (mkGlobal <$>)
       let glob = DC.global n qte (propagateQualifier qte eOpt) in
       case (eOpt, eSigOpt) of
         (Just _, Just _) -> glob
-        (_, _) -> maybe glob (foldl (@+) glob. ($ n)) $ eSigOpt
+        (_, _) -> maybe glob (foldl (@+) glob) $ eSigOpt
 
 dTrigger :: DeclParser
 dTrigger = namedDecl "trigger" "trigger" $ rule . (DC.trigger <$>)
@@ -255,11 +257,11 @@ annotationMember = memberError $ mkMember <$> annotatedRule
     subAnnotation     = mkSub <$> (keyword "annotation" *> identifier)
 
     mkMember ((((p, Left (Just _,  n, qte, eOpt, uid), eSigOpt), props), spn), cmts) =
-      attachMemAnnots uid spn cmts (maybe [] id props) (effectAnnot n eSigOpt eOpt)
+      attachMemAnnots uid spn cmts (maybe [] id props) (effectAnnot eSigOpt eOpt)
         $ Lifted p n qte (propagateQualifier qte eOpt)
 
     mkMember ((((p, Left (Nothing, n, qte, eOpt, uid), eSigOpt), props), spn), cmts) =
-      attachMemAnnots uid spn cmts (maybe [] id props) (effectAnnot n eSigOpt eOpt)
+      attachMemAnnots uid spn cmts (maybe [] id props) (effectAnnot eSigOpt eOpt)
         $ Attribute p n qte (propagateQualifier qte eOpt)
 
     mkMember ((((p, Right (n, uid), _), props), spn), cmts) =
@@ -275,8 +277,8 @@ annotationMember = memberError $ mkMember <$> annotatedRule
 
     memberError = parseError "annotation" "member"
 
-    effectAnnot _ (Just _) (Just _) = []
-    effectAnnot n eSigOpt _ = maybe [] ($ n) eSigOpt
+    effectAnnot (Just _) (Just _) = []
+    effectAnnot eSigOpt _ = maybe [] id eSigOpt
 
 polarity :: K3Parser Polarity
 polarity = choice [keyword "provides" >> return Provides,
@@ -863,81 +865,77 @@ contextualizedSpliceParameter sEnvOpt = choice [try fromContext, spliceParameter
 
 
 {- Effect signatures -}
-effectSignature :: Bool -> K3Parser (Identifier -> [Annotation Declaration])
+effectSignature :: Bool -> K3Parser [Annotation Declaration]
 effectSignature asAttrMem = mkSigAnn =<< (keyword "with" *> keyword "effects" *> effSig)
   where
-    effSig    = (,) <$> (sepBy1 (effLambda asAttrMem) $ symbol "|") <*> optional returnSig
-    returnSig = keyword "return" *> effReturn
+    effSig    = (,) <$> effTerm asAttrMem <*> optional returnSig
+    returnSig = keyword "return" *> provTerm
+    mkSigAnn (f, rOpt) = return $ [DEffect $ Left f] ++ maybe [] (\p -> [DProvenance $ Left p]) rOpt
 
-    mkSigAnn (s, rOpt)       = mkTopLevelSym (s, rOpt) >>= \f -> return (\n -> [DSymbol $ f n])
-    mkTopLevelSym (ss, rOpt) = do
-      nss <- maybe (return ss) (\ret -> mapM (attachReturn ret) ss) rOpt
-      return $ \n -> replaceCh (FC.symbol n F.PChoice False False False) nss
+effTerm :: Bool -> K3Parser (K3 FS.Effect)
+effTerm asAttrMem = effApply fTerm <?> "effect term"
+  where 
+    fTerm     = choice (map try [effExec, effStruc, fNest])
+    fNest     = parens $ effTerm asAttrMem
+    fTermE    = choice $ map try [effExec >>= return . Left, effStruc >>= return . Right, fNestE]
+    fNestE    = parens fTermE
+    
+    effApply p = foldl1 FSC.fapplyExt <$> some (try p)
+    effExec    = choice $ map try [effRead, effWrite, effSeq, effLoop]
+    effStruc   = choice $ map try [effNone, effVar, effLambda]
 
-effLambda :: Bool -> K3Parser (K3 F.Symbol)
-effLambda asAttrMem = mkLambda <$> readLambda <*> choice [ Left <$> try (effLambda asAttrMem)
-                                                         , Right <$> try (effTerm asAttrMem) ]
-  where readLambda = choice [iArrow "fun", iArrowS "\\"]
-        mkLambda :: String -> Either (K3 F.Symbol) [K3 F.Effect] -> K3 F.Symbol
-        mkLambda i (Left s)  = FC.lambda i (mkScope i []) $ Just s
-        mkLambda i (Right e) = FC.lambda i (mkScope i e) Nothing
-        mkScope i ch = FC.scope [FC.symbol i F.PVar False True False] $ termAsSeq ch
-        termAsSeq []  = []
-        termAsSeq [x] = [x]
-        termAsSeq xs  = [FC.seq xs]
+    effRead   = FSC.fseq . map FSC.fread  <$> varList "R" provTerm
+    effWrite  = FSC.fseq . map FSC.fwrite <$> varList "W" provTerm
+    effSeq    = FSC.fseq <$> brackets (semiSep1 $ effTerm asAttrMem)
+    effLoop   = FSC.floop <$> (parens $ effTerm asAttrMem) <* symbol "*"
 
-effTerm :: Bool -> K3Parser [K3 F.Effect]
-effTerm asAttrMem = choice (map try [effRead, effWrite, effApply, effSeq, effLoop]) <?> "effect term"
-  where effRead   = map FC.read  <$> varList "R" effSymbol
-        effWrite  = map FC.write <$> varList "W" effSymbol
-        effApply  = (\a b -> [FC.apply a b]) <$> effSymbol <*> effSymbol
-        effSeq    = (:[]) . FC.seq . concat <$> brackets (semiSep1 $ effTerm asAttrMem)
-        effLoop   = (\eff -> [FC.loop $ termAsSeq eff]) <$> (parens $ effTerm asAttrMem) <* symbol "*"
+    effNone   = const FSC.fnone <$> keyword "none" 
+    effLambda = mkLambda <$> choice [iArrow "fun", iArrowS "\\"] <*> lambdaBody
+    effVar    = FSC.ffvar <$> (identifier <|> (keyword "self"    >> return "self")
+                                          <|> (keyword "content" >> return "content"))
+                          <?> "effect symbol"
 
-        effSymbol = (mkVar <$> (identifier <|> (keyword "self"    >> return "self")
-                                           <|> (keyword "content" >> return "content")))
-                        <?> "effect symbol"
-        mkVar i = let copyFlag = if i == "self" then False else True
-                  in FC.symbol i F.PVar False copyFlag False
-        termAsSeq t = if length t == 1 then head t else FC.seq t
-        varList pfx parser = string pfx *> brackets (commaSep1 parser)
+    lambdaBody   = choice $ map try [lamApp fTermE, fTermE]
+    lamApp     p = mkLamApp =<< some (try p)
+    mkLamApp []  = P.parserFail "Invalid provenance lambda body"
+    mkLamApp [p] = return p
+    mkLamApp l   = return $ Right $ foldl1 FSC.fapplyExt $ map (either id id) l
 
-effReturn :: K3Parser (K3 F.Symbol)
-effReturn = choice [rRet, rDerived]
+    mkLambda i (Left  ef) = FSC.flambda i FSC.fnone ef FSC.fnone
+    mkLambda i (Right rf) = FSC.flambda i FSC.fnone FSC.fnone rf
+
+    varList pfx parser = string pfx *> brackets (commaSep1 parser)
+
+provTerm :: K3Parser (K3 P.Provenance)
+provTerm =  pApply pTerm <?> "provenance term"
   where
-    rRet  = choice [rVar, rPrj, rRec, rTup, rInd]
-    rVar  = (mkVar =<< (identifier <|> (keyword "self"    >> return "self")
+    pTerm    = mkTerm <$> choice [pVar, pInd, pDerived, pLambda, pNest] <*> optional pSuffix
+    pNest    = parens provTerm
+    pSuffix  = choice [pPrj, pRec, pTup]
+    pApply p = foldl1 PC.papplyExt <$> some (try p)
+
+    pVar  = (mkVar =<< (identifier <|> (keyword "self"    >> return "self")
                                    <|> (keyword "content" >> return "content")
                                    <|> (keyword "fresh"   >> return "fresh")))
               <?> "return symbol"
-    rPrj  = mkPrj <$> rRet <*> (dot        *> identifier)
-    rRec  = mkRec <$> rRet <*> (colon      *> identifier)
-    rTup  = mkTup <$> rRet <*> (symbol "#" *> integer)
-    rInd  = mkInd <$> (symbol "!" *> rRet)
-    rDerived = mkDerived <$> (symbol "~" *> choice [rRet >>= return . (:[]), commaSep1 rRet])
 
-    mkDerived s = replaceCh (FC.symbol "return" F.PDerived False True False) s
+    pInd = mkInd <$> (symbol "!" *> provTerm)
+    pDerived = PC.pderived <$> (symbol "~" *> choice [provTerm >>= return . (:[]), parens (commaSep1 provTerm)])
+    pLambda  = PC.plambda <$> choice [iArrow "fun", iArrowS "\\"] <*> provTerm
 
-    mkVar "fresh" = withEffectID (\eid -> FC.symbol ("fresh"++ show eid) F.PTemporary False True False)
-    mkVar       i = return $ FC.symbol i F.PVar False True False
+    pPrj = flip mkPrj <$> (dot        *> identifier)
+    pRec = flip mkRec <$> (colon      *> identifier)
+    pTup = flip mkTup <$> (symbol "#" *> integer)
 
-    mkPrj   s n = mkSym ("prj_" ++ n)      (F.PProject n) [s]
-    mkRec   s n = mkSym ("rec_" ++ n)      (F.PRecord  n) [s]
-    mkTup   s i = mkSym ("tup_" ++ show i) (F.PTuple   i) [s]
-    mkInd     s = mkSym "ind" F.PIndirection [s]
-    mkSym i e c = replaceCh (FC.symbol i e False True False) c
+    mkTerm p psfxOpt = maybe p ($ p) psfxOpt
 
-pattern PLambdaSym eff ch <-
-  Node ((F.Symbol _ (F.PLambda (tag -> F.FScope [(tag -> F.Symbol _ eff _ _ _ _)])) _ _ _ _) :@: _) ch
+    mkVar "fresh" = withEffectID $ \eid -> PC.pfvar ("fresh"++ show eid)
+    mkVar       i = return $ PC.pfvar i
 
-attachReturn :: K3 F.Symbol -> K3 F.Symbol -> K3Parser (K3 F.Symbol)
-attachReturn ret sym = rcrLambda sym
-  where rcrLambda s@(PLambdaSym F.PVar []) = return $ replaceCh s [ret]
-        rcrLambda s@(PLambdaSym (F.PLambda _) [lam]) = do
-          nch <- rcrLambda lam
-          return $ replaceCh s [nch]
-
-        rcrLambda _ = P.parserFail "Invalid effect signature lambda while attaching return symbol"
+    mkPrj    p n = PC.pproject n p Nothing
+    mkRec    p n = PC.precord n p
+    mkTup    p n = PC.ptuple (fromInteger n) p
+    mkInd      p = PC.pindirect p
 
 
 {- Identifiers and their list forms -}
