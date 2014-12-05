@@ -20,7 +20,8 @@ module Language.K3.Core.Declaration (
     isDProperty,
     isDSyntax,
     isDSymbol,
-    isDProvenance
+    isDProvenance,
+    isDEffect
 ) where
 
 import Data.List
@@ -35,6 +36,7 @@ import Language.K3.Core.Literal
 import Language.K3.Core.Type
 
 import Language.K3.Analysis.Provenance.Core
+import qualified Language.K3.Analysis.SEffects.Core as S
 import Language.K3.Analysis.Effects.Core hiding ( Provenance )
 
 import Language.K3.Utils.Pretty
@@ -98,7 +100,10 @@ data instance Annotation Declaration
     | DSyntax     SyntaxAnnotation
     | DConflict   UnorderedConflict  -- TODO: organize into categories.
     | DSymbol     (K3 Symbol)
-    | DProvenance (K3 Provenance)
+
+    -- Provenance and effects may be user-defined (lefts) or inferred (rights)
+    | DProvenance (Either (K3 Provenance) (K3 Provenance))
+    | DEffect     (Either (K3 S.Effect) (K3 S.Effect))
   deriving (Eq, Ord, Read, Show)
 
 -- | Unordered Data Conflicts (between triggers)
@@ -133,6 +138,10 @@ isDSymbol _           = False
 isDProvenance :: Annotation Declaration -> Bool
 isDProvenance (DProvenance _) = True
 isDProvenance _               = False
+
+isDEffect :: Annotation Declaration -> Bool
+isDEffect (DEffect _) = True
+isDEffect _           = False
 
 {- Utils -}
 -- Given top level role declaration, return list of all trigger ids in the AST
@@ -225,12 +234,14 @@ instance Pretty AnnMemDecl where
 
 drawDeclAnnotations :: [Annotation Declaration] -> (String, [String])
 drawDeclAnnotations as =
-  let (prettyAnns, anns) = partition (\a -> isDSymbol a || isDProvenance a) as
-      prettyDeclAnns     = concatMap drawDAnnotation prettyAnns
+  let (prettyAnns, anns) = partition (\a -> isDSymbol a || isDProvenance a || isDEffect a) as
+      prettyDeclAnns     = concatMap (shift " "   "|  " . drawDAnnotation) (init prettyAnns) ++ ["|"]
+                                  ++ (shift "`- " "   " $ drawDAnnotation $ last prettyAnns)
   in (drawAnnotations anns, prettyDeclAnns)
 
   where drawDAnnotation (DSymbol s)     = ["DSymbol "]     %+ prettyLines s
-        drawDAnnotation (DProvenance p) = ["DProvenance "] %+ prettyLines p
+        drawDAnnotation (DProvenance p) = ["DProvenance "] %+ either prettyLines prettyLines p
+        drawDAnnotation (DEffect e)     = ["DEffect "]     %+ either prettyLines prettyLines e
         drawDAnnotation _ = error "Invalid symbol annotation"
 
 {- PrettyText instance -}
@@ -239,6 +250,9 @@ tPipe = T.pack "|"
 
 aPipe :: [Text] -> [Text]
 aPipe t = t ++ [tPipe]
+
+tShift :: [Text] -> [Text]
+tShift = PT.shift (T.pack "`- ") (T.pack "   ")
 
 ntShift :: [Text] -> [Text]
 ntShift = PT.shift (T.pack "+- ") (T.pack "|  ")
@@ -309,10 +323,12 @@ instance PT.Pretty AnnMemDecl where
 
 drawDeclAnnotationsT :: [Annotation Declaration] -> (Text, [Text])
 drawDeclAnnotationsT as =
-  let (prettyAnns, anns) = partition (\a -> isDSymbol a || isDProvenance a) as
-      prettyDeclAnns  = concatMap drawDAnnotationT prettyAnns
+  let (prettyAnns, anns) = partition (\a -> isDSymbol a || isDProvenance a || isDEffect a) as
+      prettyDeclAnns  = aPipe (concatMap (ntShift . drawDAnnotationT) (init prettyAnns))
+                                      ++ (tShift  $ drawDAnnotationT $ last prettyAnns)
   in (PT.drawAnnotations anns, prettyDeclAnns)
 
   where drawDAnnotationT (DSymbol s)     = map T.pack $ ["DSymbol "] %+ prettyLines s
-        drawDAnnotationT (DProvenance p) = [T.pack "DProvenance "] PT.%+ PT.prettyLines p
+        drawDAnnotationT (DProvenance p) = [T.pack "DProvenance "] PT.%+ either PT.prettyLines PT.prettyLines p
+        drawDAnnotationT (DEffect e)     = [T.pack "DEffect "]     PT.%+ either PT.prettyLines PT.prettyLines e
         drawDAnnotationT _               = error "Invalid symbol annotation"
