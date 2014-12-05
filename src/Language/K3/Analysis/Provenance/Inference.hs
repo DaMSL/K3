@@ -185,11 +185,13 @@ pienv0 :: PLCEnv -> PIEnv
 pienv0 lcenv = PIEnv 0 ppenv0 penv0 paenv0 lcenv epmap0 []
 
 -- | Modifiers.
+{-
 mpiee :: (PEnv -> PEnv) -> PIEnv -> PIEnv
 mpiee f env = env {penv = f $ penv env}
 
 mpiep :: (PPEnv -> PPEnv) -> PIEnv -> PIEnv
 mpiep f env = env {ppenv = f $ ppenv env}
+-}
 
 pilkupe :: PIEnv -> Identifier -> Either Text (K3 Provenance)
 pilkupe env x = plkup (penv env) x
@@ -206,8 +208,10 @@ pilkupp env x = pplkup (ppenv env) x
 piextp :: PIEnv -> Int -> K3 Provenance -> PIEnv
 piextp env x p = env {ppenv=ppext (ppenv env) x p}
 
+{-
 pidelp :: PIEnv -> Int -> PIEnv
 pidelp env i = env {ppenv=ppdel (ppenv env) i}
+-}
 
 pilkupa :: PIEnv -> Identifier -> Identifier -> Either Text (K3 Provenance)
 pilkupa env x y = palkup (paenv env) x y
@@ -274,6 +278,7 @@ pifreshAs pienv n memN =
 
 {- Provenance pointer helpers -}
 
+{-
 -- | Retrieves the provenance value referenced by a named pointer
 piload :: PIEnv -> Identifier -> Either Text (K3 Provenance)
 piload pienv n = do
@@ -281,6 +286,7 @@ piload pienv n = do
   case tag p of
     PBVar mv -> pilkupp pienv $ pmvptr mv
     _ -> Left $ PT.boxToString $ [T.pack "Invalid load on pointer"] %$ PT.prettyLines p
+-}
 
 -- | Sets the provenance value referenced by a named pointer
 pistore :: PIEnv -> Identifier -> UID -> K3 Provenance -> Either Text PIEnv
@@ -331,6 +337,14 @@ pisub pienv i dp sp = acyclicSub pienv emptyPtrSubs [] sp >>= \(renv, _, rp) -> 
     -- Avoid descent into materialization points of shadowed variables.
     acyclicSub env subs _ p@(tag -> PMaterialize mvs) | i `elem` map pmvn mvs = return (env, subs, p)
 
+    -- Handle higher-order function application (two-place PApply nodes) where a PFVar
+    -- in the lambda position is replaced by a PLambda
+    acyclicSub env subs path p@(tnc -> (PApply Nothing, [lp@(tag -> PFVar _), argp])) = do
+      (nenv,nsubs,nch) <- foldM (rcr path) (env, subs, []) [lp, argp]
+      case nch of
+        [lp',argp'] -> simplifyApply nenv Nothing lp' argp' >>= \(p',nenv') -> return (nenv', nsubs, p')
+        _ -> appSubErr p
+
     acyclicSub env subs path n@(Node _ ch) = do
       (nenv,nsubs,nch) <- foldM (rcr path) (env, subs, []) ch
       return (nenv, nsubs, replaceCh n nch)
@@ -358,6 +372,84 @@ pisub pienv i dp sp = acyclicSub pienv emptyPtrSubs [] sp >>= \(renv, _, rp) -> 
 
     lookupErr j = Left $ T.pack $ "Could not find pointer substitution for " ++ show j
     freshErr  p = Left $ PT.boxToString $ [T.pack "Invalid fresh PBVar result "] %$ PT.prettyLines p
+    appSubErr p = Left $ PT.boxToString $ [T.pack "Invalid apply substitution at: "] %$ PT.prettyLines p
+
+
+{- Apply simplification -}
+
+chaseLambda :: PIEnv -> [PPtr] -> K3 Provenance -> Either Text [K3 Provenance]
+chaseLambda _ _ p@(tag -> PLambda _) = return [p]
+chaseLambda _ _ p@(tag -> PFVar _)   = return [p]
+
+chaseLambda env path p@(tag -> PBVar (pmvptr -> i))
+  | i `elem` path = return [p]
+  | otherwise     = pichase env p >>= chaseLambda env (i:path)
+
+chaseLambda env path (tnc -> (PApply _, [_,_,r]))   = chaseLambda env path r
+chaseLambda env path (tnc -> (PMaterialize _, [r])) = chaseLambda env path r
+chaseLambda env path (tnc -> (PProject _, [_,r]))   = chaseLambda env path r
+chaseLambda env path (tnc -> (PGlobal _, [r]))      = chaseLambda env path r
+chaseLambda env path (tnc -> (PChoice, r:_))        = chaseLambda env path r -- TODO: for now we use the first choice.
+chaseLambda env path (tnc -> (PSet, rl))            = mapM (chaseLambda env path) rl >>= return . concat
+chaseLambda _ _ p = Left $ PT.boxToString $ [T.pack "Invalid application or lambda: "] %$ PT.prettyLines p
+
+chaseAppArg :: K3 Provenance -> Either Text (K3 Provenance)
+chaseAppArg (tnc -> (PApply _, [_,_,r])) = chaseAppArg r
+chaseAppArg p = return p
+
+simplifyApply :: PIEnv -> Maybe (K3 Expression) -> K3 Provenance -> K3 Provenance -> Either Text (K3 Provenance, PIEnv)
+simplifyApply pienv eOpt lp argp = do
+  uOpt   <- maybe (return Nothing) (\e -> uidOf e >>= return . Just) eOpt
+  argp'  <- chaseAppArg argp
+  manyLp <- chaseLambda pienv [] lp
+  (manyLp', nenv) <- foldM (doSimplify uOpt argp') ([], pienv) manyLp
+  case manyLp' of
+    []  -> appLambdaErr lp
+    [p] -> return (p, nenv)
+    _   -> return (pset manyLp', nenv)
+
+  where
+    doSimplify uOpt argp' (chacc, eacc) lp' =
+      case tnc lp' of
+        (PLambda i, [bp]) ->
+          case uOpt of
+            Just uid -> do
+              let (ip, neacc) = pifreshbp eacc i uid argp'
+              imv <- pmv ip
+              (rp, reacc) <- pisub neacc i ip bp
+              return (chacc ++ [papply (Just imv) lp argp rp], reacc)
+
+            Nothing -> do
+              (rp, reacc) <- pisub eacc i argp' bp
+              return (chacc ++ [papply Nothing lp argp rp], reacc)
+
+        -- Handle recursive functions, and forward declarations
+        -- by using an opaque return value.
+        (PBVar _, _) -> return (chacc ++ [papply Nothing lp argp ptemp], eacc)
+
+        -- Handle higher-order and external functions as an unsimplified apply.
+        (PFVar _, _) -> return (chacc ++ [papplyExt lp argp], eacc)
+
+        _ -> appLambdaErr lp'
+
+    uidOf  e = maybe (uidErr e) (\case {(EUID u) -> return u ; _ ->  uidErr e}) $ e @~ isEUID
+    uidErr e = Left $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines e
+
+    pmv (tag -> PBVar mv) = return mv
+    pmv p = Left $ PT.boxToString $ [T.pack "Invalid provenance bound var: "] %$ PT.prettyLines p
+
+    exprErr = flip (maybe []) eOpt $ \e -> PT.prettyLines e
+    appLambdaErr p = Left $ PT.boxToString $ [T.pack "Invalid function provenance on:"]
+                          %$ exprErr %$ [T.pack "Provenance:"] %$ PT.prettyLines p
+
+
+simplifyApplyM :: Maybe (K3 Expression) -> K3 Provenance -> K3 Provenance -> PInfM (K3 Provenance)
+simplifyApplyM eOpt lp argp = do
+  env <- get
+  (p', nenv) <- liftEitherM $ simplifyApply env eOpt lp argp
+  void $ put nenv
+  return p'
+
 
 {- PInfM helpers -}
 
@@ -375,8 +467,10 @@ errorM msg = reasonM id $ left msg
 liftEitherM :: Either Text a -> PInfM a
 liftEitherM = either left return
 
+{-
 pifreshbpM :: Identifier -> UID -> K3 Provenance -> PInfM (K3 Provenance)
 pifreshbpM n u p = get >>= return . (\env -> pifreshbp env n u p) >>= \(p',nenv) -> put nenv >> return p'
+-}
 
 pifreshsM :: Identifier -> UID -> PInfM (K3 Provenance)
 pifreshsM n u = get >>= return . (\env -> pifreshs env n u) >>= \(p,env) -> put env >> return p
@@ -399,11 +493,13 @@ pideleM n = get >>= \env -> return (pidele env n) >>= put
 pilkuppM :: Int -> PInfM (K3 Provenance)
 pilkuppM n = get >>= liftEitherM . flip pilkupp n
 
+{-
 piextpM :: Int -> K3 Provenance -> PInfM ()
 piextpM n p = get >>= \env -> return (piextp env n p) >>= put
 
 pidelpM :: Int -> PInfM ()
 pidelpM n = get >>= \env -> return (pidelp env n) >>= put
+-}
 
 pilkupaM :: Identifier -> Identifier -> PInfM (K3 Provenance)
 pilkupaM n m = get >>= liftEitherM . (\env -> pilkupa env n m)
@@ -417,8 +513,10 @@ pilkupmM e = get >>= liftEitherM . flip pilkupm e
 piextmM :: K3 Expression -> K3 Provenance -> PInfM ()
 piextmM e p = get >>= liftEitherM . (\env -> piextm env e p) >>= put
 
+{-
 piloadM :: Identifier -> PInfM (K3 Provenance)
 piloadM n = get >>= liftEitherM . flip piload n
+-}
 
 pistoreM :: Identifier -> UID -> K3 Provenance -> PInfM ()
 pistoreM n u p = get >>= liftEitherM . (\env -> pistore env n u p) >>= put
@@ -426,11 +524,13 @@ pistoreM n u p = get >>= liftEitherM . (\env -> pistore env n u p) >>= put
 pistoreaM :: Identifier -> [(Identifier, UID, K3 Provenance, Bool)] -> PInfM ()
 pistoreaM n memP = get >>= liftEitherM . (\env -> pistorea env n memP) >>= put
 
+{-
 pichaseM :: K3 Provenance -> PInfM (K3 Provenance)
 pichaseM p = get >>= liftEitherM . flip pichase p
 
 pisubM :: Identifier -> K3 Provenance -> K3 Provenance -> PInfM (K3 Provenance)
 pisubM i rep p = get >>= liftEitherM . (\env -> pisub env i rep p) >>= \(p',nenv) -> put nenv >> return p'
+-}
 
 pilkupcM :: Int -> PInfM [Identifier]
 pilkupcM n = get >>= liftEitherM . flip pilkupc n
@@ -459,7 +559,6 @@ inferProgramProvenance p = do
       np'' <- simplifyExprProvenance np'
       markGlobals np''
 
-    -- TODO: handle provenance annotations from the parser.
     globalsProv :: K3 Declaration -> PInfM (K3 Declaration)
     globalsProv d = do
       nd <- mapProgram rcrDeclProv return return Nothing d
@@ -479,45 +578,67 @@ inferProgramProvenance p = do
     declProv :: K3 Declaration -> PInfM (K3 Declaration)
     declProv d@(tag -> DGlobal n t eOpt) = do
       u <- uidOf d
-      p' <- maybe (provOfType [] t) inferProvenance eOpt
+      p' <- case d @~ isDProvenance of
+              Just (DProvenance prv) -> either return return prv
+              _ -> maybe (provOfType [] t) inferProvenance eOpt
       void $ pistoreM n u $ pglobal n p'
       return d
 
     declProv d@(tag -> DTrigger n _ e) = do
       u <- uidOf d
-      p' <- inferProvenance e
+      p' <- case d @~ isDProvenance of
+              Just (DProvenance prv) -> either return return prv
+              _ -> inferProvenance e
       void $ pistoreM n u $ pglobal n p'
       return d
 
     declProv d@(tag -> DDataAnnotation n _ mems) = mapM inferMems mems >>= pistoreaM n . catMaybes >> return d
     declProv d = return d
 
-    inferMems m@(Lifted    Provides mn mt meOpt mas) = memUID m mas >>= \u -> inferMember True  mn mt meOpt u
-    inferMems m@(Attribute Provides mn mt meOpt mas) = memUID m mas >>= \u -> inferMember False mn mt meOpt u
+    inferMems m@(Lifted    Provides mn mt meOpt mas) = inferMember m True  mn mt meOpt mas
+    inferMems m@(Attribute Provides mn mt meOpt mas) = inferMember m False mn mt meOpt mas
     inferMems _ = return Nothing
 
-    inferMember lifted mn mt meOpt u = do
-      mp <- maybe (provOfType [] mt) inferProvenance meOpt
+    inferMember mem lifted mn mt meOpt mas = do
+      u  <- memUID mem mas
+      mp <- case find isDProvenance mas of
+              Just (DProvenance prv) -> either return return prv
+              _ -> maybe (provOfType [] mt) inferProvenance meOpt
       return $ Just (mn,u,mp,lifted)
 
     markGlobals = mapProgram markGlobal return return Nothing
-    markGlobal d@(tag -> DGlobal  n _ eOpt) = maybe (pilkupeM n) (globalProvOf n) eOpt >>= \p' -> return (d @+ (DProvenance p'))
-    markGlobal d@(tag -> DTrigger n _ e)    = globalProvOf n e >>= \p' -> return (d @+ (DProvenance p'))
+
+    markGlobal d@(tag -> DGlobal  n _ eOpt) = unlessHasProvenance d $ \_ -> do
+      p' <- maybe (pilkupeM n) (globalProvOf n) eOpt
+      return (d @+ (DProvenance $ Right p'))
+
+    markGlobal d@(tag -> DTrigger n _ e) = unlessHasProvenance d $ \_ -> do
+      p' <- globalProvOf n e
+      return (d @+ (DProvenance $ Right p'))
     
-    markGlobal d@(tag -> DDataAnnotation n tvars mems) =
-      mapM (markMems n) mems >>= \nmems -> return (replaceTag d $ DDataAnnotation n tvars nmems)
+    markGlobal d@(tag -> DDataAnnotation n tvars mems) = do
+      nmems <- mapM (markMems n) mems
+      return (replaceTag d $ DDataAnnotation n tvars nmems)
 
     markGlobal d = return d
 
-    markMems n (Lifted Provides mn mt meOpt mas) =
-      maybe (pilkupaM n mn) provOf meOpt >>=
-        \p' -> return (Lifted Provides mn mt meOpt $ mas ++ [DProvenance p'])
+    markMems n m@(Lifted Provides mn mt meOpt mas) = unlessMemHasProvenance m mas $ \_ -> do
+      p' <- maybe (pilkupaM n mn) provOf meOpt
+      return (Lifted Provides mn mt meOpt $ mas ++ [DProvenance $ Right p'])
 
-    markMems n (Attribute Provides mn mt meOpt mas) =
-      maybe (pilkupaM n mn) provOf meOpt >>=
-        \p' -> return (Attribute Provides mn mt meOpt $ mas ++ [DProvenance p'])
+    markMems n m@(Attribute Provides mn mt meOpt mas) = unlessMemHasProvenance m mas $ \_ -> do
+      p' <- maybe (pilkupaM n mn) provOf meOpt
+      return (Attribute Provides mn mt meOpt $ mas ++ [DProvenance $ Right p'])
 
     markMems _ m = return m
+
+    unlessHasProvenance d f = case d @~ isDProvenance of
+      Nothing -> f ()
+      _ -> return d
+
+    unlessMemHasProvenance mem as f = case find isDProvenance as of
+      Nothing -> f ()
+      _ -> return mem
 
     uidOf  n = maybe (uidErr n) (\case {(DUID u) -> return u ; _ ->  uidErr n}) $ n @~ isDUID
     uidErr n = errorM $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines n
@@ -573,25 +694,8 @@ inferProvenance expr = mapIn1RebuildTree topdown sideways infer expr
 
     -- Return a papply with three children: the lambda, argument, and return value provenance.
     infer [lp, argp] e@(tag -> EOperate OApp) = do
-      argp'   <- chaseAppArg argp
-      manyLp  <- chaseApply [] lp
-      manyLp' <- flip mapM manyLp $ \lp' ->
-                    case tnc lp' of
-                      (PLambda i, [bp]) -> do
-                        ip  <- uidOf e >>= \u -> pifreshbpM i u argp'
-                        imv <- pmv ip
-                        rp  <- pisubM i ip bp
-                        return $ papply (Just imv) lp argp rp
-
-                      -- Handle recursive functions and forward declarations
-                      -- by using an opaque return value.
-                      (PBVar _, _) -> return $ papply Nothing lp argp ptemp
-
-                      _ -> appLambdaErr e lp'
-      case manyLp' of
-        []  -> appLambdaErr e lp
-        [p] -> rt e p
-        _   -> rt e $ pset manyLp'
+      p <- simplifyApplyM (Just e) lp argp
+      rt e p
 
     infer [psrc] e@(tnc -> (EProject i, [esrc])) = 
       case esrc @~ isEType of
@@ -657,22 +761,6 @@ inferProvenance expr = mapIn1RebuildTree topdown sideways infer expr
     unwrapClosure (tag -> PBVar mv) = pilkuppM (pmvptr mv)
     unwrapClosure p = errorM $ PT.boxToString $ [T.pack "Invalid closure variable "] %+ PT.prettyLines p
 
-    chaseApply _  p@(tag -> PLambda _) = return [p]
-    chaseApply path p@(tag -> PBVar (pmvptr -> i))
-      | i `elem` path = return [p]
-      | otherwise     = pichaseM p >>= chaseApply (i:path)
-
-    chaseApply path (tnc -> (PApply _, [_,_,r]))   = chaseApply path r
-    chaseApply path (tnc -> (PMaterialize _, [r])) = chaseApply path r
-    chaseApply path (tnc -> (PProject _, [_,r]))   = chaseApply path r
-    chaseApply path (tnc -> (PGlobal _, [r]))      = chaseApply path r
-    chaseApply path (tnc -> (PChoice, r:_))        = chaseApply path r -- TODO: for now we use the first choice.
-    chaseApply path (tnc -> (PSet, rl))            = mapM (chaseApply path) rl >>= return . concat
-    chaseApply _ p = errorM $ PT.boxToString $ [T.pack "Invalid application or lambda: "] %$ PT.prettyLines p
-
-    chaseAppArg (tnc -> (PApply _, [_,_,r])) = chaseAppArg r
-    chaseAppArg p = return p
-
     pmv (tag -> PBVar mv) = return mv
     pmv p = errorM $ PT.boxToString $ [T.pack "Invalid provenance bound var: "] %$ PT.prettyLines p
 
@@ -687,9 +775,6 @@ inferProvenance expr = mapIn1RebuildTree topdown sideways infer expr
     inferErr e = errorM $ PT.boxToString $ [T.pack "Could not infer provenance for "] %$ PT.prettyLines e
     varErr e   = reasonM (\s -> T.unlines [s, T.pack "Variable access on", PT.pretty e])
     prjErr e   = errorM $ PT.boxToString $ [T.pack "Invalid type on "] %+ PT.prettyLines e
-    appLambdaErr e p = errorM $ PT.boxToString
-                              $  [T.pack "Invalid function provenance on:"] %$ PT.prettyLines e
-                              %$ [T.pack "Provenance:"]                     %$ PT.prettyLines p
 
     memErr i e = errorM $ PT.boxToString $  [T.unwords $ map T.pack ["Failed to project", i, "from"]]
                                          %$ PT.prettyLines e

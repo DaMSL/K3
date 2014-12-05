@@ -36,8 +36,10 @@ data Provenance =
     | PIndirection
     | POption
     | PLambda      Identifier
+
     | PApply       (Maybe PMatVar) -- The lambda, argument, and return value provenances of the application.
                                    -- The apply also tracks any provenance variable binding needed for the lambda.
+
     | PMaterialize [PMatVar]       -- A materialized return value scope, denoting provenance varibles bound in the child.
     | PProject     Identifier      -- The source of the projection, and the provenance of the projected value if available.
     | PAssign      Identifier      -- The provenance of the expression used for assignment.

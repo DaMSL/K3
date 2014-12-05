@@ -28,15 +28,25 @@ data Effect
     | FWrite       (K3 Provenance)
     | FIO
     | FData        (Maybe [Identifier]) -- An effect container, to support structural matching for lambda effects.
+
     | FScope       [FMatVar]   -- Materialization point for the given FMatVars. This has four children:
                                -- initialization execution effects (i.e., pre-body effects), body execution effects
                                -- post-body execution effects, and result effect structure.
-    | FLambda      Identifier  -- Lambda effects have three effect children: closure construction effects,
-                               -- deferred execution effects and deferred effect structure.
-    | FApply       (Maybe FMatVar)  -- Application effect nodes have three children: 
-                                    -- initializer execution effects, result execution effects,
-                                    -- and a result effect structure.
-    | FSet                          -- Set of effects, all of which are possible.
+
+    | FLambda      Identifier 
+                          -- Lambda effects have three effect children: closure construction effects,
+                          -- deferred execution effects and deferred effect structure.
+
+    | FApply       (Maybe FMatVar)
+                          -- Application effect nodes have either two or five children: 
+                          -- i. 5-child variant:
+                          --    lambda effect structure, arg effect structure,
+                          --    initializer execution effects, result execution effects,
+                          --    and a result effect structure.
+                          -- ii. 2-child variant:
+                          --     lambda effect structure, and arg effect structure.
+
+    | FSet                     -- Set of effects, all of which are possible.
     | FSeq
     | FLoop                    -- A repetitive effect. Can only happen in a foreign function
     | FNone                    -- Null effect

@@ -67,6 +67,9 @@ plambda i p = sing p $ PLambda i
 papply :: Maybe PMatVar -> K3 Provenance -> K3 Provenance -> K3 Provenance -> K3 Provenance
 papply mvOpt f a r = Node (PApply mvOpt :@: []) [f, a, r]
 
+papplyExt :: K3 Provenance -> K3 Provenance -> K3 Provenance
+papplyExt f a = Node (PApply Nothing :@: []) [f, a]
+
 pmaterialize :: [PMatVar] -> K3 Provenance -> K3 Provenance
 pmaterialize mvl p = Node (PMaterialize mvl :@: []) [p]
 

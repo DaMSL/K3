@@ -42,8 +42,11 @@ fscope mv prebef bef postbef sf = Node (FScope mv :@: []) [prebef, bef, postbef,
 flambda :: Identifier -> K3 Effect -> K3 Effect -> K3 Effect -> K3 Effect
 flambda i cl ef sf = Node (FLambda i :@: [])  [cl, ef, sf]
 
-fapply :: Maybe FMatVar -> K3 Effect -> K3 Effect -> K3 Effect -> K3 Effect
-fapply mvOpt ief ef sf = Node (FApply mvOpt :@: []) [ief, ef, sf]
+fapply :: Maybe FMatVar -> K3 Effect -> K3 Effect -> K3 Effect -> K3 Effect -> K3 Effect -> K3 Effect
+fapply mvOpt lf af ief ef sf = Node (FApply mvOpt :@: []) [lf, af, ief, ef, sf]
+
+fapplyExt :: K3 Effect -> K3 Effect -> K3 Effect
+fapplyExt lf af = Node (FApply Nothing :@: []) [lf, af]
 
 simplifyChildren :: (Effect -> Bool) -> [K3 Effect] -> [K3 Effect]
 simplifyChildren tagF ch = nub $ filter (\p -> tag p /= FNone) $ concatMap flatCh ch
