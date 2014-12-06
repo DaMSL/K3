@@ -19,6 +19,7 @@ module Language.K3.Utils.PrettyText (
 
     drawSubTrees,
     drawAnnotations,
+    drawGroup,
 
     shift,
     terminalShift,
@@ -110,6 +111,17 @@ drawSubTrees (x:xs) = T.pack "|" : nonTerminalShift x ++ drawSubTrees xs
 
 drawAnnotations :: Show a => [a] -> Text
 drawAnnotations as = if null as then T.empty else T.pack $ " :@: " ++ show as
+
+drawGroup :: [[Text]] -> [Text]
+drawGroup sll = case sll of
+  []   -> []
+  [sl] -> sl
+  [sl1,sl2] -> prefixList sl1 ++ [T.pack "|"] ++ (shift (T.pack "`- ") (T.pack "   ") sl2)
+  _ -> (prefixList $ head sll) ++ [T.pack "|"]
+         ++ (concatMap ((++ [T.pack "|"]) . shift (T.pack "+- ") (T.pack "|  ")) $ init $ tail sll)
+         ++ (shift (T.pack "`- ") (T.pack "   ") $ last sll)
+
+  where prefixList l = head l : map (\t -> T.append (T.pack "|") (T.tail t)) (tail l)
 
 shift :: Text -> Text -> [Text] -> [Text]
 shift first other = zipWith T.append (first : repeat other)

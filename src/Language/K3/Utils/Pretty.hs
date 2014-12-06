@@ -18,6 +18,7 @@ module Language.K3.Utils.Pretty (
 
     drawSubTrees,
     drawAnnotations,
+    drawGroup,
 
     shift,
     terminalShift,
@@ -114,6 +115,17 @@ drawSubTrees (x:xs) = "|" : nonTerminalShift x ++ drawSubTrees xs
 
 drawAnnotations :: Show a => [a] -> String
 drawAnnotations as = if null as then "" else " :@: " ++ show as
+
+drawGroup :: [[String]] -> [String]
+drawGroup sll = case sll of
+  []   -> []
+  [sl] -> sl
+  [sl1,sl2] -> prefixList sl1 ++ ["|"] ++ (shift "`- " "   " sl2)
+  _ -> (prefixList $ head sll)
+          ++ ["|"] ++ (concatMap ((++["|"]) . shift "+- " "|  ") $ init $ tail sll)
+          ++ (shift "`- " "   " $ last sll)
+
+  where prefixList l = head l : map (\(_:t) -> '|':t) (tail l)
 
 shift :: String -> String -> [String] -> [String]
 shift first other = zipWith (++) (first : repeat other)
