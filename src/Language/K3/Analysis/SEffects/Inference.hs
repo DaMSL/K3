@@ -863,8 +863,7 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
           forceLambdaEff t f >>= void . fifreshM i u
 
         Just (EProvenance (tnc -> (PSet, (safeHead -> Just (tag -> PMaterialize mvs))))) | asCase -> do
-          trace (unlines [unwords ["Fresh as case ", i, show asCase, show mvs], T.unpack $ PT.pretty f])
-            $ mapM_ (\mv -> fiextepM (pmvn mv) (pbvar mv)) mvs
+          mapM_ (\mv -> fiextepM (pmvn mv) (pbvar mv)) mvs
           forceLambdaEff t f >>= void . fifreshM i u
 
         _ -> matErr e
