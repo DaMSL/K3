@@ -870,8 +870,8 @@ effectSignature asAttrMem = mkSigAnn =<< (keyword "with" *> keyword "effects" *>
   where
     effSig    = (,) <$> effTerm asAttrMem <*> optional returnSig
     returnSig = keyword "return" *> provTerm
-    mkSigAnn (f, rOpt) = return $ [DEffect $ Left f]
-                          ++ maybe [DProvenance $ Left $ provOfEffect [] f] (\p -> [DProvenance $ Left p]) rOpt
+    mkSigAnn (f, rOpt) = return $
+      [DEffect $ Left f] ++ maybe [DProvenance $ Left $ provOfEffect [] f] (\p -> [DProvenance $ Left p]) rOpt
     
     provOfEffect args (tnc -> (FS.FLambda i, [_, _, sf])) = PC.plambda i $ provOfEffect (args++[i]) sf
     provOfEffect args _ = PC.pderived $ map PC.pfvar args

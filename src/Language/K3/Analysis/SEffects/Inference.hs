@@ -360,9 +360,8 @@ fichase fienv cf = aux [] cf
         aux _ f = return f
 
 -- Capture-avoiding substitution of any free variable with the given identifier.
--- Provenance variable substitution is left to another routine via fmapProv.
-fisub :: FIEnv -> Identifier -> K3 Effect -> K3 Effect -> Either Text (K3 Effect, FIEnv)
-fisub fienv i df sf = acyclicSub fienv emptyPtrSubs [] sf >>= \(renv, _, rf) -> return (rf, renv)
+fisub :: FIEnv -> Identifier -> K3 Effect -> K3 Effect -> K3 Provenance -> Either Text (K3 Effect, FIEnv)
+fisub fienv i df sf p = acyclicSub fienv emptyPtrSubs [] sf >>= \(renv, _, rf) -> return (rf, renv)
   where
     acyclicSub env subs _ (tag -> FFVar j) | i == j = return (env, subs, df)
 
@@ -370,6 +369,12 @@ fisub fienv i df sf = acyclicSub fienv emptyPtrSubs [] sf >>= \(renv, _, rf) -> 
       | j `elem` path = return (env, subs, f)
       | isPtrSub subs j = getPtrSub subs j >>= return . (env, subs,)
       | otherwise     = filkupp fienv j >>= subPtrIfDifferent env subs path mv
+
+    acyclicSub env subs _ (tag -> FRead (tag -> PFVar j)) | j == i
+      = return (env, subs, fread p)
+
+    acyclicSub env subs _ (tag -> FWrite (tag -> PFVar j)) | j == i
+      = return (env, subs, fwrite p)
 
     -- TODO: we can short-circuit descending into the body if we
     -- are willing to stash the expression uid in a PLambda, using
@@ -413,14 +418,6 @@ fisub fienv i df sf = acyclicSub fienv emptyPtrSubs [] sf >>= \(renv, _, rf) -> 
     appSubErr f = Left $ PT.boxToString $ [T.pack "Invalid apply substitution at: "] %$ PT.prettyLines f
 
 
--- Apply a function to every provenance node in an effect tree.
-fmapProv :: (K3 Provenance -> Either Text (K3 Provenance)) -> K3 Effect -> Either Text (K3 Effect)
-fmapProv provF f = modifyTree onProv f
-  where onProv (tag -> FRead p)  = provF p >>= return . fread
-        onProv (tag -> FWrite p) = provF p >>= return . fwrite
-        onProv f' = return f'
-
-
 {- Apply simplification -}
 chaseAppArg :: K3 Effect -> Either Text (K3 Effect)
 chaseAppArg (tnc -> (FApply _, [_,_,_,_,sf])) = chaseAppArg sf
@@ -460,8 +457,8 @@ simplifyApply fienv eOpt ef lrf arf = do
           Just (uid, p) -> do
             let (ifbv, neacc) = fifreshbp eacc i uid arf'
             imv  <- fmv ifbv
-            (nbef,n2eacc) <- fisub neacc  i ifbv bef >>= subProv i p
-            (nbrf,n3eacc) <- fisub n2eacc i ifbv brf >>= subProv i p
+            (nbef,n2eacc) <- fisub neacc  i ifbv bef p
+            (nbrf,n3eacc) <- fisub n2eacc i ifbv brf p
             let apprf = fapply (Just imv) lrf arf (fromJust $ finit ef) (fromJust $ finit [Just nbef]) nbrf
             return (facc++[apprf], n3eacc)
 
@@ -470,8 +467,8 @@ simplifyApply fienv eOpt ef lrf arf = do
             -- of the argument effect structure without lifting.
             -- Also, we replace any provenance symbols for the argument with temporaries
             -- since we have no further information from effect signatures.
-            (nbef,neacc)  <- fisub eacc  i arf' bef >>= subProv i ptemp
-            (nbrf,n2eacc) <- fisub neacc i arf' brf >>= subProv i ptemp
+            (nbef,neacc)  <- fisub eacc  i arf' bef ptemp
+            (nbrf,n2eacc) <- fisub neacc i arf' brf ptemp
             let apprf = fapply Nothing lrf arf (fromJust $ finit ef) (fromJust $ finit [Just nbef]) nbrf
             return (facc++[apprf], n2eacc)
 
@@ -499,11 +496,6 @@ simplifyApply fienv eOpt ef lrf arf = do
                             p -> return p
 
     finit ef' = Just $ fseq $ catMaybes ef'
-
-    subProv i p (f, env) = fmapProv (subpfvar i p) f >>= \f' -> return (f', env)
-
-    subpfvar i p (tag -> PFVar j) | i == j = return p
-    subpfvar _ _ p = return p
 
     fmv (tag -> FBVar mv) = return mv
     fmv f = Left $ PT.boxToString $ [T.pack "Invalid effect bound var: "] %$ PT.prettyLines f
@@ -590,11 +582,8 @@ fistoreaM n memF = get >>= liftEitherM . (\env -> fistorea env n memF) >>= put
 fichaseM :: K3 Effect -> FInfM (K3 Effect)
 fichaseM f = get >>= liftEitherM . flip fichase f
 
-fisubM :: Identifier -> K3 Effect -> K3 Effect -> FInfM (K3 Effect)
-fisubM i ref f = get >>= liftEitherM . (\env -> fisub env i ref f) >>= \(f', nenv) -> put nenv >> return f'
-
-fmapProvM :: (K3 Provenance -> Either Text (K3 Provenance)) -> K3 Effect -> FInfM (K3 Effect)
-fmapProvM provF f = liftEitherM $ fmapProv provF f
+fisubM :: Identifier -> K3 Effect -> K3 Effect -> K3 Provenance -> FInfM (K3 Effect)
+fisubM i ref f p = get >>= liftEitherM . (\env -> fisub env i ref f p) >>= \(f', nenv) -> put nenv >> return f'
 
 filkupppM :: Int -> FInfM (K3 Provenance)
 filkupppM n = get >>= liftEitherM . flip filkuppp n
@@ -610,10 +599,12 @@ fipushcaseM mv = get >>= return . flip fipushcase mv >>= put
 
 
 {- Analysis entrypoint -}
-inferProgramEffects :: FPPEnv -> K3 Declaration -> Either String (K3 Declaration)
+inferProgramEffects :: FPPEnv -> K3 Declaration -> Either String (K3 Declaration, FPEnv)
 inferProgramEffects ppenv p =  do
   lcenv <- lambdaClosures p
-  liftEitherTM $ fst $ runFInfM (fienv0 ppenv lcenv) $ doInference p
+  let (npE, finalEnv) = runFInfM (fienv0 ppenv lcenv) $ doInference p
+  rnp <- liftEitherTM npE
+  return (rnp, fpenv finalEnv)
 
   where
     liftEitherTM = either (Left . T.unpack) Right
@@ -621,8 +612,8 @@ inferProgramEffects ppenv p =  do
     doInference p' = do
       np   <- globalsEff p'
       np'  <- mapExpression inferExprEffects np
-      np'' <- simplifyExprEffects np'
-      markGlobals np''
+      --np'' <- simplifyExprEffects np'
+      markGlobals np'
 
     -- Globals cannot be captured in closures, so we elide them from the
     -- effect provenance bindings environment.
@@ -647,26 +638,33 @@ inferProgramEffects ppenv p =  do
     declEff :: K3 Declaration -> FInfM (K3 Declaration)
     declEff d@(tag -> DGlobal n t eOpt) = do
       u <- uidOf d
-      f <- maybe (effectsOfType [] t) inferEffects eOpt
+      f <- case d @~ isDEffect of
+              Just (DEffect eff) -> either return return eff
+              _ -> maybe (effectsOfType [] t) inferEffects eOpt
       void $ fistoreM n u f
       return d
 
     declEff d@(tag -> DTrigger n _ e) = do
       u <- uidOf d
-      f <- inferEffects e
+      f <- case d @~ isDEffect of
+              Just (DEffect eff) -> either return return eff
+              _ -> inferEffects e
       void $ fistoreM n u f
       return d
 
     declEff d@(tag -> DDataAnnotation n _ mems) = mapM inferMems mems >>= fistoreaM n . catMaybes >> return d
     declEff d = return d
 
-    inferMems m@(Lifted      Provides mn mt meOpt mas) = memUID m mas >>= \u -> inferMember True  mn mt meOpt u
-    inferMems m@(Attribute   Provides mn mt meOpt mas) = memUID m mas >>= \u -> inferMember False mn mt meOpt u
+    inferMems m@(Lifted      Provides mn mt meOpt mas) = inferMember m True  mn mt meOpt mas
+    inferMems m@(Attribute   Provides mn mt meOpt mas) = inferMember m False mn mt meOpt mas
     inferMems _ = return Nothing
 
-    inferMember lifted mn mt meOpt u = do
-      mfOpt <- maybe (effectsOfType [] mt) inferEffects meOpt
-      return $ Just (mn, u, mfOpt, lifted)
+    inferMember mem lifted mn mt meOpt mas = do
+      u  <- memUID mem mas
+      mf <- case find isDEffect mas of
+              Just (DEffect eff) -> either return return eff
+              _ -> maybe (effectsOfType [] mt) inferEffects meOpt
+      return $ Just (mn, u, mf, lifted)
 
     markGlobals = mapProgram markGlobal return return Nothing
 
@@ -792,7 +790,7 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
       case esrc @~ isEType of
         Just (EType t) ->
           case tag t of
-            TCollection -> collectionMemberEffect i ef esrc t psrc >>= rt e
+            TCollection -> collectionMemberEffect i ef rf esrc t psrc >>= rt e
             TRecord ids ->
               case tnc rf of
                 (FData _, fdch) -> do
@@ -935,19 +933,18 @@ effectsOfType args _ = return $ foldl lam (flambda (last args) fnone ef fnone) $
 -- | Computes execution effects and effect structure for a collection field member.
 --   TODO: much like its counterpart with provenance, this method recomputes the effect rather
 --   using a cached result. 
-collectionMemberEffect :: Identifier -> [Maybe (K3 Effect)] -> K3 Expression -> K3 Type -> K3 Provenance
+collectionMemberEffect :: Identifier -> [Maybe (K3 Effect)] -> K3 Effect
+                       -> K3 Expression -> K3 Type -> K3 Provenance
                        -> FInfM (Maybe (K3 Effect), K3 Effect)
-collectionMemberEffect i ef esrc t psrc =
+collectionMemberEffect i ef sf esrc t psrc =
   let annIds = namedTAnnotations $ annotations t in do
     memsEnv <- mapM filkupasM annIds >>= return . Map.unions
     (mrf, lifted) <- maybe memErr return $ Map.lookup i memsEnv
-    mrf' <- fmapProvM (subpself psrc) mrf
-    if not lifted then attrErr else return $ (Just $ fseq $ catMaybes ef, mrf')
+    mrfs  <- fisubM "self" sf mrf psrc
+    mrfsc <- fisubM "content" fnone mrfs ptemp
+    if not lifted then attrErr else return $ (Just $ fseq $ catMaybes ef, mrfsc)
 
   where
-    subpself p (tag -> PFVar "self") = return p
-    subpself _ p = return p
-
     memErr  = errorM $ PT.boxToString $ [T.unwords $ map T.pack ["Unknown projection of ", i, "on"]]           %+ PT.prettyLines esrc
     attrErr = errorM $ PT.boxToString $ [T.unwords $ map T.pack ["Invalid attribute projection of ", i, "on"]] %+ PT.prettyLines esrc
 
