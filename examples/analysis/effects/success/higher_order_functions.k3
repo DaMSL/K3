@@ -1,0 +1,7 @@
+include "Annotation/Collection.k3"
+
+declare x : mut int = 0
+
+trigger t : () = \_ -> (
+  x = (((\f -> (\g -> g f + 1)) (\z -> z + 5)) (\h -> h 10))
+)

@@ -1,0 +1,8 @@
+include "Annotation/Collection.k3"
+
+declare c : collection {a:int} @Collection
+declare d : mut collection {elem:int} @Collection
+
+trigger t : () = \_ -> (
+  d = c.map (\r -> r.a + 5)
+)
