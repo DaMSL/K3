@@ -231,12 +231,11 @@ instance Pretty AnnMemDecl where
   prettyLines (MAnnotation pol n anns) =
     ["MAnnotation " ++ unwords [show pol, n, show anns]]
 
-
 drawDeclAnnotations :: [Annotation Declaration] -> (String, [String])
 drawDeclAnnotations as =
   let (prettyAnns, anns) = partition (\a -> isDSymbol a || isDProvenance a || isDEffect a) as
-      prettyDeclAnns     = concatMap (shift " "   "|  " . drawDAnnotation) (init prettyAnns) ++ ["|"]
-                                  ++ (shift "`- " "   " $ drawDAnnotation $ last prettyAnns)
+      prettyDeclAnns     = drawGroup $ map drawDAnnotation prettyAnns
+
   in (drawAnnotations anns, prettyDeclAnns)
 
   where drawDAnnotation (DSymbol s)     = ["DSymbol "]     %+ prettyLines s
@@ -244,15 +243,13 @@ drawDeclAnnotations as =
         drawDAnnotation (DEffect e)     = ["DEffect "]     %+ either prettyLines prettyLines e
         drawDAnnotation _ = error "Invalid symbol annotation"
 
+
 {- PrettyText instance -}
 tPipe :: Text
 tPipe = T.pack "|"
 
 aPipe :: [Text] -> [Text]
 aPipe t = t ++ [tPipe]
-
-tShift :: [Text] -> [Text]
-tShift = PT.shift (T.pack "`- ") (T.pack "   ")
 
 ntShift :: [Text] -> [Text]
 ntShift = PT.shift (T.pack "+- ") (T.pack "|  ")
@@ -270,6 +267,7 @@ tNullTerm a bl =
 
 tMaybeTerm :: (PT.Pretty a, PT.Pretty b) => a -> Maybe b -> [Text]
 tMaybeTerm a bOpt = maybe (PT.terminalShift a) ((aPipe (PT.nonTerminalShift a) ++) . PT.terminalShift) bOpt
+
 
 instance PT.Pretty (K3 Declaration) where
   prettyLines (Node (DGlobal i t me :@: as) ds) =
@@ -324,8 +322,7 @@ instance PT.Pretty AnnMemDecl where
 drawDeclAnnotationsT :: [Annotation Declaration] -> (Text, [Text])
 drawDeclAnnotationsT as =
   let (prettyAnns, anns) = partition (\a -> isDSymbol a || isDProvenance a || isDEffect a) as
-      prettyDeclAnns  = aPipe (concatMap (ntShift . drawDAnnotationT) (init prettyAnns))
-                                      ++ (tShift  $ drawDAnnotationT $ last prettyAnns)
+      prettyDeclAnns     = PT.drawGroup $ map drawDAnnotationT prettyAnns
   in (PT.drawAnnotations anns, prettyDeclAnns)
 
   where drawDAnnotationT (DSymbol s)     = map T.pack $ ["DSymbol "] %+ prettyLines s

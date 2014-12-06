@@ -276,6 +276,7 @@ namedEAnnotations anns = map extractId $ filter isEAnnotation anns
 
 
 {- Pretty instances -}
+
 instance Pretty (K3 Expression) where
     prettyLines (Node (ETuple :@: as) []) =
       let (annStr, pAnnStrs) = drawExprAnnotations as
@@ -306,21 +307,7 @@ drawExprAnnotations as =
                                         %+ indent 2 (drawETypeAnnotation u))
                          _     -> error "Invalid type bound annotations"
 
-      prettyTypeAnnsPrefixed =
-        if null prettyTypeAnns then []
-        else head prettyTypeAnns : map (\(_:t) -> '|':t) (tail prettyTypeAnns)
-
-      prettyEffectAnnsL = map drawEEffectAnnotations effectAnns
-
-      prettyEffectAnnsConcat  = foldl (\a b -> a %$ ["|"] %$ b) [] prettyEffectAnnsL
-      prettyEffectAnnsShifted =
-        if null prettyEffectAnnsL then []
-        else    (concatMap (\e -> (shift "+- " "|  " e) ++ ["|"]) $ init prettyEffectAnnsL)
-             ++ (shift "`- " "   " $ last prettyEffectAnnsL)
-
-      prettyAnns = if null prettyTypeAnns || null prettyEffectAnnsL
-                     then prettyTypeAnns ++ prettyEffectAnnsConcat
-                     else prettyTypeAnnsPrefixed ++ ["|"] ++ prettyEffectAnnsShifted
+      prettyAnns = drawGroup $ [prettyTypeAnns] ++ map drawEEffectAnnotations effectAnns
 
   in (drawAnnotations anns', prettyAnns)
 
@@ -385,21 +372,7 @@ drawExprAnnotationsT as =
                                         PT.%+ PT.indent 2 (drawETypeAnnotationT u))
                          _     -> error "Invalid type bound annotations"
 
-      prettyTypeAnnsPrefixed =
-        if null prettyTypeAnns then []
-        else head prettyTypeAnns : map (\t -> T.append (T.pack "|") $ T.tail t) (tail prettyTypeAnns)
-
-      prettyEffectAnnsL = map drawEEffectAnnotationsT effectAnns
-
-      prettyEffectAnnsConcat  = foldl (\a b -> a PT.%$ [T.pack "|"] PT.%$ b) [] prettyEffectAnnsL
-      prettyEffectAnnsShifted =
-        if null prettyEffectAnnsL then []
-        else    (concatMap (aPipe . ntShift) $ init prettyEffectAnnsL)
-             ++ (tShift $ last prettyEffectAnnsL)
-
-      prettyAnns = if null prettyTypeAnns || null prettyEffectAnnsL
-                     then prettyTypeAnns ++ prettyEffectAnnsConcat
-                     else aPipe prettyTypeAnnsPrefixed ++ prettyEffectAnnsShifted
+      prettyAnns = PT.drawGroup $ [prettyTypeAnns] ++ map drawEEffectAnnotationsT effectAnns
 
   in (PT.drawAnnotations anns', prettyAnns)
 
