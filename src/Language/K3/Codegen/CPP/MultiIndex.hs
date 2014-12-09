@@ -102,11 +102,8 @@ indexes name ans = do
                        []
 
       let index = R.Call
-                   (R.Project
-                      container
-                      (R.Specialized [R.Named $ R.Name $ show i] (R.Name "get"))
-                   )
-                   []
+                    (R.Variable $ (R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")))
+                    [container]
 
       let look k_t = R.Call
                    (R.Project this (R.Name "lookup_with_index") )
@@ -135,11 +132,8 @@ indexes name ans = do
                        []
 
       let index = R.Call
-                   (R.Project
-                      container
-                      (R.Specialized [R.Named $ R.Name $ show i] (R.Name "get"))
-                   )
-                   []
+                    ((R.Variable $ R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")))
+                    [container]
 
       let slice k_t = R.Call
                    (R.Project this (R.Name "slice_with_index") )
@@ -156,5 +150,3 @@ indexes name ans = do
       let result = key_t >>= \k_t -> cType >>= \c_t -> Just $ defn k_t c_t
       return $ if "slice" `isInfixOf` fname then result else Nothing
     slice_fn _ = return Nothing
-
-
