@@ -6,6 +6,7 @@ import Data.Char
 import Data.List(foldl')
 import Data.Maybe
 import Data.Tuple
+import Data.Functor
 
 import qualified Options.Applicative as Options
 import Options.Applicative((<>), (<*>))
@@ -157,7 +158,7 @@ run opts = do
     
     analyzer SEffects x = flip wrapEither x $ \p -> do
       (np, ppenv) <- Provenance.inferProgramProvenance p
-      SEffects.inferProgramEffects ppenv np
+      fst <$> SEffects.inferProgramEffects ppenv np
 
     analyzer Effects x = flip first x $
       (uncurry Effects.expandProgram . swap . Effects.runConsolidatedAnalysis)
