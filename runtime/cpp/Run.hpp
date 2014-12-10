@@ -12,7 +12,8 @@ namespace K3 {
 
     std::vector<string> peer_strs = opt.peer_strings;
     bool simulation = opt.simulation;
-    std::string log_path = opt.log_path;
+    std::string log_level = opt.log_level; 
+    std::string log_path = opt.json_path;
     std::string result_var = opt.result_var;
     std::string result_path = opt.result_path;
 
@@ -43,7 +44,7 @@ namespace K3 {
       }
 
       SystemEnvironment se = defaultEnvironment(getAddrs(contexts));
-      engine.configure(simulation, se, make_shared<DefaultInternalCodec>(), log_path, result_var, result_path);
+      engine.configure(simulation, se, make_shared<DefaultInternalCodec>(), log_level, log_path, result_var, result_path);
       processRoles(contexts);
       engine.runEngine(make_shared<virtualizing_message_processor>(contexts));
     }
@@ -61,7 +62,7 @@ namespace K3 {
         gc->initDecls(unit_t {});
         contexts[gc->me] = gc;
         SystemEnvironment se = defaultEnvironment(getAddrs(contexts));
-        engine->configure(simulation, se, make_shared<DefaultInternalCodec>(), log_path, result_var, result_path);
+        engine->configure(simulation, se, make_shared<DefaultInternalCodec>(), log_level, log_path, result_var, result_path);
         processRoles(contexts);
         auto t = tuple<e_ptr, ctxt_map>(engine, contexts);
         engines.push_back(t);
