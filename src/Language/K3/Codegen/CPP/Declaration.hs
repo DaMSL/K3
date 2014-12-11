@@ -25,8 +25,6 @@ import Language.K3.Codegen.CPP.Types
 
 import qualified Language.K3.Codegen.CPP.Representation as R
 
-import Language.K3.Transform.Hints
-
 declaration :: K3 Declaration -> CPPGenM [R.Definition]
 declaration (tag -> DGlobal _ (tag -> TSource) _) = return []
 
@@ -44,19 +42,12 @@ declaration (tag -> DGlobal i (tag &&& children -> (TFunction, [ta, tr]))
     cta <- genCType ta
     ctr <- genCType tr
 
-    let nrvoHint = case (e @~ \case { EOpt (ReturnMoveHint _) -> True; _ -> False }) of
-                     Just (EOpt (ReturnMoveHint b)) -> b
-                     _ -> False
-
-    cbody <- reify (RReturn nrvoHint) body
+    cbody <- reify (RReturn False) body
 
     addForward $ R.FunctionDecl (R.Name i) [cta] ctr
 
-    let (EOpt (FuncHint readOnly)) = fromMaybe (EOpt (FuncHint False))
-                                     (e @~ \case { EOpt (FuncHint _) -> True; _ -> False})
-
     -- processRole always gets generated as const ref because that's our built-in signature
-    let cta' = if readOnly || i == "processRole" then R.Const (R.Reference cta) else cta
+    let cta' = if i == "processRole" then R.Const (R.Reference cta) else cta
 
     return [R.FunctionDefn (R.Name i) [(x, cta')] (Just ctr) [] False cbody]
 
@@ -74,17 +65,8 @@ declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children
     addForward $ maybe id (\t -> R.TemplateDecl [(t, Nothing)]) template $
                    R.FunctionDecl (R.Name i) [argumentType] returnType
 
-    let (EOpt (FuncHint readOnly)) = fromMaybe (EOpt (FuncHint False))
-                                     (e @~ \case { EOpt (FuncHint _) -> True; _ -> False})
-
-    let argumentType' = if readOnly then R.Const (R.Reference argumentType) else argumentType
-
-    let nrvoHint = case (e @~ \case { EOpt (ReturnMoveHint _) -> True; _ -> False }) of
-                     Just (EOpt (ReturnMoveHint b)) -> b
-                     _ -> False
-
-    body' <- reify (RReturn nrvoHint) body
-    return [templatize $ R.FunctionDefn (R.Name i) [(x, argumentType')] (Just returnType) [] False body']
+    body' <- reify (RReturn False) body
+    return [templatize $ R.FunctionDefn (R.Name i) [(x, argumentType)] (Just returnType) [] False body']
 
 -- Global scalars.
 declaration d@(tag -> DGlobal i t me) = do
