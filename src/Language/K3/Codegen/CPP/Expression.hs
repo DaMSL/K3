@@ -37,8 +37,6 @@ import qualified Language.K3.Codegen.CPP.Representation as R
 
 import qualified Language.K3.Analysis.CArgs as CArgs
 
-import Language.K3.Transform.Hints
-
 -- | The reification context passed to an expression determines how the result of that expression
 -- will be stored in the generated code.
 --
@@ -140,14 +138,15 @@ inline e@(tag -> EVariable v) = do
     Just (tag -> TForall _, False) | applyLevel env < cargs -> return ([], addBind v cargs)
     _                              -> return ([], defVar)
   where
-    isGlobal = isJust $ e @~ \case { EOpt GlobalHint -> True; _ -> False }
+    -- isGlobal = isJust $ e @~ \case { EOpt GlobalHint -> True; _ -> False }
     defVar = R.Variable $ R.Name v
-    addBind x n = if isGlobal then R.Call stdBind [addContext x, stdRefThis, placeHolder n] else defVar
+    addBind x n = defVar
+    -- addBind x n = if isGlobal then R.Call stdBind [addContext x, stdRefThis, placeHolder n] else defVar
 
-    stdBind = R.Variable $ R.Qualified (R.Name "std") (R.Name "bind")
-    addContext x = R.Variable $ R.Qualified (R.Name "&__global_context") $ R.Name x
-    stdRefThis = R.Call (R.Variable (R.Qualified (R.Name "std") $ R.Name "ref")) [R.Dereference $ R.Variable $ R.Name "this"]
-    placeHolder i = R.Variable $ R.Qualified (R.Qualified (R.Name "std") $ R.Name "placeholders") $ R.Name $ "_"++show i
+    -- stdBind = R.Variable $ R.Qualified (R.Name "std") (R.Name "bind")
+    -- addContext x = R.Variable $ R.Qualified (R.Name "&__global_context") $ R.Name x
+    -- stdRefThis = R.Call (R.Variable (R.Qualified (R.Name "std") $ R.Name "ref")) [R.Dereference $ R.Variable $ R.Name "this"]
+    -- placeHolder i = R.Variable $ R.Qualified (R.Qualified (R.Name "std") $ R.Name "placeholders") $ R.Name $ "_"++show i
 
 inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
     (e, v) <- inline c
@@ -183,16 +182,10 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
 
 inline e@(tag &&& children -> (ELambda arg, [body])) = do
     resetApplyLevel
-    let (EOpt (FuncHint readOnly)) = fromMaybe (EOpt (FuncHint False))
-                                     (e @~ \case { EOpt (FuncHint _) -> True; _ -> False})
-
-    (cRef, cMove, cCopy) <- case (e @~ \case { EOpt (CaptHint _) -> True; _ -> False }) of
-                              Just (EOpt (CaptHint ch)) -> return ch
-                              -- If we have no capture hints, we need to do the heavy work ourselves
-                              _ -> do
-                                globVals <- fst . unzip . globals <$> get
-                                let fvs = nub $ filter (/= arg) $ freeVariables body
-                                return $ (S.empty, S.empty, S.fromList $ fvs \\ globVals)
+    (cRef, cMove, cCopy) <- do
+      globVals <- fst . unzip . globals <$> get
+      let fvs = nub $ filter (/= arg) $ freeVariables body
+      return $ (S.empty, S.empty, S.fromList $ fvs \\ globVals)
 
     (ta, _) <- getKType e >>= \case
         (tag &&& children -> (TFunction, [ta, tr])) -> do
@@ -209,16 +202,10 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
     let copyCapture = S.map (\s -> R.ValueCapture $ Just (s, Nothing)) cCopy
     let capture = thisCapture : (S.toList $ S.unions [refCapture, moveCapture, copyCapture])
 
-    let nrvoHint = case (e @~ \case { EOpt (ReturnMoveHint _) -> True; _ -> False }) of
-                     Just (EOpt (ReturnMoveHint b)) -> b
-                     _ -> False
+    body' <- reify (RReturn False) body
 
-    body' <- reify (RReturn nrvoHint) body
     -- TODO: Handle `mutable' arguments.
-    let hintedArgType = if readOnly then R.Const (R.Reference ta) else ta
-    return ( []
-           , R.Lambda capture [(arg, hintedArgType)] True Nothing body'
-           )
+    return ([], R.Lambda capture [(arg, ta)] True Nothing body')
 
 inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, [Fold c, f, z]))) = do
   (ce, cv) <- inline c
@@ -263,15 +250,9 @@ inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) 
     incApplyLevel
     (fe, fv) <- inline f
     (aes, avs) <- unzip <$> mapM inline as
-    c <- call fv (movedArgs avs)
+    c <- call fv avs
     return (fe ++ concat aes, c)
   where
-    movedArgs args = [ if noMove
-                           then arg
-                           else R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "move")) [arg]
-                     | arg <- args
-                     | EOpt (PassHint noMove) <- passHints
-                     ]
     call fn@(R.Variable n) args =
       if isJust $ f @~ CArgs.isErrorFn
         then do
@@ -280,10 +261,6 @@ inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) 
           return $ R.Call (R.Variable $ R.Specialized [returnType] n) args
         else return $ R.Call fn args
     call fn args = return $ R.Call fn args
-
-    getPassHint c = fromMaybe (EOpt (PassHint True)) (c @~ \case { EOpt (PassHint _) -> True; _ -> False})
-    passHints = map getPassHint as
-
 
 inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
     d <- genSym
@@ -352,10 +329,7 @@ reify r (tag &&& children -> (ELetIn x, [e, b])) = do
 
 -- case `e' of { some `x' -> `s' } { none -> `n' }
 reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
-    let (refBinds, copyBinds, writeBinds)
-            = case (k @~ \case { EOpt (BindHint _) -> True; _ -> False}) of
-                Just (EOpt (BindHint ch)) -> ch
-                _ -> (S.empty, S.empty, S.singleton x)
+    let (refBinds, copyBinds, writeBinds) = (S.empty, S.empty, S.singleton x)
 
     let isCopyBound i = i `S.member` copyBinds || i `S.member` writeBinds
     let isWriteBound i = i `S.member` writeBinds
@@ -387,10 +361,7 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
     return $ gd ++ ee ++ [R.IfThenElse (R.Variable $ R.Name g) (d ++ se ++ reconstruct) ne]
 
 reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
-    let (refBinds, copyBinds, writeBinds)
-            = case (k @~ \case { EOpt (BindHint _) -> True; _ -> False}) of
-                Just (EOpt (BindHint (r, c, w))) -> (r, c, w)
-                _ -> (S.empty, S.empty, S.fromList $ bindingVariables b)
+    let (refBinds, copyBinds, writeBinds) = (S.empty, S.empty, S.fromList $ bindingVariables b)
 
     let isCopyBound i = i `S.member` copyBinds || i `S.member` writeBinds
     let isWriteBound i = i `S.member` writeBinds
