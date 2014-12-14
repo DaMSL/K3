@@ -98,31 +98,56 @@ materializationD (Node (d :@: as) cs)
    cs' = mapM materializationD cs
 
 materializationE :: K3 Expression -> MaterializationM (K3 Expression)
-materializationE e
-  = case e of
-      (tag &&& children -> (EOperate OApp, [f, x])) -> do
-             f' <- withLocalDS [x] (materializationE f)
-             x' <- materializationE x
+materializationE e@(Node (t :@: as) cs)
+  = case t of
+      EOperate OApp -> do
+             [f, x] <- mapM materializationE cs
 
-             let argIdent = case tag (getProvenance f') of
-                              PLambda p -> p
-                              _ -> error "Unexpected provenance on function."
+             let pf = getProvenance f
 
-             fDecision <- dLookup (getUID f') argIdent
+             setDecision (getUID e) "" defaultDecision
 
-             decision <- if inD fDecision == Referenced || inD fDecision == ConstReferenced
-                           then return fDecision
-                           else do
-                             moveable <- isMoveableNow x'
+             decisions <- dLookupAll (getUID e)
 
-                             return $ if moveable then (Decision Moved Moved) else (Decision Copied Copied)
+             return (Node (t :@: (EMaterialization decisions:as)) [f, x])
 
-             setDecision (getUID e) argIdent decision
+      ELambda x -> do
+             [b] <- mapM materializationE cs
+             setDecision (getUID e) x defaultDecision
+             decisions <- dLookupAll (getUID e)
+             return (Node (t :@: (EMaterialization decisions:as)) [b])
 
-             allDecisions <- dLookupAll (getUID e)
-             return $ Node (tag e :@: (EMaterialization allDecisions : annotations e)) [f', x']
+      EBindAs b -> do
+             let [x, y] = cs
+             x' <- withLocalDS [y] (materializationE x)
+             y' <- materializationE y
 
-      _  -> Node (tag e :@: annotations e) <$> mapM materializationE (children e)
+             case b of
+               BIndirection i -> setDecision (getUID e) i defaultDecision
+               BTuple is -> mapM_ (\i -> setDecision (getUID e) i defaultDecision) is
+               BRecord iis -> mapM_ (\(_, i) -> setDecision (getUID e) i defaultDecision) iis
+
+             decisions <- dLookupAll (getUID e)
+             return (Node (t :@: (EMaterialization decisions:as)) [x', y'])
+
+      ECaseOf i -> do
+             let [x, s, n] = cs
+             x' <- withLocalDS [s, n] (materializationE x)
+             s' <- materializationE s
+             n' <- materializationE n
+
+             setDecision (getUID e) i defaultDecision
+             decisions <- dLookupAll (getUID e)
+             return (Node (t :@: (EMaterialization decisions:as)) [x', s', n'])
+
+      ELetIn i -> do
+             let [x, b] = cs
+             x' <- withLocalDS [b] (materializationE x)
+             b' <- materializationE b
+
+             setDecision (getUID e) i defaultDecision
+             decisions <- dLookupAll (getUID e)
+             return (Node (t :@: (EMaterialization decisions:as)) [x', b'])
 
 -- Queries
 
