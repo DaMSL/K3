@@ -4,6 +4,8 @@
 -- | Machinery for making decisions about C++ level materialization for K3.
 module Language.K3.Codegen.CPP.Materialization where
 
+import Prelude hiding (mapM)
+
 import Control.Applicative
 import Control.Arrow
 
@@ -18,6 +20,8 @@ import Language.K3.Analysis.SEffects.Core
 import Language.K3.Codegen.CPP.Materialization.Hints
 
 import Data.Functor
+import Data.Traversable
+
 import Data.Maybe (fromMaybe)
 import Data.Tree
 
@@ -85,7 +89,13 @@ runMaterializationM :: MaterializationM a -> MaterializationS -> (a, Materializa
 runMaterializationM m s = runIdentity $ runStateT m s
 
 materializationD :: K3 Declaration -> MaterializationM (K3 Declaration)
-materializationD = undefined
+materializationD (Node (d :@: as) cs)
+  = case d of
+      DGlobal i t me -> traverse materializationE me >>= \me' -> Node (DGlobal i t me' :@: as) <$> cs'
+      DTrigger i t e -> materializationE e >>= \e' -> Node (DTrigger i t e' :@: as) <$> cs'
+      DRole i -> Node (DRole i :@: as) <$> cs'
+ where
+   cs' = mapM materializationD cs
 
 materializationE :: K3 Expression -> MaterializationM (K3 Expression)
 materializationE e
