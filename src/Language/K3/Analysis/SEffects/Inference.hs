@@ -53,7 +53,7 @@ localLog = logVoid effTraceLogging
 localLogAction :: (Functor m, Monad m) => (Maybe a -> Maybe String) -> m a -> m a
 localLogAction = logAction effTraceLogging
 
--- | An effect bindings environment, using an option type to represent 
+-- | An effect bindings environment, using an option type to represent
 --   bindings that do not have an effect.
 type FEnv = Map Identifier [K3 Effect]
 
@@ -106,7 +106,7 @@ fenv0 = Map.empty
 
 flkup :: FEnv -> Identifier -> Either Text (K3 Effect)
 flkup env x = maybe err safeHead $ Map.lookup x env
-  where 
+  where
     safeHead l = if null l then err else Right $ head l
     err = mkErrP msg env
     msg = "Unbound variable in effect binding environment: " ++ x
@@ -182,7 +182,7 @@ fpbenv0 = Map.empty
 
 fpblkup :: FPBEnv -> Identifier -> Either Text (K3 Provenance)
 fpblkup env x = maybe err safeHead $ Map.lookup x env
-  where 
+  where
     safeHead l = if null l then err else Right $ head l
     err = mkErrP msg env
     msg = "Unbound variable in effect provenance binding environment: " ++ x
@@ -289,13 +289,13 @@ fipushcase env mvs = env {fcase=mvs:(fcase env)}
 
 -- | Self-referential provenance pointer construction
 fifreshfp :: FIEnv -> Identifier -> UID -> (K3 Effect, FIEnv)
-fifreshfp fienv i u = 
+fifreshfp fienv i u =
   let j = fcnt fienv
       f = fbvar $ FMatVar i u j
   in (f, fiextp (fienv {fcnt=j+1}) j f)
 
 fifreshbp :: FIEnv -> Identifier -> UID -> K3 Effect -> (K3 Effect, FIEnv)
-fifreshbp fienv i u f = 
+fifreshbp fienv i u f =
   let j  = fcnt fienv
       f' = fbvar $ FMatVar i u j
   in (f', fiextp (fienv {fcnt=j+1}) j f)
@@ -303,16 +303,16 @@ fifreshbp fienv i u f =
 -- | Self-referential provenance pointer construction
 --   This adds a new named pointer to both the named and pointer environments.
 fifreshs :: FIEnv -> Identifier -> UID -> (K3 Effect, FIEnv)
-fifreshs fienv n u = 
+fifreshs fienv n u =
   let (f, nenv) = fifreshfp fienv n u in (f, fiexte nenv n f)
 
 -- | Provenance linked pointer construction.
 fifresh :: FIEnv -> Identifier -> UID -> K3 Effect -> (K3 Effect, FIEnv)
-fifresh fienv n u f = 
+fifresh fienv n u f =
   let (f', nenv) = fifreshbp fienv n u f in (f', fiexte nenv n f')
 
 fifreshAs :: FIEnv -> Identifier -> [(Identifier, UID, Bool, Bool)] -> (FMEnv, FIEnv)
-fifreshAs fienv n memN = 
+fifreshAs fienv n memN =
   let mkMemF lacc l f                = lacc++[(f,l)]
       extMemF (lacc,eacc) (i,u,l,fn) = if fn then first (mkMemF lacc l) $ fifreshfp eacc i u
                                              else (lacc++[(fnone,l)], eacc)
@@ -348,10 +348,10 @@ fistorea fienv n memF = do
         store eacc i u (tag -> FBVar mv) f
           | (fmvn mv, fmvloc mv) == (i,u) = return $ fiextp eacc (fmvptr mv) f
         store eacc _ _ _ _ = return eacc
-        
+
         invalidMem i = mkErr $ "Invalid store on annotation member" ++ i
 
--- | Traverses all pointers until reaching a non-pointer. 
+-- | Traverses all pointers until reaching a non-pointer.
 --   This function stops on any cycles detected.
 fichase :: FIEnv -> K3 Effect -> Either Text (K3 Effect)
 fichase fienv cf = aux [] cf
@@ -450,7 +450,7 @@ simplifyApply fienv eOpt ef lrf arf = do
     [rf] -> return (rf, nenv)
     _    -> return (fset manyLrf', nenv)
 
-  where 
+  where
     doSimplify upOpt arf' (facc, eacc) lrf' =
       case tnc lrf' of
         (FLambda i, [_,bef,brf]) -> case upOpt of
@@ -612,9 +612,8 @@ inferProgramEffects ppenv p =  do
     doInference p' = do
       np   <- globalsEff p'
       np'  <- mapExpression inferExprEffects np
-      --np'' <- simplifyExprEffects np'
-      --markGlobals np''
-      return np'
+      np'' <- simplifyExprEffects np'
+      markGlobals np''
 
     -- Globals cannot be captured in closures, so we elide them from the
     -- effect provenance bindings environment.
@@ -676,7 +675,7 @@ inferProgramEffects ppenv p =  do
     markGlobal d@(tag -> DTrigger _ _ e) = unlessHasEffect d $ \_ -> do
       f' <- effectOf e
       return (d @+ (DEffect $ Right f'))
-    
+
     markGlobal d@(tag -> DDataAnnotation n tvars mems) = do
       nmems <- mapM (markMems n) mems
       return (replaceTag d $ DDataAnnotation n tvars nmems)
@@ -770,12 +769,12 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
     infer :: FInfM () -> [Maybe (K3 Effect)] -> [K3 Effect] -> K3 Expression -> FInfM (Maybe (K3 Effect), K3 Effect)
     infer m _ _ e@(tag -> EConstant _) = m >> rt e (Nothing, fnone)
     infer m _ _ e@(tag -> EVariable i) = m >> ((\f p -> (Just (fread p), f)) <$> filkupeM i <*> filkupepM i) >>= rt e
-    
+
     infer m ef rf e@(tag -> ESome)       = m >> rt e (fexec ef, fdata Nothing    rf)
     infer m ef rf e@(tag -> EIndirect)   = m >> rt e (fexec ef, fdata Nothing    rf)
     infer m ef rf e@(tag -> ETuple)      = m >> rt e (fexec ef, fdata Nothing    rf)
     infer m ef rf e@(tag -> ERecord ids) = m >> rt e (fexec ef, fdata (Just ids) rf)
-    
+
     infer m ef [rf] e@(tag -> ELambda i) = m >> do
       UID u <- uidOf e
       clv   <- filkupcM u
@@ -829,7 +828,7 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
                                       (fset $ catMaybes [sef, nef])
                                       (fset [fwrite $ pbvar cpmv, fnone])
                                       (fset [snf, rnf]))
-    
+
     infer m _ _ e@(tag -> EAddress) = m >> rt e (Nothing, fnone)
 
     -- TODO: unhandled cases: ESelf, EImperative
@@ -926,14 +925,14 @@ effectsOfType args t | isTFunction t =
 
 effectsOfType [] _   = return fnone
 effectsOfType args _ = return $ foldl lam (flambda (last args) fnone ef fnone) $ init args
-  where 
+  where
     lam rfacc a = flambda a fnone fnone rfacc
     ef = floop $ fseq $ concatMap (\i -> [fread $ pfvar i, fwrite $ pfvar i]) args
 
 
 -- | Computes execution effects and effect structure for a collection field member.
 --   TODO: much like its counterpart with provenance, this method recomputes the effect rather
---   using a cached result. 
+--   using a cached result.
 collectionMemberEffect :: Identifier -> [Maybe (K3 Effect)] -> K3 Effect
                        -> K3 Expression -> K3 Type -> K3 Provenance
                        -> FInfM (Maybe (K3 Effect), K3 Effect)
@@ -957,9 +956,9 @@ simplifyEffects f = modifyTree simplify f
   where simplify f'@(tnc -> (FApply mvOpt, [_,_,ef,bf,r])) =
           return $ Node (FApply mvOpt :@: annotations f') [ef,bf,r]
 
-        -- Rebuilding FSet, and FSeq will filter all fnones. 
-        simplify (tnc -> (FSet, ch))  = return $ fset ch 
-        simplify (tnc -> (FSeq, ch))  = return $ fseq ch 
+        -- Rebuilding FSet, and FSeq will filter all fnones.
+        simplify (tnc -> (FSet, ch))  = return $ fset ch
+        simplify (tnc -> (FSeq, ch))  = return $ fseq ch
         simplify f' = return f'
 
 -- | Simplifies applies on all effect trees attached to an expression.
