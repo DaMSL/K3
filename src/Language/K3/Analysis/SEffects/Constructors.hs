@@ -37,7 +37,7 @@ fdata :: Maybe [Identifier] -> [K3 Effect] -> K3 Effect
 fdata idOpt ch = Node (FData idOpt :@: []) ch
 
 fscope :: [FMatVar] -> K3 Effect -> K3 Effect -> K3 Effect -> K3 Effect -> K3 Effect
-fscope mv prebef bef postbef sf = Node (FScope mv :@: []) [prebef, bef, postbef,sf]
+fscope mv prebef bef postbef sf = Node (FScope mv :@: []) [prebef, bef, postbef, sf]
 
 flambda :: Identifier -> K3 Effect -> K3 Effect -> K3 Effect -> K3 Effect
 flambda i cl ef sf = Node (FLambda i :@: [])  [cl, ef, sf]

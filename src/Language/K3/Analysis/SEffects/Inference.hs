@@ -459,7 +459,7 @@ simplifyApply fienv eOpt ef lrf arf = do
             imv  <- fmv ifbv
             (nbef,n2eacc) <- fisub neacc  i ifbv bef p
             (nbrf,n3eacc) <- fisub n2eacc i ifbv brf p
-            let apprf = fapply (Just imv) lrf arf (fromJust $ finit ef) (fromJust $ finit [Just nbef]) nbrf
+            let apprf = fapply (Just imv) lrf arf (fromJust $ fexec ef) (fromJust $ fexec [Just nbef]) nbrf
             return (facc++[apprf], n3eacc)
 
           Nothing -> do
@@ -469,11 +469,11 @@ simplifyApply fienv eOpt ef lrf arf = do
             -- since we have no further information from effect signatures.
             (nbef,neacc)  <- fisub eacc  i arf' bef ptemp
             (nbrf,n2eacc) <- fisub neacc i arf' brf ptemp
-            let apprf = fapply Nothing lrf arf (fromJust $ finit ef) (fromJust $ finit [Just nbef]) nbrf
+            let apprf = fapply Nothing lrf arf (fromJust $ fexec ef) (fromJust $ fexec [Just nbef]) nbrf
             return (facc++[apprf], n2eacc)
 
         -- Handle recursive functions and forward declarations by using an opaque return value.
-        (FBVar _, _) -> return (facc ++ [fapply Nothing lrf arf (fromJust $ finit ef) fnone fnone], eacc)
+        (FBVar _, _) -> return (facc ++ [fapply Nothing lrf arf (fromJust $ fexec ef) fnone fnone], eacc)
 
         -- Handle higher-order and external functions as an unsimplified apply.
         (FFVar _, _) -> return (facc ++ [fapplyExt lrf arf], eacc)
@@ -495,7 +495,7 @@ simplifyApply fienv eOpt ef lrf arf = do
                             (tag -> PMaterialize [mv]) -> return $ pbvar mv
                             p -> return p
 
-    finit ef' = Just $ fseq $ catMaybes ef'
+    fexec ef' = Just $ fseq $ catMaybes ef'
 
     fmv (tag -> FBVar mv) = return mv
     fmv f = Left $ PT.boxToString $ [T.pack "Invalid effect bound var: "] %$ PT.prettyLines f
@@ -613,7 +613,8 @@ inferProgramEffects ppenv p =  do
       np   <- globalsEff p'
       np'  <- mapExpression inferExprEffects np
       --np'' <- simplifyExprEffects np'
-      markGlobals np'
+      --markGlobals np''
+      return np'
 
     -- Globals cannot be captured in closures, so we elide them from the
     -- effect provenance bindings environment.
@@ -770,10 +771,10 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
     infer m _ _ e@(tag -> EConstant _) = m >> rt e (Nothing, fnone)
     infer m _ _ e@(tag -> EVariable i) = m >> ((\f p -> (Just (fread p), f)) <$> filkupeM i <*> filkupepM i) >>= rt e
     
-    infer m ef rf e@(tag -> ESome)       = m >> rt e (finit ef, fdata Nothing    rf)
-    infer m ef rf e@(tag -> EIndirect)   = m >> rt e (finit ef, fdata Nothing    rf)
-    infer m ef rf e@(tag -> ETuple)      = m >> rt e (finit ef, fdata Nothing    rf)
-    infer m ef rf e@(tag -> ERecord ids) = m >> rt e (finit ef, fdata (Just ids) rf)
+    infer m ef rf e@(tag -> ESome)       = m >> rt e (fexec ef, fdata Nothing    rf)
+    infer m ef rf e@(tag -> EIndirect)   = m >> rt e (fexec ef, fdata Nothing    rf)
+    infer m ef rf e@(tag -> ETuple)      = m >> rt e (fexec ef, fdata Nothing    rf)
+    infer m ef rf e@(tag -> ERecord ids) = m >> rt e (fexec ef, fdata (Just ids) rf)
     
     infer m ef [rf] e@(tag -> ELambda i) = m >> do
       UID u <- uidOf e
@@ -795,36 +796,36 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
               case tnc rf of
                 (FData _, fdch) -> do
                   idx <- maybe (memErr i esrc) return $ elemIndex i ids
-                  rt e (finit ef, fdch !! idx)
-                (_,_) -> rt e (finit ef, fnone)
+                  rt e (fexec ef, fdch !! idx)
+                (_,_) -> rt e (fexec ef, fnone)
             _ -> prjErr esrc
         _ -> prjErr esrc
 
-    infer m ef _      e@(tag -> EAssign i)     = m >> filkupepM i >>= \p -> rt e (finit $ ef ++ [Just $ fwrite p], fnone)
-    infer m ef _      e@(tag -> EOperate OSnd) = m >> rt e (finit $ ef ++ [Just fio], fnone)
-    infer m ef [_,rf] e@(tag -> EOperate OSeq) = m >> rt e (finit ef, rf)
-    infer m ef _      e@(tag -> EOperate _)    = m >> rt e (finit ef, fnone)
+    infer m ef _      e@(tag -> EAssign i)     = m >> filkupepM i >>= \p -> rt e (fexec $ ef ++ [Just $ fwrite p], fnone)
+    infer m ef _      e@(tag -> EOperate OSnd) = m >> rt e (fexec $ ef ++ [Just fio], fnone)
+    infer m ef [_,rf] e@(tag -> EOperate OSeq) = m >> rt e (fexec ef, rf)
+    infer m ef _      e@(tag -> EOperate _)    = m >> rt e (fexec ef, fnone)
 
     infer m [pe,te,ee] [_,tr,er] e@(tag -> EIfThenElse) =
-      m >> rt e (finit [pe, Just $ fset $ catMaybes [te, ee]], fset [tr,er])
+      m >> rt e (fexec [pe, Just $ fset $ catMaybes [te, ee]], fset [tr,er])
 
     infer m [initef,bef] [_,rf] e@(tag -> ELetIn  i) = m >> do
       mv <- filkupeM i >>= fmv
       popVars i
-      rt e (Just fnone, fscope [mv] (fromJust $ finit [initef]) (fromJust $ finit [bef]) fnone rf)
+      rt e (Just fnone, fscope [mv] (fromJust $ fexec [initef]) (fromJust $ fexec [bef]) fnone rf)
 
     infer m [initef,bef] [_,rf] e@(tag -> EBindAs b) = m >> do
       fmvs <- mapM filkupeM (bindingVariables b) >>= mapM fmv
       ps   <- mapM filkupepM (bindingVariables b) >>= mapM pmv >>= mapM (filkupppM . pmvptr)
       mapM_ popVars (bindingVariables b)
-      rt e (Just fnone, fscope fmvs (fromJust $ finit [initef])
-                                    (fromJust $ finit [bef])
+      rt e (Just fnone, fscope fmvs (fromJust $ fexec [initef])
+                                    (fromJust $ fexec [bef])
                                     (fseq $ map fwrite ps)
                                     rf)
 
     infer m [oef,sef,nef] [_,snf,rnf] e@(tag -> ECaseOf _) = m >> do
       (cfmv, cpmv) <- fipopcaseM ()
-      rt e (Just fnone, fscope [cfmv] (fromJust $ finit [oef])
+      rt e (Just fnone, fscope [cfmv] (fromJust $ fexec [oef])
                                       (fset $ catMaybes [sef, nef])
                                       (fset [fwrite $ pbvar cpmv, fnone])
                                       (fset [snf, rnf]))
@@ -837,7 +838,7 @@ inferEffects expr = foldMapIn1RebuildTree topdown sideways infer iu Nothing expr
     rt e r@(Nothing, rf) = fiextmM e fnone rf >> return r
     rt e r@(Just ef, rf) = fiextmM e ef rf    >> return r
 
-    finit ef = Just $ fseq $ catMaybes ef
+    fexec ef = Just $ fseq $ catMaybes ef
     popVars i = fideleM i >> fidelepM i
 
     matchLambdaEff f@(tag -> FLambda _) = return $ Just f
@@ -977,6 +978,87 @@ simplifyExprEffects d = mapExpression simplifyExpr d
         isEffectAnn (ESEffect _) = True
         isEffectAnn (EFStructure _) = True
         isEffectAnn _ = False
+
+{- Effect queries -}
+type EffectMap = IntMap (K3 Effect)
+
+-- | Single-pass, bottom-up recomputation of default effects at all expressions in a program.
+inferDefaultEffects :: K3 Declaration -> Either Text EffectMap
+inferDefaultEffects p = foldExpression foldDefaultExprEffects IntMap.empty p >>= return . fst
+
+-- | Accumulating default effect computation for a specific expression.
+foldDefaultExprEffects :: EffectMap -> K3 Expression -> Either Text (EffectMap, K3 Expression)
+foldDefaultExprEffects accqr expr = do
+  (nqr,_) <- foldMapTree infer (emptyQR, Nothing) expr
+  return (unionQR accqr nqr, expr)
+
+  where
+    infer :: [(EffectMap, Maybe (K3 Effect))] -> K3 Expression -> Either Text (EffectMap, Maybe (K3 Effect))
+    infer (onSub -> (qr, _)) e@(tag -> EConstant _) = fromEffect e (e @~ isESEffect) >>= rt qr e
+    infer (onSub -> (qr, _)) e@(tag -> EVariable _) = fromEffect e (e @~ isESEffect) >>= rt qr e
+
+    infer (onSub -> (qr, _)) e@(tag -> ELambda _) =
+      case e @~ isEFStructure of
+        Just (EFStructure (tnc -> (FLambda _, [clf,_,_]))) -> rt qr e $ fexec [Just clf]
+        _ -> lambdaErr e
+
+    -- TODO: handle FSet, i.e., multi-applies
+    infer (onSub -> (qr, ef)) e@(tag -> EOperate OApp) =
+      case e @~ isEFStructure of
+        Just (EFStructure (tnc -> (FApply _, [ief,bef,_]))) -> rt qr e $ fexec $ ef ++ map Just [ief, bef]
+        Just (EFStructure (tnc -> (FApply _, [_,_])))       -> rt qr e $ fexec ef
+        _ -> applyErr e
+
+    -- Extract only the write effect on assignments; we are rebuilding all the other execution effects.
+    infer (onSub -> (qr, ef)) e@(tag -> EAssign _) =
+      case e @~ isESEffect of
+        Just (ESEffect (tnc -> (FSeq, (last -> f@(tag -> FWrite _))))) -> rt qr e $ fexec $ ef ++ [Just f]
+        Just (ESEffect f@(tag -> FWrite _)) -> rt qr e $ fexec $ ef ++ [Just f]
+        _ -> assignErr e
+
+    infer (onSub -> (qr, ef)) e@(tag -> EOperate OSnd) = rt qr e $ fexec $ ef ++ [Just fio]
+
+    infer (onSub -> (qr, ef)) e@(tag -> ELetIn  _) = fromScope qr ef e $ e @~ isEFStructure
+    infer (onSub -> (qr, ef)) e@(tag -> EBindAs _) = fromScope qr ef e $ e @~ isEFStructure
+    infer (onSub -> (qr, ef)) e@(tag -> ECaseOf _) = fromScope qr ef e $ e @~ isEFStructure
+    infer (onSub -> (qr, ef)) e = rt qr e $ fexec ef
+
+    fromEffect _ (Just (ESEffect f)) = return $ Just f
+    fromEffect e _ = effectErr e
+
+    fromScope qr ef e (Just (EFStructure (tnc -> (FScope _, [preef, bef, postef,_])))) =
+      rt qr e $ fexec $ ef ++ map Just [preef, bef, postef]
+
+    fromScope _ _ e _ = scopeErr e
+
+    rt :: EffectMap -> K3 Expression -> Maybe (K3 Effect) -> Either Text (EffectMap, Maybe (K3 Effect))
+    rt qr e f = uidOf e >>= \u -> return (putQR qr u f, f)
+
+    onSub ch = let (x,y) = unzip ch in (unionsQR x, y)
+
+    fexec :: [Maybe (K3 Effect)] -> Maybe (K3 Effect)
+    fexec ef = Just $ fseq $ catMaybes ef
+
+    emptyQR  = IntMap.empty
+    unionQR  = IntMap.union
+    unionsQR = IntMap.unions
+
+    putQR qr (UID i) (Just f) = IntMap.insert i f qr
+    putQR qr _ Nothing  = qr
+
+    uidOf  e = maybe (uidErr e) (\case {(EUID u) -> return u ; _ ->  uidErr e}) $ e @~ isEUID
+    uidErr e = Left $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines e
+
+    lambdaErr e = Left $ PT.boxToString $ [T.pack "No effect structure found on lambda: "]       %$ PT.prettyLines e
+    scopeErr  e = Left $ PT.boxToString $ [T.pack "No effect structure found at binding site: "] %$ PT.prettyLines e
+    applyErr  e = Left $ PT.boxToString $ [T.pack "No effect structure found at apply: "]        %$ PT.prettyLines e
+    assignErr e = Left $ PT.boxToString $ [T.pack "No execution effects found at assign: "]      %$ PT.prettyLines e
+    effectErr e = Left $ PT.boxToString $ [T.pack "No execution effects found on expression: "]  %$ PT.prettyLines e
+
+-- | Default effect computation for a specific expression.
+inferDefaultExprEffects :: K3 Expression -> Either Text EffectMap
+inferDefaultExprEffects e = foldDefaultExprEffects IntMap.empty e >>= return . fst
+
 
 {- Pattern synonyms for inference -}
 pattern PTOption et <- Node (TOption :@: _) [et]
