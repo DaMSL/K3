@@ -361,7 +361,7 @@ instance PT.Pretty (K3 Expression) where
 drawExprAnnotationsT :: [Annotation Expression] -> (Text, [Text])
 drawExprAnnotationsT as =
   let (typeAnns, anns)    = partition (\a -> isETypeOrBound a || isEQType a || isEPType a) as
-      (effectAnns, anns') = partition (\a -> isEProvenance a || isEEffect a || isESymbol a) anns
+      (effectAnns, anns') = partition isAnyEEffectAnn anns
       prettyTypeAnns = case typeAnns of
                          []         -> []
                          [EType t]  -> drawETypeAnnotationT $ EType t
