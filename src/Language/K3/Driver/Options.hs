@@ -26,13 +26,14 @@ import Language.K3.Utils.Pretty (
 
 -- | Program Options.
 data Options = Options {
-      mode      :: Mode
-    , inform    :: InfoSpec
-    , paths     :: PathOptions
-    , input     :: FilePath
-    , noFeed    :: Bool
-    , noMP      :: Bool
-    , mpOpts    :: Maybe MetaprogramOptions
+      mode         :: Mode
+    , inform       :: InfoSpec
+    , paths        :: PathOptions
+    , input        :: FilePath
+    , noFeed       :: Bool
+    , noMP         :: Bool
+    , mpOpts       :: Maybe MetaprogramOptions
+    , analysisOpts :: [(String, String)]
     }
   deriving (Eq, Read, Show)
 
@@ -432,22 +433,6 @@ printQuickTypesOpt = switch (
                       <> help    "Show quicktypes as typechecker output"
                    )
 
--- | Metaprogram option parsing.
-metaprogramOptions :: Parser (Maybe MetaprogramOptions)
-metaprogramOptions = optional (MetaprogramOptions <$> interpreterArgOpts <*> moduleSearchPathOpts)
-
-interpreterArgOpts :: Parser [(String, String)]
-interpreterArgOpts = keyValList "-" <$> strOption (   long    "mpargs"
-                                                   <> value   ""
-                                                   <> help    "Metaprogram interpreter args"
-                                                   <> metavar "MPINTERPARGS" )
-
-moduleSearchPathOpts :: Parser [String]
-moduleSearchPathOpts = pathList <$> strOption (   long    "mpsearch"
-                                               <> value   ""
-                                               <> help    "Metaprogram module search path"
-                                               <> metavar "MPSEARCHPATH" )
-
 -- Accept a precursor string
 transformMode :: Parser [TransformMode]
 transformMode   =  wrap <$> conflictsOpt
@@ -614,6 +599,29 @@ inputOptions = fileOrStdin <$> (many $ argument str (
   where fileOrStdin [] = ["-"]
         fileOrStdin x  = x
 
+-- | Metaprogram option parsing.
+metaprogramOptions :: Parser (Maybe MetaprogramOptions)
+metaprogramOptions = optional (MetaprogramOptions <$> interpreterArgOpts <*> moduleSearchPathOpts)
+
+interpreterArgOpts :: Parser [(String, String)]
+interpreterArgOpts = keyValList "-" <$> strOption (   long    "mpargs"
+                                                   <> value   ""
+                                                   <> help    "Metaprogram interpreter args"
+                                                   <> metavar "MPINTERPARGS" )
+
+moduleSearchPathOpts :: Parser [String]
+moduleSearchPathOpts = pathList <$> strOption (   long    "mpsearch"
+                                               <> value   ""
+                                               <> help    "Metaprogram module search path"
+                                               <> metavar "MPSEARCHPATH" )
+
+-- | Analysis option parsing.
+analysisOptions :: Parser [(String, String)]
+analysisOptions = keyValList "" <$> strOption (   long    "analysis"
+                                               <> value   ""
+                                               <> help    "Analysis pass arguments"
+                                               <> metavar "ANALYSISARGS" )
+
 -- | Program Options Parsing.
 programOptions :: Parser Options
 programOptions = mkOptions <$> modeOptions
@@ -622,8 +630,9 @@ programOptions = mkOptions <$> modeOptions
                            <*> noFeedOpt
                            <*> noMPOpt
                            <*> metaprogramOptions
+                           <*> analysisOptions
                            <*> inputOptions
-    where mkOptions m i p nf nmp mp is = Options m i p (last is) nf nmp mp
+    where mkOptions m i p nf nmp mp an is = Options m i p (last is) nf nmp mp an
 
 {- Instance definitions -}
 

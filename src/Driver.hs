@@ -67,13 +67,13 @@ run opts = do
   case parseResult of
     Left err      -> parseError err
     Right parsedP -> if noMP opts then dispatch (mode opts) parsedP
-                     else metaprogram opts parsedP
+                     else metaprogram parsedP
 
   where
-    metaprogram :: Options -> K3 Declaration -> IO ()
-    metaprogram opts' p = do
-      mp <- evalMetaprogram (metaprogramOpts $ mpOpts opts') Nothing Nothing p
-      either spliceError (dispatch $ mode opts') mp
+    metaprogram :: K3 Declaration -> IO ()
+    metaprogram p = do
+      mp <- evalMetaprogram (metaprogramOpts $ mpOpts opts) Nothing Nothing p
+      either spliceError (dispatch $ mode opts) mp
 
     dispatch :: Mode -> K3 Declaration -> IO ()
     dispatch (Parse popts) p = if not $ null $ poStages popts
@@ -113,7 +113,7 @@ run opts = do
     -- quickTypecheck p = inferProgramTypes p >>= translateProgramTypes
 
     -- Perform all transformations
-    transform ts prog = foldl' (flip analyzer) (prog, "") ts
+    transform ts prog = foldl' (flip (analyzer $ analysisOpts opts)) (prog, "") ts
 
     -- Print out the program
     printer (PrintAST st se sc) p =
@@ -139,37 +139,48 @@ run opts = do
       printer (parsePrintMode popts) p
       putStrLn str
 
-      -- Using arrow combinators to make this simpler
-      -- first/second passes the other part of the pair straight through
-    analyzer :: TransformMode -> (K3 Declaration, String) -> (K3 Declaration, String)
-    --analyzer Conflicts x                   = first getAllConflicts x
-    --analyzer Tasks x                       = first getAllTasks x
-    --analyzer ProgramTasks (p,s)            = (p, s ++ show (getProgramTasks p))
-    analyzer ProxyPaths x                  = first labelBindAliases x
-    analyzer AnnotationProvidesGraph (p,s) = (p, s ++ show (providesGraph p))
-    analyzer FlatAnnotations (p,s)         = (p, s ++ show (flattenAnnotations p))
-    analyzer EffectNormalization x         = first Normalization.normalizeProgram x
-    analyzer FoldConstants x               = wrapEither Simplification.foldProgramConstants x
-    
-    analyzer Provenance x = flip wrapEitherS x $ \p str -> do
-      (np, ppenv) <- Provenance.inferProgramProvenance p
-      return $ (np, str ++ (T.unpack $ PT.pretty ppenv))
-    
-    analyzer SEffects x = flip wrapEither x $ \p -> do
-      (np, ppenv) <- Provenance.inferProgramProvenance p
-      SEffects.inferProgramEffects ppenv np
+    ifFlag v f keys aopts = concatMap (\k -> maybe v (f v k . read) $ lookup k aopts) keys
 
-    analyzer Effects x = flip first x $
+    -- Using arrow combinators to make this simpler
+    -- first/second passes the other part of the pair straight through
+    analyzer :: [(String, String)] -> TransformMode -> (K3 Declaration, String) -> (K3 Declaration, String)
+    analyzer _ ProxyPaths x                  = first labelBindAliases x
+    analyzer _ AnnotationProvidesGraph (p,s) = (p, s ++ show (providesGraph p))
+    analyzer _ FlatAnnotations (p,s)         = (p, s ++ show (flattenAnnotations p))
+    analyzer _ EffectNormalization x         = first Normalization.normalizeProgram x
+    analyzer _ FoldConstants x               = wrapEither Simplification.foldProgramConstants x
+    
+    analyzer aopts Provenance x = flip wrapEitherS x $ \p str -> do
+      (np, ppenv) <- Provenance.inferProgramProvenance p
+      return $ (np, addEnv str ppenv)
+      where addEnv str ppenv = str ++ ifFlag "" (withEnv ppenv) ["showprovenance"] aopts
+            withEnv ppenv v _ b = if b then "Provenance pointers:\n" ++ (T.unpack $ PT.pretty ppenv) else v
+    
+    analyzer aopts SEffects x = flip wrapEitherS x $ \p str -> do
+      (np,  ppenv) <- Provenance.inferProgramProvenance p
+      (np', fpenv) <- SEffects.inferProgramEffects ppenv np
+      return (np', addEnv str ppenv fpenv)
+      where addEnv str ppenv fpenv = str ++ ifFlag "" (withEnv ppenv fpenv) ["showprovenance", "showeffects"] aopts
+            withEnv ppenv _ _ "showprovenance" True = "Provenance pointers:\n" ++ (T.unpack $ PT.pretty ppenv)
+            withEnv _ fpenv _ "showeffects"    True = "Effect pointers:\n"     ++ (T.unpack $ PT.pretty fpenv)
+            withEnv _ _ v _ _ = v
+
+    analyzer _ Effects x = flip first x $
       (uncurry Effects.expandProgram . swap . Effects.runConsolidatedAnalysis)
 
-    analyzer DeadCodeElimination x  = flip wrapEither x $
+    analyzer _ DeadCodeElimination x  = flip wrapEither x $
       (uncurry Simplification.eliminateDeadProgramCode . swap . Effects.runConsolidatedAnalysis)
 
-    analyzer Profiling x      = first (cleanGeneration "profiling" . Profiling.addProfiling) x
-    analyzer Purity x         = first ((\(d,e) -> Pure.runPurity e d) . Effects.runConsolidatedAnalysis) x
-    analyzer ReadOnlyBinds x  = first (cleanGeneration "ro_binds" . RemoveROBinds.transform) x
-    analyzer TriggerSymbols x = wrapEither TriggerSymbols.triggerSymbols x
-    analyzer a (p,s)          = (p, unwords [s, "unhandled analysis", show a])
+    analyzer _ Profiling x      = first (cleanGeneration "profiling" . Profiling.addProfiling) x
+    analyzer _ Purity x         = first ((\(d,e) -> Pure.runPurity e d) . Effects.runConsolidatedAnalysis) x
+    analyzer _ ReadOnlyBinds x  = first (cleanGeneration "ro_binds" . RemoveROBinds.transform) x
+    analyzer _ TriggerSymbols x = wrapEither TriggerSymbols.triggerSymbols x
+
+    -- Deprecated analyses
+    --analyzer _ Conflicts x                   = first getAllConflicts x
+    --analyzer _ Tasks x                       = first getAllTasks x
+    --analyzer _ ProgramTasks (p,s)            = (p, s ++ show (getProgramTasks p))
+    analyzer _ a (p,s)          = (p, unwords [s, "unhandled analysis", show a])
 
     -- Option handling utilities
     metaprogramOpts (Just mpo) =
