@@ -191,7 +191,8 @@ instance Stringifiable Expression where
         rt'  = maybe empty (\rt'' -> "->" <+> stringify rt'') rt
         bd'  = hangBrace $ vsep $ map stringify bd
     stringify (Literal lt) = stringify lt
-    stringify (Project pt i) = parenthesize pt <> dot <> stringify i
+    stringify (Project (Dereference e) n) = stringify e <> fromString "->" <> stringify n
+    stringify (Project pt i) = stringify pt <> dot <> stringify i
       where
         parenthesize pt'@(Variable _) = stringify pt'
         parenthesize pt' = parens $ stringify pt'
