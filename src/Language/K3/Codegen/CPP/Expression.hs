@@ -17,6 +17,7 @@ import Data.Tree
 
 import Safe
 
+import qualified Data.Map as M
 import qualified Data.Set as S
 
 import Language.K3.Analysis.Effects.Core
@@ -29,6 +30,7 @@ import Language.K3.Core.Type
 import Language.K3.Core.Utils
 
 import Language.K3.Codegen.Common
+import Language.K3.Codegen.CPP.Materialization.Hints
 import Language.K3.Codegen.CPP.Preprocessing
 import Language.K3.Codegen.CPP.Primitives
 import Language.K3.Codegen.CPP.Types
@@ -169,30 +171,37 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
 
 inline e@(tag &&& children -> (ELambda arg, [body])) = do
     resetApplyLevel
-    (cRef, cMove, cCopy) <- do
-      globVals <- fst . unzip . globals <$> get
-      let fvs = nub $ filter (/= arg) $ freeVariables body
-      return $ (S.empty, S.empty, S.fromList $ fvs \\ globVals)
 
-    (ta, _) <- getKType e >>= \case
-        (tag &&& children -> (TFunction, [ta, tr])) -> do
-            ta' <- genCInferredType ta
-            tr' <- genCInferredType tr
+    mtrlzns <- case e @~ isEMaterialization of
+                 Just (EMaterialization ms) -> return ms
+                 Nothing -> do
+                   globVals <- fst . unzip . globals <$> get
+                   let fvs = (nub $ filter (/= arg) $ freeVariables body) \\ globVals
+                   return $ M.fromList [(i, defaultDecision) | i <- (arg:fvs)]
 
-            return (ta', tr')
-        _ -> throwE $ CPPGenE "Invalid Function Form"
+    ta <- getKType e >>= \case
+          (tag &&& children -> (TFunction, [ta, tr])) -> genCInferredType ta
+          _ -> throwE $ CPPGenE "Invalid Function Form"
+
     let thisCapture = R.ValueCapture (Just ("this", Nothing))
-    let refCapture = S.map (\s -> R.RefCapture $ Just (s, Nothing)) cRef
-    let moveCapture = S.map (\s -> R.ValueCapture $
-                                   Just (s, Just $ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "move"))
-                                              [R.Variable $ R.Name s])) cMove
-    let copyCapture = S.map (\s -> R.ValueCapture $ Just (s, Nothing)) cCopy
-    let capture = thisCapture : (S.toList $ S.unions [refCapture, moveCapture, copyCapture])
+
+    let captureByMtrlzn i d = case inD d of
+                                ConstReferenced -> R.ValueCapture (Just (i, Just $ R.CRef $ R.Variable $ R.Name i))
+                                Referenced -> R.RefCapture (Just (i, Nothing))
+                                Moved -> R.ValueCapture (Just (i, Just $ R.Move $ R.Variable $ R.Name i))
+                                Copied -> R.ValueCapture (Just (i, Nothing))
+
+    let captures = [R.ValueCapture (Just ("this", Nothing))] ++
+                   (M.elems $ M.mapWithKey captureByMtrlzn $ M.filterWithKey (\k _ -> k /= arg) mtrlzns)
+
+    let argMtrlznType = case inD (mtrlzns M.! arg) of
+                          ConstReferenced -> R.Const (R.Reference ta)
+                          Referenced -> R.Reference ta
+                          _ -> ta
 
     body' <- reify (RReturn False) body
 
-    -- TODO: Handle `mutable' arguments.
-    return ([], R.Lambda capture [(arg, ta)] True Nothing body')
+    return ([], R.Lambda captures [(arg, argMtrlznType)] True Nothing body')
 
 inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, [Fold c, f, z]))) = do
   (ce, cv) <- inline c
