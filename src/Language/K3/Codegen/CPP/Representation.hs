@@ -48,6 +48,7 @@ hangBrace d = "{" <$$> indent 2 d <$$> text "}"
 binaryParens :: Identifier -> Expression -> (Doc -> Doc)
 binaryParens _ (Call _ _) = id
 binaryParens _ (Variable _) = id
+binaryParens _ (Literal _) = id
 binaryParens op (Binary op' _ _) = if precedence op < precedence op' then parens else id
   where
     precedence :: Identifier -> Int
