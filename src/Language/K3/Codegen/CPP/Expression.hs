@@ -64,19 +64,6 @@ instance Show RContext where
     show (RName i) = "RName \"" ++ i ++ "\""
     show (RSplice _) = "RSplice <opaque>"
 
-dedup :: [(Identifier, a)] -> [(Identifier, a)]
-dedup = foldl (\ds (t, u) -> if isJust (lookup t ds) then ds else ds ++ [(t, u)]) []
-
-matchTrees :: K3 Type -> K3 Type -> [(Identifier, K3 Type)]
-matchTrees (tag -> TDeclaredVar i) u = [(i, u)]
-matchTrees (children -> ts) (children -> us) = concat $ zipWith matchTrees ts us
-
-functionType :: K3 Expression -> Maybe (K3 Type)
-functionType e = case e @~ \case { EType _ -> True; _ -> False } of
-    Just (EType t@(tag -> TFunction)) -> Just t
-    _ -> Nothing
-
-
 -- | Patterns
 -- TODO: Check for transformer property.
 pattern Fold c <- Node (EProject "fold" :@: _) [c]
