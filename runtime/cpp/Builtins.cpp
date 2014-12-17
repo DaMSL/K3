@@ -108,6 +108,7 @@ namespace K3 {
   }
 
   // TODO
+  // Elements must have random values
   Vector<R_elem<double>> __standard_context::randomVector(int i) {
     Vector<R_elem<double>> result;
     auto& c = result.getContainer();
