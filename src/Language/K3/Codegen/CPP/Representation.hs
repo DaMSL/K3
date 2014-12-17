@@ -21,6 +21,9 @@ module Language.K3.Codegen.CPP.Representation (
     Capture(..),
     Expression(..),
 
+    pattern CRef,
+    pattern Move,
+
     Declaration(..),
     Statement(..),
 
@@ -205,6 +208,9 @@ instance Stringifiable Expression where
         parenthesize a' = parens $ stringify a'
     stringify (Unary op e) = fromString op <> parens (stringify e)
     stringify (Variable n) = stringify n
+
+pattern CRef e = Call (Variable (Qualified (Name "std") (Name "cref"))) [e]
+pattern Move e = Call (Variable (Qualified (Name "std") (Name "move"))) [e]
 
 data Declaration
     = ClassDecl Name
