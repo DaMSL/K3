@@ -33,12 +33,6 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Common hiding (getUID)
 
--- The most conservative decision is to initialize a new binding by copying its initializer, and to
--- finalize it by copying it back. There might be a strictly better strategy, but this is the
--- easiest to write.
-defaultDecision :: Decision
-defaultDecision = Decision { inD = Copied, outD = Copied }
-
 type Table = I.IntMap (M.Map Identifier Decision)
 
 type MaterializationS = (Table, PIEnv, [K3 Expression])
