@@ -29,6 +29,7 @@ module Language.K3.Core.Expression (
   , isEFStructure
   , isEEffect
   , isESymbol
+  , isEMaterialization
   , isAnyETypeAnn
   , isAnyEEffectAnn
   , isAnyETypeOrEffectAnn
@@ -274,6 +275,9 @@ namedEAnnotations anns = map extractId $ filter isEAnnotation anns
   where extractId (EAnnotation n) = n
         extractId _ = error "Invalid named annotation"
 
+isEMaterialization :: Annotation Expression -> Bool
+isEMaterialization (EMaterialization _) = True
+isEMaterialization _ = False
 
 {- Pretty instances -}
 
