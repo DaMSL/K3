@@ -1,5 +1,7 @@
 #include <functional>
 #include <string>
+#include <stdlib.h>
+#include <time.h>
 
 #include "Common.hpp"
 #include "Engine.hpp"
@@ -108,13 +110,14 @@ namespace K3 {
   }
 
   // TODO
-  // Elements must have random values
+  // Elements must have random values in [0,1)
   Vector<R_elem<double>> __standard_context::randomVector(int i) {
     Vector<R_elem<double>> result;
     auto& c = result.getContainer();
     c.resize(i);
     for(int j = 0; j < i; j++) {
-     c[j] = R_elem<double>{0.0};
+       srand(time(NULL));		
+       c[j] = R_elem<double>{(rand()/(RAND_MAX+ 1.))};
     }
     return result;
   }
