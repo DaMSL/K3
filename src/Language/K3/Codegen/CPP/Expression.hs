@@ -199,7 +199,9 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
                           Referenced -> R.Reference ta
                           _ -> ta
 
-    body' <- reify (RReturn False) body
+    let nrvo = outD (mtrlzns M.! arg) == Moved
+
+    body' <- reify (RReturn nrvo) body
 
     return ([], R.Lambda captures [(arg, argMtrlznType)] True Nothing body')
 
