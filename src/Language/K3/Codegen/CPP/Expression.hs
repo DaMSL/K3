@@ -205,7 +205,7 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
 
     return ([], R.Lambda captures [(arg, argMtrlznType)] True Nothing body')
 
-inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, [Fold c, f, z]))) = do
+inline e@(tag &&& children -> (EOperate OApp, [Fold c, f, z])) = do
   (ce, cv) <- inline c
   (fe, fv) <- inline f
   (ze, zv) <- inline z
@@ -243,7 +243,7 @@ inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, [Fold c, f
   let loop = R.ForEach g (R.Const $ R.Reference $ R.Inferred) cv (R.Block loopBody)
   return (ce ++ fe ++ ze ++ loopInit ++ loopPragmas ++ [loop], (R.Variable $ R.Name acc))
 
-inline e@(flattenApplicationE -> (tag &&& children -> (EOperate OApp, (f:as)))) = do
+inline e@(tag &&& children -> (EOperate OApp, (f:as))) = do
     -- Inline both function and argument for call.
     incApplyLevel
     (fe, fv) <- inline f
