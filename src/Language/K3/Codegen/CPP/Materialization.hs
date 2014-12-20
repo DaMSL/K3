@@ -142,6 +142,7 @@ materializationE e@(Node (t :@: as) cs)
              setDecision (getUID e) i defaultDecision
              decisions <- dLookupAll (getUID e)
              return (Node (t :@: (EMaterialization decisions:as)) [x', b'])
+      _ -> (Node (t :@: as)) <$> mapM materializationE cs
 
 -- Queries
 
