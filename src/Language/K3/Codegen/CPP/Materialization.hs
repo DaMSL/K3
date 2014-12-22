@@ -82,6 +82,9 @@ pmvloc' pmv = let UID u = pmvloc pmv in u
 runMaterializationM :: MaterializationM a -> MaterializationS -> (a, MaterializationS)
 runMaterializationM m s = runIdentity $ runStateT m s
 
+optimizeMaterialization :: (PIEnv, ()) -> K3 Declaration -> K3 Declaration
+optimizeMaterialization (p, _) d = fst $ runMaterializationM (materializationD d) (I.empty, p, [])
+
 materializationD :: K3 Declaration -> MaterializationM (K3 Declaration)
 materializationD (Node (d :@: as) cs)
   = case d of
