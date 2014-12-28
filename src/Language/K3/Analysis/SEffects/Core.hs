@@ -33,12 +33,12 @@ data Effect
                                -- initialization execution effects (i.e., pre-body effects), body execution effects
                                -- post-body execution effects, and result effect structure.
 
-    | FLambda      Identifier 
+    | FLambda      Identifier
                           -- Lambda effects have three effect children: closure construction effects,
                           -- deferred execution effects and deferred effect structure.
 
     | FApply       (Maybe FMatVar)
-                          -- Application effect nodes have either two or five children: 
+                          -- Application effect nodes have either two or five children:
                           -- i. 5-child variant:
                           --    lambda effect structure, arg effect structure,
                           --    initializer execution effects, result execution effects,
@@ -61,12 +61,12 @@ isFDeclared _ = False
 
 
 instance Pretty (K3 Effect) where
-  prettyLines (Node (FRead  p :@: as) _) = 
-    let (aStr, chAStr) = drawFAnnotations as 
+  prettyLines (Node (FRead  p :@: as) _) =
+    let (aStr, chAStr) = drawFAnnotations as
     in ["FRead " ++ aStr] %+ prettyLines p ++ shift "`- " "   " chAStr
 
   prettyLines (Node (FWrite p :@: as) _) =
-    let (aStr, chAStr) = drawFAnnotations as 
+    let (aStr, chAStr) = drawFAnnotations as
     in ["FWrite " ++ aStr] %+ prettyLines p ++ shift "`- " "   " chAStr
 
   prettyLines (Node (tg :@: as) ch) =
@@ -87,7 +87,7 @@ drawFAnnotations as =
 
 
 instance PT.Pretty (K3 Effect) where
-  prettyLines (Node (FRead  p :@: as) _) = 
+  prettyLines (Node (FRead  p :@: as) _) =
     let (aTxt, chATxt) = drawFAnnotationsT as
     in [T.append (T.pack "FRead ") aTxt] PT.%+ PT.prettyLines p
        ++ (PT.shift (T.pack "`- ") (T.pack "   ") chATxt)

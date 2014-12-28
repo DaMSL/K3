@@ -988,55 +988,75 @@ inferDefaultEffects p = foldExpression foldDefaultExprEffects IntMap.empty p >>=
 -- | Accumulating default effect computation for a specific expression.
 foldDefaultExprEffects :: EffectMap -> K3 Expression -> Either Text (EffectMap, K3 Expression)
 foldDefaultExprEffects accqr expr = do
-  (nqr,_) <- foldMapTree infer (emptyQR, Nothing) expr
+  (nqr,_,_) <- foldMapTree infer (emptyQR, Nothing, []) expr
   return (unionQR accqr nqr, expr)
 
   where
-    infer :: [(EffectMap, Maybe (K3 Effect))] -> K3 Expression -> Either Text (EffectMap, Maybe (K3 Effect))
-    infer (onSub -> (qr, _)) e@(tag -> EConstant _) = fromEffect e (e @~ isESEffect) >>= rt qr e
-    infer (onSub -> (qr, _)) e@(tag -> EVariable _) = fromEffect e (e @~ isESEffect) >>= rt qr e
+    infer :: [(EffectMap, Maybe (K3 Effect), [PMatVar])] -> K3 Expression -> Either Text (EffectMap, Maybe (K3 Effect), [PMatVar])
+    infer (onSub -> (qr, _, v)) e@(tag -> EConstant _) = fromEffect e (e @~ isESEffect) >>= rt qr e v
+    infer (onSub -> (qr, _, v)) e@(tag -> EVariable _) = fromEffect e (e @~ isESEffect) >>= rt qr e v
 
-    infer (onSub -> (qr, _)) e@(tag -> ELambda _) =
+    infer (onSub -> (qr, _, v)) e@(tag -> ELambda _) =
       case e @~ isEFStructure of
-        Just (EFStructure (tnc -> (FLambda _, [clf,_,_]))) -> rt qr e $ fexec [Just clf]
+        Just (EFStructure (tnc -> (FLambda _, [clf,_,_]))) -> rt qr e v $ fexec [Just clf]
         _ -> lambdaErr e
 
     -- TODO: handle FSet, i.e., multi-applies
-    infer (onSub -> (qr, ef)) e@(tag -> EOperate OApp) =
-      case e @~ isEFStructure of
-        Just (EFStructure (tnc -> (FApply _, [ief,bef,_]))) -> rt qr e $ fexec $ ef ++ map Just [ief, bef]
-        Just (EFStructure (tnc -> (FApply _, [_,_])))       -> rt qr e $ fexec ef
-        _ -> applyErr e
+    infer (onSub -> (qr, ef, v)) e@(tag -> EOperate OApp) = do
+      pmvl <- pmvOf e >>= return . union v
+      nef  <- case e @~ isEFStructure of
+                Just (EFStructure (tnc -> (FApply _, [ief,bef,_]))) -> pruneFonPmv pmvl $ fexec $ ef ++ map Just [ief, bef]
+                Just (EFStructure (tnc -> (FApply _, [_,_])))       -> pruneFonPmv pmvl $ fexec ef
+                _ -> applyErr e
+      rt qr e pmvl nef
 
     -- Extract only the write effect on assignments; we are rebuilding all the other execution effects.
-    infer (onSub -> (qr, ef)) e@(tag -> EAssign _) =
+    infer (onSub -> (qr, ef, v)) e@(tag -> EAssign _) =
       case e @~ isESEffect of
-        Just (ESEffect (tnc -> (FSeq, (last -> f@(tag -> FWrite _))))) -> rt qr e $ fexec $ ef ++ [Just f]
-        Just (ESEffect f@(tag -> FWrite _)) -> rt qr e $ fexec $ ef ++ [Just f]
+        Just (ESEffect (tnc -> (FSeq, (last -> f@(tag -> FWrite _))))) -> rt qr e v $ fexec $ ef ++ [Just f]
+        Just (ESEffect f@(tag -> FWrite _)) -> rt qr e v $ fexec $ ef ++ [Just f]
         _ -> assignErr e
 
-    infer (onSub -> (qr, ef)) e@(tag -> EOperate OSnd) = rt qr e $ fexec $ ef ++ [Just fio]
+    infer (onSub -> (qr, ef, v)) e@(tag -> EOperate OSnd) = rt qr e v $ fexec $ ef ++ [Just fio]
 
-    infer (onSub -> (qr, ef)) e@(tag -> ELetIn  _) = fromScope qr ef e $ e @~ isEFStructure
-    infer (onSub -> (qr, ef)) e@(tag -> EBindAs _) = fromScope qr ef e $ e @~ isEFStructure
-    infer (onSub -> (qr, ef)) e@(tag -> ECaseOf _) = fromScope qr ef e $ e @~ isEFStructure
-    infer (onSub -> (qr, ef)) e = rt qr e $ fexec ef
+    infer (onSub -> (qr, ef, v)) e@(tag -> ELetIn  _) = fromScope qr ef v False e $ e @~ isEFStructure
+    infer (onSub -> (qr, ef, v)) e@(tag -> EBindAs _) = fromScope qr ef v False e $ e @~ isEFStructure
+    infer (onSub -> (qr, ef, v)) e@(tag -> ECaseOf _) = fromScope qr ef v False e $ e @~ isEFStructure
+    infer (onSub -> (qr, ef, v)) e = rt qr e v $ fexec ef
 
     fromEffect _ (Just (ESEffect f)) = return $ Just f
     fromEffect e _ = effectErr e
 
-    fromScope qr ef e (Just (EFStructure (tnc -> (FScope _, [preef, bef, postef,_])))) =
-      rt qr e $ fexec $ ef ++ map Just [preef, bef, postef]
+    fromScope qr ef v withPostF e (Just (EFStructure (tnc -> (FScope _, [preef, bef, postef,_])))) = do
+      pmvl <- pmvOf e >>= return . union v
+      nef  <- pruneFonPmv pmvl $ fexec $ ef ++ (map Just $ [preef, bef] ++ if withPostF then [postef] else [])
+      rt qr e pmvl nef
 
-    fromScope _ _ e _ = scopeErr e
+    fromScope _ _ _ _ e _ = scopeErr e
 
-    rt :: EffectMap -> K3 Expression -> Maybe (K3 Effect) -> Either Text (EffectMap, Maybe (K3 Effect))
-    rt qr e f = uidOf e >>= \u -> return (putQR qr u f, f)
+    rt :: EffectMap -> K3 Expression -> [PMatVar] -> Maybe (K3 Effect) -> Either Text (EffectMap, Maybe (K3 Effect), [PMatVar])
+    rt qr e emvl f = uidOf e >>= \u -> return (putQR qr u f, f, emvl)
 
-    onSub ch = let (x,y) = unzip ch in (unionsQR x, y)
+    onSub ch = let (x,y,z) = unzip3 ch in (unionsQR x, y, foldl union [] z)
 
     fexec :: [Maybe (K3 Effect)] -> Maybe (K3 Effect)
     fexec ef = Just $ fseq $ catMaybes ef
+
+    pruneFonPmv :: [PMatVar] -> Maybe (K3 Effect) -> Either Text (Maybe (K3 Effect))
+    pruneFonPmv _ Nothing = return Nothing
+    pruneFonPmv pmvl (Just pf) = pruneF pmvl pf >>= return . Just
+      where pruneF mvl f = mapTree (prune mvl) f
+            prune mvl _  (tag -> FRead  (tag -> PBVar mv')) | mv' `elem` mvl = return fnone
+            prune mvl _  (tag -> FWrite (tag -> PBVar mv')) | mv' `elem` mvl = return fnone
+            prune _  ch (tag -> FSeq) = return $ fseq ch
+            prune _  ch f@(tna -> (tg,a)) | not (isFStructure tg) = return $ Node (tg :@: a) ch
+                                          | otherwise             = pruneErr f
+            pruneErr f = Left $ PT.boxToString $ [T.pack "Invalid effect structure during prune:"] %$ PT.prettyLines f
+
+            isFStructure (FLambda _) = True
+            isFStructure (FApply _) = True
+            isFStructure (FScope _) = True
+            isFStructure _ = False
 
     emptyQR  = IntMap.empty
     unionQR  = IntMap.union
@@ -1044,6 +1064,13 @@ foldDefaultExprEffects accqr expr = do
 
     putQR qr (UID i) (Just f) = IntMap.insert i f qr
     putQR qr _ Nothing  = qr
+
+    pmvOf  e = maybe (pmvErr e) (\case {EProvenance p -> pmvOfT e p; _ -> pmvErr e}) $ e @~ isEProvenance
+    pmvErr e = Left $ PT.boxToString $ [T.pack "No pmv found on "] %+ PT.prettyLines e
+
+    pmvOfT _ (tag -> PApply mvOpt) = return $ maybe [] (:[]) mvOpt
+    pmvOfT _ (tag -> PMaterialize mvl) = return mvl
+    pmvOfT e _ = pmvErr e
 
     uidOf  e = maybe (uidErr e) (\case {(EUID u) -> return u ; _ ->  uidErr e}) $ e @~ isEUID
     uidErr e = Left $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines e
@@ -1057,6 +1084,61 @@ foldDefaultExprEffects accqr expr = do
 -- | Default effect computation for a specific expression.
 inferDefaultExprEffects :: K3 Expression -> Either Text EffectMap
 inferDefaultExprEffects e = foldDefaultExprEffects IntMap.empty e >>= return . fst
+
+-- Categorizes symbols by whether they participate in reads, writes, function application or scopes.
+data SymbolCategories = SymbolCategories { readSyms    :: [K3 Provenance]
+                                         , writeSyms   :: [K3 Provenance]
+                                         , doesIO      :: Bool
+                                         }
+
+instance Pretty SymbolCategories where
+  prettyLines (SymbolCategories r w io) =
+         [T.pack "Reads"]   %$ concatMap PT.prettyLines r
+      %$ [T.pack "Writes"]  %$ concatMap PT.prettyLines w
+      %$ [T.pack "Does IO "] %+ [T.pack $ show io]
+
+emptyCategories :: SymbolCategories
+emptyCategories = SymbolCategories [] [] False
+
+addCategories :: SymbolCategories -> SymbolCategories -> SymbolCategories
+addCategories (SymbolCategories r w io1) (SymbolCategories r2 w2 io2) =
+  SymbolCategories (nub $ r++r2) (nub $ w++w2) (io1 || io2)
+
+-- | Effect categorization
+type SymCatMap = IntMap SymbolCategories
+
+categorizeProgramEffects :: K3 Declaration -> Either Text SymCatMap
+categorizeProgramEffects p = foldExpression categorize emptyCatMap p >>= return . fst
+  where
+    categorize cmacc e = (\f -> foldTree f cmacc e >>= return . (,e)) $ \cmacc' e' -> do
+      UID u <- uidOf e'
+      sc    <- categorizeExprEffects e'
+      return $ addCatMap cmacc' u sc
+
+    emptyCatMap = IntMap.empty
+    addCatMap cm u c = IntMap.insert u c cm
+
+    uidOf  e = maybe (uidErr e) (\case {(EUID u) -> return u ; _ ->  uidErr e}) $ e @~ isEUID
+    uidErr e = Left $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines e
+
+categorizeExprEffects :: K3 Expression -> Either Text SymbolCategories
+categorizeExprEffects e = do
+  UID u <- uidOf e
+  df    <- inferDefaultExprEffects e
+  maybe (lookupErr e) categorize $ IntMap.lookup u df
+
+  where
+    -- TODO: for deep operation, handle FBVars by chasing effects and categorizing.
+    categorize (tag -> FRead  p)  = return $ emptyCategories {readSyms  = [p]}
+    categorize (tag -> FWrite p)  = return $ emptyCategories {writeSyms = [p]}
+    categorize (tag -> FIO)       = return $ emptyCategories {doesIO    = True}
+    categorize (tag -> FLambda _) = return $ emptyCategories
+    categorize (Node _ ch)        = foldM (\a c -> categorize c >>= return . addCategories a) emptyCategories ch
+
+    uidOf  e' = maybe (uidErr e') (\case {(EUID u) -> return u ; _ ->  uidErr e'}) $ e' @~ isEUID
+    uidErr e' = Left $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines e'
+
+    lookupErr e' = Left $ PT.boxToString $ [T.pack "No effects found for "] %+ PT.prettyLines e'
 
 
 {- Pattern synonyms for inference -}
@@ -1081,6 +1163,9 @@ instance Pretty (IntMap (K3 Effect)) where
 
 instance Pretty (IntMap (K3 Effect, K3 Effect)) where
   prettyLines fp = IntMap.foldlWithKey (\acc k (u,v) -> acc ++ prettyTriple k u v) [] fp
+
+instance Pretty (IntMap SymbolCategories) where
+  prettyLines cm = IntMap.foldlWithKey (\acc k sc -> acc ++ prettyPair (k,sc)) [] cm
 
 instance Pretty FEnv where
   prettyLines fe = Map.foldlWithKey (\acc k v -> acc ++ prettyFrame k v) [] fe
