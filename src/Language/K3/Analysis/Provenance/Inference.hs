@@ -101,7 +101,7 @@ penv0 = Map.empty
 
 plkup :: PEnv -> Identifier -> Either Text (K3 Provenance)
 plkup env x = maybe err safeHead $ Map.lookup x env
-  where 
+  where
     safeHead l = if null l then err else Right $ head l
     err = mkErrP msg env
     msg = "Unbound variable in lineage binding environment: " ++ x
@@ -245,13 +245,13 @@ pipushcase env mv = env {pcase=mv:(pcase env)}
 
 -- | Self-referential provenance pointer construction
 pifreshfp :: PIEnv -> Identifier -> UID -> (K3 Provenance, PIEnv)
-pifreshfp pienv i u = 
+pifreshfp pienv i u =
   let j = pcnt pienv
       p = pbvar $ PMatVar i u j
   in (p, piextp (pienv {pcnt=j+1}) j p)
 
 pifreshbp :: PIEnv -> Identifier -> UID -> K3 Provenance -> (K3 Provenance, PIEnv)
-pifreshbp pienv i u p = 
+pifreshbp pienv i u p =
   let j  = pcnt pienv
       p' = pbvar $ PMatVar i u j
   in (p', piextp (pienv {pcnt=j+1}) j p)
@@ -259,16 +259,16 @@ pifreshbp pienv i u p =
 -- | Self-referential provenance pointer construction
 --   This adds a new named pointer to both the named and pointer environments.
 pifreshs :: PIEnv -> Identifier -> UID -> (K3 Provenance, PIEnv)
-pifreshs pienv n u = 
+pifreshs pienv n u =
   let (p, nenv) = pifreshfp pienv n u in (p, piexte nenv n p)
 
 -- | Provenance linked pointer construction.
 pifresh :: PIEnv -> Identifier -> UID -> K3 Provenance -> (K3 Provenance, PIEnv)
-pifresh pienv n u p = 
+pifresh pienv n u p =
   let (p', nenv) = pifreshbp pienv n u p in (p', piexte nenv n p')
 
 pifreshAs :: PIEnv -> Identifier -> [(Identifier, UID, Bool)] -> (PMEnv, PIEnv)
-pifreshAs pienv n memN = 
+pifreshAs pienv n memN =
   let mkMemP lacc l p             = lacc++[(p,l)]
       extMemP (lacc,eacc) (i,u,l) = first (mkMemP lacc l) $ pifreshfp eacc i u
       (memP, npienv)              = foldl extMemP ([], pienv) memN
@@ -305,12 +305,12 @@ pistorea pienv n memP = do
         store eacc i u (tag -> PBVar mv) p
           | (pmvn mv, pmvloc mv) == (i,u) = return $ piextp eacc (pmvptr mv) p
         store _ i u p _ = invalidStore i u p
-        
+
         invalidMem   i     = mkErr $ "Invalid store on annotation member" ++ i
         invalidStore i u p = Left $ PT.boxToString $ storeMsg i u %$ PT.prettyLines p
         storeMsg     i u   = [T.unwords $ map T.pack ["Invalid store on pointer", "@loc", show (i,u)]]
 
--- | Traverses all pointers until reaching a non-pointer. 
+-- | Traverses all pointers until reaching a non-pointer.
 --   This function stops on any cycles detected.
 pichase :: PIEnv -> K3 Provenance -> Either Text (K3 Provenance)
 pichase pienv cp = aux [] cp
@@ -365,7 +365,7 @@ pisub pienv i dp sp = acyclicSub pienv emptyPtrSubs [] sp >>= \(renv, _, rp) -> 
     isPtrSub  ps j = IntMap.member j ps
     getPtrSub ps j = maybe (lookupErr j) (return . pbvar) $ IntMap.lookup j ps
     addPtrSub env ps mv p =
-      let (np, nenv) = pifresh env (pmvn mv) (pmvloc mv) p in 
+      let (np, nenv) = pifresh env (pmvn mv) (pmvloc mv) p in
       case tag np of
         PBVar nmv -> return (nenv, IntMap.insert (pmvptr mv) nmv ps, np)
         _ -> freshErr np
@@ -615,7 +615,7 @@ inferProgramProvenance p = do
     markGlobal d@(tag -> DTrigger n _ e) = unlessHasProvenance d $ \_ -> do
       p' <- globalProvOf n e
       return (d @+ (DProvenance $ Right p'))
-    
+
     markGlobal d@(tag -> DDataAnnotation n tvars mems) = do
       nmems <- mapM (markMems n) mems
       return (replaceTag d $ DDataAnnotation n tvars nmems)
@@ -664,7 +664,7 @@ inferExprProvenance expr = inferProvenance expr >> substituteProvenance expr
 --   separate relation in the environment rather than directly attached to each node.
 inferProvenance :: K3 Expression -> PInfM (K3 Provenance)
 inferProvenance expr = mapIn1RebuildTree topdown sideways infer expr
-  where 
+  where
     iu = return ()
     uidOf  e = maybe (uidErr e) (\case {(EUID u) -> return u ; _ ->  uidErr e}) $ e @~ isEUID
     uidErr e = errorM $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines e
@@ -697,7 +697,7 @@ inferProvenance expr = mapIn1RebuildTree topdown sideways infer expr
       p <- simplifyApplyM (Just e) lp argp
       rt e p
 
-    infer [psrc] e@(tnc -> (EProject i, [esrc])) = 
+    infer [psrc] e@(tnc -> (EProject i, [esrc])) =
       case esrc @~ isEType of
         Just (EType t) ->
           case tag t of
@@ -813,8 +813,8 @@ provOfType args _ = return $ pderived $ map pfvar args
 simplifyProvenance :: K3 Provenance -> PInfM (K3 Provenance)
 simplifyProvenance p = modifyTree simplify p
   where simplify (tnc -> (PApply _, [_,_,r])) = return r
-        -- Rebuilding PSet and PDerived will filter all temporaries. 
-        simplify (tnc -> (PSet, ch))     = return $ pset ch 
+        -- Rebuilding PSet and PDerived will filter all temporaries.
+        simplify (tnc -> (PSet, ch))     = return $ pset ch
         simplify (tnc -> (PDerived, ch)) = return $ pderived ch
         simplify p' = return p'
 
@@ -830,7 +830,7 @@ simplifyExprProvenance d = mapExpression simplifyExpr d
         simplifyProvAnn e@((@~ isEProvenance) -> Just (EProvenance p)) = do
           np <- simplifyProvenance p
           return $ (e @<- (filter (not . isEProvenance) $ annotations e)) @+ (EProvenance np)
-        
+
         simplifyProvAnn e = return e
 
 {- Provenance environment pretty printing -}
