@@ -150,21 +150,28 @@ run opts = do
     analyzer _ FlatAnnotations (p,s)         = (p, s ++ show (flattenAnnotations p))
     analyzer _ EffectNormalization x         = first Normalization.normalizeProgram x
     analyzer _ FoldConstants x               = wrapEither Simplification.foldProgramConstants x
-    
+
     analyzer aopts Provenance x = flip wrapEitherS x $ \p str -> do
       (np, ppenv) <- Provenance.inferProgramProvenance p
       return $ (np, addEnv str ppenv)
       where addEnv str ppenv = str ++ ifFlag "" (withEnv ppenv) ["showprovenance"] aopts
             withEnv ppenv v _ b = if b then "Provenance pointers:\n" ++ (T.unpack $ PT.pretty ppenv) else v
-    
+
     analyzer aopts SEffects x = flip wrapEitherS x $ \p str -> do
       (np,  ppenv) <- Provenance.inferProgramProvenance p
       (np', fpenv) <- SEffects.inferProgramEffects ppenv np
-      return (np', addEnv str ppenv fpenv)
-      where addEnv str ppenv fpenv = str ++ ifFlag "" (withEnv ppenv fpenv) ["showprovenance", "showeffects"] aopts
-            withEnv ppenv _ _ "showprovenance" True = "Provenance pointers:\n" ++ (T.unpack $ PT.pretty ppenv)
-            withEnv _ fpenv _ "showeffects"    True = "Effect pointers:\n"     ++ (T.unpack $ PT.pretty fpenv)
-            withEnv _ _ v _ _ = v
+      return (np', addEnv str $ withEnv np' ppenv fpenv)
+      where
+        optionKeys = ["showprovenance", "showeffects", "showdefaults", "showcategories"]
+        addEnv str optF = str ++ ifFlag "" optF optionKeys aopts
+        withEnv _  ppenv _ _ "showprovenance" True = "Provenance pointers:\n" ++ (T.unpack $ PT.pretty ppenv)
+        withEnv _  _ fpenv _ "showeffects"    True = "Effect pointers:\n"     ++ (T.unpack $ PT.pretty fpenv)
+        withEnv p' _ _ _     "showdefaults"   True = "Default effects:\n"     ++ defaults p'
+        withEnv p' _ _ _     "showcategories" True = "Effect categories:\n"   ++ categories p'
+        withEnv _  _ _ v _ _ = v
+
+        defaults   p' = T.unpack $ either id PT.pretty $ SEffects.inferDefaultEffects p'
+        categories p' = T.unpack $ either id PT.pretty $ SEffects.categorizeProgramEffects p'
 
     analyzer _ Effects x = flip first x $
       (uncurry Effects.expandProgram . swap . Effects.runConsolidatedAnalysis)
