@@ -6,7 +6,6 @@ import Data.Char
 import Data.List(foldl')
 import Data.Maybe
 import Data.Tuple
-import Data.Functor
 
 import qualified Options.Applicative as Options
 import Options.Applicative((<>), (<*>))
