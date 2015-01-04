@@ -38,13 +38,18 @@ data Effect
                           -- deferred execution effects and deferred effect structure.
 
     | FApply       (Maybe FMatVar)
-                          -- Application effect nodes have either two or five children:
+                          -- Application effect nodes have either two, three or five children:
                           -- i. 5-child variant:
                           --    lambda effect structure, arg effect structure,
                           --    initializer execution effects, result execution effects,
                           --    and a result effect structure.
                           -- ii. 2-child variant:
                           --     lambda effect structure, and arg effect structure.
+                          --
+                          -- Note after simplification, we introduce a 3-child variant as a
+                          -- simplified form of the 5-child version:
+                          -- iii. initializer execution effects, result execution effects,
+                          --      and a result effect structure.
 
     | FSet                     -- Set of effects, all of which are possible.
     | FSeq

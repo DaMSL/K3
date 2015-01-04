@@ -25,9 +25,11 @@ fbvar :: FMatVar -> K3 Effect
 fbvar mv = leaf $ FBVar mv
 
 fread :: K3 Provenance -> K3 Effect
+fread (tag -> PTemporary) = fnone
 fread p = leaf $ FRead p
 
 fwrite :: K3 Provenance -> K3 Effect
+fwrite (tag -> PTemporary) = fnone
 fwrite p = leaf $ FWrite p
 
 fio :: K3 Effect
@@ -49,14 +51,14 @@ fapplyExt :: K3 Effect -> K3 Effect -> K3 Effect
 fapplyExt lf af = Node (FApply Nothing :@: []) [lf, af]
 
 simplifyChildren :: (Effect -> Bool) -> [K3 Effect] -> [K3 Effect]
-simplifyChildren tagF ch = nub $ filter (\p -> tag p /= FNone) $ concatMap flatCh ch
+simplifyChildren tagF ch = filter (\p -> tag p /= FNone) $ concatMap flatCh ch
   where flatCh (tnc -> (tagF -> True, gch)) = gch
         flatCh p = [p]
 
 -- Note: we cannot blindly eliminate fnones, otherwise this incorrectly represents scenarios
 -- of two paths, only one of which has any concrete effects (e.g., writeback in case-of expressions)
 fset :: [K3 Effect] -> K3 Effect
-fset ch = Node (FSet :@: []) $ nub ch
+fset ch = Node (FSet :@: []) ch
 
 fseq :: [K3 Effect] -> K3 Effect
 fseq ch = mkNode $ simplifyChildren (== FSeq) ch
@@ -65,6 +67,7 @@ fseq ch = mkNode $ simplifyChildren (== FSeq) ch
         mkNode chl = Node (FSeq :@: []) chl
 
 floop :: K3 Effect -> K3 Effect
+floop (tag -> FNone) = fnone
 floop f = sing f $ FLoop
 
 fnone :: K3 Effect
