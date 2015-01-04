@@ -159,8 +159,8 @@ run opts = do
 
     analyzer aopts SEffects x = flip wrapEitherS x $ \p str -> do
       (np,  ppenv) <- Provenance.inferProgramProvenance p
-      (np', fpenv) <- SEffects.inferProgramEffects ppenv np
-      return (np', addEnv str $ withEnv np' ppenv fpenv)
+      (np', fienv) <- SEffects.inferProgramEffects Nothing ppenv np
+      return (np', addEnv str $ withEnv np' ppenv $ SEffects.fpenv fienv)
       where
         optionKeys = ["showprovenance", "showeffects", "showdefaults", "showcategories"]
         addEnv str optF = str ++ ifFlag "" optF optionKeys aopts
