@@ -395,6 +395,7 @@ chaseLambda _ _ p = Left $ PT.boxToString $ [T.pack "Invalid application or lamb
 
 chaseAppArg :: K3 Provenance -> Either Text (K3 Provenance)
 chaseAppArg (tnc -> (PApply _, [_,_,r])) = chaseAppArg r
+chaseAppArg (tnc -> (PMaterialize _, [r])) = chaseAppArg r
 chaseAppArg p = return p
 
 simplifyApply :: PIEnv -> Maybe (K3 Expression) -> K3 Provenance -> K3 Provenance -> Either Text (K3 Provenance, PIEnv)
