@@ -26,10 +26,12 @@ fbvar mv = leaf $ FBVar mv
 
 fread :: K3 Provenance -> K3 Effect
 fread (tag -> PTemporary) = fnone
+fread (tag -> PDerived) = fnone
 fread p = leaf $ FRead p
 
 fwrite :: K3 Provenance -> K3 Effect
 fwrite (tag -> PTemporary) = fnone
+fwrite (tag -> PDerived) = fnone
 fwrite p = leaf $ FWrite p
 
 fio :: K3 Effect

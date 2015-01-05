@@ -362,6 +362,12 @@ fichase fienv cf = aux [] cf
                                                 | otherwise = filkupp fienv i >>= aux (i:path)
         aux _ f = return f
 
+{- Substitution helpers -}
+chaseProvenance :: K3 Provenance -> Either Text (K3 Provenance)
+chaseProvenance (tnc -> (PApply _, [_,_,r])) = chaseProvenance r
+chaseProvenance (tnc -> (PMaterialize _, [r])) = chaseProvenance r
+chaseProvenance p = return p
+
 -- Capture-avoiding substitution of any free variable with the given identifier.
 fisub :: FIEnv -> Maybe (ExtInferF a, a) -> Identifier -> K3 Effect -> K3 Effect -> K3 Provenance
       -> Either Text (K3 Effect, FIEnv)
@@ -379,11 +385,15 @@ fisub fienv extInfOpt i df sf p = do
       | isPtrSub subs j = getPtrSub subs j >>= return . (env, subs,)
       | otherwise     = filkupp fienv j >>= subPtrIfDifferent env subs path mv
 
-    acyclicSub env subs _ (tag -> FRead (tag -> PFVar j)) | j == i
-      = extInferM env (fread p) >>= return . (env, subs,)
+    acyclicSub env subs _ (tag -> FRead (tag -> PFVar j)) | j == i = do
+      p' <- chaseProvenance p
+      f' <- extInferM env $ fread p'
+      return (env, subs, f')
 
-    acyclicSub env subs _ (tag -> FWrite (tag -> PFVar j)) | j == i
-      = extInferM env (fwrite p) >>= return . (env, subs,)
+    acyclicSub env subs _ (tag -> FWrite (tag -> PFVar j)) | j == i = do
+      p' <- chaseProvenance p
+      f' <- extInferM env $ fwrite p'
+      return (env, subs, f')
 
     -- TODO: we can short-circuit descending into the body if we
     -- are willing to stash the expression uid in a PLambda, using
@@ -790,7 +800,8 @@ inferEffects extInfOpt expr = do
     infer m (onSub -> (_, mv)) _ e@(tag -> EVariable i) = m >> do
       f  <- filkupeM i
       p  <- filkupepM i
-      ef <- extInferM $ fread p
+      p' <- liftEitherM $ chaseProvenance p
+      ef <- extInferM $ fread p'
       rt False e mv (Just ef, f)
 
     infer m (onSub -> (ef, mv)) rf e@(tag -> ESome)       = m >> rt False e mv (fexec ef, fdata Nothing    rf)
@@ -801,7 +812,7 @@ inferEffects extInfOpt expr = do
     infer m (onSub -> (ef, mv)) [rf] e@(tag -> ELambda i) = m >> do
       UID u    <- uidOf e
       clv      <- filkupcM u
-      clf      <- mapM filkupepM clv >>= mapM (extInferM . fread)
+      clf      <- mapM filkupepM clv >>= mapM (liftEitherM . chaseProvenance) >>= mapM (extInferM . fread)
       rt False e mv (Just fnone, flambda i (fseq clf) (fseq $ catMaybes ef) rf)
 
     infer m (onSub -> (ef, mv)) [lrf,arf] e@(tag -> EOperate OApp) = m >> do
@@ -828,7 +839,8 @@ inferEffects extInfOpt expr = do
 
     infer m (onSub -> (ef, mv)) _ e@(tag -> EAssign i) = m >> do
       p   <- filkupepM i
-      aef <- extInferM $ fwrite p
+      p'  <- liftEitherM $ chaseProvenance p
+      aef <- extInferM $ fwrite p'
       rt False e mv (fexec $ ef ++ [Just aef], fnone)
 
     infer m (onSub -> (ef, mv)) _      e@(tag -> EOperate OSnd) = m >> rt False e mv (fexec $ ef ++ [Just fio], fnone)
@@ -855,7 +867,7 @@ inferEffects extInfOpt expr = do
       let nmv  = smvs ++ mv
       let nief = fromJust $ fexec [initef]
       let nbef = fromJust $ fexec [bef]
-      npef <- mapM (extInferM . fwrite) ps >>= return . fseq
+      npef <- mapM (liftEitherM . chaseProvenance) ps >>= mapM (extInferM . fwrite) >>= return . fseq
       let nrf  = fscope fmvs nief nbef npef rf
       nef <- pruneAndSimplify False nmv $ fexec $ map Just [nief, nbef]
       rt True e nmv (nef, nrf)
@@ -1124,11 +1136,13 @@ simplifyExprEffects d = mapExpression simplifyExpr d
 {- Effect queries -}
 type EffectMap = IntMap (K3 Effect)
 
--- | Single-pass, bottom-up recomputation of default effects at all expressions in a program.
+-- | Single-pass, bottom-up extraction of default effects at all expressions in a program.
 inferDefaultEffects :: K3 Declaration -> Either Text EffectMap
 inferDefaultEffects p = foldExpression foldDefaultExprEffects IntMap.empty p >>= return . fst
 
 -- | Accumulating default effect computation for a specific expression.
+--   Default effects only require extraction of the execution effects at an expression, since
+--   inference without an external function assumes call-by-value semantics for all bindings.
 foldDefaultExprEffects :: EffectMap -> K3 Expression -> Either Text (EffectMap, K3 Expression)
 foldDefaultExprEffects accqr expr = do
   nqr <- foldMapTree extract emptyQR expr
