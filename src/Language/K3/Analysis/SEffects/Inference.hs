@@ -873,9 +873,8 @@ inferEffects extInfOpt expr = do
       rt True e nmv (nef, nrf)
 
     infer m (onSub -> ([oef,sef,nef], mv)) [_,snf,rnf] e@(tag -> ECaseOf _) = m >> do
-      smvs <- pcasemvOf e
       (cfmv, cpmv) <- fipopcaseM ()
-      let nmv  = smvs ++ mv
+      let nmv  = [cpmv] ++ mv
       let nief = fromJust $ fexec [oef]
       let nbef = fset $ catMaybes [sef, nef]
       npef <- extInferM (fwrite $ pbvar cpmv) >>= \spf -> return (fset [spf, fnone])
@@ -1017,10 +1016,6 @@ inferEffects extInfOpt expr = do
     pmvOfT _ (tag -> PApply mvOpt) = return $ maybe [] (:[]) mvOpt
     pmvOfT _ (tag -> PMaterialize mvl) = return mvl
     pmvOfT e _ = pmvErr e
-
-    pcasemvOf e = maybe (pmvErr e) (\case {EProvenance p -> pmvOfCase e p; _ -> pmvErr e}) $ e @~ isEProvenance
-    pmvOfCase e (tnc -> (PSet, [sp,_])) = pmvOfT e sp
-    pmvOfCase e _ = pmvErr e
 
     uidOf  e = maybe (uidErr e) (\case {(EUID u) -> return u ; _ ->  uidErr e}) $ e @~ isEUID
     uidErr e = errorM $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines e

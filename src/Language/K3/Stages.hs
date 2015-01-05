@@ -15,11 +15,15 @@ import Language.K3.Core.Utils
 
 import Language.K3.Analysis.Properties
 import Language.K3.Analysis.HMTypes.Inference
+import qualified Language.K3.Analysis.CArgs as CArgs
+
+import qualified Language.K3.Analysis.Provenance.Inference as Provenance
+import qualified Language.K3.Analysis.SEffects.Inference   as SEffects
+
 import Language.K3.Analysis.Effects.InsertEffects(EffectEnv)
 import qualified Language.K3.Analysis.Effects.InsertEffects as Effects
 import qualified Language.K3.Analysis.Effects.Purity        as Purity
 import qualified Language.K3.Analysis.InsertMembers         as InsertMembers
-import qualified Language.K3.Analysis.CArgs                 as CArgs
 
 import Language.K3.Transform.LambdaForms
 import Language.K3.Transform.NRVOMove
@@ -88,8 +92,18 @@ fixpointIEnvE interF f = fixpointTransformI interF $ transformEnvE f
 inferTypes :: ProgramTransform
 inferTypes (prog, e) = liftM (, e) $ inferProgramTypes prog >>= translateProgramTypes
 
+inferCEffects :: ProgramTransform
+inferCEffects (prog, _) = return $ second Just $ Effects.runConsolidatedAnalysis prog
+
+inferSEffects :: ProgramTransform
+inferSEffects (prog, e) = do
+  (p,  ppenv) <- Provenance.inferProgramProvenance prog
+  (p', _)     <- SEffects.inferProgramEffects Nothing ppenv p
+  return (p', e)
+
+-- | Effect algorithm selection.
 inferEffects :: ProgramTransform
-inferEffects (prog, _) = return $ second Just $ Effects.runConsolidatedAnalysis prog
+inferEffects = inferSEffects
 
 inferTypesAndEffects :: ProgramTransform
 inferTypesAndEffects p = inferTypes p >>= inferEffects
@@ -124,7 +138,7 @@ withPasses passes prog = foldM (flip ($!)) prog passes
 simplify :: ProgramTransform
 simplify = fixpointTransform $ simplifyChain
   where simplifyChain p = transformE foldProgramConstants p
-                            >>= transformEnvF betaReductionOnProgram
+                            >>= transformEnvE betaReductionOnProgram
                             >>= transformEnvE eliminateDeadProgramCode
 
 simplifyWCSE :: ProgramTransform
@@ -135,7 +149,7 @@ simplifyWCSE p = simplify p >>= transformEnvE commonProgramSubexprElim
 streamFusion :: ProgramTransform
 streamFusion = withProperties $ \p -> transformEnvE encodeTransformers p >>= fusionFixpoint
   where fusionFixpoint = fixpointIEnvE fusionInterF fuseProgramFoldTransformers
-        fusionInterF   = [inferFreshTypesAndEffects, transformEnvF betaReductionOnProgram, inferFreshTypesAndEffects]
+        fusionInterF   = [inferFreshTypesAndEffects, transformEnvE betaReductionOnProgram, inferFreshTypesAndEffects]
 
 runPasses :: [ProgramTransform] -> K3 Declaration -> Either String (K3 Declaration, Maybe EffectEnv)
 runPasses passes d = withPasses passes (d, Nothing)

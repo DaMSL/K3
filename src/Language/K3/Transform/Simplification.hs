@@ -1,3 +1,4 @@
+{-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE PatternSynonyms #-}
@@ -36,11 +37,16 @@ import qualified Language.K3.Core.Constructor.Literal    as LC
 import Language.K3.Analysis.Effects.InsertEffects
 import Language.K3.Analysis.Effects.Core hiding (PVar)
 
+import qualified Language.K3.Analysis.SEffects.Inference as SE
+
 import Language.K3.Transform.Common
 import Language.K3.Interpreter.Data.Accessors
 import Language.K3.Interpreter.Data.Types
 
 import Language.K3.Utils.Pretty
+
+import Data.Text ( Text )
+import qualified Data.Text as T
 
 traceLogging :: Bool
 traceLogging = False
@@ -209,11 +215,28 @@ isEMonoidGroupBy _ = False
 
 
 -- Effect queries
-readOnly :: Bool -> EffectEnv -> K3 Expression -> Bool
-readOnly skipArg env e = let SymbolCategories _ w _ _ io = exprSCategories (Just skipArg) e env in null w && not io
+readOnlyCE :: Bool -> EffectEnv -> K3 Expression -> Either String Bool
+readOnlyCE skipArg env e =
+  let SymbolCategories _ w _ _ io = exprSCategories (Just skipArg) e env
+  in return $ null w && not io
 
-noWrites :: Bool -> EffectEnv -> K3 Expression -> Bool
-noWrites skipArg env e = let SymbolCategories _ w _ _ _ = exprSCategories (Just skipArg) e env in null w
+noWritesCE :: Bool -> EffectEnv -> K3 Expression -> Either String Bool
+noWritesCE skipArg env e =
+  let SymbolCategories _ w _ _ _ = exprSCategories (Just skipArg) e env
+  in return $ null w
+
+-- New effect queries
+readOnlySE :: Bool -> K3 Expression -> Either String Bool
+readOnlySE True e@(tnc -> (ELambda _, [b])) = readOnlySE False b
+readOnlySE _ e = either (Left . T.unpack) Right $ do
+  SE.SymbolCategories _ w io <- SE.categorizeExprEffects e
+  return $ null w && not io
+
+noWritesSE :: Bool -> K3 Expression -> Either String Bool
+noWritesSE True e@(tnc -> (ELambda _, [b])) = noWritesSE False b
+noWritesSE _ e = either (Left . T.unpack) Right $ do
+  SE.SymbolCategories _ w io <- SE.categorizeExprEffects e
+  return $ null w
 
 
 -- | Constant folding
@@ -476,10 +499,10 @@ stringOp op a b =
 --   Furthermore, this only applies to direct lambda invocations, rather than
 --   on general function values (i.e., including applications through bnds
 --   and substructure). For the latter case, we must inline and defunctionalize first.
-betaReductionOnProgram :: EffectEnv -> K3 Declaration -> K3 Declaration
-betaReductionOnProgram eenv prog = runIdentity $ mapExpression (betaReduction eenv) prog
+betaReductionOnProgram :: EffectEnv -> K3 Declaration -> Either String (K3 Declaration)
+betaReductionOnProgram eenv prog = mapExpression (betaReduction eenv) prog
 
-betaReduction :: EffectEnv -> K3 Expression -> Identity (K3 Expression)
+betaReduction :: EffectEnv -> K3 Expression -> Either String (K3 Expression)
 betaReduction env expr = mapTree reduce expr
   where
     reduce ch n = case replaceCh n ch of
@@ -487,8 +510,9 @@ betaReduction env expr = mapTree reduce expr
       (PAppLam i bodyE argE lamAs appAs) -> reduceOnOccurrences n ch i argE bodyE
       _ -> rebuildNode n ch
 
-    reduceOnOccurrences n ch i ie e =
-      if readOnly False env ie then
+    reduceOnOccurrences n ch i ie e = do
+      ieRO <- readOnlySE False {- readOnlyCE False env -} ie
+      if ieRO then
         case tag ie of
           EConstant _ -> betaReduction env $ substituteImmutBinding i ie e
           EVariable _ -> betaReduction env $ substituteImmutBinding i ie e
@@ -529,52 +553,57 @@ eliminateDeadCode env expr = mapTree pruneExpr expr
 
       -- Immediate record construction and projection, provided all other record fields are pure.
       (PPrjRec fId ids fieldsE _ _) ->
-        flip (maybe $ rebuildNode n ch) (elemIndex fId ids) $ \i ->
-          if and $ map (readOnly True env . snd) $ filter ((/= fId) . fst) $ zip ids ch
-            then return $ fieldsE !! i
-            else rebuildNode n ch
+        (\justF -> maybe (rebuildNode n ch) justF $ elemIndex fId ids) $ \i -> do
+          let restCh = filter ((/= fId) . fst) $ zip ids ch
+          let readF  = readOnlySE False {- readOnlyCE True env -} . snd
+          restRO <- mapM readF restCh >>= return . and
+          if restRO then return $ fieldsE !! i
+                    else rebuildNode n ch
 
       -- Immediate structure binding, preserving effect ordering of bound substructure expressions.
       (PBindInd i iE bodyE iAs bAs) -> rcr $ (EC.letIn i (PInd iE iAs) bodyE) @<- bAs
 
-      (PBindTup ids fieldsE bodyE _ _) ->
+      (PBindTup ids fieldsE bodyE _ _) -> do
         let vars          = freeVariables bodyE
-            unused (i, e) = readOnly True env e && i `notElem` vars
-            used          = filter (not . unused) $ zip ids fieldsE
-        in rcr $ foldr (\(i,e) accE -> EC.letIn i e accE) bodyE used
+        let unused (i, e) = readOnlySE False e {- readOnlyCE True env e -} >>= return . (&& i `notElem` vars)
+        used <- filterM (\i -> unused i >>= return . not) $ zip ids fieldsE
+        rcr $ foldr (\(i,e) accE -> EC.letIn i e accE) bodyE used
 
-      (PBindRec ijs ids fieldsE bodyE _ _) ->
+      (PBindRec ijs ids fieldsE bodyE _ _) -> do
         let vars          = freeVariables bodyE
-            unused (i, e) = readOnly True env e && (maybe False (`notElem` vars) $ lookup i ijs)
-            used          = filter (not . unused) $ zip ids fieldsE
-        in
+        let notfvar i     = maybe False (`notElem` vars) $ lookup i ijs
+        let unused (i, e) = readOnlySE False e {- readOnlyCE True env e -} >>= return . (&& notfvar i)
+        used <- filterM (\i -> unused i >>= return . not) $ zip ids fieldsE
         rcr $ foldr (\(i,e) accE -> maybe accE (\j -> EC.letIn j e accE) $ lookup i ijs) bodyE used
 
       -- Unused effect-free binding removal
-      (tag -> ELetIn  i) ->
-        let vars = freeVariables $ last ch in
-        if readOnly True env (head ch) && i `notElem` vars
-          then return $ last ch
-          else rebuildNode n ch
+      (tag -> ELetIn i) -> do
+        let vars = freeVariables $ last ch
+        initRO <- readOnlySE False {- readOnlyCE True env -} (head ch) >>= return . (&& i `notElem` vars)
+        if initRO then return $ last ch
+                  else rebuildNode n ch
 
       (tag -> EBindAs b) ->
         let vars = freeVariables $ last ch in
         case b of
-          BRecord ijs ->
-            let nBinder = filter (\(_,j) -> j `elem` vars) ijs in
-            if readOnly True env (head ch) && null nBinder
+          BRecord ijs -> do
+            let nBinder = filter (\(_,j) -> j `elem` vars) ijs
+            initRO <- readOnlySE False {- readOnlyCE True env -} (head ch) >>= return . (&& null nBinder)
+            if initRO
               then return $ last ch
               else return $ Node (EBindAs (BRecord $ nBinder) :@: annotations n) ch
           _ -> rebuildNode n ch
 
-      (tag -> EOperate OSeq) ->
-        if readOnly True env (head ch)
+      (tag -> EOperate OSeq) -> do
+        lhsRO <- readOnlySE False {- readOnlyCE True env -} (head ch)
+        if lhsRO
           then return $ last ch
           else rebuildNode n ch
 
       -- Immediate option bindings
-      e@(PCaseOf (PSome sE optAs) j someE noneE cAs) ->
-        return $ if readOnly True env sE then someE else e
+      e@(PCaseOf (PSome sE optAs) j someE noneE cAs) -> do
+        someRO <- readOnlySE False {- readOnlyCE True env -} sE
+        return $ if someRO then someE else e
 
       (PCaseOf (PNone _ _) j someE noneE cAs) -> return $ noneE
 
@@ -709,9 +738,10 @@ commonSubexprElim env expr = do
               candTreeNode    = Node (uid, localCands) $ concat ctCh
               nStrippedExpr   = Node (tag t :@: (filter ((||) <$> isEQualified <*> isAnyETypeOrEffectAnn)
                                                             $ annotations t)) $ concat sExprCh
-              propagatedExprs = if readOnly False env n then (concat subAcc)++[nStrippedExpr] else []
-          in
-          return $ ([candTreeNode], [nStrippedExpr], propagatedExprs)
+          in do
+            nRO <- readOnlySE False {- readOnlyCE False env -} n
+            let propagatedExprs = if nRO then (concat subAcc)++[nStrippedExpr] else []
+            return $ ([candTreeNode], [nStrippedExpr], propagatedExprs)
 
         _ -> uidError n
 
@@ -758,10 +788,13 @@ commonSubexprElim env expr = do
 
         pruneCandidates :: Candidates -> [CandidateTree] -> CandidateTree
                         -> Either String CandidateTree
-        pruneCandidates candAcc ch (Node (uid, cands) _) =
-          let used = filter (\p@(e, _) -> elem p candAcc && noWrites False env e) cands
-              nUid = if null used then UID $ -1 else uid
-          in return $ Node (nUid, used) ch
+        pruneCandidates candAcc ch (Node (uid, cands) _) = do
+          let isCand p@(e, _) = if elem p candAcc
+                                  then noWritesSE False {- noWritesCE False env -} e
+                                  else return False
+          used <- filterM isCand cands
+          let nUid = if null used then UID $ -1 else uid
+          return $ Node (nUid, used) ch
 
     substituteCandidates :: CandidateTree -> Either String (K3 Expression)
     substituteCandidates prunedTree = do
@@ -870,7 +903,7 @@ encodeTransformerExprs env expr = modifyTree encode expr -- >>= modifyTree markC
     mkFold1 e@(PPrjApp cE fId fAs fArg appAs) = do
       accE           <- mkAccumE e
       (nfAs', nfArg) <- mkIndepAccF fId fAs fArg
-      let nfAs = markPureTransformer False nfAs' fArg
+      nfAs           <- markPureTransformer False nfAs' fArg
       let (nApp1As, nApp2As) = (markTAppChain appAs, markTAppChain [])
       return $ PPrjApp2 cE "fold" nfAs nfArg accE nApp1As nApp2As
 
@@ -888,12 +921,12 @@ encodeTransformerExprs env expr = modifyTree encode expr -- >>= modifyTree markC
     mkFold2 e@(PPrjApp2 cE fId fAs
                         fArg1@(streamableTransformerArg -> streamable) fArg2
                         app1As app2As)
-      = let cls   = if streamable then (ICondN,IndepTr) else (Open,DepTr)
-            nfAs' = fAs ++ [pFusionSpec cls, pFusionLineage "fold"]
-            nfAs  = markPureTransformer True nfAs' fArg1
-            r     = PPrjApp2 cE fId nfAs fArg1 fArg2 app1As app2As
-        in
-        if False then return r else debugInferredFold r nfAs fArg1
+      = do
+          let cls   = if streamable then (ICondN,IndepTr) else (Open,DepTr)
+          let nfAs' = fAs ++ [pFusionSpec cls, pFusionLineage "fold"]
+          nfAs      <- markPureTransformer True nfAs' fArg1
+          let r     = PPrjApp2 cE fId nfAs fArg1 fArg2 app1As app2As
+          if False then return r else debugInferredFold r nfAs fArg1
 
         where debugInferredFold e nfAs@(getFusionSpecA -> Just cls) fArg1 = return $
                 flip trace e $
@@ -911,7 +944,9 @@ encodeTransformerExprs env expr = modifyTree encode expr -- >>= modifyTree markC
             (accE, valueT)  <- mkGBAccumE e
             rAccE           <- mkAccumE e
             (nfAs', nfArg1) <- mkGBAccumF valueT fAs fArg1 fArg2 fArg3
-            let nfAs                       = nfAs' ++ if readOnly False env fArg1 && readOnly True env fArg2
+            fArg1RO         <- readOnlySE True {- readOnlyCE False env -} fArg1
+            fArg2RO         <- readOnlySE True {- readOnlyCE True  env -} fArg2
+            let nfAs                       = nfAs' ++ if fArg1RO && fArg2RO
                                                       then [pPureTransformer] else [pImpureTransformer]
             let (nApp1As, nApp2As)         = (markTAppChain app1As, markTAppChain app2As)
             let buildE                     = PPrjApp2 cE "fold" nfAs nfArg1 accE nApp1As nApp2As
@@ -1005,8 +1040,10 @@ encodeTransformerExprs env expr = modifyTree encode expr -- >>= modifyTree markC
 
     markTAppChain as = cleanAnns $ nub $ as ++ [pTAppChain]
 
-    markPureTransformer skipArg as e = cleanAnns $ nub $
-      if readOnly skipArg env e then as ++ [pPureTransformer] else as ++ [pImpureTransformer]
+    markPureTransformer skipArg as e = do
+      eRO <- readOnlySE True {- readOnlyCE skipArg env -} e
+      return $ cleanAnns $ nub $
+        if eRO then as ++ [pPureTransformer] else as ++ [pImpureTransformer]
 
     propagateRecType ias as = nub $ as ++ (if any isEOElemRec ias then [pIElemRec] else [])
 
@@ -1761,9 +1798,6 @@ fuseFoldTransformers env expr = do
       return $ EC.lambda i $ EC.lambda j $ case entryEOpt of
         Just (lke, entryE) -> EC.letIn lke entryE $ EC.caseOf lookupE ci someE noneE
         Nothing -> EC.caseOf lookupE ci someE noneE
-
-
-    simplifyLambda e = runIdentity $ betaReduction env e
 
     -- Fusion spec helpers
     updateFusionSpec as spec = filter (not . isEFusionSpec) as ++ [pFusionSpec spec]

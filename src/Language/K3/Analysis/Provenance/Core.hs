@@ -51,7 +51,6 @@ data instance Annotation Provenance = PDeclared (K3 Provenance)
 
 isPDeclared :: Annotation Provenance -> Bool
 isPDeclared (PDeclared _) = True
-isPDeclared _ = False
 
 instance Pretty (K3 Provenance) where
   prettyLines (Node (tg :@: as) ch) =
@@ -68,7 +67,6 @@ drawPAnnotations as =
   in (drawAnnotations anns, prettyPrAnns)
 
   where drawPDeclAnnotation (PDeclared p) = ["PDeclared "] %+ prettyLines p
-        drawPDeclAnnotation _ = error "Invalid provenance annotation"
 
 
 instance PT.Pretty (K3 Provenance) where
@@ -87,4 +85,3 @@ drawPAnnotationsT as =
   in (PT.drawAnnotations anns, prettyPrAnns)
 
   where drawPDeclAnnotation (PDeclared p) = [T.pack "PDeclared "] PT.%+ PT.prettyLines p
-        drawPDeclAnnotation _ = error "Invalid provenance annotation"

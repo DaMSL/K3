@@ -62,8 +62,6 @@ data instance Annotation Effect = FDeclared (K3 Effect)
 
 isFDeclared :: Annotation Effect -> Bool
 isFDeclared (FDeclared _) = True
-isFDeclared _ = False
-
 
 instance Pretty (K3 Effect) where
   prettyLines (Node (FRead  p :@: as) _) =
@@ -88,7 +86,6 @@ drawFAnnotations as =
   in (drawAnnotations anns, prettyEffAnns)
 
   where drawFDeclAnnotation (FDeclared f) = ["FDeclared "] %+ prettyLines f
-        drawFDeclAnnotation _ = error "Invalid provenance annotation"
 
 
 instance PT.Pretty (K3 Effect) where
@@ -117,4 +114,3 @@ drawFAnnotationsT as =
   in (PT.drawAnnotations anns, prettyEffAnns)
 
   where drawFDeclAnnotation (FDeclared f) = [T.pack "FDeclared "] PT.%+ PT.prettyLines f
-        drawFDeclAnnotation _ = error "Invalid provenance annotation"
