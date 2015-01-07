@@ -21,7 +21,8 @@ module Language.K3.Core.Declaration (
     isDSyntax,
     isDSymbol,
     isDProvenance,
-    isDEffect
+    isDEffect,
+    isAnyDEffectAnn
 ) where
 
 import Data.List
@@ -142,6 +143,10 @@ isDProvenance _               = False
 isDEffect :: Annotation Declaration -> Bool
 isDEffect (DEffect _) = True
 isDEffect _           = False
+
+isAnyDEffectAnn :: Annotation Declaration -> Bool
+isAnyDEffectAnn a = isDSymbol a || isDProvenance a || isDEffect a
+
 
 {- Utils -}
 -- Given top level role declaration, return list of all trigger ids in the AST
