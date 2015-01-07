@@ -32,6 +32,8 @@ import Data.IntMap ( IntMap )
 import qualified Data.Map    as Map
 import qualified Data.IntMap as IntMap
 
+import Debug.Trace
+
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
@@ -391,7 +393,8 @@ chaseLambda env path (tnc -> (PProject _, [_,r]))   = chaseLambda env path r
 chaseLambda env path (tnc -> (PGlobal _, [r]))      = chaseLambda env path r
 chaseLambda env path (tnc -> (PChoice, r:_))        = chaseLambda env path r -- TODO: for now we use the first choice.
 chaseLambda env path (tnc -> (PSet, rl))            = mapM (chaseLambda env path) rl >>= return . concat
-chaseLambda _ _ p = Left $ PT.boxToString $ [T.pack "Invalid application or lambda: "] %$ PT.prettyLines p
+chaseLambda env _ p = Left $ PT.boxToString $ [T.pack "Invalid application or lambda: "]
+                          %$ PT.prettyLines p %$ [T.pack "Env:"] %$ PT.prettyLines env
 
 chaseAppArg :: K3 Provenance -> Either Text (K3 Provenance)
 chaseAppArg (tnc -> (PApply _, [_,_,r])) = chaseAppArg r
@@ -400,9 +403,14 @@ chaseAppArg p = return p
 
 simplifyApply :: PIEnv -> Maybe (K3 Expression) -> K3 Provenance -> K3 Provenance -> Either Text (K3 Provenance, PIEnv)
 simplifyApply pienv eOpt lp argp = do
+  let debugChase lp' argp' = flip trace lp' (T.unpack $ PT.boxToString
+                                 $ [T.pack "chaseLambda"]
+                                %$ [T.pack "Expr:"]  %$ (maybe [] PT.prettyLines eOpt)
+                                %$ [T.pack "LProv:"] %$ PT.prettyLines lp'
+                                %$ [T.pack "AProv:"] %$ PT.prettyLines argp')
   uOpt   <- maybe (return Nothing) (\e -> uidOf e >>= return . Just) eOpt
   argp'  <- chaseAppArg argp
-  manyLp <- chaseLambda pienv [] lp
+  manyLp <- chaseLambda pienv [] {-(debugChase lp argp)-} lp
   (manyLp', nenv) <- foldM (doSimplify uOpt argp') ([], pienv) manyLp
   case manyLp' of
     []  -> appLambdaErr lp
@@ -664,12 +672,8 @@ inferExprProvenance expr = inferProvenance expr >> substituteProvenance expr
 --   of the apply. The provenance associated with each subexpression is stored as a
 --   separate relation in the environment rather than directly attached to each node.
 inferProvenance :: K3 Expression -> PInfM (K3 Provenance)
-inferProvenance expr = mapIn1RebuildTree topdown sideways infer expr
+inferProvenance expr = mapIn1RebuildTree topdown sideways inferWithRule expr
   where
-    iu = return ()
-    uidOf  e = maybe (uidErr e) (\case {(EUID u) -> return u ; _ ->  uidErr e}) $ e @~ isEUID
-    uidErr e = errorM $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines e
-
     topdown _ e@(tag -> ELambda i) = piexteM i (pfvar i) >> pushClosure e
     topdown _ _ = iu
 
@@ -687,88 +691,103 @@ inferProvenance expr = mapIn1RebuildTree topdown sideways infer expr
 
     sideways _ (children -> ch) = return $ replicate (length ch - 1) iu
 
-    -- Provenance computation
-    infer _ e@(tag -> EConstant _) = rt e ptemp
-    infer _ e@(tag -> EVariable i) = varErr e (pilkupeM i >>= rt e)
+    -- Provenance deduction logging.
+    inferWithRule :: [K3 Provenance] -> K3 Expression -> PInfM (K3 Provenance)
+    inferWithRule ch e = do
+      u  <- uidOf e
+      (ruleTag, rp) <- infer ch e
+      localLog $ T.unpack $ showPInfRule ruleTag ch rp u
+      return rp
 
-    infer [p] e@(tag -> ELambda i) = popClosure e >> pideleM i >> rt e (plambda i p)
+    -- Provenance computation
+    infer :: [K3 Provenance] -> K3 Expression -> PInfM (String, K3 Provenance)
+    infer _ e@(tag -> EConstant _) = rt "const" e ptemp
+    infer _ e@(tag -> EVariable i) = varErr e (pilkupeM i >>= rt "var" e)
+
+    infer [p] e@(tag -> ELambda i) = popClosure e >> pideleM i >> rt "lambda" e (plambda i p)
 
     -- Return a papply with three children: the lambda, argument, and return value provenance.
     infer [lp, argp] e@(tag -> EOperate OApp) = do
       p <- simplifyApplyM (Just e) lp argp
-      rt e p
+      rt "apply" e p
 
     infer [psrc] e@(tnc -> (EProject i, [esrc])) =
       case esrc @~ isEType of
         Just (EType t) ->
           case tag t of
-            TCollection -> collectionMemberProvenance i psrc esrc t >>= rt e
+            TCollection -> collectionMemberProvenance i psrc esrc t >>= rt "cproject" e
             TRecord ids ->
               case tnc psrc of
                 (PData _, pdch) -> do
                   idx <- maybe (memErr i esrc) return $ elemIndex i ids
-                  rt e $ pproject i psrc $ Just $ pdch !! idx
-                (_,_) -> rt e $ pproject i psrc Nothing
+                  rt "rproject" e $ pproject i psrc $ Just $ pdch !! idx
+                (_,_) -> rt "project" e $ pproject i psrc Nothing
             _ -> prjErr esrc
         _ -> prjErr esrc
 
-    infer pch   e@(tag -> EIfThenElse)   = rt e $ pset $ tail pch
-    infer pch   e@(tag -> EOperate OSeq) = rt e $ last pch
-    infer [p]   e@(tag -> EAssign i)     = rt e $ passign i p
-    infer [_,p] e@(tag -> EOperate OSnd) = rt e $ psend p
+    infer pch   e@(tag -> EIfThenElse)   = rt "if-then-else" e $ pset $ tail pch
+    infer pch   e@(tag -> EOperate OSeq) = rt "seq"          e $ last pch
+    infer [p]   e@(tag -> EAssign i)     = rt "assign"       e $ passign i p
+    infer [_,p] e@(tag -> EOperate OSnd) = rt "send"         e $ psend p
 
     infer [_,lb] e@(tag -> ELetIn i) = do
       mv <- pilkupeM i >>= pmv
       void $ pideleM i
       void $ piextmM e $ pmaterialize [mv] lb
-      return lb
+      return ("let-in", lb)
 
     infer [_,bb] e@(tag -> EBindAs b) = do
       mvs <- mapM pilkupeM (bindingVariables b) >>= mapM pmv
       void $ mapM_ pideleM $ bindingVariables b
       void $ piextmM e $ pmaterialize mvs bb
-      return bb
+      return ("bind-as", bb)
 
     infer [_,s,n] e@(tag -> ECaseOf _) = do
       casemv <- pipopcaseM ()
       void $ piextmM e $ pset [pmaterialize [casemv] s, n]
-      return $ pset [s,n]
+      return ("case-of", pset [s,n])
 
     -- Data constructors.
-    infer pch e@(tag -> ESome)       = rt e $ pdata Nothing pch
-    infer pch e@(tag -> EIndirect)   = rt e $ pdata Nothing pch
-    infer pch e@(tag -> ETuple)      = rt e $ pdata Nothing pch
-    infer pch e@(tag -> ERecord ids) = rt e $ pdata (Just ids) pch
+    infer pch e@(tag -> ESome)       = rt "some"   e $ pdata Nothing pch
+    infer pch e@(tag -> EIndirect)   = rt "ind"    e $ pdata Nothing pch
+    infer pch e@(tag -> ETuple)      = rt "tuple"  e $ pdata Nothing pch
+    infer pch e@(tag -> ERecord ids) = rt "record" e $ pdata (Just ids) pch
 
     -- Operators and untracked primitives.
-    infer pch e@(tag -> EOperate _)  = rt e $ derived pch
-    infer pch e@(tag -> EAddress)    = rt e $ derived pch
+    infer pch e@(tag -> EOperate op) = rt (show op) e $ derived pch
+    infer pch e@(tag -> EAddress)    = rt "address" e $ derived pch
 
     -- TODO: ESelf
     infer _ e = inferErr e
 
-    rt e p = piextmM e p >> return p
+    rt tg e p = piextmM e p >> return (tg, p)
 
     -- | Closure variable management
-    pushClosure ((@~ isEUID) -> Just (EUID u@(UID i))) = pilkupcM i >>= mapM_ (liftClosureVar u)
+    pushClosure e@((@~ isEUID) -> Just (EUID u@(UID i))) = pilkupcM i >>= mapM_ (liftClosureVar e u)
     pushClosure e = errorM $ PT.boxToString $ [T.pack "Invalid UID on "] %+ PT.prettyLines e
 
-    popClosure ((@~ isEUID) -> Just (EUID (UID i))) = pilkupcM i >>= mapM_ lowerClosureVar
+    popClosure e@((@~ isEUID) -> Just (EUID (UID i))) = pilkupcM i >>= mapM_ (lowerClosureVar e)
     popClosure e = errorM $ PT.boxToString $ [T.pack "Invalid UID on "] %+ PT.prettyLines e
 
-    liftClosureVar  u n = pilkupeM n >>= \p -> pideleM n >> freshM n u p
-    lowerClosureVar   n = pilkupeM n >>= \p -> pideleM n >> unwrapClosure p >>= piexteM n
+    liftClosureVar  _ u n = pilkupeM n >>= \p -> pideleM n >> freshM n u p
+    lowerClosureVar   e n = pilkupeM n >>= \p -> unwrapClosure e p >>= \p' -> pideleM n >> piexteM n p'
 
-    unwrapClosure (tag -> PBVar mv) = pilkuppM (pmvptr mv)
-    unwrapClosure p = errorM $ PT.boxToString $ [T.pack "Invalid closure variable "] %+ PT.prettyLines p
-
-    pmv (tag -> PBVar mv) = return mv
-    pmv p = errorM $ PT.boxToString $ [T.pack "Invalid provenance bound var: "] %$ PT.prettyLines p
+    unwrapClosure _ (tag -> PBVar mv) = pilkuppM (pmvptr mv)
+    unwrapClosure e p = errorM $ PT.boxToString $ [T.pack "Invalid closure variable "] %+ PT.prettyLines p
+                                               %$ [T.pack "at expr:"] %$ PT.prettyLines e
 
     freshM i u p = void $ pifreshM i u p
 
     derived ch = let ntch = filter (not . isPTemporary) ch
                  in if null ntch then ptemp else pderived ntch
+
+    iu = return ()
+
+    uidOf  e = maybe (uidErr e) (\case {(EUID u) -> return u ; _ ->  uidErr e}) $ e @~ isEUID
+    uidErr e = errorM $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines e
+
+    pmv (tag -> PBVar mv) = return mv
+    pmv p = errorM $ PT.boxToString $ [T.pack "Invalid provenance bound var: "] %$ PT.prettyLines p
 
     isPTemporary (tag -> PTemporary) = True
     isPTemporary _ = False
@@ -779,6 +798,18 @@ inferProvenance expr = mapIn1RebuildTree topdown sideways infer expr
 
     memErr i e = errorM $ PT.boxToString $  [T.unwords $ map T.pack ["Failed to project", i, "from"]]
                                          %$ PT.prettyLines e
+
+    showPInfRule rtag ch p euid =
+      PT.boxToString $ (rpsep %+ premise) %$ separator %$ (rpsep %+ conclusion)
+      where rprefix        = T.pack $ unwords [rtag, show euid]
+            (rplen, rpsep) = (T.length rprefix, [T.pack $ replicate rplen ' '])
+            premise        = if null ch then [T.pack "<empty>"]
+                             else (PT.intersperseBoxes [T.pack " , "] $ map PT.prettyLines ch)
+            premLens       = map T.length premise
+            headWidth      = if null premLens then 4 else maximum premLens
+            separator      = [T.append rprefix $ T.pack $ replicate headWidth '-']
+            conclusion     = PT.prettyLines p
+
 
 substituteProvenance :: K3 Expression -> PInfM (K3 Expression)
 substituteProvenance expr = modifyTree injectProvenance expr

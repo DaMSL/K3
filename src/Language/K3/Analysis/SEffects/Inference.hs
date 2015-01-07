@@ -751,7 +751,7 @@ inferExprEffects extInfOpt expr = inferEffects extInfOpt expr >> substituteEffec
 
 inferEffects :: Maybe (ExtInferF a, a) -> K3 Expression -> FInfM (K3 Effect)
 inferEffects extInfOpt expr = do
-  (_, r) <- foldMapIn1RebuildTree topdown sideways infer iu (Nothing, []) expr
+  (_, r) <- foldMapIn1RebuildTree topdown sideways inferWithRule iu (Nothing, []) expr
   return r
 
   where
@@ -794,46 +794,55 @@ inferEffects extInfOpt expr = do
 
     sideways m _ _ (children -> ch) = m >> (srt $ replicate (length ch - 1) iu)
 
+    -- Effect deduction logging.
+    inferWithRule :: FInfM () -> [(Maybe (K3 Effect), [PMatVar])] -> [K3 Effect] -> K3 Expression
+                  -> FInfM ((Maybe (K3 Effect), [PMatVar]), K3 Effect)
+    inferWithRule m efch rfch e = do
+      u <- uidOf e
+      (ruleTag, r) <- infer m efch rfch e
+      localLog $ T.unpack $ showFInfRule ruleTag efch rfch r u
+      return r
+
     infer :: FInfM () -> [(Maybe (K3 Effect), [PMatVar])] -> [K3 Effect] -> K3 Expression
-          -> FInfM ((Maybe (K3 Effect), [PMatVar]), K3 Effect)
-    infer m (onSub -> (_, mv)) _ e@(tag -> EConstant _) = m >> rt False e mv (Nothing, fnone)
+          -> FInfM (String, ((Maybe (K3 Effect), [PMatVar]), K3 Effect))
+    infer m (onSub -> (_, mv)) _ e@(tag -> EConstant _) = m >> rt "const" False e mv (Nothing, fnone)
     infer m (onSub -> (_, mv)) _ e@(tag -> EVariable i) = m >> do
       f  <- filkupeM i
       p  <- filkupepM i
       p' <- liftEitherM $ chaseProvenance p
       ef <- extInferM $ fread p'
-      rt False e mv (Just ef, f)
+      rt "var" False e mv (Just ef, f)
 
-    infer m (onSub -> (ef, mv)) rf e@(tag -> ESome)       = m >> rt False e mv (fexec ef, fdata Nothing    rf)
-    infer m (onSub -> (ef, mv)) rf e@(tag -> EIndirect)   = m >> rt False e mv (fexec ef, fdata Nothing    rf)
-    infer m (onSub -> (ef, mv)) rf e@(tag -> ETuple)      = m >> rt False e mv (fexec ef, fdata Nothing    rf)
-    infer m (onSub -> (ef, mv)) rf e@(tag -> ERecord ids) = m >> rt False e mv (fexec ef, fdata (Just ids) rf)
+    infer m (onSub -> (ef, mv)) rf e@(tag -> ESome)       = m >> rt "some"   False e mv (fexec ef, fdata Nothing    rf)
+    infer m (onSub -> (ef, mv)) rf e@(tag -> EIndirect)   = m >> rt "ind"    False e mv (fexec ef, fdata Nothing    rf)
+    infer m (onSub -> (ef, mv)) rf e@(tag -> ETuple)      = m >> rt "tuple"  False e mv (fexec ef, fdata Nothing    rf)
+    infer m (onSub -> (ef, mv)) rf e@(tag -> ERecord ids) = m >> rt "record" False e mv (fexec ef, fdata (Just ids) rf)
 
     infer m (onSub -> (ef, mv)) [rf] e@(tag -> ELambda i) = m >> do
       UID u    <- uidOf e
       clv      <- filkupcM u
       clf      <- mapM filkupepM clv >>= mapM (liftEitherM . chaseProvenance) >>= mapM (extInferM . fread)
-      rt False e mv (Just fnone, flambda i (fseq clf) (fseq $ catMaybes ef) rf)
+      rt "lambda" False e mv (Just fnone, flambda i (fseq clf) (fseq $ catMaybes ef) rf)
 
     infer m (onSub -> (ef, mv)) [lrf,arf] e@(tag -> EOperate OApp) = m >> do
       (appef, apprf) <- simplifyApplyM extInfOpt (Just e) ef lrf arf
       appmv <- pmvOf e
       let nmv = appmv ++ mv
       pappef <- pruneAndSimplify False nmv $ Just appef
-      rt True e nmv (pappef, apprf)
+      rt "apply" True e nmv (pappef, apprf)
 
     infer m (onSub -> (ef, mv)) [rf] e@(tnc -> (EProject i, [esrc])) = m >> do
       psrc <- provOf esrc
       case esrc @~ isEType of
         Just (EType t) ->
           case tag t of
-            TCollection -> collectionMemberEffect extInfOpt i ef rf esrc t psrc >>= rt False e mv
+            TCollection -> collectionMemberEffect extInfOpt i ef rf esrc t psrc >>= rt "cproject" False e mv
             TRecord ids ->
               case tnc rf of
                 (FData _, fdch) -> do
                   idx <- maybe (memErr i esrc) return $ elemIndex i ids
-                  rt False e mv (fexec ef, fdch !! idx)
-                (_,_) -> rt False e mv (fexec ef, fnone)
+                  rt "rproject" False e mv (fexec ef, fdch !! idx)
+                (_,_) -> rt "project" False e mv (fexec ef, fnone)
             _ -> prjErr esrc
         _ -> prjErr esrc
 
@@ -841,14 +850,14 @@ inferEffects extInfOpt expr = do
       p   <- filkupepM i
       p'  <- liftEitherM $ chaseProvenance p
       aef <- extInferM $ fwrite p'
-      rt False e mv (fexec $ ef ++ [Just aef], fnone)
+      rt "assign" False e mv (fexec $ ef ++ [Just aef], fnone)
 
-    infer m (onSub -> (ef, mv)) _      e@(tag -> EOperate OSnd) = m >> rt False e mv (fexec $ ef ++ [Just fio], fnone)
-    infer m (onSub -> (ef, mv)) [_,rf] e@(tag -> EOperate OSeq) = m >> rt False e mv (fexec ef, rf)
-    infer m (onSub -> (ef, mv)) _      e@(tag -> EOperate _)    = m >> rt False e mv (fexec ef, fnone)
+    infer m (onSub -> (ef, mv)) _      e@(tag -> EOperate OSnd) = m >> rt "send"    False e mv (fexec $ ef ++ [Just fio], fnone)
+    infer m (onSub -> (ef, mv)) [_,rf] e@(tag -> EOperate OSeq) = m >> rt "seq"     False e mv (fexec ef, rf)
+    infer m (onSub -> (ef, mv)) _      e@(tag -> EOperate op)   = m >> rt (show op) False e mv (fexec ef, fnone)
 
     infer m (onSub -> ([pe,te,ee], mv)) [_,tr,er] e@(tag -> EIfThenElse) =
-      m >> rt False e mv (fexec [pe, Just $ fset $ catMaybes [te, ee]], fset [tr,er])
+      m >> rt "if-then-else" False e mv (fexec [pe, Just $ fset $ catMaybes [te, ee]], fset [tr,er])
 
     infer m (onSub -> ([initef,bef], submv)) [_,rf] e@(tag -> ELetIn  i) = m >> do
       smv <- pmvOf e
@@ -857,7 +866,7 @@ inferEffects extInfOpt expr = do
       let nmv = smv ++ submv
       let nrf = fscope [mv] (fromJust $ fexec [initef]) (fromJust $ fexec [bef]) fnone rf
       nef <- pruneAndSimplify False nmv $ fexec [initef, bef]
-      rt True e nmv (nef, nrf)
+      rt "let-in" True e nmv (nef, nrf)
 
     infer m (onSub -> ([initef,bef], mv)) [_,rf] e@(tag -> EBindAs b) = m >> do
       smvs <- pmvOf e
@@ -870,7 +879,7 @@ inferEffects extInfOpt expr = do
       npef <- mapM (liftEitherM . chaseProvenance) ps >>= mapM (extInferM . fwrite) >>= return . fseq
       let nrf  = fscope fmvs nief nbef npef rf
       nef <- pruneAndSimplify False nmv $ fexec $ map Just [nief, nbef]
-      rt True e nmv (nef, nrf)
+      rt "bind-as" True e nmv (nef, nrf)
 
     infer m (onSub -> ([oef,sef,nef], mv)) [_,snf,rnf] e@(tag -> ECaseOf _) = m >> do
       (cfmv, cpmv) <- fipopcaseM ()
@@ -881,18 +890,18 @@ inferEffects extInfOpt expr = do
       let nrf  = fscope [cfmv] nief nbef npef (fset [snf, rnf])
       Just nsef <- pruneAndSimplify False nmv sef
       let nef' = fexec $ map Just [nief, fset [nsef, maybe fnone id nef]]
-      rt True e nmv (nef', nrf)
+      rt "case-of" True e nmv (nef', nrf)
 
-    infer m (onSub -> (_, mv)) _ e@(tag -> EAddress) = m >> rt False e mv (Nothing, fnone)
+    infer m (onSub -> (_, mv)) _ e@(tag -> EAddress) = m >> rt "address" False e mv (Nothing, fnone)
 
     -- TODO: unhandled cases: ESelf, EImperative
     infer m _ _ e = m >> inferErr e
 
-    rt prune e mv r = fiextmM e (maybe fnone id $ fst r) (snd r) >> rtp prune mv r
-    rtp prune mv r = do
+    rt tg prune e mv r = fiextmM e (maybe fnone id $ fst r) (snd r) >> rtp tg prune mv r
+    rtp tg prune mv r = do
       let r' = Just $ snd r
       Just nr <- if prune then pruneAndSimplify True mv r' else return r'
-      return ((fst r, mv), nr)
+      return (tg, ((fst r, mv), nr))
 
     onSub efmv = let (x,y) = unzip efmv in (x, foldl union [] y)
 
@@ -1036,6 +1045,19 @@ inferEffects extInfOpt expr = do
     memErr i e = errorM $ PT.boxToString $ [T.unwords $ map T.pack ["Failed to project", i, "from"]]
                                          %$ PT.prettyLines e
 
+    showFInfRule rtag efch rfch ((refOpt, rmv), rrf) euid =
+      PT.boxToString $ (rpsep %+ premise) %$ separator %$ (rpsep %+ conclusion)
+      where commaT         = T.pack ", "
+            rprefix        = T.pack $ unwords [rtag, show euid]
+            (rplen, rpsep) = (T.length rprefix, [T.pack $ replicate rplen ' '])
+            premise        = let ch = zip (map fst efch) rfch in
+                             if null ch then [T.pack "<empty>"]
+                             else (PT.intersperseBoxes [commaT] $ map (uncurry prettyER) ch)
+            premLens       = map T.length premise
+            headWidth      = if null premLens then 4 else maximum premLens
+            separator      = [T.append rprefix $ T.pack $ replicate headWidth '-']
+            conclusion     = prettyER refOpt rrf
+            prettyER ef rf = maybe [T.pack "<no exec>"] PT.prettyLines ef %+ [commaT] %+ PT.prettyLines rf
 
 substituteEffects :: K3 Expression -> FInfM (K3 Expression)
 substituteEffects expr = modifyTree injectEffects expr
@@ -1161,7 +1183,8 @@ foldDefaultExprEffects accqr expr = do
     uidOf  e = maybe (uidErr e) (\case {(EUID u) -> return u ; _ ->  uidErr e}) $ e @~ isEUID
     uidErr e = Left $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines e
 
-    effectErr e = Left $ PT.boxToString $ [T.pack "No execution effects found on expression: "]  %$ PT.prettyLines e
+    effectErr e = Left $ PT.boxToString $ [T.pack "No execution effects found on expression: "] %$ PT.prettyLines e
+                                       %$ [T.pack "On argument: "] %$ PT.prettyLines expr
 
 -- | Default effect computation for a specific expression.
 inferDefaultExprEffects :: K3 Expression -> Either Text EffectMap
