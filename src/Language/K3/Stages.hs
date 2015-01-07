@@ -7,6 +7,7 @@ module Language.K3.Stages where
 
 import Control.Monad
 import Control.Arrow (first, second)
+import Data.List
 import Debug.Trace
 
 import Language.K3.Core.Annotation
@@ -49,6 +50,10 @@ transformF f (prog, menv) = Right (f prog, menv)
 transformE :: TrE -> ProgramTransform
 transformE f (prog, menv) = f prog >>= return . (, menv)
 
+transformEDbg :: String -> TrE -> ProgramTransform
+transformEDbg tg f (prog, menv) = mkTg "Before " prog (f prog) >>= \p -> mkTg "After " p (return (p, menv))
+  where mkTg pfx p = trace (boxToString $ [pfx ++ tg] %$ prettyLines p)
+
 transformEnvF :: TrEF -> ProgramTransform
 transformEnvF _ (_, Nothing)     = Left "missing effect environment"
 transformEnvF f (prog, Just env) = Right (f env prog, Just env)
@@ -82,6 +87,12 @@ fixpointEnvE :: TrEE -> ProgramTransform
 fixpointEnvE f = fixpointTransform $ transformEnvE f
 
 -- Fixpoint constructors with intermediate transformations between rounds.
+fixpointIF :: [ProgramTransform] -> TrF -> ProgramTransform
+fixpointIF interF f = fixpointTransformI interF $ transformF f
+
+fixpointIE :: [ProgramTransform] -> TrE-> ProgramTransform
+fixpointIE interF f = fixpointTransformI interF $ transformE f
+
 fixpointIEnvF :: [ProgramTransform] -> TrEF -> ProgramTransform
 fixpointIEnvF interF f = fixpointTransformI interF $ transformEnvF f
 
@@ -137,32 +148,32 @@ withPasses passes prog = foldM (flip ($!)) prog passes
 
 simplify :: ProgramTransform
 simplify = fixpointTransform $ simplifyChain
-  where simplifyChain p = transformE foldProgramConstants p
-                            >>= transformEnvE betaReductionOnProgram
-                            >>= transformEnvE eliminateDeadProgramCode
+  where simplifyChain p = withPasses simplifyPasses p
+        simplifyPasses = intersperse inferFreshTypesAndEffects $
+                           map (mkXform False) [ ("FC", foldProgramConstants)
+                                               , ("BR", betaReductionOnProgram)
+                                               , ("DCE", eliminateDeadProgramCode) ]
+        mkXform asDebug (i,f) = withRepair i $ (if asDebug then transformEDbg i else transformE) f
+
 
 simplifyWCSE :: ProgramTransform
-simplifyWCSE p = simplify p >>= transformEnvE commonProgramSubexprElim
+simplifyWCSE p = simplify p >>= transformE commonProgramSubexprElim
 
 -- TODO: remove whole-program fixpoint once we have the ability to
 -- locally infer effects on expressions.
 streamFusion :: ProgramTransform
-streamFusion = withProperties $ \p -> transformEnvE encodeTransformers p >>= fusionFixpoint
-  where fusionFixpoint = fixpointIEnvE fusionInterF fuseProgramFoldTransformers
-        fusionInterF   = [inferFreshTypesAndEffects, transformEnvE betaReductionOnProgram, inferFreshTypesAndEffects]
+streamFusion = withProperties $ \p -> transformE encodeTransformers p >>= fusionFixpoint
+  where fusionFixpoint = fixpointIE fusionInterF fuseProgramFoldTransformers
+        fusionInterF   = [inferFreshTypesAndEffects, transformE betaReductionOnProgram, inferFreshTypesAndEffects]
 
 runPasses :: [ProgramTransform] -> K3 Declaration -> Either String (K3 Declaration, Maybe EffectEnv)
 runPasses passes d = withPasses passes (d, Nothing)
-
-effectPasses :: [ProgramTransform]
-effectPasses = [transformEnvF Purity.runPurity]
 
 optPasses :: [ProgramTransform]
 optPasses = map prepareOpt [ (simplify,         "opt-simplify-prefuse")
                            , (streamFusion,     "opt-fuse")
                            , (simplify,         "opt-simplify-final") ]
-  where prepareOpt (f,i) =
-          withPasses $ [inferFreshTypesAndEffects] ++ effectPasses ++ [withRepair i f]
+  where prepareOpt (f,i) = withPasses $ [inferFreshTypesAndEffects, withRepair i f]
 
 cgPasses :: Int -> [ProgramTransform]
 -- no moves
