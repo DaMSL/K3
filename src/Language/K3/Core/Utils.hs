@@ -88,6 +88,8 @@ import Data.Tree
 import Data.IntMap ( IntMap )
 import qualified Data.IntMap as IntMap
 
+import Debug.Trace
+
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
@@ -632,7 +634,7 @@ type ClosureEnv = IntMap [Identifier]
 lambdaClosures :: K3 Declaration -> Either String ClosureEnv
 lambdaClosures p = foldExpression exprClosure IntMap.empty p >>= return . fst
   where
-    exprClosure :: ClosureEnv -> K3 Expression -> Either String (ClosureEnv, K3 Expression) 
+    exprClosure :: ClosureEnv -> K3 Expression -> Either String (ClosureEnv, K3 Expression)
     exprClosure lcAcc expr = do
       (lcenv,_) <- biFoldMapTree bind extract [] (IntMap.empty, []) expr
       return $ (IntMap.unions [lcAcc, lcenv], expr)
@@ -660,7 +662,7 @@ lambdaClosures p = foldExpression exprClosure IntMap.empty p >>= return . fst
 
     extendLc :: ClosureEnv -> K3 Expression -> [Identifier] -> Either String (ClosureEnv, [Identifier])
     extendLc lcenv e ids = case e @~ isEUID of
-      Just (EUID (UID i)) -> return $ (IntMap.insert i ids lcenv, ids)
+      Just (EUID (UID i)) -> return $ (IntMap.insert i (nub ids) lcenv, ids)
       _ -> Left $ boxToString $ ["No UID found on lambda"] %$ prettyLines e
 
     rt subAcc f = return $ second (f . concat) $ concatLc subAcc
@@ -682,7 +684,7 @@ stripDeclAnnotations :: (Annotation Declaration -> Bool)
 stripDeclAnnotations dStripF eStripF tStripF d =
     runIdentity $ mapProgram stripDeclF stripMemF stripExprF (Just stripTypeF) d
   where
-    stripDeclF (Node (tg :@: anns) ch) =  return $ Node (tg :@: (filter (not . dStripF) anns)) ch
+    stripDeclF (Node (tg :@: anns) ch) =  return $ Node (tg :@: stripDAnns anns) ch
 
     stripMemF (Lifted    p n t eOpt anns) = return $ Lifted      p n t eOpt $ stripDAnns anns
     stripMemF (Attribute p n t eOpt anns) = return $ Attribute   p n t eOpt $ stripDAnns anns
@@ -800,6 +802,9 @@ resetEffectAnns p = runIdentity $ mapMaybeAnnotation resetF idF idF p
           case s @~ isSDeclared of
             Just (SDeclared s') -> Just $ DSymbol s'
             _ -> Nothing
+
+        resetF (DProvenance (Right _)) = return $ Nothing
+        resetF (DEffect (Right _))     = return $ Nothing
         resetF a = return $ Just a
 
 stripEffectAnns :: K3 Declaration -> K3 Declaration
@@ -808,7 +813,7 @@ stripEffectAnns p = resetEffectAnns $
 
 -- | Effects-related metadata removal, including user-specified effect signatures.
 stripAllEffectAnns :: K3 Declaration -> K3 Declaration
-stripAllEffectAnns = stripDeclAnnotations isDSymbol isAnyEEffectAnn (const False)
+stripAllEffectAnns = stripDeclAnnotations isAnyDEffectAnn isAnyEEffectAnn (const False)
 
 -- | Single-pass composition of type and effect removal.
 stripTypeAndEffectAnns :: K3 Declaration -> K3 Declaration
@@ -817,7 +822,7 @@ stripTypeAndEffectAnns p = resetEffectAnns $
 
 -- | Single-pass variant removing all effect annotations.
 stripAllTypeAndEffectAnns :: K3 Declaration -> K3 Declaration
-stripAllTypeAndEffectAnns = stripDeclAnnotations isDSymbol isAnyETypeOrEffectAnn (const False)
+stripAllTypeAndEffectAnns = stripDeclAnnotations isAnyDEffectAnn isAnyETypeOrEffectAnn (const False)
 
 -- | Removes all properties from a program.
 stripAllProperties :: K3 Declaration -> K3 Declaration
