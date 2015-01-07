@@ -133,7 +133,7 @@ run opts = do
                         prog
                         [ (PSOptimization, (\p -> runOptPasses p >>= return . fst))
                         , (PSCodegen, flip runCGPasses 3)]
-      either putStrLn (printer (parsePrintMode popts) . stripAllProperties . stripTypeAndEffectAnns) sprogE
+      either putStrLn (printer (parsePrintMode popts) . stripAllProperties) sprogE
 
     analyzeThenPrint popts prog = do
       let (p, str) = transform (poTransform popts) prog
@@ -177,7 +177,7 @@ run opts = do
       (uncurry Effects.expandProgram . swap . Effects.runConsolidatedAnalysis)
 
     analyzer _ DeadCodeElimination x  = flip wrapEither x $
-      (uncurry Simplification.eliminateDeadProgramCode . swap . Effects.runConsolidatedAnalysis)
+      (Simplification.eliminateDeadProgramCode . fst . Effects.runConsolidatedAnalysis)
 
     analyzer _ Profiling x      = first (cleanGeneration "profiling" . Profiling.addProfiling) x
     analyzer _ Purity x         = first ((\(d,e) -> Pure.runPurity e d) . Effects.runConsolidatedAnalysis) x
