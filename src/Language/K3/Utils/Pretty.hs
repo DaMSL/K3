@@ -125,7 +125,7 @@ drawGroup sll = case sll of
           ++ ["|"] ++ (concatMap ((++["|"]) . shift "+- " "|  ") $ init $ tail sll)
           ++ (shift "`- " "   " $ last sll)
 
-  where prefixList l = head l : map (\(_:t) -> '|':t) (tail l)
+  where prefixList l = if null l then l else (head l : map (\(_:t) -> '|':t) (tail l))
 
 shift :: String -> String -> [String] -> [String]
 shift first other = zipWith (++) (first : repeat other)

@@ -121,7 +121,7 @@ drawGroup sll = case sll of
          ++ (concatMap ((++ [T.pack "|"]) . shift (T.pack "+- ") (T.pack "|  ")) $ init $ tail sll)
          ++ (shift (T.pack "`- ") (T.pack "   ") $ last sll)
 
-  where prefixList l = head l : map (\t -> T.append (T.pack "|") (T.tail t)) (tail l)
+  where prefixList l = if null l then l else (head l : map (\t -> T.append (T.pack "|") (T.tail t)) (tail l))
 
 shift :: Text -> Text -> [Text] -> [Text]
 shift first other = zipWith T.append (first : repeat other)
