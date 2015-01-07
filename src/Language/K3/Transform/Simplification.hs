@@ -34,9 +34,6 @@ import qualified Language.K3.Core.Constructor.Expression as EC
 import qualified Language.K3.Core.Constructor.Type       as TC
 import qualified Language.K3.Core.Constructor.Literal    as LC
 
-import Language.K3.Analysis.Effects.InsertEffects
-import Language.K3.Analysis.Effects.Core hiding (PVar)
-
 import qualified Language.K3.Analysis.SEffects.Inference as SE
 
 import Language.K3.Transform.Common
@@ -47,6 +44,7 @@ import Language.K3.Utils.Pretty
 
 import Data.Text ( Text )
 import qualified Data.Text as T
+import qualified Language.K3.Utils.PrettyText as PT
 
 traceLogging :: Bool
 traceLogging = False
@@ -215,26 +213,15 @@ isEMonoidGroupBy _ = False
 
 
 -- Effect queries
-readOnlyCE :: Bool -> EffectEnv -> K3 Expression -> Either String Bool
-readOnlyCE skipArg env e =
-  let SymbolCategories _ w _ _ io = exprSCategories (Just skipArg) e env
-  in return $ null w && not io
-
-noWritesCE :: Bool -> EffectEnv -> K3 Expression -> Either String Bool
-noWritesCE skipArg env e =
-  let SymbolCategories _ w _ _ _ = exprSCategories (Just skipArg) e env
-  in return $ null w
-
--- New effect queries
-readOnlySE :: Bool -> K3 Expression -> Either String Bool
-readOnlySE True e@(tnc -> (ELambda _, [b])) = readOnlySE False b
-readOnlySE _ e = either (Left . T.unpack) Right $ do
+readOnly :: Bool -> K3 Expression -> Either String Bool
+readOnly True e@(tnc -> (ELambda _, [b])) = readOnly False b
+readOnly _ e = either (Left . T.unpack) Right $ do
   SE.SymbolCategories _ w io <- SE.categorizeExprEffects e
   return $ null w && not io
 
-noWritesSE :: Bool -> K3 Expression -> Either String Bool
-noWritesSE True e@(tnc -> (ELambda _, [b])) = noWritesSE False b
-noWritesSE _ e = either (Left . T.unpack) Right $ do
+noWrites :: Bool -> K3 Expression -> Either String Bool
+noWrites True e@(tnc -> (ELambda _, [b])) = noWrites False b
+noWrites _ e = either (Left . T.unpack) Right $ do
   SE.SymbolCategories _ w io <- SE.categorizeExprEffects e
   return $ null w
 
@@ -499,11 +486,11 @@ stringOp op a b =
 --   Furthermore, this only applies to direct lambda invocations, rather than
 --   on general function values (i.e., including applications through bnds
 --   and substructure). For the latter case, we must inline and defunctionalize first.
-betaReductionOnProgram :: EffectEnv -> K3 Declaration -> Either String (K3 Declaration)
-betaReductionOnProgram eenv prog = mapExpression (betaReduction eenv) prog
+betaReductionOnProgram :: K3 Declaration -> Either String (K3 Declaration)
+betaReductionOnProgram prog = mapExpression betaReduction prog
 
-betaReduction :: EffectEnv -> K3 Expression -> Either String (K3 Expression)
-betaReduction env expr = mapTree reduce expr
+betaReduction :: K3 Expression -> Either String (K3 Expression)
+betaReduction expr = mapTree reduce expr
   where
     reduce ch n = case replaceCh n ch of
       (tag -> ELetIn i) -> reduceOnOccurrences n ch i (head ch) $ last ch
@@ -511,14 +498,14 @@ betaReduction env expr = mapTree reduce expr
       _ -> rebuildNode n ch
 
     reduceOnOccurrences n ch i ie e = do
-      ieRO <- readOnlySE False {- readOnlyCE False env -} ie
+      ieRO <- readOnly False ie
       if ieRO then
         case tag ie of
-          EConstant _ -> betaReduction env $ substituteImmutBinding i ie e
-          EVariable _ -> betaReduction env $ substituteImmutBinding i ie e
+          EConstant _ -> betaReduction $ substituteImmutBinding i ie e
+          EVariable _ -> betaReduction $ substituteImmutBinding i ie e
           _ -> let occurrences = length $ filter (== i) $ freeVariables e in
                if occurrences <= 3
-                 then betaReduction env $ substituteImmutBinding i ie e
+                 then betaReduction $ substituteImmutBinding i ie e
                  else rebuildNode n ch
       else rebuildNode n ch
 
@@ -541,13 +528,13 @@ betaReduction env expr = mapTree reduce expr
 --        if a then (if a then b else c) else d => if a then b else d
 --        case x of { Some j -> case x of { Some k -> l } { None -> m }} { None -> n }
 --          => case x of { Some j -> l } { None -> n }
-eliminateDeadProgramCode :: EffectEnv -> K3 Declaration -> Either String (K3 Declaration)
-eliminateDeadProgramCode env prog = mapExpression (eliminateDeadCode env) prog
+eliminateDeadProgramCode :: K3 Declaration -> Either String (K3 Declaration)
+eliminateDeadProgramCode prog = mapExpression eliminateDeadCode prog
 
-eliminateDeadCode :: EffectEnv -> K3 Expression -> Either String (K3 Expression)
-eliminateDeadCode env expr = mapTree pruneExpr expr
+eliminateDeadCode :: K3 Expression -> Either String (K3 Expression)
+eliminateDeadCode expr = mapTree pruneExpr expr
   where
-    rcr = eliminateDeadCode env
+    rcr = eliminateDeadCode
 
     pruneExpr ch n = case replaceCh n ch of
 
@@ -555,7 +542,7 @@ eliminateDeadCode env expr = mapTree pruneExpr expr
       (PPrjRec fId ids fieldsE _ _) ->
         (\justF -> maybe (rebuildNode n ch) justF $ elemIndex fId ids) $ \i -> do
           let restCh = filter ((/= fId) . fst) $ zip ids ch
-          let readF  = readOnlySE False {- readOnlyCE True env -} . snd
+          let readF  = readOnly False . snd
           restRO <- mapM readF restCh >>= return . and
           if restRO then return $ fieldsE !! i
                     else rebuildNode n ch
@@ -565,21 +552,21 @@ eliminateDeadCode env expr = mapTree pruneExpr expr
 
       (PBindTup ids fieldsE bodyE _ _) -> do
         let vars          = freeVariables bodyE
-        let unused (i, e) = readOnlySE False e {- readOnlyCE True env e -} >>= return . (&& i `notElem` vars)
+        let unused (i, e) = readOnly False e >>= return . (&& i `notElem` vars)
         used <- filterM (\i -> unused i >>= return . not) $ zip ids fieldsE
         rcr $ foldr (\(i,e) accE -> EC.letIn i e accE) bodyE used
 
       (PBindRec ijs ids fieldsE bodyE _ _) -> do
         let vars          = freeVariables bodyE
         let notfvar i     = maybe False (`notElem` vars) $ lookup i ijs
-        let unused (i, e) = readOnlySE False e {- readOnlyCE True env e -} >>= return . (&& notfvar i)
+        let unused (i, e) = readOnly False e >>= return . (&& notfvar i)
         used <- filterM (\i -> unused i >>= return . not) $ zip ids fieldsE
         rcr $ foldr (\(i,e) accE -> maybe accE (\j -> EC.letIn j e accE) $ lookup i ijs) bodyE used
 
       -- Unused effect-free binding removal
       (tag -> ELetIn i) -> do
         let vars = freeVariables $ last ch
-        initRO <- readOnlySE False {- readOnlyCE True env -} (head ch) >>= return . (&& i `notElem` vars)
+        initRO <- readOnly False (head ch) >>= return . (&& i `notElem` vars)
         if initRO then return $ last ch
                   else rebuildNode n ch
 
@@ -588,21 +575,21 @@ eliminateDeadCode env expr = mapTree pruneExpr expr
         case b of
           BRecord ijs -> do
             let nBinder = filter (\(_,j) -> j `elem` vars) ijs
-            initRO <- readOnlySE False {- readOnlyCE True env -} (head ch) >>= return . (&& null nBinder)
+            initRO <- readOnly False (head ch) >>= return . (&& null nBinder)
             if initRO
               then return $ last ch
               else return $ Node (EBindAs (BRecord $ nBinder) :@: annotations n) ch
           _ -> rebuildNode n ch
 
       (tag -> EOperate OSeq) -> do
-        lhsRO <- readOnlySE False {- readOnlyCE True env -} (head ch)
+        lhsRO <- readOnly False (head ch)
         if lhsRO
           then return $ last ch
           else rebuildNode n ch
 
       -- Immediate option bindings
       e@(PCaseOf (PSome sE optAs) j someE noneE cAs) -> do
-        someRO <- readOnlySE False {- readOnlyCE True env -} sE
+        someRO <- readOnly False sE
         return $ if someRO then someE else e
 
       (PCaseOf (PNone _ _) j someE noneE cAs) -> return $ noneE
@@ -693,11 +680,11 @@ type CandidateTree     = Tree (UID, Candidates)
 type Substitution      = (UID, K3 Expression, Int)
 type NamedSubstitution = (UID, Identifier, K3 Expression, Int)
 
-commonProgramSubexprElim :: EffectEnv -> K3 Declaration -> Either String (K3 Declaration)
-commonProgramSubexprElim env prog = mapExpression (commonSubexprElim env) prog
+commonProgramSubexprElim :: K3 Declaration -> Either String (K3 Declaration)
+commonProgramSubexprElim prog = mapExpression commonSubexprElim prog
 
-commonSubexprElim :: EffectEnv -> K3 Expression -> Either String (K3 Expression)
-commonSubexprElim env expr = do
+commonSubexprElim :: K3 Expression -> Either String (K3 Expression)
+commonSubexprElim expr = do
     cTree <- buildCandidateTree expr
     -- TODO: log candidates for debugging
     pTree <- pruneCandidateTree cTree
@@ -739,7 +726,7 @@ commonSubexprElim env expr = do
               nStrippedExpr   = Node (tag t :@: (filter ((||) <$> isEQualified <*> isAnyETypeOrEffectAnn)
                                                             $ annotations t)) $ concat sExprCh
           in do
-            nRO <- readOnlySE False {- readOnlyCE False env -} n
+            nRO <- readOnly False n
             let propagatedExprs = if nRO then (concat subAcc)++[nStrippedExpr] else []
             return $ ([candTreeNode], [nStrippedExpr], propagatedExprs)
 
@@ -790,7 +777,7 @@ commonSubexprElim env expr = do
                         -> Either String CandidateTree
         pruneCandidates candAcc ch (Node (uid, cands) _) = do
           let isCand p@(e, _) = if elem p candAcc
-                                  then noWritesSE False {- noWritesCE False env -} e
+                                  then noWrites False e
                                   else return False
           used <- filterM isCand cands
           let nUid = if null used then UID $ -1 else uid
@@ -866,11 +853,11 @@ streamableTransformerArg :: K3 Expression -> Bool
 streamableTransformerArg (PStreamableTransformerArg _ _ _ _) = True
 streamableTransformerArg _ = False
 
-encodeTransformers :: EffectEnv -> K3 Declaration -> Either String (K3 Declaration)
-encodeTransformers env prog = mapExpression (encodeTransformerExprs env) prog
+encodeTransformers :: K3 Declaration -> Either String (K3 Declaration)
+encodeTransformers prog = mapExpression encodeTransformerExprs prog
 
-encodeTransformerExprs :: EffectEnv -> K3 Expression -> Either String (K3 Expression)
-encodeTransformerExprs env expr = modifyTree encode expr -- >>= modifyTree markContent
+encodeTransformerExprs :: K3 Expression -> Either String (K3 Expression)
+encodeTransformerExprs expr = modifyTree encode expr -- >>= modifyTree markContent
   where
     encode e@(PPrjApp _ fId fAs _ _)
       | unaryTransformer fId && any isETransformer fAs
@@ -928,10 +915,11 @@ encodeTransformerExprs env expr = modifyTree encode expr -- >>= modifyTree markC
           let r     = PPrjApp2 cE fId nfAs fArg1 fArg2 app1As app2As
           if False then return r else debugInferredFold r nfAs fArg1
 
-        where debugInferredFold e nfAs@(getFusionSpecA -> Just cls) fArg1 = return $
-                flip trace e $
+        where debugInferredFold e nfAs@(getFusionSpecA -> Just cls) fArg1 = do
+                fa1FMap <- either (Left . T.unpack) Right $ SE.inferDefaultExprEffects fArg1
+                return $ flip trace e $
                   unlines [ unwords ["Fold function effects"]
-                          , pretty $ expandCategories env $ exprSCategories (Just True) fArg1 env
+                          , T.unpack $ PT.pretty fa1FMap
                           , unwords ["Inferred fold:", show streamable, show cls]
                           , pretty e ]
               debugInferredFold _ _ _ = Left "Invalid fusion-fold construction"
@@ -944,8 +932,8 @@ encodeTransformerExprs env expr = modifyTree encode expr -- >>= modifyTree markC
             (accE, valueT)  <- mkGBAccumE e
             rAccE           <- mkAccumE e
             (nfAs', nfArg1) <- mkGBAccumF valueT fAs fArg1 fArg2 fArg3
-            fArg1RO         <- readOnlySE True {- readOnlyCE False env -} fArg1
-            fArg2RO         <- readOnlySE True {- readOnlyCE True  env -} fArg2
+            fArg1RO         <- readOnly True fArg1
+            fArg2RO         <- readOnly True fArg2
             let nfAs                       = nfAs' ++ if fArg1RO && fArg2RO
                                                       then [pPureTransformer] else [pImpureTransformer]
             let (nApp1As, nApp2As)         = (markTAppChain app1As, markTAppChain app2As)
@@ -1021,7 +1009,9 @@ encodeTransformerExprs env expr = modifyTree encode expr -- >>= modifyTree markC
       _ -> accumEerr e
 
     collectionElementType e = case e @~ isEType of
-      Just (EType t@(tag -> TCollection)) -> Just $ (t, head $ children t)
+      Just (EType t@(tag -> TCollection)) ->
+        let ch = children t in
+        if null ch then Nothing else Just $ (t, head ch)
       _ -> Nothing
 
     recordType t@(tag -> TRecord ids) = Just $ zip ids $ children t
@@ -1041,7 +1031,7 @@ encodeTransformerExprs env expr = modifyTree encode expr -- >>= modifyTree markC
     markTAppChain as = cleanAnns $ nub $ as ++ [pTAppChain]
 
     markPureTransformer skipArg as e = do
-      eRO <- readOnlySE True {- readOnlyCE skipArg env -} e
+      eRO <- readOnly True e
       return $ cleanAnns $ nub $
         if eRO then as ++ [pPureTransformer] else as ++ [pImpureTransformer]
 
@@ -1055,12 +1045,12 @@ encodeTransformerExprs env expr = modifyTree encode expr -- >>= modifyTree markC
     accumEerr   e = Left . boxToString $ ["Invalid accumulator construction on: "] %$ prettyLines e
 
 
-fuseProgramFoldTransformers :: EffectEnv -> K3 Declaration -> Either String (K3 Declaration)
-fuseProgramFoldTransformers env prog =
-  mapExpression (fuseFoldTransformers env) prog >>= return . repairProgram "fusion"
+fuseProgramFoldTransformers :: K3 Declaration -> Either String (K3 Declaration)
+fuseProgramFoldTransformers prog =
+  mapExpression fuseFoldTransformers prog >>= return . repairProgram "fusion"
 
-fuseFoldTransformers :: EffectEnv -> K3 Expression -> Either String (K3 Expression)
-fuseFoldTransformers env expr = do
+fuseFoldTransformers :: K3 Expression -> Either String (K3 Expression)
+fuseFoldTransformers expr = do
     (_, eOpt) <- foldMapTree fuseUntilFirst (False, Nothing) expr
     maybe (Left "Invalid fusion result") return eOpt
 
@@ -1095,7 +1085,7 @@ fuseFoldTransformers env expr = do
     fuse nch = return $ (False, uncurry replaceCh nch)
 
     debugFusionStep fAs gAs ngArg1 e = flip trace e $
-      unlines [ "Fused:" ++ showFusion fAs gAs, pretty $ stripAllExprAnnotations ngArg1 ]
+      unlines [ "Fused:" ++ (showFusion fAs gAs), pretty $ stripAllExprAnnotations ngArg1 ]
 
     debugFusionMatching lAccF rAccF lAs rAs r =
       if False then r
@@ -1258,7 +1248,7 @@ fuseFoldTransformers env expr = do
           (ICond1, ICondN) | nonDepTr ltCls && nonDepTr rtCls ->
             case (lAccF, rAccF) of
               (PICond1 li lj lpE lpArg ltE, PChainLambda1 ri rj rE rAs1 rAs2) -> do
-                nf <- chainCondRightOpen li lj lpE lpArg ltE lAs ri ri rE rAs1 rAs2 rAs
+                nf <- chainCondRightOpen li lj lpE lpArg ltE lAs ri rj rE rAs1 rAs2 rAs
                 return $ Just $ (updateFusionSpec rAs (ICondN, promoteTCls ltCls rtCls), nf)
 
               (PChainLambda1 li lj lE lAs1 lAs2, PChainLambda1 ri rj rE rAs1 rAs2) -> do
@@ -1630,7 +1620,7 @@ fuseFoldTransformers env expr = do
 
     chainICond1Lambda lAccF rAccF lAs rAs ltCls rtCls nAccCls nAccCls2 = case (lAccF, rAccF) of
       (PICond1 li lj lpE lpArg ltE, PChainLambda1 ri rj rE rAs1 rAs2) -> do
-        nf <- chainCondRightOpen li lj lpE lpArg ltE lAs ri ri rE rAs1 rAs2 rAs
+        nf <- chainCondRightOpen li lj lpE lpArg ltE lAs ri rj rE rAs1 rAs2 rAs
         return $ Just $ (updateFusionSpec rAs (nAccCls, promoteTCls ltCls rtCls), nf)
 
       (PChainLambda1 li lj lE lAs1 lAs2, PChainLambda1 ri rj rE rAs1 rAs2) -> do
