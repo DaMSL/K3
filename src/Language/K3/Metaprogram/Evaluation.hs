@@ -222,14 +222,13 @@ applyCAnnGens mp = mapExpression applyCAnnExprTree mp
     applyCAnnExprTree e = mapTree applyCAnnExpr e
 
     -- TODO: think about propagation of annotations between rewrites.
-    -- Currently we preserve all non-control annotations, but clearly this is rewrite-dependent.
+    -- Currently we do not preserve any annotations.
     applyCAnnExpr ch (Node (t :@: anns) _) =
       let (appAnns, rest) = partition isEApplyGen anns
-      in foldM (eApplyAnn rest) (Node (t :@: rest) ch) appAnns
+      in foldM eApplyAnn (Node (t :@: rest) ch) appAnns
 
-    eApplyAnn ncAnns e (EApplyGen True n senv) =
-      applyCAnnotation e n senv >>= \ne -> return (foldl (@+) ne ncAnns)
-    eApplyAnn _ e _ = return e
+    eApplyAnn e (EApplyGen True n senv) = applyCAnnotation e n senv
+    eApplyAnn e _ = return e
 
 
 applyCAnnotation :: K3 Expression -> Identifier -> SpliceEnv -> ExprGenerator
