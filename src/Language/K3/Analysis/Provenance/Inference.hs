@@ -110,8 +110,17 @@ plkup env x = maybe err safeHead $ Map.lookup x env
     err = mkErrP msg env
     msg = "Unbound variable in lineage binding environment: " ++ x
 
+plkupAll :: PEnv -> Identifier -> Either Text [K3 Provenance]
+plkupAll env x = maybe err return $ Map.lookup x env
+  where
+    err = mkErrP msg env
+    msg = "Unbound variable in lineage binding environment: " ++ x
+
 pext :: PEnv -> Identifier -> K3 Provenance -> PEnv
 pext env x p = Map.insertWith (++) x [p] env
+
+psetAll :: PEnv -> Identifier -> [K3 Provenance] -> PEnv
+psetAll env x l = Map.insert x l env
 
 pdel :: PEnv -> Identifier -> PEnv
 pdel env x = Map.update safeTail x env
@@ -202,8 +211,14 @@ mpiep f env = env {ppenv = f $ ppenv env}
 pilkupe :: PIEnv -> Identifier -> Either Text (K3 Provenance)
 pilkupe env x = plkup (penv env) x
 
+pilkupalle :: PIEnv -> Identifier -> Either Text [K3 Provenance]
+pilkupalle env x = plkupAll (penv env) x
+
 piexte :: PIEnv -> Identifier -> K3 Provenance -> PIEnv
 piexte env x p = env {penv=pext (penv env) x p}
+
+pisetalle :: PIEnv -> Identifier -> [K3 Provenance] -> PIEnv
+pisetalle env x pl = env {penv=psetAll (penv env) x pl}
 
 pidele :: PIEnv -> Identifier -> PIEnv
 pidele env i = env {penv=pdel (penv env) i}
@@ -303,7 +318,7 @@ pistore pienv n u p = do
   p' <- pilkupe pienv n
   case tag p' of
     PBVar mv | (pmvn mv, pmvloc mv) == (n,u) -> return $ piextp pienv (pmvptr mv) p
-    _ -> Left $ PT.boxToString $ [T.pack "Invalid store on pointer"] %$ PT.prettyLines p'
+    _ -> Left $ PT.boxToString $ [T.pack $ unwords ["Invalid store on pointer", show n, show u]] %$ PT.prettyLines p'
 
 pistorea :: PIEnv -> Identifier -> [(Identifier, UID, K3 Provenance, Bool)] -> Either Text PIEnv
 pistorea pienv n memP = do
@@ -374,7 +389,14 @@ pisub pienv i dp sp = acyclicSub pienv emptyPtrSubs [] sp >>= \(renv, _, rp) -> 
     isPtrSub  ps j = IntMap.member j ps
     getPtrSub ps j = maybe (lookupErr j) (return . pbvar) $ IntMap.lookup j ps
     addPtrSub env ps mv p =
-      let (np, nenv) = pifresh env (pmvn mv) (pmvloc mv) p in
+      let (mvi, mviE) = (pmvn mv, pilkupalle env $ pmvn mv)
+          (p', env') = pifreshbp env mvi (pmvloc mv) p
+          (np, nenv) = case mviE of
+                         Left _  -> (p', env')
+                         Right l -> (p',) $ pisetalle env' mvi $ flip map l $ \ip -> case tag ip of
+                           PBVar imv | imv == mv -> p'
+                           _ -> ip
+      in
       case tag np of
         PBVar nmv -> return (nenv, IntMap.insert (pmvptr mv) nmv ps, np)
         _ -> freshErr np

@@ -114,8 +114,17 @@ flkup env x = maybe err safeHead $ Map.lookup x env
     err = mkErrP msg env
     msg = "Unbound variable in effect binding environment: " ++ x
 
+flkupAll :: FEnv -> Identifier -> Either Text [K3 Effect]
+flkupAll env x = maybe err return $ Map.lookup x env
+  where
+    err = mkErrP msg env
+    msg = "Unbound variable in effect binding environment: " ++ x
+
 fext :: FEnv -> Identifier -> K3 Effect -> FEnv
 fext env x p = Map.insertWith (++) x [p] env
+
+fsetAll :: FEnv -> Identifier -> [K3 Effect] -> FEnv
+fsetAll env x l = Map.insert x l env
 
 fdel :: FEnv -> Identifier -> FEnv
 fdel env x = Map.update safeTail x env
@@ -236,8 +245,14 @@ mfiep f env = env {fpenv = f $ fpenv env}
 filkupe :: FIEnv -> Identifier -> Either Text (K3 Effect)
 filkupe env x = flkup (fenv env) x
 
+filkupalle :: FIEnv -> Identifier -> Either Text [K3 Effect]
+filkupalle env x = flkupAll (fenv env) x
+
 fiexte :: FIEnv -> Identifier -> K3 Effect -> FIEnv
 fiexte env x f = env {fenv=fext (fenv env) x f}
+
+fisetalle :: FIEnv -> Identifier -> [K3 Effect] -> FIEnv
+fisetalle env x fl = env {fenv=fsetAll (fenv env) x fl}
 
 fidele :: FIEnv -> Identifier -> FIEnv
 fidele env i = env {fenv=fdel (fenv env) i}
@@ -434,7 +449,14 @@ fisub fienv extInfOpt i df sf p = do
     isPtrSub  fs j = IntMap.member j fs
     getPtrSub fs j = maybe (lookupErr j) (return . fbvar) $ IntMap.lookup j fs
     addPtrSub env fs mv f =
-      let (nf, nenv) = fifresh env (fmvn mv) (fmvloc mv) f in
+      let (mvi, mviE) = (fmvn mv, filkupalle env $ fmvn mv)
+          (f', env') = fifreshbp env mvi (fmvloc mv) f
+          (nf, nenv) = case mviE of
+                         Left _  -> (f', env')
+                         Right l -> (f',) $ fisetalle env' mvi $ flip map l $ \ef -> case tag ef of
+                           FBVar imv | imv == mv -> f'
+                           _ -> ef
+      in
       case tag nf of
         FBVar nmv -> return (nenv, IntMap.insert (fmvptr mv) nmv fs, nf)
         _ -> freshErr nf
