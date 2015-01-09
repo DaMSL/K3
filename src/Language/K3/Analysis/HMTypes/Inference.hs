@@ -363,6 +363,9 @@ withCyclicEnv n m = do
 runTInfM :: TIEnv -> TInfM a -> (Either String a, TIEnv)
 runTInfM env m = flip runState env $ runEitherT m
 
+runTInfE :: TIEnv -> TInfM a -> Either String (a, TIEnv)
+runTInfE e m = let (a,b) = runTInfM e m in a >>= return . (, b)
+
 reasonM :: (String -> String) -> TInfM a -> TInfM a
 reasonM errf = mapEitherT $ \m -> m >>= \case
   Left  err -> get >>= \env -> (return . Left $ errf $ err ++ "\nType environment:\n" ++ pretty env)
@@ -916,140 +919,150 @@ substituteDeepQt e = mapTree subNode e
         subAnns (EQType qt) = tvsub qt >>= return . EQType
         subAnns x = return x
 
--- | Top-level type inference methods
+{- Type initialization -}
+
+-- | Initialize a declaration's type from its type signature.
+initializeDeclType :: K3 Declaration -> TInfM (K3 Declaration)
+initializeDeclType d@(tag -> DGlobal n t _) = withUnique n $ do
+  qpt <- qpType t
+  modify (\env -> tiextc (tiexte env n qpt) n $ isTFunction t)
+  return d
+
+initializeDeclType d@(tag -> DTrigger n t _) = withUnique n $ do
+    qpt <- trigType t
+    modify (\env -> tiextc (tiexte env n qpt) n True)
+    return d
+  where trigType x = qType x >>= \qt -> return (ttrg qt) >>= monomorphize
+
+initializeDeclType d@(tag -> DDataAnnotation n tdeclvars mems) = withUniqueA n $ mkAnnMemEnv >> return d
+  where mkAnnMemEnv = mapM memType mems >>= \l -> modify (\env -> tiexta env n $ catMaybes l)
+        memType (Lifted      _ mn mt _ _) = unifyMemInit True  mn mt
+        memType (Attribute   _ mn mt _ _) = unifyMemInit False mn mt
+        memType (MAnnotation _ _ _) = return Nothing
+        unifyMemInit lifted mn mt = do
+          qpt <- qpType (TC.forAll tdeclvars mt)
+          return (Just (mn, (qpt, lifted)))
+
+initializeDeclType d = return d
+
+-- | Initialization helpers.
+withUnique :: Identifier -> TInfM (K3 Declaration) -> TInfM (K3 Declaration)
+withUnique n m = failOnValid (return ()) (uniqueErr "declaration" n) (flip tilkupe n) >>= const m
+
+withUniqueA :: Identifier -> TInfM (K3 Declaration) -> TInfM (K3 Declaration)
+withUniqueA n m = failOnValid (return ()) (uniqueErr "annotation" n) (flip tilkupa n) >>= const m
+
+failOnValid :: TInfM () -> TInfM () -> (TIEnv -> Either a b) -> TInfM ()
+failOnValid success failure f = get >>= \env -> either (const $ success) (const $ failure) $ f env
+
+uniqueErr :: String -> Identifier -> TInfM a
+uniqueErr s n = left $ unwords ["Invalid unique", s, "identifier:", n]
+
+
+{- Top-level type inference methods -}
+
+-- | Whole program inference
 inferProgramTypes :: K3 Declaration -> Either String (K3 Declaration)
 inferProgramTypes prog = do
-    (_, initEnv) <- let (a,b) = runTInfM tienv0 $ initializeTypeEnv
-                    in a >>= return . (, b)
-    (nProg, finalEnv) <- let m     = mapProgramWithDecl declF annMemF exprF Nothing prog
-                             (a,b) = runTInfM (resetCyclicEnv initEnv) m
-                         in a >>= return . (, b)
+    (_, initEnv)      <- runTInfE tienv0 $ initializeTypeEnv
+    (nProg, finalEnv) <- runTInfE (resetCyclicEnv initEnv) $ inferAllDecls
     localLog $ "Final type environment"
     localLog $ pretty finalEnv
     return nProg
+
   where
     initializeTypeEnv :: TInfM (K3 Declaration)
-    initializeTypeEnv = mapProgram initDeclF initAMemF initExprF Nothing prog
+    initializeTypeEnv = mapProgram initializeDeclType return return Nothing prog
 
-    withUnique :: Identifier -> TInfM (K3 Declaration) -> TInfM (K3 Declaration)
-    withUnique n m = failOnValid (return ()) (uniqueErr "declaration" n) (flip tilkupe n) >>= const m
+    inferAllDecls :: TInfM (K3 Declaration)
+    inferAllDecls = mapProgramWithDecl inferDeclTypes (const return) (const return) Nothing prog
 
-    withUniqueA :: Identifier -> TInfM (K3 Declaration) -> TInfM (K3 Declaration)
-    withUniqueA n m = failOnValid (return ()) (uniqueErr "annotation" n) (flip tilkupa n) >>= const m
+-- | Repeat inference for a specific declaration.
+reinferProgDeclTypes :: TIEnv -> Identifier -> K3 Declaration -> Either String (K3 Declaration, TIEnv)
+reinferProgDeclTypes env dn prog = runTInfE env inferNamedDecl
+  where
+    inferNamedDecl = mapProgramWithDecl onNamedDecl (const return) (const return) Nothing prog
 
-    failOnValid :: TInfM () -> TInfM () -> (TIEnv -> Either a b) -> TInfM ()
-    failOnValid success failure f = get >>= \env -> either (const $ success) (const $ failure) $ f env
+    onNamedDecl d@(tag -> DGlobal  n _ _) | dn == n = inferDeclTypes d
+    onNamedDecl d@(tag -> DTrigger n _ _) | dn == n = inferDeclTypes d
+    onNamedDecl d = return d
 
-    uniqueErr :: String -> Identifier -> TInfM a
-    uniqueErr s n = left $ unwords ["Invalid unique", s, "identifier:", n]
 
-    initDeclF :: K3 Declaration -> TInfM (K3 Declaration)
-    initDeclF d@(tag -> DGlobal n t _) = withUnique n $ do
-      qpt <- qpType t
-      modify (\env -> tiextc (tiexte env n qpt) n $ isTFunction t)
-      return d
+-- | Declaration type inference
+inferDeclTypes :: K3 Declaration -> TInfM (K3 Declaration)
+inferDeclTypes d@(tag -> DGlobal n t eOpt) = inferAsCyclicType n $ do
+  neOpt <- inferDeclInitializer (Just n) eOpt
+  qptE  <- if isTFunction t then return (Left Nothing)
+                            else (qpType t >>= return . Left . Just)
+  if isTEndpoint t
+    then return d
+    else unifyDeclInitializer n qptE neOpt >>= \neOpt' ->
+           return $ (Node (DGlobal n t neOpt' :@: annotations d) $ children d)
 
-    initDeclF d@(tag -> DTrigger n t _) = withUnique n $ do
-        qpt <- trigType t
-        modify (\env -> tiextc (tiexte env n qpt) n True)
-        return d
-      where trigType x = qType x >>= \qt -> return (ttrg qt) >>= monomorphize
+inferDeclTypes d@(tag -> DTrigger n t e) = inferAsCyclicType n $ do
+  Just ne <- inferDeclInitializer (Just n) $ Just e
+  env <- get
+  QPType qtvars qt <- liftEitherM (tilkupe env n)
+  case tag qt of
+    QTCon QTTrigger ->
+      let nqptE = Right $ QPType qtvars $ tfun (head $ children qt) tunit
+      in unifyDeclInitializer n nqptE (Just ne) >>= \neOpt ->
+           return $ maybe d (\ne' -> Node (DTrigger n t ne' :@: annotations d) $ children d) neOpt
+    _ -> left $ "Invalid trigger declaration type for: " ++ n
 
-    initDeclF d@(tag -> DDataAnnotation n tdeclvars mems) = withUniqueA n $ mkAnnMemEnv >> return d
-      where mkAnnMemEnv = mapM memType mems >>= \l -> modify (\env -> tiexta env n $ catMaybes l)
-            memType (Lifted      _ mn mt _ _) = unifyMemInit True  mn mt
-            memType (Attribute   _ mn mt _ _) = unifyMemInit False mn mt
-            memType (MAnnotation _ _ _) = return Nothing
-            unifyMemInit lifted mn mt = do
-              qpt <- qpType (TC.forAll tdeclvars mt)
-              return (Just (mn, (qpt, lifted)))
+inferDeclTypes d@(tag -> DDataAnnotation n tvars mems) = do
+    env   <- get
+    amEnv <- liftEitherM (tilkupa env n)
+    nmems <- chkAnnMemEnv amEnv
+    return (Node (DDataAnnotation n tvars nmems :@: annotations d) $ children d)
 
-    initDeclF d = return d
+  where
+    chkAnnMemEnv amEnv = mapM (memType amEnv) mems
 
-    initAMemF :: AnnMemDecl -> TInfM AnnMemDecl
-    initAMemF mem  = return mem
+    memType amEnv (Lifted mp mn mt meOpt mAnns) =
+      unifyMemInit amEnv mn meOpt >>= \nmeOpt -> return (Lifted mp mn mt nmeOpt mAnns)
 
-    initExprF :: K3 Expression -> TInfM (K3 Expression)
-    initExprF expr = return expr
+    memType amEnv (Attribute   mp mn mt meOpt mAnns) =
+      unifyMemInit amEnv mn meOpt >>= \nmeOpt -> return (Attribute mp mn mt nmeOpt mAnns)
 
-    unifyInitializer :: Identifier -> Either (Maybe QPType) QPType -> Maybe (K3 Expression)
+    memType _ mem@(MAnnotation _ _ _) = return mem
+
+    unifyMemInit amEnv mn meOpt = do
+      nmeOpt <- inferDeclInitializer Nothing meOpt
+      qpt <- maybe (memLookupErr mn) (return . fst) (lookup mn amEnv)
+      unifyDeclInitializer mn (Right qpt) nmeOpt
+
+    memLookupErr mn = left $ "No annotation member in initial environment: " ++ mn
+
+inferDeclTypes d = return d
+
+inferAsCyclicType :: Identifier -> TInfM a -> TInfM a
+inferAsCyclicType n m = do
+  cyclic <- get >>= return . flip tilkupc n
+  case cyclic of
+    Left err -> left err
+    Right True -> withCyclicEnv n m
+    Right _    -> m
+
+unifyDeclInitializer :: Identifier -> Either (Maybe QPType) QPType -> Maybe (K3 Expression)
                      -> TInfM (Maybe (K3 Expression))
-    unifyInitializer n qptE eOpt = do
-      qpt <- case qptE of
-              Left Nothing     -> get >>= \env -> liftEitherM (tilkupe env n)
-              Left (Just qpt') -> modify (\env -> tiexte env n qpt') >> return qpt'
-              Right qpt'       -> return qpt'
+unifyDeclInitializer n qptE eOpt = do
+  qpt <- case qptE of
+          Left Nothing     -> get >>= \env -> liftEitherM (tilkupe env n)
+          Left (Just qpt') -> modify (\env -> tiexte (tidele env n) n qpt') >> return qpt'
+          Right qpt'       -> return qpt'
 
-      case eOpt of
-        Just e -> do
-          qt1 <- instantiate qpt
-          qt2 <- qTypeOfM e
-          localLog $ prettyTaggedPair ("unify init ") qt1 qt2
-          void $ unifyWithOverrideM qt1 qt2 $ mkErrorF e unifyInitErrF
-          substituteDeepQt e >>= return . Just
+  case eOpt of
+    Just e -> do
+      qt1 <- instantiate qpt
+      qt2 <- qTypeOfM e
+      localLog $ prettyTaggedPair ("unify init ") qt1 qt2
+      void $ unifyWithOverrideM qt1 qt2 $ mkErrorF e unifyInitErrF
+      substituteDeepQt e >>= return . Just
 
-        Nothing -> return Nothing
+    Nothing -> return Nothing
 
-    asCyclic :: Identifier -> TInfM a -> TInfM a
-    asCyclic n m = do
-      cyclic <- get >>= return . flip tilkupc n
-      case cyclic of
-        Left err -> left err
-        Right True -> withCyclicEnv n m
-        Right _    -> m
-
-    declF :: K3 Declaration -> TInfM (K3 Declaration)
-    declF d@(tag -> DGlobal n t eOpt) = asCyclic n $ do
-      qptE <- if isTFunction t then return (Left Nothing)
-                               else (qpType t >>= return . Left . Just)
-      if isTEndpoint t
-        then return d
-        else unifyInitializer n qptE eOpt >>= \neOpt ->
-               return $ (Node (DGlobal n t neOpt :@: annotations d) $ children d)
-
-    declF d@(tag -> DTrigger n t e) = asCyclic n $ do
-      env <- get
-      QPType qtvars qt <- liftEitherM (tilkupe env n)
-      case tag qt of
-        QTCon QTTrigger ->
-          let nqptE = Right $ QPType qtvars $ tfun (head $ children qt) tunit
-          in unifyInitializer n nqptE (Just e) >>= \neOpt ->
-               return $ maybe d (\ne -> Node (DTrigger n t ne :@: annotations d) $ children d) neOpt
-        _ -> trigTypeErr n
-
-    declF d@(tag -> DDataAnnotation n tvars mems) =
-        get >>= \env -> liftEitherM (tilkupa env n) >>= chkAnnMemEnv >>= \nmems ->
-          return (Node (DDataAnnotation n tvars nmems :@: annotations d) $ children d)
-
-      where chkAnnMemEnv amEnv = mapM (memType amEnv) mems
-
-            memType amEnv (Lifted mp mn mt meOpt mAnns) =
-              unifyMemInit amEnv mn meOpt >>= \nmeOpt -> return (Lifted mp mn mt nmeOpt mAnns)
-
-            memType amEnv (Attribute   mp mn mt meOpt mAnns) =
-              unifyMemInit amEnv mn meOpt >>= \nmeOpt -> return (Attribute mp mn mt nmeOpt mAnns)
-
-            memType _ mem@(MAnnotation _ _ _) = return mem
-
-            unifyMemInit amEnv mn meOpt = do
-              qpt <- maybe (memLookupErr mn) (return . fst) (lookup mn amEnv)
-              unifyInitializer mn (Right qpt) meOpt
-
-    declF d = return d
-
-    annMemF :: K3 Declaration -> AnnMemDecl -> TInfM AnnMemDecl
-    annMemF _ mem = return mem
-
-    exprF :: K3 Declaration -> K3 Expression -> TInfM (K3 Expression)
-    exprF d e = case nameOfDecl d of
-      Just n  -> asCyclic n $ inferExprTypes e
-      Nothing -> inferExprTypes e
-
-    nameOfDecl :: K3 Declaration -> Maybe Identifier
-    nameOfDecl (tag -> DGlobal n _ _)  = Just n
-    nameOfDecl (tag -> DTrigger n _ _) = Just n
-    nameOfDecl _ = Nothing
-
+  where
     mkErrorF :: K3 Expression -> (String -> String) -> (String -> String)
     mkErrorF e f s = spanAsString ++ f s
       where spanAsString = let uidSpans = filter (\a -> isESpan a || isEUID a) $ annotations e
@@ -1057,9 +1070,14 @@ inferProgramTypes prog = do
                                 then (boxToString $ ["["] %+ prettyLines e %+ ["]"])
                                 else show uidSpans
 
-    memLookupErr  n = left $ "No annotation member in initial environment: " ++ n
-    trigTypeErr   n = left $ "Invlaid trigger declaration type for: " ++ n
     unifyInitErrF s = "Failed to unify initializer: " ++ s
+
+inferDeclInitializer :: Maybe Identifier -> Maybe (K3 Expression) -> TInfM (Maybe (K3 Expression))
+inferDeclInitializer _ Nothing = return Nothing
+inferDeclInitializer nOpt (Just e) = return . Just =<< case nOpt of
+  Just n  -> inferAsCyclicType n $ inferExprTypes e
+  Nothing -> inferExprTypes e
+
 
 -- | Expression type inference. Note this not perform a final type substitution, leaving
 --   it to the caller as desired. This may leave type variables present in the

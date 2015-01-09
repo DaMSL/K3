@@ -123,6 +123,9 @@ fdel env x = Map.update safeTail x env
         safeTail [_] = Nothing
         safeTail l   = Just $ tail l
 
+fmem :: FEnv -> Identifier -> Either Text Bool
+fmem env x = return $ Map.member x env
+
 
 {- FPEnv helpers -}
 fpenv0 :: FPEnv
@@ -238,6 +241,9 @@ fiexte env x f = env {fenv=fext (fenv env) x f}
 
 fidele :: FIEnv -> Identifier -> FIEnv
 fidele env i = env {fenv=fdel (fenv env) i}
+
+fimeme :: FIEnv -> Identifier -> Either Text Bool
+fimeme env i = fmem (fenv env) i
 
 filkupep :: FIEnv -> Identifier -> Either Text (K3 Provenance)
 filkupep env x = fpblkup (fpbenv env) x
@@ -509,7 +515,7 @@ simplifyApply fienv extInfOpt eOpt ef lrf arf = do
         _ -> applyLambdaErr lrf
 
     uidOf  e = maybe (uidErr e) (\case {(EUID u) -> return u ; _ ->  uidErr e}) $ e @~ isEUID
-    uidErr e = Left $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines e
+    uidErr e = Left $ PT.boxToString $ [T.pack "No uid found for fsimplifyapp on "] %+ PT.prettyLines e
 
     provOf  e = maybe (provErr e) (\case {(EProvenance p) ->  return p; _ -> provErr e}) $ e @~ isEProvenance
     provErr e = Left $ PT.boxToString $ [T.pack "No provenance found on "] %+ PT.prettyLines e
@@ -545,6 +551,12 @@ simplifyApplyM extInfOpt eOpt ef lrf argrf = do
 runFInfM :: FIEnv -> FInfM a -> (Either Text a, FIEnv)
 runFInfM env m = flip runState env $ runEitherT m
 
+runFInfE :: FIEnv -> FInfM a -> Either Text (a, FIEnv)
+runFInfE env m = let (a,b) = runFInfM env m in a >>= return . (,b)
+
+runFInfES :: FIEnv -> FInfM a -> Either String (a, FIEnv)
+runFInfES env m = either (Left . T.unpack) Right $ runFInfE env m
+
 reasonM :: (Text -> Text) -> FInfM a -> FInfM a
 reasonM errf = mapEitherT $ \m -> m >>= \case
   Left  err -> get >>= \env -> (return . Left $ errf $ T.unlines [err, T.pack "Effect environment:", PT.pretty env])
@@ -576,6 +588,9 @@ fiexteM n f = get >>= \env -> return (fiexte env n f) >>= put
 
 fideleM :: Identifier -> FInfM ()
 fideleM n = get >>= \env -> return (fidele env n) >>= put
+
+fimemeM :: Identifier -> FInfM Bool
+fimemeM n = get >>= liftEitherM . flip fimeme n
 
 filkupepM :: Identifier -> FInfM (K3 Provenance)
 filkupepM n = get >>= liftEitherM . flip filkupep n
@@ -626,64 +641,156 @@ fipushcaseM :: (FMatVar, PMatVar) -> FInfM ()
 fipushcaseM mv = get >>= return . flip fipushcase mv >>= put
 
 
+-- | Misc. initialization helpers.
+uidOfD :: K3 Declaration -> FInfM UID
+uidOfD d = maybe uidErr (\case {(DUID u) -> return u ; _ ->  uidErr}) $ d @~ isDUID
+  where uidErr = errorM $ PT.boxToString $ [T.pack "No uid found for fdeclinf on "] %+ PT.prettyLines d
+
+memUID :: AnnMemDecl -> [Annotation Declaration] -> FInfM UID
+memUID memDecl as = case filter isDUID as of
+                      [DUID u] -> return u
+                      _ -> memUIDErr
+  where memUIDErr = errorM $ T.append (T.pack "Invalid member UID") $ PT.pretty memDecl
+
+unlessHasEffect :: K3 Declaration -> (() -> FInfM (K3 Declaration)) -> FInfM (K3 Declaration)
+unlessHasEffect d f = case d @~ isDEffect of
+  Nothing -> f ()
+  _ -> return d
+
+unlessMemHasEffect :: AnnMemDecl -> [Annotation Declaration] -> (() -> FInfM AnnMemDecl) -> FInfM AnnMemDecl
+unlessMemHasEffect mem as f = case find isDEffect as of
+  Nothing -> f ()
+  _ -> return mem
+
+effectOf :: K3 Expression -> FInfM (K3 Effect)
+effectOf e = maybe effectErr effectOfA $ e @~ isESEffect
+  where
+    effectOfA a = case a of {(ESEffect f') -> return f'; _ -> effectErr}
+    effectErr   = errorM $ PT.boxToString $ [T.pack "No effect found on "] %+ PT.prettyLines e
+
+-- | Attaches any inferred effect in the effect environment to a declaration.
+markGlobalEffect :: K3 Declaration -> FInfM (K3 Declaration)
+markGlobalEffect d@(tag -> DGlobal  n _ eOpt) = unlessHasEffect d $ \_ -> do
+  f' <- maybe (filkupeM n) effectOf eOpt
+  return (d @+ (DEffect $ Right f'))
+
+markGlobalEffect d@(tag -> DTrigger _ _ e) = unlessHasEffect d $ \_ -> do
+  f' <- effectOf e
+  return (d @+ (DEffect $ Right f'))
+
+markGlobalEffect d@(tag -> DDataAnnotation n tvars mems) = do
+  nmems <- mapM (markMemsEffect n) mems
+  return (replaceTag d $ DDataAnnotation n tvars nmems)
+
+  where
+    markMemsEffect an m@(Lifted Provides mn mt meOpt mas) = unlessMemHasEffect m mas $ \_ -> do
+      f' <- maybe (filkupaM an mn) effectOf meOpt
+      return (Lifted Provides mn mt meOpt $ mas ++ [DEffect $ Right f'])
+
+    markMemsEffect an m@(Attribute Provides mn mt meOpt mas) = unlessMemHasEffect m mas $ \_ -> do
+      f' <- maybe (filkupaM an mn) effectOf meOpt
+      return (Attribute Provides mn mt meOpt $ mas ++ [DEffect $ Right f'])
+
+    markMemsEffect _ m = return m
+
+markGlobalEffect d = return d
+
+
 {- Analysis entrypoint -}
 inferProgramEffects :: Maybe (ExtInferF a, a) -> FPPEnv -> K3 Declaration
                     -> Either String (K3 Declaration, FIEnv)
-inferProgramEffects extInfOpt ppenv p =  do
-  lcenv <- lambdaClosures p
-  let (npE, finalEnv) = runFInfM (fienv0 ppenv lcenv) $ doInference p
-  rnp <- liftEitherTM npE
-  return (rnp, finalEnv)
+inferProgramEffects extInfOpt ppenv prog =  do
+  lcenv <- lambdaClosures prog
+  liftEitherTM $ runFInfE (fienv0 ppenv lcenv) $ doInference prog
 
   where
     liftEitherTM = either (Left . T.unpack) Right
 
-    doInference p' = do
-      np   <- globalsEff p'
+    doInference p = do
+      np   <- globalsEff p
       np'  <- mapExpression (inferExprEffects extInfOpt) np
-      np'' <- simplifyExprEffects np'
+      np'' <- simplifyProgramEffects np'
       markGlobals np''
 
     -- Globals cannot be captured in closures, so we elide them from the
     -- effect provenance bindings environment.
     globalsEff :: K3 Declaration -> FInfM (K3 Declaration)
-    globalsEff d = do
-      nd <- mapProgram rcrDeclEff return return Nothing d
-      mapProgram declEff return return Nothing nd
+    globalsEff p = inferAllRcrDecls p >>= inferAllDecls
 
-    -- Add self-referential effect pointers to every global for cyclic scope.
-    rcrDeclEff d@(tag -> DGlobal  n _ _) = uidOf d >>= \u -> fifreshsM n u >> declProv d n >> return d
-    rcrDeclEff d@(tag -> DTrigger n _ _) = uidOf d >>= \u -> fifreshsM n u >> declProv d n >> return d
-    rcrDeclEff d@(tag -> DDataAnnotation n _ mems) = mapM freshMems mems >>= fifreshAsM n . catMaybes >> return d
-    rcrDeclEff d = return d
+    inferAllRcrDecls p = mapProgram initializeRcrDeclEffect return return Nothing p
+    inferAllDecls    p = mapProgram (inferDeclEffect extInfOpt) return return Nothing p
+    markGlobals      p = mapProgram markGlobalEffect return return Nothing p
 
+
+-- | Repeat provenance inference on a global with an initializer.
+reinferProgDeclEffects :: Maybe (ExtInferF a, a) -> FIEnv -> Identifier -> K3 Declaration
+                       -> Either String (K3 Declaration, FIEnv)
+reinferProgDeclEffects extInfOpt env dn prog = runFInfES env inferNamedDecl
+  where
+    inferNamedDecl = mapProgramWithDecl onNamedDecl (const return) (const return) Nothing prog
+
+    onNamedDecl d@(tag -> DGlobal  n _ (Just e)) | dn == n = inferDecl n d e
+    onNamedDecl d@(tag -> DTrigger n _ e)        | dn == n = inferDecl n d e
+    onNamedDecl d = return d
+
+    inferDecl n d e = do
+      present <- fimemeM n
+      nd   <- if present then return d else initializeRcrDeclEffect d
+      nd'  <- inferDeclEffect extInfOpt nd
+      ne   <- inferExprEffects extInfOpt e >>= simplifyExprEffects
+      nd'' <- rebuildDecl ne nd'
+      markGlobalEffect nd''
+
+    rebuildDecl e d@(tnc -> (DGlobal  n t (Just _), ch)) = return $ Node (DGlobal  n t (Just e) :@: annotations d) ch
+    rebuildDecl e d@(tnc -> (DTrigger n t _, ch))        = return $ Node (DTrigger n t e        :@: annotations d) ch
+    rebuildDecl _ d = return d
+
+
+-- | Declaration effect "blind" initialization.
+--   This adds a self-referential effect pointers to a global for cyclic scope.
+initializeRcrDeclEffect :: K3 Declaration -> FInfM (K3 Declaration)
+initializeRcrDeclEffect decl = case tag decl of
+    DGlobal  n _ _ -> uidOfD decl >>= \u -> fifreshsM n u >> declProv decl n >> return decl
+    DTrigger n _ _ -> uidOfD decl >>= \u -> fifreshsM n u >> declProv decl n >> return decl
+    DDataAnnotation n _ mems -> mapM freshMems mems >>= fifreshAsM n . catMaybes >> return decl
+    _ -> return decl
+
+  where
     freshMems m@(Lifted      Provides mn mt _ mas) = memUID m mas >>= \u -> return (Just (mn, u, True,  isTFunction mt))
     freshMems m@(Attribute   Provides mn mt _ mas) = memUID m mas >>= \u -> return (Just (mn, u, False, isTFunction mt))
     freshMems _ = return Nothing
 
     declProv d n = void $ provOf d >>= fiextepM n
 
-    -- Infer based on initializer, and update effect pointer.
-    declEff :: K3 Declaration -> FInfM (K3 Declaration)
-    declEff d@(tag -> DGlobal n t eOpt) = do
-      u <- uidOf d
-      f <- case d @~ isDEffect of
-              Just (DEffect eff) -> either return return eff
-              _ -> maybe (effectsOfType [] t) (inferEffects extInfOpt) eOpt
-      void $ fistoreM n u f
-      return d
+    provOf    d = maybe (provErr d) (provOfA d) $ d @~ isDProvenance
+    provOfA d a = case a of {(DProvenance p') -> either return return p'; _ -> provErr d}
+    provErr   d = errorM $ PT.boxToString $ [T.pack "No provenance found on "] %+ PT.prettyLines d
 
-    declEff d@(tag -> DTrigger n _ e) = do
-      u <- uidOf d
-      f <- case d @~ isDEffect of
-              Just (DEffect eff) -> either return return eff
-              _ -> inferEffects extInfOpt e
-      void $ fistoreM n u f
-      return d
+-- | Structure-based declaration effect initialization.
+--   Infer based on initializer, and update effect pointer.
+inferDeclEffect :: Maybe (ExtInferF a, a) -> K3 Declaration -> FInfM (K3 Declaration)
+inferDeclEffect extInfOpt d@(tag -> DGlobal n t eOpt) = do
+  u <- uidOfD d
+  f <- case d @~ isDEffect of
+          Just (DEffect eff) -> either return return eff
+          _ -> maybe (effectsOfType [] t) (inferEffects extInfOpt) eOpt
+  void $ fistoreM n u f
+  return d
 
-    declEff d@(tag -> DDataAnnotation n _ mems) = mapM inferMems mems >>= fistoreaM n . catMaybes >> return d
-    declEff d = return d
+inferDeclEffect extInfOpt d@(tag -> DTrigger n _ e) = do
+  u <- uidOfD d
+  f <- case d @~ isDEffect of
+          Just (DEffect eff) -> either return return eff
+          _ -> inferEffects extInfOpt e
+  void $ fistoreM n u f
+  return d
 
+inferDeclEffect extInfOpt d@(tag -> DDataAnnotation n _ mems) = do
+  mEffs <- mapM inferMems mems
+  void $ fistoreaM n $ catMaybes mEffs
+  return d
+
+  where
     inferMems m@(Lifted      Provides mn mt meOpt mas) = inferMember m True  mn mt meOpt mas
     inferMems m@(Attribute   Provides mn mt meOpt mas) = inferMember m False mn mt meOpt mas
     inferMems _ = return Nothing
@@ -695,57 +802,10 @@ inferProgramEffects extInfOpt ppenv p =  do
               _ -> maybe (effectsOfType [] mt) (inferEffects extInfOpt) meOpt
       return $ Just (mn, u, mf, lifted)
 
-    markGlobals = mapProgram markGlobal return return Nothing
-
-    markGlobal d@(tag -> DGlobal  n _ eOpt) = unlessHasEffect d $ \_ -> do
-      f' <- maybe (filkupeM n) effectOf eOpt
-      return (d @+ (DEffect $ Right f'))
-
-    markGlobal d@(tag -> DTrigger _ _ e) = unlessHasEffect d $ \_ -> do
-      f' <- effectOf e
-      return (d @+ (DEffect $ Right f'))
-
-    markGlobal d@(tag -> DDataAnnotation n tvars mems) = do
-      nmems <- mapM (markMems n) mems
-      return (replaceTag d $ DDataAnnotation n tvars nmems)
-
-    markGlobal d = return d
-
-    markMems n m@(Lifted Provides mn mt meOpt mas) = unlessMemHasEffect m mas $ \_ -> do
-      f' <- maybe (filkupaM n mn) effectOf meOpt
-      return (Lifted Provides mn mt meOpt $ mas ++ [DEffect $ Right f'])
-
-    markMems n m@(Attribute Provides mn mt meOpt mas) = unlessMemHasEffect m mas $ \_ -> do
-      f' <- maybe (filkupaM n mn) effectOf meOpt
-      return (Attribute Provides mn mt meOpt $ mas ++ [DEffect $ Right f'])
-
-    markMems _ m = return m
-
-    unlessHasEffect d f = case d @~ isDEffect of
-      Nothing -> f ()
-      _ -> return d
-
-    unlessMemHasEffect mem as f = case find isDEffect as of
-      Nothing -> f ()
-      _ -> return mem
-
-    effectOf    e = maybe (effectErr e) (effectOfA e) $ e @~ isESEffect
-    effectOfA e a = case a of {(ESEffect f') -> return f'; _ -> effectErr e}
-    effectErr   e = errorM $ PT.boxToString $ [T.pack "No effect found on "] %+ PT.prettyLines e
-
-    uidOf  n = maybe (uidErr n) (\case {(DUID u) -> return u ; _ ->  uidErr n}) $ n @~ isDUID
-    uidErr n = errorM $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines n
-
-    provOf    d = maybe (provErr d) (provOfA d) $ d @~ isDProvenance
-    provOfA d a = case a of {(DProvenance p') -> either return return p'; _ -> provErr d}
-    provErr   d = errorM $ PT.boxToString $ [T.pack "No provenance found on "] %+ PT.prettyLines d
-
-    memUID memDecl as = case filter isDUID as of
-                          [DUID u] -> return u
-                          _ -> memUIDErr memDecl
-    memUIDErr memDecl = errorM $ T.append (T.pack "Invalid member UID") $ PT.pretty memDecl
+inferDeclEffect _ d = return d
 
 
+-- | Expression effect inference.
 inferExprEffects :: Maybe (ExtInferF a, a) -> K3 Expression -> FInfM (K3 Expression)
 inferExprEffects extInfOpt expr = inferEffects extInfOpt expr >> substituteEffects expr
 
@@ -1027,7 +1087,7 @@ inferEffects extInfOpt expr = do
     pmvOfT e _ = pmvErr e
 
     uidOf  e = maybe (uidErr e) (\case {(EUID u) -> return u ; _ ->  uidErr e}) $ e @~ isEUID
-    uidErr e = errorM $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines e
+    uidErr e = errorM $ PT.boxToString $ [T.pack "No uid found for fexprinf on "] %$ PT.prettyLines e
 
     provOf  e = maybe (provErr e) (\case {(EProvenance p) ->  return p; _ -> provErr e}) $ e @~ isEProvenance
     provErr e = errorM $ PT.boxToString $ [T.pack "No provenance found on "] %+ PT.prettyLines e
@@ -1045,7 +1105,7 @@ inferEffects extInfOpt expr = do
     memErr i e = errorM $ PT.boxToString $ [T.unwords $ map T.pack ["Failed to project", i, "from"]]
                                          %$ PT.prettyLines e
 
-    showFInfRule rtag efch rfch ((refOpt, rmv), rrf) euid =
+    showFInfRule rtag efch rfch ((refOpt, _), rrf) euid =
       PT.boxToString $ (rpsep %+ premise) %$ separator %$ (rpsep %+ conclusion)
       where commaT         = T.pack ", "
             rprefix        = T.pack $ unwords [rtag, show euid]
@@ -1134,21 +1194,24 @@ simplifyEffects removeTopLevel f =
     rt = return . ((),)
 
 -- | Simplifies applies on all effect trees attached to an expression.
-simplifyExprEffects :: K3 Declaration -> FInfM (K3 Declaration)
-simplifyExprEffects d = mapExpression simplifyExpr d
-  where simplifyExpr e = modifyTree simplifyEffAnns e
+simplifyProgramEffects :: K3 Declaration -> FInfM (K3 Declaration)
+simplifyProgramEffects d = mapExpression simplifyExprEffects d
 
-        simplifyEffAnns e = do
-          (Just (ESEffect f1), Just (EFStructure f2)) <- annsOf e
-          nf1 <- simplifyEffects True f1
-          nf2 <- simplifyEffects False f2
-          return $ ((e @<- (filter (not . isEffectAnn) $ annotations e)) @+ (ESEffect nf1)) @+ (EFStructure nf2)
+simplifyExprEffects :: K3 Expression -> FInfM (K3 Expression)
+simplifyExprEffects expr = modifyTree simplifyEffAnns expr
+  where
+    simplifyEffAnns e = do
+      (Just (ESEffect f1), Just (EFStructure f2)) <- annsOf e
+      nf1 <- simplifyEffects True f1
+      nf2 <- simplifyEffects False f2
+      return $ ((e @<- (filter (not . isEffectAnn) $ annotations e)) @+ (ESEffect nf1)) @+ (EFStructure nf2)
 
-        annsOf e = return (e @~ isESEffect, e @~ isEFStructure)
+    annsOf e = return (e @~ isESEffect, e @~ isEFStructure)
 
-        isEffectAnn (ESEffect _) = True
-        isEffectAnn (EFStructure _) = True
-        isEffectAnn _ = False
+    isEffectAnn (ESEffect _) = True
+    isEffectAnn (EFStructure _) = True
+    isEffectAnn _ = False
+
 
 {- Effect queries -}
 type EffectMap = IntMap (K3 Effect)
@@ -1181,7 +1244,7 @@ foldDefaultExprEffects accqr expr = do
     putQR qr (UID i) f = IntMap.insert i f qr
 
     uidOf  e = maybe (uidErr e) (\case {(EUID u) -> return u ; _ ->  uidErr e}) $ e @~ isEUID
-    uidErr e = Left $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines e
+    uidErr e = Left $ PT.boxToString $ [T.pack "No uid found for fdefault on "] %+ PT.prettyLines e
 
     effectErr e = Left $ PT.boxToString $ [T.pack "No execution effects found on expression: "] %$ PT.prettyLines e
                                        %$ [T.pack "On argument: "] %$ PT.prettyLines expr
@@ -1224,7 +1287,7 @@ categorizeProgramEffects p = foldExpression categorize emptyCatMap p >>= return 
     addCatMap cm u c = IntMap.insert u c cm
 
     uidOf  e = maybe (uidErr e) (\case {(EUID u) -> return u ; _ ->  uidErr e}) $ e @~ isEUID
-    uidErr e = Left $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines e
+    uidErr e = Left $ PT.boxToString $ [T.pack "No uid found for fcategorizedecl on "] %+ PT.prettyLines e
 
 categorizeExprEffects :: K3 Expression -> Either Text SymbolCategories
 categorizeExprEffects e = do
@@ -1243,7 +1306,7 @@ categorizeExprEffects e = do
     categorize (Node _ ch)        = foldM (\a c -> categorize c >>= return . addCategories a) emptyCategories ch
 
     uidOf  e' = maybe (uidErr e') (\case {(EUID u) -> return u ; _ ->  uidErr e'}) $ e' @~ isEUID
-    uidErr e' = Left $ PT.boxToString $ [T.pack "No uid found on "] %+ PT.prettyLines e'
+    uidErr e' = Left $ PT.boxToString $ [T.pack "No uid found for fcategorizeexpr on "] %+ PT.prettyLines e'
 
     lookupErr e' = Left $ PT.boxToString $ [T.pack "No effects found for "] %+ PT.prettyLines e'
 

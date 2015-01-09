@@ -39,6 +39,9 @@ module Language.K3.Core.Utils
 , foldExpression
 , mapExpression
 
+, mapNamedDeclaration
+, mapNamedDeclExpression
+
 , mapMaybeAnnotation
 , mapAnnotation
 , mapExprAnnotation
@@ -55,6 +58,7 @@ module Language.K3.Core.Utils
 , compareWithoutAnnotations
 
 , stripDeclAnnotations
+, stripNamedDeclAnnotations
 , stripExprAnnotations
 , stripTypeAnnotations
 , stripAllDeclAnnotations
@@ -68,10 +72,14 @@ module Language.K3.Core.Utils
 
 , stripComments
 , stripTypeAnns
+, stripDeclTypeAnns
 , resetEffectAnns
+, resetDeclEffectAnns
 , stripEffectAnns
+, stripDeclEffectAnns
 , stripAllEffectAnns
 , stripTypeAndEffectAnns
+, stripDeclTypeAndEffectAnns
 , stripAllTypeAndEffectAnns
 , stripAllProperties
 
@@ -447,6 +455,28 @@ mapExpression exprF prog = foldProgram returnPair returnPair wrapExprF Nothing (
   where returnPair a b = return (a,b)
         wrapExprF a e = exprF e >>= return . (a,)
 
+-- | Apply a function to a specific named declaration
+mapNamedDeclaration :: (Monad m) => Identifier -> (K3 Declaration -> m (K3 Declaration))
+                    -> K3 Declaration -> m (K3 Declaration)
+mapNamedDeclaration i declF prog = mapProgram namedDeclF return return Nothing prog
+  where namedDeclF d@(tag -> DGlobal  n _ _) | i == n = declF d
+        namedDeclF d@(tag -> DTrigger n _ _) | i == n = declF d
+        namedDeclF d = return d
+
+-- | Apply a function to a specific declaration's initializer.
+mapNamedDeclExpression :: (Monad m) => Identifier -> (K3 Expression -> m (K3 Expression))
+                    -> K3 Declaration -> m (K3 Declaration)
+mapNamedDeclExpression i exprF prog = mapProgram namedDeclF return return Nothing prog
+  where namedDeclF d@(tag -> DGlobal  n t eOpt) | i == n = do
+          neOpt <- maybe (return eOpt) (\e -> exprF e >>= return . Just) eOpt
+          return $ Node (DGlobal n t neOpt :@: annotations d) $ children d
+
+        namedDeclF d@(tag -> DTrigger n t e) | i == n = do
+          ne <- exprF e
+          return $ Node (DTrigger n t ne :@: annotations d) $ children d
+
+        namedDeclF d = return d
+
 -- | Map a function over all program annotations, filtering null returns.
 mapMaybeAnnotation :: (Applicative m, Monad m)
                    => (Annotation Declaration -> m (Maybe (Annotation Declaration)))
@@ -695,6 +725,29 @@ stripDeclAnnotations dStripF eStripF tStripF d =
 
     stripDAnns anns = filter (not . dStripF) anns
 
+-- | Remove effects from a specific declaration
+stripNamedDeclAnnotations :: Identifier
+                          -> (Annotation Declaration -> Bool)
+                          -> (Annotation Expression -> Bool)
+                          -> (Annotation Type -> Bool)
+                          -> K3 Declaration -> K3 Declaration
+stripNamedDeclAnnotations i dStripF eStripF tStripF p =
+  runIdentity $ mapProgram stripDeclF return return Nothing p
+  where
+    stripDeclF (Node (DGlobal n t eOpt :@: anns) ch) | i == n =
+      return $ Node (DGlobal n (stripTypeF t) (maybe Nothing (Just . stripExprF) eOpt)
+                      :@: stripDAnns anns) ch
+
+    stripDeclF (Node (DTrigger n t e :@: anns) ch) | i == n =
+      return $ Node (DTrigger n (stripTypeF t) (stripExprF e) :@: stripDAnns anns) ch
+
+    stripDeclF d = return d
+
+    stripExprF e = stripExprAnnotations eStripF tStripF e
+    stripTypeF t = stripTypeAnnotations tStripF t
+
+    stripDAnns anns = filter (not . dStripF) anns
+
 -- | Strips all annotations from an expression given expression and type annotation filtering functions.
 stripExprAnnotations :: (Annotation Expression -> Bool) -> (Annotation Type -> Bool)
                      -> K3 Expression -> K3 Expression
@@ -795,23 +848,42 @@ stripComments = stripDeclAnnotations isDSyntax isESyntax (const False)
 stripTypeAnns :: K3 Declaration -> K3 Declaration
 stripTypeAnns = stripDeclAnnotations (const False) isAnyETypeAnn (const False)
 
+stripDeclTypeAnns :: Identifier -> K3 Declaration -> K3 Declaration
+stripDeclTypeAnns i = stripNamedDeclAnnotations i (const False) isAnyETypeAnn (const False)
+
+-- | Reset only inferred effect annotations, and not user-specified ones.
+resetEffectAnnotation :: Annotation Declaration -> Maybe (Annotation Declaration)
+resetEffectAnnotation (DSymbol s@(tag -> SymId _)) =
+  case s @~ isSDeclared of
+    Just (SDeclared s') -> Just $ DSymbol s'
+    _ -> Nothing
+
+resetEffectAnnotation (DProvenance (Right _)) = Nothing
+resetEffectAnnotation (DEffect (Right _))     = Nothing
+resetEffectAnnotation a = Just a
+
+-- | Reset all inferred effect annotations on program declarations.
 resetEffectAnns :: K3 Declaration -> K3 Declaration
-resetEffectAnns p = runIdentity $ mapMaybeAnnotation resetF idF idF p
+resetEffectAnns p = runIdentity $ mapMaybeAnnotation (return . resetEffectAnnotation) idF idF p
   where idF = return . Just
-        resetF (DSymbol s@(tag -> SymId _)) = return $
-          case s @~ isSDeclared of
-            Just (SDeclared s') -> Just $ DSymbol s'
-            _ -> Nothing
 
-        resetF (DProvenance (Right _)) = return $ Nothing
-        resetF (DEffect (Right _))     = return $ Nothing
-        resetF a = return $ Just a
+-- | Reset inferred effect annotations on a specific declaration.
+resetDeclEffectAnns :: Identifier -> K3 Declaration -> K3 Declaration
+resetDeclEffectAnns i p = runIdentity $ mapNamedDeclaration i onDeclF p
+  where onDeclF (Node (tg :@: anns) ch) = return (Node (tg :@: onAnns anns) ch)
+        onAnns as = catMaybes $ map resetEffectAnnotation as
 
+-- | Strip all inferred effect annotations from a program
 stripEffectAnns :: K3 Declaration -> K3 Declaration
 stripEffectAnns p = resetEffectAnns $
   stripDeclAnnotations (const False) isAnyEEffectAnn (const False) p
 
--- | Effects-related metadata removal, including user-specified effect signatures.
+-- | Strip all inferred effect annotations from a specific declaration
+stripDeclEffectAnns :: Identifier -> K3 Declaration -> K3 Declaration
+stripDeclEffectAnns i p = resetDeclEffectAnns i $
+  stripNamedDeclAnnotations i (const False) isAnyEEffectAnn (const False) p
+
+-- | Strip all effects annotations, including user-specified effect signatures.
 stripAllEffectAnns :: K3 Declaration -> K3 Declaration
 stripAllEffectAnns = stripDeclAnnotations isAnyDEffectAnn isAnyEEffectAnn (const False)
 
@@ -819,6 +891,11 @@ stripAllEffectAnns = stripDeclAnnotations isAnyDEffectAnn isAnyEEffectAnn (const
 stripTypeAndEffectAnns :: K3 Declaration -> K3 Declaration
 stripTypeAndEffectAnns p = resetEffectAnns $
   stripDeclAnnotations (const False) isAnyETypeOrEffectAnn (const False) p
+
+-- | Single-pass composition of type and effect removal on a specific annotation
+stripDeclTypeAndEffectAnns :: Identifier -> K3 Declaration -> K3 Declaration
+stripDeclTypeAndEffectAnns i p = resetDeclEffectAnns i $
+  stripNamedDeclAnnotations i (const False) isAnyETypeOrEffectAnn (const False) p
 
 -- | Single-pass variant removing all effect annotations.
 stripAllTypeAndEffectAnns :: K3 Declaration -> K3 Declaration

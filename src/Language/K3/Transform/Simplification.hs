@@ -280,7 +280,7 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
       applyVCtor ch n (recordCtor ids $ map extractQualifier $ children n)
 
     -- Binding simplification.
-    -- TODO: substitute when we have read-only mutable bnds.
+    -- TODO: substitute when we have read-only mutable binds.
     simplifyConstants ch n@(tag -> ELetIn i) =
       let immutSource = onQualifiedExpression (head $ children n) True False in
       case (head ch, last ch, immutSource) of
@@ -288,7 +288,7 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
         (Left v, Right bodyE, True) -> substituteBinding i v bodyE >>= simplifyAsFoldedExpr
         (_, _, _)                   -> rebuildNode n ch
 
-    -- TODO: substitute when we have read-only mutable bnds.
+    -- TODO: substitute when we have read-only mutable binds.
     simplifyConstants ch n@(tag -> EBindAs b) =
       case (b, head ch, last ch) of
         (_, _, Left v) -> return $ Left v
@@ -489,6 +489,17 @@ stringOp op a b =
 betaReductionOnProgram :: K3 Declaration -> Either String (K3 Declaration)
 betaReductionOnProgram prog = mapExpression betaReduction prog
 
+-- TODO: substitution of up to 3 occurrences will result in duplicate UIDs.
+-- We need to relabel (strip, and repair at a suitable scope) to preserve integrity.
+-- Other annotations: types can be substituted fine, what about effects?
+-- They must be recomputed, via stripping and inference:
+-- * the binding effects will no longer be pruned, and its substitution
+--   can appear in the body rather than as a pruned FBVar.
+-- * execution effects should occur multiply based on occurrences.
+-- * return effects can now directly include the binding effects
+--
+-- Because of effect changes, this function cannot safely locally recur
+-- (i.e., recursively invoke betaReduction on a substituted expression).
 betaReduction :: K3 Expression -> Either String (K3 Expression)
 betaReduction expr = mapTree reduce expr
   where
@@ -853,11 +864,11 @@ streamableTransformerArg :: K3 Expression -> Bool
 streamableTransformerArg (PStreamableTransformerArg _ _ _ _) = True
 streamableTransformerArg _ = False
 
-encodeTransformers :: K3 Declaration -> Either String (K3 Declaration)
-encodeTransformers prog = mapExpression encodeTransformerExprs prog
+encodeProgramTransformers :: K3 Declaration -> Either String (K3 Declaration)
+encodeProgramTransformers prog = mapExpression encodeTransformers prog
 
-encodeTransformerExprs :: K3 Expression -> Either String (K3 Expression)
-encodeTransformerExprs expr = modifyTree encode expr -- >>= modifyTree markContent
+encodeTransformers :: K3 Expression -> Either String (K3 Expression)
+encodeTransformers expr = modifyTree encode expr -- >>= modifyTree markContent
   where
     encode e@(PPrjApp _ fId fAs _ _)
       | unaryTransformer fId && any isETransformer fAs
@@ -1046,8 +1057,7 @@ encodeTransformerExprs expr = modifyTree encode expr -- >>= modifyTree markConte
 
 
 fuseProgramFoldTransformers :: K3 Declaration -> Either String (K3 Declaration)
-fuseProgramFoldTransformers prog =
-  mapExpression fuseFoldTransformers prog >>= return . repairProgram "fusion"
+fuseProgramFoldTransformers prog = mapExpression fuseFoldTransformers prog
 
 fuseFoldTransformers :: K3 Expression -> Either String (K3 Expression)
 fuseFoldTransformers expr = do
