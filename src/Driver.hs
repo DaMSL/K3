@@ -158,9 +158,10 @@ run opts = do
             withEnv ppenv v _ b = if b then "Provenance pointers:\n" ++ (T.unpack $ PT.pretty ppenv) else v
 
     analyzer aopts SEffects x = flip wrapEitherS x $ \p str -> do
-      (np,  ppenv) <- Provenance.inferProgramProvenance p
-      (np', fienv) <- SEffects.inferProgramEffects Nothing ppenv np
-      return (np', addEnv str $ withEnv np' ppenv $ SEffects.fpenv fienv)
+      (np,  pienv) <- Provenance.inferProgramProvenance p
+      let pe = Provenance.ppenv pienv
+      (np', fienv) <- SEffects.inferProgramEffects Nothing pe np
+      return (np', addEnv str $ withEnv np' pe $ SEffects.fpenv fienv)
       where
         optionKeys = ["showprovenance", "showeffects", "showdefaults", "showcategories"]
         addEnv str optF = str ++ ifFlag "" optF optionKeys aopts
