@@ -962,13 +962,13 @@ uniqueErr s n = left $ unwords ["Invalid unique", s, "identifier:", n]
 {- Top-level type inference methods -}
 
 -- | Whole program inference
-inferProgramTypes :: K3 Declaration -> Either String (K3 Declaration)
+inferProgramTypes :: K3 Declaration -> Either String (K3 Declaration, TIEnv)
 inferProgramTypes prog = do
     (_, initEnv)      <- runTInfE tienv0 $ initializeTypeEnv
     (nProg, finalEnv) <- runTInfE (resetCyclicEnv initEnv) $ inferAllDecls
     localLog $ "Final type environment"
     localLog $ pretty finalEnv
-    return nProg
+    return (nProg, finalEnv)
 
   where
     initializeTypeEnv :: TInfM (K3 Declaration)
@@ -983,10 +983,19 @@ reinferProgDeclTypes env dn prog = runTInfE env inferNamedDecl
   where
     inferNamedDecl = mapProgramWithDecl onNamedDecl (const return) (const return) Nothing prog
 
-    onNamedDecl d@(tag -> DGlobal  n _ _) | dn == n = inferDeclTypes d
-    onNamedDecl d@(tag -> DTrigger n _ _) | dn == n = inferDeclTypes d
+    onNamedDecl d@(tag -> DGlobal  n _ _) | dn == n = inferDeclTypes d >>= translateDecl
+    onNamedDecl d@(tag -> DTrigger n _ _) | dn == n = inferDeclTypes d >>= translateDecl
     onNamedDecl d = return d
 
+    translateDecl d@(tag -> DGlobal  n t eOpt) = do
+      neOpt <- liftEitherM $ maybe (return Nothing) (\e -> translateExprTypes e >>= return . Just) eOpt
+      return $ replaceTag d $ DGlobal n t neOpt
+
+    translateDecl d@(tag -> DTrigger n t e) = do
+      ne <- liftEitherM $ translateExprTypes e
+      return $ replaceTag d $ DTrigger n t ne
+
+    translateDecl d = return d
 
 -- | Declaration type inference
 inferDeclTypes :: K3 Declaration -> TInfM (K3 Declaration)

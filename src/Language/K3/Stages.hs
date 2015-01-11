@@ -130,12 +130,12 @@ transformEEO f p = do
 transformFixpoint :: ProgramTransform -> ProgramTransform
 transformFixpoint f p = do
   np <- f p
-  (if np == p then return else transformFixpoint f) np
+  (if compareDAST np p then return else transformFixpoint f) np
 
 transformFixpointI :: [ProgramTransform] -> ProgramTransform -> ProgramTransform
 transformFixpointI interF f p = do
   np <- f p
-  if np == p then return np
+  if compareDAST np p then return np
   else runPasses interF np >>= transformFixpointI interF f
 
 fixpointF :: TrF -> ProgramTransform
@@ -166,7 +166,11 @@ fixpointISE interF f = transformFixpointI interF $ transformSE f
 
 {- Whole program analyses -}
 inferTypes :: ProgramTransform
-inferTypes prog = liftEitherM $ inferProgramTypes prog >>= translateProgramTypes
+inferTypes prog = do
+  (p, tienv) <- liftEitherM $ inferProgramTypes prog
+  p' <- liftEitherM $ translateProgramTypes p
+  void $ modify $ \st -> st {tenv = tienv}
+  return p'
 
 inferCEffects :: ProgramTransform
 inferCEffects prog = do
@@ -289,8 +293,12 @@ runCGPasses prog lvl = st0 prog >>= flip runTransformM (runCGPassesM lvl prog)
 {- Declaration-at-a-time analyses and optimizations. -}
 
 -- | Program traversal with fixpoints per declaration.
-mapProgramFixpoint :: (K3 Declaration -> [ProgramTransform]) -> ProgramTransform
-mapProgramFixpoint passesF prog = mapProgram declFixpoint return return Nothing prog
+mapProgramDecls :: (K3 Declaration -> [ProgramTransform]) -> ProgramTransform
+mapProgramDecls passesF prog = mapProgram declFixpoint return return Nothing prog
+  where declFixpoint d = runPasses (passesF d) d
+
+mapProgramDeclFixpoint :: (K3 Declaration -> [ProgramTransform]) -> ProgramTransform
+mapProgramDeclFixpoint passesF prog = mapProgram declFixpoint return return Nothing prog
   where declFixpoint d = (transformFixpoint $ runPasses $ passesF d) d
 
 inferDeclTypes :: Identifier -> ProgramTransform
@@ -298,14 +306,17 @@ inferDeclTypes n = withTypeTransform $ \te p -> reinferProgDeclTypes te n p
 
 inferDeclEffects :: Maybe (SEffects.ExtInferF a, a) -> Identifier -> ProgramTransform
 inferDeclEffects extInfOpt n = withEffectTransform $ \pe fe p -> do
-  (np,  npe) <- Provenance.reinferProgDeclProvenance pe n p
-  (np', nfe) <- SEffects.reinferProgDeclEffects extInfOpt fe n np
+  (nlc, _)       <- lambdaClosuresDecl n (Provenance.plcenv pe) p
+  let (pe', fe') = (pe {Provenance.plcenv = nlc}, fe {SEffects.flcenv = nlc})
+  (np,  npe)     <- Provenance.reinferProgDeclProvenance pe' n p
+  (np', nfe)     <- SEffects.reinferProgDeclEffects extInfOpt fe' n np
   return (np', npe, nfe)
 
 inferFreshDeclTypesAndEffects :: Maybe (SEffects.ExtInferF a, a) -> Identifier -> ProgramTransform
 inferFreshDeclTypesAndEffects extInfOpt n =
   runPasses [inferDeclTypes n, inferDeclEffects extInfOpt n] . stripDeclTypeAndEffectAnns n
 
+-- TODO: each transformation here should be a local fixpoint, as well as the current pipeline fixpoint.
 simplifyDecl :: Maybe (SEffects.ExtInferF a, a) -> Identifier -> ProgramTransform
 simplifyDecl extInfOpt n = runPasses simplifyPasses
   where simplifyPasses = intersperse (inferFreshDeclTypesAndEffects extInfOpt n) $
@@ -313,8 +324,9 @@ simplifyDecl extInfOpt n = runPasses simplifyPasses
                                                , ("Decl-BR",  betaReduction)
                                                , ("Decl-DCE", eliminateDeadCode) ]
         mkXform asDebug (i,f) = withRepair i $
-          (if asDebug then transformEDbg i else transformE) $ mapNamedDeclExpression i f
+          (if asDebug then transformEDbg i else transformE) $ mapNamedDeclExpression n f
 
+-- TODO: incremental version of withProperties
 streamFusionDecl :: Maybe (SEffects.ExtInferF a, a) -> Identifier -> ProgramTransform
 streamFusionDecl extInfOpt n = withProperties $ \p -> fusionEncode p >>= fusionFixpoint
   where mkXform       i f = withRepair i $ transformE $ mapNamedDeclExpression n f
@@ -335,5 +347,9 @@ declOptPasses extInfOpt d = case nameOfDecl d of
         nameOfDecl (tag -> DTrigger n _ _) = Just n
         nameOfDecl _ = Nothing
 
-runDeclOptPasses :: Maybe (SEffects.ExtInferF a, a) -> ProgramTransform
-runDeclOptPasses extInfOpt prog = mapProgramFixpoint (declOptPasses extInfOpt) prog
+runDeclOptPassesM :: Maybe (SEffects.ExtInferF a, a) -> ProgramTransform
+runDeclOptPassesM extInfOpt =
+  runPasses [inferFreshTypesAndEffects, mapProgramDeclFixpoint (declOptPasses extInfOpt)]
+
+runDeclOptPasses :: Maybe (SEffects.ExtInferF a, a) -> K3 Declaration -> Either String (K3 Declaration)
+runDeclOptPasses extInfOpt prog = st0 prog >>= flip runTransformM (runDeclOptPassesM extInfOpt prog)

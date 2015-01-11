@@ -97,7 +97,7 @@ evalMetaprogram evalOpts analyzeFOpt repairFOpt mp =
 defaultMetaAnalysis :: K3 Declaration -> GeneratorM (K3 Declaration)
 defaultMetaAnalysis p = do
     strippedP <- mapExpression removeTypes p
-    liftError (liftError return . translateProgramTypes) $ inferProgramTypes strippedP
+    liftError (liftError return . translateProgramTypes . fst) $ inferProgramTypes strippedP
 
   where
     -- | Match any type annotation except pattern types which are user-defined in patterns.

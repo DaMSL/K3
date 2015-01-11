@@ -214,15 +214,15 @@ isEMonoidGroupBy _ = False
 
 -- Effect queries
 readOnly :: Bool -> K3 Expression -> Either String Bool
-readOnly True e@(tnc -> (ELambda _, [b])) = readOnly False b
+readOnly True (tnc -> (ELambda _, [b])) = readOnly False b
 readOnly _ e = either (Left . T.unpack) Right $ do
   SE.SymbolCategories _ w io <- SE.categorizeExprEffects e
   return $ null w && not io
 
 noWrites :: Bool -> K3 Expression -> Either String Bool
-noWrites True e@(tnc -> (ELambda _, [b])) = noWrites False b
+noWrites True (tnc -> (ELambda _, [b])) = noWrites False b
 noWrites _ e = either (Left . T.unpack) Right $ do
-  SE.SymbolCategories _ w io <- SE.categorizeExprEffects e
+  SE.SymbolCategories _ w _ <- SE.categorizeExprEffects e
   return $ null w
 
 
@@ -489,39 +489,43 @@ stringOp op a b =
 betaReductionOnProgram :: K3 Declaration -> Either String (K3 Declaration)
 betaReductionOnProgram prog = mapExpression betaReduction prog
 
--- TODO: substitution of up to 3 occurrences will result in duplicate UIDs.
--- We need to relabel (strip, and repair at a suitable scope) to preserve integrity.
--- Other annotations: types can be substituted fine, what about effects?
--- They must be recomputed, via stripping and inference:
--- * the binding effects will no longer be pruned, and its substitution
---   can appear in the body rather than as a pruned FBVar.
--- * execution effects should occur multiply based on occurrences.
--- * return effects can now directly include the binding effects
---
--- Because of effect changes, this function cannot safely locally recur
--- (i.e., recursively invoke betaReduction on a substituted expression).
+-- Effect-aware beta reduction of an expression.
+-- We strip UIDs, spans, types and effects present on the substitution.
+-- Thus, we cannot recursively invoke the simplification, and must iterate
+-- to a fixpoint externally.
 betaReduction :: K3 Expression -> Either String (K3 Expression)
-betaReduction expr = mapTree reduce expr
+betaReduction expr = betaReductionDelta expr >>= return . fst
+
+-- Beta reduction with a boolean indicating if any substitutions were performed.
+betaReductionDelta :: K3 Expression -> Either String (K3 Expression, Bool)
+betaReductionDelta expr = foldMapTree reduce ([], False) expr >>= return . first head
   where
-    reduce ch n = case replaceCh n ch of
-      (tag -> ELetIn i) -> reduceOnOccurrences n ch i (head ch) $ last ch
-      (PAppLam i bodyE argE lamAs appAs) -> reduceOnOccurrences n ch i argE bodyE
-      _ -> rebuildNode n ch
+    reduce (onSub -> (ch, True)) n = return $ ([replaceCh n ch], True)
+    reduce (onSub -> (ch, False)) n =
+      let n' = replaceCh n ch in
+      case n' of
+        (tag -> ELetIn i) -> reduceOnOccurrences n' i (head ch) (last ch)
+        (PAppLam i bodyE argE _ _) -> reduceOnOccurrences n' i argE bodyE
+        _ -> return ([n'], False)
 
-    reduceOnOccurrences n ch i ie e = do
+    reduceOnOccurrences n i ie e = do
       ieRO <- readOnly False ie
-      if ieRO then
-        case tag ie of
-          EConstant _ -> betaReduction $ substituteImmutBinding i ie e
-          EVariable _ -> betaReduction $ substituteImmutBinding i ie e
-          _ -> let occurrences = length $ filter (== i) $ freeVariables e in
-               if occurrences <= 3
-                 then betaReduction $ substituteImmutBinding i ie e
-                 else rebuildNode n ch
-      else rebuildNode n ch
+      let doReduce = case tag ie of
+                       EConstant _ -> True
+                       EVariable _ -> True
+                       _ -> (length $ filter (== i) $ freeVariables e) <= 3
+      if ieRO && doReduce then return ([substituteImmutBinding i (cleanExpr ie) e], True)
+      else return ([n], False)
 
-    rebuildNode (Node t _) ch = return $ Node t ch
+    onSub ch = (concat *** any id) $ unzip ch
 
+    cleanExpr e = stripExprAnnotations cleanAnns (const False) e
+    cleanAnns a = isEUID a || isESpan a || isAnyETypeOrEffectAnn a
+
+    debugROC sube deste r@(re,_) = trace (boxToString $ ["BR-ROC"] %$ prettyLines sube
+                                                                   %$ prettyLines deste
+                                                                   %$ prettyLines (head re))
+                                     $ return r
 
 -- | Effect-aware dead code elimination.
 --   Currently this only operates on expressions, and does not prune
@@ -543,106 +547,108 @@ eliminateDeadProgramCode :: K3 Declaration -> Either String (K3 Declaration)
 eliminateDeadProgramCode prog = mapExpression eliminateDeadCode prog
 
 eliminateDeadCode :: K3 Expression -> Either String (K3 Expression)
-eliminateDeadCode expr = mapTree pruneExpr expr
+eliminateDeadCode expr = eliminateDeadCodeDelta expr >>= return . fst
+
+eliminateDeadCodeDelta :: K3 Expression -> Either String (K3 Expression, Bool)
+eliminateDeadCodeDelta expr = foldMapTree pruneExpr ([],False) expr >>= return . first head
   where
-    rcr = eliminateDeadCode
+    pruneExpr (onSub -> (ch, True)) n = return $ ([replaceCh n ch], True)
+    pruneExpr (onSub -> (ch, False)) n =
+      let n' = replaceCh n ch in
+      case n' of
+        -- Immediate record construction and projection, provided all other record fields are pure.
+        (PPrjRec fId ids fieldsE _ _) ->
+          (\justF -> maybe (rtf n') justF $ elemIndex fId ids) $ \i -> do
+            let restCh = filter ((/= fId) . fst) $ zip ids ch
+            let readF  = readOnly False . snd
+            restRO <- mapM readF restCh >>= return . and
+            if restRO then rtt $ fieldsE !! i else rtf n'
 
-    pruneExpr ch n = case replaceCh n ch of
+        -- Immediate structure binding, preserving effect ordering of bound substructure expressions.
+        (PBindInd i iE bodyE iAs bAs) -> rtt $ (EC.letIn i (PInd iE iAs) bodyE) @<- bAs
 
-      -- Immediate record construction and projection, provided all other record fields are pure.
-      (PPrjRec fId ids fieldsE _ _) ->
-        (\justF -> maybe (rebuildNode n ch) justF $ elemIndex fId ids) $ \i -> do
-          let restCh = filter ((/= fId) . fst) $ zip ids ch
-          let readF  = readOnly False . snd
-          restRO <- mapM readF restCh >>= return . and
-          if restRO then return $ fieldsE !! i
-                    else rebuildNode n ch
+        (PBindTup ids fieldsE bodyE _ _) -> do
+          let vars          = freeVariables bodyE
+          let unused (i, e) = readOnly False e >>= return . (&& i `notElem` vars)
+          used <- filterM (\i -> unused i >>= return . not) $ zip ids fieldsE
+          rtt $ foldr (\(i,e) accE -> EC.letIn i e accE) bodyE used
 
-      -- Immediate structure binding, preserving effect ordering of bound substructure expressions.
-      (PBindInd i iE bodyE iAs bAs) -> rcr $ (EC.letIn i (PInd iE iAs) bodyE) @<- bAs
+        (PBindRec ijs ids fieldsE bodyE _ _) -> do
+          let vars          = freeVariables bodyE
+          let notfvar i     = maybe False (`notElem` vars) $ lookup i ijs
+          let unused (i, e) = readOnly False e >>= return . (&& notfvar i)
+          used <- filterM (\i -> unused i >>= return . not) $ zip ids fieldsE
+          rtt $ foldr (\(i,e) accE -> maybe accE (\j -> EC.letIn j e accE) $ lookup i ijs) bodyE used
 
-      (PBindTup ids fieldsE bodyE _ _) -> do
-        let vars          = freeVariables bodyE
-        let unused (i, e) = readOnly False e >>= return . (&& i `notElem` vars)
-        used <- filterM (\i -> unused i >>= return . not) $ zip ids fieldsE
-        rcr $ foldr (\(i,e) accE -> EC.letIn i e accE) bodyE used
+        -- Unused effect-free binding removal
+        (tag -> ELetIn i) -> do
+          let vars = freeVariables $ last ch
+          initRO <- readOnly False (head ch) >>= return . (&& i `notElem` vars)
+          if initRO then rtt $ last ch else rtf n'
 
-      (PBindRec ijs ids fieldsE bodyE _ _) -> do
-        let vars          = freeVariables bodyE
-        let notfvar i     = maybe False (`notElem` vars) $ lookup i ijs
-        let unused (i, e) = readOnly False e >>= return . (&& notfvar i)
-        used <- filterM (\i -> unused i >>= return . not) $ zip ids fieldsE
-        rcr $ foldr (\(i,e) accE -> maybe accE (\j -> EC.letIn j e accE) $ lookup i ijs) bodyE used
+        (tag -> EBindAs b) ->
+          let vars = freeVariables $ last ch in
+          case b of
+            BRecord ijs -> do
+              let nBinder = filter (\(_,j) -> j `elem` vars) ijs
+              initRO <- readOnly False (head ch) >>= return . (&& null nBinder)
+              if initRO
+                then rtt $ last ch
+                else rtt $ Node (EBindAs (BRecord $ nBinder) :@: annotations n) ch
+            _ -> rtf n'
 
-      -- Unused effect-free binding removal
-      (tag -> ELetIn i) -> do
-        let vars = freeVariables $ last ch
-        initRO <- readOnly False (head ch) >>= return . (&& i `notElem` vars)
-        if initRO then return $ last ch
-                  else rebuildNode n ch
+        (tag -> EOperate OSeq) -> do
+          lhsRO <- readOnly False (head ch)
+          if lhsRO then rtt $ last ch else rtf n'
 
-      (tag -> EBindAs b) ->
-        let vars = freeVariables $ last ch in
-        case b of
-          BRecord ijs -> do
-            let nBinder = filter (\(_,j) -> j `elem` vars) ijs
-            initRO <- readOnly False (head ch) >>= return . (&& null nBinder)
-            if initRO
-              then return $ last ch
-              else return $ Node (EBindAs (BRecord $ nBinder) :@: annotations n) ch
-          _ -> rebuildNode n ch
+        -- Immediate option bindings
+        PCaseOf (PSome sE _) _ someE _ _ -> do
+          someRO <- readOnly False sE
+          if someRO then rtt someE else rtf n'
 
-      (tag -> EOperate OSeq) -> do
-        lhsRO <- readOnly False (head ch)
-        if lhsRO
-          then return $ last ch
-          else rebuildNode n ch
+        (PCaseOf (PNone _ _) _ _ noneE _) -> rtt noneE
 
-      -- Immediate option bindings
-      e@(PCaseOf (PSome sE optAs) j someE noneE cAs) -> do
-        someRO <- readOnly False sE
-        return $ if someRO then someE else e
+        -- Branch unnesting for case-of/if-then-else combinations (case-of-case, etc.)
+        -- These strip UID and Span annotations due to duplication following the rewrite.
+        (PCaseOf (PCaseOf optE i isomeE inoneE icAs) j jsomeE jnoneE jcAs) ->
+          rtt $ PCaseOf optE i (PCaseOf isomeE j (cl jsomeE) (cl jnoneE) $ cla jcAs)
+                               (PCaseOf inoneE j (cl jsomeE) (cl jnoneE) $ cla jcAs)
+                               icAs
 
-      (PCaseOf (PNone _ _) j someE noneE cAs) -> return $ noneE
+        (PCaseOf (PIfThenElse pE tE eE bAs) i isomeE inoneE cAs) ->
+          rtt $ PIfThenElse pE (PCaseOf tE i (cl isomeE) (cl inoneE) $ cla cAs)
+                               (PCaseOf eE i (cl isomeE) (cl inoneE) $ cla cAs)
+                               bAs
 
-      -- Branch unnesting for case-of/if-then-else combinations (case-of-case, etc.)
-      -- These strip UID and Span annotations due to duplication following the rewrite.
-      (PCaseOf (PCaseOf optE i isomeE inoneE icAs) j jsomeE jnoneE jcAs) ->
-        rcr $ PCaseOf optE i (PCaseOf isomeE j jsomeE jnoneE $ stripUIDSpanE jcAs)
-                             (PCaseOf inoneE j jsomeE jnoneE $ stripUIDSpanE jcAs)
-                             icAs
+        (PIfThenElse (PCaseOf optE i someE noneE cAs) otE oeE oAs) ->
+          rtt $ PCaseOf optE i (PIfThenElse someE (cl otE) (cl oeE) $ cla oAs)
+                               (PIfThenElse noneE (cl otE) (cl oeE) $ cla oAs)
+                               cAs
 
-      (PCaseOf (PIfThenElse pE tE eE bAs) i isomeE inoneE cAs) ->
-        rcr $ PIfThenElse pE (PCaseOf tE i isomeE inoneE $ stripUIDSpanE cAs)
-                             (PCaseOf eE i isomeE inoneE $ stripUIDSpanE cAs)
-                             bAs
+        (PIfThenElse (PIfThenElse ipE itE ieE iAs) otE oeE oAs) ->
+          rtt $ PIfThenElse ipE (PIfThenElse itE (cl otE) (cl oeE) $ cla oAs)
+                                (PIfThenElse ieE (cl otE) (cl oeE) $ cla oAs)
+                                iAs
 
-      (PIfThenElse (PCaseOf optE i someE noneE cAs) otE oeE oAs) ->
-        rcr $ PCaseOf optE i (PIfThenElse someE otE oeE $ stripUIDSpanE oAs)
-                             (PIfThenElse noneE otE oeE $ stripUIDSpanE oAs)
-                             cAs
+        -- Condition aggregation for equivalent sub-branches
+        (PIfThenElse opE (PIfThenElse ipE itE (PVar i ivAs) _) (PVar ((== i) -> True) _) oAs) ->
+          let npE = EC.binop OAnd opE ipE in
+          rtt $ PIfThenElse npE itE (PVar i $ cla ivAs) $ cla oAs
 
-      (PIfThenElse (PIfThenElse ipE itE ieE iAs) otE oeE oAs) ->
-        rcr $ PIfThenElse ipE (PIfThenElse itE otE oeE $ stripUIDSpanE oAs)
-                              (PIfThenElse ieE otE oeE $ stripUIDSpanE oAs)
-                              iAs
+        (PIfThenElse opE (PVar i ivAs) (PIfThenElse ipE (PVar ((== i) -> True) _) ieE _) oAs) ->
+          let npE = EC.binop OOr opE ipE in
+          rtt $ PIfThenElse npE (PVar i $ cla ivAs) ieE $ cla oAs
 
-      -- Condition aggregation for equivalent sub-branches
-      (PIfThenElse opE (PIfThenElse ipE itE ieV@(PVar i ivAs) iAs) (PVar ((== i) -> True) _) oAs) ->
-        let npE = EC.binop OAnd opE ipE in
-        rcr $ PIfThenElse npE itE (PVar i $ stripUIDSpanE ivAs) $ stripUIDSpanE oAs
+        _ -> rtf n'
 
-      (PIfThenElse opE otV@(PVar i ivAs) (PIfThenElse ipE (PVar ((== i) -> True) _) ieE iAs) oAs) ->
-        let npE = EC.binop OOr opE ipE in
-        rcr $ PIfThenElse npE (PVar i $ stripUIDSpanE ivAs) ieE $ stripUIDSpanE oAs
+    onSub ch = (concat *** any id) $ unzip ch
+    rtt e = return ([e], True)
+    rtf e = return ([e], False)
 
-      e -> return e
+    cl  = stripExprAnnotations cleanAnns (const False)
+    cla = filter (not . cleanAnns)
 
-    rebuildNode n@(tag -> EConstant _) _ = return n
-    rebuildNode n@(tag -> EVariable _) _ = return n
-    rebuildNode n ch = return $ Node (tag n :@: annotations n) ch
-
-    stripUIDSpanE = filter (not . \a -> isEUID a || isESpan a)
+    cleanAnns a = isEUID a || isESpan a || isAnyETypeOrEffectAnn a
 
 
 -- | Effect-aware common subexpression elimination.

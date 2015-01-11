@@ -40,7 +40,9 @@ module Language.K3.Core.Utils
 , mapExpression
 
 , mapNamedDeclaration
+, foldNamedDeclaration
 , mapNamedDeclExpression
+, foldNamedDeclExpression
 
 , mapMaybeAnnotation
 , mapAnnotation
@@ -54,8 +56,12 @@ module Language.K3.Core.Utils
 , freeVariables
 , bindingVariables
 , modifiedVariables
+
 , lambdaClosures
-, compareWithoutAnnotations
+, lambdaClosuresDecl
+
+, compareDAST
+, compareEAST
 
 , stripDeclAnnotations
 , stripNamedDeclAnnotations
@@ -463,19 +469,45 @@ mapNamedDeclaration i declF prog = mapProgram namedDeclF return return Nothing p
         namedDeclF d@(tag -> DTrigger n _ _) | i == n = declF d
         namedDeclF d = return d
 
+foldNamedDeclaration :: (Monad m) => Identifier -> (a -> K3 Declaration -> m (a, K3 Declaration))
+                    -> a -> K3 Declaration -> m (a, K3 Declaration)
+foldNamedDeclaration i declF acc prog = foldProgram namedDeclF mkP mkP Nothing acc prog
+  where namedDeclF nacc d@(tag -> DGlobal  n _ _) | i == n = declF nacc d
+        namedDeclF nacc d@(tag -> DTrigger n _ _) | i == n = declF nacc d
+        namedDeclF nacc d = return (nacc, d)
+
+        mkP a b = return (a,b)
+
 -- | Apply a function to a specific declaration's initializer.
 mapNamedDeclExpression :: (Monad m) => Identifier -> (K3 Expression -> m (K3 Expression))
                     -> K3 Declaration -> m (K3 Declaration)
 mapNamedDeclExpression i exprF prog = mapProgram namedDeclF return return Nothing prog
-  where namedDeclF d@(tag -> DGlobal  n t eOpt) | i == n = do
+  where namedDeclF d@(tag -> DGlobal n t eOpt) | i == n = do
           neOpt <- maybe (return eOpt) (\e -> exprF e >>= return . Just) eOpt
-          return $ Node (DGlobal n t neOpt :@: annotations d) $ children d
+          return $ replaceTag d $ DGlobal n t neOpt
 
         namedDeclF d@(tag -> DTrigger n t e) | i == n = do
           ne <- exprF e
-          return $ Node (DTrigger n t ne :@: annotations d) $ children d
+          return $ replaceTag d $ DTrigger n t ne
 
         namedDeclF d = return d
+
+foldNamedDeclExpression :: (Monad m) => Identifier -> (a -> K3 Expression -> m (a, K3 Expression))
+                        -> a -> K3 Declaration -> m (a, K3 Declaration)
+foldNamedDeclExpression i exprF acc prog = foldProgram namedDeclF mkP mkP Nothing acc prog
+  where namedDeclF nacc d@(tag -> DGlobal n t eOpt) | i == n = do
+          (a, neOpt) <- case eOpt of
+                          Nothing -> return (nacc, Nothing)
+                          Just e -> exprF nacc e >>= \(a,ne) -> return (a, Just ne)
+          return . (a,) $ replaceTag d $ DGlobal n t neOpt
+
+        namedDeclF nacc d@(tag -> DTrigger n t e) | i == n = do
+          (a, ne) <- exprF nacc e
+          return . (a,) $ replaceTag d $ DTrigger n t ne
+
+        namedDeclF nacc d = return (nacc, d)
+
+        mkP a b = return (a,b)
 
 -- | Map a function over all program annotations, filtering null returns.
 mapMaybeAnnotation :: (Applicative m, Monad m)
@@ -662,13 +694,17 @@ modifiedVariables expr = either (const []) id $ foldMapTree extractVariable [] e
 type ClosureEnv = IntMap [Identifier]
 
 lambdaClosures :: K3 Declaration -> Either String ClosureEnv
-lambdaClosures p = foldExpression exprClosure IntMap.empty p >>= return . fst
-  where
-    exprClosure :: ClosureEnv -> K3 Expression -> Either String (ClosureEnv, K3 Expression)
-    exprClosure lcAcc expr = do
-      (lcenv,_) <- biFoldMapTree bind extract [] (IntMap.empty, []) expr
-      return $ (IntMap.unions [lcAcc, lcenv], expr)
+lambdaClosures p = foldExpression lambdaClosuresExpr IntMap.empty p >>= return . fst
 
+lambdaClosuresDecl :: Identifier -> ClosureEnv -> K3 Declaration -> Either String (ClosureEnv, K3 Declaration)
+lambdaClosuresDecl n lc p = foldNamedDeclExpression n lambdaClosuresExpr lc p
+
+lambdaClosuresExpr :: ClosureEnv -> K3 Expression -> Either String (ClosureEnv, K3 Expression)
+lambdaClosuresExpr lcAcc expr = do
+  (lcenv,_) <- biFoldMapTree bind extract [] (IntMap.empty, []) expr
+  return $ (IntMap.unions [lcAcc, lcenv], expr)
+
+  where
     bind :: [Identifier] -> K3 Expression -> Either String ([Identifier], [[Identifier]])
     bind l (tag -> ELambda i) = return (l, [i:l])
     bind l (tag -> ELetIn  i) = return (l, [l, i:l])
@@ -698,10 +734,13 @@ lambdaClosures p = foldExpression exprClosure IntMap.empty p >>= return . fst
     rt subAcc f = return $ second (f . concat) $ concatLc subAcc
 
 
--- | Compares two expressions for identical AST structures while ignoring annotations
---   (such as UIDs, spans, etc.)
-compareWithoutAnnotations :: K3 Expression -> K3 Expression -> Bool
-compareWithoutAnnotations e1 e2 = stripAllExprAnnotations e1 == stripAllExprAnnotations e2
+-- | Compares declarations and expressions for identical AST structures
+--  while ignoring annotations and properties (such as UIDs, spans, etc.)
+compareDAST :: K3 Declaration -> K3 Declaration -> Bool
+compareDAST d1 d2 = stripAllDeclAnnotations d1 == stripAllDeclAnnotations d2
+
+compareEAST :: K3 Expression -> K3 Expression -> Bool
+compareEAST e1 e2 = stripAllExprAnnotations e1 == stripAllExprAnnotations e2
 
 
 {- Annotation cleaning -}
