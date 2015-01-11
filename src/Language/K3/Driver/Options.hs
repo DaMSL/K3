@@ -59,7 +59,7 @@ data ParseOptions = ParseOptions { parsePrintMode :: PrintMode,
 -- | Stage options used for parse-only mode.
 type ParseStageOptions = [ParseStage]
 
-data ParseStage = PSOptimization
+data ParseStage = PSOptimization Bool
                 | PSCodegen
                 deriving (Eq, Ord, Read, Show)
 
@@ -204,9 +204,10 @@ parseStageOpt :: Parser ParseStageOptions
 parseStageOpt = nub . concat <$> many parseStage
 
 parseStage :: Parser [ParseStage]
-parseStage = ((:[]) <$> pstageOpt) <|> ((:[]) <$> pstageCG)
-  where pstageOpt = flag' PSOptimization ( long "fpopt" <> help "Parse with an optimization pass" )
-        pstageCG  = flag' PSCodegen      ( long "fpcg"  <> help "Parse with a codegen pass" )
+parseStage = ((:[]) <$> pstageOpt) <|> ((:[]) <$> pstageDeclOpt) <|> ((:[]) <$> pstageCG)
+  where pstageOpt     = flag' (PSOptimization False) ( long "fpopt"     <> help "Parse with whole program optimization" )
+        pstageDeclOpt = flag' (PSOptimization True)  ( long "fpdeclopt" <> help "Parse with declaration-at-a-time optimization" )
+        pstageCG      = flag' PSCodegen              ( long "fpcg"      <> help "Parse with a codegen pass" )
 
 -- | Parse mode
 parseOptions :: Parser Mode

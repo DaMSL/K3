@@ -109,7 +109,7 @@ run opts = do
       if noQuickTypes opts' then typecheck p else quickTypecheckOpts opts' p
 
     quickTypecheckOpts opts' p = inferProgramTypes p >>=
-      \p' -> if printQuickTypes opts' then return p' else translateProgramTypes p'
+      \(p',_) -> if printQuickTypes opts' then return p' else translateProgramTypes p'
 
     -- quickTypecheck p = inferProgramTypes p >>= translateProgramTypes
 
@@ -131,7 +131,8 @@ run opts = do
     runStagesThenPrint popts prog = do
       let sprogE = foldM (\p (stg, f) -> if stg `elem` (poStages popts) then f p else Right p)
                         prog
-                        [ (PSOptimization, (\p -> runOptPasses p >>= return . fst))
+                        [ (PSOptimization False, (\p -> runOptPasses p >>= return . fst))
+                        , (PSOptimization True, runDeclOptPasses Nothing)
                         , (PSCodegen, flip runCGPasses 3)]
       either putStrLn (printer (parsePrintMode popts) . stripAllProperties) sprogE
 
