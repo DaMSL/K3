@@ -179,7 +179,6 @@ modeOptions = subparser (
         compileDesc   = "Compile a K3 binary"
         interpretDesc = "Interpret a K3 program"
         typeDesc      = "Typecheck a K3 program"
-        analyzeDesc   = "Analyze a K3 program"
 
 -- | Print mode flags
 printModeOpt :: Parser PrintMode
