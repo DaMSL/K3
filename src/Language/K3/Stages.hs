@@ -246,34 +246,9 @@ optPasses = map prepareOpt [ (simplify,     "opt-simplify-prefuse")
   where prepareOpt (f,i) = runPasses [inferFreshTypesAndEffects, withRepair i f]
 
 cgPasses :: Int -> [ProgramTransform]
--- no moves
-cgPasses 3 = [inferFreshEffects,
-              transformEE   Purity.runPurity,
-              transformF    CArgs.runAnalysis,
-              transformEE   nrvoMoveOpt,
-              transformEEO  writebackOptPT,
-              transformEE $ lambdaFormOpt noMovesTransConfig
-             ]
-
--- no refs
-cgPasses 2 = [inferFreshEffects,
-              transformEE   Purity.runPurity,
-              transformF    CArgs.runAnalysis,
-              transformEE   nrvoMoveOpt,
-              transformEEO  writebackOptPT,
-              transformEE $ lambdaFormOpt noRefsTransConfig
-             ]
-
-cgPasses 1 = [inferFreshEffects,
-              transformEE   Purity.runPurity,
-              transformF    CArgs.runAnalysis,
-              transformEE   nrvoMoveOpt,
-              transformEEO  writebackOptPT,
-              transformEE $ lambdaFormOpt defaultTransConfig
-             ]
-
-cgPasses _ = [transformF InsertMembers.runAnalysis,
-              transformF CArgs.runAnalysis
+cgPasses _ = [ inferFreshEffects
+             , transformF InsertMembers.runAnalysis
+             , transformF    CArgs.runAnalysis
              ]
 
 runOptPassesM :: ProgramTransform
