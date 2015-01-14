@@ -2,5 +2,4 @@
 declare external: int -> int -> ()
   with effects \x -> \y -> [R[x]; R[y]]
 
-trigger main: () = \_ ->
-  external 1 2
+declare external_call: () -> () = \_ -> external 1 2
