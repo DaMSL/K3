@@ -218,7 +218,7 @@ bind :: Expression -> Expression -> Int -> Expression
 bind f a 0 = Call f [a]
 bind f a n = Call (Variable (Qualified (Name "std") (Name "bind")))
              (f : a : [ (Variable (Qualified (Name "std") (Qualified (Name "placeholders") (Name ("_" ++ show i)))))
-                      | i <- [1..n - 1]
+                      | i <- [1..n]
                       ])
 
 data Declaration
