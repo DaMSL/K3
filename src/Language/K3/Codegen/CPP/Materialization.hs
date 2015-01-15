@@ -91,6 +91,7 @@ materializationD (Node (d :@: as) cs)
       DGlobal i t me -> traverse materializationE me >>= \me' -> Node (DGlobal i t me' :@: as) <$> cs'
       DTrigger i t e -> materializationE e >>= \e' -> Node (DTrigger i t e' :@: as) <$> cs'
       DRole i -> Node (DRole i :@: as) <$> cs'
+      _ -> Node (d :@: as) <$> cs'
  where
    cs' = mapM materializationD cs
 
