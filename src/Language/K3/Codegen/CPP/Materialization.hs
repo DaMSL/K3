@@ -4,7 +4,7 @@
 -- | Machinery for making decisions about C++ level materialization for K3.
 module Language.K3.Codegen.CPP.Materialization where
 
-import Prelude hiding (mapM)
+import Prelude hiding (concat, mapM, mapM_, or)
 
 import Control.Applicative
 import Control.Arrow
@@ -21,8 +21,9 @@ import Language.K3.Codegen.CPP.Materialization.Hints
 
 import Data.Functor
 import Data.Traversable
+import Data.Foldable
 
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, maybeToList)
 import Data.Tree
 
 import qualified Data.Map as M
@@ -74,6 +75,9 @@ getEffects e = let ESEffect f = fromMaybe (error "No effects on expression.")
 setDecision :: Int -> Identifier -> Decision -> MaterializationM ()
 setDecision u i d = modify $ \(t, e, ds) -> (I.insertWith M.union u (M.singleton i d) t, e, ds)
 
+getClosureSymbols :: Int -> MaterializationM [Identifier]
+getClosureSymbols i = get >>= \(_, plcenv -> e, _) -> return $ concat $ maybeToList (I.lookup i e)
+
 pmvloc' :: PMatVar -> Int
 pmvloc' pmv = let UID u = pmvloc pmv in u
 
@@ -111,7 +115,9 @@ materializationE e@(Node (t :@: as) cs)
 
       ELambda x -> do
              [b] <- mapM materializationE cs
+             closureSymbols <- getClosureSymbols (getUID e)
              setDecision (getUID e) x defaultDecision
+             forM_ closureSymbols $ \s -> setDecision (getUID e) s defaultDecision
              decisions <- dLookupAll (getUID e)
              return (Node (t :@: (EMaterialization decisions:as)) [b])
 
