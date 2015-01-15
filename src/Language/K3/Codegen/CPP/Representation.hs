@@ -24,6 +24,8 @@ module Language.K3.Codegen.CPP.Representation (
     pattern CRef,
     pattern Move,
 
+    bind,
+
     Declaration(..),
     Statement(..),
 
@@ -211,6 +213,13 @@ instance Stringifiable Expression where
 
 pattern CRef e = Call (Variable (Qualified (Name "std") (Name "cref"))) [e]
 pattern Move e = Call (Variable (Qualified (Name "std") (Name "move"))) [e]
+
+bind :: Expression -> Expression -> Int -> Expression
+bind f a 0 = Call f [a]
+bind f a n = Call (Variable (Qualified (Name "std") (Name "bind")))
+             (f : a : [ (Variable (Qualified (Name "std") (Qualified (Name "placeholders") (Name ("_" ++ show i)))))
+                      | i <- [1..n]
+                      ])
 
 data Declaration
     = ClassDecl Name

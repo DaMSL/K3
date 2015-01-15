@@ -243,22 +243,23 @@ inline e@(tag &&& children -> (EOperate OApp, [Fold c, f, z])) = do
   let loop = R.ForEach g (R.Const $ R.Reference $ R.Inferred) cv (R.Block loopBody)
   return (ce ++ fe ++ ze ++ loopInit ++ loopPragmas ++ [loop], (R.Variable $ R.Name acc))
 
-inline e@(tag &&& children -> (EOperate OApp, (f:as))) = do
+inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
     -- Inline both function and argument for call.
     incApplyLevel
+    let cargs = CArgs.eCArgs e
     (fe, fv) <- inline f
-    (aes, avs) <- unzip <$> mapM inline as
-    c <- call fv avs
-    return (fe ++ concat aes, c)
+    (ae, av) <- inline a
+    c <- call fv av cargs
+    return $ (fe ++ ae, c)
   where
-    call fn@(R.Variable n) args =
+    call fn@(R.Variable i) arg n =
       if isJust $ f @~ CArgs.isErrorFn
         then do
           kType <- getKType e
           returnType <- genCType kType
-          return $ R.Call (R.Variable $ R.Specialized [returnType] n) args
-        else return $ R.Call fn args
-    call fn args = return $ R.Call fn args
+          return $ R.Call (R.Variable $ R.Specialized [returnType] i) [arg]
+        else return $ R.bind fn arg n
+    call fn arg n = return $ R.bind fn arg n
 
 inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
     d <- genSym

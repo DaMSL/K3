@@ -1,0 +1,5 @@
+@:CArgs 2
+declare external: int -> int -> ()
+  with effects \x -> \y -> [R[x]; R[y]]
+
+declare external_call: () -> () = \_ -> external 1 2
