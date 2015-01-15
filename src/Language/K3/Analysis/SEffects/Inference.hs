@@ -219,7 +219,7 @@ fppenv0 = IntMap.empty
 fpplkup :: FPPEnv -> Int -> Either Text (K3 Provenance)
 fpplkup env x = maybe err Right $ IntMap.lookup x env
   where err = mkErrP msg env
-        msg = "Unbound pointer in lineage environment: " ++ show x
+        msg = "Unbound pointer in lineage environment during effects: " ++ show x
 
 
 {- FLCEnv helpers -}

@@ -18,10 +18,10 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Utils
 
-import Language.K3.Analysis.Properties        hiding ( liftEitherM, penv )
 import Language.K3.Analysis.HMTypes.Inference hiding ( liftEitherM, tenv, inferDeclTypes )
-import qualified Language.K3.Analysis.CArgs as CArgs
 
+import qualified Language.K3.Analysis.Properties           as Properties
+import qualified Language.K3.Analysis.CArgs                as CArgs
 import qualified Language.K3.Analysis.Provenance.Inference as Provenance
 import qualified Language.K3.Analysis.SEffects.Inference   as SEffects
 
@@ -38,9 +38,14 @@ import Language.K3.Transform.Common
 
 import Language.K3.Utils.Pretty
 
+import Data.Text ( Text )
+import qualified Data.Text as T
+import qualified Language.K3.Utils.PrettyText as PT
+
 -- | The program transformation composition monad
 data TransformSt = TransformSt { maxuid :: Int
                                , tenv   :: TIEnv
+                               , prenv  :: Properties.PIEnv
                                , penv   :: Provenance.PIEnv
                                , fenv   :: SEffects.FIEnv
                                , ofenv  :: Maybe EffectEnv }
@@ -48,7 +53,8 @@ data TransformSt = TransformSt { maxuid :: Int
 type TransformM = EitherT String (State TransformSt)
 
 st0 :: K3 Declaration -> Either String TransformSt
-st0 prog = mkEnv >>= \(stpe, stfe) -> return $ TransformSt puid tienv0 stpe stfe Nothing
+st0 prog = mkEnv >>= \(stpe, stfe) ->
+  return $ TransformSt puid tienv0 Properties.pienv0 stpe stfe Nothing
   where puid = ((\(UID i) -> i) $ maxProgramUID prog) + 1
         mkEnv = do
           lcenv <- lambdaClosures prog
@@ -81,17 +87,39 @@ runPasses passes p = foldM (flip ($)) p passes
 bracketPasses :: ProgramTransform -> [ProgramTransform] -> [ProgramTransform]
 bracketPasses f l = [f] ++ l ++ [f]
 
+type PrpTrE = Properties.PIEnv -> K3 Declaration -> Either String (K3 Declaration, Properties.PIEnv)
 type TypTrE = TIEnv -> K3 Declaration -> Either String (K3 Declaration, TIEnv)
 type EffTrE = Provenance.PIEnv -> SEffects.FIEnv -> K3 Declaration
               -> Either String (K3 Declaration, Provenance.PIEnv, SEffects.FIEnv)
 
+withPropertyTransform :: PrpTrE -> ProgramTransform
+withPropertyTransform f p = do
+  st <- get
+  (np, pre) <- liftEitherM $ f (prenv st) p
+  void $ put $ st {prenv=pre}
+  return np
+
 withTypeTransform :: TypTrE -> ProgramTransform
-withTypeTransform f p = get >>= \st ->
-  (liftEitherM (f (tenv st) p) >>= \(np,te) -> put (st {tenv=te}) >> return np)
+withTypeTransform f p = do
+  st <- get
+  (np, te) <- liftEitherM $ f (tenv st) p
+  void $ put $ st {tenv=te}
+  return np
 
 withEffectTransform :: EffTrE -> ProgramTransform
-withEffectTransform f p = get >>= \st ->
-  (liftEitherM (f (penv st) (fenv st) p) >>= \(np,pe,fe) -> put (st {penv=pe, fenv=fe}) >> return np)
+withEffectTransform f p = do
+  st <- get
+  (np,pe,fe) <- liftEitherM (f (penv st) (fenv st) p)
+  void $ {-debugEffectTransform (penv st) (fenv st) pe fe $-} put (st {penv=pe, fenv=fe})
+  return np
+
+  where debugEffectTransform oldp oldf newp newf r =
+          trace (T.unpack $ PT.boxToString $ [T.pack "Effect xform"]
+                  PT.%$ [T.pack "Old P"] PT.%$ PT.prettyLines oldp
+                  PT.%$ [T.pack "New P"] PT.%$ PT.prettyLines newp
+                  PT.%$ [T.pack "Old F"] PT.%$ PT.prettyLines oldf
+                  PT.%$ [T.pack "New F"] PT.%$ PT.prettyLines newf)
+            $ r
 
 
 {- Transform constructors -}
@@ -189,6 +217,13 @@ inferSEffects prog = do
 inferEffects :: ProgramTransform
 inferEffects = inferSEffects
 
+-- | Property propagation
+inferProperties :: ProgramTransform
+inferProperties prog = do
+  (p, prienv) <- liftEitherM $ Properties.inferProgramUsageProperties prog
+  void $ modify $ \st -> st {prenv = prienv}
+  return p
+
 inferTypesAndEffects :: ProgramTransform
 inferTypesAndEffects p = inferTypes p >>= inferEffects
 
@@ -211,7 +246,8 @@ withTypeAndEffects :: ProgramTransform -> ProgramTransform
 withTypeAndEffects f prog = f =<< inferEffects =<< inferTypes prog
 
 withProperties :: ProgramTransform -> ProgramTransform
-withProperties f p = transformE inferProgramUsageProperties p >>= f
+withProperties f p = transformE propF p >>= f
+  where propF p' = Properties.inferProgramUsageProperties p' >>= return . fst
 
 withRepair :: String -> ProgramTransform -> ProgramTransform
 withRepair msg f prog = f prog >>= return . repairProgram msg
@@ -301,16 +337,22 @@ mapProgramDeclFixpoint :: (K3 Declaration -> [ProgramTransform]) -> ProgramTrans
 mapProgramDeclFixpoint passesF prog = mapProgram declFixpoint return return Nothing prog
   where declFixpoint d = (transformFixpoint $ runPasses $ passesF d) d
 
+inferDeclProperties :: Identifier -> ProgramTransform
+inferDeclProperties n = withPropertyTransform $ \pre p ->
+  Properties.reinferProgDeclUsageProperties pre n p
+
 inferDeclTypes :: Identifier -> ProgramTransform
 inferDeclTypes n = withTypeTransform $ \te p -> reinferProgDeclTypes te n p
 
 inferDeclEffects :: Maybe (SEffects.ExtInferF a, a) -> Identifier -> ProgramTransform
 inferDeclEffects extInfOpt n = withEffectTransform $ \pe fe p -> do
-  (nlc, _)       <- lambdaClosuresDecl n (Provenance.plcenv pe) p
-  let (pe', fe') = (pe {Provenance.plcenv = nlc}, fe {SEffects.flcenv = nlc})
-  (np,  npe)     <- Provenance.reinferProgDeclProvenance pe' n p
-  (np', nfe)     <- SEffects.reinferProgDeclEffects extInfOpt fe' n np
+  (nlc, _)   <- lambdaClosuresDecl n (Provenance.plcenv pe) p
+  let pe'     = pe {Provenance.plcenv = nlc}
+  (np,  npe) <- {-debugPretty ("Reinfer P\n" ++ show nlc) p $-} Provenance.reinferProgDeclProvenance pe' n p
+  let fe'     = fe {SEffects.fppenv = Provenance.ppenv npe, SEffects.flcenv = nlc}
+  (np', nfe) <- {-debugPretty "Reinfer F" fe' $-} SEffects.reinferProgDeclEffects extInfOpt fe' n np
   return (np', npe, nfe)
+  where debugPretty tg a b = trace (T.unpack $ PT.boxToString $ [T.pack tg] PT.%$ PT.prettyLines a) b
 
 inferFreshDeclTypesAndEffects :: Maybe (SEffects.ExtInferF a, a) -> Identifier -> ProgramTransform
 inferFreshDeclTypesAndEffects extInfOpt n =
@@ -328,7 +370,7 @@ simplifyDecl extInfOpt n = runPasses simplifyPasses
 
 -- TODO: incremental version of withProperties
 streamFusionDecl :: Maybe (SEffects.ExtInferF a, a) -> Identifier -> ProgramTransform
-streamFusionDecl extInfOpt n = withProperties $ \p -> fusionEncode p >>= fusionFixpoint
+streamFusionDecl extInfOpt n = runPasses [inferDeclProperties n, fusionEncode, fusionFixpoint]
   where mkXform       i f = withRepair i $ transformE $ mapNamedDeclExpression n f
         fusionEncode      = mkXform "fusionEncode"    encodeTransformers
         fusionTransform   = mkXform "fusionTransform" fuseFoldTransformers
@@ -349,7 +391,7 @@ declOptPasses extInfOpt d = case nameOfDecl d of
 
 runDeclOptPassesM :: Maybe (SEffects.ExtInferF a, a) -> ProgramTransform
 runDeclOptPassesM extInfOpt =
-  runPasses [inferFreshTypesAndEffects, mapProgramDeclFixpoint (declOptPasses extInfOpt)]
+  runPasses [inferFreshTypesAndEffects, inferProperties, mapProgramDeclFixpoint (declOptPasses extInfOpt)]
 
 runDeclOptPasses :: Maybe (SEffects.ExtInferF a, a) -> K3 Declaration -> Either String (K3 Declaration)
 runDeclOptPasses extInfOpt prog = st0 prog >>= flip runTransformM (runDeclOptPassesM extInfOpt prog)

@@ -702,7 +702,7 @@ lambdaClosuresDecl n lc p = foldNamedDeclExpression n lambdaClosuresExpr lc p
 lambdaClosuresExpr :: ClosureEnv -> K3 Expression -> Either String (ClosureEnv, K3 Expression)
 lambdaClosuresExpr lcAcc expr = do
   (lcenv,_) <- biFoldMapTree bind extract [] (IntMap.empty, []) expr
-  return $ (IntMap.unions [lcAcc, lcenv], expr)
+  return $ (IntMap.union lcenv lcAcc, expr)
 
   where
     bind :: [Identifier] -> K3 Expression -> Either String ([Identifier], [[Identifier]])

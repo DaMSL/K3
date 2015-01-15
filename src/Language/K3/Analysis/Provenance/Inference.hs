@@ -114,7 +114,7 @@ plkupAll :: PEnv -> Identifier -> Either Text [K3 Provenance]
 plkupAll env x = maybe err return $ Map.lookup x env
   where
     err = mkErrP msg env
-    msg = "Unbound variable in lineage binding environment: " ++ x
+    msg = "Unbound variable in lineage binding environment during lookupAll: " ++ x
 
 pext :: PEnv -> Identifier -> K3 Provenance -> PEnv
 pext env x p = Map.insertWith (++) x [p] env
@@ -786,6 +786,7 @@ inferProvenance expr = mapIn1RebuildTree topdown sideways inferWithRule expr
       (ruleTag, rp) <- infer ch e
       localLog $ T.unpack $ showPInfRule ruleTag ch rp u
       return rp
+      --where debugInfer tg a b = trace (T.unpack $ PT.boxToString $ [T.pack tg] %$ PT.prettyLines a) b
 
     -- Provenance computation
     infer :: [K3 Provenance] -> K3 Expression -> PInfM (String, K3 Provenance)

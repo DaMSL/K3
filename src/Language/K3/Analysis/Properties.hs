@@ -1,16 +1,18 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Analysis.Properties where
 
-import Control.Arrow ( (&&&) )
 import Control.Monad.State
 import Control.Monad.Trans.Either
 
-import Data.Function
 import Data.List
 import Data.Maybe
 import Data.Tree
+
+import Data.Map              ( Map )
+import qualified Data.Map    as Map
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -21,7 +23,7 @@ import Language.K3.Core.Literal
 import Language.K3.Core.Constructor.Expression as EC
 import Language.K3.Core.Utils
 
-type NamedEnv a = [(Identifier, a)]
+type NamedEnv a = Map Identifier [a]
 type PList = [(Identifier, Maybe (K3 Literal))]
 type PEnv  = NamedEnv PList
 type PAEnv = NamedEnv PEnv
@@ -30,17 +32,24 @@ type PInfM = EitherT String (State PIEnv)
 
 {- NamedEnv helpers -}
 neenv0 :: NamedEnv a
-neenv0 = []
+neenv0 = Map.empty
 
 nelkup :: NamedEnv a -> Identifier -> Either String a
-nelkup env x = maybe err Right $ lookup x env
- where err = Left $ "Unbound identifier in named environment: " ++ x
+nelkup env x = maybe err safeHead $ Map.lookup x env
+ where safeHead l = if null l then err else Right $ head l
+       err = Left $ "Unbound identifier in named environment: " ++ x
+
+nmem :: NamedEnv a -> Identifier -> Bool
+nmem env n = Map.member n env
 
 neext :: NamedEnv a -> Identifier -> a -> NamedEnv a
-neext env x v = (x,v) : env
+neext env x v = Map.insertWith (++) x [v] env
 
-nedel :: NamedEnv a -> Identifier -> a -> NamedEnv a
-nedel env x v = deleteBy ((==) `on` fst) (x, v) env
+nedel :: NamedEnv a -> Identifier -> NamedEnv a
+nedel env x = Map.update safeTail x env
+  where safeTail []  = Nothing
+        safeTail [_] = Nothing
+        safeTail l   = Just $ tail l
 
 {- PList helpers -}
 pl0 :: PList
@@ -63,25 +72,30 @@ penv0 = neenv0
 plkup :: PEnv -> Identifier -> Either String PList
 plkup = nelkup
 
+pmem :: PEnv -> Identifier -> Bool
+pmem = nmem
+
 pext :: PEnv -> Identifier -> PList -> PEnv
 pext = neext
 
 pdel :: PEnv -> Identifier -> PEnv
-pdel env x = nedel env x pl0
+pdel env x = nedel env x
 
 pextp :: PEnv -> Identifier -> Identifier -> Maybe (K3 Literal) -> PEnv
-pextp env x y v = snd $ modifyAssoc env x $ \case
-  Nothing -> ((), Just $ [(y,v)])
-  Just pl -> ((), Just $ plext pl y v)
+pextp env x y v = (\f -> Map.alter f x env) $ \case
+  Nothing    -> Just [[(y,v)]]
+  Just []    -> Just [[(y,v)]]
+  Just (h:t) -> Just $ (plext h y v):t
 
 pdelp :: PEnv -> Identifier -> Identifier -> PEnv
-pdelp env x y = snd $ modifyAssoc env x $ \case
-  Nothing -> ((), Nothing)
-  Just pl -> ((), Just $ pldel pl y)
+pdelp env x y = (\f -> Map.alter f x env) $ \case
+  Nothing -> Nothing
+  Just [] -> Just []
+  Just (h:t) -> Just $ (pldel h y):t
 
 {- PAEnv helpers -}
 paenv0 :: PAEnv
-paenv0 = []
+paenv0 = Map.empty
 
 palkup :: PAEnv -> Identifier -> Either String PEnv
 palkup = nelkup
@@ -90,15 +104,19 @@ paext :: PAEnv -> Identifier -> PEnv -> PAEnv
 paext = neext
 
 padel :: PAEnv -> Identifier -> PAEnv
-padel env x = nedel env x penv0
+padel env x = nedel env x
 
 paextm :: PAEnv -> Identifier -> Identifier -> PList -> PAEnv
-paextm env x y pl = snd $
-  modifyAssoc env x  $ \peOpt -> ((), Just $ pext (maybe penv0 id peOpt) y pl)
+paextm env x y pl = Map.alter extF x env
+  where extF Nothing   = Just [pext penv0 y pl]
+        extF (Just []) = Just [pext penv0 y pl]
+        extF (Just (h:t)) = Just $ (pext h y pl):t
 
 padelm :: PAEnv -> Identifier -> Identifier -> PAEnv
-padelm env x y = snd $
-  modifyAssoc env x $ \peOpt -> ((), maybe Nothing (\pe -> Just $ pdel pe y) peOpt)
+padelm env x y = Map.alter delF x env
+  where delF Nothing      = Nothing
+        delF (Just [])    = Just []
+        delF (Just (h:t)) = Just $ (pdel h y):t
 
 
 {- PIEnv helpers -}
@@ -107,6 +125,9 @@ pienv0 = PIEnv {penv=penv0, paenv=paenv0}
 
 pilkupe :: PIEnv -> Identifier -> Either String PList
 pilkupe env = plkup $ penv env
+
+pimeme :: PIEnv -> Identifier -> Bool
+pimeme env = pmem $ penv env
 
 pilkupa :: PIEnv -> Identifier -> Either String PEnv
 pilkupa env = palkup $ paenv env
@@ -140,33 +161,56 @@ pidelam env i j = env {paenv=padelm (paenv env) i j}
 runPInfM :: PIEnv -> PInfM a -> (Either String a, PIEnv)
 runPInfM pienv m = flip runState pienv $ runEitherT m
 
+runPInfE :: PIEnv -> PInfM a -> Either String (a, PIEnv)
+runPInfE env m = let (a,b) = runPInfM env m in a >>= return . (,b)
+
 liftEitherM :: Either String a -> PInfM a
 liftEitherM = either left return
 
+{- Analysis entry point. -}
+inferProgramUsageProperties :: K3 Declaration -> Either String (K3 Declaration, PIEnv)
+inferProgramUsageProperties prog = do
+    (_, initEnv) <- runPInfE pienv0 $ mapProgram initializeDeclUsageProperties return return Nothing prog
+    runPInfE initEnv $ mapProgram return return inferExprUsageProperties Nothing prog
 
-inferProgramUsageProperties :: K3 Declaration -> Either String (K3 Declaration)
-inferProgramUsageProperties prog =
-    let (result, initEnv) = runPInfM pienv0 $ mapProgram initDeclF return return Nothing prog
-    in result >> (fst $ runPInfM initEnv $ mapProgram declF annMemF exprF Nothing prog)
+-- | Repeat property propagation on a global with an initializer.
+reinferProgDeclUsageProperties :: PIEnv -> Identifier -> K3 Declaration -> Either String (K3 Declaration, PIEnv)
+reinferProgDeclUsageProperties env dn prog = runPInfE env inferNamedDecl
   where
-        initDeclF d@(tag &&& annotations -> (DGlobal n _ _, anns))  = extDeclProps n anns >> return d
-        initDeclF d@(tag &&& annotations -> (DTrigger n _ _, anns)) = extDeclProps n anns >> return d
-        initDeclF d@(tag -> DDataAnnotation n _ mems) = extAnnProps n mems >> return d
-        initDeclF d = return d
+    inferNamedDecl = mapProgramWithDecl onNamedDecl (const return) (const return) Nothing prog
 
-        declF   d = return d
-        annMemF m = return m
-        exprF   e = inferExprUsageProperties e
+    onNamedDecl d@(tag -> DGlobal  n _ (Just e)) | dn == n = inferDecl n d e
+    onNamedDecl d@(tag -> DTrigger n _ e)        | dn == n = inferDecl n d e
+    onNamedDecl d = return d
 
-        extDeclProps n anns = modify (\env -> piexte env n $ mapMaybe extractDProperty anns)
+    inferDecl n d e = do
+      modify (\env' -> if pimeme env' n then (pidele env' n) else env')
+      nd   <- initializeDeclUsageProperties d
+      ne   <- inferExprUsageProperties e
+      rebuildDecl ne nd
 
-        extAnnProps n mems = modify (\env -> piexta env n $ mapMaybe memF mems)
-        memF (Lifted      _ mn _ _ mAnns) = Just $ (mn, mapMaybe extractDProperty mAnns)
-        memF (Attribute   _ mn _ _ mAnns) = Just $ (mn, mapMaybe extractDProperty mAnns)
-        memF (MAnnotation _ _ _) = Nothing
+    rebuildDecl e d@(tnc -> (DGlobal  n t (Just _), ch)) = return $ Node (DGlobal  n t (Just e) :@: annotations d) ch
+    rebuildDecl e d@(tnc -> (DTrigger n t _, ch))        = return $ Node (DTrigger n t e        :@: annotations d) ch
+    rebuildDecl _ d = return d
 
-        extractDProperty (DProperty n lopt) = Just (n, lopt)
-        extractDProperty _ = Nothing
+
+initializeDeclUsageProperties :: K3 Declaration -> PInfM (K3 Declaration)
+initializeDeclUsageProperties d = case tna d of
+    (DGlobal  n _ _, anns)        -> extDeclProps n anns >> return d
+    (DTrigger n _ _, anns)        -> extDeclProps n anns >> return d
+    (DDataAnnotation n _ mems, _) -> extAnnProps n mems >> return d
+    _ -> return d
+
+  where
+    extDeclProps n anns = modify (\env -> piexte env n $ mapMaybe extractDProperty anns)
+
+    extAnnProps n mems = modify (\env -> piexta env n $ Map.fromList $ mapMaybe memF mems)
+    memF (Lifted      _ mn _ _ mAnns) = Just $ (mn, [mapMaybe extractDProperty mAnns])
+    memF (Attribute   _ mn _ _ mAnns) = Just $ (mn, [mapMaybe extractDProperty mAnns])
+    memF (MAnnotation _ _ _) = Nothing
+
+    extractDProperty (DProperty n lopt) = Just (n, lopt)
+    extractDProperty _ = Nothing
 
 inferExprUsageProperties :: K3 Expression -> PInfM (K3 Expression)
 inferExprUsageProperties prog = mapIn1RebuildTree lambdaProp sidewaysProp inferProp prog
@@ -214,13 +258,18 @@ inferExprUsageProperties prog = mapIn1RebuildTree lambdaProp sidewaysProp inferP
                  TCollection -> do
                    let tAnns = namedTAnnotations $ annotations srcT
                    annEnvs <- get >>= \env -> mapM (liftEitherM . pilkupa env) tAnns
-                   case lookup i $ concat annEnvs of
+                   case lookup i $ concatMap headPEnv annEnvs of
                      Nothing -> invalidAnnMemErr i tAnns
                      Just pl -> return pl
                  _ -> left $ "Invalid projected type while inferring properties"
       return $ foldl (@+) (EC.project i $ head ch) $ rebuildAnnotations e memPL
 
     inferProp ch (Node (tg :@: anns) _) = return $ Node (tg :@: anns) ch
+
+    headPEnv :: PEnv -> [(Identifier, PList)]
+    headPEnv pe = flip concatMap (Map.toList pe) $ \case
+      (_,[]) -> []
+      (n,(h:_)) -> [(n,h)]
 
     extNullExprProps :: Identifier -> PInfM ()
     extNullExprProps i = modify $ \env -> piexte env i pl0
@@ -232,7 +281,9 @@ inferExprUsageProperties prog = mapIn1RebuildTree lambdaProp sidewaysProp inferP
     pruneExprProps i = modify (\env -> pidele env i)
 
     rebuildAnnotations :: K3 Expression -> PList -> [Annotation Expression]
-    rebuildAnnotations e pl = nub $ annotations e ++ map (uncurry EProperty) pl
+    rebuildAnnotations e pl =
+      let (annProps,rest) = partition isEProperty $ annotations e
+      in rest ++ (nub $ annProps ++ map (uncurry EProperty) pl)
 
     extractEProperty :: Annotation Expression -> Maybe (Identifier, Maybe (K3 Literal))
     extractEProperty (EProperty n lopt) = Just (n, lopt)
