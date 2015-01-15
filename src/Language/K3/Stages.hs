@@ -289,7 +289,7 @@ cgPasses _ = [ withRepair "TID" $ transformE triggerSymbols
              , inferFreshEffects
              , transformF InsertMembers.runAnalysis
              , transformF    CArgs.runAnalysis
-             , \d -> get >>= \s -> return $ (optimizeMaterialization (penv s, ())) d
+             , \d -> get >>= \s -> return $ (optimizeMaterialization (penv s, fenv s)) d
              ]
 
 runOptPassesM :: ProgramTransform

@@ -16,6 +16,7 @@ import Language.K3.Analysis.Provenance.Core
 import Language.K3.Analysis.Provenance.Inference (PIEnv(..))
 
 import Language.K3.Analysis.SEffects.Core
+import Language.K3.Analysis.SEffects.Inference (FIEnv(..))
 
 import Language.K3.Codegen.CPP.Materialization.Hints
 
@@ -36,28 +37,28 @@ import Language.K3.Core.Common hiding (getUID)
 
 type Table = I.IntMap (M.Map Identifier Decision)
 
-type MaterializationS = (Table, PIEnv, [K3 Expression])
+type MaterializationS = (Table, PIEnv, FIEnv, [K3 Expression])
 type MaterializationM = StateT MaterializationS Identity
 
 -- State Accessors
 
 dLookup :: Int -> Identifier -> MaterializationM Decision
-dLookup u i = get >>= \(t, _, _) -> return $ fromMaybe defaultDecision (I.lookup u t >>= M.lookup i)
+dLookup u i = get >>= \(t, _, _, _) -> return $ fromMaybe defaultDecision (I.lookup u t >>= M.lookup i)
 
 dLookupAll :: Int -> MaterializationM (M.Map Identifier Decision)
-dLookupAll u = get >>= \(t, _, _) -> return (I.findWithDefault M.empty u t)
+dLookupAll u = get >>= \(t, _, _, _) -> return (I.findWithDefault M.empty u t)
 
 pLookup :: PPtr -> MaterializationM (K3 Provenance)
-pLookup p = get >>= \(_, e, _) -> return (fromMaybe (error "Dangling provenance pointer") (I.lookup p (ppenv e)))
+pLookup p = get >>= \(_, e, _, _) -> return (fromMaybe (error "Dangling provenance pointer") (I.lookup p (ppenv e)))
 
 -- A /very/ rough approximation of ReaderT's ~local~ for StateT.
 withLocalDS :: [K3 Expression] -> MaterializationM a -> MaterializationM a
 withLocalDS nds m = do
-  (t, e, ds) <- get
-  put (t, e, (nds ++ ds))
+  (t, e, f, ds) <- get
+  put (t, e, f, (nds ++ ds))
   r <- m
-  (t', e', _) <- get
-  put (t', e', ds)
+  (t', e', f', _) <- get
+  put (t', e', f', ds)
   return r
 
 getUID :: K3 Expression -> Int
@@ -73,10 +74,10 @@ getEffects e = let ESEffect f = fromMaybe (error "No effects on expression.")
                                 (e @~ \case { EEffect _ -> True; _ -> False }) in f
 
 setDecision :: Int -> Identifier -> Decision -> MaterializationM ()
-setDecision u i d = modify $ \(t, e, ds) -> (I.insertWith M.union u (M.singleton i d) t, e, ds)
+setDecision u i d = modify $ \(t, e, f, ds) -> (I.insertWith M.union u (M.singleton i d) t, e, f, ds)
 
 getClosureSymbols :: Int -> MaterializationM [Identifier]
-getClosureSymbols i = get >>= \(_, plcenv -> e, _) -> return $ concat $ maybeToList (I.lookup i e)
+getClosureSymbols i = get >>= \(_, plcenv -> e, _, _) -> return $ concat $ maybeToList (I.lookup i e)
 
 pmvloc' :: PMatVar -> Int
 pmvloc' pmv = let UID u = pmvloc pmv in u
@@ -86,8 +87,8 @@ pmvloc' pmv = let UID u = pmvloc pmv in u
 runMaterializationM :: MaterializationM a -> MaterializationS -> (a, MaterializationS)
 runMaterializationM m s = runIdentity $ runStateT m s
 
-optimizeMaterialization :: (PIEnv, ()) -> K3 Declaration -> K3 Declaration
-optimizeMaterialization (p, _) d = fst $ runMaterializationM (materializationD d) (I.empty, p, [])
+optimizeMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> K3 Declaration
+optimizeMaterialization (p, f) d = fst $ runMaterializationM (materializationD d) (I.empty, p, f, [])
 
 materializationD :: K3 Declaration -> MaterializationM (K3 Declaration)
 materializationD (Node (d :@: as) cs)
@@ -199,4 +200,4 @@ isMoveableIn :: K3 Expression -> K3 Expression -> MaterializationM Bool
 isMoveableIn x c = undefined
 
 isMoveableNow :: K3 Expression -> MaterializationM Bool
-isMoveableNow x = get >>= \(_, _, ds) -> anyM (isMoveableIn x) ds
+isMoveableNow x = get >>= \(_, _, _, ds) -> anyM (isMoveableIn x) ds
