@@ -43,6 +43,8 @@ import Data.Text ( Text )
 import qualified Data.Text as T
 import qualified Language.K3.Utils.PrettyText as PT
 
+import Language.K3.Codegen.CPP.Materialization
+
 -- | The program transformation composition monad
 data TransformSt = TransformSt { maxuid :: Int
                                , tenv   :: TIEnv
@@ -287,6 +289,7 @@ cgPasses _ = [ withRepair "TID" $ transformE triggerSymbols
              , inferFreshEffects
              , transformF InsertMembers.runAnalysis
              , transformF    CArgs.runAnalysis
+             , \d -> get >>= \s -> return $ (optimizeMaterialization (penv s, ())) d
              ]
 
 runOptPassesM :: ProgramTransform
