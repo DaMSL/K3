@@ -35,6 +35,7 @@ import Language.K3.Transform.NRVOMove
 import Language.K3.Transform.Simplification
 import Language.K3.Transform.Writeback
 import Language.K3.Transform.Common
+import Language.K3.Transform.TriggerSymbols (triggerSymbols)
 
 import Language.K3.Utils.Pretty
 
@@ -282,7 +283,8 @@ optPasses = map prepareOpt [ (simplify,     "opt-simplify-prefuse")
   where prepareOpt (f,i) = runPasses [inferFreshTypesAndEffects, withRepair i f]
 
 cgPasses :: Int -> [ProgramTransform]
-cgPasses _ = [ inferFreshEffects
+cgPasses _ = [ withRepair "TID" $ transformE triggerSymbols
+             , inferFreshEffects
              , transformF InsertMembers.runAnalysis
              , transformF    CArgs.runAnalysis
              ]
