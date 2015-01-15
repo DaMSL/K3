@@ -25,8 +25,6 @@ import Language.K3.Analysis.HMTypes.Inference (inferProgramTypes, translateProgr
 import qualified Language.K3.Codegen.Imperative as I
 import qualified Language.K3.Codegen.CPP as CPP
 
-import Language.K3.Transform.TriggerSymbols
-
 import Language.K3.Stages ( runCGPasses )
 
 import Language.K3.Driver.Options
@@ -72,9 +70,8 @@ cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $
   where
     --attach trigger symbols. TODO: mangle names before applying this transformation.
     -- TODO move this into core. Must happen before imperative generation.
-    prog' = either error id $ triggerSymbols typedProgram
 
-    (irRes, initSt)      = I.runImperativeM (I.declaration prog') I.defaultImperativeS
+    (irRes, initSt)      = I.runImperativeM (I.declaration typedProgram) I.defaultImperativeS
 
     preprocess = applyOptimizations copts
 
