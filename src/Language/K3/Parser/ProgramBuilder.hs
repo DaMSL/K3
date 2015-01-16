@@ -213,10 +213,11 @@ endpointMethods isSource eSpec argE formatE n t =
           (EC.unit))
 
     -- External functions
+    cleanT        = stripTUIDSpan t
     sourceHasRead = ("HasRead",  TC.unit, TC.bool, Nothing)
-    sourceRead    = ("Read",     TC.unit, t,       Nothing)
+    sourceRead    = ("Read",     TC.unit, cleanT,  Nothing)
     sinkHasWrite  = ("HasWrite", TC.unit, TC.bool, Nothing)
-    sinkWrite     = ("Write",    t,       TC.unit, Nothing)
+    sinkWrite     = ("Write",    cleanT,  TC.unit, Nothing)
 
     openEndpointE = case eSpec of
       BuiltinEP _ _ -> EC.applyMany openBuiltinFn [sourceId n, argE, formatE]

@@ -24,13 +24,17 @@ import qualified Language.K3.Analysis.CArgs                as CArgs
 import qualified Language.K3.Analysis.Provenance.Inference as Provenance
 import qualified Language.K3.Analysis.SEffects.Inference   as SEffects
 
+import Language.K3.Transform.Common
 import Language.K3.Transform.Simplification
+import Language.K3.Transform.TriggerSymbols (triggerSymbols)
 
 import Language.K3.Utils.Pretty
 
 import Data.Text ( Text )
 import qualified Data.Text as T
 import qualified Language.K3.Utils.PrettyText as PT
+
+import Language.K3.Codegen.CPP.Materialization
 
 -- | The program transformation composition monad
 data TransformSt = TransformSt { maxuid :: Int
@@ -256,8 +260,10 @@ optPasses = map prepareOpt [ (simplify,     "opt-simplify-prefuse")
   where prepareOpt (f,i) = runPasses [refreshProgram, withRepair i f]
 
 cgPasses :: Int -> [ProgramTransform]
-cgPasses _ = [ refreshProgram
+cgPasses _ = [ withRepair "TID" $ transformE triggerSymbols
+             , refreshProgram
              , transformF CArgs.runAnalysis
+             , \d -> get >>= \s -> return $ (optimizeMaterialization (penv s, fenv s)) d
              ]
 
 runOptPassesM :: ProgramTransform
