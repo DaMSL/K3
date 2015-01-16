@@ -10,13 +10,21 @@ module Language.K3.Core.Expression (
   Constant(..),
   Operator(..),
   Binder(..),
-  Annotation(..)
+  Annotation(..),
+  PropertyE
 
-  , isESpan
+  , onEProperty
+  , ePropertyName
+  , ePropertyValue
+  , ePropertyV
+
   , isEQualified
+  , isESpan
   , isEUID
+  , isEUIDSpan
   , isEAnnotation
   , isEProperty
+  , isEInferredProperty
   , isESyntax
   , isEApplyGen
   , isEType
@@ -27,8 +35,6 @@ module Language.K3.Core.Expression (
   , isEProvenance
   , isESEffect
   , isEFStructure
-  , isEEffect
-  , isESymbol
   , isEMaterialization
   , isAnyETypeAnn
   , isAnyEEffectAnn
@@ -54,7 +60,6 @@ import Language.K3.Core.Literal
 import Language.K3.Analysis.HMTypes.DataTypes
 import Language.K3.Analysis.Provenance.Core
 import qualified Language.K3.Analysis.SEffects.Core as S
-import Language.K3.Analysis.Effects.Core hiding ( Provenance(..) )
 
 import Language.K3.Transform.Hints
 import qualified Language.K3.Codegen.CPP.Materialization.Hints as Z
@@ -143,7 +148,10 @@ data instance Annotation Expression
     | EImmutable
 
     | EAnnotation Identifier
-    | EProperty   Identifier (Maybe (K3 Literal))
+    | EProperty   PropertyE
+        -- ^ Properties are either types, with a left variant indicating a
+        -- user-defined property, while a right variant represents an inferred property.
+
     | EApplyGen   Bool Identifier SpliceEnv
         -- ^ Apply a K3 generator, with a bool indicating a control annotation generator (vs a data annotation),
         --   a generator name, and a splice environment.
@@ -153,8 +161,6 @@ data instance Annotation Expression
 
     -- TODO: the remainder of these should be pushed into
     -- an annotation category (e.g., EType, EAnalysis, etc)
-    | EEffect     (K3 Effect)
-    | ESymbol     (K3 Symbol)
     | EProvenance (K3 Provenance)
     | ESEffect    (K3 S.Effect)
     | EFStructure (K3 S.Effect)
@@ -168,14 +174,6 @@ data instance Annotation Expression
     | EEmbedding EmbeddingAnnotation
   deriving (Eq, Ord, Read, Show)
 
-instance HasUID (Annotation Expression) where
-  getUID (EUID u) = Just u
-  getUID _        = Nothing
-
-instance HasSpan (Annotation Expression) where
-  getSpan (ESpan s) = Just s
-  getSpan _         = Nothing
-
 -- | Data Conflicts
 --   TODO: move to Language.K3.Core.Annotation.Analysis
 data Conflict
@@ -184,28 +182,63 @@ data Conflict
     | WW (Annotation Expression) (Annotation Expression)
   deriving (Eq, Ord, Read, Show)
 
-{- Expression annotation predicates -}
+instance HasUID (Annotation Expression) where
+  getUID (EUID u) = Just u
+  getUID _        = Nothing
 
-isESpan :: Annotation Expression -> Bool
-isESpan (ESpan _) = True
-isESpan _         = False
+instance HasSpan (Annotation Expression) where
+  getSpan (ESpan s) = Just s
+  getSpan _         = Nothing
+
+-- | Property helpers
+type PropertyV = (Identifier, Maybe (K3 Literal))
+type PropertyE = Either PropertyV PropertyV
+
+onEProperty :: (PropertyV -> a) -> PropertyE -> a
+onEProperty f (Left  (n, lopt)) = f (n, lopt)
+onEProperty f (Right (n, lopt)) = f (n, lopt)
+
+ePropertyName :: PropertyE -> String
+ePropertyName (Left  (n,_)) = n
+ePropertyName (Right (n,_)) = n
+
+ePropertyValue :: PropertyE -> Maybe (K3 Literal)
+ePropertyValue (Left  (_,v)) = v
+ePropertyValue (Right (_,v)) = v
+
+ePropertyV :: PropertyE -> PropertyV
+ePropertyV (Left  pv) = pv
+ePropertyV (Right pv) = pv
+
+{- Expression annotation predicates -}
 
 isEQualified :: Annotation Expression -> Bool
 isEQualified EImmutable = True
 isEQualified EMutable   = True
 isEQualified _          = False
 
+isESpan :: Annotation Expression -> Bool
+isESpan (ESpan _) = True
+isESpan _         = False
+
 isEUID :: Annotation Expression -> Bool
 isEUID (EUID _) = True
 isEUID _        = False
+
+isEUIDSpan :: Annotation Expression -> Bool
+isEUIDSpan a = isESpan a || isEUID a
 
 isEAnnotation :: Annotation Expression -> Bool
 isEAnnotation (EAnnotation _) = True
 isEAnnotation _               = False
 
 isEProperty :: Annotation Expression -> Bool
-isEProperty (EProperty _ _) = True
-isEProperty _               = False
+isEProperty (EProperty _) = True
+isEProperty _             = False
+
+isEInferredProperty :: Annotation Expression -> Bool
+isEInferredProperty (EProperty (Right _)) = True
+isEInferredProperty _                     = False
 
 isESyntax :: Annotation Expression -> Bool
 isESyntax (ESyntax _) = True
@@ -253,19 +286,11 @@ isEFStructure :: Annotation Expression -> Bool
 isEFStructure (EFStructure _) = True
 isEFStructure _               = False
 
-isEEffect :: Annotation Expression -> Bool
-isEEffect (EEffect _) = True
-isEEffect _           = False
-
-isESymbol :: Annotation Expression -> Bool
-isESymbol (ESymbol _) = True
-isESymbol _           = False
-
 isAnyETypeAnn :: Annotation Expression -> Bool
 isAnyETypeAnn a = isETypeOrBound a || isEQType a
 
 isAnyEEffectAnn :: Annotation Expression -> Bool
-isAnyEEffectAnn a = isEProvenance a || isESEffect a || isEFStructure a || isEEffect a || isESymbol a
+isAnyEEffectAnn a = isEProvenance a || isESEffect a || isEFStructure a
 
 isAnyETypeOrEffectAnn :: Annotation Expression -> Bool
 isAnyETypeOrEffectAnn a = isAnyETypeAnn a || isAnyEEffectAnn a
@@ -325,8 +350,6 @@ drawExprAnnotations as =
         drawEEffectAnnotations (EProvenance p) = ["EProvenance "] %+ prettyLines p
         drawEEffectAnnotations (ESEffect e)    = ["ESEffect "]    %+ prettyLines e
         drawEEffectAnnotations (EFStructure e) = ["EFStructure "] %+ prettyLines e
-        drawEEffectAnnotations (EEffect e)     = ["EEffect "]     %+ prettyLines e
-        drawEEffectAnnotations (ESymbol s)     = ["ESymbol "]     %+ prettyLines s
         drawEEffectAnnotations _ = error "Invalid effect annotation"
 
 
@@ -346,9 +369,10 @@ tShift = PT.shift (T.pack "`- ") (T.pack "   ")
 tTA :: Bool -> String -> [Annotation Expression] -> [Text]
 tTA asTerm s as =
   let (annTxt, pAnnTxt) = drawExprAnnotationsT as in
-  aPipe [T.append (T.pack s) annTxt]
+  let suffix = if null pAnnTxt then id else aPipe in
+  (suffix [T.append (T.pack s) annTxt])
   ++ (if null pAnnTxt then []
-      else if asTerm then tShift pAnnTxt else aPipe $ tShift pAnnTxt)
+      else if asTerm then tShift pAnnTxt else (aPipe $ tShift pAnnTxt))
 
 instance PT.Pretty (K3 Expression) where
     prettyLines (Node (ETuple :@: as) []) = tTA True "EUnit" as
@@ -391,6 +415,4 @@ drawExprAnnotationsT as =
         drawEEffectAnnotationsT (EProvenance p) = [T.pack "EProvenance "] PT.%+ PT.prettyLines p
         drawEEffectAnnotationsT (ESEffect e)    = [T.pack "ESEffect "]    PT.%+ PT.prettyLines e
         drawEEffectAnnotationsT (EFStructure e) = [T.pack "EFStructure "] PT.%+ PT.prettyLines e
-        drawEEffectAnnotationsT (EEffect e)     = [T.pack "EEffect "]     PT.%+ (map T.pack $ prettyLines e)
-        drawEEffectAnnotationsT (ESymbol s)     = [T.pack "ESymbol "]     PT.%+ (map T.pack $ prettyLines s)
         drawEEffectAnnotationsT _ = error "Invalid effect annotation"

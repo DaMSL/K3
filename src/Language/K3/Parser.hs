@@ -303,18 +303,14 @@ dControlAnnotation = namedIdentifier "control annotation" "control" $ rule
 
         mkCtrlAnn n svars (rw, exts) = DC.generator $ mpCtrlAnnotation n svars rw exts
 
-        cleanExpr e = return $ stripExprAnnotations eAnnFilter tAnnFilter e
-        cleanDecl d = return $ stripDeclAnnotations dAnnFilter eAnnFilter tAnnFilter d
-
-        dAnnFilter a = isDUID a || isDSpan a
-        eAnnFilter a = isEUID a || isESpan a
-        tAnnFilter a = isTUID a || isTSpan a
+        cleanExpr e = return $ stripEUIDSpan e
+        cleanDecl d = return $ stripDUIDSpan d
 
 
 dTypeAlias :: K3Parser (Maybe (K3 Declaration))
 dTypeAlias = namedIdentifier "typedef" "typedef" rule
   where rule x = mkTypeAlias =<< ((,) <$> x <*> equateTypeExpr)
-        mkTypeAlias (n, t) = modifyTAEnvF_ (Right . appendTAliasE n t) >> return Nothing
+        mkTypeAlias (n, t) = modifyTAEnvF_ (Right . appendTAliasE n (stripTUIDSpan t)) >> return Nothing
 
 pInclude :: K3Parser String
 pInclude = keyword "include" >> stringLiteral
@@ -409,7 +405,11 @@ tCollection = cErr $ TUID # mkCollectionType
                   <$> ((keyword "collection" *> choice [tRecord, tDeclared]) >>= attachAnnotations)
   where mkCollectionType (t, a) = foldl (@+) (TC.collection t) a
         cErr = typeExprError "collection"
-        attachAnnotations t@(tag -> TRecord ids) = withAnnotations (tAnnotations $ Just $ mkRecordSpliceEnv ids $ children t) >>= return . (t,)
+
+        attachAnnotations t@(tag -> TRecord ids) = do
+          a <- withAnnotations (tAnnotations $ Just $ mkRecordSpliceEnv ids $ children $ stripTUIDSpan t)
+          return (t,a)
+
         attachAnnotations t = withAnnotations (tAnnotations Nothing) >>= return . (t,)
 
 tBuiltIn :: TypeParser
@@ -554,8 +554,11 @@ eEmpty :: ExpressionParser
 eEmpty = exprError "empty" $ mkEmpty <$> (typedEmpty >>= attachAnnotations)
   where mkEmpty (e, a) = foldl (@+) e a
         typedEmpty = EC.empty <$> (keyword "empty" *> choice [tRecord, tDeclared])
-        attachAnnotations e@(tag -> EConstant (CEmpty t@(tag -> TRecord ids))) =
-          withAnnotations (eAnnotations $ Just $ mkRecordSpliceEnv ids $ children t) >>= return . (e,)
+
+        attachAnnotations e@(tag -> EConstant (CEmpty t@(tag -> TRecord ids))) = do
+          a <- withAnnotations (eAnnotations $ Just $ mkRecordSpliceEnv ids $ children $ stripTUIDSpan t)
+          return (e,a)
+
         attachAnnotations e = withAnnotations (eAnnotations Nothing) >>= return . (e,)
 
 eLambda :: ExpressionParser
@@ -646,8 +649,9 @@ eCollection = exprError "collection" $
         mkSingletonRecord p (n,t) =
           p >>= return . ([(n,t)],) . map (EC.record . (:[]) . (n,) . (@+ EImmutable))
 
-        attachAnnotations (tyl, el) =
-          withAnnotations (eAnnotations $ Just $ uncurry mkRecordSpliceEnv $ unzip tyl) >>= return . ((tyl,el),)
+        attachAnnotations (tyl, el) = do
+          a <- withAnnotations (eAnnotations $ Just $ uncurry mkRecordSpliceEnv $ second (map stripTUIDSpan) $ unzip tyl)
+          return ((tyl,el),a)
 
 
 {- Literal values -}
@@ -711,8 +715,11 @@ lEmpty :: LiteralParser
 lEmpty = litError "empty" $ mkEmpty <$> (typedEmpty >>= attachAnnotations)
   where mkEmpty (l, a) = foldl (@+) l a
         typedEmpty = LC.empty <$> (keyword "empty" *> tRecord)
-        attachAnnotations l@(tag -> LEmpty t@(tag -> TRecord ids)) =
-          withAnnotations (lAnnotations $ Just $ mkRecordSpliceEnv ids $ children t) >>= return . (l,)
+
+        attachAnnotations l@(tag -> LEmpty t@(tag -> TRecord ids)) = do
+          a <- withAnnotations (lAnnotations $ Just $ mkRecordSpliceEnv ids $ children $ stripTUIDSpan t)
+          return (l,a)
+
         attachAnnotations l = withAnnotations (lAnnotations Nothing) >>= return . (l,)
 
 lCollection :: LiteralParser
@@ -732,8 +739,9 @@ lCollection = litError "collection" $
     mkSingletonRecord p (n,t) =
       p >>= return . ([(n,t)],) . map (LC.record . (:[]) . (n,) . (@+ LImmutable))
 
-    attachAnnotations (tyl,el) =
-      withAnnotations (lAnnotations $ Just $ uncurry mkRecordSpliceEnv $ unzip tyl) >>= return . ((tyl,el),)
+    attachAnnotations (tyl,el) = do
+      a <- withAnnotations (lAnnotations $ Just $ uncurry mkRecordSpliceEnv $ second (map stripTUIDSpan) $ unzip tyl)
+      return ((tyl,el),a)
 
 lAddress :: LiteralParser
 lAddress = litError "address" $ LC.address <$> ipAddress <* colon <*> port
@@ -797,10 +805,10 @@ properties ctor = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
   where p = ctor <$> identifier <*> optional literal
 
 dProperties :: K3Parser [Annotation Declaration]
-dProperties = properties DProperty
+dProperties = properties (\n lopt -> DProperty $ Left (n,lopt))
 
 eProperties :: K3Parser [Annotation Expression]
-eProperties = properties EProperty
+eProperties = properties (\n lopt -> EProperty $ Left (n,lopt))
 
 {- Metaprogramming -}
 stTerm :: K3Parser SpliceType
@@ -823,22 +831,23 @@ stVar = try (flip (,) <$> identifier <* colon <*> stTerm)
 spliceParameterDecls :: K3Parser [TypedSpliceVar]
 spliceParameterDecls = brackets (commaSep stVar)
 
+-- TODO: strip literal uid/span
 svTerm :: K3Parser SpliceValue
 svTerm = choice $ map try [sVar, sLabel, sType, sExpr, sDecl, sLiteral, sLabelType, sRecord, sList]
   where
-    sVar        = SVar     <$> identifier
-    sLabel      = SLabel   <$> wrap "[#"  "]" identifier
-    sType       = SType    <$> wrap "[:"  "]" typeExpr
-    sExpr       = SExpr    <$> wrap "[$"  "]" expr
-    sLiteral    = SLiteral <$> wrap "[$#" "]" literal
-    sDecl       = mkDecl   =<< wrap "[$^" "]" declaration
-    sLabelType  = mkLabelType  <$> wrap "[&" "]" ((,) <$> identifier <* colon <*> typeExpr)
-    sRecord     = spliceRecord <$> wrap "[%" "]" (commaSep1 ((,) <$> identifier <* colon <*> svTerm))
-    sList       = spliceList   <$> wrap "[*" "]" (commaSep1 svTerm)
+    sVar        = SVar                  <$> identifier
+    sLabel      = SLabel                <$> wrap "[#"  "]" identifier
+    sType       = SType . stripTUIDSpan <$> wrap "[:"  "]" typeExpr
+    sExpr       = SExpr . stripEUIDSpan <$> wrap "[$"  "]" expr
+    sLiteral    = SLiteral              <$> wrap "[$#" "]" literal
+    sDecl       = mkDecl                =<< wrap "[$^" "]" declaration
+    sLabelType  = mkLabelType           <$> wrap "[&" "]" ((,) <$> identifier <* colon <*> typeExpr)
+    sRecord     = spliceRecord          <$> wrap "[%" "]" (commaSep1 ((,) <$> identifier <* colon <*> svTerm))
+    sList       = spliceList            <$> wrap "[*" "]" (commaSep1 svTerm)
 
-    mkLabelType (n,st) = spliceRecord [(spliceVIdSym, SLabel n), (spliceVTSym, SType st)]
+    mkLabelType (n,st) = spliceRecord [(spliceVIdSym, SLabel n), (spliceVTSym, SType $ stripTUIDSpan st)]
 
-    mkDecl [x] = return $ SDecl x
+    mkDecl [x] = return $ SDecl $ stripDUIDSpan x
     mkDecl _   = P.parserFail "Invalid splice declaration"
 
     wrap l r p = between (symbol l) (symbol r) p
@@ -872,18 +881,18 @@ effectSignature asAttrMem = mkSigAnn =<< (keyword "with" *> keyword "effects" *>
     returnSig = keyword "return" *> provTerm
     mkSigAnn (f, rOpt) = return $
       [DEffect $ Left f] ++ maybe [DProvenance $ Left $ provOfEffect [] f] (\p -> [DProvenance $ Left p]) rOpt
-    
+
     provOfEffect args (tnc -> (FS.FLambda i, [_, _, sf])) = PC.plambda i $ provOfEffect (args++[i]) sf
     provOfEffect args _ = PC.pderived $ map PC.pfvar args
 
 effTerm :: Bool -> K3Parser (K3 FS.Effect)
 effTerm asAttrMem = effApply fTerm <?> "effect term"
-  where 
+  where
     fTerm     = choice (map try [effExec, effStruc, fNest])
     fNest     = parens $ effTerm asAttrMem
     fTermE    = choice $ map try [effExec >>= return . Left, effStruc >>= return . Right, fNestE]
     fNestE    = parens fTermE
-    
+
     effApply p = foldl1 FSC.fapplyExt <$> some (try p)
     effExec    = choice $ map try [effRead, effWrite, effSeq, effLoop]
     effStruc   = choice $ map try [effNone, effVar, effLambda]
@@ -893,7 +902,7 @@ effTerm asAttrMem = effApply fTerm <?> "effect term"
     effSeq    = FSC.fseq <$> brackets (semiSep1 $ effTerm asAttrMem)
     effLoop   = FSC.floop <$> (parens $ effTerm asAttrMem) <* symbol "*"
 
-    effNone   = const FSC.fnone <$> keyword "none" 
+    effNone   = const FSC.fnone <$> keyword "none"
     effLambda = mkLambda <$> choice [iArrow "fun", iArrowS "\\"] <*> lambdaBody
     effVar    = FSC.ffvar <$> (identifier <|> (keyword "self"    >> return "self")
                                           <|> (keyword "content" >> return "content"))

@@ -55,40 +55,43 @@ localLog = logVoid traceLogging
 localLogAction :: (Functor m, Monad m) => (Maybe a -> Maybe String) -> m a -> m a
 localLogAction = logAction traceLogging
 
+-- | Property construction helper
+inferredEProp :: Identifier -> Maybe (K3 Literal) -> Annotation Expression
+inferredEProp n lopt = EProperty $ Right (n,lopt)
 
 -- | Property testers and constructors
 pTransformer :: Annotation Expression
-pTransformer = EProperty "Transformer" Nothing
+pTransformer = inferredEProp "Transformer" Nothing
 
 pPureTransformer :: Annotation Expression
-pPureTransformer = EProperty "PureTransformer" Nothing
+pPureTransformer = inferredEProp "PureTransformer" Nothing
 
 pImpureTransformer :: Annotation Expression
-pImpureTransformer = EProperty "ImpureTransformer" Nothing
+pImpureTransformer = inferredEProp "ImpureTransformer" Nothing
 
 pFusable :: Annotation Expression
-pFusable = EProperty "Fusable" Nothing
+pFusable = inferredEProp "Fusable" Nothing
 
 pStreamable :: Annotation Expression
-pStreamable = EProperty "Streamable" Nothing
+pStreamable = inferredEProp "Streamable" Nothing
 
 pStream :: Annotation Expression
-pStream = EProperty "Stream" Nothing
+pStream = inferredEProp "Stream" Nothing
 
 pUnstream :: K3 Type -> Annotation Expression
-pUnstream t = EProperty "Unstream" (Just $ LC.string $ show t)
+pUnstream t = inferredEProp "Unstream" $ Just $ LC.string $ show t
 
 pHasSkip :: Annotation Expression
-pHasSkip = EProperty "HasSkip" Nothing
+pHasSkip = inferredEProp "HasSkip" Nothing
 
 pTAppChain :: Annotation Expression
-pTAppChain = EProperty "TAppChain" Nothing
+pTAppChain = inferredEProp "TAppChain" Nothing
 
 pIElemRec :: Annotation Expression
-pIElemRec = EProperty "IElemRec" Nothing
+pIElemRec = inferredEProp "IElemRec" Nothing
 
 pOElemRec :: Annotation Expression
-pOElemRec = EProperty "OElemRec" Nothing
+pOElemRec = inferredEProp "OElemRec" Nothing
 
 -- | Fold fusion accumulator function classification
 data FusionAccFClass = UCondVal -- Direct return of accumulator value (e.g., iterate)
@@ -108,71 +111,71 @@ data FusionAccTClass = IdTr     -- Identity transform
 type FusionAccSpec = (FusionAccFClass, FusionAccTClass)
 
 pFusionSpec :: FusionAccSpec -> Annotation Expression
-pFusionSpec spec = EProperty "FusionSpec" (Just . LC.string $ show spec)
+pFusionSpec spec = inferredEProp "FusionSpec" $ Just . LC.string $ show spec
 
 pFusionLineage :: String -> Annotation Expression
-pFusionLineage s = EProperty "FusionLineage" (Just $ LC.string s)
+pFusionLineage s = inferredEProp "FusionLineage" $ Just $ LC.string s
 
 pHierarchicalGroupBy :: Annotation Expression
-pHierarchicalGroupBy = EProperty "HGroupBy" Nothing
+pHierarchicalGroupBy = inferredEProp "HGroupBy" Nothing
 
 pMonoidGroupBy :: Annotation Expression
-pMonoidGroupBy = EProperty "MonoidGroupBy" Nothing
+pMonoidGroupBy = inferredEProp "MonoidGroupBy" Nothing
 
 isEPure :: Annotation Expression -> Bool
-isEPure (EProperty "Pure" _) = True
+isEPure (EProperty (ePropertyName -> "Pure")) = True
 isEPure _ = False
 
 isETransformer :: Annotation Expression -> Bool
-isETransformer (EProperty "Transformer" _) = True
+isETransformer (EProperty (ePropertyName -> "Transformer")) = True
 isETransformer _ = False
 
 isEPureTransformer :: Annotation Expression -> Bool
-isEPureTransformer (EProperty "PureTransformer" _) = True
+isEPureTransformer (EProperty (ePropertyName -> "PureTransformer")) = True
 isEPureTransformer _ = False
 
 isEImpureTransformer :: Annotation Expression -> Bool
-isEImpureTransformer (EProperty "ImpureTransformer" _) = True
+isEImpureTransformer (EProperty (ePropertyName -> "ImpureTransformer")) = True
 isEImpureTransformer _ = False
 
 isEFusable :: Annotation Expression -> Bool
-isEFusable (EProperty "Fusable" _) = True
+isEFusable (EProperty (ePropertyName -> "Fusable")) = True
 isEFusable _ = False
 
 isEStreamable :: Annotation Expression -> Bool
-isEStreamable (EProperty "Streamable" _) = True
+isEStreamable (EProperty (ePropertyName -> "Streamable")) = True
 isEStreamable _ = False
 
 isEStream :: Annotation Expression -> Bool
-isEStream (EProperty "Stream" _) = True
+isEStream (EProperty (ePropertyName -> "Stream")) = True
 isEStream _ = False
 
 isEUnstream :: Annotation Expression -> Bool
-isEUnstream (EProperty "Unstream" _) = True
+isEUnstream (EProperty (ePropertyName -> "Unstream")) = True
 isEUnstream _ = False
 
 isEHasSkip :: Annotation Expression -> Bool
-isEHasSkip (EProperty "HasSkip" _) = True
+isEHasSkip (EProperty (ePropertyName -> "HasSkip")) = True
 isEHasSkip _ = False
 
 isETAppChain :: Annotation Expression -> Bool
-isETAppChain (EProperty "TAppChain" _) = True
+isETAppChain (EProperty (ePropertyName -> "TAppChain")) = True
 isETAppChain _ = False
 
 isEIElemRec :: Annotation Expression -> Bool
-isEIElemRec (EProperty "IElemRec" _) = True
+isEIElemRec (EProperty (ePropertyName -> "IElemRec")) = True
 isEIElemRec _ = False
 
 isEOElemRec :: Annotation Expression -> Bool
-isEOElemRec (EProperty "OElemRec" _) = True
+isEOElemRec (EProperty (ePropertyName -> "OElemRec")) = True
 isEOElemRec _ = False
 
 isEFusionSpec :: Annotation Expression -> Bool
-isEFusionSpec (EProperty "FusionSpec" (Just _)) = True
+isEFusionSpec (EProperty (ePropertyV -> ("FusionSpec", Just _))) = True
 isEFusionSpec _ = False
 
 getFusionSpec :: Annotation Expression -> Maybe FusionAccSpec
-getFusionSpec (EProperty "FusionSpec" (Just (tag -> LString s))) = Just $ read s
+getFusionSpec (EProperty (ePropertyV -> ("FusionSpec", Just (tag -> LString s)))) = Just $ read s
 getFusionSpec _ = Nothing
 
 getFusionSpecA :: [Annotation Expression] -> Maybe FusionAccSpec
@@ -186,11 +189,11 @@ getFusionSpecE e = case e @~ isEFusionSpec of
   _ -> Nothing
 
 isEFusionLineage :: Annotation Expression -> Bool
-isEFusionLineage (EProperty "FusionLineage" (Just _)) = True
+isEFusionLineage (EProperty (ePropertyV -> ("FusionLineage", Just _))) = True
 isEFusionLineage _ = False
 
 getFusionLineage :: Annotation Expression -> Maybe String
-getFusionLineage (EProperty "FusionLineage" (Just (tag -> LString s))) = Just s
+getFusionLineage (EProperty (ePropertyV -> ("FusionLineage", Just (tag -> LString s)))) = Just s
 getFusionLineage _ = Nothing
 
 getFusionLineageA :: [Annotation Expression] -> Maybe String
@@ -204,11 +207,11 @@ getFusionLineageE e = case e @~ isEFusionLineage of
   _ -> Nothing
 
 isEHierarchicalGroupBy :: Annotation Expression -> Bool
-isEHierarchicalGroupBy (EProperty "HGroupBy" Nothing) = True
+isEHierarchicalGroupBy (EProperty (ePropertyV -> ("HGroupBy", Nothing))) = True
 isEHierarchicalGroupBy _ = False
 
 isEMonoidGroupBy :: Annotation Expression -> Bool
-isEMonoidGroupBy (EProperty "MonoidGroupBy" Nothing) = True
+isEMonoidGroupBy (EProperty (ePropertyV -> ("MonoidGroupBy", Nothing))) = True
 isEMonoidGroupBy _ = False
 
 
@@ -874,24 +877,36 @@ encodeProgramTransformers :: K3 Declaration -> Either String (K3 Declaration)
 encodeProgramTransformers prog = mapExpression encodeTransformers prog
 
 encodeTransformers :: K3 Expression -> Either String (K3 Expression)
-encodeTransformers expr = modifyTree encode expr -- >>= modifyTree markContent
+encodeTransformers expr = do
+    (_, eOpt) <- foldMapTree encodeUntilFirst (False, Nothing) expr
+    maybe (Left "Invalid fusion encoding") return eOpt
+
   where
+    encodeUntilFirst (unzip -> (chFused, catMaybes -> ch)) n =
+      if or chFused then return $ (True, Just $ replaceCh n ch)
+      else encode (replaceCh n ch) >>= return . second Just
+
+    rtt = return . (True,)
+    rtf = return . (False,)
+
+    transformable as = any isETransformer as && (not $ any isEFusionSpec as)
+
     encode e@(PPrjApp _ fId fAs _ _)
-      | unaryTransformer fId && any isETransformer fAs
+      | unaryTransformer fId && transformable fAs
         = case fId of
             "filter"  -> mkFold1 e
             "map"     -> mkFold1 e
             "iterate" -> mkIter  e
-            "ext"     -> return e
-            _         -> return e
+            "ext"     -> rtf e
+            _         -> rtf e
 
     encode e@(PPrjApp2 _ fId fAs _ _ _ _)
-      | binaryTransformer fId && any isETransformer fAs = mkFold2 e
+      | binaryTransformer fId && transformable fAs = mkFold2 e
 
     encode e@(PPrjApp3 _ fId fAs _ _ _ _ _ _)
-      | ternaryTransformer fId && any isETransformer fAs = mkFold3 e
+      | ternaryTransformer fId && transformable fAs = mkFold3 e
 
-    encode e = return e
+    encode e = rtf e
 
     -- Mark whether a transform has an 'elem'-wrapped or 'key-value' input element type.
     markContent e@(PPrjApp2Chain cE "fold" "fold" fArg1 fArg2 gArg1 gArg2
@@ -909,16 +924,16 @@ encodeTransformers expr = modifyTree encode expr -- >>= modifyTree markContent
       (nfAs', nfArg) <- mkIndepAccF fId fAs fArg
       nfAs           <- markPureTransformer False nfAs' fArg
       let (nApp1As, nApp2As) = (markTAppChain appAs, markTAppChain [])
-      return $ PPrjApp2 cE "fold" nfAs nfArg accE nApp1As nApp2As
+      rtt $ PPrjApp2 cE "fold" nfAs nfArg accE nApp1As nApp2As
 
-    mkFold1 e = return e
+    mkFold1 e = rtf e
 
     mkIter e@(PPrjApp cE fId fAs fArg appAs) = do
       let nfAs = fAs ++ [pImpureTransformer, pFusionSpec (UCondVal, IndepTr), pFusionLineage "iterate"]
       let (nApp1As, nApp2As) = (markTAppChain appAs, markTAppChain [])
-      return $ PPrjApp2 cE "fold" nfAs (EC.lambda "_" fArg) EC.unit nApp1As nApp2As
+      rtt $ PPrjApp2 cE "fold" nfAs (EC.lambda "_" fArg) EC.unit nApp1As nApp2As
 
-    mkIter e = return e
+    mkIter e = rtf e
 
     -- TODO: infer simpler top-level structure of accumulator function than ICondN.
     -- i.e., ICond1? UCond?
@@ -930,18 +945,18 @@ encodeTransformers expr = modifyTree encode expr -- >>= modifyTree markContent
           let nfAs' = fAs ++ [pFusionSpec cls, pFusionLineage "fold"]
           nfAs      <- markPureTransformer True nfAs' fArg1
           let r     = PPrjApp2 cE fId nfAs fArg1 fArg2 app1As app2As
-          if False then return r else debugInferredFold r nfAs fArg1
+          if False then rtt r else debugInferredFold r nfAs fArg1
 
         where debugInferredFold e nfAs@(getFusionSpecA -> Just cls) fArg1 = do
                 fa1FMap <- either (Left . T.unpack) Right $ SE.inferDefaultExprEffects fArg1
-                return $ flip trace e $
+                rtt $ flip trace e $
                   unlines [ unwords ["Fold function effects"]
                           , T.unpack $ PT.pretty fa1FMap
                           , unwords ["Inferred fold:", show streamable, show cls]
                           , pretty e ]
               debugInferredFold _ _ _ = Left "Invalid fusion-fold construction"
 
-    mkFold2 e = return e
+    mkFold2 e = rtf e
 
     mkFold3 e@(PPrjApp3 cE fId fAs fArg1 fArg2 fArg3 app1As app2As app3As)
       = case fId of
@@ -959,11 +974,11 @@ encodeTransformers expr = modifyTree encode expr -- >>= modifyTree markContent
             let (ncAs, ncApp1As, ncApp2As) = ([ pTransformer, pPureTransformer
                                               , pFusionSpec (UCond, IdTr), pFusionLineage "copy" ]
                                              , markTAppChain [], markTAppChain [])
-            return $ PPrjApp2 buildE "fold" ncAs copyF rAccE ncApp1As ncApp2As
+            rtt $ PPrjApp2 buildE "fold" ncAs copyF rAccE ncApp1As ncApp2As
 
           _ -> Left $ "Invalid ternary transformer: " ++ fId
 
-    mkFold3 e = return e
+    mkFold3 e = rtf e
 
     mkAccF elemF bodyF =
       let (aVar, aVarId) = (EC.variable "acc", "acc")
@@ -1003,9 +1018,13 @@ encodeTransformers expr = modifyTree encode expr -- >>= modifyTree markContent
                             ,("value", EC.applyMany accFE [EC.project "value" sVar, eVar])]])
                        aVar []
 
+          -- Create a stripped version of accFE for use in the none branch,
+          -- to avoid duplicate UIDs.
+          noneAccFE = stripEUIDSpan accFE
+
           noneE = PSeq (EC.applyMany (EC.project "insert" aVar)
                           [EC.record [("key", EC.project "key" nVar)
-                                     ,("value", EC.applyMany accFE [zE, eVar])]])
+                                     ,("value", EC.applyMany noneAccFE [zE, eVar])]])
                        aVar []
       in do
       defaultV <- defaultExpression valueT
@@ -1042,8 +1061,7 @@ encodeTransformers expr = modifyTree encode expr -- >>= modifyTree markContent
     binaryTransformer  fId = fId `elem` ["fold"]
     ternaryTransformer fId = fId `elem` ["groupBy"]
 
-    cleanAnns as = filter (\a -> not (foldAffectedAnn a)) as
-    foldAffectedAnn a = isETypeOrBound a || isEQType a || isEEffect a || isESymbol a
+    cleanAnns as = filter (not . isAnyETypeOrEffectAnn) as
 
     markTAppChain as = cleanAnns $ nub $ as ++ [pTAppChain]
 
@@ -1903,7 +1921,7 @@ mapAccumulation onAccumF onRetVarF i expr = runIdentity $ do
 
 inferAccumulation :: Identifier -> K3 Expression -> Bool
 inferAccumulation i expr = fst $ mapAccumulation annotationAccumE id i expr
-  where annotationAccumE e = e @+ EProperty "Accumulation" Nothing
+  where annotationAccumE e = e @+ (inferredEProp "Accumulation" Nothing)
 
 rewriteStreamAccumulation :: Identifier -> K3 Expression -> (Bool, K3 Expression)
 rewriteStreamAccumulation i expr = mapAccumulation rewriteAccumE rewriteVarE i expr

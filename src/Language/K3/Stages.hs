@@ -5,7 +5,6 @@
 -- | High-level API to K3 toolchain stages.
 module Language.K3.Stages where
 
-import Control.Arrow ( second )
 import Control.Monad
 import Control.Monad.State
 import Control.Monad.Trans.Either
@@ -25,16 +24,7 @@ import qualified Language.K3.Analysis.CArgs                as CArgs
 import qualified Language.K3.Analysis.Provenance.Inference as Provenance
 import qualified Language.K3.Analysis.SEffects.Inference   as SEffects
 
-import Language.K3.Analysis.Effects.InsertEffects(EffectEnv)
-import qualified Language.K3.Analysis.Effects.InsertEffects as Effects
-import qualified Language.K3.Analysis.Effects.Purity        as Purity
-import qualified Language.K3.Analysis.InsertMembers         as InsertMembers
-
-import Language.K3.Transform.LambdaForms
-import Language.K3.Transform.NRVOMove
 import Language.K3.Transform.Simplification
-import Language.K3.Transform.Writeback
-import Language.K3.Transform.Common
 
 import Language.K3.Utils.Pretty
 
@@ -47,14 +37,13 @@ data TransformSt = TransformSt { maxuid :: Int
                                , tenv   :: TIEnv
                                , prenv  :: Properties.PIEnv
                                , penv   :: Provenance.PIEnv
-                               , fenv   :: SEffects.FIEnv
-                               , ofenv  :: Maybe EffectEnv }
+                               , fenv   :: SEffects.FIEnv }
 
 type TransformM = EitherT String (State TransformSt)
 
 st0 :: K3 Declaration -> Either String TransformSt
 st0 prog = mkEnv >>= \(stpe, stfe) ->
-  return $ TransformSt puid tienv0 Properties.pienv0 stpe stfe Nothing
+  return $ TransformSt puid tienv0 Properties.pienv0 stpe stfe
   where puid = ((\(UID i) -> i) $ maxProgramUID prog) + 1
         mkEnv = do
           lcenv <- lambdaClosures prog
@@ -78,19 +67,21 @@ type TrE  = K3 Declaration -> Either String (K3 Declaration)
 type TrSF = TransformSt -> K3 Declaration -> K3 Declaration
 type TrSE = TransformSt -> K3 Declaration -> Either String (K3 Declaration)
 
-type TrEE  = EffectEnv -> K3 Declaration -> K3 Declaration
-type TrEEO = (K3 Declaration, Maybe EffectEnv) -> Either String (K3 Declaration, Maybe EffectEnv)
-
 runPasses :: [ProgramTransform] -> ProgramTransform
 runPasses passes p = foldM (flip ($)) p passes
 
-bracketPasses :: ProgramTransform -> [ProgramTransform] -> [ProgramTransform]
-bracketPasses f l = [f] ++ l ++ [f]
+bracketPasses :: String -> ProgramTransform -> [ProgramTransform] -> [ProgramTransform]
+bracketPasses n f l = [{-displayPass (n ++ " preBracket") $-} f] ++ l ++ [{-displayPass (n ++ " postBracket") $-} f]
 
 type PrpTrE = Properties.PIEnv -> K3 Declaration -> Either String (K3 Declaration, Properties.PIEnv)
 type TypTrE = TIEnv -> K3 Declaration -> Either String (K3 Declaration, TIEnv)
 type EffTrE = Provenance.PIEnv -> SEffects.FIEnv -> K3 Declaration
               -> Either String (K3 Declaration, Provenance.PIEnv, SEffects.FIEnv)
+
+-- | Show the program after applying the given program transform.
+displayPass :: String -> ProgramTransform -> ProgramTransform
+displayPass n f p = f p >>= \np -> mkTg n np (return np)
+  where mkTg str p' = trace (boxToString $ [str] %$ prettyLines p')
 
 withPropertyTransform :: PrpTrE -> ProgramTransform
 withPropertyTransform f p = do
@@ -101,6 +92,7 @@ withPropertyTransform f p = do
 
 withTypeTransform :: TypTrE -> ProgramTransform
 withTypeTransform f p = do
+  void $ ensureNoDuplicateUIDs p
   st <- get
   (np, te) <- liftEitherM $ f (tenv st) p
   void $ put $ st {tenv=te}
@@ -141,20 +133,6 @@ transformSF f p = get >>= return . flip f p
 transformSE :: TrSE -> ProgramTransform
 transformSE f p = get >>= liftEitherM . flip f p
 
-transformEE :: TrEE -> ProgramTransform
-transformEE f p = do
-  st <- get
-  ee <- maybe (left "Invalid effect env") return $ ofenv st
-  let np = f ee p
-  return np
-
-transformEEO :: TrEEO -> ProgramTransform
-transformEEO f p = do
-  st       <- get
-  (np, ne) <- liftEitherM $ f (p, ofenv st)
-  void $ put $ st {ofenv = ne}
-  return np
-
 transformFixpoint :: ProgramTransform -> ProgramTransform
 transformFixpoint f p = do
   np <- f p
@@ -193,39 +171,40 @@ fixpointISE interF f = transformFixpointI interF $ transformSE f
 
 
 {- Whole program analyses -}
+ensureNoDuplicateUIDs :: ProgramTransform
+ensureNoDuplicateUIDs p =
+  let dupUids = duplicateProgramUIDs p
+  in if null dupUids then return p
+     else left $ T.unpack $ PT.boxToString $ [T.pack "Found duplicate uids:"]
+                                       PT.%$ [T.pack $ show dupUids]
+                                       PT.%$ PT.prettyLines p
+
 inferTypes :: ProgramTransform
 inferTypes prog = do
+  void $ ensureNoDuplicateUIDs prog
   (p, tienv) <- liftEitherM $ inferProgramTypes prog
   p' <- liftEitherM $ translateProgramTypes p
   void $ modify $ \st -> st {tenv = tienv}
   return p'
 
-inferCEffects :: ProgramTransform
-inferCEffects prog = do
-  let pe = Effects.runConsolidatedAnalysis prog
-  void $ modify $ \st -> st {ofenv = Just $ snd pe}
-  return $ fst pe
-
-inferSEffects :: ProgramTransform
-inferSEffects prog = do
+inferEffects :: ProgramTransform
+inferEffects prog = do
   (p,  pienv) <- liftEitherM $ Provenance.inferProgramProvenance prog
   (p', fienv) <- liftEitherM $ SEffects.inferProgramEffects Nothing (Provenance.ppenv pienv) p
   void $ modify $ \st -> st {penv = pienv, fenv = fienv}
   return p'
 
--- | Effect algorithm selection.
-inferEffects :: ProgramTransform
-inferEffects = inferSEffects
-
--- | Property propagation
 inferProperties :: ProgramTransform
 inferProperties prog = do
   (p, prienv) <- liftEitherM $ Properties.inferProgramUsageProperties prog
   void $ modify $ \st -> st {prenv = prienv}
   return p
 
+inferFreshProperties :: ProgramTransform
+inferFreshProperties = inferProperties . stripProperties
+
 inferTypesAndEffects :: ProgramTransform
-inferTypesAndEffects p = inferTypes p >>= inferEffects
+inferTypesAndEffects = runPasses [inferTypes, inferEffects]
 
 inferFreshTypes :: ProgramTransform
 inferFreshTypes = inferTypes . stripTypeAnns
@@ -236,42 +215,37 @@ inferFreshEffects = inferEffects . stripEffectAnns
 inferFreshTypesAndEffects :: ProgramTransform
 inferFreshTypesAndEffects = inferTypesAndEffects . stripTypeAndEffectAnns
 
-withTypecheck :: ProgramTransform -> ProgramTransform
-withTypecheck f prog = inferTypes prog >>= f
+-- | Recomputes a program's inferred properties, types and effects.
+refreshProgram :: ProgramTransform
+refreshProgram = runPasses [inferFreshTypesAndEffects, inferFreshProperties]
 
-withEffects :: ProgramTransform -> ProgramTransform
-withEffects f prog = inferEffects prog >>= f
-
-withTypeAndEffects :: ProgramTransform -> ProgramTransform
-withTypeAndEffects f prog = f =<< inferEffects =<< inferTypes prog
-
-withProperties :: ProgramTransform -> ProgramTransform
-withProperties f p = transformE propF p >>= f
-  where propF p' = Properties.inferProgramUsageProperties p' >>= return . fst
-
+-- TODO: write a declaration-at-a-time variant.
 withRepair :: String -> ProgramTransform -> ProgramTransform
 withRepair msg f prog = f prog >>= return . repairProgram msg
 
 {- Whole program optimizations -}
 simplify :: ProgramTransform
 simplify = transformFixpoint $ runPasses simplifyPasses
-  where simplifyPasses = intersperse inferFreshTypesAndEffects $
+  where simplifyPasses = intersperse refreshProgram $
                            map (mkXform False) [ ("CF", foldProgramConstants)
                                                , ("BR", betaReductionOnProgram)
                                                , ("DCE", eliminateDeadProgramCode) ]
         mkXform asDebug (i,f) = withRepair i $ (if asDebug then transformEDbg i else transformE) f
 
+-- TODO: debug and revise fixpoints
 simplifyWCSE :: ProgramTransform
 simplifyWCSE p = simplify p >>= transformE commonProgramSubexprElim
 
 streamFusion :: ProgramTransform
-streamFusion = withProperties $ \p -> fusionEncode p >>= fusionFixpoint
-  where mkXform       i f = withRepair i $ transformE f
-        fusionEncode      = mkXform "fusionEncode"    encodeProgramTransformers
-        fusionTransform   = mkXform "fusionTransform" fuseProgramFoldTransformers
-        fusionReduce      = mkXform "fusionReduce"    betaReductionOnProgram
-        fusionFixpoint    = transformFixpointI fusionInterF fusionTransform
-        fusionInterF      = bracketPasses inferFreshTypesAndEffects [fusionReduce]
+streamFusion = runPasses [fusionEncodeFixpoint, inferFreshTypesAndEffects, fusionTransformFixpoint]
+  where
+    mkXform asDebug i f     = withRepair i $ (if asDebug then transformEDbg i else transformE) f
+    fusionEncode            = mkXform False "fusionEncode"    encodeProgramTransformers
+    fusionTransform         = mkXform False "fusionTransform" fuseProgramFoldTransformers
+    fusionReduce            = mkXform False "fusionReduce"    betaReductionOnProgram
+    fusionEncodeFixpoint    = transformFixpointI [inferFreshTypesAndEffects] fusionEncode
+    fusionTransformFixpoint = transformFixpointI fusionInterF fusionTransform
+    fusionInterF            = bracketPasses "fusion" inferFreshTypesAndEffects [fusionReduce]
 
 
 {- Whole program pass aliases -}
@@ -279,12 +253,11 @@ optPasses :: [ProgramTransform]
 optPasses = map prepareOpt [ (simplify,     "opt-simplify-prefuse")
                            , (streamFusion, "opt-fuse")
                            , (simplify,     "opt-simplify-final") ]
-  where prepareOpt (f,i) = runPasses [inferFreshTypesAndEffects, withRepair i f]
+  where prepareOpt (f,i) = runPasses [refreshProgram, withRepair i f]
 
 cgPasses :: Int -> [ProgramTransform]
-cgPasses _ = [ inferFreshEffects
-             , transformF InsertMembers.runAnalysis
-             , transformF    CArgs.runAnalysis
+cgPasses _ = [ refreshProgram
+             , transformF CArgs.runAnalysis
              ]
 
 runOptPassesM :: ProgramTransform
@@ -294,8 +267,8 @@ runCGPassesM :: Int -> ProgramTransform
 runCGPassesM lvl prog = runPasses (cgPasses lvl) prog
 
 -- Legacy methods.
-runOptPasses :: K3 Declaration -> Either String (K3 Declaration, Maybe EffectEnv)
-runOptPasses prog = st0 prog >>= flip runTransformStM (runOptPassesM prog) >>= return . second ofenv
+runOptPasses :: K3 Declaration -> Either String (K3 Declaration, TransformSt)
+runOptPasses prog = st0 prog >>= flip runTransformStM (runOptPassesM prog)
 
 runCGPasses :: K3 Declaration -> Int -> Either String (K3 Declaration)
 runCGPasses prog lvl = st0 prog >>= flip runTransformM (runCGPassesM lvl prog)
@@ -316,6 +289,9 @@ inferDeclProperties :: Identifier -> ProgramTransform
 inferDeclProperties n = withPropertyTransform $ \pre p ->
   Properties.reinferProgDeclUsageProperties pre n p
 
+inferFreshDeclProperties :: Identifier -> ProgramTransform
+inferFreshDeclProperties n = inferDeclProperties n . stripDeclProperties n
+
 inferDeclTypes :: Identifier -> ProgramTransform
 inferDeclTypes n = withTypeTransform $ \te p -> reinferProgDeclTypes te n p
 
@@ -333,25 +309,39 @@ inferFreshDeclTypesAndEffects :: Maybe (SEffects.ExtInferF a, a) -> Identifier -
 inferFreshDeclTypesAndEffects extInfOpt n =
   runPasses [inferDeclTypes n, inferDeclEffects extInfOpt n] . stripDeclTypeAndEffectAnns n
 
+-- | Recomputes property propagation, types and effects on a declaration
+refreshDecl :: Maybe (SEffects.ExtInferF a, a) -> Identifier -> ProgramTransform
+refreshDecl extInfOpt n =
+  runPasses [inferFreshDeclTypesAndEffects extInfOpt n, inferFreshDeclProperties n]
+
 -- TODO: each transformation here should be a local fixpoint, as well as the current pipeline fixpoint.
 simplifyDecl :: Maybe (SEffects.ExtInferF a, a) -> Identifier -> ProgramTransform
 simplifyDecl extInfOpt n = runPasses simplifyPasses
-  where simplifyPasses = intersperse (inferFreshDeclTypesAndEffects extInfOpt n) $
+  where simplifyPasses = intersperse (refreshDecl extInfOpt n) $
                            map (mkXform False) [ ("Decl-CF",  foldConstants)
                                                , ("Decl-BR",  betaReduction)
                                                , ("Decl-DCE", eliminateDeadCode) ]
         mkXform asDebug (i,f) = withRepair i $
           (if asDebug then transformEDbg i else transformE) $ mapNamedDeclExpression n f
 
--- TODO: incremental version of withProperties
+-- TODO: CSE
+simplifyDeclWCSE :: Maybe (SEffects.ExtInferF a, a) -> Identifier -> ProgramTransform
+simplifyDeclWCSE = undefined
+
 streamFusionDecl :: Maybe (SEffects.ExtInferF a, a) -> Identifier -> ProgramTransform
-streamFusionDecl extInfOpt n = runPasses [inferDeclProperties n, fusionEncode, fusionFixpoint]
-  where mkXform       i f = withRepair i $ transformE $ mapNamedDeclExpression n f
-        fusionEncode      = mkXform "fusionEncode"    encodeTransformers
-        fusionTransform   = mkXform "fusionTransform" fuseFoldTransformers
-        fusionReduce      = mkXform "fusionReduce"    betaReduction
-        fusionFixpoint    = transformFixpointI fusionInterF fusionTransform
-        fusionInterF      = bracketPasses (inferFreshDeclTypesAndEffects extInfOpt n) [fusionReduce]
+streamFusionDecl extInfOpt n = runPasses [ fusionEncodeFixpoint
+                                         , typEffPass
+                                         , fusionTransformFixpoint]
+  where
+    mkXform asDebug i f     = withRepair i $ (if asDebug then transformEDbg i else transformE)
+                                           $ mapNamedDeclExpression n f
+    typEffPass              = inferFreshDeclTypesAndEffects extInfOpt n
+    fusionEncode            = mkXform False "fusionEncode"    encodeTransformers
+    fusionTransform         = mkXform False "fusionTransform" fuseFoldTransformers
+    fusionReduce            = mkXform False "fusionReduce"    betaReduction
+    fusionEncodeFixpoint    = transformFixpointI [typEffPass] fusionEncode
+    fusionTransformFixpoint = transformFixpointI fusionInterF fusionTransform
+    fusionInterF            = bracketPasses "fusion" typEffPass [fusionReduce]
 
 declOptPasses :: Maybe (SEffects.ExtInferF a, a) -> K3 Declaration -> [ProgramTransform]
 declOptPasses extInfOpt d = case nameOfDecl d of
@@ -359,14 +349,14 @@ declOptPasses extInfOpt d = case nameOfDecl d of
   Just n -> map (prepareOpt n) [ (simplifyDecl     extInfOpt n, "opt-decl-simplify-prefuse")
                                , (streamFusionDecl extInfOpt n, "opt-decl-fuse")
                                , (simplifyDecl     extInfOpt n, "opt-decl-simplify-final") ]
-  where prepareOpt n (f,i) = runPasses [inferFreshDeclTypesAndEffects extInfOpt n, withRepair i f]
+  where prepareOpt n (f,i) = runPasses [refreshDecl extInfOpt n, withRepair i f]
         nameOfDecl (tag -> DGlobal  n _ (Just _)) = Just n
         nameOfDecl (tag -> DTrigger n _ _) = Just n
         nameOfDecl _ = Nothing
 
 runDeclOptPassesM :: Maybe (SEffects.ExtInferF a, a) -> ProgramTransform
 runDeclOptPassesM extInfOpt =
-  runPasses [inferFreshTypesAndEffects, inferProperties, mapProgramDeclFixpoint (declOptPasses extInfOpt)]
+  runPasses [refreshProgram, mapProgramDeclFixpoint (declOptPasses extInfOpt)]
 
 runDeclOptPasses :: Maybe (SEffects.ExtInferF a, a) -> K3 Declaration -> Either String (K3 Declaration)
 runDeclOptPasses extInfOpt prog = st0 prog >>= flip runTransformM (runDeclOptPassesM extInfOpt prog)

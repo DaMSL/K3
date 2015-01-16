@@ -69,18 +69,21 @@ instance Pretty (K3 Literal) where
 
 {- Literal annotation predicates -}
 
-isLSpan :: Annotation Literal -> Bool
-isLSpan (LSpan _) = True
-isLSpan _         = False
-
 isLQualified :: Annotation Literal -> Bool
 isLQualified LImmutable = True
 isLQualified LMutable   = True
 isLQualified _          = False
 
+isLSpan :: Annotation Literal -> Bool
+isLSpan (LSpan _) = True
+isLSpan _         = False
+
 isLUID :: Annotation Literal -> Bool
 isLUID (LUID _) = True
 isLUID _        = False
+
+isLUIDSpan :: Annotation Literal -> Bool
+isLUIDSpan a = isLSpan a || isLUID a
 
 isLAnnotation :: Annotation Literal -> Bool
 isLAnnotation (LAnnotation _) = True

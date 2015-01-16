@@ -20,8 +20,6 @@ import Safe
 import qualified Data.Map as M
 import qualified Data.Set as S
 
-import Language.K3.Analysis.Effects.Core
-
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Expression
@@ -210,18 +208,21 @@ inline e@(tag &&& children -> (EOperate OApp, [Fold c, f, z])) = do
   (fe, fv) <- inline f
   (ze, zv) <- inline z
 
-  let vectorizePragma = case e @~ (\case { EProperty "Vectorize" _ -> True; _ -> False }) of
+  let isVectorizeProp  = \case { EProperty (ePropertyName -> "Vectorize")  -> True; _ -> False }
+  let isInterleaveProp = \case { EProperty (ePropertyName -> "Interleave") -> True; _ -> False }
+
+  let vectorizePragma = case e @~ isVectorizeProp of
                           Nothing -> []
-                          Just (EProperty _ Nothing) -> [R.Pragma "clang vectorize(enable)"]
-                          Just (EProperty _ (Just (tag -> LInt i))) ->
+                          Just (EProperty (ePropertyValue -> Nothing)) -> [R.Pragma "clang vectorize(enable)"]
+                          Just (EProperty (ePropertyValue -> Just (tag -> LInt i))) ->
                               [ R.Pragma "clang loop vectorize(enable)"
                               , R.Pragma $ "clang loop vectorize_width(" ++ show i ++ ")"
                               ]
 
-  let interleavePragma = case e @~ (\case { EProperty "Interleave" _ -> True; _ -> False }) of
+  let interleavePragma = case e @~ isInterleaveProp of
                            Nothing -> []
-                           Just (EProperty _ Nothing) -> [R.Pragma "clang interleave(enable)"]
-                           Just (EProperty _ (Just (tag -> LInt i))) ->
+                           Just (EProperty (ePropertyValue -> Nothing)) -> [R.Pragma "clang interleave(enable)"]
+                           Just (EProperty (ePropertyValue -> Just (tag -> LInt i))) ->
                                [ R.Pragma "clang loop interleave(enable)"
                                , R.Pragma $ "clang loop interleave_count(" ++ show i ++ ")"
                                ]

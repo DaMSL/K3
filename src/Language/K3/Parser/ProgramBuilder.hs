@@ -25,6 +25,7 @@ import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
+import Language.K3.Core.Utils
 
 import qualified Language.K3.Core.Constructor.Type        as TC
 import qualified Language.K3.Core.Constructor.Expression  as EC
@@ -266,7 +267,7 @@ bindSource bindings d
     processFnE n = EC.lambda "next" $ EC.block $
       map (\(_,dest) -> sendNextE dest) $ filter ((n ==) . fst) bindings
 
-    nextE _ (Just e) = e
+    nextE _ (Just e) = stripEUIDSpan e
     nextE n Nothing  = EC.applyMany (EC.variable $ crName n) [EC.unit]
     sendNextE dest   = EC.send (EC.variable dest) myAddr (EC.variable "next")
     unitFnT          = TC.function TC.unit TC.unit

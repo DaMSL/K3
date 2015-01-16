@@ -71,7 +71,7 @@ declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children
 -- Global scalars.
 declaration d@(tag -> DGlobal i t me) = do
     globalType <- genCType t
-    let pinned = isJust $ d @~ (\case { DProperty "Pinned" Nothing -> True; _ -> False })
+    let pinned = isJust $ d @~ (\case { DProperty (dPropertyV -> ("Pinned", Nothing)) -> True; _ -> False })
     let globalType' = if pinned then R.Static globalType else globalType
 
     -- Need to declare static members outside of class scope

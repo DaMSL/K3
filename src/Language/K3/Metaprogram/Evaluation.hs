@@ -174,11 +174,13 @@ applyDAnnGens mp = mapProgram applyDAnnDecl applyDAnnMemDecl applyDAnnExprTree (
 
     applyDAnnLiteral ch n = rebuildNode n Nothing ch
 
-    dApplyAnn (DProperty n (Just l)) = applyDAnnLitTree l >>= return . DProperty n . Just
+    dApplyAnn (DProperty (Left  (n, Just l))) = applyDAnnLitTree l >>= return . DProperty . Left  . (n,) . Just
+    dApplyAnn (DProperty (Right (n, Just l))) = applyDAnnLitTree l >>= return . DProperty . Right . (n,) . Just
     dApplyAnn x = return x
 
     eApplyAnn (EApplyGen False n senv) = applyDAnnotation EAnnotation n senv
-    eApplyAnn (EProperty n (Just l)) = applyDAnnLitTree l >>= return . EProperty n . Just
+    eApplyAnn (EProperty (Left  (n, Just l))) = applyDAnnLitTree l >>= return . EProperty . Left  . (n,) . Just
+    eApplyAnn (EProperty (Right (n, Just l))) = applyDAnnLitTree l >>= return . EProperty . Right . (n,) . Just
     eApplyAnn x = return x
 
     tApplyAnn (TApplyGen n senv) = applyDAnnotation TAnnotation n senv
@@ -399,11 +401,13 @@ spliceIdentifier :: Identifier -> GeneratorM Identifier
 spliceIdentifier i = expectIdSplicer i
 
 spliceDAnnotation :: Annotation Declaration -> DeclAnnGenerator
-spliceDAnnotation (DProperty n (Just l)) = spliceLiteral l >>= return . DProperty n . Just
+spliceDAnnotation (DProperty (Left  (n, Just l))) = spliceLiteral l >>= return . DProperty . Left  . (n,) . Just
+spliceDAnnotation (DProperty (Right (n, Just l))) = spliceLiteral l >>= return . DProperty . Right . (n,) . Just
 spliceDAnnotation da = return da
 
 spliceEAnnotation :: Annotation Expression  -> ExprAnnGenerator
-spliceEAnnotation (EProperty n (Just l)) = spliceLiteral l >>= return . EProperty n . Just
+spliceEAnnotation (EProperty (Left  (n, Just l))) = spliceLiteral l >>= return . EProperty . Left  . (n,) . Just
+spliceEAnnotation (EProperty (Right (n, Just l))) = spliceLiteral l >>= return . EProperty . Right . (n,) . Just
 spliceEAnnotation ea = return ea
 
 

@@ -209,7 +209,7 @@ initializeDeclUsageProperties d = case tna d of
     memF (Attribute   _ mn _ _ mAnns) = Just $ (mn, [mapMaybe extractDProperty mAnns])
     memF (MAnnotation _ _ _) = Nothing
 
-    extractDProperty (DProperty n lopt) = Just (n, lopt)
+    extractDProperty (DProperty (dPropertyV -> pv)) = Just pv
     extractDProperty _ = Nothing
 
 inferExprUsageProperties :: K3 Expression -> PInfM (K3 Expression)
@@ -283,10 +283,10 @@ inferExprUsageProperties prog = mapIn1RebuildTree lambdaProp sidewaysProp inferP
     rebuildAnnotations :: K3 Expression -> PList -> [Annotation Expression]
     rebuildAnnotations e pl =
       let (annProps,rest) = partition isEProperty $ annotations e
-      in rest ++ (nub $ annProps ++ map (uncurry EProperty) pl)
+      in rest ++ (nub $ annProps ++ map (\(n,lopt) -> EProperty $ Right (n,lopt)) pl)
 
     extractEProperty :: Annotation Expression -> Maybe (Identifier, Maybe (K3 Literal))
-    extractEProperty (EProperty n lopt) = Just (n, lopt)
+    extractEProperty (EProperty (ePropertyV -> pv)) = Just pv
     extractEProperty _ = Nothing
 
     iu :: PInfM ()

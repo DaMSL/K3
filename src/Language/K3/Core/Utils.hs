@@ -45,6 +45,7 @@ module Language.K3.Core.Utils
 , foldNamedDeclExpression
 
 , mapMaybeAnnotation
+, mapMaybeExprAnnotation
 , mapAnnotation
 , mapExprAnnotation
 
@@ -72,22 +73,27 @@ module Language.K3.Core.Utils
 , stripAllTypeAnnotations
 
 , repairProgram
-, onProgramUID
+, foldProgramUID
 , maxProgramUID
 , minProgramUID
+, collectProgramUIDs
+, duplicateProgramUIDs
 
 , stripComments
+, stripDUIDSpan
+, stripEUIDSpan
+, stripTUIDSpan
+, stripProperties
+, stripDeclProperties
+, stripAllProperties
 , stripTypeAnns
 , stripDeclTypeAnns
-, resetEffectAnns
-, resetDeclEffectAnns
 , stripEffectAnns
 , stripDeclEffectAnns
 , stripAllEffectAnns
 , stripTypeAndEffectAnns
 , stripDeclTypeAndEffectAnns
 , stripAllTypeAndEffectAnns
-, stripAllProperties
 
 ) where
 
@@ -111,8 +117,6 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
 import qualified Language.K3.Core.Constructor.Expression as EC
-
-import Language.K3.Analysis.Effects.Core
 
 import Language.K3.Utils.Pretty hiding ( wrap )
 
@@ -530,6 +534,18 @@ mapMaybeAnnotation declF exprF typeF = mapProgram onDecl onMem onExpr (Just onTy
         onType t = modifyTree (nodeF typeF) t
         nodeF f (Node (tg :@: anns) ch) = mapM f anns >>= \nanns -> return $ Node (tg :@: catMaybes nanns) ch
 
+-- | Map a function over all expression annotations, filtering null returns.
+mapMaybeExprAnnotation :: (Monad m)
+                       => (Annotation Expression  -> m (Maybe (Annotation Expression)))
+                       -> (Annotation Type        -> m (Maybe (Annotation Type)))
+                       -> K3 Expression
+                       -> m (K3 Expression)
+mapMaybeExprAnnotation exprF typeF = modifyTree (onNode chainType)
+  where chainType (EType t) = modifyTree (onNode typeF) t >>= exprF . EType
+        chainType a = exprF a
+        onNode f (Node (tg :@: anns) ch) = mapM f anns >>= \nanns -> return $ Node (tg :@: catMaybes nanns) ch
+
+-- | Transform all annotations on a program.
 mapAnnotation :: (Applicative m, Monad m)
               => (Annotation Declaration -> m (Annotation Declaration))
               -> (Annotation Expression  -> m (Annotation Expression))
@@ -539,6 +555,7 @@ mapAnnotation :: (Applicative m, Monad m)
 mapAnnotation declF exprF typeF = mapMaybeAnnotation (wrap declF) (wrap exprF) (wrap typeF)
   where wrap f a = f a >>= return . Just
 
+-- | Transform all annotations on an expression.
 mapExprAnnotation :: (Monad m)
                   => (Annotation Expression  -> m (Annotation Expression))
                   -> (Annotation Type        -> m (Annotation Type))
@@ -700,9 +717,9 @@ lambdaClosuresDecl :: Identifier -> ClosureEnv -> K3 Declaration -> Either Strin
 lambdaClosuresDecl n lc p = foldNamedDeclExpression n lambdaClosuresExpr lc p
 
 lambdaClosuresExpr :: ClosureEnv -> K3 Expression -> Either String (ClosureEnv, K3 Expression)
-lambdaClosuresExpr lcAcc expr = do
+lambdaClosuresExpr lc expr = do
   (lcenv,_) <- biFoldMapTree bind extract [] (IntMap.empty, []) expr
-  return $ (IntMap.union lcenv lcAcc, expr)
+  return $ (IntMap.union lcenv lc, expr)
 
   where
     bind :: [Identifier] -> K3 Expression -> Either String ([Identifier], [[Identifier]])
@@ -818,6 +835,64 @@ stripAllTypeAnnotations :: K3 Type -> K3 Type
 stripAllTypeAnnotations = stripTypeAnnotations (const True)
 
 
+{- Annotation removal -}
+stripComments :: K3 Declaration -> K3 Declaration
+stripComments = stripDeclAnnotations isDSyntax isESyntax (const False)
+
+stripDUIDSpan :: K3 Declaration -> K3 Declaration
+stripDUIDSpan = stripDeclAnnotations isDUIDSpan isEUIDSpan isTUIDSpan
+
+stripEUIDSpan :: K3 Expression -> K3 Expression
+stripEUIDSpan = stripExprAnnotations isEUIDSpan isTUIDSpan
+
+stripTUIDSpan :: K3 Type -> K3 Type
+stripTUIDSpan = stripTypeAnnotations isTUIDSpan
+
+stripTypeAnns :: K3 Declaration -> K3 Declaration
+stripTypeAnns = stripDeclAnnotations (const False) isAnyETypeAnn (const False)
+
+stripDeclTypeAnns :: Identifier -> K3 Declaration -> K3 Declaration
+stripDeclTypeAnns i = stripNamedDeclAnnotations i (const False) isAnyETypeAnn (const False)
+
+-- | Strip all inferred properties from a program
+stripProperties :: K3 Declaration -> K3 Declaration
+stripProperties = stripDeclAnnotations isDInferredProperty isEInferredProperty (const False)
+
+-- | Strip all inferred properties from a specific declaration
+stripDeclProperties :: Identifier -> K3 Declaration -> K3 Declaration
+stripDeclProperties i = stripNamedDeclAnnotations i isDInferredProperty isEInferredProperty (const False)
+
+-- | Removes all properties from a program.
+stripAllProperties :: K3 Declaration -> K3 Declaration
+stripAllProperties = stripDeclAnnotations isDProperty isEProperty (const False)
+
+-- | Strip all inferred effect annotations from a program
+stripEffectAnns :: K3 Declaration -> K3 Declaration
+stripEffectAnns p = stripDeclAnnotations isAnyDInferredEffectAnn isAnyEEffectAnn (const False) p
+
+-- | Strip all inferred effect annotations from a specific declaration
+stripDeclEffectAnns :: Identifier -> K3 Declaration -> K3 Declaration
+stripDeclEffectAnns i p = stripNamedDeclAnnotations i isAnyDInferredEffectAnn isAnyEEffectAnn (const False) p
+
+-- | Strip all effects annotations, including user-specified effect signatures.
+stripAllEffectAnns :: K3 Declaration -> K3 Declaration
+stripAllEffectAnns = stripDeclAnnotations isAnyDEffectAnn isAnyEEffectAnn (const False)
+
+-- | Single-pass composition of type and effect removal.
+stripTypeAndEffectAnns :: K3 Declaration -> K3 Declaration
+stripTypeAndEffectAnns p =
+  stripDeclAnnotations isAnyDInferredEffectAnn isAnyETypeOrEffectAnn (const False) p
+
+-- | Single-pass composition of type and effect removal on a specific annotation
+stripDeclTypeAndEffectAnns :: Identifier -> K3 Declaration -> K3 Declaration
+stripDeclTypeAndEffectAnns i p =
+  stripNamedDeclAnnotations i isAnyDInferredEffectAnn isAnyETypeOrEffectAnn (const False) p
+
+-- | Single-pass variant removing all effect annotations.
+stripAllTypeAndEffectAnns :: K3 Declaration -> K3 Declaration
+stripAllTypeAndEffectAnns = stripDeclAnnotations isAnyDEffectAnn isAnyETypeOrEffectAnn (const False)
+
+
 {-| Tree repair utilities -}
 
 -- | Ensures every node has a valid UID and Span.
@@ -856,15 +931,16 @@ repairProgram repairMsg p =
 
         addAnn rUsed rNotUsed a t n = maybe (rUsed, n @+ a) (const (rNotUsed, n)) (n @~ t)
 
-onProgramUID :: (UID -> UID -> UID) -> UID -> K3 Declaration -> (UID, K3 Declaration)
-onProgramUID uidF z d = runIdentity $ foldProgram onDecl onMem onExpr (Just onType) z d
+-- | Fold an accumulator over all program UIDs.
+foldProgramUID :: (a -> UID -> a) -> a -> K3 Declaration -> (a, K3 Declaration)
+foldProgramUID uidF z d = runIdentity $ foldProgram onDecl onMem onExpr (Just onType) z d
   where onDecl a n = return $ (dUID a n, n)
         onExpr a n = foldTree (\a' n' -> return $ eUID a' n') a n >>= return . (,n)
         onType a n = foldTree (\a' n' -> return $ tUID a' n') a n >>= return . (,n)
 
-        onMem a (Lifted    p n t eOpt anns) = return $ (dMemUID a anns, Lifted      p n t eOpt $ anns)
-        onMem a (Attribute p n t eOpt anns) = return $ (dMemUID a anns, Attribute   p n t eOpt $ anns)
-        onMem a (MAnnotation p n anns)      = return $ (dMemUID a anns, MAnnotation p n        $ anns)
+        onMem a mem@(Lifted    _ _ _ _ anns) = return $ (dMemUID a anns, mem)
+        onMem a mem@(Attribute _ _ _ _ anns) = return $ (dMemUID a anns, mem)
+        onMem a mem@(MAnnotation   _ _ anns) = return $ (dMemUID a anns, mem)
 
         dUID a n = maybe a (\case {DUID b -> uidF a b; _ -> a}) $ n @~ isDUID
         eUID a n = maybe a (\case {EUID b -> uidF a b; _ -> a}) $ n @~ isEUID
@@ -873,73 +949,15 @@ onProgramUID uidF z d = runIdentity $ foldProgram onDecl onMem onExpr (Just onTy
         dMemUID a anns = maybe a (\case {DUID b -> uidF a b; _ -> a}) $ find isDUID anns
 
 maxProgramUID :: K3 Declaration -> UID
-maxProgramUID d = fst $ onProgramUID maxUID (UID (minBound :: Int)) d
+maxProgramUID d = fst $ foldProgramUID maxUID (UID (minBound :: Int)) d
   where maxUID (UID a) (UID b) = UID $ max a b
 
 minProgramUID :: K3 Declaration -> UID
-minProgramUID d = fst $ onProgramUID minUID (UID (maxBound :: Int)) d
+minProgramUID d = fst $ foldProgramUID minUID (UID (maxBound :: Int)) d
   where minUID (UID a) (UID b) = UID $ min a b
 
-{- Annotation removal -}
-stripComments :: K3 Declaration -> K3 Declaration
-stripComments = stripDeclAnnotations isDSyntax isESyntax (const False)
+collectProgramUIDs :: K3 Declaration -> [UID]
+collectProgramUIDs d = fst $ foldProgramUID (flip (:)) [] d
 
-stripTypeAnns :: K3 Declaration -> K3 Declaration
-stripTypeAnns = stripDeclAnnotations (const False) isAnyETypeAnn (const False)
-
-stripDeclTypeAnns :: Identifier -> K3 Declaration -> K3 Declaration
-stripDeclTypeAnns i = stripNamedDeclAnnotations i (const False) isAnyETypeAnn (const False)
-
--- | Reset only inferred effect annotations, and not user-specified ones.
-resetEffectAnnotation :: Annotation Declaration -> Maybe (Annotation Declaration)
-resetEffectAnnotation (DSymbol s@(tag -> SymId _)) =
-  case s @~ isSDeclared of
-    Just (SDeclared s') -> Just $ DSymbol s'
-    _ -> Nothing
-
-resetEffectAnnotation (DProvenance (Right _)) = Nothing
-resetEffectAnnotation (DEffect (Right _))     = Nothing
-resetEffectAnnotation a = Just a
-
--- | Reset all inferred effect annotations on program declarations.
-resetEffectAnns :: K3 Declaration -> K3 Declaration
-resetEffectAnns p = runIdentity $ mapMaybeAnnotation (return . resetEffectAnnotation) idF idF p
-  where idF = return . Just
-
--- | Reset inferred effect annotations on a specific declaration.
-resetDeclEffectAnns :: Identifier -> K3 Declaration -> K3 Declaration
-resetDeclEffectAnns i p = runIdentity $ mapNamedDeclaration i onDeclF p
-  where onDeclF (Node (tg :@: anns) ch) = return (Node (tg :@: onAnns anns) ch)
-        onAnns as = catMaybes $ map resetEffectAnnotation as
-
--- | Strip all inferred effect annotations from a program
-stripEffectAnns :: K3 Declaration -> K3 Declaration
-stripEffectAnns p = resetEffectAnns $
-  stripDeclAnnotations (const False) isAnyEEffectAnn (const False) p
-
--- | Strip all inferred effect annotations from a specific declaration
-stripDeclEffectAnns :: Identifier -> K3 Declaration -> K3 Declaration
-stripDeclEffectAnns i p = resetDeclEffectAnns i $
-  stripNamedDeclAnnotations i (const False) isAnyEEffectAnn (const False) p
-
--- | Strip all effects annotations, including user-specified effect signatures.
-stripAllEffectAnns :: K3 Declaration -> K3 Declaration
-stripAllEffectAnns = stripDeclAnnotations isAnyDEffectAnn isAnyEEffectAnn (const False)
-
--- | Single-pass composition of type and effect removal.
-stripTypeAndEffectAnns :: K3 Declaration -> K3 Declaration
-stripTypeAndEffectAnns p = resetEffectAnns $
-  stripDeclAnnotations (const False) isAnyETypeOrEffectAnn (const False) p
-
--- | Single-pass composition of type and effect removal on a specific annotation
-stripDeclTypeAndEffectAnns :: Identifier -> K3 Declaration -> K3 Declaration
-stripDeclTypeAndEffectAnns i p = resetDeclEffectAnns i $
-  stripNamedDeclAnnotations i (const False) isAnyETypeOrEffectAnn (const False) p
-
--- | Single-pass variant removing all effect annotations.
-stripAllTypeAndEffectAnns :: K3 Declaration -> K3 Declaration
-stripAllTypeAndEffectAnns = stripDeclAnnotations isAnyDEffectAnn isAnyETypeOrEffectAnn (const False)
-
--- | Removes all properties from a program.
-stripAllProperties :: K3 Declaration -> K3 Declaration
-stripAllProperties = stripDeclAnnotations isDProperty isEProperty (const False)
+duplicateProgramUIDs :: K3 Declaration -> [UID]
+duplicateProgramUIDs d = let uids = collectProgramUIDs d in uids \\ nub uids

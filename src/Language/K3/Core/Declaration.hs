@@ -12,17 +12,27 @@ module Language.K3.Core.Declaration (
     AnnMemDecl(..),
     PatternRewriteRule,
     UnorderedConflict(..),
+    PropertyD
 
-    getTriggerIds,
+    , getTriggerIds
 
-    isDUID,
-    isDSpan,
-    isDProperty,
-    isDSyntax,
-    isDSymbol,
-    isDProvenance,
-    isDEffect,
-    isAnyDEffectAnn
+    , onDProperty
+    , dPropertyName
+    , dPropertyValue
+    , dPropertyV
+
+    , isDUID
+    , isDSpan
+    , isDUIDSpan
+    , isDProperty
+    , isDInferredProperty
+    , isDSyntax
+    , isDProvenance
+    , isDEffect
+    , isAnyDEffectAnn
+    , isDInferredProvenance
+    , isDInferredEffect
+    , isAnyDInferredEffectAnn
 ) where
 
 import Data.List
@@ -38,7 +48,6 @@ import Language.K3.Core.Type
 
 import Language.K3.Analysis.Provenance.Core
 import qualified Language.K3.Analysis.SEffects.Core as S
-import Language.K3.Analysis.Effects.Core hiding ( Provenance )
 
 import Language.K3.Utils.Pretty
 
@@ -97,10 +106,9 @@ type PatternRewriteRule = (K3 Expression, K3 Expression, [K3 Declaration])
 data instance Annotation Declaration
     = DSpan       Span
     | DUID        UID
-    | DProperty   Identifier (Maybe (K3 Literal))
+    | DProperty   PropertyD
     | DSyntax     SyntaxAnnotation
     | DConflict   UnorderedConflict  -- TODO: organize into categories.
-    | DSymbol     (K3 Symbol)
 
     -- Provenance and effects may be user-defined (lefts) or inferred (rights)
     | DProvenance (Either (K3 Provenance) (K3 Provenance))
@@ -113,6 +121,26 @@ data UnorderedConflict
     | UWW (Annotation Expression) (Annotation Expression)
   deriving (Eq, Ord, Read, Show)
 
+-- | Property helpers
+type PropertyV = (Identifier, Maybe (K3 Literal))
+type PropertyD = Either PropertyV PropertyV
+
+onDProperty :: (PropertyV -> a) -> PropertyD -> a
+onDProperty f (Left  (n, lopt)) = f (n, lopt)
+onDProperty f (Right (n, lopt)) = f (n, lopt)
+
+dPropertyName :: PropertyD -> String
+dPropertyName (Left  (n,_)) = n
+dPropertyName (Right (n,_)) = n
+
+dPropertyValue :: PropertyD -> Maybe (K3 Literal)
+dPropertyValue (Left  (_,v)) = v
+dPropertyValue (Right (_,v)) = v
+
+dPropertyV :: PropertyD -> PropertyV
+dPropertyV (Left  pv) = pv
+dPropertyV (Right pv) = pv
+
 
 {- Declaration annotation predicates -}
 
@@ -124,17 +152,20 @@ isDUID :: Annotation Declaration -> Bool
 isDUID (DUID _) = True
 isDUID _        = False
 
+isDUIDSpan :: Annotation Declaration -> Bool
+isDUIDSpan a = isDSpan a || isDUID a
+
 isDProperty :: Annotation Declaration -> Bool
-isDProperty (DProperty _ _) = True
-isDProperty _               = False
+isDProperty (DProperty _) = True
+isDProperty _             = False
+
+isDInferredProperty :: Annotation Declaration -> Bool
+isDInferredProperty (DProperty (Right _)) = True
+isDInferredProperty _                     = False
 
 isDSyntax :: Annotation Declaration -> Bool
 isDSyntax (DSyntax _) = True
 isDSyntax _           = False
-
-isDSymbol :: Annotation Declaration -> Bool
-isDSymbol (DSymbol _) = True
-isDSymbol _           = False
 
 isDProvenance :: Annotation Declaration -> Bool
 isDProvenance (DProvenance _) = True
@@ -145,8 +176,18 @@ isDEffect (DEffect _) = True
 isDEffect _           = False
 
 isAnyDEffectAnn :: Annotation Declaration -> Bool
-isAnyDEffectAnn a = isDSymbol a || isDProvenance a || isDEffect a
+isAnyDEffectAnn a = isDProvenance a || isDEffect a
 
+isDInferredProvenance :: Annotation Declaration -> Bool
+isDInferredProvenance (DProvenance (Right _)) = True
+isDInferredProvenance _                       = False
+
+isDInferredEffect :: Annotation Declaration -> Bool
+isDInferredEffect (DEffect (Right _)) = True
+isDInferredEffect _                   = False
+
+isAnyDInferredEffectAnn :: Annotation Declaration -> Bool
+isAnyDInferredEffectAnn a = isDInferredProvenance a || isDInferredEffect a
 
 {- Utils -}
 -- Given top level role declaration, return list of all trigger ids in the AST
@@ -238,13 +279,12 @@ instance Pretty AnnMemDecl where
 
 drawDeclAnnotations :: [Annotation Declaration] -> (String, [String])
 drawDeclAnnotations as =
-  let (prettyAnns, anns) = partition (\a -> isDSymbol a || isDProvenance a || isDEffect a) as
+  let (prettyAnns, anns) = partition (\a -> isDProvenance a || isDEffect a) as
       prettyDeclAnns     = drawGroup $ map drawDAnnotation prettyAnns
 
   in (drawAnnotations anns, prettyDeclAnns)
 
-  where drawDAnnotation (DSymbol s)     = ["DSymbol "]     %+ prettyLines s
-        drawDAnnotation (DProvenance p) = ["DProvenance "] %+ either prettyLines prettyLines p
+  where drawDAnnotation (DProvenance p) = ["DProvenance "] %+ either prettyLines prettyLines p
         drawDAnnotation (DEffect e)     = ["DEffect "]     %+ either prettyLines prettyLines e
         drawDAnnotation _ = error "Invalid symbol annotation"
 
@@ -266,7 +306,7 @@ tTA s as =
   ++ (if null pAnnTxt then [] else aPipe $ ntShift pAnnTxt)
 
 tNullTerm :: (PT.Pretty a, PT.Pretty b) => a -> [b] -> [Text]
-tNullTerm a bl = 
+tNullTerm a bl =
   if null bl then PT.terminalShift a
   else ((aPipe (PT.nonTerminalShift a) ++) . PT.drawSubTrees) bl
 
@@ -326,11 +366,10 @@ instance PT.Pretty AnnMemDecl where
 
 drawDeclAnnotationsT :: [Annotation Declaration] -> (Text, [Text])
 drawDeclAnnotationsT as =
-  let (prettyAnns, anns) = partition (\a -> isDSymbol a || isDProvenance a || isDEffect a) as
+  let (prettyAnns, anns) = partition (\a -> isDProvenance a || isDEffect a) as
       prettyDeclAnns     = PT.drawGroup $ map drawDAnnotationT prettyAnns
   in (PT.drawAnnotations anns, prettyDeclAnns)
 
-  where drawDAnnotationT (DSymbol s)     = map T.pack $ ["DSymbol "] %+ prettyLines s
-        drawDAnnotationT (DProvenance p) = [T.pack "DProvenance "] PT.%+ either PT.prettyLines PT.prettyLines p
+  where drawDAnnotationT (DProvenance p) = [T.pack "DProvenance "] PT.%+ either PT.prettyLines PT.prettyLines p
         drawDAnnotationT (DEffect e)     = [T.pack "DEffect "]     PT.%+ either PT.prettyLines PT.prettyLines e
         drawDAnnotationT _               = error "Invalid symbol annotation"

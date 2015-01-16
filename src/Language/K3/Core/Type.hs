@@ -14,6 +14,7 @@ module Language.K3.Core.Type (
 
     isTSpan,
     isTUID,
+    isTUIDSpan,
     isTQualified,
     isTImmutable,
     isTMutable,
@@ -149,6 +150,9 @@ isTSpan _ = False
 isTUID :: Annotation Type -> Bool
 isTUID (TUID _) = True
 isTUID _        = False
+
+isTUIDSpan :: Annotation Type -> Bool
+isTUIDSpan a = isTSpan a || isTUID a
 
 isTQualified :: Annotation Type -> Bool
 isTQualified TImmutable = True
