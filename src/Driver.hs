@@ -5,7 +5,6 @@ import Control.Arrow (first)
 import Data.Char
 import Data.List(foldl')
 import Data.Maybe
-import Data.Tuple
 
 import qualified Options.Applicative as Options
 import Options.Applicative((<>), (<*>))
@@ -30,11 +29,7 @@ import Language.K3.Analysis.HMTypes.Inference
 
 import qualified Language.K3.Analysis.Provenance.Inference  as Provenance
 import qualified Language.K3.Analysis.SEffects.Inference    as SEffects
-import qualified Language.K3.Analysis.Effects.InsertEffects as Effects
-import qualified Language.K3.Analysis.Effects.Purity        as Pure
 
-import qualified Language.K3.Transform.Normalization  as Normalization
-import qualified Language.K3.Transform.Simplification as Simplification
 import qualified Language.K3.Transform.Profiling      as Profiling
 import qualified Language.K3.Transform.RemoveROBinds  as RemoveROBinds
 import qualified Language.K3.Transform.TriggerSymbols as TriggerSymbols
@@ -148,8 +143,6 @@ run opts = do
     analyzer _ ProxyPaths x                  = first labelBindAliases x
     analyzer _ AnnotationProvidesGraph (p,s) = (p, s ++ show (providesGraph p))
     analyzer _ FlatAnnotations (p,s)         = (p, s ++ show (flattenAnnotations p))
-    analyzer _ EffectNormalization x         = first Normalization.normalizeProgram x
-    analyzer _ FoldConstants x               = wrapEither Simplification.foldProgramConstants x
 
     analyzer aopts Provenance x = flip wrapEitherS x $ \p str -> do
       (np, ppenv) <- Provenance.inferProgramProvenance p
@@ -157,7 +150,7 @@ run opts = do
       where addEnv str ppenv = str ++ ifFlag "" (withEnv ppenv) ["showprovenance"] aopts
             withEnv ppenv v _ b = if b then "Provenance pointers:\n" ++ (T.unpack $ PT.pretty ppenv) else v
 
-    analyzer aopts SEffects x = flip wrapEitherS x $ \p str -> do
+    analyzer aopts Effects x = flip wrapEitherS x $ \p str -> do
       (np,  pienv) <- Provenance.inferProgramProvenance p
       let pe = Provenance.ppenv pienv
       (np', fienv) <- SEffects.inferProgramEffects Nothing pe np
@@ -174,14 +167,7 @@ run opts = do
         defaults   p' = T.unpack $ either id PT.pretty $ SEffects.inferDefaultEffects p'
         categories p' = T.unpack $ either id PT.pretty $ SEffects.categorizeProgramEffects p'
 
-    analyzer _ Effects x = flip first x $
-      (uncurry Effects.expandProgram . swap . Effects.runConsolidatedAnalysis)
-
-    analyzer _ DeadCodeElimination x  = flip wrapEither x $
-      (Simplification.eliminateDeadProgramCode . fst . Effects.runConsolidatedAnalysis)
-
     analyzer _ Profiling x      = first (cleanGeneration "profiling" . Profiling.addProfiling) x
-    analyzer _ Purity x         = first ((\(d,e) -> Pure.runPurity e d) . Effects.runConsolidatedAnalysis) x
     analyzer _ ReadOnlyBinds x  = first (cleanGeneration "ro_binds" . RemoveROBinds.transform) x
     analyzer _ TriggerSymbols x = wrapEither TriggerSymbols.triggerSymbols x
 

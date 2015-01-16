@@ -121,13 +121,8 @@ data TransformMode
     | AnnotationProvidesGraph
     | FlatAnnotations
     | Provenance
-    | SEffects
     | Effects
-    | EffectNormalization
-    | FoldConstants
-    | DeadCodeElimination
     | Profiling
-    | Purity
     | ReadOnlyBinds
     | TriggerSymbols
   deriving (Eq, Ord, Read, Show)
@@ -443,14 +438,8 @@ transformMode   =  wrap <$> conflictsOpt
               <|> wrap <$> annProvOpt
               <|> wrap <$> flatAnnOpt
               <|> wrap <$> provenanceOpt
-              <|> wrap <$> seffectOpt
               <|> wrap <$> effectOpt
-              <|> wrap <$> normalizationOpt
-              <|> wrap <$> foldConstantsOpt
-              <|> wrap <$> deadCodeElimOpt
-              <|> simplifyOpt
               <|> wrap <$> profilingOpt
-              <|> wrap <$> purityOpt
               <|> wrap <$> readOnlyBindOpts
               <|> wrap <$> trigSymOpt
   where
@@ -493,44 +482,14 @@ provenanceOpt :: Parser TransformMode
 provenanceOpt = flag' Provenance (   long "fprovenance"
                                   <> help "Print program provenance")
 
-seffectOpt :: Parser TransformMode
-seffectOpt = flag' SEffects (   long "fseffects"
-                             <> help "Print simpler program effects")
-
 effectOpt :: Parser TransformMode
 effectOpt = flag' Effects (   long "feffects"
                            <> help "Print program effects")
-
-normalizationOpt :: Parser TransformMode
-normalizationOpt = flag' EffectNormalization
-                      (   long "fnormalize"
-                       <> help "Print an effect-normalized program.")
-
-foldConstantsOpt :: Parser TransformMode
-foldConstantsOpt = flag' FoldConstants
-                      (   long "ffold-constants"
-                       <> help "Print a program after constant folding.")
-
-deadCodeElimOpt :: Parser TransformMode
-deadCodeElimOpt = flag' DeadCodeElimination
-                      (   long "fdead-code"
-                       <> help "Print a program after dead code elimination.")
-
-simplifyOpt :: Parser [TransformMode]
-simplifyOpt = flag' [EffectNormalization, FoldConstants, DeadCodeElimination]
-                (   long "fsimplify"
-                 <> (help $ "Print a program after running all simplification phases " ++
-                            "(i.e., constant folding, DCE, CSE, etc)" ))
 
 profilingOpt :: Parser TransformMode
 profilingOpt = flag' Profiling
                 (   long "fprofile"
                  <> (help $ "Add profiling points"))
-
-purityOpt :: Parser TransformMode
-purityOpt = flag' Purity
-                (   long "fpure"
-                 <> (help $ "Perform purity analysis"))
 
 readOnlyBindOpts :: Parser TransformMode
 readOnlyBindOpts = flag' ReadOnlyBinds
