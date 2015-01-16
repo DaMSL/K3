@@ -1,0 +1,144 @@
+include "Annotation/Collection.k3"
+include "Annotation/Vector.k3"
+include "Core/Builtins.k3"
+include "Core/CppBuiltins.k3"
+
+
+//typedefs
+typedef feature_vector = collection { elem: real } @Vector
+
+//declare the variables
+declare i : mut int
+declare k : int = 3
+declare n : mut int
+declare r : mut real
+declare lambda : real = 0.2
+declare dataFiles: collection { path: string } @Collection
+declare master : immut address = 127.0.0.1:40000
+declare s : mut int
+declare peerAddress : mut address 
+declare peers_seq : mut collection {addr: address} @ {Seq}
+
+
+declare data: collection { elem: feature_vector } @Seq
+declare oneDataElement : mut feature_vector
+declare localData: collection { elem: feature_vector } @Vector
+declare w : collection {i : collection {elem: real } @Vector } @Seq
+declare h : collection {i : collection {elem: real } @Vector } @Seq
+
+declare test : collection {i : real } @Seq
+declare randInt :mut  int = 0
+declare now_ms : mut int = 0
+declare peers_ready : mut int =0
+
+declare queue : collection {j: int, hj: collection {elem: real }@Vector} @Seq
+//declare queueElement : mut collection {}
+
+//declare the functions
+
+// This function returns a random integer between 0 and n-1
+declare randomInteger : int -> int = \i -> ( 
+	now_ms = now_int(); 
+	if (now_ms < 0)  
+	then (now_ms = now_ms * -1; now_ms % i )
+	else (now_ms % i)
+ )
+/*
+declare uniformDiscrete : int -> collection {elem : int} @Seq = (
+	
+)
+*/
+
+//declare the triggers
+
+trigger initialize : () = \_ -> (
+	s = data.size ();
+	(range s).iterate(\element ->
+		w.insert {i: randomVector k}
+	);
+	//oneDataElement = (data.at(0)).elem;
+	
+	//r = (((data.at(1)).elem).at(1)).elem;	
+
+	randInt = randomInteger 5;
+
+	// n is the number of columns in A matrix. There will be a better way to get this. TODO later
+	n = ((data.at(0)).elem).size();
+	(initializeQueue, master ) <- (n);
+
+	print "Done"
+)
+
+
+trigger initializeQueue : int  = \n ->  (
+	peers_ready = peers_ready + 1;
+	
+	if (peers_ready == peers.size())
+	then (
+		// create the H matrix
+		(range n).iterate (\element -> h.insert {i: randomVector k});
+
+		// distribute the H matrix over the n nodes
+
+		peers.iterate (\i -> peers_seq.insert i); // can't get a specific element of peers using 'at', probably because it is not ordered. Hence creating this Seq
+
+		(range n).iterate (\element -> (
+			randInt = randomInteger (peers.size ());
+			peerAddress = ((peers_seq.at(randInt)).addr) ; 
+			(insertIntoQueue,  peerAddress ) <- {j : element.i , hj : (h.at(element.i)).i } ) 
+			);
+
+		peers.iterate(\peer -> (startProcess, peer.addr) <- ())
+
+
+	)
+	else ()	
+)
+
+trigger insertIntoQueue : {j:int , hj: collection {elem: real } @Vector } = \x -> (
+	queue.insert {j : x.j, hj: x.hj}
+)
+
+trigger startProcess : () = \_ -> (
+/*
+This trigger is called for each q in {1,2...p} i.e. for each of the threads/nodes
+
+*/
+	case (queue.peek () ) of 
+	{Some queueElement -> (       
+			data.iterate (\d -> (d.elem.iterate (\r -> (if (r.elem != 0.0) 
+								// SGD update in the then case
+								 then ( ) 
+								  else ()
+
+								)
+							   )  
+					    )    
+				     );
+			//Push the queue element (j,hj) to a peer's queue
+			randInt = randomInteger (peers.size ());
+			peerAddress = ((peers_seq.at(randInt)).addr) ; 			
+			(insertIntoQueue,  peerAddress ) <- {j : queueElement.j , hj : queueElement.hj } )	
+
+			//remove the element from the present queue
+			queue.erase queueElement
+		 )
+	}
+	{None -> ()}
+
+)
+
+trigger load_all : () = \_ -> (
+
+	peers.iterate (\i -> peers_seq.insert i); // can't get a specific element of peers using 'at', probably because it is not ordered. Hence creating this Seq
+	dataFiles.iterate ( \d -> (print (concat "Reading the file " d.path ); loadVector d.path data));	
+	//data.iterate(\d -> d.elem.iterate (\r -> (print (itos (d.size())   ) )))
+	(initialize, me) <- ();
+	//(initializeQueue, master)<-()
+	print "Done"
+)
+
+
+
+source points : () = value ()
+feed points |> load_all

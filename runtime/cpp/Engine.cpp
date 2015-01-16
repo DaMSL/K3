@@ -11,10 +11,12 @@ using boost::thread;
 namespace K3 {
 
     void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec,
-                           string log_p, string result_v, string result_p) {
+                           string log_l, string log_p, string result_v, string result_p) {
       internal_codec = _internal_codec;
       log_enabled = false;
-      if (log_p != "") { log_enabled = true; }
+      log_json = false;
+      if (log_l != "") { log_enabled = true; }
+      if (log_p != "") { log_json = true; }
       auto dir = log_p != "" ? log_p : ".";
       log_path = dir;
 
@@ -24,7 +26,7 @@ namespace K3 {
       list<Address> processAddrs = deployedNodes(sys_env);
       Address initialAddress;
 
-      if (log_enabled) {
+      if (log_json) {
         for (const auto& addr : processAddrs) {
           auto s1 = log_path + "/" + addressAsString(addr) + "_Messages.dsv";
           auto s2 = log_path + "/" + addressAsString(addr) + "_Globals.dsv";

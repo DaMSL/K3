@@ -165,13 +165,14 @@ namespace K3 {
       SystemEnvironment& sys_env,
       shared_ptr<InternalCodec> _internal_codec,
       string log_level,
+      string log_path,
       string result_v,
       string result_p
     ): LogMT("Engine") {
-      configure(simulation, sys_env, _internal_codec, log_level, result_v, result_p);
+      configure(simulation, sys_env, _internal_codec, log_level, log_path, result_v, result_p);
     }
 
-    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level, string result_var, string result_path);
+    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level,string log_path, string result_var, string result_path);
 
     //-----------
     // Messaging.
@@ -408,6 +409,7 @@ namespace K3 {
     IOMode ioMode(string k3Mode);
 
     bool logEnabled() { return log_enabled; }
+    bool logJsonEnabled() { return log_json; }
   protected:
     shared_ptr<EngineConfiguration> config;
     shared_ptr<EngineControl>       control;
@@ -427,6 +429,7 @@ namespace K3 {
 
     // Log info
     bool                            log_enabled;
+    bool                            log_json;
     // Tuple of (eventLog, globalsLog)
     
     std::map<Address, tuple<shared_ptr<ofstream>, shared_ptr<ofstream>>> log_streams;

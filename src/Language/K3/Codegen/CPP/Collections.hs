@@ -92,7 +92,8 @@ composite name ans = do
                        (Just $ R.Named $ R.Name "void")
                        [] False serializeStatements)
 
-    let methods = [defaultConstructor, superConstructor, superMoveConstructor, serializeFn]
+    let methods = [defaultConstructor, superConstructor, superMoveConstructor, serializeFn] ++ indexDefns
+
     let collectionClassDefn = R.TemplateDefn [("__CONTENT", Nothing)]
              (R.ClassDefn (R.Name name) [] (map R.Named baseClasses) methods [] [])
 

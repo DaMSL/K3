@@ -948,6 +948,7 @@ class Map {
   template <class Q>
   unit_t insert(Q&& q) {
     container[q.key] = std::forward<Q>(q);
+    return unit_t();
   }
 
   template <class F>
@@ -1310,6 +1311,8 @@ class MultiIndex {
   template<typename Iterator>
   MultiIndex(Iterator begin, Iterator end): container(begin,end) {}
 
+  Elem elemToRecord(const Elem& e) const { return e; }
+
   // Maybe return the first element in the ds
   shared_ptr<Elem> peek(unit_t) const {
     shared_ptr<Elem> res(nullptr);
@@ -1665,6 +1668,24 @@ namespace JSON {
     }
 
   };
+
+  template <class E, typename... Indexes>
+  struct convert<K3::MultiIndex<E, Indexes...>> {
+    template <class Allocator>
+    static Value encode(const K3::MultiIndex<E, Indexes...>& c, Allocator& al) {
+     Value v;
+     v.SetObject();
+     v.AddMember("type", Value("MultiIndex"), al);
+     Value inner;
+     inner.SetArray();
+     for (const auto& e : c.getConstContainer()) {
+       inner.PushBack(convert<E>::encode(e, al), al);
+     }
+     v.AddMember("value", inner.Move(), al);
+     return v;
+    }
+
+  };
 }
 
 
@@ -1783,6 +1804,26 @@ namespace YAML {
     }
 
     static bool decode(const Node& node, K3::Set<E>& c) {
+      for (auto& i: node) {
+        c.insert(i.as<E>());
+      }
+
+      return true;
+    }
+  };
+
+  template <class E, typename... Indexes>
+  struct convert<K3::MultiIndex<E, Indexes...>> {
+    static Node encode(const K3::MultiIndex<E, Indexes...>& c) {
+      Node node;
+      for (auto i: c.getConstContainer()) {
+        node.push_back(convert<E>::encode(i));
+      }
+
+      return node;
+    }
+
+    static bool decode(const Node& node, K3::MultiIndex<E, Indexes...>& c) {
       for (auto& i: node) {
         c.insert(i.as<E>());
       }

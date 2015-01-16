@@ -11,7 +11,8 @@ int Options::parse(int argc, const char *const argv[]) {
     ("help,h", "produce help message")
     ("peer,p", po::value< vector<string> >(), "variables to set in peer (required)")
     ("simulation,s", "run in simulation mode")
-    ("log,l",po::value<string>(), "log directory (required to enable logging)")
+    ("log,l",po::value<string>(), "log level for stdout")
+    ("json,j",po::value<string>(), "directory for json logging")
     ("result_var,r", po::value<string>(), "result variable to log (must be a flat collection)")
     ("result_path,o", po::value<string>(), "path to store the result variable");
 
@@ -35,14 +36,20 @@ int Options::parse(int argc, const char *const argv[]) {
     simulation = false;
   }
 
-  if (vm.count("log")) {
-    log_path = vm["log"].as<string>();
+  if (vm.count("json")) {
+    json_path = vm["json"].as<string>();
     struct stat info;
-    if( stat( log_path.c_str(), &info ) != 0 ) {
-      throw std::runtime_error("Log directory does not exist: " + log_path);
+    if( stat( json_path.c_str(), &info ) != 0 ) {
+      throw std::runtime_error("JSON Log directory does not exist: " + json_path);
     }
   } else {
-    log_path = "";
+  
+  }
+
+  if (vm.count("log")) {
+    log_level = vm["log"].as<string>();
+  } else {
+    log_level = "";
   }
 
   if (vm.count("result_var")) {

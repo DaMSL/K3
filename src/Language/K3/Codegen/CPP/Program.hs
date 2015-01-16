@@ -345,7 +345,7 @@ generateDispatchPopulation = do
                                                              R.Name "static_cast") [R.Variable $ R.Name "payload"])
                              , R.Ignore $ R.Call (R.Variable $ R.Name tName)
                                    [R.Variable $ R.Name "v"]
-                             , R.IfThenElse (R.Call (R.Project engine (R.Name "logEnabled")) [])
+                             , R.IfThenElse (R.Call (R.Project engine (R.Name "logJsonEnabled")) [])
                                  [ R.Ignore $ R.Call ((R.Project engine) (R.Name "logJson"))
                                     [ R.Variable $ R.Name "ct"
                                     , R.Variable $ R.Name "me"

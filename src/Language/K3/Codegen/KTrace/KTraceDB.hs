@@ -117,6 +117,27 @@ mkLoader name idSqlt = ["create or replace function " ++ name
     loaderAttr       = "logEntry"
     loaderFields idT = intercalate "," $ map (\(i,t) -> "(t#>>" ++ "'{value," ++ i ++ "}')::" ++ t) idT
 
+mkDiff :: String -> TypedAttrs -> Either String [String]
+mkDiff name idSqlt = do
+  comparisons <- fmap (unwords . intersperse "and") . mapM compareField $ idSqlt
+  Right ["create view" +. name +. "as"
+             , "SELECT * FROM" +. correctResultsTable +. "as l"
+             , "WHERE NOT EXISTS"
+             ,     "(SELECT * FROM" +. resultsTable +. "as r"
+             ,     "WHERE" +.  comparisons ++ ");"]
+  where
+    a +. b = a ++ " " ++ b
+
+compareField :: (String, String) -> Either String String
+compareField (field, typ) | typ == varcharType = Right $ proj "l" ++ " = " ++ proj "r"
+                          | typ == intType     = Right $ proj "l" ++ " = " ++ proj "r"
+                          | typ == doubleType  = Right $ abs (proj "l" ++ "-" ++ proj "r")  ++ " > .01" 
+                          | otherwise = Left $ "Invalid type for result comparison: " ++ typ
+
+  where
+    proj t = t ++ "." ++ field
+    abs s = "ABS(" ++ s ++ ")"
+
 {- Constants -}
 -- Key for joining Globals and Messages
 -- Prefixed with _ to help avoid name clashes with global vars
@@ -132,11 +153,31 @@ msgsTable = "Messages"
 resultsTable :: String
 resultsTable = "Results"
 
+correctResultsTable :: String
+correctResultsTable = "CorrectResults"
+
 loadResultsFn :: String
 loadResultsFn = "load_results"
 
 loadFlatResultsFn :: Identifier -> String
 loadFlatResultsFn i = "load_" ++ i
+
+boolType :: String
+boolType = "boolean"
+
+charType :: String
+charType = "char"
+
+intType :: String
+intType = "int"
+
+doubleType :: String
+doubleType = "double precision"
+
+varcharType :: String
+varcharType = "varchar"
+
+
 
 {- SQL script construction -}
 mkGlobalsSchema :: Globals -> Statement
@@ -156,9 +197,10 @@ mkFlatSingletonResultSchema i prog = do
   case fieldsOpt of
     Just fields -> do
       idSqlT   <- mapM (\(n,t) -> schemaType t >>= maybe schemaErr (return . (n,))) fields
-      loaderFn <- return $ mkLoader (loadFlatResultsFn i) idSqlT
-      ast      <- return $  printStatements [ createTable resultsTable idSqlT ]
-      manual   <- return $ unlines loaderFn
+      loaderLines <- return $ mkLoader (loadFlatResultsFn i) idSqlT
+      diffLines <- mkDiff "compute_diff" idSqlT
+      ast      <- return $  printStatements [ createTable resultsTable idSqlT , createTable correctResultsTable idSqlT]
+      manual   <- return $ unlines loaderLines ++ unlines diffLines
       return $ unlines [ast, manual]
     Nothing -> noIdFoundErr
 
