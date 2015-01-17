@@ -1,4 +1,5 @@
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE ViewPatterns #-}
 
 -- | Options for the K3 Driver
 module Language.K3.Driver.Options where
@@ -59,7 +60,7 @@ data ParseOptions = ParseOptions { parsePrintMode :: PrintMode,
 -- | Stage options used for parse-only mode.
 type ParseStageOptions = [ParseStage]
 
-data ParseStage = PSOptimization Bool
+data ParseStage = PSOptimization (Maybe Int)
                 | PSCodegen
                 deriving (Eq, Ord, Read, Show)
 
@@ -175,6 +176,27 @@ modeOptions = subparser (
         interpretDesc = "Interpret a K3 program"
         typeDesc      = "Typecheck a K3 program"
 
+{- Common parsers -}
+-- | Transformation options
+transformOptions :: Parser TransformOptions
+transformOptions = concat <$> many transformMode
+
+-- Accept a precursor string
+transformMode :: Parser [TransformMode]
+transformMode   =  wrap <$> ( conflictsOpt
+                        <|>   tasksOpt
+                        <|>   programTasksOpt
+                        <|>   proxyPathsOpt
+                        <|>   annProvOpt
+                        <|>   flatAnnOpt
+                        <|>   provenanceOpt
+                        <|>   effectOpt
+                        <|>   profilingOpt
+                        <|>   readOnlyBindOpts
+                        <|>   trigSymOpt )
+  where
+    wrap x = [x]
+
 -- | Print mode flags
 printModeOpt :: Parser PrintMode
 printModeOpt = astPrintOpt <|> syntaxPrintOpt
@@ -184,32 +206,34 @@ astPrintOpt = extract . keyValList "" <$> strOption (
                    long "ast"
                 <> value ""
                 <> help "Print AST output"
-                <> metavar "PRINT-AST-FLAGS"
+                <> metavar "PRINTASTFLAGS"
               )
-   where extract l = PrintAST (maybe False read $ lookup "notypes" l)
-                              (maybe False read $ lookup "noeffects" l)
-                              (maybe False read $ lookup "nocomments" l)
+   where extract l = PrintAST (key "notypes"    l)
+                              (key "noeffects"  l)
+                              (key "nocomments" l)
+
+         key k kvl = maybe False read $ lookup k kvl
 
 syntaxPrintOpt :: Parser PrintMode
 syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
                                     <> help "Print syntax output" )
 
 parseStageOpt :: Parser ParseStageOptions
-parseStageOpt = nub . concat <$> many parseStage
+parseStageOpt = concatMap stageKV . keyValList "" <$> strOption (
+                     long "fpstage"
+                  <> value ""
+                  <> metavar "STAGES"
+                  <> help "Run compilation stages" )
 
-parseStage :: Parser [ParseStage]
-parseStage = ((:[]) <$> pstageOpt) <|> ((:[]) <$> pstageDeclOpt) <|> ((:[]) <$> pstageCG)
-  where pstageOpt     = flag' (PSOptimization False) ( long "fpopt"     <> help "Parse with whole program optimization" )
-        pstageDeclOpt = flag' (PSOptimization True)  ( long "fpdeclopt" <> help "Parse with declaration-at-a-time optimization" )
-        pstageCG      = flag' PSCodegen              ( long "fpcg"      <> help "Parse with a codegen pass" )
+   where stageKV ("opt",     read -> True) = [PSOptimization Nothing]
+         stageKV ("declopt", read -> i)    = [PSOptimization $ Just i]
+         stageKV ("cg",      read -> True) = [PSCodegen]
+         stageKV _ = []
 
 -- | Parse mode
 parseOptions :: Parser Mode
 parseOptions = Parse <$> (ParseOptions <$> printModeOpt <*> parseStageOpt <*> transformOptions)
 
--- | Transformation options
-transformOptions :: Parser TransformOptions
-transformOptions = concat <$> many transformMode
 
 -- | Compiler options
 compileOptions :: Parser Mode
@@ -427,22 +451,6 @@ printQuickTypesOpt = switch (
                          long    "print-quicktypes"
                       <> help    "Show quicktypes as typechecker output"
                    )
-
--- Accept a precursor string
-transformMode :: Parser [TransformMode]
-transformMode   =  wrap <$> conflictsOpt
-              <|> wrap <$> tasksOpt
-              <|> wrap <$> programTasksOpt
-              <|> wrap <$> proxyPathsOpt
-              <|> wrap <$> annProvOpt
-              <|> wrap <$> flatAnnOpt
-              <|> wrap <$> provenanceOpt
-              <|> wrap <$> effectOpt
-              <|> wrap <$> profilingOpt
-              <|> wrap <$> readOnlyBindOpts
-              <|> wrap <$> trigSymOpt
-  where
-    wrap x = [x]
 
 
 optimizationOpt :: Parser OptimizationLevel

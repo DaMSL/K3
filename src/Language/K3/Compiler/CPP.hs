@@ -63,7 +63,7 @@ typecheckStage _ cOpts prog = prefixError "Type error:" $ return $ if useSubType
 applyOptimizations :: CompileOptions -> K3 Declaration -> K3 Declaration
 applyOptimizations cOpts prog =
   let lvl = optimizationLevel cOpts in
-  either (\s -> error $ "Invalid result from runCGPasses: "++ s) id $ runCGPasses prog lvl
+  either (\s -> error $ "Invalid result from runCGPasses: "++ s) id $ runCGPasses lvl prog
 
 cppCodegenStage :: CompilerStage (K3 Declaration) ()
 cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $ genCPP irRes

@@ -123,12 +123,12 @@ run opts = do
     printer PrintSyntax p = either syntaxError putStrLn $ programS p
 
     runStagesThenPrint popts prog = do
-      let sprogE = foldM (\p (stg, f) -> if stg `elem` (poStages popts) then f p else Right p)
-                        prog
-                        [ (PSOptimization False, (\p -> runOptPasses p >>= return . fst))
-                        , (PSOptimization True, runDeclOptPasses Nothing)
-                        , (PSCodegen, flip runCGPasses 3)]
+      let sprogE = foldM processStage prog (poStages popts)
       either putStrLn (printer (parsePrintMode popts) . stripAllProperties) sprogE
+
+    processStage p (PSOptimization Nothing) = runOptPasses p >>= return . fst
+    processStage p (PSOptimization (Just blockSize)) = runDeclOptPasses blockSize Nothing p
+    processStage p PSCodegen = runCGPasses 3 p
 
     analyzeThenPrint popts prog = do
       let (p, str) = transform (poTransform popts) prog
