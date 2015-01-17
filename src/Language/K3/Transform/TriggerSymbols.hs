@@ -48,5 +48,5 @@ triggerSymbols prog = do
 
         mkSyms trigSyms = map (\(n,i) -> mkSymGlobal n i @+ symAnnot) trigSyms
         mkSymGlobal n i = DC.global (symId n) TC.int $ Just $ EC.constant $ CInt i
-        symAnnot = DProperty $ Right ("Pinned", Nothing)
+        symAnnot = DProperty $ Left ("Pinned", Nothing)
         symId n = "__" ++ n ++ "_tid"
