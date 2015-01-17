@@ -589,6 +589,7 @@ eliminateDeadCodeDelta expr = foldMapTree pruneExpr ([],False) expr >>= return .
           initRO <- readOnly False (head ch) >>= return . (&& i `notElem` vars)
           if initRO then rtt $ last ch else rtf n'
 
+        {-
         (tag -> EBindAs b) ->
           let vars = freeVariables $ last ch in
           case b of
@@ -599,6 +600,7 @@ eliminateDeadCodeDelta expr = foldMapTree pruneExpr ([],False) expr >>= return .
                 then rtt $ last ch
                 else rtt $ Node (EBindAs (BRecord $ nBinder) :@: annotations n) ch
             _ -> rtf n'
+        -}
 
         (tag -> EOperate OSeq) -> do
           lhsRO <- readOnly False (head ch)
@@ -945,7 +947,7 @@ encodeTransformers expr = do
           let nfAs' = fAs ++ [pFusionSpec cls, pFusionLineage "fold"]
           nfAs      <- markPureTransformer True nfAs' fArg1
           let r     = PPrjApp2 cE fId nfAs fArg1 fArg2 app1As app2As
-          if False then rtt r else debugInferredFold r nfAs fArg1
+          if True then rtt r else debugInferredFold r nfAs fArg1
 
         where debugInferredFold e nfAs@(getFusionSpecA -> Just cls) fArg1 = do
                 fa1FMap <- either (Left . T.unpack) Right $ SE.inferDefaultExprEffects fArg1
@@ -1118,11 +1120,12 @@ fuseFoldTransformers expr = do
     fuse nch@(PPrj _ _ (any isETransformer -> True), _) = return $ (False, uncurry replaceCh nch)
     fuse nch = return $ (False, uncurry replaceCh nch)
 
-    debugFusionStep fAs gAs ngArg1 e = flip trace e $
-      unlines [ "Fused:" ++ (showFusion fAs gAs), pretty $ stripAllExprAnnotations ngArg1 ]
+    debugFusionStep fAs gAs ngArg1 e =
+      if True then e else flip trace e $
+        unlines [ "Fused:" ++ (showFusion fAs gAs), pretty $ stripAllExprAnnotations ngArg1 ]
 
     debugFusionMatching lAccF rAccF lAs rAs r =
-      if False then r
+      if True then r
       else let pp e   = pretty $ stripAllExprAnnotations e
                onFail = unlines ["Fail", pp lAccF, pp rAccF]
            in trace (unwords ["Fusing:", showFusion lAs rAs

@@ -897,11 +897,10 @@ stripAllTypeAndEffectAnns = stripDeclAnnotations isAnyDEffectAnn isAnyETypeOrEff
 
 -- | Ensures every node has a valid UID and Span.
 --   This currently does not handle literals.
-
-repairProgram :: String -> K3 Declaration -> K3 Declaration
-repairProgram repairMsg p =
-    let maxUid = (\case { UID i -> i }) $ maxProgramUID p
-    in snd $ runIdentity $ foldProgram repairDecl repairMem repairExpr (Just repairType) (maxUid + 1) p
+repairProgram :: String -> Maybe Int -> K3 Declaration -> (Int, K3 Declaration)
+repairProgram repairMsg nextUIDOpt p =
+    let nextUID = maybe (let UID maxUID = maxProgramUID p in maxUID + 1) id nextUIDOpt
+    in runIdentity $ foldProgram repairDecl repairMem repairExpr (Just repairType) nextUID p
 
   where repairDecl uid n = validateD uid (children n) n
         repairExpr uid n = foldRebuildTree validateE uid n
@@ -930,6 +929,7 @@ repairProgram repairMsg p =
         ensureUID uid ctor t n = addAnn (uid+1) uid (ctor $ UID uid) t n
 
         addAnn rUsed rNotUsed a t n = maybe (rUsed, n @+ a) (const (rNotUsed, n)) (n @~ t)
+
 
 -- | Fold an accumulator over all program UIDs.
 foldProgramUID :: (a -> UID -> a) -> a -> K3 Declaration -> (a, K3 Declaration)

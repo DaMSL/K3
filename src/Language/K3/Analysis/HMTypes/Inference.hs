@@ -1111,29 +1111,31 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       modify $ \env -> tiexte env i ipt
       return [iu]
 
-    sidewaysBinding ch1 (tag -> EBindAs b) = do
+    sidewaysBinding ch1 e@(tag -> EBindAs b) = do
         ch1T <- qTypeOfM ch1
         case b of
           BIndirection i -> do
             itv <- newtv
-            void $ unifyWithOverrideM ch1T (tind itv) $ bindErr "indirection"
+            void $ unifyWithOverrideM ch1T (tind itv) $ bindErr e "indirection"
             monoBinding i itv
 
           BTuple ids -> do
             idtvs <- mapM (const newtv) ids
-            void   $ unifyWithOverrideM ch1T (ttup idtvs) $ bindErr "tuple"
+            void   $ unifyWithOverrideM ch1T (ttup idtvs) $ bindErr e "tuple"
             mapM_ (uncurry monoBinding) $ zip ids idtvs
 
           -- TODO: partial bindings?
           BRecord ijs -> do
             jtvs <- mapM (const newtv) ijs
-            void $  unifyWithOverrideM ch1T (trec $ flip zip jtvs $ map fst ijs) $ bindErr "record"
+            void $  unifyWithOverrideM ch1T (trec $ flip zip jtvs $ map fst ijs) $ bindErr e "record"
             mapM_ (uncurry monoBinding) $ flip zip jtvs $ map snd ijs
 
         return [iu]
 
       where
-        bindErr kind reason = unwords ["Invalid", kind, "bind-as:", reason]
+        bindErr errE kind reason = unwords ["Invalid", kind, "bind-as:", reason]
+                                     ++ "\nOn:\n" ++ pretty errE
+                                     ++ "\nToplevel:\n" ++ pretty expr
 
     sidewaysBinding ch1 (tag -> ECaseOf i) = do
       ch1T <- qTypeOfM ch1

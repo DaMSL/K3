@@ -105,7 +105,7 @@ defaultMetaAnalysis p = do
     liftError = either throwG
 
 defaultMetaRepair :: K3 Declaration -> GeneratorM (K3 Declaration)
-defaultMetaRepair p = return $ repairProgram "metaprogram" p
+defaultMetaRepair p = return $ snd $ repairProgram "metaprogram" Nothing p
 
 nullMetaAnalysis :: K3 Declaration -> GeneratorM (K3 Declaration)
 nullMetaAnalysis p = return p
