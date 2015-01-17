@@ -247,7 +247,7 @@ inline e@(tag &&& children -> (EOperate OApp, [Fold c, f, z])) = do
 inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
     -- Inline both function and argument for call.
     incApplyLevel
-    let cargs = CArgs.eCArgs e
+    let cargs = CArgs.eCArgs f
     (fe, fv) <- inline f
     (ae, av) <- inline a
     c <- call fv av cargs
