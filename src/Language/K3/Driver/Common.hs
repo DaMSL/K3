@@ -20,11 +20,11 @@ defaultOutLanguage = "cpp"
 defaultProgramName :: String
 defaultProgramName = "A"
 
-defaultOutputFile :: Maybe FilePath
-defaultOutputFile = Just "a.out"
+defaultOutputFile :: FilePath
+defaultOutputFile = "a.out"
 
-defaultBuildDir :: Maybe FilePath
-defaultBuildDir = Just "__build"
+defaultBuildDir :: FilePath
+defaultBuildDir = "__build"
 
 defaultRuntimeDir :: FilePath
 defaultRuntimeDir = "runtime"

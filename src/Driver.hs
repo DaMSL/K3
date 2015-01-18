@@ -1,10 +1,17 @@
+{-# LANGUAGE TupleSections #-}
+
 -- | Primary Driver for the K3 Ecosystem.
 
 import Control.Monad
-import Control.Arrow (first)
+import Control.Arrow (first, second)
+
+import Criterion.Measurement
+
 import Data.Char
-import Data.List(foldl')
+import Data.List
 import Data.Maybe
+
+import GHC.IO.Encoding
 
 import qualified Options.Applicative as Options
 import Options.Applicative((<>), (<*>))
@@ -50,6 +57,11 @@ import qualified Language.K3.Compiler.CPP     as CPPC
 -- | Mode Dispatch.
 run :: Options -> IO ()
 run opts = do
+  initializeTime
+  setLocaleEncoding     utf8
+  setFileSystemEncoding utf8
+  setForeignEncoding    utf8
+
   putStrLn $ "Mode: "      ++ pretty (mode opts)
   putStrLn $ "Verbosity: " ++ show (verbosity $ inform opts)
   putStrLn $ "Input: "     ++ show (input opts)
@@ -123,12 +135,25 @@ run opts = do
     printer PrintSyntax p = either syntaxError putStrLn $ programS p
 
     runStagesThenPrint popts prog = do
-      let sprogE = foldM processStage prog (poStages popts)
-      either putStrLn (printer (parsePrintMode popts) . stripAllProperties) sprogE
+      sprogE <- foldM processStage (Right (prog, [])) (poStages popts)
+      either putStrLn (printStages popts) sprogE
 
-    processStage p (PSOptimization Nothing) = runOptPasses p >>= return . fst
-    processStage p (PSOptimization (Just blockSize)) = runDeclOptPasses blockSize Nothing p
-    processStage p PSCodegen = runCGPasses 3 p
+    processStage (Right (p,lg)) (PSOptimization Nothing) =
+      runOptPasses p >>= prettyReport lg
+
+    processStage (Right (p,lg)) (PSOptimization (Just cSpec)) =
+      runDeclOptPasses cSpec Nothing p >>= prettyReport lg
+
+    processStage (Right (p,lg)) PSCodegen = runCGPasses 3 p >>= \rE -> return (rE >>= return . (,lg))
+    processStage (Left s) _ = return $ Left s
+
+    printStages popts (prog, rp) = do
+      printer (parsePrintMode popts) $ stripAllProperties prog
+      putStrLn $ sep ++ "Report" ++ sep
+      putStrLn $ boxToString rp
+      where sep = replicate 20 '='
+
+    prettyReport lg npE = return (npE >>= return . (second $ (lg ++) . prettyLines))
 
     analyzeThenPrint popts prog = do
       let (p, str) = transform (poTransform popts) prog

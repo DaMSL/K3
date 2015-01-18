@@ -60,10 +60,8 @@ typecheckStage _ cOpts prog = prefixError "Type error:" $ return $ if useSubType
 
     quickTypecheck = inferProgramTypes prog >>= translateProgramTypes . fst
 
-applyOptimizations :: CompileOptions -> K3 Declaration -> K3 Declaration
-applyOptimizations cOpts prog =
-  let lvl = optimizationLevel cOpts in
-  either (\s -> error $ "Invalid result from runCGPasses: "++ s) id $ runCGPasses lvl prog
+applyOptimizations :: CompileOptions -> K3 Declaration -> IO (Either String (K3 Declaration))
+applyOptimizations cOpts prog = runCGPasses (optimizationLevel cOpts) prog
 
 cppCodegenStage :: CompilerStage (K3 Declaration) ()
 cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $ genCPP irRes
@@ -71,13 +69,13 @@ cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $
     --attach trigger symbols. TODO: mangle names before applying this transformation.
     -- TODO move this into core. Must happen before imperative generation.
 
-    (irRes, initSt)      = I.runImperativeM (I.declaration typedProgram) I.defaultImperativeS
+    (irRes, initSt) = I.runImperativeM (I.declaration typedProgram) I.defaultImperativeS
 
-    preprocess = applyOptimizations copts
+    genCPP (Right cppIr) = do
+      Right optIr <- applyOptimizations copts cppIr
+      outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt) (CPP.stringifyProgram optIr)
 
-    genCPP (Right cppIr) = outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt)
-                           (CPP.stringifyProgram $ preprocess cppIr)
-    genCPP (Left _)      = return $ Left "Error in Imperative Transformation."
+    genCPP (Left _) = return $ Left "Error in Imperative Transformation."
 
     outputCPP (Right doc) =
       either (return . Left) (\x -> Right <$> outputDoc doc x)

@@ -7,13 +7,14 @@ module Language.K3.Driver.Options where
 import Control.Applicative
 import Options.Applicative
 
-import Data.List
+import qualified Data.Map as Map
 import Data.List.Split
 import Data.Maybe
 
 import System.FilePath
 import System.Log
 
+import Language.K3.Stages ( CompilerSpec(..), cs0 )
 import Language.K3.Runtime.Common ( SystemEnvironment )
 import Language.K3.Runtime.Options
 import Language.K3.Utils.Logger.Config
@@ -60,7 +61,7 @@ data ParseOptions = ParseOptions { parsePrintMode :: PrintMode,
 -- | Stage options used for parse-only mode.
 type ParseStageOptions = [ParseStage]
 
-data ParseStage = PSOptimization (Maybe Int)
+data ParseStage = PSOptimization (Maybe CompilerSpec)
                 | PSCodegen
                 deriving (Eq, Ord, Read, Show)
 
@@ -157,11 +158,18 @@ data Verbosity
 pathList :: String -> [String]
 pathList = splitOn ":"
 
-keyValList :: String -> String -> [(String, String)]
-keyValList keyPrefix s = catMaybes $ map kvPair $ splitOn ":" s
- where kvPair s' = case splitOn "=" s' of
+parseKVL :: String -> String -> String -> String -> [(String, String)]
+parseKVL sepSym eqSym keyPrefix s = catMaybes $ map kvPair $ splitOn sepSym s
+ where kvPair s' = case splitOn eqSym s' of
                      [x,y] -> Just (keyPrefix ++ x, y)
                      _     -> Nothing
+
+keyValList :: String -> String -> [(String, String)]
+keyValList = parseKVL ":" "="
+
+specParamList :: String -> String -> [(String, String)]
+specParamList = parseKVL "," "@"
+
 
 -- | Mode Options Parsing.
 modeOptions :: Parser Mode
@@ -219,16 +227,28 @@ syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
                                     <> help "Print syntax output" )
 
 parseStageOpt :: Parser ParseStageOptions
-parseStageOpt = concatMap stageKV . keyValList "" <$> strOption (
+parseStageOpt = extractStageAndSpec . keyValList "" <$> strOption (
                      long "fpstage"
                   <> value ""
                   <> metavar "STAGES"
                   <> help "Run compilation stages" )
 
-   where stageKV ("opt",     read -> True) = [PSOptimization Nothing]
-         stageKV ("declopt", read -> i)    = [PSOptimization $ Just i]
-         stageKV ("cg",      read -> True) = [PSCodegen]
-         stageKV _ = []
+   where
+    extractStageAndSpec kvl = case kvl of
+      [] -> []
+      [x] -> stageOf cs0 x
+      h:t -> stageOf (specOf t) h
+
+    stageOf _     ("opt",     read -> True) = [PSOptimization Nothing]
+    stageOf cSpec ("declopt", read -> True) = [PSOptimization $ Just cSpec]
+    stageOf _     ("cg",      read -> True) = [PSCodegen]
+    stageOf _ _ = []
+
+    specOf kvl = foldl specParam cs0 kvl
+    specParam cs (k,v) = case k of
+      "@blockSize" -> cs {blockSize = read v}
+      _ -> cs {snapshotSpec = Map.insertWith (++) k (splitOn "," v) $ snapshotSpec cs}
+
 
 -- | Parse mode
 parseOptions :: Parser Mode
@@ -274,7 +294,7 @@ runtimePathOpt = strOption (
                     <> metavar "RUNTIME" )
 
 outputFileOpt :: Parser (Maybe FilePath)
-outputFileOpt = validatePath <$> option (\s -> str s >>= return . Just) (
+outputFileOpt = validatePath . Just <$> option auto (
                        short   'o'
                     <> long    "output"
                     <> value   defaultOutputFile
@@ -284,7 +304,7 @@ outputFileOpt = validatePath <$> option (\s -> str s >>= return . Just) (
         validatePath (Just p) = if isValid p then Just p else Nothing
 
 buildDirOpt :: Parser (Maybe FilePath)
-buildDirOpt = validatePath <$> option (\s -> str s >>= return . Just) (
+buildDirOpt = validatePath . Just <$> option auto (
                        short   'b'
                     <> long    "build"
                     <> value   defaultBuildDir
