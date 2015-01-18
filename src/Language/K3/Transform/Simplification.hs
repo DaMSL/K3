@@ -901,14 +901,29 @@ encodeTransformers expr = do
             "iterate" -> mkIter  e
             "ext"     -> rtf e
             _         -> rtf e
+      | unaryTransformer fId = rtf $ debugEncode fId fAs e
 
     encode e@(PPrjApp2 _ fId fAs _ _ _ _)
       | binaryTransformer fId && transformable fAs = mkFold2 e
+      | binaryTransformer fId = rtf $ debugEncode fId fAs e
 
     encode e@(PPrjApp3 _ fId fAs _ _ _ _ _ _)
       | ternaryTransformer fId && transformable fAs = mkFold3 e
+      | ternaryTransformer fId = rtf $ debugEncode fId fAs e
 
     encode e = rtf e
+
+    debugEncode trid as e =
+      let uid = case filter isEUID as of
+                  [] -> -1
+                  (head -> EUID (UID u)) -> u
+
+          str = unwords [ "debugEncode", trid, "UID", show uid, ":"
+                        , show $ any isETransformer as
+                        , show $ any isEFusionSpec as
+                        , show $ filter (not . isAnyETypeOrEffectAnn) as]
+      in trace str e
+
 
     -- Mark whether a transform has an 'elem'-wrapped or 'key-value' input element type.
     markContent e@(PPrjApp2Chain cE "fold" "fold" fArg1 fArg2 gArg1 gArg2

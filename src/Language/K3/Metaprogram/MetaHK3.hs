@@ -72,7 +72,7 @@ injectSpliceValue v = case parseExp $ show v of
 spliceQuotesDecl :: SpliceContext -> Decl -> Decl
 spliceQuotesDecl sctxt decl = case decl of
     FunBind matchL -> FunBind $ map rcrm matchL
-    PatBind l p tOpt rhs binds -> PatBind l (rcrp p) tOpt (rcrr rhs) $ rcrb binds
+    PatBind l p rhs binds -> PatBind l (rcrp p) (rcrr rhs) $ rcrb binds
     _ -> decl
   where rcrm = spliceQuotesMatch sctxt
         rcrp = spliceQuotesPat   sctxt
@@ -141,7 +141,7 @@ spliceQuotesExp sctxt e = case e of
   Lambda l patL e1        -> Lambda l (map rcrp patL) $ rcr e1
   Let binds e1            -> Let (rcrb binds) $ rcr e1
   If pe te ee             -> If (rcr pe) (rcr te) $ rcr ee
-  MultiIf ifAltL          -> MultiIf $ map rcrif ifAltL
+  MultiIf gurhsL          -> MultiIf $ map rcrgurhs gurhsL
   Case e1 altL            -> Case (rcr e1) $ map rcra altL
   Do stmtL                -> Do $ map rcrs stmtL
   MDo stmtL               -> MDo $ map rcrs stmtL
@@ -172,14 +172,14 @@ spliceQuotesExp sctxt e = case e of
 
   _ -> e
 
-  where rcr   = spliceQuotesExp   sctxt
-        rcrp  = spliceQuotesPat   sctxt
-        rcra  = spliceQuotesAlt   sctxt
-        rcrif = spliceQuotesIfAlt sctxt
-        rcrs  = spliceQuotesStmt  sctxt
-        rcrb  = spliceQuotesBinds sctxt
-        rcrf  = spliceQuotesFieldUpdate sctxt
-        rcrq  = spliceQuotesQualStmt sctxt
+  where rcr      = spliceQuotesExp         sctxt
+        rcrp     = spliceQuotesPat         sctxt
+        rcra     = spliceQuotesAlt         sctxt
+        rcrgurhs = spliceQuotesGuardedRhs  sctxt
+        rcrs     = spliceQuotesStmt        sctxt
+        rcrb     = spliceQuotesBinds       sctxt
+        rcrf     = spliceQuotesFieldUpdate sctxt
+        rcrq     = spliceQuotesQualStmt    sctxt
 
   {- Unhandled cases
   Var QName
@@ -211,26 +211,10 @@ spliceQuotesIPBind sctxt (IPBind l ipn e) = IPBind l ipn $ rcre e
   where rcre = spliceQuotesExp sctxt
 
 spliceQuotesAlt :: SpliceContext -> Alt -> Alt
-spliceQuotesAlt sctxt (Alt l pat gAlts binds) = Alt l (rcrp pat) (rcrg gAlts) $ rcrb binds
+spliceQuotesAlt sctxt (Alt l pat rhs binds) = Alt l (rcrp pat) (rcrr rhs) $ rcrb binds
   where rcrp = spliceQuotesPat sctxt
-        rcrg = spliceQuotesGuardedAlts sctxt
+        rcrr = spliceQuotesRhs sctxt
         rcrb = spliceQuotesBinds sctxt
-
-spliceQuotesIfAlt :: SpliceContext -> IfAlt -> IfAlt
-spliceQuotesIfAlt sctxt (IfAlt e1 e2) = IfAlt (rcr e1) $ rcr e2
-  where rcr = spliceQuotesExp sctxt
-
-spliceQuotesGuardedAlts :: SpliceContext -> GuardedAlts -> GuardedAlts
-spliceQuotesGuardedAlts sctxt = \case
-    UnGuardedAlt e -> UnGuardedAlt $ rcr e
-    GuardedAlts gL -> GuardedAlts $ map rcrg gL
-  where rcr  = spliceQuotesExp sctxt
-        rcrg = spliceQuotesGuardedAlt sctxt
-
-spliceQuotesGuardedAlt :: SpliceContext -> GuardedAlt -> GuardedAlt
-spliceQuotesGuardedAlt sctxt (GuardedAlt l stmtL e) = GuardedAlt l (map rcrs stmtL) $ rcr e
-  where rcr  = spliceQuotesExp sctxt
-        rcrs = spliceQuotesStmt sctxt
 
 spliceQuotesFieldUpdate :: SpliceContext -> FieldUpdate -> FieldUpdate
 spliceQuotesFieldUpdate sctxt fu = case fu of
@@ -264,7 +248,6 @@ spliceQuotesStmt sctxt = \case
 {- Patterns -}
 spliceQuotesPat :: SpliceContext -> Pat -> Pat
 spliceQuotesPat sctxt pat = case pat of
-    PNeg p              -> PNeg $ rcr p
     PInfixApp p1 qn p2  -> PInfixApp (rcr p1) qn (rcr p2)
     PApp qn patL        -> PApp qn $ map rcr patL
     PTuple boxed patL   -> PTuple boxed $ map rcr patL
