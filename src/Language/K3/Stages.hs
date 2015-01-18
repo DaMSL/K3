@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -5,13 +6,24 @@
 -- | High-level API to K3 toolchain stages.
 module Language.K3.Stages where
 
+import Control.Arrow hiding ( left )
+import Control.Exception
 import Control.Monad
 import Control.Monad.State
 import Control.Monad.Trans.Either
 
+import Criterion.Measurement
+import Criterion.Types
+
+import Data.Function
 import Data.List
+import Data.Map ( Map )
+import qualified Data.Map as Map
 import qualified Data.Set as Set
+import qualified Data.Text as T
 import Debug.Trace
+
+import qualified Text.Printf as TPF
 
 import Language.K3.Core.Common
 import Language.K3.Core.Annotation
@@ -29,40 +41,64 @@ import Language.K3.Transform.Simplification
 import Language.K3.Transform.TriggerSymbols (triggerSymbols)
 
 import Language.K3.Utils.Pretty
-
-import qualified Data.Text as T
 import qualified Language.K3.Utils.PrettyText as PT
 
 import Language.K3.Codegen.CPP.Materialization
 
+-- | Snapshot specifications are a list of pass names to capture per declaration.
+type SnapshotSpec = Map String [String]
+
+-- | Configuration metadata for compiler stages
+data CompilerSpec = CompilerSpec { blockSize :: Int
+                                 , snapshotSpec :: SnapshotSpec }
+                    deriving (Eq, Ord, Read, Show)
+
+-- | Compilation profiling
+data TransformReport = TransformReport { statistics :: Map String [Measured]
+                                       , snapshots  :: Map String [K3 Declaration] }
+
 -- | The program transformation composition monad
-data TransformSt = TransformSt { nextuid :: Int
-                               , tenv    :: TIEnv
-                               , prenv   :: Properties.PIEnv
-                               , penv    :: Provenance.PIEnv
-                               , fenv    :: SEffects.FIEnv }
+data TransformSt = TransformSt { nextuid    :: Int
+                               , tenv       :: TIEnv
+                               , prenv      :: Properties.PIEnv
+                               , penv       :: Provenance.PIEnv
+                               , fenv       :: SEffects.FIEnv
+                               , report     :: TransformReport }
 
-type TransformM = EitherT String (State TransformSt)
+type TransformM = EitherT String (StateT TransformSt IO)
 
-st0 :: K3 Declaration -> Either String TransformSt
-st0 prog = mkEnv >>= \(stpe, stfe) ->
-  return $ TransformSt puid tienv0 Properties.pienv0 stpe stfe
+cs0 :: CompilerSpec
+cs0 = CompilerSpec 16 Map.empty
+
+rp0 :: TransformReport
+rp0 = TransformReport Map.empty Map.empty
+
+st0 :: K3 Declaration -> IO (Either String TransformSt)
+st0 prog = do
+  return $ mkEnv >>= \(stpe, stfe) ->
+    return $ TransformSt puid tienv0 Properties.pienv0 stpe stfe rp0
+
   where puid = let UID i = maxProgramUID prog in i + 1
         mkEnv = do
           lcenv <- lambdaClosures prog
           let pe = Provenance.pienv0 lcenv
           return (pe, SEffects.fienv0 (Provenance.ppenv pe) lcenv)
 
-runTransformStM :: TransformSt -> TransformM a -> Either String (a, TransformSt)
-runTransformStM st m = let (a,b) = runState (runEitherT m) st in a >>= return . (,b)
+runTransformStM :: TransformSt -> TransformM a -> IO (Either String (a, TransformSt))
+runTransformStM st m = do
+  (a, s) <- runStateT (runEitherT m) st
+  return $ either Left (Right . (,s)) a
 
-runTransformM :: TransformSt -> TransformM a -> Either String a
-runTransformM st m = runTransformStM st m >>= return . fst
+runTransformM :: TransformSt -> TransformM a -> IO (Either String a)
+runTransformM st m = do
+  e <- runTransformStM st m
+  return $ either Left (Right . fst) e
 
 liftEitherM :: Either String a -> TransformM a
 liftEitherM = either left return
 
-{- Transform utilities -}
+
+{-- Transform utilities --}
 type ProgramTransform = K3 Declaration -> TransformM (K3 Declaration)
 type ProgramTransformSt a = a -> K3 Declaration -> TransformM (a, K3 Declaration)
 
@@ -88,6 +124,59 @@ displayPass :: String -> ProgramTransform -> ProgramTransform
 displayPass n f p = f p >>= \np -> mkTg n np (return np)
   where mkTg str p' = trace (boxToString $ [str] %$ prettyLines p')
 
+-- | Measure the execution time of a transform
+timePass :: String -> ProgramTransform -> ProgramTransform
+timePass n f prog = do
+  (npE, sample) <- get >>= liftIO . profile f prog
+  (np, nst)     <- liftEitherM npE
+  void $ put $ addMeasurement n sample nst
+  return np
+
+  where
+    addMeasurement n sample st =
+      let rp  = report st
+          nrp = rp {statistics = Map.insertWith (++) n [sample] $ statistics rp}
+      in st {report = nrp}
+
+    -- This is a reimplementation of Criterion.Measurement.measure
+    -- while actually returning the value computed.
+    profile tr arg st = do
+      startStats     <- getGCStats
+      startTime      <- getTime
+      startCpuTime   <- getCPUTime
+      startCycles    <- getCycles
+      resultE        <- runTransformStM st $ tr arg
+      wresultE       <- evaluate resultE
+      endTime        <- getTime
+      endCpuTime     <- getCPUTime
+      endCycles      <- getCycles
+      endStats       <- getGCStats
+      let !m = applyGCStats endStats startStats $ measured {
+                 measTime    = max 0 (endTime - startTime)
+               , measCpuTime = max 0 (endCpuTime - startCpuTime)
+               , measCycles  = max 0 (fromIntegral (endCycles - startCycles))
+               , measIters   = 1
+               }
+      return (wresultE, m)
+
+-- | Take a snapshot of the result of a transform
+type SnapshotCombineF = [K3 Declaration] -> [K3 Declaration] -> [K3 Declaration]
+
+lastSnapshot :: SnapshotCombineF
+lastSnapshot a _ = a
+
+snapshotPass :: String -> SnapshotCombineF -> ProgramTransform -> ProgramTransform
+snapshotPass n combineF f prog = do
+  np <- f prog
+  modify $ addSnapshot n np
+  return np
+
+  where addSnapshot n np st =
+          let rp  = report st
+              nrp = rp {snapshots = Map.insertWith combineF n [np] $ snapshots rp}
+          in st {report = nrp}
+
+{-- Stateful transformations --}
 withPropertyTransform :: PrpTrE -> ProgramTransform
 withPropertyTransform f p = do
   st <- get
@@ -127,7 +216,7 @@ withRepair msg f prog = do
   return np'
 
 
-{- Transform constructors -}
+{-- Transform constructors --}
 transformF :: TrF -> ProgramTransform
 transformF f p = return $ f p
 
@@ -283,11 +372,16 @@ runCGPassesM :: Int -> ProgramTransform
 runCGPassesM lvl prog = runPasses (cgPasses lvl) prog
 
 -- Legacy methods.
-runOptPasses :: K3 Declaration -> Either String (K3 Declaration, TransformSt)
-runOptPasses prog = st0 prog >>= flip runTransformStM (runOptPassesM prog)
+runOptPasses :: K3 Declaration -> IO (Either String (K3 Declaration, TransformReport))
+runOptPasses prog = st0 prog >>= either (return . Left) run
+  where run st = do
+          resE <- runTransformStM st $ runOptPassesM prog
+          return (resE >>= return . second report)
 
-runCGPasses :: Int -> K3 Declaration -> Either String (K3 Declaration)
-runCGPasses lvl prog = st0 prog >>= flip runTransformM (runCGPassesM lvl prog)
+runCGPasses :: Int -> K3 Declaration -> IO (Either String (K3 Declaration))
+runCGPasses lvl prog = do
+  stE <- st0 prog
+  either (return . Left) (\st -> runTransformM st $ runCGPassesM lvl prog) stE
 
 
 {- Declaration-at-a-time analyses and optimizations. -}
@@ -375,53 +469,114 @@ refreshDecl :: Maybe (SEffects.ExtInferF a, a) -> Identifier -> ProgramTransform
 refreshDecl extInfOpt n =
   runPasses [inferFreshDeclTypesAndEffects extInfOpt n, inferFreshDeclProperties n]
 
--- TODO: each transformation here should be a local fixpoint, as well as the current pipeline fixpoint.
-simplifyDecl :: Maybe (SEffects.ExtInferF a, a) -> Identifier -> ProgramTransform
-simplifyDecl extInfOpt n = runPasses simplifyPasses
-  where simplifyPasses = intersperse (refreshDecl extInfOpt n) $
-                           map (mkXform False) [ (False, "Decl-CF",  foldConstants)
-                                               , (False, "Decl-BR",  betaReduction)
-                                               , (False, "Decl-DCE", eliminateDeadCode) ]
-        mkXform asDebug (asFix,i,f) = withRepair i
-          $ (if asFix then transformFixpointI [refreshDecl extInfOpt n] else id)
-          $ (if asDebug then transformEDbg i else transformE)
-          $ mapNamedDeclExpression n f
-
--- TODO: CSE
-simplifyDeclWCSE :: Maybe (SEffects.ExtInferF a, a) -> Identifier -> ProgramTransform
-simplifyDeclWCSE = undefined
-
-streamFusionDecl :: Maybe (SEffects.ExtInferF a, a) -> Identifier -> ProgramTransform
-streamFusionDecl extInfOpt n = runPasses [ fusionEncodeFixpoint
-                                         , typEffPass
-                                         , fusionTransformFixpoint ]
+-- | Returns a map of transformations, treating passes as data.
+--   We could build a TH-DSL based on this map to define compilers.
+declTransforms :: SnapshotSpec -> Maybe (SEffects.ExtInferF a, a) -> Identifier -> Map Identifier ProgramTransform
+declTransforms snSpec extInfOpt n = topLevel
   where
-    mkXform asDebug i f     = withRepair i $ (if asDebug then transformEDbg i else transformE)
-                                           $ mapNamedDeclExpression n f
-    typEffPass              = inferFreshDeclTypesAndEffects extInfOpt n
-    fusionEncode            = mkXform False "fusionEncode"    encodeTransformers
-    fusionTransform         = mkXform False "fusionTransform" fuseFoldTransformers
-    fusionReduce            = mkXform False "fusionReduce"    betaReduction
-    fusionEncodeFixpoint    = transformFixpointI [typEffPass] fusionEncode
-    fusionTransformFixpoint = transformFixpointI fusionInterF fusionTransform
-    fusionInterF            = bracketPasses "fusion" typEffPass [fusionReduce]
+    topLevel  = Map.fromList [
+        mkSeqRep "Optimize" highLevel $ prepend [ ("refreshI",      False) ]
+                                              $ [ ("Decl-Simplify", True)
+                                                , ("Decl-Fuse",     True)
+                                                , ("Decl-Simplify", True) ]
+      ] `Map.union` highLevel
 
-declOptPasses :: Maybe (SEffects.ExtInferF a, a) -> K3 Declaration -> [ProgramTransform]
-declOptPasses extInfOpt d = case nameOfDecl d of
+    highLevel = Map.fromList [
+        mkT $ mkSeq "Decl-Simplify" lowLevel $ intersperse "refreshI" $ [ "Decl-CF"
+                                                                        , "Decl-BR"
+                                                                        , "Decl-DCE" ]
+      , mkT $ mkSeq "Decl-Fuse" lowLevel [ "Decl-FE"
+                                         , "typEffI"
+                                         , "Decl-FT" ]
+      ] `Map.union` lowLevel
+
+    -- TODO: CF,BR,DCE should be a local fixpoint.
+    lowLevel = Map.fromList [
+        mk foldConstants        "Decl-CF"  True False Nothing
+      , mk betaReduction        "Decl-BR"  True False Nothing
+      , mk eliminateDeadCode    "Decl-DCE" True False Nothing
+      , mk encodeTransformers   "Decl-FE"  True False (Just [typEffI])
+      , mk fuseFoldTransformers "Decl-FT"  True False (Just fusionI)
+      , fusionReduce
+      , ("typEffI",)  $ typEffI
+      , ("refreshI",) $ refreshI
+      ]
+
+    mk f i asRepair asDebug fixPassOpt = mkSS $ (i,)
+      $ (maybe id mkFix fixPassOpt)
+      $ (if asRepair then withRepair i else id)
+      $ (if asDebug then transformEDbg i else transformE)
+      $ mapNamedDeclExpression n f
+
+    mkFix interF = transformFixpointI interF
+
+    -- Timing and snapshotting.
+    mkN i = unwords [n, i]
+    mkT (i,f)  = (i, timePass (mkN i) f)
+    mkS (i,f)  = (i, snapshotPass (mkN i) lastSnapshot f)
+    mkSS (i,f) = maybe (i,f) (\l -> if i `elem` l then mkS (i,f) else (i,f))
+                   $ Map.lookup n snSpec
+
+    -- Shared passes
+    fusionReduce = mk betaReduction "Decl-FR" True False Nothing
+
+    -- Fixpoint intermediates
+    typEffI  = inferFreshDeclTypesAndEffects extInfOpt n
+    refreshI = refreshDecl extInfOpt n
+    fusionI  = bracketPasses "fusionReduce" typEffI [snd fusionReduce]
+
+    -- Derived transforms
+    mkSeq i m l = mkSS (i, runPasses $ map (flip getTransform m) l)
+
+    mkSeqRep i m lWRep = mkSS (i, runPasses $ map (getWRep m) lWRep)
+    getWRep m (i, asRep) = (if asRep then withRepair i else id) $ getTransform i m
+
+    prepend l1 l2 = concatMap ((l1 ++) . (:[])) l2
+
+
+getTransform :: Identifier -> Map Identifier ProgramTransform -> ProgramTransform
+getTransform i m = maybe err id $ Map.lookup i m
+  where err = error $ "Invalid compiler transformation: " ++ i
+
+declOptPasses :: SnapshotSpec -> Maybe (SEffects.ExtInferF a, a) -> K3 Declaration -> [ProgramTransform]
+declOptPasses snSpec extInfOpt d = case nameOfDecl d of
   Nothing -> []
-  Just n -> trace ("Optimizing " ++ n) $
-            map (prepareOpt n) [ (simplifyDecl     extInfOpt n, "opt-decl-simplify-prefuse")
-                               , (streamFusionDecl extInfOpt n, "opt-decl-fuse")
-                               , (simplifyDecl     extInfOpt n, "opt-decl-simplify-final") ]
-  where prepareOpt n (f,i) = runPasses [refreshDecl extInfOpt n, withRepair i f]
-        nameOfDecl (tag -> DGlobal  n _ (Just _)) = Just n
+  Just n -> trace ("Optimizing " ++ n) $ [getTransform "Optimize" $ declTransforms snSpec extInfOpt n]
+
+  where nameOfDecl (tag -> DGlobal  n _ (Just _)) = Just n
         nameOfDecl (tag -> DTrigger n _ _) = Just n
         nameOfDecl _ = Nothing
 
-runDeclOptPassesM :: Int -> Maybe (SEffects.ExtInferF a, a) -> ProgramTransform
-runDeclOptPassesM blockSize extInfOpt =
-  --runPasses [refreshProgram, mapProgramDeclFixpoint (declOptPasses extInfOpt)]
-  runPasses [refreshProgram, blockMapProgramDeclFixpoint blockSize [refreshProgram] (declOptPasses extInfOpt)]
+runDeclOptPassesM :: CompilerSpec -> Maybe (SEffects.ExtInferF a, a) -> ProgramTransform
+runDeclOptPassesM cSpec extInfOpt =
+  runPasses [refreshProgram, blockMapProgramDeclFixpoint (blockSize cSpec) [refreshProgram] passes]
+  where passes = declOptPasses (snapshotSpec cSpec) extInfOpt
 
-runDeclOptPasses :: Int -> Maybe (SEffects.ExtInferF a, a) -> K3 Declaration -> Either String (K3 Declaration)
-runDeclOptPasses blockSize extInfOpt prog = st0 prog >>= flip runTransformM (runDeclOptPassesM blockSize extInfOpt prog)
+runDeclOptPasses :: CompilerSpec -> Maybe (SEffects.ExtInferF a, a)
+                 -> K3 Declaration -> IO (Either String (K3 Declaration, TransformReport))
+runDeclOptPasses cSpec extInfOpt prog = st0 prog >>= either (return . Left) run
+  where run st = do
+          resE <- runTransformStM st $ runDeclOptPassesM cSpec extInfOpt prog
+          return (resE >>= return . second report)
+
+
+{- Instances -}
+instance Pretty TransformReport where
+  prettyLines (TransformReport st sn) =
+    tlines %$ [unwords ["Total observed compilation time:", secs tsum]]
+           %$ Map.foldlWithKey prettySnapshot [] sn
+    where
+      maxnst = maximum $ map length $ Map.keys st
+      maxnsn = maximum $ map length $ Map.keys sn
+      padst s = replicate (maxnst - length s) ' '
+      padsn s = replicate (maxnsn - length s) ' '
+
+      stagg = map (second $ (sum &&& length) . map measTime) $ Map.assocs st
+      tsum  = sum $ map (fst . snd) stagg
+      trep  = map (second $ (\(tt,l) -> ((tt, percent tt), l))) stagg
+      percent t = TPF.printf "%.2f" $ 100 * t / tsum
+
+      tlines = concatMap prettyStats $ sortBy (compare `on` (fst . fst . snd)) trep
+      prettyStats (n,((t,pt), l)) = [unwords [n ++ padst n, ":", secs t, pt, show l, "iters"]]
+
+      prettySnapshot acc n l = acc %$ (flip concatMap l $ \p -> [n ++ padsn n ++ " "] %$ prettyLines p)
