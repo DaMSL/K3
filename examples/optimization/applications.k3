@@ -3,3 +3,8 @@ declare external: int -> int -> ()
   with effects \x -> \y -> [R[x]; R[y]]
 
 declare external_call: () -> () = \_ -> external 1 2
+
+declare internal: int -> () = \x -> let y = x + 1 in ()
+
+declare internal_x: mut int = 5
+declare internal_call: () -> () = \_ -> internal internal_x
