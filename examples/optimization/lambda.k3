@@ -18,7 +18,8 @@ trigger let_lambda: int = \p -> (\a -> \v -> let x = a + v + p in ()) 1 2
 
 // Should accept outer argument by value, inner argument by constant reference, and move outer
 // argument into closure.
-declare accumulate: collection { x: int } @ { Collection }-> int -> int = \d -> \w -> ((d.insert { x: w }); w)
+declare accumulate: collection { x: int } @ { Collection } -> int -> collection { x: int } @ { Collection }
+  = \d -> \w -> ((d.insert { x: w }); d)
 
 declare hash: int -> int = \x -> x + 1
 
