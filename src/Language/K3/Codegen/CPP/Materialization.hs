@@ -4,7 +4,7 @@
 -- | Machinery for making decisions about C++ level materialization for K3.
 module Language.K3.Codegen.CPP.Materialization where
 
-import Prelude hiding (concat, mapM, mapM_, or)
+import Prelude hiding (concat, mapM, mapM_, or, and)
 
 import Control.Applicative
 import Control.Arrow
@@ -251,7 +251,7 @@ isMoveableIn :: K3 Expression -> K3 Expression -> MaterializationM Bool
 isMoveableIn x c = do
   isRead <- isReadIn x c
   isWritten <- isWrittenIn x c
-  return $ traceShow (isRead, isWritten) $ not (isRead || isWritten)
+  return $ not (isRead || isWritten)
 
 isMoveableNow :: K3 Expression -> MaterializationM Bool
 isMoveableNow x = do
