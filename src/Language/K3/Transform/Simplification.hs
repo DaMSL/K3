@@ -513,10 +513,20 @@ betaReductionDelta expr = foldMapTree reduce ([], False) expr >>= return . first
 
     reduceOnOccurrences n i ie e = do
       ieRO <- readOnly False ie
-      let doReduce = case tag ie of
-                       EConstant _ -> True
-                       EVariable _ -> True
-                       _ -> (length $ filter (== i) $ freeVariables e) <= 3
+      let numOccurs = length $ filter (== i) $ freeVariables e
+      doReduce <- case (tag ie, ie @~ isEType) of
+                    (_, Nothing) -> Left "No type found on target during beta reduction"
+                    (EVariable _, _) -> Right True
+
+                    -- Collections can be modified in place with insert/update/delete,
+                    -- thus we can only substitute single uses.
+                    -- TODO: we can actually substitute provided the collection is not
+                    -- written in the body. Use effects to determine this.
+                    (_, Just (EType (tag -> TCollection))) -> Right $ numOccurs <= 1
+
+                    (EConstant _, _) -> Right True
+                    _ -> Right $ numOccurs <= 3
+
       if ieRO && doReduce then return ([substituteImmutBinding i (cleanExpr ie) e], True)
       else return ([n], False)
 
@@ -589,7 +599,6 @@ eliminateDeadCodeDelta expr = foldMapTree pruneExpr ([],False) expr >>= return .
           initRO <- readOnly False (head ch) >>= return . (&& i `notElem` vars)
           if initRO then rtt $ last ch else rtf n'
 
-        {-
         (tag -> EBindAs b) ->
           let vars = freeVariables $ last ch in
           case b of
@@ -600,7 +609,6 @@ eliminateDeadCodeDelta expr = foldMapTree pruneExpr ([],False) expr >>= return .
                 then rtt $ last ch
                 else rtt $ Node (EBindAs (BRecord $ nBinder) :@: annotations n) ch
             _ -> rtf n'
-        -}
 
         (tag -> EOperate OSeq) -> do
           lhsRO <- readOnly False (head ch)
@@ -875,15 +883,17 @@ streamableTransformerArg :: K3 Expression -> Bool
 streamableTransformerArg (PStreamableTransformerArg _ _ _ _) = True
 streamableTransformerArg _ = False
 
-encodeProgramTransformers :: K3 Declaration -> Either String (K3 Declaration)
-encodeProgramTransformers prog = mapExpression encodeTransformers prog
+encodeProgramTransformers :: K3 Declaration -> Either String (Bool, K3 Declaration)
+encodeProgramTransformers prog = foldExpression encodeTransformers False prog
 
-encodeTransformers :: K3 Expression -> Either String (K3 Expression)
-encodeTransformers expr = do
-    (_, eOpt) <- foldMapTree encodeUntilFirst (False, Nothing) expr
-    maybe (Left "Invalid fusion encoding") return eOpt
+encodeTransformers :: Bool -> K3 Expression -> Either String (Bool, K3 Expression)
+encodeTransformers restChanged expr = do
+    (changed, eOpt) <- foldMapTree encodeUntilFirst (False, Nothing) expr
+    maybe err (return . (restChanged || changed,)) eOpt
 
   where
+    err = Left "Invalid fusion encoding"
+
     encodeUntilFirst (unzip -> (chFused, catMaybes -> ch)) n =
       if or chFused then return $ (True, Just $ replaceCh n ch)
       else encode (replaceCh n ch) >>= return . second Just
@@ -922,7 +932,8 @@ encodeTransformers expr = do
                         , show $ any isETransformer as
                         , show $ any isEFusionSpec as
                         , show $ filter (not . isAnyETypeOrEffectAnn) as]
-      in trace str e
+      in
+      if True then e else trace str e
 
 
     -- Mark whether a transform has an 'elem'-wrapped or 'key-value' input element type.
