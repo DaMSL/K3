@@ -250,7 +250,16 @@ inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
     let cargs = CArgs.eCArgs f
     (fe, fv) <- inline f
     (ae, av) <- inline a
-    c <- call fv av cargs
+
+    mtrlzns <- case e @~ isEMaterialization of
+                 Just (EMaterialization ms) -> return ms
+                 Nothing -> return $ M.fromList [("", defaultDecision)]
+
+    pass <- case inD (fromJust (M.lookup "" mtrlzns)) of
+              Copied -> return av
+              Moved -> return (R.Move av)
+
+    c <- call fv pass cargs
     return $ (fe ++ ae, c)
   where
     call fn@(R.Variable i) arg n =
