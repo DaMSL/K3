@@ -1,13 +1,18 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
 
 -- | Literals (i.e., constant values) in K3.
 module Language.K3.Core.Literal where
 
+import Control.DeepSeq
+
 import Data.Typeable
 import Data.Tree
 import Data.Word (Word8)
+
+import GHC.Generics (Generic)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Syntax
@@ -34,7 +39,7 @@ data Literal
     | LEmpty      (K3 Type)
     | LCollection (K3 Type)
     | LAddress
-  deriving (Eq, Ord, Read, Show, Typeable)
+  deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Annotations on literals.
 data instance Annotation Literal
@@ -46,8 +51,13 @@ data instance Annotation Literal
     | LApplyGen   Identifier SpliceEnv
     | LSyntax     SyntaxAnnotation
     | LType       (K3 Type)
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Generic)
 
+{- NFData instances for literals. -}
+instance NFData Literal
+instance NFData (Annotation Literal)
+
+{- HasUID instances. -}
 instance HasUID (Annotation Literal) where
   getUID (LUID u) = Just u
   getUID _        = Nothing
@@ -93,4 +103,3 @@ namedLAnnotations :: [Annotation Literal] -> [Identifier]
 namedLAnnotations anns = map extractId $ filter isLAnnotation anns
   where extractId (LAnnotation n) = n
         extractId _ = error "Invalid named annotation"
-

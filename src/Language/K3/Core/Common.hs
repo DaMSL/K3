@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -38,11 +40,15 @@ module Language.K3.Core.Common (
 
 import Control.Concurrent.MVar
 import Control.Monad
+import Control.DeepSeq
 
 import Data.Char
 import Data.Hashable ( Hashable(..) )
 import Data.IORef
+import Data.Typeable
 import Debug.Trace
+
+import GHC.Generics (Generic)
 
 import Text.ParserCombinators.ReadP    as TP
 import Text.ParserCombinators.ReadPrec as TRP
@@ -59,7 +65,7 @@ type Identifier = String
 
 
 -- | Address implementation
-data Address = Address (String, Int) deriving (Eq, Ord)
+data Address = Address (String, Int) deriving (Eq, Ord, Typeable, Generic)
 
 defaultAddress :: Address
 defaultAddress = Address ("127.0.0.1", 40000)
@@ -72,10 +78,10 @@ data Span
 
     | GeneratedSpan String
         -- ^ Generator-specific metadata.
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Unique identifiers for AST nodes.
-data UID = UID Int deriving (Eq, Ord, Read, Show)
+data UID = UID Int deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- |Mutability modes for @CNone@.  These are kept distinct from the expression
 --  annotations because e.g. @mut (mut None mut, mut None mut)@ must have a
@@ -83,7 +89,7 @@ data UID = UID Int deriving (Eq, Ord, Read, Show)
 data NoneMutability
     = NoneMut
     | NoneImmut
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Endpoint types.
 data EndpointSpec
@@ -91,7 +97,7 @@ data EndpointSpec
   | BuiltinEP String String    -- ^ Builtin endpoint type (stdin/stdout/stderr), format
   | FileEP    String String    -- ^ File path, format
   | NetworkEP String String    -- ^ Address, format
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Union two spans.
 coverSpans :: Span -> Span -> Span
@@ -148,6 +154,12 @@ logAction asTrace msgF action = do
 
 
 {- Instance implementations -}
+instance NFData Address
+instance NFData Span
+instance NFData UID
+instance NFData NoneMutability
+instance NFData EndpointSpec
+
 instance Show Address where
   show (Address (host, port)) = host ++ ":" ++ show port
 

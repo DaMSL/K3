@@ -7,6 +7,7 @@
 module Language.K3.Stages where
 
 import Control.Arrow hiding ( left )
+import Control.DeepSeq
 import Control.Exception
 import Control.Monad
 import Control.Monad.State
@@ -130,6 +131,17 @@ type PrpTrE = Properties.PIEnv -> K3 Declaration -> Either String (K3 Declaratio
 type TypTrE = TIEnv -> K3 Declaration -> Either String (K3 Declaration, TIEnv)
 type EffTrE = Provenance.PIEnv -> SEffects.FIEnv -> K3 Declaration
               -> Either String (K3 Declaration, Provenance.PIEnv, SEffects.FIEnv)
+
+-- | Forces evaluation of the program transformation, by fully evaluating its result.
+reifyPass :: ProgramTransform -> ProgramTransform
+reifyPass f p = do
+  np <- f p
+  return $!! np
+
+reifyPassD :: ProgramTransformD -> ProgramTransformD
+reifyPassD f p = do
+  (r,np) <- f p
+  return $!! (r,np)
 
 -- | Show the program after applying the given program transform.
 displayPass :: String -> ProgramTransform -> ProgramTransform
@@ -447,26 +459,21 @@ runCGPasses lvl prog = do
 
 {- Declaration-at-a-time analyses and optimizations. -}
 
--- | Program traversal with fixpoints per declaration.
-foldProgramDecls :: Bool -> (a -> K3 Declaration -> (a, [ProgramTransform])) -> ProgramTransformSt a
-foldProgramDecls asFixpoint passesF z prog =
-  foldProgram declFixpoint idF idF Nothing z prog
+-- | Accumulating declaration-at-a-time program traversal.
+foldProgramDecls :: (a -> K3 Declaration -> (a, [ProgramTransform])) -> ProgramTransformSt a
+foldProgramDecls passesF z prog = foldProgram declFixpoint idF idF Nothing z prog
   where idF a b = return (a, b)
         declFixpoint acc d = do
           let (nacc, passes) = passesF acc d
-          nd <- ((if asFixpoint then transformFixpoint else id) $ runPasses passes) d
+          nd <- runPasses passes d
           return (nacc, nd)
 
 mapProgramDecls :: (K3 Declaration -> [ProgramTransform]) -> ProgramTransform
 mapProgramDecls passesF prog =
-  foldProgramDecls False (\_ d -> ((), passesF d)) () prog >>= return . snd
+  foldProgramDecls (\_ d -> ((), passesF d)) () prog >>= return . snd
 
-mapProgramDeclFixpoint :: (K3 Declaration -> [ProgramTransform]) -> ProgramTransform
-mapProgramDeclFixpoint passesF prog =
-  foldProgramDecls True (\_ d -> ((), passesF d)) () prog >>= return . snd
-
-blockMapProgramDeclFixpoint :: Int -> [ProgramTransform] -> (K3 Declaration -> [ProgramTransform]) -> ProgramTransform
-blockMapProgramDeclFixpoint blockSize blockPassesF declPassesF prog = blockDriver emptySeen prog
+blockMapProgramDecls :: Int -> [ProgramTransform] -> (K3 Declaration -> [ProgramTransform]) -> ProgramTransform
+blockMapProgramDecls blockSize blockPassesF declPassesF prog = blockDriver emptySeen prog
   where
     emptySeen              = (Set.empty, [])
     addNamedSeen   (n,u) i = (Set.insert i n, u)
@@ -482,7 +489,7 @@ blockMapProgramDeclFixpoint blockSize blockPassesF declPassesF prog = blockDrive
 
     blockedPass seen p = do
       let z = (seen, blockSize, False)
-      ((nseen, _, anyNew), np) <- foldProgramDecls True passesWSkip z p
+      ((nseen, _, anyNew), np) <- foldProgramDecls passesWSkip z p
       return ((nseen, anyNew), np)
 
     passesWSkip (seen, cnt, anyNew) d@(nameOfDecl -> nOpt) =
@@ -536,6 +543,7 @@ declTransforms :: SnapshotSpec -> Maybe (SEffects.ExtInferF a, a) -> Identifier 
 declTransforms snSpec extInfOpt n = topLevel
   where
     topLevel  = Map.fromList [
+        second mkFix $
         mkSeqRep "Optimize" highLevel $ prepend [ ("refreshI",      False) ]
                                               $ [ ("Decl-Simplify", True)
                                                 , ("Decl-Fuse",     True)
@@ -553,30 +561,34 @@ declTransforms snSpec extInfOpt n = topLevel
 
     -- TODO: CF,BR,DCE should be a local fixpoint.
     lowLevel = Map.fromList [
-        mk  foldConstants        "Decl-CF"  True False Nothing
-      , mk  betaReduction        "Decl-BR"  True False Nothing
-      , mk  eliminateDeadCode    "Decl-DCE" True False Nothing
-      , mkD encodeTransformers   "Decl-FE"  True False (Just [typEffI])
-      , mk  fuseFoldTransformers "Decl-FT"  True False (Just fusionI)
+        mk  foldConstants        "Decl-CF"  False True False Nothing
+      , mk  betaReduction        "Decl-BR"  False True False Nothing
+      , mk  eliminateDeadCode    "Decl-DCE" False True False Nothing
+      , mkD encodeTransformers   "Decl-FE"  True  True False (Just [typEffI])
+      , mk  fuseFoldTransformers "Decl-FT"  True  True False (Just fusionI)
       , fusionReduce
       , ("typEffI",)  $ typEffI
       , ("refreshI",) $ refreshI
       ]
 
-    mk f i asRepair asDebug fixPassOpt = mkSS $ (i,)
-      $ (maybe id mkFix fixPassOpt)
+    mk f i asReified asRepair asDebug fixPassOpt = mkSS $ (i,)
+      $ (maybe id mkFixI fixPassOpt)
+      $ (if asReified then reifyPass else id)
       $ (if asRepair then withRepair i else id)
       $ (if asDebug then transformEDbg i else transformE)
       $ mapNamedDeclExpression n f
 
-    mkD f i asRepair asDebug fixPassOpt = mkSS $ (i,)
-      $ (maybe transformFromDelta mkFixD fixPassOpt)
+    mkD f i asReified asRepair asDebug fixPassOpt = mkSS $ (i,)
+      $ (maybe transformFromDelta mkFixID fixPassOpt)
+      $ (if asReified then reifyPassD else id)
       $ (if asRepair then withRepairD i else id)
       $ (if asDebug then transformEDDbg i else transformED)
       $ foldNamedDeclExpression n f False
 
-    mkFix  interF = transformFixpointI  interF
-    mkFixD interF = transformFixpointID interF
+    evalP          = reifyPass
+    mkFix          = transformFixpoint
+    mkFixI  interF = transformFixpointI  interF
+    mkFixID interF = transformFixpointID interF
 
     -- Timing and snapshotting.
     mkN i = unwords [n, i]
@@ -586,7 +598,7 @@ declTransforms snSpec extInfOpt n = topLevel
                    $ Map.lookup n snSpec
 
     -- Shared passes
-    fusionReduce = mk betaReduction "Decl-FR" True False Nothing
+    fusionReduce = mk betaReduction "Decl-FR" False True False Nothing
 
     -- Fixpoint intermediates
     typEffI  = inferFreshDeclTypesAndEffects extInfOpt n
@@ -609,7 +621,8 @@ getTransform i m = maybe err id $ Map.lookup i m
 declOptPasses :: SnapshotSpec -> Maybe (SEffects.ExtInferF a, a) -> K3 Declaration -> [ProgramTransform]
 declOptPasses snSpec extInfOpt d = case nameOfDecl d of
   Nothing -> []
-  Just n -> trace ("Optimizing " ++ n) $ [getTransform "Optimize" $ declTransforms snSpec extInfOpt n]
+  Just n -> trace ("Optimizing " ++ n) $
+            [getTransform "Optimize" $ declTransforms snSpec extInfOpt n]
 
   where nameOfDecl (tag -> DGlobal  n _ (Just _)) = Just n
         nameOfDecl (tag -> DTrigger n _ _) = Just n
@@ -617,7 +630,7 @@ declOptPasses snSpec extInfOpt d = case nameOfDecl d of
 
 runDeclOptPassesM :: CompilerSpec -> Maybe (SEffects.ExtInferF a, a) -> ProgramTransform
 runDeclOptPassesM cSpec extInfOpt =
-  runPasses [refreshProgram, blockMapProgramDeclFixpoint (blockSize cSpec) [refreshProgram] passes]
+  runPasses [refreshProgram, blockMapProgramDecls (blockSize cSpec) [refreshProgram] passes]
   where passes = declOptPasses (snapshotSpec cSpec) extInfOpt
 
 runDeclOptPasses :: CompilerSpec -> Maybe (SEffects.ExtInferF a, a)

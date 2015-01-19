@@ -25,6 +25,7 @@ library
         criterion,
         data-ordlist,
         deepseq,
+        deepseq-generics,
         directory,
         either,
         errors,

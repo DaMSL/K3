@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -42,12 +43,16 @@ module Language.K3.Core.Expression (
   , namedEAnnotations
 ) where
 
+import Control.DeepSeq
+
 import Data.List
 import Data.Tree
 import Data.Typeable
 import Data.Word (Word8)
 
 import qualified Data.Map as M
+
+import GHC.Generics (Generic)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Analysis
@@ -93,11 +98,11 @@ data Expression
     | EAddress
     | ESelf
     | EImperative ImperativeExpression
-  deriving (Eq, Ord, Read, Show, Typeable)
+  deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 data ImperativeExpression
     = EWhile
-  deriving (Eq, Ord, Read, Show, Typeable)
+  deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Constant expression values.
 data Constant
@@ -108,7 +113,7 @@ data Constant
     | CString  String
     | CNone    NoneMutability
     | CEmpty   (K3 Type)
-  deriving (Eq, Ord, Read, Show, Typeable)
+  deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Operators (unary and binary).
 data Operator
@@ -131,14 +136,14 @@ data Operator
     | OSeq
     | OApp
     | OSnd
-  deriving (Eq, Ord, Read, Show, Typeable)
+  deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Binding Forms.
 data Binder
     = BIndirection Identifier
     | BTuple       [Identifier]
     | BRecord      [(Identifier, Identifier)]
-  deriving (Eq, Ord, Read, Show, Typeable)
+  deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Annotations on expressions.
 data instance Annotation Expression
@@ -172,7 +177,7 @@ data instance Annotation Expression
     | ETypeUB     (K3 Type)
     | EPType      (K3 Type)  -- Annotation embedding for pattern types
     | EEmbedding EmbeddingAnnotation
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Generic)
 
 -- | Data Conflicts
 --   TODO: move to Language.K3.Core.Annotation.Analysis
@@ -180,8 +185,18 @@ data Conflict
     = RW [(Annotation Expression)] (Annotation Expression)
     | WR (Annotation Expression) [(Annotation Expression)]
     | WW (Annotation Expression) (Annotation Expression)
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Generic)
 
+{- NFData instances for expressions. -}
+instance NFData Expression
+instance NFData ImperativeExpression
+instance NFData Constant
+instance NFData Operator
+instance NFData Binder
+instance NFData (Annotation Expression)
+instance NFData Conflict
+
+{- HasUID instances. -}
 instance HasUID (Annotation Expression) where
   getUID (EUID u) = Just u
   getUID _        = Nothing

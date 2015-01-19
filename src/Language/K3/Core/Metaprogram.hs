@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -6,11 +7,15 @@
 
 module Language.K3.Core.Metaprogram where
 
+import Control.DeepSeq
+
 import Data.Either
 import Data.List
 import qualified Data.Map as Map
 import Data.Map ( Map )
 import Data.Typeable
+
+import GHC.Generics (Generic)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -29,6 +34,15 @@ import Language.K3.Utils.Pretty
     into standard expression and type ASTs through identifiers.
 -}
 
+data SpliceType = STLabel
+                | STType
+                | STExpr
+                | STDecl
+                | STLiteral
+                | STRecord NamedSpliceTypes
+                | STList   SpliceType
+                deriving (Eq, Ord, Read, Show, Typeable, Generic)
+
 data SpliceValue = SVar     Identifier
                  | SLabel   Identifier
                  | SType    (K3 Type)
@@ -37,16 +51,7 @@ data SpliceValue = SVar     Identifier
                  | SLiteral (K3 Literal)
                  | SRecord  NamedSpliceValues
                  | SList    [SpliceValue]
-                 deriving (Eq, Ord, Read, Show, Typeable)
-
-data SpliceType = STLabel
-                | STType
-                | STExpr
-                | STDecl
-                | STLiteral
-                | STRecord NamedSpliceTypes
-                | STList   SpliceType
-                deriving (Eq, Ord, Read, Show, Typeable)
+                 deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 type NamedSpliceValues = Map Identifier SpliceValue
 type NamedSpliceTypes  = Map Identifier SpliceType
@@ -60,13 +65,19 @@ data SpliceResult m = SRType    (m (K3 Type))
 
 data MPDeclaration = MPDataAnnotation Identifier [TypedSpliceVar] [TypeVarDecl] [Either MPAnnMemDecl AnnMemDecl]
                    | MPCtrlAnnotation Identifier [TypedSpliceVar] [PatternRewriteRule] [K3 Declaration]
-                   deriving (Eq, Ord, Read, Show, Typeable)
+                   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 data MPAnnMemDecl = MPAnnMemDecl Identifier SpliceValue [AnnMemDecl]
-                  deriving (Eq, Ord, Read, Show, Typeable)
+                  deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 type SpliceEnv     = Map Identifier SpliceValue
 type SpliceContext = [SpliceEnv]
+
+{- Metaprogramming instances -}
+instance NFData SpliceType
+instance NFData SpliceValue
+instance NFData MPDeclaration
+instance NFData MPAnnMemDecl
 
 instance Pretty MPDeclaration where
   prettyLines (MPDataAnnotation i svars tvars (partitionEithers -> (mpAnnMems, annMems))) =

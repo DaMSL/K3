@@ -1,11 +1,17 @@
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Data types for the K3 effect system
 module Language.K3.Analysis.SEffects.Core where
 
+import Control.DeepSeq
+import GHC.Generics (Generic)
+
 import Data.List
 import Data.Tree
+import Data.Typeable
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -19,7 +25,7 @@ import Language.K3.Analysis.Provenance.Core
 
 type FPtr    = Int
 data FMatVar = FMatVar {fmvn :: Identifier, fmvloc :: UID, fmvptr :: FPtr}
-             deriving (Eq, Ord, Read, Show)
+             deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 data Effect
     = FFVar        Identifier
@@ -55,11 +61,17 @@ data Effect
     | FSeq
     | FLoop                    -- A repetitive effect. Can only happen in a foreign function
     | FNone                    -- Null effect
-    deriving (Eq, Ord, Read, Show)
+    deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 data instance Annotation Effect = FDeclared (K3 Effect)
-                                deriving (Eq, Ord, Read, Show)
+                                deriving (Eq, Ord, Read, Show, Generic)
 
+{- SEffect instances -}
+instance NFData FMatVar
+instance NFData Effect
+instance NFData (Annotation Effect)
+
+{- Annotation extractors -}
 isFDeclared :: Annotation Effect -> Bool
 isFDeclared (FDeclared _) = True
 

@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
 
@@ -35,9 +36,13 @@ module Language.K3.Core.Declaration (
     , isAnyDInferredEffectAnn
 ) where
 
+import Control.DeepSeq
+
 import Data.List
 import Data.Tree
 import Data.Typeable
+
+import GHC.Generics (Generic)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Syntax
@@ -78,7 +83,7 @@ data Declaration
     | DTypeDef        Identifier (K3 Type)
         -- ^ Type synonym declaration.
 
-  deriving (Eq, Ord, Read, Show, Typeable)
+  deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Annotation declaration members
 data AnnMemDecl
@@ -91,10 +96,10 @@ data AnnMemDecl
                   [Annotation Declaration]
 
     | MAnnotation Polarity Identifier [Annotation Declaration]
-  deriving (Eq, Ord, Read, Show, Typeable)
+  deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Annotation member polarities
-data Polarity = Provides | Requires deriving (Eq, Ord, Read, Show, Typeable)
+data Polarity = Provides | Requires deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | A pattern-based rewrite rule, as used in control annotations.
 --   This includes a pattern matching expression, a rewritten expression,
@@ -113,13 +118,30 @@ data instance Annotation Declaration
     -- Provenance and effects may be user-defined (lefts) or inferred (rights)
     | DProvenance (Either (K3 Provenance) (K3 Provenance))
     | DEffect     (Either (K3 S.Effect) (K3 S.Effect))
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Generic)
 
 -- | Unordered Data Conflicts (between triggers)
 data UnorderedConflict
     = URW [(Annotation Expression)] (Annotation Expression)
     | UWW (Annotation Expression) (Annotation Expression)
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Generic)
+
+{- NFData instances for declarations -}
+instance NFData Declaration
+instance NFData AnnMemDecl
+instance NFData Polarity
+instance NFData (Annotation Declaration)
+instance NFData UnorderedConflict
+
+{- HasUID instances -}
+instance HasUID (Annotation Declaration) where
+  getUID (DUID u) = Just u
+  getUID _        = Nothing
+
+instance HasSpan (Annotation Declaration) where
+  getSpan (DSpan s) = Just s
+  getSpan _         = Nothing
+
 
 -- | Property helpers
 type PropertyV = (Identifier, Maybe (K3 Literal))
@@ -205,14 +227,6 @@ getTriggerName _ = error "getTriggerName expects trigger declaration"
 
 
 {- Declaration instances -}
-instance HasUID (Annotation Declaration) where
-  getUID (DUID u) = Just u
-  getUID _        = Nothing
-
-instance HasSpan (Annotation Declaration) where
-  getSpan (DSpan s) = Just s
-  getSpan _         = Nothing
-
 instance Pretty (K3 Declaration) where
   prettyLines (Node (DGlobal i t me :@: as) ds) =
     let (annStr, pAnnStrs) = drawDeclAnnotations as in

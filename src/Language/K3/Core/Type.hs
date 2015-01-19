@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -26,10 +27,13 @@ module Language.K3.Core.Type (
 ) where
 
 import Control.Arrow
+import Control.DeepSeq
 
 import Data.Maybe
 import Data.Tree
 import Data.Typeable
+
+import GHC.Generics (Generic)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Syntax
@@ -37,7 +41,6 @@ import Language.K3.Core.Common
 
 import Language.K3.Utils.Pretty
 
-import Data.Text ( Text )
 import qualified Data.Text as T
 import qualified Language.K3.Utils.PrettyText as PT
 
@@ -97,7 +100,7 @@ data Type
     -- | Implementation Types. These should never be produced by the parser, nor should they be
     -- considered by the typechecker.
     | TImperative ImperativeType
-  deriving (Eq, Ord, Read, Show, Typeable)
+  deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Types specific to an imperative implementation backend.
 data ImperativeType
@@ -108,7 +111,7 @@ data ImperativeType
     -- | An imperative class type. Requires the name of the class, list of superclasses, and the
     -- list of named template variables.
     | TClass Identifier [Identifier] [Identifier]
-  deriving (Eq, Ord, Read, Show, Typeable)
+  deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | The built-in type references.
 data TypeBuiltIn
@@ -116,17 +119,17 @@ data TypeBuiltIn
     | TStructure
     | THorizon
     | TContent
-  deriving (Eq, Ord, Read, Show, Typeable)
+  deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Type variable declarations.  These consist of the identifier for the
 --   declared variable and, optionally, a type expression for the lower and
 --   upper bounds (respectively).
 data TypeVarDecl = TypeVarDecl Identifier (Maybe (K3 Type)) (Maybe (K3 Type))
-  deriving (Eq, Ord, Read, Show, Typeable)
+  deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | The operations which may occur on a collection of opaque variables.
 data TypeVariableOperator = TyVarOpUnion | TyVarOpIntersection
-  deriving (Eq, Ord, Read, Show, Typeable)
+  deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Annotations on types are the mutability qualifiers.
 data instance Annotation Type
@@ -138,8 +141,14 @@ data instance Annotation Type
     | TAnnotation Identifier
     | TApplyGen   Identifier SpliceEnv
     | TSyntax     SyntaxAnnotation
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Generic)
 
+{- NFData instances for the Type AST -}
+instance NFData Type
+instance NFData ImperativeType
+instance NFData TypeBuiltIn
+instance NFData TypeVarDecl
+instance NFData (Annotation Type)
 
 {- Type annotation predicates -}
 
@@ -253,4 +262,3 @@ instance PT.Pretty TypeVarDecl where
       [T.pack i] PT.%+
       (if isNothing mubtExpr then [] else
           [T.pack "<="] PT.%+ PT.prettyLines (fromJust mubtExpr))
-

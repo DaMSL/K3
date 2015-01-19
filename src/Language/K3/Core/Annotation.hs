@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -25,9 +27,13 @@ module Language.K3.Core.Annotation (
 ) where
 
 import Control.Arrow ( (&&&) )
+import Control.DeepSeq
 
 import Data.List (delete, find)
 import Data.Tree
+import Data.Typeable
+
+import GHC.Generics (Generic)
 
 -- | Every tag type defines the set of annotations that can be associated with that tag.
 data family Annotation t :: *
@@ -106,7 +112,9 @@ instance AContainer a => AContainer (Tree a) where
     Node a _ @~ f = a @~ f
 
 -- | A convenience form for attachment, structurally equivalent to tupling.
-data a :@: b = a :@: b deriving (Eq, Ord, Read, Show)
+data a :@: b = a :@: b deriving (Eq, Ord, Read, Show, Typeable, Generic)
+
+instance (NFData a, NFData b) => NFData (a :@: b)
 
 -- | A pair can act as a proxy to the container it contains as its second element.
 instance AContainer a => AContainer (b :@: a) where
@@ -163,6 +171,7 @@ replaceAnnos :: K3 a -> [Annotation a] -> K3 a
 replaceAnnos (Node (n :@: _) ch) as = Node (n :@: as) ch
 
 -- | Remove all annotations of a certain kind
+stripAnno :: (Annotation a -> Bool) -> K3 a -> K3 a
 stripAnno f n@(Node (_ :@: as) _) = replaceAnnos n $ filter (not . f) as
 
 -- | Get all elements: tag, children, annotations

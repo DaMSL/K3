@@ -1,4 +1,11 @@
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
+
 module Language.K3.Transform.Hints where
+
+import Control.DeepSeq
+import Data.Typeable
+import GHC.Generics (Generic)
 
 import qualified Data.Set as S
 
@@ -24,4 +31,6 @@ data OptHint
     | ReturnMoveHint Bool
 
     | GlobalHint
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Typeable, Generic)
+
+instance NFData OptHint

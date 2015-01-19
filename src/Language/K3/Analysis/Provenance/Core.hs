@@ -1,11 +1,17 @@
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- | Data types for K3 dataflow provenance
 module Language.K3.Analysis.Provenance.Core where
 
+import Control.DeepSeq
+import GHC.Generics (Generic)
+
 import Data.List
 import Data.Tree
+import Data.Typeable
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -17,7 +23,7 @@ import qualified Language.K3.Utils.PrettyText as PT
 
 type PPtr    = Int
 data PMatVar = PMatVar {pmvn :: Identifier, pmvloc :: UID, pmvptr :: PPtr}
-             deriving (Eq, Ord, Read, Show)
+             deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 data Provenance =
     -- Atoms
@@ -44,11 +50,17 @@ data Provenance =
     | PProject     Identifier      -- The source of the projection, and the provenance of the projected value if available.
     | PAssign      Identifier      -- The provenance of the expression used for assignment.
     | PSend                        -- The provenance of the value being sent.
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 data instance Annotation Provenance = PDeclared (K3 Provenance)
-                                    deriving (Eq, Ord, Read, Show)
+                                    deriving (Eq, Ord, Read, Show, Generic)
 
+{- SEffect instances -}
+instance NFData PMatVar
+instance NFData Provenance
+instance NFData (Annotation Provenance)
+
+{- Annotation extractors -}
 isPDeclared :: Annotation Provenance -> Bool
 isPDeclared (PDeclared _) = True
 

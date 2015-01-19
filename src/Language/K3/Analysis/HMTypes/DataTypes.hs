@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -6,8 +8,12 @@
 --   We use a separate tree data type to ensure no mixing of type systems.
 module Language.K3.Analysis.HMTypes.DataTypes where
 
+import Control.DeepSeq
+import GHC.Generics (Generic)
+
 import Data.List
 import Data.Tree
+import Data.Typeable
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -16,7 +22,7 @@ import Language.K3.Utils.Pretty
 type QTVarId = Int
 
 data QPType = QPType [QTVarId] (K3 QType)
-                deriving (Eq, Ord, Read, Show)
+                deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 data QType
         = QTBottom
@@ -28,7 +34,7 @@ data QType
         | QTFinal
         | QTSelf
         | QTTop
-      deriving (Eq, Ord, Read, Show)
+      deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Primitive types.
 --   Note this class derives an enum instance which we use to determine precedence.
@@ -41,7 +47,7 @@ data QTBase
         | QTString
         | QTAddress
         | QTNumber
-      deriving (Enum, Eq, Ord, Read, Show)
+      deriving (Enum, Eq, Ord, Read, Show, Typeable, Generic)
 
 data QTData
         = QTFunction
@@ -53,16 +59,24 @@ data QTData
         | QTTrigger
         | QTSource
         | QTSink
-      deriving (Eq, Ord, Read, Show)
+      deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
-data QTOp = QTLower deriving (Eq, Ord, Read, Show)
+data QTOp = QTLower deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Annotations on types are the mutability qualifiers.
 data instance Annotation QType
     = QTMutable
     | QTImmutable
     | QTWitness
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Generic)
+
+{- QType-related instances -}
+instance NFData QPType
+instance NFData QType
+instance NFData QTBase
+instance NFData QTData
+instance NFData QTOp
+instance NFData (Annotation QType)
 
 -- | Type constructors
 tleaf :: QType -> K3 QType
