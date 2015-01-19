@@ -781,7 +781,8 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
     primitiveErr a b = unifyErr a b "primitives" ""
 
     unifyErr a b kind s = left $ boxToString $
-      [unwords ["Unification mismatch on ", kind, ":("]] %$ indent 2 [s] %$ [")"] %$ (prettyLines a %+ [" "] %+ prettyLines b)
+      [unwords ["Unification mismatch on ", kind, ":("]]
+        %$ indent 2 [s] %$ [")"] %$ (prettyLines a %+ [" vs. "] %+ prettyLines b)
 
     subSelfErr ct = left $ boxToString $
       ["Invalid self substitution, qtype is not a collection: "] ++ prettyLines ct
@@ -1124,18 +1125,18 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
             void   $ unifyWithOverrideM ch1T (ttup idtvs) $ bindErr e "tuple"
             mapM_ (uncurry monoBinding) $ zip ids idtvs
 
-          -- TODO: partial bindings?
+          -- We unify with a lower-bounded record since records may be partially bound.
           BRecord ijs -> do
             jtvs <- mapM (const newtv) ijs
-            void $  unifyWithOverrideM ch1T (trec $ flip zip jtvs $ map fst ijs) $ bindErr e "record"
+            void $  unifyWithOverrideM ch1T (tlower $ [trec $ flip zip jtvs $ map fst ijs]) $ bindErr e "record"
             mapM_ (uncurry monoBinding) $ flip zip jtvs $ map snd ijs
 
         return [iu]
 
       where
-        bindErr errE kind reason = unwords ["Invalid", kind, "bind-as:", reason]
-                                     ++ "\nOn:\n" ++ pretty errE
-                                     ++ "\nToplevel:\n" ++ pretty expr
+        bindErr errE kind reason = unlines [ unwords ["Invalid", kind, "bind-as:", reason]
+                                           , "On:", pretty errE
+                                           , "Toplevel:", pretty expr ]
 
     sidewaysBinding ch1 (tag -> ECaseOf i) = do
       ch1T <- qTypeOfM ch1
@@ -1202,7 +1203,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
         QPType [] iqt@(tag -> QTVar _) ->
           let nqt = tvchase (tvenv env) iqt in
           if nqt == iqt
-            then do { void $ unifyWithOverrideM iqt (eqt @+ QTMutable) $ mkErrorF n $ assignErrF i;
+            then do { void $ unifyWithOverrideM iqt (eqt @+ QTMutable) $ mkErrorF expr n $ assignErrF i;
                       return $ ("assign",) $ rebuildE n ch .+ tunit }
             else unifyWithMutableQt eqt nqt
 
@@ -1211,7 +1212,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
 
       where unifyWithMutableQt eqt iqt
               | (iqt @~ isQTQualified) == Just QTMutable =
-                  do { void $ unifyM (iqt @- QTMutable) eqt $ mkErrorF n $ assignErrF i;
+                  do { void $ unifyM (iqt @- QTMutable) eqt $ mkErrorF expr n $ assignErrF i;
                        return $ ("assign",) $ rebuildE n ch .+ tunit }
               | otherwise = mutabilityErr i
 
@@ -1219,7 +1220,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       srcqt   <- qTypeOfM $ head ch
       fieldqt <- newtv
       let prjqt = tlower $ [trec [(i, fieldqt)]]
-      void   $ unifyWithOverrideM srcqt prjqt $ mkErrorF n $ projectErrF srcqt prjqt
+      void   $ unifyWithOverrideM srcqt prjqt $ mkErrorF expr n $ projectErrF srcqt prjqt
       return $ ("project",) $ rebuildE n ch .+ fieldqt
 
     -- TODO: reorder inferred record fields based on argument at application.
@@ -1227,13 +1228,13 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       fnqt   <- qTypeOfM $ head ch
       argqt  <- qTypeOfM $ last ch
       retqt  <- newtv
-      void   $ unifyWithOverrideM fnqt (tfun argqt retqt) $ mkErrorF n $ applyErrF fnqt argqt retqt
+      void   $ unifyWithOverrideM fnqt (tfun argqt retqt) $ mkErrorF expr n $ applyErrF fnqt argqt retqt
       return $ ("apply",) $ rebuildE n ch .+ retqt
 
     inferTagQType ch n@(tag -> EOperate OSeq) = do
         lqt <- qTypeOfM $ head ch
         rqt <- qTypeOfM $ last ch
-        void $ unifyM tunit lqt $ mkErrorF n seqErrF
+        void $ unifyM tunit lqt $ mkErrorF expr n seqErrF
         return $ ("seq",) $ rebuildE n ch .+ rqt
 
     -- | Check trigger-address pair and unify trigger type and message argument.
@@ -1252,7 +1253,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       | comparison op = do
           lqt <- qTypeOfM $ head ch
           rqt <- qTypeOfM $ last ch
-          void $ unifyM lqt rqt $ mkErrorF n comparisonError
+          void $ unifyM lqt rqt $ mkErrorF expr n comparisonError
           return $ ("comp",) $ rebuildE n ch .+ tbool
 
       | logic op = do
@@ -1264,7 +1265,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
             return $ ("text",) $ rebuildE n ch .+ tstr
 
       | op == ONeg = do
-            chqt <- unifyUnaryM tnum ch $ mkErrorF n uminusError
+            chqt <- unifyUnaryM tnum ch $ mkErrorF expr n uminusError
             let resultqt = case tag chqt of
                              QTPrimitive _  -> chqt
                              QTVar _ -> chqt
@@ -1272,7 +1273,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
             return $ ("neg",) $ rebuildE n ch .+ resultqt
 
       | op == ONot = do
-            void $ unifyUnaryM tbool ch $ mkErrorF n negateError
+            void $ unifyUnaryM tbool ch $ mkErrorF expr n negateError
             return $ ("not",) $ rebuildE n ch .+ tbool
 
       | otherwise = left $ "Invalid operation: " ++ show op
@@ -1305,22 +1306,22 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     inferTagQType ch n@(tag -> ECaseOf _) = do
       sqt   <- qTypeOfM $ ch !! 1
       nqt   <- qTypeOfM $ last ch
-      retqt <- unifyWithOverrideM sqt nqt $ mkErrorF n caseErrF
+      retqt <- unifyWithOverrideM sqt nqt $ mkErrorF expr n caseErrF
       return $ ("case-of",) $ rebuildE n ch .+ retqt
 
     inferTagQType ch n@(tag -> EIfThenElse) = do
       pqt   <- qTypeOfM $ head ch
       tqt   <- qTypeOfM $ ch !! 1
       eqt   <- qTypeOfM $ last ch
-      void  $  unifyM pqt tbool $ mkErrorF n $ (("Invalid if-then-else predicate: ") ++)
-      retqt <- unifyWithOverrideM tqt eqt $ mkErrorF n $ (("Mismatched condition branches: ") ++)
+      void  $  unifyM pqt tbool $ mkErrorF expr n $ (("Invalid if-then-else predicate: ") ++)
+      retqt <- unifyWithOverrideM tqt eqt $ mkErrorF expr n $ (("Mismatched condition branches: ") ++)
       return $ ("if-then",) $ rebuildE n ch .+ retqt
 
     inferTagQType ch n@(tag -> EAddress) = do
       hostqt <- qTypeOfM $ head ch
       portqt <- qTypeOfM $ last ch
-      void $ unifyM hostqt tstr $ mkErrorF n $ (("Invalid address host string: ") ++)
-      void $ unifyM portqt tint $ mkErrorF n $ (("Invalid address port int: ") ++)
+      void $ unifyM hostqt tstr $ mkErrorF expr n $ (("Invalid address host string: ") ++)
+      void $ unifyM portqt tint $ mkErrorF expr n $ (("Invalid address port int: ") ++)
       return $ ("address",) $ rebuildE n ch .+ taddr
 
     inferTagQType ch n  = return $ ("<unhandled>",) $ rebuildE n ch
@@ -1331,8 +1332,8 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     unifyBinaryM lexpected rexpected ch n errf = do
       lqt <- qTypeOfM $ head ch
       rqt <- qTypeOfM $ last ch
-      void $ unifyM lexpected lqt (mkErrorF n $ errf "left")
-      void $ unifyM rexpected rqt (mkErrorF n $ errf "right")
+      void $ unifyM lexpected lqt (mkErrorF expr n $ errf "left")
+      void $ unifyM rexpected rqt (mkErrorF expr n $ errf "right")
       return (lqt, rqt)
 
     unifyUnaryM expected ch errf = do
@@ -1345,13 +1346,16 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     logic      op = op `elem` [OAnd, OOr]
     textual    op = op `elem` [OConcat]
 
-    mkErrorF :: K3 Expression -> (String -> String) -> (String -> String)
-    mkErrorF e f s = uidSpanAsString ++ f s
-      where uidSpanAsString =
-              let uidSpans = filter (\a -> isESpan a || isEUID a) $ annotations e
-              in if null uidSpans
-                    then (boxToString $ ["["] %+ prettyLines e %+ ["]"])
-                    else show uidSpans
+    mkErrorF :: K3 Expression -> K3 Expression -> (String -> String) -> (String -> String)
+    mkErrorF tle e f s = uidSpanAsString ++ f s ++ exprsAsString
+      where
+        uidSpanAsString =
+          let uidSpans = filter isEUIDSpan $ annotations e
+          in if null uidSpans then "" else show uidSpans
+
+        exprsAsString =
+          (boxToString $ ["On ["]       %$ prettyLines e   %$ ["]"]
+                      %$ ["Toplevel ["] %$ prettyLines tle %$ ["]"])
 
     -- | Error printing functions for unification cases
     assignErrF i = (("Invalid assignment to " ++ i ++ ": ") ++)
@@ -1362,7 +1366,9 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       (unlines ["Invalid record projection:", pretty srcqt, "and", pretty prjqt] ++)
 
     applyErrF fnqt argqt retqt =
-      (unlines ["Invalid function application:", pretty fnqt, "and", pretty (tfun argqt retqt), ":"] ++)
+      (unlines [ "Invalid function application:", pretty fnqt
+               , "and", pretty (tfun argqt retqt), ":"]
+       ++)
 
     msgWithTypeEnv msg        = get >>= \env -> left $ msg ++ "\nType environment:\n" ++ pretty env
     lookupError j reason      = msgWithTypeEnv $ unwords ["No type environment binding for ", j, ":", reason]
