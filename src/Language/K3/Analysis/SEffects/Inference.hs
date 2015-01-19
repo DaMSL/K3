@@ -77,17 +77,21 @@ type FLCEnv = IntMap [Identifier]
 -- | A mapping from expression ids to a pair of effect and effect structure.
 type EFMap = IntMap (K3 Effect, K3 Effect)
 
+data EffectErrorCtxt = EffectErrorCtxt { ftoplevelExpr :: Maybe (K3 Expression)
+                                       , fcurrentExpr  :: Maybe (K3 Expression) }
+
 -- | An effect inference environment.
 data FIEnv = FIEnv {
-               fcnt    :: Int,
-               fpenv   :: FPEnv,
-               fenv    :: FEnv,
-               faenv   :: FAEnv,
-               fpbenv  :: FPBEnv,
-               fppenv  :: FPPEnv,
-               flcenv  :: FLCEnv,
-               efmap   :: EFMap,
-               fcase   :: [(FMatVar, PMatVar)]  -- Temporary storage stack for case variables.
+               fcnt     :: Int,
+               fpenv    :: FPEnv,
+               fenv     :: FEnv,
+               faenv    :: FAEnv,
+               fpbenv   :: FPBEnv,
+               fppenv   :: FPPEnv,
+               flcenv   :: FLCEnv,
+               efmap    :: EFMap,
+               fcase    :: [(FMatVar, PMatVar)],  -- Temporary storage stack for case variables.
+               ferrctxt :: EffectErrorCtxt
             }
 
 -- | The effects inference monad
@@ -230,10 +234,13 @@ flclkup :: FLCEnv -> Int -> Either Text [Identifier]
 flclkup env x = maybe err Right $ IntMap.lookup x env
   where err = mkErr $ "Unbound UID in closure environment: " ++ show x
 
+{- Error context helpers -}
+err0 :: EffectErrorCtxt
+err0 = EffectErrorCtxt Nothing Nothing
 
 {- FIEnv helpers -}
 fienv0 :: FPPEnv -> FLCEnv -> FIEnv
-fienv0 ppenv lcenv = FIEnv 0 fpenv0 fenv0 faenv0 fpbenv0 ppenv lcenv efmap0 []
+fienv0 ppenv lcenv = FIEnv 0 fpenv0 fenv0 faenv0 fpbenv0 ppenv lcenv efmap0 [] err0
 
 -- | Modifiers.
 mfiee :: (FEnv -> FEnv) -> FIEnv -> FIEnv
@@ -307,6 +314,18 @@ fipopcase env = case fcase env of
 
 fipushcase :: FIEnv -> (FMatVar, PMatVar) -> FIEnv
 fipushcase env mvs = env {fcase=mvs:(fcase env)}
+
+fierrtle :: FIEnv -> Maybe (K3 Expression)
+fierrtle = ftoplevelExpr . ferrctxt
+
+fierrce :: FIEnv -> Maybe (K3 Expression)
+fierrce = fcurrentExpr . ferrctxt
+
+fiseterrtle :: FIEnv -> Maybe (K3 Expression) -> FIEnv
+fiseterrtle env eOpt = env {ferrctxt = (ferrctxt env) {ftoplevelExpr = eOpt}}
+
+fiseterrce :: FIEnv -> Maybe (K3 Expression) -> FIEnv
+fiseterrce env eOpt = env {ferrctxt = (ferrctxt env) {fcurrentExpr = eOpt}}
 
 
 {- Fresh pointer and binding construction. -}
@@ -588,7 +607,13 @@ errorM :: Text -> FInfM a
 errorM msg = reasonM id $ left msg
 
 liftEitherM :: Either Text a -> FInfM a
-liftEitherM = either left return
+liftEitherM = either contextualizeErr return
+  where contextualizeErr msg = do
+          ctxt <- get >>= return . ferrctxt
+          let tle = maybe [T.pack "<nothing>"] PT.prettyLines $ ftoplevelExpr ctxt
+          let cre = maybe [T.pack "<nothing>"] PT.prettyLines $ fcurrentExpr ctxt
+          let ctxtmsg = PT.boxToString $ [msg] %$ [T.pack "On"] %$ cre %$ [T.pack "Toplevel"] %$ tle
+          left ctxtmsg
 
 fifreshbpM :: Identifier -> UID -> K3 Effect -> FInfM (K3 Effect)
 fifreshbpM n u f = get >>= return . (\env -> fifreshbp env n u f) >>= \(f',nenv) -> put nenv >> return f'
@@ -661,6 +686,18 @@ fipopcaseM _ = get >>= liftEitherM . fipopcase >>= \(cmvs,env) -> put env >> ret
 
 fipushcaseM :: (FMatVar, PMatVar) -> FInfM ()
 fipushcaseM mv = get >>= return . flip fipushcase mv >>= put
+
+fierrtleM :: FInfM (Maybe (K3 Expression))
+fierrtleM = get >>= return . fierrtle
+
+fierrceM :: FInfM (Maybe (K3 Expression))
+fierrceM = get >>= return . fierrce
+
+fiseterrtleM :: Maybe (K3 Expression) -> FInfM ()
+fiseterrtleM eOpt = modify $ flip fiseterrtle eOpt
+
+fiseterrceM :: Maybe (K3 Expression) -> FInfM ()
+fiseterrceM eOpt = modify $ flip fiseterrce eOpt
 
 
 -- | Misc. initialization helpers.
@@ -833,6 +870,7 @@ inferExprEffects extInfOpt expr = inferEffects extInfOpt expr >> substituteEffec
 
 inferEffects :: Maybe (ExtInferF a, a) -> K3 Expression -> FInfM (K3 Effect)
 inferEffects extInfOpt expr = do
+  fiseterrtleM $ Just expr
   (_, r) <- foldMapIn1RebuildTree topdown sideways inferWithRule iu (Nothing, []) expr
   return r
 
@@ -880,6 +918,7 @@ inferEffects extInfOpt expr = do
     inferWithRule :: FInfM () -> [(Maybe (K3 Effect), [PMatVar])] -> [K3 Effect] -> K3 Expression
                   -> FInfM ((Maybe (K3 Effect), [PMatVar]), K3 Effect)
     inferWithRule m efch rfch e = do
+      fiseterrceM $ Just e
       u <- uidOf e
       (ruleTag, r) <- infer m efch rfch e
       localLog $ T.unpack $ showFInfRule ruleTag efch rfch r u
@@ -904,6 +943,7 @@ inferEffects extInfOpt expr = do
       UID u    <- uidOf e
       clv      <- filkupcM u
       clf      <- mapM filkupepM clv >>= mapM (liftEitherM . chaseProvenance) >>= mapM (extInferM . fread)
+      popVars i
       rt "lambda" False e mv (Just fnone, flambda i (fseq clf) (fseq $ catMaybes ef) rf)
 
     infer m (onSub -> (ef, mv)) [lrf,arf] e@(tag -> EOperate OApp) = m >> do
@@ -1341,14 +1381,17 @@ pattern PTRecord rt <- Node (TRecord _ :@: _) rt
 
 {- Effect environment pretty printing -}
 instance Pretty FIEnv where
-  prettyLines (FIEnv c p e a pb _ cl ef _) =
+  prettyLines (FIEnv c p e a pb _ cl ef _ errc) =
     [T.pack $ "FCnt: " ++ show c] ++
     [T.pack "FEnv: "  ]  %$ (PT.indent 2 $ PT.prettyLines e)  ++
     [T.pack "FPEnv: " ]  %$ (PT.indent 2 $ PT.prettyLines p)  ++
     [T.pack "FAEnv: " ]  %$ (PT.indent 2 $ PT.prettyLines a)  ++
     [T.pack "FPBEnv: "]  %$ (PT.indent 2 $ PT.prettyLines pb) ++
     [T.pack "FLCEnv: "]  %$ (PT.indent 2 $ PT.prettyLines cl) ++
-    [T.pack "EFMap: " ]  %$ (PT.indent 2 $ PT.prettyLines ef)
+    [T.pack "EFMap: " ]  %$ (PT.indent 2 $ PT.prettyLines ef) ++
+    [T.pack "FErrCtxt: "]
+      %$ (PT.indent 2 $ [T.pack "Toplevel:"] %$ (maybe [T.pack "<nothing>"] PT.prettyLines $ ftoplevelExpr errc)
+                     %$ [T.pack "Current:"]  %$ (maybe [T.pack "<nothing>"] PT.prettyLines $ fcurrentExpr errc))
 
 instance Pretty (IntMap (K3 Effect)) where
   prettyLines fp = IntMap.foldlWithKey (\acc k v -> acc ++ prettyPair (k,v)) [] fp

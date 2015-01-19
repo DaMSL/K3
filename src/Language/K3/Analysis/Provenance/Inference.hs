@@ -78,15 +78,19 @@ type PLCEnv = IntMap [Identifier]
 -- | A mapping of expression ids and provenance ids.
 type EPMap = IntMap (K3 Provenance)
 
+data ProvErrorCtxt = ProvErrorCtxt { ptoplevelExpr :: Maybe (K3 Expression)
+                                   , pcurrentExpr  :: Maybe (K3 Expression) }
+
 -- | A provenance inference environment.
 data PIEnv = PIEnv {
-               pcnt    :: Int,
-               ppenv   :: PPEnv,
-               penv    :: PEnv,
-               paenv   :: PAEnv,
-               plcenv  :: PLCEnv,
-               epmap   :: EPMap,
-               pcase   :: [PMatVar]   -- Temporary storage stack for case variables.
+               pcnt     :: Int,
+               ppenv    :: PPEnv,
+               penv     :: PEnv,
+               paenv    :: PAEnv,
+               plcenv   :: PLCEnv,
+               epmap    :: EPMap,
+               pcase    :: [PMatVar],   -- Temporary storage stack for case variables.
+               perrctxt :: ProvErrorCtxt
             }
 
 -- | The type inference monad
@@ -194,10 +198,13 @@ epext epm e p = case e @~ isEUID of
   Just (EUID (UID i)) -> Right $ IntMap.insert i p epm
   _ -> Left $ PT.boxToString $ [T.pack "No UID found on "] %+ PT.prettyLines e
 
+{- Error context helpers -}
+perr0 :: ProvErrorCtxt
+perr0 = ProvErrorCtxt Nothing Nothing
 
 {- PIEnv helpers -}
 pienv0 :: PLCEnv -> PIEnv
-pienv0 lcenv = PIEnv 0 ppenv0 penv0 paenv0 lcenv epmap0 []
+pienv0 lcenv = PIEnv 0 ppenv0 penv0 paenv0 lcenv epmap0 [] perr0
 
 -- | Modifiers.
 {-
@@ -263,6 +270,18 @@ pipopcase env = case pcase env of
 
 pipushcase :: PIEnv -> PMatVar -> PIEnv
 pipushcase env mv = env {pcase=mv:(pcase env)}
+
+pierrtle :: PIEnv -> Maybe (K3 Expression)
+pierrtle = ptoplevelExpr . perrctxt
+
+pierrce :: PIEnv -> Maybe (K3 Expression)
+pierrce = pcurrentExpr . perrctxt
+
+piseterrtle :: PIEnv -> Maybe (K3 Expression) -> PIEnv
+piseterrtle env eOpt = env {perrctxt = (perrctxt env) {ptoplevelExpr = eOpt}}
+
+piseterrce :: PIEnv -> Maybe (K3 Expression) -> PIEnv
+piseterrce env eOpt = env {perrctxt = (perrctxt env) {pcurrentExpr = eOpt}}
 
 
 {- Fresh pointer and binding construction. -}
@@ -509,7 +528,13 @@ errorM :: Text -> PInfM a
 errorM msg = reasonM id $ left msg
 
 liftEitherM :: Either Text a -> PInfM a
-liftEitherM = either left return
+liftEitherM = either contextualizeErr return
+  where contextualizeErr msg = do
+          ctxt <- get >>= return . perrctxt
+          let tle = maybe [T.pack "<nothing>"] PT.prettyLines $ ptoplevelExpr ctxt
+          let cre = maybe [T.pack "<nothing>"] PT.prettyLines $ pcurrentExpr ctxt
+          let ctxtmsg = PT.boxToString $ [msg] %$ [T.pack "On"] %$ cre %$ [T.pack "Toplevel"] %$ tle
+          left ctxtmsg
 
 {-
 pifreshbpM :: Identifier -> UID -> K3 Provenance -> PInfM (K3 Provenance)
@@ -587,6 +612,18 @@ pipopcaseM _ = get >>= liftEitherM . pipopcase >>= \(mv,env) -> put env >> retur
 
 pipushcaseM :: PMatVar -> PInfM ()
 pipushcaseM mv = get >>= return . flip pipushcase mv >>= put
+
+pierrtleM :: PInfM (Maybe (K3 Expression))
+pierrtleM = get >>= return . pierrtle
+
+pierrceM :: PInfM (Maybe (K3 Expression))
+pierrceM = get >>= return . pierrce
+
+piseterrtleM :: Maybe (K3 Expression) -> PInfM ()
+piseterrtleM eOpt = modify $ flip piseterrtle eOpt
+
+piseterrceM :: Maybe (K3 Expression) -> PInfM ()
+piseterrceM eOpt = modify $ flip piseterrce eOpt
 
 
 -- | Misc. inference helpers.
@@ -760,7 +797,9 @@ inferExprProvenance expr = inferProvenance expr >> substituteProvenance expr
 --   of the apply. The provenance associated with each subexpression is stored as a
 --   separate relation in the environment rather than directly attached to each node.
 inferProvenance :: K3 Expression -> PInfM (K3 Provenance)
-inferProvenance expr = mapIn1RebuildTree topdown sideways inferWithRule expr
+inferProvenance expr = do
+  piseterrtleM $ Just expr
+  mapIn1RebuildTree topdown sideways inferWithRule expr
   where
     topdown _ e@(tag -> ELambda i) = piexteM i (pfvar i) >> pushClosure e
     topdown _ _ = iu
@@ -782,6 +821,7 @@ inferProvenance expr = mapIn1RebuildTree topdown sideways inferWithRule expr
     -- Provenance deduction logging.
     inferWithRule :: [K3 Provenance] -> K3 Expression -> PInfM (K3 Provenance)
     inferWithRule ch e = do
+      piseterrceM $ Just e
       u  <- uidOf e
       (ruleTag, rp) <- infer ch e
       localLog $ T.unpack $ showPInfRule ruleTag ch rp u
@@ -960,13 +1000,16 @@ simplifyProvenance p = modifyTree simplify p
 
 {- Provenance environment pretty printing -}
 instance Pretty PIEnv where
-  prettyLines (PIEnv c p e a cl ep _) =
+  prettyLines (PIEnv c p e a cl ep _ errc) =
     [T.pack $ "PCnt: " ++ show c] ++
     [T.pack "PEnv: "  ]  %$ (PT.indent 2 $ PT.prettyLines e)  ++
     [T.pack "PPEnv: " ]  %$ (PT.indent 2 $ PT.prettyLines p)  ++
     [T.pack "PAEnv: " ]  %$ (PT.indent 2 $ PT.prettyLines a)  ++
     [T.pack "PLCEnv: "]  %$ (PT.indent 2 $ PT.prettyLines cl) ++
-    [T.pack "EPMap: " ]  %$ (PT.indent 2 $ PT.prettyLines ep)
+    [T.pack "EPMap: " ]  %$ (PT.indent 2 $ PT.prettyLines ep) ++
+    [T.pack "PErrCtxt: "]
+      %$ (PT.indent 2 $ [T.pack "Toplevel:"] %$ (maybe [T.pack "<nothing>"] PT.prettyLines $ ptoplevelExpr errc)
+                     %$ [T.pack "Current:"]  %$ (maybe [T.pack "<nothing>"] PT.prettyLines $ pcurrentExpr errc))
 
 instance Pretty (IntMap (K3 Provenance)) where
   prettyLines pp = IntMap.foldlWithKey (\acc k v -> acc ++ prettyPair (k,v)) [] pp
