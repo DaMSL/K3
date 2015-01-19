@@ -119,8 +119,17 @@ materializationE e@(Node (t :@: as) cs)
 
       ELambda x -> do
              [b] <- mapM materializationE cs
+
+             nrvo <- case getProvenance e of
+                       (tag &&& children -> (PLambda _, [returnP])) ->
+                         case returnP of
+                           (tag -> PBVar _) -> not <$> isGlobalP returnP
+                           _ -> return False
+                       _ -> error "Materialization of non-function provenance."
+
+             setDecision (getUID e) x $ if nrvo then defaultDecision { outD = Moved } else defaultDecision
+
              closureSymbols <- getClosureSymbols (getUID e)
-             setDecision (getUID e) x defaultDecision
              forM_ closureSymbols $ \s -> setDecision (getUID e) s defaultDecision
              decisions <- dLookupAll (getUID e)
              return (Node (t :@: (EMaterialization decisions:as)) [b])
