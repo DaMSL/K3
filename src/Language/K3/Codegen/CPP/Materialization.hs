@@ -69,11 +69,10 @@ getProvenance :: K3 Expression -> K3 Provenance
 getProvenance e = let EProvenance p = fromMaybe (error "No provenance on expression.")
                                       (e @~ \case { EProvenance _ -> True; _ -> False}) in p
 
-{-
+
 getEffects :: K3 Expression -> K3 Effect
 getEffects e = let ESEffect f = fromMaybe (error "No effects on expression.")
-                                (e @~ \case { EEffect _ -> True; _ -> False }) in f
--}
+                                (e @~ \case { ESEffect _ -> True; _ -> False }) in f
 
 setDecision :: Int -> Identifier -> Decision -> MaterializationM ()
 setDecision u i d = modify $ \(t, e, f, ds) -> (I.insertWith M.union u (M.singleton i d) t, e, f, ds)
