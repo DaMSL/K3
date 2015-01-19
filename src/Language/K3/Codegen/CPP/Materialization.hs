@@ -161,6 +161,9 @@ materializationE e@(Node (t :@: as) cs)
 anyM :: (Functor m, Applicative m, Monad m) => (a -> m Bool) -> [a] -> m Bool
 anyM f xs = or <$> mapM f xs
 
+allM :: (Functor m, Applicative m, Monad m) => (a -> m Bool) -> [a] -> m Bool
+allM f xs = and <$> mapM f xs
+
 -- Determine if a piece of provenance 'occurs in' another. The answer can be influenced by 'width
 -- flag', determining whether or not the provenance of superstructure occurs in the provenance of
 -- its substructure.
@@ -192,13 +195,56 @@ occursIn wide b a
       _ -> return False
 
 isReadIn :: K3 Expression -> K3 Expression -> MaterializationM Bool
-isReadIn = undefined
+isReadIn x f =
+  case f of
+    _ -> isReadInF (getProvenance x) (getEffects f)
+
+isReadInF :: K3 Provenance -> K3 Effect -> MaterializationM Bool
+isReadInF xp ff =
+  case ff of
+    (tag -> FRead yp) -> occursIn False yp xp
+
+    (tag -> FScope _) -> anyM (isReadInF xp) (children ff)
+    (tag -> FSeq) -> anyM (isReadInF xp) (children ff)
+    (tag -> FSet) -> anyM (isReadInF xp) (children ff)
+
+    _ -> return False
 
 isWrittenIn :: K3 Expression -> K3 Expression -> MaterializationM Bool
-isWrittenIn = undefined
+isWrittenIn x f =
+  case f of
+    _ -> isWrittenInF (getProvenance x) (getEffects f)
+
+isWrittenInF :: K3 Provenance -> K3 Effect -> MaterializationM Bool
+isWrittenInF xp ff =
+  case ff of
+    (tag -> FWrite yp) -> occursIn False yp xp
+
+    (tag -> FScope _) -> anyM (isWrittenInF xp) (children ff)
+    (tag -> FSeq) -> anyM (isWrittenInF xp) (children ff)
+    (tag -> FSet) -> anyM (isWrittenInF xp) (children ff)
+
+    _ -> return False
+
+isGlobalP :: K3 Provenance -> MaterializationM Bool
+isGlobalP ep =
+  case ep of
+    (tag -> PGlobal _) -> return True
+    (tag -> PBVar pmv) -> pLookup (pmvptr pmv) >>= isGlobalP
+
+    (tag &&& children -> (PProject _, [pp])) -> isGlobalP pp
+
+    _ -> return False
 
 isMoveableIn :: K3 Expression -> K3 Expression -> MaterializationM Bool
-isMoveableIn x c = undefined
+isMoveableIn x c = do
+  isRead <- isReadIn x c
+  isWritten <- isWrittenIn x c
+  return $ traceShow (isRead, isWritten) $ not (isRead || isWritten)
 
 isMoveableNow :: K3 Expression -> MaterializationM Bool
-isMoveableNow x = get >>= \(_, _, _, ds) -> anyM (isMoveableIn x) ds
+isMoveableNow x = do
+  (_, _, _, downstreams) <- get
+  isGlobal <- isGlobalP (getProvenance x)
+  allMoveable <- allM (isMoveableIn x) downstreams
+  return $ (not isGlobal) && allMoveable
