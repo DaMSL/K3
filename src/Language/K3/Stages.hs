@@ -100,12 +100,24 @@ liftEitherM = either left return
 
 {-- Transform utilities --}
 type ProgramTransform = K3 Declaration -> TransformM (K3 Declaration)
+
+-- | Stateful program transforms.
 type ProgramTransformSt a = a -> K3 Declaration -> TransformM (a, K3 Declaration)
 
+-- | Transforms returning whether they modified the program.
+type ProgramTransformD = K3 Declaration -> TransformM (Bool, K3 Declaration)
+
+-- | Transforms with only a declaration argument.
 type TrF  = K3 Declaration -> K3 Declaration
 type TrE  = K3 Declaration -> Either String (K3 Declaration)
-type TrSF = TransformSt -> K3 Declaration -> K3 Declaration
-type TrSE = TransformSt -> K3 Declaration -> Either String (K3 Declaration)
+type TrED = K3 Declaration -> Either String (Bool, K3 Declaration)
+
+-- | Transforms with an accumulating argument.
+type TrTF = TransformSt -> K3 Declaration -> K3 Declaration
+type TrTE = TransformSt -> K3 Declaration -> Either String (K3 Declaration)
+
+type TrSF a = a -> K3 Declaration -> (a, K3 Declaration)
+type TrSE a = a -> K3 Declaration -> Either String (a, K3 Declaration)
 
 runPasses :: [ProgramTransform] -> ProgramTransform
 runPasses passes p = foldM (flip ($)) p passes
@@ -215,8 +227,19 @@ withRepair msg f prog = do
   void $ put $ st {nextuid = i}
   return np'
 
+withRepairD :: String -> ProgramTransformD -> ProgramTransformD
+withRepairD msg f prog = do
+  (r,np) <- f prog
+  st <- get
+  let (i,np') = repairProgram msg (Just $ nextuid st) np
+  void $ put $ st {nextuid = i}
+  return (r,np')
+
 
 {-- Transform constructors --}
+transformFromDelta :: ProgramTransformD -> ProgramTransform
+transformFromDelta f p = f p >>= return . snd
+
 transformF :: TrF -> ProgramTransform
 transformF f p = return $ f p
 
@@ -229,12 +252,30 @@ transformEDbg tg f p = do
   mkTg "After " p' $ return p'
   where mkTg pfx p' = trace (boxToString $ [pfx ++ tg] %$ prettyLines p')
 
-transformSF :: TrSF -> ProgramTransform
-transformSF f p = get >>= return . flip f p
+transformED :: TrED -> ProgramTransformD
+transformED f p = liftEitherM $ f p
 
-transformSE :: TrSE -> ProgramTransform
-transformSE f p = get >>= liftEitherM . flip f p
+transformEDDbg :: String -> TrED -> ProgramTransformD
+transformEDDbg tg f p = do
+  (changed, p') <- mkTg "Before " p $ transformED f p
+  mkTg (after changed) p' $ return (changed, p')
+  where
+    after b = unwords ["After", "(", show b, ")"]
+    mkTg pfx p' = trace (boxToString $ [pfx ++ tg] %$ prettyLines p')
 
+transformTF :: TrTF -> ProgramTransform
+transformTF f p = get >>= return . flip f p
+
+transformTE :: TrTE -> ProgramTransform
+transformTE f p = get >>= liftEitherM . flip f p
+
+transformSF :: TrSF a -> ProgramTransformSt a
+transformSF f z p = return $ f z p
+
+transformSE :: TrSE a -> ProgramTransformSt a
+transformSE f z p = liftEitherM $ f z p
+
+{- Fixpoint transform constructors -}
 transformFixpoint :: ProgramTransform -> ProgramTransform
 transformFixpoint f p = do
   np <- f p
@@ -251,17 +292,34 @@ transformFixpointSt f z p = do
   (nacc, np) <- f z p
   (if compareDAST np p then return . (nacc,) else transformFixpointSt f nacc) np
 
+transformFixpointD :: ProgramTransformD -> ProgramTransform
+transformFixpointD f p = do
+  (changed, np) <- f p
+  (if not changed && compareDAST np p then return else transformFixpointD f) np
+
+transformFixpointID :: [ProgramTransform] -> ProgramTransformD -> ProgramTransform
+transformFixpointID interF f p = do
+  (changed, np) <- f p
+  if not changed && compareDAST np p then return np
+  else runPasses interF np >>= transformFixpointID interF f
+
 fixpointF :: TrF -> ProgramTransform
 fixpointF f = transformFixpoint $ transformF f
 
 fixpointE :: TrE -> ProgramTransform
 fixpointE f = transformFixpoint $ transformE f
 
-fixpointSF :: TrSF -> ProgramTransform
-fixpointSF f = transformFixpoint $ transformSF f
+fixpointTF :: TrTF -> ProgramTransform
+fixpointTF f = transformFixpoint $ transformTF f
 
-fixpointSE :: TrSE -> ProgramTransform
-fixpointSE f = transformFixpoint $ transformSE f
+fixpointTE :: TrTE -> ProgramTransform
+fixpointTE f = transformFixpoint $ transformTE f
+
+fixpointSF :: TrSF a -> ProgramTransformSt a
+fixpointSF f = transformFixpointSt $ transformSF f
+
+fixpointSE :: TrSE a -> ProgramTransformSt a
+fixpointSE f = transformFixpointSt $ transformSE f
 
 -- Fixpoint constructors with intermediate transformations between rounds.
 fixpointIF :: [ProgramTransform] -> TrF -> ProgramTransform
@@ -270,11 +328,11 @@ fixpointIF interF f = transformFixpointI interF $ transformF f
 fixpointIE :: [ProgramTransform] -> TrE -> ProgramTransform
 fixpointIE interF f = transformFixpointI interF $ transformE f
 
-fixpointISF :: [ProgramTransform] -> TrSF -> ProgramTransform
-fixpointISF interF f = transformFixpointI interF $ transformSF f
+fixpointITF :: [ProgramTransform] -> TrTF -> ProgramTransform
+fixpointITF interF f = transformFixpointI interF $ transformTF f
 
-fixpointISE :: [ProgramTransform] -> TrSE -> ProgramTransform
-fixpointISE interF f = transformFixpointI interF $ transformSE f
+fixpointITE :: [ProgramTransform] -> TrTE -> ProgramTransform
+fixpointITE interF f = transformFixpointI interF $ transformTE f
 
 
 {- Whole program analyses -}
@@ -342,12 +400,15 @@ simplifyWCSE p = simplify p >>= transformE commonProgramSubexprElim
 streamFusion :: ProgramTransform
 streamFusion = runPasses [fusionEncodeFixpoint, inferFreshTypesAndEffects, fusionTransformFixpoint]
   where
-    mkXform asDebug i f     = withRepair i $ (if asDebug then transformEDbg i else transformE) f
-    fusionEncode            = mkXform False "fusionEncode"    encodeProgramTransformers
-    fusionTransform         = mkXform False "fusionTransform" fuseProgramFoldTransformers
-    fusionReduce            = mkXform False "fusionReduce"    betaReductionOnProgram
-    fusionEncodeFixpoint    = transformFixpointI [inferFreshTypesAndEffects] fusionEncode
+    mkXform  asDebug i f    = withRepair  i $ (if asDebug then transformEDbg  i else transformE)  f
+    mkXformD asDebug i f    = withRepairD i $ (if asDebug then transformEDDbg i else transformED) f
+
+    fusionEncodeFixpoint    = transformFixpointID [inferFreshTypesAndEffects] fusionEncode
     fusionTransformFixpoint = transformFixpointI fusionInterF fusionTransform
+
+    fusionEncode            = mkXformD False "fusionEncode"    encodeProgramTransformers
+    fusionTransform         = mkXform  False "fusionTransform" fuseProgramFoldTransformers
+    fusionReduce            = mkXform  False "fusionReduce"    betaReductionOnProgram
     fusionInterF            = bracketPasses "fusion" inferFreshTypesAndEffects [fusionReduce]
 
 
@@ -430,7 +491,7 @@ blockMapProgramDeclFixpoint blockSize blockPassesF declPassesF prog = blockDrive
           (nseen, passes) = if thisSeen then (seen, []) else (case nOpt of
                               Nothing -> (addUnnamedSeen seen d, declPassesF d)
                               Just n  -> if cnt == 0 then ({-trace ("Skip " ++ n)-} (seen, []))
-                                         else (trace ("Process " ++ n) $ (addNamedSeen seen n, declPassesF d)))
+                                         else (trace ("Compile " ++ n) $ (addNamedSeen seen n, declPassesF d)))
       in
       let ncnt = maybe cnt (const $ if cnt == 0 || thisSeen then cnt else (cnt-1)) nOpt
           nacc = (nseen, ncnt, nAnyNew)
@@ -492,11 +553,11 @@ declTransforms snSpec extInfOpt n = topLevel
 
     -- TODO: CF,BR,DCE should be a local fixpoint.
     lowLevel = Map.fromList [
-        mk foldConstants        "Decl-CF"  True False Nothing
-      , mk betaReduction        "Decl-BR"  True False Nothing
-      , mk eliminateDeadCode    "Decl-DCE" True False Nothing
-      , mk encodeTransformers   "Decl-FE"  True False (Just [typEffI])
-      , mk fuseFoldTransformers "Decl-FT"  True False (Just fusionI)
+        mk  foldConstants        "Decl-CF"  True False Nothing
+      , mk  betaReduction        "Decl-BR"  True False Nothing
+      , mk  eliminateDeadCode    "Decl-DCE" True False Nothing
+      , mkD encodeTransformers   "Decl-FE"  True False (Just [typEffI])
+      , mk  fuseFoldTransformers "Decl-FT"  True False (Just fusionI)
       , fusionReduce
       , ("typEffI",)  $ typEffI
       , ("refreshI",) $ refreshI
@@ -508,7 +569,14 @@ declTransforms snSpec extInfOpt n = topLevel
       $ (if asDebug then transformEDbg i else transformE)
       $ mapNamedDeclExpression n f
 
-    mkFix interF = transformFixpointI interF
+    mkD f i asRepair asDebug fixPassOpt = mkSS $ (i,)
+      $ (maybe transformFromDelta mkFixD fixPassOpt)
+      $ (if asRepair then withRepairD i else id)
+      $ (if asDebug then transformEDDbg i else transformED)
+      $ foldNamedDeclExpression n f False
+
+    mkFix  interF = transformFixpointI  interF
+    mkFixD interF = transformFixpointID interF
 
     -- Timing and snapshotting.
     mkN i = unwords [n, i]
@@ -579,4 +647,4 @@ instance Pretty TransformReport where
       tlines = concatMap prettyStats $ sortBy (compare `on` (fst . fst . snd)) trep
       prettyStats (n,((t,pt), l)) = [unwords [n ++ padst n, ":", secs t, pt, show l, "iters"]]
 
-      prettySnapshot acc n l = acc %$ (flip concatMap l $ \p -> [n ++ padsn n ++ " "] %$ prettyLines p)
+      prettySnapshot acc n l = acc %$ (flip concatMap l $ \p -> [n ++ padsn n ++ " "] %$ (prettyLines $ stripTypeAndEffectAnns p))
