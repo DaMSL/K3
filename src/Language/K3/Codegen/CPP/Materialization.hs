@@ -107,9 +107,11 @@ materializationE e@(Node (t :@: as) cs)
       EOperate OApp -> do
              [f, x] <- mapM materializationE cs
 
-             let pf = getProvenance f
+             moveable <- isMoveableNow x
 
-             setDecision (getUID e) "" defaultDecision
+             let decision = if moveable then defaultDecision { inD = Moved } else defaultDecision
+
+             setDecision (getUID e) "" decision
 
              decisions <- dLookupAll (getUID e)
 
