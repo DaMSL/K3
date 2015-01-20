@@ -169,6 +169,7 @@ type IsMutable = Bool
 
 data Expression
     = Binary Identifier Expression Expression
+    | Bind Expression [Expression] Int
     | Call Expression [Expression]
     | Dereference Expression
     | TakeReference Expression
@@ -183,7 +184,13 @@ data Expression
 
 instance Stringifiable Expression where
     stringify (Binary op a b)
-        = binaryParens op a (stringify a) <+> fromString op <+> binaryParens op b (stringify b)
+      = binaryParens op a (stringify a) <+> fromString op <+> binaryParens op b (stringify b)
+    stringify (Bind f vs n)
+      = stringify $ Call (Variable (Qualified (Name "std") (Name "bind")))
+                         (f : vs ++ [ (Variable (Qualified (Name "std") (Qualified (Name "placeholders")
+                                                (Name ("_" ++ show i)))))
+                                    | i <- [1..n]
+                                  ])
     stringify (Call e as) = stringify e <> parens (commaSep $ map stringify as)
     stringify (Dereference e) = fromString "*" <> parens (stringify e)
     stringify (TakeReference e) = fromString "&" <> parens (stringify e)
