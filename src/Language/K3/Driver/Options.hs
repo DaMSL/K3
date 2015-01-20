@@ -48,7 +48,8 @@ data Mode
   deriving (Eq, Read, Show)
 
 data PrintMode
-    = PrintAST    { stripEffects :: Bool, stripTypes :: Bool, stripCmts :: Bool }
+    = PrintAST    { stripEffects :: Bool, stripTypes :: Bool
+                  , stripCmts :: Bool, stripProps :: Bool }
     | PrintSyntax
   deriving (Eq, Read, Show)
 
@@ -219,6 +220,7 @@ astPrintOpt = extract . keyValList "" <$> strOption (
    where extract l = PrintAST (key "notypes"    l)
                               (key "noeffects"  l)
                               (key "nocomments" l)
+                              (key "noproperties" l)
 
          key k kvl = maybe False read $ lookup k kvl
 

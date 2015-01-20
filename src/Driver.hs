@@ -90,8 +90,8 @@ run opts = do
     dispatch (Compile c)   p = compile c p
     dispatch (Interpret i) p = interpret i p
     dispatch (Typecheck t) p = case chooseTypechecker t p of
-      Left s   -> putStrLn s                              >> putStrLn "ERROR"
-      Right p' -> printer (PrintAST False False False) p' >> putStrLn "SUCCESS"
+      Left s   -> putStrLn s >> putStrLn "ERROR"
+      Right p' -> printer (PrintAST False False False False) p' >> putStrLn "SUCCESS"
 
     -- Compilation dispatch.
     compile cOpts prog = do
@@ -123,13 +123,14 @@ run opts = do
     transform ts prog = foldl' (flip (analyzer $ analysisOpts opts)) (prog, "") ts
 
     -- Print out the program
-    printer (PrintAST st se sc) p =
+    printer (PrintAST st se sc sp) p =
       let filterF = catMaybes $
                      [if st && se then Just stripTypeAndEffectAnns
                       else if st  then Just stripTypeAnns
                       else if se  then Just stripEffectAnns
                       else Nothing]
                       ++ [if sc then Just stripComments else Nothing]
+                      ++ [if sp then Just stripProperties else Nothing]
       in putStrLn . pretty $ foldl (flip ($)) p filterF
 
     printer PrintSyntax p = either syntaxError putStrLn $ programS p
@@ -148,7 +149,7 @@ run opts = do
     processStage (Left s) _ = return $ Left s
 
     printStages popts (prog, rp) = do
-      printer (parsePrintMode popts) $ stripAllProperties prog
+      printer (parsePrintMode popts) prog
       putStrLn $ sep ++ "Report" ++ sep
       putStrLn $ boxToString rp
       where sep = replicate 20 '='
