@@ -193,7 +193,10 @@ instance Stringifiable Expression where
                                   ])
     stringify (Call e as) = stringify e <> parens (commaSep $ map stringify as)
     stringify (Dereference e) = fromString "*" <> parens (stringify e)
-    stringify (TakeReference e) = fromString "&" <> parens (stringify e)
+    stringify (TakeReference e) = fromString "&" <> parenthesize e
+      where
+        parenthesize pt'@(Variable _) = stringify pt'
+        parenthesize pt' = parens $ stringify pt'
     stringify (Initialization t es) = stringify t <+> braces (commaSep $ map stringify es)
     stringify (Lambda cs as mut rt bd) = cs' <+> as' <+> mut' <+> rt' <+> bd'
       where
