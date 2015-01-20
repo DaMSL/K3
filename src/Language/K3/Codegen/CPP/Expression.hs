@@ -123,17 +123,11 @@ inline e@(tag -> EVariable v) = do
   case lookup v (globals env) of
     Just (tag -> TFunction, False) | applyLevel env < cargs -> return ([], addBind v cargs)
     Just (tag -> TForall _, False) | applyLevel env < cargs -> return ([], addBind v cargs)
-    _                              -> return ([], defVar)
+    _                              -> return ([], R.Variable defVar)
   where
-    -- isGlobal = isJust $ e @~ \case { EOpt GlobalHint -> True; _ -> False }
-    defVar = R.Variable $ R.Name v
-    addBind x n = defVar
-    -- addBind x n = if isGlobal then R.Call stdBind [addContext x, stdRefThis, placeHolder n] else defVar
-
-    -- stdBind = R.Variable $ R.Qualified (R.Name "std") (R.Name "bind")
-    -- addContext x = R.Variable $ R.Qualified (R.Name "&__global_context") $ R.Name x
-    -- stdRefThis = R.Call (R.Variable (R.Qualified (R.Name "std") $ R.Name "ref")) [R.Dereference $ R.Variable $ R.Name "this"]
-    -- placeHolder i = R.Variable $ R.Qualified (R.Qualified (R.Name "std") $ R.Name "placeholders") $ R.Name $ "_"++show i
+    defVar = R.Name v
+    addBind x n = R.Bind (R.TakeReference $ R.Variable $ R.Qualified (R.Name "__global_context") defVar)
+                  [R.Dereference $ R.Variable $ R.Name "this"] n
 
 inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
     (e, v) <- inline c
