@@ -215,6 +215,7 @@ library
         Language.K3.Codegen.CPP.Preprocessing,
         Language.K3.Codegen.CPP.Primitives,
         Language.K3.Codegen.CPP.Program,
+        Language.K3.Codegen.CPP.Simplification,
         Language.K3.Codegen.CPP.Types,
         Language.K3.Utils.Pretty.Common,
         Language.K3.TypeSystem.Manifestation.BranchSemiElimination,
