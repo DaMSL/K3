@@ -18,6 +18,37 @@ runSimplificationM s t = runIdentity $ runStateT s t
 simplifyCPP :: [Definition] -> [Definition]
 simplifyCPP ds = fst $ runSimplificationM (mapM simplifyCPPDefinition ds) ()
 
+simplifyCPPExpression :: Expression -> SimplificationM Expression
+simplifyCPPExpression expr =
+  case expr of
+    Binary i x y -> Binary i <$> simplifyCPPExpression x <*> simplifyCPPExpression y
+
+    Bind f vs 0 -> simplifyCPPExpression (Call f vs)
+    Bind f vs n -> do
+      f' <- simplifyCPPExpression f
+      vs' <- mapM simplifyCPPExpression vs
+
+      case f' of
+        Bind f'' vs'' n' -> return (Bind f'' (vs'' ++ vs') n)
+        _ -> return (Bind f' vs' n)
+
+    Call f vs -> do
+      f' <- simplifyCPPExpression f
+      vs' <- mapM simplifyCPPExpression vs
+
+      case f' of
+        Bind f'' vs'' n | n == length vs' -> return (Call f'' (vs'' ++ vs'))
+        _ -> return (Call f' vs')
+
+    Dereference e -> Dereference <$> simplifyCPPExpression e
+    TakeReference e -> TakeReference <$> simplifyCPPExpression e
+    Initialization t es -> Initialization t <$> mapM simplifyCPPExpression es
+    Lambda cs as m mrt bd -> Lambda cs as m mrt <$> mapM simplifyCPPStatement bd
+    Literal lt -> return (Literal lt)
+    Project e n -> Project <$> simplifyCPPExpression e <*> return n
+    Subscript a x -> Subscript <$> simplifyCPPExpression a <*> simplifyCPPExpression x
+    Unary i e -> Unary i <$> simplifyCPPExpression e
+    Variable n -> return (Variable n)
 
 simplifyCPPStatement :: Statement -> SimplificationM Statement
 simplifyCPPStatement stmt =
