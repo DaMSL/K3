@@ -31,6 +31,8 @@ import qualified Language.K3.Codegen.Imperative as I
 
 import qualified Language.K3.Codegen.CPP.Representation as R
 
+import Language.K3.Codegen.CPP.Simplification
+
 -- | Copy state elements from the imperative transformation to CPP code generation.
 -- | Also mangle the lists for C++
 transitionCPPGenS :: I.ImperativeS -> CPPGenS
@@ -44,7 +46,7 @@ transitionCPPGenS is = defaultCPPGenS
     convert = map (first mangleReservedId)
 
 stringifyProgram :: K3 Declaration -> CPPGenM Doc
-stringifyProgram d = vsep . map R.stringify <$> program d
+stringifyProgram d = vsep . map R.stringify . simplifyCPP <$> program d
 
 -- Top-level program generation.
 -- publics <- concat <$> mapM declaration cs
