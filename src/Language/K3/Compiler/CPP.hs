@@ -72,7 +72,10 @@ cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $
     (irRes, initSt) = I.runImperativeM (I.declaration typedProgram) I.defaultImperativeS
 
     genCPP (Right cppIr) = do
-      Right optIr <- applyOptimizations copts cppIr
+      optIr <- applyOptimizations copts cppIr >>= \case
+                 Right x -> return x
+                 Left s -> error s
+
       outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt) (CPP.stringifyProgram optIr)
 
     genCPP (Left _) = return $ Left "Error in Imperative Transformation."
