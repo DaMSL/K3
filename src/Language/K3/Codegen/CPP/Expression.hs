@@ -273,6 +273,9 @@ inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
 
 inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
     d <- genSym
+    tIdName <- case trig @~ isEProperty of
+                 Just (EProperty (ePropertyValue -> Just (tag -> LString nm))) -> return nm
+                 _ -> throwE $ CPPGenE $ "No trigger id property attached to " ++ tName
     (te, _)  <- inline trig
     (ae, av)  <- inline addr
     (ve, vv)  <- inline val
@@ -285,10 +288,13 @@ inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@
     return (concat [te, ae, ve]
                  ++ [ classInst
                     , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine") (R.Name "send")) [
-                                    av, R.Variable (R.Name $ tName), R.Variable (R.Name d), R.Variable (R.Name "me")
+                                    av, R.Variable (R.Name $ tIdName), R.Variable (R.Name d), R.Variable (R.Name "me")
                                    ]
                     ]
              , R.Initialization R.Unit [])
+    where
+      isETriggerId (EProperty (ePropertyName -> "TriggerId")) = True
+      isETriggerId _ = False
 
 inline (tag &&& children -> (EOperate bop, [a, b])) = do
     (ae, av) <- inline a
