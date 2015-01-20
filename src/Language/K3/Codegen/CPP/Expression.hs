@@ -268,8 +268,8 @@ inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
           kType <- getKType e
           returnType <- genCType kType
           return $ R.Call (R.Variable $ R.Specialized [returnType] i) [arg]
-        else return $ R.bind fn arg n
-    call fn arg n = return $ R.bind fn arg n
+        else return $ R.Bind fn [arg] (n - 1)
+    call fn arg n = return $ R.Bind fn [arg] (n - 1)
 
 inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
     d <- genSym
