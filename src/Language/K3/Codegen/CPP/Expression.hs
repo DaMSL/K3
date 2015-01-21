@@ -251,7 +251,7 @@ inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
 
     pass <- case inD (fromJust (M.lookup "" mtrlzns)) of
               Copied -> return av
-              Moved -> return (R.Move av)
+              Moved -> return (move a av)
 
     c <- call fv pass cargs
     return $ (fe ++ ae, c)
@@ -264,6 +264,14 @@ inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
           return $ R.Call (R.Variable $ R.Specialized [returnType] i) [arg]
         else return $ R.Bind fn [arg] (n - 1)
     call fn arg n = return $ R.Bind fn [arg] (n - 1)
+
+    move e a =
+      case e of
+        (tag -> EConstant _) -> a
+        (tag -> EOperate _) -> a
+        (tag -> ETuple) -> a
+        (tag -> ERecord _) -> a
+        _ -> R.Move a
 
 inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
     d <- genSym
