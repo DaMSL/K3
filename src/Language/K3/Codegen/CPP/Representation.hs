@@ -54,6 +54,7 @@ binaryParens :: Identifier -> Expression -> (Doc -> Doc)
 binaryParens _ (Call _ _) = id
 binaryParens _ (Variable _) = id
 binaryParens _ (Literal _) = id
+binaryParens _ (Project _ _) = id
 binaryParens op (Binary op' _ _) = if precedence op < precedence op' then parens else id
   where
     precedence :: Identifier -> Int
@@ -74,6 +75,12 @@ binaryParens op (Binary op' _ _) = if precedence op < precedence op' then parens
           ]
 
 binaryParens _ _ = parens
+
+unaryParens :: Expression -> Doc
+unaryParens e@(Variable _) = stringify e
+unaryParens e@(Project _ _) = stringify e
+unaryParens e@(Subscript _ _) = stringify e
+unaryParens e = parens $ stringify e
 
 data Name
     = Name Identifier
@@ -192,33 +199,24 @@ instance Stringifiable Expression where
                                     | i <- [1..n]
                                   ])
     stringify (Call e as) = stringify e <> parens (commaSep $ map stringify as)
-    stringify (Dereference e) = fromString "*" <> parens (stringify e)
-    stringify (TakeReference e) = fromString "&" <> parenthesize e
-      where
-        parenthesize pt'@(Variable _) = stringify pt'
-        parenthesize pt' = parens $ stringify pt'
+    stringify (Dereference e) = fromString "*" <> unaryParens e
+    stringify (TakeReference e) = fromString "&" <> unaryParens e
     stringify (Initialization t es) = stringify t <+> braces (commaSep $ map stringify es)
-    stringify (Lambda cs as mut rt bd) = cs' <+> as' <+> mut' <+> rt' <+> bd'
+    stringify (Lambda cs as mut rt bd) = cs' <+> as' <+> mut' <> rt' <> bd'
       where
         cs'  = brackets $ commaSep (map stringify cs)
-        mut' = if mut then "mutable" else ""
+        mut' = if mut then "mutable" <> space else space
         as'  = parens $ commaSep [stringify t <+> fromString i | (i, t) <- as]
-        rt'  = maybe empty (\rt'' -> "->" <+> stringify rt'') rt
+        rt'  = maybe empty (\rt'' -> "->" <+> stringify rt'' <> space) rt
         bd'  = hangBrace $ vsep $ map stringify bd
     stringify (Literal lt) = stringify lt
     stringify (Project (Dereference e) n) = stringify e <> fromString "->" <> stringify n
-    stringify (Project pt i) = stringify pt <> dot <> stringify i
-      where
-        parenthesize pt'@(Variable _) = stringify pt'
-        parenthesize pt' = parens $ stringify pt'
+    stringify (Project pt i) = unaryParens pt <> dot <> stringify i
     stringify (Subscript a b)
         = case b of
-            (Lambda _ _ _ _ _) -> parenthesize a <> brackets (parens $ stringify b)
-            _ -> parenthesize a <> brackets (stringify b)
-      where
-        parenthesize a'@(Variable _) = stringify a'
-        parenthesize a' = parens $ stringify a'
-    stringify (Unary op e) = fromString op <> parens (stringify e)
+            (Lambda _ _ _ _ _) -> unaryParens a <> brackets (parens $ stringify b)
+            _ -> unaryParens a <> brackets (stringify b)
+    stringify (Unary op e) = fromString op <> unaryParens e
     stringify (Variable n) = stringify n
 
 pattern CRef e = Call (Variable (Qualified (Name "std") (Name "cref"))) [e]
