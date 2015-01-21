@@ -15,6 +15,8 @@ import Control.Monad.State (StateT(..), MonadState(..), modify, runState)
 import Language.K3.Analysis.Provenance.Core
 import Language.K3.Analysis.Provenance.Inference (PIEnv(..))
 
+import qualified Language.K3.Analysis.Provenance.Constructors as P
+
 import Language.K3.Analysis.SEffects.Core
 import Language.K3.Analysis.SEffects.Inference (FIEnv(..))
 
@@ -51,6 +53,11 @@ dLookupAll u = get >>= \(t, _, _, _) -> return (I.findWithDefault M.empty u t)
 pLookup :: PPtr -> MaterializationM (K3 Provenance)
 pLookup p = get >>= \(_, e, _, _) -> return (fromMaybe (error "Dangling provenance pointer") (I.lookup p (ppenv e)))
 
+pLookupDeep :: PPtr -> MaterializationM (K3 Provenance)
+pLookupDeep p = pLookup p >>= \case
+  (tag -> PBVar (PMatVar { pmvptr })) -> pLookupDeep pmvptr
+  p' -> return p'
+
 -- A /very/ rough approximation of ReaderT's ~local~ for StateT.
 withLocalDS :: [K3 Expression] -> MaterializationM a -> MaterializationM a
 withLocalDS nds m = do
@@ -73,6 +80,11 @@ getProvenance e = let EProvenance p = fromMaybe (error "No provenance on express
 getEffects :: K3 Expression -> K3 Effect
 getEffects e = let ESEffect f = fromMaybe (error "No effects on expression.")
                                 (e @~ \case { ESEffect _ -> True; _ -> False }) in f
+
+getFStructure :: K3 Expression -> K3 Effect
+getFStructure e = let EFStructure f = fromMaybe (error "No effects on expression.")
+                                      (e @~ \case { EFStructure _ -> True; _ -> False }) in f
+
 
 setDecision :: Int -> Identifier -> Decision -> MaterializationM ()
 setDecision u i d = modify $ \(t, e, f, ds) -> (I.insertWith M.union u (M.singleton i d) t, e, f, ds)
@@ -107,11 +119,19 @@ materializationE e@(Node (t :@: as) cs)
       EOperate OApp -> do
              [f, x] <- mapM materializationE cs
 
+             let applicationEffects = getFStructure e
+             let (executionEffects, formalParameter) =
+                   case applicationEffects of
+                     (tag &&& children -> (FApply (Just fmv), [_, executionEffects, _])) -> (executionEffects, fmv)
+                     _ -> error "Invalid effect structure"
+
+             conservativeDoMove <- hasWriteInIF (fmvn formalParameter) executionEffects
+
              moveable <- isMoveableNow x
 
-             let decision = if moveable then defaultDecision { inD = Moved } else defaultDecision
+             let applicationDecision d = if conservativeDoMove && moveable then d { inD = Moved } else d
 
-             setDecision (getUID e) "" decision
+             setDecision (getUID e) "" $ applicationDecision defaultDecision
 
              decisions <- dLookupAll (getUID e)
 
