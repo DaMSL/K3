@@ -140,19 +140,39 @@ materializationE e@(Node (t :@: as) cs)
       ELambda x -> do
              [b] <- mapM materializationE cs
 
-             nrvo <- case getProvenance e of
-                       (tag &&& children -> (PLambda _, [returnP])) ->
-                         case returnP of
-                           (tag -> PBVar _) -> not <$> isGlobalP returnP
-                           _ -> return False
-                       _ -> error "Materialization of non-function provenance."
+             let lambdaEffects = getEffects e
+             let (deferredEffects, returnedEffects)
+                   = case lambdaEffects of
+                       (tag &&& children -> (FLambda _, [_, deferredEffects, returnedEffects]))
+                         -> (deferredEffects, returnedEffects)
+                       _ -> error "Invalid effect structure"
 
-             setDecision (getUID e) x $ if nrvo then defaultDecision { outD = Moved } else defaultDecision
+             let lambdaProvenance = getProvenance e
+
+             let returnedProvenance =
+                   case getProvenance e of
+                     (tag &&& children -> (PLambda _, [returnedProvenance])) -> returnedProvenance
+                     _ -> error "Invalid provenance structure"
+
+             readOnly <- not <$> hasWriteInP (P.pfvar x) b
+
+             nrvo <- case returnedProvenance of
+                       (tag -> PBVar _) -> not <$> isGlobalP returnedProvenance
+                       _ -> return False
+
+             let readOnlyDecision d = if readOnly then d { inD = ConstReferenced } else d
+             let nrvoDecision d = if nrvo then d { outD = Moved } else d
+
+             setDecision (getUID e) x $ readOnlyDecision $ nrvoDecision $ defaultDecision
 
              closureSymbols <- getClosureSymbols (getUID e)
-             forM_ closureSymbols $ \s -> setDecision (getUID e) s defaultDecision
+
+             forM_ closureSymbols $ \s -> do
+               closureHasWrite <- hasWriteInI s b
+               let closureDecision d = if closureHasWrite then d { inD = Moved } else d
+               setDecision (getUID e) s $ closureDecision defaultDecision
              decisions <- dLookupAll (getUID e)
-             return (Node (t :@: (EMaterialization decisions:as)) [b])
+             return $ (Node (t :@: (EMaterialization decisions:as)) [b])
 
       EBindAs b -> do
              let [x, y] = cs
