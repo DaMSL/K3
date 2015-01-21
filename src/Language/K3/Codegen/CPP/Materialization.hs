@@ -247,6 +247,12 @@ isGlobalP ep =
 
     _ -> return False
 
+isMoveable :: K3 Expression -> MaterializationM Bool
+isMoveable e =
+  case e of
+    (tag -> ELambda _) -> return False
+    _ -> not <$> isGlobalP (getProvenance e)
+
 isMoveableIn :: K3 Expression -> K3 Expression -> MaterializationM Bool
 isMoveableIn x c = do
   isRead <- isReadIn x c
@@ -256,6 +262,6 @@ isMoveableIn x c = do
 isMoveableNow :: K3 Expression -> MaterializationM Bool
 isMoveableNow x = do
   (_, _, _, downstreams) <- get
-  isGlobal <- isGlobalP (getProvenance x)
+  isMoveable1 <- isMoveable x
   allMoveable <- allM (isMoveableIn x) downstreams
-  return $ (not isGlobal) && allMoveable
+  return $ isMoveable1 && allMoveable
