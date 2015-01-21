@@ -237,6 +237,76 @@ isWrittenInF xp ff =
 
     _ -> return False
 
+hasWriteInIF :: Identifier -> K3 Effect -> MaterializationM Bool
+hasWriteInIF ident effect =
+  case effect of
+    (tag -> FWrite (tag -> PFVar i)) | i == ident -> return True
+    (tag -> FWrite (tag -> PBVar m)) | pmvn m == ident -> return True
+
+    (tag -> FScope _) -> anyM (hasWriteInIF ident) (children effect)
+    (tag -> FSeq) -> anyM (hasWriteInIF ident) (children effect)
+    (tag -> FSet) -> anyM (hasWriteInIF ident) (children effect)
+
+    _ -> return False
+
+hasWriteInI :: Identifier -> K3 Expression -> MaterializationM Bool
+hasWriteInI ident expr =
+  case expr of
+    (tag -> ELambda i) | i == ident -> return False
+    (tag &&& children -> (ELambda _, [body])) -> do
+       lambdaDecisions <- dLookupAll (getUID expr)
+       case M.lookup ident lambdaDecisions of
+         Nothing -> return False
+         Just cd ->
+           case inD cd of
+             ConstReferenced -> return False
+             Referenced -> hasWriteInI ident body
+             Moved -> return True
+             Copied -> return False
+
+    (tag &&& children -> (ELetIn i, [e, _])) | i == ident -> hasWriteInI ident e
+    (tag &&& children -> (ELetIn j, [e, b])) -> do
+      eHasWriteInI <- hasWriteInI ident e
+      bHasWriteInI <- hasWriteInI ident b
+      (||) <$> hasWriteInI ident e <*> hasWriteInI ident b
+
+    -- TODO: Other shadow cases.
+
+    _ -> do
+      localHasWrite <- hasWriteInIF ident (getEffects expr)
+      childHasWrite <- anyM (hasWriteInI ident) (children expr)
+      return (localHasWrite || childHasWrite)
+
+pVarName :: K3 Provenance -> Maybe Identifier
+pVarName p =
+  case p of
+    (tag -> PFVar j) -> Just j
+    (tag -> PBVar pmv) -> Just $ pmvn pmv
+    _ -> Nothing
+
+hasWriteInP :: K3 Provenance -> K3 Expression -> MaterializationM Bool
+hasWriteInP prov expr =
+  case expr of
+    (tag &&& children -> (ELambda i, [b])) -> do
+      closureDecisions <- dLookupAll (getUID expr)
+      let writeInClosure = maybe False (\j -> maybe False (\d -> inD d == Moved) $ M.lookup j closureDecisions)
+                           (pVarName prov)
+      childHasWrite <- hasWriteInP prov b
+      return (writeInClosure || childHasWrite)
+
+    (tag &&& children -> (EOperate OApp, [f, x])) -> do
+      let argProv = getProvenance x
+      argOccurs <- occursIn True argProv prov
+      appDecision <- dLookup (getUID expr) ""
+
+      functionHasWrite <- hasWriteInP prov f
+      argHasWrite <- hasWriteInP prov x
+      let appHasWrite = inD appDecision == Moved && argOccurs
+
+      return (functionHasWrite || argHasWrite || appHasWrite)
+
+    _ -> (||) <$> isWrittenInF prov (getEffects expr) <*> anyM (hasWriteInP prov) (children expr)
+
 isGlobalP :: K3 Provenance -> MaterializationM Bool
 isGlobalP ep =
   case ep of
