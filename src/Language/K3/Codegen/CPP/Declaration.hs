@@ -4,11 +4,13 @@
 module Language.K3.Codegen.CPP.Declaration where
 
 import Control.Arrow ((&&&))
+import Control.Applicative
 import Control.Monad.State
 
 import Data.Maybe
 
 import qualified Data.List as L
+import qualified Data.Map as M
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -22,6 +24,8 @@ import qualified Language.K3.Core.Constructor.Type as T
 import Language.K3.Codegen.CPP.Expression
 import Language.K3.Codegen.CPP.Primitives
 import Language.K3.Codegen.CPP.Types
+
+import Language.K3.Codegen.CPP.Materialization.Hints
 
 import qualified Language.K3.Codegen.CPP.Representation as R
 
@@ -46,10 +50,17 @@ declaration (tag -> DGlobal i (tag &&& children -> (TFunction, [ta, tr]))
 
     addForward $ R.FunctionDecl (R.Name i) [cta] ctr
 
-    -- processRole always gets generated as const ref because that's our built-in signature
-    let cta' = if i == "processRole" then R.Const (R.Reference cta) else cta
+    mtrlzns <- case e @~ isEMaterialization of
+                 Just (EMaterialization ms) -> return ms
+                 Nothing -> return $ M.fromList [(x, defaultDecision)]
 
-    return [R.FunctionDefn (R.Name i) [(x, cta')] (Just ctr) [] False cbody]
+    let argMtrlznType = case inD (mtrlzns M.! x) of
+                          ConstReferenced -> R.Const (R.Reference cta)
+                          Referenced -> R.Reference cta
+                          _ | i == "processRole" -> R.Const (R.Reference cta)
+                          _ -> cta
+
+    return [R.FunctionDefn (R.Name i) [(x, argMtrlznType)] (Just ctr) [] False cbody]
 
 -- Global polymorphic functions with direct implementations.
 declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children -> (TFunction, [ta, tr])]))
