@@ -50,13 +50,19 @@ simplifyCPPExpression expr =
     Unary i e -> Unary i <$> simplifyCPPExpression e
     Variable n -> return (Variable n)
 
+simplifyCPPDeclaration :: Declaration -> SimplificationM Declaration
+simplifyCPPDeclaration decl =
+  case decl of
+    ScalarDecl n t (Just e) -> ScalarDecl n t . Just <$> simplifyCPPExpression e
+    _ -> return decl
+
 simplifyCPPStatement :: Statement -> SimplificationM Statement
 simplifyCPPStatement stmt =
   case stmt of
     Assignment x y -> Assignment <$> simplifyCPPExpression x <*> simplifyCPPExpression y
     Block ss -> Block <$> mapM simplifyCPPStatement ss
     ForEach i t e s -> ForEach i t <$> simplifyCPPExpression e <*> simplifyCPPStatement s
-    Forward d -> return (Forward d)
+    Forward d -> Forward <$> simplifyCPPDeclaration d
     IfThenElse p ts es -> IfThenElse <$> simplifyCPPExpression p <*> mapM simplifyCPPStatement ts
                                                                  <*> mapM simplifyCPPStatement es
     Ignore e -> Ignore <$> simplifyCPPExpression e
