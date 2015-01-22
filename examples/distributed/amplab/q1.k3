@@ -18,9 +18,6 @@ declare num_results: mut int = 0
 declare local_rankings: collection {pageRank: int, pageURL: string} @ { Collection }
 declare local_q1_results: mut collection {pageRank: int, pageURL: string} @ { Collection }
 
-@:CArgs 2
-declare resultLogger : string -> collection {pageURL: string, pageRank: int} @Collection -> string -> ()
-
 // Time
 declare start_ms: mut int = 0
 declare end_ms: mut int = 0
@@ -36,11 +33,9 @@ trigger hello : () = \_ -> ()
 // Perform the query on the local dataset. (Filter and project.)
 // Store the results in memory.
 // Notify master that we have finished.
-// Store the output on disk
 trigger q1_local: () = \_ -> (
   local_q1_results = local_rankings.filter (\row -> row.pageRank > x);
-  (finished, master) <- (local_q1_results.size ());
-  resultLogger outputFile local_q1_results "|"
+  (finished, master) <- (local_q1_results.size ())
 )
 
 // Signal to the master that a peer has finished the query locally.

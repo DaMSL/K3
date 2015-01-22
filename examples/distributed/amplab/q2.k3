@@ -32,9 +32,6 @@ declare local_uservisits: collection {
 declare local_q2_results: mut collection {key: string, value: real} @ { Map }
 declare q2_results_coll: mut collection {substr: string, sum: real} @Collection
 
-@:CArgs 3
-declare resultLogger : string -> collection {substr: string, sum: real} @Collection -> string -> ()
-
 // Time
 declare start_ms : mut int = 0
 declare end_ms : mut int = 0
@@ -92,9 +89,7 @@ trigger peer_barrier : () = \_ -> (
   peers_finished = peers_finished + 1;
   if peers_finished == peers.size ()
   then (
-    (master_done, master) <- ();
-    (local_q2_results.iterate (\e -> q2_results_coll.insert {substr: e.key, sum: e.value}));
-    resultLogger outFile q2_results_coll "|"
+    (master_done, master) <- ()
   )
   else ()
 )
