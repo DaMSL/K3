@@ -365,8 +365,21 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
              ee <- reify (RName g) e
              return (g, [R.Forward $ R.ScalarDecl (R.Name g) epc Nothing], ee)
 
-    se <- reify r s
-    ne <- reify r n
+    (se, ne, de, genSymP) <-
+      case r of
+        RReturn _ -> do
+          g' <- genSym
+          te <- getKType k
+          de' <- cDecl te g'
+          se' <- reify (RName g') s
+          ne' <- reify (RName g') n
+          return (se', ne', de', Just g')
+        _ -> do
+          se' <- reify r s
+          ne' <- reify r n
+          return (se', ne', [], Nothing)
+
+    let cleanUp = maybe [] (\g -> [R.Return (R.Variable $ R.Name g)]) genSymP
 
     let d = [R.Forward $ R.ScalarDecl (R.Name x) (if isWriteBound x then R.Inferred else R.Reference R.Inferred)
                (Just $ R.Dereference (R.Variable $ R.Name g))]
@@ -375,7 +388,11 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
                             (R.Call (R.Variable $ R.Qualified (R.Name "std") $ R.Specialized [ec]
                                           (R.Name "make_shared")) [R.Variable $ R.Name x]) | isWriteBound x]
 
-    return $ gd ++ ee ++ [R.IfThenElse (R.Variable $ R.Name g) (d ++ se ++ reconstruct) ne]
+    let reconstruct' = [R.Assignment (R.Variable $ R.Name g) (R.Literal R.LNullptr)]
+
+    return $ gd ++ ee ++ [R.IfThenElse (R.Variable $ R.Name g)
+                             (d ++ de ++ se ++ reconstruct ++ cleanUp)
+                             (de ++ ne ++ reconstruct' ++ cleanUp)]
 
 reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
     let (refBinds, copyBinds, writeBinds) = (S.empty, S.empty, S.fromList $ bindingVariables b)
