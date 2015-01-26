@@ -25,7 +25,7 @@ import Language.K3.Analysis.HMTypes.Inference (inferProgramTypes, translateProgr
 import qualified Language.K3.Codegen.Imperative as I
 import qualified Language.K3.Codegen.CPP as CPP
 
-import Language.K3.Stages ( runCGPasses )
+import Language.K3.Stages ( runCGPasses, runDeclOptPasses, cs0 )
 
 import Language.K3.Driver.Options
 import Language.K3.Driver.Typecheck
@@ -61,7 +61,11 @@ typecheckStage _ cOpts prog = prefixError "Type error:" $ return $ if useSubType
     quickTypecheck = inferProgramTypes prog >>= translateProgramTypes . fst
 
 applyOptimizations :: CompileOptions -> K3 Declaration -> IO (Either String (K3 Declaration))
-applyOptimizations cOpts prog = runCGPasses (optimizationLevel cOpts) prog
+applyOptimizations cOpts prog = do
+  declOpted <- runDeclOptPasses cs0 Nothing prog
+  case declOpted of
+    Left report -> return $ Left ""
+    Right program -> runCGPasses (optimizationLevel cOpts) (fst program)
 
 cppCodegenStage :: CompilerStage (K3 Declaration) ()
 cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $ genCPP irRes
