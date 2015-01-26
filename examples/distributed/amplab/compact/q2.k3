@@ -1,55 +1,56 @@
 include "Annotation/Collection.k3"
 include "Annotation/Map.k3"
-include "AmplabBDB.k3"
+include "compact/AmplabBDB.k3"
 
 typedef adRevByIp = collection {key:string, value:real} @Collection
 
-@:CArgs 2
-declare dataLoader : string -> uv_bag -> ()
+// Globals
+declare slice_length : mut int = 8
+declare num_results : mut int = 0
 
 // Data
-declare local_uservisits : uv_bag
-declare local_q2_results : mut collection {key: string, value: real} @Map
+declare local_uservisits: collection {adRevenue: real, sourceIP: string} @Collection
+declare results_map: mut collection {key: string, value: real} @Map
+declare results : mut collection {key: string, value: real} @Collection
 
-declare slice_length : mut int = 3
 
 // Perform the query on the local dataset (local group by on ad revenue).
 // Then, group by destination peer address and send.
 trigger q2_local : () = \_ -> (
   (ignore
-    (( local_uservisits.groupBy
+    ( local_uservisits.groupBy
          (\r -> slice_string r.sourceIP 0 slice_length) //TODO index by 0 or 1?
          (\acc -> \r -> acc + r.adRevenue)
          0.0
-      ) @Profile(lbl=[# agg_vals], tag=[$ "Agg vals time"])
-      ) @SendPartitionByKey( dest_trg    = [$ aggregate]
-                           , barrier_trg = [$ peer_barrier]
-                           , nodes       = [$ peers ]))
+    ) @SendPartitionByKey( dest_trg    = [$ aggregate]
+                         , barrier_trg = [$ peer_barrier]
+                         , nodes       = [$ peers ]))
 )
 
 trigger aggregate : adRevByIp = \vals -> (
   ( vals.iterate (
-      \v -> case local_q2_results.lookup {key: v.key, value: 0.0}  of
-          { Some kv -> local_q2_results.insert { key: v.key, value: kv.value + v.value } }
-          { None    -> local_q2_results.insert v }
+      \v -> case results_map.lookup {key: v.key, value: 0.0}  of
+          { Some kv -> results_map.insert { key: v.key, value: kv.value + v.value } }
+          { None    -> results_map.insert v }
     )
   ) @Profile(lbl=[# aggregate], tag=[$ "Aggregate time"])
 )
 
 trigger peer_barrier : () = \_ -> (
-  ( (() @:Result) @AmplabBenchmark
+  ( ( ignore (results_map.size ()) @:Result) @AmplabBenchmark;
+    results_map.iterate (\r -> results.insert r)
   ) @OnCounter(id=[# peers_finished], eq=[$ peers.size()])
 )
 
 trigger start : () = \_ -> (() @:Start) @AmplabBenchmark(
   queryTrigger       = [$ q2_local],
-  loadExpr           = [$ dataFiles.iterate (\e -> dataLoader e.path local_uservisits)],
+  loadExpr           = [$ uservisitsFiles.iterate (\e -> loadQ2 e.path local_uservisits)],
   preLoadExpr        = [$ peers.iterate (\i -> peers_seq.insert i)],
   preReadyExpr       = [$ ()],
-  finishArgT         = [: ()],
-  preTestFinishExpr  = [$ (\_ -> ())],
-  preFinishExpr      = [$ ()],
-  preShutdownExpr    = [$ print (concat "Num local results: " (itos (local_q2_results.size ())))]
+  finishArgT         = [: int],
+  preTestFinishExpr  = [$ (\n -> num_results = num_results + n)],
+  preFinishExpr      = [$ print (concat "# Results: " (itos num_results))],
+  preShutdownExpr    = [$ ()]
 )
 
 source rows : () = value ()

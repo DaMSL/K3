@@ -1,32 +1,24 @@
 include "Annotation/Collection.k3"
-include "AmplabBDB.k3"
-
-// Generate a builtin to load data into a collection
-@:CArgs 2
-declare dataLoader: string -> rk_bag -> ()
+include "compact/AmplabBDB.k3"
 
 // Globals
-declare x           : mut int = 10 //pageRank threshold for the select statement
+declare x           : mut int = 1000 // pageRank threshold for filter
 declare num_results : mut int = 0
 
 // Data
-declare local_rankings   : rk_bag
-declare local_q1_results : collection {pageRank: int, pageURL: string} @Collection
+declare local_rankings  :     collection {pageRank: int, pageURL: string} @Collection
+declare results         : mut collection {pageRank: int, pageURL: string} @Collection
 
 // Perform the query on the local dataset. (Filter and project.)
 // Store the results in memory.
 trigger q1_local: () = \_ -> (
-  local_rankings.iterate (\row ->
-    if row.pageRank > x
-    then local_q1_results.insert ({pageRank: row.pageRank, pageURL: row.pageURL})
-    else ()
-  );
-  ignore ((local_q1_results.size ()) @:Result) @AmplabBenchmark
+  results = local_rankings.filter (\row -> row.pageRank > x);
+  ignore ((results.size ()) @:Result) @AmplabBenchmark
 )
 
 trigger start : () = \_ -> (() @:Start) @AmplabBenchmark(
   queryTrigger       = [$ q1_local],
-  loadExpr           = [$ dataFiles.iterate (\e -> dataLoader e.path local_rankings)],
+  loadExpr           = [$ rankingsFiles.iterate (\e -> loadQ1 e.path local_rankings)],
   preLoadExpr        = [$ ()],
   preReadyExpr       = [$ peers.iterate (\p -> (hello, p.addr) <- ())],
   finishArgT         = [: int],

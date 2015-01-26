@@ -4,6 +4,7 @@ include "Core/Builtins.k3"
 include "Core/Barrier.k3"
 include "Core/Profile.k3"
 include "Core/Messaging.k3"
+include "Core/Loaders.k3"
 
 typedef uv_record = {
     sourceIP     : string,
@@ -49,7 +50,8 @@ control AmplabBenchmark[queryTrigger       : expr,
   ?e @:Start  => (load_all, me)     <- $.[e]
     +> {
       declare master    : address = 127.0.0.1:40000
-      declare dataFiles : collection {path: string} @Collection
+      declare rankingsFiles : collection {path: string} @Collection
+      declare uservisitsFiles : collection {path: string} @Collection
 
       // Dummy trigger to warm up connections
       trigger hello : () = \_ -> ()
@@ -73,13 +75,13 @@ control AmplabBenchmark[queryTrigger       : expr,
       trigger ready : () = \_ -> (
         ( $[preReadyExpr];
           ((peers.iterate (\p -> ($[queryTrigger], p.addr) <- ()))
-              @:StartTimer) @Time(lbl=[# query], tag=[$ "Query time"])
+              @:StartTimer) @Time(lbl=[# query], tag=[$ "Query time:"])
         ) @OnCounter(id=[# peers_ready], eq=[$ peers.size()])
       )
 
       trigger load_all : () = \_ -> (
         $[preLoadExpr];
-        ($[loadExpr]) @Profile(lbl=[# loader], tag=[$ "Load time"]);
+        ($[loadExpr]) @Profile(lbl=[# loader], tag=[$ "Load time:"]);
         ((ready, master) <- ())
       )
     }

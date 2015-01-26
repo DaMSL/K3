@@ -1,6 +1,6 @@
 include "Annotation/Collection.k3"
 include "Annotation/Map.k3"
-include "AmplabBDB.k3"
+include "compact/AmplabBDB.k3"
 
 typedef rk_by_url_elem     = {key: string, value: int}
 typedef rk_by_url_map      = collection rk_by_url_elem @ Map
@@ -25,20 +25,11 @@ declare local_max  : mut aggs_by_ip_elem
 declare global_max : mut aggs_by_ip_elem
 
 declare date_lb    : string = "1980-01-01"
-declare date_ub    : string = "1990-01-01"
+declare date_ub    : string = "1980-04-01"
 declare valid_date : string -> bool = \i -> (i <= date_ub and i >= date_lb)
 
 declare flag  : mut bool = false
 declare flag2 : mut bool = false
-
-declare uvFiles : collection {path: string} @Collection
-declare rkFiles : collection {path: string} @Collection
-
-@:CArgs 2
-declare uvLoader: string -> uv_bag -> ()
-
-@:CArgs 2
-declare rkLoaderMap : string -> rk_by_url_map  -> ()
 
 trigger q3_local : () = \_ -> (
   user_visits.iterate (\uv ->
@@ -108,8 +99,8 @@ trigger count_merges : () = \_ -> (
 
 trigger start : () = \_ -> (() @:Start) @AmplabBenchmark(
   queryTrigger       = [$ q3_local],
-  loadExpr           = [$ (uvFiles.iterate (\e -> uvLoader e.path user_visits);
-                           rkFiles.iterate (\e -> rkLoaderMap e.path rk_by_url)) ],
+  loadExpr           = [$ (uservisitsFiles.iterate (\e -> loadUVQ3 e.path user_visits);
+                           rankingsFiles.iterate (\e ->  loadRKQ3 e.path rk_by_url)) ],
   preLoadExpr        = [$ peers.iterate (\i -> peers_seq.insert i)],
   preReadyExpr       = [$ ()],
   finishArgT         = [: aggs_by_ip_elem],

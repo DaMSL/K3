@@ -57,7 +57,7 @@ control TPCHBenchmarkWithoutMaster
       // Once all nodes are ready, the master will start the query.
       trigger ready : () = \_ -> (
         ( $[preReadyExpr];
-          (( $[onReadyExpr] @:StartTimer) @Time(lbl=[# query], tag=[$ "Query time"])
+          (( $[onReadyExpr] @:StartTimer) @Time(lbl=[# query], tag=[$ "Query time:"])
           ) @OnCounter(id=[#  nodes_ready], eq=[$ $[nodes].size()]))
       )
 
