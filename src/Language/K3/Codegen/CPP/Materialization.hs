@@ -157,9 +157,14 @@ materializationE e@(Node (t :@: as) cs)
 
              readOnly <- not <$> hasWriteInP (P.pfvar x) b
 
-             nrvo <- case returnedProvenance of
-                       (tag -> PBVar _) -> not <$> isGlobalP returnedProvenance
-                       _ -> return False
+             let nrvoProvenance q =
+                   case q of
+                     (tag -> PFVar _) -> return True
+                     (tag -> PBVar _) -> not <$> isGlobalP q
+                     (tag -> PSet) -> anyM nrvoProvenance (children q)
+                     _ -> return False
+
+             nrvo <- nrvoProvenance returnedProvenance
 
              let readOnlyDecision d = if readOnly then d { inD = ConstReferenced } else d
              let nrvoDecision d = if nrvo then d { outD = Moved } else d
