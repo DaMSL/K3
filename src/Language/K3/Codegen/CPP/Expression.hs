@@ -197,7 +197,7 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
 
     return ([], R.Lambda captures [(arg, argMtrlznType)] True Nothing body')
 
-inline e@(tag &&& children -> (EOperate OApp, [Fold c, f, z])) = do
+inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [Fold c, f])), z])) = do
   (ce, cv) <- inline c
   (fe, fv) <- inline f
   (ze, zv) <- inline z
@@ -254,7 +254,7 @@ inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
               Moved -> return (move a av)
 
     c <- call fv pass cargs
-    return $ (fe ++ ae, c)
+    return (fe ++ ae, c)
   where
     call fn@(R.Variable i) arg n =
       if isJust $ f @~ CArgs.isErrorFn
