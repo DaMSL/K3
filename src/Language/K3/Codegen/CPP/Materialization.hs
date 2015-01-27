@@ -199,7 +199,19 @@ materializationE e@(Node (t :@: as) cs)
              s' <- materializationE s
              n' <- materializationE n
 
-             setDecision (getUID e) i defaultDecision
+             let xp = getProvenance x
+
+             -- TODO: Slightly conservative, although it takes reasonably unusual code to trigger
+             -- those cases.
+             noMention <- do
+               sMention <- (||) <$> hasReadInP xp s' <*> hasWriteInP xp s'
+               nMention <- (||) <$> hasReadInP xp n' <*> hasWriteInP xp n'
+
+               return $ not (sMention || nMention)
+
+             let referenceBind d = if noMention then d { inD = Referenced, outD = Referenced } else d
+
+             setDecision (getUID e) i $ referenceBind defaultDecision
              decisions <- dLookupAll (getUID e)
              return (Node (t :@: (EMaterialization decisions:as)) [x', s', n'])
 
@@ -352,6 +364,29 @@ hasWriteInP prov expr =
       return (functionHasWrite || argHasWrite || appHasWrite)
 
     _ -> (||) <$> isWrittenInF prov (getEffects expr) <*> anyM (hasWriteInP prov) (children expr)
+
+hasReadInP :: K3 Provenance -> K3 Expression -> MaterializationM Bool
+hasReadInP prov expr =
+  case expr of
+    (tag &&& children -> (ELambda i, [b])) -> do
+      closureDecisions <- dLookupAll (getUID expr)
+      let readInClosure = maybe False (\j -> maybe False (\d -> inD d == Copied) $ M.lookup j closureDecisions)
+                           (pVarName prov)
+      childHasRead <- hasReadInP prov b
+      return (readInClosure || childHasRead)
+
+    (tag &&& children -> (EOperate OApp, [f, x])) -> do
+      let argProv = getProvenance x
+      argOccurs <- occursIn True argProv prov
+      appDecision <- dLookup (getUID expr) ""
+
+      functionHasRead <- hasReadInP prov f
+      argHasRead <- hasReadInP prov x
+      let appHasRead = inD appDecision == Moved && argOccurs
+
+      return (functionHasRead || argHasRead || appHasRead)
+
+    _ -> (||) <$> isReadInF prov (getEffects expr) <*> anyM (hasReadInP prov) (children expr)
 
 isGlobalP :: K3 Provenance -> MaterializationM Bool
 isGlobalP ep =
