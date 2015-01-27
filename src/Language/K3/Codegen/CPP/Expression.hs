@@ -283,10 +283,10 @@ inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@
     (ve, vv)  <- inline val
     trigList  <- triggers <$> get
     trigTypes <- getKType val >>= genCType
-    let className = R.Specialized [trigTypes] (R.Qualified (R.Name "K3" )$ R.Name "ValDispatcher")
+    let className = R.Specialized [trigTypes] (R.Qualified (R.Name "K3" ) $ R.Name "ValDispatcher")
         classInst = R.Forward $ R.ScalarDecl (R.Name d) R.Inferred
                       (Just $ R.Call (R.Variable $ R.Specialized [R.Named className]
-                                           (R.Qualified (R.Name "std" )$ R.Name "make_shared")) [vv])
+                                           (R.Qualified (R.Name "std" ) $ R.Name "make_shared")) [vv])
     return (concat [te, ae, ve]
                  ++ [ classInst
                     , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine") (R.Name "send")) [
@@ -346,53 +346,69 @@ reify r (tag &&& children -> (ELetIn x, [e, b])) = do
 
 -- case `e' of { some `x' -> `s' } { none -> `n' }
 reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
-    let (refBinds, copyBinds, writeBinds) = (S.empty, S.empty, S.singleton x)
+    mtrlzn <- case k @~ isEMaterialization of
+                Just (EMaterialization ms) -> return $ ms M.! x
+                Nothing -> return defaultDecision
 
-    let isCopyBound i = i `S.member` copyBinds || i `S.member` writeBinds
-    let isWriteBound i = i `S.member` writeBinds
+    initKType <- getKType e
+    initCType <- genCType initKType
 
-    -- Create types for the element and the pointer to said element
-    ept <- getKType e
-    epc <- genCType ept
-    let et = headNote ("Missing type in reify for " ++ show e) $ children ept
-    ec  <- genCType et
+    let innerCType = case initCType of
+                       R.Pointer t -> t
+                       R.SharedPointer t -> t
+                       _ -> error "Invalid pointer type for case/of"
 
-    (g, gd, ee) <- case tag e of
-           -- Reuse an existing variable
-           EVariable k -> return (k, [], [])
-           _ -> do
-             g  <- genSym
-             ee <- reify (RName g) e
-             return (g, [R.Forward $ R.ScalarDecl (R.Name g) epc Nothing], ee)
-
-    (se, ne, de, genSymP) <-
-      case r of
-        RReturn _ -> do
-          g' <- genSym
-          te <- getKType k
-          de' <- cDecl te g'
-          se' <- reify (RName g') s
-          ne' <- reify (RName g') n
-          return (se', ne', de', Just g')
+    -- Code to reify the case/of initializer, and the name of the temporary variable used.
+    (initName, initReify) <-
+      case tag e of
+        EVariable k -> return (k, [])
         _ -> do
-          se' <- reify r s
-          ne' <- reify r n
-          return (se', ne', [], Nothing)
+          g <- genSym
+          ee <- reify (RName g) e
+          return (g, [R.Forward $ R.ScalarDecl (R.Name g) initCType Nothing] ++ ee)
 
-    let cleanUp = maybe [] (\g -> [R.Return (R.Variable $ R.Name g)]) genSymP
+    let initExpr = R.Dereference $ R.Variable $ R.Name initName
 
-    let d = [R.Forward $ R.ScalarDecl (R.Name x) (if isWriteBound x then R.Inferred else R.Reference R.Inferred)
-               (Just $ R.Dereference (R.Variable $ R.Name g))]
+    let cx = R.Name x
 
-    let reconstruct = [R.Assignment (R.Variable $ R.Name g)
-                            (R.Call (R.Variable $ R.Qualified (R.Name "std") $ R.Specialized [ec]
-                                          (R.Name "make_shared")) [R.Variable $ R.Name x]) | isWriteBound x]
+    let initSome =
+          case inD mtrlzn of
+            Copied -> [R.Forward $ R.ScalarDecl cx innerCType (Just initExpr)]
+            Moved -> [R.Forward $ R.ScalarDecl cx innerCType (Just $ R.Move initExpr)]
+            Referenced -> [R.Forward $ R.ScalarDecl cx (R.Reference innerCType) (Just initExpr)]
+            ConstReferenced -> [R.Forward $ R.ScalarDecl cx (R.Const $ R.Reference innerCType) (Just initExpr)]
 
-    let reconstruct' = [R.Assignment (R.Variable $ R.Name g) (R.Literal R.LNullptr)]
+    let writeBackSome = case outD mtrlzn of
+                          Copied -> [R.Assignment (R.Variable $ R.Name initName) (R.Variable $ R.Name x)]
+                          Moved -> [R.Assignment (R.Variable $ R.Name initName) (R.Move $ R.Variable $ R.Name x)]
+                          _ -> []
 
-    return $ gd ++ ee ++ [R.IfThenElse (R.Variable $ R.Name g)
-                             (d ++ de ++ se ++ reconstruct ++ cleanUp)
-                             (de ++ ne ++ reconstruct' ++ cleanUp)]
+    let writeBackNone = case outD mtrlzn of
+                          Copied -> [R.Assignment (R.Variable $ R.Name initName) (R.Literal R.LNullptr)]
+                          Moved -> [R.Assignment (R.Variable $ R.Name initName) (R.Literal R.LNullptr)]
+                          _ -> []
+
+    -- If this case/of is the last expression in the current function and therefore returns,
+    -- writeback must happen before the return takes place.
+    (someE, noneE, returnDecl, returnName, returnStmt) <-
+      case r of
+        RReturn m | outD mtrlzn == Copied || outD mtrlzn == Moved -> do
+          returnName <- genSym
+          returnType <- getKType k >>= genCType
+          let returnDecl = [R.Forward $ R.ScalarDecl (R.Name returnName) returnType Nothing]
+          someE <- reify (RName returnName) s
+          noneE <- reify (RName returnName) n
+
+          let returnStmt = if m then R.Move (R.Variable $ R.Name returnName) else (R.Variable $ R.Name returnName)
+          return (someE, noneE, returnDecl, Just returnName, [R.Return returnStmt])
+        _ -> do
+          someE <- reify r s
+          noneE <- reify r n
+          return (someE, noneE, [], Nothing, [])
+
+    return $ initReify ++ [R.IfThenElse (R.Variable $ R.Name initName)
+                              (returnDecl ++ initSome ++ someE ++ writeBackSome ++ returnStmt)
+                              (returnDecl ++ noneE ++ writeBackNone ++ returnStmt)]
 
 reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
     let (refBinds, copyBinds, writeBinds) = (S.empty, S.empty, S.fromList $ bindingVariables b)
