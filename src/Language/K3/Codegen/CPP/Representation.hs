@@ -21,8 +21,10 @@ module Language.K3.Codegen.CPP.Representation (
     Capture(..),
     Expression(..),
 
+    pattern WRef,
     pattern CRef,
     pattern Move,
+    pattern TGet,
 
     bind,
 
@@ -80,6 +82,7 @@ unaryParens :: Expression -> Doc
 unaryParens e@(Variable _) = stringify e
 unaryParens e@(Project _ _) = stringify e
 unaryParens e@(Subscript _ _) = stringify e
+unaryParens e@(Call _ _) = stringify e
 unaryParens e = parens $ stringify e
 
 data Name
@@ -219,8 +222,10 @@ instance Stringifiable Expression where
     stringify (Unary op e) = fromString op <> unaryParens e
     stringify (Variable n) = stringify n
 
+pattern WRef e = Call (Variable (Qualified (Name "std") (Name "ref"))) [e]
 pattern CRef e = Call (Variable (Qualified (Name "std") (Name "cref"))) [e]
 pattern Move e = Call (Variable (Qualified (Name "std") (Name "move"))) [e]
+pattern TGet e n = Call (Variable (Qualified (Name "std") (Specialized [TypeLit (LInt n)] (Name "get")))) [e]
 
 bind :: Expression -> Expression -> Int -> Expression
 bind f a 1 = Call f [a]
