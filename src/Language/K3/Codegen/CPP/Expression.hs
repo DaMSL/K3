@@ -6,9 +6,11 @@
 
 module Language.K3.Codegen.CPP.Expression where
 
+import Prelude hiding (any, concat)
 import Control.Arrow ((&&&))
 import Control.Monad.State
 
+import Data.Foldable
 import Data.Functor
 import Data.List (nub, sortBy, (\\))
 import Data.Maybe
@@ -229,11 +231,7 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
   let loopInit = [R.Forward $ R.ScalarDecl (R.Name acc) R.Inferred (Just zv)]
   let loopBody =
           [ R.Assignment (R.Variable $ R.Name acc) $
-              R.Call
-                (R.Call fv
-                  [ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "move"))
-                    [R.Variable $ R.Name acc]
-                  ]) [R.Variable $ R.Name g]
+              R.Call (R.Call fv [ R.Move (R.Variable $ R.Name acc)]) [R.Variable $ R.Name g]
           ]
   let loop = R.ForEach g (R.Const $ R.Reference $ R.Inferred) cv (R.Block loopBody)
   return (ce ++ fe ++ ze ++ loopInit ++ loopPragmas ++ [loop], (R.Variable $ R.Name acc))
@@ -390,21 +388,21 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
 
     -- If this case/of is the last expression in the current function and therefore returns,
     -- writeback must happen before the return takes place.
-    (someE, noneE, returnDecl, returnName, returnStmt) <-
+    (someE, noneE, returnDecl, returnStmt) <-
       case r of
         RReturn m | outD mtrlzn == Copied || outD mtrlzn == Moved -> do
           returnName <- genSym
           returnType <- getKType k >>= genCType
           let returnDecl = [R.Forward $ R.ScalarDecl (R.Name returnName) returnType Nothing]
+          let returnStmt = if m then R.Move (R.Variable $ R.Name returnName) else (R.Variable $ R.Name returnName)
           someE <- reify (RName returnName) s
           noneE <- reify (RName returnName) n
 
-          let returnStmt = if m then R.Move (R.Variable $ R.Name returnName) else (R.Variable $ R.Name returnName)
-          return (someE, noneE, returnDecl, Just returnName, [R.Return returnStmt])
+          return (someE, noneE, returnDecl, [R.Return returnStmt])
         _ -> do
           someE <- reify r s
           noneE <- reify r n
-          return (someE, noneE, [], Nothing, [])
+          return (someE, noneE, [], [])
 
     return $ initReify ++ [R.IfThenElse (R.Variable $ R.Name initName)
                               (returnDecl ++ initSome ++ someE ++ writeBackSome ++ returnStmt)
