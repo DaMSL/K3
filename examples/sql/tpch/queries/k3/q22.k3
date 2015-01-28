@@ -61,6 +61,7 @@ typedef c_nt_by_cc_map = collection c_nt_by_cc_r @Map
 declare o_ck         : collection {key: int, value: ()} @Map
 declare c_nt_by_cc   : c_nt_by_cc_map
 declare q22_result   : c_nt_by_cc_map
+declare results : collection { cntrycode: string, numcust: int, totacctbal: real} @Collection
 
 declare merge_c_nt_by_cc : c_nt_by_cc_r -> c_nt_by_cc_r -> c_nt_by_cc_r
   = \a -> \b -> {key: a.key, value: {nc:a.value.nc + b.value.nc, tab:a.value.tab + b.value.tab}}
@@ -162,7 +163,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   finishArgT         = [: ()],
   preTestFinishExpr  = [$ (\_ -> ())],
   preFinishExpr      = [$ ()],
-  preShutdownExpr    = [$ ()]
+  preShutdownExpr    = [$ (q22_result.iterate (\r -> results.insert {cntrycode: r.key, numcust: r.value.nc, totacctbal: r.value.tab} ))]
 )
 
 source rows : () = value ()

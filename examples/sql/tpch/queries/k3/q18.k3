@@ -56,6 +56,8 @@ typedef loc_q_by_ncodt_bag = collection loc_q_by_ncodt_r @Collection
 typedef loc_q_by_ncodt_map = collection loc_q_by_ncodt_r @Map
 
 declare q18_peer_result : loc_q_by_ncodt_map
+declare results : collection {name: string, custkey: int, orderkey: int, orderdate:string, totalprice: real, sum: real} @Collection
+
 
 // Q18 intermediates.
 typedef o_cdt_by_ok_r = {key : int, value : { o_custkey    : int
@@ -200,7 +202,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   finishArgT         = [: ()],
   preTestFinishExpr  = [$ (\_ -> ())],
   preFinishExpr      = [$ ()],
-  preShutdownExpr    = [$ ()]
+  preShutdownExpr    = [$ (q18_peer_result.iterate(\r -> results.insert {name: r.key.nm, custkey: r.key.ck, orderkey: r.key.ok, orderdate: r.key.od, totalprice: r.key.tp, sum: r.value} ))]
 )
 
 source rows : () = value ()

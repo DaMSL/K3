@@ -7,14 +7,15 @@ include "tpch/benchmark.k3"
 
 declare lineitem : lineitem_bag
 declare q6_result : mut real = 0.0
+declare results : collection {revenue: real} @Collection
 
 trigger q6_local : () = \_ -> (
   (ignore
     ((( (lineitem
         .filter  (\r ->     ( r.l_shipdate >= "1994-01-01" )
                         and ( r.l_shipdate < "1995-01-01" )
-                        and ( r.l_discount >= ( 0.06 - 0.01 ) )
-                        and ( r.l_discount <= ( 0.06 + 0.01 ) )
+                        and ( r.l_discount >= ( 0.05 ) )
+                        and ( r.l_discount <= ( 0.07 ) )
                         and ( r.l_quantity < 24 )
                   )
         ).fold    (\acc -> \r -> acc + (r.l_extendedprice * r.l_discount)) 0.0
@@ -30,7 +31,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
   preReadyExpr       = [$ ()],
   finishArgT         = [: real],
   preTestFinishExpr  = [$ (\x -> q6_result = q6_result + x)],
-  preFinishExpr      = [$ print (concat "Result: " (rtos q6_result))],
+  preFinishExpr      = [$ results.insert {revenue: q6_result}; (print (concat "Result: " (rtos q6_result)))],
   preShutdownExpr    = [$ ()]
 )
 
