@@ -27,7 +27,7 @@ typedef q1_result = collection q1_result_r @Collection
 
 declare lineitem    : lineitem_bag
 declare init_agg    : q1_agg
-declare peer_result : mut q1_result
+declare results : mut q1_result
 
 
 declare accum_agg : q1_agg -> lineitem_r -> q1_agg = \acc -> \r ->
@@ -80,7 +80,7 @@ trigger q1 : () = \_ -> (
                        init_agg)
   ) @DistributedGroupBy(
       lbl         = [# groupby],
-      peer_next   = [$ (\x -> ((x.iterate (\kv -> peer_result.insert (finalize_agg kv)));
+      peer_next   = [$ (\x -> ((x.iterate (\kv -> results.insert (finalize_agg kv)));
                                ((() @:Result) @TPCHBenchmarkWithoutMaster))) ],
       next        = [$ ()],
       merge       = [$ merge_agg],
