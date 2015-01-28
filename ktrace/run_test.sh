@@ -16,15 +16,15 @@ KTRACE=$(pwd)
 source env.sh
 
 # Remove old executables
-#rm $DRIVER/__build/A $DRIVER/__build/__build/* || true
-##
-## Compile the K3 executable
-#cd $DRIVER && ./compile.sh $INFILE
+rm $DRIVER/__build/A $DRIVER/__build/__build/* || true
 #
-## Create a directory for K3 Results
-#cd $KTRACE && mkdir $TESTDIR/results || rm $TESTDIR/results/* || true
-#
-## Run the K3 Executable, stash results
+# Compile the K3 executable
+cd $DRIVER && ./compile.sh $INFILE
+
+# Create a directory for K3 Results
+cd $KTRACE && mkdir $TESTDIR/results || rm $TESTDIR/results/* || true
+
+# Run the K3 Executable, stash results
 $DRIVER/__build/A -p $TESTDIR/peers.yaml --result_var $RESULTVAR --result_path $TESTDIR/results/
 
 # Run KTrace to populate the database with K3 Results
