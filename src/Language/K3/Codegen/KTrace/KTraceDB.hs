@@ -76,6 +76,9 @@ schematize st d = return (st, d)
 createTable :: String -> TypedAttrs -> Statement
 createTable name attrs = CreateTable eA (Name eA [Nmc name]) (mkAttrs attrs) []
 
+dropTable :: String -> Statement
+dropTable name = DropSomething eA Table IfExists [Name eA [Nmc name]] Cascade
+
 createFunction :: String -> [(String, String)] -> String -> FnBody -> Statement
 createFunction name params returnT body =
   CreateFunction eA (Name eA [Nmc name]) fnParams fnRetT Replace Plpgsql body Stable
@@ -98,7 +101,7 @@ extractProgramState prog = do
 
 mkLoader :: String -> TypedAttrs -> [String]
 mkLoader name idSqlt = ["create or replace function " ++ name
-                 , "(" ++ concat (intersperse "," (map mkArg loaderParams)) ++ ")"
+                 , "(" ++ intercalate "," (map mkArg loaderParams) ++ ")"
                  , "returns void as $$"
                  , "declare jsonVar json;"
                  , "begin"
@@ -120,14 +123,18 @@ mkLoader name idSqlt = ["create or replace function " ++ name
 mkDiff :: String -> TypedAttrs -> Either String [String]
 mkDiff name idSqlt = do
   comparisons <- fmap (unwords . intersperse "and") . mapM compareField $ idSqlt
-  Right ["create view" +. name +. "as"
-             , "SELECT * FROM" +. correctResultsTable +. "as l"
-             , "WHERE NOT EXISTS"
-             ,     "(SELECT * FROM" +. resultsTable +. "as r"
-             ,     "WHERE" +.  comparisons ++ ");"]
+  let p1 = oneWayDiff correctResultsTable resultsTable comparisons
+  let p2 = oneWayDiff resultsTable correctResultsTable comparisons
+  Right $ viewHeader ++ p1 ++ ["UNION ALL"] ++ p2 ++ [";"]
   where
     a +. b = a ++ " " ++ b
+    viewHeader = ["drop view if exists" +. name +. "; create view" +. name +. "as"]
+    oneWayDiff left right compares = [ "SELECT * FROM" +. left +. "as l"
+                                     , "WHERE NOT EXISTS"
+                                     ,     "(SELECT * FROM" +. right +. "as r"
+                                     ,     "WHERE" +.  compares ++ ")"]
 
+-- TODO relative error
 compareField :: (String, String) -> Either String String
 compareField (field, typ) | typ == varcharType = Right $ proj "l" ++ " = " ++ proj "r"
                           | typ == intType     = Right $ proj "l" ++ " = " ++ proj "r"
@@ -236,9 +243,12 @@ mkLoadCalls iOpt catalogFile = do
 mkProgramTraceSchema :: K3 Declaration -> Either String String
 mkProgramTraceSchema prog = do
     progSt <- extractProgramState prog
-    return $ printStatements [ mkGlobalsSchema $ sortBy (compare `on` fst) $ globals progSt
-                             , mkEventTraceSchema $ triggers progSt ]
-
+    let drops = concatMap drop [globalsTable, msgsTable, resultsTable, correctResultsTable]
+    let statements = printStatements [ mkGlobalsSchema $ sortBy (compare `on` fst) $ globals progSt
+                                     , mkEventTraceSchema $ triggers progSt ]
+    return $ drops ++ statements
+    where
+      drop name = "drop table if exists " ++ name ++ " cascade;\n"
 {- Entry point -}
 kTrace :: [(String, String)] -> K3 Declaration -> Either String String
 kTrace opts prog = return . unlines =<< sequence
