@@ -185,10 +185,15 @@ materializationE e@(Node (t :@: as) cs)
              x' <- withLocalDS [y] (materializationE x)
              y' <- materializationE y
 
+             let xp = getProvenance x
+             mention <- (||) <$> hasReadInP xp y' <*> hasWriteInP xp y'
+
+             let referenceBind d = if not mention then d { inD = Referenced, outD = Referenced } else d
+
              case b of
-               BIndirection i -> setDecision (getUID e) i defaultDecision
-               BTuple is -> mapM_ (\i -> setDecision (getUID e) i defaultDecision) is
-               BRecord iis -> mapM_ (\(_, i) -> setDecision (getUID e) i defaultDecision) iis
+               BIndirection i -> setDecision (getUID e) i $ referenceBind defaultDecision
+               BTuple is -> mapM_ (\i -> setDecision (getUID e) i $ referenceBind defaultDecision) is
+               BRecord iis -> mapM_ (\(_, i) -> setDecision (getUID e) i $ referenceBind defaultDecision) iis
 
              decisions <- dLookupAll (getUID e)
              return (Node (t :@: (EMaterialization decisions:as)) [x', y'])
