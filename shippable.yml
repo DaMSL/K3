@@ -29,13 +29,13 @@ script:
   - ./run_test.sh ../../K3-Core/examples/distributed/amplab/q3.k3 tests/amplab_q3 results
 
     # TPCH
-  - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q1.k3 test/tpch_q1 results
-  - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q3.k3 test/tpch_q3 results
-  - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q5.k3 test/tpch_q5 results
-  # numerical error: - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q6.k3 test/tpch_q6 results
-  # incorrect query plan: - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q11.k3 test/tpch_q11 results
-  - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q18.k3 test/tpch_q18 results
-  - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q22.k3 test/tpch_q22 results
+  - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q1.k3 tests/tpch_q1 results
+  - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q3.k3 tests/tpch_q3 results
+  - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q5.k3 tests/tpch_q5 results
+  # numerical error: - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q6.k3 tests/tpch_q6 results
+  # incorrect query plan: - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q11.k3 tests/tpch_q11 results
+  - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q18.k3 tests/tpch_q18 results
+  - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q22.k3 tests/tpch_q22 results
 
 notifications:
      email:
