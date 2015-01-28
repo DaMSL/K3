@@ -1,14 +1,13 @@
 ---
-x: 1000
 me: [127.0.0.1, 30000]
 master: [127.0.0.1, 30000]
 peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
 role: rows
-dataFiles: [{path: data/rankings1}]
+rkFiles: [{path: data/rankings1}, {path: data/rankings2}]
+uvFiles: [{path: data/uservisits1}]
 ---
-x: 1000
 me: [127.0.0.1, 40000]
 master: [127.0.0.1, 30000]
 peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
 role: rows
-dataFiles: [{path: data/rankings2}]
+uvFiles: [{path: data/uservisits2}]

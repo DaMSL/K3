@@ -1,12 +1,14 @@
 ---
 x: 8
 me: [127.0.0.1, 30000]
+master: [127.0.0.1, 30000]
 peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
 role: rows
 dataFiles: [{path: data/uservisits1}]
 ---
 x: 8
 me: [127.0.0.1, 40000]
+master: [127.0.0.1, 30000]
 peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
 role: rows
 dataFiles: [{path: data/uservisits2}]
