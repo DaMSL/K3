@@ -25,7 +25,7 @@ script:
   # Begin tests
   - cd ktrace
     # Amplab Q1:
-  - ./run_test ../../K3-Core/examples/distributed/amplab/q1.k3 tests/amplab_q1 local_q1_results
+  - ./run_test.sh ../../K3-Core/examples/distributed/amplab/q1.k3 tests/amplab_q1 local_q1_results
 
 notifications:
      email:
