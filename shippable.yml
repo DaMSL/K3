@@ -40,6 +40,6 @@ script:
 notifications:
      email:
          recipients:
-             - joshdub223@gmail.com
+             - k3-developers@googlegroups.com 
          on_success: change
          on_failure: always
