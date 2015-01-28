@@ -129,7 +129,7 @@ inline e@(tag -> EVariable v) = do
   where
     defVar = R.Name v
     addBind x n = R.Bind (R.TakeReference $ R.Variable $ R.Qualified (R.Name "__global_context") defVar)
-                  [R.Dereference $ R.Variable $ R.Name "this"] n
+                  [R.WRef $ R.Dereference $ R.Variable $ R.Name "this"] n
 
 inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
     (e, v) <- inline c
