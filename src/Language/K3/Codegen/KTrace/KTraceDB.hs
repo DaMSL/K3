@@ -138,7 +138,7 @@ mkDiff name idSqlt = do
 compareField :: (String, String) -> Either String String
 compareField (field, typ) | typ == varcharType = Right $ proj "l" ++ " = " ++ proj "r"
                           | typ == intType     = Right $ proj "l" ++ " = " ++ proj "r"
-                          | typ == doubleType  = Right $ abs (proj "l" ++ "-" ++ proj "r")  ++ " > .01" 
+                          | typ == doubleType  = Right $ abs (proj "l" ++ "-" ++ proj "r")  ++ " < .01" 
                           | otherwise = Left $ "Invalid type for result comparison: " ++ typ
 
   where
