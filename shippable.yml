@@ -2,9 +2,6 @@ build_image: damsl/k3-tests
 env:
   - GHCVER=7.8.3
   - CABALVER=1.20
-  - PGHOST=127.0.0.1
-  - PGUSER=postgres
-  - PGPASSWORD=password
 
 install:
   - cd /k3/K3-Core
@@ -24,6 +21,7 @@ script:
 
   # Begin tests
   - cd ktrace
+  - source env.sh
     # Amplab Q1:
   - ./run_test.sh ../../K3-Core/examples/distributed/amplab/q1.k3 tests/amplab_q1 local_q1_results
 
