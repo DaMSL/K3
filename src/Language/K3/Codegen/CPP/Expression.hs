@@ -409,63 +409,75 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
                               (returnDecl ++ noneE ++ writeBackNone ++ returnStmt)]
 
 reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
-    let (refBinds, copyBinds, writeBinds) = (S.empty, S.empty, S.fromList $ bindingVariables b)
+  let newNames =
+        case b of
+          BIndirection i -> [i]
+          BTuple is -> is
+          BRecord iis -> snd (unzip iis)
 
-    let isCopyBound i = i `S.member` copyBinds || i `S.member` writeBinds
-    let isWriteBound i = i `S.member` writeBinds
+  mtrlzns <- case k @~ isEMaterialization of
+                 Just (EMaterialization ms) -> return ms
+                 Nothing -> return $ M.fromList (zip newNames $ repeat defaultDecision)
 
-    (ae, g) <- case a of
-        (tag -> EVariable _) -> inline a
-        _ -> do
-            g' <- genSym
-            ta <- getKType a
-            da <- cDecl ta g'
-            ae' <- reify (RName g') a
-            return (da ++ ae', R.Variable $ R.Name g')
+  initKType <- getKType a
+  initCType <- genCType initKType
 
-    ta <- getKType a
+  (initName, initReify) <-
+    case tag a of
+      EVariable v -> return (v, [])
+      _ -> do
+        g <- genSym
+        ee <- reify (RName g) a
+        return (g, [R.Forward $ R.ScalarDecl (R.Name g) initCType Nothing] ++ ee)
 
-    bindInit <- case b of
-            BIndirection i -> do
-                let (tag &&& children -> (TIndirection, [ti])) = ta
-                let bt = if isCopyBound i then R.Inferred else R.Reference R.Inferred
-                return [R.Forward $ R.ScalarDecl (R.Name i) bt (Just $ R.Dereference g)]
-            BTuple is ->
-                return [ R.Forward $ R.ScalarDecl (R.Name i)
-                           (if isCopyBound i then R.Inferred else R.Reference R.Inferred)
-                           (Just $ R.Call (R.Variable $ R.Qualified (R.Name "std")
-                           (R.Specialized [R.TypeLit $ R.LInt n] $ R.Name "get")) [g])
-                       | i <- is
-                       | n <- [0..]
-                       ]
-            BRecord iis -> return [ R.Forward $ R.ScalarDecl (R.Name v)
-                                      (if isCopyBound v then R.Inferred else R.Reference R.Inferred)
-                                      (Just $ R.Project g (R.Name i))
-                                  | (i, v) <- iis]
+  let initExpr = R.Variable (R.Name initName)
 
-    let bindWriteback = case b of
-            BIndirection i -> [ R.Assignment (R.Dereference g) (R.Variable $ R.Name i) | isWriteBound i]
-            BTuple is -> [genTupleAssign g n i | i <- is, isWriteBound i | n <- [0..]]
-            BRecord iis -> [genRecordAssign g k v | (k, v) <- iis, isWriteBound v]
+  let initSkeleton t m i e = [R.Forward $ R.ScalarDecl (R.Name i) (t R.Inferred) (Just $ m e)]
 
-    (bindBody, k) <- case r of
-        RReturn _ -> do
-            g' <- genSym
-            te <- getKType e
-            de <- cDecl te g'
-            re <- reify (RName g') e
-            return (de ++ re, Just g')
-        _ -> (,Nothing) <$> reify r e
+  let initByDecision d =
+        case d of
+          Referenced -> initSkeleton R.Reference id
+          ConstReferenced -> initSkeleton (R.Const . R.Reference) id
+          Moved -> initSkeleton id R.Move
+          Copied -> initSkeleton id id
 
-    let bindCleanUp = maybe [] (\k' -> [R.Return (R.Variable $ R.Name k')]) k
+  let bindInit =
+        case b of
+          BIndirection i -> initByDecision (inD $ mtrlzns M.! i) i (R.Dereference initExpr)
+          BTuple is ->
+            concat [initByDecision (inD $ mtrlzns M.! i) i (R.TGet initExpr n) | i <- is | n <- [0..]]
+          BRecord iis ->
+            concat [initByDecision (inD $ mtrlzns M.! i) i (R.Project initExpr (R.Name f)) | (f, i) <- iis]
 
-    return $ ae ++ [R.Block $ bindInit ++ bindBody ++ bindWriteback ++ bindCleanUp]
-  where
-    genTupleAssign :: R.Expression -> Int -> Identifier -> R.Statement
-    genTupleAssign g n i =
-        R.Assignment (R.Call (R.Variable $ R.Specialized [R.Named $ R.Name (show n)] (R.Name "get")) [g])
-                     (R.Variable $ R.Name i)
-    genRecordAssign g k v = R.Assignment (R.Project g (R.Name k)) (R.Variable $ R.Name v)
+  let wbByDecision d old new =
+        case d of
+          Referenced -> []
+          ConstReferenced -> []
+          Moved -> [R.Assignment (R.Variable $ R.Name old) (R.Move new)]
+          Copied -> [R.Assignment (R.Variable $ R.Name old) new]
+
+  let bindWriteBack =
+        case b of
+          BIndirection i -> wbByDecision (outD $ mtrlzns M.! i) i initExpr
+          BTuple is ->
+            concat [wbByDecision (outD $ mtrlzns M.! i) i (R.TGet initExpr n) | i <- is | n <- [0..]]
+          BRecord iis ->
+            concat [wbByDecision (outD $ mtrlzns M.! i) i (R.Project initExpr (R.Name f)) | (f, i) <- iis]
+
+  (bindBody, returnDecl, returnStmt) <-
+    case r of
+      RReturn m | any (\d -> outD d == Moved || outD d == Copied) mtrlzns -> do
+        returnName <- genSym
+        returnType <- getKType k >>= genCType
+        let returnDecl = [R.Forward $ R.ScalarDecl (R.Name returnName) returnType Nothing]
+        let returnExpr = if m then R.Move (R.Variable $ R.Name returnName) else (R.Variable $ R.Name returnName)
+        bindBody <- reify (RName returnName) e
+        return (bindBody, returnDecl, [R.Return returnExpr])
+      _ -> do
+        bindBody <- reify r e
+        return (bindBody, [], [])
+
+  return $ initReify ++ [R.Block $ bindInit ++ returnDecl ++ bindBody ++ bindWriteBack ++ returnStmt]
 
 reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
     (pe, pv) <- inline p
@@ -478,7 +490,6 @@ reify r e = do
     reification <- case r of
         RForget -> return []
         RName k -> return [R.Assignment (R.Variable $ R.Name k) value]
-        RReturn True -> return [R.Return $ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "move")) [value]]
-        RReturn False -> return [R.Return value]
+        RReturn b -> return $ [R.Return $ (if b then R.Move else id) value]
         RSplice _ -> throwE $ CPPGenE "Unsupported reification by splice."
     return $ effects ++ reification
