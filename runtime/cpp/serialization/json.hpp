@@ -11,12 +11,25 @@
 
 namespace JSON {
 using namespace rapidjson;
+  template <class T>
+  bool tCheck() { return false; }
 
   // Default
   template <class T>
   struct convert {
     template <class Allocator>
-    static Value encode(const T& from, Allocator&) {}
+    static Value encode(const T& from, Allocator&) {
+      // Force an error if no specialization is hit.
+      static_assert(tCheck<T>(), "No Specialization found for type.");
+    }
+  };
+
+  // Bool
+  template <> struct convert<bool> {
+    template <class Allocator>
+    static Value encode(const bool& b, Allocator& al) {
+      return Value(b);
+    }
   };
 
   // Unit

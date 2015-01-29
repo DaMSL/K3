@@ -30,7 +30,7 @@ declare local_uservisits: collection {
     } @ { Collection }
 
 declare local_q2_results: mut collection {key: string, value: real} @ { Map }
-declare q2_results_coll: mut collection {substr: string, sum: real} @Collection
+declare results: mut collection {substr: string, sum: real} @Collection
 
 // Time
 declare start_ms : mut int = 0
@@ -106,6 +106,7 @@ trigger master_done : () = \_ -> (
 
 trigger shutdown : () = \_ -> (
   print (concat "Num local results: " (itos (local_q2_results.size ())));
+  (local_q2_results.iterate (\r -> results.insert {substr: r.key, sum: r.value} ) );
   haltEngine ()
 )
 

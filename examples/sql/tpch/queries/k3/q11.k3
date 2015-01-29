@@ -165,6 +165,9 @@ trigger calc_result : () = \_ -> (
   ) @OnCounter(id=[# loc_done], eq=[$ peers.size()])
 )
 
+//K-trace results
+declare results : collection {key: int, value: real} @Collection
+
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
   nodes              = [$ peers ],
   loadExpr           = [$ ( supplierFiles.iterate (\e -> supplierLoaderP e.path supplier);
@@ -177,7 +180,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
   finishArgT         = [: ()],
   preTestFinishExpr  = [$ (\_ -> ())],
   preFinishExpr      = [$ ()],
-  preShutdownExpr    = [$ ()]
+  preShutdownExpr    = [$ (q11_result.iterate (\r -> results.insert r))]
 )
 
 source rows : () = value ()
