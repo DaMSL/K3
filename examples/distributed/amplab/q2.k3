@@ -119,10 +119,9 @@ trigger ready : () = \_ -> (
   else ()
 )
 
-declare foo : mut int = 0
 trigger load_all : () = \_ -> (
   peers.iterate (\i -> peers_seq.insert i);
-  (dataFiles.iterate (\e -> (foo = foo + 1; loadQ2 e.path local_uservisits)));
+  (dataFiles.iterate (\e -> loadQ2 e.path local_uservisits));
   ((ready, master) <- ())
 )
 
