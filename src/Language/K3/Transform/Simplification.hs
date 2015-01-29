@@ -214,6 +214,9 @@ isEMonoidGroupBy :: Annotation Expression -> Bool
 isEMonoidGroupBy (EProperty (ePropertyV -> ("MonoidGroupBy", Nothing))) = True
 isEMonoidGroupBy _ = False
 
+isENoBetaReduce :: Annotation Expression -> Bool
+isENoBetaReduce (EProperty (ePropertyName -> "NoBetaReduce")) = True
+isENoBetaReduce _ = False
 
 -- Effect queries
 readOnly :: Bool -> K3 Expression -> Either String Bool
@@ -506,10 +509,10 @@ betaReductionDelta expr = foldMapTree reduce ([], False) expr >>= return . first
     reduce (onSub -> (ch, True)) n = return $ ([replaceCh n ch], True)
     reduce (onSub -> (ch, False)) n =
       let n' = replaceCh n ch in
-      case n' of
-        (tag -> ELetIn i) -> reduceOnOccurrences n' i (head ch) (last ch)
-        (PAppLam i bodyE argE _ _) -> reduceOnOccurrences n' i argE bodyE
-        _ -> return ([n'], False)
+      case (skipBetaReduce n', n') of
+        (False, tag -> ELetIn i) -> reduceOnOccurrences n' i (head ch) (last ch)
+        (False, PAppLam i bodyE argE _ _) -> reduceOnOccurrences n' i argE bodyE
+        (_, _) -> return ([n'], False)
 
     reduceOnOccurrences n i ie e = do
       ieRO <- readOnly False ie
@@ -531,6 +534,8 @@ betaReductionDelta expr = foldMapTree reduce ([], False) expr >>= return . first
       else return ([n], False)
 
     onSub ch = (concat *** any id) $ unzip ch
+
+    skipBetaReduce n = any isENoBetaReduce $ filter isEUserProperty $ annotations n
 
     cleanExpr e = stripExprAnnotations cleanAnns (const False) e
     cleanAnns a = isEUID a || isESpan a || isAnyETypeOrEffectAnn a
