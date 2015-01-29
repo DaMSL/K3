@@ -552,8 +552,8 @@ declTransforms snSpec extInfOpt n = topLevel
 
     highLevel = Map.fromList [
         mkT $ mkSeq "Decl-Simplify" lowLevel $ intersperse "refreshI" $ [ "Decl-CF"
-                                                                        , "Decl-BR" ]
-                                                                        --, "Decl-DCE" ]
+                                                                        , "Decl-BR"
+                                                                        , "Decl-DCE" ]
       , mkT $ mkSeq "Decl-Fuse" lowLevel [ "Decl-FE"
                                          , "typEffI"
                                          , "Decl-FT" ]
@@ -563,7 +563,7 @@ declTransforms snSpec extInfOpt n = topLevel
     lowLevel = Map.fromList [
         mk  foldConstants        "Decl-CF"  False True False Nothing
       , mk  betaReduction        "Decl-BR"  False True False Nothing
-      --, mk  eliminateDeadCode    "Decl-DCE" False True False Nothing
+      , mk  eliminateDeadCode    "Decl-DCE" False True False Nothing
       , mkD encodeTransformers   "Decl-FE"  True  True False (Just [typEffI])
       , mk  fuseFoldTransformers "Decl-FT"  True  True False (Just fusionI)
       , fusionReduce
