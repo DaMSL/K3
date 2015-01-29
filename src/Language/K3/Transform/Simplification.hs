@@ -729,7 +729,7 @@ commonSubexprElim expr = do
   where
     covers :: K3 Expression -> K3 Expression -> Bool
     covers a b = runIdentity $ (\f -> foldMapTree f False a) $ \chAcc n ->
-      if or chAcc then return $ True else return $ n == b
+      if or chAcc then return $ True else return $ compareEStrictAST n b
 
     buildCandidateTree :: K3 Expression -> Either String CandidateTree
     buildCandidateTree e = do
@@ -740,6 +740,7 @@ commonSubexprElim expr = do
 
     buildCandidates :: [([CandidateTree], [K3 Expression], [K3 Expression])] -> K3 Expression
                     -> Either String ([CandidateTree], [K3 Expression], [K3 Expression])
+    buildCandidates _ n@(tnc -> (ETuple, [])) = leafTreeAccumulator n
     buildCandidates _ n@(tag -> EConstant _) = leafTreeAccumulator n
     buildCandidates _ n@(tag -> EVariable _) = leafTreeAccumulator n
     buildCandidates chAccs n@(Node t _) = flip (maybe $ uidError n) (n @~ isEUID) $ \x ->
@@ -747,19 +748,18 @@ commonSubexprElim expr = do
         EUID uid ->
           let (ctCh, sExprCh, subAcc) = unzip3 chAccs
               bnds = case tag t of
-                           ELambda i -> [[i]]
-                           ELetIn  i -> [[], [i]]
-                           ECaseOf j -> [[], [j], []]
-                           EBindAs b -> [[], bindingVariables b]
-                           _         -> repeat []
+                       ELambda i -> [[i]]
+                       ELetIn  i -> [[], [i]]
+                       ECaseOf j -> [[], [j], []]
+                       EBindAs b -> [[], bindingVariables b]
+                       _         -> repeat []
 
-              filteredCands   = nub $ concatMap filterOpenCandidates $ zip bnds subAcc
-              localCands      = sortBy ((flip compare) `on` snd) $
-                                  foldl (addCandidateIfLCA subAcc) [] filteredCands
+              filteredCands = nub $ concatMap filterOpenCandidates $ zip bnds subAcc
+              localCands    = sortBy ((flip compare) `on` snd) $
+                                foldl (addCandidateIfLCA subAcc) [] filteredCands
 
-              candTreeNode    = Node (uid, localCands) $ concat ctCh
-              nStrippedExpr   = Node (tag t :@: (filter ((||) <$> isEQualified <*> isAnyETypeOrEffectAnn)
-                                                            $ annotations t)) $ concat sExprCh
+              candTreeNode  = Node (uid, localCands) $ concat ctCh
+              nStrippedExpr = Node (tag t :@: cseValidAnnotations t) $ concat sExprCh
           in do
             nRO <- readOnly False n
             let propagatedExprs = if nRO then (concat subAcc)++[nStrippedExpr] else []
@@ -776,13 +776,15 @@ commonSubexprElim expr = do
                         -> Either String ([CandidateTree], [K3 Expression], [K3 Expression])
     leafTreeAccumulator e = do
       ctNode <- leafCandidateNode e
-      return $ ([ctNode], [Node (tag e :@: (filter ((||) <$> isEQualified <*> isAnyETypeOrEffectAnn)
-                                                            $ annotations e)) []], [])
+      return $ ([ctNode], [Node (tag e :@: cseValidAnnotations e) []], [])
 
     leafCandidateNode :: K3 Expression -> Either String CandidateTree
     leafCandidateNode e = case e @~ isEUID of
       Just (EUID uid) -> Right $ Node (uid, []) []
       _               -> uidError e
+
+    cseValidAnnotations e = filter cseValidAnn $ annotations e
+    cseValidAnn a = isEQualified a || isEUserProperty a || isEUID a || isEAnnotation a || isAnyETypeOrEffectAnn a
 
     addCandidateIfLCA :: [[K3 Expression]] -> Candidates -> K3 Expression -> Candidates
     addCandidateIfLCA descSubs candAcc sub =
@@ -798,7 +800,7 @@ commonSubexprElim expr = do
 
     branchCounters sub descSubs = foldl (countInBranch sub) (0::Int,0::Int) descSubs
     countInBranch sub (a,b) cs =
-      let i = length $ filter (== sub) cs in (if i > 0 then a+1 else a, b+i)
+      let i = length $ filter (compareEStrictAST sub) cs in (if i > 0 then a+1 else a, b+i)
 
     pruneCandidateTree :: CandidateTree -> Either String CandidateTree
     pruneCandidateTree = biFoldMapTree trackCandidates pruneCandidates [] (Node (UID $ -1, []) [])
@@ -811,9 +813,7 @@ commonSubexprElim expr = do
         pruneCandidates :: Candidates -> [CandidateTree] -> CandidateTree
                         -> Either String CandidateTree
         pruneCandidates candAcc ch (Node (uid, cands) _) = do
-          let isCand p@(e, _) = if elem p candAcc
-                                  then noWrites False e
-                                  else return False
+          let isCand p@(e, _) = if elem p candAcc then readOnly False e else return False
           used <- filterM isCand cands
           let nUid = if null used then UID $ -1 else uid
           return $ Node (nUid, used) ch
@@ -829,7 +829,7 @@ commonSubexprElim expr = do
         rebuildAnnNode n ch = Node (tag n :@: annotations n) ch
 
         concatCandidates candAcc (Node (uid, cands) _) =
-          return $ (if null cands then [] else map (\(e,i) -> (uid,e,i)) cands) ++ (concat candAcc)
+          return $ (map (\(e,i) -> (uid,e,i)) cands) ++ (concat candAcc)
 
         foldSubstitutions :: [Substitution] -> Either String [NamedSubstitution]
         foldSubstitutions subs = do
@@ -856,26 +856,15 @@ commonSubexprElim expr = do
           Just (EUID uid2) -> return $
             let cseVar = EC.variable cseId in
             if uid == uid2
-              then let srcE = case e @~ isEQualified of
-                                Nothing -> e @+ EImmutable
-                                Just _  -> e
-                   in EC.letIn cseId srcE $ substituteExpr e cseVar n
+              then EC.letIn cseId e $ substituteExpr e cseVar n
               else rebuildAnnNode n ch
           _ -> return $ rebuildAnnNode n ch
 
         substituteExpr :: K3 Expression -> K3 Expression -> K3 Expression -> K3 Expression
         substituteExpr compareE newE targetE =
-          snd . runIdentity $ foldMapRebuildTree (stripAndSub compareE newE) EC.unit targetE
+          runIdentity $ modifyTree (doSub compareE newE) targetE
 
-        stripAndSub compareE newE chAcc ch n = do
-          (strippedE, rebuiltE) <- return $ case tag n of
-              EConstant _ -> (Node (tag n :@: (filter isEQualified $ annotations n)) [],    Node (tag n :@: annotations n) [])
-              EVariable _ -> (Node (tag n :@: (filter isEQualified $ annotations n)) [],    Node (tag n :@: annotations n) [])
-              _           -> (Node (tag n :@: (filter isEQualified $ annotations n)) chAcc, Node (tag n :@: annotations n) ch)
-
-          return $ if strippedE == compareE
-                     then (newE, foldl (@+) newE $ annotations n)
-                     else (strippedE, rebuiltE)
+        doSub compareE newE n = return $ if compareEAST compareE n then newE else n
 
 
     uidError e = Left $ "No UID found on " ++ show e

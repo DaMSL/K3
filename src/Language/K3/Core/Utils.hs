@@ -63,6 +63,8 @@ module Language.K3.Core.Utils
 
 , compareDAST
 , compareEAST
+, compareDStrictAST
+, compareEStrictAST
 
 , stripDeclAnnotations
 , stripNamedDeclAnnotations
@@ -79,6 +81,8 @@ module Language.K3.Core.Utils
 , collectProgramUIDs
 , duplicateProgramUIDs
 
+, stripDCompare
+, stripECompare
 , stripComments
 , stripDUIDSpan
 , stripEUIDSpan
@@ -759,6 +763,12 @@ compareDAST d1 d2 = stripAllDeclAnnotations d1 == stripAllDeclAnnotations d2
 compareEAST :: K3 Expression -> K3 Expression -> Bool
 compareEAST e1 e2 = stripAllExprAnnotations e1 == stripAllExprAnnotations e2
 
+compareDStrictAST :: K3 Declaration -> K3 Declaration -> Bool
+compareDStrictAST d1 d2 = stripDCompare d1 == stripDCompare d2
+
+compareEStrictAST :: K3 Expression -> K3 Expression -> Bool
+compareEStrictAST e1 e2 = stripECompare e1 == stripECompare e2
+
 
 {- Annotation cleaning -}
 
@@ -836,6 +846,15 @@ stripAllTypeAnnotations = stripTypeAnnotations (const True)
 
 
 {- Annotation removal -}
+stripDCompare :: K3 Declaration -> K3 Declaration
+stripDCompare = stripDeclAnnotations cleanDecl cleanExpr isTAnnotation
+  where cleanDecl a = not $ isDUserProperty a
+        cleanExpr a = not (isEQualified a || isEUserProperty a || isEAnnotation a)
+
+stripECompare :: K3 Expression -> K3 Expression
+stripECompare = stripExprAnnotations cleanExpr isTAnnotation
+  where cleanExpr a = not (isEQualified a || isEUserProperty a || isEAnnotation a)
+
 stripComments :: K3 Declaration -> K3 Declaration
 stripComments = stripDeclAnnotations isDSyntax isESyntax (const False)
 

@@ -553,17 +553,19 @@ declTransforms snSpec extInfOpt n = topLevel
     highLevel = Map.fromList [
         mkT $ mkSeq "Decl-Simplify" lowLevel $ intersperse "refreshI" $ [ "Decl-CF"
                                                                         , "Decl-BR"
-                                                                        , "Decl-DCE" ]
+                                                                        , "Decl-DCE"
+                                                                        , "Decl-CSE" ]
       , mkT $ mkSeq "Decl-Fuse" lowLevel [ "Decl-FE"
                                          , "typEffI"
                                          , "Decl-FT" ]
       ] `Map.union` lowLevel
 
-    -- TODO: CF,BR,DCE should be a local fixpoint.
+    -- TODO: CF,BR,DCE,CSE should be a local fixpoint.
     lowLevel = Map.fromList [
         mk  foldConstants        "Decl-CF"  False True False Nothing
       , mk  betaReduction        "Decl-BR"  False True False Nothing
       , mk  eliminateDeadCode    "Decl-DCE" False True False Nothing
+      , mk  commonSubexprElim    "Decl-CSE" False True False Nothing
       , mkD encodeTransformers   "Decl-FE"  True  True False (Just [typEffI])
       , mk  fuseFoldTransformers "Decl-FT"  True  True False (Just fusionI)
       , fusionReduce

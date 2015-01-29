@@ -27,6 +27,7 @@ module Language.K3.Core.Declaration (
     , isDUIDSpan
     , isDProperty
     , isDInferredProperty
+    , isDUserProperty
     , isDSyntax
     , isDProvenance
     , isDEffect
@@ -184,6 +185,10 @@ isDProperty _             = False
 isDInferredProperty :: Annotation Declaration -> Bool
 isDInferredProperty (DProperty (Right _)) = True
 isDInferredProperty _                     = False
+
+isDUserProperty :: Annotation Declaration -> Bool
+isDUserProperty (DProperty (Left _)) = True
+isDUserProperty _                    = False
 
 isDSyntax :: Annotation Declaration -> Bool
 isDSyntax (DSyntax _) = True
