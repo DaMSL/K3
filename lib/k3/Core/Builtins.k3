@@ -30,6 +30,7 @@ declare regex_matcher_q4 : string -> collection {elem: string} @ Collection
 
 // TODO: move to Time.k3
 declare now_int : () -> int
+  with effects \_ -> io
 
 ///////////////////////
 //
@@ -98,6 +99,7 @@ declare get_max_int : () -> int
 
 // Print to the screen
 declare print : string -> ()
+  with effects \_ -> io
 
 // Show a value
 declare show : forall a. a -> string

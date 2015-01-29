@@ -894,9 +894,10 @@ effTerm asAttrMem = effApply fTerm <?> "effect term"
     fNestE    = parens fTermE
 
     effApply p = foldl1 FSC.fapplyExt <$> some (try p)
-    effExec    = choice $ map try [effRead, effWrite, effSeq, effLoop]
+    effExec    = choice $ map try [effIO, effRead, effWrite, effSeq, effLoop]
     effStruc   = choice $ map try [effNone, effVar, effLambda]
 
+    effIO     = const FSC.fio <$> keyword "io"
     effRead   = FSC.fseq . map FSC.fread  <$> varList "R" provTerm
     effWrite  = FSC.fseq . map FSC.fwrite <$> varList "W" provTerm
     effSeq    = FSC.fseq <$> brackets (semiSep1 $ effTerm asAttrMem)
