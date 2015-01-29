@@ -39,7 +39,7 @@ annotation Vector given type a{
 
   @:{Transformer, CArgs 2}
   provides lifted fold: (a -> (content -> a)) -> a -> a
-    with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; foldF content])*]
+    with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
 
   provides lifted dot : self -> real
     with effects \other -> [R[self]; R[other]]
@@ -52,7 +52,7 @@ annotation Vector given type a{
 
   provides lifted inPlaceScalarMult: real -> ()
     with effects \x -> [R[self]; R[x]; W[self]]
-  
+
   provides lifted toString : () -> string
     with effects \_ -> R[self]
 }

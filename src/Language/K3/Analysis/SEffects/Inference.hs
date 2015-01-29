@@ -449,9 +449,20 @@ fisub fienv extInfOpt i df sf p = do
       (nenv,nsubs,nch) <- foldM (rcr path) (env, subs, []) [lrf, argrf]
       case nch of
         [lrf', argrf'] -> do
-          (_, nrf, nenv') <- simplifyApply nenv extInfOpt Nothing [] lrf' argrf'
-          return (nenv', nsubs, nrf)
+          (nef, nrf, nenv') <- simplifyApply nenv extInfOpt True Nothing [] lrf' argrf'
+          return $ debugFFApp lrf argrf lrf' argrf' nef nrf $ (nenv', nsubs, nrf)
         _ -> appSubErr f
+
+      where
+        debugFFApp a b c d e f r = if True then r else
+          flip trace r (T.unpack $ PT.boxToString $ [T.pack $ "Sub FFVar app " ++ i]
+                                %$ PT.prettyLines a
+                                %$ PT.prettyLines b
+                                %$ PT.prettyLines c
+                                %$ PT.prettyLines d
+                                %$ PT.prettyLines e
+                                %$ PT.prettyLines f)
+
 
     acyclicSub env subs path n@(Node _ ch) = do
       (nenv,nsubs,nch) <- foldM (rcr path) (env, subs, []) ch
@@ -491,26 +502,31 @@ chaseAppArg (tnc -> (FApply _, [_,_,_,_,sf])) = chaseAppArg sf
 chaseAppArg (tnc -> (FScope _, [_,_,_,sf])) = chaseAppArg sf
 chaseAppArg sf = return sf
 
-chaseLambda :: FIEnv -> Maybe (K3 Expression) -> [FPtr] -> K3 Effect -> Either Text [K3 Effect]
-chaseLambda _ _ _ f@(tag -> FLambda _) = return [f]
-chaseLambda _ _ _ f@(tag -> FFVar _)   = return [f]
+chaseLambda :: FIEnv -> Maybe (ExtInferF a, a) -> [Text] -> [FPtr] -> K3 Effect -> Either Text [K3 Effect]
+chaseLambda env extInfOpt msg path f@(tnc -> (FApply _, [lf, af])) = do
+  (_, nrf, nenv) <- simplifyApply env extInfOpt False Nothing [] lf af
+  if nrf == f then return [f] else chaseLambda nenv extInfOpt msg path nrf
 
-chaseLambda env e path f@(tag -> FBVar (fmvptr -> i))
-  | i `elem` path = return [f]
-  | otherwise     = fichase env f >>= chaseLambda env e (i:path)
+chaseLambda env _ msg path f = chaseApplied env msg path f
+  where chaseApplied _ _ _ f@(tag -> FLambda _) = return [f]
+        chaseApplied _ _ _ f@(tnc -> (FApply _, [_,_])) = return [f]
+        chaseApplied _ _ _ f@(tag -> FFVar _)   = return [f]
 
-chaseLambda env e path (tnc -> (FApply _, [_,_,_,_,sf])) = chaseLambda env e path sf
-chaseLambda env e path (tnc -> (FSet, rfl)) = mapM (chaseLambda env e path) rfl >>= return . concat
-chaseLambda _ e _ f = Left $ PT.boxToString $ fErr f %$ exprErr e
-  where fErr f' = [T.pack "Invalid application or lambda: "] %$ PT.prettyLines f'
-        exprErr eOpt = maybe [] (\e' -> [T.pack "on"] %$ PT.prettyLines e') eOpt
+        chaseApplied env msg path f@(tag -> FBVar (fmvptr -> i))
+          | i `elem` path = return [f]
+          | otherwise     = fichase env f >>= chaseApplied env msg (i:path)
 
-simplifyApply :: FIEnv -> Maybe (ExtInferF a, a) -> Maybe (K3 Expression) -> [Maybe (K3 Effect)] -> K3 Effect -> K3 Effect
+        chaseApplied env msg path (tnc -> (FApply _, [_,_,_,_,sf])) = chaseApplied env msg path sf
+        chaseApplied env msg path (tnc -> (FSet, rfl)) = mapM (chaseApplied env msg path) rfl >>= return . concat
+        chaseApplied _ msg _ f = Left $ PT.boxToString $ fErr f %$ (if null msg then [] else [T.pack "on"]) %$ msg
+          where fErr f' = [T.pack "Invalid application or lambda: "] %$ PT.prettyLines f'
+
+simplifyApply :: FIEnv -> Maybe (ExtInferF a, a) -> Bool -> Maybe (K3 Expression) -> [Maybe (K3 Effect)] -> K3 Effect -> K3 Effect
               -> Either Text (K3 Effect, K3 Effect, FIEnv)
-simplifyApply fienv extInfOpt eOpt ef lrf arf = do
+simplifyApply fienv extInfOpt defer eOpt ef lrf arf = do
   upOpt            <- uidP eOpt
   arf'             <- chaseAppArg arf
-  manyLrf          <- chaseLambda fienv eOpt [] lrf
+  manyLrf          <- chaseLambda fienv extInfOpt (maybe [] PT.prettyLines eOpt) [] lrf
   (manyLerf, nenv) <- foldM (doSimplify upOpt arf') ([], fienv) manyLrf
 
   case manyLerf of
@@ -521,6 +537,10 @@ simplifyApply fienv extInfOpt eOpt ef lrf arf = do
 
   where
     doSimplify upOpt arf' (facc, eacc) lrf' =
+      if defer && (case tag arf' of {FFVar _ -> True; _ -> False})
+      then let appef = fromJust $ fexec ef
+           in return (facc ++ [(appef, fapplyExt lrf arf)], eacc)
+      else
       case tnc lrf' of
         (FLambda i, [_,bef,brf]) -> case upOpt of
           Just (uid, p) -> do
@@ -553,6 +573,9 @@ simplifyApply fienv extInfOpt eOpt ef lrf arf = do
         (FFVar _, _) -> let appef = fromJust $ fexec ef
                         in return (facc ++ [(appef, fapplyExt lrf arf)], eacc)
 
+        (FApply _, [_,_]) -> let appef = fromJust $ fexec ef
+                             in return (facc ++ [(appef, fapplyExt lrf arf)], eacc)
+
         _ -> applyLambdaErr lrf
 
     uidOf  e = maybe (uidErr e) (\case {(EUID u) -> return u ; _ ->  uidErr e}) $ e @~ isEUID
@@ -568,7 +591,7 @@ simplifyApply fienv extInfOpt eOpt ef lrf arf = do
     argP e = provOf e >>= \case
                             (tag -> PApply (Just mv))  -> return $ pbvar mv
                             (tag -> PMaterialize [mv]) -> return $ pbvar mv
-                            p -> return p
+                            _ -> argPErr e
 
     fexec ef' = Just $ fseq $ catMaybes ef'
 
@@ -576,13 +599,14 @@ simplifyApply fienv extInfOpt eOpt ef lrf arf = do
     fmv f = Left $ PT.boxToString $ [T.pack "Invalid effect bound var: "] %$ PT.prettyLines f
 
     exprErr = maybe [] (\e -> PT.prettyLines e) eOpt
+    argPErr e = Left $ PT.boxToString $ [T.pack "No argument provenance found on:"] %$ PT.prettyLines e
     applyLambdaErr f = Left $ PT.boxToString $ [T.pack "Invalid apply lambda effect: "]
                             %$ exprErr %$ [T.pack "Effect:"] %$ PT.prettyLines f
 
-simplifyApplyM :: Maybe (ExtInferF a, a) -> Maybe (K3 Expression) -> [Maybe (K3 Effect)] -> K3 Effect -> K3 Effect -> FInfM (K3 Effect, K3 Effect)
-simplifyApplyM extInfOpt eOpt ef lrf argrf = do
+simplifyApplyM :: Maybe (ExtInferF a, a) -> Bool -> Maybe (K3 Expression) -> [Maybe (K3 Effect)] -> K3 Effect -> K3 Effect -> FInfM (K3 Effect, K3 Effect)
+simplifyApplyM extInfOpt defer eOpt ef lrf argrf = do
   env <- get
-  (nef, nrf, nenv) <- liftEitherM $ simplifyApply env extInfOpt eOpt ef lrf argrf
+  (nef, nrf, nenv) <- liftEitherM $ simplifyApply env extInfOpt defer eOpt ef lrf argrf
   void $ put nenv
   return (nef, nrf)
 
@@ -947,11 +971,20 @@ inferEffects extInfOpt expr = do
       rt "lambda" False e mv (Just fnone, flambda i (fseq clf) (fseq $ catMaybes ef) rf)
 
     infer m (onSub -> (ef, mv)) [lrf,arf] e@(tag -> EOperate OApp) = m >> do
-      (appef, apprf) <- simplifyApplyM extInfOpt (Just e) ef lrf arf
+      (appef, apprf) <- simplifyApplyM extInfOpt False (Just e) ef lrf arf
       appmv <- pmvOf e
       let nmv = appmv ++ mv
       pappef <- pruneAndSimplify False nmv $ Just appef
-      rt "apply" True e nmv (pappef, apprf)
+      Just papprf <- simplifyAppCh mv $ Just apprf
+      debugAppRF nmv apprf papprf $ rt "apply" True e nmv (pappef, papprf)
+
+      where debugAppRF x a b c = if True then c else do
+              Just nb <- pruneAndSimplify True x $ Just b
+              flip trace c (T.unpack $ PT.boxToString $ [T.pack "AppRF"]
+                                                     %$ PT.prettyLines a
+                                                     %$ PT.prettyLines b
+                                                     %$ PT.prettyLines nb
+                                                     %$ PT.prettyLines e)
 
     infer m (onSub -> (ef, mv)) [rf] e@(tnc -> (EProject i, [esrc])) = m >> do
       psrc <- provOf esrc
@@ -1097,15 +1130,37 @@ inferEffects extInfOpt expr = do
               return $ flambda i clf nbef nrf
 
             -- Note a 3-child variant cannot exist yet since we have not performed simplification.
-            transform False mvl (tnc -> (FApply _, [_, _, ief, bef, _])) = do
+            transform False mvl (tnc -> (FApply (Just _), [_, _, ief, bef, _])) = do
               nief <- transform False mvl ief
               nbef <- transform False mvl bef
               return $ fseq [nief, nbef]
 
-            transform True mvl (tnc -> (FApply _, [_, _, _, _, rf])) = transform True mvl rf
+            transform True mvl (tnc -> (FApply (Just _), [_, _, _, _, rf])) = transform True mvl rf
 
-            -- Leave unapplied FApply in place for deferred expansion.
-            transform _ _ f@(tnc -> (FApply _, [_, _])) = return f
+            -- Try to simplify any external FApply.
+            transform asStructure mvl (tnc -> (FApply Nothing, [l, a, ief, bef, r])) = do
+              nl <- transform True mvl l
+              na <- transform True mvl a
+              nief <- transform False mvl ief
+              nbef <- transform False mvl bef
+              nr <- transform True mvl r
+              return $ fapply Nothing nl na nief nbef nr
+
+            transform asStructure mvl (tnc -> (FApply Nothing, [l, a])) = do
+              nl <- transform True mvl l
+              na <- transform True mvl a
+              (nef, nrf) <- simplifyApplyM extInfOpt True Nothing [] nl na
+              return $ debugXfApp nl na nef nrf $ if asStructure then nrf else
+                case tnc nrf of
+                  (FApply Nothing, _) -> nrf
+                  _ -> nef
+              where debugXfApp a b c d r = if True then r else
+                      flip trace r $ T.unpack $ PT.boxToString $ [T.pack $ "Transform " ++ show asStructure]
+                                             %$ PT.prettyLines a
+                                             %$ PT.prettyLines b
+                                             %$ PT.prettyLines c
+                                             %$ PT.prettyLines d
+                                             %$ PT.prettyLines r
 
             transform False mvl (tnc -> (FScope _, [ief, bef, pef, _])) = do
               nief <- transform False mvl ief
@@ -1126,14 +1181,35 @@ inferEffects extInfOpt expr = do
             transform False _ f@(tag -> FIO)      = return f
 
             transform False mvl (tnc -> (FSeq, ch)) = mapM (transform False mvl) ch >>= return . fseq
-            transform False mvl (tnc -> (FLoop, [ch])) = transform False mvl ch >>= return . floop
+            transform False mvl (tnc -> (FLoop, [ch])) = do
+              nch <- transform False mvl ch
+              return $ debugXfLoop ch $ floop nch
+              where debugXfLoop a b = if True then b else
+                      flip trace b $ T.unpack $ PT.boxToString $ [T.pack "Transform loop"]
+                                             %$ PT.prettyLines a
+                                             %$ PT.prettyLines b
 
             transform True mvl (tnc -> (FData idOpt, ch)) = mapM (transform True mvl) ch >>= return . fdata idOpt
 
             transform s mvl (tnc -> (FSet, ch)) = mapM (transform s mvl) ch >>= return . fset
 
-            transform s _ f = errorM $ PT.boxToString $ [T.pack $ errmsg s] %$ PT.prettyLines f
+            transform s _ f = errorM $ PT.boxToString $ [T.pack $ errmsg s]
+                                    %$ PT.prettyLines f
+                                    %$ [T.pack "applied on:"]
+                                    %$ PT.prettyLines pf
+
             errmsg s = "Invalid pruneAndSimplify (asStructure=" ++ show s ++ "): "
+
+    simplifyAppCh :: [PMatVar] -> Maybe (K3 Effect) -> FInfM (Maybe (K3 Effect))
+    simplifyAppCh _ Nothing = return Nothing
+    simplifyAppCh pmvl (Just pf) = do
+      let origChOpt = map Just $ children pf
+      let chStructure = case tnc pf of
+                          (FApply _, ch@[lf, af, ief, bef, sf]) -> Just $ zip [True, True, False, False, True] ch
+                          (FApply _, ch@[lf, af]) -> Just $ zip [True, True] ch
+                          _ -> Nothing
+      nchOpt <- maybe (return origChOpt) (mapM (\(s,c) -> pruneAndSimplify s pmvl $ Just c)) chStructure
+      return $ Just $ replaceCh pf $ catMaybes nchOpt
 
     fmv (tag -> FBVar mv) = return mv
     fmv f = errorM $ PT.boxToString $ [T.pack "Invalid effect bound var: "] %$ PT.prettyLines f

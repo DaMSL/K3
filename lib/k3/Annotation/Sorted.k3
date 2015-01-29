@@ -42,14 +42,14 @@ annotation Sorted given type a, b
 
   @:{Transformer, CArgs 2}
   provides lifted fold : (a -> (content -> a)) -> a -> a
-    with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; foldF content])*]
+    with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
 
   @:{Transformer, CArgs 3}
   provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
                              -> collection { key : a, value : b } @ {Sorted}
     with effects
       \gbF -> \gaccF -> \z ->
-        [R[self]; R[z]; ([R[content]; gbF content; gaccF content])*]
+        [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:Transformer
   provides lifted ext : (content -> collection {elem : a} @ {Sorted})
