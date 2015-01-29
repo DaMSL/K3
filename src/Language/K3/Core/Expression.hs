@@ -26,6 +26,7 @@ module Language.K3.Core.Expression (
   , isEAnnotation
   , isEProperty
   , isEInferredProperty
+  , isEUserProperty
   , isESyntax
   , isEApplyGen
   , isEType
@@ -254,6 +255,10 @@ isEProperty _             = False
 isEInferredProperty :: Annotation Expression -> Bool
 isEInferredProperty (EProperty (Right _)) = True
 isEInferredProperty _                     = False
+
+isEUserProperty :: Annotation Expression -> Bool
+isEUserProperty (EProperty (Left _)) = True
+isEUserProperty _                    = False
 
 isESyntax :: Annotation Expression -> Bool
 isESyntax (ESyntax _) = True
