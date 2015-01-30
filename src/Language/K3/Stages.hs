@@ -60,6 +60,7 @@ data TransformReport = TransformReport { statistics :: Map String [Measured]
 
 -- | The program transformation composition monad
 data TransformSt = TransformSt { nextuid    :: Int
+                               , cseCnt     :: Int
                                , tenv       :: TIEnv
                                , prenv      :: Properties.PIEnv
                                , penv       :: Provenance.PIEnv
@@ -77,7 +78,7 @@ rp0 = TransformReport Map.empty Map.empty
 st0 :: K3 Declaration -> IO (Either String TransformSt)
 st0 prog = do
   return $ mkEnv >>= \(stpe, stfe) ->
-    return $ TransformSt puid tienv0 Properties.pienv0 stpe stfe rp0
+    return $ TransformSt puid 0 tienv0 Properties.pienv0 stpe stfe rp0
 
   where puid = let UID i = maxProgramUID prog in i + 1
         mkEnv = do
@@ -201,6 +202,13 @@ snapshotPass n combineF f prog = do
           in st {report = nrp}
 
 {-- Stateful transformations --}
+withStateTransform :: (TransformSt -> a) -> (a -> TransformSt -> TransformSt) -> TrSE a -> ProgramTransform
+withStateTransform getStF modifyStF f p = do
+  st <- get
+  (na, np) <- liftEitherM $ f (getStF st) p
+  void $ put $ modifyStF na st
+  return np
+
 withPropertyTransform :: PrpTrE -> ProgramTransform
 withPropertyTransform f p = do
   st <- get
@@ -401,13 +409,15 @@ simplify :: ProgramTransform
 simplify = transformFixpoint $ runPasses simplifyPasses
   where simplifyPasses = intersperse refreshProgram $
                            map (mkXform False) [ ("CF", foldProgramConstants)
-                                               , ("BR", betaReductionOnProgram) ]
-                                               --, ("DCE", eliminateDeadProgramCode) ]
+                                               , ("BR", betaReductionOnProgram)
+                                               , ("DCE", eliminateDeadProgramCode) ]
         mkXform asDebug (i,f) = withRepair i $ (if asDebug then transformEDbg i else transformE) f
 
--- TODO: debug and revise fixpoints
 simplifyWCSE :: ProgramTransform
-simplifyWCSE p = simplify p >>= transformE commonProgramSubexprElim
+simplifyWCSE p = do
+  np <- simplify p
+  (_, rp) <- liftEitherM $ commonProgramSubexprElim Nothing np
+  return rp
 
 streamFusion :: ProgramTransform
 streamFusion = runPasses [fusionEncodeFixpoint, inferFreshTypesAndEffects, fusionTransformFixpoint]
@@ -426,9 +436,9 @@ streamFusion = runPasses [fusionEncodeFixpoint, inferFreshTypesAndEffects, fusio
 
 {- Whole program pass aliases -}
 optPasses :: [ProgramTransform]
-optPasses = map prepareOpt [ (simplify,     "opt-simplify-prefuse")
+optPasses = map prepareOpt [ (simplifyWCSE, "opt-simplify-prefuse")
                            , (streamFusion, "opt-fuse")
-                           , (simplify,     "opt-simplify-final") ]
+                           , (simplifyWCSE, "opt-simplify-final") ]
   where prepareOpt (f,i) = runPasses [refreshProgram, withRepair i f]
 
 cgPasses :: Int -> [ProgramTransform]
@@ -565,7 +575,7 @@ declTransforms snSpec extInfOpt n = topLevel
         mk  foldConstants        "Decl-CF"  False True False Nothing
       , mk  betaReduction        "Decl-BR"  False True False Nothing
       , mk  eliminateDeadCode    "Decl-DCE" False True False Nothing
-      , mk  commonSubexprElim    "Decl-CSE" False True False Nothing
+      , mkW cseTransform         "Decl-CSE" False True       Nothing
       , mkD encodeTransformers   "Decl-FE"  True  True False (Just [typEffI])
       , mk  fuseFoldTransformers "Decl-FT"  True  True False (Just fusionI)
       , fusionReduce
@@ -573,6 +583,7 @@ declTransforms snSpec extInfOpt n = topLevel
       , ("refreshI",) $ refreshI
       ]
 
+    -- Build a transform with additional debugging/repair/reification functionality.
     mk f i asReified asRepair asDebug fixPassOpt = mkSS $ (i,)
       $ (maybe id mkFixI fixPassOpt)
       $ (if asReified then reifyPass else id)
@@ -580,12 +591,20 @@ declTransforms snSpec extInfOpt n = topLevel
       $ (if asDebug then transformEDbg i else transformE)
       $ mapNamedDeclExpression n f
 
+    -- Build a delta transform
     mkD f i asReified asRepair asDebug fixPassOpt = mkSS $ (i,)
       $ (maybe transformFromDelta mkFixID fixPassOpt)
       $ (if asReified then reifyPassD else id)
       $ (if asRepair then withRepairD i else id)
       $ (if asDebug then transformEDDbg i else transformED)
       $ foldNamedDeclExpression n f False
+
+    -- Wrap an existing transform
+    mkW tr i asReified asRepair fixPassOpt = mkSS $ (i,)
+      $ (maybe id mkFixI fixPassOpt)
+      $ (if asReified then reifyPass else id)
+      $ (if asRepair then withRepair i else id)
+      $ tr
 
     evalP          = reifyPass
     mkFix          = transformFixpoint
@@ -599,8 +618,11 @@ declTransforms snSpec extInfOpt n = topLevel
     mkSS (i,f) = maybe (i,f) (\l -> if i `elem` l then mkS (i,f) else (i,f))
                    $ Map.lookup n snSpec
 
-    -- Shared passes
+    -- Custom, and shared passes
     fusionReduce = mk betaReduction "Decl-FR" False True False Nothing
+    cseTransform = withStateTransform (Just . cseCnt)
+                                      (\ncntOpt st -> st {cseCnt=maybe (cseCnt st) id ncntOpt})
+                                      (foldNamedDeclExpression n commonSubexprElim)
 
     -- Fixpoint intermediates
     typEffI  = inferFreshDeclTypesAndEffects extInfOpt n

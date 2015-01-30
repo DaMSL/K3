@@ -528,7 +528,7 @@ betaReductionDelta expr = foldMapTree reduce ([], False) expr >>= return . first
                     (_, Just (EType (tag -> TCollection))) -> Right $ numOccurs <= 1
 
                     (EConstant _, _) -> Right True
-                    _ -> Right $ numOccurs <= 3
+                    _ -> Right $ numOccurs == 1
 
       if ieRO && doReduce then return ([substituteImmutBinding i (cleanExpr ie) e], True)
       else return ([n], False)
@@ -715,16 +715,16 @@ type CandidateTree     = Tree (UID, Candidates)
 type Substitution      = (UID, K3 Expression, Int)
 type NamedSubstitution = (UID, Identifier, K3 Expression, Int)
 
-commonProgramSubexprElim :: K3 Declaration -> Either String (K3 Declaration)
-commonProgramSubexprElim prog = mapExpression commonSubexprElim prog
+commonProgramSubexprElim :: Maybe Int -> K3 Declaration -> Either String (Maybe Int, K3 Declaration)
+commonProgramSubexprElim cseCntOpt prog = foldExpression commonSubexprElim cseCntOpt prog
 
-commonSubexprElim :: K3 Expression -> Either String (K3 Expression)
-commonSubexprElim expr = do
+commonSubexprElim :: Maybe Int -> K3 Expression -> Either String (Maybe Int, K3 Expression)
+commonSubexprElim cseCntOpt expr = do
     cTree <- buildCandidateTree expr
     -- TODO: log candidates for debugging
     pTree <- pruneCandidateTree cTree
     -- TODO: log pruned candidates for debugging
-    substituteCandidates pTree
+    substituteCandidates (maybe 0 id cseCntOpt) pTree >>= return . first Just
 
   where
     covers :: K3 Expression -> K3 Expression -> Bool
@@ -818,12 +818,12 @@ commonSubexprElim expr = do
           let nUid = if null used then UID $ -1 else uid
           return $ Node (nUid, used) ch
 
-    substituteCandidates :: CandidateTree -> Either String (K3 Expression)
-    substituteCandidates prunedTree = do
-        substitutions   <- foldMapTree concatCandidates [] prunedTree
-        ncSubstitutions <- foldSubstitutions substitutions
-        nExpr           <- foldM substituteAtUID expr ncSubstitutions
-        return nExpr
+    substituteCandidates :: Int -> CandidateTree -> Either String (Int, K3 Expression)
+    substituteCandidates cnt prunedTree = do
+        substitutions           <- foldMapTree concatCandidates [] prunedTree
+        (ncnt, ncSubstitutions) <- foldSubstitutions cnt substitutions
+        nExpr                   <- foldM substituteAtUID expr ncSubstitutions
+        return (ncnt, nExpr)
 
       where
         rebuildAnnNode n ch = Node (tag n :@: annotations n) ch
@@ -831,10 +831,11 @@ commonSubexprElim expr = do
         concatCandidates candAcc (Node (uid, cands) _) =
           return $ (map (\(e,i) -> (uid,e,i)) cands) ++ (concat candAcc)
 
-        foldSubstitutions :: [Substitution] -> Either String [NamedSubstitution]
-        foldSubstitutions subs = do
-          (_,namedSubs) <- foldM nameSubstitution (0::Int,[]) subs
-          foldM (\subAcc sub -> mapM (closeOverSubstitution sub) subAcc) namedSubs namedSubs
+        foldSubstitutions :: Int -> [Substitution] -> Either String (Int, [NamedSubstitution])
+        foldSubstitutions startcnt subs = do
+          (ncnt,namedSubs) <- foldM nameSubstitution (startcnt,[]) subs
+          nnsubs <- foldM (\subAcc sub -> mapM (closeOverSubstitution sub) subAcc) namedSubs namedSubs
+          return (ncnt, nnsubs)
 
         nameSubstitution :: (Int, [NamedSubstitution]) -> Substitution
                          -> Either String (Int, [NamedSubstitution])
