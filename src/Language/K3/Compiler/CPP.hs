@@ -64,7 +64,7 @@ applyOptimizations :: CompileOptions -> K3 Declaration -> IO (Either String (K3 
 applyOptimizations cOpts prog = do
   declOpted <- runDeclOptPasses cs0 Nothing prog
   case declOpted of
-    Left report -> return $ Left ""
+    Left s -> return $ Left s
     Right program -> runCGPasses (optimizationLevel cOpts) (fst program)
 
 cppCodegenStage :: CompilerStage (K3 Declaration) ()
