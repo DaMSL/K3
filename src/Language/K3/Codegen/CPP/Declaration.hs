@@ -76,8 +76,17 @@ declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children
     addForward $ maybe id (\t -> R.TemplateDecl [(t, Nothing)]) template $
                    R.FunctionDecl (R.Name i) [argumentType] returnType
 
+    mtrlzns <- case e @~ isEMaterialization of
+                 Just (EMaterialization ms) -> return ms
+                 Nothing -> return $ M.fromList [(x, defaultDecision)]
+
+    let argMtrlznType = case inD (mtrlzns M.! x) of
+                          ConstReferenced -> R.Const (R.Reference argumentType)
+                          Referenced -> R.Reference argumentType
+                          _ -> argumentType
+
     body' <- reify (RReturn False) body
-    return [templatize $ R.FunctionDefn (R.Name i) [(x, argumentType)] (Just returnType) [] False body']
+    return [templatize $ R.FunctionDefn (R.Name i) [(x, argMtrlznType)] (Just returnType) [] False body']
 
 -- Global scalars.
 declaration d@(tag -> DGlobal i t me) = do
