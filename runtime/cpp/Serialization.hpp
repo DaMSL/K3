@@ -49,7 +49,7 @@ shared_ptr<V> unpack_with_engine(const string& s, Engine * eng) {
 
 namespace boost { namespace serialization {
 
-template <uint N>
+template <unsigned int N>
 struct tuple_serializer {
     template <class archive, class ... args>
     static void serialize(archive& a, std::tuple<args ...>& t, const unsigned int version) {
