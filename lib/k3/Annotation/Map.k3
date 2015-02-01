@@ -8,7 +8,7 @@ annotation Map given type a,b {
 
   @:CArgs 2
   provides lifted insert_with: content -> (content -> content -> content) -> ()
-    with effects \elem -> \f -> [R[self]; R[elem]; f content; W[self]]
+    with effects \elem -> \f -> [R[self]; R[elem]; f content content; W[self]]
 
   @:CArgs 3
   provides lifted upsert_with: content -> (() -> content) -> (content -> content) -> ()
@@ -37,7 +37,7 @@ annotation Map given type a,b {
     with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
 
   @:Transformer
-  provides lifted map     : (content -> {key: a, value: b}) -> collection {key: a, value: b} @ {Map}
+  provides lifted map     : (content -> {key: a, value: b}) -> collection {key: a, value: b} @Map
     with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
 
   @:Transformer
@@ -50,15 +50,19 @@ annotation Map given type a,b {
 
   @:{Transformer, CArgs 3}
   provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @ {Map}
+                             -> collection { key : a, value : b } @Map
     with effects
       \gbF -> \gaccF -> \z ->
         [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:Transformer
-  provides lifted ext     : (content -> collection {key : a, value: b} @ {Map})
-                             -> collection {key : a, value: b} @ {Map}
+  provides lifted ext     : (content -> collection {key : a, value: b} @Map)
+                             -> collection {key : a, value: b} @Map
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
+
+  @:{Transformer, CArgs 3}
+  provides lifted sample : (a -> content -> a) -> a -> int -> a
+    with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
 
   //lookup ignores the value of the provided element.
   provides lifted lookup : content -> option content

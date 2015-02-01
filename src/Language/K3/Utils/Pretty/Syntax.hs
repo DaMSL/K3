@@ -110,9 +110,9 @@ decl' (details -> (DTrigger n t e, cs, _)) =
 decl' (details -> (DRole n, cs, _)) =
   if n == "__global" then vsep     C.<$> ((++) C.<$> subDecls cs <*> bindingDecls cs)
                      else roleDecl C.<$> ((++) C.<$> subDecls cs <*> bindingDecls cs)
-  where roleDecl subDecls' =
+  where roleDecl roleCh =
           text "role" <+> text n
-                      <+> lbrace </> (align . indent 2 $ vsep subDecls') <$> rbrace <> line
+                      <+> lbrace </> (align . indent 2 $ vsep roleCh) <$> rbrace <> line
 
 
 decl' (details -> (DDataAnnotation n tvars mems, cs, _)) = do
@@ -125,6 +125,11 @@ decl' (details -> (DGenerator mp, cs, _)) = do
   msp    <- mpDeclaration mp
   csps   <- mapM decl cs
   return . vsep $ msp : csps
+
+decl' (details -> (DTypeDef tn t, cs, _)) = do
+  tsp  <- typ t
+  csps <- mapM decl cs
+  return $ vsep . (: csps) $ text "typedef" <+> text tn <+> equals <+> tsp
 
 decl' _ = throwSP "Invalid declaration"
 
@@ -227,7 +232,7 @@ typedSpliceVar :: TypedSpliceVar -> SyntaxPrinter
 typedSpliceVar (t, i) = spliceType t >>= return . ((text i <+> colon) <+>)
 
 subDecls :: [K3 Declaration] -> Printer [Doc]
-subDecls d = mapM decl $ filter (not . generatedDecl) d
+subDecls d = mapM decl {-$ filter (not . generatedDecl)-} d
   where generatedDecl (details -> (DGlobal _ _ _, _, anns))  = any isGenerated $ filter isDSpan anns
         generatedDecl (details -> (DTrigger _ _ _, _, anns)) = any isGenerated $ filter isDSpan anns
         generatedDecl _ = False
@@ -386,7 +391,7 @@ qualifierAndExpr :: K3 Expression -> Printer (Doc, Doc)
 qualifierAndExpr e@(annotations -> anns) = (,) C.<$> eQualifier anns <*> expr e
 
 eQualifier :: [Annotation Expression] -> SyntaxPrinter
-eQualifier = qualifier "mutability" isEQualified eqSyntax
+eQualifier = qualifier "expr mutability" isEQualified eqSyntax
   where
     eqSyntax EImmutable = return $ text "immut"
     eqSyntax EMutable   = return $ text "mut"
@@ -453,7 +458,7 @@ qualifierAndType :: K3 Type -> Printer (Doc, Doc)
 qualifierAndType t@(annotations -> anns) = (,) C.<$> tQualifier anns <*> typ t
 
 tQualifier :: [Annotation Type] -> SyntaxPrinter
-tQualifier anns = qualifier "mutability" isTQualified tqSyntax anns
+tQualifier anns = qualifier "type mutability" isTQualified tqSyntax anns
   where
     tqSyntax TImmutable = return $ text "immut"
     tqSyntax TMutable   = return $ text "mut"
@@ -512,7 +517,7 @@ qualifierAndLiteral :: K3 Literal -> Printer(Doc, Doc)
 qualifierAndLiteral l@(annotations -> anns) = (,) C.<$> lQualifier anns <*> literal l
 
 lQualifier :: [Annotation Literal] -> SyntaxPrinter
-lQualifier anns = qualifier "mutability" isLQualified lqSyntax anns
+lQualifier anns = qualifier "lit mutability" isLQualified lqSyntax anns
   where
     lqSyntax LImmutable = return $ text "immut"
     lqSyntax LMutable   = return $ text "mut"
@@ -680,10 +685,10 @@ matchAnnotation :: (Eq (Annotation a), HasUID (Annotation a))
 matchAnnotation desc matchF mapF anns =
   let uidStr = maybe "" show (getUID =<< find (isJust . getUID) anns) in
   case filter matchF anns of
-    []            -> throwSP $ "No matching "++desc++" annotation found at "++uidStr
+    []            -> throwSP $ unwords ["No matching", desc, "annotation found at", uidStr]
     [q]           -> mapF q
     l | same l    -> mapF $ head l
-      | otherwise -> throwSP $ "Multiple matching "++desc++" annotations found at "++uidStr
+      | otherwise -> throwSP $ unwords ["Multiple matching", desc, "annotations found at", uidStr]
   where same l = 1 == length (nub l)
 
 qualifier :: (Eq (Annotation a), HasUID (Annotation a))

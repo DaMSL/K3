@@ -29,7 +29,7 @@ annotation Seq given type a,b
     with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
 
   @:Transformer
-  provides lifted map     : (content -> a) -> collection {elem : a} @ {Seq}
+  provides lifted map     : (content -> a) -> collection {elem : a} @Seq
     with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
 
   @:Transformer
@@ -42,22 +42,26 @@ annotation Seq given type a,b
 
   @:{Transformer, CArgs 3}
   provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @ {Seq}
+                             -> collection { key : a, value : b } @Seq
     with effects
       \gbF -> \gaccF -> \z ->
         [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:{Transformer, CArgs 4}
   provides lifted groupByContiguous : (content -> a) -> (b -> content -> b) -> b -> int
-                             -> collection { key : a, value : b } @ {Seq}
+                             -> collection { key : a, value : b } @Seq
     with effects
       \gbF -> \gaccF -> \z -> \s ->
         [R[self]; R[z]; ([R[content]; gbF content; gaccF content])*]
 
   @:Transformer
-  provides lifted ext     : (content -> collection {elem : a} @ {Seq})
-                             -> collection {elem : a} @ {Seq}
+  provides lifted ext     : (content -> collection {elem : a} @Seq)
+                             -> collection {elem : a} @Seq
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
+
+  @:{Transformer, CArgs 3}
+  provides lifted sample : (a -> content -> a) -> a -> int -> a
+    with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
 
   provides lifted sort : (content -> content -> int) -> self
     with effects \sortF -> [R[self]; ([R[content]; ((sortF content) content)])*]

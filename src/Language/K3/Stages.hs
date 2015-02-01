@@ -228,16 +228,8 @@ withEffectTransform :: EffTrE -> ProgramTransform
 withEffectTransform f p = do
   st <- get
   (np,pe,fe) <- liftEitherM (f (penv st) (fenv st) p)
-  void $ {-debugEffectTransform (penv st) (fenv st) pe fe $-} put (st {penv=pe, fenv=fe})
+  void $ put (st {penv=pe, fenv=fe})
   return np
-
-  where debugEffectTransform oldp oldf newp newf r =
-          trace (T.unpack $ PT.boxToString $ [T.pack "Effect xform"]
-                  PT.%$ [T.pack "Old P"] PT.%$ PT.prettyLines oldp
-                  PT.%$ [T.pack "New P"] PT.%$ PT.prettyLines newp
-                  PT.%$ [T.pack "Old F"] PT.%$ PT.prettyLines oldf
-                  PT.%$ [T.pack "New F"] PT.%$ PT.prettyLines newf)
-            $ r
 
 withRepair :: String -> ProgramTransform -> ProgramTransform
 withRepair msg f prog = do
@@ -493,7 +485,7 @@ blockMapProgramDecls blockSize blockPassesF declPassesF prog = blockDriver empty
 
     blockDriver seen p = do
       ((nseen, anyNew), np) <- blockedPass seen p
-      np' <- trace "Finished a block" $ runPasses blockPassesF np
+      np' <- debugBlock seen nseen $ runPasses blockPassesF np
       if not anyNew && compareDAST np' p then return np'
       else blockDriver nseen np'
 
@@ -507,8 +499,8 @@ blockMapProgramDecls blockSize blockPassesF declPassesF prog = blockDriver empty
           nAnyNew         = anyNew || not thisSeen
           (nseen, passes) = if thisSeen then (seen, []) else (case nOpt of
                               Nothing -> (addUnnamedSeen seen d, declPassesF d)
-                              Just n  -> if cnt == 0 then ({-trace ("Skip " ++ n)-} (seen, []))
-                                         else (trace ("Compile " ++ n) $ (addNamedSeen seen n, declPassesF d)))
+                              Just n  -> if cnt == 0 then (seen, [])
+                                         else (addNamedSeen seen n, declPassesF d))
       in
       let ncnt = maybe cnt (const $ if cnt == 0 || thisSeen then cnt else (cnt-1)) nOpt
           nacc = (nseen, ncnt, nAnyNew)
@@ -517,6 +509,16 @@ blockMapProgramDecls blockSize blockPassesF declPassesF prog = blockDriver empty
     nameOfDecl (tag -> DGlobal  n _ _) = Just n
     nameOfDecl (tag -> DTrigger n _ _) = Just n
     nameOfDecl _ = Nothing
+
+    debugBlock old new r = flip trace r $ "Compiled a block: " ++
+                            (sep $ (Set.toList $ ((Set.\\) `on` fst) new old)
+                                ++ (map showDuid $ ((\\) `on` snd) new old))
+
+    sep = concat . intersperse ", "
+    showDuid d = maybe invalidUid duid $ d @~ isDUID
+    duid (DUID (UID i)) = "DUID " ++ show i
+    duid _ = invalidUid
+    invalidUid = "<no duid>"
 
 inferDeclProperties :: Identifier -> ProgramTransform
 inferDeclProperties n = withPropertyTransform $ \pre p ->
@@ -645,8 +647,7 @@ getTransform i m = maybe err id $ Map.lookup i m
 declOptPasses :: SnapshotSpec -> Maybe (SEffects.ExtInferF a, a) -> K3 Declaration -> [ProgramTransform]
 declOptPasses snSpec extInfOpt d = case nameOfDecl d of
   Nothing -> []
-  Just n -> trace ("Optimizing " ++ n) $
-            [getTransform "Optimize" $ declTransforms snSpec extInfOpt n]
+  Just n -> [getTransform "Optimize" $ declTransforms snSpec extInfOpt n]
 
   where nameOfDecl (tag -> DGlobal  n _ (Just _)) = Just n
         nameOfDecl (tag -> DTrigger n _ _) = Just n

@@ -925,13 +925,41 @@ repairProgram repairMsg nextUIDOpt p =
         repairExpr uid n = foldRebuildTree validateE uid n
         repairType uid n = foldRebuildTree validateT uid n
 
-        repairMem uid (Lifted      pol n t eOpt anns) = rebuildMem uid anns $ Lifted      pol n t eOpt
-        repairMem uid (Attribute   pol n t eOpt anns) = rebuildMem uid anns $ Attribute   pol n t eOpt
+        repairMem uid (Lifted      pol n t eOpt anns) = rebuildMem uid anns $ Lifted      pol n (repairTQualifier t) eOpt
+        repairMem uid (Attribute   pol n t eOpt anns) = rebuildMem uid anns $ Attribute   pol n (repairTQualifier t) eOpt
         repairMem uid (MAnnotation pol n anns)        = rebuildMem uid anns $ MAnnotation pol n
 
-        validateD uid ch n = ensureUIDSpan uid DUID isDUID DSpan isDSpan ch n
-        validateE uid ch n = ensureUIDSpan uid EUID isEUID ESpan isESpan ch n
-        validateT uid ch n = ensureUIDSpan uid TUID isTUID TSpan isTSpan ch n
+        validateD uid ch n = ensureUIDSpan uid DUID isDUID DSpan isDSpan ch n >>= return . second repairDQualifier
+        validateE uid ch n = ensureUIDSpan uid EUID isEUID ESpan isESpan ch n >>= return . second repairEQualifier
+        validateT uid ch n = ensureUIDSpan uid TUID isTUID TSpan isTSpan ch n >>= return . second repairTQualifier
+
+        repairDQualifier d = case tag d of
+          DGlobal  n t eOpt -> replaceTag d (DGlobal n (repairTQualifier t) eOpt)
+          DTrigger n t e    -> replaceTag d (DTrigger n (repairTQualifier t) e)
+          _ -> d
+
+        repairEQualifier n = case tnc n of
+          (EConstant (CEmpty t), _) -> let nt = runIdentity $ modifyTree (return . repairTQualifier) t
+                                       in replaceTag n $ EConstant $ CEmpty nt
+          (ELetIn _, [t, b]) -> replaceCh n [repairEQAnn t, b]
+          (ESome,     ch)    -> replaceCh n $ map repairEQAnn ch
+          (EIndirect, ch)    -> replaceCh n $ map repairEQAnn ch
+          (ETuple,    ch)    -> replaceCh n $ map repairEQAnn ch
+          (ERecord _, ch)    -> replaceCh n $ map repairEQAnn ch
+          _ -> n
+
+        repairEQAnn n@((@~ isEQualified) -> Nothing) = n @+ EImmutable
+        repairEQAnn n = n
+
+        repairTQualifier n = case tnc n of
+          (TOption,      ch) -> replaceCh n $ map repairTQAnn ch
+          (TIndirection, ch) -> replaceCh n $ map repairTQAnn ch
+          (TTuple,       ch) -> replaceCh n $ map repairTQAnn ch
+          (TRecord _,    ch) -> replaceCh n $ map repairTQAnn ch
+          _ -> n
+
+        repairTQAnn n@((@~ isTQualified) -> Nothing) = n @+ TImmutable
+        repairTQAnn n = n
 
         rebuildMem uid anns ctor = return $ (\(nuid, nanns) -> (nuid, ctor nanns)) $ validateMem uid anns
 

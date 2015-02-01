@@ -38,6 +38,148 @@ using unordered_map = std::tr1::unordered_map<K,V>;
 template<class K>
 using unordered_set = std::tr1::unordered_set<K>;
 
+// Sequential sampling with Vitter's Algorithm D:
+// Jeffrey Scott Vitter: Faster Methods for Random Sampling. Commun. ACM 27(7): 703-718 (1984)
+//
+// Our implementation is based on:
+// https://github.com/WebDrake/GrSL/blob/master/sampling/vitter.c
+class DSSampler {
+public:
+  DSSampler(size_t populationSize, size_t sampleSize) : eng(rd()) {
+    reset(populationSize, sampleSize);
+  }
+
+  void reset(size_t populationSize, size_t sampleSize) {
+    N = populationSize;
+    n = sampleSize;
+    if ( !(use_a = (alpha_inv * n > N)) ) {
+      vprime = vprimeF(n);
+      q1 = N - n + 1;
+      q2 = static_cast<double>(q1) / N;
+      threshold = alpha_inv * n;
+    }
+  }
+
+  tuple<bool, size_t> next()
+  {
+    tuple<bool, size_t> result = make_tuple(false, 0);
+
+    if ( use_a ) {
+      result = std::move(next_A());
+    }
+    else if ( n > 1 && threshold < N ) {
+      size_t S, top, t, limit;
+      double X, y, bottom;
+
+      while ( true ) {
+        /* Step D2 */
+        for(X = N * (1 - vprime), S = std::trunc(X); S >= q1; ) {
+          vprime = vprimeF(n);
+          X = N * (1 - vprime); S = std::trunc(X);
+        }
+
+        y = std::generate_canonical<double,64>(eng) / q2;
+        vprime = std::pow(y, 1.0/(n-1)) * ((-X/N) + 1.0) * (q1/static_cast<double>(q1 - S));
+
+        /* Step D3 */
+        if ( vprime > 1.0 ) {
+          if ( n - 1 > S ) {
+            bottom = N - n;
+            limit = N - S;
+          } else {
+            bottom = N - S - 1;
+            limit = q1;
+          }
+
+          for ( top = N - 1; top >= limit; --top, --bottom) {
+            y *= top/bottom;
+          }
+
+          /* Step D4 */
+          if( N / (N - X) < std::pow(y, 1.0/(n - 1)) ) {
+            vprime = vprimeF(n);
+          } else {
+            vprime = vprimeF(n - 1);
+            result = make_tuple(true, S);
+            break;
+          }
+        } else {
+          result = make_tuple(true, S);
+          break;
+        }
+      } // End inner while
+
+      /* Step D5 */
+      N = N - S - 1;
+      --n;
+      q1 = q1 - S;
+      q2 = static_cast<double>(q1) / N;
+      threshold -= alpha_inv;
+    }
+    else if ( n > 1 ) {
+      use_a = true;
+      result = std::move(next_A());
+    }
+    else if ( n == 1 ) {
+      result = make_tuple(true, std::trunc(N * vprime));
+      --n;
+    }
+
+    return result;
+  }
+
+private:
+  size_t N;
+  size_t n;
+
+  // Seed with a real random value, if available
+  std::random_device rd;
+  std::default_random_engine eng;
+
+  bool use_a;
+
+  // Variables for Algorithm D
+  const short alpha_inv = 13;
+  double vprime;
+  size_t q1;
+  double q2;
+  double threshold;
+
+  double vprimeF(size_t n) { return std::pow(std::generate_canonical<double,64>(eng), 1.0/n); }
+
+  // Algorithm A helper.
+  tuple<bool, size_t> next_A() {
+    tuple<bool, size_t> result = make_tuple(false, 0);
+    if ( n == 0 ) { return result; }
+
+    size_t S = 0;
+    double V, quot, top;
+
+    if (n == 1) {
+      std::uniform_int_distribution<size_t> unif(0,N);
+      S = unif(eng);
+    } else if ( n >= 2 ) {
+      top = N - n;
+      quot = top/N;
+      V = std::generate_canonical<double, 64>(eng);
+
+      while (quot > V) {
+        ++S;
+        quot *= (top - S) / (N - S);
+      }
+    }
+
+    if ( S > 0 ) {
+      result = make_tuple(true, S);
+      N = N - S - 1;
+      --n;
+    }
+
+    return result;
+  }
+};
+
+
 // StlDS provides the basic Collection transformers via generic implementations
 // that should work with any STL container.
 template <template <typename> class Derived, template<typename...> class StlContainer, class Elem>
@@ -265,6 +407,25 @@ class StlDS {
     return result;
   }
 
+  // Accumulate over a sampled ds.
+  // This number of items accessed depends on the iterator implementation, via std::advance.
+  template<typename Fun, typename Acc>
+  Acc sample(Fun f, Acc acc, size_t sampleSize) const {
+    auto it = begin();
+    DSSampler seqSampler(container.size(), sampleSize);
+
+    tuple<bool, size_t> next_skip = seqSampler.next();
+    while ( it != end() && std::get<0>(next_skip) ) {
+      std::advance(it, std::get<1>(next_skip));
+      if ( it != end() ) {
+        acc = f(std::move(acc))(*it);
+        next_skip = seqSampler.next();
+      }
+    }
+
+    return acc;
+  }
+
   bool operator==(const StlDS& other) const {
     return container == other.container;
   }
@@ -304,7 +465,7 @@ template <template <class> class Derived, class Elem>
 using VectorDS = StlDS<Derived, std::vector, Elem>;
 
 
-// The Colllection variants inherit functionality from a dataspace.
+// The Collection variants inherit functionality from a dataspace.
 // Each variant may also add extra functionality.
 template <class Elem>
 class Collection: public VectorDS<K3::Collection, Elem> {
@@ -501,6 +662,25 @@ class Set {
       }
     }
     return result;
+  }
+
+  // Accumulate over a sampled ds.
+  // This number of items accessed depends on the iterator implementation, via std::advance.
+  template<typename Fun, typename Acc>
+  Acc sample(Fun f, Acc acc, size_t sampleSize) const {
+    auto it = container.begin();
+    DSSampler seqSampler(container.size(), sampleSize);
+
+    tuple<bool, size_t> next_skip = seqSampler.next();
+    while ( it != container.end() && std::get<0>(next_skip) ) {
+      std::advance(it, std::get<1>(next_skip));
+      if ( it != container.end() ) {
+        acc = f(std::move(acc))(*it);
+        next_skip = seqSampler.next();
+      }
+    }
+
+    return acc;
   }
 
   bool operator==(const Set<Elem>& other) const {
@@ -772,6 +952,25 @@ class Sorted {
       }
     }
     return result;
+  }
+
+  // Accumulate over a sampled ds.
+  // This number of items accessed depends on the iterator implementation, via std::advance.
+  template<typename Fun, typename Acc>
+  Acc sample(Fun f, Acc acc, size_t sampleSize) const {
+    auto it = container.begin();
+    DSSampler seqSampler(container.size(), sampleSize);
+
+    tuple<bool, size_t> next_skip = seqSampler.next();
+    while ( it != container.end() && std::get<0>(next_skip) ) {
+      std::advance(it, std::get<1>(next_skip));
+      if ( it != container.end() ) {
+        acc = f(std::move(acc))(*it);
+        next_skip = seqSampler.next();
+      }
+    }
+
+    return acc;
   }
 
   bool operator==(const Sorted<Elem>& other) const {
@@ -1084,6 +1283,25 @@ class Map {
     }
 
     return result;
+  }
+
+  // Accumulate over a sampled ds.
+  // This number of items accessed depends on the iterator implementation, via std::advance.
+  template<typename Fun, typename Acc>
+  Acc sample(Fun f, Acc acc, size_t sampleSize) const {
+    auto it = container.begin();
+    DSSampler seqSampler(container.size(), sampleSize);
+
+    tuple<bool, size_t> next_skip = seqSampler.next();
+    while ( it != container.end() && std::get<0>(next_skip) ) {
+      std::advance(it, std::get<1>(next_skip));
+      if ( it != container.end() ) {
+        acc = f(std::move(acc))(*it);
+        next_skip = seqSampler.next();
+      }
+    }
+
+    return acc;
   }
 
   int size(unit_t) const { return container.size(); }
@@ -1463,6 +1681,25 @@ class MultiIndex {
     return result;
   }
 
+  // Accumulate over a sampled ds.
+  // This number of items accessed depends on the iterator implementation, via std::advance.
+  template<typename Fun, typename Acc>
+  Acc sample(Fun f, Acc acc, size_t sampleSize) const {
+    auto it = container.begin();
+    DSSampler seqSampler(container.size(), sampleSize);
+
+    tuple<bool, size_t> next_skip = seqSampler.next();
+    while ( it != container.end() && std::get<0>(next_skip) ) {
+      std::advance(it, std::get<1>(next_skip));
+      if ( it != container.end() ) {
+        acc = f(std::move(acc))(*it);
+        next_skip = seqSampler.next();
+      }
+    }
+
+    return acc;
+  }
+
   bool operator==(const MultiIndex& other) const {
     return container == other.container;
   }
@@ -1516,7 +1753,6 @@ class MultiIndex {
   }
 
 };
-
 
 } // Namespace K3
 

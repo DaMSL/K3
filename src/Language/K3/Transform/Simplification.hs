@@ -856,16 +856,21 @@ commonSubexprElim cseCntOpt expr = do
         letAtUID uid cseId e ch n = case n @~ isEUID of
           Just (EUID uid2) -> return $
             let cseVar = EC.variable cseId in
-            if uid == uid2
-              then EC.letIn cseId e $ substituteExpr e cseVar n
-              else rebuildAnnNode n ch
+            let qualE  = case e @~ isEQualified of
+                           Nothing -> e @+ EImmutable
+                           Just _  -> e
+            in if uid == uid2
+                 then EC.letIn cseId qualE $ substituteExpr e cseVar n
+                 else rebuildAnnNode n ch
           _ -> return $ rebuildAnnNode n ch
 
         substituteExpr :: K3 Expression -> K3 Expression -> K3 Expression -> K3 Expression
         substituteExpr compareE newE targetE =
           runIdentity $ modifyTree (doSub compareE newE) targetE
 
-        doSub compareE newE n = return $ if compareEAST compareE n then newE else n
+        doSub compareE newE n = return $ if compareEAST compareE n then qualifySub n newE else n
+        qualifySub ((@~ isEQualified) -> Nothing)   n = n
+        qualifySub ((@~ isEQualified) -> Just qAnn) n = n @+ qAnn
 
 
     uidError e = Left $ "No UID found on " ++ show e
@@ -946,14 +951,14 @@ encodeTransformers restChanged expr = do
       accE           <- mkAccumE e
       (nfAs', nfArg) <- mkIndepAccF fId fAs fArg
       nfAs           <- markPureTransformer False nfAs' fArg
-      let (nApp1As, nApp2As) = (markTAppChain appAs, markTAppChain [])
+      let (nApp1As, nApp2As) = (markTAppChain appAs, markTAppChain $ filter isEQualified appAs)
       rtt $ PPrjApp2 cE "fold" nfAs nfArg accE nApp1As nApp2As
 
     mkFold1 e = rtf e
 
     mkIter e@(PPrjApp cE fId fAs fArg appAs) = do
       let nfAs = fAs ++ [pImpureTransformer, pFusionSpec (UCondVal, IndepTr), pFusionLineage "iterate"]
-      let (nApp1As, nApp2As) = (markTAppChain appAs, markTAppChain [])
+      let (nApp1As, nApp2As) = (markTAppChain appAs, markTAppChain $ filter isEQualified appAs)
       rtt $ PPrjApp2 cE "fold" nfAs (EC.lambda "_" fArg) EC.unit nApp1As nApp2As
 
     mkIter e = rtf e
@@ -965,7 +970,7 @@ encodeTransformers restChanged expr = do
                         app1As app2As)
       = do
           let cls   = if streamable then (ICondN,IndepTr) else (Open,DepTr)
-          let nfAs' = fAs ++ [pFusionSpec cls, pFusionLineage "fold"]
+          let nfAs' = fAs ++ [pFusionSpec cls, pFusionLineage fId]
           nfAs      <- markPureTransformer True nfAs' fArg1
           let r     = PPrjApp2 cE fId nfAs fArg1 fArg2 app1As app2As
           if True then rtt r else debugInferredFold r nfAs fArg1
@@ -996,7 +1001,8 @@ encodeTransformers restChanged expr = do
             let copyF                      = mkIdAccF
             let (ncAs, ncApp1As, ncApp2As) = ([ pTransformer, pPureTransformer
                                               , pFusionSpec (UCond, IdTr), pFusionLineage "copy" ]
-                                             , markTAppChain [], markTAppChain [])
+                                             , markTAppChain $ filter isEQualified app2As
+                                             , markTAppChain $ filter isEQualified app3As)
             rtt $ PPrjApp2 buildE "fold" ncAs copyF rAccE ncApp1As ncApp2As
 
           _ -> Left $ "Invalid ternary transformer: " ++ fId
@@ -1081,7 +1087,7 @@ encodeTransformers restChanged expr = do
     extractTAnnotation _ = []
 
     unaryTransformer   fId = fId `elem` ["map", "filter", "iterate", "ext"]
-    binaryTransformer  fId = fId `elem` ["fold"]
+    binaryTransformer  fId = fId `elem` ["fold", "sample"]
     ternaryTransformer fId = fId `elem` ["groupBy"]
 
     cleanAnns as = filter (not . isAnyETypeOrEffectAnn) as
@@ -1124,12 +1130,12 @@ fuseFoldTransformers expr = do
       if or chFused then return $ (True, Just $ replaceCh n ch)
       else fuse (n,ch) >>= return . second Just
 
-    fuse nch@(PPrjApp2ChainCh cE "fold" "fold" fArg1 fArg2 gArg1 gArg2
+    fuse nch@(PPrjApp2ChainCh cE fId1@(leftFusable -> True) "fold" fArg1 fArg2 gArg1 gArg2
                               fAs iApp1As iApp2As gAs oApp1As oApp2As)
       | fusableChain fAs gAs
         = case fuseAccF fArg1 gArg1 fAs gAs of
             Right (Just (ngAs, ngArg1)) -> do
-              let r = PPrjApp2 cE "fold" (cleanElemAnns ngAs) ngArg1 gArg2 oApp1As oApp2As
+              let r = PPrjApp2 cE fId1 (cleanElemAnns ngAs) ngArg1 gArg2 oApp1As oApp2As
               return (True, debugFusionStep fAs gAs ngArg1 r)
 
             Right Nothing -> return $ (False, uncurry replaceCh nch)
@@ -1140,6 +1146,8 @@ fuseFoldTransformers expr = do
     fuse nch@(PApp _ _ (any isETAppChain -> True), _)   = return $ (False, uncurry replaceCh nch)
     fuse nch@(PPrj _ _ (any isETransformer -> True), _) = return $ (False, uncurry replaceCh nch)
     fuse nch = return $ (False, uncurry replaceCh nch)
+
+    leftFusable fId = fId `elem` ["sample", "fold"]
 
     debugFusionStep fAs gAs ngArg1 e =
       if True then e else flip trace e $

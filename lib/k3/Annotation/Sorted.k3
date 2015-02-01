@@ -29,11 +29,11 @@ annotation Sorted given type a, b
     with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
 
   @:Transformer
-  provides lifted map : (content -> a) -> collection {elem : a} @ {Sorted}
+  provides lifted map : (content -> a) -> collection {elem : a} @Sorted
     with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
 
   @:Transformer
-  provides lifted selfMap : (content -> a) -> collection {elem : a} @ {Sorted}
+  provides lifted selfMap : (content -> a) -> collection {elem : a} @Sorted
     with effects \selfMapF -> [R[self]; ([R[content]; selfMapF content])*]
 
   @:Transformer
@@ -46,15 +46,19 @@ annotation Sorted given type a, b
 
   @:{Transformer, CArgs 3}
   provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @ {Sorted}
+                             -> collection { key : a, value : b } @Sorted
     with effects
       \gbF -> \gaccF -> \z ->
         [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:Transformer
-  provides lifted ext : (content -> collection {elem : a} @ {Sorted})
-                         -> collection {elem : a} @ {Sorted}
+  provides lifted ext : (content -> collection {elem : a} @Sorted)
+                         -> collection {elem : a} @Sorted
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
+
+  @:{Transformer, CArgs 3}
+  provides lifted sample : (a -> content -> a) -> a -> int -> a
+    with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
 
   provides lifted min : () -> option content
     with effects \_ -> R[self]

@@ -29,7 +29,7 @@ annotation Collection given type a, b
     with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
 
   @:Transformer
-  provides lifted map : (content -> a) -> collection {elem : a} @ {Collection}
+  provides lifted map : (content -> a) -> collection {elem : a} @Collection
     with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
 
   @:Transformer
@@ -42,17 +42,20 @@ annotation Collection given type a, b
 
   @:{Transformer, CArgs 3}
   provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @ {Collection}
+                             -> collection { key : a, value : b } @Collection
     with effects
       \gbF -> \gaccF -> \z ->
         [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:Transformer
-  provides lifted ext : (content -> collection {elem : a} @ {Collection})
+  provides lifted ext : (content -> collection {elem : a} @Collection)
                          -> collection {elem : a} @ {Collection}
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
 
-  @:Transformer
+  @:{Transformer, CArgs 3}
+  provides lifted sample : (a -> content -> a) -> a -> int -> a
+    with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
+
   provides lifted at: int -> option content
     with effects \i -> [R[i]; R[self]]
 }

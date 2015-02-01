@@ -52,6 +52,10 @@ annotation Set given type a, b
                          -> collection {elem : a} @ {Set}
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
 
+  @:{Transformer, CArgs 3}
+  provides lifted sample : (a -> content -> a) -> a -> int -> a
+    with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
+
   provides lifted member : content -> bool
     with effects \elem -> [R[self]; R[elem]]
 
