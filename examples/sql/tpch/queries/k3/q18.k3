@@ -187,7 +187,7 @@ trigger loc_aggregate : loc_q_by_ncodt_bag = \vals -> (
 trigger log_aggregate_peer_barrier : () = \_ -> (
   ( print "Query 18 done." ;
     ((() @:Result) @TPCHBenchmarkWithoutMaster)
-  ) @OnCounter(id=[# loc_aggregate_done], eq=[$ peers.size()])
+  ) @OnCounter(id=[# loc_aggregate_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 )
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(

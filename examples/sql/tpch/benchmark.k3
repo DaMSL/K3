@@ -2,7 +2,8 @@ include "Annotation/Collection.k3"
 include "Core/Barrier.k3"
 include "Core/Profile.k3"
 
-declare ignore    : forall a. a -> () = \_ -> ()
+declare ignore : forall a. a -> () = \_ -> ()
+
 control TPCHBenchmarkWithoutMaster
                      [nodes              : expr,
                       loadExpr           : expr,
@@ -39,26 +40,26 @@ control TPCHBenchmarkWithoutMaster
       // Dummy trigger to warm up connections
       trigger hello : () = \_ -> ()
 
+      // A shutdown trigger which runs at each peer to terminate the distributed program.
       trigger shutdown : () = \_ -> (
         $[preShutdownExpr];
         haltEngine ()
       )
 
-      // Signal to the master that a peer has finished the query locally.
+      // A 'finished' trigger which shuts down all the nodes. This is invoked at the master.
       trigger finished : $[finishArgT] = \finishArg -> (
         ($[preTestFinishExpr] finishArg);
         ((( $[preFinishExpr];
             $[nodes].iterate (\p -> (shutdown, p.addr) <- ()))
               @:StopTimer) @Time(lbl=[# query], tag=[$ "Query time"])
-        ) @OnCounter(id=[# query_done], eq=[$ $[nodes].size()])
+        ) @OnCounter(id=[# query_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
       )
 
-      // Signal to the master that a peer is ready.
-      // Once all nodes are ready, the master will start the query.
+      // A 'ready' trigger which starts the query once all nodes are alive. This is invoked at the master.
       trigger ready : () = \_ -> (
         ( $[preReadyExpr];
           (( $[onReadyExpr] @:StartTimer) @Time(lbl=[# query], tag=[$ "Query time:"])
-          ) @OnCounter(id=[#  nodes_ready], eq=[$ $[nodes].size()]))
+          ) @OnCounter(id=[#  nodes_ready], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false]))
       )
 
       trigger load_all : () = \_ -> (

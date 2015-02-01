@@ -67,7 +67,7 @@ control AmplabBenchmark[queryTrigger       : expr,
         ((( $[preFinishExpr];
             peers.iterate (\p -> (shutdown, p.addr) <- ()))
               @:StopTimer) @Time(lbl=[# query], tag=[$ "Query time"])
-        ) @OnCounter(id=[# query_done], eq=[$ peers.size()])
+        ) @OnCounter(id=[# query_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
       )
 
       // Signal to the master that a peer is ready.
@@ -76,7 +76,7 @@ control AmplabBenchmark[queryTrigger       : expr,
         ( $[preReadyExpr];
           ((peers.iterate (\p -> ($[queryTrigger], p.addr) <- ()))
               @:StartTimer) @Time(lbl=[# query], tag=[$ "Query time:"])
-        ) @OnCounter(id=[# peers_ready], eq=[$ peers.size()])
+        ) @OnCounter(id=[# peers_ready], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
       )
 
       trigger load_all : () = \_ -> (

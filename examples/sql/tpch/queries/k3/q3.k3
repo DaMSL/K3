@@ -142,7 +142,7 @@ trigger loc_probe_rhs : cs_ck_bag = \vals -> (
        { None -> () }
     ) ;
   ( (() @:Result) @TPCHBenchmarkWithoutMaster
-  ) @OnCounter(id=[# loc_done], eq=[$ peers.size()])
+  ) @OnCounter(id=[# loc_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 )
 
 // For ktrace:
@@ -151,7 +151,7 @@ declare results: collection {orderkey: int, revenue: real, orderdate: string, sh
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes              = [$ peers ],
   loadExpr           = [$ ( lineitemFiles.iterate (\e -> lineitemLoaderP e.path lineitem);
-                            ordersFiles.iterate   (\e -> ordersLoaderP  e.path orders);
+                            ordersFiles.iterate   (\e -> ordersLoaderP   e.path orders);
                             customerFiles.iterate (\e -> customerLoaderP e.path customer)
                           ) ],
   preLoadExpr        = [$ ()],
@@ -160,7 +160,12 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   finishArgT         = [: ()],
   preTestFinishExpr  = [$ (\_ -> ())],
   preFinishExpr      = [$ ()],
-  preShutdownExpr    = [$ q3_peer_result.iterate (\r -> results.insert {orderkey: r.key.ok, revenue: r.value, orderdate: r.key.od, shippriority: r.key.sp}) ]
+  preShutdownExpr    = [$ q3_peer_result.iterate (\r ->
+                              results.insert { orderkey: r.key.ok
+                                             , revenue: r.value
+                                             , orderdate: r.key.od
+                                             , shippriority: r.key.sp })
+                       ]
 )
 
 source rows : () = value ()

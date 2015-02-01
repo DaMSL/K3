@@ -143,13 +143,13 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
                                  } @Collection ]
         )
 
-  ) @OnCounter(id=[# customer_subagg_done], eq=[$ peers.size()])
+  ) @OnCounter(id=[# customer_subagg_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 )
 
 trigger q22_final_aggregate : c_nt_by_cc_map = \vals -> (
   vals.iterate (\kv -> q22_result.insert_with kv merge_c_nt_by_cc) ;
   ( print "Q22 final aggregation done."
-  ) @OnCounter(id=[# q22_aggregate_done], eq=[$ peers.size()])
+  ) @OnCounter(id=[# q22_aggregate_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 )
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(

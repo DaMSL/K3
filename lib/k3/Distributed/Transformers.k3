@@ -29,12 +29,12 @@ control DistributedGroupByGeneric [ lbl             : label
           trigger $[lbl]_peer_barrier : () = \_ -> (
             ( $[peer_next] ;
               ( $[lbl]_global_barrier, $[coordinator] ) <- ()
-            ) @OnCounter(id=[# $[lbl]_peer_done], eq=[$ $[nodes].size()])
+            ) @OnCounter(id=[# $[lbl]_peer_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
           )
 
           trigger $[lbl]_global_barrier : () = \_ -> (
             ( $[next]
-            ) @OnCounter(id=[# $[lbl]_done], eq=[$ $[nodes].size()])
+            ) @OnCounter(id=[# $[lbl]_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
           )
         }
 }
@@ -92,7 +92,7 @@ control DistributedHashJoin [ lbl             : label
         trigger $[lbl]_lhs_peer_barrier : () = \_ -> (
           print "Hash join LHS finished build." ;
           ( $[nodes].iterate (\p -> ($[lbl]_rhs_scan, p.addr) <- ())
-          ) @OnCounter(id=[# $[lbl]_peer_build_done], eq=[$ $[nodes].size() ])
+          ) @OnCounter(id=[# $[lbl]_peer_build_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
         )
 
         trigger $[lbl]_rhs_scan : () = \_ -> (
@@ -101,11 +101,11 @@ control DistributedHashJoin [ lbl             : label
               ) @SendPartitionByKey( dest_trg    = [$ $[lbl]_probe_rhs]
                                    , barrier_trg = [$ $[lbl]_rhs_peer_barrier]
                                    , nodes       = nodes))
-          ) @OnCounter(id=[# $[lbl]_lhs_done], eq=[$ $[nodes].size() ])
+          ) @OnCounter(id=[# $[lbl]_lhs_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
         )
 
         trigger $[lbl]_probe_rhs : $[rhs_probe_ty] = \vals -> (
-          // Probe lineitem map.
+          // Probe LHS hash table.
           vals.iterate $[rhs_probe_merge]
         )
 
@@ -113,13 +113,13 @@ control DistributedHashJoin [ lbl             : label
           ( print "Hash join RHS finished probe." ;
             $[peer_next] ;
             ($[lbl]_global_barrier, $[coordinator]) <- ()
-          ) @OnCounter(id=[# $[lbl]_rhs_done], eq=[$ $[nodes].size() ])
+          ) @OnCounter(id=[# $[lbl]_rhs_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
         )
 
         trigger $[lbl]_global_barrier : () = \_ -> (
           ( print "Hash join done." ;
             $[next]
-          ) @OnCounter(id=[# $[lbl]_join_done], eq=[$ $[nodes].size() ])
+          ) @OnCounter(id=[# $[lbl]_join_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
         )
      }
 }

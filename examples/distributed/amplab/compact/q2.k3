@@ -39,7 +39,7 @@ trigger aggregate : adRevByIp = \vals -> (
 trigger peer_barrier : () = \_ -> (
   ( ( ignore (results_map.size ()) @:Result) @AmplabBenchmark;
     results_map.iterate (\r -> results.insert r)
-  ) @OnCounter(id=[# peers_finished], eq=[$ peers.size()])
+  ) @OnCounter(id=[# peers_finished], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 )
 
 trigger start : () = \_ -> (() @:Start) @AmplabBenchmark(

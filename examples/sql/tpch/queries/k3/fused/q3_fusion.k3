@@ -143,7 +143,7 @@ trigger loc_probe_rhs : cs_ck_bag = \vals -> (
        { None -> () }
     ) ;
   ( (() @:Result) @TPCHBenchmarkWithoutMaster
-  ) @OnCounter(id=[# loc_done], eq=[$ peers.size()])
+  ) @OnCounter(id=[# loc_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 )
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(

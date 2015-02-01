@@ -162,7 +162,7 @@ trigger calc_result : () = \_ -> (
   let total2 = global_total * 0.0001 in
   q11_result = unfiltered_result.filter (\x -> x.value > total2);
   ( (() @:Result) @TPCHBenchmark
-  ) @OnCounter(id=[# loc_done], eq=[$ peers.size()])
+  ) @OnCounter(id=[# loc_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 )
 
 //K-trace results

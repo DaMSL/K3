@@ -62,7 +62,7 @@ trigger merge_trainings : (int, collection agg_elem @Seq) = \aggs_and_count -> (
        { None -> aggregated.insert v }
     );
     ( build_model ()
-    ) @OnCounter(id=[# peers_merged], eq=[$ peers.size()])
+    ) @OnCounter(id=[# peers_merged], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
   )
 )
 
@@ -81,7 +81,7 @@ declare build_model : () -> () = \_ -> (
 
 trigger ready : () = \_ -> (
   ( peers.iterate (\p -> (train_local, p.addr) <- ())
-  ) @OnCounter(id=[# peers_ready], eq=[$ peers.size()])
+  ) @OnCounter(id=[# peers_ready], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 )
 
 trigger load_all : () = \_ -> (

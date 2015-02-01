@@ -105,7 +105,8 @@ trigger gather: collection { key: vertex, value: page_rank } @ { Map } = \messag
     state.insert_with { key: r.key, value: r.value } (\a -> \b -> { key: r.key, value: a.value + b.value})
   ));
 
-  (scatter (); reset_timer ()) @ { OnCounterReset(id=[# gather], eq=[$ peers.size ()]) }
+  (scatter (); reset_timer ())
+    @ { OnCounter(id=[# gather], eq=[$ peers.size ()], reset=[$ true], profile=[$ false]) }
 )
 
 declare reset_timer: () -> () = \_ -> (
@@ -124,7 +125,7 @@ trigger go: () = \_ -> scatter ()
 trigger ready: int = \i -> (
   vertex_count = vertex_count + i;
   if master == me
-  then ((peers.iterate (\p -> (go, p.addr) <- ())) @ { OnCounter(id=[# ready], eq=[$ peers.size ()]) }) else ()
+  then ((peers.iterate (\p -> (go, p.addr) <- ())) @ { OnCounter(id=[# ready], eq=[$ peers.size ()], reset=[$ false], profile=[$ false]) }) else ()
 )
 
 

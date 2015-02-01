@@ -75,7 +75,7 @@ trigger aggregate : collection {key: string, value: int} @ {Collection} = \newVa
 
 trigger peer_barrier : () = \_ -> (
   ( (() @:Result) @AmplabBenchmark
-  ) @OnCounter(id=[# aggs_received], eq=[$ peers.size()])
+  ) @OnCounter(id=[# aggs_received], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 )
 
 trigger start : () = \_ -> (() @:Start) @AmplabBenchmark(

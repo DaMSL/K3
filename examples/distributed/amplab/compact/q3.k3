@@ -94,7 +94,7 @@ trigger count_merges : () = \_ -> (
       else () );
     let ignore = (local_max @:Result) @AmplabBenchmark
     in ()
-  ) @OnCounter(id=[# merged_peers], eq=[$ peers.size()])
+  ) @OnCounter(id=[# merged_peers], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 )
 
 trigger start : () = \_ -> (() @:Start) @AmplabBenchmark(
