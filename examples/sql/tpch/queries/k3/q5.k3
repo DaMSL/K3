@@ -292,22 +292,23 @@ trigger q5_result_aggregate : q5_r_by_n_map = \vals -> (
 )
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
-  nodes              = [$ peers],
-  loadExpr           = [$ ( lineitemFiles.iterate (\e -> lineitemLoaderP e.path lineitem);
-                            ordersFiles.iterate   (\e -> ordersLoaderP   e.path orders);
-                            customerFiles.iterate (\e -> customerLoaderP e.path customer);
-                            supplierFiles.iterate (\e -> supplierLoaderP e.path supplier);
-                            nationFiles.iterate   (\e -> nationLoaderP   e.path nation);
-                            regionFiles.iterate   (\e -> regionLoaderP   e.path region)
-                          ) ],
-  preLoadExpr        = [$ ()],
-  preReadyExpr       = [$ ()],
-  onReadyExpr        = [$ (q5_lo_start, me) <- ()],
-  finishArgT         = [: ()],
-  preTestFinishExpr  = [$ (\_ -> ())],
-  preFinishExpr      = [$ (print ("Q5 num results:" ++ (itos (q5_result.size()))));
-                          q5_result.iterate (\r -> results.insert r)],
-  preShutdownExpr    = [$ ()]
+  nodes               = [$ peers],
+  loadExpr            = [$ ( lineitemFiles.iterate (\e -> lineitemLoaderP e.path lineitem);
+                             ordersFiles.iterate   (\e -> ordersLoaderP   e.path orders);
+                             customerFiles.iterate (\e -> customerLoaderP e.path customer);
+                             supplierFiles.iterate (\e -> supplierLoaderP e.path supplier);
+                             nationFiles.iterate   (\e -> nationLoaderP   e.path nation);
+                             regionFiles.iterate   (\e -> regionLoaderP   e.path region)
+                           ) ],
+  preLoadExpr         = [$ ()],
+  preReadyExpr        = [$ ()],
+  onReadyExpr         = [$ (q5_lo_start, me) <- ()],
+  finishArgT          = [: ()],
+  preTestFinishExpr   = [$ (\_ -> ())],
+  preFinishExpr       = [$ (print ("Q5 num results:" ++ (itos (q5_result.size()))));
+                           q5_result.iterate (\r -> results.insert r)],
+  preShutdownExpr     = [$ ()],
+ finishAsShutdownExpr = [$ true]
 )
 
 source rows : () = value ()

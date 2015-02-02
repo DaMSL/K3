@@ -83,15 +83,16 @@ trigger q1 : () = \_ -> (
 
 trigger start : () = \_ -> (
   (() @:Start) @TPCHBenchmarkWithoutMaster(
-    nodes              = [$ peers],
-    loadExpr           = [$ dataFiles.iterate (\e -> lineitemLoaderP e.path lineitem)],
-    preLoadExpr        = [$ ()],
-    preReadyExpr       = [$ ()],
-    onReadyExpr        = [$ (q1, me) <- ()],
-    finishArgT         = [: ()],
-    preTestFinishExpr  = [$ (\_ -> ())],
-    preFinishExpr      = [$ ()],
-    preShutdownExpr    = [$ ()]
+    nodes                = [$ peers],
+    loadExpr             = [$ dataFiles.iterate (\e -> lineitemLoaderP e.path lineitem)],
+    preLoadExpr          = [$ ()],
+    preReadyExpr         = [$ ()],
+    onReadyExpr          = [$ (q1, me) <- ()],
+    finishArgT           = [: ()],
+    preTestFinishExpr    = [$ (\_ -> ())],
+    preFinishExpr        = [$ ()],
+    preShutdownExpr      = [$ ()],
+    finishAsShutdownExpr = [$ true]
   )
 )
 

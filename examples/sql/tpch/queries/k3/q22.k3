@@ -149,17 +149,18 @@ trigger q22_final_aggregate : c_nt_by_cc_map = \vals -> (
 )
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
-  nodes              = [$ peers ],
-  loadExpr           = [$ ( ordersFiles.iterate   (\e -> ordersLoaderP   e.path orders);
-                            customerFiles.iterate (\e -> customerLoaderP e.path customer)
-                          ) ],
-  preLoadExpr        = [$ ()],
-  preReadyExpr       = [$ ()],
-  onReadyExpr        = [$ (customer_subagg, me) <- ()],
-  finishArgT         = [: ()],
-  preTestFinishExpr  = [$ (\_ -> ())],
-  preFinishExpr      = [$ ()],
-  preShutdownExpr    = [$ (q22_result.iterate (\r -> results.insert {cntrycode: r.key, numcust: r.value.nc, totacctbal: r.value.tab} ))]
+  nodes                = [$ peers ],
+  loadExpr             = [$ ( ordersFiles.iterate   (\e -> ordersLoaderP   e.path orders);
+                              customerFiles.iterate (\e -> customerLoaderP e.path customer)
+                            ) ],
+  preLoadExpr          = [$ ()],
+  preReadyExpr         = [$ ()],
+  onReadyExpr          = [$ (customer_subagg, me) <- ()],
+  finishArgT           = [: ()],
+  preTestFinishExpr    = [$ (\_ -> ())],
+  preFinishExpr        = [$ ()],
+  preShutdownExpr      = [$ (q22_result.iterate (\r -> results.insert {cntrycode: r.key, numcust: r.value.nc, totacctbal: r.value.tab} ))],
+  finishAsShutdownExpr = [$ true]
 )
 
 source rows : () = value ()

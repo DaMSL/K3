@@ -166,18 +166,19 @@ trigger calc_result : () = \_ -> (
 declare results : collection {key: int, value: real} @Collection
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
-  nodes              = [$ peers ],
-  loadExpr           = [$ ( supplierFiles.iterate (\e -> supplierLoaderP e.path supplier);
-                            partsuppFiles.iterate (\e -> partsuppLoaderP e.path partsupp);
-                            nationFiles.iterate   (\e -> nationLoaderP   e.path nation)
-                          ) ],
-  preLoadExpr        = [$ ()],
-  preReadyExpr       = [$ ()],
-  onReadyExpr        = [$ (partsupp_supplier, me) <- ()],
-  finishArgT         = [: ()],
-  preTestFinishExpr  = [$ (\_ -> ())],
-  preFinishExpr      = [$ ()],
-  preShutdownExpr    = [$ (q11_result.iterate (\r -> results.insert r))]
+  nodes                = [$ peers ],
+  loadExpr             = [$ ( supplierFiles.iterate (\e -> supplierLoaderP e.path supplier);
+                              partsuppFiles.iterate (\e -> partsuppLoaderP e.path partsupp);
+                              nationFiles.iterate   (\e -> nationLoaderP   e.path nation)
+                            ) ],
+  preLoadExpr          = [$ ()],
+  preReadyExpr         = [$ ()],
+  onReadyExpr          = [$ (partsupp_supplier, me) <- ()],
+  finishArgT           = [: ()],
+  preTestFinishExpr    = [$ (\_ -> ())],
+  preFinishExpr        = [$ ()],
+  preShutdownExpr      = [$ (q11_result.iterate (\r -> results.insert r))],
+  finishAsShutdownExpr = [$ true]
 )
 
 source rows : () = value ()

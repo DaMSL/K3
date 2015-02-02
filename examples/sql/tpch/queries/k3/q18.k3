@@ -188,18 +188,22 @@ trigger log_aggregate_peer_barrier : () = \_ -> (
 )
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
-  nodes              = [$ peers ],
-  loadExpr           = [$ ( lineitemFiles.iterate (\e -> lineitemLoaderP e.path lineitem);
-                            ordersFiles.iterate   (\e -> ordersLoaderP   e.path orders);
-                            customerFiles.iterate (\e -> customerLoaderP e.path customer)
-                          ) ],
-  preLoadExpr        = [$ ()],
-  preReadyExpr       = [$ ()],
-  onReadyExpr        = [$ (lineitem_having, me) <- ()],
-  finishArgT         = [: ()],
-  preTestFinishExpr  = [$ (\_ -> ())],
-  preFinishExpr      = [$ ()],
-  preShutdownExpr    = [$ (q18_peer_result.iterate(\r -> results.insert {name: r.key.nm, custkey: r.key.ck, orderkey: r.key.ok, orderdate: r.key.od, totalprice: r.key.tp, sum: r.value} ))]
+  nodes                = [$ peers ],
+  loadExpr             = [$ ( lineitemFiles.iterate (\e -> lineitemLoaderP e.path lineitem);
+                              ordersFiles.iterate   (\e -> ordersLoaderP   e.path orders);
+                              customerFiles.iterate (\e -> customerLoaderP e.path customer)
+                            ) ],
+  preLoadExpr          = [$ ()],
+  preReadyExpr         = [$ ()],
+  onReadyExpr          = [$ (lineitem_having, me) <- ()],
+  finishArgT           = [: ()],
+  preTestFinishExpr    = [$ (\_ -> ())],
+  preFinishExpr        = [$ ()],
+  preShutdownExpr      = [$ (q18_peer_result.iterate(\r ->
+                              results.insert { name: r.key.nm, custkey: r.key.ck, orderkey: r.key.ok
+                                             , orderdate: r.key.od, totalprice: r.key.tp, sum: r.value} ))
+                         ],
+  finishAsShutdownExpr = [$ true]
 )
 
 source rows : () = value ()

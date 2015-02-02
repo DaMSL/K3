@@ -18,15 +18,16 @@ trigger q6_local : () = \_ -> (
 )
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
-  nodes              = [$ peers],
-  onReadyExpr        = [$ peers.iterate (\x -> (q6_local, x.addr) <- () ) ],
-  loadExpr           = [$ dataFiles.iterate (\e -> lineitemLoaderP e.path lineitem)],
-  preLoadExpr        = [$ ()],
-  preReadyExpr       = [$ ()],
-  finishArgT         = [: real],
-  preTestFinishExpr  = [$ (\x -> q6_result = q6_result + x)],
-  preFinishExpr      = [$ results.insert {revenue: q6_result}; (print ("Result: " ++ (rtos q6_result)))],
-  preShutdownExpr    = [$ ()]
+  nodes                = [$ peers],
+  onReadyExpr          = [$ peers.iterate (\x -> (q6_local, x.addr) <- () ) ],
+  loadExpr             = [$ dataFiles.iterate (\e -> lineitemLoaderP e.path lineitem)],
+  preLoadExpr          = [$ ()],
+  preReadyExpr         = [$ ()],
+  finishArgT           = [: real],
+  preTestFinishExpr    = [$ (\x -> q6_result = q6_result + x)],
+  preFinishExpr        = [$ results.insert {revenue: q6_result}; (print ("Result: " ++ (rtos q6_result)))],
+  preShutdownExpr      = [$ ()],
+  finishAsShutdownExpr = [$ true]
 )
 
 source rows : () = value ()

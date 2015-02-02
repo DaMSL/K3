@@ -11,15 +11,16 @@ include "tpch/loader.k3"
 declare ignore : forall a. a -> () = \_ -> ()
 
 control TPCHBenchmarkWithoutMaster
-                     [nodes              : expr,
-                      loadExpr           : expr,
-                      preLoadExpr        : expr,
-                      preReadyExpr       : expr,
-                      onReadyExpr        : expr,
-                      finishArgT         : type,
-                      preTestFinishExpr  : expr,
-                      preFinishExpr      : expr,
-                      preShutdownExpr    : expr]
+                     [nodes                : expr,
+                      loadExpr             : expr,
+                      preLoadExpr          : expr,
+                      preReadyExpr         : expr,
+                      onReadyExpr          : expr,
+                      finishArgT           : type,
+                      preTestFinishExpr    : expr,
+                      preFinishExpr        : expr,
+                      preShutdownExpr      : expr,
+                      finishAsShutdownExpr : expr]
 {
   ?e @:Result => (finished, master) <- $.[e]
   ?e @:Start  => (load_all, me)     <- $.[e]
@@ -52,12 +53,12 @@ control TPCHBenchmarkWithoutMaster
         haltEngine ()
       )
 
-      // A 'finished' trigger which shuts down all the nodes. This is invoked at the master.
+      // A 'finished' trigger which optionally shuts down all the nodes. This is invoked at the master.
       trigger finished : $[finishArgT] = \finishArg -> (
         ($[preTestFinishExpr] finishArg);
         ((( $[preFinishExpr];
-            $[nodes].iterate (\p -> (shutdown, p.addr) <- ()))
-              @:StopTimer) @Time(lbl=[# query], tag=[$ "Query time"])
+            if $[finishAsShutdownExpr] then $[nodes].iterate (\p -> (shutdown, p.addr) <- ()) else ()
+          ) @:StopTimer) @Time(lbl=[# query], tag=[$ "Query time"])
         ) @OnCounter(id=[# query_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
       )
 
@@ -76,25 +77,27 @@ control TPCHBenchmarkWithoutMaster
     }
 }
 
-control TPCHBenchmark[nodes              : expr,
-                      loadExpr           : expr,
-                      preLoadExpr        : expr,
-                      preReadyExpr       : expr,
-                      onReadyExpr        : expr,
-                      finishArgT         : type,
-                      preTestFinishExpr  : expr,
-                      preFinishExpr      : expr,
-                      preShutdownExpr    : expr]
+control TPCHBenchmark[nodes                : expr,
+                      loadExpr             : expr,
+                      preLoadExpr          : expr,
+                      preReadyExpr         : expr,
+                      onReadyExpr          : expr,
+                      finishArgT           : type,
+                      preTestFinishExpr    : expr,
+                      preFinishExpr        : expr,
+                      preShutdownExpr      : expr,
+                      finishAsShutdownExpr : expr]
 {
   ?e => ($.[e]) @TPCHBenchmarkWithoutMaster(
-                      nodes             = nodes
-                    , loadExpr          = loadExpr
-                    , preLoadExpr       = preLoadExpr
-                    , preReadyExpr      = preReadyExpr
-                    , onReadyExpr       = onReadyExpr
-                    , finishArgT        = finishArgT
-                    , preTestFinishExpr = preTestFinishExpr
-                    , preFinishExpr     = preFinishExpr
-                    , preShutdownExpr   = preShutdownExpr )
+                      nodes                = nodes
+                    , loadExpr             = loadExpr
+                    , preLoadExpr          = preLoadExpr
+                    , preReadyExpr         = preReadyExpr
+                    , onReadyExpr          = onReadyExpr
+                    , finishArgT           = finishArgT
+                    , preTestFinishExpr    = preTestFinishExpr
+                    , preFinishExpr        = preFinishExpr
+                    , preShutdownExpr      = preShutdownExpr
+                    , finishAsShutdownExpr = finishAsShutdownExpr )
      +> { declare master : address = 127.0.0.1:40000 }
 }
