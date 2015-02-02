@@ -1,5 +1,3 @@
-include "Annotation/Collection.k3"
-include "Annotation/Map.k3"
 include "compact/AmplabBDB.k3"
 
 typedef rk_by_url_elem     = {key: string, value: int}
@@ -106,7 +104,7 @@ trigger start : () = \_ -> (() @:Start) @AmplabBenchmark(
   finishArgT         = [: aggs_by_ip_elem],
   preTestFinishExpr  = [$ (\kv -> (if (kv.value.arSum > global_max.value.arSum)
                                    then (global_max = kv) else ())) ],
-  preFinishExpr      = [$ print (concat "Global max.key: " global_max.key) ],
+  preFinishExpr      = [$ print ("Global max.key: " ++ global_max.key) ],
   preShutdownExpr    = [$ ()]
 )
 

@@ -308,7 +308,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   onReadyExpr        = [$ (q5_lo_start, me) <- ()],
   finishArgT         = [: ()],
   preTestFinishExpr  = [$ (\_ -> ())],
-  preFinishExpr      = [$ (print (concat "Q5 num results:" (itos (q5_result.size()))))],
+  preFinishExpr      = [$ (print ("Q5 num results:" ++ (itos (q5_result.size()))))],
   preShutdownExpr    = [$ ()]
 )
 

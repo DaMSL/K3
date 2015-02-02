@@ -53,7 +53,7 @@ trigger q2_local : () = \_ -> (
         acc + r.adRevenue)
       0.0;
   let agg_vals_end = now_int () in
-  print (concat "Agg vals time: " (itos (agg_vals_end-agg_vals_start)));
+  print ("Agg vals time: " ++ (itos (agg_vals_end-agg_vals_start)));
   // Group by destination peer address
   peer_aggs =
     agg_vals.groupBy
@@ -61,7 +61,7 @@ trigger q2_local : () = \_ -> (
       (\acc -> \v -> (acc.insert(v); acc))
       (empty {key: string, value: real} @ {Collection});
   let peer_aggs_end = now_int () in
-  print (concat "Peer aggs time: " (itos (peer_aggs_end-agg_vals_end)));
+  print ("Peer aggs time: " ++ (itos (peer_aggs_end-agg_vals_end)));
   peer_aggs.iterate (\v ->
     (aggregate, (peers_seq.at v.key).addr) <- v.value
   );
@@ -82,7 +82,7 @@ trigger aggregate : collection { key: string, value: real } @ {Collection} = \va
   let aggregate_start = now_int () in
   merge_results vals;
   let aggregate_end = now_int () in
-  print (concat "Aggregate time: " (itos (aggregate_end-aggregate_start)))
+  print ("Aggregate time: " ++ (itos (aggregate_end-aggregate_start)))
 )
 
 trigger peer_barrier : () = \_ -> (
@@ -105,7 +105,7 @@ trigger master_done : () = \_ -> (
 )
 
 trigger shutdown : () = \_ -> (
-  print (concat "Num local results: " (itos (local_q2_results.size ())));
+  print ("Num local results: " ++ (itos (local_q2_results.size ())));
   (local_q2_results.iterate (\r -> results.insert {substr: r.key, sum: r.value} ) );
   haltEngine ()
 )

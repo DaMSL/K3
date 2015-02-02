@@ -5,8 +5,8 @@ control Profile[lbl : label, tag : expr] {
         let result      = $.[e] in
         let end         = now_int () in
         let elapsed_str = end - start in
-        let tag         = concat (concat $[tag] $[|(exprLabel 'lbl)|]) ":" in
-          print (concat tag (itos elapsed_str));
+        let tag         = $[tag] ++ $[|(exprLabel 'lbl)|] ++ ":" in
+          print (tag ++ (itos elapsed_str));
           result
 }
 
@@ -22,10 +22,10 @@ control OnProfile[f : expr] {
 control Time[lbl : label, tag : expr] {
   ?e @:StartTimer => $[lbl]_start_ms = now_int(); $.[e]
   ?e @:StopTimer  => let result        = $.[e] in
-                     let tag           = concat (concat $[tag] $[|(exprLabel 'lbl)|]) ":" in
+                     let tag           = $[tag] ++ $[|(exprLabel 'lbl)|] ++ ":" in
                      $[lbl]_end_ms     = now_int();
                      $[lbl]_elapsed_ms = $[lbl]_end_ms - $[lbl]_start_ms;
-                     print (concat tag (itos $[lbl]_elapsed_ms));
+                     print (tag ++ (itos $[lbl]_elapsed_ms));
                      result
 
   shared { declare $[lbl]_start_ms   : mut int = 0

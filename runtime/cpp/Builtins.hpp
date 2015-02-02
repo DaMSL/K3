@@ -361,10 +361,11 @@ namespace K3 {
     shared_ptr<RE2> pattern;
     __string_context();
 
-    string_impl concat(string_impl s1, string_impl s2);
     string_impl itos(int i);
 
     string_impl rtos(double d);
+
+    string_impl atos(Address a);
 
     F<Collection<R_elem<string_impl>>(const string_impl &)> regex_matcher(const string_impl&);
     Collection<R_elem<string_impl>> regex_matcher_q4(const string_impl&);

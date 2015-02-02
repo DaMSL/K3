@@ -1,7 +1,4 @@
-include "Distributed/Transformers.k3"
-include "tpch/schema.k3"
 include "tpch/benchmark.k3"
-include "tpch/loader.k3"
 
 /**********************
 * SQL query
@@ -308,7 +305,8 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   onReadyExpr        = [$ (q5_lo_start, me) <- ()],
   finishArgT         = [: ()],
   preTestFinishExpr  = [$ (\_ -> ())],
-  preFinishExpr      = [$ (print (concat "Q5 num results:" (itos (q5_result.size())))); q5_result.iterate (\r -> results.insert r)],
+  preFinishExpr      = [$ (print ("Q5 num results:" ++ (itos (q5_result.size()))));
+                          q5_result.iterate (\r -> results.insert r)],
   preShutdownExpr    = [$ ()]
 )
 

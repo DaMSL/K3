@@ -16,7 +16,7 @@ declare lambda : real = 0.2
 declare dataFiles: collection { path: string } @Collection
 declare master : immut address = 127.0.0.1:40000
 declare s : mut int
-declare peerAddress : mut address 
+declare peerAddress : mut address
 declare peers_seq : mut collection {addr: address} @ {Seq}
 
 
@@ -37,15 +37,15 @@ declare queue : collection {j: int, hj: collection {elem: real }@Vector} @Seq
 //declare the functions
 
 // This function returns a random integer between 0 and n-1
-declare randomInteger : int -> int = \i -> ( 
-	now_ms = now_int(); 
-	if (now_ms < 0)  
+declare randomInteger : int -> int = \i -> (
+	now_ms = now_int();
+	if (now_ms < 0)
 	then (now_ms = now_ms * -1; now_ms % i )
 	else (now_ms % i)
  )
 /*
 declare uniformDiscrete : int -> collection {elem : int} @Seq = (
-	
+
 )
 */
 
@@ -57,8 +57,8 @@ trigger initialize : () = \_ -> (
 		w.insert {i: randomVector k}
 	);
 	//oneDataElement = (data.at(0)).elem;
-	
-	//r = (((data.at(1)).elem).at(1)).elem;	
+
+	//r = (((data.at(1)).elem).at(1)).elem;
 
 	randInt = randomInteger 5;
 
@@ -72,7 +72,7 @@ trigger initialize : () = \_ -> (
 
 trigger initializeQueue : int  = \n ->  (
 	peers_ready = peers_ready + 1;
-	
+
 	if (peers_ready == peers.size())
 	then (
 		// create the H matrix
@@ -84,15 +84,15 @@ trigger initializeQueue : int  = \n ->  (
 
 		(range n).iterate (\element -> (
 			randInt = randomInteger (peers.size ());
-			peerAddress = ((peers_seq.at(randInt)).addr) ; 
-			(insertIntoQueue,  peerAddress ) <- {j : element.i , hj : (h.at(element.i)).i } ) 
+			peerAddress = ((peers_seq.at(randInt)).addr) ;
+			(insertIntoQueue,  peerAddress ) <- {j : element.i , hj : (h.at(element.i)).i } )
 			);
 
 		peers.iterate(\peer -> (startProcess, peer.addr) <- ())
 
 
 	)
-	else ()	
+	else ()
 )
 
 trigger insertIntoQueue : {j:int , hj: collection {elem: real } @Vector } = \x -> (
@@ -104,21 +104,21 @@ trigger startProcess : () = \_ -> (
 This trigger is called for each q in {1,2...p} i.e. for each of the threads/nodes
 
 */
-	case (queue.peek () ) of 
-	{Some queueElement -> (       
-			data.iterate (\d -> (d.elem.iterate (\r -> (if (r.elem != 0.0) 
+	case (queue.peek () ) of
+	{Some queueElement -> (
+			data.iterate (\d -> (d.elem.iterate (\r -> (if (r.elem != 0.0)
 								// SGD update in the then case
-								 then ( ) 
+								 then ( )
 								  else ()
 
 								)
-							   )  
-					    )    
+							   )
+					    )
 				     );
 			//Push the queue element (j,hj) to a peer's queue
 			randInt = randomInteger (peers.size ());
-			peerAddress = ((peers_seq.at(randInt)).addr) ; 			
-			(insertIntoQueue,  peerAddress ) <- {j : queueElement.j , hj : queueElement.hj } )	
+			peerAddress = ((peers_seq.at(randInt)).addr) ;
+			(insertIntoQueue,  peerAddress ) <- {j : queueElement.j , hj : queueElement.hj } )
 
 			//remove the element from the present queue
 			queue.erase queueElement
@@ -131,7 +131,7 @@ This trigger is called for each q in {1,2...p} i.e. for each of the threads/node
 trigger load_all : () = \_ -> (
 
 	peers.iterate (\i -> peers_seq.insert i); // can't get a specific element of peers using 'at', probably because it is not ordered. Hence creating this Seq
-	dataFiles.iterate ( \d -> (print (concat "Reading the file " d.path ); loadVector d.path data));	
+	dataFiles.iterate ( \d -> (print ("Reading the file " ++ d.path ); loadVector d.path data));
 	//data.iterate(\d -> d.elem.iterate (\r -> (print (itos (d.size())   ) )))
 	(initialize, me) <- ();
 	//(initializeQueue, master)<-()

@@ -1,6 +1,12 @@
 include "Annotation/Collection.k3"
+include "Annotation/Map.k3"
+include "Annotation/Seq.k3"
+include "Annotation/Vector.k3"
 include "Core/Barrier.k3"
 include "Core/Profile.k3"
+include "Distributed/Transformers.k3"
+include "tpch/schema.k3"
+include "tpch/loader.k3"
 
 declare ignore : forall a. a -> () = \_ -> ()
 

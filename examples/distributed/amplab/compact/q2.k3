@@ -1,5 +1,3 @@
-include "Annotation/Collection.k3"
-include "Annotation/Map.k3"
 include "compact/AmplabBDB.k3"
 
 typedef adRevByIp = collection {key:string, value:real} @Collection
@@ -49,7 +47,7 @@ trigger start : () = \_ -> (() @:Start) @AmplabBenchmark(
   preReadyExpr       = [$ ()],
   finishArgT         = [: int],
   preTestFinishExpr  = [$ (\n -> num_results = num_results + n)],
-  preFinishExpr      = [$ print (concat "# Results: " (itos num_results))],
+  preFinishExpr      = [$ print ("# Results: " ++ (itos num_results))],
   preShutdownExpr    = [$ ()]
 )
 

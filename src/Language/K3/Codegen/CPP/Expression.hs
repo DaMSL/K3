@@ -91,6 +91,7 @@ binarySymbol OGth = return ">"
 binarySymbol OGeq = return ">="
 binarySymbol OAnd = return "&&"
 binarySymbol OOr = return "||"
+binarySymbol OConcat = return "+"
 binarySymbol b = throwE $ CPPGenE $ "Invalid Binary Operator " ++ show b
 
 -- | Realization of constants.

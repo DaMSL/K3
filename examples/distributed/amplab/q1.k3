@@ -45,8 +45,8 @@ trigger finished: int = \num_peer_results -> (
   if peers_finished == peers.size ()
   then end_ms = now_int ();
        elapsed_ms = end_ms - start_ms;
-       print (concat "# Results: " (itos num_results));
-       print (concat "Elapsed time (ms):" (itos elapsed_ms));
+       print ("# Results: " ++ (itos num_results));
+       print ("Elapsed time (ms):" ++ (itos elapsed_ms));
        peers.iterate (\p -> (shutdown, p.addr) <- ())
   else ()
 )
@@ -76,7 +76,7 @@ trigger load_all: () = \_ -> (
   );
   load_end_ms = now_int ();
   load_elapsed_ms = load_end_ms - load_start_ms;
-  print (concat "Load time: " (itos load_elapsed_ms));
+  print ("Load time: " ++ (itos load_elapsed_ms));
   ((ready, master) <- ())
 )
 

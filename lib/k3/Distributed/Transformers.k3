@@ -4,6 +4,41 @@ include "Core/Barrier.k3"
 include "Core/Builtins.k3"
 include "Core/Messaging.k3"
 
+control DistributedCollectionStatistics [ lbl         : label
+                                        , query_c     : expr
+                                        , coordinator : expr
+                                        , nodes       : expr
+                                        , next        : expr ]
+{
+  ?e => $[lbl]_get_cstats(); $.[e]
+     +> {
+          // Statistics data structure populated at the coordinator.
+          // Key is bucket address, value is bucket size.
+          declare $[lbl]_cstats : mut collection {key: address, value: int} @Map
+
+          // Use this method to gather collection statistics at the coordinator.
+          declare $[lbl]_get_cstats : () -> () = \_ -> (
+            $[nodes].iterate (\p -> ($[lbl]_collect_cstats, p.addr) <- ())
+          )
+
+          // Worker-side trigger to respond to statistics queries.
+          trigger $[lbl]_collect_cstats : () = \_ -> (
+            ($[lbl]_node_cstats, $[coordinator]) <- (me, $[query_c].size())
+          )
+
+          // Coordinator-side trigger to accumulate collection statistics returns.
+          // It prints the bucket distribution when all nodes are done reporting.
+          trigger $[lbl]_node_cstats : (address, int) = \ns -> (
+            (bind ns as (bucket_addr, bucket_size) in
+              $[lbl]_cstats.insert {key: bucket_addr, value: bucket_size});
+            ( print ($[|exprLabel 'lbl|] ++ " buckets: " ++
+                      ($[lbl]_cstats.fold (\acc -> \r -> (acc ++ atos(r.key) ++ " => " ++ itos(r.value) ++ " ")) ""));
+              $[next]
+            ) @OnCounter(id=[# $[lbl]_cstats_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
+          )
+        }
+}
+
 control DistributedGroupByGeneric [ lbl             : label
                                   , peer_next       : expr
                                   , next            : expr
@@ -58,6 +93,7 @@ control DistributedGroupBy [ lbl             : label
                             ]
             , coordinator = coordinator
             , nodes       = nodes )
+
      +> { declare $[lbl]_result : mut collection $::[t] @Map }
 }
 

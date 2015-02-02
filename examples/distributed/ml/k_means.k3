@@ -42,7 +42,7 @@ declare start_timer: () -> () = \_ -> (
 declare printStats: () -> () = \_ -> (
   let s = times.fold (\a -> \t -> a + t.ms) 0 in
   let avg = (1.0 / times.size()) * s in
-  print (concat "Avg time per iteration:" (rtos avg))
+  print ("Avg time per iteration:" ++ (rtos avg))
 
 )
 
@@ -112,7 +112,7 @@ declare merge_results: collection {key: int, value: {count: int, sum: feature_ve
 
 // Load data into global variable, then notify master.
 trigger load_all : () = \_ -> (
-   dataFiles.iterate (\e -> (print (concat "Loading File: " e.path); loadVector e.path data));
+   dataFiles.iterate (\e -> (print ("Loading File: " ++ e.path); loadVector e.path data));
    ((ready, master) <- ())
 )
 
@@ -120,8 +120,8 @@ trigger load_all : () = \_ -> (
 trigger ready: () = \_ -> (
   let n = peers.size () in
   peers_ready = peers_ready + 1;
-  let s = concat (itos peers_ready) (concat "/" (itos n)) in
-  print (concat "Received a ready signal from a peer:" s);
+  let s = (itos peers_ready) ++ "/" ++ (itos n) in
+  print ("Received a ready signal from a peer:" ++ s);
 
   if (peers_ready == n)
     then start ()
@@ -170,8 +170,8 @@ trigger maximize: () = \_ -> (
   iterations_remaining = iterations_remaining - 1;
   let elapsed = end_ms - start_ms in
   times.insert {ms: elapsed};
-  print (concat "Iteration complete, Elapsed time (ms): " (itos elapsed));
-  print (concat "Iterations remaining:" (itos iterations_remaining));
+  print ("Iteration complete, Elapsed time (ms): " ++ (itos elapsed));
+  print ("Iterations remaining:" ++ (itos iterations_remaining));
 
   // Decide to iterate, or terminate
   if iterations_remaining == 0

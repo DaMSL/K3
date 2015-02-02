@@ -23,8 +23,8 @@ declare start_timer: () -> () = \_ -> (
 declare printStats: () -> () = \_ -> (
   let s = times.fold (\a -> \t -> a + t.ms) 0 in
   let avg = (1.0 / times.size()) * s in
-  print (concat "Avg time per iteration: " (rtos avg));
-  print (concat "Total vertex count: " (itos vertex_count))
+  print ("Avg time per iteration: " ++ (rtos avg));
+  print ("Total vertex count: " ++ (itos vertex_count))
 )
 
 declare iterations: mut int = 5
@@ -64,7 +64,7 @@ declare aggregate_and_send_by_peer: () -> () = \_ -> (
 )
 
 declare scatter: () -> () = \_ -> (
-  print (concat "Starting Iteration: " (itos iterations));
+  print ("Starting Iteration: " ++ (itos iterations));
   start_timer ();
   consolidated_outgoing = empty { key: int, value: collection { key: vertex, value: page_rank } @ Map } @ { Map };
   state.iterate (\s -> state.insert {
@@ -111,7 +111,7 @@ trigger gather: collection { key: vertex, value: page_rank } @ { Map } = \messag
 
 declare reset_timer: () -> () = \_ -> (
   end_ms = now_int ();
-  let elapsed = end_ms - start_ms in (times.insert {ms: elapsed}; print (concat "Elapsed: " (itos elapsed)))
+  let elapsed = end_ms - start_ms in (times.insert {ms: elapsed}; print ("Elapsed: " ++ (itos elapsed)))
 )
 
 trigger load_all: () = \_ -> (

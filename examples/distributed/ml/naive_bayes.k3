@@ -85,7 +85,7 @@ trigger ready : () = \_ -> (
 )
 
 trigger load_all : () = \_ -> (
-   dataFiles.iterate (\e -> ( print (concat "Loading File: " e.path);
+   dataFiles.iterate (\e -> ( print ("Loading File: " ++ e.path);
                               dataLoader e.path data) );
    ((ready, master) <- ())
 )

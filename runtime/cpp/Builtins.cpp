@@ -138,15 +138,12 @@ namespace K3 {
     return string_impl(to_string(i));
   }
 
-  // TODO: more efficient implementation.
-  string_impl __string_context::concat(string_impl s1, string_impl s2) {
-    std::string ss1 = s1;
-    std::string ss2 = s2;
-    return string_impl(ss1 + ss2);
-  }
-
   string_impl __string_context::rtos(double d) {
     return string_impl(to_string(d));
+  }
+
+  string_impl __string_context::atos(Address a) {
+    return string_impl(addressAsString(a));
   }
 
   // Split a string by substrings

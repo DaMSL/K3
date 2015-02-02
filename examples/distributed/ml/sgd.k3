@@ -51,7 +51,7 @@ declare svm_gradient : collection {elem: real} @Vector   -> real -> collection {
   in
     if flag > 1
     then parameters.scalarMult lambda
-    else (parameters.scalarMult lambda).sub (x.scalarMult y)  
+    else (parameters.scalarMult lambda).sub (x.scalarMult y)
 )
 
 // Compute the gradient at a single point.
@@ -62,7 +62,7 @@ declare point_gradient: collection {elem: real} @Vector  -> real -> collection {
 
 // Update parameters based on a single point
 declare update_parameters: collection {elem: real} @Vector  -> real -> () = \point -> \class_label -> (
-  let update = (point_gradient point class_label) in 
+  let update = (point_gradient point class_label) in
   update.inPlaceScalarMult step_size;
   parameters.inPlaceSub update
 )
@@ -72,8 +72,8 @@ declare print_results : () -> () = \_ -> (
   let avg_iter_time = (time_stats.iter_time_sum / time_stats.iter_count) in
   end_ms = now_int ();
   elapsed_ms = end_ms - start_ms;
-  print (concat "Elapsed: " (itos elapsed_ms));
-  print (concat "Avg Time per Iteration: " (rtos avg_iter_time))
+  print ("Elapsed: " ++ (itos elapsed_ms));
+  print ("Avg Time per Iteration: " ++ (rtos avg_iter_time))
 )
 
 // Run SGD on local dataset.
@@ -114,7 +114,7 @@ trigger maximize : () = \_ -> (
   if iterations_remaining == 0
   then (print_results (); peers.iterate (\p -> (shutdown, p.addr) <- ()))
   else (
-    iter_start = now_int (); 
+    iter_start = now_int ();
     peers.iterate (\p -> (local_sgd, p.addr) <- parameters)
   )
 )

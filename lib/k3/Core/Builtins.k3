@@ -13,10 +13,6 @@ declare takeUntil : string -> string -> string
 declare countChar : string -> string -> int
 
 // TODO: move to String.k3
-@:CArgs 2
-declare concat : string -> string -> string
-
-// TODO: move to String.k3
 @:CArgs 3
 declare slice_string : string -> int -> int -> string
 
@@ -91,8 +87,10 @@ declare range : int -> collection {i : int} @ { Seq }
 // Value conversion
 declare truncate : real -> int
 declare real_of_int : int -> real
+
 declare itos : int -> string
 declare rtos : real -> string
+declare atos : address -> string
 
 // Maximum Int value
 declare get_max_int : () -> int

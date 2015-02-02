@@ -18,7 +18,7 @@ control OnCounter[id : label, eq : expr, reset : expr, profile : expr] {
                        { Some start_ms ->
                          let elapsed_ms = now_int() - start_ms in
                          ($[id]_span_ms = Some elapsed_ms);
-                         print (concat $[|exprLabel 'id|] (concat " barrier" (itos elapsed_ms))) }
+                         print ($[|exprLabel 'id|] ++ " barrier" ++ (itos elapsed_ms)) }
                        { None -> () })
                   else ());
 

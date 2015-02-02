@@ -1,11 +1,4 @@
-include "Annotation/Collection.k3"
-include "Annotation/Seq.k3"
-include "Core/Profile.k3"
-include "Core/Barrier.k3"
-include "Distributed/Transformers.k3"
-include "tpch/schema.k3"
 include "tpch/benchmark.k3"
-include "tpch/loader.k3"
 
 declare master : address
 
@@ -41,7 +34,7 @@ declare accum_agg : q1_agg -> lineitem_r -> q1_agg = \acc -> \r ->
   , count_order    : acc.count_order    + 1
   }
 
-declare merge_agg : q1_agg -> q1_agg -> q1_agg= \a -> \b -> (
+declare merge_agg : q1_agg -> q1_agg -> q1_agg = \a -> \b -> (
   { sum_qty        : a.sum_qty        + b.sum_qty
   , sum_base_price : a.sum_base_price + b.sum_base_price
   , sum_disc_price : a.sum_disc_price + b.sum_disc_price

@@ -13,6 +13,8 @@ import Data.Functor.Identity
 import qualified Data.HashSet as HashSet
 import Data.List
 
+import Debug.Trace
+
 import qualified Text.Parsec          as P
 import qualified Text.Parsec.Prim     as PP
 
@@ -54,7 +56,7 @@ processIncludes searchPaths prog excludes = do
   return $ nub $ newIncludes ++ excludes
 
   where includeError = error "Invalid include statement"
-        recurAndCombine td acc p = preprocess searchPaths p (acc ++ td) >>= return . (acc ++)
+        recurAndCombine td acc p = preprocess searchPaths p (nub $ acc ++ td) >>= \np -> return (acc ++ (np \\ td))
 
 preprocess :: [FilePath] -> FilePath -> [FilePath] -> IO [FilePath]
 preprocess searchPaths (normalise -> path) excludes = searchForPath >>= \actualPath ->
@@ -62,7 +64,7 @@ preprocess searchPaths (normalise -> path) excludes = searchForPath >>= \actualP
     then return []
     else do
       contents    <- readFile actualPath
-      subIncludes <- processIncludes searchPaths (lines contents) ([actualPath, path] ++ excludes)
+      subIncludes <- processIncludes searchPaths (lines contents) (nub $ [actualPath, path] ++ excludes)
       return $ if actualPath == path then subIncludes else filter (path /=) subIncludes
 
   where matchPath p = SF.find SF.always matchClause p
@@ -72,7 +74,7 @@ preprocess searchPaths (normalise -> path) excludes = searchForPath >>= \actualP
         preprocessError msg = error $ "Preprocessing failed: " ++ msg ++ "\nSearch paths: " ++ unlines searchPaths
 
         searchForPath = do
-          matches <- mapM matchPath searchPaths >>= return . concat  
+          matches <- mapM matchPath searchPaths >>= return . concat
           case matches of
             [x] -> return x
             []  -> preprocessError $ "no matching file found for " ++ path

@@ -1,3 +1,7 @@
+include "Annotation/Collection.k3"
+include "Annotation/Seq.k3"
+include "Annotation/Vector.k3"
+
 typedef lineitem_r = {
       l_orderkey         : int,
       l_partkey          : int,

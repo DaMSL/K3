@@ -1,4 +1,5 @@
 {-# LANGUAGE DoAndIfThenElse #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE PatternSynonyms #-}
@@ -514,8 +515,12 @@ betaReductionDelta expr = foldMapTree reduce ([], False) expr >>= return . first
         (False, PAppLam i bodyE argE _ _) -> reduceOnOccurrences n' i argE bodyE
         (_, _) -> return ([n'], False)
 
+    -- This reduction is extremely conservative: we proceed only if both the target and
+    -- substitution are read only. A more general form is if there are no writes to any
+    -- variables in the substitution in the target, in the prefix of all substitution points.
     reduceOnOccurrences n i ie e = do
       ieRO <- readOnly False ie
+      eRO  <- readOnly True e
       let numOccurs = length $ filter (== i) $ freeVariables e
       doReduce <- case (tag ie, ie @~ isEType) of
                     (_, Nothing) -> Left "No type found on target during beta reduction"
@@ -530,7 +535,7 @@ betaReductionDelta expr = foldMapTree reduce ([], False) expr >>= return . first
                     (EConstant _, _) -> Right True
                     _ -> Right $ numOccurs == 1
 
-      if ieRO && doReduce then return ([substituteImmutBinding i (cleanExpr ie) e], True)
+      if ieRO && eRO && doReduce then return ([substituteImmutBinding i (cleanExpr ie) e], True)
       else return ([n], False)
 
     onSub ch = (concat *** any id) $ unzip ch
@@ -715,6 +720,14 @@ type CandidateTree     = Tree (UID, Candidates)
 type Substitution      = (UID, K3 Expression, Int)
 type NamedSubstitution = (UID, Identifier, K3 Expression, Int)
 
+instance Pretty CandidateTree where
+  prettyLines (Node (uid, cands) ch) =
+    [show uid ++ " => "]
+      ++ (indent 2 $ concatMap prettyCandidates cands)
+      ++ drawSubTrees ch
+
+    where prettyCandidates (e, cnt) = [show cnt ++ " "] %+ prettyLines e
+
 commonProgramSubexprElim :: Maybe Int -> K3 Declaration -> Either String (Maybe Int, K3 Declaration)
 commonProgramSubexprElim cseCntOpt prog = foldExpression commonSubexprElim cseCntOpt prog
 
@@ -762,7 +775,7 @@ commonSubexprElim cseCntOpt expr = do
               nStrippedExpr = Node (tag t :@: cseValidAnnotations t) $ concat sExprCh
           in do
             nRO <- readOnly False n
-            let propagatedExprs = if nRO then (concat subAcc)++[nStrippedExpr] else []
+            let propagatedExprs = if nRO then filteredCands ++ [nStrippedExpr] else []
             return $ ([candTreeNode], [nStrippedExpr], propagatedExprs)
 
         _ -> uidError n

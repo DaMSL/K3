@@ -4,7 +4,7 @@ control Profile[lbl : label] {
   ?e => let start = now_int () in
         let result = $.[e] in
         let end = now_int () in
-        ((print (concat $[|exprLabel 'lbl|] (itos (end-start))));
+        ((print ($[|exprLabel 'lbl|] ++ (itos (end-start))));
         result)
 }
 

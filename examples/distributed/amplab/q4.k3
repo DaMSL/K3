@@ -120,11 +120,11 @@ trigger end_barrier : () = \_ -> (
   if peers_finished == (peers.size ())
   then end_ms = now_int ();
        elapsed_ms = end_ms - start_ms;
-       print (concat "Elapsed: " (itos elapsed_ms));
-       print (concat "Num results: " (itos (url_counts_agg.size ())));
-       print (concat "Split time: " (itos split_time));
-       print (concat "Regex time: " (itos regex_time));
-       print (concat "Agg time: " (itos agg_time));
+       print ("Elapsed: " ++ (itos elapsed_ms));
+       print ("Num results: " ++ (itos (url_counts_agg.size ())));
+       print ("Split time: " ++ (itos split_time));
+       print ("Regex time: " ++ (itos regex_time));
+       print ("Agg time: " ++ (itos agg_time));
        peers.iterate (\p -> (shutdown, p.addr) <- ())
   else ()
 

@@ -1,9 +1,4 @@
-include "Annotation/Collection.k3"
-include "Core/Builtins.k3"
-include "tpch/schema.k3"
-include "tpch/loader.k3"
 include "tpch/benchmark.k3"
-
 
 declare lineitem : lineitem_bag
 declare q6_result : mut real = 0.0
@@ -18,9 +13,8 @@ trigger q6_local : () = \_ -> (
                         and ( r.l_discount <= ( 0.07 ) )
                         and ( r.l_quantity < 24 )
                   )
-        ).fold    (\acc -> \r -> acc + (r.l_extendedprice * r.l_discount)) 0.0
-      ) 
-      ) @:Result) @TPCHBenchmark)
+        ).fold    (\acc -> \r -> (acc + (r.l_extendedprice * r.l_discount))) 0.0
+      )) @:Result) @TPCHBenchmark)
 )
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
@@ -31,7 +25,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
   preReadyExpr       = [$ ()],
   finishArgT         = [: real],
   preTestFinishExpr  = [$ (\x -> q6_result = q6_result + x)],
-  preFinishExpr      = [$ results.insert {revenue: q6_result}; (print (concat "Result: " (rtos q6_result)))],
+  preFinishExpr      = [$ results.insert {revenue: q6_result}; (print ("Result: " ++ (rtos q6_result)))],
   preShutdownExpr    = [$ ()]
 )
 

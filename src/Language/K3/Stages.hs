@@ -149,6 +149,11 @@ displayPass :: String -> ProgramTransform -> ProgramTransform
 displayPass n f p = f p >>= \np -> mkTg n np (return np)
   where mkTg str p' = trace (boxToString $ [str] %$ prettyLines p')
 
+-- | Show the program both before and after applying the given program transform.
+debugPass :: String -> ProgramTransform -> ProgramTransform
+debugPass n f p = mkTg (n ++ " before") p (f p) >>= \np -> mkTg (n ++ " after") np (return np)
+  where mkTg str p' = trace (boxToString $ [str] %$ prettyLines p')
+
 -- | Measure the execution time of a transform
 timePass :: String -> ProgramTransform -> ProgramTransform
 timePass n f prog = do
@@ -577,7 +582,7 @@ declTransforms snSpec extInfOpt n = topLevel
         mk  foldConstants        "Decl-CF"  False True False Nothing
       , mk  betaReduction        "Decl-BR"  False True False Nothing
       , mk  eliminateDeadCode    "Decl-DCE" False True False Nothing
-      , mkW cseTransform         "Decl-CSE" False True       Nothing
+      , mkW cseTransform         "Decl-CSE" False True False Nothing
       , mkD encodeTransformers   "Decl-FE"  True  True False (Just [typEffI])
       , mk  fuseFoldTransformers "Decl-FT"  True  True False (Just fusionI)
       , fusionReduce
@@ -602,10 +607,11 @@ declTransforms snSpec extInfOpt n = topLevel
       $ foldNamedDeclExpression n f False
 
     -- Wrap an existing transform
-    mkW tr i asReified asRepair fixPassOpt = mkSS $ (i,)
+    mkW tr i asReified asRepair asDebug fixPassOpt = mkSS $ (i,)
       $ (maybe id mkFixI fixPassOpt)
       $ (if asReified then reifyPass else id)
       $ (if asRepair then withRepair i else id)
+      $ (if asDebug then debugPass i else id)
       $ tr
 
     evalP          = reifyPass

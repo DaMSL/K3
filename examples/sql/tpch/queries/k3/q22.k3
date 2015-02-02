@@ -1,8 +1,4 @@
-include "Core/Builtins.k3"
-include "Distributed/Transformers.k3"
-include "tpch/schema.k3"
 include "tpch/benchmark.k3"
-include "tpch/loader.k3"
 
 /**********************
 * SQL query

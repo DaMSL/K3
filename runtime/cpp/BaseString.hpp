@@ -47,6 +47,14 @@ class base_string {
     buffer = 0;
   }
 
+  base_string operator +(const base_string& other) const {
+    return base_string(std::string(buffer) + std::string(other.buffer));
+  }
+
+  base_string operator +(base_string&& other) {
+    return base_string(std::string(buffer) + std::string(other.buffer));
+  }
+
   base_string& operator =(const base_string& other) {
     base_string temp(other);
     swap(*this, temp);
@@ -198,11 +206,11 @@ class base_string {
 
 namespace JSON {
   template <> struct convert<K3::base_string> {
-    template <class Allocator> 
+    template <class Allocator>
     static rapidjson::Value encode(const K3::base_string& from, Allocator& al) {
       Value v;
       if (from.c_str()) {
-        v.SetString(from.c_str(), al); 
+        v.SetString(from.c_str(), al);
       }
       else {
         v.SetString("", al);

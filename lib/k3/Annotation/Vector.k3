@@ -1,7 +1,7 @@
 include "Annotation/Collection.k3"
 
 // Vectors must have a content type of {elem: real}
-annotation Vector given type a{
+annotation Vector given type a, b {
   // TODO: bounds checking
   provides lifted at  : int -> content
     with effects \_ -> [R[i]; R[self]]

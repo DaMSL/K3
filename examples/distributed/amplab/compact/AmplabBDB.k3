@@ -1,10 +1,12 @@
 include "Annotation/Collection.k3"
+include "Annotation/Map.k3"
 include "Annotation/Seq.k3"
 include "Core/Builtins.k3"
 include "Core/Barrier.k3"
 include "Core/Profile.k3"
 include "Core/Messaging.k3"
 include "Core/Loaders.k3"
+include "Distributed/Transformers.k3"
 
 typedef uv_record = {
     sourceIP     : string,
