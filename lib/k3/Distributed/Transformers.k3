@@ -39,16 +39,30 @@ control DistributedCollectionStatistics [ lbl         : label
         }
 }
 
+
+// Distributed Group By Implementation
+// Enabling profiling will display the total elapsed time for the operator
+// And skew statistics, namely:
+//   - Difference in time between first and last peer finished with the group-by
+//   - Number of keys assigned to each peer
+
 control DistributedGroupByGeneric [ lbl             : label
                                   , peer_next       : expr
                                   , next            : expr
                                   , merge           : expr
                                   , coordinator     : expr
-                                  , nodes           : expr ]
+                                  , nodes           : expr
+                                  , profile         : expr ]
 {
   ignore ( (?e.groupBy ?groupF ?aggF ?accE) : collection ?t )
-     => $[nodes].iterate (\p -> ($[lbl]_scan, p.addr) <- ())
+     => ((if $[profile]
+          then $[lbl]_start_ts = now_int ()
+          else ());
+        $[nodes].iterate (\p -> ($[lbl]_scan, p.addr) <- ()) )
      +> {
+          declare $[lbl]_start_ts : mut int = 0
+          declare $[lbl]_end_ts : mut int = 0
+
           trigger $[lbl]_scan : () = \_ -> (
             (ignore ( $.[e].groupBy $.[groupF] $.[aggF] $.[accE]
             ) @SendPartitionByKey( dest_trg    = [$ $[lbl]_merge]
@@ -68,8 +82,14 @@ control DistributedGroupByGeneric [ lbl             : label
           )
 
           trigger $[lbl]_global_barrier : () = \_ -> (
-            ( $[next]
-            ) @OnCounter(id=[# $[lbl]_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
+            ( if $[profile]
+                then ( $[lbl]_end_ts = now_int ();
+                       let elapsed = $[lbl]_end_ts - $[lbl]_start_ts
+                       in print ($[|exprLabel 'lbl|] ++ " total time: " ++ (itos elapsed))
+                     )
+                else ();
+              $[next]
+            ) @OnCounter(id=[# $[lbl]_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ $[profile]])
           )
         }
 }
@@ -79,7 +99,8 @@ control DistributedGroupBy [ lbl             : label
                            , next            : expr
                            , merge           : expr
                            , coordinator     : expr
-                           , nodes           : expr ]
+                           , nodes           : expr
+                           , profile         : expr ]
 {
   ignore ( (?e.groupBy ?groupF ?aggF ?accE) : collection ?t )
      => (ignore ($.[e].groupBy $.[groupF] $.[aggF] $.[accE]))
@@ -92,7 +113,8 @@ control DistributedGroupBy [ lbl             : label
                                     {key:a.key, value: $[merge] a.value b.value}))
                             ]
             , coordinator = coordinator
-            , nodes       = nodes )
+            , nodes       = nodes
+            , profile     = [$ $[profile] ] )
 
      +> { declare $[lbl]_result : mut collection $::[t] @Map }
 }
