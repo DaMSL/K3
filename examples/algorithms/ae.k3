@@ -73,26 +73,7 @@ declare activationFunctionDerivate : real -> real = \x -> (
 	1.0 //Modify this
 )
 
-//This is equivalent to Neuron feedForward 
-declare neuronFeedForward : Net -> int -> int -> Layer -> real = \net-> \layerNum-> \neuronIndex -> \prevLayer -> (
-	// Change these to use fold function
-	//fold    : (a -> (content -> a)) -> a -> a
-	//sumMyC = myCollection.fold (\acc -> (\r -> acc + r.x)) 0;
-	//sum = prevLayer.fold (\sum -> (\elem -> sum + elem.neuron.m_outputValue * (elem.neuron.m_outputWeights.at(neuronIndex)).connection.weight )) 0.0;
 
-	
-	sum = 0.0;		
-	//(range (prevLayer.size ())).iterate (\elem -> ( sum = sum+ (prevLayer.at(elem.i)).neuron.m_outputValue * ((prevLayer.at(elem.i)).neuron.m_outputWeights.at(neuronIndex)).connection.weight  )); 
-
-	// TODO 
-	//testNeuron = ((net.m_layer.at(layerNum)).layer.at(neuronIndex)).neuron;
-	//testNeuron.m_outputValue = sum;
-		
-	//((net.m_layer.at(layerNum)).layer.at(neuronIndex)).neuron.m_outputValue = sum;
-
-	//print "Done";
-	activationFunction sum
-)
 
 declare createNeuron : int -> int -> Neuron = \numOutputs -> \myIndex -> (
 	let newNeuron = {m_outputValue: mut 0.0 , m_myIndex: mut myIndex, m_gradient: mut 0.0 , m_outputWeights : empty {connection : Connection} @Seq , eta: 0.15, alpha : 0.15 } in 
@@ -127,7 +108,13 @@ declare backProp : Net -> collection {i: mut real } @Seq -> () = \net -> \output
 
 )
 
-
+//This is equivalent to Neuron feedForward 
+declare neuronFeedForward : Net -> int -> int -> Layer -> real = \net-> \layerNum-> \neuronIndex -> \prevLayer -> (
+	
+	//fold    : (a -> (content -> a)) -> a -> a
+	let sum = prevLayer.fold (\sum -> (\elem -> sum + elem.neuron.m_outputValue * (elem.neuron.m_outputWeights.at(neuronIndex)).connection.weight )) 0.0 in 
+	activationFunction sum
+)
 
 declare xrange : int -> int -> collection {i: int } @Seq  = \start -> \end -> (
 	(range end).filter (\x -> x.i >= start)
