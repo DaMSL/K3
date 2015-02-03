@@ -144,6 +144,7 @@ declare netFeedForward : Net ->  Net  = \net -> (
         // TODO : update the output of the bias term in the first layer
         
         //feedforward the subsequent layers
+
         (xrange 1 (net.m_layer.size ())).iterate (
                 \layerNum -> (
                         let prevLayer = (net.m_layer.at(layerNum.i -1)).layer in 
