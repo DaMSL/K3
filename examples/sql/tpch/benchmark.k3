@@ -38,6 +38,9 @@ control TPCHBenchmarkWithoutMaster
       declare nationFiles   : collection {path : string} @Collection
       declare regionFiles   : collection {path : string} @Collection
 
+      // Timing for loading
+      declare program_start_ts : mut int = 0
+
       declare index_by_hash : forall a. a -> int = (\s -> (
         let n = $[nodes].size () in
         let h = (hash s) in
@@ -65,13 +68,17 @@ control TPCHBenchmarkWithoutMaster
       // A 'ready' trigger which starts the query once all nodes are alive. This is invoked at the master.
       trigger ready : () = \_ -> (
         ( $[preReadyExpr];
-          (( $[onReadyExpr] @:StartTimer) @Time(lbl=[# query], tag=[$ "Query time:"])
+          (
+          (let load_time = (now_int () - program_start_ts)
+          in print ("Load time:" ++  (itos load_time)) );
+          ( $[onReadyExpr] @:StartTimer) @Time(lbl=[# query], tag=[$ "Query time:"])
           ) @OnCounter(id=[#  nodes_ready], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false]))
       )
 
       trigger load_all : () = \_ -> (
+        program_start_ts = now_int ();
         $[preLoadExpr];
-        ($[loadExpr]) @Profile(lbl=[# loader], tag=[$ "Load time"]);
+        $[loadExpr];
         ((ready, master) <- ())
       )
     }

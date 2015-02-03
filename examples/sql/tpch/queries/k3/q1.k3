@@ -78,7 +78,8 @@ trigger q1 : () = \_ -> (
       next        = [$ ()],
       merge       = [$ merge_agg],
       coordinator = [$ master],
-      nodes       = [$ peers] )
+      nodes       = [$ peers],
+      profile     = [$ false] )
 )
 
 trigger start : () = \_ -> (

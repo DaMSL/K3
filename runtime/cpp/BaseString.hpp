@@ -47,12 +47,14 @@ class base_string {
     buffer = 0;
   }
 
-  base_string operator +(const base_string& other) const {
-    return base_string(std::string(buffer) + std::string(other.buffer));
+  base_string& operator += (const base_string& other) {
+    auto new_string = std::string(buffer) + std::string(other.buffer);
+    buffer = dupstr(new_string.c_str());
+    return *this;
   }
 
-  base_string operator +(base_string&& other) {
-    return base_string(std::string(buffer) + std::string(other.buffer));
+  base_string& operator += (const char* other) {
+    return *this += base_string(other);
   }
 
   base_string& operator =(const base_string& other) {
@@ -201,6 +203,19 @@ class base_string {
  private:
   char* buffer;
 };
+
+  inline base_string operator + (base_string s, base_string const& t) {
+    return s += t;
+  }
+
+  inline base_string operator + (base_string s, char const* t) {
+    return s += t;
+  }
+
+  inline base_string operator + (char const* t, base_string const& s) {
+    auto new_string = base_string(t);
+    return new_string += s;
+  }
 
 } // namespace K3
 

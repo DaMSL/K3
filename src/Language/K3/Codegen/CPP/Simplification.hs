@@ -53,6 +53,9 @@ simplifyCPPExpression expr =
 simplifyCPPDeclaration :: Declaration -> SimplificationM Declaration
 simplifyCPPDeclaration decl =
   case decl of
+    ScalarDecl n Inferred (Just (Literal (LString s))) ->
+      return $ ScalarDecl n Inferred (Just $ Initialization (Named $ Qualified (Name "K3") (Name "base_string"))
+                                               [Literal $ LString s])
     ScalarDecl n t (Just e) -> ScalarDecl n t . Just <$> simplifyCPPExpression e
     _ -> return decl
 
