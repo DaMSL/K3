@@ -141,16 +141,27 @@ declare netFeedForward : Net ->  Net  = \net -> (
 			bind (((net.m_layer.at(0)).layer.at(i.i)).neuron ) as { m_outputValue : x} in ( x = (inputValues.at(i.i)).i)
 		)
 	); 
-        // TODO : update the output of the bias term in the first layer
+	
+    
         
         //feedforward the subsequent layers
-
         (xrange 1 (net.m_layer.size ())).iterate (
                 \layerNum -> (
                         let prevLayer = (net.m_layer.at(layerNum.i -1)).layer in 
                         (xrange 0 (((net.m_layer.at(layerNum.i)).layer).size ()-1)).iterate (\i -> (
                                 let sum = neuronFeedForward net layerNum.i i.i prevLayer in 
                                 bind (((net.m_layer.at(layerNum.i)).layer.at(i.i)).neuron ) as {m_outputValue : x} in (x= sum)
+                        ) )
+                )
+        );
+        
+    	// TODO : fix the output of the bias term in all the layers to 1.0
+        (xrange 0 (net.m_layer.size ())).iterate (
+                \layerNum -> (
+                        let prevLayer = (net.m_layer.at(layerNum.i -1)).layer in 
+                        (xrange 0 (((net.m_layer.at(layerNum.i)).layer).size ()-1)).iterate (\i -> (
+                                let lastElementPosition = (((net.m_layer.at(layerNum.i)).layer).size ()-1) in 
+                                bind (((net.m_layer.at(layerNum.i)).layer.at(lastElementPosition)).neuron ) as {m_outputValue : x} in (x= 1.0)
                         ) )
                 )
         );
