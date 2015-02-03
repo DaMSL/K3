@@ -204,11 +204,15 @@ class base_string {
   char* buffer;
 };
 
+  inline base_string operator + (base_string s, base_string const& t) {
+    return s += t;
+  }
+
   inline base_string operator + (base_string s, char const* t) {
     return s += t;
   }
 
-  inline base_string operator + (char const* t, base_string s) {
+  inline base_string operator + (char const* t, base_string const& s) {
     auto new_string = base_string(t);
     return new_string += s;
   }
