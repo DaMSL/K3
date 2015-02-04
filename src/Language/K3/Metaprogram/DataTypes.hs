@@ -37,10 +37,11 @@ data GeneratorDecls = GeneratorDecls { dataADecls :: Map Identifier [K3 Declarat
                                      , ctrlADecls :: Map Identifier (Set (K3 Declaration)) }
 
 -- | Haskell-K3 metaprogramming bridge options.
-data MPEvalOptions = MPEvalOptions { mpInterpArgs  :: [String]
-                                   , mpSearchPaths :: [String]
-                                   , mpLoadPaths   :: [String]
-                                   , mpImportPaths :: [String] }
+data MPEvalOptions = MPEvalOptions { mpInterpArgs   :: [String]
+                                   , mpSearchPaths  :: [String]
+                                   , mpLoadPaths    :: [String]
+                                   , mpImportPaths  :: [String]
+                                   , mpQImportPaths :: [(String, Maybe String)] }
 
 data GeneratorState = GeneratorState { generatorUid    :: Int
                                      , generatorEnv    :: GeneratorEnv
@@ -238,29 +239,37 @@ generatorDeclsToList (GeneratorDecls dd cd) =
 {- Haskell-K3 metaprogram evaluation options -}
 
 defaultMPEvalOptions :: MPEvalOptions
-defaultMPEvalOptions = MPEvalOptions dInterpArgs dSearchPaths dLoadPaths dImportPaths
+defaultMPEvalOptions = MPEvalOptions dInterpArgs dSearchPaths dLoadPaths dImportPaths dQImportPaths
   where
-    dInterpArgs  = ["-package-db", ".cabal-sandbox/x86_64-windows-ghc-7.8.3-packages.conf.d"]
-    dSearchPaths = [".", "../K3-Core/src"]
-    dLoadPaths   = [ "Language.K3.Core.Metaprogram"
-                   , "Language.K3.Metaprogram.Primitives.Values"
-                   , "Language.K3.Metaprogram.Primitives.Distributed" ]
-    dImportPaths = [ "Prelude"
-                   , "Data.Map"
-                   , "Data.Tree"
-                   , "Language.K3.Core.Annotation"
-                   , "Language.K3.Core.Common"
-                   , "Language.K3.Core.Type"
-                   , "Language.K3.Core.Expression"
-                   , "Language.K3.Core.Declaration"
-                   , "Language.K3.Core.Metaprogram"
-                   , "Language.K3.Metaprogram.Primitives.Values"
-                   , "Language.K3.Metaprogram.Primitives.Distributed" ]
+    dInterpArgs   = ["-package-db", ".cabal-sandbox/x86_64-windows-ghc-7.8.3-packages.conf.d"]
+    dSearchPaths  = [".", "../K3-Core/src"]
+    dLoadPaths    = [ "Language.K3.Core.Metaprogram"
+                    , "Language.K3.Core.Constructor.Type"
+                    , "Language.K3.Core.Constructor.Expression"
+                    , "Language.K3.Core.Constructor.Declaration"
+                    , "Language.K3.Metaprogram.Primitives.Values"
+                    , "Language.K3.Metaprogram.Primitives.Distributed" ]
+    dImportPaths  = [ "Prelude"
+                    , "Control.Monad"
+                    , "Data.Map"
+                    , "Data.Tree"
+                    , "Language.K3.Core.Annotation"
+                    , "Language.K3.Core.Common"
+                    , "Language.K3.Core.Type"
+                    , "Language.K3.Core.Expression"
+                    , "Language.K3.Core.Declaration"
+                    , "Language.K3.Core.Metaprogram"
+                    , "Language.K3.Metaprogram.Primitives.Values"
+                    , "Language.K3.Metaprogram.Primitives.Distributed" ]
+    dQImportPaths = [ ("Language.K3.Core.Constructor.Type",        Just "TC")
+                    , ("Language.K3.Core.Constructor.Expression",  Just "EC")
+                    , ("Language.K3.Core.Constructor.Declaration", Just "DC")
+                    ]
 
 initializeInterpreter :: MPEvalOptions -> Interpreter ()
 initializeInterpreter evalOpts = do
   void $  HI.set [HI.searchPath HI.:= (mpSearchPaths evalOpts)]
   void $  HI.loadModules $ (mpLoadPaths evalOpts)
-  void $  HI.setImports $ (mpImportPaths evalOpts)
+  void $  HI.setImportsQ $ (map (,Nothing) (mpImportPaths evalOpts) ++ mpQImportPaths evalOpts)
   mods <- HI.getLoadedModules
   logVoid True $ ("Loaded: " ++ show mods)

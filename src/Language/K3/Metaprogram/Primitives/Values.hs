@@ -1,10 +1,33 @@
 module Language.K3.Metaprogram.Primitives.Values where
 
+import Language.K3.Core.Common
+import Language.K3.Core.Annotation
+import Language.K3.Core.Expression
+import Language.K3.Core.Type
+
 import Language.K3.Core.Constructor.Type       as TC
 import Language.K3.Core.Constructor.Literal    as LC
 import Language.K3.Core.Constructor.Expression as EC
 
 import Language.K3.Core.Metaprogram
+
+{- Splice value extractors -}
+idOfSLabel :: SpliceValue -> Maybe Identifier
+idOfSLabel (SLabel i) = Just i
+idOfSLabel _ = Nothing
+
+tyOfSType :: SpliceValue -> Maybe (K3 Type)
+tyOfSType (SType t) = Just t
+tyOfSType _ = Nothing
+
+expOfSExpr :: SpliceValue -> Maybe (K3 Expression)
+expOfSExpr (SExpr e) = Just e
+expOfSExpr _ = Nothing
+
+elemsOfSList :: SpliceValue -> Maybe [SpliceValue]
+elemsOfSList (SList svs) = Just svs
+elemsOfSList _ = Nothing
+
 
 {- Splice value operations -}
 concatLabel :: SpliceValue -> SpliceValue -> SpliceValue

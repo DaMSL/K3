@@ -93,7 +93,8 @@ trigger lineitem_having : () = \_ -> (
       next        = [$ (print "LI shuffle all nodes finished"; (lineitem_orders, me) <- ()) ],
       merge       = [$ (\a -> \b -> a + b)],
       coordinator = [$ master],
-      nodes       = [$ peers] )
+      nodes       = [$ peers],
+      profile     = [$ false] )
 )
 
 // Since lineitem is already partitioned by orderkey, we can implement the
@@ -124,7 +125,8 @@ trigger lineitem_orders : () = \_ -> (
                           }
                           {None -> ()})],
       coordinator = [$ master],
-      nodes       = [$ peers] )
+      nodes       = [$ peers],
+      profile     = [$ false] )
 )
 
 trigger lineitem_orders_customer : () = \_ -> (

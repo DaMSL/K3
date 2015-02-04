@@ -5,7 +5,7 @@ include "Core/Builtins.k3"
 include "Core/Messaging.k3"
 
 control DistributedCollectionStatistics [ lbl         : label
-                                        , query_c     : expr
+                                        , query_cl    : [{cl:label, ce:expr}]
                                         , coordinator : expr
                                         , nodes       : expr
                                         , next        : expr ]
@@ -14,7 +14,14 @@ control DistributedCollectionStatistics [ lbl         : label
      +> {
           // Statistics data structure populated at the coordinator.
           // Key is bucket address, value is bucket size.
-          declare $[lbl]_cstats : mut collection {key: address, value: int} @Map
+          declare $[lbl]_cstats : mut collection {key: address, value: $[|
+            -- This metaprogram creates a K3 record type using the list of collection labels.
+            -- Each field is an integer type, to store the number of keys in the distributed collection.
+            -- {<clbl 1> : int, <clbl 2> : int}
+            let recErr _ = error "Invalid collection statistics type record" in
+            let sizeFieldLT cRec = spliceRecordField cRec "cl" >>= idOfSLabel >>= \clbl -> return (clbl,TC.int)
+            in maybe (recErr ()) (SType . TC.record) (elemsOfSList 'query_cl >>= mapM sizeFieldLT)
+          |]} @Map
 
           // Use this method to gather collection statistics at the coordinator.
           declare $[lbl]_get_cstats : () -> () = \_ -> (
@@ -23,16 +30,45 @@ control DistributedCollectionStatistics [ lbl         : label
 
           // Worker-side trigger to respond to statistics queries.
           trigger $[lbl]_collect_cstats : () = \_ -> (
-            ($[lbl]_node_cstats, $[coordinator]) <- (me, $[query_c].size())
+            ($[lbl]_node_cstats, $[coordinator]) <- (me, $[|
+              -- This metaprogram creates a record expression that contains fields
+              -- populated with all of the desired collection sizes.
+              let recErr _ = error "Invalid collection statistics record expr" in
+              let sizeFieldLE cRec = do { l <- (spliceRecordField cRec "cl" >>= idOfSLabel);
+                                          e <- (spliceRecordField cRec "ce" >>= expOfSExpr);
+                                          return (l, EC.applyMany (EC.project "size" e) [EC.unit]) }
+              in maybe (recErr ()) (SExpr . EC.record) (elemsOfSList 'query_cl >>= mapM sizeFieldLE)
+            |])
           )
 
           // Coordinator-side trigger to accumulate collection statistics returns.
           // It prints the bucket distribution when all nodes are done reporting.
-          trigger $[lbl]_node_cstats : (address, int) = \ns -> (
-            (bind ns as (bucket_addr, bucket_size) in
-              $[lbl]_cstats.insert {key: bucket_addr, value: bucket_size});
+          trigger $[lbl]_node_cstats : (address, $[|
+            -- This is the same K3 record constructor metaprogram as above.
+            -- We could provide a common context of splice values in control annotation rewrites
+            -- or support proper arbitrary nesting of Haskell/K3 metaprograms with a K3 quasiquoter.
+            let recErr _ = error "Invalid collection statistics type record" in
+            let sizeFieldLT cRec = spliceRecordField cRec "cl" >>= idOfSLabel >>= \clbl -> return (clbl,TC.int)
+            in maybe (recErr ()) (SType . TC.record) (elemsOfSList 'query_cl >>= mapM sizeFieldLT)
+          |])
+          = \ns -> (
+            (bind ns as (bucket_addr, cbucket_sizes) in
+              $[lbl]_cstats.insert {key: bucket_addr, value: cbucket_sizes});
             ( print ($[|exprLabel 'lbl|] ++ " buckets: " ++
-                      ($[lbl]_cstats.fold (\acc -> \r -> (acc ++ atos(r.key) ++ " => " ++ itos(r.value) ++ " ")) ""));
+                      ($[lbl]_cstats.fold (\acc -> \r -> (acc ++ atos(r.key) ++ " => " ++ $[|
+                      -- This metaprogram flattens all collection sizes into a K3 string expression.
+                      let strError _ = error "Invalid collection statistics report" in
+                      let sizeStr flbl = EC.applyMany (EC.variable "itos")
+                                           [EC.project flbl $ EC.project "value" $ EC.variable "r"] in
+                      let reportStr acc cRec = do { clbl <- spliceRecordField cRec "cl" >>= idOfSLabel;
+                                                    return $ EC.binop OConcat acc
+                                                           $ EC.binop OConcat (sizeStr clbl)
+                                                           $ EC.constant (CString " ") }
+                      in
+                      let repExpr cRecs = foldM reportStr (EC.constant (CString "")) cRecs in
+                      maybe (strError ()) SExpr $ (elemsOfSList 'query_cl >>= repExpr)
+                      |]
+                      )) ""));
               $[next]
             ) @OnCounter(id=[# $[lbl]_cstats_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
           )

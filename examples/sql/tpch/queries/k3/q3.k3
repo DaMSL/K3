@@ -157,17 +157,13 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   finishArgT           = [: ()],
   preTestFinishExpr    = [$ (\_ -> ())],
   preFinishExpr        = [$ () @DistributedCollectionStatistics(
-                                    lbl         = [# lo_skew],
-                                    query_c     = [$ li_epd_by_ok_map ],
+                                    lbl         = [# q3_skew ],
+                                    query_cl    = [* [% cl: [# lo_skew],  ce: [$ li_epd_by_ok_map]]
+                                                   , [% cl: [# loc_skew], ce: [$ lior_epdods_map]]
+                                                  ],
                                     coordinator = [$ master ],
                                     nodes       = [$ peers ],
-                                    next        = [$
-                            () @DistributedCollectionStatistics(
-                                    lbl         = [# loc_skew],
-                                    query_c     = [$ lior_epdods_map ],
-                                    coordinator = [$ master ],
-                                    nodes       = [$ peers ],
-                                    next        = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ])])
+                                    next        = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ])
                          ],
   preShutdownExpr      = [$ q3_peer_result.iterate (\r ->
                                 results.insert { orderkey: r.key.ok
