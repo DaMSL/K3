@@ -80,14 +80,14 @@ declare createNeuron : int -> int -> Neuron = \numOutputs -> \myIndex -> (
 	(
 	(range numOutputs).iterate (
 		\conn -> (
-			((newNeuron.m_outputWeights).insert {connection : {weight: mut 0.0, deltaWeight: mut 0.0}}); // Update to random number 
+			((newNeuron.m_outputWeights).insert {connection : {weight: mut 0.0, deltaWeight: mut 0.0}}); // TODO : Update to random number 
 			print "Done"
 		)
 	);
 	newNeuron )
 )
 
-declare backProp : Net -> collection {i: mut real } @Seq -> () = \net -> \outputValues -> (
+declare backProp : Net -> collection {i: mut real } @Seq -> Net = \net -> \outputValues -> (
 
 	// calculate overall net error
 	//i = net.m_layer.size () - 1;
@@ -104,13 +104,12 @@ declare backProp : Net -> collection {i: mut real } @Seq -> () = \net -> \output
 
 	// Update the connection weights (output -> hidden layer) 
 
-	print "Done"	
+	net
 
 )
 
 //This is equivalent to Neuron feedForward 
-declare neuronFeedForward : Net -> int -> int -> Layer -> real = \net-> \layerNum-> \neuronIndex -> \prevLayer -> (
-	
+declare neuronFeedForward : Net -> int -> int -> Layer -> real = \net-> \layerNum-> \neuronIndex -> \prevLayer -> (	
 	//fold    : (a -> (content -> a)) -> a -> a
 	let sum = prevLayer.fold (\sum -> (\elem -> sum + elem.neuron.m_outputValue * (elem.neuron.m_outputWeights.at(neuronIndex)).connection.weight )) 0.0 in 
 	activationFunction sum
@@ -203,7 +202,7 @@ trigger proceedAsSlave : () = \_ -> (
 				inputValues = i.iv; 
 				net = netFeedForward net ; 
 				outputValues = inputValues; 
-				backProp net outputValues
+				net = backProp net outputValues
 			)
 		);	
 		
