@@ -3,6 +3,9 @@
 
 #include <ios>
 #include <queue>
+#include <thread>
+#include <chrono>
+
 #include <system_error>
 #include <boost/asio.hpp>
 #include <boost/iostreams/categories.hpp>
@@ -102,7 +105,28 @@ namespace K3
       {
         if ( ctxt ) {
           ip::tcp::endpoint ep(get<0>(addr), get<1>(addr));
-          acceptor_ = shared_ptr<ip::tcp::acceptor>(new ip::tcp::acceptor(*(ctxt->service), ep));
+          acceptor_ = shared_ptr<ip::tcp::acceptor>(new ip::tcp::acceptor(*(ctxt->service)));
+	  for(int retries=4; retries > 0; retries--) {
+	    try {
+	      acceptor_->open(ep.protocol());
+	      boost::asio::socket_base::reuse_address option(true);
+	      acceptor_->set_option(option);
+	      acceptor_->bind(ep);
+	      acceptor_->listen();
+	      break;
+	    }
+	    catch (std::exception e) {
+              logAt(boost::log::trivial::warning, e.what());
+	      if (retries > 1) {
+                logAt(boost::log::trivial::warning, "Trying again in 30 seconds");
+		std::this_thread::sleep_for (std::chrono::seconds(30));
+	      }
+	      else {
+                logAt(boost::log::trivial::warning, "Aborting");
+		throw e;
+	      }
+	    }
+	  }
         } else {
           logAt(boost::log::trivial::warning, "Invalid network context in constructing an NEndpoint");
         }
