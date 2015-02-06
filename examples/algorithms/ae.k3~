@@ -89,6 +89,29 @@ declare createNeuron : int -> int -> Neuron = \numOutputs -> \myIndex -> (
 
 declare backProp : Net -> collection {i: mut real } @Seq -> Net = \net -> \outputValues -> (
 
+	/*
+	Layer &outputLayer = m_layers.back();
+	
+	m_error = 0.0;
+	
+	for (unsigned i=0; i< outputLayer.size()-1 ; i++ ){
+		double delta = outputValues[i] - outputLayer[i].getOutputValue();
+		m_error +=delta*delta;	
+	}
+	m_error /= (outputLayer.size()-1);
+	m_error = sqrt(m_error);
+	
+
+	//Calculate output layer gradients
+	for (unsigned i = 0; i< outputLayer.size()-1; i++){
+		outputLayer[i].calculateOutputGradients(outputValues[i]);
+	
+	}
+	
+	*/
+	
+	let outputLayer = (net.m_layer.at(net.m_layer.size () -1)).layer in 
+	
 	// calculate overall net error
 	//i = net.m_layer.size () - 1;
 	//outputLayer = net.m_layer.at()
