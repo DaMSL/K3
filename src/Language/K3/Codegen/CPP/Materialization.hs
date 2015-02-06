@@ -121,16 +121,31 @@ materializationE e@(Node (t :@: as) cs)
              [f, x] <- mapM materializationE cs
 
              let applicationEffects = getFStructure e
-             let (executionEffects, formalParameter) =
+             let (executionEffects, returnEffects, formalParameter) =
                    case applicationEffects of
-                     (tag &&& children -> (FApply (Just fmv), [_, executionEffects, _])) -> (executionEffects, fmv)
+                     (tag &&& children -> (FApply (Just fmv), [_, executionEffects, returnEffects])) ->
+                         (executionEffects, returnEffects, fmv)
                      _ -> error "Invalid effect structure"
 
-             conservativeDoMove <- hasWriteInIF (fmvn formalParameter) executionEffects
+             conservativeDoMoveLocal <- hasWriteInIF (fmvn formalParameter) executionEffects
+
+             conservativeDoMoveReturn <-
+               case f of
+                 (tag &&& children -> (ELambda i, [f'])) ->
+                   case f' of
+                     (tag -> ELambda _) -> do
+                       let f'id = getUID f'
+                       f'd <- dLookup f'id i
+                       return $ inD f'd == Moved
+                     _ -> return False
+                 _ -> return False
 
              moveable <- isMoveableNow x
 
-             let applicationDecision d = if conservativeDoMove && moveable then d { inD = Moved } else d
+             let applicationDecision d =
+                   if (conservativeDoMoveLocal || conservativeDoMoveReturn) && moveable
+                     then d { inD = Moved }
+                     else d
 
              setDecision (getUID e) "" $ applicationDecision defaultDecision
 
