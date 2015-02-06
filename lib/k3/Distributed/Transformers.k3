@@ -101,9 +101,10 @@ control DistributedGroupByGeneric [ lbl             : label
 
           trigger $[lbl]_scan : () = \_ -> (
             (ignore ( $.[e].groupBy $.[groupF] $.[aggF] $.[accE]
-            ) @SendPartitionByKey( dest_trg    = [$ $[lbl]_merge]
-                                 , barrier_trg = [$ $[lbl]_peer_barrier]
-                                 , nodes       = nodes ))
+            ) @SendPartitionByKey( dest_trg      = [$ $[lbl]_merge]
+                                 , barrier_trg   = [$ $[lbl]_peer_barrier]
+                                 , nodes         = nodes
+                                 , send_extra_fn = [$ (\x -> x)]))
           )
 
           // Note: SendByPartitionKey always uses a @Collection for the wire type.
@@ -174,9 +175,10 @@ control DistributedHashJoin [ lbl             : label
         trigger $[lbl]_lhs_scan : () = \_ -> (
           (ignore
             ( $[lhs_query]
-            ) @SendPartitionByKey( dest_trg    = [$ $[lbl]_build_lhs]
-                                 , barrier_trg = [$ $[lbl]_lhs_peer_barrier]
-                                 , nodes       = nodes))
+            ) @SendPartitionByKey( dest_trg      = [$ $[lbl]_build_lhs]
+                                 , barrier_trg   = [$ $[lbl]_lhs_peer_barrier]
+                                 , nodes         = nodes
+                                 , send_extra_fn = [$ (\x -> x)]))
         )
 
         trigger $[lbl]_build_lhs : $[lhs_build_ty] = \vals -> (
@@ -192,9 +194,10 @@ control DistributedHashJoin [ lbl             : label
         trigger $[lbl]_rhs_scan : () = \_ -> (
           (( ignore
               ( $[rhs_query]
-              ) @SendPartitionByKey( dest_trg    = [$ $[lbl]_probe_rhs]
-                                   , barrier_trg = [$ $[lbl]_rhs_peer_barrier]
-                                   , nodes       = nodes))
+              ) @SendPartitionByKey( dest_trg      = [$ $[lbl]_probe_rhs]
+                                   , barrier_trg   = [$ $[lbl]_rhs_peer_barrier]
+                                   , nodes         = nodes
+                                   , send_extra_fn = [$ (\x -> x)]))
           ) @OnCounter(id=[# $[lbl]_lhs_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
         )
 
@@ -216,4 +219,103 @@ control DistributedHashJoin [ lbl             : label
           ) @OnCounter(id=[# $[lbl]_join_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
         )
      }
+}
+
+// TODO: it would be cool to generalize this to a multi-way join algorithm through metaprogramming.
+// Each input would insert into a single relation hash table, and then execute a match chain against
+// all other single table inputs.
+//
+//
+//
+control PipelineSymmetricHashJoin [ lbl             : label
+                                  , lhs_query       : expr
+                                  , rhs_query       : expr
+                                  , lhs_ht_ty       : type
+                                  , rhs_ht_ty       : type
+                                  , peer_next       : expr
+                                  , next            : expr
+                                  , coordinator     : expr
+                                  , nodes           : expr
+                                  ]
+{
+  () => $[nodes].iterate (\p -> ($[lbl]_scan, p.addr) <- ())
+     +> {
+          declare $[lbl]_lhs_ht : collection $[lhs_ht_ty] @Map
+          declare $[lbl]_rhs_ht : collection $[rhs_ht_ty] @Map
+          declare $[lbl]_lhs_done : mut bool = false
+          declare $[lbl]_rhs_done : mut bool = false
+
+          trigger $[lbl]_redistribute : () = \_ -> (
+            (ignore
+              ( $[lhs_query]
+              ) @SendPartitionByKey( dest_trg      = [$ $[lbl]_process_redistribute]
+                                   , barrier_trg   = [$ $[lbl]_lhs_peer_barrier]
+                                   , nodes         = nodes
+                                   , send_extra_fn = [$ (\x -> (Some x, None immut, true))]));
+            (ignore
+              ( $[rhs_query]
+              ) @SendPartitionByKey( dest_trg      = [$ $[lbl]_process_redistribute]
+                                   , barrier_trg   = [$ $[lbl]_rhs_peer_barrier]
+                                   , nodes         = nodes
+                                   , send_extra_fn = [$ (\x -> (None immut, Some x, false))]))
+          )
+
+          trigger $[lbl]_process_redistribute : ( option (collection $[lhs_ht_ty] @Map)
+                                                , option (collection $[rhs_ht_ty] @Map)
+                                                , bool)
+          = \rd -> (
+            bind rd as (lv_opt, rv_opt, is_left) in (
+              // Three stages: join other, pipeline outputs, track for other
+              if is_left then (
+                case lv_opt of
+                { Some lvals ->
+                  let outputs = lvals.fold $[rhs_probe] $[rhs_empty_output_buffer] in
+                  $[lhs_pipeline_next] outputs;
+                  if $[lbl]_rhs_done then () else ( lvals.iterate $[lhs_build_ht] )
+                }
+                { None -> error ($[|exprLabel 'lbl|] ++ "_process_redistribute: invalid left join inputs.") }
+              ) else (
+                case rv_opt of
+                { Some rvals ->
+                  let outputs = rvals.fold $[lhs_probe] $[lhs_empty_output_buffer] in
+                  $[rhs_pipeline_next] outputs;
+                  if $[lbl]_lhs_done then () else ( rvals.iterate $[rhs_build_ht] )
+                }
+                { None -> error ($[|exprLabel 'lbl|] ++ "_process_redistribute: invalid right join inputs.") }
+              )
+            )
+          )
+
+          trigger $[lbl]_lhs_peer_barrier : () = \_ -> (
+            print "Hash join LHS finished processing." ;
+            (
+              // LHS is finished, we no longer need to build/probe the RHS
+              $[lbl]_lhs_done = true;
+              $[lbl]_rhs_ht.clear();
+              if not $[lbl]_rhs_finished then () else (
+                $[peer_next];
+                ($[lbl]_global_barrier, $[coordinator]) <- ()
+              )
+            ) @OnCounter(id=[# $[lbl]_peer_lbuild_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
+          )
+
+          trigger $[lbl]_rhs_peer_barrier : () = \_ -> (
+            print "Hash join RHS finished processing." ;
+            (
+              // RHS is finished, we no longer need to build/probe the LHS
+              $[lbl]_rhs_done = true;
+              $[lbl]_lhs_ht.clear();
+              if not $[lbl]_lhs_finished then () else (
+                $[peer_next];
+                ($[lbl]_global_barrier, $[coordinator]) <- ()
+              )
+            ) @OnCounter(id=[# $[lbl]_peer_rbuild_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
+          )
+
+          trigger $[lbl]_global_barrier : () = \_ -> (
+            ( print "Hash join done." ;
+              $[next]
+            ) @OnCounter(id=[# $[lbl]_join_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
+          )
+        }
 }
