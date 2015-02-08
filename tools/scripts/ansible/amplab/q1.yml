@@ -1,0 +1,15 @@
+- hosts: target_hosts
+  tasks:
+    - include: plays/deploy_k3.yml
+      vars:
+        app_name: amplab_q1_final
+        binary: /tmp/q1final
+        numprocs: 16
+        k3_variables:
+          x: "1000"
+          master: "<192.168.0.40:40000>" # TODO, just set to first peer?
+          role: '"rows"'
+        data_files:
+          - name: "dataFiles"
+            num: 1024
+            prefix: "/local/data/amplab/1024/rankings/rankings"

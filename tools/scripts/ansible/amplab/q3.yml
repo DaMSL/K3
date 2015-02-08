@@ -1,0 +1,20 @@
+- hosts: target_hosts
+  tasks:
+    - include: plays/deploy_k3_mt.yml
+      vars:
+        app_name: q3
+        binary: /tmp/q3final
+        numprocs: 16
+        k3_variables:
+          date_lb: '"1980-01-01"'
+          date_ub: '"1980-04-01"'
+          master: "<192.168.0.40:40000>" # TODO, just set to first peer?
+          role: '"rows"'
+        data_files:
+          - name: "uvFiles"
+            num: 1024
+            prefix: "/local/data/amplab/1024/uservisits/uservisits"
+        pinned_files:
+          - name: "rkFiles"
+            num: 1024
+            prefix: "/local/data/amplab/1024/rankings/rankings"

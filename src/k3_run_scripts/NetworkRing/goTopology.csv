@@ -1,0 +1,3 @@
+/home/vagrant/K3/K3-Core/examples/distributed/networkRing.k3
+Hostname,peer,role,to_activate
+qp1-k3VM,192.168.0.174:30000,\"go\","192.168.0.174:40000"

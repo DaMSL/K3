@@ -1,0 +1,26 @@
+---
+me:  [127.0.0.1,40000]
+master: [127.0.0.1, 40000]
+peers: 
+  - addr: [127.0.0.1, 40000]
+  - addr: [127.0.0.1, 50000]
+rkFiles:
+  - path: /local/data/amplab/1024/rankings/rankings0000
+uvFiles:
+  - path: /local/data/amplab/1024/uservisits/uservisits0000
+outFile: /results/q3_1.csv
+date_ub: 1980-04-01
+date_lb: 1980-01-01
+role: rows
+---
+me:  [127.0.0.1,50000]
+master: [127.0.0.1, 40000]
+peers: 
+  - addr: [127.0.0.1, 40000]
+  - addr: [127.0.0.1, 50000]
+uvFiles:
+  - path: /local/data/amplab/1024/uservisits/uservisits0001
+outFile: /results/q3_2.csv
+date_ub: 1980-04-01
+date_lb: 1980-01-01
+role: rows

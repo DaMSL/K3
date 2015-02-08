@@ -1,0 +1,7 @@
+  
+  - hosts: all
+    tasks:
+      - name: kill any running k3 process
+        shell: kill -9 $(pgrep k3)
+        sudo: yes
+        

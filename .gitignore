@@ -2,6 +2,12 @@ dist/*
 tmp
 .ghci
 .cabal-sandbox
+.project
+*.k3
+*.pyc
+
+__build
+__build.database
 
 /.dist-buildwrapper
 /.settings

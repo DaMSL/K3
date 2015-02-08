@@ -1,0 +1,11 @@
+name: Amplab Query 3
+
+# Peer Bootstrap
+local_binary_path: "/tmp/q3" #Mandatory
+k3_port: "40000"
+k3_bindings: # All values are strings. String literals should have quotes!
+  role: '"rows"'
+  master: '<192.168.1.34:40000>'
+  lower_date: "315532860"
+  upper_date: "315533040"  
+

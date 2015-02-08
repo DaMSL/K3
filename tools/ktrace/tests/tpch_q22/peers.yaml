@@ -1,0 +1,14 @@
+---
+me: [127.0.0.1, 30000]
+master: [127.0.0.1, 30000]
+peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
+role: rows
+ordersFiles: [{path: data/tpch/orders0}]
+customerFiles: [{path: data/tpch/customer0}]
+---
+me: [127.0.0.1, 40000]
+master: [127.0.0.1, 30000]
+peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
+role: rows
+ordersFiles: [{path: data/tpch/orders1}]
+customerFiles: [{path: data/tpch/customer1}]

@@ -1,0 +1,3 @@
+/home/vagrant/K3/K3-Core/examples/MapReduce/WordCount/MapReduce.k3
+Hostname,peer
+qp3-k3VM,192.168.0.141:40000

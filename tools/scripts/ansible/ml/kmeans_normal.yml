@@ -1,0 +1,18 @@
+- hosts: target_hosts
+  tasks:
+    - include: plays/deploy_k3.yml
+      vars:
+        app_name: kmeans_normal
+        log_enabled: false
+        binary: /sigmod/bins/kmeans
+        numprocs: 16
+        k3_variables:
+          k: 5
+          dimensionality: 32
+          iterations_remaining: 10
+          master: "<192.168.0.40:40000>" # TODO, just set to first peer?
+          role: '"s1"'
+        data_files:
+          - name: "dataFiles"
+            num: 105
+            prefix: "/local/data/kmeans/kmeans"

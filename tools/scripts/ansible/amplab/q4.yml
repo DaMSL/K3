@@ -1,0 +1,14 @@
+- hosts: target_hosts
+  tasks:
+    - include: plays/deploy_k3.yml
+      vars:
+        app_name: amplab_q4
+        binary: /tmp/q4final
+        numprocs: 16
+        k3_variables:
+          master: "<192.168.0.41:40000>" # TODO, just set to first peer?
+          role: '"rows"'
+        data_files:
+          - name: "dataFiles"
+            num: 1024
+            prefix: "/local/data/amplab/1024/crawl/crawl"

@@ -1,0 +1,12 @@
+name: Kmeans bpti
+
+# Peer Bootstrap
+local_binary_path: "/tmp/kmeans" #Mandatory
+stash_output: True # Redirect stdout and stderr to a log file, and collect after execution.
+k3_bindings: # All values are strings. String literals should have quotes!
+  dimensionality: "43"
+  iterations_remaining: "10"
+  k: "3"
+  role: '"s1"'
+  master: '<192.168.1.34:40000>'
+  data_file: '"/local_data/bpti_labelled/bpti_labelled_1G.txt"'  

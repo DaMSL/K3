@@ -1,0 +1,37 @@
+- hosts: target_hosts
+  tasks:
+    - include: plays/deploy_k3.yml
+      vars:
+        app_name: tpch5_normal
+        binary: /sigmod/bins/tpch5
+        log_enabled: false
+        numprocs: 16
+        k3_variables:
+          master: "<192.168.0.40:40000>" # TODO, just set to first peer?
+          role: '"rows"'
+        data_files:
+
+          - name: "customerFiles"
+            num: 1024
+            prefix: "/local/data/tpch1g/customer/customer"
+          
+          - name: "ordersFiles"
+            num: 1024
+            prefix: "/local/data/tpch1g/orders/orders"
+
+          - name: "lineitemFiles"
+            num: 1024
+            prefix: "/local/data/tpch1g/lineitem/lineitem"
+          
+          - name: "supplierFiles"
+            num: 1024
+            prefix: "/local/data/tpch1g/supplier/supplier"
+          
+          - name: "nationFiles"
+            num: 1
+            prefix: "/local/data/tpch1g/nation/nation"
+
+          - name: "regionFiles"
+            num: 1
+            prefix: "/local/data/tpch1g/region/region"
+

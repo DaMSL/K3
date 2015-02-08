@@ -1,0 +1,9 @@
+---
+  - name: Setup docker
+    include: setup_docker.yml
+
+  - name: run the binary in a docker container
+    shell: docker run -d --net=host --name="{{docker_image}}_40000" -v {{data_dir}}40000:/app_data -v /local:/local {{docker_image}} run_k3 {% for item in range(numprocs) %} -p 'peers:{{peers}},me:<{{ip}}:{{40000 + (item|int)}}>,{% for key, value in k3_variables.iteritems()|list -%}{{key}}:{{value}}{% if not loop.last -%},{%- endif %} {%- endfor -%},{% for file in data_files -%} {{file.name}}{{colon}} [{%- for i in range(file.num) -%} {%- if (i % (num_peers|int)) == ((peer*(numprocs|int))+(item|int)) -%} {%- if i >= (num_peers|int) -%} , {%- endif -%} { path{{colon}} "{{file.prefix}}{{"%04d" | format(i|int)}}" } {%- endif -%} {%- endfor -%} ] {% if not loop.last %} , {%- endif %} {%- endfor %} {% if item == 0 %} {% for file in pinned_files -%},{{file.name}}{{colon}} [ {%- for i in range(file.num) -%} {path{{colon}}"{{file.prefix}}{{"%04d" | format(i|int)}}"} {%- if not loop.last -%}, {%- endif -%} {%- endfor -%} ]{% endfor %} {% endif %}' {%- endfor %}
+  
+  - name: Cleanup Docker
+    include: cleanup_docker.yml

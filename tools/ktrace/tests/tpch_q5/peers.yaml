@@ -1,0 +1,20 @@
+---
+me: [127.0.0.1, 30000]
+master: [127.0.0.1, 30000]
+peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
+role: rows
+lineitemFiles: [{path: data/tpch/lineitem0}]
+ordersFiles: [{path: data/tpch/orders0}]
+customerFiles: [{path: data/tpch/customer0}]
+supplierFiles: [{path: data/tpch/supplier0}]
+nationFiles: [{path: data/tpch/nation.tbl}]
+regionFiles: [{path: data/tpch/region.tbl}]       
+---
+me: [127.0.0.1, 40000]
+master: [127.0.0.1, 30000]
+peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
+role: rows
+lineitemFiles: [{path: data/tpch/lineitem1}]
+ordersFiles: [{path: data/tpch/orders1}]
+customerFiles: [{path: data/tpch/customer1}]
+supplierFiles: [{path: data/tpch/supplier1}]
