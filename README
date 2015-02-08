@@ -1,5 +1,0 @@
-K3/meta
-=======
-
-This is a meta-package for the K3 programming language. It contains submodule
-references to the projects that make up the language distribution.
