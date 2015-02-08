@@ -1,6 +1,6 @@
 control SendByKey[dest_trg : expr, barrier_trg : expr, nodes : expr, send_extra_fn : expr] {
   ?e => ( $.[e].iterate (\v -> case $[nodes].at v.key of
-                               { Some p -> ($[dest_trg], p.addr) <- (send_extra_fn v.value) }
+                               { Some p -> ($[dest_trg], p.addr) <- ($[send_extra_fn] v.value) }
                                { None -> error () }
                         );
 
