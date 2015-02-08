@@ -91,9 +91,16 @@ trigger start : () = \_ -> (
     onReadyExpr          = [$ (q1, me) <- ()],
     finishArgT           = [: ()],
     preTestFinishExpr    = [$ (\_ -> ())],
-    preFinishExpr        = [$ ()],
+    preFinishExpr        = [$ () @DistributedCollectionStatistics(
+                                    lbl         = [# q1_skew ],
+                                    query_cl    = [* [% cl: [# lo_skew],  ce: [$ groupby_result]]
+                                                  ],
+                                    coordinator = [$ master ],
+                                    nodes       = [$ peers ],
+                                    next        = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ])
+                         ],
     preShutdownExpr      = [$ ()],
-    finishAsShutdownExpr = [$ true]
+    finishAsShutdownExpr = [$ false]
   )
 )
 

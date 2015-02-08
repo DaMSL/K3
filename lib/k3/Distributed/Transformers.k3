@@ -67,7 +67,7 @@ control DistributedCollectionStatistics [ lbl         : label
                       in
                       let repExpr cRecs = foldM reportStr (EC.constant (CString "")) cRecs in
                       maybe (strError ()) SExpr $ (elemsOfSList 'query_cl >>= repExpr)
-                      |]
+                      |] ++ "\\n"
                       )) ""));
               $[next]
             ) @OnCounter(id=[# $[lbl]_cstats_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
