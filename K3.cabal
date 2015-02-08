@@ -1,7 +1,9 @@
-name:           K3-Core
+name:           K3
 version:        0.0.0.1
-author:         P.C. Shyamshankar <shyam@cs.jhu.edu>, Yanif Ahmad <yanif@cs.jhu.edu>
-maintainer:     P.C. Shyamshankar <shyam@cs.jhu.edu>, Yanif Ahmad <yanif@cs.jhu.edu>
+license:        Apache 2.0
+license-file:   LICENSE
+author:         The K3 Team <k3-developers@googlegroups.com>
+maintainer:     The K3 Team <k3-developers@googlegroups.com>
 build-type:     Simple
 cabal-version:  >=1.8
 
@@ -9,18 +11,24 @@ flag test
     default: False
     manual: True
 
-library
+executable k3
     if flag(test)
         cpp-options: -DTEST
 
     hs-source-dirs:
         src
 
+    main-is: Language/K3/Driver.hs
+
+    ghc-options: -Wall -fno-warn-orphans -O2
+
     build-depends:
-        old-locale,
+        ansi-wl-pprint,
         attoparsec,
         base,
         bytestring,
+        Cabal,
+        clock,
         containers,
         criterion,
         data-ordlist,
@@ -35,6 +43,7 @@ library
         hashable,
         hashable-extras,
         hashtables,
+        haskeline,
         haskell-src-exts,
         haskell-src-exts-qq,
         hint,
@@ -45,24 +54,27 @@ library
         network,
         network-transport,
         network-transport-tcp,
+        old-locale,
         optparse-applicative,
         parsec,
         parsers,
         process,
         random,
+        readline,
+        safe,
+        shake,
         split,
         SafeSemaphore,
         template-haskell,
         text,
         time,
         transformers,
-        unordered-containers,
-        ansi-wl-pprint,
-        clock,
-        safe
+        unordered-containers
 
-    exposed-modules:
+    other-modules:
         Language.K3.Core.Annotation,
+        Language.K3.Core.Annotation.Analysis,
+        Language.K3.Core.Annotation.Codegen,
         Language.K3.Core.Annotation.Syntax,
         Language.K3.Core.Common,
         Language.K3.Core.Declaration,
@@ -83,6 +95,7 @@ library
         Language.K3.Utils.Logger.Operations,
         Language.K3.Utils.Pretty,
         Language.K3.Utils.PrettyText,
+        Language.K3.Utils.Pretty.Common,
         Language.K3.Utils.Pretty.Syntax,
         Language.K3.Utils.TemplateHaskell.Reduce,
         Language.K3.Utils.TemplateHaskell.ReduceM,
@@ -171,12 +184,6 @@ library
         Language.K3.TypeSystem.TypeDecision.AnnotationInlining,
         Language.K3.TypeSystem.TypeDecision.StubReplacement,
         Language.K3.TypeSystem.Annotations.Error,
-        Language.K3.Core.Annotation.Codegen,
-        Language.K3.Core.Annotation.Analysis,
-        Language.K3.Codegen.Common,
-        Language.K3.Codegen.CPP,
-        Language.K3.Codegen.Imperative,
-        Language.K3.Codegen,
         Language.K3.TypeSystem.Monad.Iface.FreshOpaque,
         Language.K3.TypeSystem.Simplification,
         Language.K3.TypeSystem.Simplification.Common,
@@ -184,10 +191,15 @@ library
         Language.K3.TypeSystem.Within,
         Language.K3.TypeSystem.Data.Types,
         Language.K3.TypeSystem.Simplification.GarbageCollection,
+        Language.K3.TypeSystem.Simplification.EquivalenceUnification.StructuralEquivalence,
+        Language.K3.TypeSystem.Simplification.EquivalenceUnification.Common,
+        Language.K3.TypeSystem.Simplification.EquivalenceUnification.BoundEquivalence,
+        Language.K3.TypeSystem.Simplification.EquivalenceUnification.ConstraintEquivalence
         Language.K3.TypeSystem.Manifestation,
         Language.K3.TypeSystem.Manifestation.Graph,
         Language.K3.TypeSystem.Manifestation.Monad,
         Language.K3.TypeSystem.Manifestation.Data,
+        Language.K3.TypeSystem.Manifestation.BranchSemiElimination,
         Language.K3.TypeSystem.Data.PrimitiveSubtyping,
         Language.K3.Utils.IndexedSet.TemplateHaskell,
         Language.K3.Utils.IndexedSet.Common,
@@ -198,13 +210,11 @@ library
         Language.K3.TypeSystem.Data.Constraints,
         Language.K3.TypeSystem.Data.ConstraintSet.Queries,
         Language.K3.TypeSystem.Data.Result,
+        Language.K3.Codegen,
+        Language.K3.Codegen.Common,
+        Language.K3.Codegen.CPP,
+        Language.K3.Codegen.Imperative,
         Language.K3.Codegen.CPP.Representation,
-        Language.K3.Codegen.KTrace.KTraceDB,
-        Language.K3.Stages
-
-    ghc-options: -Wall -fno-warn-orphans -O2
-
-    other-modules:
         Language.K3.Codegen.CPP.Collections,
         Language.K3.Codegen.CPP.Common,
         Language.K3.Codegen.CPP.Declaration,
@@ -217,12 +227,16 @@ library
         Language.K3.Codegen.CPP.Program,
         Language.K3.Codegen.CPP.Simplification,
         Language.K3.Codegen.CPP.Types,
-        Language.K3.Utils.Pretty.Common,
-        Language.K3.TypeSystem.Manifestation.BranchSemiElimination,
-        Language.K3.TypeSystem.Simplification.EquivalenceUnification.StructuralEquivalence,
-        Language.K3.TypeSystem.Simplification.EquivalenceUnification.Common,
-        Language.K3.TypeSystem.Simplification.EquivalenceUnification.BoundEquivalence,
-        Language.K3.TypeSystem.Simplification.EquivalenceUnification.ConstraintEquivalence
+        Language.K3.Codegen.KTrace.KTraceDB,
+        Language.K3.Stages,
+        Language.K3.Driver.Batch.hs,
+        Language.K3.Driver.Common.hs,
+        Language.K3.Driver.Console.hs,
+        Language.K3.Driver.Interactive.hs,
+        Language.K3.Driver.Options.hs,
+        Language.K3.Driver.Typecheck.hs,
+        Language.K3.Driver.CompilerTarget.CPP.hs
+
 
 test-suite all
     type: exitcode-stdio-1.0
@@ -234,21 +248,17 @@ test-suite all
 
     build-depends:
         base,
-
-        K3-Core,
-
         bytestring,
         containers,
         directory,
         either,
         filepath,
         hslogger,
+        HUnit,
         network-transport,
         parsec,
         transformers,
         unordered-containers,
-
-        HUnit,
         test-framework,
         test-framework-hunit
 
