@@ -1,0 +1,4 @@
+// Demonstration of NRVO-Move optimization.
+
+// Should manually std::move the return value out of this function, as NRVO does not kick in.
+declare f: int -> int -> int = \a -> \b -> a

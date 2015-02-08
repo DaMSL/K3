@@ -1,0 +1,2 @@
+trigger t : int = \x -> ( x ; () )
+

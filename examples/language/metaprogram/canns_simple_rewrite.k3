@@ -1,0 +1,9 @@
+control Plus2 {
+  x + 1 => x + 2
+}
+
+declare x : mut int = 0
+trigger t : () = \_ -> ( x = ( x + 1 ) @Plus2 )
+
+source s1 : () = value ()
+feed s1 |> t

@@ -1,0 +1,2 @@
+declare f : {x:mut int} -> () = \r -> bind r as {x:z} in z = 5
+

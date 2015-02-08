@@ -1,0 +1,12 @@
+include "Annotation/Containers/Interfaces/Implrimitive/Composable.k3"
+include "Annotation/Containers/Interfaces/Implrimitive/Transformers.k3"
+include "Annotation/Containers/Interfaces/Implrimitive/Accessors.k3"
+include "Annotation/Containers/Interfaces/Implrimitive/Extendible.k3"
+
+annotation Array
+{
+  requires Composable
+  requires Transformers
+  requires Accessors
+  requires InPlaceModifiable
+}

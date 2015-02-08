@@ -1,0 +1,1 @@
+declare r : immut {x:immut int} = {y:immut 4}

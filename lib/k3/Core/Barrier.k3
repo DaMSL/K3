@@ -1,0 +1,34 @@
+include "Core/Builtins.k3"
+
+control OnCounter[id : label, eq : expr, reset : expr, profile : expr] {
+  ?e => ( // Track first increment time.
+          (if $[profile] then
+             (case $[id]_span_ms of { Some _ -> () }
+                                    { None   -> $[id]_span_ms = Some ( now_int() ) })
+           else ());
+
+          // Do counter increment.
+          $[id]_cnt = $[id]_cnt + 1;
+
+          // Evaluate barrier expression when ready.
+          if $[id]_cnt == $[eq]
+          then ( // Track last increment time, without expression evaluation.
+                 (if $[profile] then
+                    (case $[id]_span_ms of
+                       { Some start_ms ->
+                         let elapsed_ms = now_int() - start_ms in
+                         ($[id]_span_ms = Some elapsed_ms);
+                         print ($[|exprLabel 'id|] ++ " barrier" ++ (itos elapsed_ms)) }
+                       { None -> () })
+                  else ());
+
+                 // Reset barrier if desired after barrier expression evaluation.
+                 let r = $.[e] in
+                 (( if $[reset] then $[id]_cnt = 0 else ());
+                    r ))
+          else () )
+
+     +> { declare $[id]_cnt     : mut int = 0
+          declare $[id]_span_ms : mut option int = None immut
+        }
+}

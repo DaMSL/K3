@@ -1,0 +1,61 @@
+create procedure paymentById(w_id integer not null, d_id smallint not null, c_w_id integer not null, c_d_id smallint not null, c_id integer not null, h_date timestamp not null, h_amount numeric(6,2) not null, datetime timestamp not null)
+{
+   select w_name,w_ytd from warehouse w where w.w_id=w_id;
+   update warehouse set w_ytd=w_ytd+h_amount where warehouse.w_id=w_id;
+   select d_name,d_ytd from district d where d.d_w_id=w_id and d.d_id=d_id;
+   update district set d_ytd=d_ytd+h_amount where district.d_w_id=w_id and district.d_id=d_id;
+
+   select c_data,c_credit,c_balance from customer c where c.c_w_id=c_w_id and c.c_d_id=c_d_id and c.c_id=c_id;
+   var c_new_balance=c_balance+h_amount;
+
+   if (c_credit='BC') {
+      var c_new_data varchar(500) not null;
+      sprintf (c_new_data,'%s| %4d %2d %4d %2d %4d $%7.2f %12s %s%s',c_data,c_id,c_d_id,c_w_id,d_id,w_id,h_amount,h_date,w_name,d_name);
+      update customer set c_balance=c_new_balance,c_data=c_new_data where customer.c_w_id=c_w_id and customer.c_d_id=c_d_id and customer.c_id=c_id;
+   } else {
+      update customer set c_balance=c_new_balance where customer.c_w_id=c_w_id and customer.c_d_id=c_d_id and customer.c_id=c_id;
+   }
+
+   var h_new_data varchar(24) not null;
+   sprintf(h_new_data,'%s%s',w_name,d_name);
+   insert into history values(c_id,c_d_id,c_w_id,d_id,w_id,datetime,h_amount,h_new_data);
+};
+
+create procedure paymentByName(w_id integer not null, d_id smallint not null, c_w_id integer not null, c_d_id smallint not null, c_last varchar(16) not null, h_date timestamp not null, h_amount numeric(6,2) not null, datetime timestamp not null)
+{
+   select w_name,w_ytd from warehouse w where w.w_id=w_id;
+   update warehouse set w_ytd=w_ytd+h_amount where warehouse.w_id=w_id;
+   select d_name,d_ytd from district d where d.d_w_id=w_id and d.d_id=d_id;
+   update district set d_ytd=d_ytd+h_amount where district.d_w_id=w_id and district.d_id=d_id;
+
+   -- count the number of matching customers
+   select count(*) as c_count from customer c where c.c_w_id=c_w_id and c.c_d_id=c_d_id and c.c_last=c_last;
+   if (c_count=0)
+      rollback;
+
+   -- find the customer at position ceil(c_count/2)
+   var c_id_result integer not null;
+   var c_count_remaining=(c_count+1)/2;
+   select c_id as c_id_cand from customer c where c.c_w_id=c_w_id and c.c_d_id=c_d_id and c.c_last=c_last order by c_first {
+      if (c_count_remaining = 1) {
+         c_id_result=c_id_cand;
+         break;
+      }
+      c_count_remaining=c_count_remaining-1;
+   }
+
+   select c_data,c_credit,c_balance from customer c where c.c_w_id=c_w_id and c.c_d_id=c_d_id and c.c_id=c_id_result;
+   var c_new_balance=c_balance+h_amount;
+
+   if (c_credit='BC') {
+      var c_new_data varchar(500) not null;
+      sprintf (c_new_data,'%s| %4d %2d %4d %2d %4d $%7.2f %12s %s%s',c_data,c_id_result,c_d_id,c_w_id,d_id,w_id,h_amount,h_date,w_name,d_name);
+      update customer set c_balance=c_new_balance,c_data=c_new_data where customer.c_w_id=c_w_id and customer.c_d_id=c_d_id and customer.c_id=c_id_result;
+   } else {
+      update customer set c_balance=c_new_balance where customer.c_w_id=c_w_id and customer.c_d_id=c_d_id and customer.c_id=c_id_result;
+   }
+
+   var h_new_data varchar(24) not null;
+   sprintf(h_new_data,'%s%s',w_name,d_name);
+   insert into history values(c_id_result,c_d_id,c_w_id,d_id,w_id,datetime,h_amount,h_new_data);
+};

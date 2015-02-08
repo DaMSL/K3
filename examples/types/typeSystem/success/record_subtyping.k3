@@ -1,0 +1,1 @@
+declare f : immut (int -> {x : immut int}) = \x -> {x: immut x, y: immut 0}

@@ -1,0 +1,185 @@
+// Type mappings:
+//   integer        => int
+//   varchar | char => string
+//   numeric        => real
+//   timestamp      => real
+
+typedef warehouse_r = {
+     w_id       : int,
+     w_name     : string,
+     w_street_1 : string,
+     w_street_2 : string,
+     w_city     : string,
+     w_state    : string,
+     w_zip      : string,
+     w_tax      : real,
+     w_ytd      : real
+  }
+
+// primary key (w_id)
+// partitionkey = w_id
+typedef warehouse_bag = collection warehouse_r @Collection
+typedef warehouse_seq = collection warehouse_r @Seq
+typedef warehouse_vec = collection warehouse_r @Vector
+
+
+typedef district_r = {
+     d_id        : int,
+     d_w_id      : int,
+     d_name      : string,
+     d_street_1  : string,
+     d_street_2  : string,
+     d_city      : string,
+     d_state     : string,
+     d_zip       : string,
+     d_tax       : real,
+     d_ytd       : real,
+     d_next_o_id : int
+  }
+
+// primary key (d_w_id,d_id)
+// partitionkey = d_w_id
+typedef district_bag = collection district_r @Collection
+typedef district_seq = collection district_r @Seq
+typedef district_vec = collection district_r @Vector
+
+
+typedef customer_r {
+     c_id           : int,
+     c_d_id         : int,
+     c_w_id         : int,
+     c_first        : string,
+     c_middle       : string,
+     c_last         : string,
+     c_street_1     : string,
+     c_street_2     : string,
+     c_city         : string,
+     c_state        : string,
+     c_zip          : string,
+     c_phone        : string,
+     c_since        : real,
+     c_credit       : string,
+     c_credit_lim   : real,
+     c_discount     : real,
+     c_balance      : real,
+     c_ytd_paymenr  : real,
+     c_payment_cnt  : real,
+     c_delivery_cnt : real,
+     c_data         : string
+  }
+
+// primary key (c_w_id,c_d_id,c_id)
+// partitionkey=c_w_id
+// index customer_wdl (c_w_id,c_d_id,c_last,c_first)
+typedef customer_bag = collection customer_r @Collection
+typedef customer_seq = collection customer_r @Seq
+typedef customer_vec = collection customer_r @Vector
+
+
+typedef history_r = {
+     h_c_id   : int,
+     h_c_d_id : int,
+     h_c_w_id : int,
+     h_d_id   : int,
+     h_w_id   : int,
+     h_date   : real,
+     h_amount : real,
+     h_data   : string
+  }
+
+// partitionkey = h_w_id
+typedef history_bag = collection history_r @Collection
+typedef history_seq = collection history_r @Seq
+typedef history_vec = collection history_r @Vector
+
+
+typedef neworder_r = {
+     no_o_id : int,
+     no_d_id : int,
+     no_w_id : int
+  }
+
+// primary key (no_w_id,no_d_id,no_o_id)
+// partitionkey = no_w_id
+typedef neworder_bag = collection neworder_r @Collection
+typedef neworder_seq = collection neworder_r @Seq
+typedef neworder_vec = collection neworder_r @Vector
+
+
+typedef order_r = {
+     o_id         : int,
+     o_d_id       : int,
+     o_w_id       : int,
+     o_c_id       : int,
+     o_entry_d    : real,
+     o_carrier_id : int,
+     o_ol_cnt     : real,
+     o_all_local  : real,
+  }
+
+// primary key (o_w_id,o_d_id,o_id)
+// partitionkey = o_w_id
+// index order_wdc (o_w_id,o_d_id,o_c_id,o_id)
+typedef order_bag = collection order_r @Collection
+typedef order_seq = collection order_r @Seq
+typedef order_vec = collection order_r @Vector
+
+
+typedef orderline_r {
+     ol_o_id        : int,
+     ol_d_id        : int,
+     ol_w_id        : int,
+     ol_number      : int,
+     ol_i_id        : int,
+     ol_supply_w_id : int,
+     ol_delivery_d  : real,
+     ol_quantity    : real,
+     ol_amount      : real,
+     ol_dist_info   : string,
+  }
+
+// primary key (ol_w_id,ol_d_id,ol_o_id,ol_number)
+// partitionkey = ol_w_id
+typedef orderline_bag = collection orderline_r @Collection
+typedef orderline_seq = collection orderline_r @Seq
+typedef orderline_vec = collection orderline_r @Vector
+
+
+typedef item_r = {
+     i_id    : int,
+     i_im_id : int,
+     i_name  : string,
+     i_price : real,
+     i_data  : string,
+  }
+
+// primary key (i_id)
+typedef item_bag = collection item_r @Collection
+typedef item_seq = collection item_r @Seq
+typedef item_vec = collection item_r @Vector
+
+typedef stock_r = {
+   s_i_id       : int,
+   s_w_id       : int,
+   s_quantity   : real,
+   s_dist_01    : string,
+   s_dist_02    : string,
+   s_dist_03    : string,
+   s_dist_04    : string,
+   s_dist_05    : string,
+   s_dist_06    : string,
+   s_dist_07    : string,
+   s_dist_08    : string,
+   s_dist_09    : string,
+   s_dist_10    : string,
+   s_ytd        : real,
+   s_order_cnt  : real,
+   s_remote_cnt : real,
+   s_data       : string,
+}
+
+// primary key (s_w_id,s_i_id)
+// partitionkey=s_w_id
+typedef stock_bag = collection stock_r @Collection
+typedef stock_seq = collection stock_r @Seq
+typedef stock_vec = collection stock_r @Vector

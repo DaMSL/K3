@@ -1,0 +1,1000 @@
+filedesc://1285400045113_18.arc.gz 0.0.0.0 20100925003405 text/plain 73
+1 0 CommonCrawl
+URL IP-address Archive-date Content-type Archive-length
+
+http://www.3e-montague.com/VTT/VTT.php 85.14.165.46 20100903165851 text/html 7858
+HTTP/1.1 200 OK
+Date:Fri, 03 Sep 2010 23:58:51 GMT
+Server:Apache/2.0.54 (Fedora)
+X-Powered-By:PHP/4.4.2
+Content-Length:7493
+Connection:close
+Content-Type:text/html
+x_commoncrawl_OriginalURL:http://www.3e-montague.com/VTT/VTT.php
+x_commoncrawl_URLFP:830529464806109576
+x_commoncrawl_HostFP:4112275004098347684
+x_commoncrawl_FetchTimestamp:1283558331176
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><!-- InstanceBegin template="/Templates/template3.dwt.php" codeOutsideHTMLIsLocked="false" -->
+<head>
+<!-- InstanceBeginEditable name="doctitle" -->
+<title>VTT - Montague par 3e-oeil</title>
+<!-- InstanceEndEditable -->
+<meta http-equiv="expires" content="0" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+<!-- InstanceBeginEditable name="head" -->
+<meta name="keywords" lang="fr" content="VTT - vtt, pliable, Montague, 3e-oeil, folding bikes, VTT pliable, VTT pliant, VTT design, VTT montague, VTT personnalis�, VTT urbain, d�placement VTT, nouveaut� VTT" />
+<meta name="description" content="VTT - Montague by 3e-oeil. Les VTT fabriqu�s par Montague offrent les m�mes qualit�s de conduite que les VTT conventionnels." />
+<!-- InstanceEndEditable -->
+<meta name="language" content="french" />
+<link rel="shortcut icon" href="http://www.3e-montague.fr/favicon.png" type="image/x-png" />
+
+<link rel="stylesheet" href="../optim/styles.css" type="text/css" media="all" />
+
+<script type="text/javascript" src="../optim/jquery.js"></script>
+<script type="text/javascript" src="../optim/jquery.hoverIntent.js"></script>
+<script type="text/javascript" src="../optim/slide.js"></script>
+</head>
+
+<body>
+<div id="site">
+	<div id="gauche">
+		<img src="../img/gauche2.jpg" alt="vtt montague" width="552" height="862" border="0" usemap="#Map" />
+<map name="Map" id="Map"><area shape="rect" coords="429,198,546,236" href="http://www.facebook.com/group.php?v=photos&ref=search&gid=168408960229#!/group.php?v=wall&ref=search&gid=168408960229" />
+<area shape="rect" coords="460,423,485,449" href="http://www.3e-boutique.com" />
+</map>
+  </div>
+	<div id="milieu">
+		<div id="banniere">
+		  <img src="../img/banniere2.jpg" alt="banniere" width="547" height="330" border="0" usemap="#Map3" />
+<map name="Map3" id="Map3"><area shape="rect" coords="420,72,438,92" href="http://www.3e-montague.es" />
+<area shape="rect" coords="397,72,418,91" href="http://www.3e-montague.fr" />
+<area shape="rect" coords="11,29,323,97" href="http://www.3e-montague.fr" />
+<area shape="rect" coords="5,102,542,256" href="http://www.3e-montague.fr" />
+</map>
+	  </div>
+		<div id="contenu">
+			<!-- InstanceBeginEditable name="contenu" -->
+			<h1><a href="http://www.3e-montague.fr/" title="VTT">VTT</a></h1>
+			<p>Dans la gamme de <a href="velo-montague.php" title="velos montague">v�los Montague</a>, vous trouverez des <strong><a href="VTT.php" title="VTT">VTT</a></strong>.<br /> 
+Le mod�le Paratrooper est ainsi notamment un vrai <strong><a href="VTT.php" title="VTT">VTT</a></strong>, de taille normale, mais pliant. <br />
+Fabriqu�s par Montague, ils offrent les m�mes qualit�s de conduite que les <strong><a href="VTT.php" title="VTT">VTT</a></strong> conventionnels, mais sont beaucoup plus facile � entreposer et � plier (en moins d�une minute).
+Ces <strong><a href="VTT.php" title="VTT">VTT</a></strong> prennent ainsi vraiment peu de place une fois pli�s. <br />
+De plus Montague n�utilise que des composants fiables et de qualit�.</p>
+<p>Voir aussi <a href="deplacement-urbain.php" title="deplacement urbain">d�placement urbain</a>.</p>
+			<h2><a href="VTT.php" title="VTT">VTT</a></h2>
+			<!-- InstanceEndEditable -->			
+			<hr />
+			
+			<div id="slide">			
+				<div style="float:left">
+					Site d�velopp� par 3e-Oeil studio Paris - <a href="www.3e-oeil.com">www.3e-oeil.com</a>
+				</div>
+				
+				<div style="float:left" class="Style20">&nbsp;-&nbsp;</div>
+			
+				<div style="float:left">
+					<div title="Cliquez pour basculer l'affichage" class="Optim1" onMouseOver="document.body.style.cursor='hand';" onMouseOut="document.body.style.cursor='default';">
+						VTT <br />
+						<div class="menu-Optim1">
+							<ul>
+								<li><a href="plan.php">Plan</a></li>
+								<li><a href="deplacement-urbain.php" title="deplacement urbain">D�placement urbain</a></li>
+								<li><a href="deplacement-velo.php" title="deplacement velo">D�placement v�lo</a></li>
+								<li><a href="folding-bikes.php" title="folding bikes">Folding bikes</a></li>
+								<li><a href="montague-france.php" title="montague france">Montague France</a></li>
+								<li><a href="montague-paratrooper.php" title="montague paratrooper">Montague Paratrooper</a></li>
+								<li><a href="nouveaute-velo.php" title="nouveaute velo">Nouveaut� v�lo</a></li>
+								<li><a href="velo-design.php" title="velo design">Velo design</a></li>
+								<li><a href="velo-montague.php" title="velo montague">Velo Montague</a></li>
+								<li><a href="velo-personnalise.php" title="velo personnalise">V�lo personnalis�</a></li>
+								<li><a href="velo-pliable.php" title="velo pliable">V�lo pliable</a></li>
+								<li><a href="velo-pliant.php" title="velo pliant">V�lo pliant</a></li>
+								<li><a href="velo-urbain.php" title="velo urbain">Velo urbain</a></li>
+								<li><a href="VTT.php" title="vtt">VTT</a></li>
+							</ul>
+						</div>
+					</div>
+				</div>
+				
+				<div style="float:left" class="Style20">&nbsp;-&nbsp;</div>
+	
+				<div style="float:left">
+					<div title="Cliquez pour basculer l'affichage" class="Optim2" onMouseOver="document.body.style.cursor='hand';" onMouseOut="document.body.style.cursor='default';">
+						Liens <br />
+						<div class="menu-Optim2">
+							<ul style="display:block; float:none;">
+								<li><a href="http://www.air-magic.com/montgolfiere/montgolfiere.html" title="montgolfiere">Montgolfi�re</a></li>
+								<li><a href="http://www.ineole.com/investissement-loi-girardin.html" title="Investissement Loi girardin">Investissement loi girardin</a></li>
+								<li><a href="http://www.abris-kokoon.fr/" title="Abris piscine">Abris piscine</a></li>
+								<li><a href="http://www.misterprojo.com/" title="Videoprojecteur">Videoprojecteur</a></li>
+								<li><a href="http://www.sosserrurier.com" title="serrurerie">Serrurerie</a></li>
+								<li><a href="http://www.location-groupe-electrogene.eu/location-groupe-electrogene.html" title="location groupe electrogene">Location groupe �lectrog�ne</a></li>
+								<li><a href="http://www.sectionderecherches.fr" title="serie francaise">S�rie fran�aise</a></li>
+								<li><a href="http://www.toopneus.com/" title="pneus">Pneus</a></li>
+								<li><a href="http://www.bestpub.fr/indexproduits.php?id=USB" title="clefs usb personnalisees" target="blank">Clefs USB personnalis�es</a></li>
+								<li><a href="http://www.internet-rentable.fr/coaching-referencement.html" title="coaching referencement">Coaching r�f�rencement</a></li>
+							</ul>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div id="droite">
+	  <img src="../img/droite2.jpg" alt="vtt montague" width="555" height="862" border="0" usemap="#Map2" />
+<map name="Map2" id="Map2"><area shape="rect" coords="9,391,174,454" href="http://www.3e-boutique.com" />
+</map>
+  </div>
+</div>
+<script type="text/javascript">
+var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+</script>
+<script type="text/javascript">
+try {
+var pageTracker = _gat._getTracker("UA-15838634-1");
+pageTracker._trackPageview();
+} catch(err) {}</script>
+</body>
+<!-- InstanceEnd --></html>
+
+http://www.3e-montague.com/VTT/deplacement-urbain.php 85.14.165.46 20100903170444 text/html 8209
+HTTP/1.1 200 OK
+Date:Sat, 04 Sep 2010 00:04:44 GMT
+Server:Apache/2.0.54 (Fedora)
+X-Powered-By:PHP/4.4.2
+Content-Length:7828
+Connection:close
+Content-Type:text/html
+x_commoncrawl_OriginalURL:http://www.3e-montague.com/VTT/deplacement-urbain.php
+x_commoncrawl_URLFP:7028278185988128713
+x_commoncrawl_HostFP:4112275004098347684
+x_commoncrawl_FetchTimestamp:1283558684917
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><!-- InstanceBegin template="/Templates/template3.dwt.php" codeOutsideHTMLIsLocked="false" -->
+<head>
+<!-- InstanceBeginEditable name="doctitle" -->
+<title>D�placement urbain - Montague par 3e-oeil</title>
+<!-- InstanceEndEditable -->
+<meta http-equiv="expires" content="0" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+<!-- InstanceBeginEditable name="head" -->
+<meta name="keywords" lang="fr" content="D�placement urbain - vtt, Montague, 3e-oeil, velo pliant, velos pliants, VTT urbain, VTC urbain, folding bikes, deplacement vtt urbain, deplacement VTC urbain, deplacement velo urbain, d�placement vtt urbain, d�placement VTC urbain, d�placement v�lo urbain" />
+<meta name="description" content="D�placement urbain - Montague by 3e-oeil" />
+<!-- InstanceEndEditable -->
+<meta name="language" content="french" />
+<link rel="shortcut icon" href="http://www.3e-montague.fr/favicon.png" type="image/x-png" />
+
+<link rel="stylesheet" href="../optim/styles.css" type="text/css" media="all" />
+
+<script type="text/javascript" src="../optim/jquery.js"></script>
+<script type="text/javascript" src="../optim/jquery.hoverIntent.js"></script>
+<script type="text/javascript" src="../optim/slide.js"></script>
+</head>
+
+<body>
+<div id="site">
+	<div id="gauche">
+		<img src="../img/gauche2.jpg" alt="vtt montague" width="552" height="862" border="0" usemap="#Map" />
+<map name="Map" id="Map"><area shape="rect" coords="429,198,546,236" href="http://www.facebook.com/group.php?v=photos&ref=search&gid=168408960229#!/group.php?v=wall&ref=search&gid=168408960229" />
+<area shape="rect" coords="460,423,485,449" href="http://www.3e-boutique.com" />
+</map>
+  </div>
+	<div id="milieu">
+		<div id="banniere">
+		  <img src="../img/banniere2.jpg" alt="banniere" width="547" height="330" border="0" usemap="#Map3" />
+<map name="Map3" id="Map3"><area shape="rect" coords="420,72,438,92" href="http://www.3e-montague.es" />
+<area shape="rect" coords="397,72,418,91" href="http://www.3e-montague.fr" />
+<area shape="rect" coords="11,29,323,97" href="http://www.3e-montague.fr" />
+<area shape="rect" coords="5,102,542,256" href="http://www.3e-montague.fr" />
+</map>
+	  </div>
+		<div id="contenu">
+			<!-- InstanceBeginEditable name="contenu" -->
+			<h1><a href="http://www.3e-montague.fr" title="deplacement urbain">D�placement urbain</a></h1>
+			<p>Le v�lo comme mode de <strong><a href="deplacement-urbain.php" title="deplacement urbain">d�placement urbain</a></strong>.<br />
+Le v�lo est devenu un v�ritable mode de d�placement alternatif � la voiture.<br />
+Mode de <strong><a href="deplacement-urbain.php" title="deplacement urbain">d�placement urbain</a></strong> qui, compte tenu de son c�t� propre et �conome, s�duit un tr�s grand nombre de citadins.<br />
+Aujourd�hui environ 400 000 personnes utilisent un v�lo pour se d�placer. <br />
+C�est aussi un des outils les plus efficaces du d�veloppement durable des territoires. <br />
+Alors pour vos <strong><a href="deplacement-urbain.php" title="deplacement urbain">d�placement urbains</a></strong> pensez aux v�los pliants de la gamme Montague.<br />
+Montague vous propose toute une gamme de v�los pliants avec des mod�les 16, 20 et 26 pouces id�ale pour vos <strong><a href="deplacement-urbain.php" title="deplacement urbain">d�placements urbains</a></strong>.
+</p>
+			<p>Voir aussi <a href="deplacement-velo.php" title="deplacement velo">d�placement v�lo</a>.</p>
+			<h2><a href="deplacement-urbain.php" title="deplacement urbain">D�placement urbain</a></h2>
+			<!-- InstanceEndEditable -->			
+			<hr />
+			
+			<div id="slide">			
+				<div style="float:left">
+					Site d�velopp� par 3e-Oeil studio Paris - <a href="www.3e-oeil.com">www.3e-oeil.com</a>
+				</div>
+				
+				<div style="float:left" class="Style20">&nbsp;-&nbsp;</div>
+			
+				<div style="float:left">
+					<div title="Cliquez pour basculer l'affichage" class="Optim1" onMouseOver="document.body.style.cursor='hand';" onMouseOut="document.body.style.cursor='default';">
+						VTT <br />
+						<div class="menu-Optim1">
+							<ul>
+								<li><a href="plan.php">Plan</a></li>
+								<li><a href="deplacement-urbain.php" title="deplacement urbain">D�placement urbain</a></li>
+								<li><a href="deplacement-velo.php" title="deplacement velo">D�placement v�lo</a></li>
+								<li><a href="folding-bikes.php" title="folding bikes">Folding bikes</a></li>
+								<li><a href="montague-france.php" title="montague france">Montague France</a></li>
+								<li><a href="montague-paratrooper.php" title="montague paratrooper">Montague Paratrooper</a></li>
+								<li><a href="nouveaute-velo.php" title="nouveaute velo">Nouveaut� v�lo</a></li>
+								<li><a href="velo-design.php" title="velo design">Velo design</a></li>
+								<li><a href="velo-montague.php" title="velo montague">Velo Montague</a></li>
+								<li><a href="velo-personnalise.php" title="velo personnalise">V�lo personnalis�</a></li>
+								<li><a href="velo-pliable.php" title="velo pliable">V�lo pliable</a></li>
+								<li><a href="velo-pliant.php" title="velo pliant">V�lo pliant</a></li>
+								<li><a href="velo-urbain.php" title="velo urbain">Velo urbain</a></li>
+								<li><a href="VTT.php" title="vtt">VTT</a></li>
+							</ul>
+						</div>
+					</div>
+				</div>
+				
+				<div style="float:left" class="Style20">&nbsp;-&nbsp;</div>
+	
+				<div style="float:left">
+					<div title="Cliquez pour basculer l'affichage" class="Optim2" onMouseOver="document.body.style.cursor='hand';" onMouseOut="document.body.style.cursor='default';">
+						Liens <br />
+						<div class="menu-Optim2">
+							<ul style="display:block; float:none;">
+								<li><a href="http://www.air-magic.com/montgolfiere/montgolfiere.html" title="montgolfiere">Montgolfi�re</a></li>
+								<li><a href="http://www.ineole.com/investissement-loi-girardin.html" title="Investissement Loi girardin">Investissement loi girardin</a></li>
+								<li><a href="http://www.abris-kokoon.fr/" title="Abris piscine">Abris piscine</a></li>
+								<li><a href="http://www.misterprojo.com/" title="Videoprojecteur">Videoprojecteur</a></li>
+								<li><a href="http://www.sosserrurier.com" title="serrurerie">Serrurerie</a></li>
+								<li><a href="http://www.location-groupe-electrogene.eu/location-groupe-electrogene.html" title="location groupe electrogene">Location groupe �lectrog�ne</a></li>
+								<li><a href="http://www.sectionderecherches.fr" title="serie francaise">S�rie fran�aise</a></li>
+								<li><a href="http://www.toopneus.com/" title="pneus">Pneus</a></li>
+								<li><a href="http://www.bestpub.fr/indexproduits.php?id=USB" title="clefs usb personnalisees" target="blank">Clefs USB personnalis�es</a></li>
+								<li><a href="http://www.internet-rentable.fr/coaching-referencement.html" title="coaching referencement">Coaching r�f�rencement</a></li>
+							</ul>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div id="droite">
+	  <img src="../img/droite2.jpg" alt="vtt montague" width="555" height="862" border="0" usemap="#Map2" />
+<map name="Map2" id="Map2"><area shape="rect" coords="9,391,174,454" href="http://www.3e-boutique.com" />
+</map>
+  </div>
+</div>
+<script type="text/javascript">
+var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+</script>
+<script type="text/javascript">
+try {
+var pageTracker = _gat._getTracker("UA-15838634-1");
+pageTracker._trackPageview();
+} catch(err) {}</script>
+</body>
+<!-- InstanceEnd --></html>
+
+http://www.3e-montague.com/VTT/deplacement-velo.php 85.14.165.46 20100903165429 text/html 8294
+HTTP/1.1 200 OK
+Date:Fri, 03 Sep 2010 23:54:28 GMT
+Server:Apache/2.0.54 (Fedora)
+X-Powered-By:PHP/4.4.2
+Content-Length:7914
+Connection:close
+Content-Type:text/html
+x_commoncrawl_OriginalURL:http://www.3e-montague.com/VTT/deplacement-velo.php
+x_commoncrawl_URLFP:-3600589498605678634
+x_commoncrawl_HostFP:4112275004098347684
+x_commoncrawl_FetchTimestamp:1283558069135
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><!-- InstanceBegin template="/Templates/template3.dwt.php" codeOutsideHTMLIsLocked="false" -->
+<head>
+<!-- InstanceBeginEditable name="doctitle" -->
+<title>D�placement v�lo - Montague par 3e-oeil</title>
+<!-- InstanceEndEditable -->
+<meta http-equiv="expires" content="0" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+<!-- InstanceBeginEditable name="head" -->
+<meta name="keywords" lang="fr" content="D�placement v�lo - vtt, Montague, 3e-oeil, folding bikes, deplacement velo pliable, deplacement velo urbain, deplacement velo pliant, deplacement velo design, deplacement velo montague, deplacement velo personnalise, d�placement v�lo pliable, d�placement v�lo urbain, d�placement v�lo pliant, d�placement v�lo design, d�placement v�lo montague, d�placement v�lo personnalis�" />
+<meta name="description" content="D�placement v�lo - Montague by 3e-oeil" />
+<!-- InstanceEndEditable -->
+<meta name="language" content="french" />
+<link rel="shortcut icon" href="http://www.3e-montague.fr/favicon.png" type="image/x-png" />
+
+<link rel="stylesheet" href="../optim/styles.css" type="text/css" media="all" />
+
+<script type="text/javascript" src="../optim/jquery.js"></script>
+<script type="text/javascript" src="../optim/jquery.hoverIntent.js"></script>
+<script type="text/javascript" src="../optim/slide.js"></script>
+</head>
+
+<body>
+<div id="site">
+	<div id="gauche">
+		<img src="../img/gauche2.jpg" alt="vtt montague" width="552" height="862" border="0" usemap="#Map" />
+<map name="Map" id="Map"><area shape="rect" coords="429,198,546,236" href="http://www.facebook.com/group.php?v=photos&ref=search&gid=168408960229#!/group.php?v=wall&ref=search&gid=168408960229" />
+<area shape="rect" coords="460,423,485,449" href="http://www.3e-boutique.com" />
+</map>
+  </div>
+	<div id="milieu">
+		<div id="banniere">
+		  <img src="../img/banniere2.jpg" alt="banniere" width="547" height="330" border="0" usemap="#Map3" />
+<map name="Map3" id="Map3"><area shape="rect" coords="420,72,438,92" href="http://www.3e-montague.es" />
+<area shape="rect" coords="397,72,418,91" href="http://www.3e-montague.fr" />
+<area shape="rect" coords="11,29,323,97" href="http://www.3e-montague.fr" />
+<area shape="rect" coords="5,102,542,256" href="http://www.3e-montague.fr" />
+</map>
+	  </div>
+		<div id="contenu">
+			<!-- InstanceBeginEditable name="contenu" -->
+			<h1><a href="http://www.3e-montague.fr" title="deplacement velo">D�placement v�lo</a></h1>
+			<p>Les villes fran�aises s'impliquent de plus en plus sur la mani�re de limiter les trajets individuels en voiture et de favoriser les modes de transports �cologiques.<br />
+Depuis plusieurs ann�es, les <strong><a href="deplacement-velo.php" title="deplacement velo">d�placements � v�lo</a></strong> ne cessent de cro�tre et en particulier dans les grandes villes.<br />
+Alors, pour vos <strong><a href="deplacement-velo.php" title="deplacement velo">d�placements v�lo</a></strong> utilisez un v�lo Montague.<br />
+L�ensemble des v�los de la gamme Montague facilitera vos <strong><a href="deplacement-velo.php" title="deplacement velo">d�placements v�lo</a></strong> que ce soit en milieu urbain ou � la campagne.<br />
+Une fa�on agr�able d�aller au travail, faire les magasins ou m�me aller au caf�. Petit appartement? Besoin de le ranger dans le coffre? Aucun probl�me. Les v�los Montague se plient pour atteindre une taille qui permet un rangement n�importe o�.</p>
+			<p>Voir aussi <a href="folding-bikes.php" title="folding bikes">folding bikes</a>.</p>
+			<h2><a href="deplacement-velo.php" title="deplacement velo">D�placement v�lo</a></h2>
+			<!-- InstanceEndEditable -->			
+			<hr />
+			
+			<div id="slide">			
+				<div style="float:left">
+					Site d�velopp� par 3e-Oeil studio Paris - <a href="www.3e-oeil.com">www.3e-oeil.com</a>
+				</div>
+				
+				<div style="float:left" class="Style20">&nbsp;-&nbsp;</div>
+			
+				<div style="float:left">
+					<div title="Cliquez pour basculer l'affichage" class="Optim1" onMouseOver="document.body.style.cursor='hand';" onMouseOut="document.body.style.cursor='default';">
+						VTT <br />
+						<div class="menu-Optim1">
+							<ul>
+								<li><a href="plan.php">Plan</a></li>
+								<li><a href="deplacement-urbain.php" title="deplacement urbain">D�placement urbain</a></li>
+								<li><a href="deplacement-velo.php" title="deplacement velo">D�placement v�lo</a></li>
+								<li><a href="folding-bikes.php" title="folding bikes">Folding bikes</a></li>
+								<li><a href="montague-france.php" title="montague france">Montague France</a></li>
+								<li><a href="montague-paratrooper.php" title="montague paratrooper">Montague Paratrooper</a></li>
+								<li><a href="nouveaute-velo.php" title="nouveaute velo">Nouveaut� v�lo</a></li>
+								<li><a href="velo-design.php" title="velo design">Velo design</a></li>
+								<li><a href="velo-montague.php" title="velo montague">Velo Montague</a></li>
+								<li><a href="velo-personnalise.php" title="velo personnalise">V�lo personnalis�</a></li>
+								<li><a href="velo-pliable.php" title="velo pliable">V�lo pliable</a></li>
+								<li><a href="velo-pliant.php" title="velo pliant">V�lo pliant</a></li>
+								<li><a href="velo-urbain.php" title="velo urbain">Velo urbain</a></li>
+								<li><a href="VTT.php" title="vtt">VTT</a></li>
+							</ul>
+						</div>
+					</div>
+				</div>
+				
+				<div style="float:left" class="Style20">&nbsp;-&nbsp;</div>
+	
+				<div style="float:left">
+					<div title="Cliquez pour basculer l'affichage" class="Optim2" onMouseOver="document.body.style.cursor='hand';" onMouseOut="document.body.style.cursor='default';">
+						Liens <br />
+						<div class="menu-Optim2">
+							<ul style="display:block; float:none;">
+								<li><a href="http://www.air-magic.com/montgolfiere/montgolfiere.html" title="montgolfiere">Montgolfi�re</a></li>
+								<li><a href="http://www.ineole.com/investissement-loi-girardin.html" title="Investissement Loi girardin">Investissement loi girardin</a></li>
+								<li><a href="http://www.abris-kokoon.fr/" title="Abris piscine">Abris piscine</a></li>
+								<li><a href="http://www.misterprojo.com/" title="Videoprojecteur">Videoprojecteur</a></li>
+								<li><a href="http://www.sosserrurier.com" title="serrurerie">Serrurerie</a></li>
+								<li><a href="http://www.location-groupe-electrogene.eu/location-groupe-electrogene.html" title="location groupe electrogene">Location groupe �lectrog�ne</a></li>
+								<li><a href="http://www.sectionderecherches.fr" title="serie francaise">S�rie fran�aise</a></li>
+								<li><a href="http://www.toopneus.com/" title="pneus">Pneus</a></li>
+								<li><a href="http://www.bestpub.fr/indexproduits.php?id=USB" title="clefs usb personnalisees" target="blank">Clefs USB personnalis�es</a></li>
+								<li><a href="http://www.internet-rentable.fr/coaching-referencement.html" title="coaching referencement">Coaching r�f�rencement</a></li>
+							</ul>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div id="droite">
+	  <img src="../img/droite2.jpg" alt="vtt montague" width="555" height="862" border="0" usemap="#Map2" />
+<map name="Map2" id="Map2"><area shape="rect" coords="9,391,174,454" href="http://www.3e-boutique.com" />
+</map>
+  </div>
+</div>
+<script type="text/javascript">
+var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+</script>
+<script type="text/javascript">
+try {
+var pageTracker = _gat._getTracker("UA-15838634-1");
+pageTracker._trackPageview();
+} catch(err) {}</script>
+</body>
+<!-- InstanceEnd --></html>
+
+http://www.3e-montague.com/VTT/folding-bikes.php 85.14.165.46 20100903165710 text/html 7658
+HTTP/1.1 200 OK
+Date:Fri, 03 Sep 2010 23:57:07 GMT
+Server:Apache/2.0.54 (Fedora)
+X-Powered-By:PHP/4.4.2
+Content-Length:7281
+Connection:close
+Content-Type:text/html
+x_commoncrawl_OriginalURL:http://www.3e-montague.com/VTT/folding-bikes.php
+x_commoncrawl_URLFP:-5665490788958925552
+x_commoncrawl_HostFP:4112275004098347684
+x_commoncrawl_FetchTimestamp:1283558230368
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><!-- InstanceBegin template="/Templates/template3.dwt.php" codeOutsideHTMLIsLocked="false" -->
+<head>
+<!-- InstanceBeginEditable name="doctitle" -->
+<title>Folding bikes - Montague par 3e-oeil</title>
+<!-- InstanceEndEditable -->
+<meta http-equiv="expires" content="0" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+<!-- InstanceBeginEditable name="head" -->
+<meta name="keywords" lang="fr" content="Folding bikes - vtt, Montague, 3e-oeil, velo pliant, velos pliants, VTT urbain, VTC urbain." />
+<meta name="description" content="Folding bikes - Montague by 3e-oeil" />
+<!-- InstanceEndEditable -->
+<meta name="language" content="french" />
+<link rel="shortcut icon" href="http://www.3e-montague.fr/favicon.png" type="image/x-png" />
+
+<link rel="stylesheet" href="../optim/styles.css" type="text/css" media="all" />
+
+<script type="text/javascript" src="../optim/jquery.js"></script>
+<script type="text/javascript" src="../optim/jquery.hoverIntent.js"></script>
+<script type="text/javascript" src="../optim/slide.js"></script>
+</head>
+
+<body>
+<div id="site">
+	<div id="gauche">
+		<img src="../img/gauche2.jpg" alt="vtt montague" width="552" height="862" border="0" usemap="#Map" />
+<map name="Map" id="Map"><area shape="rect" coords="429,198,546,236" href="http://www.facebook.com/group.php?v=photos&ref=search&gid=168408960229#!/group.php?v=wall&ref=search&gid=168408960229" />
+<area shape="rect" coords="460,423,485,449" href="http://www.3e-boutique.com" />
+</map>
+  </div>
+	<div id="milieu">
+		<div id="banniere">
+		  <img src="../img/banniere2.jpg" alt="banniere" width="547" height="330" border="0" usemap="#Map3" />
+<map name="Map3" id="Map3"><area shape="rect" coords="420,72,438,92" href="http://www.3e-montague.es" />
+<area shape="rect" coords="397,72,418,91" href="http://www.3e-montague.fr" />
+<area shape="rect" coords="11,29,323,97" href="http://www.3e-montague.fr" />
+<area shape="rect" coords="5,102,542,256" href="http://www.3e-montague.fr" />
+</map>
+	  </div>
+		<div id="contenu">
+			<!-- InstanceBeginEditable name="contenu" -->
+			<h1><a href="http://www.3e-montague.fr" title="folding bikes">Folding bikes</a></h1>
+			<p>If you are looking for a <strong><a href="folding-bikes.php" title="folding bikes">folding bike</a></strong>, Montague offers top quality bikes. Montague design the world's first high-performance full-size <strong><a href="folding-bikes.php" title="folding bikes">folding bike</a></strong>.<br />
+The 2009 Montague�s are about freedom. Freedom from traffic. Freedom of expression. Freedom to choose to the moment how you want to move. <br />
+Montague <strong><a href="folding-bikes.php" title="folding bikes">folding bikes</a></strong> are easy to carry in elevators and up stairs. Quickly fits in a closet or under a desk.
+</p>
+			<p>Voir aussi <a href="montague-france.php" title="montague france">Montague en France</a>.</p>
+			<h2><a href="folding-bikes.php" title="folding bike">Folding bikes</a></h2>
+			<!-- InstanceEndEditable -->			
+			<hr />
+			
+			<div id="slide">			
+				<div style="float:left">
+					Site d�velopp� par 3e-Oeil studio Paris - <a href="www.3e-oeil.com">www.3e-oeil.com</a>
+				</div>
+				
+				<div style="float:left" class="Style20">&nbsp;-&nbsp;</div>
+			
+				<div style="float:left">
+					<div title="Cliquez pour basculer l'affichage" class="Optim1" onMouseOver="document.body.style.cursor='hand';" onMouseOut="document.body.style.cursor='default';">
+						VTT <br />
+						<div class="menu-Optim1">
+							<ul>
+								<li><a href="plan.php">Plan</a></li>
+								<li><a href="deplacement-urbain.php" title="deplacement urbain">D�placement urbain</a></li>
+								<li><a href="deplacement-velo.php" title="deplacement velo">D�placement v�lo</a></li>
+								<li><a href="folding-bikes.php" title="folding bikes">Folding bikes</a></li>
+								<li><a href="montague-france.php" title="montague france">Montague France</a></li>
+								<li><a href="montague-paratrooper.php" title="montague paratrooper">Montague Paratrooper</a></li>
+								<li><a href="nouveaute-velo.php" title="nouveaute velo">Nouveaut� v�lo</a></li>
+								<li><a href="velo-design.php" title="velo design">Velo design</a></li>
+								<li><a href="velo-montague.php" title="velo montague">Velo Montague</a></li>
+								<li><a href="velo-personnalise.php" title="velo personnalise">V�lo personnalis�</a></li>
+								<li><a href="velo-pliable.php" title="velo pliable">V�lo pliable</a></li>
+								<li><a href="velo-pliant.php" title="velo pliant">V�lo pliant</a></li>
+								<li><a href="velo-urbain.php" title="velo urbain">Velo urbain</a></li>
+								<li><a href="VTT.php" title="vtt">VTT</a></li>
+							</ul>
+						</div>
+					</div>
+				</div>
+				
+				<div style="float:left" class="Style20">&nbsp;-&nbsp;</div>
+	
+				<div style="float:left">
+					<div title="Cliquez pour basculer l'affichage" class="Optim2" onMouseOver="document.body.style.cursor='hand';" onMouseOut="document.body.style.cursor='default';">
+						Liens <br />
+						<div class="menu-Optim2">
+							<ul style="display:block; float:none;">
+								<li><a href="http://www.air-magic.com/montgolfiere/montgolfiere.html" title="montgolfiere">Montgolfi�re</a></li>
+								<li><a href="http://www.ineole.com/investissement-loi-girardin.html" title="Investissement Loi girardin">Investissement loi girardin</a></li>
+								<li><a href="http://www.abris-kokoon.fr/" title="Abris piscine">Abris piscine</a></li>
+								<li><a href="http://www.misterprojo.com/" title="Videoprojecteur">Videoprojecteur</a></li>
+								<li><a href="http://www.sosserrurier.com" title="serrurerie">Serrurerie</a></li>
+								<li><a href="http://www.location-groupe-electrogene.eu/location-groupe-electrogene.html" title="location groupe electrogene">Location groupe �lectrog�ne</a></li>
+								<li><a href="http://www.sectionderecherches.fr" title="serie francaise">S�rie fran�aise</a></li>
+								<li><a href="http://www.toopneus.com/" title="pneus">Pneus</a></li>
+								<li><a href="http://www.bestpub.fr/indexproduits.php?id=USB" title="clefs usb personnalisees" target="blank">Clefs USB personnalis�es</a></li>
+								<li><a href="http://www.internet-rentable.fr/coaching-referencement.html" title="coaching referencement">Coaching r�f�rencement</a></li>
+							</ul>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div id="droite">
+	  <img src="../img/droite2.jpg" alt="vtt montague" width="555" height="862" border="0" usemap="#Map2" />
+<map name="Map2" id="Map2"><area shape="rect" coords="9,391,174,454" href="http://www.3e-boutique.com" />
+</map>
+  </div>
+</div>
+<script type="text/javascript">
+var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+</script>
+<script type="text/javascript">
+try {
+var pageTracker = _gat._getTracker("UA-15838634-1");
+pageTracker._trackPageview();
+} catch(err) {}</script>
+</body>
+<!-- InstanceEnd --></html>
+
+http://www.3e-montague.com/VTT/montague-france.php 85.14.165.46 20100903165957 text/html 8124
+HTTP/1.1 200 OK
+Date:Fri, 03 Sep 2010 23:59:57 GMT
+Server:Apache/2.0.54 (Fedora)
+X-Powered-By:PHP/4.4.2
+Content-Length:7746
+Connection:close
+Content-Type:text/html
+x_commoncrawl_OriginalURL:http://www.3e-montague.com/VTT/montague-france.php
+x_commoncrawl_URLFP:1233804093132275392
+x_commoncrawl_HostFP:4112275004098347684
+x_commoncrawl_FetchTimestamp:1283558397864
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><!-- InstanceBegin template="/Templates/template3.dwt.php" codeOutsideHTMLIsLocked="false" -->
+<head>
+<!-- InstanceBeginEditable name="doctitle" -->
+<title>Montague France - Montague par 3e-oeil</title>
+<!-- InstanceEndEditable -->
+<meta http-equiv="expires" content="0" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+<!-- InstanceBeginEditable name="head" -->
+<meta name="keywords" lang="fr" content="Montague France - vtt, Montague, 3e-oeil, velo pliant, VTT urbain, VTC urbain, folding bikes, velo Montague France, VTT Montague France" />
+<meta name="description" content="Montague France - Montague by 3e-oeil. La soci�t� TROISIEME �IL est devenu le distributeur exclusif des v�los MONTAGUE en France, Portugal et Espagne." />
+<!-- InstanceEndEditable -->
+<meta name="language" content="french" />
+<link rel="shortcut icon" href="http://www.3e-montague.fr/favicon.png" type="image/x-png" />
+
+<link rel="stylesheet" href="../optim/styles.css" type="text/css" media="all" />
+
+<script type="text/javascript" src="../optim/jquery.js"></script>
+<script type="text/javascript" src="../optim/jquery.hoverIntent.js"></script>
+<script type="text/javascript" src="../optim/slide.js"></script>
+</head>
+
+<body>
+<div id="site">
+	<div id="gauche">
+		<img src="../img/gauche2.jpg" alt="vtt montague" width="552" height="862" border="0" usemap="#Map" />
+<map name="Map" id="Map"><area shape="rect" coords="429,198,546,236" href="http://www.facebook.com/group.php?v=photos&ref=search&gid=168408960229#!/group.php?v=wall&ref=search&gid=168408960229" />
+<area shape="rect" coords="460,423,485,449" href="http://www.3e-boutique.com" />
+</map>
+  </div>
+	<div id="milieu">
+		<div id="banniere">
+		  <img src="../img/banniere2.jpg" alt="banniere" width="547" height="330" border="0" usemap="#Map3" />
+<map name="Map3" id="Map3"><area shape="rect" coords="420,72,438,92" href="http://www.3e-montague.es" />
+<area shape="rect" coords="397,72,418,91" href="http://www.3e-montague.fr" />
+<area shape="rect" coords="11,29,323,97" href="http://www.3e-montague.fr" />
+<area shape="rect" coords="5,102,542,256" href="http://www.3e-montague.fr" />
+</map>
+	  </div>
+		<div id="contenu">
+			<!-- InstanceBeginEditable name="contenu" -->
+			<h1><a href="http://www.3e-montague.fr" title="montague france">Montague France</a></h1>
+			<p>Montague Corporation est une compagnie sp�cialis�e dans la cr�ation et la production de v�los pliants munis d�un syst�me r�volutionnaire le � FIT �. 
+Il n�existait pas, � ce jour, de distributeur <strong><a href="montague-france.php" title="montague france">Montague en France</a></strong>.<br />
+La soci�t� TROISIEME �IL est devenu le distributeur exclusif de <strong><a href="montague-france.php" title="montague france">Montague France</a></strong>, Portugal et Espagne.<br />
+Acheter un v�lo de la gamme Montague est d�sormais possible par le biais de notre site <a href="www.3e-store.com" title="montague france">www.3e-store.com</a> ou dans les boutiques de nos revendeurs.<br />
+Vous trouverez la liste des revendeurs <strong><a href="montague-france.php" title="montague france">Montague France</a></strong> sur le site <a href="www.3e-montague.com" title="montague france">www.3e-montague.com</a>. 
+</p>
+<p>Voir aussi <a href="montague-paratrooper.php" title="montague paratrooper">Montague Paratrooper</a>.</p>
+			<h2><a href="montague-france.php" title="montague france">Montague France</a></h2>
+			<!-- InstanceEndEditable -->			
+			<hr />
+			
+			<div id="slide">			
+				<div style="float:left">
+					Site d�velopp� par 3e-Oeil studio Paris - <a href="www.3e-oeil.com">www.3e-oeil.com</a>
+				</div>
+				
+				<div style="float:left" class="Style20">&nbsp;-&nbsp;</div>
+			
+				<div style="float:left">
+					<div title="Cliquez pour basculer l'affichage" class="Optim1" onMouseOver="document.body.style.cursor='hand';" onMouseOut="document.body.style.cursor='default';">
+						VTT <br />
+						<div class="menu-Optim1">
+							<ul>
+								<li><a href="plan.php">Plan</a></li>
+								<li><a href="deplacement-urbain.php" title="deplacement urbain">D�placement urbain</a></li>
+								<li><a href="deplacement-velo.php" title="deplacement velo">D�placement v�lo</a></li>
+								<li><a href="folding-bikes.php" title="folding bikes">Folding bikes</a></li>
+								<li><a href="montague-france.php" title="montague france">Montague France</a></li>
+								<li><a href="montague-paratrooper.php" title="montague paratrooper">Montague Paratrooper</a></li>
+								<li><a href="nouveaute-velo.php" title="nouveaute velo">Nouveaut� v�lo</a></li>
+								<li><a href="velo-design.php" title="velo design">Velo design</a></li>
+								<li><a href="velo-montague.php" title="velo montague">Velo Montague</a></li>
+								<li><a href="velo-personnalise.php" title="velo personnalise">V�lo personnalis�</a></li>
+								<li><a href="velo-pliable.php" title="velo pliable">V�lo pliable</a></li>
+								<li><a href="velo-pliant.php" title="velo pliant">V�lo pliant</a></li>
+								<li><a href="velo-urbain.php" title="velo urbain">Velo urbain</a></li>
+								<li><a href="VTT.php" title="vtt">VTT</a></li>
+							</ul>
+						</div>
+					</div>
+				</div>
+				
+				<div style="float:left" class="Style20">&nbsp;-&nbsp;</div>
+	
+				<div style="float:left">
+					<div title="Cliquez pour basculer l'affichage" class="Optim2" onMouseOver="document.body.style.cursor='hand';" onMouseOut="document.body.style.cursor='default';">
+						Liens <br />
+						<div class="menu-Optim2">
+							<ul style="display:block; float:none;">
+								<li><a href="http://www.air-magic.com/montgolfiere/montgolfiere.html" title="montgolfiere">Montgolfi�re</a></li>
+								<li><a href="http://www.ineole.com/investissement-loi-girardin.html" title="Investissement Loi girardin">Investissement loi girardin</a></li>
+								<li><a href="http://www.abris-kokoon.fr/" title="Abris piscine">Abris piscine</a></li>
+								<li><a href="http://www.misterprojo.com/" title="Videoprojecteur">Videoprojecteur</a></li>
+								<li><a href="http://www.sosserrurier.com" title="serrurerie">Serrurerie</a></li>
+								<li><a href="http://www.location-groupe-electrogene.eu/location-groupe-electrogene.html" title="location groupe electrogene">Location groupe �lectrog�ne</a></li>
+								<li><a href="http://www.sectionderecherches.fr" title="serie francaise">S�rie fran�aise</a></li>
+								<li><a href="http://www.toopneus.com/" title="pneus">Pneus</a></li>
+								<li><a href="http://www.bestpub.fr/indexproduits.php?id=USB" title="clefs usb personnalisees" target="blank">Clefs USB personnalis�es</a></li>
+								<li><a href="http://www.internet-rentable.fr/coaching-referencement.html" title="coaching referencement">Coaching r�f�rencement</a></li>
+							</ul>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div id="droite">
+	  <img src="../img/droite2.jpg" alt="vtt montague" width="555" height="862" border="0" usemap="#Map2" />
+<map name="Map2" id="Map2"><area shape="rect" coords="9,391,174,454" href="http://www.3e-boutique.com" />
+</map>
+  </div>
+</div>
+<script type="text/javascript">
+var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+</script>
+<script type="text/javascript">
+try {
+var pageTracker = _gat._getTracker("UA-15838634-1");
+pageTracker._trackPageview();
+} catch(err) {}</script>
+</body>
+<!-- InstanceEnd --></html>
+
+http://www.3e-montague.com/VTT/montague-paratrooper.php 85.14.165.46 20100903165550 text/html 8294
+HTTP/1.1 200 OK
+Date:Fri, 03 Sep 2010 23:55:49 GMT
+Server:Apache/2.0.54 (Fedora)
+X-Powered-By:PHP/4.4.2
+Content-Length:7911
+Connection:close
+Content-Type:text/html
+x_commoncrawl_OriginalURL:http://www.3e-montague.com/VTT/montague-paratrooper.php
+x_commoncrawl_URLFP:4300831933308686527
+x_commoncrawl_HostFP:4112275004098347684
+x_commoncrawl_FetchTimestamp:1283558150185
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><!-- InstanceBegin template="/Templates/template3.dwt.php" codeOutsideHTMLIsLocked="false" -->
+<head>
+<!-- InstanceBeginEditable name="doctitle" -->
+<title>Montague Paratrooper - Montague par 3e-oeil</title>
+<!-- InstanceEndEditable -->
+<meta http-equiv="expires" content="0" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+<!-- InstanceBeginEditable name="head" -->
+<meta name="keywords" lang="fr" content="Montague Paratrooper - vtt, Montague, 3e-oeil, velo pliant, velos pliants, VTT urbain, VTC urbain, folding bikes, velo montague paratrooper, VTT montague paratrooper" />
+<meta name="description" content="Montague Paratrooper - Montague by 3e-oeil. Le Montague Paratrooper est optimis� pour �tre transport� pr�s du corps, pour un haut niveau de man�uvre, et peut �tre pli� en moins de 30 secondes. " />
+<!-- InstanceEndEditable -->
+<meta name="language" content="french" />
+<link rel="shortcut icon" href="http://www.3e-montague.fr/favicon.png" type="image/x-png" />
+
+<link rel="stylesheet" href="../optim/styles.css" type="text/css" media="all" />
+
+<script type="text/javascript" src="../optim/jquery.js"></script>
+<script type="text/javascript" src="../optim/jquery.hoverIntent.js"></script>
+<script type="text/javascript" src="../optim/slide.js"></script>
+</head>
+
+<body>
+<div id="site">
+	<div id="gauche">
+		<img src="../img/gauche2.jpg" alt="vtt montague" width="552" height="862" border="0" usemap="#Map" />
+<map name="Map" id="Map"><area shape="rect" coords="429,198,546,236" href="http://www.facebook.com/group.php?v=photos&ref=search&gid=168408960229#!/group.php?v=wall&ref=search&gid=168408960229" />
+<area shape="rect" coords="460,423,485,449" href="http://www.3e-boutique.com" />
+</map>
+  </div>
+	<div id="milieu">
+		<div id="banniere">
+		  <img src="../img/banniere2.jpg" alt="banniere" width="547" height="330" border="0" usemap="#Map3" />
+<map name="Map3" id="Map3"><area shape="rect" coords="420,72,438,92" href="http://www.3e-montague.es" />
+<area shape="rect" coords="397,72,418,91" href="http://www.3e-montague.fr" />
+<area shape="rect" coords="11,29,323,97" href="http://www.3e-montague.fr" />
+<area shape="rect" coords="5,102,542,256" href="http://www.3e-montague.fr" />
+</map>
+	  </div>
+		<div id="contenu">
+			<!-- InstanceBeginEditable name="contenu" -->
+			<h1><a href="http://www.3e-montague.fr" title="montague paratrooper">Montague Paratrooper</a></h1>
+			<p>Le <strong><a href="montague-paratrooper.php" title="montague paratrooper">Montague Paratrooper</a></strong> est la version non �lectrique du v�lo tout terrain � TENS � (Tactical Electric No Signature) lequel est n� d�un partenariat entre Montague et les US Marines.<br />
+Il b�n�ficie du syst�me FIT (Folding Integrated Technology) d�velopp� pour permettre � un v�lo tout terrain de se plier en deux de mani�re � passer par la porte du cargo d�un avion militaire avec un parachutiste. <br />
+Le <strong><a href="montague-paratrooper.php" title="montague paratrooper">Montague Paratrooper</a></strong> est un peu � la base de toute la gamme Montague et Swissbike.<br />
+Il est optimis� pour �tre transport� pr�s du corps, pour un haut niveau de man�uvre, et peut �tre pli� en moins de 30 secondes. <br />
+Le <strong><a href="montague-paratrooper.php" title="montague paratrooper">Montague Paratrooper</a></strong> a �t� cr�� pour endurer quasiment n�importe quel terrain � grande vitesse.</p>
+<p>Voir aussi <a href="nouveaute-velo.php" title="nouveaute velo">nouveaut� v�lo</a>.</p>
+			<h2><a href="montague-paratrooper.php" title="montague paratrooper">Montague Paratrooper</a></h2>
+			<!-- InstanceEndEditable -->			
+			<hr />
+			
+			<div id="slide">			
+				<div style="float:left">
+					Site d�velopp� par 3e-Oeil studio Paris - <a href="www.3e-oeil.com">www.3e-oeil.com</a>
+				</div>
+				
+				<div style="float:left" class="Style20">&nbsp;-&nbsp;</div>
+			
+				<div style="float:left">
+					<div title="Cliquez pour basculer l'affichage" class="Optim1" onMouseOver="document.body.style.cursor='hand';" onMouseOut="document.body.style.cursor='default';">
+						VTT <br />
+						<div class="menu-Optim1">
+							<ul>
+								<li><a href="plan.php">Plan</a></li>
+								<li><a href="deplacement-urbain.php" title="deplacement urbain">D�placement urbain</a></li>
+								<li><a href="deplacement-velo.php" title="deplacement velo">D�placement v�lo</a></li>
+								<li><a href="folding-bikes.php" title="folding bikes">Folding bikes</a></li>
+								<li><a href="montague-france.php" title="montague france">Montague France</a></li>
+								<li><a href="montague-paratrooper.php" title="montague paratrooper">Montague Paratrooper</a></li>
+								<li><a href="nouveaute-velo.php" title="nouveaute velo">Nouveaut� v�lo</a></li>
+								<li><a href="velo-design.php" title="velo design">Velo design</a></li>
+								<li><a href="velo-montague.php" title="velo montague">Velo Montague</a></li>
+								<li><a href="velo-personnalise.php" title="velo personnalise">V�lo personnalis�</a></li>
+								<li><a href="velo-pliable.php" title="velo pliable">V�lo pliable</a></li>
+								<li><a href="velo-pliant.php" title="velo pliant">V�lo pliant</a></li>
+								<li><a href="velo-urbain.php" title="velo urbain">Velo urbain</a></li>
+								<li><a href="VTT.php" title="vtt">VTT</a></li>
+							</ul>
+						</div>
+					</div>
+				</div>
+				
+				<div style="float:left" class="Style20">&nbsp;-&nbsp;</div>
+	
+				<div style="float:left">
+					<div title="Cliquez pour basculer l'affichage" class="Optim2" onMouseOver="document.body.style.cursor='hand';" onMouseOut="document.body.style.cursor='default';">
+						Liens <br />
+						<div class="menu-Optim2">
+							<ul style="display:block; float:none;">
+								<li><a href="http://www.air-magic.com/montgolfiere/montgolfiere.html" title="montgolfiere">Montgolfi�re</a></li>
+								<li><a href="http://www.ineole.com/investissement-loi-girardin.html" title="Investissement Loi girardin">Investissement loi girardin</a></li>
+								<li><a href="http://www.abris-kokoon.fr/" title="Abris piscine">Abris piscine</a></li>
+								<li><a href="http://www.misterprojo.com/" title="Videoprojecteur">Videoprojecteur</a></li>
+								<li><a href="http://www.sosserrurier.com" title="serrurerie">Serrurerie</a></li>
+								<li><a href="http://www.location-groupe-electrogene.eu/location-groupe-electrogene.html" title="location groupe electrogene">Location groupe �lectrog�ne</a></li>
+								<li><a href="http://www.sectionderecherches.fr" title="serie francaise">S�rie fran�aise</a></li>
+								<li><a href="http://www.toopneus.com/" title="pneus">Pneus</a></li>
+								<li><a href="http://www.bestpub.fr/indexproduits.php?id=USB" title="clefs usb personnalisees" target="blank">Clefs USB personnalis�es</a></li>
+								<li><a href="http://www.internet-rentable.fr/coaching-referencement.html" title="coaching referencement">Coaching r�f�rencement</a></li>
+							</ul>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div id="droite">
+	  <img src="../img/droite2.jpg" alt="vtt montague" width="555" height="862" border="0" usemap="#Map2" />
+<map name="Map2" id="Map2"><area shape="rect" coords="9,391,174,454" href="http://www.3e-boutique.com" />
+</map>
+  </div>
+</div>
+<script type="text/javascript">
+var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+</script>
+<script type="text/javascript">
+try {
+var pageTracker = _gat._getTracker("UA-15838634-1");
+pageTracker._trackPageview();
+} catch(err) {}</script>
+</body>
+<!-- InstanceEnd --></html>
+
+http://www.3e-montague.com/VTT/nouveaute-velo.php 85.14.165.46 20100903170127 text/html 8209
+HTTP/1.1 200 OK
+Date:Sat, 04 Sep 2010 00:01:27 GMT
+Server:Apache/2.0.54 (Fedora)
+X-Powered-By:PHP/4.4.2
+Content-Length:7832
+Connection:close
+Content-Type:text/html
+x_commoncrawl_OriginalURL:http://www.3e-montague.com/VTT/nouveaute-velo.php
+x_commoncrawl_URLFP:9057649363771951161
+x_commoncrawl_HostFP:4112275004098347684
+x_commoncrawl_FetchTimestamp:1283558487437
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><!-- InstanceBegin template="/Templates/template3.dwt.php" codeOutsideHTMLIsLocked="false" -->
+<head>
+<!-- InstanceBeginEditable name="doctitle" -->
+<title>Nouveaut� v�lo - Montague par 3e-oeil</title>
+<!-- InstanceEndEditable -->
+<meta http-equiv="expires" content="0" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1" />
+<!-- InstanceBeginEditable name="head" -->
+<meta name="keywords" lang="fr" content="Nouveaut� v�lo - vtt, Montague, 3e-oeil, velo pliant, velos pliants, VTT urbain, VTC urbain, folding bikes" />
+<meta name="description" content="Nouveaut� v�lo - Montague by 3e-oeil. Venez d�couvrir sur notre site www.3e-montague.com une nouveaut� v�lo." />
+<!-- InstanceEndEditable -->
+<meta name="language" content="french" />
+<link rel="shortcut icon" href="http://www.3e-montague.fr/favicon.png" type="image/x-png" />
+
+<link rel="stylesheet" href="../optim/styles.css" type="text/css" media="all" />
+
+<script type="text/javascript" src="../optim/jquery.js"></script>
+<script type="text/javascript" src="../optim/jquery.hoverIntent.js"></script>
+<script type="text/javascript" src="../optim/slide.js"></script>
+</head>
+
+<body>
+<div id="site">
+	<div id="gauche">
+		<img src="../img/gauche2.jpg" alt="vtt montague" width="552" height="862" border="0" usemap="#Map" />
+<map name="Map" id="Map"><area shape="rect" coords="429,198,546,236" href="http://www.facebook.com/group.php?v=photos&ref=search&gid=168408960229#!/group.php?v=wall&ref=search&gid=168408960229" />
+<area shape="rect" coords="460,423,485,449" href="http://www.3e-boutique.com" />
+</map>
+  </div>
+	<div id="milieu">
+		<div id="banniere">
+		  <img src="../img/banniere2.jpg" alt="banniere" width="547" height="330" border="0" usemap="#Map3" />
+<map name="Map3" id="Map3"><area shape="rect" coords="420,72,438,92" href="http://www.3e-montague.es" />
+<area shape="rect" coords="397,72,418,91" href="http://www.3e-montague.fr" />
+<area shape="rect" coords="11,29,323,97" href="http://www.3e-montague.fr" />
+<area shape="rect" coords="5,102,542,256" href="http://www.3e-montague.fr" />
+</map>
+	  </div>
+		<div id="contenu">
+			<!-- InstanceBeginEditable name="contenu" -->
+			<h1><a href="http://www.3e-montague.fr" title="nouveaute velo">Nouveaut� v�lo</a></h1>
+			<p><strong><a href="nouveaute-velo.php" title="nouveaute velo">Nouveaut� v�lo</a></strong> : Montague arrive en France, en Espagne et au Portugal.<br />
+Venez d�couvrir sur notre site <a href="www.3e-montague.com" title="nouveaute velo">www.3e-montague.com</a> les derni�res <strong><a href="nouveaute-velo.php" title="nouveaute velo">nouveaut�s v�los</a></strong> de la gamme Montague.<br /><br />
+Premi�re nouveaut� : la s�rie limit�e L-Edge : sur la base du Paratrooper original, le L-EDGE a �t� optimis� pour les circuits urbains avec une monte de pneumatique fine et un design soign� en tirage limit�.<br />
+Deuxi�me nouveaut� : la s�rie limit�e B-Lock : sur la base du PARATROOPER ORIGINAL, le B-LOCK pr�serve ses qualit�s tout terrain tout en soignant une apparence suggestive qui n'est pas sans rappeler les origines de Montague USA.<br />
+N�h�sitez pas � visiter r�guli�rement notre site <a href="www.3e-montague.com" title="nouveaute velo">www.3e-montague.com</a> afin d�y d�couvrir de nouvelles <strong><a href="nouveaute-velo.php" title="nouveaute velo">nouveaut�s v�los</a></strong>.
+.</p>
+			<p>Voir aussi <a href="velo-design.php" title="velo design">v�lo design</a>.</p>
+			<h2><a href="nouveaute-velo.php" title="nouveaute velo">Nouveaut� v�lo</a></h2>
+			<!-- InstanceEndEditable -->			
+			<hr />
+			
+			<div id="slide">			
+				<div style="float:left">
+					Site d�velopp� par 3e-Oeil studio Paris - <a href="www.3e-oeil.com">www.3e-oeil.com</a>
+				</div>
+				
+				<div style="float:left" class="Style20">&nbsp;-&nbsp;</div>
+			
+				<div style="float:left">
+					<div title="Cliquez pour basculer l'affichage" class="Optim1" onMouseOver="document.body.style.cursor='hand';" onMouseOut="document.body.style.cursor='default';">
+						VTT <br />
+						<div class="menu-Optim1">
+							<ul>
+								<li><a href="plan.php">Plan</a></li>
+								<li><a href="deplacement-urbain.php" title="deplacement urbain">D�placement urbain</a></li>
+								<li><a href="deplacement-velo.php" title="deplacement velo">D�placement v�lo</a></li>
+								<li><a href="folding-bikes.php" title="folding bikes">Folding bikes</a></li>
+								<li><a href="montague-france.php" title="montague france">Montague France</a></li>
+								<li><a href="montague-paratrooper.php" title="montague paratrooper">Montague Paratrooper</a></li>
+								<li><a href="nouveaute-velo.php" title="nouveaute velo">Nouveaut� v�lo</a></li>
+								<li><a href="velo-design.php" title="velo design">Velo design</a></li>
+								<li><a href="velo-montague.php" title="velo montague">Velo Montague</a></li>
+								<li><a href="velo-personnalise.php" title="velo personnalise">V�lo personnalis�</a></li>
+								<li><a href="velo-pliable.php" title="velo pliable">V�lo pliable</a></li>
+								<li><a href="velo-pliant.php" title="velo pliant">V�lo pliant</a></li>
+								<li><a href="velo-urbain.php" title="velo urbain">Velo urbain</a></li>
+								<li><a href="VTT.php" title="vtt">VTT</a></li>
+							</ul>
+						</div>
+					</div>
+				</div>
+				
+				<div style="float:left" class="Style20">&nbsp;-&nbsp;</div>
+	
+				<div style="float:left">
+					<div title="Cliquez pour basculer l'affichage" class="Optim2" onMouseOver="document.body.style.cursor='hand';" onMouseOut="document.body.style.cursor='default';">
+						Liens <br />
+						<div class="menu-Optim2">
+							<ul style="display:block; float:none;">
+								<li><a href="http://www.air-magic.com/montgolfiere/montgolfiere.html" title="montgolfiere">Montgolfi�re</a></li>
+								<li><a href="http://www.ineole.com/investissement-loi-girardin.html" title="Investissement Loi girardin">Investissement loi girardin</a></li>
+								<li><a href="http://www.abris-kokoon.fr/" title="Abris piscine">Abris piscine</a></li>
+								<li><a href="http://www.misterprojo.com/" title="Videoprojecteur">Videoprojecteur</a></li>
+								<li><a href="http://www.sosserrurier.com" title="serrurerie">Serrurerie</a></li>
+								<li><a href="http://www.location-groupe-electrogene.eu/location-groupe-electrogene.html" title="location groupe electrogene">Location groupe �lectrog�ne</a></li>
+								<li><a href="http://www.sectionderecherches.fr" title="serie francaise">S�rie fran�aise</a></li>
+								<li><a href="http://www.toopneus.com/" title="pneus">Pneus</a></li>
+								<li><a href="http://www.bestpub.fr/indexproduits.php?id=USB" title="clefs usb personnalisees" target="blank">Clefs USB personnalis�es</a></li>
+								<li><a href="http://www.internet-rentable.fr/coaching-referencement.html" title="coaching referencement">Coaching r�f�rencement</a></li>
+							</ul>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div id="droite">
+	  <img src="../img/droite2.jpg" alt="vtt montague" width="555" height="862" border="0" usemap="#Map2" />
+<map name="Map2" id="Map2"><area shape="rect" coords="9,391,174,454" href="http://www.3e-boutique.com" />
+</map>
+  </div>
+</div>
+<script type="text/javascript">
+var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+</script>
+<script type="text/javascript">
+try {
+var pageTracker = _gat._getTracker("UA-15838634-1");
+pageTracker._trackPageview();
+} catch(err) {}</script>
+</body>
+<!-- InstanceEnd --></html>
+
+http://www.3e-montague.com/VTT/plan.php 85.14.165.46 20100903165502 text/html 8485
+HTTP/1.1 200 OK
+Date:Fri, 03 Sep 2010 23:55:02 GMT
+Server:Apache/2.0.54 (Fedora)
+X-Powered-By:PHP/4.4.2
+Connection:close
+Transfer-Encoding:chunked
+Content-Type:text/html
+x_commoncrawl_OriginalURL:http://www.3e-montague.com/VTT/plan.php
+x_commoncrawl_URLFP:-4856447417586391813
+x_commoncrawl_HostFP:4112275004098347684
+x_commoncrawl_FetchTimestamp:1283558102867
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"><!-- InstanceBegin template="/Templates/template3.dwt.php" codeOutsideHTMLIsLocked="false" -->
+<head>
+<!-- InstanceBeginEditable name="doctitle" -->
+<title>Plan Montague Troisieme Oeil - Montague par 3e-oeil</title>
+<!-- InstanceEndEditable -->

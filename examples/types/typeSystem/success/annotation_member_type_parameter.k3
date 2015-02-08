@@ -1,0 +1,9 @@
+annotation X given type a {
+	provides lifted f : a -> a = \x -> x
+}
+
+declare c : collection {}@{X} = empty{}@{X}
+
+declare x : int = c.f 5
+declare y : bool = c.f true
+

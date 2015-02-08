@@ -1,0 +1,17 @@
+include "Annotation/Containers/Interfaces/Collection.k3"
+
+annotation Transformers given type a, b
+{
+  requires lifted iterate : (content -> ()) -> ()
+  requires lifted map     : (content -> a) -> collection {elem : a} @ { Collection }
+  requires lifted filter  : (content -> bool) -> self
+  requires lifted fold    : (a -> (content -> a)) -> a -> a
+  requires lifted sort    : (content -> content -> int) -> collection content @ { Seq }
+
+  requires lifted groupBy : (content -> a) -> (b -> content -> b) -> b
+                             -> collection { key : a, value : b } @ { Collection }
+
+  requires lifted ext     : (content -> collection {elem : a} @ { Collection })
+                             -> collection {elem : a} @ { Collection }
+                             -> collection {elem : a} @ { Collection }
+}

@@ -1,0 +1,112 @@
+include "compact/AmplabBDB.k3"
+
+typedef rk_by_url_elem     = {key: string, value: int}
+typedef rk_by_url_map      = collection rk_by_url_elem @ Map
+
+typedef pr_agg             = {prSum: int, prCount: int, arSum: real}
+typedef aggs_by_ip_elem    = {key: string, value: pr_agg}
+typedef aggs_by_ip_map     = collection aggs_by_ip_elem @ Map
+
+declare user_visits : uv_bag
+
+//key: pageURL, value: pageRank
+@:Pinned
+declare rk_by_url : rk_by_url_map
+
+declare empty_aggs_by_ip : aggs_by_ip_map
+declare empty_agg        : pr_agg
+
+declare partial_aggs    : collection {key: int, value: aggs_by_ip_map} @ Map
+declare merged_partials : aggs_by_ip_map
+
+declare local_max  : mut aggs_by_ip_elem
+declare global_max : mut aggs_by_ip_elem
+
+declare date_lb    : string = "1980-01-01"
+declare date_ub    : string = "1980-04-01"
+declare valid_date : string -> bool = \i -> (i <= date_ub and i >= date_lb)
+
+declare flag  : mut bool = false
+declare flag2 : mut bool = false
+
+trigger q3_local : () = \_ -> (
+  user_visits.iterate (\uv ->
+    if (valid_date uv.visitDate)
+    then (
+      bind (uv.sourceIP, uv.destURL, index_by_hash uv.sourceIP) as (ip, url, a) in
+      case partial_aggs.lookup {key: a, value: empty_aggs_by_ip} of
+      { Some aggs ->
+        case rk_by_url.lookup {key: url, value: 0} of
+        {Some r ->
+          case (aggs.value.lookup {key: ip, value: empty_agg}) of
+          {Some pa_v ->
+             aggs.value.insert
+             {key: ip,
+              value: {prSum   : pa_v.value.prSum + r.value,
+                      prCount : pa_v.value.prCount + 1,
+                      arSum   : pa_v.value.arSum + uv.adRevenue } }
+          }
+          { None -> aggs.value.insert
+                      {key: ip, value: {prSum: r.value, prCount: 1, arSum: uv.adRevenue} }
+          };
+          partial_aggs.insert {key: a, value: aggs.value}
+        }
+        { None -> () }
+      }
+      { None ->
+        case rk_by_url.lookup {key: url, value: 0} of
+        {Some r ->
+          partial_aggs.insert
+          {key: a, value:
+            {|key: string, value: {prSum: int, prCount: int, arSum: real}|
+              {key: ip, value: {prSum: r.value, prCount: 1, arSum: uv.adRevenue} }
+            |} @ Map }
+        }
+        { None -> () }
+      }
+    )
+    else ()
+  );
+  ignore partial_aggs @SendByKey(dest_trg=[$ merge], barrier_trg=[$ count_merges], nodes = [$ peers], send_extra_fn = [$ (\x -> x)])
+)
+
+trigger merge : aggs_by_ip_map = \aggs_map -> (
+  aggs_map.iterate (\kv ->
+    case merged_partials.lookup {key: kv.key, value: kv.value} of
+    {Some agg ->
+      merged_partials.insert
+        {key: kv.key,
+         value:
+          {prSum   : agg.value.prSum   + kv.value.prSum,
+           prCount : agg.value.prCount + kv.value.prCount,
+           arSum   : agg.value.arSum   + kv.value.arSum
+          } } }
+    {None -> merged_partials.insert kv}
+  )
+)
+
+trigger count_merges : () = \_ -> (
+  ( merged_partials.iterate (\kv ->
+      if (kv.value.arSum > local_max.value.arSum)
+      then (local_max = kv)
+      else () );
+    let ignore = (local_max @:Result) @AmplabBenchmark
+    in ()
+  ) @OnCounter(id=[# merged_peers], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+)
+
+trigger start : () = \_ -> (() @:Start) @AmplabBenchmark(
+  queryTrigger       = [$ q3_local],
+  loadExpr           = [$ (uservisitsFiles.iterate (\e -> loadUVQ3 e.path user_visits);
+                           rankingsFiles.iterate (\e ->  loadRKQ3 e.path rk_by_url)) ],
+  preLoadExpr        = [$ peers.iterate (\i -> peers_seq.insert i)],
+  preReadyExpr       = [$ ()],
+  finishArgT         = [: aggs_by_ip_elem],
+  preTestFinishExpr  = [$ (\kv -> (if (kv.value.arSum > global_max.value.arSum)
+                                   then (global_max = kv) else ())) ],
+  preFinishExpr      = [$ print ("Global max.key: " ++ global_max.key) ],
+  preShutdownExpr    = [$ ()]
+)
+
+source rows : () = value ()
+feed rows |> start

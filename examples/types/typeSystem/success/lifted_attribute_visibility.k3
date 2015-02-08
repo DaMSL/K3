@@ -1,0 +1,10 @@
+annotation X {
+    provides lifted x : int = 4
+}
+annotation Y {
+    requires lifted x : int
+    provides lifted f : int -> int = fun a -> a + x
+}
+declare g : () -> int = fun junk ->
+    let c = immut empty {} @ {X,Y} in
+    c.f(8)

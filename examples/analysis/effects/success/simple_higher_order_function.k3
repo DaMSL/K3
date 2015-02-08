@@ -1,0 +1,5 @@
+declare x : mut int = 0
+
+trigger t : () = \_ -> (
+  x = ((\f -> f () + 1) (\z -> 5))
+)

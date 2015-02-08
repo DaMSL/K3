@@ -1,0 +1,4 @@
+annotation X {
+    provides x : int = 4
+}
+

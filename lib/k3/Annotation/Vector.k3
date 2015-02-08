@@ -1,0 +1,78 @@
+include "Annotation/Collection.k3"
+
+// Vectors must have a content type of {elem: real}
+annotation Vector given type a, b {
+  // TODO: bounds checking
+  provides lifted at  : int -> content
+    with effects \_ -> [R[i]; R[self]]
+
+  @:CArgs 2
+  provides lifted set : int -> content -> ()
+    with effects \i -> \elem -> [R[self]; R[i]; R[elem]; W[self]]
+
+  provides lifted size : () -> int
+    with effects \_ -> R[self]
+
+  @:Transformer
+  provides lifted add : self -> self
+    with effects \other -> [R[self]; R[other]]
+
+  @:Transformer
+  provides lifted inPlaceAdd : self -> ()
+    with effects \other -> [R[self]; R[other]; W[self]]
+
+  @:Transformer
+  provides lifted sub : self -> self
+    with effects \other -> [R[self]; R[other]]
+
+  @:Transformer
+  provides lifted inPlaceSub : self -> ()
+    with effects \other -> [R[self]; R[other]; W[self]]
+
+  @:Transformer
+  provides lifted iterate : (content -> ()) -> ()
+    with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
+
+  @:Transformer
+  provides lifted map: (content -> real) -> self
+    with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
+
+  @:Transformer
+  provides lifted filter : (content -> bool) -> self
+    with effects \filterF -> [R[self]; ([R[content]; filterF content])*]
+
+  @:{Transformer, CArgs 2}
+  provides lifted fold : (a -> (content -> a)) -> a -> a
+    with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+  @:{Transformer, CArgs 3}
+  provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
+                             -> collection { key : a, value : b } @Collection
+    with effects
+      \gbF -> \gaccF -> \z ->
+        [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
+
+  @:Transformer
+  provides lifted ext : (content -> collection {elem : a} @Collection)
+                         -> collection {elem : a} @ {Collection}
+    with effects \extF -> [R[self]; ([R[content]; extF content])*]
+
+  @:{Transformer, CArgs 3}
+  provides lifted sample : (a -> content -> a) -> a -> int -> a
+    with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
+
+  provides lifted dot : self -> real
+    with effects \other -> [R[self]; R[other]]
+
+  provides lifted distance: self -> real
+    with effects \other -> [R[self]; R[other]]
+
+  provides lifted scalarMult: real -> self
+    with effects \x -> [R[self]; R[x]]
+
+  provides lifted inPlaceScalarMult: real -> ()
+    with effects \x -> [R[self]; R[x]; W[self]]
+
+  provides lifted toString : () -> string
+    with effects \_ -> R[self]
+}

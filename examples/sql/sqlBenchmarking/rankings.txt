@@ -1,0 +1,10 @@
+{CNS={}, ANS={}, InMemoryDS=[{PageURL = ("www.google.com", MemImmut), PageRank = (12, MemImmut), AvgDuration = (15, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{PageURL = ("www.apple.com", MemImmut), PageRank = (9, MemImmut), AvgDuration = (15, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{PageURL = ("www.google1.com", MemImmut), PageRank = (17, MemImmut), AvgDuration = (15, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{PageURL = ("www.apple1.com", MemImmut), PageRank = (14, MemImmut), AvgDuration = (15, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{PageURL = ("www.google2.com", MemImmut), PageRank = (100, MemImmut), AvgDuration = (15, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{PageURL = ("www.apple2.com", MemImmut), PageRank = (6, MemImmut), AvgDuration = (15, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{PageURL = ("www.google3.com", MemImmut), PageRank = (3, MemImmut), AvgDuration = (15, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{PageURL = ("www.apple3.com", MemImmut), PageRank = (11, MemImmut), AvgDuration = (15, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{PageURL = ("www.google4.com", MemImmut), PageRank = (15, MemImmut), AvgDuration = (15, MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{PageURL = ("www.apple4.com", MemImmut), PageRank = (16, MemImmut), AvgDuration = (15, MemImmut)}], Collection}

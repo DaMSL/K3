@@ -1,0 +1,3 @@
+declare g : immut (int -> int) = \y -> f (f y)
+
+declare f : immut (int -> int) = \x -> x + 1

@@ -1,0 +1,43 @@
+/*
+ * aggregationQuery.k3
+ *
+ * Created by Kartik Thapar on 05/14/2014 at 10:45:16
+ * Copyright (c) 2014 Kartik Thapar. All rights reserved.
+ *
+ */
+
+include "Annotation/Collection.k3"
+include "Core/Builtins.k3"
+
+/* 
+ * Example SQL Query:
+ * SELECT SUBSTR(SourceIP, 1, X), SUM(adRevenue) FROM uservisits GROUP BY SUBSTR(SourceIP, 1, X)
+ */
+
+/* Dataset */
+
+declare dataOutput : collection {SourceIP : string, AdRevenue : int} @ {Collection}
+
+/* Query Variables */
+
+declare substringEndValue : mut int
+
+/* PHASE 1 : Process Table Rows and Compute */
+
+trigger processTableRows : (collection {SourceIP : string, AdRevenue : int} @ {Collection}) = \tableElementCollection -> (
+    tableElementCollection.iterate (\tableElement -> (
+        /* Check if the SourceIP exists in the collection; if it exists, update collection with new revenue; else insert as new. */
+        let sourceIPSubstring = (substring substringEndValue tableElement.SourceIP) in
+            let tupleInstance = (dataOutput.filter (\inputTuple -> inputTuple.SourceIP == sourceIPSubstring)).peek() in
+                case tupleInstance of
+                {Some tuple -> (
+                    let newAdRevenue = tuple.AdRevenue + tableElement.AdRevenue in
+                        dataOutput.update {SourceIP : sourceIPSubstring, AdRevenue : tuple.AdRevenue} {SourceIP : sourceIPSubstring, AdRevenue : newAdRevenue}
+                )}
+                {None -> dataOutput.insert {SourceIP : sourceIPSubstring, AdRevenue : tableElement.AdRevenue}}
+    ))
+)
+
+source tableSource : (collection {SourceIP : string, AdRevenue : int} @ {Collection}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/sqlBenchmarking/uservisits.txt" k3
+
+feed tableSource |> processTableRows

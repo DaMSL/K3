@@ -1,0 +1,10 @@
+annotation A given type a {
+    provides lifted f : a -> a = \x -> x
+}
+
+annotation B given type b {
+    requires lifted f : b -> b
+}
+
+declare c : collection {}@{A,B} = empty {}@{A,B}
+

@@ -1,0 +1,18 @@
+include "Annotation/Collection.k3"
+declare final : mut int = 0
+
+declare logthis: collection {id: int, name: string} @Collection
+
+trigger start : int = \n -> (fibonacci, me) <- (n, 0, 1)
+
+trigger fibonacci : (immut int, immut int, immut int) = \x ->
+  bind x as (n,a,b) in
+  if n <= 1
+  then (result, me) <- b
+  else (fibonacci, me) <- (n - 1, b, a + b)
+
+trigger result : int = \x -> final = x
+
+source s1 : int = value 6
+
+feed s1 |> start

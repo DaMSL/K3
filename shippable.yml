@@ -1,0 +1,45 @@
+build_image: damsl/k3-tests
+env:
+  - GHCVER=7.8.3
+  - CABALVER=1.20
+
+install:
+  - cd /k3/K3-Core
+  - git pull
+  - cd /k3/K3-Driver
+  - git pull
+  - cd /k3/K3-Mosaic
+  - git pull
+
+script:
+  - service postgresql start
+  - sudo -u postgres psql -c "alter user postgres password 'password'"
+  - cd /k3/K3-Driver
+  - cabal install --only-dependencies --disable-documentation
+  - cabal configure
+  - cabal build
+
+  # Begin tests
+  - cd ktrace
+  - source env.sh
+    
+    # Amplab
+  - ./run_test.sh ../../K3-Core/examples/distributed/amplab/q1.k3 tests/amplab_q1 local_q1_results
+  - ./run_test.sh ../../K3-Core/examples/distributed/amplab/q2.k3 tests/amplab_q2 results
+  - ./run_test.sh ../../K3-Core/examples/distributed/amplab/q3.k3 tests/amplab_q3 results
+
+    # TPCH
+  - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q1.k3 tests/tpch_q1 results
+  - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q3.k3 tests/tpch_q3 results
+  - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q5.k3 tests/tpch_q5 results
+  # numerical error: - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q6.k3 tests/tpch_q6 results
+  # incorrect query plan: - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q11.k3 tests/tpch_q11 results
+  - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q18.k3 tests/tpch_q18 results
+  - ./run_test.sh ../../K3-Core/examples/sql/tpch/queries/k3/q22.k3 tests/tpch_q22 results
+
+notifications:
+     email:
+         recipients:
+             - k3-developers@googlegroups.com 
+         on_success: change
+         on_failure: always

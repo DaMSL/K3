@@ -1,0 +1,497 @@
+/*
+ * joinQuery_MM.k3
+ *
+ * Created by Kartik Thapar on 05/20/2014 at 20:14:44
+ * Copyright (c) 2014 Kartik Thapar. All rights reserved.
+ *
+ */
+
+include "Annotation/Collection.k3"
+include "Core/Builtins.k3"
+include "Core/Time.k3"
+
+ /*
+  * 1. Implement the join algorithm using thetaJoin implemented before.
+  * 2. Implement GROUP BY for UV.SourceIP and get totalRevenue.
+  * 3. Implement ORDER BY DESC LIMIT 1 by retrieving the row with max totalRevenue with row.Id that comes first.
+  *    Send it to master and then select the max totalRevenue with row.Id that comes first.
+  */
+
+/* DATASETS */
+
+/*
+ * Datasets only hold columns that are used in the final output set computation.
+ * Columns utilized are: UV.SourceIP, UV.DestURL, UV.VisitDate, UV.AdRevenue, R.PageRank, R.PageURL.
+ */
+
+declare sTable: collection {Id: int, PageURL: string, PageRank: int} @ {Collection}
+declare tTable: collection {Id: int, SourceIP: string, DestURL: string, VisitDate: {y: int, m: int, d: int}, AdRevenue: real} @ {Collection}
+
+declare sNumRows: mut int = 0
+declare tNumRows: mut int = 0
+declare totalRows: mut int
+declare rowCounter: mut int = 0
+
+declare thresholdDate: mut {y: int, m: int, d: int}
+
+/* MASTER */
+
+declare master: mut address
+
+/* MAPPER */
+
+declare sMappers: mut collection {Address: address, Id: int} @ {Collection}
+declare tMappers: mut collection {Address: address, Id: int} @ {Collection}
+
+declare sNumMappers: mut int
+declare tNumMappers: mut int
+declare sCurrentMapperSize: mut int = 0
+declare tCurrentMapperSize: mut int = 0
+
+declare currentMapperSize: mut int = 0
+declare sMapperOutput: collection {RegionId: int, Output: collection {Id: int, PageURL: string, PageRank: int} @ {Collection}} @ {Collection}
+declare tMapperOutput: collection {RegionId: int, Output: collection {Id: int, SourceIP: string, DestURL: string, VisitDate: {y: int, m: int, d: int}, AdRevenue: real} @ {Collection}} @ {Collection}
+
+declare _randomRow: mut int = 0
+declare _randomColumn: mut int = 0
+
+/* REDUCER */
+
+/* Number of Reducers is equal to the total of Regions in the grid */
+declare nReducers: mut int
+declare reducers: mut collection {Address: address, Id: int} @ {Collection}
+
+declare sTuples: collection {Id: int, PageURL: string, PageRank: int} @ {Collection}
+declare tTuples: collection {Id: int, SourceIP: string, DestURL: string, VisitDate: {y: int, m: int, d: int}, AdRevenue: real} @ {Collection}
+
+/* REGIONS */
+
+declare maxS: mut int
+declare maxT: mut int
+declare rowLookupTable: mut collection {Row: int, Regions: mut collection {RegionId: int} @ {Collection}} @ {Collection}
+declare columnLookupTable: mut collection {Column: int, Regions: collection {RegionId: int} @ {Collection}} @ {Collection}
+
+/* OUTPUT */
+
+declare output: collection {SourceIP: string, TotalRevenue: real, AvgPageRank: real} @ {Collection}
+
+/* PHASE 1: PRE-PROCESS 1 - Process Table Rows */
+
+trigger preProcessTableRows: ({fromS: bool, sRow: option {PageURL: string, PageRank: int, AvgDuration: int}, tRow: option {SourceIP: string, DestURL: string, VisitDate: {y: int, m: int, d: int}, AdRevenue: real, UserAgent: string, CountryCode: string, LanguageCode: string, SearchWord: string, Duration: int}}) = \tableRow -> (
+    rowCounter = rowCounter + 1;
+    if tableRow.fromS then
+        sNumRows = sNumRows + 1;
+        // stamp every row with an Id value for usage in groupBy
+        case tableRow.sRow of 
+            {Some x -> sTable.insert {Id: sNumRows, PageURL: x.PageURL, PageRank: x.PageRank}}
+            {None -> ()}
+    else
+        tNumRows = tNumRows + 1;
+        case tableRow.tRow of
+            {Some x -> tTable.insert {Id: tNumRows, SourceIP: x.SourceIP, DestURL: x.DestURL, VisitDate: x.VisitDate, AdRevenue: x.AdRevenue}}
+            {None -> ()};
+
+    /*
+     * 1. If all the rows have been processed, process regions.
+     * 2. Send shared data to mappers [data shared by reducers will sent over by the mappers.]
+     * 3. Do Map.
+     */
+    if rowCounter == totalRows then 
+        (preProcessRegions, me) <- ();
+        (sendDataToMappers, me) <- ();
+        (startMappers, me) <- ()
+    else ()
+)
+
+/* PHASE 1: PRE-PROCESS 2 - Process Regions*/
+
+declare _tmpRegions: mut collection {RegionId: int} @ {Collection}
+
+declare getSRegions: immut (collection {RegionId: int} @ {Collection} -> int -> collection {RegionId: int} @ {Collection}) = fun tmpRegionsX -> fun rowNumber -> (
+    (getSRegionsWorker tmpRegionsX ((rowNumber - 1)/maxS * tNumRows/maxT) (tNumRows/maxT))
+)
+
+declare getSRegionsWorker: immut (collection {RegionId: int} @ {Collection} -> int -> int -> collection {RegionId: int} @ {Collection}) = fun tmpRegionsX -> fun regionNumber -> fun count -> (
+    /* 
+     * tmpRegionsX is just the carrier collection for RegionIds; count refers to max number of regions in a row which are added to the regionNumber iteratively.
+     * Until count > 0, keep inserting regionNumber + count as a RegionId 
+     */
+    if count > 0 then
+        tmpRegionsX.insert {RegionId: regionNumber + count};
+        (getSRegionsWorker tmpRegionsX regionNumber (count - 1))
+    else
+        tmpRegionsX
+)
+
+declare getTRegions: immut (collection {RegionId: int} @ {Collection} -> int -> collection {RegionId: int} @ {Collection}) = fun tmpRegionsX -> fun columnNumber -> (
+    (getTRegionsWorker tmpRegionsX ((columnNumber - 1)/maxT + 1) 0)
+)
+
+declare getTRegionsWorker: immut (collection {RegionId: int} @ {Collection} -> int -> int -> collection {RegionId: int} @ {Collection}) = fun tmpRegionsX -> fun regionNumber -> fun count -> (
+    /* 
+     * count is a multiplier to the max number of regions in a row;
+     * At every point we check if the regionNumber + thisvalue is greater than total number of regions possible and add to region list if not.
+     */
+    if (regionNumber + count*(tNumRows/maxT)) <= (sNumRows/maxS * tNumRows/maxT) then
+        tmpRegionsX.insert {RegionId: regionNumber + count*(tNumRows/maxT)};
+        (getTRegionsWorker tmpRegionsX regionNumber (count + 1))
+    else
+        tmpRegionsX
+)
+
+declare preProcessRegionsWorker: mut (int -> string -> ()) = fun numberOfRows -> fun tableName -> (
+    /* 
+     * Process every single row from the last row to the first row; numberOfRows is just the max row count; but essentially the row number.
+     * Create an empty collection always (by searching for a RegionId that does not exist - hack for clearing a list).
+     * Find regions and then update them for every row/column.
+     */
+    if numberOfRows > 0 then
+        if tableName == "S" then
+            _tmpRegions = _tmpRegions.filter (\region -> region.RegionId == -1);
+            _tmpRegions = (getSRegions _tmpRegions numberOfRows);
+            rowLookupTable.insert {Row: numberOfRows, Regions: _tmpRegions};
+            (preProcessRegionsWorker (numberOfRows - 1) "S")
+        else
+            _tmpRegions = _tmpRegions.filter (\region -> region.RegionId == -1);
+            _tmpRegions = (getTRegions _tmpRegions numberOfRows);
+            columnLookupTable.insert {Column: numberOfRows, Regions: _tmpRegions};
+            (preProcessRegionsWorker (numberOfRows - 1) "T")
+    else ()
+)
+
+trigger preProcessRegions: () = \_ -> (
+    (preProcessRegionsWorker sNumRows "S");
+    (preProcessRegionsWorker tNumRows "T")
+) 
+
+/* PHASE 3: SETUP PHASE - Send Data to Mappers and Reducers; Initiate Mappers */
+
+trigger understandMapData: (collection {Row: int, Regions: mut collection {RegionId: int} @ {Collection}} @ {Collection}, collection {Column: int, Regions: mut collection {RegionId: int} @ {Collection}} @ {Collection}, collection {Address: address, Id: int} @ {Collection}, int, int, int, int, int, {y: int, m: int, d: int}) = \data -> (
+    bind data as (_rowLookupTable, _columnLookupTable, _reducers, _sNumRows, _tNumRows, _sNumMappers, _tNumMappers, _nReducers, _thresholdDate) in (
+        rowLookupTable = _rowLookupTable;
+        columnLookupTable = _columnLookupTable;
+        reducers = _reducers;
+        sNumRows = _sNumRows;
+        tNumRows = _tNumRows;
+        sNumMappers = _sNumMappers;
+        tNumMappers = _tNumMappers;
+        nReducers = _nReducers;
+
+        // custom data
+        thresholdDate = _thresholdDate
+    )
+)
+
+trigger understandReduceData: (int, int, int, {y: int, m: int, d: int}) = \data -> (
+    bind data as (_sNumMappers, _tNumMappers, _nReducers, _thresholdDate) in (
+        sNumMappers = _sNumMappers;
+        tNumMappers = _tNumMappers;
+        nReducers = _nReducers;
+
+        // custom data
+        thresholdDate = _thresholdDate
+    )
+)
+
+trigger sendDataToMappers: () = \_ -> (
+    /*
+     * Copy data to other mappers. == Put all shared data in this subroutine network call; also update understandMapData ==
+     * Sending lookup tables and a list of reducers to each mapper as output needs to be routed to all reducers irrespective of the data;
+     * also the reducers are created on fly using a script; therefore sending a collection of reducer addresses seems ideal. 
+     */
+    sMappers.iterate (\mapper -> (
+        (understandMapData, mapper.Address) <- (rowLookupTable, columnLookupTable, reducers, sNumRows, tNumRows, sNumMappers, tNumMappers, nReducers, thresholdDate)
+    ));
+
+    tMappers.iterate (\mapper -> (
+        (understandMapData, mapper.Address) <- (rowLookupTable, columnLookupTable, reducers, sNumRows, tNumRows, sNumMappers, tNumMappers, nReducers, thresholdDate)
+    ))
+)
+
+trigger sendDataToReducer: (address) = \reducerAddress -> (
+    /*
+     * Copy data to reducers == Put all shared data in this subroutine network call; also update understandReduceData ==
+     */
+    (understandReduceData, reducerAddress) <- (sNumMappers, tNumMappers, nReducers, thresholdDate)
+)
+
+trigger startMappers: () = \_ -> (
+    /*
+     * Send rows to specific mappers; this is not randomized. Iterate throw the rows and send them to mapper; then mapper.next.
+     */
+    sTable.fold (\mapperCounter -> \row -> (
+        (sendRowToMapper_s, me) <- (row, (mapperCounter % sNumMappers) + 1);
+        mapperCounter + 1
+    )) 0;
+
+    tTable.fold (\mapperCounter -> \row -> (
+        (sendRowToMapper_t, me) <- (row, (mapperCounter % sNumMappers) + 1);
+        mapperCounter + 1
+    )) 0
+)
+
+/* PHASE 2: MAP */
+
+declare getRandom: immut (string -> int) = fun tableName -> (
+    if tableName == "S" then (random (sNumRows - 1) + 1)
+    else (random (tNumRows - 1) + 1)
+)
+
+declare getMapperSize: immut (int -> string -> int) = fun mapperId -> fun tableName -> (
+    /*
+     * If r == 0 => equal division
+     * If mapperId <= r => some r mappers will get the extra 1 row
+     * If mapperId > r => will not get extra 1 row
+     */
+    if tableName == "S" then
+        let r = sNumRows % sNumMappers in
+            let q = sNumRows / sNumMappers in
+                if r == 0 then q else if mapperId <= r then q + 1 else q
+    else
+        let r = tNumRows % tNumMappers in
+            let q = tNumRows / tNumMappers in
+                if r == 0 then q else if mapperId <= r then q + 1 else q
+)
+
+/*
+ * Feedback:
+ * 1. Not sure if this is the right approach to send the rows to different mappers one by one -> network congestion.
+ * 2. Create rowOutputForMapper collection to collect mapper rows for each mapper.
+ */
+
+trigger sendRowToMapper_s: ({Id: int, PageURL: string, PageRank: int}, int) = \x -> (
+    bind x as (sRow, mapperId) in (
+        let mapperSize = (getMapperSize mapperId "S") in
+            let fMappers = sMappers.filter (\mapper -> (mapper.Id == mapperId)) in
+                let mapperInstance = fMappers.peek() in
+                    case mapperInstance of 
+                        {Some mapper -> (map_s, mapper.Address) <- (sRow, mapperSize)}
+                        {None -> ()}
+    )
+)
+
+trigger sendRowToMapper_t: ({Id: int, SourceIP: string, DestURL: string, VisitDate: {y: int, m: int, d: int}, AdRevenue: real}, int) = \x -> (
+    bind x as (tRow, mapperId) in (
+        let mapperSize = (getMapperSize mapperId "T") in
+            let fMappers = tMappers.filter (\mapper -> (mapper.Id == mapperId)) in
+                let mapperInstance = fMappers.peek() in
+                    case mapperInstance of
+                        {Some mapper -> (map_t, mapper.Address) <- (tRow, mapperSize)}
+                        {None -> ()}
+    )
+)
+
+/* Implement Mapper Functionality */
+
+declare _sTmpMapperOutputCollection: mut collection {Id: int, PageURL: string, PageRank: int} @ {Collection}
+declare _tTmpMapperOutputCollection: mut collection {Id: int, SourceIP: string, DestURL: string, VisitDate: {y: int, m: int, d: int}, AdRevenue: real} @ {Collection}
+
+trigger map_s: ({Id: int, PageURL: string, PageRank: int}, int) = \x -> (
+    bind x as (sRow, mapperSize) in (
+        sCurrentMapperSize = sCurrentMapperSize + 1;
+        _randomRow = (getRandom "S");
+        /*
+         * Find the specific row in the lookup table.
+         * Lookup all the regions associated to that row.
+         * Find the mapper output associated with that region using the RegionId field.
+         * Create a new output if output is None; otherwise, insert the row in the existing output and update collection.
+         */
+        let optLookupRow = (rowLookupTable.filter (\lookupRow -> lookupRow.Row == _randomRow)).peek() in
+            case optLookupRow of
+                {Some lookupRow -> (
+                    lookupRow.Regions.iterate (\region -> (
+                        let optOldOutput = (sMapperOutput.filter (\output -> output.RegionId == region.RegionId)).peek() in
+                            case optOldOutput of
+                                {Some oldOutput -> (
+                                    let newOutput = oldOutput.Output in
+                                        newOutput.insert {Id: sRow.Id, PageURL: sRow.PageURL, PageRank: sRow.PageRank};
+                                        sMapperOutput.update {RegionId: region.RegionId, Output: oldOutput.Output} {RegionId: region.RegionId, Output: newOutput}
+                                )}
+                                {None -> (
+                                    _sTmpMapperOutputCollection = _sTmpMapperOutputCollection.filter (\outputCollection -> outputCollection.Id == -1);
+                                    _sTmpMapperOutputCollection.insert {Id: sRow.Id, PageURL: sRow.PageURL, PageRank: sRow.PageRank};
+                                    sMapperOutput.insert {RegionId: region.RegionId, Output: _sTmpMapperOutputCollection}
+                                )}
+                    ))
+                )}
+                {None -> ()};
+
+        /* After computing on mapperSize amount of rows, we then send the data to the reducers */
+        if sCurrentMapperSize == mapperSize then (sendAllToReducer, me) <- ()
+        else ()
+    )
+)
+
+trigger map_t: ({Id: int, SourceIP: string, DestURL: string, VisitDate: {y: int, m: int, d: int}, AdRevenue: real}, int) = \x -> (
+    bind x as (tRow, mapperSize) in (
+        tCurrentMapperSize = tCurrentMapperSize + 1;
+        _randomColumn = (getRandom "T");
+        /*
+         * Find the specific column in the lookup table.
+         * Lookuo all the regions associated to that column.
+         * Find the mapper output associated with that region using the RegionId field.
+         * Create a new output if output is None; otherwise, insert the column(row) in the existing output and update collection.
+         */
+        let optLookupColumn = (columnLookupTable.filter (\lookupColumn -> lookupColumn.Column == _randomColumn)).peek() in
+            case optLookupColumn of
+                {Some lookupColumn -> (
+                    lookupColumn.Regions.iterate (\region -> (
+                        let optOldOutput = (tMapperOutput.filter (\output -> output.RegionId == region.RegionId)).peek() in
+                            case optOldOutput of
+                                {Some oldOutput -> (
+                                    let newOutput = oldOutput.Output in
+                                        newOutput.insert {Id: tRow.Id, SourceIP: tRow.SourceIP, DestURL: tRow.DestURL, VisitDate: tRow.VisitDate, AdRevenue: tRow.AdRevenue};
+                                        tMapperOutput.update {RegionId: region.RegionId, Output: oldOutput.Output} {RegionId: region.RegionId, Output: newOutput}
+                                )}
+                                {None -> (
+                                    _tTmpMapperOutputCollection = _tTmpMapperOutputCollection.filter (\outputCollection -> outputCollection.Id == -1);
+                                    _tTmpMapperOutputCollection.insert {Id: tRow.Id, SourceIP: tRow.SourceIP, DestURL: tRow.DestURL, VisitDate: tRow.VisitDate, AdRevenue: tRow.AdRevenue};
+                                    tMapperOutput.insert {RegionId: region.RegionId, Output: _tTmpMapperOutputCollection}
+                                )}
+                    ))
+                )}
+                {None -> ()};
+
+        /* After computing on mapperSize amount of rows, we then send the data to the reducers */
+        if tCurrentMapperSize == mapperSize then (sendAllToReducer, me) <- ()
+        else ()
+    )
+)
+
+/* PHASE 3: REDUCER */
+
+declare _sEmptyCollection: collection {Id: int, PageURL: string, PageRank: int} @ {Collection}
+declare _tEmptyCollection: collection {Id: int, SourceIP: string, DestURL: string, VisitDate: {y: int, m: int, d: int}, AdRevenue: real} @ {Collection}
+
+trigger sendAllToReducer: () = \_ -> (
+    /*
+     * 1. This method is called by every mapper once: (sendAllToReducer, me) <- (). Therefore every mapper sends something to all reducers.
+     * 2. For every reducer, check if the mapper has some output for it. If so, send the output; else send () data.
+     */
+    reducers.iterate (\reducer -> (
+        // send the required shared data to each reducer
+        (sendDataToReducer, me) <- (reducer.Address);
+
+        // do reduce
+        let mapperOutputCorrespondingToReducer = (sMapperOutput.filter (\mapperOutput -> mapperOutput.RegionId == reducer.Id)).peek() in
+            case mapperOutputCorrespondingToReducer of
+                {Some mapperOutput -> (reduce_s, reducer.Address) <- mapperOutput.Output}
+                {None -> (reduce_s, reducer.Address) <- _sEmptyCollection};
+
+        let mapperOutputCorrespondingToReducer = (tMapperOutput.filter (\mapperOutput -> mapperOutput.RegionId == reducer.Id)).peek() in
+            case mapperOutputCorrespondingToReducer of
+                {Some mapperOutput -> (reduce_t, reducer.Address) <- mapperOutput.Output}
+                {None -> (reduce_t, reducer.Address) <- _tEmptyCollection}
+    ))
+)
+
+declare _sMapperReceiveCounter: mut int = 0
+declare _tMapperReceiveCounter: mut int = 0
+
+trigger reduce_s: (collection {Id: int, PageURL: string, PageRank: int} @ {Collection}) = \coll -> (
+    _sMapperReceiveCounter = _sMapperReceiveCounter + 1;
+    
+    coll.iterate (\row -> (
+        sTuples.insert {Id: row.Id, PageURL: row.PageURL, PageRank: row.PageRank}
+    ));
+
+    // request join when data received from all mappers
+    let totalMappers = sNumMappers + tNumMappers in
+        if (_sMapperReceiveCounter == totalMappers and _tMapperReceiveCounter == totalMappers) then
+            (reduceDoJoin, me) <- ()
+        else ()
+)
+
+trigger reduce_t: (collection {Id: int, SourceIP: string, DestURL: string, VisitDate: {y: int, m: int, d: int}, AdRevenue: real} @ {Collection}) = \coll -> (
+    _tMapperReceiveCounter = _tMapperReceiveCounter + 1;
+    
+    coll.iterate (\row -> (
+        tTuples.insert {Id: row.Id, SourceIP: row.SourceIP, DestURL: row.DestURL, VisitDate: row.VisitDate, AdRevenue: row.AdRevenue}
+    ));
+
+    // request join when data received from all mappers
+    let totalMappers = sNumMappers + tNumMappers in
+        if (_sMapperReceiveCounter == totalMappers and _tMapperReceiveCounter == totalMappers) then
+            (reduceDoJoin, me) <- ()
+        else ()
+)
+
+declare reducerOutput: collection {SId: int, TId: int, SourceIP: string, PageRank: int, AdRevenue: real, URL: string} @ {Collection}
+
+trigger reduceDoJoin: () = \_ -> (
+    sTuples.iterate (\sRow -> (
+        tTuples.iterate (\tRow -> (
+            let lDate = {y: 1980, m: 1, d: 1} in
+                if sRow.PageURL == tRow.DestURL then
+                    reducerOutput.insert {SId: sRow.Id, TId: tRow.Id, SourceIP: tRow.SourceIP, PageRank: sRow.PageRank, AdRevenue: tRow.AdRevenue, URL: tRow.DestURL}
+                else ()
+        ))
+    ));
+
+    (accumulateOutput, master) <- (reducerOutput)
+)
+
+/* PHASE 4: ACCUMULATE OUTPUT */
+
+declare getMinS: mut (int -> int -> int) = fun oldSId -> fun newSId -> (
+    /* Simply get the minimum of two integer values. */
+    if oldSId < newSId then oldSId
+    else newSId
+)
+
+declare reducerReceiveCounter: mut int = 0
+declare groupBySourceIPCollection: collection {Id: int, SourceIP: string, PageRank: collection {v: int} @ {Collection}, AdRevenue: real} @ {Collection}
+declare _emptyPageRanks : collection {v: int} @ {Collection}
+
+trigger accumulateOutput: (collection {SId: int, TId: int, SourceIP: string, PageRank: int, AdRevenue: real} @ {Collection}) = \reducerOutput -> (
+    reducerReceiveCounter = reducerReceiveCounter + 1;
+    reducerOutput.iterate (\outputInstance -> (
+        let existingOutput = (groupBySourceIPCollection.filter (\element -> element.SourceIP == outputInstance.SourceIP)).peek() in
+            case existingOutput of
+                {Some existingOutput -> (
+                    let newPageRank = existingOutput.PageRank in
+                        newPageRank.insert {v: outputInstance.PageRank};
+                        groupBySourceIPCollection.update {Id: existingOutput.Id, SourceIP: existingOutput.SourceIP, PageRank: existingOutput.PageRank, AdRevenue: existingOutput.AdRevenue} {Id: (getMinS existingOutput.Id outputInstance.SId), SourceIP: existingOutput.SourceIP, PageRank: newPageRank, AdRevenue: existingOutput.AdRevenue + outputInstance.AdRevenue}
+                )}
+                {None -> (
+                    let pageRanks = _emptyPageRanks in
+                        pageRanks.insert {v: outputInstance.PageRank};
+                        groupBySourceIPCollection.insert {Id: outputInstance.SId, SourceIP: outputInstance.SourceIP, PageRank: pageRanks, AdRevenue: outputInstance.AdRevenue}
+                )}
+    ));
+
+    // once you have received reducerOutput from all reducers, implement orderBy operation
+    if reducerReceiveCounter == nReducers then (implementOrderBy, me) <- (groupBySourceIPCollection)
+    else ()
+)
+
+declare _tmpRevenueSet: mut collection {SourceIP: string, PageRank: int, AdRevenue: real} @ {Collection}
+declare _tmpMaxAdRevenue: mut real = 0.0
+declare _tmpMaxAdRevenueIdCount: mut int = 6
+
+declare averagedPageRank: mut real = 0
+
+declare maxAdRevenueSet: collection {SourceIP: string, PageRank: int, AdRevenue: real} @ {Collection}
+
+trigger implementOrderBy : (collection {Id: int, SourceIP: string, PageRank: int, AdRevenue: real} @ {Collection}) = \data -> (
+    data.iterate (\sourceIPSet -> (
+        if sourceIPSet.AdRevenue >= _tmpMaxAdRevenue then
+            if sourceIPSet.Id < _tmpMaxAdRevenueIdCount then
+                _tmpMaxAdRevenue = sourceIPSet.AdRevenue;
+                _tmpRevenueSet = sourceIPSet
+            else ()
+        else ()
+    ));
+
+    let totalNumberOfPageRanks = _tmpRevenueSet.PageRank.fold (\acc -> \pageRankVal -> acc + 1) 0 in
+        let cumualtivePageRank = _tmpRevenueSet.PageRank.fold (\acc -> \pageRankVal -> acc + pageRankVal.v) 0 in
+            averagedPageRank = cumualtivePageRank/totalNumberOfPageRanks;
+
+    /* get the final revenue set order by total revenue, descending with single entry. */
+    maxAdRevenueSet.insert {SourceIP: _tmpRevenueSet.SourceIP, PageRank: averagedPageRank, AdRevenue: _tmpRevenueSet.AdRevenue}
+)
+
+
+source tableSource: ({fromS: bool, sRow: option {PageURL: string, PageRank: int, AvgDuration: int}, tRow: option {SourceIP: string, DestURL: string, VisitDate: {y: int, m: int, d: int}, AdRevenue: real, UserAgent: string, CountryCode: string, LanguageCode: string, SearchWord: string, Duration: int}}) = file "/Users/kartikthapar/WorkCenter/Projects/K3/core/examples/sqlBenchmarking/R_UV_Tables.text" k3
+
+feed tableSource |> preProcessTableRows

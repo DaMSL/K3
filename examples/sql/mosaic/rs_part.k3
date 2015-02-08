@@ -1,0 +1,12 @@
+declare pmap_input : collection {
+  key:string, value:collection { key:int, value:int } @ { Seq } } @ { Seq } =
+  {| key:string, value:collection { key:int, value:int } @ { Seq } |
+  {key:"__SQL_SUM_AGGREGATE_1_mS1", value:{| key:int, value:int |
+   {key:0, value:16}|} @ { Seq }},
+  {key:"__SQL_SUM_AGGREGATE_1_mR1", value:{| key:int, value:int |
+   {key:0, value:16}|} @ { Seq }},
+  {key:"__SQL_SUM_AGGREGATE_2_mS3", value:{| key:int, value:int |
+   {key:0, value:16}|} @ { Seq }},
+  {key:"__SQL_SUM_AGGREGATE_2_mR1", value:{| key:int, value:int |
+   {key:0, value:16}|} @ { Seq }}|} @ { Seq }
+

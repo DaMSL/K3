@@ -1,0 +1,16 @@
+include "Annotation/Collection.k3"
+
+// Collection of where each element holds an indirection to a record
+// with mutable fields.
+declare c : collection {i: ind {count: mut int}} @ {Collection}
+
+
+// Attempt to mutate each element of the collection
+trigger t : () = \_ -> (
+  c.iterate (\x ->
+    bind x.i as ind r
+    in r.count = 0
+  )
+)
+
+

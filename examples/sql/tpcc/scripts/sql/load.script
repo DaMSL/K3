@@ -1,0 +1,185 @@
+create constant warehouses integer not null = 5;
+
+create function randomId(fromId integer not null, toId integer not null) integer not null
+{
+   return random(toId-fromId+1)+fromId;
+};
+
+create function randomastring(minLenStr integer not null,maxLenStr integer not null) varchar(600) not null
+{
+   var len=random(maxLenStr-minLenStr+1)+minLenStr;
+   var result varchar(600) not null;
+   -- var chars varchar(62) not null='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+   --   result=result||substring(chars from random(62)+1 for 1);
+   select index from sequence(0,len-1) {
+      var i=random(62);
+      if (i<10)
+         result=result||chr(48+i);
+      else if (i<36)
+         result=result||chr(64-10+i);
+      else result=result||chr(96-36+i);
+   }
+   return result;
+};
+
+create function randomnstring(minLenStr integer not null,maxLenStr integer not null) varchar(600) not null
+{
+   var len=random(maxLenStr-minLenStr+1)+minLenStr;
+   var result varchar(600) not null;
+   select index from sequence(0,len-1) {
+      result=result||chr(48+random(10));
+   }
+   return result;
+};
+
+create function namePart(id integer not null) varchar(20) not null
+{
+   return case id when 0 then 'BAR' when 1 then 'OUGHT' when 2 then 'ABLE' when 3 then 'PRI' when 4 then 'PRES' when 5 then 'ESE' when 6 then 'ANTI' when 7 then 'CALLY' when 8 then 'ATION' else 'EING' end;
+};
+
+create function genName(id integer not null) varchar(20) not null
+{
+   return namePart(mod(id/100,10))||namePart(mod(id/10,10))||namePart(mod(id,10));
+};
+
+create function randomnumeric52("min" numeric(5,2) not null,"max" numeric(5,2) not null) numeric(5,2) not null
+{
+   return "min"+(cast(random(cast(("max"-"min"+1)*100 as integer)) as numeric(5,2))/100);
+};
+
+create function randomnumeric44("min" numeric(4,4) not null,"max" numeric(4,4) not null) numeric(4,4) not null
+{
+   return "min"+(cast(random(cast(("max"-"min"+1)*10000 as integer)) as numeric(4,4))/10000);
+};
+
+create function randomnumeric40("min" numeric(4,0) not null,"max" numeric(4,0) not null) numeric(4,0) not null
+{
+   return "min"+(cast(random(cast("max"-"min"+1 as integer)) as numeric(4,0)));
+};
+
+create function randomnumeric62("min" numeric(6,2) not null,"max" numeric(6,2) not null) numeric(6,2) not null
+{
+   return "min"+(cast(random(cast(("max"-"min"+1)*100 as integer)) as numeric(6,2))/100);
+};
+
+create function randomzip() varchar(9) not null
+{
+   var id=random(10000);
+   return chr(48+(id/1000))||chr(48+mod(id/100,10))||chr(48+mod(id/10,10))||chr(48+mod(id,10))||'11111';
+};
+
+create function nurand(A integer not null,x integer not null,y integer not null) integer not null
+{
+   return mod(((random(A)|random((y-x+1)+x))+42),(y-x+1))+x;
+};
+
+create procedure loadItems()
+{
+   select index from sequence(0,100000-1) {
+      var i_data=randomastring(26,50);
+      if (random(10)=0) {
+         var len=length(i_data);
+         var ofs=random(len-8);
+         i_data=substring(i_data from 1 for ofs)||'ORIGINAL';
+      }
+      insert into item values(index+1,randomId(1,10000),randomastring(14,24),randomnumeric52(1.00,100.00),i_data);
+   }
+};
+
+create procedure loadWarehouses(warehouses integer not null)
+{
+   select index from sequence(0,warehouses-1) {
+      insert into warehouse values(index+1,randomastring(6,10),randomastring(10,20),randomastring(10,20),randomastring(10,20),randomastring(2,2),randomzip(),randomnumeric44(0.1000,0.2000),3000000);
+   }
+};
+
+create procedure loadStock(w_id integer not null)
+{
+   select index from sequence(0,100000-1) {
+      var s_data varchar(50) not null=randomastring(25,50);
+      if (random(10)=0) {
+         var len=length(s_data);
+         var ofs=random(len-8);
+         s_data=substring(s_data from 1 for ofs)||'ORIGINAL';
+      }
+      insert into stock values(index+1,w_id,randomnumeric40(10,100),randomastring(24,24),randomastring(24,24),randomastring(24,24),randomastring(24,24),randomastring(24,24),randomastring(24,24),randomastring(24,24),randomastring(24,24),randomastring(24,24),randomastring(24,24),0,0,0,s_data);
+   }
+};
+
+create procedure loadDistricts(w_id integer not null)
+{
+   select index from sequence(0,10-1) {
+      insert into district values(index+1,w_id,randomastring(6,10),randomastring(10,20),randomastring(10,20),randomastring(10,20),randomastring(2,2),randomzip(),randomnumeric44(0.0000,0.2000),3000000,3001);
+   }
+};
+
+create procedure loadCustomersAndHistory(w_id integer not null,d_id smallint not null)
+{
+   var now=current_timestamp;
+   select index from sequence(0,3000-1) {
+      var c_last varchar(16) not null;
+      if (index<1000)
+         c_last=genName(index); else
+         c_last=genName(nurand(255,0,999));
+      var c_credit char(2) not null;
+      if (random(10)=0)
+         c_credit='BC'; else
+         c_credit='GC';
+
+      insert into customer values(index+1,d_id,w_id,randomastring(8,16),'OE',c_last,randomastring(10,20),randomastring(10,20),randomastring(10,20),randomastring(2,2),randomzip(),randomnstring(16,16),now,c_credit,50000.00,randomnumeric44(0.0000,0.5000),-10.00,1,0,0,randomastring(300,500));
+
+      insert into history values(index+1,d_id,d_id,w_id,w_id,now,10.00,randomastring(12,24));
+   }
+};
+
+create procedure loadOrdersAndLines(w_id integer not null,d_id smallint not null)
+{
+   var now=current_timestamp;
+   table remaining(index integer not null,rankvalue integer not null);
+
+   select index from sequence(0,3000-1) {
+      insert into remaining values(index+1,random(1000000000));
+   }
+
+   var o_id integer not null = 0;
+   select index as o_c_id from remaining order by rankvalue {
+      o_id=o_id+1;
+      var o_carrier_id integer not null;
+      if (o_id<2101)
+         o_carrier_id=random(10)+1; else
+         o_carrier_id=0;
+      var o_ol_cnt integer not null=randomnumeric40(5,15);
+      insert into "order" values(o_id,d_id,w_id,o_c_id,now,o_carrier_id,o_ol_cnt,1);
+
+      select index as index2 from sequence(0,o_ol_cnt-1) {
+         var ol_delivery_d timestamp;
+         if (o_id<2101)
+            ol_delivery_d=now;
+         var ol_amount numeric(6,2) not null;
+         if (o_id<2101)
+            ol_amount=0; else
+            ol_amount=randomnumeric62(0.01,9999.99);
+         insert into orderline values(o_id,d_id,w_id,index2+1,random(100000)+1,w_id,ol_delivery_d,5,ol_amount,randomastring(24,24));
+      }
+   }
+
+   select index from sequence(0,900-1) {
+      insert into neworder values(3000+index-900+1,d_id,w_id);
+   }
+};
+
+create procedure load()
+{
+   loadItems();
+   loadWarehouses(warehouses);
+
+   select index from sequence(0,warehouses-1) {
+      loadStock(index+1);
+      loadDistricts(index+1);
+
+      select index2 from sequence(0,10-1) s(index2) {
+         loadCustomersAndHistory(index+1,index2+1);
+         loadOrdersAndLines(index+1,index2+1);
+      }
+   }
+};

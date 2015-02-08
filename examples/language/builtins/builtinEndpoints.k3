@@ -1,0 +1,13 @@
+include "Core/Builtins.k3"
+
+trigger test : string = \x -> (
+  (s1, me) <- x;
+  (s2, me) <- x)
+
+sink   s1 : string = stdout k3
+sink   s2 : string = stderr k3
+source s3 : string = stdin k3
+source s4 : string = value "hello k3"
+
+feed s3 |> test
+feed s4 |> test

@@ -1,0 +1,5 @@
+annotation Composable
+{
+  requires lifted combine : self -> self
+  requires lifted split   : self -> (self, self)
+}

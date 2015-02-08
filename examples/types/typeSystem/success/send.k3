@@ -1,0 +1,6 @@
+trigger t : int = \x -> ()
+
+declare a : address = 127.0.0.1:4000
+
+declare u : () = (t,a) <- 4
+

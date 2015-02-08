@@ -1,0 +1,28 @@
+declare x : mut int = 0
+
+// Should inline both let and lambda.
+trigger t1 : int = \a -> (
+    let f = (\b -> b + 1)
+    in x = f a
+  )
+
+// Should inline let but not lambda.
+trigger t2 : int = \a -> (
+    let f = (\b -> b + b)
+    in x = f a
+  )
+
+// Should not inline either.
+trigger t3 : int = \a -> (
+    let f = (\b -> b + 1)
+    in (x = f a; x = f 5)
+  )
+
+// Should inline the let, the lambda and the a, b arguments.
+trigger t4 : () = \_ -> (
+  let f = \a -> \b -> (((\c -> \d -> c + c + d + d) a) b)
+  in (x = f 1 2)
+)
+
+source s1 : int = value 5
+feed s1 |> t1

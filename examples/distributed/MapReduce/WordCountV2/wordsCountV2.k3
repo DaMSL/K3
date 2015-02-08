@@ -1,0 +1,51 @@
+include "Annotation/Collection.k3"
+include "Core/Builtins.k3"
+
+declare reducer :               immut address = 127.0.0.1:70000
+declare tmpWordLst :            mut collection { word : string } @ { Collection }
+declare peekedWord :            mut string = "none"
+declare wordCount :             mut int = 0
+declare shufflerWordMap :       mut collection { word : string, count : int } @ { Collection }
+declare shufflersTable :        mut collection { shuffler : address, word : string } @ { Collection } = { | shuffler : address, word : string | {shuffler : 127.0.0.1:61000, word : "foo" }, {shuffler : 127.0.0.1:62000, word : "bar" }, {shuffler : 127.0.0.1:63000, word : "baz"} | } @ { Collection }
+declare resultMap :             mut collection { word : string, count : int } @ { Collection }
+
+/*fields for debug*/
+declare testWord :              mut string = "test"
+declare testCount :             mut int = 0
+
+trigger initWordLst : (collection { word : string } @ { Collection }) = \wordsColl -> (    
+    shufflersTable.iterate (\shufflerRerd ->
+      if shufflerRerd.word == "foo"
+	  then (tmpWordLst = wordsColl.filter(\record -> (record.word == "foo"));
+	        (reducePhase1, shufflerRerd.shuffler) <- tmpWordLst)
+	  else if shufflerRerd.word == "bar"
+           then (tmpWordLst = wordsColl.filter(\record -> (record.word == "bar"));
+	             (reducePhase1, shufflerRerd.shuffler) <- tmpWordLst)
+		   else (tmpWordLst = wordsColl.filter(\record -> (record.word == "baz"));
+	             (reducePhase1, shufflerRerd.shuffler) <- tmpWordLst)				
+    )       
+)
+
+trigger reducePhase1 : (collection { word : string } @ { Collection }) = \subWordLst -> (
+    subWordLst.iterate (\wordRerd -> wordCount = wordCount + 1);
+    (let tmpOption = subWordLst.peek() in
+	     case tmpOption of { Some tmpRerd -> peekedWord = tmpRerd.word }
+	                       { None         -> ()});   
+    (if peekedWord == "foo"
+	 then shufflerWordMap.insert { word : "foo", count : wordCount }
+     else if peekedWord == "bar"
+	      then shufflerWordMap.insert { word : "bar", count : wordCount }
+	      else shufflerWordMap.insert { word : "baz", count : wordCount });
+	(reducePhase2, reducer) <- shufflerWordMap	 
+)
+
+trigger reducePhase2 : (collection { word : string } @ { Collection }) = \receivedWordMap -> (
+    resultMap = resultMap.combine receivedWordMap;
+    resultMap.iterate (\ele -> (testWord = ele.word;
+	                            testCount = ele.count)) 
+)
+
+source master : (collection { word : string } @ { Collection }) = file "/home/chao/work/K3/K3-Core/examples/distributed/MapReduce/WordCountV2/wordsCollection.txt" k3
+
+feed master |> initWordLst
+

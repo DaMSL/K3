@@ -1,0 +1,33 @@
+// Functions to do with manipulation of date/time
+
+// Convert Sql date -> integer
+declare parse_sql_date : string -> int
+
+// Get current monotonic time in {sec, nsec}
+declare now : () -> {sec:int, nsec:int}
+
+// Time addition
+declare add_time : {sec:int, nsec:int} -> {sec:int, nsec:int} -> {sec:int, nsec:int}
+
+// Time difference
+declare sub_time : {sec:int, nsec:int} -> {sec:int, nsec:int} -> {sec:int, nsec:int}
+
+///// DATE /////
+
+declare getUTCDate : () -> {y : int, m : int, d : int}
+
+declare getLocalDate : () -> {y : int, m : int, d : int}
+
+declare parseDate : string -> string -> option {y : int, m : int, d : int}
+
+declare compareDate : {y : int, m : int, d : int} -> {y : int, m : int, d : int} -> int
+
+///// TIME /////
+
+declare getUTCTime : () -> {h : int, m : int, d : int}
+
+declare getUTCTimeWithFormat : string -> string
+
+declare getLocalTime : () -> {h : int, m : int, d : int}
+
+declare getLocalTimeWithFormat : string -> string

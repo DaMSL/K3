@@ -1,0 +1,129 @@
+include "Annotation/Collection.k3"
+include "Annotation/Map.k3"
+include "Core/Builtins.k3"
+include "Core/Loaders.k3"
+
+declare dataFiles : collection {path: string} @ Collection
+declare outFile: string
+
+// Constants
+declare peers_seq : collection {addr: address} @ {Seq}
+
+declare master: address = 127.0.0.1:40000
+
+declare index_by_hash: string -> int = \s -> (
+  let n = peers_seq.size () in
+  let h = (hash s) in
+  ((h % n) + n) % n
+)
+declare x: mut int = 3
+
+// Globals
+declare peers_ready: mut int = 0
+declare peers_finished: mut int = 0
+declare master_peers_finished: mut int = 0
+
+// Data
+declare local_uservisits: collection {
+    adRevenue: real,
+    sourceIP: string
+    } @ { Collection }
+
+declare local_q2_results: mut collection {key: string, value: real} @ { Map }
+declare results: mut collection {substr: string, sum: real} @Collection
+
+// Time
+declare start_ms : mut int = 0
+declare end_ms : mut int = 0
+declare elapsed_ms : mut int = 0
+
+declare agg_vals : mut collection {key:string, value:real} @ {Collection}
+declare peer_aggs : mut collection {key: int, value:
+                   collection {key: string, value: real} @ {Collection}
+                   } @ {Collection}
+
+// Perform the query on the local dataset. (Filter and project.)
+// Store the results in memory.
+trigger q2_local : () = \_ -> (
+  let agg_vals_start = now_int () in
+  agg_vals =
+    local_uservisits.groupBy
+      (\r -> slice_string r.sourceIP 0 x) //TODO index by 0 or 1?
+      (\acc -> \r ->
+        acc + r.adRevenue)
+      0.0;
+  let agg_vals_end = now_int () in
+  print ("Agg vals time: " ++ (itos (agg_vals_end-agg_vals_start)));
+  // Group by destination peer address
+  peer_aggs =
+    agg_vals.groupBy
+      (\v -> index_by_hash v.key)
+      (\acc -> \v -> (acc.insert(v); acc))
+      (empty {key: string, value: real} @ {Collection});
+  let peer_aggs_end = now_int () in
+  print ("Peer aggs time: " ++ (itos (peer_aggs_end-agg_vals_end)));
+  peer_aggs.iterate (\v ->
+    (aggregate, (peers_seq.at v.key).addr) <- v.value
+  );
+  // Send punctuation: we're done
+  peers.iterate(\p -> (peer_barrier, p.addr) <- ())
+)
+
+declare merge_results: collection { key: string, value: real } @ { Collection } -> () = \vals -> (
+    vals.iterate (
+        \v -> case local_q2_results.lookup {key: v.key, value: 0.0}  of
+            { Some kv -> local_q2_results.insert { key: v.key, value: kv.value + v.value } }
+            { None -> local_q2_results.insert v }
+    )
+)
+
+trigger aggregate : collection { key: string, value: real } @ {Collection} = \vals -> (
+
+  let aggregate_start = now_int () in
+  merge_results vals;
+  let aggregate_end = now_int () in
+  print ("Aggregate time: " ++ (itos (aggregate_end-aggregate_start)))
+)
+
+trigger peer_barrier : () = \_ -> (
+  peers_finished = peers_finished + 1;
+  if peers_finished == peers.size ()
+  then (
+    (master_done, master) <- ()
+  )
+  else ()
+)
+
+trigger master_done : () = \_ -> (
+  master_peers_finished = master_peers_finished + 1;
+  if master_peers_finished == peers.size ()
+  then end_ms = now_int ();
+       elapsed_ms = end_ms - start_ms;
+       print (itos elapsed_ms);
+       peers.iterate (\p -> (shutdown, p.addr) <- ())
+  else ()
+)
+
+trigger shutdown : () = \_ -> (
+  print ("Num local results: " ++ (itos (local_q2_results.size ())));
+  (local_q2_results.iterate (\r -> results.insert {substr: r.key, sum: r.value} ) );
+  haltEngine ()
+)
+
+// Signal to the master that a peer is ready.
+// Once all peers are ready, the master will start the query.
+trigger ready : () = \_ -> (
+  peers_ready = peers_ready + 1;
+  if peers_ready == peers.size ()
+  then start_ms = now_int (); peers.iterate (\p -> (q2_local, p.addr) <- ())
+  else ()
+)
+
+trigger load_all : () = \_ -> (
+  peers.iterate (\i -> peers_seq.insert i);
+  (dataFiles.iterate (\e -> loadQ2 e.path local_uservisits));
+  ((ready, master) <- ())
+)
+
+source rows : () = value ()
+feed rows |> load_all

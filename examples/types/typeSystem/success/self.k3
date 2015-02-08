@@ -1,0 +1,5 @@
+annotation A {
+    provides lifted f : self -> self = \x -> x
+}
+declare c : collection{x:int}@{A} = empty{x:int}@{A}
+declare v : collection{x:int}@{A} = c.f c

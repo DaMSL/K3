@@ -1,0 +1,29 @@
+create procedure ostatById(w_id integer not null,d_id smallint not null,c_id integer not null)
+{
+   select max(o_id) as o_id from "order" where o_w_id=w_id and o_d_id=d_id and o_c_id=c_id;
+
+   select ol_delivery_d from orderline where ol_w_id=w_id and ol_d_id=d_id and ol_o_id=o_id {{}}
+};
+
+create procedure ostatByName(w_id integer not null,d_id smallint not null,c_last varchar(16) not null)
+{
+   -- count the number of matching customers
+   select count(*) as c_count from customer c where c.c_w_id=w_id and c.c_d_id=d_id and c.c_last=c_last;
+   if (c_count=0)
+      rollback;
+
+   -- find the customer at position ceil(c_count/2)
+   var c_id_result integer not null;
+   var c_count_remaining=(c_count+1)/2;
+   select c_id as c_id_cand from customer c where c.c_w_id=w_id and c.c_d_id=d_id and c.c_last=c_last order by c_first {
+      if (c_count_remaining = 1) {
+         c_id_result=c_id_cand;
+         break;
+      }
+      c_count_remaining=c_count_remaining-1;
+   }
+
+   select max(o_id) as o_id from "order" where o_w_id=w_id and o_d_id=d_id and o_c_id=c_id_result;
+
+   select ol_delivery_d from orderline where ol_w_id=w_id and ol_d_id=d_id and ol_o_id=o_id {{}}
+};

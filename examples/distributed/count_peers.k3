@@ -1,0 +1,30 @@
+// A simple example of a distributed K3 program.
+//
+// K3 distributed systems are peer-to-peer networks, where each node runs the same program.
+// Thus the script below is deployed onto multiple machines, with each node consuming from
+// the 'go' source.
+//
+// In this example, all peers send a message to the 'register' trigger running at the
+// 'rendezvous' address. The 'register' trigger simply counts the number of peers sending
+// a message in the 'nodeCounter' variable.
+//
+// The '<-' operator is our message passing primitive, where '(trg, addr) <- e' sends
+// the result of the expression 'e' to the 'trg' trigger at the peer referenced by 'addr'.
+//
+// Interpreter run instructions for a three node network:
+// k3 interpret -b -p 127.0.0.1:40000:role=\"go\" \
+//                 -p 127.0.0.1:41000:role=\"go\" \
+//                 -p 127.0.0.1:42000:role=\"go\"
+//
+// Above, each '-p' flag specifies a new peer to simulate or virtualize in the interpreter.
+//
+
+declare nodeCounter : mut int = 0
+declare rendezvous : immut address = 127.0.0.1:40000
+
+trigger join : () = \_ -> (register, rendezvous) <- 1
+
+trigger register : int = \x -> nodeCounter = nodeCounter + x
+
+source go : () = value ()
+feed go |> join

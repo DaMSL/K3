@@ -1,0 +1,31 @@
+// K3's splicing operator allows for two types of splices:
+// i.   direct variable and record splicing. Syntax: $[<var id>.(<path>)*]  , e.g., $[x.y.z]
+// ii.  Haskell-generated splices, from running a Haskell expression on a splice variable.
+//      Syntax: $[|<Haskell expr> '<splice variable>|] , e.g., $[|foo 'x|]
+//
+// The example below shows that label splices are automatically concatenated
+// if multiple splices are provided. Type and expression splices cannot be composed.
+//
+annotation Index[key : [labeltype], value : labeltype, customLabel : label] {
+  @:{IndexKey "$[|literalType $ mkRecord 'key|]"}
+  provides lifted lookup_by_$[|concatLabels $ listLabels 'key|]_$[customLabel] : $[|mkRecord 'key|] -> $::[value]
+}
+
+// Splice parameters are specified as keyword arguments.
+// By default, parameters are assumed to be record fields,
+// and enable label and type splicing in an annotation.
+//
+// We also provide explicit splice value constructors for:
+//
+//    Labels:         [#  <id>]
+//    Types:          [:  <type>]
+//    Exprs:          [$  <expr>]
+//    Literals:       [$# <litl>]
+//    Declarations:   [$^ <decl>]
+//    Label-types:    [&  <ltyp>]
+//    Splice records: [%  <srec>]
+//    Splice lists:   [*  <slst>]
+//
+declare employees : collection {id: int, name: string, salary: int}
+                      @Index(key=[id,name], value=salary, customLabel=[# foo])
+

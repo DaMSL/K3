@@ -1,0 +1,15 @@
+annotation myAnnotation {
+  provides lifted y : int = 5
+  provides lifted z : () -> int = \_ -> 10
+}
+
+declare myCollection : collection { x : int } @ { myAnnotation }
+
+declare a : mut int = 0
+
+trigger t : int = \x ->
+  a = myCollection.y + myCollection.z ()
+
+source s1 : int = value 0
+
+feed s1 |> t 

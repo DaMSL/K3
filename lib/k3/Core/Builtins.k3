@@ -1,0 +1,121 @@
+include "Annotation/Collection.k3"
+include "Annotation/Seq.k3"
+
+// TODO: implement in haskell backend:
+// 1. target string 2. split text
+@:CArgs 2
+declare splitString : string -> string -> collection { elem: string } @ {Seq}
+
+@:CArgs 2
+declare takeUntil : string -> string -> string
+
+@:CArgs 2
+declare countChar : string -> string -> int
+
+// TODO: move to String.k3
+@:CArgs 3
+declare slice_string : string -> int -> int -> string
+
+@:CArgs 2
+declare strcomp : string -> string -> int
+  with effects \x -> \y -> [R[x]; R[y]]
+
+// TODO: move to String.k3
+declare regex_matcher : string -> (string -> collection {elem: string} @ Collection)
+declare regex_matcher_q4 : string -> collection {elem: string} @ Collection
+
+// TODO: move to Time.k3
+declare now_int : () -> int
+  with effects \_ -> io
+
+///////////////////////
+//
+// Engine I/O builtins
+
+// openBuiltin: channel id -> builtin channel id -> format -> ()
+// builtin channel id is one of: stdin, stdout, stderr
+@:CArgs 3
+declare openBuiltin : string -> string -> string -> ()
+
+// openFile: channel id -> path -> format -> mode -> ()
+@:CArgs 4
+declare openFile : string -> string -> string -> string -> ()
+
+// openSocket: channel id -> address -> format -> mode -> ()
+@:CArgs 4
+declare openSocket : string -> address -> string -> string -> ()
+
+// close: channel id -> ()
+declare close : string -> ()
+
+//////////////////////////////////
+//
+// Builtins on primitives/values
+
+// Uniform random integer generation in [0,n)
+declare random : int -> int
+
+// Uniform random real generation in [0,1)
+declare randomFraction : () -> real
+
+// Polymorphic hash function
+declare hash : forall a . a -> int
+  with effects \x -> R[x]
+
+////////////////////////
+//
+// Math functions
+// TODO: implement in backends
+
+declare log : real -> real
+declare exp : real -> real
+declare sin : real -> real
+declare cos : real -> real
+declare tan : real -> real
+
+
+////////////////////////
+//
+// Collection builtins
+
+// Collection enumeration [0,1,..n-1]
+@:ErrorFn
+declare range : int -> collection {i : int} @ { Seq }
+
+///////////////////////
+//
+// Value conversion
+declare truncate : real -> int
+declare real_of_int : int -> real
+
+declare itos : int -> string
+declare rtos : real -> string
+declare atos : address -> string
+
+// Maximum Int value
+declare get_max_int : () -> int
+
+// Print to the screen
+declare print : string -> ()
+  with effects \_ -> io
+
+// Show a value
+declare show : forall a. a -> string
+
+// Error (exceptional state)
+@:ErrorFn
+declare error : forall a. () -> a
+
+
+///////////////////////
+//
+// Engine Termination
+
+// Terminate engine after current message
+declare haltEngine : () -> ()
+
+// Terminate engine once queues are empty
+declare drainEngine : () -> ()
+
+// Sleep the engine (microseconds)
+declare sleep : int -> ()

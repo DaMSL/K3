@@ -1,0 +1,2 @@
+declare x : mut bool = 4 <= 2
+

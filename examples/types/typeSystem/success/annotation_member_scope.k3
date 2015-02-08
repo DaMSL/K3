@@ -1,0 +1,9 @@
+annotation X {
+	provides lifted n : int = 4
+	provides lifted f : int -> int = (\x -> x + n)
+}
+
+declare c : collection {}@{X} = empty {}@{X}
+
+declare m : int = c.f 1
+

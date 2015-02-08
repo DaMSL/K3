@@ -1,0 +1,37 @@
+language: haskell
+env:
+  - GHCVER=7.8.3
+  - CABALVER=1.20
+before_install:
+  - travis_retry sudo apt-add-repository -y ppa:hvr/ghc
+  - travis_retry sudo apt-add-repository -y ppa:boost-latest/ppa
+  - travis_retry sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+  - travis_retry sudo apt-get update -qq
+  - travis_retry sudo apt-get install -qq gcc-4.9 clang-3.3 boost1.55 
+  - travis_retry sudo apt-get install -qq cabal-install-$CABALVER ghc-$GHCVER
+  - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 20
+  - export PATH=/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:$PATH
+  # install nanomsg
+  - wget http://download.nanomsg.org/nanomsg-0.3-beta.tar.gz
+  - tar -xvzf nanomsg-0.3-beta.tar.gz
+  - mkdir -p ~/software/nanomsg
+  - ./nanomsg-0.3-beta/configure --prefix ~/software/nanomsg && make && make install  
+install:
+  - cabal install cabal-install && cabal --version
+  - export PATH=~/.cabal/bin:$PATH
+  - mkdir ../K3-Driver
+  - cd ../K3-Driver
+  - git clone https://github.com/DaMSL/K3-Driver.git .
+  - cabal sandbox init
+  - cabal sandbox add-source ../K3-Core
+  - sudo pip install six
+script:
+  - ls ~/software/nanomsg/include
+  - cd ../K3-Driver
+  - cabal install --only-dependencies --disable-documentation
+  - cabal configure
+  - cabal build
+    #- scripts/tests/tests.py -l scripts/tests/passed_tests.txt
+  - ./compile.sh ../K3-Core/examples/fibonacci.k3
+  - ./compile.sh ../K3-Core/examples/distributed/amplab/q1.k3
+    #- ./compile.sh ../K3-Core/examples/distributed/amplab/q2.k3

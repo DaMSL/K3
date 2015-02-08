@@ -1,0 +1,186 @@
+include "tpch/benchmark.k3"
+
+/**********************
+* sql query
+***********************
+select
+        ps_partkey,
+        sum(ps_supplycost * ps_availqty) as "value"
+from
+        partsupp,
+        supplier,
+        nation
+where
+        ps_suppkey = s_suppkey
+        and s_nationkey = n_nationkey
+        and n_name = 'GERMANY'
+group by
+        ps_partkey having
+                sum(ps_supplycost * ps_availqty) > (
+                        select
+                                sum(ps_supplycost * ps_availqty) * 0.0001
+                        from
+                                partsupp,
+                                supplier,
+                                nation
+                        where
+                                ps_suppkey = s_suppkey
+                                and s_nationkey = n_nationkey
+                                and n_name = 'GERMANY'
+                )
+order by
+        "value" desc
+****************************/
+
+declare partsupp : partsupp_bag
+declare supplier : supplier_bag
+declare nation   : nation_bag
+
+// Distributed plan: dist. hash-join on sp, broadcast semi-join on spn
+// Partsupp is much bigger than supplier
+
+// suppkey -> partkey -> value_mult_sum
+typedef p_by_partkey_t     =  {key: int, value: real}
+typedef p_by_partkey_map_t =  collection p_by_partkey_t @ Map
+typedef p_by_suppkey_t     = {key: int , value: p_by_partkey_map_t }
+typedef p_by_suppkey_map_t = collection p_by_suppkey_t @ Map
+typedef p_by_suppkey_col_t = collection p_by_suppkey_t @ Collection
+declare p_by_suppkey_map   : p_by_suppkey_map_t
+
+// suppkey -> [nationkey]
+typedef s_by_suppkey_t   = {key: int, value: collection {nk:int} @ Collection }
+typedef s_by_suppkey_map_t = collection s_by_suppkey_t @ Map
+typedef s_by_suppkey_col_t = collection s_by_suppkey_t @ Collection
+declare s_by_suppkey_map : s_by_suppkey_map_t
+
+// nationkey -> [(partkey, calcval)]
+typedef ps_inner_t = {key: int, value: real}
+typedef ps_inner_col_t = collection ps_inner_t @ Collection
+typedef ps_inner_map_t = collection ps_inner_t @ Map
+typedef ps_t = {key: int, value: ps_inner_map_t}
+typedef ps_map_t = collection ps_t @ Map
+declare ps_map : ps_map_t
+
+typedef n_bag  = collection {elem : int} @ Collection
+
+typedef result_t = collection {key : int, value: real} @ Map
+declare unfiltered_result : mut result_t
+declare q11_result : mut result_t
+
+// For dealing with total calculation
+declare local_total : mut real = 0
+declare global_total : mut real = 0
+declare received_totals : mut int = 0
+
+declare num_peers : int = peers.fold (\acc -> \_ -> acc + 1) 0
+
+declare combine_maps : p_by_suppkey_t -> p_by_suppkey_t -> p_by_suppkey_t =
+  (\a -> \b ->
+    let a2 = b.value.fold
+      (\acc -> \x -> (acc.insert_with x
+        (\z -> \y -> {key: z.key, value: z.value + y.value});
+        acc))
+      a.value
+    in
+    { key : a.key , value: a2})
+
+trigger partsupp_supplier : () = \_ -> (
+  () @DistributedHashJoin
+        ( lbl       = [# sp ]
+        , lhs_query = [$ partsupp.groupBy (\p -> p.ps_suppkey )
+                                          (\acc1 -> \p ->
+                                           (acc1.insert
+                                           { key:   p.ps_partkey
+                                           , value: p.ps_availqty * p.ps_supplycost }; acc1))
+                                          empty p_by_partkey_t @ Map
+                      ]
+
+        , rhs_query = [$
+            supplier.groupBy (\s   -> s.s_suppkey )
+                             (\acc2 -> \s ->
+                               (acc2.insert
+                                 { nk : s.s_nationkey }; acc2) )
+                             empty { nk : int } @Collection
+                      ]
+
+        , lhs_build_merge = [$ (\p -> p_by_suppkey_map.insert_with p combine_maps)]
+
+        , rhs_probe_merge = [$
+            (\s ->
+                case p_by_suppkey_map.lookup { key: s.key
+                                             , value: empty p_by_partkey_t @Map}
+                of
+                  { Some p -> s.value.iterate
+                                (\sval ->
+                                  ps_map.insert_with
+                                    {key: sval.nk, value: p.value}
+                                    combine_maps)}
+                  { None -> () }
+              )]
+
+        , peer_next       = [$ print "PS-S join finished orders probe."]
+        , next            = [$ print "PS-S join all nodes finished." ;
+                               peers.iterate (\p -> (nation_trig, p.addr) <- ())
+                            ]
+        , coordinator     = [$ master]
+        , nodes          = [$ peers ]
+        , lhs_build_ty    = [: p_by_suppkey_col_t]
+        , rhs_probe_ty    = [: s_by_suppkey_col_t]
+        )
+)
+
+trigger nation_trig : () = \_ -> (
+  // Broadcast nation to all peers
+  let german_ids = (nation.filter (\n -> n.n_name == "GERMANY"))
+                          .map (\n -> n.n_nationkey)
+  in
+  peers.iterate (\p -> (ps_probe_rhs, p.addr) <- german_ids)
+  )
+
+trigger ps_probe_rhs : n_bag = \ns -> (
+  ns.iterate (\n ->
+    case (ps_map.lookup {key:n.elem, value: empty ps_inner_t @ Map}) of
+      { Some ps ->
+        ps.value.iterate (\m ->
+          (unfiltered_result.insert_with m (\a -> \b -> {key: a.key, value: a.value + b.value});
+          local_total = local_total + m.value)) }
+      { None    -> () });
+  peers.iterate (\p -> (add_totals, p.addr) <- local_total)
+)
+
+trigger add_totals : real = \t -> (
+  global_total = global_total + t;
+  received_totals = received_totals + 1;
+  if received_totals >= num_peers then (calc_result, me) <- () else ()
+)
+
+// Final result calculation
+trigger calc_result : () = \_ -> (
+  let total2 = global_total * 0.0001 in
+  q11_result = unfiltered_result.filter (\x -> x.value > total2);
+  ( (() @:Result) @TPCHBenchmark
+  ) @OnCounter(id=[# loc_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+)
+
+//K-trace results
+declare results : collection {key: int, value: real} @Collection
+
+trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
+  nodes                = [$ peers ],
+  loadExpr             = [$ ( supplierFiles.iterate (\e -> supplierLoaderP e.path supplier);
+                              partsuppFiles.iterate (\e -> partsuppLoaderP e.path partsupp);
+                              nationFiles.iterate   (\e -> nationLoaderP   e.path nation)
+                            ) ],
+  preLoadExpr          = [$ ()],
+  preReadyExpr         = [$ ()],
+  onReadyExpr          = [$ (partsupp_supplier, me) <- ()],
+  finishArgT           = [: ()],
+  preTestFinishExpr    = [$ (\_ -> ())],
+  preFinishExpr        = [$ ()],
+  preShutdownExpr      = [$ (q11_result.iterate (\r -> results.insert r))],
+  finishAsShutdownExpr = [$ true]
+)
+
+source rows : () = value ()
+feed rows |> start
+

@@ -1,0 +1,37 @@
+include "tpch/schema.k3"
+
+@:CArgs 2
+declare lineitemLoaderP : string -> lineitem_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare customerLoaderP : string -> customer_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare ordersLoaderP : string -> orders_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare supplierLoaderP : string -> supplier_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare partsuppLoaderP : string -> partsupp_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare partLoaderP : string -> part_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare nationLoaderP : string -> nation_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare regionLoaderP : string -> region_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare tpchAgendaLoaderP : string -> tpch_agenda_bag -> ()
+  with effects \_ -> \_ -> io

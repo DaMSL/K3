@@ -1,0 +1,84 @@
+include "Annotation/Collection.k3"
+include "Core/Builtins.k3"
+include "Core/Loaders.k3"
+
+declare dataFiles : collection {path: string} @ Collection
+declare outputFile : mut string
+
+// Constants
+declare master: address = 127.0.0.1:40000
+declare x: mut int = 10 //pageRank threshold for the select statement
+
+// Globals
+declare peers_ready: mut int = 0
+declare peers_finished: mut int = 0
+declare num_results: mut int = 0
+
+// Data
+declare local_rankings: collection {pageRank: int, pageURL: string} @ { Collection }
+declare local_q1_results: mut collection {pageRank: int, pageURL: string} @ { Collection }
+
+// Time
+declare start_ms: mut int = 0
+declare end_ms: mut int = 0
+declare elapsed_ms: mut int = 0
+
+declare load_start_ms : mut int = 0
+declare load_end_ms : mut int = 0
+declare load_elapsed_ms : mut int = 0
+
+// Dummy trigger to warm up connections
+trigger hello : () = \_ -> ()
+
+// Perform the query on the local dataset. (Filter and project.)
+// Store the results in memory.
+// Notify master that we have finished.
+trigger q1_local: () = \_ -> (
+  local_q1_results = local_rankings.filter (\row -> row.pageRank > x);
+  (finished, master) <- (local_q1_results.size ())
+)
+
+// Signal to the master that a peer has finished the query locally.
+trigger finished: int = \num_peer_results -> (
+  num_results = num_results + num_peer_results;
+  peers_finished = peers_finished + 1;
+  if peers_finished == peers.size ()
+  then end_ms = now_int ();
+       elapsed_ms = end_ms - start_ms;
+       print ("# Results: " ++ (itos num_results));
+       print ("Elapsed time (ms):" ++ (itos elapsed_ms));
+       peers.iterate (\p -> (shutdown, p.addr) <- ())
+  else ()
+)
+
+trigger shutdown: () = \_ -> (
+  haltEngine ()
+)
+
+// Signal to the master that a peer is ready.
+// Once all peers are ready, the master will start the query.
+trigger ready: () = \_ -> (
+  peers_ready = peers_ready + 1;
+  if peers_ready == peers.size ()
+  then (
+    // Establish connections before starting the timer
+    peers.iterate (\p -> (hello, p.addr) <- ());
+    start_ms = now_int ();
+    peers.iterate (\p -> (q1_local, p.addr) <- ())
+  )
+  else ()
+)
+
+trigger load_all: () = \_ -> (
+  load_start_ms = now_int ();
+  dataFiles.iterate (\e ->
+    loadQ1 e.path local_rankings
+  );
+  load_end_ms = now_int ();
+  load_elapsed_ms = load_end_ms - load_start_ms;
+  print ("Load time: " ++ (itos load_elapsed_ms));
+  ((ready, master) <- ())
+)
+
+source rows: () = value ()
+feed rows |> load_all

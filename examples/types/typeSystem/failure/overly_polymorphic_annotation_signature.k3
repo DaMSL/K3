@@ -1,0 +1,6 @@
+annotation X given type a {
+	provides lifted f : a -> a = (\x -> x + 1)
+}
+
+declare c : collection {}@{X} = empty {}@{X}
+

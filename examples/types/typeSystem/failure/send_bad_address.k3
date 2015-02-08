@@ -1,0 +1,4 @@
+trigger t : int = \x -> ()
+
+declare u : () = (t,4) <- 4
+

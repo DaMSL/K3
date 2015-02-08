@@ -1,0 +1,25 @@
+declare x : mut int = 0
+
+/* Program normalization selectively lifts effects in
+   control expressions and operators to yield a normalized
+   program representation.
+   
+   Here, let-in, bind-as, and case-of (i.e. a subset of binding
+   expressions) are transformed to ensure they work on a pure
+   value where possible, and similarly for operators for both
+   their left and right operands.
+
+   Examples of where we cannot lift effects include conditions
+   (i.e., if-then-else expressions) which do not share common
+   effects across both branches, amongst others.
+
+   In the example below, the assignment expression 'x = 5' is
+   lifted outside and sequenced with the bind expression.
+*/
+declare t : () = \_ -> (
+    bind (x = 5; {a:1, b:2}) as {a:m, b:n}
+    in x = m + n 
+  )
+
+source s1 : () = value ()
+feed s1 |> t

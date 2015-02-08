@@ -1,0 +1,153 @@
+include "Annotation/Collection.k3"
+include "Annotation/Map.k3"
+include "Core/Builtins.k3"
+include "Core/Profile.k3"
+
+@:CArgs 2
+declare stringLoader: string -> collection {elem:string} @ { Seq } -> ()
+declare dataFiles : collection {path: string} @ {Collection}
+
+// Constants
+declare master: address = 127.0.0.1:40000
+
+// Globals
+declare peers_ready: mut int = 0
+declare peers_finished: mut int = 0
+declare peer_seq : collection {addr: address} @ {Seq}
+
+
+// Time
+declare start_ms : mut int = 0
+declare end_ms : mut int = 0
+declare elapsed_ms : mut int = 0
+declare regex_time : mut int = 0 declare split_time : mut int = 0
+declare agg_time: mut int = 0
+
+declare inputData : collection {elem:string} @ {Seq}
+
+declare url_count : mut collection {key:string, value:int} @ {Map}
+declare url_regex : mut collection {elem:string} @ {Collection}
+declare cur_page : mut string = "NONE"
+declare url_counts_partial :
+  collection {sourcePage:string, destPage:string, count:int} @ {Collection}
+
+
+// FIXME: cant declare this global function
+//declare matcher : (string -> collection {elem: string} @ Collection) = regex_matcher "(?P<url>https?://[^\\\\s]+)"
+
+declare index_by_hash: string -> int = \s -> (
+  let n = peer_seq.size () in
+  let h = (hash s) in
+  ((h % n) + n) % n
+)
+
+declare get_line : string -> () = \line -> (
+  ((if slice_string line 0 4 == "http" and (countChar line " ") == 5 then
+     cur_page = (takeUntil line " ");
+     url_count.iterate(\v ->
+       url_counts_partial.insert
+         {sourcePage:cur_page, destPage:v.key, count:v.value});
+     // Empty url_count
+     url_count = empty {key: string, value: int} @Map
+   else ());
+   (let re_start = now_int () in
+   ((url_regex = regex_matcher_q4 line);
+   let re_end = now_int () in
+   regex_time = regex_time + (re_end - re_start);
+   url_regex.iterate (\r ->
+     // lookup ignores value
+     case url_count.lookup {key: r.elem, value: 0}  of
+       {Some x -> url_count.insert {key:r.elem, value:x.value + 1} }
+       {None   -> url_count.insert {key:r.elem, value:1}}
+   ))))
+)
+trigger local : () = \_ -> (
+  // Apply udf to each line, piping results into url_counts_partial
+  ((inputData.iterate (\s -> get_line s.elem))
+      @Profile(lbl=[# iterate_get_line], tag=[$ "Input scan time:"]) );
+  url_count.iterate (\v ->
+    url_counts_partial.insert {sourcePage:cur_page, destPage:v.key, count:v.value});
+
+
+  // Local groupBy
+  let url_counts_total = (url_counts_partial.groupBy
+    (\v -> v.destPage)
+    (\acc -> \v -> acc + v.count)
+    0) @Profile(lbl=[# url_counts_groupBy], tag=[$ "Url count time"])
+  in
+
+  // groupBy peer
+  let url_counts_by_peer = ((url_counts_total.groupBy
+    (\v -> index_by_hash v.key)
+    (\acc -> \v -> ((acc.insert v); acc))
+    empty {key: string, value: int} @Collection)
+      @Profile(lbl=[# group_by_peer], tag=[$ "Send partition time"]))
+  in
+
+  // send to peer for global aggregation
+  url_counts_by_peer.iterate (\v ->
+   (aggregate, (peer_seq.at v.key).addr) <- v.value
+  );
+
+  // send punctutaion
+  peers.iterate (\p -> (peer_barrier, p.addr) <- ())
+)
+
+declare url_counts_agg : collection {key: string, value: int} @ {Map}
+
+trigger aggregate : collection {key: string, value: int} @ {Collection} = \newVals -> (
+  let start = now_int () in
+  newVals.iterate (\v ->
+    // lookup ignores value
+    case url_counts_agg.lookup {key: v.key, value: 0} of
+      { Some x -> url_counts_agg.insert {key:v.key, value:v.value + x.value} }
+      { None   -> url_counts_agg.insert v }
+    );
+  let end = now_int () in
+  agg_time = agg_time + (end - start)
+)
+
+declare aggs_received : mut int = 0
+trigger peer_barrier : () = \_ -> (
+  aggs_received = aggs_received + 1;
+  if (aggs_received == peers.size () )
+  then (end_barrier, master)  <- ()
+  else ()
+)
+
+trigger end_barrier : () = \_ -> (
+  peers_finished = peers_finished + 1;
+  if peers_finished == (peers.size ())
+  then end_ms = now_int ();
+       elapsed_ms = end_ms - start_ms;
+       print ("Elapsed: " ++ (itos elapsed_ms));
+       print ("Num results: " ++ (itos (url_counts_agg.size ())));
+       print ("Split time: " ++ (itos split_time));
+       print ("Regex time: " ++ (itos regex_time));
+       print ("Agg time: " ++ (itos agg_time));
+       peers.iterate (\p -> (shutdown, p.addr) <- ())
+  else ()
+
+)
+
+trigger shutdown : () = \_ -> (
+  haltEngine ()
+)
+
+// Signal to the master that a peer is ready.
+// Once all peers are ready, the master will start the query.
+trigger ready : () = \_ -> (
+  peers_ready = peers_ready + 1;
+  if peers_ready == (peers.size ())
+  then start_ms = now_int (); peers.iterate (\p -> (local, p.addr) <- ())
+  else ()
+)
+
+trigger load_all : () = \_ -> (
+   peers.iterate (\p -> peer_seq.insert p);
+   dataFiles.iterate (\e -> stringLoader e.path inputData);
+  ((ready, master) <- ())
+)
+
+source rows : () = value ()
+feed rows |> load_all

@@ -1,0 +1,33 @@
+include "Annotation/Collection.k3"
+include "Core/Time.k3"
+
+declare utcDate : mut {y: int, m: int, d:int}
+declare localDate : mut {y: int, m: int, d:int}
+declare validParsedDate : mut option {y: int, m: int, d:int}
+declare invalidParsedDate : mut option {y: int, m: int, d:int}
+
+declare utcTime : mut {h : int, m : int, s : int}
+declare utcFormattedTime : mut string
+declare localTime : mut {h : int, m : int, s : int}
+declare localFormattedTime : mut string
+
+declare compareValue : mut int
+
+trigger t : () = \_ -> (
+    localDate = getLocalDate ();
+    utcDate = getUTCDate ();
+    validParsedDate = parseDate "%-d/%-m" "12/09";
+    invalidParsedDate = parseDate "%-d/%-m" "12/09/1";
+
+    utcTime = getUTCTime ();
+    localTime = getLocalTime ();
+    utcFormattedTime = getUTCTimeWithFormat "%H -- %M __ %S :|";
+    localFormattedTime = getLocalTimeWithFormat "%H :: %M :: %S :)";
+
+    case validParsedDate of
+        {Some d -> compareValue = compareDate d localDate}
+        {None -> ()}
+)
+
+source s1 : () = value ()
+feed s1 |> t

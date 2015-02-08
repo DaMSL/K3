@@ -1,0 +1,110 @@
+include "Annotation/Collection.k3"
+include "Annotation/Map.k3"
+include "Annotation/Seq.k3"
+include "Annotation/Vector.k3"
+include "Core/Barrier.k3"
+include "Core/Profile.k3"
+include "Distributed/Transformers.k3"
+include "tpch/schema.k3"
+include "tpch/loader.k3"
+
+declare ignore : forall a. a -> () = \_ -> ()
+
+control TPCHBenchmarkWithoutMaster
+                     [nodes                : expr,
+                      loadExpr             : expr,
+                      preLoadExpr          : expr,
+                      preReadyExpr         : expr,
+                      onReadyExpr          : expr,
+                      finishArgT           : type,
+                      preTestFinishExpr    : expr,
+                      preFinishExpr        : expr,
+                      preShutdownExpr      : expr,
+                      finishAsShutdownExpr : expr]
+{
+  ?e @:Result => (finished, master) <- $.[e]
+  ?e @:Start  => (load_all, me)     <- $.[e]
+    +> {
+      // Generic, single relation dataset
+      declare dataFiles : collection {path: string} @Collection
+
+      // Relation-specific datasets
+      declare lineitemFiles : collection {path : string} @Collection
+      declare customerFiles : collection {path : string} @Collection
+      declare ordersFiles   : collection {path : string} @Collection
+      declare supplierFiles : collection {path : string} @Collection
+      declare partFiles     : collection {path : string} @Collection
+      declare partsuppFiles : collection {path : string} @Collection
+      declare nationFiles   : collection {path : string} @Collection
+      declare regionFiles   : collection {path : string} @Collection
+
+      // Timing for loading
+      declare program_start_ts : mut int = 0
+
+      declare index_by_hash : forall a. a -> int = (\s -> (
+        let n = $[nodes].size () in
+        let h = (hash s) in
+        ((h % n) + n) % n
+      ))
+
+      // Dummy trigger to warm up connections
+      trigger hello : () = \_ -> ()
+
+      // A shutdown trigger which runs at each peer to terminate the distributed program.
+      trigger shutdown : () = \_ -> (
+        $[preShutdownExpr];
+        haltEngine ()
+      )
+
+      // A 'finished' trigger which optionally shuts down all the nodes. This is invoked at the master.
+      trigger finished : $[finishArgT] = \finishArg -> (
+        ($[preTestFinishExpr] finishArg);
+        ((( $[preFinishExpr];
+            if $[finishAsShutdownExpr] then $[nodes].iterate (\p -> (shutdown, p.addr) <- ()) else ()
+          ) @:StopTimer) @Time(lbl=[# query], tag=[$ "Query time"])
+        ) @OnCounter(id=[# query_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
+      )
+
+      // A 'ready' trigger which starts the query once all nodes are alive. This is invoked at the master.
+      trigger ready : () = \_ -> (
+        ( $[preReadyExpr];
+          (
+          (let load_time = (now_int () - program_start_ts)
+          in print ("Load time:" ++  (itos load_time)) );
+          ( $[onReadyExpr] @:StartTimer) @Time(lbl=[# query], tag=[$ "Query time:"])
+          ) @OnCounter(id=[#  nodes_ready], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false]))
+      )
+
+      trigger load_all : () = \_ -> (
+        program_start_ts = now_int ();
+        $[preLoadExpr];
+        $[loadExpr];
+        ((ready, master) <- ())
+      )
+    }
+}
+
+control TPCHBenchmark[nodes                : expr,
+                      loadExpr             : expr,
+                      preLoadExpr          : expr,
+                      preReadyExpr         : expr,
+                      onReadyExpr          : expr,
+                      finishArgT           : type,
+                      preTestFinishExpr    : expr,
+                      preFinishExpr        : expr,
+                      preShutdownExpr      : expr,
+                      finishAsShutdownExpr : expr]
+{
+  ?e => ($.[e]) @TPCHBenchmarkWithoutMaster(
+                      nodes                = nodes
+                    , loadExpr             = loadExpr
+                    , preLoadExpr          = preLoadExpr
+                    , preReadyExpr         = preReadyExpr
+                    , onReadyExpr          = onReadyExpr
+                    , finishArgT           = finishArgT
+                    , preTestFinishExpr    = preTestFinishExpr
+                    , preFinishExpr        = preFinishExpr
+                    , preShutdownExpr      = preShutdownExpr
+                    , finishAsShutdownExpr = finishAsShutdownExpr )
+     +> { declare master : address = 127.0.0.1:40000 }
+}

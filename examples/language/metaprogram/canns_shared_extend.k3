@@ -1,0 +1,17 @@
+control A {
+  ?e @:Foo => $.[e]
+  ?e @:Bar => $.[e]
+  shared { declare x : mut int = 0 }
+}
+
+declare m : mut int = 0
+declare n : mut int = 0
+
+// TODO: fix the duplicate attachment of properties during rewrite
+trigger t : () = \_ -> (
+  m = ((1 @:Foo) @A);
+  n = ((2 @:Bar) @A)
+)
+
+source s1 : () = value ()
+feed s1 |> t

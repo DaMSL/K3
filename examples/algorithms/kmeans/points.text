@@ -1,0 +1,8 @@
+{CNS={}, ANS={}, InMemoryDS=[{key = ( 1 , MemImmut),value = ( 1.0 , MemImmut)},{key = ( 2 , MemImmut),value = ( 1.0 , MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{key = ( 1 , MemImmut),value = ( 1.0 , MemImmut)},{key = ( 2 , MemImmut),value = ( 2.0 , MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{key = ( 1 , MemImmut),value = ( 2.0 , MemImmut)},{key = ( 2 , MemImmut),value = ( 1.0 , MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{key = ( 1 , MemImmut),value = ( 2.0 , MemImmut)},{key = ( 2 , MemImmut),value = ( 2.0 , MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{key = ( 1 , MemImmut),value = ( -1.0 , MemImmut)},{key = ( 2 , MemImmut),value = ( -1.0 , MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{key = ( 1 , MemImmut),value = ( -1.0 , MemImmut)},{key = ( 2 , MemImmut),value = ( -2.0 , MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{key = ( 1 , MemImmut),value = ( -2.0 , MemImmut)},{key = ( 2 , MemImmut),value = ( -1.0 , MemImmut)}], Collection}
+{CNS={}, ANS={}, InMemoryDS=[{key = ( 1 , MemImmut),value = ( -2.0 , MemImmut)},{key = ( 2 , MemImmut),value = ( -2.0 , MemImmut)}], Collection}

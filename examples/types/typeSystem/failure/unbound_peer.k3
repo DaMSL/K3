@@ -1,0 +1,4 @@
+declare x : immut int = 5
+
+declare y : immut int = z
+

@@ -1,0 +1,52 @@
+include "Annotation/Collection.k3"
+declare c : collection { key: int, value: real} @ { Collection }
+declare c2 : collection { x: int } @ { Collection }
+
+// There should be no type errors here!
+
+
+trigger foo1 : () = \_ -> (
+  let bar = c.groupBy (\e -> 1) (\acc -> \e -> acc) 0.0
+  in ()
+)
+
+
+trigger foo2 : () = \_ -> (
+  let bar = c.groupBy (\e -> 1) (\acc -> \e -> acc) {sum: 0.0}
+  in ()
+)
+
+trigger foo3 : () = \_ -> (
+  let bar = c.groupBy (\e -> 1) (\acc -> \e -> acc) (empty {sum: real} @ {Collection })
+  in ()
+)
+
+trigger foo4 : () = \_ -> (
+  let bar = c.groupBy (\e -> 1) (\acc -> \e -> acc) (1,2)
+  in ()
+)
+
+trigger foo5 : () = \_ -> (
+  let bar = c.fold (\a -> \p -> {sum: 1}) {sum: 0}
+  in ()
+)
+
+trigger foo6 : () = \_ -> (
+  let bar = c.fold (\a -> \p -> if true then a else a) {sum: 0}
+  in ()
+)
+
+trigger foo7 : () = \_ -> (
+  let bar = c.fold (\a -> \p -> if true then {sum:a.sum} else {sum:a.sum}) {sum: 0}
+  in ()
+)
+
+trigger foo8 : () = \_ -> (
+  let bar = c.fold (\a -> \p -> if (a.sum == 0) then {sum:a.sum} else {sum:a.sum}) {sum: 0}
+  in ()
+)
+
+trigger foo9 : (collection { x: int } @ { Collection }) = \ags -> let f = (ags.combine ags) in ()
+
+source s1 : () = value ()
+feed s1 |> foo1

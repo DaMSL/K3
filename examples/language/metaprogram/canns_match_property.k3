@@ -1,0 +1,14 @@
+control Match[lbl : label] {
+  ?e @:Prop => $[lbl]_matched = true; $.[e]
+  +> { declare $[lbl]_matched : mut bool = false }
+}
+
+declare x : mut int = 0
+
+trigger t : () = \_ -> (
+  x = (1 @:Prop) @Match(lbl=[# test])
+)
+
+source s1 : () = value ()
+feed s1 |> t
+

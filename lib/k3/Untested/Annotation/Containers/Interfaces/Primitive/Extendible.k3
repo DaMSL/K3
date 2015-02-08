@@ -1,0 +1,6 @@
+annotation Extendible
+{
+  requires lifted insert  : content -> ()
+  requires lifted delete  : content -> ()
+  requires lifted update  : content -> (content -> ())
+}

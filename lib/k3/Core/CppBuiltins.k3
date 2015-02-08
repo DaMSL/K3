@@ -1,0 +1,14 @@
+include "Annotation/Vector.k3"
+
+// Vector Utilities
+@:CArgs 2
+declare loadVector : string -> collection {elem: collection {elem: real} @ {Vector} } @Seq -> ()
+
+@:CArgs 2
+declare loadVectorLabel : int -> string -> collection {elem: collection {elem: real} @ {Vector}, class_label: real } @Collection -> ()
+
+declare zeroVector : int -> collection {elem: real} @ {Vector}
+
+declare randomVector : int -> collection {elem: real} @ {Vector}
+
+declare toJson : forall a . a -> string

@@ -1,0 +1,30 @@
+include "compact/AmplabBDB.k3"
+
+// Globals
+declare x           : mut int = 1000 // pageRank threshold for filter
+declare num_results : mut int = 0
+
+// Data
+declare local_rankings  :     collection {pageRank: int, pageURL: string} @Collection
+declare results         : mut collection {pageRank: int, pageURL: string} @Collection
+
+// Perform the query on the local dataset. (Filter and project.)
+// Store the results in memory.
+trigger q1_local: () = \_ -> (
+  results = local_rankings.filter (\row -> row.pageRank > x);
+  ignore ((results.size ()) @:Result) @AmplabBenchmark
+)
+
+trigger start : () = \_ -> (() @:Start) @AmplabBenchmark(
+  queryTrigger       = [$ q1_local],
+  loadExpr           = [$ rankingsFiles.iterate (\e -> loadQ1 e.path local_rankings)],
+  preLoadExpr        = [$ ()],
+  preReadyExpr       = [$ peers.iterate (\p -> (hello, p.addr) <- ())],
+  finishArgT         = [: int],
+  preTestFinishExpr  = [$ (\num_peer_results -> num_results = num_results + num_peer_results)],
+  preFinishExpr      = [$ print ("# Results: " ++ (itos num_results))],
+  preShutdownExpr    = [$ ()]
+)
+
+source rows: () = value ()
+feed rows |> start

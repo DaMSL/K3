@@ -1,0 +1,31 @@
+create procedure newOrder (w_id integer not null, d_id smallint not null, c_id integer not null, table positions(line_number integer not null,supware integer not null,itemid integer not null,qty integer not null), datetime timestamp not null)
+{
+   select w_tax from warehouse w where w.w_id=w_id;
+   select c_discount from customer c where c_w_id=w_id and c_d_id=d_id and c.c_id=c_id;
+   select d_next_o_id as o_id,d_tax from district d where d_w_id=w_id and d.d_id=d_id;
+   update district set d_next_o_id=o_id+1 where d_w_id=w_id and district.d_id=d_id;
+
+   select count(*) as cnt from positions;
+   select case when count(*)=0 then 1 else 0 end as all_local from positions where supware<>w_id;
+
+   insert into "order" values (o_id,d_id,w_id,c_id,datetime,0,cnt,all_local);
+   insert into neworder values (o_id,d_id,w_id);
+
+   update stock
+   set s_quantity=case when s_quantity>qty then s_quantity-qty else s_quantity+91-qty end,
+       s_remote_cnt=s_remote_cnt+case when supware<>w_id then 1 else 0 end,
+       s_order_cnt=s_order_cnt+case when supware=w_id then 1 else 0 end
+   from positions
+   where s_w_id=supware and s_i_id=itemid;
+
+   insert into orderline
+          select o_id,d_id,w_id,line_number,itemid,supware,null,qty,
+                 qty*i_price*(1.0+w_tax+d_tax)*(1.0-c_discount),
+                 case d_id when 1 then s_dist_01 when 2 then s_dist_02 when 3 then s_dist_03 when 4 then s_dist_04 when 5 then s_dist_05 when 6 then s_dist_06 when 7 then s_dist_07 when 8 then s_dist_08 when 9 then s_dist_09 when 10 then s_dist_10 end
+          from positions, item, stock
+          where itemid=i_id
+          and s_w_id=supware and s_i_id=itemid
+   returning count(*) as inserted;
+
+   if (inserted<cnt) rollback;
+};

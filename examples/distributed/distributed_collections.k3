@@ -1,0 +1,59 @@
+// Distributed collection example, illustrating the ability to send
+// collections over the wire in our messages.
+//
+// Also note that addresses are a primitive datatype, and can be
+// stored in collections to make dynamic routing decisions (i.e.,
+// programmatic selection of where to invoke triggers).
+//
+// This program applies a series of collection accessors and transformers
+// in the 't' trigger, before sending a collection to the 'u' trigger
+// running on 'node2'
+//
+// Interpreter command:
+// k3 -I <path to K3 stanrdard library> \
+//    interpret -b -p 127.0.0.1:40000:role=\"s1\" \
+//                 -p 127.0.0.1:50000
+//
+
+include "Annotation/Collection.k3"
+
+declare myCollection : mut collection { x : int } @ { Collection }
+declare c1           :     collection { x : int } @ { Collection }
+declare c2           :     collection { x : int } @ { Collection }
+declare c3           : mut collection { key : int, value : int } @ { Collection }
+
+declare c4           : mut collection { addr : address } @ { Collection }
+declare c5           : mut collection { addr : address } @ { Collection }
+
+declare y : mut int = 0
+
+declare node1 : immut address = 127.0.0.1:40000
+declare node2 : immut address = 127.0.0.1:50000
+
+trigger t : int = \i -> (
+  myCollection.insert {x:i};
+  c1.insert {x:i};
+  c2.insert {x:(i + 1)};
+  myCollection = c1.combine c2;
+
+  //myCollection = myCollection.map (\r -> {x : r.x + 1});
+  y = myCollection.fold (\acc -> (\r -> acc + r.x)) 0;
+
+  myCollection = myCollection.combine myCollection;
+  c3 = myCollection.groupBy (\r -> r.x) (\acc -> (\r -> acc + 1)) 0;
+
+  c4.insert { addr : node1 };
+  (u, node2) <- c4
+)
+
+trigger u : (collection { addr : address } @ { Collection }) = \c -> (
+  c5 = c;
+  c5.iterate (\a -> (v, a.addr) <- 100 )
+)
+
+trigger v : int = \i ->
+  y = i
+
+source s1 : int = value 5
+
+feed s1 |> t

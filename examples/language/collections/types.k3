@@ -1,0 +1,38 @@
+include "Annotation/Collection.k3"
+include "Annotation/Seq.k3"
+include "Annotation/Set.k3"
+include "Annotation/Sorted.k3"
+
+declare a : mut collection {i:int} @ {Collection} = empty {i:int} @ {Collection}
+declare b : mut collection {i:int} @ {Seq}        = empty {i:int} @ {Seq}
+declare c : mut collection {i:int} @ {Set}        = empty {i:int} @ {Set}
+declare d : mut collection {i:int} @ {Sorted}     = empty {i:int} @ {Sorted}
+
+declare e : mut bool = false
+declare f : mut int  = 0
+
+trigger t : () = \_ -> (
+  a.insert {i:5};
+  a.insert {i:5};
+  a.insert {i:4};
+
+  b.insert {i:5};
+  b.insert {i:5};
+  b.insert {i:4};
+  b = b.sort (\x -> (\y -> x.i - y.i));
+
+  c.insert {i:5};
+  c.insert {i:5};
+  c.insert {i:4};
+  e = c.member {i:5};
+
+  d.insert {i:5};
+  d.insert {i:5};
+  d.insert {i:4};
+  case d.min () of
+    { Some x -> f = x.i }
+    { None -> () }
+)
+
+source s1 : () = value ()
+feed s1 |> t

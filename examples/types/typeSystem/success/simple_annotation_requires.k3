@@ -1,0 +1,3 @@
+annotation X {
+    requires x : int
+}

@@ -1,0 +1,2 @@
+declare x : mut int = 4 / 2
+

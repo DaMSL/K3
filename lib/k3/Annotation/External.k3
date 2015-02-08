@@ -1,0 +1,36 @@
+annotation External given type a, b {
+  provides lifted peek    : () -> option content
+
+  provides lifted insert  : content -> ()
+  provides lifted erase  : content -> ()
+
+  @:CArgs 2
+  provides lifted update  : content -> (content -> ())
+  provides lifted size : () -> int
+
+  @:Transformer
+  provides lifted combine : self -> self
+
+  @:Transformer
+  provides lifted split   : () -> (self, self)
+
+  @:Transformer
+  provides lifted iterate : (content -> ()) -> ()
+
+  @:Transformer
+  provides lifted map     : (content -> a) -> collection { elem : a } @ {External}
+
+  @:Transformer
+  provides lifted filter  : (content -> bool) -> self
+
+  @:{Transformer, CArgs 2}
+  provides lifted fold    : (a -> (content -> a)) -> a -> a
+
+  @:{Transformer, CArgs 3}
+  provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
+                             -> collection { key : a, value : b } @ {External}
+
+  @:Transformer
+  provides lifted ext     : (content -> collection { elem : a } @ {External})
+                             -> collection { elem : a } @ {External}
+}

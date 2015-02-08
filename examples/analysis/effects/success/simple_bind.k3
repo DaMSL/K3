@@ -1,0 +1,6 @@
+declare x : mut int = 0
+declare y : mut int = 10
+
+trigger t : () = \_ -> (
+  x = (bind {a:5, b:y} as {a:m,b:n} in m+n)
+)

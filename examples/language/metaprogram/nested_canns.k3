@@ -1,0 +1,15 @@
+control A[lbl : label] {
+  ?e => $.[e] + ($[lbl]_x @B(lbl=lbl))
+     +> { declare $[lbl]_x : int = 5 }
+}
+
+control B[lbl : label] {
+  ?e => $.[e] + $[lbl]_y
+     +> { declare $[lbl]_y : int = 10 }
+}
+
+declare m : mut int = 0
+trigger t : () = \_ -> m = (3 @A(lbl=[# nested_test]))
+
+source s1 : () = value ()
+feed s1 |> t
