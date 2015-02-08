@@ -11,7 +11,7 @@ We empower K3 developers to create algorithms with the mindset of working on a s
 Our language and compiler allows us to leverage powerful program analyses and statistics to realize co-design opportunities that are often lost at API boundaries in library and framework-based approaches.
 
 K3 is a work in progress at all levels (language, compiler, cloud runtime).
-You can find examples of language features, and simple algorithms in [damsl/K3-Core/examples/](examples/)
+You can find examples of language features, and simple algorithms in [damsl/K3/examples/](examples/)
 
 The easiest way to try out K3 is with our docker container:
 https://registry.hub.docker.com/u/damsl/k3-vanilla/
@@ -20,7 +20,7 @@ From any docker installation, you can grab this with:
 
     $> docker pull damsl/k3-vanilla
 
-Our docker image contains both the K3-Core and K3-Driver codebases, as well as the dependencies and libraries listed below. We're developing K3 in the Haskell language, and K3 generates C++ code.
+Our docker image contains the K3 github codebase, as well as the dependencies and libraries listed below. We're developing K3 in the Haskell language, and K3 generates C++ code.
 
 Dependencies
 -------------
@@ -43,42 +43,31 @@ Full Toolchain Installation
 ----------------------------
 We **strongly** recommend you use our docker container unless you're comfortable with Haskell, cabal and C++ compilers. You'll only need to build this repository if you plan to work directly on the compiler toolchain.
 
-This repository contains the compiler toolchain backend implemented as a Haskell package.
-To use the library, you'll also need a frontend, as found in our driver repo: http://github.com/damsl/K3-Driver
-
 Assuming you've installed the Haskell platform:
 
     $> mkdir K3
-    $> git clone git@github.com:DaMSL/K3-Core.git K3/K3-Core
-    $> git clone git@github.com:DaMSL/K3-Driver.git K3/K3-Driver
+    $> git clone git@github.com:DaMSL/K3.git K3/K3
 
-    $> cd K3/K3-Core
+    $> cd K3/K3
     $> cabal sandbox init
+    $> cabal install --only-dependencies --disable-documentation -j
     $> cabal configure
-    $> cabal install --only-dependencies
     $> cabal build
 
-    $> cd ../K3-Driver
-    $> cabal sandbox init
-    $> cabal sandbox add-source ../K3-Core
-    $> cabal configure
-    $> cabal install --only-dependencies
-    $> cabal build
-
-This will leave you with a binary in: **K3-Driver/dist/build/k3/k3**
+This will leave you with a binary in: **K3/dist/build/k3/k3**
 
 Running and Deploying
 ----------------------
-The K3 driver supports several modes of execution for testing simple programs:
+The K3 toolchain supports several modes of execution for testing simple programs:
 - Interpreted execution
 - Network simulation (in a single process)
 - Multithreaded and multiprocess network execution
 
 For example, to run [our fibonnacci example](examples/algorithms/fibonacci.k3) on a single local peer:
 
-    $> K3-Driver/dist/build/k3/k3 -I K3-Core/lib/k3 interpret \
-                                  -b -p 127.0.0.1:40000:role=\"s1\" \
-                                  K3-Core/examples/algorithms/fibonacci.k3
+    $> K3/dist/build/k3/k3 -I K3/lib/k3 interpret \
+                           -b -p 127.0.0.1:40000:role=\"s1\" \
+                           K3/examples/algorithms/fibonacci.k3
 
 Example interpreter output:
 
@@ -91,7 +80,7 @@ Example interpreter output:
              role => "s1"
            [... snip remainder of config ...]
 
-        Input: "../K3-Core/examples/algorithms/fibonacci.k3"
+        Input: "../K3/examples/algorithms/fibonacci.k3"
 
         [127.0.0.1:40000]               ## Final program state printed at exit
           Value: VTuple []
