@@ -105,9 +105,9 @@ namespace K3
       {
         if ( ctxt ) {
           ip::tcp::endpoint ep(get<0>(addr), get<1>(addr));
-          acceptor_ = shared_ptr<ip::tcp::acceptor>(new ip::tcp::acceptor(*(ctxt->service)));
 	  for(int retries=4; retries > 0; retries--) {
 	    try {
+              acceptor_ = shared_ptr<ip::tcp::acceptor>(new ip::tcp::acceptor(*(ctxt->service)));
 	      acceptor_->open(ep.protocol());
 	      boost::asio::socket_base::reuse_address option(true);
 	      acceptor_->set_option(option);
