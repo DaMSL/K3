@@ -43,6 +43,7 @@ import qualified Data.Set as Set
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
+import Language.K3.Core.Metaprogram hiding ( SRecord )
 import Language.K3.Core.Type
 import Language.K3.Utils.Pretty
 import Language.K3.TypeSystem.Data.Environments.Common

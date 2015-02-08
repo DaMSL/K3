@@ -9,10 +9,10 @@ import six
 
 temp_file = 'temp.out'
 
-test_paths = ['K3-Core/examples',
-              'K3-Core/examples/language',
-              'K3-Core/examples/language/builtins',
-              'K3-Core/examples/language/collections']
+test_paths = ['K3/examples',
+              'K3/examples/language',
+              'K3/examples/language/builtins',
+              'K3/examples/language/collections']
 
 script_path = os.path.dirname(__file__)
 root_path = os.path.join(script_path, '../../../')
@@ -27,8 +27,8 @@ def find_error(file):
 
 def test_file(count, file, verbose=False):
     temp = temp_file
-    k3_path = os.path.join(root_path, './K3-Driver/dist/build/k3/k3')
-    lib_path = os.path.join(root_path, './K3-Core/lib/k3')
+    k3_path = os.path.join(root_path, './K3/dist/build/k3/k3')
+    lib_path = os.path.join(root_path, './K3/lib/k3')
     six.print_('[{count}] Testing {file}...'.format(**locals()), end="")
     cmd = r'{k3_path} -I {lib_path} interpret -b -p 127.0.0.1:40000:role=\"s1\" {file} > {temp} 2> {temp}'.format(**locals())
     if verbose:

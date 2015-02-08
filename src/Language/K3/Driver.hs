@@ -51,8 +51,8 @@ import Language.K3.Driver.Common
 import Language.K3.Driver.Options
 import Language.K3.Driver.Typecheck
 
---import qualified Language.K3.Compiler.Haskell as HaskellC
-import qualified Language.K3.Compiler.CPP     as CPPC
+--import qualified Language.K3.Driver.CompilerTarget.Haskell as HaskellC
+import qualified Language.K3.Driver.CompilerTarget.CPP     as CPPC
 
 -- | Mode Dispatch.
 run :: Options -> IO ()

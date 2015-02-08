@@ -4,9 +4,7 @@ env:
   - CABALVER=1.20
 
 install:
-  - cd /k3/K3-Core
-  - git pull
-  - cd /k3/K3-Driver
+  - cd /k3/K3
   - git pull
   - cd /k3/K3-Mosaic
   - git pull
@@ -14,13 +12,13 @@ install:
 script:
   - service postgresql start
   - sudo -u postgres psql -c "alter user postgres password 'password'"
-  - cd /k3/K3-Driver
-  - cabal install --only-dependencies --disable-documentation
-  - cabal configure
+  - cd /k3/K3
+  - cabal install --only-dependencies --disable-documentation -j --ghc-options="-O2"
+  - cabal configure --ghc-options="-O2"
   - cabal build
 
   # Begin tests
-  - cd ktrace
+  - cd tools/ktrace
   - source env.sh
     
     # Amplab

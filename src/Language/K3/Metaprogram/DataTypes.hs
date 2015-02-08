@@ -242,7 +242,7 @@ defaultMPEvalOptions :: MPEvalOptions
 defaultMPEvalOptions = MPEvalOptions dInterpArgs dSearchPaths dLoadPaths dImportPaths dQImportPaths
   where
     dInterpArgs   = ["-package-db", ".cabal-sandbox/x86_64-windows-ghc-7.8.3-packages.conf.d"]
-    dSearchPaths  = [".", "../K3-Core/src"]
+    dSearchPaths  = [".", "../K3/src"]
     dLoadPaths    = [ "Language.K3.Core.Metaprogram"
                     , "Language.K3.Core.Constructor.Type"
                     , "Language.K3.Core.Constructor.Expression"

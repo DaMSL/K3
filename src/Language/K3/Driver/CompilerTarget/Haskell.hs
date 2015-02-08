@@ -1,4 +1,4 @@
-module Language.K3.Compiler.Haskell where
+module Language.K3.Driver.CompilerTarget.Haskell where
 
 import qualified Data.Sequence as Seq
 

@@ -58,25 +58,15 @@ WORKDIR /k3/K3-Mosaic
 RUN ./build_opt.sh
 RUN ./build_utils.sh
 
-# Clone K3-Core from Git
-RUN mkdir -p /k3/K3-Core
-RUN git clone https://github.com/DaMSL/K3-Core.git /k3/K3-Core
+# Clone K3 from Git
+RUN mkdir -p /k3/K3
+RUN git clone https://github.com/DaMSL/K3.git /k3/K3
 
-# Clone K3-Driver from Git
-RUN mkdir -p /k3/K3-Driver
-RUN git clone https://github.com/DaMSL/K3-Driver.git /k3/K3-Driver
-
-### Build K3-Core
-WORKDIR /k3/K3-Core
+### Build K3
+WORKDIR /k3/K3
 RUN rm -rf /.ghc
 RUN cabal sandbox init
-RUN cabal install --only-dependencies --disable-documentation
-
-### Build K3-Driver
-WORKDIR /k3/K3-Driver
-RUN cabal sandbox init
-RUN cabal sandbox add-source /k3/K3-Core
-RUN cabal install --ghc-options="-O2" --only-dependencies --disable-documentation
+RUN cabal install --only-dependencies --disable-documentation --ghc-options="-O2" -j
 RUN cabal configure --ghc-options="-O2"
 RUN cabal build
 

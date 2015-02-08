@@ -1,6 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 
-module Language.K3.Compiler.CPP (compile) where
+module Language.K3.Driver.CompilerTarget.CPP (compile) where
 
 import Data.Functor
 

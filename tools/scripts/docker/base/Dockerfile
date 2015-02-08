@@ -71,9 +71,8 @@ RUN add-apt-repository -y ppa:pi-rho/security && \
 # Install libyaml
 RUN apt-get install -y libyaml-cpp-dev
 
-# Clone K3-Core, K3-Driver, K3-Mosaic from Git
-RUN mkdir -p /k3/K3-Core /k3/K3-Driver /k3/K3-Mosaic && \
-    git clone https://github.com/DaMSL/K3-Core.git /k3/K3-Core && \
-    git clone https://github.com/DaMSL/K3-Driver.git /k3/K3-Driver && \
+# Clone K3, K3-Mosaic from Git
+RUN mkdir -p /k3/K3 /k3/K3-Mosaic && \
+    git clone https://github.com/DaMSL/K3.git /k3/K3 && \
     git clone https://github.com/DaMSL/K3-Mosaic.git /k3/K3-Mosaic
 

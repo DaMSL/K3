@@ -2,7 +2,7 @@
 #
 # Script to generate command line for running Cumulus
 #
-# Note: this script assumes it's run from a directory above K3-Core and K3-Driver
+# Note: this script assumes it's run from a directory above K3/
 # Feel free to change it so it's more portable
 import argparse
 import os
@@ -38,7 +38,7 @@ def main():
     # NOTE: we assume a certain location for the script
     script_path = os.path.abspath(os.path.dirname(__file__))
     base_path = os.path.abspath(os.path.join(script_path, '../../..'))
-    k3_prog_path = os.path.join(base_path, 'K3-Driver/dist/build/k3/k3')
+    k3_prog_path = os.path.join(base_path, 'K3/dist/build/k3/k3')
 
     # get the plain file
     (file_dir, file_name) = os.path.split(k3_file)
@@ -122,12 +122,12 @@ def main():
     # Create command line
     log_s = '--log "debug"'
     log_file = file_no_ext + '.log'
-    lib_path = os.path.join(base_path, 'K3-Core/lib')
+    lib_path = os.path.join(base_path, 'K3/lib')
     cmd = 'time {k3_prog_path} -I {lib_path} interpret {network_s} {peer_cmd_s} -b --simple {log_s} {file_s} > {log_file} 2>&1'.format(**locals())
     print_sys(cmd)
 
     # Create a clean log file
-    sanitize_file = os.path.join(base_path, 'K3-Driver/scripts/mosaic/sanitize_log.py')
+    sanitize_file = os.path.join(base_path, 'K3/scripts/mosaic/sanitize_log.py')
     cmd = '{sanitize_file} --unhash {log_file} > {file_no_ext}_clean.log'.format(**locals())
     print_sys(cmd)
 
