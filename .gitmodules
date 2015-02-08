@@ -1,3 +1,0 @@
-[submodule "driver"]
-	path = driver
-	url = git@github.com:DaMSL/K3-Driver.git
