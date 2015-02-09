@@ -5,7 +5,9 @@ env:
 
 install:
   - cd /k3/K3
-  - git pull
+  - git fetch
+  - git checkout -f $BRANCH
+  - git reset --hard $COMMIT
   - cd /k3/K3-Mosaic
   - git pull
 
