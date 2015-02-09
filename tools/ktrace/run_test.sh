@@ -14,8 +14,6 @@ TESTDIR=$2
 RESULTVAR=$3
 KTRACE=./tools/ktrace
 
-source $KTRACE/env.sh
-
 # Remove old executables
 rm __build/A __build/__build/* || true
 
