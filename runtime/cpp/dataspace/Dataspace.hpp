@@ -4,6 +4,7 @@
 #include <list>
 #include <vector>
 #include <math.h>
+#include <random>
 
 #include <boost/tr1/unordered_set.hpp>
 #include <boost/tr1/unordered_map.hpp>
@@ -523,6 +524,26 @@ class Set {
       res = std::make_shared<Elem>(*it);
     }
     return res;
+  }
+
+  using iterator = typename Container::iterator;
+  using const_iterator = typename Container::const_iterator;
+  using reverse_iterator = typename Container::reverse_iterator;
+
+  iterator begin() {
+    return iterator(container.begin());
+  }
+
+  iterator end() {
+    return iterator(container.end());
+  }
+
+  const_iterator begin() const {
+    return const_iterator(container.cbegin());
+  }
+
+  const_iterator end() const {
+    return const_iterator(container.cend());
   }
 
   template <class T>

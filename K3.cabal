@@ -20,6 +20,8 @@ executable k3
 
     main-is: Language/K3/Driver.hs
 
+    other-extensions: TemplateHaskell
+
     ghc-options: -Wall -fno-warn-orphans -O2
 
     build-depends:
