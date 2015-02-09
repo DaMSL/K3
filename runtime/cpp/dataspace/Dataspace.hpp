@@ -3,6 +3,7 @@
 
 #include <list>
 #include <vector>
+#include <random>
 #include <math.h>
 
 #include <boost/tr1/unordered_set.hpp>
