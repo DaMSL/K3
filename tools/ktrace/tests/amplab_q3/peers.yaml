@@ -3,11 +3,11 @@ me: [127.0.0.1, 30000]
 master: [127.0.0.1, 30000]
 peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
 role: rows
-rkFiles: [{path: data/rankings1}, {path: data/rankings2}]
-uvFiles: [{path: data/uservisits1}]
+rkFiles: [{path: tools/ktrace/data/rankings1}, {path: tools/ktrace/data/rankings2}]
+uvFiles: [{path: tools/ktrace/data/uservisits1}]
 ---
 me: [127.0.0.1, 40000]
 master: [127.0.0.1, 30000]
 peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
 role: rows
-uvFiles: [{path: data/uservisits2}]
+uvFiles: [{path: tools/ktrace/data/uservisits2}]

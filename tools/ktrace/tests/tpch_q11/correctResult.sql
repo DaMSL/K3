@@ -9,8 +9,8 @@ create table supplier (
    s_comment   varchar(101)  not null
 );
 
-\copy supplier from data/tpch/supplier0 with delimiter '|';
-\copy supplier from data/tpch/supplier1 with delimiter '|';
+\copy supplier from tools/ktrace/data/tpch/supplier0 with delimiter '|';
+\copy supplier from tools/ktrace/data/tpch/supplier1 with delimiter '|';
 
 drop table if exists nation;
 create table nation (
@@ -20,7 +20,7 @@ create table nation (
    n_comment   varchar(152) not null
 );
 
-\copy nation from data/tpch/nation.tbl with delimiter '|';
+\copy nation from tools/ktrace/data/tpch/nation.tbl with delimiter '|';
 
 drop table if exists partsupp;
 create table partsupp (
@@ -31,8 +31,8 @@ create table partsupp (
 	   ps_comment    varchar(199)  not null
 );
 
-\copy partsupp from data/tpch/partsupp0 with delimiter '|';
-\copy partsupp from data/tpch/partsupp1 with delimiter '|';
+\copy partsupp from tools/ktrace/data/tpch/partsupp0 with delimiter '|';
+\copy partsupp from tools/ktrace/data/tpch/partsupp1 with delimiter '|';
 
 DELETE FROM CorrectResults;
 INSERT INTO CorrectResults

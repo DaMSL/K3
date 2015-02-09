@@ -4,8 +4,8 @@ CREATE TABLE rankings (
   pageRank int,
   avgDuration int
 );
-\copy rankings from data/rankings1 with delimiter ',';
-\copy rankings from data/rankings2 with delimiter ',';
+\copy rankings from tools/ktrace/data/rankings1 with delimiter ',';
+\copy rankings from tools/ktrace/data/rankings2 with delimiter ',';
 
 DROP TABLE IF EXISTS uservisits;
 CREATE TABLE uservisits (
@@ -19,8 +19,8 @@ CREATE TABLE uservisits (
   searchWord text,
   duration int
 );
-\copy uservisits from data/uservisits1 with delimiter ',';
-\copy uservisits from data/uservisits2 with delimiter ',';
+\copy uservisits from tools/ktrace/data/uservisits1 with delimiter ',';
+\copy uservisits from tools/ktrace/data/uservisits2 with delimiter ',';
 
 DELETE FROM CorrectResults;
 INSERT INTO CorrectResults (sourceIP, totalRevenue, avgPageRank)
