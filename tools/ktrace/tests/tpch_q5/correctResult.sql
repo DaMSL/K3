@@ -19,8 +19,8 @@ create table lineitem (
 );
 
 
-\copy lineitem from data/tpch/lineitem0 with delimiter '|';
-\copy lineitem from data/tpch/lineitem1 with delimiter '|';
+\copy lineitem from tools/ktrace/data/tpch/lineitem0 with delimiter '|';
+\copy lineitem from tools/ktrace/data/tpch/lineitem1 with delimiter '|';
 
 drop table if exists customer;
 create table customer (
@@ -34,8 +34,8 @@ create table customer (
    c_comment    varchar(117)  not null
 );
 
-\copy customer from data/tpch/customer0 with delimiter '|';
-\copy customer from data/tpch/customer1 with delimiter '|';
+\copy customer from tools/ktrace/data/tpch/customer0 with delimiter '|';
+\copy customer from tools/ktrace/data/tpch/customer1 with delimiter '|';
 
 drop table if exists orders;
 create table orders (
@@ -50,8 +50,8 @@ create table orders (
 	   o_comment       varchar(79)   not null
 );	
 
-\copy orders from data/tpch/orders0 with delimiter '|';
-\copy orders from data/tpch/orders1 with delimiter '|';
+\copy orders from tools/ktrace/data/tpch/orders0 with delimiter '|';
+\copy orders from tools/ktrace/data/tpch/orders1 with delimiter '|';
 
 drop table if exists supplier;
 create table supplier (
@@ -64,8 +64,8 @@ create table supplier (
    s_comment   varchar(101)  not null
 );
 
-\copy supplier from data/tpch/supplier0 with delimiter '|';
-\copy supplier from data/tpch/supplier1 with delimiter '|';
+\copy supplier from tools/ktrace/data/tpch/supplier0 with delimiter '|';
+\copy supplier from tools/ktrace/data/tpch/supplier1 with delimiter '|';
 
 drop table if exists nation;
 create table nation (
@@ -75,7 +75,7 @@ create table nation (
    n_comment   varchar(152) not null
 );
 
-\copy nation from data/tpch/nation.tbl with delimiter '|';
+\copy nation from tools/ktrace/data/tpch/nation.tbl with delimiter '|';
 
 drop table if exists region;
 create table region (
@@ -84,7 +84,7 @@ create table region (
    r_comment   varchar(152) not null
 );
 
-\copy region from data/tpch/region.tbl with delimiter '|';
+\copy region from tools/ktrace/data/tpch/region.tbl with delimiter '|';
 
 DELETE FROM CorrectResults;
 INSERT INTO CorrectResults

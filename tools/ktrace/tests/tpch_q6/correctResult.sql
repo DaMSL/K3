@@ -19,8 +19,8 @@ create table lineitem (
 );
 
 
-\copy lineitem from data/tpch/lineitem0 with delimiter '|';
-\copy lineitem from data/tpch/lineitem1 with delimiter '|';
+\copy lineitem from tools/ktrace/data/tpch/lineitem0 with delimiter '|';
+\copy lineitem from tools/ktrace/data/tpch/lineitem1 with delimiter '|';
 
 DELETE FROM CorrectResults;
 INSERT INTO CorrectResults

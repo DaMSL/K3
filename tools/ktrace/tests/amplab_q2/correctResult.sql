@@ -10,8 +10,8 @@ CREATE TABLE uservisits (
   searchWord text,
   duration int
 );
-\copy uservisits from data/uservisits1 with delimiter ',';
-\copy uservisits from data/uservisits2 with delimiter ',';
+\copy uservisits from tools/ktrace/data/uservisits1 with delimiter ',';
+\copy uservisits from tools/ktrace/data/uservisits2 with delimiter ',';
 DELETE FROM CorrectResults;
 INSERT INTO CorrectResults (substr, sum) 
   SELECT SUBSTR(sourceIP, 1, 8), SUM(adRevenue) FROM uservisits GROUP BY SUBSTR(sourceIP, 1, 8);
