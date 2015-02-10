@@ -3,13 +3,13 @@ me: [127.0.0.1, 30000]
 master: [127.0.0.1, 30000]
 peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
 role: rows
-partsuppFiles: [{path: data/tpch/partsupp0}]
-supplierFiles: [{path: data/tpch/supplier0}]
-nationFiles: [{path: data/tpch/nation.tbl}]
+partsuppFiles: [{path: tools/ktrace/data/tpch/partsupp0}]
+supplierFiles: [{path: tools/ktrace/data/tpch/supplier0}]
+nationFiles: [{path: tools/ktrace/data/tpch/nation.tbl}]
 ---
 me: [127.0.0.1, 40000]
 master: [127.0.0.1, 30000]
 peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
 role: rows
-supplierFiles: [{path: data/tpch/supplier1}]
-partsuppFiles: [{path: data/tpch/partsupp1}]
+supplierFiles: [{path: tools/ktrace/data/tpch/supplier1}]
+partsuppFiles: [{path: tools/ktrace/data/tpch/partsupp1}]
