@@ -512,8 +512,17 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
               matchTypesAndAnnotations (annotations e1) (annotations e2) nsEnv >>= return . (True,)
 
     matchTag sEnv e1@(tag -> x) e2@(tag -> y)
-      | x == y    = matchTypesAndAnnotations (annotations e1) (annotations e2) sEnv >>= return . (False,)
-      | otherwise = Nothing
+      | hasIdentifiers y = matchITAPair e1 e2 sEnv
+      | x == y           = matchTAPair  e1 e2 sEnv
+      | otherwise        = Nothing
+
+    matchITAPair e1 e2 sEnv = matchIdentifiers (extractIdentifiers $ tag e1) (extractIdentifiers $ tag e2) sEnv >>= matchTAPair e1 e2
+    matchTAPair  e1 e2 sEnv = matchTypesAndAnnotations (annotations e1) (annotations e2) sEnv >>= return . (False,)
+
+    matchIdentifiers :: [Identifier] -> [Identifier] -> SpliceEnv -> Maybe SpliceEnv
+    matchIdentifiers ids patIds sEnv =
+      if length ids /= length patIds then Nothing
+      else foldM bindIdentifier sEnv $ zip ids patIds
 
     matchTypesAndAnnotations :: [Annotation Expression] -> [Annotation Expression] -> SpliceEnv
                              -> Maybe SpliceEnv
@@ -525,6 +534,33 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
 
       (_, _) -> if matchAnnotations (\x -> ignoreUIDSpan x && ignoreTypes x) anns1 anns2
                 then Just sEnv else Nothing
+
+    bindIdentifier :: SpliceEnv -> (Identifier, Identifier) -> Maybe SpliceEnv
+    bindIdentifier sEnv (a, b@(isPatternVariable -> True)) =
+      let nrEnv = spliceRecord [(spliceVIdSym, SLabel a)]
+      in Just $ maybe sEnv (\n -> if null n then sEnv else addSpliceE n nrEnv sEnv) $ patternVariable b
+
+    bindIdentifier sEnv (a,b) = if a == b then Just sEnv else Nothing
+
+    hasIdentifiers :: Expression -> Bool
+    hasIdentifiers (ELambda  _) = True
+    hasIdentifiers (ERecord  _) = True
+    hasIdentifiers (EProject _) = True
+    hasIdentifiers (ELetIn   _) = True
+    hasIdentifiers (EAssign  _) = True
+    hasIdentifiers (ECaseOf  _) = True
+    hasIdentifiers (EBindAs  _) = True
+    hasIdentifiers _ = False
+
+    extractIdentifiers :: Expression -> [Identifier]
+    extractIdentifiers (ELambda  i) = [i]
+    extractIdentifiers (ERecord  i) = i
+    extractIdentifiers (EProject i) = [i]
+    extractIdentifiers (ELetIn   i) = [i]
+    extractIdentifiers (EAssign  i) = [i]
+    extractIdentifiers (ECaseOf  i) = [i]
+    extractIdentifiers (EBindAs  b) = bindingVariables b
+    extractIdentifiers _ = []
 
     typeRepr (EType ty) = [(spliceVTSym, SType ty)]
     typeRepr _ = []
