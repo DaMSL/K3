@@ -252,6 +252,7 @@ defaultMPEvalOptions = MPEvalOptions dInterpArgs dSearchPaths dLoadPaths dImport
     dImportPaths  = [ "Prelude"
                     , "Control.Monad"
                     , "Data.Map"
+                    , "Data.Maybe"
                     , "Data.Tree"
                     , "Language.K3.Core.Annotation"
                     , "Language.K3.Core.Common"
