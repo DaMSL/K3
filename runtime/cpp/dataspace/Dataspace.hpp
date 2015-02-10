@@ -1130,15 +1130,16 @@ class Map {
       return t;
     }
 
-    auto operator *() {
+    reference operator*() const {
       return i->second;
     }
 
-    bool operator ==(const map_iterator& other) {
+
+    bool operator ==(const map_iterator& other) const {
       return i == other.i;
     }
 
-    bool operator !=(const map_iterator& other) {
+    bool operator !=(const map_iterator& other) const {
       return i != other.i;
     }
 
