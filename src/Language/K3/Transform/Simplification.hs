@@ -773,9 +773,13 @@ commonSubexprElim cseCntOpt expr = do
 
               candTreeNode  = Node (uid, localCands) $ concat ctCh
               nStrippedExpr = Node (tag t :@: cseValidAnnotations t) $ concat sExprCh
+              nCands        = case (tag t, n @~ isEType) of
+                                (EProject _, _) -> []
+                                (_, Just (EType (isTFunction -> True))) -> []
+                                (_, _) -> [nStrippedExpr]
           in do
             nRO <- readOnly False n
-            let propagatedExprs = if nRO then filteredCands ++ [nStrippedExpr] else []
+            let propagatedExprs = if nRO then filteredCands ++ nCands else []
             return $ ([candTreeNode], [nStrippedExpr], propagatedExprs)
 
         _ -> uidError n
