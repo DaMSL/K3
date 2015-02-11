@@ -5,9 +5,7 @@ include "Core/Builtins.k3"
 typedef Connection = {weight :  mut real , deltaWeight : mut real }
 typedef Neuron = {m_outputValue: mut real , m_myIndex: mut int, m_gradient: mut real , m_outputWeights : mut collection { connection : Connection } @Seq, eta: real, alpha : real } 
 typedef Layer =  collection {neuron : mut  Neuron } @Seq
-
-//typedef testInt = 
-typedef Net = {m_error : mut real , m_layer : mut collection {layer : Layer} @Seq, m_test : collection {elem : int} @Seq}
+typedef Net = {m_error : mut real , m_layer : mut collection {layer : Layer} @Seq}
 
 //declarations
 declare net : mut Net
@@ -44,12 +42,34 @@ declare master : address = 127.0.0.1:40000
 declare outputLayer : mut Layer 
 // functions
 
-declare updateWeights : Neuron -> Layer -> ()  = \neuron -> \prevLayer -> (
-	
-	
+declare xrange : int -> int -> collection {i: int } @Seq  = \start -> \end -> (
+	(range end).filter (\x -> x.i >= start)
+)
+
+declare updateWeights : Neuron -> Layer -> collection { connection : Connection } @Seq  = \neuron -> \prevLayer -> (
+	empty  { connection : Connection } @Seq
 )
 
 declare sumDOW : Neuron -> Layer -> real =  \neuron -> \nextLayer -> (
+	/*
+		double sum = 0.0;
+	
+	for (unsigned i=0; i< nextLayer.size()-1; i++){
+		sum +=  m_outputWeights[i].weight * nextLayer[i].m_gradient;
+	
+	}
+	
+	return sum;
+	
+	
+
+
+	(range (nextLayer.size () -1)).iterate (\i -> ( 
+			bind (neuron.m_outputputWeights.at(i.i)) as {weight : w } in (
+			
+			
+			)		
+	));*/
 	// TODO : Add the first part of product as well, m_outputWeights[i].weight 
 	//nextLayer.fold (\sum -> \elem -> sum + elem.neuron.m_gradient  ) 0.0
 	1.0
@@ -64,15 +84,12 @@ declare calculateHiddenGradients : Neuron -> Layer -> real = \neuron -> \nextLay
 	(sumDOW neuron nextLayer) * (activationFunctionDerivate neuron.m_outputValue)	
 )
 //Activation Function 
-//TODO : Add tanh functin in Builtins.k3 and the backend
-
 declare activationFunction : real -> real =  \x -> (
-	1.0	// Modify this
+	tanh x	
 )
 declare activationFunctionDerivate : real -> real = \x -> (
-	1.0 //Modify this
+	1.0 - x*x 
 )
-
 
 
 declare createNeuron : int -> int -> Neuron = \numOutputs -> \myIndex -> (
@@ -88,45 +105,66 @@ declare createNeuron : int -> int -> Neuron = \numOutputs -> \myIndex -> (
 )
 
 declare backProp : Net -> collection {i: mut real } @Seq -> Net = \net -> \outputValues -> (
-
-	/*
-	Layer &outputLayer = m_layers.back();
 	
-	m_error = 0.0;
-	
-	for (unsigned i=0; i< outputLayer.size()-1 ; i++ ){
-		double delta = outputValues[i] - outputLayer[i].getOutputValue();
-		m_error +=delta*delta;	
-	}
-	m_error /= (outputLayer.size()-1);
-	m_error = sqrt(m_error);
-	
-
-	//Calculate output layer gradients
-	for (unsigned i = 0; i< outputLayer.size()-1; i++){
-		outputLayer[i].calculateOutputGradients(outputValues[i]);
-	
-	}
-	
-	*/
-	
-	let outputLayer = (net.m_layer.at(net.m_layer.size () -1)).layer in 
-	(range (outputLayer.size () -1 ))
 	// calculate overall net error
-	//i = net.m_layer.size () - 1;
-	//outputLayer = net.m_layer.at()
-	outputLayer = (net.m_layer.at((net.m_layer.size ())-1)).layer;
-	//net.m_error = 0.0;
-	// delta = outputValues[i] - outputLayer[i].getOutputValue();
-	//outputLayer.
-
+	//let outputLayer = (net.m_layer.at(net.m_layer.size () -1)).layer in
+	/*
+	bind ((net.m_layer.at(net.m_layer.size () -1))) as {layer : outputLayer} in 
+	(
+		
+		(range (outputLayer.size () -1 )).iterate (\i-> ( let delta = (outputValues.at(i.i)).i - (outputLayer.at(i.i)).neuron.m_outputValue in 
+			bind net as {m_error : x } in ( x = net.m_error + delta*delta)
+		));
+		
+		//bind net as {m_error : x } in (x = net.m_error/(outputLayer.size () -1 ) );
+		//bind net as {m_error : x } in (x = sqrt 1.0);	 
+		print "Hello"	
+	);
+	*/
 
 	// calculate output layer gradients
-
+	bind ((net.m_layer.at(net.m_layer.size () -1))) as {layer : outputLayer} in (
+		(range (outputLayer.size () -1 )).iterate (\i-> ( bind ((outputLayer.at(i.i)).neuron) as {m_gradient : x} in 
+			(x =  calculateOutputGradients (outputLayer.at(i.i)).neuron (outputValues.at(i.i)).i) ))
+	);
+	
 	// calculate hidden layer gradients
-
+	//TODO : Reverse this
+	(xrange 1 (net.m_layer.size()-1) ).iterate (\layerNum -> (
+		bind ((net.m_layer.at(layerNum.i))) as {layer : hiddenLayer} in (
+			bind ((net.m_layer.at(layerNum.i+1))) as {layer : nextLayer} in (
+				(range (hiddenLayer.size())).iterate (\i-> ( 
+					bind ((hiddenLayer.at(i.i)).neuron) as {m_gradient : x} in 
+						(x =  calculateHiddenGradients (outputLayer.at(i.i)).neuron nextLayer)								
+				))
+			)
+		)
+	));
+	/*
+	//Update the connection weights (output -> first hidden layer) 
+	
+	for (unsigned layerNum = m_layers.size()-1 ; layerNum > 0; layerNum--){
+		Layer &layer = m_layers[layerNum];
+		Layer &prevLayer = m_layers[layerNum-1];
+		
+		for (unsigned i=0; i< layer.size()-1; i++ ){
+			layer[i].updateWeights(prevLayer);
+		}
+	} 
+	
+	*/
 	// Update the connection weights (output -> hidden layer) 
-
+	//TODO : Reverse this 
+	/*
+	(xrange 1 (net.m_layer.size())).iterate (\layerNum -> (
+		bind ((net.m_layer.at(layerNum.i))) as {layer : presentLayer} in (
+			bind ((net.m_layer.at(layerNum.i-1))) as {layer : prevLayer} in (				
+				(range (presentLayer.size()-1)).iterate (\i-> ( print "hello"	))
+			)
+		)	
+	
+	));
+	*/
 	net
 
 )
@@ -138,9 +176,8 @@ declare neuronFeedForward : Net -> int -> int -> Layer -> real = \net-> \layerNu
 	activationFunction sum
 )
 
-declare xrange : int -> int -> collection {i: int } @Seq  = \start -> \end -> (
-	(range end).filter (\x -> x.i >= start)
-)
+
+//declare reverse collection {i: int } @Seq -> collection {i: int } @Seq = 
 
 declare netFeedForward : Net ->  Net  = \net -> (
 
@@ -245,8 +282,8 @@ trigger configureNetwork : () = \_ -> (
 	topology.insert {i: 5};
 
 	numLayers = topology.size ();
-	//net.m_error = 0.0;
 
+	TODO : change this to 
 	let net = {m_error: mut 0.0, m_layer: empty {layer: Layer } @Seq } in 
 	(
 	(range numLayers).iterate (
