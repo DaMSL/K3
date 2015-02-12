@@ -48,14 +48,9 @@ class Dispatcher(mesos.interface.Scheduler):
 		print "[RESOURCE OFFER] Got %d resource offers" % len(offers)
 		for offer in offers:
 			tasks = []
-
-      
+    
       # TODO:  ITERATE RESOURCE OFFERS & ACCEPT/DECLINE
-      
-      
-
-
-			if self.tasksLaunched < TOTAL_TASKS:
+  		if self.tasksLaunched < TOTAL_TASKS:
 				# Generate a new Task ID
 				tid = self.tasksLaunched
 				self.tasksLaunched += 1
@@ -90,73 +85,63 @@ class Dispatcher(mesos.interface.Scheduler):
 				
 				# This call actually requests to launch the task via the Mesos driver
 				#  It executed the task.executor which was passed to the schedule during construction
-				self.taskData[task.task_id.value] = (
-					offer.slave_id, task.executor.executor_id)
+		#		self.taskData[task.task_id.value] = (offer.slave_id, task.executor.executor_id)
 
-			print "Launching your task"
-			driver.launchTasks(offer.id, tasks)
-
-
+#    driver.launchTasks(offer.id, tasks)
     
-def makeExecutor (programBinary, hostParams, mounts):
-  # Create the Executor
-  executor = mesos_pb2.ExecutorInfo() 
-  executor.executor_id.value = "K3 Executor"
-  executor.name = programBinary
-  executor.data = hostParams
-  #executor.source = "NOT USED"    
+  def addExecutor (programBinary, hostParams, mounts):
+    # Create the Executor
+    executor = mesos_pb2.ExecutorInfo() 
+    executor.executor_id.value = "K3 Executor"
+    executor.name = programBinary
+    executor.data = hostParams
+    #executor.source = "NOT USED"    
 
-  # Create the Command
-  command = mesos_pb2.CommandInfo()
-  command.value = '$MESOS_SANDBOX/k3executor'
-  exec_binary = command.uris.add()
-  exec_binary.value = FILESERVER + '/' + programBinary
-  exec_binary.URI.executable = True
-  exec_binary.URI.extract = False
+    # Create the Command
+    command = mesos_pb2.CommandInfo()
+    command.value = '$MESOS_SANDBOX/k3executor'
+    exec_binary = command.uris.add()
+    exec_binary.value = FILESERVER + '/' + programBinary
+    exec_binary.URI.executable = True
+    exec_binary.URI.extract = False
 
-  k3_binary = command.uris.add()
-  k3_binary.value = FILESERVER + '/' + programBinary
-  k3_binary.URI.executable = True
-  k3_binary.URI.extract = False
-  
-  executor.command.MergeFrom(command)
-  executor.container.MergeFrom(container)
-
-  # Create the docker object
-  docker = mesos_pb2.ContainerInfo.DockerInfo()
-  docker.image = K3_DOCKER_NAME
-  docker.network = docker.HOST
+    k3_binary = command.uris.add()
+    k3_binary.value = FILESERVER + '/' + programBinary
+    k3_binary.URI.executable = True
+    k3_binary.URI.extract = False
     
-  # Create the Container
-  container = mesos_pb2.ContainerInfo()
-  container.type = container.DOCKER
-  container.docker.MergeFrom(docker)
-  #container.volumes = []    # FOR: Mounting Volumes
-        
-  # Map the volume to the Docker Container
-#  for m in mounts:    # TODO: UPDATE mounts
-#    volume = container.volumes.add()
-#    volume.container_path = m.______'/mnt'
-#    volume.host_path = m.______'/local/mesos'
-    # TODO RO vs RW
-    #volume.mode = volume.RO
-    #volume.mode = volume.RW
-  volume = container.volumes.add()
-  volume.container_path = '/local/mesos'
-  volume.host_path = '/mnt/out'
+    executor.command.MergeFrom(command)
+    executor.container.MergeFrom(container)
+
+    # Create the docker object
+    docker = mesos_pb2.ContainerInfo.DockerInfo()
+    docker.image = K3_DOCKER_NAME
+    docker.network = docker.HOST
+      
+    # Create the Container
+    container = mesos_pb2.ContainerInfo()
+    container.type = container.DOCKER
+    container.docker.MergeFrom(docker)
+    #container.volumes = []    # FOR: Mounting Volumes
+          
+    # Map the volume to the Docker Container
+  #  for m in mounts:    # TODO: UPDATE mounts
+  #    volume = container.volumes.add()
+  #    volume.container_path = m.______'/mnt'
+  #    volume.host_path = m.______'/local/mesos'
+      # TODO RO vs RW
+      #volume.mode = volume.RO
+      #volume.mode = volume.RW
+    volume = container.volumes.add()
+    volume.container_path = '/local/mesos'
+    volume.host_path = '/mnt/out'
   
   
 if __name__ == "__main__":
-
-	# This defines the "executor" for the action performed 
-	executor = makeExecutor()
-
-	framework = mesos_pb2.FrameworkInfo()
-	framework.user = "" # Have Mesos fill in the current user.
-	framework.name = "K3 Framework"
-
-  # driver defines the 'actual' scheduler driver for the framework
-  driver = mesos.native.MesosSchedulerDriver(MyScheduler(executor), framework, MASTER)
-
-	status = 0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1
+  framework = mesos_pb2.FrameworkInfo()
+  framework.user = "" # Have Mesos fill in the current user.
+  framework.name = "K3 Dispatcher"
+  driver = mesos.native.MesosSchedulerDriver(Dispatcher(), framework, MASTER)
+	
+  status = 0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1
 
