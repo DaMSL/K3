@@ -1,8 +1,9 @@
 # scheduler.core: Data structures for managing K3 jobs.
 
 class Job:
-  def __init__(self, roles):
+  def __init__(self, roles, binary_url):
     self.roles = roles
+    self.binary_url = binary_url
     self.tasks = None
     self.status = None
 
