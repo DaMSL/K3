@@ -17,21 +17,34 @@ declare framesRead : mut int = 0
 declare peersResponded : mut collection {elem : address } @Seq
 
 
-trigger reportToMaster : address = \slaveAddress -> ( 
-	peersResponded.insert {elem: master}
+
+declare updateMaster : Net -> ()  = \newNet -> (
+	
+)
+
+declare updateSlave : Net -> () = \masterNet -> (
+
+)
+trigger broadcastToSlave : Net = \masterNet -> (
+	updateSlave masterNet
+) 
+trigger reportToMaster : address -> Net -> () = \slaveAddress -> \newNet -> ( 
+	peersResponded.insert {elem: slaveAddress}
+	//updateMaster newNet
+
 )
 
 
  
 trigger proceedAsMaster : () = \_ -> (
-
+	print "Proceeding as master"
 
 )
 
 trigger proceedAsSlave : () = \_ -> (
 	(range 1000).iterate (\i -> (
 		framesRead= framesRead+1;
-		if framesRead == 500 then ( (reportToMaster,master) <- (master) ) else () 	
+		if framesRead == 500 then ( (reportToMaster,master) <- (me) ) else () 	
 	))
 ) 
 
