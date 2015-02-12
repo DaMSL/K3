@@ -6,6 +6,7 @@ import threading
 from collections import deque
 
 from core import *
+from mesosutils import *
 
 import mesos.interface
 from mesos.interface import mesos_pb2
@@ -17,8 +18,38 @@ TASK_CPUS = 1
 TASK_MEM = 32
 
 MASTER = 'zk://192.168.0.10:2181,192.168.0.11:2181,192.168.0.18:2181/mesos'
-FILESERVER = 'http://192.168.0.10:8002'
-K3_DOCKER_NAME = "k3-mesos2"
+
+IP_ADDRS = { "qp1":"192.168.0.10",
+             "qp2":"192.168.0.11",
+             "qp3":"192.168.0.15",
+             "qp4":"192.168.0.16",
+             "qp5":"192.168.0.17",
+             "qp6":"192.168.0.18",
+             "qp-hd1":"192.168.0.24",
+             "qp-hd2":"192.168.0.25",
+             "qp-hd3":"192.168.0.26",
+             "qp-hd4":"192.168.0.27",
+             "qp-hd5":"192.168.0.28",
+             "qp-hd6":"192.168.0.29",
+             "qp-hd7":"192.168.0.30",
+             "qp-hd8":"192.168.0.31",
+             "qp-hd9":"192.168.0.32",
+             "qp-hd10":"192.168.0.33",
+             "qp-hd11":"192.168.0.34",
+             "qp-hd12":"192.168.0.35",
+             "qp-hd13":"192.168.0.36",
+             "qp-hd14":"192.168.0.37",
+             "qp-hd15":"192.168.0.38",
+             "qp-hd16":"192.168.0.39",
+             "qp-hm1":"192.168.0.40",
+             "qp-hm2":"192.168.0.41",
+             "qp-hm3":"192.168.0.42",
+             "qp-hm4":"192.168.0.43",
+             "qp-hm5":"192.168.0.44",
+             "qp-hm6":"192.168.0.45",
+             "qp-hm7":"192.168.0.46",
+             "qp-hm8":"192.168.0.47"}
+
 
 task_state = {
 	6: "TASK_STAGING",  # Initial state. Framework status updates should not use.
@@ -41,6 +72,12 @@ class Dispatcher(mesos.interface.Scheduler):
     self.active = {}
     self.pending = deque()
     self.offers = {}
+    self.jobsCreated = 0
+
+  def genJobId(self):
+    x = self.jobsCreated
+    self.jobsCreated = x + 1
+    return x
 
   def submit(self, job):
     self.pending.append(job)
@@ -71,8 +108,14 @@ class Dispatcher(mesos.interface.Scheduler):
     # TODO consider constraints, such as hostmask
     for roleId in nextJob.roles:
       for offerId in self.offers:
+        
+        # TODO remove hd restriction
+        host = self.offers[offerId].hostname.encode('ascii','ignore')
+        if "hd" not in host:
+          print("hd not in %s" % host)
+          continue
         resources = self.offers[offerId].resources
-        offeredCpus = getResource(resources, "cpus", float)
+        offeredCpus = int(getResource(resources, "cpus", float))
         offeredMem = getResource(resources, "mem", float)
         
         if cpusUsedPerOffer[offerId] >= offeredCpus:
@@ -97,12 +140,16 @@ class Dispatcher(mesos.interface.Scheduler):
         print("Failed to satisfy role %s. Used %d cpus out of %d peers" % debug)
         return None
 
+    # TODO port management
+    curPort = 40000
     curPeerIndex = 0
     nextJob.tasks = []
+    allPeers = []
     # Succesful. Accept any used offers. Build tasks, etc.
     for offerId in self.offers:
       if cpusUsedPerOffer[offerId] > 0:
         host = self.offers[offerId].hostname.encode('ascii','ignore')
+
         debug = (host, str(rolesPerOffer[offerId]))
         
         print("Accepted Roles for offer on %s: %s" % debug)
@@ -111,22 +158,36 @@ class Dispatcher(mesos.interface.Scheduler):
         for (roleId, n) in rolesPerOffer[offerId]:
           for i in range(n):
             vs = nextJob.roles[roleId].variables
-            inputs = nextJob.roles[roleId].inputs
-            p = Peer(curPeerIndex, vs, inputs)
+            p = Peer(curPeerIndex, vs, IP_ADDRS[host], curPort)
             peers.append(p)
+            allPeers.append(p)
             curPeerIndex = curPeerIndex + 1
-
-        t = Task(peers)
-        nextJob.tasks.append(t)
+            curPort = curPort + 1
         
-    return True
+        taskid = len(nextJob.tasks)
+        mem = getResource(self.offers[offerId].resources, "mem", float) 
+        t = Task(taskid, offerId, host, mem, peers)
+        print("offer id %s " %  offerId)
+        nextJob.tasks.append(t)
+        print("new offer id %s " %  nextJob.tasks[-1].offerid)
+   
+    # Fill in any "auto" variables
+    # to be the address first peer in the allPeers
+    for p in allPeers:
+      for v in p.variables:
+        if p.variables[v] == "auto":
+          p.variables[v] = [allPeers[0].ip, allPeers[0].port]  
+
+    nextJob.all_peers = allPeers
+    self.pending.popleft()
+    return nextJob
      
   # --- Mesos Callbacks ---
   def registered(self, driver, frameworkId, masterInfo):
     print("Registered with framework ID %s" % frameworkId.value)
 
   def statusUpdate(self, driver, update):
-    print("[TASK UPDATE] Task state: %s.  %s" %s (task_state[update.task_id.value], repr(str(update.data))))
+    print("[TASK UPDATE] TaskID %s. Data: %s" % (update.task_id.value, repr(str(update.data))))
     
   def frameworkMessage(self, driver, executorId, slaveId, message):
     print("[FRMWK MSG] %s" % message)
@@ -146,9 +207,20 @@ class Dispatcher(mesos.interface.Scheduler):
     for offer in offers:
       self.offers[offer.id.value] = offer
 
-    if self.prepareNextJob() != None:
-      # TODO run the job
-      print("Next job ready to launch")
+    nextJob = self.prepareNextJob()
+    if nextJob != None:
+      jobId = self.genJobId()
+      self.active[jobId] = nextJob
+      nextJob.status = "ACTIVE"
+      for k3task in nextJob.tasks:
+        print("offer id now: %s" % k3task.offerid)
+        task = taskInfo(k3task, jobId, self.offers[k3task.offerid].slave_id, nextJob.binary_url, nextJob.all_peers, nextJob.inputs)
+         
+        oid = mesos_pb2.OfferID()
+        oid.value = k3task.offerid 
+        driver.launchTasks(oid, [task])
+
+        
     else:
       print("Not enough resources to launch next job. Waiting for more offers")
 
@@ -157,54 +229,6 @@ class Dispatcher(mesos.interface.Scheduler):
     if offer.id in self.offers:
       del self.offers[offer.id]
     
-  def addExecutor (programBinary, hostParams, mounts):
-    # Create the Executor
-    executor = mesos_pb2.ExecutorInfo() 
-    executor.executor_id.value = "K3 Executor"
-    executor.name = programBinary
-    executor.data = hostParams
-    #executor.source = "NOT USED"    
-
-    # Create the Command
-    command = mesos_pb2.CommandInfo()
-    command.value = '$MESOS_SANDBOX/k3executor'
-    exec_binary = command.uris.add()
-    exec_binary.value = FILESERVER + '/' + programBinary
-    exec_binary.URI.executable = True
-    exec_binary.URI.extract = False
-
-    k3_binary = command.uris.add()
-    k3_binary.value = FILESERVER + '/' + programBinary
-    k3_binary.URI.executable = True
-    k3_binary.URI.extract = False
-    
-    executor.command.MergeFrom(command)
-    executor.container.MergeFrom(container)
-
-    # Create the docker object
-    docker = mesos_pb2.ContainerInfo.DockerInfo()
-    docker.image = K3_DOCKER_NAME
-    docker.network = docker.HOST
-      
-    # Create the Container
-    container = mesos_pb2.ContainerInfo()
-    container.type = container.DOCKER
-    container.docker.MergeFrom(docker)
-    #container.volumes = []    # FOR: Mounting Volumes
-          
-    # Map the volume to the Docker Container
-  #  for m in mounts:    # TODO: UPDATE mounts
-  #    volume = container.volumes.add()
-  #    volume.container_path = m.______'/mnt'
-  #    volume.host_path = m.______'/local/mesos'
-      # TODO RO vs RW
-      #volume.mode = volume.RO
-      #volume.mode = volume.RW
-    volume = container.volumes.add()
-    volume.container_path = '/local/mesos'
-    volume.host_path = '/mnt/out'
-  
-  
 if __name__ == "__main__":
   framework = mesos_pb2.FrameworkInfo()
   framework.user = "" # Have Mesos fill in the current user.
@@ -215,10 +239,12 @@ if __name__ == "__main__":
  
   t = threading.Thread(target = driver.run)
   variables = {"role": "rows", "master": "auto"}
-  r = Role(10, variables)
+  r = Role(128, variables)
   roles = {"role1": r}
 
-  j = Job(roles, "tpchq1")
+  inputs = [{"var": "dataFiles", "path": "/local/data/tpch/tpch10g/lineitem", "policy": "global"}]
+  j = Job(roles, "http://192.168.0.11:8002/tpchq1")
+  j.inputs = inputs
 
   d.submit(j)
   try:
@@ -234,43 +260,3 @@ if __name__ == "__main__":
 
   print(len(d.pending))
 
-#			if self.tasksLaunched < TOTAL_TASKS:
-#				# Generate a new Task ID
-#				tid = self.tasksLaunched
-#				self.tasksLaunched += 1
-#				
-#				print "Creating the Task object"
-#				# Create the Task to Launch the Docker Container
-#				task = mesos_pb2.TaskInfo()
-#				task.task_id.value = str(tid)
-#				task.slave_id.value = offer.slave_id.value
-##        task.name = programBinary + '@' + hostname
-#				task.executor.MergeFrom(executor)
-#
-#				cpus = task.resources.add()
-#				cpus.name = "cpus"
-#				cpus.type = mesos_pb2.Value.SCALAR
-#				cpus.scalar.value = TASK_CPUS
-#
-#				mem = task.resources.add()
-#				mem.name = "mem"
-#				mem.type = mesos_pb2.Value.SCALAR
-#				mem.scalar.value = TASK_MEM
-#				
-#				# Set the command to run
-##				task.command.value = '/bin/sleep 15'
-#
-#				# SET Task's Container to the task
-##				task.container.MergeFrom(container)
-#				
-#				print "Task Created."
-#				
-#				tasks.append(task)
-#				
-#				# This call actually requests to launch the task via the Mesos driver
-#				#  It executed the task.executor which was passed to the schedule during construction
-#				self.taskData[task.task_id.value] = (
-#					offer.slave_id, task.executor.executor_id)
-#
-#			print "Launching your task"
-#			driver.launchTasks(offer.id, tasks)
