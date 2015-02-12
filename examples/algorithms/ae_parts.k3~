@@ -9,6 +9,9 @@ typedef Layer =  collection {neuron : mut  Neuron } @Seq
 typedef Net = {m_error : mut real , m_layer : mut collection {layer : Layer} @Seq}
 
 declare net : Net 
+declare netReported : Net 
+declare oldNet : mut Net 
+
 declare topology : mut collection {i: int} @ {Seq}
 declare numLayers : mut int = 0
 declare master : address = 127.0.0.1:40000
@@ -17,7 +20,9 @@ declare framesRead : mut int = 0
 declare peersResponded : mut collection {elem : address } @Seq
 
 
-
+declare updateOnNet : Net -> Net -> Net = \oldNet -> \newNet -> (
+	net
+)
 declare updateMaster : Net -> ()  = \newNet -> (
 	
 )
@@ -28,14 +33,20 @@ declare updateSlave : Net -> () = \masterNet -> (
 trigger broadcastToSlave : Net = \masterNet -> (
 	updateSlave masterNet
 ) 
-trigger reportToMaster : address -> Net -> () = \slaveAddress -> \newNet -> ( 
-	peersResponded.insert {elem: slaveAddress}
-	//updateMaster newNet
+trigger receiveAtMaster : {slaveAddress : address, slaveNet : Net  } = \x ->  ( 
+	peersResponded.insert {elem: x.slaveAddress};	
+	updateMaster x.slaveNet;
+	if peersResponded.size () == peers.size () 
+	then ( peers.iterate (\peer -> (
+	
+					
+				) 
+	))
+	else ()
 
+	
 )
 
-
- 
 trigger proceedAsMaster : () = \_ -> (
 	print "Proceeding as master"
 
@@ -44,7 +55,12 @@ trigger proceedAsMaster : () = \_ -> (
 trigger proceedAsSlave : () = \_ -> (
 	(range 1000).iterate (\i -> (
 		framesRead= framesRead+1;
-		if framesRead == 500 then ( (reportToMaster,master) <- (me) ) else () 	
+		if framesRead == 500 
+		then (
+			let diffNet = (updateOnNet oldNet net) in  (receiveAtMaster,master) <- {slaveAddress: me, slaveNet : net} ;
+			oldNet = net
+		     )
+	         else () 	
 	))
 ) 
 
