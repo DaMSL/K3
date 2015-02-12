@@ -8,7 +8,7 @@ class Job:
     self.status = None
 
 class Role:
-  def __init__(self, peers = 0, variables {}, inputs {}, hostmask = r"*"):
+  def __init__(self, peers = 0, variables = {}, inputs = {}, hostmask = r"*"):
     self.peers = peers
     self.variables = variables,
     self.inputs = inputs
