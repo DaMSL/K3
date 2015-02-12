@@ -17,7 +17,7 @@ declare framesRead : mut int = 0
 declare peersResponded : mut collection {elem : address } @Seq
 
 
-trigger reportToMaster : () = \slaveAddress -> ( 
+trigger reportToMaster : address = \slaveAddress -> ( 
 	peersResponded.insert {elem: master}
 )
 
@@ -31,7 +31,7 @@ trigger proceedAsMaster : () = \_ -> (
 trigger proceedAsSlave : () = \_ -> (
 	(range 1000).iterate (\i -> (
 		framesRead= framesRead+1;
-		if framesRead == 500 then ( (reportToMaster,master) <- () ) else () 	
+		if framesRead == 500 then ( (reportToMaster,master) <- (me) ) else () 	
 	))
 ) 
 
