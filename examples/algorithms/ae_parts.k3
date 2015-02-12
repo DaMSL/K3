@@ -1,0 +1,60 @@
+include "Annotation/Vector.k3"
+include "Annotation/Set.k3"
+include "Core/Builtins.k3"
+
+//typedefs
+typedef Connection = {weight :  mut real , deltaWeight : mut real }
+typedef Neuron = {m_outputValue: mut real , m_myIndex: mut int, m_gradient: mut real , m_outputWeights : mut collection { connection : Connection } @Seq, eta: real, alpha : real } 
+typedef Layer =  collection {neuron : mut  Neuron } @Seq
+typedef Net = {m_error : mut real , m_layer : mut collection {layer : Layer} @Seq}
+
+declare net : Net 
+declare topology : mut collection {i: int} @ {Seq}
+declare numLayers : mut int = 0
+declare master : address = 127.0.0.1:40000
+
+declare framesRead : mut int = 0
+declare peersResponded : mut collection {elem : address } @Seq
+
+
+trigger reportToMaster : () = \slaveAddress -> ( 
+	peersResponded.insert {elem: master}
+)
+
+
+ 
+trigger proceedAsMaster : () = \_ -> (
+
+
+)
+
+trigger proceedAsSlave : () = \_ -> (
+	(range 1000).iterate (\i -> (
+		framesRead= framesRead+1;
+		if framesRead == 500 then ( (reportToMaster,master) <- () ) else () 	
+	))
+) 
+
+trigger configureNetwork : () = \_ -> (
+	topology.insert {i: 10};
+	topology.insert {i: 5};
+	topology.insert {i: 10}	;		
+	numLayers = topology.size ();
+	if (me==master) then ((proceedAsMaster, me) <- ()) else ((proceedAsSlave, me) <- ())	
+
+)
+trigger startServer : () = \_ -> (
+	(configureNetwork, me) <- ()
+
+)
+
+trigger startSlave : () = \_ -> (
+	(configureNetwork, me) <- ()
+)
+
+
+source server : () = value ()
+feed server |> startServer
+
+source slave : () = value ()
+feed slave |> startSlave
