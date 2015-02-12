@@ -14,6 +14,13 @@ class Role:
     self.inputs = inputs
     self.hostmask = hostmask
 
+class Peer:
+  def __init__(self, index, variables, inputs):
+    self.index = index
+    self.variables = variables
+    self.inputs = inputs
+
 class Task:
-  def __init__(self):
+  def __init__(self, peers):
     self.status = None
+    self.peers = peers

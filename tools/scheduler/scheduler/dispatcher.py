@@ -97,12 +97,28 @@ class Dispatcher(mesos.interface.Scheduler):
         print("Failed to satisfy role %s. Used %d cpus out of %d peers" % debug)
         return None
 
+    curPeerIndex = 0
+    nextJob.tasks = []
     # Succesful. Accept any used offers. Build tasks, etc.
     for offerId in self.offers:
       if cpusUsedPerOffer[offerId] > 0:
         host = self.offers[offerId].hostname.encode('ascii','ignore')
         debug = (host, str(rolesPerOffer[offerId]))
-        print("Roles for offer on %s: %s" % debug)
+        
+        print("Accepted Roles for offer on %s: %s" % debug)
+
+        peers = []
+        for (roleId, n) in rolesPerOffer[offerId]:
+          for i in range(n):
+            vs = nextJob.roles[roleId].variables
+            inputs = nextJob.roles[roleId].inputs
+            p = Peer(curPeerIndex, vs, inputs)
+            peers.append(p)
+            curPeerIndex = curPeerIndex + 1
+
+        t = Task(peers)
+        nextJob.tasks.append(t)
+        
     return True
      
   # --- Mesos Callbacks ---
