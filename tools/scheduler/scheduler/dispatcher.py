@@ -2,8 +2,9 @@
 import os
 import sys
 import time
-
+import threading
 from collections import deque
+
 from core import *
 
 import mesos.interface
@@ -29,6 +30,11 @@ task_state = {
 	5: "TASK_LOST"      # TERMINAL.
 }
 
+# Helper functions. TODO move elsewhere
+def getResource(resources, tag, convF):
+  for resource in resources:
+    if resource.name == tag:
+      return convF(resource.scalar.value)
 
 class Dispatcher(mesos.interface.Scheduler):
   def __init__(self):
@@ -40,13 +46,65 @@ class Dispatcher(mesos.interface.Scheduler):
     self.pending.append(job)
 
   # For the first pending job, attempt to construct tasks given the current set of offers
-  # If the job cannot be run, return None
-  # Otherwise, accept any used offer, reject any unused offer,
+  # If the job can't be run: return None
+  # Otherwise: accept any used offer and remove it from the dict.
   # Attach tasks to the job, launch them on Mesos, then return the Job
   # TODO if first job can't be launched, should we try the next one instead?
   def prepareNextJob(self):
-    return None
+    if len(self.pending) == 0:
+      return None
+   
+    nextJob = self.pending[0]
 
+    # Keep track of how many cpus have been used per role and per offer
+    # and which roles have been assigned to an offer
+    cpusUsedPerOffer = {}
+    cpusUsedPerRole = {}
+    rolesPerOffer = {}
+    for roleId in nextJob.roles:
+      cpusUsedPerRole[roleId] = 0
+    for offerId in self.offers:
+      cpusUsedPerOffer[offerId] = 0
+      rolesPerOffer[offerId] = []
+
+    # Try to satisy each role, sequentially
+    # TODO consider constraints, such as hostmask
+    for roleId in nextJob.roles:
+      for offerId in self.offers:
+        resources = self.offers[offerId].resources
+        offeredCpus = getResource(resources, "cpus", float)
+        offeredMem = getResource(resources, "mem", float)
+        
+        if cpusUsedPerOffer[offerId] >= offeredCpus:
+          # All cpus for this offer have already been used
+          continue
+
+        cpusRemainingForOffer = offeredCpus - cpusUsedPerOffer[offerId]
+        cpusToUse = min([cpusRemainingForOffer, nextJob.roles[roleId].peers])
+        
+        cpusUsedPerOffer[offerId] += cpusToUse
+        rolesPerOffer[offerId].append((roleId, cpusToUse))
+        cpusUsedPerRole[roleId] += cpusToUse
+      
+        if cpusUsedPerRole[roleId] == nextJob.roles[roleId].peers:
+          # All peers for this role have been assigned
+          break      
+    
+    # Check if all roles were satisfied
+    for roleId in nextJob.roles:
+      if cpusUsedPerRole[roleId] != nextJob.roles[roleId].peers:
+        debug = (roleId, cpusUsedPerRole[roleId], nextJob.roles[roleId].peers)
+        print("Failed to satisfy role %s. Used %d cpus out of %d peers" % debug)
+        return None
+
+    # Succesful. Accept any used offers. Build tasks, etc.
+    for offerId in self.offers:
+      if cpusUsedPerOffer[offerId] > 0:
+        host = self.offers[offerId].hostname.encode('ascii','ignore')
+        debug = (host, str(rolesPerOffer[offerId]))
+        print("Roles for offer on %s: %s" % debug)
+    return True
+     
   # --- Mesos Callbacks ---
   def registered(self, driver, frameworkId, masterInfo):
     print("Registered with framework ID %s" % frameworkId.value)
@@ -63,20 +121,25 @@ class Dispatcher(mesos.interface.Scheduler):
   def resourceOffers(self, driver, offers):
     print("[RESOURCE OFFER] Got %d resource offers" % len(offers))
     if len(self.pending) == 0:
-      # TODO decline all offers
+      print("No Pending jobs. Declining all offers")
+      for offer in offers:
+        driver.declineOffer(offer.id)
       return
 
+    print("Adding %d offers to offer dict" % len(offers))
     for offer in offers:
       self.offers[offer.id.value] = offer
 
-    if prepareNextJob() != None:
+    if self.prepareNextJob() != None:
       # TODO run the job
-      pass
+      print("Next job ready to launch")
+    else:
+      print("Not enough resources to launch next job. Waiting for more offers")
 
   def offerRescinded(self, driver, offer):
     print("[OFFER RESCINDED] Previous offer '%d' invalidated" % offer.id.value)
-    if offer.id.value in self.offers:
-      del self.offers[offer.id.value]
+    if offer.id in self.offers:
+      del self.offers[offer.id]
     
   def addExecutor (programBinary, hostParams, mounts):
     # Create the Executor
@@ -130,18 +193,28 @@ if __name__ == "__main__":
   framework = mesos_pb2.FrameworkInfo()
   framework.user = "" # Have Mesos fill in the current user.
   framework.name = "K3 Dispatcher"
-  driver = mesos.native.MesosSchedulerDriver(Dispatcher(), framework, MASTER)
-	
-  status = 0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1
-
+  d = Dispatcher()
+  driver = mesos.native.MesosSchedulerDriver(d, framework, MASTER)
+  status = 0
+ 
+  t = threading.Thread(target = driver.run)
   variables = {"role": "rows", "master": "auto"}
   r = Role(10, variables)
   roles = {"role1": r}
 
   j = Job(roles, "tpchq1")
 
-  d = Dispatcher()
   d.submit(j)
+  try:
+    t.start() 
+    # Sleep until interrup
+    while True:
+      time.sleep(1)
+  except KeyboardInterrupt:
+    print("INTERRUPT")
+    driver.stop()
+    t.join()
+
 
   print(len(d.pending))
 
