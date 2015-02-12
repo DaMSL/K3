@@ -5,9 +5,72 @@ import mesos.interface
 from mesos.interface import mesos_pb2
 import mesos.native
 
-# TODO how should we determine this?
+# TODO how should we determine the executor url
 EXECUTOR_URL = "http://192.168.0.11:8002/k3executor"
 K3_DOCKER_NAME = "damsl/k3-mesos2"
+
+def getResource(resources, tag, convF):
+  for resource in resources:
+    if resource.name == tag:
+      return convF(resource.scalar.value)
+
+# Fill in any "auto" variables
+# to be the address first peer in allPeers
+def populateAutoVars(allPeers):
+  for p in allPeers:
+    for v in p.variables:
+      if p.variables[v] == "auto":
+        p.variables[v] = [allPeers[0].ip, allPeers[0].port]  
+
+def assignRolesToOffers(nextJob, offers):
+  # Keep track of how many cpus have been used per role and per offer
+  # and which roles have been assigned to an offer
+  cpusUsedPerOffer = {}
+  cpusUsedPerRole = {}
+  rolesPerOffer = {}
+  for roleId in nextJob.roles:
+    cpusUsedPerRole[roleId] = 0
+  for offerId in offers:
+    cpusUsedPerOffer[offerId] = 0
+    rolesPerOffer[offerId] = []
+  
+  # Try to satisy each role, sequentially
+  # TODO consider constraints, such as hostmask
+  for roleId in nextJob.roles:
+    for offerId in offers:
+      
+      # TODO remove hd restriction
+      host = offers[offerId].hostname.encode('ascii','ignore')
+      #if "hd" not in host:
+      #  continue
+      
+      resources = offers[offerId].resources
+      offeredCpus = int(getResource(resources, "cpus", float))
+      offeredMem = getResource(resources, "mem", float)
+      
+      if cpusUsedPerOffer[offerId] >= offeredCpus:
+        # All cpus for this offer have already been used
+        continue
+
+      cpusRemainingForOffer = offeredCpus - cpusUsedPerOffer[offerId]
+      cpusToUse = min([cpusRemainingForOffer, nextJob.roles[roleId].peers])
+      
+      cpusUsedPerOffer[offerId] += cpusToUse
+      rolesPerOffer[offerId].append((roleId, cpusToUse))
+      cpusUsedPerRole[roleId] += cpusToUse
+    
+      if cpusUsedPerRole[roleId] == nextJob.roles[roleId].peers:
+        # All peers for this role have been assigned
+        break      
+  
+  # Check if all roles were satisfied
+  for roleId in nextJob.roles:
+    if cpusUsedPerRole[roleId] != nextJob.roles[roleId].peers:
+      debug = (roleId, cpusUsedPerRole[roleId], nextJob.roles[roleId].peers)
+      print("Failed to satisfy role %s. Used %d cpus out of %d peers" % debug)
+      return None
+
+  return (cpusUsedPerRole, cpusUsedPerOffer, rolesPerOffer)
 
 def executorInfo(k3task, jobid, binary_url):
 
