@@ -11,7 +11,7 @@ class Job:
 
 # TODO inputs per Roles instead of per Job
 class Role:
-  def __init__(self, peers = 0, variables = {}, inputs = {}, hostmask = r"*"):
+  def __init__(self, peers = 0, variables = {}, inputs = {}, hostmask = r".*"):
     self.peers = peers
     self.variables = variables
     #self.inputs = inputs

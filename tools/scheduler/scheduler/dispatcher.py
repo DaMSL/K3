@@ -52,16 +52,20 @@ task_state = { 6: "TASK_STAGING",  # Initial state. Framework status updates sho
 	       2: "TASK_FINISHED", # TERMINAL.
 	       3: "TASK_FAILED",   # TERMINAL.
 	       4: "TASK_KILLED",   # TERMINAL.
-	       5: "TASK_LOST"}      # TERMINAL. 
+	       5: "TASK_LOST"}      # TERMINAL.
 
 
 class Dispatcher(mesos.interface.Scheduler):
-  def __init__(self):
-    self.active = {}           # Active jobs keyed on jobId.
+  def __init__(self, daemon=True):
     self.pending = deque()     # Pending jobs. First job is popped once there are enough resources available to launch it.
+    self.active = {}           # Active jobs keyed on jobId.
+    self.finished = {}         # Finished jobs keyed on jobId.
     self.offers = {}           # Offers from Mesos keyed on offerId. We assume they are valid until they are rescinded by Mesos.
     self.jobsCreated = 0       # Total number of jobs created for generating job ids.
-  
+
+    self.daemon = daemon       # Run as a daemon (or finish when there are no more pending/active jobs)
+    self.terminate = False     # Flag to signal termination to the owner of the dispatcher
+ 
   def submit(self, job):
     self.pending.append(job)
 
@@ -73,7 +77,7 @@ class Dispatcher(mesos.interface.Scheduler):
 
   def fullId(self, jobId, taskId):
     return "%d.%d" % (jobId, taskId)
-  
+ 
   def jobId(self, fullid):
     s = fullid.split(".")
     return int(s[0])
@@ -91,6 +95,11 @@ class Dispatcher(mesos.interface.Scheduler):
         return t
     return None
 
+  def tryTerminate(self):
+    if not self.daemon and len(self.pending) == 0 and len(self.active) == 0:
+      self.terminate = True
+      print("Terminating")
+
   # See if the next job in the pending queue can be launched using the current offers.
   # Upon failure, return None. Otherwise, return the Job object with fresh k3 tasks attached to it
   def prepareNextJob(self):
@@ -98,12 +107,12 @@ class Dispatcher(mesos.interface.Scheduler):
     if len(self.pending) == 0:
       print("No pending jobs to prepare")
       return None
-   
+  
     nextJob = self.pending[0]
     result = assignRolesToOffers(nextJob, self.offers)
     if result == None:
-      return None 
-    
+      return None
+   
     (cpusUsedPerRole, cpusUsedPerOffer, rolesPerOffer) = result
 
     # TODO port management
@@ -128,12 +137,12 @@ class Dispatcher(mesos.interface.Scheduler):
             allPeers.append(p)
             curPeerIndex = curPeerIndex + 1
             curPort = curPort + 1
-        
+       
         taskid = len(nextJob.tasks)
-        mem = getResource(self.offers[offerId].resources, "mem", float) 
+        mem = getResource(self.offers[offerId].resources, "mem", float)
         t = Task(taskid, offerId, host, mem, peers)
         nextJob.tasks.append(t)
-  
+ 
     populateAutoVars(allPeers)
     nextJob.all_peers = allPeers
     self.pending.popleft()
@@ -143,25 +152,33 @@ class Dispatcher(mesos.interface.Scheduler):
     jobId = self.genJobId()
     print("Launching job %d" % jobId)
     self.active[jobId] = nextJob
-    nextJob.status = "ACTIVE"
+    nextJob.status = "RUNNING"
     # Build Mesos TaskInfo Protobufs for each k3 task and launch them through the driver
     for k3task in nextJob.tasks:
       task = taskInfo(k3task, jobId, self.offers[k3task.offerid].slave_id, nextJob.binary_url, nextJob.all_peers, nextJob.inputs)
-      
+     
       oid = mesos_pb2.OfferID()
-      oid.value = k3task.offerid 
+      oid.value = k3task.offerid
       driver.launchTasks(oid, [task])
       # Stop considering the offer, since we just used it.
       del self.offers[k3task.offerid]
 
   def cancelJob(self, jobId):
     print("Asked to cancel job %d. Killing all tasks" % jobId)
-    for t in self.active[jobId].tasks:
+    job = self.active[jobId]
+    job.status = "FAILED"
+    for t in job.tasks:
+      t.status = "TASK_FAILED"
       fullid = self.fullId(jobId, t.taskid)
       tid = mesos_pb2.TaskID()
       tid.value = fullid
       driver.killTask(tid)
     del self.active[jobId]
+    self.finished[jobId] = job
+
+    self.tryTerminate()
+   
+     
 
   def taskFinished(self, fullid):
     jobId = self.jobId(fullid)
@@ -177,7 +194,11 @@ class Dispatcher(mesos.interface.Scheduler):
     if not runningTasks:
       print("All tasks finished for job %d" % jobId)
       # TODO Move the job to a finished job list
+      job = self.active[jobId]
+      job.status = "FINISHED"
       del self.active[jobId]
+      self.finished[jobId] = job
+      self.tryTerminate()
 
   # --- Mesos Callbacks ---
   def registered(self, driver, frameworkId, masterInfo):
@@ -202,10 +223,10 @@ class Dispatcher(mesos.interface.Scheduler):
 
     if task_state[update.state] == "TASK_FINISHED":
       self.taskFinished(update.task_id.value)
-    
+   
   def frameworkMessage(self, driver, executorId, slaveId, message):
     print("[FRMWK MSG] %s" % message)
-   
+  
   # Handle a resource offers from Mesos.
   # If there is a pending job, add all offers to self.offers
   # Then see if pending jobs can be launched with the offers accumulated so far
@@ -230,40 +251,75 @@ class Dispatcher(mesos.interface.Scheduler):
     print("[OFFER RESCINDED] Previous offer '%d' invalidated" % offer.id.value)
     if offer.id in self.offers:
       del self.offers[offer.id]
-    
+   
 if __name__ == "__main__":
   framework = mesos_pb2.FrameworkInfo()
   framework.user = "" # Have Mesos fill in the current user.
   framework.name = "K3 Dispatcher"
-  d = Dispatcher()
+  d = Dispatcher(daemon=False)
   driver = mesos.native.MesosSchedulerDriver(d, framework, MASTER)
   status = 0
- 
+
   t = threading.Thread(target = driver.run)
-  variables = {"role": "rows", "master": "auto"}
-  r = Role(128, variables)
+  #variables = {"role": "rows", "master": "auto"}
+  #r = Role(128, variables)
+  #roles = {"role1": r}
+
+  #inputs = [{"var": "dataFiles", "path": "/local/data/tpch/tpch10g/lineitem", "policy": "global"}]
+  #j = Job(roles, "http://192.168.0.11:8002/tpchq1")
+  #j.inputs = inputs
+ 
+  #d.submit(j)
+ 
+  #variables = {"role": "rows", "master": "auto", "profilingEnabled": "true"}
+  #r = Role(128, variables, hostmask=r".*hd.*")
+  #roles = {"role1": r}
+
+  #inputs = [{"var": "lineitemFiles", "path": "/local/data/tpch/tpch10g/lineitem", "policy": "global"}, \
+  #          {"var": "ordersFiles", "path": "/local/data/tpch/tpch10g/orders", "policy": "global"}, \
+  #          {"var": "customerFiles", "path": "/local/data/tpch/tpch10g/customer", "policy": "global"}, \
+  #          {"var": "supplierFiles", "path": "/local/data/tpch/tpch10g/supplier", "policy": "global"}, \
+  #          {"var": "nationFiles", "path": "/local/data/tpch/tpch10g/nation", "policy": "global"}, \
+  #          {"var": "regionFiles", "path": "/local/data/tpch/tpch10g/region", "policy": "global"}]
+  #j = Job(roles, "http://192.168.0.11:8002/tpchq5")
+  #j.inputs = inputs
+
+  #d.submit(j)
+
+  variables = {"role": "rows", "master": "auto", "profilingEnabled": "true"}
+  r = Role(128, variables, hostmask=r".*hd.*")
   roles = {"role1": r}
 
-  inputs = [{"var": "dataFiles", "path": "/local/data/tpch/tpch10g/lineitem", "policy": "global"}]
-  j = Job(roles, "http://192.168.0.11:8002/tpchq1")
-  j.inputs = inputs
-  
-  d.submit(j)
-  
-  variables = {"role": "rows", "master": "auto"}
-  r = Role(128, variables)
-  roles = {"role1": r}
-
-  inputs = [{"var": "dataFiles", "path": "/local/data/tpch/tpch10g/lineitem", "policy": "global"}]
-  j = Job(roles, "http://192.168.0.11:8002/tpchq1")
+  inputs = [{"var": "lineitemFiles", "path": "/local/data/tpch/tpch10g/lineitem", "policy": "global"}, \
+            {"var": "ordersFiles", "path": "/local/data/tpch/tpch10g/orders", "policy": "global"}, \
+            {"var": "customerFiles", "path": "/local/data/tpch/tpch10g/customer", "policy": "global"}, \
+            {"var": "supplierFiles", "path": "/local/data/tpch/tpch10g/supplier", "policy": "global"}, \
+            {"var": "nationFiles", "path": "/local/data/tpch/tpch10g/nation", "policy": "global"}, \
+            {"var": "regionFiles", "path": "/local/data/tpch/tpch10g/region", "policy": "global"}]
+  j = Job(roles, "http://192.168.0.11:8002/tpchq5")
   j.inputs = inputs
 
   d.submit(j)
+ 
+  #variables = {"role": "rows", "master": "auto", "profilingEnabled": "true"}
+  #r = Role(128, variables, hostmask=r".*hd.*")
+  #roles = {"role1": r}
+
+  #inputs = [{"var": "dataFiles", "path": "/local/data/tpch/tpch10g/lineitem", "policy": "global"}]
+  #j = Job(roles, "http://192.168.0.11:8002/tpchq1")
+  #j.inputs = inputs
+
+  #d.submit(j)
+
   try:
-    t.start() 
+    t.start()
     # Sleep until interrupt
-    while True:
+    terminate = False
+    while not terminate:
       time.sleep(1)
+      terminate = d.terminate
+    driver.stop()
+    t.join()
   except KeyboardInterrupt:
     print("INTERRUPT")
     driver.stop()

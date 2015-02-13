@@ -1,5 +1,6 @@
 # mesosutils: Constructors for Mesos Protocol Buffers
 import yaml
+import re
 
 import mesos.interface
 from mesos.interface import mesos_pb2
@@ -20,7 +21,7 @@ def populateAutoVars(allPeers):
   for p in allPeers:
     for v in p.variables:
       if p.variables[v] == "auto":
-        p.variables[v] = [allPeers[0].ip, allPeers[0].port]  
+        p.variables[v] = [allPeers[0].ip, allPeers[0].port] 
 
 def assignRolesToOffers(nextJob, offers):
   # Keep track of how many cpus have been used per role and per offer
@@ -33,36 +34,38 @@ def assignRolesToOffers(nextJob, offers):
   for offerId in offers:
     cpusUsedPerOffer[offerId] = 0
     rolesPerOffer[offerId] = []
-  
+ 
   # Try to satisy each role, sequentially
   # TODO consider constraints, such as hostmask
   for roleId in nextJob.roles:
     for offerId in offers:
-      
-      # TODO remove hd restriction
+     
+      hostmask = nextJob.roles[roleId].hostmask
       host = offers[offerId].hostname.encode('ascii','ignore')
-      #if "hd" not in host:
-      #  continue
-      
+      r = re.compile(hostmask)
+      if not r.match(host):
+        print("%s does not match hostmask" % host)
+        continue
+     
       resources = offers[offerId].resources
       offeredCpus = int(getResource(resources, "cpus", float))
       offeredMem = getResource(resources, "mem", float)
-      
+     
       if cpusUsedPerOffer[offerId] >= offeredCpus:
         # All cpus for this offer have already been used
         continue
 
       cpusRemainingForOffer = offeredCpus - cpusUsedPerOffer[offerId]
       cpusToUse = min([cpusRemainingForOffer, nextJob.roles[roleId].peers])
-      
+     
       cpusUsedPerOffer[offerId] += cpusToUse
       rolesPerOffer[offerId].append((roleId, cpusToUse))
       cpusUsedPerRole[roleId] += cpusToUse
-    
+   
       if cpusUsedPerRole[roleId] == nextJob.roles[roleId].peers:
         # All peers for this role have been assigned
-        break      
-  
+        break     
+ 
   # Check if all roles were satisfied
   for roleId in nextJob.roles:
     if cpusUsedPerRole[roleId] != nextJob.roles[roleId].peers:
@@ -75,7 +78,7 @@ def assignRolesToOffers(nextJob, offers):
 def executorInfo(k3task, jobid, binary_url):
 
   # Create the Executor
-  executor = mesos_pb2.ExecutorInfo() 
+  executor = mesos_pb2.ExecutorInfo()
   executor.executor_id.value = k3task.getId(jobid)
   executor.name = k3task.getId(jobid)
   executor.data = ""
@@ -92,26 +95,26 @@ def executorInfo(k3task, jobid, binary_url):
   k3_binary.value = binary_url
   k3_binary.executable = True
   k3_binary.extract = False
-  
+ 
   executor.command.MergeFrom(command)
 
   # Create the docker object
   docker = mesos_pb2.ContainerInfo.DockerInfo()
   docker.image = K3_DOCKER_NAME
   docker.network = docker.HOST
-    
+   
   # Create the Container
   container = mesos_pb2.ContainerInfo()
   container.type = container.DOCKER
   container.docker.MergeFrom(docker)
-  
+ 
   volume = container.volumes.add()
   volume.container_path = '/local/data'
   volume.host_path = '/local/data'
   volume.mode = volume.RO
- 
+
   executor.container.MergeFrom(container)
-        
+       
   return executor
 
 def taskInfo(k3task, jobId, slaveId, binary_url, all_peers, inputs):
@@ -121,21 +124,21 @@ def taskInfo(k3task, jobId, slaveId, binary_url, all_peers, inputs):
   task_data["totalPeers"] = len(all_peers)
   task_data["peerStart"] = k3task.peers[0].index
   task_data["peerEnd"] = k3task.peers[-1].index
-  task_data["me"] = [ [p.ip, p.port] for p in k3task.peers] 
-  task_data["peers"] = [ {"addr": [p.ip, p.port] } for p in all_peers] 
-  task_data["globals"] = [p.variables for p in k3task.peers]  
+  task_data["me"] = [ [p.ip, p.port] for p in k3task.peers]
+  task_data["peers"] = [ {"addr": [p.ip, p.port] } for p in all_peers]
+  task_data["globals"] = [p.variables for p in k3task.peers] 
   task_data["master"] = [ all_peers[0].ip, all_peers[0].port ]
   task_data["data"] = [ inputs for p in range(len(k3task.peers)) ]
 
   executor = executorInfo(k3task, jobId, binary_url)
-  
+ 
   task = mesos_pb2.TaskInfo()
   task.task_id.value = k3task.getId(jobId)
   task.slave_id.value = slaveId.value
   task.name = str(jobId) + "@" + k3task.host
-  task.executor.MergeFrom(executor) 
+  task.executor.MergeFrom(executor)
   task.data = yaml.dump(task_data)
-  
+ 
   cpus = task.resources.add()
   cpus.name = "cpus"
   cpus.type = mesos_pb2.Value.SCALAR
@@ -146,5 +149,5 @@ def taskInfo(k3task, jobId, slaveId, binary_url, all_peers, inputs):
   mem.type = mesos_pb2.Value.SCALAR
   mem.scalar.value = k3task.mem
 
-  return task    
+  return task   
 
