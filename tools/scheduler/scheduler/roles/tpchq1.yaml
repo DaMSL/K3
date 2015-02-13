@@ -1,0 +1,10 @@
+---
+name: role 1
+peers: 128
+hostmask: ".*hd.*"
+k3_globals:
+  role: rows
+  master: auto
+  profilingEnabled: True
+k3_data:
+  - {var: dataFiles, path: /local/data/tpch/tpch10g/lineitem, policy: global}

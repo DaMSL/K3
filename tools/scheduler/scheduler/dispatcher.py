@@ -7,6 +7,7 @@ from collections import deque
 
 from core import *
 from mesosutils import *
+from opts import *
 
 import mesos.interface
 from mesos.interface import mesos_pb2
@@ -256,61 +257,15 @@ if __name__ == "__main__":
   framework = mesos_pb2.FrameworkInfo()
   framework.user = "" # Have Mesos fill in the current user.
   framework.name = "K3 Dispatcher"
-  d = Dispatcher(daemon=False)
+
+  d = parseArgs()
+  if d == None:
+    print("Failed to create dispatcher. Aborting")
+    sys.exit(1)
+
   driver = mesos.native.MesosSchedulerDriver(d, framework, MASTER)
-  status = 0
-
   t = threading.Thread(target = driver.run)
-  #variables = {"role": "rows", "master": "auto"}
-  #r = Role(128, variables)
-  #roles = {"role1": r}
-
-  #inputs = [{"var": "dataFiles", "path": "/local/data/tpch/tpch10g/lineitem", "policy": "global"}]
-  #j = Job(roles, "http://192.168.0.11:8002/tpchq1")
-  #j.inputs = inputs
- 
-  #d.submit(j)
- 
-  #variables = {"role": "rows", "master": "auto", "profilingEnabled": "true"}
-  #r = Role(128, variables, hostmask=r".*hd.*")
-  #roles = {"role1": r}
-
-  #inputs = [{"var": "lineitemFiles", "path": "/local/data/tpch/tpch10g/lineitem", "policy": "global"}, \
-  #          {"var": "ordersFiles", "path": "/local/data/tpch/tpch10g/orders", "policy": "global"}, \
-  #          {"var": "customerFiles", "path": "/local/data/tpch/tpch10g/customer", "policy": "global"}, \
-  #          {"var": "supplierFiles", "path": "/local/data/tpch/tpch10g/supplier", "policy": "global"}, \
-  #          {"var": "nationFiles", "path": "/local/data/tpch/tpch10g/nation", "policy": "global"}, \
-  #          {"var": "regionFiles", "path": "/local/data/tpch/tpch10g/region", "policy": "global"}]
-  #j = Job(roles, "http://192.168.0.11:8002/tpchq5")
-  #j.inputs = inputs
-
-  #d.submit(j)
-
-  variables = {"role": "rows", "master": "auto", "profilingEnabled": "true"}
-  r = Role(128, variables, hostmask=r".*hd.*")
-  roles = {"role1": r}
-
-  inputs = [{"var": "lineitemFiles", "path": "/local/data/tpch/tpch10g/lineitem", "policy": "global"}, \
-            {"var": "ordersFiles", "path": "/local/data/tpch/tpch10g/orders", "policy": "global"}, \
-            {"var": "customerFiles", "path": "/local/data/tpch/tpch10g/customer", "policy": "global"}, \
-            {"var": "supplierFiles", "path": "/local/data/tpch/tpch10g/supplier", "policy": "global"}, \
-            {"var": "nationFiles", "path": "/local/data/tpch/tpch10g/nation", "policy": "global"}, \
-            {"var": "regionFiles", "path": "/local/data/tpch/tpch10g/region", "policy": "global"}]
-  j = Job(roles, "http://192.168.0.11:8002/tpchq5")
-  j.inputs = inputs
-
-  d.submit(j)
- 
-  #variables = {"role": "rows", "master": "auto", "profilingEnabled": "true"}
-  #r = Role(128, variables, hostmask=r".*hd.*")
-  #roles = {"role1": r}
-
-  #inputs = [{"var": "dataFiles", "path": "/local/data/tpch/tpch10g/lineitem", "policy": "global"}]
-  #j = Job(roles, "http://192.168.0.11:8002/tpchq1")
-  #j.inputs = inputs
-
-  #d.submit(j)
-
+  
   try:
     t.start()
     # Sleep until interrupt
