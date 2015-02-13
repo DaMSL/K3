@@ -283,7 +283,7 @@ trigger configureNetwork : () = \_ -> (
 
 	numLayers = topology.size ();
 
-	TODO : change this to 
+	//TODO : change this to 
 	let net = {m_error: mut 0.0, m_layer: empty {layer: Layer } @Seq } in 
 	(
 	(range numLayers).iterate (

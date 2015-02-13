@@ -1130,7 +1130,7 @@ class Map {
       return t;
     }
 
-    reference operator*() const {
+    auto& operator*() const {
       return i->second;
     }
 
