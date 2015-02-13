@@ -257,7 +257,7 @@ allM f xs = and <$> mapM f xs
 -- flag', determining whether or not the provenance of superstructure occurs in the provenance of
 -- its substructure.
 occursIn :: Bool -> K3 Provenance -> K3 Provenance -> MaterializationM Bool
-occursIn wide b a
+occursIn wide a b
   = case a of
 
       -- Everything occurs in itself.
