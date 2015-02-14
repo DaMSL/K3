@@ -121,7 +121,7 @@ pHierarchicalGroupBy :: Annotation Expression
 pHierarchicalGroupBy = inferredEProp "HGroupBy" Nothing
 
 pMonoidGroupBy :: Annotation Expression
-pMonoidGroupBy = inferredEProp "MonoidGroupBy" Nothing
+pMonoidGroupBy = inferredEProp "MGroupBy" Nothing
 
 isEPure :: Annotation Expression -> Bool
 isEPure (EProperty (ePropertyName -> "Pure")) = True
@@ -212,7 +212,7 @@ isEHierarchicalGroupBy (EProperty (ePropertyV -> ("HGroupBy", Nothing))) = True
 isEHierarchicalGroupBy _ = False
 
 isEMonoidGroupBy :: Annotation Expression -> Bool
-isEMonoidGroupBy (EProperty (ePropertyV -> ("MonoidGroupBy", Nothing))) = True
+isEMonoidGroupBy (EProperty (ePropertyV -> ("MGroupBy", Nothing))) = True
 isEMonoidGroupBy _ = False
 
 isENoBetaReduce :: Annotation Expression -> Bool
@@ -522,21 +522,24 @@ betaReductionDelta expr = foldMapTree reduce ([], False) expr >>= return . first
       ieRO <- readOnly False ie
       eRO  <- readOnly True e
       let numOccurs = length $ filter (== i) $ freeVariables e
-      doReduce <- case (tag ie, ie @~ isEType) of
-                    (_, Nothing) -> Left "No type found on target during beta reduction"
-                    (EVariable _, _) -> Right True
+      (simple, doReduce) <- reducibleTarget numOccurs ie
+      if (simple || (ieRO && eRO)) && doReduce
+        then return ([substituteImmutBinding i (cleanExpr ie) e], True)
+        else return ([n], False)
 
-                    -- Collections can be modified in place with insert/update/delete,
-                    -- thus we can only substitute single uses.
-                    -- TODO: we can actually substitute provided the collection is not
-                    -- written in the body. Use effects to determine this.
-                    (_, Just (EType (tag -> TCollection))) -> Right $ numOccurs <= 1
+    reducibleTarget numOccurs ie =
+      case (tag ie, ie @~ isEType) of
+        (_, Nothing) -> Left "No type found on target during beta reduction"
+        (EVariable _, _) -> Right (True, True)
 
-                    (EConstant _, _) -> Right True
-                    _ -> Right $ numOccurs == 1
+        -- Collections can be modified in place with insert/update/delete,
+        -- thus we can only substitute single uses.
+        -- TODO: we can actually substitute provided the collection is not
+        -- written in the body. Use effects to determine this.
+        (_, Just (EType (tag -> TCollection))) -> Right (False, numOccurs <= 1)
 
-      if ieRO && eRO && doReduce then return ([substituteImmutBinding i (cleanExpr ie) e], True)
-      else return ([n], False)
+        (EConstant _, _) -> Right (True, True)
+        _ -> Right $ (False, numOccurs == 1)
 
     onSub ch = (concat *** any id) $ unzip ch
 
@@ -549,6 +552,18 @@ betaReductionDelta expr = foldMapTree reduce ([], False) expr >>= return . first
                                                                    %$ prettyLines deste
                                                                    %$ prettyLines (head re))
                                      $ return r
+
+-- Beta reduction of variable applications, i.e., (\x -> ...) var
+simpleBetaReduction :: K3 Expression -> K3 Expression
+simpleBetaReduction expr = let r = runIdentity $ modifyTree reduce expr
+                           in if compareEAST r expr then r else simpleBetaReduction r
+  where
+    reduce n@(PAppLam i bodyE argE@(tag -> EVariable _) _ _) = return $ substituteImmutBinding i (cleanExpr argE) bodyE
+    reduce n = return n
+
+    cleanExpr e = stripExprAnnotations cleanAnns (const False) e
+    cleanAnns a = isEUID a || isESpan a || isAnyETypeOrEffectAnn a
+
 
 -- | Effect-aware dead code elimination.
 --   Currently this only operates on expressions, and does not prune
@@ -1162,6 +1177,19 @@ fuseFoldTransformers expr = do
            in trace (unwords ["Fusing:", showFusion lAs rAs
                              , either id (maybe onFail (const "Success")) r]) r
 
+    debugGroupBy isHG isMG lAccF rAccF r = 
+      if True then r else flip trace r $
+      let match f = case f of
+                      PDCond2 _ _ _ _ _ _ _ _  -> "DCond2"
+                      PSDCond2 _ _ _ _ _ _ _ _ -> "SDCond2"
+                      _ -> "No-match"
+      in
+      let (lty, rty) = (match lAccF, match rAccF)
+      in
+      let pfx = if isHG then "H" else if isMG then "M" else "N" in
+      boxToString $ [unwords [pfx, "DCond2-DCond2", show isHG, lty, rty, ":"]]
+        ++ (prettyLines $ cleanExpr lAccF) ++ (prettyLines $ cleanExpr rAccF)
+
     fuseAccF lAccF rAccF
              lAs@(getFusionSpecA -> Just (lfCls, ltCls))
              rAs@(getFusionSpecA -> Just (rfCls, rtCls))
@@ -1203,7 +1231,7 @@ fuseFoldTransformers expr = do
               -- TODO: this duplicates lfE/lfArg, thus is not safe it has effects.
               (PUCond li lj lfE lfArg, PICond1 _ rj rpE rpArg rtE) -> do
                 composedP <- chainFunctions lfE lfArg lAs rj rpE rpArg rAs
-                composedT <- chainFunRight lj lfE lfArg lAs rj rtE rAs
+                composedT <- chainFunRight lj (cleanExpr lfE) (cleanExpr lfArg) lAs rj rtE rAs
                 return $ Just $ (updateFusionSpec rAs (ICond1, promoteTCls ltCls rtCls),) $
                   mkCondAccF li lj composedT composedP
 
@@ -1385,8 +1413,8 @@ fuseFoldTransformers expr = do
               (PChainLambda1 li lj lE lAs1 lAs2, PDCond2 ri rj rleti roi rdlV rgbF raccF rzE) -> do
                 chainValDCond2 li lj lE lAs1 lAs2 ri rj roi (Right (rleti, rdlV, rgbF, rzE, raccF)) lAs rAs DCond2 $ promoteTCls ltCls rtCls
 
-              (PChainLambda1 li lj lE lAs1 lAs2, PSDCond2 ri rj roi rentryE rpvE rmkE rmvE) -> do
-                chainValDCond2 li lj lE lAs1 lAs2 ri rj roi (Left (rentryE, rpvE, rmkE, rmvE)) lAs rAs DCond2 $ promoteTCls ltCls rtCls
+              (PChainLambda1 li lj lE lAs1 lAs2, PSDCond2 ri rj rleti roi rdlK rdlV rmvE rpvE) -> do
+                chainValDCond2 li lj lE lAs1 lAs2 ri rj roi (Left (rleti, rdlK, rdlV, rmvE, rpvE)) lAs rAs DCond2 $ promoteTCls ltCls rtCls
 
               (_, _) -> Right Nothing
 
@@ -1410,8 +1438,8 @@ fuseFoldTransformers expr = do
               (PChainLambda1 li lj lE lAs1 lAs2, PDCond2 ri rj rleti roi rdlV rgbF raccF rzE) ->
                 chainValDCond2 li lj lE lAs1 lAs2 ri rj roi (Right (rleti, rdlV, rgbF, rzE, raccF)) lAs rAs ICondN DepTr
 
-              (PChainLambda1 li lj lE lAs1 lAs2, PSDCond2 ri rj roi rentryE rpvE rmkE rmvE) -> do
-                chainValDCond2 li lj lE lAs1 lAs2 ri rj roi (Left (rentryE, rpvE, rmkE, rmvE)) lAs rAs DCond2 $ promoteTCls ltCls rtCls
+              (PChainLambda1 li lj lE lAs1 lAs2, PSDCond2 ri rj rleti roi rdlK rdlV rmvE rpvE) -> do
+                chainValDCond2 li lj lE lAs1 lAs2 ri rj roi (Left (rleti, rdlK, rdlV, rmvE, rpvE)) lAs rAs DCond2 $ promoteTCls ltCls rtCls
 
               (_, _) -> Right Nothing
 
@@ -1460,61 +1488,73 @@ fuseFoldTransformers expr = do
           --     (\iacc -> iacc.val.upsert_with ientry
           --                 (\_    -> {key:ientry.key, val: ACC1 z1 e})
           --                 (\iold -> {key:iold.key,   val: ACC1 iold.val e});
-          --               iacc)
+          --               {key: iacc.key, val: iacc.val});
+          --   oacc
           --
           --
           -- Simpler version:
           -- \acc e ->
-          --   let ientry = {key: G1(e),          val: z1};
-          --   let oentry = {key: G2(ientry.key), val: z2};
+          --   let ientry = {key: G1(e),      val: z1};
+          --   let oentry = {key: G2(ientry), val: z2};
           --   acc.upsert_with oentry
           --     (\_   -> let niacc = z2 in
-          --              niacc.insert {key:ientry.key, val: ACC1 z1 e};
+          --              niacc.insert {key:ientry.key, val: ACC1 ientry.val e};
           --              {key:oentry.key, val: niacc})
           --     (\iacc -> iacc.val.upsert_with ientry
-          --                 (\_    -> {key:ientry.key, val: ACC1 z1 e})
+          --                 (\_    -> {key:ientry.key, val: ACC1 ientry.val e})
           --                 (\iold -> {key:iold.key,   val: ACC1 iold.val e});
-          --               iacc)
+          --               {key: iacc.key, val: iacc.val});
+          --   acc
           --
-          (DCond2, DCond2) | nonDepTr ltCls && nonDepTr rtCls && any isEHierarchicalGroupBy rAs ->
+          (DCond2, DCond2) | (debugGroupBy (any isEHierarchicalGroupBy rAs) False lAccF rAccF $ nonDepTr ltCls)
+                              && nonDepTr rtCls && any isEHierarchicalGroupBy rAs
+            ->
+            let mkKey       e = EC.project "key" e
+                mkVal       e = EC.project "value" e
+                mkKVRec kE vE = EC.record [("key", kE), ("value", vE)]
+
+                (ieId, oeId)   = ("ientry", "oentry")
+                (nVarId, nV)   = ("niacc", EC.variable "niacc")
+                (iuVarId, iuV) = ("iold", EC.variable "iold")
+                (uVarId, uV)   = ("iacc", EC.variable "iacc")
+
+                iekE         = mkKey $ EC.variable ieId
+                ievE         = mkVal $ EC.variable ieId
+                oekE         = mkKey $ EC.variable oeId
+            in
             case (lAccF, rAccF) of
               (PDCond2 li lj _ _ _ lgbF laccE lzE, PDCond2 _ rj _ _ _ rgbF _ rzE) ->
-                let (liV, ljV)   = trace "Hierarchical Group By 1" $ (EC.variable li, EC.variable lj)
-                    (ieId, oeId) = ("ientry", "oentry")
+                let (liV, ljV) = (EC.variable li, EC.variable lj)
 
                     chainRGBF = EC.lambda rj $ EC.applyMany rgbF [EC.variable rj]
 
-                    mkKey       e = EC.project "key" e
-                    mkVal       e = EC.project "value" e
-                    mkKVRec kE vE = EC.record [("key", kE), ("value", vE)]
+                    ientryE   = stripEUIDSpan $ mkKVRec (EC.applyMany lgbF [ljV]) lzE
+                    oentryE   = stripEUIDSpan $ mkKVRec (EC.applyMany chainRGBF [ientryE]) rzE
 
-                    iekE      = mkKey $ EC.variable ieId
-                    oekE      = mkKey $ EC.variable oeId
-                    ientryE   = mkKVRec (EC.applyMany lgbF [ljV])       lzE
-                    oentryE   = mkKVRec (EC.applyMany chainRGBF [iekE]) rzE
-
-                    (nVarId, nV) = ("niacc", EC.variable "niacc")
-
-                    insertF = EC.lambda "_" $ EC.letIn nVarId rzE $
+                    insertF = EC.lambda "_" $ EC.letIn nVarId (stripEUIDSpan rzE) $
                                 EC.binop OSeq
                                   (EC.applyMany (EC.project "insert" nV)
-                                                [mkKVRec iekE $ EC.applyMany laccE [lzE, ljV]])
+                                                [mkKVRec iekE $ EC.applyMany laccE [ievE, ljV]])
                                   (mkKVRec oekE nV)
 
-                    iInsertF = EC.lambda "_" $ mkKVRec iekE $ EC.applyMany laccE [lzE, ljV]
+                    iInsertF = EC.lambda "_" $ mkKVRec iekE
+                                 $ EC.applyMany (stripEUIDSpan laccE) [ievE, ljV]
 
-                    (iuVarId, iuV) = ("iold", EC.variable "iold")
-                    iUpdateF = EC.lambda iuVarId $ mkKVRec (mkKey iuV) $ EC.applyMany laccE [mkVal iuV, ljV]
+                    iUpdateF = EC.lambda iuVarId $ mkKVRec (mkKey iuV)
+                                 $ EC.applyMany (stripEUIDSpan laccE) [mkVal iuV, ljV]
 
-                    (uVarId, uV) = ("iacc", EC.variable "iacc")
                     updateF = EC.lambda uVarId $
-                                EC.applyMany (EC.project "upsert_with" $ mkVal uV)
-                                             [EC.variable ieId, iInsertF, iUpdateF]
+                                EC.binop OSeq
+                                  (EC.applyMany (EC.project "upsert_with" $ mkVal uV)
+                                                [EC.variable ieId, iInsertF, iUpdateF])
+                                  uV
 
                     nfE = EC.letIn ieId ientryE $
                           EC.letIn oeId oentryE $
-                          EC.applyMany (EC.project "upsert_with" liV)
-                                       [EC.variable oeId, insertF, updateF]
+                          EC.binop OSeq
+                            (EC.applyMany (EC.project "upsert_with" liV)
+                                          [EC.variable oeId, insertF, updateF])
+                            liV
 
                     nf  = PChainLambda1 li lj nfE [] []
                 in
@@ -1522,38 +1562,34 @@ fuseFoldTransformers expr = do
                   -- ^ TODO: for now, we pick a restrictive fusion spec that disallows further
                   --   fusion with downstream operations.
 
-              (PSDCond2 li lj loi lentryE lpvE lmkE lmvE, PDCond2 _ _ _ _ _ rgbF _ rzE) ->
-                let liV          = trace "Hierarchical Group By 2" $ EC.variable li
-                    (ieId, oeId) = ("ientry", "oentry")
+              (PSDCond2 li lj _ loi ldlK ldlV lmvE lpvE, PDCond2 _ _ _ _ _ rgbF _ rzE) ->
+                let (liV, ljV) = (EC.variable li, EC.variable lj)
 
-                    mkKey       e = EC.project "key" e
-                    mkVal       e = EC.project "value" e
-                    mkKVRec kE vE = EC.record [("key", kE), ("value", vE)]
+                    ientryE   = stripEUIDSpan $ mkKVRec ldlK ldlV
+                    oentryE   = stripEUIDSpan $ mkKVRec (EC.applyMany rgbF [ientryE]) rzE
 
-                    oekE      = mkKey $ EC.variable oeId
-                    oentryE   = mkKVRec (EC.applyMany rgbF [mkKey lentryE]) rzE
-
-                    (nVarId, nV) = ("niacc", EC.variable "niacc")
-
-                    insertF = EC.lambda "_" $ EC.letIn nVarId rzE $
+                    insertF = EC.lambda "_" $ EC.letIn nVarId (stripEUIDSpan rzE) $
                                 EC.binop OSeq
-                                  (EC.applyMany (EC.project "insert" nV) [mkKVRec lmkE lmvE])
+                                  (EC.applyMany (EC.project "insert" nV) [mkKVRec iekE lmvE])
                                   (mkKVRec oekE nV)
 
-                    iInsertF = EC.lambda "_" $ mkKVRec lmkE lmvE
+                    iInsertF = EC.lambda "_" $ mkKVRec iekE $ stripEUIDSpan lmvE
 
-                    (iuVarId, iuV) = ("iold", EC.variable "iold")
                     iUpdateF = EC.lambda iuVarId $ mkKVRec (mkKey iuV)
-                                 $ EC.applyMany (EC.lambda loi lpvE) [mkVal iuV]
+                                 $ EC.applyMany (EC.lambda loi lpvE) [iuV]
 
-                    (uVarId, uV) = ("iacc", EC.variable "iacc")
                     updateF = EC.lambda uVarId $
-                                EC.applyMany (EC.project "upsert_with" $ mkVal uV)
-                                             [EC.variable ieId, iInsertF, iUpdateF]
+                                EC.binop OSeq
+                                  (EC.applyMany (EC.project "upsert_with" $ mkVal uV)
+                                                [EC.variable ieId, iInsertF, iUpdateF])
+                                  uV
 
-                    nfE = EC.letIn ieId lentryE $
+                    nfE = EC.letIn ieId ientryE $
                           EC.letIn oeId oentryE $
-                          EC.applyMany (EC.project "upsert_with" liV) [EC.variable oeId, insertF, updateF]
+                          EC.binop OSeq
+                            (EC.applyMany (EC.project "upsert_with" liV)
+                                          [EC.variable oeId, insertF, updateF])
+                            liV
 
                     nf  = PChainLambda1 li lj nfE [] []
                 in
@@ -1561,38 +1597,32 @@ fuseFoldTransformers expr = do
                   -- ^ TODO: for now, we pick a restrictive fusion spec that disallows further
                   --   fusion with downstream operations.
 
-              (PSDCond2 li lj loi lentryE lpvE lmkE lmvE, PSDCond2 _ rj _ rentryE _ _ rmvE) ->
-                let liV          = trace "Hierarchical Group By 2" $ EC.variable li
-                    (ieId, oeId) = ("ientry", "oentry")
+              (PSDCond2 li lj _ loi ldlK ldlV lmvE lpvE, PSDCond2 _ rj _ _ rdlK rdlV rmvE _) ->
+                let (liV, ljV) = (EC.variable li, EC.variable lj)
 
-                    mkKey       e = EC.project "key" e
-                    mkVal       e = EC.project "value" e
-                    mkKVRec kE vE = EC.record [("key", kE), ("value", vE)]
+                    ientryE   = stripEUIDSpan $ mkKVRec ldlK ldlV
+                    oentryE   = stripEUIDSpan $ mkKVRec (EC.applyMany (EC.lambda rj rdlK) [ientryE]) rdlV
 
-                    oekE      = mkKey $ EC.variable oeId
-                    oentryE   = mkKVRec (EC.applyMany (EC.lambda rj $ rentryE) [mkKey lentryE]) rmvE
+                    insertF = EC.lambda "_" $
+                                mkKVRec oekE $ EC.applyMany (EC.lambda rj rmvE) [mkKVRec iekE lmvE]
 
-                    (nVarId, nV) = ("niacc", EC.variable "niacc")
+                    iInsertF = EC.lambda "_" $ mkKVRec iekE $ stripEUIDSpan lmvE
 
-                    insertF = EC.lambda "_" $ EC.letIn nVarId rmvE $
-                                EC.binop OSeq
-                                  (EC.applyMany (EC.project "insert" nV) [mkKVRec lmkE lmvE])
-                                  (mkKVRec oekE nV)
-
-                    iInsertF = EC.lambda "_" $ mkKVRec lmkE lmvE
-
-                    (iuVarId, iuV) = ("iold", EC.variable "iold")
                     iUpdateF = EC.lambda iuVarId $ mkKVRec (mkKey iuV)
-                                 $ EC.applyMany (EC.lambda loi lpvE) [mkVal iuV]
+                                 $ EC.applyMany (EC.lambda loi lpvE) [iuV]
 
-                    (uVarId, uV) = ("iacc", EC.variable "iacc")
                     updateF = EC.lambda uVarId $
-                                EC.applyMany (EC.project "upsert_with" $ mkVal uV)
-                                             [EC.variable ieId, iInsertF, iUpdateF]
+                                EC.binop OSeq
+                                  (EC.applyMany (EC.project "upsert_with" $ mkVal uV)
+                                                [EC.variable ieId, iInsertF, iUpdateF])
+                                  uV
 
-                    nfE = EC.letIn ieId lentryE $
+                    nfE = EC.letIn ieId ientryE $
                           EC.letIn oeId oentryE $
-                          EC.applyMany (EC.project "upsert_with" liV) [EC.variable oeId, insertF, updateF]
+                          EC.binop OSeq
+                            (EC.applyMany (EC.project "upsert_with" liV)
+                                          [EC.variable oeId, insertF, updateF])
+                            liV
 
                     nf  = PChainLambda1 li lj nfE [] []
                 in
@@ -1602,7 +1632,7 @@ fuseFoldTransformers expr = do
 
               (_, _) -> Right Nothing
 
-          -- Assumes ACC2 is the identity function.
+          -- Assumes ACC2 is the same as ACC1, i.e., (+,+) or (*,*).
           -- entry = {key: mut null_k2, val: z2}
           -- for each element in c:
           --   bind entry as {key:k} in k = G2(G1(item));
@@ -1615,37 +1645,62 @@ fuseFoldTransformers expr = do
           --   let entry = {key: G2(G1(item)), val: z1};
           --   acc.upsert_with entry
           --     (\_   -> {key:entry.key, val: ACC2 z2 (ACC1 z1 e)})
-          --     (\old -> {key:old.key,   val: ACC1 old.val e})
-          (DCond2, DCond2) | nonDepTr ltCls && nonDepTr rtCls && any isEMonoidGroupBy rAs ->
+          --     (\old -> {key:old.key,   val: ACC1 old.val e});
+          --   acc
+          (DCond2, DCond2) | (debugGroupBy False (any isEMonoidGroupBy rAs) lAccF rAccF $ nonDepTr ltCls)
+                              && nonDepTr rtCls && any isEMonoidGroupBy rAs ->
+            let mkKey       e = EC.project "key" e
+                mkVal       e = EC.project "value" e
+                mkKVRec kE vE = EC.record [("key", kE), ("value", vE)]
+                (eId, eV)     = ("entry", EC.variable "entry")
+                (uVarId, uV)  = ("old", EC.variable "old")
+            in
             case (lAccF, rAccF) of
               (PDCond2 li lj _ _ _ lgbF laccE lzE, PDCond2 _ rj _ _ _ rgbF raccE rzE) ->
-                let (liV, ljV) = trace "Monoid Group By" $ (EC.variable li, EC.variable lj)
-
-                    mkKey       e = EC.project "key" e
-                    mkVal       e = EC.project "value" e
-                    mkKVRec kE vE = EC.record [("key", kE), ("value", vE)]
+                let (liV, ljV) = (EC.variable li, EC.variable lj)
 
                     chainRGBF = EC.lambda rj $ EC.applyMany rgbF [EC.variable rj]
 
-                    (eId, eV)    = ("entry", EC.variable "entry")
-                    (uVarId, uV) = ("old", EC.variable "old")
-                    entryE       = mkKVRec (EC.applyMany chainRGBF [EC.applyMany lgbF [ljV]]) lzE
+                    entryE    = mkKVRec (EC.applyMany chainRGBF [EC.applyMany lgbF [ljV]]) lzE
 
-                    insertF      = EC.lambda "_" $ mkKVRec (mkKey eV)
-                                     $ EC.applyMany raccE [rzE, EC.applyMany laccE [lzE, ljV]]
+                    insertF   = EC.lambda "_" $ mkKVRec (mkKey eV)
+                                  $ EC.applyMany raccE [rzE, EC.applyMany laccE [lzE, ljV]]
 
-                    updateF      = EC.lambda uVarId $ mkKVRec (mkKey uV)
-                                     $ EC.applyMany laccE [mkVal uV, ljV]
+                    updateF   = EC.lambda uVarId $ mkKVRec (mkKey uV)
+                                  $ EC.applyMany laccE [mkVal uV, ljV]
 
                     nfE = EC.letIn eId entryE $
-                          EC.applyMany (EC.project "upsert_with" liV)
-                                       [eV, insertF, updateF]
+                          EC.binop OSeq
+                            (EC.applyMany (EC.project "upsert_with" liV)
+                                          [eV, insertF, updateF])
+                            liV
 
                     nf  = PChainLambda1 li lj nfE [] []
                 in
                 return $ Just (updateFusionSpec rAs (Open, DepTr), nf)
                   -- ^ TODO: for now, we pick a restrictive fusion spec that disallows further
                   --   fusion with downstream operations.
+
+              (PSDCond2 li lj _ loi ldlK ldlV lmvE lpvE, PSDCond2 _ rj _ _ rdlK rdlV rmvE _) ->
+                let (liV, ljV) = (EC.variable li, EC.variable lj)
+
+                    entryE     = mkKVRec (EC.applyMany (EC.lambda rj rdlK) [mkKVRec ldlK ldlV]) rdlV
+
+                    insertF    = EC.lambda "_" $ mkKVRec (mkKey eV)
+                                   $ EC.applyMany (EC.lambda rj rmvE) [mkKVRec (stripEUIDSpan ldlK) lmvE]
+
+                    updateF    = EC.lambda uVarId $ mkKVRec (mkKey uV)
+                                   $ EC.applyMany (EC.lambda loi lpvE) [uV]
+
+                    nfE = EC.letIn eId entryE $
+                          EC.binop OSeq
+                            (EC.applyMany (EC.project "upsert_with" liV)
+                                          [eV, insertF, updateF])
+                            liV
+
+                    nf  = PChainLambda1 li lj nfE [] []
+                in
+                return $ Just (updateFusionSpec rAs (Open, DepTr), nf)
 
               (_, _) -> Right Nothing
 
@@ -1819,27 +1874,29 @@ fuseFoldTransformers expr = do
           jV = EC.variable j
           oV = EC.variable o
 
-          (entryEE, missingE, presentE) = case gbParams of
-            Left (enE, pvE, mkE, mvE) ->
-              let spresE = EC.lambda o $ EC.record [("key", EC.project "key" oV), ("value", pvE)]
-                  smissE = EC.lambda "_" $ EC.record [("key", mkE), ("value", mvE)]
-              in (Left enE, smissE, spresE)
+          (leti, entryE, missingE, presentE) = case gbParams of
+            Left (lleti, dlK, dlV, mvE, pvE) ->
+              let lentryE = EC.record [("key", dlK), ("value", dlV)]
+                  spresE = EC.lambda o $ EC.record [("key", EC.project "key" oV), ("value", pvE)]
+                  smissE = EC.lambda "_" $ EC.record [("key", EC.project "key" $ EC.variable leti), ("value", mvE)]
+              in (lleti, lentryE, smissE, spresE)
 
-            Right (leti, dlV, gbE, zE, accFE) ->
-              let entryE       = EC.record [("key", EC.applyMany gbE [jV]), ("value", dlV)]
+            Right (rleti, dlV, gbE, zE, accFE) ->
+              let rentryE       = EC.record [("key", EC.applyMany gbE [jV]), ("value", dlV)]
                   npresE       = EC.lambda o $ EC.record [("key", EC.project "key" oV), ("value", EC.applyMany accFE [EC.project "value" oV, jV])]
                   missingAccFE = stripEUIDSpan accFE
                   nmissE       = EC.lambda "_" $ EC.record [("key", EC.project "key" $ EC.variable leti), ("value", EC.applyMany missingAccFE [zE, jV])]
-              in (Right (leti, entryE), nmissE, npresE)
+              in (rleti, rentryE, nmissE, npresE)
 
           seqApp entryE =
             PSeq (EC.applyMany (EC.project "upsert_with" iV)
                                [entryE, missingE, presentE])
               iV []
       in
-      return $ EC.lambda i $ EC.lambda j $ case entryEE of
-        Left entryE -> seqApp entryE
-        Right (leti, entryE) -> EC.letIn leti entryE $ seqApp $ EC.variable leti
+      return $ EC.lambda i $ EC.lambda j $ EC.letIn leti entryE $ seqApp $ EC.variable leti
+
+    cleanExpr e = stripExprAnnotations cleanAnns (const False) e
+    cleanAnns a = isEUID a || isESpan a || isAnyETypeOrEffectAnn a
 
     -- Fusion spec helpers
     updateFusionSpec as spec = filter (not . isEFusionSpec) as ++ [pFusionSpec spec]
@@ -1848,16 +1905,6 @@ fuseFoldTransformers expr = do
 
     nonDepTr DepTr = False
     nonDepTr _ = True
-
-    -- Beta reduction of variable applications, i.e., (\x -> ...) var
-    simpleBetaReduction :: K3 Expression -> K3 Expression
-    simpleBetaReduction expr = runIdentity $ modifyTree reduce expr
-      where
-        reduce n@(PAppLam i bodyE argE@(tag -> EVariable _) _ _) = return $ substituteImmutBinding i (cleanExpr argE) bodyE
-        reduce n = return n
-
-        cleanExpr e = stripExprAnnotations cleanAnns (const False) e
-        cleanAnns a = isEUID a || isESpan a || isAnyETypeOrEffectAnn a
 
 
 
@@ -2063,13 +2110,19 @@ pattern PDCond2 i j leti o dlV gbF accF zE <-
             (PVar ((== i) -> True) _) _) _
     ) _ _
 
-pattern PSDCond2 i j o entryE pvE mkE mvE <-
+pattern PSDCond2 i j leti o dlK dlV mvE pvE <-
   PChainLambda1 i j
-    (PSeq (PPrjApp3 (PVar ((== i) -> True) _)
-                    "upsert_with" 
-                    _
-                    entryE
-                    (PLam "_" (PRec ["key", "value"] [mkE, mvE] _) _)
-                    (PLam o   (PRec ["key", "value"] [(PPrj (PVar ((== o) -> True) _) "value" _), pvE] _) _)
-                    _ _ _)
-          (PVar ((== i) -> True) _) _) _ _
+    (PLetIn
+      (PRec ["key", "value"] [dlK, dlV] _)
+      leti
+      (PSeq (PPrjApp3 (PVar ((== i) -> True) _)
+              "upsert_with" 
+              _
+              (PVar ((== leti) -> True) _)
+              (PLam "_" (PRec ["key", "value"]
+                              [ (PPrj (PVar ((== leti) -> True) _) "key" _), mvE] _) _)
+              (PLam o   (PRec ["key", "value"]
+                              [ (PPrj (PVar ((== o) -> True) _) "key" _), pvE] _) _)
+              _ _ _)
+            (PVar ((== i) -> True) _) _) _
+    ) _ _

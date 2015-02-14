@@ -627,7 +627,7 @@ declTransforms snSpec extInfOpt n = topLevel
                    $ Map.lookup n snSpec
 
     -- Custom, and shared passes
-    fusionReduce = mk betaReduction "Decl-FR" False True False Nothing
+    fusionReduce = mk betaReduction "Decl-FR" False True False (Just [typEffI])
     cseTransform = withStateTransform (Just . cseCnt)
                                       (\ncntOpt st -> st {cseCnt=maybe (cseCnt st) id ncntOpt})
                                       (foldNamedDeclExpression n commonSubexprElim)
