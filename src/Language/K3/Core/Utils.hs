@@ -63,8 +63,10 @@ module Language.K3.Core.Utils
 
 , compareDAST
 , compareEAST
+, compareTAST
 , compareDStrictAST
 , compareEStrictAST
+, compareTStrictAST
 
 , stripDeclAnnotations
 , stripNamedDeclAnnotations
@@ -763,11 +765,17 @@ compareDAST d1 d2 = stripAllDeclAnnotations d1 == stripAllDeclAnnotations d2
 compareEAST :: K3 Expression -> K3 Expression -> Bool
 compareEAST e1 e2 = stripAllExprAnnotations e1 == stripAllExprAnnotations e2
 
+compareTAST :: K3 Type -> K3 Type -> Bool
+compareTAST t1 t2 = stripAllTypeAnnotations t1 == stripAllTypeAnnotations t2
+
 compareDStrictAST :: K3 Declaration -> K3 Declaration -> Bool
 compareDStrictAST d1 d2 = stripDCompare d1 == stripDCompare d2
 
 compareEStrictAST :: K3 Expression -> K3 Expression -> Bool
 compareEStrictAST e1 e2 = stripECompare e1 == stripECompare e2
+
+compareTStrictAST :: K3 Type -> K3 Type -> Bool
+compareTStrictAST t1 t2 = stripTCompare t1 == stripTCompare t2
 
 
 {- Annotation cleaning -}
@@ -847,13 +855,16 @@ stripAllTypeAnnotations = stripTypeAnnotations (const True)
 
 {- Annotation removal -}
 stripDCompare :: K3 Declaration -> K3 Declaration
-stripDCompare = stripDeclAnnotations cleanDecl cleanExpr isTAnnotation
+stripDCompare = stripDeclAnnotations cleanDecl cleanExpr (not . isTAnnotation)
   where cleanDecl a = not $ isDUserProperty a
         cleanExpr a = not (isEQualified a || isEUserProperty a || isEAnnotation a)
 
 stripECompare :: K3 Expression -> K3 Expression
-stripECompare = stripExprAnnotations cleanExpr isTAnnotation
+stripECompare = stripExprAnnotations cleanExpr (not . isTAnnotation)
   where cleanExpr a = not (isEQualified a || isEUserProperty a || isEAnnotation a)
+
+stripTCompare :: K3 Type -> K3 Type
+stripTCompare = stripTypeAnnotations (not . isTAnnotation)
 
 stripComments :: K3 Declaration -> K3 Declaration
 stripComments = stripDeclAnnotations isDSyntax isESyntax (const False)

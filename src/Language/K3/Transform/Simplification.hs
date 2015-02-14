@@ -910,9 +910,10 @@ commonSubexprElim cseCntOpt expr = do
 -- | Collection transformer fusion.
 -- TODO: duplicate eliminating fusion on sets (fine for bags/lists)
 
-streamableTransformerArg :: K3 Expression -> Bool
-streamableTransformerArg (PStreamableTransformerArg _ _ _ _) = True
-streamableTransformerArg _ = False
+streamableTransformerArg :: K3 Expression -> (Bool, FusionAccFClass, FusionAccTClass)
+streamableTransformerArg (PStreamableTransformerArg i j (PAccumulate ((== i) -> True) ((== j) -> True)) _ _) = (True, UCond, IdTr)
+streamableTransformerArg (PStreamableTransformerArg _ _ _ _ _) = (True, ICondN, IndepTr)
+streamableTransformerArg _ = (False, Open, DepTr)
 
 encodeProgramTransformers :: K3 Declaration -> Either String (Bool, K3 Declaration)
 encodeProgramTransformers prog = foldExpression encodeTransformers False prog
@@ -986,10 +987,10 @@ encodeTransformers restChanged expr = do
     -- TODO: infer simpler top-level structure of accumulator function than ICondN.
     -- i.e., ICond1? UCond?
     mkFold2 (PPrjApp2 cE fId fAs
-                      fArg1@(streamableTransformerArg -> streamable) fArg2
+                      fArg1@(streamableTransformerArg -> (streamable, fCls, tCls)) fArg2
                       app1As app2As)
       = do
-          let cls   = if streamable then (ICondN,IndepTr) else (Open,DepTr)
+          let cls   = if streamable then (fCls,tCls) else (Open,DepTr)
           let nfAs' = fAs ++ [pFusionSpec cls, pFusionLineage fId]
           nfAs      <- markPureTransformer nfAs' fArg1
           let r     = PPrjApp2 cE fId nfAs fArg1 fArg2 app1As app2As
@@ -1146,10 +1147,12 @@ fuseFoldTransformers expr = do
       if or chFused then return $ (True, Just $ replaceCh n ch)
       else fuse (n,ch) >>= return . second Just
 
-    fuse nch@(PPrjApp2ChainCh cE fId1@(leftFusable -> True) "fold" fArg1 _ gArg1 gArg2
+    fuse nch@(PPrjApp2ChainCh cE fId1@(leftFusable -> True) "fold"
+                              fArg1 fArg2@((@~ isEType) -> Just (EType fAccT))
+                              gArg1 gArg2@((@~ isEType) -> Just (EType gAccT))
                               fAs _ _ gAs oApp1As oApp2As)
       | fusableChain fAs gAs
-        = case fuseAccF fArg1 gArg1 fAs gAs of
+        = case fuseAccF fArg1 gArg1 fAs gAs fAccT gAccT of
             Right (Just (ngAs, ngArg1)) -> do
               let r = PPrjApp2 cE fId1 (cleanElemAnns ngAs) ngArg1 gArg2 oApp1As oApp2As
               return (True, debugFusionStep fAs gAs ngArg1 r)
@@ -1166,11 +1169,11 @@ fuseFoldTransformers expr = do
     leftFusable fId = fId `elem` ["sample", "fold"]
 
     debugFusionStep fAs gAs ngArg1 e =
-      if True then e else flip trace e $
+      if False then e else flip trace e $
         unlines [ "Fused:" ++ (showFusion fAs gAs), pretty $ stripAllExprAnnotations ngArg1 ]
 
     debugFusionMatching lAccF rAccF lAs rAs r =
-      if True then r
+      if False then r
       else let pp e   = pretty $ stripAllExprAnnotations e
                onFail = unlines ["Fail", pp lAccF, pp rAccF]
            in trace (unwords ["Fusing:", showFusion lAs rAs
@@ -1192,6 +1195,7 @@ fuseFoldTransformers expr = do
     fuseAccF lAccF rAccF
              lAs@(getFusionSpecA -> Just (lfCls, ltCls))
              rAs@(getFusionSpecA -> Just (rfCls, rtCls))
+             lAccT rAccT
       =
         debugFusionMatching lAccF rAccF lAs rAs $
         case (lfCls, rfCls) of
@@ -1445,6 +1449,9 @@ fuseFoldTransformers expr = do
           ---- TODO: special cases for partial operation on DCond2 result.
 
           -- TODO: fusion can apply if the transform is an injective function on keys.
+          (DCond2, UCond) | nonDepTr ltCls && (rtCls == IdTr) && compareTStrictAST lAccT rAccT ->
+            return $ Just (updateFusionSpec lAs (DCond2, ltCls), lAccF)
+
           (DCond2, UCond) | nonDepTr ltCls && nonDepTr rtCls -> Right Nothing
 
           -- If condition is on keys alone, lift the condition.
@@ -1715,7 +1722,7 @@ fuseFoldTransformers expr = do
           -- Unhandled cases: (UCondVal, *), (Open,*), and (DCond2, Open | UCondVal)
           (_, _) -> Right Nothing
 
-    fuseAccF _ _ _ _ = Right Nothing
+    fuseAccF _ _ _ _ _ _ = Right Nothing
 
     fusableChain lAs rAs = any isETransformer lAs && any isETransformer rAs
                          && (any isEPureTransformer lAs || any isEPureTransformer rAs)
@@ -2054,8 +2061,10 @@ pattern PPrjApp3VarSeq i prjId arg1 arg2 arg3 <-
 
 pattern PChainLambda1 i j bodyE iAs jAs = PLam i (PLam j bodyE jAs) iAs
 
-pattern PStreamableTransformerArg i j iAs jAs <-
-  PChainLambda1 i j (inferAccumulation i -> True) iAs jAs
+pattern PAccumulate i j <- PPrjAppVarSeq i "insert" (PVar j _)
+
+pattern PStreamableTransformerArg i j bodyE iAs jAs <-
+  PChainLambda1 i j (id &&& inferAccumulation i -> (bodyE, True)) iAs jAs
 
 pattern PPrjApp2Chain cE fId gId fArg1 fArg2 gArg1 gArg2 fAs iApp1As iApp2As gAs oApp1As oApp2As =
   PPrjApp2 (PPrjApp2 cE fId fAs fArg1 fArg2 iApp1As iApp2As) gId gAs gArg1 gArg2 oApp1As oApp2As
