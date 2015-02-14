@@ -575,19 +575,21 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
 -- | Match two types, returning any pattern variables bound in the second argument.
 matchType :: K3 Type -> K3 Type -> Maybe SpliceEnv
 matchType t patT = matchTree matchTag t patT emptySpliceEnv
-  where matchTag sEnv t1 (tag -> TDeclaredVar i)
+  where matchTag sEnv t1 t2@(tag -> TDeclaredVar i)
           | isPatternVariable i =
-              let extend n =
-                    if null n then Nothing
-                    else Just . (True,) $ addSpliceE n (spliceRecord [(spliceVTSym, SType t1)]) sEnv
+              let extend n = if null n then Nothing
+                             else Just . (True,) $ addSpliceE n (spliceRecord [(spliceVTSym, SType t1)]) sEnv
               in do
                    localLog $ debugMatchPVar i
-                   maybe Nothing extend $ patternVariable i
+                   if matchTypeAnnotations t1 t2 then maybe Nothing extend $ patternVariable i else Nothing
 
         matchTag sEnv t1@(tag -> x) t2@(tag -> y)
-          | x == y && matchMutability t1 t2 = Just (False, sEnv)
+          | x == y && matchTypeMetadata t1 t2 = Just (False, sEnv)
           | otherwise = Nothing
 
+        matchTypeMetadata t1 t2 = matchTypeAnnotations t1 t2 && matchMutability t1 t2
+
+        matchTypeAnnotations t1 t2 = matchAnnotations isTAnnotation (annotations t1) (annotations t2)
         matchMutability t1 t2 = (t1 @~ isTQualified) == (t2 @~ isTQualified)
 
         debugMatchPVar i =
