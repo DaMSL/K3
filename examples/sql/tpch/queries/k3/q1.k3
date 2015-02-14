@@ -79,7 +79,7 @@ trigger q1 : () = \_ -> (
       merge       = [$ merge_agg],
       coordinator = [$ master],
       nodes       = [$ peers],
-      profile     = [$ false] )
+      profile     = [$ true] )
 )
 
 trigger start : () = \_ -> (
@@ -98,7 +98,7 @@ trigger start : () = \_ -> (
                                     coordinator = [$ master ],
                                     nodes       = [$ peers ],
                                     next        = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ])
-                         ],
+                           ],
     preShutdownExpr      = [$ ()],
     finishAsShutdownExpr = [$ false]
   )

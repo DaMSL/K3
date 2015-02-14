@@ -226,7 +226,7 @@ class Dispatcher(mesos.interface.Scheduler):
       self.taskFinished(update.task_id.value)
    
   def frameworkMessage(self, driver, executorId, slaveId, message):
-    print("[FRMWK MSG] %s" % message)
+    print("[FRMWK MSG] %s" % message[:-1])
   
   # Handle a resource offers from Mesos.
   # If there is a pending job, add all offers to self.offers

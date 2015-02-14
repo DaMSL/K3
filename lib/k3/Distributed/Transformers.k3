@@ -75,12 +75,8 @@ control DistributedCollectionStatistics [ lbl         : label
         }
 }
 
-
 // Distributed Group By Implementation
 // Enabling profiling will display the total elapsed time for the operator
-// And skew statistics, namely:
-//   - Difference in time between first and last peer finished with the group-by
-//   - Number of keys assigned to each peer
 
 control DistributedGroupByGeneric [ lbl             : label
                                   , peer_next       : expr
@@ -91,14 +87,12 @@ control DistributedGroupByGeneric [ lbl             : label
                                   , profile         : expr ]
 {
   ignore ( (?e.groupBy ?groupF ?aggF ?accE) : collection ?t )
-     => ((if $[profile]
-          then $[lbl]_start_ts = now_int ()
-          else ());
-        $[nodes].iterate (\p -> ($[lbl]_scan, p.addr) <- ()) )
+     => (if $[profile] 
+          then (() @:StartTimer) @Time(lbl=[# $[lbl]_GROUPBY], tag=[$ "Time "])
+          else () 
+        );
+        $[nodes].iterate (\p -> ($[lbl]_scan, p.addr) <- ()) 
      +> {
-          declare $[lbl]_start_ts : mut int = 0
-          declare $[lbl]_end_ts : mut int = 0
-
           trigger $[lbl]_scan : () = \_ -> (
             (ignore ( $.[e].groupBy $.[groupF] $.[aggF] $.[accE]
             ) @SendPartitionByKey( dest_trg      = [$ $[lbl]_merge]
@@ -119,14 +113,12 @@ control DistributedGroupByGeneric [ lbl             : label
           )
 
           trigger $[lbl]_global_barrier : () = \_ -> (
-            ( if $[profile]
-                then ( $[lbl]_end_ts = now_int ();
-                       let elapsed = $[lbl]_end_ts - $[lbl]_start_ts
-                       in print ($[|exprLabel 'lbl|] ++ " total time: " ++ (itos elapsed))
-                     )
-                else ();
-              $[next]
-            ) @OnCounter(id=[# $[lbl]_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ $[profile]])
+            ((if $[profile]
+              then (() @:StopTimer) @Time(lbl=[# $[lbl]_GROUPBY ], tag=[$ "Time "])
+              else ()
+            );
+            $[next]
+            ) @OnCounter(id=[# $[lbl]_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
           )
         }
 }
@@ -168,9 +160,14 @@ control DistributedHashJoin [ lbl             : label
                             , nodes           : expr
                             , lhs_build_ty    : type
                             , rhs_probe_ty    : type
+                            , profile         : expr
                             ]
 {
-  () => $[nodes].iterate (\p -> ($[lbl]_lhs_scan, p.addr) <- ())
+  () => (if $[profile]
+          then (() @:StartTimer) @Time(lbl=[# $[lbl]_HASHJOIN ], tag=[$ "Time "])
+          else ()
+        );
+        $[nodes].iterate (\p -> ($[lbl]_lhs_scan, p.addr) <- ())
      +> {
         trigger $[lbl]_lhs_scan : () = \_ -> (
           (ignore
@@ -186,7 +183,6 @@ control DistributedHashJoin [ lbl             : label
         )
 
         trigger $[lbl]_lhs_peer_barrier : () = \_ -> (
-          print "Hash join LHS finished build." ;
           ( $[nodes].iterate (\p -> ($[lbl]_rhs_scan, p.addr) <- ())
           ) @OnCounter(id=[# $[lbl]_peer_build_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
         )
@@ -207,14 +203,16 @@ control DistributedHashJoin [ lbl             : label
         )
 
         trigger $[lbl]_rhs_peer_barrier : () = \_ -> (
-          ( print "Hash join RHS finished probe." ;
-            $[peer_next] ;
+          ( $[peer_next] ;
             ($[lbl]_global_barrier, $[coordinator]) <- ()
           ) @OnCounter(id=[# $[lbl]_rhs_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
         )
 
         trigger $[lbl]_global_barrier : () = \_ -> (
-          ( print "Hash join done." ;
+          ( (if $[profile]
+               then (() @:StopTimer) @Time(lbl=[# $[lbl]_HASHJOIN ], tag=[$ "Time "])
+               else ()
+            );
             $[next]
           ) @OnCounter(id=[# $[lbl]_join_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
         )
@@ -288,7 +286,6 @@ control PipelineSymmetricHashJoin [ lbl                  : label
           )
 
           trigger $[lbl]_lhs_peer_barrier : () = \_ -> (
-            print "Hash join LHS finished processing." ;
             (
               // LHS is finished, we no longer need to build/probe the RHS
               $[lbl]_lhs_done = true;
@@ -301,7 +298,6 @@ control PipelineSymmetricHashJoin [ lbl                  : label
           )
 
           trigger $[lbl]_rhs_peer_barrier : () = \_ -> (
-            print "Hash join RHS finished processing." ;
             (
               // RHS is finished, we no longer need to build/probe the LHS
               $[lbl]_rhs_done = true;
@@ -314,8 +310,7 @@ control PipelineSymmetricHashJoin [ lbl                  : label
           )
 
           trigger $[lbl]_global_barrier : () = \_ -> (
-            ( print "Hash join done." ;
-              $[next]
+            ( $[next]
             ) @OnCounter(id=[# $[lbl]_join_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
           )
         }

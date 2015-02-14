@@ -61,7 +61,7 @@ control TPCHBenchmarkWithoutMaster
         ($[preTestFinishExpr] finishArg);
         ((( $[preFinishExpr];
             if $[finishAsShutdownExpr] then $[nodes].iterate (\p -> (shutdown, p.addr) <- ()) else ()
-          ) @:StopTimer) @Time(lbl=[# query], tag=[$ "Query time"])
+          ) @:StopTimer) @Time(lbl=[# Query], tag=[$ "Time "])
         ) @OnCounter(id=[# query_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
       )
 
@@ -70,8 +70,8 @@ control TPCHBenchmarkWithoutMaster
         ( $[preReadyExpr];
           (
           (let load_time = (now_int () - program_start_ts)
-          in print ("Load time:" ++  (itos load_time)) );
-          ( $[onReadyExpr] @:StartTimer) @Time(lbl=[# query], tag=[$ "Query time:"])
+          in print ("Time Load:" ++  (itos load_time)) );
+          ( $[onReadyExpr] @:StartTimer) @Time(lbl=[# Query], tag=[$ "Time "])
           ) @OnCounter(id=[#  nodes_ready], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false]))
       )
 

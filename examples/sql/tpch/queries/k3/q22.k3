@@ -137,6 +137,7 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
                                  , value : collection {cntrycode:string, c_acctbal : real}
                                               @Collection
                                  } @Collection ]
+        , profile         = [$ true]
         )
 
   ) @OnCounter(id=[# customer_subagg_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
