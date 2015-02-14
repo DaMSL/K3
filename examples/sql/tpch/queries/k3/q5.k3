@@ -157,6 +157,7 @@ trigger q5_lo_start : () = \_ -> (
                                  } @Collection
                             ]
         , rhs_probe_ty    = [: collection {key : int, value : int } @Collection ]
+        , profile         = [$ true]
         )
 )
 
@@ -193,6 +194,7 @@ trigger q5_loc_start : () = \_ -> (
                                 , value : collection {l_suppkey : int, l_epd : real} @Collection
                                 } @Collection ]
         , rhs_probe_ty    = [: collection {key : int, value : int } @Collection ]
+        , profile         = [$ true]
         )
 )
 
@@ -220,6 +222,7 @@ trigger q5_locs_start : () = \_ -> (
         , nodes           = [$ peers ]
         , lhs_build_ty    = [: collection {key : {s_suppkey : int, s_nationkey : int}, value : real} @Collection ]
         , rhs_probe_ty    = [: collection {key : {s_suppkey : int, s_nationkey : int}, value : ()  } @Collection ]
+        , profile         = [$ true]
         )
 )
 
@@ -256,6 +259,7 @@ trigger q5_locsn_start : () = \_ -> (
         , nodes           = [$ peers ]
         , lhs_build_ty    = [: collection {key : int, value : real} @Collection ]
         , rhs_probe_ty    = [: collection {key : int, value : {n_regionkey: int, n_name: string} } @Collection ]
+        , profile         = [$ true]
         )
 )
 
@@ -284,6 +288,7 @@ trigger q5_locsnr_start : () = \_ -> (
         , nodes           = [$ peers ]
         , lhs_build_ty    = [: collection {key : int, value : collection {key:string, value:real} @Map } @Collection ]
         , rhs_probe_ty    = [: collection {key : int, value : () } @Collection ]
+        , profile         = [$ true]
         )
 )
 

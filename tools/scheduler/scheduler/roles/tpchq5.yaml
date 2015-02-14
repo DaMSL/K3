@@ -1,0 +1,15 @@
+---
+name: role 1
+peers: 128
+hostmask: ".*hd.*"
+k3_globals:
+  role: rows
+  master: auto
+  profilingEnabled: True
+k3_data:
+  - {var: lineitemFiles, path: /local/data/tpch/tpch10g/lineitem, policy: global}
+  - {var: ordersFiles, path: /local/data/tpch/tpch10g/orders, policy: global}
+  - {var: customerFiles, path: /local/data/tpch/tpch10g/customer, policy: global}
+  - {var: supplierFiles, path: /local/data/tpch/tpch10g/supplier, policy: global}
+  - {var: nationFiles, path: /local/data/tpch/tpch10g/nation, policy: global}
+  - {var: regionFiles, path: /local/data/tpch/tpch10g/region, policy: global}

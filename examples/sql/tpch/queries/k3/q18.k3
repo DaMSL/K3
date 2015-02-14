@@ -94,7 +94,7 @@ trigger lineitem_having : () = \_ -> (
       merge       = [$ (\a -> \b -> a + b)],
       coordinator = [$ master],
       nodes       = [$ peers],
-      profile     = [$ false] )
+      profile     = [$ true] )
 )
 
 // Since lineitem is already partitioned by orderkey, we can implement the
@@ -126,7 +126,7 @@ trigger lineitem_orders : () = \_ -> (
                           {None -> ()})],
       coordinator = [$ master],
       nodes       = [$ peers],
-      profile     = [$ false] )
+      profile     = [$ true] )
 )
 
 trigger lineitem_orders_customer : () = \_ -> (
@@ -177,6 +177,7 @@ trigger lineitem_orders_customer : () = \_ -> (
                                                       , value: real} @Map
                                  } @Collection ]
         , rhs_probe_ty    = [: collection {key : int, value : string} @Collection ]
+        , profile         = [$ false]
         )
 )
 

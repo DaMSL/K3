@@ -109,19 +109,19 @@ trigger lineitem_orders : () = \_ -> (
                   { None   -> ()  }
               ) ]
 
-        , peer_next       = [$ print "LI-OR join finished orders probe." ;
-                               (lineitem_orders_customer, me) <- ()
-                            ]
-        , next            = [$ print "LI-OR join all nodes finished." ]
+        , peer_next       = [$ (lineitem_orders_customer, me) <- () ]
+        , next            = [$ () ]
         , coordinator     = [$ master]
         , nodes           = [$ peers]
         , lhs_build_ty    = [: collection {key : int, value : real } @Collection ]
         , rhs_probe_ty    = [: collection {key : int, value : {od:string, ck:int, sp:int}} @Collection ]
+        , profile         = [$ true]
         )
 )
 
 
 trigger lineitem_orders_customer : () = \_ -> (
+  ( (() @:StartTimer) @Time(lbl=[# loc_JOIN], tag=[$ "Time "]) );
   // Broadcast customers to all peers with li-or buckets for semi-join.
   let building_customers = (customer.filter  (\c -> c.c_mktsegment == "BUILDING" ))
                                     .map     (\c -> { c_custkey : c.c_custkey })
@@ -138,7 +138,10 @@ trigger loc_probe_rhs : cs_ck_bag = \vals -> (
        { Some lo_r -> lo_r.value.iterate (\kv -> q3_peer_result.insert_with kv merge_lior_epd_by_ods) }
        { None -> () }
     ) ;
-  ( (() @:Result) @TPCHBenchmarkWithoutMaster
+  ( ( (() @:Result) @TPCHBenchmarkWithoutMaster );
+      if master == me
+        then ( () @:StopTimer) @Time(lbl=[# loc_JOIN], tag=[$ "Time "])
+        else ()
   ) @OnCounter(id=[# loc_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 )
 
@@ -156,7 +159,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   onReadyExpr          = [$ (lineitem_orders, me) <- ()],
   finishArgT           = [: ()],
   preTestFinishExpr    = [$ (\_ -> ())],
-  preFinishExpr        = [$ () @DistributedCollectionStatistics(
+  preFinishExpr        = [$  () @DistributedCollectionStatistics(
                                     lbl         = [# q3_skew ],
                                     query_cl    = [* [% cl: [# lo_skew],  ce: [$ li_epd_by_ok_map]]
                                                    , [% cl: [# loc_skew], ce: [$ lior_epdods_map]]
