@@ -7,4 +7,4 @@ k3_globals:
   master: auto
   profilingEnabled: True
 k3_data:
-  - {var: dataFiles, path: /local/data/tpch100g/lineitem, policy: global}
+  - {var: dataFiles, path: /local/data/tpch10g/lineitem, policy: global}
