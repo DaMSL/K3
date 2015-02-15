@@ -1169,11 +1169,11 @@ fuseFoldTransformers expr = do
     leftFusable fId = fId `elem` ["sample", "fold"]
 
     debugFusionStep fAs gAs ngArg1 e =
-      if False then e else flip trace e $
+      if True then e else flip trace e $
         unlines [ "Fused:" ++ (showFusion fAs gAs), pretty $ stripAllExprAnnotations ngArg1 ]
 
     debugFusionMatching lAccF rAccF lAs rAs r =
-      if False then r
+      if True then r
       else let pp e   = pretty $ stripAllExprAnnotations e
                onFail = unlines ["Fail", pp lAccF, pp rAccF]
            in trace (unwords ["Fusing:", showFusion lAs rAs
