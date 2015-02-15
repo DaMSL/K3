@@ -317,19 +317,19 @@ control PipelineSymmetricHashJoin [ lbl                  : label
               if is_left then (
                 case lv_opt of
                 { Some lvals ->
-                  let outputs = lvals.fold $[rhs_probe] $[empty_out_buffer] in
-                  $[lhs_pipeline_next] outputs;
-                  if $[lbl]_rhs_done then () else ( lvals.iterate (\lkv -> $[lbl]_lhs_ht.insert_with lkv $[lhs_insert_with]) )
+                  let outputs = lvals.fold ($[rhs_probe] $[lbl]_rhs_ht) $[empty_out_buffer] in
+                  ((if outputs.size () > 0 then ( $[lhs_pipeline_next] outputs ) else ());
+                    if $[lbl]_rhs_done then () else ( lvals.iterate (\lkv -> $[lbl]_lhs_ht.insert_with lkv $[lhs_insert_with]) ))
                 }
-                { None -> error ($[|exprLabel 'lbl|] ++ "_process_redistribute: invalid left join inputs.") }
+                { None -> error (print ($[|exprLabel 'lbl|] ++ "_process_redistribute: invalid left join inputs.")) }
               ) else (
                 case rv_opt of
                 { Some rvals ->
-                  let outputs = rvals.fold $[lhs_probe] $[empty_out_buffer] in
-                  $[rhs_pipeline_next] outputs;
-                  if $[lbl]_lhs_done then () else ( rvals.iterate (\rkv -> $[lbl]_rhs_ht.insert_with rkv $[rhs_insert_with]) )
+                  let outputs = rvals.fold ($[lhs_probe] $[lbl]_lhs_ht) $[empty_out_buffer] in
+                  ((if outputs.size() > 0 then ( $[rhs_pipeline_next] outputs ) else ());
+                    if $[lbl]_lhs_done then () else ( rvals.iterate (\rkv -> $[lbl]_rhs_ht.insert_with rkv $[rhs_insert_with]) ))
                 }
-                { None -> error ($[|exprLabel 'lbl|] ++ "_process_redistribute: invalid right join inputs.") }
+                { None -> error (print ($[|exprLabel 'lbl|] ++ "_process_redistribute: invalid right join inputs.")) }
               )
             )
           )
@@ -338,8 +338,8 @@ control PipelineSymmetricHashJoin [ lbl                  : label
             (
               // LHS is finished, we no longer need to build/probe the RHS
               $[lbl]_lhs_done = true;
-              $[lbl]_rhs_ht.clear();
-              if not $[lbl]_rhs_finished then () else (
+              // TODO: add collection method: $[lbl]_rhs_ht.clear();
+              if not $[lbl]_rhs_done then () else (
                 $[peer_next];
                 ($[lbl]_global_barrier, $[coordinator]) <- ()
               )
@@ -350,8 +350,8 @@ control PipelineSymmetricHashJoin [ lbl                  : label
             (
               // RHS is finished, we no longer need to build/probe the LHS
               $[lbl]_rhs_done = true;
-              $[lbl]_lhs_ht.clear();
-              if not $[lbl]_lhs_finished then () else (
+              // TODO: add collection method: $[lbl]_lhs_ht.clear();
+              if not $[lbl]_lhs_done then () else (
                 $[peer_next];
                 ($[lbl]_global_barrier, $[coordinator]) <- ()
               )
@@ -541,20 +541,18 @@ control PipelineSkewJoin [ lbl                  : label
                 case lv_opt of
                 { Some lvals ->
                   let outputs = lvals.fold $[rhs_probe] $[rhs_empty_out_buffer] in
-                  $[lhs_pipeline_next] outputs;
-                  if $[lbl]_rhs_done then ()
-                  else ( lvals.iterate (\lkv -> $[lbl]_lhs_ht.insert_with lkv $[lhs_insert_ht_with]) )
+                  ((if outputs.size () > 0 then $[lhs_pipeline_next] outputs else ());
+                    if $[lbl]_rhs_done then () else ( lvals.iterate (\lkv -> $[lbl]_lhs_ht.insert_with lkv $[lhs_insert_with]) ))
                 }
-                { None -> error ($[|exprLabel 'lbl|] ++ "_process_redistribute: invalid left join inputs.") }
+                { None -> error (print ($[|exprLabel 'lbl|] ++ "_process_redistribute: invalid left join inputs.")) }
               ) else (
                 case rv_opt of
                 { Some rvals ->
                   let outputs = rvals.fold $[lhs_probe] $[lhs_empty_out_buffer] in
-                  $[rhs_pipeline_next] outputs;
-                  if $[lbl]_lhs_done then ()
-                  else ( rvals.iterate (\rkv -> $[lbl]_rhs_ht.insert_with rkv $[rhs_insert_ht_with]) )
+                  ((if outputs.size() > 0 then $[rhs_pipeline_next] outputs else ());
+                    if $[lbl]_lhs_done then () else ( rvals.iterate (\rkv -> $[lbl]_rhs_ht.insert_with rkv $[rhs_insert_with]) ))
                 }
-                { None -> error ($[|exprLabel 'lbl|] ++ "_process_redistribute: invalid right join inputs.") }
+                { None -> error (print ($[|exprLabel 'lbl|] ++ "_process_redistribute: invalid right join inputs.")) }
               )
             )
           )
@@ -564,8 +562,8 @@ control PipelineSkewJoin [ lbl                  : label
             (
               // LHS is finished, we no longer need to build/probe the RHS
               $[lbl]_lhs_done = true;
-              $[lbl]_rhs_ht.clear();
-              if not $[lbl]_rhs_finished then () else (
+              // TODO: add collection method: $[lbl]_rhs_ht.clear();
+              if not $[lbl]_rhs_done then () else (
                 $[peer_next];
                 ($[lbl]_global_barrier, $[coordinator]) <- ()
               )
@@ -577,8 +575,8 @@ control PipelineSkewJoin [ lbl                  : label
             (
               // RHS is finished, we no longer need to build/probe the LHS
               $[lbl]_rhs_done = true;
-              $[lbl]_lhs_ht.clear();
-              if not $[lbl]_lhs_finished then () else (
+              // TODO: add collection method: $[lbl]_lhs_ht.clear();
+              if not $[lbl]_lhs_done then () else (
                 $[peer_next];
                 ($[lbl]_global_barrier, $[coordinator]) <- ()
               )
