@@ -1,0 +1,10 @@
+include "Core/Profile.k3"
+
+declare sum: mut int = 0
+
+trigger worker: () = (\y -> (((range 10000).iterate (\i -> sum = sum + i.i)); (print ("Did work.")); (wrapper, me) <- ())) @ProfileTrigger(lbl = [# worker])
+
+trigger wrapper: () = \_ -> (() @ CollectProfile(lbls = [* [# worker]], coordinator = [$ me], nodes = [$ peers], next = [$ haltEngine ()]))
+
+source s1: () = value ()
+feed s1 |> worker

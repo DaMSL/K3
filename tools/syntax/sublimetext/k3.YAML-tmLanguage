@@ -1,0 +1,162 @@
+# [PackageDev] target_format: plist, ext: tmLanguage
+---
+name: K3
+scopeName: source.syntax_name
+fileTypes: [k3]
+uuid: 57951741-2557-458e-8e7a-e16402697106
+
+patterns:
+- include: '#comments'
+- include: '#declarations'
+- include: '#memdecls'
+- include: '#annotations'
+- match: \b(as|bind|case|content|effects|else|forall|fresh|fun|given|horizon|if|in|io|include|let|of|return|self|shared|structure|then|type|with)\b
+  name: keyword.control.k3
+- match: \b(address|bool|byte|collection|decl|expr|ind|int|label|labeltype|literal|option|real|string)\b
+  name: storage.type.k3
+- match: \b(immut|mut)\b
+  name: storage.modifier.k3
+- match: \b(true|false|empty|Some|None)\b
+  name: constant.language.k3
+- match: \(\)
+  name: constant.language.unit.k3
+- comment: Floats are always decimal
+  match: \b([0-9]+\.[0-9]+([eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+)\b
+  name: constant.numeric.float.k3
+- match: \b([0-9]+|0([xX][0-9a-fA-F]+|[oO][0-7]+))\b
+  name: constant.numeric.k3
+- begin: '"'
+  beginCaptures:
+      '0':
+          name: punctuation.definition.string.begin.k3
+  end: $|"
+  endCaptures:
+      '0':
+          name: punctuation.definition.string.end.k3
+  name: string.quoted.double.haskell
+
+##############
+repository:
+  comments:
+    patterns:
+    -   begin: //
+        beginCaptures:
+            '0':
+                name: punctuation.definition.comment.k3
+        end: $\n?
+        name: comment.line.double-slash.k3
+    -   begin: /\*
+        captures:
+            '0':
+                name: punctuation.definition.comment.k3
+        end: \*/
+        name: comment.block.k3
+
+  annotations:
+    patterns:
+      -   begin: (@:)\s*(\{)
+          beginCaptures:
+              '1':
+                  name: constant.language.k3
+              '2':
+                  name: constant.language.k3
+          end: \s*([^\}]+)\s*(\})
+          endCaptures:
+              '1':
+                  name: entity.name.function.k3
+              '2':
+                  name: constant.language.k3
+          name: meta.declaration.propusage.k3
+
+      -   begin: (@:)
+          beginCaptures:
+              '1':
+                  name: constant.language.k3
+          end: \s*([a-zA-Z0-9_']+)\s*
+          endCaptures:
+              '1':
+                  name: entity.name.function.k3
+          name: meta.declaration.propusage.k3
+
+      -   begin: (@)\s*(\{)
+          beginCaptures:
+              '1':
+                  name: constant.language.k3
+              '2':
+                  name: constant.language.k3
+          end: \s*([^\}]+)\s*(\})
+          endCaptures:
+              '1':
+                  name: entity.name.function.k3
+              '2':
+                  name: constant.language.k3
+          name: meta.declaration.annusage.k3
+
+      -   begin: (@)
+          beginCaptures:
+              '1':
+                  name: constant.language.k3
+          end: \s*([a-zA-Z0-9_']+)\s*
+          endCaptures:
+              '1':
+                  name: entity.name.function.k3
+          name: meta.declaration.annusage.k3
+
+  memdecls:
+    patterns:
+      -   begin: \b(provides|requires)\b\s*\b(lifted?)\b
+          beginCaptures:
+              '1':
+                  name: keyword.control.k3
+              '2':
+                  name: keyword.control.k3
+          end: \s*([a-zA-Z0-9_']+)\s*
+          endCaptures:
+              '1':
+                  name: entity.name.function.k3
+          name: meta.declaration.member.k3
+
+  declarations:
+    patterns:
+      -   begin: \b(trigger|declare|source|sink)\b
+          beginCaptures:
+              '1':
+                  name: keyword.control.k3
+          end: \s*([a-zA-Z0-9_']+)\s*(:)\s*
+          endCaptures:
+              '1':
+                  name: entity.name.function.k3
+              '2':
+                  name: keyword.other.colon.k3
+          name: meta.declaration.k3
+      -   begin: \b(annotation|control)\b
+          beginCaptures:
+              '1':
+                  name: keyword.control.k3
+          end: \s*([a-zA-Z0-9_']+)\s*
+          endCaptures:
+              '1':
+                  name: entity.name.function.k3
+          name: meta.declaration.annotation.k3
+      -   begin: \b(typedef)\b
+          beginCaptures:
+              '1':
+                  name: keyword.control.k3
+          end: \s*([a-zA-Z0-9_']+)\s*(=)\s*
+          endCaptures:
+              '1':
+                  name: entity.name.function.k3
+              '2':
+                  name: keyword.other.equals.k3
+          name: meta.declaration.typedef.k3
+      -   begin: \b(feed)\b
+          beginCaptures:
+              '1':
+                  name: keyword.control.k3
+          end: \s*([a-zA-Z0-9_']+)\s*(\|>)\s*
+          endCaptures:
+              '1':
+                  name: entity.name.function.k3
+              '2':
+                  name: keyword.other.pipe.k3
+          name: meta.declaration.feed.k3

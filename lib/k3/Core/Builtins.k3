@@ -72,7 +72,8 @@ declare exp : real -> real
 declare sin : real -> real
 declare cos : real -> real
 declare tan : real -> real
-
+declare tanh : real -> real
+declare sqrt : real -> real
 
 ////////////////////////
 //

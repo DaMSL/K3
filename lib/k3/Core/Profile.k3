@@ -1,3 +1,5 @@
+include "Annotation/Map.k3"
+include "Core/Barrier.k3"
 include "Core/Builtins.k3"
 
 control Profile[lbl : label, tag : expr] {
@@ -31,4 +33,54 @@ control Time[lbl : label, tag : expr] {
   shared { declare $[lbl]_start_ms   : mut int = 0
            declare $[lbl]_end_ms     : mut int = 0
            declare $[lbl]_elapsed_ms : mut int = 0 }
+}
+
+control ProfileTrigger[lbl: label] {
+  (\?x -> ?b) => (\$#[x] -> $.[b] @OnProfile(f = [$ \s -> $[lbl]_time_samples.insert {time: s}]))
+
+  +> {
+    declare $[lbl]_time_samples: collection { time: int } @ Collection
+  }
+}
+
+typedef peer_sample_map_entry = { key: string, value: collection { time: int } @ Collection }
+typedef peer_sample_map = collection peer_sample_map_entry @ Map
+typedef sample_map_entry = { key: address, value: peer_sample_map }
+typedef sample_map = collection sample_map_entry @ Map
+
+control CollectProfile[lbls: [label], coordinator: expr, nodes: expr, next: expr] {
+  ?e => $[nodes].iterate (\p -> (send_time_samples, p.addr) <- ())
+  +> {
+    declare global_time_samples: sample_map
+
+    trigger send_time_samples: () = \_ -> (
+      let local_outgoing_samples = empty peer_sample_map_entry @ Map in
+      ($[|
+            SExpr $
+            EC.block $ flip Prelude.map (fromJust $ elemsOfSList 'lbls) $ \lbl ->
+              EC.applyMany
+                  (EC.project "insert" (EC.variable "local_outgoing_samples"))
+                  [EC.record [ ("key", EC.constant $ CString $ fromJust $ idOfSLabel lbl)
+                             , ("value", EC.variable $ fromJust (idOfSLabel lbl) ++ "_time_samples")
+                             ]
+                  ]
+      |]);
+      (receive_time_samples, $[coordinator]) <- (me, local_outgoing_samples)
+    )
+
+    trigger receive_time_samples: (address, peer_sample_map) = \x -> (
+      (bind x as (sender, times) in
+        global_time_samples.insert { key: sender, value: times });
+      ((global_time_samples.iterate (\r ->
+      (
+      (print ("Peer: " ++ atos r.key));
+        r.value.iterate (\psme ->
+          let sum = psme.value.fold (\a -> \e -> a + e.time) 0.0 in
+            print ("Trigger:\\n" ++ psme.key ++ " " ++ rtos (sum / psme.value.size ()))
+        )
+        )
+      )); $[next]
+      ) @OnCounter(id=[# global_profiles_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
+    )
+  }
 }

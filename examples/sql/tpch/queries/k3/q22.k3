@@ -38,8 +38,8 @@ order by cntrycode
 ****************************/
 
 declare master   : address = 127.0.0.1:4000
-declare customer : customer_bag
-declare orders   : orders_bag
+declare customer : mut customer_bag
+declare orders   : mut orders_bag
 
 declare c_valid_phone : collection {key : string, value : ()} @Map =
   {| key:string, value:()
@@ -94,9 +94,10 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
     () @DistributedHashJoin(
           lbl       = [# co ]
 
-        , lhs_query = [$ orders.groupBy (\o -> o.o_custkey)
+        , lhs_query = [$ let result = orders.groupBy (\o -> o.o_custkey)
                                         (\acc -> \_ -> acc)
                                         ()
+                         in (orders = empty orders_r @Collection); result
                       ]
 
         , rhs_query = [$ (customer.filter  (\c -> case c_valid_phone.lookup
@@ -137,6 +138,7 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
                                  , value : collection {cntrycode:string, c_acctbal : real}
                                               @Collection
                                  } @Collection ]
+        , profile         = [$ true]
         )
 
   ) @OnCounter(id=[# customer_subagg_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])

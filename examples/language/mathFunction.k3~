@@ -1,0 +1,25 @@
+include "Core/Builtins.k3"
+
+declare i : real = 2.5
+declare x1 : mut real = 0.0
+declare x2 : mut real = 0.0
+declare x3 : mut real = 0.0
+declare x4 : mut real = 0.0
+declare x5 : mut real = 0.0
+declare x6 : mut real = 0.0
+declare x7 : mut real = 0.0
+
+declare rv : mut collection {elem: real} @ {Vector} = empty  {elem: real} @ {Vector}
+
+trigger t : () = \_ -> (
+	x1 = log i;
+	x2 = exp i;
+	x3 = sin i;
+	x4 = cos i;
+	x5 = tan i;
+	x6 = tanh i;
+	x7 = sqrt i
+)
+
+source s1 : () = value ()
+feed s1 |> t
