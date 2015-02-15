@@ -94,34 +94,37 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
     () @DistributedHashJoin(
           lbl       = [# co ]
 
-        , lhs_query = [$ orders.groupBy (\o -> o.o_custkey)
-                                        (\acc -> \_ -> acc)
-                                        ()
+        , lhs_query = [$ (orders.groupBy (\o -> o.o_custkey)
+                                         (\_ -> \_ -> ())
+                                         ())
+                                .fold    (\acc -> \o -> ((acc.insert o); acc))
+                                         (empty {key:int, value: ()} @Map)
                       ]
 
-        , rhs_query = [$ (customer.filter  (\c -> case c_valid_phone.lookup
-                                                         {key: (slice_string c.c_phone 0 2), value:()}
-                                                  of {Some x -> c.c_acctbal > c_avg_acctbal}
-                                                     {None -> false}))
-                                  .groupBy (\c -> c.c_custkey)
-                                           (\acc -> \c -> ((acc.insert { cntrycode : (slice_string c.c_phone 0 2)
-                                                                       , c_acctbal : c.c_acctbal })
-                                                            ; acc))
-                                           empty {cntrycode: string, c_acctbal: real} @Collection
+        , rhs_query = [$ ((customer.filter  (\c -> case c_valid_phone.lookup
+                                                          {key: (slice_string c.c_phone 0 2), value:()}
+                                                   of {Some x -> c.c_acctbal > c_avg_acctbal}
+                                                      {None -> false}))
+                                   .groupBy (\c -> c.c_custkey)
+                                            (\acc -> \c -> ((acc.insert { cntrycode : (slice_string c.c_phone 0 2)
+                                                                        , c_acctbal : c.c_acctbal })
+                                                             ; acc))
+                                            (empty {cntrycode: string, c_acctbal: real} @Collection))
+                                   .fold    (\acc -> \c -> ((acc.insert c); acc))
+                                            (empty {key:int, value: collection {cntrycode: string, c_acctbal: real} @Collection} @Map)
                       ]
 
         , lhs_build_merge = [$ (\o -> o_ck.insert_with o (\a -> \b -> {key: a.key, value: ()})) ]
 
-        , rhs_probe_merge = [$
-            (\c ->
-                case o_ck.lookup {key: c.key, value: ()}
-                of { Some _ -> () }
-                   { None   -> c.value.iterate (\ca ->
-                                 c_nt_by_cc.insert_with
-                                   {key: ca.cntrycode, value: {nc: 1, tab:ca.c_acctbal}}
-                                   merge_c_nt_by_cc)
-                   }
-              ) ]
+        , rhs_probe_merge = [$ (\c -> case o_ck.lookup {key: c.key, value: ()}
+                                      of { Some _ -> () }
+                                         { None   -> c.value.iterate (\ca ->
+                                                       c_nt_by_cc.insert_with
+                                                         {key: ca.cntrycode, value: {nc: 1, tab:ca.c_acctbal}}
+                                                         merge_c_nt_by_cc)
+                                         }
+                               )
+                            ]
 
         , peer_next       = [$ print "OR-CS join finished customer probe." ;
                                (q22_final_aggregate, master) <- c_nt_by_cc ;
@@ -131,12 +134,10 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
         , next            = [$ print "OR-CS join all nodes finished." ]
         , coordinator     = [$ master]
         , nodes           = [$ peers]
-        , lhs_build_ty    = [: collection {key : int, value : () } @Collection ]
-        , rhs_probe_ty    = [: collection
-                                 { key : int
-                                 , value : collection {cntrycode:string, c_acctbal : real}
-                                              @Collection
-                                 } @Collection ]
+        , lhs_build_ty    = [: collection {key : int, value : ()} @Map ]
+        , rhs_probe_ty    = [: collection { key : int
+                                          , value : collection {cntrycode:string, c_acctbal : real} @Collection
+                                          } @Map ]
         , profile         = [$ true]
         )
 

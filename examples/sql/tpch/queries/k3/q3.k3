@@ -73,23 +73,23 @@ declare merge_lior_r : lior_epdods_by_ck_r -> lior_epdods_by_ck_r -> lior_epdods
 trigger lineitem_orders : () = \_ -> (
   () @DistributedHashJoin
         ( lbl       = [# lo ]
-        , lhs_query = [$ (lineitem.filter  (\l -> l.l_shipdate > "1995-03-15" ))
-                                  .groupBy (\l -> l.l_orderkey)
-                                           (\acc -> \l -> acc + (l.l_extendedprice * (1 - l.l_discount)))
-                                           0.0
+        , lhs_query = [$  // TODO: this currently does not fuse with the group-by in SendPartitionByKey.
+                          // We need a nested fusion class structure, i.e., ICond1(DCond2), for this functionality.
+                          ((lineitem.filter  (\l -> l.l_shipdate > "1995-03-15" ))
+                                    .groupBy (\l -> l.l_orderkey)
+                                             (\acc -> \l -> acc + (l.l_extendedprice * (1 - l.l_discount)))
+                                             0.0)
+                                    .fold    (\acc -> \l -> ((acc.insert l); acc)) (empty {key:int, value:real} @Map)
                       ]
 
-        , rhs_query = [$
-           (orders.filter (\o -> o.o_orderdate < "1995-03-15" ))
-                  .fold   (\acc -> \o ->
-                             ((acc.insert
-                               { key : o.o_orderkey , value : { od : o.o_orderdate
-                                                              , ck : o.o_custkey
-                                                              , sp : o.o_shippriority} } );
-                              acc))
-                          empty { key   : int
-                                , value : { od : string, ck : int, sp : int }
-                                } @Collection
+        , rhs_query = [$ ((orders.filter  (\o -> o.o_orderdate < "1995-03-15" ))
+                                 .groupBy (\o -> o.o_orderkey)
+                                          (\_ -> \o -> { od : o.o_orderdate
+                                                       , ck : o.o_custkey
+                                                       , sp : o.o_shippriority})
+                                          { od: "", ck: 0, sp: 0 })
+                                 .fold    (\acc -> \o -> ((acc.insert o); acc))
+                                          (empty {key : int, value : {od:string, ck:int, sp:int}} @Map)
                       ]
 
         , lhs_build_merge = [$ (\li -> li_epd_by_ok_map.insert_with li merge_li_epd_by_ok) ]
@@ -113,8 +113,8 @@ trigger lineitem_orders : () = \_ -> (
         , next            = [$ () ]
         , coordinator     = [$ master]
         , nodes           = [$ peers]
-        , lhs_build_ty    = [: collection {key : int, value : real } @Collection ]
-        , rhs_probe_ty    = [: collection {key : int, value : {od:string, ck:int, sp:int}} @Collection ]
+        , lhs_build_ty    = [: collection {key : int, value : real } @Map ]
+        , rhs_probe_ty    = [: collection {key : int, value : {od:string, ck:int, sp:int}} @Map ]
         , profile         = [$ true]
         )
 )
@@ -132,8 +132,7 @@ trigger lineitem_orders_customer : () = \_ -> (
 // TODO: sort and limit on q3_peer_result
 trigger loc_probe_rhs : cs_ck_bag = \vals -> (
   vals.iterate (\v ->
-       case lior_epdods_map.lookup
-              {key: v.elem.c_custkey, value: empty lior_epd_by_ods_r @Map}
+       case lior_epdods_map.lookup {key: v.elem.c_custkey, value: empty lior_epd_by_ods_r @Map}
        of
        { Some lo_r -> lo_r.value.iterate (\kv -> q3_peer_result.insert_with kv merge_lior_epd_by_ods) }
        { None -> () }

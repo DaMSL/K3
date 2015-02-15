@@ -9,6 +9,11 @@ control SendByKey[dest_trg : expr, barrier_trg : expr, nodes : expr, send_extra_
 }
 
 control PartitionByKey {
+  ?e : collection ?t @Map
+      => ( ($.[e].groupBy @:HGroupBy) (\v -> index_by_hash v.key)
+                                      (\acc -> \v -> ((acc.insert v); acc))
+                                      empty $::[t] @Map )
+
   ?e : collection ?t
       => ( $.[e].groupBy (\v -> index_by_hash v.key)
                          (\acc -> \v -> ((acc.insert v); acc))
@@ -16,11 +21,17 @@ control PartitionByKey {
 }
 
 control PartitionRoundRobin {
+  ?e : collection ?t @Map
+    => ( let i = mut 0 in
+         ($.[e].groupBy @:HGroupBy) (\v -> ((i = i + 1); (i % ($[nodes].size()))))
+                                    (\acc -> \v -> ((acc.insert v); acc))
+                                    empty $::[t] @Map )
+
   ?e : collection ?t
     => ( let i = mut 0 in
          $.[e].groupBy (\v -> ((i = i + 1); (i % ($[nodes].size()))))
                        (\acc -> \v -> ((acc.insert v); acc))
-                       empty $::[t] @Collection )        
+                       empty $::[t] @Collection )
 }
 
 control SendPartitionByKey[dest_trg : expr, barrier_trg : expr, nodes : expr, send_extra_fn : expr] {

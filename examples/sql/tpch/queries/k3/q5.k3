@@ -119,26 +119,30 @@ trigger q5_lo_start : () = \_ -> (
   () @DistributedHashJoin
         ( lbl       = [# lo ]
         , lhs_query = [$
-            lineitem.groupBy (\li -> li.l_orderkey)
-                             (\acc -> \li ->
-                               ((acc.insert { l_suppkey : li.l_suppkey
-                                            , l_epd     : li.l_extendedprice * (1 - li.l_discount)}) ;
-                                 acc))
-                             empty {l_suppkey : int, l_epd : real} @Collection ]
+            (lineitem.groupBy (\li -> li.l_orderkey)
+                              (\acc -> \li ->
+                                ((acc.insert { l_suppkey : li.l_suppkey
+                                             , l_epd     : li.l_extendedprice * (1 - li.l_discount)}) ;
+                                  acc))
+                              (empty {l_suppkey : int, l_epd : real} @Collection))
+                     .fold    (\acc -> \li -> ((acc.insert li); acc))
+                              (empty {key: int, value: collection {l_suppkey: int, l_epd: real} @Collection} @Map) ]
 
-        , rhs_query = [$ (orders.filter  (\o ->     o.o_orderdate >= "1994-01-01"
-                                                and o.o_orderdate <  "1995-01-01" ))
-                                .groupBy (\o -> o.o_orderkey)
-                                         (\_ -> \o -> o.o_custkey)
-                                         0 ]
+        , rhs_query = [$ ((orders.filter  (\o ->     o.o_orderdate >= "1994-01-01"
+                                                 and o.o_orderdate <  "1995-01-01" ))
+                                 .groupBy (\o -> o.o_orderkey)
+                                          (\_ -> \o -> o.o_custkey)
+                                          0)
+                                 .fold    (\acc -> \o -> ((acc.insert o); acc))
+                                          (empty {key: int, value: int} @Map)
+                      ]
 
         , lhs_build_merge = [$ (\li -> lior_build.insert_with li merge_lior_build) ]
 
         , rhs_probe_merge = [$
             (\o ->
-              case lior_build.lookup
-                     { key: o.key
-                     , value: empty {l_suppkey : int, l_epd : real} @Collection }
+              case lior_build.lookup { key: o.key
+                                     , value: empty {l_suppkey : int, l_epd : real} @Collection }
               of
               { Some li -> lior_cse_by_ck.insert_with { key: o.value, value: li.value }
                                                       merge_lior_cse_by_ck_r
@@ -154,9 +158,9 @@ trigger q5_lo_start : () = \_ -> (
         , lhs_build_ty    = [: collection
                                  { key : int
                                  , value : collection {l_suppkey : int, l_epd : real} @Collection
-                                 } @Collection
+                                 } @Map
                             ]
-        , rhs_probe_ty    = [: collection {key : int, value : int } @Collection ]
+        , rhs_probe_ty    = [: collection {key : int, value : int } @Map ]
         , profile         = [$ true]
         )
 )
@@ -165,9 +169,11 @@ trigger q5_loc_start : () = \_ -> (
   () @DistributedHashJoin
         ( lbl       = [# loc ]
         , lhs_query = [$ lior_cse_by_ck ]
-        , rhs_query = [$ customer.fold
-                            (\acc -> \c -> ((acc.insert {key: c.c_custkey, value: c.c_nationkey}); acc))
-                            empty {key: int, value: int} @Collection
+        , rhs_query = [$ (customer.groupBy (\c -> c.c_custkey)
+                                           (\_ -> \c -> c.c_nationkey)
+                                           0)
+                                  .fold    (\acc -> \c -> ((acc.insert c); acc))
+                                           (empty {key: int, value:int} @Map)
                       ]
         , lhs_build_merge = [$ (\li -> loc_build.insert_with li merge_lior_cse_by_ck_r) ]
         , rhs_probe_merge = [$
@@ -192,8 +198,8 @@ trigger q5_loc_start : () = \_ -> (
         , lhs_build_ty    = [: collection
                                 { key   : int
                                 , value : collection {l_suppkey : int, l_epd : real} @Collection
-                                } @Collection ]
-        , rhs_probe_ty    = [: collection {key : int, value : int } @Collection ]
+                                } @Map ]
+        , rhs_probe_ty    = [: collection {key : int, value : int} @Map ]
         , profile         = [$ true]
         )
 )
@@ -202,13 +208,16 @@ trigger q5_locs_start : () = \_ -> (
   () @DistributedHashJoin
         ( lbl       = [# locs ]
         , lhs_query = [$ loc_epd_by_sn ]
-        , rhs_query = [$ supplier.fold
-                           (\acc -> \s -> ((acc.insert {key: {s_suppkey: s.s_suppkey, s_nationkey: s.s_nationkey}, value : ()}); acc))
-                           empty {key: {s_suppkey:int, s_nationkey: int}, value: ()} @Collection ]
+        , rhs_query = [$ (supplier.groupBy (\s -> s.s_suppkey)
+                                           (\_ -> \s -> s.s_nationkey)
+                                           0)
+                                  .fold    (\acc -> \s -> ((acc.insert s); acc))
+                                           (empty {key: int, value: int} @Map)
+                      ]
         , lhs_build_merge = [$ (\epd_by_sn -> locs_build.insert_with epd_by_sn merge_epd_by_sn_r) ]
         , rhs_probe_merge = [$
             (\s ->
-              case locs_build.lookup {key: s.key, value: 0.0} of
+              case locs_build.lookup {key: {s_suppkey: s.key, s_nationkey: s.value}, value: 0.0} of
               { Some loc -> locs_epd_by_nk.insert_with
                               {key: loc.key.s_nationkey, value: loc.value} merge_epd_by_nk_r
               }
@@ -220,23 +229,24 @@ trigger q5_locs_start : () = \_ -> (
                                (q5_locsn_start, master) <- () ]
         , coordinator     = [$ master]
         , nodes           = [$ peers ]
-        , lhs_build_ty    = [: collection {key : {s_suppkey : int, s_nationkey : int}, value : real} @Collection ]
-        , rhs_probe_ty    = [: collection {key : {s_suppkey : int, s_nationkey : int}, value : ()  } @Collection ]
+        , lhs_build_ty    = [: collection {key : {s_suppkey : int, s_nationkey : int}, value : real} @Map ]
+        , rhs_probe_ty    = [: collection {key : int, value : int  } @Map ]
         , profile         = [$ true]
         )
 )
 
+// TODO: broadcast join
 trigger q5_locsn_start : () = \_ -> (
   () @DistributedHashJoin
         ( lbl       = [# locsn ]
         , lhs_query = [$ locs_epd_by_nk ]
 
-        , rhs_query = [$ nation.fold
-                           (\acc -> \n ->
-                             ((acc.insert { key: n.n_nationkey
-                                          , value: {n_regionkey: n.n_regionkey, n_name: n.n_name}});
-                               acc))
-                           empty {key: int, value: {n_regionkey: int, n_name: string}} @Collection ]
+        , rhs_query = [$ (nation.groupBy (\n -> n.n_nationkey)
+                                         (\_ -> \n -> {n_regionkey: n.n_regionkey, n_name: n.n_name})
+                                         {n_regionkey: 0, n_name: ""})
+                                .fold    (\acc -> \n -> ((acc.insert n); acc))
+                                         (empty {key:int, value: {n_regionkey: int, n_name: string}} @Map)
+                      ]
 
         , lhs_build_merge = [$ (\epd_by_nk -> locsn_build.insert_with epd_by_nk merge_epd_by_nk_r) ]
         , rhs_probe_merge = [$
@@ -257,24 +267,25 @@ trigger q5_locsn_start : () = \_ -> (
                                (q5_locsnr_start, master) <- () ]
         , coordinator     = [$ master]
         , nodes           = [$ peers ]
-        , lhs_build_ty    = [: collection {key : int, value : real} @Collection ]
-        , rhs_probe_ty    = [: collection {key : int, value : {n_regionkey: int, n_name: string} } @Collection ]
+        , lhs_build_ty    = [: collection {key : int, value : real} @Map ]
+        , rhs_probe_ty    = [: collection {key : int, value : {n_regionkey: int, n_name: string} } @Map ]
         , profile         = [$ true]
         )
 )
 
+// TODO: broadcast join
+// TODO: move earlier in join order due to selecticity of r_name == 'ASIA'
 trigger q5_locsnr_start : () = \_ -> (
   () @DistributedHashJoin
         ( lbl       = [# locsnr ]
         , lhs_query = [$ locsn_nepd_by_rk ]
         , rhs_query = [$ (region.filter  (\r -> r.r_name == "ASIA"))
                                 .fold    (\acc -> \r -> ((acc.insert {key : r.r_regionkey, value: ()}); acc))
-                                         empty {key: int, value: ()} @Collection ]
+                                         empty {key: int, value: ()} @Map ]
         , lhs_build_merge = [$ (\nepd_by_rk -> locsnr_build.insert_with nepd_by_rk merge_nepd_by_rk_r) ]
         , rhs_probe_merge = [$
             (\r ->
-              case locsnr_build.lookup
-                      {key: r.key, value: empty {key: string, value: real} @Map}
+              case locsnr_build.lookup {key: r.key, value: empty {key: string, value: real} @Map}
               of
               { Some locsn -> locsn.value.iterate (\kv -> locsnr_epd_by_n.insert_with kv merge_nepd_r) }
               { None       -> ()  }
@@ -286,8 +297,8 @@ trigger q5_locsnr_start : () = \_ -> (
         , next            = [$ print "LI-OR-CS-SUP-NT-RG join all nodes finished." ]
         , coordinator     = [$ master]
         , nodes           = [$ peers ]
-        , lhs_build_ty    = [: collection {key : int, value : collection {key:string, value:real} @Map } @Collection ]
-        , rhs_probe_ty    = [: collection {key : int, value : () } @Collection ]
+        , lhs_build_ty    = [: collection {key : int, value : collection {key:string, value:real} @Map } @Map ]
+        , rhs_probe_ty    = [: collection {key : int, value : () } @Map ]
         , profile         = [$ true]
         )
 )

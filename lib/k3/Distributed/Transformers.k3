@@ -94,15 +94,16 @@ control DistributedGroupByGeneric [ lbl             : label
         $[nodes].iterate (\p -> ($[lbl]_scan, p.addr) <- ())
      +> {
           trigger $[lbl]_scan : () = \_ -> (
-            (ignore ( $.[e].groupBy $.[groupF] $.[aggF] $.[accE]
+            (ignore ( ($.[e].groupBy $.[groupF] $.[aggF] $.[accE])
+                            .fold    (\acc -> \v -> ((acc.insert v); acc))
+                                     (empty $::[t] @Map)
             ) @SendPartitionByKey( dest_trg      = [$ $[lbl]_merge]
                                  , barrier_trg   = [$ $[lbl]_peer_barrier]
                                  , nodes         = nodes
                                  , send_extra_fn = [$ (\x -> x)]))
           )
 
-          // Note: SendByPartitionKey always uses a @Collection for the wire type.
-          trigger $[lbl]_merge : collection $::[t] @Collection = \partials -> (
+          trigger $[lbl]_merge : collection $::[t] @Map = \partials -> (
             partials.iterate (\w -> $[merge] w)
           )
 

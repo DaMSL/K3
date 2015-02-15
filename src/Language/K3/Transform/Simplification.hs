@@ -1199,6 +1199,11 @@ fuseFoldTransformers expr = do
       =
         debugFusionMatching lAccF rAccF lAs rAs $
         case (lfCls, rfCls) of
+
+          -- Copy-elimination when accumulators are of the same type.
+          (_, UCond) | rtCls == IdTr && compareTStrictAST lAccT rAccT ->
+            return $ Just (updateFusionSpec lAs (lfCls, ltCls), lAccF)
+
           -- Fusion for {UCond, ICond1} x {UCond, ICond1} cases
           --
           (UCond, UCond) | nonDepTr ltCls && nonDepTr rtCls ->
@@ -1449,9 +1454,6 @@ fuseFoldTransformers expr = do
           ---- TODO: special cases for partial operation on DCond2 result.
 
           -- TODO: fusion can apply if the transform is an injective function on keys.
-          (DCond2, UCond) | nonDepTr ltCls && (rtCls == IdTr) && compareTStrictAST lAccT rAccT ->
-            return $ Just (updateFusionSpec lAs (DCond2, ltCls), lAccF)
-
           (DCond2, UCond) | nonDepTr ltCls && nonDepTr rtCls -> Right Nothing
 
           -- If condition is on keys alone, lift the condition.
