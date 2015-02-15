@@ -529,7 +529,6 @@ class Set {
 
   using iterator = typename Container::iterator;
   using const_iterator = typename Container::const_iterator;
-  using reverse_iterator = typename Container::reverse_iterator;
 
   iterator begin() {
     return iterator(container.begin());
@@ -1131,7 +1130,7 @@ class Map {
       return t;
     }
 
-    reference operator*() const {
+    auto& operator*() const {
       return i->second;
     }
 

@@ -43,12 +43,12 @@ order by
 
 declare master : address
 
-declare lineitem : lineitem_bag
-declare orders   : orders_bag
-declare customer : customer_bag
-declare supplier : supplier_bag
-declare nation   : nation_bag
-declare region   : region_bag
+declare lineitem : mut lineitem_bag
+declare orders   : mut orders_bag
+declare customer : mut customer_bag
+declare supplier : mut supplier_bag
+declare nation   : mut nation_bag
+declare region   : mut region_bag
 
 // Final result.
 typedef q5_r_by_n_r     = {key : string, value: real}
@@ -119,18 +119,20 @@ trigger q5_lo_start : () = \_ -> (
   () @DistributedHashJoin
         ( lbl       = [# lo ]
         , lhs_query = [$
-            lineitem.groupBy (\li -> li.l_orderkey)
+            let result = lineitem.groupBy (\li -> li.l_orderkey)
                              (\acc -> \li ->
                                ((acc.insert { l_suppkey : li.l_suppkey
                                             , l_epd     : li.l_extendedprice * (1 - li.l_discount)}) ;
                                  acc))
-                             empty {l_suppkey : int, l_epd : real} @Collection ]
+                             empty {l_suppkey : int, l_epd : real} @Collection 
+            in (lineitem = empty lineitem_r @Collection); result]
 
-        , rhs_query = [$ (orders.filter  (\o ->     o.o_orderdate >= "1994-01-01"
+        , rhs_query = [$ let result = (orders.filter  (\o ->     o.o_orderdate >= "1994-01-01"
                                                 and o.o_orderdate <  "1995-01-01" ))
                                 .groupBy (\o -> o.o_orderkey)
                                          (\_ -> \o -> o.o_custkey)
-                                         0 ]
+                                         0 
+                         in (orders = empty orders_r @Collection); result]
 
         , lhs_build_merge = [$ (\li -> lior_build.insert_with li merge_lior_build) ]
 
@@ -157,6 +159,7 @@ trigger q5_lo_start : () = \_ -> (
                                  } @Collection
                             ]
         , rhs_probe_ty    = [: collection {key : int, value : int } @Collection ]
+        , profile         = [$ true]
         )
 )
 
@@ -164,9 +167,10 @@ trigger q5_loc_start : () = \_ -> (
   () @DistributedHashJoin
         ( lbl       = [# loc ]
         , lhs_query = [$ lior_cse_by_ck ]
-        , rhs_query = [$ customer.fold
+        , rhs_query = [$ let result = customer.fold
                             (\acc -> \c -> ((acc.insert {key: c.c_custkey, value: c.c_nationkey}); acc))
                             empty {key: int, value: int} @Collection
+                         in (customer = empty customer_r @Collection); result
                       ]
         , lhs_build_merge = [$ (\li -> loc_build.insert_with li merge_lior_cse_by_ck_r) ]
         , rhs_probe_merge = [$
@@ -193,6 +197,7 @@ trigger q5_loc_start : () = \_ -> (
                                 , value : collection {l_suppkey : int, l_epd : real} @Collection
                                 } @Collection ]
         , rhs_probe_ty    = [: collection {key : int, value : int } @Collection ]
+        , profile         = [$ true]
         )
 )
 
@@ -200,9 +205,10 @@ trigger q5_locs_start : () = \_ -> (
   () @DistributedHashJoin
         ( lbl       = [# locs ]
         , lhs_query = [$ loc_epd_by_sn ]
-        , rhs_query = [$ supplier.fold
+        , rhs_query = [$ let result = supplier.fold
                            (\acc -> \s -> ((acc.insert {key: {s_suppkey: s.s_suppkey, s_nationkey: s.s_nationkey}, value : ()}); acc))
-                           empty {key: {s_suppkey:int, s_nationkey: int}, value: ()} @Collection ]
+                           empty {key: {s_suppkey:int, s_nationkey: int}, value: ()} @Collection 
+                         in (supplier = empty supplier_r @Collection); result ]
         , lhs_build_merge = [$ (\epd_by_sn -> locs_build.insert_with epd_by_sn merge_epd_by_sn_r) ]
         , rhs_probe_merge = [$
             (\s ->
@@ -220,6 +226,7 @@ trigger q5_locs_start : () = \_ -> (
         , nodes           = [$ peers ]
         , lhs_build_ty    = [: collection {key : {s_suppkey : int, s_nationkey : int}, value : real} @Collection ]
         , rhs_probe_ty    = [: collection {key : {s_suppkey : int, s_nationkey : int}, value : ()  } @Collection ]
+        , profile         = [$ true]
         )
 )
 
@@ -256,6 +263,7 @@ trigger q5_locsn_start : () = \_ -> (
         , nodes           = [$ peers ]
         , lhs_build_ty    = [: collection {key : int, value : real} @Collection ]
         , rhs_probe_ty    = [: collection {key : int, value : {n_regionkey: int, n_name: string} } @Collection ]
+        , profile         = [$ true]
         )
 )
 
@@ -284,6 +292,7 @@ trigger q5_locsnr_start : () = \_ -> (
         , nodes           = [$ peers ]
         , lhs_build_ty    = [: collection {key : int, value : collection {key:string, value:real} @Map } @Collection ]
         , rhs_probe_ty    = [: collection {key : int, value : () } @Collection ]
+        , profile         = [$ true]
         )
 )
 

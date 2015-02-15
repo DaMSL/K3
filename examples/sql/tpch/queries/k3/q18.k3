@@ -43,9 +43,9 @@ order by
 *          (filter . group lineitem)
 ****************************/
 
-declare lineitem : lineitem_bag
-declare customer : customer_bag
-declare orders   : orders_bag
+declare lineitem : mut lineitem_bag
+declare customer : mut customer_bag
+declare orders   : mut orders_bag
 
 // Final result.
 typedef loc_q_by_ncodt_r   = { key: {nm:string, ck:int, ok:int, od:string, tp:real}, value: real}
@@ -94,7 +94,7 @@ trigger lineitem_having : () = \_ -> (
       merge       = [$ (\a -> \b -> a + b)],
       coordinator = [$ master],
       nodes       = [$ peers],
-      profile     = [$ false] )
+      profile     = [$ true] )
 )
 
 // Since lineitem is already partitioned by orderkey, we can implement the
@@ -126,17 +126,18 @@ trigger lineitem_orders : () = \_ -> (
                           {None -> ()})],
       coordinator = [$ master],
       nodes       = [$ peers],
-      profile     = [$ false] )
+      profile     = [$ true] )
 )
 
 trigger lineitem_orders_customer : () = \_ -> (
   () @DistributedHashJoin
         ( lbl       = [# loc ]
         , lhs_query = [$ lo_odtq_by_ck]
-        , rhs_query = [$ customer.fold (\acc -> \c ->
+        , rhs_query = [$ let result = customer.fold (\acc -> \c ->
                                           ((acc.insert {key: c.c_custkey, value: c.c_name})
                                            ; acc))
                                        empty {key: int, value: string} @Collection
+                         in (customer = empty customer_r @Collection); result
                       ]
 
         , lhs_build_merge = [$ (\lo -> loc_build.insert_with lo merge_odtq_by_ck_r) ]
@@ -177,6 +178,7 @@ trigger lineitem_orders_customer : () = \_ -> (
                                                       , value: real} @Map
                                  } @Collection ]
         , rhs_probe_ty    = [: collection {key : int, value : string} @Collection ]
+        , profile         = [$ false]
         )
 )
 

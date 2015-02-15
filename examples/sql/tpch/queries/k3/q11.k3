@@ -126,6 +126,7 @@ trigger partsupp_supplier : () = \_ -> (
         , nodes          = [$ peers ]
         , lhs_build_ty    = [: p_by_suppkey_col_t]
         , rhs_probe_ty    = [: s_by_suppkey_col_t]
+        , profile         = [$ true]
         )
 )
 
