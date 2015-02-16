@@ -40,6 +40,7 @@ declare openBuiltin : string -> string -> string -> ()
 // openFile: channel id -> path -> format -> mode -> ()
 @:CArgs 4
 declare openFile : string -> string -> string -> string -> ()
+with effects \_ -> \_ -> \_ -> \_ -> io
 
 // openSocket: channel id -> address -> format -> mode -> ()
 @:CArgs 4

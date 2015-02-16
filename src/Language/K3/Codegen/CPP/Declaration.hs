@@ -136,17 +136,28 @@ declaration (tag -> DDataAnnotation i _ amds) = addAnnotation i amds >> return [
 declaration (tag -> DRole _) = throwE $ CPPGenE "Roles below top-level are deprecated."
 declaration _ = return []
 
--- Generate a lambda to parse a csv string. of type string -> tuple
 genCsvParser :: K3 Type -> CPPGenM (Maybe R.Expression)
-genCsvParser (tag &&& children -> (TTuple, ts)) = do
-  cts <- mapM genCType ts
-  let fields = concatMap (uncurry readField) (zip ts [0,1..])
-  return $ Just $ R.Lambda
-                    []
-                    [("str", R.Named $ R.Qualified (R.Name "std") (R.Name "string"))]
-                    False
-                    Nothing
-                    ( [iss_decl, iss_str, tup_decl cts, token_decl] ++ fields ++ [R.Return tup])
+genCsvParser t@(tag &&& children -> (TTuple, ts)) = genCsvParserImpl t ts get >>= (return . Just)
+  where
+    get exp i = R.Call
+               (R.Variable $ R.Qualified (R.Name "std") (R.Specialized [R.Named $ R.Name (show i)] (R.Name "get")))
+               [exp]
+genCsvParser t@(tag &&& children -> (TRecord ids, ts)) = genCsvParserImpl t ts project >>= (return . Just)
+  where
+    project exp i = R.Project exp (R.Name (ids L.!! i))
+genCsvParser _ = error "Can't generate CsvParser. Only works for flat records and tuples"
+
+genCsvParserImpl :: K3 Type -> [K3 Type] -> (R.Expression -> Int -> R.Expression) -> CPPGenM R.Expression
+genCsvParserImpl elemType childTypes accessor = do
+  et  <- genCType elemType
+  cts <- mapM genCType childTypes
+  let fields = concatMap (uncurry readField) (zip childTypes [0,1..])
+  return $ R.Lambda
+               []
+               [("str", R.Const $ R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "string"))]
+               False
+               Nothing
+               ( [iss_decl, iss_str, tup_decl et, token_decl] ++ fields ++ [R.Return tup])
   where
 
    iss_decl = R.Forward $ R.ScalarDecl (R.Name "iss") (R.Named $ R.Qualified (R.Name "std") (R.Name "istringstream")) Nothing
@@ -154,18 +165,15 @@ genCsvParser (tag &&& children -> (TTuple, ts)) = do
    token_decl = R.Forward $ R.ScalarDecl (R.Name "token") (R.Named $ R.Qualified (R.Name "std") (R.Name "string")) Nothing
    iss = R.Variable $ R.Name "iss"
    token = R.Variable $ R.Name "token"
-   tup_decl cts = R.Forward $ R.ScalarDecl (R.Name "tup") (R.Tuple cts) Nothing
+   tup_decl et = R.Forward $ R.ScalarDecl (R.Name "tup") et Nothing
    tup = R.Variable $ R.Name "tup"
 
    readField :: K3 Type -> Int -> [R.Statement]
    readField t i = [ R.Ignore getline
-                   , R.Assignment (get i) (typeMap t cstr)
+                   , R.Assignment (accessor tup i) (typeMap t cstr)
                    ]
 
    cstr = R.Call (R.Project token (R.Name "c_str")) []
-   get i = R.Call
-               (R.Variable $ R.Qualified (R.Name "std") (R.Specialized [R.Named $ R.Name (show i)] (R.Name "get")))
-               [tup]
 
    getline = R.Call
                (R.Variable $ R.Qualified (R.Name "std") (R.Name "getline"))
@@ -176,8 +184,8 @@ genCsvParser (tag &&& children -> (TTuple, ts)) = do
                              [e]
    typeMap (tag -> TReal) e = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "atof"))
                               [e]
+   typeMap (tag -> TString) e = R.Call (R.Variable $ R.Name "string_impl") [e]
    typeMap (tag -> _) x = x
-genCsvParser _ = return Nothing
 
 -- -- Generated Builtins
 -- -- Interface for source builtins.
