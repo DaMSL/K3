@@ -46,7 +46,7 @@ trigger finished: int = \num_peer_results -> (
   then end_ms = now_int ();
        elapsed_ms = end_ms - start_ms;
        print ("# Results: " ++ (itos num_results));
-       print ("Elapsed time (ms):" ++ (itos elapsed_ms));
+       print ("Time Query:" ++ (itos elapsed_ms));
        peers.iterate (\p -> (shutdown, p.addr) <- ())
   else ()
 )

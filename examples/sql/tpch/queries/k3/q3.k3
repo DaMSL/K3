@@ -29,9 +29,9 @@ order by
 
 declare master : address
 
-declare lineitem : lineitem_bag
-declare customer : customer_bag
-declare orders   : orders_bag
+declare lineitem : mut lineitem_bag
+declare customer : mut customer_bag
+declare orders   : mut orders_bag
 
 // Final result.
 typedef lior_epd_by_ods_r     = {key : {ok: int, od: string, sp: int}, value: real}
@@ -73,14 +73,15 @@ declare merge_lior_r : lior_epdods_by_ck_r -> lior_epdods_by_ck_r -> lior_epdods
 trigger lineitem_orders : () = \_ -> (
   () @DistributedHashJoin
         ( lbl       = [# lo ]
-        , lhs_query = [$ (lineitem.filter  (\l -> l.l_shipdate > "1995-03-15" ))
+        , lhs_query = [$ let result = (lineitem.filter  (\l -> l.l_shipdate > "1995-03-15" ))
                                   .groupBy (\l -> l.l_orderkey)
                                            (\acc -> \l -> acc + (l.l_extendedprice * (1 - l.l_discount)))
                                            0.0
+                         in (lineitem = empty lineitem_r @Collection); result
                       ]
 
         , rhs_query = [$
-           (orders.filter (\o -> o.o_orderdate < "1995-03-15" ))
+           let result = (orders.filter (\o -> o.o_orderdate < "1995-03-15" ))
                   .fold   (\acc -> \o ->
                              ((acc.insert
                                { key : o.o_orderkey , value : { od : o.o_orderdate
@@ -90,6 +91,7 @@ trigger lineitem_orders : () = \_ -> (
                           empty { key   : int
                                 , value : { od : string, ck : int, sp : int }
                                 } @Collection
+           in (orders = empty orders_r @Collection); result
                       ]
 
         , lhs_build_merge = [$ (\li -> li_epd_by_ok_map.insert_with li merge_li_epd_by_ok) ]

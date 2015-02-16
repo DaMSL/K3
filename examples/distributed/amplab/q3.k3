@@ -168,7 +168,7 @@ typedef Source_ip_to_aggs = {key: string, value: {prSum: int, prCount: int, arSu
 trigger finished : () = \_ -> (
   end_ms = now_int ();
   elapsed_ms = end_ms - start_ms;
-  print ("Elapsed: " ++ (itos elapsed_ms));
+  print ("Time Query:" ++ (itos elapsed_ms));
   print ("Global max.key: " ++ global_max.key);
   results.insert {sourceIP: global_max.key, totalRevenue: global_max.value.arSum, avgPageRank: (1.0 * global_max.value.prSum) / global_max.value.prCount};
   peers.iterate (\p -> (shutdown, p.addr) <- ())
