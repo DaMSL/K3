@@ -49,9 +49,15 @@ import Language.K3.Codegen.CPP.Materialization
 -- | Snapshot specifications are a list of pass names to capture per declaration.
 type SnapshotSpec = Map String [String]
 
+-- | Stage specifications are a pair of pass identifiers, and a snapshot spec.
+data StageSpec = StageSpec { passesToRun    :: Maybe [Identifier]
+                           , passesToFilter :: Maybe [Identifier]
+                           , snapshotSpec   :: SnapshotSpec }
+                 deriving (Eq, Ord, Read, Show)
+
 -- | Configuration metadata for compiler stages
 data CompilerSpec = CompilerSpec { blockSize :: Int
-                                 , snapshotSpec :: SnapshotSpec }
+                                 , stageSpec :: StageSpec }
                     deriving (Eq, Ord, Read, Show)
 
 -- | Compilation profiling
@@ -69,8 +75,11 @@ data TransformSt = TransformSt { nextuid    :: Int
 
 type TransformM = EitherT String (StateT TransformSt IO)
 
+ss0 :: StageSpec
+ss0 = StageSpec Nothing Nothing Map.empty
+
 cs0 :: CompilerSpec
-cs0 = CompilerSpec 16 Map.empty
+cs0 = CompilerSpec 16 ss0
 
 rp0 :: TransformReport
 rp0 = TransformReport Map.empty Map.empty
@@ -151,7 +160,7 @@ displayPass n f p = f p >>= \np -> mkTg n np (return np)
 
 -- | Show the program both before and after applying the given program transform.
 debugPass :: String -> ProgramTransform -> ProgramTransform
-debugPass n f p = mkTg (n ++ " before") p (f p) >>= \np -> mkTg (n ++ " after") np (return np)
+debugPass n f p = mkTg ("Before " ++ n) p (f p) >>= \np -> mkTg ("After " ++ n) np (return np)
   where mkTg str p' = trace (boxToString $ [str] %$ prettyLines p')
 
 -- | Measure the execution time of a transform
@@ -163,9 +172,9 @@ timePass n f prog = do
   return np
 
   where
-    addMeasurement n sample st =
+    addMeasurement n' sample st =
       let rp  = report st
-          nrp = rp {statistics = Map.insertWith (++) n [sample] $ statistics rp}
+          nrp = rp {statistics = Map.insertWith (++) n' [sample] $ statistics rp}
       in st {report = nrp}
 
     -- This is a reimplementation of Criterion.Measurement.measure
@@ -201,9 +210,9 @@ snapshotPass n combineF f prog = do
   modify $ addSnapshot n np
   return np
 
-  where addSnapshot n np st =
+  where addSnapshot n' np st =
           let rp  = report st
-              nrp = rp {snapshots = Map.insertWith combineF n [np] $ snapshots rp}
+              nrp = rp {snapshots = Map.insertWith combineF n' [np] $ snapshots rp}
           in st {report = nrp}
 
 {-- Stateful transformations --}
@@ -556,29 +565,29 @@ refreshDecl extInfOpt n =
 
 -- | Returns a map of transformations, treating passes as data.
 --   We could build a TH-DSL based on this map to define compilers.
-declTransforms :: SnapshotSpec -> Maybe (SEffects.ExtInferF a, a) -> Identifier -> Map Identifier ProgramTransform
-declTransforms snSpec extInfOpt n = topLevel
+declTransforms :: StageSpec -> Maybe (SEffects.ExtInferF a, a) -> Identifier -> Map Identifier ProgramTransform
+declTransforms stSpec extInfOpt n = topLevel
   where
-    topLevel  = Map.fromList [
+    topLevel  = (Map.fromList $ fPf fst $ [
         second mkFix $
-        mkSeqRep "Optimize" highLevel $ prepend [ ("refreshI",      False) ]
-                                              $ [ ("Decl-Simplify", True)
-                                                , ("Decl-Fuse",     True)
-                                                , ("Decl-Simplify", True) ]
-      ] `Map.union` highLevel
+        mkSeqRep "Optimize" highLevel $ fPf fst $ prepend [ ("refreshI",      False) ]
+                                                        $ [ ("Decl-Simplify", True)
+                                                          , ("Decl-Fuse",     True)
+                                                          , ("Decl-Simplify", True) ]
+      ]) `Map.union` highLevel
 
-    highLevel = Map.fromList [
-        mkT $ mkSeq "Decl-Simplify" lowLevel $ intersperse "refreshI" $ [ "Decl-CF"
-                                                                        , "Decl-BR"
-                                                                        , "Decl-DCE"
-                                                                        , "Decl-CSE" ]
-      , mkT $ mkSeq "Decl-Fuse" lowLevel [ "Decl-FE"
-                                         , "typEffI"
-                                         , "Decl-FT" ]
-      ] `Map.union` lowLevel
+    highLevel = (Map.fromList $ fPf fst $ [
+        mkT $ mkSeq "Decl-Simplify" lowLevel $ fP $ intersperse "refreshI" $ [ "Decl-CF"
+                                                                             , "Decl-BR"
+                                                                             , "Decl-DCE"
+                                                                             , "Decl-CSE" ]
+      , mkT $ mkSeq "Decl-Fuse" lowLevel $ fP [ "Decl-FE"
+                                              , "typEffI"
+                                              , "Decl-FT" ]
+      ]) `Map.union` lowLevel
 
     -- TODO: CF,BR,DCE,CSE should be a local fixpoint.
-    lowLevel = Map.fromList [
+    lowLevel = Map.fromList $ fPf fst $ [
         mk  foldConstants        "Decl-CF"  False True False Nothing
       , mk  betaReduction        "Decl-BR"  False True False Nothing
       , mk  eliminateDeadCode    "Decl-DCE" False True False Nothing
@@ -614,6 +623,11 @@ declTransforms snSpec extInfOpt n = topLevel
       $ (if asDebug then debugPass i else id)
       $ tr
 
+    -- Pass filtering
+    fPf f = maybe id (\l -> filter (\x -> (f x) `notElem` l)) $ passesToFilter stSpec
+    fP    = fPf id
+
+    -- Fixpoint pass construction
     evalP          = reifyPass
     mkFix          = transformFixpoint
     mkFixI  interF = transformFixpointI  interF
@@ -624,7 +638,7 @@ declTransforms snSpec extInfOpt n = topLevel
     mkT (i,f)  = (i, timePass (mkN i) f)
     mkS (i,f)  = (i, snapshotPass (mkN i) lastSnapshot f)
     mkSS (i,f) = maybe (i,f) (\l -> if i `elem` l then mkS (i,f) else (i,f))
-                   $ Map.lookup n snSpec
+                   $ Map.lookup n $ snapshotSpec stSpec
 
     -- Custom, and shared passes
     fusionReduce = mk betaReduction "Decl-FR" False True False (Just [typEffI])
@@ -650,19 +664,23 @@ getTransform :: Identifier -> Map Identifier ProgramTransform -> ProgramTransfor
 getTransform i m = maybe err id $ Map.lookup i m
   where err = error $ "Invalid compiler transformation: " ++ i
 
-declOptPasses :: SnapshotSpec -> Maybe (SEffects.ExtInferF a, a) -> K3 Declaration -> [ProgramTransform]
-declOptPasses snSpec extInfOpt d = case nameOfDecl d of
+declOptPasses :: StageSpec -> Maybe (SEffects.ExtInferF a, a) -> K3 Declaration -> [ProgramTransform]
+declOptPasses stSpec extInfOpt d = case nameOfDecl d of
   Nothing -> []
-  Just n -> [getTransform "Optimize" $ declTransforms snSpec extInfOpt n]
+  Just n -> maybe (tltransforms n) (map $ flip getTransform (transforms n)) $ passesToRun stSpec
 
-  where nameOfDecl (tag -> DGlobal  n _ (Just _)) = Just n
+  where transforms n = declTransforms stSpec extInfOpt n
+        tltransforms n = maybe (defaultPasses n) (\l -> if "Optimize" `elem` l then [] else defaultPasses n) $ passesToFilter stSpec
+        defaultPasses n = [getTransform "Optimize" $ transforms n]
+
+        nameOfDecl (tag -> DGlobal  n _ (Just _)) = Just n
         nameOfDecl (tag -> DTrigger n _ _) = Just n
         nameOfDecl _ = Nothing
 
 runDeclOptPassesM :: CompilerSpec -> Maybe (SEffects.ExtInferF a, a) -> ProgramTransform
 runDeclOptPassesM cSpec extInfOpt =
   runPasses [refreshProgram, blockMapProgramDecls (blockSize cSpec) [refreshProgram] passes]
-  where passes = declOptPasses (snapshotSpec cSpec) extInfOpt
+  where passes = declOptPasses (stageSpec cSpec) extInfOpt
 
 runDeclOptPasses :: CompilerSpec -> Maybe (SEffects.ExtInferF a, a)
                  -> K3 Declaration -> IO (Either String (K3 Declaration, TransformReport))
