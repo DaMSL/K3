@@ -307,7 +307,7 @@ isWrittenIn x f =
 isWrittenInF :: K3 Provenance -> K3 Effect -> MaterializationM Bool
 isWrittenInF xp ff =
   case ff of
-    (tag -> FWrite yp) -> occursIn False yp xp
+    (tag -> FWrite yp) -> occursIn True yp xp
 
     (tag -> FScope _) -> anyM (isWrittenInF xp) (children ff)
     (tag -> FSeq) -> anyM (isWrittenInF xp) (children ff)
@@ -381,7 +381,9 @@ hasWriteInP prov expr =
       argHasWrite <- hasWriteInP prov x
       let appHasWrite = inD appDecision == Moved && argOccurs
 
-      return (functionHasWrite || argHasWrite || appHasWrite)
+      appHasIntrinsicWrite <- isWrittenInF prov (getEffects expr)
+
+      return (functionHasWrite || argHasWrite || appHasWrite || appHasIntrinsicWrite)
 
     _ -> (||) <$> isWrittenInF prov (getEffects expr) <*> anyM (hasWriteInP prov) (children expr)
 
