@@ -294,15 +294,17 @@ namespace K3 {
     unit_t loadVector(string_impl filepath, C<R_elem<V>>& c) {
       std::string line;
       std::ifstream infile(filepath);
+      char *saveptr;
+
       while (std::getline(infile, line)){
         char * pch;
-        pch = strtok(&line[0],",");
+        pch = strtok_r(&line[0],",", &saveptr);
         V v;
         while (pch) {
           R_elem<double> rec;
           rec.elem = std::atof(pch);
           v.insert(rec);
-          pch = strtok(NULL,",");
+          pch = strtok_r(NULL,",", &saveptr);
         }
         R_elem<V> rec2 {v};
         c.insert(rec2);
@@ -320,6 +322,7 @@ namespace K3 {
         // Infile
         std::ifstream in;
         in.open(filepath);
+	char *saveptr;
 
         // Parse by line
         while(!in.eof()) {
