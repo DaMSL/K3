@@ -525,22 +525,23 @@ betaReductionDelta expr = foldMapTree reduce ([], False) expr >>= return . first
       eRO  <- readOnly True e
       let numOccurs = length $ filter (== i) $ freeVariables e
       (simple, doReduce) <- reducibleTarget numOccurs ie
-      if (simple || (ieRO && eRO)) && doReduce
+      if debugCondition ieRO eRO n $ (simple || (ieRO && eRO)) && doReduce
         then return ([substituteImmutBinding i (cleanExpr ie) e], True)
         else return ([n], False)
 
     reducibleTarget numOccurs ie =
-      case (tag ie, ie @~ isEType) of
-        (_, Nothing) -> Left "No type found on target during beta reduction"
-        (EVariable _, _) -> Right (True, True)
+      case (tag ie, ie @~ isEType, ie @~ isEQualified) of
+        (_, Nothing, _)       -> Left "No type found on target during beta reduction"
+        (_, _, Just EMutable) -> Right (False, False)
+        (EVariable _, _, _)   -> Right (True, True)
 
         -- Collections can be modified in place with insert/update/delete,
         -- thus we can only substitute single uses.
         -- TODO: we can actually substitute provided the collection is not
         -- written in the body. Use effects to determine this.
-        (_, Just (EType (tag -> TCollection))) -> Right (False, numOccurs <= 1)
+        (_, Just (EType (tag -> TCollection)), _) -> Right (False, numOccurs <= 1)
 
-        (EConstant _, _) -> Right (True, True)
+        (EConstant _, _, _) -> Right (True, True)
         _ -> Right $ (False, numOccurs == 1)
 
     onSub ch = (concat *** any id) $ unzip ch
@@ -550,10 +551,13 @@ betaReductionDelta expr = foldMapTree reduce ([], False) expr >>= return . first
     cleanExpr e = stripExprAnnotations cleanAnns (const False) e
     cleanAnns a = isEUID a || isESpan a || isAnyETypeOrEffectAnn a
 
-    debugROC sube deste r@(re,_) = trace (boxToString $ ["BR-ROC"] %$ prettyLines sube
-                                                                   %$ prettyLines deste
-                                                                   %$ prettyLines (head re))
-                                     $ return r
+    debugCondition ieRO eRO n' r = if True then r else
+      flip trace r $ (boxToString $ [unwords ["BR-COND", show ieRO, show eRO]] %$ prettyLines n')
+
+    debugROC sube deste r@(re,_) = if True then return r else
+      flip trace (return r) (boxToString $ ["BR-ROC"] %$ prettyLines sube
+                                                      %$ prettyLines deste
+                                                      %$ prettyLines (head re))
 
 -- Beta reduction of variable applications, i.e., (\x -> ...) var
 simpleBetaReduction :: K3 Expression -> K3 Expression

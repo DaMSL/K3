@@ -20,18 +20,18 @@ control PartitionByKey {
                          empty $::[t] @Collection )
 }
 
-control PartitionRoundRobin {
+control PartitionRoundRobin [nodes : expr] {
   ?e : collection ?t @Map
     => ( let i = mut 0 in
-         ($.[e].groupBy @:HGroupBy) (\v -> ((i = i + 1); (i % ($[nodes].size()))))
-                                    (\acc -> \v -> ((acc.insert v); acc))
-                                    empty $::[t] @Map )
+         ( ($.[e].groupBy @:HGroupBy) (\_ -> ((i = i + 1); (i % ($[nodes].size()))))
+                                      (\acc -> \v -> ((acc.insert v); acc))
+                                      empty $::[t] @Map ) )
 
   ?e : collection ?t
     => ( let i = mut 0 in
-         $.[e].groupBy (\v -> ((i = i + 1); (i % ($[nodes].size()))))
-                       (\acc -> \v -> ((acc.insert v); acc))
-                       empty $::[t] @Collection )
+         ( $.[e].groupBy (\_ -> ((i = i + 1); (i % ($[nodes].size()))))
+                         (\acc -> \v -> ((acc.insert v); acc))
+                         empty $::[t] @Collection ) )
 }
 
 control SendPartitionByKey[dest_trg : expr, barrier_trg : expr, nodes : expr, send_extra_fn : expr] {
@@ -42,7 +42,7 @@ control SendPartitionByKey[dest_trg : expr, barrier_trg : expr, nodes : expr, se
 
 control SendRoundRobin[dest_trg : expr, barrier_trg : expr, nodes : expr, send_extra_fn : expr] {
   ?e : collection ?t
-    => ( $.[e] @PartitionRoundRobin
+    => ( $.[e] @PartitionRoundRobin(nodes = nodes)
        ) @SendByKey(dest_trg = dest_trg, barrier_trg = barrier_trg, nodes = nodes, send_extra_fn = send_extra_fn)
 }
 

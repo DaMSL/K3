@@ -385,8 +385,8 @@ control SkewShuffle [ lbl             : label
         bind acc as (rr_c, redist_c, repl_c) in
         case $[skewed_keys].lookup {key: r.key, value: false} of
         { Some skew_r ->
-            ((if from_left then ( if $[lhs] then rr_c.insert   r else repl_c.insert r )
-                           else ( if $[lhs] then repl_c.insert r else rr_c.insert   r ));
+            ((if skew_r.value then ( if $[lhs] then rr_c.insert   r else repl_c.insert r )
+                              else ( if $[lhs] then repl_c.insert r else rr_c.insert   r ));
              (rr_c, redist_c, repl_c)) }
         { None -> ((redist_c.insert r); (rr_c, redist_c, repl_c)) })
       in
@@ -421,8 +421,8 @@ control PipelineSkewJoin [ lbl                  : label
                          , rhs_ht_ty            : type
                          , lhs_probe            : expr
                          , rhs_probe            : expr
-                         , lhs_insert_ht_with   : expr
-                         , rhs_insert_ht_with   : expr
+                         , lhs_insert_with      : expr
+                         , rhs_insert_with      : expr
                          , empty_out_buffer     : expr
                          , lhs_pipeline_next    : expr
                          , rhs_pipeline_next    : expr
@@ -432,7 +432,7 @@ control PipelineSkewJoin [ lbl                  : label
                          , nodes                : expr
                          ]
 {
-    () => $[nodes].iterate (\p -> ($[lbl]_scan, p.addr) <- ())
+    () => $[nodes].iterate (\p -> ($[lbl]_sample, p.addr) <- ())
      +> {
           // Algorithm:
           // Phase 1: collect statistics per peer
@@ -480,7 +480,7 @@ control PipelineSkewJoin [ lbl                  : label
               if maxfreq > cost_ratio then ((acc.insert {key: r.key, value: lsource}; acc))
                                       else acc)
 
-          trigger $[lbl]_peer_sample : () = \_ -> (
+          trigger $[lbl]_sample : () = \_ -> (
             (($[lbl]_process_sample, $[coordinator]) <- ($[lhs_sample_query], true));
             (($[lbl]_process_sample, $[coordinator]) <- ($[rhs_sample_query], false));
             (($[lbl]_peer_sample_barrier, $[coordinator]) <- ())
@@ -509,25 +509,25 @@ control PipelineSkewJoin [ lbl                  : label
 
           trigger $[lbl]_redistribute : collection {key: $[join_key_ty], value: bool} @Map =
           \skewed_keys -> (
-            () @SkewShuffle( lbl           = lbl
-                           , lhs           = [$ true]
-                           , skewed_keys   = [$ skewed_keys]
-                           , query         = lhs_query
-                           , ty            = lhs_ht_ty
-                           , dest_trg      = [$ $[lbl]_process_redistribute ]
-                           , barrier_trg   = [$ $[lbl]_lhs_peer_barrier ]
-                           , nodes         = nodes
-                           , send_extra_fn = [$ (\x -> (Some x, None immut, true)) ]) ;
+            () @SkewShuffle( lbl             = lbl
+                           , lhs             = [$ true]
+                           , skewed_keys     = [$ skewed_keys]
+                           , query           = lhs_query
+                           , query_result_ty = lhs_ht_ty
+                           , dest_trg        = [$ $[lbl]_process_redistribute ]
+                           , barrier_trg     = [$ $[lbl]_lhs_peer_barrier ]
+                           , nodes           = nodes
+                           , send_extra_fn   = [$ (\x -> (Some x, None immut, true)) ]) ;
 
-            () @SkewShuffle( lbl           = lbl
-                           , lhs           = [$ false]
-                           , skewed_keys   = [$ skewed_keys]
-                           , query         = rhs_query
-                           , ty            = rhs_ht_ty
-                           , dest_trg      = [$ $[lbl]_process_redistribute ]
-                           , barrier_trg   = [$ $[lbl]_rhs_peer_barrier ]
-                           , nodes         = nodes
-                           , send_extra_fn = [$ (\x -> (None immut, Some x, false)) ])
+            () @SkewShuffle( lbl             = lbl
+                           , lhs             = [$ false]
+                           , skewed_keys     = [$ skewed_keys]
+                           , query           = rhs_query
+                           , query_result_ty = rhs_ht_ty
+                           , dest_trg        = [$ $[lbl]_process_redistribute ]
+                           , barrier_trg     = [$ $[lbl]_rhs_peer_barrier ]
+                           , nodes           = nodes
+                           , send_extra_fn   = [$ (\x -> (None immut, Some x, false)) ])
           )
 
 
@@ -540,16 +540,16 @@ control PipelineSkewJoin [ lbl                  : label
               if is_left then (
                 case lv_opt of
                 { Some lvals ->
-                  let outputs = lvals.fold $[rhs_probe] $[rhs_empty_out_buffer] in
-                  ((if outputs.size () > 0 then $[lhs_pipeline_next] outputs else ());
+                  let outputs = lvals.fold ($[rhs_probe] $[lbl]_rhs_ht) $[empty_out_buffer] in
+                  ((if outputs.size () > 0 then ( $[lhs_pipeline_next] outputs ) else ());
                     if $[lbl]_rhs_done then () else ( lvals.iterate (\lkv -> $[lbl]_lhs_ht.insert_with lkv $[lhs_insert_with]) ))
                 }
                 { None -> error (print ($[|exprLabel 'lbl|] ++ "_process_redistribute: invalid left join inputs.")) }
               ) else (
                 case rv_opt of
                 { Some rvals ->
-                  let outputs = rvals.fold $[lhs_probe] $[lhs_empty_out_buffer] in
-                  ((if outputs.size() > 0 then $[rhs_pipeline_next] outputs else ());
+                  let outputs = rvals.fold ($[lhs_probe] $[lbl]_lhs_ht) $[empty_out_buffer] in
+                  ((if outputs.size() > 0 then ( $[rhs_pipeline_next] outputs ) else ());
                     if $[lbl]_lhs_done then () else ( rvals.iterate (\rkv -> $[lbl]_rhs_ht.insert_with rkv $[rhs_insert_with]) ))
                 }
                 { None -> error (print ($[|exprLabel 'lbl|] ++ "_process_redistribute: invalid right join inputs.")) }
