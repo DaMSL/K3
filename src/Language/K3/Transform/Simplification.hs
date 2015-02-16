@@ -292,7 +292,9 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
       let immutSource = onQualifiedExpression (head $ children n) True False in
       case (head ch, last ch, immutSource) of
         (_, Left v2, _)             -> return $ Left v2
-        (Left v, Right bodyE, True) -> substituteBinding i v bodyE >>= simplifyAsFoldedExpr
+        (Left v, Right bodyE, True) -> let numOccurs = length $ filter (== i) $ freeVariables bodyE in
+                                       if numOccurs == 1 then substituteBinding i v bodyE >>= simplifyAsFoldedExpr
+                                                         else rebuildNode n ch
         (_, _, _)                   -> rebuildNode n ch
 
     -- TODO: substitute when we have read-only mutable binds.
@@ -750,11 +752,13 @@ commonSubexprElim :: Maybe Int -> K3 Expression -> Either String (Maybe Int, K3 
 commonSubexprElim cseCntOpt expr = do
     cTree <- buildCandidateTree expr
     -- TODO: log candidates for debugging
-    pTree <- pruneCandidateTree cTree
+    pTree <- debugCTree "CTree" cTree $ pruneCandidateTree cTree
     -- TODO: log pruned candidates for debugging
-    substituteCandidates (maybe 0 id cseCntOpt) pTree >>= return . first Just
+    substituteCandidates (maybe 0 id cseCntOpt) (debugCTree "PTree" pTree pTree) >>= return . first Just
 
   where
+    debugCTree tg ct r = if True then r else trace (boxToString $ [tg] ++ prettyLines ct) r
+
     covers :: K3 Expression -> K3 Expression -> Bool
     covers a b = runIdentity $ (\f -> foldMapTree f False a) $ \chAcc n ->
       if or chAcc then return $ True else return $ compareEStrictAST n b
@@ -858,8 +862,6 @@ commonSubexprElim cseCntOpt expr = do
         return (ncnt, nExpr)
 
       where
-        rebuildAnnNode n ch = Node (tag n :@: annotations n) ch
-
         concatCandidates candAcc (Node (uid, cands) _) =
           return $ (map (\(e,i) -> (uid,e,i)) cands) ++ (concat candAcc)
 
@@ -893,17 +895,14 @@ commonSubexprElim cseCntOpt expr = do
                            Just _  -> e
             in if uid == uid2
                  then EC.letIn cseId qualE $ substituteExpr e cseVar n
-                 else rebuildAnnNode n ch
-          _ -> return $ rebuildAnnNode n ch
+                 else replaceCh n ch
+          _ -> return $ replaceCh n ch
 
         substituteExpr :: K3 Expression -> K3 Expression -> K3 Expression -> K3 Expression
-        substituteExpr compareE newE targetE =
-          runIdentity $ modifyTree (doSub compareE newE) targetE
-
+        substituteExpr compareE newE targetE = runIdentity $ modifyTree (doSub compareE newE) targetE
         doSub compareE newE n = return $ if compareEAST compareE n then qualifySub n newE else n
         qualifySub ((@~ isEQualified) -> Nothing)   n = n
         qualifySub ((@~ isEQualified) -> Just qAnn) n = n @+ qAnn
-
 
     uidError e = Left $ "No UID found on " ++ show e
 
@@ -1064,15 +1063,15 @@ encodeTransformers restChanged expr = do
           missingAccFE = stripEUIDSpan accFE
 
           entryE v = EC.record [("key", EC.applyMany gbE [eVar]), ("value", v)]
-          
+
           missingE = EC.lambda "_" $
                        EC.record [("key", EC.project "key" rVar)
                                  ,("value", EC.applyMany missingAccFE [zE, eVar])]
-          
+
           presentE = EC.lambda oVarId $
                       EC.record [("key", EC.project "key" oVar)
                                 ,("value", EC.applyMany accFE [EC.project "value" oVar, eVar])]
-      
+
       in do
       defaultV <- defaultExpression valueT
       return $ (fAs++[pFusionSpec (DCond2, IndepTr), pFusionLineage "groupBy"],
@@ -1177,7 +1176,7 @@ fuseFoldTransformers expr = do
            in trace (unwords ["Fusing:", showFusion lAs rAs
                              , either id (maybe onFail (const "Success")) r]) r
 
-    debugGroupBy isHG isMG lAccF rAccF r = 
+    debugGroupBy isHG isMG lAccF rAccF r =
       if True then r else flip trace r $
       let match f = case f of
                       PDCond2 _ _ _ _ _ _ _ _  -> "DCond2"
@@ -2096,7 +2095,7 @@ pattern PDCond2 i j leti o dlV gbF accF zE <-
       (PRec ["key", "value"] [PApp gbF (PVar ((== j) -> True) _) _, dlV] _)
       leti
       (PSeq (PPrjApp3 (PVar ((== i) -> True) _)
-              "upsert_with" 
+              "upsert_with"
               _
               (PVar ((== leti) -> True) _)
               (PLam "_" (PRec ["key", "value"]
@@ -2116,7 +2115,7 @@ pattern PSDCond2 i j leti o dlK dlV mvE pvE <-
       (PRec ["key", "value"] [dlK, dlV] _)
       leti
       (PSeq (PPrjApp3 (PVar ((== i) -> True) _)
-              "upsert_with" 
+              "upsert_with"
               _
               (PVar ((== leti) -> True) _)
               (PLam "_" (PRec ["key", "value"]
