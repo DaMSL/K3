@@ -1,0 +1,1800 @@
+include "Core/Builtins.k3"
+include "Annotation/Map.k3"
+include "Annotation/Set.k3"
+include "Annotation/Seq.k3"
+declare my_peers : collection { i:address } @ {Collection} =
+  peers.fold (\acc -> (\x -> (acc.insert {i:x.addr}; acc))) empty { i:address} @ Collection
+declare ms_rcv_jobs_ack_cnt : mut int = 0
+
+
+declare ms_rcv_job_cnt : mut int = 0
+
+
+declare ms_rcv_node_done_cnt : mut int = 0
+
+
+declare ms_rcv_switch_done_cnt : mut int = 0
+
+
+declare g_init_vid : { key:int, value:int } = {key:0, value:0}
+
+
+declare g_min_vid : { key:int, value:int } = {key:0, value:0}
+
+
+declare g_max_vid : { key:int, value:int } = {key:get_max_int (),
+  value:get_max_int ()}
+
+
+declare job_master : int = 0
+
+
+declare job_switch : int = 1
+
+
+declare job_node : int = 2
+
+
+declare job_timer : int = 3
+
+
+declare job : mut int = if role == "master" then job_master
+  else if role == "switch" then job_switch
+    else if role == "node" then job_node
+      else if role == "timer" then job_timer
+        else error (print "failed to find proper role")
+
+
+declare jobs : mut collection { key:address, value:int } @ { Map }
+
+
+declare master_addr : mut address
+
+
+declare timer_addr : mut address
+
+
+declare nodes : mut collection {i:address} @ { Collection }
+
+
+declare switches : mut collection {i:address} @ { Collection }
+
+
+declare num_peers : mut int = my_peers.fold ((\count -> (\b3 ->
+  bind b3 as {i:addr} in count + 1))) 0
+
+
+declare num_switches : mut int
+
+
+declare num_nodes : mut int
+
+
+declare map_ids : collection { r1:int, r2:string, r3:int } @ { Collection } =
+  {| r1:int, r2:string, r3:int | {r1:1, r2:"__SQL_SUM_AGGREGATE_1", r3:1},
+  {r1:2, r2:"__SQL_SUM_AGGREGATE_1_mS1", r3:2}, {r1:3,
+  r2:"__SQL_SUM_AGGREGATE_1_mR1", r3:2}, {r1:4, r2:"__SQL_SUM_AGGREGATE_2",
+  r3:1}, {r1:5, r2:"__SQL_SUM_AGGREGATE_2_mS3", r3:2}, {r1:6,
+  r2:"__SQL_SUM_AGGREGATE_2_mR1", r3:2}|} @ { Collection }
+
+
+declare trig_ids : collection { r1:int, r2:string,
+  r3:collection {i:int} @ { Seq } } @ { Collection } = {| r1:int, r2:string,
+  r3:collection {i:int} @ { Seq } | {r1:2, r2:"sw_insert_R", r3:{|i:int| 1,
+  2|} @ { Seq }}, {r1:0, r2:"sw_insert_S", r3:{|i:int| 1,
+  2|} @ { Seq }}|} @ { Collection }
+
+
+declare nd_stmt_cntrs : collection { r1:{ key:int, value:int }, r2:int, r3:int
+  } @ { Collection }
+
+
+declare nd_log_master : collection { r1:{ key:int, value:int }, r2:int, r3:int
+  } @ { Collection }
+
+
+declare nd_state_normal : int = 0
+
+
+declare nd_state_done : int = 1
+
+
+declare nd_state : mut int = nd_state_normal
+
+
+declare sw_state_pre_init : int = 0
+
+
+declare sw_state_idle : int = 1
+
+
+declare sw_state_sending : int = 2
+
+
+declare sw_state_wait_vid : int = 3
+
+
+declare sw_state_done : int = 4
+
+
+declare sw_state : mut int = sw_state_pre_init
+
+
+declare sw_trig_buf_idx : collection {i:int} @ { Seq }
+
+
+declare ms_start_time : mut int
+
+
+declare ms_end_time : mut int
+
+
+declare sw_buf_insert_S : collection { key:int, value:int } @ { Seq }
+
+
+declare sw_buf_insert_R : collection { key:int, value:int } @ { Seq }
+
+
+declare nd_log_insert_S : collection { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Collection }
+
+
+declare nd_log_insert_R : collection { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Collection }
+
+
+declare __SQL_SUM_AGGREGATE_1 : ind collection { key:{ key:int, value:int },
+  value:int } @ { Collection } = ind {| key:{ key:int, value:int }, value:int |
+  {key:g_init_vid, value:0}|} @ { Collection }
+
+
+declare __SQL_SUM_AGGREGATE_1_mS1 : ind collection { r1:{ key:int, value:int },
+  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
+  r2:int, r3:int } @ { Collection }
+
+
+declare __SQL_SUM_AGGREGATE_1_mR1 : ind collection { r1:{ key:int, value:int },
+  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
+  r2:int, r3:int } @ { Collection }
+
+
+declare __SQL_SUM_AGGREGATE_2 : ind collection { key:{ key:int, value:int },
+  value:int } @ { Collection } = ind {| key:{ key:int, value:int }, value:int |
+  {key:g_init_vid, value:0}|} @ { Collection }
+
+
+declare __SQL_SUM_AGGREGATE_2_mS3 : ind collection { r1:{ key:int, value:int },
+  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
+  r2:int, r3:int } @ { Collection }
+
+
+declare __SQL_SUM_AGGREGATE_2_mR1 : ind collection { r1:{ key:int, value:int },
+  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
+  r2:int, r3:int } @ { Collection }
+
+
+declare map___SQL_SUM_AGGREGATE_1_mS1_s0_buf : ind collection { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection }
+
+
+declare map___SQL_SUM_AGGREGATE_1_mS1_s2_buf : ind collection { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection }
+
+
+declare map___SQL_SUM_AGGREGATE_2_mS3_s2_buf : ind collection { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection }
+
+
+declare map___SQL_SUM_AGGREGATE_1_mS1_s4_buf : ind collection { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection }
+
+
+declare map___SQL_SUM_AGGREGATE_1_mS1_s6_buf : ind collection { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection }
+
+
+declare map___SQL_SUM_AGGREGATE_2_mS3_s6_buf : ind collection { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection }
+
+
+declare map___SQL_SUM_AGGREGATE_1_mR1_s8_buf : ind collection { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection }
+
+
+declare map___SQL_SUM_AGGREGATE_2_mR1_s10_buf : ind collection { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection }
+
+
+declare map___SQL_SUM_AGGREGATE_1_mR1_s10_buf : ind collection { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection }
+
+
+declare map___SQL_SUM_AGGREGATE_1_mR1_s12_buf : ind collection { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection }
+
+
+declare map___SQL_SUM_AGGREGATE_2_mR1_s14_buf : ind collection { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection }
+
+
+declare map___SQL_SUM_AGGREGATE_1_mR1_s14_buf : ind collection { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection }
+
+
+declare tm_timer_list : mut collection { r1:int, r2:int, r3:address } @ { Seq }
+
+
+declare sw_next_switch_addr : mut address
+
+
+declare sw_need_vid_cntr : mut int = 0
+
+
+declare sw_token_vid_list : collection { key:{ key:int, value:int }, value:int
+  } @ { Seq }
+
+
+declare sw_highest_vid : mut { key:int, value:int }
+
+
+declare node_ring : mut collection { key:address, value:int } @ { Seq }
+
+
+declare replicas : mut int = 8
+
+
+declare pmap_input : collection { key:string, value:collection { key:int,
+  value:int } @ { Seq } } @ { Seq } = {| key:string, value:collection {
+  key:int, value:int } @ { Seq } | {key:"__SQL_SUM_AGGREGATE_1_mS1", value:{|
+  key:int, value:int | {key:0, value:16}|} @ { Seq }},
+  {key:"__SQL_SUM_AGGREGATE_1_mR1", value:{| key:int, value:int | {key:0,
+  value:16}|} @ { Seq }}, {key:"__SQL_SUM_AGGREGATE_2_mS3", value:{| key:int,
+  value:int | {key:0, value:16}|} @ { Seq }}, {key:"__SQL_SUM_AGGREGATE_2_mR1",
+  value:{| key:int, value:int | {key:0, value:16}|} @ { Seq }}|} @ { Seq }
+
+
+declare pmap_data : collection { key:int, value:collection { key:int, value:int
+  } @ { Seq } } @ { Seq } = pmap_input.fold ((\__acc_map -> (\b3 ->
+  bind b3 as {key:map_name, value:map_types} in __acc_map.combine ({| key:int,
+  value:collection { key:int, value:int } @ { Seq } | {key:(case
+  ((map_ids.filter ((\b1 -> bind b1 as {r1:r1, r2:r2, r3:r3} in r2 ==
+  map_name))).peek ()) of
+  {Some x -> x}{None -> error (print "can't find map in map_ids")}).r1,
+  value:map_types}|} @ { Seq })))) empty { key:int, value:collection { key:int,
+  value:int } @ { Seq } } @ { Seq }
+
+
+declare sw_max_ack_vid : mut { key:int, value:int } = g_min_vid
+
+
+declare sw_ack_log : collection { key:{ key:int, value:int },
+  value:collection {i:address} @ { Set } } @ { Map }
+
+
+declare ms_gc_interval : mut int = 300
+
+
+declare ms_gc_vid_map : mut collection { key:address, value:{ key:int,
+  value:int } } @ { Map }
+
+
+declare ms_gc_vid_ctr : mut int = 0
+
+
+declare ms_num_gc_expected : mut int = my_peers.fold ((\count -> (\b3 ->
+  bind b3 as {i:addr} in count + 1))) 0
+
+
+declare nd_log_master_write : { r1:{ key:int, value:int }, r2:int, r3:int
+  } -> () = (\b1 -> bind b1 as {r1:vid, r2:trig_id, r3:stmt_id} in 
+  nd_log_master.insert {r1:vid, r2:trig_id, r3:stmt_id})
+
+
+declare nd_log_write_insert_S : { r1:{ key:int, value:int }, r2:int, r3:int
+  } -> () = (\b1 -> bind b1 as {r1:vid, r2:S_B, r3:S_C} in 
+  nd_log_insert_S.insert {r1:vid, r2:S_B, r3:S_C})
+
+
+declare nd_log_write_insert_R : { r1:{ key:int, value:int }, r2:int, r3:int
+  } -> () = (\b1 -> bind b1 as {r1:vid, r2:R_A, r3:R_B} in 
+  nd_log_insert_R.insert {r1:vid, r2:R_A, r3:R_B})
+
+
+declare nd_log_get_bound_insert_S : { key:int, value:int } -> { r1:{ key:int,
+  value:int }, r2:int, r3:int } = (\vid -> case ((nd_log_insert_S.filter
+  ((\b1 -> bind b1 as {r1:r1, r2:r2, r3:r3} in r1 == vid))).peek ()) of
+  {Some x -> x}{None -> error (print "failed to find log")})
+
+
+declare nd_log_get_bound_insert_R : { key:int, value:int } -> { r1:{ key:int,
+  value:int }, r2:int, r3:int } = (\vid -> case ((nd_log_insert_R.filter
+  ((\b1 -> bind b1 as {r1:r1, r2:r2, r3:r3} in r1 == vid))).peek ()) of
+  {Some x -> x}{None -> error (print "failed to find log")})
+
+
+declare nd_log_read_geq : { key:int, value:int } -> collection { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection } = (\vid2 ->
+  nd_log_master.filter ((\b1 -> bind b1 as {r1:vid, r2:trig_id, r3:stmt_id} in 
+  vid >= vid2)))
+
+
+declare nd_check_stmt_cntr_index : { key:{ key:int, value:int }, value:int
+  } -> bool = (\b1 -> bind b1 as {key:vid, value:stmt_id} in case
+  ((nd_stmt_cntrs.filter ((\b1 -> bind b1 as {r1:r1, r2:r2, r3:r3} in r1 == vid
+  and r2 == stmt_id))).peek ()) of
+  {Some lookup ->
+    (nd_stmt_cntrs.update lookup (bind lookup as
+     {r1:vid, r2:stmt_id, r3:counter} in {r1:vid, r2:stmt_id, r3:counter - 1});
+     (if 0 == lookup.r2
+     then
+       (nd_stmt_cntrs.erase lookup;
+        (case (nd_stmt_cntrs.peek ()) of
+        {Some _ -> if nd_state == nd_state_done
+          then (ms_rcv_node_done, master_addr)<- true else ()}{None -> ()});
+        true) else false))}{None ->
+                             ((case (nd_stmt_cntrs.peek ()) of
+                              {Some _ -> if nd_state == nd_state_done
+                                then
+                                  (nd_stmt_cntrs.insert {r1:vid, r2:stmt_id,
+                                   r3:-1};
+                                   (ms_rcv_node_done, master_addr)<- false)
+                                else ()}{None -> nd_stmt_cntrs.insert {r1:vid,
+                                          r2:stmt_id, r3:-1}});
+                              false)})
+
+
+declare add_node : address -> () = (\addr -> let rng = range replicas in
+  let new_elems =
+    rng.fold ((\__acc_map -> (\b3 -> bind b3 as {i:i} in __acc_map.combine ({|
+      key:address, value:int | {key:addr,
+      value:hash (i + hash addr)}|} @ { Seq })))) empty { key:address,
+      value:int } @ { Seq } in
+    (node_ring = new_elems.combine node_ring;
+     node_ring = node_ring.sort ((\b2 -> (\b5 -> bind b2 as {key:addr,
+     value:hash1} in bind b5 as {key:addr, value:hash2} in if hash1 > hash2
+     then -1 else 1)))))
+
+
+declare get_ring_node : { key:int, value:int } -> address = (\b1 ->
+  bind b1 as {key:data, value:max_val} in let scaled =
+  truncate (real_of_int (get_max_int ()) * (real_of_int data /
+    real_of_int max_val)) in
+  let results =
+    node_ring.filter ((\b1 -> bind b1 as {key:addr, value:hash} in hash >=
+      scaled)) in
+    bind
+      case (results.peek ()) of
+        {Some x -> x}{None -> case (node_ring.peek ()) of
+                       {Some x -> x}{None -> error (print "empty node ring")}}
+      as {key:addr, value:_} in addr)
+
+
+declare frontier_int_int : { key:{ key:int, value:int }, value:collection {
+  r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection }
+  } -> collection { r1:{ key:int, value:int }, r2:int, r3:int
+  } @ { Collection } = (\b1 -> bind b1 as {key:vid, value:input_map} in 
+  (input_map.groupBy ((\b1 -> bind b1 as {r1:map_vid, r2:__map_0,
+  r3:__map_val} in __map_0)) ((\b2 -> (\b5 -> bind b2 as {key:acc,
+  value:max_vid} in bind b5 as {r1:map_vid, r2:__map_0, r3:__map_val} in 
+  if map_vid < vid
+  then if map_vid == max_vid
+    then
+      (acc.insert {r1:map_vid, r2:__map_0, r3:__map_val};
+       {key:acc, value:max_vid})
+    else if map_vid > max_vid
+      then {key:{| r1:{ key:int, value:int }, r2:int, r3:int | {r1:map_vid,
+        r2:__map_0, r3:__map_val}|} @ { Collection }, value:map_vid}
+      else {key:acc, value:max_vid} else {key:acc, value:max_vid})))
+  {key:empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection },
+  value:g_min_vid}).fold ((\__acc_ext -> (\b3 -> bind b3 as {value:b4} in 
+  bind b4 as {key:project} in __acc_ext.combine project))) empty { r1:{
+  key:int, value:int }, r2:int, r3:int } @ { Collection })
+
+
+declare frontier_int : { key:{ key:int, value:int }, value:collection { key:{
+  key:int, value:int }, value:int } @ { Collection } } -> collection { key:{
+  key:int, value:int }, value:int } @ { Collection } = (\b1 ->
+  bind b1 as {key:vid, value:input_map} in (input_map.fold ((\b2 -> (\b5 ->
+  bind b2 as {key:acc, value:max_vid} in bind b5 as {key:map_vid,
+  value:__map_val} in if map_vid < vid
+  then if map_vid == max_vid
+    then (acc.insert {key:map_vid, value:__map_val};{key:acc, value:max_vid})
+    else if map_vid > max_vid
+      then {key:{| key:{ key:int, value:int }, value:int | {key:map_vid,
+        value:__map_val}|} @ { Collection }, value:map_vid}
+      else {key:acc, value:max_vid} else {key:acc, value:max_vid})))
+  {key:empty { key:{ key:int, value:int }, value:int } @ { Collection },
+  value:g_min_vid}).key)
+
+
+declare nd_add_delta_to_int_int : { r1:ind collection { r1:{ key:int, value:int
+  }, r2:int, r3:int } @ { Collection }, r2:bool, r3:{ key:int, value:int },
+  r4:collection { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection }
+  } -> () = (\b1 -> bind b1 as {r1:target_map, r2:corrective, r3:min_vid,
+  r4:delta_tuples} in 
+  (delta_tuples.iterate ((\b1 -> bind b1 as {r1:vid, r2:__map_0,
+   r3:__map_val} in bind target_map as ind target_map_d in
+   let lookup_value =
+     if corrective
+       then target_map_d.filter ((\b1 -> bind b1 as {r1:r1, r2:r2, r3:r3} in r1
+         == vid and r2 == __map_0))
+       else empty { r1:{ key:int, value:int }, r2:int, r3:int
+         } @ { Collection } in
+     case (lookup_value.peek ()) of
+       {Some val -> let update_value = __map_val + val.r3 in
+         target_map_d.insert {r1:vid, r2:__map_0, r3:update_value}}{None -> let
+                                                                    lookup_value
+                                                                    =
+                                                                    frontier_int_int
+                                                                    {key:vid,
+                                                                    value:target_map_d.filter
+                                                                    ((\b1 ->
+                                                                    bind b1 as {r1:r1,
+                                                                    r2:r2,
+                                                                    r3:r3} in 
+                                                                    r2 ==
+                                                                    __map_0))}
+                                                                    in
+                                                                    let
+                                                                    update_value
+                                                                    =
+                                                                    __map_val +
+                                                                    case
+                                                                    (lookup_value.peek
+                                                                    ()) of
+                                                                    {Some val ->
+                                                                    val.r3}
+                                                                    {None -> 0}
+                                                                    in
+                                                                    target_map_d.insert
+                                                                    {r1:vid,
+                                                                    r2:__map_0,
+                                                                    r3:update_value}}));
+   delta_tuples.iterate ((\b1 -> bind b1 as {r1:vid_arg, r2:__arg_0,
+   r3:__arg_val} in let filtered =
+   bind target_map as ind target_map_d in
+     (target_map_d.filter ((\b1 -> bind b1 as {r1:r1, r2:r2, r3:r3} in r2 ==
+       __arg_0))).filter ((\b1 -> bind b1 as {r1:vid, r2:__map_0,
+       r3:__map_val} in vid > min_vid)) in
+   filtered.iterate ((\b1 -> bind b1 as {r1:vid, r2:__map_0, r3:__map_val} in 
+     bind target_map as ind target_map_d in
+     target_map_d.update {r1:vid, r2:__map_0, r3:__map_val} {r1:vid,
+       r2:__map_0, r3:__map_val + __arg_val}))))))
+
+
+declare nd_add_delta_to_int : { r1:ind collection { key:{ key:int, value:int },
+  value:int } @ { Collection }, r2:bool, r3:{ key:int, value:int },
+  r4:collection { key:{ key:int, value:int }, value:int } @ { Collection }
+  } -> () = (\b1 -> bind b1 as {r1:target_map, r2:corrective, r3:min_vid,
+  r4:delta_tuples} in 
+  (delta_tuples.iterate ((\b1 -> bind b1 as {key:vid, value:__map_val} in bind
+   target_map as ind target_map_d in
+   let lookup_value =
+     if corrective
+       then target_map_d.filter ((\b1 -> bind b1 as {key:key, value:value} in 
+         key == vid))
+       else empty { key:{ key:int, value:int }, value:int } @ { Collection } in
+     case (lookup_value.peek ()) of
+       {Some val -> let update_value = __map_val + val.value in
+         target_map_d.insert {key:vid, value:update_value}}{None -> let
+                                                             lookup_value =
+                                                             frontier_int
+                                                               {key:vid,
+                                                               value:target_map_d}
+                                                             in
+                                                             let update_value =
+                                                               __map_val + case
+                                                                 (lookup_value.peek
+                                                                 ()) of
+                                                                 {Some val ->
+                                                                   val.value}
+                                                                 {None -> 0} in
+                                                               target_map_d.insert
+                                                                 {key:vid,
+                                                                 value:update_value}}));
+   delta_tuples.iterate ((\b1 -> bind b1 as {key:vid_arg, value:__arg_val} in 
+   let filtered =
+   bind target_map as ind target_map_d in
+     target_map_d.filter ((\b1 -> bind b1 as {key:vid, value:__map_val} in vid
+       > min_vid)) in
+   filtered.iterate ((\b1 -> bind b1 as {key:vid, value:__map_val} in bind
+     target_map as ind target_map_d in
+     target_map_d.update {key:vid, value:__map_val} {key:vid, value:__map_val +
+       __arg_val}))))))
+
+
+declare sw_gen_vid : () -> option { key:int, value:int } = (\_ -> case
+  (sw_token_vid_list.peek ()) of
+  {Some vid_num -> let num_new = vid_num.value - 1 in
+    let vid_new = {key:(vid_num.key).key, value:(vid_num.key).value + 1} in
+      ((if num_new <= 0 then sw_token_vid_list.erase vid_num
+       else sw_token_vid_list.update vid_num {key:vid_new, value:num_new});
+       Some (vid_num.key))}{None -> None immut})
+
+
+declare calc_dim_bounds : collection { key:int, value:int } @ { Seq } -> {
+  key:collection { key:int, value:int } @ { Seq }, value:int } = (\pmap ->
+  pmap.fold ((\b2 -> (\b5 -> bind b2 as {key:xs, value:acc_size} in 
+  bind b5 as {key:pos, value:bin_size} in {key:xs.combine ({| key:int,
+  value:int | {key:pos, value:acc_size}|} @ { Seq }), value:bin_size *
+  acc_size}))) {key:empty { key:int, value:int } @ { Seq }, value:1})
+
+
+declare route_to_ : { key:int, value:()
+  } -> collection {i:address} @ { Collection } = (\b1 -> {|i:address|
+  get_ring_node {key:1, value:1}|} @ { Collection })
+
+
+declare route_to_int : { key:int, value:option int
+  } -> collection {i:address} @ { Collection } = (\b1 ->
+  bind b1 as {key:map_id, value:key_0} in let pmap =
+  (case ((pmap_data.filter ((\b1 -> bind b1 as {key:key, value:value} in key ==
+    map_id))).peek ()) of
+    {Some x -> x}{None -> error (print "can't find map_id in pmap_data")}).value
+  in
+  case (pmap.peek ()) of
+    {Some _ -> bind calc_dim_bounds pmap as {key:dim_bounds, value:max_val} in
+      let bound_bucket =
+        case key_0 of
+          {Some key_0_unwrap -> let pmap_slice =
+            pmap.filter ((\b1 -> bind b1 as {key:key, value:value} in key ==
+              0)) in
+            case (pmap_slice.peek ()) of
+              {Some peek_slice -> let value =
+                hash key_0_unwrap % peek_slice.value in
+                value * (case ((dim_bounds.filter ((\b1 -> bind b1 as {key:key,
+                  value:value} in key == 0))).peek ()) of
+                  {Some x -> x}{None ->
+                                 error (print "can't find 0 in dim_bounds")}).value}
+              {None -> 0}}{None -> 0} + 0 in
+        let free_dims =
+          (if key_0 != None immut then empty { key:int, value:int } @ { Seq }
+            else pmap.filter ((\b1 -> bind b1 as {key:key, value:value} in key
+              == 0))).combine empty { key:int, value:int } @ { Seq } in
+          let free_domains =
+            free_dims.fold ((\__acc_map -> (\b3 -> bind b3 as {key:i,
+              value:b_i} in __acc_map.combine ({| key:int,
+              value:collection {i:int} @ { Seq } | {key:i,
+              value:range b_i}|} @ { Seq })))) empty { key:int,
+              value:collection {i:int} @ { Seq } } @ { Seq } in
+            let free_cart_prod =
+              free_domains.fold ((\prev_cart_prod -> (\b3 -> bind b3 as {key:i,
+                value:domain} in domain.fold ((\__acc_ext -> (\b3 ->
+                bind b3 as {i:domain_element} in __acc_ext.combine (case
+                (prev_cart_prod.peek ()) of
+                {Some _ -> {|i:collection { key:int, value:int } @ { Seq }| {|
+                  key:int, value:int | {key:i,
+                  value:domain_element}|} @ { Seq }|} @ { Seq }}{None ->
+                                                                  prev_cart_prod.fold
+                                                                  ((\__acc_map ->
+                                                                  (\b3 ->
+                                                                  bind b3 as {i:rest_tup} in 
+                                                                  __acc_map.combine
+                                                                  ({|i:collection {
+                                                                  key:int,
+                                                                  value:int
+                                                                  } @ { Seq }|
+                                                                  rest_tup.combine
+                                                                  ({| key:int,
+                                                                  value:int |
+                                                                  {key:i,
+                                                                  value:domain_element}|} @ { Seq })|} @ { Seq }))))
+                                                                  empty {i:collection {
+                                                                  key:int,
+                                                                  value:int
+                                                                  } @ { Seq }} @ { Seq }}))))
+                empty {i:collection { key:int, value:int
+                } @ { Seq }} @ { Seq }))) empty {i:collection { key:int,
+                value:int } @ { Seq }} @ { Seq } in
+              let sorted_ip_list =
+                (free_cart_prod.fold ((\acc_ips -> (\b3 ->
+                  bind b3 as {i:free_bucket} in acc_ips.combine ({|i:address|
+                  get_ring_node {key:free_bucket.fold ((\acc -> (\b3 ->
+                    bind b3 as {key:i, value:val} in acc + (val * (case
+                    ((dim_bounds.filter ((\b1 -> bind b1 as {key:key,
+                    value:value} in key == i))).peek ()) of
+                    {Some x -> x}{None ->
+                                   error (print "can't find i in dim_bounds")}).value))))
+                    bound_bucket, value:max_val}|} @ { Collection }))))
+                  empty {i:address} @ { Collection }).groupBy ((\b1 ->
+                  bind b1 as {i:ip} in ip)) ((\_ -> (\_ -> ()))) () in
+                case (sorted_ip_list.peek ()) of
+                  {Some _ -> {|i:address|
+                    get_ring_node {key:bound_bucket, value:max_val}|} @ { Collection }}
+                  {None -> sorted_ip_list.fold ((\__acc_map -> (\x ->
+                    __acc_map.combine ({|i:address|
+                    x.key|} @ { Collection }))))
+                    empty {i:address} @ { Collection }}}{None -> nodes})
+
+
+declare shuffle___SQL_SUM_AGGREGATE_1_mR1_to___SQL_SUM_AGGREGATE_2 : { r1:(),
+  r2:collection { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection },
+  r3:bool } -> collection { key:address, value:collection { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection } } @ { Collection } = (\b1 ->
+  bind b1 as {r2:tuples, r3:shuffle_on_empty} in let all_targets =
+  if shuffle_on_empty == true
+    then (route_to_ {key:4, value:()}).fold ((\__acc_map -> (\b3 ->
+      bind b3 as {i:ip} in __acc_map.combine ({| key:address,
+      value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } | {key:ip, value:empty { r1:{ key:int, value:int },
+      r2:int, r3:int } @ { Collection }}|} @ { Collection })))) empty {
+      key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } } @ { Collection }
+    else empty { key:address, value:collection { r1:{ key:int, value:int },
+      r2:int, r3:int } @ { Collection } } @ { Collection } in
+  (all_targets.combine (tuples.fold ((\__acc_ext -> (\r_tuple ->
+    __acc_ext.combine (bind r_tuple as {r1:rkey_0, r2:rkey_1, r3:rkey_2} in
+    (route_to_ {key:4, value:()}).fold ((\__acc_map -> (\b3 ->
+      bind b3 as {i:ip} in __acc_map.combine ({| key:address,
+      value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } | {key:ip, value:{| r1:{ key:int, value:int }, r2:int,
+      r3:int | r_tuple|} @ { Collection }}|} @ { Collection })))) empty {
+      key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } } @ { Collection })))) empty { key:address,
+    value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+    } @ { Collection } } @ { Collection })).groupBy ((\b1 ->
+    bind b1 as {key:ip, value:tuple} in ip)) ((\acc -> (\b3 ->
+    bind b3 as {key:ip, value:tuple} in tuple.combine acc))) empty { r1:{
+    key:int, value:int }, r2:int, r3:int } @ { Collection })
+
+
+declare shuffle___SQL_SUM_AGGREGATE_2_mR1_to___SQL_SUM_AGGREGATE_2 : { r1:(),
+  r2:collection { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection },
+  r3:bool } -> collection { key:address, value:collection { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection } } @ { Collection } = (\b1 ->
+  bind b1 as {r2:tuples, r3:shuffle_on_empty} in let all_targets =
+  if shuffle_on_empty == true
+    then (route_to_ {key:4, value:()}).fold ((\__acc_map -> (\b3 ->
+      bind b3 as {i:ip} in __acc_map.combine ({| key:address,
+      value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } | {key:ip, value:empty { r1:{ key:int, value:int },
+      r2:int, r3:int } @ { Collection }}|} @ { Collection })))) empty {
+      key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } } @ { Collection }
+    else empty { key:address, value:collection { r1:{ key:int, value:int },
+      r2:int, r3:int } @ { Collection } } @ { Collection } in
+  (all_targets.combine (tuples.fold ((\__acc_ext -> (\r_tuple ->
+    __acc_ext.combine (bind r_tuple as {r1:rkey_0, r2:rkey_1, r3:rkey_2} in
+    (route_to_ {key:4, value:()}).fold ((\__acc_map -> (\b3 ->
+      bind b3 as {i:ip} in __acc_map.combine ({| key:address,
+      value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } | {key:ip, value:{| r1:{ key:int, value:int }, r2:int,
+      r3:int | r_tuple|} @ { Collection }}|} @ { Collection })))) empty {
+      key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } } @ { Collection })))) empty { key:address,
+    value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+    } @ { Collection } } @ { Collection })).groupBy ((\b1 ->
+    bind b1 as {key:ip, value:tuple} in ip)) ((\acc -> (\b3 ->
+    bind b3 as {key:ip, value:tuple} in tuple.combine acc))) empty { r1:{
+    key:int, value:int }, r2:int, r3:int } @ { Collection })
+
+
+declare shuffle___SQL_SUM_AGGREGATE_1_mR1_to___SQL_SUM_AGGREGATE_1 : { r1:(),
+  r2:collection { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection },
+  r3:bool } -> collection { key:address, value:collection { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection } } @ { Collection } = (\b1 ->
+  bind b1 as {r2:tuples, r3:shuffle_on_empty} in let all_targets =
+  if shuffle_on_empty == true
+    then (route_to_ {key:1, value:()}).fold ((\__acc_map -> (\b3 ->
+      bind b3 as {i:ip} in __acc_map.combine ({| key:address,
+      value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } | {key:ip, value:empty { r1:{ key:int, value:int },
+      r2:int, r3:int } @ { Collection }}|} @ { Collection })))) empty {
+      key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } } @ { Collection }
+    else empty { key:address, value:collection { r1:{ key:int, value:int },
+      r2:int, r3:int } @ { Collection } } @ { Collection } in
+  (all_targets.combine (tuples.fold ((\__acc_ext -> (\r_tuple ->
+    __acc_ext.combine (bind r_tuple as {r1:rkey_0, r2:rkey_1, r3:rkey_2} in
+    (route_to_ {key:1, value:()}).fold ((\__acc_map -> (\b3 ->
+      bind b3 as {i:ip} in __acc_map.combine ({| key:address,
+      value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } | {key:ip, value:{| r1:{ key:int, value:int }, r2:int,
+      r3:int | r_tuple|} @ { Collection }}|} @ { Collection })))) empty {
+      key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } } @ { Collection })))) empty { key:address,
+    value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+    } @ { Collection } } @ { Collection })).groupBy ((\b1 ->
+    bind b1 as {key:ip, value:tuple} in ip)) ((\acc -> (\b3 ->
+    bind b3 as {key:ip, value:tuple} in tuple.combine acc))) empty { r1:{
+    key:int, value:int }, r2:int, r3:int } @ { Collection })
+
+
+declare shuffle___SQL_SUM_AGGREGATE_2_mS3_to___SQL_SUM_AGGREGATE_2 : { r1:(),
+  r2:collection { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection },
+  r3:bool } -> collection { key:address, value:collection { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection } } @ { Collection } = (\b1 ->
+  bind b1 as {r2:tuples, r3:shuffle_on_empty} in let all_targets =
+  if shuffle_on_empty == true
+    then (route_to_ {key:4, value:()}).fold ((\__acc_map -> (\b3 ->
+      bind b3 as {i:ip} in __acc_map.combine ({| key:address,
+      value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } | {key:ip, value:empty { r1:{ key:int, value:int },
+      r2:int, r3:int } @ { Collection }}|} @ { Collection })))) empty {
+      key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } } @ { Collection }
+    else empty { key:address, value:collection { r1:{ key:int, value:int },
+      r2:int, r3:int } @ { Collection } } @ { Collection } in
+  (all_targets.combine (tuples.fold ((\__acc_ext -> (\r_tuple ->
+    __acc_ext.combine (bind r_tuple as {r1:rkey_0, r2:rkey_1, r3:rkey_2} in
+    (route_to_ {key:4, value:()}).fold ((\__acc_map -> (\b3 ->
+      bind b3 as {i:ip} in __acc_map.combine ({| key:address,
+      value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } | {key:ip, value:{| r1:{ key:int, value:int }, r2:int,
+      r3:int | r_tuple|} @ { Collection }}|} @ { Collection })))) empty {
+      key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } } @ { Collection })))) empty { key:address,
+    value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+    } @ { Collection } } @ { Collection })).groupBy ((\b1 ->
+    bind b1 as {key:ip, value:tuple} in ip)) ((\acc -> (\b3 ->
+    bind b3 as {key:ip, value:tuple} in tuple.combine acc))) empty { r1:{
+    key:int, value:int }, r2:int, r3:int } @ { Collection })
+
+
+declare shuffle___SQL_SUM_AGGREGATE_1_mS1_to___SQL_SUM_AGGREGATE_2 : { r1:(),
+  r2:collection { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection },
+  r3:bool } -> collection { key:address, value:collection { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection } } @ { Collection } = (\b1 ->
+  bind b1 as {r2:tuples, r3:shuffle_on_empty} in let all_targets =
+  if shuffle_on_empty == true
+    then (route_to_ {key:4, value:()}).fold ((\__acc_map -> (\b3 ->
+      bind b3 as {i:ip} in __acc_map.combine ({| key:address,
+      value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } | {key:ip, value:empty { r1:{ key:int, value:int },
+      r2:int, r3:int } @ { Collection }}|} @ { Collection })))) empty {
+      key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } } @ { Collection }
+    else empty { key:address, value:collection { r1:{ key:int, value:int },
+      r2:int, r3:int } @ { Collection } } @ { Collection } in
+  (all_targets.combine (tuples.fold ((\__acc_ext -> (\r_tuple ->
+    __acc_ext.combine (bind r_tuple as {r1:rkey_0, r2:rkey_1, r3:rkey_2} in
+    (route_to_ {key:4, value:()}).fold ((\__acc_map -> (\b3 ->
+      bind b3 as {i:ip} in __acc_map.combine ({| key:address,
+      value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } | {key:ip, value:{| r1:{ key:int, value:int }, r2:int,
+      r3:int | r_tuple|} @ { Collection }}|} @ { Collection })))) empty {
+      key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } } @ { Collection })))) empty { key:address,
+    value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+    } @ { Collection } } @ { Collection })).groupBy ((\b1 ->
+    bind b1 as {key:ip, value:tuple} in ip)) ((\acc -> (\b3 ->
+    bind b3 as {key:ip, value:tuple} in tuple.combine acc))) empty { r1:{
+    key:int, value:int }, r2:int, r3:int } @ { Collection })
+
+
+declare shuffle___SQL_SUM_AGGREGATE_1_mS1_to___SQL_SUM_AGGREGATE_1 : { r1:(),
+  r2:collection { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection },
+  r3:bool } -> collection { key:address, value:collection { r1:{ key:int,
+  value:int }, r2:int, r3:int } @ { Collection } } @ { Collection } = (\b1 ->
+  bind b1 as {r2:tuples, r3:shuffle_on_empty} in let all_targets =
+  if shuffle_on_empty == true
+    then (route_to_ {key:1, value:()}).fold ((\__acc_map -> (\b3 ->
+      bind b3 as {i:ip} in __acc_map.combine ({| key:address,
+      value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } | {key:ip, value:empty { r1:{ key:int, value:int },
+      r2:int, r3:int } @ { Collection }}|} @ { Collection })))) empty {
+      key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } } @ { Collection }
+    else empty { key:address, value:collection { r1:{ key:int, value:int },
+      r2:int, r3:int } @ { Collection } } @ { Collection } in
+  (all_targets.combine (tuples.fold ((\__acc_ext -> (\r_tuple ->
+    __acc_ext.combine (bind r_tuple as {r1:rkey_0, r2:rkey_1, r3:rkey_2} in
+    (route_to_ {key:1, value:()}).fold ((\__acc_map -> (\b3 ->
+      bind b3 as {i:ip} in __acc_map.combine ({| key:address,
+      value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } | {key:ip, value:{| r1:{ key:int, value:int }, r2:int,
+      r3:int | r_tuple|} @ { Collection }}|} @ { Collection })))) empty {
+      key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+      } @ { Collection } } @ { Collection })))) empty { key:address,
+    value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+    } @ { Collection } } @ { Collection })).groupBy ((\b1 ->
+    bind b1 as {key:ip, value:tuple} in ip)) ((\acc -> (\b3 ->
+    bind b3 as {key:ip, value:tuple} in tuple.combine acc))) empty { r1:{
+    key:int, value:int }, r2:int, r3:int } @ { Collection })
+
+
+declare sw_insert_S : { key:int, value:int } -> () = (\args ->
+  (sw_buf_insert_S.insert args;
+   sw_trig_buf_idx.insert {i:0};
+   sw_need_vid_cntr = sw_need_vid_cntr + 1))
+
+
+declare sw_insert_S_send_fetch : { key:int, value:int } -> () = (\vid -> case
+  (sw_buf_insert_S.peek ()) of
+  {Some args ->
+    (sw_buf_insert_S.erase args;
+     bind args as {key:S_B, value:S_C} in
+     ((route_to_int {key:3, value:Some S_B}).iterate ((\b1 ->
+      bind b1 as {i:ip} in (nd_insert_S_do_complete_s1, ip)<- {r1:vid, r2:S_B,
+      r3:S_C}));
+      (route_to_int {key:6, value:Some S_B}).iterate ((\b1 ->
+      bind b1 as {i:ip} in (nd_insert_S_do_complete_s3, ip)<- {r1:vid, r2:S_B,
+      r3:S_C}));
+      ((((empty { r1:address, r2:int, r3:int } @ { Collection }).combine (let
+      sender_count =
+      (route_to_int {key:2, value:Some S_B}).fold ((\count -> (\b3 ->
+        bind b3 as {i:ip} in count + 1))) 0 in
+      ((shuffle___SQL_SUM_AGGREGATE_1_mS1_to___SQL_SUM_AGGREGATE_1 {r1:(),
+          r2:empty { r1:{ key:int, value:int }, r2:int, r3:int
+          } @ { Collection }, r3:true}).fold ((\__acc_map -> (\b3 ->
+        bind b3 as {key:ip, value:tuples} in __acc_map.combine ({| r1:address,
+        r2:int, r3:int | {r1:ip, r2:0, r3:sender_count}|} @ { Collection }))))
+        empty { r1:address, r2:int, r3:int } @ { Collection }).combine (let
+        sender_count =
+        (route_to_int {key:2, value:Some S_B}).fold ((\count -> (\b3 ->
+          bind b3 as {i:ip} in count + 1))) 0 in
+        ((shuffle___SQL_SUM_AGGREGATE_1_mS1_to___SQL_SUM_AGGREGATE_2 {r1:(),
+            r2:empty { r1:{ key:int, value:int }, r2:int, r3:int
+            } @ { Collection }, r3:true}).fold ((\__acc_map -> (\b3 ->
+          bind b3 as {key:ip, value:tuples} in __acc_map.combine ({|
+          r1:address, r2:int, r3:int | {r1:ip, r2:2,
+          r3:sender_count}|} @ { Collection })))) empty { r1:address, r2:int,
+          r3:int } @ { Collection }).combine (let sender_count =
+          (route_to_int {key:5, value:Some S_B}).fold ((\count -> (\b3 ->
+            bind b3 as {i:ip} in count + 1))) 0 in
+          (shuffle___SQL_SUM_AGGREGATE_2_mS3_to___SQL_SUM_AGGREGATE_2 {r1:(),
+             r2:empty { r1:{ key:int, value:int }, r2:int, r3:int
+             } @ { Collection }, r3:true}).fold ((\__acc_map -> (\b3 ->
+            bind b3 as {key:ip, value:tuples} in __acc_map.combine ({|
+            r1:address, r2:int, r3:int | {r1:ip, r2:2,
+            r3:sender_count}|} @ { Collection })))) empty { r1:address, r2:int,
+            r3:int } @ { Collection })))).groupBy ((\b1 -> bind b1 as {r1:ip,
+      r2:stmt_id, r3:count} in {key:ip, value:stmt_id})) ((\acc -> (\b3 ->
+      bind b3 as {r1:ip, r2:stmt_id, r3:count} in acc + count))) 0).groupBy
+      ((\b1 -> bind b1 as {key:b2, value:count} in bind b2 as {key:ip,
+      value:stmt_id} in ip)) ((\acc -> (\b3 -> bind b3 as {key:ip_and_stmt_id,
+      value:count} in bind ip_and_stmt_id as {key:ip, value:stmt_id} in
+      acc.combine ({| key:int, value:int | {key:stmt_id,
+        value:count}|} @ { Collection })))) empty { key:int, value:int
+      } @ { Collection }).iterate ((\b1 -> bind b1 as {key:addr,
+      value:stmt_id_cnt_list} in 
+      ((nd_insert_S_rcv_put, addr)<- {r1:me, r2:stmt_id_cnt_list, r3:vid,
+       r4:S_B, r5:S_C};
+       (case ((sw_ack_log.filter ((\b1 -> bind b1 as {key:key, value:value} in 
+       key == vid))).peek ()) of
+       {Some old_val -> let old_set = old_val.value in
+         (old_set.insert {i:addr};sw_ack_log.insert {key:vid, value:old_set})}
+       {None -> sw_ack_log.insert {key:vid, value:{|i:address|
+         addr|} @ { Set }}}))));
+      ((((route_to_int {key:5, value:Some S_B}).fold ((\__acc_map -> (\b3 ->
+      bind b3 as {i:ip} in __acc_map.combine ({| r1:int, r2:int, r3:address |
+      {r1:2, r2:5, r3:ip}|} @ { Collection })))) empty { r1:int, r2:int,
+      r3:address } @ { Collection }).combine
+      (((route_to_int {key:2, value:Some S_B}).fold ((\__acc_map -> (\b3 ->
+      bind b3 as {i:ip} in __acc_map.combine ({| r1:int, r2:int, r3:address |
+      {r1:2, r2:2, r3:ip}|} @ { Collection })))) empty { r1:int, r2:int,
+      r3:address } @ { Collection }).combine
+      (((route_to_int {key:2, value:Some S_B}).fold ((\__acc_map -> (\b3 ->
+      bind b3 as {i:ip} in __acc_map.combine ({| r1:int, r2:int, r3:address |
+      {r1:0, r2:2, r3:ip}|} @ { Collection })))) empty { r1:int, r2:int,
+      r3:address } @ { Collection }).combine empty { r1:int, r2:int, r3:address
+      } @ { Collection }))).groupBy ((\b1 -> bind b1 as {r1:stmt_id, r2:map_id,
+      r3:ip} in ip)) ((\acc -> (\b3 -> bind b3 as {r1:stmt_id, r2:map_id,
+      r3:ip} in (acc.insert {key:stmt_id, value:map_id};acc)))) empty {
+      key:int, value:int } @ { Collection }).iterate ((\b1 ->
+      bind b1 as {key:ip, value:stmt_map_ids} in 
+      (nd_insert_S_rcv_fetch, ip)<- {r1:stmt_map_ids, r2:vid, r3:S_B, r4:S_C}))))}
+  {None -> error (print "unexpected missing arguments in sw_buf_insert_S")})
+
+
+declare sw_insert_R : { key:int, value:int } -> () = (\args ->
+  (sw_buf_insert_R.insert args;
+   sw_trig_buf_idx.insert {i:2};
+   sw_need_vid_cntr = sw_need_vid_cntr + 1))
+
+
+declare sw_insert_R_send_fetch : { key:int, value:int } -> () = (\vid -> case
+  (sw_buf_insert_R.peek ()) of
+  {Some args ->
+    (sw_buf_insert_R.erase args;
+     bind args as {key:R_A, value:R_B} in
+     ((route_to_int {key:2, value:Some R_B}).iterate ((\b1 ->
+      bind b1 as {i:ip} in (nd_insert_R_do_complete_s9, ip)<- {r1:vid, r2:R_A,
+      r3:R_B}));
+      (route_to_int {key:5, value:Some R_B}).iterate ((\b1 ->
+      bind b1 as {i:ip} in (nd_insert_R_do_complete_s11, ip)<- {r1:vid, r2:R_A,
+      r3:R_B}));
+      ((((empty { r1:address, r2:int, r3:int } @ { Collection }).combine (let
+      sender_count =
+      (route_to_int {key:3, value:Some R_B}).fold ((\count -> (\b3 ->
+        bind b3 as {i:ip} in count + 1))) 0 in
+      ((shuffle___SQL_SUM_AGGREGATE_1_mR1_to___SQL_SUM_AGGREGATE_1 {r1:(),
+          r2:empty { r1:{ key:int, value:int }, r2:int, r3:int
+          } @ { Collection }, r3:true}).fold ((\__acc_map -> (\b3 ->
+        bind b3 as {key:ip, value:tuples} in __acc_map.combine ({| r1:address,
+        r2:int, r3:int | {r1:ip, r2:8, r3:sender_count}|} @ { Collection }))))
+        empty { r1:address, r2:int, r3:int } @ { Collection }).combine (let
+        sender_count =
+        (route_to_int {key:6, value:Some R_B}).fold ((\count -> (\b3 ->
+          bind b3 as {i:ip} in count + 1))) 0 in
+        ((shuffle___SQL_SUM_AGGREGATE_2_mR1_to___SQL_SUM_AGGREGATE_2 {r1:(),
+            r2:empty { r1:{ key:int, value:int }, r2:int, r3:int
+            } @ { Collection }, r3:true}).fold ((\__acc_map -> (\b3 ->
+          bind b3 as {key:ip, value:tuples} in __acc_map.combine ({|
+          r1:address, r2:int, r3:int | {r1:ip, r2:10,
+          r3:sender_count}|} @ { Collection })))) empty { r1:address, r2:int,
+          r3:int } @ { Collection }).combine (let sender_count =
+          (route_to_int {key:3, value:Some R_B}).fold ((\count -> (\b3 ->
+            bind b3 as {i:ip} in count + 1))) 0 in
+          (shuffle___SQL_SUM_AGGREGATE_1_mR1_to___SQL_SUM_AGGREGATE_2 {r1:(),
+             r2:empty { r1:{ key:int, value:int }, r2:int, r3:int
+             } @ { Collection }, r3:true}).fold ((\__acc_map -> (\b3 ->
+            bind b3 as {key:ip, value:tuples} in __acc_map.combine ({|
+            r1:address, r2:int, r3:int | {r1:ip, r2:10,
+            r3:sender_count}|} @ { Collection })))) empty { r1:address, r2:int,
+            r3:int } @ { Collection })))).groupBy ((\b1 -> bind b1 as {r1:ip,
+      r2:stmt_id, r3:count} in {key:ip, value:stmt_id})) ((\acc -> (\b3 ->
+      bind b3 as {r1:ip, r2:stmt_id, r3:count} in acc + count))) 0).groupBy
+      ((\b1 -> bind b1 as {key:b2, value:count} in bind b2 as {key:ip,
+      value:stmt_id} in ip)) ((\acc -> (\b3 -> bind b3 as {key:ip_and_stmt_id,
+      value:count} in bind ip_and_stmt_id as {key:ip, value:stmt_id} in
+      acc.combine ({| key:int, value:int | {key:stmt_id,
+        value:count}|} @ { Collection })))) empty { key:int, value:int
+      } @ { Collection }).iterate ((\b1 -> bind b1 as {key:addr,
+      value:stmt_id_cnt_list} in 
+      ((nd_insert_R_rcv_put, addr)<- {r1:me, r2:stmt_id_cnt_list, r3:vid,
+       r4:R_A, r5:R_B};
+       (case ((sw_ack_log.filter ((\b1 -> bind b1 as {key:key, value:value} in 
+       key == vid))).peek ()) of
+       {Some old_val -> let old_set = old_val.value in
+         (old_set.insert {i:addr};sw_ack_log.insert {key:vid, value:old_set})}
+       {None -> sw_ack_log.insert {key:vid, value:{|i:address|
+         addr|} @ { Set }}}))));
+      ((((route_to_int {key:3, value:Some R_B}).fold ((\__acc_map -> (\b3 ->
+      bind b3 as {i:ip} in __acc_map.combine ({| r1:int, r2:int, r3:address |
+      {r1:10, r2:3, r3:ip}|} @ { Collection })))) empty { r1:int, r2:int,
+      r3:address } @ { Collection }).combine
+      (((route_to_int {key:6, value:Some R_B}).fold ((\__acc_map -> (\b3 ->
+      bind b3 as {i:ip} in __acc_map.combine ({| r1:int, r2:int, r3:address |
+      {r1:10, r2:6, r3:ip}|} @ { Collection })))) empty { r1:int, r2:int,
+      r3:address } @ { Collection }).combine
+      (((route_to_int {key:3, value:Some R_B}).fold ((\__acc_map -> (\b3 ->
+      bind b3 as {i:ip} in __acc_map.combine ({| r1:int, r2:int, r3:address |
+      {r1:8, r2:3, r3:ip}|} @ { Collection })))) empty { r1:int, r2:int,
+      r3:address } @ { Collection }).combine empty { r1:int, r2:int, r3:address
+      } @ { Collection }))).groupBy ((\b1 -> bind b1 as {r1:stmt_id, r2:map_id,
+      r3:ip} in ip)) ((\acc -> (\b3 -> bind b3 as {r1:stmt_id, r2:map_id,
+      r3:ip} in (acc.insert {key:stmt_id, value:map_id};acc)))) empty {
+      key:int, value:int } @ { Collection }).iterate ((\b1 ->
+      bind b1 as {key:ip, value:stmt_map_ids} in 
+      (nd_insert_R_rcv_fetch, ip)<- {r1:stmt_map_ids, r2:vid, r3:R_A, r4:R_B}))))}
+  {None -> error (print "unexpected missing arguments in sw_buf_insert_R")})
+
+
+trigger sw_rcv_init : () = (\_u ->
+  (sw_state = sw_state_idle;
+   (if job == job_master then ms_start_time = now_int () else ());
+   (sw_driver_trig, me)<- ();
+   (if job == job_master then (sw_rcv_token, sw_next_switch_addr)<- g_min_vid
+   else ());
+   (if job == job_master
+   then (tm_insert_timer, timer_addr)<- {r1:ms_gc_interval, r2:0, r3:me}
+   else ())))
+trigger rcv_jobs_ack : () = (\_u ->
+  (ms_rcv_jobs_ack_cnt = ms_rcv_jobs_ack_cnt + 1;
+   (if ms_rcv_jobs_ack_cnt >= num_peers
+   then switches.iterate ((\b1 -> bind b1 as {i:addr} in 
+     (sw_rcv_init, addr)<- ())) else ())))
+trigger rcv_jobs : collection { key:address, value:int } @ { Map } =
+  (\jobs_in ->
+  (jobs = jobs_in;
+   (if job <= job_switch
+   then sw_next_switch_addr = let addr_list =
+     (((jobs.fold ((\acc_conv -> (\x -> ({| key:address, value:int |
+       x|} @ { Seq }).combine acc_conv))) empty { key:address, value:int
+       } @ { Seq }).filter ((\b1 -> bind b1 as {key:addr, value:job} in job <=
+       job_switch))).fold ((\__acc_map -> (\b3 -> bind b3 as {key:addr,
+       value:job} in __acc_map.combine ({|i:address| addr|} @ { Seq }))))
+       empty {i:address} @ { Seq }).sort ((\b2 -> (\b3 ->
+       bind b2 as {i:addr1} in bind b3 as {i:addr2} in if addr1 < addr2 
+       then -1 else 1))) in
+     case (addr_list.peek ()) of
+       {Some first_addr -> (addr_list.fold ((\b2 -> (\b5 ->
+         bind b2 as {key:take, value:result} in bind b5 as {i:x} in if take
+         then {key:false, value:x}
+         else if x == me then {key:true, value:result}
+           else {key:take, value:result}))) {key:false,
+         value:first_addr.i}).value}{None ->
+                                      error (print "no addresses in addr_list")}
+   else ());
+   timer_addr = case ((jobs.filter ((\b1 -> bind b1 as {key:addr,
+   value:job} in job == job_timer))).peek ()) of
+   {Some timer -> timer.key}{None -> error (print "no timer peer found")};
+   nodes = (jobs.filter ((\b1 -> bind b1 as {key:addr, value:job} in job ==
+   job_node))).fold ((\__acc_map -> (\x -> __acc_map.combine ({|i:address|
+   x.key|} @ { Collection })))) empty {i:address} @ { Collection };
+   num_nodes = nodes.fold ((\count -> (\b3 -> bind b3 as {i:addr} in count +
+   1))) 0;
+   switches = (jobs.filter ((\b1 -> bind b1 as {key:addr, value:job} in job ==
+   job_switch))).fold ((\__acc_map -> (\x -> __acc_map.combine ({|i:address|
+   x.key|} @ { Collection })))) empty {i:address} @ { Collection };
+   num_switches = switches.fold ((\count -> (\b3 -> bind b3 as {i:addr} in 
+   count + 1))) 0;
+   (rcv_jobs_ack, master_addr)<- ()))
+trigger ms_rcv_job : { key:address, value:int } = (\b1 -> bind b1 as {key:addr,
+  value:job} in 
+  (jobs.insert {key:addr, value:job};
+   ms_rcv_job_cnt = ms_rcv_job_cnt + 1;
+   (if ms_rcv_job_cnt >= num_peers
+   then my_peers.iterate ((\b1 -> bind b1 as {i:addr} in 
+     (rcv_jobs, addr)<- jobs)) else ())))
+trigger rcv_master_addr : address = (\addr ->
+  (master_addr = addr;(ms_rcv_job, addr)<- {key:me, value:job}))
+trigger ms_send_addr_self : () = (\_u -> my_peers.iterate ((\b1 ->
+  bind b1 as {i:addr} in (rcv_master_addr, addr)<- me)))
+trigger shutdown_trig : () = (\_u -> haltEngine ())
+trigger ms_shutdown : () = (\_u -> if ms_rcv_node_done_cnt >= num_nodes
+  then my_peers.iterate ((\b1 -> bind b1 as {i:addr} in 
+    (shutdown_trig, addr)<- ())) else ())
+trigger ms_rcv_node_done : bool = (\done -> if done
+  then
+    (ms_rcv_node_done_cnt = ms_rcv_node_done_cnt + 1;
+     (if ms_rcv_node_done_cnt >= num_nodes
+     then (ms_end_time = now_int ();(sleep 5000);(ms_shutdown, me)<- ())
+     else ())) else ms_rcv_node_done_cnt = ms_rcv_node_done_cnt - 1)
+trigger nd_rcv_done : () = (\_u ->
+  (nd_state = nd_state_done;
+   (case (nd_stmt_cntrs.peek ()) of
+   {Some _ -> (ms_rcv_node_done, master_addr)<- true}{None -> ()})))
+trigger ms_rcv_switch_done : () = (\_u ->
+  (ms_rcv_switch_done_cnt = ms_rcv_switch_done_cnt + 1;
+   (if ms_rcv_switch_done_cnt >= num_switches
+   then nodes.iterate ((\b1 -> bind b1 as {i:addr} in 
+     (nd_rcv_done, addr)<- ())) else ())))
+trigger sw_ack_rcv : { key:address, value:{ key:int, value:int } } = (\b1 ->
+  bind b1 as {key:addr, value:vid} in case ((sw_ack_log.filter ((\b1 ->
+  bind b1 as {key:key, value:value} in key == vid))).peek ()) of
+  {Some old_val -> let old_set = old_val.value in
+    (old_set.erase {i:addr};
+     (case (old_set.peek ()) of
+     {Some _ -> sw_ack_log.insert {key:old_val.key, value:old_set}}{None ->
+                                                                    sw_ack_log.erase
+                                                                    old_val}))}
+  {None -> error (print "ack received but no msg sent")})
+trigger ms_rcv_gc_vid : { key:address, value:{ key:int, value:int } } =
+  (\data ->
+  (ms_gc_vid_map.insert data;
+   ms_gc_vid_ctr = ms_gc_vid_ctr + 1;
+   (if ms_gc_vid_ctr >= ms_num_gc_expected
+   then let min_vid =
+     ms_gc_vid_map.fold ((\min_vid -> (\b3 -> bind b3 as {key:addr,
+       value:vid} in if min_vid < vid then min_vid else vid))) g_min_vid in
+     (ms_gc_vid_ctr = 0;
+      ms_gc_vid_map = empty { key:address, value:{ key:int, value:int }
+      } @ { Map };
+      my_peers.iterate ((\b1 -> bind b1 as {i:addr} in 
+      (do_gc, addr)<- min_vid));
+      (tm_insert_timer, timer_addr)<- {r1:ms_gc_interval, r2:0, r3:me})
+   else ())))
+trigger rcv_req_gc_vid : () = (\_u -> if job == job_switch or job == job_master
+  then (ms_rcv_gc_vid, master_addr)<- {key:me, value:sw_ack_log.fold
+    ((\min_vid -> (\b3 -> bind b3 as {key:vid, value:addresses} in 
+    if min_vid < vid then min_vid else vid))) sw_highest_vid}
+  else if job == job_node
+    then (ms_rcv_gc_vid, master_addr)<- {key:me, value:nd_stmt_cntrs.fold
+      ((\min_vid -> (\b3 -> bind b3 as {r1:vid, r2:stmt_id, r3:counter} in 
+      if min_vid < vid then min_vid else vid))) g_max_vid} else ())
+trigger ms_send_gc_req : () = (\_u -> my_peers.iterate ((\b1 ->
+  bind b1 as {i:addr} in (rcv_req_gc_vid, addr)<- ())))
+trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
+  (let temp =
+   empty { key:{ key:int, value:int }, value:collection {i:address} @ { Set }
+     } @ { Map } in
+   (sw_ack_log.iterate ((\b1 -> bind b1 as {key:vid, value:addresses} in 
+    if vid < min_gc_vid then temp.insert {key:vid, value:addresses} else ()));
+    temp.iterate ((\val -> sw_ack_log.erase val)));
+   let temp =
+   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   (nd_log_master.iterate ((\b1 -> bind b1 as {r1:vid, r2:trig_id,
+    r3:stmt_id} in if vid < min_gc_vid
+    then temp.insert {r1:vid, r2:trig_id, r3:stmt_id} else ()));
+    temp.iterate ((\val -> nd_log_master.erase val)));
+   let temp =
+   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   (nd_log_insert_S.iterate ((\b1 -> bind b1 as {r1:vid, r2:S_B, r3:S_C} in 
+    if vid < min_gc_vid then temp.insert {r1:vid, r2:S_B, r3:S_C} else ()));
+    temp.iterate ((\val -> nd_log_insert_S.erase val)));
+   let temp =
+   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   (nd_log_insert_R.iterate ((\b1 -> bind b1 as {r1:vid, r2:R_A, r3:R_B} in 
+    if vid < min_gc_vid then temp.insert {r1:vid, r2:R_A, r3:R_B} else ()));
+    temp.iterate ((\val -> nd_log_insert_R.erase val)));
+   let temp =
+   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   bind map___SQL_SUM_AGGREGATE_1_mS1_s0_buf as ind
+     map___SQL_SUM_AGGREGATE_1_mS1_s0_buf_unwrap in
+     let frontier =
+       frontier_int_int {key:min_gc_vid,
+         value:map___SQL_SUM_AGGREGATE_1_mS1_s0_buf_unwrap} in
+       (map___SQL_SUM_AGGREGATE_1_mS1_s0_buf_unwrap.iterate ((\b1 ->
+        bind b1 as {r1:vid, r2:__map_0, r3:__map_val} in if vid < min_gc_vid
+        then temp.insert {r1:vid, r2:__map_0, r3:__map_val} else ()));
+        temp.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_1_mS1_s0_buf_unwrap.erase val));
+        frontier.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_1_mS1_s0_buf_unwrap.insert val)));
+   let temp =
+   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   bind map___SQL_SUM_AGGREGATE_1_mS1_s2_buf as ind
+     map___SQL_SUM_AGGREGATE_1_mS1_s2_buf_unwrap in
+     let frontier =
+       frontier_int_int {key:min_gc_vid,
+         value:map___SQL_SUM_AGGREGATE_1_mS1_s2_buf_unwrap} in
+       (map___SQL_SUM_AGGREGATE_1_mS1_s2_buf_unwrap.iterate ((\b1 ->
+        bind b1 as {r1:vid, r2:__map_0, r3:__map_val} in if vid < min_gc_vid
+        then temp.insert {r1:vid, r2:__map_0, r3:__map_val} else ()));
+        temp.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_1_mS1_s2_buf_unwrap.erase val));
+        frontier.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_1_mS1_s2_buf_unwrap.insert val)));
+   let temp =
+   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   bind map___SQL_SUM_AGGREGATE_2_mS3_s2_buf as ind
+     map___SQL_SUM_AGGREGATE_2_mS3_s2_buf_unwrap in
+     let frontier =
+       frontier_int_int {key:min_gc_vid,
+         value:map___SQL_SUM_AGGREGATE_2_mS3_s2_buf_unwrap} in
+       (map___SQL_SUM_AGGREGATE_2_mS3_s2_buf_unwrap.iterate ((\b1 ->
+        bind b1 as {r1:vid, r2:__map_0, r3:__map_val} in if vid < min_gc_vid
+        then temp.insert {r1:vid, r2:__map_0, r3:__map_val} else ()));
+        temp.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_2_mS3_s2_buf_unwrap.erase val));
+        frontier.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_2_mS3_s2_buf_unwrap.insert val)));
+   let temp =
+   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   bind map___SQL_SUM_AGGREGATE_1_mS1_s4_buf as ind
+     map___SQL_SUM_AGGREGATE_1_mS1_s4_buf_unwrap in
+     let frontier =
+       frontier_int_int {key:min_gc_vid,
+         value:map___SQL_SUM_AGGREGATE_1_mS1_s4_buf_unwrap} in
+       (map___SQL_SUM_AGGREGATE_1_mS1_s4_buf_unwrap.iterate ((\b1 ->
+        bind b1 as {r1:vid, r2:__map_0, r3:__map_val} in if vid < min_gc_vid
+        then temp.insert {r1:vid, r2:__map_0, r3:__map_val} else ()));
+        temp.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_1_mS1_s4_buf_unwrap.erase val));
+        frontier.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_1_mS1_s4_buf_unwrap.insert val)));
+   let temp =
+   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   bind map___SQL_SUM_AGGREGATE_1_mS1_s6_buf as ind
+     map___SQL_SUM_AGGREGATE_1_mS1_s6_buf_unwrap in
+     let frontier =
+       frontier_int_int {key:min_gc_vid,
+         value:map___SQL_SUM_AGGREGATE_1_mS1_s6_buf_unwrap} in
+       (map___SQL_SUM_AGGREGATE_1_mS1_s6_buf_unwrap.iterate ((\b1 ->
+        bind b1 as {r1:vid, r2:__map_0, r3:__map_val} in if vid < min_gc_vid
+        then temp.insert {r1:vid, r2:__map_0, r3:__map_val} else ()));
+        temp.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_1_mS1_s6_buf_unwrap.erase val));
+        frontier.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_1_mS1_s6_buf_unwrap.insert val)));
+   let temp =
+   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   bind map___SQL_SUM_AGGREGATE_2_mS3_s6_buf as ind
+     map___SQL_SUM_AGGREGATE_2_mS3_s6_buf_unwrap in
+     let frontier =
+       frontier_int_int {key:min_gc_vid,
+         value:map___SQL_SUM_AGGREGATE_2_mS3_s6_buf_unwrap} in
+       (map___SQL_SUM_AGGREGATE_2_mS3_s6_buf_unwrap.iterate ((\b1 ->
+        bind b1 as {r1:vid, r2:__map_0, r3:__map_val} in if vid < min_gc_vid
+        then temp.insert {r1:vid, r2:__map_0, r3:__map_val} else ()));
+        temp.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_2_mS3_s6_buf_unwrap.erase val));
+        frontier.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_2_mS3_s6_buf_unwrap.insert val)));
+   let temp =
+   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   bind map___SQL_SUM_AGGREGATE_1_mR1_s8_buf as ind
+     map___SQL_SUM_AGGREGATE_1_mR1_s8_buf_unwrap in
+     let frontier =
+       frontier_int_int {key:min_gc_vid,
+         value:map___SQL_SUM_AGGREGATE_1_mR1_s8_buf_unwrap} in
+       (map___SQL_SUM_AGGREGATE_1_mR1_s8_buf_unwrap.iterate ((\b1 ->
+        bind b1 as {r1:vid, r2:__map_0, r3:__map_val} in if vid < min_gc_vid
+        then temp.insert {r1:vid, r2:__map_0, r3:__map_val} else ()));
+        temp.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_1_mR1_s8_buf_unwrap.erase val));
+        frontier.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_1_mR1_s8_buf_unwrap.insert val)));
+   let temp =
+   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   bind map___SQL_SUM_AGGREGATE_2_mR1_s10_buf as ind
+     map___SQL_SUM_AGGREGATE_2_mR1_s10_buf_unwrap in
+     let frontier =
+       frontier_int_int {key:min_gc_vid,
+         value:map___SQL_SUM_AGGREGATE_2_mR1_s10_buf_unwrap} in
+       (map___SQL_SUM_AGGREGATE_2_mR1_s10_buf_unwrap.iterate ((\b1 ->
+        bind b1 as {r1:vid, r2:__map_0, r3:__map_val} in if vid < min_gc_vid
+        then temp.insert {r1:vid, r2:__map_0, r3:__map_val} else ()));
+        temp.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_2_mR1_s10_buf_unwrap.erase val));
+        frontier.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_2_mR1_s10_buf_unwrap.insert val)));
+   let temp =
+   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   bind map___SQL_SUM_AGGREGATE_1_mR1_s10_buf as ind
+     map___SQL_SUM_AGGREGATE_1_mR1_s10_buf_unwrap in
+     let frontier =
+       frontier_int_int {key:min_gc_vid,
+         value:map___SQL_SUM_AGGREGATE_1_mR1_s10_buf_unwrap} in
+       (map___SQL_SUM_AGGREGATE_1_mR1_s10_buf_unwrap.iterate ((\b1 ->
+        bind b1 as {r1:vid, r2:__map_0, r3:__map_val} in if vid < min_gc_vid
+        then temp.insert {r1:vid, r2:__map_0, r3:__map_val} else ()));
+        temp.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_1_mR1_s10_buf_unwrap.erase val));
+        frontier.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_1_mR1_s10_buf_unwrap.insert val)));
+   let temp =
+   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   bind map___SQL_SUM_AGGREGATE_1_mR1_s12_buf as ind
+     map___SQL_SUM_AGGREGATE_1_mR1_s12_buf_unwrap in
+     let frontier =
+       frontier_int_int {key:min_gc_vid,
+         value:map___SQL_SUM_AGGREGATE_1_mR1_s12_buf_unwrap} in
+       (map___SQL_SUM_AGGREGATE_1_mR1_s12_buf_unwrap.iterate ((\b1 ->
+        bind b1 as {r1:vid, r2:__map_0, r3:__map_val} in if vid < min_gc_vid
+        then temp.insert {r1:vid, r2:__map_0, r3:__map_val} else ()));
+        temp.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_1_mR1_s12_buf_unwrap.erase val));
+        frontier.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_1_mR1_s12_buf_unwrap.insert val)));
+   let temp =
+   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   bind map___SQL_SUM_AGGREGATE_2_mR1_s14_buf as ind
+     map___SQL_SUM_AGGREGATE_2_mR1_s14_buf_unwrap in
+     let frontier =
+       frontier_int_int {key:min_gc_vid,
+         value:map___SQL_SUM_AGGREGATE_2_mR1_s14_buf_unwrap} in
+       (map___SQL_SUM_AGGREGATE_2_mR1_s14_buf_unwrap.iterate ((\b1 ->
+        bind b1 as {r1:vid, r2:__map_0, r3:__map_val} in if vid < min_gc_vid
+        then temp.insert {r1:vid, r2:__map_0, r3:__map_val} else ()));
+        temp.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_2_mR1_s14_buf_unwrap.erase val));
+        frontier.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_2_mR1_s14_buf_unwrap.insert val)));
+   let temp =
+   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   bind map___SQL_SUM_AGGREGATE_1_mR1_s14_buf as ind
+     map___SQL_SUM_AGGREGATE_1_mR1_s14_buf_unwrap in
+     let frontier =
+       frontier_int_int {key:min_gc_vid,
+         value:map___SQL_SUM_AGGREGATE_1_mR1_s14_buf_unwrap} in
+       (map___SQL_SUM_AGGREGATE_1_mR1_s14_buf_unwrap.iterate ((\b1 ->
+        bind b1 as {r1:vid, r2:__map_0, r3:__map_val} in if vid < min_gc_vid
+        then temp.insert {r1:vid, r2:__map_0, r3:__map_val} else ()));
+        temp.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_1_mR1_s14_buf_unwrap.erase val));
+        frontier.iterate ((\val ->
+        map___SQL_SUM_AGGREGATE_1_mR1_s14_buf_unwrap.insert val)));
+   let temp = empty { key:{ key:int, value:int }, value:int } @ { Collection }
+   in
+   bind __SQL_SUM_AGGREGATE_1 as ind __SQL_SUM_AGGREGATE_1_unwrap in
+     let frontier =
+       frontier_int {key:min_gc_vid, value:__SQL_SUM_AGGREGATE_1_unwrap} in
+       (__SQL_SUM_AGGREGATE_1_unwrap.iterate ((\b1 -> bind b1 as {key:vid,
+        value:__map_val} in if vid < min_gc_vid
+        then temp.insert {key:vid, value:__map_val} else ()));
+        temp.iterate ((\val -> __SQL_SUM_AGGREGATE_1_unwrap.erase val));
+        frontier.iterate ((\val -> __SQL_SUM_AGGREGATE_1_unwrap.insert val)));
+   let temp =
+   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   bind __SQL_SUM_AGGREGATE_1_mS1 as ind __SQL_SUM_AGGREGATE_1_mS1_unwrap in
+     let frontier =
+       frontier_int_int {key:min_gc_vid,
+         value:__SQL_SUM_AGGREGATE_1_mS1_unwrap} in
+       (__SQL_SUM_AGGREGATE_1_mS1_unwrap.iterate ((\b1 -> bind b1 as {r1:vid,
+        r2:__map_0, r3:__map_val} in if vid < min_gc_vid
+        then temp.insert {r1:vid, r2:__map_0, r3:__map_val} else ()));
+        temp.iterate ((\val -> __SQL_SUM_AGGREGATE_1_mS1_unwrap.erase val));
+        frontier.iterate ((\val -> __SQL_SUM_AGGREGATE_1_mS1_unwrap.insert
+        val)));
+   let temp =
+   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   bind __SQL_SUM_AGGREGATE_1_mR1 as ind __SQL_SUM_AGGREGATE_1_mR1_unwrap in
+     let frontier =
+       frontier_int_int {key:min_gc_vid,
+         value:__SQL_SUM_AGGREGATE_1_mR1_unwrap} in
+       (__SQL_SUM_AGGREGATE_1_mR1_unwrap.iterate ((\b1 -> bind b1 as {r1:vid,
+        r2:__map_0, r3:__map_val} in if vid < min_gc_vid
+        then temp.insert {r1:vid, r2:__map_0, r3:__map_val} else ()));
+        temp.iterate ((\val -> __SQL_SUM_AGGREGATE_1_mR1_unwrap.erase val));
+        frontier.iterate ((\val -> __SQL_SUM_AGGREGATE_1_mR1_unwrap.insert
+        val)));
+   let temp = empty { key:{ key:int, value:int }, value:int } @ { Collection }
+   in
+   bind __SQL_SUM_AGGREGATE_2 as ind __SQL_SUM_AGGREGATE_2_unwrap in
+     let frontier =
+       frontier_int {key:min_gc_vid, value:__SQL_SUM_AGGREGATE_2_unwrap} in
+       (__SQL_SUM_AGGREGATE_2_unwrap.iterate ((\b1 -> bind b1 as {key:vid,
+        value:__map_val} in if vid < min_gc_vid
+        then temp.insert {key:vid, value:__map_val} else ()));
+        temp.iterate ((\val -> __SQL_SUM_AGGREGATE_2_unwrap.erase val));
+        frontier.iterate ((\val -> __SQL_SUM_AGGREGATE_2_unwrap.insert val)));
+   let temp =
+   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   bind __SQL_SUM_AGGREGATE_2_mS3 as ind __SQL_SUM_AGGREGATE_2_mS3_unwrap in
+     let frontier =
+       frontier_int_int {key:min_gc_vid,
+         value:__SQL_SUM_AGGREGATE_2_mS3_unwrap} in
+       (__SQL_SUM_AGGREGATE_2_mS3_unwrap.iterate ((\b1 -> bind b1 as {r1:vid,
+        r2:__map_0, r3:__map_val} in if vid < min_gc_vid
+        then temp.insert {r1:vid, r2:__map_0, r3:__map_val} else ()));
+        temp.iterate ((\val -> __SQL_SUM_AGGREGATE_2_mS3_unwrap.erase val));
+        frontier.iterate ((\val -> __SQL_SUM_AGGREGATE_2_mS3_unwrap.insert
+        val)));
+   let temp =
+   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   bind __SQL_SUM_AGGREGATE_2_mR1 as ind __SQL_SUM_AGGREGATE_2_mR1_unwrap in
+     let frontier =
+       frontier_int_int {key:min_gc_vid,
+         value:__SQL_SUM_AGGREGATE_2_mR1_unwrap} in
+       (__SQL_SUM_AGGREGATE_2_mR1_unwrap.iterate ((\b1 -> bind b1 as {r1:vid,
+        r2:__map_0, r3:__map_val} in if vid < min_gc_vid
+        then temp.insert {r1:vid, r2:__map_0, r3:__map_val} else ()));
+        temp.iterate ((\val -> __SQL_SUM_AGGREGATE_2_mR1_unwrap.erase val));
+        frontier.iterate ((\val -> __SQL_SUM_AGGREGATE_2_mR1_unwrap.insert
+        val)))))
+trigger sw_rcv_token : { key:int, value:int } = (\vid ->
+  if sw_need_vid_cntr > 0
+  then let next_vid = {key:vid.key, value:(vid.value + sw_need_vid_cntr) - 1}
+    in
+    (sw_token_vid_list.insert {key:vid, value:sw_need_vid_cntr};
+     sw_need_vid_cntr = 0;
+     sw_highest_vid = next_vid;
+     (sw_rcv_token, sw_next_switch_addr)<- next_vid;
+     (if sw_state == sw_state_wait_vid then (sw_driver_trig, me)<- () else ()))
+  else (sw_rcv_token, sw_next_switch_addr)<- vid)
+trigger tm_insert_timer : { r1:int, r2:int, r3:address } = (\b1 ->
+  bind b1 as {r1:time, r2:trig_id, r3:addr} in 
+  (tm_timer_list.insert {r1:time + now_int (), r2:trig_id, r3:addr};
+   tm_timer_list = tm_timer_list.sort ((\b2 -> (\b6 -> bind b2 as {r1:time1,
+   r2:trig_id1, r3:addr1} in bind b6 as {r1:time2, r2:trig_id2, r3:addr2} in 
+   if time1 < time2 then -1 else 1)));
+   (tm_check_time, me)<- ()))
+trigger tm_check_time : () = (\_u -> case (tm_timer_list.peek ()) of
+  {Some timer -> if now_int () >= timer.r1
+    then
+      (tm_timer_list.erase timer;
+       bind timer as {r1:time, r2:trig_id, r3:addr} in
+       if trig_id == 0 then (ms_send_gc_req, addr)<- () else ();
+       (tm_check_time, me)<- ()) else ((tm_check_time, me)<- ();(sleep 1000))}
+  {None -> ()})
+trigger sw_demux : { r1:int, r2:int, r3:int } = (\args -> if args.r1 == 2
+  then sw_insert_R {key:args.r2, value:args.r3}
+  else if args.r1 == 0 then sw_insert_S {key:args.r2, value:args.r3}
+    else if args.r1 == -1
+      then (sw_state = sw_state_done;(ms_rcv_switch_done, master_addr)<- ())
+      else error (print "unidentified trig id"))
+trigger sw_driver_trig : () = (\_u -> case sw_gen_vid () of
+  {Some vid -> case (sw_trig_buf_idx.peek ()) of
+    {Some trig_id ->
+      (sw_trig_buf_idx.erase {i:trig_id.i};
+       (sw_state = sw_state_sending;
+        (if trig_id.i == 2
+        then case (sw_buf_insert_R.peek ()) of
+          {Some trig_args ->
+            (sw_buf_insert_R.erase trig_args;(sw_insert_R_send_fetch trig_args))}
+          {None -> error (print "missing trigger insert_R args")}
+        else if trig_id.i == 0
+          then case (sw_buf_insert_S.peek ()) of
+            {Some trig_args ->
+              (sw_buf_insert_S.erase trig_args;
+               (sw_insert_S_send_fetch trig_args))}{None ->
+                                                     error
+                                                       (print
+                                                          "missing trigger insert_S args")}
+          else error (print "mismatch on trigger id"));
+        (sw_driver_trig, me)<- ()))}{None -> sw_state = sw_state_idle}}
+  {None -> sw_state = sw_state_wait_vid})
+trigger nd_insert_S_rcv_put : { r1:address, r2:collection { key:int, value:int
+  } @ { Collection }, r3:{ key:int, value:int }, r4:int, r5:int } = (\b1 ->
+  bind b1 as {r1:sender_ip, r2:stmt_id_cnt_list, r3:vid, r4:S_B, r5:S_C} in 
+  (stmt_id_cnt_list.iterate ((\b1 -> bind b1 as {key:stmt_id, value:count} in 
+   case ((nd_stmt_cntrs.filter ((\b1 -> bind b1 as {r1:r1, r2:r2, r3:r3} in r1
+   == vid and r2 == stmt_id))).peek ()) of
+   {Some old_val -> bind old_val as {r1:_, r2:_, r3:old_count} in
+     let new_count = old_count + count in
+       (nd_stmt_cntrs.update {r1:vid, r2:stmt_id, r3:old_count} {r1:vid,
+        r2:stmt_id, r3:new_count};
+        (if new_count == 0
+        then if stmt_id == 3
+          then (nd_insert_S_do_complete_s3, me)<- {r1:vid, r2:S_B, r3:S_C}
+          else if stmt_id == 2
+            then (nd_insert_S_do_complete_s2, me)<- {r1:vid, r2:S_B, r3:S_C}
+            else if stmt_id == 1
+              then (nd_insert_S_do_complete_s1, me)<- {r1:vid, r2:S_B, r3:S_C}
+              else if stmt_id == 0
+                then (nd_insert_S_do_complete_s0, me)<- {r1:vid, r2:S_B,
+                  r3:S_C} else () else ()))}{None -> case (nd_stmt_cntrs.peek
+                                              ()) of
+                                              {Some _ ->
+                                                if nd_state == nd_state_done
+                                                then
+                                                  (nd_stmt_cntrs.insert
+                                                   {r1:vid, r2:stmt_id,
+                                                   r3:count};
+                                                   (ms_rcv_node_done,
+                                                     master_addr)<- false)
+                                                else ()}{None ->
+                                                          nd_stmt_cntrs.insert
+                                                          {r1:vid, r2:stmt_id,
+                                                          r3:count}}}));
+   (sw_ack_rcv, sender_ip)<- {key:me, value:vid}))
+trigger nd_insert_S_rcv_fetch : { r1:collection { key:int, value:int
+  } @ { Collection }, r2:{ key:int, value:int }, r3:int, r4:int } = (\b1 ->
+  bind b1 as {r1:stmts_and_map_ids, r2:vid, r3:S_B, r4:S_C} in 
+  ((nd_log_write_insert_S {r1:vid, r2:S_B, r3:S_C});
+   stmts_and_map_ids.iterate ((\b1 -> bind b1 as {key:stmt_id,
+   value:map_id} in if stmt_id == 0
+   then if map_id == 2
+     then (nd_insert_S_send_push_s0_m___SQL_SUM_AGGREGATE_1_mS1, me)<- {r1:vid,
+       r2:S_B, r3:S_C} else error (print "nd_rcv_fetch: invalid map id")
+   else if stmt_id == 2
+     then if map_id == 2
+       then
+         (nd_insert_S_send_push_s2_m___SQL_SUM_AGGREGATE_1_mS1, me)<- {r1:vid,
+         r2:S_B, r3:S_C}
+       else if map_id == 5
+         then
+           (nd_insert_S_send_push_s2_m___SQL_SUM_AGGREGATE_2_mS3, me)<- {r1:vid,
+           r2:S_B, r3:S_C} else error (print "nd_rcv_fetch: invalid map id")
+     else error (print "nd_rcv_fetch: invalid stmt id")))))
+trigger nd_insert_S_send_push_s0_m___SQL_SUM_AGGREGATE_1_mS1 : { r1:{ key:int,
+  value:int }, r2:int, r3:int } = (\b1 -> bind b1 as {r1:vid, r2:S_B,
+  r3:S_C} in bind __SQL_SUM_AGGREGATE_1_mS1 as ind
+  __SQL_SUM_AGGREGATE_1_mS1_deref in
+  ((nd_log_master_write {r1:vid, r2:0, r3:0});
+   (shuffle___SQL_SUM_AGGREGATE_1_mS1_to___SQL_SUM_AGGREGATE_1 {r1:(),
+      r2:frontier_int_int {key:vid,
+           value:__SQL_SUM_AGGREGATE_1_mS1_deref.filter ((\b1 ->
+           bind b1 as {r1:r1, r2:r2, r3:r3} in r2 == S_B))}, r3:true}).iterate
+   ((\b1 -> bind b1 as {key:ip, value:tuples} in 
+   (nd_insert_S_rcv_push_s0_m___SQL_SUM_AGGREGATE_1_mS1, ip)<- {r1:tuples,
+   r2:vid, r3:S_B, r4:S_C}))))
+trigger nd_insert_S_send_push_s2_m___SQL_SUM_AGGREGATE_1_mS1 : { r1:{ key:int,
+  value:int }, r2:int, r3:int } = (\b1 -> bind b1 as {r1:vid, r2:S_B,
+  r3:S_C} in bind __SQL_SUM_AGGREGATE_1_mS1 as ind
+  __SQL_SUM_AGGREGATE_1_mS1_deref in
+  ((nd_log_master_write {r1:vid, r2:0, r3:2});
+   (shuffle___SQL_SUM_AGGREGATE_1_mS1_to___SQL_SUM_AGGREGATE_2 {r1:(),
+      r2:frontier_int_int {key:vid,
+           value:__SQL_SUM_AGGREGATE_1_mS1_deref.filter ((\b1 ->
+           bind b1 as {r1:r1, r2:r2, r3:r3} in r2 == S_B))}, r3:true}).iterate
+   ((\b1 -> bind b1 as {key:ip, value:tuples} in 
+   (nd_insert_S_rcv_push_s2_m___SQL_SUM_AGGREGATE_1_mS1, ip)<- {r1:tuples,
+   r2:vid, r3:S_B, r4:S_C}))))
+trigger nd_insert_S_send_push_s2_m___SQL_SUM_AGGREGATE_2_mS3 : { r1:{ key:int,
+  value:int }, r2:int, r3:int } = (\b1 -> bind b1 as {r1:vid, r2:S_B,
+  r3:S_C} in bind __SQL_SUM_AGGREGATE_2_mS3 as ind
+  __SQL_SUM_AGGREGATE_2_mS3_deref in
+  ((nd_log_master_write {r1:vid, r2:0, r3:2});
+   (shuffle___SQL_SUM_AGGREGATE_2_mS3_to___SQL_SUM_AGGREGATE_2 {r1:(),
+      r2:frontier_int_int {key:vid,
+           value:__SQL_SUM_AGGREGATE_2_mS3_deref.filter ((\b1 ->
+           bind b1 as {r1:r1, r2:r2, r3:r3} in r2 == S_B))}, r3:true}).iterate
+   ((\b1 -> bind b1 as {key:ip, value:tuples} in 
+   (nd_insert_S_rcv_push_s2_m___SQL_SUM_AGGREGATE_2_mS3, ip)<- {r1:tuples,
+   r2:vid, r3:S_B, r4:S_C}))))
+trigger nd_insert_S_rcv_push_s0_m___SQL_SUM_AGGREGATE_1_mS1 : { r1:collection {
+  r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection }, r2:{ key:int,
+  value:int }, r3:int, r4:int } = (\b1 -> bind b1 as {r1:tuples, r2:vid,
+  r3:S_B, r4:S_C} in 
+  ((nd_log_write_insert_S {r1:vid, r2:S_B, r3:S_C});
+   tuples.iterate ((\tuple -> bind map___SQL_SUM_AGGREGATE_1_mS1_s0_buf as ind
+   map___SQL_SUM_AGGREGATE_1_mS1_s0_buf_d in
+   bind tuple as {r1:_tup0, r2:_tup1, r3:_tup2} in
+     case ((map___SQL_SUM_AGGREGATE_1_mS1_s0_buf_d.filter ((\b1 ->
+       bind b1 as {r1:r1, r2:r2, r3:r3} in r1 == _tup0 and r2 == _tup1))).peek
+       ()) of
+       {Some vals -> map___SQL_SUM_AGGREGATE_1_mS1_s0_buf_d.update vals tuple}
+       {None -> map___SQL_SUM_AGGREGATE_1_mS1_s0_buf_d.insert tuple}));
+   (if nd_check_stmt_cntr_index {key:vid, value:0}
+   then (nd_insert_S_do_complete_s0, me)<- {r1:vid, r2:S_B, r3:S_C} else ())))
+trigger nd_insert_S_rcv_push_s2_m___SQL_SUM_AGGREGATE_1_mS1 : { r1:collection {
+  r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection }, r2:{ key:int,
+  value:int }, r3:int, r4:int } = (\b1 -> bind b1 as {r1:tuples, r2:vid,
+  r3:S_B, r4:S_C} in 
+  ((nd_log_write_insert_S {r1:vid, r2:S_B, r3:S_C});
+   tuples.iterate ((\tuple -> bind map___SQL_SUM_AGGREGATE_1_mS1_s2_buf as ind
+   map___SQL_SUM_AGGREGATE_1_mS1_s2_buf_d in
+   bind tuple as {r1:_tup0, r2:_tup1, r3:_tup2} in
+     case ((map___SQL_SUM_AGGREGATE_1_mS1_s2_buf_d.filter ((\b1 ->
+       bind b1 as {r1:r1, r2:r2, r3:r3} in r1 == _tup0 and r2 == _tup1))).peek
+       ()) of
+       {Some vals -> map___SQL_SUM_AGGREGATE_1_mS1_s2_buf_d.update vals tuple}
+       {None -> map___SQL_SUM_AGGREGATE_1_mS1_s2_buf_d.insert tuple}));
+   (if nd_check_stmt_cntr_index {key:vid, value:2}
+   then (nd_insert_S_do_complete_s2, me)<- {r1:vid, r2:S_B, r3:S_C} else ())))
+trigger nd_insert_S_rcv_push_s2_m___SQL_SUM_AGGREGATE_2_mS3 : { r1:collection {
+  r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection }, r2:{ key:int,
+  value:int }, r3:int, r4:int } = (\b1 -> bind b1 as {r1:tuples, r2:vid,
+  r3:S_B, r4:S_C} in 
+  ((nd_log_write_insert_S {r1:vid, r2:S_B, r3:S_C});
+   tuples.iterate ((\tuple -> bind map___SQL_SUM_AGGREGATE_2_mS3_s2_buf as ind
+   map___SQL_SUM_AGGREGATE_2_mS3_s2_buf_d in
+   bind tuple as {r1:_tup0, r2:_tup1, r3:_tup2} in
+     case ((map___SQL_SUM_AGGREGATE_2_mS3_s2_buf_d.filter ((\b1 ->
+       bind b1 as {r1:r1, r2:r2, r3:r3} in r1 == _tup0 and r2 == _tup1))).peek
+       ()) of
+       {Some vals -> map___SQL_SUM_AGGREGATE_2_mS3_s2_buf_d.update vals tuple}
+       {None -> map___SQL_SUM_AGGREGATE_2_mS3_s2_buf_d.insert tuple}));
+   (if nd_check_stmt_cntr_index {key:vid, value:2}
+   then (nd_insert_S_do_complete_s2, me)<- {r1:vid, r2:S_B, r3:S_C} else ())))
+trigger nd_insert_S_do_complete_s0 : { r1:{ key:int, value:int }, r2:int,
+  r3:int } = (\b1 -> bind b1 as {r1:vid, r2:S_B, r3:S_C} in let __prod_ret__1 =
+  let wrapped_lookup_value =
+    bind map___SQL_SUM_AGGREGATE_1_mS1_s0_buf as ind __x in
+      (frontier_int_int {key:vid, value:__x.filter ((\b1 -> bind b1 as {r1:r1,
+         r2:r2, r3:r3} in r2 == S_B))}).fold ((\__acc_map -> (\b3 ->
+        bind b3 as {r1:map_vid, r2:__map_0, r3:__map_val} in __acc_map.combine
+        ({| key:int, value:int | {key:__map_0,
+        value:__map_val}|} @ { Collection })))) empty { key:int, value:int
+        } @ { Collection } in
+    case (wrapped_lookup_value.peek ()) of
+      {Some unwrapped_value ->
+        (\b1 -> bind b1 as {value:projected_field} in projected_field)
+          unwrapped_value}{None -> 0} * S_C in
+  ((nd_add_delta_to_int {r1:__SQL_SUM_AGGREGATE_1, r2:false, r3:vid, r4:{|
+      key:{ key:int, value:int }, value:int | {key:vid,
+      value:__prod_ret__1}|} @ { Collection }})))
+trigger nd_insert_S_do_complete_s1 : { r1:{ key:int, value:int }, r2:int,
+  r3:int } = (\b1 -> bind b1 as {r1:vid, r2:S_B, r3:S_C} in let __val_ret__2 =
+  S_C in
+  ((nd_add_delta_to_int_int {r1:__SQL_SUM_AGGREGATE_1_mR1, r2:false, r3:vid,
+      r4:{| r1:{ key:int, value:int }, r2:int, r3:int | {r1:vid, r2:S_B,
+      r3:__val_ret__2}|} @ { Collection }})))
+trigger nd_insert_S_do_complete_s2 : { r1:{ key:int, value:int }, r2:int,
+  r3:int } = (\b1 -> bind b1 as {r1:vid, r2:S_B, r3:S_C} in let __sum_ret__1 =
+  let wrapped_lookup_value =
+    bind map___SQL_SUM_AGGREGATE_1_mS1_s2_buf as ind __x in
+      (frontier_int_int {key:vid, value:__x.filter ((\b1 -> bind b1 as {r1:r1,
+         r2:r2, r3:r3} in r2 == S_B))}).fold ((\__acc_map -> (\b3 ->
+        bind b3 as {r1:map_vid, r2:__map_0, r3:__map_val} in __acc_map.combine
+        ({| key:int, value:int | {key:__map_0,
+        value:__map_val}|} @ { Collection })))) empty { key:int, value:int
+        } @ { Collection } in
+    case (wrapped_lookup_value.peek ()) of
+      {Some unwrapped_value ->
+        (\b1 -> bind b1 as {value:projected_field} in projected_field)
+          unwrapped_value}{None -> 0} + let wrapped_lookup_value =
+      bind map___SQL_SUM_AGGREGATE_2_mS3_s2_buf as ind __x in
+        (frontier_int_int {key:vid, value:__x.filter ((\b1 ->
+           bind b1 as {r1:r1, r2:r2, r3:r3} in r2 == S_B))}).fold
+          ((\__acc_map -> (\b3 -> bind b3 as {r1:map_vid, r2:__map_0,
+          r3:__map_val} in __acc_map.combine ({| key:int, value:int |
+          {key:__map_0, value:__map_val}|} @ { Collection })))) empty {
+          key:int, value:int } @ { Collection } in
+      case (wrapped_lookup_value.peek ()) of
+        {Some unwrapped_value ->
+          (\b1 -> bind b1 as {value:projected_field} in projected_field)
+            unwrapped_value}{None -> 0} * S_C in
+  ((nd_add_delta_to_int {r1:__SQL_SUM_AGGREGATE_2, r2:false, r3:vid, r4:{|
+      key:{ key:int, value:int }, value:int | {key:vid,
+      value:__sum_ret__1}|} @ { Collection }})))
+trigger nd_insert_S_do_complete_s3 : { r1:{ key:int, value:int }, r2:int,
+  r3:int } = (\b1 -> bind b1 as {r1:vid, r2:S_B, r3:S_C} in let __val_ret__4 =
+  1 in
+  ((nd_add_delta_to_int_int {r1:__SQL_SUM_AGGREGATE_2_mR1, r2:false, r3:vid,
+      r4:{| r1:{ key:int, value:int }, r2:int, r3:int | {r1:vid, r2:S_B,
+      r3:__val_ret__4}|} @ { Collection }})))
+trigger nd_insert_R_rcv_put : { r1:address, r2:collection { key:int, value:int
+  } @ { Collection }, r3:{ key:int, value:int }, r4:int, r5:int } = (\b1 ->
+  bind b1 as {r1:sender_ip, r2:stmt_id_cnt_list, r3:vid, r4:R_A, r5:R_B} in 
+  (stmt_id_cnt_list.iterate ((\b1 -> bind b1 as {key:stmt_id, value:count} in 
+   case ((nd_stmt_cntrs.filter ((\b1 -> bind b1 as {r1:r1, r2:r2, r3:r3} in r1
+   == vid and r2 == stmt_id))).peek ()) of
+   {Some old_val -> bind old_val as {r1:_, r2:_, r3:old_count} in
+     let new_count = old_count + count in
+       (nd_stmt_cntrs.update {r1:vid, r2:stmt_id, r3:old_count} {r1:vid,
+        r2:stmt_id, r3:new_count};
+        (if new_count == 0
+        then if stmt_id == 11
+          then (nd_insert_R_do_complete_s11, me)<- {r1:vid, r2:R_A, r3:R_B}
+          else if stmt_id == 10
+            then (nd_insert_R_do_complete_s10, me)<- {r1:vid, r2:R_A, r3:R_B}
+            else if stmt_id == 9
+              then (nd_insert_R_do_complete_s9, me)<- {r1:vid, r2:R_A, r3:R_B}
+              else if stmt_id == 8
+                then (nd_insert_R_do_complete_s8, me)<- {r1:vid, r2:R_A,
+                  r3:R_B} else () else ()))}{None -> case (nd_stmt_cntrs.peek
+                                              ()) of
+                                              {Some _ ->
+                                                if nd_state == nd_state_done
+                                                then
+                                                  (nd_stmt_cntrs.insert
+                                                   {r1:vid, r2:stmt_id,
+                                                   r3:count};
+                                                   (ms_rcv_node_done,
+                                                     master_addr)<- false)
+                                                else ()}{None ->
+                                                          nd_stmt_cntrs.insert
+                                                          {r1:vid, r2:stmt_id,
+                                                          r3:count}}}));
+   (sw_ack_rcv, sender_ip)<- {key:me, value:vid}))
+trigger nd_insert_R_rcv_fetch : { r1:collection { key:int, value:int
+  } @ { Collection }, r2:{ key:int, value:int }, r3:int, r4:int } = (\b1 ->
+  bind b1 as {r1:stmts_and_map_ids, r2:vid, r3:R_A, r4:R_B} in 
+  ((nd_log_write_insert_R {r1:vid, r2:R_A, r3:R_B});
+   stmts_and_map_ids.iterate ((\b1 -> bind b1 as {key:stmt_id,
+   value:map_id} in if stmt_id == 8
+   then if map_id == 3
+     then (nd_insert_R_send_push_s8_m___SQL_SUM_AGGREGATE_1_mR1, me)<- {r1:vid,
+       r2:R_A, r3:R_B} else error (print "nd_rcv_fetch: invalid map id")
+   else if stmt_id == 10
+     then if map_id == 6
+       then
+         (nd_insert_R_send_push_s10_m___SQL_SUM_AGGREGATE_2_mR1, me)<- {r1:vid,
+         r2:R_A, r3:R_B}
+       else if map_id == 3
+         then
+           (nd_insert_R_send_push_s10_m___SQL_SUM_AGGREGATE_1_mR1, me)<- {r1:vid,
+           r2:R_A, r3:R_B} else error (print "nd_rcv_fetch: invalid map id")
+     else error (print "nd_rcv_fetch: invalid stmt id")))))
+trigger nd_insert_R_send_push_s8_m___SQL_SUM_AGGREGATE_1_mR1 : { r1:{ key:int,
+  value:int }, r2:int, r3:int } = (\b1 -> bind b1 as {r1:vid, r2:R_A,
+  r3:R_B} in bind __SQL_SUM_AGGREGATE_1_mR1 as ind
+  __SQL_SUM_AGGREGATE_1_mR1_deref in
+  ((nd_log_master_write {r1:vid, r2:2, r3:8});
+   (shuffle___SQL_SUM_AGGREGATE_1_mR1_to___SQL_SUM_AGGREGATE_1 {r1:(),
+      r2:frontier_int_int {key:vid,
+           value:__SQL_SUM_AGGREGATE_1_mR1_deref.filter ((\b1 ->
+           bind b1 as {r1:r1, r2:r2, r3:r3} in r2 == R_B))}, r3:true}).iterate
+   ((\b1 -> bind b1 as {key:ip, value:tuples} in 
+   (nd_insert_R_rcv_push_s8_m___SQL_SUM_AGGREGATE_1_mR1, ip)<- {r1:tuples,
+   r2:vid, r3:R_A, r4:R_B}))))
+trigger nd_insert_R_send_push_s10_m___SQL_SUM_AGGREGATE_2_mR1 : { r1:{ key:int,
+  value:int }, r2:int, r3:int } = (\b1 -> bind b1 as {r1:vid, r2:R_A,
+  r3:R_B} in bind __SQL_SUM_AGGREGATE_2_mR1 as ind
+  __SQL_SUM_AGGREGATE_2_mR1_deref in
+  ((nd_log_master_write {r1:vid, r2:2, r3:10});
+   (shuffle___SQL_SUM_AGGREGATE_2_mR1_to___SQL_SUM_AGGREGATE_2 {r1:(),
+      r2:frontier_int_int {key:vid,
+           value:__SQL_SUM_AGGREGATE_2_mR1_deref.filter ((\b1 ->
+           bind b1 as {r1:r1, r2:r2, r3:r3} in r2 == R_B))}, r3:true}).iterate
+   ((\b1 -> bind b1 as {key:ip, value:tuples} in 
+   (nd_insert_R_rcv_push_s10_m___SQL_SUM_AGGREGATE_2_mR1, ip)<- {r1:tuples,
+   r2:vid, r3:R_A, r4:R_B}))))
+trigger nd_insert_R_send_push_s10_m___SQL_SUM_AGGREGATE_1_mR1 : { r1:{ key:int,
+  value:int }, r2:int, r3:int } = (\b1 -> bind b1 as {r1:vid, r2:R_A,
+  r3:R_B} in bind __SQL_SUM_AGGREGATE_1_mR1 as ind
+  __SQL_SUM_AGGREGATE_1_mR1_deref in
+  ((nd_log_master_write {r1:vid, r2:2, r3:10});
+   (shuffle___SQL_SUM_AGGREGATE_1_mR1_to___SQL_SUM_AGGREGATE_2 {r1:(),
+      r2:frontier_int_int {key:vid,
+           value:__SQL_SUM_AGGREGATE_1_mR1_deref.filter ((\b1 ->
+           bind b1 as {r1:r1, r2:r2, r3:r3} in r2 == R_B))}, r3:true}).iterate
+   ((\b1 -> bind b1 as {key:ip, value:tuples} in 
+   (nd_insert_R_rcv_push_s10_m___SQL_SUM_AGGREGATE_1_mR1, ip)<- {r1:tuples,
+   r2:vid, r3:R_A, r4:R_B}))))
+trigger nd_insert_R_rcv_push_s8_m___SQL_SUM_AGGREGATE_1_mR1 : { r1:collection {
+  r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection }, r2:{ key:int,
+  value:int }, r3:int, r4:int } = (\b1 -> bind b1 as {r1:tuples, r2:vid,
+  r3:R_A, r4:R_B} in 
+  ((nd_log_write_insert_R {r1:vid, r2:R_A, r3:R_B});
+   tuples.iterate ((\tuple -> bind map___SQL_SUM_AGGREGATE_1_mR1_s8_buf as ind
+   map___SQL_SUM_AGGREGATE_1_mR1_s8_buf_d in
+   bind tuple as {r1:_tup0, r2:_tup1, r3:_tup2} in
+     case ((map___SQL_SUM_AGGREGATE_1_mR1_s8_buf_d.filter ((\b1 ->
+       bind b1 as {r1:r1, r2:r2, r3:r3} in r1 == _tup0 and r2 == _tup1))).peek
+       ()) of
+       {Some vals -> map___SQL_SUM_AGGREGATE_1_mR1_s8_buf_d.update vals tuple}
+       {None -> map___SQL_SUM_AGGREGATE_1_mR1_s8_buf_d.insert tuple}));
+   (if nd_check_stmt_cntr_index {key:vid, value:8}
+   then (nd_insert_R_do_complete_s8, me)<- {r1:vid, r2:R_A, r3:R_B} else ())))
+trigger nd_insert_R_rcv_push_s10_m___SQL_SUM_AGGREGATE_2_mR1 : {
+  r1:collection { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection },
+  r2:{ key:int, value:int }, r3:int, r4:int } = (\b1 -> bind b1 as {r1:tuples,
+  r2:vid, r3:R_A, r4:R_B} in 
+  ((nd_log_write_insert_R {r1:vid, r2:R_A, r3:R_B});
+   tuples.iterate ((\tuple -> bind map___SQL_SUM_AGGREGATE_2_mR1_s10_buf as ind
+   map___SQL_SUM_AGGREGATE_2_mR1_s10_buf_d in
+   bind tuple as {r1:_tup0, r2:_tup1, r3:_tup2} in
+     case ((map___SQL_SUM_AGGREGATE_2_mR1_s10_buf_d.filter ((\b1 ->
+       bind b1 as {r1:r1, r2:r2, r3:r3} in r1 == _tup0 and r2 == _tup1))).peek
+       ()) of
+       {Some vals -> map___SQL_SUM_AGGREGATE_2_mR1_s10_buf_d.update vals tuple}
+       {None -> map___SQL_SUM_AGGREGATE_2_mR1_s10_buf_d.insert tuple}));
+   (if nd_check_stmt_cntr_index {key:vid, value:10}
+   then (nd_insert_R_do_complete_s10, me)<- {r1:vid, r2:R_A, r3:R_B} 
+   else ())))
+trigger nd_insert_R_rcv_push_s10_m___SQL_SUM_AGGREGATE_1_mR1 : {
+  r1:collection { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection },
+  r2:{ key:int, value:int }, r3:int, r4:int } = (\b1 -> bind b1 as {r1:tuples,
+  r2:vid, r3:R_A, r4:R_B} in 
+  ((nd_log_write_insert_R {r1:vid, r2:R_A, r3:R_B});
+   tuples.iterate ((\tuple -> bind map___SQL_SUM_AGGREGATE_1_mR1_s10_buf as ind
+   map___SQL_SUM_AGGREGATE_1_mR1_s10_buf_d in
+   bind tuple as {r1:_tup0, r2:_tup1, r3:_tup2} in
+     case ((map___SQL_SUM_AGGREGATE_1_mR1_s10_buf_d.filter ((\b1 ->
+       bind b1 as {r1:r1, r2:r2, r3:r3} in r1 == _tup0 and r2 == _tup1))).peek
+       ()) of
+       {Some vals -> map___SQL_SUM_AGGREGATE_1_mR1_s10_buf_d.update vals tuple}
+       {None -> map___SQL_SUM_AGGREGATE_1_mR1_s10_buf_d.insert tuple}));
+   (if nd_check_stmt_cntr_index {key:vid, value:10}
+   then (nd_insert_R_do_complete_s10, me)<- {r1:vid, r2:R_A, r3:R_B} 
+   else ())))
+trigger nd_insert_R_do_complete_s8 : { r1:{ key:int, value:int }, r2:int,
+  r3:int } = (\b1 -> bind b1 as {r1:vid, r2:R_A, r3:R_B} in let __prod_ret__8 =
+  let wrapped_lookup_value =
+    bind map___SQL_SUM_AGGREGATE_1_mR1_s8_buf as ind __x in
+      (frontier_int_int {key:vid, value:__x.filter ((\b1 -> bind b1 as {r1:r1,
+         r2:r2, r3:r3} in r2 == R_B))}).fold ((\__acc_map -> (\b3 ->
+        bind b3 as {r1:map_vid, r2:__map_0, r3:__map_val} in __acc_map.combine
+        ({| key:int, value:int | {key:__map_0,
+        value:__map_val}|} @ { Collection })))) empty { key:int, value:int
+        } @ { Collection } in
+    case (wrapped_lookup_value.peek ()) of
+      {Some unwrapped_value ->
+        (\b1 -> bind b1 as {value:projected_field} in projected_field)
+          unwrapped_value}{None -> 0} * R_A in
+  ((nd_add_delta_to_int {r1:__SQL_SUM_AGGREGATE_1, r2:false, r3:vid, r4:{|
+      key:{ key:int, value:int }, value:int | {key:vid,
+      value:__prod_ret__8}|} @ { Collection }})))
+trigger nd_insert_R_do_complete_s9 : { r1:{ key:int, value:int }, r2:int,
+  r3:int } = (\b1 -> bind b1 as {r1:vid, r2:R_A, r3:R_B} in let __val_ret__13 =
+  R_A in
+  ((nd_add_delta_to_int_int {r1:__SQL_SUM_AGGREGATE_1_mS1, r2:false, r3:vid,
+      r4:{| r1:{ key:int, value:int }, r2:int, r3:int | {r1:vid, r2:R_B,
+      r3:__val_ret__13}|} @ { Collection }})))
+trigger nd_insert_R_do_complete_s10 : { r1:{ key:int, value:int }, r2:int,
+  r3:int } = (\b1 -> bind b1 as {r1:vid, r2:R_A, r3:R_B} in let __sum_ret__3 =
+  (let wrapped_lookup_value =
+    bind map___SQL_SUM_AGGREGATE_2_mR1_s10_buf as ind __x in
+      (frontier_int_int {key:vid, value:__x.filter ((\b1 -> bind b1 as {r1:r1,
+         r2:r2, r3:r3} in r2 == R_B))}).fold ((\__acc_map -> (\b3 ->
+        bind b3 as {r1:map_vid, r2:__map_0, r3:__map_val} in __acc_map.combine
+        ({| key:int, value:int | {key:__map_0,
+        value:__map_val}|} @ { Collection })))) empty { key:int, value:int
+        } @ { Collection } in
+    case (wrapped_lookup_value.peek ()) of
+      {Some unwrapped_value ->
+        (\b1 -> bind b1 as {value:projected_field} in projected_field)
+          unwrapped_value}{None -> 0} * R_A) + let wrapped_lookup_value =
+    bind map___SQL_SUM_AGGREGATE_1_mR1_s10_buf as ind __x in
+      (frontier_int_int {key:vid, value:__x.filter ((\b1 -> bind b1 as {r1:r1,
+         r2:r2, r3:r3} in r2 == R_B))}).fold ((\__acc_map -> (\b3 ->
+        bind b3 as {r1:map_vid, r2:__map_0, r3:__map_val} in __acc_map.combine
+        ({| key:int, value:int | {key:__map_0,
+        value:__map_val}|} @ { Collection })))) empty { key:int, value:int
+        } @ { Collection } in
+    case (wrapped_lookup_value.peek ()) of
+      {Some unwrapped_value ->
+        (\b1 -> bind b1 as {value:projected_field} in projected_field)
+          unwrapped_value}{None -> 0} in
+  ((nd_add_delta_to_int {r1:__SQL_SUM_AGGREGATE_2, r2:false, r3:vid, r4:{|
+      key:{ key:int, value:int }, value:int | {key:vid,
+      value:__sum_ret__3}|} @ { Collection }})))
+trigger nd_insert_R_do_complete_s11 : { r1:{ key:int, value:int }, r2:int,
+  r3:int } = (\b1 -> bind b1 as {r1:vid, r2:R_A, r3:R_B} in let __val_ret__15 =
+  1 in
+  ((nd_add_delta_to_int_int {r1:__SQL_SUM_AGGREGATE_2_mS3, r2:false, r3:vid,
+      r4:{| r1:{ key:int, value:int }, r2:int, r3:int | {r1:vid, r2:R_B,
+      r3:__val_ret__15}|} @ { Collection }})))
+
+
+source master : () = value(())feed master |> ms_send_addr_self
+
+
+source switch : { r1:int, r2:int, r3:int } = file "rs.csv" k3
+feed switch |> sw_demux
+
+
+
+
+
+
+
+
