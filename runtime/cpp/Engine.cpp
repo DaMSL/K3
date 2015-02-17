@@ -503,4 +503,10 @@ namespace K3 {
 
     void Engine::logMessageLoop(string s) { if (log_enabled) { logAt(trivial::trace, s); } }
 
+  template <>
+  std::size_t hash_value(int const& b) {
+    std::hash<std::string> f;
+    return f(std::to_string(b));
+  }
+
 }

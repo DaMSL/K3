@@ -478,6 +478,8 @@ namespace K3 {
     shared_ptr<IOHandle> openSocketHandle(const Address& addr, shared_ptr<Codec> codec, IOMode m);
   };
 
+  template <>
+  std::size_t hash_value(int const& b);
 } // namespace K3
 
 #endif // K3_RUNTIME_ENGINE_H
