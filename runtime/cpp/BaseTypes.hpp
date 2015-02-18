@@ -136,6 +136,12 @@ class R_key_value {
       bool operator>(const R_key_value<_T0, _T1>& __other) const {
         return std::tie(key, value) > std::tie(__other.key, __other.value);
       }
+      bool operator<=(const R_key_value<_T0, _T1>& __other) const {
+        return std::tie(key, value) <= std::tie(__other.key, __other.value);
+      }
+      bool operator>=(const R_key_value<_T0, _T1>& __other) const {
+        return std::tie(key, value) >= std::tie(__other.key, __other.value);
+      }
       _T0 key;
       _T1 value;
 };
