@@ -217,7 +217,7 @@ trigger q5_locs_start : () = \_ -> (
         , lhs_build_merge = [$ (\epd_by_sn -> locs_build.insert_with epd_by_sn merge_epd_by_sn_r) ]
         , rhs_probe_merge = [$
             (\s ->
-              case locs_build.lookup {key: {s_suppkey: s.key, s_nationkey: s.value}, value: 0.0} of
+              case locs_build.lookup {key: {s_suppkey: s.key.s_suppkey, s_nationkey: s.key.s_nationkey}, value: 0.0} of
               { Some loc -> locs_epd_by_nk.insert_with
                               {key: loc.key.s_nationkey, value: loc.value} merge_epd_by_nk_r
               }
@@ -229,8 +229,8 @@ trigger q5_locs_start : () = \_ -> (
                                (q5_locsn_start, master) <- () ]
         , coordinator     = [$ master]
         , nodes           = [$ peers ]
-        , lhs_build_ty    = [: collection {key : {s_suppkey : int, s_nationkey : int}, value : real} @Map ]
-        , rhs_probe_ty    = [: collection {key : int, value : int  } @Map ]
+        , lhs_build_ty    = [: collection {key : {s_suppkey : int, s_nationkey : int}, value : real } @Map ]
+        , rhs_probe_ty    = [: collection {key : {s_suppkey : int, s_nationkey : int}, value : () } @Map ]
         , profile         = [$ true]
         )
 )
