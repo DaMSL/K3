@@ -1,5 +1,5 @@
 #include "Engine.hpp"
-
+#include <stdlib.h>
 
 using namespace boost::log;
 using namespace boost::log::trivial;
@@ -505,8 +505,14 @@ namespace K3 {
 
   template <>
   std::size_t hash_value(int const& b) {
-    std::hash<std::string> f;
-    return f(std::to_string(b));
+   const unsigned int fnv_prime = 0x811C9DC5;
+   unsigned int hash = 0;
+   const char* p = (const char *) &b;
+   for(std::size_t i = 0; i < sizeof(int); i++)
+   {
+      hash *= fnv_prime;
+      hash ^= p[i];
+   }
+   return hash;
   }
-
 }
