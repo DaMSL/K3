@@ -111,7 +111,7 @@ def executorInfo(k3task, jobid, binary_url):
   volume = container.volumes.add()
   volume.container_path = '/local/data'
   volume.host_path = '/local/data'
-  volume.mode = volume.RO
+  volume.mode = volume.RW
 
   executor.container.MergeFrom(container)
        

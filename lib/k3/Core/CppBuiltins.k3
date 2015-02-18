@@ -7,6 +7,9 @@ declare loadVector : string -> collection {elem: collection {elem: real} @ {Vect
 @:CArgs 2
 declare loadVectorLabel : int -> string -> collection {elem: collection {elem: real} @ {Vector}, class_label: real } @Collection -> ()
 
+@:CArgs 2
+declare loadStrings: string -> collection {elem: string} @Collection -> ()
+
 declare zeroVector : int -> collection {elem: real} @ {Vector}
 
 declare randomVector : int -> collection {elem: real} @ {Vector}

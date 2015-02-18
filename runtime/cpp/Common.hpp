@@ -8,6 +8,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <functional>
 #include <stdexcept>
 #include <tuple>
 #include <utility>
@@ -194,7 +195,7 @@ namespace K3 {
   }
   template <>
   std::size_t hash_value<K3::base_string>(const K3::base_string&);
-
+  
 } // namespace K3
 
 #endif
