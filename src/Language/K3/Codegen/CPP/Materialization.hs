@@ -268,7 +268,7 @@ occursIn wide a b
       (tag -> PBVar mv) -> do
              decision <- dLookup (pmvloc' mv) (pmvn mv)
              if inD decision == Referenced || inD decision == ConstReferenced
-               then pLookup (pmvptr mv) >>= occursIn wide b
+               then pLookup (pmvptr mv) >>= \a -> occursIn wide a b
                else return False
 
       -- Something occurs in substructure if it occurs in any superstructure, and wide effects are
@@ -307,7 +307,7 @@ isWrittenIn x f =
 isWrittenInF :: K3 Provenance -> K3 Effect -> MaterializationM Bool
 isWrittenInF xp ff =
   case ff of
-    (tag -> FWrite yp) -> occursIn False yp xp
+    (tag -> FWrite yp) -> occursIn True yp xp
 
     (tag -> FScope _) -> anyM (isWrittenInF xp) (children ff)
     (tag -> FSeq) -> anyM (isWrittenInF xp) (children ff)
@@ -381,7 +381,9 @@ hasWriteInP prov expr =
       argHasWrite <- hasWriteInP prov x
       let appHasWrite = inD appDecision == Moved && argOccurs
 
-      return (functionHasWrite || argHasWrite || appHasWrite)
+      appHasIntrinsicWrite <- isWrittenInF prov (getEffects expr)
+
+      return (functionHasWrite || argHasWrite || appHasWrite || appHasIntrinsicWrite)
 
     _ -> (||) <$> isWrittenInF prov (getEffects expr) <*> anyM (hasWriteInP prov) (children expr)
 
