@@ -10,6 +10,12 @@ using boost::thread;
 
 namespace K3 {
 
+  template <>
+  std::size_t hash_value(const int& t) {
+    std::hash<string> f;
+    size_t res = f(std::to_string(t)); 
+    return res;
+  }
     void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec,
                            string log_l, string log_p, string result_v, string result_p) {
       internal_codec = _internal_codec;

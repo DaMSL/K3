@@ -25,11 +25,19 @@ namespace K3 {
     return unit_t();
   }
 
-
   unit_t __standard_context::openFile(string_impl ch_id, string_impl path, string_impl fmt, string_impl mode) {
     IOMode iomode = __engine.ioMode(mode);
     __engine.openFile(ch_id, path, iomode);
     return unit_t();
+  }
+
+  bool __standard_context::hasWrite(string_impl ch_id) {
+   return  __engine.hasWrite(std::string(ch_id));
+  }
+
+  unit_t  __standard_context::doWrite(string_impl ch_id, string_impl val) {
+   __engine.doWriteExternal(std::string(ch_id), std::string(val));
+   return unit_t{};
   }
 
   unit_t __standard_context::openSocket(string_impl ch_id, Address a, string_impl fmt, string_impl mode) {
@@ -116,7 +124,7 @@ namespace K3 {
     auto& c = result.getContainer();
     c.resize(i);
     for(int j = 0; j < i; j++) {
-       srand(time(NULL));		
+       srand(time(NULL));
        c[j] = R_elem<double>{(rand()/(RAND_MAX+ 1.))};
     }
     return result;

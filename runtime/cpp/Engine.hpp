@@ -17,6 +17,9 @@
 #include "Options.hpp"
 
 namespace K3 {
+  
+  template <>
+  std::size_t hash_value(const int& t);
 
   namespace Net = K3::Asio;
 
@@ -271,7 +274,9 @@ namespace K3 {
     }
 
     void doWriteExternal(Identifier eid, Value v) {
-      return endpoints->getExternalEndpoint(eid)->doWrite(v);
+      endpoints->getExternalEndpoint(eid)->doWrite(v);
+      endpoints->getExternalEndpoint(eid)->flushBuffer();
+      return;
     }
 
     void doWriteInternal(Identifier eid, RemoteMessage m) {
@@ -431,7 +436,7 @@ namespace K3 {
     bool                            log_enabled;
     bool                            log_json;
     // Tuple of (eventLog, globalsLog)
-    
+
     std::map<Address, tuple<shared_ptr<ofstream>, shared_ptr<ofstream>>> log_streams;
     string                          log_path;
     string                          result_var;
