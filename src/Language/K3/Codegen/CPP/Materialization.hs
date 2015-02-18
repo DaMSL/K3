@@ -268,7 +268,7 @@ occursIn wide a b
       (tag -> PBVar mv) -> do
              decision <- dLookup (pmvloc' mv) (pmvn mv)
              if inD decision == Referenced || inD decision == ConstReferenced
-               then pLookup (pmvptr mv) >>= occursIn wide b
+               then pLookup (pmvptr mv) >>= \a -> occursIn wide a b
                else return False
 
       -- Something occurs in substructure if it occurs in any superstructure, and wide effects are
