@@ -129,8 +129,8 @@ class Dispatcher(mesos.interface.Scheduler):
         print("Accepted Roles for offer on %s: %s" % debug)
 
         peers = []
-        curPort = 40000
         for (roleId, n) in rolesPerOffer[offerId]:
+          curPort = 40000
           for i in range(n):
             vs = nextJob.roles[roleId].variables
             p = Peer(curPeerIndex, vs, IP_ADDRS[host], curPort)
