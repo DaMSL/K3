@@ -122,15 +122,15 @@ composite name ans = do
                              ]
                              [] []
                          ]
-    
+
     let jsonStructDefn = R.NamespaceDefn "JSON"
                          [ R.TemplateDefn [("__CONTENT", Nothing)] $
                             R.ClassDefn (R.Name "convert") [selfType] []
-                             [ R.TemplateDefn [("Allocator", Nothing)] $ 
+                             [ R.TemplateDefn [("Allocator", Nothing)] $
                                R.FunctionDefn (R.Name "encode")
                                  [("c", R.Const $ R.Reference $ selfType)
                                  ,("al", R.Reference $ R.Named $ R.Name "Allocator")
-                                 ] 
+                                 ]
                                  (Just $ R.Static $ R.Named $ R.Name "rapidjson::Value") [] False
                                  [R.Return $ R.Call
                                        (R.Variable $ R.Qualified
@@ -197,23 +197,11 @@ record (sort -> ids) = do
     let tieOther n = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "tie"))
                      [R.Project (R.Variable $ R.Name n) (R.Name i) | i <- ids]
 
-    let inequalityOperator
-            = R.FunctionDefn (R.Name "operator!=")
+    let logicOp op
+            = R.FunctionDefn (R.Name $ "operator"++op)
               [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool)
               [] True
-              [R.Return $ R.Binary "!=" tieSelf (tieOther "__other")]
-
-    let lessOperator
-            = R.FunctionDefn (R.Name "operator<")
-              [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool)
-              [] True
-              [R.Return $ R.Binary "<" tieSelf (tieOther "__other")]
-
-    let greaterOperator
-            = R.FunctionDefn (R.Name "operator>")
-              [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool)
-              [] True
-              [R.Return $ R.Binary ">" tieSelf (tieOther "__other")]
+              [R.Return $ R.Binary op tieSelf (tieOther "__other")]
 
     let fieldDecls = [ R.GlobalDefn (R.Forward $ R.ScalarDecl (R.Name i) (R.Named $ R.Name t) Nothing)
                      | i <- ids
@@ -233,7 +221,7 @@ record (sort -> ids) = do
                        [] False serializeStatements)
 
     let constructors = (defaultConstructor:initConstructors)
-    let comparators = [equalityOperator, inequalityOperator, lessOperator, greaterOperator]
+    let comparators = [equalityOperator, logicOp "!=", logicOp "<", logicOp ">", logicOp "<=", logicOp ">="]
     let members = constructors ++ comparators ++ [serializeFn] ++ fieldDecls
 
     let recordStructDefn
@@ -300,40 +288,40 @@ record (sort -> ids) = do
                                    [R.Project (R.Variable $ R.Name "r") (R.Name name), R.Variable $ R.Name "al"]
                                 , R.Variable $ R.Name "al"
                                 ]
-   
 
-    let jsonStructDefn =   R.NamespaceDefn "JSON" 
+
+    let jsonStructDefn =   R.NamespaceDefn "JSON"
                            [R.TemplateDefn (zip templateVars (repeat Nothing)) $
                            R.ClassDefn (R.Name "convert") [recordType] []
                            [
                            R.TemplateDefn [("Allocator", Nothing)] (R.FunctionDefn (R.Name "encode")
                            [("r", R.Const $ R.Reference recordType)
-                           ,("al", R.Reference $ R.Named $ R.Name "Allocator")  
+                           ,("al", R.Reference $ R.Named $ R.Name "Allocator")
                            ]
                            (Just $ R.Static $ R.Named $ R.Name "rapidjson::Value") [] False
                            (
-                            [R.Forward $ R.UsingDecl (Left (R.Name "rapidjson")) Nothing] ++ 
+                            [R.Forward $ R.UsingDecl (Left (R.Name "rapidjson")) Nothing] ++
                             [R.Forward $ R.ScalarDecl (R.Name "val") (R.Named $ R.Name "Value") Nothing] ++
-                            [R.Forward $ R.ScalarDecl (R.Name "inner") (R.Named $ R.Name "Value") Nothing ] ++ 
+                            [R.Forward $ R.ScalarDecl (R.Name "inner") (R.Named $ R.Name "Value") Nothing ] ++
                             [R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "val") (R.Name "SetObject")) [] ] ++
                             [R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "inner") (R.Name "SetObject")) [] ] ++
                             [R.Ignore $ addField tup | tup <- zip ids templateVars] ++
                             [R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "val") (R.Name "AddMember"))
                               [R.Literal $ R.LString "type"
-                              , R.Call (R.Variable $ R.Name "Value") 
+                              , R.Call (R.Variable $ R.Name "Value")
                                 [R.Literal $ R.LString "record"]
                               , R.Variable $ R.Name "al"
                               ]
-                            ] ++ 
+                            ] ++
                             [R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "val") (R.Name "AddMember"))
                               [R.Literal $ R.LString "value"
-                              , R.Call 
+                              , R.Call
                                   (R.Project (R.Variable $ R.Name "inner") (R.Name "Move"))
                                   []
                               , R.Variable $ R.Name "al"
-                              ] 
-                            ] ++ 
-                            [R.Return $ R.Variable $ R.Name "val"] 
+                              ]
+                            ] ++
+                            [R.Return $ R.Variable $ R.Name "val"]
                            ))
                             ] [] []
                             ]
