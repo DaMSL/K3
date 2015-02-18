@@ -274,7 +274,7 @@ trigger q5_locsn_start : () = \_ -> (
 )
 
 // TODO: broadcast join
-// TODO: move earlier in join order due to selecticity of r_name == 'ASIA'
+// TODO: move earlier in join order due to selectivity of r_name == 'ASIA'
 trigger q5_locsnr_start : () = \_ -> (
   () @DistributedHashJoin
         ( lbl       = [# locsnr ]
@@ -325,10 +325,10 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                            q5_result.iterate (\r -> results.insert r);
                            () @DistributedCollectionStatistics(
                                     lbl         = [# q5_skew ],
-                                    query_cl    = [* [% cl: [# lo_skew],  ce: [$ lior_cse_by_ck]]
-                                                   , [% cl: [# loc_skew], ce: [$ loc_epd_by_sn]]
-                                                   , [% cl: [# locs_skew], ce: [$ locs_epd_by_nk]]
-                                                   , [% cl: [# locsn_skew], ce: [$ locsn_nepd_by_rk]]
+                                    query_cl    = [* [% cl: [# lo_skew],     ce: [$ lior_cse_by_ck]]
+                                                   , [% cl: [# loc_skew],    ce: [$ loc_epd_by_sn]]
+                                                   , [% cl: [# locs_skew],   ce: [$ locs_epd_by_nk]]
+                                                   , [% cl: [# locsn_skew],  ce: [$ locsn_nepd_by_rk]]
                                                    , [% cl: [# locsnr_skew], ce: [$ locsnr_epd_by_n]]
                                                   ],
                                     coordinator = [$ master ],
@@ -336,7 +336,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                                     next        = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ])
                         ],
   preShutdownExpr     = [$ ()],
- finishAsShutdownExpr = [$ false]
+  finishAsShutdownExpr = [$ false]
 )
 
 source rows : () = value ()

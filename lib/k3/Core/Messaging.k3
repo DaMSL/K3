@@ -1,11 +1,25 @@
-control SendByKey[dest_trg : expr, barrier_trg : expr, nodes : expr, send_extra_fn : expr] {
+control SendPunctuation[trg : expr, nodes : expr]
+{
+  ?e => ( ( $.[e] );
+          $[nodes].iterate(\p -> ($[trg], p.addr) <- ()) )
+}
+
+control SendByKey[ dest_trg : expr, nodes : expr, send_extra_fn : expr]
+{
+  ?e => ( $.[e].iterate (\v -> case $[nodes].at v.key of
+                               { Some p -> ($[dest_trg], p.addr) <- ($[send_extra_fn] v.value) }
+                               { None -> error () }
+                        ) )
+}
+
+control PSendByKey[ dest_trg : expr, barrier_trg : expr, nodes : expr, send_extra_fn : expr]
+{
   ?e => ( $.[e].iterate (\v -> case $[nodes].at v.key of
                                { Some p -> ($[dest_trg], p.addr) <- ($[send_extra_fn] v.value) }
                                { None -> error () }
                         );
 
-          // Send punctuation: we're done
-          $[nodes].iterate(\p -> ($[barrier_trg], p.addr) <- ()) )
+          () @SendPunctuation(trg = barrier_trg, nodes = nodes) )
 }
 
 control PartitionByKey {
@@ -34,21 +48,45 @@ control PartitionRoundRobin [nodes : expr] {
                          empty $::[t] @Collection ) )
 }
 
-control SendPartitionByKey[dest_trg : expr, barrier_trg : expr, nodes : expr, send_extra_fn : expr] {
+control SendPartitionByKey[ dest_trg : expr, nodes : expr, send_extra_fn : expr]
+{
   ?e : collection ?t
     => ( $.[e] @PartitionByKey
-       ) @SendByKey(dest_trg = dest_trg, barrier_trg = barrier_trg, nodes = nodes, send_extra_fn = send_extra_fn)
+       ) @SendByKey( dest_trg = dest_trg, nodes = nodes, send_extra_fn = send_extra_fn)
 }
 
-control SendRoundRobin[dest_trg : expr, barrier_trg : expr, nodes : expr, send_extra_fn : expr] {
+control PSendPartitionByKey[ dest_trg : expr, barrier_trg : expr, nodes : expr, send_extra_fn : expr]
+{
+  ?e : collection ?t
+    => ( $.[e] @PartitionByKey
+       ) @PSendByKey( dest_trg = dest_trg, barrier_trg = barrier_trg
+                    , nodes = nodes, send_extra_fn = send_extra_fn)
+}
+
+control SendRoundRobin[ dest_trg : expr, nodes : expr, send_extra_fn : expr]
+{
   ?e : collection ?t
     => ( $.[e] @PartitionRoundRobin(nodes = nodes)
-       ) @SendByKey(dest_trg = dest_trg, barrier_trg = barrier_trg, nodes = nodes, send_extra_fn = send_extra_fn)
+       ) @SendByKey( dest_trg = dest_trg, nodes = nodes, send_extra_fn = send_extra_fn)
 }
 
-control SendBroadcast[dest_trg : expr, barrier_trg : expr, nodes : expr, send_extra_fn : expr] {
+control PSendRoundRobin[ dest_trg : expr, barrier_trg : expr, nodes : expr, send_extra_fn : expr]
+{
   ?e : collection ?t
-    => ( $[nodes].iterate (\n -> ((($[dest_trg],    n.addr) <- ($[send_extra_fn] $.[e]));
-                                   ($[barrier_trg], n.addr) <- ()))
-       )
+    => ( $.[e] @PartitionRoundRobin(nodes = nodes)
+       ) @PSendByKey( dest_trg = dest_trg, barrier_trg = barrier_trg
+                    , nodes = nodes, send_extra_fn = send_extra_fn)
+}
+
+control SendBroadcast[ dest_trg : expr, nodes : expr, send_extra_fn : expr]
+{
+  ?e : collection ?t
+    => ( $[nodes].iterate (\n -> ($[dest_trg], n.addr) <- ($[send_extra_fn] $.[e])) )
+}
+
+control PSendBroadcast[ dest_trg : expr, barrier_trg : expr, nodes : expr, send_extra_fn : expr]
+{
+  ?e : collection ?t
+    => ( $[nodes].iterate (\n -> ($[dest_trg], n.addr) <- ($[send_extra_fn] $.[e]))
+       ) @SendPunctuation(trg = barrier_trg, nodes = nodes)
 }

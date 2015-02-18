@@ -1,0 +1,347 @@
+include "tpch/benchmark.k3"
+
+/**********************
+* SQL query
+***********************
+select
+        n_name,
+        sum(l_extendedprice * (1 - l_discount)) as revenue
+from
+        customer,
+        orders,
+        lineitem,
+        supplier,
+        nation,
+        region
+where
+        c_custkey = o_custkey
+        and l_orderkey = o_orderkey
+        and l_suppkey = s_suppkey
+        and c_nationkey = s_nationkey
+        and s_nationkey = n_nationkey
+        and n_regionkey = r_regionkey
+        and r_name = 'ASIA'
+        and o_orderdate >= date '1994-01-01'
+        and o_orderdate < date '1995-01-01'
+group by
+        n_name
+order by
+        revenue desc
+****************************
+* Join graph:
+*   l -- o -- c
+*     \- s -/
+*        |
+*        n
+*        |
+*        r
+*
+****************************
+* Join order:
+*   (c-n-r)-o--result
+*   (s-n-r)-l-/
+****************************/
+
+declare master : address
+declare sample_factor : real = 10.0
+
+declare lineitem : lineitem_bag
+declare orders   : orders_bag
+declare customer : customer_bag
+declare supplier : supplier_bag
+declare nation   : nation_bag
+declare region   : region_bag
+
+// Final result.
+typedef q5_r_by_n_r     = {key : string, value: real}
+typedef q5_r_by_n_map   = collection q5_r_by_n_r @Map
+
+declare q5_result : q5_r_by_n_map
+declare results : collection {key: string, value: real} @Collection
+
+declare merge_epd_by_n :    {key: string, value: real}
+                         -> {key: string, value: real}
+                         -> {key: string, value: real}
+  = \old -> \new -> {key: old.key, value: old.value + new.value}
+
+// Plan intermediates.
+declare r_asia_by_rk : collection {key: int, value: {r_name: string, r_comments: string}} @Map
+declare n_asia_by_nk : collection {key: int, value: {n_name: string, n_regionkey: int, n_comments: string}} @Map
+
+// TODO: in the partitioned version, C|c_custkey should be broadcast into O|o_orderkey partitions.
+trigger q5_co_start : () = \_ -> (
+  ( () @:NoSkew )
+    @JoinSelector(
+        lbl                  = [# co ]
+
+      , lhs_sample_query     = [$ customer.sample (\acc -> \c ->
+                                                    ((acc.insert_with
+                                                        {key: c.c_custkey, value: 1}
+                                                        (\old -> \new -> {key: old.key, value: old.value + new.value}));
+                                                      acc))
+                                                  (empty {key:int, value: int} @Map)
+                                                  (customer.size() / sample_factor)
+                               ]
+      , rhs_sample_query     = [$ orders.sample (\acc -> \c ->
+                                                  if     o.o_orderdate >= "1994-01-01"
+                                                     and o.o_orderdate <  "1995-01-01"
+                                                  then
+                                                    ((acc.insert_with
+                                                          {key: o.o_custkey, value: 1}
+                                                          (\old -> \new -> {key: old.key, value: old.value + new.value}));
+                                                        acc)
+                                                  else acc)
+                                                (empty {key:int, value: int} @Map)
+                                                (orders.size() / sample_factor)
+                               ]
+
+      , frequency_threshold  = [$ 1000.0 ]
+
+      , lhs_query = [$ ( r_asia_by_rk =
+                           region.filter  (\r -> r.r_name == "ASIA")
+                                 .groupBy (\r -> r.r_regionkey)
+                                          (\_ -> \r -> {r_name: r.r_name, r_comments: r.r_comments})
+                                          {r_name: "", r_comments: ""}
+                                 .fold    (\acc -> \r -> ((acc.insert r); acc))
+                                          (empty {key: int, value: {r_name: string, r_comments: string}} @Map) );
+
+                       ( n_asia_by_nk =
+                           nation.filter  (\n -> case r_asia_by_rk.lookup {key: n.n_regionkey, value:{r_name:"", r_comments:""}}
+                                                 of { Some _ -> true  }
+                                                    { None   -> false } )
+                                 .groupBy (\n -> n.n_nationkey)
+                                          (\_ -> \n -> {n_name: n.n_name, n_regionkey: n.n_regionkey, n_comments: n.n_comments})
+                                          {n_name:"", n_regionkey: 0, n_comments: ""}
+                                 .fold    (\acc -> \n -> ((acc.insert n); acc))
+                                          (empty {key: int, value: {n_name: string, n_regionkey: int, n_comments: string}} @Map) );
+
+                       (((customer.filter  (\c -> case n_asia_by_nk.lookup { key: c.c_nationkey
+                                                                           , value:{n_name:"", n_regionkey:0, n_comments:""}}
+                                                  of { Some _ -> true  }
+                                                     { None   -> false }))
+                                  .groupBy (\c -> c.c_custkey)
+                                           (\_ -> \c -> case n_asia_by_nk.lookup { key: c.c_nationkey
+                                                                                 , value:{n_name:"", n_regionkey:0, n_comments:"" }
+                                                        of { Some n -> {c_nationkey: c.c_nationkey, n_name: n.n_name} }
+                                                           { None   -> error (print "Invalid customer tuple") })
+                                           {c_nationkey: int, n_name: string})
+                                  .fold    (\acc -> \c -> ((acc.insert c); acc))
+                                           (empty {key: int, value: {c_nationkey: int, n_name: string}} @Map))
+                    ]
+
+      , rhs_query = [$ ((orders.filter  (\o ->     o.o_orderdate >= "1994-01-01"
+                                               and o.o_orderdate <  "1995-01-01" ))
+                               .groupBy (\o -> o.o_custkey)
+                                        (\acc -> \o -> ((acc.insert {o_orderkey: o.o_orderkey}); acc))
+                                        (empty {o_orderkey: int} @Collection))
+                               .fold    (\acc -> \o -> ((acc.insert o); acc))
+                                        (empty {key: int, value: empty {o_orderkey: int} @Collection} @Map)
+                    ]
+
+      , join_key_ty          = [$ int ]
+      , lhs_ht_ty            = [$ {key: int, value: {c_nationkey: int, n_name: string}} ]
+      , rhs_ht_ty            = [$ {key: int, value: collection {o_orderkey: int} @Collection} ]
+
+      , lhs_probe            = [$ (\lht -> \out -> \o ->
+                                    case lht.lookup {key: o.key, value: {c_nationkey: 0, n_name: ""}} of
+                                    { Some c -> o.value.fold (\acc -> \ok ->
+                                                                ((acc.insert { key: { c_nationkey: c.value.c_nationkey
+                                                                                    , o_orderkey: ok }
+                                                                             , value: c.value.n_name });
+                                                                acc))
+                                                             out }
+                                    { None   -> out }
+                                  )
+                               ]
+
+      , rhs_probe            = [$ (\rht -> \out -> \c ->
+                                    case rht.lookup {key: c.key, value: empty {o_orderkey:int} @Collection} of
+                                    { Some o -> o.value.fold (\acc -> \ok ->
+                                                                ((acc.insert { key: { c_nationkey: c.value.c_nationkey
+                                                                                    , o_orderkey: ok }
+                                                                             , value: c.value.n_name });
+                                                                 acc))
+                                                             out }
+                                    { None   -> out }
+                                  )
+                               ]
+
+      , lhs_insert_with      = [$ (\_ -> \new -> new) ] // Note: any merge here is an integrity constraint violation.
+      , rhs_insert_with      = [$ (\old -> \new -> {key: old.key, value: old.value.combine new.value}) ]
+
+      , has_outputs          = [$ (\out -> out.size() > 0) ]
+      , empty_out_buffer     = [$ empty {key: {c_nationkey: int, o_orderkey: int}, value: string} @Map]
+
+      , lhs_pipeline_next    = [$ (\out -> ( out ) @SendPartitionByKey( dest_trg      = [$ cosl_process_redistribute ]
+                                                                      , nodes         = $[nodes]
+                                                                      , send_extra_fn = [$ (\x -> (Some x, None immut, true)) ]) ) ]
+
+      , rhs_pipeline_next    = [$ (\out -> ( out ) @SendPartitionByKey( dest_trg      = [$ cosl_process_redistribute ]
+                                                                      , nodes         = $[nodes]
+                                                                      , send_extra_fn = [$ (\x -> (Some x, None immut, true)) ]) ) ]
+
+      , peer_next            = [$ () ] // TODO: send punctuations here to all other peers,
+                                       // rather than when pipelining outputs.
+      , next                 = [$ () ]
+      , coordinator          = [$ master]
+      , nodes                = [$ peers]
+    )
+)
+
+
+// TODO: in the partitioned version, S|s_suppkey should be broadcast into L|l_orderkey partitions.
+trigger q5_sl_start : () = \_ -> (
+  ( () @:NoSkew )
+    @JoinSelector(
+        lbl                  = [# sl ]
+
+      , lhs_sample_query     = [$ supplier.sample (\acc -> \s ->
+                                                    ((acc.insert_with
+                                                        {key: s.s_suppkey, value: 1}
+                                                        (\old -> \new -> {key: old.key, value: old.value + new.value}));
+                                                      acc))
+                                                  (empty {key: int, value: int} @Map)
+                                                  (supplier.size() / sample_factor)
+                               ]
+
+      , rhs_sample_query     = [$ lineitem.sample (\acc -> \li ->
+                                                    ((acc.insert_with
+                                                        {key: li.l_suppkey, value: 1}
+                                                        (\old -> \new -> {key: old.key, value: old.value + new.value}));
+                                                      acc))
+                                                  (empty {key: int, value: int} @Map)
+                                                  (lineitem.size() / sample_factor)
+                               ]
+
+      , frequency_threshold  = [$ 1000.0 ]
+
+      , lhs_query = [$ ((supplier.filter  (\s -> case n_asia_by_nk.lookup {key: s.s_nationkey, value:{n_name:"", n_regionkey:0, n_comments:""}}
+                                                  of { Some _ -> true  }
+                                                     { None   -> false }))
+                                 .groupBy (\s -> s.s_suppkey)
+                                          (\_ -> \s -> s.s_nationkey)
+                                          0)
+                                 .fold    (\acc -> \s -> ((acc.insert s); acc))
+                                          (empty {key: int, value: int} @Map)
+                    ]
+
+      , rhs_query = [$ (lineitem.groupBy (\li -> li.l_suppkey)
+                                         (\acc -> \li ->
+                                           ((acc.insert { l_orderkey : li.l_orderkey
+                                                        , l_epd      : li.l_extendedprice * (1 - li.l_discount)}) ;
+                                             acc))
+                                         (empty {l_orderkey : int, l_epd : real} @Collection))
+                                .fold    (\acc -> \li -> ((acc.insert li); acc))
+                                         (empty {key: int, value: collection {l_orderkey: int, l_epd: real} @Collection} @Map)
+                    ]
+
+      , join_key_ty          = [$ int ]
+      , lhs_ht_ty            = [$ {key: int, value: int} ]
+      , rhs_ht_ty            = [$ {key: int, value: collection {l_orderkey: int, l_epd: real} @Collection} ]
+
+      , lhs_probe            = [$ (\lht -> \out -> \l ->
+                                    case lht.lookup {key: k.key, value: 0} of
+                                    { Some s -> l.value.fold (\acc -> \loe ->
+                                                  ((acc.insert {key: {s_nationkey: s.value, l_orderkey: loe.l_orderkey}, value: loe.l_epd}); acc)) out}
+                                    { None   -> out } )
+                               ]
+
+      , rhs_probe            = [$ (\rht -> \out -> \s ->
+                                    case rht.lookup {key: s.key, value: empty {l_orderkey: int, l_epd: real} @Collection} of
+                                    { Some l -> l.value.fold (\acc -> \loe ->
+                                                  ((acc.insert {key: {s_nationkey: s.value, l_orderkey: loe.l_orderkey}, value: loe.l_epd}); acc)) out}
+                                    { None   -> out } )
+                               ]
+
+      , lhs_insert_with      = [$ (\_ -> \new -> new) ] // Note: any merge here is an integrity constraint violation.
+      , rhs_insert_with      = [$ (\old -> \new -> {key: old.key, value: old.value.combine new.value}) ]
+
+      , has_outputs          = [$ (\out -> out.size() > 0) ]
+      , empty_out_buffer     = [$ empty {key: {s_nationkey: int, l_orderkey: int}, value: real} @Map ]
+
+      , lhs_pipeline_next    = [$ (\out -> ( out ) @SendPartitionByKey( dest_trg      = [$ cosl_process_redistribute ]
+                                                                      , nodes         = $[nodes]
+                                                                      , send_extra_fn = [$ (\x -> (None immut, Some x, true)) ]) )
+                               ]
+
+      , rhs_pipeline_next    = [$ (\out -> ( out ) @SendPartitionByKey( dest_trg      = [$ cosl_process_redistribute ]
+                                                                      , nodes         = $[nodes]
+                                                                      , send_extra_fn = [$ (\x -> (None immut, Some x, true)) ]) )
+                               ]
+
+      , peer_next            = [$ () ] // TODO: send punctuations here to all other peers.
+                                       // rather than when pipelining outputs.
+      , next                 = [$ () ]
+      , coordinator          = [$ master]
+      , nodes                = [$ peers]
+    )
+)
+
+
+trigger q5_cosl_start : () = \_ -> (
+  ( () @:NoSkew )
+    @StreamingHashJoin(
+        lbl                  = [# cosl ]
+
+      , lhs_ht_ty            = [$ {key: {c_nationkey: int, o_orderkey: int}, value: string} ]
+      , rhs_ht_ty            = [$ {key: {s_nationkey: int, l_orderkey: int}, value: real} ]
+
+      , lhs_probe            = [$ (\lht -> \out -> \sl ->
+                                    case lht.lookup {key:sl.key, value: ""} of
+                                    { Some co -> ((out.insert_with {key: co.value, value:sl.value} merge_epd_by_n); out)}
+                                    { None    -> out }
+                                  ) ]
+
+      , rhs_probe            = [$ (\rht -> \out -> \co ->
+                                    case rht.lookup {key:co.key, value: 0} of
+                                    { Some sl -> ((out.insert_with {key: co.value, value:sl.value} merge_epd_by_n); out)}
+                                    { None    -> out }
+                                  ) ]
+
+      , lhs_insert_with      = [$ (\_ -> \new -> new) ]
+      , rhs_insert_with      = [$ (\old -> \new -> {key: old.key, value: old.value + new.value}) ]
+
+      , has_outputs          = [$ (\out -> out.size() > 0) ]
+      , empty_out_buffer     = [$ empty {key: string, value: real} @Map]
+
+      // Pipeline next accumulates into a global map to materialize the full aggregate.
+      , lhs_pipeline_next    = [$ (\out -> out.iterate (\r -> q5_result.insert_with r merge_epd_by_n) ()) ]
+      , rhs_pipeline_next    = [$ (\out -> out.iterate (\r -> q5_result.insert_with r merge_epd_by_n) ()) ]
+
+      , peer_next            = [$ if me == master then () else ( (q5_result_aggregate, master) <- q5_result ) ]
+      , next                 = [$ () ]
+      , coordinator          = [$ master]
+      , nodes                = [$ peers]
+    )
+)
+
+trigger q5_result_aggregate : q5_r_by_n_map = \vals -> (
+  vals.iterate (\r -> q5_result.insert_with kv merge_epd_by_n)
+)
+
+trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
+  nodes               = [$ peers],
+  loadExpr            = [$ ( lineitemFiles.iterate (\e -> lineitemLoaderP e.path lineitem);
+                             ordersFiles.iterate   (\e -> ordersLoaderP   e.path orders);
+                             customerFiles.iterate (\e -> customerLoaderP e.path customer);
+                             supplierFiles.iterate (\e -> supplierLoaderP e.path supplier);
+                             nationFiles.iterate   (\e -> nationLoaderP   e.path nation);
+                             regionFiles.iterate   (\e -> regionLoaderP   e.path region)
+                           ) ],
+  preLoadExpr         = [$ ()],
+  preReadyExpr        = [$ ()],
+  onReadyExpr         = [$ (q5_co_start, me) <- ();
+                           (q5_sl_start, me) <- ()
+                        ],
+  finishArgT          = [: ()],
+  preTestFinishExpr   = [$ (\_ -> ())],
+  preFinishExpr       = [$ (print ("Q5 num results:" ++ (itos (q5_result.size()))));
+                           q5_result.iterate (\r -> results.insert r);
+                           peers.iterate (\p -> (shutdown, p.addr) <- ())
+                        ],
+  preShutdownExpr     = [$ ()],
+  finishAsShutdownExpr = [$ false]
+)
+
+source rows : () = value ()
+feed rows |> start

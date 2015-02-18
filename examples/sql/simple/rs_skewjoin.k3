@@ -89,6 +89,7 @@ trigger join : () = \_ -> (
         , lhs_insert_with    = [$ (\old -> \new -> {key: old.key, value: old.value.combine new.value}) ]
         , rhs_insert_with    = [$ (\old -> \new -> {key: old.key, value: old.value.combine new.value}) ]
 
+        , has_outputs        = [$ (\out -> out.size() > 0) ]
         , empty_out_buffer   = [$ empty {key: int, value: collection {a:int, c:int} @Collection} @Map ]
 
         , lhs_pipeline_next  = [$ (\out -> (merge_join_results, master) <- out) ]
