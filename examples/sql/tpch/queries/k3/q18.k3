@@ -49,7 +49,6 @@ declare orders   : mut orders_bag
 
 // Final result.
 typedef loc_q_by_ncodt_r   = { key: {nm:string, ck:int, ok:int, od:string, tp:real}, value: real}
-typedef loc_q_by_ncodt_bag = collection loc_q_by_ncodt_r @Collection
 typedef loc_q_by_ncodt_map = collection loc_q_by_ncodt_r @Map
 
 declare q18_peer_result : loc_q_by_ncodt_map
@@ -102,9 +101,9 @@ trigger lineitem_having : () = \_ -> (
 // construction occurring in the merge trigger.
 trigger lineitem_orders : () = \_ -> (
   (ignore (orders.groupBy (\o -> o.o_orderkey)
-                          (\acc -> \o -> { o_custkey    : o.o_custkey
-                                         , o_orderdate  : o.o_orderdate
-                                         , o_totalprice : o.o_totalprice })
+                          (\_ -> \o -> { o_custkey    : o.o_custkey
+                                       , o_orderdate  : o.o_orderdate
+                                       , o_totalprice : o.o_totalprice })
                           {o_custkey:0, o_orderdate:"", o_totalprice:0.0})
   ) @DistributedGroupByGeneric(
       lbl         = [# lo ],
@@ -133,11 +132,11 @@ trigger lineitem_orders_customer : () = \_ -> (
   () @DistributedHashJoin
         ( lbl       = [# loc ]
         , lhs_query = [$ lo_odtq_by_ck]
-        , rhs_query = [$ let result = customer.fold (\acc -> \c ->
-                                          ((acc.insert {key: c.c_custkey, value: c.c_name})
-                                           ; acc))
-                                       empty {key: int, value: string} @Collection
-                         in (customer = empty customer_r @Collection); result
+        , rhs_query = [$ (customer.groupBy (\c -> c.c_custkey)
+                                           (\_ -> \c -> c.c_name)
+                                           "")
+                                  .fold    (\acc -> \c -> ((acc.insert c); acc))
+                                           (empty {key: int, value: string} @Map)
                       ]
 
         , lhs_build_merge = [$ (\lo -> loc_build.insert_with lo merge_odtq_by_ck_r) ]
@@ -176,13 +175,13 @@ trigger lineitem_orders_customer : () = \_ -> (
                                  {key : int
                                  , value : collection { key: {ok:int, od:string, tp:real}
                                                       , value: real} @Map
-                                 } @Collection ]
-        , rhs_probe_ty    = [: collection {key : int, value : string} @Collection ]
+                                 } @Map ]
+        , rhs_probe_ty    = [: collection {key : int, value : string} @Map ]
         , profile         = [$ false]
         )
 )
 
-trigger loc_aggregate : loc_q_by_ncodt_bag = \vals -> (
+trigger loc_aggregate : loc_q_by_ncodt_map = \vals -> (
   vals.iterate (\kv -> q18_peer_result.insert_with kv merge_q_by_ncodt_r)
 )
 

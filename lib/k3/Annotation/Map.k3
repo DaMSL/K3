@@ -8,7 +8,7 @@ annotation Map given type a,b {
 
   @:CArgs 2
   provides lifted insert_with: content -> (content -> content -> content) -> ()
-    with effects \elem -> \f -> [R[self]; R[elem]; f content content; W[self]]
+    with effects \elem -> \f -> [R[self]; R[elem]; ((f content) content); W[self]]
 
   @:CArgs 3
   provides lifted upsert_with: content -> (() -> content) -> (content -> content) -> ()

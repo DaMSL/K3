@@ -87,22 +87,23 @@ control DistributedGroupByGeneric [ lbl             : label
                                   , profile         : expr ]
 {
   ignore ( (?e.groupBy ?groupF ?aggF ?accE) : collection ?t )
-     => (if $[profile] 
+     => (if $[profile]
           then (() @:StartTimer) @Time(lbl=[# $[lbl]_GROUPBY], tag=[$ "Time "])
-          else () 
+          else ()
         );
-        $[nodes].iterate (\p -> ($[lbl]_scan, p.addr) <- ()) 
+        $[nodes].iterate (\p -> ($[lbl]_scan, p.addr) <- ())
      +> {
           trigger $[lbl]_scan : () = \_ -> (
-            (ignore ( $.[e].groupBy $.[groupF] $.[aggF] $.[accE]
+            (ignore ( ($.[e].groupBy $.[groupF] $.[aggF] $.[accE])
+                            .fold    (\acc -> \v -> ((acc.insert v); acc))
+                                     (empty $::[t] @Map)
             ) @SendPartitionByKey( dest_trg      = [$ $[lbl]_merge]
                                  , barrier_trg   = [$ $[lbl]_peer_barrier]
                                  , nodes         = nodes
                                  , send_extra_fn = [$ (\x -> x)]))
           )
 
-          // Note: SendByPartitionKey always uses a @Collection for the wire type.
-          trigger $[lbl]_merge : collection $::[t] @Collection = \partials -> (
+          trigger $[lbl]_merge : collection $::[t] @Map = \partials -> (
             partials.iterate (\w -> $[merge] w)
           )
 
@@ -217,6 +218,54 @@ control DistributedHashJoin [ lbl             : label
           ) @OnCounter(id=[# $[lbl]_join_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
         )
      }
+}
+
+control PipelinedBroadcastJoin [ lbl                 : label
+                               , lhs_query           : expr
+                               , rhs_query           : expr
+                               , lhs_probe           : expr
+                               , lhs_clear           : expr
+                               , broadcast_ty        : type
+                               , empty_out_buffer    : expr
+                               , pipeline_next       : expr
+                               , peer_next           : expr
+                               , next                : expr
+                               , coordinator         : expr
+                               , nodes               : expr]
+{
+  () => $[nodes].iterate (\p -> ($[lbl]_broadcast, p.addr) <- ())
+     +> {
+          // Compute any LHS data structures needed for join, then start broadcast.
+          trigger $[lbl]_broadcast : () = \_ -> (
+            $[lhs_query];
+            ( ignore ( $[rhs_query]
+            ) @SendBroadcast( dest_trg      = [$ $[lbl]_probe ]
+                            , barrier_trg   = [$ $[lbl]_peer_broadcast_barrier ]
+                            , nodes         = nodes
+                            , send_extra_fn = [$ (\x -> x) ]))
+          )
+
+          // Process broadcasted partition from a peer, and pipeline its outputs.
+          trigger $[lbl]_probe : $[broadcast_ty] = \vals -> (
+            let outputs = vals.fold $[lhs_probe] $[empty_out_buffer] in
+            $[pipeline_next] outputs
+          )
+
+          trigger $[lbl]_peer_broadcast_barrier : () = \_ -> (
+            print "Broadcast join peer finished processing." ;
+            (
+              $[lhs_clear];
+              $[peer_next];
+              ($[lbl]_global_barrier, $[coordinator]) <- ()
+            ) @OnCounter(id=[# $[lbl]_peer_broadcast_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
+          )
+
+          trigger $[lbl]_global_barrier : () = \_ -> (
+            ( print "Broadcast join done." ;
+              $[next]
+            ) @OnCounter(id=[# $[lbl]_join_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
+          )
+        }
 }
 
 control PipelineSymmetricHashJoin [ lbl                  : label
@@ -402,7 +451,7 @@ control PipelineSkewJoin [ lbl                  : label
           // standard pipelined symmetric hashtable build/probe for all (i.e., repl/rr/redistributed) inputs
 
           // K * c_r / c_x, where K = # nodes, c_r = redist or repl cost, c_x = transfer cost
-          declare cost_ratio : real = 16 * 10.0 
+          declare cost_ratio : real = 16 * 10.0
 
           // Join key histogram, storing frequency in both LHS and RHS relations.
           declare $[lbl]_hist : collection {key : $[join_key_ty], value : (int, int)} @Map
@@ -416,9 +465,9 @@ control PipelineSkewJoin [ lbl                  : label
           declare $[lbl]_hist_merge :    {key: $[join_key_ty], value: (int, int)}
                                       -> {key: $[join_key_ty], value: (int, int)}
                                       -> {key: $[join_key_ty], value: (int, int)}
-          = \a -> (\b -> 
+          = \a -> (\b ->
               bind a.value as (alf, arf) in
-              bind b.value as (blf, brf) in 
+              bind b.value as (blf, brf) in
               {key: a.key, value: (alf + blf, arf + brf)})
 
           declare $[lbl]_acc_hifreq :   (collection {key: $[join_key_ty], value: bool} @Map)
@@ -451,7 +500,7 @@ control PipelineSkewJoin [ lbl                  : label
             (
               // Compute high-frequency values
               let skewed = $[lbl]_hist.fold $[lbl]_acc_hifreq (empty {key: $[join_key_ty], value: bool} @Map)
-              in ( 
+              in (
                 // Broadcast skewed values back to nodes.
                 $[nodes].iterate (\n -> ($[lbl]_redistribute, n.addr) <- skewed )
               )

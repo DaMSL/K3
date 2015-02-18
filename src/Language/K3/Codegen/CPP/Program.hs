@@ -51,7 +51,7 @@ stringifyProgram d = vsep . map R.stringify . simplifyCPP <$> program d
 -- Top-level program generation.
 -- publics <- concat <$> mapM declaration cs
 program :: K3 Declaration -> CPPGenM [R.Definition]
-program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
+program (tag &&& children -> (DRole name, decls)) = do
     -- Process the program, accumulate global state.
     programDefns <- concat <$> mapM declaration decls
 
