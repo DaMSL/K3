@@ -129,8 +129,22 @@ trigger lineitem_orders : () = \_ -> (
 )
 
 trigger lineitem_orders_customer : () = \_ -> (
-  () @DistributedHashJoin
-        ( lbl       = [# loc ]
+  ( () @:NoSkew )
+    @JoinSelector(
+          lbl       = [# loc ]
+
+
+        , lhs_sample_query     = [$ lo_odtq_by_ck.sample (\acc -> \r ->
+                                                            ((acc.insert_with {key: r.key, value: 1}
+                                                              (\old -> \new -> {key: old.key, value: old.value + new.value}));
+                                                            acc))
+                                                         (empty {key: int, value: int} @Map)
+                                                         (lo_odtq_by_ck.size () / sample_factor)
+                                 ]
+
+        , rhs_sample_query     = [$ empty {key: int, value: int} @Map ]
+        , frequency_threshold  = [$ 1000.0 ]
+
         , lhs_query = [$ lo_odtq_by_ck]
         , rhs_query = [$ (customer.groupBy (\c -> c.c_custkey)
                                            (\_ -> \c -> c.c_name)
@@ -139,55 +153,79 @@ trigger lineitem_orders_customer : () = \_ -> (
                                            (empty {key: int, value: string} @Map)
                       ]
 
-        , lhs_build_merge = [$ (\lo -> loc_build.insert_with lo merge_odtq_by_ck_r) ]
-        , rhs_probe_merge = [$
-            (\c ->
-                case loc_build.lookup { key: c.key
-                                      , value: empty { key   : {ok: int, od: string, tp: real}
-                                                     , value : real } @Map}
-                of
-                  { Some lo -> lo.value.iterate (\kv ->
-                                 loc_q_by_ncodt.insert_with
-                                   { key: { nm: c.value
-                                          , ck: c.key
-                                          , ok: kv.key.ok
-                                          , od: kv.key.od
-                                          , tp: kv.key.tp }
-                                   , value: kv.value }
-                                   merge_q_by_ncodt_r
-                               )
-                  }
-                  { None -> ()  }
-              ) ]
+      , join_key_ty          = [: int ]
+      , lhs_ht_ty            = [: {key: int, value: collection {key : {ok: int, od: string, tp: real}, value : real} @Map} ]
+      , rhs_ht_ty            = [: {key: int, value: string} ]
 
-        , peer_next       = [$ print "LI-OR-CS join finished customer probe." ;
-                               (ignore
-                                 ( loc_q_by_ncodt
-                                 ) @SendPartitionByKey( dest_trg      = [$ loc_aggregate]
-                                                      , barrier_trg   = [$ log_aggregate_peer_barrier]
-                                                      , nodes         = [$ peers]
-                                                      , send_extra_fn = [$ (\x -> x)])
-                                ) ]
-        , next            = [$ print "LI-OR-CS join all nodes finished." ]
-        , coordinator     = [$ master]
-        , nodes           = [$ peers]
-        , lhs_build_ty    = [: collection
-                                 {key : int
-                                 , value : collection { key: {ok:int, od:string, tp:real}
-                                                      , value: real} @Map
-                                 } @Map ]
-        , rhs_probe_ty    = [: collection {key : int, value : string} @Map ]
-        , profile         = [$ false]
-        )
+      , lhs_probe            = [$ (\lht -> \out -> \r ->
+                                    case lht.lookup {key: r.key, value: empty {key : {ok: int, od: string, tp: real}, value : real} @Map} of
+                                    { Some l ->
+                                      l.value.fold (\acc -> \kv ->
+                                          (( acc.insert_with
+                                               { key: { nm: r.value, ck: r.key, ok: kv.key.ok, od: kv.key.od, tp: kv.key.tp }
+                                               , value: kv.value }
+                                               merge_q_by_ncodt_r );
+                                             acc ))
+                                        out
+                                    }
+                                    { None   -> out }
+                                  )
+                               ]
+
+      , rhs_probe            = [$ (\rht -> \out -> \l ->
+                                    case rht.lookup {key: l.key, value: ""} of
+                                    { Some r ->
+                                      l.value.fold (\acc -> \kv ->
+                                          (( acc.insert_with
+                                               { key: { nm: r.value, ck: r.key, ok: kv.key.ok, od: kv.key.od, tp: kv.key.tp }
+                                               , value: kv.value }
+                                               merge_q_by_ncodt_r );
+                                             acc ))
+                                        out
+                                    }
+                                    { None   -> out }
+                                  )
+                               ]
+
+      , lhs_insert_with      = [$ (\old -> \new -> {key: old.key, value:
+                                    (new.value.fold
+                                      (\acc -> \kv ->
+                                        ((acc.insert_with
+                                              {key:kv.key, value:kv.value}
+                                              (\old2 -> \new2 -> {key:old2.key, value: old2.value + new2.value}));
+                                          acc))
+                                      old.value)}) ]
+
+      , rhs_insert_with      = [$ (\_ -> \new -> new) ]
+
+      , has_outputs          = [$ (\out -> out.size() > 0) ]
+      , empty_out_buffer     = [$ empty { key: {nm:string, ck:int, ok:int, od:string, tp:real}, value: real} @Map ]
+
+
+      , lhs_pipeline_next    = [$ (\out -> ignore ( ( out ) @SendPartitionByKey( dest_trg      = [$ loc_aggregate ]
+                                                                               , nodes         = [$ peers ]
+                                                                               , send_extra_fn = [$ (\x -> x) ]) )) ]
+
+      , rhs_pipeline_next    = [$ (\out -> ignore ( ( out ) @SendPartitionByKey( dest_trg      = [$ loc_aggregate ]
+                                                                               , nodes         = [$ peers ]
+                                                                               , send_extra_fn = [$ (\x -> x) ]) )) ]
+
+      , peer_next            = [$ ( print "LI-OR-CS join finished customer probe." );
+                                  () @SendPunctuation(trg = [$ loc_aggregate_peer_barrier ], nodes = [$ peers ])
+                               ]
+      , next                 = [$ print "LI-OR-CS join all nodes finished." ]
+      , coordinator          = [$ master]
+      , nodes                = [$ peers]
+    )
 )
 
 trigger loc_aggregate : loc_q_by_ncodt_map = \vals -> (
   vals.iterate (\kv -> q18_peer_result.insert_with kv merge_q_by_ncodt_r)
 )
 
-trigger log_aggregate_peer_barrier : () = \_ -> (
-  ( print "Query 18 done." ;
-    ((() @:Result) @TPCHBenchmarkWithoutMaster)
+trigger loc_aggregate_peer_barrier : () = \_ -> (
+  ( ( print "Query 18 done." ) ;
+    ( (() @:Result) @TPCHBenchmarkWithoutMaster )
   ) @OnCounter(id=[# loc_aggregate_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 )
 
