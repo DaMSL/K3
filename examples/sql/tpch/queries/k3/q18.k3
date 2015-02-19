@@ -43,6 +43,8 @@ order by
 *          (filter . group lineitem)
 ****************************/
 
+declare master : address
+
 declare lineitem : mut lineitem_bag
 declare customer : mut customer_bag
 declare orders   : mut orders_bag
@@ -51,24 +53,15 @@ declare orders   : mut orders_bag
 typedef loc_q_by_ncodt_r   = { key: {nm:string, ck:int, ok:int, od:string, tp:real}, value: real}
 typedef loc_q_by_ncodt_map = collection loc_q_by_ncodt_r @Map
 
-declare q18_peer_result : loc_q_by_ncodt_map
-declare results : collection {name: string, custkey: int, orderkey: int, orderdate:string, totalprice: real, sum: real} @Collection
-
-
-// Q18 intermediates.
-typedef o_cdt_by_ok_r = {key : int, value : { o_custkey    : int
-                                            , o_orderdate  : string
-                                            , o_totalprice : real}}
-
 typedef lo_q_by_odt_r     = {key : {ok: int, od: string, tp: real}, value : real}
 typedef lo_odtq_by_ck_r   = {key :int, value : collection lo_q_by_odt_r @Map}
 typedef lo_odtq_by_ck_map = collection lo_odtq_by_ck_r @Map
 
-declare master : address
+declare q18_peer_result : loc_q_by_ncodt_map
+declare results : collection {name: string, custkey: int, orderkey: int, orderdate:string, totalprice: real, sum: real} @Collection
 
-declare lo_odtq_by_ck  : lo_odtq_by_ck_map
-declare loc_build      : lo_odtq_by_ck_map
-declare loc_q_by_ncodt : loc_q_by_ncodt_map
+// Q18 intermediates.
+declare li_having_result : mut collection {key: int, value: real} @Map
 
 declare merge_q_by_odt_r : lo_q_by_odt_r -> lo_q_by_odt_r -> lo_q_by_odt_r
   = \a -> \b -> {key: a.key, value: a.value + b.value}
@@ -79,39 +72,24 @@ declare merge_odtq_by_ck_r : lo_odtq_by_ck_r -> lo_odtq_by_ck_r -> lo_odtq_by_ck
 declare merge_q_by_ncodt_r : loc_q_by_ncodt_r -> loc_q_by_ncodt_r -> loc_q_by_ncodt_r
   = \a -> \b -> {key: a.key, value: a.value + b.value}
 
-trigger lineitem_having : () = \_ -> (
-  (ignore (lineitem.groupBy (\li -> li.l_orderkey)
-                            (\acc -> \li -> acc + li.l_quantity)
-                            0.0)
-  ) @DistributedGroupBy(
-      lbl         = [# li_having],
-      peer_next   = [$ (\result -> (
-                          print "LI shuffle done." ;
-                          li_having_result = result.filter (\okq -> okq.value > 300)
-                        )) ],
-      next        = [$ (print "LI shuffle all nodes finished"; (lineitem_orders, me) <- ()) ],
-      merge       = [$ (\a -> \b -> a + b)],
-      coordinator = [$ master],
-      nodes       = [$ peers],
-      profile     = [$ true] )
-)
+trigger q18_local : () = \_ -> (
+  ( li_having_result = ((lineitem.groupBy (\li -> li.l_orderkey)
+                                          (\acc -> \li -> acc + li.l_quantity)
+                                          0.0)
+                                 .filter  (\okq -> okq.value > 300.0))
+                                 .fold    (\acc -> \li -> ((acc.insert li); acc))
+                                          (empty {key: int, value: real} @Map));
 
-// Since lineitem is already partitioned by orderkey, we can implement the
-// join as a distributed group-by on orders, with probes and intermediate
-// construction occurring in the merge trigger.
-trigger lineitem_orders : () = \_ -> (
-  (ignore (orders.groupBy (\o -> o.o_orderkey)
-                          (\_ -> \o -> { o_custkey    : o.o_custkey
-                                       , o_orderdate  : o.o_orderdate
-                                       , o_totalprice : o.o_totalprice })
-                          {o_custkey:0, o_orderdate:"", o_totalprice:0.0})
-  ) @DistributedGroupByGeneric(
-      lbl         = [# lo ],
-      peer_next   = [$ print "LI-OR shuffle done." ],
-      next        = [$ (lineitem_orders_customer, me) <- () ],
-      merge       = [$ (\o ->
-                          case li_having_result.lookup {key: o.key, value: 0.0} of
-                          {Some li -> lo_odtq_by_ck.insert_with
+  ( ignore (
+    ( orders.groupBy (\o -> o.o_orderkey)
+                     (\_ -> \o -> { o_custkey    : o.o_custkey
+                                  , o_orderdate  : o.o_orderdate
+                                  , o_totalprice : o.o_totalprice })
+                     {o_custkey:0, o_orderdate:"", o_totalprice:0.0} )
+
+            .fold    (\acc -> \o ->
+                        case li_having_result.lookup {key: o.key, value: 0.0} of
+                        { Some li -> ((acc.insert_with
                                         {key: o.value.o_custkey
                                         , value: {| key: {ok:int, od:string, tp:real}, value: real
                                                   | { key: { ok: o.key
@@ -120,40 +98,34 @@ trigger lineitem_orders : () = \_ -> (
                                                     , value: li.value}
                                                   |} @Map
                                         }
-                                        merge_odtq_by_ck_r
-                          }
-                          {None -> ()})],
-      coordinator = [$ master],
-      nodes       = [$ peers],
-      profile     = [$ true] )
+                                        merge_odtq_by_ck_r);
+                                      acc)
+                        }
+                        { None -> acc }
+                     )
+                     (empty lo_odtq_by_ck_r @Map)
+    )
+  ) @PSendPartitionByKey( dest_trg      = [$ loc_process_redistribute]
+                        , barrier_trg   = [$ loc_lhs_peer_barrier]
+                        , nodes         = [$ peers ]
+                        , send_extra_fn = [$ (\x -> (Some x, None immut, true))]);
+
+  ( ignore (
+    (customer.groupBy (\c -> c.c_custkey)
+                      (\_ -> \c -> c.c_name)
+                      "")
+             .fold    (\acc -> \c -> ((acc.insert c); acc))
+                      (empty {key: int, value: string} @Map)
+    )
+  ) @PSendPartitionByKey( dest_trg      = [$ loc_process_redistribute]
+                        , barrier_trg   = [$ loc_rhs_peer_barrier]
+                        , nodes         = [$ peers ]
+                        , send_extra_fn = [$ (\x -> (None immut, Some x, false))])
 )
 
 trigger lineitem_orders_customer : () = \_ -> (
-  ( () @:NoSkew )
-    @JoinSelector(
-          lbl       = [# loc ]
-
-
-        , lhs_sample_query     = [$ lo_odtq_by_ck.sample (\acc -> \r ->
-                                                            ((acc.insert_with {key: r.key, value: 1}
-                                                              (\old -> \new -> {key: old.key, value: old.value + new.value}));
-                                                            acc))
-                                                         (empty {key: int, value: int} @Map)
-                                                         (lo_odtq_by_ck.size () / sample_factor)
-                                 ]
-
-        , rhs_sample_query     = [$ empty {key: int, value: int} @Map ]
-        , frequency_threshold  = [$ 1000.0 ]
-
-        , lhs_query = [$ lo_odtq_by_ck]
-        , rhs_query = [$ (customer.groupBy (\c -> c.c_custkey)
-                                           (\_ -> \c -> c.c_name)
-                                           "")
-                                  .fold    (\acc -> \c -> ((acc.insert c); acc))
-                                           (empty {key: int, value: string} @Map)
-                      ]
-
-      , join_key_ty          = [: int ]
+  ()@StreamingHashJoin(
+        lbl                  = [# loc ]
       , lhs_ht_ty            = [: {key: int, value: collection {key : {ok: int, od: string, tp: real}, value : real} @Map} ]
       , rhs_ht_ty            = [: {key: int, value: string} ]
 
@@ -237,7 +209,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                             ) ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],
-  onReadyExpr          = [$ (lineitem_having, me) <- ()],
+  onReadyExpr          = [$ peers.iterate (\p -> (q18_local, p.addr) <- ()) ],
   finishArgT           = [: ()],
   preTestFinishExpr    = [$ (\_ -> ())],
   preFinishExpr        = [$ ()],
