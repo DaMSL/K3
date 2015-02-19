@@ -1,0 +1,108 @@
+include "tpch/benchmark.k3"
+include "Annotation/Map.k3"
+include "Core/Builtins.k3"
+include "Core/CppBuiltins.k3"
+
+declare numparts: int = 128
+declare dataFiles: collection {path: string} @Collection
+declare outFolder : string = "output"
+
+declare lineitem: mut lineitem_bag
+declare orders: mut orders_bag
+declare strings: mut collection {elem: string} @Collection
+
+declare filename : string -> int -> string = \s -> \i -> (
+  s ++ (itos i)
+)
+
+declare index_by_hash : forall a. a -> int = \s -> (
+  let n = numparts in
+  let h = (hash s) in
+  ((h % n) + n) % n
+)
+
+// Open a file for each partition named prefixN
+declare initialize: string  -> () = \prefix -> (
+  (range numparts).iterate (\i ->
+    let name = filename prefix i.i in
+    openFile name name "k3" "w"
+  )
+)
+
+trigger partitionLineitem: () = \_ -> (
+  let prefix = outFolder ++ "/lineitem" in
+  initialize prefix; 
+  dataFiles.iterate (\e -> (
+    // Load the file into memory. Both the raw strings and the parsed representation
+    (print ("On file: " ++ e.path));
+    (lineitemLoaderP e.path lineitem);
+    (loadStrings e.path strings);
+
+    // Assign each element to a bucket, and write the raw string to the right file
+    let n = strings.size () in
+      ((range n).iterate (\i ->
+        let r = lineitem.at i.i in
+        let s = strings.at i.i in
+        case r of 
+          {Some rec -> 
+            case s of 
+              {Some str -> 
+                let n = index_by_hash rec.l_orderkey in
+                let f = filename prefix n in
+                if hasWrite f
+                  then doWrite f str.elem
+                  else print ("error: no write for file: " ++ f)
+              }
+              {None -> error () }
+          }
+          {None -> error () }
+      ));
+
+      // Clear global state
+      lineitem = empty lineitem_r @Collection;
+      strings = empty {elem: string} @Collection
+  ));
+  haltEngine ()
+)
+
+trigger partitionOrders: () = \_ -> (
+  let prefix = outFolder ++ "/orders" in
+  initialize prefix; 
+  dataFiles.iterate (\e -> (
+    // Load the file into memory. Both the raw strings and the parsed representation
+    (print ("On file: " ++ e.path));
+    (ordersLoaderP e.path orders);
+    (loadStrings e.path strings);
+
+    // Assign each element to a bucket, and write the raw string to the right file
+    let n = strings.size () in
+      ((range n).iterate (\i ->
+        let r = orders.at i.i in
+        let s = strings.at i.i in
+        case r of 
+          {Some rec -> 
+            case s of 
+              {Some str -> 
+                let n = index_by_hash rec.o_orderkey in
+                let f = filename prefix n in
+                if hasWrite f
+                  then doWrite f str.elem
+                  else print ("error: no write for file: " ++ f)
+              }
+              {None -> error () }
+          }
+          {None -> error () }
+      ));
+
+      // Clear global state
+      orders = empty orders_r @Collection;
+      strings = empty {elem: string} @Collection
+  ));
+  haltEngine ()
+)
+
+source sLineitem: () = value ()
+feed sLineitem |> partitionLineitem
+
+source sOrders: () = value ()
+feed sOrders |> partitionOrders

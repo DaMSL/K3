@@ -102,7 +102,13 @@ namespace K3
 
     bool hasWrite() { return output? output->good() : false; }
 
-    void doWrite(shared_ptr<Value> data ) { if ( output ) { (*output) << codec->encode(*data); } }
+    void doWrite(shared_ptr<Value> data ) {
+      if ( output ) {
+        auto s = codec->encode(*data);
+        (*output) << s;
+        output->flush();
+      }
+    }
 
     void close() { if ( output ) { output.reset(); } }
 

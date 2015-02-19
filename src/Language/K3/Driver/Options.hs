@@ -14,7 +14,7 @@ import Data.Maybe
 import System.FilePath
 import System.Log
 
-import Language.K3.Stages ( CompilerSpec(..), cs0 )
+import Language.K3.Stages ( CompilerSpec(..), StageSpec(..), cs0 )
 import Language.K3.Runtime.Common ( SystemEnvironment )
 import Language.K3.Runtime.Options
 import Language.K3.Utils.Logger.Config
@@ -241,15 +241,20 @@ parseStageOpt = extractStageAndSpec . keyValList "" <$> strOption (
       [x] -> stageOf cs0 x
       h:t -> stageOf (specOf t) h
 
-    stageOf _     ("opt",     read -> True) = [PSOptimization Nothing]
-    stageOf cSpec ("declopt", read -> True) = [PSOptimization $ Just cSpec]
-    stageOf _     ("cg",      read -> True) = [PSCodegen]
+    stageOf _     ("opt",      read -> True)          = [PSOptimization Nothing]
+    stageOf cSpec ("declopt",  read -> True)          = [PSOptimization $ Just cSpec]
+    stageOf _     ("cg",       read -> True)          = [PSCodegen]
+    stageOf cSpec ("oinclude", (splitOn "," ->  psl)) = let ss = stageSpec cSpec
+                                                        in [PSOptimization $ Just cSpec {stageSpec = ss {passesToRun = Just psl}}]
+    stageOf cSpec ("oexclude", (splitOn "," -> npsl)) = let ss = stageSpec cSpec
+                                                        in [PSOptimization $ Just cSpec {stageSpec = ss {passesToFilter = Just npsl}}]
     stageOf _ _ = []
 
     specOf kvl = foldl specParam cs0 kvl
     specParam cs (k,v) = case k of
       "@blockSize" -> cs {blockSize = read v}
-      _ -> cs {snapshotSpec = Map.insertWith (++) k (splitOn "," v) $ snapshotSpec cs}
+      _ -> let ss = stageSpec cs
+           in cs {stageSpec = ss {snapshotSpec = Map.insertWith (++) k (splitOn "," v) $ snapshotSpec ss}}
 
 
 -- | Parse mode

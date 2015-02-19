@@ -2,7 +2,7 @@
 #define K3_RUNTIME_BASETYPES_H
 
 #include <tuple>
-
+#include <functional>
 #include "boost/functional/hash.hpp"
 #include "serialization/yaml.hpp"
 // Basic types needed by our builtin libraries
@@ -136,6 +136,12 @@ class R_key_value {
       bool operator>(const R_key_value<_T0, _T1>& __other) const {
         return std::tie(key, value) > std::tie(__other.key, __other.value);
       }
+      bool operator<=(const R_key_value<_T0, _T1>& __other) const {
+        return std::tie(key, value) <= std::tie(__other.key, __other.value);
+      }
+      bool operator>=(const R_key_value<_T0, _T1>& __other) const {
+        return std::tie(key, value) >= std::tie(__other.key, __other.value);
+      }
       _T0 key;
       _T1 value;
 };
@@ -150,6 +156,5 @@ template <class K,class V>
     return hasher(std::tie(b.key, b.value));
 }
 #endif // K3_R_key_value_hash_value
-
 
 #endif // K3_RUNTIME_BASETYPES_H

@@ -99,7 +99,7 @@ trigger master_done : () = \_ -> (
   if master_peers_finished == peers.size ()
   then end_ms = now_int ();
        elapsed_ms = end_ms - start_ms;
-       print (itos elapsed_ms);
+       print ("Time Query:" ++ (itos elapsed_ms));
        peers.iterate (\p -> (shutdown, p.addr) <- ())
   else ()
 )

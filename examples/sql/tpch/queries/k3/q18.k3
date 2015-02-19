@@ -43,9 +43,9 @@ order by
 *          (filter . group lineitem)
 ****************************/
 
-declare lineitem : lineitem_bag
-declare customer : customer_bag
-declare orders   : orders_bag
+declare lineitem : mut lineitem_bag
+declare customer : mut customer_bag
+declare orders   : mut orders_bag
 
 // Final result.
 typedef loc_q_by_ncodt_r   = { key: {nm:string, ck:int, ok:int, od:string, tp:real}, value: real}

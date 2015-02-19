@@ -117,7 +117,6 @@ class Dispatcher(mesos.interface.Scheduler):
     (cpusUsedPerRole, cpusUsedPerOffer, rolesPerOffer) = result
 
     # TODO port management
-    curPort = 40000
     curPeerIndex = 0
     nextJob.tasks = []
     allPeers = []
@@ -131,6 +130,7 @@ class Dispatcher(mesos.interface.Scheduler):
 
         peers = []
         for (roleId, n) in rolesPerOffer[offerId]:
+          curPort = 40000
           for i in range(n):
             vs = nextJob.roles[roleId].variables
             p = Peer(curPeerIndex, vs, IP_ADDRS[host], curPort)
@@ -164,7 +164,7 @@ class Dispatcher(mesos.interface.Scheduler):
       # Stop considering the offer, since we just used it.
       del self.offers[k3task.offerid]
 
-  def cancelJob(self, jobId):
+  def cancelJob(self, jobId, driver):
     print("Asked to cancel job %d. Killing all tasks" % jobId)
     job = self.active[jobId]
     job.status = "FAILED"
@@ -220,7 +220,7 @@ class Dispatcher(mesos.interface.Scheduler):
        task_state[update.state] == "TASK_FAILED" or \
        task_state[update.state] == "TASK_LOST":
          jobId = self.jobId(update.task_id.value)
-         self.cancelJob(jobId)
+         self.cancelJob(jobId, driver)
 
     if task_state[update.state] == "TASK_FINISHED":
       self.taskFinished(update.task_id.value)

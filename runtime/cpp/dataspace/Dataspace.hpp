@@ -3,6 +3,7 @@
 
 #include <list>
 #include <vector>
+#include <random>
 #include <math.h>
 #include <random>
 
@@ -528,7 +529,6 @@ class Set {
 
   using iterator = typename Container::iterator;
   using const_iterator = typename Container::const_iterator;
-  using reverse_iterator = typename Container::reverse_iterator;
 
   iterator begin() {
     return iterator(container.begin());

@@ -52,6 +52,8 @@ namespace K3 {
     unit_t openBuiltin(string_impl ch_id, string_impl builtin_ch_id, string_impl fmt);
 
     unit_t openFile(string_impl ch_id, string_impl path, string_impl fmt, string_impl mode);
+    bool hasWrite(string_impl ch_id);
+    unit_t doWrite(string_impl ch_id, string_impl val);
 
     unit_t openSocket(string_impl ch_id, Address a, string_impl fmt, string_impl mode);
 
@@ -290,19 +292,31 @@ namespace K3 {
     Vector<R_elem<double>> zeroVector(int i);
     Vector<R_elem<double>> randomVector(int i);
 
+    template <template <typename S> class C, class R>
+    unit_t loadStrings(string_impl filepath, C<R>& c) {
+      std::string line;
+      std::ifstream infile(filepath);
+      while (std::getline(infile, line)) {
+        c.insert(R{line}); 
+      }
+      return unit_t{};
+    }
+
     template <template<typename S> class C, class V>
     unit_t loadVector(string_impl filepath, C<R_elem<V>>& c) {
       std::string line;
       std::ifstream infile(filepath);
+      char *saveptr;
+
       while (std::getline(infile, line)){
         char * pch;
-        pch = strtok(&line[0],",");
+        pch = strtok_r(&line[0],",", &saveptr);
         V v;
         while (pch) {
           R_elem<double> rec;
           rec.elem = std::atof(pch);
           v.insert(rec);
-          pch = strtok(NULL,",");
+          pch = strtok_r(NULL,",", &saveptr);
         }
         R_elem<V> rec2 {v};
         c.insert(rec2);
@@ -320,6 +334,7 @@ namespace K3 {
         // Infile
         std::ifstream in;
         in.open(filepath);
+	char *saveptr;
 
         // Parse by line
         while(!in.eof()) {
