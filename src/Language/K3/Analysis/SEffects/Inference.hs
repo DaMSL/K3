@@ -1043,8 +1043,8 @@ inferEffects extInfOpt expr = do
       let nbef = fset $ catMaybes [sef, nef]
       npef <- extInferM (fwrite $ pbvar cpmv) >>= \spf -> return (fset [spf, fnone])
       let nrf  = fscope [cfmv] nief nbef npef (fset [snf, rnf])
-      Just nsef <- pruneAndSimplify False nmv sef
-      let nef' = fexec $ map Just [nief, fset [nsef, maybe fnone id nef]]
+      nsef <- pruneAndSimplify False nmv sef
+      let nef' = fexec $ map Just [nief, fset [maybe fnone id nsef, maybe fnone id nef]]
       rt "case-of" True e nmv (nef', nrf)
 
     infer m (onSub -> (_, mv)) _ e@(tag -> EAddress) = m >> rt "address" False e mv (Nothing, fnone)
