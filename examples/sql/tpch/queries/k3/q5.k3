@@ -38,10 +38,12 @@ order by
 *
 ****************************
 * Join order:
-*   l-o-c-s-n-r
+*   (c-n-r)-o--result
+*   (s-n-r)-l-/
 ****************************/
 
 declare master : address
+declare sample_factor : real = 10.0
 
 declare lineitem : lineitem_bag
 declare orders   : orders_bag
@@ -57,254 +59,274 @@ typedef q5_r_by_n_map   = collection q5_r_by_n_r @Map
 declare q5_result : q5_r_by_n_map
 declare results : collection {key: string, value: real} @Collection
 
-// Intermediates for Q5 plans.
-typedef li_se_r       = {l_suppkey : int, l_epd : real}
-typedef li_se_bag     = collection li_se_r @Collection
-typedef li_se_by_o_r  = {key : int, value : {l_suppkey : int, l_epd : real} }
-typedef li_cse_by_o_r = {key : int, value : li_se_bag}
-typedef li_ocse_map   = collection li_cse_by_o_r @Map
-
-typedef lior_cse_by_ck_r   = {key: int, value: li_se_bag}
-typedef lior_cse_by_ck_map = collection lior_cse_by_ck_r @Map
-
-typedef loc_epd_by_sn_r   = {key : {s_suppkey : int, s_nationkey : int}, value : real}
-typedef loc_epd_by_sn_map = collection loc_epd_by_sn_r @Map
-
-typedef locs_epd_by_nk_r   = {key : int, value: real}
-typedef locs_epd_by_nk_map = collection locs_epd_by_nk_r @Map
-
-typedef locsn_nepd_by_rk_r   = {key : int, value: collection {key: string, value: real} @Map}
-typedef locsn_nepd_by_rk_map = collection locsn_nepd_by_rk_r @Map
-
-typedef locsnr_epd_by_n_r   = {key : string, value: real}
-typedef locsnr_epd_by_n_map = collection locsnr_epd_by_n_r @Map
-
+declare merge_epd_by_n :    {key: string, value: real}
+                         -> {key: string, value: real}
+                         -> {key: string, value: real}
+  = \old -> \new -> {key: old.key, value: old.value + new.value}
 
 // Plan intermediates.
-declare lior_build     : li_ocse_map
-declare lior_cse_by_ck : lior_cse_by_ck_map
+declare r_asia_by_rk : mut collection {key: int, value: () } @Map
+declare n_asia_by_nk : mut collection {key: int, value: string } @Map
 
-declare loc_build     : lior_cse_by_ck_map
-declare loc_epd_by_sn : loc_epd_by_sn_map
+// TODO: in the partitioned version, C|c_custkey should be broadcast into O|o_orderkey partitions.
+trigger q5_co_start : () = \_ -> (
+  ( () @:NoSkew )
+    @JoinSelector(
+        lbl                  = [# co ]
 
-declare locs_build     : loc_epd_by_sn_map
-declare locs_epd_by_nk : locs_epd_by_nk_map
+      , lhs_sample_query     = [$ customer.sample (\acc -> \c ->
+                                                    ((acc.insert_with
+                                                        {key: c.c_custkey, value: 1}
+                                                        (\old -> \new -> {key: old.key, value: old.value + new.value}));
+                                                      acc))
+                                                  (empty {key:int, value: int} @Map)
+                                                  (customer.size() / sample_factor)
+                               ]
+      , rhs_sample_query     = [$ orders.sample (\acc -> \c ->
+                                                  if     o.o_orderdate >= "1994-01-01"
+                                                     and o.o_orderdate <  "1995-01-01"
+                                                  then
+                                                    ((acc.insert_with
+                                                          {key: o.o_custkey, value: 1}
+                                                          (\old -> \new -> {key: old.key, value: old.value + new.value}));
+                                                        acc)
+                                                  else acc)
+                                                (empty {key:int, value: int} @Map)
+                                                (orders.size() / sample_factor)
+                               ]
 
-declare locsn_build      : locs_epd_by_nk_map
-declare locsn_nepd_by_rk : locsn_nepd_by_rk_map
+      , frequency_threshold  = [$ 1000.0 ]
 
-declare locsnr_build     : locsn_nepd_by_rk_map
-declare locsnr_epd_by_n  : locsnr_epd_by_n_map
+      , lhs_query = [$ ( r_asia_by_rk =
+                           ((region.filter  (\r -> r.r_name == "ASIA"))
+                                   .groupBy (\r -> r.r_regionkey)
+                                            (\_ -> \_ -> ())
+                                            ())
+                                   .fold    (\acc -> \r -> ((acc.insert r); acc))
+                                            (empty {key: int, value: ()} @Map) );
 
-// Plan helpers.
-declare merge_lior_build : li_cse_by_o_r -> li_cse_by_o_r -> li_cse_by_o_r
-  = \a -> \b -> {key: a.key, value: a.value.fold (\acc -> \r -> ((acc.insert r); acc)) b.value}
+                       ( n_asia_by_nk =
+                           ((nation.filter  (\n -> case r_asia_by_rk.lookup {key: n.n_regionkey, value: ()}
+                                                   of { Some _ -> true  }
+                                                      { None   -> false } ))
+                                   .groupBy (\n -> n.n_nationkey)
+                                            (\_ -> \n -> n.n_name)
+                                            "")
+                                   .fold    (\acc -> \n -> ((acc.insert n); acc))
+                                            (empty {key: int, value: string} @Map) );
 
-declare merge_lior_cse_by_ck_r : lior_cse_by_ck_r -> lior_cse_by_ck_r -> lior_cse_by_ck_r
-  = \a -> \b -> {key: a.key, value: a.value.fold (\acc -> \r -> ((acc.insert r); acc)) b.value}
-
-declare merge_epd_by_sn_r : loc_epd_by_sn_r -> loc_epd_by_sn_r -> loc_epd_by_sn_r
-  = \a -> \b -> {key: a.key, value: a.value + b.value}
-
-declare merge_epd_by_nk_r : locs_epd_by_nk_r -> locs_epd_by_nk_r -> locs_epd_by_nk_r
-  = \a -> \b -> {key : a.key, value: a.value + b.value}
-
-declare merge_nepd_r : locsnr_epd_by_n_r -> locsnr_epd_by_n_r -> locsnr_epd_by_n_r
-  = \x -> \y -> {key: x.key, value: x.value + y.value}
-
-declare merge_nepd_by_rk_r : locsn_nepd_by_rk_r -> locsn_nepd_by_rk_r -> locsn_nepd_by_rk_r
-  = \a -> \b -> {key : a.key, value: a.value.fold (\acc -> \r -> ((acc.insert_with r merge_nepd_r); acc)) b.value}
-
-trigger q5_lo_start : () = \_ -> (
-  () @DistributedHashJoin
-        ( lbl       = [# lo ]
-        , lhs_query = [$
-            (lineitem.groupBy (\li -> li.l_orderkey)
-                              (\acc -> \li ->
-                                ((acc.insert { l_suppkey : li.l_suppkey
-                                             , l_epd     : li.l_extendedprice * (1 - li.l_discount)}) ;
-                                  acc))
-                              (empty {l_suppkey : int, l_epd : real} @Collection))
-                     .fold    (\acc -> \li -> ((acc.insert li); acc))
-                              (empty {key: int, value: collection {l_suppkey: int, l_epd: real} @Collection} @Map) ]
-
-        , rhs_query = [$ ((orders.filter  (\o ->     o.o_orderdate >= "1994-01-01"
-                                                 and o.o_orderdate <  "1995-01-01" ))
-                                 .groupBy (\o -> o.o_orderkey)
-                                          (\_ -> \o -> o.o_custkey)
-                                          0)
-                                 .fold    (\acc -> \o -> ((acc.insert o); acc))
-                                          (empty {key: int, value: int} @Map)
-                      ]
-
-        , lhs_build_merge = [$ (\li -> lior_build.insert_with li merge_lior_build) ]
-
-        , rhs_probe_merge = [$
-            (\o ->
-              case lior_build.lookup { key: o.key
-                                     , value: empty {l_suppkey : int, l_epd : real} @Collection }
-              of
-              { Some li -> lior_cse_by_ck.insert_with { key: o.value, value: li.value }
-                                                      merge_lior_cse_by_ck_r
-              }
-              { None   -> ()  }
-              )]
-
-        , peer_next       = [$ print "LI-OR join finished orders probe."]
-        , next            = [$ print "LI-OR join all nodes finished." ;
-                               (q5_loc_start, master) <- () ]
-        , coordinator     = [$ master]
-        , nodes           = [$ peers ]
-        , lhs_build_ty    = [: collection
-                                 { key : int
-                                 , value : collection {l_suppkey : int, l_epd : real} @Collection
-                                 } @Map
-                            ]
-        , rhs_probe_ty    = [: collection {key : int, value : int } @Map ]
-        , profile         = [$ true]
-        )
-)
-
-trigger q5_loc_start : () = \_ -> (
-  () @DistributedHashJoin
-        ( lbl       = [# loc ]
-        , lhs_query = [$ lior_cse_by_ck ]
-        , rhs_query = [$ (customer.groupBy (\c -> c.c_custkey)
-                                           (\_ -> \c -> c.c_nationkey)
-                                           0)
+                       (((customer.filter  (\c -> case n_asia_by_nk.lookup { key: c.c_nationkey, value: "" }
+                                                  of { Some _ -> true  }
+                                                     { None   -> false } ))
+                                  .groupBy (\c -> c.c_custkey)
+                                           (\acc -> \c -> case n_asia_by_nk.lookup { key: c.c_nationkey, value: "" }
+                                                        of { Some n -> {c_nationkey: c.c_nationkey, n_name: n.value} }
+                                                           { None   -> (error (print "Invalid customer tuple"));
+                                                                       {c_nationkey: c.c_nationkey, n_name: ""}
+                                                           }
+                                           )
+                                           {c_nationkey: 0, n_name: ""})
                                   .fold    (\acc -> \c -> ((acc.insert c); acc))
-                                           (empty {key: int, value:int} @Map)
-                      ]
-        , lhs_build_merge = [$ (\li -> loc_build.insert_with li merge_lior_cse_by_ck_r) ]
-        , rhs_probe_merge = [$
-            (\c ->
-              case loc_build.lookup
-                     { key: c.key
-                     , value: empty {l_suppkey : int, l_epd : real} @Collection }
-              of
-              { Some lo -> ((lo.value.groupBy (\lo_r -> {s_suppkey : lo_r.l_suppkey, s_nationkey: c.value})
-                                              (\acc -> \lo_r -> acc + lo_r.l_epd )
-                                              0.0)
-                                     .iterate (\kv -> loc_epd_by_sn.insert_with kv merge_epd_by_sn_r))
-              }
-              { None   -> ()  }
-              )]
+                                           (empty {key: int, value: {c_nationkey: int, n_name: string}} @Map))
+                    ]
 
-        , peer_next       = [$ print "LI-OR-CS join finished customer probe." ]
-        , next            = [$ print "LI-OR-CS join all nodes finished." ;
-                               (q5_locs_start, master) <- () ]
-        , coordinator     = [$ master]
-        , nodes           = [$ peers ]
-        , lhs_build_ty    = [: collection
-                                { key   : int
-                                , value : collection {l_suppkey : int, l_epd : real} @Collection
-                                } @Map ]
-        , rhs_probe_ty    = [: collection {key : int, value : int} @Map ]
-        , profile         = [$ true]
-        )
+      , rhs_query = [$ ((orders.filter  (\o ->     o.o_orderdate >= "1994-01-01"
+                                               and o.o_orderdate <  "1995-01-01" ))
+                               .groupBy (\o -> o.o_custkey)
+                                        (\acc -> \o -> ((acc.insert {o_orderkey: o.o_orderkey}); acc))
+                                        (empty {o_orderkey: int} @Collection))
+                               .fold    (\acc -> \o -> ((acc.insert o); acc))
+                                        (empty {key: int, value: collection {o_orderkey: int} @Collection} @Map)
+                    ]
+
+      , join_key_ty          = [: int ]
+      , lhs_ht_ty            = [: {key: int, value: {c_nationkey: int, n_name: string}} ]
+      , rhs_ht_ty            = [: {key: int, value: collection {o_orderkey: int} @Collection} ]
+
+      , lhs_probe            = [$ (\lht -> \out -> \o ->
+                                    case lht.lookup {key: o.key, value: {c_nationkey: 0, n_name: ""}} of
+                                    { Some c -> o.value.fold (\acc -> \ok ->
+                                                                ((acc.insert { key: { nationkey: c.value.c_nationkey
+                                                                                    , orderkey: ok.o_orderkey }
+                                                                             , value: c.value.n_name });
+                                                                acc))
+                                                             out }
+                                    { None   -> out }
+                                  )
+                               ]
+
+      , rhs_probe            = [$ (\rht -> \out -> \c ->
+                                    case rht.lookup {key: c.key, value: empty {o_orderkey:int} @Collection} of
+                                    { Some o -> o.value.fold (\acc -> \ok ->
+                                                                ((acc.insert { key: { nationkey: c.value.c_nationkey
+                                                                                    , orderkey: ok.o_orderkey }
+                                                                             , value: c.value.n_name });
+                                                                 acc))
+                                                             out }
+                                    { None   -> out }
+                                  )
+                               ]
+
+      , lhs_insert_with      = [$ (\_ -> \new -> new) ]
+      , rhs_insert_with      = [$ (\old -> \new -> {key: old.key, value: old.value.combine new.value}) ]
+
+      , has_outputs          = [$ (\out -> out.size() > 0) ]
+      , empty_out_buffer     = [$ empty {key: {nationkey: int, orderkey: int}, value: string} @Map]
+
+      , lhs_pipeline_next    = [$ (\out -> ignore ( ( out ) @SendPartitionByKey( dest_trg      = [$ cosl_process_redistribute ]
+                                                                               , nodes         = [$ peers ]
+                                                                               , send_extra_fn = [$ (\x -> (Some x, None immut, true)) ]) )) ]
+
+      , rhs_pipeline_next    = [$ (\out -> ignore ( ( out ) @SendPartitionByKey( dest_trg      = [$ cosl_process_redistribute ]
+                                                                               , nodes         = [$ peers ]
+                                                                               , send_extra_fn = [$ (\x -> (Some x, None immut, true)) ]) )) ]
+
+      , peer_next            = [$ () @SendPunctuation(trg = [$ cosl_lhs_peer_barrier ], nodes = [$ peers ]) ]
+      , next                 = [$ () ]
+      , coordinator          = [$ master]
+      , nodes                = [$ peers]
+    )
 )
 
-trigger q5_locs_start : () = \_ -> (
-  () @DistributedHashJoin
-        ( lbl       = [# locs ]
-        , lhs_query = [$ loc_epd_by_sn ]
-        , rhs_query = [$ (supplier.groupBy (\s -> s.s_suppkey)
-                                           (\_ -> \s -> s.s_nationkey)
-                                           0)
-                                  .fold    (\acc -> \s -> ((acc.insert s); acc))
-                                           (empty {key: int, value: int} @Map)
-                      ]
-        , lhs_build_merge = [$ (\epd_by_sn -> locs_build.insert_with epd_by_sn merge_epd_by_sn_r) ]
-        , rhs_probe_merge = [$
-            (\s ->
-              case locs_build.lookup {key: {s_suppkey: s.key, s_nationkey: s.value}, value: 0.0} of
-              { Some loc -> locs_epd_by_nk.insert_with
-                              {key: loc.key.s_nationkey, value: loc.value} merge_epd_by_nk_r
-              }
-              { None   -> ()  }
-              )]
 
-        , peer_next       = [$ print "LI-OR-CS-SUP join finished supplier probe." ]
-        , next            = [$ print "LI-OR-CS-SUP join all nodes finished." ;
-                               (q5_locsn_start, master) <- () ]
-        , coordinator     = [$ master]
-        , nodes           = [$ peers ]
-        , lhs_build_ty    = [: collection {key : {s_suppkey : int, s_nationkey : int}, value : real} @Map ]
-        , rhs_probe_ty    = [: collection {key : int, value : int  } @Map ]
-        , profile         = [$ true]
-        )
+// TODO: in the partitioned version, S|s_suppkey should be broadcast into L|l_orderkey partitions.
+trigger q5_sl_start : () = \_ -> (
+  ( () @:NoSkew )
+    @JoinSelector(
+        lbl                  = [# sl ]
+
+      , lhs_sample_query     = [$ supplier.sample (\acc -> \s ->
+                                                    ((acc.insert_with
+                                                        {key: s.s_suppkey, value: 1}
+                                                        (\old -> \new -> {key: old.key, value: old.value + new.value}));
+                                                      acc))
+                                                  (empty {key: int, value: int} @Map)
+                                                  (supplier.size() / sample_factor)
+                               ]
+
+      , rhs_sample_query     = [$ lineitem.sample (\acc -> \li ->
+                                                    ((acc.insert_with
+                                                        {key: li.l_suppkey, value: 1}
+                                                        (\old -> \new -> {key: old.key, value: old.value + new.value}));
+                                                      acc))
+                                                  (empty {key: int, value: int} @Map)
+                                                  (lineitem.size() / sample_factor)
+                               ]
+
+      , frequency_threshold  = [$ 1000.0 ]
+
+      , lhs_query = [$ ((supplier.filter  (\s -> case n_asia_by_nk.lookup {key: s.s_nationkey, value:""}
+                                                   of { Some _ -> true  }
+                                                      { None   -> false } ))
+                                 .groupBy (\s -> s.s_suppkey)
+                                          (\_ -> \s -> s.s_nationkey)
+                                          0)
+                                 .fold    (\acc -> \s -> ((acc.insert s); acc))
+                                          (empty {key: int, value: int} @Map)
+                    ]
+
+      , rhs_query = [$ (lineitem.groupBy (\li -> li.l_suppkey)
+                                         (\acc -> \li ->
+                                           ((acc.insert { l_orderkey : li.l_orderkey
+                                                        , l_epd      : li.l_extendedprice * (1 - li.l_discount)}) ;
+                                             acc))
+                                         (empty {l_orderkey : int, l_epd : real} @Collection))
+                                .fold    (\acc -> \li -> ((acc.insert li); acc))
+                                         (empty {key: int, value: collection {l_orderkey: int, l_epd: real} @Collection} @Map)
+                    ]
+
+      , join_key_ty          = [: int ]
+      , lhs_ht_ty            = [: {key: int, value: int} ]
+      , rhs_ht_ty            = [: {key: int, value: collection {l_orderkey: int, l_epd: real} @Collection} ]
+
+      , lhs_probe            = [$ (\lht -> \out -> \l ->
+                                    case lht.lookup {key: l.key, value: 0} of
+                                    { Some s -> l.value.fold (\acc -> \loe ->
+                                                    ((acc.insert {key: {nationkey: s.value, orderkey: loe.l_orderkey}
+                                                                 , value: loe.l_epd});
+                                                      acc))
+                                                  out }
+                                    { None   -> out }
+                                  )
+                               ]
+
+      , rhs_probe            = [$ (\rht -> \out -> \s ->
+                                    case rht.lookup {key: s.key, value: empty {l_orderkey: int, l_epd: real} @Collection} of
+                                    { Some l -> l.value.fold (\acc -> \loe ->
+                                                    ((acc.insert { key: {nationkey: s.value, orderkey: loe.l_orderkey}
+                                                                 , value: loe.l_epd});
+                                                       acc))
+                                                  out }
+                                    { None   -> out }
+                                  )
+                               ]
+
+      , lhs_insert_with      = [$ (\_ -> \new -> new) ]
+      , rhs_insert_with      = [$ (\old -> \new -> {key: old.key, value: old.value.combine new.value}) ]
+
+      , has_outputs          = [$ (\out -> out.size() > 0) ]
+      , empty_out_buffer     = [$ empty {key: {nationkey: int, orderkey: int}, value: real} @Map ]
+
+      , lhs_pipeline_next    = [$ (\out -> ignore ( ( out ) @SendPartitionByKey( dest_trg      = [$ cosl_process_redistribute ]
+                                                                               , nodes         = [$ peers ]
+                                                                               , send_extra_fn = [$ (\x -> (None immut, Some x, false)) ]) ))
+                               ]
+
+      , rhs_pipeline_next    = [$ (\out -> ignore ( ( out ) @SendPartitionByKey( dest_trg      = [$ cosl_process_redistribute ]
+                                                                               , nodes         = [$ peers ]
+                                                                               , send_extra_fn = [$ (\x -> (None immut, Some x, false)) ]) ))
+                               ]
+
+      , peer_next            = [$ () @SendPunctuation(trg = [$ cosl_rhs_peer_barrier ], nodes = [$ peers ]) ]
+      , next                 = [$ () ]
+      , coordinator          = [$ master]
+      , nodes                = [$ peers]
+    )
 )
 
-// TODO: broadcast join
-trigger q5_locsn_start : () = \_ -> (
-  () @DistributedHashJoin
-        ( lbl       = [# locsn ]
-        , lhs_query = [$ locs_epd_by_nk ]
 
-        , rhs_query = [$ (nation.groupBy (\n -> n.n_nationkey)
-                                         (\_ -> \n -> {n_regionkey: n.n_regionkey, n_name: n.n_name})
-                                         {n_regionkey: 0, n_name: ""})
-                                .fold    (\acc -> \n -> ((acc.insert n); acc))
-                                         (empty {key:int, value: {n_regionkey: int, n_name: string}} @Map)
-                      ]
+trigger q5_cosl_start : () = \_ -> (
+  ( () @:NoSkew )
+    @StreamingHashJoin(
+        lbl                  = [# cosl ]
 
-        , lhs_build_merge = [$ (\epd_by_nk -> locsn_build.insert_with epd_by_nk merge_epd_by_nk_r) ]
-        , rhs_probe_merge = [$
-            (\n ->
-              case locsn_build.lookup {key: n.key, value: 0.0} of
-              { Some locs -> locsn_nepd_by_rk.insert_with
-                               { key: n.value.n_regionkey
-                               , value: {| key:string, value:real
-                                         | {key: n.value.n_name, value: locs.value}
-                                         |} @Map }
-                               merge_nepd_by_rk_r
-              }
-              { None   -> ()  }
-              )]
+      , lhs_ht_ty            = [: {key: {nationkey: int, orderkey: int}, value: string} ]
+      , rhs_ht_ty            = [: {key: {nationkey: int, orderkey: int}, value: real} ]
 
-        , peer_next       = [$ print "LI-OR-CS-SUP-NT join finished nation probe." ]
-        , next            = [$ print "LI-OR-CS-SUP-NT join all nodes finished." ;
-                               (q5_locsnr_start, master) <- () ]
-        , coordinator     = [$ master]
-        , nodes           = [$ peers ]
-        , lhs_build_ty    = [: collection {key : int, value : real} @Map ]
-        , rhs_probe_ty    = [: collection {key : int, value : {n_regionkey: int, n_name: string} } @Map ]
-        , profile         = [$ true]
-        )
-)
+      , lhs_probe            = [$ (\lht -> \out -> \sl ->
+                                    case lht.lookup {key:sl.key, value: ""} of
+                                    { Some co -> ((out.insert_with {key: co.value, value:sl.value} merge_epd_by_n); out)}
+                                    { None    -> out }
+                                  )
+                               ]
 
-// TODO: broadcast join
-// TODO: move earlier in join order due to selectivity of r_name == 'ASIA'
-trigger q5_locsnr_start : () = \_ -> (
-  () @DistributedHashJoin
-        ( lbl       = [# locsnr ]
-        , lhs_query = [$ locsn_nepd_by_rk ]
-        , rhs_query = [$ (region.filter  (\r -> r.r_name == "ASIA"))
-                                .fold    (\acc -> \r -> ((acc.insert {key : r.r_regionkey, value: ()}); acc))
-                                         empty {key: int, value: ()} @Map ]
-        , lhs_build_merge = [$ (\nepd_by_rk -> locsnr_build.insert_with nepd_by_rk merge_nepd_by_rk_r) ]
-        , rhs_probe_merge = [$
-            (\r ->
-              case locsnr_build.lookup {key: r.key, value: empty {key: string, value: real} @Map}
-              of
-              { Some locsn -> locsn.value.iterate (\kv -> locsnr_epd_by_n.insert_with kv merge_nepd_r) }
-              { None       -> ()  }
-              )]
+      , rhs_probe            = [$ (\rht -> \out -> \co ->
+                                    case rht.lookup {key:co.key, value: 0} of
+                                    { Some sl -> ((out.insert_with {key: co.value, value:sl.value} merge_epd_by_n); out)}
+                                    { None    -> out }
+                                  )
+                               ]
 
-        , peer_next       = [$ print "LI-OR-CS-SUP-NT-RG join finished region probe." ;
-                               (q5_result_aggregate, master) <- locsnr_epd_by_n ;
-                               ((() @:Result) @TPCHBenchmarkWithoutMaster) ]
-        , next            = [$ print "LI-OR-CS-SUP-NT-RG join all nodes finished." ]
-        , coordinator     = [$ master]
-        , nodes           = [$ peers ]
-        , lhs_build_ty    = [: collection {key : int, value : collection {key:string, value:real} @Map } @Map ]
-        , rhs_probe_ty    = [: collection {key : int, value : () } @Map ]
-        , profile         = [$ true]
-        )
+      , lhs_insert_with      = [$ (\_ -> \new -> new) ]
+      , rhs_insert_with      = [$ (\old -> \new -> {key: old.key, value: old.value + new.value}) ]
+
+      , has_outputs          = [$ (\out -> out.size() > 0) ]
+      , empty_out_buffer     = [$ empty {key: string, value: real} @Map]
+
+      , lhs_pipeline_next    = [$ (\out -> out.iterate (\r -> q5_result.insert_with r merge_epd_by_n)) ]
+      , rhs_pipeline_next    = [$ (\out -> out.iterate (\r -> q5_result.insert_with r merge_epd_by_n)) ]
+
+      , peer_next            = [$ (if me == master then () else ( (q5_result_aggregate, master) <- q5_result ));
+                                  ((() @:Result) @TPCHBenchmarkWithoutMaster)
+                               ]
+      , next                 = [$ () ]
+      , coordinator          = [$ master]
+      , nodes                = [$ peers]
+    )
 )
 
 trigger q5_result_aggregate : q5_r_by_n_map = \vals -> (
-  vals.iterate (\kv -> q5_result.insert_with kv merge_nepd_r)
+  vals.iterate (\r -> q5_result.insert_with r merge_epd_by_n)
 )
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
@@ -318,22 +340,14 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                            ) ],
   preLoadExpr         = [$ ()],
   preReadyExpr        = [$ ()],
-  onReadyExpr         = [$ (q5_lo_start, me) <- ()],
+  onReadyExpr         = [$ (( (q5_co_start, me) <- () );
+                              (q5_sl_start, me) <- () )
+                        ],
   finishArgT          = [: ()],
   preTestFinishExpr   = [$ (\_ -> ())],
   preFinishExpr       = [$ (print ("Q5 num results:" ++ (itos (q5_result.size()))));
                            q5_result.iterate (\r -> results.insert r);
-                           () @DistributedCollectionStatistics(
-                                    lbl         = [# q5_skew ],
-                                    query_cl    = [* [% cl: [# lo_skew],     ce: [$ lior_cse_by_ck]]
-                                                   , [% cl: [# loc_skew],    ce: [$ loc_epd_by_sn]]
-                                                   , [% cl: [# locs_skew],   ce: [$ locs_epd_by_nk]]
-                                                   , [% cl: [# locsn_skew],  ce: [$ locsn_nepd_by_rk]]
-                                                   , [% cl: [# locsnr_skew], ce: [$ locsnr_epd_by_n]]
-                                                  ],
-                                    coordinator = [$ master ],
-                                    nodes       = [$ peers ],
-                                    next        = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ])
+                           peers.iterate (\p -> (shutdown, p.addr) <- ())
                         ],
   preShutdownExpr     = [$ ()],
   finishAsShutdownExpr = [$ false]

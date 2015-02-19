@@ -119,9 +119,9 @@ trigger lineitem_orders : () = \_ -> (
                                         (empty {key : int, value : {od:string, ck:int, sp:int}} @Map)
                     ]
 
-      , join_key_ty          = [$ int ]
-      , lhs_ht_ty            = [$ {key:int, value: real} ]
-      , rhs_ht_ty            = [$ {key:int, value: {od:string, ck:int, sp:int} }]
+      , join_key_ty          = [: int ]
+      , lhs_ht_ty            = [: {key:int, value: real} ]
+      , rhs_ht_ty            = [: {key:int, value: {od:string, ck:int, sp:int} }]
 
       , lhs_probe            = [$ (\lht -> \_ -> \o ->
                                     case lht.lookup {key: o.key, value: 0.0}
@@ -145,7 +145,7 @@ trigger lineitem_orders : () = \_ -> (
                                                      { key: ord.value.ck
                                                      , value: {|key : {ok: int, od: string, sp: int}, value: real
                                                                | { key   : {ok: l.key, od: ord.value.od, sp: ord.value.sp }
-                                                                 , value : li.value }
+                                                                 , value : l.value }
                                                                |} @Map }
                                                      merge_lior_r
                                       }
@@ -154,11 +154,8 @@ trigger lineitem_orders : () = \_ -> (
                                ]
 
       , lhs_insert_with      = [$ merge_li_epd_by_ok ]
-      , rhs_insert_with      = [$ (\_ -> \new -> new) ] // Note: any merge here is an integrity constraint violation.
+      , rhs_insert_with      = [$ (\_ -> \new -> new) ]
 
-      // Q3 inserts to a global variable during probes.
-      // Thus the only work we need to do here is to parallize the broadcast
-      // of customers with the L-O-join.
       , has_outputs          = [$ (\_ -> customers_sent) ]
       , empty_out_buffer     = [$ () ]
 
@@ -189,7 +186,7 @@ trigger lineitem_orders_customer : () = \_ -> (
 
 // TODO: sort and limit on q3_peer_result
 trigger loc_probe_lhs : () = \_ -> (
-  c_ck_bag.iterate (\c ->
+  ( c_ck_bag.iterate (\c ->
     case lior_epdods_map.lookup {key: c.c_custkey, value: empty lior_epd_by_ods_r @Map}
     of
     { Some lo_r -> lo_r.value.iterate (\kv -> q3_peer_result.insert_with kv merge_lior_epd_by_ods) }
