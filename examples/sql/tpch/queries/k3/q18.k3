@@ -86,7 +86,6 @@ trigger q18_local : () = \_ -> (
                                   , o_orderdate  : o.o_orderdate
                                   , o_totalprice : o.o_totalprice })
                      {o_custkey:0, o_orderdate:"", o_totalprice:0.0} )
-
             .fold    (\acc -> \o ->
                         case li_having_result.lookup {key: o.key, value: 0.0} of
                         { Some li -> ((acc.insert_with
@@ -104,11 +103,11 @@ trigger q18_local : () = \_ -> (
                         { None -> acc }
                      )
                      (empty lo_odtq_by_ck_r @Map)
-    )
-  ) @PSendPartitionByKey( dest_trg      = [$ loc_process_redistribute]
-                        , barrier_trg   = [$ loc_lhs_peer_barrier]
-                        , nodes         = [$ peers ]
-                        , send_extra_fn = [$ (\x -> (Some x, None immut, true))]);
+    ) @PSendPartitionByKey( dest_trg      = [$ loc_process_redistribute]
+                          , barrier_trg   = [$ loc_lhs_peer_barrier]
+                          , nodes         = [$ peers ]
+                          , send_extra_fn = [$ (\x -> (Some x, None immut, true))])
+  );
 
   ( ignore (
     (customer.groupBy (\c -> c.c_custkey)
@@ -116,11 +115,11 @@ trigger q18_local : () = \_ -> (
                       "")
              .fold    (\acc -> \c -> ((acc.insert c); acc))
                       (empty {key: int, value: string} @Map)
-    )
-  ) @PSendPartitionByKey( dest_trg      = [$ loc_process_redistribute]
-                        , barrier_trg   = [$ loc_rhs_peer_barrier]
-                        , nodes         = [$ peers ]
-                        , send_extra_fn = [$ (\x -> (None immut, Some x, false))]);
+    ) @PSendPartitionByKey( dest_trg      = [$ loc_process_redistribute]
+                          , barrier_trg   = [$ loc_rhs_peer_barrier]
+                          , nodes         = [$ peers ]
+                          , send_extra_fn = [$ (\x -> (None immut, Some x, false))])
+  );
 
   () @StreamingHashJoin(
         lbl                  = [# loc ]
