@@ -120,11 +120,9 @@ trigger q18_local : () = \_ -> (
   ) @PSendPartitionByKey( dest_trg      = [$ loc_process_redistribute]
                         , barrier_trg   = [$ loc_rhs_peer_barrier]
                         , nodes         = [$ peers ]
-                        , send_extra_fn = [$ (\x -> (None immut, Some x, false))])
-)
+                        , send_extra_fn = [$ (\x -> (None immut, Some x, false))]);
 
-trigger lineitem_orders_customer : () = \_ -> (
-  ()@StreamingHashJoin(
+  () @StreamingHashJoin(
         lbl                  = [# loc ]
       , lhs_ht_ty            = [: {key: int, value: collection {key : {ok: int, od: string, tp: real}, value : real} @Map} ]
       , rhs_ht_ty            = [: {key: int, value: string} ]
