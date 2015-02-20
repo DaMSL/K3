@@ -226,6 +226,7 @@ control PipelinedBroadcastJoin [ lbl                 : label
                                , lhs_probe           : expr
                                , lhs_clear           : expr
                                , broadcast_ty        : type
+                               , has_outputs         : expr
                                , empty_out_buffer    : expr
                                , pipeline_next       : expr
                                , peer_next           : expr
@@ -248,7 +249,7 @@ control PipelinedBroadcastJoin [ lbl                 : label
           // Process broadcasted partition from a peer, and pipeline its outputs.
           trigger $[lbl]_probe : $[broadcast_ty] = \vals -> (
             let outputs = vals.fold $[lhs_probe] $[empty_out_buffer] in
-            $[pipeline_next] outputs
+            if $[has_outputs] outputs then ( $[pipeline_next] outputs ) else ()
           )
 
           trigger $[lbl]_peer_broadcast_barrier : () = \_ -> (
