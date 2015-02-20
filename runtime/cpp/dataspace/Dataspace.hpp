@@ -1338,6 +1338,10 @@ class Map {
       }
   }
 
+  bool member(const R& r) const {
+    return container.find(r.key) != container.end();
+  }
+
   bool operator==(const Map& other) const {
     return container == other.container;
   }
