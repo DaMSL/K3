@@ -1,0 +1,16 @@
+---
+me: [127.0.0.1, 30000]
+master: [127.0.0.1, 30000]
+peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
+role: rows
+lineitemFiles: [{path: tools/ktrace/data/tpch/lineitem_partitioned/lineitem0}]
+ordersFiles: [{path: tools/ktrace/data/tpch/orders_partitioned/orders0}]
+customerFiles: [{path: tools/ktrace/data/tpch/customer0}]
+---
+me: [127.0.0.1, 40000]
+master: [127.0.0.1, 30000]
+peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
+role: rows
+lineitemFiles: [{path: tools/ktrace/data/tpch/lineitem_partitioned/lineitem1}]
+ordersFiles: [{path: tools/ktrace/data/tpch/orders_partitioned/orders1}]
+customerFiles: [{path: tools/ktrace/data/tpch/customer1}]

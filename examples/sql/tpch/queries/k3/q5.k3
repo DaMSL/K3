@@ -301,7 +301,7 @@ trigger q5_cosl_start : () = \_ -> (
                                ]
 
       , rhs_probe            = [$ (\rht -> \out -> \co ->
-                                    case rht.lookup {key:co.key, value: 0} of
+                                    case rht.lookup {key:co.key, value: 0.0} of
                                     { Some sl -> ((out.insert_with {key: co.value, value:sl.value} merge_epd_by_n); out)}
                                     { None    -> out }
                                   )

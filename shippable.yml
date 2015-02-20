@@ -29,7 +29,7 @@ script:
     # TPCH
   - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q1.k3 tools/ktrace/tests/tpch_q1 results
   - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q3.k3 tools/ktrace/tests/tpch_q3_partitioned results
-  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q5.k3 tools/ktrace/tests/tpch_q5 results
+  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q5.k3 tools/ktrace/tests/tpch_q5_partitioned results
   # numerical error: - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q6.k3 tools/ktrace/tests/tpch_q6 results
   # incorrect query plan: - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q11.k3 tools/ktrace/tests/tpch_q11 results
   - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q18.k3 tools/ktrace/tests/tpch_q18 results

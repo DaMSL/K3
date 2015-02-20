@@ -9,6 +9,7 @@ declare outFolder : string = "output"
 
 declare lineitem: mut lineitem_bag
 declare orders: mut orders_bag
+declare customer: mut customer_bag
 declare strings: mut collection {elem: string} @Collection
 
 declare filename : string -> int -> string = \s -> \i -> (
@@ -65,6 +66,8 @@ trigger partitionLineitem: () = \_ -> (
   haltEngine ()
 )
 
+
+
 trigger partitionOrders: () = \_ -> (
   let prefix = outFolder ++ "/orders" in
   initialize prefix; 
@@ -100,6 +103,84 @@ trigger partitionOrders: () = \_ -> (
   ));
   haltEngine ()
 )
+
+trigger partitionOrdersCustkey: () = \_ -> (
+  let prefix = outFolder ++ "/orders" in
+  initialize prefix; 
+  dataFiles.iterate (\e -> (
+    // Load the file into memory. Both the raw strings and the parsed representation
+    (print ("On file: " ++ e.path));
+    (ordersLoaderP e.path orders);
+    (loadStrings e.path strings);
+
+    // Assign each element to a bucket, and write the raw string to the right file
+    let n = strings.size () in
+      ((range n).iterate (\i ->
+        let r = orders.at i.i in
+        let s = strings.at i.i in
+        case r of 
+          {Some rec -> 
+            case s of 
+              {Some str -> 
+                let n = index_by_hash rec.o_custkey in
+                let f = filename prefix n in
+                if hasWrite f
+                  then doWrite f str.elem
+                  else print ("error: no write for file: " ++ f)
+              }
+              {None -> error () }
+          }
+          {None -> error () }
+      ));
+
+      // Clear global state
+      orders = empty orders_r @Collection;
+      strings = empty {elem: string} @Collection
+  ));
+  haltEngine ()
+)
+
+trigger partitionCustomer: () = \_ -> (
+  let prefix = outFolder ++ "/customer" in
+  initialize prefix; 
+  dataFiles.iterate (\e -> (
+    // Load the file into memory. Both the raw strings and the parsed representation
+    (print ("On file: " ++ e.path));
+    (customerLoaderP e.path customer);
+    (loadStrings e.path strings);
+
+    // Assign each element to a bucket, and write the raw string to the right file
+    let n = strings.size () in
+      ((range n).iterate (\i ->
+        let r = customer.at i.i in
+        let s = strings.at i.i in
+        case r of 
+          {Some rec -> 
+            case s of 
+              {Some str -> 
+                let n = index_by_hash rec.c_custkey in
+                let f = filename prefix n in
+                if hasWrite f
+                  then doWrite f str.elem
+                  else print ("error: no write for file: " ++ f)
+              }
+              {None -> error () }
+          }
+          {None -> error () }
+      ));
+
+      // Clear global state
+      orders = empty orders_r @Collection;
+      strings = empty {elem: string} @Collection
+  ));
+  haltEngine ()
+)
+
+source sCustomers: () = value ()
+feed sCustomers |> partitionCustomer 
+
+source sOrdersCustkey: () = value ()
+feed sOrdersCustkey |> partitionOrdersCustkey
 
 source sLineitem: () = value ()
 feed sLineitem |> partitionLineitem
