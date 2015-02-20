@@ -51,13 +51,10 @@ declare c_valid_phone : collection {key : string, value : ()} @Map =
 declare c_avg_acctbal : mut real
 declare c_acc_acctbal : mut {sum: real, cnt: int}
 
-typedef c_ca_by_ck_r   = {key:int, value: collection {cntrycode: string, c_acctbal: real} @Collection}
-typedef c_ca_by_ck_map = collection c_ca_by_ck_r @Map
-
 typedef c_nt_by_cc_r   = {key: string, value: {nc:int, tab:real}}
 typedef c_nt_by_cc_map = collection c_nt_by_cc_r @Map
 
-declare c_ca_by_ck   : mut c_ca_by_ck_map
+declare o_ck         : mut collection {key: int, value:()} @Map
 declare q22_result   : c_nt_by_cc_map
 declare results      : collection { cntrycode: string, numcust: int, totacctbal: real} @Collection
 
@@ -66,10 +63,6 @@ declare merge_c_nt_by_cc : c_nt_by_cc_r -> c_nt_by_cc_r -> c_nt_by_cc_r
 
 trigger customer_subagg : () = \_ -> (
   peers.iterate (\p -> (customer_subagg_local, p.addr) <- ())
-)
-
-trigger customer_set_avg_acctbal : real = \avg_acctbal -> (
-  c_avg_acctbal = avg_acctbal
 )
 
 trigger customer_subagg_local : () = \_ -> (
@@ -90,62 +83,35 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
 
   ( ( c_avg_acctbal = c_acc_acctbal.sum / c_acc_acctbal.cnt );
     ( print "Computed customer avg acctbal." );
-    ( peers.iterate (\p -> (customer_set_avg_acctbal, p.addr) <- c_avg_acctbal) );
-
-    () @PipelinedBroadcastJoin (
-        lbl                 = [# oc ]
-
-      , lhs_query           = [$ c_ca_by_ck =
-                                  ((customer.filter  (\c -> case c_valid_phone.lookup {key: (slice_string c.c_phone 0 2), value:()}
-                                                            of {Some x -> c.c_acctbal > c_avg_acctbal}
-                                                               {None -> false}))
-                                            .groupBy (\c -> c.c_custkey)
-                                                     (\acc -> \c -> ((acc.insert { cntrycode : (slice_string c.c_phone 0 2)
-                                                                                 , c_acctbal : c.c_acctbal })
-                                                                      ; acc))
-                                                     (empty {cntrycode: string, c_acctbal: real} @Collection))
-                                            .fold    (\acc -> \c -> ((acc.insert c); acc))
-                                                     (empty {key:int, value: collection {cntrycode: string, c_acctbal: real} @Collection} @Map)
-                              ]
-
-      , rhs_query           = [$ (orders.groupBy (\o -> o.o_custkey)
-                                                 (\_ -> \_ -> ())
-                                                 ())
-                                        .fold    (\acc -> \o -> ((acc.insert o); acc))
-                                                 (empty {key:int, value: ()} @Map)
-                              ]
-
-      , lhs_probe           = [$ (\out -> \o ->
-                                   case c_ca_by_ck.lookup {key: o.key, value: empty {cntrycode: string, c_acctbal: real} @Collection} of
-                                   { Some r ->
-                                       r.value.fold (\acc -> \ca ->
-                                           ((acc.insert_with
-                                              {key: ca.cntrycode, value: {nc: 1, tab:ca.c_acctbal}}
-                                              merge_c_nt_by_cc);
-                                             acc))
-                                         out
-                                   }
-                                   { None   -> out } )
-                              ]
-
-      , lhs_clear           = [$ c_ca_by_ck = empty {} @Map ]
-
-      , broadcast_ty        = [: collection {key: int, value: ()} @Map ]
-
-      , has_outputs         = [$ (\out -> out.size() > 0) ]
-      , empty_out_buffer    = [$ empty {key: string, value: {nc:int, tab:real}} @Map ]
-
-      , pipeline_next       = [$ (\out -> (q22_final_aggregate, master) <- out) ]
-
-      , peer_next           = [$ ( print "OR-CS join finished customer probe." );
-                                    ( (q22_final_peer_barrier, master) <- () );
-                                    ( (() @:Result) @TPCHBenchmarkWithoutMaster )
-                              ]
-      , next                = [$ print "OR-CS join all nodes finished." ]
-      , coordinator         = [$ master ]
-      , nodes               = [$ peers ]
-    )
+    ( peers.iterate (\p -> (q22_peer_local, p.addr) <- c_avg_acctbal ) )
   ) @OnCounter(id=[# customer_subagg_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+)
+
+trigger q22_peer_local : real = \avg_acctbal ->
+(
+  ( c_avg_acctbal = avg_acctbal );
+
+  ( o_ck = ((orders.groupBy (\o -> o.o_custkey) (\_ -> \_ -> ()) ())
+                   .fold    (\acc -> \o -> ((acc.insert o); acc))
+                            (empty {key:int, value:()} @Map) ));
+
+  ( (q22_final_aggregate, master) <-
+      ((( customer.filter  (\c -> c.c_acctbal > c_avg_acctbal
+                                  and
+                                  ( case c_valid_phone.lookup {key: (slice_string c.c_phone 0 2), value:()}
+                                    of { Some _ -> true  }
+                                       { None   -> false } )
+                                  and
+                                  ( case o_ck.lookup {key: c.c_custkey, value: ()}
+                                    of { Some _ -> false }
+                                       { None   -> true  })))
+                  .groupBy (\c -> (slice_string c.c_phone 0 2))
+                           (\acc -> \c -> {nc: acc.nc + 1, tab: acc.tab + c.c_acctbal})
+                           {nc:0, tab: 0.0})
+                  .fold    (\acc -> \c -> ((acc.insert c); acc))
+                           (empty {key:string, value: {nc:int, tab:real}} @Map) ));
+
+  ( (() @:Result) @TPCHBenchmarkWithoutMaster )
 )
 
 trigger q22_final_aggregate : c_nt_by_cc_map = \vals -> (
