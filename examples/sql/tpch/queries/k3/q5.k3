@@ -242,8 +242,10 @@ trigger q5_sl_start : () = \_ -> (
       , lhs_probe            = [$ (\lht -> \out -> \l ->
                                     case lht.lookup {key: l.key, value: 0} of
                                     { Some s -> l.value.fold (\acc -> \loe ->
-                                                    ((acc.insert {key: {nationkey: s.value, orderkey: loe.l_orderkey}
-                                                                 , value: loe.l_epd});
+                                                    ((acc.insert_with
+                                                          {key: {nationkey: s.value, orderkey: loe.l_orderkey}
+                                                          , value: loe.l_epd}
+                                                          (\old -> \new -> {key: old.key, value: old.value + new.value}));
                                                       acc))
                                                   out }
                                     { None   -> out }
@@ -253,8 +255,10 @@ trigger q5_sl_start : () = \_ -> (
       , rhs_probe            = [$ (\rht -> \out -> \s ->
                                     case rht.lookup {key: s.key, value: empty {l_orderkey: int, l_epd: real} @Collection} of
                                     { Some l -> l.value.fold (\acc -> \loe ->
-                                                    ((acc.insert { key: {nationkey: s.value, orderkey: loe.l_orderkey}
-                                                                 , value: loe.l_epd});
+                                                    ((acc.insert
+                                                          { key: {nationkey: s.value, orderkey: loe.l_orderkey}
+                                                          , value: loe.l_epd}
+                                                          (\old -> \new -> {key: old.key, value: old.value + new.value}));
                                                        acc))
                                                   out }
                                     { None   -> out }
