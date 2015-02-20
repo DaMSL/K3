@@ -170,7 +170,7 @@ trigger partitionCustomer: () = \_ -> (
       ));
 
       // Clear global state
-      orders = empty orders_r @Collection;
+      customer = empty customer_r @Collection;
       strings = empty {elem: string} @Collection
   ));
   haltEngine ()
