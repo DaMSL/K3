@@ -382,9 +382,11 @@ inferTypes prog = do
 inferEffects :: ProgramTransform
 inferEffects prog = do
   (p,  pienv) <- liftEitherM $ Provenance.inferProgramProvenance prog
-  (p', fienv) <- liftEitherM $ SEffects.inferProgramEffects Nothing (Provenance.ppenv pienv) p
+  (p', fienv) <- liftEitherM $ SEffects.inferProgramEffects Nothing (Provenance.ppenv pienv) (debugEffects "After provenance" p)
   void $ modify $ \st -> st {penv = pienv, fenv = fienv}
-  return p'
+  return (debugEffects "After effects" p')
+
+  where debugEffects tg p = if True then p else flip trace p $ boxToString $ [tg] %$ prettyLines p
 
 inferProperties :: ProgramTransform
 inferProperties prog = do
@@ -596,9 +598,9 @@ declTransforms stSpec extInfOpt n = topLevel
       , mkW cseTransform         "Decl-CSE" False True False Nothing
       , mkD encodeTransformers   "Decl-FE"  True  True False (Just [typEffI])
       , mk  fuseFoldTransformers "Decl-FT"  True  True False (Just fusionI)
-      , fusionReduce
-      , ("typEffI",)  $ typEffI
-      , ("refreshI",) $ refreshI
+      , mkDebug False $ fusionReduce
+      , mkDebug False $ ("typEffI",)  $ typEffI
+      , mkDebug False $ ("refreshI",) $ refreshI
       ]
 
     -- Build a transform with additional debugging/repair/reification functionality.
@@ -624,6 +626,8 @@ declTransforms stSpec extInfOpt n = topLevel
       $ (if asRepair then withRepair i else id)
       $ (if asDebug then debugPass i else id)
       $ tr
+
+    mkDebug asDebug (i,tr) = mkSS $ (i,) $ (if asDebug then debugPass i else id) tr
 
     -- Pass filtering
     fPf f = maybe id (\l -> filter (\x -> (f x) `notElem` l)) $ passesToFilter stSpec
