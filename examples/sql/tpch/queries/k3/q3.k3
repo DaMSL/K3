@@ -68,22 +68,20 @@ trigger lineitem_orders : () = \_ -> (
 
   // Build up a local lior_epdods_map
   (((lineitem.filter  (\l -> l.l_shipdate > "1995-03-15" and
-                            (case rhs_ht.lookup {key: l.l_orderkey, value: { od: "", ck: 0, sp: 0 }}
-                             of { Some _ -> true  }
-                                { None   -> false } )))
-            .groupBy (\l -> l.l_orderkey)
-                     (\acc -> \l -> acc + (l.l_extendedprice * (1 - l.l_discount)))
-                     0.0)
-            .iterate (\li -> case rhs_ht.lookup {key: li.key, value: {od: "", ck: 0, sp: 0}}
-                             of { Some o -> lior_epdods_map.insert_with
-                                              { key: o.value.ck
-                                              , value: {|key : {ok: int, od: string, sp: int}, value: real
-                                                        | { key   : {ok: o.key, od: o.value.od, sp: o.value.sp }
-                                                          , value : li.value }
-                                                        |} @Map }
-                                              merge_lior_r
-                                }
-                                { None   -> () })
+                            (rhs_ht.member {key: l.l_orderkey, value: { od: "", ck: 0, sp: 0 }})))
+             .groupBy (\l -> l.l_orderkey)
+                      (\acc -> \l -> acc + (l.l_extendedprice * (1 - l.l_discount)))
+                      0.0)
+             .iterate (\li -> case rhs_ht.lookup {key: li.key, value: {od: "", ck: 0, sp: 0}}
+                              of { Some o -> lior_epdods_map.insert_with
+                                               { key: o.value.ck
+                                               , value: {|key : {ok: int, od: string, sp: int}, value: real
+                                                         | { key   : {ok: o.key, od: o.value.od, sp: o.value.sp }
+                                                           , value : li.value }
+                                                         |} @Map }
+                                               merge_lior_r
+                                 }
+                                 { None   -> () })
   );
 
   // Start broadcasting this peer's customers.

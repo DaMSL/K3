@@ -67,10 +67,7 @@ trigger customer_subagg : () = \_ -> (
 
 trigger customer_subagg_local : () = \_ -> (
   let c_acctbal_agg =
-    (customer.filter (\c -> case c_valid_phone.lookup {key: (slice_string c.c_phone 0 2), value:()}
-                            of {Some x -> c.c_acctbal > 0.0}
-                               {None -> false}
-                     ))
+    (customer.filter (\c -> c.c_acctbal > 0.0 and (c_valid_phone.member {key: (slice_string c.c_phone 0 2), value:()})))
              .fold   (\acc -> \c -> {sum:acc.sum+c.c_acctbal, cnt:acc.cnt+1})
                      {sum: 0.0, cnt: 0}
   in (customer_subagg_final, master) <- c_acctbal_agg
@@ -97,14 +94,8 @@ trigger q22_peer_local : real = \avg_acctbal ->
 
   ( (q22_final_aggregate, master) <-
       ((( customer.filter  (\c -> c.c_acctbal > c_avg_acctbal
-                                  and
-                                  ( case c_valid_phone.lookup {key: (slice_string c.c_phone 0 2), value:()}
-                                    of { Some _ -> true  }
-                                       { None   -> false } )
-                                  and
-                                  ( case o_ck.lookup {key: c.c_custkey, value: ()}
-                                    of { Some _ -> false }
-                                       { None   -> true  })))
+                                  and ( c_valid_phone.member {key: (slice_string c.c_phone 0 2), value:()} )
+                                  and ( not ( o_ck.member {key: c.c_custkey, value: ()} ))))
                   .groupBy (\c -> (slice_string c.c_phone 0 2))
                            (\acc -> \c -> {nc: acc.nc + 1, tab: acc.tab + c.c_acctbal})
                            {nc:0, tab: 0.0})

@@ -106,18 +106,14 @@ trigger q5_co_start : () = \_ -> (
                                             (empty {key: int, value: ()} @Map) );
 
                        ( n_asia_by_nk =
-                           ((nation.filter  (\n -> case r_asia_by_rk.lookup {key: n.n_regionkey, value: ()}
-                                                   of { Some _ -> true  }
-                                                      { None   -> false } ))
+                           ((nation.filter  (\n -> r_asia_by_rk.member {key: n.n_regionkey, value: ()}))
                                    .groupBy (\n -> n.n_nationkey)
                                             (\_ -> \n -> n.n_name)
                                             "")
                                    .fold    (\acc -> \n -> ((acc.insert n); acc))
                                             (empty {key: int, value: string} @Map) );
 
-                       (((customer.filter  (\c -> case n_asia_by_nk.lookup { key: c.c_nationkey, value: "" }
-                                                  of { Some _ -> true  }
-                                                     { None   -> false } ))
+                       (((customer.filter  (\c -> n_asia_by_nk.member { key: c.c_nationkey, value: "" }))
                                   .groupBy (\c -> c.c_custkey)
                                            (\acc -> \c -> case n_asia_by_nk.lookup { key: c.c_nationkey, value: "" }
                                                         of { Some n -> {c_nationkey: c.c_nationkey, n_name: n.value} }
@@ -215,9 +211,7 @@ trigger q5_sl_start : () = \_ -> (
 
       , frequency_threshold  = [$ 1000.0 ]
 
-      , lhs_query = [$ ((supplier.filter  (\s -> case n_asia_by_nk.lookup {key: s.s_nationkey, value:""}
-                                                   of { Some _ -> true  }
-                                                      { None   -> false } ))
+      , lhs_query = [$ ((supplier.filter  (\s -> n_asia_by_nk.member {key: s.s_nationkey, value:""}))
                                  .groupBy (\s -> s.s_suppkey)
                                           (\_ -> \s -> s.s_nationkey)
                                           0)
