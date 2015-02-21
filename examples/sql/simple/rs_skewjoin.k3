@@ -23,7 +23,9 @@ trigger join : () = \_ -> (
 
   // Execute the join.
   () @PipelineSkewJoin(
-          lbl                = [# rs_skewj ]
+          lbl               = [# rs_skewj ]
+        , lhs_ht_id         = [# rs_skewj_lhs_ht ]
+        , rhs_ht_id         = [# rs_skewj_rhs_ht ]
 
         , lhs_sample_query   = [$ my_r_part.sample (\acc -> \r ->
                                                      ((acc.insert_with
@@ -94,6 +96,9 @@ trigger join : () = \_ -> (
 
         , lhs_pipeline_next  = [$ (\out -> (merge_join_results, master) <- out) ]
         , rhs_pipeline_next  = [$ (\out -> (merge_join_results, master) <- out) ]
+
+        , lhs_clear_expr    = [$ (\_ -> rs_skewj_lhs_ht = empty {key: int, value: collection {a:int} @Collection} @Map) ]
+        , rhs_clear_expr    = [$ (\_ -> rs_skewj_rhs_ht = empty {key: int, value: collection {c:int} @Collection} @Map) ]
 
         , peer_next          = [$ () ]
         , next               = [$ print "RS SkewJoin done" ]

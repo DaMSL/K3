@@ -73,6 +73,8 @@ trigger q5_co_start : () = \_ -> (
   ( () @:NoSkew )
     @JoinSelector(
         lbl                  = [# co ]
+      , lhs_ht_id            = [# co_lhs_ht ]
+      , rhs_ht_id            = [# co_rhs_ht ]
 
       , lhs_sample_query     = [$ customer.sample (\acc -> \c ->
                                                     ((acc.insert_with
@@ -82,6 +84,7 @@ trigger q5_co_start : () = \_ -> (
                                                   (empty {key:int, value: int} @Map)
                                                   (customer.size() / sample_factor)
                                ]
+
       , rhs_sample_query     = [$ orders.sample (\acc -> \c ->
                                                   if     o.o_orderdate >= "1994-01-01"
                                                      and o.o_orderdate <  "1995-01-01"
@@ -177,6 +180,9 @@ trigger q5_co_start : () = \_ -> (
                                                                                , nodes         = [$ peers ]
                                                                                , send_extra_fn = [$ (\x -> (Some x, None immut, true)) ]) )) ]
 
+      , lhs_clear_expr    = [$ (\_ -> co_lhs_ht = empty {key: int, value: {c_nationkey: int, n_name: string}} @Map) ]
+      , rhs_clear_expr    = [$ (\_ -> co_rhs_ht = empty {key: int, value: collection {o_orderkey: int} @Collection} @Map) ]
+
       , peer_next            = [$ () @SendPunctuation(trg = [$ cosl_lhs_peer_barrier ], nodes = [$ peers ]) ]
       , next                 = [$ () ]
       , coordinator          = [$ master]
@@ -190,6 +196,8 @@ trigger q5_sl_start : () = \_ -> (
   ( () @:NoSkew )
     @JoinSelector(
         lbl                  = [# sl ]
+      , lhs_ht_id            = [# sl_lhs_ht ]
+      , rhs_ht_id            = [# sl_rhs_ht ]
 
       , lhs_sample_query     = [$ supplier.sample (\acc -> \s ->
                                                     ((acc.insert_with
@@ -275,6 +283,9 @@ trigger q5_sl_start : () = \_ -> (
                                                                                , send_extra_fn = [$ (\x -> (None immut, Some x, false)) ]) ))
                                ]
 
+      , lhs_clear_expr       = [$ (\_ -> sl_lhs_ht = empty {key: int, value: int} @Map) ]
+      , rhs_clear_expr       = [$ (\_ -> sl_rhs_ht = empty {key: int, value: collection {l_orderkey: int, l_epd: real} @Collection} @Map) ]
+
       , peer_next            = [$ () @SendPunctuation(trg = [$ cosl_rhs_peer_barrier ], nodes = [$ peers ]) ]
       , next                 = [$ () ]
       , coordinator          = [$ master]
@@ -287,6 +298,8 @@ trigger q5_cosl_start : () = \_ -> (
   ( () @:NoSkew )
     @StreamingHashJoin(
         lbl                  = [# cosl ]
+      , lhs_ht_id            = [# cosl_lhs_ht ]
+      , rhs_ht_id            = [# cosl_rhs_ht ]
 
       , lhs_ht_ty            = [: {key: {nationkey: int, orderkey: int}, value: string} ]
       , rhs_ht_ty            = [: {key: {nationkey: int, orderkey: int}, value: real} ]
@@ -313,6 +326,9 @@ trigger q5_cosl_start : () = \_ -> (
 
       , lhs_pipeline_next    = [$ (\out -> out.iterate (\r -> q5_result.insert_with r merge_epd_by_n)) ]
       , rhs_pipeline_next    = [$ (\out -> out.iterate (\r -> q5_result.insert_with r merge_epd_by_n)) ]
+
+      , lhs_clear_expr       = [$ (\_ -> cosl_lhs_ht = empty {key: {nationkey: int, orderkey: int}, value: string} @Map) ]
+      , rhs_clear_expr       = [$ (\_ -> cosl_rhs_ht = empty {key: {nationkey: int, orderkey: int}, value: real} @Map) ]
 
       , peer_next            = [$ (if me == master then () else ( (q5_result_aggregate, master) <- q5_result ));
                                   ((() @:Result) @TPCHBenchmarkWithoutMaster)

@@ -149,63 +149,71 @@ control DistributedGroupBy [ lbl             : label
      +> { declare $[lbl]_result : mut collection $::[t] @Map }
 }
 
-
-control DistributedHashJoin [ lbl             : label
-                            , lhs_query       : expr
-                            , rhs_query       : expr
-                            , lhs_build_merge : expr
-                            , rhs_probe_merge : expr
-                            , peer_next       : expr
-                            , next            : expr
-                            , coordinator     : expr
-                            , nodes           : expr
-                            , lhs_build_ty    : type
-                            , rhs_probe_ty    : type
-                            , profile         : expr
+control DistributedHashJoin [ lbl              : label
+                            , lhs_ht_id        : label
+                            , lhs_query        : expr
+                            , rhs_query        : expr
+                            , lhs_ht_ty        : type
+                            , rhs_ht_ty        : type
+                            , lhs_insert_with  : expr
+                            , lhs_probe        : expr
+                            , has_outputs      : expr
+                            , empty_out_buffer : expr
+                            , pipeline_next    : expr
+                            , lhs_clear_expr   : expr
+                            , peer_next        : expr
+                            , next             : expr
+                            , coordinator      : expr
+                            , nodes            : expr
+                            , profile          : expr
                             ]
 {
   () => (if $[profile]
           then (() @:StartTimer) @Time(lbl=[# $[lbl]_HASHJOIN ], tag=[$ "Time "])
           else ()
         );
-        $[nodes].iterate (\p -> ($[lbl]_lhs_scan, p.addr) <- ())
+        $[nodes].iterate (\p -> ($[lbl]_lhs_redistribute, p.addr) <- ())
      +> {
-        trigger $[lbl]_lhs_scan : () = \_ -> (
+        declare $[lhs_ht_id] : collection $[lhs_ht_ty] @Map
+
+        trigger $[lbl]_lhs_redistribute : () = \_ -> (
           (ignore
             ( $[lhs_query]
-            ) @PSendPartitionByKey( dest_trg      = [$ $[lbl]_build_lhs]
+            ) @PSendPartitionByKey( dest_trg      = [$ $[lbl]_lhs_process_redistribute]
                                   , barrier_trg   = [$ $[lbl]_lhs_peer_barrier]
                                   , nodes         = nodes
                                   , send_extra_fn = [$ (\x -> x)]))
         )
 
-        trigger $[lbl]_build_lhs : $[lhs_build_ty] = \vals -> (
-          vals.iterate $[lhs_build_merge]
+        trigger $[lbl]_lhs_process_redistribute : collection $[lhs_ht_ty] @Map = \vals -> (
+          vals.iterate (\v -> $[lhs_ht_id].insert_with v $[lhs_insert_with])
         )
 
         trigger $[lbl]_lhs_peer_barrier : () = \_ -> (
-          ( $[nodes].iterate (\p -> ($[lbl]_rhs_scan, p.addr) <- ())
+          ( $[nodes].iterate (\p -> ($[lbl]_rhs_redistribute, p.addr) <- ())
           ) @OnCounter(id=[# $[lbl]_peer_build_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
         )
 
-        trigger $[lbl]_rhs_scan : () = \_ -> (
+        trigger $[lbl]_rhs_redistribute : () = \_ -> (
           (( ignore
               ( $[rhs_query]
-              ) @PSendPartitionByKey( dest_trg      = [$ $[lbl]_probe_rhs]
+              ) @PSendPartitionByKey( dest_trg      = [$ $[lbl]_rhs_process_redistribute]
                                     , barrier_trg   = [$ $[lbl]_rhs_peer_barrier]
                                     , nodes         = nodes
                                     , send_extra_fn = [$ (\x -> x)]))
           ) @OnCounter(id=[# $[lbl]_lhs_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
         )
 
-        trigger $[lbl]_probe_rhs : $[rhs_probe_ty] = \vals -> (
+        trigger $[lbl]_rhs_process_redistribute : collection $[rhs_ht_ty] @Map = \vals -> (
           // Probe LHS hash table.
-          vals.iterate $[rhs_probe_merge]
+          let outputs = vals.fold ($[lhs_probe] $[lhs_ht_id]) $[empty_out_buffer] in
+          if $[has_outputs] outputs then ( $[pipeline_next] outputs ) else ()
         )
 
         trigger $[lbl]_rhs_peer_barrier : () = \_ -> (
-          ( $[peer_next] ;
-            ($[lbl]_global_barrier, $[coordinator]) <- ()
+          ( ( $[lhs_clear_expr] $[lhs_ht_id] );
+            ( $[peer_next] );
+            ( $[lbl]_global_barrier, $[coordinator] ) <- ()
           ) @OnCounter(id=[# $[lbl]_rhs_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
         )
 
@@ -224,7 +232,6 @@ control PipelinedBroadcastJoin [ lbl                 : label
                                , lhs_query           : expr
                                , rhs_query           : expr
                                , lhs_probe           : expr
-                               , lhs_clear           : expr
                                , broadcast_ty        : type
                                , has_outputs         : expr
                                , empty_out_buffer    : expr
@@ -255,7 +262,6 @@ control PipelinedBroadcastJoin [ lbl                 : label
           trigger $[lbl]_peer_broadcast_barrier : () = \_ -> (
             print "Broadcast join peer finished processing." ;
             (
-              $[lhs_clear];
               $[peer_next];
               ($[lbl]_global_barrier, $[coordinator]) <- ()
             ) @OnCounter(id=[# $[lbl]_peer_broadcast_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
@@ -272,6 +278,8 @@ control PipelinedBroadcastJoin [ lbl                 : label
 // This annotation generates the symmetric streaming phase
 // of a pipelined symmetric hash join.
 control StreamingHashJoin [ lbl                  : label
+                          , lhs_ht_id            : label
+                          , rhs_ht_id            : label
                           , lhs_ht_ty            : type
                           , rhs_ht_ty            : type
                           , lhs_probe            : expr
@@ -282,6 +290,8 @@ control StreamingHashJoin [ lbl                  : label
                           , empty_out_buffer     : expr
                           , lhs_pipeline_next    : expr
                           , rhs_pipeline_next    : expr
+                          , lhs_clear_expr       : expr
+                          , rhs_clear_expr       : expr
                           , peer_next            : expr
                           , next                 : expr
                           , coordinator          : expr
@@ -290,8 +300,9 @@ control StreamingHashJoin [ lbl                  : label
 {
   () => ()
      +> {
-          declare $[lbl]_lhs_ht   : mut collection $[lhs_ht_ty] @Map
-          declare $[lbl]_rhs_ht   : mut collection $[rhs_ht_ty] @Map
+          declare $[lhs_ht_id] : mut collection $[lhs_ht_ty] @Map
+          declare $[rhs_ht_id] : mut collection $[rhs_ht_ty] @Map
+
           declare $[lbl]_lhs_done : mut bool = false
           declare $[lbl]_rhs_done : mut bool = false
 
@@ -304,17 +315,17 @@ control StreamingHashJoin [ lbl                  : label
               if is_left then (
                 case lv_opt of
                 { Some lvals ->
-                  let outputs = lvals.fold ($[rhs_probe] $[lbl]_rhs_ht) $[empty_out_buffer] in
+                  let outputs = lvals.fold ($[rhs_probe] $[rhs_ht_id]) $[empty_out_buffer] in
                   ((if $[has_outputs] outputs then ( $[lhs_pipeline_next] outputs ) else ());
-                    if $[lbl]_rhs_done then () else ( lvals.iterate (\lkv -> $[lbl]_lhs_ht.insert_with lkv $[lhs_insert_with]) ))
+                    if $[lbl]_rhs_done then () else ( lvals.iterate (\lkv -> $[lhs_ht_id].insert_with lkv $[lhs_insert_with]) ))
                 }
                 { None -> error (print ($[|exprLabel 'lbl|] ++ "_process_redistribute: invalid left join inputs.")) }
               ) else (
                 case rv_opt of
                 { Some rvals ->
-                  let outputs = rvals.fold ($[lhs_probe] $[lbl]_lhs_ht) $[empty_out_buffer] in
+                  let outputs = rvals.fold ($[lhs_probe] $[lhs_ht_id]) $[empty_out_buffer] in
                   ((if $[has_outputs] outputs then ( $[rhs_pipeline_next] outputs ) else ());
-                    if $[lbl]_lhs_done then () else ( rvals.iterate (\rkv -> $[lbl]_rhs_ht.insert_with rkv $[rhs_insert_with]) ))
+                    if $[lbl]_lhs_done then () else ( rvals.iterate (\rkv -> $[rhs_ht_id].insert_with rkv $[rhs_insert_with]) ))
                 }
                 { None -> error (print ($[|exprLabel 'lbl|] ++ "_process_redistribute: invalid right join inputs.")) }
               )
@@ -324,8 +335,8 @@ control StreamingHashJoin [ lbl                  : label
           trigger $[lbl]_lhs_peer_barrier : () = \_ -> (
             (
               // LHS is finished, we no longer need to build/probe the RHS
-              $[lbl]_lhs_done = true;
-              $[lbl]_rhs_ht   = empty $[rhs_ht_ty] @Map;
+              ( $[lbl]_lhs_done = true );
+              ( $[rhs_clear_expr] $[rhs_ht_id] );
               if not $[lbl]_rhs_done then () else (
                 $[peer_next];
                 ($[lbl]_global_barrier, $[coordinator]) <- ()
@@ -336,8 +347,8 @@ control StreamingHashJoin [ lbl                  : label
           trigger $[lbl]_rhs_peer_barrier : () = \_ -> (
             (
               // RHS is finished, we no longer need to build/probe the LHS
-              $[lbl]_rhs_done = true;
-              $[lbl]_lhs_ht   = empty $[lhs_ht_ty] @Map;
+              ( $[lbl]_rhs_done = true );
+              ( $[lhs_clear_expr] $[lhs_ht_id] );
               if not $[lbl]_lhs_done then () else (
                 $[peer_next];
                 ($[lbl]_global_barrier, $[coordinator]) <- ()
@@ -354,6 +365,8 @@ control StreamingHashJoin [ lbl                  : label
 }
 
 control PipelineSymmetricHashJoin [ lbl                  : label
+                                  , lhs_ht_id            : label
+                                  , rhs_ht_id            : label
                                   , lhs_query            : expr
                                   , rhs_query            : expr
                                   , lhs_ht_ty            : type
@@ -366,6 +379,8 @@ control PipelineSymmetricHashJoin [ lbl                  : label
                                   , empty_out_buffer     : expr
                                   , lhs_pipeline_next    : expr
                                   , rhs_pipeline_next    : expr
+                                  , lhs_clear_expr       : expr
+                                  , rhs_clear_expr       : expr
                                   , peer_next            : expr
                                   , next                 : expr
                                   , coordinator          : expr
@@ -373,6 +388,8 @@ control PipelineSymmetricHashJoin [ lbl                  : label
                                   ]
 {
   () => ( (() @StreamingHashJoin( lbl                  = lbl
+                                , lhs_ht_id            = lhs_ht_id
+                                , rhs_ht_id            = rhs_ht_id
                                 , lhs_ht_ty            = lhs_ht_ty
                                 , rhs_ht_ty            = rhs_ht_ty
                                 , lhs_probe            = lhs_probe
@@ -383,6 +400,8 @@ control PipelineSymmetricHashJoin [ lbl                  : label
                                 , empty_out_buffer     = empty_out_buffer
                                 , lhs_pipeline_next    = lhs_pipeline_next
                                 , rhs_pipeline_next    = rhs_pipeline_next
+                                , lhs_clear_expr       = lhs_clear_expr
+                                , rhs_clear_expr       = rhs_clear_expr
                                 , peer_next            = peer_next
                                 , next                 = next
                                 , coordinator          = coordinator
@@ -454,6 +473,8 @@ control SkewShuffle [ lbl             : label
 }
 
 control PipelineSkewJoin [ lbl                  : label
+                         , lhs_ht_id            : label
+                         , rhs_ht_id            : label
                          , lhs_sample_query     : expr
                          , rhs_sample_query     : expr
                          , frequency_threshold  : expr
@@ -470,6 +491,8 @@ control PipelineSkewJoin [ lbl                  : label
                          , empty_out_buffer     : expr
                          , lhs_pipeline_next    : expr
                          , rhs_pipeline_next    : expr
+                         , lhs_clear_expr       : expr
+                         , rhs_clear_expr       : expr
                          , peer_next            : expr
                          , next                 : expr
                          , coordinator          : expr
@@ -477,6 +500,8 @@ control PipelineSkewJoin [ lbl                  : label
                          ]
 {
     () => ( (() @StreamingHashJoin( lbl                  = lbl
+                                  , lhs_ht_id            = lhs_ht_id
+                                  , rhs_ht_id            = rhs_ht_id
                                   , lhs_ht_ty            = lhs_ht_ty
                                   , rhs_ht_ty            = rhs_ht_ty
                                   , lhs_probe            = lhs_probe
@@ -487,6 +512,8 @@ control PipelineSkewJoin [ lbl                  : label
                                   , empty_out_buffer     = empty_out_buffer
                                   , lhs_pipeline_next    = lhs_pipeline_next
                                   , rhs_pipeline_next    = rhs_pipeline_next
+                                  , lhs_clear_expr       = lhs_clear_expr
+                                  , rhs_clear_expr       = rhs_clear_expr
                                   , peer_next            = peer_next
                                   , next                 = next
                                   , coordinator          = coordinator
@@ -584,6 +611,8 @@ control PipelineSkewJoin [ lbl                  : label
 
 
 control JoinSelector [ lbl                  : label
+                     , lhs_ht_id            : label
+                     , rhs_ht_id            : label
                      , lhs_sample_query     : expr
                      , rhs_sample_query     : expr
                      , frequency_threshold  : expr
@@ -600,13 +629,18 @@ control JoinSelector [ lbl                  : label
                      , empty_out_buffer     : expr
                      , lhs_pipeline_next    : expr
                      , rhs_pipeline_next    : expr
+                     , lhs_clear_expr       : expr
+                     , rhs_clear_expr       : expr
                      , peer_next            : expr
                      , next                 : expr
                      , coordinator          : expr
                      , nodes                : expr
+                     , profile              : expr
                      ]
 {
   ( ?e ) @:Skew   => $.[e] @PipelineSkewJoin(lbl                   = [# $[lbl]_skew ]
+                                            , lhs_ht_id            = lhs_ht_id
+                                            , rhs_ht_id            = rhs_ht_id
                                             , lhs_sample_query     = lhs_sample_query
                                             , rhs_sample_query     = rhs_sample_query
                                             , frequency_threshold  = frequency_threshold
@@ -623,12 +657,16 @@ control JoinSelector [ lbl                  : label
                                             , empty_out_buffer     = empty_out_buffer
                                             , lhs_pipeline_next    = lhs_pipeline_next
                                             , rhs_pipeline_next    = rhs_pipeline_next
+                                            , lhs_clear_expr       = lhs_clear_expr
+                                            , rhs_clear_expr       = rhs_clear_expr
                                             , peer_next            = peer_next
                                             , next                 = next
                                             , coordinator          = coordinator
                                             , nodes                = nodes)
 
   ( ?e ) @:NoSkew => $.[e] @PipelineSymmetricHashJoin(lbl                   = [# $[lbl]_pshj ]
+                                                     , lhs_ht_id            = lhs_ht_id
+                                                     , rhs_ht_id            = rhs_ht_id
                                                      , lhs_query            = lhs_query
                                                      , rhs_query            = rhs_query
                                                      , lhs_ht_ty            = lhs_ht_ty
@@ -641,8 +679,30 @@ control JoinSelector [ lbl                  : label
                                                      , empty_out_buffer     = empty_out_buffer
                                                      , lhs_pipeline_next    = lhs_pipeline_next
                                                      , rhs_pipeline_next    = rhs_pipeline_next
+                                                     , lhs_clear_expr       = lhs_clear_expr
+                                                     , rhs_clear_expr       = rhs_clear_expr
                                                      , peer_next            = peer_next
                                                      , next                 = next
                                                      , coordinator          = coordinator
                                                      , nodes                = nodes)
+
+  ( ?e ) @:NoPipeline => $.[e] @DistributedHashJoin(  lbl              = [# $[lbl]_hj ]
+                                                    , lhs_ht_id        = lhs_ht_id
+                                                    , lhs_query        = lhs_query
+                                                    , rhs_query        = rhs_query
+                                                    , lhs_ht_ty        = lhs_ht_ty
+                                                    , rhs_ht_ty        = rhs_ht_ty
+                                                    , lhs_insert_with  = lhs_insert_with
+                                                    , lhs_probe        = lhs_probe
+                                                    , has_outputs      = has_outputs
+                                                    , empty_out_buffer = empty_out_buffer
+                                                    , pipeline_next    = rhs_pipeline_next
+                                                    , lhs_clear_expr   = lhs_clear_expr
+                                                    , peer_next        = peer_next
+                                                    , next             = next
+                                                    , coordinator      = coordinator
+                                                    , nodes            = nodes
+                                                    , profile          = profile
+                                                    )
+
 }

@@ -22,6 +22,8 @@ trigger join : () = \_ -> (
   // Execute the join.
   () @PipelineSymmetricHashJoin(
           lbl               = [# rs_pshj ]
+        , lhs_ht_id         = [# rs_pshj_lhs_ht ]
+        , rhs_ht_id         = [# rs_pshj_rhs_ht ]
 
         , lhs_query         = [$ (my_r_part.groupBy (\r -> r.b)
                                                     (\acc -> \r -> ((acc.insert {a:r.a}); acc))
@@ -72,6 +74,9 @@ trigger join : () = \_ -> (
 
         , lhs_pipeline_next = [$ (\out -> (merge_join_results, master) <- out) ]
         , rhs_pipeline_next = [$ (\out -> (merge_join_results, master) <- out) ]
+
+        , lhs_clear_expr    = [$ (\_ -> rs_pshj_lhs_ht = empty {key: int, value: collection {a:int} @Collection} @Map) ]
+        , rhs_clear_expr    = [$ (\_ -> rs_pshj_rhs_ht = empty {key: int, value: collection {c:int} @Collection} @Map) ]
 
         , peer_next         = [$ () ]
         , next              = [$ print "RS PSHJ done" ]
