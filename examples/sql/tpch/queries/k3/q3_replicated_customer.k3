@@ -56,7 +56,15 @@ declare merge_lior_r : lior_epdods_by_ck_r -> lior_epdods_by_ck_r -> lior_epdods
 
 // Distributed plan: localized hash-join on li-or, broadcast semi-join on lior-cs.
 trigger lineitem_orders : () = \_ -> (
-  let rhs_ht = ((orders.filter  (\o -> o.o_orderdate < "1995-03-15" ))
+  let cs_ht  = (((customer.filter  (\c -> c.c_mktsegment == "BUILDING" ))
+                          .groupBy (\c -> c.c_custkey)
+                                   (\_ -> \_ -> ())
+                                   ())
+                          .fold    (\acc -> \c -> ((acc.insert c); acc))
+                                   (empty {key:int, value: ()} @Map))
+  in
+  let ord_ht = ((orders.filter  (\o -> o.o_orderdate < "1995-03-15"
+                                       and ( cs_ht.member {key: o.o_custkey, value: ()} )))
                        .groupBy (\o -> o.o_orderkey)
                                 (\_ -> \o -> { od : o.o_orderdate
                                              , ck : o.o_custkey
@@ -68,13 +76,11 @@ trigger lineitem_orders : () = \_ -> (
 
   // Build up a local lior_epdods_map
   (((lineitem.filter  (\l -> l.l_shipdate > "1995-03-15" and
-                            (case rhs_ht.lookup {key: l.l_orderkey, value: { od: "", ck: 0, sp: 0 }}
-                             of { Some _ -> true  }
-                                { None   -> false } )))
+                            (ord_ht.member {key: l.l_orderkey, value: { od: "", ck: 0, sp: 0 }})))
             .groupBy (\l -> l.l_orderkey)
                      (\acc -> \l -> acc + (l.l_extendedprice * (1 - l.l_discount)))
                      0.0)
-            .iterate (\li -> case rhs_ht.lookup {key: li.key, value: {od: "", ck: 0, sp: 0}}
+            .iterate (\li -> case ord_ht.lookup {key: li.key, value: {od: "", ck: 0, sp: 0}}
                              of { Some o -> lior_epdods_map.insert_with
                                               { key: o.value.ck
                                               , value: {|key : {ok: int, od: string, sp: int}, value: real
@@ -86,13 +92,11 @@ trigger lineitem_orders : () = \_ -> (
                                 { None   -> () })
   );
 
-  ((customer.filter  (\c -> c.c_mktsegment == "BUILDING" )).iterate (\v ->
-       case lior_epdods_map.lookup {key: v.c_custkey, value: empty lior_epd_by_ods_r @Map} of
-       { Some lo_r -> lo_r.value.iterate (\kv -> q3_peer_result.insert_with kv merge_lior_epd_by_ods) }
-       { None -> () } ) );
+  ( lior_epdods_map.iterate (\lo_r -> lo_r.value.iterate (\kv -> q3_peer_result.insert_with kv merge_lior_epd_by_ods)) );
+
   ( ( (() @:Result) @TPCHBenchmarkWithoutMaster );
     if master == me then ( () @:StopTimer) @Time(lbl=[# loc_JOIN], tag=[$ "Time "]) else ()
-  ) 
+  )
 )
 
 // For ktrace:
