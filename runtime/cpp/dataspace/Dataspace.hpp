@@ -1342,6 +1342,16 @@ class Map {
     return container.find(r.key) != container.end();
   }
 
+  template <class F>
+  unit_t lookup_with(R r, F f) {
+    auto it = container.find(r.key);
+    if (it != container.end()) {
+      return f(*it);
+    }
+
+    return unit_t {};
+  }
+
   bool operator==(const Map& other) const {
     return container == other.container;
   }
