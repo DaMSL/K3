@@ -217,6 +217,7 @@ trigger lineitem_orders_customer : () = \_ -> (
       , next                 = [$ print "LI-OR-CS join all nodes finished." ]
       , coordinator          = [$ master]
       , nodes                = [$ peers]
+      , profile              = [$ false]
     )
 )
 

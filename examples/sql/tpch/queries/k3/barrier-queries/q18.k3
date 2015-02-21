@@ -67,7 +67,7 @@ typedef lo_odtq_by_ck_map = collection lo_odtq_by_ck_r @Map
 declare master : address
 
 declare lo_odtq_by_ck  : lo_odtq_by_ck_map
-declare loc_q_by_ncodt : loc_q_by_ncodt_map
+declare loc_q_by_ncodt : mut loc_q_by_ncodt_map
 
 declare merge_q_by_odt_r : lo_q_by_odt_r -> lo_q_by_odt_r -> lo_q_by_odt_r
   = \a -> \b -> {key: a.key, value: a.value + b.value}
@@ -209,7 +209,7 @@ trigger lineitem_orders_customer : () = \_ -> (
                                              ) @PSendPartitionByKey( dest_trg      = [$ loc_aggregate ]
                                                                    , barrier_trg   = [$ loc_aggregate_peer_barrier ]
                                                                    , nodes         = [$ peers ]
-                                                                   , send_extra_fn = [$ (\x -> x) ]) ))
+                                                                   , send_extra_fn = [$ (\x -> x) ]) )
                                   );
                                   loc_q_by_ncodt = empty { key: {nm:string, ck:int, ok:int, od:string, tp:real}, value: real} @Map
                                ]
@@ -217,6 +217,7 @@ trigger lineitem_orders_customer : () = \_ -> (
       , next                 = [$ print "LI-OR-CS join all nodes finished." ]
       , coordinator          = [$ master]
       , nodes                = [$ peers]
+      , profile              = [$ false]
     )
 )
 

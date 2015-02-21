@@ -174,7 +174,7 @@ control DistributedHashJoin [ lbl              : label
         );
         $[nodes].iterate (\p -> ($[lbl]_lhs_redistribute, p.addr) <- ())
      +> {
-        declare $[lhs_ht_id] : collection $[lhs_ht_ty] @Map
+        declare $[lhs_ht_id] : mut collection $[lhs_ht_ty] @Map
 
         trigger $[lbl]_lhs_redistribute : () = \_ -> (
           (ignore

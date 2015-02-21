@@ -187,6 +187,7 @@ trigger q5_co_start : () = \_ -> (
       , next                 = [$ () ]
       , coordinator          = [$ master]
       , nodes                = [$ peers]
+      , profile              = [$ false]
     )
 )
 

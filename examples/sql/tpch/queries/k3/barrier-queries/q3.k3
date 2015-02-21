@@ -162,6 +162,7 @@ trigger lineitem_orders : () = \_ -> (
       , next                 = [$ () ]
       , coordinator          = [$ master]
       , nodes                = [$ peers]
+      , profile              = [$ false]
       )
 )
 

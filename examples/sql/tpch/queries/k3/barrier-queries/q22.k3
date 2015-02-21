@@ -154,6 +154,7 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
 
         , coordinator          = [$ master]
         , nodes                = [$ peers]
+        , profile              = [$ false]
       )
 
   ) @OnCounter(id=[# customer_subagg_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
