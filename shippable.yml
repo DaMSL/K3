@@ -26,14 +26,30 @@ script:
   - ./tools/ktrace/run_test.sh examples/distributed/amplab/q2.k3 tools/ktrace/tests/amplab_q2 results
   - ./tools/ktrace/run_test.sh examples/distributed/amplab/q3.k3 tools/ktrace/tests/amplab_q3 results
 
-    # TPCH
+    # TPCH Barrier Version
   - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q1.k3 tools/ktrace/tests/tpch_q1 results
-  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q3.k3 tools/ktrace/tests/tpch_q3_partitioned results
-  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q5.k3 tools/ktrace/tests/tpch_q5_partitioned results
+  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q3.k3 tools/ktrace/tests/tpch_q3 results
+  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q5_bushy.k3 tools/ktrace/tests/tpch_q5 results
   # numerical error: - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q6.k3 tools/ktrace/tests/tpch_q6 results
   # incorrect query plan: - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q11.k3 tools/ktrace/tests/tpch_q11 results
-  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q18.k3 tools/ktrace/tests/tpch_q18 results
-  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q22.k3 tools/ktrace/tests/tpch_q22 results
+  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q18.k3 tools/ktrace/tests/tpch_q18 results
+  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q22.k3 tools/ktrace/tests/tpch_q22 results
+
+    # TPCH Pipelined version
+  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/pipeline-queries/q3.k3 tools/ktrace/tests/tpch_q3 results
+  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/pipeline-queries/q5_bushy.k3 tools/ktrace/tests/tpch_q5 results
+  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/pipeline-queries/q18.k3 tools/ktrace/tests/tpch_q18 results
+  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/pipeline-queries/q22.k3 tools/ktrace/tests/tpch_q22 results
+
+    # TPCH Partitioned version
+  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/partitioned-queries/q3.k3 tools/ktrace/tests/tpch_q3_partitioned results
+  # where is q5?- ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/partitioned-queries/q5_bushy.k3 tools/ktrace/tests/tpch_q5_partitioned results
+  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/partitioned-queries/q18.k3 tools/ktrace/tests/tpch_q18_partitioned results
+  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/partitioned-queries/q22.k3 tools/ktrace/tests/tpch_q22_partitioned results
+
+    # TPCH Partitioned and replicated
+  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/partitioned-queries/q3_replicated_customer.k3 tools/ktrace/tests/tpch_q3_replicated results
+   
 
 notifications:
      email:
