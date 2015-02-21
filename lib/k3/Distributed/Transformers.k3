@@ -322,7 +322,6 @@ control StreamingHashJoin [ lbl                  : label
           )
 
           trigger $[lbl]_lhs_peer_barrier : () = \_ -> (
-            print "Join LHS finished processing." ;
             (
               // LHS is finished, we no longer need to build/probe the RHS
               $[lbl]_lhs_done = true;
@@ -335,7 +334,6 @@ control StreamingHashJoin [ lbl                  : label
           )
 
           trigger $[lbl]_rhs_peer_barrier : () = \_ -> (
-            print "Join RHS finished processing." ;
             (
               // RHS is finished, we no longer need to build/probe the LHS
               $[lbl]_rhs_done = true;

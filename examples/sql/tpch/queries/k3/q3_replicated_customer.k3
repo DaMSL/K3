@@ -86,17 +86,13 @@ trigger lineitem_orders : () = \_ -> (
                                 { None   -> () })
   );
 
-  peers.iterate (\p -> (loc_probe_rhs, p.addr) <- ())
-)
-
-trigger loc_probe_rhs : () = \vals -> (
-  (((customer.filter  (\c -> c.c_mktsegment == "BUILDING" )).map (\c -> { c_custkey : c.c_custkey })).iterate (\v ->
-       case lior_epdods_map.lookup {key: v.elem.c_custkey, value: empty lior_epd_by_ods_r @Map} of
+  ((customer.filter  (\c -> c.c_mktsegment == "BUILDING" )).iterate (\v ->
+       case lior_epdods_map.lookup {key: v.c_custkey, value: empty lior_epd_by_ods_r @Map} of
        { Some lo_r -> lo_r.value.iterate (\kv -> q3_peer_result.insert_with kv merge_lior_epd_by_ods) }
        { None -> () } ) );
   ( ( (() @:Result) @TPCHBenchmarkWithoutMaster );
     if master == me then ( () @:StopTimer) @Time(lbl=[# loc_JOIN], tag=[$ "Time "]) else ()
-  ) @OnCounter(id=[# loc_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+  ) 
 )
 
 // For ktrace:
