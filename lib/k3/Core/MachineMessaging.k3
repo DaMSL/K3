@@ -31,8 +31,8 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
           @:Pinned
           declare $[lbl]_machvar_gc_ids : collection {key: int, value: int} @Map
 
-          // @:Pinned
           // TODO: pinning this causes a code generator bug.
+          @:Pinned
           declare $[lbl]_machvar_cnt : mut int = 0
 
           @:Pinned
