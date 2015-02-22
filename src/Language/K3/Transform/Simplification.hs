@@ -248,7 +248,7 @@ foldConstants :: K3 Expression -> Either String (K3 Expression)
 foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annotations expr) return
   where
     simplifyAsFoldedExpr :: K3 Expression -> FoldedExpr
-    simplifyAsFoldedExpr e = foldMapTree simplifyConstants (Left $ VTuple []) e
+    simplifyAsFoldedExpr e = foldMapTree simplifyWithRule (Left $ VTuple []) e
 
     simplifyConstants :: [Either Value (K3 Expression)] -> K3 Expression -> FoldedExpr
     simplifyConstants _ n@(tag -> EVariable _) = return $ Right n
@@ -291,7 +291,9 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
     simplifyConstants ch n@(tag -> ELetIn i) =
       let immutSource = onQualifiedExpression (head $ children n) True False in
       case (head ch, last ch, immutSource) of
-        (_, Left v2, _)             -> return $ Left v2
+        (_, Left v2, _) -> either (const $ return True) (readOnly False) (head ch) >>= \initRO ->
+                              if initRO then return (Left v2) else rebuildNode n ch
+
         (Left v, Right bodyE, True) -> let numOccurs = length $ filter (== i) $ freeVariables bodyE in
                                        if numOccurs == 1 then substituteBinding i v bodyE >>= simplifyAsFoldedExpr
                                                          else rebuildNode n ch
@@ -300,7 +302,9 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
     -- TODO: substitute when we have read-only mutable binds.
     simplifyConstants ch n@(tag -> EBindAs b) =
       case (b, head ch, last ch) of
-        (_, _, Left v) -> return $ Left v
+        (_, _, Left v) -> do
+          initRO <- either (const $ return True) (readOnly False) $ head ch
+          if initRO then return (Left v) else rebuildNode n ch
 
         (BTuple ids,  Left (VTuple vqs), Right bodyE) ->
           (foldM substituteQualifiedField bodyE $ zip ids vqs) >>= simplifyAsFoldedExpr
@@ -323,14 +327,15 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
         _ -> Left "Invalid if-then-else predicate simplification"
 
     -- TODO: substitute when we have read-only mutable bnds.
-    simplifyConstants ch n@(tag -> ECaseOf i) =
+    simplifyConstants ch n@(tag -> ECaseOf i) = do
+      initRO <- either (const $ return True) (readOnly False) $ head ch
       case head ch of
-        Left (VOption (Just v, MemImmut)) ->
+        Left (VOption (Just v, MemImmut)) | initRO ->
           (case ch !! 1 of
             Left v2     -> return $ Left v2
             Right someE -> substituteBinding i v someE >>= simplifyAsFoldedExpr)
 
-        Left (VOption (Nothing,  _)) -> return $ last ch
+        Left (VOption (Nothing,  _)) | initRO -> return $ last ch
         Right _ -> rebuildNode n ch
         _ -> Left "Invalid case-of source simplification"
 
@@ -422,6 +427,24 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
             (\l -> Right $ EC.record $ zip ids $ map (uncurry (@+)) $ zip l $ map eQualifier qs)
 
     valueAsExpression v = Left $ "Unable to reinject value during simplification: " ++ show v
+
+    -- Constant folding logging.
+    simplifyWithRule :: [Either Value (K3 Expression)] -> K3 Expression -> FoldedExpr
+    simplifyWithRule ch e = do
+      veE <- simplifyConstants ch e
+      localLog $ showCFRule (show $ tag e) ch veE e
+      return veE
+
+    showCFRule rtag ch vOrE e =
+      boxToString $ (rpsep %+ premise) %$ separator %$ (rpsep %+ conclusion)
+      where rprefix        = unwords [rtag, maybe "<no uid>" (\(EUID euid) -> show euid) $ e @~ isEUID]
+            (rplen, rpsep) = (length rprefix, [replicate rplen ' '])
+            premise        = if null ch then ["<empty>"] else (intersperseBoxes [" , "] $ map prettyVE ch)
+            premLens       = map length premise
+            headWidth      = if null premLens then 4 else maximum premLens
+            separator      = [rprefix ++ replicate headWidth '-']
+            conclusion     = prettyVE vOrE
+            prettyVE x     = either prettyLines prettyLines x
 
 
 {- Constant expression evaluation.
