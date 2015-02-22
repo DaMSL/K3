@@ -32,6 +32,7 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
           declare $[lbl]_machvar_gc_ids : collection {key: int, value: int} @Map
 
           // @:Pinned
+          // TODO: pinning this causes a code generator bug.
           declare $[lbl]_machvar_cnt : mut int = 0
 
           @:Pinned
@@ -61,19 +62,54 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
 
   ((\?x -> ?b) @:Shuffle)
      => (\$#[x] -> $.[b])
-     +> { trigger $[lbl]_peerproxy : () = \_ ->
-            $[lbl]_machvar.lookup_with {key: me, value: $[lbl]_machvar_default} (\$#[x] -> $.[b])
+     +> { trigger $[lbl]_peerproxy : int = \msg_id -> (
+            $[lbl]_machvar.lookup_with
+                {key: msg_id, value: $[lbl]_machvar_peer_default}
+                (\r ->
+                  ( r.value.lookup_with {key: me, value: $[lbl]_machvar_default}
+                                        (\v -> (\$#[x] -> $.[b]) v.value) );
+
+                  ( $[masters_map].lookup_with {key:me, value:me}
+                                               (\ms -> ($[lbl]_machvar_gc, ms.value) <- msg_id) ))
+          )
         }
 
   ( ignore ( ?e @: SendShuffle ) )
      => $.[e].iterate (\v -> ($[lbl]_machproxy, v.key) <- v.value)
-     +> { @:Pinned
-          declare $[lbl]_machvar : mut collection {key: address, value: $[send_ty]} @Map
+     +> {
+          @:Pinned
+          declare $[lbl]_machvar : collection {key: int, value: collection {key: address, value: $[send_ty]} @Map} @Map
+
+          @:Pinned
+          declare $[lbl]_machvar_gc_ids : collection {key: int, value: int} @Map
+
+          // @:Pinned
+          // TODO: pinning this causes a code generator bug.
+          declare $[lbl]_machvar_cnt : mut int = 0
+
+          @:Pinned
+          declare $[lbl]_machvar_peer_default : collection {key: address, value: $[send_ty]} @Map
+
+          @:Pinned
           declare $[lbl]_machvar_default : $[send_ty]
 
           trigger $[lbl]_machproxy : collection {key: address, value: $[send_ty]} @Map = \m -> (
-            $[lbl]_machvar = m;
-            local_peers.iterate (\a -> ($[lbl]_peerproxy, a.addr) <- ())
+            ( $[lbl]_machvar.insert {key: $[lbl]_machvar_cnt, value: m} );
+            ( $[lbl]_machvar_gc_ids.insert {key: $[lbl]_machvar_cnt, value: local_peers.size()} );
+            ( local_peers.iterate (\a -> ($[lbl]_peerproxy, a.addr) <- $[lbl]_machvar_cnt) );
+            $[lbl]_machvar_cnt = $[lbl]_machvar_cnt + 1
+          )
+
+          // For simplicity, garbage collection in bulk across all peers, rather than per-peer.
+          trigger $[lbl]_machvar_gc : int = \msg_id -> (
+            $[lbl]_machvar_gc_ids.lookup_with {key: msg_id, value: 0}
+              (\r -> if r.value == 1
+                     then ( ($[lbl]_machvar_gc_ids.erase r);
+                            ($[lbl]_machvar.erase {key:msg_id, value: $[lbl]_machvar_peer_default}) )
+                     else ( $[lbl]_machvar_gc_ids.upsert_with r
+                              (\_ -> {key: r.key, value: r.value - 1})
+                              (\_ -> {key: r.key, value: r.value - 1}) )
+              )
           )
         }
 }
