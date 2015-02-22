@@ -170,12 +170,13 @@ namespace K3 {
       string log_level,
       string log_path,
       string result_v,
-      string result_p
+      string result_p,
+      shared_ptr<MessageQueues> qs
     ): LogMT("Engine") {
-      configure(simulation, sys_env, _internal_codec, log_level, log_path, result_v, result_p);
+      configure(simulation, sys_env, _internal_codec, log_level, log_path, result_v, result_p, qs);
     }
 
-    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level,string log_path, string result_var, string result_path);
+    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level,string log_path, string result_var, string result_path, shared_ptr<MessageQueues> qs);
 
     //-----------
     // Messaging.
@@ -366,8 +367,7 @@ namespace K3 {
 
     void logResult(shared_ptr<MessageProcessor>& mp) {
       if (result_var != "") {
-        auto n = nodes();
-        for (const auto& a : n) {
+	auto a = *me;
           auto dir = result_path != "" ? result_path : ".";
           auto s = dir + "/" + addressAsString(a) + "_Result.txt";
           std::ofstream ofs;
@@ -379,22 +379,14 @@ namespace K3 {
           else {
             throw std::runtime_error("Cannot log result variable, does not exist: " + result_var);
           }
-        }
       }
     }
 
     //-------------------
     // Engine statistics.
 
-    list<Address> nodes() {
-      list<Address> r;
-      if ( deployment ) { r = deployedNodes(*deployment); }
-      else { logAt(boost::log::trivial::error, "Invalid system environment."); }
-      return r;
-    }
-
     tuple<size_t, size_t> statistics() {
-      return make_tuple(queues? queues->size() : 0,
+      return make_tuple(queues? queues->size(*me) : 0,
                         endpoints? endpoints->numEndpoints() : 0);
     }
 
@@ -418,7 +410,7 @@ namespace K3 {
   protected:
     shared_ptr<EngineConfiguration> config;
     shared_ptr<EngineControl>       control;
-    shared_ptr<SystemEnvironment>   deployment;
+    shared_ptr<Address>             me;
     shared_ptr<InternalCodec>       internal_codec;
     shared_ptr<MessageQueues>       queues;
     // shared_ptr<WorkerPool>          workers;
