@@ -182,13 +182,15 @@ trigger lineitem_orders_customer : () = \_ -> (
   (print "loc");
   ( (() @:StartTimer) @Time(lbl=[# loc_JOIN], tag=[$ "Time "]) );
   // Broadcast customers to all peers with li-or buckets for semi-join.
-  (customer.filter  (\c -> c.c_mktsegment == "BUILDING" ))
-           .map     (\c -> { c_custkey : c.c_custkey }) @ DispatchByMachine
-                                                        [ lbl = [# loc_broadcast]
-                                                        , dest_trg = [$ loc_probe_rhs]
-                                                        , send_ty = [$ cs_ck_bag]
-                                                        , send_default = [$ empty cs_ck_bag ]
-                                                        ]
+  ((customer.filter  (\c -> c.c_mktsegment == "BUILDING" ))
+            .map     (\c -> { c_custkey : c.c_custkey })) @ BroadcastByMachine
+                                                          ( lbl = [# loc_broadcast]
+                                                          , dest_trg = [$ loc_probe_rhs]
+                                                          , masters = masters
+                                                          , send_ty = [$ cs_ck_bag]
+                                                          , send_default = [$ empty cs_ck_bag ]
+                                                          , send_extra_fn = [$ \x -> x ]
+                                                          )
 )
 
 // TODO: sort and limit on q3_peer_result
@@ -228,11 +230,11 @@ trigger loc_probe_rhs : cs_ck_bag = (\vals -> (
     ) else ()
   ) @OnCounter(id=[# loc_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 )) @ DispatchByMachine
-   [ lbl = [# loc_broadcast]
+   ( lbl = [# loc_broadcast]
    , dest_trg = loc_probe_rhs
    , send_ty = [$ cs_ck_bag]
    , send_default = [$ empty cs_ck_bag]
-   ]
+   )
 
 // For ktrace:
 declare results: collection {orderkey: int, revenue: real, orderdate: string, shippriority: int} @Collection
