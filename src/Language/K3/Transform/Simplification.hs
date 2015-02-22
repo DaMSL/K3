@@ -35,7 +35,11 @@ import qualified Language.K3.Core.Constructor.Expression as EC
 import qualified Language.K3.Core.Constructor.Type       as TC
 import qualified Language.K3.Core.Constructor.Literal    as LC
 
-import qualified Language.K3.Analysis.SEffects.Inference as SE
+import Language.K3.Analysis.Provenance.Core
+import Language.K3.Analysis.SEffects.Core
+import qualified Language.K3.Analysis.Provenance.Constructors as PC
+import qualified Language.K3.Analysis.SEffects.Constructors   as FC
+import qualified Language.K3.Analysis.SEffects.Inference      as SE
 
 import Language.K3.Transform.Common
 import Language.K3.Interpreter.Data.Accessors
@@ -234,7 +238,7 @@ noWrites _ e = either (Left . T.unpack) Right $ do
 
 
 -- | Constant folding
-type FoldedExpr = Either String (Either Value (K3 Expression))
+type FoldedExpr = Either String (Either (Value, Tree UID) (K3 Expression))
 
 type BinOp              a = (a -> a -> a)
 type NumericFunction    a = (BinOp Word8) -> (BinOp Int) -> (BinOp Double) -> a
@@ -248,11 +252,11 @@ foldConstants :: K3 Expression -> Either String (K3 Expression)
 foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annotations expr) return
   where
     simplifyAsFoldedExpr :: K3 Expression -> FoldedExpr
-    simplifyAsFoldedExpr e = foldMapTree simplifyConstants (Left $ VTuple []) e
+    simplifyAsFoldedExpr e = foldMapTree simplifyWithRule (Left (VTuple [], leafUID $ UID (-1))) e
 
-    simplifyConstants :: [Either Value (K3 Expression)] -> K3 Expression -> FoldedExpr
+    simplifyConstants :: [Either (Value, Tree UID) (K3 Expression)] -> K3 Expression -> FoldedExpr
     simplifyConstants _ n@(tag -> EVariable _) = return $ Right n
-    simplifyConstants _ (tag &&& annotations -> (EConstant c, anns)) = constant c anns
+    simplifyConstants _ n@(tag &&& annotations -> (EConstant c, anns)) = constant c (uidOf n) anns
 
     simplifyConstants ch n@(tag -> EOperate OAdd) = applyNum ch n (numericOp (+) (+) (+))
     simplifyConstants ch n@(tag -> EOperate OSub) = applyNum ch n (numericOp (-) (-) (-))
@@ -278,7 +282,7 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
     -- | We do not process indirections as a literal constructor here, since
     --   in Haskell this requires a side effect.
     simplifyConstants ch n@(tag -> ESome) =
-      applyVCtor ch n (asUnary $ someCtor $ extractQualifier $ head $ children n)
+      applyVCtor ch n (\a b -> asUnary (someCtor (extractQualifier $ head $ children n) a) b)
 
     simplifyConstants ch n@(tag -> ETuple) =
       applyVCtor ch n (tupleCtor $ map extractQualifier $ children n)
@@ -291,7 +295,9 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
     simplifyConstants ch n@(tag -> ELetIn i) =
       let immutSource = onQualifiedExpression (head $ children n) True False in
       case (head ch, last ch, immutSource) of
-        (_, Left v2, _)             -> return $ Left v2
+        (_, Left v2, _) -> either (const $ return True) (readOnly False) (head ch) >>= \initRO ->
+                              if initRO then return (Left v2) else rebuildNode n ch
+
         (Left v, Right bodyE, True) -> let numOccurs = length $ filter (== i) $ freeVariables bodyE in
                                        if numOccurs == 1 then substituteBinding i v bodyE >>= simplifyAsFoldedExpr
                                                          else rebuildNode n ch
@@ -300,13 +306,15 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
     -- TODO: substitute when we have read-only mutable binds.
     simplifyConstants ch n@(tag -> EBindAs b) =
       case (b, head ch, last ch) of
-        (_, _, Left v) -> return $ Left v
+        (_, _, Left v) -> do
+          initRO <- either (const $ return True) (readOnly False) $ head ch
+          if initRO then return (Left v) else rebuildNode n ch
 
-        (BTuple ids,  Left (VTuple vqs), Right bodyE) ->
-          (foldM substituteQualifiedField bodyE $ zip ids vqs) >>= simplifyAsFoldedExpr
+        (BTuple ids,  Left (VTuple vqs, Node _ cu), Right bodyE) ->
+          (foldM substituteQualifiedField bodyE $ zip3 ids vqs cu) >>= simplifyAsFoldedExpr
 
-        (BRecord ijs, Left (VRecord nvqs), Right bodyE) -> do
-          subVQs <- mapM (\(s,t) -> maybe (invalidRecordBinding s) (return . (t,)) $ Map.lookup s nvqs) ijs
+        (BRecord ijs, Left (VRecord nvqs, Node _ cu), Right bodyE) -> do
+          subVQs <- mapM (\((s,t),u) -> maybe (invalidRecordBinding s) (return . (t,,u)) $ Map.lookup s nvqs) $ zip ijs cu
           foldM substituteQualifiedField bodyE subVQs >>= simplifyAsFoldedExpr
 
         (_, _, _) -> rebuildNode n ch
@@ -317,68 +325,72 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
     -- Branch simplification.
     simplifyConstants ch n@(tag -> EIfThenElse) =
       case head ch of
-        Left (VBool True)  -> return (ch !! 1)
-        Left (VBool False) -> return $ last ch
+        Left (VBool True, _)  -> return (ch !! 1)
+        Left (VBool False, _) -> return $ last ch
         Right _ -> rebuildNode n ch
         _ -> Left "Invalid if-then-else predicate simplification"
 
     -- TODO: substitute when we have read-only mutable bnds.
-    simplifyConstants ch n@(tag -> ECaseOf i) =
+    simplifyConstants ch n@(tag -> ECaseOf i) = do
+      initRO <- either (const $ return True) (readOnly False) $ head ch
       case head ch of
-        Left (VOption (Just v, MemImmut)) ->
+        Left (VOption (Just v, MemImmut), Node _ [cu]) | initRO ->
           (case ch !! 1 of
             Left v2     -> return $ Left v2
-            Right someE -> substituteBinding i v someE >>= simplifyAsFoldedExpr)
+            Right someE -> substituteBinding i (v,cu) someE >>= simplifyAsFoldedExpr)
 
-        Left (VOption (Nothing,  _)) -> return $ last ch
+        Left (VOption (Nothing,  _), _) | initRO -> return $ last ch
         Right _ -> rebuildNode n ch
         _ -> Left "Invalid case-of source simplification"
 
     -- Projection simplification on a constant record.
     -- Since we do not simplify collections, VCollections cannot appear
     -- as the source of the projection expression.
+    simplifyConstants ch n@(tag -> EProject i) = rebuildNode n ch
+    {-
     simplifyConstants ch n@(tag -> EProject i) =
         case head ch of
-          Left (VRecord nvqs) -> maybe fieldError (return . Left . fst) $ Map.lookup i nvqs
+          Left (VRecord nvqs, _) -> maybe fieldError (return . Left . fst) $ Map.lookup i nvqs
           Right _ -> rebuildNode n ch
           _ -> Left "Invalid projection source simplification"
 
       where fieldError = Left $ "Unknown record field in project simplification: " ++ i
+    -}
 
     -- The default case is to rebuild the current node as an expression.
     -- This handles: lambda, assignment, addresses, and self expressions
     simplifyConstants ch n = rebuildNode n ch
 
-    rebuildValue :: [Annotation Expression] -> Value -> Either String (K3 Expression)
-    rebuildValue anns v = valueAsExpression v >>= return . flip (foldl (@+)) anns
+    rebuildValue :: [Annotation Expression] -> (Value, Tree UID) -> Either String (K3 Expression)
+    rebuildValue anns (v, ut) = valueAsExpression ut v >>= (\(e,_,_) -> return $ foldl (@+) e anns)
 
-    rebuildNode :: K3 Expression -> [Either Value (K3 Expression)] -> FoldedExpr
+    rebuildNode :: K3 Expression -> [Either (Value, Tree UID) (K3 Expression)] -> FoldedExpr
     rebuildNode n ch = do
         let chAnns = map annotations $ children n
         nch <- mapM (\(vOrE, anns) -> either (rebuildValue anns) return vOrE) $ zip ch chAnns
         return . Right $ Node (tag n :@: annotations n) nch
 
-    withValueChildren :: K3 Expression -> [Either Value (K3 Expression)]
-                      -> ([Value] -> FoldedExpr) -> FoldedExpr
-    withValueChildren n ch f = if all isLeft ch then f (lefts ch) else rebuildNode n ch
+    withValueChildren :: K3 Expression -> [Either (Value, Tree UID) (K3 Expression)]
+                      -> (UID -> [(Value, Tree UID)] -> FoldedExpr) -> FoldedExpr
+    withValueChildren n ch f = if all isLeft ch then f (uidOf n) (lefts ch) else rebuildNode n ch
 
-    substituteQualifiedField :: K3 Expression -> (Identifier, (Value, VQualifier)) -> Either String (K3 Expression)
-    substituteQualifiedField targetE (n, (v, MemImmut)) = substituteBinding n v targetE
-    substituteQualifiedField targetE (_, (_, MemMut))   = return targetE
+    substituteQualifiedField :: K3 Expression -> (Identifier, (Value, VQualifier), Tree UID) -> Either String (K3 Expression)
+    substituteQualifiedField targetE (n, (v, MemImmut), ut) = substituteBinding n (v, ut) targetE
+    substituteQualifiedField targetE (_, (_, MemMut), _)    = return targetE
 
-    substituteBinding :: Identifier -> Value -> K3 Expression -> Either String (K3 Expression)
-    substituteBinding i iV targetE = do
-      iE <- valueAsExpression iV
+    substituteBinding :: Identifier -> (Value, Tree UID) -> K3 Expression -> Either String (K3 Expression)
+    substituteBinding i (iV, ut) targetE = do
+      (iE,_,_) <- valueAsExpression ut iV
       return $ substituteImmutBinding i iE targetE
 
-    someCtor        q v = return . Left $ VOption (Just v, q)
-    tupleCtor      qs l = return . Left $ VTuple  $ zip l qs
-    recordCtor ids qs l = return . Left $ VRecord $ Map.fromList $ zip ids $ zip l qs
+    someCtor        q u v = return . Left . (, Node u [snd v]) $ VOption (Just $ fst v, q)
+    tupleCtor      qs u l = return . Left . (, Node u $ map snd l) $ VTuple  $ zip (map fst l) qs
+    recordCtor ids qs u l = return . Left . (, Node u $ map snd l) $ VRecord $ Map.fromList $ zip ids $ zip (map fst l) qs
 
-    applyNum          ch n op   = withValueChildren n ch $ asBinary op
-    applyCmp          ch n op   = withValueChildren n ch $ asBinary (comparison op)
-    applyBool         ch n op   = withValueChildren n ch $ asBinary (logic op)
-    applyOp           ch n op   = withValueChildren n ch $ op
+    applyNum          ch n op   = withValueChildren n ch $ (const $ asBinary op)
+    applyCmp          ch n op   = withValueChildren n ch $ (const $ asBinary $ comparison op)
+    applyBool         ch n op   = withValueChildren n ch $ (const $ asBinary $ logic op)
+    applyOp           ch n op   = withValueChildren n ch $ (const $ op)
     applyVCtor        ch n ctor = withValueChildren n ch $ ctor
 
     asUnary f [a] = f a
@@ -398,91 +410,131 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
     extractQualifier :: K3 Expression -> VQualifier
     extractQualifier e = onQualifiedExpression e MemImmut MemMut
 
-    valueAsExpression :: Value -> Either String (K3 Expression)
-    valueAsExpression (VBool   v)       = Right . EC.constant $ CBool   v
-    valueAsExpression (VByte   v)       = Right . EC.constant $ CByte   v
-    valueAsExpression (VInt    v)       = Right . EC.constant $ CInt    v
-    valueAsExpression (VReal   v)       = Right . EC.constant $ CReal   v
-    valueAsExpression (VString v)       = Right . EC.constant $ CString v
+    valueAsExpression :: Tree UID -> Value -> Either String (K3 Expression, K3 Provenance, K3 Effect)
+    valueAsExpression (Node u _) (VBool   v) = leafVE u $ EC.constant $ CBool   v
+    valueAsExpression (Node u _) (VByte   v) = leafVE u $ EC.constant $ CByte   v
+    valueAsExpression (Node u _) (VInt    v) = leafVE u $ EC.constant $ CInt    v
+    valueAsExpression (Node u _) (VReal   v) = leafVE u $ EC.constant $ CReal   v
+    valueAsExpression (Node u _) (VString v) = leafVE u $ EC.constant $ CString v
 
-    valueAsExpression (VOption (Nothing, vq)) =
-      Right . EC.constant $ CNone $ noneQualifier vq
+    valueAsExpression (Node u _) (VOption (Nothing, vq)) =
+      leafVE u $ EC.constant $ CNone $ noneQualifier vq
 
-    valueAsExpression (VOption (Just v, vq)) =
-      valueAsExpression v >>= Right . (\e -> e @+ eQualifier vq) . EC.some
+    valueAsExpression (Node u [cu]) (VOption (Just v, vq)) = do
+      (ce, cp, cf) <- valueAsExpression cu v
+      let p = PC.pdata Nothing [cp]
+      let f = FC.fdata Nothing [cf]
+      let e = foldl (@+) (EC.some ce) [eQualifier vq, EUID u, EProvenance p, ESEffect FC.fnone, EFStructure f]
+      Right (e, p, f)
 
-    valueAsExpression (VTuple  vqs) =
-      mapM (valueAsExpression . fst) vqs >>=
-        (\l -> Right $ EC.tuple $ map (uncurry (@+)) $ zip l $ map (eQualifier . snd) vqs)
+    valueAsExpression (Node u cu) (VTuple vqs) = do
+      (cl, cpl, cfl) <- mapM (\(a,(b,_)) -> valueAsExpression a b) (zip cu vqs) >>= return . unzip3
+      let p = PC.pdata Nothing cpl
+      let f = FC.fdata Nothing cfl
+      let e = foldl (@+) (EC.tuple $ map (uncurry (@+)) $ zip cl $ map (eQualifier . snd) vqs)
+                         [EUID u, EProvenance p, ESEffect FC.fnone, EFStructure f]
+      Right (e, p, f)
 
-    valueAsExpression (VRecord nvqs) =
+    valueAsExpression (Node u cu) (VRecord nvqs) = do
       let (ids, vqs) = unzip $ Map.toList nvqs
-          (vs, qs)   = unzip vqs
-      in mapM valueAsExpression vs >>=
-            (\l -> Right $ EC.record $ zip ids $ map (uncurry (@+)) $ zip l $ map eQualifier qs)
+      let (vs, qs)   = unzip vqs
+      (cl, cpl, cfl) <- mapM (uncurry valueAsExpression) (zip cu vs) >>= return . unzip3
+      let p = PC.pdata (Just ids) cpl
+      let f = FC.fdata (Just ids) cfl
+      let e = foldl (@+) (EC.record $ zip ids $ map (uncurry (@+)) $ zip cl $ map eQualifier qs)
+                         [EUID u, EProvenance p, ESEffect FC.fnone, EFStructure f]
+      Right (e, p, f)
 
-    valueAsExpression v = Left $ "Unable to reinject value during simplification: " ++ show v
+    valueAsExpression _ v = Left $ "Unable to reinject value during simplification: " ++ show v
+
+    leafVE u e = Right . (, PC.ptemp, FC.fnone) $ foldl (@+) e $ constantAnns u
+    constantAnns u = [EUID u, EProvenance PC.ptemp, ESEffect FC.fnone, EFStructure FC.fnone]
+
+    {- Constant expression evaluation.
+       These are similar to the interpreter's evaluation functions, except
+       that they are pure, and do not operate in a stateful interpretation monad.
+     -}
+
+    -- | Evaluate a constant. This is similar to the intepreter's evaluation except
+    --   that we pass on collections, yielding an expression.
+    constant :: Constant -> UID -> [Annotation Expression] -> FoldedExpr
+    constant   (CBool b)   u    _ = leafCE u $ VBool b
+    constant   (CByte w)   u    _ = leafCE u $ VByte w
+    constant   (CInt i)    u    _ = leafCE u $ VInt i
+    constant   (CReal r)   u    _ = leafCE u $ VReal r
+    constant   (CString s) u    _ = leafCE u $ VString s
+    constant   (CNone _)   u anns = leafCE u $ VOption (Nothing, vQualOfAnnsE anns)
+    constant c@(CEmpty _)  _ anns = return . Right $ Node (EConstant c :@: anns) []
+
+    numericOp :: NumericFunction ((Value, Tree UID) -> (Value, Tree UID) -> FoldedExpr)
+    numericOp byteOpF intOpF realOpF a b =
+      case (fst a, fst b) of
+        (VByte x, VByte y) -> return . Left . (, snd a) $ VByte $ byteOpF x y
+        (VByte x, VInt  y) -> return . Left . (, snd a) $ VInt  $ intOpF (fromIntegral x) y
+        (VByte x, VReal y) -> return . Left . (, snd a) $ VReal $ realOpF (fromIntegral x) y
+        (VInt  x, VByte y) -> return . Left . (, snd a) $ VInt  $ intOpF x (fromIntegral y)
+        (VInt  x, VInt  y) -> return . Left . (, snd a) $ VInt  $ intOpF x y
+        (VInt  x, VReal y) -> return . Left . (, snd a) $ VReal $ realOpF (fromIntegral x) y
+        (VReal x, VByte y) -> return . Left . (, snd a) $ VReal $ realOpF x (fromIntegral y)
+        (VReal x, VInt  y) -> return . Left . (, snd a) $ VReal $ realOpF x (fromIntegral y)
+        (VReal x, VReal y) -> return . Left . (, snd a) $ VReal $ realOpF x y
+        _                  -> Left "Invalid numeric binary operands"
+
+    -- | Similar to numericOp above, except disallow a zero value for the second argument.
+    numericExceptZero :: NumericFunction ((Value, Tree UID) -> (Value, Tree UID) -> FoldedExpr)
+    numericExceptZero byteOpF intOpF realOpF a b =
+      case fst b of
+        VByte 0 -> Left "Zero denominator in numeric operation"
+        VInt  0 -> Left "Zero denominator in numeric operation"
+        VReal 0 -> Left "Zero denominator in numeric operation"
+        _       -> numericOp byteOpF intOpF realOpF a b
+
+    flipOp :: (Value, Tree UID) -> FoldedExpr
+    flipOp (VBool b, u) = return . Left . (, u) . VBool $ not b
+    flipOp (VInt  i, u) = return . Left . (, u) . VInt  $ negate i
+    flipOp (VReal r, u) = return . Left . (, u) . VReal $ negate r
+    flipOp _       = Left "Invalid negation/not operation"
+
+    comparison :: ComparisonFunction ((Value, Tree UID) -> (Value, Tree UID) -> FoldedExpr)
+    comparison cmp a b = return . Left . (, snd a) . VBool . cmp $ compare (fst a) (fst b)
+
+    logic :: LogicFunction ((Value, Tree UID) -> (Value, Tree UID) -> FoldedExpr)
+    logic op a b =
+      case (fst a, fst b) of
+        (VBool x, VBool y) -> return . Left . (, snd a) . VBool $ op x y
+        _ -> Left $ "Invalid boolean logic operands"
+
+    stringOp :: (String -> String -> String) -> (Value, Tree UID) -> (Value, Tree UID) -> FoldedExpr
+    stringOp op a b =
+      case (fst a, fst b) of
+        (VString s, VString t) -> return . Left . (, snd a) . VString $ op s t
+        _ -> Left $ "Invalid string operands"
+
+    leafCE u c = return . Left . (, leafUID u) $ c
+
+    uidOf e   = maybe uidErr (\case {(EUID u) -> u ; _ -> uidErr}) $ e @~ isEUID
+    uidErr    = error "Invalid UID in CF"
+    leafUID u = Node u []
+
+    -- Constant folding logging.
+    simplifyWithRule :: [Either (Value, Tree UID) (K3 Expression)] -> K3 Expression -> FoldedExpr
+    simplifyWithRule ch e = do
+      veE <- simplifyConstants ch e
+      localLog $ showCFRule (show $ tag e) ch veE e
+      return veE
+
+    showCFRule rtag ch vOrE e =
+      boxToString $ (rpsep %+ premise) %$ separator %$ (rpsep %+ conclusion)
+      where rprefix        = unwords [rtag, maybe "<no uid>" (\(EUID euid) -> show euid) $ e @~ isEUID]
+            (rplen, rpsep) = (length rprefix, [replicate rplen ' '])
+            premise        = if null ch then ["<empty>"] else (intersperseBoxes [" , "] $ map prettyVE ch)
+            premLens       = map length premise
+            headWidth      = if null premLens then 4 else maximum premLens
+            separator      = [rprefix ++ replicate headWidth '-']
+            conclusion     = prettyVE vOrE
+            prettyVE x     = either (prettyLines . fst) prettyLines x
 
 
-{- Constant expression evaluation.
-   These are similar to the interpreter's evaluation functions, except
-   that they are pure, and do not operate in a stateful interpretation monad.
- -}
-
--- | Evaluate a constant. This is similar to the intepreter's evaluation except
---   that we pass on collections, yielding an expression.
-constant :: Constant -> [Annotation Expression] -> FoldedExpr
-constant   (CBool b)     _ = return . Left  $ VBool b
-constant   (CByte w)     _ = return . Left  $ VByte w
-constant   (CInt i)      _ = return . Left  $ VInt i
-constant   (CReal r)     _ = return . Left  $ VReal r
-constant   (CString s)   _ = return . Left  $ VString s
-constant   (CNone _)  anns = return . Left  $ VOption (Nothing, vQualOfAnnsE anns)
-constant c@(CEmpty _) anns = return . Right $ Node (EConstant c :@: anns) []
-
-numericOp :: NumericFunction (Value -> Value -> FoldedExpr)
-numericOp byteOpF intOpF realOpF a b =
-  case (a, b) of
-    (VByte x, VByte y) -> return . Left . VByte $ byteOpF x y
-    (VByte x, VInt y)  -> return . Left . VInt  $ intOpF (fromIntegral x) y
-    (VByte x, VReal y) -> return . Left . VReal $ realOpF (fromIntegral x) y
-    (VInt x,  VByte y) -> return . Left . VInt  $ intOpF x (fromIntegral y)
-    (VInt x,  VInt y)  -> return . Left . VInt  $ intOpF x y
-    (VInt x,  VReal y) -> return . Left . VReal $ realOpF (fromIntegral x) y
-    (VReal x, VByte y) -> return . Left . VReal $ realOpF x (fromIntegral y)
-    (VReal x, VInt y)  -> return . Left . VReal $ realOpF x (fromIntegral y)
-    (VReal x, VReal y) -> return . Left . VReal $ realOpF x y
-    _                  -> Left "Invalid numeric binary operands"
-
--- | Similar to numericOp above, except disallow a zero value for the second argument.
-numericExceptZero :: NumericFunction (Value -> Value -> FoldedExpr)
-numericExceptZero byteOpF intOpF realOpF a b =
-  case b of
-    VByte 0 -> Left "Zero denominator in numeric operation"
-    VInt  0 -> Left "Zero denominator in numeric operation"
-    VReal 0 -> Left "Zero denominator in numeric operation"
-    _       -> numericOp byteOpF intOpF realOpF a b
-
-flipOp :: Value -> FoldedExpr
-flipOp (VBool b) = return . Left . VBool $ not b
-flipOp (VInt  i) = return . Left . VInt  $ negate i
-flipOp (VReal r) = return . Left . VReal $ negate r
-flipOp _       = Left "Invalid negation/not operation"
-
-comparison :: ComparisonFunction (Value -> Value -> FoldedExpr)
-comparison cmp a b = return . Left . VBool . cmp $ compare a b
-
-logic :: LogicFunction (Value -> Value -> FoldedExpr)
-logic op a b =
-  case (a, b) of
-    (VBool x, VBool y) -> return . Left . VBool $ op x y
-    _ -> Left $ "Invalid boolean logic operands"
-
-stringOp :: (String -> String -> String) -> Value -> Value -> FoldedExpr
-stringOp op a b =
-  case (a, b) of
-    (VString s, VString t) -> return . Left . VString $ op s t
-    _ -> Left $ "Invalid string operands"
 
 
 -- | Conservative beta reduction.
