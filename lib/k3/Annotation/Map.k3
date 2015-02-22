@@ -64,9 +64,13 @@ annotation Map given type a,b {
   provides lifted sample : (a -> content -> a) -> a -> int -> a
     with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
 
-  //lookup ignores the value of the provided element.
+  // Lookup ignores the value of the provided element.
   provides lifted lookup : content -> option content
     with effects \elem -> [R[self]; R[elem]]
+
+  @:CArgs 2
+  provides lifted lookup_with : content -> (content -> ()) -> ()
+    with effects \elem -> \lookupF -> [R[self]; R[elem]; lookupF content]
 
   provides lifted member: content -> bool
     with effects \elem -> [R[self]; R[elem]]

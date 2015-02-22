@@ -1346,7 +1346,7 @@ class Map {
   unit_t lookup_with(R r, F f) {
     auto it = container.find(r.key);
     if (it != container.end()) {
-      return f(*it);
+      return f(it->second);
     }
 
     return unit_t {};
