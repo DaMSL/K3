@@ -2,7 +2,7 @@ include "Annotation/Collection.k3"
 include "Annotation/Map.k3"
 include "Core/Barrier.k3"
 include "Core/Builtins.k3"
-include "Core/Messaging.k3"
+include "Core/MachineMessaging.k3"
 
 control DistributedCollectionStatistics [ lbl         : label
                                         , query_cl    : [{cl:label, ce:expr}]
@@ -78,12 +78,17 @@ control DistributedCollectionStatistics [ lbl         : label
 // Distributed Group By Implementation
 // Enabling profiling will display the total elapsed time for the operator
 
+// TODO: support send_ty = [: collection $::[t] @Map]
+// This currently breaks since patterns are not propagated through splice contexts
 control DistributedGroupByGeneric [ lbl             : label
                                   , peer_next       : expr
                                   , next            : expr
                                   , merge           : expr
                                   , coordinator     : expr
                                   , nodes           : expr
+                                  , masters         : expr
+                                  , masters_map     : expr
+                                  , send_ty         : type
                                   , profile         : expr ]
 {
   ignore ( (?e.groupBy ?groupF ?aggF ?accE) : collection ?t )
@@ -91,27 +96,51 @@ control DistributedGroupByGeneric [ lbl             : label
           then (() @:StartTimer) @Time(lbl=[# $[lbl]_GROUPBY], tag=[$ "Time "])
           else ()
         );
-        $[nodes].iterate (\p -> ($[lbl]_scan, p.addr) <- ())
+        $[nodes].iterate (\p -> ($[lbl]_redistribute, p.addr) <- ())
      +> {
-          trigger $[lbl]_scan : () = \_ -> (
-            (ignore ( ($.[e].groupBy $.[groupF] $.[aggF] $.[accE])
-                            .fold    (\acc -> \v -> ((acc.insert v); acc))
-                                     (empty $::[t] @Map)
-            ) @PSendPartitionByKey( dest_trg      = [$ $[lbl]_merge]
-                                  , barrier_trg   = [$ $[lbl]_peer_barrier]
-                                  , nodes         = nodes
-                                  , send_extra_fn = [$ (\x -> x)]))
+          trigger $[lbl]_redistribute : () = \_ -> (
+            ((ignore ( ($.[e].groupBy $.[groupF] $.[aggF] $.[accE])
+                             .fold    (\acc -> \v -> ((acc.insert v); acc))
+                                      (empty $::[t] @Map)
+            )) @:Send
+            ) @ShuffleByMachine( lbl           = [# $[lbl]_gb_shuffle ]
+                               , punclbl       = [# $[lbl]_gb_shpunc ]
+                               , dest_trg      = [$ $[lbl]_merge ]
+                               , barrier_trg   = [$ $[lbl]_peer_barrier ]
+                               , nodes         = nodes
+                               , masters       = masters
+                               , masters_map   = masters_map
+                               , send_ty       = send_ty
+                               , send_extra_fn = [$ \x -> x ] )
           )
 
-          trigger $[lbl]_merge : collection $::[t] @Map = \partials -> (
+          trigger $[lbl]_merge : collection $::[t] @Map = ((\partials ->
             partials.iterate (\w -> $[merge] w)
-          )
+          ) @:Receive
+          ) @ShuffleByMachine( lbl           = [# $[lbl]_gb_shuffle ]
+                             , punclbl       = [# $[lbl]_gb_shpunc ]
+                             , dest_trg      = [$ $[lbl]_merge ]
+                             , barrier_trg   = [$ $[lbl]_peer_barrier ]
+                             , nodes         = nodes
+                             , masters       = masters
+                             , masters_map   = masters_map
+                             , send_ty       = send_ty
+                             , send_extra_fn = [$ \x -> x ] )
 
-          trigger $[lbl]_peer_barrier : () = \_ -> (
+          trigger $[lbl]_peer_barrier : () = ((\_ -> (
             ( $[peer_next] ;
               ( $[lbl]_global_barrier, $[coordinator] ) <- ()
             ) @OnCounter(id=[# $[lbl]_peer_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
-          )
+          )) @:BarrierReceive
+          )  @ShuffleByMachine( lbl           = [# $[lbl]_gb_shuffle ]
+                              , punclbl       = [# $[lbl]_gb_shpunc ]
+                              , dest_trg      = [$ $[lbl]_merge ]
+                              , barrier_trg   = [$ $[lbl]_peer_barrier ]
+                              , nodes         = nodes
+                              , masters       = masters
+                              , masters_map   = masters_map
+                              , send_ty       = send_ty
+                              , send_extra_fn = [$ \x -> x ] )
 
           trigger $[lbl]_global_barrier : () = \_ -> (
             ((if $[profile]
@@ -130,6 +159,9 @@ control DistributedGroupBy [ lbl             : label
                            , merge           : expr
                            , coordinator     : expr
                            , nodes           : expr
+                           , masters         : expr
+                           , masters_map     : expr
+                           , send_ty         : type
                            , profile         : expr ]
 {
   ignore ( (?e.groupBy ?groupF ?aggF ?accE) : collection ?t )
@@ -144,6 +176,9 @@ control DistributedGroupBy [ lbl             : label
                             ]
             , coordinator = coordinator
             , nodes       = nodes
+            , masters     = masters
+            , masters_map = masters_map
+            , send_ty     = send_ty
             , profile     = [$ $[profile] ] )
 
      +> { declare $[lbl]_result : mut collection $::[t] @Map }

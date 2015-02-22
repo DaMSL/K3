@@ -22,7 +22,7 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
           )
         }
 
-  ( ignore ( ?e @: SendBroadcast ) )
+  ( ignore ?e ) @: SendBroadcast
      => ( $[masters].iterate (\n -> ($[lbl]_machproxy, n.addr) <- ($[send_extra_fn] $.[e])) )
      +> {
           @:Pinned
@@ -65,16 +65,17 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
      +> { trigger $[lbl]_peerproxy : int = \msg_id -> (
             $[lbl]_machvar.lookup_with
                 {key: msg_id, value: $[lbl]_machvar_peer_default}
-                (\r ->
+                (\r -> (
                   ( r.value.lookup_with {key: me, value: $[lbl]_machvar_default}
                                         (\v -> (\$#[x] -> $.[b]) v.value) );
 
                   ( $[masters_map].lookup_with {key:me, value:me}
                                                (\ms -> ($[lbl]_machvar_gc, ms.value) <- msg_id) ))
+                )
           )
         }
 
-  ( ignore ( ?e @: SendShuffle ) )
+  ( ignore ?e ) @: SendShuffle
      => $.[e].iterate (\v -> ($[lbl]_machproxy, v.key) <- v.value)
      +> {
           @:Pinned
@@ -118,7 +119,7 @@ control BroadcastByMachine[lbl : label, dest_trg : expr, masters : expr, masters
                          , send_ty : type, send_extra_fn : expr]
 {
   ( ignore (?e : collection ?t) ) @:Send
-    => ( ignore ( $.[e] @: SendBroadcast )
+    => (( ignore $.[e] ) @: SendBroadcast
        ) @DispatchByMachine( lbl = lbl, dest_trg = barrier_trg
                            , masters = masters, masters_map = masters_map
                            , send_ty = send_ty, send_extra_fn = send_extra_fn )
@@ -126,7 +127,7 @@ control BroadcastByMachine[lbl : label, dest_trg : expr, masters : expr, masters
     +> {}
 
   () @:Send
-    => ( ( ignore ( () @: SendBroadcast ) )
+    => ( ( ignore () ) @: SendBroadcast
        ) @DispatchByMachine( lbl = lbl, dest_trg = barrier_trg
                            , masters = masters, masters_map = masters_map
                            , send_ty = send_ty, send_extra_fn = send_extra_fn )
@@ -140,37 +141,36 @@ control BroadcastByMachine[lbl : label, dest_trg : expr, masters : expr, masters
                             , send_ty = send_ty, send_extra_fn = send_extra_fn )
 }
 
-// Partition a collection into a triply-nested map (machine address => peer => data)
+// Partition a collection into a triply-nested map (machine address => peer address => data)
 // for sending as a batched shuffle.
 control PartitionByKeyMachine[masters_map : expr, nodes : expr, send_ty : type, send_extra_fn : expr] {
   ?e : collection ?t @Map
-      => ((( ($.[e].groupBy @:HGroupBy) (\v -> $[nodes].at (index_by_hash v.key))
-                                        (\acc -> \v -> ((acc.insert (send_extra_fn v)); acc))
-                                        (empty $[send_ty] @Map) )
-                   .groupBy @:HGroupBy) (\v -> case $[masters_map].lookup v.key
-                                               of { Some mstr -> mstr }
-                                                  { None -> ((error ("No machine master found for " ++ (atos paddr))); me) }
+      => ((( ($.[e].groupBy @:HGroupBy) (\v -> case $[nodes].at (index_by_hash v.key)
+                                               of { Some n -> n.addr }
+                                                  { None -> ((error (print ("Invalid node"))); me) }
                                         )
                                         (\acc -> \v -> ((acc.insert v); acc))
-                                        (empty {key: address, value: collection $[send_ty] @Map} @Map))
+                                        (empty $::[t] @Map) )
+                   .groupBy @:HGroupBy) (\v -> case $[masters_map].lookup {key: v.key, value: me}
+                                               of { Some mstr -> mstr.value }
+                                                  { None -> ((error (print ("No machine master found for " ++ (atos v.key)))); me) }
+                                        )
+                                        (\acc -> \v -> ((acc.insert {key: v.key, value: ($[send_extra_fn] v.value)}); acc))
+                                        (empty {key: address, value: $[send_ty]} @Map))
 
   ?e : collection ?t
-      => (($.[e].groupBy (\v -> $[nodes].at (index_by_hash v.key))
-                         (\acc -> \v -> ((acc.insert (send_extra_fn v)); acc))
-                         (empty $[send_ty] @Collection))
-                .groupBy (\v -> case $[masters_map].lookup v.key
-                                of { Some mstr -> mstr }
-                                   { None -> ((error ("No machine master found for " ++ (atos paddr))); me) }
+      => (($.[e].groupBy (\v -> case $[nodes].at (index_by_hash v.key)
+                                of { Some n -> n.addr }
+                                   { None -> ((error (print ("Invalid node"))); me) }
                          )
                          (\acc -> \v -> ((acc.insert v); acc))
-                         (empty {key: address, value: collection $::[t] @Collection} @Collection))
-}
-
-control SendPunctuationsByMachine[lbl : label, dest_trg : expr, masters : expr, masters_map : expr] {
-  () => ( ignore ( () @:SendBroadcast ) )
-          @DispatchByMachine(
-              lbl = lbl, dest_trg = barrier_trg, masters = masters, masters_map = masters_map
-            , send_ty = [$ ()], send_extra_fn = [$ (\x -> x)])
+                         (empty $::[t] @Collection))
+                .groupBy (\v -> case $[masters_map].lookup {key: v.key, value: me}
+                                of { Some mstr -> mstr.value }
+                                   { None -> ((error (print ("No machine master found for " ++ (atos v.key)))); me) }
+                         )
+                         (\acc -> \v -> ((acc.insert {key: v.key, value: ($[send_extra_fn] v)}); acc))
+                         (empty {key: address, value: $[send_ty]} @Collection))
 }
 
 control ShuffleByMachine[ lbl : label, punclbl : label
@@ -179,22 +179,31 @@ control ShuffleByMachine[ lbl : label, punclbl : label
                         , send_ty : type, send_extra_fn : expr ]
 {
   ( ignore (?e : collection ?t) ) @:Send
-    => (( (ignore ( $.[e] @PartitionByKeyMachine( masters_map = masters_map, nodes = nodes
-                                                , send_ty = send_ty, send_extra_fn = send_extra_fn)
+    => (( ((ignore ( $.[e] @PartitionByKeyMachine( masters_map = masters_map, nodes = nodes
+                                                 , send_ty = send_ty, send_extra_fn = send_extra_fn)
+                   )
           ) @:SendShuffle
           ) @DispatchByMachine(
                 lbl = lbl, dest_trg = dest_trg, masters = masters, masters_map = masters_map
               , send_ty = send_ty, send_extra_fn = send_extra_fn)
           );
-          () @SendPunctuationsByMachine(
-                lbl = punclbl, dest_trg = barrier_trg, masters = masters, masters_map = masters_map)
+          (( ignore () ) @:SendBroadcast
+          ) @DispatchByMachine(
+                lbl = punclbl, dest_trg = barrier_trg, masters = masters, masters_map = masters_map
+              , send_ty = [: ()], send_extra_fn = [$ \x -> x ])
        )
     +> {}
 
   ( (\?x -> ?b) @:Receive )
     => ( (\$#[x] -> $.[b]) @:Shuffle
-       )  @DispatchByMachine( lbl = lbl, dest_trg = barrier_trg, masters = masters, masters_map = masters_map
+       )  @DispatchByMachine( lbl = lbl, dest_trg = dest_trg, masters = masters, masters_map = masters_map
                             , send_ty = send_ty, send_extra_fn = send_extra_fn )
+    +> {}
+
+  ( (\?x -> ?b) @:BarrierReceive )
+    => ( (\$#[x] -> $.[b]) @:Broadcast
+       )  @DispatchByMachine( lbl = punclbl, dest_trg = barrier_trg, masters = masters, masters_map = masters_map
+                            , send_ty = [: ()], send_extra_fn = [$ \x -> x ] )
     +> {}
 
 }
