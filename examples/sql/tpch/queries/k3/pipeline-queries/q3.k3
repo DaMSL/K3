@@ -182,10 +182,13 @@ trigger lineitem_orders_customer : () = \_ -> (
   (print "loc");
   ( (() @:StartTimer) @Time(lbl=[# loc_JOIN], tag=[$ "Time "]) );
   // Broadcast customers to all peers with li-or buckets for semi-join.
-  let building_customers = (customer.filter  (\c -> c.c_mktsegment == "BUILDING" ))
-                                    .map     (\c -> { c_custkey : c.c_custkey })
-  in
-  (peers.iterate (\p -> (loc_probe_rhs, p.addr) <- building_customers))
+  (customer.filter  (\c -> c.c_mktsegment == "BUILDING" ))
+           .map     (\c -> { c_custkey : c.c_custkey }) @ DispatchByMachine
+                                                        [ lbl = [# loc_broadcast]
+                                                        , dest_trg = [$ loc_probe_rhs]
+                                                        , send_ty = [$ cs_ck_bag]
+                                                        , send_default = [$ empty cs_ck_bag ]
+                                                        ]
 )
 
 // TODO: sort and limit on q3_peer_result
@@ -206,7 +209,7 @@ trigger loc_probe_lhs : () = \_ -> (
   lineitem_orders_done = true
 )
 
-trigger loc_probe_rhs : cs_ck_bag = \vals -> (
+trigger loc_probe_rhs : cs_ck_bag = (\vals -> (
   (print "loc_probe_rhs");
   (if lineitem_orders_done then (
     vals.iterate (\v ->
@@ -224,7 +227,12 @@ trigger loc_probe_rhs : cs_ck_bag = \vals -> (
         if master == me then ( () @:StopTimer) @Time(lbl=[# loc_JOIN], tag=[$ "Time "]) else ()
     ) else ()
   ) @OnCounter(id=[# loc_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
-)
+)) @ DispatchByMachine
+   [ lbl = [# loc_broadcast]
+   , dest_trg = loc_probe_rhs
+   , send_ty = [$ cs_ck_bag]
+   , send_default = [$ empty cs_ck_bag]
+   ]
 
 // For ktrace:
 declare results: collection {orderkey: int, revenue: real, orderdate: string, shippriority: int} @Collection
