@@ -30,7 +30,7 @@ control BroadcastByMachine[ lbl : label, dest_trg : expr, masters : expr
                           , send_ty : type, send_default : expr, send_extra_fn : expr ]
 {
   // Broadcast data to all masters
-  ?e : collection ?t
+  ignore (?e : collection ?t)
      => ( () @DispatchByMachine(lbl = lbl, dest_trg = dest_trg, send_ty = send_ty, send_default = send_default) );
         ( $[masters].iterate (\n -> ($[lbl]_master_receive, n.addr) <- ($[send_extra_fn] $.[e])) )
 }

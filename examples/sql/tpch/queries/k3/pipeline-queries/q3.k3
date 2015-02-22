@@ -182,8 +182,8 @@ trigger lineitem_orders_customer : () = \_ -> (
   (print "loc");
   ( (() @:StartTimer) @Time(lbl=[# loc_JOIN], tag=[$ "Time "]) );
   // Broadcast customers to all peers with li-or buckets for semi-join.
-  ((customer.filter  (\c -> c.c_mktsegment == "BUILDING" ))
-            .map     (\c -> { c_custkey : c.c_custkey })) @ BroadcastByMachine
+  ignore (((customer.filter  (\c -> c.c_mktsegment == "BUILDING" ))
+            .map     (\c -> { c_custkey : c.c_custkey }))) @ BroadcastByMachine
                                                           ( lbl = [# loc_broadcast]
                                                           , dest_trg = [$ loc_probe_rhs]
                                                           , masters = masters
