@@ -5,37 +5,107 @@ declare local_peers  : collection {addr : address} @Collection
 declare peer_masters : collection {key: address, value: address} @Map
 
 // Split a single partitioned broadcast into a dual-tier messaging pattern.
-control DispatchByMachine[lbl : label, dest_trg : expr, send_ty : type, send_default : expr] {
+control DispatchByMachine[ lbl : label, dest_trg : expr
+                         , masters : expr, masters_map : expr
+                         , send_ty : type, send_extra_fn : expr]
+{
   // Rewrite the receiving trigger to to synchronously call the existing trigger on the global
   // stashed by the machine-local master. As long as the trigger doesn't modify its argument, the
   // global will be passed in by constant reference, and no copies will take place.
-  ((\?x -> ?b) @:Broadcast) => (\_ -> ((\$#[x] -> $.[b]) $[lbl]_machvar))
-                            +> {}
+  ((\?x -> ?b) @:Broadcast)
+     => (\$#[x] -> $.[b])
+     +> { trigger $[lbl]_peerproxy : int = \msg_id -> (
+            ( $[lbl]_machvar.lookup_with {key: msg_id, value: $[lbl]_machvar_default}
+                                         (\r -> (\$#[x] -> $.[b]) r.value) );
+            ( $[masters_map].lookup_with {key:me, value:me}
+                                         (\ms -> ($[lbl]_machvar_gc, ms.value) <- msg_id ) )
+          )
+        }
 
-  ((\?x -> ?b) @:Shuffle) => (\_ -> $[lbl]_machvar.lookup_with {key: me, value: $[send_default]} (\$#[x] -> $.[b]) )
-                          +> {}
+  ( ignore ( ?e @: SendBroadcast ) )
+     => ( $[masters].iterate (\n -> ($[lbl]_machproxy, n.addr) <- ($[send_extra_fn] $.[e])) )
+     +> {
+          @:Pinned
+          declare $[lbl]_machvar : collection {key: int, value: $[send_ty]} @Map
 
-  () => ()
+          @:Pinned
+          declare $[lbl]_machvar_gc_ids : collection {key: int, value: int} @Map
+
+          // @:Pinned
+          declare $[lbl]_machvar_cnt : mut int = 0
+
+          @:Pinned
+          declare $[lbl]_machvar_default : $[send_ty]
+
+          // These two triggers must only run at the machine master since they modify
+          // the above pinned variables.
+
+          trigger $[lbl]_machproxy : $[send_ty] = \m -> (
+            ( $[lbl]_machvar.insert        {key: $[lbl]_machvar_cnt, value: m} );
+            ( $[lbl]_machvar_gc_ids.insert {key: $[lbl]_machvar_cnt, value: local_peers.size()} );
+            ( local_peers.iterate (\a -> ($[lbl]_peerproxy, a.addr) <- $[lbl]_machvar_cnt) );
+            $[lbl]_machvar_cnt = $[lbl]_machvar_cnt + 1
+          )
+
+          trigger $[lbl]_machvar_gc : int = \msg_id -> (
+            $[lbl]_machvar_gc_ids.lookup_with {key: msg_id, value: 0}
+              (\r -> if r.value == 1
+                     then ( ($[lbl]_machvar_gc_ids.erase r);
+                            ($[lbl]_machvar.erase {key:msg_id, value: $[lbl]_machvar_default}) )
+                     else ( $[lbl]_machvar_gc_ids.upsert_with r
+                              (\_ -> {key: r.key, value: r.value - 1})
+                              (\_ -> {key: r.key, value: r.value - 1}) )
+              )
+          )
+        }
+
+  ((\?x -> ?b) @:Shuffle)
+     => (\$#[x] -> $.[b])
+     +> { trigger $[lbl]_peerproxy : () = \_ ->
+            $[lbl]_machvar.lookup_with {key: me, value: $[lbl]_machvar_default} (\$#[x] -> $.[b])
+        }
+
+  ( ignore ( ?e @: SendShuffle ) )
+     => $.[e].iterate (\v -> ($[lbl]_machproxy, v.key) <- v.value)
      +> { @:Pinned
-          declare $[lbl]_machvar : mut $[send_ty]
+          declare $[lbl]_machvar : mut collection {key: address, value: $[send_ty]} @Map
+          declare $[lbl]_machvar_default : $[send_ty]
 
-          trigger $[lbl]_master_receive : $[send_ty] = \m -> (
+          trigger $[lbl]_machproxy : collection {key: address, value: $[send_ty]} @Map = \m -> (
             $[lbl]_machvar = m;
-            local_peers.iterate (\a -> ($[dest_trg], a.addr) <- ())
+            local_peers.iterate (\a -> ($[lbl]_peerproxy, a.addr) <- ())
           )
         }
 }
 
-control BroadcastByMachine[ lbl : label, dest_trg : expr, masters : expr
-                          , send_ty : type, send_default : expr, send_extra_fn : expr ]
+control BroadcastByMachine[lbl : label, dest_trg : expr, masters : expr, masters_map : expr
+                         , send_ty : type, send_extra_fn : expr]
 {
-  // Broadcast data to all masters
-  ignore (?e : collection ?t)
-     => ( () @DispatchByMachine(lbl = lbl, dest_trg = dest_trg, send_ty = send_ty, send_default = send_default) );
-        ( $[masters].iterate (\n -> ($[lbl]_master_receive, n.addr) <- ($[send_extra_fn] $.[e])) )
+  ( ignore (?e : collection ?t) ) @:Send
+    => ( ignore ( $.[e] @: SendBroadcast )
+       ) @DispatchByMachine( lbl = lbl, dest_trg = barrier_trg
+                           , masters = masters, masters_map = masters_map
+                           , send_ty = send_ty, send_extra_fn = send_extra_fn )
+
+    +> {}
+
+  () @:Send
+    => ( ( ignore ( () @: SendBroadcast ) )
+       ) @DispatchByMachine( lbl = lbl, dest_trg = barrier_trg
+                           , masters = masters, masters_map = masters_map
+                           , send_ty = send_ty, send_extra_fn = send_extra_fn )
+
+    +> {}
+
+  ( (\?x -> ?b) @:Receive )
+     => ( (\$#[x] -> $.[b]) @:Broadcast
+        ) @DispatchByMachine( lbl = lbl, dest_trg = barrier_trg
+                            , masters = masters, masters_map = masters_map
+                            , send_ty = send_ty, send_extra_fn = send_extra_fn )
 }
 
-
+// Partition a collection into a triply-nested map (machine address => peer => data)
+// for sending as a batched shuffle.
 control PartitionByKeyMachine[masters_map : expr, nodes : expr, send_ty : type, send_extra_fn : expr] {
   ?e : collection ?t @Map
       => ((( ($.[e].groupBy @:HGroupBy) (\v -> $[nodes].at (index_by_hash v.key))
@@ -60,25 +130,35 @@ control PartitionByKeyMachine[masters_map : expr, nodes : expr, send_ty : type, 
                          (empty {key: address, value: collection $::[t] @Collection} @Collection))
 }
 
-control SendPunctuationsByMachine[lbl : label, dest_trg : expr, masters : expr] {
-  ?e => ( ($.[e]);
-          () @BroadcastByMachine(lbl = lbl, dest_trg = barrier_trg, masters = masters
-                                , send_ty = [$ ()], send_default = [$ ()], send_extra_fn = [$ (\x -> x)])
-        )
+control SendPunctuationsByMachine[lbl : label, dest_trg : expr, masters : expr, masters_map : expr] {
+  () => ( ignore ( () @:SendBroadcast ) )
+          @DispatchByMachine(
+              lbl = lbl, dest_trg = barrier_trg, masters = masters, masters_map = masters_map
+            , send_ty = [$ ()], send_extra_fn = [$ (\x -> x)])
 }
 
-control SendPartitionByKeyMachine[ lbl : label, punclbl : label
-                                 , dest_trg : expr, barrier_trg : expr
-                                 , nodes : expr, masters : expr, masters_map : expr
-                                 , send_ty : type, send_default : expr, send_extra_fn : expr ]
+control ShuffleByMachine[ lbl : label, punclbl : label
+                        , dest_trg : expr, barrier_trg : expr
+                        , nodes : expr, masters : expr, masters_map : expr
+                        , send_ty : type, send_extra_fn : expr ]
 {
-  ?e : collection ?t
-    => ( () @DispatchByMachine(lbl = lbl, dest_trg = dest_trg, send_ty = send_ty, send_default = send_default);
-
-       (( $.[e] @PartitionByKeyMachine( masters_map = masters_map, nodes = nodes
-                                      , send_ty = send_ty, send_extra_fn = send_extra_fn) )
-             .iterate (\v -> ($[dest_trg], v.key) <- v.value));
-
-       () @SendPunctuationsByMachine(lbl = punclbl, dest_trg = barrier_trg, masters = masters)
+  ( ignore (?e : collection ?t) ) @:Send
+    => (( (ignore ( $.[e] @PartitionByKeyMachine( masters_map = masters_map, nodes = nodes
+                                                , send_ty = send_ty, send_extra_fn = send_extra_fn)
+          ) @:SendShuffle
+          ) @DispatchByMachine(
+                lbl = lbl, dest_trg = dest_trg, masters = masters, masters_map = masters_map
+              , send_ty = send_ty, send_extra_fn = send_extra_fn)
+          );
+          () @SendPunctuationsByMachine(
+                lbl = punclbl, dest_trg = barrier_trg, masters = masters, masters_map = masters_map)
        )
+    +> {}
+
+  ( (\?x -> ?b) @:Receive )
+    => ( (\$#[x] -> $.[b]) @:Shuffle
+       )  @DispatchByMachine( lbl = lbl, dest_trg = barrier_trg, masters = masters, masters_map = masters_map
+                            , send_ty = send_ty, send_extra_fn = send_extra_fn )
+    +> {}
+
 }
