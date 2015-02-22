@@ -1,0 +1,84 @@
+include "Core/Messaging.k3"
+
+declare masters      : collection {addr : address} @Collection
+declare local_peers  : collection {addr : address} @Collection
+declare peer_masters : collection {key: address, value: address} @Map
+
+// Split a single partitioned broadcast into a dual-tier messaging pattern.
+control DispatchByMachine[lbl : label, dest_trg : expr, send_ty : type, send_default : expr] {
+  // Rewrite the receiving trigger to to synchronously call the existing trigger on the global
+  // stashed by the machine-local master. As long as the trigger doesn't modify its argument, the
+  // global will be passed in by constant reference, and no copies will take place.
+  ((\?x -> ?b) @:Broadcast) => (\_ -> ((\$#[x] -> $.[b]) $[lbl]_machvar))
+                            +> {}
+
+  ((\?x -> ?b) @:Shuffle) => (\_ -> $[lbl]_machvar.lookup_with {key: me, value: $[send_default]} (\$#[x] -> $.[b]) )
+                          +> {}
+
+  () => ()
+     +> { @:Pinned
+          declare $[lbl]_machvar : mut $[send_ty]
+
+          trigger $[lbl]_master_receive : $[send_ty] = \m -> (
+            $[lbl]_machvar = m;
+            local_peers.iterate (\a -> ($[dest_trg], a.addr) <- ())
+          )
+        }
+}
+
+control BroadcastByMachine[ lbl : label, dest_trg : expr, masters : expr
+                          , send_ty : type, send_default : expr, send_extra_fn : expr ]
+{
+  // Broadcast data to all masters
+  ?e : collection ?t
+     => ( () @DispatchByMachine(lbl = lbl, dest_trg = dest_trg, send_ty = send_ty, send_default = send_default) );
+        ( $[masters].iterate (\n -> ($[lbl]_master_receive, n.addr) <- ($[send_extra_fn] $.[e])) )
+}
+
+
+control PartitionByKeyMachine[masters_map : expr, nodes : expr, send_ty : type, send_extra_fn : expr] {
+  ?e : collection ?t @Map
+      => ((( ($.[e].groupBy @:HGroupBy) (\v -> $[nodes].at (index_by_hash v.key))
+                                        (\acc -> \v -> ((acc.insert (send_extra_fn v)); acc))
+                                        (empty $[send_ty] @Map) )
+                   .groupBy @:HGroupBy) (\v -> case $[masters_map].lookup v.key
+                                               of { Some mstr -> mstr }
+                                                  { None -> ((error ("No machine master found for " ++ (atos paddr))); me) }
+                                        )
+                                        (\acc -> \v -> ((acc.insert v); acc))
+                                        (empty {key: address, value: collection $[send_ty] @Map} @Map))
+
+  ?e : collection ?t
+      => (($.[e].groupBy (\v -> $[nodes].at (index_by_hash v.key))
+                         (\acc -> \v -> ((acc.insert (send_extra_fn v)); acc))
+                         (empty $[send_ty] @Collection))
+                .groupBy (\v -> case $[masters_map].lookup v.key
+                                of { Some mstr -> mstr }
+                                   { None -> ((error ("No machine master found for " ++ (atos paddr))); me) }
+                         )
+                         (\acc -> \v -> ((acc.insert v); acc))
+                         (empty {key: address, value: collection $::[t] @Collection} @Collection))
+}
+
+control SendPunctuationsByMachine[lbl : label, dest_trg : expr, masters : expr] {
+  ?e => ( ($.[e]);
+          () @BroadcastByMachine(lbl = lbl, dest_trg = barrier_trg, masters = masters
+                                , send_ty = [$ ()], send_default = [$ ()], send_extra_fn = [$ (\x -> x)])
+        )
+}
+
+control SendPartitionByKeyMachine[ lbl : label, punclbl : label
+                                 , dest_trg : expr, barrier_trg : expr
+                                 , nodes : expr, masters : expr, masters_map : expr
+                                 , send_ty : type, send_default : expr, send_extra_fn : expr ]
+{
+  ?e : collection ?t
+    => ( () @DispatchByMachine(lbl = lbl, dest_trg = dest_trg, send_ty = send_ty, send_default = send_default);
+
+       (( $.[e] @PartitionByKeyMachine( masters_map = masters_map, nodes = nodes
+                                      , send_ty = send_ty, send_extra_fn = send_extra_fn) )
+             .iterate (\v -> ($[dest_trg], v.key) <- v.value));
+
+       () @SendPunctuationsByMachine(lbl = punclbl, dest_trg = barrier_trg, masters = masters)
+       )
+}

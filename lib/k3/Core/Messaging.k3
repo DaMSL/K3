@@ -90,20 +90,3 @@ control PSendBroadcast[ dest_trg : expr, barrier_trg : expr, nodes : expr, send_
     => ( $[nodes].iterate (\n -> ($[dest_trg], n.addr) <- ($[send_extra_fn] $.[e]))
        ) @SendPunctuation(trg = barrier_trg, nodes = nodes)
 }
-
-// Split a single partitioned broadcast into a dual-tier messaging pattern.
-control BroadcastByMachine[dest_trg: expr, send_extra_fn: expr, masters: expr] {
-  // Broadcast data to all masters
-  ?e : collection ?t => ($[nodes].iterate (\n -> ($[dest_trg]_master_receive, n.addr) <- ($[send_extra_fn] $.[e])))
-     +> {
-       trigger $[dest_trg]_master_receive: collection $:[t] @ Map = \m ->
-         $[dest_trg]_machine_local_stash = m;
-         local_peers.iterate (\a -> ($[dest_trg], a.addr) <- ())
-     }
-
-  // Rewrite the receiving trigger to to synchronously call the existing trigger on the global
-  // stashed by the machine-local master. As long as the trigger doesn't modify its argument, the
-  // global will be passed in by constant reference, and no copies will take place.
-  (\?x -> ?b): (?t -> ())
-    => \_ -> (\$#x -> $.[b]) $[dest_trg]_machine_local_stash
-}
