@@ -565,7 +565,7 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
     typeRepr (EType ty) = [(spliceVTSym, SType ty)]
     typeRepr _ = []
 
-    ignoreUIDSpan a = not (isEUID a || isESpan a)
+    ignoreUIDSpan a = not (isEUID a || isESpan a || isESyntax a)
     ignoreTypes   a = not $ isEAnyType a
 
     debugMatchPVar i =
