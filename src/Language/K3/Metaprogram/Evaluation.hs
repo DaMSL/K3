@@ -510,7 +510,7 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
   where
     matchTag sEnv e1 e2@(tag -> EVariable i)
       | isPatternVariable i =
-          let nrEnv = spliceRecord $ (maybe [] typeRepr $ e1 @~ isEType) ++ [(spliceVESym, SExpr e1)]
+          let nrEnv = spliceRecord $ (maybe [] typeRepr $ e1 @~ isEType) ++ [(spliceVESym, SExpr $ stripEUIDSpan e1)]
               nsEnv = maybe sEnv (\n -> if null n then sEnv else addSpliceE n nrEnv sEnv) $ patternVariable i
           in do
               localLog $ debugMatchPVar i
@@ -567,7 +567,7 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
     extractIdentifiers (EBindAs  b) = bindingVariables b
     extractIdentifiers _ = []
 
-    typeRepr (EType ty) = [(spliceVTSym, SType ty)]
+    typeRepr (EType ty) = [(spliceVTSym, SType $ stripTUIDSpan ty)]
     typeRepr _ = []
 
     ignoreUIDSpan a = not (isEUID a || isESpan a || isESyntax a)
@@ -583,7 +583,7 @@ matchType t patT = matchTree matchTag t patT emptySpliceEnv
   where matchTag sEnv t1 t2@(tag -> TDeclaredVar i)
           | isPatternVariable i =
               let extend n = if null n then Nothing
-                             else Just . (True,) $ addSpliceE n (spliceRecord [(spliceVTSym, SType t1)]) sEnv
+                             else Just . (True,) $ addSpliceE n (spliceRecord [(spliceVTSym, SType $ stripTUIDSpan t1)]) sEnv
               in do
                    localLog $ debugMatchPVar i
                    if matchTypeAnnotations t1 t2 then maybe Nothing extend $ patternVariable i else Nothing
