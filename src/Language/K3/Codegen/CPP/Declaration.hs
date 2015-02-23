@@ -115,7 +115,7 @@ declaration d@(tag -> DGlobal i t me) = do
     when (tag t == TCollection) $ addComposite (namedTAnnotations $ annotations t)
 
     -- Return the class-scope-declaration including the set variable if needed
-    let setOp = if pinned || isNothing me then [] else
+    let setOp = if False then [] else
                   [R.GlobalDefn $ R.Forward $ R.ScalarDecl
                     (R.Name $ setName i) (R.Primitive R.PBool) (Just $ R.Literal $ R.LBool False)]
 
