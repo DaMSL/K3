@@ -75,6 +75,10 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
           )
         }
 
+  ( ignore ?e ) @: SendShuffleNoDecl
+     => $.[e].iterate (\v -> ($[lbl]_machproxy, v.key) <- v.value)
+     +> {}
+
   ( ignore ?e ) @: SendShuffle
      => $.[e].iterate (\v -> ($[lbl]_machproxy, v.key) <- v.value)
      +> {
@@ -183,6 +187,22 @@ control ShuffleByMachine[ lbl : label, punclbl : label
                                                  , send_ty = send_ty, send_extra_fn = send_extra_fn)
                    )
           ) @:SendShuffle
+          ) @DispatchByMachine(
+                lbl = lbl, dest_trg = dest_trg, masters = masters, masters_map = masters_map
+              , send_ty = send_ty, send_extra_fn = send_extra_fn)
+          );
+          (( ignore () ) @:SendBroadcast
+          ) @DispatchByMachine(
+                lbl = punclbl, dest_trg = barrier_trg, masters = masters, masters_map = masters_map
+              , send_ty = [: ()], send_extra_fn = [$ \x -> x ])
+       )
+    +> {}
+
+  ( ignore (?e : collection ?t) ) @:SendNoDecl
+    => (( ((ignore ( $.[e] @PartitionByKeyMachine( masters_map = masters_map, nodes = nodes
+                                                 , send_ty = send_ty, send_extra_fn = send_extra_fn)
+                   )
+          ) @:SendShuffleNoDecl
           ) @DispatchByMachine(
                 lbl = lbl, dest_trg = dest_trg, masters = masters, masters_map = masters_map
               , send_ty = send_ty, send_extra_fn = send_extra_fn)
