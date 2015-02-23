@@ -320,33 +320,42 @@ control PipelinedBroadcastJoin [ lbl                 : label
                                , peer_next           : expr
                                , next                : expr
                                , coordinator         : expr
-                               , nodes               : expr]
+                               , nodes               : expr
+                               , masters             : expr
+                               , masters_map         : expr]
 {
   () => $[nodes].iterate (\p -> ($[lbl]_broadcast, p.addr) <- ())
      +> {
           // Compute any LHS data structures needed for join, then start broadcast.
           trigger $[lbl]_broadcast : () = \_ -> (
             $[lhs_query];
-            ( ignore ( $[rhs_query]
-            ) @PSendBroadcast( dest_trg      = [$ $[lbl]_probe ]
-                             , barrier_trg   = [$ $[lbl]_peer_broadcast_barrier ]
-                             , nodes         = nodes
-                             , send_extra_fn = [$ (\x -> x) ]))
+            (( ignore $[rhs_query]
+            ) @:Send
+            ) @BroadcastByMachine( lbl           = [# $[lbl]_rj_bcast ]
+                                 , dest_trg      = [$ $[lbl]_probe ]
+                                 , masters       = masters
+                                 , masters_map   = masters_map
+                                 , send_ty       = broadcast_ty
+                                 , send_extra_fn = [$ \x -> x ] )
           )
 
           // Process broadcasted partition from a peer, and pipeline its outputs.
-          trigger $[lbl]_probe : $[broadcast_ty] = \vals -> (
-            let outputs = vals.fold $[lhs_probe] $[empty_out_buffer] in
-            if $[has_outputs] outputs then ( $[pipeline_next] outputs ) else ()
-          )
-
-          trigger $[lbl]_peer_broadcast_barrier : () = \_ -> (
-            print "Broadcast join peer finished processing." ;
+          trigger $[lbl]_probe : $[broadcast_ty] = ((\vals -> (
+            ( let outputs = vals.fold $[lhs_probe] $[empty_out_buffer] in
+              if $[has_outputs] outputs then ( $[pipeline_next] outputs ) else () );
             (
+              ( print "Broadcast join peer finished processing." );
               $[peer_next];
               ($[lbl]_global_barrier, $[coordinator]) <- ()
             ) @OnCounter(id=[# $[lbl]_peer_broadcast_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
           )
+          ) @:Receive
+          ) @BroadcastByMachine( lbl           = [# $[lbl]_rj_bcast ]
+                               , dest_trg      = [$ $[lbl]_probe ]
+                               , masters       = masters
+                               , masters_map   = masters_map
+                               , send_ty       = broadcast_ty
+                               , send_extra_fn = [$ \x -> x ] )
 
           trigger $[lbl]_global_barrier : () = \_ -> (
             ( print "Broadcast join done." ;
