@@ -9,6 +9,10 @@ customerFiles: [{path: tools/ktrace/data/tpch/customer0}]
 supplierFiles: [{path: tools/ktrace/data/tpch/supplier0}]
 nationFiles: [{path: tools/ktrace/data/tpch/nation.tbl}]
 regionFiles: [{path: tools/ktrace/data/tpch/region.tbl}]       
+masters: [{addr: [127.0.0.1, 30000]}]
+local_peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
+peer_masters: [ { key: [127.0.0.1, 30000], value: [127.0.0.1, 30000]}
+              , { key: [127.0.0.1, 40000], value: [127.0.0.1, 30000]}]
 ---
 me: [127.0.0.1, 40000]
 master: [127.0.0.1, 30000]
@@ -20,3 +24,7 @@ customerFiles: [{path: tools/ktrace/data/tpch/customer1}]
 supplierFiles: [{path: tools/ktrace/data/tpch/supplier1}]
 nationFiles: [{path: tools/ktrace/data/tpch/nation.tbl}]
 regionFiles: [{path: tools/ktrace/data/tpch/region.tbl}]       
+masters: [{addr: [127.0.0.1, 30000]}]
+local_peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
+peer_masters: [ { key: [127.0.0.1, 30000], value: [127.0.0.1, 30000]}
+              , { key: [127.0.0.1, 40000], value: [127.0.0.1, 30000]}]

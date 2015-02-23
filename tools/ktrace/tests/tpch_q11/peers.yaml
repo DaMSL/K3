@@ -6,6 +6,10 @@ role: rows
 partsuppFiles: [{path: tools/ktrace/data/tpch/partsupp0}]
 supplierFiles: [{path: tools/ktrace/data/tpch/supplier0}]
 nationFiles: [{path: tools/ktrace/data/tpch/nation.tbl}]
+masters: [{addr: [127.0.0.1, 30000]}]
+local_peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
+peer_masters: [ { key: [127.0.0.1, 30000], value: [127.0.0.1, 30000]}
+              , { key: [127.0.0.1, 40000], value: [127.0.0.1, 30000]}]
 ---
 me: [127.0.0.1, 40000]
 master: [127.0.0.1, 30000]
@@ -13,3 +17,7 @@ peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
 role: rows
 supplierFiles: [{path: tools/ktrace/data/tpch/supplier1}]
 partsuppFiles: [{path: tools/ktrace/data/tpch/partsupp1}]
+masters: [{addr: [127.0.0.1, 30000]}]
+local_peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
+peer_masters: [ { key: [127.0.0.1, 30000], value: [127.0.0.1, 30000]}
+              , { key: [127.0.0.1, 40000], value: [127.0.0.1, 30000]}]
