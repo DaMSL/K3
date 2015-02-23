@@ -1343,7 +1343,7 @@ class Map {
   }
 
   template <class F>
-  unit_t lookup_with(R r, F f) {
+  unit_t lookup_with(R const& r, F f) const {
     auto it = container.find(r.key);
     if (it != container.end()) {
       return f(it->second);

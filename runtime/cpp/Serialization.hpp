@@ -86,7 +86,7 @@ template<class archive>
 void load(archive& ar, asio::ip::address& ip, unsigned int) {
   std::string s;
   ar >> s;
-  ip.from_string(s);
+  ip = asio::ip::address::from_string(s);
 }
 
 // For std::shared_ptr
