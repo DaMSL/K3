@@ -238,9 +238,7 @@ applyCAnnotation targetE cAnnId sEnv = do
    (gEnv, sCtxt) <- get >>= return . (getGeneratorEnv &&& getSpliceContext)
    nsEnv         <- evalBindings sCtxt sEnv
    let postSCtxt = pushSCtxt nsEnv sCtxt
-   localLog $ "Applying control annotation " ++ cAnnId
-              ++ " in "    ++ show sCtxt
-              ++ " with "  ++ show nsEnv
+   debugApply sCtxt nsEnv
    maybe (spliceLookupErr cAnnId)
          (\g -> injectRewrite postSCtxt $ g targetE nsEnv)
          $ lookupERWGenE cAnnId gEnv
@@ -248,14 +246,19 @@ applyCAnnotation targetE cAnnId sEnv = do
   where
     injectRewrite sctxt (SRExpr p) = localLog debugPassThru >> p >>= bindEAnnVars sctxt
 
-    injectRewrite sctxt (SRRewrite p) = do
+    injectRewrite sctxt (SRRewrite (p, rwsEnv)) = do
+      let nsctxt = pushSCtxt rwsEnv sctxt
       (rewriteE, decls) <- p
-      rewriteESub       <- bindEAnnVars sctxt rewriteE
-      declsSub          <- mapM (bindDAnnVars sctxt) decls
+      rewriteESub       <- bindEAnnVars nsctxt rewriteE
+      declsSub          <- mapM (bindDAnnVars nsctxt) decls
       localLog (debugRewrite rewriteESub)
       modifyGDeclsF_ (Right . addCGenDecls cAnnId declsSub) >> return rewriteESub
 
     injectRewrite _ _ = throwG "Invalid control annotation rewrite"
+
+    debugApply sCtxt nsEnv =
+       localLog $ boxToString $ ["Applying control annotation " ++ cAnnId ++ " in context "]
+                    %$ prettyLines sCtxt %$ ["with splice env"] %$ prettyLines nsEnv
 
     debugPassThru   = unwords ["Passed on generator", cAnnId]
     debugRewrite  e = boxToString $ [unwords ["Generator", cAnnId, "rewrote as "]] %+ prettyLines e
@@ -471,12 +474,14 @@ evalEmbedding _ (MPENull i) = return $ SLabel i
 evalEmbedding sctxt em@(MPEPath var path) = maybe evalErr (flip matchPath path) $ lookupSCtxt var sctxt
   where matchPath v [] = return v
         matchPath v (h:t) = maybe evalErr (flip matchPath t) $ spliceRecordField v h
-        evalErr = spliceIdPathFail var path $ unwords ["lookup failed", "(", show em, ")"]
+        evalErr = spliceIdPathFail var path sctxt $ unwords ["lookup failed", "(", show em, ")"]
 
 evalEmbedding sctxt (MPEHProg expr) = evalHaskellProg sctxt expr
 
-spliceIdPathFail :: Identifier -> [Identifier] -> String -> GeneratorM a
-spliceIdPathFail i path msg = throwG $ unwords ["Failed to splice", (intercalate "." $ [i]++path), ":", msg]
+spliceIdPathFail :: Identifier -> [Identifier] -> SpliceContext -> String -> GeneratorM a
+spliceIdPathFail i path sctxt msg = throwG $ boxToString $
+  [unwords ["Failed to splice", (intercalate "." $ [i]++path), ":", msg]]
+  %$ ["in context ["] %$ prettyLines sctxt %$ ["]"]
 
 spliceFail :: String -> GeneratorM a
 spliceFail msg = throwG $ unwords ["Splice failed:", msg]
@@ -616,8 +621,10 @@ exprPatternMatcher spliceParams rules extensions = ExprRewriter $ \expr spliceEn
     logValue msg v = runIdentity (localLog msg >> return v)
 
     inputSR expr = SRExpr $ return expr
+
     exprDeclSR spliceEnv (sEnv, rewriteE, ruleExts) =
-      SRRewrite $ generateInSpliceEnv (mergeSpliceEnv spliceEnv sEnv) $
+      let msenv = mergeSpliceEnv spliceEnv sEnv in
+      SRRewrite . (, msenv) $ generateInSpliceEnv msenv $
         (,) <$> spliceExpression rewriteE <*> mapM spliceNonAnnotationTree (extensions ++ ruleExts)
 
     tryMatch _ acc@(Just _) _ = acc
@@ -630,8 +637,8 @@ exprPatternMatcher spliceParams rules extensions = ExprRewriter $ \expr spliceEn
           ["Trying match step "] %+ prettyLines pat %+ [" on "] %+ prettyLines expr
 
     debugMatchStepResult expr pat r = boxToString $
-          ["Match step result "] %+ prettyLines pat %+ [" on "] %+ prettyLines expr
-      %$ (["Result "] %+ [show r])
+      ["Match step result "] %+ prettyLines pat %+ [" on "] %+ prettyLines expr
+        %$ ["Result "] %$ prettyLines r
 
     debugMatchResult opt = unwords ["Match result", show opt]
 

@@ -61,7 +61,7 @@ data SpliceResult m = SRType    (m (K3 Type))
                     | SRExpr    (m (K3 Expression))
                     | SRDecl    (m (K3 Declaration))
                     | SRLiteral (m (K3 Literal))
-                    | SRRewrite (m (K3 Expression, [K3 Declaration]))
+                    | SRRewrite (m (K3 Expression, [K3 Declaration]), SpliceEnv)
 
 data MPDeclaration = MPDataAnnotation Identifier [TypedSpliceVar] [TypeVarDecl] [Either MPAnnMemDecl AnnMemDecl]
                    | MPCtrlAnnotation Identifier [TypedSpliceVar] [PatternRewriteRule] [K3 Declaration]
@@ -123,10 +123,16 @@ instance Pretty SpliceValue where
   prettyLines (SExpr    e)   = ["SExpr "]    %+ prettyLines e
   prettyLines (SDecl    d)   = ["SDecl "]    %+ prettyLines d
   prettyLines (SLiteral l)   = ["SLiteral "] %+ prettyLines l
-  prettyLines (SRecord  nsv) = ["SRecord"]   %$ (indent 3 $ concatMap (\(i,sv) -> [i] %+ prettyLines sv) $ recordElemsAsList nsv)
-  prettyLines (SList    l)   = ["SList"]     %$ (indent 2 $ concatMap prettyLines l)
+  prettyLines (SRecord  nsv) = ["SRecord "]  %$ (indent 3 $ concatMap (\(i,sv) -> [i ++ " "] %+ prettyLines sv) $ recordElemsAsList nsv)
+  prettyLines (SList    l)   = ["SList "]    %$ (indent 2 $ concatMap prettyLines l)
   prettyLines sv = [show sv]
 
+instance Pretty SpliceEnv where
+  prettyLines env = Map.foldlWithKey (\acc k v -> acc ++ prettyPair k v) [] env
+    where prettyPair a b = [show a ++ " => "] %+ prettyLines b
+
+instance Pretty SpliceContext where
+  prettyLines ctxt = concatMap prettyLines ctxt
 
 drawMPAnnotationMembers :: [MPAnnMemDecl] -> [String]
 drawMPAnnotationMembers []  = []
