@@ -226,14 +226,14 @@ control DistributedHashJoin [ lbl              : label
           vals.iterate (\v -> $[lhs_ht_id].insert_with v $[lhs_insert_with])
         ) @:Receive
         ) @ShuffleByMachine( lbl           = [# $[lbl]_hjl_shuffle ]
-                             , punclbl       = [# $[lbl]_hjl_shpunc ]
-                             , dest_trg      = [$ $[lbl]_lhs_process_redistribute]
-                             , barrier_trg   = [$ $[lbl]_lhs_peer_barrier]
-                             , nodes         = nodes
-                             , masters       = masters
-                             , masters_map   = masters_map
-                             , send_ty       = [: collection $[lhs_ht_ty] @Map]
-                             , send_extra_fn = [$ \x -> x ] )
+                           , punclbl       = [# $[lbl]_hjl_shpunc ]
+                           , dest_trg      = [$ $[lbl]_lhs_process_redistribute]
+                           , barrier_trg   = [$ $[lbl]_lhs_peer_barrier]
+                           , nodes         = nodes
+                           , masters       = masters
+                           , masters_map   = masters_map
+                           , send_ty       = [: collection $[lhs_ht_ty] @Map]
+                           , send_extra_fn = [$ \x -> x ] )
 
         trigger $[lbl]_lhs_peer_barrier : () = ((\_ -> (
           ( $[nodes].iterate (\p -> ($[lbl]_rhs_redistribute, p.addr) <- ())
@@ -322,7 +322,7 @@ control PipelinedBroadcastJoin [ lbl                 : label
                                , coordinator         : expr
                                , nodes               : expr
                                , masters             : expr
-                               , masters_map         : expr]
+                               , masters_map         : expr ]
 {
   () => $[nodes].iterate (\p -> ($[lbl]_broadcast, p.addr) <- ())
      +> {
@@ -725,6 +725,8 @@ control JoinSelector [ lbl                  : label
                      , next                 : expr
                      , coordinator          : expr
                      , nodes                : expr
+                     , masters              : expr
+                     , masters_map          : expr
                      , profile              : expr
                      ]
 {
@@ -792,6 +794,8 @@ control JoinSelector [ lbl                  : label
                                                     , next             = next
                                                     , coordinator      = coordinator
                                                     , nodes            = nodes
+                                                    , masters          = masters
+                                                    , masters_map      = masters_map
                                                     , profile          = profile
                                                     )
 

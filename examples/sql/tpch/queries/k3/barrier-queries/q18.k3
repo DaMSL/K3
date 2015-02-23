@@ -92,6 +92,8 @@ trigger lineitem_having : () = \_ -> (
       merge       = [$ (\a -> \b -> a + b)],
       coordinator = [$ master],
       nodes       = [$ peers],
+      masters     = [$ masters ],
+      masters_map = [$ peer_masters ],
       profile     = [$ true] )
 )
 
@@ -124,6 +126,8 @@ trigger lineitem_orders : () = \_ -> (
                           {None -> ()})],
       coordinator = [$ master],
       nodes       = [$ peers],
+      masters     = [$ masters ],
+      masters_map = [$ peer_masters ],
       profile     = [$ true] )
 )
 
@@ -217,6 +221,8 @@ trigger lineitem_orders_customer : () = \_ -> (
       , next                 = [$ print "LI-OR-CS join all nodes finished." ]
       , coordinator          = [$ master]
       , nodes                = [$ peers]
+      , masters              = [$ masters ]
+      , masters_map          = [$ peer_masters ]
       , profile              = [$ false]
     )
 )

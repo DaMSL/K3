@@ -191,6 +191,8 @@ trigger q5_co_start : () = \_ -> (
       , next                 = [$ () ]
       , coordinator          = [$ master]
       , nodes                = [$ peers]
+      , masters              = [$ masters ]
+      , masters_map          = [$ peer_masters ]
       , profile              = [$ false]
     )
 )
@@ -294,6 +296,8 @@ trigger q5_sl_start : () = \_ -> (
       , next                 = [$ () ]
       , coordinator          = [$ master]
       , nodes                = [$ peers]
+      , masters              = [$ masters ]
+      , masters_map          = [$ peer_masters ]
       , profile              = [$ false]
     )
 )
@@ -339,6 +343,8 @@ trigger q5_cosl_start : () = \_ -> (
                                ]
       , next                 = [$ () ]
       , coordinator          = [$ master]
+      , masters              = [$ masters ]
+      , masters_map          = [$ peer_masters ]
       , nodes                = [$ peers]
     )
 )
