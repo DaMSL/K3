@@ -81,7 +81,6 @@ trigger q1 : () = \_ -> (
       nodes       = [$ peers],
       masters     = [$ masters ],
       masters_map = [$ peer_masters ],
-      send_ty     = [: collection {key: (string, string), value: q1_agg} @Map ],
       profile     = [$ true] )
 )
 
