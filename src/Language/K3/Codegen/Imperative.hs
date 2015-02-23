@@ -89,14 +89,16 @@ isFunction (tag -> TForall _) = True
 isFunction _ = False
 
 declaration :: K3 Declaration -> ImperativeM (K3 Declaration)
-declaration (Node t@(DGlobal i y Nothing :@: _) cs) = do
+declaration (Node t@(DGlobal i y Nothing :@: as) cs) = do
     let isF = isFunction y
+    let isP = isJust $ as @~ (\case { DProperty (dPropertyV -> ("Pinned", Nothing)) -> True; _ -> False })
     addGlobal i y isF
-    unless isF (addPatchable i y False >> addShowable i y)
+    unless isF (addPatchable i y False >> unless isP (addShowable i y))
     Node t <$> mapM declaration cs
 declaration (Node (DGlobal i t (Just e) :@: as) cs) = do
     addGlobal i t False
-    unless (isFunction t || isTid i t) (addPatchable i t True >> addShowable i t)
+    let isP = isJust $ as @~ (\case { DProperty (dPropertyV -> ("Pinned", Nothing)) -> True; _ -> False })
+    unless (isFunction t || isTid i t) (addPatchable i t True >> unless isP (addShowable i t))
     me' <- expression e
     cs' <- mapM declaration cs
     return $ Node (DGlobal i t (Just me') :@: as) cs'
