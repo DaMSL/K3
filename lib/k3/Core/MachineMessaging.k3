@@ -15,13 +15,13 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
   ((\?x -> ?b) @:Broadcast)
      => (\$#[x] -> $.[b])
      +> { trigger $[lbl]_peerproxy : int = \msg_id -> (
-            ( print ("Peer " ++ (atos me) ++ " proxying bc " ++ (itos msg_id)) );
+            // ( print ("Peer " ++ (atos me) ++ " proxying bc " ++ (itos msg_id)) );
             ( let entry = {key: msg_id, value: $[lbl]_machvar_default} in
               if $[lbl]_machvar.member entry
               then ( $[lbl]_machvar.lookup_with entry (\r -> (\$#[x] -> $.[b]) r.value) )
               else ( error (print ("Invalid bc peer message " ++ (itos msg_id) ++ " at " ++ (atos me))) ) );
 
-            ( print ("Peer " ++ (atos me) ++ " responding to bc GC " ++ (itos msg_id)) );
+            // ( print ("Peer " ++ (atos me) ++ " responding to bc GC " ++ (itos msg_id)) );
             ( let aentry = {key:me, value:me} in
               if $[masters_map].member aentry
               then ( $[masters_map].lookup_with aentry (\ms -> ($[lbl]_machvar_gc, ms.value) <- msg_id ) )
@@ -34,6 +34,9 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
      +> {
           @:Pinned
           declare $[lbl]_machvar : collection {key: int, value: $[send_ty]} @Map
+
+          @:Pinned
+          declare $[lbl]_machvar_initialized : mut bool = false
 
           @:Pinned
           declare $[lbl]_machvar_gc_ids : collection {key: int, value: int} @Map
@@ -49,11 +52,20 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
           // the above pinned variables.
 
           trigger $[lbl]_machproxy : $[send_ty] = \m -> (
-            ( print ("Machine " ++ (atos me) ++ " proxying bc " ++ (itos $[lbl]_machvar_cnt)) );
-            ( $[lbl]_machvar.insert        {key: $[lbl]_machvar_cnt, value: m} );
+            ( if $[lbl]_machvar_initialized then () else (
+                ( (range ($[masters_map].size())).iterate (\i ->
+                    $[lbl]_machvar.insert {key: i.i, value: $[lbl]_machvar_default} )
+                );
+                $[lbl]_machvar_initialized = true
+              )
+            );
+            // ( print ("Machine " ++ (atos me) ++ " proxying bc " ++ (itos $[lbl]_machvar_cnt)) );
+            ( $[lbl]_machvar.insert_with {key: $[lbl]_machvar_cnt, value: m}
+                                         (\_ -> \_ -> {key: $[lbl]_machvar_cnt, value: m})
+            );
             ( $[lbl]_machvar_gc_ids.insert {key: $[lbl]_machvar_cnt, value: local_peers.size()} );
             ( local_peers.iterate (\a ->
-                (( print ("Machine " ++ (atos me) ++ " proxying bc " ++ (itos $[lbl]_machvar_cnt) ++ " to peer " ++ (atos a.addr)) );
+                ( // ( print ("Machine " ++ (atos me) ++ " proxying bc " ++ (itos $[lbl]_machvar_cnt) ++ " to peer " ++ (atos a.addr)) );
                  ($[lbl]_peerproxy, a.addr) <- $[lbl]_machvar_cnt)) );
             $[lbl]_machvar_cnt = $[lbl]_machvar_cnt + 1
           )
@@ -64,10 +76,11 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
             then
             ( $[lbl]_machvar_gc_ids.lookup_with gcentry
                 (\r -> if r.value == 1
-                       then ( ( print ("Machine " ++ (atos me) ++ " GCing bc " ++ (itos msg_id)) );
+                       then ( // ( print ("Machine " ++ (atos me) ++ " GCing bc " ++ (itos msg_id)) );
                               ($[lbl]_machvar_gc_ids.erase r);
-                              ($[lbl]_machvar.erase {key:msg_id, value: $[lbl]_machvar_default}) )
-                       else ( ( print ("Machine " ++ (atos me) ++ " GC request bc " ++ (itos msg_id) ++ " " ++ (itos r.value)) );
+                              //($[lbl]_machvar.erase {key:msg_id, value: $[lbl]_machvar_default}) )
+                              () )
+                       else ( // ( print ("Machine " ++ (atos me) ++ " GC request bc " ++ (itos msg_id) ++ " " ++ (itos r.value)) );
                               $[lbl]_machvar_gc_ids.upsert_with r
                                  (\_ -> {key: r.key, value: r.value - 1})
                                  (\_ -> {key: r.key, value: r.value - 1}) )
@@ -80,7 +93,7 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
   ((\?x -> ?b) @:Shuffle)
      => (\$#[x] -> $.[b])
      +> { trigger $[lbl]_peerproxy : int = \msg_id -> (
-            ( print ("Peer " ++ (atos me) ++ " proxying shf " ++ (itos msg_id)) );
+            // ( print ("Peer " ++ (atos me) ++ " proxying shf " ++ (itos msg_id)) );
             let oentry = {key: msg_id, value: $[lbl]_machvar_peer_default} in
             if $[lbl]_machvar.member oentry
             then ( $[lbl]_machvar.lookup_with oentry
@@ -91,7 +104,7 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
                           else () );
                           // else ( error (print ("Invalid shf inner peer message " ++ (itos msg_id) ++ " at " ++ (atos me))) ) );
 
-                        ( print ("Peer " ++ (atos me) ++ " responding to GC shf " ++ (itos msg_id)) );
+                        // ( print ("Peer " ++ (atos me) ++ " responding to GC shf " ++ (itos msg_id)) );
                         ( let aentry = {key:me, value:me} in
                           if $[masters_map].member aentry
                           then ( $[masters_map].lookup_with aentry (\ms -> ($[lbl]_machvar_gc, ms.value) <- msg_id) )
@@ -113,6 +126,9 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
           declare $[lbl]_machvar : collection {key: int, value: collection {key: address, value: $[send_ty]} @Map} @Map
 
           @:Pinned
+          declare $[lbl]_machvar_initialized : mut bool = false
+
+          @:Pinned
           declare $[lbl]_machvar_gc_ids : collection {key: int, value: int} @Map
 
           // @:Pinned
@@ -126,11 +142,21 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
           declare $[lbl]_machvar_default : $[send_ty]
 
           trigger $[lbl]_machproxy : collection {key: address, value: $[send_ty]} @Map = \m -> (
-            ( print ("Machine " ++ (atos me) ++ " proxying shf " ++ (itos $[lbl]_machvar_cnt)) );
-            ( $[lbl]_machvar.insert {key: $[lbl]_machvar_cnt, value: m} );
+            ( if $[lbl]_machvar_initialized then () else (
+                ( (range ($[masters_map].size())).iterate (\i ->
+                    $[lbl]_machvar.insert {key: i.i, value: $[lbl]_machvar_peer_default} )
+                );
+                $[lbl]_machvar_initialized = true
+              )
+            );
+            // ( print ("Machine " ++ (atos me) ++ " proxying shf " ++ (itos $[lbl]_machvar_cnt)) );
+            ( $[lbl]_machvar.insert_with {key: $[lbl]_machvar_cnt, value: m}
+                                         (\_ -> \_ -> {key: $[lbl]_machvar_cnt, value: m})
+            );
+
             ( $[lbl]_machvar_gc_ids.insert {key: $[lbl]_machvar_cnt, value: local_peers.size()} );
             ( local_peers.iterate (\a ->
-              (( print ("Machine " ++ (atos me) ++ " proxying shf " ++ (itos $[lbl]_machvar_cnt) ++ " to peer " ++ (atos a.addr)) );
+              (// ( print ("Machine " ++ (atos me) ++ " proxying shf " ++ (itos $[lbl]_machvar_cnt) ++ " to peer " ++ (atos a.addr)) );
                ($[lbl]_peerproxy, a.addr) <- $[lbl]_machvar_cnt)) );
             $[lbl]_machvar_cnt = $[lbl]_machvar_cnt + 1
           )
@@ -141,10 +167,11 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
             if $[lbl]_machvar_gc_ids.member gcentry then
             ( $[lbl]_machvar_gc_ids.lookup_with gcentry
                 (\r -> if r.value == 1
-                       then ( ( print ("Machine " ++ (atos me) ++ " GCing shf " ++ (itos msg_id)) );
+                       then ( // ( print ("Machine " ++ (atos me) ++ " GCing shf " ++ (itos msg_id)) );
                               ($[lbl]_machvar_gc_ids.erase r);
-                              ($[lbl]_machvar.erase {key:msg_id, value: $[lbl]_machvar_peer_default}) )
-                       else ( ( print ("Machine " ++ (atos me) ++ " GC request shf " ++ (itos msg_id) ++ " " ++ (itos r.value)) );
+                              //($[lbl]_machvar.erase {key:msg_id, value: $[lbl]_machvar_peer_default}) )
+                              () )
+                       else ( // ( print ("Machine " ++ (atos me) ++ " GC request shf " ++ (itos msg_id) ++ " " ++ (itos r.value)) );
                               $[lbl]_machvar_gc_ids.upsert_with r
                                 (\_ -> {key: r.key, value: r.value - 1})
                                 (\_ -> {key: r.key, value: r.value - 1}) )
