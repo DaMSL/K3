@@ -30,16 +30,19 @@ namespace K3 {
 
   class RemoteMessage : public std::tuple<Address, TriggerId, Value, Address> {
   public:
+
+    RemoteMessage() : std::tuple<Address,TriggerId, Value, Address>() { }
+
     RemoteMessage(Address addr, TriggerId id, const Value& v, Address src)
       : std::tuple<Address, TriggerId, Value, Address>(std::move(addr), id, v, std::move(src))
     {}
 
     RemoteMessage(Address addr, TriggerId id, Value&& v, Address src)
-      : std::tuple<Address, TriggerId, Value, Address>(std::move(addr), id, std::forward<Value>(v), std::move(src))
+      : std::tuple<Address, TriggerId, Value, Address>(std::move(addr), id, std::move(v), std::move(src))
     {}
 
-    const Address&    address()  const { return std::get<0>(*this); }
-    TriggerId id()               const { return std::get<1>(*this); }
+    const Address&  address()    const { return std::get<0>(*this); }
+    const TriggerId& id()        const { return std::get<1>(*this); }
     const Value& contents()      const { return std::get<2>(*this); }
     const Address& source()      const { return std::get<3>(*this); }
     std::string target() const {
@@ -51,6 +54,15 @@ namespace K3 {
       auto *d = __k3_context::__get_clonable_dispatcher(id())->clone();
       d->unpack(contents());
       return make_shared<Message>(address(), id(), shared_ptr<Dispatcher>(d), source());
+    }
+  private:
+    friend class boost::serialization::access;
+    template<class Archive>
+    void serialize(Archive &ar, const unsigned int) {
+      ar & std::get<0>(*this); 
+      ar & std::get<1>(*this);
+      ar & std::get<2>(*this);
+      ar & std::get<3>(*this);
     }
   };
 
