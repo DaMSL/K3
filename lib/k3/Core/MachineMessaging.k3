@@ -78,8 +78,9 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
                 (\r -> if r.value == 1
                        then ( // ( print ("Machine " ++ (atos me) ++ " GCing bc " ++ (itos msg_id)) );
                               ($[lbl]_machvar_gc_ids.erase r);
-                              //($[lbl]_machvar.erase {key:msg_id, value: $[lbl]_machvar_default}) )
-                              () )
+                              ($[lbl]_machvar.insert_with {key:msg_id, value: $[lbl]_machvar_default}
+                                                          (\_ -> \_ -> {key: msg_id, value: $[lbl]_machvar_default}))
+                            )
                        else ( // ( print ("Machine " ++ (atos me) ++ " GC request bc " ++ (itos msg_id) ++ " " ++ (itos r.value)) );
                               $[lbl]_machvar_gc_ids.upsert_with r
                                  (\_ -> {key: r.key, value: r.value - 1})
@@ -169,8 +170,10 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
                 (\r -> if r.value == 1
                        then ( // ( print ("Machine " ++ (atos me) ++ " GCing shf " ++ (itos msg_id)) );
                               ($[lbl]_machvar_gc_ids.erase r);
-                              //($[lbl]_machvar.erase {key:msg_id, value: $[lbl]_machvar_peer_default}) )
-                              () )
+                              ($[lbl]_machvar.insert_with {key:msg_id, value: $[lbl]_machvar_peer_default}
+                                                          (\_ -> \_ -> {key: msg_id, value: $[lbl]_machvar_peer_default}))
+
+                            )
                        else ( // ( print ("Machine " ++ (atos me) ++ " GC request shf " ++ (itos msg_id) ++ " " ++ (itos r.value)) );
                               $[lbl]_machvar_gc_ids.upsert_with r
                                 (\_ -> {key: r.key, value: r.value - 1})
