@@ -96,9 +96,9 @@ control DistributedGroupByGeneric [ lbl             : label
         $[nodes].iterate (\p -> ($[lbl]_redistribute, p.addr) <- ())
      +> {
           trigger $[lbl]_redistribute : () = \_ -> (
-            ((ignore ( ($.[e].groupBy $.[groupF] $.[aggF] $.[accE])
-                             .fold    (\acc -> \v -> ((acc.insert v); acc))
-                                      (empty $::[t] @Map)
+            ((ignore ( ((($.[e].groupBy $.[groupF] $.[aggF] $.[accE])
+                               .fold) @:Accumulate)  (\acc -> \v -> ((acc.insert v); acc))
+                                                     (empty $::[t] @Map)
             )) @:Send
             ) @ShuffleByMachine( lbl           = [# $[lbl]_gb_shuffle ]
                                , punclbl       = [# $[lbl]_gb_shpunc ]

@@ -213,7 +213,46 @@ control BroadcastByMachine[lbl : label, dest_trg : expr, masters : expr, masters
 
 // Partition a collection into a triply-nested map (machine address => peer address => data)
 // for sending as a batched shuffle.
-control PartitionByKeyMachine[masters_map : expr, nodes : expr, send_ty : type, send_extra_fn : expr] {
+control PartitionByKeyMachine[masters_map : expr, nodes : expr] {
+  ( ((?e.groupBy ?groupF ?aggF ?z).fold @:Accumulate) ?accumulate (?zacc : collection ?zacct @Map)
+  ) : collection ?t @Map
+      => $.[e].fold
+            (\acc3 -> \v ->
+              let k  = $.[groupF] v in
+              let k2 = case $[nodes].at (index_by_hash k)
+                       of { Some n -> n.addr }
+                          { None -> ((error (print ("Invalid node"))); me) }
+              in
+              let k3 = case $[masters_map].lookup {key: k2, value: me}
+                       of { Some mstr -> mstr.value }
+                          { None -> ((error (print ("No machine master found for " ++ (atos k2)))); me) }
+              in
+              let z1 = empty $::[t] @Map in
+              let z2 = empty {key: address, value: collection $::[t] @Map} @Map in
+
+              ((acc3.upsert_with {key: k3, value: z2}
+                  (\_ -> let nz1 = z1 in
+                         let nz2 = z2 in
+                         ((nz1.insert {key: k,  value: (($.[aggF] $.[z]) v)});
+                          (nz2.insert {key: k2, value: nz1});
+                          {key: k3, value: nz2})
+                  )
+                  (\acc2 -> ((acc2.value.upsert_with {key: k2, value: z1}
+                                (\_ -> let nz1 = z1 in
+                                       ((nz1.insert {key: k, value: (($.[aggF] $.[z]) v)});
+                                        {key: k2, value: nz1})
+                                )
+                                (\acc -> ((acc.value.upsert_with {key:k, value: $.[z]}
+                                             (\_   -> {key: k, value: (($.[aggF] $.[z]) v)})
+                                             (\old -> {key: k, value: (($.[aggF] old.value) v)}));
+                                          acc)
+                                ));
+                              acc2)
+                  ));
+                acc3)
+            )
+            (empty {key: address, value: collection {key: address, value: collection $::[t] @Map} @Map} @Map)
+
   ?e : collection ?t @Map
       => ((( ($.[e].groupBy @:HGroupBy) (\v -> case $[nodes].at (index_by_hash v.key)
                                                of { Some n -> n.addr }
@@ -225,8 +264,8 @@ control PartitionByKeyMachine[masters_map : expr, nodes : expr, send_ty : type, 
                                                of { Some mstr -> mstr.value }
                                                   { None -> ((error (print ("No machine master found for " ++ (atos v.key)))); me) }
                                         )
-                                        (\acc -> \v -> ((acc.insert {key: v.key, value: ($[send_extra_fn] v.value)}); acc))
-                                        (empty {key: address, value: $[send_ty]} @Map))
+                                        (\acc -> \v -> ((acc.insert v); acc))
+                                        (empty {key: address, value: collection $::[t] @Map} @Map))
 
   ?e : collection ?t
       => (($.[e].groupBy (\v -> case $[nodes].at (index_by_hash v.key)
@@ -239,8 +278,8 @@ control PartitionByKeyMachine[masters_map : expr, nodes : expr, send_ty : type, 
                                 of { Some mstr -> mstr.value }
                                    { None -> ((error (print ("No machine master found for " ++ (atos v.key)))); me) }
                          )
-                         (\acc -> \v -> ((acc.insert {key: v.key, value: ($[send_extra_fn] v)}); acc))
-                         (empty {key: address, value: $[send_ty]} @Collection))
+                         (\acc -> \v -> ((acc.insert v); acc))
+                         (empty {key: address, value: collection $::[t] @Collection} @Collection))
 }
 
 control ShuffleByMachine[ lbl : label, punclbl : label
@@ -249,8 +288,7 @@ control ShuffleByMachine[ lbl : label, punclbl : label
                         , send_ty : type, send_extra_fn : expr ]
 {
   ( ignore (?e : collection ?t) ) @:Send
-    => (( ((ignore ( $.[e] @PartitionByKeyMachine( masters_map = masters_map, nodes = nodes
-                                                 , send_ty = send_ty, send_extra_fn = send_extra_fn)
+    => (( ((ignore ( $.[e] @PartitionByKeyMachine( masters_map = masters_map, nodes = nodes )
                    )
           ) @:SendShuffle
           ) @DispatchByMachine(
@@ -265,8 +303,7 @@ control ShuffleByMachine[ lbl : label, punclbl : label
     +> {}
 
   ( ignore (?e : collection ?t) ) @:SendNoDecl
-    => (( ((ignore ( $.[e] @PartitionByKeyMachine( masters_map = masters_map, nodes = nodes
-                                                 , send_ty = send_ty, send_extra_fn = send_extra_fn)
+    => (( ((ignore ( $.[e] @PartitionByKeyMachine( masters_map = masters_map, nodes = nodes )
                    )
           ) @:SendShuffleNoDecl
           ) @DispatchByMachine(
