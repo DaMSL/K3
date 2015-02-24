@@ -16,12 +16,16 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
      => (\$#[x] -> $.[b])
      +> { trigger $[lbl]_peerproxy : int = \msg_id -> (
             ( print ("Peer " ++ (atos me) ++ " proxying bc " ++ (itos msg_id)) );
-            ( $[lbl]_machvar.lookup_with {key: msg_id, value: $[lbl]_machvar_default}
-                                         (\r -> (\$#[x] -> $.[b]) r.value) );
+            ( let entry = {key: msg_id, value: $[lbl]_machvar_default} in
+              if $[lbl]_machvar.member entry
+              then ( $[lbl]_machvar.lookup_with entry (\r -> (\$#[x] -> $.[b]) r.value) )
+              else ( error (print ("Invalid bc peer message " ++ (itos msg_id) ++ " at " ++ (atos me))) ) );
 
             ( print ("Peer " ++ (atos me) ++ " responding to bc GC " ++ (itos msg_id)) );
-            ( $[masters_map].lookup_with {key:me, value:me}
-                                         (\ms -> ($[lbl]_machvar_gc, ms.value) <- msg_id ) )
+            ( let aentry = {key:me, value:me} in
+              if $[masters_map].member aentry
+              then ( $[masters_map].lookup_with aentry (\ms -> ($[lbl]_machvar_gc, ms.value) <- msg_id ) )
+              else ( error (print ("Invalid bc peer master at " ++ (atos me))) ) )
           )
         }
 
@@ -55,16 +59,21 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
           )
 
           trigger $[lbl]_machvar_gc : int = \msg_id -> (
-            $[lbl]_machvar_gc_ids.lookup_with {key: msg_id, value: 0}
-              (\r -> if r.value == 1
-                     then ( ( print ("Machine " ++ (atos me) ++ " GCing bc " ++ (itos msg_id)) );
-                            ($[lbl]_machvar_gc_ids.erase r);
-                            ($[lbl]_machvar.erase {key:msg_id, value: $[lbl]_machvar_default}) )
-                     else ( ( print ("Machine " ++ (atos me) ++ " GC request bc " ++ (itos msg_id) ++ " " ++ (itos r.value)) );
-                            $[lbl]_machvar_gc_ids.upsert_with r
-                               (\_ -> {key: r.key, value: r.value - 1})
-                               (\_ -> {key: r.key, value: r.value - 1}) )
-              )
+            let gcentry = {key: msg_id, value: 0} in
+            if $[lbl]_machvar_gc_ids.member gcentry
+            then
+            ( $[lbl]_machvar_gc_ids.lookup_with gcentry
+                (\r -> if r.value == 1
+                       then ( ( print ("Machine " ++ (atos me) ++ " GCing bc " ++ (itos msg_id)) );
+                              ($[lbl]_machvar_gc_ids.erase r);
+                              ($[lbl]_machvar.erase {key:msg_id, value: $[lbl]_machvar_default}) )
+                       else ( ( print ("Machine " ++ (atos me) ++ " GC request bc " ++ (itos msg_id) ++ " " ++ (itos r.value)) );
+                              $[lbl]_machvar_gc_ids.upsert_with r
+                                 (\_ -> {key: r.key, value: r.value - 1})
+                                 (\_ -> {key: r.key, value: r.value - 1}) )
+                )
+            )
+            else ( error (print ("Invalid bc gc id " ++ (itos msg_id))) )
           )
         }
 
@@ -72,16 +81,24 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
      => (\$#[x] -> $.[b])
      +> { trigger $[lbl]_peerproxy : int = \msg_id -> (
             ( print ("Peer " ++ (atos me) ++ " proxying shf " ++ (itos msg_id)) );
-            $[lbl]_machvar.lookup_with
-                {key: msg_id, value: $[lbl]_machvar_peer_default}
-                (\r -> (
-                  ( r.value.lookup_with {key: me, value: $[lbl]_machvar_default}
-                                        (\v -> (\$#[x] -> $.[b]) v.value) );
+            let oentry = {key: msg_id, value: $[lbl]_machvar_peer_default} in
+            if $[lbl]_machvar.member oentry
+            then ( $[lbl]_machvar.lookup_with oentry
+                      (\r -> (
+                        ( let ientry = {key: me, value: $[lbl]_machvar_default} in
+                          if r.value.member ientry
+                          then ( r.value.lookup_with ientry (\v -> (\$#[x] -> $.[b]) v.value) )
+                          else () );
+                          // else ( error (print ("Invalid shf inner peer message " ++ (itos msg_id) ++ " at " ++ (atos me))) ) );
 
-                  ( print ("Peer " ++ (atos me) ++ " responding to GC shf " ++ (itos msg_id)) );
-                  ( $[masters_map].lookup_with {key:me, value:me}
-                                               (\ms -> ($[lbl]_machvar_gc, ms.value) <- msg_id) ))
-                )
+                        ( print ("Peer " ++ (atos me) ++ " responding to GC shf " ++ (itos msg_id)) );
+                        ( let aentry = {key:me, value:me} in
+                          if $[masters_map].member aentry
+                          then ( $[masters_map].lookup_with aentry (\ms -> ($[lbl]_machvar_gc, ms.value) <- msg_id) )
+                          else ( error (print ("Invalid shf peer master at " ++ (atos me))) ) )
+                      ))
+                  )
+            else ( error (print ("Invalid shf outer peer message " ++ (itos msg_id) ++ " at " ++ (atos me))) )
           )
         }
 
@@ -120,16 +137,20 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
 
           // For simplicity, garbage collection in bulk across all peers, rather than per-peer.
           trigger $[lbl]_machvar_gc : int = \msg_id -> (
-            $[lbl]_machvar_gc_ids.lookup_with {key: msg_id, value: 0}
-              (\r -> if r.value == 1
-                     then ( ( print ("Machine " ++ (atos me) ++ " GCing shf " ++ (itos msg_id)) );
-                            ($[lbl]_machvar_gc_ids.erase r);
-                            ($[lbl]_machvar.erase {key:msg_id, value: $[lbl]_machvar_peer_default}) )
-                     else ( ( print ("Machine " ++ (atos me) ++ " GC request shf " ++ (itos msg_id) ++ " " ++ (itos r.value)) );
-                            $[lbl]_machvar_gc_ids.upsert_with r
-                              (\_ -> {key: r.key, value: r.value - 1})
-                              (\_ -> {key: r.key, value: r.value - 1}) )
-              )
+            let gcentry = {key: msg_id, value: 0} in
+            if $[lbl]_machvar_gc_ids.member gcentry then
+            ( $[lbl]_machvar_gc_ids.lookup_with gcentry
+                (\r -> if r.value == 1
+                       then ( ( print ("Machine " ++ (atos me) ++ " GCing shf " ++ (itos msg_id)) );
+                              ($[lbl]_machvar_gc_ids.erase r);
+                              ($[lbl]_machvar.erase {key:msg_id, value: $[lbl]_machvar_peer_default}) )
+                       else ( ( print ("Machine " ++ (atos me) ++ " GC request shf " ++ (itos msg_id) ++ " " ++ (itos r.value)) );
+                              $[lbl]_machvar_gc_ids.upsert_with r
+                                (\_ -> {key: r.key, value: r.value - 1})
+                                (\_ -> {key: r.key, value: r.value - 1}) )
+                )
+            )
+            else ( error (print ("Invalid shf gc id " ++ (itos msg_id))) )
           )
         }
 }
