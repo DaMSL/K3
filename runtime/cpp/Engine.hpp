@@ -17,7 +17,7 @@
 #include "Options.hpp"
 
 namespace K3 {
-  
+
   template <>
   std::size_t hash_value(const int& t);
 
@@ -89,8 +89,6 @@ namespace K3 {
       listenerCounter   = shared_ptr<ListenerCounter>(new ListenerCounter());
       waitMutex         = shared_ptr<boost::mutex>(new boost::mutex());
       waitCondition     = shared_ptr<boost::condition_variable>(new boost::condition_variable());
-      msgAvailMutex     = shared_ptr<boost::mutex>(new boost::mutex());
-      msgAvailCondition = shared_ptr<boost::condition_variable>(new boost::condition_variable());
     }
 
     bool terminate() {
@@ -115,25 +113,12 @@ namespace K3 {
       } else { logAt(boost::log::trivial::warning, "Could not wait for engine, no condition variable available."); }
     }
 
-    // Wait for a notification that the engine associated
-    // with this control object has queued messages.
-    template <class Predicate>
-    void waitForMessage(Predicate pred)
-    {
-      if (msgAvailMutex && msgAvailCondition) {
-        boost::unique_lock<boost::mutex> lock(*msgAvailMutex);
-        while (pred()) { msgAvailCondition->wait(lock); }
-      } else { logAt(boost::log::trivial::warning, "Could not wait for message, no condition variable available."); }
-    }
 
     shared_ptr<ListenerControl> listenerControl() {
       return shared_ptr<ListenerControl>(
-              new ListenerControl(msgAvailMutex, msgAvailCondition, listenerCounter));
+              new ListenerControl(listenerCounter));
     }
 
-    void messageAvail() {
-      msgAvailCondition->notify_one();
-    }
 
   protected:
     // Engine configuration, indicating whether we wait for the network when terminating.
@@ -149,9 +134,6 @@ namespace K3 {
     shared_ptr<boost::mutex> waitMutex;
     shared_ptr<boost::condition_variable> waitCondition;
 
-    // Notifications for engine worker threads waiting on messages.
-    shared_ptr<boost::mutex> msgAvailMutex;
-    shared_ptr<boost::condition_variable> msgAvailCondition;
   };
 
 
@@ -170,12 +152,13 @@ namespace K3 {
       string log_level,
       string log_path,
       string result_v,
-      string result_p
+      string result_p,
+      shared_ptr<MessageQueues> qs
     ): LogMT("Engine") {
-      configure(simulation, sys_env, _internal_codec, log_level, log_path, result_v, result_p);
+      configure(simulation, sys_env, _internal_codec, log_level, log_path, result_v, result_p, qs);
     }
 
-    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level,string log_path, string result_var, string result_path);
+    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level,string log_path, string result_var, string result_path, shared_ptr<MessageQueues> qs);
 
     //-----------
     // Messaging.
@@ -309,7 +292,7 @@ namespace K3 {
 
     void forceTerminateEngine() {
       terminateEngine();
-      control->messageAvail();
+      queues->messageAvail(*me);
       cleanupEngine();
     }
 
@@ -366,8 +349,7 @@ namespace K3 {
 
     void logResult(shared_ptr<MessageProcessor>& mp) {
       if (result_var != "") {
-        auto n = nodes();
-        for (const auto& a : n) {
+	auto a = *me;
           auto dir = result_path != "" ? result_path : ".";
           auto s = dir + "/" + addressAsString(a) + "_Result.txt";
           std::ofstream ofs;
@@ -379,23 +361,7 @@ namespace K3 {
           else {
             throw std::runtime_error("Cannot log result variable, does not exist: " + result_var);
           }
-        }
       }
-    }
-
-    //-------------------
-    // Engine statistics.
-
-    list<Address> nodes() {
-      list<Address> r;
-      if ( deployment ) { r = deployedNodes(*deployment); }
-      else { logAt(boost::log::trivial::error, "Invalid system environment."); }
-      return r;
-    }
-
-    tuple<size_t, size_t> statistics() {
-      return make_tuple(queues? queues->size() : 0,
-                        endpoints? endpoints->numEndpoints() : 0);
     }
 
     bool simulation() {
@@ -418,7 +384,7 @@ namespace K3 {
   protected:
     shared_ptr<EngineConfiguration> config;
     shared_ptr<EngineControl>       control;
-    shared_ptr<SystemEnvironment>   deployment;
+    shared_ptr<Address>             me;
     shared_ptr<InternalCodec>       internal_codec;
     shared_ptr<MessageQueues>       queues;
     // shared_ptr<WorkerPool>          workers;

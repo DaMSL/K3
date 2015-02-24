@@ -36,39 +36,17 @@ namespace K3 {
   class ListenerControl {
   public:
 
-    ListenerControl(shared_ptr<boost::mutex> m, shared_ptr<boost::condition_variable> c,
-                    shared_ptr<ListenerCounter> i)
-      : listenerCounter(i), msgAvailable(false), msgAvailMutex(m), msgAvailCondition(c)
+    ListenerControl(shared_ptr<ListenerCounter> i)
+      : listenerCounter(i)
     {}
-
-    // Waits on the message available condition variable.
-    void waitForMessage()
-    {
-      boost::unique_lock<boost::mutex> lock(*msgAvailMutex);
-      while ( !msgAvailable ) { msgAvailCondition->wait(lock); }
-    }
-
-    // Notifies one waiter on the message available condition variable.
-    void messageAvailable()
-    {
-      {
-        boost::lock_guard<boost::mutex> lock(*msgAvailMutex);
-        msgAvailable = true;
-      }
-      msgAvailCondition->notify_one();
-    }
 
     shared_ptr<ListenerCounter> counter() { return listenerCounter; }
 
-    shared_ptr<boost::mutex> msgMutex() { return msgAvailMutex; }
-    shared_ptr<boost::condition_variable> msgCondition() { return msgAvailCondition; }
 
   protected:
     shared_ptr<ListenerCounter> listenerCounter;
 
     bool msgAvailable;
-    shared_ptr<boost::mutex> msgAvailMutex;
-    shared_ptr<boost::condition_variable> msgAvailCondition;
   };
 
   //------------
@@ -238,9 +216,6 @@ namespace K3 {
                 while (v) {
 
                   bool t = endpoint_->do_push(v, queues, transfer_codec);
-                  if (t) {
-                    control_->messageAvailable();
-                  }
                   // Attempt to decode a buffered value
                   v = cdec->decode("");
                 }
@@ -311,9 +286,6 @@ namespace K3 {
               refreshSenders(v);
               bool t = this->endpoint_->do_push(v, this->queues, this->transfer_codec);
 
-              if (t) {
-                this->control_->messageAvailable();
-              }
               v = cdec->decode("");
             }
           } else {
