@@ -17,7 +17,7 @@
 #include "Options.hpp"
 
 namespace K3 {
-  
+
   template <>
   std::size_t hash_value(const int& t);
 
@@ -89,8 +89,6 @@ namespace K3 {
       listenerCounter   = shared_ptr<ListenerCounter>(new ListenerCounter());
       waitMutex         = shared_ptr<boost::mutex>(new boost::mutex());
       waitCondition     = shared_ptr<boost::condition_variable>(new boost::condition_variable());
-      msgAvailMutex     = shared_ptr<boost::mutex>(new boost::mutex());
-      msgAvailCondition = shared_ptr<boost::condition_variable>(new boost::condition_variable());
     }
 
     bool terminate() {
@@ -115,25 +113,12 @@ namespace K3 {
       } else { logAt(boost::log::trivial::warning, "Could not wait for engine, no condition variable available."); }
     }
 
-    // Wait for a notification that the engine associated
-    // with this control object has queued messages.
-    template <class Predicate>
-    void waitForMessage(Predicate pred)
-    {
-      if (msgAvailMutex && msgAvailCondition) {
-        boost::unique_lock<boost::mutex> lock(*msgAvailMutex);
-        while (pred()) { msgAvailCondition->wait(lock); }
-      } else { logAt(boost::log::trivial::warning, "Could not wait for message, no condition variable available."); }
-    }
 
     shared_ptr<ListenerControl> listenerControl() {
       return shared_ptr<ListenerControl>(
-              new ListenerControl(msgAvailMutex, msgAvailCondition, listenerCounter));
+              new ListenerControl(listenerCounter));
     }
 
-    void messageAvail() {
-      msgAvailCondition->notify_one();
-    }
 
   protected:
     // Engine configuration, indicating whether we wait for the network when terminating.
@@ -149,9 +134,6 @@ namespace K3 {
     shared_ptr<boost::mutex> waitMutex;
     shared_ptr<boost::condition_variable> waitCondition;
 
-    // Notifications for engine worker threads waiting on messages.
-    shared_ptr<boost::mutex> msgAvailMutex;
-    shared_ptr<boost::condition_variable> msgAvailCondition;
   };
 
 
@@ -310,7 +292,7 @@ namespace K3 {
 
     void forceTerminateEngine() {
       terminateEngine();
-      control->messageAvail();
+      queues->messageAvail(*me);
       cleanupEngine();
     }
 
@@ -380,14 +362,6 @@ namespace K3 {
             throw std::runtime_error("Cannot log result variable, does not exist: " + result_var);
           }
       }
-    }
-
-    //-------------------
-    // Engine statistics.
-
-    tuple<size_t, size_t> statistics() {
-      return make_tuple(queues? queues->size(*me) : 0,
-                        endpoints? endpoints->numEndpoints() : 0);
     }
 
     bool simulation() {

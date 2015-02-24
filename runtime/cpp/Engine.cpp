@@ -74,7 +74,7 @@ namespace K3 {
     void Engine::send(Address addr, TriggerId triggerId, shared_ptr<Dispatcher> disp, Address src)
     {
       if (queues) {
-        bool local_address = queues->isLocal(addr); 
+        bool local_address = queues->isLocal(addr);
         bool shortCircuit =  local_address;
 
         if (shortCircuit) {
@@ -82,9 +82,8 @@ namespace K3 {
           // TODO: ensure we avoid copying the dispatcher
           Message msg(addr, triggerId, disp,src);
           queues->enqueue(msg);
-          control->messageAvail();
-
-        } else {
+        }
+	else {
           RemoteMessage rMsg(addr, triggerId, disp->pack(), src);
 
           // Get connection and send a message on it.
@@ -214,9 +213,9 @@ namespace K3 {
                 return;
             }
 
-            control->waitForMessage(
+            queues->waitForMessage(*me,
               [=] () {
-                return !control->terminate() && queues->size(*me) < 1;
+                return !control->terminate() && queues->empty(*me);
               });
 
             // Check for termination signal after waiting is finished

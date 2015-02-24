@@ -25,7 +25,11 @@ namespace K3 {
     : public boost::basic_lockable_adapter<mutex> {
   public:
     typedef boost::basic_lockable_adapter<mutex> qlockable;
-    MsgQueue () : qlockable(), queue(*this) {}
+    MsgQueue () : qlockable(), queue(*this) {
+      msgAvailMutex     = shared_ptr<boost::mutex>(new boost::mutex());
+      msgAvailCondition = shared_ptr<boost::condition_variable>(new boost::condition_variable());
+
+    }
 
     bool empty() {
       boost::strict_lock<MsgQueue> guard(*this);
@@ -34,7 +38,6 @@ namespace K3 {
 
     bool push(const Message& v) {
       boost::strict_lock<MsgQueue> guard(*this);
-      ++qSize;
       queue.get(guard).push(v);
       return true;
     }
@@ -43,7 +46,6 @@ namespace K3 {
       boost::strict_lock<MsgQueue> guard(*this);
       shared_ptr<Message> r;
       if ( !queue.get(guard).empty() ) {
-        --qSize;
 	// TODO std::move or store pointers in queue
         r = make_shared<Message>(queue.get(guard).front());
         queue.get(guard).pop();
@@ -51,18 +53,32 @@ namespace K3 {
       return r;
     }
 
-    size_t size() { return qSize; }
+    // Wait for a notification that the engine associated
+    // with this control object has queued messages.
+    template <class Predicate>
+    void waitForMessage(Predicate pred) {
+      if (msgAvailMutex && msgAvailCondition) {
+        boost::unique_lock<boost::mutex> lock(*msgAvailMutex);
+        while (pred()) { msgAvailCondition->wait(lock); }
+      }
+    }
+
+    void messageAvail() {
+      msgAvailCondition->notify_one();
+    }
 
   protected:
     boost::externally_locked<std::queue<Message>, MsgQueue> queue;
-    size_t qSize; // TODO: synchronize
+    shared_ptr<boost::mutex> msgAvailMutex;
+    shared_ptr<boost::condition_variable> msgAvailCondition;
+
   };
 
 
   // TODO: r-ref overload for enqueue
   // TODO: for dynamic changes to the queues container, use a shared lock
   class MessageQueues
-    : public virtual LogMT 
+    : public virtual LogMT
   {
   public:
     typedef map<Address, shared_ptr<MsgQueue> > MultiPeerMessages;
@@ -77,7 +93,7 @@ namespace K3 {
     void addQueue(const Address& a) {
         multiPeerMsgs.insert(make_pair(a, shared_ptr<MsgQueue>(new MsgQueue())));
     }
-    
+
     void enqueue(Message& m)
     {
       if (validTarget(m)) { enqueue(m, queue(m.address())); }
@@ -85,7 +101,7 @@ namespace K3 {
         BOOST_LOG(*this) << "Invalid message target:" << m.id() << "@" << K3::addressAsString(m.address());
       }
     }
-    
+
     shared_ptr<Message> dequeue(const Address& a)
     {
       shared_ptr<MsgQueue> q = queue(a);
@@ -98,10 +114,36 @@ namespace K3 {
       return queue(a) ? true : false;
     }
 
-    size_t size(const Address& a) {
-      size_t r = 0;
+    bool empty(const Address& a) {
       shared_ptr<MsgQueue> q = queue(a);
-      return q ? q->size() : 0;
+      if (q) {
+        return q->empty();
+      }
+      else {
+        fail(a);
+      }
+    }
+
+    template <class Predicate>
+    void waitForMessage(const Address& a, Predicate pred) {
+      shared_ptr<MsgQueue> q = queue(a);
+      if (q) {
+        q->waitForMessage(pred);
+      }
+      else {
+        fail(a);
+      }
+    }
+
+    void messageAvail(const Address& a) {
+      shared_ptr<MsgQueue> q = queue(a);
+      if (q) {
+        q->messageAvail();
+      }
+      else {
+        fail(a);
+      }
+
     }
 
   protected:
@@ -120,10 +162,15 @@ namespace K3 {
     {
       if (q) {
         q->push(m);
+	q->messageAvail();
       }
-      else { 
-        BOOST_LOG(*this) << "Invalid destination queue during enqueue";
+      else {
+        fail(m.address());
       }
+    }
+
+    void fail(const Address& a) {
+       throw std::runtime_error("Failed to find queue for address" + addressAsString(a));
     }
   };
 
