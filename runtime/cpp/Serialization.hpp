@@ -32,7 +32,7 @@ shared_ptr<V> unpack(const string& s) {
 
   V p;
   in_archive >> p;
-  return make_shared<V>(p);
+  return std::make_shared<V>(std::move(p));
 }
 
 template <typename V>
@@ -86,7 +86,7 @@ template<class archive>
 void load(archive& ar, asio::ip::address& ip, unsigned int) {
   std::string s;
   ar >> s;
-  ip.from_string(s);
+  ip = asio::ip::address::from_string(s);
 }
 
 // For std::shared_ptr

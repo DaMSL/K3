@@ -284,7 +284,7 @@ namespace K3
     void doWrite(shared_ptr<Value>  v) {
       if ( connection && this->codec ) {
         string data = this->codec->encode(*v);
-        shared_ptr<Value> s = make_shared<Value>(data);
+        shared_ptr<Value> s = make_shared<Value>(std::move(data));
         connection->write(s);
       }
       else { BOOST_LOG(*this) << "Invalid doWrite on NetworkHandle"; }

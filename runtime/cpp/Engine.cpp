@@ -11,7 +11,8 @@ using boost::thread;
 namespace K3 {
 
     void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec,
-                           string log_l, string log_p, string result_v, string result_p) {
+                           string log_l, string log_p, string result_v, string result_p, shared_ptr<MessageQueues> qs) {
+      queues = qs;
       internal_codec = _internal_codec;
       log_enabled = false;
       log_json = false;
@@ -25,6 +26,10 @@ namespace K3 {
 
       list<Address> processAddrs = deployedNodes(sys_env);
       Address initialAddress;
+
+      if (processAddrs.size() > 1) {
+        throw std::runtime_error("Only 1 peer per engine allowed");
+      }
 
       if (log_json) {
         for (const auto& addr : processAddrs) {
@@ -43,36 +48,22 @@ namespace K3 {
 
       config       = shared_ptr<EngineConfiguration>(new EngineConfiguration(initialAddress));
       control      = shared_ptr<EngineControl>(new EngineControl(config));
-      deployment   = shared_ptr<SystemEnvironment>(new SystemEnvironment(sys_env));
       // workers     = shared_ptr<WorkerPool>(new InlinePool());
       network_ctxt = shared_ptr<Net::NContext>(new Net::NContext());
+      me           = std::make_shared<Address>(initialAddress);
       endpoints    = shared_ptr<EndpointState>(new EndpointState());
       listeners    = shared_ptr<Listeners>(new Listeners());
       collectionCount   = 0;
       message_counter = 0;
 
-      if ( simulation ) {
-        // Simulation engine initialization.
+      // Network engine initialization.
+      connections = shared_ptr<ConnectionState>(new ConnectionState(network_ctxt, false));
 
-        if (processAddrs.size() <= 1) {
-          queues = simpleQueues(initialAddress);
-        } else {
-          queues = perPeerQueues(processAddrs);
-        }
-
-        connections = shared_ptr<ConnectionState>(new ConnectionState(network_ctxt, true));
-      }
-      else {
-        // Network engine initialization.
-        queues      = perPeerQueues(processAddrs);
-        connections = shared_ptr<ConnectionState>(new ConnectionState(network_ctxt, false));
-
-        // Start network listeners for all K3 processes on this engine.
-        // This opens engine sockets with an internal codec, relying on openSocketInternal()
-        // to construct the Listener object and the thread runs the listener's event loop.
-        for (Address k3proc : processAddrs) {
-          openSocketInternal(peerEndpointId(k3proc), k3proc, IOMode::Read);
-        }
+      // Start network listeners for all K3 processes on this engine.
+      // This opens engine sockets with an internal codec, relying on openSocketInternal()
+      // to construct the Listener object and the thread runs the listener's event loop.
+      for (Address k3proc : processAddrs) {
+        openSocketInternal(peerEndpointId(k3proc), k3proc, IOMode::Read);
       }
     }
 
@@ -82,18 +73,17 @@ namespace K3 {
     // TODO: rvalue-ref overload for value argument.
     void Engine::send(Address addr, TriggerId triggerId, shared_ptr<Dispatcher> disp, Address src)
     {
-      if (deployment) {
-        bool local_address = isDeployedNode(*deployment, addr);
-        bool shortCircuit =  local_address || simulation();
+      if (queues) {
+        bool local_address = queues->isLocal(addr);
+        bool shortCircuit =  local_address;
 
         if (shortCircuit) {
           // Directly enqueue.
           // TODO: ensure we avoid copying the dispatcher
           Message msg(addr, triggerId, disp,src);
           queues->enqueue(msg);
-          control->messageAvail();
-
-        } else {
+        }
+	else {
           RemoteMessage rMsg(addr, triggerId, disp->pack(), src);
 
           // Get connection and send a message on it.
@@ -104,7 +94,7 @@ namespace K3 {
             shared_ptr<Endpoint> ep = endpoints->getInternalEndpoint(eid);
 
             if ( ep && ep->hasWrite() ) {
-              shared_ptr<Value> v = make_shared<Value>(internal_codec->show_message(rMsg));
+              shared_ptr<Value> v = make_shared<Value>(std::move(internal_codec->show_message(rMsg)));
               ep->doWrite(v);
               ep->flushBuffer();
               sent = true;
@@ -156,7 +146,7 @@ namespace K3 {
       // Log queues?
 
       // Get a message from the engine queues.
-      shared_ptr<Message> next_message = queues->dequeue();
+      shared_ptr<Message> next_message = queues->dequeue(*me);
 
       if (next_message) {
         message_counter++;
@@ -223,9 +213,9 @@ namespace K3 {
                 return;
             }
 
-            control->waitForMessage(
+            queues->waitForMessage(*me,
               [=] () {
-                return !control->terminate() && queues->size() < 1;
+                return !control->terminate() && queues->empty(*me);
               });
 
             // Check for termination signal after waiting is finished

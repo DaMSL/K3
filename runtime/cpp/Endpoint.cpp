@@ -311,9 +311,11 @@ namespace K3
     bool Endpoint::do_push(shared_ptr<Value> val,
                            shared_ptr<MessageQueues> q,
                            shared_ptr<InternalCodec> codec) {
-      buffer_->push_back(val);
-      return buffer_->transfer(q, codec,
-               std::bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
+
+      // Skip the endpoint buffer.
+      // deserialize and directly enqueue 
+      q->enqueue(*(codec->read_message(*val).toMessage()));
+      return true;
     }
 
     // Closes the endpoint's IOHandle, while also notifying subscribers
