@@ -55,6 +55,7 @@ namespace K3 {
       d->unpack(contents());
       return make_shared<Message>(address(), id(), shared_ptr<Dispatcher>(d), source());
     }
+
   private:
     friend class boost::serialization::access;
     template<class Archive>

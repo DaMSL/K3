@@ -32,7 +32,7 @@ shared_ptr<V> unpack(const string& s) {
 
   V p;
   in_archive >> p;
-  return make_shared<V>(p);
+  return std::make_shared<V>(std::move(p));
 }
 
 template <typename V>
