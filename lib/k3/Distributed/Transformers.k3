@@ -379,6 +379,72 @@ control StreamingHashJoin [ lbl                  : label
         }
 }
 
+control BarrierHashJoin   [ lbl                  : label
+                          , lhs_ht_id            : label
+                          , rhs_ht_id            : label
+                          , lhs_ht_ty            : type
+                          , rhs_ht_ty            : type
+                          , lhs_probe            : expr
+                          , rhs_probe            : expr
+                          , lhs_insert_with      : expr
+                          , rhs_insert_with      : expr
+                          , has_outputs          : expr
+                          , empty_out_buffer     : expr
+                          , lhs_pipeline_next    : expr
+                          , rhs_pipeline_next    : expr
+                          , lhs_clear_expr       : expr
+                          , rhs_clear_expr       : expr
+                          , peer_next            : expr
+                          , next                 : expr
+                          , coordinator          : expr
+                          , nodes                : expr
+                          ]
+{
+  () => ()
+     +> {
+          declare $[lhs_ht_id] : mut collection $[lhs_ht_ty] @Map
+          declare $[rhs_ht_id] : mut collection $[rhs_ht_ty] @Map
+
+          trigger $[lbl]_process_redistribute : ( option (collection $[lhs_ht_ty] @Map)
+                                                , option (collection $[rhs_ht_ty] @Map)
+                                                , bool)
+          = \rd -> (
+            (bind rd as (lv_opt, rv_opt, is_left) in (
+              // Three stages: join other, pipeline outputs, track for other
+              if is_left then (
+                case lv_opt of
+                { Some lvals ->
+                  let outputs = lvals.fold ($[rhs_probe] $[rhs_ht_id]) $[empty_out_buffer] in
+                  ((if $[has_outputs] outputs then ( $[lhs_pipeline_next] outputs ) else ());
+                    if $[lbl]_rhs_done then () else ( lvals.iterate (\lkv -> $[lhs_ht_id].insert_with lkv $[lhs_insert_with]) ))
+                }
+                { None -> error (print ($[|exprLabel 'lbl|] ++ "_process_redistribute: invalid left join inputs.")) }
+              ) else (
+                case rv_opt of
+                { Some rvals ->
+                  let outputs = rvals.fold ($[lhs_probe] $[lhs_ht_id]) $[empty_out_buffer] in
+                  ((if $[has_outputs] outputs then ( $[rhs_pipeline_next] outputs ) else ());
+                    if $[lbl]_lhs_done then () else ( rvals.iterate (\rkv -> $[rhs_ht_id].insert_with rkv $[rhs_insert_with]) ))
+                }
+                { None -> error (print ($[|exprLabel 'lbl|] ++ "_process_redistribute: invalid right join inputs.")) }
+              )
+            ));
+            (
+              ( $[lhs_clear_expr] $[lhs_ht_id] );
+              ( $[rhs_clear_expr] $[rhs_ht_id] );
+                $[peer_next];
+                ($[lbl]_global_barrier, $[coordinator]) <- ()
+            ) @OnCounter(id=[# $[lbl]_peer_done], eq=[$ $[nodes].size() * 2], reset=[$ false], profile=[$ false])
+          )
+
+          trigger $[lbl]_global_barrier : () = \_ -> (
+            ( print "Join done." ;
+              $[next]
+            ) @OnCounter(id=[# $[lbl]_join_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
+          )
+        }
+}
+
 control PipelineSymmetricHashJoin [ lbl                  : label
                                   , lhs_ht_id            : label
                                   , rhs_ht_id            : label
