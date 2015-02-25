@@ -24,7 +24,7 @@ control PSendByKey[ dest_trg : expr, barrier_trg : expr, nodes : expr, send_extr
 
 // Partition a collection by peer and send partitions to each peer; send an empty partition to any
 // peer that does not have one.
-control PartitionShuffleWithMissing[dest_trg: expr, nodes: expr] {
+control PartitionShuffleWithMissing[lbl: label, dest_trg: expr, nodes: expr, send_extra_fn: expr, send_ty: type] {
   (ignore (?e : collection ?t @Map )) => (
     let partition_table = (($.[e].groupBy @:HGroupBy)
                             (\v -> (case $[nodes].at (index_by_hash v.key) of
@@ -34,11 +34,14 @@ control PartitionShuffleWithMissing[dest_trg: expr, nodes: expr] {
                             empty $::[t] @Map)
     in $[nodes].iterate (\n ->
     (partition_table.lookup_with2 { key: n.addr, value: empty $::[t] @Map }
-        (\_ -> ($[dest_trg], n.addr) <- empty $::[t] @Map)
-        (\y -> ($[dest_trg], n.addr) <- y.value)
+        (\_ -> ($[dest_trg], n.addr) <- $[lbl]_send_ty_default)
+        (\y -> ($[dest_trg], n.addr) <- $[send_extra_fn] y.value)
         )
     )
   )
+  +> {
+    declare $[lbl]_send_ty_default: $[send_ty]
+  }
 }
 
 control PartitionByKey {
