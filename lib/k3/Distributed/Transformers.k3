@@ -100,8 +100,11 @@ control DistributedGroupByGeneric [ lbl             : label
                                .fold) @:Accumulate)  (\acc -> \v -> ((acc.insert v); acc))
                                                      (empty $::[t] @Map)
             )) @PartitionShuffleWithMissing(
-                  dest_trg      = [$ $[lbl]_merge ]
+                  lbl           = lbl
+                , dest_trg      = [$ $[lbl]_merge ]
                 , nodes         = nodes
+                , send_extra_fn = [$ \x -> x]
+                , send_ty       = [: collection $::[t] @ Map ]
                 )
           )
 
@@ -182,8 +185,14 @@ control DistributedHashJoin [ lbl              : label
         declare $[lhs_ht_id] : mut collection $[lhs_ht_ty] @Map
 
         trigger $[lbl]_lhs_redistribute : () = \_ -> (
-          (ignore $[lhs_query]
-          ) @PartitionShuffleWithMissing(dest_trg = [$ $[lbl]_lhs_process_redistribute], nodes = nodes)
+          (ignore $[lhs_query])
+            @PartitionShuffleWithMissing(
+              lbl           = [# $[lbl]_lhs]
+            , dest_trg = [$ $[lbl]_lhs_process_redistribute]
+            , nodes = nodes
+            , send_extra_fn = [$ \x -> x]
+            , send_ty = [: collection $[lhs_ht_ty] @ Map]
+            )
         )
 
         trigger $[lbl]_lhs_process_redistribute : collection $[lhs_ht_ty] @Map = (\vals ->
@@ -193,8 +202,14 @@ control DistributedHashJoin [ lbl              : label
         )
 
         trigger $[lbl]_rhs_redistribute : () = \_ -> (
-          ((( ignore $[rhs_query]
-            ) @PartitionShuffleWithMissing(dest_trg = [$ $[lbl]_rhs_process_redistribute], nodes = nodes)
+          ((( ignore $[rhs_query])
+                @PartitionShuffleWithMissing(
+                  lbl           = [# $[lbl]_rhs]
+                , dest_trg = [$ $[lbl]_rhs_process_redistribute]
+                , nodes = nodes
+                , send_extra_fn = [$ \x -> x]
+                , send_ty = [: collection $[rhs_ht_ty] @ Map]
+                )
           ) @OnCounter(id=[# $[lbl]_lhs_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
         ))
 
