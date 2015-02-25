@@ -182,94 +182,31 @@ control DistributedHashJoin [ lbl              : label
         declare $[lhs_ht_id] : mut collection $[lhs_ht_ty] @Map
 
         trigger $[lbl]_lhs_redistribute : () = \_ -> (
-          ((ignore $[lhs_query]
-          ) @:Send
-          ) @ShuffleByMachine( lbl           = [# $[lbl]_hjl_shuffle ]
-                             , punclbl       = [# $[lbl]_hjl_shpunc ]
-                             , dest_trg      = [$ $[lbl]_lhs_process_redistribute]
-                             , barrier_trg   = [$ $[lbl]_lhs_peer_barrier]
-                             , nodes         = nodes
-                             , masters       = masters
-                             , masters_map   = masters_map
-                             , send_ty       = [: collection $[lhs_ht_ty] @Map]
-                             , send_extra_fn = [$ \x -> x ] )
+          (ignore $[lhs_query]
+          ) @PartitionShuffleWithMissing(dest_trg = [$ $[lbl]_lhs_process_redistribute], nodes = nodes)
         )
 
-        trigger $[lbl]_lhs_process_redistribute : collection $[lhs_ht_ty] @Map = ((\vals ->
-          vals.iterate (\v -> $[lhs_ht_id].insert_with v $[lhs_insert_with])
-        ) @:Receive
-        ) @ShuffleByMachine( lbl           = [# $[lbl]_hjl_shuffle ]
-                           , punclbl       = [# $[lbl]_hjl_shpunc ]
-                           , dest_trg      = [$ $[lbl]_lhs_process_redistribute]
-                           , barrier_trg   = [$ $[lbl]_lhs_peer_barrier]
-                           , nodes         = nodes
-                           , masters       = masters
-                           , masters_map   = masters_map
-                           , send_ty       = [: collection $[lhs_ht_ty] @Map]
-                           , send_extra_fn = [$ \x -> x ] )
-
-        trigger $[lbl]_lhs_peer_barrier : () = ((\_ -> (
+        trigger $[lbl]_lhs_process_redistribute : collection $[lhs_ht_ty] @Map = (\vals ->
+        ((vals.iterate (\v -> $[lhs_ht_id].insert_with v $[lhs_insert_with]));
           ( $[nodes].iterate (\p -> ($[lbl]_rhs_redistribute, p.addr) <- ())
-          ) @OnCounter(id=[# $[lbl]_peer_build_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
+          ) @OnCounter(id=[# $[lbl]_peer_build_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false]))
         )
-        ) @:BarrierReceive
-        ) @ShuffleByMachine( lbl           = [# $[lbl]_hjl_shuffle ]
-                           , punclbl       = [# $[lbl]_hjl_shpunc ]
-                           , dest_trg      = [$ $[lbl]_lhs_process_redistribute]
-                           , barrier_trg   = [$ $[lbl]_lhs_peer_barrier]
-                           , nodes         = nodes
-                           , masters       = masters
-                           , masters_map   = masters_map
-                           , send_ty       = [: collection $[lhs_ht_ty] @Map]
-                           , send_extra_fn = [$ \x -> x ] )
 
         trigger $[lbl]_rhs_redistribute : () = \_ -> (
           ((( ignore $[rhs_query]
-            ) @:Send
-            ) @ShuffleByMachine( lbl           = [# $[lbl]_hjr_shuffle ]
-                               , punclbl       = [# $[lbl]_hjr_shpunc ]
-                               , dest_trg      = [$ $[lbl]_rhs_process_redistribute]
-                               , barrier_trg   = [$ $[lbl]_rhs_peer_barrier]
-                               , nodes         = nodes
-                               , masters       = masters
-                               , masters_map   = masters_map
-                               , send_ty       = [: collection $[rhs_ht_ty] @Map]
-                               , send_extra_fn = [$ \x -> x ] )
+            ) @PartitionShuffleWithMissing(dest_trg = [$ $[lbl]_rhs_process_redistribute], nodes = nodes)
           ) @OnCounter(id=[# $[lbl]_lhs_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
-        )
+        ))
 
-        trigger $[lbl]_rhs_process_redistribute : collection $[rhs_ht_ty] @Map = ((\vals -> (
+        trigger $[lbl]_rhs_process_redistribute : collection $[rhs_ht_ty] @Map = (\vals -> (
           // Probe LHS hash table.
           let outputs = vals.fold ($[lhs_probe] $[lhs_ht_id]) $[empty_out_buffer] in
-          if $[has_outputs] outputs then ( $[pipeline_next] outputs ) else ()
-        )
-        ) @:Receive
-        ) @ShuffleByMachine( lbl           = [# $[lbl]_hjr_shuffle ]
-                           , punclbl       = [# $[lbl]_hjr_shpunc ]
-                           , dest_trg      = [$ $[lbl]_rhs_process_redistribute]
-                           , barrier_trg   = [$ $[lbl]_rhs_peer_barrier]
-                           , nodes         = nodes
-                           , masters       = masters
-                           , masters_map   = masters_map
-                           , send_ty       = [: collection $[rhs_ht_ty] @Map]
-                           , send_extra_fn = [$ \x -> x ] )
-
-        trigger $[lbl]_rhs_peer_barrier : () = ((\_ -> (
+          (if $[has_outputs] outputs then ( $[pipeline_next] outputs ) else ());
           ( ( $[lhs_clear_expr] $[lhs_ht_id] );
             ( $[peer_next] );
             ( $[lbl]_global_barrier, $[coordinator] ) <- ()
           ) @OnCounter(id=[# $[lbl]_rhs_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
-        )
-        ) @:BarrierReceive
-        ) @ShuffleByMachine( lbl           = [# $[lbl]_hjr_shuffle ]
-                           , punclbl       = [# $[lbl]_hjr_shpunc ]
-                           , dest_trg      = [$ $[lbl]_rhs_process_redistribute]
-                           , barrier_trg   = [$ $[lbl]_rhs_peer_barrier]
-                           , nodes         = nodes
-                           , masters       = masters
-                           , masters_map   = masters_map
-                           , send_ty       = [: collection $[rhs_ht_ty] @Map]
-                           , send_extra_fn = [$ \x -> x ] )
+          ))
 
         trigger $[lbl]_global_barrier : () = \_ -> (
           ( (if $[profile]
