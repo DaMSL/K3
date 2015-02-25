@@ -68,6 +68,9 @@ declare merge_epd_by_n :    {key: string, value: real}
 declare r_asia_by_rk : mut collection {key: int, value: () } @Map
 declare n_asia_by_nk : mut collection {key: int, value: string } @Map
 
+declare co_out: collection {key: {nationkey: int, orderkey: int}, value: string} @ Map
+declare sl_out: collection {key: {nationkey: int, orderkey: int}, value: real} @ Map
+
 // TODO: in the partitioned version, C|c_custkey should be broadcast into O|o_orderkey partitions.
 trigger q5_co_start : () = \_ -> (
   ( () @:NoSkew )
@@ -142,48 +145,54 @@ trigger q5_co_start : () = \_ -> (
       , lhs_ht_ty            = [: {key: int, value: {c_nationkey: int, n_name: string}} ]
       , rhs_ht_ty            = [: {key: int, value: collection {o_orderkey: int} @Collection} ]
 
-      , lhs_probe            = [$ (\lht -> \out -> \o ->
+      , lhs_probe            = [$ (\lht -> \_ -> \o ->
                                     case lht.lookup {key: o.key, value: {c_nationkey: 0, n_name: ""}} of
-                                    { Some c -> o.value.fold (\acc -> \ok ->
-                                                                ((acc.insert { key: { nationkey: c.value.c_nationkey
-                                                                                    , orderkey: ok.o_orderkey }
-                                                                             , value: c.value.n_name });
-                                                                acc))
-                                                             out }
-                                    { None   -> out }
+                                    { Some c -> o.value.iterate (\ok ->
+                                                  co_out.insert { key: { nationkey: c.value.c_nationkey
+                                                                       , orderkey: ok.o_orderkey }
+                                                                , value: c.value.n_name }
+                                                                )
+                                    }
+                                    { None   -> () }
                                   )
                                ]
 
-      , rhs_probe            = [$ (\rht -> \out -> \c ->
+      , rhs_probe            = [$ (\rht -> \_ -> \c ->
                                     case rht.lookup {key: c.key, value: empty {o_orderkey:int} @Collection} of
-                                    { Some o -> o.value.fold (\acc -> \ok ->
-                                                                ((acc.insert { key: { nationkey: c.value.c_nationkey
-                                                                                    , orderkey: ok.o_orderkey }
-                                                                             , value: c.value.n_name });
-                                                                 acc))
-                                                             out }
-                                    { None   -> out }
+                                    { Some c -> o.value.iterate (\ok ->
+                                                  co_out.insert { key: { nationkey: c.value.c_nationkey
+                                                                       , orderkey: ok.o_orderkey }
+                                                                , value: c.value.n_name }
+                                                                )
+                                    }
+                                    { None   -> () }
                                   )
                                ]
 
       , lhs_insert_with      = [$ (\_ -> \new -> new) ]
       , rhs_insert_with      = [$ (\old -> \new -> {key: old.key, value: old.value.combine new.value}) ]
 
-      , has_outputs          = [$ (\out -> out.size() > 0) ]
-      , empty_out_buffer     = [$ empty {key: {nationkey: int, orderkey: int}, value: string} @Map]
+      , has_outputs          = [$ (\_ -> false) ]
+      , empty_out_buffer     = [$ ()]
 
-      , lhs_pipeline_next    = [$ (\out -> ignore ( ( out ) @SendPartitionByKey( dest_trg      = [$ cosl_process_redistribute ]
-                                                                               , nodes         = [$ peers ]
-                                                                               , send_extra_fn = [$ (\x -> (Some x, None immut, true)) ]) )) ]
+      , lhs_pipeline_next    = [$ (\_ -> ()) ]
 
-      , rhs_pipeline_next    = [$ (\out -> ignore ( ( out ) @SendPartitionByKey( dest_trg      = [$ cosl_process_redistribute ]
-                                                                               , nodes         = [$ peers ]
-                                                                               , send_extra_fn = [$ (\x -> (Some x, None immut, true)) ]) )) ]
+      , rhs_pipeline_next    = [$ (\_ -> ()) ]
 
       , lhs_clear_expr    = [$ (\_ -> co_lhs_ht = empty {key: int, value: {c_nationkey: int, n_name: string}} @Map) ]
       , rhs_clear_expr    = [$ (\_ -> co_rhs_ht = empty {key: int, value: collection {o_orderkey: int} @Collection} @Map) ]
 
-      , peer_next            = [$ () @SendPunctuation(trg = [$ cosl_lhs_peer_barrier ], nodes = [$ peers ]) ]
+      , peer_next            = [$ ignore ( ( co_out )
+                                     @PartitionShuffleWithMissing(
+                                       lbl           = [# co_shf]
+                                     , dest_trg      = [$ cosl_process_redistribute ]
+                                     , nodes         = [$ peers ]
+                                     , send_extra_fn = [$ (\x -> (Some x, None immut, true)) ]
+                                     , send_ty       = [:
+                       ( option (collection {key: int, value: {c_nationkey: int, n_name: string}} @ Map)
+                       , option (collection {key: int, value: collection {o_orderkey: int} @Collection} @ Map)
+                       , bool)]
+                                     ) )]
       , next                 = [$ () ]
       , coordinator          = [$ master]
       , nodes                = [$ peers]
@@ -244,52 +253,54 @@ trigger q5_sl_start : () = \_ -> (
       , lhs_ht_ty            = [: {key: int, value: int} ]
       , rhs_ht_ty            = [: {key: int, value: collection {l_orderkey: int, l_epd: real} @Collection} ]
 
-      , lhs_probe            = [$ (\lht -> \out -> \l ->
+      , lhs_probe            = [$ (\lht -> \_ -> \l ->
                                     case lht.lookup {key: l.key, value: 0} of
-                                    { Some s -> l.value.fold (\acc -> \loe ->
-                                                    ((acc.insert_with
-                                                          {key: {nationkey: s.value, orderkey: loe.l_orderkey}
-                                                          , value: loe.l_epd}
-                                                          (\old -> \new -> {key: old.key, value: old.value + new.value}));
-                                                      acc))
-                                                  out }
-                                    { None   -> out }
+                                    { Some s -> l.value.iterate (\loe ->
+                                       sl_out.insert_with
+                                         {key: {nationkey: s.value, orderkey: loe.l_orderkey}
+                                         , value: loe.l_epd}
+                                       (\old -> \new -> {key: old.key, value: old.value + new.value}))}
+                                    { None   -> () }
                                   )
                                ]
 
-      , rhs_probe            = [$ (\rht -> \out -> \s ->
+      , rhs_probe            = [$ (\rht -> \_ -> \s ->
                                     case rht.lookup {key: s.key, value: empty {l_orderkey: int, l_epd: real} @Collection} of
-                                    { Some l -> l.value.fold (\acc -> \loe ->
-                                                    ((acc.insert_with
-                                                          { key: {nationkey: s.value, orderkey: loe.l_orderkey}
-                                                          , value: loe.l_epd}
-                                                          (\old -> \new -> {key: old.key, value: old.value + new.value}));
-                                                       acc))
-                                                  out }
-                                    { None   -> out }
+                                    { Some s -> l.value.iterate (\loe ->
+                                       sl_out.insert_with
+                                         {key: {nationkey: s.value, orderkey: loe.l_orderkey}
+                                         , value: loe.l_epd}
+                                       (\old -> \new -> {key: old.key, value: old.value + new.value}))}
+                                    { None   -> () }
                                   )
                                ]
 
       , lhs_insert_with      = [$ (\_ -> \new -> new) ]
       , rhs_insert_with      = [$ (\old -> \new -> {key: old.key, value: old.value.combine new.value}) ]
 
-      , has_outputs          = [$ (\out -> out.size() > 0) ]
-      , empty_out_buffer     = [$ empty {key: {nationkey: int, orderkey: int}, value: real} @Map ]
+      , has_outputs          = [$ (\_ -> false) ]
+      , empty_out_buffer     = [$ () ]
 
-      , lhs_pipeline_next    = [$ (\out -> ignore ( ( out ) @SendPartitionByKey( dest_trg      = [$ cosl_process_redistribute ]
-                                                                               , nodes         = [$ peers ]
-                                                                               , send_extra_fn = [$ (\x -> (None immut, Some x, false)) ]) ))
-                               ]
+      , lhs_pipeline_next    = [$ (\_ -> ())]
 
-      , rhs_pipeline_next    = [$ (\out -> ignore ( ( out ) @SendPartitionByKey( dest_trg      = [$ cosl_process_redistribute ]
-                                                                               , nodes         = [$ peers ]
-                                                                               , send_extra_fn = [$ (\x -> (None immut, Some x, false)) ]) ))
-                               ]
+      , rhs_pipeline_next    = [$ (\_ -> ())]
 
       , lhs_clear_expr       = [$ (\_ -> sl_lhs_ht = empty {key: int, value: int} @Map) ]
       , rhs_clear_expr       = [$ (\_ -> sl_rhs_ht = empty {key: int, value: collection {l_orderkey: int, l_epd: real} @Collection} @Map) ]
 
-      , peer_next            = [$ () @SendPunctuation(trg = [$ cosl_rhs_peer_barrier ], nodes = [$ peers ]) ]
+      , peer_next            = [$ ignore ( ( sl_out )
+                                    @PartitionShuffleWithMissing(
+                                      lbl = [# sl_shf]
+                                    , dest_trg      = [$ cosl_process_redistribute ]
+                                    , nodes         = [$ peers ]
+                                    , send_extra_fn = [$ (\x -> (None immut, Some x, false)) ]
+                                    , send_ty       = [:
+                       ( option (collection {key: int, value: {c_nationkey: int, n_name: string}} @ Map)
+                       , option (collection {key: int, value: collection {o_orderkey: int} @Collection} @ Map)
+                       , bool)]
+                                    ) )
+
+]
       , next                 = [$ () ]
       , coordinator          = [$ master]
       , nodes                = [$ peers]
@@ -299,10 +310,9 @@ trigger q5_sl_start : () = \_ -> (
     )
 )
 
-
 trigger q5_cosl_start : () = \_ -> (
   ( () @:NoSkew )
-    @StreamingHashJoin(
+    @BarrierHashJoin(
         lbl                  = [# cosl ]
       , lhs_ht_id            = [# cosl_lhs_ht ]
       , rhs_ht_id            = [# cosl_rhs_ht ]
