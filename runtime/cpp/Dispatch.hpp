@@ -31,7 +31,7 @@ namespace K3 {
         ValDispatcher(const T& arg) : _arg(arg) {}
         ValDispatcher() {}
 
-        void unpack(const Value &msg) { _arg = *BoostSerializer::unpack<T>(msg); }
+        void unpack(const Value &msg) { _arg = std::move(*BoostSerializer::unpack<T>(msg)); }
 
         Dispatcher* clone() { return new ValDispatcher<T>(_arg); }
 
