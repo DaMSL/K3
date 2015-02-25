@@ -210,7 +210,13 @@ trigger lineitem_orders_customer : () = \_ -> (
 
       , peer_next            = [$ ( print "LI-OR-CS join finished customer probe." );
                                   ( (ignore loc_q_by_ncodt)
-                                      @PartitionShuffleWithMissing(dest_trg = [$ loc_aggregate], nodes = [$ peers])
+                                      @PartitionShuffleWithMissing(
+                                        lbl = [# loc]
+                                      , dest_trg = [$ loc_aggregate]
+                                      , nodes = [$ peers]
+                                      , send_extra_fn = [$ \x -> x]
+                                      , send_ty = [: loc_q_by_ncodt_map]
+                                      )
 
                                   );
                                   loc_q_by_ncodt = empty { key: {nm:string, ck:int, ok:int, od:string, tp:real}, value: real} @Map
