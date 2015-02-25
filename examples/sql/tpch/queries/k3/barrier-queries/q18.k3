@@ -209,11 +209,9 @@ trigger lineitem_orders_customer : () = \_ -> (
       , rhs_clear_expr       = [$ (\_ -> loc_rhs_ht = empty {key: int, value: string} @Map) ]
 
       , peer_next            = [$ ( print "LI-OR-CS join finished customer probe." );
-                                  ( ignore ( ( loc_q_by_ncodt
-                                             ) @PSendPartitionByKey( dest_trg      = [$ loc_aggregate ]
-                                                                   , barrier_trg   = [$ loc_aggregate_peer_barrier ]
-                                                                   , nodes         = [$ peers ]
-                                                                   , send_extra_fn = [$ (\x -> x) ]) )
+                                  ( (ignore loc_q_by_ncodt)
+                                      @PartitionShuffleWithMissing(dest_trg = [$ loc_aggregate], nodes = [$ peers])
+
                                   );
                                   loc_q_by_ncodt = empty { key: {nm:string, ck:int, ok:int, od:string, tp:real}, value: real} @Map
                                ]
@@ -228,10 +226,7 @@ trigger lineitem_orders_customer : () = \_ -> (
 )
 
 trigger loc_aggregate : loc_q_by_ncodt_map = \vals -> (
-  vals.iterate (\kv -> q18_peer_result.insert_with kv merge_q_by_ncodt_r)
-)
-
-trigger loc_aggregate_peer_barrier : () = \_ -> (
+  (vals.iterate (\kv -> q18_peer_result.insert_with kv merge_q_by_ncodt_r));
   ( ( print "Query 18 done." ) ;
     ( (() @:Result) @TPCHBenchmarkWithoutMaster )
   ) @OnCounter(id=[# loc_aggregate_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
