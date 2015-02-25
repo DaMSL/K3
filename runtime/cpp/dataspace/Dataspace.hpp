@@ -1352,6 +1352,17 @@ class Map {
     return unit_t {};
   }
 
+
+  template <class F, class G>
+  auto lookup_with2(R const& r, F f, G g) const {
+    auto it = container.find(r.key);
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(it->second);
+    }
+  }
+
   bool operator==(const Map& other) const {
     return container == other.container;
   }

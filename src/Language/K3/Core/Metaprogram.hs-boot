@@ -51,6 +51,8 @@ instance Typeable MPDeclaration
 instance NFData   MPDeclaration
 
 instance Pretty SpliceValue
+instance Pretty SpliceEnv
+instance Pretty SpliceContext
 instance Pretty MPAnnMemDecl
 instance Pretty MPDeclaration
 

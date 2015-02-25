@@ -6,6 +6,10 @@ role: rows
 lineitemFiles: [{path: tools/ktrace/data/tpch/lineitem_partitioned/lineitem0}]
 ordersFiles: [{path: tools/ktrace/data/tpch/orders_partitioned/orders0}]
 customerFiles: [{path: tools/ktrace/data/tpch/customer0}, {path: tools/ktrace/data/tpch/customer1}]
+masters: [{addr: [127.0.0.1, 30000]}]
+local_peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
+peer_masters: [ { key: [127.0.0.1, 30000], value: [127.0.0.1, 30000]}
+              , { key: [127.0.0.1, 40000], value: [127.0.0.1, 30000]}]
 ---
 me: [127.0.0.1, 40000]
 master: [127.0.0.1, 30000]
@@ -14,3 +18,7 @@ role: rows
 lineitemFiles: [{path: tools/ktrace/data/tpch/lineitem_partitioned/lineitem1}]
 ordersFiles: [{path: tools/ktrace/data/tpch/orders_partitioned/orders1}]
 customerFiles: [{path: tools/ktrace/data/tpch/customer0}, {path: tools/ktrace/data/tpch/customer1}]
+masters: [{addr: [127.0.0.1, 30000]}]
+local_peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
+peer_masters: [ { key: [127.0.0.1, 30000], value: [127.0.0.1, 30000]}
+              , { key: [127.0.0.1, 40000], value: [127.0.0.1, 30000]}]

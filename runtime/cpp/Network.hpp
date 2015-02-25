@@ -236,8 +236,10 @@ namespace K3
       NConnection(shared_ptr<NContext> ctxt, Socket s)
         : ::K3::NConnection<NContext, Socket>("NConnection", ctxt, s),
           LogMT("NConnection"), socket_(s), connected_(false), busy(false),
-          buffer_(new std::queue<shared_ptr<Value>>())
-      {}
+          buffer_(new std::queue<shared_ptr<Value>>()) {
+
+        boost::asio::socket_base::receive_buffer_size option(2 << 20);
+      }
       // use mutex to operate on queues and busy atomically
       boost::mutex mut;
       bool busy;

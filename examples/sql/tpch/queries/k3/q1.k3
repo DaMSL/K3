@@ -79,6 +79,8 @@ trigger q1 : () = \_ -> (
       merge       = [$ merge_agg],
       coordinator = [$ master],
       nodes       = [$ peers],
+      masters     = [$ masters ],
+      masters_map = [$ peer_masters ],
       profile     = [$ true] )
 )
 

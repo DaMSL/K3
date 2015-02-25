@@ -344,8 +344,9 @@ instance Pretty (K3 Expression) where
 
 drawExprAnnotations :: [Annotation Expression] -> (String, [String])
 drawExprAnnotations as =
-  let (typeAnns, anns)    = partition (\a -> isETypeOrBound a || isEQType a || isEPType a) as
+  let (typeAnns, anns)    = partition isTypeAnn as
       (effectAnns, anns') = partition isAnyEEffectAnn anns
+      (restPAnns, anns'') = partition isEApplyGen anns'
       prettyTypeAnns = case typeAnns of
                          []         -> []
                          [EType t]  -> drawETypeAnnotation $ EType t
@@ -357,8 +358,9 @@ drawExprAnnotations as =
                          _     -> error "Invalid type bound annotations"
 
       prettyAnns = drawGroup $ [prettyTypeAnns] ++ map drawEEffectAnnotations effectAnns
+                                                ++ map drawPrettyAnns restPAnns
 
-  in (drawAnnotations anns', prettyAnns)
+  in (drawAnnotations anns'', prettyAnns)
 
   where drawETypeAnnotation (ETypeLB t) = ["ETypeLB "] %+ prettyLines t
         drawETypeAnnotation (ETypeUB t) = ["ETypeUB "] %+ prettyLines t
@@ -372,6 +374,10 @@ drawExprAnnotations as =
         drawEEffectAnnotations (EFStructure e) = ["EFStructure "] %+ prettyLines e
         drawEEffectAnnotations _ = error "Invalid effect annotation"
 
+        drawPrettyAnns (EApplyGen _ genId sEnv) = ["EApplyGen " ++ genId ++ " "] %+ prettyLines sEnv
+        drawPrettyAnns _ = []
+
+        isTypeAnn a = isETypeOrBound a || isEQType a || isEPType a
 
 {- PrettyText instance -}
 tPipe :: Text
