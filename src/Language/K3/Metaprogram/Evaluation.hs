@@ -16,6 +16,7 @@ import Data.Either
 import Data.Functor.Identity
 import Data.List
 import qualified Data.Map as Map
+import Data.Maybe
 import Data.Tree
 
 import Debug.Trace
@@ -519,7 +520,7 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
     matchTag sEnv e1@(tag -> x) e2@(tag -> y)
       | hasIdentifiers y = matchITAPair e1 e2 sEnv
       | x == y           = matchTAPair  e1 e2 sEnv
-      | otherwise        = Nothing
+      | otherwise        = debugMismatch e1 e2 Nothing
 
     matchITAPair e1 e2 sEnv = matchIdentifiers (extractIdentifiers $ tag e1) (extractIdentifiers $ tag e2) sEnv >>= matchTAPair e1 e2
     matchTAPair  e1 e2 sEnv = matchTypesAndAnnotations (annotations e1) (annotations e2) sEnv >>= return . (False,)
@@ -535,10 +536,10 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
       (Just (EType ty), Just (EPType pty)) ->
           if   matchAnnotations (\x -> ignoreUIDSpan x && ignoreTypes x) anns1 anns2
           then matchType ty pty >>= return . mergeSpliceEnv sEnv
-          else Nothing
+          else debugMismatchAnns anns1 anns2 Nothing
 
       (_, _) -> if matchAnnotations (\x -> ignoreUIDSpan x && ignoreTypes x) anns1 anns2
-                then Just sEnv else Nothing
+                then Just sEnv else debugMismatchAnns anns1 anns2 Nothing
 
     bindIdentifier :: SpliceEnv -> (Identifier, Identifier) -> Maybe SpliceEnv
     bindIdentifier sEnv (a, b@(isPatternVariable -> True)) =
@@ -573,6 +574,12 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
     ignoreUIDSpan a = not (isEUID a || isESpan a || isESyntax a)
     ignoreTypes   a = not $ isEAnyType a
 
+    debugMismatch p1 p2 r =
+      localLog (boxToString $ ["No match on "] %$ prettyLines p1 %$ ["and"] %$ prettyLines p2) >> r
+
+    debugMismatchAnns a1 a2 r =
+      localLog (boxToString $ ["No match on "] %$ [show a1] %$ ["and"] %$ [show a2]) >> r
+
     debugMatchPVar i =
       unwords ["isPatternVariable", show i, ":", show $ isPatternVariable i]
 
@@ -586,16 +593,19 @@ matchType t patT = matchTree matchTag t patT emptySpliceEnv
                              else Just . (True,) $ addSpliceE n (spliceRecord [(spliceVTSym, SType $ stripTUIDSpan t1)]) sEnv
               in do
                    localLog $ debugMatchPVar i
-                   if matchTypeAnnotations t1 t2 then maybe Nothing extend $ patternVariable i else Nothing
+                   if matchTypeAnnotations t1 t2 then maybe Nothing extend $ patternVariable i else debugMismatch t1 t2 Nothing
 
         matchTag sEnv t1@(tag -> x) t2@(tag -> y)
           | x == y && matchTypeMetadata t1 t2 = Just (False, sEnv)
-          | otherwise = Nothing
+          | otherwise = debugMismatch t1 t2 Nothing
 
         matchTypeMetadata t1 t2 = matchTypeAnnotations t1 t2 && matchMutability t1 t2
 
         matchTypeAnnotations t1 t2 = matchAnnotations isTAnnotation (annotations t1) (annotations t2)
-        matchMutability t1 t2 = (t1 @~ isTQualified) == (t2 @~ isTQualified)
+        matchMutability t1 t2 = (t1 @~ isTQualified) == (t2 @~ isTQualified) || isNothing (t2 @~ isTQualified)
+
+        debugMismatch p1 p2 r =
+          localLog (boxToString $ ["No match on "] %$ prettyLines p1 %$ ["and"] %$ prettyLines p2) >> r
 
         debugMatchPVar i =
           unwords ["isPatternVariable", show i, ":", show $ isPatternVariable i]
