@@ -108,7 +108,7 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
                                                                           , c_acctbal : c.c_acctbal }
                                                                )
                                               {cntrycode: "", c_acctbal: 0.0})
-                                     .fold    (\acc -> \c -> ((acc.insert c); acc))
+                                     .fold    ((\acc -> \c -> ((acc.insert c); acc)) @:Accumulate)
                                               (empty {key:int, value: {cntrycode: string, c_acctbal: real} } @Map)
                         ]
 

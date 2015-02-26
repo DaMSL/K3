@@ -98,7 +98,8 @@ trigger lineitem_orders : () = \_ -> (
                                   .groupBy (\l -> l.l_orderkey)
                                            (\acc -> \l -> acc + (l.l_extendedprice * (1 - l.l_discount)))
                                            0.0)
-                                  .fold    (\acc -> \l -> ((acc.insert l); acc)) (empty {key:int, value:real} @Map)
+                                  .fold    ((\acc -> \l -> ((acc.insert l); acc)) @:Accumulate)
+                                           (empty {key:int, value:real} @Map)
                     ]
 
       , rhs_query = [$ ((orders.filter  (\o -> o.o_orderdate < "1995-03-15" ))
@@ -107,7 +108,7 @@ trigger lineitem_orders : () = \_ -> (
                                                      , ck : o.o_custkey
                                                      , sp : o.o_shippriority})
                                         { od: "", ck: 0, sp: 0 })
-                               .fold    (\acc -> \o -> ((acc.insert o); acc))
+                               .fold    ((\acc -> \o -> ((acc.insert o); acc)) @:Accumulate)
                                         (empty {key : int, value : {od:string, ck:int, sp:int}} @Map)
                     ]
 

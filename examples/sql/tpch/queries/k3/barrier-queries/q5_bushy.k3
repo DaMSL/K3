@@ -71,6 +71,24 @@ declare n_asia_by_nk : mut collection {key: int, value: string } @Map
 declare co_nm_by_no  : mut collection {key: {nationkey: int, orderkey: int}, value: string} @Map
 declare sl_epd_by_no : mut collection {key: {nationkey: int, orderkey: int}, value: real} @Map
 
+trigger q5_prep : () = \_ -> (
+  ( r_asia_by_rk =
+     ((region.filter  (\r -> r.r_name == "ASIA"))
+             .groupBy (\r -> r.r_regionkey)
+                      (\_ -> \_ -> ())
+                      ())
+             .fold    ((\acc -> \r -> ((acc.insert r); acc)) @:Accumulate)
+                      (empty {key: int, value: ()} @Map) );
+
+  ( n_asia_by_nk =
+      ((nation.filter  (\n -> r_asia_by_rk.member {key: n.n_regionkey, value: ()}))
+              .groupBy (\n -> n.n_nationkey)
+                       (\_ -> \n -> n.n_name)
+                       "")
+              .fold    ((\acc -> \n -> ((acc.insert n); acc)) @:Accumulate)
+                       (empty {key: int, value: string} @Map) )
+)
+
 // TODO: in the partitioned version, C|c_custkey should be broadcast into O|o_orderkey partitions.
 trigger q5_co_start : () = \_ -> (
   ( () @:NoPipeline )
@@ -103,23 +121,7 @@ trigger q5_co_start : () = \_ -> (
 
       , frequency_threshold  = [$ 1000.0 ]
 
-      , lhs_query = [$ ( r_asia_by_rk =
-                           ((region.filter  (\r -> r.r_name == "ASIA"))
-                                   .groupBy (\r -> r.r_regionkey)
-                                            (\_ -> \_ -> ())
-                                            ())
-                                   .fold    (\acc -> \r -> ((acc.insert r); acc))
-                                            (empty {key: int, value: ()} @Map) );
-
-                       ( n_asia_by_nk =
-                           ((nation.filter  (\n -> r_asia_by_rk.member {key: n.n_regionkey, value: ()}))
-                                   .groupBy (\n -> n.n_nationkey)
-                                            (\_ -> \n -> n.n_name)
-                                            "")
-                                   .fold    (\acc -> \n -> ((acc.insert n); acc))
-                                            (empty {key: int, value: string} @Map) );
-
-                       (((customer.filter  (\c -> n_asia_by_nk.member { key: c.c_nationkey, value: "" }))
+      , lhs_query = [$ (((customer.filter  (\c -> n_asia_by_nk.member { key: c.c_nationkey, value: "" }))
                                   .groupBy (\c -> c.c_custkey)
                                            (\acc -> \c -> case n_asia_by_nk.lookup { key: c.c_nationkey, value: "" }
                                                         of { Some n -> {c_nationkey: c.c_nationkey, n_name: n.value} }
@@ -128,7 +130,7 @@ trigger q5_co_start : () = \_ -> (
                                                            }
                                            )
                                            {c_nationkey: 0, n_name: ""})
-                                  .fold    (\acc -> \c -> ((acc.insert c); acc))
+                                  .fold    ((\acc -> \c -> ((acc.insert c); acc)) @:Accumulate)
                                            (empty {key: int, value: {c_nationkey: int, n_name: string}} @Map))
                     ]
 
@@ -137,7 +139,7 @@ trigger q5_co_start : () = \_ -> (
                                .groupBy (\o -> o.o_custkey)
                                         (\acc -> \o -> ((acc.insert {o_orderkey: o.o_orderkey}); acc))
                                         (empty {o_orderkey: int} @Collection))
-                               .fold    (\acc -> \o -> ((acc.insert o); acc))
+                               .fold    ((\acc -> \o -> ((acc.insert o); acc)) @:Accumulate)
                                         (empty {key: int, value: collection {o_orderkey: int} @Collection} @Map)
                     ]
 
@@ -230,7 +232,7 @@ trigger q5_sl_start : () = \_ -> (
                                  .groupBy (\s -> s.s_suppkey)
                                           (\_ -> \s -> s.s_nationkey)
                                           0)
-                                 .fold    (\acc -> \s -> ((acc.insert s); acc))
+                                 .fold    ((\acc -> \s -> ((acc.insert s); acc)) @:Accumulate)
                                           (empty {key: int, value: int} @Map)
                     ]
 
@@ -364,7 +366,8 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                            ) ],
   preLoadExpr         = [$ ()],
   preReadyExpr        = [$ ()],
-  onReadyExpr         = [$ (( (q5_co_start, me) <- () );
+  onReadyExpr         = [$ (( (q5_prep, me) <- () );
+                            ( (q5_co_start, me) <- () );
                               (q5_sl_start, me) <- () )
                         ],
   finishArgT          = [: ()],
