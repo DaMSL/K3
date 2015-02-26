@@ -48,8 +48,17 @@ class base_string {
   }
 
   base_string& operator += (const base_string& other) {
-    auto new_string = std::string(buffer) + std::string(other.buffer);
-    buffer = dupstr(new_string.c_str());
+    auto new_buffer = new char[length() + other.length() + 1];
+
+    std::strcpy(new_buffer, (buffer ? buffer : ""));
+    std::strcat(new_buffer, (other.buffer ? other.buffer : ""));
+
+    if (buffer) {
+      delete [] buffer;
+    }
+
+    buffer = new_buffer;
+
     return *this;
   }
 
