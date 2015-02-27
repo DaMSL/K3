@@ -105,24 +105,48 @@ class base_string {
     return strcmp(buffer ? buffer : "", other.buffer ? other.buffer : "") == 0;
   }
 
+  bool operator ==(const char* other) const {
+    return strcmp(buffer ? buffer : "", other ? other : "") == 0;
+  }
+
   bool operator !=(const base_string& other) const {
     return strcmp(buffer ? buffer : "", other.buffer ? other.buffer : "") != 0;
+  }
+
+  bool operator !=(const char* other) const {
+    return strcmp(buffer ? buffer : "", other ? other : "") != 0;
   }
 
   bool operator <=(const base_string& other) const {
     return strcmp(buffer ? buffer : "", other.buffer ? other.buffer : "") <= 0;
   }
 
+  bool operator <=(const char* other) const {
+    return strcmp(buffer ? buffer : "", other ? other : "") <= 0;
+  }
+
   bool operator <(const base_string& other) const {
     return strcmp(buffer ? buffer : "", other.buffer ? other.buffer : "") < 0;
+  }
+
+  bool operator <(const char* other) const {
+    return strcmp(buffer ? buffer : "", other ? other : "") < 0;
   }
 
   bool operator >=(const base_string& other) const {
     return strcmp(buffer ? buffer : "", other.buffer ? other.buffer : "") >= 0;
   }
 
+  bool operator >=(const char* other) const {
+    return strcmp(buffer ? buffer : "", other ? other : "") >= 0;
+  }
+
   bool operator >(const base_string& other) const {
     return strcmp(buffer ? buffer : "", other.buffer ? other.buffer : "") > 0;
+  }
+
+  bool operator >(const char* other) const {
+    return strcmp(buffer ? buffer : "", other ? other : "") > 0;
   }
 
   // Operations

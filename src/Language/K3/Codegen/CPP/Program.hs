@@ -142,6 +142,14 @@ program (tag &&& children -> (DRole name, decls)) = do
                              , R.Call
                                  (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__time_context")
                                  []
+
+                             , R.Call
+                                 (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__pcm_context")
+                                 []
+
+                             , R.Call
+                                 (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__tcmalloc_context")
+                                 []
                              ]
                              False
                              (inits ++ dispatchPop)
@@ -187,6 +195,8 @@ program (tag &&& children -> (DRole name, decls)) = do
                              [ R.Named $ R.Qualified (R.Name "K3") $ R.Name "__standard_context"
                              , R.Named $ R.Qualified (R.Name "K3") $ R.Name "__string_context"
                              , R.Named $ R.Qualified (R.Name "K3") $ R.Name "__time_context"
+                             , R.Named $ R.Qualified (R.Name "K3") $ R.Name "__pcm_context"
+                             , R.Named $ R.Qualified (R.Name "K3") $ R.Name "__tcmalloc_context"
                              ]
                              contextDefns [] [dispatchTableDecl]
 

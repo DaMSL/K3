@@ -38,6 +38,12 @@ with effects \s -> io
 declare heapProfilerStop: () -> ()
 with effects \_ -> io
 
+declare cacheProfilerStart: () -> ()
+with effects \_ -> io
+
+declare cacheProfilerStop: () -> ()
+with effects \_ -> io
+
 // openBuiltin: channel id -> builtin channel id -> format -> ()
 // builtin channel id is one of: stdin, stdout, stderr
 @:CArgs 3

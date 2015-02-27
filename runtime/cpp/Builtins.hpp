@@ -1,6 +1,14 @@
 #ifndef K3_RUNTIME_BUILTINS_H
 #define K3_RUNTIME_BUILTINS_H
 
+#ifdef CACHEPROFILE
+#include <cpucounters.h>
+#endif
+
+#ifdef MEMPROFILE
+#include "gperftools/heap-profiler.h"
+#endif
+
 #include <ctime>
 #include <chrono>
 #include <climits>
@@ -16,7 +24,6 @@
 #include "BaseString.hpp"
 #include "Common.hpp"
 #include "dataspace/Dataspace.hpp"
-#include "gperftools/heap-profiler.h"
 
 // Hashing:
 namespace boost {
@@ -54,13 +61,31 @@ namespace K3 {
     return;
   }
 
+  class __pcm_context {
+    #ifdef CACHEPROFILE
+    protected:
+      PCM *instance;
+      std::shared_ptr<SystemCounterState> initial_state;
+    #endif
+
+    public:
+      __pcm_context();
+      ~__pcm_context();
+      unit_t cacheProfilerStart(unit_t);
+      unit_t cacheProfilerStop(unit_t);
+  };
+
+  class __tcmalloc_context {
+    public:
+      unit_t heapProfilerStart(const string_impl&);
+      unit_t heapProfilerStop(unit_t);
+  };
+
   // Standard context for common builtins that use a handle to the engine (via inheritance)
   class __standard_context : public __k3_context {
     public:
     __standard_context(Engine&);
 
-    unit_t heapProfilerStart(const string_impl&);
-    unit_t heapProfilerStop(unit_t);
 
     unit_t openBuiltin(string_impl ch_id, string_impl builtin_ch_id, string_impl fmt);
 
@@ -310,7 +335,7 @@ namespace K3 {
       std::string line;
       std::ifstream infile(filepath);
       while (std::getline(infile, line)) {
-        c.insert(R{line}); 
+        c.insert(R{line});
       }
       return unit_t{};
     }

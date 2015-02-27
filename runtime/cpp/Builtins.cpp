@@ -20,13 +20,21 @@ namespace K3 {
     : __k3_context(__engine)
   {}
 
-  unit_t __standard_context::heapProfilerStart(const string_impl& s) {
+  unit_t __tcmalloc_context::heapProfilerStart(const string_impl& s) {
+    #ifdef MEMPROFILE
     HeapProfilerStart(s.c_str());
+    #else
+    std::cout << "heapProfilerStart: MEMPROFILE is not defined. not starting." << std::endl;
+    #endif
+    return unit_t {};
   }
 
-  unit_t __standard_context::heapProfilerStop(unit_t) {
+  unit_t __tcmalloc_context::heapProfilerStop(unit_t) {
+    #ifdef MEMPROFILE
     HeapProfilerDump("End of Program");
     HeapProfilerStop();
+    #endif
+    return unit_t {};
   }
 
   unit_t __standard_context::openBuiltin(string_impl ch_id, string_impl builtin_ch_id, string_impl fmt) {
@@ -82,6 +90,35 @@ namespace K3 {
 
   unit_t sleep(int n) {
     throw std::runtime_error("Not implemented: sleep");
+  }
+
+
+  __pcm_context::__pcm_context() {}
+
+  __pcm_context::~__pcm_context() {}
+
+  unit_t __pcm_context::cacheProfilerStart(unit_t) {
+    #ifdef CACHEPROFILE
+    instance = PCM::getInstance();
+    if (instance->program() != PCM::Success) {
+      std::cout << "PCM startup error!" << std::endl;
+    }
+    initial_state = std::make_shared<SystemCounterState>(getSystemCounterState());
+    #else
+    std::cout << "cacheProfileStart: CACHEPROFILE not set. not starting." << std::endl;
+    #endif
+  }
+
+  unit_t __pcm_context::cacheProfilerStop(unit_t) {
+    #ifdef CACHEPROFILE
+    SystemCounterState after_sstate = getSystemCounterState();
+    std::cout << "QPI Incoming: " << getAllIncomingQPILinkBytes(*initial_state, after_sstate) << std::endl;
+    std::cout << "QPI Outgoing: " << getAllOutgoingQPILinkBytes(*initial_state, after_sstate) << std::endl;
+    std::cout << "L2 cache hit ratio:" << getL2CacheHitRatio(*initial_state,after_sstate) << std::endl;
+    std::cout << "L3 cache hit ratio:" << getL3CacheHitRatio(*initial_state,after_sstate) << std::endl;
+    std::cout << "Instructions per clock:" << getIPC(*initial_state,after_sstate) << std::endl;
+    instance->cleanup();
+    #endif
   }
 
   // TODO fix copies related to base_str / std::sring conversion
