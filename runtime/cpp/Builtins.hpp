@@ -16,15 +16,25 @@
 #include "BaseString.hpp"
 #include "Common.hpp"
 #include "dataspace/Dataspace.hpp"
-
+#include "gperftools/heap-profiler.h"
 
 // Hashing:
 namespace boost {
 
 template<>
 struct hash<boost::asio::ip::address> {
-  size_t operator()(boost::asio::ip::address const& a) const {
-    return hash_value(a.to_string());
+  size_t operator()(boost::asio::ip::address const& v) const {
+    if (v.is_v4()) {
+      return v.to_v4().to_ulong();
+    }
+    if (v.is_v6()) {
+      auto const& range = v.to_v6().to_bytes();
+      return hash_range(range.begin(), range.end());
+    }
+    if (v.is_unspecified()) {
+      return 0x4751301174351161ul;
+    }
+    return hash_value(v.to_string());
   }
 };
 
@@ -48,6 +58,9 @@ namespace K3 {
   class __standard_context : public __k3_context {
     public:
     __standard_context(Engine&);
+
+    unit_t heapProfilerStart(const string_impl&);
+    unit_t heapProfilerStop(unit_t);
 
     unit_t openBuiltin(string_impl ch_id, string_impl builtin_ch_id, string_impl fmt);
 

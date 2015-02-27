@@ -20,6 +20,15 @@ namespace K3 {
     : __k3_context(__engine)
   {}
 
+  unit_t __standard_context::heapProfilerStart(const string_impl& s) {
+    HeapProfilerStart(s.c_str());
+  }
+
+  unit_t __standard_context::heapProfilerStop(unit_t) {
+    HeapProfilerDump("End of Program");
+    HeapProfilerStop();
+  }
+
   unit_t __standard_context::openBuiltin(string_impl ch_id, string_impl builtin_ch_id, string_impl fmt) {
     __engine.openBuiltin(ch_id, builtin_ch_id);
     return unit_t();

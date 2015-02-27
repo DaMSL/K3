@@ -32,6 +32,12 @@ declare now_int : () -> int
 //
 // Engine I/O builtins
 
+declare heapProfilerStart: string -> ()
+with effects \s -> io
+
+declare heapProfilerStop: () -> ()
+with effects \_ -> io
+
 // openBuiltin: channel id -> builtin channel id -> format -> ()
 // builtin channel id is one of: stdin, stdout, stderr
 @:CArgs 3
