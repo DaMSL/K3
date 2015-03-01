@@ -41,6 +41,54 @@ control ScanCSVForPeers[lbl : label, filepath : expr, blocksize : expr, parser :
   +> { declare $[lbl]_next_peer : mut int = 0 }
 }
 
+
+control GatherCollection [ lbl      : label
+                         , nodes    : expr
+                         , next     : expr ]
+{
+  ignore ( ?e : ?t ) => $[nodes].iterate (\p -> ($[lbl]_fetch, p.addr) <- me)
+   +> {
+        declare $[lbl]_stash : mut collection {key: address, value: $::[t]} @Map
+
+        trigger $[lbl]_fetch : address = \dest -> (
+          ($[lbl]_push, dest) <- {key: me, value: $.[e]}
+        )
+
+        trigger $[lbl]_push : {key: address, value: $::[t]} = \v -> (
+          $[lbl]_stash.insert v;
+          ( ($[next] $[lbl]_stash);
+            $[lbl]_stash = empty {key: address, value: $::[t]} @Map
+          ) @OnCounter(lbl=[# $[lbl]_gathered], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
+        )
+      }
+}
+
+control GatherCollectionAsCSV [ lbl      : label
+                              , filepath : expr
+                              , nodes    : expr
+                              , next     : expr ]
+{
+  ignore ( ?e : ?t ) => ignore ( $.[e] @GatherCollection(lbl=lbl, nodes=nodes, next=[$ (\v -> (($[lbl]_save_csv v); $[next])) ]) )
+   +> {
+        // TODO: generate builtin
+        declare $[lbl]_save_csv : string -> collection {key: address, value: $::[t]} @Map -> ()
+      }
+}
+
+control GatherResultsAsCSV [query_cl : [label], nodes : expr, outdir : expr]
+{
+  () => $[| let gatherE clbl = idOfSLabel clbl >>= \ci ->
+                                  (EC.applyMany (EC.variable "ignore") [EC.variable ci]
+                                  ) @+ (EApplyGen True "GatherCollectionAsCSV" $
+                                          mkSpliceEnv [ ("lbl", clbl)
+                                                      , ("filepath", EC.binop OConcat (expOfSExpr 'outdir)
+                                                                      $ EC.constant $ CString $ "/" ++ ci)
+                                                      , ("nodes", 'nodes)
+                                                      , ("next", SExpr EC.unit)])
+            in EC.block $ catMaybes (elemsOfSList 'query_cl >>= mapM gatherE)
+         |]
+}
+
 @:CArgs 2
 declare loadQ1: string -> collection {pageURL: string,pageRank: int} @ { Collection } -> ()
 
