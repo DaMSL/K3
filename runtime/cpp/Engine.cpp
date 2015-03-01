@@ -71,19 +71,18 @@ namespace K3 {
     // Messaging.
 
     // TODO: rvalue-ref overload for value argument.
-    void Engine::send(Address addr, TriggerId triggerId, shared_ptr<Dispatcher> disp, Address src)
-    {
+    void Engine::send(Address addr, TriggerId triggerId,
+                      shared_ptr<Dispatcher> disp, Address src) {
       if (queues) {
         bool local_address = queues->isLocal(addr);
-        bool shortCircuit =  local_address;
+        bool shortCircuit = local_address;
 
         if (shortCircuit) {
           // Directly enqueue.
           // TODO: ensure we avoid copying the dispatcher
-          Message msg(addr, triggerId, disp,src);
+          Message msg(addr, triggerId, disp, src);
           queues->enqueue(msg);
-        }
-	else {
+        } else {
           RemoteMessage rMsg(addr, triggerId, disp->pack(), src);
 
           // Get connection and send a message on it.
@@ -93,34 +92,34 @@ namespace K3 {
           for (int i = 0; !sent && i < config->connectionRetries(); ++i) {
             shared_ptr<Endpoint> ep = endpoints->getInternalEndpoint(eid);
 
-            if ( ep && ep->hasWrite() ) {
-              shared_ptr<Value> v = make_shared<Value>(std::move(internal_codec->show_message(rMsg)));
+            if (ep && ep->hasWrite()) {
+              shared_ptr<Value> v = make_shared<Value>(
+                  std::move(internal_codec->show_message(rMsg)));
               ep->doWrite(v);
               ep->flushBuffer();
               sent = true;
             } else {
               if (ep && !ep->hasWrite()) {
                 if (log_enabled)
-		  logAt(trivial::trace, eid + "is not ready for write. Sleeping...");
-                boost::this_thread::sleep_for( boost::chrono::milliseconds(20) );
+                  logAt(trivial::trace,
+                        eid + "is not ready for write. Sleeping...");
+                boost::this_thread::sleep_for(boost::chrono::milliseconds(20));
 
-              }
-              else {
-		if (log_enabled)
+              } else {
+                if (log_enabled)
                   logAt(trivial::trace, "Creating endpoint: " + eid);
-		// Peer may not be accepting connections yet, wait:
-		try {
-		  if (i > 0) {
-		    boost::this_thread::sleep_for( boost::chrono::milliseconds(200));
-		    if (log_enabled)
-		      logAt(trivial::trace, "Retry: Creating endpoint.");
-		  }
+                // Peer may not be accepting connections yet, wait:
+                try {
+                  if (i > 0) {
+                    boost::this_thread::sleep_for(
+                        boost::chrono::milliseconds(200));
+                    if (log_enabled)
+                      logAt(trivial::trace, "Retry: Creating endpoint.");
+                  }
                   openSocketInternal(eid, addr, IOMode::Write);
-		}
-		catch (std::runtime_error e) {
+                } catch (std::runtime_error e) {
                   // Try again next iteration.
-		}
-
+                }
               }
             }
           }
@@ -326,7 +325,10 @@ namespace K3 {
         shared_ptr<IOHandle> ioh = openFileHandle(path, codec, mode);
 
         // Add the endpoint to the given endpoint state.
-        shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBuffer>(new ScalarEPBufferST());
+
+        // For now, files have no endpoint buffer.
+        //shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBuffer>(new ScalarEPBufferST());
+        shared_ptr<EndpointBuffer> buf;
 
         shared_ptr<EndpointBindings> bindings =
           shared_ptr<EndpointBindings>(new EndpointBindings(sendFunction()));

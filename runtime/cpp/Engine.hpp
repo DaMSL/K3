@@ -248,6 +248,10 @@ namespace K3 {
       return internal_codec->read_message(*endpoints->getInternalEndpoint(eid)->doRead());
     }
 
+    Collection<R_elem<K3::base_string>> doReadExternalBlock (Identifier eid, int blockSize) {
+      return endpoints->getExternalEndpoint(eid)->doReadBlock(blockSize);
+    }
+
     bool hasWrite(Identifier eid) {
       if (externalEndpointId(eid)) {
         return endpoints->getExternalEndpoint(eid)->hasWrite();

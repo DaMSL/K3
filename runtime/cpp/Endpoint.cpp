@@ -34,7 +34,6 @@ namespace K3
     {
       strict_lock<LockB> guard(*this);
       shared_ptr<Value> r;
-      EndpointNotification nt = EndpointNotification::NullEvent;
 
       // Read from the buffer if possible
       if (contents.get(guard)) {
@@ -107,7 +106,6 @@ namespace K3
     shared_ptr<Value> ScalarEPBufferST::refresh(shared_ptr<IOHandle> ioh, NotifyFn notify)
     {
       shared_ptr<Value> r;
-      EndpointNotification nt = EndpointNotification::NullEvent;
 
       // Read from the buffer if possible
       if (!(this->empty())) {
@@ -283,29 +281,76 @@ namespace K3
       subscribers_->notifyEvent(nt, v);
     }
 
+    Collection<R_elem<K3::base_string>> Endpoint::doReadBlock(int blockSize) {
+      Collection<R_elem<K3::base_string>> r;
+      shared_ptr<Value> v;
+      if ( buffer_ ) {
+        int i = blockSize;
+        do {
+          v = buffer_->refresh(handle_,
+                std::bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
+          if ( v ) {
+            R_elem<K3::base_string> elem(K3::base_string(std::move(*v)));
+            r.insert(std::move(elem));
+          }
+        } while ( --i > 0 && handle_->hasRead() );
+      } else {
+        // Read data directly from the underlying IOHandle.
+        boost::lock_guard<boost::mutex> guard(mtx_);
+        int i = blockSize;
+        do {
+          v = handle_->doRead();
+          notify_subscribers(v); // Produce a notification for every tuple in a block read.
+          if ( v ) {
+            R_elem<K3::base_string> elem(K3::base_string(std::move(*v)));
+            r.insert(std::move(elem));
+          }
+        } while ( --i > 0 && handle_->hasRead() );
+      }
+      return r;
+    }
+
     shared_ptr<Value> Endpoint::refreshBuffer() {
-      return buffer_->refresh(handle_,
-        std::bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
+      shared_ptr<Value> r;
+      if ( buffer_ ) {
+        r = buffer_->refresh(handle_,
+              std::bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
+      } else {
+        // Read data directly from the underlying IOHandle.
+        boost::lock_guard<boost::mutex> guard(mtx_);
+        if (handle_->hasRead()) {
+          r = handle_->doRead();
+          notify_subscribers(r);
+        }
+      }
+      return r;
     }
 
     void Endpoint::flushBuffer() {
-      return buffer_->flush(handle_,
-        std::bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
+      if ( buffer_ ) {
+        buffer_->flush(handle_,
+          std::bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
+      }
     }
 
     void Endpoint::doWrite(shared_ptr<Value> v_ptr) {
+      if ( buffer_ ) {
+        bool success = buffer_->push_back(v_ptr);
+        if ( !success ) {
+          // Flush buffer, and then try to append again.
+          flushBuffer();
 
-      bool success = buffer_->push_back(v_ptr);
-      if ( !success ) {
-        // Flush buffer, and then try to append again.
-        flushBuffer();
+          // Try to append again, and if this still fails, throw a buffering exception.
+          success = buffer_->push_back(v_ptr);
+        }
 
-        // Try to append again, and if this still fails, throw a buffering exception.
-        success = buffer_->push_back(v_ptr);
+        if ( ! success )
+          { throw BufferException("Failed to buffer value during endpoint write."); }
+      } else {
+        boost::lock_guard<boost::mutex> guard(mtx_);
+        handle_->doWrite(v_ptr);
+        notify_subscribers(v_ptr);
       }
-
-      if ( ! success )
-        { throw BufferException("Failed to buffer value during endpoint write."); }
     }
 
     bool Endpoint::do_push(shared_ptr<Value> val,
@@ -313,7 +358,7 @@ namespace K3
                            shared_ptr<InternalCodec> codec) {
 
       // Skip the endpoint buffer.
-      // deserialize and directly enqueue 
+      // deserialize and directly enqueue
       q->enqueue(*(codec->read_message(*val).toMessage()));
       return true;
     }
@@ -323,6 +368,7 @@ namespace K3
     void Endpoint::close() {
       if(handle_->isOutput())
         flushBuffer();
+
       EndpointNotification nt = (handle_->builtin() || handle_->file())?
         EndpointNotification::FileClose : EndpointNotification::SocketClose;
 

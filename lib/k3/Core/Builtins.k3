@@ -54,11 +54,24 @@ declare openBuiltin : string -> string -> string -> ()
 declare openFile : string -> string -> string -> string -> ()
 with effects \_ -> \_ -> \_ -> \_ -> io
 
+// hasRead: channel id -> bool
+declare hasRead: string ->  bool
+with effects \_ -> io
+
+// doRead: channel id -> string
+declare doRead: string -> string
+with effects \_ -> io
+
+// doReadBlock: channel id -> block size -> block
+@:CArgs 2
+declare doReadBlock: string -> int -> collection {elem: string} @Collection
+with effects \_ -> \_ -> io
+
 // hasWrite: channel id -> bool
 declare hasWrite: string ->  bool
 with effects \_ -> io
 
-// doWrite: channel id -> value -> ()
+// doWrite: channel id -> string -> ()
 @:CArgs 2
 declare doWrite: string -> string -> ()
 with effects \_ -> \_ -> io

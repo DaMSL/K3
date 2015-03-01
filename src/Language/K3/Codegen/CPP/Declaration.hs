@@ -29,12 +29,18 @@ import Language.K3.Codegen.CPP.Materialization.Hints
 
 import qualified Language.K3.Codegen.CPP.Representation as R
 
+-- Builtin names to explicitly skip.
+skip_builtins :: [String]
+skip_builtins = ["hasRead", "doRead", "doReadBlock"]
+
 declaration :: K3 Declaration -> CPPGenM [R.Definition]
 declaration (tag -> DGlobal _ (tag -> TSource) _) = return []
 
 -- Global functions without implementations -- Built-Ins.
-declaration (tag -> DGlobal name t@(tag -> TFunction) Nothing) | any (`L.isSuffixOf` name) source_builtins = genSourceBuiltin t name >>= return . replicate 1
-                                                               | otherwise = return []
+declaration (tag -> DGlobal name t@(tag -> TFunction) Nothing)
+  | name `elem` skip_builtins = return []
+  | any (`L.isSuffixOf` name) source_builtins = genSourceBuiltin t name >>= return . replicate 1
+  | otherwise = return []
 
 -- Global polymorphic functions without implementations -- Built-Ins
 declaration (tag -> DGlobal _ (tag &&& children -> (TForall _, [tag &&& children -> (TFunction, [_, _])]))

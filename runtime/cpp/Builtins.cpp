@@ -48,6 +48,21 @@ namespace K3 {
     return unit_t();
   }
 
+  bool __standard_context::hasRead(string_impl ch_id) {
+    return  __engine.hasRead(std::string(ch_id));
+  }
+
+  string_impl __standard_context::doRead(string_impl ch_id) {
+    shared_ptr<string> v = __engine.doReadExternal(std::string(ch_id));
+    string_impl r;
+    if ( v ) { r = std::move(*v); }
+    return r;
+  }
+
+  Collection<R_elem<string_impl>> __standard_context::doReadBlock(string_impl ch_id, int block_size) {
+    return  __engine.doReadExternalBlock(std::string(ch_id), block_size);
+  }
+
   bool __standard_context::hasWrite(string_impl ch_id) {
    return  __engine.hasWrite(std::string(ch_id));
   }

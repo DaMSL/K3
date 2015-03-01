@@ -1,3 +1,46 @@
+include "Annotation/Collection.k3"
+
+control ScanCSV[lbl : label, filepath : expr, blocksize : expr, next_peer : expr, parser : expr, fn : expr, done : expr] {
+  ( empty ?t @Collection ) => empty $::[t] @Collection
+    +> {
+         declare $[lbl]_init_scan : () -> () = \_ -> (
+           (openFile $[|exprLabel 'lbl|] $[filepath] "k3" "r");
+           ($[lbl]_scan_block, me) <- ()
+         )
+
+         trigger $[lbl]_scan_block : () = \_ -> (
+           if hasRead $[|exprLabel 'lbl|]
+           then (let b = doReadBlock $[|exprLabel 'lbl|] $[blocksize] in
+                 let p = $[next_peer]
+                 in (($[lbl]_process_block, p) <- b);
+                    (($[lbl]_scan_block, me) <- ()))
+           else ((close $[|exprLabel 'lbl|]); $[done])
+         )
+
+         trigger $[lbl]_process_block : collection {elem: string} @Collection = \block -> (
+          let b = block.fold (\acc -> \v -> ((acc.insert ($[parser] v)); acc))
+                             (empty $::[t] @Collection)
+          in $[fn] b
+         )
+       }
+
+  (() @:Run) => $[lbl]_init_scan ()
+}
+
+control ScanCSVForPeers[lbl : label, filepath : expr, blocksize : expr, parser : expr, fn : expr, done : expr] {
+  ( empty ?t @Collection ) => ( empty $::[t] @Collection )
+      @ScanCSV(  lbl       = lbl
+               , filepath  = filepath
+               , blocksize = blocksize
+               , next_peer = [$ (($[lbl]_next_peer = ($[lbl]_next_peer + 1 % local_peers.size()));
+                                  local_peers.at ($[lbl]_next_peer)) ]
+               , parser    = parser
+               , fn        = fn
+               , done      = done)
+
+  +> { declare $[lbl]_next_peer : mut int = 0 }
+}
+
 @:CArgs 2
 declare loadQ1: string -> collection {pageURL: string,pageRank: int} @ { Collection } -> ()
 

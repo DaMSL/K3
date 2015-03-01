@@ -517,6 +517,12 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
               localLog $ debugMatchPVar i
               matchTypesAndAnnotations (annotations e1) (annotations e2) nsEnv >>= return . (True,)
 
+    matchTag sEnv e1@(tag -> EConstant (CEmpty t1)) e2@(tag -> EConstant (CEmpty t2)) =
+      let (anns1, anns2) = (annotations e1, annotations e2) in
+      if matchAnnotations (\x -> ignoreUIDSpan x && ignoreTypes x) anns1 anns2
+        then matchType t1 t2 >>= return . (True,) . mergeSpliceEnv sEnv
+        else debugMismatchAnns anns1 anns2 Nothing
+
     matchTag sEnv e1@(tag -> x) e2@(tag -> y)
       | hasIdentifiers y = matchITAPair e1 e2 sEnv
       | x == y           = matchTAPair  e1 e2 sEnv

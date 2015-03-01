@@ -230,7 +230,7 @@ namespace K3
              shared_ptr<EndpointBindings> subs)
       : handle_(ioh), buffer_(buf), subscribers_(subs)
     {
-      if (handle_->isInput()) {
+      if (handle_->isInput() && buffer_) {
         refreshBuffer();
       }
     }
@@ -242,16 +242,18 @@ namespace K3
     void notify_subscribers(shared_ptr<Value> v);
 
     // An endpoint can be read if the handle can be read or the buffer isn't empty.
-    bool hasRead() { return handle_->hasRead() || !buffer_->empty(); }
+    bool hasRead() { return handle_->hasRead() || (buffer_ && !buffer_->empty()); }
 
     // An endpoint can be written to if the handle can be written to and the buffer isn't full.
-    bool hasWrite() { return handle_->hasWrite() && !buffer_->full(); }
+    bool hasWrite() { return handle_->hasWrite() && buffer_ && !buffer_->full(); }
 
     shared_ptr<Value> refreshBuffer();
 
     void flushBuffer();
 
     shared_ptr<Value> doRead() { return refreshBuffer(); }
+
+    Collection<R_elem<K3::base_string>> doReadBlock(int blockSize);
 
     void doWrite(Value& v) { doWrite(make_shared<Value>(v)); }
 
@@ -267,6 +269,7 @@ namespace K3
     shared_ptr<IOHandle> handle_;
     shared_ptr<EndpointBuffer> buffer_;
     shared_ptr<EndpointBindings> subscribers_;
+    boost::mutex mtx_;  // A mutex used for non-buffered I/O operations.
   };
 
 
