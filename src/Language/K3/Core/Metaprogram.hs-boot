@@ -66,6 +66,7 @@ spliceRecordField :: SpliceValue -> Identifier -> Maybe SpliceValue
 
 {- Splice context accessors -}
 lookupSCtxt      :: Identifier -> SpliceContext -> Maybe SpliceValue
+lookupSCtxtPath  :: [Identifier] -> SpliceContext -> Maybe SpliceValue
 addSCtxt         :: Identifier -> SpliceValue -> SpliceContext -> SpliceContext
 removeSCtxt      :: Identifier -> SpliceContext -> SpliceContext
 removeSCtxtFirst :: Identifier -> SpliceContext -> SpliceContext

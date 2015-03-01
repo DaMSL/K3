@@ -17,6 +17,8 @@
 
 module Language.K3.Metaprogram.MetaHK3 where
 
+import Data.List.Split
+
 import Language.Haskell.Interpreter hiding ( TemplateHaskell )
 import Language.Haskell.Interpreter.Unsafe
 
@@ -133,6 +135,10 @@ spliceQuotesExp :: SpliceContext -> Exp -> Exp
 spliceQuotesExp sctxt e = case e of
   VarQuote (UnQual (Ident i)) -> maybe e id $ do
     v <- lookupSCtxt i sctxt
+    injectSpliceValue v
+
+  VarQuote (Qual (ModuleName path) (Ident i)) -> maybe e id $ do
+    v <- lookupSCtxtPath ((splitOn "." path) ++ [i]) sctxt
     injectSpliceValue v
 
   InfixApp e1 qop e2      -> InfixApp (rcr e1) qop $ rcr e2

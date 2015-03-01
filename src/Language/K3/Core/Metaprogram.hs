@@ -185,6 +185,12 @@ mpAnnMemDecl i c mems = MPAnnMemDecl i c mems
 lookupSCtxt :: Identifier -> SpliceContext -> Maybe SpliceValue
 lookupSCtxt n ctxt = find (Map.member n) ctxt >>= Map.lookup n
 
+lookupSCtxtPath :: [Identifier] -> SpliceContext -> Maybe SpliceValue
+lookupSCtxtPath [] ctxt = Nothing
+lookupSCtxtPath (var:path) ctxt = lookupSCtxt var ctxt >>= flip matchPath path
+  where matchPath v [] = return v
+        matchPath v (h:t) = spliceRecordField v h >>= flip matchPath t
+
 addSCtxt :: Identifier -> SpliceValue -> SpliceContext -> SpliceContext
 addSCtxt n val [] = [Map.insert n val Map.empty]
 addSCtxt n val ctxt = (Map.insert n val $ head ctxt):(tail ctxt)
@@ -212,7 +218,7 @@ spliceVIdSym :: Identifier
 spliceVIdSym = "identifier"
 
 spliceVTSym :: Identifier
-spliceVTSym  = "type"
+spliceVTSym  = "typ"
 
 spliceVESym :: Identifier
 spliceVESym  = "expr"
