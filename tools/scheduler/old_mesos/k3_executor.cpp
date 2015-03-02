@@ -29,7 +29,7 @@
 #include <stout/os.hpp>
 
 #include <yaml-cpp/yaml.h>
-
+#include <fstream>
 
 using namespace mesos;
 using namespace std;
