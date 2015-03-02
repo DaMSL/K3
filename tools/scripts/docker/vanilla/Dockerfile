@@ -3,6 +3,8 @@ FROM damsl/k3-base
 
 ### Build K3 toolchain.
 WORKDIR /k3/K3
+RUN git pull
+
 RUN cabal sandbox init && \
     cabal install --only-dependencies --ghc-options="-O2" --disable-documentation -j && \
     cabal configure --ghc-options="-O2" && \
