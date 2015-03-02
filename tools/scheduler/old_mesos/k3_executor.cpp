@@ -273,7 +273,7 @@ public:
 
 	cout << "BUILDING PARAMS FOR PEERS" << endl;
 	int pph = 0;
-	if (peerParams["peers"].size() > 1) {
+	if (peerParams["peers"].size() >= 1) {
 	  YAML::Node peer_masters;
 	  YAML::Node masters;
 	  YAML::Node curMaster = YAML::Load(YAML::Dump(peerParams["peers"][0]));
@@ -300,8 +300,11 @@ public:
           std::cout << "Masters: " << YAML::Dump(masters) << endl;
 	}
 
-	
+
+        std::ostringstream oss;
+	oss << "PEERS!!! (" << std::endl;
 	for (std::size_t i=0; i<peers.size(); i++)  {
+		oss << "---" << std::endl;
 		YAML::Node thispeer = peerParams;
 		YAML::Node globals = hostParams["globals"][i];
 	        for (const_iterator p=globals.begin(); p!=globals.end(); p++)  {
@@ -338,6 +341,7 @@ public:
 		peerFile.open(peerFileName, std::ofstream::out);
 		peerFile << param;
 		peerFile.close();
+		oss << param << std::endl;
 		std::cout << param << std::endl;
 		k3_cmd += " -p " + peerFileName;
 		for (auto it : peerFiles[i])  {
@@ -347,6 +351,8 @@ public:
                         }
                 }
 	}
+	oss << ") END PEERS!!!" << std::endl;
+	cout << oss.str() << std::endl;
 	
 	cout << "FINAL COMMAND: " << k3_cmd << endl;
         if (thread) {
