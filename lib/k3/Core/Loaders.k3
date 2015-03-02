@@ -82,10 +82,10 @@ control GatherResultsAsCSV [query_cl : [label], nodes : expr, outdir : expr]
                                   ) @+ (EApplyGen True "GatherCollectionAsCSV" $
                                           mkSpliceEnv [ ("lbl", clbl)
                                                       , ("filepath", EC.binop OConcat (expOfSExpr 'outdir)
-                                                                      $ EC.constant $ CString $ "/" ++ ci)
+                                                                      $ EC.constant $ CString $ "/" ++ ci ++ ".csv")
                                                       , ("nodes", 'nodes)
                                                       , ("next", SExpr EC.unit)])
-            in EC.block $ catMaybes (elemsOfSList 'query_cl >>= mapM gatherE)
+            in SExpr $ EC.block $ catMaybes (elemsOfSList 'query_cl >>= mapM gatherE)
          |]
 }
 

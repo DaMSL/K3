@@ -241,15 +241,15 @@ namespace K3
 
     void notify_subscribers(shared_ptr<Value> v);
 
+    shared_ptr<Value> refreshBuffer();
+
+    void flushBuffer();
+
     // An endpoint can be read if the handle can be read or the buffer isn't empty.
     bool hasRead() { return handle_->hasRead() || (buffer_ && !buffer_->empty()); }
 
     // An endpoint can be written to if the handle can be written to and the buffer isn't full.
     bool hasWrite() { return handle_->hasWrite() && buffer_ && !buffer_->full(); }
-
-    shared_ptr<Value> refreshBuffer();
-
-    void flushBuffer();
 
     shared_ptr<Value> doRead() { return refreshBuffer(); }
 
@@ -263,7 +263,7 @@ namespace K3
 
     // Closes the endpoint's IOHandle, while also notifying subscribers
     // of the close event.
-    void close();;
+    void close();
 
   protected:
     shared_ptr<IOHandle> handle_;

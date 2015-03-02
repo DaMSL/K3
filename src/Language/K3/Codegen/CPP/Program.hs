@@ -167,9 +167,9 @@ program (tag &&& children -> (DRole name, decls)) = do
     let dispatchTableDecl  = R.GlobalDefn $ R.Forward $ R.ScalarDecl
                      (R.Name "dispatch_table")
                      (R.Named $ R.Qualified (R.Name "std") $ R.Specialized
-                           [R.Primitive R.PInt, 
-                             R.Function 
-                               [R.Named $ R.Name "void*", R.Const $ R.Reference $ R.Named $ R.Name "Address"] 
+                           [R.Primitive R.PInt,
+                             R.Function
+                               [R.Named $ R.Name "void*", R.Const $ R.Reference $ R.Named $ R.Name "Address"]
                             R.Void] (R.Name "map"))
                      Nothing
 
@@ -349,7 +349,7 @@ generateDispatchPopulation = do
                              [ ("payload", R.Named $ R.Name "void*")
                              , ("source", R.Const $ R.Reference $ R.Named $ R.Name "Address")
                              ]
-                             
+
                              False Nothing
                              [ ctDecl
                              , R.Forward $ R.ScalarDecl (R.Name "v") R.Inferred

@@ -46,7 +46,7 @@ namespace K3 {
     const Value& contents()      const { return std::get<2>(*this); }
     const Address& source()      const { return std::get<3>(*this); }
     std::string target() const {
-      return __k3_context::__get_trigger_name(id()) + "@" + addressAsString(address()); 
+      return __k3_context::__get_trigger_name(id()) + "@" + addressAsString(address());
     }
 
     // TODO: error reporting if not found
@@ -60,7 +60,7 @@ namespace K3 {
     friend class boost::serialization::access;
     template<class Archive>
     void serialize(Archive &ar, const unsigned int) {
-      ar & std::get<0>(*this); 
+      ar & std::get<0>(*this);
       ar & std::get<1>(*this);
       ar & std::get<2>(*this);
       ar & std::get<3>(*this);
