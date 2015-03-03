@@ -61,20 +61,20 @@ namespace K3 {
                shared_ptr<MessageQueues> q,
                shared_ptr<Endpoint> ep,
                shared_ptr<ListenerControl> ctrl,
-               shared_ptr<InternalCodec> c)
+               shared_ptr<InternalFraming> f)
         : name(n), ctxt_(ctxt), queues(q),
-          endpoint_(ep), control_(ctrl), transfer_codec(c),
+          endpoint_(ep), control_(ctrl), transfer_frame(f),
           listenerLog(shared_ptr<LogMT>(new LogMT("Listener_"+n)))
       {
         if ( endpoint_ ) {
           IOHandle::SourceDetails source = ep->handle()->networkSource();
           nEndpoint_ = dynamic_pointer_cast<NEndpoint>(get<1>(source));
-          handle_codec = get<0>(source);
+          handle_frame = get<0>(source);
         }
       }
 
       shared_ptr<ListenerControl> control() { return control_; }
-      shared_ptr<Codec> newCodec() { }
+      shared_ptr<Framing> newFraming() { }
 
     protected:
       Identifier name;
@@ -84,8 +84,8 @@ namespace K3 {
       shared_ptr<Endpoint> endpoint_;
       shared_ptr<NEndpoint> nEndpoint_;
 
-      shared_ptr<Codec> handle_codec;
-      shared_ptr<InternalCodec> transfer_codec;
+      shared_ptr<Framing> handle_frame;
+      shared_ptr<InternalFraming> transfer_frame;
 
       shared_ptr<ListenerControl> control_;
       shared_ptr<LogMT> listenerLog;
@@ -108,11 +108,11 @@ namespace K3 {
                shared_ptr<MessageQueues> q,
                shared_ptr<Endpoint> ep,
                shared_ptr<ListenerControl> ctrl,
-               shared_ptr<InternalCodec> c)
-        : BaseListener<NContext, NEndpoint>(n, ctxt, q, ep, ctrl, c),
+               shared_ptr<InternalFraming> f)
+        : BaseListener<NContext, NEndpoint>(n, ctxt, q, ep, ctrl, f),
           llockable(), connections_(emptyConnections())
       {
-        if ( this->nEndpoint_ && this->handle_codec
+        if ( this->nEndpoint_ && this->handle_frame
                 && this->ctxt_ && this->ctxt_->service_threads )
         {
           acceptConnection();
@@ -147,7 +147,7 @@ namespace K3 {
 
       void acceptConnection()
       {
-        if ( this->endpoint_ && this->handle_codec ) {
+        if ( this->endpoint_ && this->handle_frame ) {
           shared_ptr<NConnection> nextConnection = shared_ptr<NConnection>(new NConnection(this->ctxt_));
           this->nEndpoint_->acceptor()->async_accept(*(nextConnection->socket()),
             [=] (const boost::system::error_code& ec) {
@@ -179,9 +179,9 @@ namespace K3 {
             this->endpoint_->subscribers()->notifyEvent(EndpointNotification::SocketAccept, nullptr);
           }
 
-          // Start connection, with a new codec(buffer)
-          shared_ptr<Codec> cdec = handle_codec->freshClone();
-          receiveMessages(c, cdec);
+          // Start connection, with a new frame(buffer)
+          shared_ptr<Framing> frme = handle_frame->freshClone();
+          receiveMessages(c, frme);
         }
       }
 
@@ -193,7 +193,7 @@ namespace K3 {
         }
       }
 
-      void receiveMessages(shared_ptr<NConnection> c, shared_ptr<Codec> cdec) {
+      void receiveMessages(shared_ptr<NConnection> c, shared_ptr<Framing> frme) {
         if ( c && c->socket()) {
           // TODO: extensible buffer size.
           // We use a local variable for the socket buffer since multiple threads
@@ -209,19 +209,19 @@ namespace K3 {
                 shared_ptr<SocketBuffer> keep_alive = buffer_;
 
                 if (!ec || (ec == boost::asio::error::eof && bytes_transferred > 0 )) {
-                // Add network data to the codec's buffer.
+                // Add network data to the frame's buffer.
                 // We assume the processor notifies subscribers regarding socket data events.
-                shared_ptr<Value> v(cdec->decode(buffer_->c_array(), bytes_transferred));
-                // Exhaust the codec's buffer
+                shared_ptr<Value> v(frme->decode(buffer_->c_array(), bytes_transferred));
+                // Exhaust the frame's buffer
                 while (v) {
 
-                  bool t = endpoint_->do_push(v, queues, transfer_codec);
+                  bool t = endpoint_->do_push(v, queues, transfer_frame);
                   // Attempt to decode a buffered value
-                  v = cdec->decode("");
+                  v = frme->decode("");
                 }
 
                 // Recursive invocation for the next message.
-                receiveMessages(c, cdec);
+                receiveMessages(c, frme);
 
               } else {
                 deregisterConnection(c);
@@ -249,10 +249,10 @@ namespace K3 {
                shared_ptr<MessageQueues> q,
                shared_ptr<Endpoint> ep,
                shared_ptr<ListenerControl> ctrl,
-               shared_ptr<InternalCodec> c)
-        : BaseListener<NContext, NEndpoint>(n, ctxt, q, ep, ctrl, c)
+               shared_ptr<InternalFraming> f)
+        : BaseListener<NContext, NEndpoint>(n, ctxt, q, ep, ctrl, f)
       {
-        if ( this->nEndpoint_ && this->handle_codec && this->ctxt_ && this->ctxt_->listenerThreads ) {
+        if ( this->nEndpoint_ && this->handle_frame && this->ctxt_ && this->ctxt_->listenerThreads ) {
           // Instantiate a new thread to listen for messages on the nanomsg
           // socket, tracking it in the network context.
           terminated_ = false;
@@ -264,7 +264,7 @@ namespace K3 {
 
       Listener(const Listener& other)
         : BaseListener<NContext, NEndpoint>(other.name, other.ctxt_, other.queues,
-                                            other.endpoint_, other.control_, other.transfer_codec)
+                                            other.endpoint_, other.control_, other.transfer_frame)
       {
         this->thread_ = other.thread_;
         this->senders = other.senders;
@@ -274,19 +274,19 @@ namespace K3 {
       void operator()() {
         typedef boost::array<char, 8192> SocketBuffer;
         SocketBuffer buffer_;
-        shared_ptr<Codec> cdec = this->handle_codec->freshClone();
+        shared_ptr<Framing> frme = this->handle_frame->freshClone();
         while ( !terminated_ ) {
           // Receive a message.
           int bytes = nn_recv(this->nEndpoint_->acceptor(), buffer_.c_array(), buffer_.static_size, 0);
           if ( bytes >= 0 ) {
             // Decode, process.
-            shared_ptr<Value> v = cdec->decode(string(buffer_.c_array(), buffer_.static_size));
+            shared_ptr<Value> v = frme->decode(string(buffer_.c_array(), buffer_.static_size));
             while ( v ) {
               // Simulate accept events for nanomsg.
               refreshSenders(v);
-              bool t = this->endpoint_->do_push(v, this->queues, this->transfer_codec);
+              bool t = this->endpoint_->do_push(v, this->queues, this->transfer_frame);
 
-              v = cdec->decode("");
+              v = frme->decode("");
             }
           } else {
             listenerLog->logAt(boost::log::trivial::error, string("Error receiving message: ") + nn_strerror(nn_errno()));

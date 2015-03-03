@@ -23,9 +23,10 @@ namespace K3 {
 
   namespace Net = K3::Asio;
 
-    using std::shared_ptr;
-    using std::tuple;
-    using std::ofstream;
+  using std::shared_ptr;
+  using std::tuple;
+  using std::ofstream;
+
   //-------------------
   // Utility functions
 
@@ -148,17 +149,17 @@ namespace K3 {
     Engine(
       bool simulation,
       SystemEnvironment& sys_env,
-      shared_ptr<InternalCodec> _internal_codec,
+      shared_ptr<InternalFraming> _internal_frame,
       string log_level,
       string log_path,
       string result_v,
       string result_p,
       shared_ptr<MessageQueues> qs
     ): LogMT("Engine") {
-      configure(simulation, sys_env, _internal_codec, log_level, log_path, result_v, result_p, qs);
+      configure(simulation, sys_env, _internal_frame, log_level, log_path, result_v, result_p, qs);
     }
 
-    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level,string log_path, string result_var, string result_path, shared_ptr<MessageQueues> qs);
+    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalFraming> _internal_frame, string log_level,string log_path, string result_var, string result_path, shared_ptr<MessageQueues> qs);
 
     //-----------
     // Messaging.
@@ -245,7 +246,7 @@ namespace K3 {
     }
 
     RemoteMessage doReadInternal(Identifier eid) {
-      return internal_codec->read_message(*endpoints->getInternalEndpoint(eid)->doRead());
+      return internal_frame->read_message(*endpoints->getInternalEndpoint(eid)->doRead());
     }
 
     Collection<R_elem<K3::base_string>> doReadExternalBlock (Identifier eid, int blockSize) {
@@ -268,7 +269,7 @@ namespace K3 {
 
     void doWriteInternal(Identifier eid, RemoteMessage m) {
       return endpoints->getInternalEndpoint(eid)->doWrite(
-                make_shared<Value>(internal_codec->show_message(m)));
+                make_shared<Value>(internal_frame->show_message(m)));
     }
 
     //-----------------------
@@ -353,18 +354,18 @@ namespace K3 {
 
     void logResult(shared_ptr<MessageProcessor>& mp) {
       if (result_var != "") {
-	auto a = *me;
-          auto dir = result_path != "" ? result_path : ".";
-          auto s = dir + "/" + addressAsString(a) + "_Result.txt";
-          std::ofstream ofs;
-          ofs.open(s);
-          auto m = mp->json_bindings(a);
-          if (m.count( result_var ) != 0) {
-            ofs << m[result_var] << std::endl;
-          }
-          else {
-            throw std::runtime_error("Cannot log result variable, does not exist: " + result_var);
-          }
+        auto a = *me;
+        auto dir = result_path != "" ? result_path : ".";
+        auto s = dir + "/" + addressAsString(a) + "_Result.txt";
+        std::ofstream ofs;
+        ofs.open(s);
+        auto m = mp->json_bindings(a);
+        if (m.count(result_var) != 0) {
+          ofs << m[result_var] << std::endl;
+        } else {
+          throw std::runtime_error(
+              "Cannot log result variable, does not exist: " + result_var);
+        }
       }
     }
 
@@ -385,11 +386,12 @@ namespace K3 {
 
     bool logEnabled() { return log_enabled; }
     bool logJsonEnabled() { return log_json; }
+
   protected:
     shared_ptr<EngineConfiguration> config;
     shared_ptr<EngineControl>       control;
     shared_ptr<Address>             me;
-    shared_ptr<InternalCodec>       internal_codec;
+    shared_ptr<InternalFraming>       internal_frame;
     shared_ptr<MessageQueues>       queues;
     // shared_ptr<WorkerPool>          workers;
     shared_ptr<Net::NContext>       network_ctxt;
@@ -446,11 +448,11 @@ namespace K3 {
     //-----------------------
     // IOHandle constructors.
 
-    shared_ptr<IOHandle> openBuiltinHandle(Builtin b, shared_ptr<Codec> codec);
+    shared_ptr<IOHandle> openBuiltinHandle(Builtin b, shared_ptr<Framing> frame);
 
-    shared_ptr<IOHandle> openFileHandle(const string& path, shared_ptr<Codec> codec, IOMode m);
+    shared_ptr<IOHandle> openFileHandle(const string& path, shared_ptr<Framing> frame, IOMode m);
 
-    shared_ptr<IOHandle> openSocketHandle(const Address& addr, shared_ptr<Codec> codec, IOMode m);
+    shared_ptr<IOHandle> openSocketHandle(const Address& addr, shared_ptr<Framing> frame, IOMode m);
   };
 
   template <>

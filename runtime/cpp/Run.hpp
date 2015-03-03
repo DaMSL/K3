@@ -12,7 +12,7 @@ namespace K3 {
 
     std::vector<string> peer_strs = opt.peer_strings;
     bool simulation = opt.simulation;
-    std::string log_level = opt.log_level; 
+    std::string log_level = opt.log_level;
     std::string log_path = opt.json_path;
     std::string result_var = opt.result_var;
     std::string result_path = opt.result_path;
@@ -47,7 +47,7 @@ namespace K3 {
       queues->addQueue(gc->me);
       peers.push_back(gc->me);
       SystemEnvironment se = defaultEnvironment(getAddrs(contexts));
-      engine->configure(simulation, se, make_shared<DefaultInternalCodec>(), log_level, log_path, result_var, result_path, queues);
+      engine->configure(simulation, se, make_shared<DefaultInternalFraming>(), log_level, log_path, result_var, result_path, queues);
       processRoles(contexts);
       auto t = tuple<e_ptr, ctxt_map>(engine, contexts);
       engines.push_back(t);

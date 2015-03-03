@@ -1,5 +1,5 @@
-#ifndef K3_RUNTIME_CODEC_H
-#define K3_RUNTIME_CODEC_H
+#ifndef K3_RUNTIME_FRAMING_H
+#define K3_RUNTIME_FRAMING_H
 
 #include <string>
 
@@ -8,14 +8,11 @@
 
 namespace K3 {
 
-  //--------------------
-  // Wire descriptions
-
   // A generic exception that can be thrown by wire descriptor methods.
-  class CodecException : public std::runtime_error {
+  class FramingException : public std::runtime_error {
   public:
-    CodecException(const std::string& msg) : runtime_error(msg) {}
-    CodecException(const char* msg) : runtime_error(msg) {}
+    FramingException(const std::string& msg) : runtime_error(msg) {}
+    FramingException(const char* msg) : runtime_error(msg) {}
   };
 
   // Message serializtion/deserialization abstract base class.
@@ -28,25 +25,24 @@ namespace K3 {
   // of the wire description (including factors such as message loss).
   // This includes the conditions under which an exception is thrown.
 
-  class Codec: public virtual LogMT {
+  class Framing : public virtual LogMT {
     public:
-      Codec(): LogMT("Codec") {}
+      Framing(): LogMT("Framing") {}
+      virtual ~Framing() {}
+
+      // codec cloning
+      virtual shared_ptr<Framing> freshClone() = 0;
 
       virtual Value encode(const Value&) = 0;
       virtual shared_ptr<Value> decode(const Value&) = 0;
       virtual shared_ptr<Value> decode(const char *, size_t) = 0;
       virtual bool decode_ready() = 0;
       virtual bool good() = 0;
-
-      // codec cloning
-      virtual shared_ptr<Codec> freshClone() = 0;
-      virtual ~Codec() {}
-
   };
 
-  class DefaultCodec : public virtual Codec, public virtual LogMT {
+  class DefaultFraming : public virtual Framing, public virtual LogMT {
     public:
-      DefaultCodec() : Codec(), LogMT("DefaultCodec"), good_(true) {}
+      DefaultFraming() : Framing(), LogMT("DefaultFraming"), good_(true) {}
 
       Value encode(const Value& v) { return v; }
 
@@ -70,8 +66,8 @@ namespace K3 {
 
       bool good() { return good_; }
 
-      shared_ptr<Codec> freshClone() {
-        shared_ptr<Codec> cdec = shared_ptr<DefaultCodec>(new DefaultCodec());
+      shared_ptr<Framing> freshClone() {
+        shared_ptr<Framing> cdec = shared_ptr<DefaultFraming>(new DefaultFraming());
         return cdec;
       };
 
@@ -79,18 +75,18 @@ namespace K3 {
       bool good_;
   };
 
-  class InternalCodec: public virtual Codec {
+  class InternalFraming: public virtual Framing {
     public:
-      InternalCodec() : LogMT("InternalCodec") {}
+      InternalFraming() : LogMT("InternalFraming") {}
 
       virtual RemoteMessage read_message(const Value&) = 0;
       virtual Value show_message(const RemoteMessage&) = 0;
   };
 
-  class DelimiterCodec : public virtual Codec, public virtual LogMT {
+  class DelimiterFraming : public virtual Framing, public virtual LogMT {
     public:
-      DelimiterCodec(char delimiter)
-        : Codec(), LogMT("DelimiterCodec"), delimiter_(delimiter), good_(true), buf_(new std::string())
+      DelimiterFraming(char delimiter)
+        : Framing(), LogMT("DelimiterFraming"), delimiter_(delimiter), good_(true), buf_(new std::string())
       {}
 
       Value encode(const Value& v);
@@ -116,8 +112,8 @@ namespace K3 {
 
       bool good() { return good_; }
 
-      shared_ptr<Codec> freshClone() {
-        return make_shared<DelimiterCodec>(delimiter_);
+      shared_ptr<Framing> freshClone() {
+        return make_shared<DelimiterFraming>(delimiter_);
       }
 
       char delimiter_;
@@ -127,10 +123,10 @@ namespace K3 {
       shared_ptr<std::string> buf_;
   };
 
-  class LengthHeaderCodec : public virtual Codec, public virtual LogMT {
+  class LengthHeaderFraming : public virtual Framing, public virtual LogMT {
     public:
-      LengthHeaderCodec()
-        : Codec(), LogMT("LengthHeaderCodec"), good_(true), buf_(new std::string()), next_size_(NULL)
+      LengthHeaderFraming()
+        : Framing(), LogMT("LengthHeaderFraming"), good_(true), buf_(new std::string()), next_size_(NULL)
       {}
 
       Value encode(const Value& s);
@@ -155,8 +151,8 @@ namespace K3 {
 
       bool good() { return good_; }
 
-      shared_ptr<Codec> freshClone() {
-        return make_shared<LengthHeaderCodec>();
+      shared_ptr<Framing> freshClone() {
+        return make_shared<LengthHeaderFraming>();
       };
 
     protected:
@@ -167,56 +163,56 @@ namespace K3 {
       void strip_header();
   };
 
-  class AbstractDefaultInternalCodec : public virtual InternalCodec, public virtual LogMT {
+  class AbstractDefaultInternalFraming : public virtual InternalFraming, public virtual LogMT {
     public:
-      AbstractDefaultInternalCodec() : InternalCodec(), LogMT("AbstractDefaultInternalCodec") {}
+      AbstractDefaultInternalFraming() : InternalFraming(), LogMT("AbstractDefaultInternalFraming") {}
 
       RemoteMessage read_message(const Value& v);
 
       Value show_message(const RemoteMessage& m);
   };
 
-  class DefaultInternalCodec : public AbstractDefaultInternalCodec, public DefaultCodec, public virtual LogMT {
+  class DefaultInternalFraming : public AbstractDefaultInternalFraming, public DefaultFraming, public virtual LogMT {
     public:
-      DefaultInternalCodec()
-        : AbstractDefaultInternalCodec(), DefaultCodec(), LogMT("DefaultInternalCodec")
+      DefaultInternalFraming()
+        : AbstractDefaultInternalFraming(), DefaultFraming(), LogMT("DefaultInternalFraming")
       {}
 
-      shared_ptr<Codec> freshClone() {
-        shared_ptr<Codec> cdec = shared_ptr<DefaultInternalCodec>(new DefaultInternalCodec());
+      shared_ptr<Framing> freshClone() {
+        shared_ptr<Framing> cdec = shared_ptr<DefaultInternalFraming>(new DefaultInternalFraming());
         return cdec;
       };
 
   };
 
-  class DelimiterInternalCodec : public AbstractDefaultInternalCodec, public DelimiterCodec, public virtual LogMT {
+  class DelimiterInternalFraming : public AbstractDefaultInternalFraming, public DelimiterFraming, public virtual LogMT {
     public:
-      DelimiterInternalCodec(char delimiter)
-        : AbstractDefaultInternalCodec(), DelimiterCodec(delimiter), LogMT("DelimiterInternalCodec"), delimiter_(delimiter)
+      DelimiterInternalFraming(char delimiter)
+        : AbstractDefaultInternalFraming(), DelimiterFraming(delimiter), LogMT("DelimiterInternalFraming"), delimiter_(delimiter)
       {}
 
-      shared_ptr<Codec> freshClone() {
-        return make_shared<DelimiterInternalCodec>(delimiter_);
+      shared_ptr<Framing> freshClone() {
+        return make_shared<DelimiterInternalFraming>(delimiter_);
       };
 
     protected:
       char delimiter_;
   };
 
-  class LengthHeaderInternalCodec : public AbstractDefaultInternalCodec, public LengthHeaderCodec, public virtual LogMT {
+  class LengthHeaderInternalFraming : public AbstractDefaultInternalFraming, public LengthHeaderFraming, public virtual LogMT {
     public:
-      LengthHeaderInternalCodec()
-        : AbstractDefaultInternalCodec(), LengthHeaderCodec(), LogMT("LengthHeaderInternalCodec")
+      LengthHeaderInternalFraming()
+        : AbstractDefaultInternalFraming(), LengthHeaderFraming(), LogMT("LengthHeaderInternalFraming")
       {}
 
-      shared_ptr<Codec> freshClone() {
-        return make_shared<LengthHeaderInternalCodec>();
+      shared_ptr<Framing> freshClone() {
+        return make_shared<LengthHeaderInternalFraming>();
       };
 
   };
 
-  using ExternalCodec = Codec;
+  using ExternalFraming = Framing;
 
 } // namespace K3
 
-#endif // K3_RUNTIME_CODEC_H
+#endif // K3_RUNTIME_FRAMING_H

@@ -9,7 +9,7 @@
 #include <boost/thread/lockable_adapter.hpp>
 
 #include <Common.hpp>
-#include <Codec.hpp>
+#include <Framing.hpp>
 #include <Network.hpp>
 #include <IOHandle.hpp>
 #include <Queue.hpp>
@@ -94,8 +94,8 @@ namespace K3
     virtual void flush(shared_ptr<IOHandle>, NotifyFn) = 0;
 
     // Transfer the contents of the buffer into provided MessageQueues
-    // Using the provided InternalCodec to convert from Value to Message
-    virtual bool transfer(shared_ptr<MessageQueues>, shared_ptr<InternalCodec>, NotifyFn)= 0;
+    // Using the provided InternalFraming to convert from Value to Message
+    virtual bool transfer(shared_ptr<MessageQueues>, shared_ptr<InternalFraming>, NotifyFn)= 0;
   };
 
 
@@ -128,7 +128,7 @@ namespace K3
 
     void flush(shared_ptr<IOHandle> ioh, NotifyFn notify);
 
-    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify);
+    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalFraming> frame, NotifyFn notify);
 
    protected:
     boost::externally_locked<shared_ptr<Value>, LockB> contents;
@@ -152,7 +152,7 @@ namespace K3
 
     void flush(shared_ptr<IOHandle> ioh, NotifyFn notify);
 
-    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify);
+    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalFraming> frame, NotifyFn notify);
 
    protected:
     shared_ptr<Value> contents;
@@ -182,12 +182,12 @@ namespace K3
     void flush(shared_ptr<IOHandle> ioh, NotifyFn notify, bool force);
 
     // Default transfer: do not force, wait for batch
-    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify) {
-      return transfer(queues,cdec,notify,false);
+    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalFraming> frame, NotifyFn notify) {
+      return transfer(queues, frame, notify, false);
     }
 
     // transfer overloaded with force flag to ignore batching semantics
-    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify, bool force);
+    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalFraming> frame, NotifyFn notify, bool force);
 
    protected:
     shared_ptr<list<Value>> contents;
@@ -259,7 +259,7 @@ namespace K3
 
     void doWrite(shared_ptr<Value> v_ptr);
 
-    bool do_push(shared_ptr<Value> val, shared_ptr<MessageQueues> q, shared_ptr<InternalCodec> codec);
+    bool do_push(shared_ptr<Value> val, shared_ptr<MessageQueues> q, shared_ptr<InternalFraming> frame);
 
     // Closes the endpoint's IOHandle, while also notifying subscribers
     // of the close event.

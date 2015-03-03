@@ -6,7 +6,6 @@ using std::out_of_range;
 
 namespace K3
 {
-
     bool ScalarEPBufferMT::push_back(shared_ptr<Value> v) {
       strict_lock<LockB> guard(*this);
       // Failure:
@@ -64,15 +63,15 @@ namespace K3
     }
 
     bool ScalarEPBufferMT::transfer(shared_ptr<MessageQueues> queues,
-                                    shared_ptr<InternalCodec> cdec,
+                                    shared_ptr<InternalFraming> frame,
                                     NotifyFn notify) {
       strict_lock<LockB> guard(*this);
       bool transferred = false;
       if(contents.get(guard)) {
         shared_ptr<Value> v = contents.get(guard);
         contents.get(guard).reset();
-        if (queues && cdec) {
-          Message msg = *(cdec->read_message(*v).toMessage());
+        if (queues && frame) {
+          Message msg = *(frame->read_message(*v).toMessage());
           queues->enqueue(msg);
           transferred = true;
         }
@@ -133,13 +132,13 @@ namespace K3
     }
 
     bool ScalarEPBufferST::transfer(shared_ptr<MessageQueues> queues,
-                                    shared_ptr<InternalCodec> cdec,
+                                    shared_ptr<InternalFraming> frame,
                                     NotifyFn notify) {
       bool transferred = false;
       if(!this->empty()) {
         shared_ptr<Value> v = this->pop();
-        if (queues && cdec) {
-          Message msg = *(cdec->read_message(*v).toMessage());
+        if (queues && frame) {
+          Message msg = *(frame->read_message(*v).toMessage());
           queues->enqueue(msg);
           transferred = true;
         }
@@ -213,7 +212,7 @@ namespace K3
 
     // transfer overloaded with force flag to ignore batching semantics
     bool ContainerEPBufferST::transfer(shared_ptr<MessageQueues> queues,
-                                       shared_ptr<InternalCodec> cdec,
+                                       shared_ptr<InternalFraming> frame,
                                        NotifyFn notify,
                                        bool force) {
       // Transfer as many full batches as possible
@@ -223,8 +222,8 @@ namespace K3
         for (int i=0; i < n; i++) {
           if (force && empty()) { return transferred; }
           shared_ptr<Value> v = this->pop();
-          if (queues && cdec) {
-            RemoteMessage rMsg = cdec->read_message(*v);
+          if (queues && frame) {
+            RemoteMessage rMsg = frame->read_message(*v);
             queues->enqueue(*(rMsg.toMessage()));
             transferred = true;
           }
@@ -355,7 +354,7 @@ namespace K3
 
     bool Endpoint::do_push(shared_ptr<Value> val,
                            shared_ptr<MessageQueues> q,
-                           shared_ptr<InternalCodec> codec) {
+                           shared_ptr<InternalFraming> codec) {
 
       // Skip the endpoint buffer.
       // deserialize and directly enqueue
