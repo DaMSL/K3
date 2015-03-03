@@ -44,6 +44,27 @@ namespace K3 {
     return;
   }
 
+  template <class C, class F>
+  void read_records_with_resize(int size, std::istream& in, C& container, F read_record) {
+    container.getContainer().resize(size);
+
+    if (size == 0) {
+      return read_records(in, container, read_record);
+    }
+
+    int i = 0;
+    std::string tmp_buffer;
+    while (!in.eof()) {
+      if (i >= container.size(unit_t {}) ) {
+        throw std::runtime_error("Cannot read records, container size is too small");
+      }
+      container.getContainer()[i++] = read_record(in, tmp_buffer);
+      in >> std::ws;
+    }
+
+    return;
+  }
+
   // Standard context for common builtins that use a handle to the engine (via inheritance)
   class __standard_context : public __k3_context {
     public:
@@ -297,7 +318,7 @@ namespace K3 {
       std::string line;
       std::ifstream infile(filepath);
       while (std::getline(infile, line)) {
-        c.insert(R{line}); 
+        c.insert(R{line});
       }
       return unit_t{};
     }

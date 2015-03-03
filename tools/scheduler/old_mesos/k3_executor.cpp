@@ -31,8 +31,24 @@
 #include <yaml-cpp/yaml.h>
 #include <fstream>
 
+#include <stdio.h>
+
 using namespace mesos;
 using namespace std;
+
+std::string exec(const char* cmd) {
+    FILE* pipe = popen(cmd, "r");
+    if (!pipe) return "ERROR";
+    char buffer[128];
+    std::string result = "";
+    while(!feof(pipe)) {
+      if(fgets(buffer, 128, pipe) != NULL)
+        result += buffer;
+    }
+    pclose(pipe);
+    return result;
+}
+
 
 class DataFile {
   public:
@@ -74,7 +90,7 @@ public:
 
   virtual void launchTask(ExecutorDriver* driver, const TaskInfo& task)    {
 	localPeerCount++;
-	
+
     TaskStatus status;
     status.mutable_task_id()->MergeFrom(task.task_id());
     status.set_state(TASK_RUNNING);
@@ -83,18 +99,18 @@ public:
     //-------------  START TASK OPERATIONS ----------
 	cout << "Running K3 Program: " << task.name() << endl;
 	string k3_cmd;
-	
+
 	using namespace YAML;
-	
+
 	Node hostParams = Load(task.data());
 	Node peerParams;
 	Node peers;
 //	vector<Node> peers;
-	
+
 	cout << "WHAT I RECEIVED\n----------------------\n";
 	cout << Dump(hostParams);
 	cout << "\n---------------------------------\n";
-	
+
 	k3_cmd = "$MESOS_SANDBOX/" + hostParams["binary"].as<string>();
 	if (hostParams["logging"]) {
 		k3_cmd += " -l INFO ";
@@ -102,24 +118,24 @@ public:
         if (hostParams["resultVar"]) {
           k3_cmd += " --result_path $MESOS_SANDBOX --result_var " + hostParams["resultVar"].as<string>();
         }
-	
-	
+
+
 	string datavar, datapath;
 	string datapolicy = "default";
 	int peerStart = 0;
 	int peerEnd = 0;
-	
+
 	for (const_iterator param=hostParams.begin(); param!=hostParams.end(); param++)  {
 		string key = param->first.as<string>();
 //		cout << " PROCESSING: " << key << endl;
-		if (key == "logging" || key == "binary" || 
+		if (key == "logging" || key == "binary" ||
 			key == "server" || key == "server_group") {
 			continue;
 		}
 		if (key == "roles") {
 		  continue;
 		}
-              
+
 		else if (key == "peers") {
 			peerParams["peers"] = hostParams["peers"];
 		}
@@ -140,7 +156,7 @@ public:
                           DataFile f;
                           auto d = *it;
 			  f.path = d["path"].as<string>();
-			  f.varName = d["var"].as<string>(); 
+			  f.varName = d["var"].as<string>();
 			  f.policy = d["policy"].as<string>();
 			  dataFiles.push_back(f);
 			}
@@ -161,7 +177,7 @@ public:
 		}
 		else if (key == "peerStart") {
 			peerStart = param->second.as<int>();
-		} 
+		}
 		else if (key == "peerEnd") {
 			peerEnd = param->second.as<int>();
 		}
@@ -174,7 +190,7 @@ public:
 			//peerParams[key] = param->second;
 		}
 	}
-	
+
 	// DATA ALLOCATION *
 		// TODO: Convert to multiple input dirs
 	map<string, vector<string> > peerFiles[peers.size()];
@@ -200,7 +216,7 @@ public:
 
 		}
 		struct dirent *srcfile = NULL;
-		
+
 		while (true) {
 			srcfile = readdir(datadir);
 			if (srcfile == NULL) {
@@ -310,7 +326,7 @@ public:
 	        for (const_iterator p=globals.begin(); p!=globals.end(); p++)  {
 	          thispeer[p->first.as<string>()] = p->second;
 	        }
-		YAML::Node me = peers[i]; 
+		YAML::Node me = peers[i];
 		thispeer["me"] = me;
 		YAML::Node local_peers;
 		std::cout << "start: " << peerStart << ". end: " << peerEnd << std::endl;
@@ -319,7 +335,8 @@ public:
 		}
 
 		thispeer["local_peers"] = YAML::Load(YAML::Dump(local_peers));
-                
+
+	        std::map<string, int> lineCountPerRelation;
 		for (auto it : peerFiles[i])  {
 			auto datavar = it.first;
                         if (thispeer[datavar]) {
@@ -328,9 +345,28 @@ public:
 			for (auto &f : it.second) {
 				Node src;
 				src["path"] = f;
+                                string wcCommand = "wc -l " + f;
+                                string lineCount = exec(wcCommand.c_str());
+				int lines = std::atoi(lineCount.c_str());
+
+				if (lineCountPerRelation.find(datavar) == lineCountPerRelation.end() ) {
+                                  lineCountPerRelation[datavar] = 0;
+				}
+				lineCountPerRelation[datavar] += lines;
+
 				thispeer[datavar].push_back(src);
 			}
 			cout << "num files:" << thispeer[datavar].size() << endl;
+ 	                string lineCountVar = datavar + "LineCount";
+	                if (thispeer[lineCountVar]) {
+                         thispeer.remove(lineCountVar);
+		        }
+			cout << "Setting " << lineCountVar << " to " << lineCountPerRelation[datavar] << endl;
+		        thispeer[lineCountVar] = lineCountPerRelation[datavar];
+		}
+		cout << "Line count per relation for peer" << i << "." <<  endl;
+		for (const auto& it : lineCountPerRelation) {
+                  cout << it.first << ": " << it.second << "." << endl;
 		}
 		// ADD DATA SOURCE DIR HERE
 		YAML::Emitter emit;
@@ -353,7 +389,7 @@ public:
 	}
 	oss << ") END PEERS!!!" << std::endl;
 	cout << oss.str() << std::endl;
-	
+
 	cout << "FINAL COMMAND: " << k3_cmd << endl;
         if (thread) {
 	  driver->sendFrameworkMessage("Debug: thread already existed!");
@@ -362,7 +398,7 @@ public:
           delete thread;
           thread = 0;
         }
-       
+
         bool isMaster = false;
         cout << "Checking master" << endl;
         if (Dump(hostParams["me"][0]) == Dump(hostParams["master"])) {
@@ -386,7 +422,7 @@ class TaskThread {
     bool isMaster;
 
   public:
-        TaskThread(TaskInfo t, string cmd, ExecutorDriver* d, bool m) 
+        TaskThread(TaskInfo t, string cmd, ExecutorDriver* d, bool m)
           : task(t), k3_cmd(cmd), driver(d), isMaster(m) {}
 
         void operator()() {
@@ -439,7 +475,7 @@ class TaskThread {
                     thread->join();
                     delete thread;
                     thread = 0;
-                  } 
+                  }
 	  	  driver->sendFrameworkMessage("Executor " + host_name+ " KILLING TASK");
 		  driver->stop();
 }

@@ -193,8 +193,9 @@ genCsvParserImpl elemType childTypes accessor = do
 source_builtin_map :: [(String, (String -> K3 Type -> String -> CPPGenM R.Definition))]
 source_builtin_map = [("HasRead", genHasRead),
                       ("Read", genDoRead),
-                      ("Loader",genLoader ","),
-                      ("LoaderP", genLoader "|"),
+                      ("Loader",genLoader False "," ),
+                      ("LoaderP", genLoader False "|" ),
+                      ("LoaderPFixedSize", genLoader True "|"),
                       ("Logger", genLogger)]
 
 source_builtins :: [String]
@@ -241,8 +242,8 @@ genDoRead suf typ name = do
 
 -- TODO: Loader is not quite valid K3. The collection should be passed by indirection so we are not working with a copy
 -- (since the collection is technically passed-by-value)
-genLoader :: String -> String -> K3 Type -> String -> CPPGenM R.Definition
-genLoader sep suf (children -> [_,f]) name = do
+genLoader :: Bool -> String -> String -> K3 Type -> String -> CPPGenM R.Definition
+genLoader fixedSize sep suf (children -> [_,f]) name = do
  (colType, recType) <- return $ getColType f
  cColType <- genCType colType
  cRecType <- genCType recType
@@ -272,17 +273,30 @@ genLoader sep suf (children -> [_,f]) name = do
                     , ("tmp_buffer", (R.Reference $ R.Named $ (R.Qualified (R.Name "std") (R.Name "string"))))
                     ] False Nothing recordGetLines
 
+ let readRecordsCall = if fixedSize
+                       then R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "read_records_with_resize")
+                              [ R.Variable $ R.Name "size"
+                              , R.Variable $ R.Name "_in"
+                              , R.Variable $ R.Name "c"
+                              , readRecordFn
+                              ]
+                       else R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "read_records")
+                              [ R.Variable $ R.Name "_in"
+                              , R.Variable $ R.Name "c"
+                              , readRecordFn
+                              ]
+ let defaultArgs = [("file", R.Named $ R.Name "string"),("c", R.Reference cColType)]
+ let args = if fixedSize
+            then defaultArgs ++ [("size", R.Primitive R.PInt)]
+            else defaultArgs
+
  return $ R.FunctionDefn (R.Name $ coll_name ++ suf)
-            [("file", R.Named $ R.Name "string"),("c", R.Reference cColType)]
+            args
             (Just $ R.Named $ R.Name "unit_t") [] False
             [ R.Forward $ R.ScalarDecl (R.Name "_in")
                             (R.Named $ R.Qualified (R.Name "std") (R.Name "ifstream")) Nothing
             , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "_in") (R.Name "open")) [R.Variable $ R.Name "file"]
-            , R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "read_records")
-                           [ R.Variable $ R.Name "_in"
-                           , R.Variable $ R.Name "c"
-                           , readRecordFn
-                           ]
+            , readRecordsCall
             , R.Return $ R.Initialization R.Unit []
             ]
  where
@@ -304,7 +318,7 @@ genLoader sep suf (children -> [_,f]) name = do
 
    type_mismatch = error "Invalid type for Loader function. Should Be String -> Collection R -> ()"
 
-genLoader _ _ _ _ =  error "Invalid type for Loader function."
+genLoader _ _ _ _ _ =  error "Invalid type for Loader function."
 
 
 genLogger :: String -> K3 Type -> String -> CPPGenM R.Definition

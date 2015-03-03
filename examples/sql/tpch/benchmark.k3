@@ -29,15 +29,22 @@ control TPCHBenchmarkWithoutMaster
       declare dataFiles : collection {path: string} @Collection
 
       // Relation-specific datasets
+      declare lineitemFilesLineCount : int = 0
       declare lineitemFiles : collection {path : string} @Collection
+      declare customerFilesLineCount : int = 0
       declare customerFiles : collection {path : string} @Collection
+      declare ordersFilesLineCount : int = 0
       declare ordersFiles   : collection {path : string} @Collection
+      declare supplierFilesLineCount: int = 0
       declare supplierFiles : collection {path : string} @Collection
+      declare partFilesLineCount: int  = 0
       declare partFiles     : collection {path : string} @Collection
+      declare partsuppFilesLineCount: int = 0
       declare partsuppFiles : collection {path : string} @Collection
+      declare nationFilesLineCount: int = 0
       declare nationFiles   : collection {path : string} @Collection
+      declare regionFilesLineCount: int = 0
       declare regionFiles   : collection {path : string} @Collection
-
       // Timing for loading
       declare program_start_ts : mut int = 0
 
