@@ -15,10 +15,10 @@ WORKDIR /k3/K3-Mosaic
 RUN ./build_opt.sh && \
     ./build_utils.sh
 
+RUN apt-get install -y google-perftools
+
 RUN mkdir -p /software
-ADD tcmalloc.tar.gz /software/
 ADD intelpcm.tar.gz /software/
 
-RUN mv /software/libtcmalloc/lib/* /usr/local/lib && mv /software/libtcmalloc/include/* /usr/local/include
 RUN mv /software/intelpcm/lib/* /usr/local/lib && mv /software/intelpcm/include/* /usr/local/include 
 ENV LD_LIBRARY_PATH /usr/local/lib/
