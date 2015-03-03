@@ -12,7 +12,7 @@
 #include "boost/serialization/vector.hpp"
 #include "boost/serialization/set.hpp"
 #include "boost/serialization/list.hpp"
-#include "external/boost_ext/unordered_map.hpp"
+#include "boost_ext/unordered_map.hpp"
 #include <boost/serialization/base_object.hpp>
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/sequenced_index.hpp>
