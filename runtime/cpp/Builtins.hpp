@@ -61,7 +61,6 @@ namespace K3 {
     return;
   }
 
-<<<<<<< HEAD
   class __pcm_context {
     #ifdef CACHEPROFILE
     protected:
