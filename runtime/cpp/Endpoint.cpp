@@ -6,233 +6,6 @@ using std::out_of_range;
 
 namespace K3
 {
-    bool ScalarEPBufferMT::push_back(shared_ptr<Value> v) {
-      strict_lock<LockB> guard(*this);
-      // Failure:
-      if (!v || (contents.get(guard))) {
-        return false;
-      }
-      // Success:
-      contents.get(guard) = v;
-      return true;
-    }
-
-    shared_ptr<Value> ScalarEPBufferMT::pop() {
-      strict_lock<LockB> guard(*this);
-      shared_ptr<Value> v;
-      if (contents.get(guard)) {
-        // Success:
-        v = contents.get(guard);
-        contents.get(guard).reset();
-      }
-      // In case of failure, v is a null pointer
-      return v;
-    }
-
-    shared_ptr<Value> ScalarEPBufferMT::refresh(shared_ptr<IOHandle> ioh, NotifyFn notify)
-    {
-      strict_lock<LockB> guard(*this);
-      shared_ptr<Value> r;
-
-      // Read from the buffer if possible
-      if (contents.get(guard)) {
-        r = contents.get(guard);
-        contents.get(guard).reset();
-        notify(r);
-      }
-
-      // If there is more data in the underlying IOHandle
-      // use it to populate the buffer
-      if (ioh->hasRead()) {
-        shared_ptr<Value> v = ioh->doRead();
-        contents.get(guard) = v;
-      }
-
-     return r;
-    }
-
-    void ScalarEPBufferMT::flush(shared_ptr<IOHandle> ioh, NotifyFn notify) {
-      // pop() a value and write to the handle if possible
-      strict_lock<LockB> guard(*this);
-      if (contents.get(guard)) {
-        shared_ptr<Value> v = contents.get(guard);
-        contents.get(guard).reset();
-        ioh->doWrite(v);
-        notify(v);
-      }
-    }
-
-    bool ScalarEPBufferMT::transfer(shared_ptr<MessageQueues> queues,
-                                    shared_ptr<InternalFraming> frame,
-                                    NotifyFn notify) {
-      strict_lock<LockB> guard(*this);
-      bool transferred = false;
-      if(contents.get(guard)) {
-        shared_ptr<Value> v = contents.get(guard);
-        contents.get(guard).reset();
-        if (queues && frame) {
-          Message msg = *(frame->read_message(*v).toMessage());
-          queues->enqueue(msg);
-          transferred = true;
-        }
-        notify(v);
-      }
-      return transferred;
-    }
-
-    // Buffer Operations
-    bool ScalarEPBufferST::push_back(shared_ptr<Value> v) {
-      // Failure:
-      if (!v || this->full()) {
-        return false;
-      }
-      // Success:
-      contents = v;
-      return true;
-    }
-
-    shared_ptr<Value> ScalarEPBufferST::pop() {
-      shared_ptr<Value> v;
-      if (!this->empty()) {
-        // Success:
-        v = contents;
-        contents = shared_ptr<Value>();
-      }
-      // In case of failure, v is a null pointer
-      return v;
-    }
-
-    shared_ptr<Value> ScalarEPBufferST::refresh(shared_ptr<IOHandle> ioh, NotifyFn notify)
-    {
-      shared_ptr<Value> r;
-
-      // Read from the buffer if possible
-      if (!(this->empty())) {
-        r = this->pop();
-        notify(r);
-      }
-
-      // If there is more data in the underlying IOHandle
-      // use it to populate the buffer
-      if (ioh->hasRead()) {
-        shared_ptr<Value> v = ioh->doRead();
-        this->push_back(v);
-      }
-
-     return r;
-    }
-
-    void ScalarEPBufferST::flush(shared_ptr<IOHandle> ioh, NotifyFn notify) {
-      // pop() a value and write to the handle if possible
-      if (!this->empty()) {
-        shared_ptr<Value> v = this->pop();
-        ioh->doWrite(v);
-        notify(v);
-      }
-    }
-
-    bool ScalarEPBufferST::transfer(shared_ptr<MessageQueues> queues,
-                                    shared_ptr<InternalFraming> frame,
-                                    NotifyFn notify) {
-      bool transferred = false;
-      if(!this->empty()) {
-        shared_ptr<Value> v = this->pop();
-        if (queues && frame) {
-          Message msg = *(frame->read_message(*v).toMessage());
-          queues->enqueue(msg);
-          transferred = true;
-        }
-        notify(v);
-      }
-      return transferred;
-    }
-
-    size_t ContainerEPBufferST::capacity() {
-      if (!contents) {
-        return 0;
-      }
-      int s = bufferMaxSize(spec);
-      return s <= 0? contents->max_size() : s;
-    }
-
-    bool ContainerEPBufferST::push_back(shared_ptr<Value> v) {
-      // Failure if contents is null or full
-      if (!v || !contents || full()) {
-        return false;
-      }
-
-      // Success
-      contents->push_back(*v);
-      return true;
-    }
-
-    shared_ptr<Value> ContainerEPBufferST::pop() {
-      shared_ptr<Value> v;
-      if (!empty()) {
-        v = make_shared<Value>(contents->front());
-        contents->pop_front();
-      }
-      return v;
-    }
-
-    shared_ptr<Value> ContainerEPBufferST::refresh(shared_ptr<IOHandle> ioh,
-                                                   NotifyFn notify) {
-      shared_ptr<Value> r;
-
-      // Read from the buffer if possible
-      if (!(this->empty())) {
-        r = this->pop();
-        notify(r);
-      }
-
-      // If there is more data in the underlying IOHandle
-      // use it to populate the buffer. try to batch
-      int n = batchSize();
-      for(int i=0; !full() && ioh->hasRead() && i < n; i++) {
-        shared_ptr<Value> v = ioh->doRead();
-        this->push_back(v);
-      }
-      return r;
-    }
-
-    // flush overloaded with force flag to ignore batching semantics
-    void ContainerEPBufferST::flush(shared_ptr<IOHandle> ioh,
-                                    NotifyFn notify,
-                                    bool force) {
-      while (batchAvailable() || force) {
-        int n = batchSize();
-        for (int i=0; i < n; i++) {
-          if (force && empty()) { return; }
-          shared_ptr<Value> v = this->pop();
-          ioh->doWrite(v);
-          notify(v);
-        }
-      }
-    }
-
-    // transfer overloaded with force flag to ignore batching semantics
-    bool ContainerEPBufferST::transfer(shared_ptr<MessageQueues> queues,
-                                       shared_ptr<InternalFraming> frame,
-                                       NotifyFn notify,
-                                       bool force) {
-      // Transfer as many full batches as possible
-      bool transferred = false;
-      while (batchAvailable() || force) {
-        int n = batchSize();
-        for (int i=0; i < n; i++) {
-          if (force && empty()) { return transferred; }
-          shared_ptr<Value> v = this->pop();
-          if (queues && frame) {
-            RemoteMessage rMsg = frame->read_message(*v);
-            queues->enqueue(*(rMsg.toMessage()));
-            transferred = true;
-          }
-          notify(v);
-        }
-      }
-      return transferred;
-    }
-
     void EndpointBindings::attachNotifier(EndpointNotification nt,
                                           Address sub_addr,
                                           TriggerId sub_id) {
@@ -260,7 +33,7 @@ namespace K3
       }
     }
 
-    void EndpointBindings::notifyEvent(EndpointNotification nt, shared_ptr<Value> payload) {
+    void EndpointBindings::notifyEvent(EndpointNotification nt, shared_ptr<string> payload) {
       auto it = eventSubscriptions.find(nt);
       if (it != eventSubscriptions.end()) {
         shared_ptr<Subscribers> s = it->second;
@@ -273,44 +46,19 @@ namespace K3
       }
     }
 
-    void Endpoint::notify_subscribers(shared_ptr<Value> v) {
+    // --------------------------
+    // Endpoint methods
+    //
+
+    void Endpoint::notify_subscribers(shared_ptr<string> v) {
       EndpointNotification nt =
         (handle_->builtin() || handle_->file())?
           EndpointNotification::FileData : EndpointNotification::SocketData;
       subscribers_->notifyEvent(nt, v);
     }
 
-    Collection<R_elem<K3::base_string>> Endpoint::doReadBlock(int blockSize) {
-      Collection<R_elem<K3::base_string>> r;
-      shared_ptr<Value> v;
-      if ( buffer_ ) {
-        int i = blockSize;
-        do {
-          v = buffer_->refresh(handle_,
-                std::bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
-          if ( v ) {
-            R_elem<K3::base_string> elem(K3::base_string(std::move(*v)));
-            r.insert(std::move(elem));
-          }
-        } while ( --i > 0 && handle_->hasRead() );
-      } else {
-        // Read data directly from the underlying IOHandle.
-        boost::lock_guard<boost::mutex> guard(mtx_);
-        int i = blockSize;
-        do {
-          v = handle_->doRead();
-          notify_subscribers(v); // Produce a notification for every tuple in a block read.
-          if ( v ) {
-            R_elem<K3::base_string> elem(K3::base_string(std::move(*v)));
-            r.insert(std::move(elem));
-          }
-        } while ( --i > 0 && handle_->hasRead() );
-      }
-      return r;
-    }
-
-    shared_ptr<Value> Endpoint::refreshBuffer() {
-      shared_ptr<Value> r;
+    shared_ptr<string> Endpoint::refreshBuffer() {
+      shared_ptr<string> r;
       if ( buffer_ ) {
         r = buffer_->refresh(handle_,
               std::bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
@@ -332,33 +80,13 @@ namespace K3
       }
     }
 
-    void Endpoint::doWrite(shared_ptr<Value> v_ptr) {
-      if ( buffer_ ) {
-        bool success = buffer_->push_back(v_ptr);
-        if ( !success ) {
-          // Flush buffer, and then try to append again.
-          flushBuffer();
-
-          // Try to append again, and if this still fails, throw a buffering exception.
-          success = buffer_->push_back(v_ptr);
-        }
-
-        if ( ! success )
-          { throw BufferException("Failed to buffer value during endpoint write."); }
-      } else {
-        boost::lock_guard<boost::mutex> guard(mtx_);
-        handle_->doWrite(v_ptr);
-        notify_subscribers(v_ptr);
-      }
-    }
-
-    bool Endpoint::do_push(shared_ptr<Value> val,
+    bool Endpoint::do_push(shared_ptr<string> val,
                            shared_ptr<MessageQueues> q,
-                           shared_ptr<InternalFraming> codec) {
+                           shared_ptr<MessageCodec> frame) {
 
       // Skip the endpoint buffer.
       // deserialize and directly enqueue
-      q->enqueue(*(codec->read_message(*val).toMessage()));
+      q->enqueue(*(frame->decode(*val)->toMessage()));
       return true;
     }
 
@@ -375,6 +103,75 @@ namespace K3
       handle_->close();
     };
 
+    // --------------------------
+    // Internal endpoint methods
+    //
+
+    Collection<R_elem<RemoteMessage>> InternalEndpoint::doReadBlock(int blockSize) {
+      Collection<R_elem<RemoteMessage>> r;
+      shared_ptr<string> v;
+      if ( msgcodec_ ) {
+        if ( buffer_ ) {
+          int i = blockSize;
+          do {
+            v = buffer_->refresh(handle_,
+                  std::bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
+            if ( v ) {
+              shared_ptr<RemoteMessage> outv = msgcodec_->decode(*v);
+              if ( outv ) {
+                R_elem<RemoteMessage> elem(*outv);
+                r.insert(std::move(elem));
+              }
+            }
+          } while ( --i > 0 && handle_->hasRead() );
+        } else {
+          // Read data directly from the underlying IOHandle.
+          boost::lock_guard<boost::mutex> guard(mtx_);
+          int i = blockSize;
+          do {
+            v = handle_->doRead();
+            notify_subscribers(v); // Produce a notification for every tuple in a block read.
+            if ( v ) {
+              shared_ptr<RemoteMessage> outv = msgcodec_->decode(*v);
+              if ( outv ) {
+                R_elem<RemoteMessage> elem(*outv);
+                r.insert(std::move(elem));
+              }
+            }
+          } while ( --i > 0 && handle_->hasRead() );
+        }
+      }
+      return r;
+    }
+
+    void InternalEndpoint::doWrite(const RemoteMessage& v) {
+      if ( msgcodec_ ) {
+        shared_ptr<string> bufv = make_shared<string>(std::move(msgcodec_->encode(v)));
+        if ( buffer_ ) {
+          bool success = buffer_->push_back(bufv);
+          if ( !success ) {
+            // Flush buffer, and then try to append again.
+            flushBuffer();
+
+            // Try to append again, and if this still fails, throw a buffering exception.
+            success = buffer_->push_back(bufv);
+          }
+
+          if ( ! success )
+            { throw BufferException("Failed to buffer value during endpoint write."); }
+        } else {
+          boost::lock_guard<boost::mutex> guard(mtx_);
+          handle_->doWrite(bufv);
+          notify_subscribers(bufv);
+        }
+      }
+    }
+
+
+    // ----------------------------
+    // EndpointState methods
+    //
+
     void EndpointState::clearEndpoints(shared_ptr<ConcurrentEndpointMap> m) {
       list<Identifier> endpoint_names;
 
@@ -387,24 +184,22 @@ namespace K3
       for (Identifier i: endpoint_names) {
         removeEndpoint(i);
       }
-
-      return;
     }
 
-    shared_ptr<Endpoint> EndpointState::getInternalEndpoint(Identifier id) {
+    shared_ptr<InternalEndpoint> EndpointState::getInternalEndpoint(Identifier id) {
       if ( externalEndpointId(id) ) {
         epsLogger->logAt(trivial::error, "Invalid request for internal endpoint: "+id);
-        return shared_ptr<Endpoint>();
+        return shared_ptr<InternalEndpoint>();
       }
-      return getEndpoint(id, internalEndpoints);
+      return dynamic_pointer_cast<InternalEndpoint, Endpoint>(getEndpoint(id, internalEndpoints));
     }
 
-    shared_ptr<Endpoint> EndpointState::getExternalEndpoint(Identifier id) {
+    shared_ptr<ExternalEndpoint> EndpointState::getExternalEndpoint(Identifier id) {
       if ( !externalEndpointId(id) ) {
         epsLogger->logAt(trivial::error, "Invalid request for external endpoint: "+id);
-        return shared_ptr<Endpoint>();
+        return shared_ptr<ExternalEndpoint>();
       }
-      return getEndpoint(id, externalEndpoints);
+      return dynamic_pointer_cast<ExternalEndpoint, Endpoint>(getEndpoint(id, externalEndpoints));
     }
 
     size_t EndpointState::numEndpoints() {

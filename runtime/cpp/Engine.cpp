@@ -10,10 +10,11 @@ using boost::thread;
 
 namespace K3 {
 
-    void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalFraming> _internal_frame,
-                           string log_l, string log_p, string result_v, string result_p, shared_ptr<MessageQueues> qs) {
+    void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<MessageCodec> _msgcodec,
+                           string log_l, string log_p, string result_v, string result_p, shared_ptr<MessageQueues> qs)
+    {
       queues = qs;
-      internal_frame = _internal_frame;
+      msgcodec = _msgcodec;
       log_enabled = false;
       log_json = false;
       if (log_l != "") { log_enabled = true; }
@@ -46,18 +47,18 @@ namespace K3 {
         initialAddress = defaultAddress;
       }
 
-      config       = shared_ptr<EngineConfiguration>(new EngineConfiguration(initialAddress));
-      control      = shared_ptr<EngineControl>(new EngineControl(config));
+      config       = make_shared<EngineConfiguration>(initialAddress);
+      control      = make_shared<EngineControl>(config);
       // workers     = shared_ptr<WorkerPool>(new InlinePool());
-      network_ctxt = shared_ptr<Net::NContext>(new Net::NContext());
-      me           = std::make_shared<Address>(initialAddress);
-      endpoints    = shared_ptr<EndpointState>(new EndpointState());
-      listeners    = shared_ptr<Listeners>(new Listeners());
+      network_ctxt = make_shared<Net::NContext>();
+      me           = make_shared<Address>(initialAddress);
+      endpoints    = make_shared<EndpointState>();
+      listeners    = make_shared<Listeners>();
       collectionCount   = 0;
       message_counter = 0;
 
       // Network engine initialization.
-      connections = shared_ptr<ConnectionState>(new ConnectionState(network_ctxt, false));
+      connections = make_shared<ConnectionState>(network_ctxt, false);
 
       // Start network listeners for all K3 processes on this engine.
       // This opens engine sockets with an internal frame, relying on openSocketInternal()
@@ -90,12 +91,10 @@ namespace K3 {
           bool sent = false;
 
           for (int i = 0; !sent && i < config->connectionRetries(); ++i) {
-            shared_ptr<Endpoint> ep = endpoints->getInternalEndpoint(eid);
+            shared_ptr<InternalEndpoint> ep = endpoints->getInternalEndpoint(eid);
 
             if (ep && ep->hasWrite()) {
-              shared_ptr<Value> v = make_shared<Value>(
-                  std::move(internal_frame->show_message(rMsg)));
-              ep->doWrite(v);
+              ep->doWrite(rMsg);
               ep->flushBuffer();
               sent = true;
             } else {
@@ -254,7 +253,7 @@ namespace K3 {
         &Engine::runEngine, this, _1
       );
 
-      shared_ptr<thread> engineThread = shared_ptr<thread>(new thread(_runEngine, mp));
+      shared_ptr<thread> engineThread = make_shared<thread>(_runEngine, mp);
 
       return engineThread;
     }
@@ -285,12 +284,34 @@ namespace K3 {
       return r;
     }
 
+    EndpointState::CodecDetails Engine::codecOfFormat(string format) {
+      EndpointState::CodecDetails r;
+      bool set = false;
+
+      if ( format == "k3" ) {
+        r = dynamic_pointer_cast<Codec, CSVCodec>(make_shared<CSVCodec>(Codec::CodecFormat::CSV));
+        set = true;
+      } else if ( format == "csv" ) {
+        r = dynamic_pointer_cast<Codec, CSVCodec>(make_shared<CSVCodec>(Codec::CodecFormat::CSV));
+        set = true;
+      } else if ( format == "internal" ) {
+        r = msgcodec;
+        set = true;
+      }
+
+      if ( set ) { return r; }
+      string errorMsg = "Invalid endpoint format " + format;
+      logAt(boost::log::trivial::error, errorMsg);
+      throw runtime_error(errorMsg);
+    }
+
     // TODO: for all of the genericOpen* endpoint constructors below, revisit:
     // i. no K3 type specified for type-safe I/O as with Haskell engine.
     // ii. buffer type with concurrent engine.
-    void Engine::genericOpenBuiltin(string id, string builtinId) {
+    void Engine::genericOpenBuiltin(string id, string builtinId, string format)
+    {
       if (endpoints) {
-        shared_ptr<Framing> frame = shared_ptr<DelimiterFraming>(new DelimiterFraming('\n'));
+        shared_ptr<FrameCodec> frame = make_shared<DelimiterFrameCodec>('\n');
 
         Builtin b = builtin(builtinId);
 
@@ -300,60 +321,60 @@ namespace K3 {
         // Add the endpoint to the given endpoint state.
         shared_ptr<EndpointBuffer> buf;
 
-        shared_ptr<EndpointBindings > bindings =
-            shared_ptr<EndpointBindings>(new EndpointBindings(sendFunction()));
+        shared_ptr<EndpointBindings> bindings = make_shared<EndpointBindings>(sendFunction());
 
         switch (b) {
           case Builtin::Stdout:
           case Builtin::Stderr:
-            buf = shared_ptr<EndpointBuffer>(new ScalarEPBufferMT());
+            buf = std::static_pointer_cast<EndpointBuffer, ScalarEPBufferMT>(make_shared<ScalarEPBufferMT>());
             break;
           case Builtin::Stdin:
             break;
         }
 
-        endpoints->addEndpoint(id, make_tuple(ioh, buf, bindings));
+        endpoints->addEndpoint(id, make_tuple(ioh, buf, bindings), codecOfFormat(format));
       }
       else { logAt(trivial::error, "Unintialized engine endpoints"); }
     }
 
-    void Engine::genericOpenFile(string id, string path, IOMode mode) {
+    void Engine::genericOpenFile(string id, string path, string format, IOMode mode)
+    {
       if ( endpoints ) {
-        shared_ptr<Framing> frame =  shared_ptr<DelimiterFraming>(new DelimiterFraming('\n'));
+        shared_ptr<FrameCodec> frame = make_shared<DelimiterFrameCodec>('\n');
 
         // Create the IO Handle
         shared_ptr<IOHandle> ioh = openFileHandle(path, frame, mode);
 
         // Add the endpoint to the given endpoint state.
-
         // For now, files have no endpoint buffer.
-        //shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBuffer>(new ScalarEPBufferST());
+
+        //shared_ptr<EndpointBuffer> buf =
+        //  std::static_pointer_cast<EndpointBuffer,ScalarEPBufferST>(make_shared<ScalarEPBufferST>());
+
         shared_ptr<EndpointBuffer> buf;
+        shared_ptr<EndpointBindings> bindings = make_shared<EndpointBindings>(sendFunction());
 
-        shared_ptr<EndpointBindings> bindings =
-          shared_ptr<EndpointBindings>(new EndpointBindings(sendFunction()));
-
-        endpoints->addEndpoint(id, make_tuple(ioh, buf, bindings));
+        endpoints->addEndpoint(id, make_tuple(ioh, buf, bindings), codecOfFormat(format));
 
         // TODO: Prime buffers as needed with a read/refresh.
       } else { logAt(trivial::error, "Unintialized engine endpoints"); }
     }
 
-    void Engine::genericOpenSocket(string id, Address addr, IOMode handleMode) {
+    void Engine::genericOpenSocket(string id, Address addr, string format, IOMode handleMode)
+    {
       if (endpoints) {
-        shared_ptr<Framing> frame =  shared_ptr<LengthHeaderFraming>(new LengthHeaderFraming());
+        shared_ptr<FrameCodec> frame = make_shared<LengthHeaderFrameCodec>();
 
         // Create the IO Handle.
         shared_ptr<IOHandle> ioh = openSocketHandle(addr, frame, handleMode);
 
         // Add the endpoint.
-        shared_ptr<EndpointBuffer> buf = shared_ptr<EndpointBuffer>(
-            new ScalarEPBufferMT());
+        shared_ptr<EndpointBuffer> buf =
+          std::static_pointer_cast<EndpointBuffer, ScalarEPBufferMT>(make_shared<ScalarEPBufferMT>());
 
-        shared_ptr<EndpointBindings> bindings =
-          shared_ptr<EndpointBindings>(new EndpointBindings(sendFunction()));
+        shared_ptr<EndpointBindings> bindings = make_shared<EndpointBindings>(sendFunction());
 
-        endpoints->addEndpoint(id, make_tuple(ioh, buf, bindings));
+        endpoints->addEndpoint(id, make_tuple(ioh, buf, bindings), codecOfFormat(format));
 
         // Mode-based handling of endpoint vs connection, e.g., to start network listener.
         switch (handleMode) {
@@ -396,9 +417,8 @@ namespace K3 {
         Identifier lstnr_name = listenerId(listenerAddr);
 
         shared_ptr<Net::Listener> lstnr =
-          shared_ptr<Net::Listener>(
-            new Net::Listener(lstnr_name, network_ctxt, queues, ep,
-                              control->listenerControl(), internal_frame));
+          make_shared<Net::Listener>(
+            lstnr_name, network_ctxt, queues, ep, control->listenerControl(), msgcodec);
 
         // Register the listener (track in map, and update control).
         (*listeners)[lstnr_name] = lstnr;
@@ -431,7 +451,7 @@ namespace K3 {
     //-----------------------
     // IOHandle constructors.
 
-    shared_ptr<IOHandle> Engine::openBuiltinHandle(Builtin b, shared_ptr<Framing> frame) {
+    shared_ptr<IOHandle> Engine::openBuiltinHandle(Builtin b, shared_ptr<FrameCodec> frame) {
       shared_ptr<IOHandle> r;
       switch (b) {
         case Builtin::Stdin:
@@ -447,7 +467,7 @@ namespace K3 {
       return r;
     }
 
-    shared_ptr<IOHandle> Engine::openFileHandle(const string& path, shared_ptr<Framing> frame, IOMode m) {
+    shared_ptr<IOHandle> Engine::openFileHandle(const string& path, shared_ptr<FrameCodec> frame, IOMode m) {
       shared_ptr<IOHandle> r;
       switch (m) {
         case IOMode::Read:
@@ -468,16 +488,16 @@ namespace K3 {
       return r;
     }
 
-    shared_ptr<IOHandle> Engine::openSocketHandle(const Address& addr, shared_ptr<Framing> frame, IOMode m) {
+    shared_ptr<IOHandle> Engine::openSocketHandle(const Address& addr, shared_ptr<FrameCodec> frame, IOMode m) {
       shared_ptr<IOHandle> r;
       switch ( m ) {
         case IOMode::Read: {
-          shared_ptr<Net::NEndpoint> n_ep = shared_ptr<Net::NEndpoint>(new Net::NEndpoint(network_ctxt, addr));
+          shared_ptr<Net::NEndpoint> n_ep = make_shared<Net::NEndpoint>(network_ctxt, addr);
           r = make_shared<NetworkHandle>(NetworkHandle(frame, n_ep));
           break;
         }
         case IOMode::Write: {
-          shared_ptr<Net::NConnection> conn = shared_ptr<Net::NConnection>(new Net::NConnection(network_ctxt, addr));
+          shared_ptr<Net::NConnection> conn = make_shared<Net::NConnection>(network_ctxt, addr);
           r = make_shared<NetworkHandle>(NetworkHandle(frame, conn));
           break;
         }

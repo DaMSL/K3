@@ -47,7 +47,7 @@ namespace K3 {
       queues->addQueue(gc->me);
       peers.push_back(gc->me);
       SystemEnvironment se = defaultEnvironment(getAddrs(contexts));
-      engine->configure(simulation, se, make_shared<DefaultInternalFraming>(), log_level, log_path, result_var, result_path, queues);
+      engine->configure(simulation, se, make_shared<DefaultMessageCodec>(), log_level, log_path, result_var, result_path, queues);
       processRoles(contexts);
       auto t = tuple<e_ptr, ctxt_map>(engine, contexts);
       engines.push_back(t);

@@ -61,7 +61,7 @@ namespace K3 {
                shared_ptr<MessageQueues> q,
                shared_ptr<Endpoint> ep,
                shared_ptr<ListenerControl> ctrl,
-               shared_ptr<InternalFraming> f)
+               shared_ptr<MessageCodec> f)
         : name(n), ctxt_(ctxt), queues(q),
           endpoint_(ep), control_(ctrl), transfer_frame(f),
           listenerLog(shared_ptr<LogMT>(new LogMT("Listener_"+n)))
@@ -74,7 +74,6 @@ namespace K3 {
       }
 
       shared_ptr<ListenerControl> control() { return control_; }
-      shared_ptr<Framing> newFraming() { }
 
     protected:
       Identifier name;
@@ -84,8 +83,8 @@ namespace K3 {
       shared_ptr<Endpoint> endpoint_;
       shared_ptr<NEndpoint> nEndpoint_;
 
-      shared_ptr<Framing> handle_frame;
-      shared_ptr<InternalFraming> transfer_frame;
+      shared_ptr<FrameCodec> handle_frame;
+      shared_ptr<MessageCodec> transfer_frame;
 
       shared_ptr<ListenerControl> control_;
       shared_ptr<LogMT> listenerLog;
@@ -108,7 +107,7 @@ namespace K3 {
                shared_ptr<MessageQueues> q,
                shared_ptr<Endpoint> ep,
                shared_ptr<ListenerControl> ctrl,
-               shared_ptr<InternalFraming> f)
+               shared_ptr<MessageCodec> f)
         : BaseListener<NContext, NEndpoint>(n, ctxt, q, ep, ctrl, f),
           llockable(), connections_(emptyConnections())
       {
@@ -180,7 +179,7 @@ namespace K3 {
           }
 
           // Start connection, with a new frame(buffer)
-          shared_ptr<Framing> frme = handle_frame->freshClone();
+          shared_ptr<FrameCodec> frme = handle_frame->freshClone();
           receiveMessages(c, frme);
         }
       }
@@ -193,7 +192,7 @@ namespace K3 {
         }
       }
 
-      void receiveMessages(shared_ptr<NConnection> c, shared_ptr<Framing> frme) {
+      void receiveMessages(shared_ptr<NConnection> c, shared_ptr<FrameCodec> frme) {
         if ( c && c->socket()) {
           // TODO: extensible buffer size.
           // We use a local variable for the socket buffer since multiple threads
@@ -249,7 +248,7 @@ namespace K3 {
                shared_ptr<MessageQueues> q,
                shared_ptr<Endpoint> ep,
                shared_ptr<ListenerControl> ctrl,
-               shared_ptr<InternalFraming> f)
+               shared_ptr<MessageCodec> f)
         : BaseListener<NContext, NEndpoint>(n, ctxt, q, ep, ctrl, f)
       {
         if ( this->nEndpoint_ && this->handle_frame && this->ctxt_ && this->ctxt_->listenerThreads ) {
@@ -274,7 +273,7 @@ namespace K3 {
       void operator()() {
         typedef boost::array<char, 8192> SocketBuffer;
         SocketBuffer buffer_;
-        shared_ptr<Framing> frme = this->handle_frame->freshClone();
+        shared_ptr<FrameCodec> frme = this->handle_frame->freshClone();
         while ( !terminated_ ) {
           // Receive a message.
           int bytes = nn_recv(this->nEndpoint_->acceptor(), buffer_.c_array(), buffer_.static_size, 0);

@@ -3,9 +3,6 @@ project                (k3rt)
 
 include(CheckCXXCompilerFlag)
 CHECK_CXX_COMPILER_FLAG("-std=c++1y" COMPILER_SUPPORTS_CXX1Y)
-CHECK_CXX_COMPILER_FLAG("-std=c++11" COMPILER_SUPPORTS_CXX11)
-CHECK_CXX_COMPILER_FLAG("-std=c++0x" COMPILER_SUPPORTS_CXX0X)
-
 if(COMPILER_SUPPORTS_CXX1Y)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++1y")
 else()
@@ -15,9 +12,10 @@ endif()
 set (srcs BaseString.cpp
           Builtins.cpp
           Context.cpp
+          EndpointBuffer.cpp
           Endpoint.cpp
           Engine.cpp
-          Framing.cpp
+          Codec.cpp
           IOHandle.cpp
           Literals.cpp
           Options.cpp

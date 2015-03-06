@@ -1,22 +1,23 @@
 #include <iostream>
 #include <cstdlib>
-#include "Common.hpp"
-#include "Framing.hpp"
+
+#include <Common.hpp>
+#include <Codec.hpp>
 
 using namespace std;
 
 namespace K3 {
 
-  // DelimiterFraming
+  // DelimiterFrameCodec
 
-  Value DelimiterFraming::encode(const Value& v) {
+  Value DelimiterFrameCodec::encode(const Value& v) {
     string res(v);
     res.push_back(delimiter_);
     return res;
   }
 
   // Run right after appending to buffer
-  shared_ptr<Value> DelimiterFraming::completeDecode() {
+  shared_ptr<Value> DelimiterFrameCodec::completeDecode() {
     // Determine if there is a complete value in the buffer
     shared_ptr<Value> result;
     size_t pos = find_delimiter();
@@ -31,9 +32,9 @@ namespace K3 {
     return result;
   }
 
-  // LengthHeaderFraming
+  // LengthHeaderFrameCodec
 
-  Value LengthHeaderFraming::encode(const Value& s) {
+  Value LengthHeaderFrameCodec::encode(const Value& s) {
     // calculate size of encoded value
     fixed_int value_size(s.length());
     size_t header_size = sizeof(value_size);
@@ -47,7 +48,7 @@ namespace K3 {
     return buf;
   }
 
-  shared_ptr<Value> LengthHeaderFraming::completeDecode() {
+  shared_ptr<Value> LengthHeaderFrameCodec::completeDecode() {
     if (!next_size_) {
       // See if there is enough data in buffer to unpack a header
       strip_header();
@@ -74,7 +75,7 @@ namespace K3 {
     }
   }
 
-  void LengthHeaderFraming::strip_header() {
+  void LengthHeaderFrameCodec::strip_header() {
     size_t header_size = sizeof(fixed_int);
     if (buf_->length() < header_size) {
       // failure: input does not contain a full header
@@ -87,13 +88,5 @@ namespace K3 {
 
     // remove the header bytes from the buffer
     *buf_ = buf_->substr(header_size);
-  }
-
-  RemoteMessage AbstractDefaultInternalFraming::read_message(const Value& v) {
-    return *BoostSerializer::unpack<RemoteMessage>(v);
-  }
-
-  Value AbstractDefaultInternalFraming::show_message(const RemoteMessage& m) {
-    return BoostSerializer::pack<RemoteMessage>(m);
   }
 }
