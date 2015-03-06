@@ -63,6 +63,20 @@ shared_ptr<V> unpack_with_engine(const string& s, Engine * eng) {
   return unpack_archive_with_engine<V,boost::archive::binary_iarchive>(s, eng);
 }
 
+// Text packing.
+template <typename V> string pack_text(const V& v) {
+  return pack_archive<V,boost::archive::text_oarchive>(v);
+}
+
+template <typename V> shared_ptr<V> unpack_text(const string& s) {
+  return unpack_archive<V,boost::archive::text_iarchive>(s);
+}
+
+template <typename V>
+shared_ptr<V> unpack_text_with_engine(const string& s, Engine * eng) {
+  return unpack_archive_with_engine<V,boost::archive::text_iarchive>(s, eng);
+}
+
 // Csv packing.
 template <typename V> string pack_csv(const V& v) {
   return pack_archive<V,csv::writer>(v);
