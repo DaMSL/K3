@@ -3,6 +3,8 @@ FROM damsl/k3-base
 
 ### Build K3
 WORKDIR /k3/K3
+RUN git pull && git checkout development
+
 RUN cabal sandbox init && \
     cabal install --only-dependencies --disable-documentation -j && \
     cabal configure --ghc-options="-DDEBUG" --disable-documentation && \

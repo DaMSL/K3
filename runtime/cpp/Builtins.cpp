@@ -2,6 +2,8 @@
 #include <string>
 #include <stdlib.h>
 #include <time.h>
+#include <chrono>
+#include <thread>
 
 #include "Common.hpp"
 #include "Engine.hpp"
@@ -108,8 +110,8 @@ namespace K3 {
     throw std::runtime_error("Not implemented: drainEngine");
   }
 
-  unit_t sleep(int n) {
-    throw std::runtime_error("Not implemented: sleep");
+  unit_t __standard_context::sleep(int n) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(n));
   }
 
 
