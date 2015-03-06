@@ -19,6 +19,7 @@ import Options.Applicative((<>), (<*>))
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Utils
+import qualified Language.K3.Core.Constructor.Declaration as DC
 
 import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
@@ -69,12 +70,15 @@ run opts = do
   void $ mapM_ configureByInstruction $ logging $ inform opts
     -- ^ Process logging directives
 
-  -- Parse, splice, and dispatch based on command mode.
-  parseResult  <- parseK3Input (noFeed opts) (includes $ paths opts) (input opts)
-  case parseResult of
-    Left err      -> parseError err
-    Right parsedP -> if noMP opts then dispatch (mode opts) parsedP
-                     else metaprogram parsedP
+  case (mode opts) of
+    Compile copts | ccStage copts == Stage2 -> compile copts (DC.role "__global" [])
+    _ -> do
+      -- Parse, splice, and dispatch based on command mode.
+      parseResult  <- parseK3Input (noFeed opts) (includes $ paths opts) (input opts)
+      case parseResult of
+        Left err      -> parseError err
+        Right parsedP -> if noMP opts then dispatch (mode opts) parsedP
+                         else metaprogram parsedP
 
   where
     metaprogram :: K3 Declaration -> IO ()
