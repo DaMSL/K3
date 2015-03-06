@@ -29,12 +29,21 @@ import Language.K3.Codegen.CPP.Materialization.Hints
 
 import qualified Language.K3.Codegen.CPP.Representation as R
 
+import Language.K3.Utils.Pretty
+
 -- Builtin names to explicitly skip.
 skip_builtins :: [String]
-skip_builtins = ["hasRead", "doRead", "doReadBlock"]
+skip_builtins = ["hasRead", "doRead", "doReadBlock", "hasWrite", "doWrite"]
 
 declaration :: K3 Declaration -> CPPGenM [R.Definition]
 declaration (tag -> DGlobal _ (tag -> TSource) _) = return []
+
+-- Sinks with a valid body are handled in the same way as triggers.
+declaration d@(tag -> DGlobal i (tnc -> (TSink, [t])) (Just e)) =
+  declaration $ D.global i (T.function t T.unit) $ Just e
+
+declaration (tag -> DGlobal i (tag -> TSink) Nothing) =
+  throwE $ CPPGenE $ unwords ["Invalid sink trigger", i, "(missing body)"]
 
 -- Global functions without implementations -- Built-Ins.
 declaration (tag -> DGlobal name t@(tag -> TFunction) Nothing)
@@ -47,7 +56,7 @@ declaration (tag -> DGlobal _ (tag &&& children -> (TForall _, [tag &&& children
                         Nothing) = return []
 
 -- Global monomorphic function with direct implementations.
-declaration (tag -> DGlobal i (tag &&& children -> (TFunction, [ta, tr]))
+declaration (tag -> DGlobal i t@(tag &&& children -> (TFunction, [ta, tr]))
                       (Just e@(tag &&& children -> (ELambda x, [body])))) = do
     cta <- genCType ta
     ctr <- genCType tr
@@ -142,66 +151,21 @@ declaration (tag -> DDataAnnotation i _ amds) = addAnnotation i amds >> return [
 declaration (tag -> DRole _) = throwE $ CPPGenE "Roles below top-level are deprecated."
 declaration _ = return []
 
-genCsvParser :: K3 Type -> CPPGenM (Maybe R.Expression)
-genCsvParser t@(tag &&& children -> (TTuple, ts)) = genCsvParserImpl t ts get >>= (return . Just)
-  where
-    get exp i = R.Call
-               (R.Variable $ R.Qualified (R.Name "std") (R.Specialized [R.Named $ R.Name (show i)] (R.Name "get")))
-               [exp]
-genCsvParser t@(tag &&& children -> (TRecord ids, ts)) = genCsvParserImpl t ts project >>= (return . Just)
-  where
-    project exp i = R.Project exp (R.Name (ids L.!! i))
-genCsvParser _ = error "Can't generate CsvParser. Only works for flat records and tuples"
-
-genCsvParserImpl :: K3 Type -> [K3 Type] -> (R.Expression -> Int -> R.Expression) -> CPPGenM R.Expression
-genCsvParserImpl elemType childTypes accessor = do
-  et  <- genCType elemType
-  cts <- mapM genCType childTypes
-  let fields = concatMap (uncurry readField) (zip childTypes [0,1..])
-  return $ R.Lambda
-               []
-               [("str", R.Const $ R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "string"))]
-               False
-               Nothing
-               ( [iss_decl, iss_str, tup_decl et, token_decl] ++ fields ++ [R.Return tup])
-  where
-
-   iss_decl = R.Forward $ R.ScalarDecl (R.Name "iss") (R.Named $ R.Qualified (R.Name "std") (R.Name "istringstream")) Nothing
-   iss_str  = R.Ignore $ R.Call (R.Project iss (R.Name "str")) [R.Variable $ R.Name "str"]
-   token_decl = R.Forward $ R.ScalarDecl (R.Name "token") (R.Named $ R.Qualified (R.Name "std") (R.Name "string")) Nothing
-   iss = R.Variable $ R.Name "iss"
-   token = R.Variable $ R.Name "token"
-   tup_decl et = R.Forward $ R.ScalarDecl (R.Name "tup") et Nothing
-   tup = R.Variable $ R.Name "tup"
-
-   readField :: K3 Type -> Int -> [R.Statement]
-   readField t i = [ R.Ignore getline
-                   , R.Assignment (accessor tup i) (typeMap t cstr)
-                   ]
-
-   cstr = R.Call (R.Project token (R.Name "c_str")) []
-
-   getline = R.Call
-               (R.Variable $ R.Qualified (R.Name "std") (R.Name "getline"))
-               [iss, token, R.Literal $ R.LChar "|"]
-
-   typeMap :: K3 Type -> R.Expression -> R.Expression
-   typeMap (tag -> TInt) e = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "atoi"))
-                             [e]
-   typeMap (tag -> TReal) e = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "atof"))
-                              [e]
-   typeMap (tag -> TString) e = R.Call (R.Variable $ R.Name "string_impl") [e]
-   typeMap (tag -> _) x = x
-
--- -- Generated Builtins
--- -- Interface for source builtins.
--- -- Map special builtin suffix to a function that will generate the builtin.
+-- Generated Builtins
+-- Interface for source builtins.
+-- Map special builtin suffix to a function that will generate the builtin.
+-- These suffixes are taken from L.K3.Parser.ProgramBuilder.hs
 source_builtin_map :: [(String, (String -> K3 Type -> String -> CPPGenM R.Definition))]
-source_builtin_map = [("HasRead", genHasRead),
-                      ("Read", genDoRead),
-                      ("Loader",genLoader ","),
-                      ("LoaderP", genLoader "|"),
-                      ("Logger", genLogger)]
+source_builtin_map = [("HasRead",  genHasRead),
+                      ("Read",     genDoRead),
+                      ("HasWrite", genHasWrite),
+                      ("Write",    genDoWrite)]
+                     ++ extraSuffixes
+
+        -- These suffixes are for data loading hacks.
+  where extraSuffixes = [("Loader",   genLoader ","),
+                         ("LoaderP",  genLoader "|"),
+                         ("Logger",   genLogger)]
 
 source_builtins :: [String]
 source_builtins = map fst source_builtin_map
@@ -234,16 +198,34 @@ genDoRead :: String -> K3 Type -> String -> CPPGenM R.Definition
 genDoRead suf typ name = do
     ret_type    <- genCType $ last $ children typ
     let source_name =  stripSuffix suf name
-    let result_dec  = R.Forward $ R.ScalarDecl (R.Name "result") ret_type Nothing
-    let read_result = R.Dereference $ R.Call (R.Project (R.Variable $ R.Name "__engine") (R.Name "doReadExternal")) [R.Literal $ R.LString source_name]
-    reader <- genCsvParser $ last $ children typ
-    let patch = case reader of
-                  Nothing -> [] -- TODO: throw a c++ level error?
-                  Just x ->  [ R.Assignment (R.Variable $ R.Name "result") (R.Call x [read_result]) ]
+    let result_dec = R.Forward $ R.ScalarDecl (R.Name "result") (R.SharedPointer ret_type) $ Just $
+                       (R.Call (R.Project (R.Variable $ R.Name "__engine")
+                                          (R.Specialized [ret_type] $ R.Name "doReadExternal"))
+                               [R.Literal $ R.LString source_name])
+    let return_stmt = R.IfThenElse (R.Variable $ R.Name "result")
+                        [R.Return $ R.Dereference $ R.Variable $ R.Name "result"]
+                        [R.Ignore $ R.ThrowRuntimeErr $ R.Literal $ R.LString $ "Invalid doRead for " ++ source_name]
     return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")]
-      (Just ret_type) [] False ([result_dec] ++ patch ++ [R.Return $ R.Variable $ R.Name "result"])
+      (Just ret_type) [] False ([result_dec, return_stmt])
 
+genHasWrite :: String -> K3 Type -> String -> CPPGenM R.Definition
+genHasWrite suf _ name = do
+    let sink_name = stripSuffix suf name
+    let e_has_w = R.Project (R.Variable $ R.Name "__engine") (R.Name "hasWrite")
+    let body = R.Return $ R.Call e_has_w [R.Literal $ R.LString sink_name]
+    return $ R.FunctionDefn (R.Name $ sink_name ++ suf) [("_", R.Named $ R.Name "unit_t")]
+      (Just $ R.Primitive R.PBool) [] False [body]
 
+genDoWrite :: String -> K3 Type -> String -> CPPGenM R.Definition
+genDoWrite suf typ name = do
+    val_type    <- genCType $ head $ children typ
+    let sink_name =  stripSuffix suf name
+    let write_expr = R.Call (R.Project (R.Variable $ R.Name "__engine")
+                                       (R.Specialized [val_type] $ R.Name "doWriteExternal"))
+                            [R.Literal $ R.LString sink_name, R.Variable $ R.Name "v"]
+    return $ R.FunctionDefn (R.Name $ sink_name ++ suf) [("v", R.Const $ R.Reference val_type)]
+      (Just $ R.Named $ R.Name "unit_t") [] False
+      ([R.Ignore write_expr, R.Return $ R.Initialization R.Unit []])
 
 -- TODO: Loader is not quite valid K3. The collection should be passed by indirection so we are not working with a copy
 -- (since the collection is technically passed-by-value)
@@ -356,3 +338,55 @@ genLogger _ (children -> [_,f]) name = do
    type_mismatch = error "Invalid type for Logger function. Must be a flat-record of ints, reals, and strings"
 
 genLogger _ _ _ = error "Error: Invalid type for Logger function. Must be a flat-record of ints, reals, and strings"
+
+
+genCsvParser :: K3 Type -> CPPGenM (Maybe R.Expression)
+genCsvParser t@(tag &&& children -> (TTuple, ts)) = genCsvParserImpl t ts get >>= (return . Just)
+  where
+    get exp i = R.Call
+               (R.Variable $ R.Qualified (R.Name "std") (R.Specialized [R.Named $ R.Name (show i)] (R.Name "get")))
+               [exp]
+genCsvParser t@(tag &&& children -> (TRecord ids, ts)) = genCsvParserImpl t ts project >>= (return . Just)
+  where
+    project exp i = R.Project exp (R.Name (ids L.!! i))
+genCsvParser _ = error "Can't generate CsvParser. Only works for flat records and tuples"
+
+genCsvParserImpl :: K3 Type -> [K3 Type] -> (R.Expression -> Int -> R.Expression) -> CPPGenM R.Expression
+genCsvParserImpl elemType childTypes accessor = do
+  et  <- genCType elemType
+  cts <- mapM genCType childTypes
+  let fields = concatMap (uncurry readField) (zip childTypes [0,1..])
+  return $ R.Lambda
+               []
+               [("str", R.Const $ R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "string"))]
+               False
+               Nothing
+               ( [iss_decl, iss_str, tup_decl et, token_decl] ++ fields ++ [R.Return tup])
+  where
+
+   iss_decl = R.Forward $ R.ScalarDecl (R.Name "iss") (R.Named $ R.Qualified (R.Name "std") (R.Name "istringstream")) Nothing
+   iss_str  = R.Ignore $ R.Call (R.Project iss (R.Name "str")) [R.Variable $ R.Name "str"]
+   token_decl = R.Forward $ R.ScalarDecl (R.Name "token") (R.Named $ R.Qualified (R.Name "std") (R.Name "string")) Nothing
+   iss = R.Variable $ R.Name "iss"
+   token = R.Variable $ R.Name "token"
+   tup_decl et = R.Forward $ R.ScalarDecl (R.Name "tup") et Nothing
+   tup = R.Variable $ R.Name "tup"
+
+   readField :: K3 Type -> Int -> [R.Statement]
+   readField t i = [ R.Ignore getline
+                   , R.Assignment (accessor tup i) (typeMap t cstr)
+                   ]
+
+   cstr = R.Call (R.Project token (R.Name "c_str")) []
+
+   getline = R.Call
+               (R.Variable $ R.Qualified (R.Name "std") (R.Name "getline"))
+               [iss, token, R.Literal $ R.LChar "|"]
+
+   typeMap :: K3 Type -> R.Expression -> R.Expression
+   typeMap (tag -> TInt) e = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "atoi"))
+                             [e]
+   typeMap (tag -> TReal) e = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "atof"))
+                              [e]
+   typeMap (tag -> TString) e = R.Call (R.Variable $ R.Name "string_impl") [e]
+   typeMap (tag -> _) x = x

@@ -58,6 +58,7 @@ program (tag &&& children -> (DRole name, decls)) = do
     globalInits <- globalInitializations <$> get
     let initDeclDefn = R.FunctionDefn (R.Name "initDecls") [("_", R.Unit)] (Just R.Unit) [] False
                          (globalInits ++ [R.Return (R.Initialization R.Unit [])])
+
     -- Generate program preamble.
     includeDefns <- map R.IncludeDefn <$> requiredIncludes
     aliasDefns   <- map (R.GlobalDefn . R.Forward . uncurry R.UsingDecl) <$> requiredAliases
@@ -207,6 +208,56 @@ program (tag &&& children -> (DRole name, decls)) = do
     return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ concat compositeDefns ++
                [contextClassDefn] ++ pinned ++ [yamlStructDefn, patchFn] ++ mainFn
 
+  where
+    mkYamlStructDefn contextName patchables'' =
+      R.NamespaceDefn "YAML"
+       [ R.TemplateDefn [] $ R.ClassDefn (R.Name "convert") [R.Named contextName] []
+           [ R.FunctionDefn (R.Name "encode")
+               [("context", R.Const $ R.Reference $ R.Named contextName)]
+               (Just $ R.Static $ R.Named $ R.Name "Node") [] False
+               ([R.Forward $ R.ScalarDecl (R.Name "_node") (R.Named $ R.Name "Node") Nothing] ++
+                [R.Assignment (R.Subscript
+                                    (R.Variable $ R.Name "_node")
+                                    (R.Literal $ R.LString field))
+                              (R.Call
+                                    (R.Variable $ R.Qualified
+                                          (R.Specialized [fieldType] (R.Name "convert"))
+                                          (R.Name "encode"))
+                                    [R.Project (R.Variable $ R.Name "context") (R.Name field)])
+                | (field, (fieldType, _)) <- patchables''
+                ] ++ [R.Return (R.Variable $ R.Name "_node")])
+           , R.FunctionDefn (R.Name "decode")
+               [ ("node", R.Const $ R.Reference $ R.Named $ R.Name "Node")
+               , ("context", R.Reference $ R.Named contextName)
+               ] (Just $ R.Static $ R.Primitive $ R.PBool) [] False
+               ([ R.IfThenElse (R.Unary "!" $ R.Call (R.Project
+                                                          (R.Variable $ R.Name "node")
+                                                          (R.Name "IsMap")) [])
+                   [R.Return $ R.Literal $ R.LBool False] []
+               ] ++
+               [ R.IfThenElse (R.Subscript
+                                    (R.Variable $ R.Name "node")
+                                    (R.Literal $ R.LString field))
+                   ([ R.Assignment
+                       (R.Project (R.Variable $ R.Name "context") (R.Name field))
+                       (R.Call (R.Project
+                                 (R.Subscript
+                                       (R.Variable $ R.Name "node")
+                                       (R.Literal $ R.LString field))
+                                 (R.Specialized [fieldType] $ R.Name "as")) [])
+                   ] ++
+                   [ R.Assignment (R.Project (R.Variable $ R.Name "context")
+                                        (R.Name $ "__" ++ field ++ "_set__"))
+                                  (R.Literal $ R.LBool True)
+                   | setF
+                   ]) []
+               | (field, (fieldType, setF)) <- patchables''
+               ] ++ [R.Return $ R.Literal $ R.LBool True])
+           ]
+           [] []
+       ]
+
+
 program _ = throwE $ CPPGenE "Top-level declaration construct must be a Role."
 
 main :: CPPGenM [R.Definition]
@@ -252,7 +303,6 @@ requiredAliases = return
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "defaultEnvironment"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "createContexts"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "getAddrs"), Nothing)
-                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "DefaultInternalCodec"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "currentTime"), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "make_tuple" ), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "make_shared" ), Nothing)
@@ -306,10 +356,10 @@ idOfTrigger t = "__" ++ unmangleReservedId t ++ "_tid"
 
 generateStaticContextMembers :: CPPGenM [R.Statement]
 generateStaticContextMembers = do
-  triggerS <- triggers <$> get
+  triggerS        <- triggers <$> get
   initializations <- staticInitializations <$> get
-  names <- mapM assignTrigName triggerS
-  dispatchers <- mapM assignClonableDispatcher triggerS
+  names           <- mapM assignTrigName triggerS
+  dispatchers     <- mapM assignClonableDispatcher triggerS
   return $ initializations ++ names ++ dispatchers
   where
     assignTrigName (tName, _) = do

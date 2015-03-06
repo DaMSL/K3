@@ -84,8 +84,9 @@ isCachedMutable i = elem i . mutables <$> get
 
 isFunction :: K3 Type -> Bool
 isFunction (tag -> TFunction) = True
-isFunction (tag -> TSource) = True
 isFunction (tag -> TForall _) = True
+isFunction (tag -> TSource) = True
+isFunction (tag -> TSink) = True
 isFunction _ = False
 
 declaration :: K3 Declaration -> ImperativeM (K3 Declaration)
@@ -97,12 +98,13 @@ declaration (Node t@(DGlobal i y Nothing :@: as) cs) = do
     Node t <$> mapM declaration cs
 declaration (Node (DGlobal i t (Just e) :@: as) cs) = do
     addGlobal i t False
+    (if tag t == TSink then addTrigger i (head $ children t) else return ())
     let isP = isJust $ as @~ (\case { DProperty (dPropertyV -> ("Pinned", Nothing)) -> True; _ -> False })
     unless (isFunction t || isTid i t) (addPatchable i t True >> unless isP (addShowable i t))
     me' <- expression e
     cs' <- mapM declaration cs
     return $ Node (DGlobal i t (Just me') :@: as) cs'
-    where isTid i (tag -> TInt) | drop (length i - 4) i == "_tid" = True
+    where isTid n (tag -> TInt) | drop (length n - 4) n == "_tid" = True
           isTid _ _ = False
 declaration (Node (DTrigger i t e :@: as) cs) = do
     addGlobal i t False

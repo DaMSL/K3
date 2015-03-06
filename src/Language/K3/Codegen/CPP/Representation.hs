@@ -25,6 +25,8 @@ module Language.K3.Codegen.CPP.Representation (
     pattern CRef,
     pattern Move,
     pattern TGet,
+    pattern Throw,
+    pattern ThrowRuntimeErr,
 
     bind,
 
@@ -226,6 +228,9 @@ pattern WRef e = Call (Variable (Qualified (Name "std") (Name "ref"))) [e]
 pattern CRef e = Call (Variable (Qualified (Name "std") (Name "cref"))) [e]
 pattern Move e = Call (Variable (Qualified (Name "std") (Name "move"))) [e]
 pattern TGet e n = Call (Variable (Qualified (Name "std") (Specialized [TypeLit (LInt n)] (Name "get")))) [e]
+pattern Throw e  = Call (Variable (Name "throw")) [e]
+pattern ThrowRuntimeErr s = Call (Variable (Name "throw"))
+                              [Call (Variable (Qualified (Name "std") (Name "runtime_error"))) [s]]
 
 bind :: Expression -> Expression -> Int -> Expression
 bind f a 1 = Call f [a]
