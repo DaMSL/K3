@@ -68,7 +68,10 @@ class Dispatcher(mesos.interface.Scheduler):
     self.terminate = False     # Flag to signal termination to the owner of the dispatcher
  
   def submit(self, job):
+    print ("Received new Job ID #%d", job.appId)
     self.pending.append(job)
+
+
 
   # Use the next available jobId and then generate a fresh one.
   def genJobId(self):
@@ -104,7 +107,7 @@ class Dispatcher(mesos.interface.Scheduler):
   # See if the next job in the pending queue can be launched using the current offers.
   # Upon failure, return None. Otherwise, return the Job object with fresh k3 tasks attached to it
   def prepareNextJob(self):
-    print("Attempting to prepare the next pending job")
+    print("Attempting to prepare the next pending job. Currently have %d offers" % len (self.offers))
     if len(self.pending) == 0:
       print("No pending jobs to prepare")
       return None
@@ -233,19 +236,23 @@ class Dispatcher(mesos.interface.Scheduler):
   # Then see if pending jobs can be launched with the offers accumulated so far
   def resourceOffers(self, driver, offers):
     print("[RESOURCE OFFER] Got %d resource offers" % len(offers))
+    print("   There are currently %d jobs in the queue" % len(self.pending))
 
-    print("Adding %d offers to offer dict" % len(offers))
-    for offer in offers:
-      self.offers[offer.id.value] = offer
-
-    while len(self.pending) > 0:
-      nextJob = self.prepareNextJob()
-
-      if nextJob != None:
-        self.launchJob(nextJob, driver)
-      else:
-        print("Not enough resources to launch next job. Waiting for more offers")
-        return
+    if len(self.pending) == 0:
+      for offer in offers:
+        driver.declineOffer(offer.id)
+    else:
+      for offer in offers:
+        self.offers[offer.id.value] = offer
+      print("Adding %d offers to offer dict" % len(offers))
+      while len(self.pending) > 0:
+        print ("Trying to dispatch job with %d offers" % len(self.offers))
+        nextJob = self.prepareNextJob()
+        if nextJob != None:
+          self.launchJob(nextJob, driver)
+        else:
+          print("Not enough resources to launch next job. Waiting for more offers")
+          return
 
 
   def offerRescinded(self, driver, offer):
@@ -253,29 +260,3 @@ class Dispatcher(mesos.interface.Scheduler):
     if offer.id in self.offers:
       del self.offers[offer.id]
    
-if __name__ == "__main__":
-  framework = mesos_pb2.FrameworkInfo()
-  framework.user = "" # Have Mesos fill in the current user.
-  framework.name = "K3 Dispatcher"
-
-  d = parseArgs()
-  if d == None:
-    print("Failed to create dispatcher. Aborting")
-    sys.exit(1)
-
-  driver = mesos.native.MesosSchedulerDriver(d, framework, MASTER)
-  t = threading.Thread(target = driver.run)
-  
-  try:
-    t.start()
-    # Sleep until interrupt
-    terminate = False
-    while not terminate:
-      time.sleep(1)
-      terminate = d.terminate
-    driver.stop()
-    t.join()
-  except KeyboardInterrupt:
-    print("INTERRUPT")
-    driver.stop()
-    t.join()

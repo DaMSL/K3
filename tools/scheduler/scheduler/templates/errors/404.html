@@ -1,0 +1,11 @@
+<!-- extend base layout -->
+{% extends "layout/base.html" %}
+
+{% block content %}
+  <div class="container">
+    <h2>404 Error</h2>
+  {% if message %}
+    <h4 class="text-danger">{{ message }}</h4>
+  {% endif %}
+  </div>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "layout/base.html" %}
+
+{% block content %}
+  <div class="container">
+    <div class="starter-template">
+        {% if appId %}
+      <h2>Jobs for <span class="text-info">{{appId}}</span></h2>
+        {% endif %}
+        {% if lastjob %}
+            <h2>Job # {{ lastjob.jobId }} submitted at {{ lastjob.time }}</h2>
+        {% else %}
+            <h2>Active/Inactive K3 Jobs</h2>
+        <table class="table table-striped">
+          {% for job in joblist %}
+            <tr><td><a href="/jobs/{{job.appId}}/{{job.jobId}}">{{job.jobId}}</a></td>
+                <td>{{job.appId}}</td><td>{{job.user}}</td><td>{{job.time}}</td><td>{{job.status}}</td></tr>
+          {% endfor %}
+        </table>
+        {% endif %}
+    </div>
+  </div>
+{% endblock %}
+
+{% block footer %}
+  {% include "include/footer.html" %}
+{% endblock %}

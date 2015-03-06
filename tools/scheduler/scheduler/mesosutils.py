@@ -7,7 +7,7 @@ from mesos.interface import mesos_pb2
 import mesos.native
 
 # TODO how should we determine the executor url
-EXECUTOR_URL = "http://192.168.0.11:8002/k3executor"
+EXECUTOR_URL = "http://qp1:8002/k3executor"
 K3_DOCKER_NAME = "damsl/k3-mesos2"
 
 def getResource(resources, tag, convF):
@@ -24,6 +24,7 @@ def populateAutoVars(allPeers):
         p.variables[v] = [allPeers[0].ip, allPeers[0].port] 
 
 def assignRolesToOffers(nextJob, offers):
+
   # Keep track of how many cpus have been used per role and per offer
   # and which roles have been assigned to an offer
   cpusUsedPerOffer = {}
@@ -38,6 +39,7 @@ def assignRolesToOffers(nextJob, offers):
   # Try to satisy each role, sequentially
   # TODO consider constraints, such as hostmask
   for roleId in nextJob.roles:
+    nextJob.roles[roleId].to_string()
     for offerId in offers:
      
       hostmask = nextJob.roles[roleId].hostmask
@@ -65,9 +67,12 @@ def assignRolesToOffers(nextJob, offers):
       if cpusUsedPerRole[roleId] == nextJob.roles[roleId].peers:
         # All peers for this role have been assigned
         break     
- 
+
+
+
   # Check if all roles were satisfied
   for roleId in nextJob.roles:
+    nextJob.roles[roleId].to_string()
     if cpusUsedPerRole[roleId] != nextJob.roles[roleId].peers:
       debug = (roleId, cpusUsedPerRole[roleId], nextJob.roles[roleId].peers)
       print("Failed to satisfy role %s. Used %d cpus out of %d peers" % debug)

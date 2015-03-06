@@ -1,0 +1,58 @@
+/* Your CSS Styling */
+
+/* Sticky footer styles
+-------------------------------------------------- */
+html,
+body {
+  /* The html and body elements cannot have any padding or margin. */
+}
+
+/* Wrapper for page content to push down footer */
+#wrap {
+  min-height: 100%;
+  height: auto;
+  /* Negative indent footer by its height */
+  margin: 70px 0 -40px auto;
+  /* Pad bottom by footer height */
+  padding: 0 0 40px;
+}
+
+/* Set the fixed height of the footer here */
+#footer {
+  position: fixed;
+  bottom: 0;
+  height: 40px;
+  width: 100%;
+  background-color: #f5f5f5;
+}
+
+/* Genericon social icon styles
+---------------------------------------------------- */
+.genericon-github:before,
+.genericon-linkedin:before,
+.genericon-twitter:before {
+    -webkit-font-smoothing: antialiased;
+    font: normal 32px/1 'Genericons';
+    vertical-align: middle;
+}
+
+.genericon-footer {
+    margin-left: 45%;
+    bottom: 10px;
+}
+
+.social-icons {
+    display: inline-block;
+    vertical-align: middle;
+    margin: 5px 0;
+}
+
+/* Error styles
+---------------------------------------------------- */
+.error-404-image {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    margin-left: -285px;
+    margin-top: -120px;
+}

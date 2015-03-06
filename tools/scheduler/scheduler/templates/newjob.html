@@ -1,0 +1,26 @@
+{% extends "layout/base.html" %}
+
+{% block content %}
+  <div class="container">
+    <div class="starter-template">
+      <h2>Launch a new Jobs for <span class="text-info">{{ appId }}</span></h2>
+        <form action="" method=post enctype=multipart/form-data>
+            <div class="row">
+              <div class="col-md-4">
+                 <h4>Upload YAML Role File</h4>
+                 <input type=file class="btn btn-file btn-md" name=file>
+              </div>
+                 <h4>Paste raw YAML below</h4>
+              <div class="col-md-8">
+                <textarea class="form-control" name=text cols=20 rows=12></textarea>
+              </div>
+            </div>
+            <span class="lead text-center">Launch: <button type=submit class="btn btn-primary btn-md">Submit</button></span>
+         </form>
+    </div>
+  </div>
+{% endblock %}
+
+{% block footer %}
+  {% include "include/footer.html" %}
+{% endblock %}
