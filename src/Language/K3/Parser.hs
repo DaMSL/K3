@@ -1046,7 +1046,7 @@ builtinChannels = choice [ch "stdin", ch "stdout", ch "stderr"]
   where ch s = try (symbol s >> return (EC.constant $ CString s))
 
 format :: ExpressionParser
-format = choice [fmt "k3"]
+format = choice [fmt "k3", fmt "csv"]
   where fmt s = try (symbol s >> return (EC.constant $ CString s))
 
 
