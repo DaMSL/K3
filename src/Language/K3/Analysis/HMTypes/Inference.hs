@@ -768,6 +768,7 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
                -> TInfM (K3 QType)
     onChildren tga tgb kind a b ctor
       | tga == tgb = onList a b ctor $ \s -> unifyErr tga tgb kind s
+      | tga `elem` tTrgOrSink && tgb `elem` tTrgOrSink = onList a b (tdata QTTrigger) $ \s -> unifyErr tga tgb kind s
       | otherwise  = unifyErr tga tgb kind ""
 
     onList :: [K3 QType] -> [K3 QType] -> QTypeCtor -> (String -> TInfM (K3 QType))
@@ -785,6 +786,8 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
     substituteSelfQt ct _ = subSelfErr ct
 
     lowerBound t = tvopeval QTLower $ children t
+
+    tTrgOrSink = [QTTrigger, QTSink]
 
     primitiveErr a b = unifyErr a b "primitives" ""
 
