@@ -96,6 +96,7 @@ declaration (Node t@(DGlobal i y Nothing :@: as) cs) = do
     addGlobal i y isF
     unless isF (addPatchable i y False >> unless isP (addShowable i y))
     Node t <$> mapM declaration cs
+
 declaration (Node (DGlobal i t (Just e) :@: as) cs) = do
     addGlobal i t False
     (if tag t == TSink then addTrigger i (head $ children t) else return ())
@@ -106,17 +107,20 @@ declaration (Node (DGlobal i t (Just e) :@: as) cs) = do
     return $ Node (DGlobal i t (Just me') :@: as) cs'
     where isTid n (tag -> TInt) | drop (length n - 4) n == "_tid" = True
           isTid _ _ = False
+
 declaration (Node (DTrigger i t e :@: as) cs) = do
     addGlobal i t False
     addTrigger i t
     ne' <- expression e
     cs' <- mapM declaration cs
     return $ Node (DTrigger i t ne' :@: as) cs'
+
 declaration t@(tag -> DDataAnnotation _ _ amds) = do
     forM_ amds $ \case
         Lifted Provides j u _ _ -> addGlobal j u False
         _ -> return ()
     let (Node t' cs') = t in Node t' <$> mapM declaration cs'
+
 declaration (Node t cs) = Node t <$> mapM declaration cs
 
 expression :: K3 Expression -> ImperativeM (K3 Expression)
