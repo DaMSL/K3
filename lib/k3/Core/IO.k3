@@ -1,0 +1,98 @@
+include "Annotation/Collection.k3"
+
+control ScanCSV[lbl : label, filepath : expr, blocksize : expr, next_peer : expr, parser : expr, fn : expr, done : expr] {
+  ( empty ?t @Collection ) => empty $::[t] @Collection
+    +> {
+         declare $[lbl]_init_scan : () -> () = \_ -> (
+           (openFile $[|exprLabel 'lbl|] $[filepath] "k3" "r");
+           ($[lbl]_scan_block, me) <- ()
+         )
+
+         trigger $[lbl]_scan_block : () = \_ -> (
+           if hasRead $[|exprLabel 'lbl|]
+           then (let b = doReadBlock $[|exprLabel 'lbl|] $[blocksize] in
+                 let p = $[next_peer]
+                 in (($[lbl]_process_block, p) <- b);
+                    (($[lbl]_scan_block, me) <- ()))
+           else ((close $[|exprLabel 'lbl|]); $[done])
+         )
+
+         trigger $[lbl]_process_block : collection {elem: string} @Collection = \block -> (
+          let b = block.fold (\acc -> \v -> ((acc.insert ($[parser] v)); acc))
+                             (empty $::[t] @Collection)
+          in $[fn] b
+         )
+       }
+
+  (() @:Run) => $[lbl]_init_scan ()
+}
+
+control ScanCSVForPeers[lbl : label, filepath : expr, blocksize : expr, parser : expr, fn : expr, done : expr] {
+  ( empty ?t @Collection ) => ( empty $::[t] @Collection )
+      @ScanCSV(  lbl       = lbl
+               , filepath  = filepath
+               , blocksize = blocksize
+               , next_peer = [$ (($[lbl]_next_peer = ($[lbl]_next_peer + 1 % local_peers.size()));
+                                  local_peers.at ($[lbl]_next_peer)) ]
+               , parser    = parser
+               , fn        = fn
+               , done      = done)
+
+  +> { declare $[lbl]_next_peer : mut int = 0 }
+}
+
+
+control GatherCollection [ lbl      : label
+                         , nodes    : expr
+                         , next     : expr ]
+{
+  ignore ( ?e : ?t ) => $[nodes].iterate (\p -> ($[lbl]_fetch, p.addr) <- me)
+   +> {
+        declare $[lbl]_stash : mut collection {key: address, value: $::[t]} @Map
+
+        trigger $[lbl]_fetch : address = \dest -> (
+          ($[lbl]_push, dest) <- {key: me, value: $.[e]}
+        )
+
+        trigger $[lbl]_push : {key: address, value: $::[t]} = \v -> (
+          $[lbl]_stash.insert v;
+          ( ($[next] $[lbl]_stash);
+            $[lbl]_stash = empty {key: address, value: $::[t]} @Map
+          ) @OnCounter(id=[# $[lbl]_gathered], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
+        )
+      }
+}
+
+control GatherCollectionAsCSV [ lbl      : label
+                              , csink    : expr
+                              , nodes    : expr
+                              , next     : expr ]
+{
+  ignore ( ?e : collection ?t )
+    => ( ignore ( $.[e] ) )
+        @GatherCollection(
+              lbl   = lbl
+            , nodes = nodes
+            , next  = [$ (\nodevals ->
+                            ((nodevals.iterate (\kv ->
+                              kv.value.iterate (\cval -> ($[csink], me) <- cval)));
+                            $[next])) ])
+}
+
+control GatherResultsAsCSV [query_cl : [{ci: label, csink: expr}], nodes : expr, next : expr]
+{
+  () => $[| let gatherE cRec = do
+                                cilbl  <- spliceRecordField cRec "ci"
+                                csexpr <- spliceRecordField cRec "csink"
+                                ci     <- idOfSLabel cilbl
+                                cs     <- expOfSExpr csexpr
+                                let sunit = SExpr EC.unit
+                                return ((EC.applyMany (EC.variable "ignore") [EC.variable ci]
+                                         ) @+ (EApplyGen True "GatherCollectionAsCSV" $
+                                                 mkSpliceEnv [ ("lbl",   cilbl)
+                                                             , ("csink", csexpr)
+                                                             , ("nodes", 'nodes)
+                                                             , ("next",  'next) ]))
+            in SExpr $ EC.block $ maybe [] id (elemsOfSList 'query_cl >>= mapM gatherE)
+         |]
+}
