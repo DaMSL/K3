@@ -57,6 +57,10 @@ def assignRolesToOffers(nextJob, offers):
 
       cpusRemainingForOffer = offeredCpus - cpusUsedPerOffer[offerId]
       cpusToUse = min([cpusRemainingForOffer, nextJob.roles[roleId].peers])
+
+      if nextJob.roles[roleId].maxPeersPerHost != None:
+        cpusToUse = min([cpusToUse, nextJob.roles[roleId].maxPeersPerHost])
+
      
       cpusUsedPerOffer[offerId] += cpusToUse
       rolesPerOffer[offerId].append((roleId, cpusToUse))

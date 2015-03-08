@@ -3,6 +3,7 @@ import os
 import sys
 import time
 import threading
+import re
 from collections import deque
 
 from core import *
@@ -66,7 +67,7 @@ class Dispatcher(mesos.interface.Scheduler):
 
     self.daemon = daemon       # Run as a daemon (or finish when there are no more pending/active jobs)
     self.terminate = False     # Flag to signal termination to the owner of the dispatcher
- 
+
   def submit(self, job):
     self.pending.append(job)
 
@@ -78,7 +79,7 @@ class Dispatcher(mesos.interface.Scheduler):
 
   def fullId(self, jobId, taskId):
     return "%d.%d" % (jobId, taskId)
- 
+
   def jobId(self, fullid):
     s = fullid.split(".")
     return int(s[0])
@@ -108,12 +109,12 @@ class Dispatcher(mesos.interface.Scheduler):
     if len(self.pending) == 0:
       print("No pending jobs to prepare")
       return None
-  
+
     nextJob = self.pending[0]
     result = assignRolesToOffers(nextJob, self.offers)
     if result == None:
       return None
-   
+
     (cpusUsedPerRole, cpusUsedPerOffer, rolesPerOffer) = result
 
     # TODO port management
@@ -138,12 +139,12 @@ class Dispatcher(mesos.interface.Scheduler):
             allPeers.append(p)
             curPeerIndex = curPeerIndex + 1
             curPort = curPort + 1
-       
+
         taskid = len(nextJob.tasks)
         mem = getResource(self.offers[offerId].resources, "mem", float)
         t = Task(taskid, offerId, host, mem, peers)
         nextJob.tasks.append(t)
- 
+
     populateAutoVars(allPeers)
     nextJob.all_peers = allPeers
     self.pending.popleft()
@@ -157,7 +158,7 @@ class Dispatcher(mesos.interface.Scheduler):
     # Build Mesos TaskInfo Protobufs for each k3 task and launch them through the driver
     for k3task in nextJob.tasks:
       task = taskInfo(k3task, jobId, self.offers[k3task.offerid].slave_id, nextJob.binary_url, nextJob.all_peers, nextJob.inputs)
-     
+
       oid = mesos_pb2.OfferID()
       oid.value = k3task.offerid
       driver.launchTasks(oid, [task])
@@ -178,8 +179,8 @@ class Dispatcher(mesos.interface.Scheduler):
     self.finished[jobId] = job
 
     self.tryTerminate()
-   
-     
+
+
 
   def taskFinished(self, fullid):
     jobId = self.jobId(fullid)
@@ -224,10 +225,10 @@ class Dispatcher(mesos.interface.Scheduler):
 
     if task_state[update.state] == "TASK_FINISHED":
       self.taskFinished(update.task_id.value)
-   
+
   def frameworkMessage(self, driver, executorId, slaveId, message):
     print("[FRMWK MSG] %s" % message[:-1])
-  
+
   # Handle a resource offers from Mesos.
   # If there is a pending job, add all offers to self.offers
   # Then see if pending jobs can be launched with the offers accumulated so far
@@ -252,7 +253,7 @@ class Dispatcher(mesos.interface.Scheduler):
     print("[OFFER RESCINDED] Previous offer '%d' invalidated" % offer.id.value)
     if offer.id in self.offers:
       del self.offers[offer.id]
-   
+
 if __name__ == "__main__":
   framework = mesos_pb2.FrameworkInfo()
   framework.user = "" # Have Mesos fill in the current user.
@@ -265,7 +266,7 @@ if __name__ == "__main__":
 
   driver = mesos.native.MesosSchedulerDriver(d, framework, MASTER)
   t = threading.Thread(target = driver.run)
-  
+
   try:
     t.start()
     # Sleep until interrupt
