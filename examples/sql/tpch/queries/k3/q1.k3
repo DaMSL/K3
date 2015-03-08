@@ -97,18 +97,16 @@ trigger start : () = \_ -> (
     onReadyExpr          = [$ (q1, me) <- ()],
     finishArgT           = [: ()],
     preTestFinishExpr    = [$ (\_ -> ())],
-    preFinishExpr        = [$ () @DistributedCollectionStatistics(
-                                    lbl         = [# q1_skew ],
-                                    query_cl    = [* [% cl: [# lo_skew],  ce: [$ groupby_result]]
-                                                  ],
-                                    coordinator = [$ master ],
-                                    nodes       = [$ peers ],
-                                    next        = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ])
+    preFinishExpr        = [$ () @GatherResultsAsCSV(
+                                    query_cl = [* [% ci: [# results], csink: [$ results_sink]] ]
+                                  , nodes    = [$ peers]
+                                  , next     = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ])
                            ],
     preShutdownExpr      = [$ ()],
     finishAsShutdownExpr = [$ false]
   )
 )
 
+sink results_sink : q1_result_r = stdout csv
 source rows : () = value ()
 feed rows |> start

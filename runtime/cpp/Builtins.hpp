@@ -113,11 +113,11 @@ namespace K3 {
     unit_t openSocket(string_impl ch_id, Address a, string_impl fmt, string_impl mode);
 
     bool hasRead(string_impl ch_id);
-    string_impl doRead(string_impl ch_id);
-    Collection<R_elem<string_impl>> doReadBlock(string_impl ch_id, int block_size);
+    template<typename T> T doRead(string_impl ch_id);
+    template<typename T> Collection<R_elem<T>> doReadBlock(string_impl ch_id, int block_size);
 
     bool hasWrite(string_impl ch_id);
-    unit_t doWrite(string_impl ch_id, string_impl val);
+    template<typename T> unit_t doWrite(string_impl ch_id, T& val);
 
     unit_t close(string_impl chan_id);
 

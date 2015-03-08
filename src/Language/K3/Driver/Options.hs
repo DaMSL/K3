@@ -47,24 +47,26 @@ data Mode
     | Typecheck TypecheckOptions
   deriving (Eq, Read, Show)
 
-data PrintMode
-    = PrintAST    { stripEffects :: Bool, stripTypes :: Bool
-                  , stripCmts :: Bool, stripProps :: Bool }
-    | PrintSyntax
-  deriving (Eq, Read, Show)
+-- | Compilation pass options.
+type CompileStages = [CompileStage]
+
+data CompileStage = SCompile (Maybe CompilerSpec)
+                  | SCodegen
+                  deriving (Eq, Ord, Read, Show)
 
 -- | Parsing options.
 data ParseOptions = ParseOptions { parsePrintMode :: PrintMode,
-                                   poStages       :: ParseStageOptions,
-                                   poTransform    :: TransformOptions }
+                                   poStages       :: CompileStages }
                     deriving (Eq, Read, Show)
 
--- | Stage options used for parse-only mode.
-type ParseStageOptions = [ParseStage]
-
-data ParseStage = PSOptimization (Maybe CompilerSpec)
-                | PSCodegen
-                deriving (Eq, Ord, Read, Show)
+-- | Printing specification.
+data PrintMode
+    = PrintAST    { stripEffects :: Bool
+                  , stripTypes   :: Bool
+                  , stripCmts    :: Bool
+                  , stripProps   :: Bool }
+    | PrintSyntax
+  deriving (Eq, Read, Show)
 
 -- | Metaprogramming options
 data MetaprogramOptions
@@ -89,9 +91,11 @@ data CompileOptions = CompileOptions
                       , ccStage            :: CPPStages
                       , cppOptions         :: String
                       , kTraceOptions      :: [(String, String)]
-                      , coTransform        :: TransformOptions
+                      , coStages           :: CompileStages
                       , useSubTypes        :: Bool
                       , optimizationLevel  :: OptimizationLevel
+                      , saveAST            :: Bool
+                      , astPrintMode       :: PrintMode
                       }
   deriving (Eq, Read, Show)
 
@@ -107,28 +111,10 @@ data InterpretOptions
             , isPar       :: Bool
             , printConfig :: PrintConfig
             , noConsole   :: Bool
-            , ioTransform :: TransformOptions
+            , ioStages    :: CompileStages
             }
     | Interactive
   deriving (Eq, Read, Show)
-
-
--- | Transformation and optimization pass options.
-type TransformOptions = [TransformMode]
-
-data TransformMode
-    = Conflicts
-    | Tasks
-    | ProgramTasks
-    | ProxyPaths
-    | AnnotationProvidesGraph
-    | FlatAnnotations
-    | Provenance
-    | Effects
-    | Profiling
-    | ReadOnlyBinds
-    | TriggerSymbols
-  deriving (Eq, Ord, Read, Show)
 
 type OptimizationLevel = Int
 
@@ -185,70 +171,35 @@ modeOptions = subparser (
         interpretDesc = "Interpret a K3 program"
         typeDesc      = "Typecheck a K3 program"
 
+
 {- Common parsers -}
--- | Transformation options
-transformOptions :: Parser TransformOptions
-transformOptions = concat <$> many transformMode
 
--- Accept a precursor string
-transformMode :: Parser [TransformMode]
-transformMode   =  wrap <$> ( conflictsOpt
-                        <|>   tasksOpt
-                        <|>   programTasksOpt
-                        <|>   proxyPathsOpt
-                        <|>   annProvOpt
-                        <|>   flatAnnOpt
-                        <|>   provenanceOpt
-                        <|>   effectOpt
-                        <|>   profilingOpt
-                        <|>   readOnlyBindOpts
-                        <|>   trigSymOpt )
-  where
-    wrap x = [x]
-
--- | Print mode flags
-printModeOpt :: Parser PrintMode
-printModeOpt = astPrintOpt <|> syntaxPrintOpt
-
-astPrintOpt :: Parser PrintMode
-astPrintOpt = extract . keyValList "" <$> strOption (
-                   long "ast"
-                <> value ""
-                <> help "Print AST output"
-                <> metavar "PRINTASTFLAGS"
-              )
-   where extract l = PrintAST (key "notypes"    l)
-                              (key "noeffects"  l)
-                              (key "nocomments" l)
-                              (key "noproperties" l)
-
-         key k kvl = maybe False read $ lookup k kvl
-
-syntaxPrintOpt :: Parser PrintMode
-syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
-                                    <> help "Print syntax output" )
-
-parseStageOpt :: Parser ParseStageOptions
-parseStageOpt = extractStageAndSpec . keyValList "" <$> strOption (
-                     long "fpstage"
-                  <> value ""
-                  <> metavar "STAGES"
-                  <> help "Run compilation stages" )
+compileStagesOpt :: Parser CompileStages
+compileStagesOpt = extractStageAndSpec . keyValList "" <$> strOption (
+                        long "fstage"
+                     <> value ""
+                     <> metavar "STAGES"
+                     <> help "Run compilation stages" )
 
    where
     extractStageAndSpec kvl = case kvl of
-      [] -> []
+      []  -> [SCompile $ Just cs0, SCodegen]
       [x] -> stageOf cs0 x
       h:t -> stageOf (specOf t) h
 
-    stageOf _     ("opt",      read -> True)          = [PSOptimization Nothing]
-    stageOf cSpec ("declopt",  read -> True)          = [PSOptimization $ Just cSpec]
-    stageOf _     ("cg",       read -> True)          = [PSCodegen]
+    stageOf _     ("none",     read -> True)          = []
+    stageOf _     ("opt",      read -> True)          = [SCompile Nothing]
+    stageOf cSpec ("declopt",  read -> True)          = [SCompile $ Just cSpec]
+    stageOf cSpec ("cg",       read -> True)          = [SCompile $ Just cSpec, SCodegen]
     stageOf cSpec ("oinclude", (splitOn "," ->  psl)) = let ss = stageSpec cSpec
-                                                        in [PSOptimization $ Just cSpec {stageSpec = ss {passesToRun = Just psl}}]
+                                                        in [SCompile $ Just cSpec {stageSpec = ss {passesToRun = Just psl}}]
     stageOf cSpec ("oexclude", (splitOn "," -> npsl)) = let ss = stageSpec cSpec
-                                                        in [PSOptimization $ Just cSpec {stageSpec = ss {passesToFilter = Just npsl}}]
-    stageOf _ _ = []
+                                                        in [SCompile $ Just cSpec {stageSpec = ss {passesToFilter = Just npsl}}]
+    stageOf cSpec ("cinclude", (splitOn "," ->  psl)) = let ss = stageSpec cSpec
+                                                        in [SCompile $ Just cSpec {stageSpec = ss {passesToRun = Just psl}}, SCodegen]
+    stageOf cSpec ("cexclude", (splitOn "," -> npsl)) = let ss = stageSpec cSpec
+                                                        in [SCompile $ Just cSpec {stageSpec = ss {passesToFilter = Just npsl}}, SCodegen]
+    stageOf cSpec _ = [SCompile $ Just cSpec, SCodegen]
 
     specOf kvl = foldl specParam cs0 kvl
     specParam cs (k,v) = case k of
@@ -259,7 +210,29 @@ parseStageOpt = extractStageAndSpec . keyValList "" <$> strOption (
 
 -- | Parse mode
 parseOptions :: Parser Mode
-parseOptions = Parse <$> (ParseOptions <$> printModeOpt <*> parseStageOpt <*> transformOptions)
+parseOptions = Parse <$> (ParseOptions <$> printModeOpt "" <*> compileStagesOpt)
+
+-- | Print mode flags
+printModeOpt :: String -> Parser PrintMode
+printModeOpt astDefault = astPrintOpt astDefault <|> syntaxPrintOpt
+
+astPrintOpt :: String -> Parser PrintMode
+astPrintOpt astDefault = extract . keyValList "" <$> strOption (
+                              long "ast"
+                           <> value astDefault
+                           <> help "Print AST output"
+                           <> metavar "PRINTASTFLAGS"
+                         )
+   where extract l = PrintAST (key "notypes"    l)
+                              (key "noeffects"  l)
+                              (key "nocomments" l)
+                              (key "noproperties" l)
+
+         key k kvl = maybe False read $ lookup k kvl
+
+syntaxPrintOpt :: Parser PrintMode
+syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
+                                    <> help "Print syntax output" )
 
 
 -- | Compiler options
@@ -274,9 +247,11 @@ compileOptions = fmap Compile $ CompileOptions
                             <*> ccStageOpt
                             <*> cppOpt
                             <*> ktraceOpt
-                            <*> transformOptions
+                            <*> compileStagesOpt
                             <*> noQuickTypesOpt
                             <*> optimizationOpt
+                            <*> saveAstOpt
+                            <*> printModeOpt "noeffects=True:notypes=True"
 
 outLanguageOpt :: Parser String
 outLanguageOpt = strOption ( short   'l'
@@ -382,6 +357,11 @@ libraryFileOpt = (False,) <$> strOption (
                  <> metavar "FILE"
                )
 
+saveAstOpt :: Parser Bool
+saveAstOpt = switch (   long    "save-ast"
+                     <> help    "Save K3 AST used for compilation" )
+
+
 -- | Interpretation options.
 interpretOptions :: Parser Mode
 interpretOptions = Interpret <$> (batchOptions <|> interactiveOptions)
@@ -407,7 +387,7 @@ batchOptions = flag' Batch (
                                <*> parOpt
                                <*> printConfigOpt
                                <*> consoleOpt
-                               <*> transformOptions
+                               <*> compileStagesOpt
 
 -- | Expression-Level flag.
 elvlOpt :: Parser Bool
@@ -488,52 +468,6 @@ optimizationOpt = option auto
         <> value 0
         <> help "Optimization level")
 
-conflictsOpt :: Parser TransformMode
-conflictsOpt = flag' Conflicts (   long "fconflicts"
-                                <> help "Print Conflicting Data Accesses for a K3 Program" )
-
-tasksOpt :: Parser TransformMode
-tasksOpt = flag' Tasks  (  long "ftasks"
-                        <> help "Split Triggers into smaller tasks for parallelization" )
-
-programTasksOpt :: Parser TransformMode
-programTasksOpt = flag' ProgramTasks (   long "fprogramtasks"
-                                      <> help "Find program-level tasks to be run in parallel " )
-
-proxyPathsOpt :: Parser TransformMode
-proxyPathsOpt = flag' ProxyPaths (   long "fproxypaths"
-                                  <> help "Print bind paths for bind expressions" )
-
-annProvOpt :: Parser TransformMode
-annProvOpt = flag' AnnotationProvidesGraph (   long "fprovides-graph"
-                                            <> help "Print bind paths for bind expressions" )
-
-flatAnnOpt :: Parser TransformMode
-flatAnnOpt = flag' FlatAnnotations (   long "fflat-annotations"
-                                    <> help "Print bind paths for bind expressions" )
-
-provenanceOpt :: Parser TransformMode
-provenanceOpt = flag' Provenance (   long "fprovenance"
-                                  <> help "Print program provenance")
-
-effectOpt :: Parser TransformMode
-effectOpt = flag' Effects (   long "feffects"
-                           <> help "Print program effects")
-
-profilingOpt :: Parser TransformMode
-profilingOpt = flag' Profiling
-                (   long "fprofile"
-                 <> (help $ "Add profiling points"))
-
-readOnlyBindOpts :: Parser TransformMode
-readOnlyBindOpts = flag' ReadOnlyBinds
-                (   long "frobinds"
-                 <> (help $ "Remove read-only binds"))
-
-trigSymOpt :: Parser TransformMode
-trigSymOpt = flag' TriggerSymbols
-                (   long "ftriggersymbols"
-                 <> (help $ "Generate integer symbols for triggers in the program"))
 
 -- | Information printing options.
 informOptions :: Parser InfoSpec
@@ -637,14 +571,14 @@ instance Pretty Mode where
   prettyLines (Typecheck tOpts) = ["Typecheck" ++ show tOpts]
 
 instance Pretty InterpretOptions where
-  prettyLines (Batch net env expr par printConf console transform) =
+  prettyLines (Batch net env expr par printConf console cstages) =
     ["Batch"] ++ (indent 3 $ ["Network: " ++ show net]
                           ++ prettySysEnv env
                           ++ ["Expression: " ++ show expr]
                           ++ ["Parallel: "   ++ show par]
                           ++ ["Print: "      ++ show printConf]
                           ++ ["Console: "    ++ show console]
-                          ++ ["Transform: "  ++ show transform]
+                          ++ ["Stages: "     ++ show cstages]
                  )
 
   prettyLines v = [show v]

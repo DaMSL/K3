@@ -12,9 +12,9 @@
 #include <boost/iostreams/stream.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/thread/thread.hpp>
-#include <external/nanomsg/nn.h>
-#include <external/nanomsg/pipeline.h>
-#include <external/nanomsg/tcp.h>
+#include <nanomsg/nn.h>
+#include <nanomsg/pipeline.h>
+#include <nanomsg/tcp.h>
 
 #include <Common.hpp>
 

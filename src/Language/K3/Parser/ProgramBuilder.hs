@@ -19,6 +19,7 @@ import Control.Applicative
 
 import Data.List
 import Data.Tree
+import Debug.Trace
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -148,15 +149,15 @@ processInitsAndRoles (Node t c) endpointBQGs roleDefaults = Node t $ c ++ initia
 
         initializerFns =
             [ builtinGlobal roleFnId (qualifyT unitFnT)
-                $ Just . qualifyE $ mkRoleBody sourceEndpoints roleDefaults ]
-
-        mkInitDeclBody sinks = EC.lambda "_" $ EC.block $ foldl sinkInitE [] sinks
+                $ Just . qualifyE $ mkRoleBody sourceEndpoints sinkEndpoints roleDefaults ]
 
         sinkInitE acc (_,(_, Nothing, _, Just e)) = acc ++ [e]
         sinkInitE acc _ = acc
 
-        mkRoleBody sources defaults =
-          EC.lambda "_" $ uncurry (foldl dispatchId) $ defaultAndRestIds sources defaults
+        mkRoleBody sources sinks defaults =
+          EC.lambda "_" $ EC.block $
+            (trace ("Sinks " ++ show sinks) $ foldl sinkInitE [] sinks) ++
+            [uncurry (foldl dispatchId) $ defaultAndRestIds sources defaults]
 
         defaultAndRestIds sources defaults = (defaultE sources $ lookup "" defaults, sources)
         dispatchId elseE (n,(_,_,y,goE))  = EC.ifThenElse (eqRole y) (runE n goE) elseE

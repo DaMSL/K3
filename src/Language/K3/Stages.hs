@@ -450,19 +450,19 @@ optPasses = map prepareOpt [ (simplifyWCSE, "opt-simplify-prefuse")
                            , (simplifyWCSE, "opt-simplify-final") ]
   where prepareOpt (f,i) = runPasses [refreshProgram, withRepair i f]
 
-cgPasses :: Int -> [ProgramTransform]
-cgPasses _ = [ withRepair "TID" $ transformE triggerSymbols
-             , \d -> return (mangleReservedNames d)
-             , refreshProgram
-             , transformF CArgs.runAnalysis
-             , \d -> get >>= \s -> return $ (optimizeMaterialization (penv s, fenv s)) d
-             ]
+cgPasses :: [ProgramTransform]
+cgPasses = [ withRepair "TID" $ transformE triggerSymbols
+           , \d -> return (mangleReservedNames d)
+           , refreshProgram
+           , transformF CArgs.runAnalysis
+           , \d -> get >>= \s -> return $ (optimizeMaterialization (penv s, fenv s)) d
+           ]
 
 runOptPassesM :: ProgramTransform
 runOptPassesM prog = runPasses optPasses $ stripTypeAndEffectAnns prog
 
-runCGPassesM :: Int -> ProgramTransform
-runCGPassesM lvl prog = runPasses (cgPasses lvl) prog
+runCGPassesM :: ProgramTransform
+runCGPassesM prog = runPasses cgPasses prog
 
 -- Legacy methods.
 runOptPasses :: K3 Declaration -> IO (Either String (K3 Declaration, TransformReport))
@@ -471,10 +471,10 @@ runOptPasses prog = st0 prog >>= either (return . Left) run
           resE <- runTransformStM st $ runOptPassesM prog
           return (resE >>= return . second report)
 
-runCGPasses :: Int -> K3 Declaration -> IO (Either String (K3 Declaration))
-runCGPasses lvl prog = do
+runCGPasses :: K3 Declaration -> IO (Either String (K3 Declaration))
+runCGPasses prog = do
   stE <- st0 prog
-  either (return . Left) (\st -> runTransformM st $ runCGPassesM lvl prog) stE
+  either (return . Left) (\st -> runTransformM st $ runCGPassesM prog) stE
 
 
 {- Declaration-at-a-time analyses and optimizations. -}

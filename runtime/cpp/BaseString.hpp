@@ -5,14 +5,16 @@
 #include <memory>
 #include <vector>
 
-#include "yaml-cpp/yaml.h"
-#include "rapidjson/document.h"
+#include <boost/serialization/array.hpp>
+#include <boost/serialization/string.hpp>
+#include <boost/functional/hash.hpp>
 
-#include "boost/serialization/array.hpp"
-#include "boost/functional/hash.hpp"
+#include <yaml-cpp/yaml.h>
+#include <rapidjson/document.h>
+#include <csvpp/csv.h>
 
-#include "Common.hpp"
-#include "dataspace/Dataspace.hpp"
+#include <Common.hpp>
+#include <dataspace/Dataspace.hpp>
 
 char* dupstr(const char*) throw ();
 
@@ -211,14 +213,14 @@ class base_string {
     if (archive::is_saving::value) {
       len = length();
     }
-    a & len;
+    a& BOOST_SERIALIZATION_NVP(len);
     if (archive::is_loading::value) {
       // Possibly extraneous:
       // Buffer might always be null when loading
       // since this base_str was just constructed
-      if(buffer) {
-        delete [] buffer;
-	buffer = 0;
+      if (buffer) {
+        delete[] buffer;
+        buffer = 0;
       }
 
       if (len) {
@@ -229,7 +231,7 @@ class base_string {
       }
     }
     if (buffer) {
-      a & boost::serialization::make_array(buffer, len);
+      a& boost::serialization::make_array(buffer, len);
     }
   }
 
@@ -237,18 +239,25 @@ class base_string {
   char* buffer;
 };
 
-  inline base_string operator + (base_string s, base_string const& t) {
-    return s += t;
-  }
+inline base_string operator + (base_string s, base_string const& t) {
+  return s += t;
+}
 
-  inline base_string operator + (base_string s, char const* t) {
-    return s += t;
-  }
+inline base_string operator + (base_string s, char const* t) {
+  return s += t;
+}
 
-  inline base_string operator + (char const* t, base_string const& s) {
-    auto new_string = base_string(t);
-    return new_string += s;
-  }
+inline base_string operator + (char const* t, base_string const& s) {
+  auto new_string = base_string(t);
+  return new_string += s;
+}
+
+// Specializations for CSV parsing/writing, skipping the length field.
+template <>
+void base_string::serialize(csv::parser& a, const unsigned int);
+
+template <>
+void base_string::serialize(csv::writer& a, const unsigned int);
 
 } // namespace K3
 
@@ -289,5 +298,8 @@ namespace YAML {
     }
   };
 }
+
+// Turn off class information tracking in boost serialization for base_strings.
+BOOST_CLASS_IMPLEMENTATION(K3::base_string, boost::serialization::object_serializable);
 
 #endif

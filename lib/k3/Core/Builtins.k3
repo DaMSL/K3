@@ -48,6 +48,7 @@ with effects \_ -> io
 // builtin channel id is one of: stdin, stdout, stderr
 @:CArgs 3
 declare openBuiltin : string -> string -> string -> ()
+with effects \_ -> \_ -> \_ -> io
 
 // openFile: channel id -> path -> format -> mode -> ()
 @:CArgs 4
@@ -79,6 +80,7 @@ with effects \_ -> \_ -> io
 // openSocket: channel id -> address -> format -> mode -> ()
 @:CArgs 4
 declare openSocket : string -> address -> string -> string -> ()
+with effects \_ -> \_ -> \_ -> \_ -> io
 
 // close: channel id -> ()
 declare close : string -> ()

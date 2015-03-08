@@ -10,16 +10,18 @@ namespace K3 {
   // Local Messages (inside a system)
 
   // (destination peer, trigger, payload, source peer)
-  class Message : public std::tuple<Address, TriggerId, shared_ptr<Dispatcher>, Address > {
+  class Message : public std::tuple<Address, TriggerId, shared_ptr<Dispatcher>, Address >
+  {
   public:
     Message(Address addr, TriggerId id, shared_ptr<Dispatcher> d, Address src)
       : std::tuple<Address, TriggerId, shared_ptr<Dispatcher>, Address>(std::move(addr), id, d, std::move(src)) {}
 
-    const Address&  address()  const { return std::get<0>(*this); }
-    TriggerId id()             const { return std::get<1>(*this); }
+    const Address&  address()                 const { return std::get<0>(*this); }
+    TriggerId id()                            const { return std::get<1>(*this); }
     const shared_ptr<Dispatcher> dispatcher() const { return std::get<2>(*this); }
-    const Address& source() const { return std::get<3>(*this); }
+    const Address& source()                   const { return std::get<3>(*this); }
     string target() const {
+
       return __k3_context::__get_trigger_name(id()) + "@" + addressAsString(address());
     }
   };

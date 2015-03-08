@@ -40,13 +40,19 @@ namespace K3 {
   }
 
   unit_t __standard_context::openBuiltin(string_impl ch_id, string_impl builtin_ch_id, string_impl fmt) {
-    __engine.openBuiltin(ch_id, builtin_ch_id);
+    __engine.openBuiltin(ch_id, builtin_ch_id, fmt);
     return unit_t();
   }
 
   unit_t __standard_context::openFile(string_impl ch_id, string_impl path, string_impl fmt, string_impl mode) {
     IOMode iomode = __engine.ioMode(mode);
-    __engine.openFile(ch_id, path, iomode);
+    __engine.openFile(ch_id, path, fmt, iomode);
+    return unit_t();
+  }
+
+  unit_t __standard_context::openSocket(string_impl ch_id, Address a, string_impl fmt, string_impl mode) {
+    IOMode iomode = __engine.ioMode(mode);
+    __engine.openSocket(ch_id, a, fmt, iomode);
     return unit_t();
   }
 
@@ -54,28 +60,27 @@ namespace K3 {
     return  __engine.hasRead(std::string(ch_id));
   }
 
-  string_impl __standard_context::doRead(string_impl ch_id) {
-    shared_ptr<string> v = __engine.doReadExternal(std::string(ch_id));
-    string_impl r;
-    if ( v ) { r = std::move(*v); }
+  template<typename T>
+  T __standard_context::doRead(string_impl ch_id) {
+    shared_ptr<T> v = __engine.doReadExternal<T>(std::string(ch_id));
+    if ( v ) { return *v; }
+    T r;
     return r;
   }
 
-  Collection<R_elem<string_impl>> __standard_context::doReadBlock(string_impl ch_id, int block_size) {
-    return  __engine.doReadExternalBlock(std::string(ch_id), block_size);
+  template<typename T>
+  Collection<R_elem<T>> __standard_context::doReadBlock(string_impl ch_id, int block_size) {
+    return  __engine.doReadExternalBlock<T>(std::string(ch_id), block_size);
   }
 
   bool __standard_context::hasWrite(string_impl ch_id) {
    return  __engine.hasWrite(std::string(ch_id));
   }
 
-  unit_t  __standard_context::doWrite(string_impl ch_id, string_impl val) {
-   __engine.doWriteExternal(std::string(ch_id), std::string(val));
+  template<typename T>
+  unit_t  __standard_context::doWrite(string_impl ch_id, T& val) {
+   __engine.doWriteExternal<T>(std::string(ch_id), val);
    return unit_t{};
-  }
-
-  unit_t __standard_context::openSocket(string_impl ch_id, Address a, string_impl fmt, string_impl mode) {
-    throw std::runtime_error("Not implemented: openSocket");
   }
 
   unit_t __standard_context::close(string_impl chan_id) {

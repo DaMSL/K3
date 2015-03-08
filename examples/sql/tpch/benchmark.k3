@@ -1,3 +1,4 @@
+include "Core/IO.k3"
 include "Core/Profile.k3"
 include "Distributed/Transformers.k3"
 include "tpch/schema.k3"

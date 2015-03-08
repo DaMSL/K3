@@ -23,9 +23,10 @@ namespace K3 {
 
   namespace Net = K3::Asio;
 
-    using std::shared_ptr;
-    using std::tuple;
-    using std::ofstream;
+  using std::shared_ptr;
+  using std::tuple;
+  using std::ofstream;
+
   //-------------------
   // Utility functions
 
@@ -148,17 +149,17 @@ namespace K3 {
     Engine(
       bool simulation,
       SystemEnvironment& sys_env,
-      shared_ptr<InternalCodec> _internal_codec,
+      shared_ptr<MessageCodec> _msgcodec,
       string log_level,
       string log_path,
       string result_v,
       string result_p,
       shared_ptr<MessageQueues> qs
     ): LogMT("Engine") {
-      configure(simulation, sys_env, _internal_codec, log_level, log_path, result_v, result_p, qs);
+      configure(simulation, sys_env, _msgcodec, log_level, log_path, result_v, result_p, qs);
     }
 
-    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level,string log_path, string result_var, string result_path, shared_ptr<MessageQueues> qs);
+    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<MessageCodec> _msgcodec, string log_level,string log_path, string result_var, string result_path, shared_ptr<MessageQueues> qs);
 
     //-----------
     // Messaging.
@@ -184,21 +185,21 @@ namespace K3 {
     //---------------------------------------
     // Internal and external channel methods.
 
-    void openBuiltin(Identifier eid, string builtinId) {
+    void openBuiltin(Identifier eid, string builtinId, string format) {
       externalEndpointId(eid) ?
-        genericOpenBuiltin(eid, builtinId)
+        genericOpenBuiltin(eid, builtinId, format)
         : invalidEndpointIdentifier("external", eid);
     }
 
-    void openFile(Identifier eid, string path, IOMode mode) {
+    void openFile(Identifier eid, string path, string format, IOMode mode) {
       externalEndpointId(eid) ?
-        genericOpenFile(eid, path, mode)
+        genericOpenFile(eid, path, format, mode)
         : invalidEndpointIdentifier("external", eid);
     }
 
-    void openSocket(Identifier eid, Address addr, IOMode mode) {
+    void openSocket(Identifier eid, Address addr, string format, IOMode mode) {
       externalEndpointId(eid) ?
-        genericOpenSocket(eid, addr, mode)
+        genericOpenSocket(eid, addr, format, mode)
         : invalidEndpointIdentifier("external", eid);
     }
 
@@ -210,19 +211,19 @@ namespace K3 {
 
     void openBuiltinInternal(Identifier eid, string builtinId) {
       !externalEndpointId(eid)?
-        genericOpenBuiltin(eid, builtinId)
+        genericOpenBuiltin(eid, builtinId, "internal")
         : invalidEndpointIdentifier("internal", eid);
     }
 
     void openFileInternal(Identifier eid, string path, IOMode mode) {
       !externalEndpointId(eid)?
-        genericOpenFile(eid, path, mode)
+        genericOpenFile(eid, path, "internal", mode)
         : invalidEndpointIdentifier("internal", eid);
     }
 
     void openSocketInternal(Identifier eid, Address addr, IOMode mode) {
       !externalEndpointId(eid)?
-        genericOpenSocket(eid, addr, mode)
+        genericOpenSocket(eid, addr, "internal", mode)
         : invalidEndpointIdentifier("internal", eid);
     }
 
@@ -240,16 +241,17 @@ namespace K3 {
       }
     }
 
-    shared_ptr<Value> doReadExternal(Identifier eid) {
-      return endpoints->getExternalEndpoint(eid)->doRead();
+    template<typename T> shared_ptr<T> doReadExternal(Identifier eid) {
+      return endpoints->getExternalEndpoint(eid)->doRead<T>();
     }
 
-    RemoteMessage doReadInternal(Identifier eid) {
-      return internal_codec->read_message(*endpoints->getInternalEndpoint(eid)->doRead());
+    shared_ptr<RemoteMessage> doReadInternal(Identifier eid) {
+      return endpoints->getInternalEndpoint(eid)->doRead();
     }
 
-    Collection<R_elem<K3::base_string>> doReadExternalBlock (Identifier eid, int blockSize) {
-      return endpoints->getExternalEndpoint(eid)->doReadBlock(blockSize);
+    template<typename T>
+    Collection<R_elem<T>> doReadExternalBlock (Identifier eid, int blockSize) {
+      return endpoints->getExternalEndpoint(eid)->doReadBlock<T>(blockSize);
     }
 
     bool hasWrite(Identifier eid) {
@@ -260,15 +262,15 @@ namespace K3 {
       }
     }
 
-    void doWriteExternal(Identifier eid, Value v) {
-      endpoints->getExternalEndpoint(eid)->doWrite(v);
+    template<typename T>
+    void doWriteExternal(Identifier eid, const T& v) {
+      endpoints->getExternalEndpoint(eid)->doWrite<T>(v);
       endpoints->getExternalEndpoint(eid)->flushBuffer();
       return;
     }
 
-    void doWriteInternal(Identifier eid, RemoteMessage m) {
-      return endpoints->getInternalEndpoint(eid)->doWrite(
-                make_shared<Value>(internal_codec->show_message(m)));
+    void doWriteInternal(Identifier eid, const RemoteMessage& m) {
+      return endpoints->getInternalEndpoint(eid)->doWrite(m);
     }
 
     //-----------------------
@@ -353,18 +355,18 @@ namespace K3 {
 
     void logResult(shared_ptr<MessageProcessor>& mp) {
       if (result_var != "") {
-	auto a = *me;
-          auto dir = result_path != "" ? result_path : ".";
-          auto s = dir + "/" + addressAsString(a) + "_Result.txt";
-          std::ofstream ofs;
-          ofs.open(s);
-          auto m = mp->json_bindings(a);
-          if (m.count( result_var ) != 0) {
-            ofs << m[result_var] << std::endl;
-          }
-          else {
-            throw std::runtime_error("Cannot log result variable, does not exist: " + result_var);
-          }
+        auto a = *me;
+        auto dir = result_path != "" ? result_path : ".";
+        auto s = dir + "/" + addressAsString(a) + "_Result.txt";
+        std::ofstream ofs;
+        ofs.open(s);
+        auto m = mp->json_bindings(a);
+        if (m.count(result_var) != 0) {
+          ofs << m[result_var] << std::endl;
+        } else {
+          throw std::runtime_error(
+              "Cannot log result variable, does not exist: " + result_var);
+        }
       }
     }
 
@@ -385,11 +387,12 @@ namespace K3 {
 
     bool logEnabled() { return log_enabled; }
     bool logJsonEnabled() { return log_json; }
+
   protected:
     shared_ptr<EngineConfiguration> config;
     shared_ptr<EngineControl>       control;
     shared_ptr<Address>             me;
-    shared_ptr<InternalCodec>       internal_codec;
+    shared_ptr<MessageCodec>        msgcodec;
     shared_ptr<MessageQueues>       queues;
     // shared_ptr<WorkerPool>          workers;
     shared_ptr<Net::NContext>       network_ctxt;
@@ -425,16 +428,17 @@ namespace K3 {
 
     Builtin builtin(string builtinId);
 
-
+    // Format selection.
+    EndpointState::CodecDetails codecOfFormat(string format);
 
     // TODO: for all of the genericOpen* endpoint constructors below, revisit:
     // i. no K3 type specified for type-safe I/O as with Haskell engine.
     // ii. buffer type with concurrent engine.
-    void genericOpenBuiltin(string id, string builtinId);
+    void genericOpenBuiltin(string id, string builtinId, string format);
 
-    void genericOpenFile(string id, string path, IOMode mode);
+    void genericOpenFile(string id, string path, string format, IOMode mode);
 
-    void genericOpenSocket(string id, Address addr, IOMode handleMode);
+    void genericOpenSocket(string id, Address addr, string format, IOMode handleMode);
 
     void genericClose(Identifier eid, shared_ptr<Endpoint> ep);
 
@@ -446,11 +450,11 @@ namespace K3 {
     //-----------------------
     // IOHandle constructors.
 
-    shared_ptr<IOHandle> openBuiltinHandle(Builtin b, shared_ptr<Codec> codec);
+    shared_ptr<IOHandle> openBuiltinHandle(Builtin b, shared_ptr<FrameCodec> frame);
 
-    shared_ptr<IOHandle> openFileHandle(const string& path, shared_ptr<Codec> codec, IOMode m);
+    shared_ptr<IOHandle> openFileHandle(const string& path, shared_ptr<FrameCodec> frame, IOMode m);
 
-    shared_ptr<IOHandle> openSocketHandle(const Address& addr, shared_ptr<Codec> codec, IOMode m);
+    shared_ptr<IOHandle> openSocketHandle(const Address& addr, shared_ptr<FrameCodec> frame, IOMode m);
   };
 
   template <>

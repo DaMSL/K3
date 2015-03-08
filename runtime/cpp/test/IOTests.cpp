@@ -19,24 +19,24 @@ namespace K3 {
 void do_nothing(const Address&, const Identifier&, shared_ptr<Value>) {}
 
 shared_ptr<FileHandle> createReadFileHandle(string path) {
-  // Setup a K3 Codec 
-  shared_ptr<DelimiterCodec> cdec = shared_ptr<DelimiterCodec>(new DelimiterCodec('\n'));
+  // Setup a K3 Framing
+  shared_ptr<DelimiterFraming> frme = shared_ptr<DelimiterFraming>(new DelimiterFraming('\n'));
   auto x = StreamHandle::Input();
   // Create a file source
   shared_ptr<file_source> fs = shared_ptr<file_source>(new file_source(path));
   // Construct File Handle
-  shared_ptr<FileHandle> f = shared_ptr<FileHandle>(new FileHandle(cdec, fs, x));
+  shared_ptr<FileHandle> f = shared_ptr<FileHandle>(new FileHandle(frme, fs, x));
   return f;
 }
 
 shared_ptr<FileHandle> createWriteFileHandle(string path) {
-  // Setup a K3 Codec 
-  shared_ptr<DelimiterCodec> cdec = shared_ptr<DelimiterCodec>(new DelimiterCodec('\n'));
+  // Setup a K3 Framing
+  shared_ptr<DelimiterFraming> frme = shared_ptr<DelimiterFraming>(new DelimiterFraming('\n'));
   auto x = StreamHandle::Output();
   // Create a file source
-  shared_ptr<file_sink> fs = shared_ptr<file_sink>(new file_sink(path)); 
+  shared_ptr<file_sink> fs = shared_ptr<file_sink>(new file_sink(path));
   // Construct File Handle
-  shared_ptr<FileHandle> f = shared_ptr<FileHandle>(new FileHandle(cdec, fs, x));
+  shared_ptr<FileHandle> f = shared_ptr<FileHandle>(new FileHandle(frme, fs, x));
   return f;
 }
 
@@ -45,15 +45,15 @@ FACT("File handle reads file by line")
 {
   // Define input path
   string path = "in.txt";
-  
+
   // Create a File Handle
   shared_ptr<FileHandle> f = createReadFileHandle(path);
-  
+
   // read from file
-  tuple<int,string> res = readFile<FileHandle>(f);  
+  tuple<int,string> res = readFile<FileHandle>(f);
   string actual = get<1>(res);
   int c = get<0>(res);
-  
+
   // compare results
   string expected = "Testing123";
   Assert.Equal(expected, actual);
@@ -80,10 +80,10 @@ FACT("File handle writes file by line")
   f->close();
   shared_ptr<FileHandle> f2 = createReadFileHandle(path);
 
-  tuple<int,string> res = readFile<FileHandle>(f2);  
+  tuple<int,string> res = readFile<FileHandle>(f2);
   string actual = get<1>(res);
   int c = get<0>(res);
-  
+
   // compare results
   string expected = "Testing123";
   Assert.Equal(expected, actual);
@@ -101,13 +101,13 @@ FACT("Endpoint read file by line. ScalarST Buffer")
   auto buf = make_shared<ScalarEPBufferST>();
   Endpoint:SendFunctionPtr func = do_nothing;
   auto bindings = make_shared<EndpointBindings>(func);
-  
+
   shared_ptr<Endpoint> ep = make_shared<Endpoint>(Endpoint(f, buf, bindings));
 
-  tuple<int,string> res = readFile<Endpoint>(ep);  
+  tuple<int,string> res = readFile<Endpoint>(ep);
   string actual = get<1>(res);
   int c = get<0>(res);
-  
+
   // compare results
   string expected = "Testing123";
   Assert.Equal(expected, actual);
@@ -118,7 +118,7 @@ FACT("Endpoint read file by line. ContainerST Buffer")
 {
   // Define input path
   string path = "in.txt";
-  
+
   // Create FileHandle
   shared_ptr<FileHandle> f = createReadFileHandle(path);
 
@@ -126,13 +126,13 @@ FACT("Endpoint read file by line. ContainerST Buffer")
   auto buf = make_shared<ContainerEPBufferST>(BufferSpec(100,10));
   SendFunctionPtr func = do_nothing;
   auto bindings = make_shared<EndpointBindings>(func);
-  
+
   shared_ptr<Endpoint> ep = make_shared<Endpoint>(Endpoint(f, buf, bindings));
 
-  tuple<int,string> res = readFile<Endpoint>(ep);  
+  tuple<int,string> res = readFile<Endpoint>(ep);
   string actual = get<1>(res);
   int c = get<0>(res);
-  
+
   // compare results
   string expected = "Testing123";
   Assert.Equal(expected, actual);
@@ -150,7 +150,7 @@ FACT("Endpoint write file by line. ScalarEPBufferST")
   auto buf = make_shared<ScalarEPBufferST>();
   Endpoint:SendFunctionPtr func = do_nothing;
   auto bindings = make_shared<EndpointBindings>(func);
-  
+
   shared_ptr<Endpoint> ep = make_shared<Endpoint>(Endpoint(f, buf, bindings));
 
   string s0 = "Testing";
@@ -161,15 +161,15 @@ FACT("Endpoint write file by line. ScalarEPBufferST")
   ep->doWrite(s0);
   ep->doWrite(s1);
   ep->doWrite(s2);
-  ep->doWrite(s3); 
+  ep->doWrite(s3);
   ep->flushBuffer();
   ep->close();
   shared_ptr<FileHandle> f2 = createReadFileHandle(path);
 
-  tuple<int,string> res = readFile<FileHandle>(f2);  
+  tuple<int,string> res = readFile<FileHandle>(f2);
   string actual = get<1>(res);
   int c = get<0>(res);
-  
+
   // compare results
   string expected = "Testing123";
   Assert.Equal(expected, actual);
@@ -187,7 +187,7 @@ FACT("Endpoint write file by line. ContainerEPBufferST")
   auto buf = make_shared<ContainerEPBufferST>(BufferSpec(100,10));
   Endpoint:SendFunctionPtr func = do_nothing;
   auto bindings = make_shared<EndpointBindings>(func);
-  
+
   shared_ptr<Endpoint> ep = make_shared<Endpoint>(Endpoint(f, buf, bindings));
 
   string s0 = "Testing";
@@ -198,7 +198,7 @@ FACT("Endpoint write file by line. ContainerEPBufferST")
   ep->doWrite(s0);
   ep->doWrite(s1);
   ep->doWrite(s2);
-  ep->doWrite(s3); 
+  ep->doWrite(s3);
   ep->flushBuffer();
   // force non-batch flush
   buf->flush(f,
@@ -206,10 +206,10 @@ FACT("Endpoint write file by line. ContainerEPBufferST")
   ep->close();
   shared_ptr<FileHandle> f2 = createReadFileHandle(path);
 
-  tuple<int,string> res = readFile<FileHandle>(f2);  
+  tuple<int,string> res = readFile<FileHandle>(f2);
   string actual = get<1>(res);
   int c = get<0>(res);
-  
+
   // compare results
   string expected = "Testing123";
   Assert.Equal(expected, actual);
