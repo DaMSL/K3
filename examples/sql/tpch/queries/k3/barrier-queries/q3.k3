@@ -94,15 +94,19 @@ trigger lineitem_orders : () = \_ -> (
 
       , lhs_query = [$  // TODO: this currently does not fuse with the group-by in SendPartitionByKey.
                         // We need a nested fusion class structure, i.e., ICond1(DCond2), for this functionality.
+                        let result =
                         ((lineitem.filter  (\l -> l.l_shipdate > "1995-03-15" ))
                                   .groupBy (\l -> l.l_orderkey)
                                            (\acc -> \l -> acc + (l.l_extendedprice * (1 - l.l_discount)))
                                            0.0)
                                   .fold    ((\acc -> \l -> ((acc.insert l); acc)) @:Accumulate)
                                            (empty {key:int, value:real} @Map)
+
+                        in ( ( lineitem = empty lineitem_r @Collection ); result )
                     ]
 
-      , rhs_query = [$ ((orders.filter  (\o -> o.o_orderdate < "1995-03-15" ))
+      , rhs_query = [$ let result =
+	               ((orders.filter  (\o -> o.o_orderdate < "1995-03-15" ))
                                .groupBy (\o -> o.o_orderkey)
                                         (\_ -> \o -> { od : o.o_orderdate
                                                      , ck : o.o_custkey
@@ -110,6 +114,7 @@ trigger lineitem_orders : () = \_ -> (
                                         { od: "", ck: 0, sp: 0 })
                                .fold    ((\acc -> \o -> ((acc.insert o); acc)) @:Accumulate)
                                         (empty {key : int, value : {od:string, ck:int, sp:int}} @Map)
+                      in ( (orders = empty orders_r @Collection); result )
                     ]
 
       , join_key_ty          = [: int ]
@@ -159,7 +164,6 @@ trigger lineitem_orders : () = \_ -> (
       , rhs_clear_expr       = [$ (\_ -> lo_rhs_ht = empty {key:int, value: {od:string, ck:int, sp:int}} @Map) ]
 
       , peer_next            = [$ (lineitem_orders_customer, me) <- () ]
-
       , next                 = [$ () ]
       , coordinator          = [$ master]
       , nodes                = [$ peers]
@@ -211,9 +215,19 @@ declare results: collection {orderkey: int, revenue: real, orderdate: string, sh
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes                = [$ peers ],
-  loadExpr             = [$ ( lineitemFiles.iterate (\e -> lineitemLoaderP e.path lineitem);
-                              ordersFiles.iterate   (\e -> ordersLoaderP   e.path orders);
-                              customerFiles.iterate (\e -> customerLoaderP e.path customer)
+  loadExpr             = [$ ( // Read line counts for each data file
+                              lineitemLineCountFiles.iterate (\e -> lineitemRows = lineitemRows + (lineCountFile e.path));
+                              ordersLineCountFiles.iterate   (\e -> ordersRows = ordersRows + (lineCountFile e.path));
+                              customerLineCountFiles.iterate (\e -> customerRows = customerRows + (lineCountFile e.path));
+
+			      print ("Lineitem rows: " ++ (itos lineitemRows));
+			      print ("Orders rows: " ++ (itos ordersRows));
+			      print ("Customer rows: " ++ (itos customerRows));
+
+                              // Load data using the fixed size loaders which resize the container before loading
+			      lineitemFiles.iterate (\e -> lineitemLoaderPFixedSize e.path lineitem lineitemRows);
+                              ordersFiles.iterate   (\e -> ordersLoaderPFixedSize   e.path orders ordersRows);
+                              customerFiles.iterate (\e -> customerLoaderPFixedSize e.path customer customerRows)
                             ) ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],

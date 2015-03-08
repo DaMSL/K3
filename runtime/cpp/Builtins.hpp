@@ -80,7 +80,7 @@ namespace K3 {
       unit_t heapProfilerStart(const string_impl&);
       unit_t heapProfilerStop(unit_t);
   };
-  
+
   template <class C, class F>
   void read_records_with_resize(int size, std::istream& in, C& container, F read_record) {
     container.getContainer().resize(size);
@@ -253,6 +253,15 @@ namespace K3 {
 
         return unit_t {};
     }
+
+   int lineCountFile(const string_impl& filepath) {
+     std::ifstream _in;
+     _in.open(filepath);
+     std::string tmp_buffer;
+     std::getline(_in, tmp_buffer);
+     return std::atoi(tmp_buffer.c_str());
+
+   }
 
    template <template <class> class C, template <typename ...> class R>
    unit_t loadQ1(string_impl filepath, C<R<int, string_impl>>& c) {

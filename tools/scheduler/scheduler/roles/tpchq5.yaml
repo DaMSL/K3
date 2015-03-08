@@ -1,15 +1,19 @@
 ---
 name: role 1
 peers: 128
-hostmask: ".*hm.*"
+hostmask: ".*hd.*"
 k3_globals:
   role: rows
   master: auto
   profilingEnabled: True
 k3_data:
-  - {var: lineitemFiles, path: /local/data/tpch10g/lineitem, policy: global}
-  - {var: ordersFiles, path: /local/data/tpch10g/orders, policy: global}
-  - {var: customerFiles, path: /local/data/tpch10g/customer, policy: global}
-  - {var: supplierFiles, path: /local/data/tpch10g/supplier, policy: global}
-  - {var: nationFiles, path: /local/data/tpch10g/nation, policy: replicate}
-  - {var: regionFiles, path: /local/data/tpch10g/region, policy: replicate}
+  - {var: lineitemFiles, path: /data/scalability/128/tables/lineitem, policy: global}
+  - {var: ordersFiles, path: /data/scalability/128/tables/orders, policy: global}
+  - {var: customerFiles, path: /data/scalability/128/tables/customer, policy: global}
+  - {var: supplierFiles, path: /data/scalability/128/tables/supplier, policy: global}
+  - {var: nationFiles, path: /data/scalability/128/tables/nation, policy: replicate}
+  - {var: regionFiles, path: /data/scalability/128/tables/region, policy: replicate}
+  - {var: lineitemLineCountFiles, path: /data/scalability/128/linecounts/lineitem, policy: global}
+  - {var: ordersLineCountFiles, path: /data/scalability/128/linecounts/orders, policy: global}
+  - {var: customerLineCountFiles, path: /data/scalability/128/linecounts/customer, policy: global}
+  - {var: supplierLineCountFiles, path: /data/scalability/128/linecounts/supplier, policy: global}

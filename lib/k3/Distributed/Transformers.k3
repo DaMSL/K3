@@ -79,6 +79,7 @@ control DistributedCollectionStatistics [ lbl         : label
 // Enabling profiling will display the total elapsed time for the operator
 
 control DistributedGroupByGeneric [ lbl             : label
+                                  , clear_expr      : expr
                                   , peer_next       : expr
                                   , next            : expr
                                   , merge           : expr
@@ -96,7 +97,7 @@ control DistributedGroupByGeneric [ lbl             : label
         $[nodes].iterate (\p -> ($[lbl]_redistribute, p.addr) <- ())
      +> {
           trigger $[lbl]_redistribute : () = \_ -> (
-            (ignore ( ($.[e].groupBy $.[groupF] $.[aggF] $.[accE])
+           ( (ignore ( ($.[e].groupBy $.[groupF] $.[aggF] $.[accE])
                             .fold  ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
                                    (empty $::[t] @Map)
             )) @PartitionShuffleWithMissing(
@@ -106,6 +107,9 @@ control DistributedGroupByGeneric [ lbl             : label
                 , send_extra_fn = [$ \x -> x]
                 , send_ty       = [: collection $::[t] @ Map ]
                 )
+          );
+          // Done with the input collection, free to clear.
+          $[clear_expr]
           )
 
           trigger $[lbl]_merge : collection $::[t] @Map = (\partials ->
@@ -127,6 +131,7 @@ control DistributedGroupByGeneric [ lbl             : label
 }
 
 control DistributedGroupBy [ lbl             : label
+                           , clear_expr      : expr
                            , peer_next       : expr
                            , next            : expr
                            , merge           : expr
@@ -140,6 +145,7 @@ control DistributedGroupBy [ lbl             : label
      => (ignore ($.[e].groupBy $.[groupF] $.[aggF] $.[accE]))
           @DistributedGroupByGeneric(
               lbl         = lbl
+            , clear_expr  = clear_expr
             , peer_next   = [$ $[peer_next] $[lbl]_result ]
             , next        = next
             , merge       = [$ (\v ->

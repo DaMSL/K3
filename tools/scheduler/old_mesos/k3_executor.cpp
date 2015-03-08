@@ -36,20 +36,6 @@
 using namespace mesos;
 using namespace std;
 
-std::string exec(const char* cmd) {
-    FILE* pipe = popen(cmd, "r");
-    if (!pipe) return "ERROR";
-    char buffer[128];
-    std::string result = "";
-    while(!feof(pipe)) {
-      if(fgets(buffer, 128, pipe) != NULL)
-        result += buffer;
-    }
-    pclose(pipe);
-    return result;
-}
-
-
 class DataFile {
   public:
     string path;
@@ -336,7 +322,6 @@ public:
 
 		thispeer["local_peers"] = YAML::Load(YAML::Dump(local_peers));
 
-	        std::map<string, int> lineCountPerRelation;
 		for (auto it : peerFiles[i])  {
 			auto datavar = it.first;
                         if (thispeer[datavar]) {
@@ -345,28 +330,8 @@ public:
 			for (auto &f : it.second) {
 				Node src;
 				src["path"] = f;
-                                string wcCommand = "wc -l " + f;
-                                string lineCount = exec(wcCommand.c_str());
-				int lines = std::atoi(lineCount.c_str());
-
-				if (lineCountPerRelation.find(datavar) == lineCountPerRelation.end() ) {
-                                  lineCountPerRelation[datavar] = 0;
-				}
-				lineCountPerRelation[datavar] += lines;
-
 				thispeer[datavar].push_back(src);
 			}
-			cout << "num files:" << thispeer[datavar].size() << endl;
- 	                string lineCountVar = datavar + "LineCount";
-	                if (thispeer[lineCountVar]) {
-                         thispeer.remove(lineCountVar);
-		        }
-			cout << "Setting " << lineCountVar << " to " << lineCountPerRelation[datavar] << endl;
-		        thispeer[lineCountVar] = lineCountPerRelation[datavar];
-		}
-		cout << "Line count per relation for peer" << i << "." <<  endl;
-		for (const auto& it : lineCountPerRelation) {
-                  cout << it.first << ": " << it.second << "." << endl;
 		}
 		// ADD DATA SOURCE DIR HERE
 		YAML::Emitter emit;

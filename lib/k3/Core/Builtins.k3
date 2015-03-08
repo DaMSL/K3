@@ -83,6 +83,8 @@ declare openSocket : string -> address -> string -> string -> ()
 // close: channel id -> ()
 declare close : string -> ()
 
+declare lineCountFile: string -> int
+with effects \_ -> io
 //////////////////////////////////
 //
 // Builtins on primitives/values
