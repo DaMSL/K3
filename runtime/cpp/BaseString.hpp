@@ -213,7 +213,7 @@ class base_string {
     if (archive::is_saving::value) {
       len = length();
     }
-    a& len;
+    a& BOOST_SERIALIZATION_NVP(len);
     if (archive::is_loading::value) {
       // Possibly extraneous:
       // Buffer might always be null when loading
@@ -298,5 +298,8 @@ namespace YAML {
     }
   };
 }
+
+// Turn off class information tracking in boost serialization for base_strings.
+BOOST_CLASS_IMPLEMENTATION(K3::base_string, boost::serialization::object_serializable);
 
 #endif

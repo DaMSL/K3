@@ -5,6 +5,7 @@
 
 module Language.K3.Codegen.CPP.Collections where
 
+import Data.Char
 import Data.List (intercalate, partition, sort, isInfixOf)
 
 import Language.K3.Core.Common
@@ -74,15 +75,17 @@ composite name ans = do
               | (b,i) <- zip baseClasses ([1..] :: [Integer])
               ] False []
 
-    let serializeParent p = R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive")
-                          (R.Call
-                              (R.Variable $
-                                R.Specialized [R.Named p]
-                                  (R.Qualified (R.Name "boost") $
-                                    R.Qualified (R.Name "serialization") $ R.Name "base_object"))
-                              [R.Variable $ R.Name "*this"])
+    let serializationName n = R.Qualified (R.Name "boost") $ R.Qualified (R.Name "serialization") n
+    let mkXmlTagName s = map (\c -> if isAlphaNum c || c `elem` ['-','_','.'] then c else '_') s
 
-    let serializeStatements = map serializeParent baseClasses
+    let serializeParent (p, (q, _))
+            = R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive")
+                (R.Call (R.Variable $ serializationName $ R.Name "make_nvp")
+                    [ R.Literal $ R.LString $ mkXmlTagName q
+                    , R.Call (R.Variable $ serializationName $ R.Specialized [R.Named p] $ R.Name "base_object")
+                             [R.Dereference $ R.Variable $ R.Name "this"]])
+
+    let serializeStatements = map serializeParent $ zip baseClasses ras
 
     let serializeFn = R.TemplateDefn [("archive", Nothing)]
                       (R.FunctionDefn (R.Name "serialize")
@@ -98,6 +101,21 @@ composite name ans = do
              (R.ClassDefn (R.Name name) [] (map R.Named baseClasses) methods [] [])
 
     let parent = head baseClasses
+
+    let compactSerializationDefn
+            = R.NamespaceDefn "boost" [ R.NamespaceDefn "serialization" [
+                R.TemplateDefn [("__CONTENT", Nothing)] $
+                R.ClassDefn (R.Name "implementation_level") [selfType] []
+                [ R.TypeDefn (R.Named $ R.Qualified (R.Name "mpl") $ R.Name "integral_c_tag") "tag"
+                , R.TypeDefn (R.Named $ R.Qualified (R.Name "mpl")
+                    $ R.Specialized [R.Named $ R.Name "object_serializable"] $ R.Name "int_") "type"
+                , R.GlobalDefn $ R.Ignore $ R.Call (R.Variable $ R.Name "BOOST_STATIC_CONSTANT")
+                    [ R.Variable $ R.Name "int"
+                    , R.Binary "=" (R.Variable $ R.Name "value")
+                        (R.Variable $ R.Qualified (R.Name "implementation_level") $ R.Qualified (R.Name "type") $ R.Name "value")]
+                ]
+                [] []
+              ]]
 
     let yamlStructDefn = R.NamespaceDefn "YAML"
                          [ R.TemplateDefn [("__CONTENT", Nothing)] $
@@ -142,7 +160,7 @@ composite name ans = do
                              ]
                              [] []
                          ]
-    return [collectionClassDefn, yamlStructDefn, jsonStructDefn]
+    return [collectionClassDefn, compactSerializationDefn, yamlStructDefn, jsonStructDefn]
 
 record :: [Identifier] -> CPPGenM [R.Definition]
 record (sort -> ids) = do
@@ -208,7 +226,8 @@ record (sort -> ids) = do
                      | t <- templateVars
                      ]
 
-    let serializeMember m = R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive") (R.Variable $ R.Name m)
+    let serializeMember m = R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive")
+                              (R.Call (R.Variable $ R.Name "BOOST_SERIALIZATION_NVP") [R.Variable $ R.Name m])
 
     let serializeStatements = map serializeMember ids
 
@@ -228,6 +247,46 @@ record (sort -> ids) = do
             = R.GuardedDefn ("K3_" ++ recordName) $
                 R.TemplateDefn (zip templateVars (repeat Nothing)) $
                  R.ClassDefn (R.Name recordName) [] [] members [] []
+
+    let compactSerializationDefn
+            = R.GuardedDefn ("K3_" ++ recordName ++ "_srimpl_lvl") $ R.NamespaceDefn "boost" [ R.NamespaceDefn "serialization" [
+                R.TemplateDefn (zip templateVars (repeat Nothing)) $
+                R.ClassDefn (R.Name "implementation_level") [recordType] []
+                [ R.TypeDefn (R.Named $ R.Qualified (R.Name "mpl") $ R.Name "integral_c_tag") "tag"
+                , R.TypeDefn (R.Named $ R.Qualified (R.Name "mpl")
+                    $ R.Specialized [R.Named $ R.Name "object_serializable"] $ R.Name "int_") "type"
+                , R.GlobalDefn $ R.Ignore $ R.Call (R.Variable $ R.Name "BOOST_STATIC_CONSTANT")
+                    [ R.Variable $ R.Name "int"
+                    , R.Binary "=" (R.Variable $ R.Name "value")
+                        (R.Variable $ R.Qualified (R.Name "implementation_level") $ R.Qualified (R.Name "type") $ R.Name "value")]
+                ]
+                [] []
+              ]]
+
+    {-
+    let noTrackingDefn
+            = R.GuardedDefn ("K3_" ++ recordName ++ "_srtrck_lvl") $ R.NamespaceDefn "boost" [ R.NamespaceDefn "serialization" [
+                R.TemplateDefn (zip templateVars (repeat Nothing)) $
+                R.ClassDefn (R.Name "tracking_level") [recordType] []
+                [ R.TypeDefn (R.Named $ R.Qualified (R.Name "mpl") $ R.Name "integral_c_tag") "tag"
+                , R.TypeDefn (R.Named $ R.Qualified (R.Name "mpl")
+                    $ R.Specialized [R.Named $ R.Name "track_never"] $ R.Name "int_") "type"
+                , R.GlobalDefn $ R.Ignore $ R.Call (R.Variable $ R.Name "BOOST_STATIC_CONSTANT")
+                    [ R.Variable $ R.Name "int"
+                    , R.Binary "=" (R.Variable $ R.Name "value")
+                        (R.Variable $ R.Qualified (R.Name "tracking_level") $ R.Qualified (R.Name "type") $ R.Name "value")]
+                ]
+                [] []
+              ]]
+
+    let bitwiseSerializableDefn
+            = R.GuardedDefn ("K3_" ++ recordName ++ "_srbitwise") $ R.NamespaceDefn "boost" [ R.NamespaceDefn "serialization" [
+                R.TemplateDefn (zip templateVars (repeat Nothing)) $
+                R.ClassDefn (R.Name "is_bitwise_serializable")
+                [recordType] [R.Named $ R.Qualified (R.Name "mpl") $ R.Name "true_"]
+                [] [] []
+              ]]
+    -}
 
     let hashStructDefn
             = R.GuardedDefn ("K3_" ++ recordName ++ "_hash_value") $ R.TemplateDefn (zip templateVars (repeat Nothing)) $
@@ -325,7 +384,8 @@ record (sort -> ids) = do
                            ))
                             ] [] []
                             ]
-    return [recordStructDefn, jsonStructDefn, yamlStructDefn, hashStructDefn]
+    return [ recordStructDefn, compactSerializationDefn {-, noTrackingDefn, bitwiseSerializableDefn-}
+           , jsonStructDefn, yamlStructDefn, hashStructDefn]
 
 reservedAnnotations :: [Identifier]
 reservedAnnotations = ["Collection", "External", "Seq", "Set", "Sorted", "Map", "Vector", "MultiIndex"]

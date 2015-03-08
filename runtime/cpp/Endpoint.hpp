@@ -231,6 +231,9 @@ namespace K3
         } else if ( codec_->format() == Codec::CodecFormat::CSV ) {
           shared_ptr<CSVCodec> csvcodec = std::dynamic_pointer_cast<CSVCodec, Codec>(codec_);
           result = csvcodec->decode<T>(s);
+        } else if ( codec_->format() == Codec::CodecFormat::K3X ) {
+          shared_ptr<K3XCodec> k3xcodec = std::dynamic_pointer_cast<K3XCodec, Codec>(codec_);
+          result = k3xcodec->decode<T>(s);
         }
         // TODO: JSON, YAML formats.
       }
@@ -248,6 +251,9 @@ namespace K3
         } else if ( codec_->format() == Codec::CodecFormat::CSV ) {
           shared_ptr<CSVCodec> csvcodec = std::dynamic_pointer_cast<CSVCodec, Codec>(codec_);
           return csvcodec->encode<T>(v);
+        } else if ( codec_->format() == Codec::CodecFormat::K3X ) {
+          shared_ptr<K3XCodec> k3xcodec = std::dynamic_pointer_cast<K3XCodec, Codec>(codec_);
+          return k3xcodec->encode<T>(v);
         }
         // TODO: JSON, YAML formats.
       }

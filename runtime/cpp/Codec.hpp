@@ -28,7 +28,7 @@ namespace K3 {
   class Codec : public virtual LogMT {
     public:
       // This enum should be extended as more data formats arise.
-      enum class CodecFormat {K3, K3B, CSV, JSON, YAML};
+      enum class CodecFormat {K3, K3B, K3X, CSV, JSON, YAML};
 
       Codec(CodecFormat f): format_(f), LogMT("Codec") {}
       virtual ~Codec() {}
@@ -341,6 +341,29 @@ namespace K3 {
 
     template<typename T> shared_ptr<T> decode(const string& s) {
       return BoostSerializer::unpack_csv<T>(s);
+    }
+
+    template<typename T> shared_ptr<T> decode(const char *s, size_t sz) {
+      string v(s, sz);
+      return decode<T>(v);
+    }
+  };
+
+  class K3XCodec : public virtual Codec, public virtual LogMT {
+  public:
+    K3XCodec(CodecFormat f): Codec(f), LogMT("K3XCodec") {}
+    virtual ~K3XCodec() {}
+
+    shared_ptr<Codec> freshClone() {
+      return std::dynamic_pointer_cast<Codec, K3XCodec>(make_shared<K3XCodec>(format_));
+    }
+
+    template<typename T> string encode(const T& v) {
+      return BoostSerializer::pack_xml<T>(v);
+    }
+
+    template<typename T> shared_ptr<T> decode(const string& s) {
+      return BoostSerializer::unpack_xml<T>(s);
     }
 
     template<typename T> shared_ptr<T> decode(const char *s, size_t sz) {

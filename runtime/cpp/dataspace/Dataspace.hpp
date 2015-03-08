@@ -455,7 +455,7 @@ class StlDS {
   friend class boost::serialization::access;
   template<class Archive>
   void serialize(Archive &ar, const unsigned int) {
-    ar & container;
+    ar & boost::serialization::make_nvp("__StlDS", container);
   }
 };
 
@@ -487,6 +487,13 @@ class Collection: public VectorDS<K3::Collection, Elem> {
     }
   }
 
+ private:
+  friend class boost::serialization::access;
+  template<class Archive>
+  void serialize(Archive &ar, const unsigned int) {
+    ar &  boost::serialization::make_nvp("__K3Collection",
+            boost::serialization::base_object<VectorDS<Collection, Elem>>(*this));
+  }
 };
 
 // StlDS provides the basic Collection transformers via generic implementations
@@ -768,7 +775,7 @@ class Set {
   friend class boost::serialization::access;
   template<class Archive>
   void serialize(Archive &ar, const unsigned int) {
-    ar & container;
+    ar & boost::serialization::make_nvp("__K3Set", container);
   }
 }; // class Set
 
@@ -799,6 +806,13 @@ class Seq : public ListDS<K3::Seq, Elem> {
     return *it;
   }
 
+ private:
+  friend class boost::serialization::access;
+  template<class Archive>
+  void serialize(Archive &ar, const unsigned int) {
+    ar &  boost::serialization::make_nvp("__K3Seq",
+            boost::serialization::base_object<ListDS<K3::Seq, Elem>>(*this));
+  }
 };
 
 // StlDS provides the basic Collection transformers via generic implementations
@@ -1077,7 +1091,7 @@ class Sorted {
   friend class boost::serialization::access;
   template<class Archive>
   void serialize(Archive &ar, const unsigned int) {
-    ar & container;
+    ar & boost::serialization::make_nvp("__K3Sorted", container);
   }
 }; // Class Sorted
 
@@ -1390,7 +1404,7 @@ class Map {
   friend class boost::serialization::access;
   template<class Archive>
   void serialize(Archive &ar, const unsigned int) {
-    ar & container;
+    ar & boost::serialization::make_nvp("__K3Map", container);
   }
 
 }; // class Map
@@ -1796,12 +1810,73 @@ class MultiIndex {
   friend class boost::serialization::access;
   template<class Archive>
   void serialize(Archive &ar, const unsigned int) {
-    ar & container;
+    ar & boost::serialization::make_nvp("__K3MultiIndex", container);
   }
 
 };
 
 } // Namespace K3
+
+namespace boost {
+  namespace serialization {
+    template <template <typename> class _T0, template<typename...> class _T1, class _T2>
+    class implementation_level<K3::StlDS<_T0, _T1, _T2>> {
+      public:
+        typedef  mpl::integral_c_tag tag;
+        typedef  mpl::int_<object_serializable> type;
+        BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
+    };
+
+    template <class _T0>
+    class implementation_level<K3::Collection<_T0>> {
+      public:
+        typedef  mpl::integral_c_tag tag;
+        typedef  mpl::int_<object_serializable> type;
+        BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
+    };
+
+    template <class _T0>
+    class implementation_level<K3::Set<_T0>> {
+      public:
+        typedef  mpl::integral_c_tag tag;
+        typedef  mpl::int_<object_serializable> type;
+        BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
+    };
+
+    template <class _T0>
+    class implementation_level<K3::Seq<_T0>> {
+      public:
+        typedef  mpl::integral_c_tag tag;
+        typedef  mpl::int_<object_serializable> type;
+        BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
+    };
+
+    template <class _T0>
+    class implementation_level<K3::Sorted<_T0>> {
+      public:
+        typedef  mpl::integral_c_tag tag;
+        typedef  mpl::int_<object_serializable> type;
+        BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
+    };
+
+    template <class _T0>
+    class implementation_level<K3::Map<_T0>> {
+      public:
+        typedef  mpl::integral_c_tag tag;
+        typedef  mpl::int_<object_serializable> type;
+        BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
+    };
+
+    template <class _T0, class... _T1>
+    class implementation_level<K3::MultiIndex<_T0, _T1...>> {
+      public:
+        typedef  mpl::integral_c_tag tag;
+        typedef  mpl::int_<object_serializable> type;
+        BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
+    };
+  }
+}
+
 
 template <class K3Collection>
 std::size_t hash_collection(K3Collection const& b) {

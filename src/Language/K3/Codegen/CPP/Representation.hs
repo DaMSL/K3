@@ -297,6 +297,7 @@ data Definition
     | IncludeDefn Identifier
     | NamespaceDefn Identifier [Definition]
     | TemplateDefn [(Identifier, Maybe Type)] Definition
+    | TypeDefn Type Identifier
   deriving (Eq, Read, Show)
 
 instance Stringifiable Definition where
@@ -311,6 +312,7 @@ instance Stringifiable Definition where
         publics' =  guardNull publics ["public" <> colon, indent 4 (vsep $ map stringify publics)]
         privates' = guardNull protecteds ["protected" <> colon, indent 4 (vsep $ map stringify protecteds)]
         protecteds' = guardNull privates ["private" <> colon, indent 4 (vsep $ map stringify privates)]
+
     stringify (FunctionDefn fn as mrt is c bd) = rt' <> fn' <> as' <> is' <+> c' <+> bd'
       where
         rt' = maybe empty (\rt'' -> stringify rt'' <> space) mrt
@@ -319,12 +321,19 @@ instance Stringifiable Definition where
         is' = if null is then empty else colon <+> commaSep (map stringify is)
         c'  = if c then "const" else ""
         bd' = if null bd then braces empty else hangBrace (vsep $ map stringify bd)
+
     stringify (GlobalDefn s) = stringify s
+
     stringify (GuardedDefn i d)
         = "#ifndef" <+> fromString i <$$> "#define" <+> fromString i <$$> stringify d <$$> "#endif"
+
     stringify (IncludeDefn i) = "#include" <+> dquotes (fromString i)
+
     stringify (NamespaceDefn n ss) = "namespace" <+> fromString n <+> hangBrace (vsep $ map stringify ss)
+
     stringify (TemplateDefn ts d) = "template" <+> angles (commaSep $ map parameterize ts) <$$> stringify d
       where
         parameterize (i, Nothing) = "class" <+> fromString i
         parameterize (i, Just t) = stringify t <+> fromString i
+
+    stringify (TypeDefn t i) = "typedef " <+> stringify t <+> fromString i <> semi
