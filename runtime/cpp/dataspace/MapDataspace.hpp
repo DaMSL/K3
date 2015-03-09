@@ -8,7 +8,7 @@
 
 #include "K3Config.hpp"
 
-#ifdef HAS_LIBDYNAMIC
+#if HAS_LIBDYNAMIC
 
 extern "C" {
 #include <dynamic/mapi.h>
