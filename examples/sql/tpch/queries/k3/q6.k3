@@ -1,6 +1,6 @@
 include "tpch/benchmark.k3"
 
-declare lineitem : lineitem_bag
+declare lineitem : mut lineitem_bag
 declare q6_result : mut real = 0.0
 declare results : collection {revenue: real} @Collection
 
@@ -14,13 +14,17 @@ trigger q6_local : () = \_ -> (
                         and ( r.l_quantity < 24 )
                   )
         ).fold    (\acc -> \r -> (acc + (r.l_extendedprice * r.l_discount))) 0.0
-      )) @:Result) @TPCHBenchmark)
+      )) @:Result) @TPCHBenchmark);
+  lineitem = empty lineitem_r @Collection
 )
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
   nodes                = [$ peers],
   onReadyExpr          = [$ peers.iterate (\x -> (q6_local, x.addr) <- () ) ],
-  loadExpr             = [$ dataFiles.iterate (\e -> lineitemLoaderP e.path lineitem)],
+  loadExpr             = [$ dataLineCountFiles.iterate (\e -> lineitemRows = lineitemRows + (lineCountFile e.path));
+			    print ("Lineitem rows: " ++ (itos lineitemRows));
+                            dataFiles.iterate (\e -> lineitemLoaderPFixedSize e.path lineitem lineitemRows)
+                           ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],
   finishArgT           = [: real],

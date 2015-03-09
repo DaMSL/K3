@@ -23,23 +23,37 @@ control TPCHBenchmarkWithoutMaster
     +> {
       // Generic, single relation dataset
       declare dataFiles : collection {path: string} @Collection
+      declare dataLineCountFiles : collection {path: string} @Collection
 
       // Relation-specific datasets
-      declare lineitemFilesLineCount : int = 0
+      declare lineitemRows : mut int = 0
       declare lineitemFiles : collection {path : string} @Collection
-      declare customerFilesLineCount : int = 0
+      declare lineitemLineCountFiles : collection {path: string} @Collection
+
+      declare customerRows : mut int = 0
       declare customerFiles : collection {path : string} @Collection
-      declare ordersFilesLineCount : int = 0
+      declare customerLineCountFiles : collection {path: string} @Collection
+
+      declare ordersRows : mut int = 0
       declare ordersFiles   : collection {path : string} @Collection
-      declare supplierFilesLineCount: int = 0
+      declare ordersLineCountFiles : collection {path: string} @Collection
+
+      declare supplierRows: mut int = 0
       declare supplierFiles : collection {path : string} @Collection
-      declare partFilesLineCount: int  = 0
+      declare supplierLineCountFiles : collection {path: string} @Collection
+
+      declare partRows: mut int  = 0
       declare partFiles     : collection {path : string} @Collection
-      declare partsuppFilesLineCount: int = 0
+      declare partLineCountFiles : collection {path: string} @Collection
+
+      declare partsuppRows: mut int = 0
       declare partsuppFiles : collection {path : string} @Collection
-      declare nationFilesLineCount: int = 0
+      declare partsuppLineCountFiles : collection {path: string} @Collection
+
+      declare nationRows: mut int = 0
       declare nationFiles   : collection {path : string} @Collection
-      declare regionFilesLineCount: int = 0
+
+      declare regionRows: mut int = 0
       declare regionFiles   : collection {path : string} @Collection
       // Timing for loading
       declare program_start_ts : mut int = 0

@@ -84,6 +84,7 @@ trigger lineitem_having : () = \_ -> (
                             0.0)
   ) @DistributedGroupBy(
       lbl         = [# li_having],
+      clear_expr  = [$ lineitem = empty lineitem_r @Collection ],
       peer_next   = [$ (\result -> (
                           print "LI shuffle done." ;
                           li_having_result = result.filter (\okq -> okq.value > 300)
@@ -108,6 +109,7 @@ trigger lineitem_orders : () = \_ -> (
                           {o_custkey:0, o_orderdate:"", o_totalprice:0.0})
   ) @DistributedGroupByGeneric(
       lbl         = [# lo ],
+      clear_expr  = [$ orders = empty orders_r @Collection ],
       peer_next   = [$ print "LI-OR shuffle done." ],
       next        = [$ (lineitem_orders_customer, me) <- () ],
       merge       = [$ (\o ->
@@ -240,9 +242,19 @@ trigger loc_aggregate : loc_q_by_ncodt_map = \vals -> (
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes                = [$ peers ],
-  loadExpr             = [$ ( lineitemFiles.iterate (\e -> lineitemLoaderP e.path lineitem);
-                              ordersFiles.iterate   (\e -> ordersLoaderP   e.path orders);
-                              customerFiles.iterate (\e -> customerLoaderP e.path customer)
+  loadExpr             = [$ ( // Read line counts for each data file
+                              lineitemLineCountFiles.iterate (\e -> lineitemRows = lineitemRows + (lineCountFile e.path));
+                              ordersLineCountFiles.iterate   (\e -> ordersRows = ordersRows + (lineCountFile e.path));
+                              customerLineCountFiles.iterate (\e -> customerRows = customerRows + (lineCountFile e.path));
+
+			      print ("Lineitem rows: " ++ (itos lineitemRows));
+			      print ("Orders rows: " ++ (itos ordersRows));
+			      print ("Customer rows: " ++ (itos customerRows));
+
+                              // Load data using the fixed size loaders which resize the container before loading
+			      lineitemFiles.iterate (\e -> lineitemLoaderPFixedSize e.path lineitem lineitemRows);
+                              ordersFiles.iterate   (\e -> ordersLoaderPFixedSize   e.path orders ordersRows);
+                              customerFiles.iterate (\e -> customerLoaderPFixedSize e.path customer customerRows)
                             ) ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],

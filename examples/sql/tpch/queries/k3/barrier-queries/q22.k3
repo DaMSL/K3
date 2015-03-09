@@ -99,7 +99,8 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
           , rhs_sample_query     = [$ empty {key: int, value: int} @Map ]
           , frequency_threshold  = [$ 1000.0 ]
 
-          , lhs_query = [$ ((customer.filter  (\c -> case c_valid_phone.lookup
+          , lhs_query = [$ let result =
+                           ((customer.filter  (\c -> case c_valid_phone.lookup
                                                             {key: (slice_string c.c_phone 0 2), value:()}
                                                      of {Some x -> c.c_acctbal > c_avg_acctbal}
                                                         {None -> false}))
@@ -110,11 +111,14 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
                                               {cntrycode: "", c_acctbal: 0.0})
                                      .fold    ((\acc -> \c -> ((acc.insert c); acc)) @:Accumulate)
                                               (empty {key:int, value: {cntrycode: string, c_acctbal: real} } @Map)
+                           in ( (customer = empty customer_r @Collection); result)
                         ]
 
-          , rhs_query = [$ (orders.groupBy (\o -> o.o_custkey) (\_ -> \_ -> ()) ())
+          , rhs_query = [$ let result =
+                           (orders.groupBy (\o -> o.o_custkey) (\_ -> \_ -> ()) ())
                                   .fold    (\acc -> \o -> ((acc.insert o); acc))
                                            (empty {key:int, value: ()} @Map)
+                           in ( (orders = empty orders_r @Collection); result )
                         ]
 
 
@@ -172,8 +176,14 @@ trigger q22_final_peer_barrier : () = \_ -> (
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes                = [$ peers ],
-  loadExpr             = [$ ( ordersFiles.iterate   (\e -> ordersLoaderP   e.path orders);
-                              customerFiles.iterate (\e -> customerLoaderP e.path customer)
+  loadExpr             = [$ ( ordersLineCountFiles.iterate   (\e -> ordersRows = ordersRows + (lineCountFile e.path));
+                              customerLineCountFiles.iterate (\e -> customerRows = customerRows + (lineCountFile e.path));
+
+			      print ("Orders rows: " ++ (itos ordersRows));
+			      print ("Customer rows: " ++ (itos customerRows));
+
+                              ordersFiles.iterate   (\e -> ordersLoaderPFixedSize   e.path orders ordersRows);
+                              customerFiles.iterate (\e -> customerLoaderPFixedSize e.path customer customerRows)
                             ) ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],

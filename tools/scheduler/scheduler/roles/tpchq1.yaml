@@ -1,10 +1,12 @@
 ---
 name: role 1
-peers: 128
-hostmask: ".*hm.*"
+peers: 60
+max_peers_per_host: 4
+hostmask: ".*qp-h.*"
 k3_globals:
   role: rows
   master: auto
   profilingEnabled: True
 k3_data:
-  - {var: dataFiles, path: /local/data/tpch10g/lineitem, policy: global}
+  - {var: dataLineCountFiles, path: /data/scalability/64/linecounts/lineitem, policy: global}
+  - {var: dataFiles, path: /data/scalability/64/tables/lineitem, policy: global}

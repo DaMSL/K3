@@ -1,11 +1,13 @@
 ---
 name: role 1
 peers: 128
-hostmask: ".*hm.*"
+hostmask: ".*hd.*"
 k3_globals:
   role: rows
   master: auto
   profilingEnabled: True
 k3_data:
-  - {var: ordersFiles, path: /local/data/tpch10g/orders, policy: global}
-  - {var: customerFiles, path: /local/data/tpch10g/customer, policy: global}
+  - {var: ordersFiles, path: /data/scalability/128/tables/orders, policy: global}
+  - {var: customerFiles, path: /data/scalability/128/tables/customer, policy: global}
+  - {var: ordersLineCountFiles, path: /data/scalability/128/linecounts/orders, policy: global}
+  - {var: customerLineCountFiles, path: /data/scalability/128/linecounts/customer, policy: global}
