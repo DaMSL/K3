@@ -1137,17 +1137,19 @@ class Map {
       return *this;
     }
 
-
     map_iterator operator ++(int) {
       map_iterator t = *this;
       *this++;
       return t;
     }
 
+    auto operator->() const {
+      return &(i->second);
+    }
+
     auto& operator*() const {
       return i->second;
     }
-
 
     bool operator ==(const map_iterator& other) const {
       return i == other.i;

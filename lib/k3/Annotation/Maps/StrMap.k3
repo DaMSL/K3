@@ -1,5 +1,10 @@
 // Maps are expected to contain only records with fields key and value
-annotation Map given type a,b {
+//
+// This map is implemented with a backend type specialized for string keys
+// While there currently is no type enforcement, it should only be used
+// with key :: string
+//
+annotation StrMap given type a,b {
   provides lifted peek    : () -> option content
     with effects \_ -> R[self]
 
@@ -79,9 +84,3 @@ annotation Map given type a,b {
   provides lifted member: content -> bool
     with effects \elem -> [R[self]; R[elem]]
 }
-
-// Specialized map inclusions.
-
-include "Annotation/Maps/IntMap.k3"
-include "Annotation/Maps/StrMap.k3"
-

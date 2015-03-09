@@ -300,6 +300,7 @@ requiredIncludes = return
                    , "Prettify.hpp"
 
                    , "dataspace/Dataspace.hpp"
+                   , "dataspace/MapDataspace.hpp"
 
                    , "yaml-cpp/yaml.h"
                    ]
