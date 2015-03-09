@@ -234,22 +234,21 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   onReadyExpr          = [$ (lineitem_orders, me) <- ()],
   finishArgT           = [: ()],
   preTestFinishExpr    = [$ (\_ -> ())],
-  preFinishExpr        = [$  () @DistributedCollectionStatistics(
-                                    lbl         = [# q3_skew ],
-                                    query_cl    = [* [% cl: [# loc_skew], ce: [$ lior_epdods_map]]
-                                                  ],
-                                    coordinator = [$ master ],
-                                    nodes       = [$ peers ],
-                                    next        = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ])
-                         ],
-  preShutdownExpr      = [$ q3_peer_result.iterate (\r ->
+  preFinishExpr        = [$ ( q3_peer_result.iterate (\r ->
                                 results.insert { orderkey: r.key.ok
                                                , revenue: r.value
                                                , orderdate: r.key.od
                                                , shippriority: r.key.sp })
+                            );
+                            (() @GatherResultsAsCSV(
+                                    query_cl = [* [% ci: [# results], csink: [$ results_sink]] ]
+                                  , nodes    = [$ peers]
+                                  , next     = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ]) )
                          ],
+  preShutdownExpr      = [$ () ],
   finishAsShutdownExpr = [$ false]
 )
 
+sink results_sink : {orderkey: int, revenue: real, orderdate: string, shippriority: int} = file "results.csv" csv
 source rows : () = value ()
 feed rows |> start

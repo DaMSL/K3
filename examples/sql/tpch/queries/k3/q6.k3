@@ -29,10 +29,11 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
   preReadyExpr         = [$ ()],
   finishArgT           = [: real],
   preTestFinishExpr    = [$ (\x -> q6_result = q6_result + x)],
-  preFinishExpr        = [$ results.insert {revenue: q6_result}; (print ("Result: " ++ (rtos q6_result)))],
+  preFinishExpr        = [$ ( (results_sink, me) <- q6_result ); (peers.iterate (\p -> (shutdown, p.addr) <- () ) )],
   preShutdownExpr      = [$ ()],
-  finishAsShutdownExpr = [$ true]
+  finishAsShutdownExpr = [$ false ]
 )
 
+sink results_sink : real = file "results.csv" csv
 source rows : () = value ()
 feed rows |> start

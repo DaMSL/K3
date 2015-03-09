@@ -261,13 +261,20 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   onReadyExpr          = [$ (lineitem_having, me) <- ()],
   finishArgT           = [: ()],
   preTestFinishExpr    = [$ (\_ -> ())],
-  preFinishExpr        = [$ ()],
-  preShutdownExpr      = [$ (q18_peer_result.iterate(\r ->
+  preFinishExpr        = [$ (q18_peer_result.iterate(\r ->
                               results.insert { name: r.key.nm, custkey: r.key.ck, orderkey: r.key.ok
-                                             , orderdate: r.key.od, totalprice: r.key.tp, sum: r.value} ))
+                                             , orderdate: r.key.od, totalprice: r.key.tp, sum: r.value} )
+                            ); (
+                            () @GatherResultsAsCSV(
+                                    query_cl = [* [% ci: [# results], csink: [$ results_sink]] ]
+                                  , nodes    = [$ peers]
+                                  , next     = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ])
+                            )
                          ],
-  finishAsShutdownExpr = [$ true]
+  preShutdownExpr      = [$ () ],
+  finishAsShutdownExpr = [$ false]
 )
 
+sink results_sink : {name: string, custkey: int, orderkey: int, orderdate:string, totalprice: real, sum: real} = file "results.csv" csv
 source rows : () = value ()
 feed rows |> start
