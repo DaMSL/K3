@@ -119,9 +119,8 @@ namespace K3 {
       if (q) {
         return q->empty();
       }
-      else {
-        fail(a);
-      }
+      fail(a);
+      return false;
     }
 
     template <class Predicate>
@@ -130,9 +129,7 @@ namespace K3 {
       if (q) {
         q->waitForMessage(pred);
       }
-      else {
-        fail(a);
-      }
+      fail(a);
     }
 
     void messageAvail(const Address& a) {
@@ -140,10 +137,7 @@ namespace K3 {
       if (q) {
         q->messageAvail();
       }
-      else {
-        fail(a);
-      }
-
+      fail(a);
     }
 
   protected:
@@ -162,11 +156,9 @@ namespace K3 {
     {
       if (q) {
         q->push(m);
-	q->messageAvail();
+        q->messageAvail();
       }
-      else {
-        fail(m.address());
-      }
+      fail(m.address());
     }
 
     void fail(const Address& a) {
