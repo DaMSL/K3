@@ -107,6 +107,6 @@ trigger start : () = \_ -> (
   )
 )
 
-sink results_sink : q1_result_r = stdout csv
+sink results_sink : q1_result_r = file "results.csv" csv
 source rows : () = value ()
 feed rows |> start

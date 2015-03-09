@@ -110,10 +110,10 @@ namespace K3
     void flushBuffer();
 
     // An endpoint can be read if the handle can be read or the buffer isn't empty.
-    bool hasRead() { return handle_->hasRead() || (buffer_ && !buffer_->empty()); }
+    bool hasRead() { return handle_->hasRead() || (buffer_ ? !buffer_->empty() : false); }
 
     // An endpoint can be written to if the handle can be written to and the buffer isn't full.
-    bool hasWrite() { return handle_->hasWrite() && buffer_ && !buffer_->full(); }
+    bool hasWrite() { return handle_->hasWrite() && (buffer_ ? !buffer_->full() : true ); }
 
     bool do_push(shared_ptr<string> val, shared_ptr<MessageQueues> q, shared_ptr<MessageCodec> frame);
 
