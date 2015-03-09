@@ -325,13 +325,13 @@ reify (RName a) e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EO
 
   let acc = a
 
-  -- let loopInit = [R.Forward $ R.ScalarDecl (R.Name acc) R.Inferred (Just zv)]
+  let loopInit = [R.Assignment (R.Variable $ R.Name acc)  zv]
   let loopBody =
           [ R.Assignment (R.Variable $ R.Name acc) $
               R.Call (R.Call fv [ R.Move (R.Variable $ R.Name acc)]) [R.Variable $ R.Name g]
           ]
   let loop = R.ForEach g (R.Const $ R.Reference $ R.Inferred) cv (R.Block loopBody)
-  return $ ce ++ fe ++ ze ++ loopPragmas ++ [loop]
+  return $ ce ++ fe ++ ze ++ loopInit ++ loopPragmas ++ [loop]
 
 -- TODO: Is this the fix we need for the unnecessary reification issues?
 reify RForget e@(tag -> EOperate OApp) = do
