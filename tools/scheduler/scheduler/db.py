@@ -93,14 +93,21 @@ def insertJob(job):
   conn.commit()
   return jobId, time
 
-
 def getJobs (**kwargs):
   appId = kwargs.get('appId', None)
   jobId = kwargs.get('jobId', None)
-  filter = (";" if not appId and not jobId
-    else (" WHERE appId='%s';" % appId if appId
-      else " WHERE jobId='%s';" % jobId))
+  filter = ("" if not appId and not jobId
+    else (" WHERE appId='%s'" % appId if appId
+      else " WHERE jobId='%s'" % jobId))
   cur = getConnection().cursor()
-  cur.execute("SELECT * from jobs " + filter)
+  cur.execute("SELECT * from jobs " + filter + " ORDER BY jobID DESC;")
   return [dict(jobId=r[0], appId=r[1], hash=r[2], user=r[3], time=r[4], status=r[5]) for r in cur.fetchall()]
 
+def updateJob(jobId, **kwargs):
+  status = kwargs.get("status", None)
+  conn = getConnection()
+  cur = conn.cursor()
+
+  if status:
+    cur.execute("UPDATE jobs SET status = '%s' WHERE jobId='%d';" % (status, jobId))
+    conn.commit()

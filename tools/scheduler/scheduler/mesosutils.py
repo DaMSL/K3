@@ -1,6 +1,11 @@
 # mesosutils: Constructors for Mesos Protocol Buffers
 import yaml
 import re
+import subprocess
+
+from protobuf_to_dict import protobuf_to_dict
+import json
+
 
 import mesos.interface
 from mesos.interface import mesos_pb2
@@ -21,7 +26,7 @@ def populateAutoVars(allPeers):
   for p in allPeers:
     for v in p.variables:
       if p.variables[v] == "auto":
-        p.variables[v] = [allPeers[0].ip, allPeers[0].port] 
+        p.variables[v] = [allPeers[0].ip, allPeers[0].port]
 
 def assignRolesToOffers(nextJob, offers):
 
@@ -35,11 +40,11 @@ def assignRolesToOffers(nextJob, offers):
   for offerId in offers:
     cpusUsedPerOffer[offerId] = 0
     rolesPerOffer[offerId] = []
- 
+
   # Try to satisy each role, sequentially
   # TODO consider constraints, such as hostmask
   for roleId in nextJob.roles:
-    nextJob.roles[roleId].to_string()
+    totalPeersPerRole = nextJob.roles[roleId].peers
     for offerId in offers:
      
       hostmask = nextJob.roles[roleId].hostmask
@@ -57,13 +62,18 @@ def assignRolesToOffers(nextJob, offers):
         # All cpus for this offer have already been used
         continue
 
+      # Accepting this offer
+      print ("Checking offer from %s" % host)
+
       cpusRemainingForOffer = offeredCpus - cpusUsedPerOffer[offerId]
-      cpusToUse = min([cpusRemainingForOffer, nextJob.roles[roleId].peers])
+      cpusToUse = min([cpusRemainingForOffer, totalPeersPerRole])
+
+      totalPeersPerRole -= cpusToUse
      
       cpusUsedPerOffer[offerId] += cpusToUse
       rolesPerOffer[offerId].append((roleId, cpusToUse))
       cpusUsedPerRole[roleId] += cpusToUse
-   
+
       if cpusUsedPerRole[roleId] == nextJob.roles[roleId].peers:
         # All peers for this role have been assigned
         break     
@@ -72,7 +82,6 @@ def assignRolesToOffers(nextJob, offers):
 
   # Check if all roles were satisfied
   for roleId in nextJob.roles:
-    nextJob.roles[roleId].to_string()
     if cpusUsedPerRole[roleId] != nextJob.roles[roleId].peers:
       debug = (roleId, cpusUsedPerRole[roleId], nextJob.roles[roleId].peers)
       print("Failed to satisfy role %s. Used %d cpus out of %d peers" % debug)
@@ -80,7 +89,7 @@ def assignRolesToOffers(nextJob, offers):
 
   return (cpusUsedPerRole, cpusUsedPerOffer, rolesPerOffer)
 
-def executorInfo(k3task, jobid, binary_url):
+def executorInfo(k3task, jobid, binary_url, volumes=[]):
 
   # Create the Executor
   executor = mesos_pb2.ExecutorInfo()
@@ -112,35 +121,42 @@ def executorInfo(k3task, jobid, binary_url):
   container = mesos_pb2.ContainerInfo()
   container.type = container.DOCKER
   container.docker.MergeFrom(docker)
- 
-  volume = container.volumes.add()
-  volume.container_path = '/local/data'
-  volume.host_path = '/local/data'
-  volume.mode = volume.RO
+
+  for v in volumes:
+    volume = container.volumes.add()
+    volume.container_path = v['container']
+    volume.host_path = v['host']
+#    volume.mode = volume.RW if v['RW'] else volume.RW
+    volume.mode = volume.RW
+    print ("MAPPING:  host:  %s to container: %s" % (v['host'], v['container']))
 
   executor.container.MergeFrom(container)
        
   return executor
 
-def taskInfo(k3task, jobId, slaveId, binary_url, all_peers, inputs):
+# def taskInfo(k3task, jobId, slaveId, binary_url, all_peers, inputs, volumes):
+def taskInfo(k3job, k3task, slaveId):
   task_data = {}
   # TODO fix this hack
-  task_data["binary"] = binary_url.split("/")[-1].strip()
-  task_data["totalPeers"] = len(all_peers)
+  task_data["binary"] = k3job.appId
+  task_data["totalPeers"] = len(k3job.all_peers)
   task_data["peerStart"] = k3task.peers[0].index
   task_data["peerEnd"] = k3task.peers[-1].index
   task_data["me"] = [ [p.ip, p.port] for p in k3task.peers]
-  task_data["peers"] = [ {"addr": [p.ip, p.port] } for p in all_peers]
-  task_data["globals"] = [p.variables for p in k3task.peers] 
-  task_data["master"] = [ all_peers[0].ip, all_peers[0].port ]
-  task_data["data"] = [ inputs for p in range(len(k3task.peers)) ]
+  task_data["peers"] = [ {"addr": [p.ip, p.port] } for p in k3job.all_peers]
+  task_data["globals"] = [p.variables for p in k3task.peers]
+  task_data["master"] = [ k3job.all_peers[0].ip, k3job.all_peers[0].port ]
+  task_data["data"] = [ k3job.inputs for p in range(len(k3task.peers)) ]
 
-  executor = executorInfo(k3task, jobId, binary_url)
+  executor = executorInfo(k3task, k3job.jobId, k3job.binary_url, k3job.volumes)
+
+  ed = protobuf_to_dict(executor)
+  print json.dumps(ed, indent=4)
  
   task = mesos_pb2.TaskInfo()
-  task.task_id.value = k3task.getId(jobId)
+  task.task_id.value = k3task.getId(k3job.jobId)
   task.slave_id.value = slaveId.value
-  task.name = str(jobId) + "@" + k3task.host
+  task.name = str(k3job.jobId) + "@" + k3task.host
   task.executor.MergeFrom(executor)
   task.data = yaml.dump(task_data)
  
@@ -156,3 +172,28 @@ def taskInfo(k3task, jobId, slaveId, binary_url, all_peers, inputs):
 
   return task   
 
+
+
+# Helper that uses 'mesos-resolve' to resolve a master IP:port from
+# one of:
+#     zk://host1:port1,host2:port2,.../path
+#     zk://username:password@host1:port1,host2:port2,.../path
+#     file://path/to/file (where file contains one of the above)
+def resolve(master):
+
+    process = subprocess.Popen(
+        ['mesos-resolve', master],
+        stdin=None,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        shell=False)
+
+    status = process.wait()
+    if status != 0:
+        raise Exception('Failed to execute \'mesos-resolve %s\':\n%s'
+                        % (master, process.stderr.read()))
+
+    result = process.stdout.read()
+    process.stdout.close()
+    process.stderr.close()
+    return result

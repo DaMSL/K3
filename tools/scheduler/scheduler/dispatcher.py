@@ -8,6 +8,10 @@ from collections import deque
 from core import *
 from mesosutils import *
 from opts import *
+import db
+
+from protobuf_to_dict import protobuf_to_dict
+import json
 
 import mesos.interface
 from mesos.interface import mesos_pb2
@@ -66,18 +70,23 @@ class Dispatcher(mesos.interface.Scheduler):
 
     self.daemon = daemon       # Run as a daemon (or finish when there are no more pending/active jobs)
     self.terminate = False     # Flag to signal termination to the owner of the dispatcher
+    self.frameworkId = None    # Will get updated when registering with Master
  
   def submit(self, job):
-    print ("Received new Job ID #%d", job.appId)
+    print ("Received new Job for Application %s, Job ID= %d" % (job.appId, job.jobId))
     self.pending.append(job)
 
 
+  def getActiveJobs(self):
+    return self.active
 
+  def getFinishedJobs(self):
+    return self.finished
   # Use the next available jobId and then generate a fresh one.
-  def genJobId(self):
-    x = self.jobsCreated
-    self.jobsCreated = x + 1
-    return x
+  # def genJobId(self):
+  #   x = self.jobsCreated
+  #   self.jobsCreated = x + 1
+  #   return x
 
   def fullId(self, jobId, taskId):
     return "%d.%d" % (jobId, taskId)
@@ -125,12 +134,15 @@ class Dispatcher(mesos.interface.Scheduler):
     nextJob.tasks = []
     allPeers = []
 
+
     # Succesful. Accept any used offers. Build tasks, etc.
     for offerId in self.offers:
       if cpusUsedPerOffer[offerId] > 0:
         host = self.offers[offerId].hostname.encode('ascii','ignore')
         debug = (host, str(rolesPerOffer[offerId]))
         print("Accepted Roles for offer on %s: %s" % debug)
+        if len(allPeers) == 0:
+          nextJob.master = offerId
 
         peers = []
         for (roleId, n) in rolesPerOffer[offerId]:
@@ -146,31 +158,45 @@ class Dispatcher(mesos.interface.Scheduler):
         mem = getResource(self.offers[offerId].resources, "mem", float)
         t = Task(taskid, offerId, host, mem, peers)
         nextJob.tasks.append(t)
- 
+
+    # ID Master for collection Stdout TODO: Should we auto-default to offer 0 for stdout?
     populateAutoVars(allPeers)
     nextJob.all_peers = allPeers
     self.pending.popleft()
     return nextJob
 
   def launchJob(self, nextJob, driver):
-    jobId = self.genJobId()
-    print("Launching job %d" % jobId)
-    self.active[jobId] = nextJob
+    #jobId = self.genJobId()
+    print("Launching job %d" % nextJob.jobId)
+    self.active[nextJob.jobId] = nextJob
+    self.jobsCreated += 1
     nextJob.status = "RUNNING"
+    db.updateJob(nextJob.jobId, status=nextJob.status)
     # Build Mesos TaskInfo Protobufs for each k3 task and launch them through the driver
     for k3task in nextJob.tasks:
-      task = taskInfo(k3task, jobId, self.offers[k3task.offerid].slave_id, nextJob.binary_url, nextJob.all_peers, nextJob.inputs)
-     
+
+      # TODO: Fix hack & send nextJob to build taskInfo
+      # task = taskInfo(k3task, nextJob.appId, nextJob.jobId,
+      #                 self.offers[k3task.offerid].slave_id,
+      #                 nextJob.binary_url, nextJob.all_peers, nextJob.inputs)
+      task = taskInfo(nextJob, k3task, self.offers[k3task.offerid].slave_id)
+
+
+      td = protobuf_to_dict(task)
+      print "TASK FOLLOWS"
+      print json.dumps(td, indent=4)
+
       oid = mesos_pb2.OfferID()
       oid.value = k3task.offerid
       driver.launchTasks(oid, [task])
       # Stop considering the offer, since we just used it.
       del self.offers[k3task.offerid]
 
-  def cancelJob(self, jobId):
+  def cancelJob(self, jobId, driver):
     print("Asked to cancel job %d. Killing all tasks" % jobId)
     job = self.active[jobId]
     job.status = "FAILED"
+    db.updateJob(jobId, status=job.status)
     for t in job.tasks:
       t.status = "TASK_FAILED"
       fullid = self.fullId(jobId, t.taskid)
@@ -179,10 +205,17 @@ class Dispatcher(mesos.interface.Scheduler):
       driver.killTask(tid)
     del self.active[jobId]
     self.finished[jobId] = job
-
     self.tryTerminate()
-   
-     
+
+  def getSandboxURL(self, jobId):
+
+    # For now, return Mesos URL to Framework:
+    master = resolve(MASTER).strip()
+    print master
+    print self.frameworkId.value
+    url = os.path.join('http://', master, "#/frameworks", self.frameworkId.value)
+    return url
+
 
   def taskFinished(self, fullid):
     jobId = self.jobId(fullid)
@@ -200,6 +233,7 @@ class Dispatcher(mesos.interface.Scheduler):
       # TODO Move the job to a finished job list
       job = self.active[jobId]
       job.status = "FINISHED"
+      db.updateJob(jobId, status=job.status)
       del self.active[jobId]
       self.finished[jobId] = job
       self.tryTerminate()
@@ -207,12 +241,13 @@ class Dispatcher(mesos.interface.Scheduler):
   # --- Mesos Callbacks ---
   def registered(self, driver, frameworkId, masterInfo):
     print("Registered with framework ID %s" % frameworkId.value)
+    self.frameworkId = frameworkId
 
   def statusUpdate(self, driver, update):
     s = update.task_id.value.encode('ascii','ignore')
     jobId = self.jobId(update.task_id.value)
     if jobId not in self.active:
-      print("Receieved a status update for an old job: %d" % jobId)
+      print("Received a status update for an old job: %d" % jobId)
       return
 
     k3task = self.getTask(s)
@@ -223,7 +258,7 @@ class Dispatcher(mesos.interface.Scheduler):
        task_state[update.state] == "TASK_FAILED" or \
        task_state[update.state] == "TASK_LOST":
          jobId = self.jobId(update.task_id.value)
-         self.cancelJob(jobId)
+         self.cancelJob(jobId, driver)
 
     if task_state[update.state] == "TASK_FINISHED":
       self.taskFinished(update.task_id.value)
@@ -235,8 +270,7 @@ class Dispatcher(mesos.interface.Scheduler):
   # If there is a pending job, add all offers to self.offers
   # Then see if pending jobs can be launched with the offers accumulated so far
   def resourceOffers(self, driver, offers):
-    print("[RESOURCE OFFER] Got %d resource offers" % len(offers))
-    print("   There are currently %d jobs in the queue" % len(self.pending))
+    print("[RESOURCE OFFER] Got %d resource offers. %d jobs in the queue" % (len(offers), len(self.pending)))
 
     if len(self.pending) == 0:
       for offer in offers:
@@ -244,9 +278,7 @@ class Dispatcher(mesos.interface.Scheduler):
     else:
       for offer in offers:
         self.offers[offer.id.value] = offer
-      print("Adding %d offers to offer dict" % len(offers))
       while len(self.pending) > 0:
-        print ("Trying to dispatch job with %d offers" % len(self.offers))
         nextJob = self.prepareNextJob()
         if nextJob != None:
           self.launchJob(nextJob, driver)

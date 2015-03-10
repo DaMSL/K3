@@ -7,11 +7,13 @@ import tarfile
 
 # TODO inputs per Roles instead of per Job
 class Role:
-  def __init__(self, peers = 0, variables = {}, inputs = {}, hostmask = r".*"):
+  def __init__(self, peers = 0, variables = {}, volumes = [], hostmask = r".*"):
     self.peers = peers
     self.variables = variables
-    #self.inputs = inputs
     self.hostmask = hostmask
+
+    # This is a placeholder -- for now
+    self.volumes = volumes
 
   def to_string(self):
     print ("  ROLE ")
@@ -45,13 +47,16 @@ class Job:
   def __init__(self, **kwargs):
     self.archive    = kwargs.get("archive", None)
     self.binary_url = kwargs.get("binary", None)
-    self.appId      = kwargs.get("appId", '2222')   #TODO: AppId system
+    self.appId      = kwargs.get("appId", 'None')   #TODO: AppId system
+    self.jobId      = kwargs.get("jobId", '1000')   #TODO: AppId system
     roleFile        = kwargs.get("rolefile", None)
     self.roles      = {}
     self.inputs     = []
+    self.volumes    = []
     self.tasks      = None
     self.status     = None
     self.all_peers  = None
+    self.master     = None
 
     if self.archive == None and self.binary_url == None:
       print ("No Archive or Binary found")
@@ -121,13 +126,34 @@ class Job:
       else:
         print("Warning. No k3_globals found in YAML file")
 
+
+      volumes = [] if not doc['volumes'] else doc['volumes']
+      self.volumes = volumes
+
+      if doc['k3_data']:
+        self.inputs = doc['k3_data']
+
+
       mask = r".*"
       if "hostmask" in doc:
         mask = doc['hostmask']
 
-      if "k3_data" in doc:
-        self.inputs = doc['k3_data']
 
-      r = Role(peers, variables, hostmask=mask)
+      r = Role(peers, variables, hostmask=mask, volumes=volumes)
       self.roles[name] = r
+
+
+  # def createTaskData (self, taskId):
+  #   task_data = {}
+  #   # TODO fix this hack
+  #   task_data["binary"] = self.appId
+  #   task_data["totalPeers"] = len(self.all_peers)
+  #   task_data["peerStart"] = self.tasks[taskId].peers[0].index
+  #   task_data["peerEnd"] = self.tasks[taskId].peers[-1].index
+  #   task_data["me"] = [ [p.ip, p.port] for p in self.tasks[taskId].peers]
+  #   task_data["peers"] = [ {"addr": [p.ip, p.port] } for p in self.all_peers]
+  #   task_data["globals"] = [p.variables for p in self.tasks[taskId].peers]
+  #   task_data["master"] = [ self.all_peers[0].ip, self.all_peers[0].port ]
+  #   task_data["data"] = [ inputs for p in range(len(self.tasks[taskId].peers)) ]
+  #   return task_data
 

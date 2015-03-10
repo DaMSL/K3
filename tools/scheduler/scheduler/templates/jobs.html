@@ -4,18 +4,39 @@
   <div class="container">
     <div class="starter-template">
         {% if appId %}
-      <h2>Jobs for <span class="text-info">{{appId}}</span></h2>
+          <h2>Application: <span class="text-info">{{appId}}</span>
+          {% if jobId %}
+           - Job: <span class="text-info">{{jobId}}</span>
+          {% endif %}
+          </h2>
         {% endif %}
         {% if lastjob %}
-            <h2>Job # {{ lastjob.jobId }} submitted at {{ lastjob.time }}</h2>
+            <h3>Job # {{ lastjob.jobId }} {{ lastjob.status }} at {{ lastjob.time }}</h3>
+            <h4>Check tasks on <a href="{{ lastjob.url }}">Mesos</a></h4>
+            <h4><a href="/jobs">return to jobs</a></h4>
         {% else %}
-            <h2>Active/Inactive K3 Jobs</h2>
-        <table class="table table-striped">
+          <h3>Active K3 Jobs</h3>
+          <table class="table table-striped">
           {% for job in joblist %}
+            {% if job.status == "SUBMITTED" or job.status == "RUNNING" %}
+            <tr><td><a href="/jobs/{{job.appId}}/{{job.jobId}}">{{job.jobId}}</a></td>
+                <td>{{job.appId}}</td><td>{{job.user}}</td><td>{{job.time}}</td><td>{{job.status}}</td>
+                <td><a href="/jobs/{{job.appId}}/{{job.jobId}}/kill">
+                    <button class="btn btn-danger btn-sm">Kill</button></a></td>
+            </tr>
+            {% endif %}
+          {% endfor %}
+          </table>
+          <h3>Inactive K3 Jobs</h3>
+          <table class="table table-striped">
+          {% for job in joblist %}
+            {% if job.status != "SUBMITTED" and job.status != "RUNNING" %}
             <tr><td><a href="/jobs/{{job.appId}}/{{job.jobId}}">{{job.jobId}}</a></td>
                 <td>{{job.appId}}</td><td>{{job.user}}</td><td>{{job.time}}</td><td>{{job.status}}</td></tr>
+            {% endif %}
           {% endfor %}
         </table>
+
         {% endif %}
     </div>
   </div>

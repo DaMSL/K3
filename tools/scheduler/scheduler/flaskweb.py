@@ -3,6 +3,7 @@ import threading
 import yaml
 import json
 import hashlib
+import datetime
 from flask import (Flask, request, redirect, url_for, jsonify, render_template)
 from flask.ext.uploads import delete, init, save, Upload
 from werkzeug import secure_filename
@@ -89,9 +90,6 @@ def trace():
     output['data'] = request.args
     return jsonify(output)
   else:
-    print (dispatcher.active)
-    print (dispatcher.finished)
-    print (dispatcher.offers)
     output = dict(active=dispatcher.active.__dict__,
                   finished=dispatcher.finished.__dict__,
                   offers=dispatcher.offers.__dict__)
@@ -175,7 +173,7 @@ def create_job(appId):
 
         # Check for valid submission
         if not file and not text:
-          return "Error on job submission"
+          return render_template("errors/404.html", message="Invalid job request")
 
         # Post new job request, get job ID & submit time
         thisjob = dict(appId=appId, hash=thisapp['hash'], user='DEV')
@@ -190,16 +188,16 @@ def create_job(appId):
         if file:
             file.save(os.path.join(path, filename))
         else:
-            file = open(os.path.join(path, filename), 'w')
-            file.write(text)
-            file.close()
+            with open(os.path.join(path, filename), 'w') as file:
+              file.write(text)
 
         # Create new Mesos K3 Job
         newJob = Job(binary=os.path.join(webapp.config['UPLOADED_APPS_URL'], appId),
-                     appId=jobId, rolefile=os.path.join(path, filename))
-
+                     appId=appId, jobId=jobId, rolefile=os.path.join(path, filename))
+        print ("NEW JOB ID: %s" % newJob.jobId)
         # Submit to Mesos
         dispatcher.submit(newJob)
+        thisjob = dict(thisjob, url=dispatcher.getSandboxURL(jobId), status='SUBMITTED')
         return render_template('jobs.html', appId=appId, lastjob=thisjob)
     elif request.method == 'GET':
       jobs = db.getJobs(appId=appId)
@@ -218,14 +216,113 @@ def create_job(appId):
 #         GET     (TODO: Display detailed job info)
 #         DELETE  (TODO: Kill a current K3Job)
 #------------------------------------------------------------------------------
-@webapp.route('/jobs/<appId>/<jobId>', methods=['GET'])
+@webapp.route('/jobs/<appId>/<jobId>', methods=['GET', 'POST'])
 def get_job(appId, jobId):
-    jobs = db.getJobs(appId=appId)
-    if 'application/json' in request.headers['Accept']:
-      return jsonify(jobs)
+    jobs = db.getJobs(appId=appId, jobId=jobId)
+    for j in jobs:
+      print j
+    print [j['jobId'] for j in jobs]
+    if int(jobId) not in [j['jobId'] for j in jobs]:
+      return render_template("errors/404.html", message="Job ID, %s, does not exist" % jobId)
     else:
-      return render_template("jobs.html", appId=appId, joblist=jobs)
+      if 'application/json' in request.headers['Accept']:
+        return jsonify(jobs)
+      else:
+        return render_template("jobs.html", appId=appId, joblist=jobs)
 
+
+#------------------------------------------------------------------------------
+#  /jobs/<appId>/<jobId>/stdout - Job Interface for specific job
+#         GET     Reads STDOUT for current job
+#         POST    TODO: Consolidate STDOUT & append here (if desired....)
+#------------------------------------------------------------------------------
+@webapp.route('/jobs/<appId>/<jobId>/stdout', methods=['GET'])
+def stdout(appId, jobId):
+    jobs = db.getJobs(appId=appId)
+    # for j in jobs:
+    #   json.dumps(j, indent=4)
+    # if int(jobId) not in [j['jobId'] for j in jobs]:
+    #   return render_template("errors/404.html", message="Job ID, %s, does not exist" % jobId)
+    # elif jobId not in dispatcher.active:
+    #   return render_template("errors/404.html", message="Job ID, %s, not currently running" % jobId)
+    # else:
+    link = resolve(MASTER)
+    print link
+    sandbox = dispatcher.getSandboxURL(jobId)
+    if sandbox:
+      print sandbox
+      return '<a href="%s">%s</a>' % (sandbox, sandbox)
+    else:
+      return 'test'
+
+
+
+#------------------------------------------------------------------------------
+#  /jobs/<appId>/<jobId>/kil - Job Interface to cancel a job
+#         GET     Reads STDOUT for current job
+#         POST    TODO: Consolidate STDOUT & append here (if desired....)
+#------------------------------------------------------------------------------
+@webapp.route('/jobs/<appId>/<jobId>/kill', methods=['GET'])
+def kill_job(appId, jobId):
+    jobs = db.getJobs(appId=appId)
+    if int(jobId) not in [j['jobId'] for j in jobs]:
+      return render_template("errors/404.html", message="Job ID, %s, does not exist" % jobId)
+    elif jobId not in dispatcher.active:
+      return render_template("errors/404.html", message="Job ID, %s, not currently running" % jobId)
+    else:
+      ts = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+      thisjob = dict(jobId=jobId, time=ts, url=dispatcher.getSandboxURL(jobId), status='KILLED')
+      dispatcher.cancelJob(jobId, driver)
+      if 'application/json' in request.headers['Accept']:
+        return jsonify(thisjob)
+      else:
+        return render_template("jobs.html", appId=appId, lastjob=thisjob)
+
+
+
+
+
+
+
+#------------------------------------------------------------------------------
+#  /compile
+#         GET     Form for compiling new K3 Executable OR status of compiling tasks
+#         POST    Submit new K3 Compile task
+#------------------------------------------------------------------------------
+@webapp.route('/compile', methods=['GET', 'POST'])
+def compile(name):
+    apps = db.getAllApps()
+    if request.method == 'POST':
+        # TODO: Get user
+        file = request.files['file']
+        text = request.form['text']
+
+        # Check for valid submission
+        if not file and not text:
+          return render_template("errors/404.html", message="Invalid job request")
+
+        # Save K3 source to file (either from file or text input)
+        path = os.path.join(webapp.config['UPLOADED_APPS_DEST'], appId, str(jobId))
+        filename = ('%s.k3' % name)
+        if not os.path.exists(path):
+          os.mkdir(path)
+        if file:
+            file.save(os.path.join(path, filename))
+        else:
+            file = open(os.path.join(path, filename), 'w')
+            file.write(text)
+            file.close()
+
+        # TODO: Create new Mesos K3 Compile Task
+
+        # Submit to Mesos
+#        dispatcher.compile(compileTask)
+        return render_template('jobs.html', appId=appId, lastjob=thisjob)
+    else:
+      if 'application/json' in request.headers['Accept']:
+        return "POST a message to compile a new K3 program."
+      else:
+        return render_template("jobs.html", appId=appId, joblist=jobs)
 
 
 
