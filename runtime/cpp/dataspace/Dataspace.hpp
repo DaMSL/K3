@@ -492,7 +492,7 @@ class Collection: public VectorDS<K3::Collection, Elem> {
   template<class Archive>
   void serialize(Archive &ar, const unsigned int) {
     ar &  boost::serialization::make_nvp("__K3Collection",
-            boost::serialization::base_object<VectorDS<Collection, Elem>>(*this));
+            boost::serialization::base_object<VectorDS<K3::Collection, Elem>>(*this));
   }
 };
 

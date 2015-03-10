@@ -190,10 +190,16 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   onReadyExpr          = [$ (customer_subagg, me) <- ()],
   finishArgT           = [: ()],
   preTestFinishExpr    = [$ (\_ -> ())],
-  preFinishExpr        = [$ ()],
-  preShutdownExpr      = [$ (q22_result.iterate (\r -> results.insert {cntrycode: r.key, numcust: r.value.nc, totacctbal: r.value.tab} ))],
-  finishAsShutdownExpr = [$ true]
+  preFinishExpr        = [$ (q22_result.iterate (\r -> results.insert {cntrycode: r.key, numcust: r.value.nc, totacctbal: r.value.tab} ));
+                            () @GatherResultsAsCSV(
+                                    query_cl = [* [% ci: [# results], csink: [$ results_sink]] ]
+                                  , nodes    = [$ peers]
+                                  , next     = [$ peers.iterate (\p -> (shutdown, p.addr) <- ())])
+                         ],
+  preShutdownExpr      = [$ () ],
+  finishAsShutdownExpr = [$ false]
 )
 
+sink results_sink : { cntrycode: string, numcust: int, totacctbal: real} = file "results.csv" csv
 source rows : () = value ()
 feed rows |> start
