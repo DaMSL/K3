@@ -201,11 +201,41 @@ inline e@(tag &&& children -> (ELambda arg, [body])) = do
     return ([], R.Lambda captures [(arg, argMtrlznType)] True Nothing body')
 
 inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [Fold c, f])), z])) = do
-  k <- genSym
-  ct <- getKType e
-  decl <- cDecl ct k
-  effects <- reify (RName k) e
-  return (decl ++ effects, R.Variable $ R.Name k)
+  (ce, cv) <- inline c
+  (fe, fv) <- inline f
+  (ze, zv) <- inline z
+
+  let isVectorizeProp  = \case { EProperty (ePropertyName -> "Vectorize")  -> True; _ -> False }
+  let isInterleaveProp = \case { EProperty (ePropertyName -> "Interleave") -> True; _ -> False }
+
+  let vectorizePragma = case e @~ isVectorizeProp of
+                          Nothing -> []
+                          Just (EProperty (ePropertyValue -> Nothing)) -> [R.Pragma "clang vectorize(enable)"]
+                          Just (EProperty (ePropertyValue -> Just (tag -> LInt i))) ->
+                              [ R.Pragma "clang loop vectorize(enable)"
+                              , R.Pragma $ "clang loop vectorize_width(" ++ show i ++ ")"
+                              ]
+
+  let interleavePragma = case e @~ isInterleaveProp of
+                           Nothing -> []
+                           Just (EProperty (ePropertyValue -> Nothing)) -> [R.Pragma "clang interleave(enable)"]
+                           Just (EProperty (ePropertyValue -> Just (tag -> LInt i))) ->
+                               [ R.Pragma "clang loop interleave(enable)"
+                               , R.Pragma $ "clang loop interleave_count(" ++ show i ++ ")"
+                               ]
+
+  let loopPragmas = concat [vectorizePragma, interleavePragma]
+
+  g <- genSym
+  acc <- genSym
+
+  let loopInit = [R.Forward $ R.ScalarDecl (R.Name acc) R.Inferred (Just zv)]
+  let loopBody =
+          [ R.Assignment (R.Variable $ R.Name acc) $
+              R.Call (R.Call fv [ R.Move (R.Variable $ R.Name acc)]) [R.Variable $ R.Name g]
+          ]
+  let loop = R.ForEach g (R.Const $ R.Reference $ R.Inferred) cv (R.Block loopBody)
+  return (ce ++ fe ++ ze ++ loopInit ++ loopPragmas ++ [loop], R.Move $ R.Variable $ R.Name acc)
 
 inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
     -- Inline both function and argument for call.
@@ -294,44 +324,6 @@ inline e = do
 -- | The generic function to generate code for an expression whose result is to be reified. The
 -- method of reification is indicated by the @RContext@ argument.
 reify :: RContext -> K3 Expression -> CPPGenM [R.Statement]
-
-reify (RName a) e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [Fold c, f])), z])) = do
-  (ce, cv) <- inline c
-  (fe, fv) <- inline f
-  (ze, zv) <- inline z
-
-  let isVectorizeProp  = \case { EProperty (ePropertyName -> "Vectorize")  -> True; _ -> False }
-  let isInterleaveProp = \case { EProperty (ePropertyName -> "Interleave") -> True; _ -> False }
-
-  let vectorizePragma = case e @~ isVectorizeProp of
-                          Nothing -> []
-                          Just (EProperty (ePropertyValue -> Nothing)) -> [R.Pragma "clang vectorize(enable)"]
-                          Just (EProperty (ePropertyValue -> Just (tag -> LInt i))) ->
-                              [ R.Pragma "clang loop vectorize(enable)"
-                              , R.Pragma $ "clang loop vectorize_width(" ++ show i ++ ")"
-                              ]
-
-  let interleavePragma = case e @~ isInterleaveProp of
-                           Nothing -> []
-                           Just (EProperty (ePropertyValue -> Nothing)) -> [R.Pragma "clang interleave(enable)"]
-                           Just (EProperty (ePropertyValue -> Just (tag -> LInt i))) ->
-                               [ R.Pragma "clang loop interleave(enable)"
-                               , R.Pragma $ "clang loop interleave_count(" ++ show i ++ ")"
-                               ]
-
-  let loopPragmas = concat [vectorizePragma, interleavePragma]
-
-  g <- genSym
-
-  let acc = a
-
-  let loopInit = [R.Assignment (R.Variable $ R.Name acc)  zv]
-  let loopBody =
-          [ R.Assignment (R.Variable $ R.Name acc) $
-              R.Call (R.Call fv [ R.Move (R.Variable $ R.Name acc)]) [R.Variable $ R.Name g]
-          ]
-  let loop = R.ForEach g (R.Const $ R.Reference $ R.Inferred) cv (R.Block loopBody)
-  return $ ce ++ fe ++ ze ++ loopInit ++ loopPragmas ++ [loop]
 
 -- TODO: Is this the fix we need for the unnecessary reification issues?
 reify RForget e@(tag -> EOperate OApp) = do
@@ -496,6 +488,7 @@ reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
     ee <- reify r e
     return $ pe ++ [R.IfThenElse pv te ee]
 
+-- | Catch-all case
 reify r e = do
     (effects, value) <- inline e
     reification <- case r of
