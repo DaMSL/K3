@@ -10,6 +10,16 @@ annotation Vector given type a, b {
   provides lifted set : int -> content -> ()
     with effects \i -> \elem -> [R[self]; R[i]; R[elem]; W[self]]
 
+  provides lifted insert : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
+  provides lifted erase : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
+  @:CArgs 2
+  provides lifted update : content -> (content -> ())
+    with effects \oldElem -> \newElem -> [R[self]; R[oldElem]; R[newElem]; W[self]]
+
   provides lifted size : () -> int
     with effects \_ -> R[self]
 
