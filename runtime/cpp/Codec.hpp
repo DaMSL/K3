@@ -221,8 +221,8 @@ namespace K3 {
         return read_message(frame.decode(s, len));
       }
 
-      bool decode_ready() { frame.decode_ready(); }
-      bool good() { frame.good(); }
+      bool decode_ready() { return frame.decode_ready(); }
+      bool good() { return frame.good(); }
 
     protected:
       shared_ptr<RemoteMessage> read_message(shared_ptr<string> v) {
