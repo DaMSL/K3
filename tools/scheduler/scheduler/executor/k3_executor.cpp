@@ -29,7 +29,9 @@
 #include <stout/os.hpp>
 
 #include <yaml-cpp/yaml.h>
+#include <fstream>
 
+#include <stdio.h>
 
 using namespace mesos;
 using namespace std;
@@ -74,7 +76,7 @@ public:
 
   virtual void launchTask(ExecutorDriver* driver, const TaskInfo& task)    {
 	localPeerCount++;
-	
+
     TaskStatus status;
     status.mutable_task_id()->MergeFrom(task.task_id());
     status.set_state(TASK_RUNNING);
@@ -83,43 +85,43 @@ public:
     //-------------  START TASK OPERATIONS ----------
 	cout << "Running K3 Program: " << task.name() << endl;
 	string k3_cmd;
-	
+
 	using namespace YAML;
-	
+
 	Node hostParams = Load(task.data());
 	Node peerParams;
 	Node peers;
 //	vector<Node> peers;
-	
+
 	cout << "WHAT I RECEIVED\n----------------------\n";
 	cout << Dump(hostParams);
 	cout << "\n---------------------------------\n";
-	
-	k3_cmd = "$MESOS_SANDBOX/" + hostParams["binary"].as<string>();
+
+	k3_cmd = "cd $MESOS_SANDBOX && ./" + hostParams["binary"].as<string>();
 	if (hostParams["logging"]) {
 		k3_cmd += " -l INFO ";
 	}
         if (hostParams["resultVar"]) {
           k3_cmd += " --result_path $MESOS_SANDBOX --result_var " + hostParams["resultVar"].as<string>();
         }
-	
-	
+
+
 	string datavar, datapath;
 	string datapolicy = "default";
 	int peerStart = 0;
 	int peerEnd = 0;
-	
+
 	for (const_iterator param=hostParams.begin(); param!=hostParams.end(); param++)  {
 		string key = param->first.as<string>();
 //		cout << " PROCESSING: " << key << endl;
-		if (key == "logging" || key == "binary" || 
+		if (key == "logging" || key == "binary" ||
 			key == "server" || key == "server_group") {
 			continue;
 		}
 		if (key == "roles") {
 		  continue;
 		}
-              
+
 		else if (key == "peers") {
 			peerParams["peers"] = hostParams["peers"];
 		}
@@ -140,7 +142,7 @@ public:
                           DataFile f;
                           auto d = *it;
 			  f.path = d["path"].as<string>();
-			  f.varName = d["var"].as<string>(); 
+			  f.varName = d["var"].as<string>();
 			  f.policy = d["policy"].as<string>();
 			  dataFiles.push_back(f);
 			}
@@ -161,7 +163,7 @@ public:
 		}
 		else if (key == "peerStart") {
 			peerStart = param->second.as<int>();
-		} 
+		}
 		else if (key == "peerEnd") {
 			peerEnd = param->second.as<int>();
 		}
@@ -174,7 +176,7 @@ public:
 			//peerParams[key] = param->second;
 		}
 	}
-	
+
 	// DATA ALLOCATION *
 		// TODO: Convert to multiple input dirs
 	map<string, vector<string> > peerFiles[peers.size()];
@@ -200,7 +202,7 @@ public:
 
 		}
 		struct dirent *srcfile = NULL;
-		
+
 		while (true) {
 			srcfile = readdir(datadir);
 			if (srcfile == NULL) {
@@ -273,7 +275,7 @@ public:
 
 	cout << "BUILDING PARAMS FOR PEERS" << endl;
 	int pph = 0;
-	if (peerParams["peers"].size() > 1) {
+	if (peerParams["peers"].size() >= 1) {
 	  YAML::Node peer_masters;
 	  YAML::Node masters;
 	  YAML::Node curMaster = YAML::Load(YAML::Dump(peerParams["peers"][0]));
@@ -300,14 +302,17 @@ public:
           std::cout << "Masters: " << YAML::Dump(masters) << endl;
 	}
 
-	
+
+        std::ostringstream oss;
+	oss << "PEERS!!! (" << std::endl;
 	for (std::size_t i=0; i<peers.size(); i++)  {
+		oss << "---" << std::endl;
 		YAML::Node thispeer = peerParams;
 		YAML::Node globals = hostParams["globals"][i];
 	        for (const_iterator p=globals.begin(); p!=globals.end(); p++)  {
 	          thispeer[p->first.as<string>()] = p->second;
 	        }
-		YAML::Node me = peers[i]; 
+		YAML::Node me = peers[i];
 		thispeer["me"] = me;
 		YAML::Node local_peers;
 		std::cout << "start: " << peerStart << ". end: " << peerEnd << std::endl;
@@ -316,7 +321,7 @@ public:
 		}
 
 		thispeer["local_peers"] = YAML::Load(YAML::Dump(local_peers));
-                
+
 		for (auto it : peerFiles[i])  {
 			auto datavar = it.first;
                         if (thispeer[datavar]) {
@@ -327,7 +332,6 @@ public:
 				src["path"] = f;
 				thispeer[datavar].push_back(src);
 			}
-			cout << "num files:" << thispeer[datavar].size() << endl;
 		}
 		// ADD DATA SOURCE DIR HERE
 		YAML::Emitter emit;
@@ -338,6 +342,7 @@ public:
 		peerFile.open(peerFileName, std::ofstream::out);
 		peerFile << param;
 		peerFile.close();
+		oss << param << std::endl;
 		std::cout << param << std::endl;
 		k3_cmd += " -p " + peerFileName;
 		for (auto it : peerFiles[i])  {
@@ -347,7 +352,9 @@ public:
                         }
                 }
 	}
-	
+	oss << ") END PEERS!!!" << std::endl;
+	cout << oss.str() << std::endl;
+
 	cout << "FINAL COMMAND: " << k3_cmd << endl;
         if (thread) {
 	  driver->sendFrameworkMessage("Debug: thread already existed!");
@@ -356,7 +363,7 @@ public:
           delete thread;
           thread = 0;
         }
-       
+
         bool isMaster = false;
         cout << "Checking master" << endl;
         if (Dump(hostParams["me"][0]) == Dump(hostParams["master"])) {
@@ -380,7 +387,7 @@ class TaskThread {
     bool isMaster;
 
   public:
-        TaskThread(TaskInfo t, string cmd, ExecutorDriver* d, bool m) 
+        TaskThread(TaskInfo t, string cmd, ExecutorDriver* d, bool m)
           : task(t), k3_cmd(cmd), driver(d), isMaster(m) {}
 
         void operator()() {
@@ -398,12 +405,7 @@ class TaskThread {
 		  while (!feof(pipe)) {
 			  if (fgets(buffer, 256, pipe) != NULL) {
 				  std::string s = std::string(buffer);
-				  if (this->isMaster) {
-	  	                  	driver->sendFrameworkMessage(s);
-				  }
-				  else {
 			               cout << s << endl;
-				  }
 			  }
 		  }
 		  int k3 = pclose(pipe);
@@ -433,7 +435,7 @@ class TaskThread {
                     thread->join();
                     delete thread;
                     thread = 0;
-                  } 
+                  }
 	  	  driver->sendFrameworkMessage("Executor " + host_name+ " KILLING TASK");
 		  driver->stop();
 }

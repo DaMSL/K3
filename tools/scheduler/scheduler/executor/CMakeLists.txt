@@ -36,9 +36,6 @@ add_definitions(-Wall -Wno-variadic-macros)
 add_executable(k3executor  k3_executor.cpp)
 target_link_libraries(k3executor mesos ${Boost_LIBRARIES} ${YAMLCPP_STATIC})
 
-add_executable(k3scheduler  k3_scheduler.cpp)
-target_link_libraries(k3scheduler ${MESOS_LIBRARIES} ${Boost_LIBRARIES} ${YAMLCPP_STATIC})
-
 #add_executable(k3run  k3run.cpp)
 #target_link_libraries(k3run ${MESOS_LIBRARIES} ${BOOST_LIBRARIES} ${YAMLCPP_STATIC})
 
