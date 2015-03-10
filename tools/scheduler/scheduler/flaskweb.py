@@ -99,7 +99,7 @@ def trace():
 
 #------------------------------------------------------------------------------
 #  /apps - Application Level interface
-#         POST   Upload new application (TODO: Change to K3 source)
+#         POST   Upload new application
 #         GET    Display both list of loaded app and form to upload new one
 #------------------------------------------------------------------------------
 @webapp.route('/apps', methods=['GET', 'POST'])
@@ -116,7 +116,13 @@ def upload_app():
           if not os.path.exists(jobdir):
             os.mkdir(jobdir)
           hash = hashlib.md5(open(fullpath).read()).hexdigest()
-          if not (db.checkHash(hash)):
+          print ("HASH = %s " % hash)
+          exist = db.checkHash(hash)
+          if exist:
+            print "EXIST"
+          else:
+            print "NOT EXIST"
+          if not (exist):
             # TODO: Insert app into DB
             db.insertApp(filename, hash)
           return redirect(url_for('upload_app'))
@@ -143,7 +149,7 @@ def get_app(appId):
 
 #------------------------------------------------------------------------------
 #  /jobs - Current runtime & completed job Interface
-#         GET    (TODO: Display currently executing & recently completed jobs)
+#         GET    Display currently executing & recently completed jobs
 #------------------------------------------------------------------------------
 @webapp.route('/jobs')
 def list_jobs():
@@ -219,33 +225,25 @@ def create_job(appId):
 @webapp.route('/jobs/<appId>/<jobId>', methods=['GET', 'POST'])
 def get_job(appId, jobId):
     jobs = db.getJobs(appId=appId, jobId=jobId)
-    for j in jobs:
-      print j
-    print [j['jobId'] for j in jobs]
-    if int(jobId) not in [j['jobId'] for j in jobs]:
+    job = None if len(jobs) == 0 else jobs[0]
+
+    if job == None:
       return render_template("errors/404.html", message="Job ID, %s, does not exist" % jobId)
+
+    if 'application/json' in request.headers['Accept']:
+      return jsonify(jobs)
     else:
-      if 'application/json' in request.headers['Accept']:
-        return jsonify(jobs)
-      else:
-        return render_template("jobs.html", appId=appId, joblist=jobs)
+      return render_template("jobs.html", appId=appId, joblist=jobs)
 
 
 #------------------------------------------------------------------------------
 #  /jobs/<appId>/<jobId>/stdout - Job Interface for specific job
-#         GET     Reads STDOUT for current job
-#         POST    TODO: Consolidate STDOUT & append here (if desired....)
+#         GET     TODO: Consolidate STDOUT for current job (from all tasks)
+#         POST    TODO: Accept STDOUT & append here (if desired....)
 #------------------------------------------------------------------------------
 @webapp.route('/jobs/<appId>/<jobId>/stdout', methods=['GET'])
 def stdout(appId, jobId):
     jobs = db.getJobs(appId=appId)
-    # for j in jobs:
-    #   json.dumps(j, indent=4)
-    # if int(jobId) not in [j['jobId'] for j in jobs]:
-    #   return render_template("errors/404.html", message="Job ID, %s, does not exist" % jobId)
-    # elif jobId not in dispatcher.active:
-    #   return render_template("errors/404.html", message="Job ID, %s, not currently running" % jobId)
-    # else:
     link = resolve(MASTER)
     print link
     sandbox = dispatcher.getSandboxURL(jobId)
@@ -264,19 +262,28 @@ def stdout(appId, jobId):
 #------------------------------------------------------------------------------
 @webapp.route('/jobs/<appId>/<jobId>/kill', methods=['GET'])
 def kill_job(appId, jobId):
-    jobs = db.getJobs(appId=appId)
-    if int(jobId) not in [j['jobId'] for j in jobs]:
+    jobs = db.getJobs(appId=appId, jobId=jobId)
+    job = None if len(jobs) == 0 else jobs[0]
+
+    if job == None:
       return render_template("errors/404.html", message="Job ID, %s, does not exist" % jobId)
-    elif jobId not in dispatcher.active:
-      return render_template("errors/404.html", message="Job ID, %s, not currently running" % jobId)
+
+    # Separate check to kill orphaned jobs in Db
+    # TODO: Merge Job withs experiments to post updates to correct table
+    if job['status'] == 'RUNNING' or job['status'] == 'SUBMITTED':
+      db.updateJob(jobId, status='KILLED')
+
+    status = 'KILLED' if jobId in dispatcher.active else 'ORPHANED and CLEANED'
+
+
+    if status == 'KILLED':
+      dispatcher.cancelJob(int(jobId), driver)
+    ts = db.getTS_est()  #datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+    thisjob = dict(jobId=jobId, time=ts, url=dispatcher.getSandboxURL(jobId), status=status)
+    if 'application/json' in request.headers['Accept']:
+      return jsonify(thisjob)
     else:
-      ts = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
-      thisjob = dict(jobId=jobId, time=ts, url=dispatcher.getSandboxURL(jobId), status='KILLED')
-      dispatcher.cancelJob(jobId, driver)
-      if 'application/json' in request.headers['Accept']:
-        return jsonify(thisjob)
-      else:
-        return render_template("jobs.html", appId=appId, lastjob=thisjob)
+      return render_template("jobs.html", appId=appId, lastjob=thisjob)
 
 
 

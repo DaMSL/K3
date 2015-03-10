@@ -205,7 +205,7 @@ class Dispatcher(mesos.interface.Scheduler):
       driver.killTask(tid)
     del self.active[jobId]
     self.finished[jobId] = job
-    self.tryTerminate()
+#    self.tryTerminate()
 
   def getSandboxURL(self, jobId):
 
