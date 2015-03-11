@@ -150,7 +150,7 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
                                           {nc: 0, tab: 0.0} ) );
 
                                     ( (q22_final_peer_barrier, master) <- () );
-                                    ( oc_lhs_ht = empty {key: int, value: {cntrycode: string, c_acctbal: real}} @Map );
+                                    ( oc_lhs_ht = empty {key: int, value: {cntrycode: string, c_acctbal: real}} @IntMap );
 
                                     ( (() @:Result) @TPCHBenchmarkWithoutMaster ) ]
 
