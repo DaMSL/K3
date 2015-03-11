@@ -164,7 +164,9 @@ control DistributedGroupBy [ lbl             : label
 control DistributedHashJoin [ lbl              : label
                             , lhs_ht_id        : label
                             , lhs_query        : expr
+                            , lhs_query_clear  : expr
                             , rhs_query        : expr
+                            , rhs_query_clear  : expr
                             , lhs_ht_ty        : type
                             , rhs_ht_ty        : type
                             , lhs_insert_with  : expr
@@ -191,14 +193,15 @@ control DistributedHashJoin [ lbl              : label
         declare $[lhs_ht_id] : mut collection $[lhs_ht_ty] @Map
 
         trigger $[lbl]_lhs_redistribute : () = \_ -> (
-          (ignore $[lhs_query])
+          ((ignore $[lhs_query])
             @PartitionShuffleWithMissing(
               lbl           = [# $[lbl]_lhs]
             , dest_trg = [$ $[lbl]_lhs_process_redistribute]
             , nodes = nodes
             , send_extra_fn = [$ \x -> x]
             , send_ty = [: collection $[lhs_ht_ty] @ Map]
-            )
+            ));
+            $[lhs_query_clear]
         )
 
         trigger $[lbl]_lhs_process_redistribute : collection $[lhs_ht_ty] @Map = (\vals ->
@@ -208,16 +211,19 @@ control DistributedHashJoin [ lbl              : label
         )
 
         trigger $[lbl]_rhs_redistribute : () = \_ -> (
-          ((( ignore $[rhs_query])
-                @PartitionShuffleWithMissing(
-                  lbl           = [# $[lbl]_rhs]
-                , dest_trg = [$ $[lbl]_rhs_process_redistribute]
-                , nodes = nodes
-                , send_extra_fn = [$ \x -> x]
-                , send_ty = [: collection $[rhs_ht_ty] @ Map]
-                )
+          (
+            (( ignore $[rhs_query])
+                  @PartitionShuffleWithMissing(
+                    lbl           = [# $[lbl]_rhs]
+                  , dest_trg = [$ $[lbl]_rhs_process_redistribute]
+                  , nodes = nodes
+                  , send_extra_fn = [$ \x -> x]
+                  , send_ty = [: collection $[rhs_ht_ty] @ Map]
+                  )
+            );
+            $[rhs_query_clear]
           ) @OnCounter(id=[# $[lbl]_lhs_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
-        ))
+        )
 
         trigger $[lbl]_rhs_process_redistribute : collection $[rhs_ht_ty] @Map = (\vals -> (
           // Probe LHS hash table.
@@ -704,7 +710,9 @@ control JoinSelector [ lbl                  : label
                      , rhs_sample_query     : expr
                      , frequency_threshold  : expr
                      , lhs_query            : expr
+                     , lhs_query_clear      : expr
                      , rhs_query            : expr
+                     , rhs_query_clear      : expr
                      , join_key_ty          : type
                      , lhs_ht_ty            : type
                      , rhs_ht_ty            : type
@@ -802,7 +810,9 @@ control JoinSelector [ lbl                  : label
   ( ?e ) @:NoPipeline => $.[e] @DistributedHashJoin(  lbl              = [# $[lbl]_hj ]
                                                     , lhs_ht_id        = lhs_ht_id
                                                     , lhs_query        = lhs_query
+                                                    , lhs_query_clear  = lhs_query_clear
                                                     , rhs_query        = rhs_query
+                                                    , rhs_query_clear  = rhs_query_clear
                                                     , lhs_ht_ty        = lhs_ht_ty
                                                     , rhs_ht_ty        = rhs_ht_ty
                                                     , lhs_insert_with  = lhs_insert_with

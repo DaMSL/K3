@@ -121,8 +121,7 @@ trigger q5_co_start : () = \_ -> (
 
       , frequency_threshold  = [$ 1000.0 ]
 
-      , lhs_query = [$ let result =
-                       (((customer.filter  (\c -> n_asia_by_nk.member { key: c.c_nationkey, value: "" }))
+      , lhs_query = [$ (((customer.filter  (\c -> n_asia_by_nk.member { key: c.c_nationkey, value: "" }))
                                   .groupBy (\c -> c.c_custkey)
                                            (\acc -> \c -> case n_asia_by_nk.lookup { key: c.c_nationkey, value: "" }
                                                         of { Some n -> {c_nationkey: c.c_nationkey, n_name: n.value} }
@@ -133,19 +132,18 @@ trigger q5_co_start : () = \_ -> (
                                            {c_nationkey: 0, n_name: ""})
                                   .fold    ((\acc -> \c -> ((acc.insert c); acc)) @:Accumulate)
                                            (empty {key: int, value: {c_nationkey: int, n_name: string}} @Map))
-                      in ( (customer = empty customer_r @Collection); result )
                     ]
+      , lhs_query_clear = [$ customer = empty customer_r @Collection ]
 
-      , rhs_query = [$ let result =
-                       ((orders.filter  (\o ->     o.o_orderdate >= "1994-01-01"
+      , rhs_query = [$ ((orders.filter  (\o ->     o.o_orderdate >= "1994-01-01"
                                                and o.o_orderdate <  "1995-01-01" ))
                                .groupBy (\o -> o.o_custkey)
                                         (\acc -> \o -> ((acc.insert {o_orderkey: o.o_orderkey}); acc))
                                         (empty {o_orderkey: int} @Collection))
                                .fold    ((\acc -> \o -> ((acc.insert o); acc)) @:Accumulate)
                                         (empty {key: int, value: collection {o_orderkey: int} @Collection} @Map)
-                      in ( (orders = empty orders_r @Collection); result )
                     ]
+      , rhs_query_clear = [$ orders = empty orders_r @Collection ]
 
       , join_key_ty          = [: int ]
       , lhs_ht_ty            = [: {key: int, value: {c_nationkey: int, n_name: string}} ]
@@ -232,18 +230,17 @@ trigger q5_sl_start : () = \_ -> (
 
       , frequency_threshold  = [$ 1000.0 ]
 
-      , lhs_query = [$ let result =
-                       ((supplier.filter  (\s -> n_asia_by_nk.member {key: s.s_nationkey, value:""}))
+      , lhs_query = [$ ((supplier.filter  (\s -> n_asia_by_nk.member {key: s.s_nationkey, value:""}))
                                  .groupBy (\s -> s.s_suppkey)
                                           (\_ -> \s -> s.s_nationkey)
                                           0)
                                  .fold    ((\acc -> \s -> ((acc.insert s); acc)) @:Accumulate)
                                           (empty {key: int, value: int} @Map)
-                       in ( (supplier = empty supplier_r @Collection); result )
-                    ]
 
-      , rhs_query = [$ let result =
-                       (lineitem.groupBy (\li -> li.l_suppkey)
+                    ]
+      , lhs_query_clear = [$ supplier = empty supplier_r @Collection ]
+
+      , rhs_query = [$ (lineitem.groupBy (\li -> li.l_suppkey)
                                          (\acc -> \li ->
                                            ((acc.insert { l_orderkey : li.l_orderkey
                                                         , l_epd      : li.l_extendedprice * (1 - li.l_discount)}) ;
@@ -251,8 +248,8 @@ trigger q5_sl_start : () = \_ -> (
                                          (empty {l_orderkey : int, l_epd : real} @Collection))
                                 .fold    (\acc -> \li -> ((acc.insert li); acc))
                                          (empty {key: int, value: collection {l_orderkey: int, l_epd: real} @Collection} @Map)
-                       in ( (lineitem = empty lineitem_r @Collection); result )
                     ]
+      , rhs_query_clear = [$ lineitem = empty lineitem_r @Collection ]
 
       , join_key_ty          = [: int ]
       , lhs_ht_ty            = [: {key: int, value: int} ]
