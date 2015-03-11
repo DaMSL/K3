@@ -375,12 +375,12 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                              customerFiles.iterate (\e -> customerLoaderPFixedSize e.path customer customerRows);
                              supplierFiles.iterate (\e -> supplierLoaderPFixedSize e.path supplier supplierRows);
                              nationFiles.iterate   (\e -> nationLoaderP   e.path nation);
-                             regionFiles.iterate   (\e -> regionLoaderP   e.path region)
+                             regionFiles.iterate   (\e -> regionLoaderP   e.path region);
+                             ( (q5_prep, me) <- () )
                            ) ],
   preLoadExpr         = [$ ()],
   preReadyExpr        = [$ ()],
-  onReadyExpr         = [$ (( (q5_prep, me) <- () );
-                            ( (q5_co_start, me) <- () );
+  onReadyExpr         = [$ (( (q5_co_start, me) <- () );
                               (q5_sl_start, me) <- () )
                         ],
   finishArgT          = [: ()],

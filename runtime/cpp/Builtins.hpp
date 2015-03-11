@@ -83,10 +83,12 @@ namespace K3 {
 
   template <class C, class F>
   void read_records_with_resize(int size, std::istream& in, C& container, F read_record) {
-    container.getContainer().resize(size);
 
     if (size == 0) {
       return read_records(in, container, read_record);
+    }
+    else {
+      container.getContainer().resize(size);
     }
 
     int i = 0;
