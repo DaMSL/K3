@@ -27,16 +27,23 @@ script:
     # - ./tools/ktrace/run_test.sh examples/distributed/amplab/q3.k3 tools/ktrace/tests/amplab_q3 results
 
     # TPCH Barrier Version
-  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q1.k3 tools/ktrace/tests/tpch_q1 results
-  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q3.k3 tools/ktrace/tests/tpch_q3 results
-  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q5_bushy.k3 tools/ktrace/tests/tpch_q5 results
+    # NOTE: for now, only build
+    
+    - ./tools/source/run/compile.sh examples/sql/tpch/queries/k3/q1.k3
+    - ./tools/source/run/compile.sh examples/sql/tpch/queries/k3/barrier-queries/q3.k3
+    - ./tools/source/run/compile.sh examples/sql/tpch/queries/k3/barrier-queries/q5_bushy.k3
+    # - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q1.k3 tools/ktrace/tests/tpch_q1 results
+    # - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q3.k3 tools/ktrace/tests/tpch_q3 results
+    # - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q5_bushy.k3 tools/ktrace/tests/tpch_q5 results
   # numerical error: - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q6.k3 tools/ktrace/tests/tpch_q6 results
   # incorrect query plan: - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q11.k3 tools/ktrace/tests/tpch_q11 results
-  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q18.k3 tools/ktrace/tests/tpch_q18 results
-  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q22.k3 tools/ktrace/tests/tpch_q22 results
+    - ./tools/source/run/compile.sh examples/sql/tpch/queries/k3/barrier-queries/q18.k3
+    - ./tools/source/run/compile.sh examples/sql/tpch/queries/k3/barrier-queries/q22.k3
+    # - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q18.k3 tools/ktrace/tests/tpch_q18 results
+    # - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q22.k3 tools/ktrace/tests/tpch_q22 results
 
     # Mosaic (must have fusion disabled)
-  - ./tools/source/run/compile.sh --fstage cexclude=Decl-FE,Decl-FT examples/sql/mosaic/rs.k3
+    - ./tools/source/run/compile.sh --fstage cexclude=Decl-FE,Decl-FT examples/sql/mosaic/rs.k3
 
 notifications:
      email:
