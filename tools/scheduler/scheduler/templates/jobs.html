@@ -10,10 +10,23 @@
           {% endif %}
           </h2>
         {% endif %}
-        {% if lastjob %}
+        {% if lastjob %}.
+
             <h3>Job # {{ lastjob.jobId }} {{ lastjob.status }} at {{ lastjob.time }}</h3>
-            <h4>Check tasks on <a href="{{ lastjob.url }}">Mesos</a></h4>
-            <h4><a href="/jobs">return to jobs</a></h4>
+            <h4>Check tasks on <a href="{{ lastjob.url }}" target="_blank">Mesos</a></h4>
+            <br>
+            <h4 class="text-center">Job Environment</h4>
+            <ul class="list-group">
+              {% if lastjob.master %}
+                <li class="list-group-item">Master at <span class="text-info">{{ lastjob.master }}</span></li>{% endif %}
+              {% if lastjob.app_version %}
+                <li class="list-group-item">Binary Version Hash: <span class="text-info">{{ lastjob.app_version }}</span></li>{% endif %}
+              {% if lastjob.time %}
+                <li class="list-group-item">Time Submitted <span class="text-info">{{ lastjob.time }}</span></li>{% endif %}
+              {% if lastjob.roles %}
+                <li class="list-group-item"><pre>{{ lastjob.roles }}</pre></li> {% endif %}
+            </ul>
+            <br><br><h4><a href="/jobs">return to jobs</a></h4>
         {% else %}
           <h3>Active K3 Jobs</h3>
           <table class="table table-striped">

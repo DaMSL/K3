@@ -88,6 +88,13 @@ class Dispatcher(mesos.interface.Scheduler):
   #   self.jobsCreated = x + 1
   #   return x
 
+  def getJob(self, jobId):
+    if jobId in self.active:
+      return self.active[jobId]
+    if jobId in self.finished:
+      return self.finished[jobId]
+    return None
+
   def fullId(self, jobId, taskId):
     return "%d.%d" % (jobId, taskId)
  
@@ -142,7 +149,7 @@ class Dispatcher(mesos.interface.Scheduler):
         debug = (host, str(rolesPerOffer[offerId]))
         print("Accepted Roles for offer on %s: %s" % debug)
         if len(allPeers) == 0:
-          nextJob.master = offerId
+          nextJob.master = host
 
         peers = []
         for (roleId, n) in rolesPerOffer[offerId]:
@@ -180,11 +187,6 @@ class Dispatcher(mesos.interface.Scheduler):
       #                 self.offers[k3task.offerid].slave_id,
       #                 nextJob.binary_url, nextJob.all_peers, nextJob.inputs)
       task = taskInfo(nextJob, k3task, self.offers[k3task.offerid].slave_id)
-
-
-      td = protobuf_to_dict(task)
-      print "TASK FOLLOWS"
-      print json.dumps(td, indent=4)
 
       oid = mesos_pb2.OfferID()
       oid.value = k3task.offerid

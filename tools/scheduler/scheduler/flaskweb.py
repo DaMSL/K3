@@ -116,13 +116,7 @@ def upload_app():
           if not os.path.exists(jobdir):
             os.mkdir(jobdir)
           hash = hashlib.md5(open(fullpath).read()).hexdigest()
-          print ("HASH = %s " % hash)
-          exist = db.checkHash(hash)
-          if exist:
-            print "EXIST"
-          else:
-            print "NOT EXIST"
-          if not (exist):
+          if not (db.checkHash(hash)):
             # TODO: Insert app into DB
             db.insertApp(filename, hash)
           return redirect(url_for('upload_app'))
@@ -210,7 +204,15 @@ def create_job(appId):
       if 'application/json' in request.headers['Accept']:
         return jsonify(jobs)
       else:
-        return render_template("newjob.html", appId=appId, joblist=jobs)
+        if len(jobs) > 0:
+          lastjobId = max([j['jobId'] for j in jobs])
+
+          path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appId, str(lastjobId),'role.yaml').encode(encoding='ascii')
+          if os.path.exists(path):
+            with open(path, 'r') as role:
+              lastrole = role.read()
+            return render_template("newjob.html", appId=appId, lastrole=lastrole)
+        return render_template("newjob.html", appId=appId)
 
   else:
     #TODO:  Error handle
@@ -224,16 +226,26 @@ def create_job(appId):
 #------------------------------------------------------------------------------
 @webapp.route('/jobs/<appId>/<jobId>', methods=['GET', 'POST'])
 def get_job(appId, jobId):
-    jobs = db.getJobs(appId=appId, jobId=jobId)
+    jobs = db.getJobs(jobId=jobId)
     job = None if len(jobs) == 0 else jobs[0]
+    k3job = dispatcher.getJob(int(jobId))
 
     if job == None:
       return render_template("errors/404.html", message="Job ID, %s, does not exist" % jobId)
 
+    thisjob = dict(job, url=dispatcher.getSandboxURL(jobId))
+    if k3job != None:
+      thisjob = dict(thisjob, master=k3job.master)
+
+    path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appId, str(jobId),'role.yaml').encode(encoding='ascii')
+    if os.path.exists(path):
+      with open(path, 'r') as role:
+        thisjob['roles'] = role.read()
+
     if 'application/json' in request.headers['Accept']:
-      return jsonify(jobs)
+      return jsonify(thisjob)
     else:
-      return render_template("jobs.html", appId=appId, joblist=jobs)
+      return render_template("jobs.html", appId=appId, joblist=jobs, lastjob=thisjob)
 
 
 #------------------------------------------------------------------------------
@@ -254,6 +266,32 @@ def stdout(appId, jobId):
       return 'test'
 
 
+#------------------------------------------------------------------------------
+#  /jobs/<appId>/<jobId>/archive - Endpoint to receive & archive files
+#         GET     TODO: Consolidate STDOUT for current job (from all tasks)
+#         POST    TODO: Accept STDOUT & append here (if desired....)
+#------------------------------------------------------------------------------
+@webapp.route('/jobs/<appId>/<jobId>/archive', methods=['GET', 'POST'])
+def archive_job(appId, jobId):
+    jobs = db.getJobs(jobId=jobId)
+    job = None if len(jobs) == 0 else jobs[0]
+    if job == None:
+      return render_template("errors/404.html", message="Job ID, %s, does not exist" % jobId)
+
+    if request.method == 'POST':
+        file = request.files['file']
+        if file:
+            filename = secure_filename(file.filename)
+            path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appId, jobId, filename).encode(encoding='ascii')
+            file.save(path)
+            return "File Uploaded & archived", 202
+        else:
+            return "No file received", 400
+
+    elif request.method == 'GET':
+        return 'Upload your file using a POST request'
+
+
 
 #------------------------------------------------------------------------------
 #  /jobs/<appId>/<jobId>/kil - Job Interface to cancel a job
@@ -262,12 +300,13 @@ def stdout(appId, jobId):
 #------------------------------------------------------------------------------
 @webapp.route('/jobs/<appId>/<jobId>/kill', methods=['GET'])
 def kill_job(appId, jobId):
-    jobs = db.getJobs(appId=appId, jobId=jobId)
+    jobs = db.getJobs(jobId=jobId)
     job = None if len(jobs) == 0 else jobs[0]
 
     if job == None:
       return render_template("errors/404.html", message="Job ID, %s, does not exist" % jobId)
 
+    print ("Asked to KILL job #%s. Current Job status is %s" % (jobId, job['status']))
     # Separate check to kill orphaned jobs in Db
     # TODO: Merge Job withs experiments to post updates to correct table
     if job['status'] == 'RUNNING' or job['status'] == 'SUBMITTED':
@@ -284,6 +323,7 @@ def kill_job(appId, jobId):
       return jsonify(thisjob)
     else:
       return render_template("jobs.html", appId=appId, lastjob=thisjob)
+
 
 
 

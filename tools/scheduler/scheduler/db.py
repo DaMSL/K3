@@ -5,12 +5,17 @@ import sys
 
 
 # Helper functions for Time Stamps
-TS_FMT = "%Y-%m-%d %H:%M:%S %Z%z"
+TS_FMT = "%Y-%m-%d %H:%M:%S"
 def getTS_utc():
     return dt.datetime.now(timezone('UTC')).strftime(TS_FMT)
 
-def getTS_est():
-    return dt.datetime.now(timezone('US/Eastern')).strftime(TS_FMT)
+def getTS_est(ts=None):
+    if ts:
+      time = dt.datetime.strptime(ts, TS_FMT).replace(tzinfo=timezone('UTC'))
+      return time.astimezone(timezone('US/Eastern')).strftime(TS_FMT)
+    else:
+      return dt.datetime.now(timezone('US/Eastern')).strftime(TS_FMT)
+
 
 
 # ts = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
@@ -78,7 +83,7 @@ def insertApp(name, version):
   if int(cur.fetchone()[0]) == 0:
     cur.execute("INSERT INTO apps VALUES ('%s', '%s');" % (name, version))
     conn.commit()
-  cur.execute("INSERT INTO app_versions VALUES ('%s', '%s', '%s');" % (version, name, str(dt.date.today())))
+  cur.execute("INSERT INTO app_versions VALUES ('%s', '%s', '%s');" % (version, name, str(getTS_utc())))
   conn.commit()
 
 
@@ -99,9 +104,7 @@ def getAllApps():
 
 def checkHash(hash):
   cur = getConnection().cursor()
-  query = "SELECT COUNT(*) FROM app_versions WHERE hash='%s';" % hash
-  print query
-  cur.execute(query)
+  cur.execute("SELECT COUNT(*) FROM app_versions WHERE hash='%s';" % hash)
   return False if int(cur.fetchone()[0]) == 0 else True
 
 
@@ -111,11 +114,11 @@ def insertJob(job):
   cur.execute("SELECT MAX(jobId) FROM jobs;")
   result = cur.fetchone()
   jobId = 1000 if result[0] == None else int(result[0]) + 1
-  time = str(dt.date.today())
+  time = str(getTS_utc())
   cur.execute("INSERT INTO jobs VALUES ('%(jobId)d', '%(appId)s', '%(hash)s', '%(user)s', '%(time)s', '%(status)s');" %
               dict(job, jobId=jobId, status='SUBMITTED', time=time))
   conn.commit()
-  return jobId, time
+  return jobId, getTS_est(time)
 
 
 def getJobs(**kwargs):

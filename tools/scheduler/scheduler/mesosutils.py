@@ -13,7 +13,7 @@ import mesos.native
 
 # TODO how should we determine the executor url
 EXECUTOR_URL = "http://qp1:8002/k3executor"
-K3_DOCKER_NAME = "damsl/k3-mesos2"
+K3_DOCKER_NAME = "damsl/k3-deployment:stable"
 
 def getResource(resources, tag, convF):
   for resource in resources:
@@ -62,11 +62,18 @@ def assignRolesToOffers(nextJob, offers):
         # All cpus for this offer have already been used
         continue
 
-      # Accepting this offer
-      print ("Checking offer from %s" % host)
 
       cpusRemainingForOffer = offeredCpus - cpusUsedPerOffer[offerId]
-      cpusToUse = min([cpusRemainingForOffer, totalPeersPerRole])
+
+      cpusToUse = 0
+      if 'peers_per_host' in nextJob.roles[roleId].params:
+        cpusToUse = nextJob.roles[roleId].params['peers_per_host']
+        if cpusToUse > cpusRemainingForOffer:
+          # Cannot satisfy specific peers-to-host requirement
+          continue
+      else:
+        cpusToUse = min([cpusRemainingForOffer, totalPeersPerRole])
+
 
       totalPeersPerRole -= cpusToUse
      
@@ -128,7 +135,6 @@ def executorInfo(k3task, jobid, binary_url, volumes=[]):
     volume.host_path = v['host']
 #    volume.mode = volume.RW if v['RW'] else volume.RW
     volume.mode = volume.RW
-    print ("MAPPING:  host:  %s to container: %s" % (v['host'], v['container']))
 
   executor.container.MergeFrom(container)
        
@@ -150,9 +156,6 @@ def taskInfo(k3job, k3task, slaveId):
 
   executor = executorInfo(k3task, k3job.jobId, k3job.binary_url, k3job.volumes)
 
-  ed = protobuf_to_dict(executor)
-  print json.dumps(ed, indent=4)
- 
   task = mesos_pb2.TaskInfo()
   task.task_id.value = k3task.getId(k3job.jobId)
   task.slave_id.value = slaveId.value

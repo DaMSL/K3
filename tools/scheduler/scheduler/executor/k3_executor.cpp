@@ -338,7 +338,7 @@ public:
 		emit << YAML::Flow << thispeer;
 		string param = emit.c_str();
 		std::ofstream peerFile;
-		string peerFileName = "peers" + std::to_string(i) + ".yaml";
+		string peerFileName = "/mnt/mesos/sandbox/peers" + std::to_string(i) + ".yaml";
 		peerFile.open(peerFileName, std::ofstream::out);
 		peerFile << param;
 		peerFile.close();

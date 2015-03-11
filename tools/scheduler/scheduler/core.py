@@ -7,13 +7,13 @@ import tarfile
 
 # TODO inputs per Roles instead of per Job
 class Role:
-  def __init__(self, peers = 0, variables = {}, volumes = [], hostmask = r".*"):
-    self.peers = peers
-    self.variables = variables
-    self.hostmask = hostmask
-
-    # This is a placeholder -- for now
-    self.volumes = volumes
+  def __init__(self, **kwargs):
+    #peers = 0, variables = {}, volumes = [], hostmask = r".*"):
+    self.peers      = kwargs.get("peers", 0)
+    self.variables  = kwargs.get("variables", {})
+    self.hostmask   = kwargs.get("hostmask", r".*")
+    self.params     = kwargs.get("params", {})
+    self.volumes    = kwargs.get("volumes", [])
 
   def to_string(self):
     print ("  ROLE ")
@@ -121,25 +121,29 @@ class Job:
       peers = int(doc['peers'])
 
       variables = {}
-      if doc['k3_globals']:
+      if 'k3_globals' in doc:
         variables = doc['k3_globals']
       else:
         print("Warning. No k3_globals found in YAML file")
 
+      params = {}
+      if 'peers_per_host' in doc:
+        params['peers_per_host'] = doc['peers_per_host']
 
-      volumes = [] if not doc['volumes'] else doc['volumes']
+      # TODO:  CHANGE TO ROLE-BASED VOLUMES for volumes
+      volumes = [] if 'volumes' not in doc else doc['volumes']
       self.volumes = volumes
 
-      if doc['k3_data']:
+      # TODO:  CHANGE TO ROLE-BASED INPUTS for k3_data
+      if 'k3_data' in doc:
         self.inputs = doc['k3_data']
-
 
       mask = r".*"
       if "hostmask" in doc:
         mask = doc['hostmask']
 
 
-      r = Role(peers, variables, hostmask=mask, volumes=volumes)
+      r = Role(peers=peers, variables=variables, hostmask=mask, volumes=volumes, params=params)
       self.roles[name] = r
 
 
