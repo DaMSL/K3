@@ -235,7 +235,7 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
               R.Call (R.Call fv [ R.Move (R.Variable $ R.Name acc)]) [R.Variable $ R.Name g]
           ]
   let loop = R.ForEach g (R.Const $ R.Reference $ R.Inferred) cv (R.Block loopBody)
-  return (ce ++ fe ++ ze ++ loopInit ++ loopPragmas ++ [loop], (R.Variable $ R.Name acc))
+  return (ce ++ fe ++ ze ++ loopInit ++ loopPragmas ++ [loop], R.Move $ R.Variable $ R.Name acc)
 
 inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
     -- Inline both function and argument for call.
@@ -488,6 +488,7 @@ reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
     ee <- reify r e
     return $ pe ++ [R.IfThenElse pv te ee]
 
+-- | Catch-all case
 reify r e = do
     (effects, value) <- inline e
     reification <- case r of

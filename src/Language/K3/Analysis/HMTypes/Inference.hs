@@ -125,12 +125,19 @@ data TIEnv = TIEnv {
                tdvenv  :: TDVEnv,
                tvenv   :: TVEnv,
                tcyclic :: TEnv,
-               tcenv   :: TCEnv
+               tcenv   :: TCEnv,
+               tprop   :: [(Identifier, QPType)]
             }
 
 -- | The type inference monad
 type TInfM = EitherT String (State TIEnv)
 
+-- | Data type for initializer type handling.
+data IDeclaredAction = IDAExtend     QPType
+                     | IDAPassThru   QPType
+                     | IDAFunction
+                     | IDATrigger    QPType
+                     deriving (Eq, Ord, Read, Show)
 
 {- TEnv helpers -}
 tenv0 :: TEnv
@@ -197,7 +204,8 @@ tienv0 = TIEnv {
            tdvenv  = tdvenv0,
            tvenv   = tvenv0,
            tcyclic = tenv0,
-           tcenv   = tcenv0
+           tcenv   = tcenv0,
+           tprop   = []
          }
 
 -- | Modifiers.
@@ -760,6 +768,7 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
                -> TInfM (K3 QType)
     onChildren tga tgb kind a b ctor
       | tga == tgb = onList a b ctor $ \s -> unifyErr tga tgb kind s
+      | tga `elem` tTrgOrSink && tgb `elem` tTrgOrSink = onList a b (tdata QTTrigger) $ \s -> unifyErr tga tgb kind s
       | otherwise  = unifyErr tga tgb kind ""
 
     onList :: [K3 QType] -> [K3 QType] -> QTypeCtor -> (String -> TInfM (K3 QType))
@@ -777,6 +786,8 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
     substituteSelfQt ct _ = subSelfErr ct
 
     lowerBound t = tvopeval QTLower $ children t
+
+    tTrgOrSink = [QTTrigger, QTSink]
 
     primitiveErr a b = unifyErr a b "primitives" ""
 
@@ -1001,23 +1012,23 @@ reinferProgDeclTypes env dn prog = runTInfE env inferNamedDecl
 -- | Declaration type inference
 inferDeclTypes :: K3 Declaration -> TInfM (K3 Declaration)
 inferDeclTypes d@(tag -> DGlobal n t eOpt) = inferAsCyclicType n $ do
-  neOpt <- inferDeclInitializer (Just n) eOpt
-  qptE  <- if isTFunction t then return (Left Nothing)
-                            else (qpType t >>= return . Left . Just)
+  qptAct  <- if isTFunction t then return IDAFunction
+                              else (qpType t >>= return . IDAExtend)
   if isTEndpoint t
     then return d
-    else unifyDeclInitializer n qptE neOpt >>= \neOpt' ->
-           return $ (Node (DGlobal n t neOpt' :@: annotations d) $ children d)
+    else do
+      unifyDeclInitializer n True qptAct eOpt >>= \neOpt' ->
+             return $ (Node (DGlobal n t neOpt' :@: annotations d) $ children d)
 
 inferDeclTypes d@(tag -> DTrigger n t e) = inferAsCyclicType n $ do
-  Just ne <- inferDeclInitializer (Just n) $ Just e
   env <- get
   QPType qtvars qt <- liftEitherM (tilkupe env n)
   case tag qt of
     QTCon QTTrigger ->
-      let nqptE = Right $ QPType qtvars $ tfun (head $ children qt) tunit
-      in unifyDeclInitializer n nqptE (Just ne) >>= \neOpt ->
+      let nqptAct = IDATrigger $ QPType qtvars $ tfun (head $ children qt) tunit
+      in unifyDeclInitializer n True nqptAct (Just e) >>= \neOpt ->
            return $ maybe d (\ne' -> Node (DTrigger n t ne' :@: annotations d) $ children d) neOpt
+
     _ -> left $ "Invalid trigger declaration type for: " ++ n
 
 inferDeclTypes d@(tag -> DDataAnnotation n tvars mems) = do
@@ -1038,9 +1049,8 @@ inferDeclTypes d@(tag -> DDataAnnotation n tvars mems) = do
     memType _ mem@(MAnnotation _ _ _) = return mem
 
     unifyMemInit amEnv mn meOpt = do
-      nmeOpt <- inferDeclInitializer Nothing meOpt
       qpt <- maybe (memLookupErr mn) (return . fst) (lookup mn amEnv)
-      unifyDeclInitializer mn (Right qpt) nmeOpt
+      unifyDeclInitializer mn False (IDAPassThru qpt) meOpt
 
     memLookupErr mn = left $ "No annotation member in initial environment: " ++ mn
 
@@ -1054,21 +1064,23 @@ inferAsCyclicType n m = do
     Right True -> withCyclicEnv n m
     Right _    -> m
 
-unifyDeclInitializer :: Identifier -> Either (Maybe QPType) QPType -> Maybe (K3 Expression)
+unifyDeclInitializer :: Identifier -> Bool -> IDeclaredAction -> Maybe (K3 Expression)
                      -> TInfM (Maybe (K3 Expression))
-unifyDeclInitializer n qptE eOpt = do
-  qpt <- case qptE of
-          Left Nothing     -> get >>= \env -> liftEitherM (tilkupe env n)
-          Left (Just qpt') -> modify (\env -> tiexte (tidele env n) n qpt') >> return qpt'
-          Right qpt'       -> return qpt'
+unifyDeclInitializer n asCyclic qptAct eOpt = do
+  qpt <- case qptAct of
+           IDAExtend     qpt' -> modify (\env -> tiexte (tidele env n) n qpt') >> return qpt'
+           IDAPassThru   qpt' -> return qpt'
+           IDAFunction        -> get >>= \env -> liftEitherM (tilkupe env n) >>= \qpt' -> initializerPropagatedQPs qpt' eOpt >> return qpt'
+           IDATrigger    qpt' -> initializerPropagatedQPs qpt' eOpt >> return qpt'
 
   case eOpt of
     Just e -> do
       qt1 <- instantiate qpt
-      qt2 <- qTypeOfM e
+      ne  <- (if asCyclic then inferAsCyclicType n else id) $ inferExprTypes e
+      qt2 <- qTypeOfM ne
       localLog $ prettyTaggedPair ("unify init ") qt1 qt2
-      void $ unifyWithOverrideM qt1 qt2 $ mkErrorF e unifyInitErrF
-      substituteDeepQt e >>= return . Just
+      void $ unifyWithOverrideM qt1 qt2 $ mkErrorF ne unifyInitErrF
+      substituteDeepQt ne >>= return . Just
 
     Nothing -> return Nothing
 
@@ -1082,11 +1094,14 @@ unifyDeclInitializer n qptE eOpt = do
 
     unifyInitErrF s = "Failed to unify initializer: " ++ s
 
-inferDeclInitializer :: Maybe Identifier -> Maybe (K3 Expression) -> TInfM (Maybe (K3 Expression))
-inferDeclInitializer _ Nothing = return Nothing
-inferDeclInitializer nOpt (Just e) = return . Just =<< case nOpt of
-  Just n  -> inferAsCyclicType n $ inferExprTypes e
-  Nothing -> inferExprTypes e
+initializerPropagatedQPs :: QPType -> Maybe (K3 Expression) -> TInfM ()
+initializerPropagatedQPs _ Nothing = return ()
+initializerPropagatedQPs qpt (Just e) = modify (\env -> env {tprop = bindings})
+  where bindings = mkStack [] qpt e
+        mkStack acc (QPType _ (tnc -> (QTCon QTFunction, [a,r]))) (tnc -> (ELambda i, [b])) =
+          mkStack (acc ++ [(i, QPType [] a)]) (QPType [] r) b
+
+        mkStack acc _ _ = acc
 
 
 -- | Expression type inference. Note this not perform a final type substitution, leaving
@@ -1103,7 +1118,12 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     monoBinding i t = monomorphize t >>= \mt -> modify (\env -> tiexte env i mt)
 
     lambdaBinding :: K3 Expression -> K3 Expression -> TInfM ()
-    lambdaBinding _ (tag -> ELambda i) = newtv >>= monoBinding i
+    lambdaBinding _ (tag -> ELambda i) = do
+      env <- get
+      case tprop env of
+        (j,qpt):t | i == j -> modify (\env' -> tiexte (env' {tprop = t}) i qpt)
+        _ -> modify (\env' -> env' {tprop = []}) >> newtv >>= monoBinding i
+
     lambdaBinding _ _ = return ()
 
     sidewaysBinding :: K3 Expression -> K3 Expression -> TInfM [TInfM ()]

@@ -2,12 +2,11 @@
 
 module Language.K3.Driver.CompilerTarget.CPP (compile) where
 
-import Data.Functor
+import Data.Maybe
 
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (joinPath, replaceExtension, takeBaseName)
 
-import qualified Data.Sequence as S
 import qualified Data.List as L
 
 import Development.Shake
@@ -18,96 +17,75 @@ import Text.PrettyPrint.ANSI.Leijen hiding ((</>), (<$>))
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
+import Language.K3.Core.Utils
 
-import Language.K3.TypeSystem (typecheckProgram)
-import Language.K3.Analysis.HMTypes.Inference (inferProgramTypes, translateProgramTypes)
+import qualified Language.K3.Utils.Pretty as P
+import qualified Language.K3.Utils.Pretty.Syntax as PS
 
 import qualified Language.K3.Codegen.Imperative as I
 import qualified Language.K3.Codegen.CPP as CPP
 
-import Language.K3.Stages ( runCGPasses, runDeclOptPasses, cs0 )
-
 import Language.K3.Driver.Options
-import Language.K3.Driver.Typecheck
 
-type CompilerStage a b = Options -> CompileOptions -> a -> IO (Either String b)
-
-continue :: Either String a -> (a -> IO (Either String b)) -> IO (Either String b)
-continue e f = either (return . Left) f e
-
-finalize :: (a -> String) -> Either String a -> IO ()
-finalize f = either putStrLn (putStrLn . f)
-
-prefixError :: String -> IO (Either String a) -> IO (Either String a)
-prefixError message m = m >>= \case
-  Left err -> return . Left $ message ++ " " ++ err
-  Right r  -> return $ Right r
+type CompileContinuation = (K3 Declaration -> IO ()) -> K3 Declaration -> IO ()
 
 outputFilePath :: String -> Options -> CompileOptions -> Either String (FilePath, FilePath)
 outputFilePath ext opts copts = case buildDir copts of
     Nothing   -> Left "Error: no build directory specified."
     Just path -> Right (path, joinPath [path, replaceExtension (takeBaseName $ input opts) ext])
 
-typecheckStage :: CompilerStage (K3 Declaration) (K3 Declaration)
-typecheckStage _ cOpts prog = prefixError "Type error:" $ return $ if useSubTypes cOpts then typecheck' else quickTypecheck
+cppOutFile :: Options -> CompileOptions -> Either String [FilePath]
+cppOutFile opts copts = either Left (\(_,f) -> Right [f]) $ outputFilePath "cpp" opts copts
 
-  where
-    typecheck' = if not $ S.null typeErrors
-                then Left $ prettyTCErrors typedProgram typeErrors
-                else Right typedProgram
-
-    (typeErrors, _, typedProgram) = typecheckProgram prog
-
-    quickTypecheck = inferProgramTypes prog >>= translateProgramTypes . fst
-
-applyOptimizations :: CompileOptions -> K3 Declaration -> IO (Either String (K3 Declaration))
-applyOptimizations cOpts prog = do
-  declOpted <- runDeclOptPasses cs0 Nothing prog
-  case declOpted of
-    Left s -> return $ Left s
-    Right program -> runCGPasses (optimizationLevel cOpts) (fst program)
-
-cppCodegenStage :: CompilerStage (K3 Declaration) ()
-cppCodegenStage opts copts typedProgram = prefixError "Code generation error:" $ genCPP irRes
+-- Generate C++ code for a given K3 program.
+cppCodegenStage :: Options -> CompileOptions -> (CompileContinuation, K3 Declaration) -> IO ()
+cppCodegenStage opts copts (cont, prog) = genCPP irRes
   where
     --attach trigger symbols. TODO: mangle names before applying this transformation.
     -- TODO move this into core. Must happen before imperative generation.
 
-    (irRes, initSt) = I.runImperativeM (I.declaration typedProgram) I.defaultImperativeS
+    (irRes, initSt) = I.runImperativeM (I.declaration prog) I.defaultImperativeS
 
-    genCPP (Right cppIr) = do
-      optIr <- applyOptimizations copts cppIr >>= \case
-                 Right x -> return x
-                 Left s -> error s
+    genCPP (Right cppIr) = cont genCPPCont cppIr
+    genCPP (Left _)      = putStrLn "Error in Imperative Transformation."
 
-      outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt) (CPP.stringifyProgram optIr)
-
-    genCPP (Left _) = return $ Left "Error in Imperative Transformation."
+    genCPPCont p = do
+      (if saveAST copts then outputAST p else return ())
+      outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt) (CPP.stringifyProgram p)
 
     outputCPP (Right doc) =
-      either (return . Left) (\x -> Right <$> outputDoc doc x)
-        $ outputFilePath "cpp" opts copts
+      either putStrLn (outputDoc doc) $ outputFilePath "cpp" opts copts
 
-    outputCPP (Left (CPP.CPPGenE e)) = return $ Left e
+    outputCPP (Left (CPP.CPPGenE e)) = putStrLn e
 
-    outputDoc doc (path, file) = do
+    outputAST p = either putStrLn (outputStrFile $ formatAST (astPrintMode copts) p) $ outputFilePath "k3ast" opts copts
+
+    -- Print out the program
+    formatAST (PrintAST st se sc sp) p =
+      let filterF = catMaybes $
+                     [if st && se then Just stripTypeAndEffectAnns
+                      else if st  then Just stripTypeAnns
+                      else if se  then Just stripEffectAnns
+                      else Nothing]
+                      ++ [if sc then Just stripComments else Nothing]
+                      ++ [if sp then Just stripProperties else Nothing]
+      in P.pretty $ foldl (flip ($)) p filterF
+
+    formatAST PrintSyntax p = either syntaxError id $ PS.programS p
+    syntaxError s = "Could not print program: " ++ s
+
+    outputDoc doc (path, file) = outputStrFile (displayS (renderPretty 1.0 100 doc) "") (path, file)
+
+    outputStrFile str (path, file) = do
       createDirectoryIfMissing True path
-      writeFile file (displayS (renderPretty 1.0 100 doc) "")
+      writeFile file str
 
--- Generate C++ code for a given K3 program.
-cppSourceStage :: Options -> CompileOptions -> K3 Declaration -> IO (Either String ())
-cppSourceStage opts copts prog = do
-    tcStatus    <- typecheckStage opts copts prog
-    continue tcStatus $ cppCodegenStage opts copts
 
-cppOutFile :: Options -> CompileOptions -> Either String [FilePath]
-cppOutFile opts copts = either Left (\(_,f) -> Right [f]) $ outputFilePath "cpp" opts copts
-
-cppBinaryStage :: Options -> CompileOptions -> [FilePath] -> IO (Either String ())
-cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
+cppBinaryStage :: Options -> CompileOptions -> [FilePath] -> IO ()
+cppBinaryStage _ copts sourceFiles =
   case buildDir copts of
-    Nothing   -> return $ Left "No build directory specified."
-    Just path -> Right <$> binary path
+    Nothing   -> putStrLn "No build directory specified."
+    Just path -> binary path >> putStrLn ("Created binary file: " ++ joinPath [path, pName])
 
   where binary bDir =
           shake shakeOptions{shakeFiles = bDir} $ do
@@ -135,11 +113,10 @@ cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
         runtimeLen     = length runtimePre
         runtimePre     = "runtime"
 
-        badSubDirs = [
-                        "Eigen",
+        badSubDirs = [  "Eigen",
                         "dataspace",
                         "test"
-                      ]
+                     ]
 
         hasBadSubDir s = foldr (\bad acc -> acc || bad `L.isInfixOf` s) False badSubDirs
 
@@ -160,18 +137,14 @@ cppBinaryStage _ copts sourceFiles = prefixError "Binary compilation error:" $
                     Clang -> "clang++"
 
 -- Generate C++ code for a given K3 program.
-compile :: Options -> CompileOptions -> K3 Declaration -> IO ()
-compile opts copts prog =
+compile :: Options -> CompileOptions -> CompileContinuation -> K3 Declaration -> IO ()
+compile opts copts ccont prog =
     case ccStage copts of
       Stage1    -> do
-        sourceStatus <- cppSourceStage opts copts prog
-        finalize (const $ "Created source file: " ++ programName copts ++ ".cpp") sourceStatus
+        cppCodegenStage opts copts (ccont, prog)
+        putStrLn $ "Created source file: " ++ programName copts ++ ".cpp"
       Stage2    -> do
-        let status = cppOutFile opts copts
-        binStatus <- continue status $ cppBinaryStage opts copts
-        finalize (const $ "Created binary file: " ++ programName copts) binStatus
+        either putStrLn (cppBinaryStage opts copts) $ cppOutFile opts copts
       AllStages -> do
-        sourceStatus <- cppSourceStage opts copts prog
-        let status = either Left (const $ cppOutFile opts copts) sourceStatus
-        binStatus <- continue status $ cppBinaryStage opts copts
-        finalize (const $ "Created binary file: " ++ programName copts) binStatus
+        cppCodegenStage opts copts (ccont, prog)
+        either putStrLn (cppBinaryStage opts copts) $ cppOutFile opts copts

@@ -4,26 +4,51 @@ include "tpch/schema.k3"
 declare lineitemLoaderP : string -> lineitem_bag -> ()
   with effects \_ -> \_ -> io
 
+@:CArgs 3
+declare lineitemLoaderPFixedSize : string -> lineitem_bag -> int -> ()
+  with effects \_ -> \_ -> \_ -> io
+
 @:CArgs 2
 declare customerLoaderP : string -> customer_bag -> ()
   with effects \_ -> \_ -> io
+
+@:CArgs 3
+declare customerLoaderPFixedSize : string -> customer_bag -> int -> ()
+  with effects \_ -> \_ -> \_ -> io
 
 @:CArgs 2
 declare ordersLoaderP : string -> orders_bag -> ()
   with effects \_ -> \_ -> io
 
+@:CArgs 3
+declare ordersLoaderPFixedSize: string -> orders_bag -> int -> ()
+  with effects \_ -> \_ -> \_ -> io
+
 @:CArgs 2
 declare supplierLoaderP : string -> supplier_bag -> ()
   with effects \_ -> \_ -> io
+
+@:CArgs 3
+declare supplierLoaderPFixedSize : string -> supplier_bag -> int -> ()
+  with effects \_ -> \_ -> \_ -> io
 
 @:CArgs 2
 declare partsuppLoaderP : string -> partsupp_bag -> ()
   with effects \_ -> \_ -> io
 
+@:CArgs 3
+declare partsuppLoaderPFixedSize : string -> partsupp_bag -> int -> ()
+  with effects \_ -> \_ -> \_ -> io
+
 @:CArgs 2
 declare partLoaderP : string -> part_bag -> ()
   with effects \_ -> \_ -> io
 
+@:CArgs 3
+declare partLoaderPFixedSize : string -> part_bag -> int -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+// Fixed size not needed for nation or region
 @:CArgs 2
 declare nationLoaderP : string -> nation_bag -> ()
   with effects \_ -> \_ -> io

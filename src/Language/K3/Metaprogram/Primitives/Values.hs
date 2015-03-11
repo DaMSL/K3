@@ -79,3 +79,7 @@ literalType _ = error "Invalid splice label for literalType"
 exprLabel :: SpliceValue -> SpliceValue
 exprLabel (SLabel i) = SExpr $ EC.constant $ CString i
 exprLabel _ = error "Invalid splice label for exprLabel"
+
+exprType :: SpliceValue -> SpliceValue
+exprType (SType t) = SExpr  $ EC.constant $ CString $ show t
+exprType _ =  error "Invalid splice type for exprType"

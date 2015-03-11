@@ -1,6 +1,14 @@
 #ifndef K3_RUNTIME_BUILTINS_H
 #define K3_RUNTIME_BUILTINS_H
 
+#ifdef CACHEPROFILE
+#include <cpucounters.h>
+#endif
+
+#ifdef MEMPROFILE
+#include "gperftools/heap-profiler.h"
+#endif
+
 #include <ctime>
 #include <chrono>
 #include <climits>
@@ -17,14 +25,23 @@
 #include "Common.hpp"
 #include "dataspace/Dataspace.hpp"
 
-
 // Hashing:
 namespace boost {
 
 template<>
 struct hash<boost::asio::ip::address> {
-  size_t operator()(boost::asio::ip::address const& a) const {
-    return hash_value(a.to_string());
+  size_t operator()(boost::asio::ip::address const& v) const {
+    if (v.is_v4()) {
+      return v.to_v4().to_ulong();
+    }
+    if (v.is_v6()) {
+      auto const& range = v.to_v6().to_bytes();
+      return hash_range(range.begin(), range.end());
+    }
+    if (v.is_unspecified()) {
+      return 0x4751301174351161ul;
+    }
+    return hash_value(v.to_string());
   }
 };
 
@@ -44,18 +61,65 @@ namespace K3 {
     return;
   }
 
+  class __pcm_context {
+    #ifdef CACHEPROFILE
+    protected:
+      PCM *instance;
+      std::shared_ptr<SystemCounterState> initial_state;
+    #endif
+
+    public:
+      __pcm_context();
+      ~__pcm_context();
+      unit_t cacheProfilerStart(unit_t);
+      unit_t cacheProfilerStop(unit_t);
+  };
+
+  class __tcmalloc_context {
+    public:
+      unit_t heapProfilerStart(const string_impl&);
+      unit_t heapProfilerStop(unit_t);
+  };
+
+  template <class C, class F>
+  void read_records_with_resize(int size, std::istream& in, C& container, F read_record) {
+
+    if (size == 0) {
+      return read_records(in, container, read_record);
+    }
+    else {
+      container.getContainer().resize(size);
+    }
+
+    int i = 0;
+    std::string tmp_buffer;
+    while (!in.eof()) {
+      if (i >= container.size(unit_t {}) ) {
+        throw std::runtime_error("Cannot read records, container size is too small");
+      }
+      container.getContainer()[i++] = read_record(in, tmp_buffer);
+      in >> std::ws;
+    }
+
+    return;
+  }
+
   // Standard context for common builtins that use a handle to the engine (via inheritance)
   class __standard_context : public __k3_context {
     public:
     __standard_context(Engine&);
 
+
     unit_t openBuiltin(string_impl ch_id, string_impl builtin_ch_id, string_impl fmt);
-
     unit_t openFile(string_impl ch_id, string_impl path, string_impl fmt, string_impl mode);
-    bool hasWrite(string_impl ch_id);
-    unit_t doWrite(string_impl ch_id, string_impl val);
-
     unit_t openSocket(string_impl ch_id, Address a, string_impl fmt, string_impl mode);
+
+    bool hasRead(string_impl ch_id);
+    template<typename T> T doRead(string_impl ch_id);
+    template<typename T> Collection<R_elem<T>> doReadBlock(string_impl ch_id, int block_size);
+
+    bool hasWrite(string_impl ch_id);
+    template<typename T> unit_t doWrite(string_impl ch_id, T& val);
 
     unit_t close(string_impl chan_id);
 
@@ -135,7 +199,8 @@ namespace K3 {
 
     unit_t sleep(int n);
 
-    template <template <class> class M, template <class> class C, template <typename ...> class R>
+    template <template <class> class M, template <class> class C,
+              template <typename...> class R>
     unit_t loadGraph(string_impl filepath, M<R<int, C<R_elem<int>>>>& c) {
       std::string tmp_buffer;
       std::ifstream in(filepath);
@@ -143,28 +208,29 @@ namespace K3 {
       int source;
       std::size_t position;
       while (!in.eof()) {
-	C<R_elem<int>> edge_list;
+        C<R_elem<int>> edge_list;
 
-	std::size_t start = 0;
-	std::size_t end = start;
-	std::getline(in, tmp_buffer);
+        std::size_t start = 0;
+        std::size_t end = start;
+        std::getline(in, tmp_buffer);
 
-	end = tmp_buffer.find(",", start);
-	source = std::atoi(tmp_buffer.substr(start, end - start).c_str());
+        end = tmp_buffer.find(",", start);
+        source = std::atoi(tmp_buffer.substr(start, end - start).c_str());
 
-	start = end + 1;
+        start = end + 1;
 
-	while (end != std::string::npos) {
-	  end = tmp_buffer.find(",", start);
-	  edge_list.insert(R_elem<int>(std::atoi(tmp_buffer.substr(start, end - start).c_str())));
-	  start = end + 1;
-	}
+        while (end != std::string::npos) {
+          end = tmp_buffer.find(",", start);
+          edge_list.insert(R_elem<int>(
+              std::atoi(tmp_buffer.substr(start, end - start).c_str())));
+          start = end + 1;
+        }
 
-	c.insert(R<int, C<R_elem<int>>> { source, std::move(edge_list)});
-	in >> std::ws;
+        c.insert(R<int, C<R_elem<int>>>{source, std::move(edge_list)});
+        in >> std::ws;
       }
 
-      return unit_t {};
+      return unit_t{};
     }
 
     // TODO move to seperate context
@@ -189,6 +255,15 @@ namespace K3 {
 
         return unit_t {};
     }
+
+   int lineCountFile(const string_impl& filepath) {
+     std::ifstream _in;
+     _in.open(filepath);
+     std::string tmp_buffer;
+     std::getline(_in, tmp_buffer);
+     return std::atoi(tmp_buffer.c_str());
+
+   }
 
    template <template <class> class C, template <typename ...> class R>
    unit_t loadQ1(string_impl filepath, C<R<int, string_impl>>& c) {
@@ -297,7 +372,7 @@ namespace K3 {
       std::string line;
       std::ifstream infile(filepath);
       while (std::getline(infile, line)) {
-        c.insert(R{line}); 
+        c.insert(R{line});
       }
       return unit_t{};
     }
@@ -322,40 +397,36 @@ namespace K3 {
         c.insert(rec2);
       }
       return unit_t();
-
     }
 
-    template <template<typename S> class C, template <typename ...> class R, class V>
-    unit_t loadVectorLabel(int dims, string_impl filepath, C<R<double,V>>& c) {
+    template <template <typename S> class C, template <typename...> class R, class V>
+    unit_t loadVectorLabel(int dims, string_impl filepath, C<R<double, V>>& c) {
+      // Buffers
+      std::string tmp_buffer;
+      R<double, V> rec;
+      // Infile
+      std::ifstream in;
+      in.open(filepath);
+      char* saveptr;
 
-        // Buffers
-        std::string tmp_buffer;
-        R<double,V>  rec;
-        // Infile
-        std::ifstream in;
-        in.open(filepath);
-	char *saveptr;
-
-        // Parse by line
-        while(!in.eof()) {
-          V v;
-          R_elem<double> r;
-          for (int j = 0; j < dims; j++) {
-            std::getline(in, tmp_buffer, ',');
-            r.elem = std::atof(tmp_buffer.c_str());
-            v.insert(r);
-          }
+      // Parse by line
+      while (!in.eof()) {
+        V v;
+        R_elem<double> r;
+        for (int j = 0; j < dims; j++) {
           std::getline(in, tmp_buffer, ',');
-          rec.class_label = std::atof(tmp_buffer.c_str());
-          rec.elem = v;
-          c.insert(rec);
-
-          in >> std::ws;
+          r.elem = std::atof(tmp_buffer.c_str());
+          v.insert(r);
         }
+        std::getline(in, tmp_buffer, ',');
+        rec.class_label = std::atof(tmp_buffer.c_str());
+        rec.elem = v;
+        c.insert(rec);
 
-        return unit_t {};
+        in >> std::ws;
+      }
 
-
+      return unit_t{};
     }
   };
 

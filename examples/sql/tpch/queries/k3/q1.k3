@@ -18,7 +18,7 @@ typedef q1_result_r = { l_returnflag   : string
 
 typedef q1_result = collection q1_result_r @Collection
 
-declare lineitem    : lineitem_bag
+declare lineitem    : mut lineitem_bag
 declare init_agg    : q1_agg
 declare results : mut q1_result
 
@@ -73,36 +73,40 @@ trigger q1 : () = \_ -> (
                        init_agg)
   ) @DistributedGroupBy(
       lbl         = [# groupby],
+      clear_expr  = [$ lineitem = empty lineitem_r @Collection ],
       peer_next   = [$ (\x -> ((x.iterate (\kv -> results.insert (finalize_agg kv)));
                                ((() @:Result) @TPCHBenchmarkWithoutMaster))) ],
       next        = [$ ()],
       merge       = [$ merge_agg],
       coordinator = [$ master],
       nodes       = [$ peers],
+      masters     = [$ masters ],
+      masters_map = [$ peer_masters ],
       profile     = [$ true] )
 )
 
 trigger start : () = \_ -> (
   (() @:Start) @TPCHBenchmarkWithoutMaster(
     nodes                = [$ peers],
-    loadExpr             = [$ dataFiles.iterate (\e -> lineitemLoaderP e.path lineitem)],
+    loadExpr             = [$ dataLineCountFiles.iterate (\e -> lineitemRows = lineitemRows + (lineCountFile e.path));
+			      print ("Lineitem rows: " ++ (itos lineitemRows));
+                              dataFiles.iterate (\e -> lineitemLoaderPFixedSize e.path lineitem lineitemRows)
+                           ],
     preLoadExpr          = [$ ()],
     preReadyExpr         = [$ ()],
     onReadyExpr          = [$ (q1, me) <- ()],
     finishArgT           = [: ()],
     preTestFinishExpr    = [$ (\_ -> ())],
-    preFinishExpr        = [$ () @DistributedCollectionStatistics(
-                                    lbl         = [# q1_skew ],
-                                    query_cl    = [* [% cl: [# lo_skew],  ce: [$ groupby_result]]
-                                                  ],
-                                    coordinator = [$ master ],
-                                    nodes       = [$ peers ],
-                                    next        = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ])
+    preFinishExpr        = [$ () @GatherResultsAsCSV(
+                                    query_cl = [* [% ci: [# results], csink: [$ results_sink]] ]
+                                  , nodes    = [$ peers]
+                                  , next     = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ])
                            ],
     preShutdownExpr      = [$ ()],
     finishAsShutdownExpr = [$ false]
   )
 )
 
+sink results_sink : q1_result_r = file "results.csv" csv
 source rows : () = value ()
 feed rows |> start

@@ -1,3 +1,5 @@
+include "Annotation/Collection.k3"
+
 @:CArgs 2
 declare loadQ1: string -> collection {pageURL: string,pageRank: int} @ { Collection } -> ()
 

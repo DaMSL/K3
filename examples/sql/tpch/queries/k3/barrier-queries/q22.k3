@@ -1,0 +1,205 @@
+include "tpch/benchmark.k3"
+
+/**********************
+* SQL query
+***********************
+select cntrycode,
+       count(*) as numcust,
+       sum(c_acctbal) as totacctbal
+from
+  (
+    select substring(c_phone from 1 for 2) as cntrycode,
+           c_acctbal
+    from   customer
+    where  substring(c_phone from 1 for 2) in
+              ('13', '31', '23', '29', '30', '18', '17')
+           and c_acctbal > (
+             select avg(c_acctbal)
+             from   customer
+             where  c_acctbal > 0.00
+                    and substring(c_phone from 1 for 2) in
+                          ('13', '31', '23', '29', '30', '18', '17')
+           )
+           and not exists (
+             select *
+             from   orders
+             where  o_custkey = c_custkey
+           )
+  ) as custsale
+group by cntrycode
+order by cntrycode
+****************************
+* Plan:
+* 1st aggregate subquery ;
+* groupby on master
+*   join no-match
+*     orders
+*     filter customer
+****************************/
+
+declare master   : address = 127.0.0.1:4000
+declare customer : mut customer_bag
+declare orders   : mut orders_bag
+
+declare c_valid_phone : collection {key : string, value : ()} @Map =
+  {| key:string, value:()
+   | {key:"13", value:()}, {key:"31", value:()}, {key:"23", value:()},
+     {key:"29", value:()}, {key:"30", value:()}, {key:"18", value:()},
+     {key:"17", value:()}
+   |} @Map
+
+declare c_avg_acctbal : mut real
+declare c_acc_acctbal : mut {sum: real, cnt: int}
+
+typedef c_nt_by_cc_r   = {key: string, value: {nc:int, tab:real}}
+typedef c_nt_by_cc_map = collection c_nt_by_cc_r @Map
+
+declare q22_result : c_nt_by_cc_map
+declare results    : collection { cntrycode: string, numcust: int, totacctbal: real} @Collection
+
+declare merge_c_nt_by_cc : c_nt_by_cc_r -> c_nt_by_cc_r -> c_nt_by_cc_r
+  = \a -> \b -> {key: a.key, value: {nc:a.value.nc + b.value.nc, tab:a.value.tab + b.value.tab}}
+
+trigger customer_subagg : () = \_ -> (
+  peers.iterate (\p -> (customer_subagg_local, p.addr) <- ())
+)
+
+trigger customer_set_avg_acctbal : real = \avg_acctbal -> (
+  c_avg_acctbal = avg_acctbal
+)
+
+trigger customer_subagg_local : () = \_ -> (
+  let c_acctbal_agg =
+    (customer.filter (\c -> case c_valid_phone.lookup {key: (slice_string c.c_phone 0 2), value:()}
+                            of {Some x -> c.c_acctbal > 0.0}
+                               {None -> false}
+                     ))
+             .fold   (\acc -> \c -> {sum:acc.sum+c.c_acctbal, cnt:acc.cnt+1})
+                     {sum: 0.0, cnt: 0}
+  in (customer_subagg_final, master) <- c_acctbal_agg
+)
+
+trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
+(
+  c_acc_acctbal = { sum: c_acc_acctbal.sum + partial.sum
+                  , cnt: c_acc_acctbal.cnt + partial.cnt } ;
+
+  ( c_avg_acctbal = c_acc_acctbal.sum / c_acc_acctbal.cnt ;
+
+    print "Computed customer avg acctbal." ;
+    peers.iterate (\p -> (customer_set_avg_acctbal, p.addr) <- c_avg_acctbal) ;
+
+    ( () @:NoPipeline )
+      @JoinSelector(
+            lbl                  = [# oc ]
+          , lhs_ht_id            = [# oc_lhs_ht ]
+          , rhs_ht_id            = [# oc_rhs_ht ]
+
+          , lhs_sample_query     = [$ empty {key: int, value: int} @Map ]
+          , rhs_sample_query     = [$ empty {key: int, value: int} @Map ]
+          , frequency_threshold  = [$ 1000.0 ]
+
+          , lhs_query = [$ let result =
+                           ((customer.filter  (\c -> case c_valid_phone.lookup
+                                                            {key: (slice_string c.c_phone 0 2), value:()}
+                                                     of {Some x -> c.c_acctbal > c_avg_acctbal}
+                                                        {None -> false}))
+                                     .groupBy (\c -> c.c_custkey)
+                                              (\_ -> \c -> { cntrycode : (slice_string c.c_phone 0 2)
+                                                                          , c_acctbal : c.c_acctbal }
+                                                               )
+                                              {cntrycode: "", c_acctbal: 0.0})
+                                     .fold    ((\acc -> \c -> ((acc.insert c); acc)) @:Accumulate)
+                                              (empty {key:int, value: {cntrycode: string, c_acctbal: real} } @Map)
+                           in ( (customer = empty customer_r @Collection); result)
+                        ]
+
+          , rhs_query = [$ let result =
+                           (orders.groupBy (\o -> o.o_custkey) (\_ -> \_ -> ()) ())
+                                  .fold    (\acc -> \o -> ((acc.insert o); acc))
+                                           (empty {key:int, value: ()} @Map)
+                           in ( (orders = empty orders_r @Collection); result )
+                        ]
+
+
+        , join_key_ty          = [: int ]
+        , lhs_ht_ty            = [: {key: int, value: {cntrycode: string, c_acctbal: real}} ]
+        , rhs_ht_ty            = [: {key: int, value: ()} ]
+
+        , lhs_probe            = [$ (\_ -> \_ -> \r -> oc_lhs_ht.erase { key: r.key, value: { cntrycode: "", c_acctbal: 0.0 }}) ]
+        , rhs_probe            = [$ (\_ -> \_ -> \_ -> ()) ]
+
+        , lhs_insert_with      = [$ (\_ -> \new -> new) ]
+        , rhs_insert_with      = [$ (\_ -> \new -> new) ]
+
+        , has_outputs          = [$ (\_ -> false) ]
+        , empty_out_buffer     = [$ () ]
+
+        , lhs_pipeline_next    = [$ (\_ -> ()) ]
+        , rhs_pipeline_next    = [$ (\_ -> ()) ]
+
+        , lhs_clear_expr       = [$ (\_ -> ()) ]
+        , rhs_clear_expr       = [$ (\_ -> ()) ]
+
+        , peer_next            = [$ ( print "OR-CS join finished customer probe." );
+
+                                    ( (q22_final_aggregate, master) <-
+                                      ( oc_lhs_ht.groupBy
+                                          (\r -> r.value.cntrycode)
+                                          (\acc -> \r -> {nc: acc.nc + 1, tab: acc.tab + r.value.c_acctbal})
+                                          {nc: 0, tab: 0.0} ) );
+
+                                    ( (q22_final_peer_barrier, master) <- () );
+                                    ( oc_lhs_ht = empty {key: int, value: {cntrycode: string, c_acctbal: real}} @Map );
+
+                                    ( (() @:Result) @TPCHBenchmarkWithoutMaster ) ]
+
+        , next                 = [$ print "OR-CS join all nodes finished." ]
+
+        , coordinator          = [$ master]
+        , nodes                = [$ peers]
+        , masters              = [$ masters ]
+        , masters_map          = [$ peer_masters ]
+        , profile              = [$ false]
+      )
+  ) @OnCounter(id=[# customer_subagg_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+)
+
+trigger q22_final_aggregate : c_nt_by_cc_map = \vals -> (
+  vals.iterate (\kv -> q22_result.insert_with kv merge_c_nt_by_cc)
+)
+
+trigger q22_final_peer_barrier : () = \_ -> (
+  ( print "Q22 final aggregation done."
+  ) @OnCounter(id=[# q22_aggregate_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+)
+
+trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
+  nodes                = [$ peers ],
+  loadExpr             = [$ ( ordersLineCountFiles.iterate   (\e -> ordersRows = ordersRows + (lineCountFile e.path));
+                              customerLineCountFiles.iterate (\e -> customerRows = customerRows + (lineCountFile e.path));
+
+			      print ("Orders rows: " ++ (itos ordersRows));
+			      print ("Customer rows: " ++ (itos customerRows));
+
+                              ordersFiles.iterate   (\e -> ordersLoaderPFixedSize   e.path orders ordersRows);
+                              customerFiles.iterate (\e -> customerLoaderPFixedSize e.path customer customerRows)
+                            ) ],
+  preLoadExpr          = [$ ()],
+  preReadyExpr         = [$ ()],
+  onReadyExpr          = [$ (customer_subagg, me) <- ()],
+  finishArgT           = [: ()],
+  preTestFinishExpr    = [$ (\_ -> ())],
+  preFinishExpr        = [$ (q22_result.iterate (\r -> results.insert {cntrycode: r.key, numcust: r.value.nc, totacctbal: r.value.tab} ));
+                            () @GatherResultsAsCSV(
+                                    query_cl = [* [% ci: [# results], csink: [$ results_sink]] ]
+                                  , nodes    = [$ peers]
+                                  , next     = [$ peers.iterate (\p -> (shutdown, p.addr) <- ())])
+                         ],
+  preShutdownExpr      = [$ () ],
+  finishAsShutdownExpr = [$ false]
+)
+
+sink results_sink : { cntrycode: string, numcust: int, totacctbal: real} = file "results.csv" csv
+source rows : () = value ()
+feed rows |> start

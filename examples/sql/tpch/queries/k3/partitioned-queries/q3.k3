@@ -1,0 +1,140 @@
+include "tpch/benchmark.k3"
+
+/**********************
+* SQL query
+***********************
+select top 10
+        l_orderkey,
+        sum(l_extendedprice * (1 - l_discount)) as revenue,
+        o_orderdate,
+        o_shippriority
+from
+        customer,
+        orders,
+        lineitem
+where
+        c_mktsegment = 'BUILDING'
+        and c_custkey = o_custkey
+        and l_orderkey = o_orderkey
+        and o_orderdate < date '1995-03-15'
+        and l_shipdate > date '1995-03-15'
+group by
+        l_orderkey,
+        o_orderdate,
+        o_shippriority
+order by
+        revenue desc,
+        o_orderdate
+****************************/
+
+declare master : address
+
+declare lineitem : mut lineitem_bag
+declare customer : mut customer_bag
+declare orders   : mut orders_bag
+
+// Final result.
+typedef lior_epd_by_ods_r     = {key : {ok: int, od: string, sp: int}, value: real}
+typedef lior_epd_by_ods_map   = collection lior_epd_by_ods_r @Map
+
+declare q3_peer_result : lior_epd_by_ods_map
+
+// Intermediates for Q3 plans.
+typedef lior_epdods_by_ck_r   = {key: int, value : lior_epd_by_ods_map }
+typedef lior_epdods_by_ck_map = collection lior_epdods_by_ck_r @Map
+
+typedef cs_ck_bag = collection {elem: {c_custkey : int}} @Collection
+
+// Plan intermediates.
+declare lior_epdods_map  : lior_epdods_by_ck_map
+
+declare merge_lior_epd_by_ods : lior_epd_by_ods_r -> lior_epd_by_ods_r -> lior_epd_by_ods_r =
+  \a -> \b -> {key : a.key, value : a.value + b.value}
+
+declare merge_lior_r : lior_epdods_by_ck_r -> lior_epdods_by_ck_r -> lior_epdods_by_ck_r =
+  \a -> \b -> {key : a.key, value : a.value.fold (\acc -> \r -> ((acc.insert_with r merge_lior_epd_by_ods); acc)) b.value}
+
+// Distributed plan: localized hash-join on li-or, broadcast semi-join on lior-cs.
+trigger lineitem_orders : () = \_ -> (
+  let rhs_ht = ((orders.filter  (\o -> o.o_orderdate < "1995-03-15" ))
+                       .groupBy (\o -> o.o_orderkey)
+                                (\_ -> \o -> { od : o.o_orderdate
+                                             , ck : o.o_custkey
+                                             , sp : o.o_shippriority})
+                                { od: "", ck: 0, sp: 0 })
+                       .fold    (\acc -> \o -> ((acc.insert o); acc))
+                                (empty {key : int, value : {od:string, ck:int, sp:int}} @Map)
+  in
+
+  // Build up a local lior_epdods_map
+  (((lineitem.filter  (\l -> l.l_shipdate > "1995-03-15" and
+                            (rhs_ht.member {key: l.l_orderkey, value: { od: "", ck: 0, sp: 0 }})))
+             .groupBy (\l -> l.l_orderkey)
+                      (\acc -> \l -> acc + (l.l_extendedprice * (1 - l.l_discount)))
+                      0.0)
+             .iterate (\li -> case rhs_ht.lookup {key: li.key, value: {od: "", ck: 0, sp: 0}}
+                              of { Some o -> lior_epdods_map.insert_with
+                                               { key: o.value.ck
+                                               , value: {|key : {ok: int, od: string, sp: int}, value: real
+                                                         | { key   : {ok: o.key, od: o.value.od, sp: o.value.sp }
+                                                           , value : li.value }
+                                                         |} @Map }
+                                               merge_lior_r
+                                 }
+                                 { None   -> () })
+  );
+
+  // Start broadcasting this peer's customers.
+  ( (() @:StartTimer) @Time(lbl=[# loc_JOIN], tag=[$ "Time "]) );
+  // Broadcast customers to all peers with li-or buckets for semi-join.
+  let building_customers = (customer.filter  (\c -> c.c_mktsegment == "BUILDING" ))
+                                    .map     (\c -> { c_custkey : c.c_custkey })
+  in
+  peers.iterate (\p -> (loc_probe_rhs, p.addr) <- building_customers)
+)
+
+trigger loc_probe_rhs : cs_ck_bag = \vals -> (
+  ( vals.iterate (\v ->
+      case lior_epdods_map.lookup {key: v.elem.c_custkey, value: empty lior_epd_by_ods_r @Map}
+      of
+      { Some lo_r -> lo_r.value.iterate (\kv -> q3_peer_result.insert_with kv merge_lior_epd_by_ods) }
+      { None -> () } ) );
+
+  ( ( (() @:Result) @TPCHBenchmarkWithoutMaster );
+    if master == me then ( () @:StopTimer) @Time(lbl=[# loc_JOIN], tag=[$ "Time "]) else ()
+  ) @OnCounter(id=[# loc_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+)
+
+// For ktrace:
+declare results: collection {orderkey: int, revenue: real, orderdate: string, shippriority: int} @Collection
+
+trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
+  nodes                = [$ peers ],
+  loadExpr             = [$ ( lineitemFiles.iterate (\e -> lineitemLoaderP e.path lineitem);
+                              ordersFiles.iterate   (\e -> ordersLoaderP   e.path orders);
+                              customerFiles.iterate (\e -> customerLoaderP e.path customer)
+                            ) ],
+  preLoadExpr          = [$ ()],
+  preReadyExpr         = [$ ()],
+  onReadyExpr          = [$ peers.iterate (\p -> (lineitem_orders, p.addr) <- ()) ],
+  finishArgT           = [: ()],
+  preTestFinishExpr    = [$ (\_ -> ())],
+  preFinishExpr        = [$  () @DistributedCollectionStatistics(
+                                    lbl         = [# q3_skew ],
+                                    query_cl    = [* [% cl: [# loc_skew], ce: [$ lior_epdods_map]]
+                                                  ],
+                                    coordinator = [$ master ],
+                                    nodes       = [$ peers ],
+                                    next        = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ])
+                         ],
+  preShutdownExpr      = [$ q3_peer_result.iterate (\r ->
+                                results.insert { orderkey: r.key.ok
+                                               , revenue: r.value
+                                               , orderdate: r.key.od
+                                               , shippriority: r.key.sp })
+                         ],
+  finishAsShutdownExpr = [$ false]
+)
+
+source rows : () = value ()
+feed rows |> start

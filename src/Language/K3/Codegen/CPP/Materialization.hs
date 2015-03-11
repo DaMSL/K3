@@ -190,7 +190,13 @@ materializationE e@(Node (t :@: as) cs)
 
              forM_ closureSymbols $ \s -> do
                closureHasWrite <- hasWriteInI s b
-               let closureDecision d = if closureHasWrite then d { inD = Moved } else d
+               moveable <- return True
+               let closureDecision d =
+                     if closureHasWrite
+                       then if moveable
+                              then d { inD = Moved }
+                              else d { inD = Copied }
+                       else d { inD = Referenced }
                setDecision (getUID e) s $ closureDecision defaultDecision
              decisions <- dLookupAll (getUID e)
              return $ (Node (t :@: (EMaterialization decisions:as)) [b])

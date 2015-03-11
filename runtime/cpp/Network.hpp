@@ -12,9 +12,9 @@
 #include <boost/iostreams/stream.hpp>
 #include <boost/system/error_code.hpp>
 #include <boost/thread/thread.hpp>
-#include <external/nanomsg/nn.h>
-#include <external/nanomsg/pipeline.h>
-#include <external/nanomsg/tcp.h>
+#include <nanomsg/nn.h>
+#include <nanomsg/pipeline.h>
+#include <nanomsg/tcp.h>
 
 #include <Common.hpp>
 
@@ -184,10 +184,10 @@ namespace K3
         // If the loop is already running, just add the message to the queue
         mut.lock();
         if (busy) {
-          while(buffer_->size() > 1000) {
-            logAt(boost::log::trivial::trace, "Too many messages on outgoing queue: waiting...");
+          while(buffer_->size() > 1000000) {
+            logAt(boost::log::trivial::warning, "Too many messages on outgoing queue: waiting...");
             mut.unlock();
-      boost::this_thread::sleep_for( boost::chrono::seconds(1) );
+            boost::this_thread::sleep_for( boost::chrono::seconds(1) );
             mut.lock();
           }
           buffer_->push(val);
@@ -236,8 +236,10 @@ namespace K3
       NConnection(shared_ptr<NContext> ctxt, Socket s)
         : ::K3::NConnection<NContext, Socket>("NConnection", ctxt, s),
           LogMT("NConnection"), socket_(s), connected_(false), busy(false),
-          buffer_(new std::queue<shared_ptr<Value>>())
-      {}
+          buffer_(new std::queue<shared_ptr<Value>>()) {
+
+        boost::asio::socket_base::receive_buffer_size option(2 << 20);
+      }
       // use mutex to operate on queues and busy atomically
       boost::mutex mut;
       bool busy;

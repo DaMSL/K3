@@ -27,18 +27,17 @@ namespace K3 {
     template<typename T>
     class ValDispatcher : public Dispatcher {
       public:
-
         ValDispatcher(const T& arg) : _arg(arg) {}
         ValDispatcher() {}
 
-        void unpack(const Value &msg) { _arg = *BoostSerializer::unpack<T>(msg); }
+        void unpack(const Value &msg) { _arg = std::move(*BoostSerializer::unpack<T>(msg)); }
 
         Dispatcher* clone() { return new ValDispatcher<T>(_arg); }
 
         Value pack() const { return BoostSerializer::pack<T>(_arg); }
 
         void call_dispatch(__k3_context& context, int trigger_id, const Address& src) {
-	  context.__dispatch(trigger_id, static_cast<void*>(&_arg), src);
+	        context.__dispatch(trigger_id, static_cast<void*>(&_arg), src);
         }
 
         T _arg;

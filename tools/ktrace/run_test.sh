@@ -23,8 +23,9 @@ rm __build/A __build/__build/* || true
 # Create a directory for K3 Results
 mkdir $TESTDIR/results || rm $TESTDIR/results/* || true
 
-# Run the K3 Executable, stash results
-__build/A -p $TESTDIR/peers.yaml --result_var $RESULTVAR --result_path $TESTDIR/results/
+# Run the K3 Executable, expecting results to be stored in results.csv
+__build/A -p $TESTDIR/peers.yaml
+mv results.csv $(pwd)/$TESTDIR/results/
 
 # Run KTrace to populate the database with K3 Results
 python $KTRACE/driver.py $(pwd) $INFILE $RESULTVAR $(pwd)/$TESTDIR/results/ | psql
