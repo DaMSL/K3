@@ -27,6 +27,7 @@
 #include <boost/serialization/access.hpp>
 #include <boost/serialization/level.hpp>
 #include <boost/serialization/level_enum.hpp>
+#include <boost/serialization/nvp.hpp>
 
 CSVPP_MANIPULATORS_FWD()
 
@@ -112,6 +113,11 @@ namespace csv {
             //////////////////////////////////////////////////////////////////////////////
             typex::invoke(*this, val);
             return *this;
+        }
+
+        template<class T>
+        parser &operator&(const boost::serialization::nvp<T>& n) {
+            return *this & n.value();
         }
 
         template<class T>
