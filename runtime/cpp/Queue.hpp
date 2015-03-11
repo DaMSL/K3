@@ -99,6 +99,7 @@ namespace K3 {
       if (validTarget(m)) { enqueue(m, queue(m.address())); }
       else {
         BOOST_LOG(*this) << "Invalid message target:" << m.id() << "@" << K3::addressAsString(m.address());
+	fail(m.address());
       }
     }
 
@@ -119,9 +120,8 @@ namespace K3 {
       if (q) {
         return q->empty();
       }
-      else {
-        fail(a);
-      }
+      fail(a);
+      return false;
     }
 
     template <class Predicate>
@@ -143,7 +143,6 @@ namespace K3 {
       else {
         fail(a);
       }
-
     }
 
   protected:
@@ -162,7 +161,7 @@ namespace K3 {
     {
       if (q) {
         q->push(m);
-	q->messageAvail();
+        q->messageAvail();
       }
       else {
         fail(m.address());
