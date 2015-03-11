@@ -246,5 +246,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
 )
 
 sink results_sink : {orderkey: int, revenue: real, orderdate: string, shippriority: int} = file "results.csv" csv
+sink query_time_sink : int = file "time.txt" csv
+
 source rows : () = value ()
 feed rows |> start
