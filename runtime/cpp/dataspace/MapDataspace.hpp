@@ -2,9 +2,13 @@
 #ifndef __K3_RUNTIME_MAP_DATASPACE__
 #define __K3_RUNTIME_MAP_DATASPACE__
 
+#include <functional>
+#include <stdexcept>
+
 #include <boost/serialization/array.hpp>
 #include <boost/serialization/binary_object.hpp>
 #include <boost/serialization/string.hpp>
+#include <csvpp/csv.h>
 
 #include "K3Config.hpp"
 
@@ -20,17 +24,16 @@ namespace K3 { namespace Libdynamic {
 template<class R>
 class IntMap {
   using Key = typename R::KeyType;
+  using CloneFn = void (*)(void*, void*, size_t);
 
 public:
   using Container = shared_ptr<mapi>;
 
   // Default Constructor
-  IntMap() {
-    container = Container(mapi_new(sizeof(R)));
-  }
+  IntMap() { init_mapi(true, sizeof(R)); }
 
   IntMap(const Container& con) {
-    container = Container(mapi_new(sizeof(R)));
+    init_mapi(true, sizeof(R));
     mapi* m = con.get();
     mapi* n = container.get();
     for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
@@ -38,13 +41,16 @@ public:
     }
   }
 
-  IntMap(Container&& con) : container(std::move(con)) {}
+  IntMap(Container&& con) : container(std::move(con)) {
+    init_mapi(false, sizeof(R));
+  }
 
   template<typename Iterator>
   IntMap(Iterator begin, Iterator end): container(begin,end) {
-    container = Container(mapi_new(sizeof(R)));
+    init_mapi(true, sizeof(R));
+    mapi* m = container.get();
     for ( auto it = begin; it != end; ++it) {
-      mapi_insert(container.get(), &(*it));
+      mapi_insert(m, &(*it));
     }
   }
 
@@ -56,7 +62,7 @@ public:
     map_iterator(mapi* _m, _I&& _i): m(_m), i(static_cast<I>(std::forward<_I>(_i))) {}
 
     map_iterator& operator ++() {
-      i = static_cast<I>(mapi_next(m, i));
+      i = static_cast<I>(mapi_next(m, const_cast<void*>(static_cast<const void*>(i))));
       return *this;
     }
 
@@ -123,8 +129,14 @@ public:
     return res;
   }
 
-  unit_t insert(R& q) {
+  unit_t insert(const R& q) {
     mapi_insert(container.get(), &q);
+    return unit_t();
+  }
+
+  unit_t insert(R&& q) {
+    R tmp(std::move(q));
+    mapi_insert(container.get(), &tmp);
     return unit_t();
   }
 
@@ -370,47 +382,59 @@ protected:
 private:
   friend class boost::serialization::access;
 
+  static inline void cloneElem(void* dest, void* src, size_t sz) {
+    new(dest) R(*static_cast<R*>(src));
+  }
+
+  void init_mapi(bool alloc, size_t sz) {
+    if ( alloc ) { container = Container(mapi_new(sz)); }
+    mapi_clone(container.get(), (CloneFn) &IntMap<R>::cloneElem);
+  }
+
   template<class archive>
-  void serialize(archive &ar, const unsigned int) {
-    size_t object_size    = archive::is_saving::value? container->object_size : 0;
-    uint32_t empty_key    = archive::is_saving::value? container->empty_key   : 0;
-    size_t container_size = archive::is_saving::value? container->size        : 0;
-    size_t capacity       = archive::is_saving::value? container->capacity    : 0;
+  void save(archive &ar, const unsigned int) const {
+    ar << boost::serialization::make_nvp("object_size", container->object_size);
+    ar << boost::serialization::make_nvp("empty_key", container->empty_key);
+    ar << boost::serialization::make_nvp("size", container->size);
+    ar << boost::serialization::make_nvp("capacity", container->capacity);
 
-    ar & object_size;
-    ar & empty_key;
-    ar & container_size;
-    ar & capacity;
-
-    if ( archive::is_loading::value ) {
-      if ( container ) { mapi_free(container.get()); container.reset(); }
-      container = Container(mapi_new(object_size));
-      mapi* n = container.get();
-      mapi_empty_key(n, empty_key);
-      mapi_rehash(n, capacity);
-    }
-
-    bool sparse = true;
-    if ( sparse ) {
-      mapi* m = container.get();
-      if ( archive::is_saving::value ) {
-        for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
-          ar << boost::serialization::make_nvp("item", static_cast<R&>(*o));
-        }
-      } else {
-        for ( auto i = 0; i < container_size; ++i ) {
-          R r;
-          ar >> boost::serialization::make_nvp("item", r);
-          mapi_insert(m, &r);
-        }
-      }
-    } else {
-      // Note: this copies the whole hash table, including empty keys.
-      container->size = container_size;
-      ar & boost::serialization::make_array<R>(container.get()->objects, capacity);
+    mapi* m = container.get();
+    for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
+      ar << boost::serialization::make_nvp("item", *static_cast<R*>(o));
     }
   }
 
+  template<class archive>
+  void load(archive &ar, const unsigned int) {
+    size_t object_size;
+    uint32_t empty_key;
+    size_t container_size;
+    size_t capacity;
+
+    ar >> boost::serialization::make_nvp("object_size", object_size);
+    ar >> boost::serialization::make_nvp("empty_key", empty_key);
+    ar >> boost::serialization::make_nvp("size", container_size);
+    ar >> boost::serialization::make_nvp("capacity", capacity);
+
+    if ( container ) { mapi_clear(container.get()); container.reset(); }
+    init_mapi(true, object_size);
+
+    if ( container ) {
+      mapi* n = container.get();
+      mapi_empty_key(n, empty_key);
+      mapi_rehash(n, capacity);
+
+      for ( auto i = 0; i < container_size; ++i ) {
+        R r;
+        ar >> boost::serialization::make_nvp("item", r);
+        mapi_insert(n, &r);
+      }
+    } else {
+      throw std::runtime_error("Failed to instantiate IntMap for deserialization");
+    }
+  }
+
+  BOOST_SERIALIZATION_SPLIT_MEMBER()
 };
 
 //
@@ -425,29 +449,31 @@ private:
 template<class R>
 class StrMap {
   using Key = typename R::KeyType;
+  using CloneFn = void (*)(void*, void*, size_t);
 
 public:
   using Container = shared_ptr<map_str>;
 
   // Default Constructor
-  StrMap() { container = Container(map_str_new(sizeof(R))); }
+  StrMap() { init_map_str(true, sizeof(R)); }
 
   StrMap(const Container& con) {
-    container = Container(map_str_new(sizeof(R)));
+    init_map_str(true, sizeof(R));
     map_str* m = con.get();
-    map_str* n = container.get();
     for (auto o = map_str_begin(m); o < map_str_end(m); o = map_str_next(m, o)) {
-      map_str_insert(n, m->keys[o], map_str_get(m, o));
+      insert(static_cast<R*>(map_str_get(m,o)));
     }
   }
 
-  StrMap(Container&& con) : container(std::move(con)) {}
+  StrMap(Container&& con) : container(std::move(con)) {
+    init_map_str(false, sizeof(R));
+  }
 
   template<typename Iterator>
   StrMap(Iterator begin, Iterator end): container(begin,end) {
-    container = Container(map_str_new(sizeof(R)));
+    init_map_str(true, sizeof(R));
     for ( auto it = begin; it != end; ++it) {
-      map_str_insert(container.get(), it->key.begin(), &(*it));
+      insert(*it);
     }
   }
 
@@ -474,7 +500,7 @@ public:
     }
 
     auto& operator*() const {
-      return static_cast<V&>(*map_str_get(m, i));
+      return *static_cast<V*>(map_str_get(m, i));
     }
 
     bool operator ==(const map_iterator& other) const {
@@ -527,8 +553,27 @@ public:
     return res;
   }
 
-  unit_t insert(R& q) {
-    map_str_insert(container.get(), q.key.begin(), &q);
+  unit_t insert(const R& q) {
+    map_str* m = container.get();
+    auto pos = map_str_insert(m, q.key.begin(), const_cast<void*>(static_cast<const void*>(&q)));
+
+    R* v = static_cast<R*>(map_str_get(m, pos));
+    //v->key.divorce(q.key.begin());
+    map_str_stabilize_key(m, pos, v->key.begin());
+
+    return unit_t();
+  }
+
+  unit_t insert(R&& q) {
+    R tmp(std::move(q));
+
+    map_str* m = container.get();
+    auto pos = map_str_insert(m, tmp.key.begin(), &tmp);
+
+    R* v = static_cast<R*>(map_str_get(m, pos));
+    //v->key.divorce(tmp.key.begin());
+    map_str_stabilize_key(m, pos, v->key.begin());
+
     return unit_t();
   }
 
@@ -537,11 +582,13 @@ public:
     map_str* m = container.get();
     auto existing = map_str_find(m, rec.key.begin());
     if (existing == map_str_end(m)) {
-      map_str_insert(m, rec.key.begin(), &rec);
+      insert(rec);
     } else {
-      auto nrec = f(std::move(*map_str_get(m,existing)))(rec);
+      R* v = static_cast<R*>(map_str_get(m,existing));
+      auto nrec = f(std::move(*v))(rec);
       map_str_erase(m, rec.key.begin());
-      map_str_insert(m, nrec.key.begin(), &nrec);
+      v->~R();
+      insert(nrec);
     }
     return unit_t {};
   }
@@ -552,11 +599,13 @@ public:
     auto existing = map_str_find(m, rec.key.begin());
     if (existing == map_str_end(m)) {
       auto nrec = f(unit_t {});
-      map_str_insert(m, nrec.key.begin(), &nrec);
+      insert(nrec);
     } else {
-      auto nrec = g(std::move(*map_str_get(m,existing)));
+      R* v = static_cast<R*>(map_str_get(m,existing));
+      auto nrec = g(std::move(*v));
       map_str_erase(m, rec.key.begin());
-      map_str_insert(m, nrec.key.begin(), &nrec);
+      v->~R();
+      insert(nrec);
     }
 
     return unit_t {};
@@ -566,7 +615,9 @@ public:
     map_str* m = container.get();
     auto existing = map_str_find(m, rec.key.begin());
     if (existing != map_str_end(m)) {
+      R* v = static_cast<R*>(map_str_get(m,existing));
       map_str_erase(m, rec.key.begin());
+      v->~R();
     }
     return unit_t();
   }
@@ -575,8 +626,10 @@ public:
     map_str* m = container.get();
     auto existing = map_str_find(m, rec1.key.begin());
     if (existing != map_str_end(m)) {
+      R* v = static_cast<R*>(map_str_get(m,existing));
       map_str_erase(m, rec1.key.begin());
-      map_str_insert(m, rec2.key.begin(), &rec2);
+      v->~R();
+      insert(rec2);
     }
     return unit_t();
   }
@@ -657,15 +710,19 @@ public:
     map_str* n = result.container.get();
 
     for (auto o = map_str_begin(m); o < map_str_end(m); o = map_str_next(m, o)) {
-      K key = grouper(*map_str_get(m,o));
+      R* v = static_cast<R*>(map_str_get(m,o));
+      K key = grouper(*v);
       auto existing_acc = map_str_find(n, key.begin());
       if (existing_acc == map_str_end(n)) {
         R_key_value<K,Z> elem(key, std::move(folder(init)(*map_str_get(m,o))));
-        map_str_insert(n, key.begin(), &elem);
+        insert(elem);
       } else {
-        R_key_value<K,Z> elem(key, std::move(folder(std::move(existing_acc->value))(*map_str_get(m,o))));
+        R* accv = static_cast<R*>(map_str_get(n, existing_acc));
+        R_key_value<K,Z> elem(key, std::move(folder(std::move(accv->value))(*v)));
         map_str_erase(n, key);
-        map_str_insert(n, key.begin(), &elem);
+        accv->~R_key_value<K,Z>();
+        insert(elem);
+        delete accv;
       }
     }
     return result;
@@ -775,52 +832,70 @@ protected:
 private:
   friend class boost::serialization::access;
 
+  static inline void cloneElem(void* dest, void* src, size_t sz) {
+    new(dest) R(*static_cast<R*>(src));
+  }
+
+  void init_map_str(bool alloc, size_t sz) {
+    if ( alloc ) { container = Container(map_str_new(sz)); }
+    map_str_clone(container.get(), (CloneFn) &StrMap<R>::cloneElem);
+  }
+
   template<class archive>
-  void serialize(archive &ar, const unsigned int) {
-    size_t value_size     = archive::is_saving::value? container->value_size      : 0;
-    size_t container_size = archive::is_saving::value? container->size            : 0;
-    size_t capacity       = archive::is_saving::value? container->capacity        : 0;
-    size_t deleted        = archive::is_saving::value? container->deleted         : 0;
-    double mlf            = archive::is_saving::value? container->max_load_factor : 0.0;
+  void save(archive &ar, const unsigned int) const {
+    size_t value_size     = container->value_size;
+    size_t container_size = container->size;
+    size_t capacity       = container->capacity;
+    size_t deleted        = container->deleted;
+    double mlf            = container->max_load_factor;
 
-    ar & value_size;
-    ar & container_size;
-    ar & capacity;
-    ar & deleted;
-    ar & mlf;
+    ar << boost::serialization::make_nvp("value_size", value_size);
+    ar << boost::serialization::make_nvp("size", container_size);
+    ar << boost::serialization::make_nvp("capacity", capacity);
+    ar << boost::serialization::make_nvp("deleted", deleted);
+    ar << boost::serialization::make_nvp("mlf", mlf);
 
-    if ( archive::is_loading::value ) {
-      if ( container ) { map_str_free(container.get()); container.reset(); }
-      container = Container(map_str_new(value_size));
+    map_str* m = container.get();
+    for (auto o = map_str_begin(m); o < map_str_end(m); o = map_str_next(m, o)) {
+      R* v = static_cast<R*>(map_str_get(m,o));
+      ar << boost::serialization::make_nvp("item", *v);
+    }
+  }
+
+  template<class archive>
+  void load(archive &ar, const unsigned int) {
+    size_t value_size;
+    size_t container_size;
+    size_t capacity;
+    size_t deleted;
+    double mlf;
+
+    ar >> boost::serialization::make_nvp("value_size", value_size);
+    ar >> boost::serialization::make_nvp("size", container_size);
+    ar >> boost::serialization::make_nvp("capacity", capacity);
+    ar >> boost::serialization::make_nvp("deleted", deleted);
+    ar >> boost::serialization::make_nvp("mlf", mlf);
+
+    if ( container ) { map_str_clear(container.get()); container.reset(); }
+    init_map_str(true, value_size);
+
+    if ( container ) {
       map_str* n = container.get();
       map_str_max_load_factor(n, mlf);
       map_str_rehash(n, capacity);
-    }
 
-    bool sparse = true;
-    if ( sparse ) {
-      map_str* m = container.get();
-      if ( archive::is_saving::value ) {
-        for (auto o = map_str_begin(m); o < map_str_end(m); o = map_str_next(m, o)) {
-          ar << boost::serialization::make_nvp("item", static_cast<R&>(*map_str_get(m,o)));
-        }
-      } else {
-        for ( auto i = 0; i < container_size; ++i ) {
-          R r;
-          ar >> boost::serialization::make_nvp("item", r);
-          map_str_insert(m, r.key.begin(), &r);
-        }
+      for ( auto i = 0; i < container_size; ++i ) {
+        R r;
+        ar >> boost::serialization::make_nvp("item", r);
+        insert(r);
       }
     } else {
-      // Note: this copies the whole hash table, including empty keys.
-      container->size = container_size;
-      container->deleted = deleted;
-      container->watermark = capacity * mlf;
-      boost::serialization::binary_object keys(container.get()->keys, capacity*sizeof(container->keys));
-      ar & keys;
-      ar & boost::serialization::make_array<R>(container.get()->values, capacity);
+      cout << "Here" << endl;
+      throw std::runtime_error("Failed to instantiate StrMap for deserialization");
     }
   }
+
+  BOOST_SERIALIZATION_SPLIT_MEMBER()
 
 };
 
@@ -854,6 +929,77 @@ std::size_t hash_value(K3::Libdynamic::IntMap<Elem> const& b) {
 template <class Elem>
 std::size_t hash_value(K3::Libdynamic::StrMap<Elem> const& b) {
   return boost::hash_range(b.begin(), b.end());
+}
+
+namespace JSON {
+
+  using namespace rapidjson;
+  template <class E>
+  struct convert<K3::Libdynamic::IntMap<E>> {
+    template <class Allocator>
+    static Value encode(const K3::Libdynamic::IntMap<E>& c, Allocator& al) {
+     Value v;
+     v.SetObject();
+     v.AddMember("type", Value("IntMap"), al);
+     Value inner;
+     inner.SetArray();
+     for (const auto& e : c) { inner.PushBack(convert<E>::encode(e, al), al); }
+     v.AddMember("value", inner.Move(), al);
+     return v;
+    }
+  };
+
+  template <class E>
+  struct convert<K3::Libdynamic::StrMap<E>> {
+    template <class Allocator>
+    static Value encode(const K3::Libdynamic::StrMap<E>& c, Allocator& al) {
+     Value v;
+     v.SetObject();
+     v.AddMember("type", Value("StrMap"), al);
+     Value inner;
+     inner.SetArray();
+     for (const auto& e : c) { inner.PushBack(convert<E>::encode(e, al), al); }
+     v.AddMember("value", inner.Move(), al);
+     return v;
+    }
+  };
+}
+
+
+namespace YAML {
+  template <class R>
+  struct convert<K3::Libdynamic::IntMap<R>> {
+    static Node encode(const K3::Libdynamic::IntMap<R>& c) {
+      Node node;
+      if (c.size() > 0) {
+        for (auto& i: c) { node.push_back(convert<R>::encode(i)); }
+      }
+      else { node = YAML::Load("[]"); }
+      return node;
+    }
+
+    static bool decode(const Node& node, K3::Libdynamic::IntMap<R>& c) {
+      for (auto& i: node) { c.insert(i.as<R>()); }
+      return true;
+    }
+  };
+
+  template <class R>
+  struct convert<K3::Libdynamic::StrMap<R>> {
+    static Node encode(const K3::Libdynamic::StrMap<R>& c) {
+      Node node;
+      if (c.size() > 0) {
+        for (auto& i: c) { node.push_back(convert<R>::encode(i)); }
+      }
+      else { node = YAML::Load("[]"); }
+      return node;
+    }
+
+    static bool decode(const Node& node, K3::Libdynamic::StrMap<R>& c) {
+      for (auto& i: node) { c.insert(i.as<R>()); }
+      return true;
+    }
+  };
 }
 
 #endif
