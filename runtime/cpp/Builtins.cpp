@@ -112,6 +112,7 @@ namespace K3 {
 
   unit_t __standard_context::sleep(int n) {
     std::this_thread::sleep_for(std::chrono::milliseconds(n));
+    return unit_t();
   }
 
 
@@ -129,6 +130,7 @@ namespace K3 {
     #else
     std::cout << "cacheProfileStart: CACHEPROFILE not set. not starting." << std::endl;
     #endif
+    return unit_t();
   }
 
   unit_t __pcm_context::cacheProfilerStop(unit_t) {
@@ -141,6 +143,7 @@ namespace K3 {
     std::cout << "Instructions per clock:" << getIPC(*initial_state,after_sstate) << std::endl;
     instance->cleanup();
     #endif
+    return unit_t();
   }
 
   // TODO fix copies related to base_str / std::sring conversion
