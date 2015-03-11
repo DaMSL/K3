@@ -22,9 +22,9 @@ script:
   # Begin tests
   - source tools/ktrace/env.sh
     # Amplab
-  - ./tools/ktrace/run_test.sh examples/distributed/amplab/q1.k3 tools/ktrace/tests/amplab_q1 local_q1_results
-  - ./tools/ktrace/run_test.sh examples/distributed/amplab/q2.k3 tools/ktrace/tests/amplab_q2 results
-  - ./tools/ktrace/run_test.sh examples/distributed/amplab/q3.k3 tools/ktrace/tests/amplab_q3 results
+    # - ./tools/ktrace/run_test.sh examples/distributed/amplab/q1.k3 tools/ktrace/tests/amplab_q1 local_q1_results
+    # - ./tools/ktrace/run_test.sh examples/distributed/amplab/q2.k3 tools/ktrace/tests/amplab_q2 results
+    # - ./tools/ktrace/run_test.sh examples/distributed/amplab/q3.k3 tools/ktrace/tests/amplab_q3 results
 
     # TPCH Barrier Version
   - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q1.k3 tools/ktrace/tests/tpch_q1 results
