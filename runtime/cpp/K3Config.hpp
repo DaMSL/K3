@@ -2,7 +2,7 @@
 #ifndef K3_CONFIG_H
 #define K3_CONFIG_H
 
-#define HAS_LIBDYNAMIC 0
-#define USE_CUSTOM_HASHMAPS 0
+#define HAS_LIBDYNAMIC 1
+#define USE_CUSTOM_HASHMAPS 1
 
 #endif
