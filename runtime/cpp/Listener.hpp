@@ -58,7 +58,7 @@ namespace K3 {
     public:
       Listener(Identifier n,
                shared_ptr<NContext> ctxt,
-               shared_ptr<MessageQueues> q,
+               shared_ptr<const MessageQueues> q,
                shared_ptr<Endpoint> ep,
                shared_ptr<ListenerControl> ctrl,
                shared_ptr<MessageCodec> f)
@@ -79,7 +79,7 @@ namespace K3 {
       Identifier name;
 
       shared_ptr<NContext> ctxt_;
-      shared_ptr<MessageQueues> queues;
+      shared_ptr<const MessageQueues> queues;
       shared_ptr<Endpoint> endpoint_;
       shared_ptr<NEndpoint> nEndpoint_;
 
@@ -104,7 +104,7 @@ namespace K3 {
 
       Listener(Identifier n,
                shared_ptr<NContext> ctxt,
-               shared_ptr<MessageQueues> q,
+               shared_ptr<const MessageQueues> q,
                shared_ptr<Endpoint> ep,
                shared_ptr<ListenerControl> ctrl,
                shared_ptr<MessageCodec> f)
@@ -245,7 +245,7 @@ namespace K3 {
     public:
       Listener(Identifier n,
                shared_ptr<NContext> ctxt,
-               shared_ptr<MessageQueues> q,
+               shared_ptr<const MessageQueues> q,
                shared_ptr<Endpoint> ep,
                shared_ptr<ListenerControl> ctrl,
                shared_ptr<MessageCodec> f)

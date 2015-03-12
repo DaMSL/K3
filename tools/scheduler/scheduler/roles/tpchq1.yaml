@@ -1,7 +1,9 @@
 ---
+volumes:
+  - {host: /data, container: /data}
 name: role 1
-peers: 60
-max_peers_per_host: 4
+peers: 16
+peers_per_host: 1
 hostmask: ".*qp-h.*"
 k3_globals:
   role: rows

@@ -81,7 +81,7 @@ namespace K3
     }
 
     bool Endpoint::do_push(shared_ptr<string> val,
-                           shared_ptr<MessageQueues> q,
+                           shared_ptr<const MessageQueues> q,
                            shared_ptr<MessageCodec> frame) {
 
       // Skip the endpoint buffer.
