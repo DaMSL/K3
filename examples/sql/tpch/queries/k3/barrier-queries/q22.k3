@@ -99,8 +99,7 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
           , rhs_sample_query     = [$ empty {key: int, value: int} @Map ]
           , frequency_threshold  = [$ 1000.0 ]
 
-          , lhs_query = [$ let result =
-                           ((customer.filter  (\c -> case c_valid_phone.lookup
+          , lhs_query = [$ ((customer.filter  (\c -> case c_valid_phone.lookup
                                                             {key: (slice_string c.c_phone 0 2), value:()}
                                                      of {Some x -> c.c_acctbal > c_avg_acctbal}
                                                         {None -> false}))
@@ -111,15 +110,14 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
                                               {cntrycode: "", c_acctbal: 0.0})
                                      .fold    ((\acc -> \c -> ((acc.insert c); acc)) @:Accumulate)
                                               (empty {key:int, value: {cntrycode: string, c_acctbal: real} } @Map)
-                           in ( (customer = empty customer_r @Collection); result)
                         ]
+          , lhs_query_clear = [$ customer = empty customer_r @Collection ]
 
-          , rhs_query = [$ let result =
-                           (orders.groupBy (\o -> o.o_custkey) (\_ -> \_ -> ()) ())
+          , rhs_query = [$ (orders.groupBy (\o -> o.o_custkey) (\_ -> \_ -> ()) ())
                                   .fold    (\acc -> \o -> ((acc.insert o); acc))
                                            (empty {key:int, value: ()} @Map)
-                           in ( (orders = empty orders_r @Collection); result )
                         ]
+          , rhs_query_clear = [$ orders = empty orders_r @Collection ]
 
 
         , join_key_ty          = [: int ]
@@ -201,5 +199,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
 )
 
 sink results_sink : { cntrycode: string, numcust: int, totacctbal: real} = file "results.csv" csv
+sink query_time_sink : int = file "time.txt" csv
+
 source rows : () = value ()
 feed rows |> start

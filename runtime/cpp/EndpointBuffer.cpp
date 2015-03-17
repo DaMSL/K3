@@ -61,7 +61,7 @@ namespace K3
     }
   }
 
-  bool ScalarEPBufferMT::transfer(shared_ptr<MessageQueues> queues,
+  bool ScalarEPBufferMT::transfer(shared_ptr<const MessageQueues> queues,
                                   shared_ptr<MessageCodec> frame,
                                   NotifyFn notify)
   {
@@ -131,7 +131,7 @@ namespace K3
     }
   }
 
-  bool ScalarEPBufferST::transfer(shared_ptr<MessageQueues> queues,
+  bool ScalarEPBufferST::transfer(shared_ptr<const MessageQueues> queues,
                                   shared_ptr<MessageCodec> frame,
                                   NotifyFn notify) {
     bool transferred = false;
@@ -212,7 +212,7 @@ namespace K3
   }
 
   // transfer overloaded with force flag to ignore batching semantics
-  bool ContainerEPBufferST::transfer(shared_ptr<MessageQueues> queues,
+  bool ContainerEPBufferST::transfer(shared_ptr<const MessageQueues> queues,
                                      shared_ptr<MessageCodec> frame,
                                      NotifyFn notify,
                                      bool force)

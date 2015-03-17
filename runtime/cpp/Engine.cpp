@@ -11,7 +11,7 @@ using boost::thread;
 namespace K3 {
 
     void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<MessageCodec> _msgcodec,
-                           string log_l, string log_p, string result_v, string result_p, shared_ptr<MessageQueues> qs)
+                           string log_l, string log_p, string result_v, string result_p, shared_ptr<const MessageQueues> qs)
     {
       queues = qs;
       msgcodec = _msgcodec;

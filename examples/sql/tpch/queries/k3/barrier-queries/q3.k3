@@ -94,19 +94,16 @@ trigger lineitem_orders : () = \_ -> (
 
       , lhs_query = [$  // TODO: this currently does not fuse with the group-by in SendPartitionByKey.
                         // We need a nested fusion class structure, i.e., ICond1(DCond2), for this functionality.
-                        let result =
                         ((lineitem.filter  (\l -> l.l_shipdate > "1995-03-15" ))
                                   .groupBy (\l -> l.l_orderkey)
                                            (\acc -> \l -> acc + (l.l_extendedprice * (1 - l.l_discount)))
                                            0.0)
                                   .fold    ((\acc -> \l -> ((acc.insert l); acc)) @:Accumulate)
                                            (empty {key:int, value:real} @Map)
-
-                        in ( ( lineitem = empty lineitem_r @Collection ); result )
                     ]
+      , lhs_query_clear = [$ lineitem = empty lineitem_r @Collection ]
 
-      , rhs_query = [$ let result =
-	               ((orders.filter  (\o -> o.o_orderdate < "1995-03-15" ))
+      , rhs_query = [$ ((orders.filter  (\o -> o.o_orderdate < "1995-03-15" ))
                                .groupBy (\o -> o.o_orderkey)
                                         (\_ -> \o -> { od : o.o_orderdate
                                                      , ck : o.o_custkey
@@ -114,9 +111,8 @@ trigger lineitem_orders : () = \_ -> (
                                         { od: "", ck: 0, sp: 0 })
                                .fold    ((\acc -> \o -> ((acc.insert o); acc)) @:Accumulate)
                                         (empty {key : int, value : {od:string, ck:int, sp:int}} @Map)
-                      in ( (orders = empty orders_r @Collection); result )
                     ]
-
+      , rhs_query_clear = [$ orders = empty orders_r @Collection ]
       , join_key_ty          = [: int ]
       , lhs_ht_ty            = [: {key:int, value: real} ]
       , rhs_ht_ty            = [: {key:int, value: {od:string, ck:int, sp:int} } ]
@@ -250,5 +246,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
 )
 
 sink results_sink : {orderkey: int, revenue: real, orderdate: string, shippriority: int} = file "results.csv" csv
+sink query_time_sink : int = file "time.txt" csv
+
 source rows : () = value ()
 feed rows |> start

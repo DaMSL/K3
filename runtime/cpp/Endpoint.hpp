@@ -115,7 +115,7 @@ namespace K3
     // An endpoint can be written to if the handle can be written to and the buffer isn't full.
     bool hasWrite() { return handle_->hasWrite() && (buffer_ ? !buffer_->full() : true ); }
 
-    bool do_push(shared_ptr<string> val, shared_ptr<MessageQueues> q, shared_ptr<MessageCodec> frame);
+    bool do_push(shared_ptr<string> val, shared_ptr<const MessageQueues> q, shared_ptr<MessageCodec> frame);
 
     // Closes the endpoint's IOHandle, while also notifying subscribers
     // of the close event.

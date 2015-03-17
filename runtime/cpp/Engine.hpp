@@ -154,12 +154,12 @@ namespace K3 {
       string log_path,
       string result_v,
       string result_p,
-      shared_ptr<MessageQueues> qs
+      shared_ptr<const MessageQueues> qs
     ): LogMT("Engine") {
       configure(simulation, sys_env, _msgcodec, log_level, log_path, result_v, result_p, qs);
     }
 
-    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<MessageCodec> _msgcodec, string log_level,string log_path, string result_var, string result_path, shared_ptr<MessageQueues> qs);
+    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<MessageCodec> _msgcodec, string log_level,string log_path, string result_var, string result_path, shared_ptr<const MessageQueues> qs);
 
     //-----------
     // Messaging.
@@ -393,8 +393,8 @@ namespace K3 {
     shared_ptr<EngineControl>       control;
     shared_ptr<Address>             me;
     shared_ptr<MessageCodec>        msgcodec;
-    shared_ptr<MessageQueues>       queues;
-    // shared_ptr<WorkerPool>          workers;
+    shared_ptr<const MessageQueues> queues;
+    // shared_ptr<WorkerPool>       workers;
     shared_ptr<Net::NContext>       network_ctxt;
 
     // Endpoint and collection tracked by the engine.

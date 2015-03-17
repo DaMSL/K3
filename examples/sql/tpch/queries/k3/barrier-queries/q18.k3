@@ -152,12 +152,14 @@ trigger lineitem_orders_customer : () = \_ -> (
         , frequency_threshold  = [$ 1000.0 ]
 
         , lhs_query = [$ lo_odtq_by_ck]
+        , lhs_query_clear = [$ () ]
         , rhs_query = [$ (customer.groupBy (\c -> c.c_custkey)
                                            (\_ -> \c -> c.c_name)
                                            "")
                                   .fold    (\acc -> \c -> ((acc.insert c); acc))
                                            (empty {key: int, value: string} @Map)
                       ]
+        , rhs_query_clear = [$ customer = empty customer_r @Collection ]
 
       , join_key_ty          = [: int ]
       , lhs_ht_ty            = [: {key: int, value: collection {key : {ok: int, od: string, tp: real}, value : real} @Map} ]
@@ -276,5 +278,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
 )
 
 sink results_sink : {name: string, custkey: int, orderkey: int, orderdate:string, totalprice: real, sum: real} = file "results.csv" csv
+sink query_time_sink : int = file "time.txt" csv
+
 source rows : () = value ()
 feed rows |> start

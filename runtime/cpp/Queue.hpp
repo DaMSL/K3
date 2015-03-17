@@ -94,16 +94,15 @@ namespace K3 {
         multiPeerMsgs.insert(make_pair(a, shared_ptr<MsgQueue>(new MsgQueue())));
     }
 
-    void enqueue(Message& m)
+    void enqueue(const Message& m) const
     {
       if (validTarget(m)) { enqueue(m, queue(m.address())); }
       else {
-        BOOST_LOG(*this) << "Invalid message target:" << m.id() << "@" << K3::addressAsString(m.address());
 	fail(m.address());
       }
     }
 
-    shared_ptr<Message> dequeue(const Address& a)
+    shared_ptr<Message> dequeue(const Address& a) const
     {
       shared_ptr<MsgQueue> q = queue(a);
 
@@ -111,11 +110,11 @@ namespace K3 {
       return q->pop();
     }
 
-    bool isLocal(const Address& a) {
+    bool isLocal(const Address& a) const {
       return queue(a) ? true : false;
     }
 
-    bool empty(const Address& a) {
+    bool empty(const Address& a) const {
       shared_ptr<MsgQueue> q = queue(a);
       if (q) {
         return q->empty();
@@ -125,7 +124,7 @@ namespace K3 {
     }
 
     template <class Predicate>
-    void waitForMessage(const Address& a, Predicate pred) {
+    void waitForMessage(const Address& a, Predicate pred) const {
       shared_ptr<MsgQueue> q = queue(a);
       if (q) {
         q->waitForMessage(pred);
@@ -135,7 +134,7 @@ namespace K3 {
       }
     }
 
-    void messageAvail(const Address& a) {
+    void messageAvail(const Address& a) const {
       shared_ptr<MsgQueue> q = queue(a);
       if (q) {
         q->messageAvail();
@@ -152,13 +151,16 @@ namespace K3 {
       return multiPeerMsgs.find(m.address()) != multiPeerMsgs.end();
     }
 
-    shared_ptr<MsgQueue> queue(const Address& m) {
-      shared_ptr<MsgQueue> bqueue = multiPeerMsgs[m];
+    shared_ptr<MsgQueue> queue(const Address& m) const {
+      shared_ptr<MsgQueue> bqueue;
+      auto it  = multiPeerMsgs.find(m);
+      if ( it != multiPeerMsgs.end() ) {
+        bqueue = it->second;;
+      }
       return bqueue;
     }
 
-    void enqueue(Message& m, shared_ptr<MsgQueue> q)
-    {
+    void enqueue(const Message& m, shared_ptr<MsgQueue> q) const {
       if (q) {
         q->push(m);
         q->messageAvail();
@@ -168,7 +170,7 @@ namespace K3 {
       }
     }
 
-    void fail(const Address& a) {
+    void fail(const Address& a) const {
        throw std::runtime_error("Failed to find queue for address" + addressAsString(a));
     }
   };

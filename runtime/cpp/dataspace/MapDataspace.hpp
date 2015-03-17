@@ -303,7 +303,7 @@ public:
     auto it  = mapi_begin(m);
     auto end = mapi_end(m);
 
-    DSSampler seqSampler(m->size(), sampleSize);
+    DSSampler seqSampler(m->size, sampleSize);
 
     tuple<bool, size_t> next_skip = seqSampler.next();
     while ( it < end && std::get<0>(next_skip) ) {
@@ -752,7 +752,7 @@ public:
     auto it  = map_str_begin(m);
     auto end = map_str_end(m);
 
-    DSSampler seqSampler(m->size(), sampleSize);
+    DSSampler seqSampler(m->size, sampleSize);
 
     tuple<bool, size_t> next_skip = seqSampler.next();
     while ( it < end && std::get<0>(next_skip) ) {

@@ -48,7 +48,7 @@ namespace K3
 
     // Transfer the contents of the buffer into provided MessageQueues
     // Using the provided MessageCodec to convert from string to Message
-    virtual bool transfer(shared_ptr<MessageQueues>, shared_ptr<MessageCodec>, NotifyFn)= 0;
+    virtual bool transfer(shared_ptr<const MessageQueues>, shared_ptr<MessageCodec>, NotifyFn)= 0;
   };
 
 
@@ -81,7 +81,7 @@ namespace K3
 
     void flush(shared_ptr<IOHandle> ioh, NotifyFn notify);
 
-    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<MessageCodec> frame, NotifyFn notify);
+    bool transfer(shared_ptr<const MessageQueues> queues, shared_ptr<MessageCodec> frame, NotifyFn notify);
 
    protected:
     boost::externally_locked<shared_ptr<string>, LockB> contents;
@@ -105,7 +105,7 @@ namespace K3
 
     void flush(shared_ptr<IOHandle> ioh, NotifyFn notify);
 
-    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<MessageCodec> frame, NotifyFn notify);
+    bool transfer(shared_ptr<const MessageQueues> queues, shared_ptr<MessageCodec> frame, NotifyFn notify);
 
    protected:
     shared_ptr<string> contents;
@@ -135,12 +135,12 @@ namespace K3
     void flush(shared_ptr<IOHandle> ioh, NotifyFn notify, bool force);
 
     // Default transfer: do not force, wait for batch
-    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<MessageCodec> frame, NotifyFn notify) {
+    bool transfer(shared_ptr<const MessageQueues> queues, shared_ptr<MessageCodec> frame, NotifyFn notify) {
       return transfer(queues, frame, notify, false);
     }
 
     // transfer overloaded with force flag to ignore batching semantics
-    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<MessageCodec> frame, NotifyFn notify, bool force);
+    bool transfer(shared_ptr<const MessageQueues> queues, shared_ptr<MessageCodec> frame, NotifyFn notify, bool force);
 
    protected:
     shared_ptr<list<string>> contents;
