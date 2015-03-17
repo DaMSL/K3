@@ -21,7 +21,7 @@ declare ordersLoaderP : collection {path: string} @Collection -> orders_bag -> (
   with effects \_ -> \_ -> io
 
 @:CArgs 3
-declare ordersLoaderPFixedSize: collection {path: string} -> orders_bag -> int -> ()
+declare ordersLoaderPFixedSize: collection {path: string} @Collection -> orders_bag -> int -> ()
   with effects \_ -> \_ -> \_ -> io
 
 @:CArgs 2
