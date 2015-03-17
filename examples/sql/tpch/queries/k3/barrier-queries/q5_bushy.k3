@@ -368,7 +368,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                              supplierLineCountFiles.iterate (\e -> supplierRows = supplierRows + (lineCountFile e.path));
 
                              lineitemLoaderPFixedSize lineitemFiles lineitem lineitemRows;
-                             ordersLoaderPFixedSize ordersFiles orders ordersRows:
+                             ordersLoaderPFixedSize ordersFiles orders ordersRows;
                              customerLoaderPFixedSize customerFiles customer customerRows;
                              supplierLoaderPFixedSize supplierFiles supplier supplierRows;
                              nationFiles.iterate   (\e -> nationLoaderP   e.path nation);
