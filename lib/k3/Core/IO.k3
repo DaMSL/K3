@@ -63,10 +63,11 @@ control GatherCollection [ lbl      : label
       }
 }
 
-control GatherCollectionAsCSV [ lbl      : label
-                              , csink    : expr
-                              , nodes    : expr
-                              , next     : expr ]
+control GatherCollectionAsCSV [ lbl          : label
+                              , preprocess   : expr
+                              , csink        : expr
+                              , nodes        : expr
+                              , next         : expr ]
 {
   ignore ( ?e : collection ?t )
     => ( ignore ( $.[e] ) )

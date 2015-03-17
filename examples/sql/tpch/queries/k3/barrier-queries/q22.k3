@@ -180,8 +180,9 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
 			      print ("Orders rows: " ++ (itos ordersRows));
 			      print ("Customer rows: " ++ (itos customerRows));
 
-                              ordersFiles.iterate   (\e -> ordersLoaderPFixedSize   e.path orders ordersRows);
-                              customerFiles.iterate (\e -> customerLoaderPFixedSize e.path customer customerRows)
+
+                              ordersLoaderPFixedSize ordersFiles orders ordersRows;
+                              customerLoaderPFixedSize customerFiles customer customerRows
                             ) ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],

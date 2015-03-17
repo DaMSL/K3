@@ -23,7 +23,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
   onReadyExpr          = [$ peers.iterate (\x -> (q6_local, x.addr) <- () ) ],
   loadExpr             = [$ dataLineCountFiles.iterate (\e -> lineitemRows = lineitemRows + (lineCountFile e.path));
 			    print ("Lineitem rows: " ++ (itos lineitemRows));
-                            dataFiles.iterate (\e -> lineitemLoaderPFixedSize e.path lineitem lineitemRows)
+                            lineitemLoaderPFixedSize dataFiles lineitem lineitemRows
                            ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],

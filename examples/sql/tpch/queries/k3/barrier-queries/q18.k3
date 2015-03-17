@@ -238,7 +238,15 @@ trigger lineitem_orders_customer : () = \_ -> (
 trigger loc_aggregate : loc_q_by_ncodt_map = \vals -> (
   (vals.iterate (\kv -> q18_peer_result.insert_with kv merge_q_by_ncodt_r));
   ( ( print "Query 18 done." ) ;
-    ( (() @:Result) @TPCHBenchmarkWithoutMaster )
+    ( (() @:Result) @TPCHBenchmarkWithoutMaster );
+    // Post process results. Master does this in the preFinishExpr so that timing is not affected
+    ( if master == me
+      then ()
+      else (q18_peer_result.iterate(\r ->
+                     results.insert { name: r.key.nm, custkey: r.key.ck, orderkey: r.key.ok
+                                             , orderdate: r.key.od, totalprice: r.key.tp, sum: r.value} )
+           )
+    )
   ) @OnCounter(id=[# loc_aggregate_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 )
 
@@ -254,9 +262,9 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
 			      print ("Customer rows: " ++ (itos customerRows));
 
                               // Load data using the fixed size loaders which resize the container before loading
-			      lineitemFiles.iterate (\e -> lineitemLoaderPFixedSize e.path lineitem lineitemRows);
-                              ordersFiles.iterate   (\e -> ordersLoaderPFixedSize   e.path orders ordersRows);
-                              customerFiles.iterate (\e -> customerLoaderPFixedSize e.path customer customerRows)
+                              lineitemLoaderPFixedSize lineitemFiles lineitem lineitemRows;
+                              ordersLoaderPFixedSize ordersFiles orders ordersRows;
+                              customerLoaderPFixedSize customerFiles customer customerRows
                             ) ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],

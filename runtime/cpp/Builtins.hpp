@@ -49,13 +49,17 @@ struct hash<boost::asio::ip::address> {
 
 namespace K3 {
 
-  template <class C, class F>
-  void read_records(std::istream& in, C& container, F read_record) {
+  template <class C1, class C, class F>
+  void read_records(C1& paths, C& container, F read_record) {
 
-    std::string tmp_buffer;
-    while (!in.eof()) {
-      container.insert(read_record(in, tmp_buffer));
-      in >> std::ws;
+    for (auto rec : paths) {
+      std::ifstream in;
+      in.open(rec.path);
+      std::string tmp_buffer;
+      while (!in.eof()) {
+        container.insert(read_record(in, tmp_buffer));
+        in >> std::ws;
+      }
     }
 
     return;
@@ -81,24 +85,29 @@ namespace K3 {
       unit_t heapProfilerStop(unit_t);
   };
 
-  template <class C, class F>
-  void read_records_with_resize(int size, std::istream& in, C& container, F read_record) {
+  template <class C1, class C, class F>
+  void read_records_with_resize(int size, C1& paths, C& container, F read_record) {
 
     if (size == 0) {
-      return read_records(in, container, read_record);
+      return read_records(paths, container, read_record);
     }
     else {
       container.getContainer().resize(size);
     }
 
     int i = 0;
-    std::string tmp_buffer;
-    while (!in.eof()) {
-      if (i >= container.size(unit_t {}) ) {
-        throw std::runtime_error("Cannot read records, container size is too small");
+    for (auto rec : paths) {
+      std::ifstream in;
+      in.open(rec.path);
+
+      std::string tmp_buffer;
+      while (!in.eof()) {
+        if (i >= container.size(unit_t {}) ) {
+          throw std::runtime_error("Cannot read records, container size is too small");
+        }
+        container.getContainer()[i++] = read_record(in, tmp_buffer);
+        in >> std::ws;
       }
-      container.getContainer()[i++] = read_record(in, tmp_buffer);
-      in >> std::ws;
     }
 
     return;

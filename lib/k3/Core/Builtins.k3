@@ -159,3 +159,4 @@ declare drainEngine : () -> ()
 
 // Sleep the engine (microseconds)
 declare sleep : int -> ()
+with effects  \_ -> io

@@ -1,13 +1,12 @@
 ---
 name: role 1
 volumes:
-  - {host: /data, container: /data}
-peers: 16
-peers_per_host: 1
-hostmask: ".*qp-h.*"
+  - {host: /local, container: /local}
+peers: 112
+peers_per_host: 16
+hostmask: ".*qp-hm.*"
 k3_globals:
   role: rows
   master: auto
 k3_data:
-  - {var: dataLineCountFiles, path: /data/scalability/16/linecounts/lineitem, policy: global}
-  - {var: dataFiles, path: /data/scalability/16/tables/lineitem, policy: global}
+  - {var: dataFiles, path: /local/data/tpch10g/lineitem, policy: global}

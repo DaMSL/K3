@@ -367,10 +367,10 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                              customerLineCountFiles.iterate (\e -> customerRows = customerRows + (lineCountFile e.path));
                              supplierLineCountFiles.iterate (\e -> supplierRows = supplierRows + (lineCountFile e.path));
 
-                             lineitemFiles.iterate (\e -> lineitemLoaderPFixedSize e.path lineitem lineitemRows);
-                             ordersFiles.iterate   (\e -> ordersLoaderPFixedSize   e.path orders   ordersRows);
-                             customerFiles.iterate (\e -> customerLoaderPFixedSize e.path customer customerRows);
-                             supplierFiles.iterate (\e -> supplierLoaderPFixedSize e.path supplier supplierRows);
+                             lineitemLoaderPFixedSize lineitemFiles lineitem lineitemRows;
+                             ordersLoaderPFixedSize ordersFiles orders ordersRows:
+                             customerLoaderPFixedSize customerFiles customer customerRows;
+                             supplierLoaderPFixedSize supplierFiles supplier supplierRows;
                              nationFiles.iterate   (\e -> nationLoaderP   e.path nation);
                              regionFiles.iterate   (\e -> regionLoaderP   e.path region);
                              ( (q5_prep, me) <- () )
