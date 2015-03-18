@@ -42,7 +42,7 @@ declare q3_peer_result : lior_epd_by_ods_map
 // Intermediates for Q3 plans.
 typedef li_epd_by_ok_r        = {key: int , value: real }  // l_orderkey => l_extendedprice * (1 - l_discount)
 typedef lior_epdods_by_ck_r   = {key: int, value : lior_epd_by_ods_map }
-typedef lior_epdods_by_ck_map = collection lior_epdods_by_ck_r @Map
+typedef lior_epdods_by_ck_map = collection lior_epdods_by_ck_r @IntMap
 
 typedef cs_ck_bag = collection {elem: {c_custkey : int}} @Collection
 
@@ -74,7 +74,7 @@ trigger lineitem_orders : () = \_ -> (
                                                        acc)
                                                     else acc
                                                   )
-                                                  (empty {key: int, value: int} @Map)
+                                                  (empty {key: int, value: int} @IntMap)
                                                   (lineitem.size() / j1_sample_factor)
                                ]
 
@@ -86,7 +86,7 @@ trigger lineitem_orders : () = \_ -> (
                                                      acc)
                                                   else acc
                                                 )
-                                                (empty {key: int, value: int} @Map)
+                                                (empty {key: int, value: int} @IntMap)
                                                 (orders.size() / j1_sample_factor)
                                ]
 
@@ -99,7 +99,7 @@ trigger lineitem_orders : () = \_ -> (
                                            (\acc -> \l -> acc + (l.l_extendedprice * (1 - l.l_discount)))
                                            0.0)
                                   .fold    ((\acc -> \l -> ((acc.insert l); acc)) @:Accumulate)
-                                           (empty {key:int, value:real} @Map)
+                                           (empty {key:int, value:real} @IntMap)
                     ]
       , lhs_query_clear = [$ lineitem = empty lineitem_r @Collection ]
 
@@ -110,9 +110,10 @@ trigger lineitem_orders : () = \_ -> (
                                                      , sp : o.o_shippriority})
                                         { od: "", ck: 0, sp: 0 })
                                .fold    ((\acc -> \o -> ((acc.insert o); acc)) @:Accumulate)
-                                        (empty {key : int, value : {od:string, ck:int, sp:int}} @Map)
+                                        (empty {key : int, value : {od:string, ck:int, sp:int}} @IntMap)
                     ]
       , rhs_query_clear = [$ orders = empty orders_r @Collection ]
+
       , join_key_ty          = [: int ]
       , lhs_ht_ty            = [: {key:int, value: real} ]
       , rhs_ht_ty            = [: {key:int, value: {od:string, ck:int, sp:int} } ]
@@ -156,8 +157,8 @@ trigger lineitem_orders : () = \_ -> (
       , lhs_pipeline_next    = [$ (\_ -> ()) ]
       , rhs_pipeline_next    = [$ (\_ -> ()) ]
 
-      , lhs_clear_expr       = [$ (\_ -> lo_lhs_ht = empty {key:int, value: real} @Map) ]
-      , rhs_clear_expr       = [$ (\_ -> lo_rhs_ht = empty {key:int, value: {od:string, ck:int, sp:int}} @Map) ]
+      , lhs_clear_expr       = [$ (\_ -> lo_lhs_ht = empty {key:int, value: real} @IntMap) ]
+      , rhs_clear_expr       = [$ (\_ -> lo_rhs_ht = empty {key:int, value: {od:string, ck:int, sp:int}} @IntMap) ]
 
       , peer_next            = [$ (lineitem_orders_customer, me) <- () ]
       , next                 = [$ () ]
@@ -216,12 +217,12 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                               ordersLineCountFiles.iterate   (\e -> ordersRows = ordersRows + (lineCountFile e.path));
                               customerLineCountFiles.iterate (\e -> customerRows = customerRows + (lineCountFile e.path));
 
-			      print ("Lineitem rows: " ++ (itos lineitemRows));
-			      print ("Orders rows: " ++ (itos ordersRows));
-			      print ("Customer rows: " ++ (itos customerRows));
+                  			      print ("Lineitem rows: " ++ (itos lineitemRows));
+                  			      print ("Orders rows: " ++ (itos ordersRows));
+                  			      print ("Customer rows: " ++ (itos customerRows));
 
                               // Load data using the fixed size loaders which resize the container before loading
-			      lineitemFiles.iterate (\e -> lineitemLoaderPFixedSize e.path lineitem lineitemRows);
+                  			      lineitemFiles.iterate (\e -> lineitemLoaderPFixedSize e.path lineitem lineitemRows);
                               ordersFiles.iterate   (\e -> ordersLoaderPFixedSize   e.path orders ordersRows);
                               customerFiles.iterate (\e -> customerLoaderPFixedSize e.path customer customerRows)
                             ) ],

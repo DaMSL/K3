@@ -41,18 +41,18 @@ declare master   : address = 127.0.0.1:4000
 declare customer : mut customer_bag
 declare orders   : mut orders_bag
 
-declare c_valid_phone : collection {key : string, value : ()} @Map =
+declare c_valid_phone : collection {key : string, value : ()} @StrMap =
   {| key:string, value:()
    | {key:"13", value:()}, {key:"31", value:()}, {key:"23", value:()},
      {key:"29", value:()}, {key:"30", value:()}, {key:"18", value:()},
      {key:"17", value:()}
-   |} @Map
+   |} @StrMap
 
 declare c_avg_acctbal : mut real
 declare c_acc_acctbal : mut {sum: real, cnt: int}
 
 typedef c_nt_by_cc_r   = {key: string, value: {nc:int, tab:real}}
-typedef c_nt_by_cc_map = collection c_nt_by_cc_r @Map
+typedef c_nt_by_cc_map = collection c_nt_by_cc_r @StrMap
 
 declare q22_result : c_nt_by_cc_map
 declare results    : collection { cntrycode: string, numcust: int, totacctbal: real} @Collection
@@ -95,8 +95,8 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
           , lhs_ht_id            = [# oc_lhs_ht ]
           , rhs_ht_id            = [# oc_rhs_ht ]
 
-          , lhs_sample_query     = [$ empty {key: int, value: int} @Map ]
-          , rhs_sample_query     = [$ empty {key: int, value: int} @Map ]
+          , lhs_sample_query     = [$ empty {key: int, value: int} @IntMap ]
+          , rhs_sample_query     = [$ empty {key: int, value: int} @IntMap ]
           , frequency_threshold  = [$ 1000.0 ]
 
           , lhs_query = [$ ((customer.filter  (\c -> case c_valid_phone.lookup
@@ -109,13 +109,13 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
                                                                )
                                               {cntrycode: "", c_acctbal: 0.0})
                                      .fold    ((\acc -> \c -> ((acc.insert c); acc)) @:Accumulate)
-                                              (empty {key:int, value: {cntrycode: string, c_acctbal: real} } @Map)
+                                              (empty {key:int, value: {cntrycode: string, c_acctbal: real} } @IntMap)
                         ]
           , lhs_query_clear = [$ customer = empty customer_r @Collection ]
 
           , rhs_query = [$ (orders.groupBy (\o -> o.o_custkey) (\_ -> \_ -> ()) ())
                                   .fold    (\acc -> \o -> ((acc.insert o); acc))
-                                           (empty {key:int, value: ()} @Map)
+                                           (empty {key:int, value: ()} @IntMap)
                         ]
           , rhs_query_clear = [$ orders = empty orders_r @Collection ]
 
@@ -142,10 +142,12 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
         , peer_next            = [$ ( print "OR-CS join finished customer probe." );
 
                                     ( (q22_final_aggregate, master) <-
-                                      ( oc_lhs_ht.groupBy
-                                          (\r -> r.value.cntrycode)
-                                          (\acc -> \r -> {nc: acc.nc + 1, tab: acc.tab + r.value.c_acctbal})
-                                          {nc: 0, tab: 0.0} ) );
+                                      ( (oc_lhs_ht.groupBy (\r -> r.value.cntrycode)
+                                                           (\acc -> \r -> {nc: acc.nc + 1, tab: acc.tab + r.value.c_acctbal})
+                                                           {nc: 0, tab: 0.0})
+                                                  .fold    ((\acc -> \r -> ((acc.insert r); acc)) @:Accumulate)
+                                                           (empty c_nt_by_cc_r @StrMap))
+                                    );
 
                                     ( (q22_final_peer_barrier, master) <- () );
                                     ( oc_lhs_ht = empty {key: int, value: {cntrycode: string, c_acctbal: real}} @IntMap );

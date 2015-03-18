@@ -54,7 +54,7 @@ declare region   : mut region_bag
 
 // Final result.
 typedef q5_r_by_n_r     = {key : string, value: real}
-typedef q5_r_by_n_map   = collection q5_r_by_n_r @Map
+typedef q5_r_by_n_map   = collection q5_r_by_n_r @StrMap
 
 declare q5_result : q5_r_by_n_map
 declare results : collection {key: string, value: real} @Collection
@@ -65,8 +65,8 @@ declare merge_epd_by_n :    {key: string, value: real}
   = \old -> \new -> {key: old.key, value: old.value + new.value}
 
 // Plan intermediates.
-declare r_asia_by_rk : mut collection {key: int, value: () } @Map
-declare n_asia_by_nk : mut collection {key: int, value: string } @Map
+declare r_asia_by_rk : mut collection {key: int, value: () } @IntMap
+declare n_asia_by_nk : mut collection {key: int, value: string } @IntMap
 
 declare co_nm_by_no  : mut collection {key: {nationkey: int, orderkey: int}, value: string} @Map
 declare sl_epd_by_no : mut collection {key: {nationkey: int, orderkey: int}, value: real} @Map
@@ -78,7 +78,7 @@ trigger q5_prep : () = \_ -> (
                       (\_ -> \_ -> ())
                       ())
              .fold    ((\acc -> \r -> ((acc.insert r); acc)) @:Accumulate)
-                      (empty {key: int, value: ()} @Map) );
+                      (empty {key: int, value: ()} @IntMap) );
 
   ( n_asia_by_nk =
       ((nation.filter  (\n -> r_asia_by_rk.member {key: n.n_regionkey, value: ()}))
@@ -86,7 +86,7 @@ trigger q5_prep : () = \_ -> (
                        (\_ -> \n -> n.n_name)
                        "")
               .fold    ((\acc -> \n -> ((acc.insert n); acc)) @:Accumulate)
-                       (empty {key: int, value: string} @Map) )
+                       (empty {key: int, value: string} @IntMap) )
 )
 
 // TODO: in the partitioned version, C|c_custkey should be broadcast into O|o_orderkey partitions.
@@ -102,7 +102,7 @@ trigger q5_co_start : () = \_ -> (
                                                         {key: c.c_custkey, value: 1}
                                                         (\old -> \new -> {key: old.key, value: old.value + new.value}));
                                                       acc))
-                                                  (empty {key:int, value: int} @Map)
+                                                  (empty {key:int, value: int} @IntMap)
                                                   (customer.size() / sample_factor)
                                ]
 
@@ -115,7 +115,7 @@ trigger q5_co_start : () = \_ -> (
                                                           (\old -> \new -> {key: old.key, value: old.value + new.value}));
                                                         acc)
                                                   else acc)
-                                                (empty {key:int, value: int} @Map)
+                                                (empty {key:int, value: int} @IntMap)
                                                 (orders.size() / sample_factor)
                                ]
 
@@ -131,7 +131,7 @@ trigger q5_co_start : () = \_ -> (
                                            )
                                            {c_nationkey: 0, n_name: ""})
                                   .fold    ((\acc -> \c -> ((acc.insert c); acc)) @:Accumulate)
-                                           (empty {key: int, value: {c_nationkey: int, n_name: string}} @Map))
+                                           (empty {key: int, value: {c_nationkey: int, n_name: string}} @IntMap))
                     ]
       , lhs_query_clear = [$ customer = empty customer_r @Collection ]
 
@@ -141,7 +141,7 @@ trigger q5_co_start : () = \_ -> (
                                         (\acc -> \o -> ((acc.insert {o_orderkey: o.o_orderkey}); acc))
                                         (empty {o_orderkey: int} @Collection))
                                .fold    ((\acc -> \o -> ((acc.insert o); acc)) @:Accumulate)
-                                        (empty {key: int, value: collection {o_orderkey: int} @Collection} @Map)
+                                        (empty {key: int, value: collection {o_orderkey: int} @Collection} @IntMap)
                     ]
       , rhs_query_clear = [$ orders = empty orders_r @Collection ]
 
@@ -180,8 +180,8 @@ trigger q5_co_start : () = \_ -> (
       , lhs_pipeline_next    = [$ (\_ -> ()) ]
       , rhs_pipeline_next    = [$ (\_ -> ()) ]
 
-      , lhs_clear_expr    = [$ (\_ -> co_lhs_ht = empty {key: int, value: {c_nationkey: int, n_name: string}} @Map) ]
-      , rhs_clear_expr    = [$ (\_ -> co_rhs_ht = empty {key: int, value: collection {o_orderkey: int} @Collection} @Map) ]
+      , lhs_clear_expr    = [$ (\_ -> co_lhs_ht = empty {key: int, value: {c_nationkey: int, n_name: string}} @IntMap) ]
+      , rhs_clear_expr    = [$ (\_ -> co_rhs_ht = empty {key: int, value: collection {o_orderkey: int} @Collection} @IntMap) ]
 
       , peer_next            = [$ ( ignore ( ( co_nm_by_no
                                              ) @PSendPartitionByKey( dest_trg      = [$ cosl_process_redistribute ]
@@ -215,7 +215,7 @@ trigger q5_sl_start : () = \_ -> (
                                                         {key: s.s_suppkey, value: 1}
                                                         (\old -> \new -> {key: old.key, value: old.value + new.value}));
                                                       acc))
-                                                  (empty {key: int, value: int} @Map)
+                                                  (empty {key: int, value: int} @IntMap)
                                                   (supplier.size() / sample_factor)
                                ]
 
@@ -224,7 +224,7 @@ trigger q5_sl_start : () = \_ -> (
                                                         {key: li.l_suppkey, value: 1}
                                                         (\old -> \new -> {key: old.key, value: old.value + new.value}));
                                                       acc))
-                                                  (empty {key: int, value: int} @Map)
+                                                  (empty {key: int, value: int} @IntMap)
                                                   (lineitem.size() / sample_factor)
                                ]
 
@@ -235,7 +235,7 @@ trigger q5_sl_start : () = \_ -> (
                                           (\_ -> \s -> s.s_nationkey)
                                           0)
                                  .fold    ((\acc -> \s -> ((acc.insert s); acc)) @:Accumulate)
-                                          (empty {key: int, value: int} @Map)
+                                          (empty {key: int, value: int} @IntMap)
 
                     ]
       , lhs_query_clear = [$ supplier = empty supplier_r @Collection ]
@@ -247,7 +247,7 @@ trigger q5_sl_start : () = \_ -> (
                                              acc))
                                          (empty {l_orderkey : int, l_epd : real} @Collection))
                                 .fold    (\acc -> \li -> ((acc.insert li); acc))
-                                         (empty {key: int, value: collection {l_orderkey: int, l_epd: real} @Collection} @Map)
+                                         (empty {key: int, value: collection {l_orderkey: int, l_epd: real} @Collection} @IntMap)
                     ]
       , rhs_query_clear = [$ lineitem = empty lineitem_r @Collection ]
 
@@ -288,8 +288,8 @@ trigger q5_sl_start : () = \_ -> (
       , lhs_pipeline_next    = [$ (\_ -> ()) ]
       , rhs_pipeline_next    = [$ (\_ -> ()) ]
 
-      , lhs_clear_expr       = [$ (\_ -> sl_lhs_ht = empty {key: int, value: int} @Map) ]
-      , rhs_clear_expr       = [$ (\_ -> sl_rhs_ht = empty {key: int, value: collection {l_orderkey: int, l_epd: real} @Collection} @Map) ]
+      , lhs_clear_expr       = [$ (\_ -> sl_lhs_ht = empty {key: int, value: int} @IntMap) ]
+      , rhs_clear_expr       = [$ (\_ -> sl_rhs_ht = empty {key: int, value: collection {l_orderkey: int, l_epd: real} @Collection} @IntMap) ]
 
       , peer_next            = [$ ( ignore ( ( sl_epd_by_no
                                            ) @PSendPartitionByKey( dest_trg      = [$ cosl_process_redistribute ]
