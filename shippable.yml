@@ -36,7 +36,7 @@ script:
   - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q22.k3 tools/ktrace/tests/tpch_q22 results
 
     # Mosaic (must have fusion disabled)
-  - ./tools/source/run/compile.sh --fstage cexclude=Decl-FE,Decl-FT examples/sql/mosaic/rs.k3
+  - ./tools/scripts/run/compile.sh --fstage cexclude=Decl-FE,Decl-FT examples/sql/mosaic/rs.k3
 
 notifications:
      email:
