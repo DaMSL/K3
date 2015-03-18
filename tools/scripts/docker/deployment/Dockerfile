@@ -12,3 +12,6 @@ RUN cp -r mesos /usr/local/include
 RUN apt-get install -y cmake
 RUN easy_install mesos-eggs/mesos.*
 RUN pip install pyyaml
+RUN git clone https://github.com/3rdparty/stout.git && mv stout/include/stout /usr/include/
+ENV LD_LIBRARY_PATH /usr/local/lib/:/usr/lib/x86_64-linux-gnu/
+RUN ulimit -c unlimited
