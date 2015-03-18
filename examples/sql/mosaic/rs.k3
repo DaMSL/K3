@@ -2388,7 +2388,7 @@ trigger insert_R_rcv_corrective_s10_m___SQL_SUM_AGGREGATE_1_mR1 : { r1:address,
 source master : () = value(())feed master |> ms_send_addr_self
 
 
-source switch : { r1:int, r2:int, r3:int } = file "rs.csv" k3
+source switch : { r1:int, r2:int, r3:int } = file "rs.csv" psv
 feed switch |> sw_demux
 
 
