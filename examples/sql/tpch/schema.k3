@@ -160,3 +160,79 @@ typedef part_vec        = collection part_r        @Vector
 typedef nation_vec      = collection nation_r      @Vector
 typedef region_vec      = collection region_r      @Vector
 typedef tpch_agenda_vec = collection tpch_agenda_r @Vector
+
+/* Loader projection pushdown witness types */
+typedef q1_lineitem = { l_quantity      : real,
+                        l_extendedprice : real,
+                        l_discount      : real,
+                        l_tax           : real,
+                        l_returnflag    : string,
+                        l_linestatus    : string,
+                        l_shipdate      : string
+                      }
+
+typedef q3_lineitem = { l_orderkey      : int,
+                        l_extendedprice : real,
+                        l_discount      : real,
+                        l_shipdate      : string
+                      }
+
+typedef q3_customer = { c_custkey    : int,
+                        c_mktsegment : string
+                      }
+
+typedef q3_orders   = { o_orderkey         : int,
+                        o_custkey          : int,
+                        o_orderdate        : string,
+                        o_shippriority     : int
+                      }
+
+
+typedef q5_lineitem = { l_orderkey      : int,
+                        l_suppkey       : int,
+                        l_extendedprice : real,
+                        l_discount      : real
+                      }
+
+typedef q5_customer = { c_custkey   : int,
+                        c_nationkey : int
+                      }
+
+typedef q5_orders   = { o_orderkey  : int,
+                        o_custkey   : int,
+                        o_orderdate : string
+                      }
+
+typedef q5_supplier = { s_suppkey   : int,
+                        s_nationkey : int
+                      }
+
+typedef q5_nation   = { n_nationkey        : int,
+                        n_name             : string,
+                        n_regionkey        : int
+                      }
+
+typedef q5_region   = { r_regionkey : int,
+                        r_name      : string
+                      }
+
+typedef q18_lineitem = { l_orderkey : int,
+                         l_quantity : real
+                       }
+
+typedef q18_customer = { c_custkey : int,
+                         c_name    : string
+                       }
+
+typedef q18_orders   = { o_orderkey   : int,
+                         o_custkey    : int,
+                         o_totalprice : real,
+                         o_orderdate  : string
+                       }
+
+typedef q22_customer = { c_custkey : int,
+                         c_phone   : string,
+                         c_acctbal : real
+                       }
+
+typedef q22_orders   = { o_custkey : int }
