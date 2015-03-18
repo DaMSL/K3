@@ -24,7 +24,7 @@
               {% if lastjob.time %}
                 <li class="list-group-item">Time Submitted <span class="text-info">{{ lastjob.time }}</span></li>{% endif %}
               {% if lastjob.roles %}
-                <li class="list-group-item"><pre>{{ lastjob.roles }}</pre></li> {% endif %}
+                <li class="list-group-item">Roles<br><pre>{{ lastjob.roles }}</pre></li> {% endif %}
             </ul>
             <br><br><h4><a href="/jobs">return to jobs</a></h4>
         {% else %}

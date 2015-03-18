@@ -3,13 +3,16 @@ import threading
 import yaml
 import json
 import hashlib
+import uuid
 import datetime
 from flask import (Flask, request, redirect, url_for, jsonify, render_template)
-from flask.ext.uploads import delete, init, save, Upload
+# from flask.ext.uploads import delete, init, save, Upload
 from werkzeug import secure_filename
 from core import *
 from mesosutils import *
 from dispatcher import *
+from CompileTask import *
+
 import db
 
 
@@ -30,22 +33,22 @@ ARCHIVE_TARGET = 'archive'
 # UPLOADS_DEFAULT_DEST = os.path.join(LOCAL_DIR, DEFAULT_UPLOAD_TARGET)
 # UPLOADS_DEFAULT_URL = os.path.join(SERVER_URL, DEFAULT_UPLOAD_TARGET)
 
-UPLOADED_APPS_DEST = os.path.join(LOCAL_DIR, APPS_TARGET)
-UPLOADED_APPS_URL = os.path.join(SERVER_URL, APPS_TARGET)
-UPLOADED_JOBS_DEST = os.path.join(LOCAL_DIR, JOBS_TARGET)
-UPLOADED_JOBS_URL = os.path.join(SERVER_URL, JOBS_TARGET)
-UPLOADED_ARCHIVE_DEST = os.path.join(LOCAL_DIR, ARCHIVE_TARGET)
-UPLOADED_ARCHIVE_URL = os.path.join(SERVER_URL, ARCHIVE_TARGET)
+APPS_DEST = os.path.join(LOCAL_DIR, APPS_TARGET)
+APPS_URL = os.path.join(SERVER_URL, APPS_TARGET)
+JOBS_DEST = os.path.join(LOCAL_DIR, JOBS_TARGET)
+JOBS_URL = os.path.join(SERVER_URL, JOBS_TARGET)
+ARCHIVE_DEST = os.path.join(LOCAL_DIR, ARCHIVE_TARGET)
+ARCHIVE_URL = os.path.join(SERVER_URL, ARCHIVE_TARGET)
 
 
 # TODO: DIR Structure
 webapp = Flask(__name__)
-webapp.config['UPLOADED_APPS_DEST']     = UPLOADED_APPS_DEST
-webapp.config['UPLOADED_APPS_URL']      = UPLOADED_APPS_URL
-webapp.config['UPLOADED_JOBS_DEST']     = UPLOADED_JOBS_DEST
-webapp.config['UPLOADED_JOBS_URL']      = UPLOADED_JOBS_URL
-webapp.config['UPLOADED_ARCHIVE_DEST']  = UPLOADED_ARCHIVE_DEST
-webapp.config['UPLOADED_ARCHIVE_URL']   = UPLOADED_ARCHIVE_URL
+webapp.config['UPLOADED_APPS_DEST']     = APPS_DEST
+webapp.config['UPLOADED_APPS_URL']      = APPS_URL
+webapp.config['UPLOADED_JOBS_DEST']     = JOBS_DEST
+webapp.config['UPLOADED_JOBS_URL']      = JOBS_URL
+webapp.config['UPLOADED_ARCHIVE_DEST']  = ARCHIVE_DEST
+webapp.config['UPLOADED_ARCHIVE_URL']   = ARCHIVE_URL
 webapp.config['nextJobId']    = 1001
 
 
@@ -54,9 +57,18 @@ driver = None
 driver_t = None
 web_up = True
 debug_trace = []
+compile_tasks = {}
 
 joblist = {}
 index_message = 'Welcome to K3'
+
+
+def return_error(msg, errcode):
+  if request.headers['Accept'] == 'application/json':
+    return msg, errcode
+  else:
+    # TODO: Make other error template files
+    return render_template("errors/404.html", message=msg)
 
 
 
@@ -117,7 +129,6 @@ def upload_app():
             os.mkdir(jobdir)
           hash = hashlib.md5(open(fullpath).read()).hexdigest()
           if not (db.checkHash(hash)):
-            # TODO: Insert app into DB
             db.insertApp(filename, hash)
           return redirect(url_for('upload_app'))
   applist = db.getAllApps()
@@ -126,7 +137,6 @@ def upload_app():
 
 #------------------------------------------------------------------------------
 #  /apps/<appId> - Specific Application Level interface
-#         POST   (TODO: Upload archive data (C++, Source, etc....)
 #         GET    Display all versions, executed jobs, etc...  (TODO)
 #------------------------------------------------------------------------------
 @webapp.route('/apps/<appId>')
@@ -139,6 +149,42 @@ def get_app(appId):
         return render_template("index.html", message="Details for application %s" % appId)
     else:
       return render_template("errors/404.html", message="Application %s does not exist" % appId)
+
+#------------------------------------------------------------------------------
+#  /apps/<appId> - Specific Application Level interface
+#         POST   (Upload archive data (C++, Source, etc....)
+#         GET    Display all versions, executed jobs, etc...  (TODO)
+#------------------------------------------------------------------------------
+@webapp.route('/apps/<appId>/archive', methods=['GET', 'POST'])
+def archive_app(appId):
+    applist = [a['name'] for a in db.getAllApps()]
+    if appId not in applist:
+      msg = "Application %s does not exist" % appId
+      if request.headers['Accept'] == 'application/json':
+        return msg, 404
+      else:
+        return render_template("errors/404.html", message=msg)
+
+    if request.method == 'POST':
+        file = request.files['file']
+        if file:
+            filename = secure_filename(file.filename)
+            path = os.path.join(webapp.config['UPLOADED_ARCHIVE_DEST'], appId).encode(encoding='ascii')
+            if not os.path.exists(path):
+              os.mkdir(path)
+            file.save(os.path.join(path, filename))
+            return "File Uploaded & archived", 202
+        else:
+            return "No file received", 400
+
+    elif request.method == 'GET':
+      # TODO: Return list of archives with associated info/data
+      if request.headers['Accept'] == 'application/json':
+        return jsonify(db.getApp(appId))
+      else:
+        return render_template("index.html", message="Details for application %s" % appId)
+
+
 
 
 #------------------------------------------------------------------------------
@@ -326,50 +372,103 @@ def kill_job(appId, jobId):
 
 
 
-
-
-
-
-
 #------------------------------------------------------------------------------
 #  /compile
 #         GET     Form for compiling new K3 Executable OR status of compiling tasks
 #         POST    Submit new K3 Compile task
 #------------------------------------------------------------------------------
 @webapp.route('/compile', methods=['GET', 'POST'])
-def compile(name):
-    apps = db.getAllApps()
+def compile():
+
     if request.method == 'POST':
-        # TODO: Get user
-        file = request.files['file']
-        text = request.form['text']
+      file = request.files['file']
+      text = request.form['text']
+      name = request.form['name']
+      options = request.form['options']
 
-        # Check for valid submission
-        if not file and not text:
-          return render_template("errors/404.html", message="Invalid job request")
+      if not file and not text:
+          return render_template("errors/404.html", message="Invalid Compile request")
 
-        # Save K3 source to file (either from file or text input)
-        path = os.path.join(webapp.config['UPLOADED_APPS_DEST'], appId, str(jobId))
-        filename = ('%s.k3' % name)
-        if not os.path.exists(path):
-          os.mkdir(path)
+      # Determine application name  TODO: Change to uname
+      if not name:
         if file:
-            file.save(os.path.join(path, filename))
+          srcfile = secure_filename(file.filename)
+          name = srcfile.split('.')[0]
         else:
-            file = open(os.path.join(path, filename), 'w')
-            file.write(text)
-            file.close()
+          return render_template("errors/400.html", message="No name provided for K3 program")
 
-        # TODO: Create new Mesos K3 Compile Task
+      path = os.path.join(webapp.config['UPLOADED_ARCHIVE_DEST'], name).encode(encoding='ascii')
+      url = os.path.join(webapp.config['UPLOADED_ARCHIVE_URL'], name).encode(encoding='ascii')
+      src_file = ('%s.k3' % name)
+      if not os.path.exists(path):
+        os.mkdir(path)
 
-        # Submit to Mesos
-#        dispatcher.compile(compileTask)
-        return render_template('jobs.html', appId=appId, lastjob=thisjob)
-    else:
-      if 'application/json' in request.headers['Accept']:
-        return "POST a message to compile a new K3 program."
+      # Save K3 source to file (either from file or text input)
+      if file:
+          file.save(os.path.join(path, src_file))
       else:
-        return render_template("jobs.html", appId=appId, joblist=jobs)
+          file = open(os.path.join(path, src_file).encode(encoding='ascii'), 'w')
+          file.write(text)
+          file.close()
+
+      # Generate compilation script
+      sh_file = 'compile_%s.sh' % name
+      sh = genScript(name)
+      compscript = open(os.path.join(path, sh_file).encode(encoding='ascii'), 'w')
+      compscript.write(sh)
+      compscript.close()
+
+      source = os.path.join(url, src_file)
+      script = os.path.join(url, sh_file)
+
+      # TODO:  (if desired) use full UUID -- using shorter for simplicity
+      uid = str(uuid.uuid1()).split('-')[0]
+
+      c = CompileDriver(name=name, uid=uid, source=source,
+                        script=script, path=path) #'fibonacci', 'http://qp1:8002/src/fibonacci.k3')
+
+      uname = name + '-' + uid
+      # TODO: Enter Compile task into db, get/set K3 build source, use UUID for key
+      compile_tasks[uname] = c
+
+      t = threading.Thread(target=c.launch)
+      try:
+        t.start()
+      except e:
+        c.stop()
+        t.join()
+
+      return "http://qp1:5000/compile/%s" % uname, 200
+      # return render_template('jobs.html', appId=appId, lastjob=thisjob)
+
+    else:
+      # TODO: Return list of Active/Completed Compiling Tasks
+
+      if request.headers['Accept'] == 'application/json':
+        return 'CURL FORMAT:\n\n\tcurl -i -F "name=<appName>;options=<compileOptions>;file=@<sourceFile>" http://qp1:5000/compile'
+      else:
+        return render_template("compile.html")
+
+
+
+@webapp.route('/compile/<uname>', methods=['GET', 'POST'])
+def get_compile(uname):
+    if uname not in compile_tasks:
+      msg = "Not currently tracking the compile task %s" % uname
+      return_error (msg, 404)
+    else:
+      c = compile_tasks[uname]
+      fname = os.path.join(webapp.config['UPLOADED_ARCHIVE_DEST'], uname, 'output')
+      stdout_file = open(fname, 'r')
+      output = stdout_file.read()
+      stdout_file.close()
+
+      if request.headers['Accept'] == 'application/json':
+        return output, 200
+      else:
+        return render_template("output.html", output=output)
+
+
 
 
 
@@ -416,6 +515,8 @@ def shutdown_server():
     print ("Web is down")
     driver.stop()
     driver_t.join() 
+    for k, v in compile_tasks.items():
+      v.stop()
     print ("Mesos is down")
 
 
@@ -462,4 +563,6 @@ if __name__ == '__main__':
     print("INTERRUPT")
     driver.stop()
     driver_t.join()
+    for k, v in compile_tasks.items():
+      v.stop()
 

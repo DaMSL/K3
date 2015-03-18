@@ -1,0 +1,35 @@
+{% extends "layout/base.html" %}
+
+{% block content %}
+  <div class="container">
+    <div class="starter-template">
+      <h2>Compile a new K3 Application from source</h2>
+        <form action="" method=post enctype=multipart/form-data>
+            <div class="row">
+                <h4>Application Name:</h4> <input type=text name=name>
+            </div>
+            <div class="row">
+                <h4>Compilation Options:</h4> <input type=text name=options>
+            </div>
+            <h4>Select a file or paste your raw source text below</h5>
+            <div class="row">
+              <div class="col-md-4">
+                 <h4>Upload K3 Source File (.k3) </h4>
+                 <input type=file class="btn btn-file btn-md" name=file>
+              </div>
+                 <h4>Paste raw K3 Source below</h4>
+              <div class="col-md-8">
+                <textarea class="form-control" name=text cols=20 rows=12></textarea>
+              </div>
+            </div>
+                <p>
+            <span class="lead text-center">Launch: <button type=submit class="btn btn-primary btn-md">Submit</button></span>
+                </p>
+         </form>
+    </div>
+  </div>
+{% endblock %}
+
+{% block footer %}
+  {% include "include/footer.html" %}
+{% endblock %}

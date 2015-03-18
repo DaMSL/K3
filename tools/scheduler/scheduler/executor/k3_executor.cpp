@@ -359,6 +359,7 @@ public:
         if (thread) {
 	  driver->sendFrameworkMessage("Debug: thread already existed!");
           thread->interrupt();
+
           thread->join();
           delete thread;
           thread = 0;
@@ -430,13 +431,13 @@ class TaskThread {
 };
 
   virtual void killTask(ExecutorDriver* driver, const TaskID& taskId) {
+	  	  driver->sendFrameworkMessage("Executor " + host_name+ " KILLING TASK");
                   if (thread) {
                     thread->interrupt();
                     thread->join();
                     delete thread;
                     thread = 0;
                   }
-	  	  driver->sendFrameworkMessage("Executor " + host_name+ " KILLING TASK");
 		  driver->stop();
 }
 

@@ -13,6 +13,8 @@ import mesos.native
 
 # TODO how should we determine the executor url
 EXECUTOR_URL = "http://qp1:8002/k3executor"
+COMPEXEC_URL = "http://qp1:8002/k3compexec"
+
 K3_DOCKER_NAME = "damsl/k3-deployment:stable"
 
 def getResource(resources, tag, convF):
@@ -176,6 +178,99 @@ def taskInfo(k3job, k3task, slaveId):
   return task   
 
 
+
+def compileTask(**kwargs):
+  app     = kwargs.get('appId', 'myprog')
+  script  = kwargs.get('script', None)
+  source  = kwargs.get('source', None)
+  slave   = kwargs.get('slave', None)
+  uid     = kwargs.get('uid', None)
+  r_cpu   = kwargs.get('cpu', 4)
+  r_mem   = kwargs.get('mem', 4*1024)
+
+  print "COMPILE TASK"
+
+  if script == None or source == None:
+    print ("Error. Cannot run compiler (missing source and/or compiler script)")
+    return
+
+  if slave == None:
+    print ("Error. No mesos slave provided")
+
+  uname = app if uid == None else "%s-%s" % (app, uid)
+
+  executor = mesos_pb2.ExecutorInfo()
+  executor.executor_id.value = app
+  executor.name = 'K3-Compiler-%s' % app
+
+  command = mesos_pb2.CommandInfo()
+#  command.value = '$MESOS_SANDBOX/k3compexec'
+  command.value = 'python $MESOS_SANDBOX/CompileExecutor.py'
+
+  # env = command.environment.add()
+  # env.name = 'K3_BUILD'
+  # env.vale = <git-hash>
+
+  comp_exec = command.uris.add()
+  # comp_exec.value = COMPEXEC_URL
+  comp_exec.value = 'http://qp1:8002/CompileExecutor.py'
+  comp_exec.executable = False
+  comp_exec.extract = False
+
+  sh = command.uris.add()
+  sh.value = script
+  sh.executable = True
+  sh.extract = False
+
+  src = command.uris.add()
+  src.value = source
+  src.executable = False
+  src.extract = False
+
+  docker = mesos_pb2.ContainerInfo.DockerInfo()
+  docker.image = K3_DOCKER_NAME
+  docker.network = docker.HOST
+
+  container = mesos_pb2.ContainerInfo()
+  container.type = container.DOCKER
+  container.docker.MergeFrom(docker)
+
+  executor.command.MergeFrom(command)
+  executor.container.MergeFrom(container)
+
+
+  print "BUILD TASK"
+  task = mesos_pb2.TaskInfo()
+  task.name = app
+  task.task_id.value = uname
+  task.slave_id.value = slave
+  # task.name = '$MESOS_SANDBOX/compile_%s.sh' % app
+  print (task.name, task.task_id.value)
+
+  # task.data = ''
+
+  # Labels:  New In Mesos v 0.22
+  # config = mesos_pb2.Labels()
+  # l_app = config.labels.add()
+  # l_app.key = 'appId'
+  # l_app.value = app
+  # task.labels.MergeFrom(config)
+
+  task.executor.MergeFrom(executor)
+
+#  resources = offer.resources
+
+  cpus = task.resources.add()
+  cpus.name = "cpus"
+  cpus.type = mesos_pb2.Value.SCALAR
+  cpus.scalar.value = r_cpu
+
+  mem = task.resources.add()
+  mem.name = "mem"
+  mem.type = mesos_pb2.Value.SCALAR
+  mem.scalar.value = r_mem
+
+  return task
 
 # Helper that uses 'mesos-resolve' to resolve a master IP:port from
 # one of:
