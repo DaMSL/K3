@@ -371,8 +371,8 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                              ordersLoaderPFixedSize ordersFiles orders ordersRows;
                              customerLoaderPFixedSize customerFiles customer customerRows;
                              supplierLoaderPFixedSize supplierFiles supplier supplierRows;
-                             nationFiles.iterate   (\e -> nationLoaderP   e.path nation);
-                             regionFiles.iterate   (\e -> regionLoaderP   e.path region);
+                             nationLoaderP nationFiles nation;
+                             regionLoaderP regionFiles region;
                              ( (q5_prep, me) <- () )
                            ) ],
   preLoadExpr         = [$ ()],
