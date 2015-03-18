@@ -29,7 +29,10 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
   preReadyExpr         = [$ ()],
   finishArgT           = [: real],
   preTestFinishExpr    = [$ (\x -> q6_result = q6_result + x)],
-  preFinishExpr        = [$ ( (results_sink, me) <- q6_result ); (peers.iterate (\p -> (shutdown, p.addr) <- () ) )],
+  preFinishExpr        = [$ ( (results.insert {revenue: q6_result});
+                              (results_sink, me) <- q6_result );
+                              (peers.iterate (\p -> (shutdown, p.addr) <- () ))
+                         ],
   preShutdownExpr      = [$ ()],
   finishAsShutdownExpr = [$ false ]
 )

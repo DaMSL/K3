@@ -383,7 +383,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   finishArgT          = [: ()],
   preTestFinishExpr   = [$ (\_ -> ())],
   preFinishExpr       = [$ (print ("Q5 num results:" ++ (itos (q5_result.size()))));
-                           q5_result.iterate (\r -> (results_sink, me) <- r );
+                           (q5_result.iterate (\r -> ((results.insert r); ((results_sink, me) <- r ))));
                            peers.iterate (\p -> (shutdown, p.addr) <- ())
                         ],
   preShutdownExpr     = [$ ()],
