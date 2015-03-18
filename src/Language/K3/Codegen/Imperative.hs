@@ -84,35 +84,43 @@ isCachedMutable i = elem i . mutables <$> get
 
 isFunction :: K3 Type -> Bool
 isFunction (tag -> TFunction) = True
-isFunction (tag -> TSource) = True
 isFunction (tag -> TForall _) = True
+isFunction (tag -> TSource) = True
+isFunction (tag -> TSink) = True
 isFunction _ = False
 
 declaration :: K3 Declaration -> ImperativeM (K3 Declaration)
-declaration (Node t@(DGlobal i y Nothing :@: _) cs) = do
+declaration (Node t@(DGlobal i y Nothing :@: as) cs) = do
     let isF = isFunction y
+    let isP = isJust $ as @~ (\case { DProperty (dPropertyV -> ("Pinned", Nothing)) -> True; _ -> False })
     addGlobal i y isF
-    unless isF (addPatchable i y False >> addShowable i y)
+    unless isF (addPatchable i y False >> unless isP (addShowable i y))
     Node t <$> mapM declaration cs
+
 declaration (Node (DGlobal i t (Just e) :@: as) cs) = do
     addGlobal i t False
-    unless (isFunction t || isTid i t) (addPatchable i t True >> addShowable i t)
+    (if tag t == TSink then addTrigger i (head $ children t) else return ())
+    let isP = isJust $ as @~ (\case { DProperty (dPropertyV -> ("Pinned", Nothing)) -> True; _ -> False })
+    unless (isFunction t || isTid i t) (addPatchable i t True >> unless isP (addShowable i t))
     me' <- expression e
     cs' <- mapM declaration cs
     return $ Node (DGlobal i t (Just me') :@: as) cs'
-    where isTid i (tag -> TInt) | drop (length i - 4) i == "_tid" = True
+    where isTid n (tag -> TInt) | drop (length n - 4) n == "_tid" = True
           isTid _ _ = False
+
 declaration (Node (DTrigger i t e :@: as) cs) = do
     addGlobal i t False
     addTrigger i t
     ne' <- expression e
     cs' <- mapM declaration cs
     return $ Node (DTrigger i t ne' :@: as) cs'
+
 declaration t@(tag -> DDataAnnotation _ _ amds) = do
     forM_ amds $ \case
         Lifted Provides j u _ _ -> addGlobal j u False
         _ -> return ()
     let (Node t' cs') = t in Node t' <$> mapM declaration cs'
+
 declaration (Node t cs) = Node t <$> mapM declaration cs
 
 expression :: K3 Expression -> ImperativeM (K3 Expression)

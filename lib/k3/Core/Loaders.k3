@@ -1,18 +1,20 @@
-@:CArgs 2
-declare loadQ1: string -> collection {pageURL: string,pageRank: int} @ { Collection } -> ()
+include "Annotation/Collection.k3"
 
 @:CArgs 2
-declare loadQ2: string -> collection {adRevenue: real, sourceIP: string} @ { Collection } -> ()
+declare loadQ1: collection {path: string} @Collection -> collection {pageURL: string,pageRank: int} @ { Collection } -> ()
+
+@:CArgs 2
+declare loadQ2: collection {path: string} @Collection -> collection {adRevenue: real, sourceIP: string} @ { Collection } -> ()
 
 
 @:CArgs 2
-declare loadUVQ3: string -> collection {sourceIP: string, destURL: string, visitDate: string, adRevenue: real } @{ Collection } -> ()
+declare loadUVQ3: collection {path: string} @Collection -> collection {sourceIP: string, destURL: string, visitDate: string, adRevenue: real } @{ Collection } -> ()
 
 @:CArgs 2
-declare loadRKQ3 : string -> collection {key: string, value: int} @Map  -> ()
+declare loadRKQ3 : collection {path: string} @Collection -> collection {key: string, value: int} @Map  -> ()
 
 @:CArgs 2
-declare graphLoader: string -> collection { key: int, value: int } @ { Collection } -> ()
+declare graphLoader: collection {path: string} @Collection -> collection { key: int, value: int } @ { Collection } -> ()
 
 @:CArgs 2
-declare loadGraph: string -> collection { key: int, value: collection { elem: int } @ Collection  } @ Map  -> ()
+declare loadGraph: collection {path: string} @Collection -> collection { key: int, value: collection { elem: int } @ Collection  } @ Map  -> ()

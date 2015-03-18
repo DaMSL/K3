@@ -1,37 +1,62 @@
 include "tpch/schema.k3"
 
 @:CArgs 2
-declare lineitemLoaderP : string -> lineitem_bag -> ()
+declare lineitemLoaderP : collection {path: string} @Collection -> lineitem_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 3
+declare lineitemLoaderPFixedSize : collection {path: string} @Collection -> lineitem_bag -> int -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+@:CArgs 2
+declare customerLoaderP : collection {path: string} @Collection -> customer_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 3
+declare customerLoaderPFixedSize : collection {path: string} @Collection -> customer_bag -> int -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+@:CArgs 2
+declare ordersLoaderP : collection {path: string} @Collection -> orders_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 3
+declare ordersLoaderPFixedSize: collection {path: string} @Collection -> orders_bag -> int -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+@:CArgs 2
+declare supplierLoaderP : collection {path: string} @Collection -> supplier_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 3
+declare supplierLoaderPFixedSize : collection {path: string} @Collection -> supplier_bag -> int -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+@:CArgs 2
+declare partsuppLoaderP : collection {path: string} @Collection -> partsupp_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 3
+declare partsuppLoaderPFixedSize : collection {path: string} @Collection -> partsupp_bag -> int -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+@:CArgs 2
+declare partLoaderP : collection {path: string} @Collection -> part_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 3
+declare partLoaderPFixedSize : collection {path: string} @Collection -> part_bag -> int -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+// Fixed size not needed for nation or region
+@:CArgs 2
+declare nationLoaderP : collection {path: string} @Collection -> nation_bag -> ()
   with effects \_ -> \_ -> io
 
 @:CArgs 2
-declare customerLoaderP : string -> customer_bag -> ()
+declare regionLoaderP : collection {path: string} @Collection -> region_bag -> ()
   with effects \_ -> \_ -> io
 
 @:CArgs 2
-declare ordersLoaderP : string -> orders_bag -> ()
-  with effects \_ -> \_ -> io
-
-@:CArgs 2
-declare supplierLoaderP : string -> supplier_bag -> ()
-  with effects \_ -> \_ -> io
-
-@:CArgs 2
-declare partsuppLoaderP : string -> partsupp_bag -> ()
-  with effects \_ -> \_ -> io
-
-@:CArgs 2
-declare partLoaderP : string -> part_bag -> ()
-  with effects \_ -> \_ -> io
-
-@:CArgs 2
-declare nationLoaderP : string -> nation_bag -> ()
-  with effects \_ -> \_ -> io
-
-@:CArgs 2
-declare regionLoaderP : string -> region_bag -> ()
-  with effects \_ -> \_ -> io
-
-@:CArgs 2
-declare tpchAgendaLoaderP : string -> tpch_agenda_bag -> ()
+declare tpchAgendaLoaderP : collection {path: string} @Collection -> tpch_agenda_bag -> ()
   with effects \_ -> \_ -> io

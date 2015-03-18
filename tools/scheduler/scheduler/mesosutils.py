@@ -7,8 +7,8 @@ from mesos.interface import mesos_pb2
 import mesos.native
 
 # TODO how should we determine the executor url
-EXECUTOR_URL = "http://192.168.0.11:8002/k3executor"
-K3_DOCKER_NAME = "damsl/k3-mesos2"
+EXECUTOR_URL = "http://qp2:8002/k3executor"
+K3_DOCKER_NAME = "damsl/k3-deployment:stable"
 
 def getResource(resources, tag, convF):
   for resource in resources:
@@ -57,6 +57,10 @@ def assignRolesToOffers(nextJob, offers):
 
       cpusRemainingForOffer = offeredCpus - cpusUsedPerOffer[offerId]
       cpusToUse = min([cpusRemainingForOffer, nextJob.roles[roleId].peers])
+
+      if nextJob.roles[roleId].maxPeersPerHost != None:
+        cpusToUse = min([cpusToUse, nextJob.roles[roleId].maxPeersPerHost])
+
      
       cpusUsedPerOffer[offerId] += cpusToUse
       rolesPerOffer[offerId].append((roleId, cpusToUse))
@@ -109,8 +113,8 @@ def executorInfo(k3task, jobid, binary_url):
   container.docker.MergeFrom(docker)
  
   volume = container.volumes.add()
-  volume.container_path = '/local/data'
-  volume.host_path = '/local/data'
+  volume.container_path = '/data'
+  volume.host_path = '/data'
   volume.mode = volume.RW
 
   executor.container.MergeFrom(container)

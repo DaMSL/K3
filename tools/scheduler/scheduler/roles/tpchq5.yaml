@@ -1,15 +1,17 @@
 ---
 name: role 1
-peers: 128
-hostmask: ".*hm.*"
+volumes:
+  - {host: /local, container: /local}
+peers: 112
+peers_per_host: 16
+hostmask: ".*qp-hm.*"
 k3_globals:
   role: rows
   master: auto
-  profilingEnabled: True
 k3_data:
   - {var: lineitemFiles, path: /local/data/tpch10g/lineitem, policy: global}
   - {var: ordersFiles, path: /local/data/tpch10g/orders, policy: global}
   - {var: customerFiles, path: /local/data/tpch10g/customer, policy: global}
   - {var: supplierFiles, path: /local/data/tpch10g/supplier, policy: global}
-  - {var: nationFiles, path: /local/data/tpch10g/nation, policy: global}
-  - {var: regionFiles, path: /local/data/tpch10g/region, policy: global}
+  - {var: nationFiles, path: /local/data/tpch10g/nation, policy: replicate}
+  - {var: regionFiles, path: /local/data/tpch10g/region, policy: replicate}

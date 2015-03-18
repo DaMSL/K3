@@ -32,7 +32,7 @@ executable k3
         Cabal,
         clock,
         containers,
-        criterion,
+        criterion >= 1.0.2.0,
         data-ordlist,
         deepseq,
         deepseq-generics,

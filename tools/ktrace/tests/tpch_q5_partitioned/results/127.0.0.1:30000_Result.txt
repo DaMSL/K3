@@ -1,0 +1,1 @@
+{"type":"Collection","value":[{"type":"record","value":{"key":"INDONESIA","value":566379.5275999999}},{"type":"record","value":{"key":"VIETNAM","value":956826.0069}},{"type":"record","value":{"key":"INDIA","value":422874.68439999999}},{"type":"record","value":{"key":"CHINA","value":670255.9815999999}},{"type":"record","value":{"key":"JAPAN","value":623327.4905}}]}

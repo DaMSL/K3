@@ -412,7 +412,7 @@ chaseProvenance p = return p
 fisub :: FIEnv -> Maybe (ExtInferF a, a) -> Identifier -> K3 Effect -> K3 Effect -> K3 Provenance
       -> Either Text (K3 Effect, FIEnv)
 fisub fienv extInfOpt i df sf p = do
-  (renv, _, rf) <- acyclicSub fienv emptyPtrSubs [] sf
+  (renv, _, rf) <- debugAcyclicSub fienv sf $ acyclicSub fienv emptyPtrSubs [] sf
   return (rf, renv)
 
   where
@@ -421,9 +421,9 @@ fisub fienv extInfOpt i df sf p = do
     acyclicSub env subs _ (tag -> FFVar j) | i == j = return (env, subs, df)
 
     acyclicSub env subs path f@(tag -> FBVar mv@(fmvptr -> j))
-      | j `elem` path = return (env, subs, f)
+      | j `elem` path   = return (env, subs, f)
       | isPtrSub subs j = getPtrSub subs j >>= return . (env, subs,)
-      | otherwise     = filkupp fienv j >>= subPtrIfDifferent env subs path mv
+      | otherwise       = filkupp fienv j >>= subPtrIfDifferent env subs (j:path) mv
 
     acyclicSub env subs _ (tag -> FRead (tag -> PFVar j)) | j == i = do
       p' <- chaseProvenance p
@@ -490,6 +490,11 @@ fisub fienv extInfOpt i df sf p = do
       case tag nf of
         FBVar nmv -> return (nenv, IntMap.insert (fmvptr mv) nmv fs, nf)
         _ -> freshErr nf
+
+    debugAcyclicSub denv f r = if True then r else
+      flip trace r $ T.unpack $ PT.boxToString $ [T.pack "acyclicSub"]
+                                              %$ PT.prettyLines denv
+                                              %$ PT.prettyLines f
 
     lookupErr j = Left $ T.pack $ "Could not find pointer substitution for " ++ show j
     freshErr  f = Left $ PT.boxToString $ [T.pack "Invalid fresh FBVar result "] %$ PT.prettyLines f
@@ -1043,8 +1048,8 @@ inferEffects extInfOpt expr = do
       let nbef = fset $ catMaybes [sef, nef]
       npef <- extInferM (fwrite $ pbvar cpmv) >>= \spf -> return (fset [spf, fnone])
       let nrf  = fscope [cfmv] nief nbef npef (fset [snf, rnf])
-      Just nsef <- pruneAndSimplify False nmv sef
-      let nef' = fexec $ map Just [nief, fset [nsef, maybe fnone id nef]]
+      nsef <- pruneAndSimplify False nmv sef
+      let nef' = fexec $ map Just [nief, fset [maybe fnone id nsef, maybe fnone id nef]]
       rt "case-of" True e nmv (nef', nrf)
 
     infer m (onSub -> (_, mv)) _ e@(tag -> EAddress) = m >> rt "address" False e mv (Nothing, fnone)

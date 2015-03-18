@@ -1,0 +1,86 @@
+// Maps are expected to contain only records with fields key and value
+//
+// This map is implemented with a backend type specialized for int keys
+// While there currently is no type enforcement, it should only be used
+// with key :: int
+//
+annotation IntMap given type a,b {
+  provides lifted peek    : () -> option content
+    with effects \_ -> R[self]
+
+  provides lifted insert  : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
+  @:CArgs 2
+  provides lifted insert_with: content -> (content -> content -> content) -> ()
+    with effects \elem -> \f -> [R[self]; R[elem]; ((f content) content); W[self]]
+
+  @:CArgs 3
+  provides lifted upsert_with: content -> (() -> content) -> (content -> content) -> ()
+    with effects \elem -> \f -> \g -> [R[self]; R[elem]; f content; g content; W[self]]
+
+  provides lifted erase  : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
+  @:CArgs 2
+  provides lifted update  : content -> (content -> ())
+    with effects \oldElem -> \newElem -> [R[self]; R[oldElem]; R[newElem]; W[self]]
+
+  provides lifted size : () -> int
+    with effects \_ -> R[self]
+
+  @:Transformer
+  provides lifted combine : self -> self
+    with effects \other -> [R[self]; R[other]]
+
+  @:Transformer
+  provides lifted split   : () -> (self, self)
+    with effects \_ -> R[self]
+
+  @:Transformer
+  provides lifted iterate : (content -> ()) -> ()
+    with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
+
+  @:Transformer
+  provides lifted map     : (content -> {key: a, value: b}) -> collection {key: a, value: b} @Map
+    with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
+
+  @:Transformer
+  provides lifted filter  : (content -> bool) -> self
+    with effects \filterF -> [R[self]; ([R[content]; filterF content])*]
+
+  @:{Transformer, CArgs 2}
+  provides lifted fold    : (a -> (content -> a)) -> a -> a
+    with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+  @:{Transformer, CArgs 3}
+  provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
+                             -> collection { key : a, value : b } @Map
+    with effects
+      \gbF -> \gaccF -> \z ->
+        [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
+
+  @:Transformer
+  provides lifted ext     : (content -> collection {key : a, value: b} @Map)
+                             -> collection {key : a, value: b} @Map
+    with effects \extF -> [R[self]; ([R[content]; extF content])*]
+
+  @:{Transformer, CArgs 3}
+  provides lifted sample : (a -> content -> a) -> a -> int -> a
+    with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
+
+  // Lookup ignores the value of the provided element.
+  provides lifted lookup : content -> option content
+    with effects \elem -> [R[self]; R[elem]]
+
+  @:CArgs 2
+  provides lifted lookup_with : content -> (content -> ()) -> ()
+    with effects \elem -> \lookupF -> [R[self]; R[elem]; lookupF content]
+
+  @:CArgs 3
+  provides lifted lookup_with2 : content -> (() -> ()) -> (content -> ()) -> ()
+    with effects \elem -> \noneF -> \someF -> [R[self]; R[elem]; noneF content; someF content]
+
+  provides lifted member: content -> bool
+    with effects \elem -> [R[self]; R[elem]]
+}

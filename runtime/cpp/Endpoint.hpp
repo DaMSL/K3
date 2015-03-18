@@ -7,9 +7,11 @@
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/externally_locked.hpp>
 #include <boost/thread/lockable_adapter.hpp>
+#include <boost/variant.hpp>
 
 #include <Common.hpp>
 #include <Codec.hpp>
+#include <EndpointBuffer.hpp>
 #include <Network.hpp>
 #include <IOHandle.hpp>
 #include <Queue.hpp>
@@ -21,8 +23,6 @@ using std::runtime_error;
 
 namespace K3
 {
-  typedef tuple<int, int> BufferSpec;
-
   enum class EndpointNotification {
     NullEvent, FileData, FileTick, FileClose, SocketAccept, SocketData, SocketTick, SocketClose
   };
@@ -39,13 +39,10 @@ namespace K3
     EndpointException( const char* msg ) : runtime_error(msg) {}
   };
 
-  typedef std::function<void(const Address&, const TriggerId, shared_ptr<Value>, const Address&)> SendFunctionPtr;
+  typedef std::function<void(const Address&, const TriggerId, shared_ptr<string>, const Address&)> SendFunctionPtr;
 
   class Endpoint;
   typedef map<Identifier, shared_ptr<Endpoint> > EndpointMap;
-
-  static inline int bufferMaxSize(BufferSpec& spec)   { return get<0>(spec); }
-  static inline int bufferBatchSize(BufferSpec& spec) { return get<1>(spec); }
 
   static inline std::string internalEndpointPrefix() { return std::string("__");  }
 
@@ -62,141 +59,6 @@ namespace K3
     return ( mismatch(pfx.begin(), pfx.end(), id.begin()).first != pfx.end() );
   }
 
-
-  //------------------------
-  // Endpoint buffers.
-  // In contrast to the Haskell engine, in C++ we implement the concept of the
-  // BufferContents datatype inline in the EndpointBuffer class. This is due
-  // to the difference in the concurrency abstractions (e.g., MVar vs. externally_locked).
-
-  class EndpointBuffer {
-  public:
-    typedef std::function<void(shared_ptr<Value>)> NotifyFn;
-
-    EndpointBuffer() {}
-
-    virtual bool empty() = 0;
-    virtual bool full() = 0;
-    virtual size_t size() = 0;
-    virtual size_t capacity() = 0;
-
-    // Appends to this buffer, returning if the append succeeds.
-    virtual bool push_back(shared_ptr<Value> v) = 0;
-
-    // Maybe Removes a value from the buffer and returns it
-    virtual shared_ptr<Value> pop() = 0;
-
-    // Attempt to pull a value from the provided IOHandle
-    // into the buffer. Returns a Maybe Value
-    virtual shared_ptr<Value> refresh(shared_ptr<IOHandle>, NotifyFn) = 0;
-
-    // Flush the contents of the buffer out to the provided IOHandle
-    virtual void flush(shared_ptr<IOHandle>, NotifyFn) = 0;
-
-    // Transfer the contents of the buffer into provided MessageQueues
-    // Using the provided InternalCodec to convert from Value to Message
-    virtual bool transfer(shared_ptr<MessageQueues>, shared_ptr<InternalCodec>, NotifyFn)= 0;
-  };
-
-
-  class ScalarEPBufferMT : public EndpointBuffer, public boost::basic_lockable_adapter<boost::mutex> {
-  public:
-    typedef ScalarEPBufferMT LockB;
-
-    ScalarEPBufferMT() : EndpointBuffer(), contents(*this) {}
-    // Metadata
-    bool   empty()    {
-      boost::strict_lock<LockB> guard(*this);
-      return !(contents.get(guard));
-    }
-    bool   full()     {
-      boost::strict_lock<LockB> guard(*this);
-      return static_cast<bool>(contents.get(guard));
-    }
-    size_t size()     {
-      boost::strict_lock<LockB> guard(*this);
-      return contents.get(guard) ? 1 : 0;
-    }
-    size_t capacity() { return 1; }
-
-    // Buffer Operations
-    bool push_back(shared_ptr<Value> v);
-
-    shared_ptr<Value> pop();
-
-    shared_ptr<Value> refresh(shared_ptr<IOHandle> ioh, NotifyFn notify);
-
-    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify);
-
-    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify);
-
-   protected:
-    boost::externally_locked<shared_ptr<Value>, LockB> contents;
-  };
-
-  class ScalarEPBufferST : public EndpointBuffer {
-  public:
-    ScalarEPBufferST() : EndpointBuffer() {}
-    // Metadata
-    bool   empty()    { return !contents; }
-    bool   full()     { return static_cast<bool>(contents); }
-    size_t size()     { return contents ? 1 : 0; }
-    size_t capacity() { return 1; }
-
-    // Buffer Operations
-    bool push_back(shared_ptr<Value> v);
-
-    shared_ptr<Value> pop();
-
-    shared_ptr<Value> refresh(shared_ptr<IOHandle> ioh, NotifyFn notify);
-
-    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify);
-
-    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify);
-
-   protected:
-    shared_ptr<Value> contents;
-  };
-
-  class ContainerEPBufferST : public EndpointBuffer {
-  public:
-    ContainerEPBufferST(BufferSpec s) : EndpointBuffer(), spec(s) {
-      contents = shared_ptr<list<Value>>(new list<Value>());
-    }
-
-    bool   empty() { return contents? contents->empty() : true; }
-    bool   full()  { return size() >= bufferMaxSize(spec); }
-    size_t size()  { return empty()? 0 : contents->size(); }
-    size_t capacity();
-
-    bool push_back(shared_ptr<Value> v);
-
-    shared_ptr<Value> pop();
-
-    shared_ptr<Value> refresh(shared_ptr<IOHandle> ioh, NotifyFn notify);
-
-    // Default flush: do not force, wait for batch
-    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify) { flush(ioh,notify,false); }
-
-    // flush overloaded with force flag to ignore batching semantics
-    void flush(shared_ptr<IOHandle> ioh, NotifyFn notify, bool force);
-
-    // Default transfer: do not force, wait for batch
-    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify) {
-      return transfer(queues,cdec,notify,false);
-    }
-
-    // transfer overloaded with force flag to ignore batching semantics
-    bool transfer(shared_ptr<MessageQueues> queues, shared_ptr<InternalCodec> cdec, NotifyFn notify, bool force);
-
-   protected:
-    shared_ptr<list<Value>> contents;
-    BufferSpec spec;
-
-    int batchSize() { int r = bufferMaxSize(spec); return r <=0? 1 : r;}
-    bool batchAvailable() { return contents? contents->size() >= batchSize(): false;}
-  };
-
   //----------------------------
   // I/O event notifications.
 
@@ -212,7 +74,7 @@ namespace K3
 
     void detachNotifier(EndpointNotification nt, Address sub_addr, TriggerId sub_id);
 
-    void notifyEvent(EndpointNotification nt, shared_ptr<Value> payload);
+    void notifyEvent(EndpointNotification nt, shared_ptr<string> payload);
 
   protected:
     SendFunctionPtr sendFn;
@@ -230,43 +92,205 @@ namespace K3
              shared_ptr<EndpointBindings> subs)
       : handle_(ioh), buffer_(buf), subscribers_(subs)
     {
-      if (handle_->isInput()) {
-        refreshBuffer();
-      }
+      if (handle_->isInput() && buffer_) { refreshBuffer(); }
     }
+
+    virtual bool isInternal() = 0;
 
     shared_ptr<IOHandle> handle() { return handle_; }
     shared_ptr<EndpointBuffer> buffer() { return buffer_; }
     shared_ptr<EndpointBindings> subscribers() { return subscribers_; }
 
-    void notify_subscribers(shared_ptr<Value> v);
+    // TODO: think through this type signature. How do subscribers know what to do
+    // with the payload?
+    void notify_subscribers(shared_ptr<string> v);
 
-    // An endpoint can be read if the handle can be read or the buffer isn't empty.
-    bool hasRead() { return handle_->hasRead() || !buffer_->empty(); }
-
-    // An endpoint can be written to if the handle can be written to and the buffer isn't full.
-    bool hasWrite() { return handle_->hasWrite() && !buffer_->full(); }
-
-    shared_ptr<Value> refreshBuffer();
+    shared_ptr<string> refreshBuffer();
 
     void flushBuffer();
 
-    shared_ptr<Value> doRead() { return refreshBuffer(); }
+    // An endpoint can be read if the handle can be read or the buffer isn't empty.
+    bool hasRead() { return handle_->hasRead() || (buffer_ ? !buffer_->empty() : false); }
 
-    void doWrite(Value& v) { doWrite(make_shared<Value>(v)); }
+    // An endpoint can be written to if the handle can be written to and the buffer isn't full.
+    bool hasWrite() { return handle_->hasWrite() && (buffer_ ? !buffer_->full() : true ); }
 
-    void doWrite(shared_ptr<Value> v_ptr);
-
-    bool do_push(shared_ptr<Value> val, shared_ptr<MessageQueues> q, shared_ptr<InternalCodec> codec);
+    bool do_push(shared_ptr<string> val, shared_ptr<const MessageQueues> q, shared_ptr<MessageCodec> frame);
 
     // Closes the endpoint's IOHandle, while also notifying subscribers
     // of the close event.
-    void close();;
+    void close();
 
   protected:
     shared_ptr<IOHandle> handle_;
     shared_ptr<EndpointBuffer> buffer_;
     shared_ptr<EndpointBindings> subscribers_;
+
+    boost::mutex mtx_;          // A mutex used for non-buffered I/O operations.
+  };
+
+  class ExternalEndpoint : public virtual Endpoint
+  {
+  public:
+    // External endpoint constructor.
+    ExternalEndpoint(shared_ptr<IOHandle> ioh,
+                     shared_ptr<EndpointBuffer> buf,
+                     shared_ptr<EndpointBindings> subs,
+                     shared_ptr<Codec> codec)
+      : Endpoint(ioh, buf, subs), codec_(codec)
+    {}
+
+    bool isInternal() { return false; }
+
+    template<typename T> shared_ptr<T> doRead() {
+      shared_ptr<T> result;
+      shared_ptr<string> r = refreshBuffer();
+      if ( r ) { result = specializedDecode<T>(*r); }
+      return result;
+    }
+
+    template<typename T>
+    Collection<R_elem<T>> doReadBlock(int blockSize)
+    {
+      Collection<R_elem<T>> r;
+      shared_ptr<string> v;
+      if ( buffer_ ) {
+        int i = blockSize;
+        do {
+          v = buffer_->refresh(handle_,
+                std::bind(&Endpoint::notify_subscribers, this, std::placeholders::_1));
+          if ( v ) {
+            shared_ptr<T> outv = specializedDecode<T>(*v);
+            if ( outv ) {
+              R_elem<T> elem(*outv);
+              r.insert(std::move(elem));
+            }
+          }
+        } while ( --i > 0 && handle_->hasRead() );
+      } else {
+        // Read data directly from the underlying IOHandle.
+        boost::lock_guard<boost::mutex> guard(mtx_);
+        int i = blockSize;
+        do {
+          v = handle_->doRead();
+          notify_subscribers(v); // Produce a notification for every tuple in a block read.
+          if ( v ) {
+            shared_ptr<T> outv = specializedDecode<T>(*v);
+            if ( outv ) {
+              R_elem<T> elem(*outv);
+              r.insert(std::move(elem));
+            }
+          }
+        } while ( --i > 0 && handle_->hasRead() );
+      }
+      return r;
+    }
+
+    template<typename T>
+    void doWrite(const T& v)
+    {
+      if ( codec_ ) {
+        shared_ptr<string> bufv = make_shared<string>(std::move(specializedEncode<T>(v)));
+        if ( buffer_ ) {
+          bool success = buffer_->push_back(bufv);
+          if ( !success ) {
+            // Flush buffer, and then try to append again.
+            flushBuffer();
+
+            // Try to append again, and if this still fails, throw a buffering exception.
+            success = buffer_->push_back(bufv);
+          }
+
+          if ( ! success )
+            { throw BufferException("Failed to buffer value during endpoint write."); }
+        } else {
+          boost::lock_guard<boost::mutex> guard(mtx_);
+          handle_->doWrite(bufv);
+          notify_subscribers(bufv);
+        }
+      }
+    }
+
+    template<typename T>
+    void doWrite(shared_ptr<T> v_ptr) {
+      if ( v_ptr ) { doWrite<T>(*v_ptr); }
+    }
+
+  protected:
+    shared_ptr<Codec> codec_;
+
+    template<typename T> shared_ptr<T> specializedDecode(const string& s) {
+      shared_ptr<T> result;
+      if ( codec_ ) {
+        if ( codec_->format() == Codec::CodecFormat::K3 ) {
+          shared_ptr<K3Codec> k3codec = std::dynamic_pointer_cast<K3Codec, Codec>(codec_);
+          result = k3codec->decode<T>(s);
+        } else if ( codec_->format() == Codec::CodecFormat::K3B ) {
+          shared_ptr<K3BCodec> k3bcodec = std::dynamic_pointer_cast<K3BCodec, Codec>(codec_);
+          result = k3bcodec->decode<T>(s);
+        } else if ( codec_->format() == Codec::CodecFormat::CSV ) {
+          shared_ptr<CSVCodec> csvcodec = std::dynamic_pointer_cast<CSVCodec, Codec>(codec_);
+          result = csvcodec->decode<T>(s);
+        } else if ( codec_->format() == Codec::CodecFormat::K3X ) {
+          shared_ptr<K3XCodec> k3xcodec = std::dynamic_pointer_cast<K3XCodec, Codec>(codec_);
+          result = k3xcodec->decode<T>(s);
+        }
+        // TODO: JSON, YAML formats.
+      }
+      return result;
+    }
+
+    template<typename T> string specializedEncode(const T& v) {
+      if ( codec_ ) {
+        if ( codec_->format() == Codec::CodecFormat::K3 ) {
+          shared_ptr<K3Codec> k3codec = std::dynamic_pointer_cast<K3Codec, Codec>(codec_);
+          return k3codec->encode<T>(v);
+        } else if ( codec_->format() == Codec::CodecFormat::K3B ) {
+          shared_ptr<K3BCodec> k3bcodec = std::dynamic_pointer_cast<K3BCodec, Codec>(codec_);
+          return k3bcodec->encode<T>(v);
+        } else if ( codec_->format() == Codec::CodecFormat::CSV ) {
+          shared_ptr<CSVCodec> csvcodec = std::dynamic_pointer_cast<CSVCodec, Codec>(codec_);
+          return csvcodec->encode<T>(v);
+        } else if ( codec_->format() == Codec::CodecFormat::K3X ) {
+          shared_ptr<K3XCodec> k3xcodec = std::dynamic_pointer_cast<K3XCodec, Codec>(codec_);
+          return k3xcodec->encode<T>(v);
+        }
+        // TODO: JSON, YAML formats.
+      }
+      return std::string();
+    }
+  };
+
+  class InternalEndpoint : public virtual Endpoint
+  {
+  public:
+    // Internal endpoint constructor.
+    InternalEndpoint(shared_ptr<IOHandle> ioh,
+                     shared_ptr<EndpointBuffer> buf,
+                     shared_ptr<EndpointBindings> subs,
+                     shared_ptr<MessageCodec> msgcodec)
+      : Endpoint(ioh, buf, subs), msgcodec_(msgcodec)
+    {}
+
+    bool isInternal() { return true; }
+
+    shared_ptr<RemoteMessage> doRead() {
+      shared_ptr<RemoteMessage> result;
+      shared_ptr<string> r = refreshBuffer();
+      if ( msgcodec_ && r ) { result = msgcodec_->decode(*r); }
+      return result;
+    }
+
+    Collection<R_elem<RemoteMessage>> doReadBlock(int blockSize);
+
+    void doWrite(const RemoteMessage& v);
+
+    void doWrite(shared_ptr<RemoteMessage> v_ptr) {
+      if ( v_ptr ) { doWrite(*v_ptr); }
+    }
+
+  protected:
+    shared_ptr<MessageCodec> msgcodec_;
   };
 
 
@@ -278,9 +302,11 @@ namespace K3
     using ConcurrentEndpointMap =
       boost::externally_locked<shared_ptr<EndpointMap>,EndpointState>;
 
+    using CodecDetails = boost::variant<shared_ptr<Codec>, shared_ptr<MessageCodec>>;
+
     using EndpointDetails = tuple<shared_ptr<IOHandle>,
-                                 shared_ptr<EndpointBuffer>,
-                                 shared_ptr<EndpointBindings> >;
+                                  shared_ptr<EndpointBuffer>,
+                                  shared_ptr<EndpointBindings>>;
 
     EndpointState()
       : eplockable(), epsLogger(new LogMT("EndpointState")),
@@ -288,12 +314,8 @@ namespace K3
         externalEndpoints(emptyEndpointMap())
     {}
 
-    void addEndpoint(Identifier id, EndpointDetails details) {
-      if ( externalEndpointId(id) ) {
-        addEndpoint(id, details, externalEndpoints);
-      } else {
-        addEndpoint(id, details, internalEndpoints);
-      }
+    void addEndpoint(Identifier id, EndpointDetails details, CodecDetails cdetails) {
+      addEndpoint(id, details, cdetails, externalEndpointId(id));
     }
 
     void removeEndpoint(Identifier id) {
@@ -312,9 +334,9 @@ namespace K3
 
     void clearEndpoints(shared_ptr<ConcurrentEndpointMap> m);
 
-    shared_ptr<Endpoint> getInternalEndpoint(Identifier id);
+    shared_ptr<InternalEndpoint> getInternalEndpoint(Identifier id);
 
-    shared_ptr<Endpoint> getExternalEndpoint(Identifier id);
+    shared_ptr<ExternalEndpoint> getExternalEndpoint(Identifier id);
 
     size_t numEndpoints();
 
@@ -332,16 +354,23 @@ namespace K3
     }
 
 
-    void addEndpoint(Identifier id, EndpointDetails details,
-                     shared_ptr<ConcurrentEndpointMap> epMap)
+    void addEndpoint(Identifier id, EndpointDetails details, CodecDetails cdetails, bool isExternal)
     {
       boost::strict_lock<EndpointState> guard(*this);
+
+      shared_ptr<ConcurrentEndpointMap> epMap = isExternal? externalEndpoints : internalEndpoints;
       auto lb = epMap->get(guard)->lower_bound(id);
 
       if ( lb == epMap->get(guard)->end() || id != lb->first )
       {
-        shared_ptr<Endpoint> ep =
-          shared_ptr<Endpoint>(new Endpoint(get<0>(details), get<1>(details), get<2>(details)));
+        shared_ptr<Endpoint> ep = isExternal?
+          ( std::static_pointer_cast<Endpoint, ExternalEndpoint>(
+              make_shared<ExternalEndpoint>(get<0>(details), get<1>(details), get<2>(details),
+                                            boost::get<shared_ptr<Codec>>(cdetails))) )
+
+          : ( std::static_pointer_cast<Endpoint, InternalEndpoint>(
+                make_shared<InternalEndpoint>(get<0>(details), get<1>(details), get<2>(details),
+                                              boost::get<shared_ptr<MessageCodec>>(cdetails))) );
 
         epMap->get(guard)->insert(lb, make_pair(id, ep));
       } else if ( epsLogger ) {
@@ -355,8 +384,7 @@ namespace K3
       epMap->get(guard)->erase(id);
     }
 
-    shared_ptr<Endpoint>
-    getEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
+    shared_ptr<Endpoint> getEndpoint(Identifier id, shared_ptr<ConcurrentEndpointMap> epMap)
     {
       boost::strict_lock<EndpointState> guard(*this);
       shared_ptr<Endpoint> r;

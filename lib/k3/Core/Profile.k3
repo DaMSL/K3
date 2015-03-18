@@ -35,6 +35,22 @@ control Time[lbl : label, tag : expr] {
            declare $[lbl]_elapsed_ms : mut int = 0 }
 }
 
+// Send the elapsed time to an int sink
+control TimeSink[lbl : label, tag : expr, sink_expr: expr] {
+  ?e @:StartTimer => $[lbl]_start_ms = now_int(); $.[e]
+  ?e @:StopTimer  => let result        = $.[e] in
+                     let tag           = $[tag] ++ $[|(exprLabel 'lbl)|] ++ ":" in
+                     $[lbl]_end_ms     = now_int();
+                     $[lbl]_elapsed_ms = $[lbl]_end_ms - $[lbl]_start_ms;
+                     ( ($[sink_expr], me) <- (tag ++ (itos $[lbl]_elapsed_ms )));
+                     result
+
+  shared { declare $[lbl]_start_ms   : mut int = 0
+           declare $[lbl]_end_ms     : mut int = 0
+           declare $[lbl]_elapsed_ms : mut int = 0 }
+}
+
+
 control ProfileTrigger[lbl: label] {
   (\?x -> ?b) => (\$#[x] -> $.[b] @OnProfile(f = [$ \s -> $[lbl]_time_samples.insert {time: s}]))
 
