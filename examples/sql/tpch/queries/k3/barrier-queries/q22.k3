@@ -179,8 +179,8 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   loadExpr             = [$ ( ordersLineCountFiles.iterate   (\e -> ordersRows = ordersRows + (lineCountFile e.path));
                               customerLineCountFiles.iterate (\e -> customerRows = customerRows + (lineCountFile e.path));
 
-			      print ("Orders rows: " ++ (itos ordersRows));
-			      print ("Customer rows: " ++ (itos customerRows));
+			                        print ("Orders rows: " ++ (itos ordersRows));
+			                        print ("Customer rows: " ++ (itos customerRows));
 
                               ordersFiles.iterate   (\e -> ordersLoaderPFixedSize   e.path orders ordersRows);
                               customerFiles.iterate (\e -> customerLoaderPFixedSize e.path customer customerRows)
