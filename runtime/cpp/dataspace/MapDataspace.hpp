@@ -50,7 +50,7 @@ public:
     init_mapi(true, sizeof(R));
     mapi* m = container.get();
     for ( auto it = begin; it != end; ++it) {
-      mapi_insert(m, &(*it));
+      mapi_insert(m, static_cast<void*>(&(*it)));
     }
   }
 
@@ -118,36 +118,38 @@ public:
 
   int size(unit_t) const { return mapi_size(container.get()); }
 
+  R elemToRecord(const R& e) const { return e; }
+
   // DS Operations:
   // Maybe return the first element in the DS
   shared_ptr<R> peek(const unit_t&) const {
     shared_ptr<R> res(nullptr);
     auto it = mapi_begin(container.get());
     if (it < mapi_end(container.get()) ) {
-      res = std::make_shared<R>(*it);
+      res = std::make_shared<R>(*static_cast<R*>(it));
     }
     return res;
   }
 
   unit_t insert(const R& q) {
-    mapi_insert(container.get(), &q);
+    mapi_insert(container.get(), const_cast<void*>(static_cast<const void*>(&q)));
     return unit_t();
   }
 
   unit_t insert(R&& q) {
     R tmp(std::move(q));
-    mapi_insert(container.get(), &tmp);
+    mapi_insert(container.get(), static_cast<void*>(&tmp));
     return unit_t();
   }
 
   template <class F>
-  unit_t insert_with(R& rec, F f) {
+  unit_t insert_with(const R& rec, F f) {
     mapi* m = container.get();
     auto existing = mapi_find(m, rec.key);
     if (existing == nullptr) {
-      mapi_insert(m, &rec);
+      mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec)));
     } else {
-      auto nrec = f(std::move(*existing))(rec);
+      auto nrec = f(std::move(*static_cast<R*>(existing)))(rec);
       mapi_erase(m, rec.key);
       mapi_insert(m, &nrec);
     }
@@ -162,7 +164,7 @@ public:
       auto nrec = f(unit_t {});
       mapi_insert(m, &nrec);
     } else {
-      auto nrec = g(std::move(*existing));
+      auto nrec = g(std::move(*static_cast<R*>(existing)));
       mapi_erase(m, rec.key);
       mapi_insert(m, &nrec);
     }
@@ -324,7 +326,7 @@ public:
     if (existing == nullptr) {
       return nullptr;
     } else {
-      return std::make_shared<R>(*existing);
+      return std::make_shared<R>(*static_cast<R*>(existing));
     }
   }
 
@@ -371,10 +373,10 @@ public:
     return !(this->operator<(other) || this->operator==(other));
   }
 
-  Container& getContainer() { return container; }
+  IntMap& getContainer() { return *const_cast<IntMap*>(this); }
 
   // Return a constant reference to the container
-  const Container& getConstContainer() const { return container; }
+  const IntMap& getConstContainer() const { return *this; }
 
 protected:
   shared_ptr<mapi> container;
@@ -541,6 +543,8 @@ public:
 
   int size(unit_t) const { return map_str_size(container.get()); }
 
+  R elemToRecord(const R& e) const { return e; }
+
   // DS Operations:
   // Maybe return the first element in the DS
   shared_ptr<R> peek(const unit_t&) const {
@@ -558,7 +562,6 @@ public:
     auto pos = map_str_insert(m, q.key.begin(), const_cast<void*>(static_cast<const void*>(&q)));
 
     R* v = static_cast<R*>(map_str_get(m, pos));
-    //v->key.divorce(q.key.begin());
     map_str_stabilize_key(m, pos, v->key.begin());
 
     return unit_t();
@@ -571,14 +574,13 @@ public:
     auto pos = map_str_insert(m, tmp.key.begin(), &tmp);
 
     R* v = static_cast<R*>(map_str_get(m, pos));
-    //v->key.divorce(tmp.key.begin());
     map_str_stabilize_key(m, pos, v->key.begin());
 
     return unit_t();
   }
 
   template <class F>
-  unit_t insert_with(R& rec, F f) {
+  unit_t insert_with(const R& rec, F f) {
     map_str* m = container.get();
     auto existing = map_str_find(m, rec.key.begin());
     if (existing == map_str_end(m)) {
@@ -773,7 +775,7 @@ public:
     if (existing == map_str_end(m)) {
       return nullptr;
     } else {
-      return std::make_shared<R>(*map_str_get(m,existing));
+      return std::make_shared<R>(*static_cast<R*>(map_str_get(m,existing)));
     }
   }
 
@@ -821,10 +823,10 @@ public:
     return !(this->operator<(other) || this->operator==(other));
   }
 
-  Container& getContainer() { return container; }
+  StrMap& getContainer() { return *const_cast<StrMap*>(this); }
 
   // Return a constant reference to the container
-  const Container& getConstContainer() const { return container; }
+  const StrMap& getConstContainer() const { return *this; }
 
 protected:
   shared_ptr<map_str> container;
@@ -971,7 +973,7 @@ namespace YAML {
   struct convert<K3::Libdynamic::IntMap<R>> {
     static Node encode(const K3::Libdynamic::IntMap<R>& c) {
       Node node;
-      if (c.size() > 0) {
+      if (c.size(unit_t {}) > 0) {
         for (auto& i: c) { node.push_back(convert<R>::encode(i)); }
       }
       else { node = YAML::Load("[]"); }
@@ -988,7 +990,7 @@ namespace YAML {
   struct convert<K3::Libdynamic::StrMap<R>> {
     static Node encode(const K3::Libdynamic::StrMap<R>& c) {
       Node node;
-      if (c.size() > 0) {
+      if (c.size(unit_t {}) > 0) {
         for (auto& i: c) { node.push_back(convert<R>::encode(i)); }
       }
       else { node = YAML::Load("[]"); }
