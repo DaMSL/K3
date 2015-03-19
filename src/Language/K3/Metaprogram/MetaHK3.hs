@@ -29,6 +29,7 @@ import Language.Haskell.Exts.Syntax
 import Language.K3.Core.Common
 import Language.K3.Core.Metaprogram
 import Language.K3.Metaprogram.DataTypes
+import Language.K3.Utils.Pretty
 
 metaHK3TraceLogging :: Bool
 metaHK3TraceLogging = True
@@ -39,22 +40,23 @@ localLog = logVoid metaHK3TraceLogging
 localLogAction :: (Functor m, Monad m) => (Maybe a -> Maybe String) -> m a -> m a
 localLogAction = logAction metaHK3TraceLogging
 
-hk3Msg :: [String] -> String
-hk3Msg sl = unwords $ ["HK3"] ++ sl
+hk3Msg :: String -> [String] -> String
+hk3Msg tg sl = boxToString $ [unwords $ ["HK3", tg]] %$ sl
 
 {- K3-Haskell AST splicing -}
 
 evalHaskellProg :: SpliceContext -> String -> GeneratorM SpliceValue
 evalHaskellProg sctxt expr = case parseExpWithMode pm expr of
     ParseOk exprAST   -> evalHaskell $ spliceQuotesExp sctxt exprAST
-    ParseFailed _ msg -> throwG $ hk3Msg ["splice parse failed:", msg]
+    ParseFailed _ msg -> throwG $ hk3Msg "splice parse failed:" [msg]
   where
     pm = defaultParseMode {extensions = [EnableExtension TemplateHaskell]}
 
     evalHaskell (prettyPrint -> astStr) = localLogAction (evalLoggerF astStr) $
       liftHI $ interpretWithOptions astStr
 
-    evalLoggerF astStr = maybe (Just $ hk3Msg ["input:", astStr]) (\r -> Just $ hk3Msg ["result:", show r])
+    evalLoggerF astStr =
+      maybe (Just $ hk3Msg "input:" [astStr]) (\r -> Just $ hk3Msg "result:" $ prettyLines r)
 
     interpretWithOptions str = do
       resStr <- eval str
