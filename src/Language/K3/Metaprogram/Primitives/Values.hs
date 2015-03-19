@@ -1,3 +1,4 @@
+{-# LANGUAGE ViewPatterns #-}
 module Language.K3.Metaprogram.Primitives.Values where
 
 import Language.K3.Core.Common
@@ -83,3 +84,22 @@ exprLabel _ = error "Invalid splice label for exprLabel"
 exprType :: SpliceValue -> SpliceValue
 exprType (SType t) = SExpr  $ EC.constant $ CString $ show t
 exprType _ =  error "Invalid splice type for exprType"
+
+specializeMapTypeByKV :: SpliceValue -> SpliceValue
+specializeMapTypeByKV (SType t@(tnc -> (TRecord ["key", "value"], [(tag -> kt), _]))) =
+  case kt of
+    TInt    -> SType $ (TC.collection t) @+ TAnnotation "IntMap"
+    TString -> SType $ (TC.collection t) @+ TAnnotation "StrMap"
+    _       -> SType $ (TC.collection t) @+ TAnnotation "Map"
+
+specializeMapTypeByKV sv = error $ "Invalid key-value record element for specializeMapTypeByKV: " ++ show sv
+
+specializeMapEmptyByKV :: SpliceValue -> SpliceValue
+specializeMapEmptyByKV (SType t@(tnc -> (TRecord ["key", "value"], [(tag -> kt), _]))) =
+  case kt of
+    TInt    -> SExpr $ (EC.empty t) @+ EAnnotation "IntMap"
+    TString -> SExpr $ (EC.empty t) @+ EAnnotation "StrMap"
+    _       -> SExpr $ (EC.empty t) @+ EAnnotation "Map"
+
+specializeMapEmptyByKV sv = error $ "Invalid key-value record element for specializeMapEmptyByKV " ++ show sv
+

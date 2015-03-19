@@ -436,11 +436,9 @@ tvshallowLowerRcr rcr a b =
         | p1 == p2 -> return a
 
       (QTCon (QTRecord i1), QTCon (QTRecord i2))
-        | i1 `contains` i2 -> mergedRecord False i1 a i2 b
-        | i2 `contains` i1 -> mergedRecord True  i2 b i1 a
-        | otherwise ->
-            let idChPairs = zip (i1 ++ i2) $ children a ++ children b
-            in annLower a b >>= return . foldl (@+) (trec $ nub idChPairs)
+        | i1 `contains` i2 -> subRecord False i1 a i2 b
+        | i2 `contains` i1 -> subRecord True  i2 b i1 a
+        | otherwise -> coveringRecord i1 i2 a b
        where
         contains xs ys = xs `union` ys == xs
 
@@ -448,8 +446,8 @@ tvshallowLowerRcr rcr a b =
       (QTCon (QTRecord _), QTCon (QTCollection _)) -> coveringCollection b a
 
       (QTCon (QTCollection idsA), QTCon (QTCollection idsB))
-        | idsA `intersect` idsB == idsA -> mergedCollection idsB a b
-        | idsA `intersect` idsB == idsB -> mergedCollection idsA a b
+        | idsA `intersect` idsB == idsA -> subCollection idsB a b
+        | idsA `intersect` idsB == idsB -> subCollection idsA a b
 
       (QTVar _, QTVar _) -> return a
       (QTVar _, _) -> return a
@@ -482,19 +480,37 @@ tvshallowLowerRcr rcr a b =
         | otherwise -> lowerError a b
 
   where
-    mergedRecord supAsLeft subid subqt supid supqt = do
-      fieldQt <- mergeCovering supAsLeft
-                  (zip subid $ children subqt) (zip supid $ children supqt)
+    subRecord supAsLeft subid subqt supid supqt = do
+      fieldQt <- rcrRecordCommon supAsLeft (zip subid $ children subqt) (zip supid $ children supqt)
       annLower subqt supqt >>= return . foldl (@+) (trec $ zip subid fieldQt)
 
-    mergedCollection annIds ct1 ct2 = do
-       ctntLower <- rcr (head $ children ct1) (head $ children ct2)
-       annLower ct1 ct2 >>= return . foldl (@+) (tcol ctntLower annIds)
+    {-
+    coveringRecord i1 i2 a' b' =
+      let idChPairs = zip (i1 ++ i2) $ children a' ++ children b'
+      in annLower a' b' >>= return . foldl (@+) (trec $ nub idChPairs)
+    -}
 
-    mergeCovering supAsLeft sub sup =
+    coveringRecord i1 i2 a' b' =
+      let (idt1, idt2) = (zip i1 $ children a', zip i2 $ children b') in
+      let groupF acc (i,qt) = maybe (addAssoc acc i [qt]) (replaceAssoc acc i . (++[qt])) $ lookup i acc in
+      let qtsByName = foldl groupF [] $ idt1 ++ idt2 in
+      let rcrUnlessSingleton (i, qts) = case qts of
+                                          [x] -> return (i,x)
+                                          [x,y] -> rcr x y >>= return . (i,)
+                                          _ -> lowerError a' b'
+      in do
+        nidqt <- mapM rcrUnlessSingleton qtsByName
+        lanns <- annLower a' b'
+        return $ foldl (@+) (trec nidqt) lanns
+
+    rcrRecordCommon supAsLeft sub sup =
       let lowerF = if supAsLeft then \subV supV -> rcr supV subV
                                 else \subV supV -> rcr subV supV
       in mapM (\(k,v) -> maybe (return v) (lowerF v) $ lookup k sup) sub
+
+    subCollection annIds ct1 ct2 = do
+       ctntLower <- rcr (head $ children ct1) (head $ children ct2)
+       annLower ct1 ct2 >>= return . foldl (@+) (tcol ctntLower annIds)
 
     coveringCollection ct rt@(tag -> QTCon (QTRecord _)) =
       collectionSubRecord ct rt >>= either (const $ lowerError ct rt) (const $ return ct)
@@ -676,13 +692,9 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
       lb2 <- lowerBound t2
       lbs <- case (lb1, lb2) of
                (Node (QTCon (QTRecord _) :@: _) _, Node (QTCon (QTRecord _) :@: _) _) ->
-               {- do
-                    lb <- tvlower lb1 lb2
-                    return $ if lb `elem` [lb1, lb2] then [lb1,lb2] else [lb,lb1,lb2]
-               -}
                 do
                   tienv <- get
-                  let (lbE, _) = runTInfM tienv $ tvlower lb1 lb2
+                  let (lbE, _) = runTInfM tienv $ localLogAction (binaryLowerRecMsgF lb1 lb2) $ tvlower lb1 lb2
                   let validLB lb = if lb `elem` [lb1, lb2] then [lb1,lb2] else [lb,lb1,lb2]
                   return $ either (const $ [lb1,lb2]) validLB lbE
 
@@ -806,6 +818,11 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
     binaryLowerMsgF args (Just ret) =
       Just $ boxToString $ ["consistentTLowerB "]
                %+ (intersperseBoxes [" "] $ map prettyLines $ args ++ [ret])
+
+    binaryLowerRecMsgF _ _ Nothing = Nothing
+    binaryLowerRecMsgF lrec1 lrec2 (Just lret) =
+      Just $ boxToString $ ["consistentTLowerB record "]
+               %+ (intersperseBoxes [" "] $ map prettyLines $ [lrec1, lrec2, lret])
 
 
 -- | Type unification.

@@ -87,6 +87,7 @@ data CompileOptions = CompileOptions
                       , runtimePath        :: FilePath
                       , outputFile         :: Maybe FilePath
                       , buildDir           :: Maybe FilePath
+                      , buildJobs          :: Int
                       , ccCmd              :: CPPCompiler
                       , ccStage            :: CPPStages
                       , cppOptions         :: String
@@ -243,6 +244,7 @@ compileOptions = fmap Compile $ CompileOptions
                             <*> runtimePathOpt
                             <*> outputFileOpt
                             <*> buildDirOpt
+                            <*> buildJobsOpt
                             <*> ccCmdOpt
                             <*> ccStageOpt
                             <*> cppOpt
@@ -294,6 +296,14 @@ buildDirOpt = validatePath . Just <$> option auto (
                     <> metavar "BUILDDIR" )
   where validatePath Nothing  = Nothing
         validatePath (Just p) = if isValid p then Just p else Nothing
+
+buildJobsOpt :: Parser Int
+buildJobsOpt = option auto (
+                       short   'j'
+                    <> long    "jobs"
+                    <> value   defaultBuildJobs
+                    <> help    "Parallel job builds"
+                    <> metavar "BUILDJOBS" )
 
 ccCmdOpt :: Parser CPPCompiler
 ccCmdOpt = (gccFlag <|> clangFlag <|> pure Clang)
