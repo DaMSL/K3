@@ -7,7 +7,7 @@ from mesos.interface import mesos_pb2
 import mesos.native
 
 # TODO how should we determine the executor url
-EXECUTOR_URL = "http://qp2:8002/k3executor"
+EXECUTOR_URL = "http://qp2:8202/k3executor"
 K3_DOCKER_NAME = "damsl/k3-deployment:stable"
 
 def getResource(resources, tag, convF):
@@ -117,6 +117,11 @@ def executorInfo(k3task, jobid, binary_url):
   volume.container_path = '/data'
   volume.host_path = '/data'
   volume.mode = volume.RW
+  
+  volume2 = container.volumes.add()
+  volume2.container_path = '/local'
+  volume2.host_path = '/local'
+  volume2.mode = volume.RW
 
   executor.container.MergeFrom(container)
        
