@@ -268,7 +268,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                               // Load data using the fixed size loaders which resize the container before loading
                   			      q18_lineitemLoaderPFC lineitemFiles lineitem lineitem_r lineitemRows;
                               q18_ordersLoaderPFC   ordersFiles   orders   orders_r   ordersRows;
-                              q18_customerLoaderPFC customerFiles customer customer_r customerRow
+                              q18_customerLoaderPFC customerFiles customer customer_r customerRows
                             ) ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],
