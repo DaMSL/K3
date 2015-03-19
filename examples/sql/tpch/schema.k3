@@ -161,78 +161,106 @@ typedef nation_vec      = collection nation_r      @Vector
 typedef region_vec      = collection region_r      @Vector
 typedef tpch_agenda_vec = collection tpch_agenda_r @Vector
 
-/* Loader projection pushdown witness types */
-typedef q1_lineitem = { l_quantity      : real,
-                        l_extendedprice : real,
-                        l_discount      : real,
-                        l_tax           : real,
-                        l_returnflag    : string,
-                        l_linestatus    : string,
-                        l_shipdate      : string
-                      }
+/* Query-specific datatypes, including loader projection witness types */
+typedef q1_lineitem_r = { l_quantity      : real,
+                          l_extendedprice : real,
+                          l_discount      : real,
+                          l_tax           : real,
+                          l_returnflag    : string,
+                          l_linestatus    : string,
+                          l_shipdate      : string
+                        }
 
-typedef q3_lineitem = { l_orderkey      : int,
-                        l_extendedprice : real,
-                        l_discount      : real,
-                        l_shipdate      : string
-                      }
+typedef q1_lineitem_bag = collection q1_lineitem_r @Collection
 
-typedef q3_customer = { c_custkey    : int,
-                        c_mktsegment : string
-                      }
+typedef q3_lineitem_r = { l_orderkey      : int,
+                          l_extendedprice : real,
+                          l_discount      : real,
+                          l_shipdate      : string
+                        }
 
-typedef q3_orders   = { o_orderkey         : int,
-                        o_custkey          : int,
-                        o_orderdate        : string,
-                        o_shippriority     : int
-                      }
+typedef q3_customer_r = { c_custkey    : int,
+                          c_mktsegment : string
+                        }
+
+typedef q3_orders_r   = { o_orderkey         : int,
+                          o_custkey          : int,
+                          o_orderdate        : string,
+                          o_shippriority     : int
+                        }
+
+typedef q3_lineitem_bag = collection q3_lineitem_r @Collection
+typedef q3_customer_bag = collection q3_customer_r @Collection
+typedef q3_orders_bag   = collection q3_orders_r   @Collection
 
 
-typedef q5_lineitem = { l_orderkey      : int,
-                        l_suppkey       : int,
-                        l_extendedprice : real,
-                        l_discount      : real
-                      }
+typedef q5_lineitem_r = { l_orderkey      : int,
+                          l_suppkey       : int,
+                          l_extendedprice : real,
+                          l_discount      : real
+                        }
 
-typedef q5_customer = { c_custkey   : int,
-                        c_nationkey : int
-                      }
+typedef q5_customer_r = { c_custkey   : int,
+                          c_nationkey : int
+                        }
 
-typedef q5_orders   = { o_orderkey  : int,
-                        o_custkey   : int,
-                        o_orderdate : string
-                      }
+typedef q5_orders_r   = { o_orderkey  : int,
+                          o_custkey   : int,
+                          o_orderdate : string
+                        }
 
-typedef q5_supplier = { s_suppkey   : int,
-                        s_nationkey : int
-                      }
+typedef q5_supplier_r = { s_suppkey   : int,
+                          s_nationkey : int
+                        }
 
-typedef q5_nation   = { n_nationkey        : int,
-                        n_name             : string,
-                        n_regionkey        : int
-                      }
+typedef q5_nation_r   = { n_nationkey        : int,
+                          n_name             : string,
+                          n_regionkey        : int
+                        }
 
-typedef q5_region   = { r_regionkey : int,
-                        r_name      : string
-                      }
+typedef q5_region_r   = { r_regionkey : int,
+                          r_name      : string
+                        }
 
-typedef q18_lineitem = { l_orderkey : int,
-                         l_quantity : real
-                       }
+typedef q5_lineitem_bag = collection q5_lineitem_r @Collection
+typedef q5_customer_bag = collection q5_customer_r @Collection
+typedef q5_orders_bag   = collection q5_orders_r   @Collection
+typedef q5_supplier_bag = collection q5_supplier_r @Collection
+typedef q5_nation_bag   = collection q5_nation_r   @Collection
+typedef q5_region_bag   = collection q5_region_r   @Collection
 
-typedef q18_customer = { c_custkey : int,
-                         c_name    : string
-                       }
+typedef q6_lineitem_r = { l_quantity         : real,
+                          l_extendedprice    : real,
+                          l_discount         : real,
+                          l_shipdate         : string
+                        }
 
-typedef q18_orders   = { o_orderkey   : int,
-                         o_custkey    : int,
-                         o_totalprice : real,
-                         o_orderdate  : string
-                       }
+typedef q6_lineitem_bag = collection q6_lineitem_r @Collection
 
-typedef q22_customer = { c_custkey : int,
-                         c_phone   : string,
-                         c_acctbal : real
-                       }
+typedef q18_lineitem_r = { l_orderkey : int,
+                           l_quantity : real
+                         }
 
-typedef q22_orders   = { o_custkey : int }
+typedef q18_customer_r = { c_custkey : int,
+                           c_name    : string
+                         }
+
+typedef q18_orders_r   = { o_orderkey   : int,
+                           o_custkey    : int,
+                           o_totalprice : real,
+                           o_orderdate  : string
+                         }
+
+typedef q18_lineitem_bag = collection q18_lineitem_r @Collection
+typedef q18_customer_bag = collection q18_customer_r @Collection
+typedef q18_orders_bag   = collection q18_orders_r   @Collection
+
+typedef q22_customer_r = { c_custkey : int,
+                           c_phone   : string,
+                           c_acctbal : real
+                         }
+
+typedef q22_orders_r   = { o_custkey : int }
+
+typedef q22_customer_bag = collection q22_customer_r @Collection
+typedef q22_orders_bag   = collection q22_orders_r   @Collection
