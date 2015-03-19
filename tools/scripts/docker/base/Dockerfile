@@ -14,7 +14,7 @@ ENV LANGUAGE en_US.UTF-8
 ENV LC_ALL en_US.UTF-8
 
 ## Install Clang 3.5, Boost and utilities
-RUN apt-get update && install -y \
+RUN apt-get update && apt-get install -y \
       linux-tools-3.13.0-32-generic libc6-dbg \
       wget vim emacs make git mercurial \
       zlib1g-dev libreadline6 libreadline6-dev libncurses5-dev libgmp-dev \
@@ -24,7 +24,7 @@ RUN apt-get update && install -y \
 
 # Install and configure GCC 4.9
 RUN add-apt-repository ppa:ubuntu-toolchain-r/test
-RUN apt-get install -y gcc-4.9 libstdc++-4.9-dev
+RUN apt-get update && apt-get install -y gcc-4.9 libstdc++-4.9-dev
 RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 20
 
 # Install decent vim configuration
@@ -36,12 +36,12 @@ RUN git clone https://github.com/tpope/vim-sensible.git /root/.vim/bundle
 # Install ocaml
 RUN apt-get install -y ocaml opam camlp4-extra
 
-RUN mkdir -p /software/boost-1.56 && \
-    cd /software/boost-1.56 && \
-    wget --no-verbose http://downloads.sourceforge.net/boost/boost_1_56_0.tar.bz2 && \
-    tar xvfj boost_1_56_0.tar.bz2 && \
-    cd /software/boost-1.56/boost_1_56_0 && \
-    ./bootstrap.sh --without-libraries=python --prefix=/usr && ./b2 -j 8 stage threading=multi link=shared && ./b2 -j 8 install threading=multi link=shared
+RUN mkdir -p /software/boost-1.57 && \
+    cd /software/boost-1.57 && \
+    wget --no-verbose http://downloads.sourceforge.net/boost/boost_1_57_0.tar.bz2 && \
+    tar xvfj boost_1_57_0.tar.bz2 && \
+    cd /software/boost-1.57/boost_1_57_0 && \
+    ./bootstrap.sh --without-libraries=python --prefix=/usr && ./b2 -j 8 stage cxxflags="-flto" threading=multi link=shared && ./b2 -j 8 install threading=multi link=shared cxxflags="-flto"
 
 # Install GHC and cabal
 WORKDIR /

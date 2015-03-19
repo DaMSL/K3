@@ -1,8 +1,11 @@
-FROM damsl/k3-profiling:latest
+FROM damsl/k3-vanilla:latest
 WORKDIR /software
 
 RUN apt-get update && apt-get install -y python-pip libyaml-dev libprotobuf-dev libgoogle-glog-dev libsvn-dev libapr1-dev python-dev
+RUN apt-get install -y google-perftools libgoogle-perftools-dev
+ADD intelpcm.tar.gz /software/
 
+RUN mv /software/intelpcm/lib/* /usr/local/lib && mv /software/intelpcm/include/* /usr/local/include 
 ADD libmesos.tar.gz /software/
 ADD mesos-eggs.tar.gz /software/
 ADD mesos-include.tar.gz /software/
