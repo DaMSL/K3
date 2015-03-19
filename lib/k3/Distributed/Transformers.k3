@@ -89,7 +89,7 @@ control DistributedGroupByGeneric [ lbl             : label
                                   , masters_map     : expr
                                   , profile         : expr ]
 {
-  ignore ( (?e.groupBy ?groupF ?aggF ?accE) : collection ?t )
+  ignore ( (?e.groupBy ?groupF ?aggF ?accE) : collection ?T )
      => (if $[profile]
           then (() @:StartTimer) @Time(lbl=[# $[lbl]_GROUPBY], tag=[$ "Time "])
           else ()
@@ -99,20 +99,20 @@ control DistributedGroupByGeneric [ lbl             : label
           trigger $[lbl]_redistribute : () = \_ -> (
            ( (ignore ( ($.[e].groupBy $.[groupF] $.[aggF] $.[accE])
                             .fold  ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
-                                   (empty $::[t] @Map)
+                                   ($[|specializeMapEmptyByKV 'T.typ|])
             )) @PartitionShuffleWithMissing(
                   lbl           = lbl
                 , dest_trg      = [$ $[lbl]_merge ]
                 , nodes         = nodes
                 , send_extra_fn = [$ \x -> x]
-                , send_ty       = [: collection $::[t] @ Map ]
+                , send_ty       = [: $[|specializeMapTypeByKV 'T.typ|] ]
                 )
           );
           // Done with the input collection, free to clear.
           $[clear_expr]
           )
 
-          trigger $[lbl]_merge : collection $::[t] @Map = (\partials ->
+          trigger $[lbl]_merge : $[|specializeMapTypeByKV 'T.typ|] = (\partials ->
           ((partials.iterate (\w -> $[merge] w));
             ( $[peer_next] ;
               ( $[lbl]_global_barrier, $[coordinator] ) <- ()
@@ -190,42 +190,40 @@ control DistributedHashJoin [ lbl              : label
         );
         $[nodes].iterate (\p -> ($[lbl]_lhs_redistribute, p.addr) <- ())
      +> {
-        declare $[lhs_ht_id] : mut collection $[lhs_ht_ty] @Map
+        declare $[lhs_ht_id] : mut $[|specializeMapTypeByKV 'lhs_ht_ty|]
 
         trigger $[lbl]_lhs_redistribute : () = \_ -> (
           ((ignore $[lhs_query])
             @PartitionShuffleWithMissing(
               lbl           = [# $[lbl]_lhs]
-            , dest_trg = [$ $[lbl]_lhs_process_redistribute]
-            , nodes = nodes
+            , dest_trg      = [$ $[lbl]_lhs_process_redistribute]
+            , nodes         = nodes
             , send_extra_fn = [$ \x -> x]
-            , send_ty = [: collection $[lhs_ht_ty] @ Map]
+            , send_ty       = [: $[|specializeMapTypeByKV 'lhs_ht_ty|] ]
             ));
             $[lhs_query_clear]
         )
 
-        trigger $[lbl]_lhs_process_redistribute : collection $[lhs_ht_ty] @Map = (\vals ->
+        trigger $[lbl]_lhs_process_redistribute : $[|specializeMapTypeByKV 'lhs_ht_ty|] = (\vals ->
         ((vals.iterate (\v -> $[lhs_ht_id].insert_with v $[lhs_insert_with]));
           ( $[nodes].iterate (\p -> ($[lbl]_rhs_redistribute, p.addr) <- ())
           ) @OnCounter(id=[# $[lbl]_peer_build_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false]))
         )
 
         trigger $[lbl]_rhs_redistribute : () = \_ -> (
-          (
-            (( ignore $[rhs_query])
-                  @PartitionShuffleWithMissing(
-                    lbl           = [# $[lbl]_rhs]
-                  , dest_trg = [$ $[lbl]_rhs_process_redistribute]
-                  , nodes = nodes
-                  , send_extra_fn = [$ \x -> x]
-                  , send_ty = [: collection $[rhs_ht_ty] @ Map]
-                  )
-            );
-            $[rhs_query_clear]
+          ((( ignore $[rhs_query])
+                @PartitionShuffleWithMissing(
+                  lbl           = [# $[lbl]_rhs]
+                , dest_trg      = [$ $[lbl]_rhs_process_redistribute]
+                , nodes         = nodes
+                , send_extra_fn = [$ \x -> x]
+                , send_ty       = [: $[|specializeMapTypeByKV 'rhs_ht_ty|] ]
+                );
+            $[rhs_query_clear])
           ) @OnCounter(id=[# $[lbl]_lhs_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
         )
 
-        trigger $[lbl]_rhs_process_redistribute : collection $[rhs_ht_ty] @Map = (\vals -> (
+        trigger $[lbl]_rhs_process_redistribute : $[|specializeMapTypeByKV 'rhs_ht_ty|] = (\vals -> (
           // Probe LHS hash table.
           let outputs = vals.fold ($[lhs_probe] $[lhs_ht_id]) $[empty_out_buffer] in
           (if $[has_outputs] outputs then ( $[pipeline_next] outputs ) else ());
@@ -327,14 +325,14 @@ control StreamingHashJoin [ lbl                  : label
 {
   () => ()
      +> {
-          declare $[lhs_ht_id] : mut collection $[lhs_ht_ty] @Map
-          declare $[rhs_ht_id] : mut collection $[rhs_ht_ty] @Map
+          declare $[lhs_ht_id] : mut $[|specializeMapTypeByKV 'lhs_ht_ty|]
+          declare $[rhs_ht_id] : mut $[|specializeMapTypeByKV 'rhs_ht_ty|]
 
           declare $[lbl]_lhs_done : mut bool = false
           declare $[lbl]_rhs_done : mut bool = false
 
-          trigger $[lbl]_process_redistribute : ( option (collection $[lhs_ht_ty] @Map)
-                                                , option (collection $[rhs_ht_ty] @Map)
+          trigger $[lbl]_process_redistribute : ( option ($[|specializeMapTypeByKV 'lhs_ht_ty|])
+                                                , option ($[|specializeMapTypeByKV 'rhs_ht_ty|])
                                                 , bool)
           = \rd -> (
             bind rd as (lv_opt, rv_opt, is_left) in (
@@ -414,11 +412,11 @@ control BarrierHashJoin   [ lbl                  : label
 {
   () => ()
      +> {
-          declare $[lhs_ht_id] : mut collection $[lhs_ht_ty] @Map
-          declare $[rhs_ht_id] : mut collection $[rhs_ht_ty] @Map
+          declare $[lhs_ht_id] : mut $[|specializeMapTypeByKV 'lhs_ht_ty|]
+          declare $[rhs_ht_id] : mut $[|specializeMapTypeByKV 'rhs_ht_ty|]
 
-          trigger $[lbl]_process_redistribute : ( option (collection $[lhs_ht_ty] @Map)
-                                                , option (collection $[rhs_ht_ty] @Map)
+          trigger $[lbl]_process_redistribute : ( option ($[|specializeMapTypeByKV 'lhs_ht_ty|])
+                                                , option ($[|specializeMapTypeByKV 'rhs_ht_ty|])
                                                 , bool)
           = \rd -> (
             (bind rd as (lv_opt, rv_opt, is_left) in (

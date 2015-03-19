@@ -5,6 +5,64 @@ control ManualFusion {
               .fold    ((?foldF1) @:Accumulate) ?fz1)
               .groupBy ((?gbF2) @:Projection) ((?accF2) @:Accumulate) ?z2)
   ) @:Fuse
+  ) : collection ?t @IntMap
+  => ( $.[e].fold (\acc2 -> \v ->
+                    if $.[filterF] v then
+                    ( let k  = $.[gbF1] v in
+                      let k2 = $.[gbF2] {key: k, value: $.[z1]} in
+                      let cz1 = $.[fz1] in
+                      ((acc2.upsert_with {key: k2, value: cz1}
+                          (\_ -> let ncz1 = cz1 in
+                                 ((ncz1.insert {key: k, value: (($.[accF1] $.[z1]) v)});
+                                  {key: k2, value: ncz1})
+                          )
+                          (\acc -> ((acc.value.upsert_with {key:k, value: $.[z1]}
+                                       (\_   -> {key: k, value: (($.[accF1] $.[z1]) v)})
+                                       (\old -> {key: k, value: (($.[accF1] old.value) v)}));
+                                    acc)
+                          ));
+                        acc2)
+                    )
+                    else acc2
+                  )
+                  (empty $::[t] @IntMap)
+      )
+
+
+  ((((((( ?e ).filter  ?filterF)
+              .groupBy ?gbF1 ?accF1 (?z1 : ?accT1))
+              .fold    ((?foldF1) @:Accumulate) ?fz1)
+              .groupBy ((?gbF2) @:Projection) ((?accF2) @:Accumulate) ?z2)
+  ) @:Fuse
+  ) : collection ?t @StrMap
+  => ( $.[e].fold (\acc2 -> \v ->
+                    if $.[filterF] v then
+                    ( let k  = $.[gbF1] v in
+                      let k2 = $.[gbF2] {key: k, value: $.[z1]} in
+                      let cz1 = $.[fz1] in
+                      ((acc2.upsert_with {key: k2, value: cz1}
+                          (\_ -> let ncz1 = cz1 in
+                                 ((ncz1.insert {key: k, value: (($.[accF1] $.[z1]) v)});
+                                  {key: k2, value: ncz1})
+                          )
+                          (\acc -> ((acc.value.upsert_with {key:k, value: $.[z1]}
+                                       (\_   -> {key: k, value: (($.[accF1] $.[z1]) v)})
+                                       (\old -> {key: k, value: (($.[accF1] old.value) v)}));
+                                    acc)
+                          ));
+                        acc2)
+                    )
+                    else acc2
+                  )
+                  (empty $::[t] @StrMap)
+      )
+
+
+  ((((((( ?e ).filter  ?filterF)
+              .groupBy ?gbF1 ?accF1 (?z1 : ?accT1))
+              .fold    ((?foldF1) @:Accumulate) ?fz1)
+              .groupBy ((?gbF2) @:Projection) ((?accF2) @:Accumulate) ?z2)
+  ) @:Fuse
   ) : collection ?t @Map
   => ( $.[e].fold (\acc2 -> \v ->
                     if $.[filterF] v then

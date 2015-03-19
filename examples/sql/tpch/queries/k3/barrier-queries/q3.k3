@@ -29,9 +29,13 @@ order by
 
 declare master : address
 
-declare lineitem : mut lineitem_bag
-declare customer : mut customer_bag
-declare orders   : mut orders_bag
+declare lineitem_r : lineitem_r
+declare customer_r : customer_r
+declare orders_r   : orders_r
+
+declare lineitem : mut q3_lineitem_bag
+declare customer : mut q3_customer_bag
+declare orders   : mut q3_orders_bag
 
 // Final result.
 typedef lior_epd_by_ods_r     = {key : {ok: int, od: string, sp: int}, value: real}
@@ -42,7 +46,7 @@ declare q3_peer_result : lior_epd_by_ods_map
 // Intermediates for Q3 plans.
 typedef li_epd_by_ok_r        = {key: int , value: real }  // l_orderkey => l_extendedprice * (1 - l_discount)
 typedef lior_epdods_by_ck_r   = {key: int, value : lior_epd_by_ods_map }
-typedef lior_epdods_by_ck_map = collection lior_epdods_by_ck_r @Map
+typedef lior_epdods_by_ck_map = collection lior_epdods_by_ck_r @IntMap
 
 typedef cs_ck_bag = collection {elem: {c_custkey : int}} @Collection
 
@@ -74,7 +78,7 @@ trigger lineitem_orders : () = \_ -> (
                                                        acc)
                                                     else acc
                                                   )
-                                                  (empty {key: int, value: int} @Map)
+                                                  (empty {key: int, value: int} @IntMap)
                                                   (lineitem.size() / j1_sample_factor)
                                ]
 
@@ -86,7 +90,7 @@ trigger lineitem_orders : () = \_ -> (
                                                      acc)
                                                   else acc
                                                 )
-                                                (empty {key: int, value: int} @Map)
+                                                (empty {key: int, value: int} @IntMap)
                                                 (orders.size() / j1_sample_factor)
                                ]
 
@@ -99,9 +103,9 @@ trigger lineitem_orders : () = \_ -> (
                                            (\acc -> \l -> acc + (l.l_extendedprice * (1 - l.l_discount)))
                                            0.0)
                                   .fold    ((\acc -> \l -> ((acc.insert l); acc)) @:Accumulate)
-                                           (empty {key:int, value:real} @Map)
+                                           (empty {key:int, value:real} @IntMap)
                     ]
-      , lhs_query_clear = [$ lineitem = empty lineitem_r @Collection ]
+      , lhs_query_clear = [$ lineitem = empty q3_lineitem_r @Collection ]
 
       , rhs_query = [$ ((orders.filter  (\o -> o.o_orderdate < "1995-03-15" ))
                                .groupBy (\o -> o.o_orderkey)
@@ -110,9 +114,10 @@ trigger lineitem_orders : () = \_ -> (
                                                      , sp : o.o_shippriority})
                                         { od: "", ck: 0, sp: 0 })
                                .fold    ((\acc -> \o -> ((acc.insert o); acc)) @:Accumulate)
-                                        (empty {key : int, value : {od:string, ck:int, sp:int}} @Map)
+                                        (empty {key : int, value : {od:string, ck:int, sp:int}} @IntMap)
                     ]
-      , rhs_query_clear = [$ orders = empty orders_r @Collection ]
+      , rhs_query_clear = [$ orders = empty q3_orders_r @Collection ]
+
       , join_key_ty          = [: int ]
       , lhs_ht_ty            = [: {key:int, value: real} ]
       , rhs_ht_ty            = [: {key:int, value: {od:string, ck:int, sp:int} } ]
@@ -156,8 +161,8 @@ trigger lineitem_orders : () = \_ -> (
       , lhs_pipeline_next    = [$ (\_ -> ()) ]
       , rhs_pipeline_next    = [$ (\_ -> ()) ]
 
-      , lhs_clear_expr       = [$ (\_ -> lo_lhs_ht = empty {key:int, value: real} @Map) ]
-      , rhs_clear_expr       = [$ (\_ -> lo_rhs_ht = empty {key:int, value: {od:string, ck:int, sp:int}} @Map) ]
+      , lhs_clear_expr       = [$ (\_ -> lo_lhs_ht = empty {key:int, value: real} @IntMap) ]
+      , rhs_clear_expr       = [$ (\_ -> lo_rhs_ht = empty {key:int, value: {od:string, ck:int, sp:int}} @IntMap) ]
 
       , peer_next            = [$ (lineitem_orders_customer, me) <- () ]
       , next                 = [$ () ]
@@ -224,14 +229,14 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                               ordersLineCountFiles.iterate   (\e -> ordersRows = ordersRows + (lineCountFile e.path));
                               customerLineCountFiles.iterate (\e -> customerRows = customerRows + (lineCountFile e.path));
 
-			      print ("Lineitem rows: " ++ (itos lineitemRows));
-			      print ("Orders rows: " ++ (itos ordersRows));
-			      print ("Customer rows: " ++ (itos customerRows));
+                  			      print ("Lineitem rows: " ++ (itos lineitemRows));
+                  			      print ("Orders rows: " ++ (itos ordersRows));
+                  			      print ("Customer rows: " ++ (itos customerRows));
 
                               // Load data using the fixed size loaders which resize the container before loading
-                              lineitemLoaderPFixedSize lineitemFiles lineitem lineitemRows;
-                              ordersLoaderPFixedSize ordersFiles orders ordersRows;
-                              customerLoaderPFixedSize customerFiles customer customerRows
+                  			      q3_lineitemLoaderPFC lineitemFiles lineitem lineitem_r lineitemRows;
+                              q3_ordersLoaderPFC   ordersFiles   orders   orders_r   ordersRows;
+                              q3_customerLoaderPFC customerFiles customer customer_r customerRows
                             ) ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],
