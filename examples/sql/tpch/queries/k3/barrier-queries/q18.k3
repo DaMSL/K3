@@ -43,9 +43,13 @@ order by
 *          (filter . group lineitem)
 ****************************/
 
-declare lineitem : mut lineitem_bag
-declare customer : mut customer_bag
-declare orders   : mut orders_bag
+declare lineitem_r : lineitem_r
+declare customer_r : customer_r
+declare orders_r   : orders_r
+
+declare lineitem : mut q18_lineitem_bag
+declare customer : mut q18_customer_bag
+declare orders   : mut q18_orders_bag
 
 // Final result.
 typedef loc_q_by_ncodt_r   = { key: {nm:string, ck:int, ok:int, od:string, tp:real}, value: real}
@@ -84,7 +88,7 @@ trigger lineitem_having : () = \_ -> (
                             0.0)
   ) @DistributedGroupBy(
       lbl         = [# li_having],
-      clear_expr  = [$ lineitem = empty lineitem_r @Collection ],
+      clear_expr  = [$ lineitem = empty q18_lineitem_r @Collection ],
       peer_next   = [$ (\result -> (
                           print "LI shuffle done." ;
                           li_having_result = result.filter (\okq -> okq.value > 300)
@@ -109,7 +113,7 @@ trigger lineitem_orders : () = \_ -> (
                           {o_custkey:0, o_orderdate:"", o_totalprice:0.0})
   ) @DistributedGroupByGeneric(
       lbl         = [# lo ],
-      clear_expr  = [$ orders = empty orders_r @Collection ],
+      clear_expr  = [$ orders = empty q18_orders_r @Collection ],
       peer_next   = [$ print "LI-OR shuffle done." ],
       next        = [$ (lineitem_orders_customer, me) <- () ],
       merge       = [$ (\o ->
@@ -159,7 +163,7 @@ trigger lineitem_orders_customer : () = \_ -> (
                                   .fold    (\acc -> \c -> ((acc.insert c); acc))
                                            (empty {key: int, value: string} @IntMap)
                       ]
-        , rhs_query_clear = [$ customer = empty customer_r @Collection ]
+        , rhs_query_clear = [$ customer = empty q18_customer_r @Collection ]
 
       , join_key_ty          = [: int ]
       , lhs_ht_ty            = [: {key: int, value: collection {key : {ok: int, od: string, tp: real}, value : real} @Map} ]
@@ -249,14 +253,14 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                               ordersLineCountFiles.iterate   (\e -> ordersRows = ordersRows + (lineCountFile e.path));
                               customerLineCountFiles.iterate (\e -> customerRows = customerRows + (lineCountFile e.path));
 
-			      print ("Lineitem rows: " ++ (itos lineitemRows));
-			      print ("Orders rows: " ++ (itos ordersRows));
-			      print ("Customer rows: " ++ (itos customerRows));
+			                        print ("Lineitem rows: " ++ (itos lineitemRows));
+			                        print ("Orders rows: "   ++ (itos ordersRows));
+			                        print ("Customer rows: " ++ (itos customerRows));
 
                               // Load data using the fixed size loaders which resize the container before loading
-			      lineitemFiles.iterate (\e -> lineitemLoaderPFixedSize e.path lineitem lineitemRows);
-                              ordersFiles.iterate   (\e -> ordersLoaderPFixedSize   e.path orders ordersRows);
-                              customerFiles.iterate (\e -> customerLoaderPFixedSize e.path customer customerRows)
+                  			      lineitemFiles.iterate (\e -> q18_lineitemLoaderPFC e.path lineitem lineitem_r lineitemRows);
+                              ordersFiles.iterate   (\e -> q18_ordersLoaderPFC   e.path orders   orders_r   ordersRows);
+                              customerFiles.iterate (\e -> q18_customerLoaderPFC e.path customer customer_r customerRows)
                             ) ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],

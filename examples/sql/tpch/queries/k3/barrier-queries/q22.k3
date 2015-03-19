@@ -38,8 +38,12 @@ order by cntrycode
 ****************************/
 
 declare master   : address = 127.0.0.1:4000
-declare customer : mut customer_bag
-declare orders   : mut orders_bag
+
+declare customer_r : customer_r
+declare orders_r   : orders_r
+
+declare customer : mut q22_customer_bag
+declare orders   : mut q22_orders_bag
 
 declare c_valid_phone : collection {key : string, value : ()} @StrMap =
   {| key:string, value:()
@@ -111,13 +115,13 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
                                      .fold    ((\acc -> \c -> ((acc.insert c); acc)) @:Accumulate)
                                               (empty {key:int, value: {cntrycode: string, c_acctbal: real} } @IntMap)
                         ]
-          , lhs_query_clear = [$ customer = empty customer_r @Collection ]
+          , lhs_query_clear = [$ customer = empty q22_customer_r @Collection ]
 
           , rhs_query = [$ (orders.groupBy (\o -> o.o_custkey) (\_ -> \_ -> ()) ())
                                   .fold    (\acc -> \o -> ((acc.insert o); acc))
                                            (empty {key:int, value: ()} @IntMap)
                         ]
-          , rhs_query_clear = [$ orders = empty orders_r @Collection ]
+          , rhs_query_clear = [$ orders = empty q22_orders_r @Collection ]
 
 
         , join_key_ty          = [: int ]
@@ -182,8 +186,8 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
 			                        print ("Orders rows: " ++ (itos ordersRows));
 			                        print ("Customer rows: " ++ (itos customerRows));
 
-                              ordersFiles.iterate   (\e -> ordersLoaderPFixedSize   e.path orders ordersRows);
-                              customerFiles.iterate (\e -> customerLoaderPFixedSize e.path customer customerRows)
+                              ordersFiles.iterate   (\e -> q22_ordersLoaderPFC   e.path orders   orders_r   ordersRows);
+                              customerFiles.iterate (\e -> q22_customerLoaderPFC e.path customer customer_r customerRows)
                             ) ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],

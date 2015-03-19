@@ -29,9 +29,13 @@ order by
 
 declare master : address
 
-declare lineitem : mut lineitem_bag
-declare customer : mut customer_bag
-declare orders   : mut orders_bag
+declare lineitem_r : lineitem_r
+declare customer_r : customer_r
+declare orders_r   : orders_r
+
+declare lineitem : mut q3_lineitem_bag
+declare customer : mut q3_customer_bag
+declare orders   : mut q3_orders_bag
 
 // Final result.
 typedef lior_epd_by_ods_r     = {key : {ok: int, od: string, sp: int}, value: real}
@@ -101,7 +105,7 @@ trigger lineitem_orders : () = \_ -> (
                                   .fold    ((\acc -> \l -> ((acc.insert l); acc)) @:Accumulate)
                                            (empty {key:int, value:real} @IntMap)
                     ]
-      , lhs_query_clear = [$ lineitem = empty lineitem_r @Collection ]
+      , lhs_query_clear = [$ lineitem = empty q3_lineitem_r @Collection ]
 
       , rhs_query = [$ ((orders.filter  (\o -> o.o_orderdate < "1995-03-15" ))
                                .groupBy (\o -> o.o_orderkey)
@@ -112,7 +116,7 @@ trigger lineitem_orders : () = \_ -> (
                                .fold    ((\acc -> \o -> ((acc.insert o); acc)) @:Accumulate)
                                         (empty {key : int, value : {od:string, ck:int, sp:int}} @IntMap)
                     ]
-      , rhs_query_clear = [$ orders = empty orders_r @Collection ]
+      , rhs_query_clear = [$ orders = empty q3_orders_r @Collection ]
 
       , join_key_ty          = [: int ]
       , lhs_ht_ty            = [: {key:int, value: real} ]
@@ -222,9 +226,9 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                   			      print ("Customer rows: " ++ (itos customerRows));
 
                               // Load data using the fixed size loaders which resize the container before loading
-                  			      lineitemFiles.iterate (\e -> lineitemLoaderPFixedSize e.path lineitem lineitemRows);
-                              ordersFiles.iterate   (\e -> ordersLoaderPFixedSize   e.path orders ordersRows);
-                              customerFiles.iterate (\e -> customerLoaderPFixedSize e.path customer customerRows)
+                  			      lineitemFiles.iterate (\e -> q3_lineitemLoaderPFC e.path lineitem lineitem_r lineitemRows);
+                              ordersFiles.iterate   (\e -> q3_ordersLoaderPFC   e.path orders   orders_r   ordersRows);
+                              customerFiles.iterate (\e -> q3_customerLoaderPFC e.path customer customer_r customerRows)
                             ) ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],
