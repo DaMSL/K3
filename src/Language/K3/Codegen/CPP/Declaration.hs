@@ -163,10 +163,15 @@ source_builtin_map = [("HasRead",  genHasRead),
                      ++ extraSuffixes
 
         -- These suffixes are for data loading hacks.
-  where extraSuffixes = [("Loader",           genLoader False "," ),
-                         ("LoaderP",          genLoader False "|" ),
-                         ("LoaderPFixedSize", genLoader True "|"),
-                         ("Logger",           genLogger)]
+  where extraSuffixes = [("Loader",    genLoader False False "," ),
+                         ("LoaderC",   genLoader False True  "," ),
+                         ("LoaderF",   genLoader True  False ","),
+                         ("LoaderFC",  genLoader True  True  "," ),
+                         ("LoaderP",   genLoader False False "|" ),
+                         ("LoaderPC",  genLoader False True  "|" ),
+                         ("LoaderPF",  genLoader True  False "|"),
+                         ("LoaderPFC", genLoader True  True  "|" ),
+                         ("Logger",    genLogger)]
 
 source_builtins :: [String]
 source_builtins = map fst source_builtin_map
@@ -230,30 +235,40 @@ genDoWrite suf typ name = do
 
 -- TODO: Loader is not quite valid K3. The collection should be passed by indirection so we are not working with a copy
 -- (since the collection is technically passed-by-value)
-genLoader :: Bool -> String -> String -> K3 Type -> String -> CPPGenM R.Definition
-genLoader fixedSize sep suf (children -> [_,f]) name = do
- (colType, recType) <- return $ getColType f
- cColType <- genCType colType
- cRecType <- genCType recType
- fields   <- getRecFields recType
+genLoader :: Bool -> Bool -> String -> String -> K3 Type -> String -> CPPGenM R.Definition
+genLoader fixedSize projectedLoader sep suf (children -> [_,f]) name = do
+ (colType, recType, fullRecTypeOpt) <- return $ getColType f
+ cColType      <- genCType colType
+ cRecType      <- genCType recType
+ cfRecType     <- maybe (return Nothing) (\t -> genCType t >>= return . Just) fullRecTypeOpt
+ fields        <- getRecFields recType
+ fullFieldsOpt <- maybe (return Nothing) (\frt -> getRecFields frt >>= return . Just) fullRecTypeOpt
  let coll_name = stripSuffix suf name
  let bufferDecl = [R.Forward $ R.ScalarDecl (R.Name "tmp_buffer")
                         (R.Named $ R.Qualified (R.Name "std") (R.Name "string")) Nothing]
 
- let readField f t b = [ R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "getline")) $
-                                [ R.Variable (R.Name "in")
-                                , R.Variable (R.Name "tmp_buffer")
-                                ] ++ [R.Literal (R.LChar sep) | not b]
-                   , R.Assignment (R.Project (R.Variable $ R.Name "record") (R.Name f))
-                                  (typeMap t $ R.Variable $ R.Name "tmp_buffer")
-                   ]
+ let readField f t skip b = [ R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "getline")) $
+                                     [ R.Variable (R.Name "in")
+                                     , R.Variable (R.Name "tmp_buffer")
+                                     ] ++ [R.Literal (R.LChar sep) | not b]
+                            ] ++
+                            (if skip then []
+                             else [ R.Assignment (R.Project (R.Variable $ R.Name "record") (R.Name f))
+                                           (typeMap t $ R.Variable $ R.Name "tmp_buffer")
+                                  ])
+
  let recordDecl = [R.Forward $ R.ScalarDecl (R.Name "record") cRecType Nothing]
 
  let fts = uncurry zip fields
+ let fullfts = fullFieldsOpt >>= return . uncurry zip
+
+ let ftsWSkip = maybe (map (\(x,y) -> (x, y, False)) fts)
+                      (map (\(x,y) -> (x, y, (x,y) `notElem` fts)))
+                      fullfts
 
  let recordGetLines = recordDecl
-                      ++ concat [readField field ft False | (field, ft)  <- init fts]
-                      ++ uncurry readField (last fts) True
+                      ++ concat [readField field ft skip False | (field, ft, skip)  <- init ftsWSkip]
+                      ++ (\(a,b,c) -> readField a b c True) (last ftsWSkip)
                       ++ [R.Return $ R.Variable $ R.Name "record"]
 
  let readRecordFn = R.Lambda []
@@ -274,9 +289,9 @@ genLoader fixedSize sep suf (children -> [_,f]) name = do
                               , readRecordFn
                               ]
  let defaultArgs = [("file", R.Named $ R.Name "string"),("c", R.Reference cColType)]
- let args = if fixedSize
-            then defaultArgs ++ [("size", R.Primitive R.PInt)]
-            else defaultArgs
+ let args = defaultArgs
+              ++ (if projectedLoader then [("_rec", R.Reference $ fromJust cfRecType)] else [])
+              ++ (if fixedSize       then [("size", R.Primitive R.PInt)] else [])
 
  return $ R.FunctionDefn (R.Name $ coll_name ++ suf)
             args
@@ -295,18 +310,25 @@ genLoader fixedSize sep suf (children -> [_,f]) name = do
                               [R.Call (R.Project e (R.Name "c_str")) []]
    typeMap (tag -> _) x = x
 
-   getColType = case children f of
-                  ([c,_])  -> case children c of
-                                [r] -> return (c, r)
-                                _   -> type_mismatch
-                  _        -> type_mismatch
+   getColType = case fnArgs [] f of
+                  [c, fr, sz] | projectedLoader && fixedSize -> colRecOfType c >>= \(x,y) -> return (x, y, Just fr)
+                  [c, fr]     | projectedLoader              -> colRecOfType c >>= \(x,y) -> return (x, y, Just fr)
+                  [c, _]      | fixedSize                    -> colRecOfType c >>= \(x,y) -> return (x, y, Nothing)
+                  [c]                                        -> colRecOfType c >>= \(x,y) -> return (x, y, Nothing)
+                  _                                          -> type_mismatch
+
+   fnArgs acc t@(tnc -> (TFunction, [a,r])) = fnArgs (acc++[a]) r
+   fnArgs acc _ = acc
+
+   colRecOfType c@(tnc -> (TCollection, [r])) = return (c, r)
+   colRecOfType _ = type_mismatch
 
    getRecFields (tag &&& children -> (TRecord ids, cs))  = return (ids, cs)
    getRecFields _ = error "Cannot get fields for non-record type"
 
    type_mismatch = error "Invalid type for Loader function. Should Be String -> Collection R -> ()"
 
-genLoader _ _ _ _ _ =  error "Invalid type for Loader function."
+genLoader _ _ _ _ _ _ =  error "Invalid type for Loader function."
 
 
 genLogger :: String -> K3 Type -> String -> CPPGenM R.Definition
