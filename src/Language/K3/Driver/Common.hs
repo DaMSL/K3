@@ -26,6 +26,9 @@ defaultOutputFile = "a.out"
 defaultBuildDir :: FilePath
 defaultBuildDir = "__build"
 
+defaultBuildJobs :: Int
+defaultBuildJobs = 1
+
 defaultRuntimeDir :: FilePath
 defaultRuntimeDir = "runtime"
 
