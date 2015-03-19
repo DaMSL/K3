@@ -263,7 +263,7 @@ genLoader fixedSize projectedLoader sep suf (children -> [_,f]) name = do
  let fullfts = fullFieldsOpt >>= return . uncurry zip
 
  let ftsWSkip = maybe (map (\(x,y) -> (x, y, False)) fts)
-                      (map (\(x,y) -> (x, y, (x,y) `notElem` fts)))
+                      (map (\(x,y) -> (x, y, x `notElem` (map fst fts))))
                       fullfts
 
  let recordGetLines = recordDecl
