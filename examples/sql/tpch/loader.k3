@@ -5,7 +5,7 @@ declare lineitemLoaderP : collection {path: string} @Collection -> lineitem_bag 
   with effects \_ -> \_ -> io
 
 @:CArgs 3
-declare lineitemLoaderPFixedSize : collection {path: string} @Collection -> lineitem_bag -> int -> ()
+declare lineitemLoaderPF : collection {path: string} @Collection -> lineitem_bag -> int -> ()
   with effects \_ -> \_ -> \_ -> io
 
 @:CArgs 2
@@ -13,7 +13,7 @@ declare customerLoaderP : collection {path: string} @Collection -> customer_bag 
   with effects \_ -> \_ -> io
 
 @:CArgs 3
-declare customerLoaderPFixedSize : collection {path: string} @Collection -> customer_bag -> int -> ()
+declare customerLoaderPF : collection {path: string} @Collection -> customer_bag -> int -> ()
   with effects \_ -> \_ -> \_ -> io
 
 @:CArgs 2
@@ -21,7 +21,7 @@ declare ordersLoaderP : collection {path: string} @Collection -> orders_bag -> (
   with effects \_ -> \_ -> io
 
 @:CArgs 3
-declare ordersLoaderPFixedSize: collection {path: string} @Collection -> orders_bag -> int -> ()
+declare ordersLoaderPF: collection {path: string} @Collection -> orders_bag -> int -> ()
   with effects \_ -> \_ -> \_ -> io
 
 @:CArgs 2
@@ -29,7 +29,7 @@ declare supplierLoaderP : collection {path: string} @Collection -> supplier_bag 
   with effects \_ -> \_ -> io
 
 @:CArgs 3
-declare supplierLoaderPFixedSize : collection {path: string} @Collection -> supplier_bag -> int -> ()
+declare supplierLoaderPF : collection {path: string} @Collection -> supplier_bag -> int -> ()
   with effects \_ -> \_ -> \_ -> io
 
 @:CArgs 2
@@ -37,7 +37,7 @@ declare partsuppLoaderP : collection {path: string} @Collection -> partsupp_bag 
   with effects \_ -> \_ -> io
 
 @:CArgs 3
-declare partsuppLoaderPFixedSize : collection {path: string} @Collection -> partsupp_bag -> int -> ()
+declare partsuppLoaderPF : collection {path: string} @Collection -> partsupp_bag -> int -> ()
   with effects \_ -> \_ -> \_ -> io
 
 @:CArgs 2
@@ -45,7 +45,7 @@ declare partLoaderP : collection {path: string} @Collection -> part_bag -> ()
   with effects \_ -> \_ -> io
 
 @:CArgs 3
-declare partLoaderPFixedSize : collection {path: string} @Collection -> part_bag -> int -> ()
+declare partLoaderPF : collection {path: string} @Collection -> part_bag -> int -> ()
   with effects \_ -> \_ -> \_ -> io
 
 // Fixed size not needed for nation or region
@@ -60,3 +60,148 @@ declare regionLoaderP : collection {path: string} @Collection -> region_bag -> (
 @:CArgs 2
 declare tpchAgendaLoaderP : collection {path: string} @Collection -> tpch_agenda_bag -> ()
   with effects \_ -> \_ -> io
+
+
+/////////////////////////////
+//
+// Query-specific loaders
+//
+//
+
+// Q1
+
+@:CArgs 3
+declare q1_lineitemLoaderPC : collection {path: string} @Collection -> q1_lineitem_bag -> lineitem_r -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+@:CArgs 4
+declare q1_lineitemLoaderPFC : collection {path: string} @Collection -> q1_lineitem_bag -> lineitem_r -> int -> ()
+  with effects \_ -> \_ -> \_ -> \_ -> io
+
+
+// Q3
+
+@:CArgs 3
+declare q3_lineitemLoaderPC : collection {path: string} @Collection -> q3_lineitem_bag -> lineitem_r -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+@:CArgs 4
+declare q3_lineitemLoaderPFC : collection {path: string} @Collection -> q3_lineitem_bag -> lineitem_r -> int -> ()
+  with effects \_ -> \_ -> \_ -> \_ -> io
+
+@:CArgs 3
+declare q3_customerLoaderPC : collection {path: string} @Collection -> q3_customer_bag -> customer_r -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+@:CArgs 4
+declare q3_customerLoaderPFC : collection {path: string} @Collection -> q3_customer_bag -> customer_r -> int -> ()
+  with effects \_ -> \_ -> \_ -> \_ -> io
+
+@:CArgs 3
+declare q3_ordersLoaderPC : collection {path: string} @Collection -> q3_orders_bag -> orders_r -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+@:CArgs 4
+declare q3_ordersLoaderPFC : collection {path: string} @Collection -> q3_orders_bag -> orders_r -> int -> ()
+  with effects \_ -> \_ -> \_ -> \_ -> io
+
+
+// Q5
+
+@:CArgs 3
+declare q5_lineitemLoaderPC : collection {path: string} @Collection -> q5_lineitem_bag -> lineitem_r -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+@:CArgs 4
+declare q5_lineitemLoaderPFC : collection {path: string} @Collection -> q5_lineitem_bag -> lineitem_r -> int -> ()
+  with effects \_ -> \_ -> \_ -> \_ -> io
+
+@:CArgs 3
+declare q5_customerLoaderPC : collection {path: string} @Collection -> q5_customer_bag -> customer_r -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+@:CArgs 4
+declare q5_customerLoaderPFC : collection {path: string} @Collection -> q5_customer_bag -> customer_r -> int -> ()
+  with effects \_ -> \_ -> \_ -> \_ -> io
+
+@:CArgs 3
+declare q5_ordersLoaderPC : collection {path: string} @Collection -> q5_orders_bag -> orders_r -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+@:CArgs 4
+declare q5_ordersLoaderPFC : collection {path: string} @Collection -> q5_orders_bag -> orders_r -> int -> ()
+  with effects \_ -> \_ -> \_ -> \_ -> io
+
+@:CArgs 3
+declare q5_supplierLoaderPC : collection {path: string} @Collection -> q5_supplier_bag -> supplier_r -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+@:CArgs 4
+declare q5_supplierLoaderPFC : collection {path: string} @Collection -> q5_supplier_bag -> supplier_r -> int -> ()
+  with effects \_ -> \_ -> \_ -> \_ -> io
+
+// Fixed size not needed for nation or region
+@:CArgs 3
+declare q5_nationLoaderPC : collection {path: string} @Collection -> q5_nation_bag -> nation_r -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+@:CArgs 3
+declare q5_regionLoaderPC : collection {path: string} @Collection -> q5_region_bag -> region_r -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+
+// Q6
+
+@:CArgs 3
+declare q6_lineitemLoaderPC : collection {path: string} @Collection -> q6_lineitem_bag -> lineitem_r -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+@:CArgs 4
+declare q6_lineitemLoaderPFC : collection {path: string} @Collection -> q6_lineitem_bag -> lineitem_r -> int -> ()
+  with effects \_ -> \_ -> \_ -> \_ -> io
+
+
+// Q18
+
+@:CArgs 3
+declare q18_lineitemLoaderPC : collection {path: string} @Collection -> q18_lineitem_bag -> lineitem_r -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+@:CArgs 4
+declare q18_lineitemLoaderPFC : collection {path: string} @Collection -> q18_lineitem_bag -> lineitem_r -> int -> ()
+  with effects \_ -> \_ -> \_ -> \_ -> io
+
+@:CArgs 3
+declare q18_customerLoaderPC : collection {path: string} @Collection -> q18_customer_bag -> customer_r -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+@:CArgs 4
+declare q18_customerLoaderPFC : collection {path: string} @Collection -> q18_customer_bag -> customer_r -> int -> ()
+  with effects \_ -> \_ -> \_ -> \_ -> io
+
+@:CArgs 3
+declare q18_ordersLoaderPC : collection {path: string} @Collection -> q18_orders_bag -> orders_r -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+@:CArgs 4
+declare q18_ordersLoaderPFC : collection {path: string} @Collection -> q18_orders_bag -> orders_r -> int -> ()
+  with effects \_ -> \_ -> \_ -> \_ -> io
+
+
+// Q22
+
+@:CArgs 3
+declare q22_customerLoaderPC : collection {path: string} @Collection -> q22_customer_bag -> customer_r -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+@:CArgs 4
+declare q22_customerLoaderPFC : collection {path: string} @Collection -> q22_customer_bag -> customer_r -> int -> ()
+  with effects \_ -> \_ -> \_ -> \_ -> io
+
+@:CArgs 3
+declare q22_ordersLoaderPC : collection {path: string} @Collection -> q22_orders_bag -> orders_r -> ()
+  with effects \_ -> \_ -> \_ -> io
+
+@:CArgs 4
+declare q22_ordersLoaderPFC : collection {path: string} @Collection -> q22_orders_bag -> orders_r -> int -> ()
+  with effects \_ -> \_ -> \_ -> \_ -> io

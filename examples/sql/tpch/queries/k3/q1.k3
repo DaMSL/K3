@@ -18,12 +18,13 @@ typedef q1_result_r = { l_returnflag   : string
 
 typedef q1_result = collection q1_result_r @Collection
 
-declare lineitem    : mut lineitem_bag
+declare lineitem_r  : lineitem_r
+declare lineitem    : mut q1_lineitem_bag
 declare init_agg    : q1_agg
-declare results : mut q1_result
+declare results     : mut q1_result
 
 
-declare accum_agg : q1_agg -> lineitem_r -> q1_agg = \acc -> \r ->
+declare accum_agg : q1_agg -> q1_lineitem_r -> q1_agg = \acc -> \r ->
   { sum_qty        : acc.sum_qty        + r.l_quantity
   , sum_base_price : acc.sum_base_price + r.l_extendedprice
   , sum_disc_price : acc.sum_disc_price + (r.l_extendedprice * (1 - r.l_discount))
@@ -73,7 +74,7 @@ trigger q1 : () = \_ -> (
                        init_agg)
   ) @DistributedGroupBy(
       lbl         = [# groupby],
-      clear_expr  = [$ lineitem = empty lineitem_r @Collection ],
+      clear_expr  = [$ lineitem = empty q1_lineitem_r @Collection ],
       peer_next   = [$ (\x -> ((x.iterate (\kv -> results.insert (finalize_agg kv)));
                                ((() @:Result) @TPCHBenchmarkWithoutMaster))) ],
       next        = [$ ()],
@@ -89,8 +90,8 @@ trigger start : () = \_ -> (
   (() @:Start) @TPCHBenchmarkWithoutMaster(
     nodes                = [$ peers],
     loadExpr             = [$ dataLineCountFiles.iterate (\e -> lineitemRows = lineitemRows + (lineCountFile e.path));
-			      print ("Lineitem rows: " ++ (itos lineitemRows));
-                              lineitemLoaderPFixedSize dataFiles lineitem lineitemRows
+			                        print ("Lineitem rows: " ++ (itos lineitemRows));
+                              q1_lineitemLoaderPFC dataFiles lineitem lineitem_r lineitemRows
                            ],
     preLoadExpr          = [$ ()],
     preReadyExpr         = [$ ()],

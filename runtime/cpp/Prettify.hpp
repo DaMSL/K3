@@ -82,7 +82,7 @@ namespace K3 {
       i++;
       oss << ",";
       if (i == 10) {
-	oss << "...";
+	      oss << "...";
         break;
       }
     }
