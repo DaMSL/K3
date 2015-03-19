@@ -88,7 +88,7 @@ cppBinaryStage _ copts sourceFiles =
     Just path -> binary path >> putStrLn ("Created binary file: " ++ joinPath [path, pName])
 
   where binary bDir =
-          shake shakeOptions{shakeFiles = bDir} $ do
+          shake shakeOptions{shakeFiles = bDir, shakeThreads = buildJobs copts} $ do
             want [bDir </> pName <.> exe]
 
             phony "clean" $ removeFilesAfter bDir ["//*"]
