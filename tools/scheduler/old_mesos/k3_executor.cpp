@@ -97,7 +97,7 @@ public:
 	cout << Dump(hostParams);
 	cout << "\n---------------------------------\n";
 
-	k3_cmd = "$MESOS_SANDBOX/" + hostParams["binary"].as<string>();
+	k3_cmd = "cd $MESOS_SANDBOX && ./" + hostParams["binary"].as<string>();
 	if (hostParams["logging"]) {
 		k3_cmd += " -l INFO ";
 	}
@@ -338,7 +338,7 @@ public:
 		emit << YAML::Flow << thispeer;
 		string param = emit.c_str();
 		std::ofstream peerFile;
-		string peerFileName = "peers" + std::to_string(i) + ".yaml";
+		string peerFileName = "/mnt/mesos/sandbox/peers" + std::to_string(i) + ".yaml";
 		peerFile.open(peerFileName, std::ofstream::out);
 		peerFile << param;
 		peerFile.close();
@@ -407,6 +407,7 @@ class TaskThread {
 				  std::string s = std::string(buffer);
 				  if (this->isMaster) {
 	  	                  	driver->sendFrameworkMessage(s);
+					cout << s << endl;
 				  }
 				  else {
 			               cout << s << endl;

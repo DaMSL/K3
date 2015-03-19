@@ -200,7 +200,7 @@ trigger loc_probe_rhs : cs_ck_bag = ((\vals -> (
       { None -> () } )
   ) ;
   ( ( (() @:Result) @TPCHBenchmarkWithoutMaster );
-    if master == me then ( () @:StopTimer) @Time(lbl=[# loc_JOIN], tag=[$ "Time "]) else ()
+    if master == me then ( ( () @:StopTimer); finalizeResult ()) @Time(lbl=[# loc_JOIN], tag=[$ "Time "]) else (finalizeResult ())
   ) @OnCounter(id=[# loc_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 )
 ) @:Receive
@@ -210,6 +210,14 @@ trigger loc_probe_rhs : cs_ck_bag = ((\vals -> (
                      , masters_map   = [$ peer_masters ]
                      , send_ty       = [: collection {elem: {c_custkey : int}} @Collection ]
                      , send_extra_fn = [$ \x -> x ] )
+
+declare finalizeResult: () -> () = \_ -> (
+    q3_peer_result.iterate (\r ->
+      results.insert { orderkey: r.key.ok
+                     , revenue: r.value
+                     , orderdate: r.key.od
+                     , shippriority: r.key.sp })
+)
 
 // For ktrace:
 declare results: collection {orderkey: int, revenue: real, orderdate: string, shippriority: int} @Collection
@@ -226,32 +234,26 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                   			      print ("Customer rows: " ++ (itos customerRows));
 
                               // Load data using the fixed size loaders which resize the container before loading
-                  			      lineitemFiles.iterate (\e -> q3_lineitemLoaderPFC e.path lineitem lineitem_r lineitemRows);
-                              ordersFiles.iterate   (\e -> q3_ordersLoaderPFC   e.path orders   orders_r   ordersRows);
-                              customerFiles.iterate (\e -> q3_customerLoaderPFC e.path customer customer_r customerRows)
+                  			      q3_lineitemLoaderPFC lineitemFiles lineitem lineitem_r lineitemRows;
+                              q3_ordersLoaderPFC   ordersFiles   orders   orders_r   ordersRows;
+                              q3_customerLoaderPFC customerFiles customer customer_r customerRows
                             ) ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],
   onReadyExpr          = [$ (lineitem_orders, me) <- ()],
   finishArgT           = [: ()],
   preTestFinishExpr    = [$ (\_ -> ())],
-  preFinishExpr        = [$ ( q3_peer_result.iterate (\r ->
-                                results.insert { orderkey: r.key.ok
-                                               , revenue: r.value
-                                               , orderdate: r.key.od
-                                               , shippriority: r.key.sp })
-                            );
-                            (() @GatherResultsAsCSV(
+  preFinishExpr        = [$ ( () @GatherResultsAsCSV(
                                     query_cl = [* [% ci: [# results], csink: [$ results_sink]] ]
                                   , nodes    = [$ peers]
                                   , next     = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ]) )
                          ],
-  preShutdownExpr      = [$ () ],
+  preShutdownExpr      = [$ sleep 30000 ],
   finishAsShutdownExpr = [$ false]
 )
 
 sink results_sink : {orderkey: int, revenue: real, orderdate: string, shippriority: int} = file "results.csv" csv
-sink query_time_sink : int = file "time.txt" csv
+sink query_time_sink : string = stdout csv
 
 source rows : () = value ()
 feed rows |> start

@@ -71,9 +71,7 @@ trigger ready: () = \_ -> (
 
 trigger load_all: () = \_ -> (
   load_start_ms = now_int ();
-  dataFiles.iterate (\e ->
-    loadQ1 e.path local_rankings
-  );
+  loadQ1 dataFiles local_rankings;
   load_end_ms = now_int ();
   load_elapsed_ms = load_end_ms - load_start_ms;
   print ("Load time: " ++ (itos load_elapsed_ms));

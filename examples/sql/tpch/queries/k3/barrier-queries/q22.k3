@@ -185,9 +185,8 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
 
 			                        print ("Orders rows: " ++ (itos ordersRows));
 			                        print ("Customer rows: " ++ (itos customerRows));
-
-                              ordersFiles.iterate   (\e -> q22_ordersLoaderPFC   e.path orders   orders_r   ordersRows);
-                              customerFiles.iterate (\e -> q22_customerLoaderPFC e.path customer customer_r customerRows)
+                              q22_ordersLoaderPFC   ordersFiles   orders   orders_r   ordersRows;
+                              q22_customerLoaderPFC customerFiles customer customer_r customerRows
                             ) ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],
@@ -205,7 +204,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
 )
 
 sink results_sink : { cntrycode: string, numcust: int, totacctbal: real} = file "results.csv" csv
-sink query_time_sink : int = file "time.txt" csv
+sink query_time_sink : string = stdout csv
 
 source rows : () = value ()
 feed rows |> start

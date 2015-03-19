@@ -24,19 +24,22 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
   onReadyExpr          = [$ peers.iterate (\x -> (q6_local, x.addr) <- () ) ],
   loadExpr             = [$ dataLineCountFiles.iterate (\e -> lineitemRows = lineitemRows + (lineCountFile e.path));
 			                      print ("Lineitem rows: " ++ (itos lineitemRows));
-                            dataFiles.iterate (\e -> q6_lineitemLoaderPFC e.path lineitem lineitem_r lineitemRows)
-                           ],
+                            q6_lineitemLoaderPFC dataFiles lineitem lineitem_r lineitemRows
+                         ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],
   finishArgT           = [: real],
   preTestFinishExpr    = [$ (\x -> q6_result = q6_result + x)],
-  preFinishExpr        = [$ ( (results_sink, me) <- q6_result ); (peers.iterate (\p -> (shutdown, p.addr) <- () ) )],
+  preFinishExpr        = [$ ( (results.insert {revenue: q6_result});
+                              (results_sink, me) <- q6_result );
+                              (peers.iterate (\p -> (shutdown, p.addr) <- () ))
+                         ],
   preShutdownExpr      = [$ ()],
   finishAsShutdownExpr = [$ false ]
 )
 
 sink results_sink : real = file "results.csv" csv
-sink query_time_sink : int = file "time.txt" csv
+sink query_time_sink : string = stdout csv
 
 source rows : () = value ()
 feed rows |> start

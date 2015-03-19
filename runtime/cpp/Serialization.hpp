@@ -92,13 +92,13 @@ inline shared_ptr<V> unpack_text_with_engine(const string& s, Engine * eng) {
 
 // Csv packing.
 template <typename V>
-inline string pack_csv(const V& v) {
-  return pack_archive<V,csv::writer>(v);
+inline string pack_csv(const V& v, char sep=',') {
+  return pack_archive<V,csv::writer>(v, sep);
 }
 
 template <typename V>
-inline shared_ptr<V> unpack_csv(const string& s) {
-  return unpack_archive<V,csv::parser>(s);
+inline shared_ptr<V> unpack_csv(const string& s, char sep=',') {
+  return unpack_archive<V,csv::parser>(s, sep);
 }
 
 template <typename V>

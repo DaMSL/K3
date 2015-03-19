@@ -145,7 +145,7 @@ namespace K3
     template<typename T> shared_ptr<T> doRead() {
       shared_ptr<T> result;
       shared_ptr<string> r = refreshBuffer();
-      if ( r ) { result = specializedDecode<T>(*r); }
+      if (r) { result = specializedDecode<T>(*r); }
       return result;
     }
 
@@ -221,8 +221,8 @@ namespace K3
 
     template<typename T> shared_ptr<T> specializedDecode(const string& s) {
       shared_ptr<T> result;
-      if ( codec_ ) {
-        if ( codec_->format() == Codec::CodecFormat::K3 ) {
+      if (codec_) {
+        if (codec_->format() == Codec::CodecFormat::K3) {
           shared_ptr<K3Codec> k3codec = std::dynamic_pointer_cast<K3Codec, Codec>(codec_);
           result = k3codec->decode<T>(s);
         } else if ( codec_->format() == Codec::CodecFormat::K3B ) {
@@ -231,6 +231,9 @@ namespace K3
         } else if ( codec_->format() == Codec::CodecFormat::CSV ) {
           shared_ptr<CSVCodec> csvcodec = std::dynamic_pointer_cast<CSVCodec, Codec>(codec_);
           result = csvcodec->decode<T>(s);
+        } else if ( codec_->format() == Codec::CodecFormat::PSV ) {
+          shared_ptr<PSVCodec> psvcodec = std::dynamic_pointer_cast<PSVCodec, Codec>(codec_);
+          result = psvcodec->decode<T>(s);
         } else if ( codec_->format() == Codec::CodecFormat::K3X ) {
           shared_ptr<K3XCodec> k3xcodec = std::dynamic_pointer_cast<K3XCodec, Codec>(codec_);
           result = k3xcodec->decode<T>(s);

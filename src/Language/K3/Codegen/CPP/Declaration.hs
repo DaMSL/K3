@@ -279,16 +279,20 @@ genLoader fixedSize projectedLoader sep suf (children -> [_,f]) name = do
  let readRecordsCall = if fixedSize
                        then R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "read_records_with_resize")
                               [ R.Variable $ R.Name "size"
-                              , R.Variable $ R.Name "_in"
+                              , R.Variable $ R.Name "paths"
                               , R.Variable $ R.Name "c"
                               , readRecordFn
                               ]
                        else R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "read_records")
-                              [ R.Variable $ R.Name "_in"
+                              [ R.Variable $ R.Name "paths"
                               , R.Variable $ R.Name "c"
                               , readRecordFn
                               ]
- let defaultArgs = [("file", R.Named $ R.Name "string"),("c", R.Reference cColType)]
+
+ let defaultArgs = [ ("paths", R.Named $ R.Specialized [R.Named $ R.Specialized [R.Named $ R.Name "string_impl"] (R.Name "R_path")] (R.Name "_Collection"))
+                     , ("c", R.Reference cColType)
+                   ]
+
  let args = defaultArgs
               ++ (if projectedLoader then [("_rec", R.Reference $ fromJust cfRecType)] else [])
               ++ (if fixedSize       then [("size", R.Primitive R.PInt)] else [])
@@ -296,10 +300,7 @@ genLoader fixedSize projectedLoader sep suf (children -> [_,f]) name = do
  return $ R.FunctionDefn (R.Name $ coll_name ++ suf)
             args
             (Just $ R.Named $ R.Name "unit_t") [] False
-            [ R.Forward $ R.ScalarDecl (R.Name "_in")
-                            (R.Named $ R.Qualified (R.Name "std") (R.Name "ifstream")) Nothing
-            , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "_in") (R.Name "open")) [R.Variable $ R.Name "file"]
-            , readRecordsCall
+            [ readRecordsCall
             , R.Return $ R.Initialization R.Unit []
             ]
  where
@@ -329,7 +330,6 @@ genLoader fixedSize projectedLoader sep suf (children -> [_,f]) name = do
    type_mismatch = error "Invalid type for Loader function. Should Be String -> Collection R -> ()"
 
 genLoader _ _ _ _ _ _ =  error "Invalid type for Loader function."
-
 
 genLogger :: String -> K3 Type -> String -> CPPGenM R.Definition
 genLogger _ (children -> [_,f]) name = do

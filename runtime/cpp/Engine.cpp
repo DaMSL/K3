@@ -297,6 +297,9 @@ namespace K3 {
       } else if ( format == "csv" ) {
         r = dynamic_pointer_cast<Codec, CSVCodec>(make_shared<CSVCodec>(Codec::CodecFormat::CSV));
         set = true;
+      } else if ( format == "psv" ) {
+        r = dynamic_pointer_cast<Codec, PSVCodec>(make_shared<PSVCodec>(Codec::CodecFormat::PSV));
+        set = true;
       } else if ( format == "k3x" ) {
         r = dynamic_pointer_cast<Codec, K3XCodec>(make_shared<K3XCodec>(Codec::CodecFormat::K3X));
         set = true;

@@ -121,7 +121,7 @@ trigger ready : () = \_ -> (
 
 trigger load_all : () = \_ -> (
   peers.iterate (\i -> peers_seq.insert i);
-  (dataFiles.iterate (\e -> loadQ2 e.path local_uservisits));
+  loadQ2 dataFiles local_uservisits;
   ((ready, master) <- ())
 )
 

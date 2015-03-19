@@ -49,13 +49,17 @@ struct hash<boost::asio::ip::address> {
 
 namespace K3 {
 
-  template <class C, class F>
-  void read_records(std::istream& in, C& container, F read_record) {
+  template <class C1, class C, class F>
+  void read_records(C1& paths, C& container, F read_record) {
 
-    std::string tmp_buffer;
-    while (!in.eof()) {
-      container.insert(read_record(in, tmp_buffer));
-      in >> std::ws;
+    for (auto rec : paths) {
+      std::ifstream in;
+      in.open(rec.path);
+      std::string tmp_buffer;
+      while (!in.eof()) {
+        container.insert(read_record(in, tmp_buffer));
+        in >> std::ws;
+      }
     }
 
     return;
@@ -81,24 +85,29 @@ namespace K3 {
       unit_t heapProfilerStop(unit_t);
   };
 
-  template <class C, class F>
-  void read_records_with_resize(int size, std::istream& in, C& container, F read_record) {
+  template <class C1, class C, class F>
+  void read_records_with_resize(int size, C1& paths, C& container, F read_record) {
 
     if (size == 0) {
-      return read_records(in, container, read_record);
+      return read_records(paths, container, read_record);
     }
     else {
       container.getContainer().resize(size);
     }
 
     int i = 0;
-    std::string tmp_buffer;
-    while (!in.eof()) {
-      if (i >= container.size(unit_t {}) ) {
-        throw std::runtime_error("Cannot read records, container size is too small");
+    for (auto rec : paths) {
+      std::ifstream in;
+      in.open(rec.path);
+
+      std::string tmp_buffer;
+      while (!in.eof()) {
+        if (i >= container.size(unit_t {}) ) {
+          throw std::runtime_error("Cannot read records, container size is too small");
+        }
+        container.getContainer()[i++] = read_record(in, tmp_buffer);
+        in >> std::ws;
       }
-      container.getContainer()[i++] = read_record(in, tmp_buffer);
-      in >> std::ws;
     }
 
     return;
@@ -234,24 +243,27 @@ namespace K3 {
     }
 
     // TODO move to seperate context
-    unit_t loadRKQ3(string_impl file, K3::Map<R_key_value<string_impl,int>>& c)  {
-        // Buffers
-        std::string tmp_buffer;
-        R_key_value<string_impl, int> rec;
-        // Infile
-        std::ifstream in;
-        in.open(file);
+    template<class C1>
+    unit_t loadRKQ3(const C1& paths, K3::Map<R_key_value<string_impl,int>>& c)  {
+	for (auto r : paths) {
+          // Buffers
+          std::string tmp_buffer;
+          R_key_value<string_impl, int> rec;
+          // Infile
+          std::ifstream in;
+          in.open(r.path);
 
-        // Parse by line
-        while(!in.eof()) {
-          std::getline(in, tmp_buffer, ',');
-          rec.key = tmp_buffer;
-          std::getline(in, tmp_buffer, ',');
-          rec.value = std::atoi(tmp_buffer.c_str());
-          // ignore last value
-          std::getline(in, tmp_buffer);
-          c.insert(rec);
-        }
+          // Parse by line
+          while(!in.eof()) {
+            std::getline(in, tmp_buffer, ',');
+            rec.key = tmp_buffer;
+            std::getline(in, tmp_buffer, ',');
+            rec.value = std::atoi(tmp_buffer.c_str());
+            // ignore last value
+            std::getline(in, tmp_buffer);
+            c.insert(rec);
+          }
+	}
 
         return unit_t {};
     }
@@ -265,11 +277,9 @@ namespace K3 {
 
    }
 
-   template <template <class> class C, template <typename ...> class R>
-   unit_t loadQ1(string_impl filepath, C<R<int, string_impl>>& c) {
-        std::ifstream _in;
-        _in.open(filepath);
-        K3::read_records(_in, c, [] (std::istream& in, std::string& tmp_buffer)   {
+   template <class C1, template <class> class C, template <typename ...> class R>
+   unit_t loadQ1(const C1& paths, C<R<int, string_impl>>& c) {
+        K3::read_records(paths, c, [] (std::istream& in, std::string& tmp_buffer)   {
           R<int, string_impl> record;
           // Get pageURL
           std::getline(in, tmp_buffer, ',');
@@ -286,11 +296,9 @@ namespace K3 {
    }
 
 
-   template <template<typename S> class C, template <typename ...> class R>
-   unit_t loadQ2(string_impl filepath, C<R<double, string_impl>>& c) {
-        std::ifstream _in;
-        _in.open(filepath);
-        K3::read_records(_in, c, [] (std::istream& in, std::string& tmp_buffer)   {
+   template <class C1, template<typename S> class C, template <typename ...> class R>
+   unit_t loadQ2(const C1& paths, C<R<double, string_impl>>& c) {
+        K3::read_records(paths, c, [] (std::istream& in, std::string& tmp_buffer)   {
           R<double, string_impl> record;
           // Get sourceIP
           std::getline(in, tmp_buffer, ',');
@@ -322,11 +330,9 @@ namespace K3 {
         return unit_t {};
    }
 
-   template <template<typename S> class C, template <typename ...> class R>
-   unit_t loadUVQ3(string_impl filepath, C<R<double, string_impl, string_impl, string_impl>>& c) {
-        std::ifstream _in;
-        _in.open(filepath);
-        K3::read_records(_in, c, [] (std::istream& in, std::string& tmp_buffer)   {
+   template <class C1, template<typename S> class C, template <typename ...> class R>
+   unit_t loadUVQ3(const C1& paths, C<R<double, string_impl, string_impl, string_impl>>& c) {
+        K3::read_records(paths, c, [] (std::istream& in, std::string& tmp_buffer)   {
           R<double, string_impl, string_impl, string_impl> record;
           std::getline(in, tmp_buffer, ',');
           record.sourceIP = tmp_buffer;

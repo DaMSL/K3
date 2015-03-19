@@ -91,7 +91,7 @@ trigger start : () = \_ -> (
     nodes                = [$ peers],
     loadExpr             = [$ dataLineCountFiles.iterate (\e -> lineitemRows = lineitemRows + (lineCountFile e.path));
 			                        print ("Lineitem rows: " ++ (itos lineitemRows));
-                              dataFiles.iterate (\e -> q1_lineitemLoaderPFC e.path lineitem lineitem_r lineitemRows)
+                              q1_lineitemLoaderPFC dataFiles lineitem lineitem_r lineitemRows
                            ],
     preLoadExpr          = [$ ()],
     preReadyExpr         = [$ ()],
@@ -109,7 +109,7 @@ trigger start : () = \_ -> (
 )
 
 sink results_sink : q1_result_r = file "results.csv" csv
-sink query_time_sink : int = file "time.txt" csv
+sink query_time_sink : string = stdout csv
 
 source rows : () = value ()
 feed rows |> start

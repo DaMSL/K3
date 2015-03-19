@@ -374,12 +374,12 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                              customerLineCountFiles.iterate (\e -> customerRows = customerRows + (lineCountFile e.path));
                              supplierLineCountFiles.iterate (\e -> supplierRows = supplierRows + (lineCountFile e.path));
 
-                             lineitemFiles.iterate (\e -> q5_lineitemLoaderPFC e.path lineitem lineitem_r lineitemRows);
-                             ordersFiles.iterate   (\e -> q5_ordersLoaderPFC   e.path orders   orders_r   ordersRows);
-                             customerFiles.iterate (\e -> q5_customerLoaderPFC e.path customer customer_r customerRows);
-                             supplierFiles.iterate (\e -> q5_supplierLoaderPFC e.path supplier supplier_r supplierRows);
-                             nationFiles.iterate   (\e -> q5_nationLoaderPC    e.path nation   nation_r);
-                             regionFiles.iterate   (\e -> q5_regionLoaderPC    e.path region   region_r);
+                             q5_lineitemLoaderPFC lineitemFiles lineitem lineitem_r lineitemRows;
+                             q5_ordersLoaderPFC   ordersFiles   orders   orders_r   ordersRows;
+                             q5_customerLoaderPFC customerFiles customer customer_r customerRows;
+                             q5_supplierLoaderPFC supplierFiles supplier supplier_r supplierRows;
+                             q5_nationLoaderPC    nationFiles   nation   nation_r;
+                             q5_regionLoaderPC    regionFiles   region   region_r;
                              ( (q5_prep, me) <- () )
                            ) ],
   preLoadExpr         = [$ ()],
@@ -390,7 +390,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   finishArgT          = [: ()],
   preTestFinishExpr   = [$ (\_ -> ())],
   preFinishExpr       = [$ (print ("Q5 num results:" ++ (itos (q5_result.size()))));
-                           q5_result.iterate (\r -> (results_sink, me) <- r );
+                           (q5_result.iterate (\r -> ((results.insert r); ((results_sink, me) <- r ))));
                            peers.iterate (\p -> (shutdown, p.addr) <- ())
                         ],
   preShutdownExpr     = [$ ()],
@@ -398,7 +398,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
 )
 
 sink results_sink : {key: string, value: real} = file "results.csv" csv
-sink query_time_sink : int = file "time.txt" csv
+sink query_time_sink : string = stdout csv
 
 source rows : () = value ()
 feed rows |> start

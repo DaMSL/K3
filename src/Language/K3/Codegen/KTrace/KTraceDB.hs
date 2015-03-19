@@ -103,8 +103,13 @@ mkLoader :: String -> TypedAttrs -> [String]
 mkLoader name idSqlt = ["create or replace function " ++ name
                  , "(" ++ intercalate "," (map mkArg loaderParams) ++ ")"
                  , "returns void as $$"
+                 , "declare jsonVar json;"
                  , "begin"
-                 , "execute format('copy " ++ resultsTable ++ " (" ++ sortedColumns idSqlt ++ ") from ''%s'' with delimiter '','' ', filename);"
+                 , "drop table if exists temp_" ++ name ++ ";"
+                 , "create temporary table temp_" ++ name ++ " (logEntry json);"
+                 , "execute format('copy temp_" ++ name ++ " from ''%s'' ', filename);"
+                 , "select logEntry into jsonVar FROM temp_" ++ name ++ " limit 1;"
+                 , "insert into " ++ resultsTable ++ " select " ++ loaderFields idSqlt ++ " from json_array_elements(jsonVar->'value') as R(t);"
                  , "end;"
                  , "$$ language plpgsql volatile;"
                  ]
@@ -113,7 +118,7 @@ mkLoader name idSqlt = ["create or replace function " ++ name
     loaderParams     = [("filename", "text")]
     loaderReturnT    = "void"
     loaderAttr       = "logEntry"
-    sortedColumns    = unwords . intersperse "," . sort . map fst
+    loaderFields idT = intercalate "," $ map (\(i,t) -> "(t#>>" ++ "'{value," ++ i ++ "}')::" ++ t) idT
 
 mkDiff :: String -> TypedAttrs -> Either String [String]
 mkDiff name idSqlt = do

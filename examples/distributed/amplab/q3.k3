@@ -188,8 +188,8 @@ declare rkFiles : collection {path: string} @Collection
 
 trigger loadAll : () = \_ -> (
   peers.iterate (\p -> peer_seq.insert p);
-  uvFiles.iterate (\e -> loadUVQ3 e.path user_visits);
-  rkFiles.iterate (\e -> loadRKQ3 e.path rankingsMap);
+  loadUVQ3 uvFiles user_visits;
+  loadRKQ3 rkFiles rankingsMap;
   ((ready, master) <- ())
 )
 
