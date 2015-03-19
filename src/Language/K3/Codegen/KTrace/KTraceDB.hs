@@ -65,7 +65,7 @@ schemaType t | isTPrimitive t =
 schematize :: SchemaState -> K3 Declaration -> Either String (SchemaState, K3 Declaration)
 schematize st d@(tag -> DGlobal n t _) = do
   t' <- schemaType t
-  return $ maybe (st,d) (\t'' -> (,d) $ st { globals  = globals st ++ [(n, t'')] }) t'
+  return $ maybe (st,d) (\t'' -> (,d) $ if "__" `isPrefixOf` n && "tid" `isSuffixOf` n then st else st { globals  = globals st ++ [(n, t'')] }) t'
 
 schematize st d@(tag -> DTrigger n t _) = do
   t' <- schemaType t

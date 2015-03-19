@@ -106,6 +106,7 @@ def executorInfo(k3task, jobid, binary_url):
   docker = mesos_pb2.ContainerInfo.DockerInfo()
   docker.image = K3_DOCKER_NAME
   docker.network = docker.HOST
+  docker.privileged = True
    
   # Create the Container
   container = mesos_pb2.ContainerInfo()
