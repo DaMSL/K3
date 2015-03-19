@@ -3,18 +3,27 @@
 {% block content %}
   <div class="container">
     <div class="starter-template">
+        {% if versionList %}
+         <h2><span>{{name}}</span> - Versions</h2>
+        <table class="table table-striped">
+            <tr><th>Version</th><th>Date Uploaded/Compiled</th><th>Git Hash</th>
+                <th>user</th><th>Compile Options</th>
+                <th>Link to Archive</th></tr>
+          {% for v in versionList %}
+            <tr><td><a href="/jobs/{{v.name}}/{{v.uid}}">{{v.version}}</a></td>
+                <td>{{v.date}}</td><td>{{v.git_hash}}</td><td>{{v.user}}</td><td>{{v.options}}</td>
+                <td><a href="/apps/{{v.name}}/{{v.uid}}">Archive</a></td></tr>
+          {% endfor %}
+        </table>
+        {% else %}
       <h2>K3 Applications</h2>
       <p class="lead">
-
         <div class="row">
-          <div class="col-sm-7">Placeholder for currently running application list</div>
-          <div class="col-sm-5">
               <h3>Upload new Binary</h3>
               <form action="" method=post enctype=multipart/form-data>
                 <p><input type=file class="btn btn-file btn-md" name=file> <br />
                    <button type=submit class="btn btn-primary btn-md">Upload</button></p>
               </form>
-          </div>
         </div>
       </p><hr />
         <div><h2>Available K3 Executables</h2></div>
@@ -23,6 +32,7 @@
             <tr><td><a href="/jobs/{{app.name}}">{{app.name}}</a></td><td>{{app.hash}}</td><td>{{app.date}}</td></tr>
           {% endfor %}
         </table>
+        {% endif %}
     </div>
   </div>
 {% endblock %}

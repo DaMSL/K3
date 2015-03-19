@@ -7,7 +7,6 @@ from collections import deque
 
 from core import *
 from mesosutils import *
-from opts import *
 import db
 
 from protobuf_to_dict import protobuf_to_dict
@@ -26,6 +25,7 @@ IP_ADDRS = { "qp1":"192.168.0.10",
              "qp4":"192.168.0.16",
              "qp5":"192.168.0.17",
              "qp6":"192.168.0.18",
+             "mddb":"192.168.0.20",
              "qp-hd1":"192.168.0.24",
              "qp-hd2":"192.168.0.25",
              "qp-hd3":"192.168.0.26",
@@ -73,7 +73,7 @@ class Dispatcher(mesos.interface.Scheduler):
     self.frameworkId = None    # Will get updated when registering with Master
  
   def submit(self, job):
-    print ("Received new Job for Application %s, Job ID= %d" % (job.appId, job.jobId))
+    print ("Received new Job for Application %s, Job ID= %d" % (job.appName, job.jobId))
     self.pending.append(job)
 
 
@@ -182,10 +182,6 @@ class Dispatcher(mesos.interface.Scheduler):
     # Build Mesos TaskInfo Protobufs for each k3 task and launch them through the driver
     for k3task in nextJob.tasks:
 
-      # TODO: Fix hack & send nextJob to build taskInfo
-      # task = taskInfo(k3task, nextJob.appId, nextJob.jobId,
-      #                 self.offers[k3task.offerid].slave_id,
-      #                 nextJob.binary_url, nextJob.all_peers, nextJob.inputs)
       task = taskInfo(nextJob, k3task, self.offers[k3task.offerid].slave_id)
 
       oid = mesos_pb2.OfferID()
@@ -213,8 +209,6 @@ class Dispatcher(mesos.interface.Scheduler):
 
     # For now, return Mesos URL to Framework:
     master = resolve(MASTER).strip()
-    print master
-    print self.frameworkId.value
     url = os.path.join('http://', master, "#/frameworks", self.frameworkId.value)
     return url
 

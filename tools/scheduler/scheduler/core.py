@@ -4,6 +4,41 @@ import tarfile
 
 
 
+class JobStatus:
+  INITIATED = 'INITIATED'
+  SUBMITTED = 'SUBMITTED'
+  RUNNING   = 'RUNNING'
+  COMPILING = 'COMPILING'
+  ARCHIVING = 'ARCHIVING'
+  FAILED    = 'FAILED'
+  KILLED    = 'KILLED'
+  FINISHED  = 'FINISHED'
+
+  @classmethod
+  def done(cls, s):
+    return s in [JobStatus.FAILED, JobStatus.KILLED, JobStatus.FINISHED]
+
+class AppID:
+  def __init__(self, name, uid):
+    self.name = name
+    self.uid = uid
+
+  def get(self):
+    return '%s-%s' % (self.name, self.uid)
+
+  @classmethod
+  def getAppId(cls, name, uid):
+    # TODO: Error check for a dash in the name
+    return '%s-%s' % (name, uid)
+
+  @classmethod
+  def getName(cls, app):
+    return app.split('-')[0]
+
+  @classmethod
+  def getUID(cls, name, uid):
+    return app.split('-')[1]
+
 
 # TODO inputs per Roles instead of per Job
 class Role:
@@ -42,12 +77,27 @@ class Task:
     return "%s.%s" % (jobid, self.taskid)
 
 
+class CompileJob:
+  def __init__(self, **kwargs):
+    self.name    = kwargs.get('name', 'CompileTask')
+    self.uid      = kwargs.get('uid', '')
+    self.path     = kwargs.get('path', '')
+    self.url      = kwargs.get('url', '')
+    self.git_hash = kwargs.get('git_hash', 'latest')
+    self.user     = kwargs.get('user', '')
+    self.options   = kwargs.get('options', '')
+  def __dict__(self):
+    return dict(name=self.name, uid=self.uid, path=self.path,
+                git_hash=self.git_hash, user=self.user, options=self.options)
+
 
 class Job:
   def __init__(self, **kwargs):
     self.archive    = kwargs.get("archive", None)
     self.binary_url = kwargs.get("binary", None)
-    self.appId      = kwargs.get("appId", 'None')   #TODO: AppId system
+#    self.appId      = kwargs.get("appId", 'None')   #TODO: AppId system
+    self.appName     = kwargs.get("appName", 'None')   #TODO: AppId system
+    self.appUID      = kwargs.get("appUID", 'None')   #TODO: AppId system
     self.jobId      = kwargs.get("jobId", '1000')   #TODO: AppId system
     roleFile        = kwargs.get("rolefile", None)
     self.roles      = {}
@@ -68,7 +118,7 @@ class Job:
 
     if self.archive:
       # Unzip archive into binary & yaml file
-      self.path = "jobs/" + self.appId
+      self.path = "jobs/" + self.appName
       if not os.path.exists(self.path):
         os.mkdir(self.path)
       tf = tarfile.open(self.archive)

@@ -3,15 +3,18 @@
 {% block content %}
   <div class="container">
     <div class="starter-template">
-        {% if appId %}
-          <h2>Application: <span class="text-info">{{appId}}</span>
+        {% if appName %}
+          <h2>Application: <span class="text-info">{{appName}}</span>
           {% if jobId %}
            - Job: <span class="text-info">{{jobId}}</span>
           {% endif %}
           </h2>
         {% endif %}
+        {% if lastcompile %}
+            <h3>Compling # {{ lastcompile.uid }} {{ lastcompile.status }} at {{ lastcompile.time }}</h3>
+            <h4>Check progress on <a href="{{ lastcompile.url }}" target="_blank">Mesos</a></h4>
+        {% endif %}
         {% if lastjob %}.
-
             <h3>Job # {{ lastjob.jobId }} {{ lastjob.status }} at {{ lastjob.time }}</h3>
             <h4>Check tasks on <a href="{{ lastjob.url }}" target="_blank">Mesos</a></h4>
             <br>
@@ -20,7 +23,7 @@
               {% if lastjob.master %}
                 <li class="list-group-item">Master at <span class="text-info">{{ lastjob.master }}</span></li>{% endif %}
               {% if lastjob.app_version %}
-                <li class="list-group-item">Binary Version Hash: <span class="text-info">{{ lastjob.app_version }}</span></li>{% endif %}
+                <li class="list-group-item">Version UID: <span class="text-info">{{ lastjob.app_version }}</span></li>{% endif %}
               {% if lastjob.time %}
                 <li class="list-group-item">Time Submitted <span class="text-info">{{ lastjob.time }}</span></li>{% endif %}
               {% if lastjob.roles %}
@@ -28,13 +31,24 @@
             </ul>
             <br><br><h4><a href="/jobs">return to jobs</a></h4>
         {% else %}
+          <h3>Active Compiling Jobs</h3>
+          {% for job in compilelist %}
+            {% if job.status == "SUBMITTED" or job.status == "COMPILING" or job.status == "ARCHIVING" %}
+                <tr><td><a href="/compile/{{job.name}}-{{job.uid}}">{{job.name}}-{{job.uid}}</a></td>
+                    <td>{{job.git_hash}}</td><td>{{job.user}}</td><td>{{job.options}}</td><td>{{job.submit}}</td><td>{{job.status}}</td>
+                    <td><a href="">
+                        <button class="btn btn-danger btn-sm">Kill</button></a></td>
+                </tr>
+            {% endif %}
+          {% endfor %}
+
           <h3>Active K3 Jobs</h3>
           <table class="table table-striped">
           {% for job in joblist %}
             {% if job.status == "SUBMITTED" or job.status == "RUNNING" %}
-            <tr><td><a href="/jobs/{{job.appId}}/{{job.jobId}}">{{job.jobId}}</a></td>
-                <td>{{job.appId}}</td><td>{{job.user}}</td><td>{{job.time}}</td><td>{{job.status}}</td>
-                <td><a href="/jobs/{{job.appId}}/{{job.jobId}}/kill">
+            <tr><td><a href="/jobs/{{job.appName}}/{{job.jobId}}">{{job.jobId}}</a></td>
+                <td>{{job.appName}}</td><td>{{job.user}}</td><td>{{job.time}}</td><td>{{job.status}}</td>
+                <td><a href="/jobs/{{job.appName}}/{{job.jobId}}/kill">
                     <button class="btn btn-danger btn-sm">Kill</button></a></td>
             </tr>
             {% endif %}
@@ -44,8 +58,8 @@
           <table class="table table-striped">
           {% for job in joblist %}
             {% if job.status != "SUBMITTED" and job.status != "RUNNING" %}
-            <tr><td><a href="/jobs/{{job.appId}}/{{job.jobId}}">{{job.jobId}}</a></td>
-                <td>{{job.appId}}</td><td>{{job.user}}</td><td>{{job.time}}</td><td>{{job.status}}</td></tr>
+            <tr><td><a href="/jobs/{{job.appName}}/{{job.jobId}}">{{job.jobId}}</a></td>
+                <td>{{job.appName}}</td><td>{{job.user}}</td><td>{{job.time}}</td><td>{{job.status}}</td></tr>
             {% endif %}
           {% endfor %}
         </table>

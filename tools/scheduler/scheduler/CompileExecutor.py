@@ -25,8 +25,6 @@ import mesos.interface
 from mesos.interface import mesos_pb2
 import mesos.native
 
-from random import randint
-
 class CompilerExecutor(mesos.interface.Executor):
   def __init__(self):
     self.thread = None
@@ -39,12 +37,13 @@ class CompilerExecutor(mesos.interface.Executor):
 
       # cmd = '$MESOS_SANDBOX/compile_%s.sh' % str(task.name.encode('ascii','ignore'))
 
-      cmd = '$MESOS_SANDBOX/compile_addone.sh'
+      name = str(task.name.encode('ascii', 'ignore'))
+      cmd = '$MESOS_SANDBOX/compile_%s.sh' % name
 
       self.frameworkMessage(driver, "Python Executor Test Message")
       self.status.task_id.value = task.task_id.value
       self.status.state = mesos_pb2.TASK_RUNNING
-      self.status.data = "Compiling K3: %s " % cmd
+      self.status.data = "Compiling K3: %s " % name
       driver.sendStatusUpdate(self.status)
 
       # Mesos v0.22  (Labels)

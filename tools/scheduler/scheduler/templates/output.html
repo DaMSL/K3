@@ -5,11 +5,9 @@
     <div class="starter-template">
       <p>
         {% if output %}
-          {% for out in output %}
               <pre>
-            {{out|string}}
+            {{output.decode('utf-8')}}
               </pre>
-          {% endfor %}
         {% else %}
         <h5>Program has no output to display</h5>
         {% endif %}

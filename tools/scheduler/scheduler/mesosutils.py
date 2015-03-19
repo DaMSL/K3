@@ -135,7 +135,7 @@ def executorInfo(k3task, jobid, binary_url, volumes=[]):
     volume = container.volumes.add()
     volume.container_path = v['container']
     volume.host_path = v['host']
-#    volume.mode = volume.RW if v['RW'] else volume.RW
+#    volume.mode = volume.RW if v['RW'] else volume.RO
     volume.mode = volume.RW
 
   executor.container.MergeFrom(container)
@@ -146,7 +146,7 @@ def executorInfo(k3task, jobid, binary_url, volumes=[]):
 def taskInfo(k3job, k3task, slaveId):
   task_data = {}
   # TODO fix this hack
-  task_data["binary"] = k3job.appId
+  task_data["binary"] = k3job.appName
   task_data["totalPeers"] = len(k3job.all_peers)
   task_data["peerStart"] = k3task.peers[0].index
   task_data["peerEnd"] = k3task.peers[-1].index
@@ -180,7 +180,7 @@ def taskInfo(k3job, k3task, slaveId):
 
 
 def compileTask(**kwargs):
-  app     = kwargs.get('appId', 'myprog')
+  app     = kwargs.get('name', 'myprog')
   script  = kwargs.get('script', None)
   source  = kwargs.get('source', None)
   slave   = kwargs.get('slave', None)
@@ -252,7 +252,7 @@ def compileTask(**kwargs):
   # Labels:  New In Mesos v 0.22
   # config = mesos_pb2.Labels()
   # l_app = config.labels.add()
-  # l_app.key = 'appId'
+  # l_app.key = 'appName'
   # l_app.value = app
   # task.labels.MergeFrom(config)
 
