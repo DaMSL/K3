@@ -20,7 +20,6 @@ module Language.K3.Metaprogram.MetaHK3 where
 import Data.List.Split
 
 import Language.Haskell.Interpreter hiding ( TemplateHaskell )
-import Language.Haskell.Interpreter.Unsafe
 
 import Language.Haskell.Exts.Extension
 import Language.Haskell.Exts.Parser
@@ -53,17 +52,13 @@ evalHaskellProg sctxt expr = case parseExpWithMode pm expr of
     pm = defaultParseMode {extensions = [EnableExtension TemplateHaskell]}
 
     evalHaskell (prettyPrint -> astStr) = localLogAction (evalLoggerF astStr) $
-      generatorWithEvalOptions $ \evalOpts -> generatorWithInterpreter $ \itptr -> do
-        r <- liftIO $ unsafeRunInterpreterWithArgs (mpInterpArgs evalOpts) $ interpretWithOptions itptr astStr
-        either interpFail return r
+      liftHI $ interpretWithOptions astStr
 
     evalLoggerF astStr = maybe (Just $ hk3Msg ["input:", astStr]) (\r -> Just $ hk3Msg ["result:", show r])
 
-    interpretWithOptions itptr str = itptr >> do
+    interpretWithOptions str = do
       resStr <- eval str
       return $ ((read resStr) :: SpliceValue)
-
-    interpFail err = throwG $ hk3Msg ["splice eval failed:", show err]
 
 injectSpliceValue :: SpliceValue -> Maybe Exp
 injectSpliceValue v = case parseExp $ show v of
