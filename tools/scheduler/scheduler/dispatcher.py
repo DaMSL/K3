@@ -165,6 +165,11 @@ class Dispatcher(mesos.interface.Scheduler):
       # Stop considering the offer, since we just used it.
       del self.offers[k3task.offerid]
 
+    for offer in self.offers:
+      driver.declineOffer(self.offers[offer].id)
+
+    self.offers = {}
+
   def cancelJob(self, jobId, driver):
     print("Asked to cancel job %d. Killing all tasks" % jobId)
     job = self.active[jobId]
@@ -233,6 +238,11 @@ class Dispatcher(mesos.interface.Scheduler):
   # If there is a pending job, add all offers to self.offers
   # Then see if pending jobs can be launched with the offers accumulated so far
   def resourceOffers(self, driver, offers):
+    if len(self.pending) == 0:
+      for offer in offers:
+        driver.declineOffer(offer.id)
+      return
+
     print("[RESOURCE OFFER] Got %d resource offers" % len(offers))
 
     print("Adding %d offers to offer dict" % len(offers))
