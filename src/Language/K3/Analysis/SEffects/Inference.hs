@@ -39,6 +39,8 @@ import Language.K3.Analysis.Provenance.Inference()
 import Language.K3.Analysis.SEffects.Core
 import Language.K3.Analysis.SEffects.Constructors
 
+import Language.K3.Utils.Logger
+
 import Data.Text ( Text )
 import Language.K3.Utils.PrettyText ( Pretty, (%$), (%+) )
 import qualified Data.Text as T

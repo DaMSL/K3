@@ -25,6 +25,8 @@ import Language.K3.Core.Metaprogram
 
 import Language.K3.Parser.DataTypes
 
+import Language.K3.Utils.Logger
+
 {-| Metaprogram environment -}
 data K3Generator = Splicer  (SpliceEnv -> SpliceResult GeneratorM)
                  | TypeRewriter (K3 Type -> SpliceEnv -> SpliceResult GeneratorM)

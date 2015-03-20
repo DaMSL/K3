@@ -45,6 +45,7 @@ import Language.K3.Transform.Common
 import Language.K3.Interpreter.Data.Accessors
 import Language.K3.Interpreter.Data.Types
 
+import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 
 import Data.Text ( Text )

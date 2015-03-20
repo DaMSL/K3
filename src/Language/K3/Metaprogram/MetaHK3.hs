@@ -28,7 +28,10 @@ import Language.Haskell.Exts.Syntax
 
 import Language.K3.Core.Common
 import Language.K3.Core.Metaprogram
+
 import Language.K3.Metaprogram.DataTypes
+
+import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 
 metaHK3TraceLogging :: Bool

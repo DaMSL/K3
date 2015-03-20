@@ -28,14 +28,17 @@ import Language.K3.Utils.Pretty (
 
 -- | Program Options.
 data Options = Options {
-      mode         :: Mode
-    , inform       :: InfoSpec
-    , paths        :: PathOptions
-    , input        :: FilePath
-    , noFeed       :: Bool
-    , noMP         :: Bool
-    , mpOpts       :: Maybe MetaprogramOptions
-    , analysisOpts :: [(String, String)]
+      mode          :: Mode
+    , inform        :: InfoSpec
+    , paths         :: PathOptions
+    , input         :: FilePath
+    , noFeed        :: Bool
+    , noMP          :: Bool
+    , splicedAstIn  :: Bool
+    , saveAST       :: Bool
+    , saveRawAST    :: Bool
+    , mpOpts        :: Maybe MetaprogramOptions
+    , analysisOpts  :: [(String, String)]
     }
   deriving (Eq, Read, Show)
 
@@ -55,8 +58,8 @@ data CompileStage = SCompile (Maybe CompilerSpec)
                   deriving (Eq, Ord, Read, Show)
 
 -- | Parsing options.
-data ParseOptions = ParseOptions { parsePrintMode :: PrintMode,
-                                   poStages       :: CompileStages }
+data ParseOptions = ParseOptions { parsePrintMode :: PrintMode
+                                 , poStages       :: CompileStages }
                     deriving (Eq, Read, Show)
 
 -- | Printing specification.
@@ -95,7 +98,6 @@ data CompileOptions = CompileOptions
                       , coStages           :: CompileStages
                       , useSubTypes        :: Bool
                       , optimizationLevel  :: OptimizationLevel
-                      , saveAST            :: Bool
                       , astPrintMode       :: PrintMode
                       }
   deriving (Eq, Read, Show)
@@ -175,6 +177,14 @@ modeOptions = subparser (
 
 {- Common parsers -}
 
+saveAstOpt :: Parser Bool
+saveAstOpt = switch (   long    "save-ast"
+                     <> help    "Save human-readable K3 AST used for compilation" )
+
+saveRawAstOpt :: Parser Bool
+saveRawAstOpt = switch (   long    "save-raw-ast"
+                        <> help    "Save K3 AST used from compilation" )
+
 compileStagesOpt :: Parser CompileStages
 compileStagesOpt = extractStageAndSpec . keyValList "" <$> strOption (
                         long "fstage"
@@ -209,9 +219,11 @@ compileStagesOpt = extractStageAndSpec . keyValList "" <$> strOption (
            in cs {stageSpec = ss {snapshotSpec = Map.insertWith (++) k (splitOn "," v) $ snapshotSpec ss}}
 
 
+{- Parsing mode options -}
+
 -- | Parse mode
 parseOptions :: Parser Mode
-parseOptions = Parse <$> (ParseOptions <$> printModeOpt "" <*> compileStagesOpt)
+parseOptions = Parse <$> ( ParseOptions <$> printModeOpt "" <*> compileStagesOpt )
 
 -- | Print mode flags
 printModeOpt :: String -> Parser PrintMode
@@ -235,6 +247,7 @@ syntaxPrintOpt :: Parser PrintMode
 syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
                                     <> help "Print syntax output" )
 
+{- Compilation mode options -}
 
 -- | Compiler options
 compileOptions :: Parser Mode
@@ -252,8 +265,7 @@ compileOptions = fmap Compile $ CompileOptions
                             <*> compileStagesOpt
                             <*> noQuickTypesOpt
                             <*> optimizationOpt
-                            <*> saveAstOpt
-                            <*> printModeOpt "noeffects=True:notypes=True"
+                            <*> printModeOpt "noeffects=True:notypes=True:noproperties=True"
 
 outLanguageOpt :: Parser String
 outLanguageOpt = strOption ( short   'l'
@@ -366,11 +378,6 @@ libraryFileOpt = (False,) <$> strOption (
                  <> help "Specifies a C++ library file."
                  <> metavar "FILE"
                )
-
-saveAstOpt :: Parser Bool
-saveAstOpt = switch (   long    "save-ast"
-                     <> help    "Save K3 AST used for compilation" )
-
 
 -- | Interpretation options.
 interpretOptions :: Parser Mode
@@ -529,6 +536,11 @@ noMPOpt = switch (
        long "nometaprogram"
     <> help "Process a program, skipping metaprogram evaluation." )
 
+splicedASTInOpt :: Parser Bool
+splicedASTInOpt = switch (
+       long "from-spliced-ast"
+    <> help "Process a pre-spliced AST input."  )
+
 inputOptions :: Parser [FilePath]
 inputOptions = fileOrStdin <$> (many $ argument str (
         metavar "FILE"
@@ -567,10 +579,14 @@ programOptions = mkOptions <$> modeOptions
                            <*> pathOptions
                            <*> noFeedOpt
                            <*> noMPOpt
+                           <*> splicedASTInOpt
+                           <*> saveAstOpt
+                           <*> saveRawAstOpt
                            <*> metaprogramOptions
                            <*> analysisOptions
                            <*> inputOptions
-    where mkOptions m i p nf nmp mp an is = Options m i p (last is) nf nmp mp an
+    where mkOptions m i p nf nmp sai sao sapo mp an is =
+            Options m i p (last is) nf nmp sai sao sapo mp an
 
 {- Instance definitions -}
 

@@ -40,6 +40,7 @@ import Language.K3.Parser.DataTypes
 
 import Language.K3.Analysis.HMTypes.Inference hiding ( localLog, localLogAction )
 
+import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 
 traceLogging :: Bool

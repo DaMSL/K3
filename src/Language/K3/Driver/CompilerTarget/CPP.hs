@@ -2,12 +2,10 @@
 
 module Language.K3.Driver.CompilerTarget.CPP (compile) where
 
+import qualified Data.List as L
 import Data.Maybe
 
-import System.Directory (createDirectoryIfMissing)
-import System.FilePath (joinPath, replaceExtension, takeBaseName)
-
-import qualified Data.List as L
+import System.FilePath (joinPath)
 
 import Development.Shake
 import Development.Shake.FilePath hiding ( joinPath, replaceExtension, takeBaseName )
@@ -25,17 +23,18 @@ import qualified Language.K3.Utils.Pretty.Syntax as PS
 import qualified Language.K3.Codegen.Imperative as I
 import qualified Language.K3.Codegen.CPP as CPP
 
+import Language.K3.Driver.Common
 import Language.K3.Driver.Options
 
 type CompileContinuation = (K3 Declaration -> IO ()) -> K3 Declaration -> IO ()
 
-outputFilePath :: String -> Options -> CompileOptions -> Either String (FilePath, FilePath)
-outputFilePath ext opts copts = case buildDir copts of
+buildOutputFilePath :: String -> Options -> CompileOptions -> Either String (FilePath, FilePath)
+buildOutputFilePath ext opts copts = case buildDir copts of
     Nothing   -> Left "Error: no build directory specified."
-    Just path -> Right (path, joinPath [path, replaceExtension (takeBaseName $ input opts) ext])
+    Just path -> Right $ outputFilePath path (input opts) ext
 
 cppOutFile :: Options -> CompileOptions -> Either String [FilePath]
-cppOutFile opts copts = either Left (\(_,f) -> Right [f]) $ outputFilePath "cpp" opts copts
+cppOutFile opts copts = either Left (\(_,f) -> Right [f]) $ buildOutputFilePath "cpp" opts copts
 
 -- Generate C++ code for a given K3 program.
 cppCodegenStage :: Options -> CompileOptions -> (CompileContinuation, K3 Declaration) -> IO ()
@@ -50,18 +49,21 @@ cppCodegenStage opts copts (cont, prog) = genCPP irRes
     genCPP (Left _)      = putStrLn "Error in Imperative Transformation."
 
     genCPPCont p = do
-      (if saveAST copts then outputAST p else return ())
+      (if saveAST opts then outputAST P.pretty "k3ast" p else return ())
+      (if saveRawAST opts then outputAST show "k3ar" p else return ())
       outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt) (CPP.stringifyProgram p)
 
     outputCPP (Right doc) =
-      either putStrLn (outputDoc doc) $ outputFilePath "cpp" opts copts
+      either putStrLn (outputDoc doc) $ buildOutputFilePath "cpp" opts copts
 
     outputCPP (Left (CPP.CPPGenE e)) = putStrLn e
 
-    outputAST p = either putStrLn (outputStrFile $ formatAST (astPrintMode copts) p) $ outputFilePath "k3ast" opts copts
+    outputAST toStr ext p =
+      either putStrLn (outputStrFile $ formatAST toStr (astPrintMode copts) p)
+        $ buildOutputFilePath ext opts copts
 
     -- Print out the program
-    formatAST (PrintAST st se sc sp) p =
+    formatAST toStr (PrintAST st se sc sp) p =
       let filterF = catMaybes $
                      [if st && se then Just stripTypeAndEffectAnns
                       else if st  then Just stripTypeAnns
@@ -69,16 +71,12 @@ cppCodegenStage opts copts (cont, prog) = genCPP irRes
                       else Nothing]
                       ++ [if sc then Just stripComments else Nothing]
                       ++ [if sp then Just stripProperties else Nothing]
-      in P.pretty $ foldl (flip ($)) p filterF
+      in toStr $ foldl (flip ($)) p filterF
 
-    formatAST PrintSyntax p = either syntaxError id $ PS.programS p
+    formatAST _ PrintSyntax p = either syntaxError id $ PS.programS p
     syntaxError s = "Could not print program: " ++ s
 
     outputDoc doc (path, file) = outputStrFile (displayS (renderPretty 1.0 100 doc) "") (path, file)
-
-    outputStrFile str (path, file) = do
-      createDirectoryIfMissing True path
-      writeFile file str
 
 
 cppBinaryStage :: Options -> CompileOptions -> [FilePath] -> IO ()
