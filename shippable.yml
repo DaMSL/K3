@@ -12,7 +12,7 @@ install:
   - git pull
 
 script:
-  - sudo pg_createcluster 9.3 main --start
+  #- sudo pg_createcluster 9.3 main --start
   - service postgresql start
   - sudo -u postgres psql -c "alter user postgres password 'password'"
   - cd /k3/K3
