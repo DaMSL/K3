@@ -9,7 +9,6 @@ module Language.K3.Metaprogram.Evaluation where
 import Control.Applicative
 import Control.Arrow
 import Control.Monad
-import Control.Monad.IO.Class
 import Control.Monad.State
 
 import Data.Either
@@ -18,8 +17,6 @@ import Data.List
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Tree
-
-import Debug.Trace
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -60,11 +57,12 @@ evalMetaprogram :: Maybe MPEvalOptions
                 -> Maybe (K3 Declaration -> GeneratorM (K3 Declaration))
                 -> Maybe (K3 Declaration -> GeneratorM (K3 Declaration))
                 -> K3 Declaration -> IO (Either String (K3 Declaration))
-evalMetaprogram evalOpts analyzeFOpt repairFOpt mp =
-    runGeneratorM initGState synthesizedProg >>= return . fst
+evalMetaprogram evalOpts analyzeFOpt repairFOpt prog =
+  runGeneratorM initGState $ synthesizedProg prog
   where
-    synthesizedProg = do
+    synthesizedProg mp = do
       localLog $ generatorInput mp
+      void $ modifyGEnvF_ $ \_ -> return emptyGeneratorEnv
       pWithDataAnns  <- runMpGenerators mp
       pWithMDataAnns <- applyDAnnGens pWithDataAnns
       pWithDADecls   <- modifyGDeclsF $ \gd -> addDecls gd pWithMDataAnns
@@ -80,7 +78,7 @@ evalMetaprogram evalOpts analyzeFOpt repairFOpt mp =
     analyzeF   = maybe defaultMetaAnalysis id analyzeFOpt
     repairF    = maybe defaultMetaRepair   id repairFOpt
 
-    rcr p = (liftIO $ evalMetaprogram evalOpts analyzeFOpt repairFOpt p) >>= either throwG return
+    rcr p = synthesizedProg p
 
     addDecls genDecls p@(tag -> DRole n)
       | n == defaultRoleName =
