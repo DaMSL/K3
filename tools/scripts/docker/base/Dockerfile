@@ -41,7 +41,7 @@ RUN mkdir -p /software/boost-1.57 && \
     wget --no-verbose http://downloads.sourceforge.net/boost/boost_1_57_0.tar.bz2 && \
     tar xvfj boost_1_57_0.tar.bz2 && \
     cd /software/boost-1.57/boost_1_57_0 && \
-    ./bootstrap.sh --without-libraries=python --prefix=/usr && ./b2 -j 8 stage cxxflags="-flto" threading=multi link=shared && ./b2 -j 8 install threading=multi link=shared cxxflags="-flto"
+    ./bootstrap.sh --without-libraries=python --prefix=/usr && ./b2 -j 8 stage threading=multi link=shared && ./b2 -j 8 install threading=multi link=shared 
 
 # Install GHC and cabal
 WORKDIR /
