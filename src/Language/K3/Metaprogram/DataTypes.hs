@@ -13,6 +13,7 @@ import Data.Set ( Set )
 
 import Language.Haskell.Interpreter ( Interpreter )
 import qualified Language.Haskell.Interpreter as HI
+import qualified Language.Haskell.Interpreter.Unsafe as HIU
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -23,6 +24,8 @@ import Language.K3.Core.Literal
 import Language.K3.Core.Metaprogram
 
 import Language.K3.Parser.DataTypes
+
+import Language.K3.Utils.Logger
 
 {-| Metaprogram environment -}
 data K3Generator = Splicer  (SpliceEnv -> SpliceResult GeneratorM)
@@ -47,10 +50,9 @@ data GeneratorState = GeneratorState { generatorUid    :: Int
                                      , generatorEnv    :: GeneratorEnv
                                      , spliceCtxt      :: SpliceContext
                                      , generatorDecls  :: GeneratorDecls
-                                     , mpEvalOpts      :: MPEvalOptions
-                                     , initInterpreter :: Interpreter () }
+                                     , mpEvalOpts      :: MPEvalOptions }
 
-type GeneratorM = EitherT String (StateT GeneratorState IO)
+type GeneratorM = EitherT String (StateT GeneratorState Interpreter)
 
 type TypeGenerator    = GeneratorM (K3 Type)
 type ExprGenerator    = GeneratorM (K3 Expression)
@@ -64,12 +66,20 @@ type ExprAnnGenerator = GeneratorM (Annotation Expression)
 
 
 {- Generator monad helpers -}
-runGeneratorM :: GeneratorState -> GeneratorM a -> IO (Either String a, GeneratorState)
-runGeneratorM st action = flip runStateT st $ runEitherT action
+runGeneratorM :: GeneratorState -> GeneratorM a -> IO (Either String a)
+runGeneratorM st action = do
+  actE <- HIU.unsafeRunInterpreterWithArgs (mpInterpArgs $ mpEvalOpts st) $
+            flip runStateT st $ runEitherT
+              ( (initializeInterpreter $ mpEvalOpts st) >> action )
+  return $ either (Left . show) fst actE
 
 -- | Run a parser and return its result in the generator monad.
 liftParser :: (Show a) => String -> K3Parser a -> GeneratorM a
 liftParser s p = either throwG return $ stringifyError $ runK3Parser Nothing p s
+
+-- | Lift a Haskell interpreter action into the generator monad.
+liftHI :: Interpreter a -> GeneratorM a
+liftHI = lift . lift
 
 -- | Raise an exception in the generator monad.
 throwG :: String -> GeneratorM a
@@ -86,12 +96,12 @@ emptyGeneratorDecls :: GeneratorDecls
 emptyGeneratorDecls = GeneratorDecls Map.empty Map.empty
 
 emptyGeneratorState :: GeneratorState
-emptyGeneratorState = GeneratorState 0 emptyGeneratorEnv emptySpliceContext emptyGeneratorDecls
-                                       defaultMPEvalOptions (initializeInterpreter defaultMPEvalOptions)
+emptyGeneratorState =
+  GeneratorState 0 emptyGeneratorEnv emptySpliceContext emptyGeneratorDecls defaultMPEvalOptions
 
 mkGeneratorState :: MPEvalOptions -> GeneratorState
-mkGeneratorState evalOpts = GeneratorState 0 emptyGeneratorEnv emptySpliceContext emptyGeneratorDecls
-                                             evalOpts (initializeInterpreter evalOpts)
+mkGeneratorState evalOpts =
+  GeneratorState 0 emptyGeneratorEnv emptySpliceContext emptyGeneratorDecls evalOpts
 
 getGeneratorUID :: GeneratorState -> Int
 getGeneratorUID  = generatorUid
@@ -107,9 +117,6 @@ getGeneratedDecls = generatorDecls
 
 getMPEvalOptions :: GeneratorState -> MPEvalOptions
 getMPEvalOptions = mpEvalOpts
-
-getInterpreter :: GeneratorState -> Interpreter ()
-getInterpreter = initInterpreter
 
 modifyGeneratorEnv :: (GeneratorEnv -> Either String (GeneratorEnv, a)) -> GeneratorState -> Either String (GeneratorState, a)
 modifyGeneratorEnv f gs = either Left (\(nge,r) -> Right (gs {generatorEnv = nge}, r)) $ f $ getGeneratorEnv gs
@@ -137,9 +144,6 @@ generatorWithSCtxt f = get >>= f . getSpliceContext
 
 generatorWithEvalOptions :: (MPEvalOptions -> GeneratorM a) -> GeneratorM a
 generatorWithEvalOptions f = get >>= f . getMPEvalOptions
-
-generatorWithInterpreter :: (Interpreter () -> GeneratorM a) -> GeneratorM a
-generatorWithInterpreter f = get >>= f . getInterpreter
 
 withGUID :: (Int -> a) -> GeneratorM a
 withGUID f = generatorWithGUID $ return . f
@@ -267,8 +271,8 @@ defaultMPEvalOptions = MPEvalOptions dInterpArgs dSearchPaths dLoadPaths dImport
                     , ("Language.K3.Core.Constructor.Declaration", Just "DC")
                     ]
 
-initializeInterpreter :: MPEvalOptions -> Interpreter ()
-initializeInterpreter evalOpts = do
+initializeInterpreter :: MPEvalOptions -> GeneratorM ()
+initializeInterpreter evalOpts = liftHI $ do
   void $  HI.set [HI.searchPath HI.:= (mpSearchPaths evalOpts)]
   void $  HI.loadModules $ (mpLoadPaths evalOpts)
   void $  HI.setImportsQ $ (map (,Nothing) (mpImportPaths evalOpts) ++ mpQImportPaths evalOpts)

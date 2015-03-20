@@ -41,6 +41,8 @@ import qualified Language.K3.Core.Constructor.Type        as TC
 import qualified Language.K3.Core.Constructor.Expression  as EC
 import qualified Language.K3.Core.Constructor.Literal     as LC
 
+import Language.K3.Utils.Logger
+
 {- Type synonyms for parser return types -}
 
 -- | Endpoint name => endpoint spec, bound triggers, qualified name, initializer expression

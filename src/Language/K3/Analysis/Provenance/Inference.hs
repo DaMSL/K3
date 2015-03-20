@@ -46,6 +46,8 @@ import Language.K3.Core.Utils
 import Language.K3.Analysis.Provenance.Core
 import Language.K3.Analysis.Provenance.Constructors
 
+import Language.K3.Utils.Logger
+
 import Data.Text ( Text )
 import Language.K3.Utils.PrettyText ( Pretty, (%$), (%+) )
 import qualified Data.Text as T
