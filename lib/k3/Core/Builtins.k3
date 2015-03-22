@@ -24,6 +24,9 @@ declare strcomp : string -> string -> int
 declare regex_matcher : string -> (string -> collection {elem: string} @ Collection)
 declare regex_matcher_q4 : string -> collection {elem: string} @ Collection
 
+// TPCH date parsing.
+declare tpch_date : string -> int
+
 // TODO: move to Time.k3
 declare now_int : () -> int
   with effects \_ -> io

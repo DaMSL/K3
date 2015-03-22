@@ -114,8 +114,8 @@ trigger q5_co_start : () = \_ -> (
                                ]
 
       , rhs_sample_query     = [$ orders.sample (\acc -> \c ->
-                                                  if     o.o_orderdate >= "1994-01-01"
-                                                     and o.o_orderdate <  "1995-01-01"
+                                                  if     o.o_orderdate >= 19940101
+                                                     and o.o_orderdate <  19950101
                                                   then
                                                     ((acc.insert_with
                                                           {key: o.o_custkey, value: 1}
@@ -142,8 +142,8 @@ trigger q5_co_start : () = \_ -> (
                     ]
       , lhs_query_clear = [$ customer = empty q5_customer_r @Collection ]
 
-      , rhs_query = [$ ((orders.filter  (\o ->     o.o_orderdate >= "1994-01-01"
-                                               and o.o_orderdate <  "1995-01-01" ))
+      , rhs_query = [$ ((orders.filter  (\o ->     o.o_orderdate >= 19940101
+                                               and o.o_orderdate <  19950101 ))
                                .groupBy (\o -> o.o_custkey)
                                         (\acc -> \o -> ((acc.insert {o_orderkey: o.o_orderkey}); acc))
                                         (empty {o_orderkey: int} @Collection))

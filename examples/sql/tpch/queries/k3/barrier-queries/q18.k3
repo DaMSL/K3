@@ -52,19 +52,19 @@ declare customer : mut q18_customer_bag
 declare orders   : mut q18_orders_bag
 
 // Final result.
-typedef loc_q_by_ncodt_r   = { key: {nm:string, ck:int, ok:int, od:string, tp:real}, value: real}
+typedef loc_q_by_ncodt_r   = { key: {nm:string, ck:int, ok:int, od:int, tp:real}, value: real}
 typedef loc_q_by_ncodt_map = collection loc_q_by_ncodt_r @Map
 
 declare q18_peer_result : loc_q_by_ncodt_map
-declare results : collection {name: string, custkey: int, orderkey: int, orderdate:string, totalprice: real, sum: real} @Collection
+declare results : collection {name: string, custkey: int, orderkey: int, orderdate:int, totalprice: real, sum: real} @Collection
 
 
 // Q18 intermediates.
 typedef o_cdt_by_ok_r = {key : int, value : { o_custkey    : int
-                                            , o_orderdate  : string
+                                            , o_orderdate  : int
                                             , o_totalprice : real}}
 
-typedef lo_q_by_odt_r     = {key : {ok: int, od: string, tp: real}, value : real}
+typedef lo_q_by_odt_r     = {key : {ok: int, od: int, tp: real}, value : real}
 typedef lo_odtq_by_ck_r   = {key :int, value : collection lo_q_by_odt_r @Map}
 typedef lo_odtq_by_ck_map = collection lo_odtq_by_ck_r @IntMap
 
@@ -110,7 +110,7 @@ trigger lineitem_orders : () = \_ -> (
                           (\_ -> \o -> { o_custkey    : o.o_custkey
                                        , o_orderdate  : o.o_orderdate
                                        , o_totalprice : o.o_totalprice })
-                          {o_custkey:0, o_orderdate:"", o_totalprice:0.0})
+                          {o_custkey:0, o_orderdate:0, o_totalprice:0.0})
   ) @DistributedGroupByGeneric(
       lbl         = [# lo ],
       clear_expr  = [$ orders = empty q18_orders_r @Collection ],
@@ -120,7 +120,7 @@ trigger lineitem_orders : () = \_ -> (
                           case li_having_result.lookup {key: o.key, value: 0.0} of
                           {Some li -> lo_odtq_by_ck.insert_with
                                         {key: o.value.o_custkey
-                                        , value: {| key: {ok:int, od:string, tp:real}, value: real
+                                        , value: {| key: {ok:int, od:int, tp:real}, value: real
                                                   | { key: { ok: o.key
                                                            , od: o.value.o_orderdate
                                                            , tp: o.value.o_totalprice }
@@ -166,11 +166,11 @@ trigger lineitem_orders_customer : () = \_ -> (
         , rhs_query_clear = [$ customer = empty q18_customer_r @Collection ]
 
       , join_key_ty          = [: int ]
-      , lhs_ht_ty            = [: {key: int, value: collection {key : {ok: int, od: string, tp: real}, value : real} @Map} ]
+      , lhs_ht_ty            = [: {key: int, value: collection {key : {ok: int, od: int, tp: real}, value : real} @Map} ]
       , rhs_ht_ty            = [: {key: int, value: string} ]
 
       , lhs_probe            = [$ (\lht -> \out -> \r ->
-                                    case lht.lookup {key: r.key, value: empty {key : {ok: int, od: string, tp: real}, value : real} @Map} of
+                                    case lht.lookup {key: r.key, value: empty {key : {ok: int, od: int, tp: real}, value : real} @Map} of
                                     { Some l ->
                                       l.value.iterate (\kv ->
                                           loc_q_by_ncodt.insert_with
@@ -213,7 +213,7 @@ trigger lineitem_orders_customer : () = \_ -> (
       , lhs_pipeline_next    = [$ (\_ -> ()) ]
       , rhs_pipeline_next    = [$ (\_ -> ())]
 
-      , lhs_clear_expr       = [$ (\_ -> loc_lhs_ht = empty {key: int, value: collection {key : {ok: int, od: string, tp: real}, value : real} @Map} @IntMap) ]
+      , lhs_clear_expr       = [$ (\_ -> loc_lhs_ht = empty {key: int, value: collection {key : {ok: int, od: int, tp: real}, value : real} @Map} @IntMap) ]
       , rhs_clear_expr       = [$ (\_ -> loc_rhs_ht = empty {key: int, value: string} @IntMap) ]
 
       , peer_next            = [$ ( print "LI-OR-CS join finished customer probe." );
@@ -227,7 +227,7 @@ trigger lineitem_orders_customer : () = \_ -> (
                                       )
 
                                   );
-                                  loc_q_by_ncodt = empty { key: {nm:string, ck:int, ok:int, od:string, tp:real}, value: real} @Map
+                                  loc_q_by_ncodt = empty { key: {nm:string, ck:int, ok:int, od:int, tp:real}, value: real} @Map
                                ]
 
       , next                 = [$ print "LI-OR-CS join all nodes finished." ]
@@ -289,7 +289,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   finishAsShutdownExpr = [$ false]
 )
 
-sink results_sink : {name: string, custkey: int, orderkey: int, orderdate:string, totalprice: real, sum: real} = file "results.csv" csv
+sink results_sink : {name: string, custkey: int, orderkey: int, orderdate:int, totalprice: real, sum: real} = file "results.csv" csv
 sink query_time_sink : string = stdout csv
 
 source rows : () = value ()

@@ -38,7 +38,7 @@ declare customer : mut q3_customer_bag
 declare orders   : mut q3_orders_bag
 
 // Final result.
-typedef lior_epd_by_ods_r     = {key : {ok: int, od: string, sp: int}, value: real}
+typedef lior_epd_by_ods_r     = {key : {ok: int, od: int, sp: int}, value: real}
 typedef lior_epd_by_ods_map   = collection lior_epd_by_ods_r @Map
 
 declare q3_peer_result : lior_epd_by_ods_map
@@ -71,7 +71,7 @@ trigger lineitem_orders : () = \_ -> (
       , rhs_ht_id            = [# lo_rhs_ht ]
 
       , lhs_sample_query     = [$ lineitem.sample (\acc -> \l ->
-                                                    if l.l_shipdate > "1995-03-15" then
+                                                    if l.l_shipdate > 19950315 then
                                                       ((acc.insert_with
                                                         {key: l.l_orderkey.b, value: 1}
                                                         (\old -> \new -> {key: old.key, value: old.value + new.value}));
@@ -83,7 +83,7 @@ trigger lineitem_orders : () = \_ -> (
                                ]
 
       , rhs_sample_query     = [$ orders.sample (\acc -> \o ->
-                                                  if o.o_orderdate < "1995-03-15" then
+                                                  if o.o_orderdate < 19950315 then
                                                     ((acc.insert_with
                                                       {key: o.o_orderkey, value: 1}
                                                       (\old -> \new -> {key: old.key, value: old.value + new.value}));
@@ -96,9 +96,7 @@ trigger lineitem_orders : () = \_ -> (
 
       , frequency_threshold  = [$ 1000.0 ]
 
-      , lhs_query = [$  // TODO: this currently does not fuse with the group-by in SendPartitionByKey.
-                        // We need a nested fusion class structure, i.e., ICond1(DCond2), for this functionality.
-                        ((lineitem.filter  (\l -> l.l_shipdate > "1995-03-15" ))
+      , lhs_query = [$  ((lineitem.filter  (\l -> l.l_shipdate > 19950315 ))
                                   .groupBy (\l -> l.l_orderkey)
                                            (\acc -> \l -> acc + (l.l_extendedprice * (1 - l.l_discount)))
                                            0.0)
@@ -107,27 +105,27 @@ trigger lineitem_orders : () = \_ -> (
                     ]
       , lhs_query_clear = [$ lineitem = empty q3_lineitem_r @Collection ]
 
-      , rhs_query = [$ ((orders.filter  (\o -> o.o_orderdate < "1995-03-15" ))
+      , rhs_query = [$ ((orders.filter  (\o -> o.o_orderdate < 19950315 ))
                                .groupBy (\o -> o.o_orderkey)
                                         (\_ -> \o -> { od : o.o_orderdate
                                                      , ck : o.o_custkey
                                                      , sp : o.o_shippriority})
-                                        { od: "", ck: 0, sp: 0 })
+                                        { od: 0, ck: 0, sp: 0 })
                                .fold    ((\acc -> \o -> ((acc.insert o); acc)) @:Accumulate)
-                                        (empty {key : int, value : {od:string, ck:int, sp:int}} @IntMap)
+                                        (empty {key : int, value : {od:int, ck:int, sp:int}} @IntMap)
                     ]
       , rhs_query_clear = [$ orders = empty q3_orders_r @Collection ]
 
       , join_key_ty          = [: int ]
       , lhs_ht_ty            = [: {key:int, value: real} ]
-      , rhs_ht_ty            = [: {key:int, value: {od:string, ck:int, sp:int} } ]
+      , rhs_ht_ty            = [: {key:int, value: {od:int, ck:int, sp:int} } ]
 
       , lhs_probe            = [$ (\lht -> \_ -> \o ->
                                     case lht.lookup {key: o.key, value: 0.0}
                                     of
                                       { Some li -> lior_epdods_map.insert_with
                                                     { key: o.value.ck
-                                                    , value: {|key : {ok: int, od: string, sp: int}, value: real
+                                                    , value: {|key : {ok: int, od: int, sp: int}, value: real
                                                               | { key   : {ok: o.key, od: o.value.od, sp: o.value.sp }
                                                                 , value : li.value }
                                                               |} @Map }
@@ -138,11 +136,11 @@ trigger lineitem_orders : () = \_ -> (
                                ]
 
       , rhs_probe            = [$ (\rht -> \_ -> \l ->
-                                    case rht.lookup {key: l.key, value: {od:"", ck:0, sp:0}}
+                                    case rht.lookup {key: l.key, value: {od:0, ck:0, sp:0}}
                                     of
                                       { Some ord -> lior_epdods_map.insert_with
                                                      { key: ord.value.ck
-                                                     , value: {|key : {ok: int, od: string, sp: int}, value: real
+                                                     , value: {|key : {ok: int, od: int, sp: int}, value: real
                                                                | { key   : {ok: l.key, od: ord.value.od, sp: ord.value.sp }
                                                                  , value : l.value }
                                                                |} @Map }
@@ -162,7 +160,7 @@ trigger lineitem_orders : () = \_ -> (
       , rhs_pipeline_next    = [$ (\_ -> ()) ]
 
       , lhs_clear_expr       = [$ (\_ -> lo_lhs_ht = empty {key:int, value: real} @IntMap) ]
-      , rhs_clear_expr       = [$ (\_ -> lo_rhs_ht = empty {key:int, value: {od:string, ck:int, sp:int}} @IntMap) ]
+      , rhs_clear_expr       = [$ (\_ -> lo_rhs_ht = empty {key:int, value: {od:int, ck:int, sp:int}} @IntMap) ]
 
       , peer_next            = [$ (lineitem_orders_customer, me) <- () ]
       , next                 = [$ () ]
@@ -220,7 +218,7 @@ declare finalizeResult: () -> () = \_ -> (
 )
 
 // For ktrace:
-declare results: collection {orderkey: int, revenue: real, orderdate: string, shippriority: int} @Collection
+declare results: collection {orderkey: int, revenue: real, orderdate: int, shippriority: int} @Collection
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes                = [$ peers ],
@@ -252,7 +250,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   finishAsShutdownExpr = [$ false]
 )
 
-sink results_sink : {orderkey: int, revenue: real, orderdate: string, shippriority: int} = file "results.csv" csv
+sink results_sink : {orderkey: int, revenue: real, orderdate: int, shippriority: int} = file "results.csv" csv
 sink query_time_sink : string = stdout csv
 
 source rows : () = value ()

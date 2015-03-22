@@ -264,4 +264,20 @@ namespace K3 {
       }
       return n;
   }
+
+  int __string_context::tpch_date(const string_impl& s) {
+    char delim = '-';
+    const char* buf = s.c_str();
+    if (!buf) {
+      return 0;
+    }
+    char date[9];
+    int i = 0;
+    for ( ; *buf != 0 && i < 8; buf++ ) {
+      if ( *buf != delim ) { date[i] = *buf; i++; }
+    }
+    date[i+1] = 0;
+    return std::atoi(date);
+  }
+
 } // namespace K3
