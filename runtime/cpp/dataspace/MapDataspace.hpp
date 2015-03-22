@@ -401,6 +401,52 @@ public:
   // Return a constant reference to the container
   const IntMap& getConstContainer() const { return *this; }
 
+
+  template<class archive>
+  void serialize(archive &ar) const {
+    ar & container->object_size;
+    ar & container->empty_key;
+    ar & container->size;
+    ar & container->capacity;
+
+    mapi* m = container.get();
+    for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
+      ar & *static_cast<R*>(o);
+    }
+  }
+
+  template<class archive>
+  void serialize(archive &ar) {
+    size_t object_size;
+    uint32_t empty_key;
+    size_t container_size;
+    size_t capacity;
+
+    ar & object_size;
+    ar & empty_key;
+    ar & container_size;
+    ar & capacity;
+
+    if ( container ) { mapi_clear(container.get()); container.reset(); }
+    init_mapi(true, object_size);
+
+    if ( container ) {
+      mapi* n = container.get();
+      mapi_empty_key(n, empty_key);
+      mapi_rehash(n, capacity);
+
+      for ( auto i = 0; i < container_size; ++i ) {
+        R r;
+        ar & r;
+        mapi_insert(n, &r);
+      }
+    } else {
+      throw std::runtime_error("Failed to instantiate IntMap for deserialization");
+    }
+  }
+
+  BOOST_SERIALIZATION_SPLIT_MEMBER()
+
 protected:
   shared_ptr<mapi> container;
 
@@ -459,7 +505,6 @@ private:
     }
   }
 
-  BOOST_SERIALIZATION_SPLIT_MEMBER()
 };
 
 //
@@ -873,6 +918,56 @@ public:
   // Return a constant reference to the container
   const StrMap& getConstContainer() const { return *this; }
 
+  template<class archive>
+  void serialize(archive &ar) const {
+    ar & container->value_size;
+    ar & container->size;
+    ar & container->capacity;
+    ar & container->deleted;
+    ar & container->max_load_factor;
+
+    map_str* m = container.get();
+    for (auto o = map_str_begin(m); o < map_str_end(m); o = map_str_next(m, o)) {
+      R* v = static_cast<R*>(map_str_get(m,o));
+      ar & *v;
+    }
+  }
+
+  template<class archive>
+  void serialize(archive &ar) {
+    size_t value_size;
+    size_t container_size;
+    size_t capacity;
+    size_t deleted;
+    double mlf;
+
+    ar & value_size;
+    ar & container_size;
+    ar & capacity;
+    ar & deleted;
+    ar & mlf;
+
+    if ( container ) { map_str_clear(container.get()); container.reset(); }
+    init_map_str(true, value_size);
+
+    if ( container ) {
+      map_str* n = container.get();
+      map_str_max_load_factor(n, mlf);
+      map_str_rehash(n, capacity);
+
+      for ( auto i = 0; i < container_size; ++i ) {
+        R r;
+        ar & r;
+        insert(r);
+      }
+    } else {
+      cout << "Here" << endl;
+      throw std::runtime_error("Failed to instantiate StrMap for deserialization");
+    }
+  }
+
+  BOOST_SERIALIZATION_SPLIT_MEMBER()
+
 protected:
   shared_ptr<map_str> container;
 
@@ -941,8 +1036,6 @@ private:
       throw std::runtime_error("Failed to instantiate StrMap for deserialization");
     }
   }
-
-  BOOST_SERIALIZATION_SPLIT_MEMBER()
 
 };
 

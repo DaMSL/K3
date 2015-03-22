@@ -276,7 +276,7 @@ namespace K3 {
     for ( ; *buf != 0 && i < 8; buf++ ) {
       if ( *buf != delim ) { date[i] = *buf; i++; }
     }
-    date[i+1] = 0;
+    date[i] = 0;
     return std::atoi(date);
   }
 
