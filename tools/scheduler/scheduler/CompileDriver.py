@@ -71,19 +71,11 @@ class CompileLauncher(mesos.interface.Scheduler):
         self.launched   = False
         self.terminate  = False
         self.job        = job
-        # self.name    = kwargs.get('name', 'CompileTask')
-        # self.uid      = kwargs.get('uid', '')
-        # self.path     = kwargs.get('path', '')
-        # self.git_hash = kwargs.get('git_hash', 'latest')
-        # self.user     = kwargs.get('user', '')
-        # self.options   = kwargs.get('options', '')
 
         self.source   = kwargs.get('source', None)
         self.script   = kwargs.get('script', None)
         self.status   = JobStatus.INITIATED
         self.log      = []
-
-
 
     def registered(self, driver, frameworkId, masterInfo):
         print ("[COMPILER REGISTERED] ID %s" % frameworkId.value)
@@ -94,7 +86,7 @@ class CompileLauncher(mesos.interface.Scheduler):
 
         #TODO: Det where to compile K3... rightnow, use qp4
         for offer in offers:
-          if self.launched or offer.hostname != 'qp4':
+          if self.launched or offer.hostname != 'qp3':
             driver.declineOffer(offer.id)
             continue
 
@@ -104,8 +96,7 @@ class CompileLauncher(mesos.interface.Scheduler):
                              source=self.source,
                              slave=offer.slave_id.value)
 
-          # db.insertCompile(dict(name=self.name, uid=self.uid, user=self.user, options=self.options, git_hash=self.git_hash))
-          db.insertCompile(self.job.__dict__())
+          db.insertCompile(self.job.__dict__)
           driver.launchTasks(offer.id, [task])
           self.status   = JobStatus.SUBMITTED
           self.launched = True
@@ -114,7 +105,9 @@ class CompileLauncher(mesos.interface.Scheduler):
     def statusUpdate(self, driver, update):
         # print ("[COMPILE STATUS] %s" % update.data)
         self.log.append(update.data)
-        with open(os.path.join(self.path, 'output'), 'a') as out:
+        if not os.path.exists(self.job.path):
+          os.mkdir(self.job.path)
+        with open(os.path.join(self.job.path, 'output'), 'a') as out:
           out.write(update.data)
 
         if update.state == mesos_pb2.TASK_RUNNING:
@@ -152,13 +145,8 @@ class CompileLauncher(mesos.interface.Scheduler):
 class CompileDriver:
   def __init__(self, job, **kwargs):
     self.job = job
-    # app      = kwargs.get('name', 'CompileTask')
     source   = kwargs.get('source', None)
     script   = kwargs.get('script', None)
-    # uid      = kwargs.get('uid', '')
-    # path     = kwargs.get('path', '')
-    # user     = kwargs.get('user', '')
-    # options   = kwargs.get('options', '')
 
     f = mesos_pb2.FrameworkInfo()
     f.user = "" # Have Mesos fill in the current user.
@@ -168,8 +156,6 @@ class CompileDriver:
     print "Framework name is %s" % f.name
 
     self.framework = f
-    # self.launcher = CompileLauncher(job, name=job.name, source=source, user=job.user,
-    #                                 script=script, uid=job.uid, path=path, options=options)
     self.launcher = CompileLauncher(job, source=source, script=script)
     self.driver = None
 

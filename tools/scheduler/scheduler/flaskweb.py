@@ -5,6 +5,7 @@ import json
 import hashlib
 import uuid
 import datetime
+import shutil
 from flask import (Flask, request, redirect, url_for, jsonify, render_template)
 # from flask.ext.uploads import delete, init, save, Upload
 from werkzeug import secure_filename
@@ -22,7 +23,7 @@ class Server(Flask):
     self.up = True
     Flask.__init__(self, name)
 
-LOCAL_DIR  = '.'
+LOCAL_DIR  = '/web'
 SERVER_URL = 'http://qp1:8002/'
 
 JOBS_TARGET    = 'jobs'
@@ -63,34 +64,58 @@ joblist = {}
 index_message = 'Welcome to K3'
 
 
+def initWeb():
+  for p in [JOBS_TARGET, APPS_TARGET, ARCHIVE_TARGET]:
+    path = os.path.join(LOCAL_DIR, p)
+    if not os.path.exists(path):
+      os.mkdir(path)
+  # Check for executor(s)
+  compiler_exec = os.path.join(LOCAL_DIR, 'CompileExecutor.py')
+  if not os.path.exists(compiler_exec):
+    shutil.copyfile('CompileExecutor.py', compiler_exec)
+  launcher_exec = os.path.join(LOCAL_DIR, 'k3executor')
+  if not os.path.exists(compiler_exec):
+    os.chdir('executor')
+    os.system('cmake .')
+    os.system('make')
+    shutil.copyfile('k3executor', launcher_exec)
+    os.chdir('..')
+
+
+
 # Returns unique time stamp uid (unique to this machine only (for now)
 def getUID():
   return str(uuid.uuid1()).split('-')[0]
 
 
-def return_error(msg, errcode):
-  if request.headers['Accept'] == 'application/json':
-    return msg, errcode
-  else:
-    # TODO: Make other error template files
-    return render_template("errors/404.html", message=msg)
-
-
-
+#------------------------------------------------------------------------------
+#  / - Home (welcome msg)
+#------------------------------------------------------------------------------
 @webapp.route('/')
 def root():
-  return redirect(url_for('index'))
+  if request.headers['Accept'] == 'application/json':
+    return "Welcome\n\n", 200
+  else:
+    return redirect(url_for('index'))
+
 
 
 @webapp.route('/index')
 def index():
-    # Renders index.html.
+  if request.headers['Accept'] == 'application/json':
+    return "Welcome\n\n", 200
+  else:
     return render_template('index.html')
 
+#------------------------------------------------------------------------------
+#  /about - TODO: about message
+#------------------------------------------------------------------------------
 @webapp.route('/about')
 def about():
-    # Renders author.html.
-    return render_template('about.html')
+  if request.headers['Accept'] == 'application/json':
+    return redirect(url_for('static', filename="API.txt"))
+  else:
+    return redirect(url_for('static', filename="API.html"))
 
 
 #------------------------------------------------------------------------------
@@ -117,7 +142,9 @@ def trace():
 #------------------------------------------------------------------------------
 #  /apps - Application Level interface
 #         POST   Upload new application
-#         GET    Display both list of loaded app and form to upload new one
+#             curl -i -H "Accept: application/json" -F file=@<filename> http://qp1:5000/apps
+#
+#         GET    Display both list of loaded apps and form to upload new ones
 #------------------------------------------------------------------------------
 @webapp.route('/apps', methods=['GET', 'POST'])
 def upload_app():
@@ -153,30 +180,28 @@ def upload_app():
               return redirect(url_for('upload_app'))
 
   applist = db.getAllApps()
-  print ("SHOWING ALL APPS")
+  versions = {a['name']: db.getVersions(a['name'], limit=5) for a in applist}
+
 
   # TODO: Add 2nd link on AppList: 1 to launch latest, 1 to show all versions
   if request.headers['Accept'] == 'application/json':
-      return jsonify(applist), 200
+      return jsonify(dict(apps=applist)), 200
   else:
-      return render_template('apps.html', applist=applist)
+      return render_template('apps.html', applist=applist, versions=versions)
 
 
 #------------------------------------------------------------------------------
 #  /apps/<appName> - Specific Application Level interface
-#         GET    Display all versions, executed jobs, etc...  (TODO)
+#         GET    Display all versions for given application
 #------------------------------------------------------------------------------
 @webapp.route('/apps/<appName>')
 def get_app(appName):
     applist = [a['name'] for a in db.getAllApps()]
 
-    # TODO:  Get/List all application versions for this App
     if appName in applist:
-
       versionList = db.getVersions(appName)
-
       if request.headers['Accept'] == 'application/json':
-        return jsonify(dict(name=appname, versions=versionList))
+        return jsonify(dict(name=appName, versions=versionList)), 200
       else:
         return render_template("apps.html", name=appName, versionList=versionList)
     else:
@@ -186,16 +211,22 @@ def get_app(appName):
 #------------------------------------------------------------------------------
 #  /apps/<appName> - Specific Application Level interface
 #         POST   (Upload archive data (C++, Source, etc....)
-#         GET    Display all versions, executed jobs, etc...  (TODO)
+#            curl -i -H "Accept: application/json"
+#                    -F "file=<filename>" http://qp1:5000/apps/<addName>/<addUID>
+#
+#         GET    (TODO) Display archived files...  NotImplemented
 #------------------------------------------------------------------------------
 @webapp.route('/apps/<appName>/<appUID>', methods=['GET', 'POST'])
-def archive_app(appName):
+def archive_app(appName, appUID):
     applist = [a['name'] for a in db.getAllApps()]
     uname = AppID.getAppId(appName, appUID)
 
     if appName not in applist:
       msg = "Application %s does not exist" % appName
-      return_error(msg)
+      if request.headers['Accept'] == 'application/json':
+        return msg, errcode
+      else:
+        return render_template("errors/404.html", message=msg)
 
     if request.method == 'POST':
         file = request.files['file']
@@ -210,11 +241,14 @@ def archive_app(appName):
             return "No file received", 400
 
     elif request.method == 'GET':
-      # TODO: Return the archive for this specific build
-      if request.headers['Accept'] == 'application/json':
-        return jsonify(db.getApp(appName))
-      else:
-        return render_template("index.html", message="TODO: Archive Contents for application %s" % uname)
+      path = os.path.join(webapp.config['UPLOADED_ARCHIVE_URL'], uname)
+      return redirect(path, 302)
+
+      # if request.headers['Accept'] == 'application/json':
+      #   return jsonify(db.getApp(appName))
+      # else:
+      #   return redirect(path, 302)
+
 
 
 #------------------------------------------------------------------------------
@@ -224,19 +258,23 @@ def archive_app(appName):
 @webapp.route('/jobs')
 def list_jobs():
   jobs = db.getJobs()
+  compiles = db.getCompiles()
   if request.headers['Accept'] == 'application/json':
-    return jsonify(jobs)
+    return jsonify(dict(LaunchJobs=jobs, CompilingJobs=compiles)), 200
   else:
-    return render_template("jobs.html", joblist=jobs)
+    return render_template("jobs.html", joblist=jobs, compilelist=compiles)
 
 
 #------------------------------------------------------------------------------
-#  /jobs/<appName> - Job Interface for specific application
+#  /jobs/<appName>
+#  /jobs/<appName>/<appUID  - Launch a new K3 Job
 #         POST    Create new K3 Job
-#         GET    (TODO: Display detailed job info)
+#          curl -i -X POST -H "Accept: application/json" -F "file=@<rolefile>" http://qp1:5000/jobs/<appName>/<appUID>
+#             NOTE: if appUID is omitted, job will be submitted to latest version of this app
+#
+#         GET    Display job list for this application
 #------------------------------------------------------------------------------
-
-@webapp.route('/jobs/<appName>/<appUID>', methods=['GET', 'POST'])    # IS THIS POSSIBLE????
+@webapp.route('/jobs/<appName>/<appUID>', methods=['GET', 'POST'])
 def create_job(appName, appUID):
   global dispatcher
   applist = [a['name'] for a in db.getAllApps()]
@@ -244,20 +282,30 @@ def create_job(appName, appUID):
     if request.method == 'POST':
         # TODO: Get user
         file = request.files['file']
-        text = request.form['text']
+        text = request.form['text'] if 'text' in request.form else None
+        user = request.form['user'] if 'user' in request.form else 'anonymous'
+        tag = request.form['tag'] if 'tag' in request.form else ''
 
         # Check for valid submission
         if not file and not text:
           return render_template("errors/404.html", message="Invalid job request")
 
-        # Post new job request, get job ID & submit time
+        # if not user:
+        #   user = 'anonymous'
+        # if not tag:
+        #   tag = ''
 
-        thisjob = dict(appName=appName, appUID=appUID, user='DEV')
+        # Post new job request, get job ID & submit time
+        thisjob = dict(appName=appName, appUID=appUID, user=user, tag=tag)
         jobId, time = db.insertJob(thisjob)
         thisjob = dict(jobId=jobId, time=time)
 
         # Save yaml to file (either from file or text input)
-        path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(jobId))
+        path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName)
+        if not os.path.exists(path):
+          os.mkdir(path)
+
+        path = os.path.join(path, str(jobId))
         filename = 'role.yaml'
         if not os.path.exists(path):
           os.mkdir(path)
@@ -276,7 +324,11 @@ def create_job(appName, appUID):
         # Submit to Mesos
         dispatcher.submit(newJob)
         thisjob = dict(thisjob, url=dispatcher.getSandboxURL(jobId), status='SUBMITTED')
-        return render_template('jobs.html', appName=appName, lastjob=thisjob)
+
+        if 'application/json' in request.headers['Accept']:
+          return jsonify(thisjob), 202
+        else:
+          return render_template('jobs.html', appName=appName, lastjob=thisjob)
 
     elif request.method == 'GET':
       jobs = db.getJobs(appName=appName)
@@ -290,12 +342,15 @@ def create_job(appName, appUID):
           if os.path.exists(path):
             with open(path, 'r') as role:
               lastrole = role.read()
-            return render_template("newjob.html", appName=appName, lastrole=lastrole)
-        return render_template("newjob.html", appName=appName)
+            return render_template("newjob.html", name=appName, uid=appUID, lastrole=lastrole)
+        return render_template("newjob.html", name=appName, uid=appUID)
 
   else:
-    #TODO:  Error handle
-    return "There is no app %s" % appName
+    msg =  "There is no application, %s" % appName
+    if request.headers['Accept'] == 'application/json':
+      return msg, errcode
+    else:
+      return render_template("errors/404.html", message=msg)
 
 
 @webapp.route('/jobs/<appName>', methods=['GET', 'POST'])
@@ -306,11 +361,10 @@ def create_job_latest(appName):
 
 
 #------------------------------------------------------------------------------
-#  /jobs/<appName>/<jobId> - Job Interface for specific job
-#         GET     (TODO: Display detailed job info)
-#         DELETE  (TODO: Kill a current K3Job)
+#  /jobs/<appName>/<jobId>/status - Detailed Job info
+#         GET     Display detailed job info  (default for all methods)
 #------------------------------------------------------------------------------
-@webapp.route('/jobs/<appName>/<jobId>', methods=['GET', 'POST'])
+@webapp.route('/jobs/<appName>/<jobId>/status')
 def get_job(appName, jobId):
     jobs = db.getJobs(jobId=jobId)
     job = None if len(jobs) == 0 else jobs[0]
@@ -321,7 +375,8 @@ def get_job(appName, jobId):
 
     thisjob = dict(job, url=dispatcher.getSandboxURL(jobId))
     if k3job != None:
-      thisjob = dict(thisjob, master=k3job.master)
+      thisjob['master'] = k3job.master
+    thisjob['sandbox'] = os.path.join(webapp.config['UPLOADED_JOBS_URL'], appName, str(jobId)).encode(encoding='ascii')
 
     path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(jobId),'role.yaml').encode(encoding='ascii')
     if os.path.exists(path):
@@ -339,50 +394,56 @@ def get_job(appName, jobId):
 #         GET     TODO: Consolidate STDOUT for current job (from all tasks)
 #         POST    TODO: Accept STDOUT & append here (if desired....)
 #------------------------------------------------------------------------------
-@webapp.route('/jobs/<appName>/<jobId>/stdout', methods=['GET'])
-def stdout(appName, jobId):
-    jobs = db.getJobs(appName=appName)
-    link = resolve(MASTER)
-    print link
-    sandbox = dispatcher.getSandboxURL(jobId)
-    if sandbox:
-      print sandbox
-      return '<a href="%s">%s</a>' % (sandbox, sandbox)
-    else:
-      return 'test'
+# @webapp.route('/jobs/<appName>/<jobId>/stdout', methods=['GET'])
+# def stdout(appName, jobId):
+#     jobs = db.getJobs(appName=appName)
+#     link = resolve(MASTER)
+#     print link
+#     sandbox = dispatcher.getSandboxURL(jobId)
+#     if sandbox:
+#       print sandbox
+#       return '<a href="%s">%s</a>' % (sandbox, sandbox)
+#     else:
+#       return 'test'
 
 
 #------------------------------------------------------------------------------
 #  /jobs/<appName>/<jobId>/archive - Endpoint to receive & archive files
-#         GET     TODO: Consolidate STDOUT for current job (from all tasks)
-#         POST    TODO: Accept STDOUT & append here (if desired....)
+#         GET     returns curl command
+#         POST    Accept files for archiving here
+#           curl -i -H "Accept: application/json"
+#              -F file=@<filename> http://qp1:5000/<appName>/<jobId>/archive
 #------------------------------------------------------------------------------
 @webapp.route('/jobs/<appName>/<jobId>/archive', methods=['GET', 'POST'])
 def archive_job(appName, jobId):
-    jobs = db.getJobs(jobId=jobId)
+    job_id = str(jobId).encode('ascii', 'ignore')
+    if job_id.find('.') > 0:
+      job_id = job_id.split('.')[0]
+    jobs = db.getJobs(jobId=job_id)
     job = None if len(jobs) == 0 else jobs[0]
     if job == None:
-      return render_template("errors/404.html", message="Job ID, %s, does not exist" % jobId)
+      return render_template("errors/404.html", message="Job ID, %s, does not exist" % job_id)
 
     if request.method == 'POST':
         file = request.files['file']
         if file:
             filename = secure_filename(file.filename)
-            path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, jobId, filename).encode(encoding='ascii')
+            path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, job_id, filename).encode(encoding='ascii')
             file.save(path)
             return "File Uploaded & archived", 202
         else:
             return "No file received", 400
 
     elif request.method == 'GET':
-        return 'Upload your file using a POST request'
-
-
+        return '''
+Upload your file using the following CURL command:\n\n
+   curl -i -H "Accept: application/json" -F file=@<filename> http://qp1:5000/<appName>/<jobId>/archive
+''', 200
 
 #------------------------------------------------------------------------------
-#  /jobs/<appName>/<jobId>/kil - Job Interface to cancel a job
-#         GET     Reads STDOUT for current job
-#         POST    TODO: Consolidate STDOUT & append here (if desired....)
+#  /jobs/<appName>/<jobId>/kill - Job Interface to cancel a job
+#         GET     Kills a Job (if orphaned, updates status to killed)
+#           curl -i -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<jobId>/kill
 #------------------------------------------------------------------------------
 @webapp.route('/jobs/<appName>/<jobId>/kill', methods=['GET'])
 def kill_job(appName, jobId):
@@ -394,7 +455,7 @@ def kill_job(appName, jobId):
 
     print ("Asked to KILL job #%s. Current Job status is %s" % (jobId, job['status']))
     # Separate check to kill orphaned jobs in Db
-    # TODO: Merge Job withs experiments to post updates to correct table
+    # TODO: Merge Job with experiments to post updates to correct table
     if job['status'] == 'RUNNING' or job['status'] == 'SUBMITTED':
       db.updateJob(jobId, status='KILLED')
 
@@ -416,6 +477,10 @@ def kill_job(appName, jobId):
 #  /compile
 #         GET     Form for compiling new K3 Executable OR status of compiling tasks
 #         POST    Submit new K3 Compile task
+#           curl -i -H "Accept: application/json"
+#                   -F name=<appName> -F file=@<sourceFile>
+#                   -F options=<compileOptions> -F user=<userName> http://qp1:5000/compile
+#           NOTE: Username & Options are optional fields
 #------------------------------------------------------------------------------
 @webapp.route('/compile', methods=['GET', 'POST'])
 def compile():
@@ -424,14 +489,14 @@ def compile():
       file = request.files['file']
       text = request.form['text']
       name = request.form['name']
-      options = request.form['options']
-      user = request.form['user']
+      options = request.form['options'] if 'options' in request.form else ''
+      user = request.form['user'] if 'user' in request.form else 'someone'
+      tag = request.form['tag'] if 'tag' in request.form else ''
 
       if not file and not text:
           return render_template("errors/404.html", message="Invalid Compile request")
 
-      # Determine application name  TODO: Change to uname
-      # TODO:  (if desired) use full UUID -- using shorter for simplicity
+      # Determine application name
       uid = getUID()
 
       if not name:
@@ -467,12 +532,11 @@ def compile():
       source = os.path.join(url, src_file)
       script = os.path.join(url, sh_file)
 
-
       # TODO: Add in Git hash
-      compileJob    = CompileJob(name=name, uid=uid, path=path, url=url, options=options, user=user)
+      compileJob    = CompileJob(name=name, uid=uid, path=path, url=url, options=options, user=user, tag=tag)
       compileDriver = CompileDriver(compileJob, source=source, script=script)
 
-      # TODO: Enter Compile task into db, get/set K3 build source, use UUID for key
+      # TODO: get/set K3 build source
       compile_tasks[uname] = compileDriver
 
       t = threading.Thread(target=compileDriver.launch)
@@ -489,26 +553,26 @@ def compile():
       if request.headers['Accept'] == 'application/json':
         return outputurl, 200
       else:
-        return render_template("compile.html", appName=name, lastcompile=thiscompile)
+        return render_template("jobs.html", appName=name, lastcompile=thiscompile)
 
 
     else:
       # TODO: Return list of Active/Completed Compiling Tasks
       if request.headers['Accept'] == 'application/json':
-        return 'CURL FORMAT:\n\n\tcurl -i -F "name=<appName>;options=<compileOptions>;file=@<sourceFile>" http://qp1:5000/compile'
+        return 'CURL FORMAT:\n\n\tcurl -i -H "Accept: application/json" -F name=<appName> -F file=@<sourceFile> -F options=<compileOptions> -F user=<userName> http://qp1:5000/compile'
       else:
         return render_template("compile.html")
 
 
 
-@webapp.route('/compile/<uname>', methods=['GET', 'POST'])
+#------------------------------------------------------------------------------
+#  /compile/<uname>
+#         GET     displays STDOUT & STDERR consolidated output for compile task
+#------------------------------------------------------------------------------
+@webapp.route('/compile/<uname>', methods=['GET'])
 def get_compile(uname):
-    if uname not in compile_tasks:
-      msg = "Not currently tracking the compile task %s" % uname
-      return_error (msg, 404)
-    else:
-      c = compile_tasks[uname]
-      fname = os.path.join(webapp.config['UPLOADED_ARCHIVE_DEST'], uname, 'output').encode('ascii')
+    fname = os.path.join(webapp.config['UPLOADED_ARCHIVE_DEST'], uname, 'output').encode('ascii')
+    if os.path.exists(fname):
       stdout_file = open(fname, 'r')
       output = stdout_file.read()
       stdout_file.close()
@@ -518,24 +582,51 @@ def get_compile(uname):
       else:
         return render_template("output.html", output=output)
 
+    else:
+      msg = "No output found for compilation, %s\n\n" % uname
+      if request.headers['Accept'] == 'application/json':
+        return msg, errcode
+      else:
+        return render_template("errors/404.html", message=msg)
 
-# TODO: KILL A COMPILE TASK
-# @webapp.route('/compile/<uname>/kill', methods=['GET'])
-# def kill_compile(uname):
-#     if uname not in compile_tasks:
-#       msg = "Not currently tracking the compile task %s" % uname
-#       return_error (msg, 404)
-#     else:
-#       c = compile_tasks[uname]
-#       fname = os.path.join(webapp.config['UPLOADED_ARCHIVE_DEST'], uname, 'output').encode('ascii')
-#       stdout_file = open(fname, 'r')
-#       output = stdout_file.read()
-#       stdout_file.close()
-#
-#       if request.headers['Accept'] == 'application/json':
-#         return output, 200
-#       else:
-#         return render_template("output.html", output=output)
+
+#------------------------------------------------------------------------------
+#  /compile/<uname>/kill
+#         GET     Kills an active compiling tasks (or removes and orphaned one
+#------------------------------------------------------------------------------
+@webapp.route('/compile/<uname>/kill', methods=['GET'])
+def kill_compile(uname):
+
+    name = AppID.getName(uname)
+    uid = AppID.getUID(uname)
+
+    complist = db.getCompiles(uid=uid)
+    if len(complist) == 0:
+      msg = "Not currently tracking the compile task %s" % uname
+      if request.headers['Accept'] == 'application/json':
+        return msg, errcode
+      else:
+        return render_template("errors/404.html", message=msg)
+    else:
+      c = complist[0]
+      print ("Asked to KILL Compile UID #%s. Current Job status is %s" % (c['uid'], c['status']))
+
+      if not JobStatus.done(c['status']):
+        db.updateCompile(jobId, status=JobStatus.KILLED, done=True)
+
+      if uname in compile_tasks:
+        del compile_tasks[uname]
+        c['status'] = JobStatus.KILLED
+      else:
+        c['status'] = 'ORPHANED and CLEANED'
+
+      if request.headers['Accept'] == 'application/json':
+        return jsonify(c), 200
+      else:
+        apps = getAllApps(appName=appName)
+        return render_template("jobs.html", appName=appName, applist=apps, lastcompile=c, complist=complist)
+
+
 
 
 
@@ -599,6 +690,7 @@ if __name__ == '__main__':
   webapp.debug = True
 
   db.createTables()
+  initWeb()
 
   framework = mesos_pb2.FrameworkInfo()
   framework.user = "" # Have Mesos fill in the current user.

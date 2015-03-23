@@ -17,6 +17,7 @@
 # limitations under the License.
 
 import sys
+import os
 import threading
 import time
 import subprocess
@@ -34,8 +35,6 @@ class CompilerExecutor(mesos.interface.Executor):
     # Create a thread to run the task. Tasks should always be run in new
     # threads or processes, rather than inside launchTask itself.
     def run_task():
-
-      # cmd = '$MESOS_SANDBOX/compile_%s.sh' % str(task.name.encode('ascii','ignore'))
 
       name = str(task.name.encode('ascii', 'ignore'))
       cmd = '$MESOS_SANDBOX/compile_%s.sh' % name
@@ -66,12 +65,13 @@ class CompilerExecutor(mesos.interface.Executor):
           driver.sendStatusUpdate(self.status)
 
       exitCode = proc.returncode
-      self.status.state = mesos_pb2.TASK_FINISHED
 
-      if exitCode == 0:
-        self.status.data = "COMPILER ----  SUCCESS!!!!!"
+      if os.path.exists('/k3/K3/__build/A') and exitCode == 0:
+        self.status.state = mesos_pb2.TASK_FINISHED
+        self.status.data = "COMPILER Completed Successfully."
       else:
-        self.status.data = "COMPILER ----  FAILED"
+        self.status.state = mesos_pb2.TASK_FAILED
+        self.status.data = "COMPILER Failed. Check output for details."
 
       driver.sendStatusUpdate(self.status)
 
@@ -80,21 +80,15 @@ class CompilerExecutor(mesos.interface.Executor):
       print '\tcombined output:', repr(stdout_value)
       print '\tstderr value   :', repr(stderr_value)
 
-      # This is where one would perform the requested task.
-
-      # print "Compiler Executor: Sending status update..."
-      # driver.sendStatusUpdate(self.status)
-      # print "Sent status update"
 
     self.thread = threading.Thread(target=run_task)
     self.thread.start()
 
   def frameworkMessage(self, driver, message):
-    # Send it back to the scheduler.
     driver.sendFrameworkMessage(message)
 
   def killTask(self, driver, tid):
-    print ("Executor got killed")
+
     sys.exit(1)
 
   def error(self, driver, code, message):

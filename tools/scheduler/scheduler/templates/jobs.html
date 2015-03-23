@@ -11,42 +11,63 @@
           </h2>
         {% endif %}
         {% if lastcompile %}
-            <h3>Compling # {{ lastcompile.uid }} {{ lastcompile.status }} at {{ lastcompile.time }}</h3>
-            <h4>Check progress on <a href="{{ lastcompile.url }}" target="_blank">Mesos</a></h4>
+            <h3>Compling {{ lastcompile.name }} with UID: # {{ lastcompile.uid }} <br>
+                Status: {{ lastcompile.status }} at {{ lastcompile.time }}</h3>
+            <h4>View Compile Output: <a href="{{ lastcompile.outputurl }}" target="_blank">STDOUT</a></h4>
+            <h4>Check progress: <a href="{{ lastcompile.url }}" target="_blank">Mesos</a></h4>
         {% endif %}
-        {% if lastjob %}.
-            <h3>Job # {{ lastjob.jobId }} {{ lastjob.status }} at {{ lastjob.time }}</h3>
-            <h4>Check tasks on <a href="{{ lastjob.url }}" target="_blank">Mesos</a></h4>
+        {% if lastjob %}
+        <div class="row">
+            <div class="col-md-5">
+                <h3>Job # {{ lastjob.jobId }} {{ lastjob.status }} at {{ lastjob.time }}</h3>
+                <h4>Check tasks on <a href="{{ lastjob.url }}" target="_blank">Mesos</a></h4>
+            </div>
+            <div class="col-md-7">
+              {% if lastjob.sandbox %}
+                <li class="list-group-item">Sandbox Files: <iframe src="{{ lastjob.sandbox }}" style="border:none" width="100%"></iframe></li>{% endif %}
+            </div>
+        </div>
             <br>
             <h4 class="text-center">Job Environment</h4>
             <ul class="list-group">
-              {% if lastjob.master %}
-                <li class="list-group-item">Master at <span class="text-info">{{ lastjob.master }}</span></li>{% endif %}
-              {% if lastjob.app_version %}
-                <li class="list-group-item">Version UID: <span class="text-info">{{ lastjob.app_version }}</span></li>{% endif %}
+              {% if lastjob.hash %}
+                <li class="list-group-item">App Version UID: <span class="text-info">{{ lastjob.hash }}</span></li>{% endif %}
+              {% if lastjob.user %}
+                <li class="list-group-item">Username <span class="text-info">{{ lastjob.user }}</span></li>{% endif %}
+              {% if lastjob.url %}
+                <li class="list-group-item">Link to Mesos: <span class="text-info"><a href="{{ lastjob.url }}" target="_blank">{{ lastjob.url }}</a></span></li>{% endif %}
+              {% if lastjob.tag %}
+                <li class="list-group-item">Tag Notes: <span class="text-info">{{ lastjob.tag }}</span></li>{% endif %}
               {% if lastjob.time %}
                 <li class="list-group-item">Time Submitted <span class="text-info">{{ lastjob.time }}</span></li>{% endif %}
+              {% if lastjob.complete %}
+                <li class="list-group-item">Time Completed <span class="text-info">{{ lastjob.complete }}</span></li>{% endif %}
+              {% if lastjob.master %}
+                <li class="list-group-item">Master at <span class="text-info">{{ lastjob.master }}</span></li>{% endif %}
               {% if lastjob.roles %}
                 <li class="list-group-item">Roles<br><pre>{{ lastjob.roles }}</pre></li> {% endif %}
             </ul>
             <br><br><h4><a href="/jobs">return to jobs</a></h4>
         {% else %}
           <h3>Active Compiling Jobs</h3>
+          <table class="table table-striped">
           {% for job in compilelist %}
             {% if job.status == "SUBMITTED" or job.status == "COMPILING" or job.status == "ARCHIVING" %}
                 <tr><td><a href="/compile/{{job.name}}-{{job.uid}}">{{job.name}}-{{job.uid}}</a></td>
-                    <td>{{job.git_hash}}</td><td>{{job.user}}</td><td>{{job.options}}</td><td>{{job.submit}}</td><td>{{job.status}}</td>
-                    <td><a href="">
+                    <td>{{job.git_hash}}</td>
+                    <td>{{job.user}}</td><td>{{job.options}}</td><td>{{job.submit}}</td><td>{{job.status}}</td>
+                    <td><a href="/compile/{{job.name}}-{{job.uid}}/kill">
                         <button class="btn btn-danger btn-sm">Kill</button></a></td>
                 </tr>
             {% endif %}
           {% endfor %}
+          </table>
 
           <h3>Active K3 Jobs</h3>
           <table class="table table-striped">
           {% for job in joblist %}
             {% if job.status == "SUBMITTED" or job.status == "RUNNING" %}
-            <tr><td><a href="/jobs/{{job.appName}}/{{job.jobId}}">{{job.jobId}}</a></td>
+            <tr><td><a href="/jobs/{{job.appName}}/{{job.jobId}}/status">{{job.jobId}}</a></td>
                 <td>{{job.appName}}</td><td>{{job.user}}</td><td>{{job.time}}</td><td>{{job.status}}</td>
                 <td><a href="/jobs/{{job.appName}}/{{job.jobId}}/kill">
                     <button class="btn btn-danger btn-sm">Kill</button></a></td>
@@ -58,11 +79,24 @@
           <table class="table table-striped">
           {% for job in joblist %}
             {% if job.status != "SUBMITTED" and job.status != "RUNNING" %}
-            <tr><td><a href="/jobs/{{job.appName}}/{{job.jobId}}">{{job.jobId}}</a></td>
+            <tr><td><a href="/jobs/{{job.appName}}/{{job.jobId}}/status">{{job.jobId}}</a></td>
                 <td>{{job.appName}}</td><td>{{job.user}}</td><td>{{job.time}}</td><td>{{job.status}}</td></tr>
             {% endif %}
           {% endfor %}
         </table>
+
+          <h3>Inactive Compiling Jobs</h3>
+          <table class="table table-striped">
+          {% for job in compilelist %}
+            {% if job.status != "SUBMITTED" and job.status != "COMPILING" and job.status != "ARCHIVING" %}
+                <tr><td><a href="/compile/{{job.name}}-{{job.uid}}">{{job.name}}-{{job.uid}}</a></td>
+                    <td>{{job.git_hash}}</td>
+                    <td>{{job.user}}</td><td>{{job.options}}</td><td>{{job.submit}}</td><td>{{job.status}}</td>
+                </tr>
+            {% endif %}
+          {% endfor %}
+          </table>
+
 
         {% endif %}
     </div>

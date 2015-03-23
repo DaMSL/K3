@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS app_versions (
     hash        text,
     path        text,
     archive     text,
-    date        date
+    date        timestamp
 );''',
   'jobs': '''
 CREATE TABLE IF NOT EXISTS jobs (
@@ -47,7 +47,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     appName     name,
     appUID      text,
     username    text,
-    time        date,
+    submit      timestamp,
+    complete    timestamp,
+    tag         text,
     status      text
 );''',
   'compiles': '''
@@ -57,8 +59,9 @@ CREATE TABLE IF NOT EXISTS compiles (
     git_hash    text,
     username    text,
     options     text,
-    submit      date,
-    complete    date,
+    submit      timestamp,
+    complete    timestamp,
+    tag         text,
     status      text
 );'''
 }
@@ -126,12 +129,13 @@ def getAllApps(appName=None):
       "SELECT a.name, v.uid, v.date FROM apps AS a, app_versions AS v WHERE a.name=v.name AND a.latest=v.uid;")
   return [dict(name=r[0], uid=r[1], date=r[2]) for r in cur.fetchall()]
 
-def getVersions(appName):
+def getVersions(appName, limit=None):
     cur = getConnection().cursor()
+    limitRows = '' if not limit else 'LIMIT %d' % limit
     cur.execute('''
 SELECT name, uid, name || '-' || uid as version, date, git_hash, username, options
-FROM app_versions LEFT OUTER JOIN compiles USING (name, uid) WHERE name='%s';
-''' % appName)
+FROM app_versions LEFT OUTER JOIN compiles USING (name, uid) WHERE name='%s' ORDER BY date %s;
+''' % (appName, limitRows))
     return [dict(name=r[0], uid=r[1], version=r[2], date=r[3], git_hash=r[4], user=r[5], options=r[6]) for r in cur.fetchall()]
 
 def checkHash(hash):
@@ -146,8 +150,10 @@ def insertJob(job):
   result = cur.fetchone()
   jobId = 1000 if result[0] == None else int(result[0]) + 1
   time = str(getTS_utc())
-  cur.execute("INSERT INTO jobs VALUES ('%(jobId)d', '%(appName)s', '%(appUID)s', '%(user)s', '%(time)s', '%(status)s');" %
-              dict(job, jobId=jobId, status='SUBMITTED', time=time))
+  cur.execute('''
+INSERT INTO jobs (jobId, appName, appUID, username, submit, tag, status)
+VALUES ('%(jobId)d', '%(appName)s', '%(appUID)s', '%(user)s', '%(time)s', '%(tag)s', '%(status)s');
+''' %  dict(job, jobId=jobId, status='SUBMITTED', time=time))
   conn.commit()
   return jobId, getTS_est(time)
 
@@ -159,15 +165,18 @@ def getJobs(**kwargs):
                   else " WHERE jobId='%s'" % jobId))
   cur = getConnection().cursor()
   cur.execute("SELECT * from jobs " + filter + " ORDER BY jobID DESC;")
-  return [dict(jobId=r[0], appName=r[1], hash=r[2], user=r[3], time=r[4], status=r[5]) for r in cur.fetchall()]
+  return [dict(jobId=r[0], appName=r[1], hash=r[2], user=r[3],
+               time=r[4], complete=r[5], tag=r[6], status=r[7]) for r in cur.fetchall()]
 
 def updateJob(jobId, **kwargs):
   status = kwargs.get("status", None)
+  done = kwargs.get("done", False)
   conn = getConnection()
   cur = conn.cursor()
 
+  complete = ", complete='%s'" % str(getTS_utc()) if done else ''
   if status:
-    cur.execute("UPDATE jobs SET status='%s' WHERE jobId=%s;" % (status, jobId))
+    cur.execute("UPDATE jobs SET status='%s'%s WHERE jobId=%s;" % (status, complete, jobId))
     conn.commit()
 
 def insertCompile(comp):
@@ -175,8 +184,8 @@ def insertCompile(comp):
   cur = conn.cursor()
   time = str(getTS_utc())
   cur.execute('''
-INSERT INTO compiles (name, uid, git_hash, username, options, submit, status)
-VALUES('%(name)s', '%(uid)s', '%(git_hash)s', '%(user)s', '%(options)s', '%(time)s', '%(status)s');
+INSERT INTO compiles (name, uid, git_hash, username, options, submit, tag, status)
+VALUES('%(name)s', '%(uid)s', '%(git_hash)s', '%(user)s', '%(options)s', '%(time)s', '%(tag)s', '%(status)s');
 ''' % dict(comp, time=time, status='SUBMITTED'))
   conn.commit()
   return getTS_est(time)
@@ -199,12 +208,17 @@ def updateCompile(uid, **kwargs):
 
 def getCompiles(**kwargs):
   appName = kwargs.get('appName', None)
+  uid     = kwargs.get('uid', None)
   active  = kwargs.get('active', False)
 
-  # filter = ("" if not appName and not jobId
-  #           else (" WHERE appName='%s'" % appName if appName
-  #                 else " WHERE jobId='%s'" % jobId))
+  filter = ("WHERE appName='%s'" % appName if appName
+              else "WHERE uid='%s'" % uid if uid
+                  else "")
 
   cur = getConnection().cursor()
   cur.execute("SELECT * from compiles ORDER BY submit DESC;")
-  return dict(name=r[0], uid=r[1], git_hash=r[2], user=r[3], options=r[4], submit=r[5], complete=r[6], status=r[7])
+  return [dict(name=r[0], uid=r[1], git_hash=r[2], user=r[3],
+               options=r[4], submit=r[5], complete=r[6],
+               tag=r[7], status=r[8]) for r in cur.fetchall()]
+
+

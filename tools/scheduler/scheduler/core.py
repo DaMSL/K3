@@ -18,6 +18,8 @@ class JobStatus:
   def done(cls, s):
     return s in [JobStatus.FAILED, JobStatus.KILLED, JobStatus.FINISHED]
 
+
+
 class AppID:
   def __init__(self, name, uid):
     self.name = name
@@ -32,12 +34,12 @@ class AppID:
     return '%s-%s' % (name, uid)
 
   @classmethod
-  def getName(cls, app):
-    return app.split('-')[0]
+  def getName(cls, appId):
+    return appId.split('-')[0]
 
   @classmethod
-  def getUID(cls, name, uid):
-    return app.split('-')[1]
+  def getUID(cls, appId):
+    return appId.split('-')[1]
 
 
 # TODO inputs per Roles instead of per Job
@@ -85,9 +87,10 @@ class CompileJob:
     self.url      = kwargs.get('url', '')
     self.git_hash = kwargs.get('git_hash', 'latest')
     self.user     = kwargs.get('user', '')
+    self.tag       = kwargs.get('tag', '')
     self.options   = kwargs.get('options', '')
   def __dict__(self):
-    return dict(name=self.name, uid=self.uid, path=self.path,
+    return dict(name=self.name, uid=self.uid, path=self.path, tag=self.tag,
                 git_hash=self.git_hash, user=self.user, options=self.options)
 
 

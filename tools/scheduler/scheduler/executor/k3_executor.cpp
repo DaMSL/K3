@@ -59,14 +59,14 @@ public:
                           const FrameworkInfo& frameworkInfo,
                           const SlaveInfo& slaveInfo)
   {
-	host_name= slaveInfo.hostname();
-	localPeerCount = 0;
-	totalPeerCount = 0;
+      host_name= slaveInfo.hostname();
+      localPeerCount = 0;
+      totalPeerCount = 0;
   }
 
   virtual void reregistered(ExecutorDriver* driver, const SlaveInfo& slaveInfo)   {
     cout << "Re-registered executor on " << slaveInfo.hostname() << endl;
-	host_name= slaveInfo.hostname();
+        host_name= slaveInfo.hostname();
   }
 
   virtual void disconnected(ExecutorDriver* driver) {
@@ -75,7 +75,7 @@ public:
   }
 
   virtual void launchTask(ExecutorDriver* driver, const TaskInfo& task)    {
-	localPeerCount++;
+        localPeerCount++;
 
     TaskStatus status;
     status.mutable_task_id()->MergeFrom(task.task_id());
@@ -83,300 +83,275 @@ public:
     driver->sendStatusUpdate(status);
 
     //-------------  START TASK OPERATIONS ----------
-	cout << "Running K3 Program: " << task.name() << endl;
-	string k3_cmd;
+        cout << "Running K3 Program: " << task.name() << endl;
+        string k3_cmd;
 
-	using namespace YAML;
+        using namespace YAML;
 
-	Node hostParams = Load(task.data());
-	Node peerParams;
-	Node peers;
-//	vector<Node> peers;
+        Node hostParams = Load(task.data());
+        Node peerParams;
+        Node peers;
 
-	cout << "WHAT I RECEIVED\n----------------------\n";
-	cout << Dump(hostParams);
-	cout << "\n---------------------------------\n";
+        cout << "WHAT I RECEIVED\n----------------------\n";
+        cout << Dump(hostParams);
+        cout << "\n---------------------------------\n";
 
-	k3_cmd = "cd $MESOS_SANDBOX && ./" + hostParams["binary"].as<string>();
-	if (hostParams["logging"]) {
-		k3_cmd += " -l INFO ";
-	}
+        k3_cmd = "cd $MESOS_SANDBOX && ./" + hostParams["binary"].as<string>();
+        if (hostParams["logging"]) {
+                k3_cmd += " -l INFO ";
+        }
         if (hostParams["resultVar"]) {
           k3_cmd += " --result_path $MESOS_SANDBOX --result_var " + hostParams["resultVar"].as<string>();
         }
 
+        string datavar, datapath;
+        string datapolicy = "default";
+        int peerStart = 0;
+        int peerEnd = 0;
 
-	string datavar, datapath;
-	string datapolicy = "default";
-	int peerStart = 0;
-	int peerEnd = 0;
+        for (const_iterator param=hostParams.begin(); param!=hostParams.end(); param++)  {
+            string key = param->first.as<string>();
+            if (key == "logging" || key == "binary" ||
+                    key == "server" || key == "server_group") {
+                    continue;
+            }
+            if (key == "roles") {
+              continue;
+            }
 
-	for (const_iterator param=hostParams.begin(); param!=hostParams.end(); param++)  {
-		string key = param->first.as<string>();
-//		cout << " PROCESSING: " << key << endl;
-		if (key == "logging" || key == "binary" ||
-			key == "server" || key == "server_group") {
-			continue;
-		}
-		if (key == "roles") {
-		  continue;
-		}
+            else if (key == "peers") {
+                peerParams["peers"] = hostParams["peers"];
+            }
+            else if (key == "me") {
+                Node meList = param->second;
+                YAML::Emitter emit;
+                emit << YAML::Flow << meList;
+                for (std::size_t i=0; i<meList.size(); i++)  {
+                        peers.push_back(meList[i]);
+                }
+            }
+            else if (key == "data") {
+                // TODO: Datafiles per group. This is a hack
+                // that only includes the data files from the first peer group
+                // and assigns them to any peer
+                Node dataFilesNode = param->second[0];
+                for(YAML::const_iterator it=dataFilesNode.begin();it!=dataFilesNode.end();++it) {
+                  DataFile f;
+                  auto d = *it;
+                  f.path = d["path"].as<string>();
+                  f.varName = d["var"].as<string>();
+                  f.policy = d["policy"].as<string>();
+                  dataFiles.push_back(f);
+                }
+            }
 
-		else if (key == "peers") {
-			peerParams["peers"] = hostParams["peers"];
-		}
-		else if (key == "me") {
-			Node meList = param->second;
-			YAML::Emitter emit;
-			emit << YAML::Flow << meList;
-			for (std::size_t i=0; i<meList.size(); i++)  {
-				peers.push_back(meList[i]);
-			}
-		}
-		else if (key == "data") {
-		        // TODO: Datafiles per group. This is a hack
-		        // that only includes the data files from the first peer group
-		        // and assigns them to any peer
-		        Node dataFilesNode = param->second[0];
-			for(YAML::const_iterator it=dataFilesNode.begin();it!=dataFilesNode.end();++it) {
-                          DataFile f;
-                          auto d = *it;
-			  f.path = d["path"].as<string>();
-			  f.varName = d["var"].as<string>();
-			  f.policy = d["policy"].as<string>();
-			  dataFiles.push_back(f);
-			}
+            else if (key == "totalPeers")  {
+                    totalPeerCount = param->second.as<int>();
+            }
+            else if (key == "peerStart") {
+                    peerStart = param->second.as<int>();
+            }
+            else if (key == "peerEnd") {
+                    peerEnd = param->second.as<int>();
+            }
+            else if (key == "globals") {
+              // handled per peer
 
-		}
+            }
+            else {
+            }
+        }
 
-		//else if (key == "datavar") {
-		//	datavar = param->second.as<string>();
-		//}
-		//else if (key == "datapath") {
-		//	datapath = "{path: " + param->second.as<string>() + "}";
-		//}
-		//else if (key == "datapolicy") {
-		//	datapolicy = param->second.as<string>();
-		//}
-		else if (key == "totalPeers")  {
-			totalPeerCount = param->second.as<int>();
-		}
-		else if (key == "peerStart") {
-			peerStart = param->second.as<int>();
-		}
-		else if (key == "peerEnd") {
-			peerEnd = param->second.as<int>();
-		}
-		else if (key == "globals") {
-		  // handled per peer
-
-		}
-		else {
-//			string value = i->second.as<string>();
-			//peerParams[key] = param->second;
-		}
-	}
-
-	// DATA ALLOCATION *
-		// TODO: Convert to multiple input dirs
-	map<string, vector<string> > peerFiles[peers.size()];
+        // DATA ALLOCATION  // TODO: Convert to multiple input dirs
+        map<string, vector<string> > peerFiles[peers.size()];
 
         for (auto dataFile : dataFiles) {
-                cout << "Top of loop" << endl;
-	        vector<string> filePaths;
+            cout << "Top of loop" << endl;
+            vector<string> filePaths;
 
-		// 1. GET DIR LIST IN datavar
-		DIR *datadir = NULL;
-		datadir = opendir(dataFile.path.c_str());
-                if (!datadir) {
-                  cout << "Failed to open data dir: " << dataFile.path << endl;
-                  TaskStatus status;
-                  status.mutable_task_id()->MergeFrom(task.task_id());
-                  status.set_state(TASK_FAILED);
-                  driver->sendStatusUpdate(status);
-                  return;
+            // 1. GET DIR LIST IN datavar
+            DIR *datadir = NULL;
+            datadir = opendir(dataFile.path.c_str());
+            if (!datadir) {
+              cout << "Failed to open data dir: " << dataFile.path << endl;
+              TaskStatus status;
+              status.mutable_task_id()->MergeFrom(task.task_id());
+              status.set_state(TASK_FAILED);
+              driver->sendStatusUpdate(status);
+              return;
 
+            }
+            else {
+                    cout << "Opened data dir: " << dataFile.path << endl;
+            }
+
+            struct dirent *srcfile = NULL;
+            while (true) {
+                    srcfile = readdir(datadir);
+                    if (srcfile == NULL) {
+                        break;
+                    }
+                    cout << "FILE  " << srcfile->d_name << ":  ";
+                    if (srcfile->d_type == DT_REG) {
+                        string filename = srcfile->d_name;
+                        filePaths.push_back(dataFile.path + "/" + filename);
+                        cout << "Added -> " << filename;
+                    }
+                    cout << endl;
+            }
+            closedir(datadir);
+            cout << "read directory" << endl;
+
+            int numfiles = filePaths.size();
+
+            sort (filePaths.begin(), filePaths.end());
+
+            int myfiles = 0;
+            if (dataFile.policy == "global") {
+              for (int i = 0; i < numfiles; i++) {
+                int peer = i % totalPeerCount;
+
+                if (peer >= peerStart && peer <= peerEnd) {
+                  myfiles++;
+                  peerFiles[peer-peerStart][dataFile.varName].push_back(filePaths[i]);
                 }
-		else {
-			cout << "Opened data dir: " << dataFile.path << endl;
-
-		}
-		struct dirent *srcfile = NULL;
-
-		while (true) {
-			srcfile = readdir(datadir);
-			if (srcfile == NULL) {
-				break;
-			}
-			cout << "FILE  " << srcfile->d_name << ":  ";
-			if (srcfile->d_type == DT_REG) {
-				string filename = srcfile->d_name;
-			        filePaths.push_back(dataFile.path + "/" + filename);
-				cout << "Added -> " << filename;
-			}
-			cout << endl;
-		}
-		closedir(datadir);
-                cout << "read directory" << endl;
-
-		int numfiles = filePaths.size();
-
-		sort (filePaths.begin(), filePaths.end());
-
-
-		int p_start = 0;
-		int p_end = numfiles;
-
-		int p_total = peers.size();
-		int myfiles = 0;
-		if (dataFile.policy == "global") {
-		  for (int i = 0; i < numfiles; i++) {
-	            int peer = i % totalPeerCount;
-
-		    if (peer >= peerStart && peer <= peerEnd) {
-		      myfiles++;
-		      peerFiles[peer-peerStart][dataFile.varName].push_back(filePaths[i]);
-		    }
-
-		  }
-
-		}
-		else if (dataFile.policy == "replicate") {
-		  for (int p = 0; p < peers.size(); p++) {
-	            for (int i =0; i < numfiles; i++) {
-		      myfiles++;
-                      peerFiles[p][dataFile.varName].push_back(filePaths[i]);
-	            }
-		  }
-		}
-
-		//if (dataFile.policy == "global") {
-		//	p_start = (numfiles / totalPeerCount) * peerStart;
-		//	p_end = (numfiles / totalPeerCount) * (peerEnd+1);
-		//	p_total = totalPeerCount;
-		//	cout << ("Global files s=" + stringify(p_start) + " e=" + stringify(p_end) + " t=" + stringify(p_total)) << endl;
-		//        for (int filenum = p_start; filenum < p_end; filenum++) {
-		//        	int peer = floor((((p_total)*1.0*filenum) / numfiles)) - peerStart;
-		//        	cout << "  Peer # " << peer << " : [" << filenum << "] " << filePaths[filenum] << endl;
-		//        	peerFiles[peer][dataFile.varName].push_back(filePaths[filenum]);
-		//		myfiles++;
-		//        }
-		//}
-                else if (dataFile.policy == "pinned") {
-                  for(int filenum = 0; filenum < numfiles; filenum++) {
-	            peerFiles[0][dataFile.varName].push_back(filePaths[filenum]);
-		  }
-
+              }
+            }
+            else if (dataFile.policy == "replicate") {
+              for (int p = 0; p < peers.size(); p++) {
+                for (int i =0; i < numfiles; i++) {
+                  myfiles++;
+                  peerFiles[p][dataFile.varName].push_back(filePaths[i]);
                 }
+              }
+            }
 
-                cout << "my files: " << myfiles << endl;
+            /*if (dataFile.policy == "global") {
+                  p_start = (numfiles / totalPeerCount) * peerStart;
+                  p_end = (numfiles / totalPeerCount) * (peerEnd+1);
+                  p_total = totalPeerCount;
+                  cout << ("Global files s=" + stringify(p_start) + " e=" + stringify(p_end) + " t=" + stringify(p_total)) << endl;
+                    for (int filenum = p_start; filenum < p_end; filenum++) {
+                          int peer = floor((((p_total)*1.0*filenum) / numfiles)) - peerStart;
+                          cout << "  Peer # " << peer << " : [" << filenum << "] " << filePaths[filenum] << endl;
+                          peerFiles[peer][dataFile.varName].push_back(filePaths[filenum]);
+                          myfiles++;
+                    }
+            }  */
+            else if (dataFile.policy == "pinned") {
+              for(int filenum = 0; filenum < numfiles; filenum++) {
+                peerFiles[0][dataFile.varName].push_back(filePaths[filenum]);
+              }
 
-	}
+            }
+            cout << "my files: " << myfiles << endl;
+        }
 
-	cout << "BUILDING PARAMS FOR PEERS" << endl;
-	int pph = 0;
-	if (peerParams["peers"].size() >= 1) {
-	  YAML::Node peer_masters;
-	  YAML::Node masters;
-	  YAML::Node curMaster = YAML::Load(YAML::Dump(peerParams["peers"][0]));
-	  masters.push_back(YAML::Load(YAML::Dump(curMaster)));
-	  std::cout << peerParams["peers"].size() << " peers to map" << endl;
-	  for (std::size_t i=0; i< peerParams["peers"].size(); i++) {
-	    YAML::Node kv;
-	    if (peerParams["peers"][i]["addr"][0].as<string>() != curMaster["addr"][0].as<string>()) {
-	      cout << "Host: " << curMaster["addr"][0].as<string>() << ". Peers: " << pph << endl;
-	      pph = 0;
-	      masters.push_back(YAML::Load(YAML::Dump(peerParams["peers"][i])));
+        cout << "BUILDING PARAMS FOR PEERS" << endl;
+        int pph = 0;
+        if (peerParams["peers"].size() >= 1) {
+          YAML::Node peer_masters;
+          YAML::Node masters;
+          YAML::Node curMaster = YAML::Load(YAML::Dump(peerParams["peers"][0]));
+          masters.push_back(YAML::Load(YAML::Dump(curMaster)));
+          std::cout << peerParams["peers"].size() << " peers to map" << endl;
+          for (std::size_t i=0; i< peerParams["peers"].size(); i++) {
+            YAML::Node kv;
+            if (peerParams["peers"][i]["addr"][0].as<string>() != curMaster["addr"][0].as<string>()) {
+              cout << "Host: " << curMaster["addr"][0].as<string>() << ". Peers: " << pph << endl;
+              pph = 0;
+              masters.push_back(YAML::Load(YAML::Dump(peerParams["peers"][i])));
               curMaster = YAML::Load(YAML::Dump(peerParams["peers"][i]));
-	    }
-	    pph++;
-	    std::cout << "added one" << endl;
-	    kv["key"] = YAML::Load(YAML::Dump(peerParams["peers"][i]["addr"]));
-	    kv["value"] = YAML::Load(YAML::Dump(curMaster["addr"]));
-	    peer_masters.push_back(kv);
-	  }
-	  cout << "Host: " << curMaster["addr"][0].as<string>() << ". Peers: " << pph << endl;
+            }
+            pph++;
+            std::cout << "added one" << endl;
+            kv["key"] = YAML::Load(YAML::Dump(peerParams["peers"][i]["addr"]));
+            kv["value"] = YAML::Load(YAML::Dump(curMaster["addr"]));
+            peer_masters.push_back(kv);
+          }
+          cout << "Host: " << curMaster["addr"][0].as<string>() << ". Peers: " << pph << endl;
 
-	  peerParams["peer_masters"] = YAML::Load(YAML::Dump(peer_masters));
-	  peerParams["masters"] = YAML::Load(YAML::Dump(masters));
+          peerParams["peer_masters"] = YAML::Load(YAML::Dump(peer_masters));
+          peerParams["masters"] = YAML::Load(YAML::Dump(masters));
           std::cout << "Masters: " << YAML::Dump(masters) << endl;
-	}
+        }
 
 
         std::ostringstream oss;
-	oss << "PEERS!!! (" << std::endl;
-	for (std::size_t i=0; i<peers.size(); i++)  {
-		oss << "---" << std::endl;
-		YAML::Node thispeer = peerParams;
-		YAML::Node globals = hostParams["globals"][i];
-	        for (const_iterator p=globals.begin(); p!=globals.end(); p++)  {
-	          thispeer[p->first.as<string>()] = p->second;
-	        }
-		YAML::Node me = peers[i];
-		thispeer["me"] = me;
-		YAML::Node local_peers;
-		std::cout << "start: " << peerStart << ". end: " << peerEnd << std::endl;
-		for (int j=peerStart; j<= peerEnd; j++) {
-                  local_peers.push_back(YAML::Load(YAML::Dump(peerParams["peers"][j])));
-		}
+        oss << "PEERS!!! (" << std::endl;
+        for (std::size_t i=0; i<peers.size(); i++)  {
+            oss << "---" << std::endl;
+            YAML::Node thispeer = peerParams;
+            YAML::Node globals = hostParams["globals"][i];
+            for (const_iterator p=globals.begin(); p!=globals.end(); p++)  {
+              thispeer[p->first.as<string>()] = p->second;
+            }
+            YAML::Node me = peers[i];
+            thispeer["me"] = me;
+            YAML::Node local_peers;
+            std::cout << "start: " << peerStart << ". end: " << peerEnd << std::endl;
+            for (int j=peerStart; j<= peerEnd; j++) {
+              local_peers.push_back(YAML::Load(YAML::Dump(peerParams["peers"][j])));
+            }
 
-		thispeer["local_peers"] = YAML::Load(YAML::Dump(local_peers));
+            thispeer["local_peers"] = YAML::Load(YAML::Dump(local_peers));
 
-		for (auto it : peerFiles[i])  {
-			auto datavar = it.first;
-                        if (thispeer[datavar]) {
-                          thispeer.remove(datavar);
-                        }
-			for (auto &f : it.second) {
-				Node src;
-				src["path"] = f;
-				thispeer[datavar].push_back(src);
-			}
-		}
-		// ADD DATA SOURCE DIR HERE
-		YAML::Emitter emit;
-		emit << YAML::Flow << thispeer;
-		string param = emit.c_str();
-		std::ofstream peerFile;
-		string peerFileName = "/mnt/mesos/sandbox/peers" + std::to_string(i) + ".yaml";
-		peerFile.open(peerFileName, std::ofstream::out);
-		peerFile << param;
-		peerFile.close();
-		oss << param << std::endl;
-		std::cout << param << std::endl;
-		k3_cmd += " -p " + peerFileName;
-		for (auto it : peerFiles[i])  {
-			auto datavar = it.first;
-                        if (thispeer[datavar]) {
-                          thispeer.remove(datavar);
-                        }
-                }
-	}
-	oss << ") END PEERS!!!" << std::endl;
-	cout << oss.str() << std::endl;
+            for (auto it : peerFiles[i])  {
+                    auto datavar = it.first;
+                    if (thispeer[datavar]) {
+                      thispeer.remove(datavar);
+                    }
+                    for (auto &f : it.second) {
+                            Node src;
+                            src["path"] = f;
+                            thispeer[datavar].push_back(src);
+                    }
+            }
+            // ADD DATA SOURCE DIR HERE
+            YAML::Emitter emit;
+            emit << YAML::Flow << thispeer;
+            string param = emit.c_str();
+            std::ofstream peerFile;
+            string peerFileName = "/mnt/mesos/sandbox/peers" + std::to_string(i) + ".yaml";
+            peerFile.open(peerFileName, std::ofstream::out);
+            peerFile << param;
+            peerFile.close();
+            oss << param << std::endl;
+            std::cout << param << std::endl;
+            k3_cmd += " -p " + peerFileName;
+            for (auto it : peerFiles[i])  {
+                    auto datavar = it.first;
+                    if (thispeer[datavar]) {
+                      thispeer.remove(datavar);
+                    }
+            }
+        }
+        oss << ") END PEERS!!!" << std::endl;
+        cout << oss.str() << std::endl;
 
-	cout << "FINAL COMMAND: " << k3_cmd << endl;
+        cout << "FINAL COMMAND: " << k3_cmd << endl;
         if (thread) {
-	  driver->sendFrameworkMessage("Debug: thread already existed!");
-          thread->interrupt();
+            driver->sendFrameworkMessage("Debug: thread already existed!");
+            thread->interrupt();
 
-          thread->join();
-          delete thread;
-          thread = 0;
+            thread->join();
+            delete thread;
+            thread = 0;
         }
 
         bool isMaster = false;
         cout << "Checking master" << endl;
         if (Dump(hostParams["me"][0]) == Dump(hostParams["master"])) {
-		isMaster = true;
+                isMaster = true;
                 cout << "I am master" << endl;
-	}
+        }
         else {
           cout << "me: " << Dump(hostParams["me"][0]) << endl;
           cout << "master: " << Dump(hostParams["master"]) << endl;
         }
         cout << "Launching K3: " << endl;
-        thread = new boost::thread(TaskThread(task, k3_cmd, driver, isMaster));
+        string app_name =  hostParams["binary"].as<string>();
+        thread = new boost::thread(TaskThread(task, k3_cmd, driver, isMaster, app_name, host_name));
   }
 
 
@@ -386,88 +361,119 @@ class TaskThread {
     string k3_cmd;
     ExecutorDriver* driver;
     bool isMaster;
+    string app_name;
+    string host_name;
 
   public:
-        TaskThread(TaskInfo t, string cmd, ExecutorDriver* d, bool m)
-          : task(t), k3_cmd(cmd), driver(d), isMaster(m) {}
+      TaskThread(TaskInfo t, string cmd, ExecutorDriver* d, bool m, string a, string h)
+        : task(t), k3_cmd(cmd), driver(d), isMaster(m), app_name(a), host_name(h) {}
 
-        void operator()() {
-          TaskStatus status;
-          status.mutable_task_id()->MergeFrom(task.task_id());
-	  // Currently, just call the K3 executable with the generated command line from task.data()
-          try {
-		  FILE* pipe = popen(k3_cmd.c_str(), "r");
-		  if (!pipe) {
-			  status.set_state(TASK_FAILED);
-			  driver->sendStatusUpdate(status);
-			  cout << "Failed to open subprocess" << endl;
-		  }
-		  char buffer[256];
-		  while (!feof(pipe)) {
-			  if (fgets(buffer, 256, pipe) != NULL) {
-				  std::string s = std::string(buffer);
-			               cout << s << endl;
-			  }
-		  }
-		  int k3 = pclose(pipe);
+      void operator()() {
+        TaskStatus status;
+        status.mutable_task_id()->MergeFrom(task.task_id());
+        string job_id   = task.task_id().value();
 
-	          if (k3 == 0) {
-	          	status.set_state(TASK_FINISHED);
-	          	cout << "Task " << task.task_id().value() << " Completed!" << endl;
-                        driver->sendStatusUpdate(status);
-	          }
-	          else {
-	          	status.set_state(TASK_FAILED);
-	          	cout << "K3 Task " << task.task_id().value() << " returned error code: " << k3 << endl;
-                        driver->sendStatusUpdate(status);
-	          }
-          }
-          catch (...) {
-            status.set_state(TASK_FAILED);
-            driver->sendStatusUpdate(status);
-          }
-	  //-------------  END OF TASK  -------------------
+        // Currently, just call the K3 executable with the generated command line from task.data()
+        try {
+            FILE* pipe = popen(k3_cmd.c_str(), "r");
+            if (!pipe) {
+                status.set_state(TASK_FAILED);
+                driver->sendStatusUpdate(status);
+                cout << "Failed to open subprocess" << endl;
+            }
+            char buffer[256];
+            while (!feof(pipe)) {
+                if (fgets(buffer, 256, pipe) != NULL) {
+                   std::string s = std::string(buffer);
+                   cout << s << endl;
+                }
+            }
+            int k3 = pclose(pipe);
+            if (k3 == 0) {
+                // Tar sandbox & send to flaskweb UI  (hack for now -- should simply call post-execution script)
+                string tarfile = app_name + "_" + job_id + "_" + host_name + ".tar";
+                string tar_cmd = "cd $MESOS_SANDBOX && tar -cf " + tarfile + " --exclude='k3executor' --exclude='" + app_name + "' *";
+                string curl_cmd = "cd $MESOS_SANDBOX && curl -i -H \"Accept: application/json\" -F \"file=@"+tarfile+"\" http://qp1:5000/jobs/"+app_name+"/"+job_id+"/archive";
+                cout << tar_cmd << endl;
+                cout << curl_cmd << endl;
+                
+//                cout << "----------------------> Getting STDOUT" << endl;
+//                
+//                ifstream stdout ("stdout");
+//                string line;
+//                if (stdout.is_open())  {
+//                    while (getline (stdout,line)) {
+//                        cout << line << '\n';
+//                    }
+//                    stdout.close();
+//                }
+//                else  {
+//                  cout << "Could NOT open STDOUT" << endl;
+//                }
+//                cout << "----------------------> END OF  STDOUT" << endl;
+//
+                system(tar_cmd.c_str());
+                system(curl_cmd.c_str());
+                status.set_state(TASK_FINISHED);
+                cout << "Task " << task.task_id().value() << " Completed!" << endl;
+
+                driver->sendStatusUpdate(status);
+            }
+            else {
+                status.set_state(TASK_FAILED);
+                cout << "K3 Task " << task.task_id().value() << " returned error code: " << k3 << endl;
+                driver->sendStatusUpdate(status);
+            }
+
         }
+        catch (...) {
+          status.set_state(TASK_FAILED);
+          driver->sendStatusUpdate(status);
+        }
+
+
+        //-------------  END OF TASK  -------------------
+      }
 };
 
   virtual void killTask(ExecutorDriver* driver, const TaskID& taskId) {
-	  	  driver->sendFrameworkMessage("Executor " + host_name+ " KILLING TASK");
-                  if (thread) {
-                    thread->interrupt();
-                    thread->join();
-                    delete thread;
-                    thread = 0;
-                  }
-		  driver->stop();
+      driver->sendFrameworkMessage("Executor " + host_name+ " KILLING TASK");
+      if (thread) {
+        thread->interrupt();
+        thread->join();
+        delete thread;
+        thread = 0;
+      }
+      driver->stop();
 }
 
   virtual void frameworkMessage(ExecutorDriver* driver, const string& data) {
-	  driver->sendFrameworkMessage(data);
+      driver->sendFrameworkMessage(data);
   }
 
   virtual void shutdown(ExecutorDriver* driver) {
-  	driver->sendFrameworkMessage("Executor " + host_name+ "SHUTTING DOWN");
-	driver->stop();
+      driver->sendFrameworkMessage("Executor " + host_name+ "SHUTTING DOWN");
+      driver->stop();
   }
 
   virtual void error(ExecutorDriver* driver, const string& message) {
-	  driver->sendFrameworkMessage("Executor " + host_name+ " ERROR");
-	  driver->stop();
+      driver->sendFrameworkMessage("Executor " + host_name+ " ERROR");
+      driver->stop();
 }
   
 private:
-  string host_name;
-  int state;
-  int localPeerCount;
-  int totalPeerCount;
-  int tasknum;
+    string host_name;
+    int state;
+    int localPeerCount;
+    int totalPeerCount;
+    int tasknum;
 };
 
 
 int main(int argc, char** argv)
 {
-	KDExecutor executor;
-	MesosExecutorDriver driver(&executor);
-        TaskStatus status;
-        driver.run();
+    KDExecutor executor;
+    MesosExecutorDriver driver(&executor);
+    TaskStatus status;
+    driver.run();
 }

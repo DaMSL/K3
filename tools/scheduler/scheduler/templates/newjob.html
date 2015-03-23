@@ -3,19 +3,43 @@
 {% block content %}
   <div class="container">
     <div class="starter-template">
-      <h2>Launch a new Jobs for <span class="text-info">{{ appId }}</span></h2>
+      <h2>Launch a new K3 Job</h2>
         <form action="" method=post enctype=multipart/form-data>
             <div class="row">
-              <div class="col-md-4">
-                 <h4>Upload YAML Role File</h4>
-                 <input type=file class="btn btn-file btn-md" name=file>
-              </div>
-                 <h4>Paste raw YAML below</h4>
-              <div class="col-md-8">
-                <textarea class="form-control" name=text cols=20 rows=12></textarea>
-              </div>
+                <div class="col-md-2"><span class="lead text-center">Application:</span></div>
+                <div class="col-md-10"><span class="text-info">{{ name }}</span></div>
             </div>
-            <span class="lead text-center">Launch: <button type=submit class="btn btn-primary btn-md">Submit</button></span>
+            <div class="row">
+                <div class="col-md-2"><span class="lead text-center">Version UID:</span></div>
+                <div class="col-md-10"><span class="text-info">{{ uid }}
+                {% if latest %} (latest version) {% endif %}</span></div>
+            </div>
+
+            {% if tag %}
+            <div class="row">
+                <div class="col-md-2"><span class="lead text-center">Version Comments:</span></div>
+                <div class="col-md-10"><h3><span class="text-info">{{ tag }}</span></div>
+            </div>
+            {% endif %}
+            <hr />
+            <p><div class="row">
+                <div class="col-md-3"><span class="lead text-left">Username (optional)</span></div>
+                <div class="col-md-9"><input type=text name=user></div>
+            </div></p>
+            <div class="row">
+                <div class="col-md-3"><span class="lead text-left">Tag (optional)</span> </div>
+                <div class="col-md-9"><input type=text name=tag></div>
+            </div>
+            <br />
+            <div class="row">
+                <div class="col-md-4"> <span class="lead text-center">Option A: Upload YAML Role File </span>
+                <input type=file class="btn btn-file btn-md text-center" name=file>
+                <button type=submit class="btn btn-primary btn-md text-center">Submit</button> </div>
+
+                <div class="col-md-8"><span class="lead text-center">Option B: Paste raw YAML below:</span>
+                <textarea class="form-control" name=text cols=20 rows=12></textarea></div>
+            </div>
+            <div class="row text=right"><button type=submit class="btn btn-primary btn-md">Submit</button></div>
          </form>
     </div>
   </div>

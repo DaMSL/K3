@@ -145,6 +145,12 @@ class Dispatcher(mesos.interface.Scheduler):
     # Succesful. Accept any used offers. Build tasks, etc.
     for offerId in self.offers:
       if cpusUsedPerOffer[offerId] > 0:
+
+        mem = getResource(self.offers[offerId].resources, "mem", float)
+        # if mem < 32:
+        #   print ("Offerred less than 32MB of RAM, skipping")
+        #   continue
+
         host = self.offers[offerId].hostname.encode('ascii','ignore')
         debug = (host, str(rolesPerOffer[offerId]))
         print("Accepted Roles for offer on %s: %s" % debug)
@@ -162,7 +168,6 @@ class Dispatcher(mesos.interface.Scheduler):
             curPort = curPort + 1
        
         taskid = len(nextJob.tasks)
-        mem = getResource(self.offers[offerId].resources, "mem", float)
         t = Task(taskid, offerId, host, mem, peers)
         nextJob.tasks.append(t)
 
@@ -189,6 +194,11 @@ class Dispatcher(mesos.interface.Scheduler):
       driver.launchTasks(oid, [task])
       # Stop considering the offer, since we just used it.
       del self.offers[k3task.offerid]
+
+    # # Decline all remaining offers
+    for oid, offer in self.offers.items():
+      print "DECLINING OFFER"
+      driver.declineOffer(offer.id)
 
   def cancelJob(self, jobId, driver):
     print("Asked to cancel job %d. Killing all tasks" % jobId)
@@ -229,7 +239,7 @@ class Dispatcher(mesos.interface.Scheduler):
       # TODO Move the job to a finished job list
       job = self.active[jobId]
       job.status = "FINISHED"
-      db.updateJob(jobId, status=job.status)
+      db.updateJob(jobId, status=job.status, done=True)
       del self.active[jobId]
       self.finished[jobId] = job
       self.tryTerminate()

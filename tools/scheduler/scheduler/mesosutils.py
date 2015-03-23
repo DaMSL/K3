@@ -13,9 +13,9 @@ import mesos.native
 
 # TODO how should we determine the executor url
 EXECUTOR_URL = "http://qp1:8002/k3executor"
-COMPEXEC_URL = "http://qp1:8002/k3compexec"
+COMPEXEC_URL = "http://qp1:8002/CompileExecutor.py"
 
-K3_DOCKER_NAME = "damsl/k3-deployment:stable"
+K3_DOCKER_NAME = "damsl/k3-deployment:latest"
 
 def getResource(resources, tag, convF):
   for resource in resources:
@@ -212,8 +212,7 @@ def compileTask(**kwargs):
   # env.vale = <git-hash>
 
   comp_exec = command.uris.add()
-  # comp_exec.value = COMPEXEC_URL
-  comp_exec.value = 'http://qp1:8002/CompileExecutor.py'
+  comp_exec.value = COMPEXEC_URL
   comp_exec.executable = False
   comp_exec.extract = False
 
