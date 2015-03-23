@@ -205,9 +205,7 @@ namespace K3 {
   __time_context::__time_context() {}
 
   int __time_context::now_int(unit_t) {
-    auto t = std::chrono::system_clock::now();
-    auto elapsed =std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch());
-    return elapsed.count();
+    return time_milli();
   }
 
 

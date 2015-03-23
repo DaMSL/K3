@@ -225,6 +225,9 @@ namespace K3 {
   template <>
   std::size_t hash_value<K3::base_string>(const K3::base_string&);
 
+  // Time in milliseconds
+  int time_milli();
+
 } // namespace K3
 
 #endif
