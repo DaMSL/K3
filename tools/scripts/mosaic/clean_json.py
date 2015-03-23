@@ -4,6 +4,7 @@
 import argparse
 import csv
 import json
+import re
 
 def convert_dict(d):
     # for addresses, options, records, etc, just dereference
@@ -54,29 +55,34 @@ def convert_any(x):
     else:
         return x
 
-def convert_file(file_nm):
-    out_file = file_nm + "_out"
+def convert_file(file_nm, writer):
     with open(file_nm, 'r', newline='') as csvfile:
-        with open(out_file, 'w', newline='') as out_csvfile:
-            reader = csv.reader(csvfile, delimiter='|', quotechar="'")
-            writer = csv.writer(out_csvfile, delimiter='|', quotechar="'")
-            for row in reader:
-                res = []
-                for x in row:
-                    #print(x)
-                    obj = json.loads(x)
-                    # print("obj: " + str(obj))
-                    new_obj = convert_any(obj)
-                    #print(new_obj)
-                    res += [json.dumps(new_obj)]
-                writer.writerow(res)
+        reader = csv.reader(csvfile, delimiter='|', quotechar="'")
+        for row in reader:
+            res = []
+            for x in row:
+                #print(x)
+                obj = json.loads(x)
+                # print("obj: " + str(obj))
+                new_obj = convert_any(obj)
+                #print(new_obj)
+                res += [json.dumps(new_obj)]
+            writer.writerow(res)
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("json_files", type=str, nargs='+', help="Specify path")
     args = parser.parse_args()
-    for j in args.json_files:
-        convert_file(j)
+    with open("messages.dsv", "w", newline='') as msg_file:
+        with open("globals.dsv", "w", newline='') as glb_file:
+            msg_writer = csv.writer(msg_file, delimiter='|', quotechar="'")
+            glb_writer = csv.writer(glb_file, delimiter='|', quotechar="'")
+            for f in args.json_files:
+                # is it a messages or a globals?
+                if re.search("Globals", f):
+                    convert_file(f, glb_writer)
+                else:
+                    convert_file(f, msg_writer)
 
 if __name__=='__main__':
     main ()
