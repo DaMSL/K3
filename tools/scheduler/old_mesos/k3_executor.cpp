@@ -268,6 +268,13 @@ public:
 		  }
 
                 }
+		else if (dataFile.policy == "sharded") {
+	          for (int i =0; i < numfiles; i++) {
+		    myfiles++;
+		    int p = i % peers.size();
+                    peerFiles[p][dataFile.varName].push_back(filePaths[i]);
+	          }
+		}
 
                 cout << "my files: " << myfiles << endl;
 

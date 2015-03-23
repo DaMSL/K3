@@ -41,6 +41,7 @@ namespace K3 {
     oss << ltm->tm_hour << ":" << ltm->tm_min << ":" << ltm->tm_sec;
     return oss.str();
   }
+
   //---------------
   // Configuration
 
@@ -329,10 +330,10 @@ namespace K3 {
             // source_peer, contents, timestamp
             event_stream << message_counter << "|";
             event_stream << K3::serialization::json::encode<Address>(peer) << "|";
-            event_stream << trig << "|";
+            event_stream << "\"" << trig << "\"|";
             event_stream << K3::serialization::json::encode<Address>(msgSource) << "|";
             event_stream << msg_contents << "|";
-            event_stream << time << std::endl;
+            event_stream << time_milli() << std::endl;
 
             // Log Global state
             auto& global_stream = *std::get<1>(log_streams[peer]);
@@ -342,15 +343,12 @@ namespace K3 {
             auto s = env.size();
             for (const auto& tup : env) {
                global_stream << tup.second;
-               std::cout << tup.first;
               if (i < s-1) {
                 global_stream << "|";
-                std::cout << "|";
               }
               i++;
             }
             global_stream << std::endl;
-            std::cout << std::endl;
     }
 
     void logResult(shared_ptr<MessageProcessor>& mp) {
