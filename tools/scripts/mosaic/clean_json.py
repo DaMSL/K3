@@ -48,9 +48,10 @@ def convert_file(file_nm):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("json_file", type=str, help="Specify path")
+    parser.add_argument("json_files", type=str, nargs='+', help="Specify path")
     args = parser.parse_args()
-    convert_file(args.json_file)
+    for j in args.json_files:
+        convert_file(j)
 
 if __name__=='__main__':
     main ()
