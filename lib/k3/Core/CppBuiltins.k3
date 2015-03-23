@@ -3,9 +3,11 @@ include "Annotation/Vector.k3"
 // Vector Utilities
 @:CArgs 2
 declare loadVector : string -> collection {elem: collection {elem: real} @ {Vector} } @Seq -> ()
+  with effects \x -> \y -> io
 
-@:CArgs 2
+@:CArgs 3
 declare loadVectorLabel : int -> string -> collection {elem: collection {elem: real} @ {Vector}, class_label: real } @Collection -> ()
+  with effects \i -> \x -> \y -> io
 
 @:CArgs 2
 declare loadStrings: string -> collection {elem: string} @Collection -> ()

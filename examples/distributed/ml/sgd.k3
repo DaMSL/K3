@@ -45,26 +45,15 @@ declare svm_loss_avg : () -> real = \_ -> (
   in stats.sum / stats.count
 )
 
-// SVM gradient at 1 point.
-declare svm_gradient : collection {elem: real} @Vector   -> real -> collection {elem: real} @Vector  = \x -> \y -> (
-  let flag = y * (parameters.dot x)
-  in
-    if flag > 1
-    then parameters.scalarMult lambda
-    else (parameters.scalarMult lambda).sub (x.scalarMult y)
-)
-
-// Compute the gradient at a single point.
-// The gradient is a function of the current parameters, a global variable.
-declare point_gradient: collection {elem: real} @Vector  -> real -> collection {elem: real} @Vector  = \point -> \class_label -> (
-    svm_gradient point class_label
-)
-
 // Update parameters based on a single point
 declare update_parameters: collection {elem: real} @Vector  -> real -> () = \point -> \class_label -> (
-  let update = (point_gradient point class_label) in
-  update.inPlaceScalarMult step_size;
-  parameters.inPlaceSub update
+  let flag = class_label * (parameters.dot point) in
+  let update =
+    if flag > 1
+    then parameters.scalarMult lambda
+    else (parameters.scalarMult lambda).sub (point.scalarMult class_label)
+  in
+  parameters.inPlaceSub (update.scalarMult step_size)
 )
 
 // Print results
