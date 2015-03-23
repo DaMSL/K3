@@ -7,18 +7,43 @@ import json
 
 def convert_dict(d):
     # for addresses, options, records, etc, just dereference
-    if "type" in d and d["type"] in ["address", "option_or_ind", "record", "Collection", "Map", "Seq"]:
+    if "type" in d and d["type"] in ["address", "option_or_ind", "record", "tuple", "Collection", "Map", "Seq", "Set"]:
         return convert_any(d["value"])
+    # change record mapping back to tuple
+    elif "r1" in d:
+        res = []
+        max = 0
+        for key in d:
+            k = int(key[1:])
+            if k > max:
+                max = k
+        for i in range(max): # +1 for record fields
+            res.append(convert_any(d["r" + str(i+1)]))
+        return res
+    elif "key" in d and "value" in d:
+        res = []
+        res.append(convert_any(d["key"]))
+        res.append(convert_any(d["value"]))
+        return res
+    elif "i" in d:
+        res = []
+        res.append(convert_any(d["i"]))
+        return res
+    elif "addr" in d:
+        res = []
+        res.append(convert_any(d["addr"]))
+        return res
+    # standard record
     else:
         res = {}
         for key in d:
             res[key] = convert_any(d[key])
-        return res;
+        return res
 
 def convert_list(xs):
     res = []
     for x in xs:
-        res.append([convert_any(x)])
+        res.append(convert_any(x))
     return res
 
 def convert_any(x):
