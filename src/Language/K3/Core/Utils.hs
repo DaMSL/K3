@@ -855,13 +855,15 @@ stripAllTypeAnnotations = stripTypeAnnotations (const True)
 
 {- Annotation removal -}
 stripDCompare :: K3 Declaration -> K3 Declaration
-stripDCompare = stripDeclAnnotations cleanDecl cleanExpr (not . isTAnnotation)
+stripDCompare = stripDeclAnnotations cleanDecl cleanExpr cleanType
   where cleanDecl a = not $ isDUserProperty a
         cleanExpr a = not (isEQualified a || isEUserProperty a || isEAnnotation a)
+        cleanType a = not (isTAnnotation a || isTUserProperty a)
 
 stripECompare :: K3 Expression -> K3 Expression
-stripECompare = stripExprAnnotations cleanExpr (not . isTAnnotation)
+stripECompare = stripExprAnnotations cleanExpr cleanType
   where cleanExpr a = not (isEQualified a || isEUserProperty a || isEAnnotation a)
+        cleanType a = not (isTAnnotation a || isTUserProperty a)
 
 stripTCompare :: K3 Type -> K3 Type
 stripTCompare = stripTypeAnnotations (not . isTAnnotation)
@@ -886,15 +888,15 @@ stripDeclTypeAnns i = stripNamedDeclAnnotations i (const False) isAnyETypeAnn (c
 
 -- | Strip all inferred properties from a program
 stripProperties :: K3 Declaration -> K3 Declaration
-stripProperties = stripDeclAnnotations isDInferredProperty isEInferredProperty (const False)
+stripProperties = stripDeclAnnotations isDInferredProperty isEInferredProperty isTInferredProperty
 
 -- | Strip all inferred properties from a specific declaration
 stripDeclProperties :: Identifier -> K3 Declaration -> K3 Declaration
-stripDeclProperties i = stripNamedDeclAnnotations i isDInferredProperty isEInferredProperty (const False)
+stripDeclProperties i = stripNamedDeclAnnotations i isDInferredProperty isEInferredProperty isTInferredProperty
 
 -- | Removes all properties from a program.
 stripAllProperties :: K3 Declaration -> K3 Declaration
-stripAllProperties = stripDeclAnnotations isDProperty isEProperty (const False)
+stripAllProperties = stripDeclAnnotations isDProperty isEProperty isTProperty
 
 -- | Strip all inferred effect annotations from a program
 stripEffectAnns :: K3 Declaration -> K3 Declaration

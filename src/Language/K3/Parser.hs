@@ -163,8 +163,8 @@ declaration = (//) attachComment <$> comment False <*>
         driverDecls = choice [dSelector, dFeed]
         ignores     = pInclude >> return ()
 
-        props    p = DUID # withProperties True dProperties p
-        optProps p = uidOfOpt =<< optWithProperties True dProperties p
+        props    p = DUID # withProperties "" True dProperties p
+        optProps p = uidOfOpt =<< optWithProperties "" True dProperties p
         uidOfOpt Nothing  = return Nothing
         uidOfOpt (Just v) = (DUID # (return v)) >>= return . Just
 
@@ -247,7 +247,7 @@ annotationMember = memberError $ mkMember <$> annotatedRule
   where
     rule          = (,,) <$> polarity <*> (choice $ map uidOver [liftedOrAttribute, subAnnotation])
                                       <*> optional (effectSignature True)
-    annotatedRule = wrapInComments $ spanned $ flip (,) <$> optionalProperties dProperties <*> rule
+    annotatedRule = wrapInComments $ spanned $ flip (,) <$> optionalProperties "" dProperties <*> rule
 
     liftedOrAttribute = mkLA  <$> optional (keyword "lifted")
                               <*> identifier <* colon
@@ -318,7 +318,7 @@ pInclude = keyword "include" >> stringLiteral
 
 {- Types -}
 typeExpr :: TypeParser
-typeExpr = typeError "expression" $ TUID # tTermOrFun
+typeExpr = typeError "expression" $ TUID # withProperties ":" False tProperties tTermOrFun
 
 qualifiedTypeExpr :: TypeParser
 qualifiedTypeExpr = typeExprError "qualified" $ flip (@+) <$> (option TImmutable typeQualifier) <*> typeExpr
@@ -428,7 +428,7 @@ tDeclared = typeExprError "declared" $ TUID # ( aliasOrDecl =<< identifier )
 
 expr :: ExpressionParser
 expr = parseError "expression" "k3"
-        $ withProperties False eProperties $ buildExpressionParser fullOpTable eApp
+        $ withProperties "" False eProperties $ buildExpressionParser fullOpTable eApp
 
 nonSeqExpr :: ExpressionParser
 nonSeqExpr = buildExpressionParser nonSeqOpTable eApp
@@ -470,7 +470,7 @@ eTerm = do
     attachProjection e (((i, tOpt), anns), sp) =
       EUID # (return $ foldl (@+) (EC.project i e) $ [ESpan sp] ++ maybe [] ((:[]) . EPType) tOpt ++ anns)
 
-    eWithProperties    p = withProperties False eProperties p
+    eWithProperties    p = withProperties "" False eProperties p
     eWithAnnotations   p = foldl (@+) <$> p <*> withAnnotations eCAnnotations
     prjWithAnnotations p = (,) <$> asSourcePattern (,) (,Nothing) p <*> withAnnotations eCAnnotations
 
@@ -781,34 +781,41 @@ cAnnotationUse aCtor = mkSEnv <$> identifier <*> option [] (parens $ commaSep1 s
   where mkSEnv a b = aCtor a $ mkSpliceEnv $ catMaybes b
 
 withPropertiesF :: (Eq (Annotation a))
-                => Bool -> K3Parser [Annotation a] -> K3Parser b -> (b -> [Annotation a] -> b) -> K3Parser b
-withPropertiesF asPrefix prop tree attachF =
-    if asPrefix then (flip propertize) <$> optionalProperties prop <*> tree
-                else propertize <$> tree <*> optionalProperties prop
+                => String -> Bool -> K3Parser [Annotation a] -> K3Parser b -> (b -> [Annotation a] -> b) -> K3Parser b
+withPropertiesF sfx asPrefix prop tree attachF =
+    if asPrefix then (flip propertize) <$> optionalProperties sfx prop <*> tree
+                else propertize <$> tree <*> optionalProperties sfx prop
   where propertize a (Just b) = attachF a b
         propertize a Nothing  = a
 
 withProperties :: (Eq (Annotation a))
-               => Bool -> K3Parser [Annotation a] -> K3Parser (K3 a) -> K3Parser (K3 a)
-withProperties asPrefix prop tree = withPropertiesF asPrefix prop tree $ foldl (@+)
+               => String -> Bool -> K3Parser [Annotation a] -> K3Parser (K3 a) -> K3Parser (K3 a)
+withProperties sfx asPrefix prop tree = withPropertiesF sfx asPrefix prop tree $ foldl (@+)
 
 optWithProperties :: (Eq (Annotation a))
-                  => Bool -> K3Parser [Annotation a] -> K3Parser (Maybe (K3 a)) -> K3Parser (Maybe (K3 a))
-optWithProperties asPrefix prop tree = withPropertiesF asPrefix prop tree attachOpt
+                  => String -> Bool -> K3Parser [Annotation a] -> K3Parser (Maybe (K3 a)) -> K3Parser (Maybe (K3 a))
+optWithProperties sfx asPrefix prop tree = withPropertiesF sfx asPrefix prop tree attachOpt
   where attachOpt treeOpt anns = maybe Nothing (\t -> Just $ foldl (@+) t anns) treeOpt
 
-optionalProperties :: K3Parser [Annotation a] -> K3Parser (Maybe [Annotation a])
-optionalProperties p = optional (try $ symbol "@:" *> p)
+optionalProperties :: String -> K3Parser [Annotation a] -> K3Parser (Maybe [Annotation a])
+optionalProperties sfx p = optional (try $ symbol ("@:" ++ sfx) *> p)
 
 properties :: (Identifier -> Maybe (K3 Literal) -> Annotation a) -> K3Parser [Annotation a]
 properties ctor = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
   where p = ctor <$> identifier <*> optional literal
+
+nproperties :: (Identifier -> Annotation a) -> K3Parser [Annotation a]
+nproperties ctor = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
+  where p = ctor <$> identifier
 
 dProperties :: K3Parser [Annotation Declaration]
 dProperties = properties (\n lopt -> DProperty $ Left (n,lopt))
 
 eProperties :: K3Parser [Annotation Expression]
 eProperties = properties (\n lopt -> EProperty $ Left (n,lopt))
+
+tProperties :: K3Parser [Annotation Type]
+tProperties = nproperties $ TProperty . Left
 
 {- Metaprogramming -}
 stTerm :: K3Parser SpliceType

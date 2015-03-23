@@ -243,38 +243,40 @@ namespace K3 {
     }
 
     // TODO move to seperate context
-    template<class C1>
-    unit_t loadRKQ3(const C1& paths, K3::Map<R_key_value<string_impl,int>>& c)  {
-	for (auto r : paths) {
-          // Buffers
-          std::string tmp_buffer;
-          R_key_value<string_impl, int> rec;
-          // Infile
-          std::ifstream in;
-          in.open(r.path);
+    template <class C1>
+    unit_t loadRKQ3(const C1& paths, K3::Map<R_key_value<string_impl, int>>& c)
+    {
+      for (auto r : paths) {
+        // Buffers
+        std::string tmp_buffer;
+        R_key_value<string_impl, int> rec;
+        // Infile
+        std::ifstream in;
+        in.open(r.path);
 
-          // Parse by line
-          while(!in.eof()) {
-            std::getline(in, tmp_buffer, ',');
-            rec.key = tmp_buffer;
-            std::getline(in, tmp_buffer, ',');
-            rec.value = std::atoi(tmp_buffer.c_str());
-            // ignore last value
-            std::getline(in, tmp_buffer);
-            c.insert(rec);
-          }
-	}
+        // Parse by line
+        while (!in.eof()) {
+          std::getline(in, tmp_buffer, ',');
+          rec.key = tmp_buffer;
+          std::getline(in, tmp_buffer, ',');
+          rec.value = std::atoi(tmp_buffer.c_str());
+          // ignore last value
+          std::getline(in, tmp_buffer);
+          c.insert(rec);
+        }
+      }
 
-        return unit_t {};
+      return unit_t{};
     }
 
    int lineCountFile(const string_impl& filepath) {
+     std::cout << "LCF: " << filepath << std::endl;
      std::ifstream _in;
      _in.open(filepath);
      std::string tmp_buffer;
      std::getline(_in, tmp_buffer);
+     std::cout << "LCF read: " << tmp_buffer << std::endl;
      return std::atoi(tmp_buffer.c_str());
-
    }
 
    template <class C1, template <class> class C, template <typename ...> class R>
@@ -466,11 +468,11 @@ namespace K3 {
       return s.substr(x, y);
     }
 
-
     // Split a string by substrings
     Seq<R_elem<string_impl>> splitString(string_impl, const string_impl&);
     string_impl takeUntil(const string_impl& s, const string_impl& splitter);
     int countChar(const string_impl& s, const string_impl& splitter);
+    int tpch_date(const string_impl& s);
   };
 
 

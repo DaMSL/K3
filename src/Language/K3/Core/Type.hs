@@ -12,14 +12,21 @@ module Language.K3.Core.Type (
     TypeVarDecl(..),
     TypeVariableOperator(..),
     Annotation(..),
+    PropertyT,
+
+    onTProperty,
+    tPropertyName,
 
     isTSpan,
     isTUID,
     isTUIDSpan,
+    isTAnnotation,
+    isTProperty,
+    isTInferredProperty,
+    isTUserProperty,
     isTQualified,
     isTImmutable,
     isTMutable,
-    isTAnnotation,
     isTPrimitive,
     isTFunction,
     isTEndpoint,
@@ -139,6 +146,7 @@ data instance Annotation Type
     | TSpan       Span
     | TUID        UID
     | TAnnotation Identifier
+    | TProperty   PropertyT
     | TApplyGen   Identifier SpliceEnv
     | TSyntax     SyntaxAnnotation
   deriving (Eq, Ord, Read, Show, Generic)
@@ -149,6 +157,19 @@ instance NFData ImperativeType
 instance NFData TypeBuiltIn
 instance NFData TypeVarDecl
 instance NFData (Annotation Type)
+
+-- | Property helpers
+type PropertyV = Identifier
+type PropertyT = Either PropertyV PropertyV
+
+onTProperty :: (PropertyV -> a) -> PropertyT -> a
+onTProperty f (Left  n) = f n
+onTProperty f (Right n) = f n
+
+tPropertyName :: PropertyT -> String
+tPropertyName (Left  n) = n
+tPropertyName (Right n) = n
+
 
 {- Type annotation predicates -}
 
@@ -163,6 +184,22 @@ isTUID _        = False
 isTUIDSpan :: Annotation Type -> Bool
 isTUIDSpan a = isTSpan a || isTUID a
 
+isTAnnotation :: Annotation Type -> Bool
+isTAnnotation (TAnnotation _) = True
+isTAnnotation _               = False
+
+isTProperty :: Annotation Type -> Bool
+isTProperty (TProperty _) = True
+isTProperty _             = False
+
+isTInferredProperty :: Annotation Type -> Bool
+isTInferredProperty (TProperty (Right _)) = True
+isTInferredProperty _                     = False
+
+isTUserProperty :: Annotation Type -> Bool
+isTUserProperty (TProperty (Left _)) = True
+isTUserProperty _                    = False
+
 isTQualified :: Annotation Type -> Bool
 isTQualified TImmutable = True
 isTQualified TMutable   = True
@@ -175,10 +212,6 @@ isTImmutable _          = False
 isTMutable :: Annotation Type -> Bool
 isTMutable TMutable = True
 isTMutable _        = False
-
-isTAnnotation :: Annotation Type -> Bool
-isTAnnotation (TAnnotation _) = True
-isTAnnotation _               = False
 
 isTPrimitive :: K3 Type -> Bool
 isTPrimitive (tag -> t) = t `elem` [TBool, TByte, TInt, TReal, TNumber, TString]
