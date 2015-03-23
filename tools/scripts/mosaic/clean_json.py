@@ -38,11 +38,11 @@ def convert_file(file_nm):
             for row in reader:
                 res = []
                 for x in row:
-                    # print(x)
+                    #print(x)
                     obj = json.loads(x)
                     # print("obj: " + str(obj))
                     new_obj = convert_any(obj)
-                    print(new_obj)
+                    #print(new_obj)
                     res += [json.dumps(new_obj)]
                 writer.writerow(res)
 
