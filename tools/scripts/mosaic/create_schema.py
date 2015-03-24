@@ -35,7 +35,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("k3_file", type=str, help="Specify path of k3 file")
     args = parser.parse_args()
-    run_test(args.k3_file)
+    do_schema(args.k3_file)
 
 if __name__=='__main__':
   main ()
