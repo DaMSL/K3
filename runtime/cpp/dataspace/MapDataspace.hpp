@@ -131,6 +131,7 @@ public:
     return res;
   }
 
+  // TODO: Fix insert semantics to replace value if key exists.
   unit_t insert(const R& q) {
     mapi_insert(container.get(), const_cast<void*>(static_cast<const void*>(&q)));
     return unit_t();
@@ -148,13 +149,11 @@ public:
     if ( m->size == 0 ) {
       mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec)));
     } else {
-      auto existing = mapi_find(m, rec.key);
+      auto* existing = static_cast<R*>(mapi_find(m, rec.key));
       if (existing == nullptr) {
         mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec)));
       } else {
-        auto nrec = f(std::move(*static_cast<R*>(existing)))(rec);
-        mapi_erase(m, rec.key);
-        mapi_insert(m, &nrec);
+        *existing = f(std::move(*existing))(rec);
       }
     }
     return unit_t {};
@@ -164,17 +163,15 @@ public:
   unit_t upsert_with(const R& rec, F f, G g) {
     mapi* m = container.get();
     if ( m->size == 0 ) {
-      auto nrec = f(unit_t {});
-      mapi_insert(m, &nrec);
+      auto* placement = static_cast<R*>(mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec))));
+      *placement = f(unit_t {});
     } else {
-      auto existing = mapi_find(m, rec.key);
+      auto* existing = static_cast<R*>(mapi_find(m, rec.key));
       if (existing == nullptr) {
-        auto nrec = f(unit_t {});
-        mapi_insert(m, &nrec);
+        auto* placement = static_cast<R*>(mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec))));
+        *placement = f(unit_t {});
       } else {
-        auto nrec = g(std::move(*static_cast<R*>(existing)));
-        mapi_erase(m, rec.key);
-        mapi_insert(m, &nrec);
+        *existing = g(std::move(*existing));
       }
     }
     return unit_t {};
@@ -625,26 +622,19 @@ public:
     return res;
   }
 
-  unit_t insert(const R& q) {
+  size_t insert_aux(const R& q) {
     map_str* m = container.get();
     auto pos = map_str_insert(m, q.key.begin(), const_cast<void*>(static_cast<const void*>(&q)));
 
     R* v = static_cast<R*>(map_str_get(m, pos));
     map_str_stabilize_key(m, pos, v->key.begin());
 
-    return unit_t();
+    return pos;
   }
 
-  unit_t insert(R&& q) {
-    R tmp(std::move(q));
-
-    map_str* m = container.get();
-    auto pos = map_str_insert(m, tmp.key.begin(), &tmp);
-
-    R* v = static_cast<R*>(map_str_get(m, pos));
-    map_str_stabilize_key(m, pos, v->key.begin());
-
-    return unit_t();
+  unit_t insert(const R& q) {
+    insert_aux(q);
+    return unit_t {};
   }
 
   template <class F>
@@ -657,11 +647,9 @@ public:
       if (existing == map_str_end(m)) {
         insert(rec);
       } else {
-        R* v = static_cast<R*>(map_str_get(m,existing));
-        auto nrec = f(std::move(*v))(rec);
-        map_str_erase(m, rec.key.begin());
-        v->~R();
-        insert(nrec);
+        auto* v = static_cast<R*>(map_str_get(m, existing));
+        *v = f(std::move(*v))(rec);
+        map_str_stabilize_key(m, existing, v->key.begin());
       }
     }
     return unit_t {};
@@ -671,19 +659,21 @@ public:
   unit_t upsert_with(const R& rec, F f, G g) {
     map_str* m = container.get();
     if ( m->size == 0 ) {
-      auto nrec = f(unit_t {});
-      insert(nrec);
+      auto new_pos = insert_aux(rec);
+      auto* placement = static_cast<R*>(map_str_get(m, new_pos));
+      *placement = f(unit_t {});
+      map_str_stabilize_key(m, new_pos, placement->key.begin());
     } else {
       auto existing = map_str_find(m, rec.key.begin());
       if (existing == map_str_end(m)) {
-        auto nrec = f(unit_t {});
-        insert(nrec);
+        auto new_pos = insert_aux(rec);
+        auto* placement = static_cast<R*>(map_str_get(m, new_pos));
+        *placement = f(unit_t {});
+        map_str_stabilize_key(m, new_pos, placement->key.begin());
       } else {
-        R* v = static_cast<R*>(map_str_get(m,existing));
-        auto nrec = g(std::move(*v));
-        map_str_erase(m, rec.key.begin());
-        v->~R();
-        insert(nrec);
+        auto* v = static_cast<R*>(map_str_get(m,existing));
+        *v = g(std::move(*v));
+        map_str_stabilize_key(m, existing, v->key.begin());
       }
     }
     return unit_t {};

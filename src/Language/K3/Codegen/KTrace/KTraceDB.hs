@@ -149,7 +149,7 @@ compareField (field, typ) | typ == varcharType = Right $ proj "l" ++ " = " ++ pr
 -- Key for joining Globals and Messages
 -- Prefixed with _ to help avoid name clashes with global vars
 keyAttrs :: [(String, String)]
-keyAttrs = [("_mess_id", "int"), ("_dest_peer", "text")]
+keyAttrs = [("_mess_id", "int"), ("_dest_peer", "json")]
 
 globalsTable :: String
 globalsTable = "Globals"
@@ -193,9 +193,9 @@ mkGlobalsSchema attrs = createTable globalsTable $ keyAttrs ++ attrs
 mkEventTraceSchema :: Triggers -> Statement
 mkEventTraceSchema _ = createTable msgsTable $ keyAttrs ++ logAttrs
   where logAttrs =   [ ("trigger",     "text")
-                     , ("source_peer", "text")
-                     , ("contents",    "text")
-                     , ("time"    ,    "text")]
+                     , ("source_peer", "json")
+                     , ("contents",    "json")
+                     , ("time"    ,    "int")]
 
 
 mkFlatSingletonResultSchema :: Identifier -> K3 Declaration -> Either String String
