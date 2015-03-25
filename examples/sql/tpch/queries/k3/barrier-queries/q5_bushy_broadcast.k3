@@ -76,6 +76,7 @@ declare r_asia_by_rk : mut collection {key: int, value: () } @IntMap
 declare n_asia_by_nk : mut collection {key: int, value: string } @IntMap
 
 declare li_okepd_by_sk : mut collection {key: int, value: collection {l_orderkey: int, l_epd: real} @Collection} @IntMap
+declare or_ok_by_ck    : mut collection {key: int, value: collection {o_orderkey: int} @Collection} @IntMap
 
 declare co_nm_by_no  : mut collection {key: {nationkey: int, orderkey: int}, value: string} @Map
 declare sl_epd_by_no : mut collection {key: {nationkey: int, orderkey: int}, value: real} @Map
@@ -163,37 +164,20 @@ trigger q5_sl_start : () = \_ -> (
 
 // TODO: in the partitioned version, C|c_custkey should be broadcast into O|o_orderkey partitions.
 trigger q5_co_start : () = \_ -> (
-  ( () @:NoPipeline )
-    @JoinSelector(
-        lbl                  = [# co ]
-      , lhs_ht_id            = [# co_lhs_ht ]
-      , rhs_ht_id            = [# co_rhs_ht ]
+  () @PipelinedBroadcastJoin(
+        lbl       = [# co ]
+      , lhs_query = [$ or_ok_by_ck =
+                         ((orders.filter  (\o ->     o.o_orderdate >= 19940101
+                                                 and o.o_orderdate <  19950101 ))
+                                 .groupBy (\o -> o.o_custkey)
+                                          (\acc -> \o -> ((acc.insert {o_orderkey: o.o_orderkey}); acc))
+                                          (empty {o_orderkey: int} @Collection))
+                                 .fold    ((\acc -> \o -> ((acc.insert o); acc)) @:Accumulate)
+                                          (empty {key: int, value: collection {o_orderkey: int} @Collection} @IntMap)
+                    ]
+      , lhs_query_clear = [$ orders = empty q5_orders_r @Collection ]
 
-      , lhs_sample_query     = [$ customer.sample (\acc -> \c ->
-                                                    ((acc.insert_with
-                                                        {key: c.c_custkey, value: 1}
-                                                        (\old -> \new -> {key: old.key, value: old.value + new.value}));
-                                                      acc))
-                                                  (empty {key:int, value: int} @IntMap)
-                                                  (customer.size() / sample_factor)
-                               ]
-
-      , rhs_sample_query     = [$ orders.sample (\acc -> \c ->
-                                                  if     o.o_orderdate >= 19940101
-                                                     and o.o_orderdate <  19950101
-                                                  then
-                                                    ((acc.insert_with
-                                                          {key: o.o_custkey, value: 1}
-                                                          (\old -> \new -> {key: old.key, value: old.value + new.value}));
-                                                        acc)
-                                                  else acc)
-                                                (empty {key:int, value: int} @IntMap)
-                                                (orders.size() / sample_factor)
-                               ]
-
-      , frequency_threshold  = [$ 1000.0 ]
-
-      , lhs_query = [$ (((customer.filter  (\c -> n_asia_by_nk.member { key: c.c_nationkey, value: "" }))
+      , rhs_query = [$ (((customer.filter  (\c -> n_asia_by_nk.member { key: c.c_nationkey, value: "" }))
                                   .groupBy (\c -> c.c_custkey)
                                            (\acc -> \c -> case n_asia_by_nk.lookup { key: c.c_nationkey, value: "" }
                                                         of { Some n -> {c_nationkey: c.c_nationkey, n_name: n.value} }
@@ -204,53 +188,23 @@ trigger q5_co_start : () = \_ -> (
                                   .fold    ((\acc -> \c -> ((acc.insert c); acc)) @:Accumulate)
                                            (empty {key: int, value: {c_nationkey: int, n_name: string}} @IntMap))
                     ]
-      , lhs_query_clear = [$ customer = empty q5_customer_r @Collection ]
+      , rhs_query_clear = [$ customer = empty q5_customer_r @Collection ]
 
-      , rhs_query = [$ ((orders.filter  (\o ->     o.o_orderdate >= 19940101
-                                               and o.o_orderdate <  19950101 ))
-                               .groupBy (\o -> o.o_custkey)
-                                        (\acc -> \o -> ((acc.insert {o_orderkey: o.o_orderkey}); acc))
-                                        (empty {o_orderkey: int} @Collection))
-                               .fold    ((\acc -> \o -> ((acc.insert o); acc)) @:Accumulate)
-                                        (empty {key: int, value: collection {o_orderkey: int} @Collection} @IntMap)
-                    ]
-      , rhs_query_clear = [$ orders = empty q5_orders_r @Collection ]
-
-      , join_key_ty          = [: int ]
-      , lhs_ht_ty            = [: {key: int, value: {c_nationkey: int, n_name: string}} ]
-      , rhs_ht_ty            = [: {key: int, value: collection {o_orderkey: int} @Collection} ]
-
-      , lhs_probe            = [$ (\lht -> \_ -> \o ->
-                                    lht.lookup_with {key: o.key, value: {c_nationkey: 0, n_name: ""}}
-                                      (\c -> o.value.iterate (\ok ->
-                                                  co_nm_by_no.insert { key: { nationkey: c.value.c_nationkey
-                                                                            , orderkey: ok.o_orderkey }
-                                                                     , value: c.value.n_name })
-                                      ) 
-                                  )
-                               ]
-
-      , rhs_probe            = [$ (\rht -> \_ -> \c ->
-                                    rht.lookup_with {key: c.key, value: empty {o_orderkey:int} @Collection}
+      , lhs_probe            = [$ (\_ -> \c ->
+                                    or_ok_by_ck.lookup_with {key: c.key, value: empty {o_orderkey:int} @Collection}
                                       (\o -> o.value.iterate (\ok ->
-                                                  co_nm_by_no.insert { key: { nationkey: c.value.c_nationkey
-                                                                            , orderkey: ok.o_orderkey }
-                                                                     , value: c.value.n_name })
-                                      ) 
+                                               co_nm_by_no.insert { key: { nationkey: c.value.c_nationkey
+                                                                         , orderkey: ok.o_orderkey }
+                                                                  , value: c.value.n_name })
+                                      )
                                   )
                                ]
 
-      , lhs_insert_with      = [$ (\_ -> \new -> new) ]
-      , rhs_insert_with      = [$ (\old -> \new -> {key: old.key, value: old.value.combine new.value}) ]
-
+      , broadcast_ty         = [: collection {key: int, value: {c_nationkey: int, n_name: string}} @IntMap ]
       , has_outputs          = [$ (\_ -> false) ]
       , empty_out_buffer     = [$ () ]
 
-      , lhs_pipeline_next    = [$ (\_ -> ()) ]
-      , rhs_pipeline_next    = [$ (\_ -> ()) ]
-
-      , lhs_clear_expr    = [$ (\_ -> co_lhs_ht = empty {key: int, value: {c_nationkey: int, n_name: string}} @IntMap) ]
-      , rhs_clear_expr    = [$ (\_ -> co_rhs_ht = empty {key: int, value: collection {o_orderkey: int} @Collection} @IntMap) ]
+      , pipeline_next        = [$ (\_ -> ()) ]
 
       , peer_next            = [$ ( ignore ( ( co_nm_by_no
                                              ) @PSendPartitionByKey( dest_trg      = [$ cosl_process_redistribute ]
