@@ -386,18 +386,19 @@ class StlDS {
   }
 
   template <class G, class F, class Z>
-  Derived<R_key_value<RT<G, Elem>, Z>> groupByContiguous(G grouper, F folder, const Z& zero, const int& size) const {
-    auto table = std::vector<Z>(size, zero);
+  Derived<R_key_value<RT<G, Elem>, RT<RT<F, Z>, Elem>>> groupByContiguous(G grouper, F folder, const Z& zero, const int& size) const {
+    typedef RT<RT<F, Z>, Elem> Z2;
+    auto table = std::vector<Z2>(size, zero);
     for (const auto& elem: container) {
       auto key = grouper(elem);
       table[key] = folder(std::move(table[key]))(elem);
     }
 
     // Build the R_key_value records and insert them into result
-    Derived<R_key_value<RT<G, Elem>,Z>> result;
+    Derived<R_key_value<RT<G, Elem>,Z2>> result;
     for (auto i = 0; i < table.size(); ++i) {
       // move out of the map as we iterate
-      result.insert(R_key_value<int, Z>{i, std::move(table[i])});
+      result.insert(R_key_value<int, Z2>{i, std::move(table[i])});
     }
     return result;
   }
@@ -494,6 +495,22 @@ class Collection: public VectorDS<K3::Collection, Elem> {
     } else {
       return nullptr;
     }
+  }
+
+  template <class G, class F, class Z>
+  Collection<R_key_value<RT<G, Elem>, RT<RT<F, Z>, Elem>>> groupByContiguous(G grouper, F folder, const Z& zero, const int& size) const {
+    typedef RT<RT<F, Z>, Elem> Z2;
+    auto wrapper = VectorDS<K3::Collection, R_key_value<int, Z2>>();
+    auto& table = wrapper.getContainer();
+    table.resize(size, R_key_value<int, Z2> {0, zero});
+    for (const auto& elem: Super::getConstContainer()) {
+      auto key = grouper(elem);
+      table[key].value = folder(std::move(table[key].value))(elem);
+    }
+    for (auto i = 0; i < table.size(); ++i) {
+      table[i].key = i;
+    }
+    return Collection<R_key_value<int,Z2>>(std::move(wrapper));
   }
 
   template<class Archive>
@@ -1553,7 +1570,7 @@ class Vector: public VectorDS<K3::Vector, Elem> {
     auto& vec = Super::getConstContainer();
     auto& other_vec = other.getConstContainer();
     if (vec.size() != other_vec.size()) {
-      throw std::runtime_error("Vector squareDistance size mismatch");
+      throw std::runtime_error("Vector distance size mismatch");
     }
 
     #pragma clang loop vectorize(enable) interleave(enable)

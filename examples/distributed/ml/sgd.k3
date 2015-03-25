@@ -21,7 +21,7 @@ declare iter_end: mut int
 declare step_size: mut real = 0.1
 declare lambda: mut real = 0.1
 
-// Mast1
+// Master
 declare aggregates: mut {count: int, sum: collection {elem: real} @Vector }
 
 // All Nodes:

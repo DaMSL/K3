@@ -97,7 +97,7 @@ public:
 	cout << Dump(hostParams);
 	cout << "\n---------------------------------\n";
 
-	k3_cmd = "cd $MESOS_SANDBOX && ./" + hostParams["binary"].as<string>();
+	k3_cmd = "cd $MESOS_SANDBOX && bash -c 'ulimit -c unlimited && ./" + hostParams["binary"].as<string>();
 	if (hostParams["logging"]) {
 		k3_cmd += " -l INFO ";
 	}
@@ -362,6 +362,7 @@ public:
 	oss << ") END PEERS!!!" << std::endl;
 	cout << oss.str() << std::endl;
 
+	k3_cmd += "'";
 	cout << "FINAL COMMAND: " << k3_cmd << endl;
         if (thread) {
 	  driver->sendFrameworkMessage("Debug: thread already existed!");

@@ -2,7 +2,7 @@ include "Annotation/Vector.k3"
 
 // Vector Utilities
 @:CArgs 2
-declare loadVector : string -> collection {elem: collection {elem: real} @ {Vector} } @Seq -> ()
+declare loadVector : string -> collection {elem: collection {elem: real} @ {Vector} } @Collection -> ()
   with effects \x -> \y -> io
 
 @:CArgs 3
