@@ -65,4 +65,8 @@ annotation Collection given type a, b
 
   provides lifted at: int -> option content
     with effects \i -> [R[i]; R[self]]
+
+  @:CArgs 2
+  provides lifted at_with: int -> (content -> a) -> a
+    with effects \i -> \f -> [R[i]; R[self]; f content]
 }

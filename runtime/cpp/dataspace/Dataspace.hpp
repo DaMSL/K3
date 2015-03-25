@@ -513,6 +513,11 @@ class Collection: public VectorDS<K3::Collection, Elem> {
     return Collection<R_key_value<int,Z2>>(std::move(wrapper));
   }
 
+  template <class F>
+  auto at_with(int i, F f) {
+    return f(Super::getConstContainer()[i]);
+  }
+
   template<class Archive>
   void serialize(Archive &ar) {
     ar & yas::base_object<VectorDS<K3::Collection, Elem>>(*this);
