@@ -26,6 +26,7 @@ declare regex_matcher_q4 : string -> collection {elem: string} @ Collection
 
 // TPCH date parsing.
 declare tpch_date : string -> int
+declare tpch_date_to_string : int -> string
 
 // TODO: move to Time.k3
 declare now_int : () -> int

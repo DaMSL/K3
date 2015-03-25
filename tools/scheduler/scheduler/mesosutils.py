@@ -8,7 +8,7 @@ import mesos.native
 
 # TODO how should we determine the executor url
 EXECUTOR_URL = "http://qp2:8202/k3executor"
-K3_DOCKER_NAME = "damsl/k3-deployment:stable"
+K3_DOCKER_NAME = "damsl/k3-deployment:latest"
 
 def getResource(resources, tag, convF):
   for resource in resources:

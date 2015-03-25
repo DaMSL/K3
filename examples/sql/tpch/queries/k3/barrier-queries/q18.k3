@@ -56,7 +56,7 @@ typedef loc_q_by_ncodt_r   = { key: {nm:string, ck:int, ok:int, od:int, tp:real}
 typedef loc_q_by_ncodt_map = collection loc_q_by_ncodt_r @Map
 
 declare q18_peer_result : loc_q_by_ncodt_map
-declare results : collection {name: string, custkey: int, orderkey: int, orderdate:int, totalprice: real, sum: real} @Collection
+declare results : collection {name: string, custkey: int, orderkey: int, orderdate:string, totalprice: real, sum: real} @Collection
 
 
 // Q18 intermediates.
@@ -248,7 +248,7 @@ trigger loc_aggregate : loc_q_by_ncodt_map = \vals -> (
       then ()
       else (q18_peer_result.iterate(\r ->
                      results.insert { name: r.key.nm, custkey: r.key.ck, orderkey: r.key.ok
-                                             , orderdate: r.key.od, totalprice: r.key.tp, sum: r.value} )
+                                             , orderdate: tpch_date_to_string r.key.od, totalprice: r.key.tp, sum: r.value} )
            )
     )
   ) @OnCounter(id=[# loc_aggregate_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
@@ -277,7 +277,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   preTestFinishExpr    = [$ (\_ -> ())],
   preFinishExpr        = [$ (q18_peer_result.iterate(\r ->
                               results.insert { name: r.key.nm, custkey: r.key.ck, orderkey: r.key.ok
-                                             , orderdate: r.key.od, totalprice: r.key.tp, sum: r.value} )
+                                             , orderdate: tpch_date_to_string r.key.od, totalprice: r.key.tp, sum: r.value} )
                             ); (
                             () @GatherResultsAsCSV(
                                     query_cl = [* [% ci: [# results], csink: [$ results_sink]] ]
@@ -289,7 +289,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   finishAsShutdownExpr = [$ false]
 )
 
-sink results_sink : {name: string, custkey: int, orderkey: int, orderdate:int, totalprice: real, sum: real} = file "results.csv" csv
+sink results_sink : {name: string, custkey: int, orderkey: int, orderdate: string, totalprice: real, sum: real} = file "results.csv" csv
 sink query_time_sink : string = stdout csv
 
 source rows : () = value ()

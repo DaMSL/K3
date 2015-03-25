@@ -278,4 +278,13 @@ namespace K3 {
     return std::atoi(date);
   }
 
+  string_impl __string_context::tpch_date_to_string(const int& date) {
+    std::string tmp = std::to_string(date);
+    std::string year = tmp.substr(0, 4);
+    std::string month = tmp.substr(4, 2);
+    std::string day = tmp.substr(6, 2);
+    return year + "-" + month + "-" + day;
+
+  }
+
 } // namespace K3

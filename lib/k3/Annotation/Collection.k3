@@ -52,6 +52,13 @@ annotation Collection given type a, b
                          -> collection {elem : a} @ {Collection}
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
 
+  @:{Transformer, CArgs 4}
+  provides lifted groupByContiguous : (content -> a) -> (b -> content -> b) -> b -> int
+                                      -> collection { key : a, value : b } @Collection
+    with effects
+      \gbF -> \gaccF -> \z -> \s ->
+        [R[self]; R[z]; ([R[content]; gbF content; gaccF content])*]
+
   @:{Transformer, CArgs 3}
   provides lifted sample : (a -> content -> a) -> a -> int -> a
     with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
