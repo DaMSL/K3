@@ -401,12 +401,13 @@ class IntMap {
 
   template<class archive>
   void serialize(archive &ar) const {
-    ar & container->object_size;
-    ar & container->empty_key;
-    ar & container->size;
-    ar & container->capacity;
-
     mapi* m = get_mapi();
+
+    ar & m->object_size;
+    ar & m->empty_key;
+    ar & m->size;
+    ar & m->capacity;
+
     for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
       ar & *static_cast<R*>(o);
     }
@@ -919,13 +920,14 @@ class StrMap {
 
   template<class archive>
   void serialize(archive &ar) const {
-    ar & container->value_size;
-    ar & container->size;
-    ar & container->capacity;
-    ar & container->deleted;
-    ar & container->max_load_factor;
-
     map_str* m = get_map_str();
+
+    ar & m->value_size;
+    ar & m->size;
+    ar & m->capacity;
+    ar & m->deleted;
+    ar & m->max_load_factor;
+
     for (auto o = map_str_begin(m); o < map_str_end(m); o = map_str_next(m, o)) {
       R* v = static_cast<R*>(map_str_get(m,o));
       ar & *v;
