@@ -354,7 +354,7 @@ class IntMap {
     if ( m->size > 0 ) {
       auto existing = mapi_find(m, r.key);
       if (existing != nullptr) {
-        return f(*existing);
+        return f(*static_cast<R*>(existing));
       }
     }
     return unit_t {};
@@ -370,7 +370,7 @@ class IntMap {
       if (existing == nullptr) {
         return f(unit_t {});
       } else {
-        return g(*existing);
+        return g(*static_cast<R*>(existing));
       }
     }
   }

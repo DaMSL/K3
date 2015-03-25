@@ -197,8 +197,7 @@ trigger q5_co_start : () = \_ -> (
                                   .groupBy (\c -> c.c_custkey)
                                            (\acc -> \c -> case n_asia_by_nk.lookup { key: c.c_nationkey, value: "" }
                                                         of { Some n -> {c_nationkey: c.c_nationkey, n_name: n.value} }
-                                                           { None   -> (error (print "Invalid customer tuple"));
-                                                                       {c_nationkey: c.c_nationkey, n_name: ""}
+                                                           { None   -> (error (print "Invalid customer tuple"))
                                                            }
                                            )
                                            {c_nationkey: 0, n_name: ""})
@@ -222,24 +221,22 @@ trigger q5_co_start : () = \_ -> (
       , rhs_ht_ty            = [: {key: int, value: collection {o_orderkey: int} @Collection} ]
 
       , lhs_probe            = [$ (\lht -> \_ -> \o ->
-                                    case lht.lookup {key: o.key, value: {c_nationkey: 0, n_name: ""}} of
-                                    { Some c -> o.value.iterate (\ok ->
+                                    lht.lookup_with {key: o.key, value: {c_nationkey: 0, n_name: ""}}
+                                      (\c -> o.value.iterate (\ok ->
                                                   co_nm_by_no.insert { key: { nationkey: c.value.c_nationkey
                                                                             , orderkey: ok.o_orderkey }
                                                                      , value: c.value.n_name })
-                                    }
-                                    { None   -> () }
+                                      ) 
                                   )
                                ]
 
       , rhs_probe            = [$ (\rht -> \_ -> \c ->
-                                    case rht.lookup {key: c.key, value: empty {o_orderkey:int} @Collection} of
-                                    { Some o -> o.value.iterate (\ok ->
+                                    rht.lookup_with {key: c.key, value: empty {o_orderkey:int} @Collection}
+                                      (\o -> o.value.iterate (\ok ->
                                                   co_nm_by_no.insert { key: { nationkey: c.value.c_nationkey
                                                                             , orderkey: ok.o_orderkey }
                                                                      , value: c.value.n_name })
-                                    }
-                                    { None   -> () }
+                                      ) 
                                   )
                                ]
 
@@ -283,16 +280,14 @@ trigger q5_cosl_start : () = \_ -> (
       , rhs_ht_ty            = [: {key: {nationkey: int, orderkey: int}, value: real} ]
 
       , lhs_probe            = [$ (\lht -> \_ -> \sl ->
-                                    case lht.lookup {key:sl.key, value: ""} of
-                                    { Some co -> q5_result.insert_with {key: co.value, value:sl.value} merge_epd_by_n }
-                                    { None    -> () }
+                                    lht.lookup_with {key:sl.key, value: ""}
+                                      (\co -> q5_result.insert_with {key: co.value, value:sl.value} merge_epd_by_n)
                                   )
                                ]
 
       , rhs_probe            = [$ (\rht -> \_ -> \co ->
-                                    case rht.lookup {key:co.key, value: 0.0} of
-                                    { Some sl -> q5_result.insert_with {key: co.value, value:sl.value} merge_epd_by_n }
-                                    { None    -> () }
+                                    rht.lookup_with {key:co.key, value: 0.0}
+                                      (\sl -> q5_result.insert_with {key: co.value, value:sl.value} merge_epd_by_n)
                                   )
                                ]
 

@@ -7,5 +7,5 @@ dist/build/k3/k3 \
   --mpargs package-db=$SNDPATH --mpsearch src \
   compile \
     --gcc -l cpp \
-    --cpp-flags='-DYAS_SERIALIZE_BOOST_TYPES=1 -DMEMPROFILE -DCACHEPROFILE -DBOOST_LOG_DYN_LINK -Iruntime/cpp/external -Iruntime/cpp -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lre2 -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lintelpcm -ltcmalloc -lcsvpp -ldynamic -ftemplate-depth-1024 -O4' \
+    --cpp-flags='-DYAS_SERIALIZE_BOOST_TYPES=1 -DMEMPROFILE -DCACHEPROFILE -DBOOST_LOG_DYN_LINK -Iruntime/cpp/external -Iruntime/cpp -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lre2 -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lintelpcm -ltcmalloc -lcsvpp -ldynamic -ftemplate-depth-1024 -flto -O4' \
     -r runtime $@
