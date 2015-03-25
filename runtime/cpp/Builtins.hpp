@@ -473,6 +473,7 @@ namespace K3 {
     string_impl takeUntil(const string_impl& s, const string_impl& splitter);
     int countChar(const string_impl& s, const string_impl& splitter);
     int tpch_date(const string_impl& s);
+    string_impl tpch_date_to_string(const int& date);
   };
 
 
