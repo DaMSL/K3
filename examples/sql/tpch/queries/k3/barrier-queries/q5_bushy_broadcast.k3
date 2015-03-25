@@ -75,7 +75,7 @@ declare merge_epd_by_n :    {key: string, value: real}
 declare r_asia_by_rk : mut collection {key: int, value: () } @IntMap
 declare n_asia_by_nk : mut collection {key: int, value: string } @IntMap
 
-declare li_okepd_by_sk : mut collection {key: int, value: collection {l_orderkey: int, l_epd: real} @Collection} @IntMap
+declare li_okepd_by_sk : mut collection {key: int, value: collection {key: int, value: real} @IntMap} @IntMap
 declare or_ok_by_ck    : mut collection {key: int, value: collection {o_orderkey: int} @Collection} @IntMap
 
 declare co_nm_by_no  : mut collection {key: {nationkey: int, orderkey: int}, value: string} @Map
@@ -107,12 +107,13 @@ trigger q5_sl_start : () = \_ -> (
       , lhs_query = [$ li_okepd_by_sk =
                         (lineitem.groupBy (\li -> li.l_suppkey)
                                           (\acc -> \li ->
-                                            ((acc.insert { l_orderkey : li.l_orderkey
-                                                         , l_epd      : li.l_extendedprice * (1 - li.l_discount)}) ;
+                                            ((acc.insert_with { key   : li.l_orderkey
+                                                              , value : li.l_extendedprice * (1 - li.l_discount)}
+                                                (\old -> \new -> {key: old.key, value: old.value + new.value}));
                                               acc))
-                                          (empty {l_orderkey : int, l_epd : real} @Collection))
-                                 .fold    (\acc -> \li -> ((acc.insert li); acc))
-                                          (empty {key: int, value: collection {l_orderkey: int, l_epd: real} @Collection} @IntMap)
+                                          (empty {key : int, value : real} @IntMap))
+                                 .fold    ((\acc -> \okepd -> ((acc.insert okepd); acc)) @:Accumulate)
+                                          (empty {key: int, value: collection {key: int, value: real} @IntMap} @IntMap)
                     ]
       , lhs_query_clear = [$ lineitem = empty q5_lineitem_r @Collection ]
 
@@ -128,11 +129,11 @@ trigger q5_sl_start : () = \_ -> (
 
       , lhs_probe            = [$ (\_ -> \s ->
                                     li_okepd_by_sk.lookup_with
-                                      {key: s.key, value: empty {l_orderkey: int, l_epd: real} @Collection}
+                                      {key: s.key, value: empty {key: int, value: real} @IntMap}
                                       (\l -> l.value.iterate (\loe ->
                                                sl_epd_by_no.insert_with
-                                                     { key: {nationkey: s.value, orderkey: loe.l_orderkey}
-                                                     , value: loe.l_epd}
+                                                     { key: {nationkey: s.value, orderkey: loe.key}
+                                                     , value: loe.value}
                                                      (\old -> \new -> {key: old.key, value: old.value + new.value}))
                                       )
                                   )
