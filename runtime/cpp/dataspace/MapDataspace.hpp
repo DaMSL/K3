@@ -44,9 +44,8 @@ class IntMap {
 
   IntMap(Container&& con) : container(std::move(con)) {}
 
-  // TODO: This is just flat-out wrong.
   template<typename Iterator>
-  IntMap(Iterator begin, Iterator end): container(begin,end) {
+  IntMap(Iterator begin, Iterator end) {
     init_mapi(true, sizeof(R));
     mapi* m = get_mapi();
     for ( auto it = begin; it != end; ++it) {
@@ -463,12 +462,17 @@ class IntMap {
   }
 
   void init_mapi(bool alloc, size_t sz) {
-    if ( alloc ) { container = Container(mapi_new(sz)); }
+    if ( alloc ) {
+      container = Container(mapi_new(sz), [](mapi* m){ mapi_free(m); });
+    }
     mapi_clone(get_mapi(), (CloneFn) &IntMap<R>::cloneElem);
   }
 
   void init_mapi(bool alloc, size_t sz) const {
-    if ( alloc ) { const_cast<shared_ptr<mapi>&>(container) = Container(mapi_new(sz)); }
+    if ( alloc ) {
+      const_cast<shared_ptr<mapi>&>(container) =
+        Container(mapi_new(sz), [](mapi* m){ mapi_free(m); });
+    }
     mapi_clone(get_mapi(), (CloneFn) &IntMap<R>::cloneElem);
   }
 
@@ -547,7 +551,7 @@ class StrMap {
   StrMap(Container&& con) : container(std::move(con)) {}
 
   template<typename Iterator>
-  StrMap(Iterator begin, Iterator end): container(begin,end) {
+  StrMap(Iterator begin, Iterator end) {
     init_map_str(true, sizeof(R));
     for ( auto it = begin; it != end; ++it) {
       insert(*it);
@@ -987,12 +991,17 @@ private:
   }
 
   void init_map_str(bool alloc, size_t sz) {
-    if ( alloc ) { container = Container(map_str_new(sz)); }
+    if ( alloc ) {
+      container = Container(map_str_new(sz), [](map_str* m){ map_str_free(m); });
+    }
     map_str_clone(get_map_str(), (CloneFn) &StrMap<R>::cloneElem);
   }
 
   void init_map_str(bool alloc, size_t sz) const {
-    if ( alloc ) { const_cast<shared_ptr<map_str>&>(container) = Container(map_str_new(sz)); }
+    if ( alloc ) {
+      const_cast<shared_ptr<map_str>&>(container) =
+        Container(map_str_new(sz), [](map_str* m){ map_str_free(m); });
+    }
     map_str_clone(get_map_str(), (CloneFn) &StrMap<R>::cloneElem);
   }
 
