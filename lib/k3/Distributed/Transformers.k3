@@ -282,6 +282,9 @@ control BarrierHashJoin   [ lbl                  : label
           declare $[lhs_ht_id] : mut $[|specializeMapTypeByKV 'lhs_ht_ty|]
           declare $[rhs_ht_id] : mut $[|specializeMapTypeByKV 'rhs_ht_ty|]
 
+          declare $[lbl]_lhs_done : mut bool = false
+          declare $[lbl]_rhs_done : mut bool = false
+
           trigger $[lbl]_process_redistribute : ( option ($[|specializeMapTypeByKV 'lhs_ht_ty|])
                                                 , option ($[|specializeMapTypeByKV 'rhs_ht_ty|])
                                                 , bool)
@@ -316,6 +319,48 @@ control BarrierHashJoin   [ lbl                  : label
 
           trigger $[lbl]_global_barrier : () = \_ -> (
             ( print "Join done." ;
+              $[next]
+            ) @OnCounter(id=[# $[lbl]_join_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
+          )
+        }
+}
+
+
+control ReceiveBroadcastJoin [ lbl              : label
+                             , lhs_probe        : expr
+                             , broadcast_ty     : type
+                             , has_outputs      : expr
+                             , empty_out_buffer : expr
+                             , pipeline_next    : expr
+                             , peer_next        : expr
+                             , next             : expr
+                             , coordinator      : expr
+                             , nodes            : expr
+                             , masters          : expr
+                             , masters_map      : expr ]
+{
+  () => ()
+     +> {
+          // Process broadcasted partition from a peer, and pipeline its outputs.
+          trigger $[lbl]_probe : $[broadcast_ty] = ((\vals -> (
+            ( let outputs = vals.fold $[lhs_probe] $[empty_out_buffer] in
+              if $[has_outputs] outputs then ( $[pipeline_next] outputs ) else () );
+            (
+              ( print "Broadcast join peer finished processing." );
+              ( $[peer_next] );
+              ($[lbl]_global_barrier, $[coordinator]) <- ()
+            ) @OnCounter(id=[# $[lbl]_peer_broadcast_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
+          )
+          ) @:Receive
+          ) @BroadcastByMachine( lbl           = [# $[lbl]_rj_bcast ]
+                               , dest_trg      = [$ $[lbl]_probe ]
+                               , masters       = masters
+                               , masters_map   = masters_map
+                               , send_ty       = broadcast_ty
+                               , send_extra_fn = [$ \x -> x ] )
+
+          trigger $[lbl]_global_barrier : () = \_ -> (
+            ( print "Broadcast join done." ;
               $[next]
             ) @OnCounter(id=[# $[lbl]_join_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
           )
