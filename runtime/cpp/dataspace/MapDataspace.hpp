@@ -374,6 +374,18 @@ class IntMap {
     }
   }
 
+  template <class F>
+  auto lookup_with3(R const& r, F f) const {
+    mapi* m = get_mapi();
+    if ( m->size > 0 ) {
+      auto existing = mapi_find(m, r.key);
+      if (existing != nullptr) {
+        return f(*static_cast<R*>(existing));
+      }
+    }
+    throw std::runtime_error("No match on IntMap.lookup_with3");
+  }
+
   bool operator==(const IntMap& other) const {
     return get_mapi() == other.get_mapi()
             || ( size() == other.size()
@@ -897,6 +909,18 @@ class StrMap {
         return g(*map_str_get(m,existing));
       }
     }
+  }
+
+  template <class F>
+  auto lookup_with3(R const& r, F f) const {
+    map_str* m = get_map_str();
+    if ( m->size > 0 ) {
+      auto existing = map_str_find(m, r.key.begin());
+      if (existing != map_str_end(m)) {
+        return f(*map_str_get(m,existing));
+      }
+    }
+    throw std::runtime_error("No match on StrMap.lookup_with3");
   }
 
   bool operator==(const StrMap& other) const {

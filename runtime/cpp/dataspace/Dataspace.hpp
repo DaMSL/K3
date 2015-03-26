@@ -1419,7 +1419,6 @@ class Map {
     return unit_t {};
   }
 
-
   template <class F, class G>
   auto lookup_with2(R const& r, F f, G g) const {
     auto it = container.find(r.key);
@@ -1428,6 +1427,15 @@ class Map {
     } else {
       return g(it->second);
     }
+  }
+
+  template <class F>
+  auto lookup_with3(R const& r, F f) const {
+    auto it = container.find(r.key);
+    if (it != container.end()) {
+      return f(it->second);
+    }
+    throw std::runtime_error("No match on Map.lookup_with3");
   }
 
   bool operator==(const Map& other) const {
