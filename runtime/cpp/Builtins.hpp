@@ -91,7 +91,7 @@ namespace K3 {
 
   class __jemalloc_context {
     public:
-      unit_t jemallocStart(const string_impl&);
+      unit_t jemallocStart(unit_t);
       unit_t jemallocStop(unit_t);
   };
   template <class C1, class C, class F>
