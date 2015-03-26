@@ -38,8 +38,8 @@ order by
 *
 ****************************
 * Join order:
-*   (c-n-r)-o--result
-*   (s-n-r)-l-/
+*   (c-n-r)-o-\
+*   (s-n-r)-l----result
 ****************************/
 
 declare master : address
@@ -78,7 +78,7 @@ declare n_asia_by_nk : mut collection {key: int, value: string } @IntMap
 declare li_okepd_by_sk : mut collection {key: int, value: collection {key: int, value: real} @IntMap} @IntMap
 declare or_ok_by_ck    : mut collection {key: int, value: collection {o_orderkey: int} @Collection} @IntMap
 
-declare co_nm_by_no  : mut collection {key: {nationkey: int, orderkey: int}, value: string} @Map
+declare co_nm_by_no  : mut collection {nationkey: int, orderkey: int} @Collection
 declare sl_epd_by_no : mut collection {key: {nationkey: int, orderkey: int}, value: real} @Map
 
 trigger q5_prep : () = \_ -> (
@@ -170,28 +170,23 @@ trigger q5_co_start : () = \_ -> (
 
       , rhs_query = [$ (((customer.filter  (\c -> n_asia_by_nk.member { key: c.c_nationkey, value: "" }))
                                   .groupBy (\c -> c.c_custkey)
-                                           (\acc -> \c -> case n_asia_by_nk.lookup { key: c.c_nationkey, value: "" }
-                                                        of { Some n -> {c_nationkey: c.c_nationkey, n_name: n.value} }
-                                                           { None   -> (error (print "Invalid customer tuple"))
-                                                           }
-                                           )
-                                           {c_nationkey: 0, n_name: ""})
+                                           (\acc -> \c -> c.c_nationkey)
+                                           0)
                                   .fold    ((\acc -> \c -> ((acc.insert c); acc)) @:Accumulate)
-                                           (empty {key: int, value: {c_nationkey: int, n_name: string}} @IntMap))
+                                           (empty {key: int, value: int} @IntMap))
                     ]
       , rhs_query_clear = [$ customer = empty q5_customer_r @Collection ]
 
       , lhs_probe            = [$ (\_ -> \c ->
                                     or_ok_by_ck.lookup_with {key: c.key, value: empty {o_orderkey:int} @Collection}
                                       (\o -> o.value.iterate (\ok ->
-                                               co_nm_by_no.insert { key: { nationkey: c.value.c_nationkey
-                                                                         , orderkey: ok.o_orderkey }
-                                                                  , value: c.value.n_name })
+                                               co_nm_by_no.insert { nationkey: c.value
+                                                                  , orderkey: ok.o_orderkey })
                                       )
                                   )
                                ]
 
-      , broadcast_ty         = [: collection {key: int, value: {c_nationkey: int, n_name: string}} @IntMap ]
+      , broadcast_ty         = [: collection {key: int, value: int} @IntMap ]
       , has_outputs          = [$ (\_ -> false) ]
       , empty_out_buffer     = [$ () ]
 
@@ -203,10 +198,10 @@ trigger q5_co_start : () = \_ -> (
                                                        , dest_trg      = [$ cosl_probe ]
                                                        , masters       = masters
                                                        , masters_map   = masters_map
-                                                       , send_ty       = [: collection {key: {nationkey: int, orderkey: int}, value: string} @Map]
+                                                       , send_ty       = [: collection {nationkey: int, orderkey: int} @Collection]
                                                        , send_extra_fn = [$ \x -> x ] )
                                   );
-                                  co_nm_by_no = empty {key: {nationkey: int, orderkey: int}, value: string} @Map
+                                  co_nm_by_no = empty {nationkey: int, orderkey: int} @Collection
                                ]
 
       , next                 = [$ () ]
@@ -222,11 +217,13 @@ trigger q5_cosl_start : () = \_ -> (
   () @ReceiveBroadcastJoin(
         lbl              = [# cosl ]
       , lhs_probe        = [$ (\_ -> \co ->
-                                sl_epd_by_no.lookup_with {key:co.key, value: 0.0}
-                                  (\sl -> q5_result.insert_with {key: co.value, value:sl.value} merge_epd_by_n)
+                                sl_epd_by_no.lookup_with {key: co, value: 0.0}
+                                  (\sl -> n_asia_by_nk.lookup_with {key: co.nationkey, value: ""}
+                                            (\nkn -> q5_result.insert_with {key: nkn.value, value:sl.value} merge_epd_by_n)
+                                  )
                               )
                            ]
-      , broadcast_ty     = [: collection {key: {nationkey: int, orderkey: int}, value: string} @Map ]
+      , broadcast_ty     = [: collection {nationkey: int, orderkey: int} @Collection ]
       , has_outputs      = [$ (\_ -> false) ]
       , empty_out_buffer = [$ () ]
       , pipeline_next    = [$ (\_ -> ()) ]
