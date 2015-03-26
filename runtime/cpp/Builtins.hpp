@@ -9,6 +9,10 @@
 #include "gperftools/heap-profiler.h"
 #endif
 
+#ifdef JEMALLOC
+#include "jemalloc/jemalloc.h"
+#endif
+
 #include <ctime>
 #include <chrono>
 #include <climits>
@@ -85,6 +89,11 @@ namespace K3 {
       unit_t heapProfilerStop(unit_t);
   };
 
+  class __jemalloc_context {
+    public:
+      unit_t jemallocStart(const string_impl&);
+      unit_t jemallocStop(unit_t);
+  };
   template <class C1, class C, class F>
   void read_records_with_resize(int size, C1& paths, C& container, F read_record) {
 

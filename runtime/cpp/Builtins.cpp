@@ -39,6 +39,26 @@ namespace K3 {
     return unit_t {};
   }
 
+  unit_t __jemalloc_context::jemallocStart(unit_t) {
+    #ifdef JEMALLOC
+    bool enable = true;
+    mallctl("prof.active", NULL, 0, &enable, sizeof(enable));
+    #else
+    std::cout << "jemallocStart: JEMALLOC is not defined. not starting." << std::endl;
+    #endif
+    return unit_t {};
+  }
+
+  unit_t __jemalloc_context::jemallocStop(unit_t) {
+    #ifdef JEMALLOC
+    std::cout << "Dumping Heap Profile...\n";
+    mallctl("prof.dump", NULL, 0, NULL, 0);
+    bool enable = false;
+    mallctl("prof.active", NULL, 0, &enable, sizeof(enable));
+    #endif
+    return unit_t {};
+  }
+
   unit_t __standard_context::openBuiltin(string_impl ch_id, string_impl builtin_ch_id, string_impl fmt) {
     __engine.openBuiltin(ch_id, builtin_ch_id, fmt);
     return unit_t();

@@ -42,6 +42,12 @@ with effects \s -> io
 declare heapProfilerStop: () -> ()
 with effects \_ -> io
 
+declare jemallocStart: () -> ()
+with effects \_ -> io
+
+declare jemallocStop: () -> ()
+with effects \_ -> io
+
 declare cacheProfilerStart: () -> ()
 with effects \_ -> io
 
