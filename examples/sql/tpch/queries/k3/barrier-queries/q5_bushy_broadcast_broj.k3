@@ -43,6 +43,7 @@ order by
 ****************************/
 
 declare master : address
+declare clear_enabled : bool = false
 declare sample_factor : real = 10.0
 
 declare lineitem_r : lineitem_r
@@ -115,7 +116,7 @@ trigger q5_sl_start : () = \_ -> (
                                  .fold    ((\acc -> \okepd -> ((acc.insert okepd); acc)) @:Accumulate)
                                           (empty {key: int, value: collection {key: int, value: real} @IntMap} @IntMap)
                     ]
-      , lhs_query_clear = [$ lineitem = empty q5_lineitem_r @Collection ]
+      , lhs_query_clear = [$ if clear_enabled then (lineitem = empty q5_lineitem_r @Collection) else () ]
 
       , rhs_query = [$ ((supplier.filter  (\s -> n_asia_by_nk.member {key: s.s_nationkey, value:""}))
                                  .groupBy (\s -> s.s_suppkey)
@@ -125,7 +126,7 @@ trigger q5_sl_start : () = \_ -> (
                                           (empty {key: int, value: int} @IntMap)
 
                     ]
-      , rhs_query_clear = [$ supplier = empty q5_supplier_r @Collection ]
+      , rhs_query_clear = [$ if clear_enabled then (supplier = empty q5_supplier_r @Collection) else () ]
 
       , lhs_probe            = [$ (\_ -> \s ->
                                     li_okepd_by_sk.lookup_with
@@ -166,7 +167,7 @@ trigger q5_co_start : () = \_ -> (
                                  .fold    ((\acc -> \o -> ((acc.insert o); acc)) @:Accumulate)
                                           (empty {key: int, value: collection {o_orderkey: int} @Collection} @IntMap)
                     ]
-      , lhs_query_clear = [$ orders = empty q5_orders_r @Collection ]
+      , lhs_query_clear = [$ if clear_enabled then (orders = empty q5_orders_r @Collection) else () ]
 
       , rhs_query = [$ (((customer.filter  (\c -> n_asia_by_nk.member { key: c.c_nationkey, value: "" }))
                                   .groupBy (\c -> c.c_custkey)
@@ -175,7 +176,7 @@ trigger q5_co_start : () = \_ -> (
                                   .fold    ((\acc -> \c -> ((acc.insert c); acc)) @:Accumulate)
                                            (empty {key: int, value: int} @IntMap))
                     ]
-      , rhs_query_clear = [$ customer = empty q5_customer_r @Collection ]
+      , rhs_query_clear = [$ if clear_enabled then (customer = empty q5_customer_r @Collection) else () ]
 
       , lhs_probe            = [$ (\_ -> \c ->
                                     or_ok_by_ck.lookup_with {key: c.key, value: empty {o_orderkey:int} @Collection}
