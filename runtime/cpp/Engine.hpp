@@ -337,18 +337,10 @@ namespace K3 {
 
             // Log Global state
             auto& global_stream = *std::get<1>(log_streams[peer]);
-            global_stream << message_counter << "|";
-            global_stream << K3::serialization::json::encode<Address>(peer) << "|";
-            int i = 0;
-            auto s = env.size();
+            auto s = std::to_string(message_counter) + "|" + K3::serialization::json::encode<Address>(peer) + "|";
             for (const auto& tup : env) {
-               global_stream << tup.second;
-              if (i < s-1) {
-                global_stream << "|";
-              }
-              i++;
+              global_stream << s << tup.first << "|" << tup.second << std::endl;
             }
-            global_stream << std::endl;
     }
 
     void logResult(shared_ptr<MessageProcessor>& mp) {
