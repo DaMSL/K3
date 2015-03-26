@@ -188,7 +188,9 @@ varcharType = "varchar"
 
 {- SQL script construction -}
 mkGlobalsSchema :: Globals -> Statement
-mkGlobalsSchema attrs = createTable globalsTable $ keyAttrs ++ attrs
+mkGlobalsSchema attrs = createTable globalsTable $ keyAttrs ++ globalAttrs
+  where globalAttrs = [ ("key", "text")
+                      , ("value", "json")]
 
 mkEventTraceSchema :: Triggers -> Statement
 mkEventTraceSchema _ = createTable msgsTable $ keyAttrs ++ logAttrs
