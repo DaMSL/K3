@@ -4,6 +4,11 @@ declare masters      : collection {addr : address} @Collection
 declare local_peers  : collection {addr : address} @Collection
 declare peer_masters : collection {key: address, value: address} @Map
 
+control IfMachineMaster {
+  ?e => (peer_masters.lookup_with {key: me, value: me} (\r -> ((print (atos me)); (if me == r.value then $.[e] else ()))))
+     +> {}
+}
+
 // Split a single partitioned broadcast into a dual-tier messaging pattern.
 control DispatchByMachine[ lbl : label, dest_trg : expr
                          , masters : expr, masters_map : expr
