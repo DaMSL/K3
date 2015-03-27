@@ -30,7 +30,8 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
         }
 
   ( ignore ?e ) @: SendBroadcast
-     => ( $[masters].iterate (\n -> ($[lbl]_machproxy, n.addr) <- ($[send_extra_fn] $.[e])) )
+     => ( let r = $.[e] in
+          $[masters].iterate (\n -> ($[lbl]_machproxy, n.addr) <- ($[send_extra_fn] r)) )
      +> {
           @:Pinned
           declare $[lbl]_machvar : collection {key: int, value: $[send_ty]} @Map
