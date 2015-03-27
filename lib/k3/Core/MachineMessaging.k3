@@ -219,9 +219,7 @@ control PartitionByKeyMachine[masters_map : expr, nodes : expr] {
       => $.[e].fold
             (\acc3 -> \v ->
               let k  = $.[groupF] v in
-              let k2 = case $[nodes].at (index_by_hash k)
-                       of { Some n -> n.addr }
-                          { None -> ((error (print ("Invalid node"))); me) }
+              let k2 = $[nodes].at_with (index_by_hash k) (\a -> a.addr)
               in
               let k3 = case $[masters_map].lookup {key: k2, value: me}
                        of { Some mstr -> mstr.value }
@@ -254,10 +252,7 @@ control PartitionByKeyMachine[masters_map : expr, nodes : expr] {
             (empty {key: address, value: collection {key: address, value: collection $::[t] @Map} @Map} @Map)
 
   ?e : collection ?t @Map
-      => ((( ($.[e].groupBy @:HGroupBy) (\v -> case $[nodes].at (index_by_hash v.key)
-                                               of { Some n -> n.addr }
-                                                  { None -> ((error (print ("Invalid node"))); me) }
-                                        )
+      => ((( ($.[e].groupBy @:HGroupBy) (\v -> $[nodes].at_with (index_by_hash k) (\a -> a.addr))
                                         (\acc -> \v -> ((acc.insert v); acc))
                                         (empty $::[t] @Map) )
                    .groupBy @:HGroupBy) (\v -> case $[masters_map].lookup {key: v.key, value: me}
@@ -268,10 +263,7 @@ control PartitionByKeyMachine[masters_map : expr, nodes : expr] {
                                         (empty {key: address, value: collection $::[t] @Map} @Map))
 
   ?e : collection ?t
-      => (($.[e].groupBy (\v -> case $[nodes].at (index_by_hash v.key)
-                                of { Some n -> n.addr }
-                                   { None -> ((error (print ("Invalid node"))); me) }
-                         )
+      => (($.[e].groupBy (\v -> $[nodes].at_with (index_by_hash v.key) (\a -> a.addr))
                          (\acc -> \v -> ((acc.insert v); acc))
                          (empty $::[t] @Collection))
                 .groupBy (\v -> case $[masters_map].lookup {key: v.key, value: me}
