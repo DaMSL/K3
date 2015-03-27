@@ -129,7 +129,7 @@ trigger q3_loc : () = \_ -> (
 trigger loc_agg_merge : lior_epd_by_ods_map = \partials ->
   ((partials.iterate (\w -> q3_peer_result.insert_with w merge_lior_epd_by_ods));
     ( ( (() @:Result) @TPCHBenchmarkWithoutMaster );
-      if master == me then ( ( () @:StopTimer); finalizeResult ()) @Time(lbl=[# loc_JOIN], tag=[$ "Time "]) else (finalizeResult ())
+      ( finalizeResult () )
     ) @OnCounter(id=[# loc_agg_peer_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
   )
 
