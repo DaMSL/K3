@@ -10,6 +10,10 @@ control OnCounter[id : label, eq : expr, reset : expr, profile : expr] {
           // Do counter increment.
           $[id]_cnt = $[id]_cnt + 1;
 
+          //(if $[id]_cnt % 8 == 0
+          //then print ((atos me) ++ ": " ++ $[|exprLabel 'id|] ++ " barrier: " ++ (itos $[id]_cnt) ++ "/" ++ (itos $[eq]))
+          //else ());
+
           // Evaluate barrier expression when ready.
           if $[id]_cnt == $[eq]
           then ( // Track last increment time, without expression evaluation.

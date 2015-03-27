@@ -9,9 +9,9 @@ k3_globals:
   role: rows
   master: auto
 k3_data:
-  - {var: lineitemFiles, path: /local/data/tpch10g/lineitem, policy: global}
-  - {var: ordersFiles, path: /local/data/tpch10g/orders, policy: global}
-  - {var: customerFiles, path: /local/data/tpch10g/customer, policy: global}
-  - {var: supplierFiles, path: /local/data/tpch10g/supplier, policy: global}
-  - {var: nationFiles, path: /local/data/tpch10g/nation, policy: replicate}
-  - {var: regionFiles, path: /local/data/tpch10g/region, policy: replicate}
+  - {var: lineitemFiles, path: /local/data/tpch100g/lineitem, policy: global}
+  - {var: ordersFiles, path: /local/data/tpch100g/orders, policy: global}
+  - {var: customerFiles, path: /local/data/tpch100g/customer, policy: global}
+  - {var: supplierFiles, path: /local/data/tpch100g/supplier, policy: global}
+  - {var: nationFiles, path: /local/data/tpch100g/nation, policy: replicate}
+  - {var: regionFiles, path: /local/data/tpch100g/region, policy: replicate}

@@ -69,8 +69,8 @@ trigger q3_start : () = \_ -> (
       , has_outputs      = [$ (\_ -> false) ]
       , empty_out_buffer = [$ () ]
       , pipeline_next    = [$ (\_ -> ()) ]
-      , peer_next        = [$ (loc_broadcast, me) <- () ]
-      , next             = [$ () ]
+      , peer_next        = [$ () ]
+      , next             = [$ (q3_loc, me) <- ()]
       , coordinator      = [$ master]
       , nodes            = [$ peers]
       , masters          = [$ masters ]
@@ -170,7 +170,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                                   , nodes    = [$ peers]
                                   , next     = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ]) )
                          ],
-  preShutdownExpr      = [$ sleep 30000 ],
+  preShutdownExpr      = [$ () ],
   finishAsShutdownExpr = [$ false]
 )
 

@@ -62,7 +62,7 @@ declare print_results : () -> () = \_ -> (
   end_ms = now_int ();
   elapsed_ms = end_ms - start_ms;
   print ("Elapsed: " ++ (itos elapsed_ms));
-  print ("Avg Time per Iteration: " ++ (rtos avg_iter_time))
+  print ("Avg time per iteration: " ++ (rtos avg_iter_time))
 )
 
 // Run SGD on local dataset.

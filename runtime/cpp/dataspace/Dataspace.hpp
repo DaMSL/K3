@@ -766,8 +766,7 @@ class Set {
 
   // Set specific functions
   bool member(const Elem& e) const {
-    auto it = std::find(getConstContainer().begin(), getConstContainer().end(), e);
-    return (it != getConstContainer().end());
+    return container.find(e) != container.end();
   }
 
   bool isSubsetOf(const Set<Elem>& other) const {
