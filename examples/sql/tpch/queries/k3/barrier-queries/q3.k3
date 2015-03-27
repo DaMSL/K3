@@ -246,7 +246,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                                   , nodes    = [$ peers]
                                   , next     = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ]) )
                          ],
-  preShutdownExpr      = [$ sleep 30000 ],
+  preShutdownExpr      = [$ () ],
   finishAsShutdownExpr = [$ false]
 )
 
