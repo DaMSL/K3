@@ -51,7 +51,6 @@ namespace K3 {
 
   unit_t __jemalloc_context::jemallocStop(unit_t) {
     #ifdef JEMALLOC
-    std::cout << "Dumping Heap Profile...\n";
     mallctl("prof.dump", NULL, 0, NULL, 0);
     bool enable = false;
     mallctl("prof.active", NULL, 0, &enable, sizeof(enable));
