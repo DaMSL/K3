@@ -460,6 +460,12 @@ class TaskThread {
 
   virtual void shutdown(ExecutorDriver* driver) {
   	driver->sendFrameworkMessage("Executor " + host_name+ "SHUTTING DOWN");
+                  if (thread) {
+                    thread->interrupt();
+                    thread->join();
+                    delete thread;
+                    thread = 0;
+                  }
 	driver->stop();
   }
 

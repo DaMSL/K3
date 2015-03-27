@@ -4,7 +4,8 @@ import sys
 import time
 import threading
 import re
-from collections import deque
+import operator
+from collections import deque, OrderedDict
 
 from core import *
 from mesosutils import *
@@ -62,7 +63,7 @@ class Dispatcher(mesos.interface.Scheduler):
     self.pending = deque()     # Pending jobs. First job is popped once there are enough resources available to launch it.
     self.active = {}           # Active jobs keyed on jobId.
     self.finished = {}         # Finished jobs keyed on jobId.
-    self.offers = {}           # Offers from Mesos keyed on offerId. We assume they are valid until they are rescinded by Mesos.
+    self.offers = OrderedDict()           # Offers from Mesos keyed on offerId. We assume they are valid until they are rescinded by Mesos.
     self.jobsCreated = 0       # Total number of jobs created for generating job ids.
 
     self.daemon = daemon       # Run as a daemon (or finish when there are no more pending/active jobs)
@@ -246,7 +247,8 @@ class Dispatcher(mesos.interface.Scheduler):
     print("[RESOURCE OFFER] Got %d resource offers" % len(offers))
 
     print("Adding %d offers to offer dict" % len(offers))
-    for offer in offers:
+    sorted_offers = sorted(offers, key=lambda t: t.hostname.encode('ascii','ignore')) 
+    for offer in sorted_offers:
       self.offers[offer.id.value] = offer
 
     while len(self.pending) > 0:
