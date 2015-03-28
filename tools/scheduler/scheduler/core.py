@@ -45,12 +45,12 @@ class AppID:
 # TODO inputs per Roles instead of per Job
 class Role:
   def __init__(self, **kwargs):
-    #peers = 0, variables = {}, volumes = [], hostmask = r".*"):
     self.peers      = kwargs.get("peers", 0)
     self.variables  = kwargs.get("variables", {})
     self.hostmask   = kwargs.get("hostmask", r".*")
     self.params     = kwargs.get("params", {})
     self.volumes    = kwargs.get("volumes", [])
+    self.envars     = kwargs.get("envars", [])
 
   def to_string(self):
     print ("  ROLE ")
@@ -106,6 +106,7 @@ class Job:
     self.roles      = {}
     self.inputs     = []
     self.volumes    = []
+    self.envars   = []
     self.tasks      = None
     self.status     = None
     self.all_peers  = None
@@ -187,6 +188,10 @@ class Job:
       volumes = [] if 'volumes' not in doc else doc['volumes']
       self.volumes = volumes
 
+      envars = [] if 'envars' not in doc else doc['envars']
+      self.envars = envars
+
+
       # TODO:  CHANGE TO ROLE-BASED INPUTS for k3_data
       if 'k3_data' in doc:
         self.inputs = doc['k3_data']
@@ -196,21 +201,8 @@ class Job:
         mask = doc['hostmask']
 
 
-      r = Role(peers=peers, variables=variables, hostmask=mask, volumes=volumes, params=params)
+      r = Role(peers=peers, variables=variables, hostmask=mask, volumes=volumes, params=params, envars=envars)
       self.roles[name] = r
 
 
-  # def createTaskData (self, taskId):
-  #   task_data = {}
-  #   # TODO fix this hack
-  #   task_data["binary"] = self.appId
-  #   task_data["totalPeers"] = len(self.all_peers)
-  #   task_data["peerStart"] = self.tasks[taskId].peers[0].index
-  #   task_data["peerEnd"] = self.tasks[taskId].peers[-1].index
-  #   task_data["me"] = [ [p.ip, p.port] for p in self.tasks[taskId].peers]
-  #   task_data["peers"] = [ {"addr": [p.ip, p.port] } for p in self.all_peers]
-  #   task_data["globals"] = [p.variables for p in self.tasks[taskId].peers]
-  #   task_data["master"] = [ self.all_peers[0].ip, self.all_peers[0].port ]
-  #   task_data["data"] = [ inputs for p in range(len(self.tasks[taskId].peers)) ]
-  #   return task_data
 

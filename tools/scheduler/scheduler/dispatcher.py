@@ -147,9 +147,9 @@ class Dispatcher(mesos.interface.Scheduler):
       if cpusUsedPerOffer[offerId] > 0:
 
         mem = getResource(self.offers[offerId].resources, "mem", float)
-        # if mem < 32:
-        #   print ("Offerred less than 32MB of RAM, skipping")
-        #   continue
+        if mem == None or mem == 0:
+          print ("No RAM in this offer, skipping")
+          continue
 
         host = self.offers[offerId].hostname.encode('ascii','ignore')
         debug = (host, str(rolesPerOffer[offerId]))
@@ -197,8 +197,10 @@ class Dispatcher(mesos.interface.Scheduler):
 
     # # Decline all remaining offers
     for oid, offer in self.offers.items():
-      print "DECLINING OFFER"
+      print "DECLINING remaining offer (Task Launched)"
       driver.declineOffer(offer.id)
+    for oid in self.offers.keys():
+      del self.offers[oid]
 
   def cancelJob(self, jobId, driver):
     print("Asked to cancel job %d. Killing all tasks" % jobId)

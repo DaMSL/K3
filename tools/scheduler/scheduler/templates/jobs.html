@@ -43,7 +43,8 @@
               {% if lastjob.complete %}
                 <li class="list-group-item">Time Completed <span class="text-info">{{ lastjob.complete }}</span></li>{% endif %}
               {% if lastjob.master %}
-                <li class="list-group-item">Master at <span class="text-info">{{ lastjob.master }}</span></li>{% endif %}
+                <li class="list-group-item">Master at <span class="text-info">{{ lastjob.master }}</span>
+                (<a href="{{lastjob.sandbox}}/stdout_{{lastjob.master}}">Master OUTPUT </a>)</li>{% endif %}
               {% if lastjob.roles %}
                 <li class="list-group-item">Roles<br><pre>{{ lastjob.roles }}</pre></li> {% endif %}
             </ul>
@@ -76,27 +77,39 @@
           {% endfor %}
           </table>
           <h3>Inactive K3 Jobs</h3>
+            <form action="/delete/jobs" method=post enctype=multipart/form-data>
           <table class="table table-striped">
+              <tr><th>Job ID</th><th>Application</th><th>User</th><th>Submitted</th>
+              <th>Status</th><th>Replay</th><th>Delete</th></tr>
           {% for job in joblist %}
             {% if job.status != "SUBMITTED" and job.status != "RUNNING" %}
             <tr><td><a href="/jobs/{{job.appName}}/{{job.jobId}}/status">{{job.jobId}}</a></td>
-                <td>{{job.appName}}</td><td>{{job.user}}</td><td>{{job.time}}</td><td>{{job.status}}</td></tr>
+                <td>{{job.appName}}</td><td>{{job.user}}</td><td>{{job.time}}</td><td>{{job.status}}</td>
+                <td><a href="/jobs/{{job.appName}}/{{job.jobId}}/replay">Replay {{job.jobId}}</a></td>
+                    <td><input type="checkbox" name="delete_job" value="{{job.jobId}}"></td>
+            </tr>
             {% endif %}
           {% endfor %}
         </table>
-
+           <div class="row text-right"><button type=submit class="btn btn-danger btn-md">
+               Delete Selected Inactive K3 Jobs</button></div>
+        </form>
           <h3>Inactive Compiling Jobs</h3>
+          <form action="/delete/compiles" method=post enctype=multipart/form-data>
           <table class="table table-striped">
           {% for job in compilelist %}
             {% if job.status != "SUBMITTED" and job.status != "COMPILING" and job.status != "ARCHIVING" %}
                 <tr><td><a href="/compile/{{job.name}}-{{job.uid}}">{{job.name}}-{{job.uid}}</a></td>
                     <td>{{job.git_hash}}</td>
                     <td>{{job.user}}</td><td>{{job.options}}</td><td>{{job.submit}}</td><td>{{job.status}}</td>
+                <td><input type="checkbox" name="delete_compile" value="{{job.uid}}"></td>
                 </tr>
             {% endif %}
           {% endfor %}
           </table>
-
+          <div class="row text-right"><button type=submit class="btn btn-danger btn-md">
+               Delete Selected Inactive Compiling Jobs</button></div>
+          </form>
 
         {% endif %}
     </div>

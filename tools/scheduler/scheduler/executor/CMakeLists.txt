@@ -16,7 +16,7 @@ include(CMakeDetermineCCompiler)
 
 set(CMAKE_CXX_FLAGS "-g -std=c++11")
 
-FIND_PACKAGE(Boost 1.54.0 COMPONENTS program_options system thread REQUIRED )
+FIND_PACKAGE(Boost 1.56.0 EXACT COMPONENTS program_options system thread REQUIRED )
 
 set(MESOS_INCLUDE_DIR /usr/local/include CACHE PATH "Mesos include dir")
 set(MESOS_LIBRARY_DIR /usr/local/lib CACHE PATH "Mesos library dir")

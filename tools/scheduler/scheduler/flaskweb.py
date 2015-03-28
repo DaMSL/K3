@@ -65,7 +65,7 @@ index_message = 'Welcome to K3'
 
 
 def initWeb():
-  for p in [JOBS_TARGET, APPS_TARGET, ARCHIVE_TARGET]:
+  for p in [LOCAL_DIR, JOBS_TARGET, APPS_TARGET, ARCHIVE_TARGET]:
     path = os.path.join(LOCAL_DIR, p)
     if not os.path.exists(path):
       os.mkdir(path)
@@ -153,23 +153,24 @@ def upload_app():
       print ("UPLOAD NEW APP.....")
       file = request.files['file']
       if file:
-          print ("GOT A FILE.....")
           name = secure_filename(file.filename)
-          fullpath = os.path.join(webapp.config['UPLOADED_APPS_DEST'], name)
-          file.save(fullpath)
-
-          print ("CHECKING UID.....")
-
+          path = os.path.join(webapp.config['UPLOADED_APPS_DEST'], name)
+          if not os.path.exists(path):
+            os.mkdir(path)
           uid = getUID() if 'uid' not in request.form or not request.form['uid'] else request.form['uid']
-
-          print ("UID = %s" % uid)
+          path =  os.path.join(path, uid)
+          if not os.path.exists(path):
+            os.mkdir(path)
+          fullpath = os.path.join(path, name)
+          file.save(fullpath)
 
           jobdir = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], name)
           if not os.path.exists(jobdir):
             os.mkdir(jobdir)
-          hash = hashlib.md5(open(fullpath).read()).hexdigest()
+          # hash = hashlib.md5(open(fullpath).read()).hexdigest()
 
-          print ('hash = %s' % hash)
+          hash = request.form['tag'] if 'tag' in request.form else ''
+
           # if (db.checkHash(hash)):
           db.insertApp(dict(uid=uid, name=name, hash=hash))
           #TODO:  Complete with paths for archive & app
@@ -290,11 +291,6 @@ def create_job(appName, appUID):
         if not file and not text:
           return render_template("errors/404.html", message="Invalid job request")
 
-        # if not user:
-        #   user = 'anonymous'
-        # if not tag:
-        #   tag = ''
-
         # Post new job request, get job ID & submit time
         thisjob = dict(appName=appName, appUID=appUID, user=user, tag=tag)
         jobId, time = db.insertJob(thisjob)
@@ -317,8 +313,8 @@ def create_job(appName, appUID):
               file.write(text)
 
         # Create new Mesos K3 Job
-        newJob = Job(binary=os.path.join(webapp.config['UPLOADED_APPS_URL'], appName),
-                     appName=appName, jobId=jobId, rolefile=os.path.join(path, filename))
+        apploc = os.path.join(webapp.config['UPLOADED_APPS_URL'], appName, appUID, appName)
+        newJob = Job(binary=apploc, appName=appName, jobId=jobId, rolefile=os.path.join(path, filename))
         print ("NEW JOB ID: %s" % newJob.jobId)
 
         # Submit to Mesos
@@ -388,6 +384,58 @@ def get_job(appName, jobId):
     else:
       return render_template("jobs.html", appName=appName, joblist=jobs, lastjob=thisjob)
 
+
+
+#------------------------------------------------------------------------------
+#  /jobs/<appName>/<appUID/replay  - Replay a previous K3 Job
+#         POST    Create new K3 Job
+#          curl -i -X POST -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<appUID>/replay
+#------------------------------------------------------------------------------
+@webapp.route('/jobs/<appName>/<jobId>/replay', methods=['GET', 'POST'])
+def replay_job(appName, jobId):
+  global dispatcher
+  joblist = db.getJobs(jobId=jobId)
+  oldjob = None if len(joblist) == 0 else joblist[0]
+  if oldjob:
+      print ("REPLAYING %s" % jobId),
+      # Post new job request, get job ID & submit time
+      thisjob = dict(appName=oldjob['appName'],
+                     appUID=oldjob['hash'],
+                     user=oldjob['user'],
+                     tag='REPLAY: %s' % oldjob['tag'])
+
+      new_jobId, time = db.insertJob(thisjob)
+      thisjob = dict(jobId=new_jobId, time=time)
+      print (" as new JOBID: %s" % new_jobId),
+
+
+      # Save yaml to file (either from file or text input)
+      role_src = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(jobId), 'role.yaml').encode('ascii', 'ignore')
+      path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(new_jobId)).encode('ascii', 'ignore')
+      os.mkdir(path)
+      role_copy = os.path.join(path, 'role.yaml')
+      shutil.copyfile(role_src, os.path.join(path, role_copy))
+
+      # Create new Mesos K3 Job
+      newJob = Job(binary=os.path.join(webapp.config['UPLOADED_APPS_URL'], appName, oldjob['hash'], appName),
+                   appName=appName, jobId=new_jobId, rolefile=role_copy)
+      print ("NEW JOB ID: %s" % newJob.jobId)
+
+      # Submit to Mesos
+      dispatcher.submit(newJob)
+      thisjob = dict(thisjob, url=dispatcher.getSandboxURL(new_jobId), status='SUBMITTED')
+
+      if 'application/json' in request.headers['Accept']:
+          return jsonify(thisjob), 202
+      else:
+          return render_template('jobs.html', appName=appName, lastjob=thisjob)
+
+  else:
+    msg =  "There is no Job, %s\n" % jobId
+    if request.headers['Accept'] == 'application/json':
+      return msg, 404
+    else:
+      return render_template("errors/404.html", message=msg)
 
 #------------------------------------------------------------------------------
 #  /jobs/<appName>/<jobId>/stdout - Job Interface for specific job
@@ -629,6 +677,35 @@ def kill_compile(uname):
 
 
 
+#------------------------------------------------------------------------------
+#  /delete/jobs
+#         POST     Deletes list of K3 jobs
+#------------------------------------------------------------------------------
+@webapp.route('/delete/jobs', methods=['POST'])
+def delete_jobs():
+  deleteList = request.form.getlist("delete_job")
+  for jobId in deleteList:
+    job = db.getJobs(jobId=jobId)[0]
+    path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], job['appName'], jobId)
+    shutil.rmtree(path, ignore_errors=True)
+    db.deleteJob(jobId)
+  return redirect(url_for('list_jobs')), 302
+
+
+#------------------------------------------------------------------------------
+#  /delete/compiles
+#         POST     Deletes list of compile jobs
+#------------------------------------------------------------------------------
+@webapp.route('/delete/compiles', methods=['POST'])
+def delete_compiles():
+  deleteList = request.form.getlist("delete_compiles")
+  for uid in deleteList:
+    job = db.getCompiles(uid=uid)[0]
+    # TODO: COMPLETE
+    # path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], job['appName'], jobId)
+    # shutil.rmtree(path, ignore_errors=True)
+    # db.deleteJob(jobId)
+  return redirect(url_for('list_jobs')), 302
 
 
 
@@ -694,7 +771,7 @@ if __name__ == '__main__':
 
   framework = mesos_pb2.FrameworkInfo()
   framework.user = "" # Have Mesos fill in the current user.
-  framework.name = "K3 Dispatcher"
+  framework.name = "K3 FlaskWeb Dispatcher"
 
   dispatcher = Dispatcher(daemon=True)
   if dispatcher == None:
@@ -715,11 +792,10 @@ if __name__ == '__main__':
     while not terminate:
       time.sleep(1)
       terminate = dispatcher.terminate
-      print ("Server is running")
     print ("Server is terminating")
     driver.stop()
-
     driver_t.join()
+
   except KeyboardInterrupt:
     print("INTERRUPT")
     driver.stop()

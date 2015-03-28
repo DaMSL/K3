@@ -98,12 +98,13 @@ def assignRolesToOffers(nextJob, offers):
 
   return (cpusUsedPerRole, cpusUsedPerOffer, rolesPerOffer)
 
-def executorInfo(k3task, jobid, binary_url, volumes=[]):
+# TODO: Add role to this to enable varying roles for volumes & envars
+def executorInfo(k3job, k3task): #, jobid, binary_url, volumes=[], environs=[]):
 
   # Create the Executor
   executor = mesos_pb2.ExecutorInfo()
-  executor.executor_id.value = k3task.getId(jobid)
-  executor.name = k3task.getId(jobid)
+  executor.executor_id.value = str(k3job.jobId)
+  executor.name = str(k3job.jobId)
   executor.data = ""
 
   # Create the Command
@@ -115,10 +116,19 @@ def executorInfo(k3task, jobid, binary_url, volumes=[]):
   exec_binary.extract = False
 
   k3_binary = command.uris.add()
-  k3_binary.value = binary_url
+  k3_binary.value = k3job.binary_url
   k3_binary.executable = True
   k3_binary.extract = False
- 
+
+  if len(k3job.envars) > 0:
+    environment = mesos_pb2.Environment()
+    for e in k3job.envars:
+      var = environment.variables.add()
+      var.name = e['name']  #'K3_BUILD'
+      var.value = e['value']  #<git-hash>
+    command.environment.MergeFrom(environment)
+
+
   executor.command.MergeFrom(command)
 
   # Create the docker object
@@ -131,7 +141,7 @@ def executorInfo(k3task, jobid, binary_url, volumes=[]):
   container.type = container.DOCKER
   container.docker.MergeFrom(docker)
 
-  for v in volumes:
+  for v in k3job.volumes:
     volume = container.volumes.add()
     volume.container_path = v['container']
     volume.host_path = v['host']
@@ -156,7 +166,7 @@ def taskInfo(k3job, k3task, slaveId):
   task_data["master"] = [ k3job.all_peers[0].ip, k3job.all_peers[0].port ]
   task_data["data"] = [ k3job.inputs for p in range(len(k3task.peers)) ]
 
-  executor = executorInfo(k3task, k3job.jobId, k3job.binary_url, k3job.volumes)
+  executor = executorInfo(k3job, k3task) #, k3job.jobId, k3job.binary_url, k3job.volumes, k3job.envars)
 
   task = mesos_pb2.TaskInfo()
   task.task_id.value = k3task.getId(k3job.jobId)

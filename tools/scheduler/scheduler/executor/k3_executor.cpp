@@ -192,7 +192,8 @@ public:
                         break;
                     }
                     cout << "FILE  " << srcfile->d_name << ":  ";
-                    if (srcfile->d_type == DT_REG) {
+//                    if (srcfile->d_type == DT_REG) {
+		    if (strncmp (srcfile->d_name, ".", 1) != 0) {
                         string filename = srcfile->d_name;
                         filePaths.push_back(dataFile.path + "/" + filename);
                         cout << "Added -> " << filename;

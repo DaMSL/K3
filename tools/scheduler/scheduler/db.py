@@ -79,7 +79,6 @@ def createTables():
     print(ex)
     sys.exit(1)
 
-
 def dropTables():
   conn = getConnection()
   try:
@@ -92,7 +91,6 @@ def dropTables():
     print("Failed to drop tables:" )
     print(ex)
     sys.exit(1)
-
 
 def insertApp(app):  #name, version):
   conn = getConnection()
@@ -134,7 +132,7 @@ def getVersions(appName, limit=None):
     limitRows = '' if not limit else 'LIMIT %d' % limit
     cur.execute('''
 SELECT name, uid, name || '-' || uid as version, date, git_hash, username, options
-FROM app_versions LEFT OUTER JOIN compiles USING (name, uid) WHERE name='%s' ORDER BY date %s;
+FROM app_versions LEFT OUTER JOIN compiles USING (name, uid) WHERE name='%s' ORDER BY date DESC %s;
 ''' % (appName, limitRows))
     return [dict(name=r[0], uid=r[1], version=r[2], date=r[3], git_hash=r[4], user=r[5], options=r[6]) for r in cur.fetchall()]
 
@@ -179,6 +177,13 @@ def updateJob(jobId, **kwargs):
     cur.execute("UPDATE jobs SET status='%s'%s WHERE jobId=%s;" % (status, complete, jobId))
     conn.commit()
 
+def deleteJob(jobId):
+  conn = getConnection()
+  cur = conn.cursor()
+  cur.execute("DELETE FROM jobs WHERE jobId=%s;" % jobId)
+  conn.commit()
+
+
 def insertCompile(comp):
   conn = getConnection()
   cur = conn.cursor()
@@ -216,7 +221,7 @@ def getCompiles(**kwargs):
                   else "")
 
   cur = getConnection().cursor()
-  cur.execute("SELECT * from compiles ORDER BY submit DESC;")
+  cur.execute("SELECT * from compiles %s ORDER BY submit DESC;" % filter)
   return [dict(name=r[0], uid=r[1], git_hash=r[2], user=r[3],
                options=r[4], submit=r[5], complete=r[6],
                tag=r[7], status=r[8]) for r in cur.fetchall()]
