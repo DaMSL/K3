@@ -1,15 +1,15 @@
 #ifndef K3_RUNTIME_BUILTINS_H
 #define K3_RUNTIME_BUILTINS_H
 
-#ifdef CACHEPROFILE
+#ifdef K3_PCM
 #include <cpucounters.h>
 #endif
 
-#ifdef MEMPROFILE
+#ifdef K3_TCMALLOC
 #include "gperftools/heap-profiler.h"
 #endif
 
-#ifdef JEMALLOC
+#ifdef K3_JEMALLOC
 #include "jemalloc/jemalloc.h"
 #endif
 
@@ -70,7 +70,7 @@ namespace K3 {
   }
 
   class __pcm_context {
-    #ifdef CACHEPROFILE
+    #ifdef K3_PCM
     protected:
       PCM *instance;
       std::shared_ptr<SystemCounterState> initial_state;
@@ -79,14 +79,14 @@ namespace K3 {
     public:
       __pcm_context();
       ~__pcm_context();
-      unit_t cacheProfilerStart(unit_t);
-      unit_t cacheProfilerStop(unit_t);
+      unit_t pcmStart(unit_t);
+      unit_t pcmStop(unit_t);
   };
 
   class __tcmalloc_context {
     public:
-      unit_t heapProfilerStart(const string_impl&);
-      unit_t heapProfilerStop(unit_t);
+      unit_t tcmallocStart(unit_t);
+      unit_t tcmallocStop(unit_t);
   };
 
   class __jemalloc_context {

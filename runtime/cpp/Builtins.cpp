@@ -22,17 +22,17 @@ namespace K3 {
     : __k3_context(__engine)
   {}
 
-  unit_t __tcmalloc_context::heapProfilerStart(const string_impl& s) {
-    #ifdef MEMPROFILE
-    HeapProfilerStart(s.c_str());
+  unit_t __tcmalloc_context::tcmallocStart(unit_t) {
+    #ifdef K3_TCMALLOC
+    HeapProfilerStart("K3");
     #else
-    std::cout << "heapProfilerStart: MEMPROFILE is not defined. not starting." << std::endl;
+    std::cout << "tcmallocStart: K3_TCMALLOC is not defined. not starting." << std::endl;
     #endif
     return unit_t {};
   }
 
-  unit_t __tcmalloc_context::heapProfilerStop(unit_t) {
-    #ifdef MEMPROFILE
+  unit_t __tcmalloc_context::tcmallocStop(unit_t) {
+    #ifdef K3_TCMALLOC
     HeapProfilerDump("End of Program");
     HeapProfilerStop();
     #endif
@@ -40,7 +40,7 @@ namespace K3 {
   }
 
   unit_t __jemalloc_context::jemallocStart(unit_t) {
-    #ifdef JEMALLOC
+    #ifdef K3_JEMALLOC
     bool enable = true;
     mallctl("prof.active", NULL, 0, &enable, sizeof(enable));
     #else
@@ -50,7 +50,7 @@ namespace K3 {
   }
 
   unit_t __jemalloc_context::jemallocStop(unit_t) {
-    #ifdef JEMALLOC
+    #ifdef K3_JEMALLOC
     mallctl("prof.dump", NULL, 0, NULL, 0);
     bool enable = false;
     mallctl("prof.active", NULL, 0, &enable, sizeof(enable));
@@ -139,21 +139,21 @@ namespace K3 {
 
   __pcm_context::~__pcm_context() {}
 
-  unit_t __pcm_context::cacheProfilerStart(unit_t) {
-    #ifdef CACHEPROFILE
+  unit_t __pcm_context::pcmStart(unit_t) {
+    #ifdef K3_PCM
     instance = PCM::getInstance();
     if (instance->program() != PCM::Success) {
       std::cout << "PCM startup error!" << std::endl;
     }
     initial_state = std::make_shared<SystemCounterState>(getSystemCounterState());
     #else
-    std::cout << "cacheProfileStart: CACHEPROFILE not set. not starting." << std::endl;
+    std::cout << "pcmStart: PCM not set. not starting." << std::endl;
     #endif
     return unit_t();
   }
 
-  unit_t __pcm_context::cacheProfilerStop(unit_t) {
-    #ifdef CACHEPROFILE
+  unit_t __pcm_context::pcmStop(unit_t) {
+    #ifdef K3_PCM
     SystemCounterState after_sstate = getSystemCounterState();
     std::cout << "QPI Incoming: " << getAllIncomingQPILinkBytes(*initial_state, after_sstate) << std::endl;
     std::cout << "QPI Outgoing: " << getAllOutgoingQPILinkBytes(*initial_state, after_sstate) << std::endl;
