@@ -1244,7 +1244,7 @@ class Map {
     if (existing == std::end(container)) {
       container[rec.key] = rec;
     } else {
-      *existing = std::move(f(std::move(existing->second))(rec));
+      (existing->second) = std::move(f(std::move(existing->second))(rec));
     }
 
     return unit_t {};
@@ -1256,7 +1256,7 @@ class Map {
     if (existing == std::end(container)) {
       container[rec.key] = f(unit_t {});
     } else {
-      *existing = std::move(g(std::move(existing->second)));
+      (existing->second) = std::move(g(std::move(existing->second)));
     }
 
     return unit_t {};
