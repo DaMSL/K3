@@ -60,16 +60,18 @@ namespace K3 {
     mallctl("prof.active", NULL, 0, &enable, sizeof(enable));
       #ifdef K3_HEAP_SERIES
       auto init = [](){
-        char hp_prefix[256];
-        size_t hp_sz;
-        mallctl("opt.prof_prefix", &(hp_prefix[0]), &hp_sz, NULL, 0);
+        const char* hp_prefix;
+        size_t hp_sz = sizeof(hp_prefix);
+        mallctl("opt.prof_prefix", &hp_prefix, &hp_sz, NULL, 0);
         auto start = time_milli();
         auto start_str = to_string( ( start - (start % 250) ) % 100000 );
-        return std::string(hp_prefix, hp_sz) + "." + start_str + ".";
+        return std::string(hp_prefix) + "." + start_str + ".";
       };
       auto body = [](std::string& name, int i){
         std::string heapName = name + to_string(i);
-        mallctl("prof.dump", NULL, 0, const_cast<void*>(static_cast<const void*>(heapName.c_str())), heapName.length());
+        std::cout << "JEMalloc dumping " << heapName << std::endl;
+        const char* hnPtr = heapName.c_str();
+        mallctl("prof.dump", NULL, 0, &hnPtr, sizeof(hnPtr));
       };
       heap_series_start(init, body);
       #endif

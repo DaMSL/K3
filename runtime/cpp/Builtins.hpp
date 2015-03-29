@@ -109,6 +109,9 @@ namespace K3 {
   };
 
   class __heap_profiler {
+  public:
+    __heap_profiler() { heap_profiler_done.clear(); }
+
   protected:
     std::shared_ptr<boost::thread> heap_profiler_thread;
     std::atomic_flag heap_profiler_done;
@@ -118,13 +121,13 @@ namespace K3 {
       heap_profiler_thread = make_shared<boost::thread>([this,&init,&body](){
         std::string name = init();
         int i = 0;
-        std::cout << "Heap profiling thread starting: " << name << std::endl;
+        std::cout << "Heap profiling thread starting: " << name << " (" << time_milli() << ")" << std::endl;
         while (!heap_profiler_done.test_and_set()) {
           heap_profiler_done.clear();
           boost::this_thread::sleep_for(boost::chrono::milliseconds(250));
           body(name, i++);
         }
-        std::cout << "Heap profiling thread terminating: " << name << std::endl;
+        std::cout << "Heap profiling thread terminating: " << name << " (" << time_milli() << ")" << std::endl;
       });
     }
 
