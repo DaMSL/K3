@@ -115,11 +115,12 @@ namespace K3 {
 
     template<class I, class B>
     void heap_series_start(I init, B body) {
-      heap_profiler_thread = make_shared<boost::thread>([&heap_profiler_done](){
+      heap_profiler_thread = make_shared<boost::thread>([this,&init,&body](){
         std::string name = init();
         int i = 0;
         std::cout << "Heap profiling thread starting: " << name << std::endl;
-        while (!heap_profiler_done) {
+        while (!heap_profiler_done.test_and_set()) {
+          heap_profiler_done.clear();
           boost::this_thread::sleep_for(boost::chrono::milliseconds(250));
           body(name, i++);
         }
