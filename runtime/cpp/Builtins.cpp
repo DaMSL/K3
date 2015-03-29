@@ -68,8 +68,7 @@ namespace K3 {
         return std::string(hp_prefix) + "." + start_str + ".";
       };
       auto body = [](std::string& name, int i){
-        std::string heapName = name + to_string(i);
-        std::cout << "JEMalloc dumping " << heapName << std::endl;
+        std::string heapName = name + to_string(i) + ".heap";
         const char* hnPtr = heapName.c_str();
         mallctl("prof.dump", NULL, 0, &hnPtr, sizeof(hnPtr));
       };
