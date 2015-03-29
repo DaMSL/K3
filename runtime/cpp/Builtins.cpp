@@ -28,7 +28,7 @@ namespace K3 {
       #ifdef K3_HEAP_SERIES
       auto init = []() {
         auto start = time_milli();
-        auto start_str = to_string( ( start - (start % 250) ) / 100000 );
+        auto start_str = to_string( ( start - (start % 250) ) % 100000 );
         return std::string("K3." + start_str + ".");
       };
       auto body = [](std::string& name, int i){
@@ -61,15 +61,16 @@ namespace K3 {
       #ifdef K3_HEAP_SERIES
       auto init = [](){
         char hp_prefix[256];
-        mallctl("opt.prof_prefix", &(hp_prefix[0]), sizeof(hp_prefix), NULL, 0);
+        size_t hp_sz;
+        mallctl("opt.prof_prefix", &(hp_prefix[0]), &hp_sz, NULL, 0);
         auto start = time_milli();
-        auto start_str = to_string( ( start - (start % 250) ) / 100000 );
-        return std::string(hp_prefix + "." + start_str + ".");
+        auto start_str = to_string( ( start - (start % 250) ) % 100000 );
+        return std::string(hp_prefix, hp_sz) + "." + start_str + ".";
       };
-      auto body = [](std::string& name, int& i){
+      auto body = [](std::string& name, int i){
         std::string heapName = name + to_string(i);
-        mallctl("prof.dump", NULL, 0, heapName.c_str(), heapName.length());
-      }
+        mallctl("prof.dump", NULL, 0, const_cast<void*>(static_cast<const void*>(heapName.c_str())), heapName.length());
+      };
       heap_series_start(init, body);
       #endif
     #else
