@@ -22,6 +22,8 @@
 #include <climits>
 #include <functional>
 
+#include <boost/thread/thread.hpp>
+
 #include "re2/re2.h"
 
 #include "BaseTypes.hpp"
@@ -46,6 +48,29 @@ struct hash<boost::asio::ip::address> {
       return 0x4751301174351161ul;
     }
     return hash_value(v.to_string());
+  }
+};
+
+template <typename... TTypes>
+class hash<std::tuple<TTypes...>> {
+ private:
+  typedef std::tuple<TTypes...> Tuple;
+
+  template <int N>
+  size_t operator()(Tuple value) const {
+    return 0;
+  }
+
+  template <int N, typename THead, typename... TTail>
+  size_t operator()(Tuple value) const {
+    constexpr int Index = N - sizeof...(TTail)-1;
+    return hash<THead>()(std::get<Index>(value)) ^ operator()<N, TTail...>(
+                                                       value);
+  }
+
+ public:
+  size_t operator()(Tuple value) const {
+    return operator()<sizeof...(TTypes), TTypes...>(value);
   }
 };
 
@@ -83,17 +108,43 @@ namespace K3 {
       unit_t pcmStop(unit_t);
   };
 
-  class __tcmalloc_context {
+  class __heap_profiler {
+  protected:
+    std::shared_ptr<boost::thread> heap_profiler_thread;
+    std::atomic_flag heap_profiler_done;
+
+    template<class I, class B>
+    void heap_series_start(I init, B body) {
+      heap_profiler_thread = make_shared<boost::thread>([&heap_profiler_done](){
+        std::string name = init();
+        int i = 0;
+        std::cout << "Heap profiling thread starting: " << name << std::endl;
+        while (!heap_profiler_done) {
+          boost::this_thread::sleep_for(boost::chrono::milliseconds(250));
+          body(name, i++);
+        }
+        std::cout << "Heap profiling thread terminating: " << name << std::endl;
+      });
+    }
+
+    void heap_series_stop() {
+      heap_profiler_done.test_and_set();
+      if ( heap_profiler_thread ) { heap_profiler_thread->interrupt(); }
+    }
+  };
+
+  class __tcmalloc_context : public __heap_profiler {
     public:
       unit_t tcmallocStart(unit_t);
       unit_t tcmallocStop(unit_t);
   };
 
-  class __jemalloc_context {
+  class __jemalloc_context : public __heap_profiler {
     public:
       unit_t jemallocStart(unit_t);
       unit_t jemallocStop(unit_t);
   };
+
   template <class C1, class C, class F>
   void read_records_with_resize(int size, C1& paths, C& container, F read_record) {
 

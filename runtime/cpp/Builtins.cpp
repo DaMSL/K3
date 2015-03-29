@@ -25,6 +25,18 @@ namespace K3 {
   unit_t __tcmalloc_context::tcmallocStart(unit_t) {
     #ifdef K3_TCMALLOC
     HeapProfilerStart("K3");
+      #ifdef K3_HEAP_SERIES
+      auto init = []() {
+        auto start = time_milli();
+        auto start_str = to_string( ( start - (start % 250) ) / 100000 );
+        return std::string("K3." + start_str + ".");
+      };
+      auto body = [](std::string& name, int i){
+        std::string heapName = name + to_string(i);
+        HeapProfilerDump(heapName.c_str());
+      };
+      heap_series_start(init, body);
+      #endif
     #else
     std::cout << "tcmallocStart: K3_TCMALLOC is not defined. not starting." << std::endl;
     #endif
@@ -33,6 +45,9 @@ namespace K3 {
 
   unit_t __tcmalloc_context::tcmallocStop(unit_t) {
     #ifdef K3_TCMALLOC
+      #ifdef K3_HEAP_SERIES
+      heap_series_stop();
+      #endif
     HeapProfilerDump("End of Program");
     HeapProfilerStop();
     #endif
@@ -43,6 +58,20 @@ namespace K3 {
     #ifdef K3_JEMALLOC
     bool enable = true;
     mallctl("prof.active", NULL, 0, &enable, sizeof(enable));
+      #ifdef K3_HEAP_SERIES
+      auto init = [](){
+        char hp_prefix[256];
+        mallctl("opt.prof_prefix", &(hp_prefix[0]), sizeof(hp_prefix), NULL, 0);
+        auto start = time_milli();
+        auto start_str = to_string( ( start - (start % 250) ) / 100000 );
+        return std::string(hp_prefix + "." + start_str + ".");
+      };
+      auto body = [](std::string& name, int& i){
+        std::string heapName = name + to_string(i);
+        mallctl("prof.dump", NULL, 0, heapName.c_str(), heapName.length());
+      }
+      heap_series_start(init, body);
+      #endif
     #else
     std::cout << "jemallocStart: JEMALLOC is not defined. not starting." << std::endl;
     #endif
@@ -51,6 +80,9 @@ namespace K3 {
 
   unit_t __jemalloc_context::jemallocStop(unit_t) {
     #ifdef K3_JEMALLOC
+      #ifdef K3_HEAP_SERIES
+      heap_series_stop();
+      #endif
     mallctl("prof.dump", NULL, 0, NULL, 0);
     bool enable = false;
     mallctl("prof.active", NULL, 0, &enable, sizeof(enable));
