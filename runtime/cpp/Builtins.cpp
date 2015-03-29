@@ -65,7 +65,7 @@ namespace K3 {
         mallctl("opt.prof_prefix", &hp_prefix, &hp_sz, NULL, 0);
         auto start = time_milli();
         auto start_str = to_string( ( start - (start % 250) ) % 100000 );
-        return std::string(hp_prefix) + "." + start_str + ".";
+        return std::string(hp_prefix) + "." + start_str + ".0.t";
       };
       auto body = [](std::string& name, int i){
         std::string heapName = name + to_string(i) + ".heap";
