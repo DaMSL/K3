@@ -1,15 +1,15 @@
 #ifndef K3_RUNTIME_BUILTINS_H
 #define K3_RUNTIME_BUILTINS_H
 
-#ifdef CACHEPROFILE
+#ifdef K3_PCM
 #include <cpucounters.h>
 #endif
 
-#ifdef MEMPROFILE
+#ifdef K3_TCMALLOC
 #include "gperftools/heap-profiler.h"
 #endif
 
-#ifdef JEMALLOC
+#ifdef K3_JEMALLOC
 #include "jemalloc/jemalloc.h"
 #endif
 
@@ -21,6 +21,8 @@
 #include <string>
 #include <climits>
 #include <functional>
+
+#include <boost/thread/thread.hpp>
 
 #include "re2/re2.h"
 
@@ -49,6 +51,29 @@ struct hash<boost::asio::ip::address> {
   }
 };
 
+template <typename... TTypes>
+class hash<std::tuple<TTypes...>> {
+ private:
+  typedef std::tuple<TTypes...> Tuple;
+
+  template <int N>
+  size_t operator()(Tuple value) const {
+    return 0;
+  }
+
+  template <int N, typename THead, typename... TTail>
+  size_t operator()(Tuple value) const {
+    constexpr int Index = N - sizeof...(TTail)-1;
+    return hash<THead>()(std::get<Index>(value)) ^ operator()<N, TTail...>(
+                                                       value);
+  }
+
+ public:
+  size_t operator()(Tuple value) const {
+    return operator()<sizeof...(TTypes), TTypes...>(value);
+  }
+};
+
 } // boost
 
 namespace K3 {
@@ -70,7 +95,7 @@ namespace K3 {
   }
 
   class __pcm_context {
-    #ifdef CACHEPROFILE
+    #ifdef K3_PCM
     protected:
       PCM *instance;
       std::shared_ptr<SystemCounterState> initial_state;
@@ -79,21 +104,51 @@ namespace K3 {
     public:
       __pcm_context();
       ~__pcm_context();
-      unit_t cacheProfilerStart(unit_t);
-      unit_t cacheProfilerStop(unit_t);
+      unit_t pcmStart(unit_t);
+      unit_t pcmStop(unit_t);
   };
 
-  class __tcmalloc_context {
+  class __heap_profiler {
+  public:
+    __heap_profiler() { heap_profiler_done.clear(); }
+
+  protected:
+    std::shared_ptr<boost::thread> heap_profiler_thread;
+    std::atomic_flag heap_profiler_done;
+
+    template<class I, class B>
+    void heap_series_start(I init, B body) {
+      heap_profiler_thread = make_shared<boost::thread>([this,&init,&body](){
+        std::string name = init();
+        int i = 0;
+        std::cout << "Heap profiling thread starting: " << name << " (" << time_milli() << ")" << std::endl;
+        while (!heap_profiler_done.test_and_set()) {
+          heap_profiler_done.clear();
+          boost::this_thread::sleep_for(boost::chrono::milliseconds(250));
+          body(name, i++);
+        }
+        std::cout << "Heap profiling thread terminating: " << name << " (" << time_milli() << ")" << std::endl;
+      });
+    }
+
+    void heap_series_stop() {
+      heap_profiler_done.test_and_set();
+      if ( heap_profiler_thread ) { heap_profiler_thread->interrupt(); }
+    }
+  };
+
+  class __tcmalloc_context : public __heap_profiler {
     public:
-      unit_t heapProfilerStart(const string_impl&);
-      unit_t heapProfilerStop(unit_t);
+      unit_t tcmallocStart(unit_t);
+      unit_t tcmallocStop(unit_t);
   };
 
-  class __jemalloc_context {
+  class __jemalloc_context : public __heap_profiler {
     public:
       unit_t jemallocStart(unit_t);
       unit_t jemallocStop(unit_t);
   };
+
   template <class C1, class C, class F>
   void read_records_with_resize(int size, C1& paths, C& container, F read_record) {
 

@@ -24,7 +24,7 @@ control PartitionShuffleWithMissing[lbl: label, dest_trg: expr, nodes: expr, sen
 
   (ignore (?e : collection ?t @IntMap )) => (
     let partition_table = (((($.[e].groupBy @:HGroupBy)
-                                     (\v -> $[nodes].at_with (index_by_hash v.key) (\a -> a.addr))
+                                     ((\v -> $[nodes].at_with (index_by_hash v.key) (\a -> a.addr)) @:Projection)
                                      ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
                                      empty $::[t] @IntMap) @:Fuse) @ManualFusion)
     in $[nodes].iterate (\n ->
@@ -40,7 +40,7 @@ control PartitionShuffleWithMissing[lbl: label, dest_trg: expr, nodes: expr, sen
 
   (ignore (?e : collection ?t @StrMap )) => (
     let partition_table = (((($.[e].groupBy @:HGroupBy)
-                                     (\v -> $[nodes].at_with (index_by_hash v.key) (\a -> a.addr))
+                                     ((\v -> $[nodes].at_with (index_by_hash v.key) (\a -> a.addr)) @:Projection)
                                      ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
                                      empty $::[t] @StrMap) @:Fuse) @ManualFusion)
     in $[nodes].iterate (\n ->
@@ -57,9 +57,7 @@ control PartitionShuffleWithMissing[lbl: label, dest_trg: expr, nodes: expr, sen
 
   (ignore (?e : collection ?t @Map )) => (
     let partition_table = (((($.[e].groupBy @:HGroupBy)
-                                     ((\v -> (case $[nodes].at (index_by_hash v.key) of
-                                              { Some a -> a.addr }
-                                              { None -> error () })) @:Projection)
+                                     ((\v -> $[nodes].at_with (index_by_hash v.key) (\a -> a.addr)) @:Projection)
                                      ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
                                      empty $::[t] @Map) @:Fuse) @ManualFusion)
     in $[nodes].iterate (\n ->

@@ -69,7 +69,7 @@ control TPCHBenchmarkWithoutMaster
 
       // A shutdown trigger which runs at each peer to terminate the distributed program.
       trigger shutdown : () = \_ -> (
-        $[preShutdownExpr];
+        $[preShutdownExpr]; ((tcmallocStop ()); (jemallocStop ()); (pcmStop ())) @IfMachineMaster;
         haltEngine ()
       )
 
@@ -95,7 +95,7 @@ control TPCHBenchmarkWithoutMaster
       trigger load_all : () = \_ -> (
         program_start_ts = now_int ();
         $[preLoadExpr];
-        $[loadExpr];
+        $[loadExpr]; ((tcmallocStart ()); (jemallocStart ()); (pcmStart ())) @IfMachineMaster;
         ((ready, master) <- ())
       )
     }
