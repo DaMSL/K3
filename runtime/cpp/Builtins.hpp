@@ -218,36 +218,37 @@ namespace K3 {
     unit_t sleep(int n);
 
     template <template <class> class M, template <class> class C,
-              template <typename...> class R>
-    unit_t loadGraph(string_impl filepath, M<R<int, C<R_elem<int>>>>& c) {
-      std::string tmp_buffer;
-      std::ifstream in(filepath);
+              template <typename...> class R, class C2>
+    unit_t loadGraph(const C2& filepaths, M<R<int, C<R_elem<int>>>>& c) {
+      for (const auto& filepath : filepaths) {
+        std::string tmp_buffer;
+        std::ifstream in(filepath.path);
 
-      int source;
-      std::size_t position;
-      while (!in.eof()) {
-        C<R_elem<int>> edge_list;
+        int source;
+        std::size_t position;
+        while (!in.eof()) {
+          C<R_elem<int>> edge_list;
 
-        std::size_t start = 0;
-        std::size_t end = start;
-        std::getline(in, tmp_buffer);
+          std::size_t start = 0;
+          std::size_t end = start;
+          std::getline(in, tmp_buffer);
 
-        end = tmp_buffer.find(",", start);
-        source = std::atoi(tmp_buffer.substr(start, end - start).c_str());
-
-        start = end + 1;
-
-        while (end != std::string::npos) {
           end = tmp_buffer.find(",", start);
-          edge_list.insert(R_elem<int>(
-              std::atoi(tmp_buffer.substr(start, end - start).c_str())));
+          source = std::atoi(tmp_buffer.substr(start, end - start).c_str());
+
           start = end + 1;
+
+          while (end != std::string::npos) {
+            end = tmp_buffer.find(",", start);
+            edge_list.insert(R_elem<int>(
+                std::atoi(tmp_buffer.substr(start, end - start).c_str())));
+            start = end + 1;
+          }
+
+          c.insert(R<int, C<R_elem<int>>>{source, std::move(edge_list)});
+          in >> std::ws;
         }
-
-        c.insert(R<int, C<R_elem<int>>>{source, std::move(edge_list)});
-        in >> std::ws;
       }
-
       return unit_t{};
     }
 
