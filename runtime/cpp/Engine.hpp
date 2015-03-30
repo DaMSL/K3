@@ -330,7 +330,7 @@ namespace K3 {
             // source_peer, contents, timestamp
             event_stream << message_counter << "|";
             event_stream << K3::serialization::json::encode<Address>(peer) << "|";
-            event_stream << "\"" << trig << "\"|";
+            event_stream << trig << "|";
             event_stream << K3::serialization::json::encode<Address>(msgSource) << "|";
             event_stream << msg_contents << "|";
             event_stream << time_milli() << std::endl;
