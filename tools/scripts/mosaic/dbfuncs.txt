@@ -1,0 +1,82 @@
+drop table if exists peers;
+create table peers(address text, name text);
+insert into peers values ('["127.0.0.1", 40000]', 'ms');
+insert into peers values ('["127.0.0.1", 41000]', 'tm');
+insert into peers values ('["127.0.0.1", 42000]', 'sw');
+insert into peers values ('["127.0.0.1", 43000]', 'nd');
+
+create table if not exists keys(key text);
+
+-- select all messages
+drop function if exists msgs_ordered();
+create function msgs_ordered()
+returns table(id integer, source text, dest text, trigger text, contents json) as $$
+begin
+  return query
+  select mess_id as id, p1.name as src, p2.name as dst, m.trigger, m.contents
+  from messages as m, peers as p1, peers as p2
+  where m.source_peer = p1.address and m.dest_peer = p2.address
+  order by m.time, m.mess_id;
+end;
+$$ language plpgsql;
+
+-- show state
+drop function if exists show_state();
+create function show_state()
+returns table(id integer, dest text, key text, value json) as $$
+begin
+  return query
+  select g.mess_id as id, p.name as dest, g.key as key, g.value as value
+  from globals as g, peers as p, keys as k
+  where g.key = k.key and g.dest_peer = p.address
+  order by mess_id;
+end;
+$$ language plpgsql;
+
+-- show changed state
+drop function if exists show_changes_raw();
+create function show_changes_raw()
+returns table(id integer, dest text, key text, value json) as $$
+begin
+  return query
+  select g2.mess_id as id, g2.dest_peer, g2.key as key, g2.value as value
+  from globals as g1, globals as g2
+  where g2.mess_id = g1.mess_id + 1 and
+        g1.dest_peer = g2.dest_peer and
+        g1.key = g2.key and
+	g1.value::text <> g2.value::text
+  order by id;
+end;
+$$ language plpgsql;
+  
+-- show changed state
+drop function if exists show_changes();
+create function show_changes()
+returns table(id integer, dest text, key text, value json) as $$
+begin
+  return query
+  select c.id, p.name as dest, c.key, c.value
+  from show_changes_raw() as c, peers as p
+  where c.dest_peer = p.address
+  order by id;
+end;
+$$ language plpgsql;
+
+-- show changed state with messages
+drop function if exists msgs_d();
+create function msgs_d()
+returns table(id integer, trigger text, src text, dst text, args json, key text, value json) as $$
+begin
+  create temp table tmp on commit drop as
+  select m.time, m.mess_id as id, m.trigger, m.source_peer, m.dest_peer, m.contents as args, c.key, c.value
+  from messages as m left outer join show_changes_raw() as c
+  on c.id = m.mess_id and
+     c.dest = m.dest_peer;
+
+  return query
+  select tmp.id, tmp.trigger, p1.name, p2.name, tmp.args, tmp.key, tmp.value
+  from peers as p1, peers as p2, tmp
+  where p1.address = tmp.source_peer and p2.address = tmp.dest_peer
+  order by tmp.time, tmp.id;
+end;
+$$ language plpgsql;

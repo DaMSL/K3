@@ -55,19 +55,43 @@ def convert_any(x):
     else:
         return x
 
-def convert_file(file_nm, writer):
+# Special conversion for first level of object
+# So we have all array values
+def convert_fst_level(x):
+    if type(x) is dict:
+        return convert_dict(x)
+    elif type(x) is list:
+        return convert_list(x)
+    elif x == "()":
+        return []
+    else:
+        return [x]
+
+def convert_file(file_nm, writer, treat_as_ints):
     with open(file_nm, 'r', newline='') as csvfile:
         reader = csv.reader(csvfile, delimiter='|', quotechar="'")
+        i = 0
         for row in reader:
             res = []
+            j = 0
             for x in row:
                 #print(x)
-                obj = json.loads(x)
-                # print("obj: " + str(obj))
-                new_obj = convert_any(obj)
-                #print(new_obj)
-                res += [json.dumps(new_obj)]
+                try:
+                    obj = json.loads(x)
+                    # print("obj: " + str(obj))
+                    # keep certain fields as raw integers rather than wrapping in array
+                    if j in treat_as_ints:
+                        new_obj = convert_any(obj)
+                    else:
+                        new_obj = convert_fst_level(obj)
+                    #print(new_obj)
+                    res += [json.dumps(new_obj)]
+                except:
+                    # if we can't convert, just add it as a string
+                    res += [x]
+                j += 1
             writer.writerow(res)
+            i += 1
 
 def process_files(files):
     with open("messages.dsv", "w", newline='') as msg_file:
@@ -77,9 +101,9 @@ def process_files(files):
             for f in files:
                 # is it a messages or a globals?
                 if re.search("Globals", f):
-                    convert_file(f, glb_writer)
+                    convert_file(f, glb_writer, [0])
                 else:
-                    convert_file(f, msg_writer)
+                    convert_file(f, msg_writer, [0, 5])
 
 def main():
     parser = argparse.ArgumentParser()
