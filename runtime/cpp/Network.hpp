@@ -147,13 +147,13 @@ namespace K3
     {
     public:
       typedef shared_ptr<ip::tcp::socket> Socket;
-      typedef boost::array<char, 1024*1024> SocketBuffer;
+      typedef boost::array<char, 64*1024> SocketBuffer;
 
       // null ptr for EndpointBuffer
       NConnection(shared_ptr<NContext> ctxt)
         : NConnection(ctxt, Socket(new ip::tcp::socket(*(ctxt->service))))
       {
-        socket_buffer_ = make_shared<SocketBuffer>();
+        socket_buffer_ = nullptr;
       }
 
       // null ptr for EndpointBuffer
@@ -162,7 +162,7 @@ namespace K3
       {
         if ( ctxt ) {
           if ( socket_ ) {
-            socket_buffer_ = make_shared<SocketBuffer>();
+            socket_buffer_ = nullptr;
             ip::tcp::endpoint ep(::std::get<0>(addr), ::std::get<1>(addr));
 	    boost::system::error_code error;
 	    socket_->connect(ep, error);
@@ -180,8 +180,20 @@ namespace K3
       }
 
       Socket socket() { return socket_; }
-      char* socket_buffer() { return socket_buffer_->c_array(); }
-      int socket_buffer_size() { return socket_buffer_->size(); }
+      char* socket_buffer() { 
+	if (!socket_buffer_) {
+          socket_buffer_ = make_shared<SocketBuffer>();
+	}
+        return socket_buffer_->c_array();
+
+      }
+      int socket_buffer_size() { 
+	if (!socket_buffer_) {
+          socket_buffer_ = make_shared<SocketBuffer>();
+	}
+        return socket_buffer_->size();
+      }
+
 
       bool connected() { return connected_; }
 

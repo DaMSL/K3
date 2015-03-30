@@ -87,15 +87,21 @@ control TPCHBenchmarkWithoutMaster
         ( $[preReadyExpr];
           (
           (let load_time = (now_int () - program_start_ts)
-          in print ("Time Load:" ++  (itos load_time)) );
+           in print ("Time Load:" ++  (itos load_time)) );
+          (peers.iterate (\p -> (start_profiler, p.addr) <- () ));
           ( $[onReadyExpr] @:StartTimer) @TimeSink(lbl=[# Query], tag=[$ "Time "], sink_expr=[$ query_time_sink])
           ) @OnCounter(id=[#  nodes_ready], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false]))
+      )
+ 
+      trigger start_profiler : () = \_ -> (
+        ((tcmallocStart ()); (jemallocStart ()); (pcmStart ())) @IfMachineMaster
       )
 
       trigger load_all : () = \_ -> (
         program_start_ts = now_int ();
         $[preLoadExpr];
-        $[loadExpr]; ((tcmallocStart ()); (jemallocStart ()); (pcmStart ())) @IfMachineMaster;
+        $[loadExpr]; 
+        ( peers.iterate (\p -> (hello, p.addr) <- ()) );
         ((ready, master) <- ())
       )
     }
