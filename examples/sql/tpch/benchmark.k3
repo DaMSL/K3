@@ -65,7 +65,9 @@ control TPCHBenchmarkWithoutMaster
       ))
 
       // Dummy trigger to warm up connections
-      trigger hello : () = \_ -> ()
+      trigger hello : () = \_ -> (
+        ((ready, master) <- ()) @OnCounter(id=[# hello_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
+      )
 
       // A shutdown trigger which runs at each peer to terminate the distributed program.
       trigger shutdown : () = \_ -> (
@@ -101,8 +103,7 @@ control TPCHBenchmarkWithoutMaster
         program_start_ts = now_int ();
         $[preLoadExpr];
         $[loadExpr]; 
-        ( peers.iterate (\p -> (hello, p.addr) <- ()) );
-        ((ready, master) <- ())
+        ( peers.iterate (\p -> (hello, p.addr) <- ()) )
       )
     }
 }
