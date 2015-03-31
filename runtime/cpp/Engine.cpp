@@ -190,8 +190,11 @@ namespace K3 {
       logAt(trivial::trace, "Starting the Message Processing Loop");
 
       while(true) {
+        if (control->terminate()) {
+            logAt(trivial::trace, "Finished Message Processing Loop.");
+            return;
+        }
         switch (curr_status) {
-
           // If we are not in error, process the next message.
           case LoopStatus::Continue:
             next_status = processMessage(mp);
@@ -206,21 +209,11 @@ namespace K3 {
           //  - If the terminate flag has been set, exit out normally.
           //  - Otherwise, wait for a message and continue.
           case LoopStatus::Done:
-            if (control->terminate()) {
-                logAt(trivial::trace, "Finished Message Processing Loop.");
-                return;
-            }
-
             queues->waitForMessage(*me,
               [=] () {
                 return !control->terminate() && queues->empty(*me);
               });
 
-            // Check for termination signal after waiting is finished
-            if (control->terminate()) {
-              logAt(trivial::trace, "Received Termination Signal. Exiting Message Processing Loop.");
-              return;
-            }
             // Otherwise continue
             next_status = LoopStatus::Continue;
             break;
