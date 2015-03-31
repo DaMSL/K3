@@ -80,3 +80,21 @@ begin
   order by tmp.time, tmp.id;
 end;
 $$ language plpgsql;
+
+-- final state
+drop function if exists final_state();
+create function final_state()
+returns table(id integer, peer text, key text, value json) as $$
+begin
+  return query
+  select g.mess_id, p.name, g.key, g.value
+  from
+    (select max(mess_id) as last_id, g.dest_peer as peer
+    from globals as g
+    group by g.dest_peer)
+    as max_ids, globals as g, peers as p
+  where g.mess_id = max_ids.last_id and g.dest_peer = max_ids.peer and g.dest_peer = p.address
+  order by g.mess_id;
+end;
+$$ language plpgsql;
+
