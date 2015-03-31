@@ -65,7 +65,7 @@ $$ language plpgsql;
 -- show changed state with messages
 drop function if exists msgs_d();
 create function msgs_d()
-returns table(id integer, trigger text, src text, dst text, args json, key text, value json) as $$
+returns table(id integer, src text, dst text, trigger text, args text, key text, value json) as $$
 begin
   create temp table tmp on commit drop as
   select m.time, m.mess_id as id, m.trigger, m.source_peer, m.dest_peer, m.contents as args, c.key, c.value
@@ -74,7 +74,7 @@ begin
      c.dest = m.dest_peer;
 
   return query
-  select tmp.id, tmp.trigger, p1.name, p2.name, tmp.args, tmp.key, tmp.value
+  select tmp.id, p1.name, p2.name, tmp.trigger, substring(tmp.args::text, 1, 30), tmp.key, tmp.value
   from peers as p1, peers as p2, tmp
   where p1.address = tmp.source_peer and p2.address = tmp.dest_peer
   order by tmp.time, tmp.id;
