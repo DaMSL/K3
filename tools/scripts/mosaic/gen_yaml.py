@@ -35,9 +35,10 @@ def create_file(num_switches, num_nodes):
 
     # dump out
     print("---")
-    for p in peers2:
+    for i, p in enumerate(peers2):
         print(yaml.dump(p, default_flow_style=True))
-        print("---")
+        if i < len(peers2) - 1:
+            print("---")
 
 def main():
     parser = argparse.ArgumentParser()
