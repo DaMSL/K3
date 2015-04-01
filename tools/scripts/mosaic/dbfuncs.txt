@@ -81,13 +81,61 @@ begin
 end;
 $$ language plpgsql;
 
+-- Get final frontier of json values
+create or replace function json_last(input json)
+returns json as $$
+  import json
+
+  val = json.loads(input)
+  # check that we match our desired input
+  if not (type(val) is list and len(val) > 0 and type(val[0]) is list and
+     len(val[0]) >= 2 and type(val[0][0]) is list and len(val[0][0]) == 2 and
+     type(val[0][0][0]) is int and type(val[0][0][1]) is int):
+    return input
+  res = {}
+  for x in val:
+    if type(x) is list and len(x) >= 2:
+      # split into vid, key, value
+      vid = []
+      key = []
+      val = []
+      l = len(x)
+      for (i, k) in enumerate(x):
+        if i == 0:
+          vid = k
+        elif i >= l - 1:
+          val = k
+        else:
+          key += [k]
+      # convert list to tuple (immutable)
+      key = tuple(key)
+      if key in res:
+        # set result to max vid value
+        (oldvid, oldv) = res[key]
+        # compare vids
+        if vid[0] > oldvid[0] or vid[0] == oldvid[0] and vid[1] > oldvid[1]:
+          res[key] = (vid, val)
+      else:
+        res[key] = (vid, val)
+  # convert res to list
+  res2 = []
+  print res
+  for k in res:
+    print (list(k))
+    print res[k][1]
+    v = list(k) + [res[k][1]]
+    res2.append(v)
+  print res2
+  return json.dumps(res2)
+$$ language plpythonu;
+
 -- final state
 drop function if exists final_state();
 create function final_state()
 returns table(id integer, peer text, key text, value json) as $$
 begin
   return query
-  select g.mess_id, p.name, g.key, g.value
+  select g.mess_id, p.name, g.key, json_last(g.value)
   from
     (select max(mess_id) as last_id, g.dest_peer as peer
     from globals as g
