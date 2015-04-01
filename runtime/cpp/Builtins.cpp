@@ -4,6 +4,8 @@
 #include <time.h>
 #include <chrono>
 #include <thread>
+#include <time.h>
+#include <stdio.h>
 
 #include "Common.hpp"
 #include "Engine.hpp"
@@ -20,7 +22,9 @@ namespace K3 {
   // Standard context implementations
   __standard_context::__standard_context(Engine& __engine)
     : __k3_context(__engine)
-  {}
+  {
+  	srand (time(NULL));
+  }
 
   unit_t __tcmalloc_context::heapProfilerStart(const string_impl& s) {
     #ifdef MEMPROFILE
@@ -89,11 +93,13 @@ namespace K3 {
   }
 
   int __standard_context::random(int n) {
-    throw std::runtime_error("Not implemented: random");
+    //throw std::runtime_error("Not implemented: random");
+    return (rand () % n);
   }
 
   double __standard_context::randomFraction(unit_t) {
-    throw std::runtime_error("Not implemented: random");
+    //throw std::runtime_error("Not implemented: random");
+    return ((rand())*1.0)/RAND_MAX ;
   }
 
   unit_t __standard_context::print(string_impl message) {
