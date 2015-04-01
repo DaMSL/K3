@@ -286,6 +286,7 @@ def create_job(appName, appUID):
         text = request.form['text'] if 'text' in request.form else None
         user = request.form['user'] if 'user' in request.form else 'anonymous'
         tag = request.form['tag'] if 'tag' in request.form else ''
+        # trials = int(request.form['trials']) if 'trials' in request.form else 1
 
         # Check for valid submission
         if not file and not text:
@@ -321,6 +322,26 @@ def create_job(appName, appUID):
         dispatcher.submit(newJob)
         thisjob = dict(thisjob, url=dispatcher.getSandboxURL(jobId), status='SUBMITTED')
 
+        # while trials > 1:
+        #   def replay_this_job():
+        #     while active:
+        #       time.sleep(5)
+        #       active = len(dispatcher.getActiveJobs) > 0
+        #     replay_job(appName, jobId)
+        #   t = threading.Thread(target = replay_this_job)
+        #   try:
+        #     t.start()
+        #     t.join()
+        #
+        #   except KeyboardInterrupt:
+        #     print("INTERRUPT")
+        #     driver.stop()
+        #     driver_t.join()
+        #     break
+        #
+        #   trials -= 1
+
+
         if 'application/json' in request.headers['Accept']:
           return jsonify(thisjob), 202
         else:
@@ -353,7 +374,55 @@ def create_job(appName, appUID):
 def create_job_latest(appName):
     app = db.getApp(appName)
     print app
-    return redirect(url_for('create_job', appName=appName, appUID=app['uid']))
+    if request.method == 'POST':
+        appUID = app['uid']
+        file = request.files['file']
+        text = request.form['text'] if 'text' in request.form else None
+        user = request.form['user'] if 'user' in request.form else 'anonymous'
+        tag = request.form['tag'] if 'tag' in request.form else ''
+
+        # Check for valid submission
+        if not file and not text:
+          return render_template("errors/404.html", message="Invalid job request")
+
+        # Post new job request, get job ID & submit time
+        thisjob = dict(appName=appName, appUID=appUID, user=user, tag=tag)
+        jobId, time = db.insertJob(thisjob)
+        thisjob = dict(jobId=jobId, time=time)
+
+        # Save yaml to file (either from file or text input)
+        path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName)
+        if not os.path.exists(path):
+          os.mkdir(path)
+
+        path = os.path.join(path, str(jobId))
+        filename = 'role.yaml'
+        if not os.path.exists(path):
+          os.mkdir(path)
+
+        if file:
+            file.save(os.path.join(path, filename))
+        else:
+            with open(os.path.join(path, filename), 'w') as file:
+              file.write(text)
+
+        # Create new Mesos K3 Job
+        apploc = os.path.join(webapp.config['UPLOADED_APPS_URL'], appName, appUID, appName)
+        newJob = Job(binary=apploc, appName=appName, jobId=jobId, rolefile=os.path.join(path, filename))
+        print ("NEW JOB ID: %s" % newJob.jobId)
+
+        # Submit to Mesos
+        dispatcher.submit(newJob)
+        thisjob = dict(thisjob, url=dispatcher.getSandboxURL(jobId), status='SUBMITTED')
+
+
+        if 'application/json' in request.headers['Accept']:
+          return jsonify(thisjob), 202
+        else:
+          return render_template('jobs.html', appName=appName, lastjob=thisjob)
+
+    elif request.method == 'GET':
+      return redirect(url_for('create_job', appName=appName, appUID=app['uid']))
 
 
 #------------------------------------------------------------------------------
@@ -520,7 +589,46 @@ def kill_job(appName, jobId):
       return render_template("jobs.html", appName=appName, lastjob=thisjob)
 
 
+#------------------------------------------------------------------------------
+#  /job/<jobId> - Detailed Job info
+#         GET     Display detailed job info  (default for all methods)
+#------------------------------------------------------------------------------
+@webapp.route('/job/<jobId>')
+def get_job_id(jobId):
+    jobs = db.getJobs(jobId=jobId)
+    job = None if len(jobs) == 0 else jobs[0]
+    if job == None:
+      return render_template("errors/404.html", message="Job ID, %s, does not exist" % jobId)
+    appName = job['appName']
+    return get_job(appName, jobId)
 
+#------------------------------------------------------------------------------
+#  /job/<jobId>/replay - Replays this job
+#         GET     Display detailed job info  (default for all methods)
+#------------------------------------------------------------------------------
+@webapp.route('/job/<jobId>/replay')
+def replay_job_id(jobId):
+    jobs = db.getJobs(jobId=jobId)
+    job = None if len(jobs) == 0 else jobs[0]
+    if job == None:
+      return render_template("errors/404.html", message="Job ID, %s, does not exist" % jobId)
+    appName = job['appName']
+    print ("REPLAYING JOB # %s" % jobId)
+    return replay_job(appName, jobId)
+
+#------------------------------------------------------------------------------
+#  /jobs/<appName>/<jobId>/kill - Job Interface to cancel a job
+#         GET     Kills a Job (if orphaned, updates status to killed)
+#           curl -i -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<jobId>/kill
+#------------------------------------------------------------------------------
+@webapp.route('/job/<jobId>/kill', methods=['GET'])
+def kill_job_id(jobId):
+    jobs = db.getJobs(jobId=jobId)
+    job = None if len(jobs) == 0 else jobs[0]
+    appName = job['appName']
+    if job == None:
+      return render_template("errors/404.html", message="Job ID, %s, does not exist" % jobId)
+    return kill_job(appName, jobId)
 #------------------------------------------------------------------------------
 #  /compile
 #         GET     Form for compiling new K3 Executable OR status of compiling tasks

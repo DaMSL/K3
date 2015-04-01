@@ -28,10 +28,22 @@
                  <input type=file class="btn btn-file btn-md" name=file>
               </div>
                  <h4>Paste raw K3 Source below</h4>
-              <div class="col-md-9">
+              <div id="editor" class="col-md-9">
                 <textarea class="form-control" name=text cols=20 rows=30></textarea>
               </div>
             </div>
+                <iframe src="/static/ace.html"></iframe>
+            <div id="editor">function foo(items) {
+    var x = "All this is syntax highlighted";
+    return x;
+}</div>
+
+<script src="http://qp1:8002/src/ace.js" type="text/javascript" charset="utf-8"></script>
+<script>
+    var editor = ace.edit("editor");
+    editor.setTheme("ace/theme/monokai");
+    editor.getSession().setMode("ace/mode/javascript");
+</script>
                 <p>
             <span class="lead text-center"><button type=submit class="btn btn-primary btn-md">Submit</button></span>
                 </p>
@@ -39,7 +51,12 @@
     </div>
   </div>
 {% endblock %}
-
+<script src="/src/ace.js" type="text/javascript" charset="utf-8"></script>
+<script>
+    var editor = ace.edit("editor");
+    editor.setTheme("ace/theme/monokai");
+    editor.getSession().setMode("ace/mode/javascript");
+</script>
 {% block footer %}
   {% include "include/footer.html" %}
 {% endblock %}

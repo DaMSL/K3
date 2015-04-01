@@ -393,9 +393,13 @@ class TaskThread {
             if (k3 == 0) {
                 // Tar sandbox & send to flaskweb UI  (hack for now -- should simply call post-execution script)
                 string tarfile = app_name + "_" + job_id + "_" + host_name + ".tar";
-                string tar_cmd = "cd $MESOS_SANDBOX && tar -cf " + tarfile + " --exclude='k3executor' --exclude='" + app_name + "' *";
+                string tar_cmd = "cd $MESOS_SANDBOX && tar -cf " + tarfile + " --exclude='k3executor' *";
+		string rename_out = "cd $MESOS_SANDBOX && cp stdout stdout_" + host_name;
                 string curl_cmd = "cd $MESOS_SANDBOX && curl -i -H \"Accept: application/json\" -F \"file=@"+tarfile+"\" http://qp1:5000/jobs/"+app_name+"/"+job_id+"/archive";
+                string curl_output = "cd $MESOS_SANDBOX && curl -i -H \"Accept: application/json\" -F \"file=@stdout_"+host_name + "\" http://qp1:5000/jobs/"+app_name+"/"+job_id+"/archive";
                 cout << tar_cmd << endl;
+		cout << rename_out << endl;
+		cout << curl_output << endl;
                 cout << curl_cmd << endl;
                 
 //                cout << "----------------------> Getting STDOUT" << endl;
@@ -414,22 +418,27 @@ class TaskThread {
 //                cout << "----------------------> END OF  STDOUT" << endl;
 //
                 system(tar_cmd.c_str());
+		system(rename_out.c_str());
+                system(curl_output.c_str());
                 system(curl_cmd.c_str());
                 status.set_state(TASK_FINISHED);
                 cout << "Task " << task.task_id().value() << " Completed!" << endl;
 
                 driver->sendStatusUpdate(status);
+		driver->stop();
             }
             else {
                 status.set_state(TASK_FAILED);
                 cout << "K3 Task " << task.task_id().value() << " returned error code: " << k3 << endl;
                 driver->sendStatusUpdate(status);
+		driver->stop();
             }
 
         }
         catch (...) {
           status.set_state(TASK_FAILED);
           driver->sendStatusUpdate(status);
+	  driver->stop();
         }
 
 
@@ -439,13 +448,13 @@ class TaskThread {
 
   virtual void killTask(ExecutorDriver* driver, const TaskID& taskId) {
       driver->sendFrameworkMessage("Executor " + host_name+ " KILLING TASK");
-      if (thread) {
+  /*    if (thread) {
         thread->interrupt();
         thread->join();
         delete thread;
         thread = 0;
       }
-      driver->stop();
+  */    driver->stop();
 }
 
   virtual void frameworkMessage(ExecutorDriver* driver, const string& data) {

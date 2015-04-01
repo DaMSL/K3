@@ -103,6 +103,7 @@ class Job:
     self.appUID      = kwargs.get("appUID", 'None')   #TODO: AppId system
     self.jobId      = kwargs.get("jobId", '1000')   #TODO: AppId system
     roleFile        = kwargs.get("rolefile", None)
+    self.privileged = kwargs.get("privileged", True)
     self.roles      = {}
     self.inputs     = []
     self.volumes    = []
@@ -153,7 +154,6 @@ class Job:
         print ("Error. No YAML file provided to Job")
         return
 
-    print ("Creating Job ID %s, with Binary: %s, using Role: %s, ")
     self.createRoles(roleFile)
 
 
@@ -190,6 +190,9 @@ class Job:
 
       envars = [] if 'envars' not in doc else doc['envars']
       self.envars = envars
+
+      if 'privileged' in doc:
+        self.privileged = doc['privileged']
 
 
       # TODO:  CHANGE TO ROLE-BASED INPUTS for k3_data

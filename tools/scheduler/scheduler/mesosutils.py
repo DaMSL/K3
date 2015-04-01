@@ -30,73 +30,7 @@ def populateAutoVars(allPeers):
       if p.variables[v] == "auto":
         p.variables[v] = [allPeers[0].ip, allPeers[0].port]
 
-def assignRolesToOffers(nextJob, offers):
 
-  # Keep track of how many cpus have been used per role and per offer
-  # and which roles have been assigned to an offer
-  cpusUsedPerOffer = {}
-  cpusUsedPerRole = {}
-  rolesPerOffer = {}
-  for roleId in nextJob.roles:
-    cpusUsedPerRole[roleId] = 0
-  for offerId in offers:
-    cpusUsedPerOffer[offerId] = 0
-    rolesPerOffer[offerId] = []
-
-  # Try to satisy each role, sequentially
-  # TODO consider constraints, such as hostmask
-  for roleId in nextJob.roles:
-    totalPeersPerRole = nextJob.roles[roleId].peers
-    for offerId in offers:
-     
-      hostmask = nextJob.roles[roleId].hostmask
-      host = offers[offerId].hostname.encode('ascii','ignore')
-      r = re.compile(hostmask)
-      if not r.match(host):
-        print("%s does not match hostmask" % host)
-        continue
-     
-      resources = offers[offerId].resources
-      offeredCpus = int(getResource(resources, "cpus", float))
-      offeredMem = getResource(resources, "mem", float)
-     
-      if cpusUsedPerOffer[offerId] >= offeredCpus:
-        # All cpus for this offer have already been used
-        continue
-
-
-      cpusRemainingForOffer = offeredCpus - cpusUsedPerOffer[offerId]
-
-      cpusToUse = 0
-      if 'peers_per_host' in nextJob.roles[roleId].params:
-        cpusToUse = nextJob.roles[roleId].params['peers_per_host']
-        if cpusToUse > cpusRemainingForOffer:
-          # Cannot satisfy specific peers-to-host requirement
-          continue
-      else:
-        cpusToUse = min([cpusRemainingForOffer, totalPeersPerRole])
-
-
-      totalPeersPerRole -= cpusToUse
-     
-      cpusUsedPerOffer[offerId] += cpusToUse
-      rolesPerOffer[offerId].append((roleId, cpusToUse))
-      cpusUsedPerRole[roleId] += cpusToUse
-
-      if cpusUsedPerRole[roleId] == nextJob.roles[roleId].peers:
-        # All peers for this role have been assigned
-        break     
-
-
-
-  # Check if all roles were satisfied
-  for roleId in nextJob.roles:
-    if cpusUsedPerRole[roleId] != nextJob.roles[roleId].peers:
-      debug = (roleId, cpusUsedPerRole[roleId], nextJob.roles[roleId].peers)
-      print("Failed to satisfy role %s. Used %d cpus out of %d peers" % debug)
-      return None
-
-  return (cpusUsedPerRole, cpusUsedPerOffer, rolesPerOffer)
 
 # TODO: Add role to this to enable varying roles for volumes & envars
 def executorInfo(k3job, k3task): #, jobid, binary_url, volumes=[], environs=[]):
@@ -135,10 +69,18 @@ def executorInfo(k3job, k3task): #, jobid, binary_url, volumes=[], environs=[]):
   docker = mesos_pb2.ContainerInfo.DockerInfo()
   docker.image = K3_DOCKER_NAME
   docker.network = docker.HOST
+  docker.privileged = k3job.privileged
+
+  if docker.privileged:
+    print ("NOTE: running privileged mode")
+
    
   # Create the Container
   container = mesos_pb2.ContainerInfo()
   container.type = container.DOCKER
+
+  # For version 0.22 -- request to force docker pull
+  # container.force_pull_image = True
   container.docker.MergeFrom(docker)
 
   for v in k3job.volumes:

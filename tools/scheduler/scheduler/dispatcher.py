@@ -63,6 +63,7 @@ task_state = { 6: "TASK_STAGING",  # Initial state. Framework status updates sho
 class Dispatcher(mesos.interface.Scheduler):
   def __init__(self, daemon=True):
     self.pending = deque()     # Pending jobs. First job is popped once there are enough resources available to launch it.
+    # self.replay = {}           # Replay queust map jobId to # iterations remaining
     self.active = {}           # Active jobs keyed on jobId.
     self.finished = {}         # Finished jobs keyed on jobId.
     self.offers = {}           # Offers from Mesos keyed on offerId. We assume they are valid until they are rescinded by Mesos.
@@ -120,6 +121,120 @@ class Dispatcher(mesos.interface.Scheduler):
       self.terminate = True
       print("Terminating")
 
+
+
+  def assignRolesToOffers(self, nextJob): #, driver):
+
+    # Keep track of how many cpus have been used per role and per offer
+    # and which roles have been assigned to an offer
+    cpusUsedPerOffer = {}
+    cpusUsedPerRole = {}
+    rolesPerOffer = {}
+    for roleId in nextJob.roles:
+      cpusUsedPerRole[roleId] = 0
+    for offerId in self.offers:
+      cpusUsedPerOffer[offerId] = 0
+      rolesPerOffer[offerId] = []
+
+    availableCPU = {i: int(getResource(o.resources, "cpus", float)) for i, o in self.offers.items()}
+    availableMEM = {i: getResource(o.resources, "mem", float) for i, o in self.offers.items()}
+
+    for offerId in self.offers:
+      print "%s:" % self.offers[offerId].hostname.encode('ascii','ignore'),
+      if availableCPU[offerId] == None:
+        print "NO CPU"
+      else:
+        print " %d cpu" % availableCPU[offerId],
+
+      if availableMEM[offerId] == None:
+        print "NO MEM"
+      else:
+        print " %f mem" % availableMEM[offerId]
+    # Try to satisy each role, sequentially
+    for roleId in nextJob.roles:
+      unassignedPeers = nextJob.roles[roleId].peers
+      for offerId in self.offers:
+
+        if availableMEM[offerId] == None or availableMEM[offerId] == 0:
+          continue
+        if availableCPU[offerId] == 0:
+          continue
+
+        #  Check Hostmask requirement
+        hostmask = nextJob.roles[roleId].hostmask
+        host = self.offers[offerId].hostname.encode('ascii','ignore')
+        r = re.compile(hostmask)
+        if not r.match(host):
+          print("%s does not match hostmask. DECLINING offer" % host)
+          # driver.declineOffer(offerId)
+          # del self.offers[offerId]
+          continue
+        print("%s MATCHES hostmask. Checking offer" % host)
+
+        # resources = self.offers[offerId].resources
+        # cpu = int(getResource(resources, "cpus", float))
+        # mem = getResource(resources, "mem", float)
+
+        # if cpusUsedPerOffer[offerId] >= cpu:
+        # if cpusUsedPerOffer[offerId] >= cpu:
+        #   # All cpus for this offer have already been used
+        #   continue
+        #
+        # if mem == None or mem == 0:
+        #   # No memory offered for this TODO: set min required mem or allow user to request it
+        #   continue
+
+
+        # cpusRemainingForOffer = cpu - cpusUsedPerOffer[offerId]
+
+        requestedCPU = availableCPU[offerId]
+
+        cpusToUse = 0
+        if 'peers_per_host' in nextJob.roles[roleId].params:
+          # cpusToUse = nextJob.roles[roleId].params['peers_per_host']
+          peer_per_host = nextJob.roles[roleId].params['peers_per_host']
+          if peer_per_host > availableCPU[offerId]:
+            # Cannot satisfy specific peers-to-host requirement
+            continue
+          else:
+            requestedCPU = peer_per_host
+          # if cpusToUse > cpusRemainingForOffer:
+          #   # Cannot satisfy specific peers-to-host requirement
+          #   continue
+        # else:
+        #   cpusToUse = min([cpusRemainingForOffer, unassignedPeers])
+
+        # Assumes a 1:1 Peer:CPU ratio & USE ALL MEM (for now)
+        unassignedPeers -= requestedCPU
+        availableCPU[offerId] -= requestedCPU
+
+        # TODO: How much memory should we allocate?
+        availableMEM[offerId] -= availableMEM[offerId]
+        # unassignedPeers -= cpusToUse
+
+        # cpusUsedPerOffer[offerId] += cpusToUse
+        # rolesPerOffer[offerId].append((roleId, cpusToUse))
+        # cpusUsedPerRole[roleId] += cpusToUse
+        cpusUsedPerOffer[offerId] += requestedCPU
+        rolesPerOffer[offerId].append((roleId, requestedCPU))
+        cpusUsedPerRole[roleId] += requestedCPU
+        #
+        # if cpusUsedPerRole[roleId] == nextJob.roles[roleId].peers:
+        print "UNASSIGNED PEERS = %d" % unassignedPeers
+        if unassignedPeers <= 0:
+          # All peers for this role have been assigned
+          break
+
+
+    # Check if all roles were satisfied
+    for roleId in nextJob.roles:
+      if cpusUsedPerRole[roleId] != nextJob.roles[roleId].peers:
+        debug = (roleId, cpusUsedPerRole[roleId], nextJob.roles[roleId].peers)
+        print("Failed to satisfy role %s. Used %d cpus out of %d peers" % debug)
+        return None
+
+    return (cpusUsedPerRole, cpusUsedPerOffer, rolesPerOffer)
+
   # See if the next job in the pending queue can be launched using the current offers.
   # Upon failure, return None. Otherwise, return the Job object with fresh k3 tasks attached to it
   def prepareNextJob(self):
@@ -129,27 +244,23 @@ class Dispatcher(mesos.interface.Scheduler):
       return None
   
     nextJob = self.pending[0]
-    result = assignRolesToOffers(nextJob, self.offers)
+
+    # TODO: Determine if job CAN launch; if not try next job in QUEUE
+    result = self.assignRolesToOffers(nextJob) #, driver) #, self.offers)
     if result == None:
       return None
    
     (cpusUsedPerRole, cpusUsedPerOffer, rolesPerOffer) = result
 
     # TODO port management
-    curPort = 40000
     curPeerIndex = 0
     nextJob.tasks = []
     allPeers = []
 
-
     # Succesful. Accept any used offers. Build tasks, etc.
     for offerId in self.offers:
+      curPort = 40000
       if cpusUsedPerOffer[offerId] > 0:
-
-        mem = getResource(self.offers[offerId].resources, "mem", float)
-        if mem == None or mem == 0:
-          print ("No RAM in this offer, skipping")
-          continue
 
         host = self.offers[offerId].hostname.encode('ascii','ignore')
         debug = (host, str(rolesPerOffer[offerId]))
@@ -166,7 +277,11 @@ class Dispatcher(mesos.interface.Scheduler):
             allPeers.append(p)
             curPeerIndex = curPeerIndex + 1
             curPort = curPort + 1
-       
+
+        # Use all MEM (for now)
+        resources = self.offers[offerId].resources
+        mem = getResource(resources, "mem", float)
+
         taskid = len(nextJob.tasks)
         t = Task(taskid, offerId, host, mem, peers)
         nextJob.tasks.append(t)
@@ -212,6 +327,7 @@ class Dispatcher(mesos.interface.Scheduler):
       fullid = self.fullId(jobId, t.taskid)
       tid = mesos_pb2.TaskID()
       tid.value = fullid
+      print("Killing task: " + fullid)
       driver.killTask(tid)
     del self.active[jobId]
     self.finished[jobId] = job
