@@ -21,10 +21,10 @@ def create_file(num_switches, num_nodes):
     peers = []
     peers += [('master', 40000)]
     peers += [('timer',  40001)]
-    switch_ports = 50000
+    switch_ports = 50001
     for i in range(num_switches):
         peers += [('switch', switch_ports + i)]
-    node_ports = 60000
+    node_ports = 60001
     for i in range(num_nodes):
         peers += [('node',   node_ports + i)]
 
