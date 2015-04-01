@@ -18,24 +18,25 @@ def run_test(k3_file):
     (path, prog_nm) = os.path.split(k3_file)
     (prog_nm, ext) = os.path.splitext(prog_nm)
     yaml_file = os.path.join(script_path, prog_nm) + ".yaml"
-    # create the schema for the k3 file
+
+    print("Generating schema...")
     create_schema.do_schema(k3_file, out_file=schema_name)
 
-    # create path for json
-    if not os.path.isdir(json_dir):
-        os.makedirs(json_dir)
-    # run and create jsons
-    subprocess.call('__build/A -p {0} -j {1}'.format(yaml_file, json_dir), shell=True)
+    print("Cleaning json output files...")
+    files = os.listdir(json_dir)
+    paths = [os.path.join(json_dir, f) for f in files]
+    clean_json.process_files(paths)
 
-    # create new jsons
-    for f in os.listdir(json_dir):
-        path = os.path.join(json_dir, f)
-        if not isfile(path):
-            continue
-        (_, ext) = os.path.splitext(f)
-        if not ext == "dsv":
-            continue
-        clean_json.convert_file(path)
+    # append to schema file
+    with open(schema_name, 'a') as f:
+        f.write("copy globals from '{0}' delimiter '|' quote '`' csv;\n".format(os.path.abspath('globals.dsv')))
+        f.write("copy messages from '{0}' delimiter '|' quote '`' csv;\n".format(os.path.abspath('messages.dsv')))
+
+    print("Loading into postgres...")
+    subprocess.call('psql < {0}'.format(schema_name), shell=True)
+
+    print("done")
+
 
 def main():
     parser = argparse.ArgumentParser()

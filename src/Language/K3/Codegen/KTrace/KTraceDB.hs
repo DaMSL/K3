@@ -149,7 +149,7 @@ compareField (field, typ) | typ == varcharType = Right $ proj "l" ++ " = " ++ pr
 -- Key for joining Globals and Messages
 -- Prefixed with _ to help avoid name clashes with global vars
 keyAttrs :: [(String, String)]
-keyAttrs = [("_mess_id", "int"), ("_dest_peer", "json")]
+keyAttrs = [("mess_id", "int"), ("dest_peer", "json")]
 
 globalsTable :: String
 globalsTable = "Globals"

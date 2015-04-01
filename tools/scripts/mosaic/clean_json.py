@@ -69,20 +69,23 @@ def convert_file(file_nm, writer):
                 res += [json.dumps(new_obj)]
             writer.writerow(res)
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("json_files", type=str, nargs='+', help="Specify path")
-    args = parser.parse_args()
+def process_files(files):
     with open("messages.dsv", "w", newline='') as msg_file:
         with open("globals.dsv", "w", newline='') as glb_file:
             msg_writer = csv.writer(msg_file, delimiter='|', quotechar="'")
             glb_writer = csv.writer(glb_file, delimiter='|', quotechar="'")
-            for f in args.json_files:
+            for f in files:
                 # is it a messages or a globals?
                 if re.search("Globals", f):
                     convert_file(f, glb_writer)
                 else:
                     convert_file(f, msg_writer)
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("json_files", type=str, nargs='+', help="Specify path")
+    args = parser.parse_args()
+    process_files(args.json_files)
 
 if __name__=='__main__':
     main ()
