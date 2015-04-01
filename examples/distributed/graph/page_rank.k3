@@ -20,6 +20,11 @@ declare start_timer: () -> () = \_ -> (
   start_ms = now_int()
 )
 
+declare reset_timer: () -> () = \_ -> (
+  end_ms = now_int ();
+  let elapsed = end_ms - start_ms in (times.insert {ms: elapsed}; print ("Elapsed: " ++ (itos elapsed)))
+)
+
 declare printStats: () -> () = \_ -> (
   let s = times.fold (\a -> \t -> a + t.ms) 0 in
   let avg = (1.0 / times.size()) * s in
@@ -28,109 +33,157 @@ declare printStats: () -> () = \_ -> (
 )
 
 declare iterations: mut int = 5
-declare damping_factor: real = 0.5
+declare damping_factor: real = 0.15
 declare master: address
 
-declare table: collection { key: vertex, value: vertex } @ { Collection }
-declare graph: mut collection { key: vertex, value: collection { elem: vertex } @ { Collection }} @ { Map }
-declare state: mut collection { key: vertex, value: page_rank } @ { Map }
+declare graph: mut collection { key: vertex, value: collection { elem: vertex } @ { Collection }} @ IntMap
+declare state: mut collection { key: vertex, value: page_rank } @IntMap
+
 declare consolidated_outgoing: mut collection { key: int
                                               , value: collection { key: vertex
                                                                   , value: page_rank
-                                                                  } @  Map
-                                              } @ Map
-declare active: collection { key: vertex, value: bool } @ { Map }
+                                                                  } @ IntMap
+                                              } @ IntMap
 
 declare dataFiles: collection {path: string} @Collection
 
-declare peer_by_vertex: vertex -> int = \v -> (v % peers.size ())
+declare peer_by_vertex: vertex -> int = \v -> ((v % peers.size ()))
 
-declare aggregate_and_send_by_peer: () -> () = \_ -> (
-    print "Finished Message Batching";
-    (range (peers.size ())).iterate (\i ->
-      case consolidated_outgoing.lookup { key: i.i
-                          , value: empty { key: vertex
-                                         , value: page_rank
-                                         } @ { Map }
-                          } of
-        { Some b -> case peers.at i.i of
-                      { Some p -> (gather, p.addr) <- b.value }
-                      { None ->  () } }
-        { None -> case peers.at i.i of
-                      { Some p -> ((gather, p.addr) <- empty { key: vertex , value: page_rank} @ { Map } ) }
-                      { None -> () } }
-    );
-    print "Finished Message Scatter"
+// Ensure that vertices are partitioned properly:
+// Vertex id v should be located at peer v % peers.size()
+declare validate_vertex_partition: () -> () = \_ -> (
+  let myIndex = (range (peers.size ())).fold
+    (\a -> \i ->
+      case peers.at i.i of
+        { Some p -> if p.addr == me then i.i else a }
+        { None -> error () }
+    )
+    (-1)
+  in graph.iterate (\kv -> if peer_by_vertex kv.key != myIndex
+                           then print ("INVALID VERTEX." ++ (itos kv.key) ++ " at peer: " ++ (itos myIndex) ++ "." ++ (atos me))
+                           else ()
+                   )
 )
 
+// Use consolidated_outgoing to send each peer the new contributions for its vertices
+declare send_by_peer: () -> () = \_ -> (
+    (range (peers.size ())).iterate (\i -> (
+      (consolidated_outgoing.lookup_with2
+         { key: i.i, value: empty { key: vertex, value: page_rank} @IntMap }
+         (\_ -> peers.at_with i.i (\p -> (gather, p.addr) <- empty { key: vertex, value: page_rank} @IntMap ) )
+         (\b -> peers.at_with i.i (\p -> (gather, p.addr) <- b.value ) )
+      );
+      (peers.at_with i.i (\p -> (gatherSinks, p.addr) <- outgoingSinkContribs))
+      )
+    )
+)
+
+declare outgoingSinkContribs: mut real = 0.0
 declare scatter: () -> () = \_ -> (
-  print ("Starting Iteration: " ++ (itos iterations));
   start_timer ();
-  consolidated_outgoing = empty { key: int, value: collection { key: vertex, value: page_rank } @ Map } @ { Map };
-  state.iterate (\s -> state.insert {
-                               key: s.key,
-                               value: (((1 - damping_factor)) + damping_factor * s.value)
-                             }
-  );
-  print "Finished Initial Aggregation";
+
+  outgoingSinkContribs = 0.0;
+  consolidated_outgoing = empty { key: int, value: collection { key: vertex, value: page_rank } @IntMap } @IntMap ;
+
   state.iterate (\s ->
-    let neighbours = graph.lookup { key: s.key, value: empty { elem: vertex } @ { Collection }}
-    in case neighbours of
-         { Some ns -> let out_degree = ns.value.size ()
-                      in ns.value.iterate (\n -> (consolidated_outgoing.insert_with ({
-                           key: (peer_by_vertex n.elem),
-                           value: (
-                             let e = empty { key: vertex, value: page_rank } @ Map in
-                             (e.insert { key: n.elem, value: s.value / out_degree }; e)
-                           )
-                         })
-                         (\a -> \e -> ((
-                            bind a as { key: k, value: v } in
-                              v.insert_with { key: n.elem, value: s.value / out_degree }
-                                (\x -> \y -> { key: x.key, value: x.value + y.value })); a))))
-         }
-         { None -> () }
+    graph.lookup_with
+         { key: s.key, value: empty { elem: vertex } @Collection }
+         (\ns -> let out_degree = ns.value.size () in
+                 let damp_value = ((1 - damping_factor) / vertex_count) + (damping_factor * s.value) in
+                 let out_contrib = if out_degree == 0 then damp_value / vertex_count else damp_value / out_degree
+                 in if out_degree == 0
+                    then outgoingSinkContribs = outgoingSinkContribs + out_contrib
+                    else (
+                       ns.value.iterate (\n ->
+                          consolidated_outgoing.insert_with
+                            { key: (peer_by_vertex n.elem),
+                              value: let e = empty { key: vertex, value: page_rank } @IntMap in
+                                     e.insert { key: n.elem, value: out_contrib }; e
+                            }
+                            (\a -> \e -> (
+                                  (a.value.insert_with
+                                    { key: n.elem, value: out_contrib }
+                                    (\x -> \y -> { key: x.key, value: x.value + y.value })); a)
+                            )
+                       )
+                    )
+         )
   );
-  print "Finished Outgoing Aggregation";
-  iterations = iterations - 1;
-  (if iterations > 0
-    then ( state.iterate (\s -> state.insert { key: s.key, value: 0.0 })
-         ; aggregate_and_send_by_peer ()
-         ) else (stop, me) <- ());
-  print "Finished Dissemination"
+
+  send_by_peer ();
+  state = empty {key: vertex, value: real} @IntMap;
+  graph.iterate (\g -> state.insert {key: g.key, value: 0.0} )
 )
 
-trigger gather: collection { key: vertex, value: page_rank } @ { Map } = \message_map -> (
-  message_map.iterate (\r -> (
-    state.insert_with { key: r.key, value: r.value } (\a -> \b -> { key: r.key, value: a.value + b.value})
-  ));
-
-  (scatter (); reset_timer ())
-    @ { OnCounter(id=[# gather], eq=[$ peers.size ()], reset=[$ true], profile=[$ false]) }
+trigger gather: collection { key: vertex, value: page_rank } @IntMap  = \message_map -> (
+  message_map.iterate (\r ->
+    state.insert_with { key: r.key, value: r.value } (\a -> \b -> { key: a.key, value: a.value + b.value})
+  )
 )
 
-declare reset_timer: () -> () = \_ -> (
-  end_ms = now_int ();
-  let elapsed = end_ms - start_ms in (times.insert {ms: elapsed}; print ("Elapsed: " ++ (itos elapsed)))
+// Evenly distribute contributions from sinks to all vertices
+declare fromSinks: mut real = 0.0
+trigger gatherSinks: real = \v -> (
+  fromSinks = fromSinks + v;
+  ( graph.iterate (\g -> state.insert_with {key: g.key, value: fromSinks} (\a -> \b -> {key: a.key, value: a.value + b.value}));
+    fromSinks = 0.0;
+    (global_barrier, master) <- ()
+  ) @ { OnCounter(id=[# gather], eq=[$ peers.size ()], reset=[$ true], profile=[$ false]) }
 )
+
+trigger global_barrier: () = \_ -> (
+  (
+   reset_timer ();
+   print ("Iteration " ++ (itos iterations) ++ " finished.");
+   iterations = iterations - 1;
+   if iterations > 0
+   then peers.iterate (\p -> (go, p.addr) <- vertex_count )
+   else peers.iterate (\p -> (sendPageRanks, p.addr) <- ())
+  ) @ { OnCounter(id=[# global_barrier], eq=[$ peers.size ()], reset=[$ true], profile=[$ false]) }
+)
+
 
 trigger load_all: () = \_ -> (
-  dataFiles.iterate (\x -> loadGraph x.path graph);
-  graph.iterate (\r -> (state.insert { key: r.key, value: (1.0) }));
+  loadGraph dataFiles graph;
+  validate_vertex_partition ();
   (ready, master) <- (graph.size ())
 )
 
-trigger go: () = \_ -> scatter ()
+declare initialized: mut bool = false
+trigger go: int = \c -> (
+  (if not initialized
+  then (
+    vertex_count = c;
+    graph.iterate (\r -> (state.insert { key: r.key, value: (1.0 /vertex_count) }));
+    initialized = true
+  )
+  else ());
+  scatter ()
+)
 
 trigger ready: int = \i -> (
   vertex_count = vertex_count + i;
   if master == me
-  then ((peers.iterate (\p -> (go, p.addr) <- ())) @ { OnCounter(id=[# ready], eq=[$ peers.size ()], reset=[$ false], profile=[$ false]) }) else ()
+  then ((peers.iterate (\p -> (go, p.addr) <- vertex_count)) @ { OnCounter(id=[# ready], eq=[$ peers.size ()], reset=[$ false], profile=[$ false]) }) else ()
+
 )
 
+trigger sendPageRanks: () = \_ -> (
+  let v = state.fold (\acc -> \kv -> acc + kv.value) 0.0
+  in (collectPageRanks, master) <- v
+)
+
+declare total_pagerank : mut real = 0.0
+trigger collectPageRanks: real = \v -> (
+  total_pagerank = total_pagerank + v;
+  ( peers.iterate (\p -> (stop, p.addr) <- () );
+    print ("Total pagerank: " ++ (rtos total_pagerank));
+    printStats ()
+  ) @{ OnCounter(id=[# collect], eq=[$ peers.size ()], reset=[$ true], profile=[$ false]) }
+
+)
 
 trigger stop: () = \_ -> (
-  printStats ();
   haltEngine ()
 )
 
