@@ -4,7 +4,7 @@ include "Core/Loaders.k3"
 include "Core/Barrier.k3"
 include "Core/Builtins.k3"
 include "Core/Profile.k3"
-
+include "Core/MachineMessaging.k3"
 typedef vertex = int
 typedef page_rank = real
 
@@ -33,7 +33,7 @@ declare printStats: () -> () = \_ -> (
 )
 
 declare iterations: mut int = 5
-declare damping_factor: real = 0.15
+declare damping_factor: real = 0.85
 declare master: address
 
 declare graph: mut collection { key: vertex, value: collection { elem: vertex } @ { Collection }} @ IntMap
@@ -146,19 +146,28 @@ trigger global_barrier: () = \_ -> (
 trigger load_all: () = \_ -> (
   loadGraph dataFiles graph;
   validate_vertex_partition ();
-  (ready, master) <- (graph.size ())
+  (peers.iterate (\p -> (hello, p.addr) <- () ))
 )
 
 declare initialized: mut bool = false
 trigger go: int = \c -> (
   (if not initialized
   then (
+    (((tcmallocStart ()); (jemallocStart ()); (pcmStart ())) @IfMachineMaster);
     vertex_count = c;
     graph.iterate (\r -> (state.insert { key: r.key, value: (1.0 /vertex_count) }));
     initialized = true
   )
   else ());
   scatter ()
+)
+
+trigger hello: () = \_ -> (
+  ( (ready, master) <- graph.size () ) @{ OnCounter(id=[# hello], eq=[$ peers.size ()], reset=[$ false], profile=[$ false]) }
+)
+
+trigger start_profiler : () = \_ -> (
+  ((tcmallocStart ()); (jemallocStart ()); (pcmStart ())) @IfMachineMaster
 )
 
 trigger ready: int = \i -> (
@@ -184,6 +193,7 @@ trigger collectPageRanks: real = \v -> (
 )
 
 trigger stop: () = \_ -> (
+  ((tcmallocStop ()); (jemallocStop ()); (pcmStop ())) @IfMachineMaster;
   haltEngine ()
 )
 
