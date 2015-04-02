@@ -31,6 +31,7 @@ typedef rk_bag = collection rk_record @Collection
 
 declare ignore : forall a. a -> () = \_ -> ()
 
+declare master    : address = 127.0.0.1:40000
 declare peers_seq : collection {addr: address} @Seq
 
 declare index_by_hash : string -> int = (\s -> (
@@ -51,7 +52,6 @@ control AmplabBenchmark[queryTrigger       : expr,
   ?e @:Result => (finished, master) <- $.[e]
   ?e @:Start  => (load_all, me)     <- $.[e]
     +> {
-      declare master    : address = 127.0.0.1:40000
       declare rankingsFiles : collection {path: string} @Collection
       declare uservisitsFiles : collection {path: string} @Collection
 
@@ -68,7 +68,7 @@ control AmplabBenchmark[queryTrigger       : expr,
         ($[preTestFinishExpr] finishArg);
         ((( $[preFinishExpr];
             peers.iterate (\p -> (shutdown, p.addr) <- ()))
-              @:StopTimer) @Time(lbl=[# query], tag=[$ "Query time"])
+              @:StopTimer) @Time(lbl=[# Query], tag=[$ "Time "])
         ) @OnCounter(id=[# query_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
       )
 
@@ -77,7 +77,7 @@ control AmplabBenchmark[queryTrigger       : expr,
       trigger ready : () = \_ -> (
         ( $[preReadyExpr];
           ((peers.iterate (\p -> ($[queryTrigger], p.addr) <- ()))
-              @:StartTimer) @Time(lbl=[# query], tag=[$ "Query time:"])
+              @:StartTimer) @Time(lbl=[# Query], tag=[$ "Time "])
         ) @OnCounter(id=[# peers_ready], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
       )
 
