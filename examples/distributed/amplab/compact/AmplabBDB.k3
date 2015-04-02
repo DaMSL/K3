@@ -56,10 +56,12 @@ control AmplabBenchmark[queryTrigger       : expr,
       declare uservisitsFiles : collection {path: string} @Collection
 
       // Dummy trigger to warm up connections
-      trigger hello : () = \_ -> ()
+      trigger hello : () = \_ -> (
+        ((ready, master) <- ()) @OnCounter(id=[# hello_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+      )
 
       trigger shutdown : () = \_ -> (
-        $[preShutdownExpr];
+        $[preShutdownExpr]; ((tcmallocStop ()); (jemallocStop ()); (pcmStop ())) @IfMachineMaster;
         haltEngine ()
       )
 
@@ -76,15 +78,20 @@ control AmplabBenchmark[queryTrigger       : expr,
       // Once all peers are ready, the master will start the query.
       trigger ready : () = \_ -> (
         ( $[preReadyExpr];
+          (peers.iterate (\p -> (start_profiler, p.addr) <- () ));
           ((peers.iterate (\p -> ($[queryTrigger], p.addr) <- ()))
               @:StartTimer) @Time(lbl=[# Query], tag=[$ "Time "])
         ) @OnCounter(id=[# peers_ready], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+      )
+      
+      trigger start_profiler : () = \_ -> (
+        ((tcmallocStart ()); (jemallocStart ()); (pcmStart ())) @IfMachineMaster
       )
 
       trigger load_all : () = \_ -> (
         $[preLoadExpr];
         ($[loadExpr]) @Profile(lbl=[# loader], tag=[$ "Load time:"]);
-        ((ready, master) <- ())
+        ( peers.iterate (\p -> (hello, p.addr) <- ()) )
       )
     }
 }
