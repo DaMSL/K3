@@ -49,7 +49,7 @@ declare jemallocStop: () -> ()
 with effects \_ -> io
 
 declare jemallocDump: () -> ()
-with effects \_- > io
+with effects \_ -> io
 
 declare pcmStart: () -> ()
 with effects \_ -> io
