@@ -147,6 +147,7 @@ namespace K3 {
     public:
       unit_t jemallocStart(unit_t);
       unit_t jemallocStop(unit_t);
+      unit_t jemallocDump(unit_t);
   };
 
   template <class C1, class C, class F>
