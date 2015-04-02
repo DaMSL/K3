@@ -22,19 +22,79 @@ namespace K3 {
     : __k3_context(__engine)
   {}
 
-  unit_t __tcmalloc_context::heapProfilerStart(const string_impl& s) {
-    #ifdef MEMPROFILE
-    HeapProfilerStart(s.c_str());
+  unit_t __tcmalloc_context::tcmallocStart(unit_t) {
+    #ifdef K3_TCMALLOC
+    HeapProfilerStart("K3");
+      #ifdef K3_HEAP_SERIES
+      auto init = []() {
+        auto start = time_milli();
+        auto start_str = to_string( ( start - (start % 250) ) % 100000 );
+        return std::string("K3." + start_str + ".");
+      };
+      auto body = [](std::string& name, int i){
+        std::string heapName = name + to_string(i);
+        HeapProfilerDump(heapName.c_str());
+      };
+      heap_series_start(init, body);
+      #endif
     #else
-    std::cout << "heapProfilerStart: MEMPROFILE is not defined. not starting." << std::endl;
+    std::cout << "tcmallocStart: K3_TCMALLOC is not defined. not starting." << std::endl;
     #endif
     return unit_t {};
   }
 
-  unit_t __tcmalloc_context::heapProfilerStop(unit_t) {
-    #ifdef MEMPROFILE
+  unit_t __tcmalloc_context::tcmallocStop(unit_t) {
+    #ifdef K3_TCMALLOC
+      #ifdef K3_HEAP_SERIES
+      heap_series_stop();
+      #endif
     HeapProfilerDump("End of Program");
     HeapProfilerStop();
+    #endif
+    return unit_t {};
+  }
+
+  unit_t __jemalloc_context::jemallocStart(unit_t) {
+    #ifdef K3_JEMALLOC
+    bool enable = true;
+    mallctl("prof.active", NULL, 0, &enable, sizeof(enable));
+      #ifdef K3_HEAP_SERIES
+      auto init = [](){
+        const char* hp_prefix;
+        size_t hp_sz = sizeof(hp_prefix);
+        mallctl("opt.prof_prefix", &hp_prefix, &hp_sz, NULL, 0);
+        auto start = time_milli();
+        auto start_str = to_string( ( start - (start % 250) ) % 100000 );
+        return std::string(hp_prefix) + "." + start_str + ".0.t";
+      };
+      auto body = [](std::string& name, int i){
+        std::string heapName = name + to_string(i) + ".heap";
+        const char* hnPtr = heapName.c_str();
+        mallctl("prof.dump", NULL, 0, &hnPtr, sizeof(hnPtr));
+      };
+      heap_series_start(init, body);
+      #endif
+    #else
+    std::cout << "jemallocStart: JEMALLOC is not defined. not starting." << std::endl;
+    #endif
+    return unit_t {};
+  }
+
+  unit_t __jemalloc_context::jemallocStop(unit_t) {
+    #ifdef K3_JEMALLOC
+      #ifdef K3_HEAP_SERIES
+      heap_series_stop();
+      #endif
+    mallctl("prof.dump", NULL, 0, NULL, 0);
+    bool enable = false;
+    mallctl("prof.active", NULL, 0, &enable, sizeof(enable));
+    #endif
+    return unit_t {};
+  }
+
+  unit_t __jemalloc_context::jemallocDump(unit_t) {
+    #ifdef K3_JEMALLOC
+    mallctl("prof.dump", NULL, 0, NULL, 0);
     #endif
     return unit_t {};
   }
@@ -120,21 +180,21 @@ namespace K3 {
 
   __pcm_context::~__pcm_context() {}
 
-  unit_t __pcm_context::cacheProfilerStart(unit_t) {
-    #ifdef CACHEPROFILE
+  unit_t __pcm_context::pcmStart(unit_t) {
+    #ifdef K3_PCM
     instance = PCM::getInstance();
     if (instance->program() != PCM::Success) {
       std::cout << "PCM startup error!" << std::endl;
     }
     initial_state = std::make_shared<SystemCounterState>(getSystemCounterState());
     #else
-    std::cout << "cacheProfileStart: CACHEPROFILE not set. not starting." << std::endl;
+    std::cout << "pcmStart: PCM not set. not starting." << std::endl;
     #endif
     return unit_t();
   }
 
-  unit_t __pcm_context::cacheProfilerStop(unit_t) {
-    #ifdef CACHEPROFILE
+  unit_t __pcm_context::pcmStop(unit_t) {
+    #ifdef K3_PCM
     SystemCounterState after_sstate = getSystemCounterState();
     std::cout << "QPI Incoming: " << getAllIncomingQPILinkBytes(*initial_state, after_sstate) << std::endl;
     std::cout << "QPI Outgoing: " << getAllOutgoingQPILinkBytes(*initial_state, after_sstate) << std::endl;
@@ -276,6 +336,15 @@ namespace K3 {
     }
     date[i] = 0;
     return std::atoi(date);
+  }
+
+  string_impl __string_context::tpch_date_to_string(const int& date) {
+    std::string tmp = std::to_string(date);
+    std::string year = tmp.substr(0, 4);
+    std::string month = tmp.substr(4, 2);
+    std::string day = tmp.substr(6, 2);
+    return year + "-" + month + "-" + day;
+
   }
 
 } // namespace K3

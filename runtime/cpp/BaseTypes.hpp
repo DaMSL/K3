@@ -17,6 +17,10 @@ class unit_t {
   public:
   template <class archive>
   void serialize(archive&, const unsigned int) {}
+
+  template <class archive>
+  void serialize(archive&) {}
+
   bool operator==(const unit_t&) const { return true; }
   bool operator!=(const unit_t&) const { return false; }
   bool operator<(const unit_t&) const { return false; }
@@ -59,7 +63,10 @@ class R_addr {
         template <class archive>
         void serialize(archive& _archive,const unsigned int) {
             _archive & BOOST_SERIALIZATION_NVP(addr);
-
+        }
+        template <class archive>
+        void serialize(archive& _archive) {
+            _archive & addr;
         }
         _T0 addr;
 };
@@ -115,6 +122,10 @@ class R_elem {
         void serialize(archive& _archive,const unsigned int) {
             _archive & BOOST_SERIALIZATION_NVP(elem);
         }
+        template <class archive>
+        void serialize(archive& _archive) {
+            _archive & elem;
+        }
         _T0 elem;
 };
 #endif // K3_R_elem
@@ -159,6 +170,11 @@ class R_key_value {
       void serialize(archive& _archive, const unsigned int)  {
         _archive & BOOST_SERIALIZATION_NVP(key);
         _archive & BOOST_SERIALIZATION_NVP(value);
+      }
+      template <class archive>
+      void serialize(archive& _archive)  {
+        _archive & key;
+        _archive & value;
       }
       bool operator==(const R_key_value<_T0, _T1>& __other) const {
         return key == (__other.key) && value == (__other.value);

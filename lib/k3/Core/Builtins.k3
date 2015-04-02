@@ -26,6 +26,7 @@ declare regex_matcher_q4 : string -> collection {elem: string} @ Collection
 
 // TPCH date parsing.
 declare tpch_date : string -> int
+declare tpch_date_to_string : int -> string
 
 // TODO: move to Time.k3
 declare now_int : () -> int
@@ -35,16 +36,25 @@ declare now_int : () -> int
 //
 // Engine I/O builtins
 
-declare heapProfilerStart: string -> ()
+declare tcmallocStart: () -> ()
 with effects \s -> io
 
-declare heapProfilerStop: () -> ()
+declare tcmallocStop: () -> ()
 with effects \_ -> io
 
-declare cacheProfilerStart: () -> ()
+declare jemallocStart: () -> ()
 with effects \_ -> io
 
-declare cacheProfilerStop: () -> ()
+declare jemallocStop: () -> ()
+with effects \_ -> io
+
+declare jemallocDump: () -> ()
+with effects \_ -> io
+
+declare pcmStart: () -> ()
+with effects \_ -> io
+
+declare pcmStop: () -> ()
 with effects \_ -> io
 
 // openBuiltin: channel id -> builtin channel id -> format -> ()

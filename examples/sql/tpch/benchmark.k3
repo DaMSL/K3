@@ -65,11 +65,13 @@ control TPCHBenchmarkWithoutMaster
       ))
 
       // Dummy trigger to warm up connections
-      trigger hello : () = \_ -> ()
+      trigger hello : () = \_ -> (
+        ((ready, master) <- ()) @OnCounter(id=[# hello_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
+      )
 
       // A shutdown trigger which runs at each peer to terminate the distributed program.
       trigger shutdown : () = \_ -> (
-        $[preShutdownExpr];
+        $[preShutdownExpr]; ((tcmallocStop ()); (jemallocStop ()); (pcmStop ())) @IfMachineMaster;
         haltEngine ()
       )
 
@@ -87,16 +89,21 @@ control TPCHBenchmarkWithoutMaster
         ( $[preReadyExpr];
           (
           (let load_time = (now_int () - program_start_ts)
-          in print ("Time Load:" ++  (itos load_time)) );
+           in print ("Time Load:" ++  (itos load_time)) );
+          (peers.iterate (\p -> (start_profiler, p.addr) <- () ));
           ( $[onReadyExpr] @:StartTimer) @TimeSink(lbl=[# Query], tag=[$ "Time "], sink_expr=[$ query_time_sink])
           ) @OnCounter(id=[#  nodes_ready], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false]))
+      )
+ 
+      trigger start_profiler : () = \_ -> (
+        ((tcmallocStart ()); (jemallocStart ()); (pcmStart ())) @IfMachineMaster
       )
 
       trigger load_all : () = \_ -> (
         program_start_ts = now_int ();
         $[preLoadExpr];
-        $[loadExpr];
-        ((ready, master) <- ())
+        $[loadExpr]; 
+        ( peers.iterate (\p -> (hello, p.addr) <- ()) )
       )
     }
 }

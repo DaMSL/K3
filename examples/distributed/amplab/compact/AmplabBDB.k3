@@ -31,6 +31,7 @@ typedef rk_bag = collection rk_record @Collection
 
 declare ignore : forall a. a -> () = \_ -> ()
 
+declare master    : address = 127.0.0.1:40000
 declare peers_seq : collection {addr: address} @Seq
 
 declare index_by_hash : string -> int = (\s -> (
@@ -51,15 +52,16 @@ control AmplabBenchmark[queryTrigger       : expr,
   ?e @:Result => (finished, master) <- $.[e]
   ?e @:Start  => (load_all, me)     <- $.[e]
     +> {
-      declare master    : address = 127.0.0.1:40000
       declare rankingsFiles : collection {path: string} @Collection
       declare uservisitsFiles : collection {path: string} @Collection
 
       // Dummy trigger to warm up connections
-      trigger hello : () = \_ -> ()
+      trigger hello : () = \_ -> (
+        ((ready, master) <- ()) @OnCounter(id=[# hello_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+      )
 
       trigger shutdown : () = \_ -> (
-        $[preShutdownExpr];
+        $[preShutdownExpr]; ((tcmallocStop ()); (jemallocStop ()); (pcmStop ())) @IfMachineMaster;
         haltEngine ()
       )
 
@@ -68,7 +70,7 @@ control AmplabBenchmark[queryTrigger       : expr,
         ($[preTestFinishExpr] finishArg);
         ((( $[preFinishExpr];
             peers.iterate (\p -> (shutdown, p.addr) <- ()))
-              @:StopTimer) @Time(lbl=[# query], tag=[$ "Query time"])
+              @:StopTimer) @Time(lbl=[# Query], tag=[$ "Time "])
         ) @OnCounter(id=[# query_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
       )
 
@@ -76,15 +78,20 @@ control AmplabBenchmark[queryTrigger       : expr,
       // Once all peers are ready, the master will start the query.
       trigger ready : () = \_ -> (
         ( $[preReadyExpr];
+          (peers.iterate (\p -> (start_profiler, p.addr) <- () ));
           ((peers.iterate (\p -> ($[queryTrigger], p.addr) <- ()))
-              @:StartTimer) @Time(lbl=[# query], tag=[$ "Query time:"])
+              @:StartTimer) @Time(lbl=[# Query], tag=[$ "Time "])
         ) @OnCounter(id=[# peers_ready], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+      )
+      
+      trigger start_profiler : () = \_ -> (
+        ((tcmallocStart ()); (jemallocStart ()); (pcmStart ())) @IfMachineMaster
       )
 
       trigger load_all : () = \_ -> (
         $[preLoadExpr];
         ($[loadExpr]) @Profile(lbl=[# loader], tag=[$ "Load time:"]);
-        ((ready, master) <- ())
+        ( peers.iterate (\p -> (hello, p.addr) <- ()) )
       )
     }
 }

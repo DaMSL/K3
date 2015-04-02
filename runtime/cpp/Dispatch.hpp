@@ -28,13 +28,14 @@ namespace K3 {
     class ValDispatcher : public Dispatcher {
       public:
         ValDispatcher(const T& arg) : _arg(arg) {}
+        ValDispatcher(T&& arg) : _arg(std::move(arg)) {}
         ValDispatcher() {}
 
-        void unpack(const Value &msg) { _arg = std::move(*BoostSerializer::unpack<T>(msg)); }
+        void unpack(const Value &msg) { _arg = std::move(*K3Serializer::unpack_yas<T>(msg)); }
 
         Dispatcher* clone() { return new ValDispatcher<T>(_arg); }
 
-        Value pack() const { return BoostSerializer::pack<T>(_arg); }
+        Value pack() const { return K3Serializer::pack_yas<T>(_arg); }
 
         void call_dispatch(__k3_context& context, int trigger_id, const Address& src) {
 	        context.__dispatch(trigger_id, static_cast<void*>(&_arg), src);
@@ -54,7 +55,7 @@ namespace K3 {
 
     //     Dispatcher* clone() { return new RefDispatcher<T>(_func, _arg); }
 
-    //     Value pack() const { return BoostSerializer::pack<T>(_arg); }
+    //     Value pack() const { return K3Serializer::pack<T>(_arg); }
 
     //     const T &_arg;
     // };
@@ -66,11 +67,11 @@ namespace K3 {
     //     SharedDispatcher(std::shared_ptr<T> arg) : _arg(arg) {}
     //     SharedDispatcher() {}
 
-    //     void unpack(const Value &msg) { _arg = std::shared_ptr<T>(BoostSerializer::unpack<T>(msg)); }
+    //     void unpack(const Value &msg) { _arg = std::shared_ptr<T>(K3Serializer::unpack<T>(msg)); }
 
     //     Dispatcher* clone() { return new SharedDispatcher<T>(_func, _arg); }
 
-    //     Value pack() const { return BoostSerializer::pack<T>(*_arg); }
+    //     Value pack() const { return K3Serializer::pack<T>(*_arg); }
 
     //     std::shared_ptr<T> _arg;
     // };

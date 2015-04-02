@@ -30,8 +30,12 @@ class _Collection: public K3::Collection<CONTENT> {
 
   template <class archive>
   void serialize(archive& _archive,const unsigned int) {
-
     _archive & boost::serialization::base_object<K3::Collection<CONTENT>>(*this);
+  }
+
+  template <class archive>
+  void serialize(archive& _archive) {
+    _archive & yas::base_object<K3::Collection<CONTENT>>(*this);
   }
 
 };

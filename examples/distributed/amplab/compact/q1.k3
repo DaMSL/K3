@@ -17,7 +17,7 @@ trigger q1_local: () = \_ -> (
 
 trigger start : () = \_ -> (() @:Start) @AmplabBenchmark(
   queryTrigger       = [$ q1_local],
-  loadExpr           = [$ rankingsFiles.iterate (\e -> loadQ1 e.path local_rankings)],
+  loadExpr           = [$ loadQ1 rankingsFiles local_rankings ],
   preLoadExpr        = [$ ()],
   preReadyExpr       = [$ peers.iterate (\p -> (hello, p.addr) <- ())],
   finishArgT         = [: int],

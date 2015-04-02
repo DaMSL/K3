@@ -213,12 +213,12 @@ declare finalizeResult: () -> () = \_ -> (
     q3_peer_result.iterate (\r ->
       results.insert { orderkey: r.key.ok
                      , revenue: r.value
-                     , orderdate: r.key.od
+                     , orderdate: tpch_date_to_string (r.key.od)
                      , shippriority: r.key.sp })
 )
 
 // For ktrace:
-declare results: collection {orderkey: int, revenue: real, orderdate: int, shippriority: int} @Collection
+declare results: collection {orderkey: int, revenue: real, orderdate: string, shippriority: int} @Collection
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes                = [$ peers ],
@@ -232,7 +232,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                   			      print ("Customer rows: " ++ (itos customerRows));
 
                               // Load data using the fixed size loaders which resize the container before loading
-                  			      q3_lineitemLoaderPFC lineitemFiles lineitem lineitem_r lineitemRows;
+                              q3_lineitemLoaderPFC lineitemFiles lineitem lineitem_r lineitemRows;
                               q3_ordersLoaderPFC   ordersFiles   orders   orders_r   ordersRows;
                               q3_customerLoaderPFC customerFiles customer customer_r customerRows
                             ) ],
@@ -246,11 +246,11 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                                   , nodes    = [$ peers]
                                   , next     = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ]) )
                          ],
-  preShutdownExpr      = [$ sleep 30000 ],
+  preShutdownExpr      = [$ () ],
   finishAsShutdownExpr = [$ false]
 )
 
-sink results_sink : {orderkey: int, revenue: real, orderdate: int, shippriority: int} = file "results.csv" csv
+sink results_sink : {orderkey: int, revenue: real, orderdate: string, shippriority: int} = file "results.csv" csv
 sink query_time_sink : string = stdout csv
 
 source rows : () = value ()

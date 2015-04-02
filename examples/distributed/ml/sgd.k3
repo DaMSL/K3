@@ -2,6 +2,9 @@ include "Annotation/Collection.k3"
 include "Annotation/Vector.k3"
 include "Core/Builtins.k3"
 include "Core/CppBuiltins.k3"
+include "Core/MachineMessaging.k3"
+include "Core/Barrier.k3"
+include "Annotation/Map.k3"
 
 declare master: address = 127.0.0.1:40000
 declare peers_ready: mut int = 0
@@ -16,12 +19,19 @@ declare time_stats: mut {iter_count: int, iter_time_sum: real}
 declare iter_start: mut int
 declare iter_end: mut int
 
+trigger hello : () = \_ -> (
+  ((ready, master) <- ()) @OnCounter(id=[# hello_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+)
+
+trigger start_profiler : () = \_ -> (
+  ((tcmallocStart ()); (jemallocStart ()); (pcmStart ())) @IfMachineMaster
+)
 
 // Hyperparameters
 declare step_size: mut real = 0.1
 declare lambda: mut real = 0.1
 
-// Mast1
+// Master
 declare aggregates: mut {count: int, sum: collection {elem: real} @Vector }
 
 // All Nodes:
@@ -62,7 +72,7 @@ declare print_results : () -> () = \_ -> (
   end_ms = now_int ();
   elapsed_ms = end_ms - start_ms;
   print ("Elapsed: " ++ (itos elapsed_ms));
-  print ("Avg Time per Iteration: " ++ (rtos avg_iter_time))
+  print ("Avg time per iteration: " ++ (rtos avg_iter_time))
 )
 
 // Run SGD on local dataset.
@@ -121,17 +131,17 @@ trigger start : () = \_ -> (
 trigger ready : () = \_ -> (
   (peers_ready = peers_ready + 1);
   (if peers_ready == (peers.size ())
-   then (start, master) <- ()
+   then ((peers.iterate (\p -> (start_profiler, p.addr) <- () )); (start, master) <- ())
    else ()
   )
 )
 
-trigger shutdown : () = \_ -> haltEngine ()
+trigger shutdown: () = \_ -> (((tcmallocStop ()); (jemallocStop ()); (pcmStop ())) @IfMachineMaster; haltEngine ())
 
 // TODO: fix loader
 trigger load_all : () = \_ -> (
   dataFiles.iterate (\f -> loadVectorLabel dimensionality f.path data);
-  (ready, master) <- ()
+  ( peers.iterate (\p -> (hello, p.addr) <- ()) )
 )
 
 source points : () = value ()

@@ -75,27 +75,31 @@ composite name ans = do
               | (b,i) <- zip baseClasses ([1..] :: [Integer])
               ] False []
 
-    let serializationName n = R.Qualified (R.Name "boost") $ R.Qualified (R.Name "serialization") n
     let mkXmlTagName s = map (\c -> if isAlphaNum c || c `elem` ['-','_','.'] then c else '_') s
+    let serializationName asYas n =
+          if asYas then R.Qualified (R.Name "yas") n
+          else R.Qualified (R.Name "boost") $ R.Qualified (R.Name "serialization") n
 
-    let serializeParent (p, (q, _))
-            = R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive")
-                (R.Call (R.Variable $ serializationName $ R.Name "make_nvp")
-                    [ R.Literal $ R.LString $ mkXmlTagName q
-                    , R.Call (R.Variable $ serializationName $ R.Specialized [R.Named p] $ R.Name "base_object")
-                             [R.Dereference $ R.Variable $ R.Name "this"]])
+    let serializeParent asYas (p, (q, _)) =
+          let nvp_wrap e = if asYas then e
+                           else R.Call (R.Variable $ serializationName asYas $ R.Name "make_nvp")
+                                  [ R.Literal $ R.LString $ mkXmlTagName q, e ]
+          in
+          R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive")
+            (nvp_wrap $ R.Call (R.Variable $ serializationName asYas $ R.Specialized [R.Named p] $ R.Name "base_object")
+              [R.Dereference $ R.Variable $ R.Name "this"])
 
-    let serializeStatements = map serializeParent $ zip baseClasses ras
+    let serializeStatements asYas = map (serializeParent asYas) $ zip baseClasses ras
 
-    let serializeFn = R.TemplateDefn [("archive", Nothing)]
-                      (R.FunctionDefn (R.Name "serialize")
-                            [ ("_archive", R.Reference (R.Parameter "archive"))
-                            , ("_version", R.Const $ R.Named (R.Name "unsigned int"))
-                            ]
-                       (Just $ R.Named $ R.Name "void")
-                       [] False serializeStatements)
+    let serializeFn asYas =
+          R.TemplateDefn [("archive", Nothing)]
+            (R.FunctionDefn (R.Name "serialize")
+              ([("_archive", R.Reference (R.Parameter "archive"))]
+               ++ (if asYas then [] else [ ("_version", R.Const $ R.Named (R.Name "unsigned int")) ]))
+             (Just $ R.Named $ R.Name "void")
+             [] False $ serializeStatements asYas)
 
-    let methods = [defaultConstructor, superConstructor, superMoveConstructor, serializeFn] ++ indexDefns
+    let methods = [defaultConstructor, superConstructor, superMoveConstructor, serializeFn False, serializeFn True] ++ indexDefns
 
     let collectionClassDefn = R.TemplateDefn [("__CONTENT", Nothing)]
              (R.ClassDefn (R.Name name) [] (map R.Named baseClasses) methods [] [])
@@ -226,22 +230,24 @@ record (sort -> ids) = do
                      | t <- templateVars
                      ]
 
-    let serializeMember m = R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive")
-                              (R.Call (R.Variable $ R.Name "BOOST_SERIALIZATION_NVP") [R.Variable $ R.Name m])
+    let serializeMember asYas m =
+          R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive")
+            (if asYas then R.Variable $ R.Name m
+             else R.Call (R.Variable $ R.Name "BOOST_SERIALIZATION_NVP") [R.Variable $ R.Name m])
 
-    let serializeStatements = map serializeMember ids
+    let serializeStatements asYas = map (serializeMember asYas) ids
 
-    let serializeFn = R.TemplateDefn [("archive", Nothing)]
-                      (R.FunctionDefn (R.Name "serialize")
-                            [ ("_archive", R.Reference (R.Parameter "archive"))
-                            , ("_version", R.Const $ R.Named (R.Name "unsigned int"))
-                            ]
-                       (Just $ R.Named $ R.Name "void")
-                       [] False serializeStatements)
+    let serializeFn asYas =
+          R.TemplateDefn [("archive", Nothing)]
+            (R.FunctionDefn (R.Name "serialize")
+                  ([ ("_archive", R.Reference (R.Parameter "archive")) ]
+                   ++ if asYas then [] else [ ("_version", R.Const $ R.Named (R.Name "unsigned int")) ])
+                  (Just $ R.Named $ R.Name "void")
+                  [] False $ serializeStatements asYas)
 
     let constructors = (defaultConstructor:initConstructors)
     let comparators = [equalityOperator, logicOp "!=", logicOp "<", logicOp ">", logicOp "<=", logicOp ">="]
-    let members = constructors ++ comparators ++ [serializeFn] ++ fieldDecls
+    let members = constructors ++ comparators ++ [serializeFn False, serializeFn True] ++ fieldDecls
 
     let recordStructDefn
             = R.GuardedDefn ("K3_" ++ recordName) $

@@ -3,6 +3,8 @@ include "Annotation/Map.k3"
 include "Annotation/Seq.k3"
 include "Core/Builtins.k3"
 include "Core/CppBuiltins.k3"
+include "Core/MachineMessaging.k3"
+include "Core/Barrier.k3"
 
 typedef feature_vector  = collection { elem: real } @Vector
 typedef centroid_agg    = { key: int, value: { count: int, sum: feature_vector } }
@@ -19,11 +21,11 @@ declare iterations_remaining: mut int = 5
 declare peers_ready: mut int = 0
 declare requests: mut int = 0
 
-// Sequence of data points. Each point represented as a vector
-declare data: collection { elem: feature_vector } @Seq
+// Data points. Each point represented as a vector
+declare data: collection { elem: feature_vector } @Collection
 
 // Collection of (k) means. Each mean has an integer key, and a value represented as a vector.
-declare means: mut collection { key: int, value: feature_vector} @Collection
+declare means: mut collection { value: feature_vector} @Collection
 
 // Collection of partial aggregates for each mean.
 declare aggregates: mut centroids_stats
@@ -58,14 +60,18 @@ declare broadcastMeans: () -> () = \_ -> (
 )
 
 declare printMeans: () -> () = \_ -> (
-  means.iterate (\kv -> print (kv.value.toString ()))
+  means.iterate (\v -> print (v.value.toString ()))
 )
 
 // Initialize the means and send out the initial broadcast
 // For now_int, we use the first k data points.
 declare start: () -> () = \_ -> (
   (range k).iterate (\i ->
-    means.insert {key: i.i, value: (data.at i.i).elem}
+    means.insert {
+                  value: case (data.at i.i) of
+                           { Some x -> x.elem }
+                           { None -> error () }
+                 }
   );
 
   // Log initial means
@@ -78,42 +84,54 @@ declare start: () -> () = \_ -> (
 )
 
 // Returns the key of the nearest current mean for the provided point
-declare nearest_mean: feature_vector -> int = (\p ->
-  case means.peek() of
-    { Some first_mean ->
-        let nearest = means.fold (\acc -> \curr_mean ->
-          if acc.skip then {mean: acc.mean, distance: acc.distance, skip: false}
-          else let dist = p.distance curr_mean.value in
-                 if dist < acc.distance
-                 then {mean: curr_mean, distance: dist, skip: false}
-                 else acc
-        ) {mean: first_mean, distance: p.distance first_mean.value, skip: true}
-        in
-          nearest.mean.key
-    }
-    { None -> (-1) } // Error
+declare best_distance: mut real = 0.0
+declare best_index: mut int = -1
+declare curr_index: mut int = -1
+
+declare nearest_mean: feature_vector -> int = \p -> (
+  (best_distance = 99999999999999999999.0);
+  (best_index = -1);
+  (curr_index = -1);
+  means.iterate (\curr_mean -> (
+    (curr_index = curr_index + 1);
+    let dist = p.distance curr_mean.value in
+      if dist < best_distance
+      then (
+        best_distance = dist;
+        best_index = curr_index
+      )
+      else ()
+  ));
+  best_index
 )
 
 // Merge a collection of partial aggregates into the global state
-declare merge_results: collection {key: int, value: {count: int, sum: feature_vector}} @ {Seq} -> () = \peer_aggs -> (
+
+declare merge_results: {sums: collection {key: int, value: feature_vector} @Collection, counts: collection {elem: int} @Vector}  -> () = \peer_aggs -> (
   requests = requests -1;
-  peer_aggs.iterate (\v ->
-    case aggregates.lookup v of
-     { Some a ->
-         aggregates.insert
-          { key: v.key,
-            value: { count: v.value.count + a.value.count,
-                     sum:   v.value.sum.add a.value.sum
-          } }
-     }
-     { None -> aggregates.insert v }
+  peer_aggs.sums.iterate (\v ->
+     aggregates.insert_with {key: v.key, value: {count: (peer_aggs.counts.at v.key).elem, sum: v.value} }
+     (\old -> \new ->
+          { key: new.key,
+            value: { count: new.value.count + old.value.count,
+                     sum:   new.value.sum.add old.value.sum }
+          }
+     )
   )
+)
+
+trigger hello : () = \_ -> (
+  ((ready, master) <- ()) @OnCounter(id=[# hello_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+)
+
+trigger start_profiler : () = \_ -> (
+  ((tcmallocStart ()); (jemallocStart ()); (pcmStart ())) @IfMachineMaster
 )
 
 // Load data into global variable, then notify master.
 trigger load_all : () = \_ -> (
    dataFiles.iterate (\e -> (print ("Loading File: " ++ e.path); loadVector e.path data));
-   ((ready, master) <- ())
+   ( peers.iterate (\p -> (hello, p.addr) <- ()) )
 )
 
 // Increment the count of peers who are ready to start
@@ -124,29 +142,35 @@ trigger ready: () = \_ -> (
   print ("Received a ready signal from a peer:" ++ s);
 
   if (peers_ready == n)
-    then start ()
+    then ((peers.iterate (\p -> (start_profiler, p.addr) <- () )); start ())
     else ()
 )
 
 // Given the new means, assign each data point to the nearest.
 // Keeping a running aggregate of the sum and count for each mean.
-trigger assign: collection { key: int, value: feature_vector} @ {Collection} = \new_means -> (
+declare sums: mut collection {key: int, value: feature_vector} @IntMap
+declare counts: mut collection {elem: int} @Vector
+declare last_key: mut int = -1
+
+trigger assign: collection { value: feature_vector} @ {Collection} = \new_means -> (
   // update state
-  means = new_means;
+  (means = new_means);
+  (counts = (range k).fold (\acc -> \_ -> (acc.insert {elem: 0}; acc)) (empty {elem: int} @Vector) );
 
   // compute aggregate statistics:
-  let aggs = data.groupBy
-    (\p -> nearest_mean p.elem)
-    (\sc -> \p ->
-      {count: sc.count + 1, sum: sc.sum.add p.elem}
-    )
-    {count: 0, sum: zeroVector dimensionality}
+  let aggs = data.groupByContiguous
+    (\p -> ((last_key = nearest_mean p.elem); last_key))
+    (\sc -> \p -> (
+      (counts.set last_key ({elem: (counts.at last_key).elem + 1}));
+      (sc.inPlaceAdd p.elem);
+      sc
+    ))
+    (zeroVector dimensionality) k
+  in (aggregate, master) <- {sums: aggs, counts: counts}
 
-  // return results to master
-  in (aggregate, master) <- aggs
 )
 
-trigger aggregate: collection {key: int, value: {count: int, sum: feature_vector}} @ {Seq} = \peer_aggs -> (
+trigger aggregate: {sums: collection {key: int, value: feature_vector} @Collection, counts: collection {elem: int} @Vector}  = \peer_aggs -> (
   merge_results peer_aggs;
   if requests == 0
     then (maximize, master) <- ()
@@ -157,12 +181,11 @@ trigger maximize: () = \_ -> (
   print "Received all partial aggregates from peers, computing new means";
 
   // Compute new means
-  means = empty {key: int, value: collection {elem: real} @ {Vector}} @ {Collection};
+  means = empty {value: collection {elem: real} @ {Vector}} @ {Collection};
   aggregates.iterate (\x ->
     means.insert
-      {  key: x.key
-      ,  value: x.value.sum.scalarMult (1.0 / x.value.count)
-      }
+      {value: x.value.sum.scalarMult (1.0 / x.value.count)}
+
   );
 
   // Update state
@@ -190,7 +213,7 @@ trigger maximize: () = \_ -> (
   print "---------------"
 )
 
-trigger shutdown: () = \_ -> haltEngine ()
+trigger shutdown: () = \_ -> (((tcmallocStop ()); (jemallocStop ()); (pcmStop ())) @IfMachineMaster; haltEngine ())
 
 
 source s1: () = value ()

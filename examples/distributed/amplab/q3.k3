@@ -3,6 +3,8 @@ include "Annotation/Seq.k3"
 include "Annotation/Map.k3"
 include "Core/Builtins.k3"
 include "Core/Loaders.k3"
+include "Core/MachineMessaging.k3"
+include "Core/Barrier.k3"
 
 declare master: address = 127.0.0.1:30001
 declare peer_seq : collection {addr: address} @ {Seq}
@@ -55,6 +57,14 @@ declare valid_date : string -> bool = \i -> (i <= date_ub and i >= date_lb)
 
 declare flag : mut bool = false
 declare flag2 : mut bool = false
+
+trigger hello : () = \_ -> (
+  ((ready, master) <- ()) @OnCounter(id=[# hello_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+)
+
+trigger start_profiler : () = \_ -> (
+  ((tcmallocStart ()); (jemallocStart ()); (pcmStart ())) @IfMachineMaster
+)
 
 trigger q3_local : () = \_ -> (
   user_visits.iterate (\uv ->
@@ -178,7 +188,9 @@ declare peers_ready : mut int = 0
 trigger ready: () = \_ -> (
   peers_ready = peers_ready + 1;
   if peers_ready == peers.size ()
-  then (start_ms = now_int (); peers.iterate (\p -> (q3_local, p.addr) <- ()) )
+  then (
+    (peers.iterate (\p -> (start_profiler, p.addr) <- () ));
+    start_ms = now_int (); peers.iterate (\p -> (q3_local, p.addr) <- ()) )
   else ()
 )
 
@@ -190,10 +202,11 @@ trigger loadAll : () = \_ -> (
   peers.iterate (\p -> peer_seq.insert p);
   loadUVQ3 uvFiles user_visits;
   loadRKQ3 rkFiles rankingsMap;
-  ((ready, master) <- ())
+  peers.iterate (\p -> (hello, p.addr) <- ())
 )
 
 trigger shutdown : () = \_ -> (
+  ((tcmallocStop ()); (jemallocStop ()); (pcmStop ())) @IfMachineMaster;
   haltEngine ()
 )
 
