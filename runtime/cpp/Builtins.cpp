@@ -92,6 +92,13 @@ namespace K3 {
     return unit_t {};
   }
 
+  unit_t __jemalloc_context::jemallocDump(unit_t) {
+    #ifdef K3_JEMALLOC
+    mallctl("prof.dump", NULL, 0, NULL, 0);
+    #endif
+    return unit_t {};
+  }
+
   unit_t __standard_context::openBuiltin(string_impl ch_id, string_impl builtin_ch_id, string_impl fmt) {
     __engine.openBuiltin(ch_id, builtin_ch_id, fmt);
     return unit_t();
