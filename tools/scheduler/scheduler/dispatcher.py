@@ -247,9 +247,10 @@ class Dispatcher(mesos.interface.Scheduler):
     print("[RESOURCE OFFER] Got %d resource offers" % len(offers))
 
     print("Adding %d offers to offer dict" % len(offers))
-    sorted_offers = sorted(offers, key=lambda t: t.hostname.encode('ascii','ignore')) 
-    for offer in sorted_offers:
+    for offer in offers:
       self.offers[offer.id.value] = offer
+
+    self.offers = OrderedDict(sorted(self.offers.items(), key=lambda t: t[1].hostname.encode('ascii','ignore')))
 
     while len(self.pending) > 0:
       nextJob = self.prepareNextJob()

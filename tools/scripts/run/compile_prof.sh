@@ -3,7 +3,7 @@
 # You might need to adjust it to suit your system
 export SNDPATH=`find .cabal-sandbox -name "*packages.conf.d"`
 dist/build/k3/k3 \
-  -I lib/k3 -I examples/sql \
+  -I lib/k3 -I examples/sql -I examples/distributed/amplab \
   --mpargs package-db=$SNDPATH --mpsearch src \
   compile \
     --gcc -l cpp \

@@ -39,7 +39,6 @@ def assignRolesToOffers(nextJob, offers):
   # TODO consider constraints, such as hostmask
   for roleId in nextJob.roles:
     for offerId in offers:
-
       hostmask = nextJob.roles[roleId].hostmask
       host = offers[offerId].hostname.encode('ascii','ignore')
       r = re.compile(hostmask)
@@ -117,7 +116,7 @@ def executorInfo(k3task, jobid, binary_url):
   volume.container_path = '/data'
   volume.host_path = '/data'
   volume.mode = volume.RW
-  
+
   volume2 = container.volumes.add()
   volume2.container_path = '/local'
   volume2.host_path = '/local'
