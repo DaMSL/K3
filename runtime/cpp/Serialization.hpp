@@ -17,6 +17,12 @@
 #include <yas/text_oarchive.hpp>
 #include <csvpp/csv.h>
 #include <csvpp/string.h>
+#include <csvpp/array.h>
+#include <csvpp/deque.h>
+#include <csvpp/list.h>
+#include <csvpp/map.h>
+#include <csvpp/set.h>
+#include <csvpp/vector.h>
 
 #include <Common.hpp>
 
