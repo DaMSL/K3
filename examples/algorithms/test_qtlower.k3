@@ -1,0 +1,24 @@
+include "Core/Builtins.k3"
+include "Annotation/Vector.k3"
+
+declare targetValue  : collection {elem : real } @Vector
+
+declare calculateError : () -> real = \_ -> (
+
+	 let x= 1.0 in  (
+	 (range ( targetValue.size () )).fold (\acc -> \pos -> (  ( ((acc) + (1.0)) + ((targetValue.at(pos.i)).elem) )) ) 0.0 
+	)
+)
+
+declare val : mut real 
+
+trigger start : () = \_ -> (
+	targetValue.insert {elem : 1.0};
+	targetValue.insert {elem : 3.0};
+	targetValue.insert {elem : 4.0};
+	targetValue.insert {elem : 2.0}; 
+	val = calculateError ()
+)
+
+source s1 : () = value ()
+feed s1 |> start	

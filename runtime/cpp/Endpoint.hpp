@@ -16,6 +16,8 @@
 #include <IOHandle.hpp>
 #include <Queue.hpp>
 
+#include "io/DCDCodec.hpp"
+
 using std::runtime_error;
 
 // TODO: rewrite endpoint and connection containers without externally_locked as this requires a strict_lock.

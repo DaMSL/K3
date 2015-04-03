@@ -440,30 +440,7 @@ namespace K3 {
       return decode<T>(v);
     }
   };
-
-  class DCDCodec : public virtual Codec, public virtual LogMT {
-  public:
-    DCDCodec(CodecFormat f): Codec(f), LogMT("DCDCodec") {}
-    virtual ~DCDCodec() {}
-
-    shared_ptr<Codec> freshClone() {
-      return std::dynamic_pointer_cast<Codec, DCDCodec>(make_shared<DCDCodec>(format_));
-    }
-
-    template<typename T> string encode(const T& v) {
-      return "";
-    }
-
-    template<typename T> shared_ptr<T> decode(const string& s) {
-      throw std::runtime_error("Invalid DCD value");
-    }
-
-    template<typename T> shared_ptr<T> decode(const char *s, size_t sz) {
-      string v(s, sz);
-      return decode<T>(v);
-    }
-  };
-
+  
 
   // ---------
   // Aliases

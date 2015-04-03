@@ -1,0 +1,9 @@
+include "Annotation/Vector.k3"
+
+declare allData : collection {elem : {i: real , j : real , k : real} } @Vector
+trigger start : () = \_ -> (
+	allData.insert {elem : {i: 1.0 , j: 2.0 , k: 3.0 }}
+
+)
+source s1 : () = value ()
+feed s1 |> start 

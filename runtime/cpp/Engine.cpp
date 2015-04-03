@@ -1,4 +1,6 @@
 #include "io/DCDHandle.hpp"
+#include "io/DCDCodec.hpp"
+
 #include "Engine.hpp"
 #include <stdlib.h>
 
