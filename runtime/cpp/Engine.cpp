@@ -1,3 +1,4 @@
+#include "io/DCDHandle.hpp"
 #include "Engine.hpp"
 #include <stdlib.h>
 
@@ -306,6 +307,9 @@ namespace K3 {
       } else if ( format == "k3x" ) {
         r = dynamic_pointer_cast<Codec, K3XCodec>(make_shared<K3XCodec>(Codec::CodecFormat::K3X));
         set = true;
+      } else if (format == "dcd" ) {
+	r =  dynamic_pointer_cast<Codec, DCDCodec>(make_shared<DCDCodec>(Codec::CodecFormat::DCD));
+	set = true;
       } else if ( format == "internal" ) {
         r = msgcodec;
         set = true;
@@ -355,7 +359,12 @@ namespace K3 {
         shared_ptr<FrameCodec> frame = make_shared<DelimiterFrameCodec>('\n');
 
         // Create the IO Handle
-        shared_ptr<IOHandle> ioh = openFileHandle(path, frame, mode);
+        shared_ptr<IOHandle> ioh;
+        if (format == "dcd") 
+        {
+           ioh = std::static_pointer_cast<IOHandle, DCDIStreamHandle>(make_shared<DCDIStreamHandle>(path));
+        }
+        else { ioh = openFileHandle(path, frame, mode); } 
 
         // Add the endpoint to the given endpoint state.
         // For now, files have no endpoint buffer.
