@@ -3,8 +3,8 @@ me: [127.0.0.1, 30000]
 master: [127.0.0.1, 30000]
 peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
 role: rows
-rkFiles: [{path: tools/ktrace/data/rankings1}, {path: tools/ktrace/data/rankings2}]
-uvFiles: [{path: tools/ktrace/data/uservisits1}]
+rankingsFiles: [{path: tools/ktrace/data/rankings1}, {path: tools/ktrace/data/rankings2}]
+uservisitsFiles: [{path: tools/ktrace/data/uservisits1}]
 masters: [{addr: [127.0.0.1, 30000]}]
 local_peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
 peer_masters: [ { key: [127.0.0.1, 30000], value: [127.0.0.1, 30000]}
@@ -14,7 +14,7 @@ me: [127.0.0.1, 40000]
 master: [127.0.0.1, 30000]
 peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
 role: rows
-uvFiles: [{path: tools/ktrace/data/uservisits2}]
+uservisitsFiles: [{path: tools/ktrace/data/uservisits2}]
 masters: [{addr: [127.0.0.1, 30000]}]
 local_peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
 peer_masters: [ { key: [127.0.0.1, 30000], value: [127.0.0.1, 30000]}

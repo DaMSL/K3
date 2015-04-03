@@ -3,6 +3,8 @@ include "Annotation/Map.k3"
 include "Annotation/Seq.k3"
 include "Core/Builtins.k3"
 include "Core/CppBuiltins.k3"
+include "Core/MachineMessaging.k3"
+include "Core/Barrier.k3"
 
 typedef feature_vector  = collection { elem: real } @Vector
 typedef centroid_agg    = { key: int, value: { count: int, sum: feature_vector } }
@@ -118,10 +120,18 @@ declare merge_results: {sums: collection {key: int, value: feature_vector} @Coll
   )
 )
 
+trigger hello : () = \_ -> (
+  ((ready, master) <- ()) @OnCounter(id=[# hello_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+)
+
+trigger start_profiler : () = \_ -> (
+  ((tcmallocStart ()); (jemallocStart ()); (pcmStart ())) @IfMachineMaster
+)
+
 // Load data into global variable, then notify master.
 trigger load_all : () = \_ -> (
    dataFiles.iterate (\e -> (print ("Loading File: " ++ e.path); loadVector e.path data));
-   ((ready, master) <- ())
+   ( peers.iterate (\p -> (hello, p.addr) <- ()) )
 )
 
 // Increment the count of peers who are ready to start
@@ -132,7 +142,7 @@ trigger ready: () = \_ -> (
   print ("Received a ready signal from a peer:" ++ s);
 
   if (peers_ready == n)
-    then start ()
+    then ((peers.iterate (\p -> (start_profiler, p.addr) <- () )); start ())
     else ()
 )
 
@@ -203,7 +213,7 @@ trigger maximize: () = \_ -> (
   print "---------------"
 )
 
-trigger shutdown: () = \_ -> haltEngine ()
+trigger shutdown: () = \_ -> (((tcmallocStop ()); (jemallocStop ()); (pcmStop ())) @IfMachineMaster; haltEngine ())
 
 
 source s1: () = value ()

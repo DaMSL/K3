@@ -10,10 +10,6 @@ control OnCounter[id : label, eq : expr, reset : expr, profile : expr] {
           // Do counter increment.
           $[id]_cnt = $[id]_cnt + 1;
 
-          //(if $[id]_cnt % 8 == 0
-          //then print ((atos me) ++ ": " ++ $[|exprLabel 'id|] ++ " barrier: " ++ (itos $[id]_cnt) ++ "/" ++ (itos $[eq]))
-          //else ());
-
           // Evaluate barrier expression when ready.
           if $[id]_cnt == $[eq]
           then ( // Track last increment time, without expression evaluation.
@@ -30,7 +26,8 @@ control OnCounter[id : label, eq : expr, reset : expr, profile : expr] {
                  let r = $.[e] in
                  (( if $[reset] then $[id]_cnt = 0 else ());
                     r ))
-          else () )
+          else ()
+        )
 
      +> { declare $[id]_cnt     : mut int = 0
           declare $[id]_span_ms : mut option int = None immut

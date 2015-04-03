@@ -126,6 +126,13 @@ namespace csv {
                 //////////////////////////////////////////////////////////////////////////////
 
                 if(wr._first_in_line) {
+                    // This is equivalent to os << std::defaultfloat in C++11,
+                    // which libstdc++ does not yet implement.
+                    wr._ostream.unsetf(std::ios_base::floatfield);
+
+                    // Set the default precision to match Postgres double precision.
+                    wr._ostream.precision(15);
+
                     wr._ostream << val;
                     wr._first_in_line = false;
                     return;

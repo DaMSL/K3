@@ -346,6 +346,36 @@ class IntMap {
     mapi* m = get_mapi();
     return m->size == 0? false : ( mapi_find(m, r.key) != nullptr );
   }
+  
+  template <class F, class G>
+  unit_t key_update(int key, F f, G g) {
+    mapi* m = get_mapi();
+    if ( m->size == 0 ) {
+      auto rec = f(unit_t {});
+      auto* placement = static_cast<R*>(mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec))));
+    } else {
+      auto* existing = static_cast<R*>(mapi_find(m, key));
+      if (existing == nullptr) {
+        auto rec = f(unit_t {});
+        auto* placement = static_cast<R*>(mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec))));
+      } else {
+        *existing = g(std::move(*existing));
+      }
+    }
+    return unit_t {};
+  }
+
+  template <class F>
+  unit_t key_lookup_with(int key, F f) const {
+    mapi* m = get_mapi();
+    if ( m->size > 0 ) {
+      auto existing = mapi_find(m, key);
+      if (existing != nullptr) {
+        return f(*static_cast<R*>(existing));
+      }
+    }
+    return unit_t {};
+  }
 
   template <class F>
   unit_t lookup_with(R const& r, F f) const {

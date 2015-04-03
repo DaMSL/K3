@@ -60,6 +60,8 @@ namespace K3
     virtual Socket socket() = 0;
     virtual void close() = 0;
     virtual void write(shared_ptr<Value> ) = 0;
+    virtual char* socket_buffer() = 0;
+    virtual int socket_buffer_size() = 0;
 
     // TODO
     //virtual bool has_write() = 0;
@@ -145,11 +147,14 @@ namespace K3
     {
     public:
       typedef shared_ptr<ip::tcp::socket> Socket;
+      typedef boost::array<char, 64*1024> SocketBuffer;
 
       // null ptr for EndpointBuffer
       NConnection(shared_ptr<NContext> ctxt)
         : NConnection(ctxt, Socket(new ip::tcp::socket(*(ctxt->service))))
-      {}
+      {
+        socket_buffer_ = nullptr;
+      }
 
       // null ptr for EndpointBuffer
       NConnection(shared_ptr<NContext> ctxt, Address addr)
@@ -157,6 +162,7 @@ namespace K3
       {
         if ( ctxt ) {
           if ( socket_ ) {
+            socket_buffer_ = nullptr;
             ip::tcp::endpoint ep(::std::get<0>(addr), ::std::get<1>(addr));
 	    boost::system::error_code error;
 	    socket_->connect(ep, error);
@@ -174,6 +180,20 @@ namespace K3
       }
 
       Socket socket() { return socket_; }
+      char* socket_buffer() { 
+	if (!socket_buffer_) {
+          socket_buffer_ = make_shared<SocketBuffer>();
+	}
+        return socket_buffer_->c_array();
+
+      }
+      int socket_buffer_size() { 
+	if (!socket_buffer_) {
+          socket_buffer_ = make_shared<SocketBuffer>();
+	}
+        return socket_buffer_->size();
+      }
+
 
       bool connected() { return connected_; }
 
@@ -232,6 +252,7 @@ namespace K3
         });
       }
 
+
     protected:
       NConnection(shared_ptr<NContext> ctxt, Socket s)
         : ::K3::NConnection<NContext, Socket>("NConnection", ctxt, s),
@@ -246,6 +267,7 @@ namespace K3
       shared_ptr<std::queue<shared_ptr<Value>>> buffer_;
       Socket socket_;
       bool connected_;
+      shared_ptr<SocketBuffer> socket_buffer_;
     };
   }
 
@@ -354,6 +376,9 @@ namespace K3
         }
         return;
       }
+
+      char* socket_buffer() { throw std::runtime_error("Nanomsg socket_buffer() not implemented"); }
+      int socket_buffer_size() { throw std::runtime_error("Nanomsg socket_buffer_size() not implemented"); }
 
     protected:
       NConnection(shared_ptr<NContext> ctxt, Socket s)

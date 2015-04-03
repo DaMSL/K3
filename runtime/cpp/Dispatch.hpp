@@ -28,6 +28,7 @@ namespace K3 {
     class ValDispatcher : public Dispatcher {
       public:
         ValDispatcher(const T& arg) : _arg(arg) {}
+        ValDispatcher(T&& arg) : _arg(std::move(arg)) {}
         ValDispatcher() {}
 
         void unpack(const Value &msg) { _arg = std::move(*K3Serializer::unpack_yas<T>(msg)); }

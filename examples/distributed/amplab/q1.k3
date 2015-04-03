@@ -1,6 +1,9 @@
 include "Annotation/Collection.k3"
+include "Annotation/Map.k3"
 include "Core/Builtins.k3"
 include "Core/Loaders.k3"
+include "Core/MachineMessaging.k3"
+include "Core/Barrier.k3"
 
 declare dataFiles : collection {path: string} @ Collection
 declare outputFile : mut string
@@ -28,7 +31,13 @@ declare load_end_ms : mut int = 0
 declare load_elapsed_ms : mut int = 0
 
 // Dummy trigger to warm up connections
-trigger hello : () = \_ -> ()
+trigger hello : () = \_ -> (
+  ((ready, master) <- ()) @OnCounter(id=[# hello_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+)
+
+trigger start_profiler : () = \_ -> (
+  ((tcmallocStart ()); (jemallocStart ()); (pcmStart ())) @IfMachineMaster
+)
 
 // Perform the query on the local dataset. (Filter and project.)
 // Store the results in memory.
@@ -52,6 +61,7 @@ trigger finished: int = \num_peer_results -> (
 )
 
 trigger shutdown: () = \_ -> (
+  ((tcmallocStop ()); (jemallocStop ()); (pcmStop ())) @IfMachineMaster;
   haltEngine ()
 )
 
@@ -61,9 +71,8 @@ trigger ready: () = \_ -> (
   peers_ready = peers_ready + 1;
   if peers_ready == peers.size ()
   then (
-    // Establish connections before starting the timer
-    peers.iterate (\p -> (hello, p.addr) <- ());
     start_ms = now_int ();
+    (peers.iterate (\p -> (start_profiler, p.addr) <- () ));
     peers.iterate (\p -> (q1_local, p.addr) <- ())
   )
   else ()
@@ -75,7 +84,7 @@ trigger load_all: () = \_ -> (
   load_end_ms = now_int ();
   load_elapsed_ms = load_end_ms - load_start_ms;
   print ("Load time: " ++ (itos load_elapsed_ms));
-  ((ready, master) <- ())
+  peers.iterate (\p -> (hello, p.addr) <- ())
 )
 
 source rows: () = value ()

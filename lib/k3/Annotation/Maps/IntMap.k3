@@ -17,7 +17,7 @@ annotation IntMap given type a,b {
 
   @:CArgs 3
   provides lifted upsert_with: content -> (() -> content) -> (content -> content) -> ()
-    with effects \elem -> \f -> \g -> [R[self]; R[elem]; f content; g content; W[self]]
+    with effects \elem -> \f -> \g -> [R[self]; R[elem]; f none; g content; W[self]]
 
   provides lifted erase  : content -> ()
     with effects \elem -> [R[self]; R[elem]; W[self]]
@@ -87,4 +87,12 @@ annotation IntMap given type a,b {
 
   provides lifted member: content -> bool
     with effects \elem -> [R[self]; R[elem]]
+
+  @:CArgs 3
+  provides lifted key_update: int -> (() -> content) -> (content -> content) -> ()
+    with effects \elem -> \f -> \g -> [R[self]; R[elem]; f none; g content; W[self]]
+  
+  @:CArgs 2
+  provides lifted key_lookup_with : int -> (content -> ()) -> ()
+    with effects \elem -> \lookupF -> [R[self]; R[elem]; lookupF content]
 }

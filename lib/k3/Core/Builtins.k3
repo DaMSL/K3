@@ -36,10 +36,10 @@ declare now_int : () -> int
 //
 // Engine I/O builtins
 
-declare heapProfilerStart: string -> ()
+declare tcmallocStart: () -> ()
 with effects \s -> io
 
-declare heapProfilerStop: () -> ()
+declare tcmallocStop: () -> ()
 with effects \_ -> io
 
 declare jemallocStart: () -> ()
@@ -48,10 +48,13 @@ with effects \_ -> io
 declare jemallocStop: () -> ()
 with effects \_ -> io
 
-declare cacheProfilerStart: () -> ()
+declare jemallocDump: () -> ()
 with effects \_ -> io
 
-declare cacheProfilerStop: () -> ()
+declare pcmStart: () -> ()
+with effects \_ -> io
+
+declare pcmStop: () -> ()
 with effects \_ -> io
 
 // openBuiltin: channel id -> builtin channel id -> format -> ()

@@ -67,7 +67,7 @@ namespace K3 {
     void configureWithAddress(Address addr) {
       address_           = addr;
       defaultBufferSpec_ = BufferSpec(100,10);
-      connectionRetries_ = 100;
+      connectionRetries_ = 1000;
       waitForNetwork_    = false;
     }
 
