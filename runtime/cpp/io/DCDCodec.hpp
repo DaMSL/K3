@@ -67,7 +67,7 @@ namespace boost {
 
 namespace K3 {
 
-template<typename C> using CoordVec3
+template<template<typename Elem> C> using CoordVec3
   = R_x_y_z<C<R_elem<double>>, C<R_elem<double>>, C<R_elem<double>>>;
 
 class DCDCodec : public virtual Codec, public virtual LogMT {
