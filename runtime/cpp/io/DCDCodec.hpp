@@ -67,11 +67,12 @@ namespace boost {
 
 namespace K3 {
 
-typedef Vector<R_elem<double>> CoordVec;
+template<typename C> using CoordVec3
+  = R_x_y_z<C<R_elem<double>>, C<R_elem<double>>, C<R_elem<double>>>;
 
 class DCDCodec : public virtual Codec, public virtual LogMT {
   public:
-        
+
     DCDCodec(CodecFormat f): Codec(f), LogMT("DCDCodec") {}
     virtual ~DCDCodec() {}
 
@@ -86,17 +87,18 @@ class DCDCodec : public virtual Codec, public virtual LogMT {
     template<typename T> shared_ptr<T> decode(const string& s) {
       throw std::runtime_error("Invalid DCD value");
     }
-    
+
     template<typename T> shared_ptr<T> decode(const char *s, size_t sz) {
       string v(s, sz);
       return decode<T>(v);
     }
 };
 
-template<> 
-shared_ptr<R_x_y_z<CoordVec, CoordVec, CoordVec>> DCDCodec::decode<R_x_y_z<CoordVec, CoordVec, CoordVec>>(const string& s);
-
-
+template<typename C>
+inline shared_ptr<CoordVec3<C>> DCDCodec::decode<CoordVec3<C>>(const string& s)
+{
+  throw std::runtime_error("Invalid DCD value, but found CoordVec3");
 }
+
 #endif
 
