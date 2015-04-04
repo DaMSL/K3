@@ -1,8 +1,0 @@
-git checkout -b dcd-format
-git status
-git add runtime/cpp/Codec.cpp
-git commit -m "dcd"
-git push
-git push origin dcd-format:dcd-format
-git branch --set-upstream-to origin/dcd-format
-git pull
