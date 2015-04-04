@@ -1,6 +1,8 @@
 #ifndef K3_RUNTIME_DCDCODEC_HPP
 #define K3_RUNTIME_DCDCODEC_HPP
 
+#include <type_traits>
+
 #include "Codec.hpp"
 #include "Serialization.hpp"
 #include "dataspace/Dataspace.hpp"
@@ -85,20 +87,52 @@ class DCDCodec : public virtual Codec, public virtual LogMT {
     }
 
     template<typename T> shared_ptr<T> decode(const string& s) {
-      throw std::runtime_error("Invalid DCD value");
+      return decode_with_container<T>(s,
+        cv3_type<std::is_base_of<CoordVec, typename extract_cv3_container<T>::type>::value>());
     }
 
     template<typename T> shared_ptr<T> decode(const char *s, size_t sz) {
       string v(s, sz);
       return decode<T>(v);
     }
+
+  private:
+    template<class T>
+    struct extract_cv3_container { typedef T type; };
+
+    template<template<typename, typename, typename> class R3,
+             typename CX, typename CY, typename CZ>
+    struct extract_cv3_container<R3<CX,CY,CZ>> { typedef CX type; };
+
+    template<bool> struct cv3_type {};
+
+    template<typename T>
+    shared_ptr<T> decode_with_container(const string& s, cv3_type<false>) {
+      throw std::runtime_error("Invalid DCD value");
+    }
+
+    template<typename T>
+    shared_ptr<T> decode_with_container(const string& s, cv3_type<true>)
+    {
+      char* p = const_cast<char*>(s.data());
+      size_t sz = static_cast<size_t>(*reinterpret_cast<int*>(p));
+
+      shared_ptr<T> result = make_shared<T>();
+      result->x.getContainer().resize(sz);
+      result->y.getContainer().resize(sz);
+      result->z.getContainer().resize(sz);
+
+      char* x = p + sizeof(int);
+      char* y = x + sz*sizeof(float);
+      char* z = y + sz*sizeof(float);
+      for(size_t i = 0; i < sz; ++i) {
+        result->x.set(i, *reinterpret_cast<float*>(x+i*sizeof(float)));
+        result->y.set(i, *reinterpret_cast<float*>(y+i*sizeof(float)));
+        result->z.set(i, *reinterpret_cast<float*>(z+i*sizeof(float)));
+      }
+      return result;
+    }
 };
 
-template<>
-inline shared_ptr<CoordVec3> DCDCodec::decode<CoordVec3>(const string& s)
-{
-  throw std::runtime_error("Invalid DCD value, but found CoordVec3");
-}
-
+} // End namespace K3
 #endif
-
