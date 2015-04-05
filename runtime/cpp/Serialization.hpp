@@ -20,7 +20,6 @@
 #include <csvpp/array.h>
 #include <csvpp/deque.h>
 #include <csvpp/list.h>
-#include <csvpp/map.h>
 #include <csvpp/set.h>
 #include <csvpp/vector.h>
 
