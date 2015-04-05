@@ -23,7 +23,9 @@ class WebServer {
   typedef std::map<websocketpp::connection_hdl, varSpecs, std::owner_less<websocketpp::connection_hdl>> connVarSpecs;
 
  public:
-  WebServer(std::list<std::tuple<e_ptr, ctxt_map>>& engines) {
+  WebServer(int _port, int _data_port, std::list<std::tuple<e_ptr, ctxt_map>>& engines)
+    : port(_port), data_port(_data_port)
+  {
     start(engines);
   }
 
@@ -46,11 +48,18 @@ class WebServer {
     CROW_ROUTE(appSrv, "/")
     ([this, &engines](const crow::request& req) {
        crow::mustache::context ctx;
-       return crow::mustache::load("index.html").render();
+       ctx["port"] = std::to_string(port);
+       ctx["data_port"] = std::to_string(data_port);
+       return crow::mustache::load("index.html").render(ctx);
+    });
+
+    CROW_ROUTE(appSrv, "/<path>")
+    ([](const crow::request& req, std::string path) {
+       return crow::mustache::load(path).render();
     });
 
     appThread = std::make_shared<boost::thread>(
-        [this]() { appSrv.port(18080)./*multithreaded().*/ run(); });
+        [this]() { appSrv.port(port)./*multithreaded().*/ run(); });
   }
 
   void initializeData(std::list<std::tuple<e_ptr, ctxt_map>>& engines)
@@ -63,7 +72,7 @@ class WebServer {
     dataSrv.set_message_handler(bind(&WebServer::dataMessageHandler, this, engines, _1, _2));
 
     dataSrv.init_asio();
-    dataSrv.listen(9002);
+    dataSrv.listen(data_port);
     dataSrv.start_accept();
 
     dataThread = std::make_shared<boost::thread>([this]() { dataSrv.run(); });
@@ -209,6 +218,9 @@ class WebServer {
   }
 
  protected:
+  int port;
+  int data_port;
+
   boost::asio::io_service timerEventLoop;
   std::shared_ptr<boost::thread> timerLoopThread;
   std::shared_ptr<boost::asio::deadline_timer> nextDeadline;

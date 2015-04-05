@@ -21,6 +21,9 @@ class Options {
     string json_path = "";
     string result_var;
     string result_path;
+    bool web_server;
+    int web_port;
+    int web_data_port;
 };
 
 }

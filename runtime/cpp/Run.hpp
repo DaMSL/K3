@@ -14,11 +14,14 @@ namespace K3 {
 template <class context>
 void runProgram(Options opt) {
   std::vector<string> peer_strs = opt.peer_strings;
-  bool simulation = opt.simulation;
-  std::string log_level = opt.log_level;
-  std::string log_path = opt.json_path;
-  std::string result_var = opt.result_var;
-  std::string result_path = opt.result_path;
+  bool simulation               = opt.simulation;
+  std::string log_level         = opt.log_level;
+  std::string log_path          = opt.json_path;
+  std::string result_var        = opt.result_var;
+  std::string result_path       = opt.result_path;
+  bool web_server               = opt.web_server;
+  int web_port                  = opt.web_port;
+  int web_data_port             = opt.web_data_port;
 
   std::vector<std::string> configurations;
 
@@ -69,7 +72,10 @@ void runProgram(Options opt) {
   }
 
   // Start embedded web server.
-  WebServer<context> webSrv(engines);
+  shared_ptr<WebServer<context>> webSrv;
+  if ( web_server ) {
+    webSrv = make_shared<WebServer<context>>(web_port, web_data_port, engines);
+  }
 
   // Block until completion
   for (auto th : l) {
@@ -77,7 +83,7 @@ void runProgram(Options opt) {
   }
 
   // Stop web server.
-  webSrv.stop();
+  if ( webSrv ) { webSrv->stop(); }
 }
 
 }  // Namespace K3

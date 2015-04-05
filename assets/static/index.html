@@ -1,0 +1,215 @@
+<html>
+    <head>
+        <title>K3 dataviz</title>
+    </head>
+
+    <link rel="stylesheet" href="k3.css">
+    <style>
+        @import url(http://fonts.googleapis.com/css?family=Yanone+Kaffeesatz:400,700);
+        @import url(http://square.github.io/cubism/style.css);
+    </style>
+
+    <script src="http://d3js.org/d3.v3.min.js" charset="utf-8"></script>
+    <script src="http://square.github.io/cubism/cubism.v1.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
+    <script src="https://twitter.github.io/typeahead.js/releases/latest/typeahead.bundle.js"></script>
+
+    <body>
+      <h1>K3 Peer Visualization</h1>
+      <div id="graph"></div>
+      <div id="console">
+        <div id="peerinfo"></div>
+        <input id="input" class="typeahead" type="text" placeholder="Variable name">
+      </div>
+      <div id="output"></div>
+    </body>
+
+    <script>
+        // Data socket.
+        var address = "ws://localhost:{{data_port}}/"
+        var websocket = null
+
+        // K3 variable listing, as an array of names
+        // TODO: track type information here.
+        var k3_vars = []
+
+        // K3 variables time series, as an array of environments.
+        var k3_var_ts = []
+
+        // D3 state.
+        var context = cubism.context().step(1000).size(960)
+        var horizon = context.horizon()
+
+        // Typeahead state.
+        var bh_engine = null
+
+        // define metric accessor
+        function k3metric(name) {
+          return context.metric(function (nm) {
+            return function(start,stop,step,callback){
+              var peer_idx = 0;
+              var i = k3_var_ts.length - 1;
+              var values = [];
+              while (+start < +stop){
+                start = +start +step;
+                if ( i >= 0
+                      && ( peer_idx in k3_var_ts[i] )
+                      && ( nm in k3_var_ts[i][peer_idx]["vars"] )
+                      && ( !isNaN(k3_var_ts[i][peer_idx]["vars"][nm]) ))
+                {
+                  values.unshift(Number(k3_var_ts[i][peer_idx]["vars"][nm]));
+                } else {
+                  values.unshift(0);
+                }
+                i--;
+              }
+              callback(null, values);
+            }}(name), name);
+        }
+
+        // draw graph
+        function drawGraph(metrics) {
+          horizon.metric(k3metric);
+
+          d3.select("#graph").selectAll(".horizon").remove();
+          d3.select("#graph").selectAll(".axis").remove();
+
+          d3.select("#graph").selectAll(".horizon")
+            .data(metrics)
+            .enter()
+            .append("div")
+            .attr("class", "horizon")
+            .call(horizon);
+
+          // set rule
+          d3.select("#body").append("div")
+            .attr("class", "rule")
+            .call(context.rule());
+
+          // set focus
+          context.on("focus", function(i) {
+             d3.selectAll(".value")
+               .style( "right", i == null ? null : context.size() - i + "px");
+             });
+
+          // set axis
+          var axis = context.axis()
+          d3.select("#graph").append("div").attr("class", "axis").append("g").call(axis);
+        }
+
+        function drawPeer() {
+          d3.select("#peerinfo").selectAll("h3").remove();
+          d3.select("#peerinfo").append("h3").text("Peer: " + address)
+        }
+
+        function drawOutput(tag, msg, color) {
+          d3.select("#output").selectAll("p").remove();
+          d3.select("#output").append("p")
+            .attr("style", "color:" + (color? color : "black"))
+            .text(tag + ":" + msg);
+        }
+
+        // K3 peer API
+        function requestVars() {
+          sendMessage(JSON.stringify([{cmd: "list"}]));
+        }
+
+        function processMessage(msg) {
+          var response = JSON.parse(msg);
+          if ( response ) {
+            switch (response.rt) {
+              case "list":
+                k3_vars = response.rv;
+                setSuggestions(k3_vars);
+                drawOutput("Vars", msg, "blue");
+                drawGraph(response.rv);
+                break;
+
+              case "sample":
+                k3_var_ts.push(response.rv);
+                drawOutput("Data", msg, "green");
+                break;
+
+              default:
+                drawOutput(response.rt, msg, null);
+                break;
+            }
+          } else {
+            drawOutput("Reply", msg, null);
+          }
+        }
+
+        // Websocket helpers.
+        function connect() {
+          websocket = new WebSocket(address);
+
+          websocket.onopen = function() {
+            d3.select("#output").append("p").text("Connected");
+            requestVars();
+          };
+
+          websocket.onmessage = function(evt) {
+            processMessage(evt.data);
+          };
+
+          websocket.onerror = function(evt) {
+            drawOutput("Error", evt.data, "red");
+          };
+        }
+
+        function sendMessage(message) {
+          drawOutput("Sent", message, null);
+          websocket.send(message);
+        }
+
+        // Console setup
+        function initializeConsole() {
+          var input = $("#input")[0];
+          input.addEventListener('keyup',function(){
+            if( input.value && window.event.keyCode == 13) {
+              var msg = input.value;
+              if ( msg.charAt(0) == ':' ) {
+                msg = msg.substr(1);
+              } else {
+                msg = JSON.stringify([{"cmd": "add", "var": msg}])
+              }
+              sendMessage(msg);
+              input.value = null;
+            }
+          });
+
+          // constructs the suggestion engine
+          bh_engine = new Bloodhound({
+            datumTokenizer: Bloodhound.tokenizers.obj.whitespace('value'),
+            queryTokenizer: Bloodhound.tokenizers.whitespace,
+            local: $.map(k3_vars, function(v) { return { value: v }; })
+          });
+
+          // kicks off the loading/processing of `local` and `prefetch`
+          bh_engine.initialize();
+
+          $('#console .typeahead').typeahead({
+              hint: true,
+              highlight: true,
+              minLength: 1
+            },
+            {
+              name: 'k3_vars',
+              displayKey: 'value',
+              source: bh_engine.ttAdapter()
+            });
+        }
+
+        // Typeahead helpers
+        function setSuggestions(sgs) {
+          bh_engine.clear();
+          bh_engine.add($.map(k3_vars, function(v) { return { value: v }; }))
+        }
+
+        // Page initialization
+        drawPeer();
+        initializeConsole();
+        window.addEventListener("load", connect, false);
+    </script>
+
+</html>

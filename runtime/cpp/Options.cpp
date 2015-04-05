@@ -1,7 +1,8 @@
 #include <iostream>
-#include "Options.hpp"
 #include <sys/types.h>
 #include <sys/stat.h>
+
+#include "Options.hpp"
 
 namespace K3 {
 
@@ -14,7 +15,9 @@ int Options::parse(int argc, const char *const argv[]) {
     ("log,l",po::value<string>(), "log level for stdout")
     ("json,j",po::value<string>(), "directory for json logging")
     ("result_var,r", po::value<string>(), "result variable to log (must be a flat collection)")
-    ("result_path,o", po::value<string>(), "path to store the result variable");
+    ("result_path,o", po::value<string>(), "path to store the result variable")
+    ("web_port,w", po::value<int>(), "webserver port")
+    ("web_data_port", po::value<int>(), "webserver data port");
 
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -42,8 +45,6 @@ int Options::parse(int argc, const char *const argv[]) {
     if( stat( json_path.c_str(), &info ) != 0 ) {
       throw std::runtime_error("JSON Log directory does not exist: " + json_path);
     }
-  } else {
-  
   }
 
   if (vm.count("log")) {
@@ -63,7 +64,7 @@ int Options::parse(int argc, const char *const argv[]) {
       throw std::runtime_error("Invalid options: Cannot specify result_path without result_var" );
     }
 
-    result_path= vm["result_path"].as<string>();
+    result_path = vm["result_path"].as<string>();
     struct stat info;
     if( stat( result_path.c_str(), &info ) != 0 ) {
       throw std::runtime_error("Result directory does not exist: " + result_path);
@@ -71,6 +72,20 @@ int Options::parse(int argc, const char *const argv[]) {
 
   } else {
     result_path  = "";
+  }
+
+  if (vm.count("web_port")) {
+    web_server = true;
+    web_port = vm["web_port"].as<int>();
+  } else {
+    web_server = false;
+    web_port = -1;
+  }
+
+  if (web_server && vm.count("web_data_port")) {
+    web_data_port = vm["web_data_port"].as<int>();
+  } else {
+    web_data_port = -1;
   }
 
   return 0;
