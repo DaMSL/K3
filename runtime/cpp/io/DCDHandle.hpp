@@ -131,7 +131,7 @@ class DCDIStreamHandle : public IOHandle {
 
     HDR[4] = '\0';
     NFILE = ICNTRL[0];
-    cout << "Number of frames : " << NFILE << endl;
+    //cout << "Number of frames : " << NFILE << endl;
 
     NPRIV = ICNTRL[1];
 
@@ -142,11 +142,6 @@ class DCDIStreamHandle : public IOHandle {
     DELTA4 = ICNTRL[9];
     QCRYS = ICNTRL[10];
     CHARMV = ICNTRL[19];
-
-    for (unsigned i = 0; i < 20; ++i) {
-      cout << ICNTRL[i] << "\t";
-    }
-    cout << endl;
 
     // Reading the number of titles
     dcdFile.read((char*)&fortCheck1, sizeof(unsigned));
@@ -165,17 +160,13 @@ class DCDIStreamHandle : public IOHandle {
     }
 
     dcdFile.read((char*)&fortCheck2, sizeof(unsigned));
-
-    cout << "n Title : " << NTITLE << endl;
-    // Reading the number of atoms
+// Reading the number of atoms
     dcdFile.read((char*)&fortCheck1, sizeof(unsigned));
     dcdFile.read((char*)&NATOM, sizeof(int));
     dcdFile.read((char*)&fortCheck2, sizeof(unsigned));
 
     LNFREAT = NATOM - FROZAT;
-    cout << "Number of atoms : " << NATOM << endl;
-    cout << "Number of  free atoms : " << LNFREAT << endl;
-
+    
     pbc[0] = pbc[1] = pbc[2] = pbc[3] = pbc[4] = pbc[5] = 0.0;
   }
 };
