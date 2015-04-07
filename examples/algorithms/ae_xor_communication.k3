@@ -133,7 +133,7 @@ declare initializeMaster : () -> () = \_ -> (
 	(
 		(range (access2 {e1: secondLastLayer, e2: lastNeuronInSecondLastLayer, e3 : lastNeuronInLastLayer})).iterate (\i -> (
 			weight.insert {elem : (randomFraction ()) };
-			deltaWeight.insert {elem : (randomFraction ()) };
+			deltaWeight.insert {elem : 0.0};
 			weightsLastUpdated.insert {elem : 0.0};	
 			weightUpdateBroadcast.insert {elem : 0.0}	
 		))
@@ -161,6 +161,22 @@ declare initialize : () -> () = \_ -> (
 	let pos = (access1LayerNeuron (i.i) ((topology.at(i.i)).elem -1) ) in
 	outputValue.set pos {elem : 1.0}
 	))
+)
+
+declare setDeltaWeightsTozero : () -> () = \_ -> (
+  // Update the weights
+  (range ((topology.size ()) -1)).iterate(\layerId -> (
+    let numPresentLayerNeurons = (topology.at layerId.i).elem in
+    let numNextLayerNeurons = (topology.at (layerId.i + 1)).elem in
+    (
+      (range (numPresentLayerNeurons)).iterate(\presentLayerNeuronId -> (
+        (range (numNextLayerNeurons -1 ) ).iterate(\nextLayerNeuronId -> (
+          let index2Weight = access2 {e1 : layerId.i, e2 : presentLayerNeuronId.i, e3 : nextLayerNeuronId.i } in 
+          (weight.set index2Weight {elem : 0.0} )
+        ))    
+      ))
+    )
+  ))	
 )
 
 trigger startMaster : () = \_ -> (
@@ -283,7 +299,12 @@ declare slaveBackPropagation : () -> () = \_ -> (
           let index2Weight = access2 {e1 : layerId.i, e2 : presentLayerNeuronId.i, e3 : nextLayerNeuronId.i } in 
           (weight.set index2Weight 
           {elem : (weight.at index2Weight).elem  - 
-                  alpha * (((deltaWeight.at index2Weight).elem)/(allData.size ())  +  lambda*((weight.at index2Weight).elem))
+                  alpha * (((deltaWeight.at index2Weight).elem)/(allData.size ())  +  
+                            ( if ( (topology.at layerId.i).elem != (presentLayerNeuronId.i + 1))
+                             then(lambda*((weight.at index2Weight).elem))
+                             else (0)
+                            )
+                          )
           } )
         ))    
       ))
@@ -383,10 +404,10 @@ trigger startSlave : () = \_ -> (
 		else () );
 		
 		(slaveFeedForward ());
-    print "weights : ";
-    weight.iterate(\w -> print (rtos (w.elem)));
-    print "Output values : ";
-    outputValue.iterate(\ov -> print (rtos (ov.elem)));
+    //print "weights : ";
+    //weight.iterate(\w -> print (rtos (w.elem)));
+    //print "Output values : ";
+    //outputValue.iterate(\ov -> print (rtos (ov.elem)));
 		(slaveBackPropagation ());
     print "Total Error : ";
 		print (rtos totalError)
@@ -406,7 +427,7 @@ trigger storeData :  {i: real , j: real , k : real} = \csvData -> (
 	rows = rows +1;
   print "I am at storeData ";
   //((startSlave, me) <- ())
-  (if (rows==7) then ((startSlave, me) <- ()) else ())
+  (if (rows==8) then ((startSlave, me) <- ()) else ())
 )
 
 //sink results_sink : real = stdout csv
