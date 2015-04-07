@@ -230,13 +230,13 @@ namespace K3
         } else if ( codec_->format() == Codec::CodecFormat::K3B ) {
           shared_ptr<K3BCodec> k3bcodec = std::dynamic_pointer_cast<K3BCodec, Codec>(codec_);
           result = k3bcodec->decode<T>(s);
-        } /*else if ( codec_->format() == Codec::CodecFormat::CSV ) {
+        } else if ( codec_->format() == Codec::CodecFormat::CSV ) {
           shared_ptr<CSVCodec> csvcodec = std::dynamic_pointer_cast<CSVCodec, Codec>(codec_);
           result = csvcodec->decode<T>(s);
         } else if ( codec_->format() == Codec::CodecFormat::PSV ) {
           shared_ptr<PSVCodec> psvcodec = std::dynamic_pointer_cast<PSVCodec, Codec>(codec_);
           result = psvcodec->decode<T>(s);
-        } */else if ( codec_->format() == Codec::CodecFormat::K3X ) {
+        } else if ( codec_->format() == Codec::CodecFormat::K3X ) {
           shared_ptr<K3XCodec> k3xcodec = std::dynamic_pointer_cast<K3XCodec, Codec>(codec_);
           result = k3xcodec->decode<T>(s);
         } else if ( codec_->format() == Codec::CodecFormat::DCD ) {
