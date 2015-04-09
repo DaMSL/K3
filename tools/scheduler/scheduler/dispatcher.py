@@ -65,7 +65,6 @@ task_state = { 6: "TASK_STAGING",  # Initial state. Framework status updates sho
 class Dispatcher(mesos.interface.Scheduler):
   def __init__(self, daemon=True):
     self.pending = deque()     # Pending jobs. First job is popped once there are enough resources available to launch it.
-    # self.replay = {}           # Replay queust map jobId to # iterations remaining
     self.active = {}           # Active jobs keyed on jobId.
     self.finished = {}         # Finished jobs keyed on jobId.
     self.offers = {}           # Offers from Mesos keyed on offerId. We assume they are valid until they are rescinded by Mesos.
@@ -121,20 +120,20 @@ class Dispatcher(mesos.interface.Scheduler):
 
 
 
-  def assignRolesToOffers(self, nextJob): #, driver):
+  def allocateResources(self, nextJob): #, driver):
 
     # Keep track of how many cpus have been used per role and per offer
     # and which roles have been assigned to an offer
     committedResources = {}
 
-    committedCPU = {}
-    assignedCPU_toRole = {}
-    rolesPerOffer = {}
-    for roleId in nextJob.roles:
-      assignedCPU_toRole[roleId] = 0
-    for offerId in self.offers:
-      committedCPU[offerId] = 0
-      rolesPerOffer[offerId] = []
+    # committedCPU = {}
+    # assignedCPU_toRole = {}
+    # rolesPerOffer = {}
+    # for roleId in nextJob.roles:
+    #   assignedCPU_toRole[roleId] = 0
+    # for offerId in self.offers:
+    #   committedCPU[offerId] = 0
+    #   rolesPerOffer[offerId] = []
 
     availableCPU = {i: int(getResource(o.resources, "cpus")) for i, o in self.offers.items()}
     availableMEM = {i: getResource(o.resources, "mem") for i, o in self.offers.items()}
@@ -149,7 +148,6 @@ class Dispatcher(mesos.interface.Scheduler):
       committedResources[roleId] = {}
 
       for offerId in self.offers:
-
         if availableMEM[offerId] == None or availableMEM[offerId] == 0:
           continue
         if availableCPU[offerId] == 0:
@@ -186,8 +184,6 @@ class Dispatcher(mesos.interface.Scheduler):
               # Cannot satisfy user's memory request
               continue
 
-
-
         # Commit Resources for this offer with this role
         committedResources[roleId][offerId] = {}
 
@@ -202,26 +198,28 @@ class Dispatcher(mesos.interface.Scheduler):
 
         committedResources[roleId][offerId]['ports'] = availablePorts[offerId]
 
-        committedCPU[offerId] += requestedCPU
-        rolesPerOffer[offerId].append((roleId, requestedCPU))
-        assignedCPU_toRole[roleId] += requestedCPU
-        #
-        # if assignedCPU_toRole[roleId] == nextJob.roles[roleId].peers:
+        # committedCPU[offerId] += requestedCPU
+        # rolesPerOffer[offerId].append((roleId, requestedCPU))
+        # assignedCPU_toRole[roleId] += requestedCPU
+
         print "UNASSIGNED PEERS = %d" % unassignedPeers
         if unassignedPeers <= 0:
-
           # All peers for this role have been assigned
           break
 
-
-    # Check if all roles were satisfied
-    for roleId in nextJob.roles:
-      if assignedCPU_toRole[roleId] != nextJob.roles[roleId].peers:
-        debug = (roleId, assignedCPU_toRole[roleId], nextJob.roles[roleId].peers)
-        print("Failed to satisfy role %s. Used %d cpus out of %d peers" % debug)
+      if unassignedPeers > 0:
+        # Could not commit all peers for this role with current set of offers
+        print("Failed to satisfy role %s. Left with %d unassigned Peers" % (roleId, unassignedPeers))
         return None
 
-    return (assignedCPU_toRole, committedCPU, rolesPerOffer, committedResources)
+    # # Check if all roles were satisfied
+    # for roleId in nextJob.roles:
+    #   if assignedCPU_toRole[roleId] != nextJob.roles[roleId].peers:
+    #     debug = (roleId, assignedCPU_toRole[roleId], nextJob.roles[roleId].peers)
+    #     print("Failed to satisfy role %s. Used %d cpus out of %d peers" % debug)
+    #     return None
+
+    return committedResources #(assignedCPU_toRole, committedCPU, rolesPerOffer, committedResources)
 
   # See if the next job in the pending queue can be launched using the current offers.
   # Upon failure, return None. Otherwise, return the Job object with fresh k3 tasks attached to it
@@ -231,18 +229,30 @@ class Dispatcher(mesos.interface.Scheduler):
       print("No pending jobs to prepare")
       return None
   
+    index = 0
     nextJob = self.pending[0]
+    reservation = self.allocateResources(nextJob)
+    
+    while nextJob and reservation == None:
+      index += 1
+      if index >= len(self.pending):
+        print ("No jobs in the queue can run with current offers")
+        return None
+      nextJob = self.pending[index]
+      reservation = self.allocateResources(nextJob)
+      
 
     # TODO: Determine if job CAN launch; if not try next job in QUEUE
-    result = self.assignRolesToOffers(nextJob) #, driver) #, self.offers)
-    if result == None:
-      return None
-   
-    (assignedCPU_toRole, committedCPU, rolesPerOffer, resources) = result
-
+    # result = self.allocateResources(nextJob) #, driver) #, self.offers)
+    #   reservation = self.allocateResources(nextJob)
+    #   if reservation == None:
+    #     return None
+    #  
+    #   (assignedCPU_toRole, committedCPU, rolesPerOffer, reservation) = result
+  
     print "RESOURCE TO ROLES"
     allPeers = []
-    for roleId, role in resources.items():
+    for roleId, role in reservation.items():
       print roleId
       peers = []
       vars = nextJob.roles[roleId].variables
@@ -262,6 +272,11 @@ class Dispatcher(mesos.interface.Scheduler):
         t = Task(taskid, offerId, host, offer['mem'], peers, roleId)
         nextJob.tasks.append(t)
 
+    # ID Master for collection Stdout TODO: Should we auto-default to offer 0 for stdout?
+    populateAutoVars(allPeers)
+    nextJob.all_peers = allPeers
+    del self.pending[index]  #.popleft()
+    return nextJob
 
     # # TODO port management
     # curPeerIndex = 0
@@ -297,11 +312,7 @@ class Dispatcher(mesos.interface.Scheduler):
     #     t = Task(taskid, offerId, host, mem, peers)
     #     nextJob.tasks.append(t)
 
-    # ID Master for collection Stdout TODO: Should we auto-default to offer 0 for stdout?
-    populateAutoVars(allPeers)
-    nextJob.all_peers = allPeers
-    self.pending.popleft()
-    return nextJob
+
 
   def launchJob(self, nextJob, driver):
     #jobId = self.genJobId()

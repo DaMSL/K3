@@ -16,40 +16,10 @@ from CompileDriver import *
 
 import db
 
-
-class Server(Flask):
-  def __init__(self, name):
-    self.state = {}
-    self.up = True
-    Flask.__init__(self, name)
-
-LOCAL_DIR  = '/web'
-SERVER_URL = 'http://qp1:8002/'
-
-JOBS_TARGET    = 'jobs'
-APPS_TARGET    = 'apps'
-ARCHIVE_TARGET = 'archive'
-
-# DEFAULT_UPLOAD_TARGET  = 'uploads'
-# UPLOADS_DEFAULT_DEST = os.path.join(LOCAL_DIR, DEFAULT_UPLOAD_TARGET)
-# UPLOADS_DEFAULT_URL = os.path.join(SERVER_URL, DEFAULT_UPLOAD_TARGET)
-
-APPS_DEST = os.path.join(LOCAL_DIR, APPS_TARGET)
-APPS_URL = os.path.join(SERVER_URL, APPS_TARGET)
-JOBS_DEST = os.path.join(LOCAL_DIR, JOBS_TARGET)
-JOBS_URL = os.path.join(SERVER_URL, JOBS_TARGET)
-ARCHIVE_DEST = os.path.join(LOCAL_DIR, ARCHIVE_TARGET)
-ARCHIVE_URL = os.path.join(SERVER_URL, ARCHIVE_TARGET)
-
-
-# TODO: DIR Structure
 webapp = Flask(__name__)
-webapp.config['UPLOADED_APPS_DEST']     = APPS_DEST
-webapp.config['UPLOADED_APPS_URL']      = APPS_URL
-webapp.config['UPLOADED_JOBS_DEST']     = JOBS_DEST
-webapp.config['UPLOADED_JOBS_URL']      = JOBS_URL
-webapp.config['UPLOADED_ARCHIVE_DEST']  = ARCHIVE_DEST
-webapp.config['UPLOADED_ARCHIVE_URL']   = ARCHIVE_URL
+
+
+
 webapp.config['nextJobId']    = 1001
 
 
@@ -64,7 +34,34 @@ joblist = {}
 index_message = 'Welcome to K3'
 
 
-def initWeb():
+def initWeb(**kwargs):
+  # global webapp
+
+  LOCAL_DIR  = kwargs.get('local', '/web')
+  SERVER_URL = kwargs.get('server', 'http://qp1:8002/')
+  # SERVER_URL = 'http://' + kwargs.get('hostname', 'qp1') + ':'
+  # SERVER_PORT = kwargs.get('port', 8002)'http://qp1:8002/'
+
+  JOBS_TARGET    = 'jobs'
+  APPS_TARGET    = 'apps'
+  ARCHIVE_TARGET = 'archive'
+
+  APPS_DEST = os.path.join(LOCAL_DIR, APPS_TARGET)
+  APPS_URL = os.path.join(SERVER_URL, APPS_TARGET)
+  JOBS_DEST = os.path.join(LOCAL_DIR, JOBS_TARGET)
+  JOBS_URL = os.path.join(SERVER_URL, JOBS_TARGET)
+  ARCHIVE_DEST = os.path.join(LOCAL_DIR, ARCHIVE_TARGET)
+  ARCHIVE_URL = os.path.join(SERVER_URL, ARCHIVE_TARGET)
+
+  # TODO: DIR Structure
+  webapp.config['UPLOADED_APPS_DEST']     = APPS_DEST
+  webapp.config['UPLOADED_APPS_URL']      = APPS_URL
+  webapp.config['UPLOADED_JOBS_DEST']     = JOBS_DEST
+  webapp.config['UPLOADED_JOBS_URL']      = JOBS_URL
+  webapp.config['UPLOADED_ARCHIVE_DEST']  = ARCHIVE_DEST
+  webapp.config['UPLOADED_ARCHIVE_URL']   = ARCHIVE_URL
+
+
   for p in [LOCAL_DIR, JOBS_TARGET, APPS_TARGET, ARCHIVE_TARGET]:
     path = os.path.join(LOCAL_DIR, p)
     if not os.path.exists(path):
@@ -332,26 +329,6 @@ def create_job(appName, appUID):
         dispatcher.submit(newJob)
         thisjob = dict(thisjob, url=dispatcher.getSandboxURL(jobId), status='SUBMITTED')
 
-        # while trials > 1:
-        #   def replay_this_job():
-        #     while active:
-        #       time.sleep(5)
-        #       active = len(dispatcher.getActiveJobs) > 0
-        #     replay_job(appName, jobId)
-        #   t = threading.Thread(target = replay_this_job)
-        #   try:
-        #     t.start()
-        #     t.join()
-        #
-        #   except KeyboardInterrupt:
-        #     print("INTERRUPT")
-        #     driver.stop()
-        #     driver_t.join()
-        #     break
-        #
-        #   trials -= 1
-
-
         if 'application/json' in request.headers['Accept']:
           return jsonify(thisjob), 202
         else:
@@ -383,61 +360,63 @@ def create_job(appName, appUID):
 @webapp.route('/jobs/<appName>', methods=['GET', 'POST'])
 def create_job_latest(appName):
     app = db.getApp(appName)
-    print app
-    if request.method == 'POST':
-        appUID = app['uid']
-        file = request.files['file']
-        text = request.form['text'] if 'text' in request.form else None
-        user = request.form['user'] if 'user' in request.form else 'anonymous'
-        tag = request.form['tag'] if 'tag' in request.form else ''
+    return create_job(appName, app['uid'])
 
-        # Check for valid submission
-        if not file and not text:
-          return returnError("Invalid job request", 404)
+    # print app
+    # if request.method == 'POST':
+    #     appUID = app['uid']
+    #     file = request.files['file']
+    #     text = request.form['text'] if 'text' in request.form else None
+    #     user = request.form['user'] if 'user' in request.form else 'anonymous'
+    #     tag = request.form['tag'] if 'tag' in request.form else ''
+    #
+    #     # Check for valid submission
+    #     if not file and not text:
+    #       return returnError("Invalid job request", 404)
+    #
+    #     # Post new job request, get job ID & submit time
+    #     thisjob = dict(appName=appName, appUID=appUID, user=user, tag=tag)
+    #     jobId, time = db.insertJob(thisjob)
+    #     thisjob = dict(jobId=jobId, time=time)
+    #
+    #     # Save yaml to file (either from file or text input)
+    #     path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName)
+    #     if not os.path.exists(path):
+    #       os.mkdir(path)
+    #
+    #     path = os.path.join(path, str(jobId))
+    #     filename = 'role.yaml'
+    #     if not os.path.exists(path):
+    #       os.mkdir(path)
+    #
+    #     if file:
+    #         file.save(os.path.join(path, filename))
+    #     else:
+    #         with open(os.path.join(path, filename), 'w') as file:
+    #           file.write(text)
+    #
+    #     # Create new Mesos K3 Job
+    #     apploc = os.path.join(webapp.config['UPLOADED_APPS_URL'], appName, appUID, appName)
+    #     try:
+    #       newJob = Job(binary=apploc, appName=appName, jobId=jobId, rolefile=os.path.join(path, filename))
+    #     except K3JobError as err:
+    #       db.deleteJob(jobId)
+    #       return returnError(err.value, 400)
+    #
+    #     print ("NEW JOB ID: %s" % newJob.jobId)
+    #
+    #     # Submit to Mesos
+    #     dispatcher.submit(newJob)
+    #     thisjob = dict(thisjob, url=dispatcher.getSandboxURL(jobId), status='SUBMITTED')
+    #
+    #
+    #     if 'application/json' in request.headers['Accept']:
+    #       return jsonify(thisjob), 202
+    #     else:
+    #       return render_template('jobs.html', appName=appName, lastjob=thisjob)
 
-        # Post new job request, get job ID & submit time
-        thisjob = dict(appName=appName, appUID=appUID, user=user, tag=tag)
-        jobId, time = db.insertJob(thisjob)
-        thisjob = dict(jobId=jobId, time=time)
-
-        # Save yaml to file (either from file or text input)
-        path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName)
-        if not os.path.exists(path):
-          os.mkdir(path)
-
-        path = os.path.join(path, str(jobId))
-        filename = 'role.yaml'
-        if not os.path.exists(path):
-          os.mkdir(path)
-
-        if file:
-            file.save(os.path.join(path, filename))
-        else:
-            with open(os.path.join(path, filename), 'w') as file:
-              file.write(text)
-
-        # Create new Mesos K3 Job
-        apploc = os.path.join(webapp.config['UPLOADED_APPS_URL'], appName, appUID, appName)
-        try:
-          newJob = Job(binary=apploc, appName=appName, jobId=jobId, rolefile=os.path.join(path, filename))
-        except K3JobError as err:
-          db.deleteJob(jobId)
-          return returnError(err.value, 400)
-
-        print ("NEW JOB ID: %s" % newJob.jobId)
-
-        # Submit to Mesos
-        dispatcher.submit(newJob)
-        thisjob = dict(thisjob, url=dispatcher.getSandboxURL(jobId), status='SUBMITTED')
-
-
-        if 'application/json' in request.headers['Accept']:
-          return jsonify(thisjob), 202
-        else:
-          return render_template('jobs.html', appName=appName, lastjob=thisjob)
-
-    elif request.method == 'GET':
-      return redirect(url_for('create_job', appName=appName, appUID=app['uid']))
+    # elif request.method == 'GET':
+    #     return redirect(url_for('create_job', appName=appName, appUID=app['uid']))
 
 
 #------------------------------------------------------------------------------
@@ -842,34 +821,6 @@ def delete_compiles():
     # db.deleteJob(jobId)
   return redirect(url_for('list_jobs')), 302
 
-
-
-# @webapp.route('/upload', methods=['GET', 'POST'])
-# def upload_archive():
-#     global dispatcher
-#     global index_message
-#     index_message = "File uploading...."
-#     print ("Received an upload request...")
-#     if request.method == 'POST':
-#         file = request.files['file']
-#         if file:
-#             filename = "FOO"        # TODO: Filenaming system
-#             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-#
-#             #TODO:  appName tracker goes here
-#             app_id = '4444'
-#             print ("Creating new Job")
-#             newJob = Job(archive=UPLOAD_FOLDER + '/' + filename, appName=app_id)
-#
-#             # TODO: Insert job into DB
-#             joblist[app_id] = newJob.binary_url
-#
-#             print ("Submitting new job")
-#             dispatcher.submit(newJob)
-#             return "File Uploaded!"
-#
-#     elif request.method == 'GET':
-#         return 'Upload your file using a POST request'
 
 
 #------------------------------------------------------------------------------
