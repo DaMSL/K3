@@ -88,6 +88,14 @@ def getUID():
   return str(uuid.uuid1()).split('-')[0]
 
 
+def returnError(msg, errcode):
+  if request.headers['Accept'] == 'application/json':
+    return msg, errcode
+  else:
+    return render_template("errors/404.html", message=msg)
+
+
+
 #------------------------------------------------------------------------------
 #  / - Home (welcome msg)
 #------------------------------------------------------------------------------
@@ -315,7 +323,9 @@ def create_job(appName, appUID):
 
         # Create new Mesos K3 Job
         apploc = os.path.join(webapp.config['UPLOADED_APPS_URL'], appName, appUID, appName)
+
         newJob = Job(binary=apploc, appName=appName, jobId=jobId, rolefile=os.path.join(path, filename))
+
         print ("NEW JOB ID: %s" % newJob.jobId)
 
         # Submit to Mesos
@@ -383,7 +393,7 @@ def create_job_latest(appName):
 
         # Check for valid submission
         if not file and not text:
-          return render_template("errors/404.html", message="Invalid job request")
+          return returnError("Invalid job request", 404)
 
         # Post new job request, get job ID & submit time
         thisjob = dict(appName=appName, appUID=appUID, user=user, tag=tag)
@@ -408,7 +418,12 @@ def create_job_latest(appName):
 
         # Create new Mesos K3 Job
         apploc = os.path.join(webapp.config['UPLOADED_APPS_URL'], appName, appUID, appName)
-        newJob = Job(binary=apploc, appName=appName, jobId=jobId, rolefile=os.path.join(path, filename))
+        try:
+          newJob = Job(binary=apploc, appName=appName, jobId=jobId, rolefile=os.path.join(path, filename))
+        except K3JobError as err:
+          db.deleteJob(jobId)
+          return returnError(err.value, 400)
+
         print ("NEW JOB ID: %s" % newJob.jobId)
 
         # Submit to Mesos
@@ -486,8 +501,14 @@ def replay_job(appName, jobId):
       shutil.copyfile(role_src, os.path.join(path, role_copy))
 
       # Create new Mesos K3 Job
-      newJob = Job(binary=os.path.join(webapp.config['UPLOADED_APPS_URL'], appName, oldjob['hash'], appName),
-                   appName=appName, jobId=new_jobId, rolefile=role_copy)
+      try:
+        newJob = Job(binary=os.path.join(webapp.config['UPLOADED_APPS_URL'], appName, oldjob['hash'], appName),
+                     appName=appName, jobId=new_jobId, rolefile=role_copy)
+      except K3JobError as err:
+        db.deleteJob(jobId)
+        print err
+        return returnError(err.value, 400)
+
       print ("NEW JOB ID: %s" % newJob.jobId)
 
       # Submit to Mesos
@@ -641,6 +662,8 @@ def kill_job_id(jobId):
 @webapp.route('/compile', methods=['GET', 'POST'])
 def compile():
 
+    print ("COMPILE REQUEST....")
+
     if request.method == 'POST':
       file = request.files['file']
       text = request.form['text']
@@ -689,11 +712,15 @@ def compile():
       script = os.path.join(url, sh_file)
 
       # TODO: Add in Git hash
+      print ("Create the compile job...")
       compileJob    = CompileJob(name=name, uid=uid, path=path, url=url, options=options, user=user, tag=tag)
+      print ("Create the driver...")
       compileDriver = CompileDriver(compileJob, source=source, script=script)
 
       # TODO: get/set K3 build source
       compile_tasks[uname] = compileDriver
+
+      print ("Starting compilation thread")
 
       t = threading.Thread(target=compileDriver.launch)
       try:

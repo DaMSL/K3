@@ -20,6 +20,12 @@ class JobStatus:
 
 
 
+class K3JobError(Exception):
+  def __init__(self, msg):
+    self.value = msg
+  def __str__ (self):
+    return self.value
+
 class AppID:
   def __init__(self, name, uid):
     self.name = name
@@ -51,6 +57,7 @@ class Role:
     self.params     = kwargs.get("params", {})
     self.volumes    = kwargs.get("volumes", [])
     self.envars     = kwargs.get("envars", [])
+    self.inputs     = kwargs.get("inputs", [])
 
   def to_string(self):
     print ("  ROLE ")
@@ -67,13 +74,14 @@ class Peer:
     self.port = port
 
 class Task:
-  def __init__(self, taskid, offerid, host, mem, peers):
+  def __init__(self, taskid, offerid, host, mem, peers, roleId):
     self.taskid = taskid
     self.offerid = offerid
     self.status = None
     self.host = host
     self.mem = mem
     self.peers = peers
+    self.roleId = roleId
 
   def getId(self, jobid):
     return "%s.%s" % (jobid, self.taskid)
@@ -96,116 +104,103 @@ class CompileJob:
 
 class Job:
   def __init__(self, **kwargs):
-    self.archive    = kwargs.get("archive", None)
+    # self.archive    = kwargs.get("archive", None)
     self.binary_url = kwargs.get("binary", None)
-#    self.appId      = kwargs.get("appId", 'None')   #TODO: AppId system
-    self.appName     = kwargs.get("appName", 'None')   #TODO: AppId system
-    self.appUID      = kwargs.get("appUID", 'None')   #TODO: AppId system
-    self.jobId      = kwargs.get("jobId", '1000')   #TODO: AppId system
+    self.appName     = kwargs.get("appName", 'None')
+    self.appUID      = kwargs.get("appUID", 'None')
+    self.jobId      = kwargs.get("jobId", '1000')
     roleFile        = kwargs.get("rolefile", None)
-    self.privileged = kwargs.get("privileged", True)
     self.roles      = {}
-    self.inputs     = []
-    self.volumes    = []
-    self.envars   = []
-    self.tasks      = None
+    # self.inputs     = []
+    # self.volumes    = []
+    # self.envars   = []
+    self.tasks      = []
     self.status     = None
     self.all_peers  = None
     self.master     = None
 
-    if self.archive == None and self.binary_url == None:
-      print ("No Archive or Binary found")
+    if self.binary_url == None:
+      print ("Error. No binary provided to Job")
       return
 
-    if self.archive != None and self.binary_url != None:
-      print ("Create job with EITHER archive OR binary")
+    if roleFile == None:
+      print ("Error. No YAML file provided to Job")
       return
 
-    if self.archive:
-      # Unzip archive into binary & yaml file
-      self.path = "jobs/" + self.appName
-      if not os.path.exists(self.path):
-        os.mkdir(self.path)
-      tf = tarfile.open(self.archive)
-      tf.extractall(self.path)
-
-      files = os.listdir(self.path)
-
-      # TODO: Better way to ID binary, & split YAML upload perhaps via JSON REST input
-      for f in files:
-         if not re.match('.*\..*', f):
-           self.binary_url = "http://qp1:8002/" + self.path + "/" + f
-           break
-
-      if self.binary_url == None:
-        print ("Error. Binary file not found in archive")
-        return
-
-      roleFiles = [f for f in os.listdir(self.path) if re.match('.*\.(yml|yaml)$', f)]
-      if len(roleFiles) == 0:
-        print("Error. No YAML files found in archive")
-        return
-
-      #TODO:  Multiple role files??? (if needed)
-      roleFile = roleFiles[0]
-
-    else:
-      if roleFile == None:
-        print ("Error. No YAML file provided to Job")
-        return
-
-    self.createRoles(roleFile)
-
-
-  def createRoles(self, path):
-    y = None
-    with open(path, "r") as f:
+    roles = None
+    with open(roleFile, "r") as f:
       contents = f.read()
-      y = yaml.load_all(contents)
+      roles = yaml.load_all(contents)
 
-    for doc in y:
-      if "name" not in doc:
-        print("Error. 'name' not specified in YAML file")
-        return None
-      name = doc['name']
-
-      if "peers" not in doc:
-        print("Error. 'peers' not specified in YAML file")
-        return None
-      peers = int(doc['peers'])
-
-      variables = {}
-      if 'k3_globals' in doc:
+    for doc in roles:
+      try:
+        name = doc['name']
+        peers = int(doc['peers'])
         variables = doc['k3_globals']
-      else:
-        print("Warning. No k3_globals found in YAML file")
+      except KeyError as err:
+        raise K3JobError('Input YAML File missing entry for: %s' % err.message)
 
+      # TODO: Privileged mode currently set to True (as default), change later on
+      self.privileged = True if 'privileged' not in doc else doc['privileged']
+
+      mask = r".*" if "hostmask" not in doc else doc['hostmask']
+      volumes = [] if 'volumes' not in doc else doc['volumes']
+      envars = [] if 'envars' not in doc else doc['envars']
+      inputs = [] if 'k3_data' not in doc else doc['k3_data']
+
+      # Parameters:  Just add additional parameters here to receive them
+      #  from YAML -- the dispather will need to handle them
       params = {}
       if 'peers_per_host' in doc:
         params['peers_per_host'] = doc['peers_per_host']
+      if 'mem' in doc:
+        params['mem'] = doc['mem']
 
-      # TODO:  CHANGE TO ROLE-BASED VOLUMES for volumes
-      volumes = [] if 'volumes' not in doc else doc['volumes']
-      self.volumes = volumes
+      # self.volumes.extend(volumes)
+      # self.envars.extend(envars)
+      # self.inputs.extend(inputs)
 
-      envars = [] if 'envars' not in doc else doc['envars']
-      self.envars = envars
-
-      if 'privileged' in doc:
-        self.privileged = doc['privileged']
-
-
-      # TODO:  CHANGE TO ROLE-BASED INPUTS for k3_data
-      if 'k3_data' in doc:
-        self.inputs = doc['k3_data']
-
-      mask = r".*"
-      if "hostmask" in doc:
-        mask = doc['hostmask']
-
-
-      r = Role(peers=peers, variables=variables, hostmask=mask, volumes=volumes, params=params, envars=envars)
+      r = Role(peers=peers, variables=variables, hostmask=mask,
+               volumes=volumes, params=params, envars=envars, inputs=inputs)
       self.roles[name] = r
 
+
+
+
+
+
+
+class PortList():
+   def __init__(self, ranges=[]):
+       self.index = 0
+       self.offset = 0
+       self.ports = [] if ranges == 0 else ranges
+       print self.ports
+
+   def addRange(self, r):
+       ports.append(r)
+
+   def __iter__(self):
+       return self
+
+   def __next__(self):
+     try:
+       next = self.getNext()
+       if next == None:
+         raise StopIteration
+     except IndexError:
+       raise StopIteration
+     return next
+
+   def getNext(self):
+     if len(self.ports) == 0 or self.index >= len(self.ports):
+       return None
+     result = self.ports[self.index][0] + self.offset
+     if result == self.ports[self.index][1]:
+         self.index += 1
+         self.offset = 0
+     else:
+         self.offset += 1
+     return int(result)
 
 

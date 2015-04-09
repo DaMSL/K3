@@ -19,6 +19,8 @@ import mesos.native
 # Constants
 MASTER = 'zk://192.168.0.10:2181,192.168.0.11:2181,192.168.0.18:2181/mesos'
 
+DEFAULT_MEM = 4 * 1024
+
 IP_ADDRS = { "qp1":"192.168.0.10",
              "qp2":"192.168.0.11",
              "qp3":"192.168.0.15",
@@ -83,11 +85,7 @@ class Dispatcher(mesos.interface.Scheduler):
 
   def getFinishedJobs(self):
     return self.finished
-  # Use the next available jobId and then generate a fresh one.
-  # def genJobId(self):
-  #   x = self.jobsCreated
-  #   self.jobsCreated = x + 1
-  #   return x
+
 
   def getJob(self, jobId):
     if jobId in self.active:
@@ -127,32 +125,29 @@ class Dispatcher(mesos.interface.Scheduler):
 
     # Keep track of how many cpus have been used per role and per offer
     # and which roles have been assigned to an offer
-    cpusUsedPerOffer = {}
-    cpusUsedPerRole = {}
+    committedResources = {}
+
+    committedCPU = {}
+    assignedCPU_toRole = {}
     rolesPerOffer = {}
     for roleId in nextJob.roles:
-      cpusUsedPerRole[roleId] = 0
+      assignedCPU_toRole[roleId] = 0
     for offerId in self.offers:
-      cpusUsedPerOffer[offerId] = 0
+      committedCPU[offerId] = 0
       rolesPerOffer[offerId] = []
 
-    availableCPU = {i: int(getResource(o.resources, "cpus", float)) for i, o in self.offers.items()}
-    availableMEM = {i: getResource(o.resources, "mem", float) for i, o in self.offers.items()}
+    availableCPU = {i: int(getResource(o.resources, "cpus")) for i, o in self.offers.items()}
+    availableMEM = {i: getResource(o.resources, "mem") for i, o in self.offers.items()}
+    availablePorts = {i: PortList(getResource(o.resources, "ports")) for i, o in self.offers.items()}
 
-    for offerId in self.offers:
-      print "%s:" % self.offers[offerId].hostname.encode('ascii','ignore'),
-      if availableCPU[offerId] == None:
-        print "NO CPU"
-      else:
-        print " %d cpu" % availableCPU[offerId],
+    for i, p in availablePorts.items():
+      print i, p
 
-      if availableMEM[offerId] == None:
-        print "NO MEM"
-      else:
-        print " %f mem" % availableMEM[offerId]
     # Try to satisy each role, sequentially
-    for roleId in nextJob.roles:
+    for roleId in nextJob.roles.keys():
       unassignedPeers = nextJob.roles[roleId].peers
+      committedResources[roleId] = {}
+
       for offerId in self.offers:
 
         if availableMEM[offerId] == None or availableMEM[offerId] == 0:
@@ -166,74 +161,67 @@ class Dispatcher(mesos.interface.Scheduler):
         r = re.compile(hostmask)
         if not r.match(host):
           print("%s does not match hostmask. DECLINING offer" % host)
-          # driver.declineOffer(offerId)
-          # del self.offers[offerId]
           continue
         print("%s MATCHES hostmask. Checking offer" % host)
 
-        # resources = self.offers[offerId].resources
-        # cpu = int(getResource(resources, "cpus", float))
-        # mem = getResource(resources, "mem", float)
-
-        # if cpusUsedPerOffer[offerId] >= cpu:
-        # if cpusUsedPerOffer[offerId] >= cpu:
-        #   # All cpus for this offer have already been used
-        #   continue
-        #
-        # if mem == None or mem == 0:
-        #   # No memory offered for this TODO: set min required mem or allow user to request it
-        #   continue
-
-
-        # cpusRemainingForOffer = cpu - cpusUsedPerOffer[offerId]
-
-        requestedCPU = availableCPU[offerId]
-
-        cpusToUse = 0
+        # Allocate CPU Resource
+        requestedCPU = min(unassignedPeers, availableCPU[offerId])
         if 'peers_per_host' in nextJob.roles[roleId].params:
-          # cpusToUse = nextJob.roles[roleId].params['peers_per_host']
           peer_per_host = nextJob.roles[roleId].params['peers_per_host']
           if peer_per_host > availableCPU[offerId]:
             # Cannot satisfy specific peers-to-host requirement
             continue
           else:
             requestedCPU = peer_per_host
-          # if cpusToUse > cpusRemainingForOffer:
-          #   # Cannot satisfy specific peers-to-host requirement
-          #   continue
-        # else:
-        #   cpusToUse = min([cpusRemainingForOffer, unassignedPeers])
+
+        # Allocate Memory Resource
+        requestedMEM = availableMEM[offerId]
+        if 'mem' in nextJob.roles[roleId].params:
+          memPolicy = nextJob.roles[roleId].params['mem']
+          if memPolicy == 'some':
+            requestedMEM = min(DEFAULT_MEM, availableMEM[offerId]/4)
+          elif str(memPolicy).isdigit():
+            requestedMEM = memPolicy * 1024
+            if requestedMEM > availableMEM[offerId]:
+              # Cannot satisfy user's memory request
+              continue
+
+
+
+        # Commit Resources for this offer with this role
+        committedResources[roleId][offerId] = {}
 
         # Assumes a 1:1 Peer:CPU ratio & USE ALL MEM (for now)
+        committedResources[roleId][offerId]['cpus'] = requestedCPU
+        committedResources[roleId][offerId]['peers'] = requestedCPU
         unassignedPeers -= requestedCPU
         availableCPU[offerId] -= requestedCPU
 
-        # TODO: How much memory should we allocate?
-        availableMEM[offerId] -= availableMEM[offerId]
-        # unassignedPeers -= cpusToUse
+        committedResources[roleId][offerId]['mem'] = requestedMEM
+        availableMEM[offerId] -= requestedMEM
 
-        # cpusUsedPerOffer[offerId] += cpusToUse
-        # rolesPerOffer[offerId].append((roleId, cpusToUse))
-        # cpusUsedPerRole[roleId] += cpusToUse
-        cpusUsedPerOffer[offerId] += requestedCPU
+        committedResources[roleId][offerId]['ports'] = availablePorts[offerId]
+
+        committedCPU[offerId] += requestedCPU
         rolesPerOffer[offerId].append((roleId, requestedCPU))
-        cpusUsedPerRole[roleId] += requestedCPU
+        assignedCPU_toRole[roleId] += requestedCPU
         #
-        # if cpusUsedPerRole[roleId] == nextJob.roles[roleId].peers:
+        # if assignedCPU_toRole[roleId] == nextJob.roles[roleId].peers:
         print "UNASSIGNED PEERS = %d" % unassignedPeers
         if unassignedPeers <= 0:
+
           # All peers for this role have been assigned
           break
 
 
     # Check if all roles were satisfied
     for roleId in nextJob.roles:
-      if cpusUsedPerRole[roleId] != nextJob.roles[roleId].peers:
-        debug = (roleId, cpusUsedPerRole[roleId], nextJob.roles[roleId].peers)
+      if assignedCPU_toRole[roleId] != nextJob.roles[roleId].peers:
+        debug = (roleId, assignedCPU_toRole[roleId], nextJob.roles[roleId].peers)
         print("Failed to satisfy role %s. Used %d cpus out of %d peers" % debug)
         return None
 
-    return (cpusUsedPerRole, cpusUsedPerOffer, rolesPerOffer)
+    return (assignedCPU_toRole, committedCPU, rolesPerOffer, committedResources)
 
   # See if the next job in the pending queue can be launched using the current offers.
   # Upon failure, return None. Otherwise, return the Job object with fresh k3 tasks attached to it
@@ -250,41 +238,64 @@ class Dispatcher(mesos.interface.Scheduler):
     if result == None:
       return None
    
-    (cpusUsedPerRole, cpusUsedPerOffer, rolesPerOffer) = result
+    (assignedCPU_toRole, committedCPU, rolesPerOffer, resources) = result
 
-    # TODO port management
-    curPeerIndex = 0
-    nextJob.tasks = []
+    print "RESOURCE TO ROLES"
     allPeers = []
-
-    # Succesful. Accept any used offers. Build tasks, etc.
-    for offerId in self.offers:
-      curPort = 40000
-      if cpusUsedPerOffer[offerId] > 0:
-
+    for roleId, role in resources.items():
+      print roleId
+      peers = []
+      vars = nextJob.roles[roleId].variables
+      for offerId, offer in role.items():
+        print offer
         host = self.offers[offerId].hostname.encode('ascii','ignore')
-        debug = (host, str(rolesPerOffer[offerId]))
-        print("Accepted Roles for offer on %s: %s" % debug)
         if len(allPeers) == 0:
           nextJob.master = host
-
-        peers = []
-        for (roleId, n) in rolesPerOffer[offerId]:
-          for i in range(n):
-            vs = nextJob.roles[roleId].variables
-            p = Peer(curPeerIndex, vs, IP_ADDRS[host], curPort)
-            peers.append(p)
-            allPeers.append(p)
-            curPeerIndex = curPeerIndex + 1
-            curPort = curPort + 1
-
-        # Use all MEM (for now)
-        resources = self.offers[offerId].resources
-        mem = getResource(resources, "mem", float)
+        for n in range(offer['peers']):
+          nextPort = offer['ports'].getNext()
+          print ("PEER PORT = %s" % str(nextPort))
+          p = Peer(len(allPeers), vars, IP_ADDRS[host], nextPort)
+          peers.append(p)
+          allPeers.append(p)
 
         taskid = len(nextJob.tasks)
-        t = Task(taskid, offerId, host, mem, peers)
+        t = Task(taskid, offerId, host, offer['mem'], peers, roleId)
         nextJob.tasks.append(t)
+
+
+    # # TODO port management
+    # curPeerIndex = 0
+    # nextJob.tasks = []
+    # allPeers = []
+    #
+    # # Succesful. Accept any used offers. Build tasks, etc.
+    # for offerId in self.offers:
+    #   curPort = 40000
+    #   if committedCPU[offerId] > 0:
+    #
+    #     host = self.offers[offerId].hostname.encode('ascii','ignore')
+    #     debug = (host, str(rolesPerOffer[offerId]))
+    #     print("Accepted Roles for offer on %s: %s" % debug)
+    #     if len(allPeers) == 0:
+    #       nextJob.master = host
+    #
+    #     peers = []
+    #     for (roleId, n) in rolesPerOffer[offerId]:
+    #       for i in range(n):
+    #         vs = nextJob.roles[roleId].variables
+    #         p = Peer(curPeerIndex, vs, IP_ADDRS[host], curPort)
+    #         peers.append(p)
+    #         allPeers.append(p)
+    #         curPeerIndex = curPeerIndex + 1
+    #         curPort = curPort + 1
+    #
+    #     # Use all MEM (for now)
+    #     resources = self.offers[offerId].resources
+    #     mem = getResource(resources, "mem")
+    #
+    #     taskid = len(nextJob.tasks)
+    #     t = Task(taskid, offerId, host, mem, peers)
+    #     nextJob.tasks.append(t)
 
     # ID Master for collection Stdout TODO: Should we auto-default to offer 0 for stdout?
     populateAutoVars(allPeers)
@@ -300,9 +311,9 @@ class Dispatcher(mesos.interface.Scheduler):
     nextJob.status = "RUNNING"
     db.updateJob(nextJob.jobId, status=nextJob.status)
     # Build Mesos TaskInfo Protobufs for each k3 task and launch them through the driver
-    for k3task in nextJob.tasks:
+    for taskNum, k3task in enumerate(nextJob.tasks):
 
-      task = taskInfo(nextJob, k3task, self.offers[k3task.offerid].slave_id)
+      task = taskInfo(nextJob, taskNum, self.offers[k3task.offerid].slave_id)
 
       oid = mesos_pb2.OfferID()
       oid.value = k3task.offerid

@@ -21,7 +21,7 @@
                 <div class="col-md-4"><h4>Tag/Notes (optional):</h4></div>
                 <div class="col-md-8"><input type=text name=tag size="80"></div>
             </div>
-            <h4>Select a file or paste your raw source text below</h5>
+            <h4>Select a file or paste your raw source text below</h4>
             <div class="row">
               <div class="col-md-3">
                  <h4>Upload K3 Source File (.k3) </h4>
@@ -32,31 +32,20 @@
                 <textarea class="form-control" name=text cols=20 rows=30></textarea>
               </div>
             </div>
-                <iframe src="/static/ace.html"></iframe>
-            <div id="editor">function foo(items) {
-    var x = "All this is syntax highlighted";
-    return x;
-}</div>
 
-<script src="http://qp1:8002/src/ace.js" type="text/javascript" charset="utf-8"></script>
-<script>
-    var editor = ace.edit("editor");
-    editor.setTheme("ace/theme/monokai");
-    editor.getSession().setMode("ace/mode/javascript");
-</script>
-                <p>
+      <p>
             <span class="lead text-center"><button type=submit class="btn btn-primary btn-md">Submit</button></span>
                 </p>
          </form>
     </div>
   </div>
 {% endblock %}
-<script src="/src/ace.js" type="text/javascript" charset="utf-8"></script>
+<!--<script src="/src/ace.js" type="text/javascript" charset="utf-8"></script>
 <script>
     var editor = ace.edit("editor");
     editor.setTheme("ace/theme/monokai");
     editor.getSession().setMode("ace/mode/javascript");
-</script>
+</script>-->
 {% block footer %}
   {% include "include/footer.html" %}
 {% endblock %}

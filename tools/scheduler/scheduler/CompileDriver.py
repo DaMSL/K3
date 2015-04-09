@@ -90,6 +90,7 @@ class CompileLauncher(mesos.interface.Scheduler):
             driver.declineOffer(offer.id)
             continue
 
+          print "Accepted compile offer"
           task = compileTask(name=self.job.name,
                              uid=self.job.uid,
                              script=self.script,

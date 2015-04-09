@@ -11,16 +11,32 @@ import mesos.interface
 from mesos.interface import mesos_pb2
 import mesos.native
 
+
 # TODO how should we determine the executor url
 EXECUTOR_URL = "http://qp1:8002/k3executor"
 COMPEXEC_URL = "http://qp1:8002/CompileExecutor.py"
 
 K3_DOCKER_NAME = "damsl/k3-deployment:latest"
 
-def getResource(resources, tag, convF):
+
+
+def getResource(resources, tag):
   for resource in resources:
     if resource.name == tag:
-      return convF(resource.scalar.value)
+      if resource.type == mesos_pb2.Value.SCALAR:
+        return float(resource.scalar.value)
+      elif resource.type == mesos_pb2.Value.RANGES:
+        range_list = []
+        for r in resource.ranges.range:
+          range_list.append((r.begin, r.end))
+        return (range_list)
+      elif resource.type == mesos_pb2.Value.SET:
+        resource.set.value
+      else:
+        resource.text.value
+  return 0
+
+      # return convF(resource)  #(resource.scalar.value)
 
 # Fill in any "auto" variables
 # to be the address first peer in allPeers
@@ -33,7 +49,11 @@ def populateAutoVars(allPeers):
 
 
 # TODO: Add role to this to enable varying roles for volumes & envars
-def executorInfo(k3job, k3task): #, jobid, binary_url, volumes=[], environs=[]):
+def executorInfo(k3job, tnum): #, jobid, binary_url, volumes=[], environs=[]):
+
+
+  k3task = k3job.tasks[tnum]
+  role = k3job.roles[k3task.roleId]
 
   # Create the Executor
   executor = mesos_pb2.ExecutorInfo()
@@ -54,14 +74,13 @@ def executorInfo(k3job, k3task): #, jobid, binary_url, volumes=[], environs=[]):
   k3_binary.executable = True
   k3_binary.extract = False
 
-  if len(k3job.envars) > 0:
+  if len(role.envars) > 0:
     environment = mesos_pb2.Environment()
-    for e in k3job.envars:
+    for e in role.envars:
       var = environment.variables.add()
       var.name = e['name']  #'K3_BUILD'
       var.value = e['value']  #<git-hash>
     command.environment.MergeFrom(environment)
-
 
   executor.command.MergeFrom(command)
 
@@ -83,7 +102,7 @@ def executorInfo(k3job, k3task): #, jobid, binary_url, volumes=[], environs=[]):
   # container.force_pull_image = True
   container.docker.MergeFrom(docker)
 
-  for v in k3job.volumes:
+  for v in role.volumes:
     volume = container.volumes.add()
     volume.container_path = v['container']
     volume.host_path = v['host']
@@ -95,20 +114,22 @@ def executorInfo(k3job, k3task): #, jobid, binary_url, volumes=[], environs=[]):
   return executor
 
 # def taskInfo(k3task, jobId, slaveId, binary_url, all_peers, inputs, volumes):
-def taskInfo(k3job, k3task, slaveId):
-  task_data = {}
-  # TODO fix this hack
-  task_data["binary"] = k3job.appName
-  task_data["totalPeers"] = len(k3job.all_peers)
-  task_data["peerStart"] = k3task.peers[0].index
-  task_data["peerEnd"] = k3task.peers[-1].index
-  task_data["me"] = [ [p.ip, p.port] for p in k3task.peers]
-  task_data["peers"] = [ {"addr": [p.ip, p.port] } for p in k3job.all_peers]
-  task_data["globals"] = [p.variables for p in k3task.peers]
-  task_data["master"] = [ k3job.all_peers[0].ip, k3job.all_peers[0].port ]
-  task_data["data"] = [ k3job.inputs for p in range(len(k3task.peers)) ]
+def taskInfo(k3job, tnum, slaveId):
 
-  executor = executorInfo(k3job, k3task) #, k3job.jobId, k3job.binary_url, k3job.volumes, k3job.envars)
+  k3task = k3job.tasks[tnum]
+  role   = k3job.roles[k3task.roleId]
+
+  task_data = {"binary": str(k3job.appName),
+      "totalPeers": len(k3job.all_peers),
+      "peerStart": k3task.peers[0].index,
+      "peerEnd": k3task.peers[-1].index,
+      "me": [ [p.ip, p.port] for p in k3task.peers],
+      "peers": [ {"addr": [p.ip, p.port] } for p in k3job.all_peers],
+      "globals": [p.variables for p in k3task.peers],
+      "master": [k3job.all_peers[0].ip, k3job.all_peers[0].port ],
+      "data": [role.inputs for p in range(len(k3task.peers))]}
+
+  executor = executorInfo(k3job, tnum)
 
   task = mesos_pb2.TaskInfo()
   task.task_id.value = k3task.getId(k3job.jobId)
@@ -116,6 +137,8 @@ def taskInfo(k3job, k3task, slaveId):
   task.name = str(k3job.jobId) + "@" + k3task.host
   task.executor.MergeFrom(executor)
   task.data = yaml.dump(task_data)
+
+  print yaml.dump(task_data)
  
   cpus = task.resources.add()
   cpus.name = "cpus"
@@ -127,7 +150,27 @@ def taskInfo(k3job, k3task, slaveId):
   mem.type = mesos_pb2.Value.SCALAR
   mem.scalar.value = k3task.mem
 
-  return task   
+  ports = task.resources.add()
+  ports.name = "ports"
+  ports.type = mesos_pb2.Value.RANGES
+
+  # To handle non-contiguous ranges
+  peerPorts = sorted([p.port for p in k3job.all_peers])
+  nextPort = peerPorts[0]
+  portlist = ports.ranges.range.add()
+  portlist.begin = nextPort
+  prevPort = nextPort
+  for port in peerPorts[1:]:
+    if port != prevPort + 1:
+      portlist.end = prevPort
+      portlist = ports.ranges.range.add()
+      portlist.begin = port
+    prevPort = port
+  portlist.end = prevPort
+
+
+
+  return task
 
 
 
@@ -196,7 +239,7 @@ def compileTask(**kwargs):
   task.task_id.value = uname
   task.slave_id.value = slave
   # task.name = '$MESOS_SANDBOX/compile_%s.sh' % app
-  print (task.name, task.task_id.value)
+  print "Compiling %s (%s)" % (task.name, task.task_id.value)
 
   # task.data = ''
 
