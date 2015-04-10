@@ -54,12 +54,24 @@ namespace K3
     }
 
     bool hasRead() {
-      return input_?
-        ((input_->good() && frame->good()) || frame->decode_ready())
-        : false;
+      if ( pending_result || frame->decode_ready() ) { return true; }
+      else if ( input_->good() && frame->good() ) {
+        doPrefetch();
+      }
+      return pending_result || frame->decode_ready();
     }
 
-    shared_ptr<string> doRead();
+    shared_ptr<string> doRead() {
+      shared_ptr<string> result;
+      result.swap(pending_result);
+
+      while ( !result ) {
+        doPrefetch();
+        result.swap(pending_result);
+      }
+
+      return result;
+    }
 
     bool hasWrite() {
       BOOST_LOG(*this) << "Invalid write operation on input handle";
@@ -77,6 +89,9 @@ namespace K3
   protected:
     shared_ptr<filtering_istream> input_;
     shared_ptr<FrameCodec> frame;
+    shared_ptr<string> pending_result;
+
+    void doPrefetch();
   };
 
   class OStreamHandle : public virtual LogMT
