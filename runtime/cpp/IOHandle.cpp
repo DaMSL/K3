@@ -22,6 +22,7 @@ namespace K3
           // End of stream data
           BOOST_LOG(*this) << "doPrefetch: end of stream";
           pending_result.reset();
+          return;
         }
       }
     }
