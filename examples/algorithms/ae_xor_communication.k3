@@ -12,7 +12,6 @@ declare outputValue : collection {elem : real } @Vector // l layers * n neurons_
 declare zValue : collection {elem : real } @Vector // l layers * n neurons_per_layer
 declare deltaValue : collection {elem : real } @Vector // l layers * n neurons_per_layer
 declare gradient :  collection {elem : real } @Vector // l layers * n neurons_per_layer
-//declare gradient :  collection {elem : real } @Vector // l layers * n neurons_per_layer
 
 declare eta : mut real = 0.50
 declare alpha : mut real = 0.20
@@ -422,11 +421,11 @@ trigger startSlave : () = \_ -> (
 
 declare rows : mut int = 0 
 
-trigger storeData :  {i: real , j: real , k : real} = \csvData -> (
+trigger storeData :  {i: real, j: real, k : real} = \csvData -> (
 	allData.insert {elem : {i: csvData.i, j: csvData.j, k: csvData.k} };
 	rows = rows +1;
   print "I am at storeData ";
-  //((startSlave, me) <- ())
+  print (rtos csvData.i);
   (if (rows==8) then ((startSlave, me) <- ()) else ())
 )
 
