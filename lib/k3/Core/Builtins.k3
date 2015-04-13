@@ -148,6 +148,8 @@ declare atos : address -> string
 // Maximum Int value
 declare get_max_int : () -> int
 
+declare abs : int -> int
+
 // Print to the screen
 declare print : string -> ()
   with effects \_ -> io
