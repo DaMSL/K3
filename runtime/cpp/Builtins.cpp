@@ -16,6 +16,7 @@ namespace K3 {
   using std::endl;
   using std::to_string;
 
+  boost::mutex __standard_context::mutex_;
 
   // Standard context implementations
   __standard_context::__standard_context(Engine& __engine)
@@ -157,7 +158,8 @@ namespace K3 {
   }
 
   unit_t __standard_context::print(string_impl message) {
-    std::cout << message << endl;
+    boost::lock_guard<boost::mutex> lock(mutex_);
+    std::cout << message;
     return unit_t();
   }
 

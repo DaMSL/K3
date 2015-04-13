@@ -21,6 +21,7 @@
 #include <string>
 #include <climits>
 #include <functional>
+#include <boost/thread/mutex.hpp>
 
 #include <boost/thread/thread.hpp>
 
@@ -180,9 +181,11 @@ namespace K3 {
 
   // Standard context for common builtins that use a handle to the engine (via inheritance)
   class __standard_context : public __k3_context {
+    protected:
+      static boost::mutex mutex_;
+
     public:
     __standard_context(Engine&);
-
 
     unit_t openBuiltin(string_impl ch_id, string_impl builtin_ch_id, string_impl fmt);
     unit_t openFile(string_impl ch_id, string_impl path, string_impl fmt, string_impl mode);
@@ -229,7 +232,6 @@ namespace K3 {
     int get_max_int(unit_t) { return INT_MAX; }
 
     unit_t print(string_impl message);
-
 
     // TODO, implement, sharing code with prettify()
     template <class T>
