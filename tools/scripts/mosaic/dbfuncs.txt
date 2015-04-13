@@ -3,9 +3,9 @@ create table peers(address text, name text);
 insert into peers values ('["127.0.0.1", 40000]', 'ms');
 insert into peers values ('["127.0.0.1", 40001]', 'tm');
 insert into peers values ('["127.0.0.1", 50001]', 'sw1');
-insert into peers values ('["127.0.0.1", 50001]', 'sw2');
-insert into peers values ('["127.0.0.1", 50002]', 'sw3');
-insert into peers values ('["127.0.0.1", 50003]', 'sw4');
+insert into peers values ('["127.0.0.1", 50002]', 'sw2');
+insert into peers values ('["127.0.0.1", 50003]', 'sw3');
+insert into peers values ('["127.0.0.1", 50004]', 'sw4');
 insert into peers values ('["127.0.0.1", 60001]', 'nd1');
 insert into peers values ('["127.0.0.1", 60002]', 'nd2');
 insert into peers values ('["127.0.0.1", 60003]', 'nd3');
@@ -129,19 +129,15 @@ returns json as $$
         res[key] = (vid, val)
   # convert res to list
   res2 = []
-  print res
   for k in res:
-    print (list(k))
-    print res[k][1]
     v = list(k) + [res[k][1]]
     res2.append(v)
-  print res2
   return json.dumps(res2)
 $$ language plpythonu;
 
 -- final state
 drop function if exists final_state();
-create function final_state()
+create or replace function final_state()
 returns table(id integer, peer text, key text, value json) as $$
 begin
   return query
