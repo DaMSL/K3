@@ -110,10 +110,8 @@ class Job:
     self.appUID      = kwargs.get("appUID", 'None')
     self.jobId      = kwargs.get("jobId", '1000')
     roleFile        = kwargs.get("rolefile", None)
+    self.logging    = kwargs.get("logging", False)
     self.roles      = {}
-    # self.inputs     = []
-    # self.volumes    = []
-    # self.envars   = []
     self.tasks      = []
     self.status     = None
     self.all_peers  = None
@@ -202,5 +200,6 @@ class PortList():
      else:
          self.offset += 1
      return int(result)
+
 
 

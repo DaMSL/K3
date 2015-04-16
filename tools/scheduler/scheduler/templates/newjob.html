@@ -1,6 +1,8 @@
 {% extends "layout/base.html" %}
 
 {% block content %}
+
+
   <div class="container">
     <div class="starter-template">
       <h2>Launch a new K3 Job</h2>
@@ -30,14 +32,21 @@
                 <div class="col-md-3"><span class="lead text-left">Tag (optional)</span> </div>
                 <div class="col-md-9"><input type=text name=tag></div>
             </div>
+            <div class="checkbox">
+                <label class="checkbox-inline"><input type="checkbox" name="logging" value="">Run with LOGGING ON</label>
+            </div>
             <br />
             <div class="row">
                 <div class="col-md-4"> <span class="lead text-center">Option A: Upload YAML Role File </span>
                 <input type=file class="btn btn-file btn-md text-center" name=file>
                 <button type=submit class="btn btn-primary btn-md text-center">Submit</button> </div>
-
                 <div class="col-md-8"><span class="lead text-center">Option B: Paste raw YAML below:</span>
-                <textarea class="form-control" name=text cols=20 rows=20></textarea></div>
+<!--                 <select name='preload' id='yamls' onChange='setYaml(this.value);'>
+                     <option value='sample'>Sample Role File</option>
+                     <option value='last'>Previous Role File</option>
+                 </select>
+-->
+                <textarea class="form-control" id="yamltext" name=text cols=20 rows=20>{{sample}}</textarea></div>
             </div>
             <div class="row text=right"><button type=submit class="btn btn-primary btn-md">Submit</button></div>
          </form>

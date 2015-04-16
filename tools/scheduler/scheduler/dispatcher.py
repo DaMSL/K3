@@ -3,67 +3,31 @@ import os
 import sys
 import time
 import threading
+import socket
 from collections import deque
 
 from core import *
 from mesosutils import *
 import db
 
-from protobuf_to_dict import protobuf_to_dict
+#from protobuf_to_dict import protobuf_to_dict
 import json
 
 import mesos.interface
 from mesos.interface import mesos_pb2
 import mesos.native
 
-# Constants
-MASTER = 'zk://192.168.0.10:2181,192.168.0.11:2181,192.168.0.18:2181/mesos'
-
 DEFAULT_MEM = 4 * 1024
 
-IP_ADDRS = { "qp1":"192.168.0.10",
-             "qp2":"192.168.0.11",
-             "qp3":"192.168.0.15",
-             "qp4":"192.168.0.16",
-             "qp5":"192.168.0.17",
-             "qp6":"192.168.0.18",
-             "mddb":"192.168.0.20",
-             "qp-hd1":"192.168.0.24",
-             "qp-hd2":"192.168.0.25",
-             "qp-hd3":"192.168.0.26",
-             "qp-hd4":"192.168.0.27",
-             "qp-hd5":"192.168.0.28",
-             "qp-hd6":"192.168.0.29",
-             "qp-hd7":"192.168.0.30",
-             "qp-hd8":"192.168.0.31",
-             "qp-hd9":"192.168.0.32",
-             "qp-hd10":"192.168.0.33",
-             "qp-hd11":"192.168.0.34",
-             "qp-hd12":"192.168.0.35",
-             "qp-hd13":"192.168.0.36",
-             "qp-hd14":"192.168.0.37",
-             "qp-hd15":"192.168.0.38",
-             "qp-hd16":"192.168.0.39",
-             "qp-hm1":"192.168.0.40",
-             "qp-hm2":"192.168.0.41",
-             "qp-hm3":"192.168.0.42",
-             "qp-hm4":"192.168.0.43",
-             "qp-hm5":"192.168.0.44",
-             "qp-hm6":"192.168.0.45",
-             "qp-hm7":"192.168.0.46",
-             "qp-hm8":"192.168.0.47"}
-
-task_state = { 6: "TASK_STAGING",  # Initial state. Framework status updates should not use.
-	       0: "TASK_STARTING",
-	       1: "TASK_RUNNING",
-	       2: "TASK_FINISHED", # TERMINAL.
-	       3: "TASK_FAILED",   # TERMINAL.
-	       4: "TASK_KILLED",   # TERMINAL.
-	       5: "TASK_LOST"}      # TERMINAL.
+task_state = mesos_pb2.TaskState.DESCRIPTOR.values
 
 
 class Dispatcher(mesos.interface.Scheduler):
-  def __init__(self, daemon=True):
+  def __init__(self, master, webaddr, daemon=True):
+
+    self.mesosmaster  = master      # Mesos Master (e.g. zk://host1:2181,host2:2181/mesos)
+    self.webaddr     = webaddr
+
     self.pending = deque()     # Pending jobs. First job is popped once there are enough resources available to launch it.
     self.active = {}           # Active jobs keyed on jobId.
     self.finished = {}         # Finished jobs keyed on jobId.
@@ -71,8 +35,10 @@ class Dispatcher(mesos.interface.Scheduler):
     self.jobsCreated = 0       # Total number of jobs created for generating job ids.
 
     self.daemon = daemon       # Run as a daemon (or finish when there are no more pending/active jobs)
+    self.connected = False
     self.terminate = False     # Flag to signal termination to the owner of the dispatcher
     self.frameworkId = None    # Will get updated when registering with Master
+
  
   def submit(self, job):
     print ("Received new Job for Application %s, Job ID= %d" % (job.appName, job.jobId))
@@ -118,29 +84,12 @@ class Dispatcher(mesos.interface.Scheduler):
       self.terminate = True
       print("Terminating")
 
-
-
   def allocateResources(self, nextJob): #, driver):
 
-    # Keep track of how many cpus have been used per role and per offer
-    # and which roles have been assigned to an offer
     committedResources = {}
-
-    # committedCPU = {}
-    # assignedCPU_toRole = {}
-    # rolesPerOffer = {}
-    # for roleId in nextJob.roles:
-    #   assignedCPU_toRole[roleId] = 0
-    # for offerId in self.offers:
-    #   committedCPU[offerId] = 0
-    #   rolesPerOffer[offerId] = []
-
     availableCPU = {i: int(getResource(o.resources, "cpus")) for i, o in self.offers.items()}
     availableMEM = {i: getResource(o.resources, "mem") for i, o in self.offers.items()}
     availablePorts = {i: PortList(getResource(o.resources, "ports")) for i, o in self.offers.items()}
-
-    for i, p in availablePorts.items():
-      print i, p
 
     # Try to satisy each role, sequentially
     for roleId in nextJob.roles.keys():
@@ -198,10 +147,6 @@ class Dispatcher(mesos.interface.Scheduler):
 
         committedResources[roleId][offerId]['ports'] = availablePorts[offerId]
 
-        # committedCPU[offerId] += requestedCPU
-        # rolesPerOffer[offerId].append((roleId, requestedCPU))
-        # assignedCPU_toRole[roleId] += requestedCPU
-
         print "UNASSIGNED PEERS = %d" % unassignedPeers
         if unassignedPeers <= 0:
           # All peers for this role have been assigned
@@ -212,14 +157,8 @@ class Dispatcher(mesos.interface.Scheduler):
         print("Failed to satisfy role %s. Left with %d unassigned Peers" % (roleId, unassignedPeers))
         return None
 
-    # # Check if all roles were satisfied
-    # for roleId in nextJob.roles:
-    #   if assignedCPU_toRole[roleId] != nextJob.roles[roleId].peers:
-    #     debug = (roleId, assignedCPU_toRole[roleId], nextJob.roles[roleId].peers)
-    #     print("Failed to satisfy role %s. Used %d cpus out of %d peers" % debug)
-    #     return None
 
-    return committedResources #(assignedCPU_toRole, committedCPU, rolesPerOffer, committedResources)
+    return committedResources
 
   # See if the next job in the pending queue can be launched using the current offers.
   # Upon failure, return None. Otherwise, return the Job object with fresh k3 tasks attached to it
@@ -233,6 +172,7 @@ class Dispatcher(mesos.interface.Scheduler):
     nextJob = self.pending[0]
     reservation = self.allocateResources(nextJob)
     
+    #  If no resources were allocated and jobs are waiting, try to launch each in succession
     while nextJob and reservation == None:
       index += 1
       if index >= len(self.pending):
@@ -241,34 +181,31 @@ class Dispatcher(mesos.interface.Scheduler):
       nextJob = self.pending[index]
       reservation = self.allocateResources(nextJob)
       
-
-    # TODO: Determine if job CAN launch; if not try next job in QUEUE
-    # result = self.allocateResources(nextJob) #, driver) #, self.offers)
-    #   reservation = self.allocateResources(nextJob)
-    #   if reservation == None:
-    #     return None
-    #  
-    #   (assignedCPU_toRole, committedCPU, rolesPerOffer, reservation) = result
-  
-    print "RESOURCE TO ROLES"
+    #  Iterate through the reservations for each role / offer: create peers & tasks
     allPeers = []
     for roleId, role in reservation.items():
       print roleId
-      peers = []
       vars = nextJob.roles[roleId].variables
       for offerId, offer in role.items():
-        print offer
+        peers = []
         host = self.offers[offerId].hostname.encode('ascii','ignore')
+        ip = socket.gethostbyname(host)
         if len(allPeers) == 0:
           nextJob.master = host
         for n in range(offer['peers']):
           nextPort = offer['ports'].getNext()
           print ("PEER PORT = %s" % str(nextPort))
-          p = Peer(len(allPeers), vars, IP_ADDRS[host], nextPort)
+          # p = Peer(len(allPeers), vars, IP_ADDRS[host], nextPort)
+
+          # CHECK:  Switched to hostnames
+          p = Peer(len(allPeers), vars, ip, nextPort)
           peers.append(p)
           allPeers.append(p)
 
         taskid = len(nextJob.tasks)
+        print "PEER LIST"
+        for p in peers:
+          print p.index, p.ip, p.port
         t = Task(taskid, offerId, host, offer['mem'], peers, roleId)
         nextJob.tasks.append(t)
 
@@ -277,41 +214,6 @@ class Dispatcher(mesos.interface.Scheduler):
     nextJob.all_peers = allPeers
     del self.pending[index]  #.popleft()
     return nextJob
-
-    # # TODO port management
-    # curPeerIndex = 0
-    # nextJob.tasks = []
-    # allPeers = []
-    #
-    # # Succesful. Accept any used offers. Build tasks, etc.
-    # for offerId in self.offers:
-    #   curPort = 40000
-    #   if committedCPU[offerId] > 0:
-    #
-    #     host = self.offers[offerId].hostname.encode('ascii','ignore')
-    #     debug = (host, str(rolesPerOffer[offerId]))
-    #     print("Accepted Roles for offer on %s: %s" % debug)
-    #     if len(allPeers) == 0:
-    #       nextJob.master = host
-    #
-    #     peers = []
-    #     for (roleId, n) in rolesPerOffer[offerId]:
-    #       for i in range(n):
-    #         vs = nextJob.roles[roleId].variables
-    #         p = Peer(curPeerIndex, vs, IP_ADDRS[host], curPort)
-    #         peers.append(p)
-    #         allPeers.append(p)
-    #         curPeerIndex = curPeerIndex + 1
-    #         curPort = curPort + 1
-    #
-    #     # Use all MEM (for now)
-    #     resources = self.offers[offerId].resources
-    #     mem = getResource(resources, "mem")
-    #
-    #     taskid = len(nextJob.tasks)
-    #     t = Task(taskid, offerId, host, mem, peers)
-    #     nextJob.tasks.append(t)
-
 
 
   def launchJob(self, nextJob, driver):
@@ -324,7 +226,8 @@ class Dispatcher(mesos.interface.Scheduler):
     # Build Mesos TaskInfo Protobufs for each k3 task and launch them through the driver
     for taskNum, k3task in enumerate(nextJob.tasks):
 
-      task = taskInfo(nextJob, taskNum, self.offers[k3task.offerid].slave_id)
+      print "JOB BINARY = %s " % nextJob.binary_url
+      task = taskInfo(nextJob, taskNum, self.webaddr, self.offers[k3task.offerid].slave_id)
 
       oid = mesos_pb2.OfferID()
       oid.value = k3task.offerid
@@ -358,7 +261,7 @@ class Dispatcher(mesos.interface.Scheduler):
   def getSandboxURL(self, jobId):
 
     # For now, return Mesos URL to Framework:
-    master = resolve(MASTER).strip()
+    master = resolve(self.mesosmaster).strip()
     url = os.path.join('http://', master, "#/frameworks", self.frameworkId.value)
     return url
 
@@ -387,6 +290,7 @@ class Dispatcher(mesos.interface.Scheduler):
   # --- Mesos Callbacks ---
   def registered(self, driver, frameworkId, masterInfo):
     print("Registered with framework ID %s" % frameworkId.value)
+    self.connected = True
     self.frameworkId = frameworkId
 
   def statusUpdate(self, driver, update):
@@ -398,15 +302,16 @@ class Dispatcher(mesos.interface.Scheduler):
 
     k3task = self.getTask(s)
     host = k3task.host
-    print("[TASK UPDATE] TaskID %s on host %s. Status: %s" % (update.task_id.value, host, task_state[update.state]))
+    state = mesos_pb2.TaskState.DESCRIPTOR.values[update.state].name
+    print "[TASK UPDATE] TaskID %s on host %s. Status: %s "% (update.task_id.value, host, state)
 
-    if task_state[update.state] == "TASK_KILLED" or \
-       task_state[update.state] == "TASK_FAILED" or \
-       task_state[update.state] == "TASK_LOST":
+    if update.state == mesos_pb2.TASK_KILLED or \
+       update.state == mesos_pb2.TASK_FAILED or \
+       update.state == mesos_pb2.TASK_LOST:
          jobId = self.jobId(update.task_id.value)
          self.cancelJob(jobId, driver)
 
-    if task_state[update.state] == "TASK_FINISHED":
+    if update.state == mesos_pb2.TASK_FINISHED:
       self.taskFinished(update.task_id.value)
    
   def frameworkMessage(self, driver, executorId, slaveId, message):
@@ -438,3 +343,4 @@ class Dispatcher(mesos.interface.Scheduler):
     if offer.id in self.offers:
       del self.offers[offer.id]
    
+

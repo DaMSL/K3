@@ -6,9 +6,17 @@ import hashlib
 import uuid
 import datetime
 import shutil
-from flask import (Flask, request, redirect, url_for, jsonify, render_template)
-# from flask.ext.uploads import delete, init, save, Upload
-from werkzeug import secure_filename
+import argparse
+import socket
+import BaseHTTPServer
+import SimpleHTTPServer
+import httplib
+
+
+from flask import (Flask, request, redirect, url_for, jsonify,
+                     render_template, send_from_directory)
+from werkzeug import (secure_filename, SharedDataMiddleware)
+
 from core import *
 from mesosutils import *
 from dispatcher import *
@@ -16,31 +24,28 @@ from CompileDriver import *
 
 import db
 
-webapp = Flask(__name__)
-
-
-
-webapp.config['nextJobId']    = 1001
-
+webapp = Flask(__name__, static_url_path='')
 
 dispatcher = None
 driver = None
 driver_t = None
-web_up = True
-debug_trace = []
 compile_tasks = {}
 
-joblist = {}
-index_message = 'Welcome to K3'
+index_message = 'Welcome to K3 (DEVELOPMENT SERVER)'
 
 
-def initWeb(**kwargs):
-  # global webapp
+def initWeb(port, **kwargs):
 
-  LOCAL_DIR  = kwargs.get('local', '/web')
-  SERVER_URL = kwargs.get('server', 'http://qp1:8002/')
-  # SERVER_URL = 'http://' + kwargs.get('hostname', 'qp1') + ':'
-  # SERVER_PORT = kwargs.get('port', 8002)'http://qp1:8002/'
+  host   = kwargs.get('host', socket.gethostname())
+  master = kwargs.get('master', None)
+
+  print "FLASK WEB Initializing on host: %s, port: %d" %(host, port)
+
+  # LOCAL DIR : Local path for storing all K3 Applications, job files, executor, output, etc.
+  LOCAL_DIR  = kwargs.get('local', '/k3/web')
+
+  # SERVER URL : URL for serving static content. Defaults to using Flask as static handler via /fs/ endpoint
+  SERVER_URL = kwargs.get('server', '/fs/')
 
   JOBS_TARGET    = 'jobs'
   APPS_TARGET    = 'apps'
@@ -54,6 +59,11 @@ def initWeb(**kwargs):
   ARCHIVE_URL = os.path.join(SERVER_URL, ARCHIVE_TARGET)
 
   # TODO: DIR Structure
+  webapp.config['DIR']      = LOCAL_DIR
+  webapp.config['PORT']     = port
+  webapp.config['HOST']     = host
+  webapp.config['ADDR']     = 'http://%s:%d' % (host, port)
+  webapp.config['MESOS']    = master
   webapp.config['UPLOADED_APPS_DEST']     = APPS_DEST
   webapp.config['UPLOADED_APPS_URL']      = APPS_URL
   webapp.config['UPLOADED_JOBS_DEST']     = JOBS_DEST
@@ -66,18 +76,18 @@ def initWeb(**kwargs):
     path = os.path.join(LOCAL_DIR, p)
     if not os.path.exists(path):
       os.mkdir(path)
+
   # Check for executor(s)
   compiler_exec = os.path.join(LOCAL_DIR, 'CompileExecutor.py')
   if not os.path.exists(compiler_exec):
     shutil.copyfile('CompileExecutor.py', compiler_exec)
   launcher_exec = os.path.join(LOCAL_DIR, 'k3executor')
-  if not os.path.exists(compiler_exec):
+  if not os.path.exists(launcher_exec):
     os.chdir('executor')
     os.system('cmake .')
     os.system('make')
     shutil.copyfile('k3executor', launcher_exec)
     os.chdir('..')
-
 
 
 # Returns unique time stamp uid (unique to this machine only (for now)
@@ -143,6 +153,28 @@ def trace():
     return jsonify(output)
 
 
+# STATIC CONTENT
+@webapp.route('/fs/<path:path>/')
+def static_file(path):
+  local = os.path.join(webapp.config['DIR'], path)
+  if not os.path.exists(local):
+    return returnError("File not found: %s" % path, 404)
+  if os.path.isdir(local):
+    contents = os.listdir(local)
+
+    # TODO:  dittinguish dirs from files
+
+
+    return (jsonify(dict(cwd=local, contents=contents)), 200
+      if request.headers['Accept'] == 'application/json'
+      else render_template('listing.html', cwd=path, listing=contents), 200)
+  else:
+    if local.endswith('stdout') or local.endswith('.txt'):
+      with open(local, 'r') as file:
+        output = file.read()
+      return (output, 200 if request.headers['Accept'] == 'application/json'
+        else render_template("output.html", output=output))
+    return send_from_directory(webapp.config['DIR'], path)
 
 #------------------------------------------------------------------------------
 #  /apps - Application Level interface
@@ -153,7 +185,6 @@ def trace():
 #------------------------------------------------------------------------------
 @webapp.route('/apps', methods=['GET', 'POST'])
 def upload_app():
-  global debug_trace
   if request.method == 'POST':
       print ("UPLOAD NEW APP.....")
       file = request.files['file']
@@ -195,6 +226,10 @@ def upload_app():
   else:
       return render_template('apps.html', applist=applist, versions=versions)
 
+@webapp.route('/app', methods=['GET', 'POST'])
+def uploadApp():
+  return upload_app()
+
 
 #------------------------------------------------------------------------------
 #  /apps/<appName> - Specific Application Level interface
@@ -212,6 +247,10 @@ def get_app(appName):
         return render_template("apps.html", name=appName, versionList=versionList)
     else:
       return render_template("errors/404.html", message="Application %s does not exist" % appName)
+
+@webapp.route('/app/<appName>', methods=['GET', 'POST'])
+def getApp(appName):
+  return get_app(appName)
 
 
 #------------------------------------------------------------------------------
@@ -256,6 +295,9 @@ def archive_app(appName, appUID):
       #   return redirect(path, 302)
 
 
+@webapp.route('/app/<appName>/<appUID>', methods=['GET', 'POST'])
+def archiveApp(appName, appUID):
+  return archive_app(appName, appUID)
 
 #------------------------------------------------------------------------------
 #  /jobs - Current runtime & completed job Interface
@@ -269,6 +311,10 @@ def list_jobs():
     return jsonify(dict(LaunchJobs=jobs, CompilingJobs=compiles)), 200
   else:
     return render_template("jobs.html", joblist=jobs, compilelist=compiles)
+
+@webapp.route('/job')
+def listJobs():
+  return list_jobs()
 
 
 #------------------------------------------------------------------------------
@@ -289,6 +335,7 @@ def create_job(appName, appUID):
         # TODO: Get user
         file = request.files['file']
         text = request.form['text'] if 'text' in request.form else None
+        logging = request.form['logging'] if 'logging' in request.form else False
         user = request.form['user'] if 'user' in request.form else 'anonymous'
         tag = request.form['tag'] if 'tag' in request.form else ''
         # trials = int(request.form['trials']) if 'trials' in request.form else 1
@@ -319,11 +366,10 @@ def create_job(appName, appUID):
               file.write(text)
 
         # Create new Mesos K3 Job
-        apploc = os.path.join(webapp.config['UPLOADED_APPS_URL'], appName, appUID, appName)
+        apploc = webapp.config['ADDR']+os.path.join(webapp.config['UPLOADED_APPS_URL'], appName, appUID, appName)
 
-        newJob = Job(binary=apploc, appName=appName, jobId=jobId, rolefile=os.path.join(path, filename))
-
-        print ("NEW JOB ID: %s" % newJob.jobId)
+        newJob = Job(binary=apploc, appName=appName, jobId=jobId,
+                     rolefile=os.path.join(path, filename), logging=logging)
 
         # Submit to Mesos
         dispatcher.submit(newJob)
@@ -337,16 +383,13 @@ def create_job(appName, appUID):
     elif request.method == 'GET':
       jobs = db.getJobs(appName=appName)
       if 'application/json' in request.headers['Accept']:
-        return jsonify(jobs)
+        return jsonify(dict(jobs=jobs))
       else:
         if len(jobs) > 0:
           lastjobId = max([j['jobId'] for j in jobs])
-
-          path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(lastjobId),'role.yaml').encode(encoding='ascii')
-          if os.path.exists(path):
-            with open(path, 'r') as role:
-              lastrole = role.read()
-            return render_template("newjob.html", name=appName, uid=appUID, lastrole=lastrole)
+          with open('sample.yaml', 'r') as f:
+            sample = f.read()
+          return render_template("newjob.html", name=appName, uid=appUID, sample=sample)
         return render_template("newjob.html", name=appName, uid=appUID)
 
   else:
@@ -361,62 +404,6 @@ def create_job(appName, appUID):
 def create_job_latest(appName):
     app = db.getApp(appName)
     return create_job(appName, app['uid'])
-
-    # print app
-    # if request.method == 'POST':
-    #     appUID = app['uid']
-    #     file = request.files['file']
-    #     text = request.form['text'] if 'text' in request.form else None
-    #     user = request.form['user'] if 'user' in request.form else 'anonymous'
-    #     tag = request.form['tag'] if 'tag' in request.form else ''
-    #
-    #     # Check for valid submission
-    #     if not file and not text:
-    #       return returnError("Invalid job request", 404)
-    #
-    #     # Post new job request, get job ID & submit time
-    #     thisjob = dict(appName=appName, appUID=appUID, user=user, tag=tag)
-    #     jobId, time = db.insertJob(thisjob)
-    #     thisjob = dict(jobId=jobId, time=time)
-    #
-    #     # Save yaml to file (either from file or text input)
-    #     path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName)
-    #     if not os.path.exists(path):
-    #       os.mkdir(path)
-    #
-    #     path = os.path.join(path, str(jobId))
-    #     filename = 'role.yaml'
-    #     if not os.path.exists(path):
-    #       os.mkdir(path)
-    #
-    #     if file:
-    #         file.save(os.path.join(path, filename))
-    #     else:
-    #         with open(os.path.join(path, filename), 'w') as file:
-    #           file.write(text)
-    #
-    #     # Create new Mesos K3 Job
-    #     apploc = os.path.join(webapp.config['UPLOADED_APPS_URL'], appName, appUID, appName)
-    #     try:
-    #       newJob = Job(binary=apploc, appName=appName, jobId=jobId, rolefile=os.path.join(path, filename))
-    #     except K3JobError as err:
-    #       db.deleteJob(jobId)
-    #       return returnError(err.value, 400)
-    #
-    #     print ("NEW JOB ID: %s" % newJob.jobId)
-    #
-    #     # Submit to Mesos
-    #     dispatcher.submit(newJob)
-    #     thisjob = dict(thisjob, url=dispatcher.getSandboxURL(jobId), status='SUBMITTED')
-    #
-    #
-    #     if 'application/json' in request.headers['Accept']:
-    #       return jsonify(thisjob), 202
-    #     else:
-    #       return render_template('jobs.html', appName=appName, lastjob=thisjob)
-
-    # elif request.method == 'GET':
-    #     return redirect(url_for('create_job', appName=appName, appUID=app['uid']))
 
 
 #------------------------------------------------------------------------------
@@ -435,7 +422,7 @@ def get_job(appName, jobId):
     thisjob = dict(job, url=dispatcher.getSandboxURL(jobId))
     if k3job != None:
       thisjob['master'] = k3job.master
-    thisjob['sandbox'] = os.path.join(webapp.config['UPLOADED_JOBS_URL'], appName, str(jobId)).encode(encoding='ascii')
+    thisjob['sandbox'] = webapp.config['ADDR']+os.path.join(webapp.config['UPLOADED_JOBS_URL'], appName, str(jobId)).encode(encoding='ascii')
 
     path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(jobId),'role.yaml').encode(encoding='ascii')
     if os.path.exists(path):
@@ -481,7 +468,7 @@ def replay_job(appName, jobId):
 
       # Create new Mesos K3 Job
       try:
-        newJob = Job(binary=os.path.join(webapp.config['UPLOADED_APPS_URL'], appName, oldjob['hash'], appName),
+        newJob = Job(binary=webapp.config['ADDR']+os.path.join(webapp.config['UPLOADED_APPS_URL'], appName, oldjob['hash'], appName),
                      appName=appName, jobId=new_jobId, rolefile=role_copy)
       except K3JobError as err:
         db.deleteJob(jobId)
@@ -554,7 +541,7 @@ def archive_job(appName, jobId):
     elif request.method == 'GET':
         return '''
 Upload your file using the following CURL command:\n\n
-   curl -i -H "Accept: application/json" -F file=@<filename> http://qp1:5000/<appName>/<jobId>/archive
+   curl -i -H "Accept: application/json" -F file=@<filename> http://<server>:<port>/<appName>/<jobId>/archive
 ''', 200
 
 #------------------------------------------------------------------------------
@@ -654,9 +641,10 @@ def compile():
       if not file and not text:
           return render_template("errors/404.html", message="Invalid Compile request")
 
-      # Determine application name
+      # Create a unique ID
       uid = getUID()
 
+      # Determine application name
       if not name:
         if file:
           srcfile = secure_filename(file.filename)
@@ -668,11 +656,12 @@ def compile():
 
       path = os.path.join(webapp.config['UPLOADED_ARCHIVE_DEST'], uname).encode(encoding='ascii')
       url = os.path.join(webapp.config['UPLOADED_ARCHIVE_URL'], uname).encode(encoding='ascii')
+
+      # Save K3 source to file (either from file or text input)
       src_file = ('%s.k3' % name)
       if not os.path.exists(path):
         os.mkdir(path)
 
-      # Save K3 source to file (either from file or text input)
       if file:
           file.save(os.path.join(path, src_file))
       else:
@@ -682,33 +671,44 @@ def compile():
 
       # Generate compilation script  TODO: (Consider) Move to executor
       sh_file = 'compile_%s.sh' % name
-      sh = genScript(dict(name=name, uid=uid, options=options, uname=uname))
+      sh = genScript(dict(name=name, uid=uid, options=options, uname=uname,
+                          host=webapp.config['HOST'], port=webapp.config['PORT']))
       compscript = open(os.path.join(path, sh_file).encode(encoding='ascii'), 'w')
       compscript.write(sh)
       compscript.close()
 
-      source = os.path.join(url, src_file)
-      script = os.path.join(url, sh_file)
+      source = webapp.config['ADDR'] + os.path.join(url, src_file)
+      script = webapp.config['ADDR'] + os.path.join(url, sh_file)
+
+      print "ADDR: %s" % webapp.config['ADDR']
+      print "URL: %s" % url
+      print ("SOURCE: %s, SCRIPT: %s" % (source, script))
 
       # TODO: Add in Git hash
-      print ("Create the compile job...")
       compileJob    = CompileJob(name=name, uid=uid, path=path, url=url, options=options, user=user, tag=tag)
-      print ("Create the driver...")
-      compileDriver = CompileDriver(compileJob, source=source, script=script)
+
+
+      # compileDriver = CompileDriver(compileJob, webapp.config['MESOS'], source=source, script=script, webaddr=webapp.config['ADDR'])
+      launcher = CompileLauncher(compileJob, source=source, script=script, webaddr=webapp.config['ADDR'])
+
+      framework = mesos_pb2.FrameworkInfo()
+      framework.user = ""
+      framework.name = "Compile: %s" % name
+
+      driver = mesos.native.MesosSchedulerDriver(launcher, framework, webapp.config['MESOS'])
 
       # TODO: get/set K3 build source
-      compile_tasks[uname] = compileDriver
+      compile_tasks[uname] = driver
 
-      print ("Starting compilation thread")
-
-      t = threading.Thread(target=compileDriver.launch)
+      t = threading.Thread(target=driver.run)
       try:
         t.start()
       except e:
-        compileDriver.stop()
+        driver.stop()
         t.join()
 
-      outputurl = "http://qp1:5000/compile/%s" % uname
+      # outputurl = "http://qp1:%d/compile/%s" % (webapp.config['PORT'], uname)
+      outputurl = "/compile/%s" % uname
       thiscompile = dict(compileJob.__dict__, url=dispatcher.getSandboxURL(uname),
                          status='SUBMITTED', outputurl=outputurl)
 
@@ -828,14 +828,11 @@ def delete_compiles():
 #------------------------------------------------------------------------------
 
 def shutdown_server():
-    global web_up
     print ("Attempting to kill the server")
     func = request.environ.get('werkzeug.server.shutdown')
     if func is None:
         raise RuntimeError("Not running the server")
     func()
-    web_up = False
-    print ("Web is down")
     driver.stop()
     driver_t.join() 
     for k, v in compile_tasks.items():
@@ -849,36 +846,59 @@ def shutdown():
     shutdown_server()
     return 'Server is going down...'
 
+
+
+
 if __name__ == '__main__':
+
+  print "====================  <<<<< K3 >>>>> ==================================="
+  parser = argparse.ArgumentParser()
+  parser.add_argument('-p', '--port', help='Flaskweb Server Port', default=5000, required=False)
+  parser.add_argument('-m', '--master', help='URL for the Mesos Master (e.g. zk://localhost:2181/mesos', default='zk://localhost:2181/mesos', required=False)
+  args = parser.parse_args()
+
+  master = args.master
+
+  port = int(args.port)
+  master=args.master
   webapp.debug = True
 
   db.createTables()
-  initWeb()
+
+  initWeb(port=port, master=master)
 
   framework = mesos_pb2.FrameworkInfo()
   framework.user = "" # Have Mesos fill in the current user.
-  framework.name = "K3 FlaskWeb Dispatcher"
+  framework.name = "K3 Dispatcher (Dev)"
 
-  dispatcher = Dispatcher(daemon=True)
+  dispatcher = Dispatcher(master, webapp.config['ADDR'], daemon=True)
   if dispatcher == None:
     print("Failed to create dispatcher. Aborting")
     sys.exit(1)
 
-  driver = mesos.native.MesosSchedulerDriver(dispatcher, framework, MASTER)
+  driver = mesos.native.MesosSchedulerDriver(dispatcher, framework, master)
   driver_t = threading.Thread(target = driver.run)
 
   try:
+    print "Starting Static Web Server..."
     index_message = 'K3 Dispatcher attempting to run'
+    print "Starting Mesos Dispatcher..."
     driver_t.start()
-    webapp.run(host='0.0.0.0', threaded=True)
-    index_message = 'K3 Dispatcher currently running'
-    print ("Web Server is currently online")
+    print "Starting FlaskWeb Server..."
 
+    webapp.run(host='0.0.0.0', port=port, threaded=True, use_reloader=False)
+
+    index_message = 'K3 Dispatcher currently running'
     terminate = False
     while not terminate:
       time.sleep(1)
       terminate = dispatcher.terminate
     print ("Server is terminating")
+    driver.stop()
+    driver_t.join()
+
+  except socket.error:
+    print ("Flask web cannot start: Port not available.")
     driver.stop()
     driver_t.join()
 
@@ -888,4 +908,5 @@ if __name__ == '__main__':
     driver_t.join()
     for k, v in compile_tasks.items():
       v.stop()
+
 

@@ -1,7 +1,17 @@
-import psycopg2
+#import psycopg2
+import sqlite3
 import datetime as dt
 from pytz import timezone
 import sys
+import os
+
+SQLITE_DB = 'data.db'
+
+#  Load Postgres Connection Data from enviornment (or load defaults)
+# HOST    = os.environ.get('PGHOST',      'localhost')
+# DBNAME  = os.environ.get('PGDATABASE',  'postgres')
+# USER    = os.environ.get('PGUSER',      'postgres')
+# PASSWD  = os.environ.get('PGPASSWORD',  'password')
 
 
 # Helper functions for Time Stamps
@@ -18,11 +28,10 @@ def getTS_est(ts=None):
 
 
 
-# ts = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
-
-
+#  Connection String
 def getConnection():
-  conn = psycopg2.connect("host=qp1 dbname=postgres user=postgres password=password")
+#  conn = psycopg2.connect(host=HOST, dbname=DNAME, user=USER, password=PASSWD)
+  conn = sqlite3.connect(SQLITE_DB)
   return conn
 
 
@@ -183,7 +192,6 @@ def deleteJob(jobId):
   cur.execute("DELETE FROM jobs WHERE jobId=%s;" % jobId)
   conn.commit()
 
-
 def insertCompile(comp):
   conn = getConnection()
   cur = conn.cursor()
@@ -210,7 +218,6 @@ def updateCompile(uid, **kwargs):
       cur.execute("UPDATE compiles SET complete='%s' WHERE uid='%s';" % (time, uid))
       conn.commit()
 
-
 def getCompiles(**kwargs):
   appName = kwargs.get('appName', None)
   uid     = kwargs.get('uid', None)
@@ -225,5 +232,6 @@ def getCompiles(**kwargs):
   return [dict(name=r[0], uid=r[1], git_hash=r[2], user=r[3],
                options=r[4], submit=r[5], complete=r[6],
                tag=r[7], status=r[8]) for r in cur.fetchall()]
+
 
 

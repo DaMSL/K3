@@ -2,8 +2,9 @@
 import yaml
 import re
 import subprocess
+import httplib
 
-from protobuf_to_dict import protobuf_to_dict
+#from protobuf_to_dict import protobuf_to_dict
 import json
 
 
@@ -12,11 +13,12 @@ from mesos.interface import mesos_pb2
 import mesos.native
 
 
-# TODO how should we determine the executor url
-EXECUTOR_URL = "http://qp1:8002/k3executor"
-COMPEXEC_URL = "http://qp1:8002/CompileExecutor.py"
+# EXECUTOR_URL = "http://qp1:8002/k3executor"
+# COMPEXEC_URL = "http://qp1:8002/CompileExecutor.py"
 
-K3_DOCKER_NAME = "damsl/k3-deployment:latest"
+# EXECUTOR_URL =
+# COMPEXEC_URL =
+K3_DOCKER_NAME = "damsl/k3-run:exec"
 
 
 
@@ -36,7 +38,6 @@ def getResource(resources, tag):
         resource.text.value
   return 0
 
-      # return convF(resource)  #(resource.scalar.value)
 
 # Fill in any "auto" variables
 # to be the address first peer in allPeers
@@ -49,7 +50,7 @@ def populateAutoVars(allPeers):
 
 
 # TODO: Add role to this to enable varying roles for volumes & envars
-def executorInfo(k3job, tnum): #, jobid, binary_url, volumes=[], environs=[]):
+def executorInfo(k3job, tnum, webaddr): #, jobid, binary_url, volumes=[], environs=[]):
 
 
   k3task = k3job.tasks[tnum]
@@ -63,11 +64,12 @@ def executorInfo(k3job, tnum): #, jobid, binary_url, volumes=[], environs=[]):
 
   # Create the Command
   command = mesos_pb2.CommandInfo()
-  command.value = '$MESOS_SANDBOX/k3executor'
-  exec_binary = command.uris.add()
-  exec_binary.value = EXECUTOR_URL
-  exec_binary.executable = True
-  exec_binary.extract = False
+  command.value = 'k3/k3executor'
+#  command.value = '$MESOS_SANDBOX/k3executor'
+#  exec_binary = command.uris.add()
+#  exec_binary.value = "%s/fs/k3executor" % webaddr
+#  exec_binary.executable = True
+#  exec_binary.extract = False
 
   k3_binary = command.uris.add()
   k3_binary.value = k3job.binary_url
@@ -78,8 +80,8 @@ def executorInfo(k3job, tnum): #, jobid, binary_url, volumes=[], environs=[]):
     environment = mesos_pb2.Environment()
     for e in role.envars:
       var = environment.variables.add()
-      var.name = e['name']  #'K3_BUILD'
-      var.value = e['value']  #<git-hash>
+      var.name = e['name']
+      var.value = e['value']
     command.environment.MergeFrom(environment)
 
   executor.command.MergeFrom(command)
@@ -113,11 +115,13 @@ def executorInfo(k3job, tnum): #, jobid, binary_url, volumes=[], environs=[]):
        
   return executor
 
-# def taskInfo(k3task, jobId, slaveId, binary_url, all_peers, inputs, volumes):
-def taskInfo(k3job, tnum, slaveId):
+def taskInfo(k3job, tnum, webaddr, slaveId):
 
   k3task = k3job.tasks[tnum]
   role   = k3job.roles[k3task.roleId]
+
+  peerStart = k3task.peers[0].index,
+  peerEnd   = k3task.peers[-1].index,
 
   task_data = {"binary": str(k3job.appName),
       "totalPeers": len(k3job.all_peers),
@@ -127,9 +131,13 @@ def taskInfo(k3job, tnum, slaveId):
       "peers": [ {"addr": [p.ip, p.port] } for p in k3job.all_peers],
       "globals": [p.variables for p in k3task.peers],
       "master": [k3job.all_peers[0].ip, k3job.all_peers[0].port ],
+      "archive_endpoint" : "%s/jobs/" % webaddr,
       "data": [role.inputs for p in range(len(k3task.peers))]}
+  # if k3job.logging:
+  task_data['logging'] = True
 
-  executor = executorInfo(k3job, tnum)
+  print 'ARCHIVE ADDR: %s' % webaddr
+  executor = executorInfo(k3job, tnum, webaddr)
 
   task = mesos_pb2.TaskInfo()
   task.task_id.value = k3task.getId(k3job.jobId)
@@ -138,8 +146,6 @@ def taskInfo(k3job, tnum, slaveId):
   task.executor.MergeFrom(executor)
   task.data = yaml.dump(task_data)
 
-  print yaml.dump(task_data)
- 
   cpus = task.resources.add()
   cpus.name = "cpus"
   cpus.type = mesos_pb2.Value.SCALAR
@@ -155,20 +161,32 @@ def taskInfo(k3job, tnum, slaveId):
   ports.type = mesos_pb2.Value.RANGES
 
   # To handle non-contiguous ranges
-  peerPorts = sorted([p.port for p in k3job.all_peers])
-  nextPort = peerPorts[0]
+  peerPorts = sorted([p.port for p in k3task.peers])
   portlist = ports.ranges.range.add()
-  portlist.begin = nextPort
-  prevPort = nextPort
-  for port in peerPorts[1:]:
-    if port != prevPort + 1:
-      portlist.end = prevPort
-      portlist = ports.ranges.range.add()
-      portlist.begin = port
-    prevPort = port
-  portlist.end = prevPort
+  portlist.begin = min(peerPorts)
+  portlist.end = max(peerPorts)
 
 
+  print "PEERS IN MESOSUTIL:"
+  for p in k3task.peers:
+    print p.ip, p.port
+  # nextPort = peerPorts[0]
+  # portlist = ports.ranges.range.add()
+  #
+  # print "PROTOBUFF PORTS:"
+  # portlist.begin = nextPort
+  # print ("  Range: %d -" % nextPort,)
+  # prevPort = nextPort
+  # for port in peerPorts[1:]:
+  #   if port != prevPort + 1:
+  #     portlist.end = prevPort
+  #     print prevPort
+  #     portlist = ports.ranges.range.add()
+  #     portlist.begin = port
+  #     print "  Range: %d " % port,
+  #   prevPort = port
+  # portlist.end = prevPort
+  # print prevPort
 
   return task
 
@@ -176,6 +194,7 @@ def taskInfo(k3job, tnum, slaveId):
 
 def compileTask(**kwargs):
   app     = kwargs.get('name', 'myprog')
+  webaddr = kwargs.get('webaddr', 'http://localhost:5000')
   script  = kwargs.get('script', None)
   source  = kwargs.get('source', None)
   slave   = kwargs.get('slave', None)
@@ -183,7 +202,7 @@ def compileTask(**kwargs):
   r_cpu   = kwargs.get('cpu', 4)
   r_mem   = kwargs.get('mem', 4*1024)
 
-  print "COMPILE TASK"
+  print 'WEB ADDR: %s' % webaddr
 
   if script == None or source == None:
     print ("Error. Cannot run compiler (missing source and/or compiler script)")
@@ -199,15 +218,17 @@ def compileTask(**kwargs):
   executor.name = 'K3-Compiler-%s' % app
 
   command = mesos_pb2.CommandInfo()
-#  command.value = '$MESOS_SANDBOX/k3compexec'
   command.value = 'python $MESOS_SANDBOX/CompileExecutor.py'
 
-  # env = command.environment.add()
-  # env.name = 'K3_BUILD'
-  # env.vale = <git-hash>
+  # TODO:  Pull Specific K3-Build Version
+  # env = mesos_pb2.Environment()
+  # var = environment.variables.add()
+  # var.name = 'K3_BUILD'
+  # var.value = <git-hash>
+  # command.environment.MergeFrom(environment)
 
   comp_exec = command.uris.add()
-  comp_exec.value = COMPEXEC_URL
+  comp_exec.value = "%s/fs/CompileExecutor.py" % webaddr
   comp_exec.executable = False
   comp_exec.extract = False
 
@@ -232,16 +253,10 @@ def compileTask(**kwargs):
   executor.command.MergeFrom(command)
   executor.container.MergeFrom(container)
 
-
-  print "BUILD TASK"
   task = mesos_pb2.TaskInfo()
   task.name = app
   task.task_id.value = uname
   task.slave_id.value = slave
-  # task.name = '$MESOS_SANDBOX/compile_%s.sh' % app
-  print "Compiling %s (%s)" % (task.name, task.task_id.value)
-
-  # task.data = ''
 
   # Labels:  New In Mesos v 0.22
   # config = mesos_pb2.Labels()
@@ -251,8 +266,6 @@ def compileTask(**kwargs):
   # task.labels.MergeFrom(config)
 
   task.executor.MergeFrom(executor)
-
-#  resources = offer.resources
 
   cpus = task.resources.add()
   cpus.name = "cpus"
@@ -285,7 +298,11 @@ def resolve(master):
         raise Exception('Failed to execute \'mesos-resolve %s\':\n%s'
                         % (master, process.stderr.read()))
 
-    result = process.stdout.read()
+    server = process.stdout.read()
     process.stdout.close()
     process.stderr.close()
-    return result
+
+    conn = httplib.HTTPConnection(server.strip())
+    conn.request('GET', '/')
+    return server if conn.getresponse().status in [200, 201, 202] else None
+

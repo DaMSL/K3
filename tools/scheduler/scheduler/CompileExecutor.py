@@ -98,3 +98,4 @@ if __name__ == "__main__":
   executor = CompilerExecutor()
   driver = mesos.native.MesosExecutorDriver(executor)
   sys.exit(0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1)
+

@@ -4,7 +4,7 @@
   <div class="container">
     <div class="starter-template">
         {% if appName %}
-          <h2>Application: <span class="text-info">{{appName}}</span>
+          <h2>Application: <span class="text-info"><a href="/jobs/{{appName}}">{{appName}}</a></span>
           {% if jobId %}
            - Job: <span class="text-info">{{jobId}}</span>
           {% endif %}

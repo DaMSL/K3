@@ -1,0 +1,7 @@
+---
+name: role 1
+peers: 1
+hostmask: ".*"
+k3_globals:
+  role: go
+  rendezvous: auto
