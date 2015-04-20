@@ -18,15 +18,13 @@
         {% endif %}
         {% if lastjob %}
         <div class="row">
-            <div class="col-md-5">
+            <div class="col-md-12">
                 <h3>Job # {{ lastjob.jobId }} {{ lastjob.status }} at {{ lastjob.time }}</h3>
                 <h4>Check tasks on <a href="{{ lastjob.url }}" target="_blank">Mesos</a></h4>
             </div>
-            <div class="col-md-7">
-              {% if lastjob.sandbox %}
-                <li class="list-group-item">Sandbox Files: <iframe src="{{ lastjob.sandbox }}" style="border:none" width="100%"></iframe></li>{% endif %}
-            </div>
         </div>
+        <div class="row">
+          <div class="col-md-7">
             <br>
             <h4 class="text-center">Job Environment</h4>
             <ul class="list-group">
@@ -48,9 +46,22 @@
               {% if lastjob.roles %}
                 <li class="list-group-item">Roles<br><pre>{{ lastjob.roles }}</pre></li> {% endif %}
             </ul>
+          </div>
+          <div class="col-md-5">
+              {% if lastjob.sandbox %}
+                <h4 class="text-center">Sandbox Files</h4>
+                <ul style="list-style-type:disc">
+                {% for entry in lastjob.sandbox %}
+                    <li><a href="/fs/jobs/{{appName}}/{{lastjob.jobId}}/{{entry}}">{{entry}}</a></li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+          </div>
+        </div>
             <br><br><h4><a href="/jobs">return to jobs</a></h4>
         {% else %}
-          <h3>Active Compiling Jobs</h3>
+
+<!--          <h3>Active Compiling Jobs</h3>
           <table class="table table-striped">
           {% for job in compilelist %}
             {% if job.status == "SUBMITTED" or job.status == "COMPILING" or job.status == "ARCHIVING" %}
@@ -63,7 +74,7 @@
             {% endif %}
           {% endfor %}
           </table>
-
+-->
           <h3>Active K3 Jobs</h3>
           <table class="table table-striped">
           {% for job in joblist %}
@@ -76,6 +87,8 @@
             {% endif %}
           {% endfor %}
           </table>
+
+
           <h3>Inactive K3 Jobs</h3>
             <form action="/delete/jobs" method=post enctype=multipart/form-data>
           <table class="table table-striped">
@@ -94,7 +107,9 @@
            <div class="row text-right"><button type=submit class="btn btn-danger btn-md">
                Delete Selected Inactive K3 Jobs</button></div>
         </form>
-          <h3>Inactive Compiling Jobs</h3>
+
+
+<!--          <h3>Inactive Compiling Jobs</h3>
           <form action="/delete/compiles" method=post enctype=multipart/form-data>
           <table class="table table-striped">
           {% for job in compilelist %}
@@ -110,7 +125,7 @@
           <div class="row text-right"><button type=submit class="btn btn-danger btn-md">
                Delete Selected Inactive Compiling Jobs</button></div>
           </form>
-
+-->
         {% endif %}
     </div>
   </div>

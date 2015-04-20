@@ -261,9 +261,12 @@ class Dispatcher(mesos.interface.Scheduler):
   def getSandboxURL(self, jobId):
 
     # For now, return Mesos URL to Framework:
-    master = resolve(self.mesosmaster).strip()
-    url = os.path.join('http://', master, "#/frameworks", self.frameworkId.value)
-    return url
+    return 'http://' + self.mesosmaster
+    # print "MESOS MASTER: %s, " % self.mesosmaster,
+    # master = resolve(self.mesosmaster).strip()
+    # print " .... resolved to %s" % (master)
+    # url = os.path.join('http://', master)
+    # return url
 
 
   def taskFinished(self, fullid):
@@ -303,7 +306,7 @@ class Dispatcher(mesos.interface.Scheduler):
     k3task = self.getTask(s)
     host = k3task.host
     state = mesos_pb2.TaskState.DESCRIPTOR.values[update.state].name
-    print "[TASK UPDATE] TaskID %s on host %s. Status: %s "% (update.task_id.value, host, state)
+    print "[TASK UPDATE] TaskID %s on host %s. Status: %s   [%s]"% (update.task_id.value, host, state, update.data)
 
     if update.state == mesos_pb2.TASK_KILLED or \
        update.state == mesos_pb2.TASK_FAILED or \

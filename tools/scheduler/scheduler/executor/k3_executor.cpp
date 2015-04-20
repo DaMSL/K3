@@ -37,6 +37,25 @@ class DataFile {
     string policy;
 };
 
+
+// exec -- exec system command, pipe to stdout, return exit code
+int exec (const char * cmd)  {
+  FILE* pipe = popen(cmd, "r");
+    if (!pipe) {
+        return -1;
+    }
+    char buffer[256];
+    while (!feof(pipe)) {
+        if (fgets(buffer, 256, pipe) != NULL) {
+           std::string s = std::string(buffer);
+           cout << s << endl;
+        }
+    }
+    return pclose(pipe);
+}
+
+
+
 class KDExecutor : public Executor
 {
 protected:
@@ -73,6 +92,7 @@ public:
 
     TaskStatus status;
     status.mutable_task_id()->MergeFrom(task.task_id());
+    status.set_data("K3 Task is running");
     status.set_state(TASK_RUNNING);
     driver->sendStatusUpdate(status);
 
@@ -334,21 +354,6 @@ public:
   }
 
 
-  int exec (char * cmd)  {
-      FILE* pipe = popen(cmd, "r");
-        if (!pipe) {
-            return -1;
-        }
-        char buffer[256];
-        while (!feof(pipe)) {
-            if (fgets(buffer, 256, pipe) != NULL) {
-               std::string s = std::string(buffer);
-               cout << s << endl;
-            }
-        }
-        return pclose(pipe);
-  }
-
 class TaskThread {
   protected:
     TaskInfo task;
@@ -371,7 +376,7 @@ class TaskThread {
         // Currently, just call the K3 executable with the generated command line from task.data()
         try {
             cout << "Starting the K3 program thread: " << app_name << endl;
-            result = exec(k3_cmd.c_str());
+            int result = exec(k3_cmd.c_str());
             cout << "-------------->  PROGRAM TERMINATED <--------------------" << endl;
             if (result == 0) {
                 // Tar sandbox & send to flaskweb UI  (hack for now -- should simply call post-execution script)
@@ -383,22 +388,23 @@ class TaskThread {
                 string curl_cmd =    post_curl + "-F \"file=@" + tarfile + "\" " + archive_endpoint;
                 string curl_output = post_curl + "-F \"file=@stdout_" + host_name + "\" "  + archive_endpoint;
 
-                cout << endl << "POST-PROCESSING COMMANDS:" << endl;
+                cout << endl << "POST-PROCESSING:" << endl;
                 cout << tar_cmd << endl;
                 exec(tar_cmd.c_str());
                 cout << endl << endl << rename_out << endl;
-		        system(rename_out.c_str());
+		        exec(rename_out.c_str());
                 cout << endl << endl << curl_cmd << endl;
-                system(curl_cmd.c_str());
+                exec(curl_cmd.c_str());
                 cout << endl << endl << curl_output << endl;
-                system(curl_output.c_str());
+                exec(curl_output.c_str());
+                cout << endl << "Task " << task.task_id().value() << " Completed!" << endl;
 
                 status.set_state(TASK_FINISHED);
-                cout << "Task " << task.task_id().value() << " Completed!" << endl;
+                driver->sendFrameworkMessage("Task FINISHED");
             }
             else {
                 status.set_state(TASK_FAILED);
-                cout << "K3 Task " << task.task_id().value() << " returned error code: " << k3 << endl;
+                cout << "K3 Task " << task.task_id().value() << " returned error code: " << result << endl;
             }
             driver->sendStatusUpdate(status);
             driver->stop();

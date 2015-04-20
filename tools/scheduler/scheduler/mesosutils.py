@@ -12,6 +12,7 @@ import mesos.interface
 from mesos.interface import mesos_pb2
 import mesos.native
 
+DEBUG_EXECUTOR = True
 
 # EXECUTOR_URL = "http://qp1:8002/k3executor"
 # COMPEXEC_URL = "http://qp1:8002/CompileExecutor.py"
@@ -64,12 +65,15 @@ def executorInfo(k3job, tnum, webaddr): #, jobid, binary_url, volumes=[], enviro
 
   # Create the Command
   command = mesos_pb2.CommandInfo()
-  command.value = 'k3/k3executor'
-#  command.value = '$MESOS_SANDBOX/k3executor'
-#  exec_binary = command.uris.add()
-#  exec_binary.value = "%s/fs/k3executor" % webaddr
-#  exec_binary.executable = True
-#  exec_binary.extract = False
+
+  if DEBUG_EXECUTOR:
+    command.value = '$MESOS_SANDBOX/k3executor'
+    exec_binary = command.uris.add()
+    exec_binary.value = "%s/fs/k3executor" % webaddr
+    exec_binary.executable = True
+    exec_binary.extract = False
+  else:
+    command.value = 'k3/k3executor'
 
   k3_binary = command.uris.add()
   k3_binary.value = k3job.binary_url

@@ -70,7 +70,7 @@ def initWeb(port, **kwargs):
   webapp.config['UPLOADED_JOBS_URL']      = JOBS_URL
   webapp.config['UPLOADED_ARCHIVE_DEST']  = ARCHIVE_DEST
   webapp.config['UPLOADED_ARCHIVE_URL']   = ARCHIVE_URL
-
+  webapp.config['COMPILE_OFF']  = kwargs.get('compile', False)
 
   for p in [LOCAL_DIR, JOBS_TARGET, APPS_TARGET, ARCHIVE_TARGET]:
     path = os.path.join(LOCAL_DIR, p)
@@ -152,7 +152,6 @@ def trace():
                   offers=dispatcher.offers.__dict__)
     return jsonify(output)
 
-
 # STATIC CONTENT
 @webapp.route('/fs/<path:path>/')
 def static_file(path):
@@ -161,20 +160,27 @@ def static_file(path):
     return returnError("File not found: %s" % path, 404)
   if os.path.isdir(local):
     contents = os.listdir(local)
+    print contents
+    for i, f in enumerate(contents):
+      if os.path.isdir(f):
+        contents[i] += '/'
+    print contents
 
     # TODO:  dittinguish dirs from files
+    if request.headers['Accept'] == 'application/json':
+      return jsonify(dict(cwd=local, contents=contents)), 200
+    else:
+      return render_template('listing.html', cwd=path, listing=contents), 200
 
-
-    return (jsonify(dict(cwd=local, contents=contents)), 200
-      if request.headers['Accept'] == 'application/json'
-      else render_template('listing.html', cwd=path, listing=contents), 200)
   else:
-    if local.endswith('stdout') or local.endswith('.txt'):
+    if 'stdout' in local or local.endswith('.txt') or local.endswith('.yaml'):
       with open(local, 'r') as file:
         output = file.read()
       return (output, 200 if request.headers['Accept'] == 'application/json'
         else render_template("output.html", output=output))
     return send_from_directory(webapp.config['DIR'], path)
+
+
 
 #------------------------------------------------------------------------------
 #  /apps - Application Level interface
@@ -373,7 +379,7 @@ def create_job(appName, appUID):
 
         # Submit to Mesos
         dispatcher.submit(newJob)
-        thisjob = dict(thisjob, url=dispatcher.getSandboxURL(jobId), status='SUBMITTED')
+        thisjob = dict(thisjob, url='http://localhost:5050', status='SUBMITTED')
 
         if 'application/json' in request.headers['Accept']:
           return jsonify(thisjob), 202
@@ -422,8 +428,8 @@ def get_job(appName, jobId):
     thisjob = dict(job, url=dispatcher.getSandboxURL(jobId))
     if k3job != None:
       thisjob['master'] = k3job.master
-    thisjob['sandbox'] = webapp.config['ADDR']+os.path.join(webapp.config['UPLOADED_JOBS_URL'], appName, str(jobId)).encode(encoding='ascii')
-
+    local = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(jobId)).encode(encoding='ascii')
+    thisjob['sandbox'] = os.listdir(local)
     path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(jobId),'role.yaml').encode(encoding='ascii')
     if os.path.exists(path):
       with open(path, 'r') as role:
@@ -628,7 +634,8 @@ def kill_job_id(jobId):
 @webapp.route('/compile', methods=['GET', 'POST'])
 def compile():
 
-    print ("COMPILE REQUEST....")
+    if webapp.config['COMPILE_OFF']:
+      return returnError("Compilation Features are not available", 400)
 
     if request.method == 'POST':
       file = request.files['file']
@@ -687,7 +694,6 @@ def compile():
       # TODO: Add in Git hash
       compileJob    = CompileJob(name=name, uid=uid, path=path, url=url, options=options, user=user, tag=tag)
 
-
       # compileDriver = CompileDriver(compileJob, webapp.config['MESOS'], source=source, script=script, webaddr=webapp.config['ADDR'])
       launcher = CompileLauncher(compileJob, source=source, script=script, webaddr=webapp.config['ADDR'])
 
@@ -697,7 +703,6 @@ def compile():
 
       driver = mesos.native.MesosSchedulerDriver(launcher, framework, webapp.config['MESOS'])
 
-      # TODO: get/set K3 build source
       compile_tasks[uname] = driver
 
       t = threading.Thread(target=driver.run)
@@ -733,6 +738,10 @@ def compile():
 #------------------------------------------------------------------------------
 @webapp.route('/compile/<uname>', methods=['GET'])
 def get_compile(uname):
+
+    if webapp.config['COMPILE_OFF']:
+      return returnError("Compilation Features are not available", 400)
+
     fname = os.path.join(webapp.config['UPLOADED_ARCHIVE_DEST'], uname, 'output').encode('ascii')
     if os.path.exists(fname):
       stdout_file = open(fname, 'r')
@@ -758,6 +767,10 @@ def get_compile(uname):
 #------------------------------------------------------------------------------
 @webapp.route('/compile/<uname>/kill', methods=['GET'])
 def kill_compile(uname):
+
+    if webapp.config['COMPILE_OFF']:
+      return returnError("Compilation Features are not available", 400)
+
 
     name = AppID.getName(uname)
     uid = AppID.getUID(uname)
@@ -812,6 +825,11 @@ def delete_jobs():
 #------------------------------------------------------------------------------
 @webapp.route('/delete/compiles', methods=['POST'])
 def delete_compiles():
+
+  if webapp.config['COMPILE_OFF']:
+    return returnError("Compilation Features are not available", 400)
+
+
   deleteList = request.form.getlist("delete_compiles")
   for uid in deleteList:
     job = db.getCompiles(uid=uid)[0]
@@ -851,22 +869,31 @@ def shutdown():
 
 if __name__ == '__main__':
 
+  #  Parse Args
   print "====================  <<<<< K3 >>>>> ==================================="
   parser = argparse.ArgumentParser()
   parser.add_argument('-p', '--port', help='Flaskweb Server Port', default=5000, required=False)
   parser.add_argument('-m', '--master', help='URL for the Mesos Master (e.g. zk://localhost:2181/mesos', default='zk://localhost:2181/mesos', required=False)
+  parser.add_argument('-d', '--dir', help='Local directory for hosting application and output files', default='/k3/web/', required=False)
+  parser.add_argument('-c', '--compile', help='Enable Compilation Features (NOTE: will require a capable image)', default='/k3/web/', required=False)
+  parser.add_argument('--ip', help='Public accessible IP for connecting to flask', required=False)
   args = parser.parse_args()
 
-  master = args.master
-
-  port = int(args.port)
-  master=args.master
+  #  Program Initialization
   webapp.debug = True
-
   db.createTables()
+  master = args.master
+  port = int(args.port)
 
-  initWeb(port=port, master=master)
+  initWeb(
+    host = socket.gethostname() if not args.ip else args.ip,
+    port=port,
+    master=master,
+    local=args.dir,
+    compile=args.compile
+  )
 
+  #  Create long running framework, dispatcher, & driver
   framework = mesos_pb2.FrameworkInfo()
   framework.user = "" # Have Mesos fill in the current user.
   framework.name = "K3 Dispatcher (Dev)"
@@ -879,16 +906,13 @@ if __name__ == '__main__':
   driver = mesos.native.MesosSchedulerDriver(dispatcher, framework, master)
   driver_t = threading.Thread(target = driver.run)
 
+  # Start mesos schedulers & flask web service
   try:
-    print "Starting Static Web Server..."
-    index_message = 'K3 Dispatcher attempting to run'
     print "Starting Mesos Dispatcher..."
     driver_t.start()
     print "Starting FlaskWeb Server..."
 
     webapp.run(host='0.0.0.0', port=port, threaded=True, use_reloader=False)
-
-    index_message = 'K3 Dispatcher currently running'
     terminate = False
     while not terminate:
       time.sleep(1)
