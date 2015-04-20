@@ -94,6 +94,7 @@ public:
     status.mutable_task_id()->MergeFrom(task.task_id());
     status.set_data("K3 Task is running");
     status.set_state(TASK_RUNNING);
+    driver->sendFrameworkMessage("RUNNING:");
     driver->sendStatusUpdate(status);
 
     //-------------  START TASK OPERATIONS ----------
@@ -350,6 +351,7 @@ public:
     cout << "Launching K3: " << endl;
     string app_name =  hostParams["binary"].as<string>();
     string webaddr = hostParams["archive_endpoint"].as<string>();
+    driver->sendFrameworkMessage("LAUNCHING");
     thread = new boost::thread(TaskThread(task, k3_cmd, driver, isMaster, webaddr, app_name, host_name));
   }
 
@@ -375,8 +377,10 @@ class TaskThread {
 
         // Currently, just call the K3 executable with the generated command line from task.data()
         try {
+            driver->sendFrameworkMessage("RUNNING");
             cout << "Starting the K3 program thread: " << app_name << endl;
             int result = exec(k3_cmd.c_str());
+            driver->sendFrameworkMessage("TERMINATING");
             cout << "-------------->  PROGRAM TERMINATED <--------------------" << endl;
             if (result == 0) {
                 // Tar sandbox & send to flaskweb UI  (hack for now -- should simply call post-execution script)
@@ -404,9 +408,9 @@ class TaskThread {
             }
             else {
                 status.set_state(TASK_FAILED);
+                driver->sendStatusUpdate(status);
                 cout << "K3 Task " << task.task_id().value() << " returned error code: " << result << endl;
             }
-            driver->sendStatusUpdate(status);
             driver->stop();
         }
         catch (...) {
@@ -415,6 +419,7 @@ class TaskThread {
     	  driver->stop();
         }
         //-------------  END OF TASK  -------------------
+       driver->sendFrameworkMessage("POST-FINISHED");
       }
 };
 
