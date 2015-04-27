@@ -39,8 +39,6 @@ def initWeb(port, **kwargs):
   host   = kwargs.get('host', socket.gethostname())
   master = kwargs.get('master', None)
 
-  print "FLASK WEB Initializing on host: %s, port: %d" %(host, port)
-
   # LOCAL DIR : Local path for storing all K3 Applications, job files, executor, output, etc.
   LOCAL_DIR  = kwargs.get('local', '/k3/web')
 
@@ -57,6 +55,16 @@ def initWeb(port, **kwargs):
   JOBS_URL = os.path.join(SERVER_URL, JOBS_TARGET)
   ARCHIVE_DEST = os.path.join(LOCAL_DIR, ARCHIVE_TARGET)
   ARCHIVE_URL = os.path.join(SERVER_URL, ARCHIVE_TARGET)
+
+  print "FLASK WEB Initializing:"
+  print "    Host  : %s" % host
+  print "    Port  : %d" % port
+  print "    Master: %s" % master
+  print "    Local : %s" % LOCAL_DIR
+  print "    Port: %d" % port
+  print ""
+
+
 
   # TODO: DIR Structure
   webapp.config['DIR']      = LOCAL_DIR
@@ -99,7 +107,7 @@ def returnError(msg, errcode):
   if request.headers['Accept'] == 'application/json':
     return msg, errcode
   else:
-    return render_template("errors/404.html", message=msg)
+    return render_template("error.html", message=msg, code=errcode)
 
 
 
@@ -252,7 +260,7 @@ def get_app(appName):
       else:
         return render_template("apps.html", name=appName, versionList=versionList)
     else:
-      return render_template("errors/404.html", message="Application %s does not exist" % appName)
+      return returnError("Application %s does not exist" % appName, 404)
 
 @webapp.route('/app/<appName>', methods=['GET', 'POST'])
 def getApp(appName):
@@ -273,11 +281,7 @@ def archive_app(appName, appUID):
     uname = AppID.getAppId(appName, appUID)
 
     if appName not in applist:
-      msg = "Application %s does not exist" % appName
-      if request.headers['Accept'] == 'application/json':
-        return msg, errcode
-      else:
-        return render_template("errors/404.html", message=msg)
+      return returnError("Application %s does not exist" % appName, 404)
 
     if request.method == 'POST':
         file = request.files['file']
@@ -348,7 +352,7 @@ def create_job(appName, appUID):
 
         # Check for valid submission
         if not file and not text:
-          return render_template("errors/404.html", message="Invalid job request")
+          return render_template("error.html", code=404, message="Invalid job request")
 
         # Post new job request, get job ID & submit time
         thisjob = dict(appName=appName, appUID=appUID, user=user, tag=tag)
@@ -391,19 +395,14 @@ def create_job(appName, appUID):
       if 'application/json' in request.headers['Accept']:
         return jsonify(dict(jobs=jobs))
       else:
+        with open('sample.yaml', 'r') as f:
+          sample = f.read()
         if len(jobs) > 0:
           lastjobId = max([j['jobId'] for j in jobs])
-          with open('sample.yaml', 'r') as f:
-            sample = f.read()
-          return render_template("newjob.html", name=appName, uid=appUID, sample=sample)
-        return render_template("newjob.html", name=appName, uid=appUID)
+        return render_template("newjob.html", name=appName, uid=appUID, sample=sample)
 
   else:
-    msg =  "There is no application, %s" % appName
-    if request.headers['Accept'] == 'application/json':
-      return msg, errcode
-    else:
-      return render_template("errors/404.html", message=msg)
+    return returnError("There is no application, %s" % appName, 404)
 
 
 @webapp.route('/jobs/<appName>', methods=['GET', 'POST'])
@@ -423,17 +422,20 @@ def get_job(appName, jobId):
     k3job = dispatcher.getJob(int(jobId))
 
     if job == None:
-      return render_template("errors/404.html", message="Job ID, %s, does not exist" % jobId)
+      return returnError("Job ID, %s, does not exist" % jobId, 404)
 
     thisjob = dict(job, url=dispatcher.getSandboxURL(jobId))
     if k3job != None:
       thisjob['master'] = k3job.master
     local = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(jobId)).encode(encoding='ascii')
-    thisjob['sandbox'] = os.listdir(local)
     path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(jobId),'role.yaml').encode(encoding='ascii')
-    if os.path.exists(path):
+    if os.path.exists(local) and os.path.exists(path):
       with open(path, 'r') as role:
         thisjob['roles'] = role.read()
+    else:
+      return returnError("Job Data no longer exists", 400)
+
+    thisjob['sandbox'] = os.listdir(local)
 
     if 'application/json' in request.headers['Accept']:
       return jsonify(thisjob)
@@ -493,11 +495,7 @@ def replay_job(appName, jobId):
           return render_template('jobs.html', appName=appName, lastjob=thisjob)
 
   else:
-    msg =  "There is no Job, %s\n" % jobId
-    if request.headers['Accept'] == 'application/json':
-      return msg, 404
-    else:
-      return render_template("errors/404.html", message=msg)
+    return returnError("There is no Job, %s\n" % jobId, 404)
 
 #------------------------------------------------------------------------------
 #  /jobs/<appName>/<jobId>/stdout - Job Interface for specific job
@@ -532,7 +530,7 @@ def archive_job(appName, jobId):
     jobs = db.getJobs(jobId=job_id)
     job = None if len(jobs) == 0 else jobs[0]
     if job == None:
-      return render_template("errors/404.html", message="Job ID, %s, does not exist" % job_id)
+      return returnError ("Job ID, %s, does not exist" % job_id, 404)
 
     if request.method == 'POST':
         file = request.files['file']
@@ -561,7 +559,7 @@ def kill_job(appName, jobId):
     job = None if len(jobs) == 0 else jobs[0]
 
     if job == None:
-      return render_template("errors/404.html", message="Job ID, %s, does not exist" % jobId)
+      return returnError ("Job ID, %s, does not exist" % jobId, 404)
 
     print ("Asked to KILL job #%s. Current Job status is %s" % (jobId, job['status']))
     # Separate check to kill orphaned jobs in Db
@@ -591,7 +589,7 @@ def get_job_id(jobId):
     jobs = db.getJobs(jobId=jobId)
     job = None if len(jobs) == 0 else jobs[0]
     if job == None:
-      return render_template("errors/404.html", message="Job ID, %s, does not exist" % jobId)
+      return returnError("Job ID, %s, does not exist" % jobId, 404)
     appName = job['appName']
     return get_job(appName, jobId)
 
@@ -604,7 +602,7 @@ def replay_job_id(jobId):
     jobs = db.getJobs(jobId=jobId)
     job = None if len(jobs) == 0 else jobs[0]
     if job == None:
-      return render_template("errors/404.html", message="Job ID, %s, does not exist" % jobId)
+      return returnError("Job ID, %s, does not exist" % jobId, 404)
     appName = job['appName']
     print ("REPLAYING JOB # %s" % jobId)
     return replay_job(appName, jobId)
@@ -620,7 +618,7 @@ def kill_job_id(jobId):
     job = None if len(jobs) == 0 else jobs[0]
     appName = job['appName']
     if job == None:
-      return render_template("errors/404.html", message="Job ID, %s, does not exist" % jobId)
+      return returnError("Job ID, %s, does not exist" % jobId, 404)
     return kill_job(appName, jobId)
 #------------------------------------------------------------------------------
 #  /compile
@@ -646,7 +644,7 @@ def compile():
       tag = request.form['tag'] if 'tag' in request.form else ''
 
       if not file and not text:
-          return render_template("errors/404.html", message="Invalid Compile request")
+          return renderError("Invalid Compile request", 400)
 
       # Create a unique ID
       uid = getUID()
@@ -754,11 +752,7 @@ def get_compile(uname):
         return render_template("output.html", output=output)
 
     else:
-      msg = "No output found for compilation, %s\n\n" % uname
-      if request.headers['Accept'] == 'application/json':
-        return msg, errcode
-      else:
-        return render_template("errors/404.html", message=msg)
+      return returnError("No output found for compilation, %s\n\n" % uname, 400)
 
 
 #------------------------------------------------------------------------------
@@ -777,11 +771,7 @@ def kill_compile(uname):
 
     complist = db.getCompiles(uid=uid)
     if len(complist) == 0:
-      msg = "Not currently tracking the compile task %s" % uname
-      if request.headers['Accept'] == 'application/json':
-        return msg, errcode
-      else:
-        return render_template("errors/404.html", message=msg)
+      return returnError("Not currently tracking the compile task %s" % uname, 400)
     else:
       c = complist[0]
       print ("Asked to KILL Compile UID #%s. Current Job status is %s" % (c['uid'], c['status']))
@@ -896,7 +886,7 @@ if __name__ == '__main__':
   #  Create long running framework, dispatcher, & driver
   framework = mesos_pb2.FrameworkInfo()
   framework.user = "" # Have Mesos fill in the current user.
-  framework.name = "K3 Dispatcher (Dev)"
+  framework.name = "K3 Dispatcher (TEST)"
 
   dispatcher = Dispatcher(master, webapp.config['ADDR'], daemon=True)
   if dispatcher == None:

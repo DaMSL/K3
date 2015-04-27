@@ -1,7 +1,21 @@
+##   K3 Sample YAML File              #
 ---
 name: role 1
-peers: 1
+peers: 2
 hostmask: ".*"
+privileged: False
 k3_globals:
-  role: go
-  rendezvous: auto
+  role: rows
+  master: auto
+envars:
+  - {name: LD_PRELOAD, value: /usr/local/lib/libjemalloc.so}
+volumes:
+  - {host: /local, container: /local}
+k3_data:
+  - {var: dataFiles, path: /local/data/tpch-tiny/lineitem, policy: global}
+  - {var: lineitemFiles, path: /local/data/tpch-tiny/lineitem, policy: global}
+  - {var: customerFiles, path: /local/data/tpch-tiny/customer, policy: global}  
+  - {var: ordersFiles, path: /local/data/tpch-tiny/orders, policy: global}  
+  - {var: supplierFiles, path: /local/data/tpch-tiny/supplier, policy: global}  
+  - {var: regionFiles, path: /local/data/tpch-tiny/region, policy: replicate}
+  - {var: nationFiles, path: /local/data/tpch-tiny/nation, policy: replicate}

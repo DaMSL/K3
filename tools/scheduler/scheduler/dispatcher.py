@@ -39,6 +39,8 @@ class Dispatcher(mesos.interface.Scheduler):
     self.terminate = False     # Flag to signal termination to the owner of the dispatcher
     self.frameworkId = None    # Will get updated when registering with Master
 
+    print "Dispatcher is Initializing with master at %s" % master
+
  
   def submit(self, job):
     print ("Received new Job for Application %s, Job ID= %d" % (job.appName, job.jobId))

@@ -138,8 +138,7 @@ class Job:
       except KeyError as err:
         raise K3JobError('Input YAML File missing entry for: %s' % err.message)
 
-      # TODO: Privileged mode currently set to True (as default), change later on
-      self.privileged = True if 'privileged' not in doc else doc['privileged']
+      self.privileged = False if 'privileged' not in doc else doc['privileged']
 
       mask = r".*" if "hostmask" not in doc else doc['hostmask']
       volumes = [] if 'volumes' not in doc else doc['volumes']
