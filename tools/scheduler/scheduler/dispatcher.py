@@ -129,6 +129,8 @@ class Dispatcher(mesos.interface.Scheduler):
           memPolicy = nextJob.roles[roleId].params['mem']
           if memPolicy == 'some':
             requestedMEM = min(DEFAULT_MEM, availableMEM[offerId]/4)
+          elif memPolicy == 'all':
+            pass
           elif str(memPolicy).isdigit():
             requestedMEM = memPolicy * 1024
             if requestedMEM > availableMEM[offerId]:

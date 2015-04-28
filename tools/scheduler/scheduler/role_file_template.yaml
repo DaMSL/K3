@@ -1,0 +1,82 @@
+###############################################################################
+#                                                                             #
+#    K3 Template Role File                                                    #
+#                                                                             #
+#    Usage: Upload this file to the K3 Dispatcher REST API end point          #
+#           /jobs/<appName> in order to launch a new K3 Job for a given       #
+#           K3 application.                                                   #
+#                                                                             #
+###############################################################################
+
+# You can define multiple roles for an application. Each role equates to a 
+#   set of configuration environment settings which will apply to all the peers
+#   in the role. To define multiple roles, separate them into different YAML 
+#   documents using 3 dashes as the standard YAML separator (---)
+---
+
+# name: (required) unique name for the role  
+name: role 1
+
+# peers: (required) Total number of peers to run. Peers are allocated on a 1 
+#   peer per CPU basis. If you try to assign more peers than available CPUs, 
+#   your program will not run 
+peers: 4
+
+# peers_per_host: (optional) Specifies the exact # of peers you want running
+#   on each host. Again, ensure you allocate on a 1 peer per CPU basis
+peers_per_host: 2
+
+# hostmask: (optional) RegEx based filter to specify the hosts on which
+#   you want to run your application. By including this field, the dispatcher
+#   will ONLY accept offers from hosts whose hostnames match this filter
+hostmask: ".*"
+
+# mem: (optional) specify the amount of memory. Accepted values include: 
+#     all:   use all available memory in accepts hosts' offers
+#     some:  use "some" memory (the smaller of 25% available or 4GB)
+#     <num>: Use exactly <num> GB of memory. Note: offers will be declined
+#             if they lack sufficient resources 
+#     *If omitted, the default behavior is to use 'all' memory
+mem: ".*"
+
+
+# privileged: (optional) Flag to run the executing docker container in
+#   privileged mode. Use with caution!
+privileged: False
+
+# k3_globals: (required) list of internal K3 Global declarations with their
+#   initial value. The 'role' declaration is required. Any others are 
+#   specific to your application. Also, note that we have included an 
+#   "auto" feature to automatically assign a master peer. By setting 
+#   a K3 variable to "auto," the dispatcher will automatically assign the
+#   first peer tasked on the first host as the master.
+k3_globals:
+  role: rows
+  master: auto
+  
+# envars: (optional) Environment variables to pass to the docker container
+envars:
+  - {name: LD_PRELOAD, value: /usr/local/lib/libjemalloc.so}
+
+# volumes: (optional) Mounted volumes for the executing docker container.
+volumes:
+  - {host: /local, container: /local}
+  
+# k3_data: (optional) Names of data files or paths for allocating input 
+#   data into your progam. To use, ensure files are available onto your host 
+#   machines and mounted as volumes into the container. If you provide a
+#   directory, the dispatcher will allocate input files according to the 
+#   given policy. We currently support three policies:
+#       replicate -- EVERY peer has the same replicated input data file
+#       global -- data files are replicated on all hosts, but should be 
+#           globally distributed among all peers on all hosts
+#       pinned -- (????) data files are dispersed across all hosts and
+#           peers should only input specific data locally
+k3_data:
+  - {var: dataFiles, path: /local/data/tpch-tiny/lineitem, policy: global}
+  - {var: lineitemFiles, path: /local/data/tpch-tiny/lineitem, policy: global}
+  - {var: customerFiles, path: /local/data/tpch-tiny/customer, policy: global}  
+  - {var: ordersFiles, path: /local/data/tpch-tiny/orders, policy: global}  
+  - {var: supplierFiles, path: /local/data/tpch-tiny/supplier, policy: global}  
+  - {var: regionFiles, path: /local/data/tpch-tiny/region, policy: replicate}
+  - {var: nationFiles, path: /local/data/tpch-tiny/nation, policy: replicate}
