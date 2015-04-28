@@ -1,0 +1,131 @@
+
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+
+  "Description" : "Launches a group of Mesos Slaves to deploy distributed K3 Applications",
+
+  "Parameters" : {
+    "InstanceAmi" : {
+      "Description" : "Mesos AMI",
+      "Type" : "String"
+    },
+    "InstanceType" : {
+      "Description" : "EC2 instance type",
+      "Type" : "String",
+      "Default" : "t2.micro"
+    },
+    "KeyName" : {
+      "Description" : "Name of an existing EC2 KeyPair to enable SSH access to the instances",
+      "Type" : "AWS::EC2::KeyPair::KeyName"
+    },
+    "ClusterId" : {
+      "Description" : "Mesos cluster ID",
+      "Type" : "String"
+    },
+    "IPRestriction" : {
+      "Description" : "The IP address range that can be used to access the Mesos Master",
+      "Type": "String"
+    },
+    "MasterPrivateIP" : {
+      "Description" : "Local (private) IP of the K3 Mesos Master",
+      "Type" : "String"
+    },
+    "InternalSecurityGroup" : {
+      "Description" : "Security group for internal communication",
+      "Type" : "String"
+    },    
+    "ClusterSize" : {
+      "Description" : "Number of K3 Worker Slaves to Launch",
+      "Type" : "Number",
+      "Default": "1"
+    },    
+    "VpcId" : {
+      "Description" : "VPC associated with the provided subnets",
+      "Type" : "AWS::EC2::VPC::Id"
+    }    
+  },
+
+
+  
+  "Resources" : {
+
+      "SlaveExternalSecurityGroup" : {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "Properties" : {
+                "GroupDescription" : "EC2 Instance access"
+            }
+        },
+
+      "ExternalIngressMesos" : {
+            "Type" : "AWS::EC2::SecurityGroupIngress",
+            "Properties" : {
+                "GroupName" : { "Ref" : "SlaveExternalSecurityGroup" },
+                "IpProtocol" : "tcp",
+                "FromPort" : "5050",
+                "ToPort" : "5051",
+                "CidrIp" : "0.0.0.0/0"
+            }
+        },
+
+      "ExternalIngressSSH" : {
+            "Type" : "AWS::EC2::SecurityGroupIngress",
+            "Properties" : {
+                "GroupName" : { "Ref" : "SlaveExternalSecurityGroup" },
+                "IpProtocol" : "tcp",
+                "ToPort" : "22",
+                "FromPort" : "22",
+                "CidrIp" : { "Ref" : "IPRestriction"}
+            }
+        },
+
+
+      "SlaveConfig" : {
+         "Type" : "AWS::AutoScaling::LaunchConfiguration",
+         "Properties" : {
+            "InstanceType" : { "Ref" : "InstanceType" },
+            "ImageId" : { "Ref" : "InstanceAmi" },
+            "SecurityGroups" : [ {"Ref" : "SlaveExternalSecurityGroup"}, {"Ref" : "InternalSecurityGroup"}],
+            "KeyName" : { "Ref" : "KeyName" },
+            "UserData"       : { "Fn::Base64" : { "Fn::Join" : ["", [
+                  "#!/bin/bash -xe\n",
+                  "touch foo1\n",
+                  "yum update -y > /logfile\n",
+                  "yum install -y docker\n",
+                  "rpm -Uvh http://repos.mesosphere.io/el/6/noarch/RPMS/mesosphere-el-repo-6-2.noarch.rpm\n",
+                  "yum -y install mesos\n",
+                  "rm /etc/default/mesos-slave\n", 
+                  "echo zk://", { "Ref" : "MasterPrivateIP" }, ":2181/mesos | tee /etc/mesos-slave/master\n",
+                  "echo docker,mesos | tee /etc/mesos-slave/containerizers\n",
+                  "echo \"ports:[40000-40999]\" | tee /etc/mesos-slave/resources\n",
+                  "echo 60secs | tee /etc/mesos-slave/executor_registration_timeout\n",
+                  "echo 1mins | tee /etc/mesos-slave/executor_shutdown_grace_period\n",
+                  "echo 120mins | tee /etc/mesos-slave/gc_delay\n",
+                  "echo $(hostname) | tee /etc/mesos-slave/hostname\n",
+                  "echo $(hostname -I | awk -F\" \" {'print $1'}) | tee /etc/mesos-slave/ip\n",
+                  "echo manual | tee /etc/init/mesos-master.override\n",
+                  "service docker start\n",
+                  "initctl start mesos-slave\n",
+                  "docker pull damsl/k3-run:exec\n",
+                  "\n" 
+            ] ] } }
+          }
+        },
+        
+      "MyServerGroup" : {
+         "Type" : "AWS::AutoScaling::AutoScalingGroup",
+         "Properties" : {
+            "AvailabilityZones" : { "Fn::GetAZs" : { "Ref" : "AWS::Region" } },
+            "LaunchConfigurationName" : { "Ref" : "SlaveConfig" },
+            "MinSize" : {"Ref" : "ClusterSize"},
+            "MaxSize" : {"Ref" : "ClusterSize"}
+         }
+      }
+      
+   },
+  
+  "Outputs" : {
+    "MesosSlaveSecurityGroup" : {
+      "Value" : { "Ref" : "SlaveExternalSecurityGroup" }
+    }
+  }
+}

@@ -136,9 +136,9 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
       "globals": [p.variables for p in k3task.peers],
       "master": [k3job.all_peers[0].ip, k3job.all_peers[0].port ],
       "archive_endpoint" : "%s/jobs/" % webaddr,
-      "data": [role.inputs for p in range(len(k3task.peers))]}
-  # if k3job.logging:
-  task_data['logging'] = True
+      "data": [role.inputs for p in range(len(k3task.peers))],
+      "logging":  k3job.logging,
+      "stdout": k3job.stdout}
 
   print 'ARCHIVE ADDR: %s' % webaddr
   executor = executorInfo(k3job, tnum, webaddr)

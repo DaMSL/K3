@@ -131,14 +131,25 @@ def index():
     return render_template('index.html')
 
 #------------------------------------------------------------------------------
-#  /about - TODO: about message
+#  /about -
 #------------------------------------------------------------------------------
 @webapp.route('/about')
 def about():
   if request.headers['Accept'] == 'application/json':
-    return redirect(url_for('static', filename="API.txt"))
+    return redirect(url_for('static', filename="rest.txt"))
   else:
-    return redirect(url_for('static', filename="API.html"))
+    return render_template('about.html')
+
+
+#------------------------------------------------------------------------------
+#  /restapi - Display complete list of API EndPoints
+#------------------------------------------------------------------------------
+@webapp.route('/restapi')
+def restapi():
+  if request.headers['Accept'] == 'application/json':
+    return redirect(url_for('static', filename="rest.txt"))
+  else:
+    return render_template('rest.html')
 
 
 #------------------------------------------------------------------------------
@@ -287,7 +298,7 @@ def archive_app(appName, appUID):
         file = request.files['file']
         if file:
             filename = secure_filename(file.filename)
-            path = os.path.join(webapp.config['UPLOADED_ARCHIVE_DEST'], uname).encode(encoding='ascii')
+            path = os.path.join(webapp.config['UPLOADED_ARCHIVE_DEST'], uname).encode(encoding='utf8')
             if not os.path.exists(path):
               os.mkdir(path)
             file.save(os.path.join(path, filename))
@@ -346,6 +357,7 @@ def create_job(appName, appUID):
         file = request.files['file']
         text = request.form['text'] if 'text' in request.form else None
         logging = request.form['logging'] if 'logging' in request.form else False
+        stdout = request.form['stdout'] if 'stdout' in request.form else False
         user = request.form['user'] if 'user' in request.form else 'anonymous'
         tag = request.form['tag'] if 'tag' in request.form else ''
         # trials = int(request.form['trials']) if 'trials' in request.form else 1
@@ -395,10 +407,25 @@ def create_job(appName, appUID):
       if 'application/json' in request.headers['Accept']:
         return jsonify(dict(jobs=jobs))
       else:
-        with open('sample.yaml', 'r') as f:
-          sample = f.read()
-        if len(jobs) > 0:
-          lastjobId = max([j['jobId'] for j in jobs])
+        preload = request.args['preload'] if 'preload' in request.args else 'Sample'
+        print "PRELOAD = %s" % preload
+        if preload == 'Instructions':
+            yamlFile = 'role_file_template.yaml'
+        elif preload == 'Last':
+            lastJobId = max([ d['jobId'] for d in jobs])
+            print "PATH= %s, %s, %d" % (webapp.config['UPLOADED_JOBS_DEST'], appName, lastJobId)
+            path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, "/%d" % lastJobId, '/role.yaml')
+            if os.path.exists(path):
+              yamlFile = path
+            else:
+              yamlFile = None
+        else:
+          yamlFile = 'sample.yaml'
+        if yamlFile:
+          with open(yamlFile, 'r') as f:
+            sample = f.read()
+        else:
+          sample = "(No YAML file to display)"
         return render_template("newjob.html", name=appName, uid=appUID, sample=sample)
 
   else:
@@ -427,8 +454,8 @@ def get_job(appName, jobId):
     thisjob = dict(job, url=dispatcher.getSandboxURL(jobId))
     if k3job != None:
       thisjob['master'] = k3job.master
-    local = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(jobId)).encode(encoding='ascii')
-    path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(jobId),'role.yaml').encode(encoding='ascii')
+    local = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(jobId)).encode(encoding='utf8')
+    path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(jobId),'role.yaml').encode(encoding='utf8')
     if os.path.exists(local) and os.path.exists(path):
       with open(path, 'r') as role:
         thisjob['roles'] = role.read()
@@ -468,8 +495,8 @@ def replay_job(appName, jobId):
 
 
       # Save yaml to file (either from file or text input)
-      role_src = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(jobId), 'role.yaml').encode('ascii', 'ignore')
-      path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(new_jobId)).encode('ascii', 'ignore')
+      role_src = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(jobId), 'role.yaml').encode('utf8', 'ignore')
+      path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(new_jobId)).encode('utf8', 'ignore')
       os.mkdir(path)
       role_copy = os.path.join(path, 'role.yaml')
       shutil.copyfile(role_src, os.path.join(path, role_copy))
@@ -524,7 +551,7 @@ def replay_job(appName, jobId):
 #------------------------------------------------------------------------------
 @webapp.route('/jobs/<appName>/<jobId>/archive', methods=['GET', 'POST'])
 def archive_job(appName, jobId):
-    job_id = str(jobId).encode('ascii', 'ignore')
+    job_id = str(jobId).encode('utf8', 'ignore')
     if job_id.find('.') > 0:
       job_id = job_id.split('.')[0]
     jobs = db.getJobs(jobId=job_id)
@@ -536,7 +563,7 @@ def archive_job(appName, jobId):
         file = request.files['file']
         if file:
             filename = secure_filename(file.filename)
-            path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, job_id, filename).encode(encoding='ascii')
+            path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, job_id, filename).encode(encoding='utf8')
             file.save(path)
             return "File Uploaded & archived", 202
         else:
@@ -620,6 +647,24 @@ def kill_job_id(jobId):
     if job == None:
       return returnError("Job ID, %s, does not exist" % jobId, 404)
     return kill_job(appName, jobId)
+
+
+#------------------------------------------------------------------------------
+#  /jobs/<appName>/<jobId>/kill - Job Interface to cancel a job
+#         GET     Kills a Job (if orphaned, updates status to killed)
+#           curl -i -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<jobId>/kill
+#------------------------------------------------------------------------------
+@webapp.route('/job/<jobId>/archive', methods=['GET', 'POST'])
+def archive_job_id(jobId):
+    jobs = db.getJobs(jobId=jobId)
+    job = None if len(jobs) == 0 else jobs[0]
+    appName = job['appName']
+    if job == None:
+      return returnError("Job ID, %s, does not exist" % jobId, 404)
+    return archive_job(appName, jobId)
+
+
+
 #------------------------------------------------------------------------------
 #  /compile
 #         GET     Form for compiling new K3 Executable OR status of compiling tasks
@@ -659,8 +704,8 @@ def compile():
 
       uname = '%s-%s' % (name, uid)
 
-      path = os.path.join(webapp.config['UPLOADED_ARCHIVE_DEST'], uname).encode(encoding='ascii')
-      url = os.path.join(webapp.config['UPLOADED_ARCHIVE_URL'], uname).encode(encoding='ascii')
+      path = os.path.join(webapp.config['UPLOADED_ARCHIVE_DEST'], uname).encode(encoding='utf8')
+      url = os.path.join(webapp.config['UPLOADED_ARCHIVE_URL'], uname).encode(encoding='utf8')
 
       # Save K3 source to file (either from file or text input)
       src_file = ('%s.k3' % name)
@@ -670,7 +715,7 @@ def compile():
       if file:
           file.save(os.path.join(path, src_file))
       else:
-          file = open(os.path.join(path, src_file).encode(encoding='ascii'), 'w')
+          file = open(os.path.join(path, src_file).encode(encoding='utf8'), 'w')
           file.write(text)
           file.close()
 
@@ -678,7 +723,7 @@ def compile():
       sh_file = 'compile_%s.sh' % name
       sh = genScript(dict(name=name, uid=uid, options=options, uname=uname,
                           host=webapp.config['HOST'], port=webapp.config['PORT']))
-      compscript = open(os.path.join(path, sh_file).encode(encoding='ascii'), 'w')
+      compscript = open(os.path.join(path, sh_file).encode(encoding='utf8'), 'w')
       compscript.write(sh)
       compscript.close()
 
@@ -740,7 +785,7 @@ def get_compile(uname):
     if webapp.config['COMPILE_OFF']:
       return returnError("Compilation Features are not available", 400)
 
-    fname = os.path.join(webapp.config['UPLOADED_ARCHIVE_DEST'], uname, 'output').encode('ascii')
+    fname = os.path.join(webapp.config['UPLOADED_ARCHIVE_DEST'], uname, 'output').encode('utf8')
     if os.path.exists(fname):
       stdout_file = open(fname, 'r')
       output = stdout_file.read()

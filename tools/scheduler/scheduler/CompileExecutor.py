@@ -36,7 +36,7 @@ class CompilerExecutor(mesos.interface.Executor):
     # threads or processes, rather than inside launchTask itself.
     def run_task():
 
-      name = str(task.name.encode('ascii', 'ignore'))
+      name = str(task.name.encode('utf8', 'ignore'))
       cmd = '$MESOS_SANDBOX/compile_%s.sh' % name
 
       self.frameworkMessage(driver, "Python Executor Test Message")

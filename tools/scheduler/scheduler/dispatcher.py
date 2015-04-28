@@ -106,7 +106,7 @@ class Dispatcher(mesos.interface.Scheduler):
 
         #  Check Hostmask requirement
         hostmask = nextJob.roles[roleId].hostmask
-        host = self.offers[offerId].hostname.encode('ascii','ignore')
+        host = self.offers[offerId].hostname.encode('utf8','ignore')
         r = re.compile(hostmask)
         if not r.match(host):
           print("%s does not match hostmask. DECLINING offer" % host)
@@ -192,7 +192,7 @@ class Dispatcher(mesos.interface.Scheduler):
       vars = nextJob.roles[roleId].variables
       for offerId, offer in role.items():
         peers = []
-        host = self.offers[offerId].hostname.encode('ascii','ignore')
+        host = self.offers[offerId].hostname.encode('utf8','ignore')
         ip = socket.gethostbyname(host)
         if len(allPeers) == 0:
           nextJob.master = host
@@ -301,7 +301,7 @@ class Dispatcher(mesos.interface.Scheduler):
     self.frameworkId = frameworkId
 
   def statusUpdate(self, driver, update):
-    s = update.task_id.value.encode('ascii','ignore')
+    s = update.task_id.value.encode('utf8','ignore')
     jobId = self.jobId(update.task_id.value)
     if jobId not in self.active:
       print("Received a status update for an old job: %d" % jobId)
@@ -311,6 +311,15 @@ class Dispatcher(mesos.interface.Scheduler):
     host = k3task.host
     state = mesos_pb2.TaskState.DESCRIPTOR.values[update.state].name
     print "[TASK UPDATE] TaskID %s on host %s. Status: %s   [%s]"% (update.task_id.value, host, state, update.data)
+
+    # TODO: Check STDOUT flag, capture stream in update.data, & append to appropriate file
+    #   will need to update executor and ensure final output archive doesn't overwrite
+    # if update.state == mesos_pb2.TASK_RUNNING and self.active[jobId].stdout:
+    #     stdout =
+    #     if not os.path.exists(????):
+    #       os.mkdir(???)
+    #     with open(os.path.join(self.job.path, 'output'), 'a') as out:
+    #       out.write(update.data)
 
     if update.state == mesos_pb2.TASK_KILLED or \
        update.state == mesos_pb2.TASK_FAILED or \

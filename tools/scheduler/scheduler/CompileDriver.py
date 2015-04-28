@@ -29,21 +29,6 @@ import db
 from mesosutils import *
 from core import *
 
-# MASTER = 'zk://192.168.0.10:2181,192.168.0.11:2181,192.168.0.18:2181/mesos'
-
-
-# task_state = {
-#     6: "TASK_STAGING",  # Initial state. Framework status updates should not use.
-#     0: "TASK_STARTING",
-#     1: "TASK_RUNNING",
-#     2: "TASK_FINISHED", # TERMINAL.
-#     3: "TASK_FAILED",   # TERMINAL.
-#     4: "TASK_KILLED",   # TERMINAL.
-#     5: "TASK_LOST"      # TERMINAL.
-# }
-#
-# task_state = mesos_pb2.TaskState.DESCRIPTOR.values
-
 
 # TODO: Consider splitting into two separate tasks: pre & post compilation
 def genScript(c):

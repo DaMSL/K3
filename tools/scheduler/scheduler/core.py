@@ -111,6 +111,7 @@ class Job:
     self.jobId      = kwargs.get("jobId", '1000')
     roleFile        = kwargs.get("rolefile", None)
     self.logging    = kwargs.get("logging", False)
+    self.stdout     = kwargs.get("stdout", False)
     self.roles      = {}
     self.tasks      = []
     self.status     = None
