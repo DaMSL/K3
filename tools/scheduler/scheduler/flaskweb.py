@@ -360,6 +360,8 @@ def create_job(appName, appUID):
         stdout = request.form['stdout'] if 'stdout' in request.form else False
         user = request.form['user'] if 'user' in request.form else 'anonymous'
         tag = request.form['tag'] if 'tag' in request.form else ''
+
+        print " LOGGING VALUE ==>  %s" %  logging
         # trials = int(request.form['trials']) if 'trials' in request.form else 1
 
         # Check for valid submission
@@ -413,8 +415,8 @@ def create_job(appName, appUID):
             yamlFile = 'role_file_template.yaml'
         elif preload == 'Last':
             lastJobId = max([ d['jobId'] for d in jobs])
-            print "PATH= %s, %s, %d" % (webapp.config['UPLOADED_JOBS_DEST'], appName, lastJobId)
-            path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, "/%d" % lastJobId, '/role.yaml')
+            path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, "%d" % lastJobId, 'role.yaml')
+            print "PATH= %s" % path
             if os.path.exists(path):
               yamlFile = path
             else:

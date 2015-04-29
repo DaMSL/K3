@@ -140,6 +140,11 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
       "logging":  k3job.logging,
       "stdout": k3job.stdout}
 
+  # TODO:  When logging is fully implemented, remove this & update executor to accept
+  #       the logging level
+  if task_data['logging'] == False:
+    del task_data['logging']
+
   print 'ARCHIVE ADDR: %s' % webaddr
   executor = executorInfo(k3job, tnum, webaddr)
 

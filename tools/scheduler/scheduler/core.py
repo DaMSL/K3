@@ -122,6 +122,8 @@ class Job:
       print ("Error. No binary provided to Job")
       return
 
+    print "BINARY URL = %s " % self.binary_url
+
     if roleFile == None:
       print ("Error. No YAML file provided to Job")
       return
