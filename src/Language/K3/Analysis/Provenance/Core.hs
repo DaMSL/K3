@@ -36,7 +36,7 @@ data Provenance =
     | PSet                              -- Non-deterministic (if-then-else or case)
     | PChoice                           -- One of the cases must be chosen ie. they're exclusive
     | PDerived                          -- A value derived from named children e.g. x + y ==> [x;y]
-    | PData        (Maybe [Identifier]) -- A value derived from a data constructor (optionally with named comoonents)
+    | PData        (Maybe [Identifier]) -- A value derived from a data constructor (optionally with named components)
     | PRecord      Identifier
     | PTuple       Int
     | PIndirection

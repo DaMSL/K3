@@ -601,10 +601,10 @@ pistoreM n u p = get >>= liftEitherM . (\env -> pistore env n u p) >>= put
 pistoreaM :: Identifier -> [(Identifier, UID, K3 Provenance, Bool)] -> PInfM ()
 pistoreaM n memP = get >>= liftEitherM . (\env -> pistorea env n memP) >>= put
 
-{-
 pichaseM :: K3 Provenance -> PInfM (K3 Provenance)
 pichaseM p = get >>= liftEitherM . flip pichase p
 
+{-
 pisubM :: Identifier -> K3 Provenance -> K3 Provenance -> PInfM (K3 Provenance)
 pisubM i rep p = get >>= liftEitherM . (\env -> pisub env i rep p) >>= \(p',nenv) -> put nenv >> return p'
 -}
@@ -842,8 +842,10 @@ inferProvenance expr = do
 
     -- Return a papply with three children: the lambda, argument, and return value provenance.
     infer [lp, argp] e@(tag -> EOperate OApp) = do
-      p <- simplifyApplyM (Just e) lp argp
-      rt "apply" e p
+      p  <- simplifyApplyM (Just e) lp argp
+      np <- pruneApplyCh p
+      void $ piextmM e p
+      return ("apply", np)
 
     infer [psrc] e@(tnc -> (EProject i, [esrc])) =
       case esrc @~ isEType of
@@ -868,18 +870,21 @@ inferProvenance expr = do
       mv <- pilkupeM i >>= pmv
       void $ pideleM i
       void $ piextmM e $ pmaterialize [mv] lb
-      return ("let-in", lb)
+      nlb <- pruneEscapes [mv] lb
+      return ("let-in", nlb)
 
     infer [_,bb] e@(tag -> EBindAs b) = do
       mvs <- mapM pilkupeM (bindingVariables b) >>= mapM pmv
       void $ mapM_ pideleM $ bindingVariables b
       void $ piextmM e $ pmaterialize mvs bb
-      return ("bind-as", bb)
+      nbb <- pruneEscapes mvs bb
+      return ("bind-as", nbb)
 
     infer [_,s,n] e@(tag -> ECaseOf _) = do
       casemv <- pipopcaseM ()
       void $ piextmM e $ pset [pmaterialize [casemv] s, n]
-      return ("case-of", pset [s,n])
+      ns <- pruneEscapes [casemv] s
+      return ("case-of", pset [ns,n])
 
     -- Data constructors.
     infer pch e@(tag -> ESome)       = rt "some"   e $ pdata Nothing pch
@@ -916,6 +921,21 @@ inferProvenance expr = do
                  in if null ntch then ptemp else pderived ntch
 
     iu = return ()
+
+    pruneEscapes :: [PMatVar] -> K3 Provenance -> PInfM (K3 Provenance)
+    pruneEscapes mvl p = modifyTree prune p
+      where prune p@(tag -> PBVar pmv) | pmv `elem` mvl = do
+              p' <- pichaseM p
+              if p == p' then return p else pruneEscapes mvl p'
+            prune p = return p
+
+    pruneApplyCh :: K3 Provenance -> PInfM (K3 Provenance)
+    pruneApplyCh (tnc -> (PApply (Just pmv), [f, a, r])) = do
+      nr <- pruneEscapes [pmv] r
+      return $ papply (Just pmv) f a nr
+
+    pruneApplyCh (tnc -> (PSet, ch)) = mapM pruneApplyCh ch >>= return . pset
+    pruneApplyCh p = return p
 
     uidOf  e = maybe (uidErr e) (\case {(EUID u) -> return u ; _ ->  uidErr e}) $ e @~ isEUID
     uidErr e = errorM $ PT.boxToString $ [T.pack "No uid found for pexprinf on "] %+ PT.prettyLines e
