@@ -37,6 +37,7 @@ import Language.K3.Codegen.CPP.Types
 
 import qualified Language.K3.Codegen.CPP.Representation as R
 
+import Language.K3.Analysis.Core
 import qualified Language.K3.Analysis.CArgs as CArgs
 
 -- | The reification context passed to an expression determines how the result of that expression

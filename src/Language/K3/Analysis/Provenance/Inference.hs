@@ -29,10 +29,8 @@ import Data.List
 import Data.Maybe
 import Data.Tree
 
-import Data.HashMap.Lazy ( HashMap )
-import Data.IntMap       ( IntMap )
-import qualified Data.HashMap.Lazy as Map
-import qualified Data.IntMap       as IntMap
+import Data.IntMap              ( IntMap )
+import qualified Data.IntMap as IntMap
 
 import Debug.Trace
 
@@ -42,6 +40,11 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
 import Language.K3.Core.Utils
+
+import Language.K3.Analysis.Data.BindingEnv ( BindingEnv, BindingStackEnv )
+import qualified Language.K3.Analysis.Data.BindingEnv as BEnv
+
+import Language.K3.Analysis.Core
 
 import Language.K3.Analysis.Provenance.Core
 import Language.K3.Analysis.Provenance.Constructors
@@ -64,12 +67,12 @@ localLogAction = logAction prvTraceLogging
 
 
 -- | A provenance bindings environment, layered to support shadowing.
-type PEnv = HashMap Identifier [K3 Provenance]
+type PEnv = BindingStackEnv (K3 Provenance)
 
 -- | A provenance bindings environment for annotations,
 --   indexed by annotation and attribute name.
-type PAEnv = HashMap Identifier PMEnv
-type PMEnv = HashMap Identifier (K3 Provenance, Bool)
+type PAEnv = BindingEnv PMEnv
+type PMEnv = BindingEnv (K3 Provenance, Bool)
 
 -- | A provenance "pointer" environment
 type PPEnv = IntMap (K3 Provenance)
@@ -107,38 +110,25 @@ mkErrP msg a = Left $ T.unlines [T.pack msg, PT.pretty a]
 
 {- PEnv helpers -}
 penv0 :: PEnv
-penv0 = Map.empty
+penv0 = BEnv.empty
 
 plkup :: PEnv -> Identifier -> Either Text (K3 Provenance)
-plkup env x = maybe err safeHead $ Map.lookup x env
-  where
-    safeHead l = if null l then err else Right $ head l
-    err = mkErrP msg env
-    msg = "Unbound variable in lineage binding environment: " ++ x
+plkup env x = BEnv.slookup env x
 
 plkupAll :: PEnv -> Identifier -> Either Text [K3 Provenance]
-plkupAll env x = maybe err return $ Map.lookup x env
-  where
-    err = mkErrP msg env
-    msg = "Unbound variable in lineage binding environment during lookupAll: " ++ x
+plkupAll env x = BEnv.lookup env x
 
 pext :: PEnv -> Identifier -> K3 Provenance -> PEnv
-pext env x p = Map.insertWith (++) x [p] env
+pext env x p = BEnv.push env x p
 
 psetAll :: PEnv -> Identifier -> [K3 Provenance] -> PEnv
-psetAll env x l = Map.insert x l env
+psetAll env x l = BEnv.set env x l
 
 pdel :: PEnv -> Identifier -> PEnv
-pdel env x = maybe env (maybe (Map.delete x env)
-                              (\nv -> Map.adjust (const nv) x env)
-                          . safeTail)
-               $ Map.lookup x env
-  where safeTail []  = Nothing
-        safeTail [_] = Nothing
-        safeTail l   = Just $ tail l
+pdel env x = BEnv.pop env x
 
 pmem :: PEnv -> Identifier -> Either Text Bool
-pmem env x = return $ Map.member x env
+pmem env x = BEnv.member env x
 
 {- PPEnv helpers -}
 ppenv0 :: PPEnv
@@ -158,24 +148,22 @@ ppdel env x = IntMap.delete x env
 
 {- PAEnv helpers -}
 paenv0 :: PAEnv
-paenv0 = Map.empty
+paenv0 = BEnv.empty
 
 pmenv0 :: PMEnv
-pmenv0 = Map.empty
+pmenv0 = BEnv.empty
 
 palkup :: PAEnv -> Identifier -> Identifier -> Either Text (K3 Provenance)
-palkup env x y = maybe err (maybe err (Right . fst) . Map.lookup y) $ Map.lookup x env
-  where err = mkErr $ "Unbound annotation member in lineage environment: " ++ x
+palkup env x y = BEnv.lookup env x >>= \menv -> BEnv.lookup menv y >>= return . fst
 
 paext :: PAEnv -> Identifier -> Identifier -> K3 Provenance -> Bool -> PAEnv
-paext env x y p l = Map.insertWith Map.union x (Map.fromList [(y,(p,l))]) env
+paext env x y p l = BEnv.pushWith env BEnv.union x (BEnv.fromList [(y,(p,l))])
 
 palkups :: PAEnv -> Identifier -> Either Text PMEnv
-palkups env x = maybe err Right $ Map.lookup x env
-  where err = mkErr $ "Unbound annotation in lineage environment: " ++ x
+palkups env x = BEnv.lookup env x
 
 paexts :: PAEnv -> Identifier -> PMEnv -> PAEnv
-paexts env x ap' = Map.insertWith Map.union x ap' env
+paexts env x ap' = BEnv.pushWith env BEnv.union x ap'
 
 
 {- PLCEnv helpers -}
@@ -320,7 +308,7 @@ pifreshAs pienv n memN =
   let mkMemP lacc l p             = lacc++[(p,l)]
       extMemP (lacc,eacc) (i,u,l) = first (mkMemP lacc l) $ pifreshfp eacc i u
       (memP, npienv)              = foldl extMemP ([], pienv) memN
-      memNP                       = Map.fromList $ zip (map (\(a,_,_) -> a) memN) memP
+      memNP                       = BEnv.fromList $ zip (map (\(a,_,_) -> a) memN) memP
   in (memNP, piextas npienv n memNP)
 
 
@@ -349,7 +337,7 @@ pistorea pienv n memP = do
   pmenv <- pilkupas pienv n
   foldM (storemem pmenv) pienv memP
 
-  where storemem pmenv eacc (i,u,p,_) = maybe (invalidMem i) (\(p',_) -> store eacc i u p' p) $ Map.lookup i pmenv
+  where storemem pmenv eacc (i,u,p,_) = BEnv.lookup pmenv i >>= \(p',_) -> store eacc i u p' p
         store eacc i u (tag -> PBVar mv) p
           | (pmvn mv, pmvloc mv) == (i,u) = return $ piextp eacc (pmvptr mv) p
         store _ i u p _ = invalidStore i u p
@@ -975,8 +963,8 @@ substituteProvenance expr = modifyTree injectProvenance expr
 collectionMemberProvenance :: Identifier -> K3 Provenance -> K3 Expression -> K3 Type -> PInfM (K3 Provenance)
 collectionMemberProvenance i psrc e t =
   let annIds = namedTAnnotations $ annotations t in do
-    memsEnv <- mapM pilkupasM annIds >>= return . Map.unions
-    (mp, lifted) <- maybe memErr return $ Map.lookup i memsEnv
+    memsEnv <- mapM pilkupasM annIds >>= return . BEnv.unions
+    (mp, lifted) <- liftEitherM $ BEnv.lookup memsEnv i
     if not lifted then attrErr else return $ pproject i psrc $ Just mp
 
   where memErr  = errorM $ PT.boxToString $ [T.unwords $ map T.pack ["Unknown projection of ", i, "on"]]           %+ PT.prettyLines e
@@ -1040,14 +1028,14 @@ instance Pretty (IntMap (K3 Provenance)) where
   prettyLines pp = IntMap.foldlWithKey (\acc k v -> acc ++ prettyPair (k,v)) [] pp
 
 instance Pretty PEnv where
-  prettyLines pe = Map.foldlWithKey' (\acc k v -> acc ++ prettyFrame k v) [] pe
+  prettyLines pe = BEnv.foldl (\acc k v -> acc ++ prettyFrame k v) [] pe
     where prettyFrame k v = concatMap prettyPair $ flip zip v $ replicate (length v) k
 
 instance Pretty PAEnv where
-  prettyLines pa = Map.foldlWithKey' (\acc k v -> acc ++ prettyPair (k,v)) [] pa
+  prettyLines pa = BEnv.foldl (\acc k v -> acc ++ prettyPair (k,v)) [] pa
 
 instance Pretty PMEnv where
-  prettyLines pm = Map.foldlWithKey' (\acc k v -> acc ++ prettyPair (k, fst v)) [] pm
+  prettyLines pm = BEnv.foldl (\acc k v -> acc ++ prettyPair (k, fst v)) [] pm
 
 instance Pretty PLCEnv where
   prettyLines plc = IntMap.foldlWithKey (\acc k v -> acc ++ [T.pack $ show k ++ " => " ++ show v]) [] plc

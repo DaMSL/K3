@@ -30,6 +30,8 @@ import Language.K3.Core.Literal
 import Language.K3.Core.Type
 import Language.K3.Core.Utils
 
+import Language.K3.Analysis.Core
+
 import Language.K3.Interpreter.Data.Types
 import Language.K3.Interpreter.Data.Accessors
 import Language.K3.Interpreter.Values

@@ -18,10 +18,8 @@ import Data.List
 import Data.Maybe
 import Data.Tree
 
-import Data.HashMap.Lazy ( HashMap )
-import Data.IntMap       ( IntMap )
-import qualified Data.HashMap.Lazy as Map
-import qualified Data.IntMap       as IntMap
+import Data.IntMap           ( IntMap )
+import qualified Data.IntMap as IntMap
 
 import Debug.Trace
 
@@ -31,6 +29,11 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
 import Language.K3.Core.Utils
+
+import Language.K3.Analysis.Data.BindingEnv ( BindingEnv, BindingStackEnv )
+import qualified Language.K3.Analysis.Data.BindingEnv as BEnv
+
+import Language.K3.Analysis.Core
 
 import Language.K3.Analysis.Provenance.Core
 import Language.K3.Analysis.Provenance.Constructors
@@ -57,21 +60,21 @@ localLogAction = logAction effTraceLogging
 
 -- | An effect bindings environment, using an option type to represent
 --   bindings that do not have an effect.
-type FEnv = HashMap Identifier [K3 Effect]
+type FEnv = BindingStackEnv (K3 Effect)
 
 -- | An effect "pointer" environment for bound effect variables.
 type FPEnv = IntMap (K3 Effect)
 
 -- | A provenance bindings environment, built from existing provenance annotations.
-type FPBEnv = HashMap Identifier [K3 Provenance]
+type FPBEnv = BindingStackEnv (K3 Provenance)
 
 -- | A provenance "pointer" environment
 type FPPEnv = IntMap (K3 Provenance)
 
 -- | A effect bindings environment for annotations,
 --   indexed by annotation and attribute name.
-type FAEnv = HashMap Identifier FMEnv
-type FMEnv = HashMap Identifier (K3 Effect, Bool)
+type FAEnv = BindingEnv FMEnv
+type FMEnv = BindingEnv (K3 Effect, Bool)
 
 -- | A lambda closure environment: ELambda UID => identifiers of closure variables.
 type FLCEnv = IntMap [Identifier]
@@ -111,38 +114,25 @@ mkErrP msg a = Left $ T.unlines [T.pack msg, PT.pretty a]
 
 {- FEnv helpers -}
 fenv0 :: FEnv
-fenv0 = Map.empty
+fenv0 = BEnv.empty
 
 flkup :: FEnv -> Identifier -> Either Text (K3 Effect)
-flkup env x = maybe err safeHead $ Map.lookup x env
-  where
-    safeHead l = if null l then err else Right $ head l
-    err = mkErrP msg env
-    msg = "Unbound variable in effect binding environment: " ++ x
+flkup env x = BEnv.slookup env x
 
 flkupAll :: FEnv -> Identifier -> Either Text [K3 Effect]
-flkupAll env x = maybe err return $ Map.lookup x env
-  where
-    err = mkErrP msg env
-    msg = "Unbound variable in effect binding environment: " ++ x
+flkupAll env x = BEnv.lookup env x
 
 fext :: FEnv -> Identifier -> K3 Effect -> FEnv
-fext env x p = Map.insertWith (++) x [p] env
+fext env x f = BEnv.push env x f
 
 fsetAll :: FEnv -> Identifier -> [K3 Effect] -> FEnv
-fsetAll env x l = Map.insert x l env
+fsetAll env x l = BEnv.set env x l
 
 fdel :: FEnv -> Identifier -> FEnv
-fdel env x =  maybe env (maybe (Map.delete x env)
-                              (\nv -> Map.adjust (const nv) x env)
-                          . safeTail)
-               $ Map.lookup x env
-  where safeTail []  = Nothing
-        safeTail [_] = Nothing
-        safeTail l   = Just $ tail l
+fdel env x = BEnv.pop env x
 
 fmem :: FEnv -> Identifier -> Either Text Bool
-fmem env x = return $ Map.member x env
+fmem env x = BEnv.member env x
 
 
 {- FPEnv helpers -}
@@ -163,24 +153,22 @@ fpdel env x = IntMap.delete x env
 
 {- FAEnv helpers -}
 faenv0 :: FAEnv
-faenv0 = Map.empty
+faenv0 = BEnv.empty
 
 fmenv0 :: FMEnv
-fmenv0 = Map.empty
+fmenv0 = BEnv.empty
 
 falkup :: FAEnv -> Identifier -> Identifier -> Either Text (K3 Effect)
-falkup env x y = maybe err (maybe err (Right . fst) . Map.lookup y) $ Map.lookup x env
-  where err = mkErr $ "Unbound annotation member in effect environment: " ++ x
+falkup env x y = BEnv.lookup env x >>= \menv -> BEnv.lookup menv y >>= return . fst
 
 faext :: FAEnv -> Identifier -> Identifier -> K3 Effect -> Bool -> FAEnv
-faext env x y fOpt l = Map.insertWith Map.union x (Map.fromList [(y,(fOpt,l))]) env
+faext env x y fOpt l = BEnv.pushWith env BEnv.union x (BEnv.fromList [(y,(fOpt,l))])
 
 falkups :: FAEnv -> Identifier -> Either Text FMEnv
-falkups env x = maybe err Right $ Map.lookup x env
-  where err = mkErr $ "Unbound annotation in effect environment: " ++ x
+falkups env x = BEnv.lookup env x
 
 faexts :: FAEnv -> Identifier -> FMEnv -> FAEnv
-faexts env x ap' = Map.insertWith Map.union x ap' env
+faexts env x af = BEnv.pushWith env BEnv.union x af
 
 
 {- EFMap helpers -}
@@ -202,26 +190,16 @@ efext efm e f s = case e @~ isEUID of
 
 {- FPBEnv helpers -}
 fpbenv0 :: FPBEnv
-fpbenv0 = Map.empty
+fpbenv0 = BEnv.empty
 
 fpblkup :: FPBEnv -> Identifier -> Either Text (K3 Provenance)
-fpblkup env x = maybe err safeHead $ Map.lookup x env
-  where
-    safeHead l = if null l then err else Right $ head l
-    err = mkErrP msg env
-    msg = "Unbound variable in effect provenance binding environment: " ++ x
+fpblkup env x = BEnv.slookup env x
 
 fpbext :: FPBEnv -> Identifier -> K3 Provenance -> FPBEnv
-fpbext env x p = Map.insertWith (++) x [p] env
+fpbext env x p = BEnv.push env x p
 
 fpbdel :: FPBEnv -> Identifier -> FPBEnv
-fpbdel env x =  maybe env (maybe (Map.delete x env)
-                              (\nv -> Map.adjust (const nv) x env)
-                          . safeTail)
-               $ Map.lookup x env
-  where safeTail []  = Nothing
-        safeTail [_] = Nothing
-        safeTail l   = Just $ tail l
+fpbdel env x =  BEnv.pop env x
 
 
 {- FPPEnv helpers -}
@@ -368,7 +346,7 @@ fifreshAs fienv n memN =
       extMemF (lacc,eacc) (i,u,l,fn) = if fn then first (mkMemF lacc l) $ fifreshfp eacc i u
                                              else (lacc++[(fnone,l)], eacc)
       (memF, nfienv)                 = foldl extMemF ([], fienv) memN
-      memNF                          = Map.fromList $ zip (map (\(a,_,_,_) -> a) memN) memF
+      memNF                          = BEnv.fromList $ zip (map (\(a,_,_,_) -> a) memN) memF
   in (memNF, fiextas nfienv n memNF)
 
 
@@ -395,7 +373,7 @@ fistorea fienv n memF = do
   fmenv <- filkupas fienv n
   foldM (storemem fmenv) fienv memF
 
-  where storemem fmenv eacc (i,u,f,_) = maybe (invalidMem i) (\(f',_) -> store eacc i u f' f) $ Map.lookup i fmenv
+  where storemem fmenv eacc (i,u,f,_) = BEnv.lookup fmenv i >>= \(f',_) -> store eacc i u f' f
         store eacc i u (tag -> FBVar mv) f
           | (fmvn mv, fmvloc mv) == (i,u) = return $ fiextp eacc (fmvptr mv) f
         store eacc _ _ _ _ = return eacc
@@ -1298,8 +1276,8 @@ collectionMemberEffect :: Maybe (ExtInferF a, a) -> Identifier -> [Maybe (K3 Eff
                        -> FInfM (Maybe (K3 Effect), K3 Effect)
 collectionMemberEffect extInfOpt i ef sf esrc t psrc =
   let annIds = namedTAnnotations $ annotations t in do
-    memsEnv <- mapM filkupasM annIds >>= return . Map.unions
-    (mrf, lifted) <- maybe memErr return $ Map.lookup i memsEnv
+    memsEnv <- mapM filkupasM annIds >>= return . BEnv.unions
+    (mrf, lifted) <- liftEitherM $ BEnv.lookup memsEnv i
     mrfs  <- fisubM extInfOpt "self" sf mrf psrc
     mrfsc <- fisubM extInfOpt "content" fnone mrfs ptemp
     if not lifted then attrErr else return $ (Just $ fseq $ catMaybes ef, mrfsc)
@@ -1492,14 +1470,14 @@ instance Pretty (IntMap SymbolCategories) where
   prettyLines cm = IntMap.foldlWithKey (\acc k sc -> acc ++ prettyPair (k,sc)) [] cm
 
 instance Pretty FEnv where
-  prettyLines fe = Map.foldlWithKey' (\acc k v -> acc ++ prettyFrame k v) [] fe
+  prettyLines fe = BEnv.foldl (\acc k v -> acc ++ prettyFrame k v) [] fe
     where prettyFrame k v = concatMap prettyPair $ flip zip v $ replicate (length v) k
 
 instance Pretty FAEnv where
-  prettyLines fa = Map.foldlWithKey' (\acc k v -> acc ++ prettyPair (k,v)) [] fa
+  prettyLines fa = BEnv.foldl (\acc k v -> acc ++ prettyPair (k,v)) [] fa
 
 instance Pretty FMEnv where
-  prettyLines fm = Map.foldlWithKey' (\acc k v -> acc ++ prettyPair (k, fst v)) [] fm
+  prettyLines fm = BEnv.foldl (\acc k v -> acc ++ prettyPair (k, fst v)) [] fm
 
 prettyPair :: (Show a, Pretty b) => (a,b) -> [Text]
 prettyPair (a,b) = [T.pack $ show a ++ " => "] %+ PT.prettyLines b

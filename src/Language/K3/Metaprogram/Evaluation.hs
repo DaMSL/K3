@@ -38,6 +38,7 @@ import Language.K3.Metaprogram.MetaHK3 hiding ( localLog, localLogAction )
 import Language.K3.Parser.ProgramBuilder ( defaultRoleName )
 import Language.K3.Parser.DataTypes
 
+import Language.K3.Analysis.Core
 import Language.K3.Analysis.HMTypes.Inference hiding ( localLog, localLogAction )
 
 import Language.K3.Utils.Logger
