@@ -29,10 +29,10 @@ import Data.List
 import Data.Maybe
 import Data.Tree
 
-import Data.Map    ( Map    )
-import Data.IntMap ( IntMap )
-import qualified Data.Map    as Map
-import qualified Data.IntMap as IntMap
+import Data.HashMap.Lazy ( HashMap )
+import Data.IntMap       ( IntMap )
+import qualified Data.HashMap.Lazy as Map
+import qualified Data.IntMap       as IntMap
 
 import Debug.Trace
 
@@ -64,12 +64,12 @@ localLogAction = logAction prvTraceLogging
 
 
 -- | A provenance bindings environment, layered to support shadowing.
-type PEnv = Map Identifier [K3 Provenance]
+type PEnv = HashMap Identifier [K3 Provenance]
 
 -- | A provenance bindings environment for annotations,
 --   indexed by annotation and attribute name.
-type PAEnv = Map Identifier PMEnv
-type PMEnv = Map Identifier (K3 Provenance, Bool)
+type PAEnv = HashMap Identifier PMEnv
+type PMEnv = HashMap Identifier (K3 Provenance, Bool)
 
 -- | A provenance "pointer" environment
 type PPEnv = IntMap (K3 Provenance)
@@ -129,7 +129,10 @@ psetAll :: PEnv -> Identifier -> [K3 Provenance] -> PEnv
 psetAll env x l = Map.insert x l env
 
 pdel :: PEnv -> Identifier -> PEnv
-pdel env x = Map.update safeTail x env
+pdel env x = maybe env (maybe (Map.delete x env)
+                              (\nv -> Map.adjust (const nv) x env)
+                          . safeTail)
+               $ Map.lookup x env
   where safeTail []  = Nothing
         safeTail [_] = Nothing
         safeTail l   = Just $ tail l
@@ -1017,14 +1020,14 @@ instance Pretty (IntMap (K3 Provenance)) where
   prettyLines pp = IntMap.foldlWithKey (\acc k v -> acc ++ prettyPair (k,v)) [] pp
 
 instance Pretty PEnv where
-  prettyLines pe = Map.foldlWithKey (\acc k v -> acc ++ prettyFrame k v) [] pe
+  prettyLines pe = Map.foldlWithKey' (\acc k v -> acc ++ prettyFrame k v) [] pe
     where prettyFrame k v = concatMap prettyPair $ flip zip v $ replicate (length v) k
 
 instance Pretty PAEnv where
-  prettyLines pa = Map.foldlWithKey (\acc k v -> acc ++ prettyPair (k,v)) [] pa
+  prettyLines pa = Map.foldlWithKey' (\acc k v -> acc ++ prettyPair (k,v)) [] pa
 
 instance Pretty PMEnv where
-  prettyLines pm = Map.foldlWithKey (\acc k v -> acc ++ prettyPair (k, fst v)) [] pm
+  prettyLines pm = Map.foldlWithKey' (\acc k v -> acc ++ prettyPair (k, fst v)) [] pm
 
 instance Pretty PLCEnv where
   prettyLines plc = IntMap.foldlWithKey (\acc k v -> acc ++ [T.pack $ show k ++ " => " ++ show v]) [] plc

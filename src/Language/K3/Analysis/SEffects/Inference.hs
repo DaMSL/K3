@@ -18,10 +18,10 @@ import Data.List
 import Data.Maybe
 import Data.Tree
 
-import Data.Map    ( Map    )
-import Data.IntMap ( IntMap )
-import qualified Data.Map    as Map
-import qualified Data.IntMap as IntMap
+import Data.HashMap.Lazy ( HashMap )
+import Data.IntMap       ( IntMap )
+import qualified Data.HashMap.Lazy as Map
+import qualified Data.IntMap       as IntMap
 
 import Debug.Trace
 
@@ -57,21 +57,21 @@ localLogAction = logAction effTraceLogging
 
 -- | An effect bindings environment, using an option type to represent
 --   bindings that do not have an effect.
-type FEnv = Map Identifier [K3 Effect]
+type FEnv = HashMap Identifier [K3 Effect]
 
 -- | An effect "pointer" environment for bound effect variables.
 type FPEnv = IntMap (K3 Effect)
 
 -- | A provenance bindings environment, built from existing provenance annotations.
-type FPBEnv = Map Identifier [K3 Provenance]
+type FPBEnv = HashMap Identifier [K3 Provenance]
 
 -- | A provenance "pointer" environment
 type FPPEnv = IntMap (K3 Provenance)
 
 -- | A effect bindings environment for annotations,
 --   indexed by annotation and attribute name.
-type FAEnv = Map Identifier FMEnv
-type FMEnv = Map Identifier (K3 Effect, Bool)
+type FAEnv = HashMap Identifier FMEnv
+type FMEnv = HashMap Identifier (K3 Effect, Bool)
 
 -- | A lambda closure environment: ELambda UID => identifiers of closure variables.
 type FLCEnv = IntMap [Identifier]
@@ -133,7 +133,10 @@ fsetAll :: FEnv -> Identifier -> [K3 Effect] -> FEnv
 fsetAll env x l = Map.insert x l env
 
 fdel :: FEnv -> Identifier -> FEnv
-fdel env x = Map.update safeTail x env
+fdel env x =  maybe env (maybe (Map.delete x env)
+                              (\nv -> Map.adjust (const nv) x env)
+                          . safeTail)
+               $ Map.lookup x env
   where safeTail []  = Nothing
         safeTail [_] = Nothing
         safeTail l   = Just $ tail l
@@ -212,7 +215,10 @@ fpbext :: FPBEnv -> Identifier -> K3 Provenance -> FPBEnv
 fpbext env x p = Map.insertWith (++) x [p] env
 
 fpbdel :: FPBEnv -> Identifier -> FPBEnv
-fpbdel env x = Map.update safeTail x env
+fpbdel env x =  maybe env (maybe (Map.delete x env)
+                              (\nv -> Map.adjust (const nv) x env)
+                          . safeTail)
+               $ Map.lookup x env
   where safeTail []  = Nothing
         safeTail [_] = Nothing
         safeTail l   = Just $ tail l
@@ -1486,14 +1492,14 @@ instance Pretty (IntMap SymbolCategories) where
   prettyLines cm = IntMap.foldlWithKey (\acc k sc -> acc ++ prettyPair (k,sc)) [] cm
 
 instance Pretty FEnv where
-  prettyLines fe = Map.foldlWithKey (\acc k v -> acc ++ prettyFrame k v) [] fe
+  prettyLines fe = Map.foldlWithKey' (\acc k v -> acc ++ prettyFrame k v) [] fe
     where prettyFrame k v = concatMap prettyPair $ flip zip v $ replicate (length v) k
 
 instance Pretty FAEnv where
-  prettyLines fa = Map.foldlWithKey (\acc k v -> acc ++ prettyPair (k,v)) [] fa
+  prettyLines fa = Map.foldlWithKey' (\acc k v -> acc ++ prettyPair (k,v)) [] fa
 
 instance Pretty FMEnv where
-  prettyLines fm = Map.foldlWithKey (\acc k v -> acc ++ prettyPair (k, fst v)) [] fm
+  prettyLines fm = Map.foldlWithKey' (\acc k v -> acc ++ prettyPair (k, fst v)) [] fm
 
 prettyPair :: (Show a, Pretty b) => (a,b) -> [Text]
 prettyPair (a,b) = [T.pack $ show a ++ " => "] %+ PT.prettyLines b
