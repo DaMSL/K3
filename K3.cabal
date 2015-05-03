@@ -70,7 +70,8 @@ executable k3
         text,
         time,
         transformers,
-        unordered-containers
+        unordered-containers,
+        vector
 
 test-suite all
     type: exitcode-stdio-1.0

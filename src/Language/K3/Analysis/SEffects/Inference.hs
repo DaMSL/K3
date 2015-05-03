@@ -886,7 +886,7 @@ inferExprEffects extInfOpt expr = inferEffects extInfOpt expr >> substituteEffec
 inferEffects :: Maybe (ExtInferF a, a) -> K3 Expression -> FInfM (K3 Effect)
 inferEffects extInfOpt expr = do
   fiseterrtleM $ Just expr
-  (_, r) <- foldMapIn1RebuildTree topdown sideways inferWithRule iu (Nothing, []) expr
+  (_, r) <- biFoldMapIn1RebuildTree topdown sideways inferWithRule iu (Nothing, []) expr
   return r
 
   where
