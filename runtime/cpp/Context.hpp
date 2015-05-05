@@ -26,8 +26,12 @@ namespace K3 {
 
     static std::map<int, std::string> __trigger_names;
     static std::map<int, shared_ptr<Dispatcher>> __clonable_dispatchers;
+
+    void    __setAddr(const Address& a) { __myAddr = a; }
+    Address __getAddr() { return __myAddr; }
    protected:
     Engine& __engine;
+    Address __myAddr;
   };
 
   template <class context>
