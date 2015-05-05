@@ -1,5 +1,4 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE NoMonoLocalBinds #-}
 
 module Language.K3.Parser.Operator where

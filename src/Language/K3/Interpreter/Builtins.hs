@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
@@ -14,6 +15,12 @@ import Control.Monad.State
 
 import Data.List
 import Data.Time
+
+#if MIN_VERSION_time(1,5,0)
+#else
+import System.Locale
+#endif
+
 import Data.Time.Clock.POSIX
 
 import qualified Data.Map as Map
