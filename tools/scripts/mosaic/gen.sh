@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # generate mosaic files and compile them
 
 if [ "$#" -ne 1 ]; then
