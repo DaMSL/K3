@@ -114,7 +114,7 @@ run opts = do
 
     -- Typechecking dispatch.
     chooseTypechecker opts' p =
-      if noQuickTypes opts' then typecheck p else quickTypecheckOpts opts' p
+      if noQuickTypes opts' then error "Unsupported" p else quickTypecheckOpts opts' p
 
     quickTypecheckOpts opts' p = inferProgramTypes p >>=
       \(p',_) -> if printQuickTypes opts' then return p' else translateProgramTypes p'
