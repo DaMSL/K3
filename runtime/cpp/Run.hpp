@@ -44,6 +44,7 @@ namespace K3 {
       gc->__patch(s);
       gc->initDecls(unit_t {});
       contexts[gc->me] = gc;
+      gc->__setAddr(gc->me);
       queues->addQueue(gc->me);
       peers.push_back(gc->me);
       SystemEnvironment se = defaultEnvironment(getAddrs(contexts));

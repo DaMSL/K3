@@ -17,7 +17,11 @@ namespace K3 {
       msgcodec = _msgcodec;
       log_enabled = false;
       log_json = false;
-      if (log_l != "") { log_enabled = true; }
+      if (log_l == "final") {
+        log_final = true;
+      } else if (log_l != "") {
+        log_enabled = true;
+      }
       if (log_p != "") { log_json = true; }
       auto dir = log_p != "" ? log_p : ".";
       log_path = dir;
@@ -138,11 +142,25 @@ namespace K3 {
 
     //-----------------------
     // Engine execution loop
+    void Engine::logEnvironment(const Address& a) {
+      logAt(trivial::trace, "Environment: ");
+      std::map<std::string, std::string> env = mp_->bindings(a);
+      std::map<std::string, std::string>::iterator iter;
+      for (iter = env.begin(); iter != env.end(); ++iter) {
+         std::string id = iter->first;
+         std::string val = iter->second;
+         logAt(trivial::trace, "  " + id + " = " + val);
+      }
+    }
+
+    void Engine::logFinalEnvironment(const Address& a) {
+      if (log_final) {
+        logEnvironment(a);
+      }
+    }
 
     MPStatus Engine::processMessage(shared_ptr<MessageProcessor> mp)
     {
-      // Log queues?
-
       // Get a message from the engine queues.
       shared_ptr<Message> next_message = queues->dequeue(*me);
 
@@ -164,19 +182,10 @@ namespace K3 {
 
         // Log Env
         if (log_enabled) {
-          logAt(trivial::trace, "Environment: ");
-          std::map<std::string, std::string> env = mp->bindings(next_message->address());
-          std::map<std::string, std::string>::iterator iter;
-          for (iter = env.begin(); iter != env.end(); ++iter) {
-             std::string id = iter->first;
-             std::string val = iter->second;
-             logAt(trivial::trace, "  " + id + " = " + val);
-          }
-       }
-
+          logEnvironment(next_message->address());
+        }
 
         return res;
-
       } else {
         // Otherwise return a Done, indicating no messages in the queues.
         return LoopStatus::Done;
@@ -185,6 +194,7 @@ namespace K3 {
 
     void Engine::runMessages(shared_ptr<MessageProcessor>& mp, MPStatus init_st)
     {
+      mp_ = mp;
       MPStatus curr_status = init_st;
       MPStatus next_status;
       logAt(trivial::trace, "Starting the Message Processing Loop");

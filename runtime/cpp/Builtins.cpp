@@ -164,6 +164,7 @@ namespace K3 {
   }
 
   unit_t __standard_context::haltEngine(unit_t) {
+    __engine.logFinalEnvironment(__getAddr());
     __engine.forceTerminateEngine();
     return unit_t();
   }

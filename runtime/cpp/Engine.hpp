@@ -277,6 +277,8 @@ namespace K3 {
     //-----------------------
     // Engine execution loop
 
+    void logEnvironment(const Address& a);
+    void logFinalEnvironment(const Address& a);
     MPStatus processMessage(shared_ptr<MessageProcessor> mp);
 
     void runMessages(shared_ptr<MessageProcessor>& mp, MPStatus init_st);
@@ -384,6 +386,7 @@ namespace K3 {
     shared_ptr<Address>             me;
     shared_ptr<MessageCodec>        msgcodec;
     shared_ptr<const MessageQueues> queues;
+    shared_ptr<MessageProcessor>    mp_;
     // shared_ptr<WorkerPool>       workers;
     shared_ptr<Net::NContext>       network_ctxt;
 
@@ -397,6 +400,7 @@ namespace K3 {
 
     // Log info
     bool                            log_enabled;
+    bool                            log_final;
     bool                            log_json;
     // Tuple of (eventLog, globalsLog)
 
