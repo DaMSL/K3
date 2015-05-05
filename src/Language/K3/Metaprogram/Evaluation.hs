@@ -3,6 +3,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Language.K3.Metaprogram.Evaluation where
 
@@ -459,7 +460,9 @@ evalLiteralSplice _ (Right l) = return l
 
 evalSumEmbedding :: String -> SpliceContext -> [MPEmbedding] -> GeneratorM SpliceValue
 evalSumEmbedding tg sctxt l = maybe sumError return =<< foldM concatSpliceVal Nothing l
-  where sumError = spliceFail $ "Inconsistent " ++ tg ++ " splice parts " ++ show l ++ " " ++ show sctxt
+  where
+        sumError :: GeneratorM a
+        sumError = spliceFail $ "Inconsistent " ++ tg ++ " splice parts " ++ show l ++ " " ++ show sctxt
 
         concatSpliceVal Nothing se           = evalEmbedding sctxt se >>= return . Just
         concatSpliceVal (Just (SLabel i)) se = evalEmbedding sctxt se >>= doConcat (SLabel i)

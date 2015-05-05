@@ -938,16 +938,27 @@ repairProgram repairMsg nextUIDOpt p =
     let nextUID = maybe (let UID maxUID = maxProgramUID p in maxUID + 1) id nextUIDOpt
     in runIdentity $ foldProgram repairDecl repairMem repairExpr (Just repairType) nextUID p
 
-  where repairDecl uid n = validateD uid (children n) n
+  where
+        repairDecl :: Int -> K3 Declaration -> Identity (Int, K3 Declaration)
+        repairDecl uid n = validateD uid (children n) n
+
+        repairExpr :: Int -> K3 Expression -> Identity (Int, K3 Expression)
         repairExpr uid n = foldRebuildTree validateE uid n
+
+        repairType :: Int -> K3 Type -> Identity (Int, K3 Type)
         repairType uid n = foldRebuildTree validateT uid n
 
         repairMem uid (Lifted      pol n t eOpt anns) = rebuildMem uid anns $ Lifted      pol n (repairTQualifier t) eOpt
         repairMem uid (Attribute   pol n t eOpt anns) = rebuildMem uid anns $ Attribute   pol n (repairTQualifier t) eOpt
         repairMem uid (MAnnotation pol n anns)        = rebuildMem uid anns $ MAnnotation pol n
 
+        validateD :: Int -> [K3 Declaration] -> K3 Declaration -> Identity (Int, K3 Declaration)
         validateD uid ch n = ensureUIDSpan uid DUID isDUID DSpan isDSpan ch n >>= return . second repairDQualifier
+
+        validateE :: Int -> [K3 Expression] -> K3 Expression -> Identity (Int, K3 Expression)
         validateE uid ch n = ensureUIDSpan uid EUID isEUID ESpan isESpan ch n >>= return . second repairEQualifier
+
+        validateT :: Int -> [K3 Type] -> K3 Type -> Identity (Int, K3 Type)
         validateT uid ch n = ensureUIDSpan uid TUID isTUID TSpan isTSpan ch n >>= return . second repairTQualifier
 
         repairDQualifier d = case tag d of
@@ -955,6 +966,7 @@ repairProgram repairMsg nextUIDOpt p =
           DTrigger n t e    -> replaceTag d (DTrigger n (repairTQualifier t) e)
           _ -> d
 
+        repairEQualifier :: K3 Expression -> K3 Expression
         repairEQualifier n = case tnc n of
           (EConstant (CEmpty t), _) -> let nt = runIdentity $ modifyTree (return . repairTQualifier) t
                                        in replaceTag n $ EConstant $ CEmpty nt
@@ -989,7 +1001,10 @@ repairProgram repairMsg nextUIDOpt p =
         ensureUIDSpan uid uCtor uT sCtor sT ch (Node tg _) =
           return $ ensureUID uid uCtor uT $ snd $ ensureSpan sCtor sT $ Node tg ch
 
+        ensureSpan :: (Eq (Annotation a)) => (Span -> Annotation a) -> (Annotation a -> Bool) -> K3 a -> ((), K3 a)
         ensureSpan    ctor t n = addAnn () () (ctor $ GeneratedSpan repairMsg) t n
+
+        ensureUID :: (Eq (Annotation a)) => Int -> (UID -> Annotation a) -> (Annotation a -> Bool) -> (K3 a) -> (Int, K3 a)
         ensureUID uid ctor t n = addAnn (uid+1) uid (ctor $ UID uid) t n
 
         addAnn rUsed rNotUsed a t n = maybe (rUsed, n @+ a) (const (rNotUsed, n)) (n @~ t)

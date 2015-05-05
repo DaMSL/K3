@@ -1,5 +1,6 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Language.K3.Analysis.CArgs (runAnalysis, eCArgs, isECArgs, isErrorFn) where
 

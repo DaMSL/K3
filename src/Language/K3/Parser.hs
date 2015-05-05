@@ -1,13 +1,16 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NoMonoLocalBinds #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE ViewPatterns #-}
-
+{-# LANGUAGE PartialTypeSignatures #-}
 -- | K3 Parser.
 module Language.K3.Parser {-(
   K3Parser,
@@ -296,6 +299,8 @@ dControlAnnotation = namedIdentifier "control annotation" "control" $ rule
   where rule x = mkCtrlAnn <$> x <*> option [] spliceParameterDecls <*> braces body
         body           = (,) <$> some cpattern <*> (extensions $ keyword "shared")
         cpattern       = (,,) <$> patternE <*> (symbol "=>" *> rewriteE) <*> (extensions $ symbol "+>")
+
+        extensions :: K3Parser a -> K3Parser [K3 Declaration]
         extensions pfx = concat <$> option [] (try $ pfx *> braces (many extensionD))
         rewriteE       = cleanExpr =<< parseInMode Splice expr
         patternE       = cleanExpr =<< parseInMode SourcePattern expr
@@ -465,19 +470,26 @@ eTerm = do
                  eBind,
                  eSelf ]
 
+    eProject :: K3Parser ((String, Maybe (K3 Type)), [Annotation Expression])
     eProject = prjWithAnnotations $ dot *> identifier
 
+    -- attachProjection :: _
     attachProjection e (((i, tOpt), anns), sp) =
       EUID # (return $ foldl (@+) (EC.project i e) $ [ESpan sp] ++ maybe [] ((:[]) . EPType) tOpt ++ anns)
 
     eWithProperties    p = withProperties "" False eProperties p
+
+    eWithAnnotations :: K3Parser (K3 Expression) -> K3Parser (K3 Expression)
     eWithAnnotations   p = foldl (@+) <$> p <*> withAnnotations eCAnnotations
+
     prjWithAnnotations p = (,) <$> asSourcePattern (,) (,Nothing) p <*> withAnnotations eCAnnotations
 
+    asSourcePattern :: (a -> Maybe (K3 Type) -> b) -> (a -> b) -> K3Parser a -> K3Parser b
     asSourcePattern pctor ctor p = parserWithPMode $ \case
       SourcePattern -> pctor <$> p <*> optional (try $ colon *> typeExpr)
       _ -> ctor <$> p
 
+    attachPType :: K3 Expression -> Maybe (K3 Type) -> K3 Expression
     attachPType e tOpt = maybe e ((e @+) . EPType) tOpt
 
     wrapInComments p = (\c1 e c2 -> (//) attachComment (c1++c2) e) <$> comment False <*> p <*> comment True
@@ -1193,7 +1205,11 @@ ensureUIDs p = traverse (parserWithUID . annotateDecl) p
       return $ unlessAnnotated (any isDUID) d' (d' @+ (DUID $ UID uid))
 
     annotateNode test anns node = return $ unlessAnnotated test node (foldl (@+) node anns)
+
+    annotateExpr :: (Eq (Annotation Expression)) => K3 Expression -> K3Parser (K3 Expression)
     annotateExpr = traverse (\e -> parserWithUID (\uid -> annotateNode (any isEUID) [EUID $ UID uid] e))
+
+    annotateType :: (Eq (Annotation Type)) => K3 Type -> K3Parser (K3 Type)
     annotateType = traverse (\t -> parserWithUID (\uid -> annotateNode (any isTUID) [TUID $ UID uid] t))
 
     unlessAnnotated test n@(_ :@: as) n' = if test as then n else n'

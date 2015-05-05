@@ -1,9 +1,14 @@
 {-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 
 -- | Provenance (i.e., dataflow) analysis for K3 programs.
 module Language.K3.Analysis.Provenance.Inference (
@@ -453,11 +458,11 @@ chaseAppArg p = return p
 
 simplifyApply :: PIEnv -> Maybe (K3 Expression) -> K3 Provenance -> K3 Provenance -> Either Text (K3 Provenance, PIEnv)
 simplifyApply pienv eOpt lp argp = do
-  let debugChase lp' argp' = flip trace lp' (T.unpack $ PT.boxToString
-                                 $ [T.pack "chaseLambda"]
-                                %$ [T.pack "Expr:"]  %$ (maybe [] PT.prettyLines eOpt)
-                                %$ [T.pack "LProv:"] %$ PT.prettyLines lp'
-                                %$ [T.pack "AProv:"] %$ PT.prettyLines argp')
+  -- let debugChase lp' argp' = flip trace lp' (T.unpack $ PT.boxToString
+  --                                $ [T.pack "chaseLambda"]
+  --                               %$ [T.pack "Expr:"]  %$ (maybe [] PT.prettyLines eOpt)
+  --                               %$ [T.pack "LProv:"] %$ PT.prettyLines lp'
+  --                               %$ [T.pack "AProv:"] %$ PT.prettyLines argp')
   uOpt   <- maybe (return Nothing) (\e -> uidOf e >>= return . Just) eOpt
   argp'  <- chaseAppArg argp
   manyLp <- chaseLambda pienv [] {-(debugChase lp argp)-} lp
@@ -498,6 +503,8 @@ simplifyApply pienv eOpt lp argp = do
     pmv p = Left $ PT.boxToString $ [T.pack "Invalid provenance bound var: "] %$ PT.prettyLines p
 
     exprErr = flip (maybe []) eOpt $ \e -> PT.prettyLines e
+
+    appLambdaErr :: forall a. K3 Provenance -> Either Text a
     appLambdaErr p = Left $ PT.boxToString $ [T.pack "Invalid function provenance on:"]
                           %$ exprErr %$ [T.pack "Provenance:"] %$ PT.prettyLines p
 

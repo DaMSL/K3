@@ -1,4 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE NoMonoLocalBinds #-}
 
 module Language.K3.Parser.Operator where
 
@@ -91,10 +93,14 @@ buildExpressionParser operators simpleExpr
               postfixOp  = choice postfix' <?> ""
 
               -- Note: parsers-0.10 does not employ a 'try' parser here.
+              -- ambiguous :: Parsing m => forall c d. String -> m c -> m d
               ambiguous assoc op = try $ op *> empty <?> ("ambiguous use of a " ++ assoc ++ "-associative operator")
 
+              -- ambiguousRight :: forall a. m a
               ambiguousRight    = ambiguous "right" rassocOp
+              -- ambiguousLeft :: forall a. m a
               ambiguousLeft     = ambiguous "left" lassocOp
+              -- ambiguousNon :: forall a. m a
               ambiguousNon      = ambiguous "non" nassocOp
 
               termP      = (prefixP <*> term) <**> postfixP
