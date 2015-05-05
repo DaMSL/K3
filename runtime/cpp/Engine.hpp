@@ -157,10 +157,10 @@ namespace K3 {
       string result_p,
       shared_ptr<const MessageQueues> qs
     ): LogMT("Engine") {
-      configure(simulation, sys_env, _msgcodec, log_level, log_path, result_v, result_p, qs);
+      configure(simulation, sys_env, _msgcodec, log_level, log_path, false, result_v, result_p, qs);
     }
 
-    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<MessageCodec> _msgcodec, string log_level,string log_path, string result_var, string result_path, shared_ptr<const MessageQueues> qs);
+    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<MessageCodec> _msgcodec, string log_level,string log_path, bool json_final, string result_var, string result_path, shared_ptr<const MessageQueues> qs);
 
     //-----------
     // Messaging.
@@ -325,24 +325,29 @@ namespace K3 {
 
     // JSON logging
     void logJson(std::string time, const Address& peer, std::string trig, std::string msg_contents, std::map<std::string, std::string> env, const Address& msgSource) {
-            auto& event_stream = *std::get<0>(log_streams[peer]);
+      auto& event_stream = *std::get<0>(log_streams[peer]);
 
-            // Log message Event:
-            // message_id, dest_peer, trigger_name
-            // source_peer, contents, timestamp
-            event_stream << message_counter << "|";
-            event_stream << K3::serialization::json::encode<Address>(peer) << "|";
-            event_stream << trig << "|";
-            event_stream << K3::serialization::json::encode<Address>(msgSource) << "|";
-            event_stream << msg_contents << "|";
-            event_stream << time_milli() << std::endl;
+      // Log message Event:
+      // message_id, dest_peer, trigger_name
+      // source_peer, contents, timestamp
+      event_stream << message_counter << "|";
+      event_stream << K3::serialization::json::encode<Address>(peer) << "|";
+      event_stream << trig << "|";
+      event_stream << K3::serialization::json::encode<Address>(msgSource) << "|";
+      event_stream << msg_contents << "|";
+      event_stream << time_milli() << std::endl;
 
-            // Log Global state
-            auto& global_stream = *std::get<1>(log_streams[peer]);
-            auto s = std::to_string(message_counter) + "|" + K3::serialization::json::encode<Address>(peer) + "|";
-            for (const auto& tup : env) {
-              global_stream << s << tup.first << "|" << tup.second << std::endl;
-            }
+      // Log Global state
+      logJsonEnvironment(peer);
+    }
+
+    void logJsonEnvironment(const Address& peer) {
+      auto env = mp_->json_bindings(peer);
+      auto& global_stream = *std::get<1>(log_streams[peer]);
+      auto s = std::to_string(message_counter) + "|" + K3::serialization::json::encode<Address>(peer) + "|";
+      for (const auto& tup : env) {
+        global_stream << s << tup.first << "|" << tup.second << std::endl;
+      }
     }
 
     void logResult(shared_ptr<MessageProcessor>& mp) {
@@ -400,10 +405,11 @@ namespace K3 {
 
     // Log info
     bool                            log_enabled;
-    bool                            log_final;
+    bool                            log_final = false;
     bool                            log_json;
-    // Tuple of (eventLog, globalsLog)
+    bool                            log_json_final = false;
 
+    // Tuple of (eventLog, globalsLog)
     std::map<Address, tuple<shared_ptr<ofstream>, shared_ptr<ofstream>>> log_streams;
     string                          log_path;
     string                          result_var;

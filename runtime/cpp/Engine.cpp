@@ -11,7 +11,7 @@ using boost::thread;
 namespace K3 {
 
     void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<MessageCodec> _msgcodec,
-                           string log_l, string log_p, string result_v, string result_p, shared_ptr<const MessageQueues> qs)
+                           string log_l, string log_p, bool j_final, string result_v, string result_p, shared_ptr<const MessageQueues> qs)
     {
       queues = qs;
       msgcodec = _msgcodec;
@@ -22,7 +22,9 @@ namespace K3 {
       } else if (log_l != "") {
         log_enabled = true;
       }
-      if (log_p != "") { log_json = true; }
+
+      log_json_final = j_final;
+      if (log_p != "" && !log_json_final) { log_json = true; }
       auto dir = log_p != "" ? log_p : ".";
       log_path = dir;
 
@@ -36,7 +38,7 @@ namespace K3 {
         throw std::runtime_error("Only 1 peer per engine allowed");
       }
 
-      if (log_json) {
+      if (log_json || log_json_final) {
         for (const auto& addr : processAddrs) {
           auto s1 = log_path + "/" + addressAsString(addr) + "_Messages.dsv";
           auto s2 = log_path + "/" + addressAsString(addr) + "_Globals.dsv";
@@ -156,6 +158,9 @@ namespace K3 {
     void Engine::logFinalEnvironment(const Address& a) {
       if (log_final) {
         logEnvironment(a);
+      }
+      if (log_json_final) {
+        logJsonEnvironment(a);
       }
     }
 
