@@ -24,6 +24,13 @@ executable k3
 
     ghc-options: -Wall -fno-warn-orphans -O2
 
+    extensions:
+      FlexibleContexts,
+      FlexibleInstances,
+      NoMonoLocalBinds,
+      RankNTypes,
+      TypeFamilies
+
     build-depends:
         ansi-wl-pprint,
         attoparsec,
@@ -41,7 +48,6 @@ executable k3
         errors,
         filemanip,
         filepath,
-        graph-wrapper,
         hashable,
         hashable-extras,
         hashtables,

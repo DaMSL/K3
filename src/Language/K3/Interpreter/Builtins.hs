@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
@@ -12,10 +13,14 @@ import Control.Concurrent.MVar
 
 import Control.Monad.State
 
-import System.Locale
-
 import Data.List
 import Data.Time
+
+#if MIN_VERSION_time(1,5,0)
+#else
+import System.Locale
+#endif
+
 import Data.Time.Clock.POSIX
 
 import qualified Data.Map as Map
@@ -242,8 +247,8 @@ genBuiltin "parse_sql_date" _ = vfun $ \(VString s) -> do
 genBuiltin "now" _ = vfun $ \(VTuple []) -> do
     v <- liftIO $ Clock.getTime Clock.Realtime
     return $ VRecord $ Map.fromList $
-        [("sec", (VInt $ Clock.sec v, MemImmut)),
-         ("nsec", (VInt $ Clock.nsec v, MemImmut))]
+        [("sec", (VInt $ fromIntegral $ Clock.sec v, MemImmut)),
+         ("nsec", (VInt $ fromIntegral $ Clock.nsec v, MemImmut))]
 
 genBuiltin "add_time" _ = vfun $ \(VRecord map1) -> vfun $ \(VRecord map2) ->
     timeBinOp map1 map2 (+) >>= return . VRecord

@@ -153,6 +153,7 @@ data instance Annotation Type
 
 {- NFData instances for the Type AST -}
 instance NFData Type
+instance NFData TypeVariableOperator
 instance NFData ImperativeType
 instance NFData TypeBuiltIn
 instance NFData TypeVarDecl

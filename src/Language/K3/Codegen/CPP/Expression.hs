@@ -2,6 +2,7 @@
 {-# LANGUAGE ParallelListComp #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Codegen.CPP.Expression where

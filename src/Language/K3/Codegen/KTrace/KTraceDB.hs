@@ -1,5 +1,6 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns  #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Database-backed tracing for distributed K3 programs.
 --   This module generates a database schema for a K3 program trace.
