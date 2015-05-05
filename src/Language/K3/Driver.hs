@@ -37,7 +37,6 @@ import Language.K3.Stages
 import Language.K3.Driver.Batch
 import Language.K3.Driver.Common
 import Language.K3.Driver.Options
-import Language.K3.Driver.Typecheck
 
 --import qualified Language.K3.Driver.CompilerTarget.Haskell as HaskellC
 import qualified Language.K3.Driver.CompilerTarget.CPP     as CPPC

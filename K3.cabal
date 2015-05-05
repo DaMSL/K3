@@ -41,7 +41,6 @@ executable k3
         errors,
         filemanip,
         filepath,
-        graph-wrapper,
         hashable,
         hashable-extras,
         hashtables,

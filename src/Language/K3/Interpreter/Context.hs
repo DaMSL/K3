@@ -60,7 +60,6 @@ import Language.K3.Runtime.Dispatch
 import Language.K3.Runtime.Engine
 
 import Language.K3.Analysis.Interpreter.BindAlias ( labelBindAliases )
-import Language.K3.Analysis.AnnotationGraph
 
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Logger
