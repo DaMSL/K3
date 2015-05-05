@@ -240,8 +240,8 @@ genBuiltin "parse_sql_date" _ = vfun $ \(VString s) -> do
 genBuiltin "now" _ = vfun $ \(VTuple []) -> do
     v <- liftIO $ Clock.getTime Clock.Realtime
     return $ VRecord $ Map.fromList $
-        [("sec", (VInt $ Clock.sec v, MemImmut)),
-         ("nsec", (VInt $ Clock.nsec v, MemImmut))]
+        [("sec", (VInt $ fromIntegral $ Clock.sec v, MemImmut)),
+         ("nsec", (VInt $ fromIntegral $ Clock.nsec v, MemImmut))]
 
 genBuiltin "add_time" _ = vfun $ \(VRecord map1) -> vfun $ \(VRecord map2) ->
     timeBinOp map1 map2 (+) >>= return . VRecord
