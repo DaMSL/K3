@@ -84,4 +84,5 @@ simplifyCPPDefinition defn =
     IncludeDefn i -> return (IncludeDefn i)
     NamespaceDefn i ds -> NamespaceDefn i <$> mapM simplifyCPPDefinition ds
     TemplateDefn is d -> TemplateDefn is <$> simplifyCPPDefinition d
+    TypeDefn t i -> return $ TypeDefn t i
 

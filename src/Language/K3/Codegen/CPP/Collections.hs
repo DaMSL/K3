@@ -5,6 +5,7 @@
 
 module Language.K3.Codegen.CPP.Collections where
 
+import Data.Char
 import Data.List (intercalate, partition, sort, isInfixOf)
 
 import Language.K3.Core.Common
@@ -74,30 +75,51 @@ composite name ans = do
               | (b,i) <- zip baseClasses ([1..] :: [Integer])
               ] False []
 
-    let serializeParent p = R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive")
-                          (R.Call
-                              (R.Variable $
-                                R.Specialized [R.Named p]
-                                  (R.Qualified (R.Name "boost") $
-                                    R.Qualified (R.Name "serialization") $ R.Name "base_object"))
-                              [R.Variable $ R.Name "*this"])
+    let mkXmlTagName s = map (\c -> if isAlphaNum c || c `elem` ['-','_','.'] then c else '_') s
+    let serializationName asYas n =
+          if asYas then R.Qualified (R.Name "yas") n
+          else R.Qualified (R.Name "boost") $ R.Qualified (R.Name "serialization") n
 
-    let serializeStatements = map serializeParent baseClasses
+    let serializeParent asYas (p, (q, _)) =
+          let nvp_wrap e = if asYas then e
+                           else R.Call (R.Variable $ serializationName asYas $ R.Name "make_nvp")
+                                  [ R.Literal $ R.LString $ mkXmlTagName q, e ]
+          in
+          R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive")
+            (nvp_wrap $ R.Call (R.Variable $ serializationName asYas $ R.Specialized [R.Named p] $ R.Name "base_object")
+              [R.Dereference $ R.Variable $ R.Name "this"])
 
-    let serializeFn = R.TemplateDefn [("archive", Nothing)]
-                      (R.FunctionDefn (R.Name "serialize")
-                            [ ("_archive", R.Reference (R.Parameter "archive"))
-                            , ("_version", R.Const $ R.Named (R.Name "unsigned int"))
-                            ]
-                       (Just $ R.Named $ R.Name "void")
-                       [] False serializeStatements)
+    let serializeStatements asYas = map (serializeParent asYas) $ zip baseClasses ras
 
-    let methods = [defaultConstructor, superConstructor, superMoveConstructor, serializeFn] ++ indexDefns
+    let serializeFn asYas =
+          R.TemplateDefn [("archive", Nothing)]
+            (R.FunctionDefn (R.Name "serialize")
+              ([("_archive", R.Reference (R.Parameter "archive"))]
+               ++ (if asYas then [] else [ ("_version", R.Const $ R.Named (R.Name "unsigned int")) ]))
+             (Just $ R.Named $ R.Name "void")
+             [] False $ serializeStatements asYas)
+
+    let methods = [defaultConstructor, superConstructor, superMoveConstructor, serializeFn False, serializeFn True] ++ indexDefns
 
     let collectionClassDefn = R.TemplateDefn [("__CONTENT", Nothing)]
              (R.ClassDefn (R.Name name) [] (map R.Named baseClasses) methods [] [])
 
     let parent = head baseClasses
+
+    let compactSerializationDefn
+            = R.NamespaceDefn "boost" [ R.NamespaceDefn "serialization" [
+                R.TemplateDefn [("__CONTENT", Nothing)] $
+                R.ClassDefn (R.Name "implementation_level") [selfType] []
+                [ R.TypeDefn (R.Named $ R.Qualified (R.Name "mpl") $ R.Name "integral_c_tag") "tag"
+                , R.TypeDefn (R.Named $ R.Qualified (R.Name "mpl")
+                    $ R.Specialized [R.Named $ R.Name "object_serializable"] $ R.Name "int_") "type"
+                , R.GlobalDefn $ R.Ignore $ R.Call (R.Variable $ R.Name "BOOST_STATIC_CONSTANT")
+                    [ R.Variable $ R.Name "int"
+                    , R.Binary "=" (R.Variable $ R.Name "value")
+                        (R.Variable $ R.Qualified (R.Name "implementation_level") $ R.Qualified (R.Name "type") $ R.Name "value")]
+                ]
+                [] []
+              ]]
 
     let yamlStructDefn = R.NamespaceDefn "YAML"
                          [ R.TemplateDefn [("__CONTENT", Nothing)] $
@@ -122,15 +144,15 @@ composite name ans = do
                              ]
                              [] []
                          ]
-    
+
     let jsonStructDefn = R.NamespaceDefn "JSON"
                          [ R.TemplateDefn [("__CONTENT", Nothing)] $
                             R.ClassDefn (R.Name "convert") [selfType] []
-                             [ R.TemplateDefn [("Allocator", Nothing)] $ 
+                             [ R.TemplateDefn [("Allocator", Nothing)] $
                                R.FunctionDefn (R.Name "encode")
                                  [("c", R.Const $ R.Reference $ selfType)
                                  ,("al", R.Reference $ R.Named $ R.Name "Allocator")
-                                 ] 
+                                 ]
                                  (Just $ R.Static $ R.Named $ R.Name "rapidjson::Value") [] False
                                  [R.Return $ R.Call
                                        (R.Variable $ R.Qualified
@@ -142,7 +164,7 @@ composite name ans = do
                              ]
                              [] []
                          ]
-    return [collectionClassDefn, yamlStructDefn, jsonStructDefn]
+    return [collectionClassDefn, compactSerializationDefn, yamlStructDefn, jsonStructDefn]
 
 record :: [Identifier] -> CPPGenM [R.Definition]
 record (sort -> ids) = do
@@ -197,49 +219,80 @@ record (sort -> ids) = do
     let tieOther n = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "tie"))
                      [R.Project (R.Variable $ R.Name n) (R.Name i) | i <- ids]
 
-    let inequalityOperator
-            = R.FunctionDefn (R.Name "operator!=")
+    let logicOp op
+            = R.FunctionDefn (R.Name $ "operator"++op)
               [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool)
               [] True
-              [R.Return $ R.Binary "!=" tieSelf (tieOther "__other")]
-
-    let lessOperator
-            = R.FunctionDefn (R.Name "operator<")
-              [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool)
-              [] True
-              [R.Return $ R.Binary "<" tieSelf (tieOther "__other")]
-
-    let greaterOperator
-            = R.FunctionDefn (R.Name "operator>")
-              [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool)
-              [] True
-              [R.Return $ R.Binary ">" tieSelf (tieOther "__other")]
+              [R.Return $ R.Binary op tieSelf (tieOther "__other")]
 
     let fieldDecls = [ R.GlobalDefn (R.Forward $ R.ScalarDecl (R.Name i) (R.Named $ R.Name t) Nothing)
                      | i <- ids
                      | t <- templateVars
                      ]
 
-    let serializeMember m = R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive") (R.Variable $ R.Name m)
+    let serializeMember asYas m =
+          R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive")
+            (if asYas then R.Variable $ R.Name m
+             else R.Call (R.Variable $ R.Name "BOOST_SERIALIZATION_NVP") [R.Variable $ R.Name m])
 
-    let serializeStatements = map serializeMember ids
+    let serializeStatements asYas = map (serializeMember asYas) ids
 
-    let serializeFn = R.TemplateDefn [("archive", Nothing)]
-                      (R.FunctionDefn (R.Name "serialize")
-                            [ ("_archive", R.Reference (R.Parameter "archive"))
-                            , ("_version", R.Const $ R.Named (R.Name "unsigned int"))
-                            ]
-                       (Just $ R.Named $ R.Name "void")
-                       [] False serializeStatements)
+    let serializeFn asYas =
+          R.TemplateDefn [("archive", Nothing)]
+            (R.FunctionDefn (R.Name "serialize")
+                  ([ ("_archive", R.Reference (R.Parameter "archive")) ]
+                   ++ if asYas then [] else [ ("_version", R.Const $ R.Named (R.Name "unsigned int")) ])
+                  (Just $ R.Named $ R.Name "void")
+                  [] False $ serializeStatements asYas)
 
     let constructors = (defaultConstructor:initConstructors)
-    let comparators = [equalityOperator, inequalityOperator, lessOperator, greaterOperator]
-    let members = constructors ++ comparators ++ [serializeFn] ++ fieldDecls
+    let comparators = [equalityOperator, logicOp "!=", logicOp "<", logicOp ">", logicOp "<=", logicOp ">="]
+    let members = constructors ++ comparators ++ [serializeFn False, serializeFn True] ++ fieldDecls
 
     let recordStructDefn
             = R.GuardedDefn ("K3_" ++ recordName) $
                 R.TemplateDefn (zip templateVars (repeat Nothing)) $
                  R.ClassDefn (R.Name recordName) [] [] members [] []
+
+    let compactSerializationDefn
+            = R.GuardedDefn ("K3_" ++ recordName ++ "_srimpl_lvl") $ R.NamespaceDefn "boost" [ R.NamespaceDefn "serialization" [
+                R.TemplateDefn (zip templateVars (repeat Nothing)) $
+                R.ClassDefn (R.Name "implementation_level") [recordType] []
+                [ R.TypeDefn (R.Named $ R.Qualified (R.Name "mpl") $ R.Name "integral_c_tag") "tag"
+                , R.TypeDefn (R.Named $ R.Qualified (R.Name "mpl")
+                    $ R.Specialized [R.Named $ R.Name "object_serializable"] $ R.Name "int_") "type"
+                , R.GlobalDefn $ R.Ignore $ R.Call (R.Variable $ R.Name "BOOST_STATIC_CONSTANT")
+                    [ R.Variable $ R.Name "int"
+                    , R.Binary "=" (R.Variable $ R.Name "value")
+                        (R.Variable $ R.Qualified (R.Name "implementation_level") $ R.Qualified (R.Name "type") $ R.Name "value")]
+                ]
+                [] []
+              ]]
+
+    {-
+    let noTrackingDefn
+            = R.GuardedDefn ("K3_" ++ recordName ++ "_srtrck_lvl") $ R.NamespaceDefn "boost" [ R.NamespaceDefn "serialization" [
+                R.TemplateDefn (zip templateVars (repeat Nothing)) $
+                R.ClassDefn (R.Name "tracking_level") [recordType] []
+                [ R.TypeDefn (R.Named $ R.Qualified (R.Name "mpl") $ R.Name "integral_c_tag") "tag"
+                , R.TypeDefn (R.Named $ R.Qualified (R.Name "mpl")
+                    $ R.Specialized [R.Named $ R.Name "track_never"] $ R.Name "int_") "type"
+                , R.GlobalDefn $ R.Ignore $ R.Call (R.Variable $ R.Name "BOOST_STATIC_CONSTANT")
+                    [ R.Variable $ R.Name "int"
+                    , R.Binary "=" (R.Variable $ R.Name "value")
+                        (R.Variable $ R.Qualified (R.Name "tracking_level") $ R.Qualified (R.Name "type") $ R.Name "value")]
+                ]
+                [] []
+              ]]
+
+    let bitwiseSerializableDefn
+            = R.GuardedDefn ("K3_" ++ recordName ++ "_srbitwise") $ R.NamespaceDefn "boost" [ R.NamespaceDefn "serialization" [
+                R.TemplateDefn (zip templateVars (repeat Nothing)) $
+                R.ClassDefn (R.Name "is_bitwise_serializable")
+                [recordType] [R.Named $ R.Qualified (R.Name "mpl") $ R.Name "true_"]
+                [] [] []
+              ]]
+    -}
 
     let hashStructDefn
             = R.GuardedDefn ("K3_" ++ recordName ++ "_hash_value") $ R.TemplateDefn (zip templateVars (repeat Nothing)) $
@@ -300,44 +353,45 @@ record (sort -> ids) = do
                                    [R.Project (R.Variable $ R.Name "r") (R.Name name), R.Variable $ R.Name "al"]
                                 , R.Variable $ R.Name "al"
                                 ]
-   
 
-    let jsonStructDefn =   R.NamespaceDefn "JSON" 
+
+    let jsonStructDefn =   R.NamespaceDefn "JSON"
                            [R.TemplateDefn (zip templateVars (repeat Nothing)) $
                            R.ClassDefn (R.Name "convert") [recordType] []
                            [
                            R.TemplateDefn [("Allocator", Nothing)] (R.FunctionDefn (R.Name "encode")
                            [("r", R.Const $ R.Reference recordType)
-                           ,("al", R.Reference $ R.Named $ R.Name "Allocator")  
+                           ,("al", R.Reference $ R.Named $ R.Name "Allocator")
                            ]
                            (Just $ R.Static $ R.Named $ R.Name "rapidjson::Value") [] False
                            (
-                            [R.Forward $ R.UsingDecl (Left (R.Name "rapidjson")) Nothing] ++ 
+                            [R.Forward $ R.UsingDecl (Left (R.Name "rapidjson")) Nothing] ++
                             [R.Forward $ R.ScalarDecl (R.Name "val") (R.Named $ R.Name "Value") Nothing] ++
-                            [R.Forward $ R.ScalarDecl (R.Name "inner") (R.Named $ R.Name "Value") Nothing ] ++ 
+                            [R.Forward $ R.ScalarDecl (R.Name "inner") (R.Named $ R.Name "Value") Nothing ] ++
                             [R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "val") (R.Name "SetObject")) [] ] ++
                             [R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "inner") (R.Name "SetObject")) [] ] ++
                             [R.Ignore $ addField tup | tup <- zip ids templateVars] ++
                             [R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "val") (R.Name "AddMember"))
                               [R.Literal $ R.LString "type"
-                              , R.Call (R.Variable $ R.Name "Value") 
+                              , R.Call (R.Variable $ R.Name "Value")
                                 [R.Literal $ R.LString "record"]
                               , R.Variable $ R.Name "al"
                               ]
-                            ] ++ 
+                            ] ++
                             [R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "val") (R.Name "AddMember"))
                               [R.Literal $ R.LString "value"
-                              , R.Call 
+                              , R.Call
                                   (R.Project (R.Variable $ R.Name "inner") (R.Name "Move"))
                                   []
                               , R.Variable $ R.Name "al"
-                              ] 
-                            ] ++ 
-                            [R.Return $ R.Variable $ R.Name "val"] 
+                              ]
+                            ] ++
+                            [R.Return $ R.Variable $ R.Name "val"]
                            ))
                             ] [] []
                             ]
-    return [recordStructDefn, jsonStructDefn, yamlStructDefn, hashStructDefn]
+    return [ recordStructDefn, compactSerializationDefn {-, noTrackingDefn, bitwiseSerializableDefn-}
+           , jsonStructDefn, yamlStructDefn, hashStructDefn]
 
 reservedAnnotations :: [Identifier]
-reservedAnnotations = ["Collection", "External", "Seq", "Set", "Sorted", "Map", "Vector", "MultiIndex"]
+reservedAnnotations = ["Collection", "External", "Seq", "Set", "Sorted", "Map", "IntMap", "StrMap", "Vector", "MultiIndex"]

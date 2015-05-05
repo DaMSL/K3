@@ -1,0 +1,11 @@
+---
+volumes:
+  - {host: /data, container: /data}
+name: role 1
+peers: 128
+hostmask: ".*qp-hm.*"
+k3_globals:
+  role: rows
+  master: auto
+k3_data:
+  - {var: dataFiles, path: /local/data/tpch10g/lineitem, policy: global}

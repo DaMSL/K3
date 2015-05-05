@@ -1,10 +1,12 @@
 {-# LANGUAGE DoAndIfThenElse #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Hindley-Milner type inference.
 --
@@ -125,12 +127,19 @@ data TIEnv = TIEnv {
                tdvenv  :: TDVEnv,
                tvenv   :: TVEnv,
                tcyclic :: TEnv,
-               tcenv   :: TCEnv
+               tcenv   :: TCEnv,
+               tprop   :: [(Identifier, QPType)]
             }
 
 -- | The type inference monad
 type TInfM = EitherT String (State TIEnv)
 
+-- | Data type for initializer type handling.
+data IDeclaredAction = IDAExtend     QPType
+                     | IDAPassThru   QPType
+                     | IDAFunction
+                     | IDATrigger    QPType
+                     deriving (Eq, Ord, Read, Show)
 
 {- TEnv helpers -}
 tenv0 :: TEnv
@@ -197,7 +206,8 @@ tienv0 = TIEnv {
            tdvenv  = tdvenv0,
            tvenv   = tvenv0,
            tcyclic = tenv0,
-           tcenv   = tcenv0
+           tcenv   = tcenv0,
+           tprop   = []
          }
 
 -- | Modifiers.
@@ -428,11 +438,9 @@ tvshallowLowerRcr rcr a b =
         | p1 == p2 -> return a
 
       (QTCon (QTRecord i1), QTCon (QTRecord i2))
-        | i1 `contains` i2 -> mergedRecord False i1 a i2 b
-        | i2 `contains` i1 -> mergedRecord True  i2 b i1 a
-        | otherwise ->
-            let idChPairs = zip (i1 ++ i2) $ children a ++ children b
-            in annLower a b >>= return . foldl (@+) (trec $ nub idChPairs)
+        | i1 `contains` i2 -> subRecord False i1 a i2 b
+        | i2 `contains` i1 -> subRecord True  i2 b i1 a
+        | otherwise -> coveringRecord i1 i2 a b
        where
         contains xs ys = xs `union` ys == xs
 
@@ -440,8 +448,8 @@ tvshallowLowerRcr rcr a b =
       (QTCon (QTRecord _), QTCon (QTCollection _)) -> coveringCollection b a
 
       (QTCon (QTCollection idsA), QTCon (QTCollection idsB))
-        | idsA `intersect` idsB == idsA -> mergedCollection idsB a b
-        | idsA `intersect` idsB == idsB -> mergedCollection idsA a b
+        | idsA `intersect` idsB == idsA -> subCollection idsB a b
+        | idsA `intersect` idsB == idsB -> subCollection idsA a b
 
       (QTVar _, QTVar _) -> return a
       (QTVar _, _) -> return a
@@ -474,19 +482,37 @@ tvshallowLowerRcr rcr a b =
         | otherwise -> lowerError a b
 
   where
-    mergedRecord supAsLeft subid subqt supid supqt = do
-      fieldQt <- mergeCovering supAsLeft
-                  (zip subid $ children subqt) (zip supid $ children supqt)
+    subRecord supAsLeft subid subqt supid supqt = do
+      fieldQt <- rcrRecordCommon supAsLeft (zip subid $ children subqt) (zip supid $ children supqt)
       annLower subqt supqt >>= return . foldl (@+) (trec $ zip subid fieldQt)
 
-    mergedCollection annIds ct1 ct2 = do
-       ctntLower <- rcr (head $ children ct1) (head $ children ct2)
-       annLower ct1 ct2 >>= return . foldl (@+) (tcol ctntLower annIds)
+    {-
+    coveringRecord i1 i2 a' b' =
+      let idChPairs = zip (i1 ++ i2) $ children a' ++ children b'
+      in annLower a' b' >>= return . foldl (@+) (trec $ nub idChPairs)
+    -}
 
-    mergeCovering supAsLeft sub sup =
+    coveringRecord i1 i2 a' b' =
+      let (idt1, idt2) = (zip i1 $ children a', zip i2 $ children b') in
+      let groupF acc (i,qt) = maybe (addAssoc acc i [qt]) (replaceAssoc acc i . (++[qt])) $ lookup i acc in
+      let qtsByName = foldl groupF [] $ idt1 ++ idt2 in
+      let rcrUnlessSingleton (i, qts) = case qts of
+                                          [x] -> return (i,x)
+                                          [x,y] -> rcr x y >>= return . (i,)
+                                          _ -> lowerError a' b'
+      in do
+        nidqt <- mapM rcrUnlessSingleton qtsByName
+        lanns <- annLower a' b'
+        return $ foldl (@+) (trec nidqt) lanns
+
+    rcrRecordCommon supAsLeft sub sup =
       let lowerF = if supAsLeft then \subV supV -> rcr supV subV
                                 else \subV supV -> rcr subV supV
       in mapM (\(k,v) -> maybe (return v) (lowerF v) $ lookup k sup) sub
+
+    subCollection annIds ct1 ct2 = do
+       ctntLower <- rcr (head $ children ct1) (head $ children ct2)
+       annLower ct1 ct2 >>= return . foldl (@+) (tcol ctntLower annIds)
 
     coveringCollection ct rt@(tag -> QTCon (QTRecord _)) =
       collectionSubRecord ct rt >>= either (const $ lowerError ct rt) (const $ return ct)
@@ -668,13 +694,9 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
       lb2 <- lowerBound t2
       lbs <- case (lb1, lb2) of
                (Node (QTCon (QTRecord _) :@: _) _, Node (QTCon (QTRecord _) :@: _) _) ->
-               {- do
-                    lb <- tvlower lb1 lb2
-                    return $ if lb `elem` [lb1, lb2] then [lb1,lb2] else [lb,lb1,lb2]
-               -}
                 do
                   tienv <- get
-                  let (lbE, _) = runTInfM tienv $ tvlower lb1 lb2
+                  let (lbE, _) = runTInfM tienv $ localLogAction (binaryLowerRecMsgF lb1 lb2) $ tvlower lb1 lb2
                   let validLB lb = if lb `elem` [lb1, lb2] then [lb1,lb2] else [lb,lb1,lb2]
                   return $ either (const $ [lb1,lb2]) validLB lbE
 
@@ -760,6 +782,7 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
                -> TInfM (K3 QType)
     onChildren tga tgb kind a b ctor
       | tga == tgb = onList a b ctor $ \s -> unifyErr tga tgb kind s
+      | tga `elem` tTrgOrSink && tgb `elem` tTrgOrSink = onList a b (tdata QTTrigger) $ \s -> unifyErr tga tgb kind s
       | otherwise  = unifyErr tga tgb kind ""
 
     onList :: [K3 QType] -> [K3 QType] -> QTypeCtor -> (String -> TInfM (K3 QType))
@@ -778,6 +801,8 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
 
     lowerBound t = tvopeval QTLower $ children t
 
+    tTrgOrSink = [QTTrigger, QTSink]
+
     primitiveErr a b = unifyErr a b "primitives" ""
 
     unifyErr a b kind s = left $ boxToString $
@@ -795,6 +820,11 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
     binaryLowerMsgF args (Just ret) =
       Just $ boxToString $ ["consistentTLowerB "]
                %+ (intersperseBoxes [" "] $ map prettyLines $ args ++ [ret])
+
+    binaryLowerRecMsgF _ _ Nothing = Nothing
+    binaryLowerRecMsgF lrec1 lrec2 (Just lret) =
+      Just $ boxToString $ ["consistentTLowerB record "]
+               %+ (intersperseBoxes [" "] $ map prettyLines $ [lrec1, lrec2, lret])
 
 
 -- | Type unification.
@@ -1001,23 +1031,23 @@ reinferProgDeclTypes env dn prog = runTInfE env inferNamedDecl
 -- | Declaration type inference
 inferDeclTypes :: K3 Declaration -> TInfM (K3 Declaration)
 inferDeclTypes d@(tag -> DGlobal n t eOpt) = inferAsCyclicType n $ do
-  neOpt <- inferDeclInitializer (Just n) eOpt
-  qptE  <- if isTFunction t then return (Left Nothing)
-                            else (qpType t >>= return . Left . Just)
+  qptAct  <- if isTFunction t then return IDAFunction
+                              else (qpType t >>= return . IDAExtend)
   if isTEndpoint t
     then return d
-    else unifyDeclInitializer n qptE neOpt >>= \neOpt' ->
-           return $ (Node (DGlobal n t neOpt' :@: annotations d) $ children d)
+    else do
+      unifyDeclInitializer n True qptAct eOpt >>= \neOpt' ->
+             return $ (Node (DGlobal n t neOpt' :@: annotations d) $ children d)
 
 inferDeclTypes d@(tag -> DTrigger n t e) = inferAsCyclicType n $ do
-  Just ne <- inferDeclInitializer (Just n) $ Just e
   env <- get
   QPType qtvars qt <- liftEitherM (tilkupe env n)
   case tag qt of
     QTCon QTTrigger ->
-      let nqptE = Right $ QPType qtvars $ tfun (head $ children qt) tunit
-      in unifyDeclInitializer n nqptE (Just ne) >>= \neOpt ->
+      let nqptAct = IDATrigger $ QPType qtvars $ tfun (head $ children qt) tunit
+      in unifyDeclInitializer n True nqptAct (Just e) >>= \neOpt ->
            return $ maybe d (\ne' -> Node (DTrigger n t ne' :@: annotations d) $ children d) neOpt
+
     _ -> left $ "Invalid trigger declaration type for: " ++ n
 
 inferDeclTypes d@(tag -> DDataAnnotation n tvars mems) = do
@@ -1038,9 +1068,8 @@ inferDeclTypes d@(tag -> DDataAnnotation n tvars mems) = do
     memType _ mem@(MAnnotation _ _ _) = return mem
 
     unifyMemInit amEnv mn meOpt = do
-      nmeOpt <- inferDeclInitializer Nothing meOpt
       qpt <- maybe (memLookupErr mn) (return . fst) (lookup mn amEnv)
-      unifyDeclInitializer mn (Right qpt) nmeOpt
+      unifyDeclInitializer mn False (IDAPassThru qpt) meOpt
 
     memLookupErr mn = left $ "No annotation member in initial environment: " ++ mn
 
@@ -1054,21 +1083,23 @@ inferAsCyclicType n m = do
     Right True -> withCyclicEnv n m
     Right _    -> m
 
-unifyDeclInitializer :: Identifier -> Either (Maybe QPType) QPType -> Maybe (K3 Expression)
+unifyDeclInitializer :: Identifier -> Bool -> IDeclaredAction -> Maybe (K3 Expression)
                      -> TInfM (Maybe (K3 Expression))
-unifyDeclInitializer n qptE eOpt = do
-  qpt <- case qptE of
-          Left Nothing     -> get >>= \env -> liftEitherM (tilkupe env n)
-          Left (Just qpt') -> modify (\env -> tiexte (tidele env n) n qpt') >> return qpt'
-          Right qpt'       -> return qpt'
+unifyDeclInitializer n asCyclic qptAct eOpt = do
+  qpt <- case qptAct of
+           IDAExtend     qpt' -> modify (\env -> tiexte (tidele env n) n qpt') >> return qpt'
+           IDAPassThru   qpt' -> return qpt'
+           IDAFunction        -> get >>= \env -> liftEitherM (tilkupe env n) >>= \qpt' -> initializerPropagatedQPs qpt' eOpt >> return qpt'
+           IDATrigger    qpt' -> initializerPropagatedQPs qpt' eOpt >> return qpt'
 
   case eOpt of
     Just e -> do
       qt1 <- instantiate qpt
-      qt2 <- qTypeOfM e
+      ne  <- (if asCyclic then inferAsCyclicType n else id) $ inferExprTypes e
+      qt2 <- qTypeOfM ne
       localLog $ prettyTaggedPair ("unify init ") qt1 qt2
-      void $ unifyWithOverrideM qt1 qt2 $ mkErrorF e unifyInitErrF
-      substituteDeepQt e >>= return . Just
+      void $ unifyWithOverrideM qt1 qt2 $ mkErrorF ne unifyInitErrF
+      substituteDeepQt ne >>= return . Just
 
     Nothing -> return Nothing
 
@@ -1082,11 +1113,14 @@ unifyDeclInitializer n qptE eOpt = do
 
     unifyInitErrF s = "Failed to unify initializer: " ++ s
 
-inferDeclInitializer :: Maybe Identifier -> Maybe (K3 Expression) -> TInfM (Maybe (K3 Expression))
-inferDeclInitializer _ Nothing = return Nothing
-inferDeclInitializer nOpt (Just e) = return . Just =<< case nOpt of
-  Just n  -> inferAsCyclicType n $ inferExprTypes e
-  Nothing -> inferExprTypes e
+initializerPropagatedQPs :: QPType -> Maybe (K3 Expression) -> TInfM ()
+initializerPropagatedQPs _ Nothing = return ()
+initializerPropagatedQPs qpt (Just e) = modify (\env -> env {tprop = bindings})
+  where bindings = mkStack [] qpt e
+        mkStack acc (QPType _ (tnc -> (QTCon QTFunction, [a,r]))) (tnc -> (ELambda i, [b])) =
+          mkStack (acc ++ [(i, QPType [] a)]) (QPType [] r) b
+
+        mkStack acc _ _ = acc
 
 
 -- | Expression type inference. Note this not perform a final type substitution, leaving
@@ -1103,7 +1137,12 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     monoBinding i t = monomorphize t >>= \mt -> modify (\env -> tiexte env i mt)
 
     lambdaBinding :: K3 Expression -> K3 Expression -> TInfM ()
-    lambdaBinding _ (tag -> ELambda i) = newtv >>= monoBinding i
+    lambdaBinding _ (tag -> ELambda i) = do
+      env <- get
+      case tprop env of
+        (j,qpt):t | i == j -> modify (\env' -> tiexte (env' {tprop = t}) i qpt)
+        _ -> modify (\env' -> env' {tprop = []}) >> newtv >>= monoBinding i
+
     lambdaBinding _ _ = return ()
 
     sidewaysBinding :: K3 Expression -> K3 Expression -> TInfM [TInfM ()]

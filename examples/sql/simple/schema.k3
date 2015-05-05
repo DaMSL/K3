@@ -1,0 +1,38 @@
+include "Distributed/Transformers.k3"
+
+declare ignore : forall a. a -> () = \_ -> ()
+
+declare index_by_hash : forall a. a -> int = \s -> (
+  let n = peers.size () in
+  let h = (hash s) in
+  ((h % n) + n) % n
+)
+
+typedef r_part_ty  = collection {a: int, b: int} @Collection
+typedef r_parts_ty = collection {key: int, value: r_part_ty} @Map
+
+typedef s_part_ty  = collection {b: int, c: int} @Collection
+typedef s_parts_ty = collection {key: int, value: s_part_ty} @Map
+
+declare null_r_part : r_part_ty
+declare null_s_part : s_part_ty
+
+declare r_parts : r_parts_ty = {| key: int, value: r_part_ty
+                                | { key: 1
+                                  , value: {|a:int, b:int| {a:1,b:1}, {a:2,b:2}, {a:3,b:3} |} @Collection}
+                                , { key: 2
+                                  , value: {|a:int, b:int| {a:4,b:4}, {a:5,b:5}, {a:6,b:6} |} @Collection}
+                                , { key: 3
+                                  , value: {|a:int, b:int| {a:7,b:7}, {a:8,b:8}, {a:9,b:9} |} @Collection}
+                                |} @Map
+
+declare s_parts : s_parts_ty = {| key: int, value: s_part_ty
+                                | { key: 1
+                                  , value: {|b:int, c:int| {b:1,c:1}, {b:2,c:2}, {b:3,c:3} |} @Collection}
+                                , { key: 2
+                                  , value: {|b:int, c:int| {b:4,c:4}, {b:5,c:5}, {b:6,c:6} |} @Collection}
+                                , { key: 3
+                                  , value: {|b:int, c:int| {b:7,c:7}, {b:8,c:8}, {b:9,c:9} |} @Collection}
+                                |} @Map
+
+// TODO: partition generation helpers.

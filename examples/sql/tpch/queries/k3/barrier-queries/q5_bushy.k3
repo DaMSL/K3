@@ -1,0 +1,404 @@
+include "tpch/benchmark.k3"
+
+/**********************
+* SQL query
+***********************
+select
+        n_name,
+        sum(l_extendedprice * (1 - l_discount)) as revenue
+from
+        customer,
+        orders,
+        lineitem,
+        supplier,
+        nation,
+        region
+where
+        c_custkey = o_custkey
+        and l_orderkey = o_orderkey
+        and l_suppkey = s_suppkey
+        and c_nationkey = s_nationkey
+        and s_nationkey = n_nationkey
+        and n_regionkey = r_regionkey
+        and r_name = 'ASIA'
+        and o_orderdate >= date '1994-01-01'
+        and o_orderdate < date '1995-01-01'
+group by
+        n_name
+order by
+        revenue desc
+****************************
+* Join graph:
+*   l -- o -- c
+*     \- s -/
+*        |
+*        n
+*        |
+*        r
+*
+****************************
+* Join order:
+*   (c-n-r)-o--result
+*   (s-n-r)-l-/
+****************************/
+
+declare master : address
+declare sample_factor : real = 10.0
+
+declare lineitem_r : lineitem_r
+declare customer_r : customer_r
+declare orders_r   : orders_r
+declare supplier_r : supplier_r
+declare nation_r   : nation_r
+declare region_r   : region_r
+
+declare lineitem : mut q5_lineitem_bag
+declare orders   : mut q5_orders_bag
+declare customer : mut q5_customer_bag
+declare supplier : mut q5_supplier_bag
+declare nation   : mut q5_nation_bag
+declare region   : mut q5_region_bag
+
+// Final result.
+typedef q5_r_by_n_r     = {key : string, value: real}
+typedef q5_r_by_n_map   = collection q5_r_by_n_r @StrMap
+
+declare q5_result : q5_r_by_n_map
+declare results : collection {key: string, value: real} @Collection
+
+declare merge_epd_by_n :    {key: string, value: real}
+                         -> {key: string, value: real}
+                         -> {key: string, value: real}
+  = \old -> \new -> {key: old.key, value: old.value + new.value}
+
+// Plan intermediates.
+declare r_asia_by_rk : mut collection {key: int, value: () } @IntMap
+declare n_asia_by_nk : mut collection {key: int, value: string } @IntMap
+
+declare co_nm_by_no  : mut collection {key: {nationkey: int, orderkey: int}, value: string} @Map
+declare sl_epd_by_no : mut collection {key: {nationkey: int, orderkey: int}, value: real} @Map
+
+trigger q5_prep : () = \_ -> (
+  ( r_asia_by_rk =
+     ((region.filter  (\r -> r.r_name == "ASIA"))
+             .groupBy (\r -> r.r_regionkey)
+                      (\_ -> \_ -> ())
+                      ())
+             .fold    ((\acc -> \r -> ((acc.insert r); acc)) @:Accumulate)
+                      (empty {key: int, value: ()} @IntMap) );
+
+  ( n_asia_by_nk =
+      ((nation.filter  (\n -> r_asia_by_rk.member {key: n.n_regionkey, value: ()}))
+              .groupBy (\n -> n.n_nationkey)
+                       (\_ -> \n -> n.n_name)
+                       "")
+              .fold    ((\acc -> \n -> ((acc.insert n); acc)) @:Accumulate)
+                       (empty {key: int, value: string} @IntMap) )
+)
+
+// TODO: in the partitioned version, C|c_custkey should be broadcast into O|o_orderkey partitions.
+trigger q5_co_start : () = \_ -> (
+  ( () @:NoPipeline )
+    @JoinSelector(
+        lbl                  = [# co ]
+      , lhs_ht_id            = [# co_lhs_ht ]
+      , rhs_ht_id            = [# co_rhs_ht ]
+
+      , lhs_sample_query     = [$ customer.sample (\acc -> \c ->
+                                                    ((acc.insert_with
+                                                        {key: c.c_custkey, value: 1}
+                                                        (\old -> \new -> {key: old.key, value: old.value + new.value}));
+                                                      acc))
+                                                  (empty {key:int, value: int} @IntMap)
+                                                  (customer.size() / sample_factor)
+                               ]
+
+      , rhs_sample_query     = [$ orders.sample (\acc -> \c ->
+                                                  if     o.o_orderdate >= 19940101
+                                                     and o.o_orderdate <  19950101
+                                                  then
+                                                    ((acc.insert_with
+                                                          {key: o.o_custkey, value: 1}
+                                                          (\old -> \new -> {key: old.key, value: old.value + new.value}));
+                                                        acc)
+                                                  else acc)
+                                                (empty {key:int, value: int} @IntMap)
+                                                (orders.size() / sample_factor)
+                               ]
+
+      , frequency_threshold  = [$ 1000.0 ]
+
+      , lhs_query = [$ (((customer.filter  (\c -> n_asia_by_nk.member { key: c.c_nationkey, value: "" }))
+                                  .groupBy (\c -> c.c_custkey)
+                                           (\acc -> \c -> case n_asia_by_nk.lookup { key: c.c_nationkey, value: "" }
+                                                        of { Some n -> {c_nationkey: c.c_nationkey, n_name: n.value} }
+                                                           { None   -> (error (print "Invalid customer tuple"));
+                                                                       {c_nationkey: c.c_nationkey, n_name: ""}
+                                                           }
+                                           )
+                                           {c_nationkey: 0, n_name: ""})
+                                  .fold    ((\acc -> \c -> ((acc.insert c); acc)) @:Accumulate)
+                                           (empty {key: int, value: {c_nationkey: int, n_name: string}} @IntMap))
+                    ]
+      , lhs_query_clear = [$ customer = empty q5_customer_r @Collection ]
+
+      , rhs_query = [$ ((orders.filter  (\o ->     o.o_orderdate >= 19940101
+                                               and o.o_orderdate <  19950101 ))
+                               .groupBy (\o -> o.o_custkey)
+                                        (\acc -> \o -> ((acc.insert {o_orderkey: o.o_orderkey}); acc))
+                                        (empty {o_orderkey: int} @Collection))
+                               .fold    ((\acc -> \o -> ((acc.insert o); acc)) @:Accumulate)
+                                        (empty {key: int, value: collection {o_orderkey: int} @Collection} @IntMap)
+                    ]
+      , rhs_query_clear = [$ orders = empty q5_orders_r @Collection ]
+
+      , join_key_ty          = [: int ]
+      , lhs_ht_ty            = [: {key: int, value: {c_nationkey: int, n_name: string}} ]
+      , rhs_ht_ty            = [: {key: int, value: collection {o_orderkey: int} @Collection} ]
+
+      , lhs_probe            = [$ (\lht -> \_ -> \o ->
+                                    case lht.lookup {key: o.key, value: {c_nationkey: 0, n_name: ""}} of
+                                    { Some c -> o.value.iterate (\ok ->
+                                                  co_nm_by_no.insert { key: { nationkey: c.value.c_nationkey
+                                                                            , orderkey: ok.o_orderkey }
+                                                                     , value: c.value.n_name })
+                                    }
+                                    { None   -> () }
+                                  )
+                               ]
+
+      , rhs_probe            = [$ (\rht -> \_ -> \c ->
+                                    case rht.lookup {key: c.key, value: empty {o_orderkey:int} @Collection} of
+                                    { Some o -> o.value.iterate (\ok ->
+                                                  co_nm_by_no.insert { key: { nationkey: c.value.c_nationkey
+                                                                            , orderkey: ok.o_orderkey }
+                                                                     , value: c.value.n_name })
+                                    }
+                                    { None   -> () }
+                                  )
+                               ]
+
+      , lhs_insert_with      = [$ (\_ -> \new -> new) ]
+      , rhs_insert_with      = [$ (\old -> \new -> {key: old.key, value: old.value.combine new.value}) ]
+
+      , has_outputs          = [$ (\_ -> false) ]
+      , empty_out_buffer     = [$ () ]
+
+      , lhs_pipeline_next    = [$ (\_ -> ()) ]
+      , rhs_pipeline_next    = [$ (\_ -> ()) ]
+
+      , lhs_clear_expr    = [$ (\_ -> co_lhs_ht = empty {key: int, value: {c_nationkey: int, n_name: string}} @IntMap) ]
+      , rhs_clear_expr    = [$ (\_ -> co_rhs_ht = empty {key: int, value: collection {o_orderkey: int} @Collection} @IntMap) ]
+
+      , peer_next            = [$ ( ignore ( ( co_nm_by_no
+                                             ) @PSendPartitionByKey( dest_trg      = [$ cosl_process_redistribute ]
+                                                                   , barrier_trg   = [$ cosl_lhs_peer_barrier ]
+                                                                   , nodes         = [$ peers ]
+                                                                   , send_extra_fn = [$ (\x -> (Some x, None immut, true)) ]))
+                                  );
+                                  co_nm_by_no = empty {key: {nationkey: int, orderkey: int}, value: string} @Map
+                               ]
+
+      , next                 = [$ () ]
+      , coordinator          = [$ master]
+      , nodes                = [$ peers]
+      , masters              = [$ masters ]
+      , masters_map          = [$ peer_masters ]
+      , profile              = [$ false]
+    )
+)
+
+
+// TODO: in the partitioned version, S|s_suppkey should be broadcast into L|l_orderkey partitions.
+trigger q5_sl_start : () = \_ -> (
+  ( () @:NoPipeline )
+    @JoinSelector(
+        lbl                  = [# sl ]
+      , lhs_ht_id            = [# sl_lhs_ht ]
+      , rhs_ht_id            = [# sl_rhs_ht ]
+
+      , lhs_sample_query     = [$ supplier.sample (\acc -> \s ->
+                                                    ((acc.insert_with
+                                                        {key: s.s_suppkey, value: 1}
+                                                        (\old -> \new -> {key: old.key, value: old.value + new.value}));
+                                                      acc))
+                                                  (empty {key: int, value: int} @IntMap)
+                                                  (supplier.size() / sample_factor)
+                               ]
+
+      , rhs_sample_query     = [$ lineitem.sample (\acc -> \li ->
+                                                    ((acc.insert_with
+                                                        {key: li.l_suppkey, value: 1}
+                                                        (\old -> \new -> {key: old.key, value: old.value + new.value}));
+                                                      acc))
+                                                  (empty {key: int, value: int} @IntMap)
+                                                  (lineitem.size() / sample_factor)
+                               ]
+
+      , frequency_threshold  = [$ 1000.0 ]
+
+      , lhs_query = [$ ((supplier.filter  (\s -> n_asia_by_nk.member {key: s.s_nationkey, value:""}))
+                                 .groupBy (\s -> s.s_suppkey)
+                                          (\_ -> \s -> s.s_nationkey)
+                                          0)
+                                 .fold    ((\acc -> \s -> ((acc.insert s); acc)) @:Accumulate)
+                                          (empty {key: int, value: int} @IntMap)
+
+                    ]
+      , lhs_query_clear = [$ supplier = empty q5_supplier_r @Collection ]
+
+      , rhs_query = [$ (lineitem.groupBy (\li -> li.l_suppkey)
+                                         (\acc -> \li ->
+                                           ((acc.insert { l_orderkey : li.l_orderkey
+                                                        , l_epd      : li.l_extendedprice * (1 - li.l_discount)}) ;
+                                             acc))
+                                         (empty {l_orderkey : int, l_epd : real} @Collection))
+                                .fold    (\acc -> \li -> ((acc.insert li); acc))
+                                         (empty {key: int, value: collection {l_orderkey: int, l_epd: real} @Collection} @IntMap)
+                    ]
+      , rhs_query_clear = [$ lineitem = empty q5_lineitem_r @Collection ]
+
+      , join_key_ty          = [: int ]
+      , lhs_ht_ty            = [: {key: int, value: int} ]
+      , rhs_ht_ty            = [: {key: int, value: collection {l_orderkey: int, l_epd: real} @Collection} ]
+
+      , lhs_probe            = [$ (\lht -> \_ -> \l ->
+                                    case lht.lookup {key: l.key, value: 0} of
+                                    { Some s -> l.value.iterate (\loe ->
+                                                  sl_epd_by_no.insert_with
+                                                          {key: {nationkey: s.value, orderkey: loe.l_orderkey}
+                                                          , value: loe.l_epd}
+                                                          (\old -> \new -> {key: old.key, value: old.value + new.value}))
+                                    }
+                                    { None   -> () }
+                                  )
+                               ]
+
+      , rhs_probe            = [$ (\rht -> \_ -> \s ->
+                                    case rht.lookup {key: s.key, value: empty {l_orderkey: int, l_epd: real} @Collection} of
+                                    { Some l -> l.value.iterate (\loe ->
+                                                  sl_epd_by_no.insert_with
+                                                        { key: {nationkey: s.value, orderkey: loe.l_orderkey}
+                                                        , value: loe.l_epd}
+                                                        (\old -> \new -> {key: old.key, value: old.value + new.value}))
+                                    }
+                                    { None   -> () }
+                                  )
+                               ]
+
+      , lhs_insert_with      = [$ (\_ -> \new -> new) ]
+      , rhs_insert_with      = [$ (\old -> \new -> {key: old.key, value: old.value.combine new.value}) ]
+
+      , has_outputs          = [$ (\_ -> false) ]
+      , empty_out_buffer     = [$ () ]
+
+      , lhs_pipeline_next    = [$ (\_ -> ()) ]
+      , rhs_pipeline_next    = [$ (\_ -> ()) ]
+
+      , lhs_clear_expr       = [$ (\_ -> sl_lhs_ht = empty {key: int, value: int} @IntMap) ]
+      , rhs_clear_expr       = [$ (\_ -> sl_rhs_ht = empty {key: int, value: collection {l_orderkey: int, l_epd: real} @Collection} @IntMap) ]
+
+      , peer_next            = [$ ( ignore ( ( sl_epd_by_no
+                                           ) @PSendPartitionByKey( dest_trg      = [$ cosl_process_redistribute ]
+                                                                 , barrier_trg   = [$ cosl_rhs_peer_barrier ]
+                                                                 , nodes         = [$ peers ]
+                                                                 , send_extra_fn = [$ (\x -> (None immut, Some x, false)) ]))
+                                  );
+                                  sl_epd_by_no = empty {key: {nationkey: int, orderkey: int}, value: real} @Map
+                                ]
+
+      , next                 = [$ () ]
+      , coordinator          = [$ master]
+      , nodes                = [$ peers]
+      , masters              = [$ masters ]
+      , masters_map          = [$ peer_masters ]
+      , profile              = [$ false]
+    )
+)
+
+
+trigger q5_cosl_start : () = \_ -> (
+  () @StreamingHashJoin(
+        lbl                  = [# cosl ]
+      , lhs_ht_id            = [# cosl_lhs_ht ]
+      , rhs_ht_id            = [# cosl_rhs_ht ]
+
+      , lhs_ht_ty            = [: {key: {nationkey: int, orderkey: int}, value: string} ]
+      , rhs_ht_ty            = [: {key: {nationkey: int, orderkey: int}, value: real} ]
+
+      , lhs_probe            = [$ (\lht -> \_ -> \sl ->
+                                    case lht.lookup {key:sl.key, value: ""} of
+                                    { Some co -> q5_result.insert_with {key: co.value, value:sl.value} merge_epd_by_n }
+                                    { None    -> () }
+                                  )
+                               ]
+
+      , rhs_probe            = [$ (\rht -> \_ -> \co ->
+                                    case rht.lookup {key:co.key, value: 0.0} of
+                                    { Some sl -> q5_result.insert_with {key: co.value, value:sl.value} merge_epd_by_n }
+                                    { None    -> () }
+                                  )
+                               ]
+
+      , lhs_insert_with      = [$ (\_ -> \new -> new) ]
+      , rhs_insert_with      = [$ (\old -> \new -> {key: old.key, value: old.value + new.value}) ]
+
+      , has_outputs          = [$ (\_ -> false) ]
+      , empty_out_buffer     = [$ () ]
+
+      , lhs_pipeline_next    = [$ (\_ -> ()) ]
+      , rhs_pipeline_next    = [$ (\_ -> ()) ]
+
+      , lhs_clear_expr       = [$ (\_ -> cosl_lhs_ht = empty {key: {nationkey: int, orderkey: int}, value: string} @Map) ]
+      , rhs_clear_expr       = [$ (\_ -> cosl_rhs_ht = empty {key: {nationkey: int, orderkey: int}, value: real} @Map) ]
+
+      , peer_next            = [$ (if me == master then () else ( (q5_result_aggregate, master) <- q5_result ));
+                                  ((() @:Result) @TPCHBenchmarkWithoutMaster)
+                               ]
+      , next                 = [$ () ]
+      , coordinator          = [$ master]
+      , masters              = [$ masters ]
+      , masters_map          = [$ peer_masters ]
+      , nodes                = [$ peers]
+    )
+)
+
+trigger q5_result_aggregate : q5_r_by_n_map = \vals -> (
+  vals.iterate (\r -> q5_result.insert_with r merge_epd_by_n)
+)
+
+trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
+  nodes               = [$ peers],
+  loadExpr            = [$ ( lineitemLineCountFiles.iterate (\e -> lineitemRows = lineitemRows + (lineCountFile e.path));
+                             ordersLineCountFiles.iterate   (\e -> ordersRows = ordersRows + (lineCountFile e.path));
+                             customerLineCountFiles.iterate (\e -> customerRows = customerRows + (lineCountFile e.path));
+                             supplierLineCountFiles.iterate (\e -> supplierRows = supplierRows + (lineCountFile e.path));
+
+                             q5_lineitemLoaderPFC lineitemFiles lineitem lineitem_r lineitemRows;
+                             q5_ordersLoaderPFC   ordersFiles   orders   orders_r   ordersRows;
+                             q5_customerLoaderPFC customerFiles customer customer_r customerRows;
+                             q5_supplierLoaderPFC supplierFiles supplier supplier_r supplierRows;
+                             q5_nationLoaderPC    nationFiles   nation   nation_r;
+                             q5_regionLoaderPC    regionFiles   region   region_r;
+                             ( (q5_prep, me) <- () )
+                           ) ],
+  preLoadExpr         = [$ ()],
+  preReadyExpr        = [$ ()],
+  onReadyExpr         = [$ (( (q5_co_start, me) <- () );
+                              (q5_sl_start, me) <- () )
+                        ],
+  finishArgT          = [: ()],
+  preTestFinishExpr   = [$ (\_ -> ())],
+  preFinishExpr       = [$ (print ("Q5 num results:" ++ (itos (q5_result.size()))));
+                           (q5_result.iterate (\r -> ((results.insert r); ((results_sink, me) <- r ))));
+                           peers.iterate (\p -> (shutdown, p.addr) <- ())
+                        ],
+  preShutdownExpr     = [$ ()],
+  finishAsShutdownExpr = [$ false]
+)
+
+sink results_sink : {key: string, value: real} = file "results.csv" csv
+sink query_time_sink : string = stdout csv
+
+source rows : () = value ()
+feed rows |> start

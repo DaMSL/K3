@@ -3,7 +3,6 @@ tmp
 .ghci
 .cabal-sandbox
 .project
-*.k3
 *.pyc
 
 __build
@@ -17,5 +16,6 @@ data/out.txt
 cabal.sandbox.config
 *.swp
 *.orig
+*~
 
 _DATA

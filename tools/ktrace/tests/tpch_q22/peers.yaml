@@ -3,12 +3,20 @@ me: [127.0.0.1, 30000]
 master: [127.0.0.1, 30000]
 peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
 role: rows
-ordersFiles: [{path: data/tpch/orders0}]
-customerFiles: [{path: data/tpch/customer0}]
+ordersFiles: [{path: tools/ktrace/data/tpch/orders0}]
+customerFiles: [{path: tools/ktrace/data/tpch/customer0}]
+masters: [{addr: [127.0.0.1, 30000]}]
+local_peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
+peer_masters: [ { key: [127.0.0.1, 30000], value: [127.0.0.1, 30000]}
+              , { key: [127.0.0.1, 40000], value: [127.0.0.1, 30000]}]
 ---
 me: [127.0.0.1, 40000]
 master: [127.0.0.1, 30000]
 peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
 role: rows
-ordersFiles: [{path: data/tpch/orders1}]
-customerFiles: [{path: data/tpch/customer1}]
+ordersFiles: [{path: tools/ktrace/data/tpch/orders1}]
+customerFiles: [{path: tools/ktrace/data/tpch/customer1}]
+masters: [{addr: [127.0.0.1, 30000]}]
+local_peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
+peer_masters: [ { key: [127.0.0.1, 30000], value: [127.0.0.1, 30000]}
+              , { key: [127.0.0.1, 40000], value: [127.0.0.1, 30000]}]

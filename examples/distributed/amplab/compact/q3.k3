@@ -7,7 +7,7 @@ typedef pr_agg             = {prSum: int, prCount: int, arSum: real}
 typedef aggs_by_ip_elem    = {key: string, value: pr_agg}
 typedef aggs_by_ip_map     = collection aggs_by_ip_elem @ Map
 
-declare user_visits : uv_bag
+declare user_visits : collection {sourceIP: string, destURL: string, visitDate: string, adRevenue: real } @Collection
 
 //key: pageURL, value: pageRank
 @:Pinned
@@ -67,7 +67,7 @@ trigger q3_local : () = \_ -> (
     )
     else ()
   );
-  ignore partial_aggs @SendByKey(dest_trg=[$ merge], barrier_trg=[$ count_merges], nodes = [$ peers], send_extra_fn = [$ (\x -> x)])
+  ignore (partial_aggs @PSendByKey(dest_trg=[$ merge], barrier_trg=[$ count_merges], nodes = [$ peers], send_extra_fn = [$ (\x -> x)]))
 )
 
 trigger merge : aggs_by_ip_map = \aggs_map -> (
@@ -97,8 +97,8 @@ trigger count_merges : () = \_ -> (
 
 trigger start : () = \_ -> (() @:Start) @AmplabBenchmark(
   queryTrigger       = [$ q3_local],
-  loadExpr           = [$ (uservisitsFiles.iterate (\e -> loadUVQ3 e.path user_visits);
-                           rankingsFiles.iterate (\e ->  loadRKQ3 e.path rk_by_url)) ],
+  loadExpr           = [$ loadUVQ3 uservisitsFiles user_visits; 
+                          loadRKQ3 rankingsFiles rk_by_url ], 
   preLoadExpr        = [$ peers.iterate (\i -> peers_seq.insert i)],
   preReadyExpr       = [$ ()],
   finishArgT         = [: aggs_by_ip_elem],

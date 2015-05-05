@@ -3,22 +3,21 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Language.K3.Metaprogram.Evaluation where
 
 import Control.Applicative
 import Control.Arrow
 import Control.Monad
-import Control.Monad.IO.Class
 import Control.Monad.State
 
 import Data.Either
 import Data.Functor.Identity
 import Data.List
 import qualified Data.Map as Map
+import Data.Maybe
 import Data.Tree
-
-import Debug.Trace
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -42,6 +41,7 @@ import Language.K3.Parser.DataTypes
 
 import Language.K3.Analysis.HMTypes.Inference hiding ( localLog, localLogAction )
 
+import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 
 traceLogging :: Bool
@@ -59,11 +59,12 @@ evalMetaprogram :: Maybe MPEvalOptions
                 -> Maybe (K3 Declaration -> GeneratorM (K3 Declaration))
                 -> Maybe (K3 Declaration -> GeneratorM (K3 Declaration))
                 -> K3 Declaration -> IO (Either String (K3 Declaration))
-evalMetaprogram evalOpts analyzeFOpt repairFOpt mp =
-    runGeneratorM initGState synthesizedProg >>= return . fst
+evalMetaprogram evalOpts analyzeFOpt repairFOpt prog =
+  runGeneratorM initGState $ synthesizedProg prog
   where
-    synthesizedProg = do
+    synthesizedProg mp = do
       localLog $ generatorInput mp
+      void $ modifyGEnvF_ $ \_ -> return emptyGeneratorEnv
       pWithDataAnns  <- runMpGenerators mp
       pWithMDataAnns <- applyDAnnGens pWithDataAnns
       pWithDADecls   <- modifyGDeclsF $ \gd -> addDecls gd pWithMDataAnns
@@ -79,7 +80,7 @@ evalMetaprogram evalOpts analyzeFOpt repairFOpt mp =
     analyzeF   = maybe defaultMetaAnalysis id analyzeFOpt
     repairF    = maybe defaultMetaRepair   id repairFOpt
 
-    rcr p = (liftIO $ evalMetaprogram evalOpts analyzeFOpt repairFOpt p) >>= either throwG return
+    rcr p = synthesizedProg p
 
     addDecls genDecls p@(tag -> DRole n)
       | n == defaultRoleName =
@@ -238,9 +239,7 @@ applyCAnnotation targetE cAnnId sEnv = do
    (gEnv, sCtxt) <- get >>= return . (getGeneratorEnv &&& getSpliceContext)
    nsEnv         <- evalBindings sCtxt sEnv
    let postSCtxt = pushSCtxt nsEnv sCtxt
-   localLog $ "Applying control annotation " ++ cAnnId
-              ++ " in "    ++ show sCtxt
-              ++ " with "  ++ show nsEnv
+   debugApply sCtxt nsEnv
    maybe (spliceLookupErr cAnnId)
          (\g -> injectRewrite postSCtxt $ g targetE nsEnv)
          $ lookupERWGenE cAnnId gEnv
@@ -248,14 +247,19 @@ applyCAnnotation targetE cAnnId sEnv = do
   where
     injectRewrite sctxt (SRExpr p) = localLog debugPassThru >> p >>= bindEAnnVars sctxt
 
-    injectRewrite sctxt (SRRewrite p) = do
+    injectRewrite sctxt (SRRewrite (p, rwsEnv)) = do
+      let nsctxt = pushSCtxt rwsEnv sctxt
       (rewriteE, decls) <- p
-      rewriteESub       <- bindEAnnVars sctxt rewriteE
-      declsSub          <- mapM (bindDAnnVars sctxt) decls
+      rewriteESub       <- bindEAnnVars nsctxt rewriteE
+      declsSub          <- mapM (bindDAnnVars nsctxt) decls
       localLog (debugRewrite rewriteESub)
       modifyGDeclsF_ (Right . addCGenDecls cAnnId declsSub) >> return rewriteESub
 
     injectRewrite _ _ = throwG "Invalid control annotation rewrite"
+
+    debugApply sCtxt nsEnv =
+       localLog $ boxToString $ ["Applying control annotation " ++ cAnnId ++ " in context "]
+                    %$ prettyLines sCtxt %$ ["with splice env"] %$ prettyLines nsEnv
 
     debugPassThru   = unwords ["Passed on generator", cAnnId]
     debugRewrite  e = boxToString $ [unwords ["Generator", cAnnId, "rewrote as "]] %+ prettyLines e
@@ -377,6 +381,7 @@ spliceExpression = mapTree doSplice
     doSplice ch e@(tag -> ERecord ids)           = mapM expectIdSplicer ids >>= newAnns e >>= \(nids, nanns) -> return $ Node (ERecord  nids :@: nanns) ch
     doSplice ch e@(tag -> EProject i)            = expectIdSplicer i        >>= newAnns e >>= \(nid, nanns)  -> return $ Node (EProject nid  :@: nanns) ch
     doSplice ch e@(tag -> EAssign i)             = expectIdSplicer i        >>= newAnns e >>= \(nid, nanns)  -> return $ Node (EAssign  nid  :@: nanns) ch
+    doSplice ch e@(tag -> ELambda i)             = expectIdSplicer i        >>= newAnns e >>= \(nid, nanns)  -> return $ Node (ELambda  nid  :@: nanns) ch
     doSplice ch e@(tag -> EConstant (CEmpty ct)) = spliceType ct            >>= newAnns e >>= \(nct, nanns)  -> return $ Node (EConstant (CEmpty nct) :@: nanns) ch
     doSplice ch e@(Node (tg :@: _) _) = newAnns e () >>= \(_,nanns) -> return $ Node (tg :@: nanns) ch
 
@@ -455,7 +460,9 @@ evalLiteralSplice _ (Right l) = return l
 
 evalSumEmbedding :: String -> SpliceContext -> [MPEmbedding] -> GeneratorM SpliceValue
 evalSumEmbedding tg sctxt l = maybe sumError return =<< foldM concatSpliceVal Nothing l
-  where sumError = spliceFail $ "Inconsistent " ++ tg ++ " splice parts " ++ show l ++ " " ++ show sctxt
+  where
+        sumError :: GeneratorM a
+        sumError = spliceFail $ "Inconsistent " ++ tg ++ " splice parts " ++ show l ++ " " ++ show sctxt
 
         concatSpliceVal Nothing se           = evalEmbedding sctxt se >>= return . Just
         concatSpliceVal (Just (SLabel i)) se = evalEmbedding sctxt se >>= doConcat (SLabel i)
@@ -470,12 +477,14 @@ evalEmbedding _ (MPENull i) = return $ SLabel i
 evalEmbedding sctxt em@(MPEPath var path) = maybe evalErr (flip matchPath path) $ lookupSCtxt var sctxt
   where matchPath v [] = return v
         matchPath v (h:t) = maybe evalErr (flip matchPath t) $ spliceRecordField v h
-        evalErr = spliceIdPathFail var path $ unwords ["lookup failed", "(", show em, ")"]
+        evalErr = spliceIdPathFail var path sctxt $ unwords ["lookup failed", "(", show em, ")"]
 
 evalEmbedding sctxt (MPEHProg expr) = evalHaskellProg sctxt expr
 
-spliceIdPathFail :: Identifier -> [Identifier] -> String -> GeneratorM a
-spliceIdPathFail i path msg = throwG $ unwords ["Failed to splice", (intercalate "." $ [i]++path), ":", msg]
+spliceIdPathFail :: Identifier -> [Identifier] -> SpliceContext -> String -> GeneratorM a
+spliceIdPathFail i path sctxt msg = throwG $ boxToString $
+  [unwords ["Failed to splice", (intercalate "." $ [i]++path), ":", msg]]
+  %$ ["in context ["] %$ prettyLines sctxt %$ ["]"]
 
 spliceFail :: String -> GeneratorM a
 spliceFail msg = throwG $ unwords ["Splice failed:", msg]
@@ -504,15 +513,30 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
   where
     matchTag sEnv e1 e2@(tag -> EVariable i)
       | isPatternVariable i =
-          let nrEnv = spliceRecord $ (maybe [] typeRepr $ e1 @~ isEType) ++ [(spliceVESym, SExpr e1)]
+          let nrEnv = spliceRecord $ (maybe [] typeRepr $ e1 @~ isEType) ++ [(spliceVESym, SExpr $ stripEUIDSpan e1)]
               nsEnv = maybe sEnv (\n -> if null n then sEnv else addSpliceE n nrEnv sEnv) $ patternVariable i
           in do
               localLog $ debugMatchPVar i
               matchTypesAndAnnotations (annotations e1) (annotations e2) nsEnv >>= return . (True,)
 
+    matchTag sEnv e1@(tag -> EConstant (CEmpty t1)) e2@(tag -> EConstant (CEmpty t2)) =
+      let (anns1, anns2) = (annotations e1, annotations e2) in
+      if matchAnnotations (\x -> ignoreUIDSpan x && ignoreTypes x) anns1 anns2
+        then matchType t1 t2 >>= return . (True,) . mergeSpliceEnv sEnv
+        else debugMismatchAnns anns1 anns2 Nothing
+
     matchTag sEnv e1@(tag -> x) e2@(tag -> y)
-      | x == y    = matchTypesAndAnnotations (annotations e1) (annotations e2) sEnv >>= return . (False,)
-      | otherwise = Nothing
+      | hasIdentifiers y = matchITAPair e1 e2 sEnv
+      | x == y           = matchTAPair  e1 e2 sEnv
+      | otherwise        = debugMismatch e1 e2 Nothing
+
+    matchITAPair e1 e2 sEnv = matchIdentifiers (extractIdentifiers $ tag e1) (extractIdentifiers $ tag e2) sEnv >>= matchTAPair e1 e2
+    matchTAPair  e1 e2 sEnv = matchTypesAndAnnotations (annotations e1) (annotations e2) sEnv >>= return . (False,)
+
+    matchIdentifiers :: [Identifier] -> [Identifier] -> SpliceEnv -> Maybe SpliceEnv
+    matchIdentifiers ids patIds sEnv =
+      if length ids /= length patIds then Nothing
+      else foldM bindIdentifier sEnv $ zip ids patIds
 
     matchTypesAndAnnotations :: [Annotation Expression] -> [Annotation Expression] -> SpliceEnv
                              -> Maybe SpliceEnv
@@ -520,16 +544,49 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
       (Just (EType ty), Just (EPType pty)) ->
           if   matchAnnotations (\x -> ignoreUIDSpan x && ignoreTypes x) anns1 anns2
           then matchType ty pty >>= return . mergeSpliceEnv sEnv
-          else Nothing
+          else debugMismatchAnns anns1 anns2 Nothing
 
       (_, _) -> if matchAnnotations (\x -> ignoreUIDSpan x && ignoreTypes x) anns1 anns2
-                then Just sEnv else Nothing
+                then Just sEnv else debugMismatchAnns anns1 anns2 Nothing
 
-    typeRepr (EType ty) = [(spliceVTSym, SType ty)]
+    bindIdentifier :: SpliceEnv -> (Identifier, Identifier) -> Maybe SpliceEnv
+    bindIdentifier sEnv (a, b@(isPatternVariable -> True)) =
+      let nrEnv = spliceRecord [(spliceVIdSym, SLabel a)]
+      in Just $ maybe sEnv (\n -> if null n then sEnv else addSpliceE n nrEnv sEnv) $ patternVariable b
+
+    bindIdentifier sEnv (a,b) = if a == b then Just sEnv else Nothing
+
+    hasIdentifiers :: Expression -> Bool
+    hasIdentifiers (ELambda  _) = True
+    hasIdentifiers (ERecord  _) = True
+    hasIdentifiers (EProject _) = True
+    hasIdentifiers (ELetIn   _) = True
+    hasIdentifiers (EAssign  _) = True
+    hasIdentifiers (ECaseOf  _) = True
+    hasIdentifiers (EBindAs  _) = True
+    hasIdentifiers _ = False
+
+    extractIdentifiers :: Expression -> [Identifier]
+    extractIdentifiers (ELambda  i) = [i]
+    extractIdentifiers (ERecord  i) = i
+    extractIdentifiers (EProject i) = [i]
+    extractIdentifiers (ELetIn   i) = [i]
+    extractIdentifiers (EAssign  i) = [i]
+    extractIdentifiers (ECaseOf  i) = [i]
+    extractIdentifiers (EBindAs  b) = bindingVariables b
+    extractIdentifiers _ = []
+
+    typeRepr (EType ty) = [(spliceVTSym, SType $ stripTUIDSpan ty)]
     typeRepr _ = []
 
-    ignoreUIDSpan a = not (isEUID a || isESpan a)
+    ignoreUIDSpan a = not (isEUID a || isESpan a || isESyntax a)
     ignoreTypes   a = not $ isEAnyType a
+
+    debugMismatch p1 p2 r =
+      localLog (boxToString $ ["No match on "] %$ prettyLines p1 %$ ["and"] %$ prettyLines p2) >> r
+
+    debugMismatchAnns a1 a2 r =
+      localLog (boxToString $ ["No match on "] %$ [show a1] %$ ["and"] %$ [show a2]) >> r
 
     debugMatchPVar i =
       unwords ["isPatternVariable", show i, ":", show $ isPatternVariable i]
@@ -538,20 +595,25 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
 -- | Match two types, returning any pattern variables bound in the second argument.
 matchType :: K3 Type -> K3 Type -> Maybe SpliceEnv
 matchType t patT = matchTree matchTag t patT emptySpliceEnv
-  where matchTag sEnv t1 (tag -> TDeclaredVar i)
+  where matchTag sEnv t1 t2@(tag -> TDeclaredVar i)
           | isPatternVariable i =
-              let extend n =
-                    if null n then Nothing
-                    else Just . (True,) $ addSpliceE n (spliceRecord [(spliceVTSym, SType t1)]) sEnv
+              let extend n = if null n then Nothing
+                             else Just . (True,) $ addSpliceE n (spliceRecord [(spliceVTSym, SType $ stripTUIDSpan t1)]) sEnv
               in do
                    localLog $ debugMatchPVar i
-                   maybe Nothing extend $ patternVariable i
+                   if matchTypeAnnotations t1 t2 then maybe Nothing extend $ patternVariable i else debugMismatch t1 t2 Nothing
 
         matchTag sEnv t1@(tag -> x) t2@(tag -> y)
-          | x == y && matchMutability t1 t2 = Just (False, sEnv)
-          | otherwise = Nothing
+          | x == y && matchTypeMetadata t1 t2 = Just (False, sEnv)
+          | otherwise = debugMismatch t1 t2 Nothing
 
-        matchMutability t1 t2 = (t1 @~ isTQualified) == (t2 @~ isTQualified)
+        matchTypeMetadata t1 t2 = matchTypeAnnotations t1 t2 && matchMutability t1 t2
+
+        matchTypeAnnotations t1 t2 = matchAnnotations isTAnnotation (annotations t1) (annotations t2)
+        matchMutability t1 t2 = (t1 @~ isTQualified) == (t2 @~ isTQualified) || isNothing (t2 @~ isTQualified)
+
+        debugMismatch p1 p2 r =
+          localLog (boxToString $ ["No match on "] %$ prettyLines p1 %$ ["and"] %$ prettyLines p2) >> r
 
         debugMatchPVar i =
           unwords ["isPatternVariable", show i, ":", show $ isPatternVariable i]
@@ -577,8 +639,10 @@ exprPatternMatcher spliceParams rules extensions = ExprRewriter $ \expr spliceEn
     logValue msg v = runIdentity (localLog msg >> return v)
 
     inputSR expr = SRExpr $ return expr
+
     exprDeclSR spliceEnv (sEnv, rewriteE, ruleExts) =
-      SRRewrite $ generateInSpliceEnv (mergeSpliceEnv spliceEnv sEnv) $
+      let msenv = mergeSpliceEnv spliceEnv sEnv in
+      SRRewrite . (, msenv) $ generateInSpliceEnv msenv $
         (,) <$> spliceExpression rewriteE <*> mapM spliceNonAnnotationTree (extensions ++ ruleExts)
 
     tryMatch _ acc@(Just _) _ = acc
@@ -591,8 +655,8 @@ exprPatternMatcher spliceParams rules extensions = ExprRewriter $ \expr spliceEn
           ["Trying match step "] %+ prettyLines pat %+ [" on "] %+ prettyLines expr
 
     debugMatchStepResult expr pat r = boxToString $
-          ["Match step result "] %+ prettyLines pat %+ [" on "] %+ prettyLines expr
-      %$ (["Result "] %+ [show r])
+      ["Match step result "] %+ prettyLines pat %+ [" on "] %+ prettyLines expr
+        %$ ["Result "] %$ prettyLines r
 
     debugMatchResult opt = unwords ["Match result", show opt]
 

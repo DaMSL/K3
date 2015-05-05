@@ -18,11 +18,15 @@
 
 namespace K3 {
 
+  template <>
+  std::size_t hash_value(const int& t);
+
   namespace Net = K3::Asio;
 
-    using std::shared_ptr;
-    using std::tuple;
-    using std::ofstream;
+  using std::shared_ptr;
+  using std::tuple;
+  using std::ofstream;
+
   //-------------------
   // Utility functions
 
@@ -37,6 +41,7 @@ namespace K3 {
     oss << ltm->tm_hour << ":" << ltm->tm_min << ":" << ltm->tm_sec;
     return oss.str();
   }
+
   //---------------
   // Configuration
 
@@ -62,7 +67,7 @@ namespace K3 {
     void configureWithAddress(Address addr) {
       address_           = addr;
       defaultBufferSpec_ = BufferSpec(100,10);
-      connectionRetries_ = 100;
+      connectionRetries_ = 1000;
       waitForNetwork_    = false;
     }
 
@@ -86,8 +91,6 @@ namespace K3 {
       listenerCounter   = shared_ptr<ListenerCounter>(new ListenerCounter());
       waitMutex         = shared_ptr<boost::mutex>(new boost::mutex());
       waitCondition     = shared_ptr<boost::condition_variable>(new boost::condition_variable());
-      msgAvailMutex     = shared_ptr<boost::mutex>(new boost::mutex());
-      msgAvailCondition = shared_ptr<boost::condition_variable>(new boost::condition_variable());
     }
 
     bool terminate() {
@@ -112,25 +115,12 @@ namespace K3 {
       } else { logAt(boost::log::trivial::warning, "Could not wait for engine, no condition variable available."); }
     }
 
-    // Wait for a notification that the engine associated
-    // with this control object has queued messages.
-    template <class Predicate>
-    void waitForMessage(Predicate pred)
-    {
-      if (msgAvailMutex && msgAvailCondition) {
-        boost::unique_lock<boost::mutex> lock(*msgAvailMutex);
-        while (pred()) { msgAvailCondition->wait(lock); }
-      } else { logAt(boost::log::trivial::warning, "Could not wait for message, no condition variable available."); }
-    }
 
     shared_ptr<ListenerControl> listenerControl() {
       return shared_ptr<ListenerControl>(
-              new ListenerControl(msgAvailMutex, msgAvailCondition, listenerCounter));
+              new ListenerControl(listenerCounter));
     }
 
-    void messageAvail() {
-      msgAvailCondition->notify_one();
-    }
 
   protected:
     // Engine configuration, indicating whether we wait for the network when terminating.
@@ -146,9 +136,6 @@ namespace K3 {
     shared_ptr<boost::mutex> waitMutex;
     shared_ptr<boost::condition_variable> waitCondition;
 
-    // Notifications for engine worker threads waiting on messages.
-    shared_ptr<boost::mutex> msgAvailMutex;
-    shared_ptr<boost::condition_variable> msgAvailCondition;
   };
 
 
@@ -163,16 +150,17 @@ namespace K3 {
     Engine(
       bool simulation,
       SystemEnvironment& sys_env,
-      shared_ptr<InternalCodec> _internal_codec,
+      shared_ptr<MessageCodec> _msgcodec,
       string log_level,
       string log_path,
       string result_v,
-      string result_p
+      string result_p,
+      shared_ptr<const MessageQueues> qs
     ): LogMT("Engine") {
-      configure(simulation, sys_env, _internal_codec, log_level, log_path, result_v, result_p);
+      configure(simulation, sys_env, _msgcodec, log_level, log_path, result_v, result_p, qs);
     }
 
-    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<InternalCodec> _internal_codec, string log_level,string log_path, string result_var, string result_path);
+    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<MessageCodec> _msgcodec, string log_level,string log_path, string result_var, string result_path, shared_ptr<const MessageQueues> qs);
 
     //-----------
     // Messaging.
@@ -198,21 +186,21 @@ namespace K3 {
     //---------------------------------------
     // Internal and external channel methods.
 
-    void openBuiltin(Identifier eid, string builtinId) {
+    void openBuiltin(Identifier eid, string builtinId, string format) {
       externalEndpointId(eid) ?
-        genericOpenBuiltin(eid, builtinId)
+        genericOpenBuiltin(eid, builtinId, format)
         : invalidEndpointIdentifier("external", eid);
     }
 
-    void openFile(Identifier eid, string path, IOMode mode) {
+    void openFile(Identifier eid, string path, string format, IOMode mode) {
       externalEndpointId(eid) ?
-        genericOpenFile(eid, path, mode)
+        genericOpenFile(eid, path, format, mode)
         : invalidEndpointIdentifier("external", eid);
     }
 
-    void openSocket(Identifier eid, Address addr, IOMode mode) {
+    void openSocket(Identifier eid, Address addr, string format, IOMode mode) {
       externalEndpointId(eid) ?
-        genericOpenSocket(eid, addr, mode)
+        genericOpenSocket(eid, addr, format, mode)
         : invalidEndpointIdentifier("external", eid);
     }
 
@@ -224,19 +212,19 @@ namespace K3 {
 
     void openBuiltinInternal(Identifier eid, string builtinId) {
       !externalEndpointId(eid)?
-        genericOpenBuiltin(eid, builtinId)
+        genericOpenBuiltin(eid, builtinId, "internal")
         : invalidEndpointIdentifier("internal", eid);
     }
 
     void openFileInternal(Identifier eid, string path, IOMode mode) {
       !externalEndpointId(eid)?
-        genericOpenFile(eid, path, mode)
+        genericOpenFile(eid, path, "internal", mode)
         : invalidEndpointIdentifier("internal", eid);
     }
 
     void openSocketInternal(Identifier eid, Address addr, IOMode mode) {
       !externalEndpointId(eid)?
-        genericOpenSocket(eid, addr, mode)
+        genericOpenSocket(eid, addr, "internal", mode)
         : invalidEndpointIdentifier("internal", eid);
     }
 
@@ -254,12 +242,17 @@ namespace K3 {
       }
     }
 
-    shared_ptr<Value> doReadExternal(Identifier eid) {
-      return endpoints->getExternalEndpoint(eid)->doRead();
+    template<typename T> shared_ptr<T> doReadExternal(Identifier eid) {
+      return endpoints->getExternalEndpoint(eid)->doRead<T>();
     }
 
-    RemoteMessage doReadInternal(Identifier eid) {
-      return internal_codec->read_message(*endpoints->getInternalEndpoint(eid)->doRead());
+    shared_ptr<RemoteMessage> doReadInternal(Identifier eid) {
+      return endpoints->getInternalEndpoint(eid)->doRead();
+    }
+
+    template<typename T>
+    Collection<R_elem<T>> doReadExternalBlock (Identifier eid, int blockSize) {
+      return endpoints->getExternalEndpoint(eid)->doReadBlock<T>(blockSize);
     }
 
     bool hasWrite(Identifier eid) {
@@ -270,13 +263,15 @@ namespace K3 {
       }
     }
 
-    void doWriteExternal(Identifier eid, Value v) {
-      return endpoints->getExternalEndpoint(eid)->doWrite(v);
+    template<typename T>
+    void doWriteExternal(Identifier eid, const T& v) {
+      endpoints->getExternalEndpoint(eid)->doWrite<T>(v);
+      endpoints->getExternalEndpoint(eid)->flushBuffer();
+      return;
     }
 
-    void doWriteInternal(Identifier eid, RemoteMessage m) {
-      return endpoints->getInternalEndpoint(eid)->doWrite(
-                make_shared<Value>(internal_codec->show_message(m)));
+    void doWriteInternal(Identifier eid, const RemoteMessage& m) {
+      return endpoints->getInternalEndpoint(eid)->doWrite(m);
     }
 
     //-----------------------
@@ -304,7 +299,7 @@ namespace K3 {
 
     void forceTerminateEngine() {
       terminateEngine();
-      control->messageAvail();
+      queues->messageAvail(*me);
       cleanupEngine();
     }
 
@@ -338,59 +333,31 @@ namespace K3 {
             event_stream << trig << "|";
             event_stream << K3::serialization::json::encode<Address>(msgSource) << "|";
             event_stream << msg_contents << "|";
-            event_stream << time << std::endl;
+            event_stream << time_milli() << std::endl;
 
             // Log Global state
             auto& global_stream = *std::get<1>(log_streams[peer]);
-            global_stream << message_counter << "|";
-            global_stream << K3::serialization::json::encode<Address>(peer) << "|";
-            int i = 0;
-            auto s = env.size();
+            auto s = std::to_string(message_counter) + "|" + K3::serialization::json::encode<Address>(peer) + "|";
             for (const auto& tup : env) {
-               global_stream << tup.second;
-               std::cout << tup.first;
-              if (i < s-1) {
-                global_stream << "|";
-                std::cout << "|";
-              }
-              i++;
+              global_stream << s << tup.first << "|" << tup.second << std::endl;
             }
-            global_stream << std::endl;
-            std::cout << std::endl;
     }
 
     void logResult(shared_ptr<MessageProcessor>& mp) {
       if (result_var != "") {
-        auto n = nodes();
-        for (const auto& a : n) {
-          auto dir = result_path != "" ? result_path : ".";
-          auto s = dir + "/" + addressAsString(a) + "_Result.txt";
-          std::ofstream ofs;
-          ofs.open(s);
-          auto m = mp->json_bindings(a);
-          if (m.count( result_var ) != 0) {
-            ofs << m[result_var] << std::endl;
-          }
-          else {
-            throw std::runtime_error("Cannot log result variable, does not exist: " + result_var);
-          }
+        auto a = *me;
+        auto dir = result_path != "" ? result_path : ".";
+        auto s = dir + "/" + addressAsString(a) + "_Result.txt";
+        std::ofstream ofs;
+        ofs.open(s);
+        auto m = mp->json_bindings(a);
+        if (m.count(result_var) != 0) {
+          ofs << m[result_var] << std::endl;
+        } else {
+          throw std::runtime_error(
+              "Cannot log result variable, does not exist: " + result_var);
         }
       }
-    }
-
-    //-------------------
-    // Engine statistics.
-
-    list<Address> nodes() {
-      list<Address> r;
-      if ( deployment ) { r = deployedNodes(*deployment); }
-      else { logAt(boost::log::trivial::error, "Invalid system environment."); }
-      return r;
-    }
-
-    tuple<size_t, size_t> statistics() {
-      return make_tuple(queues? queues->size() : 0,
-                        endpoints? endpoints->numEndpoints() : 0);
     }
 
     bool simulation() {
@@ -410,13 +377,14 @@ namespace K3 {
 
     bool logEnabled() { return log_enabled; }
     bool logJsonEnabled() { return log_json; }
+
   protected:
     shared_ptr<EngineConfiguration> config;
     shared_ptr<EngineControl>       control;
-    shared_ptr<SystemEnvironment>   deployment;
-    shared_ptr<InternalCodec>       internal_codec;
-    shared_ptr<MessageQueues>       queues;
-    // shared_ptr<WorkerPool>          workers;
+    shared_ptr<Address>             me;
+    shared_ptr<MessageCodec>        msgcodec;
+    shared_ptr<const MessageQueues> queues;
+    // shared_ptr<WorkerPool>       workers;
     shared_ptr<Net::NContext>       network_ctxt;
 
     // Endpoint and collection tracked by the engine.
@@ -431,7 +399,7 @@ namespace K3 {
     bool                            log_enabled;
     bool                            log_json;
     // Tuple of (eventLog, globalsLog)
-    
+
     std::map<Address, tuple<shared_ptr<ofstream>, shared_ptr<ofstream>>> log_streams;
     string                          log_path;
     string                          result_var;
@@ -450,16 +418,17 @@ namespace K3 {
 
     Builtin builtin(string builtinId);
 
-
+    // Format selection.
+    EndpointState::CodecDetails codecOfFormat(string format);
 
     // TODO: for all of the genericOpen* endpoint constructors below, revisit:
     // i. no K3 type specified for type-safe I/O as with Haskell engine.
     // ii. buffer type with concurrent engine.
-    void genericOpenBuiltin(string id, string builtinId);
+    void genericOpenBuiltin(string id, string builtinId, string format);
 
-    void genericOpenFile(string id, string path, IOMode mode);
+    void genericOpenFile(string id, string path, string format, IOMode mode);
 
-    void genericOpenSocket(string id, Address addr, IOMode handleMode);
+    void genericOpenSocket(string id, Address addr, string format, IOMode handleMode);
 
     void genericClose(Identifier eid, shared_ptr<Endpoint> ep);
 
@@ -471,13 +440,15 @@ namespace K3 {
     //-----------------------
     // IOHandle constructors.
 
-    shared_ptr<IOHandle> openBuiltinHandle(Builtin b, shared_ptr<Codec> codec);
+    shared_ptr<IOHandle> openBuiltinHandle(Builtin b, shared_ptr<FrameCodec> frame);
 
-    shared_ptr<IOHandle> openFileHandle(const string& path, shared_ptr<Codec> codec, IOMode m);
+    shared_ptr<IOHandle> openFileHandle(const string& path, shared_ptr<FrameCodec> frame, IOMode m);
 
-    shared_ptr<IOHandle> openSocketHandle(const Address& addr, shared_ptr<Codec> codec, IOMode m);
+    shared_ptr<IOHandle> openSocketHandle(const Address& addr, shared_ptr<FrameCodec> frame, IOMode m);
   };
 
+  template <>
+  std::size_t hash_value(int const& b);
 } // namespace K3
 
 #endif // K3_RUNTIME_ENGINE_H

@@ -1,11 +1,17 @@
 include "Annotation/Collection.k3"
 include "Annotation/Map.k3"
+include "Core/Builtins.k3"
 
-typedef MyC = collection {a:int} @Collection
-declare c : MyC
-declare d : MyC
-declare e : mut int = 0
-declare f : MyC -> bool = \_ -> true
+typedef MyC  = collection {a:int} @Collection
+typedef MyC2 = collection {a:int, b:int} @Collection
+
+declare c  : MyC
+declare c2 : MyC2
+declare d  : MyC
+declare e  : mut int = 0
+declare f  : MyC -> bool = \_ -> true
+declare g  : mut collection {key: int, value: collection {key:int, value:int} @Map} @Collection
+declare h  : mut collection {key: int, value: int} @Collection
 
 trigger groupByEncode : () = \_ -> (
   let x = c.groupBy (\r -> r.a + 2)
@@ -194,8 +200,28 @@ trigger groupByFoldMapMap : () = \_ -> (
         .iterate (\r -> (result, 127.0.0.1:40000) <- r))
 )
 
+trigger groupByHGroupBy : () = \_ -> (
+  g = ((((c2.groupBy (\r -> r.a)
+                     (\acc -> (\r -> acc + r.b))
+                     0)
+            .groupBy) @:HGroupBy)
+                     (\r -> (hash r.key) % peers.size())
+                     (\acc -> (\r -> (acc.insert r; acc)))
+                     (empty {key: int, value: int} @Map))
+)
+
+trigger groupByMGroupBy : () = \_ -> (
+  h = ((((c2.groupBy (\r -> r.a)
+                     (\acc -> (\r -> acc + r.b))
+                     0)
+            .groupBy) @:MGroupBy)
+                     (\r -> (hash r.key) % peers.size())
+                     (\acc -> (\r -> acc + r.value))
+                     0)
+)
 
 trigger result    : {elem : int}                                    = \_ -> ()
 trigger resultC   : collection {elem : int} @Collection             = \_ -> ()
 trigger resultCA  : collection {a : int} @Collection                = \_ -> ()
 trigger resultCKV : collection {key : int, value : int} @Collection = \_ -> ()
+

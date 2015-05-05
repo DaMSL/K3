@@ -5,11 +5,14 @@ env:
 
 install:
   - cd /k3/K3
-  - git pull
+  - git fetch
+  - git checkout -f $BRANCH
+  - git reset --hard $COMMIT
   - cd /k3/K3-Mosaic
   - git pull
 
 script:
+  - sudo pg_createcluster 9.3 main --start
   - service postgresql start
   - sudo -u postgres psql -c "alter user postgres password 'password'"
   - cd /k3/K3
@@ -18,22 +21,23 @@ script:
   - cabal build
 
   # Begin tests
-  - cd tools/ktrace
-  - source env.sh
-    
+  - source tools/ktrace/env.sh
     # Amplab
-  - ./run_test.sh ../../examples/distributed/amplab/q1.k3 tests/amplab_q1 local_q1_results
-  - ./run_test.sh ../../examples/distributed/amplab/q2.k3 tests/amplab_q2 results
-  - ./run_test.sh ../../examples/distributed/amplab/q3.k3 tests/amplab_q3 results
+  - ./tools/ktrace/run_test.sh examples/distributed/amplab/q1.k3 tools/ktrace/tests/amplab_q1 local_q1_results
+  - ./tools/ktrace/run_test.sh examples/distributed/amplab/q2.k3 tools/ktrace/tests/amplab_q2 results
+  - ./tools/ktrace/run_test.sh examples/distributed/amplab/q3.k3 tools/ktrace/tests/amplab_q3 results
 
-    # TPCH
-  - ./run_test.sh ../../examples/sql/tpch/queries/k3/q1.k3 tests/tpch_q1 results
-  - ./run_test.sh ../../examples/sql/tpch/queries/k3/q3.k3 tests/tpch_q3 results
-  - ./run_test.sh ../../examples/sql/tpch/queries/k3/q5.k3 tests/tpch_q5 results
-  # numerical error: - ./run_test.sh ../../examples/sql/tpch/queries/k3/q6.k3 tests/tpch_q6 results
-  # incorrect query plan: - ./run_test.sh ../../examples/sql/tpch/queries/k3/q11.k3 tests/tpch_q11 results
-  - ./run_test.sh ../../examples/sql/tpch/queries/k3/q18.k3 tests/tpch_q18 results
-  - ./run_test.sh ../../examples/sql/tpch/queries/k3/q22.k3 tests/tpch_q22 results
+    # TPCH Barrier Version
+  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q1.k3 tools/ktrace/tests/tpch_q1 results
+  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q3.k3 tools/ktrace/tests/tpch_q3 results
+  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q5_bushy.k3 tools/ktrace/tests/tpch_q5 results
+  # numerical error: - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q6.k3 tools/ktrace/tests/tpch_q6 results
+  # incorrect query plan: - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q11.k3 tools/ktrace/tests/tpch_q11 results
+  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q18.k3 tools/ktrace/tests/tpch_q18 results
+  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q22.k3 tools/ktrace/tests/tpch_q22 results
+
+    # Mosaic (must have fusion disabled)
+  - ./tools/scripts/run/compile.sh --fstage cexclude=Decl-FE,Decl-FT examples/sql/mosaic/rs.k3
 
 notifications:
      email:

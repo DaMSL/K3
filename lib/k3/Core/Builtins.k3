@@ -24,6 +24,10 @@ declare strcomp : string -> string -> int
 declare regex_matcher : string -> (string -> collection {elem: string} @ Collection)
 declare regex_matcher_q4 : string -> collection {elem: string} @ Collection
 
+// TPCH date parsing.
+declare tpch_date : string -> int
+declare tpch_date_to_string : int -> string
+
 // TODO: move to Time.k3
 declare now_int : () -> int
   with effects \_ -> io
@@ -32,22 +36,70 @@ declare now_int : () -> int
 //
 // Engine I/O builtins
 
+declare tcmallocStart: () -> ()
+with effects \s -> io
+
+declare tcmallocStop: () -> ()
+with effects \_ -> io
+
+declare jemallocStart: () -> ()
+with effects \_ -> io
+
+declare jemallocStop: () -> ()
+with effects \_ -> io
+
+declare jemallocDump: () -> ()
+with effects \_ -> io
+
+declare pcmStart: () -> ()
+with effects \_ -> io
+
+declare pcmStop: () -> ()
+with effects \_ -> io
+
 // openBuiltin: channel id -> builtin channel id -> format -> ()
 // builtin channel id is one of: stdin, stdout, stderr
 @:CArgs 3
 declare openBuiltin : string -> string -> string -> ()
+with effects \_ -> \_ -> \_ -> io
 
 // openFile: channel id -> path -> format -> mode -> ()
 @:CArgs 4
 declare openFile : string -> string -> string -> string -> ()
+with effects \_ -> \_ -> \_ -> \_ -> io
+
+// hasRead: channel id -> bool
+declare hasRead: string ->  bool
+with effects \_ -> io
+
+// doRead: channel id -> string
+declare doRead: string -> string
+with effects \_ -> io
+
+// doReadBlock: channel id -> block size -> block
+@:CArgs 2
+declare doReadBlock: string -> int -> collection {elem: string} @Collection
+with effects \_ -> \_ -> io
+
+// hasWrite: channel id -> bool
+declare hasWrite: string ->  bool
+with effects \_ -> io
+
+// doWrite: channel id -> string -> ()
+@:CArgs 2
+declare doWrite: string -> string -> ()
+with effects \_ -> \_ -> io
 
 // openSocket: channel id -> address -> format -> mode -> ()
 @:CArgs 4
 declare openSocket : string -> address -> string -> string -> ()
+with effects \_ -> \_ -> \_ -> \_ -> io
 
 // close: channel id -> ()
 declare close : string -> ()
 
+declare lineCountFile: string -> int
+with effects \_ -> io
 //////////////////////////////////
 //
 // Builtins on primitives/values
@@ -72,7 +124,8 @@ declare exp : real -> real
 declare sin : real -> real
 declare cos : real -> real
 declare tan : real -> real
-
+declare tanh : real -> real
+declare sqrt : real -> real
 
 ////////////////////////
 //
@@ -94,6 +147,8 @@ declare atos : address -> string
 
 // Maximum Int value
 declare get_max_int : () -> int
+
+declare abs : int -> int
 
 // Print to the screen
 declare print : string -> ()
@@ -119,3 +174,4 @@ declare drainEngine : () -> ()
 
 // Sleep the engine (microseconds)
 declare sleep : int -> ()
+with effects  \_ -> io

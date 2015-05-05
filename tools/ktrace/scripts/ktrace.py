@@ -9,9 +9,10 @@ def stripKTraceHeader(lines):
       break
     i = i + 1
   return lines[i:]
+
 def genKTraceSQL(k3_base, k3_source, result_variable, resultFiles):
   ktrace_args   = []
-  k3_executable = "./ktrace.sh"
+  k3_executable = k3_base + "/tools/ktrace/ktrace.sh"
 
   # Check that the K3 source exists
   if not os.path.isfile(k3_source):

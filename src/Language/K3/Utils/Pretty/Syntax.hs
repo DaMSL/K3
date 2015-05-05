@@ -2,6 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Utils.Pretty.Syntax (
@@ -18,6 +19,8 @@ module Language.K3.Utils.Pretty.Syntax (
     literalS,
     symbolS
 ) where
+
+import Prelude hiding ((<$>))
 
 import Control.Applicative ( (<*>) )
 import qualified Control.Applicative as C ( (<$>) )

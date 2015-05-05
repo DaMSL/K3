@@ -1,0 +1,140 @@
+include "Annotation/Vector.k3"
+include "Annotation/Set.k3"
+include "Core/Builtins.k3"
+
+//typedefs
+typedef Connection = {weight :  mut real , deltaWeight : mut real }
+typedef Neuron = {m_outputValue: mut real , m_myIndex: mut int, m_gradient: mut real , m_outputWeights : mut collection { connection : Connection } @Vector, eta: real, alpha : real } 
+typedef Layer =  collection {neuron : mut  Neuron } @Vector
+typedef Net = {m_error : mut real , m_layer : mut collection {layer : Layer} @Vector, m_test : mut collection {i: int } @Seq}
+
+declare net : Net 
+declare netReported : Net 
+declare oldNet : mut Net 
+
+declare topology : mut collection {i: int} @ {Seq}
+declare numLayers : mut int = 0
+declare master : address = 127.0.0.1:40000
+
+declare framesRead : mut int = 0
+declare peersResponded : mut collection {elem : address } @Seq
+
+
+declare updateOnNet : Net -> Net -> Net = \oldNet -> \newNet -> (
+	net
+)
+declare updateMaster : Net -> ()  = \newNet -> (
+	
+)
+
+//This function calculates the difference between the parameters at net1 and net2
+declare differenceNets : Net -> Net -> Net = \net1 -> \net2 -> (
+	let diffNet = net in (
+	( );
+	diffNet 
+	)
+)
+declare updateSlave : Net -> () = \masterNet -> (
+
+)
+
+
+
+declare createNeuron : int -> int -> Neuron = \numOutputs -> \myIndex -> (
+	let newNeuron = {m_outputValue: mut 0.0 , m_myIndex: mut myIndex, m_gradient: mut 0.0 , m_outputWeights : empty {connection : Connection} @Vector , eta: 0.15, alpha : 0.15 } in 
+	(
+	(range numOutputs).iterate (
+		\conn -> (
+			((newNeuron.m_outputWeights).insert {connection : {weight: mut 0.0, deltaWeight: mut 0.0}}) // TODO : Update to random number 
+			
+		)
+	);
+	print "Created a neuron";
+	newNeuron )
+)
+
+
+trigger broadcastToSlave : Net = \masterNet -> (
+	updateSlave masterNet
+) 
+
+trigger receiveAtMaster : {slaveAddress : address, slaveNet : Net  } = \x ->  ( 
+	peersResponded.insert {elem: x.slaveAddress};	
+	updateMaster x.slaveNet;
+	if peersResponded.size () == peers.size () 
+	then ( peers.iterate (\peer -> (
+				(broadcastToSlave, peer.addr) <- (net)
+					
+				) 
+	))
+	else ()
+
+	
+)
+
+trigger proceedAsMaster : () = \_ -> (
+	print "Proceeding as master"
+
+)
+
+trigger proceedAsSlave : () = \_ -> (
+	(range 1000).iterate (\i -> (
+		framesRead= framesRead+1;
+		if framesRead == 500 
+		then (
+			let diffNet = (updateOnNet oldNet net) in  (receiveAtMaster,master) <- {slaveAddress: me, slaveNet : net} ;
+			oldNet = net
+		     )
+	         else () 	
+	))
+) 
+
+trigger configureNetwork : () = \_ -> (
+	topology.insert {i: 10};
+	topology.insert {i: 5};
+	topology.insert {i: 10}	;		
+	numLayers = topology.size ();
+	
+	let numOutputs = mut 0 in 
+	bind net as { m_error : m_e , m_layer : m_l, m_test : m_t } in (
+		(range numLayers).iterate (\layerNum -> (
+			if numLayers-1 == layerNum.i then (numOutputs = 0) else (numOutputs = (topology.at(layerNum.i + 1)).i );
+			print (itos layerNum.i);
+			let l = (m_l.at(layerNum.i)).layer in 
+			((range ((topology.at(layerNum.i)).i + 1) ).iterate (
+				\neuronNum -> (
+					print "Creating neuron no "; 
+					print (itos neuronNum.i);
+					m_t.insert {i: 1 }; 
+					l.insert {neuron : (createNeuron numOutputs neuronNum.i)};
+					print "The neuron has been created"
+					//if neuronNum.i == (topology.at(layerNum.i)).i then (((net.m_layer.at(layerNum.i)).layer.at(neuronNum.i)).neuron.m_outputValue = 1.0 ) else () 
+				)  
+			);
+			m_l.set layerNum.i {layer : l }
+			);
+			
+			
+			print "Done"
+		)) 
+	
+	
+	);
+	if (me==master) then ((proceedAsMaster, me) <- ()) else ((proceedAsSlave, me) <- ())	
+
+)
+trigger startServer : () = \_ -> (
+	(configureNetwork, me) <- ()
+
+)
+
+trigger startSlave : () = \_ -> (
+	(configureNetwork, me) <- ()
+)
+
+
+source server : () = value ()
+feed server |> startServer
+
+source slave : () = value ()
+feed slave |> startSlave
