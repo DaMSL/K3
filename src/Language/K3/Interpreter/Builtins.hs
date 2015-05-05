@@ -12,8 +12,6 @@ import Control.Concurrent.MVar
 
 import Control.Monad.State
 
-import System.Locale
-
 import Data.List
 import Data.Time
 import Data.Time.Clock.POSIX
