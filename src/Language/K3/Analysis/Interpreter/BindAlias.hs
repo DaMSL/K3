@@ -1,4 +1,5 @@
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Alias analysis for bind expressions.
 --   This is used by the interpreter to ensure consistent modification

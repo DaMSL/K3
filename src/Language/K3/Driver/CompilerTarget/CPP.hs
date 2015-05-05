@@ -2,6 +2,8 @@
 
 module Language.K3.Driver.CompilerTarget.CPP (compile) where
 
+import Prelude hiding ((*>))
+
 import qualified Data.List as L
 import Data.Maybe
 

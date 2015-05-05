@@ -37,7 +37,6 @@ import Language.K3.Stages
 import Language.K3.Driver.Batch
 import Language.K3.Driver.Common
 import Language.K3.Driver.Options
-import Language.K3.Driver.Typecheck
 
 --import qualified Language.K3.Driver.CompilerTarget.Haskell as HaskellC
 import qualified Language.K3.Driver.CompilerTarget.CPP     as CPPC
@@ -115,7 +114,7 @@ run opts = do
 
     -- Typechecking dispatch.
     chooseTypechecker opts' p =
-      if noQuickTypes opts' then typecheck p else quickTypecheckOpts opts' p
+      if noQuickTypes opts' then error "Unsupported" p else quickTypecheckOpts opts' p
 
     quickTypecheckOpts opts' p = inferProgramTypes p >>=
       \(p',_) -> if printQuickTypes opts' then return p' else translateProgramTypes p'
