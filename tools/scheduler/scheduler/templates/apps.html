@@ -1,0 +1,56 @@
+{% extends "layout/base.html" %}
+
+{% block content %}
+  <div class="container">
+    <div class="starter-template">
+        {% if versionList %}
+         <h2><span>{{name}}</span> - Versions</h2>
+        <table class="table table-striped">
+            <tr><th>Version</th><th>Date Uploaded/Compiled</th><th>Git Hash</th>
+                <th>user</th><th>Compile Options</th>
+                <th>Link to Archive</th></tr>
+          {% for v in versionList %}
+            <tr><td><a href="/jobs/{{v.name}}/{{v.uid}}">{{v.version}}</a></td>
+                <td>{{v.date}}</td><td>{{v.git_hash}}</td><td>{{v.user}}</td><td>{{v.options}}</td>
+                <td><a href="/apps/{{v.name}}/{{v.uid}}">Archive</a></td></tr>
+          {% endfor %}
+        </table>
+        {% else %}
+      <h2>K3 Applications</h2>
+      <p class="lead">
+        <div class="row">
+              <h3>Upload new Binary</h3>
+              <form action="" method=post enctype=multipart/form-data>
+                <p><input type=file class="btn btn-file btn-md" name=file> <br />
+                   <button type=submit class="btn btn-primary btn-md">Upload</button></p>
+              </form>
+        </div>
+      </p><hr />
+        <div><h2>Available K3 Executables with Recently Uploaded Versions</h2></div>
+        <table class="table"><tr><th>Version</th><th>Git hash</th><th>User</th><th>Date</th><th>Archive</th></tr></table>
+        <table class="table table-bordered">
+          {% for app in applist %}
+            <tr><td><h3><a href="/apps/{{app.name}}">{{app.name}}</a>
+                <a href="/jobs/{{app.name}}"><button class="btn btn-success btn-sm">Launch</button></a></h3>
+            <table class="table table-condensed">
+                {% for v in versions[app.name] %}
+                <tr><td><a href="/jobs/{{v.name}}/{{v.uid}}">{{v.version}}</a></td>
+                    <td>{{v.git_hash}}</td><td>{{v.user}}</td><td>{{v.date}}</td>
+                    <td><a href="/apps/{{v.name}}/{{v.uid}}">Archive</a></td></tr>
+                {% endfor %}
+            </table>
+            </td></tr>
+          {% endfor %}
+        </table>
+        {% endif %}
+    </div>
+  </div>
+{% endblock %}
+
+{% block footer %}
+  {% include "include/footer.html" %}
+{% endblock %}
+
+
+
+name, uid, name || '-' || uid as version, date, git_hash, username, options
