@@ -12,6 +12,7 @@ import Data.Char
 import Data.Maybe
 
 import GHC.IO.Encoding
+import System.Directory (getCurrentDirectory)
 
 import qualified Options.Applicative as Options
 import Options.Applicative((<>), (<*>))
@@ -36,7 +37,6 @@ import Language.K3.Stages
 import Language.K3.Driver.Batch
 import Language.K3.Driver.Common
 import Language.K3.Driver.Options
-import Language.K3.Driver.Typecheck
 
 --import qualified Language.K3.Driver.CompilerTarget.Haskell as HaskellC
 import qualified Language.K3.Driver.CompilerTarget.CPP     as CPPC
@@ -56,9 +56,14 @@ run opts = do
   void $ mapM_ configureByInstruction $ logging $ inform opts
     -- ^ Process logging directives
 
-  case (mode opts) of
-    Compile copts | ccStage copts == Stage2 -> compile copts (DC.role "__global" [])
-    _ -> do
+  case (splicedAstIn opts, mode opts) of
+    (_, Compile copts) | ccStage copts == Stage2 -> compile copts (DC.role "__global" [])
+
+    (True, _) -> do
+      prog <- parseSplicedASTInput (input opts)
+      dispatch (mode opts) prog
+
+    (False, _) -> do
       -- Parse, splice, and dispatch based on command mode.
       parseResult  <- parseK3Input (noFeed opts) (includes $ paths opts) (input opts)
       case parseResult of
@@ -73,12 +78,22 @@ run opts = do
       either spliceError (dispatch $ mode opts) mp
 
     dispatch :: Mode -> K3 Declaration -> IO ()
-    dispatch (Parse popts) p = transform (poStages popts) p >>= either putStrLn (printStages popts)
+    dispatch (Parse popts) p = postParse popts p
     dispatch (Compile c)   p = compile c p
     dispatch (Interpret i) p = interpret i p
     dispatch (Typecheck t) p = case chooseTypechecker t p of
       Left s   -> putStrLn s >> putStrLn "ERROR"
       Right p' -> printer (PrintAST False False False False) p' >> putStrLn "SUCCESS"
+
+    -- Parsing dispatch.
+    postParse pOpts prog = do
+      tp <- transform (poStages pOpts) prog
+      case tp of
+        Left s -> putStrLn s
+        Right (p,rp) -> do
+          (if saveAST opts then outputAST pOpts pretty "k3ast" p else return ())
+          (if saveRawAST opts then outputAST pOpts show "k3ar" p else return ())
+          printStages pOpts (p,rp)
 
     -- Compilation dispatch.
     compile cOpts prog = do
@@ -99,7 +114,7 @@ run opts = do
 
     -- Typechecking dispatch.
     chooseTypechecker opts' p =
-      if noQuickTypes opts' then typecheck p else quickTypecheckOpts opts' p
+      if noQuickTypes opts' then error "Unsupported" p else quickTypecheckOpts opts' p
 
     quickTypecheckOpts opts' p = inferProgramTypes p >>=
       \(p',_) -> if printQuickTypes opts' then return p' else translateProgramTypes p'
@@ -118,8 +133,8 @@ run opts = do
       Left s -> putStrLn s
       Right (p, rp) -> printTransformReport rp >> f p
 
-    -- Print out the program
-    printer (PrintAST st se sc sp) p =
+    -- Print out, or save, the program
+    formatAST toStr (PrintAST st se sc sp) p =
       let filterF = catMaybes $
                      [if st && se then Just stripTypeAndEffectAnns
                       else if st  then Just stripTypeAnns
@@ -127,9 +142,11 @@ run opts = do
                       else Nothing]
                       ++ [if sc then Just stripComments else Nothing]
                       ++ [if sp then Just stripProperties else Nothing]
-      in putStrLn . pretty $ foldl (flip ($)) p filterF
+      in Right $ toStr $ foldl (flip ($)) p filterF
 
-    printer PrintSyntax p = either syntaxError putStrLn $ programS p
+    formatAST _ PrintSyntax p = programS p
+
+    printer pm p = either syntaxError putStrLn $ formatAST pretty pm p
 
     printStages popts (prog, rp) = do
       printer (parsePrintMode popts) prog
@@ -141,6 +158,12 @@ run opts = do
       where sep = replicate 20 '='
 
     prettyReport lg npE = return (npE >>= return . (second $ (lg ++) . prettyLines))
+
+    outputAST popts toStr ext p = do
+      cwd <- getCurrentDirectory
+      let output = case input opts of {"-" -> "a"; x -> x }
+      either putStrLn (\s -> outputStrFile s $ outputFilePath cwd output ext)
+        $ formatAST toStr (parsePrintMode popts) p
 
     -- Option handling utilities
     metaprogramOpts (Just mpo) =

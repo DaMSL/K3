@@ -1,12 +1,16 @@
 #ifndef K3_RUNTIME_BUILTINS_H
 #define K3_RUNTIME_BUILTINS_H
 
-#ifdef CACHEPROFILE
+#ifdef K3_PCM
 #include <cpucounters.h>
 #endif
 
-#ifdef MEMPROFILE
+#ifdef K3_TCMALLOC
 #include "gperftools/heap-profiler.h"
+#endif
+
+#ifdef K3_JEMALLOC
+#include "jemalloc/jemalloc.h"
 #endif
 
 #include <ctime>
@@ -17,6 +21,9 @@
 #include <string>
 #include <climits>
 #include <functional>
+#include <boost/thread/mutex.hpp>
+
+#include <boost/thread/thread.hpp>
 
 #include "re2/re2.h"
 
@@ -45,6 +52,29 @@ struct hash<boost::asio::ip::address> {
   }
 };
 
+template <typename... TTypes>
+class hash<std::tuple<TTypes...>> {
+ private:
+  typedef std::tuple<TTypes...> Tuple;
+
+  template <int N>
+  size_t operator()(Tuple value) const {
+    return 0;
+  }
+
+  template <int N, typename THead, typename... TTail>
+  size_t operator()(Tuple value) const {
+    constexpr int Index = N - sizeof...(TTail)-1;
+    return hash<THead>()(std::get<Index>(value)) ^ operator()<N, TTail...>(
+                                                       value);
+  }
+
+ public:
+  size_t operator()(Tuple value) const {
+    return operator()<sizeof...(TTypes), TTypes...>(value);
+  }
+};
+
 } // boost
 
 namespace K3 {
@@ -66,7 +96,7 @@ namespace K3 {
   }
 
   class __pcm_context {
-    #ifdef CACHEPROFILE
+    #ifdef K3_PCM
     protected:
       PCM *instance;
       std::shared_ptr<SystemCounterState> initial_state;
@@ -75,14 +105,50 @@ namespace K3 {
     public:
       __pcm_context();
       ~__pcm_context();
-      unit_t cacheProfilerStart(unit_t);
-      unit_t cacheProfilerStop(unit_t);
+      unit_t pcmStart(unit_t);
+      unit_t pcmStop(unit_t);
   };
 
-  class __tcmalloc_context {
+  class __heap_profiler {
+  public:
+    __heap_profiler() { heap_profiler_done.clear(); }
+
+  protected:
+    std::shared_ptr<boost::thread> heap_profiler_thread;
+    std::atomic_flag heap_profiler_done;
+
+    template<class I, class B>
+    void heap_series_start(I init, B body) {
+      heap_profiler_thread = make_shared<boost::thread>([this,&init,&body](){
+        std::string name = init();
+        int i = 0;
+        std::cout << "Heap profiling thread starting: " << name << " (" << time_milli() << ")" << std::endl;
+        while (!heap_profiler_done.test_and_set()) {
+          heap_profiler_done.clear();
+          boost::this_thread::sleep_for(boost::chrono::milliseconds(250));
+          body(name, i++);
+        }
+        std::cout << "Heap profiling thread terminating: " << name << " (" << time_milli() << ")" << std::endl;
+      });
+    }
+
+    void heap_series_stop() {
+      heap_profiler_done.test_and_set();
+      if ( heap_profiler_thread ) { heap_profiler_thread->interrupt(); }
+    }
+  };
+
+  class __tcmalloc_context : public __heap_profiler {
     public:
-      unit_t heapProfilerStart(const string_impl&);
-      unit_t heapProfilerStop(unit_t);
+      unit_t tcmallocStart(unit_t);
+      unit_t tcmallocStop(unit_t);
+  };
+
+  class __jemalloc_context : public __heap_profiler {
+    public:
+      unit_t jemallocStart(unit_t);
+      unit_t jemallocStop(unit_t);
+      unit_t jemallocDump(unit_t);
   };
 
   template <class C1, class C, class F>
@@ -115,9 +181,11 @@ namespace K3 {
 
   // Standard context for common builtins that use a handle to the engine (via inheritance)
   class __standard_context : public __k3_context {
+    protected:
+      static boost::mutex mutex_;
+
     public:
     __standard_context(Engine&);
-
 
     unit_t openBuiltin(string_impl ch_id, string_impl builtin_ch_id, string_impl fmt);
     unit_t openFile(string_impl ch_id, string_impl path, string_impl fmt, string_impl mode);
@@ -165,7 +233,6 @@ namespace K3 {
 
     unit_t print(string_impl message);
 
-
     // TODO, implement, sharing code with prettify()
     template <class T>
     string_impl show(T t) {
@@ -209,72 +276,75 @@ namespace K3 {
     unit_t sleep(int n);
 
     template <template <class> class M, template <class> class C,
-              template <typename...> class R>
-    unit_t loadGraph(string_impl filepath, M<R<int, C<R_elem<int>>>>& c) {
-      std::string tmp_buffer;
-      std::ifstream in(filepath);
+              template <typename...> class R, class C2>
+    unit_t loadGraph(const C2& filepaths, M<R<int, C<R_elem<int>>>>& c) {
+      for (const auto& filepath : filepaths) {
+        std::string tmp_buffer;
+        std::ifstream in(filepath.path);
 
-      int source;
-      std::size_t position;
-      while (!in.eof()) {
-        C<R_elem<int>> edge_list;
+        int source;
+        std::size_t position;
+        while (!in.eof()) {
+          C<R_elem<int>> edge_list;
 
-        std::size_t start = 0;
-        std::size_t end = start;
-        std::getline(in, tmp_buffer);
+          std::size_t start = 0;
+          std::size_t end = start;
+          std::getline(in, tmp_buffer);
 
-        end = tmp_buffer.find(",", start);
-        source = std::atoi(tmp_buffer.substr(start, end - start).c_str());
-
-        start = end + 1;
-
-        while (end != std::string::npos) {
           end = tmp_buffer.find(",", start);
-          edge_list.insert(R_elem<int>(
-              std::atoi(tmp_buffer.substr(start, end - start).c_str())));
-          start = end + 1;
-        }
+          source = std::atoi(tmp_buffer.substr(start, end - start).c_str());
 
-        c.insert(R<int, C<R_elem<int>>>{source, std::move(edge_list)});
-        in >> std::ws;
+          start = end + 1;
+
+          while (end != std::string::npos) {
+            end = tmp_buffer.find(",", start);
+            edge_list.insert(R_elem<int>(
+                std::atoi(tmp_buffer.substr(start, end - start).c_str())));
+            start = end + 1;
+          }
+
+          c.insert(R<int, C<R_elem<int>>>{source, std::move(edge_list)});
+          in >> std::ws;
+        }
+      }
+      return unit_t{};
+    }
+
+    // TODO move to seperate context
+    template <class C1>
+    unit_t loadRKQ3(const C1& paths, K3::Map<R_key_value<string_impl, int>>& c)
+    {
+      for (auto r : paths) {
+        // Buffers
+        std::string tmp_buffer;
+        R_key_value<string_impl, int> rec;
+        // Infile
+        std::ifstream in;
+        in.open(r.path);
+
+        // Parse by line
+        while (!in.eof()) {
+          std::getline(in, tmp_buffer, ',');
+          rec.key = tmp_buffer;
+          std::getline(in, tmp_buffer, ',');
+          rec.value = std::atoi(tmp_buffer.c_str());
+          // ignore last value
+          std::getline(in, tmp_buffer);
+          c.insert(rec);
+        }
       }
 
       return unit_t{};
     }
 
-    // TODO move to seperate context
-    template<class C1>
-    unit_t loadRKQ3(const C1& paths, K3::Map<R_key_value<string_impl,int>>& c)  {
-	for (auto r : paths) {
-          // Buffers
-          std::string tmp_buffer;
-          R_key_value<string_impl, int> rec;
-          // Infile
-          std::ifstream in;
-          in.open(r.path);
-
-          // Parse by line
-          while(!in.eof()) {
-            std::getline(in, tmp_buffer, ',');
-            rec.key = tmp_buffer;
-            std::getline(in, tmp_buffer, ',');
-            rec.value = std::atoi(tmp_buffer.c_str());
-            // ignore last value
-            std::getline(in, tmp_buffer);
-            c.insert(rec);
-          }
-	}
-
-        return unit_t {};
-    }
-
    int lineCountFile(const string_impl& filepath) {
+     std::cout << "LCF: " << filepath << std::endl;
      std::ifstream _in;
      _in.open(filepath);
      std::string tmp_buffer;
      std::getline(_in, tmp_buffer);
+     std::cout << "LCF read: " << tmp_buffer << std::endl;
      return std::atoi(tmp_buffer.c_str());
-
    }
 
    template <class C1, template <class> class C, template <typename ...> class R>
@@ -466,11 +536,12 @@ namespace K3 {
       return s.substr(x, y);
     }
 
-
     // Split a string by substrings
     Seq<R_elem<string_impl>> splitString(string_impl, const string_impl&);
     string_impl takeUntil(const string_impl& s, const string_impl& splitter);
     int countChar(const string_impl& s, const string_impl& splitter);
+    int tpch_date(const string_impl& s);
+    string_impl tpch_date_to_string(const int& date);
   };
 
 

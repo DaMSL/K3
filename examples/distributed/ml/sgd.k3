@@ -2,6 +2,9 @@ include "Annotation/Collection.k3"
 include "Annotation/Vector.k3"
 include "Core/Builtins.k3"
 include "Core/CppBuiltins.k3"
+include "Core/MachineMessaging.k3"
+include "Core/Barrier.k3"
+include "Annotation/Map.k3"
 
 declare master: address = 127.0.0.1:40000
 declare peers_ready: mut int = 0
@@ -16,12 +19,19 @@ declare time_stats: mut {iter_count: int, iter_time_sum: real}
 declare iter_start: mut int
 declare iter_end: mut int
 
+trigger hello : () = \_ -> (
+  ((ready, master) <- ()) @OnCounter(id=[# hello_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+)
+
+trigger start_profiler : () = \_ -> (
+  ((tcmallocStart ()); (jemallocStart ()); (pcmStart ())) @IfMachineMaster
+)
 
 // Hyperparameters
 declare step_size: mut real = 0.1
 declare lambda: mut real = 0.1
 
-// Mast1
+// Master
 declare aggregates: mut {count: int, sum: collection {elem: real} @Vector }
 
 // All Nodes:
@@ -45,26 +55,15 @@ declare svm_loss_avg : () -> real = \_ -> (
   in stats.sum / stats.count
 )
 
-// SVM gradient at 1 point.
-declare svm_gradient : collection {elem: real} @Vector   -> real -> collection {elem: real} @Vector  = \x -> \y -> (
-  let flag = y * (parameters.dot x)
-  in
-    if flag > 1
-    then parameters.scalarMult lambda
-    else (parameters.scalarMult lambda).sub (x.scalarMult y)
-)
-
-// Compute the gradient at a single point.
-// The gradient is a function of the current parameters, a global variable.
-declare point_gradient: collection {elem: real} @Vector  -> real -> collection {elem: real} @Vector  = \point -> \class_label -> (
-    svm_gradient point class_label
-)
-
 // Update parameters based on a single point
 declare update_parameters: collection {elem: real} @Vector  -> real -> () = \point -> \class_label -> (
-  let update = (point_gradient point class_label) in
-  update.inPlaceScalarMult step_size;
-  parameters.inPlaceSub update
+  let flag = class_label * (parameters.dot point) in
+  let update =
+    if flag > 1
+    then parameters.scalarMult lambda
+    else (parameters.scalarMult lambda).sub (point.scalarMult class_label)
+  in
+  parameters.inPlaceSub (update.scalarMult step_size)
 )
 
 // Print results
@@ -73,7 +72,7 @@ declare print_results : () -> () = \_ -> (
   end_ms = now_int ();
   elapsed_ms = end_ms - start_ms;
   print ("Elapsed: " ++ (itos elapsed_ms));
-  print ("Avg Time per Iteration: " ++ (rtos avg_iter_time))
+  print ("Avg time per iteration: " ++ (rtos avg_iter_time))
 )
 
 // Run SGD on local dataset.
@@ -132,17 +131,17 @@ trigger start : () = \_ -> (
 trigger ready : () = \_ -> (
   (peers_ready = peers_ready + 1);
   (if peers_ready == (peers.size ())
-   then (start, master) <- ()
+   then ((peers.iterate (\p -> (start_profiler, p.addr) <- () )); (start, master) <- ())
    else ()
   )
 )
 
-trigger shutdown : () = \_ -> haltEngine ()
+trigger shutdown: () = \_ -> (((tcmallocStop ()); (jemallocStop ()); (pcmStop ())) @IfMachineMaster; haltEngine ())
 
 // TODO: fix loader
 trigger load_all : () = \_ -> (
   dataFiles.iterate (\f -> loadVectorLabel dimensionality f.path data);
-  (ready, master) <- ()
+  ( peers.iterate (\p -> (hello, p.addr) <- ()) )
 )
 
 source points : () = value ()

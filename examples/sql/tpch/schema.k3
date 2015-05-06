@@ -13,9 +13,9 @@ typedef lineitem_r = {
       l_tax              : real,
       l_returnflag       : string,
       l_linestatus       : string,
-      l_shipdate         : string,
-      l_commitdate       : string,
-      l_receiptdate      : string,
+      l_shipdate         : int @::TPCHDate,
+      l_commitdate       : int @::TPCHDate,
+      l_receiptdate      : int @::TPCHDate,
       l_shipinstruct     : string,
       l_shipmode         : string,
       l_comments         : string
@@ -37,7 +37,7 @@ typedef orders_r = {
       o_custkey          : int,
       o_orderstatus      : string,
       o_totalprice       : real,
-      o_orderdate        : string,
+      o_orderdate        : int @::TPCHDate,
       o_orderpriority    : string,
       o_clerk            : string,
       o_shippriority     : int,
@@ -97,7 +97,7 @@ typedef tpch_agenda_r = {
       brand            : string,
       clerk            : string,
       comments         : string,
-      commitdate       : string,
+      commitdate       : int @::TPCHDate,
       container        : string,
       custkey          : int,
       discount         : real,
@@ -108,18 +108,18 @@ typedef tpch_agenda_r = {
       mktsegment       : string,
       name             : string,
       nationkey        : int,
-      orderdate        : string,
+      orderdate        : int @::TPCHDate,
       orderkey         : int,
       orderpriority    : string,
       orderstatus      : string,
       partkey          : int,
       phone            : string,
       quantity         : real,
-      receiptdate      : string,
+      receiptdate      : int @::TPCHDate,
       regionkey        : int,
       retailprice      : real,
       returnflag       : string,
-      shipdate         : string,
+      shipdate         : int @::TPCHDate,
       shipinstruct     : string,
       shipmode         : string,
       shippriority     : int,
@@ -128,7 +128,7 @@ typedef tpch_agenda_r = {
       supplycost       : real,
       tax              : real,
       totalprice       : real,
-      type2             : string
+      type2            : string
     }
 
 typedef lineitem_bag    = collection lineitem_r    @Collection
@@ -168,7 +168,7 @@ typedef q1_lineitem_r = { l_quantity      : real,
                           l_tax           : real,
                           l_returnflag    : string,
                           l_linestatus    : string,
-                          l_shipdate      : string
+                          l_shipdate      : int @::TPCHDate
                         }
 
 typedef q1_lineitem_bag = collection q1_lineitem_r @Collection
@@ -176,7 +176,7 @@ typedef q1_lineitem_bag = collection q1_lineitem_r @Collection
 typedef q3_lineitem_r = { l_orderkey      : int,
                           l_extendedprice : real,
                           l_discount      : real,
-                          l_shipdate      : string
+                          l_shipdate      : int @::TPCHDate
                         }
 
 typedef q3_customer_r = { c_custkey    : int,
@@ -185,7 +185,7 @@ typedef q3_customer_r = { c_custkey    : int,
 
 typedef q3_orders_r   = { o_orderkey         : int,
                           o_custkey          : int,
-                          o_orderdate        : string,
+                          o_orderdate        : int @::TPCHDate,
                           o_shippriority     : int
                         }
 
@@ -206,7 +206,7 @@ typedef q5_customer_r = { c_custkey   : int,
 
 typedef q5_orders_r   = { o_orderkey  : int,
                           o_custkey   : int,
-                          o_orderdate : string
+                          o_orderdate : int @::TPCHDate
                         }
 
 typedef q5_supplier_r = { s_suppkey   : int,
@@ -232,7 +232,7 @@ typedef q5_region_bag   = collection q5_region_r   @Collection
 typedef q6_lineitem_r = { l_quantity         : real,
                           l_extendedprice    : real,
                           l_discount         : real,
-                          l_shipdate         : string
+                          l_shipdate         : int @::TPCHDate
                         }
 
 typedef q6_lineitem_bag = collection q6_lineitem_r @Collection
@@ -248,7 +248,7 @@ typedef q18_customer_r = { c_custkey : int,
 typedef q18_orders_r   = { o_orderkey   : int,
                            o_custkey    : int,
                            o_totalprice : real,
-                           o_orderdate  : string
+                           o_orderdate  : int @::TPCHDate
                          }
 
 typedef q18_lineitem_bag = collection q18_lineitem_r @Collection

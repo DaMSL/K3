@@ -1,5 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Language.K3.Codegen.CPP.Declaration where
 
@@ -271,7 +272,7 @@ genLoader fixedSize projectedLoader sep suf (children -> [_,f]) name = do
                       ++ (\(a,b,c) -> readField a b c True) (last ftsWSkip)
                       ++ [R.Return $ R.Variable $ R.Name "record"]
 
- let readRecordFn = R.Lambda []
+ let readRecordFn = R.Lambda [R.ValueCapture $ Just ("this", Nothing)]
                     [ ("in", (R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "istream")))
                     , ("tmp_buffer", (R.Reference $ R.Named $ (R.Qualified (R.Name "std") (R.Name "string"))))
                     ] False Nothing recordGetLines
@@ -305,11 +306,18 @@ genLoader fixedSize projectedLoader sep suf (children -> [_,f]) name = do
             ]
  where
    typeMap :: K3 Type -> R.Expression -> R.Expression
+   typeMap (tag &&& (@~ isTDateInt) -> (TInt, Just _)) e =
+     R.Call (R.Variable $ R.Name "tpch_date") [R.Call (R.Project e (R.Name "c_str")) []]
+
    typeMap (tag -> TInt) e = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "atoi"))
                              [R.Call (R.Project e (R.Name "c_str")) []]
    typeMap (tag -> TReal) e = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "atof"))
                               [R.Call (R.Project e (R.Name "c_str")) []]
    typeMap (tag -> _) x = x
+
+   isTDateInt :: Annotation Type -> Bool
+   isTDateInt (TProperty (tPropertyName -> "TPCHDate")) = True
+   isTDateInt _ = False
 
    getColType = case fnArgs [] f of
                   [c, fr, sz] | projectedLoader && fixedSize -> colRecOfType c >>= \(x,y) -> return (x, y, Just fr)

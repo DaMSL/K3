@@ -2,6 +2,8 @@ include "Annotation/Collection.k3"
 include "Annotation/Map.k3"
 include "Core/Builtins.k3"
 include "Core/Loaders.k3"
+include "Core/MachineMessaging.k3"
+include "Core/Barrier.k3"
 
 declare dataFiles : collection {path: string} @ Collection
 declare outFile: string
@@ -41,6 +43,15 @@ declare agg_vals : mut collection {key:string, value:real} @ {Collection}
 declare peer_aggs : mut collection {key: int, value:
                    collection {key: string, value: real} @ {Collection}
                    } @ {Collection}
+
+// Dummy trigger to warm up connections
+trigger hello : () = \_ -> (
+  ((ready, master) <- ()) @OnCounter(id=[# hello_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+)
+
+trigger start_profiler : () = \_ -> (
+  ((tcmallocStart ()); (jemallocStart ()); (pcmStart ())) @IfMachineMaster
+)
 
 // Perform the query on the local dataset. (Filter and project.)
 // Store the results in memory.
@@ -105,6 +116,7 @@ trigger master_done : () = \_ -> (
 )
 
 trigger shutdown : () = \_ -> (
+  ((tcmallocStop ()); (jemallocStop ()); (pcmStop ())) @IfMachineMaster;
   print ("Num local results: " ++ (itos (local_q2_results.size ())));
   (local_q2_results.iterate (\r -> results.insert {substr: r.key, sum: r.value} ) );
   haltEngine ()
@@ -115,14 +127,15 @@ trigger shutdown : () = \_ -> (
 trigger ready : () = \_ -> (
   peers_ready = peers_ready + 1;
   if peers_ready == peers.size ()
-  then start_ms = now_int (); peers.iterate (\p -> (q2_local, p.addr) <- ())
+  then ((peers.iterate (\p -> (start_profiler, p.addr) <- () ));
+        start_ms = now_int (); peers.iterate (\p -> (q2_local, p.addr) <- ()))
   else ()
 )
 
 trigger load_all : () = \_ -> (
   peers.iterate (\i -> peers_seq.insert i);
   loadQ2 dataFiles local_uservisits;
-  ((ready, master) <- ())
+  peers.iterate (\p -> (hello, p.addr) <- ())
 )
 
 source rows : () = value ()

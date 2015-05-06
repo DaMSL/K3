@@ -53,7 +53,7 @@ int           mapi_empty(mapi *, void *);
 void         *mapi_find(mapi *, uint32_t);
 
 /* modifiers */
-int           mapi_insert(mapi *, void *);
+void         *mapi_insert(mapi *, void *);
 void          mapi_erase(mapi *, uint32_t);
 void          mapi_clear(mapi *);
 

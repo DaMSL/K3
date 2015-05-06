@@ -14,6 +14,7 @@ namespace K3 {
     bool simulation = opt.simulation;
     std::string log_level = opt.log_level;
     std::string log_path = opt.json_path;
+    bool j_final_only = opt.json_final_only;
     std::string result_var = opt.result_var;
     std::string result_path = opt.result_path;
 
@@ -44,10 +45,11 @@ namespace K3 {
       gc->__patch(s);
       gc->initDecls(unit_t {});
       contexts[gc->me] = gc;
+      gc->__setAddr(gc->me);
       queues->addQueue(gc->me);
       peers.push_back(gc->me);
       SystemEnvironment se = defaultEnvironment(getAddrs(contexts));
-      engine->configure(simulation, se, make_shared<DefaultMessageCodec>(), log_level, log_path, result_var, result_path, queues);
+      engine->configure(simulation, se, make_shared<DefaultMessageCodec>(), log_level, log_path, j_final_only,result_var, result_path, queues);
       processRoles(contexts);
       auto t = tuple<e_ptr, ctxt_map>(engine, contexts);
       engines.push_back(t);

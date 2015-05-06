@@ -198,22 +198,15 @@ namespace K3 {
           // We use a local variable for the socket buffer since multiple threads
           // may invoke this handler simultaneously (i.e. for different connections).
 
-          typedef boost::array<char, 1024*1024> SocketBuffer;
-          shared_ptr<SocketBuffer> buffer_ = shared_ptr<SocketBuffer>(new SocketBuffer());
-          c->socket()->async_read_some(buffer(buffer_->c_array(), buffer_->size()),
-            [=](const boost::system::error_code& ec, std::size_t bytes_transferred) {
-
-                // Capture the buffer in closure to keep the pointer count > 0
-                // until the callback has finished
-                shared_ptr<SocketBuffer> keep_alive = buffer_;
+          c->socket()->async_read_some(buffer(c->socket_buffer(), c->socket_buffer_size()),
+            [c, frme, this](const boost::system::error_code& ec, std::size_t bytes_transferred) {
 
                 if (!ec || (ec == boost::asio::error::eof && bytes_transferred > 0 )) {
                 // Add network data to the frame's buffer.
                 // We assume the processor notifies subscribers regarding socket data events.
-                shared_ptr<Value> v(frme->decode(buffer_->c_array(), bytes_transferred));
+                shared_ptr<Value> v(frme->decode(c->socket_buffer(), bytes_transferred));
                 // Exhaust the frame's buffer
                 while (v) {
-
                   bool t = endpoint_->do_push(v, queues, transfer_frame);
                   // Attempt to decode a buffered value
                   v = frme->decode("");

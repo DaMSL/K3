@@ -26,7 +26,8 @@ control OnCounter[id : label, eq : expr, reset : expr, profile : expr] {
                  let r = $.[e] in
                  (( if $[reset] then $[id]_cnt = 0 else ());
                     r ))
-          else () )
+          else ()
+        )
 
      +> { declare $[id]_cnt     : mut int = 0
           declare $[id]_span_ms : mut option int = None immut

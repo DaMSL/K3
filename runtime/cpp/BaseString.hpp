@@ -235,6 +235,36 @@ class base_string {
     }
   }
 
+  template <class archive>
+  void serialize(archive& a) const {
+    std::size_t len = length();
+    a & len;
+    if ( buffer ) {
+      a.write(buffer, len);
+    }
+  }
+
+  template <class archive>
+  void serialize(archive& a) {
+    std::size_t len;
+    a & len;
+    // Possibly extraneous:
+    // Buffer might always be null when loading
+    // since this base_str was just constructed
+    if (buffer) {
+      delete[] buffer;
+      buffer = 0;
+    }
+
+    if (len) {
+      buffer = new char[len + 1];
+      buffer[len] = 0;
+    } else {
+      buffer = 0;
+    }
+    if ( buffer ) { a.read(buffer, len); }
+  }
+
  private:
   char* buffer;
 };

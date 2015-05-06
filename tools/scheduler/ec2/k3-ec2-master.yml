@@ -1,0 +1,159 @@
+
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+
+  "Description" : "Launches a pool of Mesos Masters",
+
+  "Parameters" : {
+    "InstanceAmi" : {
+      "Description" : "Mesos AMI",
+      "Type" : "String"
+    },
+    
+    "InstanceType" : {
+      "Description" : "EC2 instance type",
+      "Type" : "String",
+      "Default" : "t2.micro"
+    },
+    "KeyName" : {
+      "Description" : "Name of an existing EC2 KeyPair to enable SSH access to the instances",
+      "Type" : "AWS::EC2::KeyPair::KeyName"
+    },
+    "ClusterId" : {
+      "Description" : "Mesos cluster ID",
+      "Type" : "String"
+    },
+    "IPRestriction" : {
+      "Description" : "The IP address range that can be used to access the Mesos Master",
+      "Type": "String"
+   },
+    "VpcId" : {
+      "Description" : "VPC associated with the provided subnets",
+      "Type" : "AWS::EC2::VPC::Id"
+    }
+  },
+
+
+  "Resources" : {
+    
+        "MasterExternalSecurityGroup" : {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "Properties" : {
+                "GroupDescription" : "EC2 Instance access"
+            }
+        },
+        "InternalSecurityGroup" : {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "Properties" : {
+                "GroupDescription" : "EC2 Instance access"
+            }
+        },
+
+        "ExternalIngressFlask" : {
+            "Type" : "AWS::EC2::SecurityGroupIngress",
+            "Properties" : {
+                "GroupName" : { "Ref" : "MasterExternalSecurityGroup" },
+                "IpProtocol" : "tcp",
+                "ToPort" : "5000",
+                "FromPort" : "5000",
+                "CidrIp" : "0.0.0.0/0"
+            }
+        },
+        "ExternalIngressMesos" : {
+            "Type" : "AWS::EC2::SecurityGroupIngress",
+            "Properties" : {
+                "GroupName" : { "Ref" : "MasterExternalSecurityGroup" },
+                "IpProtocol" : "tcp",
+                "ToPort" : "5051",
+                "FromPort" : "5050",
+                "CidrIp" : "0.0.0.0/0"
+            }
+        },
+        "ExternalIngressSSH" : {
+            "Type" : "AWS::EC2::SecurityGroupIngress",
+            "Properties" : {
+                "GroupName" : { "Ref" : "MasterExternalSecurityGroup" },
+                "IpProtocol" : "tcp",
+                "ToPort" : "22",
+                "FromPort" : "22",
+                "CidrIp" : { "Ref" : "IPRestriction"}
+            }
+        },
+        "InternalIngress" : {
+            "Type" : "AWS::EC2::SecurityGroupIngress",
+            "Properties" : {
+                "GroupName" : { "Ref" : "InternalSecurityGroup" },
+                "IpProtocol" : "tcp",
+                "FromPort" : "0",
+                "ToPort" : "65535",
+                "SourceSecurityGroupName" : { "Ref" : "InternalSecurityGroup" }
+            }
+        },    
+    
+    
+    "EC2Instance" : {
+      "Type" : "AWS::EC2::Instance",
+      "Properties" : {
+        "InstanceType" : { "Ref" : "InstanceType" },
+        "SecurityGroups" : [ {"Ref" : "MasterExternalSecurityGroup"}, {"Ref" : "InternalSecurityGroup"}],
+        "KeyName" : { "Ref" : "KeyName" },
+        "ImageId" : { "Ref" : "InstanceAmi" },
+        "UserData"       : { "Fn::Base64" : { "Fn::Join" : ["", [
+            "#!/bin/bash -xe\n",
+            "yum update -y > /logfile\n",
+            "rpm -Uvh http://archive.cloudera.com/cdh4/one-click-install/redhat/6/x86_64/cloudera-cdh-4-0.x86_64.rpm\n",
+            "yum -y install zookeeper\n",
+            "zookeeper-server-initialize --myid=1\n",
+            "rpm -Uvh http://repos.mesosphere.io/el/6/noarch/RPMS/mesosphere-el-repo-6-2.noarch.rpm\n",
+            "yum -y install mesos\n",
+            "echo zk://localhost:2181/mesos | tee /etc/mesos/zk\n",
+            "echo $(hostname) | tee /etc/mesos-master/hostname\n",
+            "echo $(hostname -I | awk -F\" \" {'print $1'}) | tee /etc/mesos-master/ip\n",
+            "echo ", {"Ref" : "ClusterId"}, " | tee /etc/mesos-master/cluster\n",
+            "echo 1 | tee /etc/mesos-master/quorum\n",
+            "echo manual | tee /etc/init/mesos-slave.override\n",
+            "yum install -y wget python-setuptools python-pip git\n",
+            "easy_install https://pypi.python.org/packages/2.7/p/protobuf/protobuf-2.5.0-py2.7.egg\n",
+            "easy_install https://pypi.python.org/packages/2.7/m/mesos.interface/mesos.interface-0.22.0-py2.7.egg\n",
+            "easy_install http://downloads.mesosphere.io/master/centos/7/mesos-0.22.0-py2.7-linux-x86_64.egg\n",
+            "easy_install http://downloads.mesosphere.io/master/centos/6/mesos-0.22.0-py2.6-linux-x86_64.egg\n",
+            "pip install pyyaml flask pytz\n",
+            "zookeeper-server start \n",
+            "initctl start mesos-master\n",
+            "mkdir /k3\n",
+            "cd /k3\n",
+            "git clone https://github.com/damsl/k3\n",
+            "cd k3 \n",
+            "git checkout scheduler \n",
+            "chown -R ec2-user:ec2-user /k3\n",
+            "echo \"zookeeper-server start\" >> /etc/rc.d/rc.local\n",
+            "echo \"initctl start mesos-master\" >> /etc/rc.d/rc.local\n",
+            "echo \"su ec2-user -c 'cd /k3/k3/tools/scheduler/scheduler && python flaskweb.py'\n" >> /etc/rc.d/rc.local\n",
+            "cd tools/scheduler/scheduler\n",
+            "su ec2-user -c 'python flaskweb.py'\n",
+            "\n" 
+        ] ] } }
+      }
+    }
+  },
+  
+  
+  "Outputs" : {
+    "MesosMasterSecurityGroup" : {
+      "Description" : "Access Control for K3 and Mesos web serices",
+      "Value" : { "Ref" : "MasterExternalSecurityGroup" }
+    },
+    "InternalSecurityGroup" : {
+      "Description" : "Access for all K3 nodes",
+      "Value" : { "Ref" : "InternalSecurityGroup" }
+    },    
+    "MasterPublicIP" : {
+      "Description" : "Mesos Master public IP",
+      "Value" : { "Fn::GetAtt" : [ "EC2Instance", "PublicIp" ]}
+    },
+    "MasterPrivateIP" : {
+      "Description" : "Mesos Master private IP",
+      "Value" : { "Fn::GetAtt" : [ "EC2Instance", "PrivateIp" ]}
+    }
+  }
+}

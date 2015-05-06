@@ -1,0 +1,110 @@
+#------------------------------------------------------------------------------
+#  / - Home (welcome msg)
+#------------------------------------------------------------------------------
+END POINT:('/')
+END POINT:('/index')
+
+#------------------------------------------------------------------------------
+#  /about - about message
+#------------------------------------------------------------------------------
+END POINT:('/about')
+
+
+#------------------------------------------------------------------------------
+#  /about - Static Files (File System directory access)
+#------------------------------------------------------------------------------
+END POINT:('/fs/<path:path>/')
+
+
+#------------------------------------------------------------------------------
+#  /apps - Application Level interface
+#         POST   Upload new application
+#             curl -i -H "Accept: application/json" -F file=@<filename> http://<host>:5000/apps
+#
+#         GET    Display both list of loaded apps and form to upload new ones
+#------------------------------------------------------------------------------
+END POINT:('/apps', methods=['GET', 'POST'])
+END POINT:('/app', methods=['GET', 'POST'])
+
+
+#------------------------------------------------------------------------------
+#  /apps/<appName> - Specific Application Level interface
+#         GET    Display all versions for given application
+#------------------------------------------------------------------------------
+END POINT:('/apps/<appName>')
+END POINT:('/app/<appName>', methods=['GET', 'POST'])
+
+
+#------------------------------------------------------------------------------
+#  /apps/<appName> - Specific Application Level interface
+#         POST   (Upload archive data (C++, Source, etc....)
+#            curl -i -H "Accept: application/json"
+#                    -F "file=<filename>" http://<host>:5000/apps/<addName>/<addUID>
+#------------------------------------------------------------------------------
+END POINT:('/apps/<appName>/<appUID>', methods=['GET', 'POST'])
+END POINT:('/app/<appName>/<appUID>', methods=['GET', 'POST'])
+
+
+#------------------------------------------------------------------------------
+#  /jobs - Current runtime & completed job Interface
+#         GET    Display currently executing & recently completed jobs
+#------------------------------------------------------------------------------
+END POINT:('/jobs')
+END POINT:('/job')
+
+
+#------------------------------------------------------------------------------
+#  /jobs/<appName>
+#  /jobs/<appName>/<appUID  - Launch a new K3 Job
+#         POST    Create new K3 Job
+#          curl -i -X POST -H "Accept: application/json" -F "file=@<rolefile>" http://<host>:5000/jobs/<appName>/<appUID>
+#             NOTE: if appUID is omitted, job will be submitted to latest version of this app
+#
+#         GET    Display job list for this application
+#------------------------------------------------------------------------------
+END POINT:('/jobs/<appName>/<appUID>', methods=['GET', 'POST'])
+END POINT:('/jobs/<appName>', methods=['GET', 'POST'])
+
+
+#------------------------------------------------------------------------------
+#  /jobs/<appName>/<jobId>/status - Detailed Job info
+#         GET     Display detailed job info  (default for all methods)
+#------------------------------------------------------------------------------
+END POINT:('/jobs/<appName>/<jobId>/status')
+END POINT:('/job/<jobId>')
+
+
+#------------------------------------------------------------------------------
+#  /jobs/<appName>/<appUID/replay  - Replay a previous K3 Job
+#         POST    Create new K3 Job
+#          curl -i -X POST -H "Accept: application/json" http://<host>:5000/jobs/<appName>/<appUID>/replay
+#------------------------------------------------------------------------------
+END POINT:('/jobs/<appName>/<jobId>/replay', methods=['GET', 'POST'])
+END POINT:('/job/<jobId>/replay')
+
+
+#------------------------------------------------------------------------------
+#  /jobs/<appName>/<jobId>/archive - Endpoint to receive & archive files
+#         GET     returns curl command
+#         POST    Accept files for archiving here
+#           curl -i -H "Accept: application/json"
+#              -F file=@<filename> http://<host>:5000/<appName>/<jobId>/archive
+#------------------------------------------------------------------------------
+END POINT:('/jobs/<appName>/<jobId>/archive', methods=['GET', 'POST'])
+END POINT:('/job/<jobId>/archive', methods=['GET', 'POST'])
+
+
+#------------------------------------------------------------------------------
+#  /jobs/<appName>/<jobId>/kill - Job Interface to cancel a job
+#         GET     Kills a Job (if orphaned, updates status to killed)
+#           curl -i -H "Accept: application/json" http://<host>:5000/job/<jobId>/kill
+#------------------------------------------------------------------------------
+END POINT:('/jobs/<appName>/<jobId>/kill', methods=['GET'])
+END POINT:('/job/<jobId>/kill', methods=['GET'])
+
+
+#------------------------------------------------------------------------------
+#  /delete/jobs
+#         POST     Deletes list of K3 jobs
+#------------------------------------------------------------------------------
+END POINT:('/delete/jobs', methods=['POST'])

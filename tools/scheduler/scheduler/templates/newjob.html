@@ -1,0 +1,77 @@
+{% extends "layout/base.html" %}
+
+{% block content %}
+
+<script>
+  function updateyaml() {
+       var dropdown = document.getElementById("preload");
+       var preload = dropdown.options[dropdown.selectedIndex].value;
+       window.location="/jobs/{{name}}/{{uid}}?preload=" + preload;
+  }
+</script>
+
+  <div class="container">
+    <div class="starter-template">
+      <h2>Launch a new K3 Job</h2>
+        <form action="" method=post enctype=multipart/form-data>
+            <div class="row">
+                <div class="col-md-2"><span class="lead text-center">Application:</span></div>
+                <div class="col-md-10"><span class="text-info">{{ name }}</span></div>
+            </div>
+            <div class="row">
+                <div class="col-md-2"><span class="lead text-center">Version UID:</span></div>
+                <div class="col-md-10"><span class="text-info">{{ uid }}
+                {% if latest %} (latest version) {% endif %}</span></div>
+            </div>
+
+            {% if tag %}
+            <div class="row">
+                <div class="col-md-2"><span class="lead text-center">Version Comments:</span></div>
+                <div class="col-md-10"><h3><span class="text-info">{{ tag }}</span></div>
+            </div>
+            {% endif %}
+            <hr />
+            <p><div class="row">
+                <div class="col-md-3"><span class="lead text-left">Username (optional)</span></div>
+                <div class="col-md-9"><input type=text name=user></div>
+            </div></p>
+            <div class="row">
+                <div class="col-md-3"><span class="lead text-left">Tag (optional)</span> </div>
+                <div class="col-md-9"><input type=text name=tag></div>
+            </div>
+            <div class="checkbox">
+                <label class="checkbox-inline"><input type="checkbox" name="logging" value="">Run with LOGGING ON</label>
+            </div>
+<!--            <div class="checkbox">
+                <label class="checkbox-inline"><input type="checkbox" name="stdout" value="">Stream STDOUT to server (NOTE: this may incur network latency)</label>
+            </div>-->
+            <br />
+            <div class="row">
+                <div class="col-md-4"> <span class="lead text-center">Option A: Upload YAML Role File </span>
+                <input type=file class="btn btn-file btn-md text-center" name=file>
+                <button type=submit class="btn btn-primary btn-md text-center">Submit</button> </div>
+
+
+                <div class="col-md-8">
+                   <div class="row"> <div class="col-md-8">
+                        <span class="lead text-center">Option B: Paste raw YAML below:</select>
+                    </span></div><div class="col-md-4">
+                <select name = "preload" id="preload" onchange="updateyaml()">
+                    <option selected = "selected">Preload YAML</option>
+                    <option value = "Sample">Sample</option>
+                    <option value = "Last">Last</option>
+                    <option value = "Instructions">Instructions</option>
+                </select></div>
+                </div>
+
+                <textarea class="form-control" id="yamltext" name=text cols=20 rows=20>{{sample}}</textarea></div>
+            </div>
+            <div class="row text=right"><button type=submit class="btn btn-primary btn-md">Submit</button></div>
+         </form>
+    </div>
+  </div>
+{% endblock %}
+
+{% block footer %}
+  {% include "include/footer.html" %}
+{% endblock %}

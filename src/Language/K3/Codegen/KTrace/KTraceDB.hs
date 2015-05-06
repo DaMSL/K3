@@ -1,5 +1,6 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns  #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- | Database-backed tracing for distributed K3 programs.
 --   This module generates a database schema for a K3 program trace.
@@ -138,7 +139,7 @@ mkDiff name idSqlt = do
 compareField :: (String, String) -> Either String String
 compareField (field, typ) | typ == varcharType = Right $ proj "l" ++ " = " ++ proj "r"
                           | typ == intType     = Right $ proj "l" ++ " = " ++ proj "r"
-                          | typ == doubleType  = Right $ abs (proj "l" ++ "-" ++ proj "r")  ++ " < .01" 
+                          | typ == doubleType  = Right $ abs (proj "l" ++ "-" ++ proj "r")  ++ " < .01"
                           | otherwise = Left $ "Invalid type for result comparison: " ++ typ
 
   where
@@ -149,7 +150,7 @@ compareField (field, typ) | typ == varcharType = Right $ proj "l" ++ " = " ++ pr
 -- Key for joining Globals and Messages
 -- Prefixed with _ to help avoid name clashes with global vars
 keyAttrs :: [(String, String)]
-keyAttrs = [("_mess_id", "int"), ("_dest_peer", "text")]
+keyAttrs = [("mess_id", "int"), ("dest_peer", "text")]
 
 globalsTable :: String
 globalsTable = "Globals"
@@ -188,14 +189,16 @@ varcharType = "varchar"
 
 {- SQL script construction -}
 mkGlobalsSchema :: Globals -> Statement
-mkGlobalsSchema attrs = createTable globalsTable $ keyAttrs ++ attrs
+mkGlobalsSchema attrs = createTable globalsTable $ keyAttrs ++ globalAttrs
+  where globalAttrs = [ ("key", "text")
+                      , ("value", "json")]
 
 mkEventTraceSchema :: Triggers -> Statement
 mkEventTraceSchema _ = createTable msgsTable $ keyAttrs ++ logAttrs
   where logAttrs =   [ ("trigger",     "text")
                      , ("source_peer", "text")
-                     , ("contents",    "text")
-                     , ("time"    ,    "text")]
+                     , ("contents",    "json")
+                     , ("time"    ,    "int")]
 
 
 mkFlatSingletonResultSchema :: Identifier -> K3 Declaration -> Either String String

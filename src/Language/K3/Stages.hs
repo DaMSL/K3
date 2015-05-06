@@ -1,6 +1,9 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DoAndIfThenElse #-}
+{-# LANGUAGE NoMonoLocalBinds #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 
 -- | High-level API to K3 toolchain stages.
@@ -574,13 +577,14 @@ declTransforms stSpec extInfOpt n = topLevel
   where
     topLevel  = (Map.fromList $ fPf fst $ [
         second mkFix $
-        mkSeqRep "Optimize" highLevel $ fPf fst $ prepend [ ("refreshI",      False) ]
+        mkT $ mkSeqRep "Optimize" highLevel $ fPf fst $ prepend [ ("refreshI",      False) ]
                                                         $ [ ("Decl-Simplify", True)
                                                           , ("Decl-Fuse",     True)
                                                           , ("Decl-Simplify", True) ]
       ]) `Map.union` highLevel
 
     highLevel = (Map.fromList $ fPf fst $ [
+        second mkFix $
         mkT $ mkSeq "Decl-Simplify" lowLevel $ fP $ intersperse "refreshI" $ [ "Decl-CF"
                                                                              , "Decl-BR"
                                                                              , "Decl-DCE"
@@ -592,36 +596,36 @@ declTransforms stSpec extInfOpt n = topLevel
 
     -- TODO: CF,BR,DCE,CSE should be a local fixpoint.
     lowLevel = Map.fromList $ fPf fst $ [
-        mk  foldConstants        "Decl-CF"  False True False Nothing
-      , mk  betaReduction        "Decl-BR"  False True False Nothing
-      , mk  eliminateDeadCode    "Decl-DCE" False True False Nothing
-      , mkW cseTransform         "Decl-CSE" False True False Nothing
-      , mkD encodeTransformers   "Decl-FE"  True  True False (Just [typEffI])
-      , mk  fuseFoldTransformers "Decl-FT"  True  True False (Just fusionI)
-      , mkDebug False $ fusionReduce
-      , mkDebug False $ ("typEffI",)  $ typEffI
-      , mkDebug False $ ("refreshI",) $ refreshI
+              mk  foldConstants        "Decl-CF"  False True False True  (Just [typEffI])
+      ,       mk  betaReduction        "Decl-BR"  False True False True  (Just [typEffI])
+      ,       mk  eliminateDeadCode    "Decl-DCE" False True False True  (Just [typEffI])
+      ,       mkW cseTransform         "Decl-CSE" False True False True  (Just [typEffI])
+      , mkT $ mkD encodeTransformers   "Decl-FE"  False True False True  (Just [typEffI])
+      , mkT $ mk  fuseFoldTransformers "Decl-FT"  False True False True  (Just fusionI)
+      , mkT $ mkDebug False $ fusionReduce
+      , mkT $ mkDebug False $ ("typEffI",)  $ typEffI
+      , mkT $ mkDebug False $ ("refreshI",) $ refreshI
       ]
 
     -- Build a transform with additional debugging/repair/reification functionality.
-    mk f i asReified asRepair asDebug fixPassOpt = mkSS $ (i,)
-      $ (maybe id mkFixI fixPassOpt)
+    mk f i asReified asRepair asDebug asFixT fixPassOpt = mkSS $ (i,)
+      $ (maybe id (if asFixT then mkFixIT i else mkFixI) fixPassOpt)
       $ (if asReified then reifyPass else id)
       $ (if asRepair then withRepair i else id)
       $ (if asDebug then transformEDbg i else transformE)
       $ mapNamedDeclExpression n f
 
     -- Build a delta transform
-    mkD f i asReified asRepair asDebug fixPassOpt = mkSS $ (i,)
-      $ (maybe transformFromDelta mkFixID fixPassOpt)
+    mkD f i asReified asRepair asDebug asFixT fixPassOpt = mkSS $ (i,)
+      $ (maybe transformFromDelta (if asFixT then mkFixIDT i else mkFixID) fixPassOpt)
       $ (if asReified then reifyPassD else id)
       $ (if asRepair then withRepairD i else id)
       $ (if asDebug then transformEDDbg i else transformED)
       $ foldNamedDeclExpression n f False
 
     -- Wrap an existing transform
-    mkW tr i asReified asRepair asDebug fixPassOpt = mkSS $ (i,)
-      $ (maybe id mkFixI fixPassOpt)
+    mkW tr i asReified asRepair asDebug asFixT fixPassOpt = mkSS $ (i,)
+      $ (maybe id (if asFixT then mkFixIT i else mkFixI) fixPassOpt)
       $ (if asReified then reifyPass else id)
       $ (if asRepair then withRepair i else id)
       $ (if asDebug then debugPass i else id)
@@ -630,14 +634,16 @@ declTransforms stSpec extInfOpt n = topLevel
     mkDebug asDebug (i,tr) = mkSS $ (i,) $ (if asDebug then debugPass i else id) tr
 
     -- Pass filtering
-    fPf f = maybe id (\l -> filter (\x -> (f x) `notElem` l)) $ passesToFilter stSpec
+    fPf :: (a -> Identifier) -> [a] -> [a]
+    fPf f = maybe (id) (\l -> filter (\x -> (f x) `notElem` l)) $ passesToFilter stSpec
     fP    = fPf id
 
     -- Fixpoint pass construction
-    evalP          = reifyPass
-    mkFix          = transformFixpoint
-    mkFixI  interF = transformFixpointI  interF
-    mkFixID interF = transformFixpointID interF
+    mkFix             = transformFixpoint
+    mkFixI     interF = transformFixpointI  interF
+    mkFixID    interF = transformFixpointID interF
+    mkFixIT  i interF = transformFixpointI  [timePass (mkN $ i ++ "-FPI") $ runPasses interF]
+    mkFixIDT i interF = transformFixpointID [timePass (mkN $ i ++ "-FPI") $ runPasses interF]
 
     -- Timing and snapshotting.
     mkN i = unwords [n, i]
@@ -647,7 +653,7 @@ declTransforms stSpec extInfOpt n = topLevel
                    $ Map.lookup n $ snapshotSpec stSpec
 
     -- Custom, and shared passes
-    fusionReduce = mk betaReduction "Decl-FR" False True False (Just [typEffI])
+    fusionReduce = mkT $ mk betaReduction "Decl-FR" False True False True (Just [typEffI])
     cseTransform = withStateTransform (Just . cseCnt)
                                       (\ncntOpt st -> st {cseCnt=maybe (cseCnt st) id ncntOpt})
                                       (foldNamedDeclExpression n commonSubexprElim)

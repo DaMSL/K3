@@ -1,5 +1,7 @@
 module Language.K3.Driver.Common where
 
+import System.Directory (createDirectoryIfMissing)
+import System.FilePath (joinPath, replaceExtension, takeBaseName)
 import System.IO
 
 import Language.K3.Core.Annotation
@@ -37,10 +39,24 @@ openFileOrStdIn :: String -> IO Handle
 openFileOrStdIn "-" = return stdin
 openFileOrStdIn f = openFile f ReadMode
 
+outputFilePath :: FilePath -> String -> String -> (FilePath, FilePath)
+outputFilePath path input ext = (path, joinPath [path, replaceExtension (takeBaseName $ input) ext])
+
+outputStrFile :: String -> (FilePath, FilePath) -> IO ()
+outputStrFile str (path, file) = do
+  createDirectoryIfMissing True path
+  writeFile file str
+
 parseK3Input :: Bool -> [FilePath] -> FilePath -> IO (Either String (K3 Declaration))
 parseK3Input includeOverride searchPaths path = do
     h <- openFileOrStdIn path
     parseK3 includeOverride searchPaths =<< hGetContents h
+
+parseSplicedASTInput :: FilePath -> IO (K3 Declaration)
+parseSplicedASTInput path = do
+    h <- openFileOrStdIn path
+    astStr <- hGetContents h
+    return ((read astStr) :: K3 Declaration)
 
 prettySysEnv :: SystemEnvironment -> [String]
 prettySysEnv env = ["System environment: "] ++ concatMap prettyEnvEntry env

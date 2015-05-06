@@ -28,7 +28,7 @@ namespace K3 {
   class Codec : public virtual LogMT {
     public:
       // This enum should be extended as more data formats arise.
-      enum class CodecFormat {K3, K3B, K3X, CSV, PSV, JSON, YAML};
+      enum class CodecFormat {K3, K3B, K3YB, K3YBT, K3X, CSV, PSV, JSON, YAML};
 
       Codec(CodecFormat f): format_(f), LogMT("Codec") {}
       virtual ~Codec() {}
@@ -227,12 +227,12 @@ namespace K3 {
     protected:
       shared_ptr<RemoteMessage> read_message(shared_ptr<string> v) {
         shared_ptr<RemoteMessage> r;
-        if ( v ) { r = BoostSerializer::unpack<RemoteMessage>(*v); }
+        if ( v ) { r = K3Serializer::unpack_yas<RemoteMessage>(*v); }
         return r;
       }
 
       string show_message(const RemoteMessage& m) {
-        return BoostSerializer::pack<RemoteMessage>(m);
+        return K3Serializer::pack_yas<RemoteMessage>(m);
       }
 
     private:
@@ -290,11 +290,11 @@ namespace K3 {
     }
 
     template<typename T> string encode(const T& v) {
-      return BoostSerializer::pack_text<T>(v);
+      return K3Serializer::pack_text<T>(v);
     }
 
     template<typename T> shared_ptr<T> decode(const string& s) {
-      return BoostSerializer::unpack_text<T>(s);
+      return K3Serializer::unpack_text<T>(s);
     }
 
     template<typename T> shared_ptr<T> decode(const char *s, size_t sz) {
@@ -313,11 +313,57 @@ namespace K3 {
     }
 
     template<typename T> string encode(const T& v) {
-      return BoostSerializer::pack<T>(v);
+      return K3Serializer::pack<T>(v);
     }
 
     template<typename T> shared_ptr<T> decode(const string& s) {
-      return BoostSerializer::unpack<T>(s);
+      return K3Serializer::unpack<T>(s);
+    }
+
+    template<typename T> shared_ptr<T> decode(const char *s, size_t sz) {
+      string v(s, sz);
+      return decode<T>(v);
+    }
+  };
+
+  class K3YBCodec : public virtual Codec, public virtual LogMT {
+  public:
+    K3YBCodec(CodecFormat f): Codec(f), LogMT("K3YBCodec") {}
+    virtual ~K3YBCodec() {}
+
+    shared_ptr<Codec> freshClone() {
+      return std::dynamic_pointer_cast<Codec, K3YBCodec>(make_shared<K3YBCodec>(format_));
+    }
+
+    template<typename T> string encode(const T& v) {
+      return K3Serializer::pack_yas<T>(v);
+    }
+
+    template<typename T> shared_ptr<T> decode(const string& s) {
+      return K3Serializer::unpack_yas<T>(s);
+    }
+
+    template<typename T> shared_ptr<T> decode(const char *s, size_t sz) {
+      string v(s, sz);
+      return decode<T>(v);
+    }
+  };
+
+  class K3YBTCodec : public virtual Codec, public virtual LogMT {
+  public:
+    K3YBTCodec(CodecFormat f): Codec(f), LogMT("K3YBTCodec") {}
+    virtual ~K3YBTCodec() {}
+
+    shared_ptr<Codec> freshClone() {
+      return std::dynamic_pointer_cast<Codec, K3YBTCodec>(make_shared<K3YBTCodec>(format_));
+    }
+
+    template<typename T> string encode(const T& v) {
+      return K3Serializer::pack_yas_text<T>(v);
+    }
+
+    template<typename T> shared_ptr<T> decode(const string& s) {
+      return K3Serializer::unpack_yas_text<T>(s);
     }
 
     template<typename T> shared_ptr<T> decode(const char *s, size_t sz) {
@@ -336,11 +382,11 @@ namespace K3 {
     }
 
     template<typename T> string encode(const T& v) {
-      return BoostSerializer::pack_csv<T>(v);
+      return K3Serializer::pack_csv<T>(v);
     }
 
     template<typename T> shared_ptr<T> decode(const string& s) {
-      return BoostSerializer::unpack_csv<T>(s);
+      return K3Serializer::unpack_csv<T>(s);
     }
 
     template<typename T> shared_ptr<T> decode(const char *s, size_t sz) {
@@ -359,11 +405,11 @@ namespace K3 {
     }
 
     template<typename T> string encode(const T& v) {
-      return BoostSerializer::pack_csv<T>(v, '|');
+      return K3Serializer::pack_csv<T>(v, '|');
     }
 
     template<typename T> shared_ptr<T> decode(const string& s) {
-      return BoostSerializer::unpack_csv<T>(s, '|');
+      return K3Serializer::unpack_csv<T>(s, '|');
     }
 
     template<typename T> shared_ptr<T> decode(const char *s, size_t sz) {
@@ -382,11 +428,11 @@ namespace K3 {
     }
 
     template<typename T> string encode(const T& v) {
-      return BoostSerializer::pack_xml<T>(v);
+      return K3Serializer::pack_xml<T>(v);
     }
 
     template<typename T> shared_ptr<T> decode(const string& s) {
-      return BoostSerializer::unpack_xml<T>(s);
+      return K3Serializer::unpack_xml<T>(s);
     }
 
     template<typename T> shared_ptr<T> decode(const char *s, size_t sz) {

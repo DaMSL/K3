@@ -1,0 +1,181 @@
+include "Annotation/Set.k3"
+include "tpch/benchmark.k3"
+
+/**********************
+* SQL query
+***********************
+select top 10
+        l_orderkey,
+        sum(l_extendedprice * (1 - l_discount)) as revenue,
+        o_orderdate,
+        o_shippriority
+from
+        customer,
+        orders,
+        lineitem
+where
+        c_mktsegment = 'BUILDING'
+        and c_custkey = o_custkey
+        and l_orderkey = o_orderkey
+        and o_orderdate < date '1995-03-15'
+        and l_shipdate > date '1995-03-15'
+group by
+        l_orderkey,
+        o_orderdate,
+        o_shippriority
+order by
+        revenue desc,
+        o_orderdate
+****************************/
+
+declare master : address
+
+declare lineitem_r : lineitem_r
+declare customer_r : customer_r
+declare orders_r   : orders_r
+
+declare lineitem : mut q3_lineitem_bag
+declare customer : mut q3_customer_bag
+declare orders   : mut q3_orders_bag
+
+// Final result.
+typedef lior_epd_by_ods_r     = {key : {ok: int, od: int, sp: int}, value: real}
+typedef lior_epd_by_ods_map   = collection lior_epd_by_ods_r @Map
+
+declare q3_peer_result : lior_epd_by_ods_map
+
+// Intermediates for Q3 plans.
+typedef cs_ck_set = collection {c_custkey : int} @Set
+
+declare cs_ck      : mut cs_ck_set
+declare odsp_by_ok : mut collection {key : int, value : {od:int, sp:int}} @IntMap
+
+declare merge_lior_epd_by_ods : lior_epd_by_ods_r -> lior_epd_by_ods_r -> lior_epd_by_ods_r =
+  \a -> \b -> {key : a.key, value : a.value + b.value}
+
+trigger q3_start : () = \_ -> (
+  () @PipelinedBroadcastJoin(
+        lbl              = [# cust ]
+      , lhs_query        = [$ () ]
+      , lhs_query_clear  = [$ () ]
+      , rhs_query        = [$ (((customer.filter (\c -> c.c_mktsegment == "BUILDING" ))
+                                         .map    (\c -> { c_custkey : c.c_custkey }))
+                                         .fold   ((\acc -> \c -> ((acc.insert c.elem); acc)) @:Accumulate)
+                                                 (empty {c_custkey : int} @Set))
+                           ]
+      , rhs_query_clear  = [$ customer = empty q3_customer_r @Collection ]
+      , lhs_probe        = [$ (\_ -> \c -> cs_ck.insert c) ]
+      , broadcast_ty     = [: collection {c_custkey : int} @Set ]
+      , has_outputs      = [$ (\_ -> false) ]
+      , empty_out_buffer = [$ () ]
+      , pipeline_next    = [$ (\_ -> ()) ]
+      , peer_next        = [$ () ]
+      , next             = [$ (q3_loc, me) <- ()]
+      , coordinator      = [$ master]
+      , nodes            = [$ peers]
+      , masters          = [$ masters ]
+      , masters_map      = [$ peer_masters ]
+    )
+)
+
+// Distributed plan: dist. hash-join on li-or, broadcast semi-join on lior-cs.
+trigger q3_loc : () = \_ -> (
+  () @PipelinedBroadcastJoin(
+        lbl              = [# loc ]
+      , lhs_query        = [$ () ]
+      , lhs_query_clear  = [$ () ]
+      , rhs_query        = [$ ((orders.filter  (\o -> o.o_orderdate < 19950315 and (cs_ck.member {c_custkey: o.o_custkey})))
+                                      .groupBy (\o -> o.o_orderkey)
+                                               (\_ -> \o -> {od : o.o_orderdate, sp : o.o_shippriority})
+                                               { od: 0, sp: 0 })
+                                      .fold    ((\acc -> \o -> ((acc.insert o); acc)) @:Accumulate)
+                                               (empty {key : int, value : {od:int, sp:int}} @IntMap)
+                           ]
+      , rhs_query_clear  = [$ ( orders = empty q3_orders_r @Collection );
+                              ( cs_ck  = empty {c_custkey : int} @Set )
+                           ]
+      , lhs_probe        = [$ (\_ -> \o -> odsp_by_ok.insert o) ]
+      , broadcast_ty     = [: collection {key : int, value : {od:int, sp:int}} @IntMap ]
+      , has_outputs      = [$ (\_ -> false) ]
+      , empty_out_buffer = [$ () ]
+      , pipeline_next    = [$ (\_ -> ()) ]
+      , peer_next        = [$ ((ignore
+                                 (((lineitem.filter  (\l ->     ( l.l_shipdate > 19950315 )
+                                                            and ( odsp_by_ok.member {key: l.l_orderkey, value: {od:0, sp:0}} )))
+                                            .groupBy (\l -> odsp_by_ok.lookup_with3 {key: l.l_orderkey, value: {od:0, sp:0}}
+                                                              (\o -> {ok: l.l_orderkey, od: o.value.od, sp: o.value.sp}))
+                                                     (\acc -> \l -> acc + (l.l_extendedprice * (1 - l.l_discount)))
+                                                     0.0)
+                                            .fold    ((\acc -> \l -> ((acc.insert l); acc)) @:Accumulate)
+                                                     (empty lior_epd_by_ods_r @Map))
+                              ) @PartitionShuffleWithMissing(
+                                     lbl           = [# loc_agg ]
+                                   , dest_trg      = [$ loc_agg_merge ]
+                                   , nodes         = [$ peers ]
+                                   , send_extra_fn = [$ \x -> x]
+                                   , send_ty       = [: lior_epd_by_ods_map ]
+                                   )
+                              );
+                              ( lineitem = empty q3_lineitem_r @Collection )
+                           ]
+      , next             = [$ () ]
+      , coordinator      = [$ master]
+      , nodes            = [$ peers]
+      , masters          = [$ masters ]
+      , masters_map      = [$ peer_masters ]
+  )
+)
+
+trigger loc_agg_merge : lior_epd_by_ods_map = \partials ->
+  ((partials.iterate (\w -> q3_peer_result.insert_with w merge_lior_epd_by_ods));
+    ( ( (() @:Result) @TPCHBenchmarkWithoutMaster );
+      ( finalizeResult () )
+    ) @OnCounter(id=[# loc_agg_peer_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+  )
+
+declare finalizeResult: () -> () = \_ -> (
+    q3_peer_result.iterate (\r ->
+      results.insert { orderkey: r.key.ok
+                     , revenue: r.value
+                     , orderdate: tpch_date_to_string (r.key.od)
+                     , shippriority: r.key.sp })
+)
+
+// For ktrace:
+declare results: collection {orderkey: int, revenue: real, orderdate: string, shippriority: int} @Collection
+
+trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
+  nodes                = [$ peers ],
+  loadExpr             = [$ ( // Read line counts for each data file
+                              lineitemLineCountFiles.iterate (\e -> lineitemRows = lineitemRows + (lineCountFile e.path));
+                              ordersLineCountFiles.iterate   (\e -> ordersRows = ordersRows + (lineCountFile e.path));
+                              customerLineCountFiles.iterate (\e -> customerRows = customerRows + (lineCountFile e.path));
+
+                  			      print ("Lineitem rows: " ++ (itos lineitemRows));
+                  			      print ("Orders rows: " ++ (itos ordersRows));
+                  			      print ("Customer rows: " ++ (itos customerRows));
+
+                              // Load data using the fixed size loaders which resize the container before loading
+                              q3_lineitemLoaderPFC lineitemFiles lineitem lineitem_r lineitemRows;
+                              q3_ordersLoaderPFC   ordersFiles   orders   orders_r   ordersRows;
+                              q3_customerLoaderPFC customerFiles customer customer_r customerRows
+                            ) ],
+  preLoadExpr          = [$ ()],
+  preReadyExpr         = [$ ()],
+  onReadyExpr          = [$ (q3_start, me) <- ()],
+  finishArgT           = [: ()],
+  preTestFinishExpr    = [$ (\_ -> ())],
+  preFinishExpr        = [$ ( () @GatherResultsAsCSV(
+                                    query_cl = [* [% ci: [# results], csink: [$ results_sink]] ]
+                                  , nodes    = [$ peers]
+                                  , next     = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ]) )
+                         ],
+  preShutdownExpr      = [$ () ],
+  finishAsShutdownExpr = [$ false]
+)
+
+sink results_sink : {orderkey: int, revenue: real, orderdate: string, shippriority: int} = file "results.csv" csv
+sink query_time_sink : string = stdout csv
+
+source rows : () = value ()
+feed rows |> start

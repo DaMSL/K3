@@ -11,14 +11,20 @@ using boost::thread;
 namespace K3 {
 
     void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<MessageCodec> _msgcodec,
-                           string log_l, string log_p, string result_v, string result_p, shared_ptr<const MessageQueues> qs)
+                           string log_l, string log_p, bool j_final, string result_v, string result_p, shared_ptr<const MessageQueues> qs)
     {
       queues = qs;
       msgcodec = _msgcodec;
       log_enabled = false;
       log_json = false;
-      if (log_l != "") { log_enabled = true; }
-      if (log_p != "") { log_json = true; }
+      if (log_l == "final") {
+        log_final = true;
+      } else if (log_l != "") {
+        log_enabled = true;
+      }
+
+      log_json_final = j_final;
+      if (log_p != "" && !log_json_final) { log_json = true; }
       auto dir = log_p != "" ? log_p : ".";
       log_path = dir;
 
@@ -32,7 +38,7 @@ namespace K3 {
         throw std::runtime_error("Only 1 peer per engine allowed");
       }
 
-      if (log_json) {
+      if (log_json || log_json_final) {
         for (const auto& addr : processAddrs) {
           auto s1 = log_path + "/" + addressAsString(addr) + "_Messages.dsv";
           auto s2 = log_path + "/" + addressAsString(addr) + "_Globals.dsv";
@@ -138,11 +144,28 @@ namespace K3 {
 
     //-----------------------
     // Engine execution loop
+    void Engine::logEnvironment(const Address& a) {
+      logAt(trivial::trace, "Environment: ");
+      std::map<std::string, std::string> env = mp_->bindings(a);
+      std::map<std::string, std::string>::iterator iter;
+      for (iter = env.begin(); iter != env.end(); ++iter) {
+         std::string id = iter->first;
+         std::string val = iter->second;
+         logAt(trivial::trace, "  " + id + " = " + val);
+      }
+    }
+
+    void Engine::logFinalEnvironment(const Address& a) {
+      if (log_final) {
+        logEnvironment(a);
+      }
+      if (log_json_final) {
+        logJsonEnvironment(a);
+      }
+    }
 
     MPStatus Engine::processMessage(shared_ptr<MessageProcessor> mp)
     {
-      // Log queues?
-
       // Get a message from the engine queues.
       shared_ptr<Message> next_message = queues->dequeue(*me);
 
@@ -164,19 +187,10 @@ namespace K3 {
 
         // Log Env
         if (log_enabled) {
-          logAt(trivial::trace, "Environment: ");
-          std::map<std::string, std::string> env = mp->bindings(next_message->address());
-          std::map<std::string, std::string>::iterator iter;
-          for (iter = env.begin(); iter != env.end(); ++iter) {
-             std::string id = iter->first;
-             std::string val = iter->second;
-             logAt(trivial::trace, "  " + id + " = " + val);
-          }
-       }
-
+          logEnvironment(next_message->address());
+        }
 
         return res;
-
       } else {
         // Otherwise return a Done, indicating no messages in the queues.
         return LoopStatus::Done;
@@ -185,13 +199,17 @@ namespace K3 {
 
     void Engine::runMessages(shared_ptr<MessageProcessor>& mp, MPStatus init_st)
     {
+      mp_ = mp;
       MPStatus curr_status = init_st;
       MPStatus next_status;
       logAt(trivial::trace, "Starting the Message Processing Loop");
 
       while(true) {
+        if (control->terminate()) {
+            logAt(trivial::trace, "Finished Message Processing Loop.");
+            return;
+        }
         switch (curr_status) {
-
           // If we are not in error, process the next message.
           case LoopStatus::Continue:
             next_status = processMessage(mp);
@@ -206,21 +224,11 @@ namespace K3 {
           //  - If the terminate flag has been set, exit out normally.
           //  - Otherwise, wait for a message and continue.
           case LoopStatus::Done:
-            if (control->terminate()) {
-                logAt(trivial::trace, "Finished Message Processing Loop.");
-                return;
-            }
-
             queues->waitForMessage(*me,
               [=] () {
                 return !control->terminate() && queues->empty(*me);
               });
 
-            // Check for termination signal after waiting is finished
-            if (control->terminate()) {
-              logAt(trivial::trace, "Received Termination Signal. Exiting Message Processing Loop.");
-              return;
-            }
             // Otherwise continue
             next_status = LoopStatus::Continue;
             break;
@@ -293,6 +301,9 @@ namespace K3 {
         set = true;
       } else if ( format == "k3b" ) {
         r = dynamic_pointer_cast<Codec, K3BCodec>(make_shared<K3BCodec>(Codec::CodecFormat::K3B));
+        set = true;
+      } else if ( format == "k3yb" ) {
+        r = dynamic_pointer_cast<Codec, K3YBCodec>(make_shared<K3YBCodec>(Codec::CodecFormat::K3YB));
         set = true;
       } else if ( format == "csv" ) {
         r = dynamic_pointer_cast<Codec, CSVCodec>(make_shared<CSVCodec>(Codec::CodecFormat::CSV));

@@ -34,14 +34,16 @@ RUN echo 'execute pathogen#infect() | syntax on | filetype plugin indent on' > /
 RUN git clone https://github.com/tpope/vim-sensible.git /root/.vim/bundle
 
 # Install ocaml
-RUN apt-get install -y ocaml opam camlp4-extra
+RUN add-apt-repository -y ppa:avsm/ppa && apt-get update && \
+    apt-get install -y ocaml ocaml-native-compilers camlp4-extra opam time && \
+    export OPAMYES=1 && export OCAMLRUNPARAM=b && opam init && eval `opam config env` && opam install ocamlfind
 
 RUN mkdir -p /software/boost-1.56 && \
     cd /software/boost-1.56 && \
     wget --no-verbose http://downloads.sourceforge.net/boost/boost_1_56_0.tar.bz2 && \
     tar xvfj boost_1_56_0.tar.bz2 && \
     cd /software/boost-1.56/boost_1_56_0 && \
-    ./bootstrap.sh --without-libraries=python --prefix=/usr && ./b2 -j 8 stage threading=multi link=shared && ./b2 -j 8 install threading=multi link=shared 
+    ./bootstrap.sh --without-libraries=python --prefix=/usr && ./b2 -j 8 stage threading=multi link=shared && ./b2 -j 8 install threading=multi link=shared
 
 # Install GHC and cabal
 WORKDIR /

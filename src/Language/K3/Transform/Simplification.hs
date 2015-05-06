@@ -1,9 +1,11 @@
 {-# LANGUAGE DoAndIfThenElse #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Transform.Simplification where
@@ -45,6 +47,7 @@ import Language.K3.Transform.Common
 import Language.K3.Interpreter.Data.Accessors
 import Language.K3.Interpreter.Data.Types
 
+import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 
 import Data.Text ( Text )
@@ -1257,7 +1260,7 @@ fuseFoldTransformers expr = do
         case (lfCls, rfCls) of
 
           -- Copy-elimination when accumulators are of the same type.
-          (_, UCond) | rtCls == IdTr && compareTStrictAST lAccT rAccT ->
+          (_, UCond) | rtCls == IdTr && compatibleFusionTypes lAccT rAccT ->
             return $ Just (updateFusionSpec lAs (lfCls, ltCls), lAccF)
 
           -- Fusion for {UCond, ICond1} x {UCond, ICond1} cases
@@ -1958,6 +1961,18 @@ fuseFoldTransformers expr = do
               iV []
       in
       return $ EC.lambda i $ EC.lambda j $ EC.letIn leti entryE $ seqApp $ EC.variable leti
+
+    compatibleFusionTypes t1@(tnc -> (TCollection, [c1])) t2@(tnc -> (TCollection, [c2])) =
+      case (t1 @~ isTAnnotation, t2 @~ isTAnnotation) of
+        (Just (TAnnotation ta1), Just (TAnnotation ta2)) ->
+          compatibleAnnotations ta1 ta2 && compareTStrictAST c1 c2
+        (_, _) -> compareTStrictAST t1 t2
+
+    compatibleFusionTypes t1 t2 = compareTStrictAST t1 t2
+
+    compatibleAnnotations a1 a2 = a1 == a2 || (a1 `elem` mapCls && a2 `elem` mapCls)
+      where mapCls = ["Map", "IntMap", "StrMap"]
+
 
     cleanExpr e = stripExprAnnotations cleanAnns (const False) e
     cleanAnns a = isEUID a || isESpan a || isAnyETypeOrEffectAnn a

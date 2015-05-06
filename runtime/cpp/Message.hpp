@@ -58,8 +58,14 @@ namespace K3 {
       return make_shared<Message>(address(), id(), shared_ptr<Dispatcher>(d), source());
     }
 
-  private:
-    friend class boost::serialization::access;
+    template<class Archive>
+    void serialize(Archive &ar) {
+      ar & std::get<0>(*this);
+      ar & std::get<1>(*this);
+      ar & std::get<2>(*this);
+      ar & std::get<3>(*this);
+    }
+
     template<class Archive>
     void serialize(Archive &ar, const unsigned int) {
       ar & std::get<0>(*this);
@@ -67,6 +73,9 @@ namespace K3 {
       ar & std::get<2>(*this);
       ar & std::get<3>(*this);
     }
+
+  private:
+    friend class boost::serialization::access;
   };
 
 } // namespace K3
