@@ -265,12 +265,10 @@ class Dispatcher(mesos.interface.Scheduler):
   def getSandboxURL(self, jobId):
 
     # For now, return Mesos URL to Framework:
-    return 'http://' + self.mesosmaster
-    # print "MESOS MASTER: %s, " % self.mesosmaster,
-    # master = resolve(self.mesosmaster).strip()
-    # print " .... resolved to %s" % (master)
-    # url = os.path.join('http://', master)
-    # return url
+#    return 'http://' + self.mesosmaster
+    master = resolve(self.mesosmaster).strip()
+    url = os.path.join('http://', master)
+    return url
 
 
   def taskFinished(self, fullid):

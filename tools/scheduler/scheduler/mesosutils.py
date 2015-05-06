@@ -293,7 +293,25 @@ def compileTask(**kwargs):
 #     zk://host1:port1,host2:port2,.../path
 #     zk://username:password@host1:port1,host2:port2,.../path
 #     file://path/to/file (where file contains one of the above)
+
+def cmd_exists(cmd):
+    return subprocess.call("type " + cmd, shell=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE) == 0
+
 def resolve(master):
+
+
+    if subprocess.call("type mesos-resolve", shell=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE) != 0:
+
+      host = ''
+      for h in master.split('/')[1:]:
+        if ':' in h:
+          host = h.split(':')[0]
+          break
+      if host == '':
+        host = "localhost"
+      return "http://%s:5050" % host
 
     process = subprocess.Popen(
         ['mesos-resolve', master],

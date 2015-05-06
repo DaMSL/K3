@@ -42,7 +42,7 @@
                 <li class="list-group-item">Time Completed <span class="text-info">{{ lastjob.complete }}</span></li>{% endif %}
               {% if lastjob.master %}
                 <li class="list-group-item">Master at <span class="text-info">{{ lastjob.master }}</span>
-                (<a href="{{lastjob.sandbox}}/stdout_{{lastjob.master}}">Master OUTPUT </a>)</li>{% endif %}
+                (<a href="/fs/jobs/{{appName}}/{{lastjob.jobId}}/stdout_{{lastjob.master}}">Master OUTPUT </a>)</li>{% endif %}
               {% if lastjob.roles %}
                 <li class="list-group-item">Roles<br><pre>{{ lastjob.roles }}</pre></li> {% endif %}
             </ul>

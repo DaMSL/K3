@@ -464,7 +464,7 @@ def get_job(appName, jobId):
     else:
       return returnError("Job Data no longer exists", 400)
 
-    thisjob['sandbox'] = os.listdir(local)
+    thisjob['sandbox'] = sorted (os.listdir(local))
 
     if 'application/json' in request.headers['Accept']:
       return jsonify(thisjob)
@@ -933,7 +933,7 @@ if __name__ == '__main__':
   #  Create long running framework, dispatcher, & driver
   framework = mesos_pb2.FrameworkInfo()
   framework.user = "" # Have Mesos fill in the current user.
-  framework.name = "K3 Dispatcher (TEST)"
+  framework.name = "K3 Dispatcher"
 
   dispatcher = Dispatcher(master, webapp.config['ADDR'], daemon=True)
   if dispatcher == None:
