@@ -36,11 +36,11 @@ RUN git clone https://github.com/tpope/vim-sensible.git /root/.vim/bundle
 # Install ocaml
 RUN apt-get install -y ocaml opam camlp4-extra
 
-RUN mkdir -p /software/boost-1.57 && \
-    cd /software/boost-1.57 && \
-    wget --no-verbose http://downloads.sourceforge.net/boost/boost_1_57_0.tar.bz2 && \
-    tar xvfj boost_1_57_0.tar.bz2 && \
-    cd /software/boost-1.57/boost_1_57_0 && \
+RUN mkdir -p /software/boost-1.56 && \
+    cd /software/boost-1.56 && \
+    wget --no-verbose http://downloads.sourceforge.net/boost/boost_1_56_0.tar.bz2 && \
+    tar xvfj boost_1_56_0.tar.bz2 && \
+    cd /software/boost-1.56/boost_1_56_0 && \
     ./bootstrap.sh --without-libraries=python --prefix=/usr && ./b2 -j 8 stage threading=multi link=shared && ./b2 -j 8 install threading=multi link=shared 
 
 # Install GHC and cabal
@@ -80,8 +80,16 @@ RUN git clone https://github.com/DaMSL/libdynamic /software/libdynamic && \
     cd /software/libdynamic &&  \
     ./autogen.sh && ./configure --prefix=/usr && make && make install
 
+# Numa ctl
+RUN wget ftp://oss.sgi.com/www/projects/libnuma/download/numactl-2.0.10.tar.gz && \
+    tar -xvf numactl-2.0.10.tar.gz && \
+    cd numactl-2.0.10 && \
+    ./autogen.sh && \
+    ./configure && \
+    make && \
+    make install 
+
 # Clone K3, K3-Mosaic from Git
 RUN mkdir -p /k3/K3 /k3/K3-Mosaic && \
     git clone https://github.com/DaMSL/K3.git /k3/K3 && \
     git clone https://github.com/DaMSL/K3-Mosaic.git /k3/K3-Mosaic
-
