@@ -41,14 +41,9 @@ namespace YAML {
   };
 }
 
-#ifndef unit_t_hash_value
-#define unit_t_hash_value
-namespace K3 {
-  inline std::size_t hash_value(unit_t const&) {
-    return 0;
-  }
+inline std::size_t hash_value(unit_t const&) {
+  return 0;
 }
-#endif
 
 #ifndef K3_R_addr
 #define K3_R_addr
