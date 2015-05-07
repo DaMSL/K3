@@ -301,7 +301,7 @@ class StlDS {
     result = StlDS(*this);
     // move insert each element of the other.
     // this is okay since we are working with a copy
-    for (Elem &e : other.container) {
+    for (auto&& e : other.container) {
       result.insert(std::move(e));
     }
     return result;
@@ -613,12 +613,12 @@ class Set {
     return container.size();
   }
 
-  Set<Elem> combine(const Set<Elem> other) const {
+  Set<Elem> combine(Set<Elem> other) const {
     // copy this DS
     Set<Elem> result(*this);
     // move insert each element of the other.
     // this is okay since we are working with a copy
-    for (Elem &e : other.container) {
+    for (auto&& e : other.container) {
       result.insert(std::move(e));
     }
     return result;
@@ -931,7 +931,7 @@ class Sorted {
     result = Sorted<Elem>(*this);
     // move insert each element of the other.
     // this is okay since we are working with a copy
-    for (Elem &e : other.container) {
+    for (auto&& e : other.container) {
       result.insert(std::move(e));
     }
     return result;
