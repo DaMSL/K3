@@ -21,7 +21,7 @@ if [ ! -f "${ROOTPATH}/K3-Mosaic/tests/dbtoaster_release" ]; then
 fi
 
 # create the necessary files
-${ROOTPATH}/K3-Mosaic/tests/auto_test.py -d -f $1
+${ROOTPATH}/K3-Mosaic/tests/auto_test.py --no-interp --no-deletes -d -f $1
 
 # compile
 echo "${SCRIPTPATH}/../run/compile.sh -fstage cexclude=Decl-FT,Decl-FE temp/${K3NAME}"
