@@ -398,7 +398,6 @@ genCsvParser _ = error "Can't generate CsvParser. Only works for flat records an
 genCsvParserImpl :: K3 Type -> [K3 Type] -> (R.Expression -> Int -> R.Expression) -> CPPGenM R.Expression
 genCsvParserImpl elemType childTypes accessor = do
   et  <- genCType elemType
-  cts <- mapM genCType childTypes
   let fields = concatMap (uncurry readField) (zip childTypes [0,1..])
   return $ R.Lambda
                []
