@@ -28,6 +28,7 @@ executable k3
         ansi-wl-pprint,
         attoparsec,
         base,
+        bits,
         bytestring,
         Cabal,
         clock,
