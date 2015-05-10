@@ -93,9 +93,9 @@ st0 prog = do
 
   where puid = let UID i = maxProgramUID prog in i + 1
         mkEnv = do
-          lcenv <- lambdaClosures prog
-          let pe = Provenance.pienv0 lcenv
-          return (pe, SEffects.fienv0 (Provenance.ppenv pe) lcenv)
+          vpenv <- variablePositions prog
+          let pe = Provenance.pienv0 vpenv
+          return (pe, SEffects.fienv0 (Provenance.ppenv pe) $ lcenv vpenv)
 
 runTransformStM :: TransformSt -> TransformM a -> IO (Either String (a, TransformSt))
 runTransformStM st m = do
@@ -551,10 +551,10 @@ inferDeclTypes n = withTypeTransform $ \te p -> reinferProgDeclTypes te n p
 
 inferDeclEffects :: Maybe (SEffects.ExtInferF a, a) -> Identifier -> ProgramTransform
 inferDeclEffects extInfOpt n = withEffectTransform $ \pe fe p -> do
-  (nlc, _)   <- lambdaClosuresDecl n (Provenance.plcenv pe) p
-  let pe'     = pe {Provenance.plcenv = nlc}
-  (np,  npe) <- {-debugPretty ("Reinfer P\n" ++ show nlc) p $-} Provenance.reinferProgDeclProvenance pe' n p
-  let fe'     = fe {SEffects.fppenv = Provenance.ppenv npe, SEffects.flcenv = nlc}
+  (nvp, _)   <- variablePositionsDecl n (Provenance.pvpenv pe) p
+  let pe'     = pe {Provenance.pvpenv = nvp}
+  (np,  npe) <- {-debugPretty ("Reinfer P\n" ++ show nvp) p $-} Provenance.reinferProgDeclProvenance pe' n p
+  let fe'     = fe {SEffects.fppenv = Provenance.ppenv npe, SEffects.flcenv = lcenv nvp}
   (np', nfe) <- {-debugPretty "Reinfer F" fe' $-} SEffects.reinferProgDeclEffects extInfOpt fe' n np
   return (np', npe, nfe)
   where debugPretty tg a b = trace (T.unpack $ PT.boxToString $ [T.pack tg] PT.%$ PT.prettyLines a) b
