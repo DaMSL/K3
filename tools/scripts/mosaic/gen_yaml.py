@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 #
 # Create a yaml file for running a mosaic file
 # Note: *requires pyyaml*
@@ -34,11 +34,11 @@ def create_file(num_switches, num_nodes):
         peers2 += [entity(p[0], p[1], peers)]
 
     # dump out
-    print("---")
+    print "---"
     for i, p in enumerate(peers2):
         print(yaml.dump(p, default_flow_style=True))
         if i < len(peers2) - 1:
-            print("---")
+            print "---"
 
 def main():
     parser = argparse.ArgumentParser()
