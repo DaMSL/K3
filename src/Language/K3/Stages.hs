@@ -386,12 +386,9 @@ inferTypes prog = do
 inferEffects :: ProgramTransform
 inferEffects prog = do
   (p,  pienv) <- liftEitherM $ Provenance.inferProgramProvenance prog
-  void $ modify $ \st -> st {penv = pienv}
-  return (debugEffects "After effects" p)
-
-  -- (p', fienv) <- liftEitherM $ SEffects.inferProgramEffects Nothing (Provenance.ppenv pienv) (debugEffects "After provenance" p)
-  -- void $ modify $ \st -> st {penv = pienv, fenv = fienv}
-  -- return (debugEffects "After effects" p')
+  (p', fienv) <- liftEitherM $ SEffects.inferProgramEffects Nothing (Provenance.ppenv pienv) (debugEffects "After provenance" p)
+  void $ modify $ \st -> st {penv = pienv, fenv = fienv}
+  return (debugEffects "After effects" p')
 
   where debugEffects tg p = if True then p else flip trace p $ boxToString $ [tg] %$ prettyLines p
 
