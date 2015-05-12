@@ -398,9 +398,9 @@ chaseProvenance (tnc -> (PMaterialize _, [r])) = chaseProvenance r
 chaseProvenance p = return p
 
 -- Capture-avoiding substitution of any free variable with the given identifier.
-fisub :: FIEnv -> Maybe (ExtInferF a, a) -> Identifier -> K3 Effect -> K3 Effect -> K3 Provenance
+fisub :: FIEnv -> Maybe (ExtInferF a, a) -> Bool -> Identifier -> K3 Effect -> K3 Effect -> K3 Provenance
       -> Either Text (K3 Effect, FIEnv)
-fisub fienv extInfOpt i df sf p = do
+fisub fienv extInfOpt asStructure i df sf p = do
   (renv, _, rf) <- debugAcyclicSub fienv sf $ acyclicSub fienv emptyPtrSubs [] sf
   return (rf, renv)
 
@@ -540,10 +540,11 @@ simplifyApply fienv extInfOpt defer eOpt ef lrf arf = do
           Just (uid, p) -> do
             let (ifbv, neacc) = fifreshbp eacc i uid arf'
             imv  <- fmv ifbv
-            (nbef,n2eacc) <- fisub neacc  extInfOpt i ifbv bef p
-            (nbrf,n3eacc) <- fisub n2eacc extInfOpt i ifbv brf p
+            (nbef,n2eacc) <- fisub neacc  extInfOpt False i ifbv bef p
+            (nbrf,n3eacc) <- fisub n2eacc extInfOpt True  i ifbv brf p
             let appef = fromJust $ fexec $ ef ++ [Just nbef]
-            let apprf = fapply (Just imv) lrf arf (fromJust $ fexec ef) (fromJust $ fexec [Just nbef]) nbrf
+            --let apprf = fapply (Just imv) lrf arf (fromJust $ fexec ef) (fromJust $ fexec [Just nbef]) nbrf
+            let apprf = nbrf
             return (facc++[(appef, apprf)], n3eacc)
 
           Nothing -> do
@@ -551,10 +552,11 @@ simplifyApply fienv extInfOpt defer eOpt ef lrf arf = do
             -- of the argument effect structure without lifting.
             -- Also, we replace any provenance symbols for the argument with temporaries
             -- since we have no further information from effect signatures.
-            (nbef,neacc)  <- fisub eacc  extInfOpt i arf' bef ptemp
-            (nbrf,n2eacc) <- fisub neacc extInfOpt i arf' brf ptemp
+            (nbef,neacc)  <- fisub eacc  extInfOpt False i arf' bef ptemp
+            (nbrf,n2eacc) <- fisub neacc extInfOpt True  i arf' brf ptemp
             let appef = fromJust $ fexec $ ef ++ [Just nbef]
-            let apprf = fapply Nothing lrf arf (fromJust $ fexec ef) (fromJust $ fexec [Just nbef]) nbrf
+            --let apprf = fapply Nothing lrf arf (fromJust $ fexec ef) (fromJust $ fexec [Just nbef]) nbrf
+            let apprf = nbrf
             return (facc++[(appef,apprf)], n2eacc)
 
         -- Handle recursive functions and forward declarations by using an opaque return value.
@@ -692,8 +694,8 @@ fistoreaM n memF = get >>= liftEitherM . (\env -> fistorea env n memF) >>= put
 fichaseM :: K3 Effect -> FInfM (K3 Effect)
 fichaseM f = get >>= liftEitherM . flip fichase f
 
-fisubM :: Maybe (ExtInferF a, a) -> Identifier -> K3 Effect -> K3 Effect -> K3 Provenance -> FInfM (K3 Effect)
-fisubM extInfOpt i ref f p = get >>= liftEitherM . (\env -> fisub env extInfOpt i ref f p) >>= \(f', nenv) -> put nenv >> return f'
+fisubM :: Maybe (ExtInferF a, a) -> Bool -> Identifier -> K3 Effect -> K3 Effect -> K3 Provenance -> FInfM (K3 Effect)
+fisubM extInfOpt asStructure i ref f p = get >>= liftEitherM . (\env -> fisub env extInfOpt asStructure i ref f p) >>= \(f', nenv) -> put nenv >> return f'
 
 filkupppM :: Int -> FInfM (K3 Provenance)
 filkupppM n = get >>= liftEitherM . flip filkuppp n
@@ -787,9 +789,11 @@ inferProgramEffects extInfOpt ppenv prog =  do
 
     doInference p = do
       np   <- globalsEff p
-      np'  <- mapExpression (inferExprEffects extInfOpt) np
-      np'' <- simplifyProgramEffects np'
-      markGlobals np''
+      np'  <- inferWithSimplify np
+      markGlobals np'
+
+    inferPlain        np = mapExpression (inferExprEffects extInfOpt) np
+    inferWithSimplify np = inferPlain np >>= simplifyProgramEffects
 
     -- Globals cannot be captured in closures, so we elide them from the
     -- effect provenance bindings environment.
@@ -816,9 +820,12 @@ reinferProgDeclEffects extInfOpt env dn prog = runFInfES env inferNamedDecl
       present <- fimemeM n
       nd   <- if present then return d else initializeRcrDeclEffect d
       nd'  <- inferDeclEffect extInfOpt nd
-      ne   <- inferExprEffects extInfOpt e >>= simplifyExprEffects
+      ne   <- inferWithSimplify e
       nd'' <- rebuildDecl ne nd'
       markGlobalEffect nd''
+
+    inferPlain        e = inferExprEffects extInfOpt e
+    inferWithSimplify e = inferPlain e >>= simplifyExprEffects
 
     rebuildDecl e d@(tnc -> (DGlobal  n t (Just _), ch)) = return $ Node (DGlobal  n t (Just e) :@: annotations d) ch
     rebuildDecl e d@(tnc -> (DTrigger n t _, ch))        = return $ Node (DTrigger n t e        :@: annotations d) ch
@@ -954,10 +961,11 @@ inferEffects extInfOpt expr = do
       ef <- extInferM $ fread p'
       rt "var" False e mv (Just ef, f)
 
-    infer m (onSub -> (ef, mv)) rf e@(tag -> ESome)       = m >> rt "some"   False e mv (fexec ef, fdata Nothing    rf)
-    infer m (onSub -> (ef, mv)) rf e@(tag -> EIndirect)   = m >> rt "ind"    False e mv (fexec ef, fdata Nothing    rf)
-    infer m (onSub -> (ef, mv)) rf e@(tag -> ETuple)      = m >> rt "tuple"  False e mv (fexec ef, fdata Nothing    rf)
-    infer m (onSub -> (ef, mv)) rf e@(tag -> ERecord ids) = m >> rt "record" False e mv (fexec ef, fdata (Just ids) rf)
+    infer m (onSub -> (ef, mv)) rf e@(tag -> ESome)        = m >> rt "some"   False e mv (fexec ef,     fdata Nothing    rf)
+    infer m (onSub -> (ef, mv)) rf e@(tag -> EIndirect)    = m >> rt "ind"    False e mv (fexec ef,     fdata Nothing    rf)
+    infer m (onSub -> (_,  mv)) _  e@(tnc -> (ETuple, [])) = m >> rt "unit"   False e mv (Just $ fnone, fnone)
+    infer m (onSub -> (ef, mv)) rf e@(tag -> ETuple)       = m >> rt "tuple"  False e mv (fexec ef,     fdata Nothing    rf)
+    infer m (onSub -> (ef, mv)) rf e@(tag -> ERecord ids)  = m >> rt "record" False e mv (fexec ef,     fdata (Just ids) rf)
 
     infer m (onSub -> (ef, mv)) [rf] e@(tag -> ELambda i) = m >> do
       UID u    <- uidOf e
@@ -970,12 +978,12 @@ inferEffects extInfOpt expr = do
       (appef, apprf) <- simplifyApplyM extInfOpt False (Just e) ef lrf arf
       appmv <- pmvOf e
       let nmv = appmv ++ mv
-      pappef <- pruneAndSimplify False nmv $ Just appef
+      pappef <- pruneAndSimplify "appef" (Just $ PT.prettyLines lrf %$ PT.prettyLines arf) False nmv $ Just appef
       Just papprf <- simplifyAppCh mv $ Just apprf
       debugAppRF nmv apprf papprf $ rt "apply" True e nmv (pappef, papprf)
 
       where debugAppRF x a b c = if True then c else do
-              Just nb <- pruneAndSimplify True x $ Just b
+              Just nb <- pruneAndSimplify "apprf" Nothing True x $ Just b
               flip trace c (T.unpack $ PT.boxToString $ [T.pack "AppRF"]
                                                      %$ PT.prettyLines a
                                                      %$ PT.prettyLines b
@@ -1016,7 +1024,7 @@ inferEffects extInfOpt expr = do
       popVars i
       let nmv = smv ++ submv
       let nrf = fscope [mv] (fromJust $ fexec [initef]) (fromJust $ fexec [bef]) fnone rf
-      nef <- pruneAndSimplify False nmv $ fexec [initef, bef]
+      nef <- pruneAndSimplify "letef" Nothing False nmv $ fexec [initef, bef]
       rt "let-in" True e nmv (nef, nrf)
 
     infer m (onSub -> ([initef,bef], mv)) [_,rf] e@(tag -> EBindAs b) = m >> do
@@ -1029,7 +1037,7 @@ inferEffects extInfOpt expr = do
       let nbef = fromJust $ fexec [bef]
       npef <- mapM (liftEitherM . chaseProvenance) ps >>= mapM (extInferM . fwrite) >>= return . fseq
       let nrf  = fscope fmvs nief nbef npef rf
-      nef <- pruneAndSimplify False nmv $ fexec $ map Just [nief, nbef]
+      nef <- pruneAndSimplify "bindef" Nothing False nmv $ fexec $ map Just [nief, nbef]
       rt "bind-as" True e nmv (nef, nrf)
 
     infer m (onSub -> ([oef,sef,nef], mv)) [_,snf,rnf] e@(tag -> ECaseOf _) = m >> do
@@ -1039,7 +1047,7 @@ inferEffects extInfOpt expr = do
       let nbef = fset $ catMaybes [sef, nef]
       npef <- extInferM (fwrite $ pbvar cpmv) >>= \spf -> return (fset [spf, fnone])
       let nrf  = fscope [cfmv] nief nbef npef (fset [snf, rnf])
-      nsef <- pruneAndSimplify False nmv sef
+      nsef <- pruneAndSimplify "casesef" Nothing False nmv sef
       let nef' = fexec $ map Just [nief, fset [maybe fnone id nsef, maybe fnone id nef]]
       rt "case-of" True e nmv (nef', nrf)
 
@@ -1051,7 +1059,7 @@ inferEffects extInfOpt expr = do
     rt tg prune e mv r = fiextmM e (maybe fnone id $ fst r) (snd r) >> rtp tg prune mv r
     rtp tg prune mv r = do
       let r' = Just $ snd r
-      Just nr <- if prune then pruneAndSimplify True mv r' else return r'
+      Just nr <- if prune then pruneAndSimplify "rtsf" Nothing True mv r' else return r'
       return (tg, ((fst r, mv), nr))
 
     onSub efmv = let (x,y) = unzip efmv in (x, foldl union [] y)
@@ -1111,9 +1119,9 @@ inferEffects extInfOpt expr = do
 
     -- Simlutaneously removes any effects on the given provenance symbols,
     -- and reduces effect structures
-    pruneAndSimplify :: Bool -> [PMatVar] -> Maybe (K3 Effect) -> FInfM (Maybe (K3 Effect))
-    pruneAndSimplify _ _ Nothing = return Nothing
-    pruneAndSimplify asStructure pmvl (Just pf) = transform asStructure pmvl pf >>= return . Just
+    pruneAndSimplify :: Identifier -> Maybe [Text] -> Bool -> [PMatVar] -> Maybe (K3 Effect) -> FInfM (Maybe (K3 Effect))
+    pruneAndSimplify _ _ _ _ Nothing = return Nothing
+    pruneAndSimplify ptag errExtra asStructure pmvl (Just pf) = transform asStructure pmvl pf >>= return . Just
       where transform False mvl (tag -> FRead  (tag -> PBVar mv')) | mv' `elem` mvl = return fnone
             transform False mvl (tag -> FWrite (tag -> PBVar mv')) | mv' `elem` mvl = return fnone
 
@@ -1193,8 +1201,9 @@ inferEffects extInfOpt expr = do
                                     %$ PT.prettyLines f
                                     %$ [T.pack "applied on:"]
                                     %$ PT.prettyLines pf
+                                    %$ (maybe [] id errExtra)
 
-            errmsg s = "Invalid pruneAndSimplify (asStructure=" ++ show s ++ "): "
+            errmsg s = "Invalid pruneAndSimplify ("++ ptag ++ ", asStructure=" ++ show s ++ "): "
 
     simplifyAppCh :: [PMatVar] -> Maybe (K3 Effect) -> FInfM (Maybe (K3 Effect))
     simplifyAppCh _ Nothing = return Nothing
@@ -1204,7 +1213,7 @@ inferEffects extInfOpt expr = do
                           (FApply _, ch@[lf, af, ief, bef, sf]) -> Just $ zip [True, True, False, False, True] ch
                           (FApply _, ch@[lf, af]) -> Just $ zip [True, True] ch
                           _ -> Nothing
-      nchOpt <- maybe (return origChOpt) (mapM (\(s,c) -> pruneAndSimplify s pmvl $ Just c)) chStructure
+      nchOpt <- maybe (return origChOpt) (mapM (\(s,c) -> pruneAndSimplify "appchsf" Nothing s pmvl $ Just c)) chStructure
       return $ Just $ replaceCh pf $ catMaybes nchOpt
 
     fmv (tag -> FBVar mv) = return mv
@@ -1283,8 +1292,8 @@ collectionMemberEffect extInfOpt i ef sf esrc t psrc =
   let annIds = namedTAnnotations $ annotations t in do
     memsEnv <- mapM filkupasM annIds >>= return . BEnv.unions
     (mrf, lifted) <- liftEitherM $ BEnv.lookup memsEnv i
-    mrfs  <- fisubM extInfOpt "self" sf mrf psrc
-    mrfsc <- fisubM extInfOpt "content" fnone mrfs ptemp
+    mrfs  <- fisubM extInfOpt True "self" sf mrf psrc
+    mrfsc <- fisubM extInfOpt True "content" fnone mrfs ptemp
     if not lifted then attrErr else return $ (Just $ fseq $ catMaybes ef, mrfsc)
 
   where
@@ -1296,7 +1305,6 @@ collectionMemberEffect extInfOpt i ef sf esrc t psrc =
 --   deferred body effects, as well as their effect structure.
 simplifyEffects :: Bool -> K3 Effect -> FInfM (K3 Effect)
 simplifyEffects removeTopLevel f =
-  --modifyTree simplify f
   biFoldRebuildTree remove simplify removeTopLevel () f >>= return . snd
   where
     remove rm    (tag -> FScope _)  = return (rm, [True, True, True, False])
