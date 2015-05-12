@@ -599,16 +599,19 @@ simplifyApply pienv eOpt lp argp lti argti = do
               neacc' <- piextt neacc argti' ip argp'
               bti <- bodyTi lp' lti'
               ((rp, rip, rti), reacc) <- pisub neacc' i ip argp' bp argti' bti
-              let mkapp p = papply (Just imv) lp argp p
-              let rti' = tinode (rootbv $ rti) [lti, argti, rti]
+              --let mkapp p = papply (Just imv) lp argp p
+              --let rti' = tinode (rootbv $ rti) [lti, argti, rti]
+              let mkapp p = pmaterialize [imv] p
+              let rti' = tinode (rootbv $ rti) [rti]
               return (chacc ++ [(mkapp rp, mkapp rip, rti')], reacc)
 
             Nothing -> do
               bti <- bodyTi lp' lti'
               ((rp, rip, rti), reacc) <- pisub eacc i argp' argp' bp argti' bti
-              let mkapp p = papply Nothing lp argp p
-              let rti' = tinode (rootbv $ rti) [lti, argti, rti]
-              return (chacc ++ [(mkapp rp, mkapp rip, rti')], reacc)
+              --let mkapp p = papply Nothing lp argp p
+              --let rti' = tinode (rootbv $ rti) [lti, argti, rti]
+              let mkapp p = p
+              return (chacc ++ [(mkapp rp, mkapp rip, rti)], reacc)
 
         -- Handle recursive functions, and forward declarations
         -- by using an opaque return value.
@@ -876,10 +879,12 @@ inferProgramProvenance prog = do
     liftEitherTM = either (Left . T.unpack) Right
 
     doInference p = do
-      np   <- globalsProv p
-      np'  <- mapExpression inferExprProvenance np
-      np'' <- simplifyProgramProvenance np'
-      markAllGlobals np''
+      np  <- globalsProv p
+      np' <- inferPlain np
+      markAllGlobals np'
+
+    inferPlain        np = mapExpression inferExprProvenance np
+    inferWithSimplify np = inferPlain np >>= simplifyProgramProvenance
 
     globalsProv :: K3 Declaration -> PInfM (K3 Declaration)
     globalsProv p = inferAllRcrDecls p >>= inferAllDecls
@@ -903,9 +908,12 @@ reinferProgDeclProvenance env dn prog = runPInfES env inferNamedDecl
       present <- pimemeM n
       nd   <- if present then return d else initializeRcrDeclProv d
       nd'  <- inferDeclProv nd
-      ne   <- inferExprProvenance e >>= simplifyExprProvenance
+      ne   <- inferPlain e
       nd'' <- rebuildDecl ne nd'
       markGlobalProv nd''
+
+    inferPlain        e = inferExprProvenance e
+    inferWithSimplify e = inferPlain e >>= simplifyExprProvenance
 
     rebuildDecl e d@(tnc -> (DGlobal  n t (Just _), ch)) = return $ Node (DGlobal  n t (Just e) :@: annotations d) ch
     rebuildDecl e d@(tnc -> (DTrigger n t _, ch))        = return $ Node (DTrigger n t e        :@: annotations d) ch
@@ -1160,23 +1168,6 @@ inferProvenance expr = do
             debugPrune ti p v = flip trace v $ T.unpack $ PT.boxToString
                                   $ [T.pack "indexMapRebuildTree prune"]
                                   %$ PT.prettyLines ti %$ PT.prettyLines p
-
-    {-
-    opruneEscapes :: [PMatVar] -> K3 Provenance -> PInfM (K3 Provenance)
-    opruneEscapes mvl p = modifyTree prune p
-      where prune p@(tag -> PBVar pmv) | pmv `elem` mvl = do
-              p' <- pichaseM p
-              if p == p' then return p else opruneEscapes mvl p'
-            prune p = return p
-
-    opruneApplyCh :: K3 Provenance -> PInfM (K3 Provenance)
-    opruneApplyCh (tnc -> (PApply (Just pmv), [f, a, r])) = do
-      nr <- opruneEscapes [pmv] r
-      return $ papply (Just pmv) f a nr
-
-    opruneApplyCh (tnc -> (PSet, ch)) = mapM opruneApplyCh ch >>= return . pset
-    opruneApplyCh p = return p
-    -}
 
     {- TrIndex helpers -}
     constti varSz = return . tileaf $ zerobv varSz

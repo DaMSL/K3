@@ -169,9 +169,7 @@ mapTree f n@(Node _ ch) = mapM (mapTree f) ch >>= flip f n
 --   The children of a node are pre-transformed recursively
 modifyTree :: (Monad m) => (Tree a -> m (Tree a)) -> Tree a -> m (Tree a)
 modifyTree f n@(Node _ []) = f n
-modifyTree f   (Node x ch) = do
-   ch' <- mapM (modifyTree f) ch
-   f (Node x ch')
+modifyTree f n@(Node x ch) = mapM (modifyTree f) ch >>= f . replaceCh n
 
 -- | Map an accumulator over a tree, recurring independently over each child.
 --   The result is produced by transforming independent subresults in bottom-up fashion.
