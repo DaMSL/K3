@@ -1177,10 +1177,12 @@ inferProvenance expr = do
     varti su (tag -> PFVar n) = svarti su n
     varti _ p = vartiKindErr p
 
-    svarti su n = pilkupscM su >>= \idxsc ->
-      case n `elemIndex` (scids idxsc)  of
-        Just i -> return . tileaf $ singbv i $ scsz idxsc
-        Nothing -> return . tileaf $ zerobv $ scsz idxsc
+    svarti su n
+      | su < 0 = return emptyti
+      | otherwise = pilkupscM su >>= \idxsc ->
+          case n `elemIndex` (scids idxsc)  of
+            Just i -> return . tileaf $ singbv i $ scsz idxsc
+            Nothing -> return . tileaf $ zerobv $ scsz idxsc
 
     uidOf  e = maybe (uidErr e) (\case {(EUID u) -> return u ; _ ->  uidErr e}) $ e @~ isEUID
     uidErr e = errorM $ PT.boxToString $ [T.pack "No uid found for pexprinf on "] %+ PT.prettyLines e
