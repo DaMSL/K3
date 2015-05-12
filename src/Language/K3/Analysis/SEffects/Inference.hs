@@ -401,25 +401,25 @@ chaseProvenance p = return p
 fisub :: FIEnv -> Maybe (ExtInferF a, a) -> Bool -> Identifier -> K3 Effect -> K3 Effect -> K3 Provenance
       -> Either Text (K3 Effect, FIEnv)
 fisub fienv extInfOpt asStructure i df sf p = do
-  (renv, _, rf) <- debugAcyclicSub fienv sf $ acyclicSub fienv emptyPtrSubs [] sf
+  (renv, _, rf) <- debugAcyclicSub fienv sf $ acyclicSub fienv asStructure emptyPtrSubs [] sf
   return (rf, renv)
 
   where
     extInferM env f = maybe (return f) (\(infF, infSt) -> return $ infF f infSt env) extInfOpt
 
-    acyclicSub env subs _ (tag -> FFVar j) | i == j = return (env, subs, df)
+    acyclicSub env _ subs _ (tag -> FFVar j) | i == j = return (env, subs, df)
 
-    acyclicSub env subs path f@(tag -> FBVar mv@(fmvptr -> j))
+    acyclicSub env asStruc subs path f@(tag -> FBVar mv@(fmvptr -> j))
       | j `elem` path   = return (env, subs, f)
       | isPtrSub subs j = getPtrSub subs j >>= return . (env, subs,)
-      | otherwise       = filkupp fienv j >>= subPtrIfDifferent env subs (j:path) mv
+      | otherwise       = filkupp fienv j >>= subPtrIfDifferent env asStruc subs (j:path) mv
 
-    acyclicSub env subs _ (tag -> FRead (tag -> PFVar j)) | j == i = do
+    acyclicSub env _ subs _ (tag -> FRead (tag -> PFVar j)) | j == i = do
       p' <- chaseProvenance p
       f' <- extInferM env $ fread p'
       return (env, subs, f')
 
-    acyclicSub env subs _ (tag -> FWrite (tag -> PFVar j)) | j == i = do
+    acyclicSub env _ subs _ (tag -> FWrite (tag -> PFVar j)) | j == i = do
       p' <- chaseProvenance p
       f' <- extInferM env $ fwrite p'
       return (env, subs, f')
@@ -427,19 +427,19 @@ fisub fienv extInfOpt asStructure i df sf p = do
     -- TODO: we can short-circuit descending into the body if we
     -- are willing to stash the expression uid in a PLambda, using
     -- this uid to lookup i's presence in our precomputed closures.
-    acyclicSub env subs _ f@(tag -> FLambda j) | i == j = return (env, subs, f)
+    acyclicSub env _ subs _ f@(tag -> FLambda j) | i == j = return (env, subs, f)
 
     -- Avoid descent into materialization points of shadowed variables.
-    acyclicSub env subs _ f@(tag -> FScope mvs) | i `elem` map fmvn mvs = return (env, subs, f)
+    acyclicSub env _ subs _ f@(tag -> FScope mvs) | i `elem` map fmvn mvs = return (env, subs, f)
 
     -- Handle higher-order function application (two-place FApply nodes) where a FFVar
     -- in the lambda position is replaced by a FLambda
-    acyclicSub env subs path f@(tnc -> (FApply Nothing, [lrf@(tag -> FFVar _), argrf])) = do
-      (nenv,nsubs,nch) <- foldM (rcr path) (env, subs, []) [lrf, argrf]
+    acyclicSub env asStructure subs path f@(tnc -> (FApply Nothing, [lrf@(tag -> FFVar _), argrf])) = do
+      (nenv,nsubs,nch) <- foldM (rcr path) (env, subs, []) [(lrf, True), (argrf, True)]
       case nch of
         [lrf', argrf'] -> do
           (nef, nrf, nenv') <- simplifyApply nenv extInfOpt True Nothing [] lrf' argrf'
-          return $ debugFFApp lrf argrf lrf' argrf' nef nrf $ (nenv', nsubs, nrf)
+          return $ debugFFApp lrf argrf lrf' argrf' nef nrf $ (nenv', nsubs, if asStructure then nrf else nef)
         _ -> appSubErr f
 
       where
@@ -453,14 +453,24 @@ fisub fienv extInfOpt asStructure i df sf p = do
                                 %$ PT.prettyLines f)
 
 
-    acyclicSub env subs path n@(Node _ ch) = do
-      (nenv,nsubs,nch) <- foldM (rcr path) (env, subs, []) ch
+    acyclicSub env asStruc subs path n@(Node _ ch) = do
+      (nenv,nsubs,nch) <- foldM (rcr path) (env, subs, []) $ zip ch $ subAsStructure asStruc n
       return (nenv, nsubs, replaceCh n nch)
 
-    rcr path (eacc,sacc,chacc) c = acyclicSub eacc sacc path c >>= \(e,s,nc) -> return (e,s,chacc++[nc])
+    rcr path (eacc,sacc,chacc) (c, asStruc) = acyclicSub eacc asStruc sacc path c >>= \(e,s,nc) -> return (e,s,chacc++[nc])
 
-    subPtrIfDifferent env subs path mv f = do
-      (nenv, nsubs, nf) <- acyclicSub env subs path f
+    subAsStructure _ f@(tnc -> (FData _, ch))           = replicate (length ch) True
+    subAsStructure _ f@(tnc -> (FScope _, [a,b,c,d]))   = [False, False, False, True]
+    subAsStructure _ f@(tnc -> (FLambda _, [a,b,c]))    = [False, False, True]
+    subAsStructure _ f@(tnc -> (FApply Nothing, [a,b])) = [True, True]
+    subAsStructure _ f@(tnc -> (FApply _, [a,b,c,d,e])) = [True, True, False, False, True]
+    subAsStructure s f@(tnc -> (FSet, ch))              = replicate (length ch) s
+    subAsStructure _ f@(tnc -> (FSeq, ch))              = replicate (length ch) False
+    subAsStructure _ f@(tnc -> (FLoop, ch))             = replicate (length ch) False
+    subAsStructure _ _ = []
+
+    subPtrIfDifferent env asStruc subs path mv f = do
+      (nenv, nsubs, nf) <- acyclicSub env asStruc subs path f
       if f == nf then return (nenv, nsubs, fbvar mv) else addPtrSub nenv nsubs mv nf
 
     -- Pointer substitutions, as a map of old PPtr => new PMatVar
@@ -789,7 +799,7 @@ inferProgramEffects extInfOpt ppenv prog =  do
 
     doInference p = do
       np   <- globalsEff p
-      np'  <- inferWithSimplify np
+      np'  <- inferPlain np {- inferWithSimplify np -}
       markGlobals np'
 
     inferPlain        np = mapExpression (inferExprEffects extInfOpt) np
@@ -820,7 +830,7 @@ reinferProgDeclEffects extInfOpt env dn prog = runFInfES env inferNamedDecl
       present <- fimemeM n
       nd   <- if present then return d else initializeRcrDeclEffect d
       nd'  <- inferDeclEffect extInfOpt nd
-      ne   <- inferWithSimplify e
+      ne   <- inferPlain e {- inferWithSimplify e -}
       nd'' <- rebuildDecl ne nd'
       markGlobalEffect nd''
 
