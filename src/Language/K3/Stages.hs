@@ -1,6 +1,9 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DoAndIfThenElse #-}
+{-# LANGUAGE NoMonoLocalBinds #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 
 -- | High-level API to K3 toolchain stages.
@@ -632,7 +635,8 @@ declTransforms stSpec extInfOpt n = topLevel
     mkDebug asDebug (i,tr) = mkSS $ (i,) $ (if asDebug then debugPass i else id) tr
 
     -- Pass filtering
-    fPf f = maybe id (\l -> filter (\x -> (f x) `notElem` l)) $ passesToFilter stSpec
+    fPf :: (a -> Identifier) -> [a] -> [a]
+    fPf f = maybe (id) (\l -> filter (\x -> (f x) `notElem` l)) $ passesToFilter stSpec
     fP    = fPf id
 
     -- Fixpoint pass construction

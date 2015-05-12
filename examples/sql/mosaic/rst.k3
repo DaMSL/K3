@@ -29,6 +29,9 @@ declare g_max_vid : { key:int, value:int } = {key:get_max_int (),
   value:get_max_int ()}
 
 
+declare g_start_vid : { key:int, value:int } = {key:0, value:1}
+
+
 declare job_master : int = 0
 
 
@@ -82,8 +85,8 @@ declare map_ids : collection { r1:int, r2:string, r3:int } @ { Collection } =
 declare trig_ids : collection { r1:int, r2:string,
   r3:collection {i:int} @ { Seq } } @ { Collection } = {| r1:int, r2:string,
   r3:collection {i:int} @ { Seq } | {r1:4, r2:"sw_insert_R", r3:{|i:int| 1,
-  2|} @ { Seq }}, {r1:2, r2:"sw_insert_S", r3:{|i:int| 1, 2|} @ { Seq }},
-  {r1:0, r2:"sw_insert_T", r3:{|i:int| 1, 2|} @ { Seq }}|} @ { Collection }
+  2|} @ { Seq }}, {r1:2, r2:"sw_insert_S", r3:{|i:int| 3, 4|} @ { Seq }},
+  {r1:0, r2:"sw_insert_T", r3:{|i:int| 5, 6|} @ { Seq }}|} @ { Collection }
 
 
 declare nd_stmt_cntrs : collection { key:{ key:{ key:int, value:int },
@@ -92,7 +95,7 @@ declare nd_stmt_cntrs : collection { key:{ key:{ key:int, value:int },
 
 
 declare nd_log_master : collection { key:{ key:int, value:int }, value:int
-  } @ { Map }
+  } @ { Set }
 
 
 declare nd_state_normal : int = 0
@@ -153,153 +156,153 @@ declare nd_log_insert_R : collection { key:{ key:int, value:int }, value:{
 
 
 declare ATIMESD : ind collection { key:{ key:int, value:int }, value:int
-  } @ { Collection } = ind {| key:{ key:int, value:int }, value:int |
-  {key:g_init_vid, value:0}|} @ { Collection }
+  } @ { Set } = ind {| key:{ key:int, value:int }, value:int | {key:g_init_vid,
+  value:0}|} @ { Set }
 
 
 declare ATIMESD_mT1 : ind collection { r1:{ key:int, value:int }, r2:int,
-  r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int }, r2:int,
-  r3:int } @ { Collection }
+  r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int, r3:int
+  } @ { Set }
 
 
 declare ATIMESD_mT1_mR1 : ind collection { r1:{ key:int, value:int }, r2:int,
-  r3:int, r4:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int, r4:int } @ { Collection }
+  r3:int, r4:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int, r4:int } @ { Set }
 
 
 declare ATIMESD_mS1 : ind collection { r1:{ key:int, value:int }, r2:int,
-  r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int }, r2:int,
-  r3:int } @ { Collection }
+  r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int, r3:int
+  } @ { Set }
 
 
 declare ATIMESD_mS2 : ind collection { r1:{ key:int, value:int }, r2:int,
-  r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int }, r2:int,
-  r3:int } @ { Collection }
+  r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int, r3:int
+  } @ { Set }
 
 
 declare ATIMESD_mR1 : ind collection { r1:{ key:int, value:int }, r2:int,
-  r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int }, r2:int,
-  r3:int } @ { Collection }
+  r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int, r3:int
+  } @ { Set }
 
 
 declare map_ATIMESD_mT1_s0_buf : ind collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection }
+  r2:int, r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Set }
 
 
 declare map_ATIMESD_mT1_mR1_s2_buf : ind collection { r1:{ key:int, value:int
-  }, r2:int, r3:int, r4:int } @ { Collection } = ind empty { r1:{ key:int,
-  value:int }, r2:int, r3:int, r4:int } @ { Collection }
+  }, r2:int, r3:int, r4:int } @ { Set } = ind empty { r1:{ key:int, value:int
+  }, r2:int, r3:int, r4:int } @ { Set }
 
 
 declare map_ATIMESD_mT1_s3_buf : ind collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection }
+  r2:int, r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Set }
 
 
 declare map_ATIMESD_mT1_mR1_s5_buf : ind collection { r1:{ key:int, value:int
-  }, r2:int, r3:int, r4:int } @ { Collection } = ind empty { r1:{ key:int,
-  value:int }, r2:int, r3:int, r4:int } @ { Collection }
+  }, r2:int, r3:int, r4:int } @ { Set } = ind empty { r1:{ key:int, value:int
+  }, r2:int, r3:int, r4:int } @ { Set }
 
 
 declare map_ATIMESD_mS1_s6_buf : ind collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection }
+  r2:int, r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Set }
 
 
 declare map_ATIMESD_mS2_s6_buf : ind collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection }
+  r2:int, r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Set }
 
 
 declare map_ATIMESD_mS1_s7_buf : ind collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection }
+  r2:int, r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Set }
 
 
 declare map_ATIMESD_mS2_s9_buf : ind collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection }
+  r2:int, r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Set }
 
 
 declare map_ATIMESD_mS1_s10_buf : ind collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection }
+  r2:int, r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Set }
 
 
 declare map_ATIMESD_mS2_s10_buf : ind collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection }
+  r2:int, r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Set }
 
 
 declare map_ATIMESD_mS1_s11_buf : ind collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection }
+  r2:int, r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Set }
 
 
 declare map_ATIMESD_mS2_s13_buf : ind collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection }
+  r2:int, r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Set }
 
 
 declare map_ATIMESD_mR1_s14_buf : ind collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection }
+  r2:int, r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Set }
 
 
 declare map_ATIMESD_mT1_mR1_s15_buf : ind collection { r1:{ key:int, value:int
-  }, r2:int, r3:int, r4:int } @ { Collection } = ind empty { r1:{ key:int,
-  value:int }, r2:int, r3:int, r4:int } @ { Collection }
+  }, r2:int, r3:int, r4:int } @ { Set } = ind empty { r1:{ key:int, value:int
+  }, r2:int, r3:int, r4:int } @ { Set }
 
 
 declare map_ATIMESD_mR1_s17_buf : ind collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection }
+  r2:int, r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Set }
 
 
 declare map_ATIMESD_mT1_mR1_s18_buf : ind collection { r1:{ key:int, value:int
-  }, r2:int, r3:int, r4:int } @ { Collection } = ind empty { r1:{ key:int,
-  value:int }, r2:int, r3:int, r4:int } @ { Collection }
+  }, r2:int, r3:int, r4:int } @ { Set } = ind empty { r1:{ key:int, value:int
+  }, r2:int, r3:int, r4:int } @ { Set }
 
 
 declare map_ATIMESD_mS2_s24_buf : ind collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection }
+  r2:int, r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Set }
 
 
 declare map_ATIMESD_mS2_s26_buf : ind collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection }
+  r2:int, r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Set }
 
 
 declare map_ATIMESD_mS1_s28_buf : ind collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection }
+  r2:int, r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Set }
 
 
 declare map_ATIMESD_mS1_s30_buf : ind collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection }
+  r2:int, r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Set }
 
 
 declare map_ATIMESD_mS2_s32_buf : ind collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection }
+  r2:int, r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Set }
 
 
 declare map_ATIMESD_mS2_s34_buf : ind collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection }
+  r2:int, r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Set }
 
 
 declare map_ATIMESD_mS1_s36_buf : ind collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection }
+  r2:int, r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Set }
 
 
 declare map_ATIMESD_mS1_s38_buf : ind collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } = ind empty { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection }
+  r2:int, r3:int } @ { Set } = ind empty { r1:{ key:int, value:int }, r2:int,
+  r3:int } @ { Set }
 
 
 declare tm_timer_list : mut collection { r1:int, r2:int, r3:address } @ { Seq }
@@ -405,7 +408,7 @@ declare nd_log_get_bound_insert_R : { key:int, value:int } -> { key:int,
 
 
 declare nd_log_read_geq : { key:int, value:int } -> collection { key:{ key:int,
-  value:int }, value:int } @ { Map } = (\vid2 -> nd_log_master.filter ((\b1 ->
+  value:int }, value:int } @ { Set } = (\vid2 -> nd_log_master.filter ((\b1 ->
   bind b1 as {key:vid, value:stmt_id} in vid >= vid2)))
 
 
@@ -422,6 +425,16 @@ declare nd_check_stmt_cntr_index : { r1:{ key:int, value:int }, r2:int, r3:int
                         value:{key:add_to_count, value:empty { key:int,
                         value:int } @ { Map }}};
                         false)})
+
+
+declare nd_complete_stmt_cntr_check : { key:{ key:int, value:int }, value:int
+  } -> () = (\b1 -> bind b1 as {key:vid, value:stmt_id} in 
+  ((case ((nd_stmt_cntrs.filter ((\b1 -> bind b1 as {key:key, value:value} in 
+   key == {key:vid, value:stmt_id}))).peek ()) of
+   {Some lookup_data -> nd_stmt_cntrs.erase lookup_data}{None -> ()});
+   (if nd_state == nd_state_done
+   then if 0 == nd_stmt_cntrs.size ()
+     then (ms_rcv_node_done, master_addr)<- true else () else ())))
 
 
 declare nd_update_stmt_cntr_corr_map : { r1:{ key:int, value:int }, r2:int,
@@ -448,7 +461,7 @@ declare nd_update_stmt_cntr_corr_map : { r1:{ key:int, value:int }, r2:int,
       {key:(lkup.value).key, value:sc_corr_map})}}{None ->
                                                     error
                                                       (print
-                                                         "nd_rcv_corr_done: missing stmt_cntrs value")})))
+                                                         "nd_update_stmt_cntr_corr_map: missing stmt_cntrs value")})))
 
 
 declare nd_filter_corrective_list : { key:{ key:int, value:int },
@@ -493,29 +506,29 @@ declare get_ring_node : { key:int, value:int } -> address = (\b1 ->
 
 
 declare frontier_int_int : { key:{ key:int, value:int }, value:collection {
-  r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection }
-  } -> collection { r1:{ key:int, value:int }, r2:int, r3:int
-  } @ { Collection } = (\b1 -> bind b1 as {key:vid, value:input_map} in 
-  (input_map.groupBy ((\b1 -> bind b1 as {r1:map_vid, r2:map_0, r3:map_val} in 
-  map_0)) ((\b2 -> (\b5 -> bind b2 as {key:acc, value:max_vid} in 
-  bind b5 as {r1:map_vid, r2:map_0, r3:map_val} in if map_vid < vid
+  r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } } -> collection { r1:{
+  key:int, value:int }, r2:int, r3:int } @ { Set } = (\b1 ->
+  bind b1 as {key:vid, value:input_map} in (input_map.groupBy ((\b1 ->
+  bind b1 as {r1:map_vid, r2:map_0, r3:map_val} in map_0)) ((\b2 -> (\b5 ->
+  bind b2 as {key:acc, value:max_vid} in bind b5 as {r1:map_vid, r2:map_0,
+  r3:map_val} in if map_vid < vid
   then if map_vid == max_vid
     then
       (acc.insert {r1:map_vid, r2:map_0, r3:map_val};{key:acc, value:max_vid})
     else if map_vid > max_vid
       then {key:{| r1:{ key:int, value:int }, r2:int, r3:int | {r1:map_vid,
-        r2:map_0, r3:map_val}|} @ { Collection }, value:map_vid}
+        r2:map_0, r3:map_val}|} @ { Set }, value:map_vid}
       else {key:acc, value:max_vid} else {key:acc, value:max_vid})))
-  {key:empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection },
+  {key:empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set },
   value:g_min_vid}).fold ((\_accext -> (\b3 -> bind b3 as {value:b4} in 
   bind b4 as {key:project} in _accext.combine project))) empty { r1:{ key:int,
-  value:int }, r2:int, r3:int } @ { Collection })
+  value:int }, r2:int, r3:int } @ { Set })
 
 
 declare frontier_int_int_int : { key:{ key:int, value:int }, value:collection {
-  r1:{ key:int, value:int }, r2:int, r3:int, r4:int } @ { Collection }
+  r1:{ key:int, value:int }, r2:int, r3:int, r4:int } @ { Set }
   } -> collection { r1:{ key:int, value:int }, r2:int, r3:int, r4:int
-  } @ { Collection } = (\b1 -> bind b1 as {key:vid, value:input_map} in 
+  } @ { Set } = (\b1 -> bind b1 as {key:vid, value:input_map} in 
   (input_map.groupBy ((\b1 -> bind b1 as {r1:map_vid, r2:map_0, r3:map_1,
   r4:map_val} in {key:map_0, value:map_1})) ((\b2 -> (\b5 ->
   bind b2 as {key:acc, value:max_vid} in bind b5 as {r1:map_vid, r2:map_0,
@@ -526,34 +539,33 @@ declare frontier_int_int_int : { key:{ key:int, value:int }, value:collection {
        {key:acc, value:max_vid})
     else if map_vid > max_vid
       then {key:{| r1:{ key:int, value:int }, r2:int, r3:int, r4:int |
-        {r1:map_vid, r2:map_0, r3:map_1, r4:map_val}|} @ { Collection },
+        {r1:map_vid, r2:map_0, r3:map_1, r4:map_val}|} @ { Set },
         value:map_vid} else {key:acc, value:max_vid}
   else {key:acc, value:max_vid}))) {key:empty { r1:{ key:int, value:int },
-  r2:int, r3:int, r4:int } @ { Collection }, value:g_min_vid}).fold
-  ((\_accext -> (\b3 -> bind b3 as {value:b4} in bind b4 as {key:project} in 
-  _accext.combine project))) empty { r1:{ key:int, value:int }, r2:int, r3:int,
-  r4:int } @ { Collection })
+  r2:int, r3:int, r4:int } @ { Set }, value:g_min_vid}).fold ((\_accext ->
+  (\b3 -> bind b3 as {value:b4} in bind b4 as {key:project} in _accext.combine
+  project))) empty { r1:{ key:int, value:int }, r2:int, r3:int, r4:int
+  } @ { Set })
 
 
 declare frontier_int : { key:{ key:int, value:int }, value:collection { key:{
-  key:int, value:int }, value:int } @ { Collection } } -> collection { key:{
-  key:int, value:int }, value:int } @ { Collection } = (\b1 ->
-  bind b1 as {key:vid, value:input_map} in (input_map.fold ((\b2 -> (\b5 ->
-  bind b2 as {key:acc, value:max_vid} in bind b5 as {key:map_vid,
-  value:map_val} in if map_vid < vid
+  key:int, value:int }, value:int } @ { Set } } -> collection { key:{ key:int,
+  value:int }, value:int } @ { Set } = (\b1 -> bind b1 as {key:vid,
+  value:input_map} in (input_map.fold ((\b2 -> (\b5 -> bind b2 as {key:acc,
+  value:max_vid} in bind b5 as {key:map_vid, value:map_val} in if map_vid < vid
   then if map_vid == max_vid
     then (acc.insert {key:map_vid, value:map_val};{key:acc, value:max_vid})
     else if map_vid > max_vid
       then {key:{| key:{ key:int, value:int }, value:int | {key:map_vid,
-        value:map_val}|} @ { Collection }, value:map_vid}
+        value:map_val}|} @ { Set }, value:map_vid}
       else {key:acc, value:max_vid} else {key:acc, value:max_vid})))
-  {key:empty { key:{ key:int, value:int }, value:int } @ { Collection },
+  {key:empty { key:{ key:int, value:int }, value:int } @ { Set },
   value:g_min_vid}).key)
 
 
 declare nd_add_delta_to_int_int : { r1:ind collection { r1:{ key:int, value:int
-  }, r2:int, r3:int } @ { Collection }, r2:bool, r3:{ key:int, value:int },
-  r4:collection { key:int, value:int } @ { Collection } } -> () = (\b1 ->
+  }, r2:int, r3:int } @ { Set }, r2:bool, r3:{ key:int, value:int },
+  r4:collection { key:int, value:int } @ { Set } } -> () = (\b1 ->
   bind b1 as {r1:target_map, r2:corrective, r3:min_vid, r4:delta_tuples} in 
   (delta_tuples.iterate ((\b1 -> bind b1 as {key:map_0, value:map_val} in bind
    target_map as ind target_map_d in
@@ -561,11 +573,10 @@ declare nd_add_delta_to_int_int : { r1:ind collection { r1:{ key:int, value:int
      if corrective
        then target_map_d.filter ((\b1 -> bind b1 as {r1:r1, r2:r2, r3:r3} in r1
          == min_vid and r2 == map_0))
-       else empty { r1:{ key:int, value:int }, r2:int, r3:int
-         } @ { Collection } in
+       else empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
      case (lookup_value.peek ()) of
        {Some val -> let update_value = map_val + val.r3 in
-         target_map_d.insert {r1:min_vid, r2:map_0, r3:update_value}}
+         target_map_d.update val {r1:min_vid, r2:map_0, r3:update_value}}
        {None -> let lookup_value =
          frontier_int_int {key:min_vid, value:target_map_d.filter ((\b1 ->
            bind b1 as {r1:r1, r2:r2, r3:r3} in r2 == map_0))} in
@@ -586,10 +597,10 @@ declare nd_add_delta_to_int_int : { r1:ind collection { r1:{ key:int, value:int
 
 
 declare nd_add_delta_to_int_int_int : { r1:ind collection { r1:{ key:int,
-  value:int }, r2:int, r3:int, r4:int } @ { Collection }, r2:bool, r3:{
-  key:int, value:int }, r4:collection { r1:int, r2:int, r3:int
-  } @ { Collection } } -> () = (\b1 -> bind b1 as {r1:target_map,
-  r2:corrective, r3:min_vid, r4:delta_tuples} in 
+  value:int }, r2:int, r3:int, r4:int } @ { Set }, r2:bool, r3:{ key:int,
+  value:int }, r4:collection { r1:int, r2:int, r3:int } @ { Set } } -> () =
+  (\b1 -> bind b1 as {r1:target_map, r2:corrective, r3:min_vid,
+  r4:delta_tuples} in 
   (delta_tuples.iterate ((\b1 -> bind b1 as {r1:map_0, r2:map_1,
    r3:map_val} in bind target_map as ind target_map_d in
    let lookup_value =
@@ -597,19 +608,20 @@ declare nd_add_delta_to_int_int_int : { r1:ind collection { r1:{ key:int,
        then target_map_d.filter ((\b1 -> bind b1 as {r1:r1, r2:r2, r3:r3,
          r4:r4} in (r1 == min_vid and r3 == map_1) and r2 == map_0))
        else empty { r1:{ key:int, value:int }, r2:int, r3:int, r4:int
-         } @ { Collection } in
+         } @ { Set } in
      case (lookup_value.peek ()) of
        {Some val -> let update_value = map_val + val.r4 in
-         target_map_d.insert {r1:min_vid, r2:map_0, r3:map_1, r4:update_value}}
-       {None -> let lookup_value =
-         frontier_int_int_int {key:min_vid, value:target_map_d.filter ((\b1 ->
-           bind b1 as {r1:r1, r2:r2, r3:r3, r4:r4} in r2 == map_0 and r3 ==
-           map_1))} in
-         let update_value =
-           map_val + case (lookup_value.peek ()) of
-             {Some val -> val.r4}{None -> 0} in
-           target_map_d.insert {r1:min_vid, r2:map_0, r3:map_1,
-             r4:update_value}}));
+         target_map_d.update val {r1:min_vid, r2:map_0, r3:map_1,
+           r4:update_value}}{None -> let lookup_value =
+                              frontier_int_int_int {key:min_vid,
+                                value:target_map_d.filter ((\b1 ->
+                                bind b1 as {r1:r1, r2:r2, r3:r3, r4:r4} in r2
+                                == map_0 and r3 == map_1))} in
+                              let update_value =
+                                map_val + case (lookup_value.peek ()) of
+                                  {Some val -> val.r4}{None -> 0} in
+                                target_map_d.insert {r1:min_vid, r2:map_0,
+                                  r3:map_1, r4:update_value}}));
    delta_tuples.iterate ((\b1 -> bind b1 as {r1:map_0_delta, r2:map_1_delta,
    r3:map_val_delta} in let filtered =
    bind target_map as ind target_map_d in
@@ -624,36 +636,37 @@ declare nd_add_delta_to_int_int_int : { r1:ind collection { r1:{ key:int,
 
 
 declare nd_add_delta_to_int : { r1:ind collection { key:{ key:int, value:int },
-  value:int } @ { Collection }, r2:bool, r3:{ key:int, value:int },
-  r4:collection {i:int} @ { Collection } } -> () = (\b1 ->
-  bind b1 as {r1:target_map, r2:corrective, r3:min_vid, r4:delta_tuples} in 
+  value:int } @ { Set }, r2:bool, r3:{ key:int, value:int },
+  r4:collection {i:int} @ { Set } } -> () = (\b1 -> bind b1 as {r1:target_map,
+  r2:corrective, r3:min_vid, r4:delta_tuples} in 
   (delta_tuples.iterate ((\b1 -> bind b1 as {i:map_val} in bind target_map as
    ind target_map_d in
    let lookup_value =
      if corrective
        then target_map_d.filter ((\b1 -> bind b1 as {key:key, value:value} in 
          key == min_vid))
-       else empty { key:{ key:int, value:int }, value:int } @ { Collection } in
+       else empty { key:{ key:int, value:int }, value:int } @ { Set } in
      case (lookup_value.peek ()) of
        {Some val -> let update_value = map_val + val.value in
-         target_map_d.insert {key:min_vid, value:update_value}}{None -> let
-                                                                 lookup_value =
-                                                                 frontier_int
-                                                                   {key:min_vid,
-                                                                   value:target_map_d}
-                                                                 in
-                                                                 let
-                                                                   update_value
-                                                                   =
-                                                                   map_val +
+         target_map_d.update val {key:min_vid, value:update_value}}{None -> let
+                                                                    lookup_value
+                                                                    =
+                                                                    frontier_int
+                                                                    {key:min_vid,
+                                                                    value:target_map_d}
+                                                                    in
+                                                                    let
+                                                                    update_value
+                                                                    =
+                                                                    map_val +
                                                                     case
                                                                     (lookup_value.peek
                                                                     ()) of
                                                                     {Some val ->
                                                                     val.value}
                                                                     {None -> 0}
-                                                                   in
-                                                                   target_map_d.insert
+                                                                    in
+                                                                    target_map_d.insert
                                                                     {key:min_vid,
                                                                     value:update_value}}));
    delta_tuples.iterate ((\b1 -> bind b1 as {i:map_val_delta} in let filtered =
@@ -838,241 +851,241 @@ declare route_to_int : { key:int, value:option int
 
 declare shuffle_ATIMESD_mT1_mR1_to_ATIMESD_mT1_bind_0t1 : { r1:option int,
   r2:collection { r1:{ key:int, value:int }, r2:int, r3:int, r4:int
-  } @ { Collection }, r3:bool } -> collection { key:address, value:collection {
-  r1:{ key:int, value:int }, r2:int, r3:int, r4:int } @ { Collection }
-  } @ { Collection } = (\b1 -> bind b1 as {r1:lkey_0, r2:tuples,
-  r3:shuffle_on_empty} in let all_targets =
+  } @ { Set }, r3:bool } -> collection { key:address, value:collection { r1:{
+  key:int, value:int }, r2:int, r3:int, r4:int } @ { Set } } @ { Collection } =
+  (\b1 -> bind b1 as {r1:lkey_0, r2:tuples, r3:shuffle_on_empty} in let
+  all_targets =
   if shuffle_on_empty == true
     then (route_to_int {key:2, value:lkey_0}).fold ((\_accmap -> (\b3 ->
       bind b3 as {i:ip} in 
       (_accmap.insert {key:ip, value:empty { r1:{ key:int, value:int }, r2:int,
-       r3:int, r4:int } @ { Collection }};
+       r3:int, r4:int } @ { Set }};
        _accmap)))) empty { key:address, value:collection { r1:{ key:int,
-      value:int }, r2:int, r3:int, r4:int } @ { Collection } } @ { Collection }
+      value:int }, r2:int, r3:int, r4:int } @ { Set } } @ { Collection }
     else empty { key:address, value:collection { r1:{ key:int, value:int },
-      r2:int, r3:int, r4:int } @ { Collection } } @ { Collection } in
+      r2:int, r3:int, r4:int } @ { Set } } @ { Collection } in
   (all_targets.combine (tuples.fold ((\_accext -> (\r_tuple -> _accext.combine
     (bind r_tuple as {r1:rkey_0, r2:rkey_1, r3:rkey_2, r4:rkey_3} in
     (route_to_int {key:2, value:Some rkey_2}).fold ((\_accmap -> (\b3 ->
       bind b3 as {i:ip} in 
       (_accmap.insert {key:ip, value:{| r1:{ key:int, value:int }, r2:int,
-       r3:int, r4:int | r_tuple|} @ { Collection }};
+       r3:int, r4:int | r_tuple|} @ { Set }};
        _accmap)))) empty { key:address, value:collection { r1:{ key:int,
-      value:int }, r2:int, r3:int, r4:int } @ { Collection } } @ { Collection }))))
+      value:int }, r2:int, r3:int, r4:int } @ { Set } } @ { Collection }))))
     empty { key:address, value:collection { r1:{ key:int, value:int }, r2:int,
-    r3:int, r4:int } @ { Collection } } @ { Collection })).groupBy ((\b1 ->
+    r3:int, r4:int } @ { Set } } @ { Collection })).groupBy ((\b1 ->
     bind b1 as {key:ip, value:tuple} in ip)) ((\acc -> (\b3 ->
     bind b3 as {key:ip, value:tuple} in tuple.combine acc))) empty { r1:{
-    key:int, value:int }, r2:int, r3:int, r4:int } @ { Collection })
+    key:int, value:int }, r2:int, r3:int, r4:int } @ { Set })
 
 
 declare shuffle_ATIMESD_mR1_to_ATIMESD : { r1:(), r2:collection { r1:{ key:int,
-  value:int }, r2:int, r3:int } @ { Collection }, r3:bool } -> collection {
+  value:int }, r2:int, r3:int } @ { Set }, r3:bool } -> collection {
   key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
-  } @ { Collection } } @ { Collection } = (\b1 -> bind b1 as {r2:tuples,
+  } @ { Set } } @ { Collection } = (\b1 -> bind b1 as {r2:tuples,
   r3:shuffle_on_empty} in let all_targets =
   if shuffle_on_empty == true
     then (route_to_ {key:1, value:()}).fold ((\_accmap -> (\b3 ->
       bind b3 as {i:ip} in 
       (_accmap.insert {key:ip, value:empty { r1:{ key:int, value:int }, r2:int,
-       r3:int } @ { Collection }};
+       r3:int } @ { Set }};
        _accmap)))) empty { key:address, value:collection { r1:{ key:int,
-      value:int }, r2:int, r3:int } @ { Collection } } @ { Collection }
+      value:int }, r2:int, r3:int } @ { Set } } @ { Collection }
     else empty { key:address, value:collection { r1:{ key:int, value:int },
-      r2:int, r3:int } @ { Collection } } @ { Collection } in
+      r2:int, r3:int } @ { Set } } @ { Collection } in
   (all_targets.combine (tuples.fold ((\_accext -> (\r_tuple -> _accext.combine
     (bind r_tuple as {r1:rkey_0, r2:rkey_1, r3:rkey_2} in
     (route_to_ {key:1, value:()}).fold ((\_accmap -> (\b3 ->
       bind b3 as {i:ip} in 
       (_accmap.insert {key:ip, value:{| r1:{ key:int, value:int }, r2:int,
-       r3:int | r_tuple|} @ { Collection }};
+       r3:int | r_tuple|} @ { Set }};
        _accmap)))) empty { key:address, value:collection { r1:{ key:int,
-      value:int }, r2:int, r3:int } @ { Collection } } @ { Collection }))))
-    empty { key:address, value:collection { r1:{ key:int, value:int }, r2:int,
-    r3:int } @ { Collection } } @ { Collection })).groupBy ((\b1 ->
-    bind b1 as {key:ip, value:tuple} in ip)) ((\acc -> (\b3 ->
-    bind b3 as {key:ip, value:tuple} in tuple.combine acc))) empty { r1:{
-    key:int, value:int }, r2:int, r3:int } @ { Collection })
+      value:int }, r2:int, r3:int } @ { Set } } @ { Collection })))) empty {
+    key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+    } @ { Set } } @ { Collection })).groupBy ((\b1 -> bind b1 as {key:ip,
+    value:tuple} in ip)) ((\acc -> (\b3 -> bind b3 as {key:ip, value:tuple} in 
+    tuple.combine acc))) empty { r1:{ key:int, value:int }, r2:int, r3:int
+    } @ { Set })
 
 
 declare shuffle_ATIMESD_mS2_to_ATIMESD_mR1 : { r1:option int, r2:collection {
-  r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection }, r3:bool
+  r1:{ key:int, value:int }, r2:int, r3:int } @ { Set }, r3:bool
   } -> collection { key:address, value:collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } } @ { Collection } = (\b1 ->
+  r2:int, r3:int } @ { Set } } @ { Collection } = (\b1 ->
   bind b1 as {r1:lkey_0, r2:tuples, r3:shuffle_on_empty} in let all_targets =
   if shuffle_on_empty == true
     then (route_to_int {key:6, value:lkey_0}).fold ((\_accmap -> (\b3 ->
       bind b3 as {i:ip} in 
       (_accmap.insert {key:ip, value:empty { r1:{ key:int, value:int }, r2:int,
-       r3:int } @ { Collection }};
+       r3:int } @ { Set }};
        _accmap)))) empty { key:address, value:collection { r1:{ key:int,
-      value:int }, r2:int, r3:int } @ { Collection } } @ { Collection }
+      value:int }, r2:int, r3:int } @ { Set } } @ { Collection }
     else empty { key:address, value:collection { r1:{ key:int, value:int },
-      r2:int, r3:int } @ { Collection } } @ { Collection } in
+      r2:int, r3:int } @ { Set } } @ { Collection } in
   (all_targets.combine (tuples.fold ((\_accext -> (\r_tuple -> _accext.combine
     (bind r_tuple as {r1:rkey_0, r2:rkey_1, r3:rkey_2} in
     (route_to_int {key:6, value:lkey_0}).fold ((\_accmap -> (\b3 ->
       bind b3 as {i:ip} in 
       (_accmap.insert {key:ip, value:{| r1:{ key:int, value:int }, r2:int,
-       r3:int | r_tuple|} @ { Collection }};
+       r3:int | r_tuple|} @ { Set }};
        _accmap)))) empty { key:address, value:collection { r1:{ key:int,
-      value:int }, r2:int, r3:int } @ { Collection } } @ { Collection }))))
-    empty { key:address, value:collection { r1:{ key:int, value:int }, r2:int,
-    r3:int } @ { Collection } } @ { Collection })).groupBy ((\b1 ->
-    bind b1 as {key:ip, value:tuple} in ip)) ((\acc -> (\b3 ->
-    bind b3 as {key:ip, value:tuple} in tuple.combine acc))) empty { r1:{
-    key:int, value:int }, r2:int, r3:int } @ { Collection })
+      value:int }, r2:int, r3:int } @ { Set } } @ { Collection })))) empty {
+    key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+    } @ { Set } } @ { Collection })).groupBy ((\b1 -> bind b1 as {key:ip,
+    value:tuple} in ip)) ((\acc -> (\b3 -> bind b3 as {key:ip, value:tuple} in 
+    tuple.combine acc))) empty { r1:{ key:int, value:int }, r2:int, r3:int
+    } @ { Set })
 
 
 declare shuffle_ATIMESD_mS1_to_ATIMESD_mT1 : { r1:option int, r2:collection {
-  r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection }, r3:bool
+  r1:{ key:int, value:int }, r2:int, r3:int } @ { Set }, r3:bool
   } -> collection { key:address, value:collection { r1:{ key:int, value:int },
-  r2:int, r3:int } @ { Collection } } @ { Collection } = (\b1 ->
+  r2:int, r3:int } @ { Set } } @ { Collection } = (\b1 ->
   bind b1 as {r1:lkey_0, r2:tuples, r3:shuffle_on_empty} in let all_targets =
   if shuffle_on_empty == true
     then (route_to_int {key:2, value:lkey_0}).fold ((\_accmap -> (\b3 ->
       bind b3 as {i:ip} in 
       (_accmap.insert {key:ip, value:empty { r1:{ key:int, value:int }, r2:int,
-       r3:int } @ { Collection }};
+       r3:int } @ { Set }};
        _accmap)))) empty { key:address, value:collection { r1:{ key:int,
-      value:int }, r2:int, r3:int } @ { Collection } } @ { Collection }
+      value:int }, r2:int, r3:int } @ { Set } } @ { Collection }
     else empty { key:address, value:collection { r1:{ key:int, value:int },
-      r2:int, r3:int } @ { Collection } } @ { Collection } in
+      r2:int, r3:int } @ { Set } } @ { Collection } in
   (all_targets.combine (tuples.fold ((\_accext -> (\r_tuple -> _accext.combine
     (bind r_tuple as {r1:rkey_0, r2:rkey_1, r3:rkey_2} in
     (route_to_int {key:2, value:lkey_0}).fold ((\_accmap -> (\b3 ->
       bind b3 as {i:ip} in 
       (_accmap.insert {key:ip, value:{| r1:{ key:int, value:int }, r2:int,
-       r3:int | r_tuple|} @ { Collection }};
+       r3:int | r_tuple|} @ { Set }};
        _accmap)))) empty { key:address, value:collection { r1:{ key:int,
-      value:int }, r2:int, r3:int } @ { Collection } } @ { Collection }))))
-    empty { key:address, value:collection { r1:{ key:int, value:int }, r2:int,
-    r3:int } @ { Collection } } @ { Collection })).groupBy ((\b1 ->
-    bind b1 as {key:ip, value:tuple} in ip)) ((\acc -> (\b3 ->
-    bind b3 as {key:ip, value:tuple} in tuple.combine acc))) empty { r1:{
-    key:int, value:int }, r2:int, r3:int } @ { Collection })
+      value:int }, r2:int, r3:int } @ { Set } } @ { Collection })))) empty {
+    key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+    } @ { Set } } @ { Collection })).groupBy ((\b1 -> bind b1 as {key:ip,
+    value:tuple} in ip)) ((\acc -> (\b3 -> bind b3 as {key:ip, value:tuple} in 
+    tuple.combine acc))) empty { r1:{ key:int, value:int }, r2:int, r3:int
+    } @ { Set })
 
 
 declare shuffle_ATIMESD_mS2_to_ATIMESD : { r1:(), r2:collection { r1:{ key:int,
-  value:int }, r2:int, r3:int } @ { Collection }, r3:bool } -> collection {
+  value:int }, r2:int, r3:int } @ { Set }, r3:bool } -> collection {
   key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
-  } @ { Collection } } @ { Collection } = (\b1 -> bind b1 as {r2:tuples,
+  } @ { Set } } @ { Collection } = (\b1 -> bind b1 as {r2:tuples,
   r3:shuffle_on_empty} in let all_targets =
   if shuffle_on_empty == true
     then (route_to_ {key:1, value:()}).fold ((\_accmap -> (\b3 ->
       bind b3 as {i:ip} in 
       (_accmap.insert {key:ip, value:empty { r1:{ key:int, value:int }, r2:int,
-       r3:int } @ { Collection }};
+       r3:int } @ { Set }};
        _accmap)))) empty { key:address, value:collection { r1:{ key:int,
-      value:int }, r2:int, r3:int } @ { Collection } } @ { Collection }
+      value:int }, r2:int, r3:int } @ { Set } } @ { Collection }
     else empty { key:address, value:collection { r1:{ key:int, value:int },
-      r2:int, r3:int } @ { Collection } } @ { Collection } in
+      r2:int, r3:int } @ { Set } } @ { Collection } in
   (all_targets.combine (tuples.fold ((\_accext -> (\r_tuple -> _accext.combine
     (bind r_tuple as {r1:rkey_0, r2:rkey_1, r3:rkey_2} in
     (route_to_ {key:1, value:()}).fold ((\_accmap -> (\b3 ->
       bind b3 as {i:ip} in 
       (_accmap.insert {key:ip, value:{| r1:{ key:int, value:int }, r2:int,
-       r3:int | r_tuple|} @ { Collection }};
+       r3:int | r_tuple|} @ { Set }};
        _accmap)))) empty { key:address, value:collection { r1:{ key:int,
-      value:int }, r2:int, r3:int } @ { Collection } } @ { Collection }))))
-    empty { key:address, value:collection { r1:{ key:int, value:int }, r2:int,
-    r3:int } @ { Collection } } @ { Collection })).groupBy ((\b1 ->
-    bind b1 as {key:ip, value:tuple} in ip)) ((\acc -> (\b3 ->
-    bind b3 as {key:ip, value:tuple} in tuple.combine acc))) empty { r1:{
-    key:int, value:int }, r2:int, r3:int } @ { Collection })
+      value:int }, r2:int, r3:int } @ { Set } } @ { Collection })))) empty {
+    key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+    } @ { Set } } @ { Collection })).groupBy ((\b1 -> bind b1 as {key:ip,
+    value:tuple} in ip)) ((\acc -> (\b3 -> bind b3 as {key:ip, value:tuple} in 
+    tuple.combine acc))) empty { r1:{ key:int, value:int }, r2:int, r3:int
+    } @ { Set })
 
 
 declare shuffle_ATIMESD_mS1_to_ATIMESD : { r1:(), r2:collection { r1:{ key:int,
-  value:int }, r2:int, r3:int } @ { Collection }, r3:bool } -> collection {
+  value:int }, r2:int, r3:int } @ { Set }, r3:bool } -> collection {
   key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
-  } @ { Collection } } @ { Collection } = (\b1 -> bind b1 as {r2:tuples,
+  } @ { Set } } @ { Collection } = (\b1 -> bind b1 as {r2:tuples,
   r3:shuffle_on_empty} in let all_targets =
   if shuffle_on_empty == true
     then (route_to_ {key:1, value:()}).fold ((\_accmap -> (\b3 ->
       bind b3 as {i:ip} in 
       (_accmap.insert {key:ip, value:empty { r1:{ key:int, value:int }, r2:int,
-       r3:int } @ { Collection }};
+       r3:int } @ { Set }};
        _accmap)))) empty { key:address, value:collection { r1:{ key:int,
-      value:int }, r2:int, r3:int } @ { Collection } } @ { Collection }
+      value:int }, r2:int, r3:int } @ { Set } } @ { Collection }
     else empty { key:address, value:collection { r1:{ key:int, value:int },
-      r2:int, r3:int } @ { Collection } } @ { Collection } in
+      r2:int, r3:int } @ { Set } } @ { Collection } in
   (all_targets.combine (tuples.fold ((\_accext -> (\r_tuple -> _accext.combine
     (bind r_tuple as {r1:rkey_0, r2:rkey_1, r3:rkey_2} in
     (route_to_ {key:1, value:()}).fold ((\_accmap -> (\b3 ->
       bind b3 as {i:ip} in 
       (_accmap.insert {key:ip, value:{| r1:{ key:int, value:int }, r2:int,
-       r3:int | r_tuple|} @ { Collection }};
+       r3:int | r_tuple|} @ { Set }};
        _accmap)))) empty { key:address, value:collection { r1:{ key:int,
-      value:int }, r2:int, r3:int } @ { Collection } } @ { Collection }))))
-    empty { key:address, value:collection { r1:{ key:int, value:int }, r2:int,
-    r3:int } @ { Collection } } @ { Collection })).groupBy ((\b1 ->
-    bind b1 as {key:ip, value:tuple} in ip)) ((\acc -> (\b3 ->
-    bind b3 as {key:ip, value:tuple} in tuple.combine acc))) empty { r1:{
-    key:int, value:int }, r2:int, r3:int } @ { Collection })
+      value:int }, r2:int, r3:int } @ { Set } } @ { Collection })))) empty {
+    key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+    } @ { Set } } @ { Collection })).groupBy ((\b1 -> bind b1 as {key:ip,
+    value:tuple} in ip)) ((\acc -> (\b3 -> bind b3 as {key:ip, value:tuple} in 
+    tuple.combine acc))) empty { r1:{ key:int, value:int }, r2:int, r3:int
+    } @ { Set })
 
 
 declare shuffle_ATIMESD_mT1_mR1_to_ATIMESD_mR1_bind_0t0 : { r1:option int,
   r2:collection { r1:{ key:int, value:int }, r2:int, r3:int, r4:int
-  } @ { Collection }, r3:bool } -> collection { key:address, value:collection {
-  r1:{ key:int, value:int }, r2:int, r3:int, r4:int } @ { Collection }
-  } @ { Collection } = (\b1 -> bind b1 as {r1:lkey_0, r2:tuples,
-  r3:shuffle_on_empty} in let all_targets =
+  } @ { Set }, r3:bool } -> collection { key:address, value:collection { r1:{
+  key:int, value:int }, r2:int, r3:int, r4:int } @ { Set } } @ { Collection } =
+  (\b1 -> bind b1 as {r1:lkey_0, r2:tuples, r3:shuffle_on_empty} in let
+  all_targets =
   if shuffle_on_empty == true
     then (route_to_int {key:6, value:lkey_0}).fold ((\_accmap -> (\b3 ->
       bind b3 as {i:ip} in 
       (_accmap.insert {key:ip, value:empty { r1:{ key:int, value:int }, r2:int,
-       r3:int, r4:int } @ { Collection }};
+       r3:int, r4:int } @ { Set }};
        _accmap)))) empty { key:address, value:collection { r1:{ key:int,
-      value:int }, r2:int, r3:int, r4:int } @ { Collection } } @ { Collection }
+      value:int }, r2:int, r3:int, r4:int } @ { Set } } @ { Collection }
     else empty { key:address, value:collection { r1:{ key:int, value:int },
-      r2:int, r3:int, r4:int } @ { Collection } } @ { Collection } in
+      r2:int, r3:int, r4:int } @ { Set } } @ { Collection } in
   (all_targets.combine (tuples.fold ((\_accext -> (\r_tuple -> _accext.combine
     (bind r_tuple as {r1:rkey_0, r2:rkey_1, r3:rkey_2, r4:rkey_3} in
     (route_to_int {key:6, value:Some rkey_1}).fold ((\_accmap -> (\b3 ->
       bind b3 as {i:ip} in 
       (_accmap.insert {key:ip, value:{| r1:{ key:int, value:int }, r2:int,
-       r3:int, r4:int | r_tuple|} @ { Collection }};
+       r3:int, r4:int | r_tuple|} @ { Set }};
        _accmap)))) empty { key:address, value:collection { r1:{ key:int,
-      value:int }, r2:int, r3:int, r4:int } @ { Collection } } @ { Collection }))))
+      value:int }, r2:int, r3:int, r4:int } @ { Set } } @ { Collection }))))
     empty { key:address, value:collection { r1:{ key:int, value:int }, r2:int,
-    r3:int, r4:int } @ { Collection } } @ { Collection })).groupBy ((\b1 ->
+    r3:int, r4:int } @ { Set } } @ { Collection })).groupBy ((\b1 ->
     bind b1 as {key:ip, value:tuple} in ip)) ((\acc -> (\b3 ->
     bind b3 as {key:ip, value:tuple} in tuple.combine acc))) empty { r1:{
-    key:int, value:int }, r2:int, r3:int, r4:int } @ { Collection })
+    key:int, value:int }, r2:int, r3:int, r4:int } @ { Set })
 
 
 declare shuffle_ATIMESD_mT1_to_ATIMESD : { r1:(), r2:collection { r1:{ key:int,
-  value:int }, r2:int, r3:int } @ { Collection }, r3:bool } -> collection {
+  value:int }, r2:int, r3:int } @ { Set }, r3:bool } -> collection {
   key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
-  } @ { Collection } } @ { Collection } = (\b1 -> bind b1 as {r2:tuples,
+  } @ { Set } } @ { Collection } = (\b1 -> bind b1 as {r2:tuples,
   r3:shuffle_on_empty} in let all_targets =
   if shuffle_on_empty == true
     then (route_to_ {key:1, value:()}).fold ((\_accmap -> (\b3 ->
       bind b3 as {i:ip} in 
       (_accmap.insert {key:ip, value:empty { r1:{ key:int, value:int }, r2:int,
-       r3:int } @ { Collection }};
+       r3:int } @ { Set }};
        _accmap)))) empty { key:address, value:collection { r1:{ key:int,
-      value:int }, r2:int, r3:int } @ { Collection } } @ { Collection }
+      value:int }, r2:int, r3:int } @ { Set } } @ { Collection }
     else empty { key:address, value:collection { r1:{ key:int, value:int },
-      r2:int, r3:int } @ { Collection } } @ { Collection } in
+      r2:int, r3:int } @ { Set } } @ { Collection } in
   (all_targets.combine (tuples.fold ((\_accext -> (\r_tuple -> _accext.combine
     (bind r_tuple as {r1:rkey_0, r2:rkey_1, r3:rkey_2} in
     (route_to_ {key:1, value:()}).fold ((\_accmap -> (\b3 ->
       bind b3 as {i:ip} in 
       (_accmap.insert {key:ip, value:{| r1:{ key:int, value:int }, r2:int,
-       r3:int | r_tuple|} @ { Collection }};
+       r3:int | r_tuple|} @ { Set }};
        _accmap)))) empty { key:address, value:collection { r1:{ key:int,
-      value:int }, r2:int, r3:int } @ { Collection } } @ { Collection }))))
-    empty { key:address, value:collection { r1:{ key:int, value:int }, r2:int,
-    r3:int } @ { Collection } } @ { Collection })).groupBy ((\b1 ->
-    bind b1 as {key:ip, value:tuple} in ip)) ((\acc -> (\b3 ->
-    bind b3 as {key:ip, value:tuple} in tuple.combine acc))) empty { r1:{
-    key:int, value:int }, r2:int, r3:int } @ { Collection })
+      value:int }, r2:int, r3:int } @ { Set } } @ { Collection })))) empty {
+    key:address, value:collection { r1:{ key:int, value:int }, r2:int, r3:int
+    } @ { Set } } @ { Collection })).groupBy ((\b1 -> bind b1 as {key:ip,
+    value:tuple} in ip)) ((\acc -> (\b3 -> bind b3 as {key:ip, value:tuple} in 
+    tuple.combine acc))) empty { r1:{ key:int, value:int }, r2:int, r3:int
+    } @ { Set })
 
 
 declare nd_ATIMESD_mS1_send_correctives : { r1:address, r2:int, r3:{ key:int,
   value:int }, r4:int, r5:{ key:int, value:int }, r6:collection { key:int,
-  value:int } @ { Collection } } -> int = (\b1 -> bind b1 as {r1:orig_addr,
+  value:int } @ { Set } } -> int = (\b1 -> bind b1 as {r1:orig_addr,
   r2:orig_stmt_id, r3:orig_vid, r4:hop, r5:corrective_vid, r6:delta_tuples} in 
   let corrective_list =
   nd_filter_corrective_list {key:corrective_vid, value:{| key:int, value:int |
@@ -1082,7 +1095,7 @@ declare nd_ATIMESD_mS1_send_correctives : { r1:address, r2:int, r3:{ key:int,
       delta_tuples.fold ((\_accmap -> (\b3 -> bind b3 as {key:map_0,
         value:map_val} in 
         (_accmap.insert {r1:g_min_vid, r2:map_0, r3:map_val};_accmap))))
-        empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+        empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
       corrective_list.fold ((\acc_count -> (\b3 -> bind b3 as {key:stmt_id,
         value:vid_list} in if stmt_id == 7
         then let ips_vids =
@@ -1094,27 +1107,26 @@ declare nd_ATIMESD_mS1_send_correctives : { r1:address, r2:int, r3:{ key:int,
               (_accmap.insert {r1:ip, r2:vid, r3:tuples.fold ((\_accmap ->
                (\b3 -> bind b3 as {r1:vid, r2:map_0, r3:map_val} in 
                (_accmap.insert {key:map_0, value:map_val};_accmap)))) empty {
-               key:int, value:int } @ { Collection }};
+               key:int, value:int } @ { Set }};
                _accmap)))) empty { r1:address, r2:{ key:int, value:int },
-              r3:collection { key:int, value:int } @ { Collection }
-              } @ { Collection })))) empty { r1:address, r2:{ key:int,
-            value:int }, r3:collection { key:int, value:int } @ { Collection }
-            } @ { Collection }).groupBy ((\b1 -> bind b1 as {r1:ip, r2:vid,
-            r3:tuples} in ip)) ((\b2 -> (\b5 -> bind b2 as {key:acc_vid,
-            value:acc_tuples} in bind b5 as {r1:ip, r2:vid, r3:tuples} in 
+              r3:collection { key:int, value:int } @ { Set } } @ { Collection }))))
+            empty { r1:address, r2:{ key:int, value:int }, r3:collection {
+            key:int, value:int } @ { Set } } @ { Collection }).groupBy ((\b1 ->
+            bind b1 as {r1:ip, r2:vid, r3:tuples} in ip)) ((\b2 -> (\b5 ->
+            bind b2 as {key:acc_vid, value:acc_tuples} in bind b5 as {r1:ip,
+            r2:vid, r3:tuples} in 
             (acc_vid.insert vid;
              {key:acc_vid, value:((acc_tuples.combine tuples).groupBy
              ((\tuple -> tuple)) ((\_ -> (\_ -> ()))) ()).fold ((\_accmap ->
              (\x -> (_accmap.insert (x.key);_accmap)))) empty { key:int,
-             value:int } @ { Collection }})))) {key:empty { key:int, value:int
-            } @ { Seq }, value:empty { key:int, value:int } @ { Collection }}
-          in
+             value:int } @ { Set }})))) {key:empty { key:int, value:int
+            } @ { Seq }, value:empty { key:int, value:int } @ { Set }} in
           ips_vids.fold ((\acc_count -> (\b3 -> bind b3 as {key:ip,
             value:vid_send_list_tup} in 
             ((insert_S_rcv_corrective_s7_m_ATIMESD_mS1, ip)<- {r1:orig_addr,
              r2:orig_stmt_id, r3:orig_vid, r4:hop, r5:corrective_vid,
              r6:vid_send_list_tup.key, r7:vid_send_list_tup.value};
-             acc_count + (vid_send_list_tup.key).size ())))) acc_count
+             acc_count + 1)))) acc_count
         else if stmt_id == 6
           then let ips_vids =
             (vid_list.fold ((\_accext -> (\vid -> _accext.combine (bind
@@ -1125,34 +1137,31 @@ declare nd_ATIMESD_mS1_send_correctives : { r1:address, r2:int, r3:{ key:int,
                 (_accmap.insert {r1:ip, r2:vid, r3:tuples.fold ((\_accmap ->
                  (\b3 -> bind b3 as {r1:vid, r2:map_0, r3:map_val} in 
                  (_accmap.insert {key:map_0, value:map_val};_accmap)))) empty {
-                 key:int, value:int } @ { Collection }};
+                 key:int, value:int } @ { Set }};
                  _accmap)))) empty { r1:address, r2:{ key:int, value:int },
-                r3:collection { key:int, value:int } @ { Collection }
+                r3:collection { key:int, value:int } @ { Set }
                 } @ { Collection })))) empty { r1:address, r2:{ key:int,
-              value:int }, r3:collection { key:int, value:int
-              } @ { Collection } } @ { Collection }).groupBy ((\b1 ->
-              bind b1 as {r1:ip, r2:vid, r3:tuples} in ip)) ((\b2 -> (\b5 ->
-              bind b2 as {key:acc_vid, value:acc_tuples} in bind b5 as {r1:ip,
-              r2:vid, r3:tuples} in 
+              value:int }, r3:collection { key:int, value:int } @ { Set }
+              } @ { Collection }).groupBy ((\b1 -> bind b1 as {r1:ip, r2:vid,
+              r3:tuples} in ip)) ((\b2 -> (\b5 -> bind b2 as {key:acc_vid,
+              value:acc_tuples} in bind b5 as {r1:ip, r2:vid, r3:tuples} in 
               (acc_vid.insert vid;
                {key:acc_vid, value:((acc_tuples.combine tuples).groupBy
                ((\tuple -> tuple)) ((\_ -> (\_ -> ()))) ()).fold ((\_accmap ->
                (\x -> (_accmap.insert (x.key);_accmap)))) empty { key:int,
-               value:int } @ { Collection }})))) {key:empty { key:int,
-              value:int } @ { Seq }, value:empty { key:int, value:int
-              } @ { Collection }} in
+               value:int } @ { Set }})))) {key:empty { key:int, value:int
+              } @ { Seq }, value:empty { key:int, value:int } @ { Set }} in
             ips_vids.fold ((\acc_count -> (\b3 -> bind b3 as {key:ip,
               value:vid_send_list_tup} in 
               ((insert_S_rcv_corrective_s6_m_ATIMESD_mS1, ip)<- {r1:orig_addr,
                r2:orig_stmt_id, r3:orig_vid, r4:hop, r5:corrective_vid,
                r6:vid_send_list_tup.key, r7:vid_send_list_tup.value};
-               acc_count + (vid_send_list_tup.key).size ())))) acc_count 
-          else 0))) 0)
+               acc_count + 1)))) acc_count else acc_count))) 0)
 
 
 declare nd_ATIMESD_mT1_mR1_send_correctives : { r1:address, r2:int, r3:{
   key:int, value:int }, r4:int, r5:{ key:int, value:int }, r6:collection {
-  r1:int, r2:int, r3:int } @ { Collection } } -> int = (\b1 ->
+  r1:int, r2:int, r3:int } @ { Set } } -> int = (\b1 ->
   bind b1 as {r1:orig_addr, r2:orig_stmt_id, r3:orig_vid, r4:hop,
   r5:corrective_vid, r6:delta_tuples} in let corrective_list =
   nd_filter_corrective_list {key:corrective_vid, value:{| key:int, value:int |
@@ -1162,8 +1171,8 @@ declare nd_ATIMESD_mT1_mR1_send_correctives : { r1:address, r2:int, r3:{
       delta_tuples.fold ((\_accmap -> (\b3 -> bind b3 as {r1:map_0, r2:map_1,
         r3:map_val} in 
         (_accmap.insert {r1:g_min_vid, r2:map_0, r3:map_1, r4:map_val};_accmap))))
-        empty { r1:{ key:int, value:int }, r2:int, r3:int, r4:int
-        } @ { Collection } in
+        empty { r1:{ key:int, value:int }, r2:int, r3:int, r4:int } @ { Set }
+      in
       corrective_list.fold ((\acc_count -> (\b3 -> bind b3 as {key:stmt_id,
         value:vid_list} in if stmt_id == 15
         then let ips_vids =
@@ -1175,28 +1184,26 @@ declare nd_ATIMESD_mT1_mR1_send_correctives : { r1:address, r2:int, r3:{
               (_accmap.insert {r1:ip, r2:vid, r3:tuples.fold ((\_accmap ->
                (\b3 -> bind b3 as {r1:vid, r2:map_0, r3:map_1, r4:map_val} in 
                (_accmap.insert {r1:map_0, r2:map_1, r3:map_val};_accmap))))
-               empty { r1:int, r2:int, r3:int } @ { Collection }};
+               empty { r1:int, r2:int, r3:int } @ { Set }};
                _accmap)))) empty { r1:address, r2:{ key:int, value:int },
-              r3:collection { r1:int, r2:int, r3:int } @ { Collection }
+              r3:collection { r1:int, r2:int, r3:int } @ { Set }
               } @ { Collection })))) empty { r1:address, r2:{ key:int,
-            value:int }, r3:collection { r1:int, r2:int, r3:int
-            } @ { Collection } } @ { Collection }).groupBy ((\b1 ->
-            bind b1 as {r1:ip, r2:vid, r3:tuples} in ip)) ((\b2 -> (\b5 ->
-            bind b2 as {key:acc_vid, value:acc_tuples} in bind b5 as {r1:ip,
-            r2:vid, r3:tuples} in 
+            value:int }, r3:collection { r1:int, r2:int, r3:int } @ { Set }
+            } @ { Collection }).groupBy ((\b1 -> bind b1 as {r1:ip, r2:vid,
+            r3:tuples} in ip)) ((\b2 -> (\b5 -> bind b2 as {key:acc_vid,
+            value:acc_tuples} in bind b5 as {r1:ip, r2:vid, r3:tuples} in 
             (acc_vid.insert vid;
              {key:acc_vid, value:((acc_tuples.combine tuples).groupBy
              ((\tuple -> tuple)) ((\_ -> (\_ -> ()))) ()).fold ((\_accmap ->
              (\x -> (_accmap.insert (x.key);_accmap)))) empty { r1:int, r2:int,
-             r3:int } @ { Collection }})))) {key:empty { key:int, value:int
-            } @ { Seq }, value:empty { r1:int, r2:int, r3:int
-            } @ { Collection }} in
+             r3:int } @ { Set }})))) {key:empty { key:int, value:int
+            } @ { Seq }, value:empty { r1:int, r2:int, r3:int } @ { Set }} in
           ips_vids.fold ((\acc_count -> (\b3 -> bind b3 as {key:ip,
             value:vid_send_list_tup} in 
             ((insert_R_rcv_corrective_s15_m_ATIMESD_mT1_mR1, ip)<- {r1:orig_addr,
              r2:orig_stmt_id, r3:orig_vid, r4:hop, r5:corrective_vid,
              r6:vid_send_list_tup.key, r7:vid_send_list_tup.value};
-             acc_count + (vid_send_list_tup.key).size ())))) acc_count
+             acc_count + 1)))) acc_count
         else if stmt_id == 2
           then let ips_vids =
             (vid_list.fold ((\_accext -> (\vid -> _accext.combine (bind
@@ -1208,34 +1215,31 @@ declare nd_ATIMESD_mT1_mR1_send_correctives : { r1:address, r2:int, r3:{
                  (\b3 -> bind b3 as {r1:vid, r2:map_0, r3:map_1,
                  r4:map_val} in 
                  (_accmap.insert {r1:map_0, r2:map_1, r3:map_val};_accmap))))
-                 empty { r1:int, r2:int, r3:int } @ { Collection }};
+                 empty { r1:int, r2:int, r3:int } @ { Set }};
                  _accmap)))) empty { r1:address, r2:{ key:int, value:int },
-                r3:collection { r1:int, r2:int, r3:int } @ { Collection }
+                r3:collection { r1:int, r2:int, r3:int } @ { Set }
                 } @ { Collection })))) empty { r1:address, r2:{ key:int,
-              value:int }, r3:collection { r1:int, r2:int, r3:int
-              } @ { Collection } } @ { Collection }).groupBy ((\b1 ->
-              bind b1 as {r1:ip, r2:vid, r3:tuples} in ip)) ((\b2 -> (\b5 ->
-              bind b2 as {key:acc_vid, value:acc_tuples} in bind b5 as {r1:ip,
-              r2:vid, r3:tuples} in 
+              value:int }, r3:collection { r1:int, r2:int, r3:int } @ { Set }
+              } @ { Collection }).groupBy ((\b1 -> bind b1 as {r1:ip, r2:vid,
+              r3:tuples} in ip)) ((\b2 -> (\b5 -> bind b2 as {key:acc_vid,
+              value:acc_tuples} in bind b5 as {r1:ip, r2:vid, r3:tuples} in 
               (acc_vid.insert vid;
                {key:acc_vid, value:((acc_tuples.combine tuples).groupBy
                ((\tuple -> tuple)) ((\_ -> (\_ -> ()))) ()).fold ((\_accmap ->
                (\x -> (_accmap.insert (x.key);_accmap)))) empty { r1:int,
-               r2:int, r3:int } @ { Collection }})))) {key:empty { key:int,
-              value:int } @ { Seq }, value:empty { r1:int, r2:int, r3:int
-              } @ { Collection }} in
+               r2:int, r3:int } @ { Set }})))) {key:empty { key:int, value:int
+              } @ { Seq }, value:empty { r1:int, r2:int, r3:int } @ { Set }} in
             ips_vids.fold ((\acc_count -> (\b3 -> bind b3 as {key:ip,
               value:vid_send_list_tup} in 
               ((insert_T_rcv_corrective_s2_m_ATIMESD_mT1_mR1, ip)<- {r1:orig_addr,
                r2:orig_stmt_id, r3:orig_vid, r4:hop, r5:corrective_vid,
                r6:vid_send_list_tup.key, r7:vid_send_list_tup.value};
-               acc_count + (vid_send_list_tup.key).size ())))) acc_count 
-          else 0))) 0)
+               acc_count + 1)))) acc_count else acc_count))) 0)
 
 
 declare nd_ATIMESD_mT1_send_correctives : { r1:address, r2:int, r3:{ key:int,
   value:int }, r4:int, r5:{ key:int, value:int }, r6:collection { key:int,
-  value:int } @ { Collection } } -> int = (\b1 -> bind b1 as {r1:orig_addr,
+  value:int } @ { Set } } -> int = (\b1 -> bind b1 as {r1:orig_addr,
   r2:orig_stmt_id, r3:orig_vid, r4:hop, r5:corrective_vid, r6:delta_tuples} in 
   let corrective_list =
   nd_filter_corrective_list {key:corrective_vid, value:{| key:int, value:int |
@@ -1245,7 +1249,7 @@ declare nd_ATIMESD_mT1_send_correctives : { r1:address, r2:int, r3:{ key:int,
       delta_tuples.fold ((\_accmap -> (\b3 -> bind b3 as {key:map_0,
         value:map_val} in 
         (_accmap.insert {r1:g_min_vid, r2:map_0, r3:map_val};_accmap))))
-        empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+        empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
       corrective_list.fold ((\acc_count -> (\b3 -> bind b3 as {key:stmt_id,
         value:vid_list} in if stmt_id == 0
         then let ips_vids =
@@ -1256,33 +1260,31 @@ declare nd_ATIMESD_mT1_send_correctives : { r1:address, r2:int, r3:{ key:int,
               (_accmap.insert {r1:ip, r2:vid, r3:tuples.fold ((\_accmap ->
                (\b3 -> bind b3 as {r1:vid, r2:map_0, r3:map_val} in 
                (_accmap.insert {key:map_0, value:map_val};_accmap)))) empty {
-               key:int, value:int } @ { Collection }};
+               key:int, value:int } @ { Set }};
                _accmap)))) empty { r1:address, r2:{ key:int, value:int },
-              r3:collection { key:int, value:int } @ { Collection }
-              } @ { Collection })))) empty { r1:address, r2:{ key:int,
-            value:int }, r3:collection { key:int, value:int } @ { Collection }
-            } @ { Collection }).groupBy ((\b1 -> bind b1 as {r1:ip, r2:vid,
-            r3:tuples} in ip)) ((\b2 -> (\b5 -> bind b2 as {key:acc_vid,
-            value:acc_tuples} in bind b5 as {r1:ip, r2:vid, r3:tuples} in 
+              r3:collection { key:int, value:int } @ { Set } } @ { Collection }))))
+            empty { r1:address, r2:{ key:int, value:int }, r3:collection {
+            key:int, value:int } @ { Set } } @ { Collection }).groupBy ((\b1 ->
+            bind b1 as {r1:ip, r2:vid, r3:tuples} in ip)) ((\b2 -> (\b5 ->
+            bind b2 as {key:acc_vid, value:acc_tuples} in bind b5 as {r1:ip,
+            r2:vid, r3:tuples} in 
             (acc_vid.insert vid;
              {key:acc_vid, value:((acc_tuples.combine tuples).groupBy
              ((\tuple -> tuple)) ((\_ -> (\_ -> ()))) ()).fold ((\_accmap ->
              (\x -> (_accmap.insert (x.key);_accmap)))) empty { key:int,
-             value:int } @ { Collection }})))) {key:empty { key:int, value:int
-            } @ { Seq }, value:empty { key:int, value:int } @ { Collection }}
-          in
+             value:int } @ { Set }})))) {key:empty { key:int, value:int
+            } @ { Seq }, value:empty { key:int, value:int } @ { Set }} in
           ips_vids.fold ((\acc_count -> (\b3 -> bind b3 as {key:ip,
             value:vid_send_list_tup} in 
             ((insert_T_rcv_corrective_s0_m_ATIMESD_mT1, ip)<- {r1:orig_addr,
              r2:orig_stmt_id, r3:orig_vid, r4:hop, r5:corrective_vid,
              r6:vid_send_list_tup.key, r7:vid_send_list_tup.value};
-             acc_count + (vid_send_list_tup.key).size ())))) acc_count
-        else 0))) 0)
+             acc_count + 1)))) acc_count else acc_count))) 0)
 
 
 declare nd_ATIMESD_mR1_send_correctives : { r1:address, r2:int, r3:{ key:int,
   value:int }, r4:int, r5:{ key:int, value:int }, r6:collection { key:int,
-  value:int } @ { Collection } } -> int = (\b1 -> bind b1 as {r1:orig_addr,
+  value:int } @ { Set } } -> int = (\b1 -> bind b1 as {r1:orig_addr,
   r2:orig_stmt_id, r3:orig_vid, r4:hop, r5:corrective_vid, r6:delta_tuples} in 
   let corrective_list =
   nd_filter_corrective_list {key:corrective_vid, value:{| key:int, value:int |
@@ -1292,7 +1294,7 @@ declare nd_ATIMESD_mR1_send_correctives : { r1:address, r2:int, r3:{ key:int,
       delta_tuples.fold ((\_accmap -> (\b3 -> bind b3 as {key:map_0,
         value:map_val} in 
         (_accmap.insert {r1:g_min_vid, r2:map_0, r3:map_val};_accmap))))
-        empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+        empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
       corrective_list.fold ((\acc_count -> (\b3 -> bind b3 as {key:stmt_id,
         value:vid_list} in if stmt_id == 14
         then let ips_vids =
@@ -1303,33 +1305,31 @@ declare nd_ATIMESD_mR1_send_correctives : { r1:address, r2:int, r3:{ key:int,
               (_accmap.insert {r1:ip, r2:vid, r3:tuples.fold ((\_accmap ->
                (\b3 -> bind b3 as {r1:vid, r2:map_0, r3:map_val} in 
                (_accmap.insert {key:map_0, value:map_val};_accmap)))) empty {
-               key:int, value:int } @ { Collection }};
+               key:int, value:int } @ { Set }};
                _accmap)))) empty { r1:address, r2:{ key:int, value:int },
-              r3:collection { key:int, value:int } @ { Collection }
-              } @ { Collection })))) empty { r1:address, r2:{ key:int,
-            value:int }, r3:collection { key:int, value:int } @ { Collection }
-            } @ { Collection }).groupBy ((\b1 -> bind b1 as {r1:ip, r2:vid,
-            r3:tuples} in ip)) ((\b2 -> (\b5 -> bind b2 as {key:acc_vid,
-            value:acc_tuples} in bind b5 as {r1:ip, r2:vid, r3:tuples} in 
+              r3:collection { key:int, value:int } @ { Set } } @ { Collection }))))
+            empty { r1:address, r2:{ key:int, value:int }, r3:collection {
+            key:int, value:int } @ { Set } } @ { Collection }).groupBy ((\b1 ->
+            bind b1 as {r1:ip, r2:vid, r3:tuples} in ip)) ((\b2 -> (\b5 ->
+            bind b2 as {key:acc_vid, value:acc_tuples} in bind b5 as {r1:ip,
+            r2:vid, r3:tuples} in 
             (acc_vid.insert vid;
              {key:acc_vid, value:((acc_tuples.combine tuples).groupBy
              ((\tuple -> tuple)) ((\_ -> (\_ -> ()))) ()).fold ((\_accmap ->
              (\x -> (_accmap.insert (x.key);_accmap)))) empty { key:int,
-             value:int } @ { Collection }})))) {key:empty { key:int, value:int
-            } @ { Seq }, value:empty { key:int, value:int } @ { Collection }}
-          in
+             value:int } @ { Set }})))) {key:empty { key:int, value:int
+            } @ { Seq }, value:empty { key:int, value:int } @ { Set }} in
           ips_vids.fold ((\acc_count -> (\b3 -> bind b3 as {key:ip,
             value:vid_send_list_tup} in 
             ((insert_R_rcv_corrective_s14_m_ATIMESD_mR1, ip)<- {r1:orig_addr,
              r2:orig_stmt_id, r3:orig_vid, r4:hop, r5:corrective_vid,
              r6:vid_send_list_tup.key, r7:vid_send_list_tup.value};
-             acc_count + (vid_send_list_tup.key).size ())))) acc_count
-        else 0))) 0)
+             acc_count + 1)))) acc_count else acc_count))) 0)
 
 
 declare nd_ATIMESD_mS2_send_correctives : { r1:address, r2:int, r3:{ key:int,
   value:int }, r4:int, r5:{ key:int, value:int }, r6:collection { key:int,
-  value:int } @ { Collection } } -> int = (\b1 -> bind b1 as {r1:orig_addr,
+  value:int } @ { Set } } -> int = (\b1 -> bind b1 as {r1:orig_addr,
   r2:orig_stmt_id, r3:orig_vid, r4:hop, r5:corrective_vid, r6:delta_tuples} in 
   let corrective_list =
   nd_filter_corrective_list {key:corrective_vid, value:{| key:int, value:int |
@@ -1339,7 +1339,7 @@ declare nd_ATIMESD_mS2_send_correctives : { r1:address, r2:int, r3:{ key:int,
       delta_tuples.fold ((\_accmap -> (\b3 -> bind b3 as {key:map_0,
         value:map_val} in 
         (_accmap.insert {r1:g_min_vid, r2:map_0, r3:map_val};_accmap))))
-        empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+        empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
       corrective_list.fold ((\acc_count -> (\b3 -> bind b3 as {key:stmt_id,
         value:vid_list} in if stmt_id == 9
         then let ips_vids =
@@ -1351,27 +1351,26 @@ declare nd_ATIMESD_mS2_send_correctives : { r1:address, r2:int, r3:{ key:int,
               (_accmap.insert {r1:ip, r2:vid, r3:tuples.fold ((\_accmap ->
                (\b3 -> bind b3 as {r1:vid, r2:map_0, r3:map_val} in 
                (_accmap.insert {key:map_0, value:map_val};_accmap)))) empty {
-               key:int, value:int } @ { Collection }};
+               key:int, value:int } @ { Set }};
                _accmap)))) empty { r1:address, r2:{ key:int, value:int },
-              r3:collection { key:int, value:int } @ { Collection }
-              } @ { Collection })))) empty { r1:address, r2:{ key:int,
-            value:int }, r3:collection { key:int, value:int } @ { Collection }
-            } @ { Collection }).groupBy ((\b1 -> bind b1 as {r1:ip, r2:vid,
-            r3:tuples} in ip)) ((\b2 -> (\b5 -> bind b2 as {key:acc_vid,
-            value:acc_tuples} in bind b5 as {r1:ip, r2:vid, r3:tuples} in 
+              r3:collection { key:int, value:int } @ { Set } } @ { Collection }))))
+            empty { r1:address, r2:{ key:int, value:int }, r3:collection {
+            key:int, value:int } @ { Set } } @ { Collection }).groupBy ((\b1 ->
+            bind b1 as {r1:ip, r2:vid, r3:tuples} in ip)) ((\b2 -> (\b5 ->
+            bind b2 as {key:acc_vid, value:acc_tuples} in bind b5 as {r1:ip,
+            r2:vid, r3:tuples} in 
             (acc_vid.insert vid;
              {key:acc_vid, value:((acc_tuples.combine tuples).groupBy
              ((\tuple -> tuple)) ((\_ -> (\_ -> ()))) ()).fold ((\_accmap ->
              (\x -> (_accmap.insert (x.key);_accmap)))) empty { key:int,
-             value:int } @ { Collection }})))) {key:empty { key:int, value:int
-            } @ { Seq }, value:empty { key:int, value:int } @ { Collection }}
-          in
+             value:int } @ { Set }})))) {key:empty { key:int, value:int
+            } @ { Seq }, value:empty { key:int, value:int } @ { Set }} in
           ips_vids.fold ((\acc_count -> (\b3 -> bind b3 as {key:ip,
             value:vid_send_list_tup} in 
             ((insert_S_rcv_corrective_s9_m_ATIMESD_mS2, ip)<- {r1:orig_addr,
              r2:orig_stmt_id, r3:orig_vid, r4:hop, r5:corrective_vid,
              r6:vid_send_list_tup.key, r7:vid_send_list_tup.value};
-             acc_count + (vid_send_list_tup.key).size ())))) acc_count
+             acc_count + 1)))) acc_count
         else if stmt_id == 6
           then let ips_vids =
             (vid_list.fold ((\_accext -> (\vid -> _accext.combine (bind
@@ -1382,29 +1381,26 @@ declare nd_ATIMESD_mS2_send_correctives : { r1:address, r2:int, r3:{ key:int,
                 (_accmap.insert {r1:ip, r2:vid, r3:tuples.fold ((\_accmap ->
                  (\b3 -> bind b3 as {r1:vid, r2:map_0, r3:map_val} in 
                  (_accmap.insert {key:map_0, value:map_val};_accmap)))) empty {
-                 key:int, value:int } @ { Collection }};
+                 key:int, value:int } @ { Set }};
                  _accmap)))) empty { r1:address, r2:{ key:int, value:int },
-                r3:collection { key:int, value:int } @ { Collection }
+                r3:collection { key:int, value:int } @ { Set }
                 } @ { Collection })))) empty { r1:address, r2:{ key:int,
-              value:int }, r3:collection { key:int, value:int
-              } @ { Collection } } @ { Collection }).groupBy ((\b1 ->
-              bind b1 as {r1:ip, r2:vid, r3:tuples} in ip)) ((\b2 -> (\b5 ->
-              bind b2 as {key:acc_vid, value:acc_tuples} in bind b5 as {r1:ip,
-              r2:vid, r3:tuples} in 
+              value:int }, r3:collection { key:int, value:int } @ { Set }
+              } @ { Collection }).groupBy ((\b1 -> bind b1 as {r1:ip, r2:vid,
+              r3:tuples} in ip)) ((\b2 -> (\b5 -> bind b2 as {key:acc_vid,
+              value:acc_tuples} in bind b5 as {r1:ip, r2:vid, r3:tuples} in 
               (acc_vid.insert vid;
                {key:acc_vid, value:((acc_tuples.combine tuples).groupBy
                ((\tuple -> tuple)) ((\_ -> (\_ -> ()))) ()).fold ((\_accmap ->
                (\x -> (_accmap.insert (x.key);_accmap)))) empty { key:int,
-               value:int } @ { Collection }})))) {key:empty { key:int,
-              value:int } @ { Seq }, value:empty { key:int, value:int
-              } @ { Collection }} in
+               value:int } @ { Set }})))) {key:empty { key:int, value:int
+              } @ { Seq }, value:empty { key:int, value:int } @ { Set }} in
             ips_vids.fold ((\acc_count -> (\b3 -> bind b3 as {key:ip,
               value:vid_send_list_tup} in 
               ((insert_S_rcv_corrective_s6_m_ATIMESD_mS2, ip)<- {r1:orig_addr,
                r2:orig_stmt_id, r3:orig_vid, r4:hop, r5:corrective_vid,
                r6:vid_send_list_tup.key, r7:vid_send_list_tup.value};
-               acc_count + (vid_send_list_tup.key).size ())))) acc_count 
-          else 0))) 0)
+               acc_count + 1)))) acc_count else acc_count))) 0)
 
 
 declare sw_insert_T : { key:int, value:int } -> () = (\args ->
@@ -1426,8 +1422,8 @@ declare sw_insert_T_send_fetch : { key:int, value:int } -> () = (\vid -> case
       (route_to_int {key:2, value:Some T_C}).fold ((\count -> (\b3 ->
         bind b3 as {i:ip} in count + 1))) 0 in
       ((shuffle_ATIMESD_mT1_to_ATIMESD {r1:(), r2:empty { r1:{ key:int,
-          value:int }, r2:int, r3:int } @ { Collection }, r3:true}).fold
-        ((\_accmap -> (\b3 -> bind b3 as {key:ip, value:tuples} in 
+          value:int }, r2:int, r3:int } @ { Set }, r3:true}).fold ((\_accmap ->
+        (\b3 -> bind b3 as {key:ip, value:tuples} in 
         (_accmap.insert {r1:ip, r2:0, r3:sender_count};_accmap)))) empty {
         r1:address, r2:int, r3:int } @ { Collection }).combine (let
         sender_count =
@@ -1435,7 +1431,7 @@ declare sw_insert_T_send_fetch : { key:int, value:int } -> () = (\vid -> case
           (\b3 -> bind b3 as {i:ip} in count + 1))) 0 in
         (shuffle_ATIMESD_mT1_mR1_to_ATIMESD_mR1_bind_0t0 {r1:None immut,
            r2:empty { r1:{ key:int, value:int }, r2:int, r3:int, r4:int
-           } @ { Collection }, r3:true}).fold ((\_accmap -> (\b3 ->
+           } @ { Set }, r3:true}).fold ((\_accmap -> (\b3 ->
           bind b3 as {key:ip, value:tuples} in 
           (_accmap.insert {r1:ip, r2:2, r3:sender_count};_accmap)))) empty {
           r1:address, r2:int, r3:int } @ { Collection }))).groupBy ((\b1 ->
@@ -1448,9 +1444,9 @@ declare sw_insert_T_send_fetch : { key:int, value:int } -> () = (\vid -> case
       acc.combine ({| key:int, value:int | {key:stmt_id,
         value:count}|} @ { Collection })))) empty { key:int, value:int
       } @ { Collection }).iterate ((\b1 -> bind b1 as {key:addr,
-      value:stmt_id_cnt_list} in 
-      ((nd_insert_T_rcv_put, addr)<- {r1:me, r2:stmt_id_cnt_list, r3:vid,
-       r4:T_C, r5:T_D};
+      value:stmt_cnt_list} in 
+      ((nd_insert_T_rcv_put, addr)<- {r1:me, r2:stmt_cnt_list, r3:vid, r4:T_C,
+       r5:T_D};
        (case ((sw_ack_log.filter ((\b1 -> bind b1 as {key:key, value:value} in 
        key == vid))).peek ()) of
        {Some old_val -> let old_set = old_val.value in
@@ -1479,60 +1475,58 @@ declare sw_insert_T_send_fetch : { key:int, value:int } -> () = (\vid -> case
 declare nd_insert_T_do_complete_s0 : { r1:{ key:int, value:int }, r2:int,
   r3:int } -> () = (\b1 -> bind b1 as {r1:vid, r2:T_C, r3:T_D} in let
   __prod_ret__1 =
-  let wrapped_lookup_value =
+  (let wrapped_lookup_value =
     bind map_ATIMESD_mT1_s0_buf as ind __x in
       (frontier_int_int {key:vid, value:__x.filter ((\b1 -> bind b1 as {r1:r1,
-         r2:r2, r3:r3} in r2 == T_C))}).fold ((\_accmap -> (\b3 ->
-        bind b3 as {r1:map_vid, r2:map_0, r3:map_val} in 
-        (_accmap.insert {key:map_0, value:map_val};_accmap)))) empty { key:int,
+         r2:r2, r3:r3} in r2 == T_C))}).fold ((\acc -> (\b3 ->
+        bind b3 as {r1:vid, r2:map_0, r3:map_val} in 
+        (acc.insert {key:map_0, value:map_val};acc)))) empty { key:int,
         value:int } @ { Collection } in
     case (wrapped_lookup_value.peek ()) of
-      {Some unwrapped_value ->
-        (\b1 -> bind b1 as {value:projected_field} in projected_field)
-          unwrapped_value}{None -> 0} * T_D in
+      {Some unwrapped_value -> bind unwrapped_value as
+        {key:_, value:projected_field} in projected_field}{None -> 0}) * T_D in
   ((nd_add_delta_to_int {r1:ATIMESD, r2:false, r3:vid, r4:{|i:int|
-      __prod_ret__1|} @ { Collection }});
-   ((case ((nd_stmt_cntrs.filter ((\b1 -> bind b1 as {key:key, value:value} in 
-    key == {key:vid, value:0}))).peek ()) of
-    {Some lookup_data -> nd_stmt_cntrs.erase lookup_data}{None -> ()});
-    (if nd_state == nd_state_done
-    then if 0 == nd_stmt_cntrs.size ()
-      then (ms_rcv_node_done, master_addr)<- true else () else ()))))
+      __prod_ret__1|} @ { Set }});
+   (nd_complete_stmt_cntr_check {key:vid, value:0})))
 
 
 declare nd_insert_T_do_complete_s2 : { r1:{ key:int, value:int }, r2:int,
   r3:int } -> () = (\b1 -> bind b1 as {r1:vid, r2:T_C, r3:T_D} in let
-  _delta_values_ =
-  ((bind map_ATIMESD_mT1_mR1_s2_buf as ind __x in
+  delta_values =
+  ((((bind map_ATIMESD_mT1_mR1_s2_buf as ind __x in
     (frontier_int_int_int {key:vid, value:__x.filter ((\b1 ->
-       bind b1 as {r1:r1, r2:r2, r3:r3, r4:r4} in r3 == T_C))}).fold
-      ((\_accmap -> (\b3 -> bind b3 as {r1:map_vid, r2:map_0, r3:map_1,
-      r4:map_val} in 
-      (_accmap.insert {r1:map_0, r2:map_1, r3:map_val};_accmap)))) empty {
-      r1:int, r2:int, r3:int } @ { Collection }).fold ((\_accmap -> (\b3 ->
+       bind b1 as {r1:r1, r2:r2, r3:r3, r4:r4} in r3 == T_C))}).fold ((\acc ->
+      (\b3 -> bind b3 as {r1:vid, r2:map_0, r3:map_1, r4:map_val} in 
+      (acc.insert {r1:map_0, r2:map_1, r3:map_val};acc)))) empty { r1:int,
+      r2:int, r3:int } @ { Collection }).fold ((\_accmap -> (\b3 ->
     bind b3 as {r1:ATIMESD_mRR_B, r2:T_C, r3:__map_ret__2} in 
     (_accmap.insert {key:ATIMESD_mRR_B, value:__map_ret__2};_accmap)))) empty {
     key:int, value:int } @ { Collection }).fold ((\_accmap -> (\b3 ->
     bind b3 as {key:ATIMESD_mRR_B, value:__map_ret__2} in 
     (_accmap.insert {key:ATIMESD_mRR_B, value:__map_ret__2 * T_D};_accmap))))
-    empty { key:int, value:int } @ { Collection } in
-  ((nd_add_delta_to_int_int {r1:ATIMESD_mR1, r2:false, r3:vid,
-      r4:_delta_values_});
+    empty { key:int, value:int } @ { Collection }).fold ((\_accmap -> (\b3 ->
+    bind b3 as {key:ATIMESD_mRR_B, value:__prod_ret__2} in 
+    (_accmap.insert {key:ATIMESD_mRR_B, value:__prod_ret__2};_accmap))))
+    empty { key:int, value:int } @ { Collection }).fold ((\acc_conv -> (\x ->
+    (acc_conv.insert x;acc_conv)))) empty { key:int, value:int } @ { Set } in
+  ((nd_add_delta_to_int_int {r1:ATIMESD_mR1, r2:false, r3:vid, r4:delta_values});
    let sent_msgs =
    nd_ATIMESD_mR1_send_correctives {r1:me, r2:2, r3:vid, r4:1, r5:vid,
-     r6:_delta_values_} in
-   nd_update_stmt_cntr_corr_map {r1:vid, r2:2, r3:1, r4:sent_msgs, r5:true,
-     r6:false}))
+     r6:delta_values} in
+   if sent_msgs == 0 then nd_complete_stmt_cntr_check {key:vid, value:2}
+     else
+       nd_update_stmt_cntr_corr_map {r1:vid, r2:2, r3:1, r4:sent_msgs, r5:true,
+         r6:false}))
 
 
 declare nd_insert_T_do_complete_s1 : { r1:{ key:int, value:int }, r2:int,
   r3:int } -> () = (\b1 -> bind b1 as {r1:vid, r2:T_C, r3:T_D} in let
   __val_ret__2 = T_D in
   ((nd_add_delta_to_int_int {r1:ATIMESD_mS2, r2:false, r3:vid, r4:{| key:int,
-      value:int | {key:T_C, value:__val_ret__2}|} @ { Collection }});
+      value:int | {key:T_C, value:__val_ret__2}|} @ { Set }});
    let sent_msgs =
    nd_ATIMESD_mS2_send_correctives {r1:me, r2:1, r3:vid, r4:1, r5:vid, r6:{|
-     key:int, value:int | {key:T_C, value:__val_ret__2}|} @ { Collection }} in
+     key:int, value:int | {key:T_C, value:__val_ret__2}|} @ { Set }} in
    if sent_msgs == 0 then ()
      else
        nd_update_stmt_cntr_corr_map {r1:vid, r2:1, r3:1, r4:sent_msgs, r5:true,
@@ -1541,30 +1535,31 @@ declare nd_insert_T_do_complete_s1 : { r1:{ key:int, value:int }, r2:int,
 
 declare insert_T_do_corrective_s0_m_ATIMESD_mT1 : { r1:address, r2:int, r3:{
   key:int, value:int }, r4:int, r5:{ key:int, value:int }, r6:int, r7:int,
-  r8:collection { key:int, value:int } @ { Collection } } -> int = (\b1 ->
+  r8:collection { key:int, value:int } @ { Set } } -> int = (\b1 ->
   bind b1 as {r1:orig_addr, r2:orig_stmt_id, r3:orig_vid, r4:hop, r5:vid,
   r6:T_C, r7:T_D, r8:delta_tuples} in let new_tuples =
-  delta_tuples.fold ((\_accext -> (\b3 -> bind b3 as {key:delta_ATIMESD_mTT_C,
+  (delta_tuples.fold ((\_accext -> (\b3 -> bind b3 as {key:delta_ATIMESD_mTT_C,
     value:delta_ATIMESD_mT1} in _accext.combine (let __prod_ret__63 =
-    (if T_C == delta_ATIMESD_mTT_C then 1 else 0 * delta_ATIMESD_mT1) * T_D in
-    {|i:int| __prod_ret__63|} @ { Collection }))))
-    empty {i:int} @ { Collection } in
+    ((if T_C == delta_ATIMESD_mTT_C then 1 else 0) * delta_ATIMESD_mT1) * T_D
+    in {|i:int| __prod_ret__63|} @ { Set })))) empty {i:int} @ { Set }).filter
+    ((\b1 -> bind b1 as {i:map_val} in 0 != map_val)) in
   ((nd_add_delta_to_int {r1:ATIMESD, r2:true, r3:vid, r4:new_tuples});0))
 
 
 declare insert_T_do_corrective_s2_m_ATIMESD_mT1_mR1 : { r1:address, r2:int,
   r3:{ key:int, value:int }, r4:int, r5:{ key:int, value:int }, r6:int, r7:int,
-  r8:collection { r1:int, r2:int, r3:int } @ { Collection } } -> int = (\b1 ->
+  r8:collection { r1:int, r2:int, r3:int } @ { Set } } -> int = (\b1 ->
   bind b1 as {r1:orig_addr, r2:orig_stmt_id, r3:orig_vid, r4:hop, r5:vid,
   r6:T_C, r7:T_D, r8:delta_tuples} in let new_tuples =
-  delta_tuples.fold ((\_accext -> (\b3 ->
+  (delta_tuples.fold ((\_accext -> (\b3 ->
     bind b3 as {r1:delta_ATIMESD_mT1_mRR_B, r2:delta_ATIMESD_mTT_C,
     r3:delta_ATIMESD_mT1_mR1} in _accext.combine (let __prod_ret__65 =
-    (if T_C == delta_ATIMESD_mTT_C then 1 else 0 * delta_ATIMESD_mT1_mR1) * T_D
-    in
+    ((if T_C == delta_ATIMESD_mTT_C then 1 else 0) * delta_ATIMESD_mT1_mR1) *
+      T_D in
     {| key:int, value:int | {key:delta_ATIMESD_mT1_mRR_B,
-      value:__prod_ret__65}|} @ { Collection })))) empty { key:int, value:int
-    } @ { Collection } in
+      value:__prod_ret__65}|} @ { Set })))) empty { key:int, value:int
+    } @ { Set }).filter ((\b1 -> bind b1 as {key:map_0, value:map_val} in 0 !=
+    map_val)) in
   ((nd_add_delta_to_int_int {r1:ATIMESD_mR1, r2:true, r3:vid, r4:new_tuples});
    (nd_ATIMESD_mR1_send_correctives {r1:orig_addr, r2:orig_stmt_id,
       r3:orig_vid, r4:1 + hop, r5:vid, r6:new_tuples})))
@@ -1589,15 +1584,15 @@ declare sw_insert_S_send_fetch : { key:int, value:int } -> () = (\vid -> case
       (route_to_int {key:4, value:Some S_B}).fold ((\count -> (\b3 ->
         bind b3 as {i:ip} in count + 1))) 0 in
       ((shuffle_ATIMESD_mS1_to_ATIMESD {r1:(), r2:empty { r1:{ key:int,
-          value:int }, r2:int, r3:int } @ { Collection }, r3:true}).fold
-        ((\_accmap -> (\b3 -> bind b3 as {key:ip, value:tuples} in 
+          value:int }, r2:int, r3:int } @ { Set }, r3:true}).fold ((\_accmap ->
+        (\b3 -> bind b3 as {key:ip, value:tuples} in 
         (_accmap.insert {r1:ip, r2:6, r3:sender_count};_accmap)))) empty {
         r1:address, r2:int, r3:int } @ { Collection }).combine (let
         sender_count =
         (route_to_int {key:5, value:Some S_C}).fold ((\count -> (\b3 ->
           bind b3 as {i:ip} in count + 1))) 0 in
         ((shuffle_ATIMESD_mS2_to_ATIMESD {r1:(), r2:empty { r1:{ key:int,
-            value:int }, r2:int, r3:int } @ { Collection }, r3:true}).fold
+            value:int }, r2:int, r3:int } @ { Set }, r3:true}).fold
           ((\_accmap -> (\b3 -> bind b3 as {key:ip, value:tuples} in 
           (_accmap.insert {r1:ip, r2:6, r3:sender_count};_accmap)))) empty {
           r1:address, r2:int, r3:int } @ { Collection }).combine (let
@@ -1605,7 +1600,7 @@ declare sw_insert_S_send_fetch : { key:int, value:int } -> () = (\vid -> case
           (route_to_int {key:4, value:Some S_B}).fold ((\count -> (\b3 ->
             bind b3 as {i:ip} in count + 1))) 0 in
           ((shuffle_ATIMESD_mS1_to_ATIMESD_mT1 {r1:Some S_C, r2:empty { r1:{
-              key:int, value:int }, r2:int, r3:int } @ { Collection }, r3:true}).fold
+              key:int, value:int }, r2:int, r3:int } @ { Set }, r3:true}).fold
             ((\_accmap -> (\b3 -> bind b3 as {key:ip, value:tuples} in 
             (_accmap.insert {r1:ip, r2:7, r3:sender_count};_accmap)))) empty {
             r1:address, r2:int, r3:int } @ { Collection }).combine (let
@@ -1613,9 +1608,8 @@ declare sw_insert_S_send_fetch : { key:int, value:int } -> () = (\vid -> case
             (route_to_int {key:5, value:Some S_C}).fold ((\count -> (\b3 ->
               bind b3 as {i:ip} in count + 1))) 0 in
             (shuffle_ATIMESD_mS2_to_ATIMESD_mR1 {r1:Some S_B, r2:empty { r1:{
-               key:int, value:int }, r2:int, r3:int } @ { Collection },
-               r3:true}).fold ((\_accmap -> (\b3 -> bind b3 as {key:ip,
-              value:tuples} in 
+               key:int, value:int }, r2:int, r3:int } @ { Set }, r3:true}).fold
+              ((\_accmap -> (\b3 -> bind b3 as {key:ip, value:tuples} in 
               (_accmap.insert {r1:ip, r2:9, r3:sender_count};_accmap))))
               empty { r1:address, r2:int, r3:int } @ { Collection }))))).groupBy
       ((\b1 -> bind b1 as {r1:ip, r2:stmt_id, r3:count} in {key:ip,
@@ -1627,9 +1621,9 @@ declare sw_insert_S_send_fetch : { key:int, value:int } -> () = (\vid -> case
       acc.combine ({| key:int, value:int | {key:stmt_id,
         value:count}|} @ { Collection })))) empty { key:int, value:int
       } @ { Collection }).iterate ((\b1 -> bind b1 as {key:addr,
-      value:stmt_id_cnt_list} in 
-      ((nd_insert_S_rcv_put, addr)<- {r1:me, r2:stmt_id_cnt_list, r3:vid,
-       r4:S_B, r5:S_C};
+      value:stmt_cnt_list} in 
+      ((nd_insert_S_rcv_put, addr)<- {r1:me, r2:stmt_cnt_list, r3:vid, r4:S_B,
+       r5:S_C};
        (case ((sw_ack_log.filter ((\b1 -> bind b1 as {key:key, value:value} in 
        key == vid))).peek ()) of
        {Some old_val -> let old_set = old_val.value in
@@ -1663,35 +1657,29 @@ declare sw_insert_S_send_fetch : { key:int, value:int } -> () = (\vid -> case
 declare nd_insert_S_do_complete_s6 : { r1:{ key:int, value:int }, r2:int,
   r3:int } -> () = (\b1 -> bind b1 as {r1:vid, r2:S_B, r3:S_C} in let
   __prod_ret__8 =
-  let wrapped_lookup_value =
+  (let wrapped_lookup_value =
     bind map_ATIMESD_mS1_s6_buf as ind __x in
       (frontier_int_int {key:vid, value:__x.filter ((\b1 -> bind b1 as {r1:r1,
-         r2:r2, r3:r3} in r2 == S_B))}).fold ((\_accmap -> (\b3 ->
-        bind b3 as {r1:map_vid, r2:map_0, r3:map_val} in 
-        (_accmap.insert {key:map_0, value:map_val};_accmap)))) empty { key:int,
+         r2:r2, r3:r3} in r2 == S_B))}).fold ((\acc -> (\b3 ->
+        bind b3 as {r1:vid, r2:map_0, r3:map_val} in 
+        (acc.insert {key:map_0, value:map_val};acc)))) empty { key:int,
         value:int } @ { Collection } in
     case (wrapped_lookup_value.peek ()) of
-      {Some unwrapped_value ->
-        (\b1 -> bind b1 as {value:projected_field} in projected_field)
-          unwrapped_value}{None -> 0} * let wrapped_lookup_value =
-      bind map_ATIMESD_mS2_s6_buf as ind __x in
-        (frontier_int_int {key:vid, value:__x.filter ((\b1 ->
-           bind b1 as {r1:r1, r2:r2, r3:r3} in r2 == S_C))}).fold ((\_accmap ->
-          (\b3 -> bind b3 as {r1:map_vid, r2:map_0, r3:map_val} in 
-          (_accmap.insert {key:map_0, value:map_val};_accmap)))) empty {
-          key:int, value:int } @ { Collection } in
-      case (wrapped_lookup_value.peek ()) of
-        {Some unwrapped_value ->
-          (\b1 -> bind b1 as {value:projected_field} in projected_field)
-            unwrapped_value}{None -> 0} in
+      {Some unwrapped_value -> bind unwrapped_value as
+        {key:_, value:projected_field} in projected_field}{None -> 0}) * let
+    wrapped_lookup_value =
+    bind map_ATIMESD_mS2_s6_buf as ind __x in
+      (frontier_int_int {key:vid, value:__x.filter ((\b1 -> bind b1 as {r1:r1,
+         r2:r2, r3:r3} in r2 == S_C))}).fold ((\acc -> (\b3 ->
+        bind b3 as {r1:vid, r2:map_0, r3:map_val} in 
+        (acc.insert {key:map_0, value:map_val};acc)))) empty { key:int,
+        value:int } @ { Collection } in
+    case (wrapped_lookup_value.peek ()) of
+      {Some unwrapped_value -> bind unwrapped_value as
+        {key:_, value:projected_field} in projected_field}{None -> 0} in
   ((nd_add_delta_to_int {r1:ATIMESD, r2:false, r3:vid, r4:{|i:int|
-      __prod_ret__8|} @ { Collection }});
-   ((case ((nd_stmt_cntrs.filter ((\b1 -> bind b1 as {key:key, value:value} in 
-    key == {key:vid, value:6}))).peek ()) of
-    {Some lookup_data -> nd_stmt_cntrs.erase lookup_data}{None -> ()});
-    (if nd_state == nd_state_done
-    then if 0 == nd_stmt_cntrs.size ()
-      then (ms_rcv_node_done, master_addr)<- true else () else ()))))
+      __prod_ret__8|} @ { Set }});
+   (nd_complete_stmt_cntr_check {key:vid, value:6})))
 
 
 declare nd_insert_S_do_complete_s7 : { r1:{ key:int, value:int }, r2:int,
@@ -1700,21 +1688,22 @@ declare nd_insert_S_do_complete_s7 : { r1:{ key:int, value:int }, r2:int,
   let wrapped_lookup_value =
     bind map_ATIMESD_mS1_s7_buf as ind __x in
       (frontier_int_int {key:vid, value:__x.filter ((\b1 -> bind b1 as {r1:r1,
-         r2:r2, r3:r3} in r2 == S_B))}).fold ((\_accmap -> (\b3 ->
-        bind b3 as {r1:map_vid, r2:map_0, r3:map_val} in 
-        (_accmap.insert {key:map_0, value:map_val};_accmap)))) empty { key:int,
+         r2:r2, r3:r3} in r2 == S_B))}).fold ((\acc -> (\b3 ->
+        bind b3 as {r1:vid, r2:map_0, r3:map_val} in 
+        (acc.insert {key:map_0, value:map_val};acc)))) empty { key:int,
         value:int } @ { Collection } in
     case (wrapped_lookup_value.peek ()) of
-      {Some unwrapped_value ->
-        (\b1 -> bind b1 as {value:projected_field} in projected_field)
-          unwrapped_value}{None -> 0} in
+      {Some unwrapped_value -> bind unwrapped_value as
+        {key:_, value:projected_field} in projected_field}{None -> 0} in
   ((nd_add_delta_to_int_int {r1:ATIMESD_mT1, r2:false, r3:vid, r4:{| key:int,
-      value:int | {key:S_C, value:__map_ret__7}|} @ { Collection }});
+      value:int | {key:S_C, value:__map_ret__7}|} @ { Set }});
    let sent_msgs =
    nd_ATIMESD_mT1_send_correctives {r1:me, r2:7, r3:vid, r4:1, r5:vid, r6:{|
-     key:int, value:int | {key:S_C, value:__map_ret__7}|} @ { Collection }} in
-   nd_update_stmt_cntr_corr_map {r1:vid, r2:7, r3:1, r4:sent_msgs, r5:true,
-     r6:false}))
+     key:int, value:int | {key:S_C, value:__map_ret__7}|} @ { Set }} in
+   if sent_msgs == 0 then nd_complete_stmt_cntr_check {key:vid, value:7}
+     else
+       nd_update_stmt_cntr_corr_map {r1:vid, r2:7, r3:1, r4:sent_msgs, r5:true,
+         r6:false}))
 
 
 declare nd_insert_S_do_complete_s9 : { r1:{ key:int, value:int }, r2:int,
@@ -1723,33 +1712,33 @@ declare nd_insert_S_do_complete_s9 : { r1:{ key:int, value:int }, r2:int,
   let wrapped_lookup_value =
     bind map_ATIMESD_mS2_s9_buf as ind __x in
       (frontier_int_int {key:vid, value:__x.filter ((\b1 -> bind b1 as {r1:r1,
-         r2:r2, r3:r3} in r2 == S_C))}).fold ((\_accmap -> (\b3 ->
-        bind b3 as {r1:map_vid, r2:map_0, r3:map_val} in 
-        (_accmap.insert {key:map_0, value:map_val};_accmap)))) empty { key:int,
+         r2:r2, r3:r3} in r2 == S_C))}).fold ((\acc -> (\b3 ->
+        bind b3 as {r1:vid, r2:map_0, r3:map_val} in 
+        (acc.insert {key:map_0, value:map_val};acc)))) empty { key:int,
         value:int } @ { Collection } in
     case (wrapped_lookup_value.peek ()) of
-      {Some unwrapped_value ->
-        (\b1 -> bind b1 as {value:projected_field} in projected_field)
-          unwrapped_value}{None -> 0} in
+      {Some unwrapped_value -> bind unwrapped_value as
+        {key:_, value:projected_field} in projected_field}{None -> 0} in
   ((nd_add_delta_to_int_int {r1:ATIMESD_mR1, r2:false, r3:vid, r4:{| key:int,
-      value:int | {key:S_B, value:__map_ret__8}|} @ { Collection }});
+      value:int | {key:S_B, value:__map_ret__8}|} @ { Set }});
    let sent_msgs =
    nd_ATIMESD_mR1_send_correctives {r1:me, r2:9, r3:vid, r4:1, r5:vid, r6:{|
-     key:int, value:int | {key:S_B, value:__map_ret__8}|} @ { Collection }} in
-   nd_update_stmt_cntr_corr_map {r1:vid, r2:9, r3:1, r4:sent_msgs, r5:true,
-     r6:false}))
+     key:int, value:int | {key:S_B, value:__map_ret__8}|} @ { Set }} in
+   if sent_msgs == 0 then nd_complete_stmt_cntr_check {key:vid, value:9}
+     else
+       nd_update_stmt_cntr_corr_map {r1:vid, r2:9, r3:1, r4:sent_msgs, r5:true,
+         r6:false}))
 
 
 declare nd_insert_S_do_complete_s8 : { r1:{ key:int, value:int }, r2:int,
   r3:int } -> () = (\b1 -> bind b1 as {r1:vid, r2:S_B, r3:S_C} in let
   __val_ret__10 = 1 in
   ((nd_add_delta_to_int_int_int {r1:ATIMESD_mT1_mR1, r2:false, r3:vid, r4:{|
-      r1:int, r2:int, r3:int | {r1:S_B, r2:S_C,
-      r3:__val_ret__10}|} @ { Collection }});
+      r1:int, r2:int, r3:int | {r1:S_B, r2:S_C, r3:__val_ret__10}|} @ { Set }});
    let sent_msgs =
    nd_ATIMESD_mT1_mR1_send_correctives {r1:me, r2:8, r3:vid, r4:1, r5:vid,
      r6:{| r1:int, r2:int, r3:int | {r1:S_B, r2:S_C,
-     r3:__val_ret__10}|} @ { Collection }} in
+     r3:__val_ret__10}|} @ { Set }} in
    if sent_msgs == 0 then ()
      else
        nd_update_stmt_cntr_corr_map {r1:vid, r2:8, r3:1, r4:sent_msgs, r5:true,
@@ -1758,64 +1747,61 @@ declare nd_insert_S_do_complete_s8 : { r1:{ key:int, value:int }, r2:int,
 
 declare insert_S_do_corrective_s6_m_ATIMESD_mS1 : { r1:address, r2:int, r3:{
   key:int, value:int }, r4:int, r5:{ key:int, value:int }, r6:int, r7:int,
-  r8:collection { key:int, value:int } @ { Collection } } -> int = (\b1 ->
+  r8:collection { key:int, value:int } @ { Set } } -> int = (\b1 ->
   bind b1 as {r1:orig_addr, r2:orig_stmt_id, r3:orig_vid, r4:hop, r5:vid,
   r6:S_B, r7:S_C, r8:delta_tuples} in let new_tuples =
-  delta_tuples.fold ((\_accext -> (\b3 -> bind b3 as {key:delta_ATIMESD_mSS_B,
+  (delta_tuples.fold ((\_accext -> (\b3 -> bind b3 as {key:delta_ATIMESD_mSS_B,
     value:delta_ATIMESD_mS1} in _accext.combine (let __prod_ret__31 =
-    (if S_B == delta_ATIMESD_mSS_B then 1
-      else 0 * let wrapped_lookup_value =
-        bind map_ATIMESD_mS2_s6_buf as ind __x in
-          (frontier_int_int {key:vid, value:__x.filter ((\b1 ->
-             bind b1 as {r1:r1, r2:r2, r3:r3} in r2 == S_C))}).fold
-            ((\_accmap -> (\b3 -> bind b3 as {r1:map_vid, r2:map_0,
-            r3:map_val} in 
-            (_accmap.insert {key:map_0, value:map_val};_accmap)))) empty {
-            key:int, value:int } @ { Collection } in
-        case (wrapped_lookup_value.peek ()) of
-          {Some unwrapped_value ->
-            (\b1 -> bind b1 as {value:projected_field} in projected_field)
-              unwrapped_value}{None -> 0}) * delta_ATIMESD_mS1 in
-    {|i:int| __prod_ret__31|} @ { Collection }))))
-    empty {i:int} @ { Collection } in
+    ((if S_B == delta_ATIMESD_mSS_B then 1 else 0) * let wrapped_lookup_value =
+      bind map_ATIMESD_mS2_s6_buf as ind __x in
+        (frontier_int_int {key:vid, value:__x.filter ((\b1 ->
+           bind b1 as {r1:r1, r2:r2, r3:r3} in r2 == S_C))}).fold ((\acc ->
+          (\b3 -> bind b3 as {r1:vid, r2:map_0, r3:map_val} in 
+          (acc.insert {key:map_0, value:map_val};acc)))) empty { key:int,
+          value:int } @ { Collection } in
+      case (wrapped_lookup_value.peek ()) of
+        {Some unwrapped_value -> bind unwrapped_value as
+          {key:_, value:projected_field} in projected_field}{None -> 0}) *
+      delta_ATIMESD_mS1 in {|i:int| __prod_ret__31|} @ { Set }))))
+    empty {i:int} @ { Set }).filter ((\b1 -> bind b1 as {i:map_val} in 0 !=
+    map_val)) in
   ((nd_add_delta_to_int {r1:ATIMESD, r2:true, r3:vid, r4:new_tuples});0))
 
 
 declare insert_S_do_corrective_s6_m_ATIMESD_mS2 : { r1:address, r2:int, r3:{
   key:int, value:int }, r4:int, r5:{ key:int, value:int }, r6:int, r7:int,
-  r8:collection { key:int, value:int } @ { Collection } } -> int = (\b1 ->
+  r8:collection { key:int, value:int } @ { Set } } -> int = (\b1 ->
   bind b1 as {r1:orig_addr, r2:orig_stmt_id, r3:orig_vid, r4:hop, r5:vid,
   r6:S_B, r7:S_C, r8:delta_tuples} in let new_tuples =
-  delta_tuples.fold ((\_accext -> (\b3 -> bind b3 as {key:delta_ATIMESD_mSS_C,
+  (delta_tuples.fold ((\_accext -> (\b3 -> bind b3 as {key:delta_ATIMESD_mSS_C,
     value:delta_ATIMESD_mS2} in _accext.combine (let __prod_ret__37 =
-    (if S_C == delta_ATIMESD_mSS_C then 1
-      else 0 * let wrapped_lookup_value =
-        bind map_ATIMESD_mS1_s6_buf as ind __x in
-          (frontier_int_int {key:vid, value:__x.filter ((\b1 ->
-             bind b1 as {r1:r1, r2:r2, r3:r3} in r2 == S_B))}).fold
-            ((\_accmap -> (\b3 -> bind b3 as {r1:map_vid, r2:map_0,
-            r3:map_val} in 
-            (_accmap.insert {key:map_0, value:map_val};_accmap)))) empty {
-            key:int, value:int } @ { Collection } in
-        case (wrapped_lookup_value.peek ()) of
-          {Some unwrapped_value ->
-            (\b1 -> bind b1 as {value:projected_field} in projected_field)
-              unwrapped_value}{None -> 0}) * delta_ATIMESD_mS2 in
-    {|i:int| __prod_ret__37|} @ { Collection }))))
-    empty {i:int} @ { Collection } in
+    ((if S_C == delta_ATIMESD_mSS_C then 1 else 0) * let wrapped_lookup_value =
+      bind map_ATIMESD_mS1_s6_buf as ind __x in
+        (frontier_int_int {key:vid, value:__x.filter ((\b1 ->
+           bind b1 as {r1:r1, r2:r2, r3:r3} in r2 == S_B))}).fold ((\acc ->
+          (\b3 -> bind b3 as {r1:vid, r2:map_0, r3:map_val} in 
+          (acc.insert {key:map_0, value:map_val};acc)))) empty { key:int,
+          value:int } @ { Collection } in
+      case (wrapped_lookup_value.peek ()) of
+        {Some unwrapped_value -> bind unwrapped_value as
+          {key:_, value:projected_field} in projected_field}{None -> 0}) *
+      delta_ATIMESD_mS2 in {|i:int| __prod_ret__37|} @ { Set }))))
+    empty {i:int} @ { Set }).filter ((\b1 -> bind b1 as {i:map_val} in 0 !=
+    map_val)) in
   ((nd_add_delta_to_int {r1:ATIMESD, r2:true, r3:vid, r4:new_tuples});0))
 
 
 declare insert_S_do_corrective_s7_m_ATIMESD_mS1 : { r1:address, r2:int, r3:{
   key:int, value:int }, r4:int, r5:{ key:int, value:int }, r6:int, r7:int,
-  r8:collection { key:int, value:int } @ { Collection } } -> int = (\b1 ->
+  r8:collection { key:int, value:int } @ { Set } } -> int = (\b1 ->
   bind b1 as {r1:orig_addr, r2:orig_stmt_id, r3:orig_vid, r4:hop, r5:vid,
   r6:S_B, r7:S_C, r8:delta_tuples} in let new_tuples =
-  delta_tuples.fold ((\_accext -> (\b3 -> bind b3 as {key:delta_ATIMESD_mSS_B,
+  (delta_tuples.fold ((\_accext -> (\b3 -> bind b3 as {key:delta_ATIMESD_mSS_B,
     value:delta_ATIMESD_mS1} in _accext.combine (let __prod_ret__32 =
-    if S_B == delta_ATIMESD_mSS_B then 1 else 0 * delta_ATIMESD_mS1 in
-    {| key:int, value:int | {key:S_C, value:__prod_ret__32}|} @ { Collection }))))
-    empty { key:int, value:int } @ { Collection } in
+    (if S_B == delta_ATIMESD_mSS_B then 1 else 0) * delta_ATIMESD_mS1 in
+    {| key:int, value:int | {key:S_C, value:__prod_ret__32}|} @ { Set }))))
+    empty { key:int, value:int } @ { Set }).filter ((\b1 ->
+    bind b1 as {key:map_0, value:map_val} in 0 != map_val)) in
   ((nd_add_delta_to_int_int {r1:ATIMESD_mT1, r2:true, r3:vid, r4:new_tuples});
    (nd_ATIMESD_mT1_send_correctives {r1:orig_addr, r2:orig_stmt_id,
       r3:orig_vid, r4:1 + hop, r5:vid, r6:new_tuples})))
@@ -1823,14 +1809,15 @@ declare insert_S_do_corrective_s7_m_ATIMESD_mS1 : { r1:address, r2:int, r3:{
 
 declare insert_S_do_corrective_s9_m_ATIMESD_mS2 : { r1:address, r2:int, r3:{
   key:int, value:int }, r4:int, r5:{ key:int, value:int }, r6:int, r7:int,
-  r8:collection { key:int, value:int } @ { Collection } } -> int = (\b1 ->
+  r8:collection { key:int, value:int } @ { Set } } -> int = (\b1 ->
   bind b1 as {r1:orig_addr, r2:orig_stmt_id, r3:orig_vid, r4:hop, r5:vid,
   r6:S_B, r7:S_C, r8:delta_tuples} in let new_tuples =
-  delta_tuples.fold ((\_accext -> (\b3 -> bind b3 as {key:delta_ATIMESD_mSS_C,
+  (delta_tuples.fold ((\_accext -> (\b3 -> bind b3 as {key:delta_ATIMESD_mSS_C,
     value:delta_ATIMESD_mS2} in _accext.combine (let __prod_ret__38 =
-    if S_C == delta_ATIMESD_mSS_C then 1 else 0 * delta_ATIMESD_mS2 in
-    {| key:int, value:int | {key:S_B, value:__prod_ret__38}|} @ { Collection }))))
-    empty { key:int, value:int } @ { Collection } in
+    (if S_C == delta_ATIMESD_mSS_C then 1 else 0) * delta_ATIMESD_mS2 in
+    {| key:int, value:int | {key:S_B, value:__prod_ret__38}|} @ { Set }))))
+    empty { key:int, value:int } @ { Set }).filter ((\b1 ->
+    bind b1 as {key:map_0, value:map_val} in 0 != map_val)) in
   ((nd_add_delta_to_int_int {r1:ATIMESD_mR1, r2:true, r3:vid, r4:new_tuples});
    (nd_ATIMESD_mR1_send_correctives {r1:orig_addr, r2:orig_stmt_id,
       r3:orig_vid, r4:1 + hop, r5:vid, r6:new_tuples})))
@@ -1855,8 +1842,8 @@ declare sw_insert_R_send_fetch : { key:int, value:int } -> () = (\vid -> case
       (route_to_int {key:6, value:Some R_B}).fold ((\count -> (\b3 ->
         bind b3 as {i:ip} in count + 1))) 0 in
       ((shuffle_ATIMESD_mR1_to_ATIMESD {r1:(), r2:empty { r1:{ key:int,
-          value:int }, r2:int, r3:int } @ { Collection }, r3:true}).fold
-        ((\_accmap -> (\b3 -> bind b3 as {key:ip, value:tuples} in 
+          value:int }, r2:int, r3:int } @ { Set }, r3:true}).fold ((\_accmap ->
+        (\b3 -> bind b3 as {key:ip, value:tuples} in 
         (_accmap.insert {r1:ip, r2:14, r3:sender_count};_accmap)))) empty {
         r1:address, r2:int, r3:int } @ { Collection }).combine (let
         sender_count =
@@ -1864,7 +1851,7 @@ declare sw_insert_R_send_fetch : { key:int, value:int } -> () = (\vid -> case
           (\b3 -> bind b3 as {i:ip} in count + 1))) 0 in
         (shuffle_ATIMESD_mT1_mR1_to_ATIMESD_mT1_bind_0t1 {r1:None immut,
            r2:empty { r1:{ key:int, value:int }, r2:int, r3:int, r4:int
-           } @ { Collection }, r3:true}).fold ((\_accmap -> (\b3 ->
+           } @ { Set }, r3:true}).fold ((\_accmap -> (\b3 ->
           bind b3 as {key:ip, value:tuples} in 
           (_accmap.insert {r1:ip, r2:15, r3:sender_count};_accmap)))) empty {
           r1:address, r2:int, r3:int } @ { Collection }))).groupBy ((\b1 ->
@@ -1877,9 +1864,9 @@ declare sw_insert_R_send_fetch : { key:int, value:int } -> () = (\vid -> case
       acc.combine ({| key:int, value:int | {key:stmt_id,
         value:count}|} @ { Collection })))) empty { key:int, value:int
       } @ { Collection }).iterate ((\b1 -> bind b1 as {key:addr,
-      value:stmt_id_cnt_list} in 
-      ((nd_insert_R_rcv_put, addr)<- {r1:me, r2:stmt_id_cnt_list, r3:vid,
-       r4:R_A, r5:R_B};
+      value:stmt_cnt_list} in 
+      ((nd_insert_R_rcv_put, addr)<- {r1:me, r2:stmt_cnt_list, r3:vid, r4:R_A,
+       r5:R_B};
        (case ((sw_ack_log.filter ((\b1 -> bind b1 as {key:key, value:value} in 
        key == vid))).peek ()) of
        {Some old_val -> let old_set = old_val.value in
@@ -1908,60 +1895,58 @@ declare sw_insert_R_send_fetch : { key:int, value:int } -> () = (\vid -> case
 declare nd_insert_R_do_complete_s14 : { r1:{ key:int, value:int }, r2:int,
   r3:int } -> () = (\b1 -> bind b1 as {r1:vid, r2:R_A, r3:R_B} in let
   __prod_ret__13 =
-  let wrapped_lookup_value =
+  (let wrapped_lookup_value =
     bind map_ATIMESD_mR1_s14_buf as ind __x in
       (frontier_int_int {key:vid, value:__x.filter ((\b1 -> bind b1 as {r1:r1,
-         r2:r2, r3:r3} in r2 == R_B))}).fold ((\_accmap -> (\b3 ->
-        bind b3 as {r1:map_vid, r2:map_0, r3:map_val} in 
-        (_accmap.insert {key:map_0, value:map_val};_accmap)))) empty { key:int,
+         r2:r2, r3:r3} in r2 == R_B))}).fold ((\acc -> (\b3 ->
+        bind b3 as {r1:vid, r2:map_0, r3:map_val} in 
+        (acc.insert {key:map_0, value:map_val};acc)))) empty { key:int,
         value:int } @ { Collection } in
     case (wrapped_lookup_value.peek ()) of
-      {Some unwrapped_value ->
-        (\b1 -> bind b1 as {value:projected_field} in projected_field)
-          unwrapped_value}{None -> 0} * R_A in
+      {Some unwrapped_value -> bind unwrapped_value as
+        {key:_, value:projected_field} in projected_field}{None -> 0}) * R_A in
   ((nd_add_delta_to_int {r1:ATIMESD, r2:false, r3:vid, r4:{|i:int|
-      __prod_ret__13|} @ { Collection }});
-   ((case ((nd_stmt_cntrs.filter ((\b1 -> bind b1 as {key:key, value:value} in 
-    key == {key:vid, value:14}))).peek ()) of
-    {Some lookup_data -> nd_stmt_cntrs.erase lookup_data}{None -> ()});
-    (if nd_state == nd_state_done
-    then if 0 == nd_stmt_cntrs.size ()
-      then (ms_rcv_node_done, master_addr)<- true else () else ()))))
+      __prod_ret__13|} @ { Set }});
+   (nd_complete_stmt_cntr_check {key:vid, value:14})))
 
 
 declare nd_insert_R_do_complete_s15 : { r1:{ key:int, value:int }, r2:int,
   r3:int } -> () = (\b1 -> bind b1 as {r1:vid, r2:R_A, r3:R_B} in let
-  _delta_values_ =
-  ((bind map_ATIMESD_mT1_mR1_s15_buf as ind __x in
+  delta_values =
+  ((((bind map_ATIMESD_mT1_mR1_s15_buf as ind __x in
     (frontier_int_int_int {key:vid, value:__x.filter ((\b1 ->
-       bind b1 as {r1:r1, r2:r2, r3:r3, r4:r4} in r2 == R_B))}).fold
-      ((\_accmap -> (\b3 -> bind b3 as {r1:map_vid, r2:map_0, r3:map_1,
-      r4:map_val} in 
-      (_accmap.insert {r1:map_0, r2:map_1, r3:map_val};_accmap)))) empty {
-      r1:int, r2:int, r3:int } @ { Collection }).fold ((\_accmap -> (\b3 ->
+       bind b1 as {r1:r1, r2:r2, r3:r3, r4:r4} in r2 == R_B))}).fold ((\acc ->
+      (\b3 -> bind b3 as {r1:vid, r2:map_0, r3:map_1, r4:map_val} in 
+      (acc.insert {r1:map_0, r2:map_1, r3:map_val};acc)))) empty { r1:int,
+      r2:int, r3:int } @ { Collection }).fold ((\_accmap -> (\b3 ->
     bind b3 as {r1:R_B, r2:ATIMESD_mTT_C, r3:__map_ret__14} in 
     (_accmap.insert {key:ATIMESD_mTT_C, value:__map_ret__14};_accmap))))
     empty { key:int, value:int } @ { Collection }).fold ((\_accmap -> (\b3 ->
     bind b3 as {key:ATIMESD_mTT_C, value:__map_ret__14} in 
     (_accmap.insert {key:ATIMESD_mTT_C, value:__map_ret__14 * R_A};_accmap))))
-    empty { key:int, value:int } @ { Collection } in
-  ((nd_add_delta_to_int_int {r1:ATIMESD_mT1, r2:false, r3:vid,
-      r4:_delta_values_});
+    empty { key:int, value:int } @ { Collection }).fold ((\_accmap -> (\b3 ->
+    bind b3 as {key:ATIMESD_mTT_C, value:__prod_ret__14} in 
+    (_accmap.insert {key:ATIMESD_mTT_C, value:__prod_ret__14};_accmap))))
+    empty { key:int, value:int } @ { Collection }).fold ((\acc_conv -> (\x ->
+    (acc_conv.insert x;acc_conv)))) empty { key:int, value:int } @ { Set } in
+  ((nd_add_delta_to_int_int {r1:ATIMESD_mT1, r2:false, r3:vid, r4:delta_values});
    let sent_msgs =
    nd_ATIMESD_mT1_send_correctives {r1:me, r2:15, r3:vid, r4:1, r5:vid,
-     r6:_delta_values_} in
-   nd_update_stmt_cntr_corr_map {r1:vid, r2:15, r3:1, r4:sent_msgs, r5:true,
-     r6:false}))
+     r6:delta_values} in
+   if sent_msgs == 0 then nd_complete_stmt_cntr_check {key:vid, value:15}
+     else
+       nd_update_stmt_cntr_corr_map {r1:vid, r2:15, r3:1, r4:sent_msgs,
+         r5:true, r6:false}))
 
 
 declare nd_insert_R_do_complete_s16 : { r1:{ key:int, value:int }, r2:int,
   r3:int } -> () = (\b1 -> bind b1 as {r1:vid, r2:R_A, r3:R_B} in let
   __val_ret__17 = R_A in
   ((nd_add_delta_to_int_int {r1:ATIMESD_mS1, r2:false, r3:vid, r4:{| key:int,
-      value:int | {key:R_B, value:__val_ret__17}|} @ { Collection }});
+      value:int | {key:R_B, value:__val_ret__17}|} @ { Set }});
    let sent_msgs =
    nd_ATIMESD_mS1_send_correctives {r1:me, r2:16, r3:vid, r4:1, r5:vid, r6:{|
-     key:int, value:int | {key:R_B, value:__val_ret__17}|} @ { Collection }} in
+     key:int, value:int | {key:R_B, value:__val_ret__17}|} @ { Set }} in
    if sent_msgs == 0 then ()
      else
        nd_update_stmt_cntr_corr_map {r1:vid, r2:16, r3:1, r4:sent_msgs,
@@ -1970,30 +1955,31 @@ declare nd_insert_R_do_complete_s16 : { r1:{ key:int, value:int }, r2:int,
 
 declare insert_R_do_corrective_s14_m_ATIMESD_mR1 : { r1:address, r2:int, r3:{
   key:int, value:int }, r4:int, r5:{ key:int, value:int }, r6:int, r7:int,
-  r8:collection { key:int, value:int } @ { Collection } } -> int = (\b1 ->
+  r8:collection { key:int, value:int } @ { Set } } -> int = (\b1 ->
   bind b1 as {r1:orig_addr, r2:orig_stmt_id, r3:orig_vid, r4:hop, r5:vid,
   r6:R_A, r7:R_B, r8:delta_tuples} in let new_tuples =
-  delta_tuples.fold ((\_accext -> (\b3 -> bind b3 as {key:delta_ATIMESD_mRR_B,
+  (delta_tuples.fold ((\_accext -> (\b3 -> bind b3 as {key:delta_ATIMESD_mRR_B,
     value:delta_ATIMESD_mR1} in _accext.combine (let __prod_ret__21 =
-    (if R_B == delta_ATIMESD_mRR_B then 1 else 0 * delta_ATIMESD_mR1) * R_A in
-    {|i:int| __prod_ret__21|} @ { Collection }))))
-    empty {i:int} @ { Collection } in
+    ((if R_B == delta_ATIMESD_mRR_B then 1 else 0) * delta_ATIMESD_mR1) * R_A
+    in {|i:int| __prod_ret__21|} @ { Set })))) empty {i:int} @ { Set }).filter
+    ((\b1 -> bind b1 as {i:map_val} in 0 != map_val)) in
   ((nd_add_delta_to_int {r1:ATIMESD, r2:true, r3:vid, r4:new_tuples});0))
 
 
 declare insert_R_do_corrective_s15_m_ATIMESD_mT1_mR1 : { r1:address, r2:int,
   r3:{ key:int, value:int }, r4:int, r5:{ key:int, value:int }, r6:int, r7:int,
-  r8:collection { r1:int, r2:int, r3:int } @ { Collection } } -> int = (\b1 ->
+  r8:collection { r1:int, r2:int, r3:int } @ { Set } } -> int = (\b1 ->
   bind b1 as {r1:orig_addr, r2:orig_stmt_id, r3:orig_vid, r4:hop, r5:vid,
   r6:R_A, r7:R_B, r8:delta_tuples} in let new_tuples =
-  delta_tuples.fold ((\_accext -> (\b3 ->
+  (delta_tuples.fold ((\_accext -> (\b3 ->
     bind b3 as {r1:delta_ATIMESD_mT1_mRR_B, r2:delta_ATIMESD_mTT_C,
     r3:delta_ATIMESD_mT1_mR1} in _accext.combine (let __prod_ret__23 =
-    (if R_B == delta_ATIMESD_mT1_mRR_B then 1 else 0 * delta_ATIMESD_mT1_mR1) *
-      R_A in
+    ((if R_B == delta_ATIMESD_mT1_mRR_B then 1 else 0) * delta_ATIMESD_mT1_mR1)
+      * R_A in
     {| key:int, value:int | {key:delta_ATIMESD_mTT_C,
-      value:__prod_ret__23}|} @ { Collection })))) empty { key:int, value:int
-    } @ { Collection } in
+      value:__prod_ret__23}|} @ { Set })))) empty { key:int, value:int
+    } @ { Set }).filter ((\b1 -> bind b1 as {key:map_0, value:map_val} in 0 !=
+    map_val)) in
   ((nd_add_delta_to_int_int {r1:ATIMESD_mT1, r2:true, r3:vid, r4:new_tuples});
    (nd_ATIMESD_mT1_send_correctives {r1:orig_addr, r2:orig_stmt_id,
       r3:orig_vid, r4:1 + hop, r5:vid, r6:new_tuples})))
@@ -2004,7 +1990,7 @@ trigger ms_rcv_sw_init_ack : () = (\_u ->
    (if ms_rcv_sw_init_ack_cnt == num_switches
    then
      (ms_start_time = now_int ();
-      (sw_rcv_token, sw_next_switch_addr)<- g_min_vid;
+      (sw_rcv_token, sw_next_switch_addr)<- g_start_vid;
       (tm_insert_timer, timer_addr)<- {r1:ms_gc_interval, r2:0, r3:me})
    else ())))
 trigger sw_rcv_init : () = (\_u ->
@@ -2127,7 +2113,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
    (sw_ack_log.iterate ((\b1 -> bind b1 as {key:vid, value:addresses} in 
     if vid < min_gc_vid then temp.insert {key:vid, value:addresses} else ()));
     temp.iterate ((\val -> sw_ack_log.erase val)));
-   let temp = empty { key:{ key:int, value:int }, value:int } @ { Map } in
+   let temp = empty { key:{ key:int, value:int }, value:int } @ { Set } in
    (nd_log_master.iterate ((\b1 -> bind b1 as {key:vid, value:stmt_id} in 
     if vid < min_gc_vid then temp.insert {key:vid, value:stmt_id} else ()));
     temp.iterate ((\val -> nd_log_master.erase val)));
@@ -2149,8 +2135,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
    (nd_log_insert_R.iterate ((\b1 -> bind b1 as {key:vid, value:args} in 
     if vid < min_gc_vid then temp.insert {key:vid, value:args} else ()));
     temp.iterate ((\val -> nd_log_insert_R.erase val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind map_ATIMESD_mT1_s0_buf as ind map_ATIMESD_mT1_s0_buf_unwrap in
      let frontier =
        frontier_int_int {key:min_gc_vid, value:map_ATIMESD_mT1_s0_buf_unwrap}
@@ -2161,8 +2146,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         temp.iterate ((\val -> map_ATIMESD_mT1_s0_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mT1_s0_buf_unwrap.insert val)));
    let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int, r4:int } @ { Collection }
-   in
+   empty { r1:{ key:int, value:int }, r2:int, r3:int, r4:int } @ { Set } in
    bind map_ATIMESD_mT1_mR1_s2_buf as ind map_ATIMESD_mT1_mR1_s2_buf_unwrap in
      let frontier =
        frontier_int_int_int {key:min_gc_vid,
@@ -2173,8 +2157,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         temp.iterate ((\val -> map_ATIMESD_mT1_mR1_s2_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mT1_mR1_s2_buf_unwrap.insert
         val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind map_ATIMESD_mT1_s3_buf as ind map_ATIMESD_mT1_s3_buf_unwrap in
      let frontier =
        frontier_int_int {key:min_gc_vid, value:map_ATIMESD_mT1_s3_buf_unwrap}
@@ -2185,8 +2168,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         temp.iterate ((\val -> map_ATIMESD_mT1_s3_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mT1_s3_buf_unwrap.insert val)));
    let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int, r4:int } @ { Collection }
-   in
+   empty { r1:{ key:int, value:int }, r2:int, r3:int, r4:int } @ { Set } in
    bind map_ATIMESD_mT1_mR1_s5_buf as ind map_ATIMESD_mT1_mR1_s5_buf_unwrap in
      let frontier =
        frontier_int_int_int {key:min_gc_vid,
@@ -2197,8 +2179,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         temp.iterate ((\val -> map_ATIMESD_mT1_mR1_s5_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mT1_mR1_s5_buf_unwrap.insert
         val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind map_ATIMESD_mS1_s6_buf as ind map_ATIMESD_mS1_s6_buf_unwrap in
      let frontier =
        frontier_int_int {key:min_gc_vid, value:map_ATIMESD_mS1_s6_buf_unwrap}
@@ -2208,8 +2189,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         then temp.insert {r1:vid, r2:map_0, r3:map_val} else ()));
         temp.iterate ((\val -> map_ATIMESD_mS1_s6_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mS1_s6_buf_unwrap.insert val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind map_ATIMESD_mS2_s6_buf as ind map_ATIMESD_mS2_s6_buf_unwrap in
      let frontier =
        frontier_int_int {key:min_gc_vid, value:map_ATIMESD_mS2_s6_buf_unwrap}
@@ -2219,8 +2199,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         then temp.insert {r1:vid, r2:map_0, r3:map_val} else ()));
         temp.iterate ((\val -> map_ATIMESD_mS2_s6_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mS2_s6_buf_unwrap.insert val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind map_ATIMESD_mS1_s7_buf as ind map_ATIMESD_mS1_s7_buf_unwrap in
      let frontier =
        frontier_int_int {key:min_gc_vid, value:map_ATIMESD_mS1_s7_buf_unwrap}
@@ -2230,8 +2209,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         then temp.insert {r1:vid, r2:map_0, r3:map_val} else ()));
         temp.iterate ((\val -> map_ATIMESD_mS1_s7_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mS1_s7_buf_unwrap.insert val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind map_ATIMESD_mS2_s9_buf as ind map_ATIMESD_mS2_s9_buf_unwrap in
      let frontier =
        frontier_int_int {key:min_gc_vid, value:map_ATIMESD_mS2_s9_buf_unwrap}
@@ -2241,8 +2219,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         then temp.insert {r1:vid, r2:map_0, r3:map_val} else ()));
         temp.iterate ((\val -> map_ATIMESD_mS2_s9_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mS2_s9_buf_unwrap.insert val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind map_ATIMESD_mS1_s10_buf as ind map_ATIMESD_mS1_s10_buf_unwrap in
      let frontier =
        frontier_int_int {key:min_gc_vid, value:map_ATIMESD_mS1_s10_buf_unwrap}
@@ -2252,8 +2229,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         then temp.insert {r1:vid, r2:map_0, r3:map_val} else ()));
         temp.iterate ((\val -> map_ATIMESD_mS1_s10_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mS1_s10_buf_unwrap.insert val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind map_ATIMESD_mS2_s10_buf as ind map_ATIMESD_mS2_s10_buf_unwrap in
      let frontier =
        frontier_int_int {key:min_gc_vid, value:map_ATIMESD_mS2_s10_buf_unwrap}
@@ -2263,8 +2239,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         then temp.insert {r1:vid, r2:map_0, r3:map_val} else ()));
         temp.iterate ((\val -> map_ATIMESD_mS2_s10_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mS2_s10_buf_unwrap.insert val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind map_ATIMESD_mS1_s11_buf as ind map_ATIMESD_mS1_s11_buf_unwrap in
      let frontier =
        frontier_int_int {key:min_gc_vid, value:map_ATIMESD_mS1_s11_buf_unwrap}
@@ -2274,8 +2249,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         then temp.insert {r1:vid, r2:map_0, r3:map_val} else ()));
         temp.iterate ((\val -> map_ATIMESD_mS1_s11_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mS1_s11_buf_unwrap.insert val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind map_ATIMESD_mS2_s13_buf as ind map_ATIMESD_mS2_s13_buf_unwrap in
      let frontier =
        frontier_int_int {key:min_gc_vid, value:map_ATIMESD_mS2_s13_buf_unwrap}
@@ -2285,8 +2259,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         then temp.insert {r1:vid, r2:map_0, r3:map_val} else ()));
         temp.iterate ((\val -> map_ATIMESD_mS2_s13_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mS2_s13_buf_unwrap.insert val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind map_ATIMESD_mR1_s14_buf as ind map_ATIMESD_mR1_s14_buf_unwrap in
      let frontier =
        frontier_int_int {key:min_gc_vid, value:map_ATIMESD_mR1_s14_buf_unwrap}
@@ -2297,8 +2270,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         temp.iterate ((\val -> map_ATIMESD_mR1_s14_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mR1_s14_buf_unwrap.insert val)));
    let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int, r4:int } @ { Collection }
-   in
+   empty { r1:{ key:int, value:int }, r2:int, r3:int, r4:int } @ { Set } in
    bind map_ATIMESD_mT1_mR1_s15_buf as ind map_ATIMESD_mT1_mR1_s15_buf_unwrap
      in
      let frontier =
@@ -2310,8 +2282,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         temp.iterate ((\val -> map_ATIMESD_mT1_mR1_s15_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mT1_mR1_s15_buf_unwrap.insert
         val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind map_ATIMESD_mR1_s17_buf as ind map_ATIMESD_mR1_s17_buf_unwrap in
      let frontier =
        frontier_int_int {key:min_gc_vid, value:map_ATIMESD_mR1_s17_buf_unwrap}
@@ -2322,8 +2293,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         temp.iterate ((\val -> map_ATIMESD_mR1_s17_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mR1_s17_buf_unwrap.insert val)));
    let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int, r4:int } @ { Collection }
-   in
+   empty { r1:{ key:int, value:int }, r2:int, r3:int, r4:int } @ { Set } in
    bind map_ATIMESD_mT1_mR1_s18_buf as ind map_ATIMESD_mT1_mR1_s18_buf_unwrap
      in
      let frontier =
@@ -2335,8 +2305,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         temp.iterate ((\val -> map_ATIMESD_mT1_mR1_s18_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mT1_mR1_s18_buf_unwrap.insert
         val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind map_ATIMESD_mS2_s24_buf as ind map_ATIMESD_mS2_s24_buf_unwrap in
      let frontier =
        frontier_int_int {key:min_gc_vid, value:map_ATIMESD_mS2_s24_buf_unwrap}
@@ -2346,8 +2315,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         then temp.insert {r1:vid, r2:map_0, r3:map_val} else ()));
         temp.iterate ((\val -> map_ATIMESD_mS2_s24_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mS2_s24_buf_unwrap.insert val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind map_ATIMESD_mS2_s26_buf as ind map_ATIMESD_mS2_s26_buf_unwrap in
      let frontier =
        frontier_int_int {key:min_gc_vid, value:map_ATIMESD_mS2_s26_buf_unwrap}
@@ -2357,8 +2325,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         then temp.insert {r1:vid, r2:map_0, r3:map_val} else ()));
         temp.iterate ((\val -> map_ATIMESD_mS2_s26_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mS2_s26_buf_unwrap.insert val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind map_ATIMESD_mS1_s28_buf as ind map_ATIMESD_mS1_s28_buf_unwrap in
      let frontier =
        frontier_int_int {key:min_gc_vid, value:map_ATIMESD_mS1_s28_buf_unwrap}
@@ -2368,8 +2335,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         then temp.insert {r1:vid, r2:map_0, r3:map_val} else ()));
         temp.iterate ((\val -> map_ATIMESD_mS1_s28_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mS1_s28_buf_unwrap.insert val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind map_ATIMESD_mS1_s30_buf as ind map_ATIMESD_mS1_s30_buf_unwrap in
      let frontier =
        frontier_int_int {key:min_gc_vid, value:map_ATIMESD_mS1_s30_buf_unwrap}
@@ -2379,8 +2345,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         then temp.insert {r1:vid, r2:map_0, r3:map_val} else ()));
         temp.iterate ((\val -> map_ATIMESD_mS1_s30_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mS1_s30_buf_unwrap.insert val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind map_ATIMESD_mS2_s32_buf as ind map_ATIMESD_mS2_s32_buf_unwrap in
      let frontier =
        frontier_int_int {key:min_gc_vid, value:map_ATIMESD_mS2_s32_buf_unwrap}
@@ -2390,8 +2355,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         then temp.insert {r1:vid, r2:map_0, r3:map_val} else ()));
         temp.iterate ((\val -> map_ATIMESD_mS2_s32_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mS2_s32_buf_unwrap.insert val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind map_ATIMESD_mS2_s34_buf as ind map_ATIMESD_mS2_s34_buf_unwrap in
      let frontier =
        frontier_int_int {key:min_gc_vid, value:map_ATIMESD_mS2_s34_buf_unwrap}
@@ -2401,8 +2365,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         then temp.insert {r1:vid, r2:map_0, r3:map_val} else ()));
         temp.iterate ((\val -> map_ATIMESD_mS2_s34_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mS2_s34_buf_unwrap.insert val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind map_ATIMESD_mS1_s36_buf as ind map_ATIMESD_mS1_s36_buf_unwrap in
      let frontier =
        frontier_int_int {key:min_gc_vid, value:map_ATIMESD_mS1_s36_buf_unwrap}
@@ -2412,8 +2375,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         then temp.insert {r1:vid, r2:map_0, r3:map_val} else ()));
         temp.iterate ((\val -> map_ATIMESD_mS1_s36_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mS1_s36_buf_unwrap.insert val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind map_ATIMESD_mS1_s38_buf as ind map_ATIMESD_mS1_s38_buf_unwrap in
      let frontier =
        frontier_int_int {key:min_gc_vid, value:map_ATIMESD_mS1_s38_buf_unwrap}
@@ -2423,8 +2385,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         then temp.insert {r1:vid, r2:map_0, r3:map_val} else ()));
         temp.iterate ((\val -> map_ATIMESD_mS1_s38_buf_unwrap.erase val));
         frontier.iterate ((\val -> map_ATIMESD_mS1_s38_buf_unwrap.insert val)));
-   let temp = empty { key:{ key:int, value:int }, value:int } @ { Collection }
-   in
+   let temp = empty { key:{ key:int, value:int }, value:int } @ { Set } in
    bind ATIMESD as ind ATIMESD_unwrap in
      let frontier = frontier_int {key:min_gc_vid, value:ATIMESD_unwrap} in
        (ATIMESD_unwrap.iterate ((\b1 -> bind b1 as {key:vid, value:map_val} in 
@@ -2432,8 +2393,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         else ()));
         temp.iterate ((\val -> ATIMESD_unwrap.erase val));
         frontier.iterate ((\val -> ATIMESD_unwrap.insert val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind ATIMESD_mT1 as ind ATIMESD_mT1_unwrap in
      let frontier = frontier_int_int {key:min_gc_vid, value:ATIMESD_mT1_unwrap}
        in
@@ -2443,8 +2403,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         temp.iterate ((\val -> ATIMESD_mT1_unwrap.erase val));
         frontier.iterate ((\val -> ATIMESD_mT1_unwrap.insert val)));
    let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int, r4:int } @ { Collection }
-   in
+   empty { r1:{ key:int, value:int }, r2:int, r3:int, r4:int } @ { Set } in
    bind ATIMESD_mT1_mR1 as ind ATIMESD_mT1_mR1_unwrap in
      let frontier =
        frontier_int_int_int {key:min_gc_vid, value:ATIMESD_mT1_mR1_unwrap} in
@@ -2453,8 +2412,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         then temp.insert {r1:vid, r2:map_0, r3:map_1, r4:map_val} else ()));
         temp.iterate ((\val -> ATIMESD_mT1_mR1_unwrap.erase val));
         frontier.iterate ((\val -> ATIMESD_mT1_mR1_unwrap.insert val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind ATIMESD_mS1 as ind ATIMESD_mS1_unwrap in
      let frontier = frontier_int_int {key:min_gc_vid, value:ATIMESD_mS1_unwrap}
        in
@@ -2463,8 +2421,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         then temp.insert {r1:vid, r2:map_0, r3:map_val} else ()));
         temp.iterate ((\val -> ATIMESD_mS1_unwrap.erase val));
         frontier.iterate ((\val -> ATIMESD_mS1_unwrap.insert val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind ATIMESD_mS2 as ind ATIMESD_mS2_unwrap in
      let frontier = frontier_int_int {key:min_gc_vid, value:ATIMESD_mS2_unwrap}
        in
@@ -2473,8 +2430,7 @@ trigger do_gc : { key:int, value:int } = (\min_gc_vid ->
         then temp.insert {r1:vid, r2:map_0, r3:map_val} else ()));
         temp.iterate ((\val -> ATIMESD_mS2_unwrap.erase val));
         frontier.iterate ((\val -> ATIMESD_mS2_unwrap.insert val)));
-   let temp =
-   empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Collection } in
+   let temp = empty { r1:{ key:int, value:int }, r2:int, r3:int } @ { Set } in
    bind ATIMESD_mR1 as ind ATIMESD_mR1_unwrap in
      let frontier = frontier_int_int {key:min_gc_vid, value:ATIMESD_mR1_unwrap}
        in
@@ -2507,10 +2463,10 @@ trigger tm_check_time : () = (\_u -> case (tm_timer_list.peek ()) of
        if trig_id == 0 then (ms_send_gc_req, addr)<- () else ();
        (tm_check_time, me)<- ()) else ((tm_check_time, me)<- ();(sleep 1000))}
   {None -> ()})
-trigger sw_demux : { r1:int, r2:int, r3:int } = (\args -> if args.r1 == 4
-  then sw_insert_R {key:args.r2, value:args.r3}
-  else if args.r1 == 2 then sw_insert_S {key:args.r2, value:args.r3}
-    else if args.r1 == 0 then sw_insert_T {key:args.r2, value:args.r3}
+trigger sw_demux : { r1:int, r2:int, r3:int, r4:int, r5:int, r6:int, r7:int } =
+  (\args -> if args.r1 == 4 then sw_insert_R {key:args.r2, value:args.r3}
+  else if args.r1 == 2 then sw_insert_S {key:args.r4, value:args.r5}
+    else if args.r1 == 0 then sw_insert_T {key:args.r6, value:args.r7}
       else if args.r1 == -1
         then
           (sw_trig_buf_idx.insert ({i:-1});
@@ -2546,8 +2502,8 @@ trigger nd_rcv_corr_done : { r1:{ key:int, value:int }, r2:int, r3:int, r4:int
                error (print "nd_rcv_corr_done: expected stmt_cntr value")})))
 trigger nd_insert_T_rcv_put : { r1:address, r2:collection { key:int, value:int
   } @ { Collection }, r3:{ key:int, value:int }, r4:int, r5:int } = (\b1 ->
-  bind b1 as {r1:sender_ip, r2:stmt_id_cnt_list, r3:vid, r4:T_C, r5:T_D} in 
-  (stmt_id_cnt_list.iterate ((\b1 -> bind b1 as {key:stmt_id, value:count} in 
+  bind b1 as {r1:sender_ip, r2:stmt_cnt_list, r3:vid, r4:T_C, r5:T_D} in 
+  (stmt_cnt_list.iterate ((\b1 -> bind b1 as {key:stmt_id, value:count} in 
    if nd_check_stmt_cntr_index {r1:vid, r2:stmt_id, r3:count}
    then if stmt_id == 2
      then nd_insert_T_do_complete_s2 {r1:vid, r2:T_C, r3:T_D}
@@ -2559,10 +2515,10 @@ trigger nd_insert_T_rcv_put : { r1:address, r2:collection { key:int, value:int
    (sw_ack_rcv, sender_ip)<- {key:me, value:vid}))
 trigger nd_insert_T_rcv_fetch : { r1:collection { key:int, value:int
   } @ { Collection }, r2:{ key:int, value:int }, r3:int, r4:int } = (\b1 ->
-  bind b1 as {r1:stmts_and_map_ids, r2:vid, r3:T_C, r4:T_D} in 
+  bind b1 as {r1:stmt_map_ids, r2:vid, r3:T_C, r4:T_D} in 
   ((nd_log_write_insert_T {r1:vid, r2:T_C, r3:T_D});
-   stmts_and_map_ids.iterate ((\b1 -> bind b1 as {key:stmt_id,
-   value:map_id} in if stmt_id == 0
+   stmt_map_ids.iterate ((\b1 -> bind b1 as {key:stmt_id, value:map_id} in 
+   if stmt_id == 0
    then if map_id == 2
      then (nd_insert_T_send_push_s0_m_ATIMESD_mT1, me)<- {r1:vid, r2:T_C,
        r3:T_D} else error (print "nd_rcv_fetch: invalid map id")
@@ -2592,8 +2548,8 @@ trigger nd_insert_T_send_push_s2_m_ATIMESD_mT1_mR1 : { r1:{ key:int, value:int
    (nd_insert_T_rcv_push_s2_m_ATIMESD_mT1_mR1, ip)<- {r1:tuples, r2:vid,
    r3:T_C, r4:T_D}))))
 trigger nd_insert_T_rcv_push_s0_m_ATIMESD_mT1 : { r1:collection { r1:{ key:int,
-  value:int }, r2:int, r3:int } @ { Collection }, r2:{ key:int, value:int },
-  r3:int, r4:int } = (\b1 -> bind b1 as {r1:tuples, r2:vid, r3:T_C, r4:T_D} in 
+  value:int }, r2:int, r3:int } @ { Set }, r2:{ key:int, value:int }, r3:int,
+  r4:int } = (\b1 -> bind b1 as {r1:tuples, r2:vid, r3:T_C, r4:T_D} in 
   ((nd_log_write_insert_T {r1:vid, r2:T_C, r3:T_D});
    tuples.iterate ((\tuple -> bind map_ATIMESD_mT1_s0_buf as ind
    map_ATIMESD_mT1_s0_buf_d in
@@ -2606,9 +2562,9 @@ trigger nd_insert_T_rcv_push_s0_m_ATIMESD_mT1 : { r1:collection { r1:{ key:int,
    (if nd_check_stmt_cntr_index {r1:vid, r2:0, r3:-1}
    then nd_insert_T_do_complete_s0 {r1:vid, r2:T_C, r3:T_D} else ())))
 trigger nd_insert_T_rcv_push_s2_m_ATIMESD_mT1_mR1 : { r1:collection { r1:{
-  key:int, value:int }, r2:int, r3:int, r4:int } @ { Collection }, r2:{
-  key:int, value:int }, r3:int, r4:int } = (\b1 -> bind b1 as {r1:tuples,
-  r2:vid, r3:T_C, r4:T_D} in 
+  key:int, value:int }, r2:int, r3:int, r4:int } @ { Set }, r2:{ key:int,
+  value:int }, r3:int, r4:int } = (\b1 -> bind b1 as {r1:tuples, r2:vid,
+  r3:T_C, r4:T_D} in 
   ((nd_log_write_insert_T {r1:vid, r2:T_C, r3:T_D});
    tuples.iterate ((\tuple -> bind map_ATIMESD_mT1_mR1_s2_buf as ind
    map_ATIMESD_mT1_mR1_s2_buf_d in
@@ -2627,7 +2583,7 @@ trigger nd_insert_T_do_complete_s1_trig : { r1:{ key:int, value:int }, r2:int,
 trigger insert_T_rcv_corrective_s0_m_ATIMESD_mT1 : { r1:address, r2:int, r3:{
   key:int, value:int }, r4:int, r5:{ key:int, value:int }, r6:collection {
   key:int, value:int } @ { Seq }, r7:collection { key:int, value:int
-  } @ { Collection } } = (\b1 -> bind b1 as {r1:orig_addr, r2:orig_stmt_id,
+  } @ { Set } } = (\b1 -> bind b1 as {r1:orig_addr, r2:orig_stmt_id,
   r3:orig_vid, r4:hop, r5:vid, r6:compute_vids, r7:delta_tuples} in 
   ((nd_add_delta_to_int_int {r1:map_ATIMESD_mT1_s0_buf, r2:false, r3:vid,
       r4:delta_tuples});
@@ -2648,7 +2604,7 @@ trigger insert_T_rcv_corrective_s0_m_ATIMESD_mT1 : { r1:address, r2:int, r3:{
 trigger insert_T_rcv_corrective_s2_m_ATIMESD_mT1_mR1 : { r1:address, r2:int,
   r3:{ key:int, value:int }, r4:int, r5:{ key:int, value:int }, r6:collection {
   key:int, value:int } @ { Seq }, r7:collection { r1:int, r2:int, r3:int
-  } @ { Collection } } = (\b1 -> bind b1 as {r1:orig_addr, r2:orig_stmt_id,
+  } @ { Set } } = (\b1 -> bind b1 as {r1:orig_addr, r2:orig_stmt_id,
   r3:orig_vid, r4:hop, r5:vid, r6:compute_vids, r7:delta_tuples} in 
   ((nd_add_delta_to_int_int_int {r1:map_ATIMESD_mT1_mR1_s2_buf, r2:false,
       r3:vid, r4:delta_tuples});
@@ -2668,8 +2624,8 @@ trigger insert_T_rcv_corrective_s2_m_ATIMESD_mT1_mR1 : { r1:address, r2:int,
      r4:sent_msgs}))
 trigger nd_insert_S_rcv_put : { r1:address, r2:collection { key:int, value:int
   } @ { Collection }, r3:{ key:int, value:int }, r4:int, r5:int } = (\b1 ->
-  bind b1 as {r1:sender_ip, r2:stmt_id_cnt_list, r3:vid, r4:S_B, r5:S_C} in 
-  (stmt_id_cnt_list.iterate ((\b1 -> bind b1 as {key:stmt_id, value:count} in 
+  bind b1 as {r1:sender_ip, r2:stmt_cnt_list, r3:vid, r4:S_B, r5:S_C} in 
+  (stmt_cnt_list.iterate ((\b1 -> bind b1 as {key:stmt_id, value:count} in 
    if nd_check_stmt_cntr_index {r1:vid, r2:stmt_id, r3:count}
    then if stmt_id == 9
      then nd_insert_S_do_complete_s9 {r1:vid, r2:S_B, r3:S_C}
@@ -2683,10 +2639,10 @@ trigger nd_insert_S_rcv_put : { r1:address, r2:collection { key:int, value:int
    (sw_ack_rcv, sender_ip)<- {key:me, value:vid}))
 trigger nd_insert_S_rcv_fetch : { r1:collection { key:int, value:int
   } @ { Collection }, r2:{ key:int, value:int }, r3:int, r4:int } = (\b1 ->
-  bind b1 as {r1:stmts_and_map_ids, r2:vid, r3:S_B, r4:S_C} in 
+  bind b1 as {r1:stmt_map_ids, r2:vid, r3:S_B, r4:S_C} in 
   ((nd_log_write_insert_S {r1:vid, r2:S_B, r3:S_C});
-   stmts_and_map_ids.iterate ((\b1 -> bind b1 as {key:stmt_id,
-   value:map_id} in if stmt_id == 6
+   stmt_map_ids.iterate ((\b1 -> bind b1 as {key:stmt_id, value:map_id} in 
+   if stmt_id == 6
    then if map_id == 4
      then (nd_insert_S_send_push_s6_m_ATIMESD_mS1, me)<- {r1:vid, r2:S_B,
        r3:S_C}
@@ -2743,8 +2699,8 @@ trigger nd_insert_S_send_push_s9_m_ATIMESD_mS2 : { r1:{ key:int, value:int },
    (nd_insert_S_rcv_push_s9_m_ATIMESD_mS2, ip)<- {r1:tuples, r2:vid, r3:S_B,
    r4:S_C}))))
 trigger nd_insert_S_rcv_push_s6_m_ATIMESD_mS1 : { r1:collection { r1:{ key:int,
-  value:int }, r2:int, r3:int } @ { Collection }, r2:{ key:int, value:int },
-  r3:int, r4:int } = (\b1 -> bind b1 as {r1:tuples, r2:vid, r3:S_B, r4:S_C} in 
+  value:int }, r2:int, r3:int } @ { Set }, r2:{ key:int, value:int }, r3:int,
+  r4:int } = (\b1 -> bind b1 as {r1:tuples, r2:vid, r3:S_B, r4:S_C} in 
   ((nd_log_write_insert_S {r1:vid, r2:S_B, r3:S_C});
    tuples.iterate ((\tuple -> bind map_ATIMESD_mS1_s6_buf as ind
    map_ATIMESD_mS1_s6_buf_d in
@@ -2757,8 +2713,8 @@ trigger nd_insert_S_rcv_push_s6_m_ATIMESD_mS1 : { r1:collection { r1:{ key:int,
    (if nd_check_stmt_cntr_index {r1:vid, r2:6, r3:-1}
    then nd_insert_S_do_complete_s6 {r1:vid, r2:S_B, r3:S_C} else ())))
 trigger nd_insert_S_rcv_push_s6_m_ATIMESD_mS2 : { r1:collection { r1:{ key:int,
-  value:int }, r2:int, r3:int } @ { Collection }, r2:{ key:int, value:int },
-  r3:int, r4:int } = (\b1 -> bind b1 as {r1:tuples, r2:vid, r3:S_B, r4:S_C} in 
+  value:int }, r2:int, r3:int } @ { Set }, r2:{ key:int, value:int }, r3:int,
+  r4:int } = (\b1 -> bind b1 as {r1:tuples, r2:vid, r3:S_B, r4:S_C} in 
   ((nd_log_write_insert_S {r1:vid, r2:S_B, r3:S_C});
    tuples.iterate ((\tuple -> bind map_ATIMESD_mS2_s6_buf as ind
    map_ATIMESD_mS2_s6_buf_d in
@@ -2771,8 +2727,8 @@ trigger nd_insert_S_rcv_push_s6_m_ATIMESD_mS2 : { r1:collection { r1:{ key:int,
    (if nd_check_stmt_cntr_index {r1:vid, r2:6, r3:-1}
    then nd_insert_S_do_complete_s6 {r1:vid, r2:S_B, r3:S_C} else ())))
 trigger nd_insert_S_rcv_push_s7_m_ATIMESD_mS1 : { r1:collection { r1:{ key:int,
-  value:int }, r2:int, r3:int } @ { Collection }, r2:{ key:int, value:int },
-  r3:int, r4:int } = (\b1 -> bind b1 as {r1:tuples, r2:vid, r3:S_B, r4:S_C} in 
+  value:int }, r2:int, r3:int } @ { Set }, r2:{ key:int, value:int }, r3:int,
+  r4:int } = (\b1 -> bind b1 as {r1:tuples, r2:vid, r3:S_B, r4:S_C} in 
   ((nd_log_write_insert_S {r1:vid, r2:S_B, r3:S_C});
    tuples.iterate ((\tuple -> bind map_ATIMESD_mS1_s7_buf as ind
    map_ATIMESD_mS1_s7_buf_d in
@@ -2785,8 +2741,8 @@ trigger nd_insert_S_rcv_push_s7_m_ATIMESD_mS1 : { r1:collection { r1:{ key:int,
    (if nd_check_stmt_cntr_index {r1:vid, r2:7, r3:-1}
    then nd_insert_S_do_complete_s7 {r1:vid, r2:S_B, r3:S_C} else ())))
 trigger nd_insert_S_rcv_push_s9_m_ATIMESD_mS2 : { r1:collection { r1:{ key:int,
-  value:int }, r2:int, r3:int } @ { Collection }, r2:{ key:int, value:int },
-  r3:int, r4:int } = (\b1 -> bind b1 as {r1:tuples, r2:vid, r3:S_B, r4:S_C} in 
+  value:int }, r2:int, r3:int } @ { Set }, r2:{ key:int, value:int }, r3:int,
+  r4:int } = (\b1 -> bind b1 as {r1:tuples, r2:vid, r3:S_B, r4:S_C} in 
   ((nd_log_write_insert_S {r1:vid, r2:S_B, r3:S_C});
    tuples.iterate ((\tuple -> bind map_ATIMESD_mS2_s9_buf as ind
    map_ATIMESD_mS2_s9_buf_d in
@@ -2804,7 +2760,7 @@ trigger nd_insert_S_do_complete_s8_trig : { r1:{ key:int, value:int }, r2:int,
 trigger insert_S_rcv_corrective_s6_m_ATIMESD_mS1 : { r1:address, r2:int, r3:{
   key:int, value:int }, r4:int, r5:{ key:int, value:int }, r6:collection {
   key:int, value:int } @ { Seq }, r7:collection { key:int, value:int
-  } @ { Collection } } = (\b1 -> bind b1 as {r1:orig_addr, r2:orig_stmt_id,
+  } @ { Set } } = (\b1 -> bind b1 as {r1:orig_addr, r2:orig_stmt_id,
   r3:orig_vid, r4:hop, r5:vid, r6:compute_vids, r7:delta_tuples} in 
   ((nd_add_delta_to_int_int {r1:map_ATIMESD_mS1_s6_buf, r2:false, r3:vid,
       r4:delta_tuples});
@@ -2825,7 +2781,7 @@ trigger insert_S_rcv_corrective_s6_m_ATIMESD_mS1 : { r1:address, r2:int, r3:{
 trigger insert_S_rcv_corrective_s6_m_ATIMESD_mS2 : { r1:address, r2:int, r3:{
   key:int, value:int }, r4:int, r5:{ key:int, value:int }, r6:collection {
   key:int, value:int } @ { Seq }, r7:collection { key:int, value:int
-  } @ { Collection } } = (\b1 -> bind b1 as {r1:orig_addr, r2:orig_stmt_id,
+  } @ { Set } } = (\b1 -> bind b1 as {r1:orig_addr, r2:orig_stmt_id,
   r3:orig_vid, r4:hop, r5:vid, r6:compute_vids, r7:delta_tuples} in 
   ((nd_add_delta_to_int_int {r1:map_ATIMESD_mS2_s6_buf, r2:false, r3:vid,
       r4:delta_tuples});
@@ -2846,7 +2802,7 @@ trigger insert_S_rcv_corrective_s6_m_ATIMESD_mS2 : { r1:address, r2:int, r3:{
 trigger insert_S_rcv_corrective_s7_m_ATIMESD_mS1 : { r1:address, r2:int, r3:{
   key:int, value:int }, r4:int, r5:{ key:int, value:int }, r6:collection {
   key:int, value:int } @ { Seq }, r7:collection { key:int, value:int
-  } @ { Collection } } = (\b1 -> bind b1 as {r1:orig_addr, r2:orig_stmt_id,
+  } @ { Set } } = (\b1 -> bind b1 as {r1:orig_addr, r2:orig_stmt_id,
   r3:orig_vid, r4:hop, r5:vid, r6:compute_vids, r7:delta_tuples} in 
   ((nd_add_delta_to_int_int {r1:map_ATIMESD_mS1_s7_buf, r2:false, r3:vid,
       r4:delta_tuples});
@@ -2867,7 +2823,7 @@ trigger insert_S_rcv_corrective_s7_m_ATIMESD_mS1 : { r1:address, r2:int, r3:{
 trigger insert_S_rcv_corrective_s9_m_ATIMESD_mS2 : { r1:address, r2:int, r3:{
   key:int, value:int }, r4:int, r5:{ key:int, value:int }, r6:collection {
   key:int, value:int } @ { Seq }, r7:collection { key:int, value:int
-  } @ { Collection } } = (\b1 -> bind b1 as {r1:orig_addr, r2:orig_stmt_id,
+  } @ { Set } } = (\b1 -> bind b1 as {r1:orig_addr, r2:orig_stmt_id,
   r3:orig_vid, r4:hop, r5:vid, r6:compute_vids, r7:delta_tuples} in 
   ((nd_add_delta_to_int_int {r1:map_ATIMESD_mS2_s9_buf, r2:false, r3:vid,
       r4:delta_tuples});
@@ -2887,8 +2843,8 @@ trigger insert_S_rcv_corrective_s9_m_ATIMESD_mS2 : { r1:address, r2:int, r3:{
      r4:sent_msgs}))
 trigger nd_insert_R_rcv_put : { r1:address, r2:collection { key:int, value:int
   } @ { Collection }, r3:{ key:int, value:int }, r4:int, r5:int } = (\b1 ->
-  bind b1 as {r1:sender_ip, r2:stmt_id_cnt_list, r3:vid, r4:R_A, r5:R_B} in 
-  (stmt_id_cnt_list.iterate ((\b1 -> bind b1 as {key:stmt_id, value:count} in 
+  bind b1 as {r1:sender_ip, r2:stmt_cnt_list, r3:vid, r4:R_A, r5:R_B} in 
+  (stmt_cnt_list.iterate ((\b1 -> bind b1 as {key:stmt_id, value:count} in 
    if nd_check_stmt_cntr_index {r1:vid, r2:stmt_id, r3:count}
    then if stmt_id == 16
      then nd_insert_R_do_complete_s16 {r1:vid, r2:R_A, r3:R_B}
@@ -2900,10 +2856,10 @@ trigger nd_insert_R_rcv_put : { r1:address, r2:collection { key:int, value:int
    (sw_ack_rcv, sender_ip)<- {key:me, value:vid}))
 trigger nd_insert_R_rcv_fetch : { r1:collection { key:int, value:int
   } @ { Collection }, r2:{ key:int, value:int }, r3:int, r4:int } = (\b1 ->
-  bind b1 as {r1:stmts_and_map_ids, r2:vid, r3:R_A, r4:R_B} in 
+  bind b1 as {r1:stmt_map_ids, r2:vid, r3:R_A, r4:R_B} in 
   ((nd_log_write_insert_R {r1:vid, r2:R_A, r3:R_B});
-   stmts_and_map_ids.iterate ((\b1 -> bind b1 as {key:stmt_id,
-   value:map_id} in if stmt_id == 14
+   stmt_map_ids.iterate ((\b1 -> bind b1 as {key:stmt_id, value:map_id} in 
+   if stmt_id == 14
    then if map_id == 6
      then (nd_insert_R_send_push_s14_m_ATIMESD_mR1, me)<- {r1:vid, r2:R_A,
        r3:R_B} else error (print "nd_rcv_fetch: invalid map id")
@@ -2933,9 +2889,8 @@ trigger nd_insert_R_send_push_s15_m_ATIMESD_mT1_mR1 : { r1:{ key:int, value:int
    (nd_insert_R_rcv_push_s15_m_ATIMESD_mT1_mR1, ip)<- {r1:tuples, r2:vid,
    r3:R_A, r4:R_B}))))
 trigger nd_insert_R_rcv_push_s14_m_ATIMESD_mR1 : { r1:collection { r1:{
-  key:int, value:int }, r2:int, r3:int } @ { Collection }, r2:{ key:int,
-  value:int }, r3:int, r4:int } = (\b1 -> bind b1 as {r1:tuples, r2:vid,
-  r3:R_A, r4:R_B} in 
+  key:int, value:int }, r2:int, r3:int } @ { Set }, r2:{ key:int, value:int },
+  r3:int, r4:int } = (\b1 -> bind b1 as {r1:tuples, r2:vid, r3:R_A, r4:R_B} in 
   ((nd_log_write_insert_R {r1:vid, r2:R_A, r3:R_B});
    tuples.iterate ((\tuple -> bind map_ATIMESD_mR1_s14_buf as ind
    map_ATIMESD_mR1_s14_buf_d in
@@ -2948,9 +2903,9 @@ trigger nd_insert_R_rcv_push_s14_m_ATIMESD_mR1 : { r1:collection { r1:{
    (if nd_check_stmt_cntr_index {r1:vid, r2:14, r3:-1}
    then nd_insert_R_do_complete_s14 {r1:vid, r2:R_A, r3:R_B} else ())))
 trigger nd_insert_R_rcv_push_s15_m_ATIMESD_mT1_mR1 : { r1:collection { r1:{
-  key:int, value:int }, r2:int, r3:int, r4:int } @ { Collection }, r2:{
-  key:int, value:int }, r3:int, r4:int } = (\b1 -> bind b1 as {r1:tuples,
-  r2:vid, r3:R_A, r4:R_B} in 
+  key:int, value:int }, r2:int, r3:int, r4:int } @ { Set }, r2:{ key:int,
+  value:int }, r3:int, r4:int } = (\b1 -> bind b1 as {r1:tuples, r2:vid,
+  r3:R_A, r4:R_B} in 
   ((nd_log_write_insert_R {r1:vid, r2:R_A, r3:R_B});
    tuples.iterate ((\tuple -> bind map_ATIMESD_mT1_mR1_s15_buf as ind
    map_ATIMESD_mT1_mR1_s15_buf_d in
@@ -2968,7 +2923,7 @@ trigger nd_insert_R_do_complete_s16_trig : { r1:{ key:int, value:int }, r2:int,
 trigger insert_R_rcv_corrective_s14_m_ATIMESD_mR1 : { r1:address, r2:int, r3:{
   key:int, value:int }, r4:int, r5:{ key:int, value:int }, r6:collection {
   key:int, value:int } @ { Seq }, r7:collection { key:int, value:int
-  } @ { Collection } } = (\b1 -> bind b1 as {r1:orig_addr, r2:orig_stmt_id,
+  } @ { Set } } = (\b1 -> bind b1 as {r1:orig_addr, r2:orig_stmt_id,
   r3:orig_vid, r4:hop, r5:vid, r6:compute_vids, r7:delta_tuples} in 
   ((nd_add_delta_to_int_int {r1:map_ATIMESD_mR1_s14_buf, r2:false, r3:vid,
       r4:delta_tuples});
@@ -2989,7 +2944,7 @@ trigger insert_R_rcv_corrective_s14_m_ATIMESD_mR1 : { r1:address, r2:int, r3:{
 trigger insert_R_rcv_corrective_s15_m_ATIMESD_mT1_mR1 : { r1:address, r2:int,
   r3:{ key:int, value:int }, r4:int, r5:{ key:int, value:int }, r6:collection {
   key:int, value:int } @ { Seq }, r7:collection { r1:int, r2:int, r3:int
-  } @ { Collection } } = (\b1 -> bind b1 as {r1:orig_addr, r2:orig_stmt_id,
+  } @ { Set } } = (\b1 -> bind b1 as {r1:orig_addr, r2:orig_stmt_id,
   r3:orig_vid, r4:hop, r5:vid, r6:compute_vids, r7:delta_tuples} in 
   ((nd_add_delta_to_int_int_int {r1:map_ATIMESD_mT1_mR1_s15_buf, r2:false,
       r3:vid, r4:delta_tuples});
@@ -3012,7 +2967,8 @@ trigger insert_R_rcv_corrective_s15_m_ATIMESD_mT1_mR1 : { r1:address, r2:int,
 source master : () = value(())feed master |> ms_send_addr_self
 
 
-source switch : { r1:int, r2:int, r3:int } = file "rst.csv" psv
+source switch : { r1:int, r2:int, r3:int, r4:int, r5:int, r6:int, r7:int
+} = file "/Users/yotambarnoy/source/k3/k3/temp/rst.csv" psv
 feed switch |> sw_demux
 
 

@@ -13,8 +13,9 @@ int main(int argc, char** argv) {
  
   // Build adj list
   int a, b;
-  while (infile >> a >>b) {
+  while (infile >> a  >> b) {
     adj_list[a].push_back(b); 
+    adj_list[b];
   }
  
   // Print adj list 

@@ -19,6 +19,7 @@ class Options {
     bool simulation = false;
     string log_level = "";
     string json_path = "";
+    bool json_final_only = false;
     string result_var;
     string result_path;
 };

@@ -41,6 +41,9 @@ namespace YAML {
   };
 }
 
+inline std::size_t hash_value(unit_t const&) {
+  return 0;
+}
 
 #ifndef K3_R_addr
 #define K3_R_addr
@@ -217,7 +220,7 @@ namespace boost {
 #ifndef K3_R_key_value_hash_value
 #define K3_R_key_value_hash_value
 template <class K,class V>
-  std::size_t hash_value(R_key_value<K,V> const& b) {
+std::size_t hash_value(R_key_value<K,V> const& b) {
     boost::hash<std::tuple<K,V>> hasher;
     return hasher(std::tie(b.key, b.value));
 }

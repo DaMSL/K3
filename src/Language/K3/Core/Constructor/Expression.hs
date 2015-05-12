@@ -1,3 +1,6 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeFamilies #-}
+
 -- | Constructors for K3 Expressions. This module should almost certainly be imported qualified.
 module Language.K3.Core.Constructor.Expression (
     immut,

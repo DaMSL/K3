@@ -1,10 +1,13 @@
 {-# LANGUAGE DoAndIfThenElse #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE RankNTypes #-}
 
 -- | Effect analysis for K3 programs.
 module Language.K3.Analysis.SEffects.Inference where
@@ -591,6 +594,8 @@ simplifyApply fienv extInfOpt defer eOpt ef lrf arf = do
 
     exprErr = maybe [] (\e -> PT.prettyLines e) eOpt
     argPErr e = Left $ PT.boxToString $ [T.pack "No argument provenance found on:"] %$ PT.prettyLines e
+
+    applyLambdaErr :: forall a. K3 Effect -> Either Text a
     applyLambdaErr f = Left $ PT.boxToString $ [T.pack "Invalid apply lambda effect: "]
                             %$ exprErr %$ [T.pack "Effect:"] %$ PT.prettyLines f
 
