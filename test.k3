@@ -1,0 +1,14 @@
+include "Core/Builtins.k3"
+include "Annotation/Collection.k3"
+
+declare x : mut int = 0
+
+trigger t : () = \_ -> (
+  if ( x == 100 ) then haltEngine() else (
+  (x = x + 1);
+  (sleep 1000);
+  (t, me) <- ())
+)
+
+source s1 : () = value ()
+feed s1 |> t

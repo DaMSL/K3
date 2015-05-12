@@ -117,7 +117,8 @@ class WebServer {
       } else if ( cmd == "remove" ) {
         dataConns[hdl].erase((*it)["var"].as<std::string>());
       } else {
-        processCommand(cmd, dynamic_cast<const YAML::Node&>(*it), engines, hdl, msg);
+	    //processCommand(cmd, dynamic_cast<const YAML::Node&>(*it), engines, hdl, msg);
+        processCommand(cmd, *it, engines, hdl, msg);
       }
     }
   }
@@ -130,43 +131,114 @@ class WebServer {
     }
   }
 
-  void processCommand(std::string cmd, const YAML::Node& node,
+  void processCommand(std::string cmd, const YAML::Node&& node,
                       std::list<std::tuple<e_ptr, ctxt_map>>& engines,
                       websocketpp::connection_hdl hdl,
                       websocketpp::server<websocketpp::config::asio>::server::message_ptr msg)
   {
     if ( cmd == "list" ) {
       reply(hdl, listVars(engines));
+    } else if ( cmd == "hardVars") {
+      reply(hdl, hardVarValues(engines));
     } else {
       reply(hdl, "Invalid command: " + cmd);
     }
   }
 
-  // For now, assume all contexts have the same variables.
   std::string listVars(std::list<std::tuple<e_ptr, ctxt_map>>& engines)
   {
     using namespace rapidjson;
     Document d;
     Document::AllocatorType& a = d.GetAllocator();
     rapidjson::Value peerVars(kArrayType);
+    rapidjson::Value types(kArrayType);
+
+      
+    auto hard_vars = varsToTypes(engines);
+      
+    //TODO: don't hardcode types in types(kArrayType) array
 
     if ( !engines.empty() ) {
-      for (auto const& peer_ctxt : get<1>(*(engines.begin())))
-      if (peer_ctxt.second) {
-        auto vars = ((context*) (peer_ctxt.second.get()))->__jsonify();
-        for (auto& var : vars) {
-          peerVars.PushBack(rapidjson::Value(var.first, a), a);
+
+      for (auto const& enctx : engines) {
+        
+        for (auto const& peer_ctxt : get<1>(enctx))
+        if (peer_ctxt.second) {
+          auto vars = ((context*) (peer_ctxt.second.get()))->__jsonify();
+          for (auto& var : vars) {
+            auto it = hard_vars->find(var.first);
+            if (it == hard_vars->end()) {
+              peerVars.PushBack(rapidjson::Value(var.first, a), a);
+              types.PushBack(rapidjson::Value("int", a), a);
+            }
+          }
         }
       }
+      
     }
-
+      
+      
     StringBuffer buffer;
     Writer<StringBuffer> writer(buffer);
     rapidjson::Value(kObjectType).AddMember("rt", "list", a)
                                  .AddMember("rv", peerVars, a)
+                                 .AddMember("types", types, a)
                                  .Accept(writer);
     return std::string(buffer.GetString());
   }
+    
+  std::string hardVarValues(std::list<std::tuple<e_ptr, ctxt_map>>& engines)
+  {
+      using namespace rapidjson;
+      Document d;
+      Document::AllocatorType& a = d.GetAllocator();
+      rapidjson::Value hardvars(kArrayType);
+      
+      auto typeMap = new std::map<std::string, std::string>();
+      
+      typeMap->insert(std::pair<std::string, std::string>("args",""));
+      typeMap->insert(std::pair<std::string, std::string>("me",""));
+      //typeMap->insert(std::pair<std::string, std::string>("peers",""));
+      typeMap->insert(std::pair<std::string, std::string>("role",""));
+
+      if ( !engines.empty() ) {
+        for (auto const& enctx : engines) {
+            
+          for (auto const& peer_ctxt : get<1>(enctx))
+            if (peer_ctxt.second) {
+              auto vars = ((context*) (peer_ctxt.second.get()))->__jsonify();
+              for (auto& var : vars) {
+                auto it = typeMap->find(var.first);
+                if (it != typeMap->end()) {
+                  hardvars.PushBack(rapidjson::Value(var.first + ": " + var.second, a), a);
+                }
+              }
+            }
+          }
+          
+      }
+      
+      StringBuffer buffer;
+      Writer<StringBuffer> writer(buffer);
+      rapidjson::Value(kObjectType).AddMember("rt", "hardVars", a)
+                                    .AddMember("rv", hardvars, a)
+                                    .Accept(writer);
+      
+      return std::string(buffer.GetString());
+  }
+    
+  std::map<std::string, std::string>* varsToTypes(std::list<std::tuple<e_ptr, ctxt_map>>& engines)
+  {
+    auto typeMap = new std::map<std::string, std::string>();
+      
+    typeMap->insert(std::pair<std::string, std::string>("args","string"));
+    typeMap->insert(std::pair<std::string, std::string>("me","string"));
+    typeMap->insert(std::pair<std::string, std::string>("peers","string"));
+    typeMap->insert(std::pair<std::string, std::string>("role","string"));
+      
+    return typeMap;
+  }
+
 
   void asyncBroadcastVars(std::list<std::tuple<e_ptr, ctxt_map>>& engines)
   {
@@ -188,14 +260,16 @@ class WebServer {
     Document::AllocatorType& a = d.GetAllocator();
 
     rapidjson::Value varsByPeer(kArrayType);
+
     for (auto const& enctx : engines) {
+
       for (auto const& peer_ctxt : get<1>(enctx))
       if (peer_ctxt.second) {
         auto jsonCtxt = ((context*) (peer_ctxt.second.get()))->__jsonify();
         rapidjson::Value peerVars(kObjectType);
         for (auto& var : jsonCtxt) {
           if ( hdlVars.find(var.first) != hdlVars.end() ) {
-            peerVars.AddMember(StringRef(var.first.c_str()), rapidjson::Value(var.second, a), a);
+            peerVars.AddMember(rapidjson::Value(var.first, a), rapidjson::Value(var.second, a), a);
           }
         }
 
@@ -208,7 +282,6 @@ class WebServer {
         }
       }
     }
-
     StringBuffer buffer;
     Writer<StringBuffer> writer(buffer);
     rapidjson::Value(kObjectType).AddMember("rt", "sample", a)

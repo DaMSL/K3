@@ -16,24 +16,35 @@
 
     <body>
       <h1>K3 Peer Visualization</h1>
+      <div id="hardvars"></div>
       <div id="graph"></div>
       <div id="console">
         <div id="peerinfo"></div>
         <input id="input" class="typeahead" type="text" placeholder="Variable name">
+        <input id="addressinput" class="typeahead" type="text" placeholder="Enter WS Address">
       </div>
       <div id="output"></div>
     </body>
 
     <script>
-        // Data socket.
-        var address = "ws://localhost:{{data_port}}/"
-        var websocket = null
+        // Data sockets.
+        var connections = []
+        var address_list = []
+        
+        var static_k3_vars = []
+        
+        var num_data_connections = 0;
+        var prefix = "Process";
 
         // K3 variable listing, as an array of names
-        // TODO: track type information here.
         var k3_vars = []
+        
+        // each index corresponds to an index in k3_vars
+        var k3_var_types = []
+        
+        var k3_valid_var_types = ["int", "double"]
 
-        // K3 variables time series, as an array of environments.
+        // K3 variables time series, as an array of arrays of environments.
         var k3_var_ts = []
 
         // D3 state.
@@ -48,16 +59,20 @@
           return context.metric(function (nm) {
             return function(start,stop,step,callback){
               var peer_idx = 0;
-              var i = k3_var_ts.length - 1;
+                                
+              var retValue = getVariable(nm);
+              connectionNum = retValue[1]-1;
+                                
+              var i = k3_var_ts[connectionNum].length - 1;
               var values = [];
               while (+start < +stop){
                 start = +start +step;
                 if ( i >= 0
-                      && ( peer_idx in k3_var_ts[i] )
-                      && ( nm in k3_var_ts[i][peer_idx]["vars"] )
-                      && ( !isNaN(k3_var_ts[i][peer_idx]["vars"][nm]) ))
+                      && ( peer_idx in k3_var_ts[connectionNum][i] )
+                      && ( nm in k3_var_ts[connectionNum][i][peer_idx]["vars"] )
+                      && ( !isNaN(k3_var_ts[connectionNum][i][peer_idx]["vars"][nm]) ))
                 {
-                  values.unshift(Number(k3_var_ts[i][peer_idx]["vars"][nm]));
+                  values.unshift(Number(k3_var_ts[connectionNum][i][peer_idx]["vars"][nm]));
                 } else {
                   values.unshift(0);
                 }
@@ -97,36 +112,87 @@
           d3.select("#graph").append("div").attr("class", "axis").append("g").call(axis);
         }
 
-        function drawPeer() {
-          d3.select("#peerinfo").selectAll("h3").remove();
-          d3.select("#peerinfo").append("h3").text("Peer: " + address)
-        }
-
         function drawOutput(tag, msg, color) {
           d3.select("#output").selectAll("p").remove();
           d3.select("#output").append("p")
             .attr("style", "color:" + (color? color : "black"))
             .text(tag + ":" + msg);
         }
+    
+        function staticVars() {
+            d3.select("#hardvars").append("h3").text("Static Variables: ")
+        }
+    
+        function hardVars(start, tag) {
 
-        // K3 peer API
-        function requestVars() {
-          sendMessage(JSON.stringify([{cmd: "list"}]));
+            d3.select("#hardvars").append("h4").text(tag);
+
+            for (var i = start; i < static_k3_vars.length; i++) {
+              d3.select("#hardvars").append("p").text(static_k3_vars[i])
+            }
         }
 
-        function processMessage(msg) {
+        // K3 peer API
+        function requestVars(connNum) {
+          sendToWebSocket(connNum, JSON.stringify([{cmd: "list"}]));
+        }
+    
+        function requestFixedVars(connNum) {
+          sendToWebSocket(connNum, JSON.stringify([{cmd: "hardVars"}]));
+        }
+    
+        function checkTypes() {
+            for (var i = 0; i < k3_vars.length; i++) {
+                if (!isValidType(k3_var_types[i])) {
+                    //remove element and corresponding type
+                    k3_vars.splice(i, 1);
+                    k3_var_types.splice(i, 1);
+                    //stay on the same index
+                    i--;
+                }
+            }
+        }
+    
+        function isValidType(type) {
+            for (var i = 0; i < k3_valid_var_types.length; i++) {
+                if (type == k3_valid_var_types[i]) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function processMessage(msg, connection_num) {
           var response = JSON.parse(msg);
           if ( response ) {
             switch (response.rt) {
               case "list":
-                k3_vars = response.rv;
+                var oldLength = k3_vars.length;
+                k3_vars.push.apply(k3_vars, response.rv);
+                relabelVars(k3_vars, oldLength, connection_num);
+                
+                k3_var_types.push.apply(k3_var_types, response.types);
+                checkTypes();
+                
                 setSuggestions(k3_vars);
                 drawOutput("Vars", msg, "blue");
-                drawGraph(response.rv);
+                drawGraph(k3_vars);
+                break;
+                
+              case "hardVars":
+                var oldLength = static_k3_vars.length;
+                static_k3_vars.push.apply(static_k3_vars, response.rv);
+                
+                drawOutput("Static vars", msg, "blue")
+                var tag = prefix + " " + (connection_num+1) + ": " + address_list[connection_num];
+                hardVars(oldLength, tag);
                 break;
 
               case "sample":
-                k3_var_ts.push(response.rv);
+                //if (response.rv.length > 0) {
+                    relabelSample(response.rv, connection_num);
+                    k3_var_ts[connection_num].push(response.rv);
+                //}
                 drawOutput("Data", msg, "green");
                 break;
 
@@ -138,28 +204,88 @@
             drawOutput("Reply", msg, null);
           }
         }
+    
+        function relabelSample(var_array, conn_num) {
+          for (var i = 0; i < var_array.length; i++) {
+            for (var key in var_array[i].vars) {
+              if (var_array[i].vars.hasOwnProperty(key)) {
+                var new_key = prefix +" " + (conn_num+1) + ": " + key;
+                var_array[i].vars[new_key] = var_array[i].vars[key];
+                delete var_array[i].vars[key];
+              }
+            }
+          }
+        }
+    
+        function relabelVars(var_array, start, conn_num) {
+          for (var i = start; i < var_array.length; i++) {
+            var_array[i] = prefix + " " + (conn_num+1) + ": " + var_array[i];
+          }
+        }
+    
+        function getVariable(var_name) {
+          var actual_var_name = "";
+          var machine_index = -1;
+            
+          actual_var_name = var_name.substr(var_name.indexOf(":") + 2);
+          machine_index = var_name.substring(prefix.length, var_name.indexOf(":"));
 
-        // Websocket helpers.
-        function connect() {
-          websocket = new WebSocket(address);
-
-          websocket.onopen = function() {
-            d3.select("#output").append("p").text("Connected");
-            requestVars();
-          };
-
-          websocket.onmessage = function(evt) {
-            processMessage(evt.data);
-          };
-
-          websocket.onerror = function(evt) {
-            drawOutput("Error", evt.data, "red");
-          };
+          return [actual_var_name, machine_index];
+        }
+    
+        function sendToWebSocket(connNum, message) {
+          drawOutput("Sent", message, null);
+          connections[connNum].send(message);
+        }
+    
+        function broadCastMessage(message) {
+          drawOutput("Sent", message, null);
+            
+          for (var i = 0; i < connections.length; i++) {
+            connections[i].send(message);
+          }
         }
 
-        function sendMessage(message) {
-          drawOutput("Sent", message, null);
-          websocket.send(message);
+        function initializeAddressInput() {
+            var input = $("#addressinput")[0];
+            input.addEventListener('keyup',function(){
+              if( input.value && window.event.keyCode == 13) {
+                var msg = input.value;
+                                   
+                if (msg.charAt(msg.length - 1) != '/') {
+                  msg = msg + "/";
+                }
+                    
+                if (address_list.indexOf(msg) == -1) {
+                    
+                  connections.push(new WebSocket(msg));
+                                   
+                  var temp = num_data_connections;
+                    
+                  connections[num_data_connections].onopen = function() {
+                    d3.select("#output").append("p").text("Connected");
+                    requestVars(temp);
+                    requestFixedVars(temp);
+                  };
+                    
+                  connections[num_data_connections].onmessage = function(evt) {
+                    processMessage(evt.data, temp);
+                  };
+                                   
+                  connections[num_data_connections].onerror = function(evt) {
+                    drawOutput("Error", evt.data, "red");
+                  };
+                                   
+                  d3.select("#peerinfo").append("h3").text(prefix + " " + (num_data_connections+1) + ": " + msg);
+                    
+                  address_list.push(msg);
+                  num_data_connections++;
+                  k3_var_ts.push([]);
+                    
+                  input.value = null;
+                }
+              }
+            });
         }
 
         // Console setup
@@ -168,12 +294,17 @@
           input.addEventListener('keyup',function(){
             if( input.value && window.event.keyCode == 13) {
               var msg = input.value;
+              var connectionNum = 0;
               if ( msg.charAt(0) == ':' ) {
                 msg = msg.substr(1);
               } else {
+                var retValue = getVariable(msg);
+                msg = retValue[0];
+                connectionNum = retValue[1]-1;
+                
                 msg = JSON.stringify([{"cmd": "add", "var": msg}])
               }
-              sendMessage(msg);
+              sendToWebSocket(connectionNum, msg)
               input.value = null;
             }
           });
@@ -198,6 +329,8 @@
               displayKey: 'value',
               source: bh_engine.ttAdapter()
             });
+            
+            initializeAddressInput();
         }
 
         // Typeahead helpers
@@ -207,9 +340,8 @@
         }
 
         // Page initialization
-        drawPeer();
         initializeConsole();
-        window.addEventListener("load", connect, false);
+        staticVars();
     </script>
 
 </html>
