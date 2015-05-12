@@ -38,6 +38,9 @@ RUN add-apt-repository -y ppa:avsm/ppa && apt-get update && \
     apt-get install -y ocaml ocaml-native-compilers camlp4-extra opam time && \
     export OPAMYES=1 && export OCAMLRUNPARAM=b && opam init && eval `opam config env` && opam install ocamlfind
 
+# Install Ruby
+RUN apt-get install -y ruby
+
 RUN mkdir -p /software/boost-1.56 && \
     cd /software/boost-1.56 && \
     wget --no-verbose http://downloads.sourceforge.net/boost/boost_1_56_0.tar.bz2 && \
@@ -89,7 +92,7 @@ RUN wget ftp://oss.sgi.com/www/projects/libnuma/download/numactl-2.0.10.tar.gz &
     ./autogen.sh && \
     ./configure && \
     make && \
-    make install 
+    make install
 
 # Clone K3, K3-Mosaic from Git
 RUN mkdir -p /k3/K3 /k3/K3-Mosaic && \
