@@ -22,9 +22,11 @@ RUN apt-get update && apt-get install -y \
       clang-3.5 libbz2-dev
 
 # Install and configure GCC 4.9
-RUN add-apt-repository ppa:ubuntu-toolchain-r/test
-RUN apt-get update && apt-get install -y gcc-4.9 libstdc++-4.9-dev
-RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 20
+RUN add-apt-repository ppa:ubuntu-toolchain-r/test && \
+    apt-get update && \
+    apt-get install -y gcc-4.9 g++-4.9 libstdc++-4.9-dev && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 20 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-4.9 20
 
 # Install decent vim configuration
 RUN mkdir /root/.vim && \
@@ -39,12 +41,14 @@ RUN add-apt-repository -y ppa:avsm/ppa && apt-get update && \
 
 RUN mkdir -p /software/boost-1.56 && \
     cd /software/boost-1.56 && \
-    wget --no-verbose http://downloads.sourceforge.net/boost/boost_1_56_0.tar.bz2 && \
+    wget --no-verbose -T 10 http://downloads.sourceforge.net/boost/boost_1_56_0.tar.bz2 && \
     tar xvfj boost_1_56_0.tar.bz2 && \
     cd /software/boost-1.56/boost_1_56_0 && \
     ./bootstrap.sh --without-libraries=python --prefix=/usr && ./b2 -j 8 stage threading=multi link=shared && ./b2 -j 8 install threading=multi link=shared
 
 # Install GHC and cabal
+ENV PATH /opt/ghc/7.10.1/bin:/opt/cabal/1.22/bin:/opt/alex/3.1.4/bin:/opt/happy/1.19.5/bin:/root/.cabal/bin/:$PATH
+
 WORKDIR /
 RUN add-apt-repository ppa:hvr/ghc && \
     apt-get update && \
@@ -52,12 +56,10 @@ RUN add-apt-repository ppa:hvr/ghc && \
     cabal update && \
     cabal install cabal-install -j
 
-ENV PATH /opt/ghc/7.10.1/bin:/opt/cabal/1.22/bin:/opt/alex/3.1.4/bin:/opt/happy/1.19.5/bin:/root/.cabal/bin/:$PATH
-
 ## Download and Build nanomsg
 RUN mkdir -p /software/nanomsg/build
 WORKDIR /software/nanomsg/build
-RUN wget --no-verbose http://download.nanomsg.org/nanomsg-0.3-beta.tar.gz && \
+RUN wget --no-verbose -T 10 http://download.nanomsg.org/nanomsg-0.3-beta.tar.gz && \
     tar -xvzf nanomsg-0.3-beta.tar.gz && \
     ./nanomsg-0.3-beta/configure --prefix /software/nanomsg && \
     make -j 4 && make install && \
@@ -82,7 +84,7 @@ RUN git clone https://github.com/DaMSL/libdynamic /software/libdynamic && \
     ./autogen.sh && ./configure --prefix=/usr && make && make install
 
 # Numa ctl
-RUN wget ftp://oss.sgi.com/www/projects/libnuma/download/numactl-2.0.10.tar.gz && \
+RUN wget --no-verbose -T 10 ftp://oss.sgi.com/www/projects/libnuma/download/numactl-2.0.10.tar.gz && \
     tar -xvf numactl-2.0.10.tar.gz && \
     cd numactl-2.0.10 && \
     ./autogen.sh && \
