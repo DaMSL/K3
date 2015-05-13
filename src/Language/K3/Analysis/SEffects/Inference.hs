@@ -514,7 +514,6 @@ chaseLambda env extInfOpt msg path f@(tnc -> (FApply _, [lf, af])) = do
 
 chaseLambda env _ msg path f = chaseApplied env msg path f
   where chaseApplied _ _ _ f@(tag -> FLambda _) = return [f]
-        chaseApplied _ _ _ f@(tnc -> (FApply _, [_]))   = return [f]
         chaseApplied _ _ _ f@(tnc -> (FApply _, [_,_])) = return [f]
         chaseApplied _ _ _ f@(tag -> FFVar _)   = return [f]
 
@@ -522,6 +521,7 @@ chaseLambda env _ msg path f = chaseApplied env msg path f
           | i `elem` path = return [f]
           | otherwise     = fichase env f >>= chaseApplied env msg (i:path)
 
+        chaseApplied env msg path (tnc -> (FApply _, [sf]))         = chaseApplied env msg path sf
         chaseApplied env msg path (tnc -> (FApply _, [_,_,_,_,sf])) = chaseApplied env msg path sf
         chaseApplied env msg path (tnc -> (FSet, rfl)) = mapM (chaseApplied env msg path) rfl >>= return . concat
         chaseApplied _ msg _ f = throwE $ PT.boxToString $ fErr f %$ (if null msg then [] else [T.pack "on"]) %$ msg
@@ -536,7 +536,7 @@ simplifyApply fienv extInfOpt defer eOpt ef lrf arf = do
   (manyLerf, nenv) <- foldM (doSimplify upOpt arf') ([], fienv) manyLrf
 
   case manyLerf of
-    []          -> applyLambdaErr lrf
+    []          -> applyLambdaErr "return" lrf
     [(nef,nrf)] -> return (nef, nrf, nenv)
     _           -> let (efl, rfl) = unzip manyLerf
                    in return (fset efl, fset rfl, nenv)
@@ -586,7 +586,7 @@ simplifyApply fienv extInfOpt defer eOpt ef lrf arf = do
         (FApply _, [_,_]) -> let appef = fromJust $ fexec ef
                              in return (facc ++ [(appef, fapplyExt lrf arf)], eacc)
 
-        _ -> applyLambdaErr lrf
+        _ -> applyLambdaErr "match" lrf
 
     uidOf  e = maybe (uidErr e) (\case {(EUID u) -> return u ; _ ->  uidErr e}) $ e @~ isEUID
     uidErr e = throwE $ PT.boxToString $ [T.pack "No uid found for fsimplifyapp on "] %+ PT.prettyLines e
@@ -611,8 +611,8 @@ simplifyApply fienv extInfOpt defer eOpt ef lrf arf = do
     exprErr = maybe [] (\e -> PT.prettyLines e) eOpt
     argPErr e = throwE $ PT.boxToString $ [T.pack "No argument provenance found on:"] %$ PT.prettyLines e
 
-    applyLambdaErr :: forall a. K3 Effect -> Except Text a
-    applyLambdaErr f = throwE $ PT.boxToString $ [T.pack "Invalid apply lambda effect: "]
+    applyLambdaErr :: forall a. String -> K3 Effect -> Except Text a
+    applyLambdaErr tg f = throwE $ PT.boxToString $ [T.pack $ "Invalid apply lambda effect (" ++ tg ++ "): "]
                              %$ exprErr %$ [T.pack "Effect:"] %$ PT.prettyLines f
 
 simplifyApplyM :: Maybe (ExtInferF a, a) -> Bool -> Maybe (K3 Expression) -> [Maybe (K3 Effect)] -> K3 Effect -> K3 Effect
