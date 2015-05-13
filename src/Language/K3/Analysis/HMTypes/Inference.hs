@@ -22,7 +22,7 @@ module Language.K3.Analysis.HMTypes.Inference where
 
 import Control.Monad.Identity
 import Control.Monad.State
-import Control.Monad.Trans.Either
+import Control.Monad.Trans.Except
 
 import Data.Function
 import Data.List
@@ -92,7 +92,7 @@ qTypeOf e = case e @~ isEQType of
 qTypeOfM :: K3 Expression -> TInfM (K3 QType)
 qTypeOfM e = case e @~ isEQType of
               Just (EQType qt) -> return qt
-              _ -> left $ "Untyped expression: " ++ show e
+              _ -> throwE $ "Untyped expression: " ++ show e
 
 projectNamedPairs :: [Identifier] -> [(Identifier, a)] -> [a]
 projectNamedPairs ids idv = [v | i <- ids, let (Just v) = lookup i idv]
@@ -132,7 +132,7 @@ data TIEnv = TIEnv {
             }
 
 -- | The type inference monad
-type TInfM = EitherT String (State TIEnv)
+type TInfM = ExceptT String (State TIEnv)
 
 -- | Data type for initializer type handling.
 data IDeclaredAction = IDAExtend     QPType
@@ -145,9 +145,9 @@ data IDeclaredAction = IDAExtend     QPType
 tenv0 :: TEnv
 tenv0 = []
 
-tlkup :: TEnv -> Identifier -> Either String QPType
-tlkup env x = maybe err Right $ lookup x env
-  where err = Left $ "Unbound variable in type environment: " ++ x
+tlkup :: TEnv -> Identifier -> Except String QPType
+tlkup env x = maybe err return $ lookup x env
+  where err = throwE $ "Unbound variable in type environment: " ++ x
 
 text :: TEnv -> Identifier -> QPType -> TEnv
 text env x t = (x,t) : env
@@ -165,9 +165,9 @@ tdiff env1 env2 = partition (\(i,_) -> maybe False (const True) $ lookup i env1)
 taenv0 :: TAEnv
 taenv0 = Map.empty
 
-talkup :: TAEnv -> Identifier -> Either String TMEnv
-talkup env x = maybe err Right $ Map.lookup x env
-  where err = Left $ "Unbound variable in annotation environment: " ++ x
+talkup :: TAEnv -> Identifier -> Except String TMEnv
+talkup env x = maybe err return $ Map.lookup x env
+  where err = throwE $ "Unbound variable in annotation environment: " ++ x
 
 taext :: TAEnv -> Identifier -> TMEnv -> TAEnv
 taext env x te = Map.insert x te env
@@ -177,9 +177,9 @@ taext env x te = Map.insert x te env
 tdvenv0 :: TDVEnv
 tdvenv0 = []
 
-tdvlkup :: TDVEnv -> Identifier -> Either String (K3 QType)
-tdvlkup env x = maybe err (Right . tvar) $ lookup x env
-  where err = Left $ "Unbound declared variable in environment: " ++ x
+tdvlkup :: TDVEnv -> Identifier -> Except String (K3 QType)
+tdvlkup env x = maybe err (return . tvar) $ lookup x env
+  where err = throwE $ "Unbound declared variable in environment: " ++ x
 
 tdvext :: TDVEnv -> Identifier -> QTVarId -> TDVEnv
 tdvext env x v = (x,v) : env
@@ -191,9 +191,9 @@ tdvdel env x = deleteBy ((==) `on` fst) (x,-1) env
 tcenv0 :: TCEnv
 tcenv0 = Map.empty
 
-tclkup :: TCEnv -> Identifier -> Either String Bool
-tclkup env x = maybe err Right $ Map.lookup x env
-  where err = Left $ "Unbound cyclic scope info in environment: " ++ x
+tclkup :: TCEnv -> Identifier -> Except String Bool
+tclkup env x = maybe err return $ Map.lookup x env
+  where err = throwE $ "Unbound cyclic scope info in environment: " ++ x
 
 tcext :: TCEnv -> Identifier -> Bool -> TCEnv
 tcext env x c = Map.insert x c env
@@ -229,16 +229,16 @@ mtice f env = env {tcenv = f $ tcenv env}
 mticyce :: (TEnv -> TEnv) -> TIEnv -> TIEnv
 mticyce f env = env {tcyclic = f $ tcyclic env}
 
-tilkupe :: TIEnv -> Identifier -> Either String QPType
+tilkupe :: TIEnv -> Identifier -> Except String QPType
 tilkupe env x = tlkup (tenv env) x
 
-tilkupa :: TIEnv -> Identifier -> Either String TMEnv
+tilkupa :: TIEnv -> Identifier -> Except String TMEnv
 tilkupa env x = talkup (taenv env) x
 
-tilkupdv :: TIEnv -> Identifier -> Either String (K3 QType)
+tilkupdv :: TIEnv -> Identifier -> Except String (K3 QType)
 tilkupdv env x = tdvlkup (tdvenv env) x
 
-tilkupc :: TIEnv -> Identifier -> Either String Bool
+tilkupc :: TIEnv -> Identifier -> Except String Bool
 tilkupc env x = tclkup (tcenv env) x
 
 tiexte :: TIEnv -> Identifier -> QPType -> TIEnv
@@ -363,7 +363,7 @@ withCyclicEnv n m = do
   put env
   r <- m
   env' <- get
-  nte  <- either left (return . text te n) $ tilkupe env' n
+  nte  <- liftExceptM (tilkupe env' n >>= return . text te n)
   put $ pushCyclicEnv nte tce env'
   return r
 
@@ -371,18 +371,21 @@ withCyclicEnv n m = do
 {- TInfM helpers -}
 
 runTInfM :: TIEnv -> TInfM a -> (Either String a, TIEnv)
-runTInfM env m = flip runState env $ runEitherT m
+runTInfM env m = flip runState env $ runExceptT m
 
 runTInfE :: TIEnv -> TInfM a -> Either String (a, TIEnv)
 runTInfE e m = let (a,b) = runTInfM e m in a >>= return . (, b)
 
 reasonM :: (String -> String) -> TInfM a -> TInfM a
-reasonM errf = mapEitherT $ \m -> m >>= \case
+reasonM errf = mapExceptT $ \m -> m >>= \case
   Left  err -> get >>= \env -> (return . Left $ errf $ err ++ "\nType environment:\n" ++ pretty env)
   Right r   -> return $ Right r
 
-liftEitherM :: Either String a -> TInfM a
-liftEitherM = either left return
+liftExceptM :: Except String a -> TInfM a
+liftExceptM = mapExceptT (return . runIdentity)
+
+tryExceptM :: (String -> TInfM b) -> (a -> TInfM b) -> Except String a -> TInfM b
+tryExceptM onFail onSuccess m = catchE (liftExceptM m >>= onSuccess) onFail
 
 getTVE :: TInfM TVEnv
 getTVE = get >>= return . tvenv
@@ -412,7 +415,7 @@ tvsub qt = acyclicSub [] qt
 
         acyclicSub path t@(tag -> QTOperator QTLower) = do
           ch <- mapM (acyclicSub path) $ children t
-          if null ch then left "Invalid qtype lower operator"
+          if null ch then throwE "Invalid qtype lower operator"
           else if null $ concatMap freevars ch then tvopeval QTLower ch >>= flip extendAnns t
           else return $ foldl (@+) (tlower ch) $ annotations t
 
@@ -527,7 +530,7 @@ tvshallowLowerRcr rcr a b =
     lowerBound t@(tag -> QTOperator QTLower) = tvopevalWithLowerF rcr QTLower $ children t
     lowerBound t = return t
 
-    lowerError x y = left $ boxToString $
+    lowerError x y = throwE $ boxToString $
       ["Invalid lower bound on: "] %+ prettyLines x %+ [" and "] %+ prettyLines y
 
 -- | Type operator evaluation.
@@ -538,14 +541,14 @@ tvopevalShallow :: QTOp -> [K3 QType] -> TInfM (K3 QType)
 tvopevalShallow op ch = tvopevalWithLowerF tvshallowLower op ch
 
 tvopevalWithLowerF :: (K3 QType -> K3 QType -> TInfM (K3 QType)) -> QTOp -> [K3 QType] -> TInfM (K3 QType)
-tvopevalWithLowerF _ _ [] = left $ "Invalid qt operator arguments"
+tvopevalWithLowerF _ _ [] = throwE $ "Invalid qt operator arguments"
 tvopevalWithLowerF lowerF QTLower ch = foldM lowerF (head ch) $ tail ch
 
 consistentTLower :: [K3 QType] -> TInfM (K3 QType)
 consistentTLower ch =
     let (varCh, nonvarCh) = partition isQTVar $ nub ch in
     case (varCh, nonvarCh) of
-      ([], []) -> left "Invalid lower qtype"
+      ([], []) -> throwE "Invalid lower qtype"
       ([], _)  -> tvopevalShallow QTLower nonvarCh
       (_, _)   -> lowerBoundWithVars varCh nonvarCh
 
@@ -563,10 +566,10 @@ consistentTLower ch =
         QTVar _ -> return (tacc, vacc++[bt])
         _ -> return (tacc++[bt], vacc)
 
-    partitionBoundV _ _ = left "Invalid type var during lower qtype merge"
+    partitionBoundV _ _ = throwE "Invalid type var during lower qtype merge"
 
     unifyFreeVar tacc t2@(tag -> QTVar v) = unifyv v (head tacc) >> return (t2:tacc)
-    unifyFreeVar _ _ = left "Invalid type var during lower qtype merge"
+    unifyFreeVar _ _ = throwE "Invalid type var during lower qtype merge"
 
 
 -- Unification helpers.
@@ -577,7 +580,7 @@ collectionSubRecord ct@(tag -> QTCon (QTCollection annIds)) (tag -> QTCon (QTRec
   = get >>= mkColQT >>= return . testF
   where
     mkColQT tienv = do
-      memEnvs <- mapM (liftEitherM . tilkupa tienv) annIds
+      memEnvs <- mapM (liftExceptM . tilkupa tienv) annIds
       mkCollectionFSQType annIds memEnvs (last $ children ct)
 
     testF (_, self)
@@ -768,7 +771,7 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
           onChildren tdcon tdcon errk projSelfT (children rt) colCtor
 
     onCollection _ _ ct rt =
-      left $ unlines ["Invalid collection arguments:", pretty ct, "and", pretty rt]
+      throwE $ unlines ["Invalid collection arguments:", pretty ct, "and", pretty rt]
 
     onRecord :: RecordParts -> RecordParts -> TInfM (K3 QType)
     onRecord (supT, supCon, supIds) (subT, subCon, subIds) =
@@ -805,11 +808,11 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
 
     primitiveErr a b = unifyErr a b "primitives" ""
 
-    unifyErr a b kind s = left $ boxToString $
+    unifyErr a b kind s = throwE $ boxToString $
       [unwords ["Unification mismatch on ", kind, ":("]]
         %$ indent 2 [s] %$ [")"] %$ (prettyLines a %+ [" vs. "] %+ prettyLines b)
 
-    subSelfErr ct = left $ boxToString $
+    subSelfErr ct = throwE $ boxToString $
       ["Invalid self substitution, qtype is not a collection: "] ++ prettyLines ct
 
     unaryLowerMsgF _ Nothing = Nothing
@@ -867,7 +870,7 @@ unifyWithOverrideM qt1 qt2 errf =
                                     if null p1 then return (head p2, snd v1, Nothing)
                                     else if null p2 then return (head p1, snd v2, Nothing)
                                     else return (fst v1, snd v2, Just (last p1, head p2))
-          (_, _, _, True) -> left "Unhandled case in unifyTwoChain"
+          (_, _, _, True) -> throwE "Unhandled case in unifyTwoChain"
           (_, _, _, _) ->
             if snd v2 == fst v1 then return (fst v2, snd v1, Nothing)
             else return (fst v1, snd v2, if snd v1 /= fst v2 then Just (snd v1, fst v2) else Nothing)
@@ -983,11 +986,13 @@ withUnique n m = failOnValid (return ()) (uniqueErr "declaration" n) (flip tilku
 withUniqueA :: Identifier -> TInfM (K3 Declaration) -> TInfM (K3 Declaration)
 withUniqueA n m = failOnValid (return ()) (uniqueErr "annotation" n) (flip tilkupa n) >>= const m
 
-failOnValid :: TInfM () -> TInfM () -> (TIEnv -> Either a b) -> TInfM ()
-failOnValid success failure f = get >>= \env -> either (const $ success) (const $ failure) $ f env
+failOnValid :: TInfM () -> TInfM () -> (TIEnv -> Except a b) -> TInfM ()
+failOnValid success failure f = do
+  env <- get
+  either (const $ success) (const $ failure) $ runExcept $ f env
 
 uniqueErr :: String -> Identifier -> TInfM a
-uniqueErr s n = left $ unwords ["Invalid unique", s, "identifier:", n]
+uniqueErr s n = throwE $ unwords ["Invalid unique", s, "identifier:", n]
 
 
 {- Top-level type inference methods -}
@@ -1019,11 +1024,11 @@ reinferProgDeclTypes env dn prog = runTInfE env inferNamedDecl
     onNamedDecl d = return d
 
     translateDecl d@(tag -> DGlobal  n t eOpt) = do
-      neOpt <- liftEitherM $ maybe (return Nothing) (\e -> translateExprTypes e >>= return . Just) eOpt
+      neOpt <- liftExceptM $ maybe (return Nothing) (\e -> translateExprTypes e >>= return . Just) eOpt
       return $ replaceTag d $ DGlobal n t neOpt
 
     translateDecl d@(tag -> DTrigger n t e) = do
-      ne <- liftEitherM $ translateExprTypes e
+      ne <- liftExceptM $ translateExprTypes e
       return $ replaceTag d $ DTrigger n t ne
 
     translateDecl d = return d
@@ -1041,18 +1046,18 @@ inferDeclTypes d@(tag -> DGlobal n t eOpt) = inferAsCyclicType n $ do
 
 inferDeclTypes d@(tag -> DTrigger n t e) = inferAsCyclicType n $ do
   env <- get
-  QPType qtvars qt <- liftEitherM (tilkupe env n)
+  QPType qtvars qt <- liftExceptM (tilkupe env n)
   case tag qt of
     QTCon QTTrigger ->
       let nqptAct = IDATrigger $ QPType qtvars $ tfun (head $ children qt) tunit
       in unifyDeclInitializer n True nqptAct (Just e) >>= \neOpt ->
            return $ maybe d (\ne' -> Node (DTrigger n t ne' :@: annotations d) $ children d) neOpt
 
-    _ -> left $ "Invalid trigger declaration type for: " ++ n
+    _ -> throwE $ "Invalid trigger declaration type for: " ++ n
 
 inferDeclTypes d@(tag -> DDataAnnotation n tvars mems) = do
     env   <- get
-    amEnv <- liftEitherM (tilkupa env n)
+    amEnv <- liftExceptM (tilkupa env n)
     nmems <- chkAnnMemEnv amEnv
     return (Node (DDataAnnotation n tvars nmems :@: annotations d) $ children d)
 
@@ -1071,17 +1076,14 @@ inferDeclTypes d@(tag -> DDataAnnotation n tvars mems) = do
       qpt <- maybe (memLookupErr mn) (return . fst) (lookup mn amEnv)
       unifyDeclInitializer mn False (IDAPassThru qpt) meOpt
 
-    memLookupErr mn = left $ "No annotation member in initial environment: " ++ mn
+    memLookupErr mn = throwE $ "No annotation member in initial environment: " ++ mn
 
 inferDeclTypes d = return d
 
 inferAsCyclicType :: Identifier -> TInfM a -> TInfM a
 inferAsCyclicType n m = do
-  cyclic <- get >>= return . flip tilkupc n
-  case cyclic of
-    Left err -> left err
-    Right True -> withCyclicEnv n m
-    Right _    -> m
+  cyclic <- get >>= liftExceptM . flip tilkupc n
+  if cyclic then withCyclicEnv n m else m
 
 unifyDeclInitializer :: Identifier -> Bool -> IDeclaredAction -> Maybe (K3 Expression)
                      -> TInfM (Maybe (K3 Expression))
@@ -1089,7 +1091,7 @@ unifyDeclInitializer n asCyclic qptAct eOpt = do
   qpt <- case qptAct of
            IDAExtend     qpt' -> modify (\env -> tiexte (tidele env n) n qpt') >> return qpt'
            IDAPassThru   qpt' -> return qpt'
-           IDAFunction        -> get >>= \env -> liftEitherM (tilkupe env n) >>= \qpt' -> initializerPropagatedQPs qpt' eOpt >> return qpt'
+           IDAFunction        -> get >>= \env -> liftExceptM (tilkupe env n) >>= \qpt' -> initializerPropagatedQPs qpt' eOpt >> return qpt'
            IDATrigger    qpt' -> initializerPropagatedQPs qpt' eOpt >> return qpt'
 
   case eOpt of
@@ -1212,7 +1214,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     -- | Variable specialization. Note that instantiate strips qualifiers.
     inferTagQType _ n@(tag -> EVariable i) = do
         env <- get
-        qt  <- either (lookupError i) instantiate (tilkupe env i)
+        qt  <- tryExceptM (lookupError i) instantiate $ tilkupe env i
         return $ ("var",) $ n .+ qt
 
     -- | Data structures. Qualifiers are taken from child expressions by rebuildE.
@@ -1225,7 +1227,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     --   so the type variable for the identifier is bound in the type environment.
     inferTagQType ch n@(tag -> ELambda i) = do
         env  <- get
-        ipt  <- either (lambdaBindingErr i) return $ tilkupe env i
+        ipt  <- tryExceptM (lambdaBindingErr i) return $ tilkupe env i
         chqt <- qTypeOfM $ head ch
         void $ modify $ \env' -> tidele env' i
         case ipt of
@@ -1236,7 +1238,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     --   ensuring that the source is mutable.
     inferTagQType ch n@(tag -> EAssign i) = do
       env <- get
-      ipt <- either (assignBindingErr i) return $ tilkupe env i
+      ipt <- tryExceptM (assignBindingErr i) return $ tilkupe env i
       eqt <- qTypeOfM $ head ch
       case ipt of
         QPType [] iqt@(tag -> QTVar _) ->
@@ -1315,7 +1317,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
             void $ unifyUnaryM tbool ch $ mkErrorF expr n negateError
             return $ ("not",) $ rebuildE n ch .+ tbool
 
-      | otherwise = left $ "Invalid operation: " ++ show op
+      | otherwise = throwE $ "Invalid operation: " ++ show op
 
       where
         delayNumericQt l r
@@ -1409,7 +1411,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
                , "and", pretty (tfun argqt retqt), ":"]
        ++)
 
-    msgWithTypeEnv msg        = get >>= \env -> left $ msg ++ "\nType environment:\n" ++ pretty env
+    msgWithTypeEnv msg        = get >>= \env -> throwE $ msg ++ "\nType environment:\n" ++ pretty env
     lookupError j reason      = msgWithTypeEnv $ unwords ["No type environment binding for ", j, ":", reason]
     lambdaBindingErr i reason = msgWithTypeEnv $ unwords ["Could not find typevar for lambda binding: ", i, reason]
     polyLambdaBindingErr      = msgWithTypeEnv "Invalid forall type in lambda binding"
@@ -1448,7 +1450,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
 
 mkCollectionQType :: [Identifier] -> K3 QType -> TInfM (K3 QType)
 mkCollectionQType annIds contentQt@(tag -> QTCon (QTRecord _)) = return $ tcol contentQt annIds
-mkCollectionQType _ qt = left $ "Invalid content record type: " ++ show qt
+mkCollectionQType _ qt = throwE $ "Invalid content record type: " ++ show qt
 
 mkCollectionFSQType :: [Identifier] -> [TMEnv] -> K3 QType -> TInfM (K3 QType, K3 QType)
 mkCollectionFSQType annIds memEnvs contentQt = do
@@ -1476,8 +1478,8 @@ mkCollectionFSQType annIds memEnvs contentQt = do
 
     membersAsRecordFields attrs = mapM (\(j,(qpt,_)) -> instantiate qpt >>= return . (j,)) attrs
 
-    nameConflictErr        = left $ "Conflicting annotation member names: " ++ show annIds
-    nonRecordContentErr qt = left $ "Invalid content record type: " ++ show qt
+    nameConflictErr        = throwE $ "Conflicting annotation member names: " ++ show annIds
+    nonRecordContentErr qt = throwE $ "Invalid content record type: " ++ show qt
 
 
 {- Type conversion -}
@@ -1498,7 +1500,7 @@ qpType t@(tag -> TForall tvars) = do
     extend tvmap_ env = foldl (\a (b,c) -> tiextdv a b c) env tvmap_
     prune  tvmap_ env = foldl (\a (b,_) -> tideldv a b) env tvmap_
     varId (tag -> QTVar i) = return i
-    varId _ = left $ "Invalid type variable for type var bindings"
+    varId _ = throwE $ "Invalid type variable for type var bindings"
 
 qpType t = generalize (qType t)
   -- Old code: qType t >>= monomorphize
@@ -1533,7 +1535,7 @@ qType t = foldMapTree mkQType (ttup []) t >>= return . mutabilityT t
         let cqt = head ch
         let annIds = namedTAnnotations $ annotations n
         case annIds of
-          [] -> left $ boxToString $ ["No collection annotations found on "] %+ prettyLines n
+          [] -> throwE $ boxToString $ ["No collection annotations found on "] %+ prettyLines n
           _ -> mkCollectionQType annIds cqt
 
     mkQType ch (tag -> TFunction) = return $ tfun (head ch) $ last ch
@@ -1545,13 +1547,13 @@ qType t = foldMapTree mkQType (ttup []) t >>= return . mutabilityT t
     mkQType _ (tag -> TBuiltIn TStructure) = return tfinal
     mkQType _ (tag -> TBuiltIn TSelf)      = return tself
 
-    mkQType _ (tag -> TDeclaredVar x) = get >>= \tienv -> liftEitherM (tilkupdv tienv x)
+    mkQType _ (tag -> TDeclaredVar x) = get >>= \tienv -> liftExceptM (tilkupdv tienv x)
 
-    mkQType _ (tag -> TForall _) = left $ "Invalid forall type for QType"
+    mkQType _ (tag -> TForall _) = throwE $ "Invalid forall type for QType"
       -- ^ TODO: we can only handle top-level foralls, and not arbitrary
       --   foralls nested in type trees.
 
-    mkQType _ t_ = left $ "No QType construction for " ++ show t_
+    mkQType _ t_ = throwE $ "No QType construction for " ++ show t_
 
     mutability0 nch n = mutabilityT (head $ children n) $ head nch
     mutabilityN nch n = map (uncurry mutabilityT) $ zip (children n) nch
@@ -1559,12 +1561,12 @@ qType t = foldMapTree mkQType (ttup []) t >>= return . mutabilityT t
 
 -- | Converts all QType annotations on program expressions to K3 types.
 translateProgramTypes :: K3 Declaration -> Either String (K3 Declaration)
-translateProgramTypes prog = mapProgram declF annMemF exprF Nothing prog
+translateProgramTypes prog = runExcept $ mapProgram declF annMemF exprF Nothing prog
   where declF   d = return d
         annMemF m = return m
         exprF   e = translateExprTypes e
 
-translateExprTypes :: K3 Expression -> Either String (K3 Expression)
+translateExprTypes :: K3 Expression -> Except String (K3 Expression)
 translateExprTypes expr = mapTree translate expr >>= \e -> return $ flip addTQualifier e $ exprTQualifier expr
   where
     translate nch e@(Node (tg :@: anns) _) = do
@@ -1595,7 +1597,7 @@ translateExprTypes expr = mapTree translate expr >>= \e -> return $ flip addTQua
       QTWitness   -> TWitness
 
 
-translateQType :: Maybe (Annotation Expression) -> K3 QType -> Either String (K3 Type)
+translateQType :: Maybe (Annotation Expression) -> K3 QType -> Except String (K3 Type)
 translateQType spanOpt qt = mapTree translateWithMutability qt
   where translateWithMutability ch qt'@(tag -> QTCon tg)
           | tg `elem` [QTOption, QTIndirection, QTTuple] = translate (attachToChildren ch qt') qt'
@@ -1621,9 +1623,9 @@ translateQType spanOpt qt = mapTree translateWithMutability qt
           | QTVar v      <- tag qt' = return $ TC.declaredVar ("v" ++ show v)
           | QTOperator _ <- tag qt' =
               let msg = "Invalid qtype translation for qtype operator"
-              in Left $ boxToString
-                      $ [unwords $ [msg, "(", maybe "" show spanOpt, ")"]]
-                      %$ prettyLines qt'
+              in throwE $ boxToString
+                        $ [unwords $ [msg, "(", maybe "" show spanOpt, ")"]]
+                        %$ prettyLines qt'
 
         translate _ (tag -> QTPrimitive p) = case p of
           QTBool     -> return TC.bool
@@ -1645,7 +1647,7 @@ translateQType spanOpt qt = mapTree translateWithMutability qt
           QTSource            -> return $ TC.source $ head ch
           QTSink              -> return $ TC.sink $ head ch
 
-        translate _ qt' = Left . unwords $ ["No translation for ", "(", maybe "" show spanOpt, ")", show qt']
+        translate _ qt' = throwE . unwords $ ["No translation for ", "(", maybe "" show spanOpt, ")", show qt']
 
 
 {- Instances -}
