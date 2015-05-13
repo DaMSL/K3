@@ -20,14 +20,15 @@
 --
 module Language.K3.Analysis.HMTypes.Inference where
 
+import Control.Monad
 import Control.Monad.Identity
 import Control.Monad.State
 import Control.Monad.Trans.Except
 
-import Data.Function
+import Data.IntMap ( IntMap )
+import qualified Data.IntMap as IntMap
+
 import Data.List
-import Data.Map ( Map )
-import qualified Data.Map as Map
 import Data.Maybe
 import Data.Tree
 import Debug.Trace
@@ -42,21 +43,28 @@ import Language.K3.Core.Type
 import Language.K3.Core.Utils
 import Language.K3.Core.Constructor.Type as TC
 
+import Language.K3.Analysis.Data.BindingEnv ( BindingEnv, BindingStackEnv )
+import qualified Language.K3.Analysis.Data.BindingEnv as BEnv
+
 import Language.K3.Analysis.HMTypes.DataTypes
 
 import Language.K3.Utils.Logger
-import Language.K3.Utils.Pretty
+
+import Data.Text ( Text )
+import Language.K3.Utils.PrettyText ( Pretty, (%$), (%+) )
+import qualified Data.Text as T
+import qualified Language.K3.Utils.PrettyText as PT
 
 $(loggingFunctions)
 
 hmtcTraceLogging :: Bool
 hmtcTraceLogging = False
 
-localLog :: (Functor m, Monad m) => String -> m ()
-localLog = logVoid hmtcTraceLogging
+localLog :: (Functor m, Monad m) => Text -> m ()
+localLog t = logVoid hmtcTraceLogging $ T.unpack t
 
-localLogAction :: (Functor m, Monad m) => (Maybe a -> Maybe String) -> m a -> m a
-localLogAction = logAction hmtcTraceLogging
+localLogAction :: (Functor m, Monad m) => (Maybe a -> Maybe Text) -> m a -> m a
+localLogAction f a = logAction hmtcTraceLogging (maybe Nothing (Just . T.unpack) . f) a
 
 
 (.+) :: K3 Expression -> K3 QType -> K3 Expression
@@ -94,7 +102,7 @@ qTypeOf e = case e @~ isEQType of
 qTypeOfM :: K3 Expression -> TInfM (K3 QType)
 qTypeOfM e = case e @~ isEQType of
               Just (EQType qt) -> return qt
-              _ -> throwE $ "Untyped expression: " ++ show e
+              _ -> serrorM $ "Untyped expression: " ++ show e
 
 projectNamedPairs :: [Identifier] -> [(Identifier, a)] -> [a]
 projectNamedPairs ids idv = [v | i <- ids, let (Just v) = lookup i idv]
@@ -104,23 +112,23 @@ rebuildNamedPairs oldIdv newIds newVs = map (replaceNewPair $ zip newIds newVs) 
   where replaceNewPair pairs (k,v) = maybe v id $ lookup k pairs
 
 -- | A type environment.
-type TEnv = [(Identifier, QPType)]
+type TEnv = BindingStackEnv QPType
 
 -- | Annotation type environment.
-type TAEnv = Map Identifier TMEnv
-
--- | Declared type variable environment.
-type TDVEnv = [(Identifier, QTVarId)]
+type TAEnv = BindingEnv TMEnv
 
 -- | Annotation member environment.
 --   The boolean indicates whether the member is a lifted attribute.
-type TMEnv = [(Identifier, (QPType, Bool))]
+type TMEnv = BindingEnv (QPType, Bool)
+
+-- | Declared type variable environment.
+type TDVEnv = BindingStackEnv QTVarId
 
 -- | A type variable environment.
-data TVEnv = TVEnv QTVarId (Map QTVarId (K3 QType)) deriving Show
+data TVEnv = TVEnv QTVarId (IntMap (K3 QType)) deriving Show
 
 -- | A cyclic variable environment (tracks whether an identifer uses cyclic scope).
-type TCEnv = Map Identifier Bool
+type TCEnv = BindingEnv Bool
 
 -- | A type inference environment.
 data TIEnv = TIEnv {
@@ -140,7 +148,7 @@ instance Monoid TIEnv where
           (cyc ++ cyc') (c `Map.union` c') (prop ++ prop')
 
 -- | The type inference monad
-type TInfM = ExceptT String (State TIEnv)
+type TInfM = ExceptT Text (State TIEnv)
 
 -- | Data type for initializer type handling.
 data IDeclaredAction = IDAExtend     QPType
@@ -151,60 +159,61 @@ data IDeclaredAction = IDAExtend     QPType
 
 {- TEnv helpers -}
 tenv0 :: TEnv
-tenv0 = []
+tenv0 = BEnv.empty
 
-tlkup :: TEnv -> Identifier -> Except String QPType
-tlkup env x = maybe err return $ lookup x env
-  where err = throwE $ "Unbound variable in type environment: " ++ x
+tlkup :: TEnv -> Identifier -> Except Text QPType
+tlkup env x = BEnv.slookup env x
 
 text :: TEnv -> Identifier -> QPType -> TEnv
-text env x t = (x,t) : env
+text env x t = BEnv.push env x t
 
 tdel :: TEnv -> Identifier -> TEnv
-tdel env x = deleteBy ((==) `on` fst) (x, QPType [] tint) env
+tdel env x = BEnv.pop env x
 
--- Return entries in env2 different, and not present in from env1
+-- Return a pair of TEnvs, the first made up of env2 entries different than
+-- the named entries in env1, and the second containing env2 entries not present in env1.
 tdiff :: TEnv -> TEnv -> (TEnv, TEnv)
-tdiff env1 env2 = partition (\(i,_) -> maybe False (const True) $ lookup i env1)
-                    $ filter (`notElem` env1) env2
+tdiff env1 env2 = BEnv.foldl partdiff (BEnv.empty, BEnv.empty) env2
+  where partdiff acc _ [] = acc
+        partdiff (diffs, news) n (last -> qt) =
+          case BEnv.mlookup env1 n of
+            Nothing -> (diffs, BEnv.push news n qt)
+            Just l -> (if qt `notElem` l then BEnv.push diffs n qt else diffs, news)
 
 
 {- TAEnv helpers -}
 taenv0 :: TAEnv
-taenv0 = Map.empty
+taenv0 = BEnv.empty
 
-talkup :: TAEnv -> Identifier -> Except String TMEnv
-talkup env x = maybe err return $ Map.lookup x env
-  where err = throwE $ "Unbound variable in annotation environment: " ++ x
+talkup :: TAEnv -> Identifier -> Except Text TMEnv
+talkup env x = BEnv.lookup env x
 
 taext :: TAEnv -> Identifier -> TMEnv -> TAEnv
-taext env x te = Map.insert x te env
+taext env x te = BEnv.set env x te
 
 
 {- TDVEnv helpers -}
 tdvenv0 :: TDVEnv
-tdvenv0 = []
+tdvenv0 = BEnv.empty
 
-tdvlkup :: TDVEnv -> Identifier -> Except String (K3 QType)
-tdvlkup env x = maybe err (return . tvar) $ lookup x env
-  where err = throwE $ "Unbound declared variable in environment: " ++ x
+tdvlkup :: TDVEnv -> Identifier -> Except Text (K3 QType)
+tdvlkup env x = BEnv.slookup env x >>= return . tvar
 
 tdvext :: TDVEnv -> Identifier -> QTVarId -> TDVEnv
-tdvext env x v = (x,v) : env
+tdvext env x v = BEnv.push env x v
 
 tdvdel :: TDVEnv -> Identifier -> TDVEnv
-tdvdel env x = deleteBy ((==) `on` fst) (x,-1) env
+tdvdel env x = BEnv.pop env x
 
 {- Cyclic metadata helpers -}
 tcenv0 :: TCEnv
-tcenv0 = Map.empty
+tcenv0 = BEnv.empty
 
-tclkup :: TCEnv -> Identifier -> Except String Bool
-tclkup env x = maybe err return $ Map.lookup x env
-  where err = throwE $ "Unbound cyclic scope info in environment: " ++ x
+tclkup :: TCEnv -> Identifier -> Except Text Bool
+tclkup env x = BEnv.lookup env x
 
 tcext :: TCEnv -> Identifier -> Bool -> TCEnv
-tcext env x c = Map.insert x c env
+tcext env x c = BEnv.set env x c
 
 {- TIEnv helpers -}
 tienv0 :: TIEnv
@@ -237,16 +246,16 @@ mtice f env = env {tcenv = f $ tcenv env}
 mticyce :: (TEnv -> TEnv) -> TIEnv -> TIEnv
 mticyce f env = env {tcyclic = f $ tcyclic env}
 
-tilkupe :: TIEnv -> Identifier -> Except String QPType
+tilkupe :: TIEnv -> Identifier -> Except Text QPType
 tilkupe env x = tlkup (tenv env) x
 
-tilkupa :: TIEnv -> Identifier -> Except String TMEnv
+tilkupa :: TIEnv -> Identifier -> Except Text TMEnv
 tilkupa env x = talkup (taenv env) x
 
-tilkupdv :: TIEnv -> Identifier -> Except String (K3 QType)
+tilkupdv :: TIEnv -> Identifier -> Except Text (K3 QType)
 tilkupdv env x = tdvlkup (tdvenv env) x
 
-tilkupc :: TIEnv -> Identifier -> Except String Bool
+tilkupc :: TIEnv -> Identifier -> Except Text Bool
 tilkupc env x = tclkup (tcenv env) x
 
 tiexte :: TIEnv -> Identifier -> QPType -> TIEnv
@@ -274,25 +283,25 @@ tiincrv env = let TVEnv n s = tvenv env
 
 {- TVEnv helpers -}
 tvenv0 :: TVEnv
-tvenv0 = TVEnv 0 Map.empty
+tvenv0 = TVEnv 0 IntMap.empty
 
 tvlkup :: TVEnv -> QTVarId -> Maybe (K3 QType)
-tvlkup (TVEnv _ s) v = Map.lookup v s
+tvlkup (TVEnv _ s) v = IntMap.lookup v s
 
 tvext :: TVEnv -> QTVarId -> K3 QType -> TVEnv
-tvext (TVEnv c s) v t = TVEnv c $ Map.insert v t s
+tvext (TVEnv c s) v t = TVEnv c $ IntMap.insert v t s
 
 tvmap :: TVEnv -> (K3 QType -> K3 QType) -> TVEnv
-tvmap (TVEnv c s) f = TVEnv c $ Map.map f s
+tvmap (TVEnv c s) f = TVEnv c $ IntMap.map f s
 
 -- TVE domain predicate: check to see if a TVarName is in the domain of TVE
 tvdomainp :: TVEnv -> QTVarId -> Bool
-tvdomainp (TVEnv _ s) v = Map.member v s
+tvdomainp (TVEnv _ s) v = IntMap.member v s
 
 -- Give the list of all type variables that are allocated in TVE but
 -- not bound there
 tvfree :: TVEnv -> [QTVarId]
-tvfree (TVEnv c s) = filter (\v -> not (Map.member v s)) [0..c-1]
+tvfree (TVEnv c s) = filter (\v -> not (IntMap.member v s)) [0..c-1]
 
 -- `Shallow' substitution
 tvchase :: TVEnv -> K3 QType -> K3 QType
@@ -360,9 +369,8 @@ popCyclicEnv env = (tenv env, tcyclic env, env {tenv = tcyclic env})
 -- while pushing any changes in the new cyclic type env to the linear type env.
 pushCyclicEnv :: TEnv -> TEnv -> TIEnv -> TIEnv
 pushCyclicEnv te tc env =
-  let replace acc (i,t) = map (\(i',t') -> if i == i' then (i,t) else (i',t')) acc
-      (tcnew, tcdiff)   = tdiff tc $ tenv env
-      nte               = (foldl replace te tcdiff) ++ tcnew
+  let (tcdiff, tcnew) = tdiff tc $ tenv env
+      nte             = BEnv.unions [tcdiff, te, tcnew]
   in env {tenv = nte, tcyclic = tenv env}
 
 withCyclicEnv :: Identifier -> TInfM a -> TInfM a
@@ -378,21 +386,30 @@ withCyclicEnv n m = do
 
 {- TInfM helpers -}
 
-runTInfM :: TIEnv -> TInfM a -> (Either String a, TIEnv)
+runTInfM :: TIEnv -> TInfM a -> (Either Text a, TIEnv)
 runTInfM env m = flip runState env $ runExceptT m
 
-runTInfE :: TIEnv -> TInfM a -> Either String (a, TIEnv)
+runTInfE :: TIEnv -> TInfM a -> Either Text (a, TIEnv)
 runTInfE e m = let (a,b) = runTInfM e m in a >>= return . (, b)
 
-reasonM :: (String -> String) -> TInfM a -> TInfM a
+runTInfES :: TIEnv -> TInfM a -> Either String (a, TIEnv)
+runTInfES e m = either (Left . T.unpack) Right $ runTInfE e m
+
+reasonM :: (Text -> Text) -> TInfM a -> TInfM a
 reasonM errf = mapExceptT $ \m -> m >>= \case
-  Left  err -> get >>= \env -> (return . Left $ errf $ err ++ "\nType environment:\n" ++ pretty env)
+  Left  err -> get >>= \env -> (return . Left $ errf $ T.unlines [err, T.pack "Type environment:", PT.pretty env])
   Right r   -> return $ Right r
 
-liftExceptM :: Except String a -> TInfM a
+errorM :: Text -> TInfM a
+errorM msg = reasonM id $ throwE msg
+
+serrorM :: String -> TInfM a
+serrorM msg = reasonM id $ throwE $ T.pack msg
+
+liftExceptM :: Except Text a -> TInfM a
 liftExceptM = mapExceptT (return . runIdentity)
 
-tryExceptM :: (String -> TInfM b) -> (a -> TInfM b) -> Except String a -> TInfM b
+tryExceptM :: (Text -> TInfM b) -> (a -> TInfM b) -> Except Text a -> TInfM b
 tryExceptM onFail onSuccess m = catchE (liftExceptM m >>= onSuccess) onFail
 
 getTVE :: TInfM TVEnv
@@ -423,7 +440,7 @@ tvsub qt = acyclicSub [] qt
 
         acyclicSub path t@(tag -> QTOperator QTLower) = do
           ch <- mapM (acyclicSub path) $ children t
-          if null ch then throwE "Invalid qtype lower operator"
+          if null ch then serrorM "Invalid qtype lower operator"
           else if null $ concatMap freevars ch then tvopeval QTLower ch >>= flip extendAnns t
           else return $ foldl (@+) (tlower ch) $ annotations t
 
@@ -538,8 +555,9 @@ tvshallowLowerRcr rcr a b =
     lowerBound t@(tag -> QTOperator QTLower) = tvopevalWithLowerF rcr QTLower $ children t
     lowerBound t = return t
 
-    lowerError x y = throwE $ boxToString $
-      ["Invalid lower bound on: "] %+ prettyLines x %+ [" and "] %+ prettyLines y
+    lowerError x y = throwE $ PT.boxToString $
+      [T.pack "Invalid lower bound on: "] %+ PT.prettyLines x %+
+      [T.pack " and "] %+ PT.prettyLines y
 
 -- | Type operator evaluation.
 tvopeval :: QTOp -> [K3 QType] -> TInfM (K3 QType)
@@ -549,14 +567,14 @@ tvopevalShallow :: QTOp -> [K3 QType] -> TInfM (K3 QType)
 tvopevalShallow op ch = tvopevalWithLowerF tvshallowLower op ch
 
 tvopevalWithLowerF :: (K3 QType -> K3 QType -> TInfM (K3 QType)) -> QTOp -> [K3 QType] -> TInfM (K3 QType)
-tvopevalWithLowerF _ _ [] = throwE $ "Invalid qt operator arguments"
+tvopevalWithLowerF _ _ [] = serrorM "Invalid qt operator arguments"
 tvopevalWithLowerF lowerF QTLower ch = foldM lowerF (head ch) $ tail ch
 
 consistentTLower :: [K3 QType] -> TInfM (K3 QType)
 consistentTLower ch =
     let (varCh, nonvarCh) = partition isQTVar $ nub ch in
     case (varCh, nonvarCh) of
-      ([], []) -> throwE "Invalid lower qtype"
+      ([], []) -> serrorM "Invalid lower qtype"
       ([], _)  -> tvopevalShallow QTLower nonvarCh
       (_, _)   -> lowerBoundWithVars varCh nonvarCh
 
@@ -574,10 +592,10 @@ consistentTLower ch =
         QTVar _ -> return (tacc, vacc++[bt])
         _ -> return (tacc++[bt], vacc)
 
-    partitionBoundV _ _ = throwE "Invalid type var during lower qtype merge"
+    partitionBoundV _ _ = serrorM "Invalid type var during lower qtype merge"
 
     unifyFreeVar tacc t2@(tag -> QTVar v) = unifyv v (head tacc) >> return (t2:tacc)
-    unifyFreeVar _ _ = throwE "Invalid type var during lower qtype merge"
+    unifyFreeVar _ _ = serrorM "Invalid type var during lower qtype merge"
 
 
 -- Unification helpers.
@@ -681,14 +699,14 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
     unifyDrv' t1@(tag -> QTCon (QTCollection _)) t2@(tag -> QTCon (QTRecord _))
       = collectionSubRecord t1 t2 >>= \case
           Right (selfRecordQt, liftedAttrIds) -> onCollection selfRecordQt liftedAttrIds t1 t2
-          Left (Just selfRecordQt)            -> unifyErr t1 t2 "collection-record" $ prettyTaggedPair "field-mismatch" selfRecordQt t2
-          Left Nothing                        -> unifyErr t1 t2 "collection-record" ""
+          Left (Just selfRecordQt)            -> unifyErrT t1 t2 "collection-record" $ prettyTaggedPair "field-mismatch" selfRecordQt t2
+          Left Nothing                        -> unifyErr  t1 t2 "collection-record" ""
 
     unifyDrv' t1@(tag -> QTCon (QTRecord _)) t2@(tag -> QTCon (QTCollection _))
       = collectionSubRecord t2 t1 >>= \case
           Right (selfRecordQt, liftedAttrIds) -> onCollection selfRecordQt liftedAttrIds t2 t1
-          Left (Just selfRecordQt)            -> unifyErr t1 t2 "collection-record" $ prettyTaggedPair "field-mismatch" selfRecordQt t1
-          Left Nothing                        -> unifyErr t1 t2 "collection-record" ""
+          Left (Just selfRecordQt)            -> unifyErrT t1 t2 "collection-record" $ prettyTaggedPair "field-mismatch" selfRecordQt t1
+          Left Nothing                        -> unifyErr  t1 t2 "collection-record" ""
 
     unifyDrv' t1@(tag -> QTCon (QTCollection idsA)) t2@(tag -> QTCon (QTCollection idsB))
         | idsA `intersect` idsB == idsA = onCollectionPair idsB t1 t2
@@ -779,7 +797,7 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
           onChildren tdcon tdcon errk projSelfT (children rt) colCtor
 
     onCollection _ _ ct rt =
-      throwE $ unlines ["Invalid collection arguments:", pretty ct, "and", pretty rt]
+      throwE $ T.unlines [T.pack "Invalid collection arguments:", PT.pretty ct, T.pack "and", PT.pretty rt]
 
     onRecord :: RecordParts -> RecordParts -> TInfM (K3 QType)
     onRecord (supT, supCon, supIds) (subT, subCon, subIds) =
@@ -816,30 +834,32 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
 
     primitiveErr a b = unifyErr a b "primitives" ""
 
-    unifyErr a b kind s = throwE $ boxToString $
-      [unwords ["Unification mismatch on ", kind, ":("]]
-        %$ indent 2 [s] %$ [")"] %$ (prettyLines a %+ [" vs. "] %+ prettyLines b)
+    unifyErr a b kind s = unifyErrT a b kind $ T.pack s
 
-    subSelfErr ct = throwE $ boxToString $
-      ["Invalid self substitution, qtype is not a collection: "] ++ prettyLines ct
+    unifyErrT a b kind s = errorM $ PT.boxToString $
+      [T.unwords (map T.pack ["Unification mismatch on ", kind, ":("])]
+        %$ PT.indent 2 [s] %$ [T.pack ")"] %$ (PT.prettyLines a %+ [T.pack " vs. "] %+ PT.prettyLines b)
+
+    subSelfErr ct = errorM $ PT.boxToString $
+      [T.pack "Invalid self substitution, qtype is not a collection: "] ++ PT.prettyLines ct
 
     unaryLowerMsgF _ Nothing = Nothing
     unaryLowerMsgF suffix (Just r) =
-      Just $ boxToString $ ["consistentTLower" ++ suffix ++ " "] %+ prettyLines r
+      Just $ PT.boxToString $ [T.pack $ "consistentTLower" ++ suffix ++ " "] %+ PT.prettyLines r
 
     binaryLowerMsgF _ Nothing = Nothing
     binaryLowerMsgF args (Just ret) =
-      Just $ boxToString $ ["consistentTLowerB "]
-               %+ (intersperseBoxes [" "] $ map prettyLines $ args ++ [ret])
+      Just $ PT.boxToString $ [T.pack "consistentTLowerB "]
+               %+ (PT.intersperseBoxes [T.pack " "] $ map PT.prettyLines $ args ++ [ret])
 
     binaryLowerRecMsgF _ _ Nothing = Nothing
     binaryLowerRecMsgF lrec1 lrec2 (Just lret) =
-      Just $ boxToString $ ["consistentTLowerB record "]
-               %+ (intersperseBoxes [" "] $ map prettyLines $ [lrec1, lrec2, lret])
+      Just $ PT.boxToString $ [T.pack "consistentTLowerB record "]
+               %+ (PT.intersperseBoxes [T.pack " "] $ map PT.prettyLines $ [lrec1, lrec2, lret])
 
 
 -- | Type unification.
-unifyM :: K3 QType -> K3 QType -> (String -> String) -> TInfM ()
+unifyM :: K3 QType -> K3 QType -> (Text -> Text) -> TInfM ()
 unifyM t1 t2 errf = void $ localLogAction msgF $ reasonM errf $ unifyDrv preChase postId t1 t2
   where
     preChase qt = getTVE >>= \tve -> return ((), tvchase tve qt)
@@ -848,13 +868,13 @@ unifyM t1 t2 errf = void $ localLogAction msgF $ reasonM errf $ unifyDrv preChas
     msgF (Just r) = Just $ prettyTaggedTriple "unifyM result" t1 t2 r
 
 -- | Type unification with variable overrides to the unification result.
-unifyWithOverrideM :: K3 QType -> K3 QType -> (String -> String) -> TInfM (K3 QType)
+unifyWithOverrideM :: K3 QType -> K3 QType -> (Text -> Text) -> TInfM (K3 QType)
 unifyWithOverrideM qt1 qt2 errf =
   localLogAction msgF $ reasonM errf $ unifyDrv preChase (\x y -> postUnifyCased x y >>= logPostUnify) qt1 qt2
   where
     preChase qt = getTVE >>= \tve -> return $ tvchasev tve Nothing qt
 
-    logPostUnify r = localLog (boxToString $ ["postUnify "] %+ prettyLines r) >> return r
+    logPostUnify r = localLog (PT.boxToString $ [T.pack "postUnify "] %+ PT.prettyLines r) >> return r
 
     postUnifyCased (vo1, vo2) qt = case (vo1, vo2) of
         (Just v1, Just v2) -> unifyTwoChain v1 v2 qt
@@ -878,13 +898,13 @@ unifyWithOverrideM qt1 qt2 errf =
                                     if null p1 then return (head p2, snd v1, Nothing)
                                     else if null p2 then return (head p1, snd v2, Nothing)
                                     else return (fst v1, snd v2, Just (last p1, head p2))
-          (_, _, _, True) -> throwE "Unhandled case in unifyTwoChain"
+          (_, _, _, True) -> serrorM "Unhandled case in unifyTwoChain"
           (_, _, _, _) ->
             if snd v2 == fst v1 then return (fst v2, snd v1, Nothing)
             else return (fst v1, snd v2, if snd v1 /= fst v2 then Just (snd v1, fst v2) else Nothing)
 
       checkedUnify trg qt
-      void $ maybe (localLog "unifyTwoChain no chain") (\(s,t) -> checkedUnify s $ vtCtor t) chain
+      void $ maybe (localLog $ T.pack "unifyTwoChain no chain") (\(s,t) -> checkedUnify s $ vtCtor t) chain
       return $ vtCtor $ src
 
     commonSuffix l1 l2 =
@@ -977,7 +997,7 @@ initializeDeclType d@(tag -> DTrigger n t _) = withUnique n $ do
   where trigType x = qType x >>= \qt -> return (ttrg qt) >>= monomorphize
 
 initializeDeclType d@(tag -> DDataAnnotation n tdeclvars mems) = withUniqueA n $ mkAnnMemEnv >> return d
-  where mkAnnMemEnv = mapM memType mems >>= \l -> modify (\env -> tiexta env n $ catMaybes l)
+  where mkAnnMemEnv = mapM memType mems >>= \l -> modify (\env -> tiexta env n $ BEnv.fromList $ catMaybes l)
         memType (Lifted      _ mn mt _ _) = unifyMemInit True  mn mt
         memType (Attribute   _ mn mt _ _) = unifyMemInit False mn mt
         memType (MAnnotation _ _ _) = return Nothing
@@ -1000,7 +1020,7 @@ failOnValid success failure f = do
   either (const $ success) (const $ failure) $ runExcept $ f env
 
 uniqueErr :: String -> Identifier -> TInfM a
-uniqueErr s n = throwE $ unwords ["Invalid unique", s, "identifier:", n]
+uniqueErr s n = serrorM $ unwords ["Invalid unique", s, "identifier:", n]
 
 
 {- Top-level type inference methods -}
@@ -1008,10 +1028,10 @@ uniqueErr s n = throwE $ unwords ["Invalid unique", s, "identifier:", n]
 -- | Whole program inference
 inferProgramTypes :: K3 Declaration -> Either String (K3 Declaration, TIEnv)
 inferProgramTypes prog = do
-    (_, initEnv)      <- runTInfE tienv0 $ initializeTypeEnv
-    (nProg, finalEnv) <- runTInfE (resetCyclicEnv initEnv) $ inferAllDecls
-    localLog $ "Final type environment"
-    localLog $ pretty finalEnv
+    (_, initEnv)      <- runTInfES tienv0 $ initializeTypeEnv
+    (nProg, finalEnv) <- runTInfES (resetCyclicEnv initEnv) $ inferAllDecls
+    localLog $ T.pack $ "Final type environment"
+    localLog $ PT.pretty finalEnv
     return (nProg, finalEnv)
 
   where
@@ -1023,7 +1043,7 @@ inferProgramTypes prog = do
 
 -- | Repeat inference for a specific declaration.
 reinferProgDeclTypes :: TIEnv -> Identifier -> K3 Declaration -> Either String (K3 Declaration, TIEnv)
-reinferProgDeclTypes env dn prog = runTInfE env inferNamedDecl
+reinferProgDeclTypes env dn prog = runTInfES env inferNamedDecl
   where
     inferNamedDecl = mapProgramWithDecl onNamedDecl (const return) (const return) Nothing prog
 
@@ -1061,7 +1081,7 @@ inferDeclTypes d@(tag -> DTrigger n t e) = inferAsCyclicType n $ do
       in unifyDeclInitializer n True nqptAct (Just e) >>= \neOpt ->
            return $ maybe d (\ne' -> Node (DTrigger n t ne' :@: annotations d) $ children d) neOpt
 
-    _ -> throwE $ "Invalid trigger declaration type for: " ++ n
+    _ -> serrorM $ "Invalid trigger declaration type for: " ++ n
 
 inferDeclTypes d@(tag -> DDataAnnotation n tvars mems) = do
     env   <- get
@@ -1081,10 +1101,10 @@ inferDeclTypes d@(tag -> DDataAnnotation n tvars mems) = do
     memType _ mem@(MAnnotation _ _ _) = return mem
 
     unifyMemInit amEnv mn meOpt = do
-      qpt <- maybe (memLookupErr mn) (return . fst) (lookup mn amEnv)
+      qpt <- maybe (memLookupErr mn) (return . fst) (BEnv.mlookup amEnv mn)
       unifyDeclInitializer mn False (IDAPassThru qpt) meOpt
 
-    memLookupErr mn = throwE $ "No annotation member in initial environment: " ++ mn
+    memLookupErr mn = serrorM $ "No annotation member in initial environment: " ++ mn
 
 inferDeclTypes d = return d
 
@@ -1114,14 +1134,14 @@ unifyDeclInitializer n asCyclic qptAct eOpt = do
     Nothing -> return Nothing
 
   where
-    mkErrorF :: K3 Expression -> (String -> String) -> (String -> String)
-    mkErrorF e f s = spanAsString ++ f s
+    mkErrorF :: K3 Expression -> (Text -> Text) -> (Text -> Text)
+    mkErrorF e f s = spanAsString `T.append` f s
       where spanAsString = let uidSpans = filter (\a -> isESpan a || isEUID a) $ annotations e
                            in if null uidSpans
-                                then (boxToString $ ["["] %+ prettyLines e %+ ["]"])
-                                else show uidSpans
+                                then (PT.boxToString $ [T.pack "["] %+ PT.prettyLines e %+ [T.pack "]"])
+                                else T.pack $ show uidSpans
 
-    unifyInitErrF s = "Failed to unify initializer: " ++ s
+    unifyInitErrF s = (T.pack "Failed to unify initializer: ") `T.append` s
 
 initializerPropagatedQPs :: QPType -> Maybe (K3 Expression) -> TInfM ()
 initializerPropagatedQPs _ Nothing = return ()
@@ -1183,14 +1203,14 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
         return [iu]
 
       where
-        bindErr errE kind reason = unlines [ unwords ["Invalid", kind, "bind-as:", reason]
-                                           , "On:", pretty errE
-                                           , "Toplevel:", pretty expr ]
+        bindErr errE kind reason = T.unlines [ T.unwords $ (map T.pack ["Invalid", kind, "bind-as:"]) ++ [reason]
+                                             , T.pack "On:", PT.pretty errE
+                                             , T.pack "Toplevel:", PT.pretty expr ]
 
     sidewaysBinding ch1 (tag -> ECaseOf i) = do
       ch1T <- qTypeOfM ch1
       itv  <- newtv
-      void $  unifyWithOverrideM ch1T (topt itv) $ (("Invalid case-of source expression: ")++)
+      void $  unifyWithOverrideM ch1T (topt itv) $ conerrF $ "Invalid case-of source expression: "
       return [monoBinding i itv, modify $ \env -> tidele env i]
 
     sidewaysBinding _ (children -> ch) = return (replicate (length ch - 1) iu)
@@ -1325,7 +1345,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
             void $ unifyUnaryM tbool ch $ mkErrorF expr n negateError
             return $ ("not",) $ rebuildE n ch .+ tbool
 
-      | otherwise = throwE $ "Invalid operation: " ++ show op
+      | otherwise = serrorM $ "Invalid operation: " ++ show op
 
       where
         delayNumericQt l r
@@ -1362,15 +1382,15 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       pqt   <- qTypeOfM $ head ch
       tqt   <- qTypeOfM $ ch !! 1
       eqt   <- qTypeOfM $ last ch
-      void  $  unifyM pqt tbool $ mkErrorF expr n $ (("Invalid if-then-else predicate: ") ++)
-      retqt <- unifyWithOverrideM tqt eqt $ mkErrorF expr n $ (("Mismatched condition branches: ") ++)
+      void  $  unifyM pqt tbool $ mkErrorF expr n $ (conerrF $ "Invalid if-then-else predicate: ")
+      retqt <- unifyWithOverrideM tqt eqt $ mkErrorF expr n $ (conerrF $ "Mismatched condition branches: ")
       return $ ("if-then",) $ rebuildE n ch .+ retqt
 
     inferTagQType ch n@(tag -> EAddress) = do
       hostqt <- qTypeOfM $ head ch
       portqt <- qTypeOfM $ last ch
-      void $ unifyM hostqt tstr $ mkErrorF expr n $ (("Invalid address host string: ") ++)
-      void $ unifyM portqt tint $ mkErrorF expr n $ (("Invalid address port int: ") ++)
+      void $ unifyM hostqt tstr $ mkErrorF expr n $ (conerrF $ "Invalid address host string: ")
+      void $ unifyM portqt tint $ mkErrorF expr n $ (conerrF $ "Invalid address port int: ")
       return $ ("address",) $ rebuildE n ch .+ taddr
 
     inferTagQType ch n  = return $ ("<unhandled>",) $ rebuildE n ch
@@ -1381,8 +1401,8 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     unifyBinaryM lexpected rexpected ch n errf = do
       lqt <- qTypeOfM $ head ch
       rqt <- qTypeOfM $ last ch
-      void $ unifyM lexpected lqt (mkErrorF expr n $ errf "left")
-      void $ unifyM rexpected rqt (mkErrorF expr n $ errf "right")
+      void $ unifyM lexpected lqt (mkErrorF expr n $ errf $ T.pack "left")
+      void $ unifyM rexpected rqt (mkErrorF expr n $ errf $ T.pack "right")
       return (lqt, rqt)
 
     unifyUnaryM expected ch errf = do
@@ -1395,61 +1415,60 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
     logic      op = op `elem` [OAnd, OOr]
     textual    op = op `elem` [OConcat]
 
-    mkErrorF :: K3 Expression -> K3 Expression -> (String -> String) -> (String -> String)
-    mkErrorF tle e f s = uidSpanAsString ++ f s ++ exprsAsString
+    mkErrorF :: K3 Expression -> K3 Expression -> (Text -> Text) -> (Text -> Text)
+    mkErrorF tle e f s = (T.pack uidSpanAsString) `T.append` f s `T.append` exprsAsString
       where
         uidSpanAsString =
           let uidSpans = filter isEUIDSpan $ annotations e
           in if null uidSpans then "" else show uidSpans
 
         exprsAsString =
-          (boxToString $ ["On ["]       %$ prettyLines e   %$ ["]"]
-                      %$ ["Toplevel ["] %$ prettyLines tle %$ ["]"])
+          (PT.boxToString $ [T.pack "On ["]       %$ PT.prettyLines e   %$ [T.pack "]"]
+                         %$ [T.pack "Toplevel ["] %$ PT.prettyLines tle %$ [T.pack "]"])
 
     -- | Error printing functions for unification cases
-    assignErrF i = (("Invalid assignment to " ++ i ++ ": ") ++)
-    seqErrF      = (("Invalid left sequence operand: ") ++)
-    caseErrF     = (("Mismatched case-of branch types: ") ++)
+    conerrF    s = T.append $ T.pack s
+    assignErrF i = conerrF $ "Invalid assignment to " ++ i ++ ": "
+    seqErrF      = conerrF $ "Invalid left sequence operand: "
+    caseErrF     = conerrF $ "Mismatched case-of branch types: "
 
     projectErrF srcqt prjqt =
-      (unlines ["Invalid record projection:", pretty srcqt, "and", pretty prjqt] ++)
+      (T.append $ T.unlines [T.pack "Invalid record projection:", PT.pretty srcqt, T.pack "and", PT.pretty prjqt])
 
     applyErrF fnqt argqt retqt =
-      (unlines [ "Invalid function application:", pretty fnqt
-               , "and", pretty (tfun argqt retqt), ":"]
-       ++)
+      (T.append $ T.unlines [ T.pack "Invalid function application:", PT.pretty fnqt
+                            , T.pack "and", PT.pretty (tfun argqt retqt), T.pack ":"])
 
-    msgWithTypeEnv msg        = get >>= \env -> throwE $ msg ++ "\nType environment:\n" ++ pretty env
-    lookupError j reason      = msgWithTypeEnv $ unwords ["No type environment binding for ", j, ":", reason]
-    lambdaBindingErr i reason = msgWithTypeEnv $ unwords ["Could not find typevar for lambda binding: ", i, reason]
-    polyLambdaBindingErr      = msgWithTypeEnv "Invalid forall type in lambda binding"
+    lookupError j reason      = errorM $ T.unwords [T.pack "No type environment binding for ", T.pack j, T.pack ":", reason]
+    lambdaBindingErr i reason = errorM $ T.unwords [T.pack "Could not find typevar for lambda binding: ", T.pack i, reason]
+    polyLambdaBindingErr      = errorM $ T.pack "Invalid forall type in lambda binding"
 
-    assignBindingErr i reason = msgWithTypeEnv $ unwords ["Could not find binding type for assignment: ", i, reason]
-    polyAssignBindingErr      = msgWithTypeEnv "Invalid forall type in assignment"
-    mutabilityErr j           = msgWithTypeEnv $ "Invalid assignment to non-mutable binding: " ++ j
+    assignBindingErr i reason = errorM $ T.unwords [T.pack "Could not find binding type for assignment: ", T.pack i, reason]
+    polyAssignBindingErr      = errorM $ T.pack "Invalid forall type in assignment"
+    mutabilityErr j           = errorM $ T.pack $ "Invalid assignment to non-mutable binding: " ++ j
 
-    sndError     side reason = "Invalid " ++ side ++ " send operand: " ++ reason
-    numericError side reason = "Invalid " ++ side ++ " numeric operand: " ++ reason
-    stringError  side reason = "Invalid " ++ side ++ " string operand: " ++ reason
-    logicError   side reason = unwords ["Invalid", side, "logic", "operand:", reason]
-    comparisonError   reason = "Invalid comparison operands:" ++ reason
+    sndError     side reason = T.unwords [T.pack "Invalid", side, T.pack "send operand: ",    reason]
+    numericError side reason = T.unwords [T.pack "Invalid", side, T.pack "numeric operand: ", reason]
+    stringError  side reason = T.unwords [T.pack "Invalid", side, T.pack "string operand: ",  reason]
+    logicError   side reason = T.unwords [T.pack "Invalid", side, T.pack "logic operand:",    reason]
+    comparisonError   reason = conerrF "Invalid comparison operands:" reason
 
-    uminusError reason = "Invalid unary minus operand: " ++ reason
-    negateError reason = "Invalid negation operand: " ++ reason
+    uminusError reason = conerrF "Invalid unary minus operand: " reason
+    negateError reason = conerrF "Invalid negation operand: " reason
 
     -- | Type judgement stringification, given a tag, premise expressions and a conclusion expression.
-    showTInfRule :: String -> [K3 Expression] -> K3 Expression -> String
+    showTInfRule :: String -> [K3 Expression] -> K3 Expression -> Text
     showTInfRule rtag ch n =
-      boxToString $ (rpsep %+ premise) %$ separator %$ (rpsep %+ conclusion)
+      PT.boxToString $ (rpsep %+ premise) %$ separator %$ (rpsep %+ conclusion)
       where nuid           = uidOf $ n @~ isEUID
             rprefix        = unwords [rtag, nuid]
-            (rplen, rpsep) = (length rprefix, [replicate rplen ' '])
-            premise        = if null ch then ["<empty>"]
-                                        else (intersperseBoxes [" , "] $ map prettyLines $ mapMaybe qTypeOf ch)
-            premLens       = map length premise
+            (rplen, rpsep) = (length rprefix, [T.pack $ replicate rplen ' '])
+            premise        = if null ch then [T.pack "<empty>"]
+                                        else (PT.intersperseBoxes [T.pack " , "] $ map PT.prettyLines $ mapMaybe qTypeOf ch)
+            premLens       = map T.length premise
             headWidth      = if null premLens then 4 else maximum premLens
-            separator      = [rprefix ++ replicate headWidth '-']
-            conclusion     = maybe ["<invalid>"] prettyLines $ qTypeOf n
+            separator      = [T.pack $ rprefix ++ replicate headWidth '-']
+            conclusion     = maybe [T.pack "<invalid>"] PT.prettyLines $ qTypeOf n
             uidOf (Just (EUID u)) = show u
             uidOf _               = "<No UID>"
 
@@ -1458,12 +1477,12 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
 
 mkCollectionQType :: [Identifier] -> K3 QType -> TInfM (K3 QType)
 mkCollectionQType annIds contentQt@(tag -> QTCon (QTRecord _)) = return $ tcol contentQt annIds
-mkCollectionQType _ qt = throwE $ "Invalid content record type: " ++ show qt
+mkCollectionQType _ qt = serrorM $ "Invalid content record type: " ++ show qt
 
 mkCollectionFSQType :: [Identifier] -> [TMEnv] -> K3 QType -> TInfM (K3 QType, K3 QType)
 mkCollectionFSQType annIds memEnvs contentQt = do
     flatEnvs <- assertNoDuplicateIds
-    let (lifted, regular) = partition (snd . snd) flatEnvs
+    let (lifted, regular) = BEnv.partition (const snd) flatEnvs
     finalQt <- mkFinalQType contentQt regular
     selfQt  <- membersAsRecordFields lifted >>= subCTVars contentQt finalQt . trec
     return (finalQt, selfQt)
@@ -1480,14 +1499,14 @@ mkCollectionFSQType annIds memEnvs contentQt = do
     subCF _ _ ch (Node t _) = return $ Node t ch
 
     assertNoDuplicateIds =
-      let flatEnvs = concat memEnvs
-          ids      = map fst flatEnvs
-      in if nub ids /= ids then nameConflictErr else return flatEnvs
+      let ids = concat $ map BEnv.keys memEnvs
+      in if nub ids /= ids then nameConflictErr else return $ BEnv.unions memEnvs
 
-    membersAsRecordFields attrs = mapM (\(j,(qpt,_)) -> instantiate qpt >>= return . (j,)) attrs
+    membersAsRecordFields attrs =
+      sequence $ BEnv.foldl (\acc j (qpt,_) -> acc ++ [instantiate qpt >>= return . (j,)]) [] attrs
 
-    nameConflictErr        = throwE $ "Conflicting annotation member names: " ++ show annIds
-    nonRecordContentErr qt = throwE $ "Invalid content record type: " ++ show qt
+    nameConflictErr        = serrorM $ "Conflicting annotation member names: " ++ show annIds
+    nonRecordContentErr qt = serrorM $ "Invalid content record type: " ++ show qt
 
 
 {- Type conversion -}
@@ -1508,7 +1527,7 @@ qpType t@(tag -> TForall tvars) = do
     extend tvmap_ env = foldl (\a (b,c) -> tiextdv a b c) env tvmap_
     prune  tvmap_ env = foldl (\a (b,_) -> tideldv a b) env tvmap_
     varId (tag -> QTVar i) = return i
-    varId _ = throwE $ "Invalid type variable for type var bindings"
+    varId _ = serrorM $ "Invalid type variable for type var bindings"
 
 qpType t = generalize (qType t)
   -- Old code: qType t >>= monomorphize
@@ -1543,7 +1562,7 @@ qType t = foldMapTree mkQType (ttup []) t >>= return . mutabilityT t
         let cqt = head ch
         let annIds = namedTAnnotations $ annotations n
         case annIds of
-          [] -> throwE $ boxToString $ ["No collection annotations found on "] %+ prettyLines n
+          [] -> errorM $ PT.boxToString $ [T.pack "No collection annotations found on "] %+ PT.prettyLines n
           _ -> mkCollectionQType annIds cqt
 
     mkQType ch (tag -> TFunction) = return $ tfun (head ch) $ last ch
@@ -1557,11 +1576,11 @@ qType t = foldMapTree mkQType (ttup []) t >>= return . mutabilityT t
 
     mkQType _ (tag -> TDeclaredVar x) = get >>= \tienv -> liftExceptM (tilkupdv tienv x)
 
-    mkQType _ (tag -> TForall _) = throwE $ "Invalid forall type for QType"
+    mkQType _ (tag -> TForall _) = serrorM "Invalid forall type for QType"
       -- ^ TODO: we can only handle top-level foralls, and not arbitrary
       --   foralls nested in type trees.
 
-    mkQType _ t_ = throwE $ "No QType construction for " ++ show t_
+    mkQType _ t_ = serrorM $ "No QType construction for " ++ show t_
 
     mutability0 nch n = mutabilityT (head $ children n) $ head nch
     mutabilityN nch n = map (uncurry mutabilityT) $ zip (children n) nch
@@ -1569,12 +1588,13 @@ qType t = foldMapTree mkQType (ttup []) t >>= return . mutabilityT t
 
 -- | Converts all QType annotations on program expressions to K3 types.
 translateProgramTypes :: K3 Declaration -> Either String (K3 Declaration)
-translateProgramTypes prog = runExcept $ mapProgram declF annMemF exprF Nothing prog
-  where declF   d = return d
+translateProgramTypes prog = liftExceptTM $ mapProgram declF annMemF exprF Nothing prog
+  where liftExceptTM m = either (Left . T.unpack) Right $ runExcept m
+        declF   d = return d
         annMemF m = return m
         exprF   e = translateExprTypes e
 
-translateExprTypes :: K3 Expression -> Except String (K3 Expression)
+translateExprTypes :: K3 Expression -> Except Text (K3 Expression)
 translateExprTypes expr = mapTree translate expr >>= \e -> return $ flip addTQualifier e $ exprTQualifier expr
   where
     translate nch e@(Node (tg :@: anns) _) = do
@@ -1605,7 +1625,7 @@ translateExprTypes expr = mapTree translate expr >>= \e -> return $ flip addTQua
       QTWitness   -> TWitness
 
 
-translateQType :: Maybe (Annotation Expression) -> K3 QType -> Except String (K3 Type)
+translateQType :: Maybe (Annotation Expression) -> K3 QType -> Except Text (K3 Type)
 translateQType spanOpt qt = mapTree translateWithMutability qt
   where translateWithMutability ch qt'@(tag -> QTCon tg)
           | tg `elem` [QTOption, QTIndirection, QTTuple] = translate (attachToChildren ch qt') qt'
@@ -1631,9 +1651,9 @@ translateQType spanOpt qt = mapTree translateWithMutability qt
           | QTVar v      <- tag qt' = return $ TC.declaredVar ("v" ++ show v)
           | QTOperator _ <- tag qt' =
               let msg = "Invalid qtype translation for qtype operator"
-              in throwE $ boxToString
-                        $ [unwords $ [msg, "(", maybe "" show spanOpt, ")"]]
-                        %$ prettyLines qt'
+              in throwE $ PT.boxToString
+                        $ [T.pack $ unwords $ [msg, "(", maybe "" show spanOpt, ")"]]
+                        %$ PT.prettyLines qt'
 
         translate _ (tag -> QTPrimitive p) = case p of
           QTBool     -> return TC.bool
@@ -1655,57 +1675,66 @@ translateQType spanOpt qt = mapTree translateWithMutability qt
           QTSource            -> return $ TC.source $ head ch
           QTSink              -> return $ TC.sink $ head ch
 
-        translate _ qt' = throwE . unwords $ ["No translation for ", "(", maybe "" show spanOpt, ")", show qt']
+        translate _ qt' = throwE . T.pack . unwords $
+                            ["No translation for ", "(", maybe "" show spanOpt, ")", show qt']
 
 
 {- Instances -}
 instance Pretty TIEnv where
   prettyLines e =
-    ["TEnv: "]    %$ (indent 2 $ prettyLines $ tenv    e) ++
-    ["TAEnv: "]   %$ (indent 2 $ prettyLines $ taenv   e) ++
-    ["TDVEnv: "]  %$ (indent 2 $ prettyLines $ tdvenv  e) ++
-    ["TVEnv: "]   %$ (indent 2 $ prettyLines $ tvenv   e) ++
-    ["TCyclic: "] %$ (indent 2 $ prettyLines $ tcyclic e) ++
-    ["TCEnv: "]   %$ (indent 2 $ prettyLines $ tcenv   e)
+    [T.pack "TEnv: "]    %$ (PT.indent 2 $ PT.prettyLines $ tenv    e) ++
+    [T.pack "TAEnv: "]   %$ (PT.indent 2 $ PT.prettyLines $ taenv   e) ++
+    [T.pack "TDVEnv: "]  %$ (PT.indent 2 $ PT.prettyLines $ tdvenv  e) ++
+    [T.pack "TVEnv: "]   %$ (PT.indent 2 $ PT.prettyLines $ tvenv   e) ++
+    [T.pack "TCyclic: "] %$ (PT.indent 2 $ PT.prettyLines $ tcyclic e) ++
+    [T.pack "TCEnv: "]   %$ (PT.indent 2 $ PT.prettyLines $ tcenv   e)
 
 instance Pretty TEnv where
-  prettyLines te = prettyPairList te
+  prettyLines = prettyPairBSEnv
 
 instance Pretty TAEnv where
-  prettyLines ta = Map.foldlWithKey (\acc k v -> acc ++ prettyPair (k,v)) [] ta
+  prettyLines = prettyPairBEnv
 
 instance Pretty TMEnv where
-  prettyLines tme = prettyPairList tme
+  prettyLines = prettyPairBEnv
 
 instance Pretty TDVEnv where
-  prettyLines tdve = prettyPairList tdve
+  prettyLines = prettyPairBSEnv
 
 instance Pretty TVEnv where
-  prettyLines (TVEnv n m) = ["# vars: " ++ show n] ++
-                            (Map.foldlWithKey (\acc k v -> acc ++ prettyPair (k,v)) [] m)
+  prettyLines (TVEnv n m) = [T.pack $ "# vars: " ++ show n] ++
+                            (IntMap.foldlWithKey' (\acc k v -> acc ++ prettyPair (k,v)) [] m)
 
 instance Pretty TCEnv where
-  prettyLines tce = Map.foldlWithKey (\acc k v -> acc ++ [k ++ " => " ++ show v]) [] tce
+  prettyLines tce = BEnv.foldl (\acc k v -> acc ++ [T.pack $ k ++ " => " ++ show v]) [] tce
 
 instance Pretty (QPType, Bool) where
-  prettyLines (a,b) = (if b then ["(Lifted) "] else ["(Attr) "]) %+ prettyLines a
+  prettyLines (a,b) = (map T.pack $ if b then ["(Lifted) "] else ["(Attr) "]) %+ PT.prettyLines a
 
-prettyPairList :: (Show a, Pretty b) => [(a,b)] -> [String]
+prettyPairBEnv :: (Pretty a) => BindingEnv a -> [Text]
+prettyPairBEnv e = BEnv.foldl (\acc n v -> acc ++ prettyPair (n,v)) [] e
+
+prettyPairBSEnv :: (Pretty a) => BindingStackEnv a -> [Text]
+prettyPairBSEnv e = BEnv.foldl (\acc n v -> acc ++ concatMap (prettyPair . (n,)) v) [] e
+
+prettyPairList :: (Show a, Pretty b) => [(a,b)] -> [Text]
 prettyPairList l = foldl (\acc kvPair -> acc ++ prettyPair kvPair) [] l
 
-prettyPair :: (Show a, Pretty b) => (a,b) -> [String]
-prettyPair (a,b) = [show a ++ " => "] %+ prettyLines b
+prettyPair :: (Show a, Pretty b) => (a,b) -> [Text]
+prettyPair (a,b) = [T.pack $ show a ++ " => "] %+ PT.prettyLines b
 
-prettyTaggedSPair :: (Show a, Pretty b) => String -> a -> b -> String
-prettyTaggedSPair s a b = boxToString $ [s ++ " " ++ show a] %+ [" and "] %+ prettyLines b
+prettyTaggedSPair :: (Show a, Pretty b) => String -> a -> b -> Text
+prettyTaggedSPair s a b = PT.boxToString $ [T.pack $ s ++ " " ++ show a] %+ [T.pack " and "] %+ PT.prettyLines b
 
-prettyTaggedPair :: (Pretty a, Pretty b) => String -> a -> b -> String
-prettyTaggedPair s a b = boxToString $ [s ++ " "] %+ prettyLines a %+ [" and "] %+ prettyLines b
+prettyTaggedPair :: (Pretty a, Pretty b) => String -> a -> b -> Text
+prettyTaggedPair s a b = PT.boxToString $ [T.pack $ s ++ " "] %+ PT.prettyLines a %+ [T.pack " and "] %+ PT.prettyLines b
 
-prettyTaggedTriple :: (Pretty a, Pretty b, Pretty c) => String -> a -> b -> c -> String
+prettyTaggedTriple :: (Pretty a, Pretty b, Pretty c) => String -> a -> b -> c -> Text
 prettyTaggedTriple s a b c =
-  boxToString $ [s ++ " "] %+ (intersperseBoxes [" , "] [prettyLines a, prettyLines b, prettyLines c])
+  PT.boxToString $ [T.pack $ s ++ " "] %+ (PT.intersperseBoxes [T.pack " , "]
+                   [PT.prettyLines a, PT.prettyLines b, PT.prettyLines c])
 
-prettyTaggedSTriple :: (Show a, Pretty b, Pretty c) => String -> a -> b -> c -> String
+prettyTaggedSTriple :: (Show a, Pretty b, Pretty c) => String -> a -> b -> c -> Text
 prettyTaggedSTriple s a b c =
-  boxToString $ [s ++ " "] %+ (intersperseBoxes [" , "] [[show a], prettyLines b, prettyLines c])
+  PT.boxToString $ [T.pack $ s ++ " "] %+ (PT.intersperseBoxes [T.pack " , "]
+                   [[T.pack $ show a], PT.prettyLines b, PT.prettyLines c])

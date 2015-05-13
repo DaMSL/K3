@@ -42,7 +42,7 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Utils
 
 import Language.K3.Analysis.Core
-import Language.K3.Analysis.HMTypes.Inference hiding ( liftEitherM, tenv, inferDeclTypes )
+import Language.K3.Analysis.HMTypes.Inference hiding ( tenv, inferDeclTypes )
 
 import qualified Language.K3.Analysis.Properties           as Properties
 import qualified Language.K3.Analysis.CArgs                as CArgs

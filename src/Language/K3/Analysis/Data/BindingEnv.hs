@@ -31,6 +31,9 @@ lookup :: BindingEnv a -> Identifier -> Except Text a
 lookup env x = maybe err return $ Map.lookup x env
   where err = mkErr $ "Unbound variable in binding environment: " ++ x
 
+mlookup :: BindingEnv a -> Identifier -> Maybe a
+mlookup env x = Map.lookup x env
+
 pushWith :: BindingEnv a -> (a -> a -> a) -> Identifier -> a -> BindingEnv a
 pushWith env f x v = Map.insertWith f x v env
 
@@ -54,6 +57,14 @@ unions = Map.unions
 
 foldl :: (b -> Identifier -> a -> b) -> b -> BindingEnv a -> b
 foldl f z env = Map.foldlWithKey' f z env
+
+keys :: BindingEnv a -> [Identifier]
+keys = Map.keys
+
+partition :: (Identifier -> a -> Bool) -> BindingEnv a -> (BindingEnv a, BindingEnv a)
+partition f env = Map.foldlWithKey' part (empty, empty) env
+  where part (tacc,facc) k v = if f k v then (Map.insert k v tacc, facc)
+                                        else (tacc, Map.insert k v facc)
 
 fromList :: [(Identifier, a)] -> BindingEnv a
 fromList = Map.fromList
