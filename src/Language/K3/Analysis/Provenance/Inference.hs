@@ -682,6 +682,7 @@ liftExceptM = mapExceptT contextualizeErr
           let cre = maybe [T.pack "<nothing>"] PT.prettyLines $ pcurrentExpr ctxt
           let ctxtmsg = PT.boxToString $ [msg] %$ [T.pack "On"] %$ cre %$ [T.pack "Toplevel"] %$ tle
           return $ Left ctxtmsg
+
         contextualizeErr (runIdentity -> Right r) = return $ Right r
 
 {-
