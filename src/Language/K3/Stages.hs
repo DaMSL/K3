@@ -13,8 +13,8 @@ import Control.Arrow hiding ( left )
 import Control.DeepSeq
 import Control.Exception
 import Control.Monad
+import Control.Monad.Trans.Except
 import Control.Monad.State
-import Control.Monad.Trans.Either
 
 import Criterion.Measurement
 import Criterion.Types
@@ -78,7 +78,7 @@ data TransformSt = TransformSt { nextuid    :: Int
                                , fenv       :: SEffects.FIEnv
                                , report     :: TransformReport }
 
-type TransformM = EitherT String (StateT TransformSt IO)
+type TransformM = ExceptT String (StateT TransformSt IO)
 
 ss0 :: StageSpec
 ss0 = StageSpec Nothing Nothing Map.empty
@@ -102,7 +102,7 @@ st0 prog = do
 
 runTransformStM :: TransformSt -> TransformM a -> IO (Either String (a, TransformSt))
 runTransformStM st m = do
-  (a, s) <- runStateT (runEitherT m) st
+  (a, s) <- runStateT (runExceptT m) st
   return $ either Left (Right . (,s)) a
 
 runTransformM :: TransformSt -> TransformM a -> IO (Either String a)
@@ -111,7 +111,7 @@ runTransformM st m = do
   return $ either Left (Right . fst) e
 
 liftEitherM :: Either String a -> TransformM a
-liftEitherM = either left return
+liftEitherM = either throwE return
 
 
 {-- Transform utilities --}
@@ -371,9 +371,9 @@ ensureNoDuplicateUIDs :: ProgramTransform
 ensureNoDuplicateUIDs p =
   let dupUids = duplicateProgramUIDs p
   in if null dupUids then return p
-     else left $ T.unpack $ PT.boxToString $ [T.pack "Found duplicate uids:"]
-                                       PT.%$ [T.pack $ show dupUids]
-                                       PT.%$ PT.prettyLines p
+     else throwE $ T.unpack $ PT.boxToString $ [T.pack "Found duplicate uids:"]
+                                         PT.%$ [T.pack $ show dupUids]
+                                         PT.%$ PT.prettyLines p
 
 inferTypes :: ProgramTransform
 inferTypes prog = do
