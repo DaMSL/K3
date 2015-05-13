@@ -1,12 +1,15 @@
 module Language.K3.Analysis.Data.BindingEnv where
 
-import Language.K3.Core.Common
 import Prelude hiding ( lookup )
+import Control.Monad.Trans.Except
+
 import Data.HashMap.Lazy ( HashMap )
 import qualified Data.HashMap.Lazy as Map
 
 import Data.Text ( Text )
 import qualified Data.Text as T
+
+import Language.K3.Core.Common
 
 {- Binding environment data structures -}
 type BindingEnv      a = HashMap Identifier a
@@ -14,18 +17,18 @@ type BindingStackEnv a = BindingEnv [a]
 
 
 {- Data.Text helpers -}
-mkErr :: String -> Either Text a
-mkErr msg = Left $ T.pack msg
+mkErr :: String -> Except Text a
+mkErr msg = throwE $ T.pack msg
 
 {- BindingEnv helpers -}
 empty :: BindingEnv a
 empty = Map.empty
 
-member :: BindingEnv a -> Identifier -> Either Text Bool
+member :: BindingEnv a -> Identifier -> Except Text Bool
 member env x = return $ Map.member x env
 
-lookup :: BindingEnv a -> Identifier -> Either Text a
-lookup env x = maybe err Right $ Map.lookup x env
+lookup :: BindingEnv a -> Identifier -> Except Text a
+lookup env x = maybe err return $ Map.lookup x env
   where err = mkErr $ "Unbound variable in binding environment: " ++ x
 
 pushWith :: BindingEnv a -> (a -> a -> a) -> Identifier -> a -> BindingEnv a
@@ -57,10 +60,10 @@ fromList = Map.fromList
 
 {- BindingStackEnv helpers -}
 
-slookup :: BindingStackEnv a -> Identifier -> Either Text a
+slookup :: BindingStackEnv a -> Identifier -> Except Text a
 slookup env x = lookup env x >>= safeHead
   where
-    safeHead l = if null l then err else Right $ head l
+    safeHead l = if null l then err else return $ head l
     err = mkErr $ "Unbound variable in binding environment: " ++ x
 
 push :: BindingStackEnv a -> Identifier -> a -> BindingStackEnv a
