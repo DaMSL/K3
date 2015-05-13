@@ -1156,6 +1156,7 @@ inferEffects extInfOpt expr = do
 
             transform True mvl (tnc -> (FApply (Just _), [_, _, _, _, rf])) = transform True mvl rf
 
+            transform False mvl (tnc -> (FApply (Just _), [rf])) = return fnone
             transform True mvl (tnc -> (FApply (Just _), [rf])) = transform True mvl rf
 
             -- Try to simplify any external FApply.
@@ -1182,6 +1183,10 @@ inferEffects extInfOpt expr = do
                                              %$ PT.prettyLines c
                                              %$ PT.prettyLines d
                                              %$ PT.prettyLines r
+
+            transform asStructure mvl (tnc -> (FApply Nothing, [r])) = do
+              nr <- transform True mvl r
+              return $ fapplyRT Nothing nr
 
             transform False mvl (tnc -> (FScope _, [ief, bef, pef, _])) = do
               nief <- transform False mvl ief
