@@ -26,8 +26,8 @@ import Control.Monad.State
 import Control.Monad.Trans.Except
 
 import Data.List
-import Data.Map ( Map )
-import qualified Data.Map as Map
+import Data.HashMap.Lazy ( HashMap )
+import qualified Data.HashMap.Lazy as Map
 import Data.Maybe
 import Data.Tree
 import Debug.Trace
@@ -122,7 +122,7 @@ type TMEnv = BindingEnv (QPType, Bool)
 type TDVEnv = BindingStackEnv QTVarId
 
 -- | A type variable environment.
-data TVEnv = TVEnv QTVarId (Map QTVarId (K3 QType)) deriving Show
+data TVEnv = TVEnv QTVarId (HashMap QTVarId (K3 QType)) deriving Show
 
 -- | A cyclic variable environment (tracks whether an identifer uses cyclic scope).
 type TCEnv = BindingEnv Bool
@@ -1694,7 +1694,7 @@ instance Pretty TDVEnv where
 
 instance Pretty TVEnv where
   prettyLines (TVEnv n m) = [T.pack $ "# vars: " ++ show n] ++
-                            (Map.foldlWithKey (\acc k v -> acc ++ prettyPair (k,v)) [] m)
+                            (Map.foldlWithKey' (\acc k v -> acc ++ prettyPair (k,v)) [] m)
 
 instance Pretty TCEnv where
   prettyLines tce = BEnv.foldl (\acc k v -> acc ++ [T.pack $ k ++ " => " ++ show v]) [] tce
