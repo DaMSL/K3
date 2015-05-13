@@ -37,6 +37,7 @@ import qualified Language.K3.Core.Constructor.Expression as EC
 import qualified Language.K3.Core.Constructor.Type       as TC
 import qualified Language.K3.Core.Constructor.Literal    as LC
 
+import Language.K3.Analysis.Core
 import Language.K3.Analysis.Provenance.Core
 import Language.K3.Analysis.SEffects.Core
 import qualified Language.K3.Analysis.Provenance.Constructors as PC

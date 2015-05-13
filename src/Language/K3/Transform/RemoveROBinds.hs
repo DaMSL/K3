@@ -89,7 +89,7 @@ transformExpr :: K3 Expression -> K3 Expression
 transformExpr e = evalState computation 1
   where
     computation =
-      foldMapIn1RebuildTree sendProjection ch1SendProjection handleNode Map.empty () e
+      biFoldMapIn1RebuildTree sendProjection ch1SendProjection handleNode Map.empty () e
         >>= return . snd
 
     -- For the first child, we always send the same set we already have, since the first child

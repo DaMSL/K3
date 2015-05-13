@@ -14,8 +14,8 @@ import Control.Arrow hiding ( left )
 import Control.DeepSeq
 import Control.Exception
 import Control.Monad
+import Control.Monad.Trans.Except
 import Control.Monad.State
-import Control.Monad.Trans.Either
 
 import Control.Concurrent
 
@@ -41,6 +41,7 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Utils
 
+import Language.K3.Analysis.Core
 import Language.K3.Analysis.HMTypes.Inference hiding ( liftEitherM, tenv, inferDeclTypes )
 
 import qualified Language.K3.Analysis.Properties           as Properties
@@ -93,7 +94,7 @@ instance Monoid TransformSt where
   mappend (TransformSt n c t r p f e) (TransformSt n' c' t' r' p' f' e') =
     TransformSt (max n n') (max c c') (t <> t') (r <> r') (p <> p') (f <> f') (e <> e')
 
-type TransformM = EitherT String (StateT TransformSt IO)
+type TransformM = ExceptT String (StateT TransformSt IO)
 
 ss0 :: StageSpec
 ss0 = StageSpec Nothing Nothing Map.empty
@@ -111,13 +112,13 @@ st0 prog = do
 
   where puid = let UID i = maxProgramUID prog in i + 1
         mkEnv = do
-          lcenv <- lambdaClosures prog
-          let pe = Provenance.pienv0 lcenv
-          return (pe, SEffects.fienv0 (Provenance.ppenv pe) lcenv)
+          vpenv <- variablePositions prog
+          let pe = Provenance.pienv0 vpenv
+          return (pe, SEffects.fienv0 (Provenance.ppenv pe) $ lcenv vpenv)
 
 runTransformStM :: TransformSt -> TransformM a -> IO (Either String (a, TransformSt))
 runTransformStM st m = do
-  (a, s) <- runStateT (runEitherT m) st
+  (a, s) <- runStateT (runExceptT m) st
   return $ either Left (Right . (,s)) a
 
 runTransformM :: TransformSt -> TransformM a -> IO (Either String a)
@@ -126,7 +127,7 @@ runTransformM st m = do
   return $ either Left (Right . fst) e
 
 liftEitherM :: Either String a -> TransformM a
-liftEitherM = either left return
+liftEitherM = either throwE return
 
 
 {-- Transform utilities --}
@@ -386,9 +387,9 @@ ensureNoDuplicateUIDs :: ProgramTransform
 ensureNoDuplicateUIDs p =
   let dupUids = duplicateProgramUIDs p
   in if null dupUids then return p
-     else left $ T.unpack $ PT.boxToString $ [T.pack "Found duplicate uids:"]
-                                       PT.%$ [T.pack $ show dupUids]
-                                       PT.%$ PT.prettyLines p
+     else throwE $ T.unpack $ PT.boxToString $ [T.pack "Found duplicate uids:"]
+                                         PT.%$ [T.pack $ show dupUids]
+                                         PT.%$ PT.prettyLines p
 
 inferTypes :: ProgramTransform
 inferTypes prog = do
@@ -615,10 +616,10 @@ inferDeclTypes n = withTypeTransform $ \te p -> reinferProgDeclTypes te n p
 
 inferDeclEffects :: Maybe (SEffects.ExtInferF a, a) -> Identifier -> ProgramTransform
 inferDeclEffects extInfOpt n = withEffectTransform $ \pe fe p -> do
-  (nlc, _)   <- lambdaClosuresDecl n (Provenance.plcenv pe) p
-  let pe'     = pe {Provenance.plcenv = nlc}
-  (np,  npe) <- {-debugPretty ("Reinfer P\n" ++ show nlc) p $-} Provenance.reinferProgDeclProvenance pe' n p
-  let fe'     = fe {SEffects.fppenv = Provenance.ppenv npe, SEffects.flcenv = nlc}
+  (nvp, _)   <- variablePositionsDecl n (Provenance.pvpenv pe) p
+  let pe'     = pe {Provenance.pvpenv = nvp}
+  (np,  npe) <- {-debugPretty ("Reinfer P\n" ++ show nvp) p $-} Provenance.reinferProgDeclProvenance pe' n p
+  let fe'     = fe {SEffects.fppenv = Provenance.ppenv npe, SEffects.flcenv = lcenv nvp}
   (np', nfe) <- {-debugPretty "Reinfer F" fe' $-} SEffects.reinferProgDeclEffects extInfOpt fe' n np
   return (np', npe, nfe)
   where debugPretty tg a b = trace (T.unpack $ PT.boxToString $ [T.pack tg] PT.%$ PT.prettyLines a) b

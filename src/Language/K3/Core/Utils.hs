@@ -34,7 +34,7 @@ module Language.K3.Core.Utils
 , biFoldMapRebuildTree
 , mapIn1RebuildTree
 , foldIn1RebuildTree
-, foldMapIn1RebuildTree
+, biFoldMapIn1RebuildTree
 
 , foldProgramWithDecl
 , foldProgram
@@ -58,12 +58,6 @@ module Language.K3.Core.Utils
 , mapReturnExpression
 
 , defaultExpression
-, freeVariables
-, bindingVariables
-, modifiedVariables
-
-, lambdaClosures
-, lambdaClosuresDecl
 
 , compareDAST
 , compareEAST
@@ -114,9 +108,6 @@ import Data.Functor.Identity
 import Data.List
 import Data.Maybe
 import Data.Tree
-
-import Data.IntMap ( IntMap )
-import qualified Data.IntMap as IntMap
 
 import Debug.Trace
 
@@ -178,9 +169,7 @@ mapTree f n@(Node _ ch) = mapM (mapTree f) ch >>= flip f n
 --   The children of a node are pre-transformed recursively
 modifyTree :: (Monad m) => (Tree a -> m (Tree a)) -> Tree a -> m (Tree a)
 modifyTree f n@(Node _ []) = f n
-modifyTree f   (Node x ch) = do
-   ch' <- mapM (modifyTree f) ch
-   f (Node x ch')
+modifyTree f n@(Node x ch) = mapM (modifyTree f) ch >>= f . replaceCh n
 
 -- | Map an accumulator over a tree, recurring independently over each child.
 --   The result is produced by transforming independent subresults in bottom-up fashion.
@@ -354,23 +343,23 @@ foldIn1RebuildTree preCh1F postCh1F mergeF allChF acc n@(Node _ ch) = do
 --           over the other children.
 -- allChF:   The all-child function takes the post child's single accumulator, the processed children,
 --           and the node, and returns a new tree.
-foldMapIn1RebuildTree :: (Monad m)
+biFoldMapIn1RebuildTree :: (Monad m)
                   => (c -> Tree a -> Tree a -> m c)
                   -> (c -> d -> Tree b -> Tree a -> m (c, [c]))
                   -> (c -> [d] -> [Tree b] -> Tree a -> m (d, Tree b))
                   -> c -> d -> Tree a -> m (d, Tree b)
-foldMapIn1RebuildTree _ _ allChF tdAcc buAcc n@(Node _ []) = allChF tdAcc [buAcc] [] n
-foldMapIn1RebuildTree preCh1F postCh1F allChF tdAcc buAcc n@(Node _ ch) = do
+biFoldMapIn1RebuildTree _ _ allChF tdAcc buAcc n@(Node _ []) = allChF tdAcc [buAcc] [] n
+biFoldMapIn1RebuildTree preCh1F postCh1F allChF tdAcc buAcc n@(Node _ ch) = do
     nCh1Acc          <- preCh1F tdAcc (head ch) n
     (nCh1BuAcc, nc1) <- rcr nCh1Acc $ head ch
     (nAcc, chAccs)   <- postCh1F nCh1Acc nCh1BuAcc nc1 n
     if length chAccs /= (length $ tail ch)
-      then fail "Invalid foldMapIn1RebuildTree accumulation"
+      then fail "Invalid biFoldMapIn1RebuildTree accumulation"
       else do
         (chBuAcc, nRestCh) <- zipWithM rcr chAccs (tail ch) >>= return . unzip
         allChF nAcc (nCh1BuAcc:chBuAcc) (nc1:nRestCh) n
 
-  where rcr a b = foldMapIn1RebuildTree preCh1F postCh1F allChF a buAcc b
+  where rcr a b = biFoldMapIn1RebuildTree preCh1F postCh1F allChF a buAcc b
 
 -- | Fold a declaration and expression reducer and accumulator over the given program.
 foldProgramWithDecl :: (Monad m)
@@ -687,79 +676,8 @@ defaultExpression typ = mapTree mkExpr typ
                              Just TImmutable -> return $ EC.immut e
                              _ -> return $ e
 
--- | Retrieves all free variables in an expression.
-freeVariables :: K3 Expression -> [Identifier]
-freeVariables expr = either (const []) id $ foldMapTree extractVariable [] expr
-  where
-    extractVariable chAcc (tag -> EVariable n) = return $ concat chAcc ++ [n]
-    extractVariable chAcc (tag -> EAssign i)   = return $ concat chAcc ++ [i]
-    extractVariable chAcc (tag -> ELambda n)   = return $ filter (/= n) $ concat chAcc
-    extractVariable chAcc (tag -> EBindAs b)   = return $ (chAcc !! 0) ++ (filter (`notElem` bindingVariables b) $ chAcc !! 1)
-    extractVariable chAcc (tag -> ELetIn i)    = return $ (chAcc !! 0) ++ (filter (/= i) $ chAcc !! 1)
-    extractVariable chAcc (tag -> ECaseOf i)   = return $ let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
-    extractVariable chAcc _                    = return $ concat chAcc
 
--- | Retrieves all variables introduced by a binder
-bindingVariables :: Binder -> [Identifier]
-bindingVariables (BIndirection i) = [i]
-bindingVariables (BTuple is)      = is
-bindingVariables (BRecord ivs)    = snd (unzip ivs)
-
--- | Retrieves all variables modified in an expression.
-modifiedVariables :: K3 Expression -> [Identifier]
-modifiedVariables expr = either (const []) id $ foldMapTree extractVariable [] expr
-  where
-    extractVariable chAcc (tag -> EAssign n)   = return $ concat chAcc ++ [n]
-    extractVariable chAcc (tag -> ELambda n)   = return $ filter (/= n) $ concat chAcc
-    extractVariable chAcc (tag -> EBindAs b)   = return $ (chAcc !! 0) ++ (filter (`notElem` bindingVariables b) $ chAcc !! 1)
-    extractVariable chAcc (tag -> ELetIn i)    = return $ (chAcc !! 0) ++ (filter (/= i) $ chAcc !! 1)
-    extractVariable chAcc (tag -> ECaseOf i)   = return $ let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
-    extractVariable chAcc _                    = return $ concat chAcc
-
--- | Computes the closure variables captured at lambda expressions.
---   This is a one-pass bottom-up implementation.
-type ClosureEnv = IntMap [Identifier]
-
-lambdaClosures :: K3 Declaration -> Either String ClosureEnv
-lambdaClosures p = foldExpression lambdaClosuresExpr IntMap.empty p >>= return . fst
-
-lambdaClosuresDecl :: Identifier -> ClosureEnv -> K3 Declaration -> Either String (ClosureEnv, K3 Declaration)
-lambdaClosuresDecl n lc p = foldNamedDeclExpression n lambdaClosuresExpr lc p
-
-lambdaClosuresExpr :: ClosureEnv -> K3 Expression -> Either String (ClosureEnv, K3 Expression)
-lambdaClosuresExpr lc expr = do
-  (lcenv,_) <- biFoldMapTree bind extract [] (IntMap.empty, []) expr
-  return $ (IntMap.union lcenv lc, expr)
-
-  where
-    bind :: [Identifier] -> K3 Expression -> Either String ([Identifier], [[Identifier]])
-    bind l (tag -> ELambda i) = return (l, [i:l])
-    bind l (tag -> ELetIn  i) = return (l, [l, i:l])
-    bind l (tag -> EBindAs b) = return (l, [l, bindingVariables b ++ l])
-    bind l (tag -> ECaseOf i) = return (l, [l, i:l, l])
-    bind l (children -> ch)   = return (l, replicate (length ch) l)
-
-    extract :: [Identifier] -> [(ClosureEnv, [Identifier])] -> K3 Expression -> Either String (ClosureEnv, [Identifier])
-    extract _ chAcc (tag -> EVariable i) = rt chAcc (++[i])
-    extract _ chAcc (tag -> EAssign i)   = rt chAcc (++[i])
-    extract l (concatLc -> (lcAcc,chAcc)) e@(tag -> ELambda n) = extendLc lcAcc e $ filter (onlyLocals n l) $ concat chAcc
-    extract _ (concatLc -> (lcAcc,chAcc))   (tag -> EBindAs b) = return . (lcAcc,) $ (chAcc !! 0) ++ (filter (`notElem` bindingVariables b) $ chAcc !! 1)
-    extract _ (concatLc -> (lcAcc,chAcc))   (tag -> ELetIn i)  = return . (lcAcc,) $ (chAcc !! 0) ++ (filter (/= i) $ chAcc !! 1)
-    extract _ (concatLc -> (lcAcc,chAcc))   (tag -> ECaseOf i) = return . (lcAcc,) $ let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
-    extract _ chAcc _ = rt chAcc id
-
-    onlyLocals n l i = i /= n && i `elem` l
-
-    concatLc :: [(ClosureEnv, [Identifier])] -> (ClosureEnv, [[Identifier]])
-    concatLc subAcc = let (x,y) = unzip subAcc in (IntMap.unions x, y)
-
-    extendLc :: ClosureEnv -> K3 Expression -> [Identifier] -> Either String (ClosureEnv, [Identifier])
-    extendLc lcenv e ids = case e @~ isEUID of
-      Just (EUID (UID i)) -> return $ (IntMap.insert i (nub ids) lcenv, ids)
-      _ -> Left $ boxToString $ ["No UID found on lambda"] %$ prettyLines e
-
-    rt subAcc f = return $ second (f . concat) $ concatLc subAcc
-
+{- AST comparators -}
 
 -- | Compares declarations and expressions for identical AST structures
 --  while ignoring annotations and properties (such as UIDs, spans, etc.)

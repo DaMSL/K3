@@ -13,6 +13,8 @@ import Control.Arrow
 import Control.Monad.Identity (Identity(..), runIdentity)
 import Control.Monad.State (StateT(..), MonadState(..), modify, runState)
 
+import Language.K3.Analysis.Core
+
 import Language.K3.Analysis.Provenance.Core
 import Language.K3.Analysis.Provenance.Inference (PIEnv(..))
 
@@ -91,7 +93,7 @@ setDecision :: Int -> Identifier -> Decision -> MaterializationM ()
 setDecision u i d = modify $ \(t, e, f, ds) -> (I.insertWith M.union u (M.singleton i d) t, e, f, ds)
 
 getClosureSymbols :: Int -> MaterializationM [Identifier]
-getClosureSymbols i = get >>= \(_, plcenv -> e, _, _) -> return $ concat $ maybeToList (I.lookup i e)
+getClosureSymbols i = get >>= \(_, pvpenv -> e, _, _) -> return $ concat $ maybeToList (I.lookup i $ lcenv e)
 
 pmvloc' :: PMatVar -> Int
 pmvloc' pmv = let UID u = pmvloc pmv in u

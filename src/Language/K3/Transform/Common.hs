@@ -18,6 +18,8 @@ import Language.K3.Core.Utils
 
 import qualified Language.K3.Core.Constructor.Expression as EC
 
+import Language.K3.Analysis.Core
+
 -- Configuration for many transformations at once
 data TransformConfig = TransformConfig { optRefs :: Bool
                                        , optMoves :: Bool
