@@ -21,17 +21,16 @@ RUN apt-get update && apt-get install -y \
       autoconf automake libtool \
       clang-3.5 libbz2-dev
 
-
 # Install and configure GCC 4.9
 RUN add-apt-repository ppa:ubuntu-toolchain-r/test
 RUN apt-get update && apt-get install -y gcc-4.9 libstdc++-4.9-dev
 RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 20
 
 # Install decent vim configuration
-RUN mkdir /root/.vim
-RUN git clone https://github.com/tpope/vim-pathogen.git /root/.vim
-RUN echo 'execute pathogen#infect() | syntax on | filetype plugin indent on' > /root/.vimrc
-RUN git clone https://github.com/tpope/vim-sensible.git /root/.vim/bundle
+RUN mkdir /root/.vim && \
+    git clone https://github.com/tpope/vim-pathogen.git /root/.vim && \
+    echo 'execute pathogen#infect() | syntax on | filetype plugin indent on' > /root/.vimrc && \
+    git clone https://github.com/tpope/vim-sensible.git /root/.vim/bundle
 
 # Install ocaml
 RUN add-apt-repository -y ppa:avsm/ppa && apt-get update && \
@@ -47,13 +46,13 @@ RUN mkdir -p /software/boost-1.56 && \
 
 # Install GHC and cabal
 WORKDIR /
-RUN wget --no-verbose http://www.haskell.org/platform/download/2014.2.0.0/haskell-platform-2014.2.0.0-unknown-linux-x86_64.tar.gz && \
-    tar xvf haskell-platform-2014.2.0.0-unknown-linux-x86_64.tar.gz && \
-    /usr/local/haskell/ghc-7.8.3-x86_64/bin/activate-hs && \
+RUN add-apt-repository ppa:hvr/ghc && \
+    apt-get update && \
+    apt-get install -y ghc-7.10.1 alex-3.1.4 happy-1.19.5 cabal-install-1.22 && \
     cabal update && \
     cabal install cabal-install -j
 
-ENV PATH /root/.cabal/bin/:$PATH
+ENV PATH /opt/ghc/bin:/opt/cabal/bin:/opt/alex/bin:/opt/happy/bin:/root/.cabal/bin/:$PATH
 
 ## Download and Build nanomsg
 RUN mkdir -p /software/nanomsg/build
@@ -89,7 +88,7 @@ RUN wget ftp://oss.sgi.com/www/projects/libnuma/download/numactl-2.0.10.tar.gz &
     ./autogen.sh && \
     ./configure && \
     make && \
-    make install 
+    make install
 
 # Clone K3, K3-Mosaic from Git
 RUN mkdir -p /k3/K3 /k3/K3-Mosaic && \
