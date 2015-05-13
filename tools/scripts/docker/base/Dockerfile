@@ -52,7 +52,7 @@ RUN add-apt-repository ppa:hvr/ghc && \
     cabal update && \
     cabal install cabal-install -j
 
-ENV PATH /opt/ghc/bin:/opt/cabal/bin:/opt/alex/bin:/opt/happy/bin:/root/.cabal/bin/:$PATH
+ENV PATH /opt/ghc/7.10.1/bin:/opt/cabal/1.22/bin:/opt/alex/3.1.4/bin:/opt/happy/1.19.5/bin:/root/.cabal/bin/:$PATH
 
 ## Download and Build nanomsg
 RUN mkdir -p /software/nanomsg/build
