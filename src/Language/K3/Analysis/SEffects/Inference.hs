@@ -16,6 +16,7 @@ import Control.Applicative
 import Control.Arrow hiding ( left )
 import Control.Monad.State
 import Control.Monad.Trans.Either
+import Control.Monad.Trans.Except
 
 import Data.List
 import Data.Maybe
@@ -120,10 +121,10 @@ fenv0 :: FEnv
 fenv0 = BEnv.empty
 
 flkup :: FEnv -> Identifier -> Either Text (K3 Effect)
-flkup env x = BEnv.slookup env x
+flkup env x = runExcept $ BEnv.slookup env x
 
 flkupAll :: FEnv -> Identifier -> Either Text [K3 Effect]
-flkupAll env x = BEnv.lookup env x
+flkupAll env x = runExcept $ BEnv.lookup env x
 
 fext :: FEnv -> Identifier -> K3 Effect -> FEnv
 fext env x f = BEnv.push env x f
@@ -135,7 +136,7 @@ fdel :: FEnv -> Identifier -> FEnv
 fdel env x = BEnv.pop env x
 
 fmem :: FEnv -> Identifier -> Either Text Bool
-fmem env x = BEnv.member env x
+fmem env x = runExcept $ BEnv.member env x
 
 
 {- FPEnv helpers -}
@@ -162,13 +163,13 @@ fmenv0 :: FMEnv
 fmenv0 = BEnv.empty
 
 falkup :: FAEnv -> Identifier -> Identifier -> Either Text (K3 Effect)
-falkup env x y = BEnv.lookup env x >>= \menv -> BEnv.lookup menv y >>= return . fst
+falkup env x y = runExcept (BEnv.lookup env x >>= \menv -> BEnv.lookup menv y >>= return . fst)
 
 faext :: FAEnv -> Identifier -> Identifier -> K3 Effect -> Bool -> FAEnv
 faext env x y fOpt l = BEnv.pushWith env BEnv.union x (BEnv.fromList [(y,(fOpt,l))])
 
 falkups :: FAEnv -> Identifier -> Either Text FMEnv
-falkups env x = BEnv.lookup env x
+falkups env x = runExcept $ BEnv.lookup env x
 
 faexts :: FAEnv -> Identifier -> FMEnv -> FAEnv
 faexts env x af = BEnv.pushWith env BEnv.union x af
@@ -196,7 +197,7 @@ fpbenv0 :: FPBEnv
 fpbenv0 = BEnv.empty
 
 fpblkup :: FPBEnv -> Identifier -> Either Text (K3 Provenance)
-fpblkup env x = BEnv.slookup env x
+fpblkup env x = runExcept $ BEnv.slookup env x
 
 fpbext :: FPBEnv -> Identifier -> K3 Provenance -> FPBEnv
 fpbext env x p = BEnv.push env x p
@@ -376,7 +377,7 @@ fistorea fienv n memF = do
   fmenv <- filkupas fienv n
   foldM (storemem fmenv) fienv memF
 
-  where storemem fmenv eacc (i,u,f,_) = BEnv.lookup fmenv i >>= \(f',_) -> store eacc i u f' f
+  where storemem fmenv eacc (i,u,f,_) = runExcept (BEnv.lookup fmenv i) >>= \(f',_) -> store eacc i u f' f
         store eacc i u (tag -> FBVar mv) f
           | (fmvn mv, fmvloc mv) == (i,u) = return $ fiextp eacc (fmvptr mv) f
         store eacc _ _ _ _ = return eacc
@@ -1301,7 +1302,7 @@ collectionMemberEffect :: Maybe (ExtInferF a, a) -> Identifier -> [Maybe (K3 Eff
 collectionMemberEffect extInfOpt i ef sf esrc t psrc =
   let annIds = namedTAnnotations $ annotations t in do
     memsEnv <- mapM filkupasM annIds >>= return . BEnv.unions
-    (mrf, lifted) <- liftEitherM $ BEnv.lookup memsEnv i
+    (mrf, lifted) <- liftEitherM $ runExcept $ BEnv.lookup memsEnv i
     mrfs  <- fisubM extInfOpt True "self" sf mrf psrc
     mrfsc <- fisubM extInfOpt True "content" fnone mrfs ptemp
     if not lifted then attrErr else return $ (Just $ fseq $ catMaybes ef, mrfsc)
