@@ -464,6 +464,7 @@ fisub fienv extInfOpt asStructure i df sf p = do
     subAsStructure _ f@(tnc -> (FLambda _, [a,b,c]))    = [False, False, True]
     subAsStructure _ f@(tnc -> (FApply Nothing, [a,b])) = [True, True]
     subAsStructure _ f@(tnc -> (FApply _, [a,b,c,d,e])) = [True, True, False, False, True]
+    subAsStructure _ f@(tnc -> (FApply _, [a]))         = [True]
     subAsStructure s f@(tnc -> (FSet, ch))              = replicate (length ch) s
     subAsStructure _ f@(tnc -> (FSeq, ch))              = replicate (length ch) False
     subAsStructure _ f@(tnc -> (FLoop, ch))             = replicate (length ch) False
@@ -513,6 +514,7 @@ chaseLambda env extInfOpt msg path f@(tnc -> (FApply _, [lf, af])) = do
 
 chaseLambda env _ msg path f = chaseApplied env msg path f
   where chaseApplied _ _ _ f@(tag -> FLambda _) = return [f]
+        chaseApplied _ _ _ f@(tnc -> (FApply _, [_]))   = return [f]
         chaseApplied _ _ _ f@(tnc -> (FApply _, [_,_])) = return [f]
         chaseApplied _ _ _ f@(tag -> FFVar _)   = return [f]
 
@@ -554,7 +556,8 @@ simplifyApply fienv extInfOpt defer eOpt ef lrf arf = do
             (nbrf,n3eacc) <- fisub n2eacc extInfOpt True  i ifbv brf p
             let appef = fromJust $ fexec $ ef ++ [Just nbef]
             --let apprf = fapply (Just imv) lrf arf (fromJust $ fexec ef) (fromJust $ fexec [Just nbef]) nbrf
-            let apprf = nbrf
+            --let apprf = nbrf
+            let apprf = fapplyRT (Just imv) nbrf
             return (facc++[(appef, apprf)], n3eacc)
 
           Nothing -> do
@@ -566,7 +569,8 @@ simplifyApply fienv extInfOpt defer eOpt ef lrf arf = do
             (nbrf,n2eacc) <- fisub neacc extInfOpt True  i arf' brf ptemp
             let appef = fromJust $ fexec $ ef ++ [Just nbef]
             --let apprf = fapply Nothing lrf arf (fromJust $ fexec ef) (fromJust $ fexec [Just nbef]) nbrf
-            let apprf = nbrf
+            --let apprf = nbrf
+            let apprf = fapplyRT Nothing nbrf
             return (facc++[(appef,apprf)], n2eacc)
 
         -- Handle recursive functions and forward declarations by using an opaque return value.
@@ -1152,6 +1156,8 @@ inferEffects extInfOpt expr = do
 
             transform True mvl (tnc -> (FApply (Just _), [_, _, _, _, rf])) = transform True mvl rf
 
+            transform True mvl (tnc -> (FApply (Just _), [rf])) = transform True mvl rf
+
             -- Try to simplify any external FApply.
             transform asStructure mvl (tnc -> (FApply Nothing, [l, a, ief, bef, r])) = do
               nl <- transform True mvl l
@@ -1223,6 +1229,7 @@ inferEffects extInfOpt expr = do
       let chStructure = case tnc pf of
                           (FApply _, ch@[lf, af, ief, bef, sf]) -> Just $ zip [True, True, False, False, True] ch
                           (FApply _, ch@[lf, af]) -> Just $ zip [True, True] ch
+                          (FApply _, ch@[rf]) -> Just $ zip [True] ch
                           _ -> Nothing
       nchOpt <- maybe (return origChOpt) (mapM (\(s,c) -> pruneAndSimplify "appchsf" Nothing s pmvl $ Just c)) chStructure
       return $ Just $ replaceCh pf $ catMaybes nchOpt
@@ -1324,6 +1331,7 @@ simplifyEffects removeTopLevel f =
                                         5 -> return (rm, [False, False, True, True, False])
                                         3 -> return (rm, [True, True, False])
                                         2 -> return (rm, [False, False])
+                                        1 -> return (rm, [False])
                                         _ -> errorM $ PT.boxToString $ [T.pack "Invalid app effect"] %$ PT.prettyLines f
     remove rm f' = return (rm, replicate (length $ children f') rm)
 

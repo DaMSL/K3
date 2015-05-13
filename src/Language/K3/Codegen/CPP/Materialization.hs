@@ -123,11 +123,18 @@ materializationE e@(Node (t :@: as) cs)
              [f, x] <- mapM materializationE cs
 
              let applicationEffects = getFStructure e
+             let executionEffects = getEffects e
+             let (returnEffects, formalParameter) =
+                   case applicationEffects of
+                     (tag &&& children -> (FApply (Just fmv), [returnEffects])) -> (returnEffects, fmv)
+                     _ -> error "Invalid effect structure"
+             {-
              let (executionEffects, returnEffects, formalParameter) =
                    case applicationEffects of
                      (tag &&& children -> (FApply (Just fmv), [_, executionEffects, returnEffects])) ->
                          (executionEffects, returnEffects, fmv)
                      _ -> error "Invalid effect structure"
+             -}
 
              conservativeDoMoveLocal <- hasWriteInIF (fmvn formalParameter) executionEffects
 

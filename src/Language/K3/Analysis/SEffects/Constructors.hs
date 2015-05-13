@@ -52,6 +52,9 @@ fapply mvOpt lf af ief ef sf = Node (FApply mvOpt :@: []) [lf, af, ief, ef, sf]
 fapplyExt :: K3 Effect -> K3 Effect -> K3 Effect
 fapplyExt lf af = Node (FApply Nothing :@: []) [lf, af]
 
+fapplyRT :: Maybe FMatVar -> K3 Effect -> K3 Effect
+fapplyRT mvOpt rf = Node (FApply mvOpt :@: []) [rf]
+
 simplifyChildren :: (Effect -> Bool) -> [K3 Effect] -> [K3 Effect]
 simplifyChildren tagF ch = filter (\p -> tag p /= FNone) $ concatMap flatCh ch
   where flatCh (tnc -> (tagF -> True, gch)) = gch
