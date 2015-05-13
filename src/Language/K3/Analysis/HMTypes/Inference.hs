@@ -32,6 +32,8 @@ import Data.Maybe
 import Data.Tree
 import Debug.Trace
 
+import Data.Monoid
+
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
@@ -130,6 +132,12 @@ data TIEnv = TIEnv {
                tcenv   :: TCEnv,
                tprop   :: [(Identifier, QPType)]
             }
+
+instance Monoid TIEnv where
+  mempty = tienv0
+  mappend (TIEnv a ae dv (TVEnv q qm) cyc c prop) (TIEnv a' ae' dv' (TVEnv q' qm') cyc' c' prop') =
+    TIEnv (a ++ a') (ae `Map.union` ae') (dv ++ dv') (TVEnv (max q q') (qm `Map.union` qm'))
+          (cyc ++ cyc') (c `Map.union` c') (prop ++ prop')
 
 -- | The type inference monad
 type TInfM = EitherT String (State TIEnv)

@@ -29,9 +29,12 @@ import Control.Arrow hiding ( left )
 import Control.Monad.State
 import Control.Monad.Trans.Either
 
+import Control.Applicative
+
 import Data.List
 import Data.Maybe
 import Data.Tree
+import Data.Monoid
 
 import Data.Map    ( Map    )
 import Data.IntMap ( IntMap )
@@ -87,6 +90,10 @@ type EPMap = IntMap (K3 Provenance)
 data ProvErrorCtxt = ProvErrorCtxt { ptoplevelExpr :: Maybe (K3 Expression)
                                    , pcurrentExpr  :: Maybe (K3 Expression) }
 
+instance Monoid ProvErrorCtxt where
+  mempty = ProvErrorCtxt Nothing Nothing
+  mappend (ProvErrorCtxt t c) (ProvErrorCtxt t' c') = ProvErrorCtxt (t <|> t') (c <|> c')
+
 -- | A provenance inference environment.
 data PIEnv = PIEnv {
                pcnt     :: Int,
@@ -98,6 +105,11 @@ data PIEnv = PIEnv {
                pcase    :: [PMatVar],   -- Temporary storage stack for case variables.
                perrctxt :: ProvErrorCtxt
             }
+
+instance Monoid PIEnv where
+  mempty = pienv0 plcenv0
+  mappend (PIEnv c p e a l ep pc pec) (PIEnv c' p' e' a' l' ep' pc' pec') =
+    PIEnv (max c c') (p <> p') (e <> e') (a <> a') (l <> l') (ep <> ep') (pc <> pc') (pec <> pec')
 
 -- | The type inference monad
 type PInfM = EitherT Text (State PIEnv)

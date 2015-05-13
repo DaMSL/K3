@@ -12,6 +12,8 @@ import Data.List
 import Data.Maybe
 import Data.Tree
 
+import Data.Monoid
+
 import Data.Map              ( Map )
 import qualified Data.Map    as Map
 
@@ -30,6 +32,10 @@ type PEnv  = NamedEnv PList
 type PAEnv = NamedEnv PEnv
 data PIEnv = PIEnv { penv :: PEnv, paenv :: PAEnv }
 type PInfM = EitherT String (State PIEnv)
+
+instance Monoid PIEnv where
+  mempty = PIEnv mempty mempty
+  mappend (PIEnv e a) (PIEnv e' a') = PIEnv (e <> e') (a <> a')
 
 {- NamedEnv helpers -}
 neenv0 :: NamedEnv a

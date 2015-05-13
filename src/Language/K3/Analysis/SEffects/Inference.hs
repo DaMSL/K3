@@ -25,6 +25,7 @@ import Data.Map    ( Map    )
 import Data.IntMap ( IntMap )
 import qualified Data.Map    as Map
 import qualified Data.IntMap as IntMap
+import Data.Monoid
 
 import Debug.Trace
 
@@ -85,6 +86,10 @@ type EFMap = IntMap (K3 Effect, K3 Effect)
 data EffectErrorCtxt = EffectErrorCtxt { ftoplevelExpr :: Maybe (K3 Expression)
                                        , fcurrentExpr  :: Maybe (K3 Expression) }
 
+instance Monoid EffectErrorCtxt where
+  mempty = EffectErrorCtxt Nothing Nothing
+  mappend (EffectErrorCtxt t c) (EffectErrorCtxt t' c') = EffectErrorCtxt (t <|> t') (c <|> c')
+
 -- | An effect inference environment.
 data FIEnv = FIEnv {
                fcnt     :: Int,
@@ -98,6 +103,11 @@ data FIEnv = FIEnv {
                fcase    :: [(FMatVar, PMatVar)],  -- Temporary storage stack for case variables.
                ferrctxt :: EffectErrorCtxt
             }
+
+instance Monoid FIEnv where
+  mempty = fienv0 fppenv0 flcenv0
+  mappend (FIEnv c p e a pb pp l ef fc ec) (FIEnv c' p' e' a' pb' pp' l' ef' fc' ec') =
+    FIEnv (max c c') (p <> p') (e <> e') (a <> a') (pb <> pb') (pp <> pp') (l <> l') (ef <> ef') (fc <> fc') (ec <> ec')
 
 -- | The effects inference monad
 type FInfM = EitherT Text (State FIEnv)
