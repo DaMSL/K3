@@ -5,6 +5,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE ParallelListComp #-}
 
 -- | High-level API to K3 toolchain stages.
 module Language.K3.Stages where
@@ -511,50 +512,96 @@ mapProgramDecls passesF prog =
   foldProgramDecls (\_ d -> ((), passesF d)) () prog >>= return . snd
 
 blockMapProgramDecls :: Int -> [ProgramTransform] -> (K3 Declaration -> [ProgramTransform]) -> ProgramTransform
-blockMapProgramDecls blockSize blockPassesF declPassesF prog = blockDriver emptySeen prog
-  where
-    emptySeen              = (Set.empty, [])
-    addNamedSeen   (n,u) i = (Set.insert i n, u)
-    addUnnamedSeen (n,u) i = (n, i:u)
-    seenNamed      (n,_) i = Set.member i n
-    seenUnnamed    (_,u) i = i `elem` u
+blockMapProgramDecls blockSize blockPassesF declPassesF prog = do
+  initState <- get
+  result <- liftIO $ runBlocks initState prog
+  case result of
+    Left s -> left s
+    Right (s, d) -> put s >> runPasses blockPassesF d
+ where
+  runBlocks :: TransformSt -> K3 Declaration -> IO (Either String (TransformSt, K3 Declaration))
+  runBlocks initState prog = do
+    partitions <- (partitionDecls (topLevelDecls prog))
+    locks <- sequence [newEmptyMVar | _ <- partitions]
+    let inputs = [(initState, partition) | partition <- partitions]
+    sequence_ [forkIO (runBlock initState ps lock) | ps <- partitions | lock <- locks]
+    finalStates <- mapM takeMVar locks
 
-    blockDriver seen p = do
-      ((nseen, anyNew), np) <- blockedPass seen p
-      np' <- debugBlock seen nseen $ runPasses blockPassesF np
-      if not anyNew && compareDAST np' p then return np'
-      else blockDriver nseen np'
+    return (fmap (fmap (rebuild . concat)) $ foldl mergeEither (Right (initState, [])) finalStates)
 
-    blockedPass seen p = do
-      let z = (seen, blockSize, False)
-      ((nseen, _, anyNew), np) <- foldProgramDecls passesWSkip z p
-      return ((nseen, anyNew), np)
+  runBlock :: TransformSt -> [K3 Declaration] -> MVar (Either String (TransformSt, [K3 Declaration])) -> IO ()
+  runBlock st ds lock = do
+    result <- sequence [runTransformStM st (runBlockDecl d) | d <- ds]
+    let result' = (foldl mergeEither (Right (mempty, [])) (map (fmap swap) result))
+    putMVar lock result'
 
-    passesWSkip (seen, cnt, anyNew) d@(nameOfDecl -> nOpt) =
-      let thisSeen        = maybe (seenUnnamed seen d) (seenNamed seen) nOpt
-          nAnyNew         = anyNew || not thisSeen
-          (nseen, passes) = if thisSeen then (seen, []) else (case nOpt of
-                              Nothing -> (addUnnamedSeen seen d, declPassesF d)
-                              Just n  -> if cnt == 0 then (seen, [])
-                                         else (addNamedSeen seen n, declPassesF d))
-      in
-      let ncnt = maybe cnt (const $ if cnt == 0 || thisSeen then cnt else (cnt-1)) nOpt
-          nacc = (nseen, ncnt, nAnyNew)
-      in (nacc, passes)
+  runBlockDecl :: ProgramTransform
+  runBlockDecl = fixD (mapProgramDecls declPassesF) compareDAST
 
-    nameOfDecl (tag -> DGlobal  n _ _) = Just n
-    nameOfDecl (tag -> DTrigger n _ _) = Just n
-    nameOfDecl _ = Nothing
+  fixD f (===) d = f d >>= \d' -> if d === d' then return d else fixD f (===) d'
 
-    debugBlock old new r = flip trace r $ "Compiled a block: " ++
-                            (sep $ (Set.toList $ ((Set.\\) `on` fst) new old)
-                                ++ (map showDuid $ ((\\) `on` snd) new old))
+  partitionDecls :: [K3 Declaration] -> IO [[K3 Declaration]]
+  partitionDecls ds = do
+    maxBlocks <- getNumCapabilities
+    return $ chunksOf (length ds `div` maxBlocks) ds
 
-    sep = concat . intersperse ", "
-    showDuid d = maybe invalidUid duid $ d @~ isDUID
-    duid (DUID (UID i)) = "DUID " ++ show i
-    duid _ = invalidUid
-    invalidUid = "<no duid>"
+  rebuild :: [K3 Declaration] -> K3 Declaration
+  rebuild = Node (DRole "__global" :@: [])
+
+  topLevelDecls d =
+    case d of
+      (tag -> DRole _) -> children prog
+      _ -> error "Top level declaration is not a role."
+
+
+  mergeEither :: Either String (TransformSt, [a]) -> Either String (TransformSt, a)
+                -> Either String (TransformSt, [a])
+  mergeEither a@(Left _) _ = a
+  mergeEither (Right (s, ds)) (Left y) = Left y
+  mergeEither (Right (s, ds)) (Right (s', d)) = Right (s' <> s, d:ds)
+
+    -- emptySeen              = (Set.empty, [])
+    -- addNamedSeen   (n,u) i = (Set.insert i n, u)
+    -- addUnnamedSeen (n,u) i = (n, i:u)
+    -- seenNamed      (n,_) i = Set.member i n
+    -- seenUnnamed    (_,u) i = i `elem` u
+
+    -- blockDriver seen p = do
+    --   ((nseen, anyNew), np) <- blockedPass seen p
+    --   np' <- debugBlock seen nseen $ runPasses blockPassesF np
+    --   if not anyNew && compareDAST np' p then return np'
+    --   else blockDriver nseen np'
+
+    -- blockedPass seen p = do
+    --   let z = (seen, blockSize, False)
+    --   ((nseen, _, anyNew), np) <- foldProgramDecls passesWSkip z p
+    --   return ((nseen, anyNew), np)
+
+    -- passesWSkip (seen, cnt, anyNew) d@(nameOfDecl -> nOpt) =
+    --   let thisSeen        = maybe (seenUnnamed seen d) (seenNamed seen) nOpt
+    --       nAnyNew         = anyNew || not thisSeen
+    --       (nseen, passes) = if thisSeen then (seen, []) else (case nOpt of
+    --                           Nothing -> (addUnnamedSeen seen d, declPassesF d)
+    --                           Just n  -> if cnt == 0 then (seen, [])
+    --                                      else (addNamedSeen seen n, declPassesF d))
+    --   in
+    --   let ncnt = maybe cnt (const $ if cnt == 0 || thisSeen then cnt else (cnt-1)) nOpt
+    --       nacc = (nseen, ncnt, nAnyNew)
+    --   in (nacc, passes)
+
+    -- nameOfDecl (tag -> DGlobal  n _ _) = Just n
+    -- nameOfDecl (tag -> DTrigger n _ _) = Just n
+    -- nameOfDecl _ = Nothing
+
+    -- debugBlock old new r = flip trace r $ "Compiled a block: " ++
+    --                         (sep $ (Set.toList $ ((Set.\\) `on` fst) new old)
+    --                             ++ (map showDuid $ ((\\) `on` snd) new old))
+
+    -- sep = concat . intersperse ", "
+    -- showDuid d = maybe invalidUid duid $ d @~ isDUID
+    -- duid (DUID (UID i)) = "DUID " ++ show i
+    -- duid _ = invalidUid
+    -- invalidUid = "<no duid>"
 
 inferDeclProperties :: Identifier -> ProgramTransform
 inferDeclProperties n = withPropertyTransform $ \pre p ->
