@@ -25,9 +25,10 @@ import Control.Monad.Identity
 import Control.Monad.State
 import Control.Monad.Trans.Except
 
+import Data.IntMap ( IntMap )
+import qualified Data.IntMap as IntMap
+
 import Data.List
-import Data.HashMap.Lazy ( HashMap )
-import qualified Data.HashMap.Lazy as Map
 import Data.Maybe
 import Data.Tree
 import Debug.Trace
@@ -122,7 +123,7 @@ type TMEnv = BindingEnv (QPType, Bool)
 type TDVEnv = BindingStackEnv QTVarId
 
 -- | A type variable environment.
-data TVEnv = TVEnv QTVarId (HashMap QTVarId (K3 QType)) deriving Show
+data TVEnv = TVEnv QTVarId (IntMap (K3 QType)) deriving Show
 
 -- | A cyclic variable environment (tracks whether an identifer uses cyclic scope).
 type TCEnv = BindingEnv Bool
@@ -274,25 +275,25 @@ tiincrv env = let TVEnv n s = tvenv env
 
 {- TVEnv helpers -}
 tvenv0 :: TVEnv
-tvenv0 = TVEnv 0 Map.empty
+tvenv0 = TVEnv 0 IntMap.empty
 
 tvlkup :: TVEnv -> QTVarId -> Maybe (K3 QType)
-tvlkup (TVEnv _ s) v = Map.lookup v s
+tvlkup (TVEnv _ s) v = IntMap.lookup v s
 
 tvext :: TVEnv -> QTVarId -> K3 QType -> TVEnv
-tvext (TVEnv c s) v t = TVEnv c $ Map.insert v t s
+tvext (TVEnv c s) v t = TVEnv c $ IntMap.insert v t s
 
 tvmap :: TVEnv -> (K3 QType -> K3 QType) -> TVEnv
-tvmap (TVEnv c s) f = TVEnv c $ Map.map f s
+tvmap (TVEnv c s) f = TVEnv c $ IntMap.map f s
 
 -- TVE domain predicate: check to see if a TVarName is in the domain of TVE
 tvdomainp :: TVEnv -> QTVarId -> Bool
-tvdomainp (TVEnv _ s) v = Map.member v s
+tvdomainp (TVEnv _ s) v = IntMap.member v s
 
 -- Give the list of all type variables that are allocated in TVE but
 -- not bound there
 tvfree :: TVEnv -> [QTVarId]
-tvfree (TVEnv c s) = filter (\v -> not (Map.member v s)) [0..c-1]
+tvfree (TVEnv c s) = filter (\v -> not (IntMap.member v s)) [0..c-1]
 
 -- `Shallow' substitution
 tvchase :: TVEnv -> K3 QType -> K3 QType
@@ -1694,7 +1695,7 @@ instance Pretty TDVEnv where
 
 instance Pretty TVEnv where
   prettyLines (TVEnv n m) = [T.pack $ "# vars: " ++ show n] ++
-                            (Map.foldlWithKey' (\acc k v -> acc ++ prettyPair (k,v)) [] m)
+                            (IntMap.foldlWithKey' (\acc k v -> acc ++ prettyPair (k,v)) [] m)
 
 instance Pretty TCEnv where
   prettyLines tce = BEnv.foldl (\acc k v -> acc ++ [T.pack $ k ++ " => " ++ show v]) [] tce
