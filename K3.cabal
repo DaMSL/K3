@@ -22,7 +22,7 @@ executable k3
 
     other-extensions: TemplateHaskell
 
-    ghc-options: -Wall -fno-warn-orphans -O2
+    ghc-options: -Wall -fno-warn-orphans -O2 -threaded
 
     extensions:
       FlexibleContexts,
