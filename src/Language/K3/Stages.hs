@@ -523,10 +523,10 @@ blockMapProgramDecls blockSize blockPassesF declPassesF prog =
   runBlock :: [K3 Declaration] -> TransformM [K3 Declaration]
   runBlock ds = do
     initState <- get
-    result <- liftIO $ runParallelBlock initState ds
+    result <- debugBlock ds $ liftIO $ runParallelBlock initState ds
     case result of
       Left s -> throwE s
-      Right (st', ds') -> put st' >> return ds
+      Right (st', ds') -> put st' >> return ds'
 
   runParallelBlock :: TransformSt -> [K3 Declaration] -> IO (Either String (TransformSt, [K3 Declaration]))
   runParallelBlock st ds = do
@@ -570,6 +570,8 @@ blockMapProgramDecls blockSize blockPassesF declPassesF prog =
                           , penv = (penv s) { Provenance.pcnt = Provenance.pcnt (penv s) + forkIDRangeSize * mySID}
                           , fenv = (fenv s) { SEffects.fcnt = SEffects.fcnt (fenv s) + forkIDRangeSize * mySID}
                           }
+  debugBlock :: [K3 Declaration] -> a -> a
+  debugBlock ds = trace ("Compiling a block: " ++ intercalate ", " (map showDuid ds))
 
     -- emptySeen              = (Set.empty, [])
     -- addNamedSeen   (n,u) i = (Set.insert i n, u)
@@ -609,10 +611,10 @@ blockMapProgramDecls blockSize blockPassesF declPassesF prog =
     --                             ++ (map showDuid $ ((\\) `on` snd) new old))
 
     -- sep = concat . intersperse ", "
-    -- showDuid d = maybe invalidUid duid $ d @~ isDUID
-    -- duid (DUID (UID i)) = "DUID " ++ show i
-    -- duid _ = invalidUid
-    -- invalidUid = "<no duid>"
+  showDuid d = maybe invalidUid duid $ d @~ isDUID
+  duid (DUID (UID i)) = "DUID " ++ show i
+  duid _ = invalidUid
+  invalidUid = "<no duid>"
 
 inferDeclProperties :: Identifier -> ProgramTransform
 inferDeclProperties n = withPropertyTransform $ \pre p ->
