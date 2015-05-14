@@ -26,6 +26,7 @@ import Data.Function
 import Data.List
 import Data.List.Split
 import Data.Map ( Map )
+import Data.Monoid
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
@@ -83,6 +84,19 @@ data TransformSt = TransformSt { nextuid    :: Int
                                , penv       :: Provenance.PIEnv
                                , fenv       :: SEffects.FIEnv
                                , report     :: TransformReport }
+
+mergeTransformSt :: Maybe Identifier -> TransformSt -> TransformSt -> TransformSt
+mergeTransformSt d agg new =
+  TransformSt { nextuid = max (nextuid agg) (nextuid new)
+              , cseCnt = max (cseCnt agg) (cseCnt new)
+              , tenv = tenv agg
+              , prenv = prenv agg
+              , penv = Provenance.mergePIEnv d (penv agg) (penv new)
+              , fenv = SEffects.mergeFIEnv d (fenv agg) (fenv new)
+              , report = TransformReport { statistics = statistics (report agg) <> statistics (report new)
+                                         , snapshots = snapshots (report agg) <> snapshots (report new)
+                                         }
+              }
 
 type TransformM = ExceptT String (StateT TransformSt IO)
 
@@ -504,7 +518,7 @@ mapProgramDecls passesF prog =
 
 blockMapProgramDecls :: Int -> [ProgramTransform] -> (K3 Declaration -> [ProgramTransform]) -> ProgramTransform
 blockMapProgramDecls blockSize blockPassesF declPassesF prog =
-  mapM (runBlock >>= runPasses blockPassesF . rebuild) (chunksOf blockSize $ topLevelDecls prog)
+  rebuild . concat <$> mapM (\p -> runBlock p) (chunksOf blockSize $ topLevelDecls prog)
  where
   runBlock :: [K3 Declaration] -> TransformM [K3 Declaration]
   runBlock ds = do
@@ -521,15 +535,16 @@ blockMapProgramDecls blockSize blockPassesF declPassesF prog =
     newSDs <- mapM takeMVar locks
     return $ foldl mergeEitherStateDecl (Right (st, [])) newSDs
 
-  runParallelDecl :: MVar (Either String (TransformSt, [K3 Declaration])) -> TransformSt -> K3 Declaration -> IO ()
-  runParallelDecl m st d = runTransformStM st (fixD $ mapProgramDecls declPassesF) compareDAST d >>= putMVar m
+  runParallelDecl :: MVar (Either String (TransformSt, K3 Declaration)) -> TransformSt -> K3 Declaration -> IO ()
+  runParallelDecl m s d =
+    runTransformStM s (fixD (mapProgramDecls declPassesF) compareDAST d) >>= putMVar m . fmap swap
 
   mergeEitherStateDecl :: Either String (TransformSt, [K3 Declaration]) -> Either String (TransformSt, K3 Declaration)
                        -> Either String (TransformSt, [K3 Declaration])
   mergeEitherStateDecl (Left s) _ = (Left s)
   mergeEitherStateDecl _ (Left s) = (Left s)
-  mergeEitherStateDecl (Right (aggState, aggDecls)) (Right newState, newDecl) =
-    Right (mergeTransformStInto newDecl aggState newState, newDecl:newDecls)
+  mergeEitherStateDecl (Right (aggState, aggDecls)) (Right (newState, newDecl)) =
+    Right (mergeTransformSt (declName newDecl) aggState newState, newDecl:aggDecls)
 
   fixD f (===) d = f d >>= \d' -> if d === d' then return d else fixD f (===) d'
 
