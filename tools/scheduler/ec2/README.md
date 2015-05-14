@@ -22,9 +22,9 @@ To create the stack:
 
 We have made these templates publically availale at the following URLs:
 
-    [https://s3-us-west-2.amazonaws.com/damsl-k3/k3-ec2-cluster.yml](https://s3-us-west-2.amazonaws.com/damsl-k3/k3-ec2-cluster.yml)
-    [https://s3-us-west-2.amazonaws.com/damsl-k3/k3-ec2-master.yml](https://s3-us-west-2.amazonaws.com/damsl-k3/k3-ec2-master.yml)
-    [https://s3-us-west-2.amazonaws.com/damsl-k3/k3-ec2-slave.yml](https://s3-us-west-2.amazonaws.com/damsl-k3/k3-ec2-slave.yml)
+[https://s3-us-west-2.amazonaws.com/damsl-k3/k3-ec2-cluster.yml](https://s3-us-west-2.amazonaws.com/damsl-k3/k3-ec2-cluster.yml)
+[https://s3-us-west-2.amazonaws.com/damsl-k3/k3-ec2-master.yml](https://s3-us-west-2.amazonaws.com/damsl-k3/k3-ec2-master.yml)
+[https://s3-us-west-2.amazonaws.com/damsl-k3/k3-ec2-slave.yml](https://s3-us-west-2.amazonaws.com/damsl-k3/k3-ec2-slave.yml)
 
 ###Accessing the Interface
 It should take about 5-10 minutes to launch the stack. Once the instances are all running, find the Master's Public IP and browse to it on port 5000. Note that if you stop/restart the instance, the public IP will change. The CloudFormation is designed to re-establish the cluster, but you will need to find the public IP each time.
