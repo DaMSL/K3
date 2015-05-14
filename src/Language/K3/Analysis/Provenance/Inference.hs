@@ -20,6 +20,7 @@ module Language.K3.Analysis.Provenance.Inference (
   PInfM,
 
   pienv0,
+  mergePIEnv,
   inferProgramProvenance,
   reinferProgDeclProvenance
 ) where
