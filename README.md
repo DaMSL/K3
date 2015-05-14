@@ -80,7 +80,7 @@ We **strongly** recommend you use our docker container unless you're comfortable
 ####Dependencies
 Haskell platform: https://www.haskell.org/platform/
 - version: 2014.2.0.0
-- alternatively: [ghc == 7.8.3](http://www.haskell.org/ghc/download_ghc_7_8_3) and [cabal >= 1.20](http://www.haskell.org/ghc/download_ghc_7_8_3)
+- alternatively: [ghc >= 7.8.3](http://www.haskell.org/ghc/download_ghc_7_8_3) and [cabal >= 1.20](http://www.haskell.org/ghc/download_ghc_7_8_3)
 
 We use [cabal](http://www.haskell.org/cabal/) for managing Haskell package and library dependencies.
 
