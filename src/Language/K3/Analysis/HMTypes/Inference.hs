@@ -293,10 +293,7 @@ tvdomainp (TVEnv _ s) v = IntMap.member v s
 -- Give the list of all type variables that are allocated in TVE but
 -- not bound there
 tvfree :: TVEnv -> [QTVarId]
-tvfree (TVEnv c s) = fvs ++ (if kgt > c-1 then [] else [kgt..c-1])
-  where (kgt, fvs) = IntMap.foldlWithKey range (0,[]) s
-        range (expected, acc) k _ | k == expected = (k+1, acc)
-                                  | otherwise = (k+1, acc++[expected..k-1])
+tvfree (TVEnv c s) = filter (\v -> not (IntMap.member v s)) [0..c-1]
 
 -- `Shallow' substitution
 tvchase :: TVEnv -> K3 QType -> K3 QType
