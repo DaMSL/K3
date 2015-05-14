@@ -31,7 +31,6 @@ import qualified Data.Set as Set
 import qualified Data.Text as T
 import Debug.Trace
 import Data.Tree
-import Data.Monoid
 import Data.Tuple
 
 import qualified Text.Printf as TPF
@@ -76,10 +75,6 @@ data CompilerSpec = CompilerSpec { blockSize :: Int
 data TransformReport = TransformReport { statistics :: Map String [Measured]
                                        , snapshots  :: Map String [K3 Declaration] }
 
-instance Monoid TransformReport where
-  mempty = TransformReport mempty mempty
-  mappend (TransformReport s t) (TransformReport s' t') = TransformReport (s <> s') (t <> t')
-
 -- | The program transformation composition monad
 data TransformSt = TransformSt { nextuid    :: Int
                                , cseCnt     :: Int
@@ -88,11 +83,6 @@ data TransformSt = TransformSt { nextuid    :: Int
                                , penv       :: Provenance.PIEnv
                                , fenv       :: SEffects.FIEnv
                                , report     :: TransformReport }
-
-instance Monoid TransformSt where
-  mempty = TransformSt 0 0 mempty mempty mempty mempty rp0
-  mappend (TransformSt n c t r p f e) (TransformSt n' c' t' r' p' f' e') =
-    TransformSt (max n n') (max c c') (t <> t') (r <> r') (p <> p') (f <> f') (e <> e')
 
 type TransformM = ExceptT String (StateT TransformSt IO)
 

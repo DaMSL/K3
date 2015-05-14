@@ -141,12 +141,6 @@ data TIEnv = TIEnv {
                tprop   :: [(Identifier, QPType)]
             }
 
-instance Monoid TIEnv where
-  mempty = tienv0
-  mappend (TIEnv a ae dv (TVEnv q qm) cyc c prop) (TIEnv a' ae' dv' (TVEnv q' qm') cyc' c' prop') =
-    TIEnv (a ++ a') (ae `Map.union` ae') (dv ++ dv') (TVEnv (max q q') (qm `Map.union` qm'))
-          (cyc ++ cyc') (c `Map.union` c') (prop ++ prop')
-
 -- | The type inference monad
 type TInfM = ExceptT Text (State TIEnv)
 
