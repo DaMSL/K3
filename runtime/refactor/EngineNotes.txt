@@ -1,0 +1,176 @@
+//***********************************
+// Top-Level Engine
+//***********************************
+
+// Singleton.
+class Engine {
+  map<Address, Peer> peers_;
+
+  Engine(Options opts)
+  void sendMessage(Message)
+  void run()
+  void stop()
+  void join()
+}
+
+//***********************************
+// Network I/O
+//***********************************
+
+// Singleton. Owns all Listeners and outgoing connections.
+// External connections specify Format, which selects a combination of Connection subclass (framing) and a Codec (serialization)
+// Internal connections all use the same Connection subclass and Codec
+class NetworkManager {
+  map<Address, PeerListener> listeners_;
+  map<Address, OutgoingInternalConnection> internal_out_conns_;
+  map<Address, OutgoingExternalConnection> external_out_conns_;
+  boost::asio::io_service io_service_;
+  list<thread> threads_;
+
+  void listenInternal(Address)
+  void listenExternal(Address, Format)
+  void connectInternal(Address)
+  void connectExternal(Address, Format)
+  void sendInternal(Address, TriggerID, NativeValue)
+  void sendExternal(Address, NativeValue)
+}
+
+// Owns all Listeners (Internal and External) associated with a single Peer
+class PeerListener {
+  Listener internal_listener_;
+  list<Listener> external_listeners_;
+}
+
+// Interface
+// Upon construction, accepts connections at a particular address
+// Owns the accepted incoming connections
+class Listener { }
+
+// Interface
+// Reads values off the wire to produce Messages, in both (Internal and External) cases
+// The Internal subclass will read the destination trigger off the wire
+// While the External subclass will be bound to a particular trigger upon construction (from the feed statement)
+class IncomingConnection {
+  virtual Socket getSocket()
+  virtual void recieveMessages(Function<void(Message)>, Function<void(ErrorCode)>)
+}
+
+// Interface
+class OutgoingExternalConnection {
+  virtual void send(NativeValue)
+}
+
+// Interface
+class OutgoingInternalConnection {
+  virtual void send(TriggerID, NativeValue)
+}
+
+//***********************************
+// File I/O
+//***********************************
+
+// Singleton. Owns all IOHandles
+// openFile specifies a Format, which selects a IOHandle subclass (framing) and a Codec (serialization)
+// We could consider seperating InputHandle vs OutputHandle
+
+Frame formats:
+  length-header
+  delimiter-based
+
+Serialization formats:
+  enum class CodecFormat {K3, K3B, K3YB, K3YBT, K3X, CSV, PSV, JSON, YAML};
+
+class StorageManager {
+  map<Identifier, FileHandle> files_;
+
+  void openFile(Identifier, Path, Format, IOMode)
+  void closeFile(Identifier)
+  bool hasRead(Identifier)
+  bool hasWrite(Identifier)
+  Value doRead(Identifier)
+  void doWrite(Identifier, NativeValue)
+}
+
+// Interface for reading and writing from a file
+class FileHandle {
+  virtual bool hasRead()
+  virtual Value doRead()
+  virtual bool hasWrite()
+  virtual void doWrite(NativeValue)
+}
+
+//***********************************
+// K3 Values
+//***********************************
+
+// Interface
+// Can contain either native or packed values.
+// Virtual function to dispatch based on type (native or packed)
+class Value {
+  virtual void dispatch(ProgramContext, TriggerID)
+}
+
+// Boxes a native C++ value that is casted to the
+// correct native type once dispatched in the ProgramContext
+class NativeValue : public Value {
+ public:
+  template <class T>
+  T as()
+
+  virtual void dispatch(ProgramContext pc, TriggerID trig)
+}
+
+// Interface
+// Packed C++ value that is unpacked and casted to a native type
+// once dispatched in the ProgramContext
+// Holds a handle to a Codec to enable deferred unpacking
+class PackedValue : public Value {
+  NativeValue unpack() { codec_->unpack(buf()) }
+
+  virtual (char*, length) buf()
+  virtual void dispatch(ProgramContext pc, TriggerID trig)
+}
+
+//***********************************
+// K3 Messages
+//***********************************
+
+// Routing information and payload of a K3 Message
+// That will be processed by a ProgramContext
+// Can hold both Native and Packed values
+class Message() {
+  Address sourceAddress()
+  Address destinationAddress()
+  TriggerID destinationTrigger()
+  Value payload()
+}
+
+//***********************************
+// K3 Peer
+//***********************************
+
+// Interface
+// Contains triggers and code for a K3 Program.
+// Can process both Native and Packed values
+class ProgramContext {
+  virtual void processNativeValue(TriggerID, NativeValue)
+}
+
+class Peer {
+  void enqueue(Message)
+  void run()
+}
+
+//***********************************
+// Misc
+//***********************************
+
+// Interface
+// Converts between binary data and NativeValues
+class Codec {
+  virtual Buffer pack(NativeValue)
+  virtual NativeValue unpack(char*, length)
+}
+class Endpoint {
+  void notifySubscribers(EventType, NativeValue)
+}
