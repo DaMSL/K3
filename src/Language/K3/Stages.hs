@@ -531,7 +531,7 @@ blockMapProgramDecls blockSize blockPassesF declPassesF prog =
   runParallelBlock :: TransformSt -> [K3 Declaration] -> IO (Either String (TransformSt, [K3 Declaration]))
   runParallelBlock st ds = do
     locks <- sequence $ newEmptyMVar <$ ds
-    sequence_ [forkIO (runParallelDecl lock st d) | lock <- locks | d <- ds]
+    sequence_ [forkIO (runParallelDecl lock (forkState i (length ds) st) d) | lock <- locks | d <- ds | i <- [0..]]
     newSDs <- mapM takeMVar locks
     return $ foldl mergeEitherStateDecl (Right (st, [])) newSDs
 
@@ -560,6 +560,16 @@ blockMapProgramDecls blockSize blockPassesF declPassesF prog =
     case d of
       (tag -> DRole _) -> children prog
       _ -> error "Top level declaration is not a role."
+
+  forkIDRangeSize :: Int
+  forkIDRangeSize = 10000
+
+  forkState :: Int -> Int -> TransformSt -> TransformSt
+  forkState mySID _ s = s { nextuid = nextuid s + forkIDRangeSize * mySID
+                          , cseCnt = cseCnt s + forkIDRangeSize * mySID
+                          , penv = (penv s) { Provenance.pcnt = Provenance.pcnt (penv s) + forkIDRangeSize * mySID}
+                          , fenv = (fenv s) { SEffects.fcnt = SEffects.fcnt (fenv s) + forkIDRangeSize * mySID}
+                          }
 
     -- emptySeen              = (Set.empty, [])
     -- addNamedSeen   (n,u) i = (Set.insert i n, u)
