@@ -114,10 +114,20 @@ data PIEnv = PIEnv {
                ptienv   :: AIVEnv
             }
 
-instance Monoid PIEnv where
-  mempty = pienv0 plcenv0
-  mappend (PIEnv c p e a l ep pc pec) (PIEnv c' p' e' a' l' ep' pc' pec') =
-    PIEnv (max c c') (p <> p') (e <> e') (a <> a') (l <> l') (ep <> ep') (pc <> pc') (pec <> pec')
+mergePIEnv :: Maybe Identifier -> PIEnv -> PIEnv -> PIEnv
+mergePIEnv d agg new =
+  PIEnv (max (pcnt agg) (pcnt new))
+        (ppenv agg <> ppenv new)
+        (maybe (penv agg) (\d' -> BEnv.mergeIntoWith [d'] (penv agg) (penv new)) d)
+        (maybe (paenv agg) (\d' -> BEnv.mergeIntoWith [d'] (paenv agg) (paenv new)) d)
+        (VarPosEnv (lcenv (pvpenv agg) <> lcenv (pvpenv new))
+                   (scenv (pvpenv agg) <> scenv (pvpenv new))
+                   (vuenv (pvpenv agg) <> vuenv (pvpenv new)))
+        (epmap agg <> epmap new)
+        (pcase agg ++ pcase new)
+        (ProvErrorCtxt (ptoplevelExpr (perrctxt agg) <|> ptoplevelExpr (perrctxt new))
+                       (pcurrentExpr (perrctxt agg) <|> pcurrentExpr (perrctxt new)))
+        (AIVEnv (avtenv (ptienv agg) <> avtenv (ptienv new)))
 
 -- | The type inference monad
 type PInfM = ExceptT Text (State PIEnv)

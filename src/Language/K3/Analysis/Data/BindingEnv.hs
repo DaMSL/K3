@@ -85,3 +85,8 @@ pop env x = popWith env safeTail x
   where safeTail []  = Nothing
         safeTail [_] = Nothing
         safeTail l   = Just $ tail l
+
+
+-- Keep a, updating from b the values corresponding to keys in ks.
+mergeIntoWith :: [Identifier] -> BindingEnv a -> BindingEnv a -> BindingEnv a
+mergeIntoWith ks a b = Prelude.foldl (\acc k -> maybe acc (\v -> Map.insert k v acc) (Map.lookup k b)) a ks
