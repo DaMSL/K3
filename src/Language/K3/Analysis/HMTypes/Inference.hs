@@ -293,7 +293,7 @@ tvdomainp (TVEnv _ s) v = IntMap.member v s
 -- Give the list of all type variables that are allocated in TVE but
 -- not bound there
 tvfree :: TVEnv -> [QTVarId]
-tvfree (TVEnv c s) = filter (\v -> not (IntMap.member v s)) [0..c-1]
+tvfree (TVEnv c s) = filter (\v -> IntMap.notMember v s) [0..c-1]
 
 -- `Shallow' substitution
 tvchase :: TVEnv -> K3 QType -> K3 QType
