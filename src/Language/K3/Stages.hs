@@ -518,7 +518,7 @@ mapProgramDecls passesF prog =
 
 blockMapProgramDecls :: Int -> [ProgramTransform] -> (K3 Declaration -> [ProgramTransform]) -> ProgramTransform
 blockMapProgramDecls blockSize blockPassesF declPassesF prog =
-  rebuild . concat <$> mapM (\p -> runBlock p) (chunksOf blockSize $ topLevelDecls prog)
+  (rebuild . concat <$> mapM (\p -> runBlock p) (chunksOf blockSize $ topLevelDecls prog)) >>= runPasses blockPassesF
  where
   runBlock :: [K3 Declaration] -> TransformM [K3 Declaration]
   runBlock ds = do
@@ -562,7 +562,7 @@ blockMapProgramDecls blockSize blockPassesF declPassesF prog =
       _ -> error "Top level declaration is not a role."
 
   forkIDRangeSize :: Int
-  forkIDRangeSize = 10000
+  forkIDRangeSize = 1000000
 
   forkState :: Int -> Int -> TransformSt -> TransformSt
   forkState mySID _ s = s { nextuid = nextuid s + forkIDRangeSize * mySID
