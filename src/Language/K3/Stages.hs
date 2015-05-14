@@ -573,44 +573,6 @@ blockMapProgramDecls blockSize blockPassesF declPassesF prog =
   debugBlock :: [K3 Declaration] -> a -> a
   debugBlock ds = trace ("Compiling a block: " ++ intercalate ", " (map showDuid ds))
 
-    -- emptySeen              = (Set.empty, [])
-    -- addNamedSeen   (n,u) i = (Set.insert i n, u)
-    -- addUnnamedSeen (n,u) i = (n, i:u)
-    -- seenNamed      (n,_) i = Set.member i n
-    -- seenUnnamed    (_,u) i = i `elem` u
-
-    -- blockDriver seen p = do
-    --   ((nseen, anyNew), np) <- blockedPass seen p
-    --   np' <- debugBlock seen nseen $ runPasses blockPassesF np
-    --   if not anyNew && compareDAST np' p then return np'
-    --   else blockDriver nseen np'
-
-    -- blockedPass seen p = do
-    --   let z = (seen, blockSize, False)
-    --   ((nseen, _, anyNew), np) <- foldProgramDecls passesWSkip z p
-    --   return ((nseen, anyNew), np)
-
-    -- passesWSkip (seen, cnt, anyNew) d@(nameOfDecl -> nOpt) =
-    --   let thisSeen        = maybe (seenUnnamed seen d) (seenNamed seen) nOpt
-    --       nAnyNew         = anyNew || not thisSeen
-    --       (nseen, passes) = if thisSeen then (seen, []) else (case nOpt of
-    --                           Nothing -> (addUnnamedSeen seen d, declPassesF d)
-    --                           Just n  -> if cnt == 0 then (seen, [])
-    --                                      else (addNamedSeen seen n, declPassesF d))
-    --   in
-    --   let ncnt = maybe cnt (const $ if cnt == 0 || thisSeen then cnt else (cnt-1)) nOpt
-    --       nacc = (nseen, ncnt, nAnyNew)
-    --   in (nacc, passes)
-
-    -- nameOfDecl (tag -> DGlobal  n _ _) = Just n
-    -- nameOfDecl (tag -> DTrigger n _ _) = Just n
-    -- nameOfDecl _ = Nothing
-
-    -- debugBlock old new r = flip trace r $ "Compiled a block: " ++
-    --                         (sep $ (Set.toList $ ((Set.\\) `on` fst) new old)
-    --                             ++ (map showDuid $ ((\\) `on` snd) new old))
-
-    -- sep = concat . intersperse ", "
   showDuid d = maybe invalidUid duid $ d @~ isDUID
   duid (DUID (UID i)) = "DUID " ++ show i
   duid _ = invalidUid
