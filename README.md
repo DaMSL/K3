@@ -8,7 +8,7 @@ K3 is a programming language for building large-scale **_data systems_**. Hadoop
 
 K3's features center on separating high-performance systems design and implementation concerns from application and algorithm logic. We empower K3 developers to create algorithms with the mindset of working on a single machine, and then facilitate the transition to a scalable service with our data systems building blocks (e.g., resource allocation, replication, data partitioning, fault tolerance). Our language and compiler allows us to leverage powerful program analyses and statistics to realize co-design opportunities that are often lost at API boundaries in library and framework-based approaches.
 
-K3 is a work in progress at all levels (language, compiler, runtime). We're developing the K3 compiler in the Haskell language and the runtime environment in C++. The compiler generates C++ code which is further compiled down to an executable. You can find examples of language features and simple algorithms in [damsl/K3/examples/](examples/)
+K3 is a work in progress at all levels (language, compiler, runtime). We're developing the K3 compiler in the Haskell language and the runtime environment in C++. The compiler generates C++ code which is further compiled down to an executable. You can find examples of language features and simple algorithms in [K3/examples/](examples/)
 
 ---
 ##Getting Started
@@ -60,7 +60,8 @@ https://registry.hub.docker.com/u/damsl/k3-vanilla/
 7. Now you're ready to modify, update, & build new programs. Use the clean script before re-compiling to ensure your workspace is fresh.: `tools/scripts/run/clean.sh`.  
 
 Where to go from here:
-- View, modify, compile, & run the `count_peers_v2.k3` program which is located in the same folder as the `count_peers.k3` file. It is an updated version of the 
+- View, modify, compile, & run the `count_peers_v2.k3` program which is located in the same folder as the `count_peers.k3` file. It is an updated version of the count peers program with some additional features
+- If you want to run with different compiler flags, update the script, compile.sh.
 
 
 
@@ -70,7 +71,7 @@ The previous section ran through a single-site, local deployment with three peer
 
 ---
 ##Cloud Deployment
-Alternatively, we have developed EC2 Cloud Formation templates which will automatically set up and launch a Mesos cluster with the Flask-based Scheduler web interface in your AWS account. 
+Alternatively, we have developed EC2 Cloud Formation templates which will automatically set up and launch a Mesos cluster with the Flask-based Scheduler web interface in your AWS account. See the [EC2](https://github.com/DaMSL/K3/tree/development/tools/scheduler/ec2) for more information on setting up your cloud environment.
 
 ---
 ## Building K3
