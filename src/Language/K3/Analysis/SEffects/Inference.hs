@@ -21,10 +21,10 @@ import Data.Functor.Identity
 import Data.List
 import Data.Maybe
 import Data.Tree
+import Data.Monoid
 
 import Data.IntMap           ( IntMap )
 import qualified Data.IntMap as IntMap
-import Data.Monoid
 
 import Debug.Trace
 
@@ -90,10 +90,6 @@ type EFMap = IntMap (K3 Effect, K3 Effect)
 data EffectErrorCtxt = EffectErrorCtxt { ftoplevelExpr :: Maybe (K3 Expression)
                                        , fcurrentExpr  :: Maybe (K3 Expression) }
 
-instance Monoid EffectErrorCtxt where
-  mempty = EffectErrorCtxt Nothing Nothing
-  mappend (EffectErrorCtxt t c) (EffectErrorCtxt t' c') = EffectErrorCtxt (t <|> t') (c <|> c')
-
 -- | An effect inference environment.
 data FIEnv = FIEnv {
                fcnt     :: Int,
@@ -108,10 +104,21 @@ data FIEnv = FIEnv {
                ferrctxt :: EffectErrorCtxt
             }
 
-instance Monoid FIEnv where
-  mempty = fienv0 fppenv0 flcenv0
-  mappend (FIEnv c p e a pb pp l ef fc ec) (FIEnv c' p' e' a' pb' pp' l' ef' fc' ec') =
-    FIEnv (max c c') (p <> p') (e <> e') (a <> a') (pb <> pb') (pp <> pp') (l <> l') (ef <> ef') (fc <> fc') (ec <> ec')
+mergeFIEnv :: Maybe Identifier -> FIEnv -> FIEnv -> FIEnv
+mergeFIEnv d agg new =
+  FIEnv { fcnt = max (fcnt agg) (fcnt new)
+        , fpenv = fpenv agg <> fpenv new
+        , fenv = maybe (fenv agg) (\d' -> BEnv.mergeIntoWith [d'] (fenv agg) (fenv new)) d
+        , faenv = maybe (faenv agg) (\d' -> BEnv.mergeIntoWith [d'] (faenv agg) (faenv new)) d
+        , fpbenv = maybe (fpbenv agg) (\d' -> BEnv.mergeIntoWith [d'] (fpbenv agg) (fpbenv new)) d
+        , fppenv = fppenv agg <> fppenv new
+        , flcenv = flcenv agg <> flcenv new
+        , efmap = efmap agg <> efmap new
+        , fcase = fcase agg <> fcase new
+        , ferrctxt = EffectErrorCtxt { ftoplevelExpr = ftoplevelExpr (ferrctxt agg) <|> ftoplevelExpr (ferrctxt new)
+                                     , fcurrentExpr = fcurrentExpr (ferrctxt agg) <|> fcurrentExpr (ferrctxt new)
+                                     }
+        }
 
 -- | The effects inference monad
 type FInfM = ExceptT Text (State FIEnv)
