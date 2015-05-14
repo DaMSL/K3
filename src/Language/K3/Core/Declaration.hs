@@ -15,6 +15,7 @@ module Language.K3.Core.Declaration (
     UnorderedConflict(..),
     PropertyD
 
+    , declName
     , getTriggerIds
 
     , onDProperty
@@ -143,6 +144,15 @@ instance HasSpan (Annotation Declaration) where
   getSpan (DSpan s) = Just s
   getSpan _         = Nothing
 
+
+declName :: K3 Declaration -> Maybe Identifier
+declName d = case tag d of
+               DGlobal i _ _ -> Just i
+               DTrigger i _ _ -> Just i
+               DDataAnnotation i _ _ -> Just i
+               DRole i -> Just i
+               DTypeDef i _ -> Just i
+               DGenerator _ -> Nothing
 
 -- | Property helpers
 type PropertyV = (Identifier, Maybe (K3 Literal))
