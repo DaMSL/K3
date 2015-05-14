@@ -1,0 +1,47 @@
+// An updated example of a distributed K3 program.
+//
+// Building on the basic count_peers example, this program, demonstrates
+// a few more features. It is designed to provide the programmer with a 
+// set of building blocks to explore K3.
+//
+// Just as in the simple K3 Count Peers example, this program will start up
+// and "check in" with a master, rendezvous peer who increments the nodeCounter
+// variable for each peer. Here are some additions to play with:
+//
+//  - Primitve data types (int, address, string); real is not included, but feel free to add it
+//  - Sending, receiving & binding a tuple between peers
+//  - This program will actually halt (no need to use Ctrl-c)
+//  - Includes a collection, messageLog, with tracks all the peers' incoming messages
+//
+// Update, modify, & have fun!
+//
+//
+
+include "Core/Builtins.k3"
+include "Annotation/Collection.k3"
+
+declare nodeCounter : mut int = 0
+declare rendezvous : immut address = 127.0.0.1:40000
+declare message : mut string = "Hello!"
+declare messageLog : mut collection {elm: string} @ {Collection}
+
+trigger join : () = \_ ->
+  (register, rendezvous) <- (me, message, 1)
+
+trigger halt : () = \_ ->
+  haltEngine ()
+  
+trigger register : (address, string, int) = \msg ->
+  bind msg as (node, peerMessage, value) in  (
+    print ("Message received from " ++ atos node ++ ": " ++ message ++ "\\n");
+    messageLog.insert {elm: peerMessage};
+    nodeCounter = nodeCounter + value;
+    if nodeCounter == (peers.size ()) then (
+        messageLog.iterate (\m -> print (m.elm ++ "\\n"));
+        peers.iterate (\p -> (halt, p.addr) <- ())
+    )
+    else ()
+)
+
+source go : () = value ()
+feed go |> join
