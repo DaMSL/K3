@@ -513,31 +513,33 @@ mapProgramDecls passesF prog =
   foldProgramDecls (\_ d -> ((), passesF d)) () prog >>= return . snd
 
 blockMapProgramDecls :: Int -> [ProgramTransform] -> (K3 Declaration -> [ProgramTransform]) -> ProgramTransform
-blockMapProgramDecls blockSize blockPassesF declPassesF prog = do
-  initState <- get
-  result <- liftIO $ runBlocks initState prog
-  case result of
-    Left s -> left s
-    Right (s, d) -> put s >> runPasses blockPassesF d
+blockMapProgramDecls blockSize blockPassesF declPassesF prog =
+  mapM (runBlock >>= runPasses blockPassesF . rebuild) (chunksOf blockSize $ topLevelDecls prog)
  where
-  runBlocks :: TransformSt -> K3 Declaration -> IO (Either String (TransformSt, K3 Declaration))
-  runBlocks initState prog = do
-    partitions <- (partitionDecls (topLevelDecls prog))
-    locks <- sequence [newEmptyMVar | _ <- partitions]
-    let inputs = [(initState, partition) | partition <- partitions]
-    sequence_ [forkIO (runBlock initState ps lock) | ps <- partitions | lock <- locks]
-    finalStates <- mapM takeMVar locks
+  runBlock :: [K3 Declaration] -> TransformM [K3 Declaration]
+  runBlock ds = do
+    initState <- get
+    result <- liftIO $ runParallelBlock initState ds
+    case result of
+      Left s -> throwE s
+      Right (st', ds') -> put st' >> return ds
 
-    return (fmap (fmap (rebuild . concat)) $ foldl mergeEither (Right (initState, [])) finalStates)
+  runParallelBlock :: TransformSt -> [K3 Declaration] -> IO (Either String (TransformSt, [K3 Declaration]))
+  runParallelBlock st ds = do
+    locks <- sequence $ newEmptyMVar <$ ds
+    sequence_ [forkIO (runParallelDecl lock st d) | lock <- locks | d <- ds]
+    newSDs <- mapM takeMVar locks
+    return $ foldl mergeEitherStateDecl (Right (st, [])) newSDs
 
-  runBlock :: TransformSt -> [K3 Declaration] -> MVar (Either String (TransformSt, [K3 Declaration])) -> IO ()
-  runBlock st ds lock = do
-    result <- sequence [runTransformStM st (runBlockDecl d) | d <- ds]
-    let result' = (foldl mergeEither (Right (mempty, [])) (map (fmap swap) result))
-    putMVar lock result'
+  runParallelDecl :: MVar (Either String (TransformSt, [K3 Declaration])) -> TransformSt -> K3 Declaration -> IO ()
+  runParallelDecl m st d = runTransformStM st (fixD $ mapProgramDecls declPassesF) compareDAST d >>= putMVar m
 
-  runBlockDecl :: ProgramTransform
-  runBlockDecl = fixD (mapProgramDecls declPassesF) compareDAST
+  mergeEitherStateDecl :: Either String (TransformSt, [K3 Declaration]) -> Either String (TransformSt, K3 Declaration)
+                       -> Either String (TransformSt, [K3 Declaration])
+  mergeEitherStateDecl (Left s) _ = (Left s)
+  mergeEitherStateDecl _ (Left s) = (Left s)
+  mergeEitherStateDecl (Right (aggState, aggDecls)) (Right newState, newDecl) =
+    Right (mergeTransformStInto newDecl aggState newState, newDecl:newDecls)
 
   fixD f (===) d = f d >>= \d' -> if d === d' then return d else fixD f (===) d'
 
@@ -553,13 +555,6 @@ blockMapProgramDecls blockSize blockPassesF declPassesF prog = do
     case d of
       (tag -> DRole _) -> children prog
       _ -> error "Top level declaration is not a role."
-
-
-  mergeEither :: Either String (TransformSt, [a]) -> Either String (TransformSt, a)
-                -> Either String (TransformSt, [a])
-  mergeEither a@(Left _) _ = a
-  mergeEither (Right (s, ds)) (Left y) = Left y
-  mergeEither (Right (s, ds)) (Right (s', d)) = Right (s' <> s, d:ds)
 
     -- emptySeen              = (Set.empty, [])
     -- addNamedSeen   (n,u) i = (Set.insert i n, u)
