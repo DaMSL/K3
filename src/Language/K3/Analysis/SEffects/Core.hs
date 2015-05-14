@@ -51,11 +51,12 @@ data Effect
                           --    and a result effect structure.
                           -- ii. 2-child variant:
                           --     lambda effect structure, and arg effect structure.
+                          -- iii. 1-child variant: result effect structure
                           --
                           -- Note after simplification, we introduce a 3-child variant as a
                           -- simplified form of the 5-child version:
-                          -- iii. initializer execution effects, result execution effects,
-                          --      and a result effect structure.
+                          -- iv. initializer execution effects, result execution effects,
+                          --     and a result effect structure.
 
     | FSet                     -- Set of effects, all of which are possible.
     | FSeq

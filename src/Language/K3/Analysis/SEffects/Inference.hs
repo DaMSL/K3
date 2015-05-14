@@ -481,6 +481,7 @@ fisub fienv extInfOpt asStructure i df sf p = do
     subAsStructure _ f@(tnc -> (FLambda _, [a,b,c]))    = [False, False, True]
     subAsStructure _ f@(tnc -> (FApply Nothing, [a,b])) = [True, True]
     subAsStructure _ f@(tnc -> (FApply _, [a,b,c,d,e])) = [True, True, False, False, True]
+    subAsStructure _ f@(tnc -> (FApply _, [a]))         = [True]
     subAsStructure s f@(tnc -> (FSet, ch))              = replicate (length ch) s
     subAsStructure _ f@(tnc -> (FSeq, ch))              = replicate (length ch) False
     subAsStructure _ f@(tnc -> (FLoop, ch))             = replicate (length ch) False
@@ -537,6 +538,7 @@ chaseLambda env _ msg path f = chaseApplied env msg path f
           | i `elem` path = return [f]
           | otherwise     = fichase env f >>= chaseApplied env msg (i:path)
 
+        chaseApplied env msg path (tnc -> (FApply _, [sf]))         = chaseApplied env msg path sf
         chaseApplied env msg path (tnc -> (FApply _, [_,_,_,_,sf])) = chaseApplied env msg path sf
         chaseApplied env msg path (tnc -> (FSet, rfl)) = mapM (chaseApplied env msg path) rfl >>= return . concat
         chaseApplied _ msg _ f = throwE $ PT.boxToString $ fErr f %$ (if null msg then [] else [T.pack "on"]) %$ msg
@@ -551,7 +553,7 @@ simplifyApply fienv extInfOpt defer eOpt ef lrf arf = do
   (manyLerf, nenv) <- foldM (doSimplify upOpt arf') ([], fienv) manyLrf
 
   case manyLerf of
-    []          -> applyLambdaErr lrf
+    []          -> applyLambdaErr "return" lrf
     [(nef,nrf)] -> return (nef, nrf, nenv)
     _           -> let (efl, rfl) = unzip manyLerf
                    in return (fset efl, fset rfl, nenv)
@@ -571,7 +573,8 @@ simplifyApply fienv extInfOpt defer eOpt ef lrf arf = do
             (nbrf,n3eacc) <- fisub n2eacc extInfOpt True  i ifbv brf p
             let appef = fromJust $ fexec $ ef ++ [Just nbef]
             --let apprf = fapply (Just imv) lrf arf (fromJust $ fexec ef) (fromJust $ fexec [Just nbef]) nbrf
-            let apprf = nbrf
+            --let apprf = nbrf
+            let apprf = fapplyRT (Just imv) nbrf
             return (facc++[(appef, apprf)], n3eacc)
 
           Nothing -> do
@@ -583,7 +586,8 @@ simplifyApply fienv extInfOpt defer eOpt ef lrf arf = do
             (nbrf,n2eacc) <- fisub neacc extInfOpt True  i arf' brf ptemp
             let appef = fromJust $ fexec $ ef ++ [Just nbef]
             --let apprf = fapply Nothing lrf arf (fromJust $ fexec ef) (fromJust $ fexec [Just nbef]) nbrf
-            let apprf = nbrf
+            --let apprf = nbrf
+            let apprf = fapplyRT Nothing nbrf
             return (facc++[(appef,apprf)], n2eacc)
 
         -- Handle recursive functions and forward declarations by using an opaque return value.
@@ -599,7 +603,7 @@ simplifyApply fienv extInfOpt defer eOpt ef lrf arf = do
         (FApply _, [_,_]) -> let appef = fromJust $ fexec ef
                              in return (facc ++ [(appef, fapplyExt lrf arf)], eacc)
 
-        _ -> applyLambdaErr lrf
+        _ -> applyLambdaErr "match" lrf
 
     uidOf  e = maybe (uidErr e) (\case {(EUID u) -> return u ; _ ->  uidErr e}) $ e @~ isEUID
     uidErr e = throwE $ PT.boxToString $ [T.pack "No uid found for fsimplifyapp on "] %+ PT.prettyLines e
@@ -624,8 +628,8 @@ simplifyApply fienv extInfOpt defer eOpt ef lrf arf = do
     exprErr = maybe [] (\e -> PT.prettyLines e) eOpt
     argPErr e = throwE $ PT.boxToString $ [T.pack "No argument provenance found on:"] %$ PT.prettyLines e
 
-    applyLambdaErr :: forall a. K3 Effect -> Except Text a
-    applyLambdaErr f = throwE $ PT.boxToString $ [T.pack "Invalid apply lambda effect: "]
+    applyLambdaErr :: forall a. String -> K3 Effect -> Except Text a
+    applyLambdaErr tg f = throwE $ PT.boxToString $ [T.pack $ "Invalid apply lambda effect (" ++ tg ++ "): "]
                              %$ exprErr %$ [T.pack "Effect:"] %$ PT.prettyLines f
 
 simplifyApplyM :: Maybe (ExtInferF a, a) -> Bool -> Maybe (K3 Expression) -> [Maybe (K3 Effect)] -> K3 Effect -> K3 Effect
@@ -1169,6 +1173,9 @@ inferEffects extInfOpt expr = do
 
             transform True mvl (tnc -> (FApply (Just _), [_, _, _, _, rf])) = transform True mvl rf
 
+            transform False mvl (tnc -> (FApply (Just _), [rf])) = return fnone
+            transform True mvl (tnc -> (FApply (Just _), [rf])) = transform True mvl rf
+
             -- Try to simplify any external FApply.
             transform asStructure mvl (tnc -> (FApply Nothing, [l, a, ief, bef, r])) = do
               nl <- transform True mvl l
@@ -1193,6 +1200,10 @@ inferEffects extInfOpt expr = do
                                              %$ PT.prettyLines c
                                              %$ PT.prettyLines d
                                              %$ PT.prettyLines r
+
+            transform asStructure mvl (tnc -> (FApply Nothing, [r])) = do
+              nr <- transform True mvl r
+              return $ fapplyRT Nothing nr
 
             transform False mvl (tnc -> (FScope _, [ief, bef, pef, _])) = do
               nief <- transform False mvl ief
@@ -1240,6 +1251,7 @@ inferEffects extInfOpt expr = do
       let chStructure = case tnc pf of
                           (FApply _, ch@[lf, af, ief, bef, sf]) -> Just $ zip [True, True, False, False, True] ch
                           (FApply _, ch@[lf, af]) -> Just $ zip [True, True] ch
+                          (FApply _, ch@[rf]) -> Just $ zip [True] ch
                           _ -> Nothing
       nchOpt <- maybe (return origChOpt) (mapM (\(s,c) -> pruneAndSimplify "appchsf" Nothing s pmvl $ Just c)) chStructure
       return $ Just $ replaceCh pf $ catMaybes nchOpt
@@ -1341,6 +1353,7 @@ simplifyEffects removeTopLevel f =
                                         5 -> return (rm, [False, False, True, True, False])
                                         3 -> return (rm, [True, True, False])
                                         2 -> return (rm, [False, False])
+                                        1 -> return (rm, [False])
                                         _ -> errorM $ PT.boxToString $ [T.pack "Invalid app effect"] %$ PT.prettyLines f
     remove rm f' = return (rm, replicate (length $ children f') rm)
 
