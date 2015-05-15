@@ -334,8 +334,8 @@ tvdependentset tve_before tve_after =
    tvbs = tvfree tve_before
 
 -- Return the list of type variables in t (possibly with duplicates)
-freevars :: K3 QType -> [QTVarId]
-freevars t = runIdentity $ foldMapTree extractVars [] t
+typevars :: K3 QType -> [QTVarId]
+typevars t = runIdentity $ foldMapTree extractVars [] t
   where
     extractVars _ (tag -> QTVar v) = return [v]
     extractVars chAcc _ = return $ concat chAcc
@@ -419,8 +419,8 @@ newtv = do
 
 
 -- Deep substitute, throughout type structure
-tvsub :: K3 QType -> TInfM (K3 QType)
-tvsub qt = acyclicSub [] qt
+tvsub :: Bool -> K3 QType -> TInfM (K3 QType)
+tvsub evalLower qt = acyclicSub [] qt
   where acyclicSub path t@(tag -> QTVar v)
           | v `elem` path = return t
           | otherwise = getTVE >>= \tve ->
@@ -434,13 +434,28 @@ tvsub qt = acyclicSub [] qt
 
         acyclicSub path t@(tag -> QTOperator QTLower) = do
           ch <- mapM (acyclicSub path) $ children t
-          if null ch then serrorM "Invalid qtype lower operator"
-          else if null $ concatMap freevars ch then tvopeval QTLower ch >>= flip extendAnns t
-          else return $ foldl (@+) (tlower ch) $ annotations t
+          if null ch
+            then serrorM "Invalid qtype lower operator"
+            else rebuildLowerCh t ch
 
         acyclicSub _ t = return t
         extendAnns t1 t2 = return $ foldl (@+) t1 $ annotations t2 \\ annotations t1
 
+        rebuildLowerCh t ch = do
+          let tvars = map tvar $ concatMap typevars ch
+          (_, fv) <- foldM partitionBoundV ([], []) tvars
+          if (null tvars || (evalLower && null fv))
+            then tvopeval QTLower ch >>= flip extendAnns t
+            else return $ foldl (@+) (tlower ch) $ annotations t
+
+        partitionBoundV (bvacc,vacc) t@(tag -> QTVar _) = do
+          tve <- getTVE
+          let bt = tvchase tve t
+          case tag bt of
+            QTVar _ -> return (bvacc, vacc++[bt])
+            _ -> return (bvacc++[t], vacc)
+
+        partitionBoundV _ _ = serrorM "Invalid type var during tvsub"
 
 -- | Lower bound computation for numeric and record types.
 --   This function does not preserve annotations.
@@ -479,8 +494,8 @@ tvshallowLowerRcr rcr a b =
 
       -- | Function type lower bounds
       (QTCon QTFunction, QTCon QTFunction) -> do
-        arga  <- tvsub $ head $ children a
-        argb  <- tvsub $ head $ children b
+        arga  <- tvsub False $ head $ children a
+        argb  <- tvsub False $ head $ children b
         retlb <- rcr (last $ children a) $ last $ children b
         if arga /= argb
           then lowerError a b
@@ -573,6 +588,7 @@ consistentTLower ch =
       (_, _)   -> lowerBoundWithVars varCh nonvarCh
 
   where
+    {-
     lowerBoundWithVars vars extraLBTypes = do
       (boundTypes, freeVars) <- foldM partitionBoundV ([],[]) vars
       lb <- tvopevalShallow QTLower (boundTypes ++ extraLBTypes)
@@ -585,6 +601,22 @@ consistentTLower ch =
       case tag bt of
         QTVar _ -> return (tacc, vacc++[bt])
         _ -> return (tacc++[bt], vacc)
+
+    partitionBoundV _ _ = serrorM "Invalid type var during lower qtype merge"
+    -}
+
+    lowerBoundWithVars vars extraLBTypes = do
+      (boundTypes, boundVars, freeVars) <- foldM partitionBoundV ([],[],[]) vars
+      lb <- tvopevalShallow QTLower (boundVars ++ extraLBTypes)
+      nch <- foldM unifyFreeVar [lb] $ nub freeVars
+      return $ tlower nch
+
+    partitionBoundV (tacc,bvacc,vacc) t@(tag -> QTVar _) = do
+      tve <- getTVE
+      let bt = tvchase tve t
+      case tag bt of
+        QTVar _ -> return (tacc, bvacc, vacc++[bt])
+        _ -> return (tacc++[bt], bvacc++[t], vacc)
 
     partitionBoundV _ _ = serrorM "Invalid type var during lower qtype merge"
 
@@ -627,7 +659,7 @@ unifyv v t = getTVE >>= \tve -> do
     then do { localLog $ prettyTaggedSPair "unifyv noc" v t;
               modify $ mtive $ \tve' -> tvext tve' v t }
 
-    else do { subQt <- tvsub t;
+    else do { subQt <- tvsub False t;
               boundQt <- return $ substituteSelfQt t;
               localLog $ prettyTaggedTriple (unwords ["unifyv yoc", show v]) t subQt boundQt;
               modify $ mtive $ \tve' -> tvext (tvmap tve' substituteSelfQt) v boundQt; }
@@ -927,7 +959,7 @@ unifyWithOverrideM qt1 qt2 errf =
 --   on variable access.
 instantiate :: QPType -> TInfM (K3 QType)
 instantiate (QPType tvs t) = withFreshTVE $ do
-  (Node (tg :@: anns) ch) <- tvsub t
+  (Node (tg :@: anns) ch) <- tvsub False t
   return $ Node (tg :@: filter (not . isQTQualified) anns) ch
  where
    wrapWithTVE tve_before tve_after m =
@@ -954,9 +986,9 @@ generalize ta = do
  tve_before <- getTVE
  t          <- ta
  tve_after  <- getTVE
- t'         <- tvsub t
+ t'         <- tvsub False t
  let tvdep = tvdependentset tve_before tve_after
- let fv    = filter (not . tvdep) $ nub $ freevars t'
+ let fv    = filter (not . tvdep) $ nub $ typevars t'
  return $ QPType fv t
  -- ^ We return an unsubstituted type to preserve type variables
  --   for late binding based on overriding unification performed
@@ -972,7 +1004,7 @@ substituteDeepQt e = mapTree subNode e
           nanns <- mapM subAnns anns
           return (Node (tg :@: nanns) ch)
 
-        subAnns (EQType qt) = tvsub qt >>= return . EQType
+        subAnns (EQType qt) = tvsub True qt >>= return . EQType
         subAnns x = return x
 
 {- Type initialization -}
