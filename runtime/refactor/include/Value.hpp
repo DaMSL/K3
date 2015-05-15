@@ -6,23 +6,26 @@
 #include <utility>
 
 #include "Common.hpp"
-#include "ProgramContext.hpp"
 
 using std::shared_ptr;
 using std::make_shared;
+using std::unique_ptr;
+
+class NativeValue;
 
 // Interface
-// Can contain either native or packed values.
-// Virtual function to dispatch based on type (native or packed)
+// Can contain either native, packed, or sentinel values.
 class Value {
  public:
-  virtual void dispatch(ProgramContext&, TriggerID) = 0;
+  virtual NativeValue* asNative() = 0;
 };
 
 // Boxes a native C++ value that is casted to the
 // correct native type once dispatched in the ProgramContext
 class NativeValue : public Value {
  public:
+  virtual NativeValue* asNative();
+
   template <class T>
   T* as() {
     return static_cast<T*>(this->materialize());
@@ -32,8 +35,6 @@ class NativeValue : public Value {
   const T* asConst() const {
     return static_cast<const T*>(this->materializeConst());
   }
-
-  virtual void dispatch(ProgramContext& pc, TriggerID t);
 
  protected:
   virtual void* materialize() = 0;
@@ -60,27 +61,27 @@ class TNativeValue : public NativeValue {
 };
 
 // Interface
-// Packed C++ value that is unpacked and casted to a native type
-// once dispatched in the ProgramContext
+// Packed C++ value that is unpacked and casted to a native type when dispatched
 // Holds a handle to a Codec to enable deferred unpacking
 class Codec;
 class PackedValue : public Value {
  public:
-  PackedValue(Buffer b, shared_ptr<Codec> c);
-  virtual void dispatch(ProgramContext& pc, TriggerID trig);
+  PackedValue(unique_ptr<Buffer> b, shared_ptr<Codec> c);
+  virtual NativeValue* asNative();
+  const char* buf() const;
+  size_t length() const;
 
  protected:
-  const char* buf();
-  size_t length();
   shared_ptr<Codec> codec_;
-  Buffer buffer_;
+  unique_ptr<NativeValue> native_;
+  unique_ptr<Buffer> buffer_;
 };
 
-
+// Sentinel value throws EndofProgram exception when dispatched
 class SentinelValue : public Value {
-  public:
-    SentinelValue() { }
-    virtual void dispatch(ProgramContext& pc, TriggerID trig);
+ public:
+  SentinelValue();
+  virtual NativeValue* asNative();
 };
 
 #endif

@@ -168,8 +168,8 @@ class Peer {
 // Interface
 // Converts between binary data and NativeValues
 class Codec {
-  virtual Buffer pack(NativeValue)
-  virtual NativeValue unpack(char*, length)
+  virtual unique_ptr<PackedValue> pack(const NativeValue&)
+  virtual unique_ptr<NativeValue> unpack(const PackedValue&)
 }
 class Endpoint {
   void notifySubscribers(EventType, NativeValue)

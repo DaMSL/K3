@@ -2,35 +2,30 @@
 #include "Common.hpp"
 #include "Value.hpp"
 
-const char* foo(std::vector<char>& v) {
-  std::vector<char> v2 = std::move(v);
-  return v2.data();
+NativeValue* NativeValue::asNative() {
+  return this;
 }
 
-void NativeValue::dispatch(ProgramContext& pc, TriggerID t) {
-  pc.processNative(t, *this);
-  return;
-}
-
-void PackedValue::dispatch(ProgramContext& pc, TriggerID t) {
-  pc.processNative(t, *codec_->unpack(buf(), length()));
-  return;
-}
-
-// TODO move buffer in
-PackedValue::PackedValue(Buffer b, shared_ptr<Codec> c) {
-  buffer_ = b;
+PackedValue::PackedValue(unique_ptr<Buffer> b, shared_ptr<Codec> c) {
+  buffer_ = std::move(b);
   codec_ = c;
 }
 
-const char* PackedValue::buf() {
-  return buffer_.data();
+NativeValue* PackedValue::asNative() {
+  native_ = codec_->unpack(*this);
+  return native_.get();
 }
 
-size_t PackedValue::length() {
-  return buffer_.size();
+const char* PackedValue::buf() const {
+  return buffer_->data();
 }
 
-void SentinelValue::dispatch(ProgramContext& pc, TriggerID t) {
+size_t PackedValue::length() const {
+  return buffer_->size();
+}
+
+SentinelValue::SentinelValue() { }
+
+NativeValue* SentinelValue::asNative() {
   throw EndOfProgramException();
 }

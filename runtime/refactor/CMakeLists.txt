@@ -25,6 +25,7 @@ add_subdirectory(include/external/gtest-1.7.0)
 enable_testing()
 
 set (srcs src/ProgramContext.cpp
+          src/Message.cpp
           src/Value.cpp
     )
 
