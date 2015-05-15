@@ -34,4 +34,4 @@ end
 `#{File.join(mosaic_path, "tests", "auto_test.py")} --no-interp -d -f #{target}`
 
 # compile
-`#{File.join(script_path, "..", "run", "compile_brew.sh")} --fstage cexclude=Optimize #{File.join("temp", k3name)}`
+`#{File.join(script_path, "..", "run", "compile.sh")} --fstage cexclude=Optimize #{File.join("temp", k3name)}`
