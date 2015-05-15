@@ -1,6 +1,8 @@
 #ifndef K3_CODEC
 #define K3_CODEC
 
+// Codec is an interface for conversion between Packed and Native Values.
+
 #include <memory>
 
 #include "Value.hpp"
@@ -8,7 +10,6 @@
 
 using std::unique_ptr;
 using std::make_unique;
-
 using std::make_shared;
 
 class Codec {

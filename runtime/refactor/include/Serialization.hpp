@@ -1,6 +1,8 @@
 #ifndef K3_SERIALIZATION
 #define K3_SERIALIZATION
 
+// Serialization between Native C++ types and Binary data
+
 #include <boost/archive/binary_oarchive.hpp>
 #include <boost/archive/binary_iarchive.hpp>
 #include <boost/iostreams/stream_buffer.hpp>
@@ -16,18 +18,12 @@ namespace io = boost::iostreams;
 typedef io::stream<io::back_insert_device<Buffer> > OByteStream;
 
 template <class T>
-void pack_into(const T& t, Buffer& buf) {
+Buffer pack(const T& t) {
+  Buffer buf;
   OByteStream output_stream(buf);
   boost::archive::binary_oarchive oa(output_stream);
   oa << t;
   output_stream.flush();
-  return;
-}
-
-template <class T>
-Buffer pack(const T& t) {
-  Buffer buf;
-  pack_into(t, buf);
   return buf;
 }
 
@@ -47,6 +43,6 @@ T unpack(const Buffer& buf) {
   return unpack<T>(&buf[0], buf.size());
 }
 
-}
+}  // namespace Serialization
 
 #endif

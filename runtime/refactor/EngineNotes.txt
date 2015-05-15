@@ -1,3 +1,11 @@
+// IMPLEMENTED: see *.hpp
+
+Value (Native, Packed, Sentinel) 
+Codec (BoostCodec)
+Message 
+Queue
+ProgramContext (Dummy implementation)
+
 //***********************************
 // Top-Level Engine
 //***********************************
@@ -103,33 +111,7 @@ class FileHandle {
 // K3 Values
 //***********************************
 
-// Interface
-// Can contain either native or packed values.
-// Virtual function to dispatch based on type (native or packed)
-class Value {
-  virtual void dispatch(ProgramContext, TriggerID)
-}
-
-// Boxes a native C++ value that is casted to the
-// correct native type once dispatched in the ProgramContext
-class NativeValue : public Value {
- public:
-  template <class T>
-  T as()
-
-  virtual void dispatch(ProgramContext pc, TriggerID trig)
-}
-
-// Interface
-// Packed C++ value that is unpacked and casted to a native type
-// once dispatched in the ProgramContext
-// Holds a handle to a Codec to enable deferred unpacking
-class PackedValue : public Value {
-  NativeValue unpack() { codec_->unpack(buf()) }
-
-  virtual (char*, length) buf()
-  virtual void dispatch(ProgramContext pc, TriggerID trig)
-}
+// TODO describe current implementation in Value.hpp
 
 //***********************************
 // K3 Messages
@@ -139,10 +121,10 @@ class PackedValue : public Value {
 // That will be processed by a ProgramContext
 // Can hold both Native and Packed values
 class Message() {
-  Address sourceAddress()
-  Address destinationAddress()
-  TriggerID destinationTrigger()
-  Value payload()
+  Address source()
+  Address destination()
+  TriggerID trigger()
+  NativeValue* value()
 }
 
 //***********************************

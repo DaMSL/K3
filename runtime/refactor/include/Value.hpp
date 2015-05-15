@@ -15,13 +15,17 @@ class NativeValue;
 
 // Interface
 // Can contain either native, packed, or sentinel values.
+// asNative() provides a NativeValue pointer that is guaranteed to be valid
+// for the lifetime of the Value
 class Value {
  public:
   virtual NativeValue* asNative() = 0;
 };
 
-// Boxes a native C++ value that is casted to the
-// correct native type once dispatched in the ProgramContext
+// Boxes a native C++ value.
+// The as<T>() and asConst<T>() functions enable casting to (any) native type.
+// A ProgramContext knows the true underlying type based on the trigger
+// that this value is intended for.
 class NativeValue : public Value {
  public:
   virtual NativeValue* asNative();
@@ -46,7 +50,7 @@ template <class T>
 class TNativeValue : public NativeValue {
  public:
   template<class X>
-  TNativeValue(X&& x) : value_(std::forward<X>(x)) { }
+  explicit TNativeValue(X&& x) : value_(std::forward<X>(x)) { }
 
  protected:
   virtual void* materialize() {
@@ -60,9 +64,10 @@ class TNativeValue : public NativeValue {
   T value_;
 };
 
-// Interface
-// Packed C++ value that is unpacked and casted to a native type when dispatched
+// Owns a buffer that represents a packed C++ value.
 // Holds a handle to a Codec to enable deferred unpacking
+// asNative() will unpack the buffer, producing a native value
+// and destroy the underlying buffer.
 class Codec;
 class PackedValue : public Value {
  public:
@@ -77,7 +82,8 @@ class PackedValue : public Value {
   unique_ptr<Buffer> buffer_;
 };
 
-// Sentinel value throws EndofProgram exception when dispatched
+// Sentinel value throws EndofProgram exception
+// when converted to NativeValue
 class SentinelValue : public Value {
  public:
   SentinelValue();

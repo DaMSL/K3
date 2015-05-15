@@ -1,9 +1,13 @@
 #ifndef K3_COMMON
 #define K3_COMMON
 
-#include <vector>
+// Common contains common declarations and utilities for the K3 Runtime.
 
-#include <boost/asio.hpp>
+#include <vector>
+#include <string>
+#include <tuple>
+
+#include "boost/asio.hpp"
 
 typedef int TriggerID;
 typedef std::vector<char> Buffer;
@@ -21,7 +25,7 @@ inline Address make_address(unsigned long host, unsigned short port) {
 
 class EndOfProgramException: public std::runtime_error {
  public:
-  EndOfProgramException() : runtime_error( "Peer terminated." ) { }
+  EndOfProgramException() : runtime_error("Peer terminated.") { }
 };
 
 #endif

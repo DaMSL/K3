@@ -24,8 +24,9 @@ find_library(YAMLCPP_LIBRARY
 add_subdirectory(include/external/gtest-1.7.0)
 enable_testing()
 
-set (srcs src/ProgramContext.cpp
-          src/Message.cpp
+set (srcs src/Message.cpp
+          src/Peer.cpp 
+          src/ProgramContext.cpp
           src/Value.cpp
     )
 
@@ -40,6 +41,7 @@ set (tests test/Codec.cpp
            test/Value.cpp
            test/DummyContext.cpp
            test/Queue.cpp
+           test/Peer.cpp
     )
 add_executable(Tests ${tests} test/Main.cpp)
 target_link_libraries(Tests ${test_link_libs})

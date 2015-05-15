@@ -12,16 +12,27 @@ PackedValue::PackedValue(unique_ptr<Buffer> b, shared_ptr<Codec> c) {
 }
 
 NativeValue* PackedValue::asNative() {
-  native_ = codec_->unpack(*this);
+  if (!native_) {
+    native_ = codec_->unpack(*this);
+    buffer_.reset();
+  }
   return native_.get();
 }
 
 const char* PackedValue::buf() const {
-  return buffer_->data();
+  if (buffer_) {
+    return buffer_->data();
+  } else {
+    throw std::runtime_error("PackedValue: buffer has been destroyed");
+  }
 }
 
 size_t PackedValue::length() const {
-  return buffer_->size();
+  if (buffer_) {
+    return buffer_->size();
+  } else {
+    throw std::runtime_error("PackedValue: buffer has been destroyed");
+  }
 }
 
 SentinelValue::SentinelValue() { }
