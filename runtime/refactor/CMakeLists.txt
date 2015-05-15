@@ -32,12 +32,13 @@ set (srcs src/ProgramContext.cpp
 set (link_libs k3 ${Boost_LIBRARIES} ${YAMLCPP_LIBRARY})
 set (test_link_libs ${link_libs} gtest gtest_main)
 
-include_directories    (. include include/external ${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR})
+include_directories    (. include include/external ${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR} include/external/)
 add_library            (k3 ${srcs})
 
 set (tests test/Codec.cpp 
            test/Value.cpp
            test/DummyContext.cpp
+           test/Queue.cpp
     )
 add_executable(Tests ${tests} test/Main.cpp)
 target_link_libraries(Tests ${test_link_libs})

@@ -1,6 +1,7 @@
 #ifndef K3_VALUE
 #define K3_VALUE
 
+#include <exception>
 #include <memory>
 #include <utility>
 
@@ -73,6 +74,13 @@ class PackedValue : public Value {
   size_t length();
   shared_ptr<Codec> codec_;
   Buffer buffer_;
+};
+
+
+class SentinelValue : public Value {
+  public:
+    SentinelValue() { }
+    virtual void dispatch(ProgramContext& pc, TriggerID trig);
 };
 
 #endif

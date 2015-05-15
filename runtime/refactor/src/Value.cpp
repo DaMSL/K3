@@ -1,5 +1,11 @@
 #include "Codec.hpp"
+#include "Common.hpp"
 #include "Value.hpp"
+
+const char* foo(std::vector<char>& v) {
+  std::vector<char> v2 = std::move(v);
+  return v2.data();
+}
 
 void NativeValue::dispatch(ProgramContext& pc, TriggerID t) {
   pc.processNative(t, *this);
@@ -23,4 +29,8 @@ const char* PackedValue::buf() {
 
 size_t PackedValue::length() {
   return buffer_.size();
+}
+
+void SentinelValue::dispatch(ProgramContext& pc, TriggerID t) {
+  throw EndOfProgramException();
 }
