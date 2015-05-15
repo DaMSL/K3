@@ -1,4 +1,7 @@
+// Test the DummyContext's ability to dispatch both Packed and Native values
+
 #include <memory>
+#include <string>
 
 #include "gtest/gtest.h"
 
@@ -11,6 +14,9 @@ using std::unique_ptr;
 using std::make_unique;
 using std::shared_ptr;
 using std::make_shared;
+
+// Dispatch Messages containing NativeValues
+// Ensure that the state maintained by the DummyContext is updated properly
 TEST(DummyContext, DispatchNative) {
   shared_ptr<DummyState> s1 = make_shared<DummyState>();
   DummyContext context(s1);
@@ -18,19 +24,21 @@ TEST(DummyContext, DispatchNative) {
 
   int i = 100;
   unique_ptr<Value> v = make_unique<TNativeValue<int>>(i);
-  Message m1 = Message(me, me, 1, std::move(v));
+  auto m1 = make_unique<Message>(me, me, 1, std::move(v));
 
-  context.dispatch(m1);
+  context.dispatch(std::move(m1));
   ASSERT_EQ(i, context.state_->my_int_);
 
   std::string s = "Hello!";
   unique_ptr<NativeValue> v2 = make_unique<TNativeValue<std::string>>(s);
-  Message m2 = Message(me, me, 2, std::move(v2));
+  auto m2 = make_unique<Message>(me, me, 2, std::move(v2));
 
-  context.dispatch(m2);
+  context.dispatch(std::move(m2));
   ASSERT_EQ(s, context.state_->my_string_);
 }
 
+// Dispatch Messages containing PackedValues
+// Ensure that the state maintained by the DummyContext is updated properly
 TEST(DummyContext, DispatchPacked) {
   unique_ptr<Codec> cdec = make_unique<BoostCodec<int>>();
   shared_ptr<DummyState> s1 = make_shared<DummyState>();
@@ -40,9 +48,18 @@ TEST(DummyContext, DispatchPacked) {
   int i = 100;
   unique_ptr<NativeValue> v = make_unique<TNativeValue<int>>(i);
   unique_ptr<Value> b = cdec->pack(*v);
-  
-  Message m = Message(me, me, 1, std::move(b));
 
-  context.dispatch(m);
+  auto m = make_unique<Message>(me, me, 1, std::move(b));
+
+  context.dispatch(std::move(m));
   ASSERT_EQ(i, context.state_->my_int_);
+
+  unique_ptr<Codec> cdec2 = make_unique<BoostCodec<std::string>>();
+  std::string s = "Hello!";
+  unique_ptr<NativeValue> v2 = make_unique<TNativeValue<std::string>>(s);
+  unique_ptr<Value> b2 = cdec2->pack(*v2);
+  auto m2 = make_unique<Message>(me, me, 2, std::move(b2));
+
+  context.dispatch(std::move(m2));
+  ASSERT_EQ(s, context.state_->my_string_);
 }

@@ -37,8 +37,7 @@ set (test_link_libs ${link_libs} gtest gtest_main)
 include_directories    (. include include/external ${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR} include/external/)
 add_library            (k3 ${srcs})
 
-set (tests test/Codec.cpp 
-           test/Value.cpp
+set (tests test/Value.cpp
            test/DummyContext.cpp
            test/Queue.cpp
            test/Peer.cpp

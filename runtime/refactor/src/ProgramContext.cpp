@@ -4,17 +4,13 @@
 #include "Value.hpp"
 #include "ProgramContext.hpp"
 
-void ProgramContext::dispatch(unique_ptr<Message> m) {
-  dispatch(*m);
-}
-
 DummyContext::DummyContext(shared_ptr<DummyState> s) {
   state_ = s;
 }
 
-void DummyContext::dispatch(const Message& m) {
-  TriggerID t = m.trigger();
-  auto v = m.value();
+void DummyContext::dispatch(unique_ptr<Message> m) {
+  TriggerID t = m->trigger();
+  auto v = m->value();
   if (t == 1) {
     int i = *v->as<int>();
     intTrigger(i);

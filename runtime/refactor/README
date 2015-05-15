@@ -1,0 +1,4 @@
+To build the tests, create an empty 'build' directory and run 'cmake .. && make'.
+This will produce an executable: build/bin/Tests
+
+Lint check with tools/cpplint.sh
