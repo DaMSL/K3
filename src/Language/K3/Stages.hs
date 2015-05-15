@@ -518,7 +518,8 @@ mapProgramDecls passesF prog =
 
 blockMapProgramDecls :: Int -> [ProgramTransform] -> (K3 Declaration -> [ProgramTransform]) -> ProgramTransform
 blockMapProgramDecls blockSize blockPassesF declPassesF prog =
-  (rebuild . concat <$> mapM (\p -> runBlock p) (chunksOf blockSize $ topLevelDecls prog)) >>= runPasses blockPassesF
+  let chunks = chunksOf blockSize $ topLevelDecls prog
+  in (rebuild . concat <$> mapM (\p -> runBlock p) chunks) >>= runPasses blockPassesF
  where
   runBlock :: [K3 Declaration] -> TransformM [K3 Declaration]
   runBlock ds = do
@@ -544,7 +545,7 @@ blockMapProgramDecls blockSize blockPassesF declPassesF prog =
   mergeEitherStateDecl (Left s) _ = (Left s)
   mergeEitherStateDecl _ (Left s) = (Left s)
   mergeEitherStateDecl (Right (aggState, aggDecls)) (Right (newState, newDecl)) =
-    Right (mergeTransformSt (declName newDecl) aggState newState, newDecl:aggDecls)
+    Right (mergeTransformSt (declName newDecl) aggState newState, aggDecls++[newDecl])
 
   fixD f (===) d = f d >>= \d' -> if d === d' then return d else fixD f (===) d'
 
