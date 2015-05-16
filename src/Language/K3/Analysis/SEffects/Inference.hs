@@ -456,7 +456,8 @@ fisub fienv extInfOpt asStructure i df sf p = do
       case nch of
         [lrf', argrf'] -> do
           (nef, nrf, nenv') <- simplifyApply nenv extInfOpt True Nothing [] lrf' argrf'
-          return $ debugFFApp lrf argrf lrf' argrf' nef nrf $ (nenv', nsubs, if asStructure then nrf else nef)
+          let nrf' = if asStructure then nrf else case tnc nrf of { (FApply Nothing, [_,_]) -> nrf; _ -> nef }
+          return $ debugFFApp lrf argrf lrf' argrf' nef nrf $ (nenv', nsubs, nrf')
         _ -> appSubErr f
 
       where
@@ -520,6 +521,7 @@ fisub fienv extInfOpt asStructure i df sf p = do
 
 {- Apply simplification -}
 chaseAppArg :: K3 Effect -> Except Text (K3 Effect)
+chaseAppArg (tnc -> (FApply _, [sf])) = chaseAppArg sf
 chaseAppArg (tnc -> (FApply _, [_,_,_,_,sf])) = chaseAppArg sf
 chaseAppArg (tnc -> (FScope _, [_,_,_,sf])) = chaseAppArg sf
 chaseAppArg sf = return sf
@@ -1191,7 +1193,7 @@ inferEffects extInfOpt expr = do
               (nef, nrf) <- simplifyApplyM extInfOpt True Nothing [] nl na
               return $ debugXfApp nl na nef nrf $ if asStructure then nrf else
                 case tnc nrf of
-                  (FApply Nothing, _) -> nrf
+                  (FApply Nothing, [_,_]) -> nrf
                   _ -> nef
               where debugXfApp a b c d r = if True then r else
                       flip trace r $ T.unpack $ PT.boxToString $ [T.pack $ "Transform " ++ show asStructure]
