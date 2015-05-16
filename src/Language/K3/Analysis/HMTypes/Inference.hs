@@ -439,23 +439,14 @@ tvsub evalLower qt = acyclicSub [] qt
             else rebuildLowerCh t ch
 
         acyclicSub _ t = return t
-        extendAnns t1 t2 = return $ foldl (@+) t1 $ annotations t2 \\ annotations t1
 
         rebuildLowerCh t ch = do
           let tvars = map tvar $ concatMap typevars ch
-          (_, fv) <- foldM partitionBoundV ([], []) tvars
-          if (null tvars || (evalLower && null fv))
-            then tvopeval QTLower ch >>= flip extendAnns t
-            else return $ foldl (@+) (tlower ch) $ annotations t
+          if null tvars || evalLower then tvopeval QTLower ch >>= flip extendAnns t
+          else return $ foldl (@+) (tlower ch) $ annotations t
 
-        partitionBoundV (bvacc,vacc) t@(tag -> QTVar _) = do
-          tve <- getTVE
-          let bt = tvchase tve t
-          case tag bt of
-            QTVar _ -> return (bvacc, vacc++[bt])
-            _ -> return (bvacc++[t], vacc)
+        extendAnns t1 t2 = return $ foldl (@+) t1 $ annotations t2 \\ annotations t1
 
-        partitionBoundV _ _ = serrorM "Invalid type var during tvsub"
 
 -- | Lower bound computation for numeric and record types.
 --   This function does not preserve annotations.
@@ -588,35 +579,18 @@ consistentTLower ch =
       (_, _)   -> lowerBoundWithVars varCh nonvarCh
 
   where
-    {-
     lowerBoundWithVars vars extraLBTypes = do
-      (boundTypes, freeVars) <- foldM partitionBoundV ([],[]) vars
-      lb <- tvopevalShallow QTLower (boundTypes ++ extraLBTypes)
-      nch <- foldM unifyFreeVar [lb] $ nub freeVars
-      return $ tlower nch
-
-    partitionBoundV (tacc,vacc) t@(tag -> QTVar _) = do
-      tve <- getTVE
-      let bt = tvchase tve t
-      case tag bt of
-        QTVar _ -> return (tacc, vacc++[bt])
-        _ -> return (tacc++[bt], vacc)
-
-    partitionBoundV _ _ = serrorM "Invalid type var during lower qtype merge"
-    -}
-
-    lowerBoundWithVars vars extraLBTypes = do
-      (boundTypes, boundVars, freeVars) <- foldM partitionBoundV ([],[],[]) vars
+      (boundVars, freeVars) <- foldM partitionBoundV ([],[]) vars
       lb <- tvopevalShallow QTLower (boundVars ++ extraLBTypes)
       nch <- foldM unifyFreeVar [lb] $ nub freeVars
       return $ tlower nch
 
-    partitionBoundV (tacc,bvacc,vacc) t@(tag -> QTVar _) = do
+    partitionBoundV (bacc,facc) t@(tag -> QTVar _) = do
       tve <- getTVE
       let bt = tvchase tve t
       case tag bt of
-        QTVar _ -> return (tacc, bvacc, vacc++[bt])
-        _ -> return (tacc++[bt], bvacc++[t], vacc)
+        QTVar _ -> return (bacc, facc++[bt])
+        _ -> return (bacc++[t], facc)
 
     partitionBoundV _ _ = serrorM "Invalid type var during lower qtype merge"
 
@@ -943,9 +917,10 @@ unifyWithOverrideM qt1 qt2 errf =
       tve <- getTVE
       if not (occurs v qt tve) then unifyv v qt
       else do
-        let uqt = case tag qt of
-                    QTVar _ -> tvchase tve qt
-                    _ -> qt
+        uqt <- case tag qt of
+                 QTVar _ -> return $ tvchase tve qt
+                 QTOperator QTLower -> tvopeval QTLower $ children qt
+                 _ -> return qt
         localLog $ prettyTaggedSPair "checkedUnify adding cycle" v uqt
         unifyv v uqt
 
@@ -1004,7 +979,7 @@ substituteDeepQt e = mapTree subNode e
           nanns <- mapM subAnns anns
           return (Node (tg :@: nanns) ch)
 
-        subAnns (EQType qt) = tvsub True qt >>= return . EQType
+        subAnns (EQType qt) = tvsub False qt >>= return . EQType
         subAnns x = return x
 
 {- Type initialization -}
@@ -1375,8 +1350,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
 
       where
         delayNumericQt l r
-          | or (map isQTVar   [l, r]) = return $ tlower [l,r]
-          | or (map isQTLower [l, r]) = return $ tlower $ concatMap childrenOrSelf [l,r]
+          | any (\qt -> isQTVar qt || isQTLower qt) [l, r] = return $ tlower $ concatMap childrenOrSelf [l,r]
           | otherwise = tvlower l r
 
         childrenOrSelf t@(tag -> QTOperator QTLower) = children t
@@ -1627,7 +1601,7 @@ translateExprTypes expr = mapTree translate expr >>= \e -> return $ flip addTQua
       let nch' = case tg of
                    ELetIn _ -> [flip addTQualifier (head nch) $ letTQualifier e] ++ tail nch
                    _        -> nch
-      nanns <- mapM (translateEQType $ e @~ isESpan) $ filter (not . isEType) anns
+      nanns <- mapM (translateEQType expr e $ e @~ isESpan) $ filter (not . isEType) anns
       return (Node (tg :@: nanns) nch')
 
     addTQualifier tqOpt e@(Node (tg :@: anns) ch) = maybe e (\tq -> Node (tg :@: map (inject tq) anns) ch) tqOpt
@@ -1642,8 +1616,8 @@ translateExprTypes expr = mapTree translate expr >>= \e -> return $ flip addTQua
         Just (EQType qt) -> find isQTQualified $ annotations qt
         _ -> Nothing
 
-    translateEQType spanOpt (EQType qt) = translateQType spanOpt qt >>= return . EType
-    translateEQType _ x = return x
+    translateEQType tle e spanOpt (EQType qt) = translateQType tle e spanOpt qt >>= return . EType
+    translateEQType _ _ _ x = return x
 
     translateAnnotation a = case a of
       QTMutable   -> TMutable
@@ -1651,8 +1625,8 @@ translateExprTypes expr = mapTree translate expr >>= \e -> return $ flip addTQua
       QTWitness   -> TWitness
 
 
-translateQType :: Maybe (Annotation Expression) -> K3 QType -> Except Text (K3 Type)
-translateQType spanOpt qt = mapTree translateWithMutability qt
+translateQType :: K3 Expression -> K3 Expression -> Maybe (Annotation Expression) -> K3 QType -> Except Text (K3 Type)
+translateQType toplevel_expr expr spanOpt qt = mapTree translateWithMutability qt
   where translateWithMutability ch qt'@(tag -> QTCon tg)
           | tg `elem` [QTOption, QTIndirection, QTTuple] = translate (attachToChildren ch qt') qt'
 
@@ -1680,6 +1654,10 @@ translateQType spanOpt qt = mapTree translateWithMutability qt
               in throwE $ PT.boxToString
                         $ [T.pack $ unwords $ [msg, "(", maybe "" show spanOpt, ")"]]
                         %$ PT.prettyLines qt'
+                        %$ [T.pack "On expression"]
+                        %$ PT.prettyLines expr
+                        %$ [T.pack "Toplevel expr"]
+                        %$ PT.prettyLines toplevel_expr
 
         translate _ (tag -> QTPrimitive p) = case p of
           QTBool     -> return TC.bool
