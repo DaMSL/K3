@@ -917,12 +917,20 @@ unifyWithOverrideM qt1 qt2 errf =
       tve <- getTVE
       if not (occurs v qt tve) then unifyv v qt
       else do
-        uqt <- case tag qt of
-                 QTVar _ -> return $ tvchase tve qt
-                 QTOperator QTLower -> tvopeval QTLower $ children qt
-                 _ -> return qt
-        localLog $ prettyTaggedSPair "checkedUnify adding cycle" v uqt
+        uqt <- inlineCyclicUnifyTarget tve [] qt
+        localLog $ prettyTaggedSTriple "checkedUnify adding cycle" v qt uqt
         unifyv v uqt
+
+    inlineCyclicUnifyTarget tve path qt@(tag -> QTVar v)
+      | v `elem` path = return qt
+      | otherwise = inlineCyclicUnifyTarget tve (v:path) $ tvchase tve qt
+
+    inlineCyclicUnifyTarget tve path qt@(tag -> QTOperator QTLower) = do
+      lqt <- tvopeval QTLower (children qt)
+      nch <- inlineCyclicUnifyTarget tve path lqt
+      return $ tlower [nch]
+
+    inlineCyclicUnifyTarget _ _ qt = return qt
 
     msgF Nothing  = Just $ prettyTaggedPair "unifyOvM call" qt1 qt2
     msgF (Just r) = Just $ prettyTaggedTriple "unifyOvM result" qt1 qt2 r

@@ -168,7 +168,9 @@ tunit = ttup []
 
 -- | Operator constructors
 tlower :: [K3 QType] -> K3 QType
-tlower ch = Node (QTOperator QTLower :@: []) $ nub ch
+tlower ch = Node (QTOperator QTLower :@: []) $ nub $ concatMap simplify ch
+  where simplify qt@(tag -> QTOperator QTLower) = children qt
+        simplify qt = [qt]
 
 
 -- | Annotation predicates
