@@ -423,7 +423,8 @@ variablePositionsExpr vp expr = do
       u <- uidOf e
       return (varusage bnds sc scu u [accF u acc iAcc] iAcc, iAccF iAcc)
 
-
+-- | Compute all global declarations used by the supplied list of declaration identifiers.
+--   This method returns all transitive dependencies.
 minimalProgramDecls :: [Identifier] -> K3 Declaration -> Either String [Identifier]
 minimalProgramDecls declIds prog = fixpointAcc declGlobals (declIds, declIds)
   where fixpointAcc f (acc, next) = do
