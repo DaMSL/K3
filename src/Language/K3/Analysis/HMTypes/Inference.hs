@@ -580,17 +580,17 @@ consistentTLower ch =
 
   where
     lowerBoundWithVars vars extraLBTypes = do
-      (boundVars, freeVars) <- foldM partitionBoundV ([],[]) vars
-      lb <- tvopevalShallow QTLower (boundVars ++ extraLBTypes)
+      (boundTypes, boundVars, freeVars) <- foldM partitionBoundV ([],[],[]) vars
+      lb <- tvopevalShallow QTLower (boundTypes ++ extraLBTypes)
       nch <- foldM unifyFreeVar [lb] $ nub freeVars
-      return $ tlower nch
+      return $ tlower $ nch ++ boundVars
 
-    partitionBoundV (bacc,facc) t@(tag -> QTVar _) = do
+    partitionBoundV (tacc,bacc,facc) t@(tag -> QTVar _) = do
       tve <- getTVE
       let bt = tvchase tve t
       case tag bt of
-        QTVar _ -> return (bacc, facc++[bt])
-        _ -> return (bacc++[t], facc)
+        QTVar _ -> return (tacc, bacc, facc++[bt])
+        _ -> return (tacc++[bt], bacc++[t], facc)
 
     partitionBoundV _ _ = serrorM "Invalid type var during lower qtype merge"
 
