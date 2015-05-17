@@ -15,7 +15,7 @@ import GHC.IO.Encoding
 import System.Directory (getCurrentDirectory)
 
 import qualified Options.Applicative as Options
-import Options.Applicative((<>), (<*>))
+import Options.Applicative( (<>) )
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
@@ -29,6 +29,7 @@ import Language.K3.Utils.Pretty.Syntax
 import Language.K3.Metaprogram.DataTypes
 import Language.K3.Metaprogram.Evaluation
 
+import Language.K3.Analysis.Core ( minimalProgramDecls )
 import Language.K3.Analysis.HMTypes.Inference
 
 import Language.K3.Codegen.KTrace.KTraceDB ( kTrace )
@@ -93,7 +94,10 @@ run opts = do
         Right (p,rp) -> do
           (if saveAST opts then outputAST pOpts pretty "k3ast" p else return ())
           (if saveRawAST opts then outputAST pOpts show "k3ar" p else return ())
-          printStages pOpts (p,rp)
+          let mindecls = poMinimize pOpts
+          if null mindecls
+            then printStages pOpts (p,rp)
+            else either syntaxError (printMinimal mindecls) $ minimalProgramDecls mindecls p
 
     -- Compilation dispatch.
     compile cOpts prog = do
@@ -158,6 +162,10 @@ run opts = do
       where sep = replicate 20 '='
 
     prettyReport lg npE = return (npE >>= return . (second $ (lg ++) . prettyLines))
+
+    printMinimal userdecls reqdecls = do
+      putStrLn $ unwords $ ["Declarations needed for:"] ++ userdecls
+      putStrLn $ unlines reqdecls
 
     outputAST popts toStr ext p = do
       cwd <- getCurrentDirectory

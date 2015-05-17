@@ -7,6 +7,7 @@
 module Language.K3.Analysis.Core where
 
 import Control.Arrow
+import Control.Monad
 import Data.Bits
 import Data.Bits.Extras
 import Data.Char
@@ -421,6 +422,18 @@ variablePositionsExpr vp expr = do
     rt (sc,scu) (unzip -> (acc, iAcc)) e bnds accF iAccF = do
       u <- uidOf e
       return (varusage bnds sc scu u [accF u acc iAcc] iAcc, iAccF iAcc)
+
+
+minimalProgramDecls :: [Identifier] -> K3 Declaration -> Either String [Identifier]
+minimalProgramDecls declIds prog = fixpointAcc declGlobals (declIds, declIds)
+  where fixpointAcc f (acc, next) = do
+          deltaAcc <- foldM f [] next
+          let nacc = nub $ acc ++ deltaAcc
+          if nacc == acc then return acc else fixpointAcc f (nacc, deltaAcc)
+
+        declGlobals acc id = foldNamedDeclExpression id extractGlobals acc prog >>= return . fst
+        extractGlobals acc e = return (acc ++ freeVariables e, e)
+
 
 instance Pretty TrIndex where
   prettyLines (Node (tg :@: _) ch) = [showbv tg] ++ drawSubTrees ch

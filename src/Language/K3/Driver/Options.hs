@@ -59,7 +59,8 @@ data CompileStage = SCompile (Maybe CompilerSpec)
 
 -- | Parsing options.
 data ParseOptions = ParseOptions { parsePrintMode :: PrintMode
-                                 , poStages       :: CompileStages }
+                                 , poStages       :: CompileStages
+                                 , poMinimize     :: [String] }
                     deriving (Eq, Read, Show)
 
 -- | Printing specification.
@@ -145,8 +146,14 @@ data Verbosity
 -- | Utility functions for options.
 
 -- | Constructs a path list from a string of colon-separated paths.
+delimitedList :: String -> String -> [String]
+delimitedList sep = splitOn sep
+
 pathList :: String -> [String]
-pathList = splitOn ":"
+pathList = delimitedList ":"
+
+commaSepList :: String -> [String]
+commaSepList = delimitedList ","
 
 parseKVL :: String -> String -> String -> String -> [(String, String)]
 parseKVL sepSym eqSym keyPrefix s = catMaybes $ map kvPair $ splitOn sepSym s
@@ -223,7 +230,7 @@ compileStagesOpt = extractStageAndSpec . keyValList "" <$> strOption (
 
 -- | Parse mode
 parseOptions :: Parser Mode
-parseOptions = Parse <$> ( ParseOptions <$> printModeOpt "" <*> compileStagesOpt )
+parseOptions = Parse <$> ( ParseOptions <$> printModeOpt "" <*> compileStagesOpt <*> minimizeOpt )
 
 -- | Print mode flags
 printModeOpt :: String -> Parser PrintMode
@@ -246,6 +253,13 @@ astPrintOpt astDefault = extract . keyValList "" <$> strOption (
 syntaxPrintOpt :: Parser PrintMode
 syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
                                     <> help "Print syntax output" )
+
+minimizeOpt :: Parser [String]
+minimizeOpt = commaSepList <$> strOption (
+                   long "minimaldecls"
+                <> value ""
+                <> metavar "MINIMALDECLS"
+                <> help "Print minimal declarations needed for compilation" )
 
 {- Compilation mode options -}
 
