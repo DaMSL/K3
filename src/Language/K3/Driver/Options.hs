@@ -255,7 +255,7 @@ syntaxPrintOpt = flag' PrintSyntax (   long "syntax"
                                     <> help "Print syntax output" )
 
 minimizeOpt :: Parser [String]
-minimizeOpt = commaSepList <$> strOption (
+minimizeOpt = (\s -> if null s then [] else commaSepList s) <$> strOption (
                    long "minimaldecls"
                 <> value ""
                 <> metavar "MINIMALDECLS"
