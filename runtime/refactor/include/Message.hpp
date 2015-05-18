@@ -16,7 +16,7 @@ class Message {
   Address source() const;
   Address destination() const;
   TriggerID trigger() const;
-  NativeValue* value() const;
+  Value* value() const;
 
  protected:
   Address source_;

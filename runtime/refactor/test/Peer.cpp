@@ -16,8 +16,7 @@ using std::make_unique;
 // Run the peers event loop using only native values
 TEST(Peer, SimpleLoop) {
   Address me = make_address("127.0.0.1", 30000);
-  shared_ptr<DummyState> s1 = make_shared<DummyState>();
-  Peer peer(make_unique<DummyContext>(s1));
+  Peer<DummyContext> peer;
   peer.run();
 
   for (int i = 0; i < 100; i++) {
@@ -29,15 +28,15 @@ TEST(Peer, SimpleLoop) {
   peer.enqueue(make_unique<Message>(me, me, -1, std::move(v)));
 
   peer.join();
-  ASSERT_EQ(99, s1->my_int_);
+  DummyContext* dc = dynamic_cast<DummyContext*>(peer.context());
+  ASSERT_EQ(99, dc->state_->my_int_);
 }
 
 // Run the peers event loop using a combination of packed and native values
 TEST(Peer, NativeAndPackedLoop) {
   unique_ptr<Codec> cdec = make_unique<BoostCodec<int>>();
   Address me = make_address("127.0.0.1", 30000);
-  shared_ptr<DummyState> s1 = make_shared<DummyState>();
-  Peer peer(make_unique<DummyContext>(s1));
+  Peer<DummyContext> peer;
   peer.run();
 
   for (int i = 0; i < 100; i++) {
@@ -55,17 +54,16 @@ TEST(Peer, NativeAndPackedLoop) {
   peer.enqueue(make_unique<Message>(me, me, -1, std::move(v)));
 
   peer.join();
-  ASSERT_EQ(99, s1->my_int_);
+  DummyContext* dc = dynamic_cast<DummyContext*>(peer.context());
+  ASSERT_EQ(99, dc->state_->my_int_);
 }
 
 // Run two peers on seperate threads
 TEST(Peer, MultiThreaded) {
   unique_ptr<Codec> cdec = make_unique<BoostCodec<int>>();
   Address me = make_address("127.0.0.1", 30000);
-  shared_ptr<DummyState> s1 = make_shared<DummyState>();
-  shared_ptr<DummyState> s2 = make_shared<DummyState>();
-  Peer peer1(make_unique<DummyContext>(s1));
-  Peer peer2(make_unique<DummyContext>(s2));
+  Peer<DummyContext> peer1;
+  Peer<DummyContext> peer2;
   peer1.run();
   peer2.run();
 
@@ -92,6 +90,8 @@ TEST(Peer, MultiThreaded) {
 
   peer1.join();
   peer2.join();
-  ASSERT_EQ(98, s1->my_int_);
-  ASSERT_EQ(99, s2->my_int_);
+  DummyContext* dc1 = dynamic_cast<DummyContext*>(peer1.context());
+  DummyContext* dc2 = dynamic_cast<DummyContext*>(peer2.context());
+  ASSERT_EQ(98, dc1->state_->my_int_);
+  ASSERT_EQ(99, dc2->state_->my_int_);
 }

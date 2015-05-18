@@ -19,6 +19,6 @@ TriggerID Message::trigger() const {
   return trigger_;
 }
 
-NativeValue* Message::value() const {
-  return value_->asNative();
+Value* Message::value() const {
+  return value_.get();
 }

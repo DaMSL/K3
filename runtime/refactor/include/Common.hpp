@@ -23,6 +23,8 @@ inline Address make_address(unsigned long host, unsigned short port) {
   return Address(boost::asio::ip::address(v4), port);
 }
 
+enum class CodecFormat { BoostBinary };
+
 class EndOfProgramException: public std::runtime_error {
  public:
   EndOfProgramException() : runtime_error("Peer terminated.") { }

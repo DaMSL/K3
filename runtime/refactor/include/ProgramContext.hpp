@@ -14,7 +14,9 @@ using std::shared_ptr;
 class NativeValue;
 class ProgramContext {
  public:
-  virtual void dispatch(unique_ptr<Message> m) = 0;
+  virtual void dispatch(NativeValue* nv, TriggerID trig) = 0;
+  virtual void dispatch(PackedValue* pv, TriggerID trig) = 0;
+  virtual void dispatch(SentinelValue* sv) = 0;
 };
 
 class DummyState {
@@ -25,8 +27,10 @@ class DummyState {
 
 class DummyContext : public ProgramContext {
  public:
-  explicit DummyContext(shared_ptr<DummyState>);
-  virtual void dispatch(unique_ptr<Message> m);
+  DummyContext();
+  virtual void dispatch(NativeValue* nv, TriggerID trig);
+  virtual void dispatch(PackedValue* pv, TriggerID trig);
+  virtual void dispatch(SentinelValue* sv);
   void intTrigger(int i);
   void stringTrigger(std::string s);
   shared_ptr<DummyState> state_;

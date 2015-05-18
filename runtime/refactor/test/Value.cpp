@@ -58,32 +58,3 @@ TEST(Value, PackedRoundTrips) {
   v2 = cdec2->unpack(*b2);
   ASSERT_EQ(s, *v2->as<std::string>());
 }
-
-// Ensure both Native and Packed values can be placed in a vector
-// and converted back to C++ values
-TEST(Value, HomogenousValues) {
-  std::vector<unique_ptr<Value>> vals;
-
-  // Add a packed int to the vector
-  int i = 100;
-  unique_ptr<NativeValue> v = make_unique<TNativeValue<int>>(i);
-
-  unique_ptr<Codec> cdec = make_unique<BoostCodec<int>>();
-  unique_ptr<PackedValue> b = cdec->pack(*v);
-
-  unique_ptr<Value> val1 = std::move(b);
-  vals.push_back(std::move(val1));
-
-  // Add a native string to the vector
-  std::string s = "HELLO!";
-  unique_ptr<Value> v2 = make_unique<TNativeValue<std::string>>(s);
-  vals.push_back(std::move(v2));
-
-  // Check the int inside the vector
-  int i2 = *vals[0]->asNative()->as<int>();
-  ASSERT_EQ(i, i2);
-
-  // Check the string inside the vector
-  std::string s2 = *vals[1]->asNative()->as<std::string>();
-  ASSERT_EQ(s, s2);
-}

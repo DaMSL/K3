@@ -1,22 +1,21 @@
+#include <string>
+
 #include "Codec.hpp"
 #include "Common.hpp"
 #include "Value.hpp"
+#include "ProgramContext.hpp"
 
-NativeValue* NativeValue::asNative() {
-  return this;
+void NativeValue::dispatchIntoContext(ProgramContext* pc, TriggerID trig) {
+  return pc->dispatch(this, trig);
 }
 
-PackedValue::PackedValue(unique_ptr<Buffer> b, shared_ptr<Codec> c) {
+PackedValue::PackedValue(unique_ptr<Buffer> b, CodecFormat format) {
   buffer_ = std::move(b);
-  codec_ = c;
+  format_ = format;
 }
 
-NativeValue* PackedValue::asNative() {
-  if (!native_) {
-    native_ = codec_->unpack(*this);
-    buffer_.reset();
-  }
-  return native_.get();
+void PackedValue::dispatchIntoContext(ProgramContext* pc, TriggerID trig) {
+  return pc->dispatch(this, trig);
 }
 
 const char* PackedValue::buf() const {
@@ -35,8 +34,12 @@ size_t PackedValue::length() const {
   }
 }
 
+CodecFormat PackedValue::format() const {
+  return format_;
+}
+
 SentinelValue::SentinelValue() { }
 
-NativeValue* SentinelValue::asNative() {
-  throw EndOfProgramException();
+void SentinelValue::dispatchIntoContext(ProgramContext* pc, TriggerID trig) {
+  return pc->dispatch(this);
 }

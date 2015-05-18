@@ -25,7 +25,6 @@ add_subdirectory(include/external/gtest-1.7.0)
 enable_testing()
 
 set (srcs src/Message.cpp
-          src/Peer.cpp 
           src/ProgramContext.cpp
           src/Value.cpp
     )
@@ -37,9 +36,9 @@ set (test_link_libs ${link_libs} gtest gtest_main)
 include_directories    (. include include/external ${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR} include/external/)
 add_library            (k3 ${srcs})
 
-set (tests test/Value.cpp
-           test/DummyContext.cpp
-           test/Queue.cpp
+set (tests test/DummyContext.cpp
+           test/Engine.cpp
+           test/Value.cpp
            test/Peer.cpp
     )
 add_executable(Tests ${tests} test/Main.cpp)

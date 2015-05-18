@@ -4,6 +4,7 @@
 #include <exception>
 #include <memory>
 #include <utility>
+#include <string>
 
 #include "Common.hpp"
 
@@ -11,15 +12,15 @@ using std::shared_ptr;
 using std::make_shared;
 using std::unique_ptr;
 
-class NativeValue;
+class ProgramContext;
 
 // Interface
 // Can contain either native, packed, or sentinel values.
-// asNative() provides a NativeValue pointer that is guaranteed to be valid
-// for the lifetime of the Value
+// The 'dispatchIntoContext' method calls the correct 'dispatch' overload on a ProgramContext
+// based on the underlying value type (native, packed, or sentinel).
 class Value {
  public:
-  virtual NativeValue* asNative() = 0;
+  virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig) = 0;
 };
 
 // Boxes a native C++ value.
@@ -28,7 +29,7 @@ class Value {
 // that this value is intended for.
 class NativeValue : public Value {
  public:
-  virtual NativeValue* asNative();
+  virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig);
 
   template <class T>
   T* as() {
@@ -65,20 +66,17 @@ class TNativeValue : public NativeValue {
 };
 
 // Owns a buffer that represents a packed C++ value.
-// Holds a handle to a Codec to enable deferred unpacking
-// asNative() will unpack the buffer, producing a native value
-// and destroy the underlying buffer.
 class Codec;
 class PackedValue : public Value {
  public:
-  PackedValue(unique_ptr<Buffer> b, shared_ptr<Codec> c);
-  virtual NativeValue* asNative();
+  PackedValue(unique_ptr<Buffer> b, CodecFormat format);
+  virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig);
+  CodecFormat format() const;
   const char* buf() const;
   size_t length() const;
 
  protected:
-  shared_ptr<Codec> codec_;
-  unique_ptr<NativeValue> native_;
+  CodecFormat format_;
   unique_ptr<Buffer> buffer_;
 };
 
@@ -87,7 +85,7 @@ class PackedValue : public Value {
 class SentinelValue : public Value {
  public:
   SentinelValue();
-  virtual NativeValue* asNative();
+  virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig);
 };
 
 #endif

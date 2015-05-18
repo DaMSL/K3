@@ -13,15 +13,73 @@
 #include "ProgramContext.hpp"
 #include "Queue.hpp"
 
-using std::unique_ptr;
 using std::make_unique;
 using std::thread;
+
+template <class ContextImpl>
 class Peer {
  public:
-  explicit Peer(unique_ptr<ProgramContext>);
-  void enqueue(unique_ptr<Message> m);
-  void run();
-  void join();
+  Peer() {
+    initialize();
+  }
+
+  explicit Peer(bool skip_init) {
+    if (!skip_init) {
+      initialize();
+    }
+  }
+
+  void initialize() {
+    context_ = make_unique<ContextImpl>();
+    queue_ = make_unique<Queue>();
+  }
+
+  void enqueue(unique_ptr<Message> m) {
+    queue_->enqueue(std::move(m));
+  }
+
+  void run(std::function<void()> registerCallback) {
+    if (thread_) {
+      throw std::runtime_error("Peer run() invalid: already running ");
+    }
+
+    auto work = [this, registerCallback] () {
+      if (!queue_ && !context_) {
+        initialize();
+      }
+      registerCallback();
+
+      try {
+        while (true) {
+          unique_ptr<Message> m = queue_->dequeue();
+          m->value()->dispatchIntoContext(context_.get(), m->trigger());
+        }
+      } catch (EndOfProgramException e) {
+        return;
+      }
+    };
+
+    thread_ = make_unique<thread>(work);
+  }
+
+  void run() {
+    return run([] () {
+      return;
+    });
+  }
+
+  void join() {
+    if (!thread_) {
+      throw std::runtime_error("Peer join() invalid: not running ");
+    }
+
+    thread_->join();
+    return;
+  }
+
+  ProgramContext* context() {
+    return context_.get();
+  }
 
  protected:
   unique_ptr<thread> thread_;
