@@ -36,4 +36,5 @@ class DummyContext : public ProgramContext {
   shared_ptr<DummyState> state_;
 };
 
+typedef std::function<unique_ptr<ProgramContext>()> ContextConstructor;
 #endif

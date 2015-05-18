@@ -16,8 +16,9 @@ TEST(Engine, Termination) {
   peer_addrs.push_back(a1);
   peer_addrs.push_back(a2);
 
-  Engine<DummyContext>& engine = Engine<DummyContext>::getInstance();
-  engine.initialize(peer_addrs);
+  Engine& engine = Engine::getInstance();
+  ContextConstructor c = [] () { return make_unique<DummyContext>(); };
+  engine.initialize(peer_addrs, c);
   engine.run();
   unique_ptr<Value> v1 = make_unique<SentinelValue>();
   unique_ptr<Value> v2 = make_unique<SentinelValue>();
@@ -34,8 +35,9 @@ TEST(Engine, LocalSends) {
   Address a2 = make_address("127.0.0.1", 40000);
   peer_addrs.push_back(a1);
   peer_addrs.push_back(a2);
-  Engine<DummyContext>& engine = Engine<DummyContext>::getInstance();
-  engine.initialize(peer_addrs);
+  ContextConstructor c = [] () { return make_unique<DummyContext>(); };
+  Engine& engine = Engine::getInstance();
+  engine.initialize(peer_addrs, c);
   engine.run();
 
   for (int i = 0; i < 100; i++) {
@@ -62,8 +64,8 @@ TEST(Engine, LocalSends) {
   engine.send(make_unique<Message>(a2, a1, -1, std::move(v2)));
   engine.join();
 
-  Peer<DummyContext>* peer1 = engine.getPeer(a1);
-  Peer<DummyContext>* peer2 = engine.getPeer(a2);
+  Peer* peer1 = engine.getPeer(a1);
+  Peer* peer2 = engine.getPeer(a2);
   DummyContext* dc1 = dynamic_cast<DummyContext*>(peer1->context());
   DummyContext* dc2 = dynamic_cast<DummyContext*>(peer2->context());
   ASSERT_EQ(98, dc1->state_->my_int_);
