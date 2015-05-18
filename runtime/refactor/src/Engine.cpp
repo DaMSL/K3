@@ -1,3 +1,6 @@
+#include <map>
+#include <list>
+
 #include "Engine.hpp"
 
 Engine& Engine::getInstance() {
@@ -18,7 +21,7 @@ void Engine::send(unique_ptr<Message> m) {
   if (it != peers_.end()) {
     it->second->enqueue(std::move(m));
   } else {
-    throw std::runtime_error("Engine cannot send non-local messages yet!");
+    throw std::runtime_error("Engine send(): cannot send non-local messages yet!");
   }
 }
 
@@ -33,6 +36,14 @@ void Engine::run() {
   while (num_total_peers_ > num_ready_peers_.load()) continue;
 
   return;
+}
+
+void Engine::sendSentinel() {
+  for (auto& it : peers_) {
+    unique_ptr<Message> m;
+    m = make_unique<Message>(it.first, it.first, -1, make_unique<SentinelValue>());
+    send(std::move(m));
+  }
 }
 
 void Engine::join() {
@@ -52,6 +63,8 @@ Peer* Engine::getPeer(const Address& a) {
   auto it = peers_.find(a);
   if (it != peers_.end()) {
     p = it->second.get();
+  } else {
+    throw std::runtime_error("Engine getPeer(): failed to find the provided address");
   }
   return p;
 }
@@ -62,7 +75,7 @@ void Engine::registerPeer() {
 
 ContextConstructor* Engine::getContextConstructor() {
   if (!context_constructor_) {
-    throw std::runtime_error("Engine's context constructor is uninitialized");
+    throw std::runtime_error("Engine getContextConstructor(): null constructor pointer");
   }
   return context_constructor_.get();
 }

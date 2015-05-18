@@ -19,7 +19,7 @@ using std::thread;
 class Peer {
  public:
   Peer();
-  Peer(bool skip_init);
+  explicit Peer(bool skip_init);
   void initialize();
   void enqueue(unique_ptr<Message> m);
   void run(std::function<void()> registerCallback);

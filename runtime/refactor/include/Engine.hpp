@@ -22,6 +22,7 @@ class Engine {
   void initialize(const list<Address>& peer_addrs, ContextConstructor c);
   void send(unique_ptr<Message> m);
   void run();
+  void sendSentinel();
   void join();
   void cleanup();
   Peer* getPeer(const Address& a);
@@ -36,7 +37,7 @@ class Engine {
   map<Address, unique_ptr<Peer>> peers_;
   int num_total_peers_;
   std::atomic<int> num_ready_peers_;
-  unique_ptr<ContextConstructor> context_constructor_; 
+  unique_ptr<ContextConstructor> context_constructor_;
 };
 
 #endif

@@ -22,7 +22,7 @@ const char* PackedValue::buf() const {
   if (buffer_) {
     return buffer_->data();
   } else {
-    throw std::runtime_error("PackedValue: buffer has been destroyed");
+    throw std::runtime_error("PackedValue buf(): buffer pointer null");
   }
 }
 
@@ -30,7 +30,7 @@ size_t PackedValue::length() const {
   if (buffer_) {
     return buffer_->size();
   } else {
-    throw std::runtime_error("PackedValue: buffer has been destroyed");
+    throw std::runtime_error("PackedValue length(): buffer pointer null");
   }
 }
 

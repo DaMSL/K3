@@ -25,7 +25,7 @@ void Peer::enqueue(unique_ptr<Message> m) {
 
 void Peer::run(std::function<void()> registerCallback) {
   if (thread_) {
-    throw std::runtime_error("Peer run() invalid: already running ");
+    throw std::runtime_error("Peer run(): already running ");
   }
 
   auto work = [this, registerCallback] () {
@@ -55,7 +55,7 @@ void Peer::run() {
 
 void Peer::join() {
   if (!thread_) {
-    throw std::runtime_error("Peer join() invalid: not running ");
+    throw std::runtime_error("Peer join(): not running ");
   }
 
   thread_->join();
@@ -63,5 +63,9 @@ void Peer::join() {
 }
 
 ProgramContext* Peer::context() {
-  return context_.get();
+  if (context_) {
+    return context_.get();
+  } else {
+    throw std::runtime_error("Peer context(): null context pointer");
+  }
 }

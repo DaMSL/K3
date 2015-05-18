@@ -20,5 +20,9 @@ TriggerID Message::trigger() const {
 }
 
 Value* Message::value() const {
-  return value_.get();
+  if (value_) {
+    return value_.get();
+  } else {
+    throw std::runtime_error("Message contains a null value pointer");
+  }
 }

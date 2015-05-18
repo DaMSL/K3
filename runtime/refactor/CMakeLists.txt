@@ -42,5 +42,9 @@ set (tests test/DummyContext.cpp
            test/Engine.cpp
            test/Value.cpp
     )
+
 add_executable(Tests ${tests} test/Main.cpp)
 target_link_libraries(Tests ${test_link_libs})
+
+add_executable(Benchmark benchmark/Engine.cpp)
+target_link_libraries(Benchmark ${link_libs})

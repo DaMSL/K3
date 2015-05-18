@@ -17,13 +17,12 @@ TEST(Engine, Termination) {
   peer_addrs.push_back(a2);
 
   Engine& engine = Engine::getInstance();
-  ContextConstructor c = [] () { return make_unique<DummyContext>(); };
+  ContextConstructor c = [] () {
+    return make_unique<DummyContext>();
+  };
   engine.initialize(peer_addrs, c);
   engine.run();
-  unique_ptr<Value> v1 = make_unique<SentinelValue>();
-  unique_ptr<Value> v2 = make_unique<SentinelValue>();
-  engine.send(make_unique<Message>(a1, a2, -1, std::move(v1)));
-  engine.send(make_unique<Message>(a2, a1, -1, std::move(v2)));
+  engine.sendSentinel();
   engine.join();
   engine.cleanup();
 }
@@ -35,7 +34,9 @@ TEST(Engine, LocalSends) {
   Address a2 = make_address("127.0.0.1", 40000);
   peer_addrs.push_back(a1);
   peer_addrs.push_back(a2);
-  ContextConstructor c = [] () { return make_unique<DummyContext>(); };
+  ContextConstructor c = [] () {
+    return make_unique<DummyContext>();
+  };
   Engine& engine = Engine::getInstance();
   engine.initialize(peer_addrs, c);
   engine.run();
@@ -58,10 +59,7 @@ TEST(Engine, LocalSends) {
     engine.send(std::move(m));
   }
 
-  unique_ptr<Value> v1 = make_unique<SentinelValue>();
-  unique_ptr<Value> v2 = make_unique<SentinelValue>();
-  engine.send(make_unique<Message>(a1, a2, -1, std::move(v1)));
-  engine.send(make_unique<Message>(a2, a1, -1, std::move(v2)));
+  engine.sendSentinel();
   engine.join();
 
   Peer* peer1 = engine.getPeer(a1);
