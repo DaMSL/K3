@@ -673,6 +673,9 @@ liftExceptM = mapExceptT contextualizeErr
 
         contextualizeErr (runIdentity -> Right r) = return $ Right r
 
+liftEitherM :: Either Text a -> FInfM a
+liftEitherM = either throwE return
+
 fifreshbpM :: Identifier -> UID -> K3 Effect -> FInfM (K3 Effect)
 fifreshbpM n u f = get >>= return . (\env -> fifreshbp env n u f) >>= \(f',nenv) -> put nenv >> return f'
 
@@ -1062,27 +1065,36 @@ inferEffects extInfOpt expr = do
       rt "let-in" True e nmv (nef, nrf)
 
     infer m (onSub -> ([initef,bef], mv)) [_,rf] e@(tag -> EBindAs b) = m >> do
-      smvs <- pmvOf e
-      fmvs <- mapM filkupeM (bindingVariables b) >>= mapM fmv
-      ps   <- mapM filkupepM (bindingVariables b) >>= mapM pmv >>= mapM (filkupppM . pmvptr)
+      initp <- provOf $ head $ children e
+      smvs  <- pmvOf e
+      fmvs  <- mapM filkupeM (bindingVariables b) >>= mapM fmv
+      pbvs  <- mapM filkupepM (bindingVariables b)
+      ps    <- mapM pmv pbvs >>= mapM (filkupppM . pmvptr)
       mapM_ popVars (bindingVariables b)
       let nmv  = smvs ++ mv
       let nief = fromJust $ fexec [initef]
       let nbef = fromJust $ fexec [bef]
+      npief <- (liftExceptM $ chaseProvenance initp) >>= extInferM . fwrite
       npef <- mapM (liftExceptM . chaseProvenance) ps >>= mapM (extInferM . fwrite) >>= return . fseq
+      symcat <- liftEitherM $ categorizeLocalEffects nbef
+      nef <- pruneAndSimplify "bindef" Nothing False nmv $ fexec $ map Just $
+               [nief, nbef] ++ (if all (flip noWritesOnProvenanceC symcat) pbvs then [] else [npief])
       let nrf  = fscope fmvs nief nbef npef rf
-      nef <- pruneAndSimplify "bindef" Nothing False nmv $ fexec $ map Just [nief, nbef]
       rt "bind-as" True e nmv (nef, nrf)
 
     infer m (onSub -> ([oef,sef,nef], mv)) [_,snf,rnf] e@(tag -> ECaseOf _) = m >> do
+      initp <- provOf $ head $ children e
       (cfmv, cpmv) <- fipopcaseM ()
       let nmv  = [cpmv] ++ mv
       let nief = fromJust $ fexec [oef]
       let nbef = fset $ catMaybes [sef, nef]
+      npief <- (liftExceptM $ chaseProvenance initp) >>= extInferM . fwrite
       npef <- extInferM (fwrite $ pbvar cpmv) >>= \spf -> return (fset [spf, fnone])
-      let nrf  = fscope [cfmv] nief nbef npef (fset [snf, rnf])
-      nsef <- pruneAndSimplify "casesef" Nothing False nmv sef
+      symcat <- maybe (return emptyCategories) (liftEitherM . categorizeLocalEffects) sef
+      nsef <- pruneAndSimplify "casesef" Nothing False nmv $ fexec $
+                [sef] ++ (if noWritesOnProvenanceC (pbvar cpmv) symcat then [] else [Just npief])
       let nef' = fexec $ map Just [nief, fset [maybe fnone id nsef, maybe fnone id nef]]
+      let nrf  = fscope [cfmv] nief nbef npef (fset [snf, rnf])
       rt "case-of" True e nmv (nef', nrf)
 
     infer m (onSub -> (_, mv)) _ e@(tag -> EAddress) = m >> rt "address" False e mv (Nothing, fnone)
@@ -1461,9 +1473,9 @@ addCategories (SymbolCategories r w io1) (SymbolCategories r2 w2 io2) =
 type SymCatMap = IntMap SymbolCategories
 
 categorizeProgramEffects :: K3 Declaration -> Either Text SymCatMap
-categorizeProgramEffects p = foldExpression categorize emptyCatMap p >>= return . fst
+categorizeProgramEffects p = foldExpression categorizeExpr emptyCatMap p >>= return . fst
   where
-    categorize cmacc e = (\f -> foldTree f cmacc e >>= return . (,e)) $ \cmacc' e' -> do
+    categorizeExpr cmacc e = (\f -> foldTree f cmacc e >>= return . (,e)) $ \cmacc' e' -> do
       UID u <- uidOf e'
       sc    <- categorizeExprEffects e'
       return $ addCatMap cmacc' u sc
@@ -1478,23 +1490,56 @@ categorizeExprEffects :: K3 Expression -> Either Text SymbolCategories
 categorizeExprEffects e = do
   UID u <- uidOf e
   df    <- inferDefaultExprEffects e
-  maybe (lookupErr e) categorize $ IntMap.lookup u df
+  maybe (lookupErr e) categorizeLocalEffects $ IntMap.lookup u df
 
   where
-    -- Note: we do not need to chase FBVars here for categorization.
-    -- All effects from FBVar targets will already have been lifted during default
-    -- effect inference, or applied during regular effect inference.
-    categorize (tag -> FRead  p)  = return $ emptyCategories {readSyms  = [p]}
-    categorize (tag -> FWrite p)  = return $ emptyCategories {writeSyms = [p]}
-    categorize (tag -> FIO)       = return $ emptyCategories {doesIO    = True}
-    categorize (tag -> FLambda _) = return $ emptyCategories
-    categorize (Node _ ch)        = foldM (\a c -> categorize c >>= return . addCategories a) emptyCategories ch
 
     uidOf  e' = maybe (uidErr e') (\case {(EUID u) -> return u ; _ ->  uidErr e'}) $ e' @~ isEUID
     uidErr e' = Left $ PT.boxToString $ [T.pack "No uid found for fcategorizeexpr on "] %+ PT.prettyLines e'
 
     lookupErr e' = Left $ PT.boxToString $ [T.pack "No effects found for "] %+ PT.prettyLines e'
 
+-- | Returns effects present locally at an expression with effect targets categorized into reads, writes and IO.
+--   Note: we do not need to chase FBVars here for categorization.
+--   All effects from FBVar targets will already have been lifted during default
+--   effect inference, or applied during regular effect inference.
+categorizeLocalEffects :: K3 Effect -> Either Text SymbolCategories
+categorizeLocalEffects (tag -> FRead  p)  = return $ emptyCategories {readSyms  = [p]}
+categorizeLocalEffects (tag -> FWrite p)  = return $ emptyCategories {writeSyms = [p]}
+categorizeLocalEffects (tag -> FIO)       = return $ emptyCategories {doesIO    = True}
+categorizeLocalEffects (tag -> FLambda _) = return $ emptyCategories
+categorizeLocalEffects (Node _ ch)        = foldM (\a c -> categorizeLocalEffects c >>= return . addCategories a) emptyCategories ch
+
+
+{- Effect queries -}
+
+readOnlyC :: SymbolCategories -> Bool
+readOnlyC (SymbolCategories _ w io) = null w && not io
+
+readOnlyOnProvenanceC :: K3 Provenance -> SymbolCategories -> Bool
+readOnlyOnProvenanceC p (SymbolCategories _ w io) = not io && p `notElem` w
+
+noWritesC :: SymbolCategories -> Bool
+noWritesC (SymbolCategories _ w _) = null w
+
+noWritesOnProvenanceC :: K3 Provenance -> SymbolCategories -> Bool
+noWritesOnProvenanceC p (SymbolCategories _ w _) = p `notElem` w
+
+-- | Returns whether the given expression has only read effects.
+--   The first argument indicates whether lambda effects should be considered in terms of their body's effects.
+readOnly :: Bool -> K3 Expression -> Either String Bool
+readOnly True (tnc -> (ELambda _, [b])) = readOnly False b
+readOnly _ e = either (Left . T.unpack) Right $ do
+  symcat <- categorizeExprEffects e
+  return $ readOnlyC symcat
+
+-- | Returns whether the given expression has no write effects.
+--   The first argument indicates whether lambda effects should be considered in terms of their body's effects.
+noWrites :: Bool -> K3 Expression -> Either String Bool
+noWrites True (tnc -> (ELambda _, [b])) = noWrites False b
+noWrites _ e = either (Left . T.unpack) Right $ do
+  symcat <- categorizeExprEffects e
+  return $ noWritesC symcat
 
 {- Pattern synonyms for inference -}
 pattern PTOption et <- Node (TOption :@: _) [et]
