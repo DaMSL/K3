@@ -40,6 +40,7 @@ import qualified Language.K3.Core.Constructor.Literal    as LC
 import Language.K3.Analysis.Core
 import Language.K3.Analysis.Provenance.Core
 import Language.K3.Analysis.SEffects.Core
+import Language.K3.Analysis.SEffects.Inference                ( readOnly, noWrites )
 import qualified Language.K3.Analysis.Provenance.Constructors as PC
 import qualified Language.K3.Analysis.SEffects.Constructors   as FC
 import qualified Language.K3.Analysis.SEffects.Inference      as SE
@@ -226,19 +227,6 @@ isEMonoidGroupBy _ = False
 isENoBetaReduce :: Annotation Expression -> Bool
 isENoBetaReduce (EProperty (ePropertyName -> "NoBetaReduce")) = True
 isENoBetaReduce _ = False
-
--- Effect queries
-readOnly :: Bool -> K3 Expression -> Either String Bool
-readOnly True (tnc -> (ELambda _, [b])) = readOnly False b
-readOnly _ e = either (Left . T.unpack) Right $ do
-  SE.SymbolCategories _ w io <- SE.categorizeExprEffects e
-  return $ null w && not io
-
-noWrites :: Bool -> K3 Expression -> Either String Bool
-noWrites True (tnc -> (ELambda _, [b])) = noWrites False b
-noWrites _ e = either (Left . T.unpack) Right $ do
-  SE.SymbolCategories _ w _ <- SE.categorizeExprEffects e
-  return $ null w
 
 
 -- | Constant folding
@@ -665,7 +653,7 @@ eliminateDeadCodeDelta expr = foldMapTree pruneExpr ([],False) expr >>= return .
             if restRO then rtt $ fieldsE !! i else rtf n'
 
         -- Immediate structure binding, preserving effect ordering of bound substructure expressions.
-        (PBindInd i iE bodyE iAs bAs) -> rtt $ (EC.letIn i (PInd iE iAs) bodyE) @<- bAs
+        (PBindInd i iE bodyE _ bAs) -> rtt $ (EC.letIn i iE bodyE) @<- bAs
 
         (PBindTup ids fieldsE bodyE _ _) -> do
           let vars          = freeVariables bodyE
