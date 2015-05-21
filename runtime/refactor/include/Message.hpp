@@ -1,28 +1,39 @@
 #ifndef K3_MESSAGE
 #define K3_MESSAGE
 
-// Messages come from Peers (local or over the network) or from Sources.
-// They live in the Queue of a Peer until they are dispatched into a ProgramContext.
-
 #include <memory>
+#include <vector>
 
 #include "Common.hpp"
 #include "Value.hpp"
 
-using std::unique_ptr;
 class Message {
  public:
-  Message(const Address&, const Address&, TriggerID, unique_ptr<Value>);
+  Message() { }
+  Message(const Address&, const Address&, TriggerID, shared_ptr<Value>);
+  Message(const MessageHeader&, shared_ptr<Value>);
   Address source() const;
   Address destination() const;
   TriggerID trigger() const;
-  Value* value() const;
+  shared_ptr<Value> value() const;
 
  protected:
-  Address source_;
-  Address destination_;
-  TriggerID trigger_;
-  unique_ptr<Value> value_;
+  MessageHeader header_;
+  shared_ptr<Value> value_;
+};
+
+class NetworkMessage : public Message {
+ public:
+  NetworkMessage() : Message() { }
+  NetworkMessage(const MessageHeader& head, shared_ptr<PackedValue> v) : Message(head, v) {
+    payload_length_ = v->length();
+  }
+  shared_ptr<std::vector<boost::asio::const_buffer>> outputBuffers() const;
+  shared_ptr<std::vector<boost::asio::mutable_buffer>> inputBuffers();
+  void setValue(shared_ptr<Value> v);
+  int networkHeaderSize();
+
+  int payload_length_;
 };
 
 #endif

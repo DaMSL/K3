@@ -9,8 +9,8 @@ void NativeValue::dispatchIntoContext(ProgramContext* pc, TriggerID trig) {
   return pc->dispatch(this, trig);
 }
 
-PackedValue::PackedValue(unique_ptr<Buffer> b, CodecFormat format) {
-  buffer_ = std::move(b);
+PackedValue::PackedValue(Buffer&& b, CodecFormat format) {
+  buffer_ = std::make_unique<Buffer>(std::move(b));
   format_ = format;
 }
 

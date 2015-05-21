@@ -9,29 +9,32 @@
 #include <memory>
 #include <thread>
 
+#include "yaml-cpp/yaml.h"
+
 #include "Message.hpp"
 #include "ProgramContext.hpp"
 #include "Queue.hpp"
 
-using std::make_unique;
+using std::shared_ptr;
 using std::thread;
 
 class Peer {
  public:
-  Peer();
-  explicit Peer(bool skip_init);
-  void initialize();
-  void enqueue(unique_ptr<Message> m);
-  void run(std::function<void()> registerCallback);
-  void run();
+  Peer(const Address& addr,
+       shared_ptr<ContextFactory> fac,
+       const YAML::Node& peer_config,
+       std::function<void()> ready_callback);
+  void start();
   void join();
-  ProgramContext* context();
+  void enqueue(shared_ptr<Message> m);
+  Address address();
+  shared_ptr<ProgramContext> getContext();
 
  protected:
-  unique_ptr<thread> thread_;
-  unique_ptr<ProgramContext> context_;
-  unique_ptr<Queue> queue_;
-  ContextConstructor context_constructor_;
+  Address address_;
+  shared_ptr<thread> thread_;
+  shared_ptr<Queue> queue_;
+  shared_ptr<ProgramContext> context_;
 };
 
 #endif

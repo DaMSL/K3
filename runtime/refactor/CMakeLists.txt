@@ -5,7 +5,7 @@ set (CMAKE_LIBRARY_OUTPUT_DIRECTORY ./lib)
 set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ./bin)
 
 include(CheckCXXCompilerFlag)
-CHECK_CXX_COMPILER_FLAG("-std=c++1y" COMPILER_SUPPORTS_CXX1Y)
+CHECK_CXX_COMPILER_FLAG("-std=c++1y" "-O4" COMPILER_SUPPORTS_CXX1Y)
 if(COMPILER_SUPPORTS_CXX1Y)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++1y")
 else()
@@ -29,22 +29,19 @@ set (srcs src/Engine.cpp
           src/Peer.cpp
           src/ProgramContext.cpp
           src/Value.cpp
+          src/NetworkManager.cpp
+          src/Listener.cpp
     )
 
 # TODO add k3 back
-set (link_libs k3 ${Boost_LIBRARIES} ${YAMLCPP_LIBRARY})
+set (link_libs k3 ${Boost_LIBRARIES} ${YAMLCPP_LIBRARY} profiler)
 set (test_link_libs ${link_libs} gtest gtest_main)
 
-include_directories    (. include include/external ${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR} include/external/)
+include_directories    (include include/external ${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR} include/external/)
 add_library            (k3 ${srcs})
 
-set (tests test/DummyContext.cpp
-           test/Engine.cpp
-           test/Value.cpp
+set (tests test/Engine.cpp
     )
 
 add_executable(Tests ${tests} test/Main.cpp)
 target_link_libraries(Tests ${test_link_libs})
-
-add_executable(Benchmark benchmark/Engine.cpp)
-target_link_libraries(Benchmark ${link_libs})

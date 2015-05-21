@@ -8,10 +8,6 @@
 
 #include "Common.hpp"
 
-using std::shared_ptr;
-using std::make_shared;
-using std::unique_ptr;
-
 class ProgramContext;
 
 // Interface
@@ -69,7 +65,7 @@ class TNativeValue : public NativeValue {
 class Codec;
 class PackedValue : public Value {
  public:
-  PackedValue(unique_ptr<Buffer> b, CodecFormat format);
+  PackedValue(Buffer&& b, CodecFormat format);
   virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig);
   CodecFormat format() const;
   const char* buf() const;
@@ -77,7 +73,7 @@ class PackedValue : public Value {
 
  protected:
   CodecFormat format_;
-  unique_ptr<Buffer> buffer_;
+  std::unique_ptr<Buffer> buffer_;
 };
 
 // Sentinel value throws EndofProgram exception

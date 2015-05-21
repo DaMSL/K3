@@ -10,23 +10,23 @@
 
 #include "Message.hpp"
 
-using std::unique_ptr;
-using std::make_unique;
-
+// TODO(jbw) Consider bulk dequeues
 class Queue {
  public:
-  void enqueue(unique_ptr<Message> m) {
-    queue_.enqueue(std::move(m));
+  Queue() {}
+
+  void enqueue(shared_ptr<Message> m) {
+    queue_.enqueue(m);
   }
 
-  unique_ptr<Message> dequeue() {
-    unique_ptr<Message> m;
+  shared_ptr<Message> dequeue() {
+    shared_ptr<Message> m;
     queue_.wait_dequeue(m);
-    return std::move(m);
+    return m;
   }
 
  protected:
-  moodycamel::BlockingConcurrentQueue<unique_ptr<Message>> queue_;
+  moodycamel::BlockingConcurrentQueue<shared_ptr<Message>> queue_;
 };
 
 #endif

@@ -1,43 +1,45 @@
 #ifndef K3_ENGINE
 #define K3_ENGINE
 
+#include <atomic>
 #include <list>
 #include <map>
 #include <memory>
+#include <string>
 
 #include "Common.hpp"
-#include "Peer.hpp"
+#include "ProgramContext.hpp"
 
-using std::list;
-using std::map;
-using std::unique_ptr;
-using std::make_unique;
-class Message;
+class Peer;
 
 // TODO(jbw) make the peers_ map const after initialization
 // Singleton class.
 class Engine {
  public:
+  // Core
   static Engine& getInstance();
-  void initialize(const list<Address>& peer_addrs, ContextConstructor c);
-  void send(unique_ptr<Message> m);
-  void run();
-  void sendSentinel();
+  void run(const list<string>& peer_configs, shared_ptr<ContextFactory> f);
+  void stop();
   void join();
-  void cleanup();
-  Peer* getPeer(const Address& a);
-  void registerPeer();
-  ContextConstructor* getContextConstructor();
+  void send(const MessageHeader& m, shared_ptr<NativeValue> v, shared_ptr<Codec> cdec);
+
+  // Utilities
+  void toggleLocalSend(bool enable);
+  shared_ptr<Peer> getPeer(const Address& addr);
+  bool running();
 
  private:
   // No copies of Singleton
   Engine() { }
   Engine(const Engine&) = delete;
   void operator=(const Engine&) = delete;
-  map<Address, unique_ptr<Peer>> peers_;
-  int num_total_peers_;
-  std::atomic<int> num_ready_peers_;
-  unique_ptr<ContextConstructor> context_constructor_;
+
+  map<Address, shared_ptr<Peer>> peers_;
+  shared_ptr<ContextFactory> context_factory_;
+  int total_peers_;
+  std::atomic<int> ready_peers_;
+  std::atomic<bool> running_;
+  bool local_sends_enabled_;
 };
 
 #endif

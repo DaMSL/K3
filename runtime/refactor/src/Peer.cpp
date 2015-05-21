@@ -1,42 +1,23 @@
+#include <memory>
+
 #include "Peer.hpp"
 #include "Engine.hpp"
+#include "NetworkManager.hpp"
 
-Peer::Peer() {
-  initialize();
-}
+Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
+           const YAML::Node& peer_config,
+           std::function<void()> ready_callback) {
+  address_ = addr;
 
-Peer::Peer(bool skip_init) {
-  if (!skip_init) {
-    initialize();
-  }
-}
-
-void Peer::initialize() {
-  ContextConstructor* constructor = Engine::getInstance().getContextConstructor();
-  context_ = (*constructor)();
-  queue_ = make_unique<Queue>();
-}
-
-
-void Peer::enqueue(unique_ptr<Message> m) {
-  queue_->enqueue(std::move(m));
-}
-
-
-void Peer::run(std::function<void()> registerCallback) {
-  if (thread_) {
-    throw std::runtime_error("Peer run(): already running ");
-  }
-
-  auto work = [this, registerCallback] () {
-    if (!queue_ && !context_) {
-      initialize();
-    }
-    registerCallback();
+  auto work = [this, fac, peer_config, ready_callback] () {
+    queue_ = make_shared<Queue>();
+    context_ = (*fac)();
+    context_->__patch(peer_config);
+    ready_callback();
 
     try {
       while (true) {
-        unique_ptr<Message> m = queue_->dequeue();
+        shared_ptr<Message> m = queue_->dequeue();
         m->value()->dispatchIntoContext(context_.get(), m->trigger());
       }
     } catch (EndOfProgramException e) {
@@ -44,14 +25,24 @@ void Peer::run(std::function<void()> registerCallback) {
     }
   };
 
-  thread_ = make_unique<thread>(work);
+  thread_ = make_shared<thread>(work);
 }
 
-void Peer::run() {
-  return run([] () {
-    return;
-  });
+void Peer::start() {
+  if (!context_) {
+    throw std::runtime_error("Peer start(): null context ptr");
+  }
+
+  context_->__processRole();
 }
+
+void Peer::enqueue(shared_ptr<Message> m) {
+  if (!queue_) {
+    throw std::runtime_error("Peer enqueue(): null queue ptr");
+  }
+  queue_->enqueue(std::move(m));
+}
+
 
 void Peer::join() {
   if (!thread_) {
@@ -62,10 +53,10 @@ void Peer::join() {
   return;
 }
 
-ProgramContext* Peer::context() {
-  if (context_) {
-    return context_.get();
-  } else {
-    throw std::runtime_error("Peer context(): null context pointer");
-  }
+Address Peer::address() {
+  return address_;
+}
+
+shared_ptr<ProgramContext> Peer::getContext() {
+  return context_;
 }

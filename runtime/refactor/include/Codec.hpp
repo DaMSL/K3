@@ -10,15 +10,10 @@
 #include "Value.hpp"
 #include "Serialization.hpp"
 
-using std::unique_ptr;
-using std::make_unique;
-using std::shared_ptr;
-using std::make_shared;
-
 class Codec {
  public:
-  virtual unique_ptr<PackedValue> pack(const NativeValue&) = 0;
-  virtual unique_ptr<NativeValue> unpack(const PackedValue& pv) = 0;
+  virtual shared_ptr<PackedValue> pack(const NativeValue&) = 0;
+  virtual shared_ptr<NativeValue> unpack(const PackedValue& pv) = 0;
   virtual CodecFormat format() = 0;
 
   // TODO(jbw) switch to map lookup
@@ -29,17 +24,19 @@ class Codec {
 template <class T>
 class BoostCodec : public Codec {
  public:
-  virtual unique_ptr<PackedValue> pack(const NativeValue& nv) {
-    auto buf = make_unique<Buffer>(Serialization::pack<T>(*(nv.asConst<T>())));
-    return make_unique<PackedValue>(std::move(buf), format());
+  virtual shared_ptr<PackedValue> pack(const NativeValue& nv) {
+    auto buf = Serialization::pack<T>(*(nv.asConst<T>()));
+    return make_shared<PackedValue>(std::move(buf), format());
   }
 
-  virtual unique_ptr<NativeValue> unpack(const PackedValue& pv) {
+  virtual shared_ptr<NativeValue> unpack(const PackedValue& pv) {
     auto t = Serialization::unpack<T>(pv.buf(), pv.length());
-    return make_unique<TNativeValue<T>>(t);
+    return make_shared<TNativeValue<T>>(t);
   }
 
-  virtual CodecFormat format() { return format_; }
+  virtual CodecFormat format() {
+    return format_;
+  }
 
  protected:
   CodecFormat format_ = CodecFormat::BoostBinary;
