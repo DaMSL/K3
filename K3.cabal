@@ -18,7 +18,7 @@ executable k3
     hs-source-dirs:
         src
 
-    main-is: Language/K3/Driver.hs
+    main-is: Language/K3/Driver/Main.hs
 
     other-extensions: TemplateHaskell
 
@@ -33,8 +33,10 @@ executable k3
 
     build-depends:
         ansi-wl-pprint,
+        async,
         attoparsec,
         base,
+        binary,
         bits,
         bytestring,
         Cabal,
@@ -55,18 +57,26 @@ executable k3
         haskeline,
         haskell-src-exts,
         haskell-src-exts-qq,
+        heaps,
         hint,
         hslogger,
         hssqlppp,
         ieee754 == 0.7.4,
+        lens,
         mtl,
         network,
+        network-simple,
         network-transport,
         network-transport-tcp,
         old-locale,
         optparse-applicative,
         parsec,
         parsers,
+        pipes,
+        pipes-binary,
+        pipes-concurrency,
+        pipes-network,
+        pipes-parse,
         process,
         random,
         safe,

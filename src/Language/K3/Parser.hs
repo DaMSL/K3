@@ -27,6 +27,7 @@ module Language.K3.Parser {-(
   parseDeclaration,
   parseSimpleK3,
   parseK3,
+  stitchK3,
   ensureUIDs
 )-} where
 
@@ -37,7 +38,6 @@ import Control.Monad
 import Data.Function
 import Data.List
 import Data.Maybe
-import Data.Traversable hiding ( mapM )
 import Data.Tree
 
 import Debug.Trace
@@ -91,6 +91,13 @@ parseDeclaration s = either (const Nothing) mkRole $ runK3Parser Nothing (head <
 
 parseSimpleK3 :: String -> Maybe (K3 Declaration)
 parseSimpleK3 s = either (const Nothing) Just $ runK3Parser Nothing (program True) s
+
+stitchK3 :: [FilePath] -> String -> IO [String]
+stitchK3 includePaths s = do
+  searchPaths   <- if null includePaths then getSearchPath else return includePaths
+  subFiles      <- processIncludes searchPaths (lines s) []
+  subFileCtnts  <- trace (unwords ["subfiles:", show subFiles]) $ mapM readFile subFiles
+  return $ subFileCtnts ++ [s]
 
 parseK3 :: Bool -> [FilePath] -> String -> IO (Either String (K3 Declaration))
 parseK3 noFeed includePaths s = do
