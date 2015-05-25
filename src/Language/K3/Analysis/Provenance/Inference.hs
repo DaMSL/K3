@@ -37,10 +37,8 @@ import Data.Maybe
 import Data.Tree
 import Data.Monoid
 
-import Data.IntMap              ( IntMap )
-import qualified Data.IntMap as IntMap
-
-import Data.Vector.Unboxed           ( Vector )
+import Data.IntMap ( IntMap )
+import qualified Data.IntMap         as IntMap
 import qualified Data.Vector.Unboxed as Vector
 
 import Debug.Trace
@@ -97,6 +95,7 @@ type EPMap = IntMap (K3 Provenance)
 
 data ProvErrorCtxt = ProvErrorCtxt { ptoplevelExpr :: Maybe (K3 Expression)
                                    , pcurrentExpr  :: Maybe (K3 Expression) }
+                    deriving (Eq, Read, Show)
 
 instance Monoid ProvErrorCtxt where
   mempty = ProvErrorCtxt Nothing Nothing
@@ -114,6 +113,7 @@ data PIEnv = PIEnv {
                perrctxt :: ProvErrorCtxt,
                ptienv   :: AIVEnv
             }
+            deriving (Eq, Read, Show)
 
 mergePIEnv :: Maybe Identifier -> PIEnv -> PIEnv -> PIEnv
 mergePIEnv d agg new =

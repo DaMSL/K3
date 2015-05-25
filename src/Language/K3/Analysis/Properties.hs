@@ -31,6 +31,7 @@ type PList = [(Identifier, Maybe (K3 Literal))]
 type PEnv  = NamedEnv PList
 type PAEnv = NamedEnv PEnv
 data PIEnv = PIEnv { penv :: PEnv, paenv :: PAEnv }
+            deriving (Eq, Read, Show)
 type PInfM = EitherT String (State PIEnv)
 
 instance Monoid PIEnv where

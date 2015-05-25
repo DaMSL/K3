@@ -33,8 +33,6 @@ import Data.Maybe
 import Data.Tree
 import Debug.Trace
 
-import Data.Monoid
-
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
@@ -125,7 +123,8 @@ type TMEnv = BindingEnv (QPType, Bool)
 type TDVEnv = BindingStackEnv QTVarId
 
 -- | A type variable environment.
-data TVEnv = TVEnv QTVarId (IntMap (K3 QType)) deriving Show
+data TVEnv = TVEnv QTVarId (IntMap (K3 QType))
+           deriving (Eq, Read, Show)
 
 -- | A cyclic variable environment (tracks whether an identifer uses cyclic scope).
 type TCEnv = BindingEnv Bool
@@ -140,6 +139,7 @@ data TIEnv = TIEnv {
                tcenv   :: TCEnv,
                tprop   :: [(Identifier, QPType)]
             }
+            deriving (Eq, Read, Show)
 
 -- | The type inference monad
 type TInfM = ExceptT Text (State TIEnv)

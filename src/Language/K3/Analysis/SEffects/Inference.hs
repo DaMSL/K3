@@ -89,6 +89,7 @@ type EFMap = IntMap (K3 Effect, K3 Effect)
 
 data EffectErrorCtxt = EffectErrorCtxt { ftoplevelExpr :: Maybe (K3 Expression)
                                        , fcurrentExpr  :: Maybe (K3 Expression) }
+                      deriving (Eq, Read, Show)
 
 -- | An effect inference environment.
 data FIEnv = FIEnv {
@@ -103,6 +104,7 @@ data FIEnv = FIEnv {
                fcase    :: [(FMatVar, PMatVar)],  -- Temporary storage stack for case variables.
                ferrctxt :: EffectErrorCtxt
             }
+            deriving (Eq, Read, Show)
 
 mergeFIEnv :: Maybe Identifier -> FIEnv -> FIEnv -> FIEnv
 mergeFIEnv d agg new =

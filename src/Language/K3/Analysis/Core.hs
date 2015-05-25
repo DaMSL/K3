@@ -1,6 +1,8 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -22,11 +24,12 @@ import qualified Data.IntMap as IntMap
 import Data.Vector.Unboxed ( Vector, (!?) )
 import qualified Data.Vector.Unboxed as Vector
 
+import GHC.Generics ( Generic )
+
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
-import Language.K3.Core.Type
 import Language.K3.Core.Utils
 
 import Data.Text ( Text )
@@ -58,12 +61,15 @@ data VarPosEnv = VarPosEnv { lcenv :: ClosureEnv, scenv :: ScopeEnv, vuenv :: Sc
 -- | Traversal indexes, indicating subtree variable (from abstract interpretation or K3) usage.
 type TrIndex = K3 BVector
 
+data instance Annotation BVector = BUID UID deriving (Eq, Ord, Read, Show, Generic)
+
 -- | Traversal environment, from an abstract interpretation (AI) index to
 --   either another AI index, or a traversal index.
 type AVTraversalEnv = IntMap (TrIndex, Maybe Int)
 
 -- Abstract interpretation environment.
 data AIVEnv = AIVEnv { avtenv :: AVTraversalEnv }
+              deriving (Eq, Read, Show)
 
 {- BVector helpers -}
 showbv :: BVector -> String
@@ -313,8 +319,8 @@ lambdaClosuresDecl n lc p = foldNamedDeclExpression n lambdaClosuresExpr lc p
 
 lambdaClosuresExpr :: ClosureEnv -> K3 Expression -> Either String (ClosureEnv, K3 Expression)
 lambdaClosuresExpr lc expr = do
-  (lcenv,_) <- biFoldMapTree bind extract [] (IntMap.empty, []) expr
-  return $ (IntMap.union lcenv lc, expr)
+  (nlc,_) <- biFoldMapTree bind extract [] (IntMap.empty, []) expr
+  return $ (IntMap.union nlc lc, expr)
 
   where
     bind :: [Identifier] -> K3 Expression -> Either String ([Identifier], [[Identifier]])
@@ -339,8 +345,8 @@ lambdaClosuresExpr lc expr = do
     concatLc subAcc = let (x,y) = unzip subAcc in (IntMap.unions x, y)
 
     extendLc :: ClosureEnv -> K3 Expression -> [Identifier] -> Either String (ClosureEnv, [Identifier])
-    extendLc lcenv e ids = case e @~ isEUID of
-      Just (EUID (UID i)) -> return $ (IntMap.insert i (nub ids) lcenv, ids)
+    extendLc elc e ids = case e @~ isEUID of
+      Just (EUID (UID i)) -> return $ (IntMap.insert i (nub ids) elc, ids)
       _ -> Left $ boxToString $ ["No UID found on lambda"] %$ prettyLines e
 
     rt subAcc f = return $ second (f . concat) $ concatLc subAcc
@@ -361,7 +367,7 @@ variablePositionsExpr vp expr = do
   where
     uidOf :: K3 Expression -> Either String Int
     uidOf ((@~ isEUID) -> Just (EUID (UID i))) = return i
-    uidOf e = Left $ boxToString $ ["No UID found for uidOf"]
+    uidOf e = Left $ boxToString $ ["No UID found for uidOf"] %$ prettyLines e
 
     bind :: ([Identifier], Int) -> K3 Expression -> Either String (([Identifier], Int), [([Identifier], Int)])
     bind l e@(tag -> ELambda i) = uidOf e >>= \u -> return (l, [((i:fst l), u)])
@@ -378,25 +384,25 @@ variablePositionsExpr vp expr = do
                                                      rt td chAcc e bvs (scope bvs sc) (prune 1 bvs)
     extract td@(sc,_) chAcc e@(tag -> ELetIn i)    = rt td chAcc e [i] (scope [i] sc) (prune 1 [i])
     extract td@(sc,_) chAcc e@(tag -> ECaseOf i)   = rt td chAcc e [i] (scope [i] sc) (prune 1 [i])
-    extract td@(sc,_) chAcc e = rt td chAcc e [] (const concatVP) concat
+    extract td        chAcc e = rt td chAcc e [] (const concatVP) concat
 
     concatVP :: [VarPosEnv] -> [[Identifier]] -> VarPosEnv
     concatVP vps _ = vpunions vps
 
     closure :: Identifier -> [Identifier] -> Int -> [VarPosEnv] -> [[Identifier]] -> VarPosEnv
-    closure n sc i vps subvars = vpextlc vp i clvars
-      where vp = concatVP vps subvars
+    closure n sc i vps subvars = vpextlc vp' i clvars
+      where vp' = concatVP vps subvars
             clvars = subvarsInScope [n] sc subvars
 
     scope :: [Identifier] -> [Identifier] -> Int -> [VarPosEnv] -> [[Identifier]] -> VarPosEnv
-    scope n sc i vps subvars = vpextsc vp i scentry
-      where vp = concatVP vps subvars
+    scope n sc i vps subvars = vpextsc vp' i scentry
+      where vp' = concatVP vps subvars
             scentry = IndexedScope scvars $ length scvars
             scvars = sc ++ n
 
     varusage :: [Identifier] -> [Identifier] -> Int -> Int -> [VarPosEnv] -> [[Identifier]] -> VarPosEnv
-    varusage n sc scu u vps subvars = vpextvu vp u (UID scu) usedmask
-      where vp = concatVP vps subvars
+    varusage n sc scu u vps subvars = vpextvu vp' u (UID scu) usedmask
+      where vp' = concatVP vps subvars
             usedvars = subvarsInScope n sc subvars
             usedmask = Vector.fromList $ snd $ foldl mkmask (0,[]) sc
 
@@ -432,7 +438,7 @@ minimalProgramDecls declIds prog = fixpointAcc declGlobals (declIds, declIds)
           let nacc = nub $ acc ++ deltaAcc
           if nacc == acc then return acc else fixpointAcc f (nacc, deltaAcc)
 
-        declGlobals acc id = foldNamedDeclExpression id extractGlobals acc prog >>= return . fst
+        declGlobals acc i = foldNamedDeclExpression i extractGlobals acc prog >>= return . fst
         extractGlobals acc e = return (acc ++ freeVariables e, e)
 
 
