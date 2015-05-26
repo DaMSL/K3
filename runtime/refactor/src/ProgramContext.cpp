@@ -9,7 +9,11 @@
 #include "Value.hpp"
 #include "ProgramContext.hpp"
 
-DummyContext::DummyContext() {
+namespace K3 {
+
+ProgramContext::ProgramContext(Engine& e) : StandardBuiltins(e), engine_(e) { }
+
+DummyContext::DummyContext(Engine& e) : ProgramContext(e) {
   state_ = make_shared<DummyState>();
 }
 
@@ -56,11 +60,11 @@ void DummyContext::__processRole() {
     MessageHeader h(me, me, 1);
     // TODO(jbw) grab internal format from NetworkManager
     static shared_ptr<Codec> codec = Codec::getCodec<int>(CodecFormat::BoostBinary);
-    Engine::getInstance().send(h, make_shared<TNativeValue<int>>(5), codec);
+    engine_.send(h, make_shared<TNativeValue<int>>(5), codec);
   } else if (role == "string") {
     MessageHeader h(me, me, 2);
     static shared_ptr<Codec> codec = Codec::getCodec<std::string>(CodecFormat::BoostBinary);
-    Engine::getInstance().send(h, make_shared<TNativeValue<std::string>>("hi"), codec);
+    engine_.send(h, make_shared<TNativeValue<std::string>>("hi"), codec);
   }
 }
 
@@ -73,3 +77,5 @@ void DummyContext::stringTrigger(std::string s) {
   state_->my_string_ = s;
   return;
 }
+
+}  // namespace K3

@@ -7,6 +7,8 @@
 #include "Common.hpp"
 #include "Value.hpp"
 
+namespace K3 {
+
 class Message {
  public:
   Message() { }
@@ -35,5 +37,7 @@ class NetworkMessage : public Message {
 
   int payload_length_;
 };
+
+}  // namespace K3
 
 #endif

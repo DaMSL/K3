@@ -10,6 +10,8 @@
 #include "Value.hpp"
 #include "Serialization.hpp"
 
+namespace K3 {
+
 class Codec {
  public:
   virtual shared_ptr<PackedValue> pack(const NativeValue&) = 0;
@@ -50,5 +52,7 @@ shared_ptr<Codec> Codec::getCodec(CodecFormat format) {
     throw std::runtime_error("Unrecognized codec format");
   }
 }
+
+} // namespace K3
 
 #endif

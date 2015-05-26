@@ -15,6 +15,8 @@
 #include "ProgramContext.hpp"
 #include "Queue.hpp"
 
+namespace K3 {
+
 using std::shared_ptr;
 using std::thread;
 
@@ -36,5 +38,7 @@ class Peer {
   shared_ptr<Queue> queue_;
   shared_ptr<ProgramContext> context_;
 };
+
+}  // namespace K3
 
 #endif

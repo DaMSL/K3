@@ -5,6 +5,8 @@
 #include "Value.hpp"
 #include "ProgramContext.hpp"
 
+namespace K3 {
+
 void NativeValue::dispatchIntoContext(ProgramContext* pc, TriggerID trig) {
   return pc->dispatch(this, trig);
 }
@@ -43,3 +45,5 @@ SentinelValue::SentinelValue() { }
 void SentinelValue::dispatchIntoContext(ProgramContext* pc, TriggerID trig) {
   return pc->dispatch(this);
 }
+
+}  // namespace K3

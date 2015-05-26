@@ -12,6 +12,7 @@
 #include <vector>
 #include <iostream>
 
+namespace K3 {
 namespace Serialization {
 
 namespace io = boost::iostreams;
@@ -44,5 +45,6 @@ T unpack(const Buffer& buf) {
 }
 
 }  // namespace Serialization
+}  // namespace K3
 
 #endif

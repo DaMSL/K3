@@ -9,19 +9,27 @@
 
 #include "boost/asio.hpp"
 
+#include "Builtins.hpp"
 #include "Common.hpp"
 #include "Message.hpp"
 #include "Yaml.hpp"
 
-class NativeValue;
+namespace K3 {
 
-class ProgramContext {
+class NativeValue;
+class Engine;
+
+class ProgramContext : public StandardBuiltins {
  public:
+  explicit ProgramContext(Engine& e);
   virtual void dispatch(NativeValue* nv, TriggerID trig) = 0;
   virtual void dispatch(PackedValue* pv, TriggerID trig) = 0;
   virtual void dispatch(SentinelValue* sv) = 0;
   virtual void __patch(const YAML::Node& node) = 0;
   virtual void __processRole() = 0;
+
+ protected:
+  Engine& engine_;
 };
 
 class DummyState {
@@ -30,9 +38,11 @@ class DummyState {
   std::string my_string_ = "";
 };
 
+typedef std::function<shared_ptr<ProgramContext>()> ContextFactory;
+
 class DummyContext : public ProgramContext {
  public:
-  DummyContext();
+  explicit DummyContext(Engine& e);
   virtual void dispatch(NativeValue* nv, TriggerID trig);
   virtual void dispatch(PackedValue* pv, TriggerID trig);
   virtual void dispatch(SentinelValue* sv);
@@ -48,27 +58,27 @@ class DummyContext : public ProgramContext {
   shared_ptr<DummyState> state_;
 };
 
+}  // namespace K3
+
 namespace YAML {
 template <>
-class convert<DummyContext> {
+struct convert<K3::DummyContext> {
  public:
-  static Node encode(const DummyContext& context)  {
+  static Node encode(const K3::DummyContext& context)  {
     Node _node;
-    _node["me"] = convert<Address>::encode(context.me);
+    _node["me"] = convert<K3::Address>::encode(context.me);
     _node["role"] = convert<std::string>::encode(context.role);
     _node["my_int"] = convert<int>::encode(context.state_->my_int_);
     _node["my_string"] = convert<std::string>::encode(context.state_->my_string_);
     _node["max_loops"] = convert<int>::encode(context.max_loops);
     return _node;
   }
-  static bool decode(const Node& node, DummyContext& context)  {
+  static bool decode(const Node& node, K3::DummyContext& context)  {
     if (!node.IsMap()) {
       return false;
     }
     if (node["me"]) {
-      // TODO(jbw) solve this hack/problem.
-      // Address is stored as ulong but represented as a string in YAML
-      context.me = make_address(node);
+      context.me = K3::make_address(node["me"]);
     }
     if (node["role"]) {
       context.role = node["role"].as<std::string>();
@@ -87,5 +97,4 @@ class convert<DummyContext> {
 };
 }  // namespace YAML
 
-typedef std::function<shared_ptr<ProgramContext>()> ContextFactory;
 #endif

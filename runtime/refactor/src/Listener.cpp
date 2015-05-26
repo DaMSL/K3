@@ -1,58 +1,71 @@
+#include <string>
+
 #include "Listener.hpp"
+#include "IncomingConnection.hpp"
 #include "Peer.hpp"
 
-Listener::Listener(shared_ptr<Peer> peer,
-                   shared_ptr<IncomingConnectionFactory> in_factory)
-  : in_conns_() {
+namespace K3 {
+
+Listener::Listener(asio::io_service& service,
+                   const Address& address,
+                   shared_ptr<Peer> peer,
+                   CodecFormat format,
+                   shared_ptr<IncomingConnectionFactory> in_factory) {
+  address_ = address;
   peer_ = peer;
-  auto service = NetworkManager::getInstance().getIOService();
-  acceptor_ = make_shared<boost::asio::ip::tcp::acceptor>(*service);
+  acceptor_ = make_shared<boost::asio::ip::tcp::acceptor>(service);
+  format_ = format;
+  in_conns_ = make_shared<IncomingConnectionMap>();
   conn_factory_ = in_factory;
 
-  // Accept connections at the peer's address
-  Address addr = peer_->address();
-  auto ip = boost::asio::ip::address_v4(std::get<0>(addr));
-  boost::asio::ip::tcp::endpoint ep(ip, std::get<1>(addr));
+  // Prepare to accept connections
+  auto ip = boost::asio::ip::address_v4(std::get<0>(address_));
+  boost::asio::ip::tcp::endpoint ep(ip, std::get<1>(address_));
   acceptor_->open(ep.protocol());
   boost::asio::socket_base::reuse_address option(true);
   acceptor_->set_option(option);
   acceptor_->bind(ep);
   acceptor_->listen();
-  acceptConnection();
 }
 
-void Listener::acceptConnection() {
-  shared_ptr<MessageHandler> rcv_m_handler = make_shared<MessageHandler>(
-  [this] (shared_ptr<Message> m) {
-    peer_->enqueue(m);
-  });
+void Listener::acceptConnection(shared_ptr<ErrorHandler> acpt_e_handler) {
+  shared_ptr<IncomingConnection> conn = (*conn_factory_)(acceptor_->get_io_service(), format_);
 
-  // The error handler needs to be set after the connection is created
-  // since it caputres the connection pointer
-  shared_ptr<IncomingConnection> conn = (*conn_factory_)(rcv_m_handler, nullptr);
-  shared_ptr<ErrorHandler> rcv_e_handler;
-  rcv_e_handler = make_shared<ErrorHandler>([this, conn] (const boost::system::error_code& ec) {
+  shared_ptr<Listener> this_shared = shared_from_this();
+  acceptor_->async_accept(*conn->getSocket(), [this_shared, conn, acpt_e_handler]
+  (const boost::system::error_code& ec) {
     if (ec) {
-      in_conns_.erase(conn);
+      (*acpt_e_handler)(ec);
+    } else {
+      this_shared->registerConnection(conn);
+      this_shared->acceptConnection(acpt_e_handler);
     }
-  });
-  conn->setErrorHandler(rcv_e_handler);
-
-  acceptor_->async_accept(*conn->getSocket(), [this, conn] (const boost::system::error_code& ec) {
-    if (ec) {
-      throw std::runtime_error("Listener acceptConnection(): " + ec.message());
-    }
-
-    registerConnection(conn);
-    acceptConnection();
   });
 }
 
 void Listener::registerConnection(shared_ptr<IncomingConnection> c) {
-  in_conns_.insert(c);
-  c->receiveMessages();
+  string s = c->getSocket()->remote_endpoint().address().to_string();
+  unsigned short port = c->getSocket()->remote_endpoint().port();
+  Address a = make_address(s, port);
+  in_conns_->insert(a, c);
+
+  shared_ptr<Peer> peer = peer_;
+  shared_ptr<MessageHandler> m_handler = make_shared<MessageHandler>(
+  [peer] (shared_ptr<Message> m) {
+    peer->enqueue(m);
+  });
+
+  shared_ptr<IncomingConnectionMap> conn_map = in_conns_;
+  shared_ptr<ErrorHandler> e_handler;
+  e_handler = make_shared<ErrorHandler>([conn_map, a] (const boost::system::error_code& ec) {
+    conn_map->erase(a);
+  });
+
+  c->receiveMessages(m_handler, e_handler);
 }
 
 int Listener::numConnections() {
-  return in_conns_.size();
+  return in_conns_->size();
 }
+
+}  // namespace K3

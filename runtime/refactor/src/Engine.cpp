@@ -9,83 +9,52 @@
 #include "NetworkManager.hpp"
 #include "Peer.hpp"
 
+namespace K3 {
 using std::list;
 
-Engine& Engine::getInstance() {
-  static Engine instance;
-  return instance;
+Engine::Engine() {
+  network_manager_ = make_shared<NetworkManager>();
+  peers_ = nullptr;  // Intialized during run()
+  running_ = false;
+  ready_peers_ = 0;
+  total_peers_ = 0;
+  local_sends_enabled_ = true;
 }
 
-void Engine::run(const list<std::string>& peer_configs, shared_ptr<ContextFactory> f) {
-  // Reset members
-  peers_ = map<Address, shared_ptr<Peer>>();
-  context_factory_ = f;
-  total_peers_ = peer_configs.size();
-  ready_peers_.store(0);
-
-  NetworkManager::getInstance().run();
-
-  // Parse peer configurations
-  for (auto config : peer_configs) {
-    YAML::Node node = YAML::Load(config);
-
-    if (!node.IsMap()) {
-      throw std::runtime_error("Engine initialize(): Invalid YAML. Not a map: " + YAML::Dump(node));
-    }
-    if (!node["me"]) {
-      std::string err = "Engine initialize(): Invalid YAML. Missing 'me': " + YAML::Dump(node);
-      throw std::runtime_error(err);
-    }
-
-    Address addr = make_address(node);
-    auto ready_callback = [this] () {
-      ready_peers_++;
-    };
-    auto p = make_shared<Peer>(addr, context_factory_, node, ready_callback);
-    peers_[addr] = p;
+Engine::~Engine() {
+  if (running_) {
+    stop();
+    join();
   }
-
-  // Wait for peers to initialize and check-in as ready
-  while (total_peers_ > ready_peers_.load()) continue;
-
-  // Signal all peers to start
-  for (auto it : peers_) {
-    NetworkManager::getInstance().listenInternal(it.second);
-    it.second->start();
-  }
-
-  // Engine is running once all peers have checked in
-  running_.store(true);
-  return;
 }
 
 void Engine::stop() {
   // Place a Sentintel on each Peer's queue
-  for (auto& it : peers_) {
+  for (auto& it : *peers_) {
     auto m = make_shared<Message>(it.first, it.first , -1, make_shared<SentinelValue>());
     it.second->enqueue(std::move(m));
   }
 
-  // TODO(jbw) Restore all configuration parameters to defaults
-  local_sends_enabled_ = true;
-  running_.store(false);
+  network_manager_->stop();
 }
 
 void Engine::join() {
-  for (auto& it : peers_) {
-    it.second->join();
-  }
+  if (running_) {
+    for (auto& it : *peers_) {
+      it.second->join();
+    }
 
-  NetworkManager::getInstance().stop();
-  NetworkManager::getInstance().join();
+    network_manager_->join();
+    running_ = false;
+  }
 }
 
 void Engine::send(const MessageHeader& header,
                   shared_ptr<NativeValue> value,
                   shared_ptr<Codec> codec) {
-  auto it = peers_.find(header.destination());
+  auto it = peers_->find(header.destination());
 
-  if (local_sends_enabled_ && it != peers_.end()) {
+  if (local_sends_enabled_ && it != peers_->end()) {
     // Direct enqueue for local messages
     auto m = make_shared<Message>(header, value);
     it->second->enqueue(m);
@@ -93,27 +62,61 @@ void Engine::send(const MessageHeader& header,
     // Serialize and send over the network, otherwise
     shared_ptr<PackedValue> pv = codec->pack(*value);
     shared_ptr<NetworkMessage> m = make_shared<NetworkMessage>(header, pv);
-    NetworkManager::getInstance().sendInternal(m);
+    network_manager_->sendInternal(m);
   }
-}
-
-void Engine::toggleLocalSend(bool enable) {
-  if (running_) {
-    throw std::runtime_error("Engine toggleLocalSend(): Engine already running");
-  }
-
-  local_sends_enabled_ = enable;
 }
 
 shared_ptr<Peer> Engine::getPeer(const Address& addr) {
-  auto it = peers_.find(addr);
-  if (it != peers_.end()) {
+  auto it = peers_->find(addr);
+  if (it != peers_->end()) {
     return it->second;
   } else {
     throw std::runtime_error("Engine getPeer(): Peer not found");
   }
 }
 
+void Engine::toggleLocalSends(bool enabled) {
+  if (running_) {
+    throw std::runtime_error("Engine toggleLocalSends(): Already running");
+  } else {
+    local_sends_enabled_ = enabled;
+  }
+}
+
+shared_ptr<NetworkManager> Engine::getNetworkManager() {
+  return network_manager_;
+}
+
 bool Engine::running() {
   return running_.load();
 }
+
+Address Engine::meFromYAML(const YAML::Node& peer_config) {
+  if (!peer_config.IsMap()) {
+    throw std::runtime_error("Engine run(): Invalid YAML. Not a map: " + YAML::Dump(peer_config));
+  }
+  if (!peer_config["me"]) {
+    string err = "Engine run(): Invalid YAML. Missing 'me': " + YAML::Dump(peer_config);
+    throw std::runtime_error(err);
+  }
+  return make_address(peer_config["me"]);
+}
+
+shared_ptr<map<Address, shared_ptr<Peer>>> Engine::createPeers(const list<string>& peer_configs, 
+                                                               shared_ptr<ContextFactory> factory) {
+  auto result = make_shared<map<Address, shared_ptr<Peer>>>();
+
+  for (auto config : peer_configs) {
+    YAML::Node node = YAML::Load(config);
+    Address addr = meFromYAML(node);
+    auto ready_callback = [this] () {
+      ready_peers_++;
+    };
+    auto p = make_shared<Peer>(addr, factory, node, ready_callback);
+    (*result)[addr] = p;
+  }
+
+  return result;
+}
+
+}  // namespace K3

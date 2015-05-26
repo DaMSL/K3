@@ -2,6 +2,8 @@
 
 #include "Message.hpp"
 
+namespace K3 {
+
 Message::Message(const Address& src,
                  const Address& dst,
                  TriggerID trig,
@@ -93,3 +95,5 @@ int NetworkMessage::networkHeaderSize() {
 void NetworkMessage::setValue(shared_ptr<Value> v) {
   value_ = v;
 }
+
+}  // namespace K3

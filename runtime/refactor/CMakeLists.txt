@@ -5,9 +5,9 @@ set (CMAKE_LIBRARY_OUTPUT_DIRECTORY ./lib)
 set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ./bin)
 
 include(CheckCXXCompilerFlag)
-CHECK_CXX_COMPILER_FLAG("-std=c++1y" "-O4" COMPILER_SUPPORTS_CXX1Y)
+CHECK_CXX_COMPILER_FLAG("-std=c++1y" COMPILER_SUPPORTS_CXX1Y)
 if(COMPILER_SUPPORTS_CXX1Y)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++1y")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g -std=c++1y")
 else()
   message(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++1y support. Please use a different C++ compiler.")
 endif()
@@ -24,13 +24,17 @@ find_library(YAMLCPP_LIBRARY
 add_subdirectory(include/external/gtest-1.7.0)
 enable_testing()
 
-set (srcs src/Engine.cpp 
+set (srcs src/BaseString.cpp
+          src/Engine.cpp 
           src/Message.cpp
           src/Peer.cpp
           src/ProgramContext.cpp
           src/Value.cpp
           src/NetworkManager.cpp
           src/Listener.cpp
+          src/IncomingConnection.cpp
+          src/OutgoingConnection.cpp
+          src/builtins/StandardBuiltins.cpp
     )
 
 # TODO add k3 back

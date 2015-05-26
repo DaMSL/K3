@@ -1,25 +1,33 @@
 #ifndef K3_LISTENER
 #define K3_LISTENER
 
+#include <memory>
+
 #include "NetworkManager.hpp"
 
-typedef std::function<shared_ptr<IncomingConnection>(shared_ptr<MessageHandler>,
-    shared_ptr<ErrorHandler>)> IncomingConnectionFactory;
+namespace K3 {
+
+typedef std::function<shared_ptr<IncomingConnection>(asio::io_service&, CodecFormat)>
+IncomingConnectionFactory;
 
 class Peer;
-class Listener {
+class Listener : public std::enable_shared_from_this<Listener> {
  public:
-  Listener(shared_ptr<Peer> peer, shared_ptr<IncomingConnectionFactory> in_constructor);
+  Listener(asio::io_service&, const Address& address, shared_ptr<Peer>, CodecFormat, shared_ptr<IncomingConnectionFactory>);
+  void acceptConnection(shared_ptr<ErrorHandler>);
   int numConnections();
 
  protected:
-  void acceptConnection();
-  void registerConnection(shared_ptr<IncomingConnection> c);
+  void registerConnection(shared_ptr<IncomingConnection>);
 
+  Address address_;
   shared_ptr<Peer> peer_;
   shared_ptr<boost::asio::ip::tcp::acceptor> acceptor_;
+  CodecFormat format_;
   shared_ptr<IncomingConnectionFactory> conn_factory_;
-  ConcurrentSet<shared_ptr<IncomingConnection>> in_conns_;
+  shared_ptr<IncomingConnectionMap> in_conns_;
 };
+
+}  // namespace K3
 
 #endif

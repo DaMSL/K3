@@ -4,6 +4,8 @@
 #include "Engine.hpp"
 #include "NetworkManager.hpp"
 
+namespace K3 {
+
 Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
            const YAML::Node& peer_config,
            std::function<void()> ready_callback) {
@@ -60,3 +62,5 @@ Address Peer::address() {
 shared_ptr<ProgramContext> Peer::getContext() {
   return context_;
 }
+
+}  // namespace K3

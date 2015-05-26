@@ -8,6 +8,8 @@
 
 #include "Common.hpp"
 
+namespace K3 {
+
 class ProgramContext;
 
 // Interface
@@ -83,5 +85,7 @@ class SentinelValue : public Value {
   SentinelValue();
   virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig);
 };
+
+}  // namespace K3
 
 #endif

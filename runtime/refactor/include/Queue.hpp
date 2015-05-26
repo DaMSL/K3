@@ -10,6 +10,8 @@
 
 #include "Message.hpp"
 
+namespace K3 {
+
 // TODO(jbw) Consider bulk dequeues
 class Queue {
  public:
@@ -28,5 +30,7 @@ class Queue {
  protected:
   moodycamel::BlockingConcurrentQueue<shared_ptr<Message>> queue_;
 };
+
+}  // namespace K3
 
 #endif

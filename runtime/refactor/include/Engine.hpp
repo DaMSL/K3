@@ -8,38 +8,66 @@
 #include <string>
 
 #include "Common.hpp"
-#include "ProgramContext.hpp"
+#include "NetworkManager.hpp"
+#include "Peer.hpp"
 
-class Peer;
+namespace K3 {
 
-// TODO(jbw) make the peers_ map const after initialization
-// Singleton class.
 class Engine {
  public:
   // Core
-  static Engine& getInstance();
-  void run(const list<string>& peer_configs, shared_ptr<ContextFactory> f);
+  Engine();
+  ~Engine();
+  template <class Context> void run(const list<string>& peer_configs);
   void stop();
   void join();
   void send(const MessageHeader& m, shared_ptr<NativeValue> v, shared_ptr<Codec> cdec);
 
   // Utilities
-  void toggleLocalSend(bool enable);
   shared_ptr<Peer> getPeer(const Address& addr);
+  void toggleLocalSends(bool enabled);
+  shared_ptr<NetworkManager> getNetworkManager();
   bool running();
 
- private:
-  // No copies of Singleton
-  Engine() { }
-  Engine(const Engine&) = delete;
-  void operator=(const Engine&) = delete;
+ protected:
+  Address meFromYAML(const YAML::Node& peer_config);
+  shared_ptr<map<Address, shared_ptr<Peer>>> createPeers(const list<string>& peer_configs,
+                                                         shared_ptr<ContextFactory> context_factory);
 
-  map<Address, shared_ptr<Peer>> peers_;
-  shared_ptr<ContextFactory> context_factory_;
-  int total_peers_;
-  std::atomic<int> ready_peers_;
-  std::atomic<bool> running_;
+  shared_ptr<NetworkManager> network_manager_;
+  shared_ptr<const map<Address, shared_ptr<Peer>>> peers_;
   bool local_sends_enabled_;
+  std::atomic<bool> running_;
+  std::atomic<int> ready_peers_;
+  int total_peers_;
 };
+
+template <class Context>
+void Engine::run(const list<string>& peer_configs) {
+  if (running_) {
+    throw std::runtime_error("Engine run(): already running");
+  }
+  running_ = true;
+
+  // Create peers
+  total_peers_ = peer_configs.size();
+  auto context_factory = make_shared<ContextFactory>([this] () {
+    return make_shared<Context>(*this);
+  });
+  peers_ = createPeers(peer_configs, context_factory);
+
+  // Wait for peers to initialize and check-in as ready
+  while (total_peers_ > ready_peers_) continue;
+
+  // Signal all peers to start
+  for (auto it : *peers_) {
+    network_manager_->listenInternal(it.second);
+    it.second->start();
+  }
+
+  return;
+}
+
+}  // namespace K3
 
 #endif
