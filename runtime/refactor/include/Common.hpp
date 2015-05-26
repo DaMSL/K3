@@ -31,6 +31,8 @@ typedef std::vector<char> Buffer;
 
 typedef std::tuple<unsigned long, unsigned short> Address;
 
+typedef std::string Identifier; 
+
 // TODO(jbw) move to Message.hpp
 class MessageHeader {
  public:
@@ -87,14 +89,14 @@ class ConcurrentMap : public boost::basic_lockable_adapter<boost::mutex> {
  public:
   ConcurrentMap() : boost::basic_lockable_adapter<boost::mutex>(), map_(*this) { }
 
-  void insert(const Key& key, shared_ptr<Val> v) {
+  void insert(const Key& key, Val v) {
     boost::strict_lock<ConcurrentMap<Key, Val>> lock(*this);
     map_.get(lock)[key] = v;
   }
 
-  shared_ptr<Val> lookup(const Key& key) {
+  Val lookup(const Key& key) {
     boost::strict_lock<ConcurrentMap<Key, Val>> lock(*this);
-    shared_ptr<Val> result;
+    Val result;
     auto it = map_.get(lock).find(key);
     if (it != map_.get(lock).end()) {
       result = it->second;
@@ -103,7 +105,7 @@ class ConcurrentMap : public boost::basic_lockable_adapter<boost::mutex> {
   }
 
  protected:
-  boost::externally_locked<std::map<Key, shared_ptr<Val>>, ConcurrentMap<Key, Val>> map_;
+  boost::externally_locked<std::map<Key, Val>, ConcurrentMap<Key, Val>> map_;
 };
 
 // Thread-safe set of Val

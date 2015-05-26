@@ -1,15 +1,19 @@
-cmake_minimum_required (VERSION 3.0)
+cmake_minimum_required (VERSION 2.8)
+#SET (CMAKE_C_COMPILER "/usr/bin/gcc")
+#SET (CMAKE_CXX_COMPILER "/usr/bin/g++")
 project (k3)
+
+
 set (CMAKE_ARCHIVE_OUTPUT_DIRECTORY ./lib)
 set (CMAKE_LIBRARY_OUTPUT_DIRECTORY ./lib)
 set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ./bin)
 
 include(CheckCXXCompilerFlag)
-CHECK_CXX_COMPILER_FLAG("-std=c++1y" "-O4" COMPILER_SUPPORTS_CXX1Y)
-if(COMPILER_SUPPORTS_CXX1Y)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++1y")
+CHECK_CXX_COMPILER_FLAG(-std=c++14 COMPILER_SUPPORTS_CXX14)
+if(COMPILER_SUPPORTS_CXX14)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++14")
 else()
-  message(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++1y support. Please use a different C++ compiler.")
+  message(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++14 support. Please use a different C++ compiler.")
 endif()
 
 set(Boost_USE_STATIC_LIBS OFF) 
@@ -29,8 +33,10 @@ set (srcs src/Engine.cpp
           src/Peer.cpp
           src/ProgramContext.cpp
           src/Value.cpp
-          src/NetworkManager.cpp
+	  #src/NetworkManager.cpp
           src/Listener.cpp
+	  src/FileHandle.cpp
+	  src/StorageManager.cpp
     )
 
 # TODO add k3 back
@@ -40,7 +46,8 @@ set (test_link_libs ${link_libs} gtest gtest_main)
 include_directories    (include include/external ${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR} include/external/)
 add_library            (k3 ${srcs})
 
-set (tests test/Engine.cpp
+set (tests #test/Engine.cpp
+	   test/StorageManager.cpp
     )
 
 add_executable(Tests ${tests} test/Main.cpp)
