@@ -53,6 +53,8 @@ import qualified Language.K3.Analysis.CArgs                as CArgs
 import qualified Language.K3.Analysis.Provenance.Inference as Provenance
 import qualified Language.K3.Analysis.SEffects.Inference   as SEffects
 
+import qualified Language.K3.Analysis.SendGraph as SG
+
 import Language.K3.Transform.Simplification
 import Language.K3.Transform.TriggerSymbols (triggerSymbols)
 
@@ -485,6 +487,7 @@ optPasses = map prepareOpt [ (simplifyWCSE, "opt-simplify-prefuse")
 
 cgPasses :: [ProgramTransform]
 cgPasses = [ withRepair "TID" $ transformE triggerSymbols
+           , \d -> (liftIO (SG.generateSendGraph d) >> return d)
            , \d -> return (mangleReservedNames d)
            , refreshProgram
            , transformF CArgs.runAnalysis
