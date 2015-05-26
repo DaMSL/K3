@@ -24,14 +24,8 @@ k3name =
 		"#{basename}.k3"
 	end
 
-# check for dbtoaster
-unless File.exists? File.join(root_path, "K3-Mosaic", "tests", "dbtoaster_release")
-   `#{File.join(mosaic_path, "build_opt.sh")}`
-	 `#{File.join(mosaic_path, "build_utils.sh")}`
-end
-
 # create the necessary files
 `#{File.join(mosaic_path, "tests", "auto_test.py")} --no-interp -d -f #{target}`
 
 # compile
-`#{File.join(script_path, "..", "run", "compile.sh")} --fstage cexclude=Optimize #{File.join("temp", k3name)}`
+`#{File.join(script_path, "..", "run", "compile_brew.sh")} --fstage cexclude=Optimize #{File.join("temp", k3name)}`
