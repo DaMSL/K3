@@ -196,7 +196,7 @@ getSourceBuiltin k =
 genHasRead :: String -> K3 Type -> String -> CPPGenM R.Definition
 genHasRead suf _ name = do
     let source_name = stripSuffix suf name
-    let e_has_r = R.Project (R.Variable $ R.Name "__engine") (R.Name "hasRead")
+    let e_has_r = R.Project (R.Variable $ R.Name "__engine_") (R.Name "hasRead")
     let body = R.Return $ R.Call e_has_r [R.Literal $ R.LString source_name]
     return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")]
       (Just $ R.Primitive R.PBool) [] False [body]
@@ -206,7 +206,7 @@ genDoRead suf typ name = do
     ret_type    <- genCType $ last $ children typ
     let source_name =  stripSuffix suf name
     let result_dec = R.Forward $ R.ScalarDecl (R.Name "result") (R.SharedPointer ret_type) $ Just $
-                       (R.Call (R.Project (R.Variable $ R.Name "__engine")
+                       (R.Call (R.Project (R.Variable $ R.Name "__engine_")
                                           (R.Specialized [ret_type] $ R.Name "doReadExternal"))
                                [R.Literal $ R.LString source_name])
     let return_stmt = R.IfThenElse (R.Variable $ R.Name "result")
@@ -218,7 +218,7 @@ genDoRead suf typ name = do
 genHasWrite :: String -> K3 Type -> String -> CPPGenM R.Definition
 genHasWrite suf _ name = do
     let sink_name = stripSuffix suf name
-    let e_has_w = R.Project (R.Variable $ R.Name "__engine") (R.Name "hasWrite")
+    let e_has_w = R.Project (R.Variable $ R.Name "__engine_") (R.Name "hasWrite")
     let body = R.Return $ R.Call e_has_w [R.Literal $ R.LString sink_name]
     return $ R.FunctionDefn (R.Name $ sink_name ++ suf) [("_", R.Named $ R.Name "unit_t")]
       (Just $ R.Primitive R.PBool) [] False [body]
@@ -227,7 +227,7 @@ genDoWrite :: String -> K3 Type -> String -> CPPGenM R.Definition
 genDoWrite suf typ name = do
     val_type    <- genCType $ head $ children typ
     let sink_name =  stripSuffix suf name
-    let write_expr = R.Call (R.Project (R.Variable $ R.Name "__engine")
+    let write_expr = R.Call (R.Project (R.Variable $ R.Name "__engine_")
                                        (R.Specialized [val_type] $ R.Name "doWriteExternal"))
                             [R.Literal $ R.LString sink_name, R.Variable $ R.Name "v"]
     return $ R.FunctionDefn (R.Name $ sink_name ++ suf) [("v", R.Const $ R.Reference val_type)]

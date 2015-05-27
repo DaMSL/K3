@@ -5,22 +5,22 @@
 
 #include "gtest/gtest.h"
 
-#include "Codec.hpp"
 #include "Common.hpp"
-#include "Engine.hpp"
-#include "StorageManager.hpp"
-#include "Peer.hpp"
-#include "ProgramContext.hpp"
+#include "serialization/Codec.hpp"
+#include "core/Engine.hpp"
+#include "core/Peer.hpp"
+#include "core/ProgramContext.hpp"
+#include "storage/StorageManager.hpp"
 #include "spdlog/spdlog.h"
 
+using namespace K3;
 
 TEST(Storage, BinaryFile) {
   std::cout << "STORAGE.BIN Test" << std::endl;
   Address a1 = make_address("127.0.0.1", 30000);
 
   // Write a few ints to a sink
-  std::cout << "getInstance" << std::endl;
-  StorageManager& storage = StorageManager::getInstance();
+  StorageManager storage = StorageManager();
   storage.setLogger("stdout");
 
   std::cout << "openFile (Write)" << std::endl;

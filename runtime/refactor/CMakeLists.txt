@@ -1,6 +1,4 @@
 cmake_minimum_required (VERSION 2.8)
-#SET (CMAKE_C_COMPILER "/usr/bin/gcc")
-#SET (CMAKE_CXX_COMPILER "/usr/bin/g++")
 project (k3)
 
 
@@ -21,32 +19,38 @@ set(Boost_USE_MULTITHREADED ON)
 set(Boost_USE_STATIC_RUNTIME OFF) 
 
 # TODO error handling on not found
-find_package(Boost 1.55.0 COMPONENTS serialization system thread)
+find_package(Boost 1.55.0 COMPONENTS serialization system thread program_options)
 find_library(YAMLCPP_LIBRARY
              NAMES libyaml-cpp.a yaml-cpp)
 
 add_subdirectory(include/external/gtest-1.7.0)
 enable_testing()
 
-set (srcs src/Engine.cpp 
-          src/Message.cpp
-          src/Peer.cpp
-          src/ProgramContext.cpp
-          src/Value.cpp
-	  #src/NetworkManager.cpp
-          src/Listener.cpp
-	  src/FileHandle.cpp
-	  src/StorageManager.cpp
+set (srcs src/core/Engine.cpp 
+          src/core/Peer.cpp
+          src/core/ProgramContext.cpp
+          src/types/BaseString.cpp
+          src/types/Message.cpp
+          src/types/Value.cpp
+          src/network/NetworkManager.cpp
+          src/network/Listener.cpp
+          src/network/IncomingConnection.cpp
+          src/storage/StorageManager.cpp
+          src/storage/FileHandle.cpp
+          src/network/OutgoingConnection.cpp
+          src/builtins/StandardBuiltins.cpp
+          src/builtins/TimeBuiltins.cpp
+          src/builtins/StringBuiltins.cpp
+          src/Options.cpp
     )
 
-# TODO add k3 back
 set (link_libs k3 ${Boost_LIBRARIES} ${YAMLCPP_LIBRARY} profiler)
 set (test_link_libs ${link_libs} gtest gtest_main)
 
 include_directories    (include include/external ${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR} include/external/)
 add_library            (k3 ${srcs})
 
-set (tests #test/Engine.cpp
+set (tests test/Engine.cpp
 	   test/StorageManager.cpp
     )
 

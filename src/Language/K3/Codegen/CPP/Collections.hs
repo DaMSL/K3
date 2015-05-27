@@ -99,7 +99,7 @@ composite name ans = do
              (Just $ R.Named $ R.Name "void")
              [] False $ serializeStatements asYas)
 
-    let methods = [defaultConstructor, superConstructor, superMoveConstructor, serializeFn False, serializeFn True] ++ indexDefns
+    let methods = [defaultConstructor, superConstructor, superMoveConstructor, serializeFn False] ++ indexDefns
 
     let collectionClassDefn = R.TemplateDefn [("__CONTENT", Nothing)]
              (R.ClassDefn (R.Name name) [] (map R.Named baseClasses) methods [] [])
@@ -164,7 +164,7 @@ composite name ans = do
                              ]
                              [] []
                          ]
-    return [collectionClassDefn, compactSerializationDefn, yamlStructDefn, jsonStructDefn]
+    return [collectionClassDefn, compactSerializationDefn, yamlStructDefn]
 
 record :: [Identifier] -> CPPGenM [R.Definition]
 record (sort -> ids) = do
@@ -391,7 +391,7 @@ record (sort -> ids) = do
                             ] [] []
                             ]
     return [ recordStructDefn, compactSerializationDefn {-, noTrackingDefn, bitwiseSerializableDefn-}
-           , jsonStructDefn, yamlStructDefn, hashStructDefn]
+           , yamlStructDefn, hashStructDefn]
 
 reservedAnnotations :: [Identifier]
 reservedAnnotations = ["Collection", "External", "Seq", "Set", "Sorted", "Map", "IntMap", "StrMap", "Vector", "MultiIndex"]
