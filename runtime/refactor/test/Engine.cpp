@@ -32,6 +32,7 @@ using K3::DummyContext;
 using K3::Value;
 using K3::TNativeValue;
 using K3::NativeValue;
+using K3::StringPackedValue;
 using K3::MessageHeader;
 
 class EngineTest : public ::testing::Test {
@@ -57,6 +58,18 @@ class EngineTest : public ::testing::Test {
   Address external_addr_;
 };
 
+TEST(CSV, StringPackedValue) {
+  auto codec = Codec::getCodec<tuple<int, string>>(CodecFormat::CSV);
+  // TODO(jbw) why does csvpp flip the order????
+  string s = "one,1";
+
+  shared_ptr<K3::PackedValue> packed = make_shared<StringPackedValue>(std::move(s), CodecFormat::CSV);
+  auto result = codec->unpack(*packed);
+
+  ASSERT_EQ(1, std::get<0>(*result->as<tuple<int, string>>()));
+  ASSERT_EQ("one", std::get<1>(*result->as<tuple<int, string>>()));
+}
+
 TEST(CSV, Tuple) {
   auto codec = Codec::getCodec<tuple<int, string>>(CodecFormat::CSV);
 
@@ -64,6 +77,8 @@ TEST(CSV, Tuple) {
   auto val = make_shared<TNativeValue<tuple<int, string>>>(s);
 
   auto packed = codec->pack(*val);
+  string str = string(packed->buf(), packed->length());
+  std::cout << str << std::endl;
   auto result = codec->unpack(*packed);
   
 
