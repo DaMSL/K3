@@ -9,6 +9,7 @@
 
 #include "Common.hpp"
 #include "network/NetworkManager.hpp"
+#include "storage/StorageManager.hpp"
 #include "Peer.hpp"
 
 namespace K3 {
@@ -29,6 +30,7 @@ class Engine {
   shared_ptr<Peer> getPeer(const Address& addr);
   void toggleLocalSends(bool enabled);
   shared_ptr<NetworkManager> getNetworkManager();
+  shared_ptr<StorageManager> getStorageManager();
   bool running();
 
  protected:
@@ -38,6 +40,7 @@ class Engine {
       shared_ptr<ContextFactory> context_factory);
 
   shared_ptr<NetworkManager> network_manager_;
+  shared_ptr<StorageManager> storage_manager_;
   shared_ptr<const map<Address, shared_ptr<Peer>>> peers_;
   bool local_sends_enabled_;
   std::atomic<bool> running_;

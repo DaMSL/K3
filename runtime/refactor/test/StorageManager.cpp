@@ -19,8 +19,7 @@ TEST(Storage, BinaryFile) {
   Address a1 = make_address("127.0.0.1", 30000);
 
   // Write a few ints to a sink
-  std::cout << "getInstance" << std::endl;
-  StorageManager& storage = StorageManager::getInstance();
+  StorageManager storage = StorageManager();
 
   std::cout << "openFile (Write)" << std::endl;
   storage.openFile(a1, "sink1", "vals1.txt",  

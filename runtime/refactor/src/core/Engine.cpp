@@ -7,12 +7,12 @@
 #include "core/Engine.hpp"
 #include "core/Peer.hpp"
 #include "serialization/Codec.hpp"
-#include "network/NetworkManager.hpp"
 
 namespace K3 {
 
 Engine::Engine() {
   network_manager_ = make_shared<NetworkManager>();
+  storage_manager_ = make_shared<StorageManager>();
   peers_ = nullptr;  // Intialized during run()
   running_ = false;
   ready_peers_ = 0;
@@ -39,7 +39,7 @@ void Engine::stop() {
 }
 
 void Engine::join() {
-  if (running_) {
+  if (running_ && peers_) {
     for (auto& it : *peers_) {
       it.second->join();
     }

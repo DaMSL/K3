@@ -2,11 +2,6 @@
 
 namespace K3 {
 
-StorageManager& StorageManager::getInstance() {
-  static StorageManager instance;
-  return instance;
-}
-
 using std::pair; 
 
 void StorageManager::openFile (Address peer, Identifier id, std::string path, 

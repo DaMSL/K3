@@ -15,7 +15,9 @@ using std::make_shared;
 class StorageManager {
  public:
   // Core
-  static StorageManager& getInstance();
+  StorageManager() {
+      files_ = make_shared<ConcurrentMap<pair<Address, Identifier>, shared_ptr<FileHandle>>> ();
+  }
   void openFile(Address peer, Identifier id, std::string path, 
                       StorageFormat fmt, CodecFormat codec, IOMode io);
   void closeFile(Address peer, Identifier id);
@@ -31,13 +33,6 @@ class StorageManager {
   void doBlockWrite(Address peer, Identifier id, vector<shared_ptr<PackedValue>> vals);
 
  private:
-  // Singleton class
-  StorageManager() {
-      files_ = make_shared<ConcurrentMap<pair<Address, Identifier>, shared_ptr<FileHandle>>> ();
-  }
-  StorageManager(const StorageManager&) = delete;
-  void operator=(const StorageManager&) = delete;
-
   shared_ptr<ConcurrentMap<pair<Address, Identifier>, shared_ptr<FileHandle>>> files_;
 };
 
