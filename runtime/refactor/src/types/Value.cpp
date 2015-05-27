@@ -11,32 +11,55 @@ void NativeValue::dispatchIntoContext(ProgramContext* pc, TriggerID trig) {
   return pc->__dispatch(this, trig);
 }
 
-PackedValue::PackedValue(Buffer&& b, CodecFormat format) {
-  buffer_ = std::make_unique<Buffer>(std::move(b));
-  format_ = format;
-}
+PackedValue::PackedValue(CodecFormat format) { format_ = format; }
 
 void PackedValue::dispatchIntoContext(ProgramContext* pc, TriggerID trig) {
   return pc->__dispatch(this, trig);
 }
 
-const char* PackedValue::buf() const {
+CodecFormat PackedValue::format() const { return format_; }
+
+BufferPackedValue::BufferPackedValue(Buffer&& b, CodecFormat format)
+    : PackedValue(format) {
+  buffer_ = std::make_unique<Buffer>(std::move(b));
+}
+
+const char* BufferPackedValue::buf() const {
   if (buffer_) {
     return buffer_->data();
   } else {
-    throw std::runtime_error("PackedValue buf(): buffer pointer null");
+    throw std::runtime_error("BufferPackedValue buf(): buffer pointer null");
   }
 }
 
-size_t PackedValue::length() const {
+size_t BufferPackedValue::length() const {
   if (buffer_) {
     return buffer_->size();
   } else {
-    throw std::runtime_error("PackedValue length(): buffer pointer null");
+    throw std::runtime_error("BufferPackedValue length(): buffer pointer null");
   }
 }
 
-CodecFormat PackedValue::format() const { return format_; }
+StringPackedValue::StringPackedValue(string&& b, CodecFormat format)
+    : PackedValue(format) {
+  string_ = std::make_unique<string>(std::move(b));
+}
+
+const char* StringPackedValue::buf() const {
+  if (string_) {
+    return string_->c_str();
+  } else {
+    throw std::runtime_error("StringPackedValue buf(): string pointer null");
+  }
+}
+
+size_t StringPackedValue::length() const {
+  if (string_) {
+    return string_->length();
+  } else {
+    throw std::runtime_error("StringPackedValue length(): string pointer null");
+  }
+}
 
 SentinelValue::SentinelValue() {}
 

@@ -71,6 +71,18 @@ TEST(CSV, Tuple) {
   ASSERT_EQ(std::get<1>(s), std::get<1>(*result->as<tuple<int, string>>()));
 }
 
+TEST(CSV, String) {
+  auto codec = Codec::getCodec<string>(CodecFormat::CSV);
+
+  string s = "Hello. this is a test.";
+  auto val = make_shared<TNativeValue<string>>(s);
+
+  auto packed = codec->pack(*val);
+  auto result = codec->unpack(*packed);
+
+  ASSERT_EQ(s, *result->as<string>());
+}
+
 TEST_F(EngineTest, LocalSends) {
   engine_.run<DummyContext>(peer_configs_);
 

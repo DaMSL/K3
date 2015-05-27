@@ -63,19 +63,40 @@ class TNativeValue : public NativeValue {
   T value_;
 };
 
-// Owns a buffer that represents a packed C++ value.
+// Interface that represents a packed C++ value.
 class Codec;
 class PackedValue : public Value {
  public:
-  PackedValue(Buffer&& b, CodecFormat format);
+  PackedValue( CodecFormat format);
   virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig);
   CodecFormat format() const;
-  const char* buf() const;
-  size_t length() const;
+  virtual const char* buf() const = 0;
+  virtual size_t length() const = 0;
 
  protected:
   CodecFormat format_;
+};
+
+class BufferPackedValue : public PackedValue {
+ public:
+  BufferPackedValue(Buffer&& b, CodecFormat format);
+  CodecFormat format() const;
+  virtual const char* buf() const;
+  virtual size_t length() const;
+
+ protected:
   std::unique_ptr<Buffer> buffer_;
+};
+
+class StringPackedValue : public PackedValue {
+ public:
+  StringPackedValue(string&& b, CodecFormat format);
+  CodecFormat format() const;
+  virtual const char* buf() const;
+  virtual size_t length() const;
+
+ protected:
+  std::unique_ptr<string> string_;
 };
 
 // Sentinel value throws EndofProgram exception

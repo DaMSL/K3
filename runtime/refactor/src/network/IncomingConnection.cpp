@@ -48,8 +48,8 @@ void InternalIncomingConnection::receiveMessages(
               // Create a PackedValue from the buffer, and call the message
               // handler
               shared_ptr<PackedValue> pv;
-              pv = make_shared<PackedValue>(std::move(*payload_buf),
-                                            this_shared->format_);
+              pv = make_shared<BufferPackedValue>(std::move(*payload_buf),
+                                                  this_shared->format_);
               m->setValue(pv);
               (*m_handler)(m);
 
@@ -97,8 +97,8 @@ void ExternalIncomingConnection::receiveMessages(
                   // Create a PackedValue from the buffer, and call the message
                   // handler
                   shared_ptr<PackedValue> pv;
-                  pv = make_shared<PackedValue>(std::move(*payload_buf),
-                                                this_shared->format_);
+                  pv = make_shared<BufferPackedValue>(std::move(*payload_buf),
+                                                      this_shared->format_);
                   auto m = make_shared<Message>(this_shared->peer_addr_,
                                                 this_shared->peer_addr_,
                                                 this_shared->trigger_, pv);

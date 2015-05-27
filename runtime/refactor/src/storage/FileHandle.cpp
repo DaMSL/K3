@@ -21,7 +21,7 @@ shared_ptr<PackedValue> SourceFileHandle::doRead() {
   // Read data from file to buffer
   file_.read((char *) buf.data(), len);
 
-  shared_ptr<PackedValue> result = make_shared<PackedValue>(std::move(buf), fmt_);
+  shared_ptr<PackedValue> result = make_shared<BufferPackedValue>(std::move(buf), fmt_);
   return result;  
 }
 

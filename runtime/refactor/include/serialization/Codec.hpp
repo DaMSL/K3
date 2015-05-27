@@ -28,7 +28,7 @@ class BoostCodec : public Codec {
  public:
   virtual shared_ptr<PackedValue> pack(const NativeValue& nv) {
     auto buf = Serialization::pack<T>(*(nv.asConst<T>()));
-    return make_shared<PackedValue>(std::move(buf), format());
+    return make_shared<BufferPackedValue>(std::move(buf), format());
   }
 
   virtual shared_ptr<NativeValue> unpack(const PackedValue& pv) {
@@ -47,7 +47,7 @@ class CSVCodec : public Codec {
  public:
   virtual shared_ptr<PackedValue> pack(const NativeValue& nv) {
     auto buf = Serialization::pack_csv<T>(*(nv.asConst<T>()));
-    return make_shared<PackedValue>(std::move(buf), format());
+    return make_shared<BufferPackedValue>(std::move(buf), format());
   }
 
   virtual shared_ptr<NativeValue> unpack(const PackedValue& pv) {
