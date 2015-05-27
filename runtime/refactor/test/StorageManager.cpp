@@ -11,7 +11,7 @@
 #include "StorageManager.hpp"
 #include "Peer.hpp"
 #include "ProgramContext.hpp"
-
+#include "spdlog/spdlog.h"
 
 
 TEST(Storage, BinaryFile) {
@@ -21,6 +21,7 @@ TEST(Storage, BinaryFile) {
   // Write a few ints to a sink
   std::cout << "getInstance" << std::endl;
   StorageManager& storage = StorageManager::getInstance();
+  storage.setLogger("stdout");
 
   std::cout << "openFile (Write)" << std::endl;
   storage.openFile(a1, "sink1", "vals1.txt",  

@@ -1,18 +1,26 @@
 #include "StorageManager.hpp"
 
+using std::pair; 
+
 
 StorageManager& StorageManager::getInstance() {
-  static StorageManager instance;
+  static StorageManager instance; 
   return instance;
 }
 
-using std::pair; 
+// Set the logger
+void StorageManager::setLogger (std::string logger_id)  {
+  logger = spdlog::get(logger_id);
+  if (!logger)  {
+    logger = spdlog::stdout_logger_mt(logger_id);
+  }
+}
 
 void StorageManager::openFile (Address peer, Identifier id, std::string path, 
                       StorageFormat fmt, CodecFormat codec, IOMode io) {
   pair<Address, Identifier> key = std::make_pair (peer, id);
 
-  // shared_ptr<FileHandle> fh;
+  logger->info("Opening file");
 
   switch (io) {
     case IOMode::Read:
@@ -26,6 +34,7 @@ void StorageManager::openFile (Address peer, Identifier id, std::string path,
 }
 
 void StorageManager::closeFile(Address peer, Identifier id) {
+  logger->info("Closing file");
   files_->lookup(make_pair(peer, id))->close();
 //  free fh;
 }

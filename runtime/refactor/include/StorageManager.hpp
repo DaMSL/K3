@@ -3,6 +3,7 @@
 
 #include "Common.hpp"
 #include "FileHandle.hpp"
+#include "spdlog/spdlog.h"
 
 enum class StorageFormat { Binary, Text };
 enum class IOMode { Read, Write };
@@ -28,6 +29,8 @@ class StorageManager {
   void doWrite(Address peer, Identifier id, shared_ptr<PackedValue> val);
   void doBlockWrite(Address peer, Identifier id, vector<shared_ptr<PackedValue>> vals);
 
+  void setLogger (std::string logger_id);
+
  private:
   // Singleton class
   StorageManager() {
@@ -37,6 +40,10 @@ class StorageManager {
   void operator=(const StorageManager&) = delete;
 
   shared_ptr<ConcurrentMap<pair<Address, Identifier>, shared_ptr<FileHandle>>> files_;
+
+  // logger
+  shared_ptr<spdlog::logger> logger;
+
 };
 
 // Perhaps create a FileHandle class with its own doWrite/doRead methods

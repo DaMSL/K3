@@ -11,10 +11,13 @@
 
 using std::list;
 
+
 Engine& Engine::getInstance() {
   static Engine instance;
   return instance;
 }
+
+
 
 void Engine::run(const list<std::string>& peer_configs, shared_ptr<ContextFactory> f) {
   // Reset members
@@ -22,6 +25,9 @@ void Engine::run(const list<std::string>& peer_configs, shared_ptr<ContextFactor
   context_factory_ = f;
   total_peers_ = peer_configs.size();
   ready_peers_.store(0);
+  logger = spdlog::stdout_logger_mt("stdout");
+
+  logger->info("Initializing engine");
 
   NetworkManager::getInstance().run();
 
@@ -49,6 +55,7 @@ void Engine::run(const list<std::string>& peer_configs, shared_ptr<ContextFactor
   while (total_peers_ > ready_peers_.load()) continue;
 
   // Signal all peers to start
+  logger->info("Waiting for peers");
   for (auto it : peers_) {
     NetworkManager::getInstance().listenInternal(it.second);
     it.second->start();
@@ -56,6 +63,7 @@ void Engine::run(const list<std::string>& peer_configs, shared_ptr<ContextFactor
 
   // Engine is running once all peers have checked in
   running_.store(true);
+  logger->info("Initialization Complete");
   return;
 }
 

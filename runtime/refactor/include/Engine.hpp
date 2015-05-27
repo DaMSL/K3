@@ -10,6 +10,8 @@
 #include "Common.hpp"
 #include "ProgramContext.hpp"
 
+#include "spdlog/spdlog.h"
+
 class Peer;
 
 // TODO(jbw) make the peers_ map const after initialization
@@ -40,6 +42,10 @@ class Engine {
   std::atomic<int> ready_peers_;
   std::atomic<bool> running_;
   bool local_sends_enabled_;
+
+  // logger
+  shared_ptr<spdlog::logger> logger;
+
 };
 
 #endif

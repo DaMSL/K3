@@ -6,7 +6,7 @@ bool SourceFileHandle::hasRead() {
   return file_.good();  
 }
 
-
+// TODO: Optimize using low-level c file I/O (if needed)
 shared_ptr<PackedValue> SourceFileHandle::doRead() {
   // Get value size
   uint32_t len;
@@ -26,6 +26,15 @@ shared_ptr<PackedValue> SourceFileHandle::doRead() {
 
 
 
+// TODO: Optimize using mmap files
+shared_ptr<PackedValue> SourceTextHandle::doRead()  {
+
+  // Placeholder
+  return 0; 
+
+
+}
+
 
 //  SINK FILE HANDLE (binary file access)
 bool SinkFileHandle::hasWrite() {
@@ -39,3 +48,12 @@ void SinkFileHandle::doWrite(shared_ptr<PackedValue> val) {
   file_.write (val->buf(), val->length());
 }
 
+
+
+
+void SinkTextHandle::doWrite(shared_ptr<PackedValue> val) {
+
+  // Placeholder
+  return;
+
+}

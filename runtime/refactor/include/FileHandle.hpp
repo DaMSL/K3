@@ -12,13 +12,15 @@
 using std::make_shared;
 
 
+
 // FileHandle Interface
 //    Abstract class for both sources & sinks
 class FileHandle {
   public:
-    virtual bool hasRead()    = 0;
+    virtual bool hasRead()   {return false;}
+    virtual bool hasWrite()  {return false;}
+
     virtual shared_ptr<PackedValue> doRead()  = 0;
-    virtual bool hasWrite()   = 0;
     virtual void doWrite(shared_ptr<PackedValue> val)  = 0;
     virtual void close()      = 0;
 };
@@ -38,10 +40,6 @@ public:
   virtual bool hasRead();
   virtual shared_ptr<PackedValue> doRead();
 
-  virtual bool hasWrite() {
-    return false;
-  }
-
   virtual void doWrite(shared_ptr<PackedValue> val) {
     // TODO (ben): throw error
     return;
@@ -58,7 +56,16 @@ private:
 
 
 //  Source File Hande (for binary data)
-//class SourceTextHandle : public SourceFileHandle; 
+class SourceTextHandle : public SourceFileHandle  {
+
+  SourceTextHandle (std::string path, CodecFormat codec) {
+    file_.open (path, std::ios::in); 
+    fmt_ = codec;    
+  }
+
+  virtual shared_ptr<PackedValue> doRead();
+
+}
 
 
 //  Sink File Hande
@@ -69,17 +76,12 @@ public:
     file_.open (path);
   }
 
-  virtual bool hasRead()  {
-    return false;
-  }
-
   virtual shared_ptr<PackedValue> doRead() {
     return nullptr;
   }
 
   virtual bool hasWrite();
   virtual void doWrite(shared_ptr<PackedValue> val);
-
 
   virtual void close()  {
     file_.close();
@@ -89,12 +91,18 @@ private:
   std::ofstream file_;
 };
 
-// class SinkTextHandle : public SinkFileHandle
-// --- SOURCE TEXT HANDLE (line delim elems)
-// SourceFileHandle::SourceFileHandle (std::string path)  {
-//   file_.open (path); 
-// }
 
+
+
+class SinkTextHandle : public SinkFileHandle  {
+
+  SourceTextHandle (std::string path)  {
+    file_.open (path); 
+  }
+
+  virtual void doWrite(shared_ptr<PackedValue> val);
+
+}
 
 // // ??? Add additional check ? or leave hasRead check to caller
 // Value SourceTextHandle::doRead() {
