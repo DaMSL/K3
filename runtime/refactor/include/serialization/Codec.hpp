@@ -42,10 +42,31 @@ class BoostCodec : public Codec {
   CodecFormat format_ = CodecFormat::BoostBinary;
 };
 
+template <class T>
+class CSVCodec : public Codec {
+ public:
+  virtual shared_ptr<PackedValue> pack(const NativeValue& nv) {
+    auto buf = Serialization::pack_csv<T>(*(nv.asConst<T>()));
+    return make_shared<PackedValue>(std::move(buf), format());
+  }
+
+  virtual shared_ptr<NativeValue> unpack(const PackedValue& pv) {
+    auto t = Serialization::unpack_csv<T>(pv.buf(), pv.length());
+    return make_shared<TNativeValue<T>>(t);
+  }
+
+  virtual CodecFormat format() { return format_; }
+
+ protected:
+  CodecFormat format_ = CodecFormat::CSV;
+};
+
 template <typename T>
 shared_ptr<Codec> Codec::getCodec(CodecFormat format) {
   if (format == CodecFormat::BoostBinary) {
     return make_shared<BoostCodec<T>>();
+  } else if (format == CodecFormat::CSV) {
+    return make_shared<CSVCodec<T>>();
   } else {
     throw std::runtime_error("Unrecognized codec format");
   }

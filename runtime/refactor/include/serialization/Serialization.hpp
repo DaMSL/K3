@@ -9,6 +9,14 @@
 #include <boost/iostreams/stream.hpp>
 #include <boost/iostreams/device/back_inserter.hpp>
 
+#include <csvpp/csv.h>
+#include <csvpp/string.h>
+#include <csvpp/array.h>
+#include <csvpp/deque.h>
+#include <csvpp/list.h>
+#include <csvpp/set.h>
+#include <csvpp/vector.h>
+
 #include <vector>
 #include <iostream>
 
@@ -18,6 +26,7 @@ namespace Serialization {
 namespace io = boost::iostreams;
 typedef io::stream<io::back_insert_device<Buffer> > OByteStream;
 
+// Boost Binary serialization
 template <class T>
 Buffer pack(const T& t) {
   Buffer buf;
@@ -42,6 +51,34 @@ T unpack(const char* buf, size_t len) {
 template <class T>
 T unpack(const Buffer& buf) {
   return unpack<T>(&buf[0], buf.size());
+}
+
+// Csvpp serialization
+template <typename T>
+Buffer pack_csv(const T& t, char sep = ',') {
+  // TODO(jbw) nvp?
+  Buffer buf;
+  OByteStream output_stream(buf);
+  csv::writer oa(output_stream, sep);
+  oa << t;
+  output_stream.flush();
+  return buf;
+}
+
+template <typename T>
+T unpack_csv(const char* buf, size_t len, char sep = ',') {
+  io::basic_array_source<char> source(buf, len);
+  io::stream<io::basic_array_source<char> > input_stream(source);
+  csv::parser ia(input_stream, sep);
+
+  T t;
+  ia >> t;
+  return t;
+}
+
+template <class T>
+T unpack_csv(const Buffer& buf) {
+  return unpack_csv<T>(&buf[0], buf.size());
 }
 
 }  // namespace Serialization

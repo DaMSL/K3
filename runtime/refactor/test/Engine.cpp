@@ -11,11 +11,14 @@
 #include "core/Engine.hpp"
 #include "network/Listener.hpp"
 #include "network/NetworkManager.hpp"
+#include "serialization/Serialization.hpp"
 #include "serialization/Codec.hpp"
 
 using std::shared_ptr;
 using std::make_shared;
 using std::vector;
+using std::string;
+using std::tuple;
 using K3::Engine;
 using K3::Codec;
 using K3::CodecFormat;
@@ -53,6 +56,20 @@ class EngineTest : public ::testing::Test {
   Address addr2_;
   Address external_addr_;
 };
+
+TEST(CSV, Tuple) {
+  auto codec = Codec::getCodec<tuple<int, string>>(CodecFormat::CSV);
+
+  tuple<int, string> s = std::make_tuple(1, "one");
+  auto val = make_shared<TNativeValue<tuple<int, string>>>(s);
+
+  auto packed = codec->pack(*val);
+  auto result = codec->unpack(*packed);
+  
+
+  ASSERT_EQ(std::get<0>(s), std::get<0>(*result->as<tuple<int, string>>()));
+  ASSERT_EQ(std::get<1>(s), std::get<1>(*result->as<tuple<int, string>>()));
+}
 
 TEST_F(EngineTest, LocalSends) {
   engine_.run<DummyContext>(peer_configs_);

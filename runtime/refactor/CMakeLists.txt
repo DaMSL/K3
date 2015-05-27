@@ -22,6 +22,8 @@ set(Boost_USE_STATIC_RUNTIME OFF)
 find_package(Boost 1.55.0 COMPONENTS serialization system thread program_options)
 find_library(YAMLCPP_LIBRARY
              NAMES libyaml-cpp.a yaml-cpp)
+find_library(CSVPP_LIBRARY
+             NAMES libcsvpp.dylib csvpp)
 
 add_subdirectory(include/external/gtest-1.7.0)
 enable_testing()
@@ -44,10 +46,10 @@ set (srcs src/core/Engine.cpp
           src/Options.cpp
     )
 
-set (link_libs k3 ${Boost_LIBRARIES} ${YAMLCPP_LIBRARY} profiler)
+set (link_libs k3 ${Boost_LIBRARIES} ${YAMLCPP_LIBRARY} ${CSVPP_LIBRARY} profiler)
 set (test_link_libs ${link_libs} gtest gtest_main)
 
-include_directories    (include include/external ${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR} include/external/)
+include_directories    (include include/external ${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR} include/external/spdlog/include/)
 add_library            (k3 ${srcs})
 
 set (tests test/Engine.cpp
