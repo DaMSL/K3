@@ -94,7 +94,7 @@ class STLDS {
     std::advance(mid, half);
     const_iterator end = container.end();
     // Construct from iterators
-    return std::make_tuple(Derived<Elem>(STLDS(beg,mid)), Derived<Elem>(STLDS(mid,end)));
+    return std::make_tuple(Derived<Elem>(STLDS(beg, mid)), Derived<Elem>(STLDS(mid, end)));
   }
 
   template<typename Fun>
@@ -109,7 +109,7 @@ class STLDS {
   auto map(Fun f) const -> Derived<R_elem<RT<Fun, Elem>>>  const {
     Derived<R_elem<RT<Fun, Elem>>> result;
     for (const Elem &e : container) {
-      result.insert( R_elem<RT<Fun, Elem>> { f(e) } );
+      result.insert(R_elem<RT<Fun, Elem>> { f(e) });
     }
     return result;
   }
@@ -134,7 +134,7 @@ class STLDS {
   }
 
   template<typename F1, typename F2, typename Z>
-  Derived<R_key_value<RT<F1, Elem>,Z>> groupBy(F1 grouper, F2 folder, const Z& init) const {
+  Derived<R_key_value<RT<F1, Elem>, Z>> groupBy(F1 grouper, F2 folder, const Z& init) const {
     // Create a map to hold partial results
     typedef RT<F1, Elem> K;
     unordered_map<K, Z> accs;
@@ -149,8 +149,8 @@ class STLDS {
     }
 
     // Build the R_key_value records and insert them into result
-    Derived<R_key_value<RT<F1, Elem>,Z>> result;
-    for(auto& it : accs) {
+    Derived<R_key_value<RT<F1, Elem>, Z>> result;
+    for (auto& it : accs) {
       // move out of the map as we iterate
       result.insert(R_key_value<K, Z> {std::move(it.first), std::move(it.second)});
     }

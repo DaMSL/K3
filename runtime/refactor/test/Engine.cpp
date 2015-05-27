@@ -13,7 +13,23 @@
 #include "network/NetworkManager.hpp"
 #include "serialization/Codec.hpp"
 
-using namespace K3;
+using std::shared_ptr;
+using std::make_shared;
+using std::vector;
+using K3::Engine;
+using K3::Codec;
+using K3::CodecFormat;
+using K3::Address;
+using K3::make_address;
+using K3::Peer;
+using K3::Listener;
+using K3::NetworkManager;
+using K3::ProgramContext;
+using K3::DummyContext;
+using K3::Value;
+using K3::TNativeValue;
+using K3::NativeValue;
+using K3::MessageHeader;
 
 class EngineTest : public ::testing::Test {
  public:
@@ -61,7 +77,6 @@ TEST_F(EngineTest, LocalSends) {
   auto dc2 = std::dynamic_pointer_cast<DummyContext>(peer2->getContext());
   ASSERT_EQ(98, dc1->state_->my_int_);
   ASSERT_EQ(99, dc2->state_->my_int_);
-  std::cout << "Done" << std::endl;
 }
 
 TEST_F(EngineTest, NetworkSends) {

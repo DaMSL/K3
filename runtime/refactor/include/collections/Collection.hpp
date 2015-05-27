@@ -72,6 +72,6 @@ struct convert<K3::Collection<E>> {
     return true;
   }
 };
-}
+}  // namespace YAML
 
 #endif

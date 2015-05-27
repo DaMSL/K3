@@ -1,6 +1,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <map>
 
 #include "Common.hpp"
 #include "core/Engine.hpp"

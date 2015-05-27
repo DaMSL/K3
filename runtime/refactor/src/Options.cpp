@@ -1,4 +1,7 @@
 #include <iostream>
+#include <vector>
+#include <string>
+
 #include "Options.hpp"
 
 namespace K3 {

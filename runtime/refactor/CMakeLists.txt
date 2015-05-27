@@ -1,15 +1,17 @@
-cmake_minimum_required (VERSION 3.0)
+cmake_minimum_required (VERSION 2.8)
 project (k3)
+
+
 set (CMAKE_ARCHIVE_OUTPUT_DIRECTORY ./lib)
 set (CMAKE_LIBRARY_OUTPUT_DIRECTORY ./lib)
 set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ./bin)
 
 include(CheckCXXCompilerFlag)
-CHECK_CXX_COMPILER_FLAG("-std=c++1y" COMPILER_SUPPORTS_CXX1Y)
-if(COMPILER_SUPPORTS_CXX1Y)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++1y")
+CHECK_CXX_COMPILER_FLAG(-std=c++14 COMPILER_SUPPORTS_CXX14)
+if(COMPILER_SUPPORTS_CXX14)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -std=c++14")
 else()
-  message(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++1y support. Please use a different C++ compiler.")
+  message(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++14 support. Please use a different C++ compiler.")
 endif()
 
 set(Boost_USE_STATIC_LIBS OFF) 
@@ -33,6 +35,8 @@ set (srcs src/core/Engine.cpp
           src/network/NetworkManager.cpp
           src/network/Listener.cpp
           src/network/IncomingConnection.cpp
+          src/storage/StorageManager.cpp
+          src/storage/FileHandle.cpp
           src/network/OutgoingConnection.cpp
           src/builtins/StandardBuiltins.cpp
           src/builtins/TimeBuiltins.cpp
@@ -40,7 +44,6 @@ set (srcs src/core/Engine.cpp
           src/Options.cpp
     )
 
-# TODO add k3 back
 set (link_libs k3 ${Boost_LIBRARIES} ${YAMLCPP_LIBRARY} profiler)
 set (test_link_libs ${link_libs} gtest gtest_main)
 
@@ -48,6 +51,7 @@ include_directories    (include include/external ${gtest_SOURCE_DIR}/include ${g
 add_library            (k3 ${srcs})
 
 set (tests test/Engine.cpp
+	   test/StorageManager.cpp
     )
 
 add_executable(Tests ${tests} test/Main.cpp)

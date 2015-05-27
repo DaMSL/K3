@@ -82,6 +82,8 @@ class unit_t {
   bool operator>(const unit_t&) const { return false; }
 };
 
+typedef std::string Identifier;
+
 // TODO(jbw) move to Message.hpp
 class MessageHeader {
  public:
