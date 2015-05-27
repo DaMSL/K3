@@ -283,14 +283,18 @@ inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@
     (ve, vv)  <- inline val
     trigList  <- triggers <$> get
     trigTypes <- getKType val >>= genCType
-    let className = R.Specialized [trigTypes] (R.Qualified (R.Name "K3" ) $ R.Name "ValDispatcher")
+    -- TODO(jbw) use a static codec declaration, only needs to happen once
+    let codec = R.Forward $ R.ScalarDecl (R.Name "codec") R.Inferred $ Just $ R.Call (R.Variable $ R.Qualified (R.Name "Codec") (R.Specialized [trigTypes] (R.Name "getCodec"))) [R.Variable $ R.Name "__internal_format_"]
+    let className = R.Specialized [trigTypes] (R.Name "TNativeValue")
         classInst = R.Forward $ R.ScalarDecl (R.Name d) R.Inferred
                       (Just $ R.Call (R.Variable $ R.Specialized [R.Named className]
                                            (R.Qualified (R.Name "std" ) $ R.Name "make_shared")) [vv])
+        messageHeader = R.Call (R.Variable $ R.Name "MessageHeader") [R.Variable $ R.Name "me", av, R.Variable $ R.Name tIdName]
     return (concat [te, ae, ve]
                  ++ [ classInst
-                    , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine") (R.Name "send")) [
-                                    av, R.Variable (R.Name $ tIdName), R.Variable (R.Name d), R.Variable (R.Name "me")
+                    , codec
+                    , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Name "send")) [
+                                    messageHeader, R.Variable (R.Name d), R.Variable (R.Name "codec")
                                    ]
                     ]
              , R.Initialization R.Unit [])

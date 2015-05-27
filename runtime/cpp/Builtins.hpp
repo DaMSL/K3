@@ -537,7 +537,6 @@ namespace K3 {
     }
 
     // Split a string by substrings
-    Seq<R_elem<string_impl>> splitString(string_impl, const string_impl&);
     string_impl takeUntil(const string_impl& s, const string_impl& splitter);
     int countChar(const string_impl& s, const string_impl& splitter);
     int tpch_date(const string_impl& s);

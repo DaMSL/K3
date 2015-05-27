@@ -4,12 +4,10 @@
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/thread.hpp>
 
-#include "BaseString.hpp"
+#include "types/BaseString.hpp"
 #include "Common.hpp"
 
 namespace K3 {
-
-typedef base_string string_impl; // Toggle string implementations
 
 class Engine;
 class StandardBuiltins {
@@ -18,9 +16,12 @@ class StandardBuiltins {
   unit_t print(string_impl message);
   unit_t sleep(int n);
   unit_t haltEngine(unit_t);
-  template <class T> T range(int i);
-  template <class T> T error(unit_t);
-  template <class T> unit_t ignore(T t);
+  template <class T>
+  T range(int i);
+  template <class T>
+  T error(unit_t);
+  template <class T>
+  unit_t ignore(T t);
 
  protected:
   Engine& __engine_;

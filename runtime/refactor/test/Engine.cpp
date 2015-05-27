@@ -1,4 +1,3 @@
-#include <list>
 #include <string>
 #include <chrono>
 #include <thread>
@@ -6,22 +5,15 @@
 
 #include "gtest/gtest.h"
 
-#include "Codec.hpp"
 #include "Common.hpp"
-#include "Engine.hpp"
-#include "Listener.hpp"
-#include "NetworkManager.hpp"
-#include "Peer.hpp"
-#include "ProgramContext.hpp"
-
-#include "collections/Collection.hpp"
+#include "core/Peer.hpp"
+#include "core/ProgramContext.hpp"
+#include "core/Engine.hpp"
+#include "network/Listener.hpp"
+#include "network/NetworkManager.hpp"
+#include "serialization/Codec.hpp"
 
 using namespace K3;
-
-TEST(Foo, Foo) {
-  K3::Collection<int> c;
-  c.insert(1);
-}
 
 class EngineTest : public ::testing::Test {
  public:
@@ -36,11 +28,11 @@ class EngineTest : public ::testing::Test {
     external_addr_ = make_address("127.0.0.1", 50000);
   }
 
-  ~EngineTest() { }
+  ~EngineTest() {}
 
   Engine engine_;
 
-  list<std::string> peer_configs_;
+  vector<std::string> peer_configs_;
   Address addr1_;
   Address addr2_;
   Address external_addr_;
@@ -69,6 +61,7 @@ TEST_F(EngineTest, LocalSends) {
   auto dc2 = std::dynamic_pointer_cast<DummyContext>(peer2->getContext());
   ASSERT_EQ(98, dc1->state_->my_int_);
   ASSERT_EQ(99, dc2->state_->my_int_);
+  std::cout << "Done" << std::endl;
 }
 
 TEST_F(EngineTest, NetworkSends) {
@@ -93,7 +86,7 @@ TEST_F(EngineTest, NetworkSends) {
   }
 
   for (int retries = 1000; retries > 0; retries--) {
-    if (dc1->state_->my_int_ ==  98 && dc2->state_->my_int_ == 99) {
+    if (dc1->state_->my_int_ == 98 && dc2->state_->my_int_ == 99) {
       break;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -125,7 +118,7 @@ TEST_F(EngineTest, ExternalMessages) {
   }
 
   for (int retries = 1000; retries > 0; retries--) {
-    if (dc1->state_->my_int_ ==  99) {
+    if (dc1->state_->my_int_ == 99) {
       break;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(1));

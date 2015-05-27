@@ -1,12 +1,14 @@
 #include <thread>
 #include <chrono>
 
-#include "Engine.hpp"
+#include "Common.hpp"
 #include "builtins/StandardBuiltins.hpp"
+#include "core/Engine.hpp"
 
 namespace K3 {
 
-StandardBuiltins::StandardBuiltins(Engine& engine) : __engine_(engine), __mutex_() { }
+StandardBuiltins::StandardBuiltins(Engine& engine)
+    : __engine_(engine), __mutex_() {}
 
 unit_t StandardBuiltins::print(string_impl message) {
   boost::lock_guard<boost::mutex> lock(__mutex_);
@@ -20,8 +22,7 @@ unit_t StandardBuiltins::sleep(int n) {
 }
 
 unit_t StandardBuiltins::haltEngine(unit_t) {
-  __engine_.stop();
-  __engine_.join();
+  throw EndOfProgramException();
   return unit_t();
 }
 
