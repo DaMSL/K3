@@ -49,6 +49,13 @@ TEST(Storage, BinaryFile) {
   storage.doWrite(a1, "sink1", codec_str->pack(*nv5));
   storage.doWrite(a1, "sink2", codec_str->pack(*nv6));
 
+  vector<shared_ptr<PackedValue>> pv_vec;
+  for (int i = 0; i < 10; i++) {
+    shared_ptr<NativeValue> nv_i = make_shared<TNativeValue<int>>(i*10);
+    pv_vec.push_back(codec_int->pack(*nv_i));
+  }
+  storage.doBlockWrite(a1, "sink2", pv_vec);
+
   std::cout << "closeFile" << std::endl;
   storage.closeFile(a1, "sink1");
   storage.closeFile(a1, "sink2");
@@ -66,6 +73,7 @@ TEST(Storage, BinaryFile) {
   shared_ptr<PackedValue> pv5 = storage.doRead(a1, "source1");
   shared_ptr<PackedValue> pv6 = storage.doRead(a1, "source2");
 
+  pv_vec = storage.doBlockRead(a1, "source2", 10);
 
   std::cout << "closeFile" << std::endl;
   storage.closeFile(a1, "source1");
@@ -98,5 +106,11 @@ TEST(Storage, BinaryFile) {
   ASSERT_EQ (s1, "Foo"); 
   ASSERT_EQ (s2, "FooBar"); 
   ASSERT_EQ (s3, "The quick Brown Fox Jumps Over the Lazy Dog/nQuietly!"); 
+
+  for (int i = 0; i < 10; i++) {
+    shared_ptr<NativeValue> nv_x = codec_int->unpack(*(pv_vec[i]));
+    int x = *nv_x->as<int>();
+    ASSERT_EQ (i*10, x);
+  }
 
 }

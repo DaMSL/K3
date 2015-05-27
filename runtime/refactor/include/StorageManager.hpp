@@ -4,7 +4,6 @@
 #include "Common.hpp"
 #include "FileHandle.hpp"
 
-
 enum class StorageFormat { Binary, Text };
 enum class IOMode { Read, Write };
 
@@ -22,12 +21,12 @@ class StorageManager {
   // Reading
   bool hasRead(Address peer, Identifier id);
   shared_ptr<PackedValue> doRead(Address peer, Identifier id);
-  // vector<shared_ptr<PackedValue>> doBlockRead(Address peer, Identifier id, int max_blocksize);
+  vector<shared_ptr<PackedValue>> doBlockRead(Address peer, Identifier id, int max_blocksize);
 
   // Writing
   bool hasWrite(Address peer, Identifier id);
   void doWrite(Address peer, Identifier id, shared_ptr<PackedValue> val);
-  // void doBlockWrite(Address peer, Identifier id, vector<shared_ptr<PackedValue>> vals);
+  void doBlockWrite(Address peer, Identifier id, vector<shared_ptr<PackedValue>> vals);
 
  private:
   // Singleton class
