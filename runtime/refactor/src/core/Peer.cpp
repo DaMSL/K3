@@ -10,8 +10,11 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
            const YAML::Node& peer_config,
            std::function<void()> ready_callback) {
   address_ = addr;
+  logger = spdlog::get(addr.toString());
+  if (!logger) {
+    logger = spdlog::stdout_logger_mt(addr.toString());
+  }
 
-  logger = spdlog::stdout_logger_mt(addr.toString());
 
   auto work = [this, fac, peer_config, ready_callback]() {
     queue_ = make_shared<Queue>();
@@ -22,7 +25,12 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
     try {
       while (true) {
         shared_ptr<Message> m = queue_->dequeue();
-        logger->info() << " Received: @" << context_->__trigger_names_[m->trigger()];       
+
+        if (logger->level() == spdlog::level::trace) {
+          auto it = ProgramContext::__trigger_names_.find(m->trigger());
+          std::string trig = (it != ProgramContext::__trigger_names_.end()) ? it->second : "{Undefined Trigger}";
+          logger->trace() << "  [" << address_.toString() << "] Received:: @" << trig;
+        }
         m->value()->dispatchIntoContext(context_.get(), m->trigger());
       }
     } catch (EndOfProgramException e) {
