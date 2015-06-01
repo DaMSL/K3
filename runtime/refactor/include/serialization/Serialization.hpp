@@ -98,8 +98,8 @@ struct tuple_serializer {
   template <class archive, class... args>
   static void serialize(archive& a, std::tuple<args...>& t,
                         const unsigned int version) {
-    a& std::get<N - 1>(t);
     tuple_serializer<N - 1>::serialize(a, t, version);
+    a& std::get<N - 1>(t);
   }
 };
 

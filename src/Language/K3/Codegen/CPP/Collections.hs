@@ -81,12 +81,13 @@ composite name ans = do
           else R.Qualified (R.Name "boost") $ R.Qualified (R.Name "serialization") n
 
     let serializeParent asYas (p, (q, _)) =
-          let nvp_wrap e = if asYas then e
+          -- TOOD re-enable nvp
+          ---let nvp_wrap e = if asYas then e
                            else R.Call (R.Variable $ serializationName asYas $ R.Name "make_nvp")
                                   [ R.Literal $ R.LString $ mkXmlTagName q, e ]
           in
           R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive")
-            (nvp_wrap $ R.Call (R.Variable $ serializationName asYas $ R.Specialized [R.Named p] $ R.Name "base_object")
+            (R.Call (R.Variable $ serializationName asYas $ R.Specialized [R.Named p] $ R.Name "base_object")
               [R.Dereference $ R.Variable $ R.Name "this"])
 
     let serializeStatements asYas = map (serializeParent asYas) $ zip baseClasses ras

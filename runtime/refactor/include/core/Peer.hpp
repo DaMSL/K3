@@ -18,7 +18,6 @@
 #include "types/Message.hpp"
 #include "ProgramContext.hpp"
 #include "types/Queue.hpp"
-#include "spdlog/spdlog.h"
 
 namespace K3 {
 

@@ -63,12 +63,13 @@ class CSVCodec : public Codec {
 
 template <typename T>
 shared_ptr<Codec> Codec::getCodec(CodecFormat format) {
-  if (format == CodecFormat::BoostBinary) {
-    return make_shared<BoostCodec<T>>();
-  } else if (format == CodecFormat::CSV) {
-    return make_shared<CSVCodec<T>>();
-  } else {
-    throw std::runtime_error("Unrecognized codec format");
+  switch (format) {
+    case CodecFormat::BoostBinary:
+      return make_shared<BoostCodec<T>>();
+    case CodecFormat::CSV:
+      return make_shared<CSVCodec<T>>();
+    default:
+      throw std::runtime_error("Unrecognized codec format");
   }
 }
 

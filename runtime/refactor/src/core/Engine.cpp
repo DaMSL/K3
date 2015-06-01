@@ -11,7 +11,6 @@
 namespace K3 {
 
 Engine::Engine() {
-
   // Configure logger TODO(jbw) Integrate with program opts
   logger_ = spdlog::get("engine");
   if (!logger_) {
@@ -66,8 +65,9 @@ void Engine::send(const MessageHeader& header, shared_ptr<NativeValue> value,
         "Engine send(): Can't send before peers_ is initialized");
   }
 
-  logger_->info() << "Message: " << header.source().toString() << " --> " 
-    << header.destination().toString() << " @" <<  header.trigger();
+  logger_->info() << "Message: " << header.source().toString() << " --> "
+                  << header.destination().toString() << " @"
+                  << header.trigger();
   auto it = peers_->find(header.destination());
   if (local_sends_enabled_ && it != peers_->end()) {
     // Direct enqueue for local messages

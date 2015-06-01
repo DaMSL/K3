@@ -7,8 +7,10 @@
 namespace K3 {
 
 NetworkManager::NetworkManager() {
-
-  logger = spdlog::get("engine");
+  logger_ = spdlog::get("engine");
+  if (!logger_) {
+    logger_ = spdlog::stdout_logger_mt("engine");
+  }
 
   io_service_ = make_shared<asio::io_service>();
   work_ = make_shared<asio::io_service::work>(*io_service_);

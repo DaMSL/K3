@@ -61,8 +61,7 @@ class EngineTest : public ::testing::Test {
 
 TEST(CSV, StringPackedValue) {
   auto codec = Codec::getCodec<tuple<int, string>>(CodecFormat::CSV);
-  // TODO(jbw) why does csvpp flip the order????
-  string s = "one,1";
+  string s = "1,one";
 
   shared_ptr<K3::PackedValue> packed =
       make_shared<StringPackedValue>(std::move(s), CodecFormat::CSV);
