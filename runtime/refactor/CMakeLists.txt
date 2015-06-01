@@ -19,7 +19,7 @@ set(Boost_USE_MULTITHREADED ON)
 set(Boost_USE_STATIC_RUNTIME OFF) 
 
 # TODO error handling on not found
-find_package(Boost 1.55.0 COMPONENTS serialization system thread program_options)
+find_package(Boost 1.55.0 COMPONENTS chrono serialization system thread program_options)
 find_library(YAMLCPP_LIBRARY
              NAMES libyaml-cpp.a yaml-cpp)
 find_library(CSVPP_LIBRARY
@@ -43,7 +43,9 @@ set (srcs src/core/Engine.cpp
           src/builtins/StandardBuiltins.cpp
           src/builtins/TimeBuiltins.cpp
           src/builtins/StringBuiltins.cpp
+          src/builtins/ProfilingBuiltins.cpp
           src/Options.cpp
+          src/Prettify.cpp
     )
 
 set (link_libs k3 ${Boost_LIBRARIES} ${YAMLCPP_LIBRARY} ${CSVPP_LIBRARY} profiler)

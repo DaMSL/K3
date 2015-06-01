@@ -15,6 +15,7 @@
 #include "boost/thread/mutex.hpp"
 #include "boost/thread/externally_locked.hpp"
 #include "boost/thread/lockable_adapter.hpp"
+#include "boost/serialization/nvp.hpp"
 
 namespace K3 {
 
@@ -27,6 +28,8 @@ using std::list;
 using std::map;
 using std::vector;
 using std::enable_shared_from_this;
+
+#define K3_LOG_ID "K3"
 
 namespace asio = boost::asio;
 typedef const boost::system::error_code& boost_error;
@@ -212,12 +215,12 @@ class R_key_value {
   R_key_value(__T0&& _key, __T1&& _value)
       : key(std::forward<__T0>(_key)), value(std::forward<__T1>(_value)) {}
   template <class archive>
-  void serialize(archive& _archive, const unsigned int) {
-    _archive& BOOST_SERIALIZATION_NVP(key);
-    _archive& BOOST_SERIALIZATION_NVP(value);
+  void serialize(archive& _archive) {
+    _archive& key;
+    _archive& value;
   }
   template <class archive>
-  void serialize(archive& _archive) {
+  void serialize(archive& _archive, const unsigned int) {
     _archive& key;
     _archive& value;
   }

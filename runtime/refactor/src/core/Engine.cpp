@@ -16,9 +16,9 @@ Engine::Engine() {
   // Configure logger TODO: Integrate with program opts
   int k3_log_level = 2;
 
-  logger = spdlog::get("engine");
-  if (!logger) {
-    logger = spdlog::stdout_logger_mt("engine");
+  logger_ = spdlog::get("engine");
+  if (!logger_) {
+    logger_ = spdlog::stdout_logger_mt("engine");
   }
   spdlog::set_pattern("[%T.%f %l %n] %v");
   switch (k3_log_level) {
@@ -61,7 +61,7 @@ void Engine::stop() {
   }
 
   network_manager_->stop();
-  logger->info("The Engine has stopped.");
+  logger_->info("The Engine has stopped.");
 }
 
 void Engine::join() {
@@ -69,19 +69,24 @@ void Engine::join() {
     for (auto& it : *peers_) {
       it.second->join();
     }
-
-    network_manager_->join();
-    running_ = false;
   }
+
+  network_manager_->stop();
+  network_manager_->join();
+  running_ = false;
 }
 
 void Engine::send(const MessageHeader& header, shared_ptr<NativeValue> value,
                   shared_ptr<Codec> codec) {
+  if (!peers_) {
+    throw std::runtime_error(
+        "Engine send(): Can't send before peers_ is initialized");
+  }
+
+  logger_->info() << "Message: " << header.source().toString() << " --> "
+                  << header.destination().toString() << " @"
+                  << header.trigger();
   auto it = peers_->find(header.destination());
-
-  logger->info() << "Message: " << header.source().toString() << " --> " 
-    << header.destination().toString() << " @" <<  header.trigger();
-
   if (local_sends_enabled_ && it != peers_->end()) {
     // Direct enqueue for local messages
     auto m = make_shared<Message>(header, value);
@@ -135,11 +140,29 @@ shared_ptr<map<Address, shared_ptr<Peer>>> Engine::createPeers(
     const vector<string>& peer_configs, shared_ptr<ContextFactory> factory) {
   auto result = make_shared<map<Address, shared_ptr<Peer>>>();
 
+  vector<YAML::Node> nodes;
+
   for (auto config : peer_configs) {
-    YAML::Node node = YAML::Load(config);
+    if (config.length() == 0) {
+      throw std::runtime_error(
+          "Engine createPeers(): Empty YAML peer configuration");
+    } else if (config[0] != '{') {
+      for (auto n : YAML::LoadAllFromFile(config)) {
+        nodes.push_back(n);
+      }
+    } else {
+      nodes.push_back(YAML::Load(config));
+    }
+  }
+
+  for (auto node : nodes) {
     Address addr = meFromYAML(node);
     auto ready_callback = [this]() { ready_peers_++; };
     auto p = make_shared<Peer>(addr, factory, node, ready_callback);
+    if (result->find(addr) != result->end()) {
+      throw std::runtime_error(
+          "Engine createPeers(): Duplicate peer address: " + addr.toString());
+    }
     (*result)[addr] = p;
   }
 

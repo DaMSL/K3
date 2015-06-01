@@ -13,7 +13,6 @@
 #include "Peer.hpp"
 #include "spdlog/spdlog.h"
 
-
 namespace K3 {
 
 class Engine {
@@ -41,6 +40,7 @@ class Engine {
       const vector<string>& peer_configs,
       shared_ptr<ContextFactory> context_factory);
 
+  shared_ptr<spdlog::logger> logger_;
   shared_ptr<NetworkManager> network_manager_;
   shared_ptr<StorageManager> storage_manager_;
   shared_ptr<const map<Address, shared_ptr<Peer>>> peers_;
@@ -48,10 +48,6 @@ class Engine {
   std::atomic<bool> running_;
   std::atomic<int> ready_peers_;
   int total_peers_;
-
-  // logger
-  shared_ptr<spdlog::logger> logger;
-
 };
 
 template <class Context>
@@ -60,27 +56,32 @@ void Engine::run(const vector<string>& peer_configs) {
     throw std::runtime_error("Engine run(): already running");
   }
   running_ = true;
-  logger->info("The Engine has started.");
+  logger_->info("The Engine has started.");
 
-  // Create peers
-  total_peers_ = peer_configs.size();
+  // Create peers: Peers start their own thread, create a context
+  // and check in
   auto context_factory = make_shared<ContextFactory>(
       [this]() { return make_shared<Context>(*this); });
   peers_ = createPeers(peer_configs, context_factory);
 
-  // Wait for peers to initialize and check-in as ready
+  total_peers_ = peers_->size();
   while (total_peers_ > ready_peers_) continue;
-  logger->info("All peers are ready.");
+  logger_->info("All peers are ready.");
 
-  // Signal all peers to start
+  // Once peers check in, start a listener for each peer
+  // and allow each peer to send its initial message (processRole)
+  // This must happen AFTER peers_ has been initialized
   for (auto it : *peers_) {
     network_manager_->listenInternal(it.second);
-    it.second->start();
+    it.second->processRole();
   }
 
+  // Once all roles have been processed, peers can start to process messages
+  for (auto it : *peers_) {
+    it.second->start();
+  }
   return;
 }
 
 }  // namespace K3
-
 #endif

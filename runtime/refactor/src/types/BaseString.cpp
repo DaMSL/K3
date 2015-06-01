@@ -1,3 +1,6 @@
+#include <string>
+#include <algorithm>
+
 #include "types/BaseString.hpp"
 
 namespace K3 {
@@ -31,6 +34,7 @@ base_string::~base_string() {
 
 base_string& base_string::operator+=(const base_string& other) {
   auto new_buffer_ = new char[length() + other.length() + 1];
+
 
   std::strcpy(new_buffer_, (buffer_ ? buffer_ : ""));
   std::strcat(new_buffer_, (other.buffer_ ? other.buffer_ : ""));
@@ -184,17 +188,6 @@ char* base_string::begin() const { return buffer_; }
 
 char* base_string::end() const { return buffer_ + length(); }
 
-inline base_string operator+(base_string s, base_string const& t) {
-  return s += t;
-}
-
-inline base_string operator+(base_string s, char const* t) { return s += t; }
-
-inline base_string operator+(char const* t, base_string const& s) {
-  auto new_string = base_string(t);
-  return new_string += s;
-}
-
 // Utilities
 char* dupstr(const char* s) throw() {
   if (!s) {
@@ -204,6 +197,24 @@ char* dupstr(const char* s) throw() {
   auto n = strlen(s);
   auto d = new char[n + 1];
   return static_cast<char*>(memcpy(d, s, n + 1));
+}
+
+// Specializations for CSV parsing/writing, skipping the length field.
+template <>
+void base_string::serialize(csv::parser& a, const unsigned int) {
+  std::string tmp;
+  a& tmp;
+
+  if (buffer_) {
+    delete[] buffer_;
+  }
+  buffer_ = dupstr(tmp.c_str());
+}
+
+template <>
+void base_string::serialize(csv::writer& a, const unsigned int) {
+  std::string tmp = std::string(buffer_, length());
+  a& tmp;
 }
 
 // template<>
@@ -217,22 +228,15 @@ char* dupstr(const char* s) throw() {
 //  return seed;
 //}
 
-// template <>
-// void base_string::serialize(csv::parser& a, const unsigned int) {
-//  std::string tmp;
-//  a& tmp;
-//
-//  if (buffer_) {
-//    delete[] buffer_;
-//  }
-//  buffer_ = dupstr(tmp.c_str());
-//}
-//
-//// Specializations for CSV parsing/writing, skipping the length field.
-// template <>
-// void base_string::serialize(csv::writer& a, const unsigned int) {
-//  std::string tmp = std::string(buffer_, length());
-//  a& tmp;
-//}
-
 }  // namespace K3
+
+K3::base_string operator+(K3::base_string s, K3::base_string const& t) {
+  return s += t;
+}
+
+K3::base_string operator+(K3::base_string s, char const* t) { return s += t; }
+
+K3::base_string operator+(char const* t, K3::base_string const& s) {
+  auto new_string = K3::base_string(t);
+  return new_string += s;
+}

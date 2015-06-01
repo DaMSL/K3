@@ -2,6 +2,8 @@
 #define K3_COLLECTION
 
 #include "STLDataspace.hpp"
+#include "boost/serialization/vector.hpp"
+#include "boost/serialization/base_object.hpp"
 
 namespace K3 {
 template <template <class> class Derived, class Elem>
@@ -37,10 +39,8 @@ class Collection : public VectorDS<K3::Collection, Elem> {
 
   template <class Archive>
   void serialize(Archive& ar, const unsigned int) {
-    ar& boost::serialization::make_nvp(
-        "__K3Collection",
-        boost::serialization::base_object<VectorDS<K3::Collection, Elem>>(
-            *this));
+    ar& boost::serialization::base_object<VectorDS<K3::Collection, Elem>>(
+        *this);
   }
 
  private:
@@ -73,5 +73,4 @@ struct convert<K3::Collection<E>> {
   }
 };
 }  // namespace YAML
-
 #endif

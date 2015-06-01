@@ -67,9 +67,8 @@ class NetworkManager {
 
   std::atomic<bool> running_;
 
-  //logger
-  shared_ptr<spdlog::logger> logger;
-
+  // logger
+  shared_ptr<spdlog::logger> logger_;
 };
 
 }  // namespace K3

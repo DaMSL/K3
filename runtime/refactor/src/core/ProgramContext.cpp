@@ -18,6 +18,12 @@ void ProgramContext::__dispatch(SentinelValue* sv) {
   throw EndOfProgramException();
 }
 
+map<string, string> ProgramContext::__prettify() {
+  return map<string, string>();
+}
+
+unit_t ProgramContext::initDecls(unit_t) { return unit_t{}; }
+
 std::map<TriggerID, string> ProgramContext::__trigger_names_;
 
 DummyContext::DummyContext(Engine& e) : ProgramContext(e) {

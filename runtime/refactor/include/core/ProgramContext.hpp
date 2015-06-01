@@ -22,13 +22,17 @@ class Engine;
 
 class ProgramContext : public StandardBuiltins,
                        public TimeBuiltins,
-                       public StringBuiltins {
+                       public StringBuiltins,
+                       public ProfilingBuiltins,
+                       public AmplabLoaders {
  public:
   explicit ProgramContext(Engine& e);
   virtual void __dispatch(NativeValue* nv, TriggerID trig) = 0;
   virtual void __dispatch(PackedValue* pv, TriggerID trig) = 0;
   void __dispatch(SentinelValue* sv);
   virtual void __patch(const YAML::Node& node) = 0;
+  virtual map<string, string> __prettify();
+  virtual unit_t initDecls(unit_t);
   virtual unit_t processRole(const unit_t&) = 0;
 
   static map<TriggerID, string> __trigger_names_;

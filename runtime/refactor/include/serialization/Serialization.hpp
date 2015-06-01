@@ -3,22 +3,28 @@
 
 // Serialization between Native C++ types and Binary data
 
-#include <boost/archive/binary_oarchive.hpp>
-#include <boost/archive/binary_iarchive.hpp>
-#include <boost/iostreams/stream_buffer.hpp>
-#include <boost/iostreams/stream.hpp>
-#include <boost/iostreams/device/back_inserter.hpp>
-
-#include <csvpp/csv.h>
-#include <csvpp/string.h>
-#include <csvpp/array.h>
-#include <csvpp/deque.h>
-#include <csvpp/list.h>
-#include <csvpp/set.h>
-#include <csvpp/vector.h>
-
 #include <vector>
 #include <iostream>
+#include <tuple>
+
+#include "boost/archive/binary_oarchive.hpp"
+#include "boost/archive/binary_iarchive.hpp"
+#include "boost/iostreams/stream_buffer.hpp"
+#include "boost/iostreams/stream.hpp"
+#include "boost/iostreams/device/back_inserter.hpp"
+#include "boost/serialization/vector.hpp"
+#include "boost/serialization/set.hpp"
+#include "boost/serialization/list.hpp"
+#include "boost/serialization/base_object.hpp"
+#include "boost/serialization/nvp.hpp"
+
+#include "csvpp/csv.h"
+#include "csvpp/string.h"
+#include "csvpp/array.h"
+#include "csvpp/deque.h"
+#include "csvpp/list.h"
+#include "csvpp/set.h"
+#include "csvpp/vector.h"
 
 namespace K3 {
 namespace Serialization {
@@ -92,8 +98,8 @@ struct tuple_serializer {
   template <class archive, class... args>
   static void serialize(archive& a, std::tuple<args...>& t,
                         const unsigned int version) {
-    a& std::get<N - 1>(t);
     tuple_serializer<N - 1>::serialize(a, t, version);
+    a& std::get<N - 1>(t);
   }
 };
 

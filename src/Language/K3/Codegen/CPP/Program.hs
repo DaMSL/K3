@@ -74,7 +74,7 @@ program (tag &&& children -> (DRole name, decls)) = do
 
     inits <- initializations <$> get
 
-    --prettify <- genPrettify
+    prettify <- genPrettify
     --jsonify <- genJsonify
 
     patchables' <- patchables <$> get
@@ -126,7 +126,7 @@ program (tag &&& children -> (DRole name, decls)) = do
     --let contextDefns = [contextConstructor] ++ programDefns  ++ [initDeclDefn] ++
     --                   [patchFnDecl, prettify, jsonify, dispatchDecl]
     let contextDefns = [contextConstructor] ++ programDefns  ++ [initDeclDefn] ++
-                       [patchFnDecl, dispatchDecl True, dispatchDecl False]
+                       [patchFnDecl, prettify, dispatchDecl True, dispatchDecl False]
 
     let contextClassDefn = R.ClassDefn contextName []
                              [ R.Named $ R.Qualified (R.Name "K3") $ R.Name "ProgramContext"
@@ -263,17 +263,18 @@ requiredIncludes = return
                    , "string"
                    , "tuple"
 
-                   , "Builtins.hpp"
-                   , "BaseString.hpp"
                    , "Common.hpp"
-                   , "Codec.hpp"
-                   , "ProgramContext.hpp"
-                   , "Engine.hpp"
                    , "Options.hpp"
-                   , "Serialization.hpp"
-                   , "Yaml.hpp"
+                   , "Prettify.hpp"
+                   , "builtins/Builtins.hpp"
+                   , "core/Engine.hpp"
+                   , "core/ProgramContext.hpp"
+                   , "serialization/Codec.hpp"
+                   , "serialization/Serialization.hpp"
+                   , "serialization/Yaml.hpp"
+                   , "types/BaseString.hpp"
 
-                   , "collections/Collection.hpp"
+                   , "collections/AllCollections.hpp"
                    ]
 
 
@@ -309,7 +310,7 @@ generateDispatchPopulation isNative = do
        let i = R.Variable $ R.Name (idOfTrigger tName)
        let engine = R.Project (R.Dereference $ R.Variable $ R.Name "this") (R.Name "__engine_")
        -- TODO(jbw) use a static codec declaration, this only needs to happen once, on one thread
-       let codec = R.Forward $ R.ScalarDecl (R.Name "codec") R.Inferred $ Just $ R.Call (R.Variable $ R.Qualified (R.Name "Codec") (R.Specialized [kType] (R.Name "getCodec"))) [R.Variable $ R.Name "__internal_format_"]
+       let codec = R.Forward $ R.ScalarDecl (R.Name "codec") R.Inferred $ Just $ R.Call (R.Variable $ R.Qualified (R.Name "Codec") (R.Specialized [kType] (R.Name "getCodec"))) [R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "payload") (R.Name "format")) []]
        let unpacked = R.Forward $ R.ScalarDecl (R.Name "native_val") R.Inferred $ Just $ R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "codec") (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "payload"]
        let native_val = if isNative then "payload" else "native_val"
        let codec_decls = if isNative then [] else [codec, unpacked]
@@ -377,7 +378,6 @@ genPrettify :: CPPGenM R.Definition
 genPrettify = do
    currentS <- get
    body    <- genBody $ showables currentS
-   --let body = [R.Return $ R.Initialization result_type []]
    return $ R.FunctionDefn prettifyName [] (Just result_type) [] False body
  where
    p_string = R.Named $ R.Qualified (R.Name "std") (R.Name "string")
@@ -406,7 +406,7 @@ genPrettify = do
        isTUnit (tnc -> (TTuple, [])) = True
        isTUnit _ = False
 
--- | Generate an expression that represents an expression of the given type as a string
+-- | Generate a C++  expression that represents a K3 expression of the given type as a string
 prettifyExpr :: K3 Type -> R.Expression -> CPPGenM R.Expression
 prettifyExpr base_t e =
  case base_t of
@@ -427,7 +427,7 @@ prettifyExpr base_t e =
    _                                           -> return $ lit_string "Cant Show!"
  where
    -- Utils
-   call_prettify x exp =  R.Call (R.Variable (R.Qualified (R.Name "K3") (R.Name $ "prettify_" ++ x))) exp
+   call_prettify x args =  R.Call (R.Variable (R.Qualified (R.Name "K3") (R.Name $ "prettify_" ++ x))) args
    wrap_inner t = do
      cType <- genCType t
      inner <- prettifyExpr t (R.Variable $ R.Name "x")
@@ -451,9 +451,9 @@ prettifyExpr base_t e =
        f <- wrap_inner ct
        return $ call_prettify "indirection" [e, f]
 
-   -- TODO
-   -- Tuple
-   tup_to_string _ = return $ call_prettify "tuple" [e]
+   -- Tuple (TODO)
+   tup_to_string cts = mapM wrap_inner cts >>= return . call_prettify "tuple" . (e:)
+
    -- Record
    rec_to_string ids cts = do
        cType  <- genCType base_t
