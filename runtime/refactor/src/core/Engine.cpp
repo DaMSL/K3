@@ -43,16 +43,21 @@ void Engine::join() {
     for (auto& it : *peers_) {
       it.second->join();
     }
-
-    network_manager_->join();
-    running_ = false;
   }
+
+  network_manager_->stop();
+  network_manager_->join();
+  running_ = false;
 }
 
 void Engine::send(const MessageHeader& header, shared_ptr<NativeValue> value,
                   shared_ptr<Codec> codec) {
-  auto it = peers_->find(header.destination());
+  if (!peers_) {
+    throw std::runtime_error(
+        "Engine send(): Can't send before peers_ is initialized");
+  }
 
+  auto it = peers_->find(header.destination());
   if (local_sends_enabled_ && it != peers_->end()) {
     // Direct enqueue for local messages
     auto m = make_shared<Message>(header, value);
@@ -106,11 +111,29 @@ shared_ptr<map<Address, shared_ptr<Peer>>> Engine::createPeers(
     const vector<string>& peer_configs, shared_ptr<ContextFactory> factory) {
   auto result = make_shared<map<Address, shared_ptr<Peer>>>();
 
+  vector<YAML::Node> nodes;
+
   for (auto config : peer_configs) {
-    YAML::Node node = YAML::Load(config);
+    if (config.length() == 0) {
+      throw std::runtime_error(
+          "Engine createPeers(): Empty YAML peer configuration");
+    } else if (config[0] != '{') {
+      for (auto n : YAML::LoadAllFromFile(config)) {
+        nodes.push_back(n);
+      }
+    } else {
+      nodes.push_back(YAML::Load(config));
+    }
+  }
+
+  for (auto node : nodes) {
     Address addr = meFromYAML(node);
     auto ready_callback = [this]() { ready_peers_++; };
     auto p = make_shared<Peer>(addr, factory, node, ready_callback);
+    if (result->find(addr) != result->end()) {
+      throw std::runtime_error(
+          "Engine createPeers(): Duplicate peer address: " + addr.toString());
+    }
     (*result)[addr] = p;
   }
 

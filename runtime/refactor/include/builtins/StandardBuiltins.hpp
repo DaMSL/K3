@@ -21,7 +21,9 @@ class StandardBuiltins {
   template <class T>
   T error(unit_t);
   template <class T>
-  unit_t ignore(T t);
+  unit_t ignore(const T& t);
+  template <class T>
+  int hash(const T& t);
 
  protected:
   Engine& __engine_;
@@ -44,8 +46,14 @@ T StandardBuiltins::error(unit_t) {
 }
 
 template <class T>
-unit_t StandardBuiltins::ignore(T t) {
+unit_t StandardBuiltins::ignore(const T& t) {
   return unit_t();
+}
+
+template <class T>
+int StandardBuiltins::hash(const T& t) {
+  std::hash<T> hasher;
+  return hasher(t);
 }
 
 }  // namespace K3

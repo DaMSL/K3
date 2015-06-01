@@ -55,21 +55,27 @@ void Engine::run(const vector<string>& peer_configs) {
   }
   running_ = true;
 
-  // Create peers
-  total_peers_ = peer_configs.size();
+  // Create peers: Peers start their own thread, create a context
+  // and check in
   auto context_factory = make_shared<ContextFactory>(
       [this]() { return make_shared<Context>(*this); });
   peers_ = createPeers(peer_configs, context_factory);
 
-  // Wait for peers to initialize and check-in as ready
+  total_peers_ = peers_->size();
   while (total_peers_ > ready_peers_) continue;
 
-  // Signal all peers to start
+  // Once peers check in, start a listener for each peer
+  // and allow each peer to send its initial message (processRole)
+  // This must happen AFTER peers_ has been initialized
   for (auto it : *peers_) {
     network_manager_->listenInternal(it.second);
-    it.second->start();
+    it.second->processRole();
   }
 
+  // Once all roles have been processed, peers can start to process messages
+  for (auto it : *peers_) {
+    it.second->start();
+  }
   return;
 }
 

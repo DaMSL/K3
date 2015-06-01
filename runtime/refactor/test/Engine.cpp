@@ -2,6 +2,7 @@
 #include <chrono>
 #include <thread>
 #include <vector>
+#include <tuple>
 
 #include "gtest/gtest.h"
 
@@ -63,7 +64,8 @@ TEST(CSV, StringPackedValue) {
   // TODO(jbw) why does csvpp flip the order????
   string s = "one,1";
 
-  shared_ptr<K3::PackedValue> packed = make_shared<StringPackedValue>(std::move(s), CodecFormat::CSV);
+  shared_ptr<K3::PackedValue> packed =
+      make_shared<StringPackedValue>(std::move(s), CodecFormat::CSV);
   auto result = codec->unpack(*packed);
 
   ASSERT_EQ(1, std::get<0>(*result->as<tuple<int, string>>()));
@@ -80,7 +82,6 @@ TEST(CSV, Tuple) {
   string str = string(packed->buf(), packed->length());
   std::cout << str << std::endl;
   auto result = codec->unpack(*packed);
-  
 
   ASSERT_EQ(std::get<0>(s), std::get<0>(*result->as<tuple<int, string>>()));
   ASSERT_EQ(std::get<1>(s), std::get<1>(*result->as<tuple<int, string>>()));

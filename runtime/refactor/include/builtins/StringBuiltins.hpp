@@ -14,7 +14,14 @@ class StringBuiltins {
   // Seq<R_elem<string_impl>> splitString(string_impl, const string_impl&);
   int tpch_date(const string_impl& s);
   string_impl tpch_date_to_string(const int& date);
+  template <class S>
+  S slice_string(const S& s, int x, int y);
 };
+
+template <class S>
+S StringBuiltins::slice_string(const S& s, int x, int y) {
+  return s.substr(x, y);
+}
 
 }  // namespace K3
 

@@ -15,11 +15,3 @@ with effects \_ -> \_ -> io
 @:CArgs 2
 declare loadRKQ3 : collection {path: string} @Collection -> collection {key: string, value: int} @Map  -> ()
 with effects \_ -> \_ -> io
-
-@:CArgs 2
-declare graphLoader: collection {path: string} @Collection -> collection { key: int, value: int } @ { Collection } -> ()
-with effects \_ -> \_ -> io
-
-@:CArgs 2
-declare loadGraph: collection {path: string} @Collection -> collection { key: int, value: collection { elem: int } @ Collection  } @ IntMap  -> ()
-with effects \_ -> \_ -> io

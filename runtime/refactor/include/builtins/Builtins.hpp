@@ -1,3 +1,5 @@
 #include "builtins/StandardBuiltins.hpp"
 #include "builtins/TimeBuiltins.hpp"
 #include "builtins/StringBuiltins.hpp"
+#include "builtins/ProfilingBuiltins.hpp"
+#include "builtins/loaders/Amplab.hpp"

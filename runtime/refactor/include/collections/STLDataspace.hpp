@@ -4,6 +4,21 @@
 #include <tuple>
 #include <unordered_map>
 
+#include "boost/serialization/vector.hpp"
+#include "boost/serialization/set.hpp"
+#include "boost/serialization/map.hpp"
+#include "boost/serialization/list.hpp"
+#include "boost/serialization/nvp.hpp"
+#include "boost/serialization/base_object.hpp"
+
+#include "csvpp/csv.h"
+#include "csvpp/string.h"
+#include "csvpp/array.h"
+#include "csvpp/deque.h"
+#include "csvpp/list.h"
+#include "csvpp/set.h"
+#include "csvpp/vector.h"
+
 namespace K3 {
 
 using std::tuple;
@@ -22,11 +37,6 @@ class STLDS {
   STLDS(): container() {}
   STLDS(const Container& con): container(con) {}
   STLDS(Container&& con): container(std::move(con)) {}
-
-  // Utils
-  Elem elemToRecord(const Elem& e) const {
-    return e;
-  }
 
   Container& getContainer() {
     return container;
@@ -229,7 +239,7 @@ class STLDS {
 
   template<class Archive>
   void serialize(Archive &ar, const unsigned int) {
-    ar & boost::serialization::make_nvp("__STLDS", container);
+    ar & container;
   }
 
  private:

@@ -11,7 +11,7 @@
 
 #include <yaml-cpp/yaml.h>
 //#include <rapidjson/document.h>
-//#include <csvpp/csv.h>
+#include <csvpp/csv.h>
 
 namespace K3 {
 
@@ -67,13 +67,14 @@ class base_string {
   char* begin() const;
   char* end() const;
 
+
   template <class archive>
   void serialize(archive& a, const unsigned int) {
     std::size_t len;
     if (archive::is_saving::value) {
       len = length();
     }
-    a& BOOST_SERIALIZATION_NVP(len);
+    a& len;
     if (archive::is_loading::value) {
       if (buffer_) {
         delete[] buffer_;
@@ -120,14 +121,18 @@ class base_string {
       a.read(buffer_, len);
     }
   }
+  
 
  private:
   char* buffer_;
 };
+  
+// Specializations for CSV parsing/writing, skipping the length field.
+template <>
+void base_string::serialize(csv::parser& a, const unsigned int);
 
-inline base_string operator+(base_string s, base_string const& t);
-inline base_string operator+(base_string s, char const* t);
-inline base_string operator+(char const* t, base_string const& s);
+template <>
+void base_string::serialize(csv::writer& a, const unsigned int);
 
 // Specializations for CSV parsing/writing, skipping the length field.
 // template <>
@@ -158,6 +163,10 @@ inline base_string operator+(char const* t, base_string const& s);
 // boost::serialization::object_serializable);
 
 }  // namespace K3
+
+K3::base_string operator+(K3::base_string s, K3::base_string const& t);
+K3::base_string operator+(K3::base_string s, char const* t);
+K3::base_string operator+(char const* t, K3::base_string const& s);
 
 namespace YAML {
 template <>
