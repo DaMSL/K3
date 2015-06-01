@@ -18,6 +18,7 @@
 #include "types/Message.hpp"
 #include "ProgramContext.hpp"
 #include "types/Queue.hpp"
+#include "spdlog/spdlog.h"
 
 namespace K3 {
 
@@ -38,6 +39,7 @@ class Peer {
 
  protected:
   Address address_;
+  shared_ptr<spdlog::logger> logger_;
   shared_ptr<boost::thread> thread_;
   shared_ptr<Queue> queue_;
   shared_ptr<ProgramContext> context_;

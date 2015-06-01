@@ -3,13 +3,6 @@
 namespace K3 {
 using std::pair; 
 
-// Set the logger
-void StorageManager::setLogger (std::string logger_id)  {
-  logger = spdlog::get(logger_id);
-  if (!logger)  {
-    logger = spdlog::stdout_logger_mt(logger_id);
-  }
-}
 
 void StorageManager::openFile (Address peer, Identifier id, std::string path, 
                       StorageFormat fmt, CodecFormat codec, IOMode io) {

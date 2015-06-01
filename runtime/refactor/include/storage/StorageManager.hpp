@@ -18,6 +18,7 @@ class StorageManager {
   // Core
   StorageManager() {
       files_ = make_shared<ConcurrentMap<pair<Address, Identifier>, shared_ptr<FileHandle>>> ();
+      logger = spdlog::get("engine");
   }
   void openFile(Address peer, Identifier id, std::string path, 
                       StorageFormat fmt, CodecFormat codec, IOMode io);
@@ -33,7 +34,6 @@ class StorageManager {
   void doWrite(Address peer, Identifier id, shared_ptr<PackedValue> val);
   void doBlockWrite(Address peer, Identifier id, vector<shared_ptr<PackedValue>> vals);
 
-  void setLogger (std::string logger_id);
 
  private:
   shared_ptr<ConcurrentMap<pair<Address, Identifier>, shared_ptr<FileHandle>>> files_;

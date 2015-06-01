@@ -11,6 +11,14 @@
 namespace K3 {
 
 Engine::Engine() {
+
+  // Configure logger TODO(jbw) Integrate with program opts
+  logger_ = spdlog::get("engine");
+  if (!logger_) {
+    logger_ = spdlog::stdout_logger_mt("engine");
+  }
+  spdlog::set_pattern("[%T.%f %l %n] %v");
+
   network_manager_ = make_shared<NetworkManager>();
   storage_manager_ = make_shared<StorageManager>();
   peers_ = nullptr;  // Intialized during run()
@@ -36,6 +44,7 @@ void Engine::stop() {
   }
 
   network_manager_->stop();
+  logger_->info("The Engine has stopped.");
 }
 
 void Engine::join() {
@@ -57,6 +66,8 @@ void Engine::send(const MessageHeader& header, shared_ptr<NativeValue> value,
         "Engine send(): Can't send before peers_ is initialized");
   }
 
+  logger_->info() << "Message: " << header.source().toString() << " --> " 
+    << header.destination().toString() << " @" <<  header.trigger();
   auto it = peers_->find(header.destination());
   if (local_sends_enabled_ && it != peers_->end()) {
     // Direct enqueue for local messages

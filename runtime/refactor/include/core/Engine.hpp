@@ -11,6 +11,7 @@
 #include "network/NetworkManager.hpp"
 #include "storage/StorageManager.hpp"
 #include "Peer.hpp"
+#include "spdlog/spdlog.h"
 
 namespace K3 {
 
@@ -39,6 +40,7 @@ class Engine {
       const vector<string>& peer_configs,
       shared_ptr<ContextFactory> context_factory);
 
+  shared_ptr<spdlog::logger> logger_;
   shared_ptr<NetworkManager> network_manager_;
   shared_ptr<StorageManager> storage_manager_;
   shared_ptr<const map<Address, shared_ptr<Peer>>> peers_;
@@ -54,6 +56,7 @@ void Engine::run(const vector<string>& peer_configs) {
     throw std::runtime_error("Engine run(): already running");
   }
   running_ = true;
+  logger_->info("The Engine has started.");
 
   // Create peers: Peers start their own thread, create a context
   // and check in
@@ -63,6 +66,7 @@ void Engine::run(const vector<string>& peer_configs) {
 
   total_peers_ = peers_->size();
   while (total_peers_ > ready_peers_) continue;
+  logger_->info("All peers are ready.");
 
   // Once peers check in, start a listener for each peer
   // and allow each peer to send its initial message (processRole)
@@ -80,5 +84,4 @@ void Engine::run(const vector<string>& peer_configs) {
 }
 
 }  // namespace K3
-
 #endif

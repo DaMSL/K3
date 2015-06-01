@@ -14,6 +14,10 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
   address_ = addr;
   start_processing_ = false;
   finished_ = false;
+  logger_ = spdlog::get(addr.toString());
+  if (!logger_) {
+    logger_ = spdlog::stdout_logger_mt(addr.toString());
+  }
 
   auto work = [this, fac, peer_config, ready_callback]() {
     queue_ = make_shared<Queue>();
@@ -31,6 +35,7 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
 
       while (true) {
         shared_ptr<Message> m = queue_->dequeue();
+        logger_->info() << " Received: @" << context_->__trigger_names_[m->trigger()];       
         m->value()->dispatchIntoContext(context_.get(), m->trigger());
       }
     } catch (EndOfProgramException e) {
