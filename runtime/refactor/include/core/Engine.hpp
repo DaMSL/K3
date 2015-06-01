@@ -11,6 +11,8 @@
 #include "network/NetworkManager.hpp"
 #include "storage/StorageManager.hpp"
 #include "Peer.hpp"
+#include "spdlog/spdlog.h"
+
 
 namespace K3 {
 
@@ -46,6 +48,10 @@ class Engine {
   std::atomic<bool> running_;
   std::atomic<int> ready_peers_;
   int total_peers_;
+
+  // logger
+  shared_ptr<spdlog::logger> logger;
+
 };
 
 template <class Context>
@@ -54,6 +60,7 @@ void Engine::run(const vector<string>& peer_configs) {
     throw std::runtime_error("Engine run(): already running");
   }
   running_ = true;
+  logger->info("The Engine has started.");
 
   // Create peers
   total_peers_ = peer_configs.size();
@@ -63,6 +70,7 @@ void Engine::run(const vector<string>& peer_configs) {
 
   // Wait for peers to initialize and check-in as ready
   while (total_peers_ > ready_peers_) continue;
+  logger->info("All peers are ready.");
 
   // Signal all peers to start
   for (auto it : *peers_) {

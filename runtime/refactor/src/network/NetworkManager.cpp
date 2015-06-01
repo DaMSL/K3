@@ -7,6 +7,9 @@
 namespace K3 {
 
 NetworkManager::NetworkManager() {
+
+  logger = spdlog::get("engine");
+
   io_service_ = make_shared<asio::io_service>();
   work_ = make_shared<asio::io_service::work>(*io_service_);
   threads_ = make_shared<boost::thread_group>();

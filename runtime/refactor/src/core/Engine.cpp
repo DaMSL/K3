@@ -11,6 +11,11 @@
 namespace K3 {
 
 Engine::Engine() {
+
+  // Configure logger TODO: Integrate with program opts
+  logger = spdlog::stdout_logger_mt("engine");
+  spdlog::set_pattern("[%T.%f %l %n] %v");
+
   network_manager_ = make_shared<NetworkManager>();
   storage_manager_ = make_shared<StorageManager>();
   peers_ = nullptr;  // Intialized during run()
@@ -36,6 +41,7 @@ void Engine::stop() {
   }
 
   network_manager_->stop();
+  logger->info("The Engine has stopped.");
 }
 
 void Engine::join() {
@@ -52,6 +58,9 @@ void Engine::join() {
 void Engine::send(const MessageHeader& header, shared_ptr<NativeValue> value,
                   shared_ptr<Codec> codec) {
   auto it = peers_->find(header.destination());
+
+  logger->info() << "Message: " << header.source().toString() << " --> " 
+    << header.destination().toString() << " @" <<  header.trigger();
 
   if (local_sends_enabled_ && it != peers_->end()) {
     // Direct enqueue for local messages

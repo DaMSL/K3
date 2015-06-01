@@ -11,6 +11,7 @@
 
 #include "Common.hpp"
 #include "types/Message.hpp"
+#include "spdlog/spdlog.h"
 
 namespace K3 {
 
@@ -65,6 +66,10 @@ class NetworkManager {
   CodecFormat internal_format_;
 
   std::atomic<bool> running_;
+
+  //logger
+  shared_ptr<spdlog::logger> logger;
+
 };
 
 }  // namespace K3

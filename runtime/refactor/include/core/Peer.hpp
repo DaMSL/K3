@@ -14,6 +14,7 @@
 #include "types/Message.hpp"
 #include "ProgramContext.hpp"
 #include "types/Queue.hpp"
+#include "spdlog/spdlog.h"
 
 namespace K3 {
 
@@ -35,6 +36,8 @@ class Peer {
   shared_ptr<thread> thread_;
   shared_ptr<Queue> queue_;
   shared_ptr<ProgramContext> context_;
+  // logger
+  shared_ptr<spdlog::logger> logger;  
 };
 
 }  // namespace K3
