@@ -77,7 +77,7 @@ def main():
     parser.add_argument("-s", "--switches", type=int, help="number of switches", dest="num_switches", default=1)
     parser.add_argument("-n", "--nodes", type=int, help="number of nodes", dest="num_nodes", default=1)
     parser.add_argument("-d", "--dist", action='store_true', dest="dist_mode", default=False)
-    parser.add_argument("-f", "--file", type=str, help="file path", default="/local/agenda.csv")
+    parser.add_argument("-f", "--file", type=str, dest="file_path", help="file path", default="/local/agenda.csv")
     args = parser.parse_args()
     if args.dist_mode:
         create_dist_file(args.num_switches, args.num_nodes, args.file_path)
