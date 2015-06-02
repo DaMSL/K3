@@ -2,7 +2,25 @@
 
 namespace K3 {
 
+using std::ios_base;
+
 //  SOURCE FILE HANDLE (binary file access)
+SourceFileHandle::SourceFileHandle (std::string path, CodecFormat codec) {
+
+    file_.exceptions (ios_base::failbit | std::ios_base::badbit );
+    try {
+      file_.open (path, std::ios::in | std::ios::binary); 
+    }
+    catch (ios_base::failure e) {
+      throw e;
+    }
+  
+    fmt_ = codec;
+  }
+
+
+
+
 bool SourceFileHandle::hasRead() {
   return file_.good();  
 }
@@ -27,20 +45,47 @@ shared_ptr<PackedValue> SourceFileHandle::doRead() {
 
 
 
-// TODO: Optimize using mmap files
-// shared_ptr<PackedValue> SourceTextHandle::doRead()  {
+SourceTextHandle::SourceTextHandle (std::string path, CodecFormat codec) {
+    file_.exceptions (std::ifstream::failbit | std::ifstream::badbit );
+    try {
+      file_.open (path, std::ios::in); 
+    }
+    catch (std::ifstream::failure e) {
+      throw e;
+    }
+    fmt_ = codec;    
+  }
 
-//   // Placeholder
-//   return 0; 
 
+shared_ptr<PackedValue> SourceTextHandle::doRead()  {
 
-// };
+  // allocate buffer
+  std::string buf;
+
+  //Read next line
+  std::getline (file_, buf);
+
+  shared_ptr<PackedValue> result = make_shared<StringPackedValue>(std::move(buf), fmt_);
+  return result;  
+
+}
 
 
 //  SINK FILE HANDLE (binary file access)
+SinkFileHandle::SinkFileHandle (std::string path)  {
+    file_.exceptions (std::ofstream::failbit | std::ofstream::badbit );
+    try {
+      file_.open (path);
+    }
+    catch (std::ofstream::failure e) {
+      throw e;
+    }
+}
+
 bool SinkFileHandle::hasWrite() {
   return (file_.good());  
 }
+
 
 // Note: value size limits are 32-bit ints (4GB per value)
 void SinkFileHandle::doWrite(shared_ptr<PackedValue> val) {
@@ -51,12 +96,9 @@ void SinkFileHandle::doWrite(shared_ptr<PackedValue> val) {
 
 
 
-
-// void SinkTextHandle::doWrite(shared_ptr<PackedValue> val) {
-
-//   // Placeholder
-//   return;
-
-// };
+void SinkTextHandle::doWrite(shared_ptr<PackedValue> val) {
+  file_.write (val->buf(), val->length());
+  file_.put ('\n');
+}
 
 }

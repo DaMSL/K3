@@ -35,8 +35,12 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
 
       while (true) {
         shared_ptr<Message> m = queue_->dequeue();
-        logger_->info() << " Received: @"
-                        << context_->__trigger_names_[m->trigger()];
+
+        if (logger_->level() == spdlog::level::trace) {
+          auto it = ProgramContext::__trigger_names_.find(m->trigger());
+          std::string trig = (it != ProgramContext::__trigger_names_.end()) ? it->second : "{Undefined Trigger}";
+          logger_->trace() << "  [" << address_.toString() << "] Received:: @" << trig;
+        }
         m->value()->dispatchIntoContext(context_.get(), m->trigger());
       }
     } catch (EndOfProgramException e) {

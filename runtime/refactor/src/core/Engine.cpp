@@ -8,15 +8,33 @@
 #include "core/Peer.hpp"
 #include "serialization/Codec.hpp"
 
+
 namespace K3 {
 
 Engine::Engine() {
-  // Configure logger TODO(jbw) Integrate with program opts
+
+  // Configure logger TODO: Integrate with program opts
+  int k3_log_level = 2;
+
   logger_ = spdlog::get("engine");
   if (!logger_) {
     logger_ = spdlog::stdout_logger_mt("engine");
   }
   spdlog::set_pattern("[%T.%f %l %n] %v");
+  switch (k3_log_level) {
+    case 1:
+      spdlog::set_level(spdlog::level::info);
+      break;
+    case 2:
+      spdlog::set_level(spdlog::level::debug);
+      break;
+    case 3:
+      spdlog::set_level(spdlog::level::trace);
+      break;
+    default:
+      spdlog::set_level(spdlog::level::warn);
+      break;
+  }
 
   network_manager_ = make_shared<NetworkManager>();
   storage_manager_ = make_shared<StorageManager>();

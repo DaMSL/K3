@@ -18,7 +18,7 @@ class StorageManager {
   // Core
   StorageManager() {
       files_ = make_shared<ConcurrentMap<pair<Address, Identifier>, shared_ptr<FileHandle>>> ();
-      logger = spdlog::get("engine");
+      logger_ = spdlog::get("engine");
   }
   void openFile(Address peer, Identifier id, std::string path, 
                       StorageFormat fmt, CodecFormat codec, IOMode io);
@@ -39,7 +39,7 @@ class StorageManager {
   shared_ptr<ConcurrentMap<pair<Address, Identifier>, shared_ptr<FileHandle>>> files_;
 
   // logger
-  shared_ptr<spdlog::logger> logger;
+  shared_ptr<spdlog::logger> logger_;
 
 };
 

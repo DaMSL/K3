@@ -14,6 +14,7 @@
 #include "spdlog/spdlog.h"
 
 using namespace K3;
+using std::tuple;
 
 TEST(Storage, BinaryFile) {
   Address a1 = make_address("127.0.0.1", 30000);
@@ -100,5 +101,57 @@ TEST(Storage, BinaryFile) {
     int x = *nv_x->as<int>();
     ASSERT_EQ (i*10, x);
   }
+
+}
+
+
+TEST(Storage, TextFile) {
+  Address a1 = make_address("127.0.0.1", 30000);
+
+  StorageManager storage = StorageManager();
+
+  // Write a 2 rows to a sink
+  storage.openFile(a1, "sink", "table.csv",  
+      StorageFormat::Text, CodecFormat::CSV, IOMode::Write);
+
+  auto codec = Codec::getCodec<tuple<int, string>>(CodecFormat::CSV);
+
+  tuple<int, string> row1 = std::make_tuple(1, "one");
+  tuple<int, string> row2 = std::make_tuple(2, "two");
+
+  auto val1 = make_shared<TNativeValue<tuple<int, string>>>(row1);
+  auto val2 = make_shared<TNativeValue<tuple<int, string>>>(row2);
+
+  auto packed1 = codec->pack(*val1);
+  auto packed2 = codec->pack(*val2);
+
+  storage.doWrite(a1, "sink", codec->pack(*val1));
+  storage.doWrite(a1, "sink", codec->pack(*val2));
+
+  storage.closeFile(a1, "sink");
+
+
+  // Read them back in from a source
+  storage.openFile(a1, "source", "table.csv", 
+      StorageFormat::Text, CodecFormat::CSV, IOMode::Read);
+
+  shared_ptr<PackedValue> pv1 = storage.doRead(a1, "source");
+  shared_ptr<PackedValue> pv2 = storage.doRead(a1, "source");
+
+  storage.closeFile(a1, "source");
+
+  string str1 = string(pv1->buf(), pv1->length());
+  string str2 = string(pv2->buf(), pv2->length());
+
+  std::cout << str1 << std::endl;
+  std::cout << str2 << std::endl;
+
+  auto result1 = codec->unpack(*pv1);
+  auto result2 = codec->unpack(*pv2);  
+
+  ASSERT_EQ(std::get<0>(row1), std::get<0>(*result1->as<tuple<int, string>>()));
+  ASSERT_EQ(std::get<1>(row1), std::get<1>(*result1->as<tuple<int, string>>()));
+  ASSERT_EQ(std::get<0>(row2), std::get<0>(*result2->as<tuple<int, string>>()));
+  ASSERT_EQ(std::get<1>(row2), std::get<1>(*result2->as<tuple<int, string>>()));
 
 }

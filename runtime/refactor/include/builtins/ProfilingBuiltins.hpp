@@ -2,6 +2,7 @@
 #define K3_PROFILINGBUILTINS
 
 #include <string>
+#include <chrono>
 
 #ifdef K3_PCM
 #include <cpucounters.h>
