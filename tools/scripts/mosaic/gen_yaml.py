@@ -46,22 +46,27 @@ def create_nodes():
     hds = [ 'qp-hd' + str(x) for x in range(1,17) ]
     return hms + qps + hds
 
-def create_dist_file(num_switches, num_nodes):
+def create_dist_file(num_switches, num_nodes, file_path):
     # for now, each peer is on a different node
     nodes = create_nodes()
     peers = []
-    peers += [('Master', 'master', nodes.pop(0))]
-    peers += [('Timer',  'timer',  nodes.pop(0))]
-    peers += [('Switch' + str(i), 'switch', nodes.pop(0)) for i in range(1, num_switches+1)]
-    peers += [('Node'   + str(i), 'node',   nodes.pop(0)) for i in range(1, num_nodes+1)]
+    peers += [('Master', 'master', nodes.pop(0), None)]
+    peers += [('Timer',  'timer',  nodes.pop(0), None)]
+    peers += [('Switch' + str(i), 'switch', nodes.pop(0), file_path + str(i)) for i in range(1, num_switches+1)]
+    peers += [('Node'   + str(i), 'node',   nodes.pop(0), None) for i in range(1, num_nodes+1)]
     peers2 = []
-    for (name, role, addr) in peers:
+    for (name, role, addr, path) in peers:
+        k3_globals = {'role':role}
+        # add path for switch
+        if path is not None:
+            k3_globals['switch_path'] = path
         peers2 += [{'name':name,
                     'peers':1,
                     'hostmask':addr,
                     'privileged':False,
                     'volumes':{'host':'/local', 'container':'/local'},
-                    'k3_globals':{'role':role}}]
+                    'k3_globals':k3_globals
+                   }]
     # dump out
     emit_yaml(peers2)
 
@@ -72,9 +77,10 @@ def main():
     parser.add_argument("-s", "--switches", type=int, help="number of switches", dest="num_switches", default=1)
     parser.add_argument("-n", "--nodes", type=int, help="number of nodes", dest="num_nodes", default=1)
     parser.add_argument("-d", "--dist", action='store_true', dest="dist_mode", default=False)
+    parser.add_argument("-f", "--file", type=string, help="file path", default="/local/agenda.csv")
     args = parser.parse_args()
     if args.dist_mode:
-        create_dist_file(args.num_switches, args.num_nodes)
+        create_dist_file(args.num_switches, args.num_nodes, args.file_path)
     else:
         create_file(args.num_switches, args.num_nodes)
 

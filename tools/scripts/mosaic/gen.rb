@@ -34,10 +34,10 @@ def run_dbtoaster(test_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, sou
   Dir.chdir(start_path)
 
   # if requested, change the data path
-  if $options.has_key?(:data_path)
+  if $options.has_key?(:dbt_data_path)
     puts "Changing dbtoaster paths"
     s = File.read(dbt_name_hpp)
-    s.sub!(/agenda.csv/,$options[:data_path])
+    s.sub!(/agenda.csv/,$options[:dbt_data_path])
     File.write(dbt_name_hpp, s)
   end
 
@@ -48,51 +48,22 @@ def run_dbtoaster(test_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, sou
   run("#{File.join(".", dbt_name)} > #{dbt_name}.xml", [/File not found/])
 end
 
-def parse_dbt_results(dbt_name)
-  puts "Parsing DBToaster results"
-  dbt_xml_out = File.read("#{dbt_name}.xml")
-  dbt_xml_out.gsub!(/(Could not find insert.+$|Initializing program:|Running program:|Printing final result:)/,'')
-  dbt_xml_out.gsub!(/\n\s*/,'')
-
-  r = REXML::Document.new(dbt_xml_out)
-  dbt_results = {}
-  res2 = []
-  r.elements['boost_serialization/snap'].each do |result|
-    # complex results
-    if result.has_elements?
-      result.each do |item|
-        res = []
-        if item.name == 'item'
-          item.each { |e| res << e.text }
-        end
-      end
-      if res.size > 0 then dbt_results[result.name] = res end
-    else # simple result
-      res2 << result.text
-    end
-    if res2.size > 0 then dbt_results[result.name] = res2 end
-  end
-  return dbt_results
-end
-
 ### Mosaic stage ###
 
 def run_mosaic(k3_path, mosaic_path, source)
   puts "Creating mosaic files"
   run("#{File.join(mosaic_path, "tests", "auto_test.py")} --no-interp -d -f #{source}")
-
-  # if requested, change the data path
-  if $options.has_key?(:data_path)
-    s = File.read(k3_path)
-    s.sub!(/= file "[^"]+" psv/, "= file \"#{$options[:data_path]}\" psv")
-    File.write(k3_path, s)
-  end
 end
 
-def run_compile_k3(bin_file, k3_path, script_path)
+def run_compile_k3(bin_file, k3_path, k3_cpp_path, script_path)
   puts "Creating k3 cpp file"
   compile_brew = File.join(script_path, "..", "run", "compile_brew.sh")
   run("#{compile_brew} --fstage cexclude=Optimize -1 #{k3_path}")
+
+  # change the cpp file to use the dynamic path
+  s = File.read(k3_cpp_path)
+  s.sub!(/"switch", "[^"]+", "psv"/, "switch\", switch_path, \"psv\"")
+  File.write(k3_cpp_path, s)
 
   puts "Compiling k3 cpp file"
   run("#{compile_brew} -2 #{k3_path}")
@@ -112,7 +83,10 @@ def run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
   run("curl -i -X POST -H \"Accept: application/json\" -F \"file=@#{bin_file}\" http://#{deploy_server}/apps")
 
   puts "Generating mesos yaml file"
-  yaml = run"#{File.join(script_path, "gen_yaml.py")} --dist"
+  cmd = ""
+  if $options[:num_switches] then cmd << "--switches " << $options[:num_switches].to_s
+  if $options[:num_nodes]    then cmd << "--nodes "    << $options[:num_nodes].to_s
+  yaml = run("#{File.join(script_path, "gen_yaml.py")} --dist #{cmd}")
   File.write(role_file, yaml)
 
   puts "Creating new mesos job"
@@ -150,6 +124,35 @@ def run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
     res = run("curl -O http://#{deploy_server}#{path}/")
     run("tar xvzf #{filename}")
   end
+end
+
+# Parsing stage
+
+def parse_dbt_results(dbt_name)
+  puts "Parsing DBToaster results"
+  dbt_xml_out = File.read("#{dbt_name}.xml")
+  dbt_xml_out.gsub!(/(Could not find insert.+$|Initializing program:|Running program:|Printing final result:)/,'')
+  dbt_xml_out.gsub!(/\n\s*/,'')
+
+  r = REXML::Document.new(dbt_xml_out)
+  dbt_results = {}
+  res2 = []
+  r.elements['boost_serialization/snap'].each do |result|
+    # complex results
+    if result.has_elements?
+      result.each do |item|
+        res = []
+        if item.name == 'item'
+          item.each { |e| res << e.text }
+        end
+      end
+      if res.size > 0 then dbt_results[result.name] = res end
+    else # simple result
+      res2 << result.text
+    end
+    if res2.size > 0 then dbt_results[result.name] = res2 end
+  end
+  return dbt_results
 end
 
 def parse_k3_results(result_names)
@@ -226,8 +229,12 @@ def main()
 
   OptionParser.new do |opts|
     opts.banner = usage
-    opts.on("-d", "--data [PATH]", String, "Set the path of the data file") { |s| $options[:data_path] = s }
+    opts.on("-d", "--dbtdata [PATH]", String, "Set the path of the dbt data file") { |s| $options[:dbt_data_path] = s }
+    opts.on("-k", "--k3data [PATH]", String, "Set the path of the k3 data file") { |s| $options[:k3_data_path] = s }
     opts.on("--debug", "Debug mode") { $options[:debug] = true }
+    opts.on("-s", "--switches [NUM]", Int, "Set the number of switches") { |i| $options[:num_switches] = i }
+    opts.on("-n", "--nodes [NUM]", Int, "Set the number of nodes") { |i| $options[:num_nodes] = i }
+    # stages
     opts.on("-a", "--all", "All stages") {
       $options[:dbtoaster]  = true
       $options[:mosaic]     = true
@@ -286,6 +293,8 @@ def main()
   k3_name = nice_name + ".k3"
   k3_path = File.join("temp", k3_name)
 
+  k3_cpp_path = File.join("__build", "#{nice_name}.cpp")
+
   dbt_name = "dbt_" + nice_name
   dbt_name_hpp = dbt_name + ".hpp"
 
@@ -302,7 +311,7 @@ def main()
     run_mosaic(k3_path, mosaic_path, source)
   end
   if $options[:compile_k3]
-    run_compile_k3(bin_file, k3_path, script_path)
+    run_compile_k3(bin_file, k3_path, k3_cpp_path, script_path)
   end
 
   if $options[:deploy_k3]
