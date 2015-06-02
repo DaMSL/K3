@@ -62,13 +62,13 @@ class CSVCodec : public Codec {
   CodecFormat format_ = CodecFormat::CSV;
 };
 
-template <class T, typename std::enable_if_t<is_flat<T>::value>>
-shared_ptr<Codec> makeCSVCodec() {
+template <class T>
+std::enable_if_t<is_flat<T>::value, shared_ptr<Codec>> makeCSVCodec() {
   return make_shared<CSVCodec<T>>();
 }
 
-template <class T, typename = void>
-shared_ptr<Codec> makeCSVCodec() {
+template <class T>
+std::enable_if_t<!is_flat<T>::value, shared_ptr<Codec>> makeCSVCodec() {
   throw std::runtime_error("Invalid csv type");
 }
 
