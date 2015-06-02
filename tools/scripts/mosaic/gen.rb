@@ -24,18 +24,21 @@ def run(cmd, checks=[])
   return out
 end
 
+def stage(s)
+  puts ">> " + s
+end
+
 ### DBToaster stage ###
 
 def run_dbtoaster(test_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
 
-  puts "Creating dbtoaster hpp file"
+  stage "Creating dbtoaster hpp file"
   Dir.chdir(test_path)
   run("#{File.join(dbt_plat, "dbtoaster")} --read-agenda -l cpp #{source_path} > #{File.join(start_path, dbt_name_hpp)}")
   Dir.chdir(start_path)
 
   # if requested, change the data path
   if $options.has_key?(:dbt_data_path)
-    puts "Changing dbtoaster paths"
     s = File.read(dbt_name_hpp)
     s.sub!(/agenda.csv/,$options[:dbt_data_path])
     File.write(dbt_name_hpp, s)
@@ -46,22 +49,22 @@ def run_dbtoaster(test_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, sou
   mt = dbt_plat == "dbt_osx" ? "-mt" : ""
   boost_libs.map! { |lib| "-l" + lib + mt }
 
-  puts "Compiling dbtoaster"
+  stage "Compiling dbtoaster"
   run("g++ #{File.join(dbt_lib_path, "main.cpp")} -std=c++11 -include #{dbt_name_hpp} -o #{dbt_name} -O3 -I#{dbt_lib_path} -L#{dbt_lib_path} -ldbtoaster -lpthread #{boost_libs.join ' '}")
 
-  puts "Running DBToaster"
+  stage "Running DBToaster"
   run("#{File.join(".", dbt_name)} > #{dbt_name}.xml", [/File not found/])
 end
 
 ### Mosaic stage ###
 
 def run_mosaic(k3_path, mosaic_path, source)
-  puts "Creating mosaic files"
+  stage "Creating mosaic files"
   run("#{File.join(mosaic_path, "tests", "auto_test.py")} --no-interp -d -f #{source}")
 end
 
 def run_compile_k3(bin_file, k3_path, k3_cpp_path, script_path)
-  puts "Creating k3 cpp file"
+  stage "Creating K3 cpp file"
   compile_brew = File.join(script_path, "..", "run", "compile_brew.sh")
   run("#{compile_brew} --fstage cexclude=Optimize -1 #{k3_path}")
 
@@ -70,12 +73,11 @@ def run_compile_k3(bin_file, k3_path, k3_cpp_path, script_path)
   s.sub!(/"switch", "[^"]+", "psv"/, "switch\", switch_path, \"psv\"")
   File.write(k3_cpp_path, s)
 
-  puts "Compiling k3 cpp file"
+  stage "Compiling k3 cpp file"
   run("#{compile_brew} -2 #{k3_path}")
 
   bin_src_file = File.join(root_path, "__build", "A")
 
-  puts "Renaming binary file"
   FileUtils.copy_file(bin_src_file, bin_file)
 end
 
@@ -84,22 +86,22 @@ end
 def run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
   role_file = nice_name + ".yaml"
 
-  puts "Sending binary to mesos"
+  stage "Sending binary to mesos"
   run("curl -i -X POST -H \"Accept: application/json\" -F \"file=@#{bin_file}\" http://#{deploy_server}/apps")
 
-  puts "Generating mesos yaml file"
+  # Genereate mesos yaml file"
   cmd = ""
   if $options[:num_switches] then cmd << "--switches " << $options[:num_switches].to_s end
   if $options[:num_nodes]    then cmd << "--nodes "    << $options[:num_nodes].to_s end
   yaml = run("#{File.join(script_path, "gen_yaml.py")} --dist #{cmd}")
   File.write(role_file, yaml)
 
-  puts "Creating new mesos job"
+  stage "Creating new mesos job"
   res = run("curl -i -X POST -H \"Accept: application/json\" -F \"file=@#{role_file}\" http://#{deploy_server}/jobs/#{bin_file}")
   i = res =~ /{/
   if i then res = res[i..-1] end
 
-  puts "Parsing mesos returne jobId"
+  stage "Parsing mesos returned jobId"
   jobid = JSON::parse(res)['jobId']
 
   # Function to get job status
@@ -109,7 +111,7 @@ def run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
     else ["FAILED", res] end
   end
 
-  puts "Waiting for Mesos job to finish..."
+  stage "Waiting for Mesos job to finish..."
   status, res = get_status(jobid)
   # loop until we get a result
   while status != "FINISHED" && status != "KILLED"
@@ -117,11 +119,11 @@ def run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
     status = get_status(jobid)
   end
   if status == "KILLED"
-    puts "Mesos job has been killed"
+    stage "Mesos job has been killed"
     exit(1)
   end
 
-  puts "Getting result data"
+  stage "Getting result data"
   `rm -rf json`
   file_paths = res.scan(/<a href="([^"]+)">#{bin_file}[^.]+.tar/)
   file_paths.for_each do |path|
@@ -134,7 +136,7 @@ end
 # Parsing stage
 
 def parse_dbt_results(dbt_name)
-  puts "Parsing DBToaster results"
+  stage "Parsing DBToaster results"
   dbt_xml_out = File.read("#{dbt_name}.xml")
   dbt_xml_out.gsub!(/(Could not find insert.+$|Initializing program:|Running program:|Printing final result:)/,'')
   dbt_xml_out.gsub!(/\n\s*/,'')
@@ -167,7 +169,7 @@ def parse_k3_results(result_names)
   end
 
   # We assume only final state data
-  puts "Processing final map data"
+  stage "Processing final map data"
   combined_maps = {}
   files.each do |f|
     str = File.read(f)
@@ -219,7 +221,7 @@ def run_compare(dbt_results, k3_results)
       exit 1
     end
   end
-  puts "Results check...OK"
+  stage "Results check...OK"
 end
 
 def main()
