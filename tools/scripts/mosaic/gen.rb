@@ -63,7 +63,7 @@ def run_mosaic(k3_path, mosaic_path, source)
   run("#{File.join(mosaic_path, "tests", "auto_test.py")} --no-interp -d -f #{source}")
 end
 
-def run_compile_k3(bin_file, k3_path, k3_cpp_path, script_path)
+def run_create_k3(k3_path, k3_cpp_path, script_path)
   stage "Creating K3 cpp file"
   compile_brew = File.join(script_path, "..", "run", "compile_brew.sh")
   run("#{compile_brew} --fstage cexclude=Optimize -1 #{k3_path}")
@@ -72,7 +72,9 @@ def run_compile_k3(bin_file, k3_path, k3_cpp_path, script_path)
   s = File.read(k3_cpp_path)
   s.sub!(/"switch", "[^"]+", "psv"/, '"switch", switch_path, "psv"')
   File.write(k3_cpp_path, s)
+end
 
+def run_compile_k3(bin_file, k3_path, root_path, script_path)
   stage "Compiling k3 cpp file"
   run("#{compile_brew} -2 #{k3_path}")
 
@@ -228,6 +230,7 @@ def main()
   $options = {}
   $options[:dbtoaster]  = false
   $options[:mosaic]     = false
+  $options[:create_k3]  = false
   $options[:compile_k3] = false
   $options[:deploy_k3]  = false
   $options[:compare]    = false
@@ -244,15 +247,17 @@ def main()
     opts.on("-a", "--all", "All stages") {
       $options[:dbtoaster]  = true
       $options[:mosaic]     = true
+      $options[:create_k3]  = true
       $options[:compile_k3] = true
       $options[:deploy_k3]  = true
       $options[:compare]    = true
     }
     opts.on("-1", "--dbtoaster", "DBToaster stage")  { $options[:dbtoaster]  = true }
     opts.on("-2", "--mosaic",    "Mosaic stage")     { $options[:mosaic]     = true }
-    opts.on("-3", "--compile",   "Compile stage")    { $options[:compile_k3] = true }
-    opts.on("-4", "--deploy",    "Deploy stage")     { $options[:deploy_k3]  = true }
-    opts.on("-5", "--compare",   "Compare stage")    { $options[:compare]    = true }
+    opts.on("-3", "--create",    "Create K3 stage")  { $options[:create_k3]  = true }
+    opts.on("-4", "--compile",   "Compile K3 stage") { $options[:compile_k3] = true }
+    opts.on("-5", "--deploy",    "Deploy stage")     { $options[:deploy_k3]  = true }
+    opts.on("-6", "--compare",   "Compare stage")    { $options[:compare]    = true }
   end
   parser.parse!
 
@@ -313,14 +318,15 @@ def main()
   if $options[:dbtoaster]
     run_dbtoaster(test_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
   end
-
   if $options[:mosaic]
     run_mosaic(k3_path, mosaic_path, source)
   end
-  if $options[:compile_k3]
-    run_compile_k3(bin_file, k3_path, k3_cpp_path, script_path)
+  if $options[:create_k3]
+    run_create_k3(k3_path, k3_cpp_path, script_path)
   end
-
+  if $options[:compile_k3]
+    run_compile_k3(bin_file, k3_path, root_path, script_path)
+  end
   if $options[:deploy_k3]
     run_deploy_k3(bin_file, result_names, deploy_server, nice_name, script_path)
   end
