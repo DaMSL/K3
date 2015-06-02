@@ -82,10 +82,10 @@ composite name ans = do
 
     let serializeParent asYas (p, (q, _)) =
           -- TOOD re-enable nvp
-          ---let nvp_wrap e = if asYas then e
-                           else R.Call (R.Variable $ serializationName asYas $ R.Name "make_nvp")
-                                  [ R.Literal $ R.LString $ mkXmlTagName q, e ]
-          in
+          --let nvp_wrap e = if asYas then e
+          --                 else R.Call (R.Variable $ serializationName asYas $ R.Name "make_nvp")
+          --                        [ R.Literal $ R.LString $ mkXmlTagName q, e ]
+          --in
           R.Ignore $ R.Binary "&" (R.Variable $ R.Name "_archive")
             (R.Call (R.Variable $ serializationName asYas $ R.Specialized [R.Named p] $ R.Name "base_object")
               [R.Dereference $ R.Variable $ R.Name "this"])

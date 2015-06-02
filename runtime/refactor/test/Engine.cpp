@@ -14,6 +14,7 @@
 #include "network/NetworkManager.hpp"
 #include "serialization/Serialization.hpp"
 #include "serialization/Codec.hpp"
+#include "Flat.hpp"
 
 using std::shared_ptr;
 using std::make_shared;
@@ -58,6 +59,18 @@ class EngineTest : public ::testing::Test {
   Address addr2_;
   Address external_addr_;
 };
+
+TEST(Flat, Primitives) {
+  ASSERT_EQ(true, K3::is_flat<int>::value);
+  ASSERT_EQ(true, K3::is_flat<double>::value);
+  ASSERT_EQ(true, K3::is_flat<std::string>::value);
+  ASSERT_EQ(true, K3::is_flat<K3::base_string>::value);
+}
+
+TEST(Flat, Composites) {
+  bool b = K3::is_flat<std::tuple<int, int, std::string>>::value;
+  ASSERT_EQ(true, b);
+}
 
 TEST(CSV, StringPackedValue) {
   auto codec = Codec::getCodec<tuple<int, string>>(CodecFormat::CSV);

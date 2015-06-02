@@ -310,10 +310,11 @@ generateDispatchPopulation isNative = do
        let i = R.Variable $ R.Name (idOfTrigger tName)
        let engine = R.Project (R.Dereference $ R.Variable $ R.Name "this") (R.Name "__engine_")
        -- TODO(jbw) use a static codec declaration, this only needs to happen once, on one thread
-       let codec = R.Forward $ R.ScalarDecl (R.Name "codec") R.Inferred $ Just $ R.Call (R.Variable $ R.Qualified (R.Name "Codec") (R.Specialized [kType] (R.Name "getCodec"))) [R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "payload") (R.Name "format")) []]
-       let unpacked = R.Forward $ R.ScalarDecl (R.Name "native_val") R.Inferred $ Just $ R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "codec") (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "payload"]
+       let codec = R.Call (R.Variable $ R.Qualified (R.Name "Codec") (R.Specialized [kType] (R.Name "getCodec"))) [R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "payload") (R.Name "format")) []]
+       let unpacked = R.Forward $ R.ScalarDecl (R.Name "native_val") R.Inferred $ Just $ R.Call (R.Project (R.Dereference $ codec) (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "payload"]
        let native_val = if isNative then "payload" else "native_val"
-       let codec_decls = if isNative then [] else [codec, unpacked]
+       let codec_decls = if isNative then [] else [unpacked]
+       let casted_val = R.Dereference $ R.Call (R.Project (R.Dereference $ R.Variable $ R.Name native_val) ( R.Specialized [kType] (R.Name "as"))) [] 
        let dispatchWrapper = R.Lambda
                              [R.ValueCapture $ Just ("this", Nothing)]
                              [ ("payload", R.Pointer $ R.Named $ R.Name $ if isNative then "NativeValue" else "PackedValue")
@@ -323,12 +324,7 @@ generateDispatchPopulation isNative = do
                              ( 
                              codec_decls 
                              ++ 
-                             [R.Forward $ R.ScalarDecl (R.Name "v") R.Inferred
-                                 (Just $ R.Dereference $ R.Call 
-                                                          (R.Project (R.Dereference $ R.Variable $ R.Name native_val) ( R.Specialized [kType] (R.Name "as"))) [])
-                             , R.Ignore $ R.Call (R.Variable $ R.Name tName)
-                                   [R.Variable $ R.Name "v"]
-                             ]
+                             [ R.Ignore $ R.Call (R.Variable $ R.Name tName) [casted_val] ]
                              )
 
        return $ R.Assignment (R.Subscript table i) dispatchWrapper

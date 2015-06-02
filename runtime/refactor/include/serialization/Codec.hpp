@@ -7,6 +7,7 @@
 #include <string>
 
 #include "Common.hpp"
+#include "Flat.hpp"
 #include "types/Value.hpp"
 #include "serialization/Serialization.hpp"
 
@@ -61,13 +62,23 @@ class CSVCodec : public Codec {
   CodecFormat format_ = CodecFormat::CSV;
 };
 
+template <class T, typename std::enable_if_t<is_flat<T>::value>>
+shared_ptr<Codec> makeCSVCodec() {
+  return make_shared<CSVCodec<T>>();
+}
+
+template <class T, typename = void>
+shared_ptr<Codec> makeCSVCodec() {
+  throw std::runtime_error("Invalid csv type");
+}
+
 template <typename T>
 shared_ptr<Codec> Codec::getCodec(CodecFormat format) {
   switch (format) {
     case CodecFormat::BoostBinary:
       return make_shared<BoostCodec<T>>();
     case CodecFormat::CSV:
-      return make_shared<CSVCodec<T>>();
+      return makeCSVCodec<T>();
     default:
       throw std::runtime_error("Unrecognized codec format");
   }

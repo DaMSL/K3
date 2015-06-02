@@ -284,7 +284,7 @@ inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@
     trigList  <- triggers <$> get
     trigTypes <- getKType val >>= genCType
     -- TODO(jbw) use a static codec declaration, only needs to happen once
-    let codec = R.Forward $ R.ScalarDecl (R.Name "codec") R.Inferred $ Just $ R.Call (R.Variable $ R.Qualified (R.Name "Codec") (R.Specialized [trigTypes] (R.Name "getCodec"))) [R.Variable $ R.Name "__internal_format_"]
+    let codec = R.Call (R.Variable $ R.Qualified (R.Name "Codec") (R.Specialized [trigTypes] (R.Name "getCodec"))) [R.Variable $ R.Name "__internal_format_"]
     let className = R.Specialized [trigTypes] (R.Name "TNativeValue")
         classInst = R.Forward $ R.ScalarDecl (R.Name d) R.Inferred
                       (Just $ R.Call (R.Variable $ R.Specialized [R.Named className]
@@ -292,10 +292,8 @@ inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@
         messageHeader = R.Call (R.Variable $ R.Name "MessageHeader") [R.Variable $ R.Name "me", av, R.Variable $ R.Name tIdName]
     return (concat [te, ae, ve]
                  ++ [ classInst
-                    , codec
                     , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Name "send")) [
-                                    messageHeader, R.Variable (R.Name d), R.Variable (R.Name "codec")
-                                   ]
+                                    messageHeader, R.Variable (R.Name d), codec ]
                     ]
              , R.Initialization R.Unit [])
     where
