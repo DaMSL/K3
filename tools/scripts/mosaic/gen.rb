@@ -4,80 +4,29 @@
 require 'optparse'
 require 'net/http'
 require 'json'
+require 'rexml/document'
+require 'csv'
 
-$options = {}
-
-usage = "Usage: #{$PROGRAM_NAME} sql_file [options]"
-
-OptionParser.new do |opts|
-  opts.banner = usage
-  opts.on("-d", "--data [PATH]", String, "Set the path of the data file") { |s| $options[:data_path] = s }
-  opts.on("--debug", "Debug mode") { $options[:debug] = true }
-  opts.on("-a", "--all", "All stages") {
-    $options[:mosaic]  = true
-    $options[:compile] = true
-    $options[:deploy]  = true
-  }
-  opts.on("-1", "--mosaic", "Mosaic stage") { $options[:mosaic] = true }
-  opts.on("-2", "--compile", "Compile stage") { $options[:compile] = true }
-  opts.on("-3", "--deploy", "Deploy stage") { $options[:deploy] = true }
-end.parse!
-
-def run(cmd)
+def run(cmd, checks=[])
   if $options[:debug] then puts cmd end
-  system cmd
-end
-
-# get directory of script
-script_path = File.expand_path(File.dirname(__FILE__))
-
-unless ARGV.size == 1
-  puts usage
-  exit
-end
-
-# split path components
-source      = ARGV[0]
-ext         = File.extname(source)
-basename    = File.basename(source, ext)
-lastpath    = File.split(File.split(source)[0])[1]
-source_path = File.expand_path(source)
-root_path   = File.join(script_path, "..", "..", "..", "..")
-mosaic_path = File.join(root_path, "K3-Mosaic")
-
-start_path = File.expand_path(Dir.pwd)
-
-platform = case RUBY_PLATFORM
-            when /darwin/ then :osx
-            when /cygwin|mswin|mingw/ then :windows
-            else :linux
-           end
-dbt_plat = case platform
-            when :osx then "dbt_osx"
-            when :linux then "dbt_linux"
-            else fail "windows not yet supported"
-           end
-
-test_path    = File.join(mosaic_path, "tests")
-dbt_path     = File.join(test_path, dbt_plat) # dbtoaster path
-dbt_lib_path = File.join(dbt_path, "lib", "dbt_c++")
-
-nice_name =
-  if match = basename.match(/query(.*)/)
-    lastpath + match.captures[0]
-  else
-    basename
+  out = `#{cmd} 2>&1`
+  if $options[:debug] then puts out end
+  res = $?.success?
+  # other tests
+  checks.each do |err|
+    if out =~ err then res = false end
   end
+  if !res
+    puts "\nERROR\n"
+    unless $options[:debug] then puts out end
+    exit(1)
+  end
+  return out
+end
 
-k3_name = nice_name + ".k3"
-k3_path = File.join("temp", k3_name)
+### DBToaster stage ###
 
-dbt_name = "dbt_" + nice_name
-dbt_name_hpp = dbt_name + ".hpp"
-
-### Mosaic stage ###
-
-if $options[:mosaic]
+def run_dbtoaster(test_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
 
   puts "Creating dbtoaster hpp file"
   Dir.chdir(test_path)
@@ -86,15 +35,49 @@ if $options[:mosaic]
 
   # if requested, change the data path
   if $options.has_key?(:data_path)
+    puts "Changing dbtoaster paths"
     s = File.read(dbt_name_hpp)
-    s.sub!(/agenda.csv/, $options[:data_path])
+    s.sub!(/agenda.csv/,$options[:data_path])
     File.write(dbt_name_hpp, s)
   end
 
   puts "Compiling dbtoaster"
   run("g++ #{File.join(dbt_lib_path, "main.cpp")} -std=c++11 -include #{dbt_name_hpp} -o #{dbt_name} -O3 -I#{dbt_lib_path} -L#{dbt_lib_path} -ldbtoaster -lboost_program_options-mt -lboost_serialization-mt -lboost_system-mt -lboost_filesystem-mt -lboost_chrono-mt -lboost_thread-mt -lpthread")
 
-  # create the mosaic files
+  puts "Running DBToaster"
+  run("#{File.join(".", dbt_name)} > #{dbt_name}.xml", [/File not found/])
+end
+
+def parse_dbt_results(dbt_name)
+  puts "Parsing DBToaster results"
+  dbt_xml_out = File.read("#{dbt_name}.xml")
+  dbt_xml_out.gsub!(/(Could not find insert.+$|Initializing program:|Running program:|Printing final result:)/,'')
+  dbt_xml_out.gsub!(/\n\s*/,'')
+
+  r = REXML::Document.new(dbt_xml_out)
+  dbt_results = {}
+  res2 = []
+  r.elements['boost_serialization/snap'].each do |result|
+    # complex results
+    if result.has_elements?
+      result.each do |item|
+        res = []
+        if item.name == 'item'
+          item.each { |e| res << e.text }
+        end
+      end
+      if res.size > 0 then dbt_results[result.name] = res end
+    else # simple result
+      res2 << result.text
+    end
+    if res2.size > 0 then dbt_results[result.name] = res2 end
+  end
+  return dbt_results
+end
+
+### Mosaic stage ###
+
+def run_mosaic(k3_path, mosaic_path, source)
   puts "Creating mosaic files"
   run("#{File.join(mosaic_path, "tests", "auto_test.py")} --no-interp -d -f #{source}")
 
@@ -104,77 +87,233 @@ if $options[:mosaic]
     s.sub!(/= file "[^"]+" psv/, "= file \"#{$options[:data_path]}\" psv")
     File.write(k3_path, s)
   end
+end
 
-  # create cpp file via k3
+def run_compile_k3(bin_file, k3_path, script_path)
   puts "Creating k3 cpp file"
   compile_brew = File.join(script_path, "..", "run", "compile_brew.sh")
   run("#{compile_brew} --fstage cexclude=Optimize -1 #{k3_path}")
-end
 
-bin_src_file = File.join(root_path, "__build", "A")
-bin_file = nice_name
-
-if $options[:compile]
-  # compile the k3 cpp file
-  puts "Compiling cpp file"
+  puts "Compiling k3 cpp file"
   run("#{compile_brew} -2 #{k3_path}")
 
-  # copy and rename binary file
+  bin_src_file = File.join(root_path, "__build", "A")
+
+  puts "Renaming binary file"
   FileUtils.copy_file(bin_src_file, bin_file)
 end
 
 ### Deployment stage ###
 
-role_file = nice_name + ".yaml"
-
-if $options[:deploy]
-  deploy_server = "qp1:5000"
+def run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
+  role_file = nice_name + ".yaml"
 
   puts "Sending binary to mesos"
   run("curl -i -X POST -H \"Accept: application/json\" -F \"file=@#{bin_file}\" http://#{deploy_server}/apps")
 
-  # generate a yaml file TODO: vary number of nodes/switches
-  yaml = `#{File.join(script_path, "gen_yaml.py")} --dist`
+  puts "Generating mesos yaml file"
+  yaml = run"#{File.join(script_path, "gen_yaml.py")} --dist"
   File.write(role_file, yaml)
 
   puts "Creating new mesos job"
-  res = `curl -i -X POST -H \"Accept: application/json\" -F \"file=@#{role_file}\" http://#{deploy_server}/jobs/#{bin_file}`
+  res = run("curl -i -X POST -H \"Accept: application/json\" -F \"file=@#{role_file}\" http://#{deploy_server}/jobs/#{bin_file}")
   i = res =~ /{/
   if i then res = res[i..-1] end
 
+  puts "Parsing mesos returne jobId"
   jobid = JSON::parse(res)['jobId']
-
-  # Run DBToaster to get results (in parallel)
-  dbt_xml_out = `dbt_name`
 
   # Function to get job status
   def get_status(jobid)
-    res = `curl -i http://#{deploy_server}/job/#{jobid}`
-    if res =~ /Job # \d+ (\w+)/ then $1
-    else "FAILED" end
+    res = run("curl -i http://#{deploy_server}/job/#{jobid}")
+    if res =~ /Job # \d+ (\w+)/ then [$1, res]
+    else ["FAILED", res] end
   end
 
-  puts "Waiting for job to finish"
-  status = get_status(jobid)
+  puts "Waiting for Mesos job to finish..."
+  status, res = get_status(jobid)
   # loop until we get a result
   while status != "FINISHED" && status != "KILLED"
     sleep(4)
     status = get_status(jobid)
   end
-
   if status == "KILLED"
-    puts "Job has been killed"
+    puts "Mesos job has been killed"
     exit(1)
   end
 
-  # Get result data
-
-  # Parse DBToaster results
-
-  # Compare results
-
+  puts "Getting result data"
+  `rm -rf json`
+  file_paths = res.scan(/<a href="([^"]+)">#{bin_file}[^.]+.tar/)
+  file_paths.for_each do |path|
+    filename = File.split(path)[1]
+    res = run("curl -O http://#{deploy_server}#{path}/")
+    run("tar xvzf #{filename}")
+  end
 end
 
+def parse_k3_results(result_names)
+  files = []
+  Dir.entries("json").each do |f|
+    if f =~ /.*Globals.dsv/ then files << f end
+  end
 
+  # We assume only final state data
+  puts "Processing final map data"
+  combined_maps = {}
+  files.each do |f|
+    str = File.read(f)
+    str.each_line do |line|
+      csv = CSV.parse(line)
+      map_name = csv[2]
+      map_data = csv[3]
+      unless result_names.include? map_name then next end
+      map_data_j = JSON.parse(map_data)
+      max_map = {}
+      # check if we're dealing with simple values
+      if map_data_j[0].size > 2
+        map_data_j.each do |v|
+          key = v[1..-2]
+          max_vid, _ = max_map[key]
+          if !max_vid || ((v[0] <=> max_vid) == 1)
+            max_map[key] = [v[0], v[-1]]
+          end
+        end
+        # add the max map to the combined maps
+        max_map.each_pair do |key,value|
+          combined_maps[map_name][key] = value[1]
+        end
+      else # simple data type
+        max_vid  = nil
+        max_data = nil
+        map_data_j.each do |v|
+          if !max_vid || ((v[0] <=> max_vid) == 1)
+            max_vid  = v[0]
+            max_data = v[1]
+          end
+        end
+        combined_maps[map_name] = max_data unless !max_vid
+      end
+    end
+  end
+  return combined_maps
+end
 
+def run_compare(dbt_results, k3_results)
+  # Compare results
+  dbt_results.each_pair do |k,v1|
+    v2 = k3_results[k]
+    if !v2 then puts "Mismatch at key #{k}: missing k3 value"; exit 1; end
+    v1.sort!
+    v2.sort!
+    if (v1 <=> v2) != 0
+      puts "Mismatch at key #{k}\nv1:#{v1}\nv2:#{v2}"
+      exit 1
+    end
+  end
+  puts "Results check...OK"
+end
 
+def main()
+  $options = {}
+  $options[:dbtoaster]  = false
+  $options[:mosaic]     = false
+  $options[:compile_k3] = false
+  $options[:deploy_k3]  = false
+  $options[:compare]    = false
+
+  usage = "Usage: #{$PROGRAM_NAME} sql_file $options]"
+
+  OptionParser.new do |opts|
+    opts.banner = usage
+    opts.on("-d", "--data [PATH]", String, "Set the path of the data file") { |s| $options[:data_path] = s }
+    opts.on("--debug", "Debug mode") { $options[:debug] = true }
+    opts.on("-a", "--all", "All stages") {
+      $options[:dbtoaster]  = true
+      $options[:mosaic]     = true
+      $options[:compile_k3] = true
+      $options[:deploy_k3]  = true
+      $options[:compare]    = true
+    }
+    opts.on("-1", "--dbtoaster", "DBToaster stage")  { $options[:dbtoaster]  = true }
+    opts.on("-2", "--mosaic",    "Mosaic stage")     { $options[:mosaic]     = true }
+    opts.on("-3", "--compile",   "Compile stage")    { $options[:compile_k3] = true }
+    opts.on("-4", "--deploy",    "Deploy stage")     { $options[:deploy_k3]  = true }
+    opts.on("-5", "--compare",   "Compare stage")    { $options[:compare]    = true }
+  end.parse!
+
+  # get directory of script
+  script_path = File.expand_path(File.dirname(__FILE__))
+
+  unless ARGV.size == 1
+    puts usage
+    exit
+  end
+
+  # split path components
+  source      = ARGV[0]
+  ext         = File.extname(source)
+  basename    = File.basename(source, ext)
+  lastpath    = File.split(File.split(source)[0])[1]
+  source_path = File.expand_path(source)
+  root_path   = File.join(script_path, "..", "..", "..", "..")
+  mosaic_path = File.join(root_path, "K3-Mosaic")
+
+  start_path = File.expand_path(Dir.pwd)
+
+  platform = case RUBY_PLATFORM
+              when /darwin/ then :osx
+              when /cygwin|mswin|mingw/ then :windows
+              else :linux
+            end
+  dbt_plat = case platform
+              when :osx then "dbt_osx"
+              when :linux then "dbt_linux"
+              else fail "windows not yet supported"
+            end
+
+  test_path    = File.join(mosaic_path, "tests")
+  dbt_path     = File.join(test_path, dbt_plat) # dbtoaster path
+  dbt_lib_path = File.join(dbt_path, "lib", "dbt_c++")
+
+  nice_name =
+    if match = basename.match(/query(.*)/)
+      lastpath + match.captures[0]
+    else
+      basename
+    end
+
+  k3_name = nice_name + ".k3"
+  k3_path = File.join("temp", k3_name)
+
+  dbt_name = "dbt_" + nice_name
+  dbt_name_hpp = dbt_name + ".hpp"
+
+  deploy_server = "qp1:5000"
+
+  bin_file = nice_name
+  dbt_results = []
+
+  if $options[:dbtoaster]
+    run_dbtoaster(test_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
+  end
+
+  if $options[:mosaic]
+    run_mosaic(k3_path, mosaic_path, source)
+  end
+  if $options[:compile_k3]
+    run_compile_k3(bin_file, k3_path, script_path)
+  end
+
+  if $options[:deploy_k3]
+    run_deploy_k3(bin_file, result_names, deploy_server, nice_name, script_path)
+  end
+
+  if $options[:compare]
+    dbt_results = parse_dbt_results(dbt_name)
+    k3_results  = parse_k3_results
+    run_compare(dbt_results, k3_results)
+  end
+end
+
+main
