@@ -2,6 +2,7 @@
 # Run a distributed test and compare to dbtoaster results
 
 require 'optparse'
+require 'fileutils'
 require 'net/http'
 require 'json'
 require 'rexml/document'
@@ -166,7 +167,7 @@ def parse_dbt_results(dbt_name)
   return dbt_results
 end
 
-def parse_k3_results(result_names)
+def parse_k3_results(dbt_results)
   files = []
   Dir.entries("json").each do |f|
     if f =~ /.*Globals.dsv/ then files << f end
@@ -181,7 +182,7 @@ def parse_k3_results(result_names)
       csv = CSV.parse(line)
       map_name = csv[2]
       map_data = csv[3]
-      unless result_names.include? map_name then next end
+      unless dbt_results.has_key? map_name then next end
       map_data_j = JSON.parse(map_data)
       max_map = {}
       # check if we're dealing with simple values
@@ -331,12 +332,12 @@ def main()
     run_compile_k3(bin_file, k3_path, root_path, script_path)
   end
   if $options[:deploy_k3]
-    run_deploy_k3(bin_file, result_names, deploy_server, nice_name, script_path)
+    run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
   end
 
   if $options[:compare]
     dbt_results = parse_dbt_results(dbt_name)
-    k3_results  = parse_k3_results
+    k3_results  = parse_k3_results(dbt_results)
     run_compare(dbt_results, k3_results)
   end
 end
