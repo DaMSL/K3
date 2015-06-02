@@ -20,6 +20,7 @@
 #include <fstream>
 #include <string>
 #include <unistd.h>
+#include <cstdlib>
 #include <dirent.h>
 #include <stdio.h>
 
@@ -30,6 +31,9 @@
 using namespace mesos;
 using namespace std;
 
+const char* MESOS_SANDBOX = std::getenv("MESOS_SANDBOX");
+
+
 class DataFile {
   public:
     string path;
@@ -39,7 +43,9 @@ class DataFile {
 
 
 // exec -- exec system command, pipe to stdout, return exit code
-int exec (const char * cmd)  {
+int exec (const char * cmd, streambuf* sb)  {
+  ostream output (sb);
+
   FILE* pipe = popen(cmd, "r");
     if (!pipe) {
         return -1;
@@ -48,9 +54,10 @@ int exec (const char * cmd)  {
     while (!feof(pipe)) {
         if (fgets(buffer, 256, pipe) != NULL) {
            std::string s = std::string(buffer);
-           cout << s << endl;
+           output << buffer << endl;
         }
     }
+
     return pclose(pipe);
 }
 
@@ -116,6 +123,16 @@ public:
     if (hostParams["logging"]) {
             k3_cmd += " -l INFO ";
     }
+    if (hostParams["jsonlog"] || hostParams["jsonfinal"]) {
+            exec ("cd $MESOS_SANDBOX && mkdir json", cout.rdbuf());
+            k3_cmd += " -j json ";
+    }
+
+    if (hostParams["jsonfinal"]) {
+//            exec ("cd $MESOS_SANDBOX && mkdir json", cout.rdbuf());
+            k3_cmd += " --json_final_only ";
+    }
+
     if (hostParams["resultVar"]) {
       k3_cmd += " --result_path $MESOS_SANDBOX --result_var " + hostParams["resultVar"].as<string>();
     }
@@ -377,34 +394,42 @@ class TaskThread {
 
         // Currently, just call the K3 executable with the generated command line from task.data()
         try {
-            driver->sendFrameworkMessage("RUNNING");
+
+            // Set output buffer streams (K3 output >> file & Sandbox output >> stdout)
+            std::ofstream of;
+            string stdout_file = "stdout_" + job_id + "_" + host_name;
+            of.open(string(MESOS_SANDBOX) + "/" + stdout_file, std::ofstream::out);
+            cout << "OUTPUT FILE = " << MESOS_SANDBOX << "/" << stdout_file << endl;
+            std::streambuf * sb_buffer = cout.rdbuf();
+            std::streambuf * k3_buffer = of.rdbuf();
+
             cout << "Starting the K3 program thread: " << app_name << endl;
-            int result = exec(k3_cmd.c_str());
-            driver->sendFrameworkMessage("TERMINATING");
+            int result = exec(k3_cmd.c_str(), k3_buffer);
+            of.close();
             cout << "-------------->  PROGRAM TERMINATED <--------------------" << endl;
             if (result == 0) {
                 // Tar sandbox & send to flaskweb UI  (hack for now -- should simply call post-execution script)
                 string tarfile = app_name + "_" + job_id + "_" + host_name + ".tar";
                 string tar_cmd =     "cd $MESOS_SANDBOX && tar -cf " + tarfile + " --exclude='k3executor' *";
-        		string rename_out =  "cd $MESOS_SANDBOX && cp stdout stdout_" + host_name;
+//        		string rename_out =  "cd $MESOS_SANDBOX && cp stdout stdout_" + host_name;
                 string archive_endpoint = webaddr + app_name + "/" + job_id + "/archive";
                 string post_curl = "cd $MESOS_SANDBOX && curl -i -H \"Accept: application/json\" -X POST ";
                 string curl_cmd =    post_curl + "-F \"file=@" + tarfile + "\" " + archive_endpoint;
-                string curl_output = post_curl + "-F \"file=@stdout_" + host_name + "\" "  + archive_endpoint;
+                string curl_output = post_curl + "-F \"file=@" + stdout_file + "\" "  + archive_endpoint;
 
                 cout << endl << "POST-PROCESSING:" << endl;
                 cout << tar_cmd << endl;
-                exec(tar_cmd.c_str());
-                cout << endl << endl << rename_out << endl;
-		        exec(rename_out.c_str());
+                exec(tar_cmd.c_str(), sb_buffer);
+//                cout << endl << endl << rename_out << endl;
+//		        exec(rename_out.c_str(), sb_buffer);
                 cout << endl << endl << curl_cmd << endl;
-                exec(curl_cmd.c_str());
+                exec(curl_cmd.c_str(), sb_buffer);
                 cout << endl << endl << curl_output << endl;
-                exec(curl_output.c_str());
+                exec(curl_output.c_str(), sb_buffer);
                 cout << endl << "Task " << task.task_id().value() << " Completed!" << endl;
 
                 status.set_state(TASK_FINISHED);
-                driver->sendFrameworkMessage("Task FINISHED");
+                driver->sendStatusUpdate(status);
             }
             else {
                 status.set_state(TASK_FAILED);
@@ -419,7 +444,6 @@ class TaskThread {
     	  driver->stop();
         }
         //-------------  END OF TASK  -------------------
-       driver->sendFrameworkMessage("POST-FINISHED");
       }
 };
 

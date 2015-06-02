@@ -63,7 +63,7 @@ class Dispatcher(mesos.interface.Scheduler):
 
   def fullId(self, jobId, taskId):
     return "%d.%d" % (jobId, taskId)
- 
+
   def jobId(self, fullid):
     s = fullid.split(".")
     return int(s[0])
@@ -327,10 +327,10 @@ class Dispatcher(mesos.interface.Scheduler):
 
     if update.state == mesos_pb2.TASK_FINISHED:
       self.taskFinished(update.task_id.value)
-   
+
   def frameworkMessage(self, driver, executorId, slaveId, message):
-    print("[FRMWK MSG] %s" % message)
-  
+    print("[FRMWK MSG] %s" % message[:-1])
+
   # Handle a resource offers from Mesos.
   # If there is a pending job, add all offers to self.offers
   # Then see if pending jobs can be launched with the offers accumulated so far
