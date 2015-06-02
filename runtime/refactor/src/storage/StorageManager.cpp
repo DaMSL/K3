@@ -8,23 +8,36 @@ void StorageManager::openFile (Address peer, Identifier id, std::string path,
                       StorageFormat fmt, CodecFormat codec, IOMode io) {
   pair<Address, Identifier> key = std::make_pair (peer, id);
 
-  logger->info("Opening file");
+  logger_->info("Opening file `{}`, id={}", path, id);
 
-  switch (io) {
-    case IOMode::Read:
-      files_->insert (key, make_shared<SourceFileHandle> (path, codec));
-      break;
-    case IOMode::Write:
-      files_->insert (key, make_shared<SinkFileHandle> (path));
-      break;
+  try {
+    switch (io) {
+      case IOMode::Read:
+        if (fmt == StorageFormat::Binary) {
+          files_->insert (key, make_shared<SourceFileHandle> (path, codec));
+        }
+        else {
+          files_->insert (key, make_shared<SourceTextHandle> (path, codec));
+        }
+        break;
+      case IOMode::Write:
+        if (fmt == StorageFormat::Binary) {
+          files_->insert (key, make_shared<SinkFileHandle> (path));
+        }
+        else {
+          files_->insert (key, make_shared<SinkTextHandle> (path));
+        }
+        break;
+    }
   }
-
+  catch (std::exception e) {
+    logger_->error ("ERROR! Failed to open file `{}`", path);
+    throw std::runtime_error ("File I/O Error. Program is Halting.");
+  }
 }
 
 void StorageManager::closeFile(Address peer, Identifier id) {
-  logger->info("Closing file");
   files_->lookup(make_pair(peer, id))->close();
-//  free fh;
 }
 
 bool StorageManager::hasRead(Address peer, Identifier id)  {
@@ -33,17 +46,31 @@ bool StorageManager::hasRead(Address peer, Identifier id)  {
 
 
 shared_ptr<PackedValue> StorageManager::doRead(Address peer, Identifier id)  {
-  auto val = files_->lookup(make_pair(peer, id))->doRead();
-  return val;
+  try {
+    auto val = files_->lookup(make_pair(peer, id))->doRead();
+    return val;
+  }
+  catch (std::ios_base::failure e) {
+    logger_->error ("ERROR Reading from {}", id);
+    throw std::runtime_error ("File I/O Error. Program is Halting.");
+  }
 }
 
-vector<shared_ptr<PackedValue>> StorageManager::doBlockRead(Address peer, Identifier id, int max_blocksize)  {
+vector<shared_ptr<PackedValue>> StorageManager::doBlockRead(
+      Address peer, Identifier id, int max_blocksize)  {
   vector<shared_ptr<PackedValue>> vals;
-  auto file = files_->lookup(make_pair(peer, id));
-  for (int i = 0; i < max_blocksize; i++) {
-    vals.push_back(file->doRead());
+  try {
+    auto file = files_->lookup(make_pair(peer, id));
+    for (int i = 0; i < max_blocksize; i++) {
+      vals.push_back(file->doRead());
+    }
   }
-  return vals;
+  catch (std::exception e)  {
+    logger_->error ("ERROR Reading from {}", id);
+    throw std::runtime_error ("File I/O Error. Program is Halting.");
+  }
+    return vals;
+
 }
 
 bool StorageManager::hasWrite(Address peer, Identifier id)  {
@@ -53,15 +80,29 @@ bool StorageManager::hasWrite(Address peer, Identifier id)  {
 
 void StorageManager::doWrite(Address peer, Identifier id, 
               shared_ptr<PackedValue> val)  {
-  //TODO: Optimize w/mutli-index or additional peer -> id mapping lookup for pairs
-  auto file = files_->lookup(make_pair(peer, id));
-  file->doWrite(val);
+  try {
+    auto file = files_->lookup(make_pair(peer, id));
+    file->doWrite(val);
+  }
+  catch (std::ios_base::failure e) {
+    logger_->error ("ERROR Writing to {}", id);
+    throw std::runtime_error ("File I/O Error. Program is Halting.");
+  }
+
 }
 
-void StorageManager::doBlockWrite(Address peer, Identifier id, vector<shared_ptr<PackedValue>> vals) {
-  auto file = files_->lookup(make_pair(peer, id));
-  for (vector<shared_ptr<PackedValue>>::iterator itr = vals.begin(); itr != vals.end(); ++itr) {
-    file->doWrite(*itr);
+void StorageManager::doBlockWrite(Address peer, Identifier id, 
+      vector<shared_ptr<PackedValue>> vals) {
+  try  {
+    auto file = files_->lookup(make_pair(peer, id));
+    for (vector<shared_ptr<PackedValue>>::iterator itr = vals.begin(); 
+          itr != vals.end(); ++itr) {
+      file->doWrite(*itr);
+    }
+  }
+  catch (std::exception e)  {
+    logger_->error ("ERROR Writing to {}", id);
+    throw std::runtime_error ("File I/O Error. Program is Halting.");
   }
 }
 

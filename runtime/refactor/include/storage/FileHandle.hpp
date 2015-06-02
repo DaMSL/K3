@@ -31,104 +31,66 @@ class FileHandle {
 class SourceFileHandle : public FileHandle  {
 public:
 
-  SourceFileHandle (std::string path, CodecFormat codec) {
-    file_.open (path, std::ios::in | std::ios::binary); 
-    fmt_ = codec;
-  }
+  SourceFileHandle () {};
+  SourceFileHandle (std::string path, CodecFormat codec);
 
   virtual bool hasRead();
   virtual shared_ptr<PackedValue> doRead();
 
   virtual void doWrite(shared_ptr<PackedValue> val) {
-    // TODO (ben): throw error
-    return;
+    throw std::ios_base::failure ("ERROR trying to write to source.");
   }
 
   virtual void close() {
     file_.close();
   }
 
-private:
+protected:
   std::ifstream file_;
   CodecFormat fmt_;
 };
 
 
 //  Source File Hande (for binary data)
-// class SourceTextHandle : public SourceFileHandle  {
-
-//   SourceTextHandle (std::string path, CodecFormat codec) {
-//     file_.open (path, std::ios::in); 
-//     fmt_ = codec;    
-//   }
-
-//   virtual shared_ptr<PackedValue> doRead();
-
-// };
+class SourceTextHandle : public SourceFileHandle  {
+public:
+  SourceTextHandle (std::string path, CodecFormat codec);
+  virtual shared_ptr<PackedValue> doRead();
+};
 
 
 //  Sink File Hande
 class SinkFileHandle : public FileHandle  {
 public:
 
-  SinkFileHandle (std::string path)  {
-    file_.open (path);
-  }
-
-  virtual shared_ptr<PackedValue> doRead() {
-    return nullptr;
-  }
+  SinkFileHandle () {};
+  SinkFileHandle (std::string path);
 
   virtual bool hasWrite();
   virtual void doWrite(shared_ptr<PackedValue> val);
+
+
+  virtual shared_ptr<PackedValue> doRead() {
+    throw std::ios_base::failure ("ERROR trying to read from sink.");
+  }
 
   virtual void close()  {
     file_.close();
   }
 
-private:
+protected:
   std::ofstream file_;
 };
 
 
 
 
-// class SinkTextHandle : public SinkFileHandle  {
+class SinkTextHandle : public SinkFileHandle  {
+public:
+  SinkTextHandle (std::string path) : SinkFileHandle (path) {}
+  virtual void doWrite(shared_ptr<PackedValue> val);
+};
 
-//   SourceTextHandle (std::string path)  {
-//     file_.open (path); 
-//   }
-
-//   virtual void doWrite(shared_ptr<PackedValue> val);
-
-// };
-
-// // ??? Add additional check ? or leave hasRead check to caller
-// Value SourceTextHandle::doRead() {
-
-
-//   std::string buf;
-//   std::getLine (file_, buf);
-  
-//   //Unpack raw string to Value???
-//   return buf;  
-// }
-
-
-
-
-
-
-
-// ----- SINK TEXT HANDLE
-// SinkTextHandle::SinkTextHandle (std::string path)  {
-//   file_.open (path); 
-// }
-
-// // ??? Add additional check ? or leave hasWrite check to caller
-// void SinkTextHandle::doWrite(NativeValue val) {
-//   file_ << val << endl;
-// }
 
 }  // namespace K3
 #endif
