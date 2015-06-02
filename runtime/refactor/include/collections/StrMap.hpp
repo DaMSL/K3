@@ -4,6 +4,7 @@
 #include <tuple>
 #include <functional>
 #include <stdexcept>
+
 #if HAS_LIBDYNAMIC
 extern "C" {
 #include <dynamic/mapi.h>
@@ -16,7 +17,6 @@ extern "C" {
 #include "csvpp/csv.h"
 
 #include "Common.hpp"
-#include "MapConfig.hpp"
 
 namespace K3 {
 namespace Libdynamic {
@@ -564,10 +564,31 @@ class StrMap {
 
 }  // namespace Libdynamic
 }  // namespace K3
+
+namespace YAML {
+  template <class R>
+  struct convert<K3::Libdynamic::StrMap<R>> {
+    static Node encode(const K3::Libdynamic::StrMap<R>& c) {
+      Node node;
+      if (c.size(K3::unit_t {}) > 0) {
+        for (auto& i: c) { node.push_back(convert<R>::encode(i)); }
+      }
+      else { node = YAML::Load("[]"); }
+      return node;
+    }
+
+    static bool decode(const Node& node, K3::Libdynamic::StrMap<R>& c) {
+      for (auto& i: node) { c.insert(i.as<R>()); }
+      return true;
+    }
+  };
+}  // namespace YAML
+
+
 #endif
 
 // Map selection.
-#if USE_CUSTOM_HASHMAPS && HAS_LIBDYNAMIC
+#if (USE_CUSTOM_HASHMAPS && HAS_LIBDYNAMIC)
 
 namespace K3 {
 template <class R>
@@ -577,9 +598,11 @@ using StrMap = Libdynamic::StrMap<R>;
 #else
 
 namespace K3 {
+static_assert(false, "NO STRMAP");
 template <class R>
 using StrMap = Map<R>;
 }  // namespace K3
 
 #endif
+
 #endif

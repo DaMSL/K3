@@ -171,6 +171,7 @@ record :: [Identifier] -> CPPGenM [R.Definition]
 record (sort -> ids) = do
     let recordName = "R_" ++ intercalate "_" ids
     let templateVars = ["_T" ++ show n | _ <- ids | n <- [0..] :: [Int]]
+    let fullName = R.Specialized (map (R.Named . R.Name) templateVars) (R.Name recordName)
     let formalVars = ["_" ++ i | i <- ids]
 
     let recordType = R.Named $ R.Specialized [R.Named $ R.Name t | t <- templateVars] $ R.Name recordName
@@ -295,6 +296,26 @@ record (sort -> ids) = do
               ]]
     -}
 
+    let isTypeFlat t = R.Variable $
+                          R.Qualified 
+                           (R.Specialized [R.Named $ R.Name t] (R.Name "is_flat"))
+                           (R.Name "value")
+    let isFlatDefn
+         = R.GuardedDefn ("K3_" ++ recordName ++ "_is_flat") $
+           R.NamespaceDefn "K3" [
+           R.TemplateDefn (zip templateVars (repeat Nothing)) $
+             R.ClassDefn
+               (R.Name "is_flat")
+               [R.Named $ fullName]
+               []
+               [ R.GlobalDefn $ R.Forward $ R.ScalarDecl
+                   (R.Name "value")
+                   (R.Static $ R.Named $ R.Name "constexpr bool")
+                   (Just $ foldl1 (R.Binary "&&") (map isTypeFlat templateVars)) 
+               ]
+               []
+               []
+           ]
     let hashStructDefn
             = R.GuardedDefn ("K3_" ++ recordName ++ "_hash_value") $ R.TemplateDefn (zip templateVars (repeat Nothing)) $
                 R.FunctionDefn (R.Name "hash_value")
@@ -392,7 +413,7 @@ record (sort -> ids) = do
                             ] [] []
                             ]
     return [ recordStructDefn, compactSerializationDefn {-, noTrackingDefn, bitwiseSerializableDefn-}
-           , yamlStructDefn, hashStructDefn]
+           , yamlStructDefn, hashStructDefn, isFlatDefn]
 
 reservedAnnotations :: [Identifier]
 reservedAnnotations = ["Collection", "External", "Seq", "Set", "Sorted", "Map", "IntMap", "StrMap", "Vector", "MultiIndex"]

@@ -30,6 +30,8 @@ using std::vector;
 using std::enable_shared_from_this;
 
 #define K3_LOG_ID "K3"
+#define USE_CUSTOM_HASHMAPS 1
+#define HAS_LIBDYNAMIC 1
 
 namespace asio = boost::asio;
 typedef const boost::system::error_code& boost_error;

@@ -13,7 +13,7 @@ namespace K3 {
 template <class R>
 class Map {
   using Key = typename R::KeyType;
-  using Container = map<Key, R>;
+  using Container = std::map<Key, R>;
 
  protected:
   Container container;
