@@ -30,7 +30,8 @@ def run_dbtoaster(test_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, sou
 
   puts "Creating dbtoaster hpp file"
   Dir.chdir(test_path)
-  run("#{File.join(dbt_plat, "dbtoaster")} -d MT --read-agenda -l cpp #{source_path} > #{File.join(start_path, dbt_name_hpp)}")
+  mt = dbt_plat == "dbt_linux" ? "" : "-d MT "
+  run("#{File.join(dbt_plat, "dbtoaster")} #{mt}--read-agenda -l cpp #{source_path} > #{File.join(start_path, dbt_name_hpp)}")
   Dir.chdir(start_path)
 
   # if requested, change the data path
