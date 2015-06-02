@@ -30,8 +30,7 @@ def run_dbtoaster(test_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, sou
 
   puts "Creating dbtoaster hpp file"
   Dir.chdir(test_path)
-  mt = dbt_plat == "dbt_linux" ? "" : "-d MT "
-  run("#{File.join(dbt_plat, "dbtoaster")} #{mt}--read-agenda -l cpp #{source_path} > #{File.join(start_path, dbt_name_hpp)}")
+  run("#{File.join(dbt_plat, "dbtoaster")} --read-agenda -l cpp #{source_path} > #{File.join(start_path, dbt_name_hpp)}")
   Dir.chdir(start_path)
 
   # if requested, change the data path
@@ -42,8 +41,13 @@ def run_dbtoaster(test_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, sou
     File.write(dbt_name_hpp, s)
   end
 
+  # adjust boost libs for OS
+  boost_libs = %w(boost_program_options boost_serialization boost_system boost_filesystem boost_chrono boost_thread)
+  mt = dbt_plat == "dbt_osx" ? "-mt" : ""
+  boost_libs.map! { |lib| "-l" + lib + mt }
+
   puts "Compiling dbtoaster"
-  run("g++ #{File.join(dbt_lib_path, "main.cpp")} -std=c++11 -include #{dbt_name_hpp} -o #{dbt_name} -O3 -I#{dbt_lib_path} -L#{dbt_lib_path} -ldbtoaster -lboost_program_options-mt -lboost_serialization-mt -lboost_system-mt -lboost_filesystem-mt -lboost_chrono-mt -lboost_thread-mt -lpthread")
+  run("g++ #{File.join(dbt_lib_path, "main.cpp")} -std=c++11 -include #{dbt_name_hpp} -o #{dbt_name} -O3 -I#{dbt_lib_path} -L#{dbt_lib_path} -ldbtoaster -lpthread #{boost_libs.join ' '}")
 
   puts "Running DBToaster"
   run("#{File.join(".", dbt_name)} > #{dbt_name}.xml", [/File not found/])
