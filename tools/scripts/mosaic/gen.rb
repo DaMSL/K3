@@ -110,14 +110,14 @@ def run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
   jobid = JSON::parse(res)['jobId']
 
   # Function to get job status
-  def get_status(jobid)
+  def get_status(jobid, deploy_server)
     res = run("curl -i http://#{deploy_server}/job/#{jobid}")
     if res =~ /Job # \d+ (\w+)/ then [$1, res]
     else ["FAILED", res] end
   end
 
   stage "Waiting for Mesos job to finish..."
-  status, res = get_status(jobid)
+  status, res = get_status(jobid, deploy_server)
   # loop until we get a result
   while status != "FINISHED" && status != "KILLED"
     sleep(4)
