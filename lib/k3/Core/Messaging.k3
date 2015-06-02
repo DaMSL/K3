@@ -1,17 +1,142 @@
-control SendByKey[dest_trg : expr, barrier_trg : expr, nodes : expr, send_extra_fn : expr] {
-  ?e => ( $.[e].iterate (\v -> case $[nodes].at v.key of
-                               { Some p -> ($[dest_trg], p.addr) <- ($[send_extra_fn] v.value) }
-                               { None -> error () }
-                        );
+include "Core/Optimization.k3"
 
-          // Send punctuation: we're done
-          $[nodes].iterate(\p -> ($[barrier_trg], p.addr) <- ()) )
+control SendPunctuation[trg : expr, nodes : expr]
+{
+  ?e => ( ( $.[e] );
+          $[nodes].iterate(\p -> ($[trg], p.addr) <- ()) )
 }
 
-control SendPartitionByKey[dest_trg : expr, barrier_trg : expr, nodes : expr, send_extra_fn : expr] {
+control SendByKey[ dest_trg : expr, nodes : expr, send_extra_fn : expr]
+{
+  ?e => ( $.[e].iterate (\v -> $[nodes].at_with v.key (\p -> ($[dest_trg], p.addr) <- ($[send_extra_fn] v.value))) )
+}
+
+control PSendByKey[ dest_trg : expr, barrier_trg : expr, nodes : expr, send_extra_fn : expr]
+{
+  ?e => ( $.[e].iterate (\v -> $[nodes].at_with v.key (\p -> ($[dest_trg], p.addr) <- ($[send_extra_fn] v.value)));
+
+          () @SendPunctuation(trg = barrier_trg, nodes = nodes) )
+}
+
+// Partition a collection by peer and send partitions to each peer; send an empty partition to any
+// peer that does not have one.
+control PartitionShuffleWithMissing[lbl: label, dest_trg: expr, nodes: expr, send_extra_fn: expr, send_ty: type] {
+
+  (ignore (?e : collection ?t @IntMap )) => (
+    let partition_table = (((($.[e].groupBy @:HGroupBy)
+                                     ((\v -> $[nodes].at_with (index_by_hash v.key) (\a -> a.addr)) @:Projection)
+                                     ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
+                                     empty $::[t] @IntMap) @:Fuse) @ManualFusion)
+    in $[nodes].iterate (\n ->
+    (partition_table.lookup_with2 { key: n.addr, value: empty $::[t] @IntMap }
+        (\_ -> ($[dest_trg], n.addr) <- $[lbl]_send_ty_default)
+        (\y -> ($[dest_trg], n.addr) <- $[send_extra_fn] y.value)
+        )
+    )
+  )
+  +> {
+    declare $[lbl]_send_ty_default: $[send_ty]
+  }
+
+  (ignore (?e : collection ?t @StrMap )) => (
+    let partition_table = (((($.[e].groupBy @:HGroupBy)
+                                     ((\v -> $[nodes].at_with (index_by_hash v.key) (\a -> a.addr)) @:Projection)
+                                     ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
+                                     empty $::[t] @StrMap) @:Fuse) @ManualFusion)
+    in $[nodes].iterate (\n ->
+    (partition_table.lookup_with2 { key: n.addr, value: empty $::[t] @StrMap }
+        (\_ -> ($[dest_trg], n.addr) <- $[lbl]_send_ty_default)
+        (\y -> ($[dest_trg], n.addr) <- $[send_extra_fn] y.value)
+        )
+    )
+  )
+  +> {
+    declare $[lbl]_send_ty_default: $[send_ty]
+  }
+
+
+  (ignore (?e : collection ?t @Map )) => (
+    let partition_table = (((($.[e].groupBy @:HGroupBy)
+                                     ((\v -> $[nodes].at_with (index_by_hash v.key) (\a -> a.addr)) @:Projection)
+                                     ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
+                                     empty $::[t] @Map) @:Fuse) @ManualFusion)
+    in $[nodes].iterate (\n ->
+    (partition_table.lookup_with2 { key: n.addr, value: empty $::[t] @Map }
+        (\_ -> ($[dest_trg], n.addr) <- $[lbl]_send_ty_default)
+        (\y -> ($[dest_trg], n.addr) <- $[send_extra_fn] y.value)
+        )
+    )
+  )
+  +> {
+    declare $[lbl]_send_ty_default: $[send_ty]
+  }
+}
+
+control PartitionByKey {
+  ?e : collection ?t @Map
+      => ( ($.[e].groupBy @:HGroupBy) (\v -> index_by_hash v.key)
+                                      (\acc -> \v -> ((acc.insert v); acc))
+                                      empty $::[t] @Map )
+
   ?e : collection ?t
-    => ( ($.[e].groupBy (\v -> index_by_hash v.key)
-                        (\acc -> \v -> ((acc.insert v); acc))
-                        empty $::[t] @Collection
-         ) @SendByKey(dest_trg = dest_trg, barrier_trg = barrier_trg, nodes = nodes, send_extra_fn = send_extra_fn) )
+      => ( $.[e].groupBy (\v -> index_by_hash v.key)
+                         (\acc -> \v -> ((acc.insert v); acc))
+                         empty $::[t] @Collection )
+}
+
+control PartitionRoundRobin [nodes : expr] {
+  ?e : collection ?t @Map
+    => ( let i = mut 0 in
+         ( ($.[e].groupBy @:HGroupBy) (\_ -> ((i = i + 1); (i % ($[nodes].size()))))
+                                      (\acc -> \v -> ((acc.insert v); acc))
+                                      empty $::[t] @Map ) )
+
+  ?e : collection ?t
+    => ( let i = mut 0 in
+         ( $.[e].groupBy (\_ -> ((i = i + 1); (i % ($[nodes].size()))))
+                         (\acc -> \v -> ((acc.insert v); acc))
+                         empty $::[t] @Collection ) )
+}
+
+control SendPartitionByKey[ dest_trg : expr, nodes : expr, send_extra_fn : expr]
+{
+  ?e : collection ?t
+    => ( $.[e] @PartitionByKey
+       ) @SendByKey( dest_trg = dest_trg, nodes = nodes, send_extra_fn = send_extra_fn)
+}
+
+control PSendPartitionByKey[ dest_trg : expr, barrier_trg : expr, nodes : expr, send_extra_fn : expr]
+{
+  ?e : collection ?t
+    => ( $.[e] @PartitionByKey
+       ) @PSendByKey( dest_trg = dest_trg, barrier_trg = barrier_trg
+                    , nodes = nodes, send_extra_fn = send_extra_fn)
+}
+
+control SendRoundRobin[ dest_trg : expr, nodes : expr, send_extra_fn : expr]
+{
+  ?e : collection ?t
+    => ( $.[e] @PartitionRoundRobin(nodes = nodes)
+       ) @SendByKey( dest_trg = dest_trg, nodes = nodes, send_extra_fn = send_extra_fn)
+}
+
+control PSendRoundRobin[ dest_trg : expr, barrier_trg : expr, nodes : expr, send_extra_fn : expr]
+{
+  ?e : collection ?t
+    => ( $.[e] @PartitionRoundRobin(nodes = nodes)
+       ) @PSendByKey( dest_trg = dest_trg, barrier_trg = barrier_trg
+                    , nodes = nodes, send_extra_fn = send_extra_fn)
+}
+
+control SendBroadcast[ dest_trg : expr, nodes : expr, send_extra_fn : expr]
+{
+  ?e : collection ?t
+    => ( $[nodes].iterate (\n -> ($[dest_trg], n.addr) <- ($[send_extra_fn] $.[e])) )
+}
+
+control PSendBroadcast[ dest_trg : expr, barrier_trg : expr, nodes : expr, send_extra_fn : expr]
+{
+  ?e : collection ?t
+    => ( $[nodes].iterate (\n -> ($[dest_trg], n.addr) <- ($[send_extra_fn] $.[e]))
+       ) @SendPunctuation(trg = barrier_trg, nodes = nodes)
 }

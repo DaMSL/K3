@@ -3,6 +3,7 @@
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Interpreter.Context (
@@ -60,7 +61,6 @@ import Language.K3.Runtime.Dispatch
 import Language.K3.Runtime.Engine
 
 import Language.K3.Analysis.Interpreter.BindAlias ( labelBindAliases )
-import Language.K3.Analysis.AnnotationGraph
 
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Logger
@@ -106,7 +106,7 @@ staticEnvironment pc prog = do
 
     staticAnnotations :: IState -> EngineM Value (AEnvironment Value)
     staticAnnotations st = do
-      let annProvs  = annotationProvides prog
+      let annProvs  = undefined -- annotationProvides prog
       let flatADefs = flattenADefinitions annProvs (definitions $ getAnnotEnv st)
       let newAEnv   = AEnvironment flatADefs []
       let annEnvI   = foldM addRealization newAEnv $ nub $ declCombos prog

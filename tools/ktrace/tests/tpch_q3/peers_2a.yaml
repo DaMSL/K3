@@ -1,0 +1,28 @@
+---
+me: [127.0.0.1, 30000]
+master: [127.0.0.1, 30000]
+peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}, {addr: [127.0.0.1, 50000]}, {addr: [127.0.0.1, 60000]}]
+role: rows
+lineitemFiles: [{path: tools/ktrace/data/tpch/lineitem0_00}]
+ordersFiles: [{path: tools/ktrace/data/tpch/orders0_00}]
+customerFiles: [{path: tools/ktrace/data/tpch/customer0_00}]
+masters: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 50000]}]
+local_peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
+peer_masters: [ { key: [127.0.0.1, 30000], value: [127.0.0.1, 30000]}
+              , { key: [127.0.0.1, 40000], value: [127.0.0.1, 30000]}
+              , { key: [127.0.0.1, 50000], value: [127.0.0.1, 50000]}
+              , { key: [127.0.0.1, 60000], value: [127.0.0.1, 50000]}]
+---
+me: [127.0.0.1, 40000]
+master: [127.0.0.1, 30000]
+peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}, {addr: [127.0.0.1, 50000]}, {addr: [127.0.0.1, 60000]}]
+role: rows
+lineitemFiles: [{path: tools/ktrace/data/tpch/lineitem0_01}]
+ordersFiles: [{path: tools/ktrace/data/tpch/orders0_01}]
+customerFiles: [{path: tools/ktrace/data/tpch/customer0_01}]
+masters: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 50000]}]
+local_peers: [{addr: [127.0.0.1, 30000]}, {addr: [127.0.0.1, 40000]}]
+peer_masters: [ { key: [127.0.0.1, 30000], value: [127.0.0.1, 30000]}
+              , { key: [127.0.0.1, 40000], value: [127.0.0.1, 30000]}
+              , { key: [127.0.0.1, 50000], value: [127.0.0.1, 50000]}
+              , { key: [127.0.0.1, 60000], value: [127.0.0.1, 50000]}]

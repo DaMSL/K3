@@ -1,8 +1,4 @@
-include "Annotation/Collection.k3"
-include "Annotation/Map.k3"
-include "Annotation/Seq.k3"
-include "Annotation/Vector.k3"
-include "Core/Barrier.k3"
+include "Core/IO.k3"
 include "Core/Profile.k3"
 include "Distributed/Transformers.k3"
 include "tpch/schema.k3"
@@ -27,17 +23,38 @@ control TPCHBenchmarkWithoutMaster
     +> {
       // Generic, single relation dataset
       declare dataFiles : collection {path: string} @Collection
+      declare dataLineCountFiles : collection {path: string} @Collection
 
       // Relation-specific datasets
+      declare lineitemRows : mut int = 0
       declare lineitemFiles : collection {path : string} @Collection
-      declare customerFiles : collection {path : string} @Collection
-      declare ordersFiles   : collection {path : string} @Collection
-      declare supplierFiles : collection {path : string} @Collection
-      declare partFiles     : collection {path : string} @Collection
-      declare partsuppFiles : collection {path : string} @Collection
-      declare nationFiles   : collection {path : string} @Collection
-      declare regionFiles   : collection {path : string} @Collection
+      declare lineitemLineCountFiles : collection {path: string} @Collection
 
+      declare customerRows : mut int = 0
+      declare customerFiles : collection {path : string} @Collection
+      declare customerLineCountFiles : collection {path: string} @Collection
+
+      declare ordersRows : mut int = 0
+      declare ordersFiles   : collection {path : string} @Collection
+      declare ordersLineCountFiles : collection {path: string} @Collection
+
+      declare supplierRows: mut int = 0
+      declare supplierFiles : collection {path : string} @Collection
+      declare supplierLineCountFiles : collection {path: string} @Collection
+
+      declare partRows: mut int  = 0
+      declare partFiles     : collection {path : string} @Collection
+      declare partLineCountFiles : collection {path: string} @Collection
+
+      declare partsuppRows: mut int = 0
+      declare partsuppFiles : collection {path : string} @Collection
+      declare partsuppLineCountFiles : collection {path: string} @Collection
+
+      declare nationRows: mut int = 0
+      declare nationFiles   : collection {path : string} @Collection
+
+      declare regionRows: mut int = 0
+      declare regionFiles   : collection {path : string} @Collection
       // Timing for loading
       declare program_start_ts : mut int = 0
 
@@ -48,11 +65,13 @@ control TPCHBenchmarkWithoutMaster
       ))
 
       // Dummy trigger to warm up connections
-      trigger hello : () = \_ -> ()
+      trigger hello : () = \_ -> (
+        ((ready, master) <- ()) @OnCounter(id=[# hello_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
+      )
 
       // A shutdown trigger which runs at each peer to terminate the distributed program.
       trigger shutdown : () = \_ -> (
-        $[preShutdownExpr];
+        $[preShutdownExpr]; ((tcmallocStop ()); (jemallocStop ()); (pcmStop ())) @IfMachineMaster;
         haltEngine ()
       )
 
@@ -61,7 +80,7 @@ control TPCHBenchmarkWithoutMaster
         ($[preTestFinishExpr] finishArg);
         ((( $[preFinishExpr];
             if $[finishAsShutdownExpr] then $[nodes].iterate (\p -> (shutdown, p.addr) <- ()) else ()
-          ) @:StopTimer) @Time(lbl=[# query], tag=[$ "Query time"])
+          ) @:StopTimer) @TimeSink(lbl=[# Query], tag=[$ "Time "], sink_expr=[$ query_time_sink])
         ) @OnCounter(id=[# query_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
       )
 
@@ -70,16 +89,21 @@ control TPCHBenchmarkWithoutMaster
         ( $[preReadyExpr];
           (
           (let load_time = (now_int () - program_start_ts)
-          in print ("Load time:" ++  (itos load_time)) );
-          ( $[onReadyExpr] @:StartTimer) @Time(lbl=[# query], tag=[$ "Query time:"])
+           in print ("Time Load:" ++  (itos load_time)) );
+          (peers.iterate (\p -> (start_profiler, p.addr) <- () ));
+          ( $[onReadyExpr] @:StartTimer) @TimeSink(lbl=[# Query], tag=[$ "Time "], sink_expr=[$ query_time_sink])
           ) @OnCounter(id=[#  nodes_ready], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false]))
+      )
+ 
+      trigger start_profiler : () = \_ -> (
+        ((tcmallocStart ()); (jemallocStart ()); (pcmStart ())) @IfMachineMaster
       )
 
       trigger load_all : () = \_ -> (
         program_start_ts = now_int ();
         $[preLoadExpr];
-        $[loadExpr];
-        ((ready, master) <- ())
+        $[loadExpr]; 
+        ( peers.iterate (\p -> (hello, p.addr) <- ()) )
       )
     }
 }

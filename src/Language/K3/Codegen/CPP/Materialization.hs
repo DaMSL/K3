@@ -190,7 +190,13 @@ materializationE e@(Node (t :@: as) cs)
 
              forM_ closureSymbols $ \s -> do
                closureHasWrite <- hasWriteInI s b
-               let closureDecision d = if closureHasWrite then d { inD = Moved } else d
+               moveable <- return True
+               let closureDecision d =
+                     if closureHasWrite
+                       then if moveable
+                              then d { inD = Moved }
+                              else d { inD = Copied }
+                       else d { inD = Referenced }
                setDecision (getUID e) s $ closureDecision defaultDecision
              decisions <- dLookupAll (getUID e)
              return $ (Node (t :@: (EMaterialization decisions:as)) [b])
@@ -257,27 +263,27 @@ allM f xs = and <$> mapM f xs
 -- flag', determining whether or not the provenance of superstructure occurs in the provenance of
 -- its substructure.
 occursIn :: Bool -> K3 Provenance -> K3 Provenance -> MaterializationM Bool
-occursIn wide b a
-  = case a of
+occursIn wide a b
+  = case tag b of
 
       -- Everything occurs in itself.
       _ | a == b -> return True
 
       -- Something occurs in a bound variable if it occurs in anything that was used to initialize
       -- that bound variable, and that bound variable was initialized using a non-isolating method.
-      (tag -> PBVar mv) -> do
+      PBVar mv -> do
              decision <- dLookup (pmvloc' mv) (pmvn mv)
              if inD decision == Referenced || inD decision == ConstReferenced
-               then pLookup (pmvptr mv) >>= occursIn wide b
+               then pLookup (pmvptr mv) >>= occursIn wide a
                else return False
 
       -- Something occurs in substructure if it occurs in any superstructure, and wide effects are
       -- set.
-      (tag -> POption) | wide -> anyM (occursIn wide b) (children a)
-      (tag -> PIndirection) | wide -> anyM (occursIn wide b) (children a)
-      (tag -> PTuple _) | wide -> anyM (occursIn wide b) (children a)
-      (tag -> PProject _) | wide -> anyM (occursIn wide b) (children a)
-      (tag -> PRecord _) | wide -> anyM (occursIn wide b) (children a)
+      POption | wide -> anyM (occursIn wide a) (children b)
+      PIndirection | wide -> anyM (occursIn wide a) (children b)
+      PTuple _ | wide -> anyM (occursIn wide a) (children b)
+      PProject _ | wide -> anyM (occursIn wide a) (children b)
+      PRecord _ | wide -> anyM (occursIn wide a) (children b)
 
       -- TODO: Add more intelligent handling of substructure + PData combinations.
 
@@ -291,7 +297,7 @@ isReadIn x f =
 isReadInF :: K3 Provenance -> K3 Effect -> MaterializationM Bool
 isReadInF xp ff =
   case ff of
-    (tag -> FRead yp) -> occursIn False yp xp
+    (tag -> FRead yp) -> occursIn False xp yp
 
     (tag -> FScope _) -> anyM (isReadInF xp) (children ff)
     (tag -> FSeq) -> anyM (isReadInF xp) (children ff)
@@ -307,7 +313,7 @@ isWrittenIn x f =
 isWrittenInF :: K3 Provenance -> K3 Effect -> MaterializationM Bool
 isWrittenInF xp ff =
   case ff of
-    (tag -> FWrite yp) -> occursIn False yp xp
+    (tag -> FWrite yp) -> occursIn True xp yp
 
     (tag -> FScope _) -> anyM (isWrittenInF xp) (children ff)
     (tag -> FSeq) -> anyM (isWrittenInF xp) (children ff)
@@ -374,14 +380,16 @@ hasWriteInP prov expr =
 
     (tag &&& children -> (EOperate OApp, [f, x])) -> do
       let argProv = getProvenance x
-      argOccurs <- occursIn True argProv prov
+      argOccurs <- occursIn True prov argProv
       appDecision <- dLookup (getUID expr) ""
 
       functionHasWrite <- hasWriteInP prov f
       argHasWrite <- hasWriteInP prov x
       let appHasWrite = inD appDecision == Moved && argOccurs
 
-      return (functionHasWrite || argHasWrite || appHasWrite)
+      appHasIntrinsicWrite <- isWrittenInF prov (getEffects expr)
+
+      return (functionHasWrite || argHasWrite || appHasWrite || appHasIntrinsicWrite)
 
     _ -> (||) <$> isWrittenInF prov (getEffects expr) <*> anyM (hasWriteInP prov) (children expr)
 
@@ -397,7 +405,7 @@ hasReadInP prov expr =
 
     (tag &&& children -> (EOperate OApp, [f, x])) -> do
       let argProv = getProvenance x
-      argOccurs <- occursIn True argProv prov
+      argOccurs <- occursIn True prov argProv
       appDecision <- dLookup (getUID expr) ""
 
       functionHasRead <- hasReadInP prov f

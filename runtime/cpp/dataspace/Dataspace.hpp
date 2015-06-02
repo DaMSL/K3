@@ -3,6 +3,8 @@
 
 #include <list>
 #include <vector>
+#include <set>
+#include <random>
 #include <math.h>
 #include <random>
 
@@ -11,7 +13,7 @@
 #include "boost/serialization/vector.hpp"
 #include "boost/serialization/set.hpp"
 #include "boost/serialization/list.hpp"
-#include "external/boost_ext/unordered_map.hpp"
+#include "boost_ext/unordered_map.hpp"
 #include <boost/serialization/base_object.hpp>
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/sequenced_index.hpp>
@@ -26,6 +28,11 @@
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
 
+#include <yas/mem_streams.hpp>
+#include <yas/binary_iarchive.hpp>
+#include <yas/binary_oarchive.hpp>
+#include <yas/serializers/std_types_serializers.hpp>
+#include <yas/serializers/boost_types_serializers.hpp>
 
 namespace K3 {
 
@@ -295,7 +302,7 @@ class StlDS {
     result = StlDS(*this);
     // move insert each element of the other.
     // this is okay since we are working with a copy
-    for (Elem &e : other.container) {
+    for (auto&& e : other.container) {
       result.insert(std::move(e));
     }
     return result;
@@ -380,18 +387,19 @@ class StlDS {
   }
 
   template <class G, class F, class Z>
-  Derived<R_key_value<RT<G, Elem>, Z>> groupByContiguous(G grouper, F folder, const Z& zero, const int& size) const {
-    auto table = std::vector<Z>(size, zero);
+  Derived<R_key_value<RT<G, Elem>, RT<RT<F, Z>, Elem>>> groupByContiguous(G grouper, F folder, const Z& zero, const int& size) const {
+    typedef RT<RT<F, Z>, Elem> Z2;
+    auto table = std::vector<Z2>(size, zero);
     for (const auto& elem: container) {
       auto key = grouper(elem);
       table[key] = folder(std::move(table[key]))(elem);
     }
 
     // Build the R_key_value records and insert them into result
-    Derived<R_key_value<RT<G, Elem>,Z>> result;
+    Derived<R_key_value<RT<G, Elem>,Z2>> result;
     for (auto i = 0; i < table.size(); ++i) {
       // move out of the map as we iterate
-      result.insert(R_key_value<int, Z>{i, std::move(table[i])});
+      result.insert(R_key_value<int, Z2>{i, std::move(table[i])});
     }
     return result;
   }
@@ -450,12 +458,16 @@ class StlDS {
 
   Container container;
 
- private:
-  friend class boost::serialization::access;
+  template<class Archive>
+  void serialize(Archive &ar) { ar & container; }
+
   template<class Archive>
   void serialize(Archive &ar, const unsigned int) {
-    ar & container;
+    ar & boost::serialization::make_nvp("__StlDS", container);
   }
+
+ private:
+  friend class boost::serialization::access;
 };
 
 // Various DS's achieved through typedefs
@@ -486,6 +498,40 @@ class Collection: public VectorDS<K3::Collection, Elem> {
     }
   }
 
+  template <class G, class F, class Z>
+  Collection<R_key_value<RT<G, Elem>, RT<RT<F, Z>, Elem>>> groupByContiguous(G grouper, F folder, const Z& zero, const int& size) const {
+    typedef RT<RT<F, Z>, Elem> Z2;
+    auto wrapper = VectorDS<K3::Collection, R_key_value<int, Z2>>();
+    auto& table = wrapper.getContainer();
+    table.resize(size, R_key_value<int, Z2> {0, zero});
+    for (const auto& elem: Super::getConstContainer()) {
+      auto key = grouper(elem);
+      table[key].value = folder(std::move(table[key].value))(elem);
+    }
+    for (auto i = 0; i < table.size(); ++i) {
+      table[i].key = i;
+    }
+    return Collection<R_key_value<int,Z2>>(std::move(wrapper));
+  }
+
+  template <class F>
+  auto at_with(int i, F f) {
+    return f(Super::getConstContainer()[i]);
+  }
+
+  template<class Archive>
+  void serialize(Archive &ar) {
+    ar & yas::base_object<VectorDS<K3::Collection, Elem>>(*this);
+  }
+
+  template<class Archive>
+  void serialize(Archive &ar, const unsigned int) {
+    ar &  boost::serialization::make_nvp("__K3Collection",
+            boost::serialization::base_object<VectorDS<K3::Collection, Elem>>(*this));
+  }
+
+ private:
+  friend class boost::serialization::access;
 };
 
 // StlDS provides the basic Collection transformers via generic implementations
@@ -493,7 +539,7 @@ class Collection: public VectorDS<K3::Collection, Elem> {
 template <class Elem>
 class Set {
   // Iterator Types:
-  typedef unordered_set<Elem> Container;
+  typedef std::set<Elem> Container;
   typedef typename Container::const_iterator const_iterator_type;
   typedef typename Container::iterator iterator_type;
 
@@ -528,7 +574,6 @@ class Set {
 
   using iterator = typename Container::iterator;
   using const_iterator = typename Container::const_iterator;
-  using reverse_iterator = typename Container::reverse_iterator;
 
   iterator begin() {
     return iterator(container.begin());
@@ -569,12 +614,12 @@ class Set {
     return container.size();
   }
 
-  Set<Elem> combine(const Set<Elem> other) const {
+  Set<Elem> combine(Set<Elem> other) const {
     // copy this DS
     Set<Elem> result(*this);
     // move insert each element of the other.
     // this is okay since we are working with a copy
-    for (Elem &e : other.container) {
+    for (auto&& e : other.container) {
       result.insert(std::move(e));
     }
     return result;
@@ -722,8 +767,7 @@ class Set {
 
   // Set specific functions
   bool member(const Elem& e) const {
-    auto it = std::find(getConstContainer().begin(), getConstContainer().end(), e);
-    return (it != getConstContainer().end());
+    return container.find(e) != container.end();
   }
 
   bool isSubsetOf(const Set<Elem>& other) const {
@@ -764,12 +808,16 @@ class Set {
 
   Container container;
 
- private:
-  friend class boost::serialization::access;
+  template<class Archive>
+  void serialize(Archive &ar) { ar & container; }
+
   template<class Archive>
   void serialize(Archive &ar, const unsigned int) {
-    ar & container;
+    ar & boost::serialization::make_nvp("__K3Set", container);
   }
+
+ private:
+  friend class boost::serialization::access;
 }; // class Set
 
 template <class Elem>
@@ -799,6 +847,19 @@ class Seq : public ListDS<K3::Seq, Elem> {
     return *it;
   }
 
+  template<class Archive>
+  void serialize(Archive &ar) {
+    ar & yas::base_object<ListDS<K3::Seq, Elem>>(*this);
+  }
+
+  template<class Archive>
+  void serialize(Archive &ar, const unsigned int) {
+    ar &  boost::serialization::make_nvp("__K3Seq",
+            boost::serialization::base_object<ListDS<K3::Seq, Elem>>(*this));
+  }
+
+ private:
+  friend class boost::serialization::access;
 };
 
 // StlDS provides the basic Collection transformers via generic implementations
@@ -871,7 +932,7 @@ class Sorted {
     result = Sorted<Elem>(*this);
     // move insert each element of the other.
     // this is okay since we are working with a copy
-    for (Elem &e : other.container) {
+    for (auto&& e : other.container) {
       result.insert(std::move(e));
     }
     return result;
@@ -1073,12 +1134,16 @@ class Sorted {
 
   std::multiset<Elem> container;
 
- private:
-  friend class boost::serialization::access;
+  template<class Archive>
+  void serialize(Archive &ar) { ar & container; }
+
   template<class Archive>
   void serialize(Archive &ar, const unsigned int) {
-    ar & container;
+    ar & boost::serialization::make_nvp("__K3Sorted", container);
   }
+
+ private:
+  friend class boost::serialization::access;
 }; // Class Sorted
 
 // TODO reorder functions to match the others
@@ -1123,17 +1188,19 @@ class Map {
       return *this;
     }
 
-
     map_iterator operator ++(int) {
       map_iterator t = *this;
       *this++;
       return t;
     }
 
-    reference operator*() const {
-      return i->second;
+    auto operator->() const {
+      return &(i->second);
     }
 
+    auto& operator*() const {
+      return i->second;
+    }
 
     bool operator ==(const map_iterator& other) const {
       return i == other.i;
@@ -1338,6 +1405,39 @@ class Map {
       }
   }
 
+  bool member(const R& r) const {
+    return container.find(r.key) != container.end();
+  }
+
+  template <class F>
+  unit_t lookup_with(R const& r, F f) const {
+    auto it = container.find(r.key);
+    if (it != container.end()) {
+      return f(it->second);
+    }
+
+    return unit_t {};
+  }
+
+  template <class F, class G>
+  auto lookup_with2(R const& r, F f, G g) const {
+    auto it = container.find(r.key);
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(it->second);
+    }
+  }
+
+  template <class F>
+  auto lookup_with3(R const& r, F f) const {
+    auto it = container.find(r.key);
+    if (it != container.end()) {
+      return f(it->second);
+    }
+    throw std::runtime_error("No match on Map.lookup_with3");
+  }
+
   bool operator==(const Map& other) const {
     return container == other.container;
   }
@@ -1358,16 +1458,19 @@ class Map {
 
   const unordered_map<Key, R>& getConstContainer() const { return container; }
 
+  template<class Archive>
+  void serialize(Archive &ar) { ar & container; }
+
+  template<class Archive>
+  void serialize(Archive &ar, const unsigned int) {
+    ar & boost::serialization::make_nvp("__K3Map", container);
+  }
+
  protected:
   unordered_map<Key,R> container;
 
   private:
   friend class boost::serialization::access;
-  template<class Archive>
-  void serialize(Archive &ar, const unsigned int) {
-    ar & container;
-  }
-
 }; // class Map
 
 template <class Elem>
@@ -1480,7 +1583,7 @@ class Vector: public VectorDS<K3::Vector, Elem> {
     auto& vec = Super::getConstContainer();
     auto& other_vec = other.getConstContainer();
     if (vec.size() != other_vec.size()) {
-      throw std::runtime_error("Vector squareDistance size mismatch");
+      throw std::runtime_error("Vector distance size mismatch");
     }
 
     #pragma clang loop vectorize(enable) interleave(enable)
@@ -1767,16 +1870,98 @@ class MultiIndex {
   // Return a constant reference to the container
   const Container& getConstContainer() const {return container;}
 
- private:
-  friend class boost::serialization::access;
+  template<class Archive>
+  void serialize(Archive &ar) const {
+    ar.write(container.size());
+    for (const auto& it : container) {
+      ar & it;
+    }
+  }
+
+  template<class Archive>
+  void serialize(Archive &ar) {
+    size_t sz = 0;
+    ar.read(sz);
+    while ( sz > 0 ) {
+      Elem e;
+      ar & e;
+      insert(std::move(e));
+      sz--;
+    }
+  }
+
   template<class Archive>
   void serialize(Archive &ar, const unsigned int) {
-    ar & container;
+    ar & boost::serialization::make_nvp("__K3MultiIndex", container);
   }
+
+ private:
+  friend class boost::serialization::access;
 
 };
 
 } // Namespace K3
+
+namespace boost {
+  namespace serialization {
+    template <template <typename> class _T0, template<typename...> class _T1, class _T2>
+    class implementation_level<K3::StlDS<_T0, _T1, _T2>> {
+      public:
+        typedef  mpl::integral_c_tag tag;
+        typedef  mpl::int_<object_serializable> type;
+        BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
+    };
+
+    template <class _T0>
+    class implementation_level<K3::Collection<_T0>> {
+      public:
+        typedef  mpl::integral_c_tag tag;
+        typedef  mpl::int_<object_serializable> type;
+        BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
+    };
+
+    template <class _T0>
+    class implementation_level<K3::Set<_T0>> {
+      public:
+        typedef  mpl::integral_c_tag tag;
+        typedef  mpl::int_<object_serializable> type;
+        BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
+    };
+
+    template <class _T0>
+    class implementation_level<K3::Seq<_T0>> {
+      public:
+        typedef  mpl::integral_c_tag tag;
+        typedef  mpl::int_<object_serializable> type;
+        BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
+    };
+
+    template <class _T0>
+    class implementation_level<K3::Sorted<_T0>> {
+      public:
+        typedef  mpl::integral_c_tag tag;
+        typedef  mpl::int_<object_serializable> type;
+        BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
+    };
+
+    template <class _T0>
+    class implementation_level<K3::Map<_T0>> {
+      public:
+        typedef  mpl::integral_c_tag tag;
+        typedef  mpl::int_<object_serializable> type;
+        BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
+    };
+
+    template <class _T0, class... _T1>
+    class implementation_level<K3::MultiIndex<_T0, _T1...>> {
+      public:
+        typedef  mpl::integral_c_tag tag;
+        typedef  mpl::int_<object_serializable> type;
+        BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
+    };
+  }
+}
+
 
 template <class K3Collection>
 std::size_t hash_collection(K3Collection const& b) {

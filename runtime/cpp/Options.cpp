@@ -13,6 +13,7 @@ int Options::parse(int argc, const char *const argv[]) {
     ("simulation,s", "run in simulation mode")
     ("log,l",po::value<string>(), "log level for stdout")
     ("json,j",po::value<string>(), "directory for json logging")
+    ("json_final_only,f", "only jsonify final environment")
     ("result_var,r", po::value<string>(), "result variable to log (must be a flat collection)")
     ("result_path,o", po::value<string>(), "path to store the result variable");
 
@@ -42,8 +43,10 @@ int Options::parse(int argc, const char *const argv[]) {
     if( stat( json_path.c_str(), &info ) != 0 ) {
       throw std::runtime_error("JSON Log directory does not exist: " + json_path);
     }
-  } else {
-  
+  }
+
+  if (vm.count("json_final_only")) {
+    json_final_only = true;
   }
 
   if (vm.count("log")) {

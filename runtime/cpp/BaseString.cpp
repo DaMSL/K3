@@ -21,5 +21,22 @@ namespace K3 {
     }
     return seed;
   }
+
+  template <>
+  void base_string::serialize(csv::parser& a, const unsigned int) {
+    std::string tmp;
+    a& tmp;
+
+    if (buffer) { delete[] buffer; }
+    buffer = dupstr(tmp.c_str());
+  }
+
+  // Specializations for CSV parsing/writing, skipping the length field.
+  template <>
+  void base_string::serialize(csv::writer& a, const unsigned int) {
+    std::string tmp = std::string(buffer, length());
+    a& tmp;
+  }
+
 }
 

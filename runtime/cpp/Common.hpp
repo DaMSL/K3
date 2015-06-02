@@ -8,6 +8,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <functional>
 #include <stdexcept>
 #include <tuple>
 #include <utility>
@@ -15,6 +16,7 @@
 #include <boost/any.hpp>
 #include <boost/asio.hpp>
 #include <boost/log/core.hpp>
+#include <boost/log/core/core.hpp>
 #include <boost/log/sources/record_ostream.hpp>
 #include <boost/log/sources/severity_channel_logger.hpp>
 #include <boost/log/sources/severity_feature.hpp>
@@ -164,11 +166,25 @@ namespace K3 {
     LogST(std::string chan, boost::log::trivial::severity_level lvl): logger(boost::log::keywords::channel = chan),
                                                                       Log(lvl) {}
 
-    void log(const std::string& msg) { BOOST_LOG_SEV(*this, defaultLevel) << msg; }
-    void log(const char* msg) { BOOST_LOG_SEV(*this, defaultLevel) << msg; }
+    void log(const std::string& msg) {
+      BOOST_LOG_SEV(*this, defaultLevel) << msg;
+      boost::log::core::get()->flush();
+    }
 
-    void logAt(boost::log::trivial::severity_level lvl, const std::string& msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
-    void logAt(boost::log::trivial::severity_level lvl, const char* msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
+    void log(const char* msg) {
+      BOOST_LOG_SEV(*this, defaultLevel) << msg;
+      boost::log::core::get()->flush();
+    }
+
+    void logAt(boost::log::trivial::severity_level lvl, const std::string& msg) {
+      BOOST_LOG_SEV(*this, lvl) << msg;
+      boost::log::core::get()->flush();
+    }
+
+    void logAt(boost::log::trivial::severity_level lvl, const char* msg) {
+      BOOST_LOG_SEV(*this, lvl) << msg;
+      boost::log::core::get()->flush();
+    }
   };
 
   class LogMT : public boost::log::sources::severity_channel_logger_mt<boost::log::trivial::severity_level,std::string>, public Log
@@ -179,11 +195,25 @@ namespace K3 {
     LogMT(std::string chan) : logger(boost::log::keywords::channel = chan), Log(boost::log::trivial::severity_level::info) {}
     LogMT(std::string chan, boost::log::trivial::severity_level lvl) : logger(boost::log::keywords::channel = chan), Log(lvl) {}
 
-    void log(const std::string& msg) { BOOST_LOG_SEV(*this, defaultLevel) << msg; }
-    void log(const char* msg) { BOOST_LOG_SEV(*this, defaultLevel) << msg; }
+    void log(const std::string& msg) {
+      BOOST_LOG_SEV(*this, defaultLevel) << msg;
+      boost::log::core::get()->flush();
+    }
 
-    void logAt(boost::log::trivial::severity_level lvl, const std::string& msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
-    void logAt(boost::log::trivial::severity_level lvl, const char* msg) { BOOST_LOG_SEV(*this, lvl) << msg; }
+    void log(const char* msg) {
+      BOOST_LOG_SEV(*this, defaultLevel) << msg;
+      boost::log::core::get()->flush();
+    }
+
+    void logAt(boost::log::trivial::severity_level lvl, const std::string& msg) {
+      BOOST_LOG_SEV(*this, lvl) << msg;
+      boost::log::core::get()->flush();
+    }
+
+    void logAt(boost::log::trivial::severity_level lvl, const char* msg) {
+      BOOST_LOG_SEV(*this, lvl) << msg;
+      boost::log::core::get()->flush();
+    }
   }; // Class LogMT
 
   // Hashing
@@ -194,6 +224,9 @@ namespace K3 {
   }
   template <>
   std::size_t hash_value<K3::base_string>(const K3::base_string&);
+
+  // Time in milliseconds
+  int time_milli();
 
 } // namespace K3
 

@@ -51,13 +51,14 @@ stringifyProgram d = vsep . map R.stringify . simplifyCPP <$> program d
 -- Top-level program generation.
 -- publics <- concat <$> mapM declaration cs
 program :: K3 Declaration -> CPPGenM [R.Definition]
-program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
+program (tag &&& children -> (DRole name, decls)) = do
     -- Process the program, accumulate global state.
     programDefns <- concat <$> mapM declaration decls
 
     globalInits <- globalInitializations <$> get
     let initDeclDefn = R.FunctionDefn (R.Name "initDecls") [("_", R.Unit)] (Just R.Unit) [] False
                          (globalInits ++ [R.Return (R.Initialization R.Unit [])])
+
     -- Generate program preamble.
     includeDefns <- map R.IncludeDefn <$> requiredIncludes
     aliasDefns   <- map (R.GlobalDefn . R.Forward . uncurry R.UsingDecl) <$> requiredAliases
@@ -80,72 +81,11 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
 
     patchables'' <- forM patchables' $ \(i, (t, f)) -> genCType t >>= \ct -> return (i, (ct, f))
 
-    let yamlStructDefn = R.NamespaceDefn "YAML"
-                         [ R.TemplateDefn [] $ R.ClassDefn (R.Name "convert") [R.Named contextName] []
-                             [ R.FunctionDefn (R.Name "encode")
-                                 [("context", R.Const $ R.Reference $ R.Named contextName)]
-                                 (Just $ R.Static $ R.Named $ R.Name "Node") [] False
-                                 ([R.Forward $ R.ScalarDecl (R.Name "_node") (R.Named $ R.Name "Node") Nothing] ++
-                                  [R.Assignment (R.Subscript
-                                                      (R.Variable $ R.Name "_node")
-                                                      (R.Literal $ R.LString field))
-                                                (R.Call
-                                                      (R.Variable $ R.Qualified
-                                                            (R.Specialized [fieldType] (R.Name "convert"))
-                                                            (R.Name "encode"))
-                                                      [R.Project (R.Variable $ R.Name "context") (R.Name field)])
-                                  | (field, (fieldType, _)) <- patchables''
-                                  ] ++ [R.Return (R.Variable $ R.Name "_node")])
-                             , R.FunctionDefn (R.Name "decode")
-                                 [ ("node", R.Const $ R.Reference $ R.Named $ R.Name "Node")
-                                 , ("context", R.Reference $ R.Named contextName)
-                                 ] (Just $ R.Static $ R.Primitive $ R.PBool) [] False
-                                 ([ R.IfThenElse (R.Unary "!" $ R.Call (R.Project
-                                                                            (R.Variable $ R.Name "node")
-                                                                            (R.Name "IsMap")) [])
-                                     [R.Return $ R.Literal $ R.LBool False] []
-                                 ] ++
-                                 [ R.IfThenElse (R.Subscript
-                                                      (R.Variable $ R.Name "node")
-                                                      (R.Literal $ R.LString field))
-                                     ([ R.Assignment
-                                         (R.Project (R.Variable $ R.Name "context") (R.Name field))
-                                         (R.Call (R.Project
-                                                   (R.Subscript
-                                                         (R.Variable $ R.Name "node")
-                                                         (R.Literal $ R.LString field))
-                                                   (R.Specialized [fieldType] $ R.Name "as")) [])
-                                     ] ++
-                                     [ R.Assignment (R.Project (R.Variable $ R.Name "context")
-                                                          (R.Name $ "__" ++ field ++ "_set__"))
-                                                    (R.Literal $ R.LBool True)
-                                     | setF
-                                     ]) []
-                                 | (field, (fieldType, setF)) <- patchables''
-                                 ] ++ [R.Return $ R.Literal $ R.LBool True])
-                             ]
-                             [] []
-                         ]
+    let yamlStructDefn = mkYamlStructDefn contextName patchables''
 
     dispatchPop <- generateDispatchPopulation
 
-    let contextConstructor = R.FunctionDefn contextName [("__engine", R.Reference $ R.Named (R.Name "Engine"))]
-                             Nothing
-                             [ R.Call
-                                 (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__standard_context")
-                                 [R.Variable $ R.Name "__engine"]
-                             -- builtin mixins:
-                             , R.Call
-                                 (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__string_context")
-                                 []
-
-                             , R.Call
-                                 (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__time_context")
-                                 []
-                             ]
-                             False
-                             (inits ++ dispatchPop)
-
+    let contextConstructor = mkContextConstructor contextName (inits ++ dispatchPop)
     let dispatchDecl = R.FunctionDefn (R.Name "__dispatch")
                        [ ("trigger_id", R.Primitive R.PInt)
                        , ("payload", R.Named $ R.Name "void*")
@@ -159,9 +99,9 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
     let dispatchTableDecl  = R.GlobalDefn $ R.Forward $ R.ScalarDecl
                      (R.Name "dispatch_table")
                      (R.Named $ R.Qualified (R.Name "std") $ R.Specialized
-                           [R.Primitive R.PInt, 
-                             R.Function 
-                               [R.Named $ R.Name "void*", R.Const $ R.Reference $ R.Named $ R.Name "Address"] 
+                           [R.Primitive R.PInt,
+                             R.Function
+                               [R.Named $ R.Name "void*", R.Const $ R.Reference $ R.Named $ R.Name "Address"]
                             R.Void] (R.Name "map"))
                      Nothing
 
@@ -187,6 +127,9 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
                              [ R.Named $ R.Qualified (R.Name "K3") $ R.Name "__standard_context"
                              , R.Named $ R.Qualified (R.Name "K3") $ R.Name "__string_context"
                              , R.Named $ R.Qualified (R.Name "K3") $ R.Name "__time_context"
+                             , R.Named $ R.Qualified (R.Name "K3") $ R.Name "__pcm_context"
+                             , R.Named $ R.Qualified (R.Name "K3") $ R.Name "__tcmalloc_context"
+                             , R.Named $ R.Qualified (R.Name "K3") $ R.Name "__jemalloc_context"
                              ]
                              contextDefns [] [dispatchTableDecl]
 
@@ -196,6 +139,82 @@ program (mangleReservedNames -> (tag &&& children -> (DRole name, decls))) = do
     -- Return all top-level definitions.
     return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ concat compositeDefns ++
                [contextClassDefn] ++ pinned ++ [yamlStructDefn, patchFn] ++ mainFn
+
+  where
+    mkContextConstructor contextName body =
+      R.FunctionDefn contextName [("__engine", R.Reference $ R.Named (R.Name "Engine"))]
+        Nothing
+        [ R.Call
+            (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__standard_context")
+            [R.Variable $ R.Name "__engine"]
+        -- builtin mixins:
+        , R.Call
+            (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__string_context")
+            []
+
+        , R.Call
+            (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__time_context")
+            []
+
+        , R.Call
+            (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__pcm_context")
+            []
+
+        , R.Call
+            (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__tcmalloc_context")
+            []
+        ]
+        False
+        body
+
+    mkYamlStructDefn contextName patchables'' =
+      R.NamespaceDefn "YAML"
+       [ R.TemplateDefn [] $ R.ClassDefn (R.Name "convert") [R.Named contextName] []
+           [ R.FunctionDefn (R.Name "encode")
+               [("context", R.Const $ R.Reference $ R.Named contextName)]
+               (Just $ R.Static $ R.Named $ R.Name "Node") [] False
+               ([R.Forward $ R.ScalarDecl (R.Name "_node") (R.Named $ R.Name "Node") Nothing] ++
+                [R.Assignment (R.Subscript
+                                    (R.Variable $ R.Name "_node")
+                                    (R.Literal $ R.LString field))
+                              (R.Call
+                                    (R.Variable $ R.Qualified
+                                          (R.Specialized [fieldType] (R.Name "convert"))
+                                          (R.Name "encode"))
+                                    [R.Project (R.Variable $ R.Name "context") (R.Name field)])
+                | (field, (fieldType, _)) <- patchables''
+                ] ++ [R.Return (R.Variable $ R.Name "_node")])
+           , R.FunctionDefn (R.Name "decode")
+               [ ("node", R.Const $ R.Reference $ R.Named $ R.Name "Node")
+               , ("context", R.Reference $ R.Named contextName)
+               ] (Just $ R.Static $ R.Primitive $ R.PBool) [] False
+               ([ R.IfThenElse (R.Unary "!" $ R.Call (R.Project
+                                                          (R.Variable $ R.Name "node")
+                                                          (R.Name "IsMap")) [])
+                   [R.Return $ R.Literal $ R.LBool False] []
+               ] ++
+               [ R.IfThenElse (R.Subscript
+                                    (R.Variable $ R.Name "node")
+                                    (R.Literal $ R.LString field))
+                   ([ R.Assignment
+                       (R.Project (R.Variable $ R.Name "context") (R.Name field))
+                       (R.Call (R.Project
+                                 (R.Subscript
+                                       (R.Variable $ R.Name "node")
+                                       (R.Literal $ R.LString field))
+                                 (R.Specialized [fieldType] $ R.Name "as")) [])
+                   ] ++
+                   [ R.Assignment (R.Project (R.Variable $ R.Name "context")
+                                        (R.Name $ "__" ++ field ++ "_set__"))
+                                  (R.Literal $ R.LBool True)
+                   | setF
+                   ]) []
+               | (field, (fieldType, setF)) <- patchables''
+               ] ++ [R.Return $ R.Literal $ R.LBool True])
+           ]
+           [] []
+       ]
+
 
 program _ = throwE $ CPPGenE "Top-level declaration construct must be a Role."
 
@@ -242,7 +261,6 @@ requiredAliases = return
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "defaultEnvironment"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "createContexts"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "getAddrs"), Nothing)
-                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "DefaultInternalCodec"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "currentTime"), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "make_tuple" ), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "make_shared" ), Nothing)
@@ -283,6 +301,7 @@ requiredIncludes = return
                    , "Prettify.hpp"
 
                    , "dataspace/Dataspace.hpp"
+                   , "dataspace/MapDataspace.hpp"
 
                    , "yaml-cpp/yaml.h"
                    ]
@@ -296,10 +315,10 @@ idOfTrigger t = "__" ++ unmangleReservedId t ++ "_tid"
 
 generateStaticContextMembers :: CPPGenM [R.Statement]
 generateStaticContextMembers = do
-  triggerS <- triggers <$> get
+  triggerS        <- triggers <$> get
   initializations <- staticInitializations <$> get
-  names <- mapM assignTrigName triggerS
-  dispatchers <- mapM assignClonableDispatcher triggerS
+  names           <- mapM assignTrigName triggerS
+  dispatchers     <- mapM assignClonableDispatcher triggerS
   return $ initializations ++ names ++ dispatchers
   where
     assignTrigName (tName, _) = do
@@ -339,7 +358,7 @@ generateDispatchPopulation = do
                              [ ("payload", R.Named $ R.Name "void*")
                              , ("source", R.Const $ R.Reference $ R.Named $ R.Name "Address")
                              ]
-                             
+
                              False Nothing
                              [ ctDecl
                              , R.Forward $ R.ScalarDecl (R.Name "v") R.Inferred

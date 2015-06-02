@@ -3,6 +3,8 @@ include "Annotation/Seq.k3"
 include "Annotation/Map.k3"
 include "Core/Builtins.k3"
 include "Core/Loaders.k3"
+include "Core/MachineMessaging.k3"
+include "Core/Barrier.k3"
 
 declare master: address = 127.0.0.1:30001
 declare peer_seq : collection {addr: address} @ {Seq}
@@ -55,6 +57,14 @@ declare valid_date : string -> bool = \i -> (i <= date_ub and i >= date_lb)
 
 declare flag : mut bool = false
 declare flag2 : mut bool = false
+
+trigger hello : () = \_ -> (
+  ((ready, master) <- ()) @OnCounter(id=[# hello_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+)
+
+trigger start_profiler : () = \_ -> (
+  ((tcmallocStart ()); (jemallocStart ()); (pcmStart ())) @IfMachineMaster
+)
 
 trigger q3_local : () = \_ -> (
   user_visits.iterate (\uv ->
@@ -168,7 +178,7 @@ typedef Source_ip_to_aggs = {key: string, value: {prSum: int, prCount: int, arSu
 trigger finished : () = \_ -> (
   end_ms = now_int ();
   elapsed_ms = end_ms - start_ms;
-  print ("Elapsed: " ++ (itos elapsed_ms));
+  print ("Time Query:" ++ (itos elapsed_ms));
   print ("Global max.key: " ++ global_max.key);
   results.insert {sourceIP: global_max.key, totalRevenue: global_max.value.arSum, avgPageRank: (1.0 * global_max.value.prSum) / global_max.value.prCount};
   peers.iterate (\p -> (shutdown, p.addr) <- ())
@@ -178,7 +188,9 @@ declare peers_ready : mut int = 0
 trigger ready: () = \_ -> (
   peers_ready = peers_ready + 1;
   if peers_ready == peers.size ()
-  then (start_ms = now_int (); peers.iterate (\p -> (q3_local, p.addr) <- ()) )
+  then (
+    (peers.iterate (\p -> (start_profiler, p.addr) <- () ));
+    start_ms = now_int (); peers.iterate (\p -> (q3_local, p.addr) <- ()) )
   else ()
 )
 
@@ -188,12 +200,13 @@ declare rkFiles : collection {path: string} @Collection
 
 trigger loadAll : () = \_ -> (
   peers.iterate (\p -> peer_seq.insert p);
-  uvFiles.iterate (\e -> loadUVQ3 e.path user_visits);
-  rkFiles.iterate (\e -> loadRKQ3 e.path rankingsMap);
-  ((ready, master) <- ())
+  loadUVQ3 uvFiles user_visits;
+  loadRKQ3 rkFiles rankingsMap;
+  peers.iterate (\p -> (hello, p.addr) <- ())
 )
 
 trigger shutdown : () = \_ -> (
+  ((tcmallocStop ()); (jemallocStop ()); (pcmStop ())) @IfMachineMaster;
   haltEngine ()
 )
 

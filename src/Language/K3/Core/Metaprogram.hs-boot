@@ -51,6 +51,8 @@ instance Typeable MPDeclaration
 instance NFData   MPDeclaration
 
 instance Pretty SpliceValue
+instance Pretty SpliceEnv
+instance Pretty SpliceContext
 instance Pretty MPAnnMemDecl
 instance Pretty MPDeclaration
 
@@ -64,6 +66,7 @@ spliceRecordField :: SpliceValue -> Identifier -> Maybe SpliceValue
 
 {- Splice context accessors -}
 lookupSCtxt      :: Identifier -> SpliceContext -> Maybe SpliceValue
+lookupSCtxtPath  :: [Identifier] -> SpliceContext -> Maybe SpliceValue
 addSCtxt         :: Identifier -> SpliceValue -> SpliceContext -> SpliceContext
 removeSCtxt      :: Identifier -> SpliceContext -> SpliceContext
 removeSCtxtFirst :: Identifier -> SpliceContext -> SpliceContext

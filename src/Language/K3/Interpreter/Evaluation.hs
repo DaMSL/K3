@@ -7,10 +7,10 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Language.K3.Interpreter.Evaluation where
 
-import Control.Applicative
 import Control.Arrow hiding ( (+++) )
 import Control.Concurrent.MVar
 import Control.Monad.Reader

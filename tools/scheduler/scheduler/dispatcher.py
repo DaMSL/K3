@@ -31,7 +31,7 @@ class Dispatcher(mesos.interface.Scheduler):
     self.pending = deque()     # Pending jobs. First job is popped once there are enough resources available to launch it.
     self.active = {}           # Active jobs keyed on jobId.
     self.finished = {}         # Finished jobs keyed on jobId.
-    self.offers = {}           # Offers from Mesos keyed on offerId. We assume they are valid until they are rescinded by Mesos.
+    self.offers = OrderedDict()           # Offers from Mesos keyed on offerId. We assume they are valid until they are rescinded by Mesos.
     self.jobsCreated = 0       # Total number of jobs created for generating job ids.
 
     self.daemon = daemon       # Run as a daemon (or finish when there are no more pending/active jobs)

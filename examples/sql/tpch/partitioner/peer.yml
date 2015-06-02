@@ -1,0 +1,5 @@
+me: [127.0.0.1, 30000]
+numparts: 2
+role: sOrdersCustkey
+outFolder: orders_partitioned_custkey
+dataFiles: [{path: tools/ktrace/data/tpch/orders0}, {path: tools/ktrace/data/tpch/orders1}]

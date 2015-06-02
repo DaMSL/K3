@@ -24,12 +24,12 @@ shared_ptr<K3::Net::Listener> setup(shared_ptr<NContext> context, Address& me, s
   Identifier id = "id";
   // Setup network IOHandle
   shared_ptr<K3::Net::NEndpoint> n_ep = shared_ptr<K3::Net::NEndpoint>(new K3::Net::NEndpoint(context, me));
-  LengthHeaderCodec cdec = LengthHeaderCodec();
-  shared_ptr<NetworkHandle> net_handle = shared_ptr<NetworkHandle>(new NetworkHandle(make_shared<LengthHeaderCodec>(cdec), n_ep));
+  LengthHeaderFraming frme = LengthHeaderFraming();
+  shared_ptr<NetworkHandle> net_handle = shared_ptr<NetworkHandle>(new NetworkHandle(make_shared<LengthHeaderFraming>(frme), n_ep));
   // Setup Endpoint
   auto buf = make_shared<ScalarEPBufferST>(ScalarEPBufferST());
   SendFunctionPtr func = echo_notification;
-  auto bindings = make_shared<EndpointBindings>(func); 
+  auto bindings = make_shared<EndpointBindings>(func);
   shared_ptr<Endpoint> ep = shared_ptr<Endpoint>(new Endpoint(net_handle, buf, bindings));
   // Add some subscribers:
   bindings->attachNotifier(EndpointNotification::SocketData ,me, "TestTrigger");
@@ -38,16 +38,16 @@ shared_ptr<K3::Net::Listener> setup(shared_ptr<NContext> context, Address& me, s
   shared_ptr<condition_variable> c = shared_ptr<condition_variable>(new condition_variable());
   shared_ptr<ListenerCounter> counter = shared_ptr<ListenerCounter>(new ListenerCounter());
   shared_ptr<ListenerControl> ctrl = shared_ptr<ListenerControl>(new ListenerControl(m,c,counter));
-  // Setup Codec
-  shared_ptr<DefaultInternalCodec> i_cdec = shared_ptr<DefaultInternalCodec>(new DefaultInternalCodec());
+  // Setup Framing
+  shared_ptr<DefaultInternalFraming> i_frme = shared_ptr<DefaultInternalFraming>(new DefaultInternalFraming());
   // Create Listener
   shared_ptr<K3::Net::Listener> l = shared_ptr<K3::Net::Listener>(new K3::Asio::Listener(
-  	id, 
+  	id,
   	context,
   	qs,
   	ep,
   	ctrl,
-  	i_cdec
+  	i_frme
   	));
 
   return l;
@@ -60,8 +60,8 @@ shared_ptr<Endpoint> write_to_listener(shared_ptr<NContext> context) {
 
   // setup connection
   shared_ptr<K3::Asio::NConnection> n_conn = shared_ptr<K3::Asio::NConnection>(new K3::Asio::NConnection(context, server));
-  LengthHeaderCodec cdec = LengthHeaderCodec();
-  NetworkHandle net_handle = NetworkHandle(make_shared<LengthHeaderCodec>(cdec), n_conn);
+  LengthHeaderFraming frme = LengthHeaderFraming();
+  NetworkHandle net_handle = NetworkHandle(make_shared<LengthHeaderFraming>(frme), n_conn);
   auto buf = make_shared<ScalarEPBufferST>(ScalarEPBufferST());
   SendFunctionPtr func = echo_notification;
   auto bindings = make_shared<EndpointBindings>(func);
@@ -88,7 +88,7 @@ FACT("Send 15 messages from Endpoint to Listener => 15 notifications, 15 message
   using std::shared_ptr;
   using std::make_shared;
   using std::string;
- 
+
   // Create (start) a Listener
   K3::Address me = K3::defaultAddress;
   shared_ptr<K3::MessageQueues> qs = make_shared<K3::SinglePeerQueue>(K3::SinglePeerQueue(me));

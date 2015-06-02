@@ -1,5 +1,5 @@
-#ifndef K3_RUNTIME_CODEC_H
-#define K3_RUNTIME_CODEC_H
+#ifndef K3_RUNTIME_FRAMING_H
+#define K3_RUNTIME_FRAMING_H
 
 #include <string>
 
@@ -8,9 +8,6 @@
 
 namespace K3 {
 
-  //--------------------
-  // Wire descriptions
-
   // A generic exception that can be thrown by wire descriptor methods.
   class CodecException : public std::runtime_error {
   public:
@@ -18,50 +15,93 @@ namespace K3 {
     CodecException(const char* msg) : runtime_error(msg) {}
   };
 
-  // Message serializtion/deserialization abstract base class.
-  // Implementations can encapsulate framing concerns as well as serdes operations.
-  //
-  // The unpack method may be supplied a complete or incomplete std::string corresponding
-  // to a value. It is left to the implementation to determine the scope of functionality
-  // supported, for example partial unpacking (e.g., for network sockets).
-  // The semantics of repeated invocations are dependent on the actual implementation
-  // of the wire description (including factors such as message loss).
-  // This includes the conditions under which an exception is thrown.
+  // Codecs are an abstraction around a message transformation (e.g., framing, serialization, compression, etc.).
+  // We provide three toplevel codec classes, which all provide an encode/decode method.
+  // We do not provide an abstract base class since we may wish to have template methods, which cannot be virtual in C++.
+  // a. Codec: this provides an enum encapsulating all child variants. It provides no encode/decode in its base class
+  //    leaving its children to do so in templatized fashion. The usage pattern is to store the base class in data
+  //    structures, but to cast based on the enum prior to usage.
+  //    The primary use case is for convertinng to and from data representations, binary/csv/json formats.
+  // b. FrameCodec: for framing transformations, e.g., line-based or length-based delimitation.
+  // c. MessageCodec: for message serialization, e.g., as a triple of trigger id, address and payload.
 
-  class Codec: public virtual LogMT {
+  class Codec : public virtual LogMT {
     public:
-      Codec(): LogMT("Codec") {}
+      // This enum should be extended as more data formats arise.
+      enum class CodecFormat {K3, K3B, K3YB, K3YBT, K3X, CSV, PSV, JSON, YAML};
 
-      virtual Value encode(const Value&) = 0;
-      virtual shared_ptr<Value> decode(const Value&) = 0;
-      virtual shared_ptr<Value> decode(const char *, size_t) = 0;
-      virtual bool decode_ready() = 0;
-      virtual bool good() = 0;
-
-      // codec cloning
-      virtual shared_ptr<Codec> freshClone() = 0;
+      Codec(CodecFormat f): format_(f), LogMT("Codec") {}
       virtual ~Codec() {}
 
+      virtual shared_ptr<Codec> freshClone() { return make_shared<Codec>(format_); }
+
+      // No encode or decode method. These are template methods provided by inherited classes.
+      CodecFormat format() { return format_; }
+      virtual bool decode_ready() { return true; }
+      virtual bool good() { return true; }
+
+    protected:
+      CodecFormat format_;
   };
 
-  class DefaultCodec : public virtual Codec, public virtual LogMT {
+
+  // A codec specialization that explicitly consumes and produces strings.
+  // Note this does not inherit from a Codec; rather it is used directly
+  // in the only place it is needed (an IOHandle).
+  class FrameCodec : public virtual LogMT {
     public:
-      DefaultCodec() : Codec(), LogMT("DefaultCodec"), good_(true) {}
+      FrameCodec(): LogMT("FrameCodec") {}
+      virtual ~FrameCodec() {}
 
-      Value encode(const Value& v) { return v; }
+      // codec cloning
+      virtual shared_ptr<FrameCodec> freshClone() = 0;
 
-      shared_ptr<Value> decode(const Value& v) {
-        shared_ptr<Value> result;
+      virtual string encode(const string&) = 0;
+      virtual shared_ptr<string> decode(const string&) = 0;
+      virtual shared_ptr<string> decode(const char *, size_t) = 0;
+      virtual bool decode_ready() = 0;
+      virtual bool good() = 0;
+  };
+
+  // A codec specialization that explicitly consumes and produces RemoteMessages.
+  class MessageCodec : public virtual LogMT {
+    public:
+      MessageCodec(): LogMT("MessageCodec") {}
+      virtual ~MessageCodec() {}
+
+      virtual shared_ptr<MessageCodec> freshClone() = 0;
+
+      virtual string encode(const RemoteMessage&) = 0;
+      virtual shared_ptr<RemoteMessage> decode(const string&) = 0;
+      virtual shared_ptr<RemoteMessage> decode(const char *, size_t) = 0;
+      virtual bool decode_ready() = 0;
+      virtual bool good() = 0;
+  };
+
+
+  // ----------------------------
+  // Frame codec implementations
+  //
+
+  // The "identity" framing transformation, returning the payload unchanged.
+  class DefaultFrameCodec : public virtual FrameCodec, public virtual LogMT {
+    public:
+      DefaultFrameCodec() : FrameCodec(), LogMT("DefaultFrameCodec"), good_(true) {}
+
+      string encode(const string& v) { return v; }
+
+      shared_ptr<string> decode(const string& v) {
+        shared_ptr<string> result;
         if (v != "") {
-          result = make_shared<Value>(v);
+          result = make_shared<string>(v);
         }
         return result;
       }
 
-      shared_ptr<Value> decode(const char* v, size_t i) {
-        shared_ptr<Value> result;
+      shared_ptr<string> decode(const char* v, size_t i) {
+        shared_ptr<string> result;
         if (v != nullptr) {
-          result = make_shared<Value>(v, i);
+          result = make_shared<string>(v, i);
         }
         return result;
       }
@@ -70,8 +110,8 @@ namespace K3 {
 
       bool good() { return good_; }
 
-      shared_ptr<Codec> freshClone() {
-        shared_ptr<Codec> cdec = shared_ptr<DefaultCodec>(new DefaultCodec());
+      shared_ptr<FrameCodec> freshClone() {
+        shared_ptr<FrameCodec> cdec = shared_ptr<DefaultFrameCodec>(new DefaultFrameCodec());
         return cdec;
       };
 
@@ -79,35 +119,27 @@ namespace K3 {
       bool good_;
   };
 
-  class InternalCodec: public virtual Codec {
+  class DelimiterFrameCodec : public virtual FrameCodec, public virtual LogMT {
     public:
-      InternalCodec() : LogMT("InternalCodec") {}
-
-      virtual RemoteMessage read_message(const Value&) = 0;
-      virtual Value show_message(const RemoteMessage&) = 0;
-  };
-
-  class DelimiterCodec : public virtual Codec, public virtual LogMT {
-    public:
-      DelimiterCodec(char delimiter)
-        : Codec(), LogMT("DelimiterCodec"), delimiter_(delimiter), good_(true), buf_(new std::string())
+      DelimiterFrameCodec(char delimiter)
+        : FrameCodec(), LogMT("DelimiterFrameCodec"), delimiter_(delimiter), good_(true), buf_(new std::string())
       {}
 
-      Value encode(const Value& v);
+      string encode(const string& v);
 
-      shared_ptr<Value> decode(const char *s, size_t len) {
+      shared_ptr<string> decode(const char *s, size_t len) {
         if (s != nullptr) {
           buf_->append(s, len);
         }
         return completeDecode();
       }
 
-      shared_ptr<Value> decode(const Value& v) {
+      shared_ptr<string> decode(const string& v) {
         buf_->append(v);
         return completeDecode();
       }
 
-      shared_ptr<Value> completeDecode();
+      shared_ptr<string> completeDecode();
 
       bool decode_ready() {
        return buf_?
@@ -116,38 +148,39 @@ namespace K3 {
 
       bool good() { return good_; }
 
-      shared_ptr<Codec> freshClone() {
-        return make_shared<DelimiterCodec>(delimiter_);
+      shared_ptr<FrameCodec> freshClone() {
+        return make_shared<DelimiterFrameCodec>(delimiter_);
       }
 
       char delimiter_;
+
     protected:
       size_t find_delimiter() { return buf_->find(delimiter_); }
       bool good_;
       shared_ptr<std::string> buf_;
   };
 
-  class LengthHeaderCodec : public virtual Codec, public virtual LogMT {
+  class LengthHeaderFrameCodec : public virtual FrameCodec, public virtual LogMT {
     public:
-      LengthHeaderCodec()
-        : Codec(), LogMT("LengthHeaderCodec"), good_(true), buf_(new std::string()), next_size_(NULL)
+      LengthHeaderFrameCodec()
+        : FrameCodec(), LogMT("LengthHeaderFrameCodec"), good_(true), buf_(new std::string()), next_size_(NULL)
       {}
 
-      Value encode(const Value& s);
+      string encode(const string& s);
 
-      shared_ptr<Value> decode(const char *v, size_t len) {
+      shared_ptr<string> decode(const char *v, size_t len) {
         if (v != nullptr) {
           buf_->append(v, len);
         }
         return completeDecode();
       }
 
-      shared_ptr<Value> decode(const Value& v) {
+      shared_ptr<string> decode(const string& v) {
         buf_->append(v);
         return completeDecode();
       }
 
-      shared_ptr<Value> completeDecode();
+      shared_ptr<string> completeDecode();
 
       bool decode_ready() {
         return next_size_? buf_->length() >= *next_size_ : false;
@@ -155,8 +188,8 @@ namespace K3 {
 
       bool good() { return good_; }
 
-      shared_ptr<Codec> freshClone() {
-        return make_shared<LengthHeaderCodec>();
+      shared_ptr<FrameCodec> freshClone() {
+        return make_shared<LengthHeaderFrameCodec>();
       };
 
     protected:
@@ -167,56 +200,252 @@ namespace K3 {
       void strip_header();
   };
 
-  class AbstractDefaultInternalCodec : public virtual InternalCodec, public virtual LogMT {
+
+  // ------------------------------
+  // Message codec implementations
+  //
+
+  template<typename BaseFrameCodec, class... Types>
+  class AbstractMessageCodec : public virtual MessageCodec, public virtual LogMT
+  {
     public:
-      AbstractDefaultInternalCodec() : InternalCodec(), LogMT("AbstractDefaultInternalCodec") {}
+      AbstractMessageCodec(Types... args) : frame(args...), LogMT("AbstractMessageCodec") {}
 
-      RemoteMessage read_message(const Value& v);
+      string encode(const RemoteMessage& m) {
+        return frame.encode(show_message(m));
+      }
 
-      Value show_message(const RemoteMessage& m);
+      shared_ptr<RemoteMessage> decode(const string& s) { return decode(s.c_str(), s.size()); }
+
+      shared_ptr<RemoteMessage> decode(const char *s, size_t len) {
+        return read_message(frame.decode(s, len));
+      }
+
+      bool decode_ready() { return frame.decode_ready(); }
+      bool good() { return frame.good(); }
+
+    protected:
+      shared_ptr<RemoteMessage> read_message(shared_ptr<string> v) {
+        shared_ptr<RemoteMessage> r;
+        if ( v ) { r = K3Serializer::unpack_yas<RemoteMessage>(*v); }
+        return r;
+      }
+
+      string show_message(const RemoteMessage& m) {
+        return K3Serializer::pack_yas<RemoteMessage>(m);
+      }
+
+    private:
+      BaseFrameCodec frame;
   };
 
-  class DefaultInternalCodec : public AbstractDefaultInternalCodec, public DefaultCodec, public virtual LogMT {
+  class DefaultMessageCodec : public AbstractMessageCodec<DefaultFrameCodec>, public virtual LogMT {
     public:
-      DefaultInternalCodec()
-        : AbstractDefaultInternalCodec(), DefaultCodec(), LogMT("DefaultInternalCodec")
-      {}
+      DefaultMessageCodec() : AbstractMessageCodec<DefaultFrameCodec>(), LogMT("DefaultMessageCodec") {}
 
-      shared_ptr<Codec> freshClone() {
-        shared_ptr<Codec> cdec = shared_ptr<DefaultInternalCodec>(new DefaultInternalCodec());
-        return cdec;
-      };
-
+      shared_ptr<MessageCodec> freshClone() {
+        return make_shared<DefaultMessageCodec>();
+      }
   };
 
-  class DelimiterInternalCodec : public AbstractDefaultInternalCodec, public DelimiterCodec, public virtual LogMT {
+  class DelimiterMessageCodec : public AbstractMessageCodec<DelimiterFrameCodec, char>, public virtual LogMT
+  {
     public:
-      DelimiterInternalCodec(char delimiter)
-        : AbstractDefaultInternalCodec(), DelimiterCodec(delimiter), LogMT("DelimiterInternalCodec"), delimiter_(delimiter)
+      DelimiterMessageCodec(char delimiter)
+        : AbstractMessageCodec<DelimiterFrameCodec, char>(delimiter),
+          LogMT("DelimiterMessageCodec"), delimiter_(delimiter)
       {}
 
-      shared_ptr<Codec> freshClone() {
-        return make_shared<DelimiterInternalCodec>(delimiter_);
+      shared_ptr<MessageCodec> freshClone() {
+        return make_shared<DelimiterMessageCodec>(delimiter_);
       };
 
     protected:
       char delimiter_;
   };
 
-  class LengthHeaderInternalCodec : public AbstractDefaultInternalCodec, public LengthHeaderCodec, public virtual LogMT {
+  class LengthHeaderMessageCodec : public AbstractMessageCodec<LengthHeaderFrameCodec>, public virtual LogMT
+  {
     public:
-      LengthHeaderInternalCodec()
-        : AbstractDefaultInternalCodec(), LengthHeaderCodec(), LogMT("LengthHeaderInternalCodec")
+      LengthHeaderMessageCodec()
+        : AbstractMessageCodec<LengthHeaderFrameCodec>(), LogMT("LengthHeaderMessageCodec")
       {}
 
-      shared_ptr<Codec> freshClone() {
-        return make_shared<LengthHeaderInternalCodec>();
+      shared_ptr<MessageCodec> freshClone() {
+        return make_shared<LengthHeaderMessageCodec>();
       };
-
   };
 
-  using ExternalCodec = Codec;
+  // ------------------------------
+  // External codec implementations
+  //
+
+  class K3Codec : public virtual Codec, public virtual LogMT {
+  public:
+    K3Codec(CodecFormat f): Codec(f), LogMT("K3Codec") {}
+    virtual ~K3Codec() {}
+
+    shared_ptr<Codec> freshClone() {
+      return std::dynamic_pointer_cast<Codec, K3Codec>(make_shared<K3Codec>(format_));
+    }
+
+    template<typename T> string encode(const T& v) {
+      return K3Serializer::pack_text<T>(v);
+    }
+
+    template<typename T> shared_ptr<T> decode(const string& s) {
+      return K3Serializer::unpack_text<T>(s);
+    }
+
+    template<typename T> shared_ptr<T> decode(const char *s, size_t sz) {
+      string v(s, sz);
+      return decode<T>(v);
+    }
+  };
+
+  class K3BCodec : public virtual Codec, public virtual LogMT {
+  public:
+    K3BCodec(CodecFormat f): Codec(f), LogMT("K3BCodec") {}
+    virtual ~K3BCodec() {}
+
+    shared_ptr<Codec> freshClone() {
+      return std::dynamic_pointer_cast<Codec, K3BCodec>(make_shared<K3BCodec>(format_));
+    }
+
+    template<typename T> string encode(const T& v) {
+      return K3Serializer::pack<T>(v);
+    }
+
+    template<typename T> shared_ptr<T> decode(const string& s) {
+      return K3Serializer::unpack<T>(s);
+    }
+
+    template<typename T> shared_ptr<T> decode(const char *s, size_t sz) {
+      string v(s, sz);
+      return decode<T>(v);
+    }
+  };
+
+  class K3YBCodec : public virtual Codec, public virtual LogMT {
+  public:
+    K3YBCodec(CodecFormat f): Codec(f), LogMT("K3YBCodec") {}
+    virtual ~K3YBCodec() {}
+
+    shared_ptr<Codec> freshClone() {
+      return std::dynamic_pointer_cast<Codec, K3YBCodec>(make_shared<K3YBCodec>(format_));
+    }
+
+    template<typename T> string encode(const T& v) {
+      return K3Serializer::pack_yas<T>(v);
+    }
+
+    template<typename T> shared_ptr<T> decode(const string& s) {
+      return K3Serializer::unpack_yas<T>(s);
+    }
+
+    template<typename T> shared_ptr<T> decode(const char *s, size_t sz) {
+      string v(s, sz);
+      return decode<T>(v);
+    }
+  };
+
+  class K3YBTCodec : public virtual Codec, public virtual LogMT {
+  public:
+    K3YBTCodec(CodecFormat f): Codec(f), LogMT("K3YBTCodec") {}
+    virtual ~K3YBTCodec() {}
+
+    shared_ptr<Codec> freshClone() {
+      return std::dynamic_pointer_cast<Codec, K3YBTCodec>(make_shared<K3YBTCodec>(format_));
+    }
+
+    template<typename T> string encode(const T& v) {
+      return K3Serializer::pack_yas_text<T>(v);
+    }
+
+    template<typename T> shared_ptr<T> decode(const string& s) {
+      return K3Serializer::unpack_yas_text<T>(s);
+    }
+
+    template<typename T> shared_ptr<T> decode(const char *s, size_t sz) {
+      string v(s, sz);
+      return decode<T>(v);
+    }
+  };
+
+  class CSVCodec : public virtual Codec, public virtual LogMT {
+  public:
+    CSVCodec(CodecFormat f): Codec(f), LogMT("CSVCodec") {}
+    virtual ~CSVCodec() {}
+
+    shared_ptr<Codec> freshClone() {
+      return std::dynamic_pointer_cast<Codec, CSVCodec>(make_shared<CSVCodec>(format_));
+    }
+
+    template<typename T> string encode(const T& v) {
+      return K3Serializer::pack_csv<T>(v);
+    }
+
+    template<typename T> shared_ptr<T> decode(const string& s) {
+      return K3Serializer::unpack_csv<T>(s);
+    }
+
+    template<typename T> shared_ptr<T> decode(const char *s, size_t sz) {
+      string v(s, sz);
+      return decode<T>(v);
+    }
+  };
+
+  class PSVCodec : public virtual Codec, public virtual LogMT {
+  public:
+    PSVCodec(CodecFormat f): Codec(f), LogMT("PSVCodec") {}
+    virtual ~PSVCodec() {}
+
+    shared_ptr<Codec> freshClone() {
+      return std::dynamic_pointer_cast<Codec, PSVCodec>(make_shared<PSVCodec>(format_));
+    }
+
+    template<typename T> string encode(const T& v) {
+      return K3Serializer::pack_csv<T>(v, '|');
+    }
+
+    template<typename T> shared_ptr<T> decode(const string& s) {
+      return K3Serializer::unpack_csv<T>(s, '|');
+    }
+
+    template<typename T> shared_ptr<T> decode(const char *s, size_t sz) {
+      string v(s, sz);
+      return decode<T>(v);
+    }
+  };
+
+  class K3XCodec : public virtual Codec, public virtual LogMT {
+  public:
+    K3XCodec(CodecFormat f): Codec(f), LogMT("K3XCodec") {}
+    virtual ~K3XCodec() {}
+
+    shared_ptr<Codec> freshClone() {
+      return std::dynamic_pointer_cast<Codec, K3XCodec>(make_shared<K3XCodec>(format_));
+    }
+
+    template<typename T> string encode(const T& v) {
+      return K3Serializer::pack_xml<T>(v);
+    }
+
+    template<typename T> shared_ptr<T> decode(const string& s) {
+      return K3Serializer::unpack_xml<T>(s);
+    }
+
+    template<typename T> shared_ptr<T> decode(const char *s, size_t sz) {
+      string v(s, sz);
+      return decode<T>(v);
+    }
+  };
+
+  // ---------
+  // Aliases
+  //
+  using ExternalFrameCodec = FrameCodec;
 
 } // namespace K3
 
-#endif // K3_RUNTIME_CODEC_H
+#endif // K3_RUNTIME_FRAMING_H

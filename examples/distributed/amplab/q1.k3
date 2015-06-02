@@ -1,6 +1,9 @@
 include "Annotation/Collection.k3"
+include "Annotation/Map.k3"
 include "Core/Builtins.k3"
 include "Core/Loaders.k3"
+include "Core/MachineMessaging.k3"
+include "Core/Barrier.k3"
 
 declare dataFiles : collection {path: string} @ Collection
 declare outputFile : mut string
@@ -28,7 +31,13 @@ declare load_end_ms : mut int = 0
 declare load_elapsed_ms : mut int = 0
 
 // Dummy trigger to warm up connections
-trigger hello : () = \_ -> ()
+trigger hello : () = \_ -> (
+  ((ready, master) <- ()) @OnCounter(id=[# hello_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+)
+
+trigger start_profiler : () = \_ -> (
+  ((tcmallocStart ()); (jemallocStart ()); (pcmStart ())) @IfMachineMaster
+)
 
 // Perform the query on the local dataset. (Filter and project.)
 // Store the results in memory.
@@ -46,12 +55,13 @@ trigger finished: int = \num_peer_results -> (
   then end_ms = now_int ();
        elapsed_ms = end_ms - start_ms;
        print ("# Results: " ++ (itos num_results));
-       print ("Elapsed time (ms):" ++ (itos elapsed_ms));
+       print ("Time Query:" ++ (itos elapsed_ms));
        peers.iterate (\p -> (shutdown, p.addr) <- ())
   else ()
 )
 
 trigger shutdown: () = \_ -> (
+  ((tcmallocStop ()); (jemallocStop ()); (pcmStop ())) @IfMachineMaster;
   haltEngine ()
 )
 
@@ -61,9 +71,8 @@ trigger ready: () = \_ -> (
   peers_ready = peers_ready + 1;
   if peers_ready == peers.size ()
   then (
-    // Establish connections before starting the timer
-    peers.iterate (\p -> (hello, p.addr) <- ());
     start_ms = now_int ();
+    (peers.iterate (\p -> (start_profiler, p.addr) <- () ));
     peers.iterate (\p -> (q1_local, p.addr) <- ())
   )
   else ()
@@ -71,13 +80,11 @@ trigger ready: () = \_ -> (
 
 trigger load_all: () = \_ -> (
   load_start_ms = now_int ();
-  dataFiles.iterate (\e ->
-    loadQ1 e.path local_rankings
-  );
+  loadQ1 dataFiles local_rankings;
   load_end_ms = now_int ();
   load_elapsed_ms = load_end_ms - load_start_ms;
   print ("Load time: " ++ (itos load_elapsed_ms));
-  ((ready, master) <- ())
+  peers.iterate (\p -> (hello, p.addr) <- ())
 )
 
 source rows: () = value ()

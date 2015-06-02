@@ -1,0 +1,98 @@
+include "Annotation/Vector.k3"
+include "Annotation/Set.k3"
+include "Core/Builtins.k3"
+
+//typedefs
+typedef Connection = {weight :  mut real , deltaWeight : mut real }
+typedef Neuron = {m_outputValue: mut real , m_myIndex: mut int, m_gradient: mut real , m_outputWeights : mut collection { connection : Connection } @Seq, eta: real, alpha : real } 
+typedef Layer =  collection {neuron : mut  Neuron } @Seq
+typedef Net = {m_error : mut real , m_layer : mut collection {layer : Layer} @Seq}
+
+declare net : Net 
+declare netReported : Net 
+declare oldNet : mut Net 
+
+declare topology : mut collection {i: int} @ {Seq}
+declare numLayers : mut int = 0
+declare master : address = 127.0.0.1:40000
+
+declare framesRead : mut int = 0
+declare peersResponded : mut collection {elem : address } @Seq
+
+
+declare updateOnNet : Net -> Net -> Net = \oldNet -> \newNet -> (
+	net
+)
+declare updateMaster : Net -> ()  = \newNet -> (
+	
+)
+
+//This function calculates the difference between the parameters at net1 and net2
+declare differenceNets : Net -> Net -> Net = \net1 -> \net2 -> (
+	let diffNet = net in (
+	( );
+	diffNet 
+	)
+)
+declare updateSlave : Net -> () = \masterNet -> (
+
+)
+
+trigger broadcastToSlave : Net = \masterNet -> (
+	updateSlave masterNet
+) 
+
+trigger receiveAtMaster : {slaveAddress : address, slaveNet : Net  } = \x ->  ( 
+	peersResponded.insert {elem: x.slaveAddress};	
+	updateMaster x.slaveNet;
+	if peersResponded.size () == peers.size () 
+	then ( peers.iterate (\peer -> (
+				(broadcastToSlave, peer.addr) <- (net)
+					
+				) 
+	))
+	else ()
+
+	
+)
+
+trigger proceedAsMaster : () = \_ -> (
+	print "Proceeding as master"
+
+)
+
+trigger proceedAsSlave : () = \_ -> (
+	(range 1000).iterate (\i -> (
+		framesRead= framesRead+1;
+		if framesRead == 500 
+		then (
+			let diffNet = (updateOnNet oldNet net) in  (receiveAtMaster,master) <- {slaveAddress: me, slaveNet : net} ;
+			oldNet = net
+		     )
+	         else () 	
+	))
+) 
+
+trigger configureNetwork : () = \_ -> (
+	topology.insert {i: 10};
+	topology.insert {i: 5};
+	topology.insert {i: 10}	;		
+	numLayers = topology.size ();
+	if (me==master) then ((proceedAsMaster, me) <- ()) else ((proceedAsSlave, me) <- ())	
+
+)
+trigger startServer : () = \_ -> (
+	(configureNetwork, me) <- ()
+
+)
+
+trigger startSlave : () = \_ -> (
+	(configureNetwork, me) <- ()
+)
+
+
+source server : () = value ()
+feed server |> startServer
+
+source slave : () = value ()
+feed slave |> startSlave

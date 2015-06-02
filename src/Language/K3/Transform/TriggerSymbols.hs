@@ -1,5 +1,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Language.K3.Transform.TriggerSymbols where
 
@@ -8,6 +10,7 @@ import Data.Tree
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
+import Language.K3.Core.Type
 import Language.K3.Core.Utils
 
 import Language.K3.Core.Constructor.Declaration as DC
@@ -29,7 +32,10 @@ triggerSymbols prog = do
     Node (DRole _ :@: _) ch -> return $ replaceCh nProg $ mkSyms trigSyms ++ ch
     _ -> Left $ "Invalid top-level role in program during triggerSymbols"
 
-  where declF (acc,i) d@(tag -> DTrigger n _ _) =
+  where declF (acc,i) d@(tag -> DGlobal n (tag -> TSink) _) =
+          return ((acc ++ [(n,i)], i+1), d @+ (triggerIdProperty $ symId n))
+
+        declF (acc,i) d@(tag -> DTrigger n _ _) =
           return ((acc ++ [(n,i)], i+1), d @+ (triggerIdProperty $ symId n))
 
         declF acc d = return (acc, d)

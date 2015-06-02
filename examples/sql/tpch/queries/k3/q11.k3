@@ -40,22 +40,19 @@ declare nation   : nation_bag
 // Partsupp is much bigger than supplier
 
 // suppkey -> partkey -> value_mult_sum
-typedef p_by_partkey_t     =  {key: int, value: real}
-typedef p_by_partkey_map_t =  collection p_by_partkey_t @ Map
+typedef p_by_partkey_t     = {key: int, value: real}
+typedef p_by_partkey_map_t = collection p_by_partkey_t @ Map
 typedef p_by_suppkey_t     = {key: int , value: p_by_partkey_map_t }
 typedef p_by_suppkey_map_t = collection p_by_suppkey_t @ Map
-typedef p_by_suppkey_col_t = collection p_by_suppkey_t @ Collection
 declare p_by_suppkey_map   : p_by_suppkey_map_t
 
 // suppkey -> [nationkey]
 typedef s_by_suppkey_t   = {key: int, value: collection {nk:int} @ Collection }
 typedef s_by_suppkey_map_t = collection s_by_suppkey_t @ Map
-typedef s_by_suppkey_col_t = collection s_by_suppkey_t @ Collection
 declare s_by_suppkey_map : s_by_suppkey_map_t
 
 // nationkey -> [(partkey, calcval)]
 typedef ps_inner_t = {key: int, value: real}
-typedef ps_inner_col_t = collection ps_inner_t @ Collection
 typedef ps_inner_map_t = collection ps_inner_t @ Map
 typedef ps_t = {key: int, value: ps_inner_map_t}
 typedef ps_map_t = collection ps_t @ Map
@@ -87,28 +84,27 @@ declare combine_maps : p_by_suppkey_t -> p_by_suppkey_t -> p_by_suppkey_t =
 trigger partsupp_supplier : () = \_ -> (
   () @DistributedHashJoin
         ( lbl       = [# sp ]
-        , lhs_query = [$ partsupp.groupBy (\p -> p.ps_suppkey )
-                                          (\acc1 -> \p ->
-                                           (acc1.insert
-                                           { key:   p.ps_partkey
-                                           , value: p.ps_availqty * p.ps_supplycost }; acc1))
-                                          empty p_by_partkey_t @ Map
+        , lhs_query = [$ (partsupp.groupBy (\p -> p.ps_suppkey )
+                                           (\acc1 -> \p ->
+                                             (acc1.insert { key:   p.ps_partkey
+                                                          , value: p.ps_availqty * p.ps_supplycost }; acc1))
+                                           (empty p_by_partkey_t @ Map))
+                                  .fold    (\acc -> \p -> ((acc.insert p); acc))
+                                           (empty p_by_suppkey_t @Map)
                       ]
 
-        , rhs_query = [$
-            supplier.groupBy (\s   -> s.s_suppkey )
-                             (\acc2 -> \s ->
-                               (acc2.insert
-                                 { nk : s.s_nationkey }; acc2) )
-                             empty { nk : int } @Collection
+        , rhs_query = [$ (supplier.groupBy (\s -> s.s_suppkey )
+                                           (\acc2 -> \s -> (acc2.insert { nk : s.s_nationkey }; acc2))
+                                           (empty { nk : int } @Collection))
+                                  .fold    (\acc -> \s -> ((acc.insert s); acc))
+                                           (empty s_by_suppkey_t @Map)
                       ]
 
         , lhs_build_merge = [$ (\p -> p_by_suppkey_map.insert_with p combine_maps)]
 
         , rhs_probe_merge = [$
             (\s ->
-                case p_by_suppkey_map.lookup { key: s.key
-                                             , value: empty p_by_partkey_t @Map}
+                case p_by_suppkey_map.lookup { key: s.key, value: empty p_by_partkey_t @Map}
                 of
                   { Some p -> s.value.iterate
                                 (\sval ->
@@ -123,9 +119,10 @@ trigger partsupp_supplier : () = \_ -> (
                                peers.iterate (\p -> (nation_trig, p.addr) <- ())
                             ]
         , coordinator     = [$ master]
-        , nodes          = [$ peers ]
-        , lhs_build_ty    = [: p_by_suppkey_col_t]
-        , rhs_probe_ty    = [: s_by_suppkey_col_t]
+        , nodes           = [$ peers ]
+        , lhs_build_ty    = [: p_by_suppkey_map_t]
+        , rhs_probe_ty    = [: s_by_suppkey_map_t]
+        , profile         = [$ true]
         )
 )
 

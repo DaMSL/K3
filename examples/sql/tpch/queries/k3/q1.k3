@@ -18,12 +18,13 @@ typedef q1_result_r = { l_returnflag   : string
 
 typedef q1_result = collection q1_result_r @Collection
 
-declare lineitem    : lineitem_bag
+declare lineitem_r  : lineitem_r
+declare lineitem    : mut q1_lineitem_bag
 declare init_agg    : q1_agg
-declare results : mut q1_result
+declare results     : mut q1_result
 
 
-declare accum_agg : q1_agg -> lineitem_r -> q1_agg = \acc -> \r ->
+declare accum_agg : q1_agg -> q1_lineitem_r -> q1_agg = \acc -> \r ->
   { sum_qty        : acc.sum_qty        + r.l_quantity
   , sum_base_price : acc.sum_base_price + r.l_extendedprice
   , sum_disc_price : acc.sum_disc_price + (r.l_extendedprice * (1 - r.l_discount))
@@ -67,42 +68,48 @@ declare order_agg : {elem : q1_result_r} -> {elem : q1_result_r} -> int =
 
 trigger q1 : () = \_ -> (
   (ignore
-    ((lineitem.filter  (\r -> r.l_shipdate <= "1998-09-02"))
+    ((lineitem.filter  (\r -> r.l_shipdate <= 19980902))
               .groupBy (\r -> (r.l_returnflag, r.l_linestatus))
                        accum_agg
                        init_agg)
   ) @DistributedGroupBy(
       lbl         = [# groupby],
+      clear_expr  = [$ lineitem = empty q1_lineitem_r @Collection ],
       peer_next   = [$ (\x -> ((x.iterate (\kv -> results.insert (finalize_agg kv)));
                                ((() @:Result) @TPCHBenchmarkWithoutMaster))) ],
       next        = [$ ()],
       merge       = [$ merge_agg],
       coordinator = [$ master],
       nodes       = [$ peers],
-      profile     = [$ false] )
+      masters     = [$ masters ],
+      masters_map = [$ peer_masters ],
+      profile     = [$ true] )
 )
 
 trigger start : () = \_ -> (
   (() @:Start) @TPCHBenchmarkWithoutMaster(
     nodes                = [$ peers],
-    loadExpr             = [$ dataFiles.iterate (\e -> lineitemLoaderP e.path lineitem)],
+    loadExpr             = [$ dataLineCountFiles.iterate (\e -> lineitemRows = lineitemRows + (lineCountFile e.path));
+			                        print ("Lineitem rows: " ++ (itos lineitemRows));
+                              q1_lineitemLoaderPFC dataFiles lineitem lineitem_r lineitemRows
+                           ],
     preLoadExpr          = [$ ()],
     preReadyExpr         = [$ ()],
     onReadyExpr          = [$ (q1, me) <- ()],
     finishArgT           = [: ()],
     preTestFinishExpr    = [$ (\_ -> ())],
-    preFinishExpr        = [$ () @DistributedCollectionStatistics(
-                                    lbl         = [# q1_skew ],
-                                    query_cl    = [* [% cl: [# lo_skew],  ce: [$ groupby_result]]
-                                                  ],
-                                    coordinator = [$ master ],
-                                    nodes       = [$ peers ],
-                                    next        = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ])
-                         ],
+    preFinishExpr        = [$ () @GatherResultsAsCSV(
+                                    query_cl = [* [% ci: [# results], csink: [$ results_sink]] ]
+                                  , nodes    = [$ peers]
+                                  , next     = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ])
+                           ],
     preShutdownExpr      = [$ ()],
     finishAsShutdownExpr = [$ false]
   )
 )
+
+sink results_sink : q1_result_r = file "results.csv" csv
+sink query_time_sink : string = stdout csv
 
 source rows : () = value ()
 feed rows |> start

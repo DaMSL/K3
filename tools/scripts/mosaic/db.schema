@@ -1,0 +1,20 @@
+drop table if exists Globals cascade;
+drop table if exists Messages cascade;
+create table Globals (
+  mess_id            int,
+  dest_peer          text,
+  key                text,
+  value              json
+);
+
+create table Messages (
+  mess_id            int,
+  dest_peer          text,
+  trigger            text,
+  source_peer        text,
+  contents           json,
+  time               int
+);
+
+copy globals from '/Users/yotambarnoy/source/k3/K3/globals.dsv' delimiter '|' quote '`' csv;
+copy messages from '/Users/yotambarnoy/source/k3/K3/messages.dsv' delimiter '|' quote '`' csv;

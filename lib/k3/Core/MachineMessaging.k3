@@ -1,0 +1,330 @@
+include "Core/Messaging.k3"
+
+declare masters      : collection {addr : address} @Collection
+declare local_peers  : collection {addr : address} @Collection
+declare peer_masters : collection {key: address, value: address} @Map
+
+control IfMachineMaster {
+  ?e => (peer_masters.lookup_with {key: me, value: me} (\r -> ((if me == r.value then ((print (atos me)); $.[e]) else ()))))
+     +> {}
+}
+
+// Split a single partitioned broadcast into a dual-tier messaging pattern.
+control DispatchByMachine[ lbl : label, dest_trg : expr
+                         , masters : expr, masters_map : expr
+                         , send_ty : type, send_extra_fn : expr]
+{
+  // Rewrite the receiving trigger to to synchronously call the existing trigger on the global
+  // stashed by the machine-local master. As long as the trigger doesn't modify its argument, the
+  // global will be passed in by constant reference, and no copies will take place.
+  ((\?x -> ?b) @:Broadcast)
+     => (\$#[x] -> $.[b])
+     +> { trigger $[lbl]_peerproxy : int = \msg_id -> (
+            // ( print ("Peer " ++ (atos me) ++ " proxying bc " ++ (itos msg_id)) );
+            ( let entry = {key: msg_id, value: $[lbl]_machvar_default} in
+              if $[lbl]_machvar.member entry
+              then ( $[lbl]_machvar.lookup_with entry (\r -> (\$#[x] -> $.[b]) r.value) )
+              else ( error (print ("Invalid bc peer message " ++ (itos msg_id) ++ " at " ++ (atos me))) ) );
+
+            // ( print ("Peer " ++ (atos me) ++ " responding to bc GC " ++ (itos msg_id)) );
+            ( let aentry = {key:me, value:me} in
+              if $[masters_map].member aentry
+              then ( $[masters_map].lookup_with aentry (\ms -> ($[lbl]_machvar_gc, ms.value) <- msg_id ) )
+              else ( error (print ("Invalid bc peer master at " ++ (atos me))) ) )
+          )
+        }
+
+  ( ignore ?e ) @: SendBroadcast
+     => ( let r = $.[e] in
+          $[masters].iterate (\n -> ($[lbl]_machproxy, n.addr) <- ($[send_extra_fn] r)) )
+     +> {
+          @:Pinned
+          declare $[lbl]_machvar : collection {key: int, value: $[send_ty]} @Map
+
+          @:Pinned
+          declare $[lbl]_machvar_initialized : mut bool = false
+
+          @:Pinned
+          declare $[lbl]_machvar_gc_ids : collection {key: int, value: int} @Map
+
+          // @:Pinned
+          // TODO: pinning this causes a code generator bug.
+          declare $[lbl]_machvar_cnt : mut int = 0
+
+          @:Pinned
+          declare $[lbl]_machvar_default : $[send_ty]
+
+          // These two triggers must only run at the machine master since they modify
+          // the above pinned variables.
+
+          trigger $[lbl]_machproxy : $[send_ty] = \m -> (
+            ( if $[lbl]_machvar_initialized then () else (
+                ( (range ($[masters_map].size())).iterate (\i ->
+                    $[lbl]_machvar.insert {key: i.i, value: $[lbl]_machvar_default} )
+                );
+                $[lbl]_machvar_initialized = true
+              )
+            );
+            // ( print ("Machine " ++ (atos me) ++ " proxying bc " ++ (itos $[lbl]_machvar_cnt)) );
+            ( $[lbl]_machvar.insert_with {key: $[lbl]_machvar_cnt, value: m}
+                                         (\_ -> \_ -> {key: $[lbl]_machvar_cnt, value: m})
+            );
+            ( $[lbl]_machvar_gc_ids.insert {key: $[lbl]_machvar_cnt, value: local_peers.size()} );
+            ( local_peers.iterate (\a ->
+                ( // ( print ("Machine " ++ (atos me) ++ " proxying bc " ++ (itos $[lbl]_machvar_cnt) ++ " to peer " ++ (atos a.addr)) );
+                 ($[lbl]_peerproxy, a.addr) <- $[lbl]_machvar_cnt)) );
+            $[lbl]_machvar_cnt = $[lbl]_machvar_cnt + 1
+          )
+
+          trigger $[lbl]_machvar_gc : int = \msg_id -> (
+            let gcentry = {key: msg_id, value: 0} in
+            if $[lbl]_machvar_gc_ids.member gcentry
+            then
+            ( $[lbl]_machvar_gc_ids.lookup_with gcentry
+                (\r -> if r.value == 1
+                       then ( // ( print ("Machine " ++ (atos me) ++ " GCing bc " ++ (itos msg_id)) );
+                              ($[lbl]_machvar_gc_ids.erase r);
+                              ($[lbl]_machvar.insert_with {key:msg_id, value: $[lbl]_machvar_default}
+                                                          (\_ -> \_ -> {key: msg_id, value: $[lbl]_machvar_default}))
+                            )
+                       else ( // ( print ("Machine " ++ (atos me) ++ " GC request bc " ++ (itos msg_id) ++ " " ++ (itos r.value)) );
+                              $[lbl]_machvar_gc_ids.upsert_with r
+                                 (\_ -> {key: r.key, value: r.value - 1})
+                                 (\_ -> {key: r.key, value: r.value - 1}) )
+                )
+            )
+            else ( error (print ("Invalid bc gc id " ++ (itos msg_id))) )
+          )
+        }
+
+  ((\?x -> ?b) @:Shuffle)
+     => (\$#[x] -> $.[b])
+     +> { trigger $[lbl]_peerproxy : int = \msg_id -> (
+            // ( print ("Peer " ++ (atos me) ++ " proxying shf " ++ (itos msg_id)) );
+            let oentry = {key: msg_id, value: $[lbl]_machvar_peer_default} in
+            if $[lbl]_machvar.member oentry
+            then ( $[lbl]_machvar.lookup_with oentry
+                      (\r -> (
+                        ( let ientry = {key: me, value: $[lbl]_machvar_default} in
+                          if r.value.member ientry
+                          then ( r.value.lookup_with ientry (\v -> (\$#[x] -> $.[b]) v.value) )
+                          else () );
+                          // else ( error (print ("Invalid shf inner peer message " ++ (itos msg_id) ++ " at " ++ (atos me))) ) );
+
+                        // ( print ("Peer " ++ (atos me) ++ " responding to GC shf " ++ (itos msg_id)) );
+                        ( let aentry = {key:me, value:me} in
+                          if $[masters_map].member aentry
+                          then ( $[masters_map].lookup_with aentry (\ms -> ($[lbl]_machvar_gc, ms.value) <- msg_id) )
+                          else ( error (print ("Invalid shf peer master at " ++ (atos me))) ) )
+                      ))
+                  )
+            else ( error (print ("Invalid shf outer peer message " ++ (itos msg_id) ++ " at " ++ (atos me))) )
+          )
+        }
+
+  ( ignore ?e ) @: SendShuffleNoDecl
+     => $.[e].iterate (\v -> ($[lbl]_machproxy, v.key) <- v.value)
+     +> {}
+
+  ( ignore ?e ) @: SendShuffle
+     => $.[e].iterate (\v -> ($[lbl]_machproxy, v.key) <- v.value)
+     +> {
+          @:Pinned
+          declare $[lbl]_machvar : collection {key: int, value: collection {key: address, value: $[send_ty]} @Map} @Map
+
+          @:Pinned
+          declare $[lbl]_machvar_initialized : mut bool = false
+
+          @:Pinned
+          declare $[lbl]_machvar_gc_ids : collection {key: int, value: int} @Map
+
+          // @:Pinned
+          // TODO: pinning this causes a code generator bug.
+          declare $[lbl]_machvar_cnt : mut int = 0
+
+          @:Pinned
+          declare $[lbl]_machvar_peer_default : collection {key: address, value: $[send_ty]} @Map
+
+          @:Pinned
+          declare $[lbl]_machvar_default : $[send_ty]
+
+          trigger $[lbl]_machproxy : collection {key: address, value: $[send_ty]} @Map = \m -> (
+            ( if $[lbl]_machvar_initialized then () else (
+                ( (range ($[masters_map].size())).iterate (\i ->
+                    $[lbl]_machvar.insert {key: i.i, value: $[lbl]_machvar_peer_default} )
+                );
+                $[lbl]_machvar_initialized = true
+              )
+            );
+            // ( print ("Machine " ++ (atos me) ++ " proxying shf " ++ (itos $[lbl]_machvar_cnt)) );
+            ( $[lbl]_machvar.insert_with {key: $[lbl]_machvar_cnt, value: m}
+                                         (\_ -> \_ -> {key: $[lbl]_machvar_cnt, value: m})
+            );
+
+            ( $[lbl]_machvar_gc_ids.insert {key: $[lbl]_machvar_cnt, value: local_peers.size()} );
+            ( local_peers.iterate (\a ->
+              (// ( print ("Machine " ++ (atos me) ++ " proxying shf " ++ (itos $[lbl]_machvar_cnt) ++ " to peer " ++ (atos a.addr)) );
+               ($[lbl]_peerproxy, a.addr) <- $[lbl]_machvar_cnt)) );
+            $[lbl]_machvar_cnt = $[lbl]_machvar_cnt + 1
+          )
+
+          // For simplicity, garbage collection in bulk across all peers, rather than per-peer.
+          trigger $[lbl]_machvar_gc : int = \msg_id -> (
+            let gcentry = {key: msg_id, value: 0} in
+            if $[lbl]_machvar_gc_ids.member gcentry then
+            ( $[lbl]_machvar_gc_ids.lookup_with gcentry
+                (\r -> if r.value == 1
+                       then ( // ( print ("Machine " ++ (atos me) ++ " GCing shf " ++ (itos msg_id)) );
+                              ($[lbl]_machvar_gc_ids.erase r);
+                              ($[lbl]_machvar.insert_with {key:msg_id, value: $[lbl]_machvar_peer_default}
+                                                          (\_ -> \_ -> {key: msg_id, value: $[lbl]_machvar_peer_default}))
+
+                            )
+                       else ( // ( print ("Machine " ++ (atos me) ++ " GC request shf " ++ (itos msg_id) ++ " " ++ (itos r.value)) );
+                              $[lbl]_machvar_gc_ids.upsert_with r
+                                (\_ -> {key: r.key, value: r.value - 1})
+                                (\_ -> {key: r.key, value: r.value - 1}) )
+                )
+            )
+            else ( error (print ("Invalid shf gc id " ++ (itos msg_id))) )
+          )
+        }
+}
+
+control BroadcastByMachine[lbl : label, dest_trg : expr, masters : expr, masters_map : expr
+                         , send_ty : type, send_extra_fn : expr]
+{
+  ( ignore (?e : collection ?t) ) @:Send
+    => (( ignore $.[e] ) @: SendBroadcast
+       ) @DispatchByMachine( lbl = lbl, dest_trg = dest_trg
+                           , masters = masters, masters_map = masters_map
+                           , send_ty = send_ty, send_extra_fn = send_extra_fn )
+
+    +> {}
+
+  () @:Send
+    => ( ( ignore () ) @: SendBroadcast
+       ) @DispatchByMachine( lbl = lbl, dest_trg = dest_trg
+                           , masters = masters, masters_map = masters_map
+                           , send_ty = send_ty, send_extra_fn = send_extra_fn )
+
+    +> {}
+
+  ( (\?x -> ?b) @:Receive )
+     => ( (\$#[x] -> $.[b]) @:Broadcast
+        ) @DispatchByMachine( lbl = lbl, dest_trg = dest_trg
+                            , masters = masters, masters_map = masters_map
+                            , send_ty = send_ty, send_extra_fn = send_extra_fn )
+}
+
+// Partition a collection into a triply-nested map (machine address => peer address => data)
+// for sending as a batched shuffle.
+control PartitionByKeyMachine[masters_map : expr, nodes : expr] {
+  ( ((?e.groupBy ?groupF ?aggF ?z).fold @:Accumulate) ?accumulate (?zacc : collection ?zacct @Map)
+  ) : collection ?t @Map
+      => $.[e].fold
+            (\acc3 -> \v ->
+              let k  = $.[groupF] v in
+              let k2 = $[nodes].at_with (index_by_hash k) (\a -> a.addr)
+              in
+              let k3 = case $[masters_map].lookup {key: k2, value: me}
+                       of { Some mstr -> mstr.value }
+                          { None -> ((error (print ("No machine master found for " ++ (atos k2)))); me) }
+              in
+              let z1 = empty $::[t] @Map in
+              let z2 = empty {key: address, value: collection $::[t] @Map} @Map in
+
+              ((acc3.upsert_with {key: k3, value: z2}
+                  (\_ -> let nz1 = z1 in
+                         let nz2 = z2 in
+                         ((nz1.insert {key: k,  value: (($.[aggF] $.[z]) v)});
+                          (nz2.insert {key: k2, value: nz1});
+                          {key: k3, value: nz2})
+                  )
+                  (\acc2 -> ((acc2.value.upsert_with {key: k2, value: z1}
+                                (\_ -> let nz1 = z1 in
+                                       ((nz1.insert {key: k, value: (($.[aggF] $.[z]) v)});
+                                        {key: k2, value: nz1})
+                                )
+                                (\acc -> ((acc.value.upsert_with {key:k, value: $.[z]}
+                                             (\_   -> {key: k, value: (($.[aggF] $.[z]) v)})
+                                             (\old -> {key: k, value: (($.[aggF] old.value) v)}));
+                                          acc)
+                                ));
+                              acc2)
+                  ));
+                acc3)
+            )
+            (empty {key: address, value: collection {key: address, value: collection $::[t] @Map} @Map} @Map)
+
+  ?e : collection ?t @Map
+      => ((( ($.[e].groupBy @:HGroupBy) (\v -> $[nodes].at_with (index_by_hash k) (\a -> a.addr))
+                                        (\acc -> \v -> ((acc.insert v); acc))
+                                        (empty $::[t] @Map) )
+                   .groupBy @:HGroupBy) (\v -> case $[masters_map].lookup {key: v.key, value: me}
+                                               of { Some mstr -> mstr.value }
+                                                  { None -> ((error (print ("No machine master found for " ++ (atos v.key)))); me) }
+                                        )
+                                        (\acc -> \v -> ((acc.insert v); acc))
+                                        (empty {key: address, value: collection $::[t] @Map} @Map))
+
+  ?e : collection ?t
+      => (($.[e].groupBy (\v -> $[nodes].at_with (index_by_hash v.key) (\a -> a.addr))
+                         (\acc -> \v -> ((acc.insert v); acc))
+                         (empty $::[t] @Collection))
+                .groupBy (\v -> case $[masters_map].lookup {key: v.key, value: me}
+                                of { Some mstr -> mstr.value }
+                                   { None -> ((error (print ("No machine master found for " ++ (atos v.key)))); me) }
+                         )
+                         (\acc -> \v -> ((acc.insert v); acc))
+                         (empty {key: address, value: collection $::[t] @Collection} @Collection))
+}
+
+control ShuffleByMachine[ lbl : label, punclbl : label
+                        , dest_trg : expr, barrier_trg : expr
+                        , nodes : expr, masters : expr, masters_map : expr
+                        , send_ty : type, send_extra_fn : expr ]
+{
+  ( ignore (?e : collection ?t) ) @:Send
+    => (( ((ignore ( $.[e] @PartitionByKeyMachine( masters_map = masters_map, nodes = nodes )
+                   )
+          ) @:SendShuffle
+          ) @DispatchByMachine(
+                lbl = lbl, dest_trg = dest_trg, masters = masters, masters_map = masters_map
+              , send_ty = send_ty, send_extra_fn = send_extra_fn)
+          );
+          (( ignore () ) @:SendBroadcast
+          ) @DispatchByMachine(
+                lbl = punclbl, dest_trg = barrier_trg, masters = masters, masters_map = masters_map
+              , send_ty = [: ()], send_extra_fn = [$ \x -> x ])
+       )
+    +> {}
+
+  ( ignore (?e : collection ?t) ) @:SendNoDecl
+    => (( ((ignore ( $.[e] @PartitionByKeyMachine( masters_map = masters_map, nodes = nodes )
+                   )
+          ) @:SendShuffleNoDecl
+          ) @DispatchByMachine(
+                lbl = lbl, dest_trg = dest_trg, masters = masters, masters_map = masters_map
+              , send_ty = send_ty, send_extra_fn = send_extra_fn)
+          );
+          (( ignore () ) @:SendBroadcast
+          ) @DispatchByMachine(
+                lbl = punclbl, dest_trg = barrier_trg, masters = masters, masters_map = masters_map
+              , send_ty = [: ()], send_extra_fn = [$ \x -> x ])
+       )
+    +> {}
+
+  ( (\?x -> ?b) @:Receive )
+    => ( (\$#[x] -> $.[b]) @:Shuffle
+       )  @DispatchByMachine( lbl = lbl, dest_trg = dest_trg, masters = masters, masters_map = masters_map
+                            , send_ty = send_ty, send_extra_fn = send_extra_fn )
+    +> {}
+
+  ( (\?x -> ?b) @:BarrierReceive )
+    => ( (\$#[x] -> $.[b]) @:Broadcast
+       )  @DispatchByMachine( lbl = punclbl, dest_trg = barrier_trg, masters = masters, masters_map = masters_map
+                            , send_ty = [: ()], send_extra_fn = [$ \x -> x ] )
+    +> {}
+
+}

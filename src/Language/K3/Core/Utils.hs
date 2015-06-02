@@ -1,7 +1,11 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 
 {-|
   Contains utilities for manipulating the core K3 data structures.
@@ -63,8 +67,10 @@ module Language.K3.Core.Utils
 
 , compareDAST
 , compareEAST
+, compareTAST
 , compareDStrictAST
 , compareEStrictAST
+, compareTStrictAST
 
 , stripDeclAnnotations
 , stripNamedDeclAnnotations
@@ -763,11 +769,17 @@ compareDAST d1 d2 = stripAllDeclAnnotations d1 == stripAllDeclAnnotations d2
 compareEAST :: K3 Expression -> K3 Expression -> Bool
 compareEAST e1 e2 = stripAllExprAnnotations e1 == stripAllExprAnnotations e2
 
+compareTAST :: K3 Type -> K3 Type -> Bool
+compareTAST t1 t2 = stripAllTypeAnnotations t1 == stripAllTypeAnnotations t2
+
 compareDStrictAST :: K3 Declaration -> K3 Declaration -> Bool
 compareDStrictAST d1 d2 = stripDCompare d1 == stripDCompare d2
 
 compareEStrictAST :: K3 Expression -> K3 Expression -> Bool
 compareEStrictAST e1 e2 = stripECompare e1 == stripECompare e2
+
+compareTStrictAST :: K3 Type -> K3 Type -> Bool
+compareTStrictAST t1 t2 = stripTCompare t1 == stripTCompare t2
 
 
 {- Annotation cleaning -}
@@ -847,13 +859,18 @@ stripAllTypeAnnotations = stripTypeAnnotations (const True)
 
 {- Annotation removal -}
 stripDCompare :: K3 Declaration -> K3 Declaration
-stripDCompare = stripDeclAnnotations cleanDecl cleanExpr isTAnnotation
+stripDCompare = stripDeclAnnotations cleanDecl cleanExpr cleanType
   where cleanDecl a = not $ isDUserProperty a
         cleanExpr a = not (isEQualified a || isEUserProperty a || isEAnnotation a)
+        cleanType a = not (isTAnnotation a || isTUserProperty a)
 
 stripECompare :: K3 Expression -> K3 Expression
-stripECompare = stripExprAnnotations cleanExpr isTAnnotation
+stripECompare = stripExprAnnotations cleanExpr cleanType
   where cleanExpr a = not (isEQualified a || isEUserProperty a || isEAnnotation a)
+        cleanType a = not (isTAnnotation a || isTUserProperty a)
+
+stripTCompare :: K3 Type -> K3 Type
+stripTCompare = stripTypeAnnotations (not . isTAnnotation)
 
 stripComments :: K3 Declaration -> K3 Declaration
 stripComments = stripDeclAnnotations isDSyntax isESyntax (const False)
@@ -875,15 +892,15 @@ stripDeclTypeAnns i = stripNamedDeclAnnotations i (const False) isAnyETypeAnn (c
 
 -- | Strip all inferred properties from a program
 stripProperties :: K3 Declaration -> K3 Declaration
-stripProperties = stripDeclAnnotations isDInferredProperty isEInferredProperty (const False)
+stripProperties = stripDeclAnnotations isDInferredProperty isEInferredProperty isTInferredProperty
 
 -- | Strip all inferred properties from a specific declaration
 stripDeclProperties :: Identifier -> K3 Declaration -> K3 Declaration
-stripDeclProperties i = stripNamedDeclAnnotations i isDInferredProperty isEInferredProperty (const False)
+stripDeclProperties i = stripNamedDeclAnnotations i isDInferredProperty isEInferredProperty isTInferredProperty
 
 -- | Removes all properties from a program.
 stripAllProperties :: K3 Declaration -> K3 Declaration
-stripAllProperties = stripDeclAnnotations isDProperty isEProperty (const False)
+stripAllProperties = stripDeclAnnotations isDProperty isEProperty isTProperty
 
 -- | Strip all inferred effect annotations from a program
 stripEffectAnns :: K3 Declaration -> K3 Declaration
@@ -921,16 +938,27 @@ repairProgram repairMsg nextUIDOpt p =
     let nextUID = maybe (let UID maxUID = maxProgramUID p in maxUID + 1) id nextUIDOpt
     in runIdentity $ foldProgram repairDecl repairMem repairExpr (Just repairType) nextUID p
 
-  where repairDecl uid n = validateD uid (children n) n
+  where
+        repairDecl :: Int -> K3 Declaration -> Identity (Int, K3 Declaration)
+        repairDecl uid n = validateD uid (children n) n
+
+        repairExpr :: Int -> K3 Expression -> Identity (Int, K3 Expression)
         repairExpr uid n = foldRebuildTree validateE uid n
+
+        repairType :: Int -> K3 Type -> Identity (Int, K3 Type)
         repairType uid n = foldRebuildTree validateT uid n
 
         repairMem uid (Lifted      pol n t eOpt anns) = rebuildMem uid anns $ Lifted      pol n (repairTQualifier t) eOpt
         repairMem uid (Attribute   pol n t eOpt anns) = rebuildMem uid anns $ Attribute   pol n (repairTQualifier t) eOpt
         repairMem uid (MAnnotation pol n anns)        = rebuildMem uid anns $ MAnnotation pol n
 
+        validateD :: Int -> [K3 Declaration] -> K3 Declaration -> Identity (Int, K3 Declaration)
         validateD uid ch n = ensureUIDSpan uid DUID isDUID DSpan isDSpan ch n >>= return . second repairDQualifier
+
+        validateE :: Int -> [K3 Expression] -> K3 Expression -> Identity (Int, K3 Expression)
         validateE uid ch n = ensureUIDSpan uid EUID isEUID ESpan isESpan ch n >>= return . second repairEQualifier
+
+        validateT :: Int -> [K3 Type] -> K3 Type -> Identity (Int, K3 Type)
         validateT uid ch n = ensureUIDSpan uid TUID isTUID TSpan isTSpan ch n >>= return . second repairTQualifier
 
         repairDQualifier d = case tag d of
@@ -938,6 +966,7 @@ repairProgram repairMsg nextUIDOpt p =
           DTrigger n t e    -> replaceTag d (DTrigger n (repairTQualifier t) e)
           _ -> d
 
+        repairEQualifier :: K3 Expression -> K3 Expression
         repairEQualifier n = case tnc n of
           (EConstant (CEmpty t), _) -> let nt = runIdentity $ modifyTree (return . repairTQualifier) t
                                        in replaceTag n $ EConstant $ CEmpty nt
@@ -972,7 +1001,10 @@ repairProgram repairMsg nextUIDOpt p =
         ensureUIDSpan uid uCtor uT sCtor sT ch (Node tg _) =
           return $ ensureUID uid uCtor uT $ snd $ ensureSpan sCtor sT $ Node tg ch
 
+        ensureSpan :: (Eq (Annotation a)) => (Span -> Annotation a) -> (Annotation a -> Bool) -> K3 a -> ((), K3 a)
         ensureSpan    ctor t n = addAnn () () (ctor $ GeneratedSpan repairMsg) t n
+
+        ensureUID :: (Eq (Annotation a)) => Int -> (UID -> Annotation a) -> (Annotation a -> Bool) -> (K3 a) -> (Int, K3 a)
         ensureUID uid ctor t n = addAnn (uid+1) uid (ctor $ UID uid) t n
 
         addAnn rUsed rNotUsed a t n = maybe (rUsed, n @+ a) (const (rNotUsed, n)) (n @~ t)
