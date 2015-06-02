@@ -70,7 +70,7 @@ def run_compile_k3(bin_file, k3_path, k3_cpp_path, script_path)
 
   # change the cpp file to use the dynamic path
   s = File.read(k3_cpp_path)
-  s.sub!(/"switch", "[^"]+", "psv"/, "switch\", switch_path, \"psv\"")
+  s.sub!(/"switch", "[^"]+", "psv"/, '"switch", switch_path, "psv"')
   File.write(k3_cpp_path, s)
 
   stage "Compiling k3 cpp file"
