@@ -65,8 +65,8 @@ end
 
 def run_create_k3(k3_path, k3_cpp_path, script_path)
   stage "Creating K3 cpp file"
-  compile_brew = File.join(script_path, "..", "run", "compile_brew.sh")
-  run("#{compile_brew} --fstage cexclude=Optimize -1 #{k3_path}")
+  compile = File.join(script_path, "..", "run", "compile.sh")
+  run("#{compile} --fstage cexclude=Optimize -1 #{k3_path}")
 
   # change the cpp file to use the dynamic path
   s = File.read(k3_cpp_path)
@@ -76,7 +76,9 @@ end
 
 def run_compile_k3(bin_file, k3_path, root_path, script_path)
   stage "Compiling k3 cpp file"
-  run("#{compile_brew} -2 #{k3_path}")
+  brew = $options[:osx_brew] ? "_brew" : ""
+  compile = File.join(script_path, "..", "run", "compile#{brew}.sh")
+  run("#{compile} -2 #{k3_path}")
 
   bin_src_file = File.join(root_path, "__build", "A")
 
@@ -243,6 +245,7 @@ def main()
     opts.on("--debug", "Debug mode") { $options[:debug] = true }
     opts.on("-s", "--switches [NUM]", Integer, "Set the number of switches") { |i| $options[:num_switches] = i }
     opts.on("-n", "--nodes [NUM]", Integer, "Set the number of nodes") { |i| $options[:num_nodes] = i }
+    opts.on("--brew", "Use homebrew (OSX)") { $options[:osx_brew] = true }
     # stages
     opts.on("-a", "--all", "All stages") {
       $options[:dbtoaster]  = true
