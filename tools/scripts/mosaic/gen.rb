@@ -84,8 +84,8 @@ def run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
 
   puts "Generating mesos yaml file"
   cmd = ""
-  if $options[:num_switches] then cmd << "--switches " << $options[:num_switches].to_s
-  if $options[:num_nodes]    then cmd << "--nodes "    << $options[:num_nodes].to_s
+  if $options[:num_switches] then cmd << "--switches " << $options[:num_switches].to_s end
+  if $options[:num_nodes]    then cmd << "--nodes "    << $options[:num_nodes].to_s end
   yaml = run("#{File.join(script_path, "gen_yaml.py")} --dist #{cmd}")
   File.write(role_file, yaml)
 
@@ -225,15 +225,14 @@ def main()
   $options[:deploy_k3]  = false
   $options[:compare]    = false
 
-  usage = "Usage: #{$PROGRAM_NAME} sql_file $options]"
-
-  OptionParser.new do |opts|
+  usage = "Usage: #{$PROGRAM_NAME} sql_file options"
+  parser = OptionParser.new do |opts|
     opts.banner = usage
     opts.on("-d", "--dbtdata [PATH]", String, "Set the path of the dbt data file") { |s| $options[:dbt_data_path] = s }
     opts.on("-k", "--k3data [PATH]", String, "Set the path of the k3 data file") { |s| $options[:k3_data_path] = s }
     opts.on("--debug", "Debug mode") { $options[:debug] = true }
-    opts.on("-s", "--switches [NUM]", Int, "Set the number of switches") { |i| $options[:num_switches] = i }
-    opts.on("-n", "--nodes [NUM]", Int, "Set the number of nodes") { |i| $options[:num_nodes] = i }
+    opts.on("-s", "--switches [NUM]", Integer, "Set the number of switches") { |i| $options[:num_switches] = i }
+    opts.on("-n", "--nodes [NUM]", Integer, "Set the number of nodes") { |i| $options[:num_nodes] = i }
     # stages
     opts.on("-a", "--all", "All stages") {
       $options[:dbtoaster]  = true
@@ -247,13 +246,14 @@ def main()
     opts.on("-3", "--compile",   "Compile stage")    { $options[:compile_k3] = true }
     opts.on("-4", "--deploy",    "Deploy stage")     { $options[:deploy_k3]  = true }
     opts.on("-5", "--compare",   "Compare stage")    { $options[:compare]    = true }
-  end.parse!
+  end
+  parser.parse!
 
   # get directory of script
   script_path = File.expand_path(File.dirname(__FILE__))
 
   unless ARGV.size == 1
-    puts usage
+    puts parser.help
     exit
   end
 
