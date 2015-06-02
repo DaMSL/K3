@@ -121,7 +121,8 @@ def run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
   # loop until we get a result
   while status != "FINISHED" && status != "KILLED"
     sleep(4)
-    status = get_status(jobid, deploy_server)
+    status, res = get_status(jobid, deploy_server)
+    puts status
   end
   if status == "KILLED"
     stage "Mesos job has been killed"
