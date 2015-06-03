@@ -94,7 +94,7 @@ def gen_yaml(role_file, script_path)
   cmd = ""
   if $options[:num_switches] then cmd << "--switches "  << $options[:num_switches].to_s end
   if $options[:num_nodes]    then cmd << "--nodes "     << $options[:num_nodes].to_s end
-  if $options[:k3_data_path] then cmd << "--file_path " << $options[:k3_data_path] end
+  if $options[:k3_data_path] then cmd << "--file "      << $options[:k3_data_path] end
   if !$options[:local]       then cmd << "--dist " end
   yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
   File.write(role_file, yaml)
@@ -172,7 +172,9 @@ def run_deploy_k3_local(bin_file, nice_name, script_path)
   gen_yaml(role_file, script_path)
 
   stage "Running K3 executable locally"
-  run("#{bin_file} -p #{role_file} --json --json_final_only")
+  `rm -rf json`
+  `mkdir json`
+  run("./#{bin_file} -p #{role_file} --json json --json_final_only")
 end
 
 # Parsing stage
@@ -204,48 +206,49 @@ def parse_dbt_results(dbt_name)
   return dbt_results
 end
 
-def parse_k3_results(dbt_results)
+def parse_k3_results(script_path, dbt_results)
+  stage "Parsing K3 results"
   files = []
   Dir.entries("json").each do |f|
-    if f =~ /.*Globals.dsv/ then files << f end
+    if f =~ /.*Globals.dsv/ then files << File.join("json", f) end
   end
 
+  # Run script to convert json format
+  run("#{File.join(script_path, "clean_json.py")} #{files.join(" ")}")
+
   # We assume only final state data
-  stage "Processing final map data"
   combined_maps = {}
-  files.each do |f|
-    str = File.read(f)
-    str.each_line do |line|
-      csv = CSV.parse(line)
-      map_name = csv[2]
-      map_data = csv[3]
-      unless dbt_results.has_key? map_name then next end
-      map_data_j = JSON.parse(map_data)
-      max_map = {}
-      # check if we're dealing with simple values
-      if map_data_j[0].size > 2
-        map_data_j.each do |v|
-          key = v[1..-2]
-          max_vid, _ = max_map[key]
-          if !max_vid || ((v[0] <=> max_vid) == 1)
-            max_map[key] = [v[0], v[-1]]
-          end
+  str = File.read('globals.dsv')
+  str.each_line do |line|
+    csv = line.split('|')
+    map_name = csv[2]
+    map_data = csv[3]
+    unless dbt_results.has_key? map_name then next end
+    map_data_j = JSON.parse(map_data)
+    max_map = {}
+    # check if we're dealing with simple values
+    if map_data_j[0].size > 2
+      map_data_j.each do |v|
+        key = v[1..-2]
+        max_vid, _ = max_map[key]
+        if !max_vid || ((v[0] <=> max_vid) == 1)
+          max_map[key] = [v[0], v[-1]]
         end
-        # add the max map to the combined maps
-        max_map.each_pair do |key,value|
-          combined_maps[map_name][key] = value[1]
-        end
-      else # simple data type
-        max_vid  = nil
-        max_data = nil
-        map_data_j.each do |v|
-          if !max_vid || ((v[0] <=> max_vid) == 1)
-            max_vid  = v[0]
-            max_data = v[1]
-          end
-        end
-        combined_maps[map_name] = max_data unless !max_vid
       end
+      # add the max map to the combined maps
+      max_map.each_pair do |key,value|
+        combined_maps[map_name][key] = value[1]
+      end
+    else # simple data type
+      max_vid  = nil
+      max_data = nil
+      map_data_j.each do |v|
+        if !max_vid || ((v[0] <=> max_vid) == 1)
+          max_vid  = v[0]
+          max_data = v[1]
+        end
+      end
+      combined_maps[map_name] = max_data unless !max_vid
     end
   end
   return combined_maps
@@ -393,7 +396,7 @@ def main()
 
   if $options[:compare]
     dbt_results = parse_dbt_results(dbt_name)
-    k3_results  = parse_k3_results(dbt_results)
+    k3_results  = parse_k3_results(script_path, dbt_results)
     run_compare(dbt_results, k3_results)
   end
 end
