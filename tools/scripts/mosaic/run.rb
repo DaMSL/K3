@@ -248,12 +248,6 @@ end
 
 def main()
   $options = {}
-  $options[:dbtoaster]  = false
-  $options[:mosaic]     = false
-  $options[:create_k3]  = false
-  $options[:compile_k3] = false
-  $options[:deploy_k3]  = false
-  $options[:compare]    = false
 
   usage = "Usage: #{$PROGRAM_NAME} sql_file options"
   parser = OptionParser.new do |opts|
@@ -265,6 +259,7 @@ def main()
     opts.on("-n", "--nodes [NUM]", Integer, "Set the number of nodes") { |i| $options[:num_nodes] = i }
     opts.on("--brew", "Use homebrew (OSX)") { $options[:osx_brew] = true }
     opts.on("--local", "Run locally") { $options[:local] = true }
+    opts.on("-j", "--json [JSON]", String, "JSON file to load options") {|s| $options[:json_file] = s}
 
     # stages
     opts.on("-a", "--all", "All stages") {
@@ -295,7 +290,17 @@ def main()
   elsif $options.has_key?(:k3_data_path) && !$options.has_key?(:dbt_data_path)
     $options[:dbt_data_path] = $options[:k3_data_path]
   end
-  
+
+  # handle json options
+  if $option.has_key?(:json_file)
+    options = JSON.parse($options[:json_file])
+    options.each_pair do |k,v|
+      unless $options.has_key?(k)
+        $options[k] = v
+      end
+    end
+  end
+
   # get directory of script
   script_path = File.expand_path(File.dirname(__FILE__))
 
@@ -306,7 +311,7 @@ def main()
   basename    = File.basename(source, ext)
   lastpath    = File.split(File.split(source)[0])[1]
   source_path = File.expand_path(source)
-  root_path   = File.join(script_path, "..", "..", "..", "..")
+  root_path   = File.join(script_path, "..", "..", "..")
   mosaic_path = File.join(root_path, "K3-Mosaic")
 
   start_path = File.expand_path(Dir.pwd)
