@@ -92,8 +92,9 @@ end
 def gen_yaml(role_file, script_path)
   # Genereate yaml file"
   cmd = ""
-  if $options[:num_switches] then cmd << "--switches " << $options[:num_switches].to_s end
-  if $options[:num_nodes]    then cmd << "--nodes "    << $options[:num_nodes].to_s end
+  if $options[:num_switches] then cmd << "--switches "  << $options[:num_switches].to_s end
+  if $options[:num_nodes]    then cmd << "--nodes "     << $options[:num_nodes].to_s end
+  if $options[:k3_data_path] then cmd << "--file_path " << $options[:k3_data_path] end
   if !$options[:local]       then cmd << "--dist " end
   yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
   File.write(role_file, yaml)
@@ -152,7 +153,7 @@ def run_deploy_k3_local(bin_file, nice_name, script_path)
   gen_yaml(role_file, script_path)
 
   stage "Running K3 executable locally"
-  run("bin_file -p #{role_file} --json --json_final_only")
+  run("#{bin_file} -p #{role_file} --json --json_final_only")
 end
 
 # Parsing stage
@@ -292,7 +293,7 @@ def main()
   end
 
   # handle json options
-  if $option.has_key?(:json_file)
+  if $options.has_key?(:json_file)
     options = JSON.parse($options[:json_file])
     options.each_pair do |k,v|
       unless $options.has_key?(k)
