@@ -177,6 +177,17 @@ def run_deploy_k3_local(bin_file, nice_name, script_path)
   run("./#{bin_file} -p #{role_file} --json json --json_final_only")
 end
 
+# convert a string to the narrowest value
+def str_to_val(s)
+  case s
+    when /^\d+$/     then s.to_i
+    when /^\d+\.\d*/ then s.to_f
+    when /^true$/    then true
+    when /^false$/   then false
+    else s
+  end
+end
+
 # Parsing stage
 
 def parse_dbt_results(dbt_name)
@@ -187,21 +198,20 @@ def parse_dbt_results(dbt_name)
 
   r = REXML::Document.new(dbt_xml_out)
   dbt_results = {}
-  res2 = []
   r.elements['boost_serialization/snap'].each do |result|
     # complex results
     if result.has_elements?
       result.each do |item|
         res = []
         if item.name == 'item'
-          item.each { |e| res << e.text }
+          item.each { |e| res << str_to_val(e.text) }
         end
       end
       if res.size > 0 then dbt_results[result.name] = res end
-    else # simple result
-      res2 << result.text
+    # simple result
+    else
+      dbt_results[result.name] = str_to_val(result.text)
     end
-    if res2.size > 0 then dbt_results[result.name] = res2 end
   end
   return dbt_results
 end
@@ -225,6 +235,8 @@ def parse_k3_results(script_path, dbt_results)
     map_data = csv[3]
     unless dbt_results.has_key? map_name then next end
     map_data_j = JSON.parse(map_data)
+
+    # frontier operation
     max_map = {}
     # check if we're dealing with simple values
     if map_data_j[0].size > 2
@@ -237,7 +249,11 @@ def parse_k3_results(script_path, dbt_results)
       end
       # add the max map to the combined maps
       max_map.each_pair do |key,value|
-        combined_maps[map_name][key] = value[1]
+        if combined_maps[map_name].has_key?(key)
+          combined_maps[map_name][key] += value[1]
+        else
+          combined_maps[map_name][key] = value[1]
+        end
       end
     else # simple data type
       max_vid  = nil
@@ -248,9 +264,16 @@ def parse_k3_results(script_path, dbt_results)
           max_data = v[1]
         end
       end
-      combined_maps[map_name] = max_data unless !max_vid
+      unless !max_vid
+        if combined_maps.has_key?(map_name)
+          combined_maps[map_name] += max_data
+        else
+          combined_maps[map_name] = max_data
+        end
+      end
     end
   end
+  puts "combined: #{combined_maps}"
   return combined_maps
 end
 
@@ -259,8 +282,10 @@ def run_compare(dbt_results, k3_results)
   dbt_results.each_pair do |k,v1|
     v2 = k3_results[k]
     if !v2 then puts "Mismatch at key #{k}: missing k3 value"; exit 1; end
-    v1.sort!
-    v2.sort!
+    if v1.respond_to?(:sort!) && v2.respond_to?(:sort!)
+      v1.sort!
+      v2.sort!
+    end
     if (v1 <=> v2) != 0
       puts "Mismatch at key #{k}\nv1:#{v1}\nv2:#{v2}"
       exit 1
