@@ -100,38 +100,57 @@ def gen_yaml(role_file, script_path)
   File.write(role_file, yaml)
 end
 
+# handle all curl requests through here
+def curl(server, url, args:{}, file:"", post:false, json:false, getfile:false)
+  cmd = ""
+  cmd << if getfile then '-O ' else '-i ' end
+  if post then cmd << '-X POST ' end
+  if json then cmd << '-H "Accept: application/json" ' end
+  if file != "" then cmd << "-F \"file=@#{file}\" " end
+  args.each_pair { |k,v| cmd << "-F \"#{k}=#{v}\" " }
+
+  run("curl http://#{server}#{url} #{cmd}")
+end
+
 def run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
   role_file = nice_name + ".yaml"
 
   stage "Sending binary to mesos"
-  run("curl -i -X POST -H \"Accept: application/json\" -F \"file=@#{bin_file}\" -F \"jsonfinal=yes\" http://#{deploy_server}/apps")
+  curl(deploy_server, '/apps', file:bin_file, post:true, json:true)
 
   # Genereate mesos yaml file"
   gen_yaml(role_file, script_path)
 
   stage "Creating new mesos job"
-  res = run("curl -i -X POST -H \"Accept: application/json\" -F \"file=@#{role_file}\" http://#{deploy_server}/jobs/#{bin_file}")
+  res = curl(deploy_server, "/jobs/#{bin_file}", json:true, post:true, file:role_file, args:{'jsonfinal' => 'yes'})
   i = res =~ /{/
   if i then res = res[i..-1] end
 
   stage "Parsing mesos returned jobId"
   jobid = JSON::parse(res)['jobId']
 
-  # Function to get job status
-  def get_status(jobid, deploy_server)
-    res = run("curl -i http://#{deploy_server}/job/#{jobid}")
-    if res =~ /Job # \d+ (\w+)/ then [$1, res]
-    else ["FAILED", res] end
+  begin
+    # Function to get job status
+    def get_status(jobid, deploy_server)
+      res = curl(deploy_server, "/job/#{jobid}")
+      if res =~ /Job # \d+ (\w+)/ then [$1, res]
+      else ["FAILED", res] end
+    end
+
+    stage "Waiting for Mesos job to finish..."
+    status, res = get_status(jobid, deploy_server)
+    # loop until we get a result
+    while status != "FINISHED" && status != "KILLED"
+      sleep(4)
+      status, res = get_status(jobid, deploy_server)
+      puts status
+    end
+  rescue StandardError => _
+    # kill job in case we Ctrl-C out
+    curl(deploy_server, "/jobs/#{job_id}/kill", json:true)
+    exit! 1
   end
 
-  stage "Waiting for Mesos job to finish..."
-  status, res = get_status(jobid, deploy_server)
-  # loop until we get a result
-  while status != "FINISHED" && status != "KILLED"
-    sleep(4)
-    status, res = get_status(jobid, deploy_server)
-    puts status
-  end
   if status == "KILLED"
     stage "Mesos job has been killed"
     exit(1)
@@ -142,7 +161,7 @@ def run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
   file_paths = res.scan(/<a href="([^"]+)">#{bin_file}[^.]+.tar/)
   file_paths.for_each do |path|
     filename = File.split(path)[1]
-    res = run("curl -O http://#{deploy_server}#{path}/")
+    curl(deploy_server, path + "/", getfile:true)
     run("tar xvzf #{filename}")
   end
 end
