@@ -64,7 +64,7 @@ def create_dist_file(num_switches, num_nodes, file_path):
                     'peers':1,
                     'hostmask':addr,
                     'privileged':False,
-                    'volumes':{'host':'/local', 'container':'/local'},
+                    'volumes':[{'host':'/local', 'container':'/local'}],
                     'k3_globals':k3_globals
                    }]
     # dump out

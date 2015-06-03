@@ -126,7 +126,7 @@ def run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
   i = res =~ /{/
   if i then res = res[i..-1] end
 
-  stage "Parsing mesos returned jobId"
+  stage "Parsing mesos-returned job id"
   jobid = JSON::parse(res)['jobId']
 
   begin
@@ -303,6 +303,7 @@ def main()
     opts.on("-d", "--dbtdata [PATH]", String, "Set the path of the dbt data file") { |s| $options[:dbt_data_path] = s }
     opts.on("-k", "--k3data [PATH]", String, "Set the path of the k3 data file") { |s| $options[:k3_data_path] = s }
     opts.on("--debug", "Debug mode") { $options[:debug] = true }
+    opts.on("--json_debug", "Debug queries that won't die") { $options[:json_debug] = true }
     opts.on("-s", "--switches [NUM]", Integer, "Set the number of switches") { |i| $options[:num_switches] = i }
     opts.on("-n", "--nodes [NUM]", Integer, "Set the number of nodes") { |i| $options[:num_nodes] = i }
     opts.on("--brew", "Use homebrew (OSX)") { $options[:osx_brew] = true }
@@ -351,7 +352,6 @@ def main()
 
   # get directory of script
   script_path = File.expand_path(File.dirname(__FILE__))
-
 
   # split path components
   source      = ARGV[0]
