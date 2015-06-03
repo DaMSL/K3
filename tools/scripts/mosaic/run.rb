@@ -140,20 +140,25 @@ def run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
     stage "Waiting for Mesos job to finish..."
     status, res = get_status(jobid, deploy_server)
     # loop until we get a result
-    while status != "FINISHED" && status != "KILLED"
+    while status != "FINISHED" && status != "KILLED" && status != "FAILED"
       sleep(4)
       status, res = get_status(jobid, deploy_server)
       puts status
     end
   rescue StandardError => _
     # kill job in case we Ctrl-C out
+    stage "Killing Mesos job"
     curl(deploy_server, "/jobs/#{job_id}/kill", json:true)
     exit! 1
   end
 
-  if status == "KILLED"
-    stage "Mesos job has been killed"
-    exit(1)
+  case status
+    when "KILLED"
+      stage "Mesos job has been killed"; exit(1)
+    when "FAILED"
+      stage "Mesos job has failed"; exit(1)
+    when "FINISHED"
+      stage "Mesos job succeeded"; exit(1)
   end
 
   stage "Getting result data"

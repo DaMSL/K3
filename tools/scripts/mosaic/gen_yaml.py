@@ -2,6 +2,7 @@
 #
 # Create a yaml file for running a mosaic file
 # Note: *requires pyyaml*
+import os
 import argparse
 import yaml
 
@@ -48,11 +49,12 @@ def create_nodes():
 
 def create_dist_file(num_switches, num_nodes, file_path):
     # for now, each peer is on a different node
+    basen, ext = os.path.splitext(file_path)
     nodes = create_nodes()
     peers = []
     peers += [('Master', 'master', nodes.pop(0), None)]
     peers += [('Timer',  'timer',  nodes.pop(0), None)]
-    peers += [('Switch' + str(i), 'switch', nodes.pop(0), file_path + str(i)) for i in range(1, num_switches+1)]
+    peers += [('Switch' + str(i), 'switch', nodes.pop(0), basen + str(i) + ext) for i in range(1, num_switches+1)]
     peers += [('Node'   + str(i), 'node',   nodes.pop(0), None) for i in range(1, num_nodes+1)]
     peers2 = []
     for (name, role, addr, path) in peers:
