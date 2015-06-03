@@ -49,9 +49,6 @@ import Language.K3.Utils.Logger
 type EndpointInfo      = (EndpointSpec, Maybe [Identifier], Identifier, Maybe (K3 Expression))
 type EndpointsBQG      = [(Identifier, EndpointInfo)]
 
--- | Role name, default name
-type DefaultEntries    = [(Identifier, Identifier)]
-
 {-| Type alias support.
     This is a framed environment, with frames managed based on type variable scopes.
     The outer key is the alias identifier, while the inner key is the frame level.
@@ -65,7 +62,7 @@ data TypeAliasEnv = TypeAliasEnv Int TAEnv
     This includes two scoped frames, one for source metadata, and another as a
     list of K3 program entry points as role-qualified sources that can be consumed.
 -}
-type EnvFrame     = (EndpointsBQG, DefaultEntries)
+type EnvFrame     = EndpointsBQG
 type ParserEnv    = [EnvFrame]
 
 {-| Parsing mode, including pattern and splice modes as well as the default K3.
@@ -393,17 +390,9 @@ parseInMode mode p = parserWithPMode $ \curPMode -> do
 
 {- Parser environment accessors  -}
 
-{- Note: unused
-sourceState :: EnvFrame -> EndpointsBQG
-sourceState = fst
-
-defaultEntries :: EnvFrame -> DefaultEntries
-defaultEntries = snd
--}
-
 sourceBindings :: EndpointsBQG -> [(Identifier, Identifier)]
 sourceBindings s = concatMap extractBindings s
-  where extractBindings (x,(_,Just b,_,_))  = map ((,) x) b
+  where extractBindings (x,(_,Just b,_,_))  = map (x,) b
         extractBindings (_,(_,Nothing,_,_)) = []
 
 qualifiedSources :: EndpointsBQG -> [Identifier]
@@ -412,7 +401,7 @@ qualifiedSources s = concatMap (qualifiedSourceName . snd) s
         qualifiedSourceName (_, Nothing, _, _) = []
 
 addFrame :: ParserEnv -> ParserEnv
-addFrame env = ([],[]):env
+addFrame env = []:env
 
 removeFrame :: ParserEnv -> ParserEnv
 removeFrame = tail
@@ -421,9 +410,14 @@ currentFrame :: ParserEnv -> EnvFrame
 currentFrame = head
 
 safePopFrame :: ParserEnv -> (EnvFrame, ParserEnv)
-safePopFrame [] = (([],[]),[])
+safePopFrame [] = ([],[])
 safePopFrame (h:t) = (h,t)
 
+pushFrame :: K3Parser ()
+pushFrame = modifyEnv_ addFrame
+
+popFrame :: K3Parser EnvFrame
+popFrame = modifyEnv $ \env -> (removeFrame env, currentFrame env)
 
 {- Type alias enviroment helpers -}
 lookupTAliasE :: Identifier -> TypeAliasEnv -> Maybe (K3 Type)

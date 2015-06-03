@@ -35,9 +35,7 @@ import Control.Arrow
 import Control.Monad
 
 import Data.Function
-import Data.List
 import Data.Maybe
-import Data.Traversable hiding ( mapM )
 import Data.Tree
 
 import Debug.Trace
@@ -127,7 +125,7 @@ parseK3 noFeed includePaths s = do
 -- TODO: inline testing
 program :: Bool -> DeclParser
 program noDriver = DSpan <-> (rule >>= selfContainedProgram)
-  where rule = (DC.role defaultRoleName) . concat <$> (spaces *> endBy1 (roleBody noDriver "") eof)
+  where rule = (DC.role defaultRoleName) . concat <$> (spaces *> endBy1 (roleBody noDriver) eof)
 
         selfContainedProgram d =
           if noDriver then return d
@@ -138,17 +136,17 @@ program noDriver = DSpan <-> (rule >>= selfContainedProgram)
               withBuilderDecls $ \decls -> Node (tag d :@: annotations d) (children d ++ decls)
           | otherwise = return d
 
-        mkEntryPoints d = withEnv $ (uncurry $ processInitsAndRoles d) . fst . safePopFrame
+        mkEntryPoints d = withEnv $ processInitsAndRoles d . fst . safePopFrame
         mkBuiltins = ensureUIDs . declareBuiltins
 
 
-roleBody :: Bool -> Identifier -> K3Parser [K3 Declaration]
-roleBody noDriver n =
-    pushBindings >> rule >>= popBindings
-      >>= \df -> if noDriver then return $ fst df else postProcessRole n df
+roleBody :: Bool -> K3Parser [K3 Declaration]
+roleBody noDriver = do
+    pushFrame
+    decls <- rule
+    frame <- popFrame
+    if noDriver then return decls else postProcessRole decls frame
   where rule = some declaration >>= return . concat
-        pushBindings = modifyEnv_ addFrame
-        popBindings dl = modifyEnv (\env -> (removeFrame env, (dl, currentFrame env)))
 
 
 {- Declarations -}
@@ -157,12 +155,12 @@ declaration = (//) attachComment <$> comment False <*>
               choice [ignores >> return [], k3Decls, edgeDecls, driverDecls >> return []]
 
   where k3Decls     = choice $ map normalizeDeclAsList
-                        [Right dGlobal, Right dTrigger, Right dRole,
+                        [Right dGlobal, Right dTrigger,
                          Right dDataAnnotation, Right dControlAnnotation,
                          Left dTypeAlias]
 
         edgeDecls   = mapM ((DUID #) . return) =<< choice [dSource, dSink]
-        driverDecls = choice [dSelector, dFeed]
+        driverDecls = dFeed
         ignores     = pInclude >> return ()
 
         props    p = DUID # withProperties "" True dProperties p
@@ -198,14 +196,12 @@ dEndpoint kind name isSource =
   where rule x      = ruleError =<< (x <*> (colon *> typeExpr) <*> (symbol "=" *> (endpoint isSource)))
         ruleError x = either unexpected pure x
 
-        (typeCstr, stateModifier) =
-          (if isSource then TC.source else TC.sink, trackEndpoint)
-
         mkEndpoint n t endpointCstr = either Left (Right . mkDecls n t) $ endpointCstr n t
+        mkEndpointT t = qualifyT $ if isSource then TC.source t else TC.sink t
 
-        mkDecls n t (spec, eOpt, subDecls) = do
-          epDecl <- stateModifier spec $ DC.endpoint n (qualifyT $ typeCstr t) eOpt []
-          return $ epDecl:subDecls
+        mkDecls n t (spec, eOpt, subdecls) = do
+          epDecl <- trackEndpoint spec $ DC.endpoint n (mkEndpointT t) eOpt []
+          return $ epDecl:subdecls
 
         qualifyT t = if null $ filter isTQualified $ annotations t then t @+ TImmutable else t
 
@@ -224,13 +220,6 @@ dFeed = track $ mkFeed <$> (feedSym *> identifier) <*> bidirectional <*> identif
         bidirectional       = choice [symbol "|>" >> return True, symbol "<|" >> return False]
         mkFeed id1 lSrc id2 = if lSrc then (id1, id2) else (id2, id1)
         track p             = (trackBindings =<<) $ declError "feed" $ p
-
-dRole :: DeclParser
-dRole = chainedNamedBraceDecl n n (roleBody False) DC.role
-  where n = "role"
-
-dSelector :: K3Parser ()
-dSelector = namedIdentifier "selector" "default" (id <$>) >>= trackDefault
 
 -- | Data annotation parsing.
 --   This covers metaprogramming for data annotations when an annotation defines splice parameters.
@@ -1044,19 +1033,19 @@ value = mkValueStream <$> (symbol "value" *> expr)
 builtin :: Bool -> K3Parser EndpointBuilder
 builtin isSource = mkBuiltin <$> builtinChannels <*> format
   where mkBuiltin idE formatE n t =
-          builtinSpec idE formatE >>= \s -> return $ endpointMethods isSource s idE formatE n t
+          builtinSpec idE formatE >>= \s -> return $ endpointMethods isSource s n t
         builtinSpec idE formatE = BuiltinEP <$> S.symbolS idE <*> S.symbolS formatE
 
 file :: Bool -> K3Parser EndpointBuilder
 file isSource = mkFile <$> (symbol "file" *> eCString) <*> format
   where mkFile argE formatE n t =
-          fileSpec argE formatE >>= \s -> return $ endpointMethods isSource s argE formatE n t
+          fileSpec argE formatE >>= \s -> return $ endpointMethods isSource s n t
         fileSpec argE formatE = FileEP <$> S.exprS argE <*> S.symbolS formatE
 
 network :: Bool -> K3Parser EndpointBuilder
 network isSource = mkNetwork <$> (symbol "network" *> eAddress) <*> format
   where mkNetwork addrE formatE n t =
-          networkSpec addrE formatE >>= \s -> return $ endpointMethods isSource s addrE formatE n t
+          networkSpec addrE formatE >>= \s -> return $ endpointMethods isSource s n t
         networkSpec addrE formatE = NetworkEP <$> S.exprS addrE <*> S.symbolS formatE
 
 builtinChannels :: ExpressionParser
@@ -1097,9 +1086,9 @@ chainedNamedBraceDecl k n namedRule cstr =
 --   A parsing error is raised on an attempt to bind to anything other than a source.
 trackBindings :: (Identifier, Identifier) -> K3Parser ()
 trackBindings (src, dest) = modifyEnvF_ $ updateBindings
-  where updateBindings (safePopFrame -> ((s,d), env)) =
+  where updateBindings (safePopFrame -> (s, env)) =
           case lookup src s of
-            Just (es, Just b, q, g) -> Right $ (replaceAssoc s src (es, Just (dest:b), q, g), d):env
+            Just (es, Just b, q, g) -> Right $ (replaceAssoc s src (es, Just (dest:b), q, g)):env
             Just (_, Nothing, _, _) -> Left  $ "Invalid binding for endpoint " ++ src
             Nothing                 -> Left  $ "Invalid binding, no source " ++ src
 
@@ -1107,36 +1096,29 @@ trackBindings (src, dest) = modifyEnvF_ $ updateBindings
 -- | Records endpoint identifiers and initializer expressions in a K3 parsing environment
 trackEndpoint :: EndpointSpec -> K3 Declaration -> DeclParser
 trackEndpoint eSpec d
-  | DGlobal n t eOpt <- tag d, TSource <- tag t = track True n eOpt >> return d
-  | DGlobal n t eOpt <- tag d, TSink <- tag t   = track False n eOpt >> return d
+  | DGlobal n t eOpt <- tag d, TSource <- tag t = track True  n eOpt >> return d
+  | DGlobal n t eOpt <- tag d, TSink   <- tag t = track False n eOpt >> return d
   | otherwise = return d
 
   where
     track isSource n eOpt = modifyEnvF_ $ addEndpointGoExpr isSource n eOpt
 
-    addEndpointGoExpr isSource n eOpt (safePopFrame -> ((fs,fd), env)) =
+    addEndpointGoExpr isSource n eOpt (safePopFrame -> (fs, env)) =
       case (eOpt, isSource) of
-        (Just _, True)   -> Right $ refresh n fs fd env (Just [], n, Nothing)
-        (Nothing, True)  -> Right $ refresh n fs fd env (Just [], n, Just $ mkRunSourceE n)
-        (Just _, False)  -> Right $ refresh n fs fd env (Nothing, n, Just $ mkRunSinkE n)
+        (Just _, True)   -> Right $ refresh n fs env (Just [], n, Nothing)
+        (Nothing, True)  -> Right $ refresh n fs env (Just [], n, Just $ mkRunSourceE n)
+        (Just _, False)  -> Right $ refresh n fs env (Nothing, n, Just $ mkRunSinkE n)
         (_,_)            -> Left  $ "Invalid endpoint initializer"
 
-    refresh n fs fd env (a,b,c) = (replaceAssoc fs n (eSpec, a, b, c), fd):env
-
-
--- | Records defaults in a K3 parsing environment
-trackDefault :: Identifier -> K3Parser ()
-trackDefault n = modifyEnv_ $ updateState
-  where updateState (safePopFrame -> ((s,d), env)) = (s,replaceAssoc d "" n):env
+    refresh n fs env (a,b,c) = (replaceAssoc fs n (eSpec, a, b, c)):env
 
 
 -- | Completes any stateful processing needed for the role.
 --   This includes handling 'feed' clauses, and checking and qualifying role defaults.
-postProcessRole :: Identifier -> ([K3 Declaration], EnvFrame) -> K3Parser [K3 Declaration]
-postProcessRole n (dl, frame) =
-  modifyEnvF_ (ensureQualified frame) >> processEndpoints frame
+postProcessRole :: [K3 Declaration] -> EnvFrame -> K3Parser [K3 Declaration]
+postProcessRole decls frame = processEndpoints frame
 
-  where processEndpoints (s,_) = addBuilderDecls $ map (annotateEndpoint s . attachSource s) dl
+  where processEndpoints s = addBuilderDecls $ map (annotateEndpoint s . attachSource s) decls
 
         addBuilderDecls dAndExtras =
           let (ndl, extrasl) = unzip dAndExtras
@@ -1148,27 +1130,9 @@ postProcessRole n (dl, frame) =
           | DGlobal en t _ <- tag d, TSink   <- tag t = (maybe d (d @+) $ syntaxAnnotation en s, extraDecls)
           | otherwise = (d, extraDecls)
 
-        syntaxAnnotation en s =
-          lookup en s
-            >>= (\(enSpec,bindingsOpt,_,_) -> return (enSpec, maybe [] id bindingsOpt))
-            >>= return . DSyntax . uncurry EndpointDeclaration
-
-        ensureQualified poppedFrame (safePopFrame -> (frame', env)) =
-          case validateDefaults poppedFrame of
-            (_, [])     -> Right $ (qualifyRole' poppedFrame frame'):env
-            (_, failed) -> Left  $ "Invalid defaults\n" ++ qualifyError poppedFrame failed
-
-        validateDefaults (s,d)     = partition ((flip elem $ qualifiedSources s) . snd) d
-        qualifyRole' (s,d) (s2,d2) = (map qualifySource s ++ s2, qualifyDefaults d ++ d2)
-
-        qualifySource (eid, (es, Just b, q, g)) = (eid, (es, Just b, prefix' "." n q, g))
-        qualifySource x = x
-
-        qualifyDefaults = map $ uncurry $ flip (,) . prefix' "." n
-
-        qualifyError frame' failed = "Frame: " ++ show frame' ++ "\nFailed: " ++ show failed
-
-        prefix' sep x z = if x == "" then z else x ++ sep ++ z
+        syntaxAnnotation en s = do
+          (enSpec,bindingsOpt,_,_) <- lookup en s
+          return . DSyntax . EndpointDeclaration enSpec $ maybe [] id bindingsOpt
 
 
 -- | Adds UIDs to nodes that do not already have one.
