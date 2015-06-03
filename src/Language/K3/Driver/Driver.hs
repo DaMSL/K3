@@ -253,6 +253,7 @@ initialize opts = liftIO $ do
 
   putStrLn $ "Mode: "      ++ pretty (mode opts)
   putStrLn $ "Verbosity: " ++ show (verbosity $ inform opts)
+  putStrLn $ "Logging:   " ++ show (logging $ inform opts)
   putStrLn $ "Input: "     ++ show (input opts)
 
   void $ mapM_ configureByInstruction $ logging $ inform opts
