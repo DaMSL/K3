@@ -92,7 +92,7 @@ def run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
   role_file = nice_name + ".yaml"
 
   stage "Sending binary to mesos"
-  run("curl -i -X POST -H \"Accept: application/json\" -F \"file=@#{bin_file}\" http://#{deploy_server}/apps")
+  run("curl -i -X POST -H \"Accept: application/json\" -F \"file=@#{bin_file}\" -F \"jsonfinal=yes\" http://#{deploy_server}/apps")
 
   # Genereate mesos yaml file"
   cmd = ""
