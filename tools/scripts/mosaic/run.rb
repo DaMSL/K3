@@ -158,7 +158,7 @@ def run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
     when "FAILED"
       stage "Mesos job has failed"; exit(1)
     when "FINISHED"
-      stage "Mesos job succeeded"; exit(1)
+      stage "Mesos job succeeded"
   end
 
   stage "Getting result data"
