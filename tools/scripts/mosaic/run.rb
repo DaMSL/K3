@@ -92,9 +92,9 @@ end
 def gen_yaml(role_file, script_path)
   # Genereate yaml file"
   cmd = ""
-  if $options[:num_switches] then cmd << "--switches "  << $options[:num_switches].to_s end
-  if $options[:num_nodes]    then cmd << "--nodes "     << $options[:num_nodes].to_s end
-  if $options[:k3_data_path] then cmd << "--file "      << $options[:k3_data_path] end
+  if $options[:num_switches] then cmd << "--switches "  << $options[:num_switches].to_s << " " end
+  if $options[:num_nodes]    then cmd << "--nodes "     << $options[:num_nodes].to_s << " " end
+  if $options[:k3_data_path] then cmd << "--file "      << $options[:k3_data_path] << " " end
   if !$options[:local]       then cmd << "--dist " end
   yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
   File.write(role_file, yaml)
