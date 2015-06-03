@@ -179,13 +179,10 @@ def static_file(path):
     return returnError("File not found: %s" % path, 404)
   if os.path.isdir(local):
     contents = os.listdir(local)
-    print contents
     for i, f in enumerate(contents):
       if os.path.isdir(f):
         contents[i] += '/'
-    print contents
 
-    # TODO:  dittinguish dirs from files
     if request.headers['Accept'] == 'application/json':
       return jsonify(dict(cwd=local, contents=contents)), 200
     else:
@@ -194,10 +191,14 @@ def static_file(path):
   else:
     if 'stdout' in local or local.endswith('.txt') or local.endswith('.yaml'):
       with open(local, 'r') as file:
-        output = file.read()
-      return (output, 200 if request.headers['Accept'] == 'application/json'
-        else render_template("output.html", output=output))
-    return send_from_directory(webapp.config['DIR'], path)
+         output = unicode(file.read(), errors='ignore')
+         if request.headers['Accept'] == 'application/json':
+             return output, 200
+         else:
+             return render_template("output.html", output=output)
+    else:
+         return send_from_directory(webapp.config['DIR'], path)
+
 
 
 
@@ -357,6 +358,8 @@ def create_job(appName, appUID):
         file = request.files['file']
         text = request.form['text'] if 'text' in request.form else None
         logging = request.form['logging'] if 'logging' in request.form else False
+        jsonlog = request.form['jsonlog'] if 'jsonlog' in request.form else False
+        jsonfinal = request.form['jsonfinal'] if 'jsonfinal' in request.form else False
         stdout = request.form['stdout'] if 'stdout' in request.form else False
         user = request.form['user'] if 'user' in request.form else 'anonymous'
         tag = request.form['tag'] if 'tag' in request.form else ''
@@ -393,7 +396,7 @@ def create_job(appName, appUID):
         apploc = webapp.config['ADDR']+os.path.join(webapp.config['UPLOADED_APPS_URL'], appName, appUID, appName)
 
         newJob = Job(binary=apploc, appName=appName, jobId=jobId,
-                     rolefile=os.path.join(path, filename), logging=logging)
+                     rolefile=os.path.join(path, filename), logging=logging, jsonlog=jsonlog, jsonfinal=jsonfinal)
 
         # Submit to Mesos
         dispatcher.submit(newJob)
