@@ -123,7 +123,7 @@ inline std::string addressAsString(const Address& addr) {
   return addr.toString();
 }
 
-enum class CodecFormat { BoostBinary, CSV };
+enum class CodecFormat { BoostBinary, CSV, YASBinary };
 
 class EndOfProgramException : public std::runtime_error {
  public:

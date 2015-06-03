@@ -38,7 +38,7 @@ class ProgramContext : public StandardBuiltins,
   static map<TriggerID, string> __trigger_names_;
 
  protected:
-  CodecFormat __internal_format_ = CodecFormat::BoostBinary;
+  CodecFormat __internal_format_ = CodecFormat::YASBinary;
   Engine& __engine_;
 };
 

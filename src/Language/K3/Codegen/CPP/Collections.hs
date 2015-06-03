@@ -100,7 +100,7 @@ composite name ans = do
              (Just $ R.Named $ R.Name "void")
              [] False $ serializeStatements asYas)
 
-    let methods = [defaultConstructor, superConstructor, superMoveConstructor, serializeFn False] ++ indexDefns
+    let methods = [defaultConstructor, superConstructor, superMoveConstructor, serializeFn False, serializeFn True] ++ indexDefns
 
     let collectionClassDefn = R.TemplateDefn [("__CONTENT", Nothing)]
              (R.ClassDefn (R.Name name) [] (map R.Named baseClasses) methods [] [])
@@ -316,17 +316,24 @@ record (sort -> ids) = do
                []
                []
            ]
+    let hashCombine x = R.Call (R.Variable $ R.Qualified (R.Name "boost") (R.Name "hash_combine")) [R.Variable $ R.Name "seed", x]
     let hashStructDefn
             = R.GuardedDefn ("K3_" ++ recordName ++ "_hash_value") $ R.TemplateDefn (zip templateVars (repeat Nothing)) $
-                R.FunctionDefn (R.Name "hash_value")
-                  [("r", R.Const $ R.Reference recordType)]
-                  (Just $ R.Named $ R.Qualified (R.Name "std") (R.Name "size_t"))
-                  [] False [ R.Forward $ R.ScalarDecl (R.Name "hasher")
-                             (R.Named $ R.Qualified (R.Name "boost")
-                              (R.Specialized [R.Tuple [R.Named $ R.Name t | t <- templateVars]]
-                                    (R.Name "hash"))) Nothing
-                           , R.Return $ R.Call (R.Variable $ R.Name "hasher") [tieOther "r"]
-                           ]
+                R.ClassDefn (R.Qualified (R.Name "std") (R.Name "hash")) [recordType] []
+                [
+                  R.FunctionDefn 
+                    (R.Name "operator()") 
+                    [("r", R.Const $ R.Reference recordType)]
+                    (Just $ R.Named $ R.Qualified (R.Name "std") (R.Name "size_t"))
+                    []
+                    True
+                    (    [R.Forward $ R.ScalarDecl (R.Name "seed") (R.Named $ R.Qualified (R.Name "std") (R.Name "size_t")) (Just $ R.Literal $ R.LInt 0)]
+                      ++ (map (R.Ignore . hashCombine) [R.Project (R.Variable $ R.Name "r") (R.Name i) | i <- ids])
+                      ++ [R.Return $ R.Variable $ R.Name "seed" ]
+                    )
+                ]
+                []
+                []
 
     let yamlStructDefn = R.NamespaceDefn "YAML"
                          [ R.TemplateDefn (zip templateVars (repeat Nothing)) $

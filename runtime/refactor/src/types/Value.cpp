@@ -61,6 +61,19 @@ size_t StringPackedValue::length() const {
   }
 }
 
+YASPackedValue::YASPackedValue(yas::shared_buffer b, CodecFormat format)
+    : PackedValue(format) {
+  buf_ = b;
+}
+
+const char* YASPackedValue::buf() const {
+  return buf_.data.get();
+}
+
+size_t YASPackedValue::length() const {
+  return buf_.size;
+}
+
 SentinelValue::SentinelValue() {}
 
 void SentinelValue::dispatchIntoContext(ProgramContext* pc, TriggerID trig) {

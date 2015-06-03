@@ -6,6 +6,8 @@
 #include <utility>
 #include <string>
 
+#include "yas/buffers.hpp"
+
 #include "Common.hpp"
 
 namespace K3 {
@@ -98,6 +100,19 @@ class StringPackedValue : public PackedValue {
  protected:
   std::unique_ptr<string> string_;
 };
+
+class YASPackedValue : public PackedValue {
+ public:
+  YASPackedValue(yas::shared_buffer b, CodecFormat format);
+  CodecFormat format() const;
+  virtual const char* buf() const;
+  virtual size_t length() const;
+
+ protected:
+  yas::shared_buffer buf_;
+};
+
+
 
 // Sentinel value throws EndofProgram exception
 // when converted to NativeValue

@@ -95,7 +95,7 @@ class base_string {
 
   template <class archive>
   void serialize(archive& a) const {
-    std::size_t len = length();
+    uint64_t len = length();
     a& len;
     if (buffer_) {
       a.write(buffer_, len);
@@ -104,7 +104,7 @@ class base_string {
 
   template <class archive>
   void serialize(archive& a) {
-    std::size_t len;
+    uint64_t len;
     a& len;
     if (buffer_) {
       delete[] buffer_;
@@ -188,5 +188,8 @@ struct convert<::K3::base_string> {
   }
 };
 }
+
+// Turn off class information tracking in boost serialization for base_strings.
+BOOST_CLASS_IMPLEMENTATION(K3::base_string, boost::serialization::object_serializable);
 
 #endif

@@ -19,7 +19,8 @@ NetworkManager::NetworkManager() {
   external_listeners_ = make_shared<ListenerMap>();
   internal_out_conns_ = make_shared<InternalConnectionMap>();
   external_out_conns_ = make_shared<ExternalConnectionMap>();
-  internal_format_ = CodecFormat::BoostBinary;
+  // TODO(jbw) how to keep in sync with program context?
+  internal_format_ = CodecFormat::YASBinary;
   running_ = true;
   addThread();
 }

@@ -1,16 +1,15 @@
 #ifndef K3_SET
 #define K3_SET
 
-#include <set>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "STLDataspace.hpp"
-
-// TODO(jbw) switch to unordered set
 
 namespace K3 {
 
 template <template <typename> class Derived, class Elem>
-using SetDS = STLDS<Derived, std::set, Elem>;
+using SetDS = STLDS<Derived, std::unordered_set, Elem>;
 
 template <class Elem>
 class Set {

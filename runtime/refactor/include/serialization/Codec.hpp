@@ -6,6 +6,14 @@
 #include <memory>
 #include <string>
 
+#include <yas/mem_streams.hpp>
+#include <yas/binary_iarchive.hpp>
+#include <yas/binary_oarchive.hpp>
+#include <yas/text_iarchive.hpp>
+#include <yas/text_oarchive.hpp>
+#include <yas/serializers/std_types_serializers.hpp>
+#include <yas/serializers/boost_types_serializers.hpp>
+
 #include "Common.hpp"
 #include "Flat.hpp"
 #include "types/Value.hpp"
@@ -44,6 +52,30 @@ class BoostCodec : public Codec {
 };
 
 template <class T>
+class YASCodec : public Codec {
+ public:
+  virtual shared_ptr<PackedValue> pack(const NativeValue& nv) {
+    yas::mem_ostream os;
+    yas::binary_oarchive<yas::mem_ostream> oa(os);
+    oa & *nv.asConst<T>();
+    return make_shared<YASPackedValue>(os.get_shared_buffer(), format_);
+  }
+
+  virtual shared_ptr<NativeValue> unpack(const PackedValue& pv) {
+    yas::mem_istream is(pv.buf(), pv.length());
+    yas::binary_iarchive<yas::mem_istream> ia(is);
+    T t;
+    ia & t;
+    return make_shared<TNativeValue<T>>(std::move(t));
+  }
+
+  virtual CodecFormat format() { return format_; }
+
+ protected:
+  CodecFormat format_ = CodecFormat::YASBinary;
+};
+
+template <class T>
 class CSVCodec : public Codec {
  public:
   virtual shared_ptr<PackedValue> pack(const NativeValue& nv) {
@@ -75,6 +107,8 @@ std::enable_if_t<!is_flat<T>::value, shared_ptr<Codec>> makeCSVCodec() {
 template <typename T>
 shared_ptr<Codec> Codec::getCodec(CodecFormat format) {
   switch (format) {
+    case CodecFormat::YASBinary:
+      return make_shared<YASCodec<T>>();
     case CodecFormat::BoostBinary:
       return make_shared<BoostCodec<T>>();
     case CodecFormat::CSV:

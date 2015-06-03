@@ -60,6 +60,50 @@ class EngineTest : public ::testing::Test {
   Address external_addr_;
 };
 
+TEST(BOOST, unorderedmap) {
+  std::unordered_map<int, int> m;
+  m[1] = 1;
+  m[2] = 2;
+  m[3] = 3;
+
+  auto cdec = Codec::getCodec<std::unordered_map<int,int>>(CodecFormat::BoostBinary);
+  auto packed = cdec->pack(*make_shared<TNativeValue<std::unordered_map<int, int>>>(std::move(m)));
+  auto unpacked = cdec->unpack(*packed);
+  auto m2 = *unpacked->as<std::unordered_map<int,int>>();
+  ASSERT_EQ(1, m2[1]);
+  ASSERT_EQ(2, m2[2]);
+  ASSERT_EQ(3, m2[3]);
+}
+
+TEST(BOOST, unorderedset) {
+  std::unordered_set<int> s;
+  s.insert(1);
+  s.insert(2);
+  s.insert(3);
+
+  auto cdec = Codec::getCodec<std::unordered_set<int>>(CodecFormat::BoostBinary);
+  auto packed = cdec->pack(*make_shared<TNativeValue<std::unordered_set< int>>>(std::move(s)));
+  auto unpacked = cdec->unpack(*packed);
+  auto s2 = *unpacked->as<std::unordered_set<int>>();
+
+  ASSERT_EQ(3, s2.size());
+  ASSERT_TRUE(s2.find(1) != s2.end());
+  ASSERT_TRUE(s2.find(2) != s2.end());
+  ASSERT_TRUE(s2.find(3) != s2.end());
+}
+
+TEST(YAS, One) {
+  auto cdec = Codec::getCodec<int>(CodecFormat::YASBinary);
+  auto packed = cdec->pack(*make_shared<TNativeValue<int>>(5));
+  auto unpacked = cdec->unpack(*packed);
+  ASSERT_EQ(*unpacked->as<int>(), 5);
+
+  auto cdec2 = Codec::getCodec<shared_ptr<int>>(CodecFormat::YASBinary);
+  auto packed2 = cdec2->pack(*make_shared<TNativeValue<shared_ptr<int>>>(make_shared<int>(5)));
+  auto unpacked2 = cdec2->unpack(*packed2);
+  ASSERT_EQ(*(*unpacked2->as<shared_ptr<int>>()), 5);
+}
+
 TEST(Flat, Primitives) {
   ASSERT_EQ(true, K3::is_flat<int>::value);
   ASSERT_EQ(true, K3::is_flat<double>::value);
@@ -147,7 +191,7 @@ TEST_F(EngineTest, NetworkSends) {
   auto dc2 = std::dynamic_pointer_cast<DummyContext>(peer2->getContext());
 
   for (int i = 0; i < 100; i++) {
-    shared_ptr<Codec> codec = Codec::getCodec<int>(CodecFormat::BoostBinary);
+    shared_ptr<Codec> codec = Codec::getCodec<int>(CodecFormat::YASBinary);
     if (i % 2 == 0) {
       MessageHeader h(addr2_, addr1_, 1);
       engine_.send(h, make_shared<TNativeValue<int>>(i), codec);

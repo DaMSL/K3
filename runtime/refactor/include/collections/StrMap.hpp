@@ -419,10 +419,10 @@ class StrMap {
   void serialize(archive& ar) const {
     map_str* m = get_map_str();
 
-    ar & m->value_size;
-    ar & m->size;
-    ar & m->capacity;
-    ar & m->deleted;
+    ar & static_cast<uint64_t>(m->value_size);
+    ar & static_cast<uint64_t>(m->size);
+    ar & static_cast<uint64_t>(m->capacity);
+    ar & static_cast<uint64_t>(m->deleted);
     ar & m->max_load_factor;
 
     for (auto o = map_str_begin(m); o < map_str_end(m);
@@ -434,17 +434,17 @@ class StrMap {
 
   template <class archive>
   void serialize(archive& ar) {
-    size_t value_size;
-    size_t container_size;
-    size_t capacity;
-    size_t deleted;
+    uint64_t value_size;
+    uint64_t container_size;
+    uint64_t capacity;
+    uint64_t deleted;
     double mlf;
-
-    ar& value_size;
-    ar& container_size;
-    ar& capacity;
-    ar& deleted;
-    ar& mlf;
+    
+    ar & value_size;
+    ar & container_size;
+    ar & capacity;
+    ar & deleted;
+    ar & mlf;
 
     if (container) {
       map_str_clear(get_map_str());
@@ -598,7 +598,6 @@ using StrMap = Libdynamic::StrMap<R>;
 #else
 
 namespace K3 {
-static_assert(false, "NO STRMAP");
 template <class R>
 using StrMap = Map<R>;
 }  // namespace K3

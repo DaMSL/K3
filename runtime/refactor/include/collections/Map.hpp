@@ -1,19 +1,17 @@
 #ifndef K3_MAP
 #define K3_MAP
 
-#include <map>
+#include <unordered_map>
 #include <tuple>
 
 #include "STLDataspace.hpp"
-
-// TODO(jbw) switch ot unoredered std::map (fix serialization and hash)
 
 namespace K3 {
 
 template <class R>
 class Map {
   using Key = typename R::KeyType;
-  using Container = std::map<Key, R>;
+  using Container = std::unordered_map<Key, R>;
 
  protected:
   Container container;
@@ -191,8 +189,7 @@ class Map {
                                          const Z& init) const {
     // Create a std::map to hold partial results
     typedef RT<F1, R> K;
-    // TODO(jbw) switch to unordered map
-    std::map<K, Z> accs;
+    std::unordered_map<K, Z> accs;
 
     for (const auto& it : container) {
       K key = grouper(it.second);
