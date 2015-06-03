@@ -21,7 +21,7 @@ def emit_yaml(col):
         if i < len(col) - 1:
             print "---"
 
-def create_file(num_switches, num_nodes):
+def create_file(num_switches, num_nodes, file_path):
     peers = []
     peers += [('master', 40000)]
     peers += [('timer',  40001)]
@@ -35,7 +35,7 @@ def create_file(num_switches, num_nodes):
     # convert to dictionaries
     peers2 = []
     for (role, port) in peers:
-        peers2 += [{'role':role, 'me':address(port), 'peers':create_peers(peers)}]
+        peers2 += [{'role':role, 'me':address(port), 'switch_path':file_path, 'peers':create_peers(peers)}]
 
     # dump out
     emit_yaml(peers2)
@@ -82,7 +82,7 @@ def main():
     if args.dist_mode:
         create_dist_file(args.num_switches, args.num_nodes, args.file_path)
     else:
-        create_file(args.num_switches, args.num_nodes)
+        create_file(args.num_switches, args.num_nodes, args.file_path)
 
 
 if __name__ == '__main__':

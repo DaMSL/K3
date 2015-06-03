@@ -64,18 +64,19 @@ def run_mosaic(k3_path, mosaic_path, source)
   run("#{File.join(mosaic_path, "tests", "auto_test.py")} --no-interp -d -f #{source}")
 end
 
-def run_create_k3(k3_path, k3_cpp_path, script_path)
+def run_create_k3(k3_path, script_path)
   stage "Creating K3 cpp file"
   compile = File.join(script_path, "..", "run", "compile.sh")
   run("#{compile} --fstage cexclude=Optimize -1 #{k3_path}")
+end
+
+def run_compile_k3(bin_file, k3_path, k3_cpp_path, root_path, script_path)
 
   # change the cpp file to use the dynamic path
   s = File.read(k3_cpp_path)
   s.sub!(/"switch", "[^"]+", "psv"/, '"switch", switch_path, "psv"')
   File.write(k3_cpp_path, s)
-end
 
-def run_compile_k3(bin_file, k3_path, root_path, script_path)
   stage "Compiling k3 cpp file"
   brew = $options[:osx_brew] ? "_brew" : ""
   compile = File.join(script_path, "..", "run", "compile#{brew}.sh")
@@ -88,6 +89,16 @@ end
 
 ### Deployment stage ###
 
+def gen_yaml(role_file, script_path)
+  # Genereate yaml file"
+  cmd = ""
+  if $options[:num_switches] then cmd << "--switches " << $options[:num_switches].to_s end
+  if $options[:num_nodes]    then cmd << "--nodes "    << $options[:num_nodes].to_s end
+  if !$options[:local]       then cmd << "--dist " end
+  yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
+  File.write(role_file, yaml)
+end
+
 def run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
   role_file = nice_name + ".yaml"
 
@@ -95,11 +106,7 @@ def run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
   run("curl -i -X POST -H \"Accept: application/json\" -F \"file=@#{bin_file}\" -F \"jsonfinal=yes\" http://#{deploy_server}/apps")
 
   # Genereate mesos yaml file"
-  cmd = ""
-  if $options[:num_switches] then cmd << "--switches " << $options[:num_switches].to_s end
-  if $options[:num_nodes]    then cmd << "--nodes "    << $options[:num_nodes].to_s end
-  yaml = run("#{File.join(script_path, "gen_yaml.py")} --dist #{cmd}")
-  File.write(role_file, yaml)
+  gen_yaml(role_file, script_path)
 
   stage "Creating new mesos job"
   res = run("curl -i -X POST -H \"Accept: application/json\" -F \"file=@#{role_file}\" http://#{deploy_server}/jobs/#{bin_file}")
@@ -137,6 +144,15 @@ def run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
     res = run("curl -O http://#{deploy_server}#{path}/")
     run("tar xvzf #{filename}")
   end
+end
+
+# local deployment
+def run_deploy_k3_local(bin_file, nice_name, script_path)
+  role_file = nice_name + "_local.yaml"
+  gen_yaml(role_file, script_path)
+
+  stage "Running K3 executable locally"
+  run("bin_file -p #{role_file} --json --json_final_only")
 end
 
 # Parsing stage
@@ -248,6 +264,8 @@ def main()
     opts.on("-s", "--switches [NUM]", Integer, "Set the number of switches") { |i| $options[:num_switches] = i }
     opts.on("-n", "--nodes [NUM]", Integer, "Set the number of nodes") { |i| $options[:num_nodes] = i }
     opts.on("--brew", "Use homebrew (OSX)") { $options[:osx_brew] = true }
+    opts.on("--local", "Run locally") { $options[:local] = true }
+
     # stages
     opts.on("-a", "--all", "All stages") {
       $options[:dbtoaster]  = true
@@ -266,13 +284,21 @@ def main()
   end
   parser.parse!
 
-  # get directory of script
-  script_path = File.expand_path(File.dirname(__FILE__))
-
   unless ARGV.size == 1
     puts parser.help
     exit
   end
+
+  # if only one data file, take that one
+  if $options.has_key?(:dbt_data_path) && !$options.has_key?(:k3_data_path)
+    $options[:k3_data_path] = $options[:dbt_data_path]
+  elsif $options.has_key?(:k3_data_path) && !$options.has_key?(:dbt_data_path)
+    $options[:dbt_data_path] = $options[:k3_data_path]
+  end
+  
+  # get directory of script
+  script_path = File.expand_path(File.dirname(__FILE__))
+
 
   # split path components
   source      = ARGV[0]
@@ -327,13 +353,17 @@ def main()
     run_mosaic(k3_path, mosaic_path, source)
   end
   if $options[:create_k3]
-    run_create_k3(k3_path, k3_cpp_path, script_path)
+    run_create_k3(k3_path, script_path)
   end
   if $options[:compile_k3]
-    run_compile_k3(bin_file, k3_path, root_path, script_path)
+    run_compile_k3(bin_file, k3_path, k3_cpp_path, root_path, script_path)
   end
   if $options[:deploy_k3]
-    run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
+    if $options[:local]
+      run_deploy_k3_local(bin_file, nice_name, script_path)
+    else
+      run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
+    end
   end
 
   if $options[:compare]
