@@ -70,7 +70,7 @@ def run_create_k3(k3_path, script_path)
   run("#{compile} --fstage cexclude=Optimize -1 #{k3_path}")
 end
 
-def run_compile_k3(bin_file, k3_path, k3_cpp_path, root_path, script_path)
+def run_compile_k3(bin_file, k3_path, k3_cpp_path, k3_root_path, script_path)
 
   # change the cpp file to use the dynamic path
   s = File.read(k3_cpp_path)
@@ -82,7 +82,7 @@ def run_compile_k3(bin_file, k3_path, k3_cpp_path, root_path, script_path)
   compile = File.join(script_path, "..", "run", "compile#{brew}.sh")
   run("#{compile} -2 #{k3_path}")
 
-  bin_src_file = File.join(root_path, "__build", "A")
+  bin_src_file = File.join(k3_root_path, "__build", "A")
 
   FileUtils.copy_file(bin_src_file, bin_file)
 end
@@ -359,13 +359,14 @@ def main()
   script_path = File.expand_path(File.dirname(__FILE__))
 
   # split path components
-  source      = ARGV[0]
-  ext         = File.extname(source)
-  basename    = File.basename(source, ext)
-  lastpath    = File.split(File.split(source)[0])[1]
-  source_path = File.expand_path(source)
-  root_path   = File.join(script_path, "..", "..", "..")
-  mosaic_path = File.join(root_path, "K3-Mosaic")
+  source       = ARGV[0]
+  ext          = File.extname(source)
+  basename     = File.basename(source, ext)
+  lastpath     = File.split(File.split(source)[0])[1]
+  source_path  = File.expand_path(source)
+  k3_root_path = File.join(script_path, "..", "..", "..")
+  common_path  = File.join(k3_root_path, "..")
+  mosaic_path  = File.join(common_path, "K3-Mosaic")
 
   start_path = File.expand_path(Dir.pwd)
 
@@ -414,7 +415,7 @@ def main()
     run_create_k3(k3_path, script_path)
   end
   if $options[:compile_k3]
-    run_compile_k3(bin_file, k3_path, k3_cpp_path, root_path, script_path)
+    run_compile_k3(bin_file, k3_path, k3_cpp_path, k3_root_path, script_path)
   end
   if $options[:deploy_k3]
     if $options[:local]
