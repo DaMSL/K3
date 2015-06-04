@@ -1,3 +1,4 @@
+
 # Ubuntu 14.04 LTS derivative
 FROM phusion/baseimage:0.9.13
 
@@ -62,14 +63,14 @@ RUN mkdir -p /software/boost-1.56 && \
     ./b2 -j 8 install threading=multi link=shared
 
 # Install GHC and cabal
+ENV PATH /opt/ghc/7.10.1/bin:/opt/cabal/1.22/bin:/opt/alex/3.1.4/bin:/opt/happy/1.19.5/bin:/root/.cabal/bin/:$PATH
+
 WORKDIR /
-RUN wget --no-verbose http://www.haskell.org/platform/download/2014.2.0.0/haskell-platform-2014.2.0.0-unknown-linux-x86_64.tar.gz && \
-    tar xvf haskell-platform-2014.2.0.0-unknown-linux-x86_64.tar.gz && \
-    /usr/local/haskell/ghc-7.8.3-x86_64/bin/activate-hs && \
+RUN add-apt-repository ppa:hvr/ghc && \
+    apt-get update && \
+    apt-get install -y ghc-7.10.1 alex-3.1.4 happy-1.19.5 cabal-install-1.22 && \
     cabal update && \
     cabal install cabal-install -j
-
-ENV PATH /root/.cabal/bin/:$PATH
 
 # Install libre2
 RUN add-apt-repository -y ppa:pi-rho/security && \
