@@ -67,7 +67,9 @@ end
 def run_create_k3(k3_path, script_path)
   stage "Creating K3 cpp file"
   compile = File.join(script_path, "..", "run", "compile.sh")
-  run("#{compile} --fstage cexclude=Optimize -1 #{k3_path}")
+  # for this branch only (for now)
+  run("#{compile} -1 #{k3_path}")
+  #run("#{compile} --fstage cexclude=Optimize -1 #{k3_path}")
 end
 
 def run_compile_k3(bin_file, k3_path, k3_cpp_path, k3_root_path, script_path)
