@@ -213,7 +213,7 @@ main = do
 
     let engineDecl = R.Forward $ R.ScalarDecl (R.Name "engine") (R.Named $ R.Name "Engine") Nothing
     let logLevel = R.Ignore $ R.Call
-                     (R.Project (R.Variable $ R.Name "engine") (R.Specialized [R.Named $ R.Name "__global_context"] (R.Name "setLogLevel"))) 
+                     (R.Project (R.Variable $ R.Name "engine") (R.Name "setLogLevel")) 
                      [ R.Project (R.Variable $ R.Name "opt") (R.Name "log_level_") ]
 
     let runProgram = R.Ignore $ R.Call

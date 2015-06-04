@@ -16,7 +16,9 @@ class StringBuiltins {
   string_impl tpch_date_to_string(const int& date);
   template <class S>
   S slice_string(const S& s, int x, int y);
+  int strcomp(const string_impl& s1, const string_impl& s2);
 };
+    
 
 template <class S>
 S StringBuiltins::slice_string(const S& s, int x, int y) {

@@ -68,7 +68,6 @@ startSource name = do
   let ret = R.Return $ R.Initialization (unit_t) []
   return $ [R.FunctionDefn (R.Name $ name ++ "Start") [("_", unit_t)] (Just $ unit_t) [] False [send, ret]]
 
--- TODO remove the original versions, move sink/source generators to new module?
 hasRead :: String -> CPPGenM [R.Definition]
 hasRead source  = do
     let s_has_r = R.Project (R.Dereference $ R.Variable $ R.Name "__storage_") (R.Name "hasRead")
@@ -94,6 +93,13 @@ doRead source typ = do
     return $ [R.FunctionDefn (R.Name $ source ++ "Read") [("_", unit_t)]
       (Just ret_type) [] False ([storage, packed_dec, codec, return_stmt])]
 
+hasWrite :: String -> CPPGenM [R.Definition]
+hasWrite sink  = do
+    let s_has_r = R.Project (R.Dereference $ R.Variable $ R.Name "__storage_") (R.Name "hasWrite")
+    let ret = R.Return $ R.Call s_has_r [R.Variable $ R.Name "me", R.Literal $ R.LString sink]
+    return $ [R.FunctionDefn (R.Name $ sink ++ "HasWrite") [("_", unit_t)]
+      (Just $ R.Primitive R.PBool) [] False [storage, ret]]
+
 doWrite :: R.Expression -> String -> K3 Type -> CPPGenM [R.Definition]
 doWrite fmt sink typ = do
     elem_type <- genCType $ typ
@@ -103,10 +109,10 @@ doWrite fmt sink typ = do
     let native = R.Call (R.Variable $ R.Specialized [elem_type] (R.Name "NativeValue")) [R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "move")) [R.Variable $ R.Name "arg"]]
     let packed = R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "__codec_") (R.Name "pack")) [native]
     let write = R.Ignore $ R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "__storage_") (R.Name "doWrite"))
-                               [R.Variable $ R.Name "me", packed]
+                               [R.Variable $ R.Name "me", R.Literal $ R.LString sink, packed]
     let return_stmt = R.Return $ R.Initialization unit_t []
     return $ [R.FunctionDefn (R.Name $ sink ++ "Write") [("arg", elem_type)]
-      (Just unit_t) [] False ([storage, write, return_stmt])]
+      (Just unit_t) [] False ([storage, codec, write, return_stmt])]
 
 controller :: String -> CPPGenM [R.Definition]
 controller name = do
@@ -142,8 +148,9 @@ endpoint n t isSrc spec@(FileEP _ _ _) = do
   let fmt = case spec of 
               (FileEP _ _ x) -> x
               _ -> error "Sink missing FileEP specification"
+  hasW  <- if not isSrc then hasWrite n else return []
   write <- if not isSrc then doWrite (R.Call (R.Variable $ R.Qualified (R.Name "Codec") (R.Name "getFormat")) [R.Literal $ R.LString fmt]) n t else return []
   -- Return
-  return $ init ++ start ++ hasR ++ doR ++ cont ++ write
+  return $ init ++ start ++ hasR ++ doR ++ cont ++ hasW ++ write
 endpoint _ _ _ (NetworkEP _ _ _) = error "Network sources/sinks not yet supported"
 

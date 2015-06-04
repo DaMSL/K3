@@ -7,14 +7,15 @@
 
 #include "Common.hpp"
 
+
 namespace std {
 // Address
 template <>
 struct hash<K3::Address> {
   size_t operator()(const K3::Address& addr) const {
     size_t seed = 0;
-    boost::hash_combine(seed, addr.ip);
-    boost::hash_combine(seed, addr.port);
+    hash_combine(seed, addr.ip);
+    hash_combine(seed, addr.port);
     return seed;
   }
 };
@@ -25,7 +26,7 @@ struct hash<K3::base_string> {
   size_t operator()(const K3::base_string& s) const {
     std::size_t seed = 0;
     for (int i = 0; i < s.length(); i++) {
-      boost::hash_combine(seed, s.c_str()[i]);
+      hash_combine(seed, s.c_str()[i]);
     }
     return seed;
   }
@@ -39,13 +40,13 @@ typename std::enable_if<(n >= sizeof...(T))>::type hash_tuple(
 template <size_t n, typename... T>
 typename std::enable_if<(n < sizeof...(T))>::type hash_tuple(
     size_t& seed, const std::tuple<T...>& tup) {
-  boost::hash_combine(seed, get<n>(tup));
+  hash_combine(seed, get<n>(tup));
   hash_tuple<n + 1>(seed, tup);
 }
 
 template <typename... T>
 struct hash<tuple<T...>> {
-  size_t operator()(const tuple<T...>& tup) {
+  size_t operator()(const tuple<T...>& tup) const {
     size_t seed = 0;
     hash_tuple<0>(seed, tup);
     return seed;

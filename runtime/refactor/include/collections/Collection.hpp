@@ -32,10 +32,10 @@ class Collection : public VectorDS<K3::Collection, Elem> {
     return f(Super::getConstContainer()[i]);
   }
 
-  // template<class Archive>
-  // void serialize(Archive &ar) {
-  //  ar & yas::base_object<VectorDS<K3::Collection, Elem>>(*this);
-  //}
+  template<class Archive>
+  void serialize(Archive &ar) {
+   ar & yas::base_object<VectorDS<K3::Collection, Elem>>(*this);
+  }
 
   template <class Archive>
   void serialize(Archive& ar, const unsigned int) {

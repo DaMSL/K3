@@ -16,6 +16,7 @@
 #include "boost/thread/externally_locked.hpp"
 #include "boost/thread/lockable_adapter.hpp"
 #include "boost/serialization/nvp.hpp"
+#include <boost/serialization/array.hpp>
 #include "boost/functional/hash.hpp"
 
 namespace K3 {
@@ -70,7 +71,28 @@ struct Address {
     auto p2 = std::to_string(port);
     return p1 + ":" + p2;
   }
+  
+  template <class archive>
+  void serialize(archive& ar) const {
+    const char* buf = reinterpret_cast<const char*>(&ip);
+    ar.write(buf, sizeof(ip));
+    ar & port;
+  }
 
+  template<class Archive>
+  void serialize(Archive &ar) {
+    char* buf = reinterpret_cast<char*>(&ip);
+    ar.read(buf, sizeof(ip));
+    ar & port;
+  }
+  
+  template<class Archive>
+  void serialize(Archive &ar, const unsigned int) {
+    char* buf = reinterpret_cast<char*>(&ip);
+    ar & boost::serialization::make_array(buf, sizeof(ip));
+    ar & port;
+  }
+  
   unsigned long ip;
   unsigned short port;
 };
@@ -177,6 +199,13 @@ typedef base_string string_impl;  // Toggle string implementations
 
 }  // namespace K3
 
+template <class T>
+inline void hash_combine(std::size_t& seed, const T& v) {
+  std::hash<T> hasher;
+  seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
+
+// TODO(jbw) hash
 #ifndef K3_R_elem
 #define K3_R_elem
 
@@ -260,8 +289,8 @@ class std::hash<R_key_value<_T0, _T1>> {
  public:
   std::size_t operator()(const R_key_value<_T0, _T1>& r) const {
     std::size_t seed = 0;
-    boost::hash_combine(seed, r.key);
-    boost::hash_combine(seed, r.value);
+    hash_combine(seed, r.key);
+    hash_combine(seed, r.value);
     return seed;
   }
 };

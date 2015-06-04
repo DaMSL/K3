@@ -90,14 +90,15 @@ class Set {
 
   Container container;
 
-  template <class Archive>
-  void serialize(Archive& ar) {
-    ar& container;
+  template<class Archive>
+  void serialize(Archive &ar) {
+   ar & yas::base_object<SetDS<K3::Set, Elem>>(*this);
   }
 
   template <class Archive>
   void serialize(Archive& ar, const unsigned int) {
-    ar& boost::serialization::make_nvp("__K3Set", container);
+    ar& boost::serialization::base_object<SetDS<K3::Set, Elem>>(
+        *this);
   }
 
  private:

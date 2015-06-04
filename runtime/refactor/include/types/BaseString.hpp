@@ -59,6 +59,8 @@ class base_string {
 
   // Operations
   base_string substr(std::size_t from, std::size_t to) const;
+  int strcomp(const base_string& other) const;
+
   // Seq<R_elem<string_impl>> splitString(const string_impl& splitter); //
   // Modifies this string.
 

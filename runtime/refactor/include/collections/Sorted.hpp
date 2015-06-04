@@ -80,11 +80,15 @@ class Sorted : public SortedDS<K3::Sorted, Elem> {
     return result;
   }
 
+  template<class Archive>
+  void serialize(Archive &ar) {
+   ar & yas::base_object<SortedDS<K3::Sorted, Elem>>(*this);
+  }
+
   template <class Archive>
   void serialize(Archive& ar, const unsigned int) {
-    ar& boost::serialization::make_nvp(
-        "__K3Sorted",
-        boost::serialization::base_object<VectorDS<K3::Sorted, Elem>>(*this));
+    ar& boost::serialization::base_object<SortedDS<K3::Sorted, Elem>>(
+        *this);
   }
 
  private:

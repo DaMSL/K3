@@ -38,16 +38,15 @@ class Seq : public ListDS<K3::Seq, Elem> {
     return *it;
   }
 
-  // template <class Archive>
-  // void serialize(Archive& ar) {
-  //  ar& yas::base_object<ListDS<K3::Seq, Elem>>(*this);
-  //}
+  template<class Archive>
+  void serialize(Archive &ar) {
+   ar & yas::base_object<ListDS<K3::Seq, Elem>>(*this);
+  }
 
   template <class Archive>
   void serialize(Archive& ar, const unsigned int) {
-    ar& boost::serialization::make_nvp(
-        "__K3Seq",
-        boost::serialization::base_object<ListDS<K3::Seq, Elem>>(*this));
+    ar& boost::serialization::base_object<ListDS<K3::Seq, Elem>>(
+        *this);
   }
 
  private:

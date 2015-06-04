@@ -156,6 +156,20 @@ base_string base_string::substr(std::size_t from, std::size_t to) const {
   return base_string(buffer_ + from, to - from);
 }
 
+int base_string::strcomp(const base_string& other) const {
+  const char* c1 = this->c_str();
+  const char* c2 = other.c_str();
+  if (c1 && c2) {
+    return strcmp(c1, c2);
+  } else if (c1) {
+    return 1;
+  } else if (c2) {
+    return -1;
+  } else {
+    return 0;
+  }
+}
+
 // Modifies this string.
 // Seq<R_elem<string_impl>> splitString(const string_impl& splitter) {
 //  Seq<R_elem<string_impl>> results;

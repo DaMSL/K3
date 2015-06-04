@@ -15,6 +15,7 @@
 #include "serialization/Codec.hpp"
 #include "collections/Map.hpp"
 #include "types/BaseString.hpp"
+#include "Hash.hpp"
 
 using std::shared_ptr;
 using std::make_shared;
@@ -64,6 +65,10 @@ TEST(Map, base_string) {
   K3::base_string k = "hello!";
   K3::Map<R_key_value<K3::base_string, int>> m;
   m.insert(R_key_value<K3::base_string, int> {k, 1});
+
+  std::tuple<K3::base_string, K3::base_string> t = std::make_tuple("hello", "hello");
+  auto f = std::hash<std::tuple<K3::base_string, K3::base_string>>();
+  size_t s = f(t);
 }
 
 TEST_F(EngineTest, LocalSends) {
