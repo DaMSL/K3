@@ -97,7 +97,8 @@ RUN wget ftp://oss.sgi.com/www/projects/libnuma/download/numactl-2.0.10.tar.gz &
     make install
 
 # python pip installs
-RUN pip install pyyaml
+RUN apt-get install -y python-dev && \
+    pip install pyyaml
 
 # Clone K3, K3-Mosaic from Git
 RUN mkdir -p /k3/K3 /k3/K3-Mosaic && \
