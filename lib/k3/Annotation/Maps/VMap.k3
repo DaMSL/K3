@@ -1,10 +1,10 @@
 // Persistent maps, providing a fully versioned API for both updates and transformers.
-// Our modification methods (insert, update, erase) require a version indicating the
-// tree on which the updates apply (version 0 being the latest tree).
+//
+// Our modification methods require a version indicating the tree on which the updates apply.
 // If the version supplied does not exist, it is created.
 //
-// A snapshot method creates a new version of the tree, following which updates can apply
-// to this new version.
+// That is, the peek, insert, insert_with, upsert_with, erase, update operations do not work
+// with frontiers (i.e., lower bounds on a version).
 //
 // The transformer and retrieval methods also require an explicit version for their accesses.
 // If the version supplied does not exist, the retrieval methods apply to a version that is
@@ -12,30 +12,74 @@
 // is lower-bounded by the supplied version id.
 
 annotation VMap given type a,b {
-  provides lifted peek    : int -> option content
+
+  // Returns the size of the frontier specified by the version.
+  provides lifted size : int -> int
     with effects \version -> [R[version]; R[self]]
 
-  provides lifted insert  : int -> content -> ()
+  // Returns the total size of the map. Linear time in the domain of the map.
+  provides lifted total_size : () -> int
+    with effects \_ -> R[self]
+
+  //////////////////////////////
+  // Exact version operations.
+
+  provides lifted peek : int -> option content
+    with effects \version -> [R[version]; R[self]]
+
+  provides lifted insert : int -> content -> ()
     with effects \version -> \elem -> [R[version]; R[self]; R[elem]; W[self]]
 
   @:CArgs 3
-  provides lifted insert_with: int -> content -> (content -> content -> content) -> ()
+  provides lifted insert_with : int -> content -> (content -> content -> content) -> ()
     with effects \version -> \elem -> \f -> [R[version]; R[self]; R[elem]; ((f content) content); W[self]]
 
   @:CArgs 4
-  provides lifted upsert_with: int -> content -> (() -> content) -> (content -> content) -> ()
+  provides lifted upsert_with : int -> content -> (() -> content) -> (content -> content) -> ()
     with effects \version -> \elem -> \f -> \g -> [R[version]; R[self]; R[elem]; f content; g content; W[self]]
 
   @:CArgs 2
-  provides lifted erase  : int -> content -> ()
+  provides lifted erase : int -> content -> ()
     with effects \version -> \elem -> [R[version]; R[self]; R[elem]; W[self]]
 
   @:CArgs 2
-  provides lifted update  : int -> content -> (content -> ())
+  provides lifted update : int -> content -> (content -> ())
     with effects \version -> \oldElem -> \newElem -> [R[version]; R[self]; R[oldElem]; R[newElem]; W[self]]
 
-  provides lifted size : int -> int
-    with effects \version -> [R[version]; R[self]]
+
+  //////////////////////////////////////////////////
+  // Frontier-based map retrieval operations.
+  // These apply to the nearest version specified.
+
+  @:CArgs 2
+  provides lifted member : int -> content -> bool
+    with effects \version -> \elem -> [R[version]; R[self]; R[elem]]
+
+  @:CArgs 2
+  provides lifted lookup : int -> content -> option content
+    with effects \version -> \elem -> [R[version]; R[self]; R[elem]]
+
+  @:CArgs 3
+  provides lifted lookup_with : int -> content -> (content -> ()) -> ()
+    with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
+
+  @:CArgs 4
+  provides lifted lookup_with2 : int -> content -> (() -> ()) -> (content -> ()) -> ()
+    with effects \version -> \elem -> \noneF -> \someF -> [R[version]; R[self]; R[elem]; noneF content; someF content]
+
+  @:CArgs 3
+  provides lifted lookup_with3 : int -> content -> (content -> a) -> a
+    with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
+
+  // Non-inclusive modifications of all values before the given version.
+  @:CArgs 2
+  provides lifted erase_prefix : int -> content -> ()
+    with effects \version -> \elem -> [R[version]; R[self]; R[elem]; W[self]]
+
+
+  /////////////////////////////////////////////////////////////////////////////
+  // Transformers.
+  // Other than combine and split, these also operate on a frontier of values.
 
   @:Transformer
   provides lifted combine : self -> self
@@ -72,55 +116,5 @@ annotation VMap given type a,b {
   provides lifted ext     : int -> (content -> collection {key : a, value: b} @VMap)
                              -> collection {key : a, value: b} @VMap
     with effects \version -> \extF -> [R[version]; R[self]; ([R[content]; extF content])*]
-
-  @:{Transformer, CArgs 4}
-  provides lifted sample : int -> (a -> content -> a) -> a -> int -> a
-    with effects \version -> \sampleF -> \z -> \ns -> [R[version]; R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
-
-  @:CArgs 2
-  provides lifted lookup : int -> content -> option content
-    with effects \version -> \elem -> [R[version]; R[self]; R[elem]]
-
-  @:CArgs 3
-  provides lifted lookup_with : int -> content -> (content -> ()) -> ()
-    with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
-
-  @:CArgs 4
-  provides lifted lookup_with2 : int -> content -> (() -> ()) -> (content -> ()) -> ()
-    with effects \version -> \elem -> \noneF -> \someF -> [R[version]; R[self]; R[elem]; noneF content; someF content]
-
-  @:CArgs 3
-  provides lifted lookup_with3 : int -> content -> (content -> a) -> a
-    with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
-
-  @:CArgs 2
-  provides lifted member : int -> content -> bool
-    with effects \version -> \elem -> [R[version]; R[self]; R[elem]]
-
-  // All of these methods apply a function on every version of a map entry that occurs before the given version.
-  @:CArgs 3
-  provides lifted lookup_with_before_v : int -> content -> (int -> content -> ()) -> ()
-    with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
-
-  @:CArgs 4
-  provides lifted lookup_with2_before_v : int -> content -> (() -> ()) -> (int -> content -> ()) -> ()
-    with effects \version -> \elem -> \noneF -> \someF -> [R[version]; R[self]; R[elem]; noneF content; someF content]
-
-  @:CArgs 3
-  provides lifted lookup_with3_before_v : int -> content -> (int -> content -> a) -> a
-    with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
-
-  // All of these methods apply a function on every version of a map entry that occurs after the given version.
-  @:CArgs 3
-  provides lifted lookup_with_after_v : int -> content -> (int -> content -> ()) -> ()
-    with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
-
-  @:CArgs 4
-  provides lifted lookup_with2_after_v : int -> content -> (() -> ()) -> (int -> content -> ()) -> ()
-    with effects \version -> \elem -> \noneF -> \someF -> [R[version]; R[self]; R[elem]; noneF content; someF content]
-
-  @:CArgs 3
-  provides lifted lookup_with3_after_v : int -> content -> (int -> content -> a) -> a
-    with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
 
 }
