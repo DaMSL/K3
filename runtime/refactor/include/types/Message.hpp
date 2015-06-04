@@ -18,6 +18,7 @@ class Message {
   Address destination() const;
   TriggerID trigger() const;
   shared_ptr<Value> value() const;
+  string triggerName() const;
 
  protected:
   MessageHeader header_;

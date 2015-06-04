@@ -45,6 +45,9 @@ peersId = "peers"
 myAddr :: K3 Expression
 myAddr = EC.variable myId
 
+chrName :: Identifier -> Identifier
+chrName n = n++"HasRead"
+
 crName :: Identifier -> Identifier
 crName n = n++"Read"
 
@@ -62,6 +65,9 @@ csName n = n++"Start"
 
 cpName :: Identifier -> Identifier
 cpName n = n++"Process"
+
+ccName :: Identifier -> Identifier
+ccName n = n++"Controller"
 
 {- Runtime functions -}
 
@@ -87,11 +93,12 @@ roleElemLbl = "n"
 roleFnId :: Identifier
 roleFnId = "processRole"
 
-
 {- Declaration construction -}
 builtinGlobal :: Identifier -> K3 Type -> Maybe (K3 Expression) -> K3 Declaration
 builtinGlobal n t eOpt = (DC.global n t eOpt) @+ (DSpan $ GeneratedSpan "builtin")
 
+builtinTrigger :: Identifier -> K3 Type -> K3 Expression -> K3 Declaration
+builtinTrigger n t e = (DC.trigger n t e) @+ (DSpan $ GeneratedSpan "builtin")
 
 {- Type qualification -}
 qualifyT :: K3 Type -> K3 Type
@@ -141,7 +148,7 @@ endpointMethods :: Bool -> EndpointSpec -> Identifier -> K3 Type
 endpointMethods isSource eSpec n t =
   if isSource then sourceDecls else sinkDecls
   where
-    sourceDecls = (eSpec, Nothing, (map mkMethod [mkInit, mkStart, mkFinal, sourceHasRead, sourceRead, sourceControllerFn]))
+    sourceDecls = (eSpec, Nothing, (map mkMethod [mkInit, mkStart, mkFinal, sourceHasRead, sourceRead]) ++ [sourceController])
     sinkDecls = (eSpec, Just sinkImpl, map mkMethod [mkInit, mkFinal, sinkHasWrite, sinkWrite])
 
     mkMethod (m, argT, retT, eOpt) =
@@ -155,6 +162,13 @@ endpointMethods isSource eSpec n t =
           (EC.applyMany (EC.variable $ cwName n) [EC.variable "__msg"])
           (EC.unit))
 
+    sourceController = builtinTrigger (ccName n) TC.unit $
+      EC.lambda "_"
+        (EC.ifThenElse
+          (EC.applyMany (EC.variable $ chrName n) [EC.unit])
+          (EC.block [EC.applyMany (EC.variable $ cpName n) [EC.unit], (EC.send (EC.variable $ ccName n) myAddr EC.unit)])
+          EC.unit)
+
     -- External functions
     cleanT = stripTUIDSpan t
 
@@ -162,8 +176,6 @@ endpointMethods isSource eSpec n t =
     mkStart = ("Start", TC.unit, TC.unit, Nothing)
     mkFinal = ("Final", TC.unit, TC.unit, Nothing)
 
-    --sourceController = builtinGlobal (n++"Controller") (TC.trigger TC.unit) (Just $ EC.lambda "x" (EC.applyMany (EC.variable (n++"ControllerFn")) [EC.unit]))
-    sourceControllerFn = ("ControllerFn",  TC.unit, TC.unit, Nothing)
     sourceHasRead = ("HasRead",  TC.unit, TC.bool, Nothing)
     sourceRead    = ("Read",     TC.unit, cleanT,  Nothing)
     sinkHasWrite  = ("HasWrite", TC.unit, TC.bool, Nothing)

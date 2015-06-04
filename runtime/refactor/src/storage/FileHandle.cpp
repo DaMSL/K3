@@ -20,7 +20,7 @@ SourceFileHandle::SourceFileHandle (std::string path, CodecFormat codec) {
 
 
 bool SourceFileHandle::hasRead() {
-  return file_.good();
+  return file_.good() && (file_.peek() != EOF);
 }
 
 // TODO: Optimize using low-level c file I/O (if needed)

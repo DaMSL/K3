@@ -1,6 +1,7 @@
 #include <vector>
 
 #include "types/Message.hpp"
+#include "core/ProgramContext.hpp"
 
 namespace K3 {
 
@@ -22,6 +23,14 @@ Address Message::destination() const { return header_.destination(); }
 TriggerID Message::trigger() const { return header_.trigger(); }
 
 shared_ptr<Value> Message::value() const { return value_; }
+
+string Message::triggerName() const {
+  auto it = ProgramContext::__trigger_names_.find(trigger());
+  std::string trig = (it != ProgramContext::__trigger_names_.end())
+                         ? it->second
+                         : "{Undefined Trigger}";
+  return trig;
+}
 
 shared_ptr<vector<asio::const_buffer>> NetworkMessage::outputBuffers() const {
   // Wrap members in boost buffers for an immeninent call to async_write

@@ -2,8 +2,6 @@
 
 module Language.K3.Codegen.CPP.Endpoint where
 
-import Debug.Trace
-
 import Control.Arrow ((&&&))
 import Control.Applicative
 import Control.Monad.State
@@ -106,24 +104,13 @@ doWrite fmt sink typ = do
     let codec = R.Forward $ R.ScalarDecl (R.Name "__codec_") R.Inferred $ Just $
                   R.Call (R.Variable $ R.Specialized [elem_type] (R.Qualified (R.Name "Codec") (R.Name "getCodec")))
                     [fmt]
-    let native = R.Call (R.Variable $ R.Specialized [elem_type] (R.Name "NativeValue")) [R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "move")) [R.Variable $ R.Name "arg"]]
+    let native = R.Call (R.Variable $ R.Specialized [elem_type] (R.Name "TNativeValue")) [R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "move")) [R.Variable $ R.Name "arg"]]
     let packed = R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "__codec_") (R.Name "pack")) [native]
     let write = R.Ignore $ R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "__storage_") (R.Name "doWrite"))
                                [R.Variable $ R.Name "me", R.Literal $ R.LString sink, packed]
     let return_stmt = R.Return $ R.Initialization unit_t []
     return $ [R.FunctionDefn (R.Name $ sink ++ "Write") [("arg", elem_type)]
       (Just unit_t) [] False ([storage, codec, write, return_stmt])]
-
-controller :: String -> CPPGenM [R.Definition]
-controller name = do
-  let cName = name ++ "Controller"
-  let hr = R.Call (R.Variable $ R.Name $ name ++ "HasRead") [R.Initialization unit_t []]
-  let process = R.Ignore $ R.Call (R.Variable $ R.Name $ name ++ "Process") [R.Initialization unit_t []]
-  let send = R.Ignore $ send_unit $ "__" ++ cName ++ "_tid"
-  let ret = R.Return $ R.Initialization unit_t []
-  let body = R.IfThenElse hr [process, send, ret] [ret]
-  let func = R.FunctionDefn (R.Name (name ++ "ControllerFn")) [("_", unit_t)] (Just unit_t) [] False [body]
-  return [func]
 
 epDetails :: [Annotation Declaration] -> EndpointSpec
 epDetails as =
@@ -138,10 +125,9 @@ endpoint _ _ _ ValueEP = return []
 endpoint _ _ _ (BuiltinEP _ _) = error "Builtin sources/sinks (stdin, stdout, stderr) not yet supported"
 endpoint n t isSrc spec@(FileEP _ _ _) = do
   -- Common
-  init <- trace "FILE EP" initEndpoint n isSrc spec 
+  init <- initEndpoint n isSrc spec 
   -- Sources
   start <- if isSrc then startSource n else return []
-  cont <- if isSrc then controller n else return []
   hasR <- if isSrc then hasRead n else return []
   doR <- if isSrc then doRead n t else return []
   -- Sinks
@@ -151,6 +137,6 @@ endpoint n t isSrc spec@(FileEP _ _ _) = do
   hasW  <- if not isSrc then hasWrite n else return []
   write <- if not isSrc then doWrite (R.Call (R.Variable $ R.Qualified (R.Name "Codec") (R.Name "getFormat")) [R.Literal $ R.LString fmt]) n t else return []
   -- Return
-  return $ init ++ start ++ hasR ++ doR ++ cont ++ hasW ++ write
+  return $ init ++ start ++ hasR ++ doR ++ hasW ++ write
 endpoint _ _ _ (NetworkEP _ _ _) = error "Network sources/sinks not yet supported"
 

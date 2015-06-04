@@ -39,7 +39,7 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
         logMessage(*m);
 
         m->value()->dispatchIntoContext(context_.get(), m->trigger());
-        logGlobals();
+        logGlobals(*m);
       }
     } catch (EndOfProgramException e) {
       finished_ = true;
@@ -84,19 +84,24 @@ shared_ptr<ProgramContext> Peer::getContext() { return context_; }
 void Peer::logMessage(const Message& m) {
   if (logger_->level() == spdlog::level::trace) {
     auto it = ProgramContext::__trigger_names_.find(m.trigger());
-    std::string trig = (it != ProgramContext::__trigger_names_.end())
-                           ? it->second
-                           : "{Undefined Trigger}";
-    logger_->trace() << "  [" << address_.toString() << "] Received:: @"
-                     << trig;
+    std::string trig = m.triggerName();
+    logger_->trace() << "Received:: @" << trig;
   }
 }
 
-void Peer::logGlobals() {
+void Peer::logGlobals(const Message& m) {
   if (logger_->level() == spdlog::level::trace) {
     std::ostringstream oss;
+    oss << "Processed:: @" << m.triggerName() << std::endl;
+    oss << "Environment: " << std::endl;
+    bool first = true;
     for (const auto& it : context_->__prettify()) {
-      oss << it.first << ": " << it.second << std::endl;
+      if (!first) {
+        oss << std::endl;
+      } else {
+        first = false;
+      }
+      oss << std::setw(20) << it.first << ": " << it.second;
     }
     logger_->trace() << oss.str();
   }

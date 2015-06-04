@@ -38,7 +38,7 @@ class Peer {
 
  protected:
   void logMessage(const Message& m);
-  void logGlobals();
+  void logGlobals(const Message& m);
 
   Address address_;
   shared_ptr<spdlog::logger> logger_;

@@ -29,8 +29,8 @@ int Options::parse(int argc, const char *const argv[]) {
     return 1;
   }
 
-  if (vm.count("log level")) {
-    log_level_ = vm["log level"].as<int>();
+  if (vm.count("log_level")) {
+    log_level_ = vm["log_level"].as<int>();
   } else {
     log_level_ = 10;
   }
