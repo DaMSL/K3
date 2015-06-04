@@ -29,22 +29,31 @@ class Engine {
 
   // Utilities
   shared_ptr<Peer> getPeer(const Address& addr);
-  void toggleLocalSends(bool enabled);
   shared_ptr<NetworkManager> getNetworkManager();
   shared_ptr<StorageManager> getStorageManager();
   bool running();
 
+  // Configuration
+  void toggleLocalSends(bool enabled);
+  void setLogLevel(int level);
+
  protected:
+  // Helpers
   Address meFromYAML(const YAML::Node& peer_config);
   shared_ptr<map<Address, shared_ptr<Peer>>> createPeers(
       const vector<string>& peer_configs,
       shared_ptr<ContextFactory> context_factory);
 
+  // Components
   shared_ptr<spdlog::logger> logger_;
   shared_ptr<NetworkManager> network_manager_;
   shared_ptr<StorageManager> storage_manager_;
   shared_ptr<const map<Address, shared_ptr<Peer>>> peers_;
+
+  // Configuration
   bool local_sends_enabled_;
+
+  // State
   std::atomic<bool> running_;
   std::atomic<int> ready_peers_;
   int total_peers_;
@@ -58,8 +67,7 @@ void Engine::run(const vector<string>& peer_configs) {
   running_ = true;
   logger_->info("The Engine has started.");
 
-  // Create peers: Peers start their own thread, create a context
-  // and check in
+  // Peers start their own thread, create a context and check in
   auto context_factory = make_shared<ContextFactory>(
       [this]() { return make_shared<Context>(*this); });
   peers_ = createPeers(peer_configs, context_factory);
@@ -76,7 +84,8 @@ void Engine::run(const vector<string>& peer_configs) {
     it.second->processRole();
   }
 
-  // Once all roles have been processed, peers can start to process messages
+  // Once all roles have been processed, signal peers to start to processing
+  // messages
   for (auto it : *peers_) {
     it.second->start();
   }

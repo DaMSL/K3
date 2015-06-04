@@ -38,7 +38,7 @@ class ProgramContext : public StandardBuiltins,
   static map<TriggerID, string> __trigger_names_;
 
  protected:
-  CodecFormat __internal_format_ = CodecFormat::YASBinary;
+  CodecFormat __internal_format_ = K3_INTERNAL_FORMAT;
   Engine& __engine_;
 };
 
@@ -50,6 +50,7 @@ class DummyState {
 
 typedef std::function<shared_ptr<ProgramContext>()> ContextFactory;
 
+// A Dummy Context implementation, for simple tests.
 class DummyContext : public ProgramContext {
  public:
   explicit DummyContext(Engine& e);

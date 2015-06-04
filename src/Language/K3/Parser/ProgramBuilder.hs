@@ -141,7 +141,7 @@ endpointMethods :: Bool -> EndpointSpec -> Identifier -> K3 Type
 endpointMethods isSource eSpec n t =
   if isSource then sourceDecls else sinkDecls
   where
-    sourceDecls = (eSpec, Nothing,) $ (map mkMethod [mkInit, mkStart, mkFinal, sourceHasRead, sourceRead])
+    sourceDecls = (eSpec, Nothing, (map mkMethod [mkInit, mkStart, mkFinal, sourceHasRead, sourceRead, sourceControllerFn]))
     sinkDecls = (eSpec, Just sinkImpl, map mkMethod [mkInit, mkFinal, sinkHasWrite, sinkWrite])
 
     mkMethod (m, argT, retT, eOpt) =
@@ -162,6 +162,8 @@ endpointMethods isSource eSpec n t =
     mkStart = ("Start", TC.unit, TC.unit, Nothing)
     mkFinal = ("Final", TC.unit, TC.unit, Nothing)
 
+    --sourceController = builtinGlobal (n++"Controller") (TC.trigger TC.unit) (Just $ EC.lambda "x" (EC.applyMany (EC.variable (n++"ControllerFn")) [EC.unit]))
+    sourceControllerFn = ("ControllerFn",  TC.unit, TC.unit, Nothing)
     sourceHasRead = ("HasRead",  TC.unit, TC.bool, Nothing)
     sourceRead    = ("Read",     TC.unit, cleanT,  Nothing)
     sinkHasWrite  = ("HasWrite", TC.unit, TC.bool, Nothing)

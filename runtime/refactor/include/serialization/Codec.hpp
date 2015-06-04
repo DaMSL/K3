@@ -6,43 +6,80 @@
 #include <memory>
 #include <string>
 
-#include <yas/mem_streams.hpp>
-#include <yas/binary_iarchive.hpp>
-#include <yas/binary_oarchive.hpp>
-#include <yas/text_iarchive.hpp>
-#include <yas/text_oarchive.hpp>
-#include <yas/serializers/std_types_serializers.hpp>
-#include <yas/serializers/boost_types_serializers.hpp>
+#include "yas/mem_streams.hpp"
+#include "yas/binary_iarchive.hpp"
+#include "yas/binary_oarchive.hpp"
+#include "yas/text_iarchive.hpp"
+#include "yas/text_oarchive.hpp"
+#include "yas/serializers/std_types_serializers.hpp"
+#include "yas/serializers/boost_types_serializers.hpp"
+
+#include "boost/archive/binary_oarchive.hpp"
+#include "boost/archive/binary_iarchive.hpp"
+#include "boost/archive/text_oarchive.hpp"
+#include "boost/archive/text_iarchive.hpp"
+#include "boost/serialization/split_free.hpp"
+#include "boost/iostreams/stream_buffer.hpp"
+#include "boost/iostreams/stream.hpp"
+#include "boost/iostreams/device/back_inserter.hpp"
+#include "boost/serialization/vector.hpp"
+#include "boost/serialization/set.hpp"
+#include "boost/serialization/list.hpp"
+#include "boost/serialization/base_object.hpp"
+#include "boost/serialization/nvp.hpp"
+
+#include "csvpp/csv.h"
+#include "csvpp/string.h"
+#include "csvpp/array.h"
+#include "csvpp/deque.h"
+#include "csvpp/list.h"
+#include "csvpp/set.h"
+#include "csvpp/vector.h"
 
 #include "Common.hpp"
 #include "Flat.hpp"
 #include "types/Value.hpp"
-#include "serialization/Serialization.hpp"
+#include "serialization/Boost.hpp"
+#include "serialization/YAS.hpp"
 
 namespace K3 {
 
+// Codec Interface
 class Codec {
  public:
   virtual shared_ptr<PackedValue> pack(const NativeValue&) = 0;
   virtual shared_ptr<NativeValue> unpack(const PackedValue& pv) = 0;
   virtual CodecFormat format() = 0;
 
-  // TODO(jbw) switch to map lookup
   template <typename T>
   static shared_ptr<Codec> getCodec(CodecFormat format);
+  static CodecFormat getFormat(const string& s);
 };
 
+// Boost Codec
+// TODO(jbw) Add a text archive based codec?
+namespace io = boost::iostreams;
+typedef io::stream<io::back_insert_device<Buffer>> OByteStream;
 template <class T>
 class BoostCodec : public Codec {
  public:
   virtual shared_ptr<PackedValue> pack(const NativeValue& nv) {
-    auto buf = Serialization::pack<T>(*(nv.asConst<T>()));
+    Buffer buf;
+    OByteStream output_stream(buf);
+    boost::archive::binary_oarchive oa(output_stream);
+    oa << *nv.asConst<T>();
+    output_stream.flush();
     return make_shared<BufferPackedValue>(std::move(buf), format());
   }
 
   virtual shared_ptr<NativeValue> unpack(const PackedValue& pv) {
-    auto t = Serialization::unpack<T>(pv.buf(), pv.length());
-    return make_shared<TNativeValue<T>>(t);
+    io::basic_array_source<char> source(pv.buf(), pv.length());
+    io::stream<io::basic_array_source<char>> input_stream(source);
+    boost::archive::binary_iarchive ia(input_stream);
+
+    T t;
+    ia >> t;
+    return make_shared<TNativeValue<T>>(std::move(t));
   }
 
   virtual CodecFormat format() { return format_; }
@@ -57,7 +94,7 @@ class YASCodec : public Codec {
   virtual shared_ptr<PackedValue> pack(const NativeValue& nv) {
     yas::mem_ostream os;
     yas::binary_oarchive<yas::mem_ostream> oa(os);
-    oa & *nv.asConst<T>();
+    oa&* nv.asConst<T>();
     return make_shared<YASPackedValue>(os.get_shared_buffer(), format_);
   }
 
@@ -65,7 +102,7 @@ class YASCodec : public Codec {
     yas::mem_istream is(pv.buf(), pv.length());
     yas::binary_iarchive<yas::mem_istream> ia(is);
     T t;
-    ia & t;
+    ia& t;
     return make_shared<TNativeValue<T>>(std::move(t));
   }
 
@@ -75,17 +112,26 @@ class YASCodec : public Codec {
   CodecFormat format_ = CodecFormat::YASBinary;
 };
 
-template <class T>
+template <class T, char sep = ','>
 class CSVCodec : public Codec {
  public:
   virtual shared_ptr<PackedValue> pack(const NativeValue& nv) {
-    auto buf = Serialization::pack_csv<T>(*(nv.asConst<T>()));
+    Buffer buf;
+    OByteStream output_stream(buf);
+    csv::writer oa(output_stream, sep);
+    oa << *nv.asConst<T>();
+    output_stream.flush();
     return make_shared<BufferPackedValue>(std::move(buf), format());
   }
 
   virtual shared_ptr<NativeValue> unpack(const PackedValue& pv) {
-    auto t = Serialization::unpack_csv<T>(pv.buf(), pv.length());
-    return make_shared<TNativeValue<T>>(t);
+    io::basic_array_source<char> source(pv.buf(), pv.length());
+    io::stream<io::basic_array_source<char>> input_stream(source);
+    csv::parser ia(input_stream, sep);
+
+    T t;
+    ia >> t;
+    return make_shared<TNativeValue<T>>(std::move(t));
   }
 
   virtual CodecFormat format() { return format_; }

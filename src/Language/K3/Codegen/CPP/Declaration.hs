@@ -26,6 +26,7 @@ import qualified Language.K3.Core.Constructor.Type as T
 import Language.K3.Codegen.CPP.Expression
 import Language.K3.Codegen.CPP.Primitives
 import Language.K3.Codegen.CPP.Types
+import qualified Language.K3.Codegen.CPP.Endpoint as EP
 
 import Language.K3.Codegen.CPP.Materialization.Hints
 
@@ -36,32 +37,18 @@ import Language.K3.Utils.Pretty
 -- Builtin names to explicitly skip.
 skip_builtins :: [String]
 skip_builtins = ["hasRead", "doRead", "doReadBlock", "hasWrite", "doWrite"]
-
-epDetails :: [Annotation Declaration] -> EndpointSpec
-epDetails as =
-  let syntax = filter isDSyntax as in
-  getSpec syntax
-  where
-    getSpec [(DSyntax (EndpointDeclaration spec _))] = spec
-    getSpec _ = error "Source/Sink missing EndpointSpec"
-
-endpoint :: EndpointSpec -> CPPGenM [R.Definition]
-endpoint ValueEP = return []
-endpoint (BuiltinEP _ _) = return []
-endpoint (FileEP _ _) = return []
-endpoint (NetworkEP _ _) = return []
-
+    
 declaration :: K3 Declaration -> CPPGenM [R.Definition]
-declaration (tna -> ((DGlobal n (tnc -> (TSource, [t])) _), as)) =
-  let details = epDetails as in
-  endpoint details
-  --hasRead <- genHasRead2 n
-  --doRead <- genDoRead2 n t
-  --return [hasRead, doRead]
+declaration (tna -> ((DGlobal n (tnc -> (TSource, [t])) _), as)) = do
+  let details = EP.epDetails as
+  EP.endpoint n t True details
 
 -- Sinks with a valid body are handled in the same way as triggers.
-declaration d@(tag -> DGlobal i (tnc -> (TSink, [t])) (Just e)) =
-  declaration $ D.global i (T.function t T.unit) $ Just e
+declaration d@(tna -> (DGlobal i (tnc -> (TSink, [t])) (Just e), as)) = do
+  let details = EP.epDetails as
+  trig <- declaration $ D.global i (T.function t T.unit) $ Just e
+  ep <- EP.endpoint i t False details 
+  return $ trig ++ ep
 
 declaration (tag -> DGlobal i (tag -> TSink) Nothing) =
   throwE $ CPPGenE $ unwords ["Invalid sink trigger", i, "(missing body)"]
@@ -177,11 +164,7 @@ declaration _ = return []
 -- Map special builtin suffix to a function that will generate the builtin.
 -- These suffixes are taken from L.K3.Parser.ProgramBuilder.hs
 source_builtin_map :: [(String, (String -> K3 Type -> String -> CPPGenM R.Definition))]
-source_builtin_map = [("HasRead",  genHasRead),
-                      ("Read",     genDoRead),
-                      ("HasWrite", genHasWrite),
-                      ("Write",    genDoWrite)]
-                     ++ extraSuffixes
+source_builtin_map = extraSuffixes
 
         -- These suffixes are for data loading hacks.
   where extraSuffixes = [("Loader",    genLoader False False "," ),
@@ -213,35 +196,6 @@ getSourceBuiltin k =
         []         -> error $ "Could not find builtin with name" ++ k
         ((_,f):_) -> f k
 
--- TODO remove the original versions, move sink/source generators to new module?
-genHasRead2 :: String -> CPPGenM R.Definition
-genHasRead2 source  = do
-    let storage = R.Forward $ R.ScalarDecl (R.Name "__storage_") R.Inferred 
-                    (Just $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Name "getStorageManager")) [])
-    let s_has_r = R.Project (R.Dereference $ R.Variable $ R.Name "__storage_") (R.Name "hasRead")
-    let ret = R.Return $ R.Call s_has_r [R.Variable $ R.Name "me", R.Literal $ R.LString source]
-    return $ R.FunctionDefn (R.Name $ source ++ "hasRead") [("_", R.Named $ R.Name "unit_t")]
-      (Just $ R.Primitive R.PBool) [] False [storage, ret]
-
-genDoRead2 :: String -> K3 Type -> CPPGenM R.Definition
-genDoRead2 source typ = do
-    ret_type    <- genCType $ typ
-    let storage = R.Forward $ R.ScalarDecl (R.Name "__storage_") R.Inferred 
-                    (Just $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Name "getStorageManager")) [])
-    let packed_dec = R.Forward $ R.ScalarDecl (R.Name "packed") R.Inferred $ Just $
-                       (R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "__storage_") (R.Name "doRead"))
-                               [R.Variable $ R.Name "me", R.Literal $ R.LString source])
-    let codec = R.Forward $ R.ScalarDecl (R.Name "__codec_") R.Inferred $ Just $
-                  R.Call (R.Variable $ R.Specialized [ret_type] (R.Qualified (R.Name "Codec") (R.Name "getCodec")))
-                    [R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "packed") (R.Name "format")) []]
-    let unpacked = R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "__codec_") (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "packed"]
-    let return_stmt = R.IfThenElse (R.Variable $ R.Name "packed")
-                        [R.Return $ R.Dereference $ 
-                          R.Call (R.Project (R.Dereference unpacked) (R.Specialized [ret_type] (R.Name "as"))) []
-                        ]
-                        [R.Ignore $ R.ThrowRuntimeErr $ R.Literal $ R.LString $ "Invalid doRead for " ++ source]
-    return $ R.FunctionDefn (R.Name $ source ++ "doRead") [("_", R.Named $ R.Name "unit_t")]
-      (Just ret_type) [] False ([storage, packed_dec, codec, return_stmt])
 
 genHasRead :: String -> K3 Type -> String -> CPPGenM R.Definition
 genHasRead suf _ name = do

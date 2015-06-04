@@ -1,6 +1,9 @@
 #ifndef K3_FLAT
 #define K3_FLAT
 
+#include <string>
+#include <tuple>
+
 #include "Common.hpp"
 
 namespace K3 {

@@ -43,7 +43,8 @@ class Peer {
   shared_ptr<Queue> queue_;
   shared_ptr<ProgramContext> context_;
 
-  std::atomic<bool> start_processing_;
+  std::atomic<bool>
+      start_processing_;  // enabled after all peers roles are processed.
   std::atomic<bool> finished_;
 };
 

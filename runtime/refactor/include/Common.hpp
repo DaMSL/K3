@@ -16,6 +16,7 @@
 #include "boost/thread/externally_locked.hpp"
 #include "boost/thread/lockable_adapter.hpp"
 #include "boost/serialization/nvp.hpp"
+#include "boost/functional/hash.hpp"
 
 namespace K3 {
 
@@ -32,6 +33,7 @@ using std::enable_shared_from_this;
 #define K3_LOG_ID "K3"
 #define USE_CUSTOM_HASHMAPS 1
 #define HAS_LIBDYNAMIC 1
+#define K3_INTERNAL_FORMAT CodecFormat::YASBinary
 
 namespace asio = boost::asio;
 typedef const boost::system::error_code& boost_error;
@@ -250,5 +252,19 @@ class R_key_value {
   _T1 value;
 };
 #endif  // K3_R_key_value
+
+#ifndef K3_R_key_value_hash_value
+#define K3_R_key_value_hash_value
+template <class _T0, class _T1>
+class std::hash<R_key_value<_T0, _T1>> {
+ public:
+  std::size_t operator()(const R_key_value<_T0, _T1>& r) const {
+    std::size_t seed = 0;
+    boost::hash_combine(seed, r.key);
+    boost::hash_combine(seed, r.value);
+    return seed;
+  }
+};
+#endif
 
 #endif

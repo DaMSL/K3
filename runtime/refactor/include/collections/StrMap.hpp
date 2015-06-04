@@ -419,10 +419,10 @@ class StrMap {
   void serialize(archive& ar) const {
     map_str* m = get_map_str();
 
-    ar & static_cast<uint64_t>(m->value_size);
-    ar & static_cast<uint64_t>(m->size);
-    ar & static_cast<uint64_t>(m->capacity);
-    ar & static_cast<uint64_t>(m->deleted);
+    ar& static_cast<uint64_t>(m->value_size);
+    ar& static_cast<uint64_t>(m->size);
+    ar& static_cast<uint64_t>(m->capacity);
+    ar& static_cast<uint64_t>(m->deleted);
     ar & m->max_load_factor;
 
     for (auto o = map_str_begin(m); o < map_str_end(m);
@@ -439,12 +439,12 @@ class StrMap {
     uint64_t capacity;
     uint64_t deleted;
     double mlf;
-    
-    ar & value_size;
-    ar & container_size;
-    ar & capacity;
-    ar & deleted;
-    ar & mlf;
+
+    ar& value_size;
+    ar& container_size;
+    ar& capacity;
+    ar& deleted;
+    ar& mlf;
 
     if (container) {
       map_str_clear(get_map_str());
@@ -566,24 +566,28 @@ class StrMap {
 }  // namespace K3
 
 namespace YAML {
-  template <class R>
-  struct convert<K3::Libdynamic::StrMap<R>> {
-    static Node encode(const K3::Libdynamic::StrMap<R>& c) {
-      Node node;
-      if (c.size(K3::unit_t {}) > 0) {
-        for (auto& i: c) { node.push_back(convert<R>::encode(i)); }
+template <class R>
+struct convert<K3::Libdynamic::StrMap<R>> {
+  static Node encode(const K3::Libdynamic::StrMap<R>& c) {
+    Node node;
+    if (c.size(K3::unit_t{}) > 0) {
+      for (auto& i : c) {
+        node.push_back(convert<R>::encode(i));
       }
-      else { node = YAML::Load("[]"); }
-      return node;
+    } else {
+      node = YAML::Load("[]");
     }
+    return node;
+  }
 
-    static bool decode(const Node& node, K3::Libdynamic::StrMap<R>& c) {
-      for (auto& i: node) { c.insert(i.as<R>()); }
-      return true;
+  static bool decode(const Node& node, K3::Libdynamic::StrMap<R>& c) {
+    for (auto& i : node) {
+      c.insert(i.as<R>());
     }
-  };
+    return true;
+  }
+};
 }  // namespace YAML
-
 
 #endif
 

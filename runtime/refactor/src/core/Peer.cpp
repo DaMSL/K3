@@ -1,4 +1,5 @@
 #include <memory>
+#include <string>
 
 #include "spdlog/spdlog.h"
 
@@ -19,16 +20,15 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
     logger_ = spdlog::stdout_logger_mt(addr.toString());
   }
 
+  // Peer's event processing loop
   auto work = [this, fac, peer_config, ready_callback]() {
     queue_ = make_shared<Queue>();
     context_ = (*fac)();
     context_->__patch(peer_config);
+    context_->initDecls(unit_t{});
+    ready_callback();  // Signal to engine that peer is initialized
 
     try {
-      context_->initDecls(unit_t{});
-      // Tell the engine that this peer is ready to process its role
-      ready_callback();
-
       // The engine will flip the start_processing_ bool after
       // all peers have processed their role (sent initial message)
       while (!start_processing_) continue;
@@ -38,9 +38,13 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
 
         if (logger_->level() == spdlog::level::trace) {
           auto it = ProgramContext::__trigger_names_.find(m->trigger());
-          std::string trig = (it != ProgramContext::__trigger_names_.end()) ? it->second : "{Undefined Trigger}";
-          logger_->trace() << "  [" << address_.toString() << "] Received:: @" << trig;
+          std::string trig = (it != ProgramContext::__trigger_names_.end())
+                                 ? it->second
+                                 : "{Undefined Trigger}";
+          logger_->trace() << "  [" << address_.toString() << "] Received:: @"
+                           << trig;
         }
+
         m->value()->dispatchIntoContext(context_.get(), m->trigger());
       }
     } catch (EndOfProgramException e) {

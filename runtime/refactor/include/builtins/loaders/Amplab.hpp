@@ -4,6 +4,7 @@
 #include <string>
 
 #include "Common.hpp"
+#include "collections/Map.hpp"
 #include "builtins/loaders/ReadRecords.hpp"
 
 namespace K3 {
@@ -74,6 +75,31 @@ class AmplabLoaders {
       std::getline(in, tmp_buffer);
       return record;
     });
+    return unit_t{};
+  }
+
+  template <class C1>
+  unit_t loadRKQ3(const C1& paths, K3::Map<R_key_value<string_impl, int>>& c) {
+    for (auto r : paths) {
+      // Buffers
+      std::string tmp_buffer;
+      R_key_value<string_impl, int> rec;
+      // Infile
+      std::ifstream in;
+      in.open(r.path);
+
+      // Parse by line
+      while (!in.eof()) {
+        std::getline(in, tmp_buffer, ',');
+        rec.key = tmp_buffer;
+        std::getline(in, tmp_buffer, ',');
+        rec.value = std::atoi(tmp_buffer.c_str());
+        // ignore last value
+        std::getline(in, tmp_buffer);
+        c.insert(rec);
+      }
+    }
+
     return unit_t{};
   }
 };

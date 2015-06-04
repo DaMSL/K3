@@ -212,8 +212,13 @@ main = do
     staticContextMembersPop <- generateStaticContextMembers
 
     let engineDecl = R.Forward $ R.ScalarDecl (R.Name "engine") (R.Named $ R.Name "Engine") Nothing
+    let logLevel = R.Ignore $ R.Call
+                     (R.Project (R.Variable $ R.Name "engine") (R.Specialized [R.Named $ R.Name "__global_context"] (R.Name "setLogLevel"))) 
+                     [ R.Project (R.Variable $ R.Name "opt") (R.Name "log_level_") ]
+
     let runProgram = R.Ignore $ R.Call
-                       (R.Project (R.Variable $ R.Name "engine") (R.Specialized [R.Named $ R.Name "__global_context"] (R.Name "run"))) [ R.Project (R.Variable $ R.Name "opt") (R.Name "peer_strs_") ]
+                       (R.Project (R.Variable $ R.Name "engine") (R.Specialized [R.Named $ R.Name "__global_context"] (R.Name "run"))) 
+                       [ R.Project (R.Variable $ R.Name "opt") (R.Name "peer_strs_") ]
     let joinProgram = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "join")) []
 
     return [
@@ -224,6 +229,7 @@ main = do
              [ optionDecl
              , optionCall
              , engineDecl
+             , logLevel
              , runProgram
              , joinProgram
              ]
@@ -273,7 +279,6 @@ requiredIncludes = return
                    , "core/Engine.hpp"
                    , "core/ProgramContext.hpp"
                    , "serialization/Codec.hpp"
-                   , "serialization/Serialization.hpp"
                    , "serialization/Yaml.hpp"
                    , "types/BaseString.hpp"
 

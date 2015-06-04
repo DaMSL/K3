@@ -1,3 +1,4 @@
+#include "Common.hpp"
 #include "core/Peer.hpp"
 #include "network/NetworkManager.hpp"
 #include "network/IncomingConnection.hpp"
@@ -19,8 +20,7 @@ NetworkManager::NetworkManager() {
   external_listeners_ = make_shared<ListenerMap>();
   internal_out_conns_ = make_shared<InternalConnectionMap>();
   external_out_conns_ = make_shared<ExternalConnectionMap>();
-  // TODO(jbw) how to keep in sync with program context?
-  internal_format_ = CodecFormat::YASBinary;
+  internal_format_ = K3_INTERNAL_FORMAT;
   running_ = true;
   addThread();
 }

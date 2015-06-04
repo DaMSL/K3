@@ -17,6 +17,7 @@ class Options {
   int parse(int argc, const char *const argv[]);
 
   vector<string> peer_strs_;
+  int log_level_;
 };
 }
 namespace po = boost::program_options;

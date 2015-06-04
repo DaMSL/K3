@@ -44,6 +44,7 @@ set (srcs src/core/Engine.cpp
           src/builtins/TimeBuiltins.cpp
           src/builtins/StringBuiltins.cpp
           src/builtins/ProfilingBuiltins.cpp
+          src/serialization/Codec.cpp
           src/Options.cpp
           src/Prettify.cpp
     )
@@ -56,10 +57,8 @@ add_library            (k3 ${srcs})
 
 set (tests test/Engine.cpp
 	   test/StorageManager.cpp
+           test/Serialization.cpp
     )
 
 add_executable(Tests ${tests} test/Main.cpp)
 target_link_libraries(Tests ${test_link_libs})
-
-add_executable(file src/file.cpp)
-target_link_libraries(file ${link_libs})

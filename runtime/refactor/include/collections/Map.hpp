@@ -5,6 +5,7 @@
 #include <tuple>
 
 #include "STLDataspace.hpp"
+#include "Hash.hpp"
 
 namespace K3 {
 

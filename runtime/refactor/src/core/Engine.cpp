@@ -8,32 +8,14 @@
 #include "core/Peer.hpp"
 #include "serialization/Codec.hpp"
 
-
 namespace K3 {
 
 Engine::Engine() {
-
-  // Configure logger TODO: Integrate with program opts
-  int k3_log_level = 2;
-
   logger_ = spdlog::get("engine");
   if (!logger_) {
     logger_ = spdlog::stdout_logger_mt("engine");
-  }
-  spdlog::set_pattern("[%T.%f %l %n] %v");
-  switch (k3_log_level) {
-    case 1:
-      spdlog::set_level(spdlog::level::info);
-      break;
-    case 2:
-      spdlog::set_level(spdlog::level::debug);
-      break;
-    case 3:
-      spdlog::set_level(spdlog::level::trace);
-      break;
-    default:
-      spdlog::set_level(spdlog::level::warn);
-      break;
+    spdlog::set_level(spdlog::level::warn);
+    spdlog::set_pattern("[%T.%f %l %n] %v");
   }
 
   network_manager_ = make_shared<NetworkManager>();
@@ -86,6 +68,7 @@ void Engine::send(const MessageHeader& header, shared_ptr<NativeValue> value,
   logger_->info() << "Message: " << header.source().toString() << " --> "
                   << header.destination().toString() << " @"
                   << header.trigger();
+
   auto it = peers_->find(header.destination());
   if (local_sends_enabled_ && it != peers_->end()) {
     // Direct enqueue for local messages
@@ -108,14 +91,6 @@ shared_ptr<Peer> Engine::getPeer(const Address& addr) {
   }
 }
 
-void Engine::toggleLocalSends(bool enabled) {
-  if (running_) {
-    throw std::runtime_error("Engine toggleLocalSends(): Already running");
-  } else {
-    local_sends_enabled_ = enabled;
-  }
-}
-
 shared_ptr<NetworkManager> Engine::getNetworkManager() {
   return network_manager_;
 }
@@ -124,7 +99,32 @@ shared_ptr<StorageManager> Engine::getStorageManager() {
   return storage_manager_;
 }
 
-bool Engine::running() { return running_.load(); }
+void Engine::toggleLocalSends(bool enabled) {
+  if (running_) {
+    throw std::runtime_error("Engine toggleLocalSends(): Already running");
+  } else {
+    local_sends_enabled_ = enabled;
+  }
+}
+
+void Engine::setLogLevel(int level) {
+  switch (level) {
+    case 1:
+      spdlog::set_level(spdlog::level::info);
+      break;
+    case 2:
+      spdlog::set_level(spdlog::level::debug);
+      break;
+    case 3:
+      spdlog::set_level(spdlog::level::trace);
+      break;
+    default:
+      spdlog::set_level(spdlog::level::warn);
+      break;
+  }
+}
+
+bool Engine::running() { return running_; }
 
 Address Engine::meFromYAML(const YAML::Node& peer_config) {
   if (!peer_config.IsMap()) {

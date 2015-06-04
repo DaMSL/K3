@@ -7,7 +7,6 @@
 
 #include "Common.hpp"
 #include "types/Value.hpp"
-#include "serialization/Serialization.hpp"
 
 namespace K3 {
 

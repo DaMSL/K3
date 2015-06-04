@@ -30,7 +30,6 @@ DummyContext::DummyContext(Engine& e) : ProgramContext(e) {
   state_ = make_shared<DummyState>();
 }
 
-// TODO(jbw) ensure we can move out of the as<> function
 void DummyContext::__dispatch(NativeValue* nv, TriggerID t) {
   if (t == 1) {
     int i = *nv->as<int>();
@@ -65,14 +64,12 @@ void DummyContext::__patch(const YAML::Node& node) {
 unit_t DummyContext::processRole(const unit_t&) {
   if (role == "int") {
     MessageHeader h(me, me, 1);
-    // TODO(jbw) grab internal format from NetworkManager
-    static shared_ptr<Codec> codec =
-        Codec::getCodec<int>(CodecFormat::BoostBinary);
+    static shared_ptr<Codec> codec = Codec::getCodec<int>(__internal_format_);
     __engine_.send(h, make_shared<TNativeValue<int>>(5), codec);
   } else if (role == "string") {
     MessageHeader h(me, me, 2);
     static shared_ptr<Codec> codec =
-        Codec::getCodec<std::string>(CodecFormat::BoostBinary);
+        Codec::getCodec<std::string>(__internal_format_);
     __engine_.send(h, make_shared<TNativeValue<std::string>>("hi"), codec);
   }
 

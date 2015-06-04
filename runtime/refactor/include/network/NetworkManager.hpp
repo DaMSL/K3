@@ -65,9 +65,10 @@ class NetworkManager {
   shared_ptr<ExternalConnectionMap> external_out_conns_;
   CodecFormat internal_format_;
 
+  // State
   std::atomic<bool> running_;
 
-  // logger
+  // Logger
   shared_ptr<spdlog::logger> logger_;
 };
 
