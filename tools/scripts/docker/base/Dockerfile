@@ -17,33 +17,49 @@ ENV LC_ALL en_US.UTF-8
 RUN apt-get update && apt-get install -y \
       linux-tools-3.13.0-32-generic libc6-dbg \
       wget vim emacs make git mercurial \
-      zlib1g-dev libreadline6 libreadline6-dev libncurses5-dev libgmp-dev libyaml-dev \
+      zlib1g-dev libreadline6 libreadline6-dev \
+      libncurses5-dev libgmp-dev libyaml-dev libyaml-cpp-dev \
       autoconf automake libtool \
       clang-3.5 libbz2-dev \
-      aptitude tmux python-pip ruby
+      aptitude tmux python-pip cmake
+
+# Intall ruby 2+
+# Ubuntu's package does stupid things with ruby 2.0
+RUN add-apt-repository -y ppa:brightbox/ruby-ng && \
+    apt-get update && \
+    apt-get install -y ruby2.2 && \
+    apt-get install -y ruby-switch && \
+    ruby-switch --set ruby2.2
 
 # Install and configure GCC 4.9
-RUN add-apt-repository ppa:ubuntu-toolchain-r/test
-RUN apt-get update && apt-get install -y gcc-4.9 libstdc++-4.9-dev
-RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 20
+RUN add-apt-repository ppa:ubuntu-toolchain-r/test && \
+    apt-get update && \
+    apt-get install -y gcc-4.9 libstdc++-4.9-dev && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 20
 
 # Install decent vim configuration
-RUN mkdir /root/.vim
-RUN git clone https://github.com/tpope/vim-pathogen.git /root/.vim
-RUN echo 'execute pathogen#infect() | syntax on | filetype plugin indent on' > /root/.vimrc
-RUN git clone https://github.com/tpope/vim-sensible.git /root/.vim/bundle
+RUN mkdir /root/.vim && \
+    git clone https://github.com/tpope/vim-pathogen.git /root/.vim && \
+    echo 'execute pathogen#infect() | syntax on | filetype plugin indent on' > /root/.vimrc && \
+    git clone https://github.com/tpope/vim-sensible.git /root/.vim/bundle
 
 # Install ocaml
 RUN add-apt-repository -y ppa:avsm/ppa && apt-get update && \
     apt-get install -y ocaml ocaml-native-compilers camlp4-extra opam time && \
-    export OPAMYES=1 && export OCAMLRUNPARAM=b && opam init && eval `opam config env` && opam install ocamlfind
+
+ENV OPAMYES 1
+
+RUN opam init -a && \
+    opam install ocamlfind
 
 RUN mkdir -p /software/boost-1.56 && \
     cd /software/boost-1.56 && \
     wget --no-verbose http://downloads.sourceforge.net/boost/boost_1_56_0.tar.bz2 && \
     tar xvfj boost_1_56_0.tar.bz2 && \
     cd /software/boost-1.56/boost_1_56_0 && \
-    ./bootstrap.sh --without-libraries=python --prefix=/usr && ./b2 -j 8 stage threading=multi link=shared && ./b2 -j 8 install threading=multi link=shared
+    ./bootstrap.sh --without-libraries=python --prefix=/usr && \
+    ./b2 -j 8 stage threading=multi link=shared && \
+    ./b2 -j 8 install threading=multi link=shared
 
 # Install GHC and cabal
 WORKDIR /
@@ -55,22 +71,10 @@ RUN wget --no-verbose http://www.haskell.org/platform/download/2014.2.0.0/haskel
 
 ENV PATH /root/.cabal/bin/:$PATH
 
-## Download and Build nanomsg
-RUN mkdir -p /software/nanomsg/build
-WORKDIR /software/nanomsg/build
-RUN wget --no-verbose http://download.nanomsg.org/nanomsg-0.3-beta.tar.gz && \
-    tar -xvzf nanomsg-0.3-beta.tar.gz && \
-    ./nanomsg-0.3-beta/configure --prefix /software/nanomsg && \
-    make -j 4 && make install && \
-    rm -rf /software/nanomsg/build
-
 # Install libre2
 RUN add-apt-repository -y ppa:pi-rho/security && \
     apt-get update && \
     apt-get install -y libre2-dev
-
-# Install libyaml
-RUN apt-get install -y libyaml-cpp-dev cmake
 
 # Install csvpp
 RUN git clone https://git01.codeplex.com/forks/wjjt/csvpp /software/csvpp && \
