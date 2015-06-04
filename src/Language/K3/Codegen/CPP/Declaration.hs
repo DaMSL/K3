@@ -14,6 +14,7 @@ import qualified Data.List as L
 import qualified Data.Map as M
 
 import Language.K3.Core.Annotation
+import Language.K3.Core.Annotation.Syntax
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
@@ -36,8 +37,27 @@ import Language.K3.Utils.Pretty
 skip_builtins :: [String]
 skip_builtins = ["hasRead", "doRead", "doReadBlock", "hasWrite", "doWrite"]
 
+epDetails :: [Annotation Declaration] -> EndpointSpec
+epDetails as =
+  let syntax = filter isDSyntax as in
+  getSpec syntax
+  where
+    getSpec [(DSyntax (EndpointDeclaration spec _))] = spec
+    getSpec _ = error "Source/Sink missing EndpointSpec"
+
+endpoint :: EndpointSpec -> CPPGenM [R.Definition]
+endpoint ValueEP = return []
+endpoint (BuiltinEP _ _) = return []
+endpoint (FileEP _ _) = return []
+endpoint (NetworkEP _ _) = return []
+
 declaration :: K3 Declaration -> CPPGenM [R.Definition]
-declaration (tag -> DGlobal _ (tag -> TSource) _) = return []
+declaration (tna -> ((DGlobal n (tnc -> (TSource, [t])) _), as)) =
+  let details = epDetails as in
+  endpoint details
+  --hasRead <- genHasRead2 n
+  --doRead <- genDoRead2 n t
+  --return [hasRead, doRead]
 
 -- Sinks with a valid body are handled in the same way as triggers.
 declaration d@(tag -> DGlobal i (tnc -> (TSink, [t])) (Just e)) =
@@ -193,27 +213,66 @@ getSourceBuiltin k =
         []         -> error $ "Could not find builtin with name" ++ k
         ((_,f):_) -> f k
 
+-- TODO remove the original versions, move sink/source generators to new module?
+genHasRead2 :: String -> CPPGenM R.Definition
+genHasRead2 source  = do
+    let storage = R.Forward $ R.ScalarDecl (R.Name "__storage_") R.Inferred 
+                    (Just $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Name "getStorageManager")) [])
+    let s_has_r = R.Project (R.Dereference $ R.Variable $ R.Name "__storage_") (R.Name "hasRead")
+    let ret = R.Return $ R.Call s_has_r [R.Variable $ R.Name "me", R.Literal $ R.LString source]
+    return $ R.FunctionDefn (R.Name $ source ++ "hasRead") [("_", R.Named $ R.Name "unit_t")]
+      (Just $ R.Primitive R.PBool) [] False [storage, ret]
+
+genDoRead2 :: String -> K3 Type -> CPPGenM R.Definition
+genDoRead2 source typ = do
+    ret_type    <- genCType $ typ
+    let storage = R.Forward $ R.ScalarDecl (R.Name "__storage_") R.Inferred 
+                    (Just $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Name "getStorageManager")) [])
+    let packed_dec = R.Forward $ R.ScalarDecl (R.Name "packed") R.Inferred $ Just $
+                       (R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "__storage_") (R.Name "doRead"))
+                               [R.Variable $ R.Name "me", R.Literal $ R.LString source])
+    let codec = R.Forward $ R.ScalarDecl (R.Name "__codec_") R.Inferred $ Just $
+                  R.Call (R.Variable $ R.Specialized [ret_type] (R.Qualified (R.Name "Codec") (R.Name "getCodec")))
+                    [R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "packed") (R.Name "format")) []]
+    let unpacked = R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "__codec_") (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "packed"]
+    let return_stmt = R.IfThenElse (R.Variable $ R.Name "packed")
+                        [R.Return $ R.Dereference $ 
+                          R.Call (R.Project (R.Dereference unpacked) (R.Specialized [ret_type] (R.Name "as"))) []
+                        ]
+                        [R.Ignore $ R.ThrowRuntimeErr $ R.Literal $ R.LString $ "Invalid doRead for " ++ source]
+    return $ R.FunctionDefn (R.Name $ source ++ "doRead") [("_", R.Named $ R.Name "unit_t")]
+      (Just ret_type) [] False ([storage, packed_dec, codec, return_stmt])
+
 genHasRead :: String -> K3 Type -> String -> CPPGenM R.Definition
 genHasRead suf _ name = do
+    let storage = R.Forward $ R.ScalarDecl (R.Name "__storage_") R.Inferred 
+                    (Just $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Name "getStorageManager")) [])
     let source_name = stripSuffix suf name
-    let e_has_r = R.Project (R.Variable $ R.Name "__engine_") (R.Name "hasRead")
-    let body = R.Return $ R.Call e_has_r [R.Literal $ R.LString source_name]
+    let s_has_r = R.Project (R.Dereference $ R.Variable $ R.Name "__storage_") (R.Name "hasRead")
+    let ret = R.Return $ R.Call s_has_r [R.Variable $ R.Name "me", R.Literal $ R.LString source_name]
     return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")]
-      (Just $ R.Primitive R.PBool) [] False [body]
+      (Just $ R.Primitive R.PBool) [] False [storage, ret]
 
 genDoRead :: String -> K3 Type -> String -> CPPGenM R.Definition
 genDoRead suf typ name = do
     ret_type    <- genCType $ last $ children typ
+    let storage = R.Forward $ R.ScalarDecl (R.Name "__storage_") R.Inferred 
+                    (Just $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Name "getStorageManager")) [])
     let source_name =  stripSuffix suf name
-    let result_dec = R.Forward $ R.ScalarDecl (R.Name "result") (R.SharedPointer ret_type) $ Just $
-                       (R.Call (R.Project (R.Variable $ R.Name "__engine_")
-                                          (R.Specialized [ret_type] $ R.Name "doReadExternal"))
-                               [R.Literal $ R.LString source_name])
-    let return_stmt = R.IfThenElse (R.Variable $ R.Name "result")
-                        [R.Return $ R.Dereference $ R.Variable $ R.Name "result"]
+    let packed_dec = R.Forward $ R.ScalarDecl (R.Name "packed") R.Inferred $ Just $
+                       (R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "__storage_") (R.Name "doRead"))
+                               [R.Variable $ R.Name "me", R.Literal $ R.LString source_name])
+    let codec = R.Forward $ R.ScalarDecl (R.Name "__codec_") R.Inferred $ Just $
+                  R.Call (R.Variable $ R.Specialized [ret_type] (R.Qualified (R.Name "Codec") (R.Name "getCodec")))
+                    [R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "packed") (R.Name "format")) []]
+    let unpacked = R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "__codec_") (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "packed"]
+    let return_stmt = R.IfThenElse (R.Variable $ R.Name "packed")
+                        [R.Return $ R.Dereference $ 
+                          R.Call (R.Project (R.Dereference unpacked) (R.Specialized [ret_type] (R.Name "as"))) []
+                        ]
                         [R.Ignore $ R.ThrowRuntimeErr $ R.Literal $ R.LString $ "Invalid doRead for " ++ source_name]
     return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")]
-      (Just ret_type) [] False ([result_dec, return_stmt])
+      (Just ret_type) [] False ([storage, packed_dec, codec, return_stmt])
 
 genHasWrite :: String -> K3 Type -> String -> CPPGenM R.Definition
 genHasWrite suf _ name = do

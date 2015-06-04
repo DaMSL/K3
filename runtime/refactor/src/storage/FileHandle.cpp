@@ -19,10 +19,8 @@ SourceFileHandle::SourceFileHandle (std::string path, CodecFormat codec) {
   }
 
 
-
-
 bool SourceFileHandle::hasRead() {
-  return file_.good();  
+  return file_.good();
 }
 
 // TODO: Optimize using low-level c file I/O (if needed)

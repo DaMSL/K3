@@ -124,6 +124,8 @@ inline std::string addressAsString(const Address& addr) {
 }
 
 enum class CodecFormat { BoostBinary, CSV, YASBinary };
+enum class StorageFormat { Binary, Text };
+enum class IOMode { Read, Write };
 
 class EndOfProgramException : public std::runtime_error {
  public:

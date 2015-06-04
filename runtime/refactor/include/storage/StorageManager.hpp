@@ -7,8 +7,6 @@
 
 namespace K3 {
 
-enum class StorageFormat { Binary, Text };
-enum class IOMode { Read, Write };
 
 using std::pair;
 using std::make_shared;
@@ -40,7 +38,6 @@ class StorageManager {
 
   // logger
   shared_ptr<spdlog::logger> logger_;
-
 };
 
 }  // namespace K3

@@ -1,3 +1,4 @@
+include "Annotation/Collection.k3"
 include "Core/Builtins.k3"
 
 declare x : mut int = 0

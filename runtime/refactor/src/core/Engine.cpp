@@ -120,6 +120,10 @@ shared_ptr<NetworkManager> Engine::getNetworkManager() {
   return network_manager_;
 }
 
+shared_ptr<StorageManager> Engine::getStorageManager() {
+  return storage_manager_;
+}
+
 bool Engine::running() { return running_.load(); }
 
 Address Engine::meFromYAML(const YAML::Node& peer_config) {

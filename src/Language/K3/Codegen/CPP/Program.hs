@@ -234,6 +234,9 @@ requiredAliases :: CPPGenM [(Either R.Name R.Name, Maybe R.Name)]
 requiredAliases = return
                   [ (Right (R.Qualified (R.Name "K3" )$ R.Name "Address"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Codec"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "StorageFormat"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "IOMode"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "CodecFormat"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Engine"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "make_address"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "MessageHeader"), Nothing)
