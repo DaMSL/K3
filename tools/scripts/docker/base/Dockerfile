@@ -38,12 +38,6 @@ RUN add-apt-repository ppa:ubuntu-toolchain-r/test && \
     apt-get install -y gcc-4.9 libstdc++-4.9-dev && \
     update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-4.9 20
 
-# Install decent vim configuration
-RUN mkdir /root/.vim && \
-    git clone https://github.com/tpope/vim-pathogen.git /root/.vim && \
-    echo 'execute pathogen#infect() | syntax on | filetype plugin indent on' > /root/.vimrc && \
-    git clone https://github.com/tpope/vim-sensible.git /root/.vim/bundle
-
 # Install ocaml
 RUN add-apt-repository -y ppa:avsm/ppa && apt-get update && \
     apt-get install -y ocaml ocaml-native-compilers camlp4-extra opam time
@@ -104,3 +98,24 @@ RUN apt-get install -y python-dev && \
 RUN mkdir -p /k3/K3 /k3/K3-Mosaic && \
     git clone https://github.com/DaMSL/K3.git /k3/K3 && \
     git clone https://github.com/DaMSL/K3-Mosaic.git /k3/K3-Mosaic
+
+# Install decent vim configuration
+RUN mkdir /root/.vim && \
+    git clone https://github.com/tpope/vim-pathogen.git /root/.vim; \
+    git clone https://github.com/tpope/vim-sensible.git /root/.vim/bundle; \
+    git clone https://github.com/tmhedberg/matchit.git /root/.vim/bundle; \
+    git clone https://github.com/kien/ctrlp.git /root/.vim/bundle; \
+    git clone https://github.com/tpope/vim-surround.git /root/.vim/bundle; \
+    git clone https://github.com/tpope/vim-unimpaired.git /root/.vim/bundle; \
+    git clone https://github.com/tpope/vim-repeat.git /root/.vim/bundle; \
+    git clone https://github.com/tpope/vim-fugitive.git /root/.vim/bundle; \
+    git clone https://github.com/tpope/vim-vinegar.git /root/.vim/bundle; \
+    git clone https://github.com/tpope/vim-eunuch.git /root/.vim/bundle; \
+    git clone https://github.com/scrooloose/nerdtree.git /root/.vim/bundle; \
+    git clone https://github.com/scrooloose/syntastic.git /root/.vim/bundle; \
+    git clone https://github.com/godlygeek/tabular.git /root/.vim/bundle; \
+    git clone https://github.com/bling/airline.git /root/.vim/bundle; \
+    git clone https://github.com/bronson/vim-visual-star-search.git /root/.vim/bundle; \
+    git clone https://github.com/justinmk/vim-sneak.git /root/.vim/bundle; \
+    echo 'execute pathogen#infect() | syntax on | filetype plugin indent on' > /root/.vimrc
+
