@@ -15,3 +15,5 @@ RUN cabal configure --ghc-options="-O2" && \
 WORKDIR /k3/K3-Mosaic
 RUN ./build_opt.sh && \
     ./build_utils.sh
+
+WORKDIR /k3/K3

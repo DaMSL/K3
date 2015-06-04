@@ -47,6 +47,9 @@ ENV OPAMYES 1
 RUN opam init -a && \
     opam install ocamlfind
 
+# Set environment variables for opam
+RUN echo -e "\neval \`opam config env\`\n" >> /root/.bashrc
+
 RUN mkdir -p /software/boost-1.56 && \
     cd /software/boost-1.56 && \
     wget --no-verbose http://downloads.sourceforge.net/boost/boost_1_56_0.tar.bz2 && \
