@@ -6,6 +6,6 @@ trigger t : int = \_ -> (
   x = x + 1
 )
 
-source s1 : int = file "data/expr-i.txt" k3
+source s1 : int = file "data/expr-i.txt" text k3
 
 feed s1 |> t
