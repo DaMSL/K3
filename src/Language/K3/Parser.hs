@@ -1037,16 +1037,16 @@ builtin isSource = mkBuiltin <$> builtinChannels <*> format
         builtinSpec idE formatE = BuiltinEP <$> S.symbolS idE <*> S.symbolS formatE
 
 file :: Bool -> K3Parser EndpointBuilder
-file isSource = mkFile <$> (symbol "file" *> eCString) <*> format
-  where mkFile argE formatE n t =
-          fileSpec argE formatE >>= \s -> return $ endpointMethods isSource s n t
-        fileSpec argE formatE = FileEP <$> S.exprS argE <*> S.symbolS formatE
+file isSource = mkFile <$> (symbol "file" *> eCString) <*> textOrBinary <*> format
+  where textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
+        mkFile argE asText formatE n t = fileSpec argE asText formatE >>= \s -> return $ endpointMethods isSource s n t
+        fileSpec argE asText formatE = (\p f -> FileEP p asText f) <$> S.exprS argE <*> S.symbolS formatE
 
 network :: Bool -> K3Parser EndpointBuilder
-network isSource = mkNetwork <$> (symbol "network" *> eAddress) <*> format
-  where mkNetwork addrE formatE n t =
-          networkSpec addrE formatE >>= \s -> return $ endpointMethods isSource s n t
-        networkSpec addrE formatE = NetworkEP <$> S.exprS addrE <*> S.symbolS formatE
+network isSource = mkNetwork <$> (symbol "network" *> eAddress) <*> textOrBinary <*> format
+  where textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
+        mkNetwork addrE asText formatE n t = networkSpec addrE asText formatE >>= \s -> return $ endpointMethods isSource s n t
+        networkSpec addrE asText formatE = (\a f -> NetworkEP a asText f) <$> S.exprS addrE <*> S.symbolS formatE
 
 builtinChannels :: ExpressionParser
 builtinChannels = choice [ch "stdin", ch "stdout", ch "stderr"]
