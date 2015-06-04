@@ -5,11 +5,11 @@
 
 module Language.K3.Driver.Service where
 
-import Control.Lens hiding ( transform, each )
-import Control.Exception
-import Control.Monad
 import Control.Concurrent hiding ( yield )
-import Control.Concurrent.Async
+import Control.Concurrent.Async hiding ( wait )
+import Control.Exception
+import Control.Lens hiding ( transform, each )
+import Control.Monad
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
 
@@ -38,7 +38,6 @@ import Pipes.Network.TCP
 import Pipes.Parse
 
 import System.IO ( Handle, stdout )
-import qualified System.FilePath           as FP
 import qualified System.Log.Logger         as Log
 import qualified System.Log.Formatter      as LogF
 import qualified System.Log.Handler        as LogH
@@ -76,10 +75,10 @@ data CProtocol = Register       String
 instance Binary CProtocol
 
 -- | Service thread state, encapsulating task workers and connection workers.
-data ThreadState = ThreadState { sthread   :: Maybe ThreadId
-                               , ttworkers :: Set (Async ())
-                               , tcworkers :: Set ThreadId }
-                  deriving ( Eq, Ord )
+data ThreadState = ThreadState { sthread    :: Maybe ThreadId
+                               , ttworkers  :: Set (Async ())
+                               , tcworkers  :: Set ThreadId }
+                  deriving ( Eq )
 
 -- | Mailbox handles
 type MBHandle = Maybe (Output CProtocol, Input CProtocol)
@@ -110,13 +109,15 @@ type ClientMap      = Map ClientID  (Socket, RequestSet)
 type RequestMap     = Map RequestID ClientID
 
 -- | Common state for the compiler service.
-data ServiceState a = ServiceState { threadSt      :: ThreadState
+data ServiceState a = ServiceState { sterminate    :: MVar ()
+                                   , threadSt      :: ThreadState
                                    , mbhndl        :: MBHandle
                                    , stcompileOpts :: CompileOptions
                                    , compileSt     :: a }
 
 -- | Compiler service master state.
-data SMST = SMST { cworkers     :: WorkersMap
+data SMST = SMST { ssocket      :: Maybe Socket
+                 , cworkers     :: WorkersMap
                  , cclients     :: ClientMap
                  , crequests    :: RequestMap
                  , bcnt         :: Int
@@ -151,6 +152,9 @@ type SProducer a b = Producer CProtocol (ServiceM a) b
 type SConsumer a b = Consumer CProtocol (ServiceM a) b
 
 type SocketHandler a = Socket -> SockAddr -> ServiceM a ()
+type SocketMHandler  = Socket -> SockAddr -> ServiceMM ()
+type SocketWHandler  = Socket -> SockAddr -> ServiceWM ()
+
 type WorkHandler a = Int -> CProtocol -> SConsumer a ()
 
 {- Initial states -}
@@ -158,20 +162,20 @@ type WorkHandler a = Int -> CProtocol -> SConsumer a ()
 sthread0 :: ThreadState
 sthread0 = ThreadState Nothing Set.empty Set.empty
 
-sst0 :: CompileOptions -> a -> ServiceState a
-sst0 cOpts st = ServiceState sthread0 Nothing cOpts st
+sst0 :: MVar () -> CompileOptions -> a -> ServiceState a
+sst0 trmv cOpts st = ServiceState trmv sthread0 Nothing cOpts st
 
-sstm0 :: CompileOptions -> ServiceMState
-sstm0 cOpts = sst0 cOpts $ SMST Map.empty Map.empty Map.empty 0 0 0 0 Map.empty Map.empty
+sstm0 :: MVar () -> CompileOptions -> ServiceMState
+sstm0 trmv cOpts = sst0 trmv cOpts $ SMST Nothing Map.empty Map.empty Map.empty 0 0 0 0 Map.empty Map.empty
 
 svm0 :: CompileOptions -> IO ServiceMSTVar
-svm0 cOpts = newMVar $ sstm0 cOpts
+svm0 cOpts = newEmptyMVar >>= \trmv0 -> newMVar $ sstm0 trmv0 cOpts
 
-sstw0 :: CompileOptions -> ServiceWState
-sstw0 cOpts = sst0 cOpts $ SWST Nothing
+sstw0 :: MVar () -> CompileOptions -> ServiceWState
+sstw0 trmv cOpts = sst0 trmv cOpts $ SWST Nothing
 
 svw0 :: CompileOptions -> IO ServiceWSTVar
-svw0 cOpts = newMVar $ sstw0 cOpts
+svw0 cOpts = newEmptyMVar >>= \trmv0 -> newMVar $ sstw0 trmv0 cOpts
 
 
 {- Service monad utilities -}
@@ -269,6 +273,13 @@ requestIDM = modifyMM $ \cst -> let i = rcnt cst + 1 in (cst {rcnt = i}, i)
 
 heartbeatM :: ServiceMM Integer
 heartbeatM = modifyMM $ \cst -> let i = hbcnt cst + 1 in (cst {hbcnt = i}, i)
+
+{- Server socket accessors -}
+getMSS :: ServiceMM (Maybe Socket)
+getMSS = getM >>= return . ssocket
+
+putMSS :: Socket -> ServiceMM ()
+putMSS ssock = modifyMM_ $ \cst -> cst { ssocket = Just ssock }
 
 {- Assignments accessors -}
 getMA :: ServiceMM AssignmentsMap
@@ -416,51 +427,90 @@ cshow = \case
 
 
 -- | Service utilities.
-runServer :: ServiceOptions -> ServiceSTVar a
+initServiceThread :: ServiceSTVar a -> (ThreadId -> ServiceM a ()) -> IO ()
+initServiceThread sv0 onThreadF = do
+  streamLogging stdout Log.INFO
+  stid <- myThreadId
+  runServiceM_ sv0 $ onThreadF stid
+
+runServer :: ServiceOptions -> ServiceSTVar a -> ServiceM a ()
+          -> (ThreadId -> ServiceM a ())
           -> (ThreadId -> ServiceM a ())
           -> (ThreadId -> ServiceM a ())
           -> ServiceM a () -> SocketHandler a -> SocketHandler a
           -> IO ()
-runServer sOpts@(serviceId -> svid) sv0 onThreadF onCThreadF onShutdown onListenF onConnF = withSocketsDo $ do
-  streamLogging stdout Log.INFO
-  stid <- myThreadId
-  runServiceM_ sv0 $ onThreadF stid
-  flip finally (runServiceM_ sv0 onShutdown) $
-    listen (Host $ serviceHost sOpts) (show $ servicePort sOpts) $ \(lsock, laddr) -> runServiceM_ sv0 $ do
-      noticeM $ "Listening for TCP connections at " ++ show laddr
-      onListenF lsock laddr
-      void $ forever $ acceptConnection lsock
-      noticeM $ "Closing listener at " ++ show laddr
+runServer sOpts sv0 waitM onThreadF onCThreadInitF onCThreadFinalF onShutdown onListenF onConnF = do
+  waitTID <- forkFinally (runServiceM_ sv0 $ waitM) (either throwIO $ const $ runServiceM_ sv0 onShutdown)
+  void $ runListener
+  killThread waitTID
 
   where
-    acceptConnection lsock = do
-      ctid <- acceptFork lsock runConnection
-      onCThreadF ctid
+    runListener = withSocketsDo $ do
+      initServiceThread sv0 onThreadF
+      listen (Host $ serviceHost sOpts) (show $ servicePort sOpts) $ \(lsock, laddr) ->
+        bracket_ (lInit laddr) (lFinal laddr) $ do
+          runServiceM_ sv0 $ onListenF lsock laddr
+          forever $ acceptFork lsock runConnection
 
-    runConnection (csock, caddr) = do
+    runConnection (csock, caddr) =
+      bracket_ (cInit caddr) (cFinal caddr) $ runServiceM_ sv0 $ onConnF csock caddr
+
+    cInit caddr = do
+      ctid <- myThreadId
+      runServiceM_ sv0 $ onCThreadInitF ctid
       noticeM $ "Accepted incoming connection from " ++ show caddr
-      runServiceM_ sv0 $ onConnF csock caddr
+
+    cFinal caddr = do
+      ctid <- myThreadId
+      runServiceM_ sv0 $ onCThreadFinalF ctid
       noticeM $ "Closing connection from " ++ show caddr
 
+    lInit  laddr = noticeM $ "Listening for TCP connections at " ++ show laddr
+    lFinal laddr = noticeM $ "Closing listener at " ++ show laddr
 
-runClient :: ServiceOptions -> ServiceSTVar a -> ServiceM a () -> SocketHandler a -> IO ()
-runClient sOpts sv0 onShutdown onConnF = withSocketsDo $ do
-  streamLogging stdout Log.INFO
+
+runClient :: ServiceOptions -> ServiceSTVar a -> (ThreadId -> ServiceM a ())
+          -> ServiceM a () -> SocketHandler a -> IO ()
+runClient sOpts sv0 onThreadF onShutdown onConnF = withSocketsDo $ do
+  initServiceThread sv0 onThreadF
   flip finally (runServiceM_ sv0 onShutdown) $
     connect (serviceHost sOpts) (show $ servicePort sOpts) $ \(sock, addr) -> do
-      noticeM $ "Connection established to " ++ show addr
-      runServiceM_ sv0 $ onConnF sock addr
+      bracket_ (cStart addr) (cEnd addr) $ runServiceM_ sv0 $ onConnF sock addr
+
+  where cStart addr = noticeM $ "Connection established to " ++ show addr
+        cEnd   addr = noticeM $ "Connection finished for " ++ show addr
+
+simpleClient :: ServiceOptions -> Maybe (ServiceWM ()) -> SocketWHandler -> IO ()
+simpleClient sOpts onShutdownOpt onConnF = do
+    sv <- svw0 (scompileOpts sOpts)
+    runClient sOpts sv onInit (maybe (return ()) id onShutdownOpt) onConnF
+  where
+    -- | Thread management.
+    onInit tid = modifyTS_ $ \tst -> tst { sthread = Just tid }
+
+wait :: ServiceM (ServiceState a) ()
+wait = do
+  st <- getSt
+  liftIO $ readMVar $ sterminate st
 
 terminate :: ServiceM (ServiceState a) ()
 terminate = do
-    tst <- getTS
-    liftIO $ killThread $ fromJust $ sthread $ tst
+    st <- getSt
+    liftIO $ void $ tryPutMVar (sterminate st) ()
 
 shutdown :: ServiceM (ServiceState a) ()
 shutdown = do
     tst <- getTS
-    liftIO $ forM_ (Set.toList $ ttworkers $ tst) $ \as -> cancel as
-    liftIO $ forM_ (Set.toList $ tcworkers $ tst) $ \tid -> killThread tid
+    liftIO $ forM_ (Set.toList $ ttworkers $ tst) $ \as -> stopAS as
+    liftIO $ forM_ (Set.toList $ tcworkers $ tst) $ \tid -> stopCW tid
+
+  where stopAS as = do
+          tid <- myThreadId
+          if tid /= asyncThreadId as then cancel as else return ()
+
+        stopCW tid = do
+          mtid <- myThreadId
+          if mtid /= tid then killThread tid else return ()
 
 workqueue :: ServiceOptions -> WorkHandler (ServiceState a) -> ServiceM (ServiceState a) ()
 workqueue sOpts workerF = do
@@ -491,26 +541,37 @@ sendCs msgs = forM_ msgs $ uncurry sendC
 
 -- | Process messages from the socket with the given handler.
 messages :: Socket -> (CProtocol -> ServiceM (ServiceState a) Bool) -> ServiceM (ServiceState a) ()
-messages sock handler = runmsg $ (fromSocket sock 4096) ^. decoded
+messages sock handler = runmsg $ ((fromSocket sock 4096) ^. decoded)
   where runmsg p = runStateT untilEmpty p >>= \(quit, np) -> unless quit (runmsg np)
         untilEmpty = draw >>= maybe (return True) (lift . handler)
 
 -- | Compiler service master.
 runServiceMaster :: ServiceOptions -> ServiceMasterOptions -> Options -> IO ()
-runServiceMaster sOpts smOpts opts = svm0 (scompileOpts sOpts) >>= \sv ->
-    runServer sOpts sv onInit onConnInit onShutdown (onMasterListen sv) (processMasterConn sOpts smOpts)
+runServiceMaster sOpts@(serviceId -> msid) smOpts opts = do
+    sv <- svm0 (scompileOpts sOpts)
+    runServer sOpts sv wait onInit onConnInit onConnStop onShutdown (onMasterListen sv) (processMasterConn sOpts smOpts)
   where
+    mPfxM     = "[" ++ msid ++ "] "
+    mlogM msg = noticeM $ mPfxM ++ msg
+    mdbgM msg =  debugM $ mPfxM ++ msg
+
     -- | Thread management.
     onInit     tid = modifyTS_ $ \tst -> tst { sthread = Just tid }
     onConnInit tid = modifyTS_ $ \tst -> tst { tcworkers = Set.insert tid $ tcworkers tst }
+    onConnStop tid = modifyTS_ $ \tst -> tst { tcworkers = Set.delete tid $ tcworkers tst }
 
     onShutdown = do
       wm <- getMW
-      forM_ (map fst $ Map.elems wm) $ \wsock -> sendC wsock Quit
+      forM_ (Map.elems wm) $ \(wsock, waddr) -> do
+        mlogM $ "Shutting down worker " ++ show waddr
+        sendC wsock Quit
       shutdown
+      ssock <- getMSS
+      closeSock $ fromJust ssock
 
     -- | Create a workqueue and a timer thread when the master's server socket is up.
-    onMasterListen sv _ _ = do
+    onMasterListen sv ssock _ = do
+      putMSS ssock
       workqueue sOpts (goSMaster sOpts smOpts opts)
       liftIO $ void $ async $ heartbeatLoop sv
 
@@ -519,7 +580,7 @@ runServiceMaster sOpts smOpts opts = svm0 (scompileOpts sOpts) >>= \sv ->
       hbid <- heartbeatM
       wsockets <- getMW >>= return . Map.elems
       forM_ wsockets $ \(sock, addr) -> do
-        debugM $ unwords ["Pinging", show addr]
+        mdbgM $ unwords ["Pinging", show addr]
         sendC sock $ Heartbeat hbid
 
     heartbeatPeriod = seconds 10
@@ -527,15 +588,20 @@ runServiceMaster sOpts smOpts opts = svm0 (scompileOpts sOpts) >>= \sv ->
 
 -- | Compiler service worker.
 runServiceWorker :: ServiceOptions -> IO ()
-runServiceWorker sOpts = svw0 (scompileOpts sOpts) >>= \sv ->
-  runClient sOpts sv shutdown (processWorkerConn sOpts)
+runServiceWorker sOpts = simpleClient sOpts (Just shutdown) $ processWorkerConn sOpts
+
 
 -- | Compiler service protocol handlers.
 processMasterConn :: ServiceOptions -> ServiceMasterOptions -> Socket -> SockAddr -> ServiceM ServiceMState ()
-processMasterConn sOpts@(serviceId -> svid) smOpts sock addr = messages sock logmHandler
+processMasterConn sOpts@(serviceId -> msid) smOpts sock addr = messages sock logmHandler
   where
+    mPfxM     = "[" ++ msid ++ "] "
+    mlogM msg = noticeM $ mPfxM ++ msg
+    mdbgM msg =  debugM $ mPfxM ++ msg
+    merrM msg =  errorM $ mPfxM ++ msg
+
     logmHandler msg = do
-      infoM $ "[" ++ svid ++ "] " ++  cshow msg
+      mlogM $ cshow msg
       mHandler msg
 
     -- | Client and worker messages forwarded out of connection thread.
@@ -544,21 +610,22 @@ processMasterConn sOpts@(serviceId -> svid) smOpts sock addr = messages sock log
       enqueueMsg (Program rq s jo $ Just rid)
 
     mHandler m@(BlockDone _ _ _) = continue $ enqueueMsg m
+    mHandler m@(BlockAborted _ _ _ _) = continue $ enqueueMsg m
 
     -- | Remote worker messages
     mHandler (Register wid) = continue $ do
-      noticeM $ unwords ["Registering worker", wid]
+      mlogM $ unwords ["Registering worker", wid]
       putMWI wid sock addr
       cOpts <- getCO
       sendC sock $ RegisterAck cOpts
 
     -- TODO: detect worker changes.
-    mHandler (HeartbeatAck hbid) = continue $ debugM $ unwords ["Got a heartbeat ack", show hbid]
+    mHandler (HeartbeatAck hbid) = continue $ mdbgM $ unwords ["Got a heartbeat ack", show hbid]
 
     -- | Service termination.
     mHandler Quit = halt $ terminate
 
-    mHandler m = halt $ errorM $ boxToString $ ["Invalid message:"] %$ [show m]
+    mHandler m = halt $ merrM $ boxToString $ ["Invalid message:"] %$ [show m]
 
     continue m = m >> return False
     halt     m = m >> return True
@@ -568,16 +635,21 @@ processMasterConn sOpts@(serviceId -> svid) smOpts sock addr = messages sock log
     trackRequest = requestIDM >>= \rid ->
       putMC addr sock (Set.singleton rid) >> putMR rid addr >> return rid
 
+
 processWorkerConn :: ServiceOptions -> Socket -> SockAddr -> ServiceM ServiceWState ()
-processWorkerConn sOpts@(serviceId -> svid) sock addr = do
+processWorkerConn sOpts@(serviceId -> wid) sock addr = do
     putWC sock addr
     workqueue sOpts $ goSWorker sOpts
     sendC sock $ Register $ serviceId sOpts
     messages sock logmHandler
 
   where
+    wPfxM     = "[" ++ wid ++ "] "
+    wlogM msg = noticeM $ wPfxM ++ msg
+    werrM msg =  errorM $ wPfxM ++ msg
+
     logmHandler msg = do
-      infoM $ "[" ++ svid ++ "] " ++ cshow msg
+      wlogM $ cshow msg
       mHandler msg
 
     -- | Work messages forwarded out of connection thread.
@@ -585,7 +657,7 @@ processWorkerConn sOpts@(serviceId -> svid) sock addr = do
 
     -- | Connection messages processed in-band.
     mHandler (RegisterAck cOpts) = continue $ do
-      noticeM $ unwords ["Registered", show cOpts]
+      wlogM $ unwords ["Registered", show cOpts]
       modifyCO_ $ mergeCompileOpts cOpts
 
     mHandler (Heartbeat hbid) = continue $ do
@@ -593,7 +665,7 @@ processWorkerConn sOpts@(serviceId -> svid) sock addr = do
 
     mHandler Quit = halt $ terminate
 
-    mHandler m = halt $ errorM $ boxToString $ ["Invalid message:"] %$ [show m]
+    mHandler m = halt $ werrM $ boxToString $ ["Invalid message:"] %$ [show m]
 
     continue m = m >> return False
     halt     m = m >> return True
@@ -817,9 +889,7 @@ goSWorker sOpts@(serviceId -> wid) tid msg =  do
 
 -- | One-shot connection to submit a remote job and wait for compilation to complete.
 submitJob :: ServiceOptions -> RemoteJobOptions -> Options -> IO ()
-submitJob sOpts@(serviceId -> rq) rjOpts opts = svw0 (scompileOpts sOpts) >>= \sv ->
-    runClient sOpts sv (return ()) processClientConn
-
+submitJob sOpts@(serviceId -> rq) rjOpts opts = simpleClient sOpts Nothing processClientConn
   where
     processClientConn :: Socket -> SockAddr -> ServiceM ServiceWState ()
     processClientConn sock addr = do
@@ -843,8 +913,7 @@ submitJob sOpts@(serviceId -> rq) rjOpts opts = svw0 (scompileOpts sOpts) >>= \s
     halt     m = m >> return True
 
 command :: ServiceOptions -> CProtocol -> IO ()
-command sOpts msg = svw0 (scompileOpts sOpts) >>= \sv ->
-  runClient sOpts sv (return ()) $ \sock _ -> sendC sock msg
+command sOpts msg = simpleClient sOpts Nothing $ \sock _ -> sendC sock msg
 
 shutdownService :: ServiceOptions -> IO ()
 shutdownService sOpts = command sOpts Quit
