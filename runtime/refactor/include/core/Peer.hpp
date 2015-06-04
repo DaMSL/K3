@@ -37,14 +37,16 @@ class Peer {
   shared_ptr<ProgramContext> getContext();
 
  protected:
+  void logMessage(const Message& m);
+  void logGlobals();
+
   Address address_;
   shared_ptr<spdlog::logger> logger_;
   shared_ptr<boost::thread> thread_;
   shared_ptr<Queue> queue_;
   shared_ptr<ProgramContext> context_;
 
-  std::atomic<bool>
-      start_processing_;  // enabled after all peers roles are processed.
+  std::atomic<bool> start_processing_;
   std::atomic<bool> finished_;
 };
 

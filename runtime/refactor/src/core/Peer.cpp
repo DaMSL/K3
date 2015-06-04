@@ -1,5 +1,6 @@
 #include <memory>
 #include <string>
+#include <sstream>
 
 #include "spdlog/spdlog.h"
 
@@ -35,17 +36,10 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
 
       while (true) {
         shared_ptr<Message> m = queue_->dequeue();
-
-        if (logger_->level() == spdlog::level::trace) {
-          auto it = ProgramContext::__trigger_names_.find(m->trigger());
-          std::string trig = (it != ProgramContext::__trigger_names_.end())
-                                 ? it->second
-                                 : "{Undefined Trigger}";
-          logger_->trace() << "  [" << address_.toString() << "] Received:: @"
-                           << trig;
-        }
+        logMessage(*m);
 
         m->value()->dispatchIntoContext(context_.get(), m->trigger());
+        logGlobals();
       }
     } catch (EndOfProgramException e) {
       finished_ = true;
@@ -86,5 +80,26 @@ bool Peer::finished() { return finished_.load(); }
 Address Peer::address() { return address_; }
 
 shared_ptr<ProgramContext> Peer::getContext() { return context_; }
+
+void Peer::logMessage(const Message& m) {
+  if (logger_->level() == spdlog::level::trace) {
+    auto it = ProgramContext::__trigger_names_.find(m.trigger());
+    std::string trig = (it != ProgramContext::__trigger_names_.end())
+                           ? it->second
+                           : "{Undefined Trigger}";
+    logger_->trace() << "  [" << address_.toString() << "] Received:: @"
+                     << trig;
+  }
+}
+
+void Peer::logGlobals() {
+  if (logger_->level() == spdlog::level::trace) {
+    std::ostringstream oss;
+    for (const auto& it : context_->__prettify()) {
+      oss << it.first << ": " << it.second << std::endl;
+    }
+    logger_->trace() << oss.str();
+  }
+}
 
 }  // namespace K3
