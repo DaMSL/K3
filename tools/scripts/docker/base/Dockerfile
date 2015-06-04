@@ -46,7 +46,7 @@ RUN mkdir /root/.vim && \
 
 # Install ocaml
 RUN add-apt-repository -y ppa:avsm/ppa && apt-get update && \
-    apt-get install -y ocaml ocaml-native-compilers camlp4-extra opam time && \
+    apt-get install -y ocaml ocaml-native-compilers camlp4-extra opam time
 
 ENV OPAMYES 1
 
