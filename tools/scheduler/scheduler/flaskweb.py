@@ -11,6 +11,7 @@ import socket
 import BaseHTTPServer
 import SimpleHTTPServer
 import httplib
+import logging, logging.handlers
 
 
 from flask import (Flask, request, redirect, url_for, jsonify,
@@ -25,6 +26,7 @@ from CompileDriver import *
 import db
 
 webapp = Flask(__name__, static_url_path='')
+logger = logging.getLogger("")
 
 dispatcher = None
 driver = None
@@ -33,21 +35,44 @@ compile_tasks = {}
 
 index_message = 'Welcome to K3 (DEVELOPMENT SERVER)'
 
+# Custom formatter to grab ms (TODO: move to common)
+class MyFormatter(logging.Formatter):
+    converter=datetime.datetime.fromtimestamp
+    def formatTime(self, record, datefmt=None):
+        ct = self.converter(record.created)
+        if datefmt:
+            s = ct.strftime(datefmt)
+        else:
+            t = ct.strftime("%H:%M:%S")
+            s = "%s.%03d" % (t, record.msecs)
+        return s
 
 def initWeb(port, **kwargs):
 
-  host   = kwargs.get('host', socket.gethostname())
-  master = kwargs.get('master', None)
 
+  # Configure logging
+  # logging.Formatter(fmt='[%(asctime)s %(levelname)-5s %(name)s] %(message)s',datefmt='%H:%M:%S')
+  log_fmt = MyFormatter('[%(asctime)s %(levelname)6s] %(message)s')
+  # logger.setFormatter(log_fmt)
+  log_console = logging.StreamHandler()
+  log_console.setFormatter(log_fmt)
+  logger.setLevel(logging.DEBUG)
+  logger.addHandler(log_console)
+
+  logger.debug("Setting up directory structure")
   # LOCAL DIR : Local path for storing all K3 Applications, job files, executor, output, etc.
   LOCAL_DIR  = kwargs.get('local', '/k3/web')
 
   # SERVER URL : URL for serving static content. Defaults to using Flask as static handler via /fs/ endpoint
   SERVER_URL = kwargs.get('server', '/fs/')
 
+  host   = kwargs.get('host', socket.gethostname())
+  master = kwargs.get('master', None)
+
   JOBS_TARGET    = 'jobs'
   APPS_TARGET    = 'apps'
   ARCHIVE_TARGET = 'archive'
+  LOG_TARGET     = 'log'
 
   APPS_DEST = os.path.join(LOCAL_DIR, APPS_TARGET)
   APPS_URL = os.path.join(SERVER_URL, APPS_TARGET)
@@ -55,16 +80,6 @@ def initWeb(port, **kwargs):
   JOBS_URL = os.path.join(SERVER_URL, JOBS_TARGET)
   ARCHIVE_DEST = os.path.join(LOCAL_DIR, ARCHIVE_TARGET)
   ARCHIVE_URL = os.path.join(SERVER_URL, ARCHIVE_TARGET)
-
-  print "FLASK WEB Initializing:"
-  print "    Host  : %s" % host
-  print "    Port  : %d" % port
-  print "    Master: %s" % master
-  print "    Local : %s" % LOCAL_DIR
-  print "    Port: %d" % port
-  print ""
-
-
 
   # TODO: DIR Structure
   webapp.config['DIR']      = LOCAL_DIR
@@ -78,19 +93,38 @@ def initWeb(port, **kwargs):
   webapp.config['UPLOADED_JOBS_URL']      = JOBS_URL
   webapp.config['UPLOADED_ARCHIVE_DEST']  = ARCHIVE_DEST
   webapp.config['UPLOADED_ARCHIVE_URL']   = ARCHIVE_URL
-  webapp.config['COMPILE_OFF']  = kwargs.get('compile', False)
+  webapp.config['COMPILE_OFF']  = not(kwargs.get('compile', False))
 
-  for p in [LOCAL_DIR, JOBS_TARGET, APPS_TARGET, ARCHIVE_TARGET]:
+  for p in [LOCAL_DIR, JOBS_TARGET, APPS_TARGET, ARCHIVE_TARGET, LOG_TARGET]:
     path = os.path.join(LOCAL_DIR, p)
     if not os.path.exists(path):
       os.mkdir(path)
 
+  #  Configure rotating log file
+  logfile = os.path.join(args.dir, 'log', 'web.log')
+  webapp.config['LOGFILE'] = logfile
+  log_file = logging.handlers.RotatingFileHandler(logfile, maxBytes=1024*1024, backupCount=5, mode='w')
+  log_file.setFormatter(log_fmt)
+  logger.addHandler(log_file)
+
+  logger.info("\n\n====================  <<<<< K3 >>>>> ===================================")
+
+  logger.info("FLASK WEB Initializing:\n" +
+    "    Host  : %s\n" % host +
+    "    Port  : %d\n" % port +
+    "    Master: %s\n" % master +
+    "    Local : %s\n" % LOCAL_DIR +
+    "    Server: %s\n" % SERVER_URL +
+    "    Port  : %d\n" % port)
+
   # Check for executor(s)
   compiler_exec = os.path.join(LOCAL_DIR, 'CompileExecutor.py')
   if not os.path.exists(compiler_exec):
+    logger.info("Compiler executor not found. Copying to web root dir.")
     shutil.copyfile('CompileExecutor.py', compiler_exec)
   launcher_exec = os.path.join(LOCAL_DIR, 'k3executor')
   if not os.path.exists(launcher_exec):
+    logger.info("K3 Executor not found. Making & Copying to web root dir.")
     os.chdir('executor')
     os.system('cmake .')
     os.system('make')
@@ -153,6 +187,20 @@ def restapi():
 
 
 #------------------------------------------------------------------------------
+#  /log - Displays current log file
+#------------------------------------------------------------------------------
+@webapp.route('/log')
+def getLog():
+  with open(webapp.config['LOGFILE'], 'r') as logfile:
+    output = logfile.read()
+  if request.headers['Accept'] == 'application/json':
+    return output, 200
+  else:
+    return render_template("output.html", output=output)
+
+
+
+#------------------------------------------------------------------------------
 #  /trace - Debugging respose
 #------------------------------------------------------------------------------
 @webapp.route('/trace')
@@ -174,16 +222,15 @@ def trace():
 # STATIC CONTENT
 @webapp.route('/fs/<path:path>/')
 def static_file(path):
+  logger.debug('Static File Request for `%s`' % path)
   local = os.path.join(webapp.config['DIR'], path)
   if not os.path.exists(local):
     return returnError("File not found: %s" % path, 404)
   if os.path.isdir(local):
     contents = os.listdir(local)
-    print contents
     for i, f in enumerate(contents):
       if os.path.isdir(f):
         contents[i] += '/'
-    print contents
 
     # TODO:  dittinguish dirs from files
     if request.headers['Accept'] == 'application/json':
@@ -192,7 +239,7 @@ def static_file(path):
       return render_template('listing.html', cwd=path, listing=contents), 200
 
   else:
-    if 'stdout' in local or local.endswith('.txt') or local.endswith('.yaml'):
+    if 'stdout' in local or 'output' in local or local.split('.')[-1] in ['txt', 'yaml', 'yml', 'json', 'log']:
       with open(local, 'r') as file:
         output = file.read()
       return (output, 200 if request.headers['Accept'] == 'application/json'
@@ -211,7 +258,7 @@ def static_file(path):
 @webapp.route('/apps', methods=['GET', 'POST'])
 def upload_app():
   if request.method == 'POST':
-      print ("UPLOAD NEW APP.....")
+      logger.info("POST request to upload new application")
       file = request.files['file']
       if file:
           name = secure_filename(file.filename)
@@ -237,7 +284,8 @@ def upload_app():
           #TODO:  Complete with paths for archive & app
 
           if request.headers['Accept'] == 'application/json':
-              return "FILE UPLOADED", 200
+              output = dict(name=name, uid=uid, status='SUCCESS', greeting='Thank You!')
+              return jsonify(output), 200
           else:
               return redirect(url_for('upload_app'))
 
@@ -353,19 +401,21 @@ def create_job(appName, appUID):
   applist = [a['name'] for a in db.getAllApps()]
   if appName in applist:
     if request.method == 'POST':
+        logger.debug("POST Request for a new job")
         # TODO: Get user
         file = request.files['file']
         text = request.form['text'] if 'text' in request.form else None
-        logging = request.form['logging'] if 'logging' in request.form else False
+        k3logging = request.form['logging'] if 'logging' in request.form else False
         stdout = request.form['stdout'] if 'stdout' in request.form else False
         user = request.form['user'] if 'user' in request.form else 'anonymous'
         tag = request.form['tag'] if 'tag' in request.form else ''
 
-        print " LOGGING VALUE ==>  %s" %  logging
+        logger.debug("K3 LOGGING is :  %s" %  ("ON" if k3logging else "OFF"))
         # trials = int(request.form['trials']) if 'trials' in request.form else 1
 
         # Check for valid submission
         if not file and not text:
+          logger.error('Error. Cannot create job: No input file and no YAML for enviornment configuration provided. ')
           return render_template("error.html", code=404, message="Invalid job request")
 
         # Post new job request, get job ID & submit time
@@ -393,7 +443,7 @@ def create_job(appName, appUID):
         apploc = webapp.config['ADDR']+os.path.join(webapp.config['UPLOADED_APPS_URL'], appName, appUID, appName)
 
         newJob = Job(binary=apploc, appName=appName, jobId=jobId,
-                     rolefile=os.path.join(path, filename), logging=logging)
+                     rolefile=os.path.join(path, filename), logging=k3logging)
 
         # Submit to Mesos
         dispatcher.submit(newJob)
@@ -410,13 +460,13 @@ def create_job(appName, appUID):
         return jsonify(dict(jobs=jobs))
       else:
         preload = request.args['preload'] if 'preload' in request.args else 'Sample'
-        print "PRELOAD = %s" % preload
+        logger.debug("YAML file preload = %s" % preload)
         if preload == 'Instructions':
             yamlFile = 'role_file_template.yaml'
         elif preload == 'Last':
             lastJobId = max([ d['jobId'] for d in jobs])
             path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, "%d" % lastJobId, 'role.yaml')
-            print "PATH= %s" % path
+            logger.debug("   YAML PATH= %s" % path)
             if os.path.exists(path):
               yamlFile = path
             else:
@@ -484,7 +534,7 @@ def replay_job(appName, jobId):
   joblist = db.getJobs(jobId=jobId)
   oldjob = None if len(joblist) == 0 else joblist[0]
   if oldjob:
-      print ("REPLAYING %s" % jobId),
+      logger.info("[FLASKWEB] REPLAYING %s" % jobId),
       # Post new job request, get job ID & submit time
       thisjob = dict(appName=oldjob['appName'],
                      appUID=oldjob['hash'],
@@ -493,7 +543,7 @@ def replay_job(appName, jobId):
 
       new_jobId, time = db.insertJob(thisjob)
       thisjob = dict(jobId=new_jobId, time=time)
-      print (" as new JOBID: %s" % new_jobId),
+      logging.info ("[FLASKWEB] new Replay JOBID: %s" % new_jobId),
 
 
       # Save yaml to file (either from file or text input)
@@ -509,10 +559,10 @@ def replay_job(appName, jobId):
                      appName=appName, jobId=new_jobId, rolefile=role_copy)
       except K3JobError as err:
         db.deleteJob(jobId)
-        print err
+        logger.error("JOB ERROR: %s" % err)
         return returnError(err.value, 400)
 
-      print ("NEW JOB ID: %s" % newJob.jobId)
+      logging.info ("[FLASKWEB] NEW JOB ID: %s" % newJob.jobId)
 
       # Submit to Mesos
       dispatcher.submit(newJob)
@@ -590,17 +640,20 @@ def kill_job(appName, jobId):
     if job == None:
       return returnError ("Job ID, %s, does not exist" % jobId, 404)
 
-    print ("Asked to KILL job #%s. Current Job status is %s" % (jobId, job['status']))
+    logging.info ("[FLASKWEB] Asked to KILL job #%s. Current Job status is %s" % (jobId, job['status']))
     # Separate check to kill orphaned jobs in Db
     # TODO: Merge Job with experiments to post updates to correct table
     if job['status'] == 'RUNNING' or job['status'] == 'SUBMITTED':
       db.updateJob(jobId, status='KILLED')
 
-    status = 'KILLED' if jobId in dispatcher.active else 'ORPHANED and CLEANED'
-
-
-    if status == 'KILLED':
+    if int(jobId) in dispatcher.getActiveJobs():
+      status = 'KILLED'
+      logging.debug('[FLASKWEB] Job %s is active. Signaling to kill in mesos.' % jobId)
       dispatcher.cancelJob(int(jobId), driver)
+    else:
+      status = 'ORPHANED and CLEANED'
+      logging.debug('[FLASKWEB] Job # %s is ORPHANED and does not exist in current state. Cleaning up.' % jobId)
+
     ts = db.getTS_est()  #datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
     thisjob = dict(jobId=jobId, time=ts, url=dispatcher.getSandboxURL(jobId), status=status)
     if 'application/json' in request.headers['Accept']:
@@ -633,7 +686,7 @@ def replay_job_id(jobId):
     if job == None:
       return returnError("Job ID, %s, does not exist" % jobId, 404)
     appName = job['appName']
-    print ("REPLAYING JOB # %s" % jobId)
+    logging.info ("[FLASKWEB] REPLAYING JOB # %s" % jobId)
     return replay_job(appName, jobId)
 
 #------------------------------------------------------------------------------
@@ -689,6 +742,8 @@ def compile():
       options = request.form['options'] if 'options' in request.form else ''
       user = request.form['user'] if 'user' in request.form else 'someone'
       tag = request.form['tag'] if 'tag' in request.form else ''
+      blocksize = request.form['blocksize'] if 'blocksize' in request.form else 4
+      logger.debug("Compile requested")
 
       if not file and not text:
           return renderError("Invalid Compile request", 400)
@@ -722,25 +777,26 @@ def compile():
           file.close()
 
       # Generate compilation script  TODO: (Consider) Move to executor
-      sh_file = 'compile_%s.sh' % name
-      sh = genScript(dict(name=name, uid=uid, options=options, uname=uname,
-                          host=webapp.config['HOST'], port=webapp.config['PORT']))
-      compscript = open(os.path.join(path, sh_file).encode(encoding='utf8'), 'w')
-      compscript.write(sh)
-      compscript.close()
+      # sh_file = 'compile_%s.sh' % name
+      # sh = genScript(dict(name=name, uid=uid, options=options, uname=uname,
+      #                     host=webapp.config['HOST'], port=webapp.config['PORT']))
+      # compscript = open(os.path.join(path, sh_file).encode(encoding='utf8'), 'w')
+      # compscript.write(sh)
+      # compscript.close()
 
       source = webapp.config['ADDR'] + os.path.join(url, src_file)
-      script = webapp.config['ADDR'] + os.path.join(url, sh_file)
+      # script = webapp.config['ADDR'] + os.path.join(url, sh_file)
 
-      print "ADDR: %s" % webapp.config['ADDR']
-      print "URL: %s" % url
-      print ("SOURCE: %s, SCRIPT: %s" % (source, script))
+      # logging.debug ('''
+      #   ADDR: %s
+      #   URL: %s
+      #   SOURCE: %s''', (webapp.config['ADDR'], url, source))
 
       # TODO: Add in Git hash
       compileJob    = CompileJob(name=name, uid=uid, path=path, url=url, options=options, user=user, tag=tag)
 
       # compileDriver = CompileDriver(compileJob, webapp.config['MESOS'], source=source, script=script, webaddr=webapp.config['ADDR'])
-      launcher = CompileLauncher(compileJob, source=source, script=script, webaddr=webapp.config['ADDR'])
+      launcher = CompileLauncher(compileJob, source=source, webaddr=webapp.config['ADDR'])
 
       framework = mesos_pb2.FrameworkInfo()
       framework.user = ""
@@ -821,7 +877,7 @@ def kill_compile(uname):
       return returnError("Not currently tracking the compile task %s" % uname, 400)
     else:
       c = complist[0]
-      print ("Asked to KILL Compile UID #%s. Current Job status is %s" % (c['uid'], c['status']))
+      logging.info ("[FLASKWEB] Asked to KILL Compile UID #%s. Current Job status is %s" % (c['uid'], c['status']))
 
       if not JobStatus.done(c['status']):
         db.updateCompile(jobId, status=JobStatus.KILLED, done=True)
@@ -883,7 +939,7 @@ def delete_compiles():
 #------------------------------------------------------------------------------
 
 def shutdown_server():
-    print ("Attempting to kill the server")
+    logging.warning ("[FLASKWEB] Attempting to kill the server")
     func = request.environ.get('werkzeug.server.shutdown')
     if func is None:
         raise RuntimeError("Not running the server")
@@ -892,12 +948,12 @@ def shutdown_server():
     driver_t.join() 
     for k, v in compile_tasks.items():
       v.stop()
-    print ("Mesos is down")
+    logging.info ("[FLASKWEB] Mesos is down")
 
 
 @webapp.route('/kill')
 def shutdown():
-    print ("Shutting down the driver")
+    logging.warngin ("[FLASKWEB] Shutting down the driver")
     shutdown_server()
     return 'Server is going down...'
 
@@ -907,20 +963,29 @@ def shutdown():
 if __name__ == '__main__':
 
   #  Parse Args
-  print "====================  <<<<< K3 >>>>> ==================================="
   parser = argparse.ArgumentParser()
   parser.add_argument('-p', '--port', help='Flaskweb Server Port', default=5000, required=False)
   parser.add_argument('-m', '--master', help='URL for the Mesos Master (e.g. zk://localhost:2181/mesos', default='zk://localhost:2181/mesos', required=False)
   parser.add_argument('-d', '--dir', help='Local directory for hosting application and output files', default='/k3/web/', required=False)
-  parser.add_argument('-c', '--compile', help='Enable Compilation Features (NOTE: will require a capable image)', default='/k3/web/', required=False)
+  parser.add_argument('-c', '--compile', help='Enable Compilation Features (NOTE: will require a capable image)', action='store_true', required=False)
   parser.add_argument('--ip', help='Public accessible IP for connecting to flask', required=False)
   args = parser.parse_args()
+
+  #  TODO:  Move to a Common module
+  # 
+  # console.setFormatter(formatter)
+  # log.addHandler(console)
+
+  # logging.basicConfig(format='[%(asctime)s %(levelname)-5s %(name)s] %(message)s', level=logging.DEBUG, datefmt='%H:%M:%S')
+  logger.info("K3 Dispatcher is initiating.....")
+
 
   #  Program Initialization
   webapp.debug = True
   db.createTables()
   master = args.master
   port = int(args.port)
+
 
   initWeb(
     host = socket.gethostname() if not args.ip else args.ip,
@@ -933,11 +998,11 @@ if __name__ == '__main__':
   #  Create long running framework, dispatcher, & driver
   framework = mesos_pb2.FrameworkInfo()
   framework.user = "" # Have Mesos fill in the current user.
-  framework.name = "K3 Dispatcher"
+  framework.name = "FLASK DEVELOPMENT"
 
   dispatcher = Dispatcher(master, webapp.config['ADDR'], daemon=True)
   if dispatcher == None:
-    print("Failed to create dispatcher. Aborting")
+    logger.error("Failed to create dispatcher. Aborting")
     sys.exit(1)
 
   driver = mesos.native.MesosSchedulerDriver(dispatcher, framework, master)
@@ -945,26 +1010,26 @@ if __name__ == '__main__':
 
   # Start mesos schedulers & flask web service
   try:
-    print "Starting Mesos Dispatcher..."
+    logger.info("Starting Mesos Dispatcher...")
     driver_t.start()
-    print "Starting FlaskWeb Server..."
+    logger.info("Starting FlaskWeb Server...")
 
     webapp.run(host='0.0.0.0', port=port, threaded=True, use_reloader=False)
     terminate = False
     while not terminate:
       time.sleep(1)
       terminate = dispatcher.terminate
-    print ("Server is terminating")
+    logger.info("Server is terminating")
     driver.stop()
     driver_t.join()
 
   except socket.error:
-    print ("Flask web cannot start: Port not available.")
+    logger.error("Flask web cannot start: Port not available.")
     driver.stop()
     driver_t.join()
 
   except KeyboardInterrupt:
-    print("INTERRUPT")
+    logger.warning("INTERRUPT")
     driver.stop()
     driver_t.join()
     for k, v in compile_tasks.items():

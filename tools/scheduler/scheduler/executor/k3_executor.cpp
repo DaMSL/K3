@@ -55,6 +55,28 @@ int exec (const char * cmd)  {
 }
 
 
+void packageSandbox(string host_name, string app_name, string job_id, string webaddr)  {
+    // Tar sandbox & send to flaskweb UI  (hack for now -- should simply call post-execution script)
+    string tarfile = app_name + "_" + job_id + "_" + host_name + ".tar";
+    string tar_cmd =     "cd $MESOS_SANDBOX && tar -cf " + tarfile + " --exclude='k3executor' *";
+    string rename_out =  "cd $MESOS_SANDBOX && cp stdout stdout_" + host_name;
+    string archive_endpoint = webaddr + app_name + "/" + job_id + "/archive";
+    string post_curl = "cd $MESOS_SANDBOX && curl -i -H \"Accept: application/json\" -X POST ";
+    string curl_cmd =    post_curl + "-F \"file=@" + tarfile + "\" " + archive_endpoint;
+    string curl_output = post_curl + "-F \"file=@stdout_" + host_name + "\" "  + archive_endpoint;
+
+    cout << endl << "POST-PROCESSING:" << endl;
+    cout << tar_cmd << endl;
+    exec(tar_cmd.c_str());
+    cout << endl << endl << rename_out << endl;
+    exec(rename_out.c_str());
+    cout << endl << endl << curl_cmd << endl;
+    exec(curl_cmd.c_str());
+    cout << endl << endl << curl_output << endl;
+    exec(curl_output.c_str());
+
+}
+
 
 class KDExecutor : public Executor
 {
@@ -349,10 +371,11 @@ public:
             cout << "I am master" << endl;
     }
     cout << "Launching K3: " << endl;
-    string app_name =  hostParams["binary"].as<string>();
-    string webaddr = hostParams["archive_endpoint"].as<string>();
+    app_name =  hostParams["binary"].as<string>();
+    job_id   = task.task_id().value();
+    webaddr = hostParams["archive_endpoint"].as<string>();
     driver->sendFrameworkMessage("LAUNCHING");
-    thread = new boost::thread(TaskThread(task, k3_cmd, driver, isMaster, webaddr, app_name, host_name));
+    thread = new boost::thread(TaskThread(task, k3_cmd, driver, isMaster, webaddr, app_name, job_id, host_name));
   }
 
 
@@ -362,18 +385,19 @@ class TaskThread {
     string k3_cmd;
     ExecutorDriver* driver;
     bool isMaster;
-    string webaddr;
-    string app_name;
     string host_name;
+    string app_name;
+    string job_id;
+    string webaddr;
 
   public:
-      TaskThread(TaskInfo t, string cmd, ExecutorDriver* d, bool m, string w, string a, string h)
-        : task(t), k3_cmd(cmd), driver(d), isMaster(m), webaddr(w), app_name(a), host_name(h) {}
+      TaskThread(TaskInfo t, string cmd, ExecutorDriver* d, bool m, string w, string a, string j, string h)
+        : task(t), k3_cmd(cmd), driver(d), isMaster(m), webaddr(w), app_name(a), job_id(j), host_name(h) {}
 
       void operator()() {
         TaskStatus status;
         status.mutable_task_id()->MergeFrom(task.task_id());
-        string job_id   = task.task_id().value();
+        // string job_id   = task.task_id().value();
 
         // Currently, just call the K3 executable with the generated command line from task.data()
         try {
@@ -382,29 +406,13 @@ class TaskThread {
             int result = exec(k3_cmd.c_str());
             driver->sendFrameworkMessage("TERMINATING");
             cout << "-------------->  PROGRAM TERMINATED <--------------------" << endl;
+
+            packageSandbox(host_name, app_name, job_id, webaddr);
+
             if (result == 0) {
-                // Tar sandbox & send to flaskweb UI  (hack for now -- should simply call post-execution script)
-                string tarfile = app_name + "_" + job_id + "_" + host_name + ".tar";
-                string tar_cmd =     "cd $MESOS_SANDBOX && tar -cf " + tarfile + " --exclude='k3executor' *";
-        		string rename_out =  "cd $MESOS_SANDBOX && cp stdout stdout_" + host_name;
-                string archive_endpoint = webaddr + app_name + "/" + job_id + "/archive";
-                string post_curl = "cd $MESOS_SANDBOX && curl -i -H \"Accept: application/json\" -X POST ";
-                string curl_cmd =    post_curl + "-F \"file=@" + tarfile + "\" " + archive_endpoint;
-                string curl_output = post_curl + "-F \"file=@stdout_" + host_name + "\" "  + archive_endpoint;
-
-                cout << endl << "POST-PROCESSING:" << endl;
-                cout << tar_cmd << endl;
-                exec(tar_cmd.c_str());
-                cout << endl << endl << rename_out << endl;
-		        exec(rename_out.c_str());
-                cout << endl << endl << curl_cmd << endl;
-                exec(curl_cmd.c_str());
-                cout << endl << endl << curl_output << endl;
-                exec(curl_output.c_str());
-                cout << endl << "Task " << task.task_id().value() << " Completed!" << endl;
-
                 status.set_state(TASK_FINISHED);
                 driver->sendFrameworkMessage("Task FINISHED");
+                cout << endl << "Task " << task.task_id().value() << " Completed!" << endl;
             }
             else {
                 status.set_state(TASK_FAILED);
@@ -424,6 +432,7 @@ class TaskThread {
 };
 
   virtual void killTask(ExecutorDriver* driver, const TaskID& taskId) {
+      packageSandbox(host_name, app_name, job_id, webaddr);
       driver->sendFrameworkMessage("Executor " + host_name+ " KILLING TASK");
       driver->stop();
 }
@@ -444,6 +453,9 @@ class TaskThread {
   
 private:
     string host_name;
+    string app_name;
+    string job_id;
+    string webaddr;
     int state;
     int localPeerCount;
     int totalPeerCount;

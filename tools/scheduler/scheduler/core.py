@@ -1,7 +1,7 @@
 # scheduler.core: Data structures for managing K3 jobs.
 import os, re, yaml
 import tarfile
-
+import logging
 
 
 class JobStatus:
@@ -94,6 +94,7 @@ class CompileJob:
     self.path     = kwargs.get('path', '')
     self.url      = kwargs.get('url', '')
     self.git_hash = kwargs.get('git_hash', 'latest')
+    self.blocksize = kwargs.get('blocksize')
     self.user     = kwargs.get('user', '')
     self.tag       = kwargs.get('tag', '')
     self.options   = kwargs.get('options', '')
@@ -119,19 +120,24 @@ class Job:
     self.master     = None
 
     if self.binary_url == None:
-      print ("Error. No binary provided to Job")
+      logging.error("[FLASKWEB] Error. No binary provided to Job")
       return
 
     print "BINARY URL = %s " % self.binary_url
 
     if roleFile == None:
-      print ("Error. No YAML file provided to Job")
+      logging.error("[FLASKWEB] Error. No YAML file provided to Job")
       return
 
     roles = None
     with open(roleFile, "r") as f:
-      contents = f.read()
-      roles = yaml.load_all(contents)
+      try:
+        contents = f.read()
+        roles = yaml.load_all(contents)
+      except yaml.YAMLError, exc:
+        if hasattr(exc, 'problem_mark'):
+          mark = exc.problem_mark
+          logging.error("[FLASKWEB] YAML Format Error position: (%s:%s)" % (mark.line+1, mark.column+1))
 
     for doc in roles:
       try:
@@ -175,8 +181,7 @@ class PortList():
        self.index = 0
        self.offset = 0
        self.ports = [] if ranges == 0 else ranges
-       print self.ports
-
+       
    def addRange(self, r):
        ports.append(r)
 
