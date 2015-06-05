@@ -377,32 +377,33 @@ variablePositionsExpr vp expr = do
     bind l (children -> ch)   = return (l, replicate (length ch) l)
 
     extract :: ([Identifier], Int) -> [(VarPosEnv, [Identifier])] -> K3 Expression -> Either String (VarPosEnv, [Identifier])
-    extract td        chAcc e@(tag -> EVariable i) = rt td chAcc e [] (const concatVP) ((++[i]) . concat)
-    extract td        chAcc e@(tag -> EAssign i)   = rt td chAcc e [] (const concatVP) ((++[i]) . concat)
-    extract td@(sc,_) chAcc e@(tag -> ELambda n)   = rt td chAcc e [n] (\u as is -> scope [n] sc u [closure n sc u as is] is) (prune 0 [n])
+    extract td        chAcc e@(tag -> EVariable i) = rt td chAcc e [] $ const $ var i
+    extract td        chAcc e@(tag -> EAssign i)   = rt td chAcc e [] $ const $ var i
+    extract td@(sc,_) chAcc e@(tag -> ELambda n)   = rt td chAcc e [n] $ scope Nothing [n] sc
     extract td@(sc,_) chAcc e@(tag -> EBindAs b)   = let bvs = bindingVariables b in
-                                                     rt td chAcc e bvs (scope bvs sc) (prune 1 bvs)
-    extract td@(sc,_) chAcc e@(tag -> ELetIn i)    = rt td chAcc e [i] (scope [i] sc) (prune 1 [i])
-    extract td@(sc,_) chAcc e@(tag -> ECaseOf i)   = rt td chAcc e [i] (scope [i] sc) (prune 1 [i])
-    extract td        chAcc e = rt td chAcc e [] (const concatVP) concat
+                                                     rt td chAcc e bvs $ scope (Just 1) bvs sc
+    extract td@(sc,_) chAcc e@(tag -> ELetIn i)    = rt td chAcc e [i] $ scope (Just 1) [i] sc
+    extract td@(sc,_) chAcc e@(tag -> ECaseOf i)   = rt td chAcc e [i] $ scope (Just 1) [i] sc
+    extract td        chAcc e                      = rt td chAcc e [] $ const concatvi
 
-    concatVP :: [VarPosEnv] -> [[Identifier]] -> VarPosEnv
-    concatVP vps _ = vpunions vps
+    concatvi :: [VarPosEnv] -> [[Identifier]] -> (VarPosEnv, [Identifier])
+    concatvi vps subvars = (vpunions vps, concat subvars)
 
-    closure :: Identifier -> [Identifier] -> Int -> [VarPosEnv] -> [[Identifier]] -> VarPosEnv
-    closure n sc i vps subvars = vpextlc vp' i clvars
-      where vp' = concatVP vps subvars
-            clvars = subvarsInScope [n] sc subvars
+    var :: Identifier -> [VarPosEnv] -> [[Identifier]] -> (VarPosEnv, [Identifier])
+    var i vps subvars = (vpunions vps, concat subvars ++ [i])
 
-    scope :: [Identifier] -> [Identifier] -> Int -> [VarPosEnv] -> [[Identifier]] -> VarPosEnv
-    scope n sc i vps subvars = vpextsc vp' i scentry
-      where vp' = concatVP vps subvars
+    scope :: Maybe Int -> [Identifier] -> [Identifier] -> Int -> [VarPosEnv] -> [[Identifier]] -> (VarPosEnv, [Identifier])
+    scope pruneIdxOpt n sc i vps subvars = case pruneIdxOpt of
+        Nothing       -> (vpextlc (vpextsc vp' i scentry) i clvars, clvars)
+        Just pruneIdx -> (vpextsc vp' i scentry, prune pruneIdx n subvars)
+      where vp' = vpunions vps
             scentry = IndexedScope scvars $ length scvars
             scvars = sc ++ n
+            clvars = subvarsInScope n sc subvars
 
     varusage :: [Identifier] -> [Identifier] -> Int -> Int -> [VarPosEnv] -> [[Identifier]] -> VarPosEnv
     varusage n sc scu u vps subvars = vpextvu vp' u (UID scu) usedmask
-      where vp' = concatVP vps subvars
+      where vp' = vpunions vps
             usedvars = subvarsInScope n sc subvars
             usedmask = Vector.fromList $ snd $ foldl mkmask (0,[]) sc
 
@@ -417,7 +418,7 @@ variablePositionsExpr vp expr = do
             fromBool True  = bit 0
 
     prune :: Int -> [Identifier] -> [[Identifier]] -> [Identifier]
-    prune i vars subvars = concatMap (\(j,l) -> if i == j then (l \\ vars) else l) $ zip [0..(length subvars)] subvars
+    prune i vars subvars = concatMap (\(j,l) -> if i == j then (filter (`notElem` vars) l) else l) $ zip [0..(length subvars)] subvars
 
     subvarsInScope :: [Identifier] -> [Identifier] -> [[Identifier]] -> [Identifier]
     subvarsInScope n sc subvars = nub $ filter (onlyLocals n sc) $ concat subvars
@@ -425,9 +426,10 @@ variablePositionsExpr vp expr = do
     onlyLocals :: [Identifier] -> [Identifier] -> Identifier -> Bool
     onlyLocals n l i = i `notElem` n && i `elem` l
 
-    rt (sc,scu) (unzip -> (acc, iAcc)) e bnds accF iAccF = do
+    rt (sc,scu) (unzip -> (acc, iAcc)) e bnds accF = do
       u <- uidOf e
-      return (varusage bnds sc scu u [accF u acc iAcc] iAcc, iAccF iAcc)
+      let (nvpe, nids) = accF u acc iAcc
+      return (varusage bnds sc scu u [nvpe] iAcc, nids)
 
 -- | Compute all global declarations used by the supplied list of declaration identifiers.
 --   This method returns all transitive dependencies.

@@ -35,31 +35,36 @@ compile_tasks = {}
 
 index_message = 'Welcome to K3 (DEVELOPMENT SERVER)'
 
-# Custom formatter to grab ms (TODO: move to common)
+# TODO: move to common
 class MyFormatter(logging.Formatter):
-    converter=datetime.datetime.fromtimestamp
-    def formatTime(self, record, datefmt=None):
-        ct = self.converter(record.created)
-        if datefmt:
-            s = ct.strftime(datefmt)
-        else:
-            t = ct.strftime("%H:%M:%S")
-            s = "%s.%03d" % (t, record.msecs)
-        return s
+  """
+  Custom formatter to customize milliseconds in formats
+  """
+  converter=datetime.datetime.fromtimestamp
+  def formatTime(self, record, datefmt=None):
+      ct = self.converter(record.created)
+      if datefmt:
+          s = ct.strftime(datefmt)
+      else:
+          t = ct.strftime("%H:%M:%S")
+          s = "%s.%03d" % (t, record.msecs)
+      return s
+
 
 def initWeb(port, **kwargs):
-
-
+  """
+    Peforms web service initialization
+  """
   # Configure logging
   # logging.Formatter(fmt='[%(asctime)s %(levelname)-5s %(name)s] %(message)s',datefmt='%H:%M:%S')
   log_fmt = MyFormatter('[%(asctime)s %(levelname)6s] %(message)s')
-  # logger.setFormatter(log_fmt)
   log_console = logging.StreamHandler()
   log_console.setFormatter(log_fmt)
   logger.setLevel(logging.DEBUG)
   logger.addHandler(log_console)
 
   logger.debug("Setting up directory structure")
+
   # LOCAL DIR : Local path for storing all K3 Applications, job files, executor, output, etc.
   LOCAL_DIR  = kwargs.get('local', '/k3/web')
 
@@ -81,7 +86,7 @@ def initWeb(port, **kwargs):
   ARCHIVE_DEST = os.path.join(LOCAL_DIR, ARCHIVE_TARGET)
   ARCHIVE_URL = os.path.join(SERVER_URL, ARCHIVE_TARGET)
 
-  # TODO: DIR Structure
+  #  Store dir structures in web context
   webapp.config['DIR']      = LOCAL_DIR
   webapp.config['PORT']     = port
   webapp.config['HOST']     = host
@@ -95,6 +100,7 @@ def initWeb(port, **kwargs):
   webapp.config['UPLOADED_ARCHIVE_URL']   = ARCHIVE_URL
   webapp.config['COMPILE_OFF']  = not(kwargs.get('compile', False))
 
+  # Create dirs, if necessary
   for p in [LOCAL_DIR, JOBS_TARGET, APPS_TARGET, ARCHIVE_TARGET, LOG_TARGET]:
     path = os.path.join(LOCAL_DIR, p)
     if not os.path.exists(path):
@@ -108,7 +114,6 @@ def initWeb(port, **kwargs):
   logger.addHandler(log_file)
 
   logger.info("\n\n====================  <<<<< K3 >>>>> ===================================")
-
   logger.info("FLASK WEB Initializing:\n" +
     "    Host  : %s\n" % host +
     "    Port  : %d\n" % port +
@@ -117,7 +122,7 @@ def initWeb(port, **kwargs):
     "    Server: %s\n" % SERVER_URL +
     "    Port  : %d\n" % port)
 
-  # Check for executor(s)
+  # Check for executor(s), build if necessary
   compiler_exec = os.path.join(LOCAL_DIR, 'CompileExecutor.py')
   if not os.path.exists(compiler_exec):
     logger.info("Compiler executor not found. Copying to web root dir.")
@@ -138,6 +143,9 @@ def getUID():
 
 
 def returnError(msg, errcode):
+  """
+    returnError -- Helper function to format & return error messages & codes
+  """
   if request.headers['Accept'] == 'application/json':
     return msg, errcode
   else:
@@ -145,16 +153,17 @@ def returnError(msg, errcode):
 
 
 
-#------------------------------------------------------------------------------
-#  / - Home (welcome msg)
-#------------------------------------------------------------------------------
 @webapp.route('/')
 def root():
+  """
+  #------------------------------------------------------------------------------
+  #  / - Home (welcome msg)
+  #------------------------------------------------------------------------------
+  """
   if request.headers['Accept'] == 'application/json':
     return "Welcome\n\n", 200
   else:
     return redirect(url_for('index'))
-
 
 
 @webapp.route('/index')
@@ -164,33 +173,43 @@ def index():
   else:
     return render_template('index.html')
 
-#------------------------------------------------------------------------------
-#  /about -
-#------------------------------------------------------------------------------
+
+
 @webapp.route('/about')
 def about():
+  """
+  #------------------------------------------------------------------------------
+  #  /about - Display about page
+  #------------------------------------------------------------------------------
+  """
+  logger.debug('[FLASKWEB  /about]')
   if request.headers['Accept'] == 'application/json':
-    return redirect(url_for('static', filename="rest.txt"))
+    return redirect(url_for('staticFile', filename="rest.txt"))
   else:
     return render_template('about.html')
 
 
-#------------------------------------------------------------------------------
-#  /restapi - Display complete list of API EndPoints
-#------------------------------------------------------------------------------
 @webapp.route('/restapi')
 def restapi():
+  """
+  #------------------------------------------------------------------------------
+  #  /restapi - Display complete list of API EndPoints
+  #------------------------------------------------------------------------------
+  """
+  logger.debug('[FLASKWEB  /restapi] API Reference request')
   if request.headers['Accept'] == 'application/json':
-    return redirect(url_for('static', filename="rest.txt"))
+    return redirect(url_for('staticFile', filename="rest.txt"))
   else:
     return render_template('rest.html')
 
 
-#------------------------------------------------------------------------------
-#  /log - Displays current log file
-#------------------------------------------------------------------------------
 @webapp.route('/log')
 def getLog():
+  """
+  #------------------------------------------------------------------------------
+  #  /log - Displays current log file
+  #------------------------------------------------------------------------------
+  """
   with open(webapp.config['LOGFILE'], 'r') as logfile:
     output = logfile.read()
   if request.headers['Accept'] == 'application/json':
@@ -200,29 +219,34 @@ def getLog():
 
 
 
-#------------------------------------------------------------------------------
-#  /trace - Debugging respose
-#------------------------------------------------------------------------------
 @webapp.route('/trace')
 def trace():
-  global dispatcher
-  if 'application/json' in request.headers['Accept']:
-    output = {}
-    output['headers'] = request.headers
-    output['args'] = request.args
-    output['form'] = request.args
-    output['data'] = request.args
-    return jsonify(output)
-  else:
-    output = dict(active=dispatcher.active.__dict__,
-                  finished=dispatcher.finished.__dict__,
-                  offers=dispatcher.offers.__dict__)
-    return jsonify(output)
+  """
+  #------------------------------------------------------------------------------
+  #  /trace - Debugging respose. Returns the client's HTTP request data in json
+  #------------------------------------------------------------------------------
+  """
+  logger.debug('[FLASKWEB  /trace] Trace debug request')
+  output = {}
+  output['args'] = request.args
+  output['form'] = request.form
+  output['method'] = request.method
+  output['url'] = request.url
+  output['client_ip']  = request.remote_addr
+  output['headers'] = {k: str(v) for k,v in request.headers.items()}
+  return jsonify(output), 200
 
 # STATIC CONTENT
 @webapp.route('/fs/<path:path>/')
-def static_file(path):
-  logger.debug('Static File Request for `%s`' % path)
+def staticFile(path):
+  """
+  #------------------------------------------------------------------------------
+  #  /fs - File System Exposure for the local webroot folder
+  #        Note: Direct file access via curl should include a trailing slash (/) 
+  #           Otherwise, you will get a 302 redirect to the actual file
+  #------------------------------------------------------------------------------
+  """
+  logger.debug('[FLASKWEB  /fs] Static File Request for `%s`' % path)
   local = os.path.join(webapp.config['DIR'], path)
   if not os.path.exists(local):
     return returnError("File not found: %s" % path, 404)
@@ -232,7 +256,6 @@ def static_file(path):
       if os.path.isdir(f):
         contents[i] += '/'
 
-    # TODO:  dittinguish dirs from files
     if request.headers['Accept'] == 'application/json':
       return jsonify(dict(cwd=local, contents=contents)), 200
     else:
@@ -248,17 +271,29 @@ def static_file(path):
 
 
 
-#------------------------------------------------------------------------------
-#  /apps - Application Level interface
-#         POST   Upload new application
-#             curl -i -H "Accept: application/json" -F file=@<filename> http://qp1:5000/apps
-#
-#         GET    Display both list of loaded apps and form to upload new ones
-#------------------------------------------------------------------------------
+@webapp.route('/app', methods=['GET', 'POST'])
+def uploadAppRedir():
+  """
+    Redirect to uploadApp (/apps)
+  """
+  logger.debug('[FLASKWEB  /app] Redirect to /apps')
+  return uploadApp()
+
 @webapp.route('/apps', methods=['GET', 'POST'])
-def upload_app():
+def uploadApp():
+  """
+  #------------------------------------------------------------------------------
+  #  /apps, /app - Application Level interface    
+  #     POST   Upload new application
+  #       curl -i -X POST -H "Accept: application/json" -F file=@<filename> http://<host>:<port>/apps
+  #
+  #     GET    Display both list of loaded apps and form to upload new ones
+  #
+  #     /app will redirect to /apps
+  #------------------------------------------------------------------------------
+  """
   if request.method == 'POST':
-      logger.info("POST request to upload new application")
+      logger.info("[FLASKWEB  /apps] POST request to upload new application")
       file = request.files['file']
       if file:
           name = secure_filename(file.filename)
@@ -287,11 +322,11 @@ def upload_app():
               output = dict(name=name, uid=uid, status='SUCCESS', greeting='Thank You!')
               return jsonify(output), 200
           else:
-              return redirect(url_for('upload_app'))
+              return redirect(url_for('uploadApp'))
 
+  logger.debug('[FLASKWEB  /apps] GET request for list of apps')
   applist = db.getAllApps()
   versions = {a['name']: db.getVersions(a['name'], limit=5) for a in applist}
-
 
   # TODO: Add 2nd link on AppList: 1 to launch latest, 1 to show all versions
   if request.headers['Accept'] == 'application/json':
@@ -299,74 +334,82 @@ def upload_app():
   else:
       return render_template('apps.html', applist=applist, versions=versions)
 
-@webapp.route('/app', methods=['GET', 'POST'])
-def uploadApp():
-  return upload_app()
-
-
-#------------------------------------------------------------------------------
-#  /apps/<appName> - Specific Application Level interface
-#         GET    Display all versions for given application
-#------------------------------------------------------------------------------
-@webapp.route('/apps/<appName>')
-def get_app(appName):
-    applist = [a['name'] for a in db.getAllApps()]
-
-    if appName in applist:
-      versionList = db.getVersions(appName)
-      if request.headers['Accept'] == 'application/json':
-        return jsonify(dict(name=appName, versions=versionList)), 200
-      else:
-        return render_template("apps.html", name=appName, versionList=versionList)
-    else:
-      return returnError("Application %s does not exist" % appName, 404)
 
 @webapp.route('/app/<appName>', methods=['GET', 'POST'])
+def getAppRedir(appName):
+  """
+    Redirect to uploadApp (/apps/<appName>)
+  """
+  logger.debug('[FLASKWEB  /app/<appName>] Redirect to /apps/%s' % appName)
+  return getApp(appName)
+
+@webapp.route('/apps/<appName>')
 def getApp(appName):
-  return get_app(appName)
-
-
-#------------------------------------------------------------------------------
-#  /apps/<appName> - Specific Application Level interface
-#         POST   (Upload archive data (C++, Source, etc....)
-#            curl -i -H "Accept: application/json"
-#                    -F "file=<filename>" http://qp1:5000/apps/<addName>/<addUID>
-#
-#         GET    (TODO) Display archived files...  NotImplemented
-#------------------------------------------------------------------------------
-@webapp.route('/apps/<appName>/<appUID>', methods=['GET', 'POST'])
-def archive_app(appName, appUID):
-    applist = [a['name'] for a in db.getAllApps()]
-    uname = AppID.getAppId(appName, appUID)
-
-    if appName not in applist:
-      return returnError("Application %s does not exist" % appName, 404)
-
-    if request.method == 'POST':
-        file = request.files['file']
-        if file:
-            filename = secure_filename(file.filename)
-            path = os.path.join(webapp.config['UPLOADED_ARCHIVE_DEST'], uname).encode(encoding='utf8')
-            if not os.path.exists(path):
-              os.mkdir(path)
-            file.save(os.path.join(path, filename))
-            return "File Uploaded & archived", 202
-        else:
-            return "No file received", 400
-
-    elif request.method == 'GET':
-      path = os.path.join(webapp.config['UPLOADED_ARCHIVE_URL'], uname)
-      return redirect(path, 302)
-
-      # if request.headers['Accept'] == 'application/json':
-      #   return jsonify(db.getApp(appName))
-      # else:
-      #   return redirect(path, 302)
+  """
+  #------------------------------------------------------------------------------
+  #  /apps/<appName> - Specific Application Level interface
+  #         GET    Display all versions for given application
+  #------------------------------------------------------------------------------
+  """
+  logger.debug('[FLASKWEB  /apps/<appName>] GET request for app, `%s`' % appName)
+  applist = [a['name'] for a in db.getAllApps()]
+  if appName in applist:
+    versionList = db.getVersions(appName)
+    if request.headers['Accept'] == 'application/json':
+      return jsonify(dict(name=appName, versions=versionList)), 200
+    else:
+      return render_template("apps.html", name=appName, versionList=versionList)
+  else:
+    return returnError("Application %s does not exist" % appName, 404)
 
 
 @webapp.route('/app/<appName>/<appUID>', methods=['GET', 'POST'])
-def archiveApp(appName, appUID):
+def archiveAppRedir(appName, appUID):
+  """
+    Redirect to archiveApp
+  """
+  logger.debug('[FLASKWEB  /app/<appName>/<appUID>] Redirec to /apps/%s/%s' 
+      % (appName, appUID))
   return archive_app(appName, appUID)
+
+
+@webapp.route('/apps/<appName>/<appUID>', methods=['GET', 'POST'])
+def archiveApp(appName, appUID):
+  """
+  #------------------------------------------------------------------------------
+  #  /apps/<appName>/<appUID> - Specific Application Level interface
+  #         POST   (Upload archive data (C++, Source, etc....)
+  #            curl -i -H "Accept: application/json"
+  #                    -F "file=<filename>" http://qp1:5000/apps/<addName>/<addUID>
+  #
+  #         GET    (TODO) Display archived files...  NotImplemented
+  #------------------------------------------------------------------------------
+  """
+  logger.debug('[FLASKWEB  /app/<appName>/<appUID>] %s Request for App Archive \
+  `%s`, UID=`%S`' % (request.method, appName, appUID))
+  applist = [a['name'] for a in db.getAllApps()]
+  uname = AppID.getAppId(appName, appUID)
+
+  if appName not in applist:
+    return returnError("Application %s does not exist" % appName, 404)
+
+  if request.method == 'POST':
+      file = request.files['file']
+      if file:
+          filename = secure_filename(file.filename)
+          path = os.path.join(webapp.config['UPLOADED_ARCHIVE_DEST'], uname).encode(encoding='utf8')
+          if not os.path.exists(path):
+            os.mkdir(path)
+          file.save(os.path.join(path, filename))
+          return "File Uploaded & archived", 202
+      else:
+          return "No file received", 400
+
+  elif request.method == 'GET':
+    path = os.path.join(webapp.config['UPLOADED_ARCHIVE_URL'], uname)
+    return redirect(path, 302)
+
+
 
 #------------------------------------------------------------------------------
 #  /jobs - Current runtime & completed job Interface

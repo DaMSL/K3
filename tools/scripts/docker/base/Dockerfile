@@ -17,9 +17,10 @@ ENV LC_ALL en_US.UTF-8
 RUN apt-get update && apt-get install -y \
       linux-tools-3.13.0-32-generic libc6-dbg \
       wget vim emacs make git mercurial \
-      zlib1g-dev libreadline6 libreadline6-dev libncurses5-dev libgmp-dev \
+      zlib1g-dev libreadline6 libreadline6-dev libncurses5-dev libgmp-dev libyaml-dev \
       autoconf automake libtool \
-      clang-3.5 libbz2-dev
+      clang-3.5 libbz2-dev \
+      aptitude tmux python-pip ruby
 
 # Install and configure GCC 4.9
 RUN add-apt-repository ppa:ubuntu-toolchain-r/test && \
@@ -91,6 +92,9 @@ RUN wget --no-verbose -T 10 ftp://oss.sgi.com/www/projects/libnuma/download/numa
     ./configure && \
     make && \
     make install
+
+# python pip installs
+RUN pip install pyyaml
 
 # Clone K3, K3-Mosaic from Git
 RUN mkdir -p /k3/K3 /k3/K3-Mosaic && \

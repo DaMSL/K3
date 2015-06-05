@@ -14,26 +14,40 @@ if __FILE__ == $0
     puts "Incorrect filename, verify."
   end
 
-  schema_widths = in_handles.collect do |in_handle|
+  schema_widths = in_handles.map do |in_handle|
     width = in_handle.shift.length
     in_handle.rewind
     width
+  end
+
+  schema_defs = in_handles.map do |in_handle|
+    vals = in_handle.shift.map do |val|
+        if /^\d+$/ =~ val then 0
+        elsif /^\d+\.\d*$/ =~ val then 0
+        elsif /^(true|false)$/ =~ val then false
+        else ""
+        end
+    end
+    in_handle.rewind
+    vals
   end
 
   active = (0..in_handles.length - 1).to_a
 
   CSV.open(out_file, "wb", {:col_sep => "|"}) do |out_handle|
     while !active.empty?
+      # choose a random in_handle to read from
       index = active.sample
       in_handle = in_handles[index]
       row = in_handle.shift
       if row.nil?
         active.delete(index)
       else
-        before = schema_widths[0...index].inject(0, :+)
-        after = schema_widths[index + 1..-1].inject(0, :+)
-        out_handle << [in_handles.index(in_handle)] + [nil] * before + row + [nil] * after
+        before = schema_defs[0...index].flatten
+        after = schema_defs[index + 1..-1].flatten
+        out_handle << [index] + before + row + after
       end
     end
+    out_handle << [-1] + schema_defs.flatten
   end
 end

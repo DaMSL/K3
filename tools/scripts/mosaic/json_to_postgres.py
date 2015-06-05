@@ -8,7 +8,6 @@ import subprocess
 script_path = "tools/scripts/mosaic"
 sys.path.append(os.path.abspath(script_path))
 import clean_json
-import create_schema
 
 schema_path = "tools/scripts/mosaic/db.schema"
 json_dir = "out"
