@@ -34,6 +34,7 @@ class ProgramContext : public StandardBuiltins,
   virtual map<string, string> __prettify();
   virtual unit_t initDecls(unit_t);
   virtual unit_t processRole(const unit_t&) = 0;
+  static string __triggerName(int trig);
 
   static map<TriggerID, string> __trigger_names_;
 

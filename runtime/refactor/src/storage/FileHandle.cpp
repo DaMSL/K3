@@ -96,7 +96,7 @@ void SinkFileHandle::doWrite(shared_ptr<PackedValue> val) {
 
 void SinkTextHandle::doWrite(shared_ptr<PackedValue> val) {
   file_.write (val->buf(), val->length());
-  file_.put ('\n');
+  file_ << std::endl;
 }
 
 }

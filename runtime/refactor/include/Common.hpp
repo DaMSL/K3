@@ -113,7 +113,6 @@ class unit_t {
 
 typedef std::string Identifier;
 
-// TODO(jbw) move to Message.hpp
 class MessageHeader {
  public:
   MessageHeader() {}

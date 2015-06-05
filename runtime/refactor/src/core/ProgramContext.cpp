@@ -22,6 +22,14 @@ map<string, string> ProgramContext::__prettify() {
   return map<string, string>();
 }
 
+string ProgramContext::__triggerName(int trig) {
+  auto it = ProgramContext::__trigger_names_.find(trig);
+  std::string s = (it != ProgramContext::__trigger_names_.end())
+                      ? it->second
+                      : "{Undefined Trigger}";
+  return s;
+}
+
 unit_t ProgramContext::initDecls(unit_t) { return unit_t{}; }
 
 std::map<TriggerID, string> ProgramContext::__trigger_names_;

@@ -1278,7 +1278,7 @@ effectsOfType args t | isTFunction t =
    case tnc t of
     (TForall _, [ch])      -> effectsOfType args ch
     (TFunction, [_, retT]) -> let a = mkArg (length args + 1)
-                              in effectsOfType (args++[a]) retT-- >>= \ef -> return (flambda a fnone ef fnone)
+                              in effectsOfType (args++[a]) retT
     _ -> errorM $ PT.boxToString $ [T.pack "Invalid function type"] %+ PT.prettyLines t
   where mkArg i = "__arg" ++ show i
 
@@ -1286,7 +1286,7 @@ effectsOfType [] _   = return fnone
 effectsOfType args _ = return $ foldl lam (flambda (last args) fnone ef fnone) $ init args
   where
     lam rfacc a = flambda a fnone fnone rfacc
-    ef = floop $ fseq $ concatMap (\i -> [fread $ pfvar i, fwrite $ pfvar i]) args
+    ef = floop $ fseq $ concatMap (\i -> [fread $ pfvar i, fwrite $ pfvar i]) args ++ [fio]
 
 
 -- | Computes execution effects and effect structure for a collection field member.

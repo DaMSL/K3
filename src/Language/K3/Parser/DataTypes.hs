@@ -416,6 +416,11 @@ safePopFrame (h:t) = (h,t)
 pushFrame :: K3Parser ()
 pushFrame = modifyEnv_ addFrame
 
+mergeFrame :: EnvFrame -> K3Parser ()
+mergeFrame f = modifyEnv_ $ \env -> case env of 
+                                      [] -> [f]
+                                      h:t -> (f ++ h):t
+
 popFrame :: K3Parser EnvFrame
 popFrame = modifyEnv $ \env -> (removeFrame env, currentFrame env)
 

@@ -1116,7 +1116,8 @@ trackEndpoint eSpec d
 -- | Completes any stateful processing needed for the role.
 --   This includes handling 'feed' clauses, and checking and qualifying role defaults.
 postProcessRole :: [K3 Declaration] -> EnvFrame -> K3Parser [K3 Declaration]
-postProcessRole decls frame = processEndpoints frame
+postProcessRole decls frame = 
+  mergeFrame frame >> processEndpoints frame
 
   where processEndpoints s = addBuilderDecls $ map (annotateEndpoint s . attachSource s) decls
 

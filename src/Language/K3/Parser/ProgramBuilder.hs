@@ -124,6 +124,7 @@ processInitsAndRoles (Node t c) endpointBQGs = Node t $ c ++ initializerFns
     sinkInitE acc (_,(_, Nothing, _, Just e)) = acc ++ [e]
     sinkInitE acc _ = acc
 
+    -- TODO handle empty sinks or sources
     mkRoleBody sources sinks =
       EC.lambda "_" $ EC.block $
         (foldl sinkInitE [] sinks) ++
@@ -180,7 +181,6 @@ endpointMethods isSource eSpec n t =
     sourceRead    = ("Read",     TC.unit, cleanT,  Nothing)
     sinkHasWrite  = ("HasWrite", TC.unit, TC.bool, Nothing)
     sinkWrite     = ("Write",    cleanT,  TC.unit, Nothing)
-
 
 -- | Rewrites a source declaration's process method to access and
 --   dispatch the next available event to all its bindings.
