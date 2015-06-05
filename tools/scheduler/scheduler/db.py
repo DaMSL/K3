@@ -145,6 +145,15 @@ FROM app_versions LEFT OUTER JOIN compiles USING (name, uid) WHERE name='%s' ORD
 ''' % (appName, limitRows))
     return [dict(name=r[0], uid=r[1], version=r[2], date=r[3], git_hash=r[4], user=r[5], options=r[6]) for r in cur.fetchall()]
 
+def deleteAllApps(appName):
+  conn = getConnection()
+  cur = conn.cursor()
+  cur.execute("DELETE FROM apps WHERE name='%s';" % appName)
+  conn.commit()
+  cur.execute("DELETE FROM app_versions WHERE name='%s';" % appName)
+  conn.commit()
+
+
 def checkHash(hash):
   cur = getConnection().cursor()
   cur.execute("SELECT COUNT(*) FROM app_versions WHERE hash='%s';" % hash)

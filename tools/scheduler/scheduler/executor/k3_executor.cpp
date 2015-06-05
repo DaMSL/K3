@@ -20,7 +20,6 @@
 #include <fstream>
 #include <string>
 #include <unistd.h>
-#include <cstdlib>
 #include <dirent.h>
 #include <stdio.h>
 
@@ -31,9 +30,6 @@
 using namespace mesos;
 using namespace std;
 
-const char* MESOS_SANDBOX = std::getenv("MESOS_SANDBOX");
-
-
 class DataFile {
   public:
     string path;
@@ -43,9 +39,7 @@ class DataFile {
 
 
 // exec -- exec system command, pipe to stdout, return exit code
-int exec (const char * cmd, streambuf* sb)  {
-  ostream output (sb);
-
+int exec (const char * cmd)  {
   FILE* pipe = popen(cmd, "r");
     if (!pipe) {
         return -1;
@@ -54,12 +48,12 @@ int exec (const char * cmd, streambuf* sb)  {
     while (!feof(pipe)) {
         if (fgets(buffer, 256, pipe) != NULL) {
            std::string s = std::string(buffer);
-           output << buffer << endl;
+           cout << s << endl;
         }
     }
-
     return pclose(pipe);
 }
+
 
 
 void packageSandbox(string host_name, string app_name, string job_id, string webaddr)  {
@@ -81,8 +75,8 @@ void packageSandbox(string host_name, string app_name, string job_id, string web
     exec(curl_cmd.c_str());
     cout << endl << endl << curl_output << endl;
     exec(curl_output.c_str());
-
 }
+
 
 
 class KDExecutor : public Executor
@@ -102,7 +96,6 @@ public:
                           const SlaveInfo& slaveInfo)
   {
       host_name= slaveInfo.hostname();
-      localPeerCount = 0;
       totalPeerCount = 0;
   }
 
@@ -116,8 +109,12 @@ public:
     driver->stop();
   }
 
+
+
+
   virtual void launchTask(ExecutorDriver* driver, const TaskInfo& task)    {
-        localPeerCount++;
+    
+    job_id   = task.task_id().value();
 
     TaskStatus status;
     status.mutable_task_id()->MergeFrom(task.task_id());
@@ -140,21 +137,15 @@ public:
     cout << Dump(hostParams);
     cout << "\n---------------------------------\n";
 
+    app_name = hostParams["binary"].as<string>();
+    webaddr  = hostParams["archive_endpoint"].as<string>();
+
+
     // Build the K3 Command which will run inside this container
     k3_cmd = "cd $MESOS_SANDBOX && ./" + hostParams["binary"].as<string>();
     if (hostParams["logging"]) {
             k3_cmd += " -l INFO ";
     }
-    if (hostParams["jsonlog"] || hostParams["jsonfinal"]) {
-            exec ("cd $MESOS_SANDBOX && mkdir json", cout.rdbuf());
-            k3_cmd += " -j json ";
-    }
-
-    if (hostParams["jsonfinal"]) {
-//            exec ("cd $MESOS_SANDBOX && mkdir json", cout.rdbuf());
-            k3_cmd += " --json_final_only ";
-    }
-
     if (hostParams["resultVar"]) {
       k3_cmd += " --result_path $MESOS_SANDBOX --result_var " + hostParams["resultVar"].as<string>();
     }
@@ -388,12 +379,13 @@ public:
             cout << "I am master" << endl;
     }
     cout << "Launching K3: " << endl;
-    app_name =  hostParams["binary"].as<string>();
-    job_id   = task.task_id().value();
-    webaddr = hostParams["archive_endpoint"].as<string>();
     driver->sendFrameworkMessage("LAUNCHING");
+    cout << "D" << endl;
     thread = new boost::thread(TaskThread(task, k3_cmd, driver, isMaster, webaddr, app_name, job_id, host_name));
+    cout << "M" << endl;
   }
+
+
 
 
 class TaskThread {
@@ -402,35 +394,32 @@ class TaskThread {
     string k3_cmd;
     ExecutorDriver* driver;
     bool isMaster;
-    string host_name;
+    string webaddr;
     string app_name;
     string job_id;
-    string webaddr;
+    string host_name;
 
   public:
       TaskThread(TaskInfo t, string cmd, ExecutorDriver* d, bool m, string w, string a, string j, string h)
-        : task(t), k3_cmd(cmd), driver(d), isMaster(m), webaddr(w), app_name(a), job_id(j), host_name(h) {}
+        : task(t), k3_cmd(cmd), driver(d), isMaster(m), webaddr(w), app_name(a), job_id(j), host_name(h) {
+          cout << "EEEE" << endl;
+        }
 
       void operator()() {
+        cout << "F" << endl;
         TaskStatus status;
         status.mutable_task_id()->MergeFrom(task.task_id());
         // string job_id   = task.task_id().value();
+        cout << "G" << endl;
 
         // Currently, just call the K3 executable with the generated command line from task.data()
         try {
-
-            // Set output buffer streams (K3 output >> file & Sandbox output >> stdout)
-            std::ofstream of;
-            string stdout_file = "stdout_" + job_id + "_" + host_name;
-            of.open(string(MESOS_SANDBOX) + "/" + stdout_file, std::ofstream::out);
-            cout << "OUTPUT FILE = " << MESOS_SANDBOX << "/" << stdout_file << endl;
-            std::streambuf * sb_buffer = cout.rdbuf();
-            std::streambuf * k3_buffer = of.rdbuf();
-
+            driver->sendFrameworkMessage("RUNNING");
             cout << "Starting the K3 program thread: " << app_name << endl;
-            int result = exec(k3_cmd.c_str(), k3_buffer);
-            of.close();
+            cout << "-------------->  PROGRAM STARTING   <--------------------" << endl;
+            int result = exec(k3_cmd.c_str());
             cout << "-------------->  PROGRAM TERMINATED <--------------------" << endl;
+            driver->sendFrameworkMessage("TERMINATING");
 
             packageSandbox(host_name, app_name, job_id, webaddr);
 
@@ -438,7 +427,6 @@ class TaskThread {
                 status.set_state(TASK_FINISHED);
                 driver->sendFrameworkMessage("Task FINISHED");
                 cout << endl << "Task " << task.task_id().value() << " Completed!" << endl;
-                driver->sendStatusUpdate(status);
             }
             else {
                 status.set_state(TASK_FAILED);
@@ -453,38 +441,42 @@ class TaskThread {
     	  driver->stop();
         }
         //-------------  END OF TASK  -------------------
+       driver->sendFrameworkMessage("POST-FINISHED");
       }
 };
 
   virtual void killTask(ExecutorDriver* driver, const TaskID& taskId) {
       packageSandbox(host_name, app_name, job_id, webaddr);
-      driver->sendFrameworkMessage("Executor " + host_name+ " KILLING TASK");
+      driver->sendFrameworkMessage("Executor " + host_name + " KILLING TASK");
       driver->stop();
-}
+  }
 
   virtual void frameworkMessage(ExecutorDriver* driver, const string& data) {
       driver->sendFrameworkMessage(data);
   }
 
   virtual void shutdown(ExecutorDriver* driver) {
-      driver->sendFrameworkMessage("Executor " + host_name+ "SHUTTING DOWN");
+      driver->sendFrameworkMessage("Executor " + host_name + "SHUTTING DOWN");
       driver->stop();
   }
 
   virtual void error(ExecutorDriver* driver, const string& message) {
-      driver->sendFrameworkMessage("Executor " + host_name+ " ERROR");
+      driver->sendFrameworkMessage("Executor " + host_name + " ERROR");
       driver->stop();
-}
+  }
   
 private:
-    string host_name;
-    string app_name;
-    string job_id;
-    string webaddr;
     int state;
-    int localPeerCount;
     int totalPeerCount;
     int tasknum;
+    string host_name;
+    string job_id;
+    string app_name;
+    string webaddr;
+    // TaskInfo task;
+    string k3_cmd;
+    // bool isMaster;
+
 };
 
 

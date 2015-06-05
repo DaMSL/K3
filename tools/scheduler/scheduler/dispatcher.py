@@ -41,6 +41,8 @@ class Dispatcher(mesos.interface.Scheduler):
     self.terminate = False     # Flag to signal termination to the owner of the dispatcher
     self.frameworkId = None    # Will get updated when registering with Master
 
+    self.idle = 0
+
     logging.info("[DISPATCHER] Initializing with master at %s" % master)
 
  
@@ -200,8 +202,6 @@ class Dispatcher(mesos.interface.Scheduler):
           nextJob.master = host
         for n in range(offer['peers']):
           nextPort = offer['ports'].getNext()
-          logging.debug("    PEER PORT = %s" % str(nextPort))
-          # p = Peer(len(allPeers), vars, IP_ADDRS[host], nextPort)
 
           # CHECK:  Switched to hostnames
           p = Peer(len(allPeers), vars, ip, nextPort)
@@ -209,11 +209,13 @@ class Dispatcher(mesos.interface.Scheduler):
           allPeers.append(p)
 
         taskid = len(nextJob.tasks)
-        logging.debug("PEER LIST:")
-        for p in peers:
-          logging.debug("    %-2s  %s:%s" % (p.index, p.ip, p.port))
         t = Task(taskid, offerId, host, offer['mem'], peers, roleId)
         nextJob.tasks.append(t)
+
+    logging.debug("PEER LIST:")
+    for p in peers:
+      logging.debug("    %-2s  %s:%s" % (p.index, p.ip, p.port))
+
 
     # ID Master for collection Stdout TODO: Should we auto-default to offer 0 for stdout?
     populateAutoVars(allPeers)
@@ -232,7 +234,6 @@ class Dispatcher(mesos.interface.Scheduler):
     # Build Mesos TaskInfo Protobufs for each k3 task and launch them through the driver
     for taskNum, k3task in enumerate(nextJob.tasks):
 
-      logging.debug("JOB BINARY = %s " % nextJob.binary_url)
       task = taskInfo(nextJob, taskNum, self.webaddr, self.offers[k3task.offerid].slave_id)
 
       oid = mesos_pb2.OfferID()
@@ -242,8 +243,8 @@ class Dispatcher(mesos.interface.Scheduler):
       del self.offers[k3task.offerid]
 
     # # Decline all remaining offers
+    logging.info("[DISPATCHER] DECLINING remaining offers (Task Launched)")
     for oid, offer in self.offers.items():
-      logging.info("[DISPATCHER] DECLINING remaining offers (Task Launched)")
       driver.declineOffer(offer.id)
     for oid in self.offers.keys():
       del self.offers[oid]
@@ -337,7 +338,10 @@ class Dispatcher(mesos.interface.Scheduler):
   # If there is a pending job, add all offers to self.offers
   # Then see if pending jobs can be launched with the offers accumulated so far
   def resourceOffers(self, driver, offers):
-    logging.info("[DISPATCHER] Got %d resource offers. %d jobs in the queue" % (len(offers), len(self.pending)))
+    # logging.info("[DISPATCHER] Got %d resource offers. %d jobs in the queue" % (len(offers), len(self.pending)))
+    if time.time() > self.idle + 10:
+      logging.info("[DISPATCHER] HeartBeatting. Offers Available. %d jobs in the queue. Idling..." % (len(self.pending)))
+      self.idle = time.time()
     if len(self.pending) == 0:
       for offer in offers:
         driver.declineOffer(offer.id)

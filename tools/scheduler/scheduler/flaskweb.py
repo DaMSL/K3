@@ -270,7 +270,6 @@ def staticFile(path):
     return send_from_directory(webapp.config['DIR'], path)
 
 
-
 @webapp.route('/app', methods=['GET', 'POST'])
 def uploadAppRedir():
   """
@@ -293,7 +292,7 @@ def uploadApp():
   #------------------------------------------------------------------------------
   """
   if request.method == 'POST':
-      logger.info("[FLASKWEB  /apps] POST request to upload new application")
+      logger.debug("[FLASKWEB  /apps] POST request to upload new application")
       file = request.files['file']
       if file:
           name = secure_filename(file.filename)
@@ -316,6 +315,7 @@ def uploadApp():
 
           # if (db.checkHash(hash)):
           db.insertApp(dict(uid=uid, name=name, hash=hash))
+          logger.info("[FLASKWEB] Added new application: `%s`, uid=`%s`", name, uid)
           #TODO:  Complete with paths for archive & app
 
           if request.headers['Accept'] == 'application/json':
@@ -410,13 +410,23 @@ def archiveApp(appName, appUID):
     return redirect(path, 302)
 
 
+@webapp.route('/job')
+def listJobsRedir():
+  """
+    Redirect to listJobs
+  """
+  logger.debug('[FLASKWEB  /job] Redirecting to /jobs')
+  return listJobs()
 
-#------------------------------------------------------------------------------
-#  /jobs - Current runtime & completed job Interface
-#         GET    Display currently executing & recently completed jobs
-#------------------------------------------------------------------------------
 @webapp.route('/jobs')
-def list_jobs():
+def listJobs():
+  """
+  #------------------------------------------------------------------------------
+  #  /jobs - Current runtime & completed job Interface
+  #         GET    Display currently executing & recently completed jobs
+  #------------------------------------------------------------------------------
+  """
+  logger.debug('[FLASKWEB  /jobs] Request for job listing')
   jobs = db.getJobs()
   compiles = db.getCompiles()
   if request.headers['Accept'] == 'application/json':
@@ -424,22 +434,30 @@ def list_jobs():
   else:
     return render_template("jobs.html", joblist=jobs, compilelist=compiles)
 
-@webapp.route('/job')
-def listJobs():
-  return list_jobs()
 
+@webapp.route('/jobs/<appName>', methods=['GET', 'POST'])
+def create_job_latest(appName):
+  """
+    Redirect createJob using the latest uploaded application version
+  """
+  logger.debug('[FLASKWEB  /jobs/<appName>] Redirect to current version of /jobs/%s' % appName)
+  app = db.getApp(appName)
+  return create_job(appName, app['uid'])
 
-#------------------------------------------------------------------------------
-#  /jobs/<appName>
-#  /jobs/<appName>/<appUID  - Launch a new K3 Job
-#         POST    Create new K3 Job
-#          curl -i -X POST -H "Accept: application/json" -F "file=@<rolefile>" http://qp1:5000/jobs/<appName>/<appUID>
-#             NOTE: if appUID is omitted, job will be submitted to latest version of this app
-#
-#         GET    Display job list for this application
-#------------------------------------------------------------------------------
 @webapp.route('/jobs/<appName>/<appUID>', methods=['GET', 'POST'])
 def create_job(appName, appUID):
+  """
+  #------------------------------------------------------------------------------
+  #  /jobs/<appName>
+  #  /jobs/<appName>/<appUID  - Launch a new K3 Job
+  #         POST    Create new K3 Job
+  #          curl -i -X POST -H "Accept: application/json" -F "file=@<rolefile>" http://qp1:5000/jobs/<appName>/<appUID>
+  #             NOTE: if appUID is omitted, job will be submitted to latest version of this app
+  #
+  #         GET    Display job list for this application
+  #------------------------------------------------------------------------------
+  """
+  logger.debug('[FLASKWEB  /jobs/<appName>] Job Request for %s' % appName)
   global dispatcher
   applist = [a['name'] for a in db.getAllApps()]
   if appName in applist:
@@ -527,18 +545,14 @@ def create_job(appName, appUID):
     return returnError("There is no application, %s" % appName, 404)
 
 
-@webapp.route('/jobs/<appName>', methods=['GET', 'POST'])
-def create_job_latest(appName):
-    app = db.getApp(appName)
-    return create_job(appName, app['uid'])
-
-
-#------------------------------------------------------------------------------
-#  /jobs/<appName>/<jobId>/status - Detailed Job info
-#         GET     Display detailed job info  (default for all methods)
-#------------------------------------------------------------------------------
 @webapp.route('/jobs/<appName>/<jobId>/status')
 def get_job(appName, jobId):
+    """
+    #------------------------------------------------------------------------------
+    #  /jobs/<appName>/<jobId>/status - Detailed Job info
+    #         GET     Display detailed job info  (default for all methods)
+    #------------------------------------------------------------------------------
+    """
     jobs = db.getJobs(jobId=jobId)
     job = None if len(jobs) == 0 else jobs[0]
     k3job = dispatcher.getJob(int(jobId))
@@ -565,14 +579,15 @@ def get_job(appName, jobId):
       return render_template("jobs.html", appName=appName, joblist=jobs, lastjob=thisjob)
 
 
-
-#------------------------------------------------------------------------------
-#  /jobs/<appName>/<appUID/replay  - Replay a previous K3 Job
-#         POST    Create new K3 Job
-#          curl -i -X POST -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<appUID>/replay
-#------------------------------------------------------------------------------
 @webapp.route('/jobs/<appName>/<jobId>/replay', methods=['GET', 'POST'])
 def replay_job(appName, jobId):
+  """
+  #------------------------------------------------------------------------------
+  #  /jobs/<appName>/<appUID/replay  - Replay a previous K3 Job
+  #         POST    Create new K3 Job
+  #          curl -i -X POST -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<appUID>/replay
+  #------------------------------------------------------------------------------
+  """
   global dispatcher
   joblist = db.getJobs(jobId=jobId)
   oldjob = None if len(joblist) == 0 else joblist[0]
@@ -637,15 +652,17 @@ def replay_job(appName, jobId):
 #       return 'test'
 
 
-#------------------------------------------------------------------------------
-#  /jobs/<appName>/<jobId>/archive - Endpoint to receive & archive files
-#         GET     returns curl command
-#         POST    Accept files for archiving here
-#           curl -i -H "Accept: application/json"
-#              -F file=@<filename> http://qp1:5000/<appName>/<jobId>/archive
-#------------------------------------------------------------------------------
 @webapp.route('/jobs/<appName>/<jobId>/archive', methods=['GET', 'POST'])
 def archive_job(appName, jobId):
+    """"
+    #------------------------------------------------------------------------------
+    #  /jobs/<appName>/<jobId>/archive - Endpoint to receive & archive files
+    #         GET     returns curl command
+    #         POST    Accept files for archiving here
+    #           curl -i -H "Accept: application/json"
+    #              -F file=@<filename> http://qp1:5000/<appName>/<jobId>/archive
+    #------------------------------------------------------------------------------
+    """
     job_id = str(jobId).encode('utf8', 'ignore')
     if job_id.find('.') > 0:
       job_id = job_id.split('.')[0]
@@ -670,13 +687,15 @@ Upload your file using the following CURL command:\n\n
    curl -i -H "Accept: application/json" -F file=@<filename> http://<server>:<port>/<appName>/<jobId>/archive
 ''', 200
 
-#------------------------------------------------------------------------------
-#  /jobs/<appName>/<jobId>/kill - Job Interface to cancel a job
-#         GET     Kills a Job (if orphaned, updates status to killed)
-#           curl -i -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<jobId>/kill
-#------------------------------------------------------------------------------
 @webapp.route('/jobs/<appName>/<jobId>/kill', methods=['GET'])
 def kill_job(appName, jobId):
+    """
+    #------------------------------------------------------------------------------
+    #  /jobs/<appName>/<jobId>/kill - Job Interface to cancel a job
+    #         GET     Kills a Job (if orphaned, updates status to killed)
+    #           curl -i -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<jobId>/kill
+    #------------------------------------------------------------------------------
+    """
     jobs = db.getJobs(jobId=jobId)
     job = None if len(jobs) == 0 else jobs[0]
 
@@ -705,12 +724,14 @@ def kill_job(appName, jobId):
       return render_template("jobs.html", appName=appName, lastjob=thisjob)
 
 
-#------------------------------------------------------------------------------
-#  /job/<jobId> - Detailed Job info
-#         GET     Display detailed job info  (default for all methods)
-#------------------------------------------------------------------------------
 @webapp.route('/job/<jobId>')
 def get_job_id(jobId):
+    """
+    #------------------------------------------------------------------------------
+    #  /job/<jobId> - Detailed Job info
+    #         GET     Display detailed job info  (default for all methods)
+    #------------------------------------------------------------------------------
+    """
     jobs = db.getJobs(jobId=jobId)
     job = None if len(jobs) == 0 else jobs[0]
     if job == None:
@@ -718,12 +739,14 @@ def get_job_id(jobId):
     appName = job['appName']
     return get_job(appName, jobId)
 
-#------------------------------------------------------------------------------
-#  /job/<jobId>/replay - Replays this job
-#         GET     Display detailed job info  (default for all methods)
-#------------------------------------------------------------------------------
 @webapp.route('/job/<jobId>/replay')
 def replay_job_id(jobId):
+    """
+    #------------------------------------------------------------------------------
+    #  /job/<jobId>/replay - Replays this job
+    #         GET     Display detailed job info  (default for all methods)
+    #------------------------------------------------------------------------------
+    """
     jobs = db.getJobs(jobId=jobId)
     job = None if len(jobs) == 0 else jobs[0]
     if job == None:
@@ -732,13 +755,15 @@ def replay_job_id(jobId):
     logging.info ("[FLASKWEB] REPLAYING JOB # %s" % jobId)
     return replay_job(appName, jobId)
 
-#------------------------------------------------------------------------------
-#  /jobs/<appName>/<jobId>/kill - Job Interface to cancel a job
-#         GET     Kills a Job (if orphaned, updates status to killed)
-#           curl -i -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<jobId>/kill
-#------------------------------------------------------------------------------
 @webapp.route('/job/<jobId>/kill', methods=['GET'])
 def kill_job_id(jobId):
+    """
+    #------------------------------------------------------------------------------
+    #  /jobs/<appName>/<jobId>/kill - Job Interface to cancel a job
+    #         GET     Kills a Job (if orphaned, updates status to killed)
+    #           curl -i -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<jobId>/kill
+    #------------------------------------------------------------------------------
+    """
     jobs = db.getJobs(jobId=jobId)
     job = None if len(jobs) == 0 else jobs[0]
     appName = job['appName']
@@ -747,13 +772,15 @@ def kill_job_id(jobId):
     return kill_job(appName, jobId)
 
 
-#------------------------------------------------------------------------------
-#  /jobs/<appName>/<jobId>/kill - Job Interface to cancel a job
-#         GET     Kills a Job (if orphaned, updates status to killed)
-#           curl -i -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<jobId>/kill
-#------------------------------------------------------------------------------
 @webapp.route('/job/<jobId>/archive', methods=['GET', 'POST'])
 def archive_job_id(jobId):
+    """
+    #------------------------------------------------------------------------------
+    #  /jobs/<appName>/<jobId>/kill - Job Interface to cancel a job
+    #         GET     Kills a Job (if orphaned, updates status to killed)
+    #           curl -i -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<jobId>/kill
+    #------------------------------------------------------------------------------
+    """
     jobs = db.getJobs(jobId=jobId)
     job = None if len(jobs) == 0 else jobs[0]
     appName = job['appName']
@@ -763,19 +790,21 @@ def archive_job_id(jobId):
 
 
 
-#------------------------------------------------------------------------------
-#  /compile
-#         GET     Form for compiling new K3 Executable OR status of compiling tasks
-#         POST    Submit new K3 Compile task
-#           curl -i -H "Accept: application/json"
-#                   -F name=<appName> -F file=@<sourceFile>
-#                   -F options=<compileOptions> -F user=<userName> http://qp1:5000/compile
-#           NOTE: Username & Options are optional fields
-#------------------------------------------------------------------------------
 @webapp.route('/compile', methods=['GET', 'POST'])
 def compile():
-
+    """
+    #------------------------------------------------------------------------------
+    #  /compile
+    #         GET     Form for compiling new K3 Executable OR status of compiling tasks
+    #         POST    Submit new K3 Compile task
+    #           curl -i -H "Accept: application/json"
+    #                   -F name=<appName> -F file=@<sourceFile>
+    #                   -F options=<compileOptions> -F user=<userName> http://qp1:5000/compile
+    #           NOTE: Username & Options are optional fields
+    #------------------------------------------------------------------------------
+    """
     if webapp.config['COMPILE_OFF']:
+      logger.warning("Compilation requested, but denied (Feature not turned on)")
       return returnError("Compilation Features are not available", 400)
 
     if request.method == 'POST':
@@ -819,21 +848,7 @@ def compile():
           file.write(text)
           file.close()
 
-      # Generate compilation script  TODO: (Consider) Move to executor
-      # sh_file = 'compile_%s.sh' % name
-      # sh = genScript(dict(name=name, uid=uid, options=options, uname=uname,
-      #                     host=webapp.config['HOST'], port=webapp.config['PORT']))
-      # compscript = open(os.path.join(path, sh_file).encode(encoding='utf8'), 'w')
-      # compscript.write(sh)
-      # compscript.close()
-
       source = webapp.config['ADDR'] + os.path.join(url, src_file)
-      # script = webapp.config['ADDR'] + os.path.join(url, sh_file)
-
-      # logging.debug ('''
-      #   ADDR: %s
-      #   URL: %s
-      #   SOURCE: %s''', (webapp.config['ADDR'], url, source))
 
       # TODO: Add in Git hash
       compileJob    = CompileJob(name=name, uid=uid, path=path, url=url, options=options, user=user, tag=tag)
@@ -876,13 +891,14 @@ def compile():
 
 
 
-#------------------------------------------------------------------------------
-#  /compile/<uname>
-#         GET     displays STDOUT & STDERR consolidated output for compile task
-#------------------------------------------------------------------------------
 @webapp.route('/compile/<uname>', methods=['GET'])
 def get_compile(uname):
-
+    """
+    #------------------------------------------------------------------------------
+    #  /compile/<uname>
+    #         GET     displays STDOUT & STDERR consolidated output for compile task
+    #------------------------------------------------------------------------------
+    """
     if webapp.config['COMPILE_OFF']:
       return returnError("Compilation Features are not available", 400)
 
@@ -901,13 +917,14 @@ def get_compile(uname):
       return returnError("No output found for compilation, %s\n\n" % uname, 400)
 
 
-#------------------------------------------------------------------------------
-#  /compile/<uname>/kill
-#         GET     Kills an active compiling tasks (or removes and orphaned one
-#------------------------------------------------------------------------------
 @webapp.route('/compile/<uname>/kill', methods=['GET'])
 def kill_compile(uname):
-
+    """
+    #------------------------------------------------------------------------------
+    #  /compile/<uname>/kill
+    #         GET     Kills an active compiling tasks (or removes and orphaned one
+    #------------------------------------------------------------------------------
+    """
     if webapp.config['COMPILE_OFF']:
       return returnError("Compilation Features are not available", 400)
 
@@ -939,29 +956,58 @@ def kill_compile(uname):
 
 
 
+@webapp.route('/delete/app/<appName>', methods=['POST'])
+def deleteApp(appName):
+  """
+  #------------------------------------------------------------------------------
+  #  /delete/app/<appName>
+  #     POST     Deletes an app from the web server 
+  #         NOTE: Data files will remain in webroot on the server, but
+  #           the app will be inaccessible through the interface
+  #------------------------------------------------------------------------------
+  """
+  logger.debug('[FLASKWEB  /delete/app/<appName>] Request to delete App `%s`', appName)
+  applist = [a['name'] for a in db.getAllApps()]
+  if appName not in applist:
+    return returnError("Application %s does not exist" % appName, 404)
 
-#------------------------------------------------------------------------------
-#  /delete/jobs
-#         POST     Deletes list of K3 jobs
-#------------------------------------------------------------------------------
+  logger.info("[FLASKWEB]  DELETING all versions of app, `%s`")
+  db.deleteAllApps(appName)
+
+  if request.headers['Accept'] == 'application/json':
+    return jsonify(dict(app=appName, status='DELETED, files remain on server')), 200
+  else:
+    applist = db.getAllApps()
+    versions = {a['name']: db.getVersions(a['name'], limit=5) for a in applist}
+    return render_template('apps.html', applist=applist, versions=versions)
+
+
+
 @webapp.route('/delete/jobs', methods=['POST'])
 def delete_jobs():
+  """
+  #------------------------------------------------------------------------------
+  #  /delete/jobs
+  #         POST     Deletes list of K3 jobs
+  #------------------------------------------------------------------------------
+  """
   deleteList = request.form.getlist("delete_job")
   for jobId in deleteList:
     job = db.getJobs(jobId=jobId)[0]
     path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], job['appName'], jobId)
     shutil.rmtree(path, ignore_errors=True)
     db.deleteJob(jobId)
-  return redirect(url_for('list_jobs')), 302
+  return redirect(url_for('listJobs')), 302
 
 
-#------------------------------------------------------------------------------
-#  /delete/compiles
-#         POST     Deletes list of compile jobs
-#------------------------------------------------------------------------------
 @webapp.route('/delete/compiles', methods=['POST'])
 def delete_compiles():
-
+  """
+  #------------------------------------------------------------------------------
+  #  /delete/compiles
+  #         POST     Deletes list of compile jobs
+  #------------------------------------------------------------------------------
+  """
   if webapp.config['COMPILE_OFF']:
     return returnError("Compilation Features are not available", 400)
 
@@ -973,13 +1019,9 @@ def delete_compiles():
     # path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], job['appName'], jobId)
     # shutil.rmtree(path, ignore_errors=True)
     # db.deleteJob(jobId)
-  return redirect(url_for('list_jobs')), 302
+  return redirect(url_for('listJobs')), 302
 
 
-
-#------------------------------------------------------------------------------
-#  /kill - Kill the server  (TODO: Clean this up)
-#------------------------------------------------------------------------------
 
 def shutdown_server():
     logging.warning ("[FLASKWEB] Attempting to kill the server")
@@ -996,6 +1038,11 @@ def shutdown_server():
 
 @webapp.route('/kill')
 def shutdown():
+    """
+    #------------------------------------------------------------------------------
+    #  /kill - Kill the server  (TODO: Clean this up)
+    #------------------------------------------------------------------------------
+    """
     logging.warngin ("[FLASKWEB] Shutting down the driver")
     shutdown_server()
     return 'Server is going down...'
