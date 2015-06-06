@@ -26,7 +26,6 @@ import Data.Time.LocalTime
 
 import Data.List
 import Data.List.Split
-import Data.Maybe ( fromJust )
 import Data.Heap ( Heap )
 import Data.Map ( Map )
 import Data.Set ( Set )
@@ -237,6 +236,9 @@ modifyMM f = modifyM $ \st -> let (ncst, r) = f $ compileSt st in (st { compileS
 modifyMM_ :: (SMST -> SMST) -> ServiceMM z ()
 modifyMM_ f = modifyM_ $ \st -> st { compileSt = f $ compileSt st }
 
+modifyMIO :: ServiceMSTVar -> (SMST -> (SMST, a)) -> IO a
+modifyMIO sv f = modifyMVar sv $ \st -> let (ncst, r) = f $ compileSt st in return (st { compileSt = ncst }, r)
+
 getM :: ServiceMM z SMST
 getM = getSt >>= return . compileSt
 
@@ -258,6 +260,9 @@ requestIDM = modifyMM $ \cst -> let i = rcnt cst + 1 in (cst {rcnt = i}, i)
 
 heartbeatM :: ServiceMM z Integer
 heartbeatM = modifyMM $ \cst -> let i = hbcnt cst + 1 in (cst {hbcnt = i}, i)
+
+heartbeatIO :: ServiceMSTVar -> IO Integer
+heartbeatIO sv = modifyMIO sv $ \cst -> let i = hbcnt cst + 1 in (cst {hbcnt = i}, i)
 
 {- Assignments accessors -}
 getMA :: ServiceMM z AssignmentsMap
@@ -429,13 +434,15 @@ initService m = streamLogging stdout Log.DEBUG >> m
 
 -- | Compiler service master.
 runServiceMaster :: ServiceOptions -> ServiceMasterOptions -> Options -> IO ()
-runServiceMaster sOpts smOpts opts = initService $ runZMQ $ do
+runServiceMaster sOpts@(serviceId -> msid) smOpts opts = initService $ runZMQ $ do
     sv <- liftIO $ svm0 (scompileOpts sOpts)
     frontend <- socket Router
     bind frontend mconn
     backend <- workqueue sv nworkers "mbackend" $ processMasterConn sOpts smOpts opts sv
     as <- async $ proxy frontend backend Nothing
     noticeM $ unwords ["Service Master", show $ asyncThreadId as, mconn]
+
+    void $ async $ heartbeatLoop sv frontend
     flip finally (shutdownRemote sv frontend) $ liftIO $ do
       modifyTSIO_ sv $ \tst -> tst { sthread = Just as }
       wait sv
@@ -443,6 +450,14 @@ runServiceMaster sOpts smOpts opts = initService $ runZMQ $ do
   where
     mconn = tcpConnStr sOpts
     nworkers = serviceThreads sOpts
+
+    heartbeatLoop :: ServiceMSTVar -> Socket z Router -> ZMQ z ()
+    heartbeatLoop sv sck = forever $ do
+      liftIO $ threadDelay heartbeatPeriod
+      pingRemote msid sv sck
+
+    heartbeatPeriod = seconds 10
+    seconds x = x * 1000000
 
 
 -- | Compiler service worker.
@@ -469,7 +484,7 @@ runServiceWorker sOpts@(serviceId -> wid) = initService $ runZMQ $ do
 
 
 runClient :: (SocketType t) => t -> ServiceOptions -> ClientHandler t -> IO ()
-runClient sockT sOpts clientF = runZMQ $ do
+runClient sockT sOpts clientF = initService $ runZMQ $ do
     client <- socket sockT
     setRandomIdentity client
     connect client $ tcpConnStr sOpts
@@ -520,9 +535,16 @@ shutdownRemote :: (SocketType t, Sender t) => ServiceMSTVar -> Socket z t -> ZMQ
 shutdownRemote sv master = do
     wm <- liftIO $ getMWIO sv
     forM_ (Map.elems wm) $ \wsid -> do
-      noticeM $ "Shutting down worker " ++ (show $ BC.unpack wsid)
+      noticeM $ "Shutting down service worker " ++ (show $ BC.unpack wsid)
       sendCI wsid master Quit
     liftIO $ threadDelay $ 5 * 1000 * 1000
+
+pingRemote :: (SocketType t, Sender t) => String -> ServiceMSTVar -> Socket z t -> ZMQ z ()
+pingRemote rqid sv master = do
+    (wm, hbid) <- liftIO $ (,) <$> getMWIO sv <*> heartbeatIO sv
+    forM_ (Map.elems wm) $ \wsid -> do
+      noticeM $ "[" ++ rqid ++ "] Pinging service worker " ++ (show $ BC.unpack wsid)
+      sendCI wsid master $ Heartbeat hbid
 
 
 -- | Messaging primitives.
