@@ -8,7 +8,7 @@ import qualified Language.K3.Core.Constructor.Declaration as DC
 
 import Language.K3.Driver.Driver
 import Language.K3.Driver.Options
-import Language.K3.Driver.ZMQService
+import Language.K3.Driver.Service
 
 run :: Options -> DriverM ()
 run opts = do
