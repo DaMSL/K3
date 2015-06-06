@@ -149,21 +149,12 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
       "archive_endpoint" : "%s/jobs/" % webaddr,
       "data": [role.inputs for p in range(len(k3task.peers))],
       "logging":  k3job.logging,
-      "jsonlog":  k3job.jsonlog,
-      "jsonfinal":  k3job.jsonfinal,
       "stdout": k3job.stdout}
 
   # TODO:  When logging is fully implemented, remove this & update executor to accept
   #       the logging level
   if task_data['logging'] == False:
     del task_data['logging']
-
-  logging.info('ARCHIVE ADDR: %s' % webaddr)
-  if task_data['jsonlog'] == False:
-    del task_data['jsonlog']
-
-  if task_data['jsonfinal'] == False:
-    del task_data['jsonfinal']
 
   executor = executorInfo(k3job, tnum, webaddr)
 
@@ -195,7 +186,6 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
   portlist.end = max(peerPorts)
 
 
-  logging.debug("PEERS IN MESOSUTIL:")
   for p in k3task.peers:
     logging.debug("   %s, %s" % (p.ip, p.port))
   # nextPort = peerPorts[0]
