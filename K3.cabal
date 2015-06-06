@@ -49,6 +49,7 @@ executable k3
         directory,
         either,
         errors,
+        exceptions,
         filemanip,
         filepath,
         hashable,
@@ -88,7 +89,8 @@ executable k3
         time,
         transformers,
         unordered-containers,
-        vector
+        vector,
+        zeromq4-haskell
 
 test-suite all
     type: exitcode-stdio-1.0
