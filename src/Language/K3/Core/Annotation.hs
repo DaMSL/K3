@@ -16,6 +16,7 @@ module Language.K3.Core.Annotation (
     (:@:)(..),
     K3,
 
+    treesize,
     children,
     replaceCh,
     replaceTag,
@@ -154,6 +155,10 @@ type K3 a = Tree (a :@: [Annotation a])
 
 instance (Ord a, Eq (Annotation a), Ord (Annotation a)) => Ord (K3 a) where
   compare a b = compare (flatten a) (flatten b)
+
+-- | Tree size
+treesize :: Tree a -> Int
+treesize (Node _ ch) = sum $ (1 : map treesize ch)
 
 -- | Subtree extraction
 children :: Tree a -> Forest a
