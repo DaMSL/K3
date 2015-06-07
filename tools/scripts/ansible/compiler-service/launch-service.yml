@@ -1,0 +1,27 @@
+---
+- hosts: '{{ master }}'
+  sudo: yes
+
+  vars_files:
+   - "config.yml"
+
+  tasks:
+   - name: Start master
+     shell: docker exec -d {{ cname }} /k3/K3/tools/scripts/run/service.sh master --svid master-{{ ansible_hostname }} --host {{ ansible_default_ipv4.address }} --port {{ port }} +RTS -N -RTS 
+     register: master
+
+   - debug: var=master.stdout_lines
+
+- hosts: '{{ workers }}'
+  sudo: yes
+
+  vars_files:
+   - "config.yml"
+  vars:
+    masterip: '{{ hostvars[groups[hosts][masteridx]].ansible_default_ipv4.address }}'
+
+  tasks:
+   - name: Start worker
+     shell: docker exec -d {{ cname }} /k3/K3/tools/scripts/run/service.sh worker --svid worker-{{ ansible_hostname }} --host {{ masterip }} --port {{ port }} +RTS -N -RTS 
+     register: worker
+

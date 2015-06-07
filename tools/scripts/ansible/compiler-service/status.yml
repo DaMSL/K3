@@ -1,0 +1,20 @@
+---
+- hosts: '{{ hosts }}'
+  gather_facts: no
+  vars_files:
+   - "config.yml"
+
+  tasks:
+   - name: Check container
+     shell: docker ps
+     register: container
+
+   - debug: var=container.stdout_lines
+
+   - name: Check compiler service
+     when: container|success
+     shell: ps uch -C k3
+     register: service
+
+   - debug: var=service.stdout_lines
+

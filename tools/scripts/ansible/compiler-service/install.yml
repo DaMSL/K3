@@ -1,0 +1,10 @@
+---
+- hosts: QPDOCKER
+  sudo: yes
+
+  tasks:
+   - name: Install pip
+     apt: name=python-pip state=present
+
+   - name: Install docker-py
+     pip: name=docker-py version=1.1.0 state=present

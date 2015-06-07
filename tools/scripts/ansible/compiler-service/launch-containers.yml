@@ -1,0 +1,36 @@
+---
+- hosts: '{{ hosts }}'
+  sudo: yes
+
+  vars_files:
+   - "config.yml"
+
+  tasks:
+   - name: Check docker image
+     docker_image: name="damsl/k3-vanilla" state=present
+     register: image 
+
+   - name: Start docker container
+     when: image|success
+     docker:
+       name: '{{ cname }}'
+       image: damsl/k3-vanilla
+       state: started
+       command: /bin/bash
+       net: host
+       tty: yes
+       stdin_open: yes
+       volumes:
+        - /local
+     register: container
+
+   - name: Install service dependencies
+     when: container|success
+     shell: docker exec -ti {{ cname }} bash -c "apt-get -y install pkg-config libzmq3 libzmq3-dev"
+
+   - name: Compile K3
+     when: container|success
+     shell: docker exec -ti {{ cname }} bash -c "cd /k3/K3 && git checkout stages-parallelization && git pull && cabal install --only-dependencies -j && cabal build -j"
+     register: compile
+
+   - debug: var=compile.stdout_lines

@@ -17,10 +17,10 @@ ENV LC_ALL en_US.UTF-8
 RUN apt-get update && apt-get install -y \
       linux-tools-3.13.0-32-generic libc6-dbg \
       wget aptitude tmux vim emacs make git mercurial \
-      zlib1g-dev libreadline6 libreadline6-dev libncurses5-dev libgmp-dev libyaml-dev libzmq3 libzmq3-dev \
       autoconf automake libtool pkg-config \
-      clang-3.5 libbz2-dev \
-      python-pip ruby
+      zlib1g-dev libreadline6 libreadline6-dev libncurses5-dev libgmp-dev libyaml-dev libzmq3 libzmq3-dev \
+      python-dev python-pip ruby \
+      clang-3.5 libbz2-dev
 
 # Install and configure GCC 4.9
 RUN add-apt-repository ppa:ubuntu-toolchain-r/test && \
