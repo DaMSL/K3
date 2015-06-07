@@ -1,3 +1,6 @@
+K3 Cloud Compiler Service
+==========================
+
 A self-contained ansible playbook for launching the K3 compiler service:
 
 1. Edit the `hosts.ini` and `config.yml` files for your cluster.
