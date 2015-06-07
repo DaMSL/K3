@@ -21,10 +21,14 @@ A self-contained ansible playbook for launching the K3 compiler service:
       -s -K -i hosts.init
     ```
 
-5. Stop the service:
+5. Check the status of the compiler service master/workers and containers:
+
+   ```ansible-playbook status.yml```
+
+6. Stop the service:
 
    ```ansible-playbook stop-service.yml -s -K -i hosts.init```
 
-6. Stop the containers:
+7. Stop the containers:
 
    ```ansible-playbook stop-containers.yml -s -K -i hosts.init```
