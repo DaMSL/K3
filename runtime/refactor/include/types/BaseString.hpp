@@ -136,13 +136,6 @@ void base_string::serialize(csv::parser& a, const unsigned int);
 template <>
 void base_string::serialize(csv::writer& a, const unsigned int);
 
-// Specializations for CSV parsing/writing, skipping the length field.
-// template <>
-// void base_string::serialize(csv::parser& a, const unsigned int);
-//
-// template <>
-// void base_string::serialize(csv::writer& a, const unsigned int);
-
 // namespace JSON {
 // template <> struct convert<base_string> {
 //  template <class Allocator>

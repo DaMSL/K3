@@ -158,14 +158,14 @@ trigger assign: collection { value: feature_vector} @ {Collection} = \new_means 
   (counts = (range k).fold (\acc -> \_ -> (acc.insert {elem: 0}; acc)) (empty {elem: int} @Vector) );
 
   // compute aggregate statistics:
-  let aggs = data.groupByContiguous
+  let aggs = data.groupBy
     (\p -> ((last_key = nearest_mean p.elem); last_key))
     (\sc -> \p -> (
       (counts.set last_key ({elem: (counts.at last_key).elem + 1}));
       (sc.inPlaceAdd p.elem);
       sc
     ))
-    (zeroVector dimensionality) k
+    (zeroVector dimensionality)
   in (aggregate, master) <- {sums: aggs, counts: counts}
 
 )

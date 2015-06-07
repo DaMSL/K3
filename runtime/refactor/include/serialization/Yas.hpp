@@ -42,6 +42,7 @@ void serialize(archive_type& ar, boost::serialization::nvp<T>& nvp) {
   ar& nvp.value();
 }
 
+
 }  // namespace detail
 }  // namespace yas
 

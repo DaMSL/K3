@@ -16,4 +16,5 @@ declare zeroVector : int -> collection {elem: real} @ {Vector}
 
 declare randomVector : int -> collection {elem: real} @ {Vector}
 
+
 declare toJson : forall a . a -> string

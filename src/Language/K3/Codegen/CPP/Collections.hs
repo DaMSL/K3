@@ -316,7 +316,7 @@ record (sort -> ids) = do
                []
                []
            ]
-    let hashCombine x = R.Call (R.Variable $ R.Qualified (R.Name "boost") (R.Name "hash_combine")) [R.Variable $ R.Name "seed", x]
+    let hashCombine x = R.Call (R.Variable $ (R.Name "hash_combine")) [R.Variable $ R.Name "seed", x]
     let hashStructDefn
             = R.GuardedDefn ("K3_" ++ recordName ++ "_hash_value") $ R.TemplateDefn (zip templateVars (repeat Nothing)) $
                 R.ClassDefn (R.Qualified (R.Name "std") (R.Name "hash")) [recordType] []

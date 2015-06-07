@@ -222,20 +222,10 @@ declare results: collection {orderkey: int, revenue: real, orderdate: string, sh
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes                = [$ peers ],
-  loadExpr             = [$ ( // Read line counts for each data file
-                              lineitemLineCountFiles.iterate (\e -> lineitemRows = lineitemRows + (lineCountFile e.path));
-                              ordersLineCountFiles.iterate   (\e -> ordersRows = ordersRows + (lineCountFile e.path));
-                              customerLineCountFiles.iterate (\e -> customerRows = customerRows + (lineCountFile e.path));
-
-                  			      print ("Lineitem rows: " ++ (itos lineitemRows));
-                  			      print ("Orders rows: " ++ (itos ordersRows));
-                  			      print ("Customer rows: " ++ (itos customerRows));
-
-                              // Load data using the fixed size loaders which resize the container before loading
-                              q3_lineitemLoaderPFC lineitemFiles lineitem lineitem_r lineitemRows;
-                              q3_ordersLoaderPFC   ordersFiles   orders   orders_r   ordersRows;
-                              q3_customerLoaderPFC customerFiles customer customer_r customerRows
-                            ) ],
+  loadExpr             = [$ q3_lineitemLoaderPC lineitemFiles lineitem lineitem_r;
+                            q3_ordersLoaderPC   ordersFiles   orders   orders_r;
+                            q3_customerLoaderPC customerFiles customer customer_r
+                         ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],
   onReadyExpr          = [$ (lineitem_orders, me) <- ()],
@@ -250,8 +240,8 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   finishAsShutdownExpr = [$ false]
 )
 
-sink results_sink : {orderkey: int, revenue: real, orderdate: string, shippriority: int} = file "results.csv" csv
-sink query_time_sink : string = stdout csv
+sink results_sink : {orderkey: int, revenue: real, orderdate: string, shippriority: int} = file "results.csv" text csv
+sink query_time_sink : string = file "time.csv" text csv
 
 source rows : () = value ()
 feed rows |> start

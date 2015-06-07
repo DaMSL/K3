@@ -180,14 +180,9 @@ trigger q22_final_peer_barrier : () = \_ -> (
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes                = [$ peers ],
-  loadExpr             = [$ ( ordersLineCountFiles.iterate   (\e -> ordersRows = ordersRows + (lineCountFile e.path));
-                              customerLineCountFiles.iterate (\e -> customerRows = customerRows + (lineCountFile e.path));
-
-			                        print ("Orders rows: " ++ (itos ordersRows));
-			                        print ("Customer rows: " ++ (itos customerRows));
-                              q22_ordersLoaderPFC   ordersFiles   orders   orders_r   ordersRows;
-                              q22_customerLoaderPFC customerFiles customer customer_r customerRows
-                            ) ],
+  loadExpr             = [$ q22_ordersLoaderPC   ordersFiles   orders   orders_r;
+                            q22_customerLoaderPC customerFiles customer customer_r 
+                         ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],
   onReadyExpr          = [$ (customer_subagg, me) <- ()],
@@ -203,8 +198,8 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   finishAsShutdownExpr = [$ false]
 )
 
-sink results_sink : { cntrycode: string, numcust: int, totacctbal: real} = file "results.csv" csv
-sink query_time_sink : string = stdout csv
+sink results_sink : { cntrycode: string, numcust: int, totacctbal: real} = file "results.csv" text csv
+sink query_time_sink : string = file "time.csv" text csv
 
 source rows : () = value ()
 feed rows |> start

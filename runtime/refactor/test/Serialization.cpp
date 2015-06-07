@@ -5,6 +5,7 @@
 
 #include "Common.hpp"
 #include "serialization/Codec.hpp"
+#include "serialization/YAS.hpp"
 #include "types/BaseString.hpp"
 #include "Flat.hpp"
 
@@ -71,6 +72,11 @@ TEST(YAS, One) {
       *make_shared<TNativeValue<shared_ptr<int>>>(make_shared<int>(5)));
   auto unpacked2 = cdec2->unpack(*packed2);
   ASSERT_EQ(*(*unpacked2->as<shared_ptr<int>>()), 5);
+}
+
+TEST(YAS, Address) {
+  auto a = K3::make_address("127.0.0.1", 30000);
+  auto cdec = Codec::getCodec<K3::Address>(CodecFormat::YASBinary);
 }
 
 TEST(Flat, Primitives) {

@@ -426,10 +426,10 @@ class IntMap {
   void serialize(archive& ar) const {
     mapi* m = get_mapi();
 
-    ar & m->object_size;
+    ar.write(reinterpret_cast<const char*>(&m->object_size), sizeof(m->object_size));
     ar & m->empty_key;
-    ar & m->size;
-    ar & m->capacity;
+    ar.write(reinterpret_cast<const char*>(&m->size), sizeof(m->size));
+    ar.write(reinterpret_cast<const char*>(&m->capacity), sizeof(m->capacity));
 
     for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
       ar&* static_cast<R*>(o);
@@ -442,11 +442,11 @@ class IntMap {
     uint32_t empty_key;
     size_t container_size;
     size_t capacity;
-
-    ar& object_size;
-    ar& empty_key;
-    ar& container_size;
-    ar& capacity;
+    
+    ar.read(reinterpret_cast<char*>(&object_size), sizeof(object_size));
+    ar & empty_key;
+    ar.read(reinterpret_cast<char*>(&container_size), sizeof(container_size));
+    ar.read(reinterpret_cast<char*>(&capacity), sizeof(capacity));
 
     if (container) {
       mapi_clear(get_mapi());

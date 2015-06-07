@@ -16,6 +16,7 @@ string_impl prettify_int(int i);
 string_impl prettify_real(double d);
 string_impl prettify_string(const string_impl& s);
 string_impl prettify_address(const Address& s);
+string_impl prettify_tuple(const unit_t&);
 
 template <class T, class F>
 string_impl prettify_option(std::shared_ptr<T> o, F f) {
@@ -86,6 +87,7 @@ string_impl prettify_tuple(const std::tuple<T...>& tup, FS... funs) {
   os << ")";
   return os.str();
 }
+
 
 }  // namespace K3
 

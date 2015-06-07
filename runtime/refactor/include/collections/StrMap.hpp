@@ -419,10 +419,10 @@ class StrMap {
   void serialize(archive& ar) const {
     map_str* m = get_map_str();
 
-    ar& static_cast<uint64_t>(m->value_size);
-    ar& static_cast<uint64_t>(m->size);
-    ar& static_cast<uint64_t>(m->capacity);
-    ar& static_cast<uint64_t>(m->deleted);
+    ar.write(reinterpret_cast<const char*>(&m->value_size), sizeof(m->value_size));
+    ar.write(reinterpret_cast<const char*>(&m->size), sizeof(m->size));
+    ar.write(reinterpret_cast<const char*>(&m->capacity), sizeof(m->capacity));
+    ar.write(reinterpret_cast<const char*>(&m->deleted), sizeof(m->deleted));
     ar & m->max_load_factor;
 
     for (auto o = map_str_begin(m); o < map_str_end(m);
@@ -434,16 +434,16 @@ class StrMap {
 
   template <class archive>
   void serialize(archive& ar) {
-    uint64_t value_size;
-    uint64_t container_size;
-    uint64_t capacity;
-    uint64_t deleted;
+    size_t value_size;
+    size_t container_size;
+    size_t capacity;
+    size_t deleted;
     double mlf;
 
-    ar& value_size;
-    ar& container_size;
-    ar& capacity;
-    ar& deleted;
+    ar.read(reinterpret_cast<char*>(&value_size), sizeof(value_size));
+    ar.read(reinterpret_cast<char*>(&container_size), sizeof(container_size));
+    ar.read(reinterpret_cast<char*>(&capacity), sizeof(capacity));
+    ar.read(reinterpret_cast<char*>(&deleted), sizeof(deleted));
     ar& mlf;
 
     if (container) {

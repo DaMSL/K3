@@ -161,6 +161,10 @@ declare show : forall a. a -> string
 @:ErrorFn
 declare error : forall a. () -> a
 
+@:CArgs 2
+declare loadGraph: collection {path: string} @Collection -> collection { key: int, value: collection { elem: int } @ Collection  } @ IntMap  -> ()
+with effects \_ -> \_ -> io
+
 
 ///////////////////////
 //

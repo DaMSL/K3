@@ -113,6 +113,18 @@ struct convert<::K3::Address> {
   }
 };
 
+template <>
+struct convert<::K3::unit_t> {
+  static Node encode(const ::K3::unit_t&) {
+    Node node;
+    return node;
+  }
+
+  static bool decode(const Node& node, K3::unit_t& addr) {
+    return true;
+  }
+};
+
 }  // namespace YAML
 
 namespace K3 {

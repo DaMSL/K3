@@ -6,4 +6,5 @@
 #include "collections/Map.hpp"
 #include "collections/IntMap.hpp"
 #include "collections/StrMap.hpp"
+#include "collections/Vector.hpp"
 #include "HashCollections.hpp"

@@ -24,6 +24,7 @@ class ProgramContext : public StandardBuiltins,
                        public TimeBuiltins,
                        public StringBuiltins,
                        public ProfilingBuiltins,
+                       public VectorBuiltins,
                        public AmplabLoaders {
  public:
   explicit ProgramContext(Engine& e);

@@ -16,4 +16,8 @@ string_impl prettify_address(const Address& s) {
   return string_impl(s.toString());
 }
 
+string_impl prettify_tuple(const unit_t&) {
+  return "()";
+}
+
 }  // namespace K3
