@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -26,16 +25,13 @@ import Control.Monad.Identity
 import Control.Monad.State
 import Control.Monad.Trans.Except
 
-import Data.Binary ( Binary )
+import Data.IntMap ( IntMap )
+import qualified Data.IntMap as IntMap
+
 import Data.List
 import Data.Maybe
 import Data.Tree
 import Debug.Trace
-
-import Data.IntMap ( IntMap )
-import qualified Data.IntMap as IntMap
-
-import GHC.Generics ( Generic )
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -128,7 +124,7 @@ type TDVEnv = BindingStackEnv QTVarId
 
 -- | A type variable environment.
 data TVEnv = TVEnv QTVarId (IntMap (K3 QType))
-           deriving (Eq, Read, Show, Generic)
+           deriving (Eq, Read, Show)
 
 -- | A cyclic variable environment (tracks whether an identifer uses cyclic scope).
 type TCEnv = BindingEnv Bool
@@ -143,7 +139,7 @@ data TIEnv = TIEnv {
                tcenv   :: TCEnv,
                tprop   :: [(Identifier, QPType)]
             }
-            deriving (Eq, Read, Show, Generic)
+            deriving (Eq, Read, Show)
 
 -- | The type inference monad
 type TInfM = ExceptT Text (State TIEnv)
@@ -153,13 +149,7 @@ data IDeclaredAction = IDAExtend     QPType
                      | IDAPassThru   QPType
                      | IDAFunction
                      | IDATrigger    QPType
-                     deriving (Eq, Ord, Read, Show, Generic)
-
-
-{- Type inference instances -}
-instance Binary IDeclaredAction
-instance Binary TVEnv
-instance Binary TIEnv
+                     deriving (Eq, Ord, Read, Show)
 
 {- TEnv helpers -}
 tenv0 :: TEnv

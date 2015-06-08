@@ -10,8 +10,6 @@ module Language.K3.Analysis.Core where
 
 import Control.Arrow
 import Control.Monad
-
-import Data.Binary
 import Data.Bits
 import Data.Bits.Extras
 import Data.Char
@@ -23,7 +21,6 @@ import Numeric
 import Data.IntMap ( IntMap )
 import qualified Data.IntMap as IntMap
 
-import Data.Vector.Binary ()
 import Data.Vector.Unboxed ( Vector, (!?) )
 import qualified Data.Vector.Unboxed as Vector
 
@@ -45,7 +42,7 @@ type ClosureEnv = IntMap [Identifier]
 
 -- | Metadata for indexing on variables at a given scope
 data IndexedScope = IndexedScope { scids :: [Identifier], scsz :: Int }
-                    deriving (Eq, Ord, Read, Show, Generic)
+                    deriving (Eq, Ord, Read, Show)
 
 -- | Binding point scopes, as a map of binding point expression UIDS to current scope
 --   including the new binding.
@@ -59,7 +56,7 @@ type ScopeUsageEnv = IntMap (UID, BVector)
 
 -- | Expression-variable metadata container.
 data VarPosEnv = VarPosEnv { lcenv :: ClosureEnv, scenv :: ScopeEnv, vuenv :: ScopeUsageEnv }
-                 deriving (Eq, Ord, Read, Show, Generic)
+                 deriving (Eq, Ord, Read, Show)
 
 -- | Traversal indexes, indicating subtree variable (from abstract interpretation or K3) usage.
 type TrIndex = K3 BVector
@@ -72,14 +69,7 @@ type AVTraversalEnv = IntMap (TrIndex, Maybe Int)
 
 -- Abstract interpretation environment.
 data AIVEnv = AIVEnv { avtenv :: AVTraversalEnv }
-              deriving (Eq, Read, Show, Generic)
-
-{- Instances -}
-instance Binary IndexedScope
-instance Binary VarPosEnv
-instance Binary AIVEnv
-instance Binary (Annotation BVector)
-
+              deriving (Eq, Read, Show)
 
 {- BVector helpers -}
 showbv :: BVector -> String

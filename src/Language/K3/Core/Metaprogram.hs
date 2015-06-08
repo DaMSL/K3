@@ -9,7 +9,6 @@ module Language.K3.Core.Metaprogram where
 
 import Control.DeepSeq
 
-import Data.Binary
 import Data.Either
 import Data.List
 import qualified Data.Map as Map
@@ -79,11 +78,6 @@ instance NFData SpliceType
 instance NFData SpliceValue
 instance NFData MPDeclaration
 instance NFData MPAnnMemDecl
-
-instance Binary SpliceType
-instance Binary SpliceValue
-instance Binary MPDeclaration
-instance Binary MPAnnMemDecl
 
 instance Pretty MPDeclaration where
   prettyLines (MPDataAnnotation i svars tvars (partitionEithers -> (mpAnnMems, annMems))) =

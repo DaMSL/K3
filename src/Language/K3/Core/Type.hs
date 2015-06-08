@@ -36,7 +36,6 @@ module Language.K3.Core.Type (
 import Control.Arrow
 import Control.DeepSeq
 
-import Data.Binary
 import Data.Maybe
 import Data.Tree
 import Data.Typeable
@@ -159,13 +158,6 @@ instance NFData ImperativeType
 instance NFData TypeBuiltIn
 instance NFData TypeVarDecl
 instance NFData (Annotation Type)
-
-instance Binary Type
-instance Binary TypeVariableOperator
-instance Binary ImperativeType
-instance Binary TypeBuiltIn
-instance Binary TypeVarDecl
-instance Binary (Annotation Type)
 
 -- | Property helpers
 type PropertyV = Identifier

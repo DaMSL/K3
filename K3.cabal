@@ -48,7 +48,7 @@ executable k3
         deepseq-generics,
         directory,
         either,
-        exceptions,
+        errors,
         filemanip,
         filepath,
         hashable,
@@ -62,14 +62,21 @@ executable k3
         hslogger,
         hssqlppp,
         ieee754 == 0.7.4,
+        lens,
         mtl,
         network,
+        network-simple,
         network-transport,
         network-transport-tcp,
         old-locale,
         optparse-applicative,
         parsec,
         parsers,
+        pipes,
+        pipes-binary,
+        pipes-concurrency,
+        pipes-network,
+        pipes-parse,
         process,
         random,
         safe,
@@ -81,9 +88,7 @@ executable k3
         time,
         transformers,
         unordered-containers,
-        vector,
-        vector-binary-instances,
-        zeromq4-haskell
+        vector
 
 test-suite all
     type: exitcode-stdio-1.0

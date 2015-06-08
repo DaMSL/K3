@@ -30,13 +30,8 @@
         <table class="table"><tr><th>Version</th><th>Git hash</th><th>User</th><th>Date</th><th>Archive</th></tr></table>
         <table class="table table-bordered">
           {% for app in applist %}
-            <tr><td><h3>
-              <div class="row">
-                <div class="col-md-3"><a href="/apps/{{app.name}}">{{app.name}}</a></div>
-                <div class="col-md-1"><a href="/jobs/{{app.name}}"><button class="btn btn-success btn-sm">Launch</button></a></div>
-                <div class="col-md-1"><form action="/delete/app/{{app.name}}" method=post enctype=multipart/form-data>
-                 <button type=submit class="btn btn-danger btn-sm">Delete</button></form></div></div>
-              </h3>
+            <tr><td><h3><a href="/apps/{{app.name}}">{{app.name}}</a>
+                <a href="/jobs/{{app.name}}"><button class="btn btn-success btn-sm">Launch</button></a></h3>
             <table class="table table-condensed">
                 {% for v in versions[app.name] %}
                 <tr><td><a href="/jobs/{{v.name}}/{{v.uid}}">{{v.version}}</a></td>

@@ -37,16 +37,10 @@ module Language.K3.Core.Common (
 import Control.Concurrent.MVar
 import Control.DeepSeq
 
-import Data.Binary ( Binary )
-import qualified Data.Binary as B
-
 import Data.Char
 import Data.Hashable ( Hashable(..) )
 import Data.IORef
 import Data.Typeable
-
-import Data.HashMap.Lazy ( HashMap )
-import qualified Data.HashMap.Lazy as HashMap ( toList, fromList )
 
 import GHC.Generics (Generic)
 
@@ -141,12 +135,6 @@ instance NFData UID
 instance NFData NoneMutability
 instance NFData EndpointSpec
 
-instance Binary Address
-instance Binary Span
-instance Binary UID
-instance Binary NoneMutability
-instance Binary EndpointSpec
-
 instance Show Address where
   show (Address (host, port)) = host ++ ":" ++ show port
 
@@ -225,8 +213,3 @@ class HasUID a where
 class HasSpan a where
   getSpan :: a -> Maybe Span
 
-
-{- Additional instances -}
-instance (Binary k, Binary v, Eq k, Hashable k) => Binary (HashMap k v) where
-    put = B.put . HashMap.toList
-    get = fmap HashMap.fromList B.get

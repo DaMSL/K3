@@ -9,7 +9,6 @@ import Control.Applicative
 import Options.Applicative
 
 import Data.Binary
-import Data.Char
 import qualified Data.Map as Map
 import Data.List.Split
 import Data.Maybe
@@ -138,8 +137,6 @@ data ServiceOptions = ServiceOptions { serviceId       :: String
                                      , serviceHost     :: String
                                      , servicePort     :: Int
                                      , serviceThreads  :: Int
-                                     , serviceLog      :: Either String FilePath
-                                     , serviceLogLevel :: Priority
                                      , scompileOpts    :: CompileOptions }
                     deriving (Eq, Read, Show, Generic)
 
@@ -608,8 +605,6 @@ serviceOpts ct = ServiceOptions <$> serviceIdOpt
                                 <*> serviceHostOpt
                                 <*> servicePortOpt
                                 <*> serviceThreadsOpt
-                                <*> serviceLogOpt
-                                <*> serviceLogLevelOpt
                                 <*> compileOpts ct
 
 serviceMasterOpts :: Parser ServiceMasterOptions
@@ -629,9 +624,9 @@ serviceHostOpt = strOption (   long    "host"
 
 servicePortOpt :: Parser Int
 servicePortOpt = read <$> strOption (   long    "port"
-                                     <> value   "10000"
-                                     <> help    "Compiler service port"
-                                     <> metavar "SERVICEPORT" )
+                         <> value   "10000"
+                         <> help    "Compiler service port"
+                         <> metavar "SERVICEPORT" )
 
 serviceThreadsOpt :: Parser Int
 serviceThreadsOpt = option auto (
@@ -640,20 +635,6 @@ serviceThreadsOpt = option auto (
                     <> value   1
                     <> help    "Number of service worker threads"
                     <> metavar "NTHREADS" )
-
-serviceLogOpt :: Parser (Either String FilePath)
-serviceLogOpt = mkLog <$> strOption (   long    "svlog"
-                                     <> value   "stdout"
-                                     <> help    "Service log file or handle"
-                                     <> metavar "SERVICELOG" )
-  where mkLog s | (map toLower s) `elem` ["stdout", "stderr"] = Left $ map toLower s
-                | otherwise = Right $ makeValid s
-
-serviceLogLevelOpt :: Parser Priority
-serviceLogLevelOpt = option auto (   long    "svloglevel"
-                                  <> value   DEBUG
-                                  <> help    "Service log level"
-                                  <> metavar "SERVICELOGLVL" )
 
 remoteJobOpt :: Parser RemoteJobOptions
 remoteJobOpt = RemoteJobOptions <$> jobBlockSizeOpt

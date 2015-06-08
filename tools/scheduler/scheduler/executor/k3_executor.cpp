@@ -56,29 +56,6 @@ int exec (const char * cmd)  {
 
 
 
-void packageSandbox(string host_name, string app_name, string job_id, string webaddr)  {
-    // Tar sandbox & send to flaskweb UI  (hack for now -- should simply call post-execution script)
-    string tarfile = app_name + "_" + job_id + "_" + host_name + ".tar";
-    string tar_cmd =     "cd $MESOS_SANDBOX && tar -cf " + tarfile + " --exclude='k3executor' *";
-    string rename_out =  "cd $MESOS_SANDBOX && cp stdout stdout_" + host_name;
-    string archive_endpoint = webaddr + app_name + "/" + job_id + "/archive";
-    string post_curl = "cd $MESOS_SANDBOX && curl -i -H \"Accept: application/json\" -X POST ";
-    string curl_cmd =    post_curl + "-F \"file=@" + tarfile + "\" " + archive_endpoint;
-    string curl_output = post_curl + "-F \"file=@stdout_" + host_name + "\" "  + archive_endpoint;
-
-    cout << endl << "POST-PROCESSING:" << endl;
-    cout << tar_cmd << endl;
-    exec(tar_cmd.c_str());
-    cout << endl << endl << rename_out << endl;
-    exec(rename_out.c_str());
-    cout << endl << endl << curl_cmd << endl;
-    exec(curl_cmd.c_str());
-    cout << endl << endl << curl_output << endl;
-    exec(curl_output.c_str());
-}
-
-
-
 class KDExecutor : public Executor
 {
 protected:
@@ -96,6 +73,7 @@ public:
                           const SlaveInfo& slaveInfo)
   {
       host_name= slaveInfo.hostname();
+      localPeerCount = 0;
       totalPeerCount = 0;
   }
 
@@ -109,12 +87,8 @@ public:
     driver->stop();
   }
 
-
-
-
   virtual void launchTask(ExecutorDriver* driver, const TaskInfo& task)    {
-    
-    job_id   = task.task_id().value();
+        localPeerCount++;
 
     TaskStatus status;
     status.mutable_task_id()->MergeFrom(task.task_id());
@@ -136,10 +110,6 @@ public:
     cout << "Host Parameters Received:\n----------------------\n";
     cout << Dump(hostParams);
     cout << "\n---------------------------------\n";
-
-    app_name = hostParams["binary"].as<string>();
-    webaddr  = hostParams["archive_endpoint"].as<string>();
-
 
     // Build the K3 Command which will run inside this container
     k3_cmd = "cd $MESOS_SANDBOX && ./" + hostParams["binary"].as<string>();
@@ -379,13 +349,11 @@ public:
             cout << "I am master" << endl;
     }
     cout << "Launching K3: " << endl;
+    string app_name =  hostParams["binary"].as<string>();
+    string webaddr = hostParams["archive_endpoint"].as<string>();
     driver->sendFrameworkMessage("LAUNCHING");
-    cout << "D" << endl;
-    thread = new boost::thread(TaskThread(task, k3_cmd, driver, isMaster, webaddr, app_name, job_id, host_name));
-    cout << "M" << endl;
+    thread = new boost::thread(TaskThread(task, k3_cmd, driver, isMaster, webaddr, app_name, host_name));
   }
-
-
 
 
 class TaskThread {
@@ -396,37 +364,47 @@ class TaskThread {
     bool isMaster;
     string webaddr;
     string app_name;
-    string job_id;
     string host_name;
 
   public:
-      TaskThread(TaskInfo t, string cmd, ExecutorDriver* d, bool m, string w, string a, string j, string h)
-        : task(t), k3_cmd(cmd), driver(d), isMaster(m), webaddr(w), app_name(a), job_id(j), host_name(h) {
-          cout << "EEEE" << endl;
-        }
+      TaskThread(TaskInfo t, string cmd, ExecutorDriver* d, bool m, string w, string a, string h)
+        : task(t), k3_cmd(cmd), driver(d), isMaster(m), webaddr(w), app_name(a), host_name(h) {}
 
       void operator()() {
-        cout << "F" << endl;
         TaskStatus status;
         status.mutable_task_id()->MergeFrom(task.task_id());
-        // string job_id   = task.task_id().value();
-        cout << "G" << endl;
+        string job_id   = task.task_id().value();
 
         // Currently, just call the K3 executable with the generated command line from task.data()
         try {
             driver->sendFrameworkMessage("RUNNING");
             cout << "Starting the K3 program thread: " << app_name << endl;
-            cout << "-------------->  PROGRAM STARTING   <--------------------" << endl;
             int result = exec(k3_cmd.c_str());
-            cout << "-------------->  PROGRAM TERMINATED <--------------------" << endl;
             driver->sendFrameworkMessage("TERMINATING");
-
-            packageSandbox(host_name, app_name, job_id, webaddr);
-
+            cout << "-------------->  PROGRAM TERMINATED <--------------------" << endl;
             if (result == 0) {
+                // Tar sandbox & send to flaskweb UI  (hack for now -- should simply call post-execution script)
+                string tarfile = app_name + "_" + job_id + "_" + host_name + ".tar";
+                string tar_cmd =     "cd $MESOS_SANDBOX && tar -cf " + tarfile + " --exclude='k3executor' *";
+        		string rename_out =  "cd $MESOS_SANDBOX && cp stdout stdout_" + host_name;
+                string archive_endpoint = webaddr + app_name + "/" + job_id + "/archive";
+                string post_curl = "cd $MESOS_SANDBOX && curl -i -H \"Accept: application/json\" -X POST ";
+                string curl_cmd =    post_curl + "-F \"file=@" + tarfile + "\" " + archive_endpoint;
+                string curl_output = post_curl + "-F \"file=@stdout_" + host_name + "\" "  + archive_endpoint;
+
+                cout << endl << "POST-PROCESSING:" << endl;
+                cout << tar_cmd << endl;
+                exec(tar_cmd.c_str());
+                cout << endl << endl << rename_out << endl;
+		        exec(rename_out.c_str());
+                cout << endl << endl << curl_cmd << endl;
+                exec(curl_cmd.c_str());
+                cout << endl << endl << curl_output << endl;
+                exec(curl_output.c_str());
+                cout << endl << "Task " << task.task_id().value() << " Completed!" << endl;
+
                 status.set_state(TASK_FINISHED);
                 driver->sendFrameworkMessage("Task FINISHED");
-                cout << endl << "Task " << task.task_id().value() << " Completed!" << endl;
             }
             else {
                 status.set_state(TASK_FAILED);
@@ -446,37 +424,30 @@ class TaskThread {
 };
 
   virtual void killTask(ExecutorDriver* driver, const TaskID& taskId) {
-      packageSandbox(host_name, app_name, job_id, webaddr);
-      driver->sendFrameworkMessage("Executor " + host_name + " KILLING TASK");
+      driver->sendFrameworkMessage("Executor " + host_name+ " KILLING TASK");
       driver->stop();
-  }
+}
 
   virtual void frameworkMessage(ExecutorDriver* driver, const string& data) {
       driver->sendFrameworkMessage(data);
   }
 
   virtual void shutdown(ExecutorDriver* driver) {
-      driver->sendFrameworkMessage("Executor " + host_name + "SHUTTING DOWN");
+      driver->sendFrameworkMessage("Executor " + host_name+ "SHUTTING DOWN");
       driver->stop();
   }
 
   virtual void error(ExecutorDriver* driver, const string& message) {
-      driver->sendFrameworkMessage("Executor " + host_name + " ERROR");
+      driver->sendFrameworkMessage("Executor " + host_name+ " ERROR");
       driver->stop();
-  }
+}
   
 private:
+    string host_name;
     int state;
+    int localPeerCount;
     int totalPeerCount;
     int tasknum;
-    string host_name;
-    string job_id;
-    string app_name;
-    string webaddr;
-    // TaskInfo task;
-    string k3_cmd;
-    // bool isMaster;
-
 };
 
 

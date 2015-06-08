@@ -1,5 +1,3 @@
--- Functions for analysing ktrace in postgres
-
 drop table if exists peers;
 create table peers(address text, name text);
 insert into peers values ('["127.0.0.1", 40000]', 'ms');

@@ -1,10 +1,10 @@
 // Persistent maps, providing a fully versioned API for both updates and transformers.
-//
-// Our modification methods require a version indicating the tree on which the updates apply.
+// Our modification methods (insert, update, erase) require a version indicating the
+// tree on which the updates apply (version 0 being the latest tree).
 // If the version supplied does not exist, it is created.
 //
-// That is, the peek, insert, insert_with, upsert_with, erase, update operations do not work
-// with frontiers (i.e., lower bounds on a version).
+// A snapshot method creates a new version of the tree, following which updates can apply
+// to this new version.
 //
 // The transformer and retrieval methods also require an explicit version for their accesses.
 // If the version supplied does not exist, the retrieval methods apply to a version that is
@@ -33,19 +33,19 @@ annotation VMap given type a,b {
     with effects \version -> \elem -> [R[version]; R[self]; R[elem]; W[self]]
 
   @:CArgs 3
-  provides lifted insert_with : int -> content -> (content -> content -> content) -> ()
+  provides lifted insert_with: int -> content -> (content -> content -> content) -> ()
     with effects \version -> \elem -> \f -> [R[version]; R[self]; R[elem]; ((f content) content); W[self]]
 
   @:CArgs 4
-  provides lifted upsert_with : int -> content -> (() -> content) -> (content -> content) -> ()
+  provides lifted upsert_with: int -> content -> (() -> content) -> (content -> content) -> ()
     with effects \version -> \elem -> \f -> \g -> [R[version]; R[self]; R[elem]; f content; g content; W[self]]
 
   @:CArgs 2
-  provides lifted erase : int -> content -> ()
+  provides lifted erase  : int -> content -> ()
     with effects \version -> \elem -> [R[version]; R[self]; R[elem]; W[self]]
 
   @:CArgs 2
-  provides lifted update : int -> content -> (content -> ())
+  provides lifted update  : int -> content -> (content -> ())
     with effects \version -> \oldElem -> \newElem -> [R[version]; R[self]; R[oldElem]; R[newElem]; W[self]]
 
   // Returns if a value at the exact version is present in the VMap.
@@ -120,8 +120,8 @@ annotation VMap given type a,b {
         [R[version]; R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:{Transformer, CArgs 2}
-  provides lifted ext     : int -> (content -> collection {key : a, value: b} @VMap)
-                             -> collection {key : a, value: b} @VMap
+  provides lifted ext : int -> (content -> collection {key : a, value: b} @VMap)
+                         -> collection {key : a, value: b} @VMap
     with effects \version -> \extF -> [R[version]; R[self]; ([R[content]; extF content])*]
 
 }

@@ -1,208 +1,110 @@
+#------------------------------------------------------------------------------
+#  / - Home (welcome msg)
+#------------------------------------------------------------------------------
+END POINT:('/')
+END POINT:('/index')
+
+#------------------------------------------------------------------------------
+#  /about - about message
+#------------------------------------------------------------------------------
+END POINT:('/about')
 
 
-===============================================================================
-  / - Home (welcome msg)
--------------------------------------------------------------------------------
-@webapp.route('/')
+#------------------------------------------------------------------------------
+#  /about - Static Files (File System directory access)
+#------------------------------------------------------------------------------
+END POINT:('/fs/<path:path>/')
 
 
-===============================================================================
-  /about - Display about page
--------------------------------------------------------------------------------
-@webapp.route('/index')
-@webapp.route('/about')
+#------------------------------------------------------------------------------
+#  /apps - Application Level interface
+#         POST   Upload new application
+#             curl -i -H "Accept: application/json" -F file=@<filename> http://<host>:5000/apps
+#
+#         GET    Display both list of loaded apps and form to upload new ones
+#------------------------------------------------------------------------------
+END POINT:('/apps', methods=['GET', 'POST'])
+END POINT:('/app', methods=['GET', 'POST'])
 
 
-===============================================================================
-  /restapi - Display complete list of API EndPoints
--------------------------------------------------------------------------------
-@webapp.route('/restapi')
+#------------------------------------------------------------------------------
+#  /apps/<appName> - Specific Application Level interface
+#         GET    Display all versions for given application
+#------------------------------------------------------------------------------
+END POINT:('/apps/<appName>')
+END POINT:('/app/<appName>', methods=['GET', 'POST'])
 
 
-===============================================================================
-  /log - Displays current log file
--------------------------------------------------------------------------------
-@webapp.route('/log')
+#------------------------------------------------------------------------------
+#  /apps/<appName> - Specific Application Level interface
+#         POST   (Upload archive data (C++, Source, etc....)
+#            curl -i -H "Accept: application/json"
+#                    -F "file=<filename>" http://<host>:5000/apps/<addName>/<addUID>
+#------------------------------------------------------------------------------
+END POINT:('/apps/<appName>/<appUID>', methods=['GET', 'POST'])
+END POINT:('/app/<appName>/<appUID>', methods=['GET', 'POST'])
 
 
-===============================================================================
-  /trace - Debugging respose. Returns the client's HTTP request data in json
--------------------------------------------------------------------------------
-@webapp.route('/trace')
+#------------------------------------------------------------------------------
+#  /jobs - Current runtime & completed job Interface
+#         GET    Display currently executing & recently completed jobs
+#------------------------------------------------------------------------------
+END POINT:('/jobs')
+END POINT:('/job')
 
 
-===============================================================================
-  /fs - File System Exposure for the local webroot folder
-        Note: Direct file access via curl should include a trailing slash (/)
-           Otherwise, you will get a 302 redirect to the actual file
--------------------------------------------------------------------------------
-@webapp.route('/fs/<path:path>/')
+#------------------------------------------------------------------------------
+#  /jobs/<appName>
+#  /jobs/<appName>/<appUID  - Launch a new K3 Job
+#         POST    Create new K3 Job
+#          curl -i -X POST -H "Accept: application/json" -F "file=@<rolefile>" http://<host>:5000/jobs/<appName>/<appUID>
+#             NOTE: if appUID is omitted, job will be submitted to latest version of this app
+#
+#         GET    Display job list for this application
+#------------------------------------------------------------------------------
+END POINT:('/jobs/<appName>/<appUID>', methods=['GET', 'POST'])
+END POINT:('/jobs/<appName>', methods=['GET', 'POST'])
 
 
-===============================================================================
-  /apps, /app - Application Level interface
-     POST   Upload new application
-       curl -i -X POST -H "Accept: application/json" -F file=@<filename> http://<host>:<port>/apps
-
-     GET    Display both list of loaded apps and form to upload new ones
-
-     /app will redirect to /apps
--------------------------------------------------------------------------------
-@webapp.route('/app', methods=['GET', 'POST'])
-@webapp.route('/apps', methods=['GET', 'POST'])
+#------------------------------------------------------------------------------
+#  /jobs/<appName>/<jobId>/status - Detailed Job info
+#         GET     Display detailed job info  (default for all methods)
+#------------------------------------------------------------------------------
+END POINT:('/jobs/<appName>/<jobId>/status')
+END POINT:('/job/<jobId>')
 
 
-===============================================================================
-  /apps/<appName> - Specific Application Level interface
-         GET    Display all versions for given application
--------------------------------------------------------------------------------
-@webapp.route('/app/<appName>', methods=['GET', 'POST'])
-@webapp.route('/apps/<appName>')
+#------------------------------------------------------------------------------
+#  /jobs/<appName>/<appUID/replay  - Replay a previous K3 Job
+#         POST    Create new K3 Job
+#          curl -i -X POST -H "Accept: application/json" http://<host>:5000/jobs/<appName>/<appUID>/replay
+#------------------------------------------------------------------------------
+END POINT:('/jobs/<appName>/<jobId>/replay', methods=['GET', 'POST'])
+END POINT:('/job/<jobId>/replay')
 
 
-===============================================================================
-  /apps/<appName>/<appUID> - Specific Application Level interface
-         POST   (Upload archive data (C++, Source, etc....)
-            curl -i -H "Accept: application/json"
-                    -F "file=<filename>" http://qp1:5000/apps/<addName>/<addUID>
-
-         GET    (TODO) Display archived files...  NotImplemented
--------------------------------------------------------------------------------
-@webapp.route('/app/<appName>/<appUID>', methods=['GET', 'POST'])
-@webapp.route('/apps/<appName>/<appUID>', methods=['GET', 'POST'])
-
-
-===============================================================================
-  /jobs - Current runtime & completed job Interface
-         GET    Display currently executing & recently completed jobs
--------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#  /jobs/<appName>/<jobId>/archive - Endpoint to receive & archive files
+#         GET     returns curl command
+#         POST    Accept files for archiving here
+#           curl -i -H "Accept: application/json"
+#              -F file=@<filename> http://<host>:5000/<appName>/<jobId>/archive
+#------------------------------------------------------------------------------
+END POINT:('/jobs/<appName>/<jobId>/archive', methods=['GET', 'POST'])
+END POINT:('/job/<jobId>/archive', methods=['GET', 'POST'])
 
 
-===============================================================================
-  /jobs/<appName>
-  /jobs/<appName>/<appUID  - Launch a new K3 Job
-         POST    Create new K3 Job
-          curl -i -X POST -H "Accept: application/json" -F "file=@<rolefile>" http://qp1:5000/jobs/<appName>/<appUID>
-             NOTE: if appUID is omitted, job will be submitted to latest version of this app
-
-         GET    Display job list for this application
--------------------------------------------------------------------------------
-@webapp.route('/jobs')
-@webapp.route('/job')
+#------------------------------------------------------------------------------
+#  /jobs/<appName>/<jobId>/kill - Job Interface to cancel a job
+#         GET     Kills a Job (if orphaned, updates status to killed)
+#           curl -i -H "Accept: application/json" http://<host>:5000/job/<jobId>/kill
+#------------------------------------------------------------------------------
+END POINT:('/jobs/<appName>/<jobId>/kill', methods=['GET'])
+END POINT:('/job/<jobId>/kill', methods=['GET'])
 
 
-===============================================================================
-  /jobs/<appName>/<jobId>/status - Detailed Job info
-         GET     Display detailed job info  (default for all methods)
--------------------------------------------------------------------------------
-@webapp.route('/jobs/<appName>/<appUID>', methods=['GET', 'POST'])
-@webapp.route('/jobs/<appName>', methods=['GET', 'POST'])
-
-
-===============================================================================
-  /jobs/<appName>/<appUID/replay  - Replay a previous K3 Job
-         POST    Create new K3 Job
-          curl -i -X POST -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<appUID>/replay
--------------------------------------------------------------------------------
-@webapp.route('/jobs/<appName>/<jobId>/status')
-
-
-===============================================================================
-  /jobs/<appName>/<jobId>/stdout - Job Interface for specific job
-         GET     TODO: Consolidate STDOUT for current job (from all tasks)
-         POST    TODO: Accept STDOUT & append here (if desired....)
--------------------------------------------------------------------------------
-@webapp.route('/jobs/<appName>/<jobId>/replay', methods=['GET', 'POST'])
-
-
-===============================================================================
-  /jobs/<appName>/<jobId>/archive - Endpoint to receive & archive files
-         GET     returns curl command
-         POST    Accept files for archiving here
-           curl -i -H "Accept: application/json"
-              -F file=@<filename> http://qp1:5000/<appName>/<jobId>/archive
--------------------------------------------------------------------------------
-
-
-===============================================================================
-  /jobs/<appName>/<jobId>/kill - Job Interface to cancel a job
-         GET     Kills a Job (if orphaned, updates status to killed)
-           curl -i -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<jobId>/kill
--------------------------------------------------------------------------------
-@webapp.route('/jobs/<appName>/<jobId>/archive', methods=['GET', 'POST'])
-
-
-===============================================================================
-  /job/<jobId> - Detailed Job info
-         GET     Display detailed job info  (default for all methods)
--------------------------------------------------------------------------------
-@webapp.route('/jobs/<appName>/<jobId>/kill', methods=['GET'])
-
-
-===============================================================================
-  /job/<jobId>/replay - Replays this job
-         GET     Display detailed job info  (default for all methods)
--------------------------------------------------------------------------------
-@webapp.route('/job/<jobId>')
-
-
-===============================================================================
-  /jobs/<appName>/<jobId>/kill - Job Interface to cancel a job
-         GET     Kills a Job (if orphaned, updates status to killed)
-           curl -i -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<jobId>/kill
--------------------------------------------------------------------------------
-@webapp.route('/job/<jobId>/replay')
-
-
-===============================================================================
-  /jobs/<appName>/<jobId>/kill - Job Interface to cancel a job
-         GET     Kills a Job (if orphaned, updates status to killed)
-           curl -i -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<jobId>/kill
--------------------------------------------------------------------------------
-@webapp.route('/job/<jobId>/kill', methods=['GET'])
-
-
-===============================================================================
-  /compile
-         GET     Form for compiling new K3 Executable OR status of compiling tasks
-         POST    Submit new K3 Compile task
-           curl -i -H "Accept: application/json"
-                   -F name=<appName> -F file=@<sourceFile>
-                   -F options=<compileOptions> -F user=<userName> http://qp1:5000/compile
-           NOTE: Username & Options are optional fields
--------------------------------------------------------------------------------
-@webapp.route('/job/<jobId>/archive', methods=['GET', 'POST'])
-
-
-===============================================================================
-  /compile/<uname>
-         GET     displays STDOUT & STDERR consolidated output for compile task
--------------------------------------------------------------------------------
-@webapp.route('/compile', methods=['GET', 'POST'])
-
-
-===============================================================================
-  /compile/<uname>/kill
-         GET     Kills an active compiling tasks (or removes and orphaned one
--------------------------------------------------------------------------------
-@webapp.route('/compile/<uname>', methods=['GET'])
-
-
-===============================================================================
-  /delete/jobs
-         POST     Deletes list of K3 jobs
--------------------------------------------------------------------------------
-@webapp.route('/compile/<uname>/kill', methods=['GET'])
-
-
-===============================================================================
-  /delete/compiles
-         POST     Deletes list of compile jobs
--------------------------------------------------------------------------------
-@webapp.route('/delete/jobs', methods=['POST'])
-
-
-===============================================================================
-  /kill - Kill the server  (TODO: Clean this up)
--------------------------------------------------------------------------------
-@webapp.route('/delete/compiles', methods=['POST'])
+#------------------------------------------------------------------------------
+#  /delete/jobs
+#         POST     Deletes list of K3 jobs
+#------------------------------------------------------------------------------
+END POINT:('/delete/jobs', methods=['POST'])

@@ -17,8 +17,6 @@ import mesos.interface
 from mesos.interface import mesos_pb2
 import mesos.native
 
-import logging
-
 DEFAULT_MEM = 4 * 1024
 
 task_state = mesos_pb2.TaskState.DESCRIPTOR.values
@@ -33,7 +31,7 @@ class Dispatcher(mesos.interface.Scheduler):
     self.pending = deque()     # Pending jobs. First job is popped once there are enough resources available to launch it.
     self.active = {}           # Active jobs keyed on jobId.
     self.finished = {}         # Finished jobs keyed on jobId.
-    self.offers = {}           # Offers from Mesos keyed on offerId. We assume they are valid until they are rescinded by Mesos.
+    self.offers = OrderedDict()           # Offers from Mesos keyed on offerId. We assume they are valid until they are rescinded by Mesos.
     self.jobsCreated = 0       # Total number of jobs created for generating job ids.
 
     self.daemon = daemon       # Run as a daemon (or finish when there are no more pending/active jobs)
@@ -41,13 +39,11 @@ class Dispatcher(mesos.interface.Scheduler):
     self.terminate = False     # Flag to signal termination to the owner of the dispatcher
     self.frameworkId = None    # Will get updated when registering with Master
 
-    self.idle = 0
-
-    logging.info("[DISPATCHER] Initializing with master at %s" % master)
+    print "Dispatcher is Initializing with master at %s" % master
 
  
   def submit(self, job):
-    logging.info("[DISPATCHER] Received new Job for Application %s, Job ID= %d" % (job.appName, job.jobId))
+    print ("Received new Job for Application %s, Job ID= %d" % (job.appName, job.jobId))
     self.pending.append(job)
 
 
@@ -88,7 +84,7 @@ class Dispatcher(mesos.interface.Scheduler):
   def tryTerminate(self):
     if not self.daemon and len(self.pending) == 0 and len(self.active) == 0:
       self.terminate = True
-      logging.info("[DISPATCHER] Terminating")
+      print("Terminating")
 
   def allocateResources(self, nextJob): #, driver):
 
@@ -113,9 +109,9 @@ class Dispatcher(mesos.interface.Scheduler):
         host = self.offers[offerId].hostname.encode('utf8','ignore')
         r = re.compile(hostmask)
         if not r.match(host):
-          logging.debug("%s does not match hostmask. DECLINING offer" % host)
+          print("%s does not match hostmask. DECLINING offer" % host)
           continue
-        logging.debug("%s MATCHES hostmask. Checking offer" % host)
+        print("%s MATCHES hostmask. Checking offer" % host)
 
         # Allocate CPU Resource
         requestedCPU = min(unassignedPeers, availableCPU[offerId])
@@ -155,14 +151,14 @@ class Dispatcher(mesos.interface.Scheduler):
 
         committedResources[roleId][offerId]['ports'] = availablePorts[offerId]
 
-        logging.debug("UNASSIGNED PEERS = %d" % unassignedPeers)
+        print "UNASSIGNED PEERS = %d" % unassignedPeers
         if unassignedPeers <= 0:
           # All peers for this role have been assigned
           break
 
       if unassignedPeers > 0:
         # Could not commit all peers for this role with current set of offers
-        logging.warning("Failed to satisfy role %s. Left with %d unassigned Peers" % (roleId, unassignedPeers))
+        print("Failed to satisfy role %s. Left with %d unassigned Peers" % (roleId, unassignedPeers))
         return None
 
 
@@ -171,9 +167,9 @@ class Dispatcher(mesos.interface.Scheduler):
   # See if the next job in the pending queue can be launched using the current offers.
   # Upon failure, return None. Otherwise, return the Job object with fresh k3 tasks attached to it
   def prepareNextJob(self):
-    logging.info("[DISPATCHER] Attempting to prepare the next pending job. Currently have %d offers" % len (self.offers))
+    print("Attempting to prepare the next pending job. Currently have %d offers" % len (self.offers))
     if len(self.pending) == 0:
-      logging.info("[DISPATCHER] No pending jobs to prepare")
+      print("No pending jobs to prepare")
       return None
   
     index = 0
@@ -184,7 +180,7 @@ class Dispatcher(mesos.interface.Scheduler):
     while nextJob and reservation == None:
       index += 1
       if index >= len(self.pending):
-        logging.info ("[DISPATCHER] No jobs in the queue can run with current offers")
+        print ("No jobs in the queue can run with current offers")
         return None
       nextJob = self.pending[index]
       reservation = self.allocateResources(nextJob)
@@ -192,7 +188,7 @@ class Dispatcher(mesos.interface.Scheduler):
     #  Iterate through the reservations for each role / offer: create peers & tasks
     allPeers = []
     for roleId, role in reservation.items():
-      logging.debug("[DISPATCHER] Preparing role, %s" % roleId)
+      print roleId
       vars = nextJob.roles[roleId].variables
       for offerId, offer in role.items():
         peers = []
@@ -202,6 +198,8 @@ class Dispatcher(mesos.interface.Scheduler):
           nextJob.master = host
         for n in range(offer['peers']):
           nextPort = offer['ports'].getNext()
+          print ("PEER PORT = %s" % str(nextPort))
+          # p = Peer(len(allPeers), vars, IP_ADDRS[host], nextPort)
 
           # CHECK:  Switched to hostnames
           p = Peer(len(allPeers), vars, ip, nextPort)
@@ -209,13 +207,11 @@ class Dispatcher(mesos.interface.Scheduler):
           allPeers.append(p)
 
         taskid = len(nextJob.tasks)
+        print "PEER LIST"
+        for p in peers:
+          print p.index, p.ip, p.port
         t = Task(taskid, offerId, host, offer['mem'], peers, roleId)
         nextJob.tasks.append(t)
-
-    logging.debug("PEER LIST:")
-    for p in peers:
-      logging.debug("    %-2s  %s:%s" % (p.index, p.ip, p.port))
-
 
     # ID Master for collection Stdout TODO: Should we auto-default to offer 0 for stdout?
     populateAutoVars(allPeers)
@@ -226,7 +222,7 @@ class Dispatcher(mesos.interface.Scheduler):
 
   def launchJob(self, nextJob, driver):
     #jobId = self.genJobId()
-    logging.info("[DISPATCHER] Launching job %d" % nextJob.jobId)
+    print("Launching job %d" % nextJob.jobId)
     self.active[nextJob.jobId] = nextJob
     self.jobsCreated += 1
     nextJob.status = "RUNNING"
@@ -234,6 +230,7 @@ class Dispatcher(mesos.interface.Scheduler):
     # Build Mesos TaskInfo Protobufs for each k3 task and launch them through the driver
     for taskNum, k3task in enumerate(nextJob.tasks):
 
+      print "JOB BINARY = %s " % nextJob.binary_url
       task = taskInfo(nextJob, taskNum, self.webaddr, self.offers[k3task.offerid].slave_id)
 
       oid = mesos_pb2.OfferID()
@@ -243,14 +240,14 @@ class Dispatcher(mesos.interface.Scheduler):
       del self.offers[k3task.offerid]
 
     # # Decline all remaining offers
-    logging.info("[DISPATCHER] DECLINING remaining offers (Task Launched)")
     for oid, offer in self.offers.items():
+      print "DECLINING remaining offer (Task Launched)"
       driver.declineOffer(offer.id)
     for oid in self.offers.keys():
       del self.offers[oid]
 
   def cancelJob(self, jobId, driver):
-    logging.warning("[DISPATCHER] Asked to cancel job %d. Killing all tasks" % jobId)
+    print("Asked to cancel job %d. Killing all tasks" % jobId)
     job = self.active[jobId]
     job.status = "FAILED"
     db.updateJob(jobId, status=job.status)
@@ -259,7 +256,7 @@ class Dispatcher(mesos.interface.Scheduler):
       fullid = self.fullId(jobId, t.taskid)
       tid = mesos_pb2.TaskID()
       tid.value = fullid
-      logging.warning("[DISPATCHER] Killing task: " + fullid)
+      print("Killing task: " + fullid)
       driver.killTask(tid)
     del self.active[jobId]
     self.finished[jobId] = job
@@ -286,7 +283,7 @@ class Dispatcher(mesos.interface.Scheduler):
 
     # If all tasks are finished, clean up the job
     if not runningTasks:
-      logging.info("[DISPATCHER] All tasks finished for job %d" % jobId)
+      print("All tasks finished for job %d" % jobId)
       # TODO Move the job to a finished job list
       job = self.active[jobId]
       job.status = "FINISHED"
@@ -297,7 +294,7 @@ class Dispatcher(mesos.interface.Scheduler):
 
   # --- Mesos Callbacks ---
   def registered(self, driver, frameworkId, masterInfo):
-    logging.info ("[DISPATCHER] Registered with framework ID %s" % frameworkId.value)
+    print("Registered with framework ID %s" % frameworkId.value)
     self.connected = True
     self.frameworkId = frameworkId
 
@@ -305,13 +302,13 @@ class Dispatcher(mesos.interface.Scheduler):
     s = update.task_id.value.encode('utf8','ignore')
     jobId = self.jobId(update.task_id.value)
     if jobId not in self.active:
-      logging.warning("[DISPATCHER] Received a status update for an old job: %d" % jobId)
+      print("Received a status update for an old job: %d" % jobId)
       return
 
     k3task = self.getTask(s)
     host = k3task.host
     state = mesos_pb2.TaskState.DESCRIPTOR.values[update.state].name
-    logging.info ("[TASK UPDATE] TaskID %s on host %s. Status: %s   [%s]"% (update.task_id.value, host, state, update.data))
+    print "[TASK UPDATE] TaskID %s on host %s. Status: %s   [%s]"% (update.task_id.value, host, state, update.data)
 
     # TODO: Check STDOUT flag, capture stream in update.data, & append to appropriate file
     #   will need to update executor and ensure final output archive doesn't overwrite
@@ -332,38 +329,32 @@ class Dispatcher(mesos.interface.Scheduler):
       self.taskFinished(update.task_id.value)
 
   def frameworkMessage(self, driver, executorId, slaveId, message):
-    logging.info("[FRMWK MSG] %s" % message[:-1])
+    print("[FRMWK MSG] %s" % message[:-1])
 
   # Handle a resource offers from Mesos.
   # If there is a pending job, add all offers to self.offers
   # Then see if pending jobs can be launched with the offers accumulated so far
   def resourceOffers(self, driver, offers):
-    # logging.info("[DISPATCHER] Got %d resource offers. %d jobs in the queue" % (len(offers), len(self.pending)))
-    if time.time() > self.idle + 10:
-      logging.info("[DISPATCHER] HeartBeatting. Offers Available. %d jobs in the queue. Idling..." % (len(self.pending)))
-      self.idle = time.time()
+    print("[RESOURCE OFFER] Got %d resource offers. %d jobs in the queue" % (len(offers), len(self.pending)))
+
     if len(self.pending) == 0:
       for offer in offers:
         driver.declineOffer(offer.id)
-      return
-
-    for offer in offers:
-      self.offers[offer.id.value] = offer
-    nextJob = self.prepareNextJob()
-    if nextJob != None:
-      self.launchJob(nextJob, driver)
     else:
-      if len(self.pending) > 0:
-        logging.warning("[DISPATCHER] Not enough resources to launch next job. Releasing all offers")
       for offer in offers:
-        driver.declineOffer(offer.id)
-        del self.offers[offer.id.value]
-
+        self.offers[offer.id.value] = offer
+      while len(self.pending) > 0:
+        nextJob = self.prepareNextJob()
+        if nextJob != None:
+          self.launchJob(nextJob, driver)
+        else:
+          print("Not enough resources to launch next job. Waiting for more offers")
+          return
 
 
   def offerRescinded(self, driver, offer):
-    logging.warning("[DISPATCHER] Previous offer '%d' invalidated" % offer.id.value)
+    print("[OFFER RESCINDED] Previous offer '%d' invalidated" % offer.id.value)
     if offer.id in self.offers:
-      del self.offers[offer.id.value]
+      del self.offers[offer.id]
    
 

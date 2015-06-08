@@ -3,7 +3,6 @@
 
 #include <list>
 #include <vector>
-#include <set>
 #include <random>
 #include <math.h>
 #include <random>
@@ -539,7 +538,7 @@ class Collection: public VectorDS<K3::Collection, Elem> {
 template <class Elem>
 class Set {
   // Iterator Types:
-  typedef std::set<Elem> Container;
+  typedef unordered_set<Elem> Container;
   typedef typename Container::const_iterator const_iterator_type;
   typedef typename Container::iterator iterator_type;
 

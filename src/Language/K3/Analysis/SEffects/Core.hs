@@ -9,7 +9,6 @@ module Language.K3.Analysis.SEffects.Core where
 import Control.DeepSeq
 import GHC.Generics (Generic)
 
-import Data.Binary
 import Data.List
 import Data.Tree
 import Data.Typeable
@@ -72,10 +71,6 @@ data instance Annotation Effect = FDeclared (K3 Effect)
 instance NFData FMatVar
 instance NFData Effect
 instance NFData (Annotation Effect)
-
-instance Binary FMatVar
-instance Binary Effect
-instance Binary (Annotation Effect)
 
 {- Annotation extractors -}
 isFDeclared :: Annotation Effect -> Bool

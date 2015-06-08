@@ -11,7 +11,6 @@ module Language.K3.Analysis.HMTypes.DataTypes where
 import Control.DeepSeq
 import GHC.Generics (Generic)
 
-import Data.Binary
 import Data.List
 import Data.Tree
 import Data.Typeable
@@ -81,13 +80,6 @@ instance NFData QTBase
 instance NFData QTData
 instance NFData QTOp
 instance NFData (Annotation QType)
-
-instance Binary QPType
-instance Binary QType
-instance Binary QTBase
-instance Binary QTData
-instance Binary QTOp
-instance Binary (Annotation QType)
 
 -- | Type constructors
 tleaf :: QType -> K3 QType

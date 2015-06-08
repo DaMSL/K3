@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -26,13 +25,13 @@ module Language.K3.Analysis.Provenance.Inference (
   reinferProgDeclProvenance
 ) where
 
-import Control.Applicative
 import Control.Arrow hiding ( left )
 import Control.Monad.State
 import Control.Monad.Trans.Except
 import Data.Functor.Identity
 
-import Data.Binary ( Binary )
+import Control.Applicative
+
 import Data.List
 import Data.Maybe
 import Data.Tree
@@ -43,8 +42,6 @@ import qualified Data.IntMap         as IntMap
 import qualified Data.Vector.Unboxed as Vector
 
 import Debug.Trace
-
-import GHC.Generics ( Generic )
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -98,7 +95,7 @@ type EPMap = IntMap (K3 Provenance)
 
 data ProvErrorCtxt = ProvErrorCtxt { ptoplevelExpr :: Maybe (K3 Expression)
                                    , pcurrentExpr  :: Maybe (K3 Expression) }
-                    deriving (Eq, Read, Show, Generic)
+                    deriving (Eq, Read, Show)
 
 instance Monoid ProvErrorCtxt where
   mempty = ProvErrorCtxt Nothing Nothing
@@ -116,7 +113,7 @@ data PIEnv = PIEnv {
                perrctxt :: ProvErrorCtxt,
                ptienv   :: AIVEnv
             }
-            deriving (Eq, Read, Show, Generic)
+            deriving (Eq, Read, Show)
 
 mergePIEnv :: Maybe Identifier -> PIEnv -> PIEnv -> PIEnv
 mergePIEnv d agg new =
@@ -135,10 +132,6 @@ mergePIEnv d agg new =
 
 -- | The type inference monad
 type PInfM = ExceptT Text (State PIEnv)
-
-{- Provenance instances -}
-instance Binary ProvErrorCtxt
-instance Binary PIEnv
 
 {- Data.Text helpers -}
 mkErr :: String -> Except Text a

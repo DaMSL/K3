@@ -40,7 +40,6 @@ module Language.K3.Core.Declaration (
 
 import Control.DeepSeq
 
-import Data.Binary
 import Data.List
 import Data.Tree
 import Data.Typeable
@@ -135,12 +134,6 @@ instance NFData AnnMemDecl
 instance NFData Polarity
 instance NFData (Annotation Declaration)
 instance NFData UnorderedConflict
-
-instance Binary Declaration
-instance Binary AnnMemDecl
-instance Binary Polarity
-instance Binary (Annotation Declaration)
-instance Binary UnorderedConflict
 
 {- HasUID instances -}
 instance HasUID (Annotation Declaration) where

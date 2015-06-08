@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -19,7 +18,6 @@ import Control.Monad.State
 import Control.Monad.Trans.Except
 import Data.Functor.Identity
 
-import Data.Binary ( Binary )
 import Data.List
 import Data.Maybe
 import Data.Tree
@@ -29,8 +27,6 @@ import Data.IntMap           ( IntMap )
 import qualified Data.IntMap as IntMap
 
 import Debug.Trace
-
-import GHC.Generics ( Generic )
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -93,11 +89,7 @@ type EFMap = IntMap (K3 Effect, K3 Effect)
 
 data EffectErrorCtxt = EffectErrorCtxt { ftoplevelExpr :: Maybe (K3 Expression)
                                        , fcurrentExpr  :: Maybe (K3 Expression) }
-                      deriving (Eq, Read, Show, Generic)
-
-instance Monoid EffectErrorCtxt where
-  mempty = EffectErrorCtxt Nothing Nothing
-  mappend (EffectErrorCtxt t c) (EffectErrorCtxt t' c') = EffectErrorCtxt (t <|> t') (c <|> c')
+                      deriving (Eq, Read, Show)
 
 -- | An effect inference environment.
 data FIEnv = FIEnv {
@@ -112,7 +104,7 @@ data FIEnv = FIEnv {
                fcase    :: [(FMatVar, PMatVar)],  -- Temporary storage stack for case variables.
                ferrctxt :: EffectErrorCtxt
             }
-            deriving (Eq, Read, Show, Generic)
+            deriving (Eq, Read, Show)
 
 mergeFIEnv :: Maybe Identifier -> FIEnv -> FIEnv -> FIEnv
 mergeFIEnv d agg new =
@@ -135,10 +127,6 @@ type FInfM = ExceptT Text (State FIEnv)
 
 -- | User-defined external inference function.
 type ExtInferF a = K3 Effect -> a -> FIEnv -> K3 Effect
-
-{- Effect instances -}
-instance Binary EffectErrorCtxt
-instance Binary FIEnv
 
 {- Data.Text helpers -}
 mkErr :: String -> Except Text a
