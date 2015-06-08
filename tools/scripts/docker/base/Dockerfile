@@ -45,7 +45,7 @@ RUN add-apt-repository -y ppa:avsm/ppa && apt-get update && \
     apt-get install -y ocaml ocaml-native-compilers camlp4-extra opam time && \
     opam init -a && \
     opam install ocamlfind && \
-    echo -e "\neval \`opam config env\`\n" >> /root/.bashrc
+    /bin/echo -e "\neval \`opam config env\`\n" >> /root/.bashrc
 
 RUN mkdir -p /software/boost-1.56 && \
     cd /software/boost-1.56 && \
