@@ -42,7 +42,7 @@ import GHC.Generics ( Generic )
 import System.Random
 import System.ZMQ4.Monadic
 
-import System.IO ( Handle, stdout )
+import System.IO ( Handle, stdout, stderr )
 import qualified System.Log.Logger         as Log
 import qualified System.Log.Formatter      as LogF
 import qualified System.Log.Handler        as LogH
@@ -461,13 +461,16 @@ cshow = \case
 
 
 -- | Service utilities.
-initService :: IO () -> IO ()
-initService m = streamLogging stdout Log.DEBUG >> m
-
+initService :: ServiceOptions -> IO () -> IO ()
+initService sOpts m = slog (serviceLog sOpts) >> m
+  where slog (Left "stdout") = streamLogging stdout $ serviceLogLevel sOpts
+        slog (Left "stderr") = streamLogging stderr $ serviceLogLevel sOpts
+        slog (Left s)        = error $ "Invalid service logging handle " ++ s
+        slog (Right path)    = fileLogging path $ serviceLogLevel sOpts
 
 -- | Compiler service master.
 runServiceMaster :: ServiceOptions -> ServiceMasterOptions -> Options -> IO ()
-runServiceMaster sOpts@(serviceId -> msid) smOpts opts = initService $ runZMQ $ do
+runServiceMaster sOpts@(serviceId -> msid) smOpts opts = initService sOpts $ runZMQ $ do
     sv <- liftIO $ svm0 (scompileOpts sOpts)
     frontend <- socket Router
     bind frontend mconn
@@ -495,7 +498,7 @@ runServiceMaster sOpts@(serviceId -> msid) smOpts opts = initService $ runZMQ $ 
 
 -- | Compiler service worker.
 runServiceWorker :: ServiceOptions -> IO ()
-runServiceWorker sOpts@(serviceId -> wid) = initService $ runZMQ $ do
+runServiceWorker sOpts@(serviceId -> wid) = initService sOpts $ runZMQ $ do
     sv <- liftIO $ svw0 (scompileOpts sOpts)
     frontend <- socket Dealer
     setRandomIdentity frontend
@@ -517,7 +520,7 @@ runServiceWorker sOpts@(serviceId -> wid) = initService $ runZMQ $ do
 
 
 runClient :: (SocketType t) => t -> ServiceOptions -> ClientHandler t -> IO ()
-runClient sockT sOpts clientF = initService $ runZMQ $ do
+runClient sockT sOpts clientF = initService sOpts $ runZMQ $ do
     client <- socket sockT
     setRandomIdentity client
     connect client $ tcpConnStr sOpts
@@ -714,7 +717,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       let (total_cost, swich) = sortByCost ch in do
         (nwWeights, newAssigns) <- greedyPartition wWeights swich
         (wcBlocks, wcosts) <- foldMapKeyM (return (Map.empty, Map.empty)) newAssigns $ chunkAssigns blockSize
-        return (nwWeights, wcBlocks, wcosts)
+        return (nwWeights, Map.map reverse wcBlocks, wcosts)
 
     partitionProgram _ _ _ = throwE "Top level declaration is not a role."
 
@@ -724,7 +727,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       biwsl <- forM (chunksOf blockSize wbwl) $ \bwl -> do
                  let (chunkcb, chunkcost) = second sum $ unzip bwl
                  bid <- blockIDM
-                 return ((bid, chunkcb), (bid, chunkcost))
+                 return ((bid, sortOn fst chunkcb), (bid, chunkcost))
       let (wcompileblock, wblockcosts) = second Map.fromList $ unzip biwsl
       return $ ( Map.insertWith (++) wid wcompileblock wcbm
                , Map.insertWith mergeBlockCosts wid wblockcosts wcm )
