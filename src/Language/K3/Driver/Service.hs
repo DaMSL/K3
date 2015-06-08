@@ -908,12 +908,42 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
 
     -- | Compilation report construction.
     generateReport profile finalreport =
-      let workerTime s (wid,e) = wid ++ ": " ++ (secs $ e - s)
-          timereport = map (workerTime $ jstartTime profile) $ Map.toList $ jendTimes profile
-          profreport = prettyLines $ mconcat $ jreports $ profile
-      in boxToString $ ["Workers"] %$ (indent 2 profreport)
-                    %$ ["Final"]   %$ (indent 2 finalreport)
-                    %$ ["Time"]    %$ (indent 2 timereport)
+      let mkspan s e = e - s
+          mkwtrep  (wid, span) = wid ++ ": " ++ (secs $ span)
+          mkwvstr  (wid, v)    = wid ++ ": " ++ (show v)
+
+          -- Compile time per worker
+          workertimes    = Map.map (mkspan $ jstartTime profile) $ jendTimes profile
+
+          -- Assigned cost per worker
+          workercontribs = Map.map (foldl (+) 0.0 . jwassign) $ jworkerst $ profile
+
+          -- Per-worker fraction of total worker time.
+          totaltime      = foldl (+) 0.0 workertimes
+          workertratios  = Map.map (/ totaltime) workertimes
+
+          -- Per-worker fraction of total worker cost.
+          totalcontrib   = foldl (+) 0.0 workercontribs
+          workercratios  = Map.map (/ totalcontrib) workercontribs
+
+          -- Absolute time ratio and cost ratio difference.
+          wtcratiodiff   = Map.intersectionWith (\t c -> 1.0 - abs (t - c)) workertratios workercratios
+
+          -- Reports.
+          profreport    = prettyLines $ mconcat $ jreports $ profile
+          timereport    = map mkwtrep $ Map.toList workertimes
+          wtratioreport = map mkwvstr $ Map.toList workertratios
+          wcratioreport = map mkwvstr $ Map.toList workercratios
+          costreport    = map mkwvstr $ Map.toList wtcratiodiff
+
+          i = indent 2
+      in boxToString $ ["Workers"]          %$ (i profreport)
+                    %$ ["Final"]            %$ (i finalreport)
+                    %$ ["Compiler service"]
+                    %$ (i ["Time ratios"]   %$ (i wtratioreport))
+                    %$ (i ["Cost ratios"]   %$ (i wcratioreport))
+                    %$ (i ["Cost accuracy"] %$ (i costreport))
+                    %$ ["Time"]             %$ (i timereport)
 
     parseError = "Could not parse input: "
 
