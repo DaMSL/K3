@@ -324,12 +324,12 @@ def main()
       $options[:deploy_k3]  = true
       $options[:compare]    = true
     }
-    opts.on("-1", "--dbtoaster", "DBToaster stage")  { $options[:dbtoaster]  = true }
-    opts.on("-2", "--mosaic",    "Mosaic stage")     { $options[:mosaic]     = true }
-    opts.on("-3", "--create",    "Create K3 stage")  { $options[:create_k3]  = true }
-    opts.on("-4", "--compile",   "Compile K3 stage") { $options[:compile_k3] = true }
-    opts.on("-5", "--deploy",    "Deploy stage")     { $options[:deploy_k3]  = true }
-    opts.on("-6", "--compare",   "Compare stage")    { $options[:compare]    = true }
+    opts.on("-1", "--dbtoaster", "DBToaster stage")                                { $options[:dbtoaster]  = true }
+    opts.on("-2", "--mosaic",    "Mosaic stage (creates Mosaic K3 program)")       { $options[:mosaic]     = true }
+    opts.on("-3", "--create",    "Create K3 stage (creates Mosaic CPP program)")   { $options[:create_k3]  = true }
+    opts.on("-4", "--compile",   "Compile K3 stage (compiles Mosaic CPP program)") { $options[:compile_k3] = true }
+    opts.on("-5", "--deploy",    "Deploy stage")                                   { $options[:deploy_k3]  = true }
+    opts.on("-6", "--compare",   "Compare stage")                                  { $options[:compare]    = true }
   end
   parser.parse!
 
