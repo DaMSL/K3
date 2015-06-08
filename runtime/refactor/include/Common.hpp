@@ -34,7 +34,7 @@ using std::vector;
 using std::enable_shared_from_this;
 
 #define K3_LOG_ID "K3"
-#define USE_CUSTOM_HASHMAPS 0
+#define USE_CUSTOM_HASHMAPS 1
 #define HAS_LIBDYNAMIC 1
 #define K3_INTERNAL_FORMAT CodecFormat::YASBinary
 
