@@ -936,14 +936,14 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
           wcratioreport = map mkwvstr $ Map.toList workercratios
           costreport    = map mkwvstr $ Map.toList wtcratiodiff
 
-          i = indent 2
-      in boxToString $ ["Workers"]          %$ (i profreport)
-                    %$ ["Final"]            %$ (i finalreport)
+          i x = indent $ 2*x
+      in boxToString $ ["Workers"]            %$ (i 1 profreport)
+                    %$ ["Final"]              %$ (i 1 finalreport)
                     %$ ["Compiler service"]
-                    %$ (i ["Time ratios"]   %$ (i wtratioreport))
-                    %$ (i ["Cost ratios"]   %$ (i wcratioreport))
-                    %$ (i ["Cost accuracy"] %$ (i costreport))
-                    %$ ["Time"]             %$ (i timereport)
+                    %$ (i 1 ["Time ratios"]   %$ (i 2 wtratioreport))
+                    %$ (i 1 ["Cost ratios"]   %$ (i 2 wcratioreport))
+                    %$ (i 1 ["Cost accuracy"] %$ (i 2 costreport))
+                    %$ ["Time"]               %$ (i 1 timereport)
 
     parseError = "Could not parse input: "
 
