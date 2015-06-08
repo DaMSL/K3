@@ -82,6 +82,7 @@ executable k3
         transformers,
         unordered-containers,
         vector,
+        vector-binary-instances,
         zeromq4-haskell
 
 test-suite all

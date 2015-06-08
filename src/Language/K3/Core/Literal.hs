@@ -8,6 +8,7 @@ module Language.K3.Core.Literal where
 
 import Control.DeepSeq
 
+import Data.Binary
 import Data.Typeable
 import Data.Tree
 import Data.Word (Word8)
@@ -56,6 +57,9 @@ data instance Annotation Literal
 {- NFData instances for literals. -}
 instance NFData Literal
 instance NFData (Annotation Literal)
+
+instance Binary Literal
+instance Binary (Annotation Literal)
 
 {- HasUID instances. -}
 instance HasUID (Annotation Literal) where

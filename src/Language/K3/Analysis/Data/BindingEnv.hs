@@ -15,7 +15,6 @@ import Language.K3.Core.Common
 type BindingEnv      a = HashMap Identifier a
 type BindingStackEnv a = BindingEnv [a]
 
-
 {- Data.Text helpers -}
 mkErr :: String -> Except Text a
 mkErr msg = throwE $ T.pack msg

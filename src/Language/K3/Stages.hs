@@ -78,13 +78,10 @@ data CompilerSpec = CompilerSpec { blockSize :: Int
                                  , stageSpec :: StageSpec }
                     deriving (Eq, Ord, Read, Show, Generic)
 
-instance Binary StageSpec
-instance Binary CompilerSpec
-
 -- | Compilation profiling
 data TransformReport = TransformReport { statistics :: Map String [Measured]
                                        , snapshots  :: Map String [K3 Declaration] }
-                      deriving (Eq, Read, Show)
+                      deriving (Eq, Read, Show, Generic)
 
 -- | The program transformation composition monad
 data TransformSt = TransformSt { nextuid    :: Int
@@ -94,7 +91,7 @@ data TransformSt = TransformSt { nextuid    :: Int
                                , penv       :: Provenance.PIEnv
                                , fenv       :: SEffects.FIEnv
                                , report     :: TransformReport }
-                  deriving (Eq, Read, Show)
+                  deriving (Eq, Read, Show, Generic)
 
 -- | Monoid instance for transform reports.
 instance Monoid TransformReport where
@@ -118,6 +115,12 @@ mergeTransformSt d agg new =
               }
 
 type TransformM = ExceptT String (StateT TransformSt IO)
+
+{- Stage-based transform instances -}
+instance Binary StageSpec
+instance Binary CompilerSpec
+instance Binary TransformReport
+instance Binary TransformSt
 
 ss0 :: StageSpec
 ss0 = StageSpec Nothing Nothing Map.empty

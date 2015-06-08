@@ -34,7 +34,7 @@ import qualified Data.Heap as Heap
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
-import Criterion.Measurement ( getTime )
+import Criterion.Measurement ( getTime, secs )
 
 import GHC.Conc
 import GHC.Generics ( Generic )
@@ -54,7 +54,7 @@ import qualified Language.K3.Core.Constructor.Declaration as DC
 
 import Language.K3.Parser ( parseK3 )
 
-import Language.K3.Stages ( TransformReport )
+import Language.K3.Stages ( TransformReport, TransformSt )
 import qualified Language.K3.Stages as ST
 
 import Language.K3.Driver.Common
@@ -70,11 +70,11 @@ data CProtocol = Register       String
                | RegisterAck    CompileOptions
                | Heartbeat      Integer
                | HeartbeatAck   Integer
-               | Program        Request ByteString RemoteJobOptions
-               | ProgramDone    Request ByteString
+               | Program        Request String RemoteJobOptions
+               | ProgramDone    Request (K3 Declaration) String
                | ProgramAborted Request String
-               | Block          ProgramID CompileStages ByteString CompileBlock
-               | BlockDone      WorkerID ProgramID CompileBlock ByteString
+               | Block          ProgramID CompileStages TransformSt CompileBlock
+               | BlockDone      WorkerID ProgramID CompileBlock TransformReport
                | BlockAborted   WorkerID ProgramID [BlockID] String
                | Quit
                deriving (Eq, Read, Show, Generic)
@@ -95,7 +95,7 @@ type DeclID    = Int
 type BlockID   = Int
 type ProgramID = Int
 
-type CompileBlock = [(BlockID, [(DeclID, ByteString)])]
+type CompileBlock = [(BlockID, [(DeclID, K3 Declaration)])]
 
 -- | Compilation progress state per program.
 data JobState = JobState { jrid         :: RequestID
@@ -452,7 +452,7 @@ cshow = \case
           Heartbeat hbid              -> "Heartbeat " ++ show hbid
           HeartbeatAck hbid           -> "HeartbeatAck " ++ show hbid
           Program rq _ _              -> "Program " ++ rq
-          ProgramDone rq _            -> "ProgramDone " ++ rq
+          ProgramDone rq _ _          -> "ProgramDone " ++ rq
           ProgramAborted rq _         -> "ProgramAborted " ++ rq
           Block pid _ _ bids          -> unwords ["Block", show pid, intercalate "," $ map (show . fst) bids]
           BlockDone wid pid bids _    -> unwords ["BlockDone", show wid, show pid, intercalate "," $ map (show . fst) bids]
@@ -629,7 +629,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       rid' <- zm $ do
         rid <- requestIDM
         putMC sid (Set.singleton rid) >> putMR rid sid >> return rid
-      process (BC.unpack prog) jobOpts rq rid'
+      process prog jobOpts rq rid'
 
     mHandler _ (BlockDone wid pid blocksByBID report) = completeBlocks wid pid blocksByBID report
     mHandler _ (BlockAborted wid pid bids reason)     = abortBlocks wid pid bids reason
@@ -673,7 +673,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     -- | Cost-based compile block assignment.
     assignBlocks rid rq jobOpts initP initSt = do
       pid <- progIDM
-      mlogM $ unwords ["Assigning blocks for program", show pid]
+      mlogM $ unwords ["Assigning blocks for program:", show pid]
 
       -- Get the current worker weights, and use them to partition the program.
       wWeights <- workerWeights
@@ -692,10 +692,12 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       let wjs     = Map.intersectionWith (\w c -> WorkerJobState w c $ Map.size c) nwaWeights jobCosts
       js <- js0 rid rq pending wjs
 
-      mlogM $ unwords ["Assignments:", show $ Map.toList nassigns]
       modifyMJ_ $ \jbs -> Map.insert pid js jbs
       modifyMA_ $ \assigns -> Map.unionWith incrWorkerAssignments assigns nassigns
-      mkMessages pid jobOpts initSt wBlocks
+      msgs <- mkMessages pid jobOpts initSt wBlocks
+
+      logAssigment pid nassigns js
+      return msgs
 
     -- | Compute a min-heap of worker assignment weights, returning a zero-heap if no assignments exist.
     workerWeights = do
@@ -722,7 +724,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       biwsl <- forM (chunksOf blockSize wbwl) $ \bwl -> do
                  let (chunkcb, chunkcost) = second sum $ unzip bwl
                  bid <- blockIDM
-                 return ((bid, map (second $ BC.pack . show) chunkcb), (bid, chunkcost))
+                 return ((bid, chunkcb), (bid, chunkcost))
       let (wcompileblock, wblockcosts) = second Map.fromList $ unzip biwsl
       return $ ( Map.insertWith (++) wid wcompileblock wcbm
                , Map.insertWith mergeBlockCosts wid wblockcosts wcm )
@@ -747,12 +749,11 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
           return ( Heap.insert (sz + w, wid) restheap, Map.insertWith (++) wid [(ich,w)] acm )
 
     -- | Compile block messages construction.
-    mkMessages pid (rcStages -> rstg) (BC.pack . show -> pst) cBlocksByWID = do
-      mlogM $ unwords ["State size", show $ BC.length $ pst]
+    mkMessages pid (rcStages -> rstg) initSt cBlocksByWID = do
       foldMapKeyM (return []) cBlocksByWID $ \m wid cb -> do
         msgacc <- m
         wsockid <- getMWI wid >>= maybe (workerError wid) return
-        return $ msgacc ++ [(wsockid, Block pid rstg pst cb)]
+        return $ msgacc ++ [(wsockid, Block pid rstg initSt cb)]
 
     -- Map helpers to supply fold function as last argument.
     foldMapKeyM a m f = Map.foldlWithKey f a m
@@ -772,15 +773,29 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     jprof0 workerjs = liftIO getTime >>= \start -> return $ JobProfile start Map.empty workerjs []
     js0 rid rq pending workerjs = jprof0 workerjs >>= \prof -> return $ JobState rid rq prof pending Map.empty []
 
+    logAssigment pid nassigns js =
+      let wk wid s = wid ++ ":" ++ s
+
+          wastr (wid, WorkerAssignment b w) = (wk wid $ show $ length b, wk wid $ show w)
+          wststr (wid, jwassign -> jbc)     = wk wid $ show $ foldl (+) 0.0 jbc
+
+          (wlens, ww) = unzip $ map wastr $ Map.toList nassigns
+          wcontrib    = map wststr $ Map.toList $ jworkerst $ jprofile $ js
+      in
+        mlogM $ boxToString $  ["Assignment for program: " ++ show pid]
+                            %$ ["Worker weights:"]     %$ (indent 2 ww)
+                            %$ ["Block distribution:"] %$ (indent 2 wlens)
+                            %$ ["Load distribution:"]  %$ (indent 2 wcontrib)
+
 
     {------------------------------
      - Block completion handling.
      -----------------------------}
 
     -- | Block completion processing. This garbage collects jobs and assignment state.
-    completeBlocks wid pid cblocksByBID (read . BC.unpack -> report) = do
+    completeBlocks wid pid cblocksByBID report = do
       time <- liftIO $ getTime
-      forM_ cblocksByBID $ \(bid, map (second $ read . BC.unpack) -> iblock) -> do
+      forM_ cblocksByBID $ \(bid, iblock) -> do
         psOpt <- zm $ do
           (r, bcontrib) <- modifyMJ $ \sjobs -> tryCompleteJS time wid pid bid iblock sjobs $ Map.lookup pid sjobs
           modifyMA_ $ \assigns -> Map.adjust (decrWorkerAssignments bid bcontrib) wid assigns
@@ -822,7 +837,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
           (nprof, bcontrib) = updateProfile time wid bid $ jprofile js
 
       in if Set.null npend
-            then Left $ ((jrid js, jrq js, jaborted js, ncomp), bcontrib)
+            then Left $ ((jrid js, jrq js, jaborted js, nprof, ncomp), bcontrib)
             else Right $ (js { jpending = npend, jcompleted = ncomp, jprofile = nprof }, bcontrib)
 
     abortJobBlock time wid bid reason js =
@@ -849,26 +864,25 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
      -----------------------------}
 
     -- | Program completion processing. This garbage collects client request state.
-    completeProgram pid (rid, rq, aborts, sources) = do
+    completeProgram pid (rid, rq, aborts, profile, sources) = do
       let prog = DC.role "__global" $ map snd $ sortOn fst $ concatMap snd $ Map.toAscList sources
       nprogrpE <- liftIO $ evalTransform (sfinalStages $ smOpts) prog
       case (aborts, nprogrpE) of
         (_, Left err) -> abortProgram (Just pid) rid rq err
         (h:t, _)      -> abortProgram (Just pid) rid rq $ concat $ h:t
-        ([], Right (nprog, _)) -> do
+        ([], Right (nprog, rp)) -> do
             clOpt <- zm $ getMR rid
             case clOpt of
               Nothing -> zm $ requestError rid
-              Just cid -> completeRequest pid cid rid rq nprog
+              Just cid -> completeRequest pid cid rid rq nprog $ generateReport profile rp
 
-    completeRequest pid cid rid rq prog = do
-      let packedProg = BC.pack $ show prog
-      mlogM $ unwords ["Complete program", show pid, ":", show $ BC.length packedProg, "bytes"]
+    completeRequest pid cid rid rq prog report = do
+      mlogM $ unwords ["Completed program", show pid]
       sockOpt <- zm $ do
         modifyMJ_ $ \sjobs -> Map.delete pid sjobs
         modifyMR_ $ \rm -> Map.delete rid rm
         modifyMC  $ \cm -> tryCompleteCL cid rid cm $ Map.lookup cid cm
-      maybe (return ()) (\sid -> sendCI sid mworker $ ProgramDone rq packedProg) sockOpt
+      maybe (return ()) (\sid -> sendCI sid mworker $ ProgramDone rq prog report) sockOpt
 
     -- | Abort compilation.
     abortProgram pidOpt rid rq reason = do
@@ -887,6 +901,16 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     completeClient cid rid cm rs =
       let nrs = Set.delete rid rs in
       (if null nrs then Map.delete cid cm else Map.insert cid nrs cm, Just cid)
+
+
+    -- | Compilation report construction.
+    generateReport profile finalreport =
+      let workerTime s (wid,e) = wid ++ ": " ++ (secs $ e - s)
+          timereport = map (workerTime $ jstartTime profile) $ Map.toList $ jendTimes profile
+          profreport = prettyLines $ mconcat $ jreports $ profile
+      in boxToString $ ["Workers"] %$ (indent 2 profreport)
+                    %$ ["Final"]   %$ (indent 2 finalreport)
+                    %$ ["Time"]    %$ (indent 2 timereport)
 
     parseError = "Could not parse input: "
 
@@ -936,10 +960,10 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
                                             , optimizationLevel = optimizationLevel $ mcopts }
 
     -- | Block compilation functions.
-    processBlock pid ([SDeclOpt cSpec]) (read . BC.unpack -> initSt) blocksByBID =
+    processBlock pid ([SDeclOpt cSpec]) initSt blocksByBID =
       abortcatch pid blocksByBID $ do
         (cBlocksByBID, finalSt) <- zm $ foldM (compileBlock pid cSpec) ([], initSt) blocksByBID
-        sendC wworker $ BlockDone wid pid cBlocksByBID $ BC.pack $ show $ ST.report finalSt
+        sendC wworker $ BlockDone wid pid cBlocksByBID $ ST.report finalSt
 
     processBlock _ _ _ _ = werrM $ "Invalid worker compile stages"
 
@@ -948,12 +972,10 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
     abortBlock pid blocksByBID reason =
       sendC wworker $ BlockAborted wid pid (map fst blocksByBID) reason
 
-    compileBlock pid cSpec (blacc, st) (bid, idsAndBlock -> (ids, block)) = do
+    compileBlock pid cSpec (blacc, st) (bid, unzip -> (ids, block)) = do
       (nblock, nst) <- debugCompileBlock pid bid (unwords [show $ length block])
                         $ liftIE $ ST.runTransformM st $ ST.runDeclOptPassesBLM cSpec Nothing block
-      return (blacc ++ [(bid, zip ids $ map (BC.pack . show) nblock)], nst)
-
-    idsAndBlock = second (map $ read . BC.unpack) . unzip
+      return (blacc ++ [(bid, zip ids nblock)], nst)
 
     debugCompileBlock pid bid str m = do
       wlogM $ unwords ["got block", show pid, show bid, str]
@@ -965,28 +987,33 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
 -- | One-shot connection to submit a remote job and wait for compilation to complete.
 submitJob :: ServiceOptions -> RemoteJobOptions -> Options -> IO ()
 submitJob sOpts@(serviceId -> rq) rjOpts opts = do
+    start <- getTime
     progE <- runDriverM $ k3read opts
-    either putStrLn (\p -> runClient Dealer sOpts $ processClientConn p) progE
+    either putStrLn (\p -> runClient Dealer sOpts $ processClientConn start $ concat p) progE
 
   where
-    processClientConn :: [String] -> (forall z. Socket z Dealer -> ZMQ z ())
-    processClientConn prog client = do
-      noticeM $ "Client submitting compilation job"
-      sendC client $ Program rq (BC.pack $ concat $ prog) rjOpts
-      noticeM $ "Client waiting for compilation"
+    processClientConn :: Double -> String -> (forall z. Socket z Dealer -> ZMQ z ())
+    processClientConn start prog client = do
+      noticeM $ "Client submitting compilation job " ++ rq
+      sendC client $ Program rq prog rjOpts
       msg <- receive client
-      mHandler $ decode $ LBC.fromStrict msg
+      mHandler start $ decode $ LBC.fromStrict msg
 
-    mHandler :: forall z. CProtocol -> ZMQ z ()
-    mHandler (ProgramDone rrq bytes) | rq == rrq = liftIO $ do
-      noticeM $ "Client compiling request " ++ rq
-      noticeM $ "Client received program of size " ++ (show $ BC.length bytes)
-      CPPC.compile opts (scompileOpts $ sOpts) ($) (read $ BC.unpack bytes)
+    mHandler :: forall z. Double -> CProtocol -> ZMQ z ()
+    mHandler start (ProgramDone rrq prog report) | rq == rrq = liftIO $ do
+      end <- getTime
+      noticeM $ unwords ["Client finalizing request", rq]
+      noticeM $ clientReport (end - start) report
+      CPPC.compile opts (scompileOpts $ sOpts) ($) $ prog
 
-    mHandler (ProgramAborted rrq reason) | rq == rrq = liftIO $ do
+    mHandler _ (ProgramAborted rrq reason) | rq == rrq = liftIO $ do
       errorM $ unwords ["Failed to compile request", rq, ":", reason]
 
-    mHandler m = errorM $ boxToString $ ["Invalid message:"] %$ [show m]
+    mHandler _ m = errorM $ boxToString $ ["Invalid message:"] %$ [show m]
+
+    clientReport time report =
+      boxToString $  ["Compile report:"] %$ (indent 4 $ lines $ report)
+                  %$ ["Compile time: " ++ secs time]
 
 shutdownService :: ServiceOptions -> IO ()
 shutdownService sOpts = command Dealer sOpts Quit
