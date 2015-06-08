@@ -9,7 +9,7 @@ DATA_EXTN = ".tbl"
 DATA_DELM = "|"
 
 MAPPING_RXP = /mapping\s*:=\s*'([^']*)'/, 1
-STREAM_RXP = /CREATE STREAM (\w*) \((?:.|\n)*?\)\s*FROM FILE '([^']*)'/
+STREAM_RXP = /CREATE STREAM (\w*) \(((?:.|\n)*?)\)\s*FROM FILE '([^']*)'/
 
 if __FILE__ == $0
   begin
@@ -26,14 +26,33 @@ if __FILE__ == $0
   end
 
   begin
-    table_sources = sql_dump.scan(STREAM_RXP).collect do |name, path|
-      next if name == "AGENDA"
-      [name, CSV::open(
-         Pathname.new(DATA_PATH) + Pathname.new(path).basename.sub_ext(DATA_EXTN),
-         "r",
-         {:col_sep => ","},
-       )]
-    end.compact.to_h
+    table_sources = {}
+    default_map = {}
+    sql_dump.scan(STREAM_RXP).each do |name, contents, path|
+      if name == "AGENDA"
+        types = contents.strip.split(/\s*,\s*/).map(&:split).transpose[1]
+        types.each_with_index do |t, i|
+          case t
+          when /CHAR/
+            default_map[i] = nil
+          when /VARCHAR/
+            default_map[i] = nil
+          when /INT/
+            default_map[i] = 0
+          when /DATE/
+            default_map[i] = nil
+          when /DECIMAL/
+            default_map[i] = 0.0
+          end
+        end
+        next
+      end
+      table_sources[name] = CSV::open(
+        Pathname.new(DATA_PATH) + Pathname.new(path).basename.sub_ext(DATA_EXTN),
+        "r",
+        {:col_sep => ","},
+       )
+    end
   rescue
     puts "Unable to open source stream file."
     exit
@@ -61,6 +80,14 @@ if __FILE__ == $0
         end
         union_schema[0] = index
         union_schema[1] = 1
+
+        union_schema.each_with_index do |u, i|
+          if u.nil?
+            union_schema[i] = default_map[i]
+          else
+            union_schema[i] = u
+          end
+        end
         out_handle << union_schema
       end
     end
