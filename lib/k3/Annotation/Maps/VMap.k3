@@ -24,9 +24,11 @@ annotation VMap given type a,b {
   //////////////////////////////
   // Exact version operations.
 
+  @:CArgs 2
   provides lifted peek : int -> option content
     with effects \version -> [R[version]; R[self]]
 
+  @:CArgs 2
   provides lifted insert : int -> content -> ()
     with effects \version -> \elem -> [R[version]; R[self]; R[elem]; W[self]]
 
@@ -46,14 +48,14 @@ annotation VMap given type a,b {
   provides lifted update : int -> content -> (content -> ())
     with effects \version -> \oldElem -> \newElem -> [R[version]; R[self]; R[oldElem]; R[newElem]; W[self]]
 
+  // Returns if a value at the exact version is present in the VMap.
+  @:CArgs 2
+  provides lifted member : int -> content -> bool
+    with effects \version -> \elem -> [R[version]; R[self]; R[elem]]
 
   //////////////////////////////////////////////////
   // Frontier-based map retrieval operations.
   // These apply to the nearest version specified.
-
-  @:CArgs 2
-  provides lifted member : int -> content -> bool
-    with effects \version -> \elem -> [R[version]; R[self]; R[elem]]
 
   @:CArgs 2
   provides lifted lookup : int -> content -> option content
@@ -74,6 +76,11 @@ annotation VMap given type a,b {
   // Non-inclusive modifications of all values before the given version.
   @:CArgs 2
   provides lifted erase_prefix : int -> content -> ()
+    with effects \version -> \elem -> [R[version]; R[self]; R[elem]; W[self]]
+
+  // Inclusive update of all values greater than or equal to specific version.
+  @:CArgs 3
+  provides lifted update_suffix : int -> content -> (int -> content -> content) -> ()
     with effects \version -> \elem -> [R[version]; R[self]; R[elem]; W[self]]
 
 

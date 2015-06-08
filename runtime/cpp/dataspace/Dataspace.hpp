@@ -1164,17 +1164,6 @@ class Map {
   template <class Pair>
   R elemToRecord(const Pair& e) const { return e.second; }
 
-  // DS Operations:
-  // Maybe return the first element in the DS
-  shared_ptr<R> peek(const unit_t&) const {
-    shared_ptr<R> res(nullptr);
-    auto it = container.begin();
-    if (it != container.end()) {
-      res = std::make_shared<R>(it->second);
-    }
-    return res;
-  }
-
   template <class I>
   class map_iterator: public std::iterator<std::forward_iterator_tag, R> {
     using container = unordered_map<Key, R>;
@@ -1233,6 +1222,17 @@ class Map {
     return const_iterator(container.cend());
   }
 
+  // DS Operations:
+  // Maybe return the first element in the DS
+  shared_ptr<R> peek(const unit_t&) const {
+    shared_ptr<R> res(nullptr);
+    auto it = container.begin();
+    if (it != container.end()) {
+      res = std::make_shared<R>(it->second);
+    }
+    return res;
+  }
+
   template <class Q>
   unit_t insert(Q&& q) {
     container[q.key] = std::forward<Q>(q);
@@ -1280,38 +1280,14 @@ class Map {
     return unit_t();
   }
 
-  template<typename Fun, typename Acc>
-  Acc fold(Fun f, Acc acc) const {
-    for (const auto& p : container) {
-      acc = f(std::move(acc))(p.second);
-    }
-    return acc;
-  }
+  int size(unit_t) const { return container.size(); }
 
-  template<typename Fun>
-  auto map(Fun f) const -> Map< RT<Fun, R> > {
-    Map< RT<Fun,R> > result;
-    for (const auto& p : container) {
-      result.insert( f(p.second) );
-    }
-    return result;
-  }
-
-  template <typename Fun>
-  unit_t iterate(Fun f) const {
-    for (const auto& p : container) {
-      f(p.second);
-    }
-    return unit_t();
-  }
-
-  template <typename Fun>
-  Map<R> filter(Fun predicate) const {
-    Map<R> result;
-    for (const auto& p : container) {
-      if (predicate(p.second)) {
-        result.insert(p.second);
-      }
+  Map combine(const Map& other) const {
+    // copy this DS
+    Map result = Map(*this);
+    // copy other DS
+    for (const auto& p: other.container) {
+      result.container[p.first] = p.second;
     }
     return result;
   }
@@ -1329,14 +1305,40 @@ class Map {
     return std::make_tuple(Map(beg, mid),Map(mid, end));
   }
 
-  Map combine(const Map& other) const {
-    // copy this DS
-    Map result = Map(*this);
-    // copy other DS
-    for (const auto& p: other.container) {
-      result.container[p.first] = p.second;
+  template <typename Fun>
+  unit_t iterate(Fun f) const {
+    for (const auto& p : container) {
+      f(p.second);
+    }
+    return unit_t();
+  }
+
+  template<typename Fun>
+  auto map(Fun f) const -> Map< RT<Fun, R> > {
+    Map< RT<Fun,R> > result;
+    for (const auto& p : container) {
+      result.insert( f(p.second) );
     }
     return result;
+  }
+
+  template <typename Fun>
+  Map<R> filter(Fun predicate) const {
+    Map<R> result;
+    for (const auto& p : container) {
+      if (predicate(p.second)) {
+        result.insert(p.second);
+      }
+    }
+    return result;
+  }
+
+  template<typename Fun, typename Acc>
+  Acc fold(Fun f, Acc acc) const {
+    for (const auto& p : container) {
+      acc = f(std::move(acc))(p.second);
+    }
+    return acc;
   }
 
   template<typename F1, typename F2, typename Z>
@@ -1392,8 +1394,6 @@ class Map {
 
     return acc;
   }
-
-  int size(unit_t) const { return container.size(); }
 
   // lookup ignores the value of the argument
   shared_ptr<R> lookup(const R& r) const {
@@ -1469,7 +1469,7 @@ class Map {
  protected:
   unordered_map<Key,R> container;
 
-  private:
+ private:
   friend class boost::serialization::access;
 }; // class Map
 

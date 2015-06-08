@@ -1,0 +1,12 @@
+include "Annotation/Maps/VMap.k3"
+include "Core/Builtins.k3"
+
+declare c : collection {key:int, value:int} @VMap
+
+trigger t : () = \_ -> (
+  ((range 10).iterate (\r -> c.insert r.i {key: 1, value: r.i}));
+  print ("VMap sizes: " ++ (itos (c.total_size())) ++ " " ++ (itos (c.size 0)) ++ " " ++ (itos (c.size 9)))
+)
+
+source s1 : () = value ()
+feed s1 |> t
