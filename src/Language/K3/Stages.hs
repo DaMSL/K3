@@ -419,7 +419,7 @@ ensureNoDuplicateUIDs p =
 
 inferTypes :: ProgramTransform
 inferTypes prog = do
-  --void $ ensureNoDuplicateUIDs prog
+  void $ ensureNoDuplicateUIDs prog
   (p, tienv) <- liftEitherM $ inferProgramTypes prog
   p' <- liftEitherM $ translateProgramTypes p
   void $ modify $ \st -> st {tenv = tienv}
