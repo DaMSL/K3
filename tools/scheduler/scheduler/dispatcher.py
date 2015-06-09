@@ -21,9 +21,6 @@ import logging
 
 DEFAULT_MEM = 4 * 1024
 
-task_state = mesos_pb2.TaskState.DESCRIPTOR.values
-
-
 class Dispatcher(mesos.interface.Scheduler):
   def __init__(self, master, webaddr, daemon=True):
 
@@ -339,12 +336,14 @@ class Dispatcher(mesos.interface.Scheduler):
   # Then see if pending jobs can be launched with the offers accumulated so far
   def resourceOffers(self, driver, offers):
     # logging.info("[DISPATCHER] Got %d resource offers. %d jobs in the queue" % (len(offers), len(self.pending)))
-    if time.time() > self.idle + 10:
-      logging.info("[DISPATCHER] HeartBeatting. Offers Available. %d jobs in the queue. Idling..." % (len(self.pending)))
-      self.idle = time.time()
+    # if time.time() > self.idle + 10:
+    logging.info("[COMPILER] HeartBeatting with Mesos. # Offers: %d", len(offers))
+      # self.idle = time.time()
     if len(self.pending) == 0:
       for offer in offers:
         driver.declineOffer(offer.id)
+        # logging.debug("DECLINING Offer from %s" % offer.hostname)
+
       return
 
     for offer in offers:

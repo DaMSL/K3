@@ -1,0 +1,53 @@
+FROM damsl/k3-run:base
+
+
+# Install GHC and cabal
+ENV PATH /opt/ghc/7.10.1/bin:/opt/cabal/1.22/bin:/opt/alex/3.1.4/bin:/opt/happy/1.19.5/bin:/root/.cabal/bin/:$PATH
+
+#WORKDIR /
+#RUN add-apt-repository ppa:hvr/ghc && \
+#    apt-get update && \
+#    apt-get install -y ghc-7.10.1 alex-3.1.4 happy-1.19.5 cabal-install-1.22 && \
+#    cabal update && \
+#    cabal install cabal-install -j
+
+
+## ensure locale is set during build
+ENV LANG            C.UTF-8
+
+RUN echo 'deb http://ppa.launchpad.net/hvr/ghc/ubuntu trusty main' > /etc/apt/sources.list.d/ghc.list && \
+    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys F6F88286 && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends cabal-install-1.22 ghc-7.10.1 happy-1.19.5 alex-3.1.4 && \
+    rm -rf /var/lib/apt/lists/* 
+RUN apt-get update && \
+    apt-get install -y zlib1g-dev && \
+    cabal update && \
+    cabal install cabal-install -j
+
+# Clone Repo
+RUN mkdir -p /k3/K3 && \
+    git clone https://github.com/DaMSL/K3.git /k3/K3
+
+# Build K3
+WORKDIR /k3/K3 
+
+RUN cabal sandbox init && \
+    cabal install --only-dependencies --ghc-options="-O2" --disable-documentation -j && \
+    cabal configure --ghc-options="-O2" && \
+    cabal build -j
+
+# Clean up
+RUN apt-get remove -y python3 \
+    software-properties-common \
+    python-software-properties \
+    unzip autoconf Libtool && \
+    rm -rf /usr/share/doc/* && \
+    rm -rf /usr/share/man/* && \
+    rm /usr/lib/libprotoc* && \
+    rm /usr/bin/protoc &&\
+    rm -rf /usr/local/include/boost && \
+    apt-get autoremove -y && \
+    apt-get autoclean -y
+
+CMD git pull && git checkout $K3_BRANCH && cabal build -j

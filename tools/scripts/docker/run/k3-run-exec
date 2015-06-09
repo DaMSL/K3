@@ -1,0 +1,14 @@
+FROM damsl/k3-run:base
+
+# Clean up
+RUN apt-get remove -y gcc g++ make cmake git python3 \
+    software-properties-common \
+    python-software-properties \
+    unzip autoconf Libtool && \
+    rm -rf /usr/share/doc/* && \
+    rm -rf /usr/share/man/* && \
+    rm /usr/lib/libprotoc* && \
+    rm /usr/bin/protoc &&\
+    rm -rf /usr/local/include/boost && \
+    apt-get autoremove -y && \
+    apt-get autoclean -y

@@ -18,12 +18,14 @@ from flask import (Flask, request, redirect, url_for, jsonify,
                      render_template, send_from_directory)
 from werkzeug import (secure_filename, SharedDataMiddleware)
 
-from core import *
 from mesosutils import *
+
+from common import *
+from core import *
 from dispatcher import *
 from CompileDriver import *
-
 import db
+
 
 webapp = Flask(__name__, static_url_path='')
 logger = logging.getLogger("")
@@ -35,20 +37,6 @@ compile_tasks = {}
 
 index_message = 'Welcome to K3 (DEVELOPMENT SERVER)'
 
-# TODO: move to common
-class MyFormatter(logging.Formatter):
-  """
-  Custom formatter to customize milliseconds in formats
-  """
-  converter=datetime.datetime.fromtimestamp
-  def formatTime(self, record, datefmt=None):
-      ct = self.converter(record.created)
-      if datefmt:
-          s = ct.strftime(datefmt)
-      else:
-          t = ct.strftime("%H:%M:%S")
-          s = "%s.%03d" % (t, record.msecs)
-      return s
 
 
 def initWeb(port, **kwargs):
@@ -57,7 +45,7 @@ def initWeb(port, **kwargs):
   """
   # Configure logging
   # logging.Formatter(fmt='[%(asctime)s %(levelname)-5s %(name)s] %(message)s',datefmt='%H:%M:%S')
-  log_fmt = MyFormatter('[%(asctime)s %(levelname)6s] %(message)s')
+  log_fmt = ServiceFormatter('[%(asctime)s %(levelname)6s] %(message)s')
   log_console = logging.StreamHandler()
   log_console.setFormatter(log_fmt)
   logger.setLevel(logging.DEBUG)
@@ -385,24 +373,26 @@ def archiveApp(appName, appUID):
   #         GET    (TODO) Display archived files...  NotImplemented
   #------------------------------------------------------------------------------
   """
-  logger.debug('[FLASKWEB  /app/<appName>/<appUID>] %s Request for App Archive \
-  `%s`, UID=`%S`' % (request.method, appName, appUID))
+  logger.debug('[FLASKWEB  /app/<appName>/<appUID>] %s Request for App Archive `%s`, UID=`%s`' % (request.method, appName, appUID))
   applist = [a['name'] for a in db.getAllApps()]
   uname = AppID.getAppId(appName, appUID)
 
-  if appName not in applist:
-    return returnError("Application %s does not exist" % appName, 404)
+  # if appName not in applist:
+  #   logger.warning("Archive request for app that does not exist: %s", appName)
+  #   return returnError("Application %s does not exist" % appName, 404)
 
   if request.method == 'POST':
       file = request.files['file']
       if file:
           filename = secure_filename(file.filename)
           path = os.path.join(webapp.config['UPLOADED_ARCHIVE_DEST'], uname).encode(encoding='utf8')
+          logger.debug("Archiving file, %s, to %s" % (filename, path))
           if not os.path.exists(path):
             os.mkdir(path)
           file.save(os.path.join(path, filename))
           return "File Uploaded & archived", 202
       else:
+          logger.warning("Archive request, but no file provided.")
           return "No file received", 400
 
   elif request.method == 'GET':
@@ -873,11 +863,15 @@ def compile():
 
       # outputurl = "http://qp1:%d/compile/%s" % (webapp.config['PORT'], uname)
       outputurl = "/compile/%s" % uname
+      cppsrc = '/fs/archive/%s/%s.cpp' % (uname, name)
+
       thiscompile = dict(compileJob.__dict__, url=dispatcher.getSandboxURL(uname),
-                         status='SUBMITTED', outputurl=outputurl)
+                         status='SUBMITTED', outputurl=outputurl, cppsrc=cppsrc)
+
+
 
       if request.headers['Accept'] == 'application/json':
-        return outputurl, 200
+        return jsonify(thiscompile), 200
       else:
         return render_template("jobs.html", appName=name, lastcompile=thiscompile)
 

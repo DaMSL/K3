@@ -15,13 +15,10 @@ import mesos.native
 
 DEBUG_EXECUTOR = True
 
-# EXECUTOR_URL = "http://qp1:8002/k3executor"
-# COMPEXEC_URL = "http://qp1:8002/CompileExecutor.py"
-
-# EXECUTOR_URL =
-# COMPEXEC_URL =
-K3_DOCKER_NAME = "damsl/k3-run:exec"
-K3_COMPILER_IMAGE = "damsl/k3-compiler"
+# K3_DOCKER_NAME = "damsl/k3-run:exec"
+# K3_COMPILER_IMAGE = "damsl/k3-compiler:stable"
+K3_DOCKER_NAME = "damsl/k3-run:min"
+K3_COMPILER_IMAGE = "damsl/k3-run:compile"
 
 
 
