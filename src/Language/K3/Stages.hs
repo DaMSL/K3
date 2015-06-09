@@ -408,7 +408,7 @@ ensureNoDuplicateUIDs p =
 
 inferTypes :: ProgramTransform
 inferTypes prog = do
-  --void $ ensureNoDuplicateUIDs prog
+  void $ ensureNoDuplicateUIDs prog
   (p, tienv) <- liftEitherM $ inferProgramTypes prog
   p' <- liftEitherM $ translateProgramTypes p
   void $ modify $ \st -> st {tenv = tienv}
@@ -544,11 +544,6 @@ parmapProgramDeclsBlock declPassesF block = do
       Right (mergeTransformSt (declName newDecl) aggState newState, aggDecls++[newDecl])
 
     fixD f (===) d = f d >>= \d' -> if d === d' then return d else fixD f (===) d'
-
-    partitionDecls :: [K3 Declaration] -> IO [[K3 Declaration]]
-    partitionDecls ds = do
-      maxBlocks <- getNumCapabilities
-      return $ chunksOf (length ds `div` maxBlocks) ds
 
     forkIDRangeSize :: Int
     forkIDRangeSize = 1000000
