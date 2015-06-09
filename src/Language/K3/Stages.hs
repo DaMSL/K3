@@ -25,6 +25,7 @@ import Criterion.Types
 
 import Data.Binary hiding ( get, put )
 import Data.Function
+import Data.Functor.Identity
 import Data.List
 import Data.List.Split
 import Data.Map ( Map )
@@ -84,8 +85,8 @@ data TransformReport = TransformReport { statistics :: Map String [Measured]
                       deriving (Eq, Read, Show, Generic)
 
 -- | The program transformation composition monad
-data TransformSt = TransformSt { nextuid    :: Int
-                               , cseCnt     :: Int
+data TransformSt = TransformSt { nextuid    :: ParGenSymS
+                               , cseCnt     :: ParGenSymS
                                , tenv       :: TIEnv
                                , prenv      :: Properties.PIEnv
                                , penv       :: Provenance.PIEnv
@@ -100,20 +101,11 @@ instance Monoid TransformReport where
   mappend (TransformReport ast asn) (TransformReport bst bsn) =
     TransformReport (ast <> bst) (asn <> bsn)
 
--- | Left-associative merge for transform states.
-mergeTransformSt :: Maybe Identifier -> TransformSt -> TransformSt -> TransformSt
-mergeTransformSt d agg new =
-  TransformSt { nextuid = max (nextuid agg) (nextuid new)
-              , cseCnt = max (cseCnt agg) (cseCnt new)
-              , tenv = tenv agg
-              , prenv = prenv agg
-              , penv = Provenance.mergePIEnv d (penv agg) (penv new)
-              , fenv = SEffects.mergeFIEnv d (fenv agg) (fenv new)
-              , report = TransformReport { statistics = statistics (report agg) <> statistics (report new)
-                                         , snapshots = snapshots (report agg) <> snapshots (report new)
-                                         }
-              }
+data TransformStSymS = TransformStSymS { uidSym :: ParGenSymS, cseSym :: ParGenSymS
+                                       , prvSym :: ParGenSymS, effSym :: ParGenSymS }
+                      deriving (Eq, Ord, Read, Show, Generic)
 
+-- | Stage-based transformation monad.
 type TransformM = ExceptT String (StateT TransformSt IO)
 
 {- Stage-based transform instances -}
@@ -131,16 +123,18 @@ cs0 = CompilerSpec 16 ss0
 rp0 :: TransformReport
 rp0 = TransformReport Map.empty Map.empty
 
-st0 :: K3 Declaration -> IO (Either String TransformSt)
-st0 prog = do
+st0 :: Maybe ParGenSymS -> K3 Declaration -> IO (Either String TransformSt)
+st0 symSOpt prog =
   return $ mkEnv >>= \(stpe, stfe) ->
-    return $ TransformSt puid 0 tienv0 Properties.pienv0 stpe stfe rp0
+    return $ TransformSt uidSymS cseSymS tienv0 Properties.pienv0 stpe stfe rp0
 
   where puid = let UID i = maxProgramUID prog in i + 1
+        uidSymS = maybe (contigsymAtS puid) (lowerboundsymS puid) symSOpt
+        [cseSymS, prvSymS, effSymS] = replicate 3 $ resetsymS uidSymS
         mkEnv = do
           vpenv <- variablePositions prog
-          let pe = Provenance.pienv0 vpenv
-          return (pe, SEffects.fienv0 (Provenance.ppenv pe) $ lcenv vpenv)
+          let pe = Provenance.pienv0 (Just prvSymS) vpenv
+          return (pe, SEffects.fienv0 (Just effSymS) (Provenance.ppenv pe) $ lcenv vpenv)
 
 runTransformM :: TransformSt -> TransformM a -> IO (Either String (a, TransformSt))
 runTransformM st m = do
@@ -154,6 +148,49 @@ evalTransformM st m = do
 
 liftEitherM :: Either String a -> TransformM a
 liftEitherM = either throwE return
+
+{- TransformSt utilities -}
+-- | Left-associative merge for transform states.
+mergeTransformSt :: Maybe Identifier -> TransformSt -> TransformSt -> TransformSt
+mergeTransformSt d agg new = flip rewindTransformStSyms new
+  agg { penv    = Provenance.mergePIEnv d (penv agg) (penv new)
+      , fenv    = SEffects.mergeFIEnv   d (fenv agg) (fenv new)
+      , report  = TransformReport { statistics = statistics (report agg) <> statistics (report new)
+                                  , snapshots  = snapshots  (report agg) <> snapshots  (report new) } }
+
+getTransformSyms :: TransformSt -> TransformStSymS
+getTransformSyms s = TransformStSymS (nextuid s) (cseCnt s) (Provenance.pcnt $ penv s) (SEffects.fcnt $ fenv s)
+
+mapTransformStSyms :: (Monad m) => (TransformStSymS -> m TransformStSymS) -> TransformSt -> m TransformSt
+mapTransformStSyms f s = rebuild $ f $ getTransformSyms s
+  where
+    rebuild m = do
+      rsyms <- m
+      return $ s { nextuid = uidSym rsyms
+                 , cseCnt  = cseSym rsyms
+                 , penv    = (penv s) { Provenance.pcnt = prvSym rsyms }
+                 , fenv    = (fenv s) { SEffects.fcnt   = effSym rsyms } }
+
+advanceTransformStSyms :: Int -> TransformSt -> Maybe TransformSt
+advanceTransformStSyms delta s = mapTransformStSyms advance s
+  where adv = advancesymS delta
+        advance (TransformStSymS a b c d) = TransformStSymS <$> adv a <*> adv b <*> adv c <*> adv d
+
+rewindTransformStSyms :: TransformSt -> TransformSt -> TransformSt
+rewindTransformStSyms s t = runIdentity $ mapTransformStSyms (rewind $ getTransformSyms s) t
+  where rw a b = return $ rewindsymS a b
+        rewind (TransformStSymS a b c d) (TransformStSymS a' b' c' d') =
+          TransformStSymS <$> rw a a' <*> rw b b' <*> rw c c' <*> rw d d'
+
+forkTransformStSyms :: Int -> TransformSt -> TransformSt
+forkTransformStSyms factor s = runIdentity $ mapTransformStSyms fork s
+  where f = return . forksymS factor
+        fork (TransformStSymS a b c d) = TransformStSymS <$> f a <*> f b <*> f c <*> f d
+
+partitionTransformStSyms :: Int -> Int -> TransformSt -> Maybe TransformSt
+partitionTransformStSyms forkFactor assignOffset s = mapTransformStSyms part s
+  where p = advancesymS assignOffset . forksymS forkFactor
+        part (TransformStSymS a b c d) = TransformStSymS <$> p a <*> p b <*> p c <*> p d
 
 
 {-- Transform utilities --}
@@ -427,9 +464,11 @@ inferTypes prog = do
 
 inferEffects :: ProgramTransform
 inferEffects prog = do
-  (p,  pienv) <- liftEitherM $ Provenance.inferProgramProvenance prog
-  (p', fienv) <- liftEitherM $ SEffects.inferProgramEffects Nothing (Provenance.ppenv pienv) (debugEffects "After provenance" p)
-  void $ modify $ \st -> st {penv = pienv, fenv = fienv}
+  st <- get
+  (p,  pienv) <- liftEitherM $ Provenance.inferProgramProvenance (Just $ Provenance.pcnt $ penv st) prog
+  (p', fienv) <- liftEitherM $ SEffects.inferProgramEffects Nothing (Just $ SEffects.fcnt $ fenv st)
+                                 (Provenance.ppenv pienv) (debugEffects "After provenance" p)
+  void $ modify $ \st' -> st' {penv = pienv, fenv = fienv}
   return (debugEffects "After effects" p')
 
   where debugEffects tg p = if True then p else flip trace p $ boxToString $ [tg] %$ prettyLines p
@@ -539,13 +578,16 @@ parmapProgramDeclsBlock declPassesF block = do
     runParallelBlock :: TransformSt -> [K3 Declaration] -> IO (Either String (TransformSt, [K3 Declaration]))
     runParallelBlock st ds = do
       locks <- sequence $ newEmptyMVar <$ ds
-      sequence_ [forkIO (runParallelDecl lock (forkState i (length ds) st) d) | lock <- locks | d <- ds | i <- [0..]]
+      sequence_ [runParallelDecl i lock d st | lock <- locks | d <- ds | i <- [0..]]
       newSDs <- mapM takeMVar locks
       return $ foldl mergeEitherStateDecl (Right (st, [])) newSDs
 
-    runParallelDecl :: MVar (Either String (TransformSt, K3 Declaration)) -> TransformSt -> K3 Declaration -> IO ()
-    runParallelDecl m s d =
-      runTransformM s (fixD (mapProgramDecls declPassesF) compareDAST d) >>= putMVar m . fmap swap
+    stateError :: IO a
+    stateError = throwIO $ userError "Invalid parallel compilation state."
+
+    runParallelDecl :: Int -> MVar (Either String (TransformSt, K3 Declaration)) -> K3 Declaration -> TransformSt -> IO ThreadId
+    runParallelDecl i m d s = flip (maybe stateError) (advanceTransformStSyms i s) $ \s' ->
+      forkIO $ runTransformM s' (fixD (mapProgramDecls declPassesF) compareDAST d) >>= putMVar m . fmap swap
 
     mergeEitherStateDecl :: Either String (TransformSt, [K3 Declaration]) -> Either String (TransformSt, K3 Declaration)
                          -> Either String (TransformSt, [K3 Declaration])
@@ -555,16 +597,6 @@ parmapProgramDeclsBlock declPassesF block = do
       Right (mergeTransformSt (declName newDecl) aggState newState, aggDecls++[newDecl])
 
     fixD f (===) d = f d >>= \d' -> if d === d' then return d else fixD f (===) d'
-
-    forkIDRangeSize :: Int
-    forkIDRangeSize = 1000000
-
-    forkState :: Int -> Int -> TransformSt -> TransformSt
-    forkState mySID _ s = s { nextuid = nextuid s + forkIDRangeSize * mySID
-                            , cseCnt = cseCnt s + forkIDRangeSize * mySID
-                            , penv = (penv s) { Provenance.pcnt = Provenance.pcnt (penv s) + forkIDRangeSize * mySID}
-                            , fenv = (fenv s) { SEffects.fcnt = SEffects.fcnt (fenv s) + forkIDRangeSize * mySID}
-                            }
 
     debugBlock :: [K3 Declaration] -> a -> a
     debugBlock ds = trace ("Compiling a block: " ++ intercalate ", " (map showDuid ds))

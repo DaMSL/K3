@@ -40,6 +40,7 @@ import qualified Data.Text as T
 import Language.K3.Utils.Pretty
 import qualified Language.K3.Utils.PrettyText as PT
 
+
 -- | Lambda closures, as a map of lambda expression UIDs to closure variable identifiers.
 type ClosureEnv = IntMap [Identifier]
 

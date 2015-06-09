@@ -19,6 +19,7 @@ import GHC.IO.Encoding
 import System.Directory (getCurrentDirectory)
 
 import Language.K3.Core.Annotation
+import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Utils
 
@@ -77,14 +78,14 @@ transformM cstages prog = foldM processStage (prog, []) cstages
 runTransformSt :: CompileStages -> TransformSt -> K3 Declaration -> IO (Either String ((K3 Declaration, [String]), TransformSt))
 runTransformSt cstages initSt prog = ST.runTransformM initSt $ transformM cstages prog
 
-runTransform :: CompileStages -> K3 Declaration -> IO (Either String ((K3 Declaration, [String]), TransformSt))
-runTransform cstages prog = ST.st0 prog >>= either (return . Left) (\st -> runTransformSt cstages st prog)
+runTransform :: Maybe ParGenSymS -> CompileStages -> K3 Declaration -> IO (Either String ((K3 Declaration, [String]), TransformSt))
+runTransform symSOpt cstages prog = ST.st0 symSOpt prog >>= either (return . Left) (\st -> runTransformSt cstages st prog)
 
 evalTransformSt :: CompileStages -> TransformSt -> K3 Declaration -> IO (Either String (K3 Declaration, [String]))
 evalTransformSt cstages initSt prog = runTransformSt cstages initSt prog >>= either (return . Left) (return . Right . fst)
 
-evalTransform :: CompileStages -> K3 Declaration -> IO (Either String (K3 Declaration, [String]))
-evalTransform cstages prog = runTransform cstages prog >>= either (return . Left) (return . Right . fst)
+evalTransform :: Maybe ParGenSymS -> CompileStages -> K3 Declaration -> IO (Either String (K3 Declaration, [String]))
+evalTransform symSOpt cstages prog = runTransform symSOpt cstages prog >>= either (return . Left) (return . Right . fst)
 
 
 -- | Driver printing helpers
@@ -175,7 +176,7 @@ metaprogram opts p = if noMP $ input opts
 -- | Parser dispatch.
 parse :: IOOptions -> ParseOptions -> K3 Declaration -> DriverM ()
 parse ioOpts pOpts prog = do
-    (xP, report) <- liftE $ evalTransform (poStages pOpts) prog
+    (xP, report) <- liftE $ evalTransform Nothing (poStages pOpts) prog
     k3out ioOpts pOpts xP
     minP <- reasonM syntaxError $ minimize pOpts (xP, report)
     liftIO $ either (printStages pOpts) (uncurry printMinimal) minP
@@ -201,7 +202,7 @@ compile opts cOpts prog = do
     _         -> throwE $ outLanguage cOpts ++ " compilation not supported."
     --"haskell" -> HaskellC.compile opts cOpts p
 
-  where withTransform cstages p f = evalTransform cstages p >>= \case
+  where withTransform cstages p f = evalTransform Nothing cstages p >>= \case
           Left s -> putStrLn s
           Right (xP, rp) -> printTransformReport rp >> f xP
 
@@ -214,7 +215,7 @@ ktrace ktOpts p = either putStrLn putStrLn $ KT.kTrace ktOpts p
 -- | Interpreter dispatch.
 interpret :: Options -> InterpretOptions -> K3 Declaration -> DriverM ()
 interpret opts im@(Batch {}) prog = liftIO $ do
-  sp <- evalTransform (ioStages im) prog
+  sp <- evalTransform Nothing (ioStages im) prog
   case sp of
     Left s -> putStrLn s
     Right (p, rp) -> printTransformReport rp >> runBatch opts im p

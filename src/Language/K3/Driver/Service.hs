@@ -666,7 +666,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       mlogM $ "Parsing with paths " ++ show includesP
       pP <- reasonM parseError . liftIE $ parseK3 nfP includesP prog
       mP <- liftIE . runDriverM $ metaprogram opts pP
-      ((initP, _), initSt) <- liftIE $ runTransform (coStages $ scompileOpts $ sOpts) mP
+      ((initP, _), initSt) <- liftIE $ runTransform Nothing (coStages $ scompileOpts $ sOpts) mP
       return (initP, initSt)
 
     {------------------------
@@ -752,11 +752,19 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
           return ( Heap.insert (sz + w, wid) restheap, Map.insertWith (++) wid [(ich,w)] acm )
 
     -- | Compile block messages construction.
-    mkMessages pid (rcStages -> rstg) initSt cBlocksByWID = do
-      foldMapKeyM (return []) cBlocksByWID $ \m wid cb -> do
-        msgacc <- m
+    mkMessages pid (jobBlockSize &&& rcStages -> (blockSz, remoteStages)) initSt cBlocksByWID = do
+      let forkFactor = blockSz * Map.size cBlocksByWID
+      liftM fst $ foldMapKeyM (return ([], [0..])) cBlocksByWID $ \m wid cb -> do
+        (msgacc, offgen) <- m
+        (wst, restidx) <- maybe wstateError return $ workerSt forkFactor offgen
         wsockid <- getMWI wid >>= maybe (workerError wid) return
-        return $ msgacc ++ [(wsockid, Block pid rstg initSt cb)]
+        return $ (msgacc ++ [(wsockid, Block pid remoteStages wst cb)], restidx)
+
+      where workerSt factor offgen = do
+              (widx, restidx) <- uncons offgen
+              let wOffset = widx * blockSz
+              wst <- ST.partitionTransformStSyms factor wOffset initSt
+              return (wst, restidx)
 
     -- Map helpers to supply fold function as last argument.
     foldMapKeyM a m f = Map.foldlWithKey f a m
@@ -869,7 +877,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     -- | Program completion processing. This garbage collects client request state.
     completeProgram pid (rid, rq, aborts, profile, sources) = do
       let prog = DC.role "__global" $ map snd $ sortOn fst $ concatMap snd $ Map.toAscList sources
-      nprogrpE <- liftIO $ evalTransform (sfinalStages $ smOpts) prog
+      nprogrpE <- liftIO $ evalTransform Nothing (sfinalStages $ smOpts) prog
       case (aborts, nprogrpE) of
         (_, Left err) -> abortProgram (Just pid) rid rq err
         (h:t, _)      -> abortProgram (Just pid) rid rq $ concat $ h:t
@@ -947,6 +955,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
 
     parseError = "Could not parse input: "
 
+    wstateError      = throwE $ "Could not create a worker symbol state."
     partitionError   = throwE $ "Could not greedily pick a partition"
     assignError  pid = throwE $ unwords ["Could not assign program", show pid, "(no workers available)"]
     workerError  wid = throwE $ "No worker named " ++ show wid

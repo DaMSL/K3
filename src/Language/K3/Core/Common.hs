@@ -10,6 +10,17 @@ module Language.K3.Core.Common (
     UID(..),
     NoneMutability(..),
 
+    ParGenSymS(..),
+    zerosymS,
+    resetsymS,
+    contigsymS,
+    contigsymAtS,
+    lowerboundsymS,
+    advancesymS,
+    rewindsymS,
+    forksymS,
+    gensym,
+
     Address(..),
     defaultAddress,
 
@@ -79,6 +90,48 @@ data Span
 
 -- | Unique identifiers for AST nodes.
 data UID = UID Int deriving (Eq, Ord, Read, Show, Typeable, Generic)
+
+
+{- Symbol generation -}
+data ParGenSymS = ParGenSymS { stride :: Int, offset :: Int, current :: Int }
+                  deriving (Eq, Ord, Read, Show, Generic)
+
+zerosymS :: Int -> Int -> ParGenSymS
+zerosymS str off = ParGenSymS str off off
+
+resetsymS :: ParGenSymS -> ParGenSymS
+resetsymS (ParGenSymS str off _) = ParGenSymS str off off
+
+contigsymS :: ParGenSymS
+contigsymS = ParGenSymS 1 0 0
+
+contigsymAtS :: Int -> ParGenSymS
+contigsymAtS cur = ParGenSymS 1 0 cur
+
+lowerboundsymS :: Int -> ParGenSymS -> ParGenSymS
+lowerboundsymS lb s@(ParGenSymS str off cur)
+  | cur <= lb = ParGenSymS str off ((lb `divceil` str) * str + off)
+  | otherwise = s
+  where divceil x y = let (a,b) = x `divMod` y in (a + (if b == 0 then 0 else 1))
+
+advancesymS :: Int -> ParGenSymS -> Maybe ParGenSymS
+advancesymS deltaOff (ParGenSymS str off i)
+  | deltaOff + off >= str = Nothing
+  | otherwise = Just $ ParGenSymS str (off + deltaOff) i
+
+rewindsymS :: ParGenSymS -> ParGenSymS -> ParGenSymS
+rewindsymS (ParGenSymS sa oa ca) (ParGenSymS sb ob cb) = ParGenSymS (max sa sb) (min oa ob) (max ca cb)
+
+forksymS :: Int -> ParGenSymS -> ParGenSymS
+forksymS i (ParGenSymS str off cur)
+  | i > 0 = ParGenSymS (i*str) off cur
+  | otherwise = error "Invalid symbol generator fork factor."
+
+gensym :: ParGenSymS -> (ParGenSymS, Int)
+gensym (ParGenSymS str off cur) = (ParGenSymS str off (cur + str), cur + off)
+
+instance Binary ParGenSymS
+
 
 -- |Mutability modes for @CNone@.  These are kept distinct from the expression
 --  annotations because e.g. @mut (mut None mut, mut None mut)@ must have a

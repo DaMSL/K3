@@ -793,16 +793,16 @@ instance Pretty CandidateTree where
 
     where prettyCandidates (e, cnt) = [show cnt ++ " "] %+ prettyLines e
 
-commonProgramSubexprElim :: Maybe Int -> K3 Declaration -> Either String (Maybe Int, K3 Declaration)
+commonProgramSubexprElim :: Maybe ParGenSymS -> K3 Declaration -> Either String (Maybe ParGenSymS, K3 Declaration)
 commonProgramSubexprElim cseCntOpt prog = foldExpression commonSubexprElim cseCntOpt prog
 
-commonSubexprElim :: Maybe Int -> K3 Expression -> Either String (Maybe Int, K3 Expression)
+commonSubexprElim :: Maybe ParGenSymS -> K3 Expression -> Either String (Maybe ParGenSymS, K3 Expression)
 commonSubexprElim cseCntOpt expr = do
     cTree <- buildCandidateTree expr
     -- TODO: log candidates for debugging
     pTree <- debugCTree "CTree" cTree $ pruneCandidateTree cTree
     -- TODO: log pruned candidates for debugging
-    substituteCandidates (maybe 0 id cseCntOpt) (debugCTree "PTree" pTree pTree) >>= return . first Just
+    substituteCandidates (maybe contigsymS id cseCntOpt) (debugCTree "PTree" pTree pTree) >>= return . first Just
 
   where
     debugCTree tg ct r = if True then r else trace (boxToString $ [tg] ++ prettyLines ct) r
@@ -902,27 +902,26 @@ commonSubexprElim cseCntOpt expr = do
           let nUid = if null used then UID $ -1 else uid
           return $ Node (nUid, used) ch
 
-    substituteCandidates :: Int -> CandidateTree -> Either String (Int, K3 Expression)
-    substituteCandidates cnt prunedTree = do
-        substitutions           <- foldMapTree concatCandidates [] prunedTree
-        (ncnt, ncSubstitutions) <- foldSubstitutions cnt substitutions
-        nExpr                   <- foldM substituteAtUID expr ncSubstitutions
-        return (ncnt, nExpr)
+    substituteCandidates :: ParGenSymS -> CandidateTree -> Either String (ParGenSymS, K3 Expression)
+    substituteCandidates symS prunedTree = do
+        substitutions            <- foldMapTree concatCandidates [] prunedTree
+        (nsymS, ncSubstitutions) <- foldSubstitutions symS substitutions
+        nExpr                    <- foldM substituteAtUID expr ncSubstitutions
+        return (nsymS, nExpr)
 
       where
         concatCandidates candAcc (Node (uid, cands) _) =
           return $ (map (\(e,i) -> (uid,e,i)) cands) ++ (concat candAcc)
 
-        foldSubstitutions :: Int -> [Substitution] -> Either String (Int, [NamedSubstitution])
-        foldSubstitutions startcnt subs = do
-          (ncnt,namedSubs) <- foldM nameSubstitution (startcnt,[]) subs
+        foldSubstitutions :: ParGenSymS -> [Substitution] -> Either String (ParGenSymS, [NamedSubstitution])
+        foldSubstitutions startsymS subs = do
+          (nsymS,namedSubs) <- foldM nameSubstitution (startsymS, []) subs
           nnsubs <- foldM (\subAcc sub -> mapM (closeOverSubstitution sub) subAcc) namedSubs namedSubs
-          return (ncnt, nnsubs)
+          return (nsymS, nnsubs)
 
-        nameSubstitution :: (Int, [NamedSubstitution]) -> Substitution
-                         -> Either String (Int, [NamedSubstitution])
-        nameSubstitution (cnt', acc) (uid, e, i) =
-          return (cnt'+1, acc++[(uid, ("__cse"++show cnt'), e, i)])
+        nameSubstitution :: (ParGenSymS, [NamedSubstitution]) -> Substitution -> Either String (ParGenSymS, [NamedSubstitution])
+        nameSubstitution (symS', acc) (uid, e, i) = return (nsymS', acc++[(uid, ("__cse"++show c), e, i)])
+          where (nsymS', c) = gensym symS'
 
         closeOverSubstitution :: NamedSubstitution -> NamedSubstitution -> Either String NamedSubstitution
         closeOverSubstitution (uid, n, e, _) (uid2, n2, e2, i2)

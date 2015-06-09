@@ -106,7 +106,7 @@ instance Monoid ProvErrorCtxt where
 
 -- | A provenance inference environment.
 data PIEnv = PIEnv {
-               pcnt     :: Int,
+               pcnt     :: ParGenSymS,
                ppenv    :: PPEnv,
                penv     :: PEnv,
                paenv    :: PAEnv,
@@ -120,9 +120,9 @@ data PIEnv = PIEnv {
 
 mergePIEnv :: Maybe Identifier -> PIEnv -> PIEnv -> PIEnv
 mergePIEnv d agg new =
-  PIEnv (max (pcnt agg) (pcnt new))
+  PIEnv (rewindsymS (pcnt agg) (pcnt new))
         (ppenv agg <> ppenv new)
-        (maybe (penv agg) (\d' -> BEnv.mergeIntoWith [d'] (penv agg) (penv new)) d)
+        (maybe (penv agg)  (\d' -> BEnv.mergeIntoWith [d'] (penv agg)  (penv new))  d)
         (maybe (paenv agg) (\d' -> BEnv.mergeIntoWith [d'] (paenv agg) (paenv new)) d)
         (VarPosEnv (lcenv (pvpenv agg) <> lcenv (pvpenv new))
                    (scenv (pvpenv agg) <> scenv (pvpenv new))
@@ -226,8 +226,9 @@ perr0 :: ProvErrorCtxt
 perr0 = ProvErrorCtxt Nothing Nothing
 
 {- PIEnv helpers -}
-pienv0 :: PVPEnv -> PIEnv
-pienv0 vpenv = PIEnv 0 ppenv0 penv0 paenv0 vpenv epmap0 [] perr0 aivenv0
+pienv0 :: Maybe ParGenSymS -> PVPEnv -> PIEnv
+pienv0 symSOpt vpenv =
+  PIEnv (maybe contigsymS id symSOpt) ppenv0 penv0 paenv0 vpenv epmap0 [] perr0 aivenv0
 
 -- | Modifiers.
 {-
@@ -338,15 +339,15 @@ picleart env = env {ptienv=aivenv0}
 -- | Self-referential provenance pointer construction
 pifreshfp :: PIEnv -> Identifier -> UID -> (K3 Provenance, PIEnv)
 pifreshfp pienv i u =
-  let j = pcnt pienv
+  let (npcnt,j) = gensym $ pcnt pienv
       p = pbvar $ PMatVar i u j
-  in (p, piextp (pienv {pcnt=j+1}) j p)
+  in (p, piextp (pienv {pcnt=npcnt}) j p)
 
 pifreshbp :: PIEnv -> Identifier -> UID -> K3 Provenance -> (K3 Provenance, PIEnv)
 pifreshbp pienv i u p =
-  let j  = pcnt pienv
+  let (npcnt,j) = gensym $ pcnt pienv
       p' = pbvar $ PMatVar i u j
-  in (p', piextp (pienv {pcnt=j+1}) j p)
+  in (p', piextp (pienv {pcnt=npcnt}) j p)
 
 -- | Self-referential provenance pointer construction
 --   This adds a new named pointer to both the named and pointer environments.
@@ -903,10 +904,10 @@ markGlobalProv d = return d
 
 
 {- Analysis entry point -}
-inferProgramProvenance :: K3 Declaration -> Either String (K3 Declaration, PIEnv)
-inferProgramProvenance prog = do
+inferProgramProvenance :: Maybe ParGenSymS -> K3 Declaration -> Either String (K3 Declaration, PIEnv)
+inferProgramProvenance symSOpt prog = do
   vpenv <- variablePositions prog
-  runPInfES (pienv0 vpenv) $ doInference prog
+  runPInfES (pienv0 symSOpt vpenv) $ doInference prog
 
   where
     doInference p = do

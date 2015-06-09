@@ -851,81 +851,83 @@ stripAllTypeAndEffectAnns = stripDeclAnnotations isAnyDEffectAnn isAnyETypeOrEff
 
 -- | Ensures every node has a valid UID and Span.
 --   This currently does not handle literals.
-repairProgram :: String -> Maybe Int -> K3 Declaration -> (Int, K3 Declaration)
-repairProgram repairMsg nextUIDOpt p =
-    let nextUID = maybe (let UID maxUID = maxProgramUID p in maxUID + 1) id nextUIDOpt
-    in runIdentity $ foldProgram repairDecl repairMem repairExpr (Just repairType) nextUID p
+repairProgram :: String -> Maybe ParGenSymS -> K3 Declaration -> (ParGenSymS, K3 Declaration)
+repairProgram repairMsg symSOpt p =
+    let UID maxUID = maxProgramUID p
+        symS       = maybe (contigsymAtS $ maxUID + 1) id symSOpt
+    in runIdentity $ foldProgram repairDecl repairMem repairExpr (Just repairType) symS p
 
   where
-        repairDecl :: Int -> K3 Declaration -> Identity (Int, K3 Declaration)
-        repairDecl uid n = validateD uid (children n) n
+    repairDecl :: ParGenSymS -> K3 Declaration -> Identity (ParGenSymS, K3 Declaration)
+    repairDecl symS n = validateD symS (children n) n
 
-        repairExpr :: Int -> K3 Expression -> Identity (Int, K3 Expression)
-        repairExpr uid n = foldRebuildTree validateE uid n
+    repairExpr :: ParGenSymS -> K3 Expression -> Identity (ParGenSymS, K3 Expression)
+    repairExpr symS n = foldRebuildTree validateE symS n
 
-        repairType :: Int -> K3 Type -> Identity (Int, K3 Type)
-        repairType uid n = foldRebuildTree validateT uid n
+    repairType :: ParGenSymS -> K3 Type -> Identity (ParGenSymS, K3 Type)
+    repairType symS n = foldRebuildTree validateT symS n
 
-        repairMem uid (Lifted      pol n t eOpt anns) = rebuildMem uid anns $ Lifted      pol n (repairTQualifier t) eOpt
-        repairMem uid (Attribute   pol n t eOpt anns) = rebuildMem uid anns $ Attribute   pol n (repairTQualifier t) eOpt
-        repairMem uid (MAnnotation pol n anns)        = rebuildMem uid anns $ MAnnotation pol n
+    repairMem symS (Lifted      pol n t eOpt anns) = rebuildMem symS anns $ Lifted      pol n (repairTQualifier t) eOpt
+    repairMem symS (Attribute   pol n t eOpt anns) = rebuildMem symS anns $ Attribute   pol n (repairTQualifier t) eOpt
+    repairMem symS (MAnnotation pol n anns)        = rebuildMem symS anns $ MAnnotation pol n
 
-        validateD :: Int -> [K3 Declaration] -> K3 Declaration -> Identity (Int, K3 Declaration)
-        validateD uid ch n = ensureUIDSpan uid DUID isDUID DSpan isDSpan ch n >>= return . second repairDQualifier
+    validateD :: ParGenSymS -> [K3 Declaration] -> K3 Declaration -> Identity (ParGenSymS, K3 Declaration)
+    validateD symS ch n = ensureUIDSpan symS DUID isDUID DSpan isDSpan ch n >>= return . second repairDQualifier
 
-        validateE :: Int -> [K3 Expression] -> K3 Expression -> Identity (Int, K3 Expression)
-        validateE uid ch n = ensureUIDSpan uid EUID isEUID ESpan isESpan ch n >>= return . second repairEQualifier
+    validateE :: ParGenSymS -> [K3 Expression] -> K3 Expression -> Identity (ParGenSymS, K3 Expression)
+    validateE symS ch n = ensureUIDSpan symS EUID isEUID ESpan isESpan ch n >>= return . second repairEQualifier
 
-        validateT :: Int -> [K3 Type] -> K3 Type -> Identity (Int, K3 Type)
-        validateT uid ch n = ensureUIDSpan uid TUID isTUID TSpan isTSpan ch n >>= return . second repairTQualifier
+    validateT :: ParGenSymS -> [K3 Type] -> K3 Type -> Identity (ParGenSymS, K3 Type)
+    validateT symS ch n = ensureUIDSpan symS TUID isTUID TSpan isTSpan ch n >>= return . second repairTQualifier
 
-        repairDQualifier d = case tag d of
-          DGlobal  n t eOpt -> replaceTag d (DGlobal n (repairTQualifier t) eOpt)
-          DTrigger n t e    -> replaceTag d (DTrigger n (repairTQualifier t) e)
-          _ -> d
+    repairDQualifier d = case tag d of
+      DGlobal  n t eOpt -> replaceTag d (DGlobal  n (repairTQualifier t) eOpt)
+      DTrigger n t e    -> replaceTag d (DTrigger n (repairTQualifier t) e)
+      _ -> d
 
-        repairEQualifier :: K3 Expression -> K3 Expression
-        repairEQualifier n = case tnc n of
-          (EConstant (CEmpty t), _) -> let nt = runIdentity $ modifyTree (return . repairTQualifier) t
-                                       in replaceTag n $ EConstant $ CEmpty nt
-          (ELetIn _, [t, b]) -> replaceCh n [repairEQAnn t, b]
-          (ESome,     ch)    -> replaceCh n $ map repairEQAnn ch
-          (EIndirect, ch)    -> replaceCh n $ map repairEQAnn ch
-          (ETuple,    ch)    -> replaceCh n $ map repairEQAnn ch
-          (ERecord _, ch)    -> replaceCh n $ map repairEQAnn ch
-          _ -> n
+    repairEQualifier :: K3 Expression -> K3 Expression
+    repairEQualifier n = case tnc n of
+      (EConstant (CEmpty t), _) -> let nt = runIdentity $ modifyTree (return . repairTQualifier) t
+                                   in replaceTag n $ EConstant $ CEmpty nt
+      (ELetIn _, [t, b]) -> replaceCh n [repairEQAnn t, b]
+      (ESome,     ch)    -> replaceCh n $ map repairEQAnn ch
+      (EIndirect, ch)    -> replaceCh n $ map repairEQAnn ch
+      (ETuple,    ch)    -> replaceCh n $ map repairEQAnn ch
+      (ERecord _, ch)    -> replaceCh n $ map repairEQAnn ch
+      _ -> n
 
-        repairEQAnn n@((@~ isEQualified) -> Nothing) = n @+ EImmutable
-        repairEQAnn n = n
+    repairEQAnn n@((@~ isEQualified) -> Nothing) = n @+ EImmutable
+    repairEQAnn n = n
 
-        repairTQualifier n = case tnc n of
-          (TOption,      ch) -> replaceCh n $ map repairTQAnn ch
-          (TIndirection, ch) -> replaceCh n $ map repairTQAnn ch
-          (TTuple,       ch) -> replaceCh n $ map repairTQAnn ch
-          (TRecord _,    ch) -> replaceCh n $ map repairTQAnn ch
-          _ -> n
+    repairTQualifier n = case tnc n of
+      (TOption,      ch) -> replaceCh n $ map repairTQAnn ch
+      (TIndirection, ch) -> replaceCh n $ map repairTQAnn ch
+      (TTuple,       ch) -> replaceCh n $ map repairTQAnn ch
+      (TRecord _,    ch) -> replaceCh n $ map repairTQAnn ch
+      _ -> n
 
-        repairTQAnn n@((@~ isTQualified) -> Nothing) = n @+ TImmutable
-        repairTQAnn n = n
+    repairTQAnn n@((@~ isTQualified) -> Nothing) = n @+ TImmutable
+    repairTQAnn n = n
 
-        rebuildMem uid anns ctor = return $ (\(nuid, nanns) -> (nuid, ctor nanns)) $ validateMem uid anns
+    rebuildMem symS anns ctor = return $ (\(nsymS, nanns) -> (nsymS, ctor nanns)) $ validateMem symS anns
 
-        validateMem uid anns =
-          let (nuid, extraAnns) =
-                (\spa -> maybe (uid+1, [DUID $ UID uid]++spa) (const (uid, spa)) $ find isDUID anns)
-                  $ maybe ([DSpan $ GeneratedSpan repairMsg]) (const []) $ find isDSpan anns
-          in (nuid, anns ++ extraAnns)
+    validateMem symS anns =
+      let spa               = maybe ([DSpan $ GeneratedSpan repairMsg]) (const []) $ find isDSpan anns
+          (nsymS, u)         = gensym symS
+          (rsymS, extraAnns) = maybe (nsymS, [DUID $ UID u]++spa) (const (symS, spa)) $ find isDUID anns
+      in (rsymS, anns ++ extraAnns)
 
-        ensureUIDSpan uid uCtor uT sCtor sT ch (Node tg _) =
-          return $ ensureUID uid uCtor uT $ snd $ ensureSpan sCtor sT $ Node tg ch
+    ensureUIDSpan symS uCtor uT sCtor sT ch (Node tg _) =
+      return $ ensureUID symS uCtor uT $ snd $ ensureSpan sCtor sT $ Node tg ch
 
-        ensureSpan :: (Eq (Annotation a)) => (Span -> Annotation a) -> (Annotation a -> Bool) -> K3 a -> ((), K3 a)
-        ensureSpan    ctor t n = addAnn () () (ctor $ GeneratedSpan repairMsg) t n
+    ensureSpan :: (Eq (Annotation a)) => (Span -> Annotation a) -> (Annotation a -> Bool) -> K3 a -> ((), K3 a)
+    ensureSpan ctor t n = addAnn () () (ctor $ GeneratedSpan repairMsg) t n
 
-        ensureUID :: (Eq (Annotation a)) => Int -> (UID -> Annotation a) -> (Annotation a -> Bool) -> (K3 a) -> (Int, K3 a)
-        ensureUID uid ctor t n = addAnn (uid+1) uid (ctor $ UID uid) t n
+    ensureUID :: (Eq (Annotation a)) => ParGenSymS -> (UID -> Annotation a) -> (Annotation a -> Bool) -> (K3 a) -> (ParGenSymS, K3 a)
+    ensureUID symS ctor t n = addAnn nsymS symS (ctor $ UID uid) t n
+      where (nsymS, uid) = gensym symS
 
-        addAnn rUsed rNotUsed a t n = maybe (rUsed, n @+ a) (const (rNotUsed, n)) (n @~ t)
+    addAnn rUsed rNotUsed a t n = maybe (rUsed, n @+ a) (const (rNotUsed, n)) (n @~ t)
 
 
 -- | Fold an accumulator over all program UIDs.

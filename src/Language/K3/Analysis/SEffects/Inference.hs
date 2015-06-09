@@ -101,7 +101,7 @@ instance Monoid EffectErrorCtxt where
 
 -- | An effect inference environment.
 data FIEnv = FIEnv {
-               fcnt     :: Int,
+               fcnt     :: ParGenSymS,
                fpenv    :: FPEnv,
                fenv     :: FEnv,
                faenv    :: FAEnv,
@@ -116,15 +116,15 @@ data FIEnv = FIEnv {
 
 mergeFIEnv :: Maybe Identifier -> FIEnv -> FIEnv -> FIEnv
 mergeFIEnv d agg new =
-  FIEnv { fcnt = max (fcnt agg) (fcnt new)
-        , fpenv = fpenv agg <> fpenv new
-        , fenv = maybe (fenv agg) (\d' -> BEnv.mergeIntoWith [d'] (fenv agg) (fenv new)) d
-        , faenv = maybe (faenv agg) (\d' -> BEnv.mergeIntoWith [d'] (faenv agg) (faenv new)) d
-        , fpbenv = maybe (fpbenv agg) (\d' -> BEnv.mergeIntoWith [d'] (fpbenv agg) (fpbenv new)) d
-        , fppenv = fppenv agg <> fppenv new
-        , flcenv = flcenv agg <> flcenv new
-        , efmap = efmap agg <> efmap new
-        , fcase = fcase agg <> fcase new
+  FIEnv { fcnt     = rewindsymS (fcnt agg) (fcnt new)
+        , fpenv    = fpenv agg <> fpenv new
+        , fenv     = maybe (fenv agg)   (\d' -> BEnv.mergeIntoWith [d'] (fenv agg)   (fenv new))   d
+        , faenv    = maybe (faenv agg)  (\d' -> BEnv.mergeIntoWith [d'] (faenv agg)  (faenv new))  d
+        , fpbenv   = maybe (fpbenv agg) (\d' -> BEnv.mergeIntoWith [d'] (fpbenv agg) (fpbenv new)) d
+        , fppenv   = fppenv agg <> fppenv new
+        , flcenv   = flcenv agg <> flcenv new
+        , efmap    = efmap agg <> efmap new
+        , fcase    = fcase agg <> fcase new
         , ferrctxt = EffectErrorCtxt { ftoplevelExpr = ftoplevelExpr (ferrctxt agg) <|> ftoplevelExpr (ferrctxt new)
                                      , fcurrentExpr = fcurrentExpr (ferrctxt agg) <|> fcurrentExpr (ferrctxt new)
                                      }
@@ -260,8 +260,9 @@ err0 :: EffectErrorCtxt
 err0 = EffectErrorCtxt Nothing Nothing
 
 {- FIEnv helpers -}
-fienv0 :: FPPEnv -> FLCEnv -> FIEnv
-fienv0 ppenv lcenv = FIEnv 0 fpenv0 fenv0 faenv0 fpbenv0 ppenv lcenv efmap0 [] err0
+fienv0 :: Maybe ParGenSymS -> FPPEnv -> FLCEnv -> FIEnv
+fienv0 symSOpt ppenv lcenv =
+  FIEnv (maybe contigsymS id symSOpt) fpenv0 fenv0 faenv0 fpbenv0 ppenv lcenv efmap0 [] err0
 
 -- | Modifiers.
 mfiee :: (FEnv -> FEnv) -> FIEnv -> FIEnv
@@ -353,15 +354,15 @@ fiseterrce env eOpt = env {ferrctxt = (ferrctxt env) {fcurrentExpr = eOpt}}
 -- | Self-referential provenance pointer construction
 fifreshfp :: FIEnv -> Identifier -> UID -> (K3 Effect, FIEnv)
 fifreshfp fienv i u =
-  let j = fcnt fienv
+  let (nfcnt,j) = gensym $ fcnt fienv
       f = fbvar $ FMatVar i u j
-  in (f, fiextp (fienv {fcnt=j+1}) j f)
+  in (f, fiextp (fienv {fcnt=nfcnt}) j f)
 
 fifreshbp :: FIEnv -> Identifier -> UID -> K3 Effect -> (K3 Effect, FIEnv)
 fifreshbp fienv i u f =
-  let j  = fcnt fienv
+  let (nfcnt,j) = gensym $ fcnt fienv
       f' = fbvar $ FMatVar i u j
-  in (f', fiextp (fienv {fcnt=j+1}) j f)
+  in (f', fiextp (fienv {fcnt=nfcnt}) j f)
 
 -- | Self-referential provenance pointer construction
 --   This adds a new named pointer to both the named and pointer environments.
@@ -831,11 +832,12 @@ markGlobalEffect d = return d
 
 
 {- Analysis entrypoint -}
-inferProgramEffects :: Maybe (ExtInferF a, a) -> FPPEnv -> K3 Declaration
+inferProgramEffects :: Maybe (ExtInferF a, a)
+                    -> Maybe ParGenSymS -> FPPEnv -> K3 Declaration
                     -> Either String (K3 Declaration, FIEnv)
-inferProgramEffects extInfOpt ppenv prog =  do
+inferProgramEffects extInfOpt symSOpt ppenv prog =  do
   lcenv <- lambdaClosures prog
-  runFInfES (fienv0 ppenv lcenv) $ doInference prog
+  runFInfES (fienv0 symSOpt ppenv lcenv) $ doInference prog
 
   where
     doInference p = do
