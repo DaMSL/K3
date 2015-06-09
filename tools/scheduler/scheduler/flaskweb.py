@@ -65,14 +65,19 @@ def initWeb(port, **kwargs):
   JOBS_TARGET    = 'jobs'
   APPS_TARGET    = 'apps'
   ARCHIVE_TARGET = 'archive'
+  BUILD_TARGET   = 'build'
   LOG_TARGET     = 'log'
 
+  #  TODO: Either do away with this Flask_request  (python vers limitation)
+  #       or simplify this
   APPS_DEST = os.path.join(LOCAL_DIR, APPS_TARGET)
   APPS_URL = os.path.join(SERVER_URL, APPS_TARGET)
   JOBS_DEST = os.path.join(LOCAL_DIR, JOBS_TARGET)
   JOBS_URL = os.path.join(SERVER_URL, JOBS_TARGET)
   ARCHIVE_DEST = os.path.join(LOCAL_DIR, ARCHIVE_TARGET)
   ARCHIVE_URL = os.path.join(SERVER_URL, ARCHIVE_TARGET)
+  BUILD_DEST = os.path.join(LOCAL_DIR, BUILD_TARGET)
+  BUILD_URL = os.path.join(SERVER_URL, BUILD_TARGET)
 
   #  Store dir structures in web context
   webapp.config['DIR']      = LOCAL_DIR
@@ -86,10 +91,12 @@ def initWeb(port, **kwargs):
   webapp.config['UPLOADED_JOBS_URL']      = JOBS_URL
   webapp.config['UPLOADED_ARCHIVE_DEST']  = ARCHIVE_DEST
   webapp.config['UPLOADED_ARCHIVE_URL']   = ARCHIVE_URL
+  webapp.config['UPLOADED_BUILD_DEST']  = BUILD_DEST
+  webapp.config['UPLOADED_BUILD_URL']   = BUILD_URL
   webapp.config['COMPILE_OFF']  = not(kwargs.get('compile', False))
 
   # Create dirs, if necessary
-  for p in [LOCAL_DIR, JOBS_TARGET, APPS_TARGET, ARCHIVE_TARGET, LOG_TARGET]:
+  for p in [LOCAL_DIR, JOBS_TARGET, APPS_TARGET, ARCHIVE_TARGET, BUILD_TARGET, LOG_TARGET]:
     path = os.path.join(LOCAL_DIR, p)
     if not os.path.exists(path):
       os.mkdir(path)
@@ -323,7 +330,7 @@ def uploadApp():
       return render_template('apps.html', applist=applist, versions=versions)
 
 
-@webapp.route('/app/<appName>', methods=['GET', 'POST'])
+@webapp.route('/app/<appName>')
 def getAppRedir(appName):
   """
     Redirect to uploadApp (/apps/<appName>)
@@ -358,7 +365,7 @@ def archiveAppRedir(appName, appUID):
   """
   logger.debug('[FLASKWEB  /app/<appName>/<appUID>] Redirec to /apps/%s/%s' 
       % (appName, appUID))
-  return archive_app(appName, appUID)
+  return archiveApp(appName, appUID)
 
 
 @webapp.route('/apps/<appName>/<appUID>', methods=['GET', 'POST'])
@@ -385,18 +392,18 @@ def archiveApp(appName, appUID):
       file = request.files['file']
       if file:
           filename = secure_filename(file.filename)
-          path = os.path.join(webapp.config['UPLOADED_ARCHIVE_DEST'], uname).encode(encoding='utf8')
+          path = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], uname).encode(encoding='utf8')
           logger.debug("Archiving file, %s, to %s" % (filename, path))
           if not os.path.exists(path):
             os.mkdir(path)
           file.save(os.path.join(path, filename))
-          return "File Uploaded & archived", 202
+          return "File Uploaded & archived\n", 202
       else:
           logger.warning("Archive request, but no file provided.")
-          return "No file received", 400
+          return "No file received\n", 400
 
   elif request.method == 'GET':
-    path = os.path.join(webapp.config['UPLOADED_ARCHIVE_URL'], uname)
+    path = os.path.join(webapp.config['UPLOADED_BUILD_URL'], uname)
     return redirect(path, 302)
 
 
@@ -419,6 +426,11 @@ def listJobs():
   logger.debug('[FLASKWEB  /jobs] Request for job listing')
   jobs = db.getJobs()
   compiles = db.getCompiles()
+  for c in compiles:
+    if c['uid'] not in compile_tasks.keys():
+      db.updateCompile(c['uid'], status='KILLED', done=True)
+  compiles = db.getCompiles()
+
   if request.headers['Accept'] == 'application/json':
     return jsonify(dict(LaunchJobs=jobs, CompilingJobs=compiles)), 200
   else:
@@ -499,6 +511,8 @@ def create_job(appName, appUID):
         # Submit to Mesos
         dispatcher.submit(newJob)
         thisjob = dict(thisjob, url='http://localhost:5050', status='SUBMITTED')
+
+
 
         if 'application/json' in request.headers['Accept']:
           return jsonify(thisjob), 202
@@ -787,10 +801,12 @@ def compile():
     #  /compile
     #         GET     Form for compiling new K3 Executable OR status of compiling tasks
     #         POST    Submit new K3 Compile task
-    #           curl -i -H "Accept: application/json"
-    #                   -F name=<appName> -F file=@<sourceFile>
-    #                   -F options=<compileOptions> -F user=<userName> http://qp1:5000/compile
-    #           NOTE: Username & Options are optional fields
+    #           curl -i -X POST -H "Accept: application/json" -F name=<appName> 
+    #                   -F file=@<sourceFile> -F blocksize=<blocksize>
+    #                   -F numworkers=<numworkers> -F options=<compileOptions>
+    #                   -F user=<userName> http://<host>:<port>/compile
+    #           NOTE: Username, blocksize, numworkers & Options are optional fields
+    #             default vals:  numworkers=1,  blocksize=4
     #------------------------------------------------------------------------------
     """
     if webapp.config['COMPILE_OFF']:
@@ -805,7 +821,8 @@ def compile():
       user = request.form['user'] if 'user' in request.form else 'someone'
       tag = request.form['tag'] if 'tag' in request.form else ''
       blocksize = request.form['blocksize'] if 'blocksize' in request.form else 4
-      logger.debug("Compile requested")
+      numworkers = int(request.form['numworkers']) if 'numworkers' in request.form else 1
+      logger.debug("Compile requested for application: %s", name)
 
       if not file and not text:
           return renderError("Invalid Compile request", 400)
@@ -822,9 +839,10 @@ def compile():
           return render_template("errors/404.html", message="No name provided for K3 program")
 
       uname = '%s-%s' % (name, uid)
+      path = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], uname).encode(encoding='utf8')
 
-      path = os.path.join(webapp.config['UPLOADED_ARCHIVE_DEST'], uname).encode(encoding='utf8')
-      url = os.path.join(webapp.config['UPLOADED_ARCHIVE_URL'], uname).encode(encoding='utf8')
+
+
 
       # Save K3 source to file (either from file or text input)
       src_file = ('%s.k3' % name)
@@ -838,17 +856,27 @@ def compile():
           file.write(text)
           file.close()
 
-      source = webapp.config['ADDR'] + os.path.join(url, src_file)
+      # source = webapp.config['ADDR'] + os.path.join(url, src_file)
+
+      # Create Symlink for easy access to latest compiled task
+      symlink = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], name).encode(encoding='utf8')
+      if os.path.exists(symlink):
+        os.remove(symlink)
+
+      os.symlink(path, symlink)
+      url = os.path.join(webapp.config['UPLOADED_BUILD_URL'], uname).encode(encoding='utf8')
+
 
       # TODO: Add in Git hash
-      compileJob    = CompileJob(name=name, uid=uid, path=path, url=url, options=options, user=user, tag=tag)
+      compileJob   = CompileJob(name=name, uid=uid, options=options, user=user, tag=tag,
+              path=path, blocksize=blocksize, numworkers=numworkers, url=url)
 
       # compileDriver = CompileDriver(compileJob, webapp.config['MESOS'], source=source, script=script, webaddr=webapp.config['ADDR'])
-      launcher = CompileLauncher(compileJob, source=source, webaddr=webapp.config['ADDR'])
+      launcher = CompileLauncher(compileJob, source=src_file, webaddr=webapp.config['ADDR'])
 
       framework = mesos_pb2.FrameworkInfo()
       framework.user = ""
-      framework.name = "Compile: %s" % name
+      framework.name = "Compile %s" % name
 
       driver = mesos.native.MesosSchedulerDriver(launcher, framework, webapp.config['MESOS'])
 
@@ -868,7 +896,7 @@ def compile():
       thiscompile = dict(compileJob.__dict__, url=dispatcher.getSandboxURL(uname),
                          status='SUBMITTED', outputurl=outputurl, cppsrc=cppsrc)
 
-
+      compile_tasks[uid] = t
 
       if request.headers['Accept'] == 'application/json':
         return jsonify(thiscompile), 200
@@ -896,7 +924,7 @@ def get_compile(uname):
     if webapp.config['COMPILE_OFF']:
       return returnError("Compilation Features are not available", 400)
 
-    fname = os.path.join(webapp.config['UPLOADED_ARCHIVE_DEST'], uname, 'output').encode('utf8')
+    fname = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], uname, 'output').encode('utf8')
     if os.path.exists(fname):
       stdout_file = open(fname, 'r')
       output = stdout_file.read()
@@ -931,22 +959,19 @@ def kill_compile(uname):
       return returnError("Not currently tracking the compile task %s" % uname, 400)
     else:
       c = complist[0]
-      logging.info ("[FLASKWEB] Asked to KILL Compile UID #%s. Current Job status is %s" % (c['uid'], c['status']))
+      logging.info ("[FLASKWEB] Asked to KILL Compile UID #%s. Current status is %s" % (c['uid'], c['status']))
 
-      if not JobStatus.done(c['status']):
-        db.updateCompile(jobId, status=JobStatus.KILLED, done=True)
+      if c['status'] != State.COMPLETE:
+        db.updateCompile(uid, status='KILLED', done=True)
 
-      if uname in compile_tasks:
-        del compile_tasks[uname]
-        c['status'] = JobStatus.KILLED
-      else:
-        c['status'] = 'ORPHANED and CLEANED'
+      if uid in compile_tasks.keys():
+        del compile_tasks[uid]
+        c['status'] = 'KILLED'
 
       if request.headers['Accept'] == 'application/json':
         return jsonify(c), 200
       else:
-        apps = getAllApps(appName=appName)
-        return render_template("jobs.html", appName=appName, applist=apps, lastcompile=c, complist=complist)
+        return redirect(url_for('listJobs')), 302
 
 
 

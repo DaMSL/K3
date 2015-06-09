@@ -4,22 +4,6 @@ import tarfile
 import logging
 
 
-class JobStatus:
-  INITIATED = 'INITIATED'
-  SUBMITTED = 'SUBMITTED'
-  RUNNING   = 'RUNNING'
-  COMPILING = 'COMPILING'
-  ARCHIVING = 'ARCHIVING'
-  FAILED    = 'FAILED'
-  KILLED    = 'KILLED'
-  FINISHED  = 'FINISHED'
-
-  @classmethod
-  def done(cls, s):
-    return s in [JobStatus.FAILED, JobStatus.KILLED, JobStatus.FINISHED]
-
-
-
 class K3JobError(Exception):
   def __init__(self, msg):
     self.value = msg
@@ -91,16 +75,22 @@ class CompileJob:
   def __init__(self, **kwargs):
     self.name    = kwargs.get('name', 'CompileTask')
     self.uid      = kwargs.get('uid', '')
-    self.path     = kwargs.get('path', '')
-    self.url      = kwargs.get('url', '')
-    self.git_hash = kwargs.get('git_hash', 'latest')
-    self.blocksize = kwargs.get('blocksize')
     self.user     = kwargs.get('user', '')
     self.tag       = kwargs.get('tag', '')
     self.options   = kwargs.get('options', '')
+    self.blocksize = kwargs.get('blocksize', 4)
+    self.numworkers = kwargs.get('numworkers', 1)
+    self.path     = kwargs.get('path', '')
+    # self.git_hash = kwargs.get('git_hash', 'latest')
+
+    self.url      = kwargs.get('path', '')
+
+    # os.path.join(kwargs.get('webaddr'), 'fs', 'archive', self.name, self.uid)
+
   def __dict__(self):
     return dict(name=self.name, uid=self.uid, path=self.path, tag=self.tag,
-                git_hash=self.git_hash, user=self.user, options=self.options)
+                user=self.user, options=self.options, blocksize=self.blocksize,
+                numworkers=self.numworkers, url=self.url)
 
 
 class Job:

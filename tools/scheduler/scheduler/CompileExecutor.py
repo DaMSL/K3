@@ -32,7 +32,7 @@ import mesos.native
 
 import logging
 
-DEBUG = True
+DEBUG = False
 DEBUG_FILE = 'examples/sql/tpch/queries/k3/q1.k3'
 
 
@@ -107,7 +107,7 @@ class CompilerExecutor(mesos.interface.Executor):
           self.status.data = output
           driver.sendStatusUpdate(self.status)
 
-      self.status.message = "Task is complete -- post processing %s" % daemon['svid']
+      self.status.message = "complete"
       driver.sendStatusUpdate(self.status)
       logging.info("Compile Task COMPLETED for %s" % daemon['svid'])
 
@@ -129,8 +129,12 @@ class CompilerExecutor(mesos.interface.Executor):
           curl = curlcmd % f
           logging.debug('  CURL:  ' + curl)
           subprocess.call(curl, shell=True)
+
+        haltcmd = './tools/scripts/run/service.sh halt --svid %(svid)s --host %(host)s --port %(port)s' % daemon
+        subprocess.call(curl, shell=True)
+        logging.info("Client sent HALT command and is terminating")
       else:
-        logging.info("ROLE = %s", daemon['role'])
+        logging.info("`%s` Terminated", daemon['svid'])
 
       self.status.state = mesos_pb2.TASK_FINISHED if exitCode == 0 else mesos_pb2.TASK_FAILED
       driver.sendStatusUpdate(self.status)

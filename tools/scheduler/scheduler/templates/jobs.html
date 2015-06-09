@@ -62,20 +62,24 @@
             <br><br><h4><a href="/jobs">return to jobs</a></h4>
         {% else %}
 
-<!--          <h3>Active Compiling Jobs</h3>
+          <h3>Active Compiling Jobss</h3>
           <table class="table table-striped">
+            <tr> <th>Build</th><th>Output</th><th>Time Submit</th><th>Time Complete</th><th>Status</th><th>Kill</th><th></th></tr>
           {% for job in compilelist %}
-            {% if job.status == "SUBMITTED" or job.status == "COMPILING" or job.status == "ARCHIVING" %}
-                <tr><td><a href="/compile/{{job.name}}-{{job.uid}}">{{job.name}}-{{job.uid}}</a></td>
-                    <td>{{job.git_hash}}</td>
-                    <td>{{job.user}}</td><td>{{job.options}}</td><td>{{job.submit}}</td><td>{{job.status}}</td>
+                {% if job.status != "COMPLETE" and job.status != "KILLED" %}
+                <tr>
+                  <td><a href="/fs/build/{{job.name}}/{{job.uid}}">{{job.name}}-{{job.uid}}</a></td>
+                  <td><a href="/compile/{{job.name}}-{{job.uid}}">Output</a></td>
+                    <td>{{job.submit}}</td>
+                    <td>{{job.complete}}</td>
+                    <td>{{job.status}}</td>
                     <td><a href="/compile/{{job.name}}-{{job.uid}}/kill">
                         <button class="btn btn-danger btn-sm">Kill</button></a></td>
                 </tr>
-            {% endif %}
+                {% endif %}
           {% endfor %}
           </table>
--->
+
           <h3>Active K3 Jobs</h3>
           <table class="table table-striped">
           {% for job in joblist %}
@@ -110,14 +114,18 @@
         </form>
 
 
-<!--          <h3>Inactive Compiling Jobs</h3>
+          <h3>Inactive Compiling Jobs</h3>
           <form action="/delete/compiles" method=post enctype=multipart/form-data>
           <table class="table table-striped">
+            <tr> <th>Build</th><th>Output</th><th>Time Submit</th><th>Time Complete</th><th>Status</th><th>Kill</th></tr>
           {% for job in compilelist %}
-            {% if job.status != "SUBMITTED" and job.status != "COMPILING" and job.status != "ARCHIVING" %}
-                <tr><td><a href="/compile/{{job.name}}-{{job.uid}}">{{job.name}}-{{job.uid}}</a></td>
-                    <td>{{job.git_hash}}</td>
-                    <td>{{job.user}}</td><td>{{job.options}}</td><td>{{job.submit}}</td><td>{{job.status}}</td>
+            {% if job.status == "COMPELTE" or job.status == "KILLED" %}
+                <tr>
+                    <td><a href="/fs/build/{{job.name}}/{{job.uid}}">{{job.name}}-{{job.uid}}</a></td>
+                    <td><a href="/compile/{{job.name}}-{{job.uid}}">Output</a></td>
+                    <td>{{job.submit}}</td>
+                    <td>{{job.complete}}</td>
+                    <td>{{job.status}}</td>
                 <td><input type="checkbox" name="delete_compile" value="{{job.uid}}"></td>
                 </tr>
             {% endif %}
@@ -126,7 +134,7 @@
           <div class="row text-right"><button type=submit class="btn btn-danger btn-md">
                Delete Selected Inactive Compiling Jobs</button></div>
           </form>
--->
+
         {% endif %}
     </div>
   </div>

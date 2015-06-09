@@ -16,9 +16,9 @@ import mesos.native
 DEBUG_EXECUTOR = True
 
 # K3_DOCKER_NAME = "damsl/k3-run:exec"
-# K3_COMPILER_IMAGE = "damsl/k3-compiler:stable"
+K3_COMPILER_IMAGE = "damsl/k3-compile:chain"
 K3_DOCKER_NAME = "damsl/k3-run:min"
-K3_COMPILER_IMAGE = "damsl/k3-run:compile"
+#K3_COMPILER_IMAGE = "damsl/k3-run:compile"
 
 
 
@@ -207,6 +207,15 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
 
 
 
+def addTaskLabel(task, key, value):
+  # Labels:  New In Mesos v 0.22
+  # config = mesos_pb2.Labels()
+  # lab = config.labels.add()
+  lab = task.labels.labels.add()
+  lab.key = str(key)
+  lab.value = str(value)
+  # task.labels.MergeFrom(config)
+
 def compileTask(**kwargs):
   app     = kwargs.get('name', 'myprog')
   webaddr = kwargs.get('webaddr', 'http://localhost:5000')
@@ -237,7 +246,7 @@ def compileTask(**kwargs):
 
   if daemon['role'] == 'client':
     src = command.uris.add()
-    src.value = source
+    src.value = "%s/fs/build/%s-%s/%s" % (webaddr, app, uid, source)
     src.executable = False
     src.extract = False
 
