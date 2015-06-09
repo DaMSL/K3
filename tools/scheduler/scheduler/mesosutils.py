@@ -3,8 +3,9 @@ import yaml
 import re
 import subprocess
 import httplib
+import logging
 
-#from protobuf_to_dict import protobuf_to_dict
+#from protobuf_to_dict import protobuf_to_dictd
 import json
 
 
@@ -20,6 +21,16 @@ DEBUG_EXECUTOR = True
 # EXECUTOR_URL =
 # COMPEXEC_URL =
 K3_DOCKER_NAME = "damsl/k3-run:exec"
+K3_COMPILER_IMAGE = "damsl/k3-compiler"
+
+
+
+def addLabel(labelMap, key, value):
+  # Labels:  New In Mesos v 0.22
+  # config = mesos_pb2.Labels()
+  lab = labelMap.labels.add()
+  lab.key = key
+  lab.value = value
 
 
 
@@ -97,7 +108,7 @@ def executorInfo(k3job, tnum, webaddr): #, jobid, binary_url, volumes=[], enviro
   docker.privileged = k3job.privileged
 
   if docker.privileged:
-    print ("NOTE: running privileged mode")
+    logging.warning ("NOTE: running privileged mode")
 
    
   # Create the Container
@@ -145,7 +156,6 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
   if task_data['logging'] == False:
     del task_data['logging']
 
-  print 'ARCHIVE ADDR: %s' % webaddr
   executor = executorInfo(k3job, tnum, webaddr)
 
   task = mesos_pb2.TaskInfo()
@@ -176,9 +186,8 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
   portlist.end = max(peerPorts)
 
 
-  print "PEERS IN MESOSUTIL:"
   for p in k3task.peers:
-    print p.ip, p.port
+    logging.debug("   %s, %s" % (p.ip, p.port))
   # nextPort = peerPorts[0]
   # portlist = ports.ranges.range.add()
   #
@@ -204,21 +213,16 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
 def compileTask(**kwargs):
   app     = kwargs.get('name', 'myprog')
   webaddr = kwargs.get('webaddr', 'http://localhost:5000')
-  script  = kwargs.get('script', None)
+  # script  = kwargs.get('script', None)
   source  = kwargs.get('source', None)
   slave   = kwargs.get('slave', None)
   uid     = kwargs.get('uid', None)
   r_cpu   = kwargs.get('cpu', 4)
   r_mem   = kwargs.get('mem', 4*1024)
-
-  print 'WEB ADDR: %s' % webaddr
-
-  if script == None or source == None:
-    print ("Error. Cannot run compiler (missing source and/or compiler script)")
-    return
+  daemon  = kwargs.get('daemon')
 
   if slave == None:
-    print ("Error. No mesos slave provided")
+    logging.error("Error. No mesos slave provided")
 
   uname = app if uid == None else "%s-%s" % (app, uid)
 
@@ -229,30 +233,19 @@ def compileTask(**kwargs):
   command = mesos_pb2.CommandInfo()
   command.value = 'python $MESOS_SANDBOX/CompileExecutor.py'
 
-  # TODO:  Pull Specific K3-Build Version
-  # env = mesos_pb2.Environment()
-  # var = environment.variables.add()
-  # var.name = 'K3_BUILD'
-  # var.value = <git-hash>
-  # command.environment.MergeFrom(environment)
-
   comp_exec = command.uris.add()
   comp_exec.value = "%s/fs/CompileExecutor.py" % webaddr
   comp_exec.executable = False
   comp_exec.extract = False
 
-  sh = command.uris.add()
-  sh.value = script
-  sh.executable = True
-  sh.extract = False
-
-  src = command.uris.add()
-  src.value = source
-  src.executable = False
-  src.extract = False
+  if daemon['role'] == 'client':
+    src = command.uris.add()
+    src.value = source
+    src.executable = False
+    src.extract = False
 
   docker = mesos_pb2.ContainerInfo.DockerInfo()
-  docker.image = K3_DOCKER_NAME
+  docker.image = K3_COMPILER_IMAGE
   docker.network = docker.HOST
 
   container = mesos_pb2.ContainerInfo()
@@ -264,16 +257,17 @@ def compileTask(**kwargs):
 
   task = mesos_pb2.TaskInfo()
   task.name = app
-  task.task_id.value = uname
+  task.task_id.value = daemon['svid']
   task.slave_id.value = slave
 
-  # Labels:  New In Mesos v 0.22
-  # config = mesos_pb2.Labels()
-  # l_app = config.labels.add()
-  # l_app.key = 'appName'
-  # l_app.value = app
-  # task.labels.MergeFrom(config)
+  # ADD ALL LABELS HERE to pass to executor
+  config = mesos_pb2.Labels()
+  for k, v in daemon.items():
+    lab = config.labels.add()
+    lab.key = str(k)
+    lab.value = str(v)
 
+  task.labels.MergeFrom(config)
   task.executor.MergeFrom(executor)
 
   cpus = task.resources.add()
@@ -285,6 +279,8 @@ def compileTask(**kwargs):
   mem.name = "mem"
   mem.type = mesos_pb2.Value.SCALAR
   mem.scalar.value = r_mem
+
+  logging.debug("Compile Task Resources: cpu=%s, mem=%s" % (r_cpu, r_mem))
 
   return task
 
@@ -299,8 +295,6 @@ def cmd_exists(cmd):
         stdout=subprocess.PIPE, stderr=subprocess.PIPE) == 0
 
 def resolve(master):
-
-
     if subprocess.call("type mesos-resolve", shell=True,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE) != 0:
 

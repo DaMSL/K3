@@ -5,6 +5,7 @@ module Language.K3.Core.Metaprogram where
 
 import Control.DeepSeq
 
+import Data.Binary
 import Data.Map ( Map )
 import Data.Typeable
 
@@ -28,6 +29,7 @@ instance Read     SpliceType
 instance Show     SpliceType
 instance Typeable SpliceType
 instance NFData   SpliceType
+instance Binary   SpliceType
 
 instance Eq       SpliceValue
 instance Ord      SpliceValue
@@ -35,6 +37,7 @@ instance Read     SpliceValue
 instance Show     SpliceValue
 instance Typeable SpliceValue
 instance NFData   SpliceValue
+instance Binary   SpliceValue
 
 instance Eq       MPAnnMemDecl
 instance Ord      MPAnnMemDecl
@@ -42,6 +45,7 @@ instance Read     MPAnnMemDecl
 instance Show     MPAnnMemDecl
 instance Typeable MPAnnMemDecl
 instance NFData   MPAnnMemDecl
+instance Binary   MPAnnMemDecl
 
 instance Eq       MPDeclaration
 instance Ord      MPDeclaration
@@ -49,6 +53,7 @@ instance Read     MPDeclaration
 instance Show     MPDeclaration
 instance Typeable MPDeclaration
 instance NFData   MPDeclaration
+instance Binary   MPDeclaration
 
 instance Pretty SpliceValue
 instance Pretty SpliceEnv

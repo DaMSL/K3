@@ -5,40 +5,44 @@
 
 module Language.K3.Driver.Service where
 
-import Control.Lens hiding ( transform, each )
-import Control.Exception
+import Control.Arrow ( (&&&), second )
+import Control.Concurrent
+import Control.Concurrent.Async ( Async, asyncThreadId, cancel )
+import Control.Exception ( ErrorCall(..) )
 import Control.Monad
-import Control.Concurrent hiding ( yield )
-import Control.Concurrent.Async
+import Control.Monad.Catch ( throwM, catchIOError, finally )
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
 
+import Data.Binary ( Binary, encode, decode )
+import Data.ByteString.Char8 ( ByteString )
+import qualified Data.ByteString.Char8 as BC
+import qualified Data.ByteString.Lazy.Char8 as LBC
+
+import Data.Time.Format
+import Data.Time.Clock
+import Data.Time.LocalTime
+
 import Data.List
 import Data.List.Split
-import Data.Maybe
 import Data.Heap ( Heap )
 import Data.Map ( Map )
 import Data.Set ( Set )
 import qualified Data.Heap as Heap
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import qualified Data.ByteString.Char8 as BC
 
-import Data.Time.Format
-import Data.Time.Clock
-import Data.Time.LocalTime
+import Criterion.Measurement ( getTime, secs )
 
+import GHC.Conc
 import GHC.Generics ( Generic )
 
-import Network.Simple.TCP
-import Pipes
-import Pipes.Binary hiding ( get )
-import Pipes.Concurrent
-import Pipes.Network.TCP
-import Pipes.Parse
+import System.Random
+import System.ZMQ4.Monadic
 
-import System.IO ( Handle, stdout )
-import qualified System.FilePath           as FP
+import System.IO ( Handle, stdout, stderr )
 import qualified System.Log.Logger         as Log
 import qualified System.Log.Formatter      as LogF
 import qualified System.Log.Handler        as LogH
@@ -49,6 +53,8 @@ import Language.K3.Core.Declaration
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
 import Language.K3.Parser ( parseK3 )
+
+import Language.K3.Stages ( TransformReport, TransformSt )
 import qualified Language.K3.Stages as ST
 
 import Language.K3.Driver.Common
@@ -64,11 +70,11 @@ data CProtocol = Register       String
                | RegisterAck    CompileOptions
                | Heartbeat      Integer
                | HeartbeatAck   Integer
-               | Program        Request ByteString RemoteJobOptions (Maybe RequestID)
-               | ProgramDone    Request ByteString
+               | Program        Request String RemoteJobOptions
+               | ProgramDone    Request (K3 Declaration) String
                | ProgramAborted Request String
-               | Block          ProgramID CompileStages ByteString [(BlockID, [ByteString])]
-               | BlockDone      WorkerID ProgramID [(BlockID, [ByteString])]
+               | Block          ProgramID CompileStages TransformSt CompileBlock
+               | BlockDone      WorkerID ProgramID CompileBlock TransformReport
                | BlockAborted   WorkerID ProgramID [BlockID] String
                | Quit
                deriving (Eq, Read, Show, Generic)
@@ -76,42 +82,66 @@ data CProtocol = Register       String
 instance Binary CProtocol
 
 -- | Service thread state, encapsulating task workers and connection workers.
-data ThreadState = ThreadState { sthread   :: Maybe ThreadId
-                               , ttworkers :: Set (Async ())
-                               , tcworkers :: Set ThreadId }
-                  deriving ( Eq, Ord )
+data ThreadState = ThreadState { sthread    :: Maybe (Async ())
+                               , ttworkers  :: Set (Async ()) }
+                  deriving ( Eq )
 
--- | Mailbox handles
-type MBHandle = Maybe (Output CProtocol, Input CProtocol)
-
--- | Compilation progress state.
+-- | Primitive service datatypes.
 type Request   = String
 type RequestID = Int
-type ClientID  = SockAddr
+type SocketID  = ByteString
 type WorkerID  = String
+type DeclID    = Int
 type BlockID   = Int
 type ProgramID = Int
 
+type CompileBlock = [(BlockID, [(DeclID, K3 Declaration)])]
+
+-- | Compilation progress state per program.
 data JobState = JobState { jrid         :: RequestID
                          , jrq          :: Request
-                         , pending      :: BlockSet
-                         , completed    :: BlockSourceMap
-                         , aborted      :: [String] }
+                         , jprofile     :: JobProfile
+                         , jpending     :: BlockSet
+                         , jcompleted   :: BlockSourceMap
+                         , jaborted     :: [String] }
                 deriving (Eq, Read, Show)
 
+-- | Profiling information per worker and block.
+data JobProfile = JobProfile { jstartTime :: Double
+                             , jendTimes  :: Map WorkerID Double
+                             , jworkerst  :: Map WorkerID WorkerJobState
+                             , jreports   :: [TransformReport] }
+                   deriving (Eq, Read, Show)
+
+-- | Cost book-keeping per worker.
+--   This is a snapshot of the worker's total weight (across all jobs),
+--   the per-block contributions from the current job during assignment,
+--   and a block completion counter per worker.
+--   We use this information to validate the cost model accuracy.
+type JobBlockCosts  = Map BlockID Double
+data WorkerJobState = WorkerJobState { jwwsnap    :: Double
+                                     , jwassign   :: JobBlockCosts
+                                     , jwcomplete :: Int }
+                     deriving (Eq, Read, Show)
+
+-- | Assignment book-keeping for a single service worker.
+data WorkerAssignment = WorkerAssignment { wablocks :: BlockSet
+                                         , waweight :: Double }
+                        deriving (Eq, Read, Show)
+
 type BlockSet       = Set BlockID
-type BlockSourceMap = Map BlockID   [K3 Declaration]
+type BlockSourceMap = Map BlockID   [(DeclID, K3 Declaration)]
 type JobsMap        = Map ProgramID JobState
-type AssignmentsMap = Map WorkerID  BlockSet
-type WorkersMap     = Map WorkerID  (Socket, SockAddr)
+type AssignmentsMap = Map WorkerID  WorkerAssignment
+type WorkersMap     = Map WorkerID  SocketID
 
 type RequestSet     = Set RequestID
-type ClientMap      = Map ClientID  (Socket, RequestSet)
-type RequestMap     = Map RequestID ClientID
+type ClientMap      = Map SocketID  RequestSet
+type RequestMap     = Map RequestID SocketID
 
 -- | Common state for the compiler service.
-data ServiceState a = ServiceState { threadSt      :: ThreadState
-                                   , mbhndl        :: MBHandle
+data ServiceState a = ServiceState { sterminate    :: MVar ()
+                                   , threadSt      :: ThreadState
                                    , stcompileOpts :: CompileOptions
                                    , compileSt     :: a }
 
@@ -128,8 +158,8 @@ data SMST = SMST { cworkers     :: WorkersMap
 
 type ServiceMState = ServiceState SMST
 
--- | Compiler service worker state.
-data SWST = SWST { cmaster :: Maybe (Socket, SockAddr) }
+-- | Compiler service worker state. Note: workers are stateless.
+type SWST = ()
 
 type ServiceWState = ServiceState SWST
 
@@ -140,224 +170,239 @@ type ServiceMSTVar  = ServiceST SMST
 type ServiceWSTVar  = ServiceST SWST
 
 -- | A K3 compiler service monad.
-type ServiceM a = ExceptT String (StateT (ServiceSTVar a) IO)
+type ServiceM z a = ExceptT String (StateT (ServiceSTVar a) (ZMQ z))
 
 -- | Type definitions for service master and worker monads.
-type ServiceMM = ServiceM ServiceMState
-type ServiceWM = ServiceM ServiceWState
+type ServiceMM z = ServiceM z ServiceMState
+type ServiceWM z = ServiceM z ServiceWState
 
--- | Producers and consumers of the compiler protocol.
-type SProducer a b = Producer CProtocol (ServiceM a) b
-type SConsumer a b = Consumer CProtocol (ServiceM a) b
-
-type SocketHandler a = Socket -> SockAddr -> ServiceM a ()
-type WorkHandler a = Int -> CProtocol -> SConsumer a ()
+type WorkQHandler   z = Int -> Socket z Dealer -> ZMQ z ()
+type ClientHandler  t = forall z. Socket z t -> ZMQ z ()
+type MessageHandler   = forall z. CProtocol -> ZMQ z ()
 
 {- Initial states -}
 
 sthread0 :: ThreadState
-sthread0 = ThreadState Nothing Set.empty Set.empty
+sthread0 = ThreadState Nothing Set.empty
 
-sst0 :: CompileOptions -> a -> ServiceState a
-sst0 cOpts st = ServiceState sthread0 Nothing cOpts st
+sst0 :: MVar () -> CompileOptions -> a -> ServiceState a
+sst0 trmv cOpts st = ServiceState trmv sthread0 cOpts st
 
-sstm0 :: CompileOptions -> ServiceMState
-sstm0 cOpts = sst0 cOpts $ SMST Map.empty Map.empty Map.empty 0 0 0 0 Map.empty Map.empty
+sstm0 :: MVar () -> CompileOptions -> ServiceMState
+sstm0 trmv cOpts = sst0 trmv cOpts $ SMST Map.empty Map.empty Map.empty 0 0 0 0 Map.empty Map.empty
 
 svm0 :: CompileOptions -> IO ServiceMSTVar
-svm0 cOpts = newMVar $ sstm0 cOpts
+svm0 cOpts = newEmptyMVar >>= \trmv0 -> newMVar $ sstm0 trmv0 cOpts
 
-sstw0 :: CompileOptions -> ServiceWState
-sstw0 cOpts = sst0 cOpts $ SWST Nothing
+sstw0 :: MVar () -> CompileOptions -> ServiceWState
+sstw0 trmv cOpts = sst0 trmv cOpts ()
 
 svw0 :: CompileOptions -> IO ServiceWSTVar
-svw0 cOpts = newMVar $ sstw0 cOpts
+svw0 cOpts = newEmptyMVar >>= \trmv0 -> newMVar $ sstw0 trmv0 cOpts
 
 
 {- Service monad utilities -}
 
-runServiceM :: ServiceSTVar a -> ServiceM a b -> IO (Either String b)
-runServiceM st m = evalStateT (runExceptT m) st
+runServiceM :: ServiceSTVar a -> (forall z. ServiceM z a b) -> IO (Either String b)
+runServiceM st m = runZMQ $ evalStateT (runExceptT m) st
 
-runServiceM_ :: ServiceSTVar a -> ServiceM a b -> IO ()
+runServiceM_ :: ServiceSTVar a -> (forall z. ServiceM z a b) -> IO ()
 runServiceM_ st m = runServiceM st m >>= either putStrLn (const $ return ())
 
-liftI :: IO b -> ServiceM a b
+runServiceZ :: ServiceSTVar a -> ServiceM z a b -> ZMQ z (Either String b)
+runServiceZ st m = evalStateT (runExceptT m) st
+
+liftI :: IO b -> ServiceM z a b
 liftI = lift . liftIO
 
-liftIE :: IO (Either String b) -> ServiceM a b
+liftIE :: IO (Either String b) -> ServiceM z a b
 liftIE m = ExceptT $ liftIO m
 
-liftIC :: IO b -> SConsumer a b
-liftIC = lift . liftI
-
-liftIP :: IO b -> SProducer a b
-liftIP = lift . liftI
-
-liftEitherM :: Either String b -> ServiceM a b
+liftEitherM :: Either String b -> ServiceM z a b
 liftEitherM e = liftIE $ return e
 
-reasonM :: String -> ServiceM a b -> ServiceM a b
+reasonM :: String -> ServiceM z a b -> ServiceM z a b
 reasonM msg m = withExceptT (msg ++) m
 
-modifyM :: (a -> (a, b)) -> ServiceM a b
+modifyM :: (a -> (a, b)) -> ServiceM z a b
 modifyM f = getV >>= \sv -> liftI (modifyMVar sv (return  . f))
 
-modifyM_ :: (a -> a) -> ServiceM a ()
+modifyM_ :: (a -> a) -> ServiceM z a ()
 modifyM_ f = getV >>= \sv -> liftI (modifyMVar_ sv (return  . f))
 
-getV :: ServiceM a (ServiceSTVar a)
+getV :: ServiceM z a (ServiceSTVar a)
 getV = lift get
 
-getSt :: ServiceM a a
+getSt :: ServiceM z a a
 getSt = getV >>= liftIO . readMVar
 
 {- Thread and async task management -}
-getTS :: ServiceM (ServiceState a) ThreadState
+getTS :: ServiceM z (ServiceState a) ThreadState
 getTS = getSt >>= return . threadSt
 
-modifyTS :: (ThreadState -> (ThreadState, b)) -> ServiceM (ServiceState a) b
+modifyTS :: (ThreadState -> (ThreadState, b)) -> ServiceM z (ServiceState a) b
 modifyTS f = modifyM $ \st -> let (nt,r) = f $ threadSt st in (st {threadSt = nt}, r)
 
-modifyTS_ :: (ThreadState -> ThreadState) -> ServiceM (ServiceState a) ()
+modifyTS_ :: (ThreadState -> ThreadState) -> ServiceM z (ServiceState a) ()
 modifyTS_ f = modifyM_ $ \st -> st { threadSt = f $ threadSt st }
 
-{- Mailbox handle accessors -}
-getQ :: ServiceM (ServiceState a) (Output CProtocol, Input CProtocol)
-getQ = getSt >>= return . fromJust . mbhndl
+getTSIO :: ServiceST a -> IO ThreadState
+getTSIO v = readMVar v >>= return . threadSt
 
-cgetQ :: SConsumer (ServiceState a) (Output CProtocol, Input CProtocol)
-cgetQ = lift $ getQ
+modifyTSIO_ :: ServiceST a -> (ThreadState -> ThreadState) -> IO ()
+modifyTSIO_ v f = modifyMVar_ v $ \st -> return $ st { threadSt = f $ threadSt st }
 
-pgetQ :: SProducer (ServiceState a) (Output CProtocol, Input CProtocol)
-pgetQ = lift $ getQ
-
-putQ :: Output CProtocol -> Input CProtocol -> ServiceM (ServiceState a) ()
-putQ e d = modifyM_ $ \st -> st { mbhndl = Just (e, d) }
-
-getCO :: ServiceM (ServiceState a) CompileOptions
+{- Compile options accessors -}
+getCO :: ServiceM z (ServiceState a) CompileOptions
 getCO = getSt >>= return . stcompileOpts
 
-putCO :: CompileOptions -> ServiceM (ServiceState a) ()
+putCO :: CompileOptions -> ServiceM z (ServiceState a) ()
 putCO cOpts = modifyM_ $ \st -> st { stcompileOpts = cOpts }
 
-modifyCO_ :: (CompileOptions -> CompileOptions) -> ServiceM (ServiceState a) ()
+modifyCO_ :: (CompileOptions -> CompileOptions) -> ServiceM z (ServiceState a) ()
 modifyCO_ f = modifyM_ $ \st -> st { stcompileOpts = f $ stcompileOpts st }
 
 {- Service master accessors -}
-modifyMM :: (SMST -> (SMST, a)) -> ServiceMM a
+modifyMM :: (SMST -> (SMST, a)) -> ServiceMM z a
 modifyMM f = modifyM $ \st -> let (ncst, r) = f $ compileSt st in (st { compileSt = ncst }, r)
 
-modifyMM_ :: (SMST -> SMST) -> ServiceMM ()
+modifyMM_ :: (SMST -> SMST) -> ServiceMM z ()
 modifyMM_ f = modifyM_ $ \st -> st { compileSt = f $ compileSt st }
 
-getM :: ServiceMM SMST
+modifyMIO :: ServiceMSTVar -> (SMST -> (SMST, a)) -> IO a
+modifyMIO sv f = modifyMVar sv $ \st -> let (ncst, r) = f $ compileSt st in return (st { compileSt = ncst }, r)
+
+getM :: ServiceMM z SMST
 getM = getSt >>= return . compileSt
 
-putM :: SMST -> ServiceMM ()
+getMIO :: ServiceMSTVar -> IO SMST
+getMIO sv = liftIO (readMVar sv) >>= return . compileSt
+
+putM :: SMST -> ServiceMM z ()
 putM ncst = modifyM_ $ \st -> st { compileSt = ncst }
 
 {- Counter accessors -}
-progIDM :: ServiceMM ProgramID
+progIDM :: ServiceMM z ProgramID
 progIDM = modifyMM $ \cst -> let i = pcnt cst + 1 in (cst {pcnt = i}, i)
 
-blockIDM :: ServiceMM BlockID
+blockIDM :: ServiceMM z BlockID
 blockIDM = modifyMM $ \cst -> let i = bcnt cst + 1 in (cst {bcnt = i}, i)
 
-requestIDM :: ServiceMM BlockID
+requestIDM :: ServiceMM z BlockID
 requestIDM = modifyMM $ \cst -> let i = rcnt cst + 1 in (cst {rcnt = i}, i)
 
-heartbeatM :: ServiceMM Integer
+heartbeatM :: ServiceMM z Integer
 heartbeatM = modifyMM $ \cst -> let i = hbcnt cst + 1 in (cst {hbcnt = i}, i)
 
+heartbeatIO :: ServiceMSTVar -> IO Integer
+heartbeatIO sv = modifyMIO sv $ \cst -> let i = hbcnt cst + 1 in (cst {hbcnt = i}, i)
+
 {- Assignments accessors -}
-getMA :: ServiceMM AssignmentsMap
+getMA :: ServiceMM z AssignmentsMap
 getMA = getM >>= return . assignments
 
-putMA :: AssignmentsMap -> ServiceMM ()
+putMA :: AssignmentsMap -> ServiceMM z ()
 putMA nassigns = modifyMM_ $ \cst -> cst { assignments = nassigns }
 
-modifyMA :: (AssignmentsMap -> (AssignmentsMap, a)) -> ServiceMM a
+modifyMA :: (AssignmentsMap -> (AssignmentsMap, a)) -> ServiceMM z a
 modifyMA f = modifyMM $ \cst -> let (nassigns, r) = f $ assignments cst in (cst { assignments = nassigns }, r)
 
-modifyMA_ :: (AssignmentsMap -> AssignmentsMap) -> ServiceMM ()
+modifyMA_ :: (AssignmentsMap -> AssignmentsMap) -> ServiceMM z ()
 modifyMA_ f = modifyMM_ $ \cst -> cst { assignments = f $ assignments cst }
 
-mapMA :: (WorkerID -> BlockSet -> a) -> ServiceMM (Map WorkerID a)
+mapMA :: (WorkerID -> WorkerAssignment -> a) -> ServiceMM z (Map WorkerID a)
 mapMA f = getMA >>= return . Map.mapWithKey f
 
-foldMA :: (a -> WorkerID -> BlockSet -> a) -> a -> ServiceMM a
+foldMA :: (a -> WorkerID -> WorkerAssignment -> a) -> a -> ServiceMM z a
 foldMA f z = getMA >>= return . Map.foldlWithKey f z
 
 {- Job state accessors -}
-getMJ :: ServiceMM JobsMap
+getMJ :: ServiceMM z JobsMap
 getMJ = getM >>= return . jobs
 
-putMJ :: JobsMap -> ServiceMM ()
+putMJ :: JobsMap -> ServiceMM z ()
 putMJ njobs = modifyMM_ $ \cst -> cst { jobs = njobs }
 
-modifyMJ :: (JobsMap -> (JobsMap, a)) -> ServiceMM a
+modifyMJ :: (JobsMap -> (JobsMap, a)) -> ServiceMM z a
 modifyMJ f = modifyMM $ \cst -> let (njobs, r) = f $ jobs cst in (cst { jobs = njobs }, r)
 
-modifyMJ_ :: (JobsMap -> JobsMap) -> ServiceMM ()
+modifyMJ_ :: (JobsMap -> JobsMap) -> ServiceMM z ()
 modifyMJ_ f = modifyMM_ $ \cst -> cst { jobs = f $ jobs cst }
 
 {- Service request, client and worker accessors -}
-getMC :: ClientID -> ServiceMM (Maybe (Socket, RequestSet))
+getMC :: SocketID -> ServiceMM z (Maybe RequestSet)
 getMC c = getM >>= return . Map.lookup c . cclients
 
-putMC :: ClientID -> Socket -> RequestSet -> ServiceMM ()
-putMC c s r = modifyMM_ $ \cst -> cst { cclients = Map.insert c (s,r) $ cclients cst }
+putMC :: SocketID -> RequestSet -> ServiceMM z ()
+putMC c r = modifyMM_ $ \cst -> cst { cclients = Map.insert c r $ cclients cst }
 
-modifyMC :: (ClientMap -> (ClientMap, a)) -> ServiceMM a
+modifyMC :: (ClientMap -> (ClientMap, a)) -> ServiceMM z a
 modifyMC f = modifyMM $ \cst -> let (ncc, r) = f $ cclients cst in (cst {cclients = ncc}, r)
 
-modifyMC_ :: (ClientMap -> ClientMap) -> ServiceMM ()
+modifyMC_ :: (ClientMap -> ClientMap) -> ServiceMM z ()
 modifyMC_ f = modifyMM_ $ \cst -> cst {cclients = f $ cclients cst}
 
-getMR :: RequestID -> ServiceMM (Maybe ClientID)
+getMR :: RequestID -> ServiceMM z (Maybe SocketID)
 getMR r = getM >>= return . Map.lookup r . crequests
 
-putMR :: RequestID -> ClientID -> ServiceMM ()
+putMR :: RequestID -> SocketID -> ServiceMM z ()
 putMR r c = modifyMM_ $ \cst -> cst { crequests = Map.insert r c $ crequests cst }
 
-modifyMR :: (RequestMap -> (RequestMap, a)) -> ServiceMM a
+modifyMR :: (RequestMap -> (RequestMap, a)) -> ServiceMM z a
 modifyMR f = modifyMM $ \cst -> let (nrq, r) = f $ crequests cst in (cst {crequests = nrq}, r)
 
-modifyMR_ :: (RequestMap -> RequestMap) -> ServiceMM ()
+modifyMR_ :: (RequestMap -> RequestMap) -> ServiceMM z ()
 modifyMR_ f = modifyMM_ $ \cst -> cst {crequests = f $ crequests cst}
 
-getMW :: ServiceMM WorkersMap
+getMW :: ServiceMM z WorkersMap
 getMW = getM >>= return . cworkers
 
-getMWI :: WorkerID -> ServiceMM (Maybe (Socket, SockAddr))
+getMWIO :: ServiceMSTVar -> IO WorkersMap
+getMWIO sv = getMIO sv >>= return . cworkers
+
+getMWI :: WorkerID -> ServiceMM z (Maybe SocketID)
 getMWI wid = getM >>= return . Map.lookup wid . cworkers
 
-putMWI :: WorkerID -> Socket -> SockAddr -> ServiceMM ()
-putMWI wid s a = modifyMM_ $ \cst -> cst { cworkers = Map.insert wid (s,a) $ cworkers cst }
+putMWI :: WorkerID -> SocketID -> ServiceMM z ()
+putMWI wid s = modifyMM_ $ \cst -> cst { cworkers = Map.insert wid s $ cworkers cst }
 
 {- Worker state accessors -}
-modifyWM :: (SWST -> (SWST, a)) -> ServiceWM a
+modifyWM :: (SWST -> (SWST, a)) -> ServiceWM z a
 modifyWM f = modifyM $ \st -> let (ncst, r) = f $ compileSt st in (st { compileSt = ncst }, r)
 
-modifyWM_ :: (SWST -> SWST) -> ServiceWM ()
+modifyWM_ :: (SWST -> SWST) -> ServiceWM z ()
 modifyWM_ f = modifyM_ $ \st -> st { compileSt = f $ compileSt st }
 
-getW :: ServiceWM SWST
+getW :: ServiceWM z SWST
 getW = getSt >>= return . compileSt
 
-putW :: SWST -> ServiceWM ()
+putW :: SWST -> ServiceWM z ()
 putW ncst = modifyM_ $ \st -> st { compileSt = ncst }
 
-getWC :: ServiceWM (Maybe (Socket, SockAddr))
-getWC = getW >>= return . cmaster
-
-putWC :: Socket -> SockAddr -> ServiceWM ()
-putWC s a = modifyWM_ $ \cst -> cst { cmaster = Just (s, a) }
 
 {- Misc -}
-putStrLnM :: String -> ServiceM a ()
+putStrLnM :: String -> ServiceM z a ()
 putStrLnM = liftIO . putStrLn
+
+-- From ZHelpers.hs
+-- In General Since We use Randomness, You should Pass in
+-- an StdGen, but for simplicity we just use newStdGen
+setRandomIdentity :: Socket z t -> ZMQ z ()
+setRandomIdentity sock = do
+   ident <- liftIO genUniqueId
+   setIdentity (restrict $ BC.pack ident) sock
+
+-- From ZHelpers.hs
+-- You probably want to use a ext lib to generate random unique id in production code
+genUniqueId :: IO String
+genUniqueId = do
+    gen <- liftIO newStdGen
+    let (val1, gen') = randomR (0 :: Int, 65536) gen
+    let (val2, _) = randomR (0 :: Int, 65536) gen'
+    return $ show val1 ++ show val2
+
+tcpConnStr :: ServiceOptions -> String
+tcpConnStr sOpts = "tcp://" ++ (serviceHost sOpts) ++ ":" ++ (show $ servicePort sOpts)
 
 logFormat :: String -> String -> LogF.LogFormatter a
 logFormat timeFormat format h (prio, msg) loggername = LogF.varFormatter vars format h (prio,msg) loggername
@@ -406,199 +451,538 @@ cshow = \case
           RegisterAck _               -> "RegisterAck"
           Heartbeat hbid              -> "Heartbeat " ++ show hbid
           HeartbeatAck hbid           -> "HeartbeatAck " ++ show hbid
-          Program rq _ _ ridOpt       -> unwords ["Program", rq, maybe "" show ridOpt]
-          ProgramDone rq _            -> "ProgramDone " ++ rq
+          Program rq _ _              -> "Program " ++ rq
+          ProgramDone rq _ _          -> "ProgramDone " ++ rq
           ProgramAborted rq _         -> "ProgramAborted " ++ rq
           Block pid _ _ bids          -> unwords ["Block", show pid, intercalate "," $ map (show . fst) bids]
-          BlockDone wid pid bids      -> unwords ["BlockDone", show wid, show pid, intercalate "," $ map (show . fst) bids]
+          BlockDone wid pid bids _    -> unwords ["BlockDone", show wid, show pid, intercalate "," $ map (show . fst) bids]
           BlockAborted wid pid bids _ -> unwords ["BlockAborted", show wid, show pid, intercalate "," $ map show bids]
           Quit                        -> "Quit"
 
 
 -- | Service utilities.
-runServer :: ServiceOptions -> ServiceSTVar a
-          -> (ThreadId -> ServiceM a ())
-          -> (ThreadId -> ServiceM a ())
-          -> ServiceM a () -> SocketHandler a -> SocketHandler a
-          -> IO ()
-runServer sOpts@(serviceId -> svid) sv0 onThreadF onCThreadF onShutdown onListenF onConnF = withSocketsDo $ do
-  streamLogging stdout Log.INFO
-  stid <- myThreadId
-  runServiceM_ sv0 $ onThreadF stid
-  flip finally (runServiceM_ sv0 onShutdown) $
-    listen (Host $ serviceHost sOpts) (show $ servicePort sOpts) $ \(lsock, laddr) -> runServiceM_ sv0 $ do
-      noticeM $ "Listening for TCP connections at " ++ show laddr
-      onListenF lsock laddr
-      void $ forever $ acceptConnection lsock
-      noticeM $ "Closing listener at " ++ show laddr
-
-  where
-    acceptConnection lsock = do
-      ctid <- acceptFork lsock runConnection
-      onCThreadF ctid
-
-    runConnection (csock, caddr) = do
-      noticeM $ "Accepted incoming connection from " ++ show caddr
-      runServiceM_ sv0 $ onConnF csock caddr
-      noticeM $ "Closing connection from " ++ show caddr
-
-
-runClient :: ServiceOptions -> ServiceSTVar a -> ServiceM a () -> SocketHandler a -> IO ()
-runClient sOpts sv0 onShutdown onConnF = withSocketsDo $ do
-  streamLogging stdout Log.INFO
-  flip finally (runServiceM_ sv0 onShutdown) $
-    connect (serviceHost sOpts) (show $ servicePort sOpts) $ \(sock, addr) -> do
-      noticeM $ "Connection established to " ++ show addr
-      runServiceM_ sv0 $ onConnF sock addr
-
-terminate :: ServiceM (ServiceState a) ()
-terminate = do
-    tst <- getTS
-    liftIO $ killThread $ fromJust $ sthread $ tst
-
-shutdown :: ServiceM (ServiceState a) ()
-shutdown = do
-    tst <- getTS
-    liftIO $ forM_ (Set.toList $ ttworkers $ tst) $ \as -> cancel as
-    liftIO $ forM_ (Set.toList $ tcworkers $ tst) $ \tid -> killThread tid
-
-workqueue :: ServiceOptions -> WorkHandler (ServiceState a) -> ServiceM (ServiceState a) ()
-workqueue sOpts workerF = do
-    (qEnq, qDeq) <- liftIO $ spawn unbounded
-    putQ qEnq qDeq
-    workers (serviceThreads sOpts) workerF
-
-workers :: Int -> WorkHandler (ServiceState a) -> ServiceM (ServiceState a) ()
-workers numWorkers workerF = do
-    sv <- getV
-    (_, qDeq) <- getQ
-    forM_ [1..numWorkers] $ asyncWorker sv qDeq
-  where asyncWorker sv qDeq i = do
-          as <- liftIO $ async $ runServiceM_ sv $ runEffect $ fromInput qDeq >-> worker i workerF
-          modifyTS_ $ \tst -> tst { ttworkers = Set.insert as $ ttworkers tst }
-
-worker :: Int -> WorkHandler (ServiceState a) -> SConsumer (ServiceState a) ()
-worker workerId workerF = forever $ do
-    job <- await
-    workerF workerId job
-
--- | Send a message over the given socket.
-sendC :: Socket -> CProtocol -> ServiceM (ServiceState a) ()
-sendC sock m = runEffect $ encode m >-> toSocket sock
-
-sendCs :: [(Socket, CProtocol)] -> ServiceM (ServiceState a) ()
-sendCs msgs = forM_ msgs $ uncurry sendC
-
--- | Process messages from the socket with the given handler.
-messages :: Socket -> (CProtocol -> ServiceM (ServiceState a) Bool) -> ServiceM (ServiceState a) ()
-messages sock handler = runmsg $ (fromSocket sock 4096) ^. decoded
-  where runmsg p = runStateT untilEmpty p >>= \(quit, np) -> unless quit (runmsg np)
-        untilEmpty = draw >>= maybe (return True) (lift . handler)
+initService :: ServiceOptions -> IO () -> IO ()
+initService sOpts m = slog (serviceLog sOpts) >> m
+  where slog (Left "stdout") = streamLogging stdout $ serviceLogLevel sOpts
+        slog (Left "stderr") = streamLogging stderr $ serviceLogLevel sOpts
+        slog (Left s)        = error $ "Invalid service logging handle " ++ s
+        slog (Right path)    = fileLogging path $ serviceLogLevel sOpts
 
 -- | Compiler service master.
 runServiceMaster :: ServiceOptions -> ServiceMasterOptions -> Options -> IO ()
-runServiceMaster sOpts smOpts opts = svm0 (scompileOpts sOpts) >>= \sv ->
-    runServer sOpts sv onInit onConnInit onShutdown (onMasterListen sv) (processMasterConn sOpts smOpts)
+runServiceMaster sOpts@(serviceId -> msid) smOpts opts = initService sOpts $ runZMQ $ do
+    sv <- liftIO $ svm0 (scompileOpts sOpts)
+    frontend <- socket Router
+    bind frontend mconn
+    backend <- workqueue sv nworkers "mbackend" $ processMasterConn sOpts smOpts opts sv
+    as <- async $ proxy frontend backend Nothing
+    noticeM $ unwords ["Service Master", show $ asyncThreadId as, mconn]
+
+    void $ async $ heartbeatLoop sv frontend
+    flip finally (shutdownRemote sv frontend) $ liftIO $ do
+      modifyTSIO_ sv $ \tst -> tst { sthread = Just as }
+      wait sv
+
   where
-    -- | Thread management.
-    onInit     tid = modifyTS_ $ \tst -> tst { sthread = Just tid }
-    onConnInit tid = modifyTS_ $ \tst -> tst { tcworkers = Set.insert tid $ tcworkers tst }
+    mconn = tcpConnStr sOpts
+    nworkers = serviceThreads sOpts
 
-    onShutdown = do
-      wm <- getMW
-      forM_ (map fst $ Map.elems wm) $ \wsock -> sendC wsock Quit
-      shutdown
-
-    -- | Create a workqueue and a timer thread when the master's server socket is up.
-    onMasterListen sv _ _ = do
-      workqueue sOpts (goSMaster sOpts smOpts opts)
-      liftIO $ void $ async $ heartbeatLoop sv
-
-    heartbeatLoop sv = forever $ runServiceM_ sv $ do
+    heartbeatLoop :: ServiceMSTVar -> Socket z Router -> ZMQ z ()
+    heartbeatLoop sv sck = forever $ do
       liftIO $ threadDelay heartbeatPeriod
-      hbid <- heartbeatM
-      wsockets <- getMW >>= return . Map.elems
-      forM_ wsockets $ \(sock, addr) -> do
-        debugM $ unwords ["Pinging", show addr]
-        sendC sock $ Heartbeat hbid
+      pingRemote msid sv sck
 
     heartbeatPeriod = seconds 10
     seconds x = x * 1000000
 
+
 -- | Compiler service worker.
 runServiceWorker :: ServiceOptions -> IO ()
-runServiceWorker sOpts = svw0 (scompileOpts sOpts) >>= \sv ->
-  runClient sOpts sv shutdown (processWorkerConn sOpts)
+runServiceWorker sOpts@(serviceId -> wid) = initService sOpts $ runZMQ $ do
+    sv <- liftIO $ svw0 (scompileOpts sOpts)
+    frontend <- socket Dealer
+    setRandomIdentity frontend
+    connect frontend mconn
+    backend <- workqueue sv nworkers "wbackend" $ processWorkerConn sOpts sv
+
+    noticeM $ unwords ["Worker", wid, "registering"]
+    sendC frontend $ Register wid
+
+    as <- async $ proxy frontend backend Nothing
+    noticeM $ unwords ["Service Worker", wid, show $ asyncThreadId as, mconn]
+    liftIO $ do
+      modifyTSIO_ sv $ \tst -> tst { sthread = Just as }
+      wait sv
+
+  where
+    mconn = tcpConnStr sOpts
+    nworkers = serviceThreads sOpts
+
+
+runClient :: (SocketType t) => t -> ServiceOptions -> ClientHandler t -> IO ()
+runClient sockT sOpts clientF = initService sOpts $ runZMQ $ do
+    client <- socket sockT
+    setRandomIdentity client
+    connect client $ tcpConnStr sOpts
+    clientF client
+
+
+workqueue :: ServiceST a -> Int -> String -> WorkQHandler z -> ZMQ z (Socket z Dealer)
+workqueue sv n qid workerF = do
+    backend <- socket Dealer
+    bind backend $ "inproc://" ++ qid
+    as <- forM [1..n] $ \i -> async $ worker i qid workerF
+    liftIO $ modifyTSIO_ sv $ \tst -> tst { ttworkers = Set.fromList as `Set.union` ttworkers tst }
+    return backend
+
+worker :: Int -> String -> WorkQHandler z -> ZMQ z ()
+worker i qid workerF = do
+    wsock <- socket Dealer
+    connect wsock $ "inproc://" ++ qid
+    liftIO $ putStrLn "Worker started"
+    forever $ workerF i wsock
+
+-- | Control primitives.
+wait :: ServiceST a -> IO ()
+wait sv = do
+  st <- readMVar sv
+  readMVar $ sterminate st
+
+terminate :: ServiceST a -> IO ()
+terminate sv = do
+    st <- readMVar sv
+    void $ tryPutMVar (sterminate st) ()
+
+threadstatus :: ServiceST a -> IO ()
+threadstatus sv = do
+    tst  <- getTSIO sv
+    tids <- mapM (return . asyncThreadId) $ (maybe [] (:[]) $ sthread tst) ++ (Set.toList $ ttworkers tst)
+    thsl <- mapM (\t -> threadStatus t >>= \s -> return (unwords [show t, ":", show s])) tids
+    noticeM $ concat thsl
+
+shutdown :: ServiceST a -> IO ()
+shutdown sv = do
+    tst <- getTSIO sv
+    tid <- myThreadId
+    mapM_ (\a -> unless (tid == asyncThreadId a) $ cancel a) $ Set.toList $ ttworkers $ tst
+
+-- | Distributed control primitives.
+shutdownRemote :: (SocketType t, Sender t) => ServiceMSTVar -> Socket z t -> ZMQ z ()
+shutdownRemote sv master = do
+    wm <- liftIO $ getMWIO sv
+    forM_ (Map.elems wm) $ \wsid -> do
+      noticeM $ "Shutting down service worker " ++ (show $ BC.unpack wsid)
+      sendCI wsid master Quit
+    liftIO $ threadDelay $ 5 * 1000 * 1000
+
+pingRemote :: (SocketType t, Sender t) => String -> ServiceMSTVar -> Socket z t -> ZMQ z ()
+pingRemote rqid sv master = do
+    (wm, hbid) <- liftIO $ (,) <$> getMWIO sv <*> heartbeatIO sv
+    forM_ (Map.elems wm) $ \wsid -> do
+      noticeM $ "[" ++ rqid ++ "] Pinging service worker " ++ (show $ BC.unpack wsid)
+      sendCI wsid master $ Heartbeat hbid
+
+
+-- | Messaging primitives.
+sendC :: (SocketType t, Sender t) => Socket z t -> CProtocol -> ZMQ z ()
+sendC s m = send s [] $ LBC.toStrict $ encode m
+
+sendCI :: (SocketType t, Sender t) => SocketID -> Socket z t -> CProtocol -> ZMQ z ()
+sendCI sid s m = send s [SendMore] sid >> sendC s m
+
+sendCIs :: (SocketType t, Sender t) => Socket z t -> [(SocketID, CProtocol)] -> ZMQ z ()
+sendCIs s msgs = forM_ msgs $ \(sid,m) -> sendCI sid s m
+
+-- | Client primitives.
+command :: (SocketType t, Sender t) => t -> ServiceOptions -> CProtocol -> IO ()
+command t sOpts msg = runClient t sOpts $ \client -> sendC client msg
+
+requestreply :: (SocketType t, Receiver t, Sender t) => t -> ServiceOptions -> CProtocol -> MessageHandler -> IO ()
+requestreply t sOpts req replyF = runClient t sOpts $ \client -> do
+  sendC client req
+  rep <- receive client
+  replyF $ decode $ LBC.fromStrict rep
+
 
 -- | Compiler service protocol handlers.
-processMasterConn :: ServiceOptions -> ServiceMasterOptions -> Socket -> SockAddr -> ServiceM ServiceMState ()
-processMasterConn sOpts@(serviceId -> svid) smOpts sock addr = messages sock logmHandler
+processMasterConn :: ServiceOptions -> ServiceMasterOptions -> Options -> ServiceMSTVar -> Int -> Socket z Dealer -> ZMQ z ()
+processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
+    sid <- receive mworker
+    msg <- receive mworker
+    logmHandler sid msg
+
   where
-    logmHandler msg = do
-      infoM $ "[" ++ svid ++ "] " ++  cshow msg
-      mHandler msg
+    mPfxM = "[" ++ msid ++ " " ++ show wtid ++ "] "
 
-    -- | Client and worker messages forwarded out of connection thread.
-    mHandler (Program rq s jo Nothing) = continue $ do
-      rid <- trackRequest
-      enqueueMsg (Program rq s jo $ Just rid)
+    mlogM :: (Monad m, MonadIO m) => String -> m ()
+    mlogM msg = noticeM $ mPfxM ++ msg
 
-    mHandler m@(BlockDone _ _ _) = continue $ enqueueMsg m
+    mdbgM :: (Monad m, MonadIO m) => String -> m ()
+    mdbgM msg =  debugM $ mPfxM ++ msg
 
-    -- | Remote worker messages
-    mHandler (Register wid) = continue $ do
-      noticeM $ unwords ["Registering worker", wid]
-      putMWI wid sock addr
-      cOpts <- getCO
-      sendC sock $ RegisterAck cOpts
+    merrM :: (Monad m, MonadIO m) => String -> m ()
+    merrM msg =  errorM $ mPfxM ++ msg
+
+    zm :: ServiceMM z a -> ZMQ z a
+    zm m = runServiceZ sv m >>= either (throwM . ErrorCall) return
+
+    logmHandler sid (decode . LBC.fromStrict -> msg) = mlogM (cshow msg) >> mHandler sid msg
+
+    mHandler sid (Program rq prog jobOpts) = do
+      rid' <- zm $ do
+        rid <- requestIDM
+        putMC sid (Set.singleton rid) >> putMR rid sid >> return rid
+      process prog jobOpts rq rid'
+
+    mHandler _ (BlockDone wid pid blocksByBID report) = completeBlocks wid pid blocksByBID report
+    mHandler _ (BlockAborted wid pid bids reason)     = abortBlocks wid pid bids reason
+
+    mHandler sid (Register wid) = do
+      mlogM $ unwords ["Registering worker", wid]
+      cOpts <- zm $ putMWI wid sid >> getCO
+      sendCI sid mworker $ RegisterAck cOpts
 
     -- TODO: detect worker changes.
-    mHandler (HeartbeatAck hbid) = continue $ debugM $ unwords ["Got a heartbeat ack", show hbid]
+    mHandler _ (HeartbeatAck hbid) = mdbgM $ unwords ["Got a heartbeat ack", show hbid]
 
-    -- | Service termination.
-    mHandler Quit = halt $ terminate
+    mHandler _ Quit = liftIO $ terminate sv
+    mHandler _ m = merrM $ boxToString $ ["Invalid message:"] %$ [show m]
 
-    mHandler m = halt $ errorM $ boxToString $ ["Invalid message:"] %$ [show m]
+    -- | Compilation functions
+    nfP        = noFeed $ input opts
+    includesP  = (includes $ paths opts)
 
-    continue m = m >> return False
-    halt     m = m >> return True
+    process prog jobOpts rq rid = abortcatch rid rq $ do
+      msgs <- zm $ do
+        mlogM $ unwords ["Processing program", rq, "(", show rid, ")"]
+        (initP, initSt) <- preprocess prog
+        assignBlocks rid rq jobOpts initP initSt
+      sendCIs mworker msgs
 
-    enqueueMsg m = getQ >>= \(qEnq,_) -> runEffect (yield m >-> toOutput qEnq)
+    abortcatch rid rq m = m `catchIOError` (\e -> abortProgram Nothing rid rq $ show e)
 
-    trackRequest = requestIDM >>= \rid ->
-      putMC addr sock (Set.singleton rid) >> putMR rid addr >> return rid
+    -- | Parse, evaluate metaprogram, and apply prepare transform.
+    preprocess prog = do
+      mlogM $ "Parsing with paths " ++ show includesP
+      pP <- reasonM parseError . liftIE $ parseK3 nfP includesP prog
+      mP <- liftIE . runDriverM $ metaprogram opts pP
+      ((initP, _), initSt) <- liftIE $ runTransform (coStages $ scompileOpts $ sOpts) mP
+      return (initP, initSt)
 
-processWorkerConn :: ServiceOptions -> Socket -> SockAddr -> ServiceM ServiceWState ()
-processWorkerConn sOpts@(serviceId -> svid) sock addr = do
-    putWC sock addr
-    workqueue sOpts $ goSWorker sOpts
-    sendC sock $ Register $ serviceId sOpts
-    messages sock logmHandler
+    {------------------------
+      - Job assignment.
+      -----------------------}
+
+    -- | Cost-based compile block assignment.
+    assignBlocks rid rq jobOpts initP initSt = do
+      pid <- progIDM
+      mlogM $ unwords ["Assigning blocks for program:", show pid]
+
+      -- Get the current worker weights, and use them to partition the program.
+      wWeights <- workerWeights
+      when ( Heap.null wWeights ) $ assignError pid
+      (nwWeights, wBlocks, jobCosts) <- partitionProgram (jobBlockSize jobOpts) wWeights initP
+
+      -- Compute assignment map delta.
+      -- Extract block ids per worker, and join with new weights per worker to compute
+      -- an assignment map with updated weights and new block sets.
+      let nwaBlockIds = Map.map (\cb -> Set.fromList $ map fst cb) wBlocks
+      let nwaWeights  = foldl (\m (w,wid) -> Map.insert wid w m) Map.empty nwWeights
+      let nassigns    = Map.intersectionWith WorkerAssignment nwaBlockIds nwaWeights
+
+      -- Compute new job state.
+      let pending = foldl (\acc cb -> acc `Set.union` (Set.fromList $ map fst cb)) Set.empty wBlocks
+      let wjs     = Map.intersectionWith (\w c -> WorkerJobState w c $ Map.size c) nwaWeights jobCosts
+      js <- js0 rid rq pending wjs
+
+      modifyMJ_ $ \jbs -> Map.insert pid js jbs
+      modifyMA_ $ \assigns -> Map.unionWith incrWorkerAssignments assigns nassigns
+      msgs <- mkMessages pid jobOpts initSt wBlocks
+
+      logAssigment pid nassigns js
+      return msgs
+
+    -- | Compute a min-heap of worker assignment weights, returning a zero-heap if no assignments exist.
+    workerWeights = do
+      weightHeap <- flip foldMA Heap.empty $ \acc wid assigns -> Heap.insert (waweight assigns, wid) acc
+      if Heap.null weightHeap
+        then getMW >>= return . Map.foldlWithKey (\acc wid _ -> Heap.insert (0.0, wid) acc) Heap.empty
+        else return weightHeap
+
+    -- | Cost-based program partitioning.
+    --   This performs assignments at a per-declaration granularity rather than per-block,
+    --   using a greedy heuristic to balance work across each worker (the k-partition problem).
+    --   This returns final worker weights, new compile block assignments, and the job costs per worker.
+    partitionProgram blockSize wWeights (tnc -> (DRole _, ch)) =
+      let (total_cost, swich) = sortByCost ch in do
+        (nwWeights, newAssigns) <- greedyPartition wWeights swich
+        (wcBlocks, wcosts) <- foldMapKeyM (return (Map.empty, Map.empty)) newAssigns $ chunkAssigns blockSize
+        return (nwWeights, Map.map reverse wcBlocks, wcosts)
+
+    partitionProgram _ _ _ = throwE "Top level declaration is not a role."
+
+    -- Creates compile block chunks per worker, and sums up costs per chunk.
+    chunkAssigns blockSize accM wid wbwl = do
+      (wcbm,wcm) <- accM
+      biwsl <- forM (chunksOf blockSize wbwl) $ \bwl -> do
+                 let (chunkcb, chunkcost) = second sum $ unzip bwl
+                 bid <- blockIDM
+                 return ((bid, sortOn fst chunkcb), (bid, chunkcost))
+      let (wcompileblock, wblockcosts) = second Map.fromList $ unzip biwsl
+      return $ ( Map.insertWith (++) wid wcompileblock wcbm
+               , Map.insertWith mergeBlockCosts wid wblockcosts wcm )
+
+    -- | A simple compilation cost model
+    sortByCost ch = second (sortOn fst) $ foldl foldCost (0,[]) $ zip [0..] ch
+    foldCost (total, acc) (i, d@(cost -> c)) = (total + c, acc ++ [(c, (i,d))])
+
+    cost (tag -> DGlobal _ _ (Just (treesize -> n))) = n
+    cost (tag -> DTrigger _ _ (treesize -> n))       = n
+    cost _                                           = 1
+
+    -- | Greedy solution to the k-partitioning problem.
+    --   We maintain a heap of weights, to easily pick the partition with minimum weight,
+    --   and update the corresponding partition with the new element.
+    greedyPartition wWeights swich = foldM greedy (wWeights, Map.empty) swich
+      where
+        greedy (heap, assignsAndCosts) (w, ich) =
+          maybe partitionError (assign assignsAndCosts w ich) $ Heap.uncons heap
+
+        assign acm (fromIntegral -> w) ich ((sz,wid), restheap) =
+          return ( Heap.insert (sz + w, wid) restheap, Map.insertWith (++) wid [(ich,w)] acm )
+
+    -- | Compile block messages construction.
+    mkMessages pid (rcStages -> rstg) initSt cBlocksByWID = do
+      foldMapKeyM (return []) cBlocksByWID $ \m wid cb -> do
+        msgacc <- m
+        wsockid <- getMWI wid >>= maybe (workerError wid) return
+        return $ msgacc ++ [(wsockid, Block pid rstg initSt cb)]
+
+    -- Map helpers to supply fold function as last argument.
+    foldMapKeyM a m f = Map.foldlWithKey f a m
+
+    -- | Merge block costs
+    mergeBlockCosts = Map.unionWith (+)
+
+    -- | Update worker assignments with a new weight and a delta blockset.
+    incrWorkerAssignments (WorkerAssignment oldbs _) (WorkerAssignment deltabs w) =
+      flip WorkerAssignment w $ oldbs `Set.union` deltabs
+
+    -- | Update worker assignments with a completed or aborted block.
+    decrWorkerAssignments bid dw (WorkerAssignment blocks weight) =
+      WorkerAssignment (Set.delete bid blocks) (weight - dw)
+
+    -- | Job state constructors.
+    jprof0 workerjs = liftIO getTime >>= \start -> return $ JobProfile start Map.empty workerjs []
+    js0 rid rq pending workerjs = jprof0 workerjs >>= \prof -> return $ JobState rid rq prof pending Map.empty []
+
+    logAssigment pid nassigns js =
+      let wk wid s = wid ++ ":" ++ s
+
+          wastr (wid, WorkerAssignment b w) = (wk wid $ show $ length b, wk wid $ show w)
+          wststr (wid, jwassign -> jbc)     = wk wid $ show $ foldl (+) 0.0 jbc
+
+          (wlens, ww) = unzip $ map wastr $ Map.toList nassigns
+          wcontrib    = map wststr $ Map.toList $ jworkerst $ jprofile $ js
+      in
+        mlogM $ boxToString $  ["Assignment for program: " ++ show pid]
+                            %$ ["Worker weights:"]     %$ (indent 2 ww)
+                            %$ ["Block distribution:"] %$ (indent 2 wlens)
+                            %$ ["Load distribution:"]  %$ (indent 2 wcontrib)
+
+
+    {------------------------------
+     - Block completion handling.
+     -----------------------------}
+
+    -- | Block completion processing. This garbage collects jobs and assignment state.
+    completeBlocks wid pid cblocksByBID report = do
+      time <- liftIO $ getTime
+      forM_ cblocksByBID $ \(bid, iblock) -> do
+        psOpt <- zm $ do
+          (r, bcontrib) <- modifyMJ $ \sjobs -> tryCompleteJS time wid pid bid iblock sjobs $ Map.lookup pid sjobs
+          modifyMA_ $ \assigns -> Map.adjust (decrWorkerAssignments bid bcontrib) wid assigns
+          return r
+        zm $ modifyMJ_ $ \sjobs -> Map.adjust (appendProfileReport report) pid sjobs
+        maybe (return ()) (completeProgram pid) psOpt
+
+    -- | Block abort processing. This aborts the given block ids, cleaning up state, but
+    --   does not affect any other in-flight blocks.
+    -- TODO: pre-emptively abort all other remaining blocks, and clean up the job state.
+    abortBlocks wid pid bids reason = do
+      time <- liftIO $ getTime
+      forM_ bids $ \bid -> do
+        psOpt <- zm $ do
+          (r, bcontrib) <- modifyMJ $ \sjobs -> tryAbortJS time wid pid bid reason sjobs $ Map.lookup pid sjobs
+          modifyMA_ $ \assigns -> Map.adjust (decrWorkerAssignments bid bcontrib) wid assigns
+          return r
+        maybe (return ()) (\(rid,rq,aborts) -> abortProgram (Just pid) rid rq $ concat aborts) psOpt
+
+    tryCompleteJS time wid pid bid iblock sjobs jsOpt =
+      maybe (sjobs, (Nothing, 0.0)) id $ jsOpt >>= \js ->
+        let jsE = completeJobBlock time wid bid iblock js in
+        return $ either (completeJS pid sjobs) (incompleteJS pid sjobs) jsE
+
+    tryAbortJS time wid pid bid reason sjobs jsOpt =
+      maybe (sjobs, (Nothing, 0.0)) id $ jsOpt >>= \js ->
+        let jsE = abortJobBlock time wid bid reason js in
+        return $ either (completeJS pid sjobs) (incompleteJS pid sjobs) jsE
+
+    completeJS pid sjobs (result, contrib) = (Map.delete pid sjobs, (Just result, contrib))
+    incompleteJS pid sjobs (partials, contrib) = (Map.insert pid partials sjobs, (Nothing, contrib))
+
+    completeJobBlock time wid bid iblock js =
+      let ncomp             = if null $ jaborted js
+                                then Map.insertWith (++) bid iblock $ jcompleted js
+                                else Map.empty
+
+          npend             = Set.delete bid $ jpending js
+          (nprof, bcontrib) = updateProfile time wid bid $ jprofile js
+
+      in if Set.null npend
+            then Left $ ((jrid js, jrq js, jaborted js, nprof, ncomp), bcontrib)
+            else Right $ (js { jpending = npend, jcompleted = ncomp, jprofile = nprof }, bcontrib)
+
+    abortJobBlock time wid bid reason js =
+      let npend             = Set.delete bid $ jpending js
+          (nprof, bcontrib) = updateProfile time wid bid $ jprofile js
+      in if Set.null npend
+            then Left  ((jrid js, jrq js, jaborted js), bcontrib)
+            else Right (js { jpending = npend, jaborted = jaborted js ++ [reason], jprofile = nprof }, bcontrib)
+
+    -- | Profile maintenance.
+    updateProfile time wid bid jprof@(jendTimes &&& jworkerst -> (jends, jws)) =
+      let njws          = Map.adjust (\wjs -> wjs { jwcomplete = jwcomplete wjs - 1 }) wid jws
+          njends        = maybe jends completew $ Map.lookup wid njws
+          completew wjs = if jwcomplete wjs == 0 then Map.insert wid time jends else jends
+          bcontrib      = maybe 0.0 id (Map.lookup wid njws >>= Map.lookup bid . jwassign)
+      in (jprof { jendTimes = njends, jworkerst = njws }, bcontrib)
+
+    appendProfileReport report js@(jprofile -> jprof) =
+      js { jprofile = jprof { jreports = (jreports jprof) ++ [report] } }
+
+
+    {------------------------------
+     - Program completion handling.
+     -----------------------------}
+
+    -- | Program completion processing. This garbage collects client request state.
+    completeProgram pid (rid, rq, aborts, profile, sources) = do
+      let prog = DC.role "__global" $ map snd $ sortOn fst $ concatMap snd $ Map.toAscList sources
+      nprogrpE <- liftIO $ evalTransform (sfinalStages $ smOpts) prog
+      case (aborts, nprogrpE) of
+        (_, Left err) -> abortProgram (Just pid) rid rq err
+        (h:t, _)      -> abortProgram (Just pid) rid rq $ concat $ h:t
+        ([], Right (nprog, rp)) -> do
+            clOpt <- zm $ getMR rid
+            case clOpt of
+              Nothing -> zm $ requestError rid
+              Just cid -> completeRequest pid cid rid rq nprog $ generateReport profile rp
+
+    completeRequest pid cid rid rq prog report = do
+      mlogM $ unwords ["Completed program", show pid]
+      sockOpt <- zm $ do
+        modifyMJ_ $ \sjobs -> Map.delete pid sjobs
+        modifyMR_ $ \rm -> Map.delete rid rm
+        modifyMC  $ \cm -> tryCompleteCL cid rid cm $ Map.lookup cid cm
+      maybe (return ()) (\sid -> sendCI sid mworker $ ProgramDone rq prog report) sockOpt
+
+    -- | Abort compilation.
+    abortProgram pidOpt rid rq reason = do
+      mlogM $ unwords ["Aborting program", rq, maybe "" show pidOpt]
+      cid <- zm $ getMR rid >>= maybe (requestError rid) return
+      abortRequest pidOpt cid rid rq reason
+
+    abortRequest pidOpt cid rid rq reason = do
+      clOpt <- zm $ do
+        modifyMJ_ $ \sjobs -> maybe sjobs (flip Map.delete sjobs) pidOpt
+        modifyMR_ $ \rm -> Map.delete rid rm
+        modifyMC $ \cm -> tryCompleteCL cid rid cm $ Map.lookup cid cm
+      maybe (return ()) (\sid -> sendCI sid mworker $ ProgramAborted rq reason) clOpt
+
+    tryCompleteCL cid rid cm rOpt = maybe (cm, Nothing) (completeClient cid rid cm) rOpt
+    completeClient cid rid cm rs =
+      let nrs = Set.delete rid rs in
+      (if null nrs then Map.delete cid cm else Map.insert cid nrs cm, Just cid)
+
+
+    -- | Compilation report construction.
+    generateReport profile finalreport =
+      let mkspan s e = e - s
+          mkwtrep  (wid, span) = wid ++ ": " ++ (secs $ span)
+          mkwvstr  (wid, v)    = wid ++ ": " ++ (show v)
+
+          -- Compile time per worker
+          workertimes    = Map.map (mkspan $ jstartTime profile) $ jendTimes profile
+
+          -- Assigned cost per worker
+          workercontribs = Map.map (foldl (+) 0.0 . jwassign) $ jworkerst $ profile
+
+          -- Per-worker fraction of total worker time.
+          totaltime      = foldl (+) 0.0 workertimes
+          workertratios  = Map.map (/ totaltime) workertimes
+
+          -- Per-worker fraction of total worker cost.
+          totalcontrib   = foldl (+) 0.0 workercontribs
+          workercratios  = Map.map (/ totalcontrib) workercontribs
+
+          -- Absolute time ratio and cost ratio difference.
+          wtcratiodiff   = Map.intersectionWith (\t c -> 1.0 - abs (t - c)) workertratios workercratios
+
+          -- Reports.
+          profreport    = prettyLines $ mconcat $ jreports $ profile
+          timereport    = map mkwtrep $ Map.toList workertimes
+          wtratioreport = map mkwvstr $ Map.toList workertratios
+          wcratioreport = map mkwvstr $ Map.toList workercratios
+          costreport    = map mkwvstr $ Map.toList wtcratiodiff
+
+          i x = indent $ 2*x
+      in boxToString $ ["Workers"]            %$ (i 1 profreport)
+                    %$ ["Final"]              %$ (i 1 finalreport)
+                    %$ ["Compiler service"]
+                    %$ (i 1 ["Time ratios"]   %$ (i 2 wtratioreport))
+                    %$ (i 1 ["Cost ratios"]   %$ (i 2 wcratioreport))
+                    %$ (i 1 ["Cost accuracy"] %$ (i 2 costreport))
+                    %$ ["Time"]               %$ (i 1 timereport)
+
+    parseError = "Could not parse input: "
+
+    partitionError   = throwE $ "Could not greedily pick a partition"
+    assignError  pid = throwE $ unwords ["Could not assign program", show pid, "(no workers available)"]
+    workerError  wid = throwE $ "No worker named " ++ show wid
+    requestError rid = throwE $ "No request found: " ++ show rid
+
+
+processWorkerConn :: ServiceOptions -> ServiceWSTVar -> Int -> Socket z Dealer -> ZMQ z ()
+processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
+    msg <- receive wworker
+    logmHandler msg
 
   where
-    logmHandler msg = do
-      infoM $ "[" ++ svid ++ "] " ++ cshow msg
-      mHandler msg
+    wPfxM = "[" ++ wid ++ " " ++ show wtid ++ "] "
 
-    -- | Work messages forwarded out of connection thread.
-    mHandler m@(Block _ _ _ _) = continue $ enqueueMsg m
+    wlogM :: (Monad m, MonadIO m) => String -> m ()
+    wlogM msg = noticeM $ wPfxM ++ msg
 
-    -- | Connection messages processed in-band.
-    mHandler (RegisterAck cOpts) = continue $ do
-      noticeM $ unwords ["Registered", show cOpts]
+    werrM :: (Monad m, MonadIO m) => String -> m ()
+    werrM msg =  errorM $ wPfxM ++ msg
+
+    zm :: ServiceWM z a -> ZMQ z a
+    zm m = runServiceZ sv m >>= either (throwM . ErrorCall) return
+
+    logmHandler (decode . LBC.fromStrict -> msg) = wlogM (cshow msg) >> mHandler msg
+
+    -- | Worker message processing.
+    mHandler (Block pid cstages st blocksByBID) = processBlock pid cstages st blocksByBID
+
+    mHandler (RegisterAck cOpts) = zm $ do
+      wlogM $ unwords ["Registered", show cOpts]
       modifyCO_ $ mergeCompileOpts cOpts
 
-    mHandler (Heartbeat hbid) = continue $ do
-      sendC sock $ HeartbeatAck hbid
+    mHandler (Heartbeat hbid) = sendC wworker $ HeartbeatAck hbid
+    mHandler Quit = liftIO $ terminate sv
 
-    mHandler Quit = halt $ terminate
-
-    mHandler m = halt $ errorM $ boxToString $ ["Invalid message:"] %$ [show m]
-
-    continue m = m >> return False
-    halt     m = m >> return True
-
-    enqueueMsg m = getQ >>= \(qEnq,_) -> runEffect (yield m >-> toOutput qEnq)
+    mHandler m = werrM $ boxToString $ ["Invalid message:"] %$ [show m]
 
     -- | Synchronizes relevant master and worker compiler options.
     --   These are defaults that can be overridden per compile job.
@@ -608,205 +992,23 @@ processWorkerConn sOpts@(serviceId -> svid) sock addr = do
                                             , useSubTypes = useSubTypes $ mcopts
                                             , optimizationLevel = optimizationLevel $ mcopts }
 
+    -- | Block compilation functions.
+    processBlock pid ([SDeclOpt cSpec]) initSt blocksByBID =
+      abortcatch pid blocksByBID $ do
+        (cBlocksByBID, finalSt) <- zm $ foldM (compileBlock pid cSpec) ([], initSt) blocksByBID
+        sendC wworker $ BlockDone wid pid cBlocksByBID $ ST.report finalSt
 
--- | Work handling function for the service master.
-goSMaster :: ServiceOptions -> ServiceMasterOptions -> Options -> Int -> CProtocol -> SConsumer ServiceMState ()
-goSMaster sOpts@(serviceId -> msid) smOpts opts workerId msg = do
-    case msg of
-      Program rq prog jobOpts (Just rid) -> process (BC.unpack prog) jobOpts rq rid
-      BlockDone wid pid blocksByBID      -> completeBlocks wid pid blocksByBID
-      BlockAborted wid pid bids reason   -> abortBlocks wid pid bids reason
-      m -> lift $ mlogerrM $ boxToString $ ["Invalid message:"] %$ [show m]
+    processBlock _ _ _ _ = werrM $ "Invalid worker compile stages"
 
-  where
-    mPfxM    m = "[" ++ msid ++ " worker " ++ show workerId ++ "] " ++ m
-    mlogM    m = noticeM $ mPfxM m
-    mlogerrM m = errorM $ mPfxM m
+    abortcatch pid blocksByBID m = m `catchIOError` (\e -> abortBlock pid blocksByBID $ show e)
 
-    nfP        = noFeed $ input opts
-    includesP  = (includes $ paths opts)
+    abortBlock pid blocksByBID reason =
+      sendC wworker $ BlockAborted wid pid (map fst blocksByBID) reason
 
-    process prog jobOpts rq rid = lift $ flip catchE (abortProgram rid rq) $ do
-      mlogM $ unwords ["Processing program", rq, "(", show rid, ")"]
-      (blocks, initSt) <- preprocess prog jobOpts
-      assignBlocks rid rq jobOpts blocks initSt
-
-    preprocess prog jobOpts = do
-      mlogM $ "Parsing with paths " ++ show includesP
-      ((initP, _), initSt) <- prepareProgram prog
-      initParts <- partitionProgram (jobBlockSize jobOpts) initP
-      return (initParts, initSt)
-
-    -- | Parse, evaluate metaprogram, and apply prepare transform.
-    prepareProgram prog = do
-      pP <- reasonM parseError . liftIE $ parseK3 nfP includesP prog
-      mP <- liftIE . runDriverM $ metaprogram opts pP
-      liftIE $ runTransform (coStages $ scompileOpts $ sOpts) mP
-
-    partitionProgram n (tnc -> (DRole _, ch)) =
-      let blocks = chunksOf n ch
-      in mapM (\bl -> blockIDM >>= return . (, map (BC.pack . show) bl)) blocks
-
-    partitionProgram _ _ = throwE "Top level declaration is not a role."
-
-    {- Job management -}
-    js0 rid rq = JobState rid rq Set.empty Map.empty []
-
-    assignBlocks rid rq jobOpts blocks initSt = do
-      pid <- progIDM
-      mlogM $ unwords ["Assigning blocks for program", show pid]
-      mlogM $ unwords ["State size", show $ BC.length $ BC.pack $ show initSt]
-      waCounts <- countAssignments pid
-      (_, blocksByWID, nassigns, js) <- foldM assignBlock (waCounts, Map.empty, Map.empty, js0 rid rq) blocks
-      mlogM $ unwords ["Assignments:", show $ Map.toList nassigns]
-      modifyMJ_ $ \jbs -> Map.insert pid js jbs
-      modifyMA_ $ \assigns -> Map.unionWith Set.union assigns nassigns
-      blockMsgs <- mkMessages pid jobOpts initSt blocksByWID
-      sendCs blockMsgs
-
-    assignBlock (waCounts, msgacc, asacc, jsacc) (bid, block) = do
-      (wid, nwaCounts) <- assignToMin waCounts $ length block
-      return $ ( nwaCounts
-               , Map.insertWith (\new old -> old ++ new) wid [(bid, block)] msgacc
-               , Map.insertWith Set.union wid (Set.singleton bid) asacc
-               , jsacc {pending = Set.insert bid $ pending jsacc} )
-
-    -- | Compute a min-heap of assignment counts, instantiating a zero-heap if no assignments have been made.
-    countAssignments pid = do
-      countsByWid <- flip foldMA Map.empty $ \acc wid block -> Map.insertWith (+) wid (length block) acc
-      if Map.null countsByWid
-        then defaultCounts pid
-        else return $ Map.foldlWithKey (\acc wid sz -> Heap.insert (sz, wid) acc) Heap.empty countsByWid
-
-    -- | Construct a zero-heap of all available woerkers.
-    defaultCounts pid = do
-      cw <- getMW
-      if Map.null cw
-        then assignError pid
-        else return $ Map.foldlWithKey (\acc wid _ -> Heap.insert (0, wid) acc) Heap.empty cw
-
-    assignToMin waCounts sz = do
-      let Just ((wsz, wid), nwaCounts) = Heap.uncons waCounts
-      return $ (wid, Heap.insert (wsz + sz, wid) nwaCounts)
-
-    -- | Grouped block messages construction.
-    mkMessages pid (rcStages -> rstg) (BC.pack . show -> pst) blocksByWID =
-      (\f -> Map.foldlWithKey f (return []) blocksByWID) $ \m wid bbl -> do
-        msgacc <- m
-        wsock <- getMWI wid >>= maybe (workerError wid) (return . fst)
-        return $ msgacc ++ [(wsock, Block pid rstg pst bbl)]
-
-
-    -- | Block completion processing. This garbage collects jobs and assignment state.
-    completeBlocks wid pid blocksByBID = lift $ do
-      forM_ blocksByBID $ \(bid, map (read . BC.unpack) -> block) -> do
-        modifyMA_ $ \assigns -> Map.adjust (Set.delete bid) wid assigns
-        progDone <- modifyMJ $ \sjobs -> tryCompleteJS pid bid block sjobs $ Map.lookup pid sjobs
-        maybe (return ()) completeProgram progDone
-
-    -- | Block abort processing. This aborts the given block ids, cleaning up state, but
-    --   does not affect any other in-flight blocks.
-    -- TODO: pre-emptively abort all other remaining blocks, and clean up the job state.
-    abortBlocks wid pid bids reason = lift $ do
-      forM_ bids $ \bid -> do
-        modifyMA_ $ \assigns -> Map.adjust (Set.delete bid) wid assigns
-        progAborted <- modifyMJ $ \sjobs -> tryAbortJS pid bid reason sjobs $ Map.lookup pid sjobs
-        maybe (return ()) (\(rid,rq,aborts) -> abortProgram rid rq $ concat aborts) progAborted
-
-    tryCompleteJS pid bid block sjobs jsOpt =
-      maybe (sjobs, Nothing) (either (completeJS pid sjobs) (incompleteJS pid sjobs) . completeJobBlock bid block) jsOpt
-
-    tryAbortJS pid bid reason sjobs jsOpt =
-      maybe (sjobs, Nothing) (either (completeJS pid sjobs) (incompleteJS pid sjobs) . abortJobBlock bid reason) jsOpt
-
-    completeJS pid sjobs result = (Map.delete pid sjobs, Just result)
-    incompleteJS pid sjobs partials = (Map.insert pid partials sjobs, Nothing)
-
-    completeJobBlock bid block js =
-      let nc = if null $ aborted js then Map.insert bid block $ completed js else Map.empty
-          np = Set.delete bid $ pending js
-      in if Set.null np then Left $ (jrid js, jrq js, aborted js, nc)
-                        else Right $ js { pending = np, completed = nc }
-
-    abortJobBlock bid reason js =
-      let np = Set.delete bid $ pending js
-      in if Set.null np then Left $ (jrid js, jrq js, aborted js)
-                        else Right $ js { pending = np, aborted = aborted js ++ [reason] }
-
-    -- | Program completion processing. This garbage collects client request state.
-    completeProgram (rid, rq, aborts, sources) = do
-      let prog = DC.role "__global" $ concatMap snd $ Map.toAscList sources
-      nprogrpE <- liftIO $ evalTransform (sfinalStages $ smOpts) prog
-      case (aborts, nprogrpE) of
-        (_, Left err) -> abortProgram rid rq err
-        (h:t, _)      -> abortProgram rid rq $ concat $ h:t
-        ([], Right (nprog, _)) -> do
-          clOpt <- getMR rid
-          case clOpt of
-            Nothing -> requestError rid
-            Just cid -> completeRequest cid rid rq nprog
-
-    completeRequest cid rid rq prog = do
-      modifyMR_ $ \rm -> Map.delete rid rm
-      sockOpt <- modifyMC $ \cm -> tryCompleteCL cid rid cm $ Map.lookup cid cm
-      let packedProg = BC.pack $ show prog
-      mlogM $ "Packed result program size " ++ (show $ BC.length packedProg)
-      maybe (return ()) (\sock -> sendC sock $ ProgramDone rq packedProg) sockOpt
-
-    -- | Abort compilation.
-    abortProgram rid rq reason = do
-      clOpt <- getMR rid
-      case clOpt of
-        Nothing -> requestError rid
-        Just cid -> abortRequest cid rid rq reason
-
-    abortRequest cid rid rq reason = do
-      modifyMR_ $ \rm -> Map.delete rid rm
-      sockOpt <- modifyMC $ \cm -> tryCompleteCL cid rid cm $ Map.lookup cid cm
-      maybe (return ()) (\sock -> sendC sock $ ProgramAborted rq reason) sockOpt
-
-    tryCompleteCL cid rid cm srOpt = maybe (cm, Nothing) (completeClient cid rid cm) srOpt
-    completeClient cid rid cm (sock, rs) =
-      let nrs = Set.delete rid rs in
-      if null nrs then (Map.delete cid cm, Just sock)
-                  else (Map.insert cid (sock, nrs) cm, Just sock)
-
-    parseError = "Could not parse input: "
-
-    assignError  pid = throwE $ unwords ["Could not assign program", show pid, "(no workers available)"]
-    workerError  wid = throwE $ "No worker named " ++ show wid
-    requestError rid = throwE $ "No request found: " ++ show rid
-
-
--- | Work handling function for the service worker.
-goSWorker :: ServiceOptions -> Int -> CProtocol -> SConsumer ServiceWState ()
-goSWorker sOpts@(serviceId -> wid) tid msg =  do
-    case msg of
-      Block pid cstages st blocksByBID -> processBlock pid cstages st blocksByBID
-      _ -> lift $ wlogerrM $ boxToString $ ["Invalid message:"] %$ [show msg]
-
-  where
-    wPfxM    m = "[" ++ wid ++ " worker " ++ show tid ++ "] " ++ m
-    wlogM    m = noticeM $ wPfxM m
-    wlogerrM m = errorM  $ wPfxM m
-
-    processBlock :: ProgramID -> CompileStages -> ByteString -> [(BlockID, [ByteString])] -> SConsumer ServiceWState ()
-    processBlock pid ([SDeclOpt cSpec]) (read . BC.unpack -> st) blocksByBID =
-      lift $ flip catchE (abortBlock pid blocksByBID) $ do
-        Just (sock, _)    <- getWC
-        (cBlocksByBID, _) <- foldM (compileBlock pid cSpec) ([], st) blocksByBID
-        sendC sock $ BlockDone wid pid cBlocksByBID
-
-    processBlock _ _ _ _ = lift $ wlogerrM $ "Invalid worker compile stages"
-
-    abortBlock pid blocksByBID reason = do
-      Just (sock, _) <- getWC
-      sendC sock $ BlockAborted wid pid (map fst blocksByBID) reason
-
-    compileBlock pid cSpec (blacc, st) (bid, map (read . BC.unpack) -> block) = do
+    compileBlock pid cSpec (blacc, st) (bid, unzip -> (ids, block)) = do
       (nblock, nst) <- debugCompileBlock pid bid (unwords [show $ length block])
                         $ liftIE $ ST.runTransformM st $ ST.runDeclOptPassesBLM cSpec Nothing block
-      return (blacc ++ [(bid, map (BC.pack . show) nblock)], nst)
+      return (blacc ++ [(bid, zip ids nblock)], nst)
 
     debugCompileBlock pid bid str m = do
       wlogM $ unwords ["got block", show pid, show bid, str]
@@ -817,35 +1019,34 @@ goSWorker sOpts@(serviceId -> wid) tid msg =  do
 
 -- | One-shot connection to submit a remote job and wait for compilation to complete.
 submitJob :: ServiceOptions -> RemoteJobOptions -> Options -> IO ()
-submitJob sOpts@(serviceId -> rq) rjOpts opts = svw0 (scompileOpts sOpts) >>= \sv ->
-    runClient sOpts sv (return ()) processClientConn
+submitJob sOpts@(serviceId -> rq) rjOpts opts = do
+    start <- getTime
+    progE <- runDriverM $ k3read opts
+    either putStrLn (\p -> runClient Dealer sOpts $ processClientConn start $ concat p) progE
 
   where
-    processClientConn :: Socket -> SockAddr -> ServiceM ServiceWState ()
-    processClientConn sock addr = do
-      putWC sock addr
-      prog <- liftIE $ runDriverM $ k3read opts
-      sendC sock $ Program rq (BC.pack $ concat $ prog) rjOpts Nothing
-      noticeM $ boxToString $ ["Client waiting for compilation"]
-      messages sock mHandler
+    processClientConn :: Double -> String -> (forall z. Socket z Dealer -> ZMQ z ())
+    processClientConn start prog client = do
+      noticeM $ "Client submitting compilation job " ++ rq
+      sendC client $ Program rq prog rjOpts
+      msg <- receive client
+      mHandler start $ decode $ LBC.fromStrict msg
 
-    mHandler (ProgramDone rrq bytes) | rq == rrq = halt $ liftIO $ do
-      noticeM $ "Client compiling request " ++ rq
-      noticeM $ "Client received program of size " ++ (show $ BC.length bytes)
-      CPPC.compile opts (scompileOpts $ sOpts) ($) (read $ BC.unpack bytes)
+    mHandler :: forall z. Double -> CProtocol -> ZMQ z ()
+    mHandler start (ProgramDone rrq prog report) | rq == rrq = liftIO $ do
+      end <- getTime
+      noticeM $ unwords ["Client finalizing request", rq]
+      noticeM $ clientReport (end - start) report
+      CPPC.compile opts (scompileOpts $ sOpts) ($) $ prog
 
-    mHandler (ProgramAborted rrq reason) | rq == rrq = halt $ liftIO $ do
+    mHandler _ (ProgramAborted rrq reason) | rq == rrq = liftIO $ do
       errorM $ unwords ["Failed to compile request", rq, ":", reason]
 
-    mHandler m = halt $ errorM $ boxToString $ ["Invalid message:"] %$ [show m]
+    mHandler _ m = errorM $ boxToString $ ["Invalid message:"] %$ [show m]
 
-    continue m = m >> return False
-    halt     m = m >> return True
-
-command :: ServiceOptions -> CProtocol -> IO ()
-command sOpts msg = svw0 (scompileOpts sOpts) >>= \sv ->
-  runClient sOpts sv (return ()) $ \sock _ -> sendC sock msg
+    clientReport time report =
+      boxToString $  ["Compile report:"] %$ (indent 4 $ lines $ report)
+                  %$ ["Compile time: " ++ secs time]
 
 shutdownService :: ServiceOptions -> IO ()
-shutdownService sOpts = command sOpts Quit
-
+shutdownService sOpts = command Dealer sOpts Quit

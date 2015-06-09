@@ -9,6 +9,7 @@ module Language.K3.Analysis.Provenance.Core where
 import Control.DeepSeq
 import GHC.Generics (Generic)
 
+import Data.Binary
 import Data.List
 import Data.Tree
 import Data.Typeable
@@ -55,10 +56,14 @@ data Provenance =
 data instance Annotation Provenance = PDeclared (K3 Provenance)
                                     deriving (Eq, Ord, Read, Show, Generic)
 
-{- SEffect instances -}
+{- Provenance instances -}
 instance NFData PMatVar
 instance NFData Provenance
 instance NFData (Annotation Provenance)
+
+instance Binary PMatVar
+instance Binary Provenance
+instance Binary (Annotation Provenance)
 
 {- Annotation extractors -}
 isPDeclared :: Annotation Provenance -> Bool

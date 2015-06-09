@@ -1,10 +1,10 @@
 // Persistent maps, providing a fully versioned API for both updates and transformers.
-// Our modification methods (insert, update, erase) require a version indicating the
-// tree on which the updates apply (version 0 being the latest tree).
+//
+// Our modification methods require a version indicating the tree on which the updates apply.
 // If the version supplied does not exist, it is created.
 //
-// A snapshot method creates a new version of the tree, following which updates can apply
-// to this new version.
+// That is, the peek, insert, insert_with, upsert_with, erase, update operations do not work
+// with frontiers (i.e., lower bounds on a version).
 //
 // The transformer and retrieval methods also require an explicit version for their accesses.
 // If the version supplied does not exist, the retrieval methods apply to a version that is
@@ -33,19 +33,19 @@ annotation VMap given type a,b {
     with effects \version -> \elem -> [R[version]; R[self]; R[elem]; W[self]]
 
   @:CArgs 3
-  provides lifted insert_with: int -> content -> (content -> content -> content) -> ()
+  provides lifted insert_with : int -> content -> (content -> content -> content) -> ()
     with effects \version -> \elem -> \f -> [R[version]; R[self]; R[elem]; ((f content) content); W[self]]
 
   @:CArgs 4
-  provides lifted upsert_with: int -> content -> (() -> content) -> (content -> content) -> ()
+  provides lifted upsert_with : int -> content -> (() -> content) -> (content -> content) -> ()
     with effects \version -> \elem -> \f -> \g -> [R[version]; R[self]; R[elem]; f content; g content; W[self]]
 
   @:CArgs 2
-  provides lifted erase  : int -> content -> ()
+  provides lifted erase : int -> content -> ()
     with effects \version -> \elem -> [R[version]; R[self]; R[elem]; W[self]]
 
   @:CArgs 2
-  provides lifted update  : int -> content -> (content -> ())
+  provides lifted update : int -> content -> (content -> ())
     with effects \version -> \oldElem -> \newElem -> [R[version]; R[self]; R[oldElem]; R[newElem]; W[self]]
 
   // Returns if a value at the exact version is present in the VMap.

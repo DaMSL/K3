@@ -78,13 +78,10 @@ data CompilerSpec = CompilerSpec { blockSize :: Int
                                  , stageSpec :: StageSpec }
                     deriving (Eq, Ord, Read, Show, Generic)
 
-instance Binary StageSpec
-instance Binary CompilerSpec
-
 -- | Compilation profiling
 data TransformReport = TransformReport { statistics :: Map String [Measured]
                                        , snapshots  :: Map String [K3 Declaration] }
-                      deriving (Eq, Read, Show)
+                      deriving (Eq, Read, Show, Generic)
 
 -- | The program transformation composition monad
 data TransformSt = TransformSt { nextuid    :: Int
@@ -94,8 +91,16 @@ data TransformSt = TransformSt { nextuid    :: Int
                                , penv       :: Provenance.PIEnv
                                , fenv       :: SEffects.FIEnv
                                , report     :: TransformReport }
-                  deriving (Eq, Read, Show)
+                  deriving (Eq, Read, Show, Generic)
 
+-- | Monoid instance for transform reports.
+instance Monoid TransformReport where
+  mempty = TransformReport Map.empty Map.empty
+
+  mappend (TransformReport ast asn) (TransformReport bst bsn) =
+    TransformReport (ast <> bst) (asn <> bsn)
+
+-- | Left-associative merge for transform states.
 mergeTransformSt :: Maybe Identifier -> TransformSt -> TransformSt -> TransformSt
 mergeTransformSt d agg new =
   TransformSt { nextuid = max (nextuid agg) (nextuid new)
@@ -110,6 +115,12 @@ mergeTransformSt d agg new =
               }
 
 type TransformM = ExceptT String (StateT TransformSt IO)
+
+{- Stage-based transform instances -}
+instance Binary StageSpec
+instance Binary CompilerSpec
+instance Binary TransformReport
+instance Binary TransformSt
 
 ss0 :: StageSpec
 ss0 = StageSpec Nothing Nothing Map.empty
@@ -202,7 +213,7 @@ debugPass n f p = mkTg ("Before " ++ n) p (f p) >>= \np -> mkTg ("After " ++ n) 
 -- | Measure the execution time of a transform
 timePass :: String -> ProgramTransform -> ProgramTransform
 timePass n f prog = do
-  (npE, sample) <- get >>= liftIO . profile f prog
+  (npE, sample) <- get >>= \st -> liftIO (profile $ const $ runTransformM st $ f prog)
   (np, nst)     <- liftEitherM npE
   void $ put $ addMeasurement n sample nst
   return np
@@ -213,26 +224,26 @@ timePass n f prog = do
           nrp = rp {statistics = Map.insertWith (++) n' [sample] $ statistics rp}
       in st {report = nrp}
 
-    -- This is a reimplementation of Criterion.Measurement.measure
-    -- while actually returning the value computed.
-    profile tr arg st = do
-      startStats     <- getGCStats
-      startTime      <- getTime
-      startCpuTime   <- getCPUTime
-      startCycles    <- getCycles
-      resultE        <- runTransformM st $ tr arg
-      wresultE       <- evaluate resultE
-      endTime        <- getTime
-      endCpuTime     <- getCPUTime
-      endCycles      <- getCycles
-      endStats       <- getGCStats
-      let !m = applyGCStats endStats startStats $ measured {
-                 measTime    = max 0 (endTime - startTime)
-               , measCpuTime = max 0 (endCpuTime - startCpuTime)
-               , measCycles  = max 0 (fromIntegral (endCycles - startCycles))
-               , measIters   = 1
-               }
-      return (wresultE, m)
+-- This is a reimplementation of Criterion.Measurement.measure that returns the value computed.
+profile :: (() -> IO a) -> IO (a, Measured)
+profile m = do
+  startStats     <- getGCStats
+  startTime      <- getTime
+  startCpuTime   <- getCPUTime
+  startCycles    <- getCycles
+  resultE        <- m () >>= evaluate
+  endTime        <- getTime
+  endCpuTime     <- getCPUTime
+  endCycles      <- getCycles
+  endStats       <- getGCStats
+  let msr = applyGCStats endStats startStats $ measured {
+              measTime    = max 0 (endTime - startTime)
+            , measCpuTime = max 0 (endCpuTime - startCpuTime)
+            , measCycles  = max 0 (fromIntegral (endCycles - startCycles))
+            , measIters   = 1
+            }
+  return (resultE, msr)
+
 
 -- | Take a snapshot of the result of a transform
 type SnapshotCombineF = [K3 Declaration] -> [K3 Declaration] -> [K3 Declaration]

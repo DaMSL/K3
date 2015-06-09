@@ -16,6 +16,7 @@ module Language.K3.Core.Annotation (
     (:@:)(..),
     K3,
 
+    treesize,
     children,
     replaceCh,
     replaceTag,
@@ -29,11 +30,12 @@ module Language.K3.Core.Annotation (
 import Control.Arrow ( (&&&) )
 import Control.DeepSeq
 
+import Data.Binary
 import Data.List (delete, find)
 import Data.Tree
 import Data.Typeable
 
-import GHC.Generics (Generic)
+import GHC.Generics
 
 -- | Every tag type defines the set of annotations that can be associated with that tag.
 data family Annotation t :: *
@@ -114,7 +116,8 @@ instance AContainer a => AContainer (Tree a) where
 -- | A convenience form for attachment, structurally equivalent to tupling.
 data a :@: b = a :@: b deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
-instance (NFData a, NFData b) => NFData (a :@: b)
+instance (NFData a,  NFData b) => NFData (a :@: b)
+instance (Binary a,  Binary b) => Binary (a :@: b)
 
 -- | A pair can act as a proxy to the container it contains as its second element.
 instance AContainer a => AContainer (b :@: a) where
@@ -154,6 +157,15 @@ type K3 a = Tree (a :@: [Annotation a])
 
 instance (Ord a, Eq (Annotation a), Ord (Annotation a)) => Ord (K3 a) where
   compare a b = compare (flatten a) (flatten b)
+
+instance {-# OVERLAPPING #-} (Binary a, Binary (Annotation a)) => Binary (K3 a) where
+  put (Node (tg :@: anns) ch) = put tg >> put anns >> put ch
+  get = (\tg anns ch -> Node (tg :@: anns) ch) <$> get <*> get <*> get
+
+
+-- | Tree size
+treesize :: Tree a -> Int
+treesize (Node _ ch) = sum $ (1 : map treesize ch)
 
 -- | Subtree extraction
 children :: Tree a -> Forest a
