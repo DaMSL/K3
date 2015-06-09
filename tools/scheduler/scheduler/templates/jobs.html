@@ -14,6 +14,7 @@
             <h3>Compling {{ lastcompile.name }} with UID: # {{ lastcompile.uid }} <br>
                 Status: {{ lastcompile.status }} at {{ lastcompile.time }}</h3>
             <h4>View Compile Output: <a href="{{ lastcompile.outputurl }}" target="_blank">STDOUT</a></h4>
+            <h4>Download CPP Source Output: <a href="{{ lastcompile.cppsrc }}">CPP Source</a></h4>
             <h4>Check progress: <a href="{{ lastcompile.url }}" target="_blank">Mesos</a></h4>
         {% endif %}
         {% if lastjob %}

@@ -30,9 +30,10 @@ import mesos.interface
 from mesos.interface import mesos_pb2
 import mesos.native
 
-import db
-from mesosutils import *
+from common import *
 from core import *
+from mesosutils import *
+import db
 
 State = enum.Enum('State', 'INIT DISPATCH MASTER_WAIT WORKER_WAIT CLIENT_WAIT SUBMIT COMPILE UPLOAD KILL')
 
@@ -48,6 +49,7 @@ class CompileLauncher(mesos.interface.Scheduler):
         self.numworkers = kwargs.get('numworkers', 1)
         self.readyworkers = 0
         self.blocksize = kwargs.get('blocksize', 4)
+        self.compile_level = kwargs.get('compile_level', 1)
         self.status   = JobStatus.INITIATED
         self.log      = []
 
@@ -61,14 +63,18 @@ class CompileLauncher(mesos.interface.Scheduler):
         self.master = None
         self.workers = []
         self.client  = None
+        self.idle = 0
+
+
 
     def registered(self, driver, frameworkId, masterInfo):
         logging.info("[COMPILER] Compiler is registered with Mesos. ID %s" % frameworkId.value)
 
     #  This Gets invoked when Mesos offers resources to my framework & we decide what to do with the recources (e.g. launch task, set mem/cpu, etc...)
     def resourceOffers(self, driver, offers):
-        logging.info("[COMPILER] Got %d resource offers. Current state = %s" % (len(offers), self.state))
-
+        # if time.time() > self.idle + 10:
+        logging.info("[COMPILER] HeartBeatting with Mesos. Current state: %s.  # Offers: %d", self.state, len(offers))
+          # self.idle = time.time()
 
         #TODO: Det where to compile K3... rightnow, use qp3
         for offer in offers:
@@ -121,7 +127,9 @@ class CompileLauncher(mesos.interface.Scheduler):
           if daemon == None:
             continue
 
-          config = dict(hostname=offer.hostname, port=port, webaddr=self.webaddr, name=self.job.name)
+          config = dict(hostname=offer.hostname, port=port, 
+            webaddr=self.webaddr, name=self.job.name, uid=self.job.uid,
+            compileto=  self.compile_level)
           daemon.update(config)
 
           task = compileTask(name=self.job.name,
@@ -150,7 +158,8 @@ class CompileLauncher(mesos.interface.Scheduler):
 
 
     def statusUpdate(self, driver, update):
-        logging.debug("[COMPILER UPDATE] %s" % update.data)
+        # state = mesos_pb2.TaskState.Name(update.state)
+        # logging.debug("[UPDATE - %s]: %s {%s}" % (update.message, state, update.data))
 
         #  TODO: CHANGE this to logging module
         self.log.append(update.data)
@@ -159,7 +168,8 @@ class CompileLauncher(mesos.interface.Scheduler):
         with open(os.path.join(self.job.path, 'output'), 'a') as out:
           out.write(update.data)
 
-        if update.state == mesos_pb2.TASK_RUNNING:
+        if update.state == mesos_pb2.TASK_STARTING:
+        # if update.state == mesos_pb2.TASK_RUNNING or update.state == mesos_pb2.TASK_STARTING:
           # logging.debug("NODE STARTED: %s  (current state = %s)" % (update.message, self.state))
           if self.state == State.MASTER_WAIT and update.message == 'master':
             logging.info("MASTER is READY. Launching Workers")
@@ -186,11 +196,13 @@ class CompileLauncher(mesos.interface.Scheduler):
 
 
         if update.state == mesos_pb2.TASK_RUNNING:
-          logging.debug("[UPDATE %s STDOUT] %s" % (update.task_id.value, update.data))
-          logging.debug("[UPDATE %s STDERR] %s" % (update.task_id.value, update.message))
-            # if self.status == JobStatus.SUBMITTED:
-            #   self.status = JobStatus.COMPILING
-            #   db.updateCompile(self.job.uid, status=self.status)
+          logging.debug(update.data)
+          pass
+          # logging.debug("[UPDATE %s STDOUT] %s" % (update.task_id.value, update.data))
+          # logging.debug("[UPDATE %s STDERR] %s" % (update.task_id.value, update.message))
+          if self.status == JobStatus.SUBMITTED:
+            self.status = JobStatus.COMPILING
+            db.updateCompile(self.job.uid, status=self.status)
 
             # elif self.status == JobStatus.COMPILING and \
             #       update.data.startswith('Created binary file:'):
