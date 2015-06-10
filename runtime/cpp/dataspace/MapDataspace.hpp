@@ -1121,6 +1121,129 @@ private:
 
 } // end Libdynamic
 
+} // end K3
+
+namespace boost {
+  namespace serialization {
+    template <class _T0>
+    class implementation_level<K3::Libdynamic::IntMap<_T0>> {
+      public:
+        typedef  mpl::integral_c_tag tag;
+        typedef  mpl::int_<object_serializable> type;
+        BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
+    };
+
+    template <class _T0>
+    class implementation_level<K3::Libdynamic::StrMap<_T0>> {
+      public:
+        typedef  mpl::integral_c_tag tag;
+        typedef  mpl::int_<object_serializable> type;
+        BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
+    };
+  }
+}
+
+template <class Elem>
+std::size_t hash_value(K3::Libdynamic::IntMap<Elem> const& b) {
+  return boost::hash_range(b.begin(), b.end());
+}
+
+template <class Elem>
+std::size_t hash_value(K3::Libdynamic::StrMap<Elem> const& b) {
+  return boost::hash_range(b.begin(), b.end());
+}
+
+namespace JSON {
+
+  using namespace rapidjson;
+  template <class E>
+  struct convert<K3::Libdynamic::IntMap<E>> {
+    template <class Allocator>
+    static Value encode(const K3::Libdynamic::IntMap<E>& c, Allocator& al) {
+     Value v;
+     v.SetObject();
+     v.AddMember("type", Value("IntMap"), al);
+     Value inner;
+     inner.SetArray();
+     for (const auto& e : c) { inner.PushBack(convert<E>::encode(e, al), al); }
+     v.AddMember("value", inner.Move(), al);
+     return v;
+    }
+  };
+
+  template <class E>
+  struct convert<K3::Libdynamic::StrMap<E>> {
+    template <class Allocator>
+    static Value encode(const K3::Libdynamic::StrMap<E>& c, Allocator& al) {
+     Value v;
+     v.SetObject();
+     v.AddMember("type", Value("StrMap"), al);
+     Value inner;
+     inner.SetArray();
+     for (const auto& e : c) { inner.PushBack(convert<E>::encode(e, al), al); }
+     v.AddMember("value", inner.Move(), al);
+     return v;
+    }
+  };
+
+}
+
+namespace YAML {
+  template <class R>
+  struct convert<K3::Libdynamic::IntMap<R>> {
+    static Node encode(const K3::Libdynamic::IntMap<R>& c) {
+      Node node;
+      if (c.size(unit_t {}) > 0) {
+        for (auto& i: c) { node.push_back(convert<R>::encode(i)); }
+      }
+      else { node = YAML::Load("[]"); }
+      return node;
+    }
+
+    static bool decode(const Node& node, K3::Libdynamic::IntMap<R>& c) {
+      for (auto& i: node) { c.insert(i.as<R>()); }
+      return true;
+    }
+  };
+
+  template <class R>
+  struct convert<K3::Libdynamic::StrMap<R>> {
+    static Node encode(const K3::Libdynamic::StrMap<R>& c) {
+      Node node;
+      if (c.size(unit_t {}) > 0) {
+        for (auto& i: c) { node.push_back(convert<R>::encode(i)); }
+      }
+      else { node = YAML::Load("[]"); }
+      return node;
+    }
+
+    static bool decode(const Node& node, K3::Libdynamic::StrMap<R>& c) {
+      for (auto& i: node) { c.insert(i.as<R>()); }
+      return true;
+    }
+  };
+}
+
+#endif
+
+// Map selection.
+#if USE_CUSTOM_HASHMAPS && HAS_LIBDYNAMIC
+
+namespace K3 {
+  template<class R> using IntMap = Libdynamic::IntMap<R>;
+  template<class R> using StrMap = Libdynamic::StrMap<R>;
+}
+
+#else
+
+namespace K3 {
+  template<class R> using IntMap = Map<R>;
+  template<class R> using StrMap = Map<R>;
+}
+
+#endif
+
+namespace K3 {
 
 template<class R>
 class VMap {
@@ -1131,7 +1254,10 @@ class VMap {
   using Key = typename R::KeyType;
 
   // The VMap stores versions in decreasing order.
-  typedef unordered_map<Key, map<Version, R, std::greater<Version>>> Container;
+  // The VMap stores versions in decreasing order.
+  template<typename Elem> using VContainer = map<Version, Elem, std::greater<Version>>;
+  using Container = unordered_map<Key, VContainer<R>>;
+
   typedef typename Container::const_iterator const_iterator_type;
   typedef typename Container::iterator iterator_type;
 
@@ -1521,9 +1647,8 @@ class VMap {
   template<typename F1, typename F2, typename Z>
   VMap<R_key_value<RT<F1, R>, Z>> groupBy(const Version& v, F1 grouper, F2 folder, const Z& init) const {
     // Create a map to hold partial results
-    typedef RT<F1, R> K;
-    typedef std::map<Version, Z, std::greater<Version>> VAccMap;
-    unordered_map<K, VAccMap> accs;
+    using K = RT<F1, R>;
+    unordered_map<K, VContainer<Z>> accs;
 
     for (const auto& it : container) {
       auto vit = it->second.lower_bound(v);
@@ -1600,26 +1725,10 @@ class VMap {
 
 }; // class VMap
 
-} // end K3
+} // Namespace K3
 
 namespace boost {
   namespace serialization {
-    template <class _T0>
-    class implementation_level<K3::Libdynamic::IntMap<_T0>> {
-      public:
-        typedef  mpl::integral_c_tag tag;
-        typedef  mpl::int_<object_serializable> type;
-        BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
-    };
-
-    template <class _T0>
-    class implementation_level<K3::Libdynamic::StrMap<_T0>> {
-      public:
-        typedef  mpl::integral_c_tag tag;
-        typedef  mpl::int_<object_serializable> type;
-        BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
-    };
-
     template <class _T0>
     class implementation_level<K3::VMap<_T0>> {
       public:
@@ -1631,16 +1740,6 @@ namespace boost {
 }
 
 template <class Elem>
-std::size_t hash_value(K3::Libdynamic::IntMap<Elem> const& b) {
-  return boost::hash_range(b.begin(), b.end());
-}
-
-template <class Elem>
-std::size_t hash_value(K3::Libdynamic::StrMap<Elem> const& b) {
-  return boost::hash_range(b.begin(), b.end());
-}
-
-template <class Elem>
 std::size_t hash_value(K3::VMap<Elem> const& b) {
   const auto& c = b.getConstContainer();
   return boost::hash_range(c.begin(), c.end());
@@ -1649,36 +1748,6 @@ std::size_t hash_value(K3::VMap<Elem> const& b) {
 namespace JSON {
 
   using namespace rapidjson;
-  template <class E>
-  struct convert<K3::Libdynamic::IntMap<E>> {
-    template <class Allocator>
-    static Value encode(const K3::Libdynamic::IntMap<E>& c, Allocator& al) {
-     Value v;
-     v.SetObject();
-     v.AddMember("type", Value("IntMap"), al);
-     Value inner;
-     inner.SetArray();
-     for (const auto& e : c) { inner.PushBack(convert<E>::encode(e, al), al); }
-     v.AddMember("value", inner.Move(), al);
-     return v;
-    }
-  };
-
-  template <class E>
-  struct convert<K3::Libdynamic::StrMap<E>> {
-    template <class Allocator>
-    static Value encode(const K3::Libdynamic::StrMap<E>& c, Allocator& al) {
-     Value v;
-     v.SetObject();
-     v.AddMember("type", Value("StrMap"), al);
-     Value inner;
-     inner.SetArray();
-     for (const auto& e : c) { inner.PushBack(convert<E>::encode(e, al), al); }
-     v.AddMember("value", inner.Move(), al);
-     return v;
-    }
-  };
-
   template <class E>
   struct convert<K3::VMap<E>> {
     template <class Allocator>
@@ -1700,42 +1769,7 @@ namespace JSON {
   };
 }
 
-
 namespace YAML {
-  template <class R>
-  struct convert<K3::Libdynamic::IntMap<R>> {
-    static Node encode(const K3::Libdynamic::IntMap<R>& c) {
-      Node node;
-      if (c.size(unit_t {}) > 0) {
-        for (auto& i: c) { node.push_back(convert<R>::encode(i)); }
-      }
-      else { node = YAML::Load("[]"); }
-      return node;
-    }
-
-    static bool decode(const Node& node, K3::Libdynamic::IntMap<R>& c) {
-      for (auto& i: node) { c.insert(i.as<R>()); }
-      return true;
-    }
-  };
-
-  template <class R>
-  struct convert<K3::Libdynamic::StrMap<R>> {
-    static Node encode(const K3::Libdynamic::StrMap<R>& c) {
-      Node node;
-      if (c.size(unit_t {}) > 0) {
-        for (auto& i: c) { node.push_back(convert<R>::encode(i)); }
-      }
-      else { node = YAML::Load("[]"); }
-      return node;
-    }
-
-    static bool decode(const Node& node, K3::Libdynamic::StrMap<R>& c) {
-      for (auto& i: node) { c.insert(i.as<R>()); }
-      return true;
-    }
-  };
-
   template <class R>
   struct convert<K3::VMap<R>> {
     static Node encode(const K3::VMap<R>& c) {
@@ -1766,26 +1800,5 @@ namespace YAML {
       return true;
     }
   };
-
 }
-
-#endif
-
-// Map selection.
-#if USE_CUSTOM_HASHMAPS && HAS_LIBDYNAMIC
-
-namespace K3 {
-  template<class R> using IntMap = Libdynamic::IntMap<R>;
-  template<class R> using StrMap = Libdynamic::StrMap<R>;
-}
-
-#else
-
-namespace K3 {
-  template<class R> using IntMap = Map<R>;
-  template<class R> using StrMap = Map<R>;
-}
-
-#endif
-
 #endif
