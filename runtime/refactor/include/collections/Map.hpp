@@ -6,6 +6,8 @@
 
 #include "STLDataspace.hpp"
 #include "Hash.hpp"
+#include "serialization/Json.hpp"
+#include "serialization/Yaml.hpp"
 
 namespace K3 {
 
@@ -325,5 +327,25 @@ struct convert<K3::Map<R>> {
 };
 
 }  // namespace YAML
+
+namespace JSON {
+using namespace rapidjson;
+template <class E>
+struct convert<K3::Map<E>> {
+  template <class Allocator>
+  static Value encode(const K3::Map<E>& c, Allocator& al) {
+    Value v;
+    v.SetObject();
+    v.AddMember("type", Value("Map"), al);
+    Value inner;
+    inner.SetArray();
+    for (const auto& e : c.getConstContainer()) {
+      inner.PushBack(convert<E>::encode(e.second, al), al);
+    }
+    v.AddMember("value", inner.Move(), al);
+    return v;
+  }
+};
+}  // namespace JSON
 
 #endif

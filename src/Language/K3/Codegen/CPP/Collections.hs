@@ -165,7 +165,7 @@ composite name ans = do
                              ]
                              [] []
                          ]
-    return [collectionClassDefn, compactSerializationDefn, yamlStructDefn]
+    return [collectionClassDefn, compactSerializationDefn, yamlStructDefn, jsonStructDefn]
 
 record :: [Identifier] -> CPPGenM [R.Definition]
 record (sort -> ids) = do
@@ -422,7 +422,7 @@ record (sort -> ids) = do
                             ] [] []
                             ]
     return [ recordStructDefn, compactSerializationDefn {-, noTrackingDefn, bitwiseSerializableDefn-}
-           , yamlStructDefn, hashStructDefn, isFlatDefn]
+           , yamlStructDefn, hashStructDefn, isFlatDefn, jsonStructDefn]
 
 reservedAnnotations :: [Identifier]
 reservedAnnotations = ["Collection", "External", "Seq", "Set", "Sorted", "Map", "IntMap", "StrMap", "Vector", "MultiIndex"]

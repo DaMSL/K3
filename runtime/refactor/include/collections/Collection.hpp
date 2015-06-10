@@ -1,9 +1,12 @@
 #ifndef K3_COLLECTION
 #define K3_COLLECTION
 
-#include "STLDataspace.hpp"
 #include "boost/serialization/vector.hpp"
 #include "boost/serialization/base_object.hpp"
+
+#include "STLDataspace.hpp"
+#include "serialization/Json.hpp"
+#include "serialization/Yaml.hpp"
 
 namespace K3 {
 template <template <class> class Derived, class Elem>
@@ -73,4 +76,25 @@ struct convert<K3::Collection<E>> {
   }
 };
 }  // namespace YAML
+
+namespace JSON {
+using namespace rapidjson;
+template <class E>
+struct convert<K3::Collection<E>> {
+  template <class Allocator>
+  static Value encode(const K3::Collection<E>& c, Allocator& al) {
+    Value v;
+    v.SetObject();
+    v.AddMember("type", Value("Collection"), al);
+    Value inner;
+    inner.SetArray();
+    for (const auto& e : c.getConstContainer()) {
+      inner.PushBack(convert<E>::encode(e, al), al);
+    }
+    v.AddMember("value", inner.Move(), al);
+    return v;
+  }
+};
+}  // namespace JSON
+
 #endif

@@ -11,7 +11,8 @@ int Options::parse(int argc, const char *const argv[]) {
   desc.add_options()
     ("help,h", "produce help message")
     ("peer,p", po::value<vector<string> >(), "variables to set in peer (required)")
-    ("log_level,l", po::value<int>(), "Engine log level");
+    ("log_level,l", po::value<int>(), "Engine log level: (1,2,3)")
+    ("json,j", po::value<string>(), "Directory for json log files");
 
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -34,6 +35,13 @@ int Options::parse(int argc, const char *const argv[]) {
   } else {
     log_level_ = 10;
   }
+  
+  if (vm.count("json")) {
+    json_folder_ = vm["json"].as<string>();
+  } else {
+    json_folder_ = "";
+  }
+
 
   return 0;
 }

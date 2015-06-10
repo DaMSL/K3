@@ -22,6 +22,10 @@ map<string, string> ProgramContext::__prettify() {
   return map<string, string>();
 }
 
+map<string, string> ProgramContext::__jsonify() {
+  return map<string, string>();
+}
+
 string ProgramContext::__triggerName(int trig) {
   auto it = ProgramContext::__trigger_names_.find(trig);
   std::string s = (it != ProgramContext::__trigger_names_.end())

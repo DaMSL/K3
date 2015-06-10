@@ -67,7 +67,7 @@ void Engine::send(const MessageHeader& header, shared_ptr<NativeValue> value,
 
   logger_->info() << "Message: " << header.source().toString() << " --> "
                   << header.destination().toString() << " @"
-                  << header.trigger();
+                  << ProgramContext::__triggerName(header.trigger());
 
   auto it = peers_->find(header.destination());
   if (local_sends_enabled_ && it != peers_->end()) {
@@ -141,9 +141,10 @@ Address Engine::meFromYAML(const YAML::Node& peer_config) {
 }
 
 shared_ptr<map<Address, shared_ptr<Peer>>> Engine::createPeers(
-    const vector<string>& peer_configs, shared_ptr<ContextFactory> factory) {
+    const Options& opts, shared_ptr<ContextFactory> factory) {
   auto result = make_shared<map<Address, shared_ptr<Peer>>>();
-
+  
+  auto peer_configs = opts.peer_strs_;
   vector<YAML::Node> nodes;
 
   for (auto config : peer_configs) {
@@ -162,7 +163,7 @@ shared_ptr<map<Address, shared_ptr<Peer>>> Engine::createPeers(
   for (auto node : nodes) {
     Address addr = meFromYAML(node);
     auto ready_callback = [this]() { ready_peers_++; };
-    auto p = make_shared<Peer>(addr, factory, node, ready_callback);
+    auto p = make_shared<Peer>(addr, factory, node, ready_callback, opts.json_folder_);
     if (result->find(addr) != result->end()) {
       throw std::runtime_error(
           "Engine createPeers(): Duplicate peer address: " + addr.toString());

@@ -5,6 +5,8 @@
 #include <unordered_set>
 
 #include "STLDataspace.hpp"
+#include "serialization/Yaml.hpp"
+#include "serialization/Json.hpp"
 
 namespace K3 {
 
@@ -129,4 +131,24 @@ struct convert<K3::Set<E>> {
 };
 }  // namespace YAML
 
+namespace JSON {
+using namespace rapidjson;
+template <class E>
+struct convert<K3::Set<E>> {
+  template <class Allocator>
+  static Value encode(const K3::Set<E>& c, Allocator& al) {
+    Value v;
+    v.SetObject();
+    v.AddMember("type", Value("Set"), al);
+    Value inner;
+    inner.SetArray();
+    for (const auto& e : c.getConstContainer()) {
+      inner.PushBack(convert<E>::encode(e, al), al);
+    }
+    v.AddMember("value", inner.Move(), al);
+    return v;
+  }
+};
+
+}  // namespace JSON
 #endif

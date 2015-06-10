@@ -43,19 +43,22 @@ class EngineTest : public ::testing::Test {
   EngineTest() {
     std::string config1 = "{me: [127.0.0.1, 30000]}";
     std::string config2 = "{me: [127.0.0.1, 40000]}";
-    peer_configs_.push_back(config1);
-    peer_configs_.push_back(config2);
+    vector<std::string> configs;
+    configs.push_back(config1);
+    configs.push_back(config2);
 
     addr1_ = make_address("127.0.0.1", 30000);
     addr2_ = make_address("127.0.0.1", 40000);
     external_addr_ = make_address("127.0.0.1", 50000);
+
+    peer_configs_ = K3::Options(configs, 0, "");
   }
 
   ~EngineTest() {}
 
   Engine engine_;
 
-  vector<std::string> peer_configs_;
+  K3::Options peer_configs_;
   Address addr1_;
   Address addr2_;
   Address external_addr_;

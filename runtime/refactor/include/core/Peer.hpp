@@ -26,7 +26,8 @@ using std::shared_ptr;
 class Peer {
  public:
   Peer(const Address& addr, shared_ptr<ContextFactory> fac,
-       const YAML::Node& peer_config, std::function<void()> ready_callback);
+       const YAML::Node& peer_config, std::function<void()> ready_callback,
+       const string& json_path);
   void start();
   void processRole();
   void join();
@@ -48,6 +49,9 @@ class Peer {
 
   std::atomic<bool> start_processing_;
   std::atomic<bool> finished_;
+
+  shared_ptr<std::ofstream> json_globals_log_;
+  shared_ptr<std::ofstream> json_messages_log_;
 };
 
 }  // namespace K3

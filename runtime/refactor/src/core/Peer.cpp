@@ -11,14 +11,20 @@
 namespace K3 {
 
 Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
-           const YAML::Node& peer_config,
-           std::function<void()> ready_callback) {
+           const YAML::Node& peer_config, std::function<void()> ready_callback,
+           const string& json_path) {
   address_ = addr;
   start_processing_ = false;
   finished_ = false;
   logger_ = spdlog::get(addr.toString());
+ 
   if (!logger_) {
     logger_ = spdlog::stdout_logger_mt(addr.toString());
+  }
+
+  if (json_path != "") {
+    json_globals_log_ = make_shared<std::ofstream>(json_path + "/" + address_.toString() + "_Globals.dsv"); 
+    json_messages_log_ = make_shared<std::ofstream>(json_path + "/" + address_.toString() + "_Messages.dsv"); 
   }
 
   // Peer's event processing loop
@@ -106,6 +112,12 @@ void Peer::logGlobals(const Message& m) {
       oss << std::setw(20) << it.first << ": " << it.second;
     }
     logger_->trace() << oss.str();
+  }
+
+  if (json_globals_log_) {
+    for (const auto& it : context_->__jsonify()) {
+      *json_globals_log_ << it.first << "|" << it.second << std::endl;
+    }
   }
 }
 

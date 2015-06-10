@@ -17,6 +17,8 @@ extern "C" {
 #include "csvpp/csv.h"
 
 #include "Common.hpp"
+#include "serialization/Json.hpp"
+#include "serialization/Yaml.hpp"
 
 namespace K3 {
 namespace Libdynamic {
@@ -578,6 +580,27 @@ struct convert<K3::Libdynamic::IntMap<R>> {
   }
 };
 }  // namespace YAML
+
+namespace JSON {
+
+using namespace rapidjson;
+template <class E>
+struct convert<K3::Libdynamic::IntMap<E>> {
+  template <class Allocator>
+  static Value encode(const K3::Libdynamic::IntMap<E>& c, Allocator& al) {
+    Value v;
+    v.SetObject();
+    v.AddMember("type", Value("IntMap"), al);
+    Value inner;
+    inner.SetArray();
+    for (const auto& e : c) {
+      inner.PushBack(convert<E>::encode(e, al), al);
+    }
+    v.AddMember("value", inner.Move(), al);
+    return v;
+  }
+};
+}
 
 #endif
 

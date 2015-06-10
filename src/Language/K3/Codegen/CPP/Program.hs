@@ -75,7 +75,7 @@ program (tag &&& children -> (DRole name, decls)) = do
     inits <- initializations <$> get
 
     prettify <- genPrettify
-    --jsonify <- genJsonify
+    jsonify <- genJsonify
 
     patchables' <- patchables <$> get
 
@@ -123,10 +123,8 @@ program (tag &&& children -> (DRole name, decls)) = do
     let patchFnDecl = R.GlobalDefn $ R.Forward $ R.FunctionDecl (R.Name "__patch")
                       [R.Const $ R.Reference $ R.Named $ R.Qualified (R.Name "YAML") (R.Name "Node")] R.Void
 
-    --let contextDefns = [contextConstructor] ++ programDefns  ++ [initDeclDefn] ++
-    --                   [patchFnDecl, prettify, jsonify, dispatchDecl]
     let contextDefns = [contextConstructor] ++ programDefns  ++ [initDeclDefn] ++
-                       [patchFnDecl, prettify, dispatchDecl True, dispatchDecl False]
+                       [patchFnDecl, prettify, jsonify, dispatchDecl True, dispatchDecl False]
 
     let contextClassDefn = R.ClassDefn contextName []
                              [ R.Named $ R.Qualified (R.Name "K3") $ R.Name "ProgramContext"
@@ -212,13 +210,10 @@ main = do
     staticContextMembersPop <- generateStaticContextMembers
 
     let engineDecl = R.Forward $ R.ScalarDecl (R.Name "engine") (R.Named $ R.Name "Engine") Nothing
-    let logLevel = R.Ignore $ R.Call
-                     (R.Project (R.Variable $ R.Name "engine") (R.Name "setLogLevel")) 
-                     [ R.Project (R.Variable $ R.Name "opt") (R.Name "log_level_") ]
 
     let runProgram = R.Ignore $ R.Call
                        (R.Project (R.Variable $ R.Name "engine") (R.Specialized [R.Named $ R.Name "__global_context"] (R.Name "run"))) 
-                       [ R.Project (R.Variable $ R.Name "opt") (R.Name "peer_strs_") ]
+                       [ R.Variable $ R.Name "opt" ]
     let joinProgram = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "join")) []
 
     return [
@@ -229,7 +224,6 @@ main = do
              [ optionDecl
              , optionCall
              , engineDecl
-             , logLevel
              , runProgram
              , joinProgram
              ]
@@ -342,7 +336,6 @@ genJsonify :: CPPGenM R.Definition
 genJsonify = do
    currentS <- get
    body    <- genBody $ showables currentS
-   --let body = [R.Return $ R.Initialization result_type []]
    return $ R.FunctionDefn (R.Name "__jsonify") [] (Just result_type) [] False body
   where
    genBody  :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]

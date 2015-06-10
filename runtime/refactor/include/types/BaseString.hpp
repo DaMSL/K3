@@ -10,8 +10,9 @@
 #include <boost/functional/hash.hpp>
 
 #include <yaml-cpp/yaml.h>
-//#include <rapidjson/document.h>
+#include <rapidjson/document.h>
 #include <csvpp/csv.h>
+#include "serialization/Json.hpp"
 
 namespace K3 {
 
@@ -136,28 +137,26 @@ void base_string::serialize(csv::parser& a, const unsigned int);
 template <>
 void base_string::serialize(csv::writer& a, const unsigned int);
 
-// namespace JSON {
-// template <> struct convert<base_string> {
-//  template <class Allocator>
-//  static rapidjson::Value encode(const base_string& from, Allocator& al) {
-//    Value v;
-//    if (from.c_str()) {
-//      v.SetString(from.c_str(), al);
-//    } else {
-//      v.SetString("", al);
-//    }
-//    return v;
-//  }
-//
-//};
-//}
-//
-
 // Turn off class information tracking in boost serialization for base_strings.
-// BOOST_CLASS_IMPLEMENTATION(base_string,
-// boost::serialization::object_serializable);
+//BOOST_CLASS_IMPLEMENTATION(base_string, boost::serialization::object_serializable);
 
 }  // namespace K3
+
+namespace JSON {
+template <>
+struct convert<K3::base_string> {
+  template <class Allocator>
+  static rapidjson::Value encode(const K3::base_string& from, Allocator& al) {
+    Value v;
+    if (from.c_str()) {
+      v.SetString(from.c_str(), al);
+    } else {
+      v.SetString("", al);
+    }
+    return v;
+  }
+};
+}
 
 K3::base_string operator+(K3::base_string s, K3::base_string const& t);
 K3::base_string operator+(K3::base_string s, char const* t);

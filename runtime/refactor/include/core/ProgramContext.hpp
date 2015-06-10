@@ -14,6 +14,7 @@
 #include "Common.hpp"
 #include "types/Message.hpp"
 #include "serialization/Yaml.hpp"
+#include "serialization/Json.hpp"
 
 namespace K3 {
 
@@ -33,6 +34,7 @@ class ProgramContext : public StandardBuiltins,
   void __dispatch(SentinelValue* sv);
   virtual void __patch(const YAML::Node& node) = 0;
   virtual map<string, string> __prettify();
+  virtual map<string, string> __jsonify();
   virtual unit_t initDecls(unit_t);
   virtual unit_t processRole(const unit_t&) = 0;
   static string __triggerName(int trig);

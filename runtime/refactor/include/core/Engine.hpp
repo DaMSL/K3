@@ -8,6 +8,7 @@
 #include <string>
 
 #include "Common.hpp"
+#include "Options.hpp"
 #include "network/NetworkManager.hpp"
 #include "storage/StorageManager.hpp"
 #include "Peer.hpp"
@@ -21,7 +22,7 @@ class Engine {
   Engine();
   ~Engine();
   template <class Context>
-  void run(const vector<string>& peer_configs);
+  void run(const Options& opts);
   void stop();
   void join();
   void send(const MessageHeader& m, shared_ptr<NativeValue> v,
@@ -41,7 +42,7 @@ class Engine {
   // Helpers
   Address meFromYAML(const YAML::Node& peer_config);
   shared_ptr<map<Address, shared_ptr<Peer>>> createPeers(
-      const vector<string>& peer_configs,
+      const Options& opts,
       shared_ptr<ContextFactory> context_factory);
 
   // Components
@@ -60,17 +61,20 @@ class Engine {
 };
 
 template <class Context>
-void Engine::run(const vector<string>& peer_configs) {
+void Engine::run(const Options& opts) {
   if (running_) {
     throw std::runtime_error("Engine run(): already running");
   }
+
+  setLogLevel(opts.log_level_);
+  auto peer_configs = opts.peer_strs_;
   running_ = true;
   logger_->info("The Engine has started.");
 
   // Peers start their own thread, create a context and check in
   auto context_factory = make_shared<ContextFactory>(
       [this]() { return make_shared<Context>(*this); });
-  peers_ = createPeers(peer_configs, context_factory);
+  peers_ = createPeers(opts, context_factory);
 
   total_peers_ = peers_->size();
   while (total_peers_ > ready_peers_) continue;

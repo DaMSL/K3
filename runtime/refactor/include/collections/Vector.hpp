@@ -10,6 +10,8 @@
 
 #include "Common.hpp"
 #include "STLDataspace.hpp"
+#include "serialization/Json.hpp"
+#include "serialization/Yaml.hpp"
 
 namespace K3 {
 
@@ -198,5 +200,26 @@ struct convert<K3::Vector<E>> {
 };
 
 }  // namespace YAML
+
+namespace JSON {
+using namespace rapidjson;
+template <class E>
+struct convert<K3::Vector<E>> {
+  template <class Allocator>
+  static Value encode(const K3::Vector<E>& c, Allocator& al) {
+    Value v;
+    v.SetObject();
+    v.AddMember("type", Value("Vector"), al);
+    Value inner;
+    inner.SetArray();
+    for (const auto& e : c.getConstContainer()) {
+      inner.PushBack(convert<E>::encode(e, al), al);
+    }
+    v.AddMember("value", inner.Move(), al);
+    return v;
+  }
+};
+
+}  // namespace JSON
 
 #endif
