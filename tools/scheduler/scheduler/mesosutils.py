@@ -16,8 +16,8 @@ import mesos.native
 DEBUG_EXECUTOR = True
 
 # K3_DOCKER_NAME = "damsl/k3-run:exec"
-K3_COMPILER_IMAGE = "damsl/k3-compile:chain"
-K3_DOCKER_NAME = "damsl/k3-run:min"
+K3_COMPILER_IMAGE = "damsl/k3-compiler"
+K3_DOCKER_NAME = "damsl/k3-app"
 #K3_COMPILER_IMAGE = "damsl/k3-run:compile"
 
 

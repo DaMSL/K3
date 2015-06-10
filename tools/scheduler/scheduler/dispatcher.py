@@ -253,7 +253,7 @@ class Dispatcher(mesos.interface.Scheduler):
     logging.warning("[DISPATCHER] Asked to cancel job %d. Killing all tasks" % jobId)
     job = self.active[jobId]
     job.status = "FAILED"
-    db.updateJob(jobId, status=job.status)
+    db.updateJob(jobId, status=job.status, done=True)
     for t in job.tasks:
       t.status = "TASK_FAILED"
       fullid = self.fullId(jobId, t.taskid)
@@ -352,9 +352,9 @@ class Dispatcher(mesos.interface.Scheduler):
         if job['jobId'] in self.pending or job['jobId'] in self.active or JobStatus.done(job['status']):
           continue
         else:
-          logging.info("[DISPATCHER] [GARBAGE COLLECTION] %(jobId)s Job is listed as %(status)s, \
-            but is neither pendning nor active. Killing it now." % job)
-          db.updateJob(status=JobStatus.KILLED, done=True)
+          logging.info("[GARBAGE COLLECTION] Job `%(jobId)s` is listed as %(status)s, \
+but is neither pending nor active. Killing it now." % job)
+          db.updateJob(job['jobId'], status=JobStatus.KILLED, done=True)
       self.gc = ts + gc_delay
 
 

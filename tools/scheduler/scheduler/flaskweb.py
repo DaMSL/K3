@@ -1152,6 +1152,6 @@ if __name__ == '__main__':
     driver.stop()
     driver_t.join()
     for k, v in compile_tasks.items():
-      v.stop()
+      v.kill()
 
 

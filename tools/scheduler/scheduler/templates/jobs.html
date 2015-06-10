@@ -3,66 +3,7 @@
 {% block content %}
   <div class="container">
     <div class="starter-template">
-<!--         {% if appName %}
-          <h2>Application: <span class="text-info"><a href="/jobs/{{appName}}">{{appName}}</a></span>
-          {% if jobId %}
-           - Job: <span class="text-info">{{jobId}}</span>
-          {% endif %}
-          </h2>
-        {% endif %}
-        {% if lastcompile %}
-            <h3>Compling {{ lastcompile.name }} with UID: # {{ lastcompile.uid }} <br>
-                Status: {{ lastcompile.status }} at {{ lastcompile.time }}</h3>
-            <h4>View Compile Output: <a href="{{ lastcompile.outputurl }}" target="_blank">STDOUT</a></h4>
-            <h4>Download CPP Source Output: <a href="{{ lastcompile.cppsrc }}">CPP Source</a></h4>
-            <h4>Check progress: <a href="{{ lastcompile.url }}" target="_blank">Mesos</a></h4>
-        {% endif %}
-        {% if lastjob %}
-        <div class="row">
-            <div class="col-md-12">
-                <h3>Job # {{ lastjob.jobId }} {{ lastjob.status }} at {{ lastjob.time }}</h3>
-                <h4>Check tasks on <a href="{{ lastjob.url }}" target="_blank">Mesos</a></h4>
-            </div>
-        </div>
-        <div class="row">
-          <div class="col-md-7">
-            <br>
-            <h4 class="text-center">Job Environment</h4>
-            <ul class="list-group">
-              {% if lastjob.hash %}
-                <li class="list-group-item">App Version UID: <span class="text-info">{{ lastjob.hash }}</span></li>{% endif %}
-              {% if lastjob.user %}
-                <li class="list-group-item">Username <span class="text-info">{{ lastjob.user }}</span></li>{% endif %}
-              {% if lastjob.url %}
-                <li class="list-group-item">Link to Mesos: <span class="text-info"><a href="{{ lastjob.url }}" target="_blank">{{ lastjob.url }}</a></span></li>{% endif %}
-              {% if lastjob.tag %}
-                <li class="list-group-item">Tag Notes: <span class="text-info">{{ lastjob.tag }}</span></li>{% endif %}
-              {% if lastjob.time %}
-                <li class="list-group-item">Time Submitted <span class="text-info">{{ lastjob.time }}</span></li>{% endif %}
-              {% if lastjob.complete %}
-                <li class="list-group-item">Time Completed <span class="text-info">{{ lastjob.complete }}</span></li>{% endif %}
-              {% if lastjob.master %}
-                <li class="list-group-item">Master at <span class="text-info">{{ lastjob.master }}</span>
-                (<a href="/fs/jobs/{{appName}}/{{lastjob.jobId}}/stdout_{{lastjob.master}}">Master OUTPUT </a>)</li>{% endif %}
-              {% if lastjob.roles %}
-                <li class="list-group-item">Roles<br><pre>{{ lastjob.roles }}</pre></li> {% endif %}
-            </ul>
-          </div>
-          <div class="col-md-5">
-              {% if lastjob.sandbox %}
-                <h4 class="text-center">Sandbox Files</h4>
-                <ul style="list-style-type:disc">
-                {% for entry in lastjob.sandbox %}
-                    <li><a href="/fs/jobs/{{appName}}/{{lastjob.jobId}}/{{entry}}">{{entry}}</a></li>
-                    {% endfor %}
-                </ul>
-                {% endif %}
-          </div>
-        </div>
-            <br><br><h4><a href="/jobs">return to jobs</a></h4>
-        {% else %}
- -->
-          <h3>Active Compiling Jobss</h3>
+          <h3>Active Compiling Jobs</h3>
           <table class="table table-striped">
             <tr> <th>Build</th><th>Output</th><th>Time Submit</th><th>Time Complete</th><th>Status</th><th>Kill</th><th></th></tr>
           {% for job in compilelist %}
@@ -135,7 +76,6 @@
                Delete Selected Inactive Compiling Jobs</button></div>
           </form>
 
-        <!-- {% endif %} -->
     </div>
   </div>
 {% endblock %}

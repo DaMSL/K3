@@ -115,20 +115,33 @@ class CompilerExecutor(mesos.interface.Executor):
 
       destfile = ''
 
+      curlPrefix ='curl -i -X POST -H "Accept: application/json"'
+      builddir = '/k3/K3/__build/'
+
       #  TODO: Need a way to check success/failure
       if daemon['role'] == 'client':
-        endpoint = daemon['webaddr'] + '/apps/' + daemon['name'] + '/' + daemon['uid']
         logging.debug("Client is copying all files in build dir")
-        curlcmd = 'curl -i -X POST -H "Accept: application/json" -F "file=@/k3/K3/__build/%s" ' + endpoint
+        self.status.data = "CLIENT ----> Uploading Application, %s" % daemon['name']
+        driver.sendStatusUpdate(self.status)
+        archive_target = daemon['webaddr'] + '/apps/' + daemon['name'] + '/' + daemon['uid']
+        curlcmd = curlPrefix + ' -F "file=@' + builddir + '%s" ' + archive_target
 
-        logging.debug("  CLIENT __build: ")
-        for f in os.listdir('/k3/K3/__build/'):
-          #  Upload binary to flask server & copy fo sandbox
-          # shutil.copyfile('/k3/K3/__build/' + f, '$MESOS_SANDBOX/' + f)
+        if daemon['compilestage'] == '' and os.path.exists(builddir + 'A'):
+          shutil.move (builddir + 'A', builddir + daemon['name'])
+          submit = curlPrefix + ' -F "file=@%s%s" %s/apps' % (builddir, daemon['name'], daemon['webaddr'])
+          logging.debug("SUBMIT New Application: " + submit)
+          subprocess.call(submit, shell=True)
+
+
+        logging.debug("CLIENT __build: ")
+        self.status.data = "CLIENT ----> Sending build dir to server"
+        driver.sendStatusUpdate(self.status)
+        for f in os.listdir(builddir):
+          #  Upload binary to flask server & copy to sandbox
           logging.debug('  Shipping FILE: ' + f)
           curl = curlcmd % f
-          logging.debug('  CURL:  ' + curl)
           subprocess.call(curl, shell=True)
+
 
         haltcmd = './tools/scripts/run/service.sh halt --svid %(svid)s --host %(host)s --port %(port)s' % daemon
         subprocess.call(haltcmd, shell=True)
