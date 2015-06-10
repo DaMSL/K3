@@ -63,6 +63,3 @@ set (tests test/Engine.cpp
 
 add_executable(Tests ${tests} test/Main.cpp)
 target_link_libraries(Tests ${test_link_libs})
-
-add_executable(q1 src/q1.cpp)
-target_link_libraries(q1 ${link_libs})

@@ -11,7 +11,7 @@ void read_records(C1& paths, C& container, F read_record) {
   for (auto rec : paths) {
     std::ifstream in;
     in.open(rec.path);
-    if (in.fail()){
+    if (in.fail()) {
       throw std::runtime_error("Failed to open file: " + std::string(rec.path));
     }
     std::string tmp_buffer;
