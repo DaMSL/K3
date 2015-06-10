@@ -108,5 +108,7 @@ trigger start : () = \_ -> (() @:Start) @AmplabBenchmark(
   preShutdownExpr    = [$ ()]
 )
 
+sink query_time_sink : string = file "time.csv" text csv
+
 source rows : () = value ()
 feed rows |> start

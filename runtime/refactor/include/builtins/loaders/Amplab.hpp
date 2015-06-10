@@ -16,6 +16,7 @@ class AmplabLoaders {
   template <class C1, template <class> class C, template <typename...> class R>
   unit_t loadQ1(const C1& paths, C<R<int, string_impl>>& c) {
     K3::read_records(paths, c, [](std::istream& in, std::string& tmp_buffer) {
+      std::cout << "reading one!" << std::endl;
       R<int, string_impl> record;
       // Get pageURL
       std::getline(in, tmp_buffer, ',');
