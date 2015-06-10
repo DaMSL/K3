@@ -56,16 +56,16 @@ struct Address {
     return (ip != other.ip) || (port != other.port);
   }
   bool operator<=(const Address& other) const {
-    return (ip <= other.ip ? true : port <= other.port);
+    return std::tie(ip, port) <= std::tie(other.ip, other.port);
   }
   bool operator<(const Address& other) const {
-    return (ip < other.ip ? true : port < other.port);
+    return std::tie(ip, port) < std::tie(other.ip, other.port);
   }
   bool operator>=(const Address& other) const {
-    return (ip >= other.ip ? true : port >= other.port);
+    return std::tie(ip, port) >= std::tie(other.ip, other.port);
   }
   bool operator>(const Address& other) const {
-    return (ip > other.ip ? true : port > other.port);
+    return std::tie(ip, port) > std::tie(other.ip, other.port);
   }
 
   string toString() const {
@@ -285,8 +285,9 @@ class R_key_value {
 
 #ifndef K3_R_key_value_hash_value
 #define K3_R_key_value_hash_value
+namespace std {
 template <class _T0, class _T1>
-class std::hash<R_key_value<_T0, _T1>> {
+class hash<R_key_value<_T0, _T1>> {
  public:
   std::size_t operator()(const R_key_value<_T0, _T1>& r) const {
     std::size_t seed = 0;
@@ -295,6 +296,7 @@ class std::hash<R_key_value<_T0, _T1>> {
     return seed;
   }
 };
+}  // namespace std
 #endif
 
 #endif

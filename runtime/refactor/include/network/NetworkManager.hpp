@@ -21,15 +21,35 @@ class IncomingConnection;
 class Peer;
 class Listener;
 
+template <class Connection>
+class ConnectionMap : public ConcurrentMap<Address, shared_ptr<Connection>> {
+ public:
+  typedef ConcurrentMap<Address, shared_ptr<Connection>> Super;
+  ConnectionMap() : ConcurrentMap<Address, shared_ptr<Connection>>() {}
+  shared_ptr<Connection> lookupOrCreate(const Address& addr,
+                                        boost::asio::io_service& service) {
+    boost::strict_lock<ConcurrentMap<Address, shared_ptr<Connection>>> lock(*this);
+    auto it = Super::map_.get(lock).find(addr);
+    if (it != Super::map_.get(lock).end()) {
+      return it->second;
+    } else {
+      auto c = make_shared<Connection>(addr, service);
+      Super::map_.get(lock)[addr] = c;
+      return c;
+    }
+  }
+};
+
 typedef ConcurrentMap<Address, shared_ptr<Listener>> ListenerMap;
-typedef ConcurrentMap<Address, shared_ptr<InternalOutgoingConnection>>
+typedef ConnectionMap<InternalOutgoingConnection> 
     InternalConnectionMap;
-typedef ConcurrentMap<Address, shared_ptr<ExternalOutgoingConnection>>
+typedef ConnectionMap<ExternalOutgoingConnection>
     ExternalConnectionMap;
 typedef ConcurrentMap<Address, shared_ptr<IncomingConnection>>
     IncomingConnectionMap;
 typedef std::function<void(shared_ptr<Message>)> MessageHandler;
 typedef std::function<void(boost_error)> ErrorHandler;
+
 
 class NetworkManager {
  public:

@@ -92,10 +92,7 @@ void NetworkManager::listenExternal(shared_ptr<Peer> peer, Address listen_addr,
 void NetworkManager::sendInternal(shared_ptr<NetworkMessage> pm) {
   // Check for an existing connection, creating one if necessary
   shared_ptr<InternalOutgoingConnection> c =
-      internal_out_conns_->lookup(pm->destination());
-  if (!c) {
-    c = connectInternal(pm->destination());
-  }
+      internal_out_conns_->lookupOrCreate(pm->destination(), *io_service_);
 
   // Send, removing the connection upon error
   shared_ptr<InternalConnectionMap> conn_map = internal_out_conns_;
@@ -110,10 +107,7 @@ void NetworkManager::sendInternal(shared_ptr<NetworkMessage> pm) {
 void NetworkManager::sendExternal(const Address& addr,
                                   shared_ptr<PackedValue> pm) {
   // Check for an existing connection, creating one if necessary
-  shared_ptr<ExternalOutgoingConnection> c = external_out_conns_->lookup(addr);
-  if (!c) {
-    c = connectExternal(addr);
-  }
+  shared_ptr<ExternalOutgoingConnection> c = external_out_conns_->lookupOrCreate(addr, *io_service_);
 
   // Send, removing the connection upon error
   shared_ptr<ExternalConnectionMap> conn_map = external_out_conns_;

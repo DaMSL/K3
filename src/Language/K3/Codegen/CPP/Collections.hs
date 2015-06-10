@@ -318,7 +318,8 @@ record (sort -> ids) = do
            ]
     let hashCombine x = R.Call (R.Variable $ (R.Name "hash_combine")) [R.Variable $ R.Name "seed", x]
     let hashStructDefn
-            = R.GuardedDefn ("K3_" ++ recordName ++ "_hash_value") $ R.TemplateDefn (zip templateVars (repeat Nothing)) $
+            = R.NamespaceDefn "std" [ 
+              R.GuardedDefn ("K3_" ++ recordName ++ "_hash_value") $ R.TemplateDefn (zip templateVars (repeat Nothing)) $
                 R.ClassDefn (R.Qualified (R.Name "std") (R.Name "hash")) [recordType] []
                 [
                   R.FunctionDefn 
@@ -334,6 +335,7 @@ record (sort -> ids) = do
                 ]
                 []
                 []
+              ]
 
     let yamlStructDefn = R.NamespaceDefn "YAML"
                          [ R.TemplateDefn (zip templateVars (repeat Nothing)) $
