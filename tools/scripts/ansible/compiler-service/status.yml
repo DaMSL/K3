@@ -13,7 +13,7 @@
 
    - name: Check compiler service
      when: container|success
-     shell: ps uch -C k3
+     shell: docker exec -ti {{ cname }} ps uch -C k3
      register: service
 
    - debug: var=service.stdout_lines
