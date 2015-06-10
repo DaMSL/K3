@@ -1,8 +1,25 @@
 import logging
 import datetime
+from enum import enum
 
 
 heartbeat_delay = 10  # secs. move to common
+gc_delay = 8
+
+
+class JobStatus:
+  INITIATED = 'INITIATED'
+  SUBMITTED = 'SUBMITTED'
+  RUNNING   = 'RUNNING'
+  COMPILING = 'COMPILING'
+  ARCHIVING = 'ARCHIVING'
+  FAILED    = 'FAILED'
+  KILLED    = 'KILLED'
+  FINISHED  = 'FINISHED'
+
+  @classmethod
+  def done(cls, s):
+    return s in [JobStatus.FAILED, JobStatus.KILLED, JobStatus.FINISHED]
 
 
 # TODO: move to common

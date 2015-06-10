@@ -65,12 +65,13 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE TABLE IF NOT EXISTS compiles (
     name        text,
     uid         text,
-    git_hash    text,
     username    text,
     options     text,
+    tag         text,
+    blocksize   text,
+    numworkers  text,
     submit      timestamp,
     complete    timestamp,
-    tag         text,
     status      text
 );'''
 }
@@ -88,12 +89,13 @@ def createTables():
     print(ex)
     sys.exit(1)
 
-def dropTables():
+def dropTables(t=None):
+  tablelist = table.keys if t == None else [t]
   conn = getConnection()
   try:
     cur = conn.cursor()
     for table in tables.keys():
-      query = "DROP TABLE IF EXISTS %s CASCADE;" % table
+      query = "DROP TABLE IF EXISTS %s;" % table
       cur.execute(query)
       conn.commit()
   except Exception as ex:
@@ -201,14 +203,15 @@ def deleteJob(jobId):
   cur.execute("DELETE FROM jobs WHERE jobId=%s;" % jobId)
   conn.commit()
 
+
 def insertCompile(comp):
   conn = getConnection()
   cur = conn.cursor()
   time = str(getTS_utc())
   cur.execute('''
-INSERT INTO compiles (name, uid, git_hash, username, options, submit, tag, status)
-VALUES('%(name)s', '%(uid)s', '%(git_hash)s', '%(user)s', '%(options)s', '%(time)s', '%(tag)s', '%(status)s');
-''' % dict(comp, time=time, status='SUBMITTED'))
+INSERT INTO compiles (name, uid, username, options, tag, blocksize, numworkers, submit, status)
+VALUES('%(name)s', '%(uid)s', '%(user)s', '%(options)s', '%(tag)s', '%(blocksize)s', '%(numworkers)s', '%(time)s','%(status)s');
+''' % dict(comp, time=time, status='INITIALIZED'))
   conn.commit()
   return getTS_est(time)
 
@@ -238,9 +241,9 @@ def getCompiles(**kwargs):
 
   cur = getConnection().cursor()
   cur.execute("SELECT * from compiles %s ORDER BY submit DESC;" % filter)
-  return [dict(name=r[0], uid=r[1], git_hash=r[2], user=r[3],
-               options=r[4], submit=r[5], complete=r[6],
-               tag=r[7], status=r[8]) for r in cur.fetchall()]
+  return [dict(name=r[0], uid=r[1], user=r[2], options=r[3], tag=r[4], 
+        blocksize=r[5], numworkers=r[6], submit=r[7], complete=r[8],
+               status=r[9]) for r in cur.fetchall()]
 
 
 

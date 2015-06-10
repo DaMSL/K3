@@ -35,40 +35,52 @@ from core import *
 from mesosutils import *
 import db
 
-State = enum.Enum('State', 'INIT DISPATCH MASTER_WAIT WORKER_WAIT CLIENT_WAIT SUBMIT COMPILE UPLOAD KILL')
+State = enum.Enum('State', 'INIT DISPATCH MASTER_WAIT WORKER_WAIT CLIENT_WAIT SUBMIT COMPILE UPLOAD COMPLETE KILLED')
+
+masterNodes =  ['qp3']
+# workerNodes =  ['qp-hm' + str(i) for i in range(1,9)]
+workerNodes =  ['qp4']
+clientNodes =  ['qp5']
 
 class CompileLauncher(mesos.interface.Scheduler):
     def __init__(self, job, **kwargs):
+        logging.debug ("[COMPILER] Initializing........")
+
+        self.state    = State.INIT
         self.launched   = False
         self.terminate  = False
-        self.job        = job
+        self.driver = None
 
+        self.name = job.name
+        self.localpath = job.path
+        self.uid  = job.uid
+        self.numworkers = job.numworkers
+        self.blocksize = job.blocksize
         self.source   = kwargs.get('source', None)
-        self.script   = kwargs.get('script', None)
         self.webaddr  = kwargs.get('webaddr', None)
-        self.numworkers = kwargs.get('numworkers', 1)
-        self.readyworkers = 0
-        self.blocksize = kwargs.get('blocksize', 4)
         self.compile_level = kwargs.get('compile_level', 1)
-        self.status   = JobStatus.INITIATED
-        self.log      = []
 
         self.tasks    = {}  # Map (svid: taskInfo) 
         self.offers   = {}  # Map (svid: offer.id)
 
-        self.state    = State.INIT
-        logging.debug (" COMPILER Initiated")
-
-        self.roles    = {}
         self.master = None
         self.workers = []
         self.client  = None
+        self.masterHost = None
+        self.masterPort = 0
+        self.readyworkers = 0
         self.idle = 0
+
+        logging.info("[COMPILER] Posting new job into DB: %s", self.name)
+        db.insertCompile(job.__dict__)
+        for c in db.getCompiles():
+          logging.debug("COMPILE JOB FOUND!!!  --- " + c['name'])
 
 
 
     def registered(self, driver, frameworkId, masterInfo):
         logging.info("[COMPILER] Compiler is registered with Mesos. ID %s" % frameworkId.value)
+        self.driver = driver
 
     #  This Gets invoked when Mesos offers resources to my framework & we decide what to do with the recources (e.g. launch task, set mem/cpu, etc...)
     def resourceOffers(self, driver, offers):
@@ -76,9 +88,11 @@ class CompileLauncher(mesos.interface.Scheduler):
         logging.info("[COMPILER] HeartBeatting with Mesos. Current state: %s.  # Offers: %d", self.state, len(offers))
           # self.idle = time.time()
 
+        accepted = []
+
         #TODO: Det where to compile K3... rightnow, use qp3
         for offer in offers:
-          if offer.hostname not in ['qp3', 'qp4', 'qp5']:
+          if self.launched or offer.hostname not in masterNodes + workerNodes + clientNodes:
             driver.declineOffer(offer.id)
             # logging.debug("DECLINING Offer from %s" % offer.hostname)
             continue
@@ -87,53 +101,50 @@ class CompileLauncher(mesos.interface.Scheduler):
 
           mem = getResource(offer.resources, "mem")
           cpu = getResource(offer.resources, "cpus")
-          # TODO:  PORT assignment
-          port = 20000
-          logging.info('  Resources:  cpu=%s, mem=%s, port=%d' % (cpu, mem, port))
+          logging.info('  Resources:  cpu=%s, mem=%s' % (cpu, mem))
 
           daemon = None
 
-          if self.master == None:
+          if self.master == None and offer.hostname in masterNodes:
               
             logging.debug("Creating Master role")
-            daemon = dict(role='master', svid='master', hostname=offer.hostname,
-                port=port, host=socket.gethostbyname(offer.hostname))
+
+            #update master host (& TODO: port):
+            self.masterHost = socket.gethostbyname(offer.hostname)
+            self.masterPort = 20000   # For now
+
+            daemon = dict(role='master', svid='master', hostname=offer.hostname)
             self.master = daemon
-            db.insertCompile(self.job.__dict__)
 
-          elif len(self.workers) < self.numworkers:
+          elif len(self.workers) < self.numworkers and offer.hostname in workerNodes:
           # elif len(self.workers) < self.numworkers:
-            logging.debug("Creating Worker #%d role" % len(self.workers))
-            daemon = dict(role='worker', 
-                svid='worker%d' % len(self.workers), hostname=offer.hostname,
-                port=port, host=self.master['host'])
+            workerNum = len(self.workers) + 1
+            logging.debug("Creating Worker #%d role" % workerNum)
+            daemon = dict(role='worker', svid='worker%d' % workerNum, hostname=offer.hostname,)
             self.workers.append (daemon)
+            logging.debug ("Worker %d out of %d assigned" % (len(self.workers), self.numworkers))
 
-          elif self.client == None:
+          elif self.client == None and offer.hostname in clientNodes:
           # elif len(self.workers) < self.numworkers:
             logging.debug("Creating Client role")
             daemon = dict(role='client', svid='client', 
-              hostname=offer.hostname, port=port,
-              host=self.master['host'], blocksize=self.blocksize)
+              hostname=offer.hostname, blocksize=self.blocksize)
             self.client = daemon
-            db.updateCompile(self.job.uid, status=self.state)
-            self.state = State.DISPATCH
-
-            self.launched = True
 
           else:
-            logging.debug("ALL tasks are assigned. Current state: %s" % self.state)
+            logging.debug("DECLINING Offer from %s (unneeded resource). Current state: %s" % (offer.hostname, self.state))
+            driver.declineOffer(offer.id)
 
           if daemon == None:
             continue
 
-          config = dict(hostname=offer.hostname, port=port, 
-            webaddr=self.webaddr, name=self.job.name, uid=self.job.uid,
+          config = dict(hostname=offer.hostname, 
+            webaddr=self.webaddr, name=self.name, uid=self.uid,
             compileto=  self.compile_level)
           daemon.update(config)
 
-          task = compileTask(name=self.job.name,
-                               uid=self.job.uid,
+          task = compileTask(name=self.name,
+                               uid=self.uid,
                                source=self.source,
                                webaddr=self.webaddr,
                                mem=mem,
@@ -145,16 +156,25 @@ class CompileLauncher(mesos.interface.Scheduler):
           self.offers[daemon['svid']] = offer.id 
           self.tasks[daemon['svid']]  = task
 
+          if self.master and self.client and len(self.workers) == self.numworkers:
+            db.updateCompile(self.uid, status=self.state.name)
+            self.state = State.DISPATCH
+            break
+
 
         if self.state == State.DISPATCH:    
+          for svid, task in self.tasks.items():
+            addTaskLabel(task, 'host', self.masterHost)
+            addTaskLabel(task, 'port', self.masterPort)
           logging.info ("ACCEPTED OFFER LIST:")
-          logging.info ("    master ----> %s" % self.master['hostname'])
-          logging.info ("    client ----> %s" % self.client['hostname'])
+          logging.info ("    master  ----> %s" % self.master['hostname'])
+          logging.info ("    client  ----> %s" % self.client['hostname'])
           for w in self.workers:
             logging.info("    %s ----> %s" % (w['svid'], w['hostname']))
           logging.debug("LAUNCHING MASTER")
           self.state = State.MASTER_WAIT
           driver.launchTasks(self.offers['master'], [self.tasks['master']])
+          self.launched = True
 
 
     def statusUpdate(self, driver, update):
@@ -162,68 +182,63 @@ class CompileLauncher(mesos.interface.Scheduler):
         # logging.debug("[UPDATE - %s]: %s {%s}" % (update.message, state, update.data))
 
         #  TODO: CHANGE this to logging module
-        self.log.append(update.data)
-        if not os.path.exists(self.job.path):
-          os.mkdir(self.job.path)
-        with open(os.path.join(self.job.path, 'output'), 'a') as out:
+        with open(os.path.join(self.localpath, 'output'), 'a') as out:
           out.write(update.data)
 
         if update.state == mesos_pb2.TASK_STARTING:
-        # if update.state == mesos_pb2.TASK_RUNNING or update.state == mesos_pb2.TASK_STARTING:
-          # logging.debug("NODE STARTED: %s  (current state = %s)" % (update.message, self.state))
           if self.state == State.MASTER_WAIT and update.message == 'master':
             logging.info("MASTER is READY. Launching Workers")
             self.state = State.WORKER_WAIT
-            driver.launchTasks(self.offers['worker0'], [self.tasks['worker0']])
-
-            # for worker in [w for w in self.offers if w.startswith('worker')]:
-            #   driver.launchTasks(self.offers[worker], [self.tasks[worker]])
-            db.updateCompile(self.job.uid, status=self.state)
+            for worker in [w for w in self.offers if w.startswith('worker')]:
+              driver.launchTasks(self.offers[worker], [self.tasks[worker]])
+            db.updateCompile(self.uid, status=self.state.name)
   
-
           if self.state == State.WORKER_WAIT and update.message == 'worker':
             self.readyworkers += 1
             logging.debug("Worker reported READY. Readiness status: %d out of %d Total Worker" % (self.readyworkers,self.numworkers))
             if self.readyworkers == self.numworkers:
               logging.info("ALL WORKERS READY. Launching Client")
               self.state = State.CLIENT_WAIT
-              db.updateCompile(self.job.uid, status=self.state)
+              db.updateCompile(self.uid, status=self.state.name)
               driver.launchTasks(self.offers['client'], [self.tasks['client']])
 
           if self.state == State.CLIENT_WAIT and update.message == 'client':
             logging.info("CLIENT is READY. Submitting Compilation Task")
             self.state = State.SUBMIT
-
+            db.updateCompile(self.uid, status=self.state.name)
 
         if update.state == mesos_pb2.TASK_RUNNING:
           logging.debug(update.data)
-          pass
-          # logging.debug("[UPDATE %s STDOUT] %s" % (update.task_id.value, update.data))
-          # logging.debug("[UPDATE %s STDERR] %s" % (update.task_id.value, update.message))
-          if self.status == JobStatus.SUBMITTED:
-            self.status = JobStatus.COMPILING
-            db.updateCompile(self.job.uid, status=self.status)
-
-            # elif self.status == JobStatus.COMPILING and \
-            #       update.data.startswith('Created binary file:'):
-            #   self.status = JobStatus.ARCHIVING
-            #   db.updateCompile(self.job.uid, status=self.status)
-
+          if update.message == 'client':
+            self.state = State.COMPILE
+            db.updateCompile(self.uid, status=self.state.name)
+          if update.message == 'complete':
+            self.state = State.UPLOAD
+            db.updateCompile(self.uid, status=self.state.name)
 
         if update.state == mesos_pb2.TASK_FAILED:
-            self.status = JobStatus.FAILED
-            db.updateCompile(self.job.uid, status=self.status, done=True)
+            self.state = State.COMPLETE
+            db.updateCompile(self.uid, status=self.state.name)
             self.terminate = True
 
         if update.state == mesos_pb2.TASK_FINISHED:
-            self.status = JobStatus.FINISHED
-            db.updateCompile(self.job.uid, status=self.status, done=True)
+            self.state = State.COMPLETE
+            db.updateCompile(self.uid, status=self.state.name)
             self.terminate = True
 
         if update.state == mesos_pb2.TASK_LOST:
-            self.status = JobStatus.FAILED
-            db.updateCompile(self.job.uid, status=self.status, done=True)
             self.terminate = True
+
+
+
+    def kill(self):
+      logging.warning("Asked to kill compilation job for %s", self.name)
+      for svid, task in self.tasks.items:
+        tid = mesos_pb2.TaskID()
+        tid.value = svid
+        logging.info("[DISPATCHER] Killing task: %s", svid)
+        driver.killTask(tid)
+      driver.stop()
 
 
 

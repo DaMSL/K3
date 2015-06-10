@@ -6,6 +6,7 @@ import threading
 import socket
 from collections import deque
 
+from common import *
 from core import *
 from mesosutils import *
 import db
@@ -39,6 +40,8 @@ class Dispatcher(mesos.interface.Scheduler):
     self.frameworkId = None    # Will get updated when registering with Master
 
     self.idle = 0
+
+    self.gc = time.time()
 
     logging.info("[DISPATCHER] Initializing with master at %s" % master)
 
@@ -336,9 +339,28 @@ class Dispatcher(mesos.interface.Scheduler):
   # Then see if pending jobs can be launched with the offers accumulated so far
   def resourceOffers(self, driver, offers):
     # logging.info("[DISPATCHER] Got %d resource offers. %d jobs in the queue" % (len(offers), len(self.pending)))
-    # if time.time() > self.idle + 10:
-    logging.info("[COMPILER] HeartBeatting with Mesos. # Offers: %d", len(offers))
-      # self.idle = time.time()
+    ts = time.time()
+    if ts > self.idle + heartbeat_delay:
+      logging.info("[COMPILER] HeartBeatting with Mesos. # Offers: %d", len(offers))
+      self.idle = time.time()
+
+    # Crude Garbage Collection to police up jobs in bad state
+    if ts > self.gc + gc_delay:
+      for job in db.getJobs():
+        if job.jobId in self.pending:
+          continue
+        elif job.jobId in self.active:
+          logging.warning("[DISPATCHER] Found an ACTIVE job with a COMPLETED status.")
+          # if JobStatus.done(job.status):
+          #   del self.active[job.jobId]
+          #   self.finished[job.jobId] = job
+        else:
+          logging.info("[DISPATCHER] [GARBAGE COLLECTION] %s Job is listed as %s, \
+            but is neither pendning nor active. Killing it now." % (job.jobId, job.status))
+          if not JobStatus.done(job.status):
+            db.updateJob(status=JobStatus.KILLED, done=True)
+
+
     if len(self.pending) == 0:
       for offer in offers:
         driver.declineOffer(offer.id)
