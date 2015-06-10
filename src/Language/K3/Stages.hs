@@ -192,6 +192,11 @@ partitionTransformStSyms forkFactor assignOffset s = mapTransformStSyms part s
   where p = advancesymS assignOffset . forksymS forkFactor
         part (TransformStSymS a b c d) = TransformStSymS <$> p a <*> p b <*> p c <*> p d
 
+ensureParallelStSyms :: Int -> TransformM ()
+ensureParallelStSyms parFactor = modify $ \s -> runIdentity $ mapTransformStSyms ensure s
+  where e sym@(ParGenSymS str off cur) | str < parFactor = return $ ParGenSymS parFactor off cur
+                                       | otherwise = return sym
+        ensure (TransformStSymS a b c d) = TransformStSymS <$> e a <*> e b <*> e c <*> e d
 
 {-- Transform utilities --}
 type ProgramTransform = K3 Declaration -> TransformM (K3 Declaration)
@@ -773,8 +778,9 @@ runDeclPreparePassesM :: ProgramTransform
 runDeclPreparePassesM = runPasses [refreshProgram]
 
 runDeclOptPassesM :: CompilerSpec -> Maybe (SEffects.ExtInferF a, a) -> ProgramTransform
-runDeclOptPassesM cSpec extInfOpt =
-  runPasses [blockMapProgramDecls (blockSize cSpec) [refreshProgram] passes]
+runDeclOptPassesM cSpec extInfOpt prog = do
+  ensureParallelStSyms $ blockSize cSpec
+  runPasses [blockMapProgramDecls (blockSize cSpec) [refreshProgram] passes] prog
   where passes = declOptPasses (stageSpec cSpec) extInfOpt
 
 runDeclOptPassesBLM :: CompilerSpec -> Maybe (SEffects.ExtInferF a, a)
