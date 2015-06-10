@@ -492,7 +492,7 @@ runServiceMaster sOpts@(serviceId -> msid) smOpts opts = initService sOpts $ run
       liftIO $ threadDelay heartbeatPeriod
       pingRemote msid sv sck
 
-    heartbeatPeriod = seconds 10
+    heartbeatPeriod = seconds $ sHeartbeatEpoch sOpts
     seconds x = x * 1000000
 
 
@@ -917,8 +917,8 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     -- | Compilation report construction.
     generateReport profile finalreport =
       let mkspan s e = e - s
-          mkwtrep  (wid, span) = wid ++ ": " ++ (secs $ span)
-          mkwvstr  (wid, v)    = wid ++ ": " ++ (show v)
+          mkwtrep  (wid, tspan) = wid ++ ": " ++ (secs $ tspan)
+          mkwvstr  (wid, v)     = wid ++ ": " ++ (show v)
 
           -- Compile time per worker
           workertimes    = Map.map (mkspan $ jstartTime profile) $ jendTimes profile

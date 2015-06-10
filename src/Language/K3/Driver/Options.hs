@@ -140,6 +140,7 @@ data ServiceOptions = ServiceOptions { serviceId       :: String
                                      , serviceThreads  :: Int
                                      , serviceLog      :: Either String FilePath
                                      , serviceLogLevel :: Priority
+                                     , sHeartbeatEpoch :: Int
                                      , scompileOpts    :: CompileOptions }
                     deriving (Eq, Read, Show, Generic)
 
@@ -610,6 +611,7 @@ serviceOpts ct = ServiceOptions <$> serviceIdOpt
                                 <*> serviceThreadsOpt
                                 <*> serviceLogOpt
                                 <*> serviceLogLevelOpt
+                                <*> serviceHeartbeatOpt
                                 <*> compileOpts ct
 
 serviceMasterOpts :: Parser ServiceMasterOptions
@@ -654,6 +656,12 @@ serviceLogLevelOpt = option auto (   long    "svloglevel"
                                   <> value   DEBUG
                                   <> help    "Service log level"
                                   <> metavar "SERVICELOGLVL" )
+
+serviceHeartbeatOpt :: Parser Int
+serviceHeartbeatOpt = option auto (   long    "heartbeat"
+                                   <> value   10
+                                   <> help    "Service heartbeat period"
+                                   <> metavar "PERIOD" )
 
 remoteJobOpt :: Parser RemoteJobOptions
 remoteJobOpt = RemoteJobOptions <$> jobBlockSizeOpt
