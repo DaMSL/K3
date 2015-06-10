@@ -1,0 +1,95 @@
+#  Dockerfile:  k3-app
+#
+#  Description:  Image for use with K3 to run applications ONLY
+#    Contains minimal amount of libs & dependencies
+#
+#  Version:   Boost (1.57), Mesos (0.22.1), Protobuf (2.5)
+#
+#  Requirements:  Copy mesos libs (libmesos-<version>.so, libmesos.la) to local work dir
+
+# Debian: Jesse
+FROM debian:jessie
+
+# Install basic packages to build the image
+RUN apt-get update && apt-get install -y \
+  bzip2 unzip autoconf Libtool \
+  gcc g++ make cmake git curl wget \
+  libyaml-cpp-dev \
+  subversion 
+
+# Install Boost v1.57.0
+RUN wget http://sourceforge.net/projects/boost/files/boost/1.57.0/boost_1_57_0.tar.bz2/download && \
+  tar --bzip2 -xvf ./download && \
+  rm download && \
+  cd boost_1_57_0 &&  \
+  ./bootstrap.sh --with-libraries=serialization,system,thread,log,program_options,filesystem --prefix=/usr/local libdir=/usr/local/lib && \
+  ./b2 stage threading=multi link=shared &&  \
+  ./b2 install threading=multi link=shared && \
+  cd .. && \
+  rm -Rf boost_1_57_0
+
+# Install Google Regex (re2) lib
+RUN git clone https://github.com/google/re2.git && \
+  cd re2  && \
+  make && \
+  make test && \
+  make install && \
+  cd .. && \
+  rm -Rf re2
+
+# Install CSV++
+RUN git clone https://git01.codeplex.com/forks/wjjt/csvpp && \
+  cd csvpp && \
+  cmake . && \
+  make && \
+  mv libcsvpp.so /usr/lib/ && \
+  cd .. && \
+  rm -Rf csvpp
+
+# Install libdynamic
+RUN git clone https://github.com/DaMSL/libdynamic && \
+  cd libdynamic &&  \
+  ./autogen.sh && \
+  ./configure --prefix=/usr && \
+  make && \
+  make install && \
+  cd .. && \
+  rm -Rf libdynamic
+
+# Install Protobf v2.5
+RUN wget https://github.com/google/protobuf/releases/download/v2.5.0/protobuf-2.5.0.tar.bz2 && \
+  tar -xvf protobuf-2.5.0.tar.bz2 && \
+  rm protobuf-2.5.0.tar.bz2 && \
+  cd protobuf-2.5.0 && \
+  ./autogen.sh && \
+  ./configure --prefix=/usr && \
+  make && \
+  make check && \
+  make install && \
+  cd .. && \
+  rm -Rf /protobuf-2.5.0
+
+# Copy in Mesos v0.22.1 libs
+ADD libmesos-0.22.1.so /usr/lib/
+ADD libmesos.la /usr/lib/
+
+# Finish & Clean up
+RUN ln -s /usr/lib/libmesos-0.22.1.so /usr/lib/libmesos.so && \
+    apt-get remove -y gcc g++ make cmake git \
+    software-properties-common \
+    python-software-properties \
+    unzip autoconf Libtool && \
+    apt-get autoremove -y && \
+    apt-get autoclean -y && \
+    rm -rf /usr/share/doc/* && \
+    rm -rf /usr/share/man/* && \
+    rm /usr/lib/libprotoc* && \
+    rm /usr/bin/protoc &&\
+    rm -rf /usr/local/include/boost && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /var/lib/dpkg/* && \
+    rm -rf /var/cache/* && \
+    rm -rf /var/log/* && \
+    rm -rf /usr/include/*
+    
+    
