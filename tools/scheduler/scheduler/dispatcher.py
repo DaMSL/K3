@@ -40,8 +40,8 @@ class Dispatcher(mesos.interface.Scheduler):
     self.frameworkId = None    # Will get updated when registering with Master
 
     self.idle = 0
-
     self.gc = time.time()
+    self.offerRelease = 0
 
     logging.info("[DISPATCHER] Initializing with master at %s" % master)
 
@@ -340,45 +340,48 @@ class Dispatcher(mesos.interface.Scheduler):
   def resourceOffers(self, driver, offers):
     # logging.info("[DISPATCHER] Got %d resource offers. %d jobs in the queue" % (len(offers), len(self.pending)))
     ts = time.time()
-    if ts > self.idle + heartbeat_delay:
-      logging.info("[COMPILER] HeartBeatting with Mesos. # Offers: %d", len(offers))
-      self.idle = time.time()
+
+    # Heart Beat logging
+    if ts > self.idle:
+      logging.info("[DISPATCHER] HeartBeatting with Mesos. # Offers: %d", len(offers))
+      self.idle = ts + heartbeat_delay
 
     # Crude Garbage Collection to police up jobs in bad state
-    if ts > self.gc + gc_delay:
+    if ts > self.gc:
       for job in db.getJobs():
-        if job.jobId in self.pending:
+        if job['jobId'] in self.pending or job['jobId'] in self.active or JobStatus.done(job['status']):
           continue
-        elif job.jobId in self.active:
-          logging.warning("[DISPATCHER] Found an ACTIVE job with a COMPLETED status.")
-          # if JobStatus.done(job.status):
-          #   del self.active[job.jobId]
-          #   self.finished[job.jobId] = job
         else:
-          logging.info("[DISPATCHER] [GARBAGE COLLECTION] %s Job is listed as %s, \
-            but is neither pendning nor active. Killing it now." % (job.jobId, job.status))
-          if not JobStatus.done(job.status):
-            db.updateJob(status=JobStatus.KILLED, done=True)
+          logging.info("[DISPATCHER] [GARBAGE COLLECTION] %(jobId)s Job is listed as %(status)s, \
+            but is neither pendning nor active. Killing it now." % job)
+          db.updateJob(status=JobStatus.KILLED, done=True)
+      self.gc = ts + gc_delay
 
 
     if len(self.pending) == 0:
+      self.offerRelease = ts + offer_wait
       for offer in offers:
         driver.declineOffer(offer.id)
         # logging.debug("DECLINING Offer from %s" % offer.hostname)
-
       return
 
     for offer in offers:
       self.offers[offer.id.value] = offer
     nextJob = self.prepareNextJob()
+
     if nextJob != None:
       self.launchJob(nextJob, driver)
     else:
       if len(self.pending) > 0:
-        logging.warning("[DISPATCHER] Not enough resources to launch next job. Releasing all offers")
-      for offer in offers:
-        driver.declineOffer(offer.id)
-        del self.offers[offer.id.value]
+        logging.info("[DISPATCHER] Not enough resources to launch next job")
+      if ts > self.offerRelease + offer_wait:
+        logging.info("[DISPATCHER] I've waited %s seconds and cannot lauch. Releasing all offers", offer_wait)
+        for offer in offers:
+          driver.declineOffer(offer.id)
+          del self.offers[offer.id.value]
+        self.offerRelease = ts + offer_wait
+      else:
+        logging.info("[DISPATCHER]  HOLDING %d Offers for %s Jobs and waiting for more offers", len(self.offers), len(self.pending))
 
 
 

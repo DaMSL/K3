@@ -76,8 +76,13 @@ CREATE TABLE IF NOT EXISTS compiles (
 );'''
 }
 
-
+# -------------------------------------------------
+#   DDL Querries to build/destroy db
+#--------------------------------------------------
 def createTables():
+  """
+    Create all the tables for flask service
+  """
   conn = getConnection()
   try:
     cur = conn.cursor()
@@ -90,7 +95,10 @@ def createTables():
     sys.exit(1)
 
 def dropTables(t=None):
-  tablelist = table.keys if t == None else [t]
+  """
+    Delete all the tables for flask service
+  """
+  tablelist = tables.keys if t == None else [t]
   conn = getConnection()
   try:
     cur = conn.cursor()
@@ -103,6 +111,10 @@ def dropTables(t=None):
     print(ex)
     sys.exit(1)
 
+
+# -------------------------------------------------
+#   Application (app, app_versions) DML {C, R, U, D}
+#--------------------------------------------------
 def insertApp(app):  #name, version):
   conn = getConnection()
   cur = conn.cursor()
@@ -142,10 +154,10 @@ def getVersions(appName, limit=None):
     cur = getConnection().cursor()
     limitRows = '' if not limit else 'LIMIT %d' % limit
     cur.execute('''
-SELECT name, uid, name || '-' || uid as version, date, git_hash, username, options
-FROM app_versions LEFT OUTER JOIN compiles USING (name, uid) WHERE name='%s' ORDER BY date DESC %s;
+SELECT name, uid, name || '-' || uid as version, date
+FROM app_versions WHERE name='%s' ORDER BY date DESC %s;
 ''' % (appName, limitRows))
-    return [dict(name=r[0], uid=r[1], version=r[2], date=r[3], git_hash=r[4], user=r[5], options=r[6]) for r in cur.fetchall()]
+    return [dict(name=r[0], uid=r[1], version=r[2], date=r[3]) for r in cur.fetchall()]
 
 def deleteAllApps(appName):
   conn = getConnection()
@@ -161,6 +173,11 @@ def checkHash(hash):
   cur.execute("SELECT COUNT(*) FROM app_versions WHERE hash='%s';" % hash)
   return False if int(cur.fetchone()[0]) == 0 else True
 
+
+
+# -------------------------------------------------
+#   Job (job) DML {C, R, U, D}
+#--------------------------------------------------
 def insertJob(job):
   conn = getConnection()
   cur = conn.cursor()
@@ -204,6 +221,9 @@ def deleteJob(jobId):
   conn.commit()
 
 
+# -------------------------------------------------
+#   Job (job) DML {C, R, U, D}
+#--------------------------------------------------
 def insertCompile(comp):
   conn = getConnection()
   cur = conn.cursor()
@@ -214,21 +234,6 @@ VALUES('%(name)s', '%(uid)s', '%(user)s', '%(options)s', '%(tag)s', '%(blocksize
 ''' % dict(comp, time=time, status='INITIALIZED'))
   conn.commit()
   return getTS_est(time)
-
-def updateCompile(uid, **kwargs):
-  status    = kwargs.get("status", None)
-  done      = kwargs.get("done", False)
-  conn = getConnection()
-  cur = conn.cursor()
-
-  if status:
-    cur.execute("UPDATE compiles SET status='%s' WHERE uid='%s';" % (status, uid))
-    conn.commit()
-
-    if done:
-      time = str(getTS_utc())
-      cur.execute("UPDATE compiles SET complete='%s' WHERE uid='%s';" % (time, uid))
-      conn.commit()
 
 def getCompiles(**kwargs):
   appName = kwargs.get('appName', None)
@@ -245,5 +250,24 @@ def getCompiles(**kwargs):
         blocksize=r[5], numworkers=r[6], submit=r[7], complete=r[8],
                status=r[9]) for r in cur.fetchall()]
 
+def updateCompile(uid, **kwargs):
+  status    = kwargs.get("status", None)
+  done      = kwargs.get("done", False)
+  conn = getConnection()
+  cur = conn.cursor()
 
+  if status:
+    cur.execute("UPDATE compiles SET status='%s' WHERE uid='%s';" % (status, uid))
+    conn.commit()
+
+    if done:
+      time = str(getTS_utc())
+      cur.execute("UPDATE compiles SET complete='%s' WHERE uid='%s';" % (time, uid))
+      conn.commit()
+
+def deleteJob(uid):
+  conn = getConnection()
+  cur = conn.cursor()
+  cur.execute("DELETE FROM compiles WHERE uid=%s;" % uid)
+  conn.commit()
 

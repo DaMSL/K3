@@ -80,8 +80,8 @@ class CompileJob:
     self.options   = kwargs.get('options', '')
     self.blocksize = kwargs.get('blocksize', 4)
     self.numworkers = kwargs.get('numworkers', 1)
+    self.compilestage = kwargs.get('compilestage', '')
     self.path     = kwargs.get('path', '')
-    # self.git_hash = kwargs.get('git_hash', 'latest')
 
     self.url      = kwargs.get('path', '')
 

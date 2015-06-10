@@ -6,12 +6,10 @@
         {% if versionList %}
          <h2><span>{{name}}</span> - Versions</h2>
         <table class="table table-striped">
-            <tr><th>Version</th><th>Date Uploaded/Compiled</th><th>Git Hash</th>
-                <th>user</th><th>Compile Options</th>
-                <th>Link to Archive</th></tr>
+            <tr><th>Version</th><th>Date Uploaded</th><th>Link to Archive</th></tr>
           {% for v in versionList %}
             <tr><td><a href="/jobs/{{v.name}}/{{v.uid}}">{{v.version}}</a></td>
-                <td>{{v.date}}</td><td>{{v.git_hash}}</td><td>{{v.user}}</td><td>{{v.options}}</td>
+                <td>{{v.date}}</td>
                 <td><a href="/apps/{{v.name}}/{{v.uid}}">Archive</a></td></tr>
           {% endfor %}
         </table>
@@ -27,7 +25,7 @@
         </div>
       </p><hr />
         <div><h2>Available K3 Executables with Recently Uploaded Versions</h2></div>
-        <table class="table"><tr><th>Version</th><th>Git hash</th><th>User</th><th>Date</th><th>Archive</th></tr></table>
+        <table class="table"><tr><th>Version</th><th>Date</th><th>Archive</th></tr></table>
         <table class="table table-bordered">
           {% for app in applist %}
             <tr><td><h3>
@@ -40,7 +38,7 @@
             <table class="table table-condensed">
                 {% for v in versions[app.name] %}
                 <tr><td><a href="/jobs/{{v.name}}/{{v.uid}}">{{v.version}}</a></td>
-                    <td>{{v.git_hash}}</td><td>{{v.user}}</td><td>{{v.date}}</td>
+                    <td>{{v.date}}</td>
                     <td><a href="/apps/{{v.name}}/{{v.uid}}">Archive</a></td></tr>
                 {% endfor %}
             </table>
