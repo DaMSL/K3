@@ -1,3 +1,4 @@
+
 # Ubuntu 14.04 LTS derivative
 FROM phusion/baseimage:0.9.13
 
@@ -91,7 +92,8 @@ RUN wget --no-verbose -T 10 ftp://oss.sgi.com/www/projects/libnuma/download/numa
     make install
 
 # python pip installs
-RUN pip install pyyaml
+RUN apt-get install -y python-dev && \
+    pip install pyyaml
 
 # Clone K3, K3-Mosaic from Git
 RUN mkdir -p /k3/K3 /k3/K3-Mosaic && \
