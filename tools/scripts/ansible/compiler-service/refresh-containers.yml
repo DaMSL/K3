@@ -6,12 +6,7 @@
    - "config.yml"
 
   tasks:
-   - name: Check docker image
-     docker: name="damsl/k3-vanilla" state=present
-     register: image 
-
-   - name: Start docker container
-     when: image|success
+   - name: Checked docker container is started
      docker:
        name: '{{ cname }}'
        image: damsl/k3-vanilla
