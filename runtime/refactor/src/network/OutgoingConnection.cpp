@@ -55,16 +55,15 @@ void InternalOutgoingConnection::send(shared_ptr<NetworkMessage> pm,
 
   shared_ptr<InternalOutgoingConnection> this_shared = shared_from_this();
   strand_->post([pm, this_shared, e_handler]() {
-    if (this_shared->outbox_.size() == 0) {
-      this_shared->writeLoop(pm, e_handler);
-    } else {
-      this_shared->outbox_.push(pm);
+    this_shared->outbox_.push(pm);
+    if (this_shared->outbox_.size() == 1) {
+      this_shared->writeLoop(e_handler);
     }
   });
 }
 
-void InternalOutgoingConnection::writeLoop(shared_ptr<NetworkMessage> pm,
-                                           shared_ptr<ErrorHandler> e_handler) {
+void InternalOutgoingConnection::writeLoop(shared_ptr<ErrorHandler> e_handler) {
+  auto pm = outbox_.front();
   auto buffers = pm->outputBuffers();
   shared_ptr<InternalOutgoingConnection> this_shared = shared_from_this();
   auto callback = [this_shared, pm, buffers, e_handler](
@@ -72,11 +71,10 @@ void InternalOutgoingConnection::writeLoop(shared_ptr<NetworkMessage> pm,
     if (ec) {
       (*e_handler)(ec);
     }
+    this_shared->outbox_.pop();
 
     if (this_shared->outbox_.size() > 0) {
-      shared_ptr<NetworkMessage> next = this_shared->outbox_.front();
-      this_shared->outbox_.pop();
-      this_shared->writeLoop(next, e_handler);
+      this_shared->writeLoop(e_handler);
     }
   };
 
@@ -93,16 +91,15 @@ void ExternalOutgoingConnection::send(shared_ptr<PackedValue> pm,
 
   shared_ptr<ExternalOutgoingConnection> this_shared = shared_from_this();
   strand_->post([pm, this_shared, e_handler]() {
-    if (this_shared->outbox_.size() == 0) {
-      this_shared->writeLoop(pm, e_handler);
-    } else {
-      this_shared->outbox_.push(pm);
+    this_shared->outbox_.push(pm);
+    if (this_shared->outbox_.size() == 1) {
+      this_shared->writeLoop(e_handler);
     }
   });
 }
 
-void ExternalOutgoingConnection::writeLoop(shared_ptr<PackedValue> pm,
-                                           shared_ptr<ErrorHandler> e_handler) {
+void ExternalOutgoingConnection::writeLoop(shared_ptr<ErrorHandler> e_handler) {
+  auto pm = outbox_.front();
   auto buffers = make_shared<vector<asio::const_buffer>>();
   shared_ptr<int> header = make_shared<int>(pm->length());
   buffers->push_back(
@@ -115,11 +112,10 @@ void ExternalOutgoingConnection::writeLoop(shared_ptr<PackedValue> pm,
     if (ec) {
       (*e_handler)(ec);
     }
+    this_shared->outbox_.pop();
 
     if (this_shared->outbox_.size() > 0) {
-      shared_ptr<PackedValue> next = this_shared->outbox_.front();
-      this_shared->outbox_.pop();
-      this_shared->writeLoop(next, e_handler);
+      this_shared->writeLoop(e_handler);
     }
   };
 

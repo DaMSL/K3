@@ -2,6 +2,7 @@
 #define K3_VECTORBUILTINS
 
 #include <fstream>
+#include <string>
 
 #include "Common.hpp"
 #include "collections/Vector.hpp"
@@ -66,6 +67,8 @@ class VectorBuiltins {
 
     return unit_t{};
   }
+
+  // TODO(jbw) move to a new module
   template <template <class> class M, template <class> class C,
             template <typename...> class R, class C2>
   unit_t loadGraph(const C2& filepaths, M<R<int, C<R_elem<int>>>>& c) {
@@ -100,6 +103,9 @@ class VectorBuiltins {
     }
     return unit_t{};
   }
+
+ protected:
+  unsigned int seed_;
 };
 
 }  // namespace K3

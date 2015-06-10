@@ -33,25 +33,25 @@ shared_ptr<vector<asio::const_buffer>> NetworkMessage::outputBuffers() const {
   auto& s_ip = header_.source_.ip;
   auto& s_port = header_.source_.port;
   result->push_back(
-      asio::buffer(reinterpret_cast<const char*>(&s_ip), sizeof(long)));
+      asio::buffer(reinterpret_cast<const char*>(&s_ip), sizeof(s_ip)));
   result->push_back(
-      asio::buffer(reinterpret_cast<const char*>(&s_port), sizeof(short)));
+      asio::buffer(reinterpret_cast<const char*>(&s_port), sizeof(s_port)));
 
   // Destination Address
   auto& d_ip = header_.destination_.ip;
   auto& d_port = header_.destination_.port;
   result->push_back(
-      asio::buffer(reinterpret_cast<const char*>(&d_ip), sizeof(long)));
+      asio::buffer(reinterpret_cast<const char*>(&d_ip), sizeof(d_ip)));
   result->push_back(
-      asio::buffer(reinterpret_cast<const char*>(&d_port), sizeof(short)));
+      asio::buffer(reinterpret_cast<const char*>(&d_port), sizeof(d_port)));
 
   // Trigger
   result->push_back(asio::buffer(
-      reinterpret_cast<const char*>(&header_.trigger_), sizeof(int)));
+      reinterpret_cast<const char*>(&header_.trigger_), sizeof(header_.trigger_)));
 
   // Packed Payload Length
   result->push_back(asio::buffer(
-      reinterpret_cast<const char*>(&payload_length_), sizeof(int)));
+      reinterpret_cast<const char*>(&payload_length_), sizeof(payload_length_)));
 
   // Payload Bytes
   shared_ptr<PackedValue> pv = std::dynamic_pointer_cast<PackedValue>(value_);
@@ -68,30 +68,32 @@ shared_ptr<vector<asio::mutable_buffer>> NetworkMessage::inputBuffers() {
   // Source Address
   auto& s_ip = header_.source_.ip;
   auto& s_port = header_.source_.port;
-  result->push_back(asio::buffer(reinterpret_cast<char*>(&s_ip), sizeof(long)));
+  result->push_back(asio::buffer(reinterpret_cast<char*>(&s_ip), sizeof(s_ip)));
   result->push_back(
-      asio::buffer(reinterpret_cast<char*>(&s_port), sizeof(short)));
+      asio::buffer(reinterpret_cast<char*>(&s_port), sizeof(s_port)));
 
   // Destination Address
   auto& d_ip = header_.destination_.ip;
   auto& d_port = header_.destination_.port;
-  result->push_back(asio::buffer(reinterpret_cast<char*>(&d_ip), sizeof(long)));
+  result->push_back(asio::buffer(reinterpret_cast<char*>(&d_ip), sizeof(d_ip)));
   result->push_back(
-      asio::buffer(reinterpret_cast<char*>(&d_port), sizeof(short)));
+      asio::buffer(reinterpret_cast<char*>(&d_port), sizeof(d_port)));
 
   // Trigger
   result->push_back(
-      asio::buffer(reinterpret_cast<char*>(&header_.trigger_), sizeof(int)));
+      asio::buffer(reinterpret_cast<char*>(&header_.trigger_), sizeof(header_.trigger_)));
 
   // Payload Length
   result->push_back(
-      asio::buffer(reinterpret_cast<char*>(&payload_length_), sizeof(int)));
+      asio::buffer(reinterpret_cast<char*>(&payload_length_), sizeof(payload_length_)));
 
   return result;
 }
 
-int NetworkMessage::networkHeaderSize() {
-  return 2 * sizeof(long) + 2 * sizeof(short) + 2 * sizeof(int);
+size_t NetworkMessage::networkHeaderSize() {
+  return sizeof(header_.source_.ip) + sizeof(header_.source_.port) +
+         sizeof(header_.destination_.ip) + sizeof(header_.destination_.port) +
+         sizeof(header_.trigger_) + sizeof(payload_length_);
 }
 
 void NetworkMessage::setValue(shared_ptr<Value> v) { value_ = v; }

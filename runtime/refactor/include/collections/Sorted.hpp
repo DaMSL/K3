@@ -82,7 +82,7 @@ class Sorted : public SortedDS<K3::Sorted, Elem> {
 
   template<class Archive>
   void serialize(Archive &ar) {
-   ar & yas::base_object<SortedDS<K3::Sorted, Elem>>(*this);
+    ar & yas::base_object<SortedDS<K3::Sorted, Elem>>(*this);
   }
 
   template <class Archive>

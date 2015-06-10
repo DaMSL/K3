@@ -83,16 +83,16 @@ shared_ptr<ProgramContext> Peer::getContext() { return context_; }
 
 void Peer::logMessage(const Message& m) {
   if (logger_->level() == spdlog::level::trace) {
-    auto it = ProgramContext::__trigger_names_.find(m.trigger());
-    //std::string trig = m.triggerName();
-    //logger_->trace() << "Received:: @" << trig;
+    string trig = ProgramContext::__triggerName(m.trigger());
+    logger_->trace() << "Received:: @" << trig;
   }
 }
 
 void Peer::logGlobals(const Message& m) {
   if (logger_->level() == spdlog::level::trace) {
     std::ostringstream oss;
-    //oss << "Processed:: @" << m.triggerName() << std::endl;
+    string trig = ProgramContext::__triggerName(m.trigger());
+    oss << "Processed:: @" trig << std::endl;
     oss << "Environment: " << std::endl;
     bool first = true;
     for (const auto& it : context_->__prettify()) {

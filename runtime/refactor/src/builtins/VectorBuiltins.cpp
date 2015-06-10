@@ -2,7 +2,10 @@
 
 namespace K3 {
 
-VectorBuiltins::VectorBuiltins() { srand(time(NULL)); }
+VectorBuiltins::VectorBuiltins() {
+  srand(time(NULL));
+  seed_ = time(NULL);
+}
 
 Vector<R_elem<double>> VectorBuiltins::zeroVector(int i) {
   Vector<R_elem<double>> result;
@@ -20,7 +23,7 @@ Vector<R_elem<double>> VectorBuiltins::randomVector(int i) {
   auto& c = result.getContainer();
   c.resize(i);
   for (int j = 0; j < i; j++) {
-    c[j] = R_elem<double>{(rand() / (RAND_MAX + 1.))};
+    c[j] = R_elem<double>{(rand_r(&seed_) / (RAND_MAX + 1.))};
   }
   return result;
 }

@@ -26,7 +26,9 @@ class Message {
 
 class NetworkMessage : public Message {
  public:
-  NetworkMessage() : Message() {}
+  NetworkMessage() : Message() {
+    payload_length_ = 0;
+  }
   NetworkMessage(const MessageHeader& head, shared_ptr<PackedValue> v)
       : Message(head, v) {
     payload_length_ = v->length();
@@ -34,9 +36,9 @@ class NetworkMessage : public Message {
   shared_ptr<std::vector<boost::asio::const_buffer>> outputBuffers() const;
   shared_ptr<std::vector<boost::asio::mutable_buffer>> inputBuffers();
   void setValue(shared_ptr<Value> v);
-  int networkHeaderSize();
+  size_t networkHeaderSize();
 
-  int payload_length_;
+  size_t payload_length_;
 };
 
 }  // namespace K3

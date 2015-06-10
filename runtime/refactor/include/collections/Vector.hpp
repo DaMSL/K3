@@ -2,12 +2,14 @@
 #define K3_VECTOR
 
 #include <vector>
+#include <string>
+
 #include "yaml-cpp/yaml.h"
+#include "boost/serialization/vector.hpp"
+#include "boost/serialization/base_object.hpp"
 
 #include "Common.hpp"
 #include "STLDataspace.hpp"
-#include "boost/serialization/vector.hpp"
-#include "boost/serialization/base_object.hpp"
 
 namespace K3 {
 
@@ -20,13 +22,11 @@ class Vector : public STLDS<K3::Vector, std::vector, Elem> {
   Vector(const Super& c) : Super(c) {}
   Vector(Super&& c) : Super(std::move(c)) {}
 
-  // TODO bounds checking
   Elem at(int i) const {
     auto& vec = Super::getConstContainer();
     return vec[i];
   }
 
-  // TODO bounds checking
   unit_t set(int i, Elem f) {
     auto& vec = Super::getContainer();
     vec[i] = f;
@@ -160,7 +160,7 @@ class Vector : public STLDS<K3::Vector, std::vector, Elem> {
     auto result = Vector<Elem>(*this);
     auto& vec = result.getContainer();
 
-   #pragma clang loop vectorize(enable) interleave(enable)
+    #pragma clang loop vectorize(enable) interleave(enable)
     for (auto i = 0; i < vec.size(); ++i) {
       vec[i].elem *= c;
     }

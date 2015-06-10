@@ -37,8 +37,7 @@ class InternalOutgoingConnection
   void send(shared_ptr<NetworkMessage> pm, shared_ptr<ErrorHandler> e_handler);
 
  protected:
-  void writeLoop(shared_ptr<NetworkMessage> pm,
-                 shared_ptr<ErrorHandler> e_handler);
+  void writeLoop(shared_ptr<ErrorHandler> e_handler);
 
   std::queue<shared_ptr<NetworkMessage>> outbox_;
 };
@@ -52,8 +51,7 @@ class ExternalOutgoingConnection
   void send(shared_ptr<PackedValue> pm, shared_ptr<ErrorHandler> e_handler);
 
  protected:
-  void writeLoop(shared_ptr<PackedValue> pm,
-                 shared_ptr<ErrorHandler> e_handler);
+  void writeLoop(shared_ptr<ErrorHandler> e_handler);
 
   std::queue<shared_ptr<PackedValue>> outbox_;
 };

@@ -40,7 +40,7 @@ class Seq : public ListDS<K3::Seq, Elem> {
 
   template<class Archive>
   void serialize(Archive &ar) {
-   ar & yas::base_object<ListDS<K3::Seq, Elem>>(*this);
+    ar & yas::base_object<ListDS<K3::Seq, Elem>>(*this);
   }
 
   template <class Archive>

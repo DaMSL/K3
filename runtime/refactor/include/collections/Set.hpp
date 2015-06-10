@@ -92,7 +92,7 @@ class Set {
 
   template<class Archive>
   void serialize(Archive &ar) {
-   ar & yas::base_object<SetDS<K3::Set, Elem>>(*this);
+    ar & yas::base_object<SetDS<K3::Set, Elem>>(*this);
   }
 
   template <class Archive>

@@ -11,7 +11,7 @@ template <class K3Collection>
 size_t hash_collection(K3Collection const& b) {
   int seed = 0;
   for (auto& elem : b) {
-    hash_combine(seed, elem); 
+    hash_combine(seed, elem);
   }
   return seed;
 }
@@ -40,7 +40,9 @@ struct hash<K3::Seq<Elem>> {
 
 template <class Elem>
 struct hash<K3::Sorted<Elem>> {
-  size_t operator()(K3::Sorted<Elem> const& b) const { return hash_collection(b); }
+  size_t operator()(K3::Sorted<Elem> const& b) const {
+    return hash_collection(b);
+  }
 };
 
 }  // namespace std

@@ -442,7 +442,7 @@ class IntMap {
     uint32_t empty_key;
     size_t container_size;
     size_t capacity;
-    
+
     ar.read(reinterpret_cast<char*>(&object_size), sizeof(object_size));
     ar & empty_key;
     ar.read(reinterpret_cast<char*>(&container_size), sizeof(container_size));

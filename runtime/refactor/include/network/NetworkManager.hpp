@@ -41,8 +41,7 @@ class ConnectionMap : public ConcurrentMap<Address, shared_ptr<Connection>> {
 };
 
 typedef ConcurrentMap<Address, shared_ptr<Listener>> ListenerMap;
-typedef ConnectionMap<InternalOutgoingConnection> 
-    InternalConnectionMap;
+typedef ConnectionMap<InternalOutgoingConnection> InternalConnectionMap;
 typedef ConnectionMap<ExternalOutgoingConnection>
     ExternalConnectionMap;
 typedef ConcurrentMap<Address, shared_ptr<IncomingConnection>>

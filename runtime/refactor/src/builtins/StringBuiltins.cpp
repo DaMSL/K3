@@ -44,7 +44,7 @@ string_impl StringBuiltins::tpch_date_to_string(const int& date) {
   std::string day = tmp.substr(6, 2);
   return year + "-" + month + "-" + day;
 }
-  
+
 int StringBuiltins::strcomp(const string_impl& s1, const string_impl& s2) {
   return s1.strcomp(s2);
 }

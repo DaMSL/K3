@@ -16,7 +16,7 @@
 #include "boost/thread/externally_locked.hpp"
 #include "boost/thread/lockable_adapter.hpp"
 #include "boost/serialization/nvp.hpp"
-#include <boost/serialization/array.hpp>
+#include "boost/serialization/array.hpp"
 #include "boost/functional/hash.hpp"
 
 #include "serialization/YAS.hpp"
@@ -73,28 +73,28 @@ struct Address {
     auto p2 = std::to_string(port);
     return p1 + ":" + p2;
   }
-  
+
   template <class archive>
   void serialize(archive& ar) const {
     const char* buf = reinterpret_cast<const char*>(&ip);
     ar.write(buf, sizeof(ip));
-    ar & port;
+    ar& port;
   }
 
-  template<class Archive>
-  void serialize(Archive &ar) {
+  template <class Archive>
+  void serialize(Archive& ar) {
     char* buf = reinterpret_cast<char*>(&ip);
     ar.read(buf, sizeof(ip));
-    ar & port;
+    ar& port;
   }
-  
-  template<class Archive>
-  void serialize(Archive &ar, const unsigned int) {
+
+  template <class Archive>
+  void serialize(Archive& ar, const unsigned int) {
     char* buf = reinterpret_cast<char*>(&ip);
-    ar & boost::serialization::make_array(buf, sizeof(ip));
-    ar & port;
+    ar& boost::serialization::make_array(buf, sizeof(ip));
+    ar& port;
   }
-  
+
   unsigned long ip;
   unsigned short port;
 };

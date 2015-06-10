@@ -107,7 +107,8 @@ void NetworkManager::sendInternal(shared_ptr<NetworkMessage> pm) {
 void NetworkManager::sendExternal(const Address& addr,
                                   shared_ptr<PackedValue> pm) {
   // Check for an existing connection, creating one if necessary
-  shared_ptr<ExternalOutgoingConnection> c = external_out_conns_->lookupOrCreate(addr, *io_service_);
+  shared_ptr<ExternalOutgoingConnection> c =
+      external_out_conns_->lookupOrCreate(addr, *io_service_);
 
   // Send, removing the connection upon error
   shared_ptr<ExternalConnectionMap> conn_map = external_out_conns_;
