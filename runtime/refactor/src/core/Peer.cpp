@@ -92,7 +92,7 @@ void Peer::logGlobals(const Message& m) {
   if (logger_->level() == spdlog::level::trace) {
     std::ostringstream oss;
     string trig = ProgramContext::__triggerName(m.trigger());
-    oss << "Processed:: @" trig << std::endl;
+    oss << "Processed:: @" << trig << std::endl;
     oss << "Environment: " << std::endl;
     bool first = true;
     for (const auto& it : context_->__prettify()) {
