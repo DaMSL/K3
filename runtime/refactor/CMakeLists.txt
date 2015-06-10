@@ -53,7 +53,7 @@ set (srcs src/core/Engine.cpp
 set (link_libs k3 ${Boost_LIBRARIES} ${YAMLCPP_LIBRARY} ${CSVPP_LIBRARY} dynamic)
 set (test_link_libs ${link_libs} gtest gtest_main)
 
-include_directories    (include include/external ${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR} include/external/spdlog/include/)
+include_directories    (include include/external ${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR})
 add_library            (k3 ${srcs})
 
 set (tests test/Engine.cpp
