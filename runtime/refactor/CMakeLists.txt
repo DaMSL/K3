@@ -50,7 +50,7 @@ set (srcs src/core/Engine.cpp
           src/Prettify.cpp
     )
 
-set (link_libs k3 ${Boost_LIBRARIES} ${YAMLCPP_LIBRARY} ${CSVPP_LIBRARY} dynamic profiler)
+set (link_libs k3 ${Boost_LIBRARIES} ${YAMLCPP_LIBRARY} ${CSVPP_LIBRARY} dynamic)
 set (test_link_libs ${link_libs} gtest gtest_main)
 
 include_directories    (include include/external ${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR} include/external/spdlog/include/)
@@ -63,3 +63,6 @@ set (tests test/Engine.cpp
 
 add_executable(Tests ${tests} test/Main.cpp)
 target_link_libraries(Tests ${test_link_libs})
+
+add_executable(q1 src/q1.cpp)
+target_link_libraries(q1 ${link_libs})

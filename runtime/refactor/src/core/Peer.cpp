@@ -44,6 +44,8 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
     } catch (EndOfProgramException e) {
       finished_ = true;
       return;
+    } catch (const std::exception& e) {
+      logger_->error() << "Peer failed: " << e.what();
     }
   };
 
