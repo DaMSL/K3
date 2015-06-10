@@ -2,6 +2,7 @@
 #ifndef __K3_RUNTIME_MAP_DATASPACE__
 #define __K3_RUNTIME_MAP_DATASPACE__
 
+#include <iterator>
 #include <map>
 #include <unordered_map>
 
@@ -1307,14 +1308,10 @@ class VMap {
     return it != container.end() && it->second.find(v) != it->second.end();
   }
 
-
-  //////////////////////////////////////////////////
-  // Frontier-based map retrieval.
-
   shared_ptr<R> lookup(const Version& v, const R& r) const {
     auto it = container.find(r.key);
     if (it != container.end()) {
-      auto vit = it->second.lower_bound(v);
+      auto vit = it->second.find(v);
       if ( vit != it->second.end() ) {
         return std::make_shared<R>(vit->second);
       }
@@ -1326,7 +1323,7 @@ class VMap {
   unit_t lookup_with(const Version& v, R const& r, F f) const {
     auto it = container.find(r.key);
     if (it != container.end()) {
-      auto vit = it->second.lower_bound(v);
+      auto vit = it->second.find(v);
       if ( vit != it->second.end() ) {
         return f(vit->second);
       }
@@ -1336,6 +1333,60 @@ class VMap {
 
   template <class F, class G>
   auto lookup_with2(const Version& v, R const& r, F f, G g) const {
+    auto it = container.find(r.key);
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      auto vit = it->second.find(v);
+      if ( vit == it->second.end() ) {
+        return f(unit_t {});
+      } else {
+        return g(vit->second);
+      }
+    }
+  }
+
+  template <class F>
+  auto lookup_with3(const Version& v, R const& r, F f) const {
+    auto it = container.find(r.key);
+    if (it != container.end()) {
+      auto vit = it->second.find(v);
+      if ( vit != it->second.end() ) {
+        return f(vit->second);
+      }
+    }
+    throw std::runtime_error("No match on Map.lookup_with3");
+  }
+
+
+  //////////////////////////////////////////////////
+  // Frontier-based map retrieval.
+
+  shared_ptr<R> lookup_before(const Version& v, const R& r) const {
+    auto it = container.find(r.key);
+    if (it != container.end()) {
+      auto vit = it->second.lower_bound(v);
+      if ( vit != it->second.end() ) {
+        return std::make_shared<R>(vit->second);
+      }
+    }
+    return nullptr;
+  }
+
+  template <class F>
+  unit_t lookup_with_before(const Version& v, R const& r, F f) const {
+    auto it = container.find(r.key);
+    if (it != container.end()) {
+      auto vit = it->second.lower_bound(v);
+      if ( vit != it->second.end() ) {
+        return f(vit->second);
+      }
+    }
+    return unit_t {};
+  }
+
+  template <class F, class G>
+  auto lookup_with2_before(const Version& v, R const& r, F f, G g) const {
     auto it = container.find(r.key);
     if (it == container.end()) {
       return f(unit_t {});
@@ -1350,7 +1401,7 @@ class VMap {
   }
 
   template <class F>
-  auto lookup_with3(const Version& v, R const& r, F f) const {
+  auto lookup_with3_before(const Version& v, R const& r, F f) const {
     auto it = container.find(r.key);
     if (it != container.end()) {
       auto vit = it->second.lower_bound(v);
@@ -1358,7 +1409,7 @@ class VMap {
         return f(vit->second);
       }
     }
-    throw std::runtime_error("No match on Map.lookup_with3");
+    throw std::runtime_error("No match on Map.lookup_with3_before");
   }
 
   // Non-inclusive erase less than version.
@@ -1369,7 +1420,7 @@ class VMap {
       auto vless = it->second.upper_bound(v);
       auto vend  = it->second.end();
       if ( vless != it->second.end() ) {
-        it->second.erase(vlteq == vless? vless+1 : vless, vend);
+        it->second.erase((vlteq == vless)? ++vless : vless, vend);
         if ( it->second.empty() ) {
           container.erase(it);
         }
@@ -1386,7 +1437,7 @@ class VMap {
       auto vstart = it->second.begin();
       auto vless  = it->second.upper_bound(v);
       for (; vstart != vless; vstart++) {
-        container[rec.key][vstart->first] = f(vstart->first, std::move(vstart->second));
+        container[rec.key][vstart->first] = f(vstart->first)(std::move(vstart->second));
       }
     }
     return unit_t();

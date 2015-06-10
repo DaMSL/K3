@@ -53,10 +53,6 @@ annotation VMap given type a,b {
   provides lifted member : int -> content -> bool
     with effects \version -> \elem -> [R[version]; R[self]; R[elem]]
 
-  //////////////////////////////////////////////////
-  // Frontier-based map retrieval operations.
-  // These apply to the nearest version specified.
-
   @:CArgs 2
   provides lifted lookup : int -> content -> option content
     with effects \version -> \elem -> [R[version]; R[self]; R[elem]]
@@ -73,6 +69,26 @@ annotation VMap given type a,b {
   provides lifted lookup_with3 : int -> content -> (content -> a) -> a
     with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
 
+  //////////////////////////////////////////////////
+  // Frontier-based map retrieval operations.
+  // These apply to the nearest version specified.
+
+  @:CArgs 2
+  provides lifted lookup_before : int -> content -> option content
+    with effects \version -> \elem -> [R[version]; R[self]; R[elem]]
+
+  @:CArgs 3
+  provides lifted lookup_with_before : int -> content -> (content -> ()) -> ()
+    with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
+
+  @:CArgs 4
+  provides lifted lookup_with2_before : int -> content -> (() -> ()) -> (content -> ()) -> ()
+    with effects \version -> \elem -> \noneF -> \someF -> [R[version]; R[self]; R[elem]; noneF content; someF content]
+
+  @:CArgs 3
+  provides lifted lookup_with3_before : int -> content -> (content -> a) -> a
+    with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
+
   // Non-inclusive modifications of all values before the given version.
   @:CArgs 2
   provides lifted erase_prefix : int -> content -> ()
@@ -81,45 +97,45 @@ annotation VMap given type a,b {
   // Inclusive update of all values greater than or equal to specific version.
   @:CArgs 3
   provides lifted update_suffix : int -> content -> (int -> content -> content) -> ()
-    with effects \version -> \elem -> [R[version]; R[self]; R[elem]; W[self]]
+    with effects \version -> \elem -> \updateF -> [R[version]; R[self]; R[elem]; (updateF content)*; W[self]]
 
 
   /////////////////////////////////////////////////////////////////////////////
   // Transformers.
+  // Note these do not include the transformer property with fusion
+  // being unsupported on VMaps.
   // Other than combine and split, these also operate on a frontier of values.
 
-  @:Transformer
   provides lifted combine : self -> self
     with effects \other -> [R[self]; R[other]]
 
-  @:Transformer
   provides lifted split   : () -> (self, self)
     with effects \_ -> R[self]
 
-  @:{Transformer, CArgs 2}
+  @:{CArgs 2}
   provides lifted iterate : int -> (content -> ()) -> ()
     with effects \version -> \iterF -> [R[version]; R[self]; ([R[content]; iterF content])*]
 
-  @:{Transformer, CArgs 2}
+  @:{CArgs 2}
   provides lifted map     : int -> (content -> {key: a, value: b}) -> collection {key: a, value: b} @VMap
     with effects \version -> \mapF -> [R[version]; R[self]; ([R[content]; mapF content])*]
 
-  @:{Transformer, CArgs 2}
+  @:{CArgs 2}
   provides lifted filter  : int -> (content -> bool) -> self
     with effects \version -> \filterF -> [R[version]; R[self]; ([R[content]; filterF content])*]
 
-  @:{Transformer, CArgs 3}
+  @:{CArgs 3}
   provides lifted fold    : int -> (a -> (content -> a)) -> a -> a
     with effects \version -> \foldF -> \z -> [R[version]; R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
 
-  @:{Transformer, CArgs 4}
+  @:{CArgs 4}
   provides lifted groupBy : int -> (content -> a) -> (b -> content -> b) -> b
                              -> collection { key : a, value : b } @VMap
     with effects
       \version -> \gbF -> \gaccF -> \z ->
         [R[version]; R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
-  @:{Transformer, CArgs 2}
+  @:{CArgs 2}
   provides lifted ext : int -> (content -> collection {key : a, value: b} @VMap)
                          -> collection {key : a, value: b} @VMap
     with effects \version -> \extF -> [R[version]; R[self]; ([R[content]; extF content])*]

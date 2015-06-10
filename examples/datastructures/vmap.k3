@@ -4,8 +4,48 @@ include "Core/Builtins.k3"
 declare c : collection {key:int, value:int} @VMap
 
 trigger t : () = \_ -> (
-  ((range 10).iterate (\r -> c.insert r.i {key: 1, value: r.i}));
-  print ("VMap sizes: " ++ (itos (c.total_size())) ++ " " ++ (itos (c.size 0)) ++ " " ++ (itos (c.size 9)))
+  ((range 10).iterate (\r ->
+  	((range 10).iterate (\s ->
+  		c.insert (r.i * 2) {key: s.i, value: s.i * 100 + r.i * 2}))));
+
+  // Print total size across all versions, a size for a specific verion,
+  // and a size for a non-existing version (which returns the frontier size).
+  (print ("VMap sizes; total: "  ++ (itos (c.total_size()))
+  			++ " existing: "     ++ (itos (c.size 0))
+  			++ " non-existing: " ++ (itos (c.size 9))
+  			++ "\\n" ));
+
+  // Exact lookup test on a non-existing version. This should indicate the version does not exist.
+  (c.lookup_with2 5 {key: 7, value: 0}
+  		(\_ -> print "Non-existant value\\n")
+  		(\r -> print ("VMap at 5: " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
+
+  // Lower-bound lookup test on a non-existing version. This should print the entry at version 4.
+  (c.lookup_with_before 5 {key: 7, value: 0} (\r -> print ("VMap before 5: " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
+
+  // Print the frontier at version 7, which should print all values at version 6 in this instance.
+  ((c.filter  7 (\_ -> true))
+  	 .iterate 7 (\r -> print ("VMap frontier 7: " ++ " " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
+
+  // Erase all entries before version 15. This is non-inclusive,
+  // and thus will not erase v14, leaving v14, v16 and v18 in the map.
+  ((range 10).iterate (\s -> c.erase_prefix 15 {key: s.i, value: 0}));
+
+  // Print total size across all versions, and the remaining versions.
+  (print ("VMap sizes; total: " ++ (itos (c.total_size()))
+  			++ " v12: " ++ (itos (c.size 12))
+  			++ " v14: " ++ (itos (c.size 14))
+  			++ " v16: " ++ (itos (c.size 16))
+  			++ " v18: " ++ (itos (c.size 18))
+  			++ "\\n" ));
+
+  // Update v16 onwards with update_suffix.
+  ((range 10).iterate (\s -> c.update_suffix 16 {key: s.i, value: 0} (\v -> (\r -> {key: r.key, value: r.value + 1000}))));
+
+  // Print the frontiers at v14, v16, v18. The values at v16 and v18 should be greater than 1000.
+  (c.iterate 14 (\r -> print ("VMap frontier 14: " ++ " " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
+  (c.iterate 16 (\r -> print ("VMap frontier 16: " ++ " " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
+  (c.iterate 18 (\r -> print ("VMap frontier 18: " ++ " " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")))
 )
 
 source s1 : () = value ()
