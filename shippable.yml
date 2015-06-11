@@ -30,14 +30,14 @@ script:
     # TPCH Barrier Version
   - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q1.k3 tools/ktrace/tests/tpch_q1 results
   - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q3.k3 tools/ktrace/tests/tpch_q3 results
-  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q5_bushy.k3 tools/ktrace/tests/tpch_q5 results
+  - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q5_bushy_broadcast_broj2.k3 tools/ktrace/tests/tpch_q5 results
   # numerical error: - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q6.k3 tools/ktrace/tests/tpch_q6 results
   # incorrect query plan: - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/q11.k3 tools/ktrace/tests/tpch_q11 results
   - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q18.k3 tools/ktrace/tests/tpch_q18 results
   - ./tools/ktrace/run_test.sh examples/sql/tpch/queries/k3/barrier-queries/q22.k3 tools/ktrace/tests/tpch_q22 results
 
     # Mosaic (must have fusion disabled)
-  - ./tools/scripts/run/compile.sh --fstage cexclude=Decl-FE,Decl-FT examples/sql/mosaic/rs.k3
+  # old k3 file? - ./tools/scripts/run/compile.sh --fstage cexclude=Decl-FE,Decl-FT examples/sql/mosaic/rs.k3
 
 notifications:
      email:
