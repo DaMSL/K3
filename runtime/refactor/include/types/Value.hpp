@@ -21,7 +21,7 @@ class ProgramContext;
 // based on the underlying value type (native, packed, or sentinel).
 class Value {
  public:
-  virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig) = 0;
+  virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig, const Address& source) = 0;
 };
 
 // Boxes a native C++ value.
@@ -30,7 +30,7 @@ class Value {
 // that this value is intended for.
 class NativeValue : public Value {
  public:
-  virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig);
+  virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig, const Address& source);
 
   template <class T>
   T* as() {
@@ -70,7 +70,7 @@ class Codec;
 class PackedValue : public Value {
  public:
   PackedValue( CodecFormat format);
-  virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig);
+  virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig, const Address& source);
   CodecFormat format() const;
   virtual const char* buf() const = 0;
   virtual size_t length() const = 0;
@@ -119,7 +119,7 @@ class YASPackedValue : public PackedValue {
 class SentinelValue : public Value {
  public:
   SentinelValue();
-  virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig);
+  virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig, const Address& source);
 };
 
 }  // namespace K3

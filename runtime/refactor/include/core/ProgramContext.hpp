@@ -29,8 +29,8 @@ class ProgramContext : public StandardBuiltins,
                        public AmplabLoaders {
  public:
   explicit ProgramContext(Engine& e);
-  virtual void __dispatch(NativeValue* nv, TriggerID trig) = 0;
-  virtual void __dispatch(PackedValue* pv, TriggerID trig) = 0;
+  virtual void __dispatch(NativeValue* nv, TriggerID trig, const Address& source) = 0;
+  virtual void __dispatch(PackedValue* pv, TriggerID trig, const Address& source) = 0;
   void __dispatch(SentinelValue* sv);
   virtual void __patch(const YAML::Node& node) = 0;
   virtual map<string, string> __prettify();
@@ -58,8 +58,8 @@ typedef std::function<shared_ptr<ProgramContext>()> ContextFactory;
 class DummyContext : public ProgramContext {
  public:
   explicit DummyContext(Engine& e);
-  virtual void __dispatch(NativeValue* nv, TriggerID trig);
-  virtual void __dispatch(PackedValue* pv, TriggerID trig);
+  virtual void __dispatch(NativeValue* nv, TriggerID trig, const Address& source);
+  virtual void __dispatch(PackedValue* pv, TriggerID trig, const Address& source);
   virtual void __patch(const YAML::Node& node);
   virtual unit_t processRole(const unit_t&);
   void intTrigger(int i);

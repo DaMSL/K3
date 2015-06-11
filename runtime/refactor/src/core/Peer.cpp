@@ -28,6 +28,7 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
   }
 
   json_final_state_only_ = json_final_only;
+  message_counter_ = 0;
 
   // Peer's event processing loop
   auto work = [this, fac, peer_config, ready_callback]() {
@@ -46,7 +47,7 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
         shared_ptr<Message> m = queue_->dequeue();
         logMessage(*m);
 
-        m->value()->dispatchIntoContext(context_.get(), m->trigger());
+        m->value()->dispatchIntoContext(context_.get(), m->trigger(), m->source());
         logGlobals(*m);
       }
     } catch (EndOfProgramException e) {

@@ -42,7 +42,7 @@ DummyContext::DummyContext(Engine& e) : ProgramContext(e) {
   state_ = make_shared<DummyState>();
 }
 
-void DummyContext::__dispatch(NativeValue* nv, TriggerID t) {
+void DummyContext::__dispatch(NativeValue* nv, TriggerID t, const Address& addr) {
   if (t == 1) {
     int i = *nv->as<int>();
     intTrigger(i);
@@ -55,7 +55,7 @@ void DummyContext::__dispatch(NativeValue* nv, TriggerID t) {
   return;
 }
 
-void DummyContext::__dispatch(PackedValue* pv, TriggerID t) {
+void DummyContext::__dispatch(PackedValue* pv, TriggerID t, const Address& addr) {
   shared_ptr<NativeValue> nv;
   shared_ptr<Codec> codec;
   if (t == 1) {
@@ -66,7 +66,7 @@ void DummyContext::__dispatch(PackedValue* pv, TriggerID t) {
     throw std::runtime_error("Invalid trigger ID");
   }
   nv = codec->unpack(*pv);
-  return __dispatch(nv.get(), t);
+  return __dispatch(nv.get(), t, addr);
 }
 
 void DummyContext::__patch(const YAML::Node& node) {

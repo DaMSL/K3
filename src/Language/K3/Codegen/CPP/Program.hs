@@ -94,18 +94,19 @@ program (tag &&& children -> (DRole name, decls)) = do
     let dispatchDecl isNative = R.FunctionDefn (R.Name "__dispatch")
                        [ ("payload", R.Pointer $ R.Named $ R.Name $ valType isNative)
                        , ("trigger_id", R.Primitive R.PInt)
+                       , ("source", R.Const $ R.Reference $ R.Named $ R.Name "Address")
                        ]
                        (Just R.Void) [] False
                        [R.Ignore $ R.Call
                          (R.Subscript (R.Variable $ R.Name $ tableName isNative) (R.Variable $ R.Name "trigger_id"))
-                         [R.Variable $ R.Name "payload", R.Variable $ R.Name "trigger_id"]
+                         [R.Variable $ R.Name "payload", R.Variable $ R.Name "trigger_id", R.Variable $ R.Name "source"]
                        ]
     let dispatchTableDecl isNative = R.GlobalDefn $ R.Forward $ R.ScalarDecl
                      (R.Name $ tableName isNative)
                      (R.Named $ R.Qualified (R.Name "std") $ R.Specialized
                            [R.Primitive R.PInt,
                              R.Function
-                               [R.Pointer $ R.Named $ R.Name $ valType isNative, R.Primitive R.PInt]
+                               [R.Pointer $ R.Named $ R.Name $ valType isNative, R.Primitive R.PInt, R.Const $ R.Reference $ R.Named $ R.Name "Address"]
                             R.Void] (R.Name "map"))
                      Nothing
 
@@ -316,17 +317,23 @@ generateDispatchPopulation isNative = do
        let unpacked = R.Forward $ R.ScalarDecl (R.Name "native_val") R.Inferred $ Just $ R.Call (R.Project (R.Dereference $ codec) (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "payload"]
        let native_val = if isNative then "payload" else "native_val"
        let codec_decls = if isNative then [] else [unpacked]
-       let casted_val = R.Dereference $ R.Call (R.Project (R.Dereference $ R.Variable $ R.Name native_val) ( R.Specialized [kType] (R.Name "as"))) [] 
+       let casted_val = R.Forward $ R.ScalarDecl (R.Name "casted") (R.Reference $ R.Inferred) $ Just $ R.Dereference $ R.Call (R.Project (R.Dereference $ R.Variable $ R.Name native_val) ( R.Specialized [kType] (R.Name "as"))) [] 
+       let encoded_payload = R.Call (R.Variable $ R.Specialized [kType] (R.Name "K3::serialization::json::encode")) [R.Variable $ R.Name "casted"]
+       let frozen = R.Lambda [R.RefCapture $ Just ("casted", Nothing)] [] True (Just $ R.Primitive $ R.PString) [R.Return $ encoded_payload]
+       let log_message = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Name "logJson")) [R.Variable $ R.Name "me", i, R.Variable $ R.Name "source", frozen]
        let dispatchWrapper = R.Lambda
                              [R.ValueCapture $ Just ("this", Nothing)]
                              [ ("payload", R.Pointer $ R.Named $ R.Name $ if isNative then "NativeValue" else "PackedValue")
                              , ("trigger_id", R.Primitive R.PInt)
+                             , ("source", R.Const $ R.Reference $ R.Named $ R.Name "Address")
                              ]
                              False Nothing
                              ( 
                              codec_decls 
+                             ++
+                             [ casted_val, log_message ]
                              ++ 
-                             [ R.Ignore $ R.Call (R.Variable $ R.Name tName) [casted_val] ]
+                             [ R.Ignore $ R.Call (R.Variable $ R.Name tName) [R.Variable $ R.Name "casted"] ]
                              )
 
        return $ R.Assignment (R.Subscript table i) dispatchWrapper

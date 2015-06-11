@@ -33,6 +33,8 @@ class Peer {
   void join();
   void enqueue(shared_ptr<Message> m);
 
+  template <class F>
+  void logJson(int trigger, const Address& src, F f);
   bool finished();
   Address address();
   shared_ptr<ProgramContext> getContext();
@@ -53,7 +55,24 @@ class Peer {
   shared_ptr<std::ofstream> json_globals_log_;
   shared_ptr<std::ofstream> json_messages_log_;
   bool json_final_state_only_;
+  int message_counter_;
 };
+
+template <class F>
+void Peer::logJson(int trigger, const Address& src, F f) {
+  if (json_messages_log_ && !json_final_state_only_) {
+    auto t = std::chrono::system_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch());
+    auto time =  elapsed.count();
+    *json_messages_log_ << message_counter_ << "|";
+    *json_messages_log_ << K3::serialization::json::encode<Address>(address_) << "|";
+    *json_messages_log_ << ProgramContext::__triggerName(trigger) << "|";
+    *json_messages_log_ << K3::serialization::json::encode<Address>(src) << "|";
+    *json_messages_log_ << f() << "|";
+    *json_messages_log_ << time << std::endl;
+    message_counter_++;
+  }
+}
 
 }  // namespace K3
 

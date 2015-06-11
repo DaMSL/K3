@@ -29,6 +29,8 @@ class Engine {
             shared_ptr<Codec> cdec);
 
   // Utilities
+  template <class F>
+  void logJson(const Address& dest, int trigger, const Address& src, F f);
   shared_ptr<Peer> getPeer(const Address& addr);
   shared_ptr<NetworkManager> getNetworkManager();
   shared_ptr<StorageManager> getStorageManager();
@@ -59,6 +61,11 @@ class Engine {
   std::atomic<int> ready_peers_;
   int total_peers_;
 };
+
+template <class F>
+void Engine::logJson(const Address& dest, int trigger, const Address& src, F f) {
+  getPeer(dest)->logJson(trigger, src, f);
+}
 
 template <class Context>
 void Engine::run(const Options& opts) {
