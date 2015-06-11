@@ -944,7 +944,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
           workercratios  = Map.map (/ totalcontrib) workercontribs
 
           -- Absolute time ratio and cost ratio difference.
-          wtcratiodiff   = Map.intersectionWith (\t c -> 1.0 - abs (t - c)) workertratios workercratios
+          wtcratiodiff   = Map.intersectionWith (\t c -> 1.0 - ((abs $ t - c) / t)) workertratios workercratios
 
           -- Reports.
           masterreport  = prettyLines $ mconcat [jppreport profile, finalreport]
