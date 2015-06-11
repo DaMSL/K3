@@ -34,6 +34,7 @@ import qualified Data.Heap as Heap
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
+import Criterion.Types ( Measured(..) )
 import Criterion.Measurement ( getTime, secs )
 
 import GHC.Conc
@@ -54,7 +55,7 @@ import qualified Language.K3.Core.Constructor.Declaration as DC
 
 import Language.K3.Parser ( parseK3 )
 
-import Language.K3.Stages ( TransformReport, TransformSt )
+import Language.K3.Stages ( TransformReport(..), TransformSt )
 import qualified Language.K3.Stages as ST
 
 import Language.K3.Driver.Common
@@ -110,6 +111,7 @@ data JobState = JobState { jrid         :: RequestID
 data JobProfile = JobProfile { jstartTime :: Double
                              , jendTimes  :: Map WorkerID Double
                              , jworkerst  :: Map WorkerID WorkerJobState
+                             , jppreport  :: TransformReport
                              , jreports   :: [TransformReport] }
                    deriving (Eq, Read, Show)
 
@@ -655,8 +657,9 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     process prog jobOpts rq rid = abortcatch rid rq $ do
       msgs <- zm $ do
         mlogM $ unwords ["Processing program", rq, "(", show rid, ")"]
-        (initP, initSt) <- preprocess prog
-        assignBlocks rid rq jobOpts initP initSt
+        (initP, initSt, ppProfs) <- preprocess prog
+        let ppRep = TransformReport (Map.singleton "Master preprocessing" ppProfs) Map.empty
+        assignBlocks rid rq jobOpts initP initSt ppRep
       sendCIs mworker msgs
 
     abortcatch rid rq m = m `catchIOError` (\e -> abortProgram Nothing rid rq $ show e)
@@ -664,17 +667,22 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     -- | Parse, evaluate metaprogram, and apply prepare transform.
     preprocess prog = do
       mlogM $ "Parsing with paths " ++ show includesP
-      pP <- reasonM parseError . liftIE $ parseK3 nfP includesP prog
-      mP <- liftIE . runDriverM $ metaprogram opts pP
-      ((initP, _), initSt) <- liftIE $ runTransform Nothing (coStages $ scompileOpts $ sOpts) mP
-      return (initP, initSt)
+      (pP, pProf) <- reasonM parseError . liftMeasured $ parseK3 nfP includesP prog
+      (mP, mProf) <- liftMeasured $ runDriverM $ metaprogram opts pP
+      (((initP, _), initSt), iProf) <- liftMeasured $ runTransform Nothing (coStages $ scompileOpts $ sOpts) mP
+      return (initP, initSt, [pProf, mProf, iProf])
+
+    liftMeasured :: IO (Either String a) -> ServiceMM z (a, Measured)
+    liftMeasured m = liftIE $ do
+      (rE, p) <- ST.profile $ const m
+      return $ either Left (\a -> Right (a,p)) rE
 
     {------------------------
       - Job assignment.
       -----------------------}
 
     -- | Cost-based compile block assignment.
-    assignBlocks rid rq jobOpts initP initSt = do
+    assignBlocks rid rq jobOpts initP initSt ppRep = do
       pid <- progIDM
       mlogM $ unwords ["Assigning blocks for program:", show pid]
 
@@ -693,7 +701,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       -- Compute new job state.
       let pending = foldl (\acc cb -> acc `Set.union` (Set.fromList $ map fst cb)) Set.empty wBlocks
       let wjs     = Map.intersectionWith (\w c -> WorkerJobState w c $ Map.size c) nwaWeights jobCosts
-      js <- js0 rid rq pending wjs
+      js <- js0 rid rq pending wjs ppRep
 
       modifyMJ_ $ \jbs -> Map.insert pid js jbs
       modifyMA_ $ \assigns -> Map.unionWith incrWorkerAssignments assigns nassigns
@@ -781,8 +789,8 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       WorkerAssignment (Set.delete bid blocks) (weight - dw)
 
     -- | Job state constructors.
-    jprof0 workerjs = liftIO getTime >>= \start -> return $ JobProfile start Map.empty workerjs []
-    js0 rid rq pending workerjs = jprof0 workerjs >>= \prof -> return $ JobState rid rq prof pending Map.empty []
+    jprof0 workerjs pprep = liftIO getTime >>= \start -> return $ JobProfile start Map.empty workerjs pprep []
+    js0 rid rq pending workerjs pprep = jprof0 workerjs pprep >>= \prof -> return $ JobState rid rq prof pending Map.empty []
 
     logAssigment pid nassigns js =
       let wk wid s = wid ++ ":" ++ s
@@ -877,15 +885,16 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     -- | Program completion processing. This garbage collects client request state.
     completeProgram pid (rid, rq, aborts, profile, sources) = do
       let prog = DC.role "__global" $ map snd $ sortOn fst $ concatMap snd $ Map.toAscList sources
-      nprogrpE <- liftIO $ evalTransform Nothing (sfinalStages $ smOpts) prog
+      (nprogrpE, fpProf) <- liftIO $ ST.profile $ const $ evalTransform Nothing (sfinalStages $ smOpts) prog
       case (aborts, nprogrpE) of
         (_, Left err) -> abortProgram (Just pid) rid rq err
         (h:t, _)      -> abortProgram (Just pid) rid rq $ concat $ h:t
-        ([], Right (nprog, rp)) -> do
+        ([], Right (nprog, _)) -> do
             clOpt <- zm $ getMR rid
             case clOpt of
               Nothing -> zm $ requestError rid
-              Just cid -> completeRequest pid cid rid rq nprog $ generateReport profile rp
+              Just cid -> let fpRep = TransformReport (Map.singleton "Master finalization" [fpProf]) Map.empty
+                          in completeRequest pid cid rid rq nprog $ generateReport profile fpRep
 
     completeRequest pid cid rid rq prog report = do
       mlogM $ unwords ["Completed program", show pid]
@@ -938,7 +947,8 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
           wtcratiodiff   = Map.intersectionWith (\t c -> 1.0 - abs (t - c)) workertratios workercratios
 
           -- Reports.
-          profreport    = prettyLines $ mconcat $ jreports $ profile
+          masterreport  = prettyLines $ mconcat [jppreport profile, finalreport]
+          profreport    = prettyLines $ mconcat $ jreports profile
           timereport    = map mkwtrep $ Map.toList workertimes
           wtratioreport = map mkwvstr $ Map.toList workertratios
           wcratioreport = map mkwvstr $ Map.toList workercratios
@@ -946,7 +956,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
 
           i x = indent $ 2*x
       in boxToString $ ["Workers"]            %$ (i 1 profreport)
-                    %$ ["Final"]              %$ (i 1 finalreport)
+                    %$ ["Final"]              %$ (i 1 masterreport)
                     %$ ["Compiler service"]
                     %$ (i 1 ["Time ratios"]   %$ (i 2 wtratioreport))
                     %$ (i 1 ["Cost ratios"]   %$ (i 2 wcratioreport))
