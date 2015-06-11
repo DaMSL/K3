@@ -33,9 +33,10 @@ import Data.Monoid
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
-import Debug.Trace
 import Data.Tree
 import Data.Tuple
+
+import Debug.Trace
 
 import GHC.Generics ( Generic )
 
@@ -152,11 +153,10 @@ liftEitherM = either throwE return
 {- TransformSt utilities -}
 -- | Left-associative merge for transform states.
 mergeTransformSt :: Maybe Identifier -> TransformSt -> TransformSt -> TransformSt
-mergeTransformSt d agg new = flip rewindTransformStSyms new
+mergeTransformSt d agg new = rewindTransformStSyms new $
   agg { penv    = Provenance.mergePIEnv d (penv agg) (penv new)
       , fenv    = SEffects.mergeFIEnv   d (fenv agg) (fenv new)
-      , report  = TransformReport { statistics = statistics (report agg) <> statistics (report new)
-                                  , snapshots  = snapshots  (report agg) <> snapshots  (report new) } }
+      , report  = (report agg) <> (report new) }
 
 getTransformSyms :: TransformSt -> TransformStSymS
 getTransformSyms s = TransformStSymS (nextuid s) (cseCnt s) (Provenance.pcnt $ penv s) (SEffects.fcnt $ fenv s)
@@ -321,7 +321,7 @@ withPropertyTransform f p = do
 
 withTypeTransform :: TypTrE -> ProgramTransform
 withTypeTransform f p = do
-  void $ ensureNoDuplicateUIDs p
+  --void $ ensureNoDuplicateUIDs p
   st <- get
   (np, te) <- liftEitherM $ f (tenv st) p
   void $ put $ st {tenv=te}
@@ -461,7 +461,7 @@ ensureNoDuplicateUIDs p =
 
 inferTypes :: ProgramTransform
 inferTypes prog = do
-  void $ ensureNoDuplicateUIDs prog
+  --void $ ensureNoDuplicateUIDs prog
   (p, tienv) <- liftEitherM $ inferProgramTypes prog
   p' <- liftEitherM $ translateProgramTypes p
   void $ modify $ \st -> st {tenv = tienv}
@@ -599,7 +599,14 @@ parmapProgramDeclsBlock declPassesF block = do
     mergeEitherStateDecl (Left s) _ = (Left s)
     mergeEitherStateDecl _ (Left s) = (Left s)
     mergeEitherStateDecl (Right (aggState, aggDecls)) (Right (newState, newDecl)) =
-      Right (mergeTransformSt (declName newDecl) aggState newState, aggDecls++[newDecl])
+      let resultSt = mergeTransformSt (declName newDecl) aggState newState
+      in debugMergeReport (statistics $ report aggState) (statistics $ report newState) (statistics $ report resultSt)
+          $ Right (resultSt, aggDecls++[newDecl])
+
+    debugMergeReport srp1 srp2 srprest r = if True then r else
+      flip trace r $ boxToString $ ["Report 1"]      ++ (indent 2 $ map fst (Map.toList srp1)) ++
+                                   ["Report 2"]      ++ (indent 2 $ map fst (Map.toList srp2)) ++
+                                   ["Report result"] ++ (indent 2 $ map fst (Map.toList srprest))
 
     fixD f (===) d = f d >>= \d' -> if d === d' then return d else fixD f (===) d'
 
