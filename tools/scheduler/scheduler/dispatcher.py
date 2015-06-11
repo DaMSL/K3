@@ -22,6 +22,7 @@ import logging
 
 DEFAULT_MEM = 4 * 1024
 
+
 class Dispatcher(mesos.interface.Scheduler):
   def __init__(self, master, webaddr, daemon=True):
 
@@ -310,7 +311,7 @@ class Dispatcher(mesos.interface.Scheduler):
 
     k3task = self.getTask(s)
     host = k3task.host
-    state = mesos_pb2.TaskState.DESCRIPTOR.values[update.state].name
+    state = mesos_pb2.TaskState.Name(update.state)
     logging.info ("[TASK UPDATE] TaskID %s on host %s. Status: %s   [%s]"% (update.task_id.value, host, state, update.data))
 
     # TODO: Check STDOUT flag, capture stream in update.data, & append to appropriate file

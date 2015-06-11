@@ -1,11 +1,18 @@
 import logging
 import datetime
+import uuid
 from enum import enum
 
 
 heartbeat_delay = 10  # secs. move to common
 gc_delay = 8
 offer_wait = 8
+
+
+# Returns unique time stamp uid (unique to this machine only (for now)
+def getUID():
+  return str(uuid.uuid1()).split('-')[0]
+
 
 
 class JobStatus:

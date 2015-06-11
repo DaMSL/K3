@@ -163,11 +163,6 @@ class Job:
       self.roles[name] = r
 
 
-
-
-
-
-
 class PortList():
    def __init__(self, ranges=[]):
        self.index = 0
@@ -199,6 +194,7 @@ class PortList():
      else:
          self.offset += 1
      return int(result)
+
 
 
 

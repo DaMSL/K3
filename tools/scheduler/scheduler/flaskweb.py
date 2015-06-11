@@ -3,7 +3,6 @@ import threading
 import yaml
 import json
 import hashlib
-import uuid
 import datetime
 import shutil
 import argparse
@@ -18,12 +17,11 @@ from flask import (Flask, request, redirect, url_for, jsonify,
                      render_template, send_from_directory)
 from werkzeug import (secure_filename, SharedDataMiddleware)
 
-from mesosutils import *
-
 from common import *
 from core import *
 from dispatcher import *
 from CompileDriver import *
+from mesosutils import *
 import db
 
 
@@ -35,10 +33,12 @@ driver = None
 driver_t = None
 compile_tasks = {}
 
-index_message = 'Welcome to K3 (DEVELOPMENT SERVER)'
+index_message = 'Welcome to K3'
 
 
-
+#===============================================================================
+#   General Web Service Functions
+#===============================================================================
 def initWeb(port, **kwargs):
   """
     Peforms web service initialization
@@ -132,11 +132,6 @@ def initWeb(port, **kwargs):
     os.chdir('..')
 
 
-# Returns unique time stamp uid (unique to this machine only (for now)
-def getUID():
-  return str(uuid.uuid1()).split('-')[0]
-
-
 def returnError(msg, errcode):
   """
     returnError -- Helper function to format & return error messages & codes
@@ -147,7 +142,22 @@ def returnError(msg, errcode):
     return render_template("error.html", message=msg, code=errcode)
 
 
+def shutdown_server():
+    logging.warning ("[FLASKWEB] Attempting to kill the server")
+    func = request.environ.get('werkzeug.server.shutdown')
+    if func is None:
+        raise RuntimeError("Not running the server")
+    func()
+    driver.stop()
+    driver_t.join() 
+    for k, v in compile_tasks.items():
+      v.stop()
+    logging.info ("[FLASKWEB] Mesos is down")
 
+
+#===============================================================================
+#   General Web Service End Points
+#===============================================================================
 @webapp.route('/')
 def root():
   """
@@ -167,7 +177,6 @@ def index():
     return "Welcome\n\n", 200
   else:
     return render_template('index.html')
-
 
 
 @webapp.route('/about')
@@ -213,7 +222,6 @@ def getLog():
     return render_template("output.html", output=output)
 
 
-
 @webapp.route('/trace')
 def trace():
   """
@@ -231,7 +239,23 @@ def trace():
   output['headers'] = {k: str(v) for k,v in request.headers.items()}
   return jsonify(output), 200
 
-# STATIC CONTENT
+
+@webapp.route('/kill')
+def shutdown():
+    """
+    #------------------------------------------------------------------------------
+    #  /kill - Kill the server  (TODO: Clean this up)
+    #------------------------------------------------------------------------------
+    """
+    logging.warngin ("[FLASKWEB] Shutting down the driver")
+    shutdown_server()
+    return 'Server is going down...'
+
+
+
+#===============================================================================
+#   Static Content Service
+#===============================================================================
 @webapp.route('/fs/<path:path>/')
 def staticFile(path):
   """
@@ -266,7 +290,7 @@ def staticFile(path):
 
 
 #===============================================================================
-#   Application Layer End Points
+#   Application End Points
 #===============================================================================
 @webapp.route('/app', methods=['GET', 'POST'])
 def uploadAppRedir():
@@ -438,7 +462,7 @@ def deleteApp(appName):
 
 
 #===============================================================================
-#   Job Layer End Points
+#   Job End Points
 #===============================================================================
 @webapp.route('/job')
 def listJobsRedir():
@@ -796,6 +820,21 @@ def killJob(appName, jobId):
     else:
       return render_template("last.html", appName=appName, lastjob=thisjob)
 
+@webapp.route('/delete/jobs', methods=['POST'])
+def delete_jobs():
+  """
+  #------------------------------------------------------------------------------
+  #  /delete/jobs
+  #         POST     Deletes list of K3 jobs
+  #------------------------------------------------------------------------------
+  """
+  deleteList = request.form.getlist("delete_job")
+  for jobId in deleteList:
+    job = db.getJobs(jobId=jobId)[0]
+    path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], job['appName'], jobId)
+    shutil.rmtree(path, ignore_errors=True)
+    db.deleteJob(jobId)
+  return redirect(url_for('listJobs')), 302
 
 #------------------------------------------------------------------------------
 #  /jobs/<appName>/<jobId>/stdout - Job Interface for specific job
@@ -817,28 +856,9 @@ def killJob(appName, jobId):
 
 
 
-
-
-
-
-@webapp.route('/delete/jobs', methods=['POST'])
-def delete_jobs():
-  """
-  #------------------------------------------------------------------------------
-  #  /delete/jobs
-  #         POST     Deletes list of K3 jobs
-  #------------------------------------------------------------------------------
-  """
-  deleteList = request.form.getlist("delete_job")
-  for jobId in deleteList:
-    job = db.getJobs(jobId=jobId)[0]
-    path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], job['appName'], jobId)
-    shutil.rmtree(path, ignore_errors=True)
-    db.deleteJob(jobId)
-  return redirect(url_for('listJobs')), 302
-
-
-
+#===============================================================================
+#   Compile End Points
+#===============================================================================
 @webapp.route('/compile', methods=['GET', 'POST'])
 def compile():
     """
@@ -955,8 +975,6 @@ def compile():
       else:
         return render_template("compile.html")
 
-
-
 @webapp.route('/compile/<uname>', methods=['GET'])
 def get_compile(uname):
     """
@@ -981,7 +999,6 @@ def get_compile(uname):
 
     else:
       return returnError("No output found for compilation, %s\n\n" % uname, 400)
-
 
 @webapp.route('/compile/<uname>/kill', methods=['GET'])
 def kill_compile(uname):
@@ -1017,11 +1034,6 @@ def kill_compile(uname):
       else:
         return redirect(url_for('listJobs')), 302
 
-
-
-
-
-
 @webapp.route('/delete/compiles', methods=['POST'])
 def delete_compiles():
   """
@@ -1042,33 +1054,6 @@ def delete_compiles():
     # shutil.rmtree(path, ignore_errors=True)
     # db.deleteJob(jobId)
   return redirect(url_for('listJobs')), 302
-
-
-
-def shutdown_server():
-    logging.warning ("[FLASKWEB] Attempting to kill the server")
-    func = request.environ.get('werkzeug.server.shutdown')
-    if func is None:
-        raise RuntimeError("Not running the server")
-    func()
-    driver.stop()
-    driver_t.join() 
-    for k, v in compile_tasks.items():
-      v.stop()
-    logging.info ("[FLASKWEB] Mesos is down")
-
-
-@webapp.route('/kill')
-def shutdown():
-    """
-    #------------------------------------------------------------------------------
-    #  /kill - Kill the server  (TODO: Clean this up)
-    #------------------------------------------------------------------------------
-    """
-    logging.warngin ("[FLASKWEB] Shutting down the driver")
-    shutdown_server()
-    return 'Server is going down...'
-
 
 
 

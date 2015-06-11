@@ -24,7 +24,9 @@
 #include <stdio.h>
 
 #include <mesos/executor.hpp>
-#include <boost/thread.hpp>
+// #include <boost/thread.hpp>
+#include <thread>
+#include <chrono>
 #include <yaml-cpp/yaml.h>
 
 using namespace mesos;
@@ -36,6 +38,7 @@ class DataFile {
     string varName;
     string policy;
 };
+
 
 
 // exec -- exec system command, pipe to stdout, return exit code
@@ -60,7 +63,6 @@ void packageSandbox(string host_name, string app_name, string job_id, string web
     // Tar sandbox & send to flaskweb UI  (hack for now -- should simply call post-execution script)
     string tarfile = app_name + "_" + job_id + "_" + host_name + ".tar";
     string tar_cmd =     "cd $MESOS_SANDBOX && tar -cf " + tarfile + " --exclude='k3executor' *";
-    string rename_out =  "cd $MESOS_SANDBOX && cp stdout stdout_" + host_name;
     string archive_endpoint = webaddr + app_name + "/" + job_id + "/archive";
     string post_curl = "cd $MESOS_SANDBOX && curl -i -H \"Accept: application/json\" -X POST ";
     string curl_cmd =    post_curl + "-F \"file=@" + tarfile + "\" " + archive_endpoint;
@@ -69,8 +71,6 @@ void packageSandbox(string host_name, string app_name, string job_id, string web
     cout << endl << "POST-PROCESSING:" << endl;
     cout << tar_cmd << endl;
     exec(tar_cmd.c_str());
-    cout << endl << endl << rename_out << endl;
-    exec(rename_out.c_str());
     cout << endl << endl << curl_cmd << endl;
     exec(curl_cmd.c_str());
     cout << endl << endl << curl_output << endl;
@@ -79,17 +79,71 @@ void packageSandbox(string host_name, string app_name, string job_id, string web
 
 
 
+
+void runK3Job (TaskInfo task, 
+            string k3_cmd, 
+            ExecutorDriver* driver, 
+            bool isMaster, 
+            string webaddr, 
+            string app_name, 
+            string job_id, 
+            string host_name)  {
+
+    TaskStatus status;
+    status.mutable_task_id()->MergeFrom(task.task_id());
+
+    // Currently, just call the K3 executable with the generated command line from task.data()
+    try {
+        cout << "-------------->  PROGRAM STARTING   <--------------------" << endl;
+        int result = exec(k3_cmd.c_str());
+        cout << "-------------->  PROGRAM TERMINATED <--------------------" << endl;
+
+        packageSandbox(host_name, app_name, job_id, webaddr);
+
+        if (result == 0) {
+            status.set_state(TaskState::TASK_FINISHED);
+            // status.set_state(2);
+            driver->sendStatusUpdate(status);
+            cout << endl << "Task " << task.task_id().value() << " Completed!" << endl;
+        }
+        else {
+            status.set_state(TaskState::TASK_FAILED);
+            // status.set_state(3);
+            driver->sendStatusUpdate(status);
+            cout << "K3 Task " << task.task_id().value() << " returned error code: " << result << endl;
+        }
+
+        std::this_thread::sleep_for (std::chrono::seconds(3));
+        driver->stop();
+
+    }
+    catch (...) {
+      status.set_state(TaskState::TASK_FAILED);
+      // status.set_state(3);
+      driver->sendStatusUpdate(status);
+      driver->stop();
+    }
+    //-------------  END OF TASK  -------------------
+  }
+
+
+
+
 class KDExecutor : public Executor
 {
 protected:
-  boost::thread *thread;
+  std::thread *thread;
   vector<DataFile> dataFiles;
+
+
 
 
 public:
   KDExecutor() : dataFiles() { thread=0; }
   virtual ~KDExecutor() { delete thread; }
 
+
+ 
   virtual void registered(ExecutorDriver* driver,
                           const ExecutorInfo& executorInfo,
                           const FrameworkInfo& frameworkInfo,
@@ -110,8 +164,6 @@ public:
   }
 
 
-
-
   virtual void launchTask(ExecutorDriver* driver, const TaskInfo& task)    {
     
     job_id   = task.task_id().value();
@@ -119,7 +171,7 @@ public:
     TaskStatus status;
     status.mutable_task_id()->MergeFrom(task.task_id());
     status.set_data("K3 Task is running");
-    status.set_state(TASK_RUNNING);
+    status.set_state(TaskState::TASK_RUNNING);
     driver->sendStatusUpdate(status);
 
     //-------------  START TASK OPERATIONS ----------
@@ -220,6 +272,7 @@ public:
           TaskStatus status;
           status.mutable_task_id()->MergeFrom(task.task_id());
           status.set_state(TASK_FAILED);
+          // status.set_state(3);
           driver->sendStatusUpdate(status);
           return;
 
@@ -360,16 +413,10 @@ public:
     oss << ") END PEERS" << std::endl;
     cout << oss.str() << std::endl;
 
-    cout << "FINAL COMMAND: " << k3_cmd << endl;
+    // Redirect Program's output
+    k3_cmd += " > stdout_" + host_name + " 2>&1";
 
-    // RUN K3 Program in a thread
-    if (thread) {
-        driver->sendFrameworkMessage("Debug: thread already existed!");
-        thread->interrupt();
-        thread->join();
-        delete thread;
-        thread = 0;
-    }
+    cout << "FINAL COMMAND: " << k3_cmd << endl;
 
     bool isMaster = false;
     cout << "Checking master" << endl;
@@ -378,59 +425,12 @@ public:
             cout << "I am master" << endl;
     }
     cout << "Launching K3: " << endl;
-    thread = new boost::thread(TaskThread(task, k3_cmd, driver, isMaster, webaddr, app_name, job_id, host_name));
+    thread = new std::thread(runK3Job, task, k3_cmd, driver, isMaster, webaddr, app_name, job_id, host_name);
+    
+
   }
 
 
-
-
-class TaskThread {
-  protected:
-    TaskInfo task;
-    string k3_cmd;
-    ExecutorDriver* driver;
-    bool isMaster;
-    string webaddr;
-    string app_name;
-    string job_id;
-    string host_name;
-
-  public:
-      TaskThread(TaskInfo t, string cmd, ExecutorDriver* d, bool m, string w, string a, string j, string h)
-        : task(t), k3_cmd(cmd), driver(d), isMaster(m), webaddr(w), app_name(a), job_id(j), host_name(h) {
-        }
-
-      void operator()() {
-        cout << "F" << endl;
-        TaskStatus status;
-        status.mutable_task_id()->MergeFrom(task.task_id());
-        // string job_id   = task.task_id().value();
-
-        // Currently, just call the K3 executable with the generated command line from task.data()
-        try {
-            cout << "-------------->  PROGRAM STARTING   <--------------------" << endl;
-            int result = exec(k3_cmd.c_str());
-            cout << "-------------->  PROGRAM TERMINATED <--------------------" << endl;
-
-            packageSandbox(host_name, app_name, job_id, webaddr);
-
-            if (result == 0) {
-                status.set_state(TASK_FINISHED);
-                cout << endl << "Task " << task.task_id().value() << " Completed!" << endl;
-            }
-            else {
-                status.set_state(TASK_FAILED);
-                cout << "K3 Task " << task.task_id().value() << " returned error code: " << result << endl;
-            }
-        }
-        catch (...) {
-          status.set_state(TASK_FAILED);
-        driver->sendStatusUpdate(status);
-    	  driver->stop();
-        }
-        //-------------  END OF TASK  -------------------
-      }
-};
 
   virtual void killTask(ExecutorDriver* driver, const TaskID& taskId) {
       packageSandbox(host_name, app_name, job_id, webaddr);
@@ -460,10 +460,7 @@ private:
     string job_id;
     string app_name;
     string webaddr;
-    // TaskInfo task;
     string k3_cmd;
-    // bool isMaster;
-
 };
 
 
