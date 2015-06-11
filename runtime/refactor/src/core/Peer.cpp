@@ -12,7 +12,7 @@ namespace K3 {
 
 Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
            const YAML::Node& peer_config, std::function<void()> ready_callback,
-           const string& json_path) {
+           const string& json_path, bool json_final_only) {
   address_ = addr;
   start_processing_ = false;
   finished_ = false;
@@ -26,6 +26,8 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
     json_globals_log_ = make_shared<std::ofstream>(json_path + "/" + address_.toString() + "_Globals.dsv"); 
     json_messages_log_ = make_shared<std::ofstream>(json_path + "/" + address_.toString() + "_Messages.dsv"); 
   }
+
+  json_final_state_only_ = json_final_only;
 
   // Peer's event processing loop
   auto work = [this, fac, peer_config, ready_callback]() {
@@ -49,6 +51,11 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
       }
     } catch (EndOfProgramException e) {
       finished_ = true;
+      if (json_globals_log_ && json_final_state_only_) {
+        for (const auto& it : context_->__jsonify()) {
+          *json_globals_log_ << it.first << "|" << it.second << std::endl;
+        }
+      }
       return;
     } catch (const std::exception& e) {
       logger_->error() << "Peer failed: " << e.what();
@@ -114,7 +121,7 @@ void Peer::logGlobals(const Message& m) {
     logger_->trace() << oss.str();
   }
 
-  if (json_globals_log_) {
+  if (json_globals_log_ && !json_final_state_only_) {
     for (const auto& it : context_->__jsonify()) {
       *json_globals_log_ << it.first << "|" << it.second << std::endl;
     }

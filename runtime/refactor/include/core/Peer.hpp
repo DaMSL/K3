@@ -27,7 +27,7 @@ class Peer {
  public:
   Peer(const Address& addr, shared_ptr<ContextFactory> fac,
        const YAML::Node& peer_config, std::function<void()> ready_callback,
-       const string& json_path);
+       const string& json_path, bool json_final_only);
   void start();
   void processRole();
   void join();
@@ -52,6 +52,7 @@ class Peer {
 
   shared_ptr<std::ofstream> json_globals_log_;
   shared_ptr<std::ofstream> json_messages_log_;
+  bool json_final_state_only_;
 };
 
 }  // namespace K3

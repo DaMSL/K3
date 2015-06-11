@@ -163,7 +163,7 @@ shared_ptr<map<Address, shared_ptr<Peer>>> Engine::createPeers(
   for (auto node : nodes) {
     Address addr = meFromYAML(node);
     auto ready_callback = [this]() { ready_peers_++; };
-    auto p = make_shared<Peer>(addr, factory, node, ready_callback, opts.json_folder_);
+    auto p = make_shared<Peer>(addr, factory, node, ready_callback, opts.json_folder_, opts.json_final_state_only_);
     if (result->find(addr) != result->end()) {
       throw std::runtime_error(
           "Engine createPeers(): Duplicate peer address: " + addr.toString());
