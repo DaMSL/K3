@@ -28,7 +28,6 @@ class Options {
   string json_folder_;
   bool json_final_state_only_;
 };
-}
-namespace po = boost::program_options;
+}  // namespace K3
 
 #endif

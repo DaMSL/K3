@@ -600,7 +600,7 @@ struct convert<K3::Libdynamic::IntMap<E>> {
     return v;
   }
 };
-}
+}  // namespace JSON
 
 #endif
 

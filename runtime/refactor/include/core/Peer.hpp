@@ -7,6 +7,7 @@
 // A peer stops processing when a special SentinelValue is dispatched.
 
 #include <atomic>
+#include <string>
 #include <memory>
 
 #include "boost/thread.hpp"

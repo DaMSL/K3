@@ -7,13 +7,14 @@
 namespace K3 {
 
 int Options::parse(int argc, const char *const argv[]) {
+  namespace po = boost::program_options;
   po::options_description desc("Allowed options");
-  desc.add_options()
-    ("help,h", "produce help message")
-    ("peer,p", po::value<vector<string> >(), "variables to set in peer (required)")
-    ("log_level,l", po::value<int>(), "Engine log level: (1,2,3)")
-    ("json,j", po::value<string>(), "Directory for json log files")
-    ("json_final_only,f", "json log final state only");
+  desc.add_options()("help,h", "produce help message")(
+      "peer,p", po::value<vector<string> >(),
+      "variables to set in peer (required)")("log_level,l", po::value<int>(),
+                                             "Engine log level: (1,2,3)")(
+      "json,j", po::value<string>(), "Directory for json log files")(
+      "json_final_only,f", "json log final state only");
 
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -36,7 +37,7 @@ int Options::parse(int argc, const char *const argv[]) {
   } else {
     log_level_ = 10;
   }
-  
+
   if (vm.count("json")) {
     json_folder_ = vm["json"].as<string>();
   } else {

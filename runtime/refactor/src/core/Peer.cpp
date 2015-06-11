@@ -17,14 +17,16 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
   start_processing_ = false;
   finished_ = false;
   logger_ = spdlog::get(addr.toString());
- 
+
   if (!logger_) {
     logger_ = spdlog::stdout_logger_mt(addr.toString());
   }
 
   if (json_path != "") {
-    json_globals_log_ = make_shared<std::ofstream>(json_path + "/" + address_.toString() + "_Globals.dsv"); 
-    json_messages_log_ = make_shared<std::ofstream>(json_path + "/" + address_.toString() + "_Messages.dsv"); 
+    json_globals_log_ = make_shared<std::ofstream>(
+        json_path + "/" + address_.toString() + "_Globals.dsv");
+    json_messages_log_ = make_shared<std::ofstream>(
+        json_path + "/" + address_.toString() + "_Messages.dsv");
   }
 
   json_final_state_only_ = json_final_only;
@@ -47,7 +49,8 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
         shared_ptr<Message> m = queue_->dequeue();
         logMessage(*m);
 
-        m->value()->dispatchIntoContext(context_.get(), m->trigger(), m->source());
+        m->value()->dispatchIntoContext(context_.get(), m->trigger(),
+                                        m->source());
         logGlobals(*m);
       }
     } catch (EndOfProgramException e) {
