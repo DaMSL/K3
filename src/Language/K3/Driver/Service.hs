@@ -25,6 +25,7 @@ import Data.Time.Format
 import Data.Time.Clock
 import Data.Time.LocalTime
 
+import Data.Monoid
 import Data.List
 import Data.List.Split
 import Data.Heap ( Heap )
@@ -687,27 +688,30 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       mlogM $ unwords ["Assigning blocks for program:", show pid]
 
       -- Get the current worker weights, and use them to partition the program.
-      wWeights <- workerWeights
-      when ( Heap.null wWeights ) $ assignError pid
-      (nwWeights, wBlocks, jobCosts) <- partitionProgram (jobBlockSize jobOpts) wWeights initP
+      ((wBlocks', nassigns', pending', wjs'), aProf) <- ST.profile $ const $ do
+        wWeights <- workerWeights
+        when ( Heap.null wWeights ) $ assignError pid
+        (nwWeights, wBlocks, jobCosts) <- partitionProgram (jobBlockSize jobOpts) wWeights initP
 
-      -- Compute assignment map delta.
-      -- Extract block ids per worker, and join with new weights per worker to compute
-      -- an assignment map with updated weights and new block sets.
-      let nwaBlockIds = Map.map (\cb -> Set.fromList $ map fst cb) wBlocks
-      let nwaWeights  = foldl (\m (w,wid) -> Map.insert wid w m) Map.empty nwWeights
-      let nassigns    = Map.intersectionWith WorkerAssignment nwaBlockIds nwaWeights
+        -- Compute assignment map delta.
+        -- Extract block ids per worker, and join with new weights per worker to compute
+        -- an assignment map with updated weights and new block sets.
+        let nwaBlockIds = Map.map (\cb -> Set.fromList $ map fst cb) wBlocks
+        let nwaWeights  = foldl (\m (w,wid) -> Map.insert wid w m) Map.empty nwWeights
+        let nassigns    = Map.intersectionWith WorkerAssignment nwaBlockIds nwaWeights
 
-      -- Compute new job state.
-      let pending = foldl (\acc cb -> acc `Set.union` (Set.fromList $ map fst cb)) Set.empty wBlocks
-      let wjs     = Map.intersectionWith (\w c -> WorkerJobState w c $ Map.size c) nwaWeights jobCosts
-      js <- js0 rid rq pending wjs ppRep
+        -- Compute new job state.
+        let pending = foldl (\acc cb -> acc `Set.union` (Set.fromList $ map fst cb)) Set.empty wBlocks
+        let wjs     = Map.intersectionWith (\w c -> WorkerJobState w c $ Map.size c) nwaWeights jobCosts
+        return (wBlocks, nassigns, pending, wjs)
 
+      let aRep = TransformReport (Map.singleton "Master assignment" [aProf]) Map.empty
+      js <- js0 rid rq pending' wjs' $ ppRep <> aRep
       modifyMJ_ $ \jbs -> Map.insert pid js jbs
-      modifyMA_ $ \assigns -> Map.unionWith incrWorkerAssignments assigns nassigns
-      msgs <- mkMessages pid jobOpts initSt wBlocks
+      modifyMA_ $ \assigns -> Map.unionWith incrWorkerAssignments assigns nassigns'
+      msgs <- mkMessages pid jobOpts initSt wBlocks'
 
-      logAssigment pid nassigns js
+      logAssignment pid nassigns' js
       return msgs
 
     -- | Compute a min-heap of worker assignment weights, returning a zero-heap if no assignments exist.
@@ -792,7 +796,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     jprof0 workerjs pprep = liftIO getTime >>= \start -> return $ JobProfile start Map.empty workerjs pprep []
     js0 rid rq pending workerjs pprep = jprof0 workerjs pprep >>= \prof -> return $ JobState rid rq prof pending Map.empty []
 
-    logAssigment pid nassigns js =
+    logAssignment pid nassigns js =
       let wk wid s = wid ++ ":" ++ s
 
           wastr (wid, WorkerAssignment b w) = (wk wid $ show $ length b, wk wid $ show w)
@@ -955,13 +959,13 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
           costreport    = map mkwvstr $ Map.toList wtcratiodiff
 
           i x = indent $ 2*x
-      in boxToString $ ["Workers"]            %$ (i 1 profreport)
-                    %$ ["Final"]              %$ (i 1 masterreport)
+      in boxToString $ ["Workers"]             %$ (i 1 profreport)
+                    %$ ["Sequential"]          %$ (i 1 masterreport)
                     %$ ["Compiler service"]
-                    %$ (i 1 ["Time ratios"]   %$ (i 2 wtratioreport))
-                    %$ (i 1 ["Cost ratios"]   %$ (i 2 wcratioreport))
-                    %$ (i 1 ["Cost accuracy"] %$ (i 2 costreport))
-                    %$ ["Time"]               %$ (i 1 timereport)
+                    %$ (i 1 ["Time ratios"]    %$ (i 2 wtratioreport))
+                    %$ (i 1 ["Cost ratios"]    %$ (i 2 wcratioreport))
+                    %$ (i 1 ["Cost accuracy"]  %$ (i 2 costreport))
+                    %$ ["Time"]                %$ (i 1 timereport)
 
     parseError = "Could not parse input: "
 

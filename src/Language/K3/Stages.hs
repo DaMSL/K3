@@ -15,8 +15,9 @@ import Control.Arrow hiding ( left )
 import Control.DeepSeq
 import Control.Exception
 import Control.Monad
-import Control.Monad.Trans.Except
+import Control.Monad.IO.Class
 import Control.Monad.State
+import Control.Monad.Trans.Except
 
 import Control.Concurrent
 
@@ -267,17 +268,17 @@ timePass n f prog = do
       in st {report = nrp}
 
 -- This is a reimplementation of Criterion.Measurement.measure that returns the value computed.
-profile :: (() -> IO a) -> IO (a, Measured)
+profile :: (MonadIO m) => (() -> m a) -> m (a, Measured)
 profile m = do
-  startStats     <- getGCStats
-  startTime      <- getTime
-  startCpuTime   <- getCPUTime
-  startCycles    <- getCycles
-  resultE        <- m () >>= evaluate
-  endTime        <- getTime
-  endCpuTime     <- getCPUTime
-  endCycles      <- getCycles
-  endStats       <- getGCStats
+  startStats     <- liftIO getGCStats
+  startTime      <- liftIO getTime
+  startCpuTime   <- liftIO getCPUTime
+  startCycles    <- liftIO getCycles
+  resultE        <- m () >>= liftIO . evaluate
+  endTime        <- liftIO getTime
+  endCpuTime     <- liftIO getCPUTime
+  endCycles      <- liftIO getCycles
+  endStats       <- liftIO getGCStats
   let msr = applyGCStats endStats startStats $ measured {
               measTime    = max 0 (endTime - startTime)
             , measCpuTime = max 0 (endCpuTime - startCpuTime)
