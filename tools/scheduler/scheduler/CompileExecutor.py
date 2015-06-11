@@ -67,9 +67,9 @@ class CompilerExecutor(mesos.interface.Executor):
       daemon['k3src'] = DEBUG_FILE if DEBUG else '$MESOS_SANDBOX/%s.k3' % daemon['name']
 
       if daemon['role'] == 'client':
-        cmd = './tools/scripts/run/service.sh submit --svid %(svid)s --host %(host)s --port %(port)s  --blocksize %(blocksize)s -%(compileto)s %(k3src)s' % daemon
+        cmd = './tools/scripts/run/service.sh submit --svid %(svid)s --host %(host)s --port %(port)s  --blocksize %(blocksize)s %(compilestage)s %(k3src)s +RTS -N -RTS' % daemon
       else:
-        cmd = './tools/scripts/run/service.sh %(role)s --svid %(svid)s --host %(host)s --port %(port)s' % daemon
+        cmd = './tools/scripts/run/service.sh %(role)s --svid %(svid)s --host %(host)s --port %(port)s +RTS -N -RTS' % daemon
 
       logging.info("CMD = %s" % cmd)
 
@@ -131,12 +131,14 @@ class CompilerExecutor(mesos.interface.Executor):
           subprocess.call(curl, shell=True)
 
         haltcmd = './tools/scripts/run/service.sh halt --svid %(svid)s --host %(host)s --port %(port)s' % daemon
-        subprocess.call(curl, shell=True)
+        subprocess.call(haltcmd, shell=True)
         logging.info("Client sent HALT command and is terminating")
       else:
         logging.info("`%s` Terminated", daemon['svid'])
 
       self.status.state = mesos_pb2.TASK_FINISHED if exitCode == 0 else mesos_pb2.TASK_FAILED
+      self.status.message = daemon['svid']
+      self.status.data = "Exit Code: " + str(exitCode)
       driver.sendStatusUpdate(self.status)
 
       # driver.sendStatusUpdate(self.status)
@@ -163,4 +165,13 @@ if __name__ == "__main__":
   sys.exit(0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1)
 
 
+          #  Upload binary to flask server
+          # headers = {"Accept": "application/json"}
+          # data = {"file": open(daemon['name'])}
+          # endpoint = "/apps/%s/%s" % (daemon['name'], daemom['uid'])
+          # conn = httplib.HTTPConnection(daemon['webaddr'])
+          # conn.request("POST", endpoint, data, headers)
+          # response = conn.getresponse()
+          # logging.info ('%s: %s\n%s' % (response.status, response.reason, response.read()))
+          # conn.close()
 

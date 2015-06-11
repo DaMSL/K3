@@ -39,7 +39,8 @@ State = enum.Enum('State', 'INIT DISPATCH MASTER_WAIT WORKER_WAIT CLIENT_WAIT SU
 
 masterNodes =  ['qp3']
 # workerNodes =  ['qp-hm' + str(i) for i in range(1,9)]
-workerNodes =  ['qp4']
+# workerNodes =  ['qp4']
+workerNodes =  ['qp-hd' + str(i) for i in [1, 3, 4, 6, 7, 8, 10, 12]]
 clientNodes =  ['qp5']
 
 class CompileLauncher(mesos.interface.Scheduler):
@@ -58,7 +59,7 @@ class CompileLauncher(mesos.interface.Scheduler):
         self.blocksize = job.blocksize
         self.source   = kwargs.get('source', None)
         self.webaddr  = kwargs.get('webaddr', None)
-        self.compile_level = kwargs.get('compile_level', 1)
+        self.compilestage = job.compilestage
 
         self.tasks    = {}  # Map (svid: taskInfo) 
         self.offers   = {}  # Map (svid: offer.id)
@@ -72,9 +73,16 @@ class CompileLauncher(mesos.interface.Scheduler):
         self.idle = 0
 
         logging.info("[COMPILER] Posting new job into DB: %s", self.name)
+        logging.info("    Name:          " + self.name)
+        logging.info("    uid:           " + str(self.uid))
+        logging.info("    blocksize:     " + str(self.blocksize))
+        logging.info("    # Workers:     " + str(self.numworkers))
+        logging.info("    Compile Stage: " + str(self.compilestage))
+        logging.info("    Build Dir:     " + str(self.localpath))
+
         db.insertCompile(job.__dict__)
-        for c in db.getCompiles():
-          logging.debug("COMPILE JOB FOUND!!!  --- " + c['name'])
+        # for c in db.getCompiles():
+        #   logging.debug("COMPILE JOB FOUND!!!  --- " + c['name'])
 
 
 
@@ -84,9 +92,9 @@ class CompileLauncher(mesos.interface.Scheduler):
 
     #  This Gets invoked when Mesos offers resources to my framework & we decide what to do with the recources (e.g. launch task, set mem/cpu, etc...)
     def resourceOffers(self, driver, offers):
-        # if time.time() > self.idle + 10:
-        logging.info("[COMPILER] HeartBeatting with Mesos. Current state: %s.  # Offers: %d", self.state, len(offers))
-          # self.idle = time.time()
+        if time.time() > self.idle + heartbeat_delay:
+          logging.info("[COMPILER] HeartBeatting with Mesos. `%s` Current state: %s.  (offers available)", self.name, self.state)
+          self.idle = time.time()
 
         accepted = []
 
@@ -128,7 +136,7 @@ class CompileLauncher(mesos.interface.Scheduler):
           # elif len(self.workers) < self.numworkers:
             logging.debug("Creating Client role")
             daemon = dict(role='client', svid='client', 
-              hostname=offer.hostname, blocksize=self.blocksize)
+              hostname=offer.hostname, blocksize=self.blocksize, compilestage=self.compilestage)
             self.client = daemon
 
           else:
@@ -139,8 +147,7 @@ class CompileLauncher(mesos.interface.Scheduler):
             continue
 
           config = dict(hostname=offer.hostname, 
-            webaddr=self.webaddr, name=self.name, uid=self.uid,
-            compileto=  self.compile_level)
+            webaddr=self.webaddr, name=self.name, uid=self.uid)
           daemon.update(config)
 
           task = compileTask(name=self.name,
@@ -217,16 +224,21 @@ class CompileLauncher(mesos.interface.Scheduler):
             db.updateCompile(self.uid, status=self.state.name)
 
         if update.state == mesos_pb2.TASK_FAILED:
+            logging.warning("[COMPILER]  -- FAILED TASK [%s]: %s", update.message, update.data)
             self.state = State.COMPLETE
             db.updateCompile(self.uid, status=self.state.name)
             self.terminate = True
 
         if update.state == mesos_pb2.TASK_FINISHED:
+            logging.info("[COMPILER]  -- FINISHED TASK [%s]: %s", update.message, update.data)
             self.state = State.COMPLETE
             db.updateCompile(self.uid, status=self.state.name)
             self.terminate = True
+            if update.message == 'master':
+              self.driver.stop()
 
         if update.state == mesos_pb2.TASK_LOST:
+            logging.warning("[COMPILER]  -- LOST TASK [%s]: %s", update.message, update.data)
             self.terminate = True
 
 
@@ -237,8 +249,8 @@ class CompileLauncher(mesos.interface.Scheduler):
         tid = mesos_pb2.TaskID()
         tid.value = svid
         logging.info("[DISPATCHER] Killing task: %s", svid)
-        driver.killTask(tid)
-      driver.stop()
+        self.driver.killTask(tid)
+      self.driver.stop()
 
 
 

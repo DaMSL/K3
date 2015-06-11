@@ -3,7 +3,7 @@
 {% block content %}
   <div class="container">
     <div class="starter-template">
-        {% if appName %}
+<!--         {% if appName %}
           <h2>Application: <span class="text-info"><a href="/jobs/{{appName}}">{{appName}}</a></span>
           {% if jobId %}
            - Job: <span class="text-info">{{jobId}}</span>
@@ -61,7 +61,7 @@
         </div>
             <br><br><h4><a href="/jobs">return to jobs</a></h4>
         {% else %}
-
+ -->
           <h3>Active Compiling Jobss</h3>
           <table class="table table-striped">
             <tr> <th>Build</th><th>Output</th><th>Time Submit</th><th>Time Complete</th><th>Status</th><th>Kill</th><th></th></tr>
@@ -119,23 +119,23 @@
           <table class="table table-striped">
             <tr> <th>Build</th><th>Output</th><th>Time Submit</th><th>Time Complete</th><th>Status</th><th>Kill</th></tr>
           {% for job in compilelist %}
-            {% if job.status == "COMPELTE" or job.status == "KILLED" %}
+<!--             {% if job.status == "COMPELTE" or job.status == "KILLED" %} -->
                 <tr>
-                    <td><a href="/fs/build/{{job.name}}/{{job.uid}}">{{job.name}}-{{job.uid}}</a></td>
+                    <td><a href="/fs/build/{{job.name}}-{{job.uid}}">{{job.name}}-{{job.uid}}</a></td>
                     <td><a href="/compile/{{job.name}}-{{job.uid}}">Output</a></td>
                     <td>{{job.submit}}</td>
                     <td>{{job.complete}}</td>
                     <td>{{job.status}}</td>
                 <td><input type="checkbox" name="delete_compile" value="{{job.uid}}"></td>
                 </tr>
-            {% endif %}
+            <!-- {% endif %} -->
           {% endfor %}
           </table>
           <div class="row text-right"><button type=submit class="btn btn-danger btn-md">
                Delete Selected Inactive Compiling Jobs</button></div>
           </form>
 
-        {% endif %}
+        <!-- {% endif %} -->
     </div>
   </div>
 {% endblock %}

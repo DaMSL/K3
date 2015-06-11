@@ -5,6 +5,7 @@ from enum import enum
 
 heartbeat_delay = 10  # secs. move to common
 gc_delay = 8
+offer_wait = 8
 
 
 class JobStatus:

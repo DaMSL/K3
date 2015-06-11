@@ -265,6 +265,9 @@ def staticFile(path):
     return send_from_directory(webapp.config['DIR'], path)
 
 
+#===============================================================================
+#   Application Layer End Points
+#===============================================================================
 @webapp.route('/app', methods=['GET', 'POST'])
 def uploadAppRedir():
   """
@@ -407,6 +410,36 @@ def archiveApp(appName, appUID):
     return redirect(path, 302)
 
 
+@webapp.route('/delete/app/<appName>', methods=['POST'])
+def deleteApp(appName):
+  """
+  #------------------------------------------------------------------------------
+  #  /delete/app/<appName>
+  #     POST     Deletes an app from the web server 
+  #         NOTE: Data files will remain in webroot on the server, but
+  #           the app will be inaccessible through the interface
+  #           (metadata is removed from the internal db)
+  #------------------------------------------------------------------------------
+  """
+  logger.debug('[FLASKWEB  /delete/app/<appName>] Request to delete App `%s`', appName)
+  applist = [a['name'] for a in db.getAllApps()]
+  if appName not in applist:
+    return returnError("Application %s does not exist" % appName, 404)
+
+  logger.info("[FLASKWEB]  DELETING all versions of app, `%s`")
+  db.deleteAllApps(appName)
+
+  if request.headers['Accept'] == 'application/json':
+    return jsonify(dict(app=appName, status='DELETED, files remain on server')), 200
+  else:
+    applist = db.getAllApps()
+    versions = {a['name']: db.getVersions(a['name'], limit=5) for a in applist}
+    return render_template('apps.html', applist=applist, versions=versions)
+
+
+#===============================================================================
+#   Job Layer End Points
+#===============================================================================
 @webapp.route('/job')
 def listJobsRedir():
   """
@@ -424,12 +457,14 @@ def listJobs():
   #------------------------------------------------------------------------------
   """
   logger.debug('[FLASKWEB  /jobs] Request for job listing')
-  jobs = db.getJobs()
+  jobs = db.getJobs() 
+
+  #  Garbage Collect Orpahened jobs
   compiles = db.getCompiles()
-  for c in compiles:
-    if c['uid'] not in compile_tasks.keys():
-      db.updateCompile(c['uid'], status='KILLED', done=True)
-  compiles = db.getCompiles()
+  # for c in compiles:
+  #   if c['uid'] not in compile_tasks.keys():
+  #     db.updateCompile(c['uid'], status='KILLED', done=True)
+  # compiles = db.getCompiles()
 
   if request.headers['Accept'] == 'application/json':
     return jsonify(dict(LaunchJobs=jobs, CompilingJobs=compiles)), 200
@@ -438,16 +473,16 @@ def listJobs():
 
 
 @webapp.route('/jobs/<appName>', methods=['GET', 'POST'])
-def create_job_latest(appName):
+def createJobLatest(appName):
   """
     Redirect createJob using the latest uploaded application version
   """
   logger.debug('[FLASKWEB  /jobs/<appName>] Redirect to current version of /jobs/%s' % appName)
   app = db.getApp(appName)
-  return create_job(appName, app['uid'])
+  return createJob(appName, app['uid'])
 
 @webapp.route('/jobs/<appName>/<appUID>', methods=['GET', 'POST'])
-def create_job(appName, appUID):
+def createJob(appName, appUID):
   """
   #------------------------------------------------------------------------------
   #  /jobs/<appName>
@@ -517,7 +552,7 @@ def create_job(appName, appUID):
         if 'application/json' in request.headers['Accept']:
           return jsonify(thisjob), 202
         else:
-          return render_template('jobs.html', appName=appName, lastjob=thisjob)
+          return render_template('last.html', appName=appName, lastjob=thisjob)
 
     elif request.method == 'GET':
       jobs = db.getJobs(appName=appName)
@@ -549,8 +584,20 @@ def create_job(appName, appUID):
     return returnError("There is no application, %s" % appName, 404)
 
 
+@webapp.route('/job/<jobId>')
+def getJobRedir(jobId):
+    """
+      Redirect to getJob
+    """
+    jobs = db.getJobs(jobId=jobId)
+    job = None if len(jobs) == 0 else jobs[0]
+    if job == None:
+      return returnError("Job ID, %s, does not exist" % jobId, 404)
+    appName = job['appName']
+    return getJob(appName, jobId)
+
 @webapp.route('/jobs/<appName>/<jobId>/status')
-def get_job(appName, jobId):
+def getJob(appName, jobId):
     """
     #------------------------------------------------------------------------------
     #  /jobs/<appName>/<jobId>/status - Detailed Job info
@@ -580,11 +627,24 @@ def get_job(appName, jobId):
     if 'application/json' in request.headers['Accept']:
       return jsonify(thisjob)
     else:
-      return render_template("jobs.html", appName=appName, joblist=jobs, lastjob=thisjob)
+      return render_template("last.html", appName=appName, lastjob=thisjob)
 
+
+@webapp.route('/job/<jobId>/replay')
+def replayJobRedir(jobId):
+    """
+      Redirect to replayJob
+    """
+    jobs = db.getJobs(jobId=jobId)
+    job = None if len(jobs) == 0 else jobs[0]
+    if job == None:
+      return returnError("Job ID, %s, does not exist" % jobId, 404)
+    appName = job['appName']
+    logging.info ("[FLASKWEB] REPLAYING JOB # %s" % jobId)
+    return replayJob(appName, jobId)
 
 @webapp.route('/jobs/<appName>/<jobId>/replay', methods=['GET', 'POST'])
-def replay_job(appName, jobId):
+def replayJob(appName, jobId):
   """
   #------------------------------------------------------------------------------
   #  /jobs/<appName>/<appUID/replay  - Replay a previous K3 Job
@@ -633,31 +693,27 @@ def replay_job(appName, jobId):
       if 'application/json' in request.headers['Accept']:
           return jsonify(thisjob), 202
       else:
-          return render_template('jobs.html', appName=appName, lastjob=thisjob)
+          return render_template('last.html', appName=appName, lastjob=thisjob)
 
   else:
     return returnError("There is no Job, %s\n" % jobId, 404)
 
-#------------------------------------------------------------------------------
-#  /jobs/<appName>/<jobId>/stdout - Job Interface for specific job
-#         GET     TODO: Consolidate STDOUT for current job (from all tasks)
-#         POST    TODO: Accept STDOUT & append here (if desired....)
-#------------------------------------------------------------------------------
-# @webapp.route('/jobs/<appName>/<jobId>/stdout', methods=['GET'])
-# def stdout(appName, jobId):
-#     jobs = db.getJobs(appName=appName)
-#     link = resolve(MASTER)
-#     print link
-#     sandbox = dispatcher.getSandboxURL(jobId)
-#     if sandbox:
-#       print sandbox
-#       return '<a href="%s">%s</a>' % (sandbox, sandbox)
-#     else:
-#       return 'test'
+
+@webapp.route('/job/<jobId>/archive', methods=['GET', 'POST'])
+def archiveJobRedir(jobId):
+    """
+      Redirect to archiveJob
+    """
+    jobs = db.getJobs(jobId=jobId)
+    job = None if len(jobs) == 0 else jobs[0]
+    appName = job['appName']
+    if job == None:
+      return returnError("Job ID, %s, does not exist" % jobId, 404)
+    return archiveJob(appName, jobId)
 
 
 @webapp.route('/jobs/<appName>/<jobId>/archive', methods=['GET', 'POST'])
-def archive_job(appName, jobId):
+def archiveJob(appName, jobId):
     """"
     #------------------------------------------------------------------------------
     #  /jobs/<appName>/<jobId>/archive - Endpoint to receive & archive files
@@ -691,8 +747,21 @@ Upload your file using the following CURL command:\n\n
    curl -i -H "Accept: application/json" -F file=@<filename> http://<server>:<port>/<appName>/<jobId>/archive
 ''', 200
 
+
+@webapp.route('/job/<jobId>/kill', methods=['GET'])
+def killRedir(jobId):
+    """
+      Redirect to killJob
+    """
+    jobs = db.getJobs(jobId=jobId)
+    job = None if len(jobs) == 0 else jobs[0]
+    appName = job['appName']
+    if job == None:
+      return returnError("Job ID, %s, does not exist" % jobId, 404)
+    return killJob(appName, jobId)
+
 @webapp.route('/jobs/<appName>/<jobId>/kill', methods=['GET'])
-def kill_job(appName, jobId):
+def killJob(appName, jobId):
     """
     #------------------------------------------------------------------------------
     #  /jobs/<appName>/<jobId>/kill - Job Interface to cancel a job
@@ -725,72 +794,48 @@ def kill_job(appName, jobId):
     if 'application/json' in request.headers['Accept']:
       return jsonify(thisjob)
     else:
-      return render_template("jobs.html", appName=appName, lastjob=thisjob)
+      return render_template("last.html", appName=appName, lastjob=thisjob)
 
 
-@webapp.route('/job/<jobId>')
-def get_job_id(jobId):
-    """
-    #------------------------------------------------------------------------------
-    #  /job/<jobId> - Detailed Job info
-    #         GET     Display detailed job info  (default for all methods)
-    #------------------------------------------------------------------------------
-    """
-    jobs = db.getJobs(jobId=jobId)
-    job = None if len(jobs) == 0 else jobs[0]
-    if job == None:
-      return returnError("Job ID, %s, does not exist" % jobId, 404)
-    appName = job['appName']
-    return get_job(appName, jobId)
-
-@webapp.route('/job/<jobId>/replay')
-def replay_job_id(jobId):
-    """
-    #------------------------------------------------------------------------------
-    #  /job/<jobId>/replay - Replays this job
-    #         GET     Display detailed job info  (default for all methods)
-    #------------------------------------------------------------------------------
-    """
-    jobs = db.getJobs(jobId=jobId)
-    job = None if len(jobs) == 0 else jobs[0]
-    if job == None:
-      return returnError("Job ID, %s, does not exist" % jobId, 404)
-    appName = job['appName']
-    logging.info ("[FLASKWEB] REPLAYING JOB # %s" % jobId)
-    return replay_job(appName, jobId)
-
-@webapp.route('/job/<jobId>/kill', methods=['GET'])
-def kill_job_id(jobId):
-    """
-    #------------------------------------------------------------------------------
-    #  /jobs/<appName>/<jobId>/kill - Job Interface to cancel a job
-    #         GET     Kills a Job (if orphaned, updates status to killed)
-    #           curl -i -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<jobId>/kill
-    #------------------------------------------------------------------------------
-    """
-    jobs = db.getJobs(jobId=jobId)
-    job = None if len(jobs) == 0 else jobs[0]
-    appName = job['appName']
-    if job == None:
-      return returnError("Job ID, %s, does not exist" % jobId, 404)
-    return kill_job(appName, jobId)
+#------------------------------------------------------------------------------
+#  /jobs/<appName>/<jobId>/stdout - Job Interface for specific job
+#         GET     TODO: Consolidate STDOUT for current job (from all tasks)
+#         POST    TODO: Accept STDOUT & append here (if desired....)
+#------------------------------------------------------------------------------
+# @webapp.route('/jobs/<appName>/<jobId>/stdout', methods=['GET'])
+# def stdout(appName, jobId):
+#     jobs = db.getJobs(appName=appName)
+#     link = resolve(MASTER)
+#     print link
+#     sandbox = dispatcher.getSandboxURL(jobId)
+#     if sandbox:
+#       print sandbox
+#       return '<a href="%s">%s</a>' % (sandbox, sandbox)
+#     else:
+#       return 'test'
 
 
-@webapp.route('/job/<jobId>/archive', methods=['GET', 'POST'])
-def archive_job_id(jobId):
-    """
-    #------------------------------------------------------------------------------
-    #  /jobs/<appName>/<jobId>/kill - Job Interface to cancel a job
-    #         GET     Kills a Job (if orphaned, updates status to killed)
-    #           curl -i -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<jobId>/kill
-    #------------------------------------------------------------------------------
-    """
-    jobs = db.getJobs(jobId=jobId)
-    job = None if len(jobs) == 0 else jobs[0]
-    appName = job['appName']
-    if job == None:
-      return returnError("Job ID, %s, does not exist" % jobId, 404)
-    return archive_job(appName, jobId)
+
+
+
+
+
+
+@webapp.route('/delete/jobs', methods=['POST'])
+def delete_jobs():
+  """
+  #------------------------------------------------------------------------------
+  #  /delete/jobs
+  #         POST     Deletes list of K3 jobs
+  #------------------------------------------------------------------------------
+  """
+  deleteList = request.form.getlist("delete_job")
+  for jobId in deleteList:
+    job = db.getJobs(jobId=jobId)[0]
+    path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], job['appName'], jobId)
+    shutil.rmtree(path, ignore_errors=True)
+    db.deleteJob(jobId)
+  return redirect(url_for('listJobs')), 302
 
 
 
@@ -820,12 +865,14 @@ def compile():
       options = request.form['options'] if 'options' in request.form else ''
       user = request.form['user'] if 'user' in request.form else 'someone'
       tag = request.form['tag'] if 'tag' in request.form else ''
+      compilestage = request.form['compilestage'] if 'compilestage' in request.form else ""
       blocksize = request.form['blocksize'] if 'blocksize' in request.form else 4
       numworkers = int(request.form['numworkers']) if 'numworkers' in request.form else 1
       logger.debug("Compile requested for application: %s", name)
 
       if not file and not text:
           return renderError("Invalid Compile request", 400)
+
 
       # Create a unique ID
       uid = getUID()
@@ -840,9 +887,6 @@ def compile():
 
       uname = '%s-%s' % (name, uid)
       path = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], uname).encode(encoding='utf8')
-
-
-
 
       # Save K3 source to file (either from file or text input)
       src_file = ('%s.k3' % name)
@@ -869,7 +913,7 @@ def compile():
 
       # TODO: Add in Git hash
       compileJob   = CompileJob(name=name, uid=uid, options=options, user=user, tag=tag,
-              path=path, blocksize=blocksize, numworkers=numworkers, url=url)
+              path=path, blocksize=blocksize, numworkers=numworkers, compilestage=compilestage, url=url)
 
       # compileDriver = CompileDriver(compileJob, webapp.config['MESOS'], source=source, script=script, webaddr=webapp.config['ADDR'])
       launcher = CompileLauncher(compileJob, source=src_file, webaddr=webapp.config['ADDR'])
@@ -901,7 +945,7 @@ def compile():
       if request.headers['Accept'] == 'application/json':
         return jsonify(thiscompile), 200
       else:
-        return render_template("jobs.html", appName=name, lastcompile=thiscompile)
+        return render_template("last.html", appName=name, lastcompile=thiscompile)
 
 
     else:
@@ -975,48 +1019,7 @@ def kill_compile(uname):
 
 
 
-@webapp.route('/delete/app/<appName>', methods=['POST'])
-def deleteApp(appName):
-  """
-  #------------------------------------------------------------------------------
-  #  /delete/app/<appName>
-  #     POST     Deletes an app from the web server 
-  #         NOTE: Data files will remain in webroot on the server, but
-  #           the app will be inaccessible through the interface
-  #------------------------------------------------------------------------------
-  """
-  logger.debug('[FLASKWEB  /delete/app/<appName>] Request to delete App `%s`', appName)
-  applist = [a['name'] for a in db.getAllApps()]
-  if appName not in applist:
-    return returnError("Application %s does not exist" % appName, 404)
 
-  logger.info("[FLASKWEB]  DELETING all versions of app, `%s`")
-  db.deleteAllApps(appName)
-
-  if request.headers['Accept'] == 'application/json':
-    return jsonify(dict(app=appName, status='DELETED, files remain on server')), 200
-  else:
-    applist = db.getAllApps()
-    versions = {a['name']: db.getVersions(a['name'], limit=5) for a in applist}
-    return render_template('apps.html', applist=applist, versions=versions)
-
-
-
-@webapp.route('/delete/jobs', methods=['POST'])
-def delete_jobs():
-  """
-  #------------------------------------------------------------------------------
-  #  /delete/jobs
-  #         POST     Deletes list of K3 jobs
-  #------------------------------------------------------------------------------
-  """
-  deleteList = request.form.getlist("delete_job")
-  for jobId in deleteList:
-    job = db.getJobs(jobId=jobId)[0]
-    path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], job['appName'], jobId)
-    shutil.rmtree(path, ignore_errors=True)
-    db.deleteJob(jobId)
-  return redirect(url_for('listJobs')), 302
 
 
 @webapp.route('/delete/compiles', methods=['POST'])
@@ -1077,6 +1080,7 @@ if __name__ == '__main__':
   parser.add_argument('-m', '--master', help='URL for the Mesos Master (e.g. zk://localhost:2181/mesos', default='zk://localhost:2181/mesos', required=False)
   parser.add_argument('-d', '--dir', help='Local directory for hosting application and output files', default='/k3/web/', required=False)
   parser.add_argument('-c', '--compile', help='Enable Compilation Features (NOTE: will require a capable image)', action='store_true', required=False)
+  parser.add_argument('--wipedb', help='Wipe the Database clean before running', action='store_true', required=False)
   parser.add_argument('--ip', help='Public accessible IP for connecting to flask', required=False)
   args = parser.parse_args()
 
@@ -1091,6 +1095,12 @@ if __name__ == '__main__':
 
   #  Program Initialization
   webapp.debug = True
+
+  if args.wipedb:
+    logger.info("Wiping database and exiting")
+    db.dropTables()
+    sys.exit(0)
+
   db.createTables()
   master = args.master
   port = int(args.port)

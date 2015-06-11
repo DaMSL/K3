@@ -3,7 +3,7 @@
 {% block content %}
   <div class="container">
     <div class="starter-template">
-      <h2>Compile a new K3 Application from source</h2>
+      <h2>Compile a New K3 Application from source</h2>
         <form action="" method=post enctype=multipart/form-data>
             <div class="row">
                 <div class="col-md-2"><h4>Application Name: </h4></div>
@@ -11,15 +11,27 @@
             </div>
             <div class="row">
                 <div class="col-md-2"><h4>Blocksize:</h4></div>
-                <div class="col-md-8"><input type=text name=blocksize size="80"></div>
+                <div class="col-md-8"><input type=text name=blocksize value=4 size="80"></div>
             </div>
             <div class="row">
                 <div class="col-md-2"><h4># of Worker Nodes:</h4></div>
-                <div class="col-md-8"><input type=text name=numworkers size="80"></div>
+                <div class="col-md-8"><input type=text name=numworkers value=1 size="80"></div>
             </div>
+            <div class="row">
+                <div class="col-md-2"><h4>Compile Stage</h4></div>
+                <div class="col-md-8">
+                    <select name = "compilestage">
+                        <option selected = "selected">Select...</option>
+                        <option value = "-1">First Stage:   K3->CPP</option>
+                        <option value = "-2">Second Stage: CPP->bin</option>
+                          <option value = "">Both Stages:   K3->bin</option>
+                    </select>
+                  </div>
+            </div>
+
 <!--             <div class="row">
-                <div class="col-md-4"><h4>User (optional):</h4></div>
-                <div class="col-md-8"><input type=text name=user></div>
+                <div class="col-md-4"><h4>Compile Level (1=cpp, 2=binary)</h4></div>
+                <div class="col-md-8"><input type=text name=compilestage value=1 size="80"></div>
             </div>
  -->
              <div class="row">
