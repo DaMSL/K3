@@ -1018,7 +1018,10 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
     -- | Block compilation functions.
     processBlock pid ([SDeclOpt cSpec]) initSt blocksByBID =
       abortcatch pid blocksByBID $ do
+        start <- liftIO getTime
         (cBlocksByBID, finalSt) <- zm $ foldM (compileBlock pid cSpec) ([], initSt) blocksByBID
+        end <- liftIO getTime
+        wlogM $ boxToString $ ["Worker local time"] %$ (indent 2 [secs $ end - start])
         sendC wworker $ BlockDone wid pid cBlocksByBID $ ST.report finalSt
 
     processBlock _ _ _ _ = werrM $ "Invalid worker compile stages"
