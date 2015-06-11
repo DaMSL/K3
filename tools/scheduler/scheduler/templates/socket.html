@@ -30,10 +30,9 @@
 
             socket.on('my response', function(msg) {
                 $('#log').append('<br>' + msg);
-                $('#logpanel').scrollTop($('#log').outerHeight());
+                $('#log').scrollTop($('#log')[0].scrollHeight);
             });
 
-            $('#log').scrollTop($('#log')[0].scrollHeight);
          });
     </script>
 
@@ -42,7 +41,7 @@
       <p>
         <h2>Socket Stream:</h2>
         <div id="logpanel" height="100%" style="width: 100%; height: 100%">
-           <textarea id="log" col=30 readonly style="width: 100%; height: 100%; font-family: monospace; overflow: scroll"></textarea>
+           <textarea id="log" row=30 readonly style="width: 100%; height: 100%; font-family: monospace; overflow: scroll"></textarea>
         </div>
       </p>
     </div>
