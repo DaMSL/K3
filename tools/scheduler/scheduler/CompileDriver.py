@@ -72,6 +72,9 @@ class CompileLauncher(mesos.interface.Scheduler):
         self.readyworkers = 0
         self.idle = 0
 
+
+        self.wslog = logging.getLogger("compiler")
+
         logging.info("[COMPILER] Posting new job into DB: %s", self.name)
         logging.info("    Name:          " + self.name)
         logging.info("    uid:           " + str(self.uid))
@@ -188,6 +191,7 @@ class CompileLauncher(mesos.interface.Scheduler):
         # state = mesos_pb2.TaskState.Name(update.state)
         # logging.debug("[UPDATE - %s]: %s {%s}" % (update.message, state, update.data))
 
+        self.wslog.info(update.data)
         #  TODO: CHANGE this to logging module
         with open(os.path.join(self.localpath, 'output'), 'a') as out:
           out.write(update.data)

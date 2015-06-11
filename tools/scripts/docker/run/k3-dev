@@ -8,19 +8,26 @@
 #  Requirements:  Copy mesos libs (libmesos-<version>.so, libmesos.la) to local work dir
 
 # Debian: Jesse
-FROM debian:jessie
+FROM debian:sid
 
 # Install basic packages to build the image
 RUN apt-get update && apt-get install -y \
     bzip2 unzip autoconf Libtool \
     gcc g++ make cmake git curl wget \
-    libyaml-cpp-dev \
-    subversion \
-    python \
+    aptitude vim tmux \
+    libyaml-cpp-dev ruby2.2 \
+    subversion clang-3.5 \
+    python python-dev python-pip \
     software-properties-common \
     python-software-properties \
     python-setuptools \
-    libzmq3-dev pkgconf
+    libzmq3-dev pkgconf \
+    libre2-dev numactl && \
+    pip install pyyaml && \
+    pip install flask && \
+    pip install pytz && \
+    pip install enum34 && \
+    pip install Flask-SocketIO
 
 # Install Boost v1.57.0
 RUN wget http://sourceforge.net/projects/boost/files/boost/1.57.0/boost_1_57_0.tar.bz2/download && \
@@ -32,15 +39,6 @@ RUN wget http://sourceforge.net/projects/boost/files/boost/1.57.0/boost_1_57_0.t
   ./b2 install threading=multi link=shared && \
   cd .. && \
   rm -Rf boost_1_57_0
-
-# Install Google Regex (re2) lib
-RUN git clone https://github.com/google/re2.git && \
- cd re2  && \
- make && \
- make test && \
- make install && \
- cd .. && \
- rm -Rf re2
 
 # Install CSV++
 RUN git clone https://git01.codeplex.com/forks/wjjt/csvpp && \
@@ -119,6 +117,31 @@ RUN git checkout development && \
     apt-get update && \
     apt-get install -y libtinfo-dev && \
     cabal build
+
+# Clone K3, K3-Mosaic from Git
+RUN mkdir -p /k3/K3 /k3/K3-Mosaic && \
+    git clone https://github.com/DaMSL/K3.git /k3/K3 && \
+    git clone https://github.com/DaMSL/K3-Mosaic.git /k3/K3-Mosaic
+
+# Install decent vim configuration
+RUN mkdir /root/.vim && \
+    git clone https://github.com/tpope/vim-pathogen.git /root/.vim; \
+    git clone https://github.com/tpope/vim-sensible.git /root/.vim/bundle; \
+    git clone https://github.com/tmhedberg/matchit.git /root/.vim/bundle; \
+    git clone https://github.com/kien/ctrlp.git /root/.vim/bundle; \
+    git clone https://github.com/tpope/vim-surround.git /root/.vim/bundle; \
+    git clone https://github.com/tpope/vim-unimpaired.git /root/.vim/bundle; \
+    git clone https://github.com/tpope/vim-repeat.git /root/.vim/bundle; \
+    git clone https://github.com/tpope/vim-fugitive.git /root/.vim/bundle; \
+    git clone https://github.com/tpope/vim-vinegar.git /root/.vim/bundle; \
+    git clone https://github.com/tpope/vim-eunuch.git /root/.vim/bundle; \
+    git clone https://github.com/scrooloose/nerdtree.git /root/.vim/bundle; \
+    git clone https://github.com/scrooloose/syntastic.git /root/.vim/bundle; \
+    git clone https://github.com/godlygeek/tabular.git /root/.vim/bundle; \
+    git clone https://github.com/bling/airline.git /root/.vim/bundle; \
+    git clone https://github.com/bronson/vim-visual-star-search.git /root/.vim/bundle; \
+    git clone https://github.com/justinmk/vim-sneak.git /root/.vim/bundle; \
+    echo 'execute pathogen#infect() | syntax on | filetype plugin indent on' > /root/.vimrc
 
 # Clean up
 RUN apt-get autoremove -y && \

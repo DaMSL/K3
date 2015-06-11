@@ -68,6 +68,8 @@ class CompilerExecutor(mesos.interface.Executor):
 
       if daemon['role'] == 'client':
         cmd = './tools/scripts/run/service.sh submit --svid %(svid)s --host %(host)s --port %(port)s  --blocksize %(blocksize)s %(compilestage)s %(k3src)s +RTS -N -RTS' % daemon
+      elif daemon['role'] == 'master':
+        cmd = './tools/scripts/run/service.sh %(role)s --svid %(svid)s --host %(host)s --port %(port)s --heartbeat 60 +RTS -N -RTS' % daemon
       else:
         cmd = './tools/scripts/run/service.sh %(role)s --svid %(svid)s --host %(host)s --port %(port)s +RTS -N -RTS' % daemon
 

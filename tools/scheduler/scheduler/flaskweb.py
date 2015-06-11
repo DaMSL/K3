@@ -12,10 +12,14 @@ import SimpleHTTPServer
 import httplib
 import logging, logging.handlers
 
+import socket
+from threading import Thread
+from time import sleep
 
 from flask import (Flask, request, redirect, url_for, jsonify,
                      render_template, send_from_directory)
 from werkzeug import (secure_filename, SharedDataMiddleware)
+from flask.ext.socketio import SocketIO, emit
 
 from common import *
 from core import *
@@ -26,6 +30,7 @@ import db
 
 
 webapp = Flask(__name__, static_url_path='')
+socketio = SocketIO(webapp)
 logger = logging.getLogger("")
 
 dispatcher = None
@@ -35,6 +40,11 @@ compile_tasks = {}
 
 index_message = 'Welcome to K3'
 
+
+class SocketIOHandler(logging.Handler):
+    def emit(self, record):
+        #socketio.send(msg)
+        socketio.emit('my response', record.getMessage(), namespace='/compile')
 
 #===============================================================================
 #   General Web Service Functions
@@ -50,6 +60,13 @@ def initWeb(port, **kwargs):
   log_console.setFormatter(log_fmt)
   logger.setLevel(logging.DEBUG)
   logger.addHandler(log_console)
+
+  compile_fmt = ServiceFormatter('[%(asctime)s] %(message)s')
+  sio = SocketIOHandler()
+  sio.setFormatter(compile_fmt)
+  compileLogger = logging.getLogger("compiler")
+  compileLogger.addHandler(sio)
+  # logger.addHandler(sio)
 
   logger.debug("Setting up directory structure")
 
@@ -151,7 +168,7 @@ def shutdown_server():
     driver.stop()
     driver_t.join() 
     for k, v in compile_tasks.items():
-      v.stop()
+      v.kill()
     logging.info ("[FLASKWEB] Mesos is down")
 
 
@@ -943,8 +960,7 @@ def compile():
       framework.name = "Compile %s" % name
 
       driver = mesos.native.MesosSchedulerDriver(launcher, framework, webapp.config['MESOS'])
-
-      compile_tasks[uname] = driver
+      compile_tasks[uid] = launcher
 
       t = threading.Thread(target=driver.run)
       try:
@@ -960,7 +976,6 @@ def compile():
       thiscompile = dict(compileJob.__dict__, url=dispatcher.getSandboxURL(uname),
                          status='SUBMITTED', outputurl=outputurl, cppsrc=cppsrc)
 
-      compile_tasks[uid] = t
 
       if request.headers['Accept'] == 'application/json':
         return jsonify(thiscompile), 200
@@ -1000,6 +1015,22 @@ def get_compile(uname):
     else:
       return returnError("No output found for compilation, %s\n\n" % uname, 400)
 
+@webapp.route('/compilelog')
+def getCompileLog():
+  """
+  #------------------------------------------------------------------------------
+  #  /compilelog - Connects User to compile log websocket
+  #------------------------------------------------------------------------------
+  """
+  logger.debug("[FLASKWEB] Connecting user to Compile Log WebSocket")
+  if request.headers['Accept'] == 'application/json':
+    # TODO: Return command line based data (??)
+    return output, 200
+  else:
+    return render_template("socket.html", namespace='/compile')
+
+
+
 @webapp.route('/compile/<uname>/kill', methods=['GET'])
 def kill_compile(uname):
     """
@@ -1026,7 +1057,7 @@ def kill_compile(uname):
         db.updateCompile(uid, status='KILLED', done=True)
 
       if uid in compile_tasks.keys():
-        del compile_tasks[uid]
+        compile_tasks[uid].kill()
         c['status'] = 'KILLED'
 
       if request.headers['Accept'] == 'application/json':
@@ -1054,6 +1085,18 @@ def delete_compiles():
     # shutil.rmtree(path, ignore_errors=True)
     # db.deleteJob(jobId)
   return redirect(url_for('listJobs')), 302
+
+@socketio.on('connect', namespace='/compile')
+def test_connect():
+    logger.info('[FLASKWEB] Client is connected to /connect stream')
+    emit('my response', 'Connected to Compile Log Steam')
+    # thread = CountThread()
+    # thread.start()
+
+@socketio.on('message', namespace='/log')
+def test_message(message):
+    emit('my response', "Hello User!")
+
 
 
 
@@ -1102,7 +1145,7 @@ if __name__ == '__main__':
   #  Create long running framework, dispatcher, & driver
   framework = mesos_pb2.FrameworkInfo()
   framework.user = "" # Have Mesos fill in the current user.
-  framework.name = "FLASK DEVELOPMENT"
+  framework.name = "K3 FLASK (With Compiler)"
 
   dispatcher = Dispatcher(master, webapp.config['ADDR'], daemon=True)
   if dispatcher == None:
@@ -1118,7 +1161,8 @@ if __name__ == '__main__':
     driver_t.start()
     logger.info("Starting FlaskWeb Server...")
 
-    webapp.run(host='0.0.0.0', port=port, threaded=True, use_reloader=False)
+    # webapp.run(host='0.0.0.0', port=port, threaded=True, use_reloader=False)
+    socketio.run(webapp, host='0.0.0.0', port=port, use_reloader=False)
     terminate = False
     while not terminate:
       time.sleep(1)
