@@ -590,13 +590,15 @@ pingRemote rqid sv master = do
 
 -- | Messaging primitives.
 sendC :: (SocketType t, Sender t) => Socket z t -> CProtocol -> ZMQ z ()
-sendC s m = send s [] $ LBC.toStrict $ encode m
+sendC s m = let msg = encode m in do
+    noticeM $ unwords ["Message size for ", cshow m, show $ LBC.length msg]
+    send s [] $ LBC.toStrict msg
 
 sendCI :: (SocketType t, Sender t) => SocketID -> Socket z t -> CProtocol -> ZMQ z ()
 sendCI sid s m = send s [SendMore] sid >> sendC s m
 
 sendCIs :: (SocketType t, Sender t) => Socket z t -> [(SocketID, CProtocol)] -> ZMQ z ()
-sendCIs s msgs = forM_ msgs $ \(sid,m) -> async $ sendCI sid s m
+sendCIs s msgs = forM_ msgs $ \(sid,m) -> sendCI sid s m
 
 -- | Client primitives.
 command :: (SocketType t, Sender t) => t -> ServiceOptions -> CProtocol -> IO ()
