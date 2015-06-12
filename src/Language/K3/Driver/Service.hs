@@ -596,7 +596,7 @@ sendCI :: (SocketType t, Sender t) => SocketID -> Socket z t -> CProtocol -> ZMQ
 sendCI sid s m = send s [SendMore] sid >> sendC s m
 
 sendCIs :: (SocketType t, Sender t) => Socket z t -> [(SocketID, CProtocol)] -> ZMQ z ()
-sendCIs s msgs = forM_ msgs $ \(sid,m) -> sendCI sid s m
+sendCIs s msgs = forM_ msgs $ \(sid,m) -> async $ sendCI sid s m
 
 -- | Client primitives.
 command :: (SocketType t, Sender t) => t -> ServiceOptions -> CProtocol -> IO ()
@@ -666,7 +666,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       sendStart <- liftIO getPOSIXTime
       sendCIs mworker msgs
       sendDone <- liftIO getPOSIXTime
-      mlogM $ unwords ["Send time", show $ sendStart - sendDone]
+      mlogM $ unwords ["Send time", show $ sendDone - sendStart]
 
     abortcatch rid rq m = m `catchIOError` (\e -> abortProgram Nothing rid rq $ show e)
 
