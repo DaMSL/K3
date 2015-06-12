@@ -663,7 +663,10 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
         (initP, initSt, ppProfs) <- preprocess prog
         let ppRep = TransformReport (Map.singleton "Master preprocessing" ppProfs) Map.empty
         assignBlocks rid rq jobOpts initP initSt ppRep
+      sendStart <- liftIO getPOSIXTime
       sendCIs mworker msgs
+      sendDone <- liftIO getPOSIXTime
+      mlogM $ unwords ["Send time", show $ sendStart - sendDone]
 
     abortcatch rid rq m = m `catchIOError` (\e -> abortProgram Nothing rid rq $ show e)
 
