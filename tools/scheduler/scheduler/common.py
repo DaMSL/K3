@@ -4,7 +4,7 @@ import uuid
 from enum import enum
 
 
-heartbeat_delay = 10  # secs. move to common
+heartbeat_delay = 60  # secs. move to common
 gc_delay = 8
 offer_wait = 8
 
@@ -13,6 +13,8 @@ offer_wait = 8
 def getUID():
   return str(uuid.uuid1()).split('-')[0]
 
+
+CompileState = enum.Enum('CompileState', 'INIT DISPATCH MASTER_WAIT WORKER_WAIT CLIENT_WAIT SUBMIT COMPILE UPLOAD COMPLETE FAILED KILLED')
 
 
 class JobStatus:

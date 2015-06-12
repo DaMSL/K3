@@ -24,8 +24,6 @@ import datetime
 import socket
 import logging
 
-from enum import enum
-
 import mesos.interface
 from mesos.interface import mesos_pb2
 import mesos.native
@@ -35,7 +33,6 @@ from core import *
 from mesosutils import *
 import db
 
-State = enum.Enum('State', 'INIT DISPATCH MASTER_WAIT WORKER_WAIT CLIENT_WAIT SUBMIT COMPILE UPLOAD COMPLETE KILLED')
 
 masterNodes =  ['qp3']
 # workerNodes =  ['qp-hm' + str(i) for i in range(1,9)]
@@ -47,7 +44,7 @@ class CompileLauncher(mesos.interface.Scheduler):
     def __init__(self, job, **kwargs):
         logging.debug ("[COMPILER] Initializing........")
 
-        self.state    = State.INIT
+        self.state    = CompileState.INIT
         self.launched   = False
         self.terminate  = False
         self.driver = None
@@ -168,11 +165,11 @@ class CompileLauncher(mesos.interface.Scheduler):
 
           if self.master and self.client and len(self.workers) == self.numworkers:
             db.updateCompile(self.uid, status=self.state.name)
-            self.state = State.DISPATCH
+            self.state = CompileState.DISPATCH
             break
 
 
-        if self.state == State.DISPATCH:    
+        if self.state == CompileState.DISPATCH:    
           for svid, task in self.tasks.items():
             addTaskLabel(task, 'host', self.masterHost)
             addTaskLabel(task, 'port', self.masterPort)
@@ -182,13 +179,13 @@ class CompileLauncher(mesos.interface.Scheduler):
           for w in self.workers:
             logging.info("    %s ----> %s" % (w['svid'], w['hostname']))
           logging.debug("LAUNCHING MASTER")
-          self.state = State.MASTER_WAIT
+          self.state = CompileState.MASTER_WAIT
           driver.launchTasks(self.offers['master'], [self.tasks['master']])
           self.launched = True
 
 
     def statusUpdate(self, driver, update):
-        # state = mesos_pb2.TaskState.Name(update.state)
+        # state = mesos_pb2.TaskCompileState.Name(update.state)
         # logging.debug("[UPDATE - %s]: %s {%s}" % (update.message, state, update.data))
 
         self.wslog.info(update.data)
@@ -197,59 +194,61 @@ class CompileLauncher(mesos.interface.Scheduler):
           out.write(update.data)
 
         if update.state == mesos_pb2.TASK_STARTING:
-          if self.state == State.MASTER_WAIT and update.message == 'master':
+          if self.state == CompileState.MASTER_WAIT and update.message == 'master':
             logging.info("MASTER is READY. Launching Workers")
-            self.state = State.WORKER_WAIT
+            self.state = CompileState.WORKER_WAIT
             for worker in [w for w in self.offers if w.startswith('worker')]:
               driver.launchTasks(self.offers[worker], [self.tasks[worker]])
             db.updateCompile(self.uid, status=self.state.name)
   
-          if self.state == State.WORKER_WAIT and update.message == 'worker':
+          if self.state == CompileState.WORKER_WAIT and update.message == 'worker':
             self.readyworkers += 1
             logging.debug("Worker reported READY. Readiness status: %d out of %d Total Worker" % (self.readyworkers,self.numworkers))
             if self.readyworkers == self.numworkers:
               logging.info("ALL WORKERS READY. Launching Client")
-              self.state = State.CLIENT_WAIT
+              self.state = CompileState.CLIENT_WAIT
               db.updateCompile(self.uid, status=self.state.name)
               driver.launchTasks(self.offers['client'], [self.tasks['client']])
 
-          if self.state == State.CLIENT_WAIT and update.message == 'client':
+          if self.state == CompileState.CLIENT_WAIT and update.message == 'client':
             logging.info("CLIENT is READY. Submitting Compilation Task")
-            self.state = State.SUBMIT
+            self.state = CompileState.SUBMIT
             db.updateCompile(self.uid, status=self.state.name)
 
         if update.state == mesos_pb2.TASK_RUNNING:
           logging.debug(update.data)
           if update.message == 'client':
-            self.state = State.COMPILE
+            self.state = CompileState.COMPILE
             db.updateCompile(self.uid, status=self.state.name)
           if update.message == 'complete':
-            self.state = State.UPLOAD
+            self.state = CompileState.UPLOAD
             db.updateCompile(self.uid, status=self.state.name)
 
         if update.state == mesos_pb2.TASK_FAILED:
-            logging.warning("[COMPILER]  -- FAILED TASK [%s]: %s", update.message, update.data)
-            self.state = State.COMPLETE
-            db.updateCompile(self.uid, status=self.state.name)
+            logging.warning("[COMPILER]  -- FAILED TASK [%s]: %s.  KIlling the job", update.message, update.data)
+            self.state = CompileState.FAILED
+            db.updateCompile(self.uid, status=self.state.name, done=True)
             self.terminate = True
+            self.driver.stop()
 
         if update.state == mesos_pb2.TASK_FINISHED:
             logging.info("[COMPILER]  -- FINISHED TASK [%s]: %s", update.message, update.data)
-            self.state = State.COMPLETE
-            db.updateCompile(self.uid, status=self.state.name)
+            self.state = CompileState.COMPLETE
+            db.updateCompile(self.uid, status=self.state.name, done=True)
             self.terminate = True
             if update.message == 'master':
               self.driver.stop()
 
         if update.state == mesos_pb2.TASK_LOST:
-            logging.warning("[COMPILER]  -- LOST TASK [%s]: %s", update.message, update.data)
+            logging.warning("[COMPILER]  -- LOST TASK [%s]: %s.  Killing the job", update.message, update.data)
+            db.updateCompile(self.uid, status=self.state.name, done=True)
             self.terminate = True
-
+            self.driver.stop()  
 
 
     def kill(self):
       logging.warning("Asked to kill compilation job for %s", self.name)
-      for svid, task in self.tasks.items:
+      for svid, task in self.tasks.items():
         tid = mesos_pb2.TaskID()
         tid.value = svid
         logging.info("[DISPATCHER] Killing task: %s", svid)

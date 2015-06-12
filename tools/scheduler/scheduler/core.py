@@ -92,6 +92,9 @@ class CompileJob:
                 user=self.user, options=self.options, blocksize=self.blocksize,
                 numworkers=self.numworkers, url=self.url)
 
+  def uname(self):
+    return self.name + '-' + self.uid
+
 
 class Job:
   def __init__(self, **kwargs):

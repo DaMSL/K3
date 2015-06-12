@@ -5,6 +5,8 @@ from pytz import timezone
 import sys
 import os
 
+from common import *
+
 SQLITE_DB = 'data.db'
 
 #  Load Postgres Connection Data from enviornment (or load defaults)
@@ -73,6 +75,11 @@ CREATE TABLE IF NOT EXISTS compiles (
     submit      timestamp,
     complete    timestamp,
     status      text
+);''',
+  'state': '''
+CREATE TABLE IF NOT EXISTS state (
+    key text,
+    value text
 );'''
 }
 
@@ -221,7 +228,7 @@ def deleteJob(jobId):
   conn.commit()
 
 
-# -------------------------------------------------
+#-------------------------------------------------
 #   Job (job) DML {C, R, U, D}
 #--------------------------------------------------
 def insertCompile(comp):
@@ -270,4 +277,23 @@ def deleteJob(uid):
   cur = conn.cursor()
   cur.execute("DELETE FROM compiles WHERE uid=%s;" % uid)
   conn.commit()
+
+
+# -------------------------------------------------
+#   State DML {C, R, U}
+#--------------------------------------------------
+def setState (key, value):
+  conn = getConnection()
+  cur = conn.cursor()
+  cur.execute("SELECT COUNT(*) FROM state WHERE key='%s';" % key)
+  if int(cur.fetchone()[0]) != 0:
+    cur.execute("DELETE FROM state WHERE key='%s';" % key)
+    comm.commit()
+  cur.execute("INSERT INTO state VALUES ('%s', '%s');" % (key, value))
+  conn.commit()
+
+def getState(key):
+  conn = getConnection()
+  cur = conn.cursor()
+  cur.execute("SELECT value FROM state WHERE key='%s';" % key)
 

@@ -6,7 +6,7 @@ endblock = False
 with open('flaskweb.py', 'r') as f:
   src = f.read().split('\n')
 
-with open('api.out', 'w') as api:
+with open('rest.txt', 'w') as api:
   endpoints = []
   for line in src:
     dowrite = False

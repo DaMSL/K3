@@ -24,7 +24,7 @@ from flask.ext.socketio import SocketIO, emit
 from common import *
 from core import *
 from dispatcher import *
-from CompileDriver import *
+from compileLauncher import *
 from mesosutils import *
 import db
 
@@ -34,8 +34,10 @@ socketio = SocketIO(webapp)
 logger = logging.getLogger("")
 
 dispatcher = None
+
 driver = None
 driver_t = None
+lastCompile = None
 compile_tasks = {}
 
 index_message = 'Welcome to K3'
@@ -287,7 +289,7 @@ def staticFile(path):
   if not os.path.exists(local):
     return returnError("File not found: %s" % path, 404)
   if os.path.isdir(local):
-    contents = os.listdir(local)
+    contents = sorted(os.listdir(local))
     for i, f in enumerate(contents):
       if os.path.isdir(f):
         contents[i] += '/'
@@ -838,7 +840,7 @@ def killJob(appName, jobId):
       return render_template("last.html", appName=appName, lastjob=thisjob)
 
 @webapp.route('/delete/jobs', methods=['POST'])
-def delete_jobs():
+def deleteJobs():
   """
   #------------------------------------------------------------------------------
   #  /delete/jobs
@@ -878,6 +880,7 @@ def delete_jobs():
 #===============================================================================
 @webapp.route('/compile', methods=['GET', 'POST'])
 def compile():
+    global lastCompile
     """
     #------------------------------------------------------------------------------
     #  /compile
@@ -909,7 +912,6 @@ def compile():
 
       if not file and not text:
           return renderError("Invalid Compile request", 400)
-
 
       # Create a unique ID
       uid = getUID()
@@ -947,21 +949,26 @@ def compile():
       os.symlink(path, symlink)
       url = os.path.join(webapp.config['UPLOADED_BUILD_URL'], uname).encode(encoding='utf8')
 
-
       # TODO: Add in Git hash
       compileJob   = CompileJob(name=name, uid=uid, options=options, user=user, tag=tag,
               path=path, blocksize=blocksize, numworkers=numworkers, compilestage=compilestage, url=url)
 
+
+      # Create the Mesos Scheduler to manage the compilation
       # compileDriver = CompileDriver(compileJob, webapp.config['MESOS'], source=source, script=script, webaddr=webapp.config['ADDR'])
       launcher = CompileLauncher(compileJob, source=src_file, webaddr=webapp.config['ADDR'])
 
+      # Note: Each compile job runs as as a separate framework
       framework = mesos_pb2.FrameworkInfo()
       framework.user = ""
       framework.name = "Compile %s" % name
 
+      # Create the Mesos Driver to register with Mesos
       driver = mesos.native.MesosSchedulerDriver(launcher, framework, webapp.config['MESOS'])
       compile_tasks[uid] = launcher
+      lastCompile = compileJob
 
+      # Start the Driver in its own thread
       t = threading.Thread(target=driver.run)
       try:
         t.start()
@@ -990,8 +997,20 @@ def compile():
       else:
         return render_template("compile.html")
 
+def getCompilerOutput(uname):
+    """
+      Retrieves the compiler output from local file
+    """
+    fname = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], uname, 'output').encode('utf8')
+    if os.path.exists(fname):
+      stdout_file = open(fname, 'r')
+      output = stdout_file.read()
+      stdout_file.close()
+    return output.encode(encoding='utf-8')
+
+
 @webapp.route('/compile/<uname>', methods=['GET'])
-def get_compile(uname):
+def getCompile(uname):
     """
     #------------------------------------------------------------------------------
     #  /compile/<uname>
@@ -1001,11 +1020,7 @@ def get_compile(uname):
     if webapp.config['COMPILE_OFF']:
       return returnError("Compilation Features are not available", 400)
 
-    fname = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], uname, 'output').encode('utf8')
-    if os.path.exists(fname):
-      stdout_file = open(fname, 'r')
-      output = stdout_file.read()
-      stdout_file.close()
+      output = getCompilerOutput(uname)
 
       if request.headers['Accept'] == 'application/json':
         return output, 200
@@ -1017,17 +1032,25 @@ def get_compile(uname):
 
 @webapp.route('/compilelog')
 def getCompileLog():
+  global lastCompile
   """
   #------------------------------------------------------------------------------
   #  /compilelog - Connects User to compile log websocket
   #------------------------------------------------------------------------------
   """
   logger.debug("[FLASKWEB] Connecting user to Compile Log WebSocket")
+
+
+  if lastCompile == None:
+    output = "Waiting for compile task to launch.....\n"
+  else:
+    output = getCompilerOutput(lastCompile.uname())
+
   if request.headers['Accept'] == 'application/json':
     # TODO: Return command line based data (??)
     return output, 200
   else:
-    return render_template("socket.html", namespace='/compile')
+    return render_template("socket.html", namespace='/compile', prefetch=output)
 
 
 
@@ -1053,7 +1076,7 @@ def kill_compile(uname):
       c = complist[0]
       logging.info ("[FLASKWEB] Asked to KILL Compile UID #%s. Current status is %s" % (c['uid'], c['status']))
 
-      if c['status'] != State.COMPLETE:
+      if c['status'] != CompileState.COMPLETE:
         db.updateCompile(uid, status='KILLED', done=True)
 
       if uid in compile_tasks.keys():

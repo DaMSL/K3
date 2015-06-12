@@ -21,7 +21,7 @@
 
         $(document).ready(function(){
           //TODO: Change /compile to generic django input
-            namespace = '/compile';
+            namespace = '{{ namespace }}';
 
             var socket = io.connect('http://' + document.domain + ':' + location.port + namespace);
             socket.on('connect', function() {
@@ -40,8 +40,10 @@
     <div class="starter-template" onload="resizeTextArea()" onresize="resizeTextArea()">
       <p>
         <h2>Socket Stream:</h2>
-        <div id="logpanel" height="100%" style="width: 100%; height: 100%">
-           <textarea id="log" row=30 readonly style="width: 100%; height: 100%; font-family: monospace; overflow: scroll"></textarea>
+        <div id="logpanel" style="width: 100%; height: 100%">
+           <textarea id="log" rows="30" readonly style="width: 100%; height: 100%; font-family: monospace; overflow: scroll">
+            {{ prefetch }}
+           </textarea>
         </div>
       </p>
     </div>

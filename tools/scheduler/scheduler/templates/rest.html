@@ -2,133 +2,211 @@
 
 {% block content %}
 
-<style type="text/css">
-.ln { color: rgb(0,0,0); font-weight: normal; font-style: normal; }
-.s0 { color: rgb(4,128,12); font-style: italic; }
-.s1 { }
-.s2 { color: rgb(153,16,2); font-weight: bold; }
-</style>
-
-<div class="container">
-<TABLE CELLSPACING=0 CELLPADDING=5 COLS=1 WIDTH="100%" BGCOLOR="#C0C0C0" >
-<TR><TD><CENTER>
-<FONT FACE="Arial, Helvetica" COLOR="#000000">
-api.py</FONT>
-</center></TD></TR></TABLE>
 <pre>
 
-<span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-</span><span class="s0">#  / - Home (welcome msg)</span><span class="s1"> 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/'</span><span class="s1">) 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/index'</span><span class="s1">) 
- 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-</span><span class="s0">#  /about - about message</span><span class="s1"> 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/about'</span><span class="s1">) 
- 
- 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-</span><span class="s0">#  /about - Static Files (File System directory access)</span><span class="s1"> 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/fs/&lt;path:path&gt;/'</span><span class="s1">) 
- 
- 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-</span><span class="s0">#  /apps - Application Level interface</span><span class="s1"> 
-</span><span class="s0">#         POST   Upload new application</span><span class="s1"> 
-</span><span class="s0">#             curl -i -H &quot;Accept: application/json&quot; -F file=@&lt;filename&gt; http://qp1:5000/apps</span><span class="s1"> 
-</span><span class="s0">#</span><span class="s1"> 
-</span><span class="s0">#         GET    Display both list of loaded apps and form to upload new ones</span><span class="s1"> 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/apps'</span><span class="s1">, methods=[</span><span class="s2">'GET'</span><span class="s1">, </span><span class="s2">'POST'</span><span class="s1">]) 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/app'</span><span class="s1">, methods=[</span><span class="s2">'GET'</span><span class="s1">, </span><span class="s2">'POST'</span><span class="s1">]) 
- 
- 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-</span><span class="s0">#  /apps/&lt;appName&gt; - Specific Application Level interface</span><span class="s1"> 
-</span><span class="s0">#         GET    Display all versions for given application</span><span class="s1"> 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/apps/&lt;appName&gt;'</span><span class="s1">) 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/app/&lt;appName&gt;'</span><span class="s1">, methods=[</span><span class="s2">'GET'</span><span class="s1">, </span><span class="s2">'POST'</span><span class="s1">]) 
- 
- 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-</span><span class="s0">#  /apps/&lt;appName&gt; - Specific Application Level interface</span><span class="s1"> 
-</span><span class="s0">#         POST   (Upload archive data (C++, Source, etc....)</span><span class="s1"> 
-</span><span class="s0">#            curl -i -H &quot;Accept: application/json&quot;</span><span class="s1"> 
-</span><span class="s0">#                    -F &quot;file=&lt;filename&gt;&quot; http://qp1:5000/apps/&lt;addName&gt;/&lt;addUID&gt;</span><span class="s1"> 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/apps/&lt;appName&gt;/&lt;appUID&gt;'</span><span class="s1">, methods=[</span><span class="s2">'GET'</span><span class="s1">, </span><span class="s2">'POST'</span><span class="s1">]) 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/app/&lt;appName&gt;/&lt;appUID&gt;'</span><span class="s1">, methods=[</span><span class="s2">'GET'</span><span class="s1">, </span><span class="s2">'POST'</span><span class="s1">]) 
- 
- 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-</span><span class="s0">#  /jobs - Current runtime &amp; completed job Interface</span><span class="s1"> 
-</span><span class="s0">#         GET    Display currently executing &amp; recently completed jobs</span><span class="s1"> 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/jobs'</span><span class="s1">) 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/job'</span><span class="s1">) 
- 
- 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-</span><span class="s0">#  /jobs/&lt;appName&gt;</span><span class="s1"> 
-</span><span class="s0">#  /jobs/&lt;appName&gt;/&lt;appUID  - Launch a new K3 Job</span><span class="s1"> 
-</span><span class="s0">#         POST    Create new K3 Job</span><span class="s1"> 
-</span><span class="s0">#          curl -i -X POST -H &quot;Accept: application/json&quot; -F &quot;file=@&lt;rolefile&gt;&quot; http://qp1:5000/jobs/&lt;appName&gt;/&lt;appUID&gt;</span><span class="s1"> 
-</span><span class="s0">#             NOTE: if appUID is omitted, job will be submitted to latest version of this app</span><span class="s1"> 
-</span><span class="s0">#</span><span class="s1"> 
-</span><span class="s0">#         GET    Display job list for this application</span><span class="s1"> 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/jobs/&lt;appName&gt;/&lt;appUID&gt;'</span><span class="s1">, methods=[</span><span class="s2">'GET'</span><span class="s1">, </span><span class="s2">'POST'</span><span class="s1">]) 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/jobs/&lt;appName&gt;'</span><span class="s1">, methods=[</span><span class="s2">'GET'</span><span class="s1">, </span><span class="s2">'POST'</span><span class="s1">]) 
- 
- 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-</span><span class="s0">#  /jobs/&lt;appName&gt;/&lt;jobId&gt;/status - Detailed Job info</span><span class="s1"> 
-</span><span class="s0">#         GET     Display detailed job info  (default for all methods)</span><span class="s1"> 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/jobs/&lt;appName&gt;/&lt;jobId&gt;/status'</span><span class="s1">) 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/job/&lt;jobId&gt;'</span><span class="s1">) 
- 
- 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-</span><span class="s0">#  /jobs/&lt;appName&gt;/&lt;appUID/replay  - Replay a previous K3 Job</span><span class="s1"> 
-</span><span class="s0">#         POST    Create new K3 Job</span><span class="s1"> 
-</span><span class="s0">#          curl -i -X POST -H &quot;Accept: application/json&quot; http://qp1:5000/jobs/&lt;appName&gt;/&lt;appUID&gt;/replay</span><span class="s1"> 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/jobs/&lt;appName&gt;/&lt;jobId&gt;/replay'</span><span class="s1">, methods=[</span><span class="s2">'GET'</span><span class="s1">, </span><span class="s2">'POST'</span><span class="s1">]) 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/job/&lt;jobId&gt;/replay'</span><span class="s1">) 
- 
- 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-</span><span class="s0">#  /jobs/&lt;appName&gt;/&lt;jobId&gt;/archive - Endpoint to receive &amp; archive files</span><span class="s1"> 
-</span><span class="s0">#         GET     returns curl command</span><span class="s1"> 
-</span><span class="s0">#         POST    Accept files for archiving here</span><span class="s1"> 
-</span><span class="s0">#           curl -i -H &quot;Accept: application/json&quot;</span><span class="s1"> 
-</span><span class="s0">#              -F file=@&lt;filename&gt; http://qp1:5000/&lt;appName&gt;/&lt;jobId&gt;/archive</span><span class="s1"> 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/jobs/&lt;appName&gt;/&lt;jobId&gt;/archive'</span><span class="s1">, methods=[</span><span class="s2">'GET'</span><span class="s1">, </span><span class="s2">'POST'</span><span class="s1">]) 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/job/&lt;jobId&gt;/archive'</span><span class="s1">, methods=[</span><span class="s2">'GET'</span><span class="s1">, </span><span class="s2">'POST'</span><span class="s1">]) 
- 
- 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-</span><span class="s0">#  /jobs/&lt;appName&gt;/&lt;jobId&gt;/kill - Job Interface to cancel a job</span><span class="s1"> 
-</span><span class="s0">#         GET     Kills a Job (if orphaned, updates status to killed)</span><span class="s1"> 
-</span><span class="s0">#           curl -i -H &quot;Accept: application/json&quot; http://&lt;host&gt;:5000/job/&lt;jobId&gt;/kill</span><span class="s1"> 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/jobs/&lt;appName&gt;/&lt;jobId&gt;/kill'</span><span class="s1">, methods=[</span><span class="s2">'GET'</span><span class="s1">]) 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/job/&lt;jobId&gt;/kill'</span><span class="s1">, methods=[</span><span class="s2">'GET'</span><span class="s1">]) 
- 
- 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-</span><span class="s0">#  /delete/jobs</span><span class="s1"> 
-</span><span class="s0">#         POST     Deletes list of K3 jobs</span><span class="s1"> 
-</span><span class="s0">#------------------------------------------------------------------------------</span><span class="s1"> 
-<span class=".text-info">END POINT:</span>(</span><span class="s2">'/delete/jobs'</span><span class="s1">, methods=[</span><span class="s2">'POST'</span><span class="s1">]) 
-</span></pre>
-    </div>
+
+===============================================================================
+  / - Home (welcome msg)
+-------------------------------------------------------------------------------
+@webapp.route('/')
+
+
+===============================================================================
+  /about - Display about page
+-------------------------------------------------------------------------------
+@webapp.route('/index')
+@webapp.route('/about')
+
+
+===============================================================================
+  /restapi - Display complete list of API EndPoints
+-------------------------------------------------------------------------------
+@webapp.route('/restapi')
+
+
+===============================================================================
+  /log - Displays current log file
+-------------------------------------------------------------------------------
+@webapp.route('/log')
+
+
+===============================================================================
+  /trace - Debugging respose. Returns the client's HTTP request data in json
+-------------------------------------------------------------------------------
+@webapp.route('/trace')
+
+
+===============================================================================
+  /kill - Kill the server  (TODO: Clean this up)
+-------------------------------------------------------------------------------
+@webapp.route('/kill')
+
+
+===============================================================================
+  /fs - File System Exposure for the local webroot folder
+        Note: Direct file access via curl should include a trailing slash (/)
+           Otherwise, you will get a 302 redirect to the actual file
+-------------------------------------------------------------------------------
+@webapp.route('/fs/<path:path>/')
+
+
+===============================================================================
+  /apps, /app - Application Level interface
+     POST   Upload new application
+       curl -i -X POST -H "Accept: application/json" -F file=@<filename> http://<host>:<port>/apps
+
+     GET    Display both list of loaded apps and form to upload new ones
+
+     /app will redirect to /apps
+-------------------------------------------------------------------------------
+@webapp.route('/app', methods=['GET', 'POST'])
+@webapp.route('/apps', methods=['GET', 'POST'])
+
+
+===============================================================================
+  /apps/<appName> - Specific Application Level interface
+         GET    Display all versions for given application
+-------------------------------------------------------------------------------
+@webapp.route('/app/<appName>')
+@webapp.route('/apps/<appName>')
+
+
+===============================================================================
+  /apps/<appName>/<appUID> - Specific Application Level interface
+         POST   (Upload archive data (C++, Source, etc....)
+            curl -i -H "Accept: application/json"
+                    -F "file=<filename>" http://qp1:5000/apps/<addName>/<addUID>
+
+         GET    (TODO) Display archived files...  NotImplemented
+-------------------------------------------------------------------------------
+@webapp.route('/app/<appName>/<appUID>', methods=['GET', 'POST'])
+@webapp.route('/apps/<appName>/<appUID>', methods=['GET', 'POST'])
+
+
+===============================================================================
+  /delete/app/<appName>
+     POST     Deletes an app from the web server
+         NOTE: Data files will remain in webroot on the server, but
+           the app will be inaccessible through the interface
+           (metadata is removed from the internal db)
+-------------------------------------------------------------------------------
+@webapp.route('/delete/app/<appName>', methods=['POST'])
+
+
+===============================================================================
+  /jobs - Current runtime & completed job Interface
+         GET    Display currently executing & recently completed jobs
+-------------------------------------------------------------------------------
+@webapp.route('/job')
+@webapp.route('/jobs')
+
+
+===============================================================================
+  /jobs/<appName>
+  /jobs/<appName>/<appUID  - Launch a new K3 Job
+         POST    Create new K3 Job
+          curl -i -X POST -H "Accept: application/json" -F "file=@<rolefile>" http://qp1:5000/jobs/<appName>/<appUID>
+             NOTE: if appUID is omitted, job will be submitted to latest version of this app
+
+         GET    Display job list for this application
+-------------------------------------------------------------------------------
+@webapp.route('/jobs/<appName>', methods=['GET', 'POST'])
+@webapp.route('/jobs/<appName>/<appUID>', methods=['GET', 'POST'])
+
+
+===============================================================================
+  /jobs/<appName>/<jobId>/status - Detailed Job info
+         GET     Display detailed job info  (default for all methods)
+-------------------------------------------------------------------------------
+@webapp.route('/job/<jobId>')
+@webapp.route('/jobs/<appName>/<jobId>/status')
+
+
+===============================================================================
+  /jobs/<appName>/<appUID/replay  - Replay a previous K3 Job
+         POST    Create new K3 Job
+          curl -i -X POST -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<appUID>/replay
+-------------------------------------------------------------------------------
+@webapp.route('/job/<jobId>/replay')
+@webapp.route('/jobs/<appName>/<jobId>/replay', methods=['GET', 'POST'])
+
+
+===============================================================================
+  /jobs/<appName>/<jobId>/archive - Endpoint to receive & archive files
+         GET     returns curl command
+         POST    Accept files for archiving here
+           curl -i -H "Accept: application/json"
+              -F file=@<filename> http://qp1:5000/<appName>/<jobId>/archive
+-------------------------------------------------------------------------------
+@webapp.route('/job/<jobId>/archive', methods=['GET', 'POST'])
+@webapp.route('/jobs/<appName>/<jobId>/archive', methods=['GET', 'POST'])
+
+
+===============================================================================
+  /jobs/<appName>/<jobId>/kill - Job Interface to cancel a job
+         GET     Kills a Job (if orphaned, updates status to killed)
+           curl -i -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<jobId>/kill
+-------------------------------------------------------------------------------
+@webapp.route('/job/<jobId>/kill', methods=['GET'])
+@webapp.route('/jobs/<appName>/<jobId>/kill', methods=['GET'])
+
+
+===============================================================================
+  /delete/jobs
+         POST     Deletes list of K3 jobs
+-------------------------------------------------------------------------------
+@webapp.route('/delete/jobs', methods=['POST'])
+
+
+===============================================================================
+  /jobs/<appName>/<jobId>/stdout - Job Interface for specific job
+         GET     TODO: Consolidate STDOUT for current job (from all tasks)
+         POST    TODO: Accept STDOUT & append here (if desired....)
+-------------------------------------------------------------------------------
+
+
+===============================================================================
+  /compile
+         GET     Form for compiling new K3 Executable OR status of compiling tasks
+         POST    Submit new K3 Compile task
+           curl -i -X POST -H "Accept: application/json" -F name=<appName>
+                   -F file=@<sourceFile> -F blocksize=<blocksize>
+                   -F numworkers=<numworkers> -F options=<compileOptions>
+                   -F user=<userName> http://<host>:<port>/compile
+           NOTE: Username, blocksize, numworkers & Options are optional fields
+             default vals:  numworkers=1,  blocksize=4
+-------------------------------------------------------------------------------
+@webapp.route('/compile', methods=['GET', 'POST'])
+
+
+===============================================================================
+  /compile/<uname>
+         GET     displays STDOUT & STDERR consolidated output for compile task
+-------------------------------------------------------------------------------
+@webapp.route('/compile/<uname>', methods=['GET'])
+
+
+===============================================================================
+  /compilelog - Connects User to compile log websocket
+-------------------------------------------------------------------------------
+@webapp.route('/compilelog')
+
+
+===============================================================================
+  /compile/<uname>/kill
+         GET     Kills an active compiling tasks (or removes and orphaned one
+-------------------------------------------------------------------------------
+@webapp.route('/compile/<uname>/kill', methods=['GET'])
+
+
+===============================================================================
+  /delete/compiles
+         POST     Deletes list of compile jobs
+-------------------------------------------------------------------------------
+@webapp.route('/delete/compiles', methods=['POST'])
+</pre>
+
+
 {% endblock %}
 
 {% block footer %}
