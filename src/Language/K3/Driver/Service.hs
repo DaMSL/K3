@@ -23,6 +23,7 @@ import qualified Data.ByteString.Lazy.Char8 as LBC
 
 import Data.Time.Format
 import Data.Time.Clock
+import Data.Time.Clock.POSIX ( getPOSIXTime )
 import Data.Time.LocalTime
 
 import Data.Monoid
@@ -36,7 +37,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 import Criterion.Types ( Measured(..) )
-import Criterion.Measurement ( getTime, secs )
+import Criterion.Measurement ( initializeTime, getTime, secs )
 
 import GHC.Conc
 import GHC.Generics ( Generic )
@@ -465,7 +466,7 @@ cshow = \case
 
 -- | Service utilities.
 initService :: ServiceOptions -> IO () -> IO ()
-initService sOpts m = slog (serviceLog sOpts) >> m
+initService sOpts m = initializeTime >> slog (serviceLog sOpts) >> m
   where slog (Left "stdout") = streamLogging stdout $ serviceLogLevel sOpts
         slog (Left "stderr") = streamLogging stderr $ serviceLogLevel sOpts
         slog (Left s)        = error $ "Invalid service logging handle " ++ s
@@ -1019,6 +1020,8 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
     processBlock pid ([SDeclOpt cSpec]) initSt blocksByBID =
       abortcatch pid blocksByBID $ do
         start <- liftIO getTime
+        startP <- liftIO getPOSIXTime
+        wlogM $ boxToString $ ["Worker blocks start"] %$ (indent 2 [show startP])
         (cBlocksByBID, finalSt) <- zm $ foldM (compileBlock pid cSpec) ([], initSt) blocksByBID
         end <- liftIO getTime
         wlogM $ boxToString $ ["Worker local time"] %$ (indent 2 [secs $ end - start])
