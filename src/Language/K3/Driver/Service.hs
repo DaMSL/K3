@@ -544,20 +544,27 @@ runServiceWorker sOpts@(serviceId -> wid) = initService sOpts $ runZMQ $ do
       bind hbsock wconn
       liftIO $ putStrLn "Heartbeat loop started"
       void $ forever $ do
-        hbid <- liftIO $ heartbeatIO sv
-        sendC hbsock $ Heartbeat hbid
-        [evts] <- poll heartbeatPeriod [Sock hbsock [In] Nothing]
-        if In `elem` evts then do
-          ackmsg <- receive hbsock
-          case SC.decode ackmsg of
-            Right (HeartbeatAck i) -> noticeM $ unwords ["Got a heartbeat ack", show i]
-            Right m -> errorM $ unwords ["Invalid heartbeat ack", cshow m]
-            Left err -> errorM err
-        else noticeM $ "No heartbeat acknowledgement received during the last epoch."
+        liftIO $ threadDelay heartbeatPeriod
+        pingPongHeartbeat sv hbsock
       close hbsock
 
-    registerPeriod = 2 * 1000000
-    heartbeatPeriod = fromIntegral $ sHeartbeatEpoch sOpts * 1000
+    pingPongHeartbeat :: ServiceWSTVar -> Socket z Dealer -> ZMQ z ()
+    pingPongHeartbeat sv hbsock = do
+      hbid <- liftIO $ heartbeatIO sv
+      sendC hbsock $ Heartbeat hbid
+      [evts] <- poll heartbeatPollPeriod [Sock hbsock [In] Nothing]
+      if In `elem` evts then do
+        ackmsg <- receive hbsock
+        case SC.decode ackmsg of
+          Right (HeartbeatAck i) -> noticeM $ unwords ["Got a heartbeat ack", show i]
+          Right m -> errorM $ unwords ["Invalid heartbeat ack", cshow m]
+          Left err -> errorM err
+      else noticeM $ "No heartbeat acknowledgement received during the last epoch."
+
+    registerPeriod = seconds 2
+    heartbeatPeriod = seconds $ sHeartbeatEpoch sOpts
+    heartbeatPollPeriod = fromIntegral $ sHeartbeatEpoch sOpts * 1000
+    seconds x = x * 1000000
 
 
 runClient :: (SocketType t) => t -> ServiceOptions -> ClientHandler t -> IO ()
