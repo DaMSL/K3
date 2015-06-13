@@ -220,6 +220,9 @@ runServiceM_ st m = runServiceM st m >>= either putStrLn (const $ return ())
 runServiceZ :: ServiceSTVar a -> ServiceM z a b -> ZMQ z (Either String b)
 runServiceZ st m = evalStateT (runExceptT m) st
 
+liftZ :: ZMQ z a -> ServiceM z b a
+liftZ = lift . lift
+
 liftI :: IO b -> ServiceM z a b
 liftI = lift . liftIO
 
@@ -665,6 +668,8 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     zm :: ServiceMM z a -> ZMQ z a
     zm m = runServiceZ sv m >>= either (throwM . ErrorCall) return
 
+    mkReport n profs = TransformReport (Map.singleton n profs) Map.empty
+
     logmHandler sid (SC.decode -> msgE) = either merrM (\msg -> mlogM (cshow msg) >> mHandler sid msg) msgE
 
     mHandler sid (Program rq prog jobOpts) = do
@@ -692,17 +697,21 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     includesP  = (includes $ paths opts)
 
     process prog jobOpts rq rid = abortcatch rid rq $ do
-      msgs <- zm $ do
+      void $ zm $ do
         mlogM $ unwords ["Processing program", rq, "(", show rid, ")"]
         (initP, initSt, ppProfs) <- preprocess prog
-        let ppRep = TransformReport (Map.singleton "Master preprocessing" ppProfs) Map.empty
-        assignBlocks rid rq jobOpts initP initSt ppRep
-      sendStart <- liftIO getPOSIXTime
-      sendCIs mworker msgs
-      sendDone <- liftIO getPOSIXTime
-      mlogM $ unwords ["Send time", show $ sendDone - sendStart]
+        let ppRep = mkReport "Master preprocessing" ppProfs
+        (pid, blocksByWID) <- assignBlocks rid rq jobOpts initP ppRep
+        (_, sProf) <- ST.profile $ const $ do
+          msgs <- mkMessages pid jobOpts initSt blocksByWID
+          liftZ $ sendCIs mworker msgs
+        let sRep = mkReport "Master distribution" [sProf]
+        modifyMJ_ $ \jbs -> Map.adjust (adjustProfile sRep) pid jbs
 
     abortcatch rid rq m = m `catchIOError` (\e -> abortProgram Nothing rid rq $ show e)
+
+    adjustProfile rep js@(jprofile -> jprof@(jppreport -> jpp)) =
+      js {jprofile = jprof {jppreport = jpp `mappend` rep}}
 
     -- | Parse, evaluate metaprogram, and apply prepare transform.
     preprocess prog = do
@@ -722,7 +731,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       -----------------------}
 
     -- | Cost-based compile block assignment.
-    assignBlocks rid rq jobOpts initP initSt ppRep = do
+    assignBlocks rid rq jobOpts initP ppRep = do
       pid <- progIDM
       mlogM $ unwords ["Assigning blocks for program:", show pid]
 
@@ -744,14 +753,13 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
         let wjs     = Map.intersectionWith (\w c -> WorkerJobState w c $ Map.size c) nwaWeights jobCosts
         return (wBlocks, nassigns, pending, wjs)
 
-      let aRep = TransformReport (Map.singleton "Master assignment" [aProf]) Map.empty
+      let aRep = mkReport "Master assignment" [aProf]
       js <- js0 rid rq pending' wjs' $ ppRep <> aRep
       modifyMJ_ $ \jbs -> Map.insert pid js jbs
       modifyMA_ $ \assigns -> Map.unionWith incrWorkerAssignments assigns nassigns'
-      msgs <- mkMessages pid jobOpts initSt wBlocks'
 
       logAssignment pid nassigns' js
-      return msgs
+      return (pid, wBlocks')
 
     -- | Compute a min-heap of worker assignment weights, returning a zero-heap if no assignments exist.
     workerWeights = do
