@@ -526,6 +526,7 @@ runServiceWorker sOpts@(serviceId -> wid) = initService sOpts $ runZMQ $ do
     frontend <- socket Dealer
     setRandomIdentity frontend
     connect frontend mconn
+    liftIO $ threadDelay $ seconds 2
     backend <- workqueue sv nworkers bqid $ processWorkerConn sOpts sv
     as <- async $ proxy frontend backend Nothing
     noticeM $ unwords ["Service Worker", wid, show $ asyncThreadId as, mconn]
