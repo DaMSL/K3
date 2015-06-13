@@ -525,17 +525,21 @@ runServiceWorker sOpts@(serviceId -> wid) = initService sOpts $ runZMQ $ do
     setRandomIdentity frontend
     connect frontend mconn
     backend <- workqueue sv nworkers "wbackend" $ processWorkerConn sOpts sv
+    as <- async $ proxy frontend backend Nothing
 
+    liftIO $ threadDelay registerPeriod
     noticeM $ unwords ["Worker", wid, "registering"]
     sendC frontend $ Register wid
 
-    as <- async $ proxy frontend backend Nothing
     noticeM $ unwords ["Service Worker", wid, show $ asyncThreadId as, mconn]
     liftIO $ do
       modifyTSIO_ sv $ \tst -> tst { sthread = Just as }
       wait sv
 
   where
+    registerPeriod = seconds 1
+    seconds x = x * 1000000
+
     mconn = tcpConnStr sOpts
     nworkers = serviceThreads sOpts
 
