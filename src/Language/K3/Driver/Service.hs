@@ -487,7 +487,7 @@ runServiceMaster sOpts smOpts opts = initService sOpts $ runZMQ $ do
 
     frontend <- socket Router
     bind frontend mconn
-    backend <- workqueue sv nworkers bqid $ processMasterConn sOpts smOpts opts sv
+    backend <- workqueue sv nworkers bqid Nothing $ processMasterConn sOpts smOpts opts sv
     as <- async $ proxy frontend backend Nothing
     noticeM $ unwords ["Service Master", show $ asyncThreadId as, mconn]
 
@@ -517,7 +517,7 @@ runServiceWorker sOpts@(serviceId -> wid) = initService sOpts $ runZMQ $ do
     setRandomIdentity frontend
     connect frontend wconn
 
-    backend <- workqueue sv nworkers bqid $ processWorkerConn sOpts sv registerWorker
+    backend <- workqueue sv nworkers bqid (Just registerWorker) $ processWorkerConn sOpts sv
     as <- async $ proxy frontend backend Nothing
     noticeM $ unwords ["Service Worker", wid, show $ asyncThreadId as, wconn]
 
@@ -575,19 +575,20 @@ runClient sockT sOpts clientF = initService sOpts $ runZMQ $ do
     clientF client
 
 
-workqueue :: ServiceST a -> Int -> String -> SocketAction z -> ZMQ z (Socket z Dealer)
-workqueue sv n qid workerF = do
+workqueue :: ServiceST a -> Int -> String -> Maybe (SocketAction z) -> SocketAction z -> ZMQ z (Socket z Dealer)
+workqueue sv n qid initFOpt workerF = do
     backend <- socket Dealer
     bind backend $ "inproc://" ++ qid
-    as <- forM [1..n] $ \i -> async $ worker i qid workerF
+    as <- forM [1..n] $ \i -> async $ worker i qid initFOpt workerF
     liftIO $ modifyTSIO_ sv $ \tst -> tst { ttworkers = Set.fromList as `Set.union` ttworkers tst }
     return backend
 
-worker :: Int -> String -> SocketAction z -> ZMQ z ()
-worker i qid workerF = do
+worker :: Int -> String -> Maybe (SocketAction z) -> SocketAction z -> ZMQ z ()
+worker i qid initFOpt workerF = do
     wsock <- socket Dealer
     connect wsock $ "inproc://" ++ qid
     liftIO $ putStrLn "Worker started"
+    void $ maybe (return ()) (\f -> f i wsock) initFOpt
     forever $ workerF i wsock
 
 -- | Control primitives.
@@ -1015,9 +1016,8 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     requestError rid = throwE $ "No request found: " ++ show rid
 
 
-processWorkerConn :: ServiceOptions -> ServiceWSTVar -> SocketAction z -> Int -> Socket z Dealer -> ZMQ z ()
-processWorkerConn sOpts@(serviceId -> wid) sv initM wtid wworker = do
-    initM wtid wworker
+processWorkerConn :: ServiceOptions -> ServiceWSTVar -> Int -> Socket z Dealer -> ZMQ z ()
+processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
     msg <- receive wworker
     logmHandler msg
 
