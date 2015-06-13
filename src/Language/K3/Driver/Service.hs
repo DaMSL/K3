@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -160,14 +161,13 @@ data SMST = SMST { cworkers     :: WorkersMap
                  , bcnt         :: Int
                  , pcnt         :: Int
                  , rcnt         :: Int
-                 , hbcnt        :: Integer
                  , jobs         :: JobsMap
                  , assignments  :: AssignmentsMap }
 
 type ServiceMState = ServiceState SMST
 
 -- | Compiler service worker state. Note: workers are stateless.
-data SWST = SWST { registerThread :: Maybe (Async ()) }
+data SWST = SWST { hbcnt :: Integer }
 
 type ServiceWState = ServiceState SWST
 
@@ -184,7 +184,7 @@ type ServiceM z a = ExceptT String (StateT (ServiceSTVar a) (ZMQ z))
 type ServiceMM z = ServiceM z ServiceMState
 type ServiceWM z = ServiceM z ServiceWState
 
-type WorkQHandler   z = Int -> Socket z Dealer -> ZMQ z ()
+type SocketAction   z = Int -> Socket z Dealer -> ZMQ z ()
 type ClientHandler  t = forall z. Socket z t -> ZMQ z ()
 type MessageHandler   = forall z. CProtocol -> ZMQ z ()
 
@@ -197,13 +197,13 @@ sst0 :: MVar () -> CompileOptions -> a -> ServiceState a
 sst0 trmv cOpts st = ServiceState trmv sthread0 cOpts st
 
 sstm0 :: MVar () -> CompileOptions -> ServiceMState
-sstm0 trmv cOpts = sst0 trmv cOpts $ SMST Map.empty Map.empty Map.empty 0 0 0 0 Map.empty Map.empty
+sstm0 trmv cOpts = sst0 trmv cOpts $ SMST Map.empty Map.empty Map.empty 0 0 0 Map.empty Map.empty
 
 svm0 :: CompileOptions -> IO ServiceMSTVar
 svm0 cOpts = newEmptyMVar >>= \trmv0 -> newMVar $ sstm0 trmv0 cOpts
 
 sstw0 :: MVar () -> CompileOptions -> ServiceWState
-sstw0 trmv cOpts = sst0 trmv cOpts $ SWST Nothing
+sstw0 trmv cOpts = sst0 trmv cOpts $ SWST 0
 
 svw0 :: CompileOptions -> IO ServiceWSTVar
 svw0 cOpts = newEmptyMVar >>= \trmv0 -> newMVar $ sstw0 trmv0 cOpts
@@ -299,12 +299,6 @@ blockIDM = modifyMM $ \cst -> let i = bcnt cst + 1 in (cst {bcnt = i}, i)
 requestIDM :: ServiceMM z BlockID
 requestIDM = modifyMM $ \cst -> let i = rcnt cst + 1 in (cst {rcnt = i}, i)
 
-heartbeatM :: ServiceMM z Integer
-heartbeatM = modifyMM $ \cst -> let i = hbcnt cst + 1 in (cst {hbcnt = i}, i)
-
-heartbeatIO :: ServiceMSTVar -> IO Integer
-heartbeatIO sv = modifyMIO sv $ \cst -> let i = hbcnt cst + 1 in (cst {hbcnt = i}, i)
-
 {- Assignments accessors -}
 getMA :: ServiceMM z AssignmentsMap
 getMA = getM >>= return . assignments
@@ -381,17 +375,21 @@ modifyWM f = modifyM $ \st -> let (ncst, r) = f $ compileSt st in (st { compileS
 modifyWM_ :: (SWST -> SWST) -> ServiceWM z ()
 modifyWM_ f = modifyM_ $ \st -> st { compileSt = f $ compileSt st }
 
+modifyWIO :: ServiceWSTVar -> (SWST -> (SWST, a)) -> IO a
+modifyWIO sv f = modifyMVar sv $ \st -> let (ncst, r) = f $ compileSt st in return (st { compileSt = ncst }, r)
+
 getW :: ServiceWM z SWST
 getW = getSt >>= return . compileSt
 
 putW :: SWST -> ServiceWM z ()
 putW ncst = modifyM_ $ \st -> st { compileSt = ncst }
 
-modifyWR_ :: (Maybe (Async ()) -> Maybe (Async ())) -> ServiceWM z ()
-modifyWR_ f = modifyWM_ $ \wst -> wst {registerThread = f $ registerThread wst}
+heartbeatM :: ServiceWM z Integer
+heartbeatM = modifyWM $ \cst -> let i = hbcnt cst + 1 in (cst {hbcnt = i}, i)
 
-getWR :: ServiceWM z (Maybe (Async ()))
-getWR = getW >>= return . registerThread
+heartbeatIO :: ServiceWSTVar -> IO Integer
+heartbeatIO sv = modifyWIO sv $ \cst -> let i = hbcnt cst + 1 in (cst {hbcnt = i}, i)
+
 
 {- Misc -}
 putStrLnM :: String -> ServiceM z a ()
@@ -483,7 +481,7 @@ initService sOpts m = initializeTime >> slog (serviceLog sOpts) >> m
 
 -- | Compiler service master.
 runServiceMaster :: ServiceOptions -> ServiceMasterOptions -> Options -> IO ()
-runServiceMaster sOpts@(serviceId -> msid) smOpts opts = initService sOpts $ runZMQ $ do
+runServiceMaster sOpts smOpts opts = initService sOpts $ runZMQ $ do
     let bqid = "mbackend"
     sv <- liftIO $ svm0 (scompileOpts sOpts)
 
@@ -493,7 +491,6 @@ runServiceMaster sOpts@(serviceId -> msid) smOpts opts = initService sOpts $ run
     as <- async $ proxy frontend backend Nothing
     noticeM $ unwords ["Service Master", show $ asyncThreadId as, mconn]
 
-    -- void $ async $ heartbeatLoop sv bqid
     flip finally (stopService sv bqid) $ liftIO $ do
       modifyTSIO_ sv $ \tst -> tst { sthread = Just as }
       wait sv
@@ -509,56 +506,58 @@ runServiceMaster sOpts@(serviceId -> msid) smOpts opts = initService sOpts $ run
       shutdownRemote sv wsock
       liftIO $ threadDelay $ 5 * 1000 * 1000
 
-    heartbeatLoop :: ServiceMSTVar -> String -> ZMQ z ()
-    heartbeatLoop sv qid = do
-      wsock <- socket Dealer
-      connect wsock $ "inproc://" ++ qid
-      liftIO $ putStrLn "Heartbeat worker started"
-      void $ forever $ do
-        liftIO $ threadDelay heartbeatPeriod
-        pingRemote msid sv wsock
-      close wsock
-
-    heartbeatPeriod = seconds $ sHeartbeatEpoch sOpts
-    seconds x = x * 1000000
-
 
 -- | Compiler service worker.
 runServiceWorker :: ServiceOptions -> IO ()
 runServiceWorker sOpts@(serviceId -> wid) = initService sOpts $ runZMQ $ do
     let bqid = "wbackend"
     sv <- liftIO $ svw0 (scompileOpts sOpts)
+
     frontend <- socket Dealer
     setRandomIdentity frontend
-    connect frontend mconn
-    backend <- workqueue sv nworkers bqid $ processWorkerConn sOpts sv
-    as <- async $ proxy frontend backend Nothing
-    noticeM $ unwords ["Service Worker", wid, show $ asyncThreadId as, mconn]
+    connect frontend wconn
 
-    registerWorker sv bqid
+    backend <- workqueue sv nworkers bqid $ processWorkerConn sOpts sv registerWorker
+    as <- async $ proxy frontend backend Nothing
+    noticeM $ unwords ["Service Worker", wid, show $ asyncThreadId as, wconn]
+
+    void $ async $ heartbeatLoop sv
     liftIO $ do
       modifyTSIO_ sv $ \tst -> tst { sthread = Just as }
       wait sv
 
   where
-    registerWorker :: ServiceWSTVar -> String -> ZMQ z ()
-    registerWorker sv qid = do
-      wsock <- socket Dealer
-      connect wsock $ "inproc://" ++ qid
-      noticeM $ unwords ["Worker", wid, "registering"]
-      as <- async $ forever $ do
-        liftIO $ threadDelay registerPeriod
-        sendC wsock $ Register wid
-      zm sv $ modifyWR_ $ const $ Just as
-
-    registerPeriod = seconds 3
-    seconds x = x * 1000000
-
-    mconn = tcpConnStr sOpts
+    wconn = tcpConnStr sOpts
     nworkers = serviceThreads sOpts
 
-    zm :: ServiceWSTVar -> ServiceWM z a -> ZMQ z a
-    zm sv m = runServiceZ sv m >>= either (throwM . ErrorCall) return
+    registerWorker :: Int -> Socket z Dealer -> ZMQ z ()
+    registerWorker wtid wsock
+      | wtid == 1 = do
+        liftIO $ threadDelay registerPeriod
+        noticeM $ unwords ["Worker", wid, "registering"]
+        sendC wsock $ Register wid
+      | otherwise = return ()
+
+    heartbeatLoop :: ServiceWSTVar -> ZMQ z ()
+    heartbeatLoop sv = do
+      hbsock <- socket Dealer
+      bind hbsock wconn
+      liftIO $ putStrLn "Heartbeat loop started"
+      void $ forever $ do
+        hbid <- liftIO $ heartbeatIO sv
+        sendC hbsock $ Heartbeat hbid
+        [evts] <- poll heartbeatPeriod [Sock hbsock [In] Nothing]
+        if In `elem` evts then do
+          ackmsg <- receive hbsock
+          case SC.decode ackmsg of
+            Right (HeartbeatAck i) -> noticeM $ unwords ["Got a heartbeat ack", show i]
+            Right m -> errorM $ unwords ["Invalid heartbeat ack", cshow m]
+            Left err -> errorM err
+        else noticeM $ "No heartbeat acknowledgement received during the last epoch."
+      close hbsock
+
+    registerPeriod = 2 * 1000000
+    heartbeatPeriod = fromIntegral $ sHeartbeatEpoch sOpts * 1000
 
 
 runClient :: (SocketType t) => t -> ServiceOptions -> ClientHandler t -> IO ()
@@ -569,7 +568,7 @@ runClient sockT sOpts clientF = initService sOpts $ runZMQ $ do
     clientF client
 
 
-workqueue :: ServiceST a -> Int -> String -> WorkQHandler z -> ZMQ z (Socket z Dealer)
+workqueue :: ServiceST a -> Int -> String -> SocketAction z -> ZMQ z (Socket z Dealer)
 workqueue sv n qid workerF = do
     backend <- socket Dealer
     bind backend $ "inproc://" ++ qid
@@ -577,7 +576,7 @@ workqueue sv n qid workerF = do
     liftIO $ modifyTSIO_ sv $ \tst -> tst { ttworkers = Set.fromList as `Set.union` ttworkers tst }
     return backend
 
-worker :: Int -> String -> WorkQHandler z -> ZMQ z ()
+worker :: Int -> String -> SocketAction z -> ZMQ z ()
 worker i qid workerF = do
     wsock <- socket Dealer
     connect wsock $ "inproc://" ++ qid
@@ -616,13 +615,6 @@ shutdownRemote sv master = do
       noticeM $ "Shutting down service worker " ++ (show $ BC.unpack wsid)
       sendCI wsid master Quit
 
-pingRemote :: (SocketType t, Sender t) => String -> ServiceMSTVar -> Socket z t -> ZMQ z ()
-pingRemote rqid sv master = do
-    (wm, hbid) <- liftIO $ (,) <$> getMWIO sv <*> heartbeatIO sv
-    forM_ (Map.elems wm) $ \wsid -> do
-      noticeM $ "[" ++ rqid ++ "] Pinging service worker " ++ (show $ BC.unpack wsid)
-      sendCI wsid master $ Heartbeat hbid
-
 
 -- | Messaging primitives.
 sendC :: (SocketType t, Sender t) => Socket z t -> CProtocol -> ZMQ z ()
@@ -660,9 +652,6 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     mlogM :: (Monad m, MonadIO m) => String -> m ()
     mlogM msg = noticeM $ mPfxM ++ msg
 
-    mdbgM :: (Monad m, MonadIO m) => String -> m ()
-    mdbgM msg =  debugM $ mPfxM ++ msg
-
     merrM :: (Monad m, MonadIO m) => String -> m ()
     merrM msg =  errorM $ mPfxM ++ msg
 
@@ -686,7 +675,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       sendCI sid mworker $ RegisterAck cOpts
 
     -- TODO: detect worker changes.
-    mHandler _ (HeartbeatAck hbid) = mdbgM $ unwords ["Got a heartbeat ack", show hbid]
+    mHandler sid (Heartbeat hbid) = sendCI sid mworker $ HeartbeatAck hbid
 
     mHandler _ Quit = liftIO $ terminate sv
     mHandler _ m = merrM $ boxToString $ ["Invalid message:"] %$ [show m]
@@ -1019,8 +1008,9 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     requestError rid = throwE $ "No request found: " ++ show rid
 
 
-processWorkerConn :: ServiceOptions -> ServiceWSTVar -> Int -> Socket z Dealer -> ZMQ z ()
-processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
+processWorkerConn :: ServiceOptions -> ServiceWSTVar -> SocketAction z -> Int -> Socket z Dealer -> ZMQ z ()
+processWorkerConn sOpts@(serviceId -> wid) sv initM wtid wworker = do
+    initM wtid wworker
     msg <- receive wworker
     logmHandler msg
 
@@ -1044,12 +1034,7 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
     mHandler (RegisterAck cOpts) = zm $ do
       wlogM $ unwords ["Registered", show cOpts]
       modifyCO_ $ mergeCompileOpts cOpts
-      rtOpt <- getWR
-      case rtOpt of
-        Nothing -> return ()
-        Just as -> liftIO $ cancel as
 
-    mHandler (Heartbeat hbid) = sendC wworker $ HeartbeatAck hbid
     mHandler Quit = liftIO $ terminate sv
 
     mHandler m = werrM $ boxToString $ ["Invalid message:"] %$ [show m]
