@@ -61,7 +61,7 @@ import qualified Language.K3.Core.Constructor.Declaration as DC
 
 import Language.K3.Parser ( parseK3 )
 
-import Language.K3.Stages ( TransformReport(..), TransformSt )
+import Language.K3.Stages ( TransformReport(..), TransformStSymS, getTransformSyms, putTransformSyms )
 import qualified Language.K3.Stages as ST
 
 import Language.K3.Driver.Common
@@ -80,7 +80,7 @@ data CProtocol = Register       String
                | Program        Request String RemoteJobOptions
                | ProgramDone    Request (K3 Declaration) String
                | ProgramAborted Request String
-               | Block          ProgramID CompileStages TransformSt CompileBlock
+               | Block          ProgramID CompileStages ByteString TransformStSymS CompileBlock
                | BlockDone      WorkerID ProgramID CompileBlock TransformReport
                | BlockAborted   WorkerID ProgramID [BlockID] String
                | Quit
@@ -465,7 +465,7 @@ cshow = \case
           Program rq _ _              -> "Program " ++ rq
           ProgramDone rq _ _          -> "ProgramDone " ++ rq
           ProgramAborted rq _         -> "ProgramAborted " ++ rq
-          Block pid _ _ bids          -> unwords ["Block", show pid, intercalate "," $ map (show . fst) bids]
+          Block pid _ _ _ bids        -> unwords ["Block", show pid, intercalate "," $ map (show . fst) bids]
           BlockDone wid pid bids _    -> unwords ["BlockDone", show wid, show pid, intercalate "," $ map (show . fst) bids]
           BlockAborted wid pid bids _ -> unwords ["BlockAborted", show wid, show pid, intercalate "," $ map show bids]
           Quit                        -> "Quit"
@@ -533,7 +533,6 @@ runServiceWorker sOpts@(serviceId -> wid) = initService sOpts $ runZMQ $ do
     registerWorker :: Int -> Socket z Dealer -> ZMQ z ()
     registerWorker wtid wsock
       | wtid == 1 = do
-        liftIO $ threadDelay registerPeriod
         noticeM $ unwords ["Worker", wid, "registering"]
         sendC wsock $ Register wid
       | otherwise = return ()
@@ -562,7 +561,6 @@ runServiceWorker sOpts@(serviceId -> wid) = initService sOpts $ runZMQ $ do
           Left err -> errorM err
       else noticeM $ "No heartbeat acknowledgement received during the last epoch."
 
-    registerPeriod = seconds 2
     heartbeatPeriod = seconds $ sHeartbeatEpoch sOpts
     heartbeatPollPeriod = fromIntegral $ sHeartbeatEpoch sOpts * 1000
     seconds x = x * 1000000
@@ -807,17 +805,18 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     -- | Compile block messages construction.
     mkMessages pid (jobBlockSize &&& rcStages -> (blockSz, remoteStages)) initSt cBlocksByWID = do
       let forkFactor = blockSz * Map.size cBlocksByWID
+      let initStBS = SC.encode initSt
       liftM fst $ foldMapKeyM (return ([], [0..])) cBlocksByWID $ \m wid cb -> do
         (msgacc, offgen) <- m
-        (wst, restidx) <- maybe wstateError return $ workerSt forkFactor offgen
+        (wsym, restidx) <- maybe wstateError return $ workerSyms forkFactor offgen
         wsockid <- getMWI wid >>= maybe (workerError wid) return
-        return $ (msgacc ++ [(wsockid, Block pid remoteStages wst cb)], restidx)
+        return $ (msgacc ++ [(wsockid, Block pid remoteStages initStBS wsym cb)], restidx)
 
-      where workerSt factor offgen = do
+      where workerSyms factor offgen = do
               (widx, restidx) <- uncons offgen
               let wOffset = widx * blockSz
               wst <- ST.partitionTransformStSyms factor wOffset initSt
-              return (wst, restidx)
+              return (getTransformSyms wst, restidx)
 
     -- Map helpers to supply fold function as last argument.
     foldMapKeyM a m f = Map.foldlWithKey f a m
@@ -1037,7 +1036,7 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
     logmHandler (SC.decode -> msgE) = either werrM (\msg -> wlogM (cshow msg) >> mHandler msg) msgE
 
     -- | Worker message processing.
-    mHandler (Block pid cstages st blocksByBID) = processBlock pid cstages st blocksByBID
+    mHandler (Block pid cstages stbs syms blocksByBID) = processBlock pid cstages stbs syms blocksByBID
 
     mHandler (RegisterAck cOpts) = zm $ do
       wlogM $ unwords ["Registered", show cOpts]
@@ -1056,8 +1055,9 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
                                             , optimizationLevel = optimizationLevel $ mcopts }
 
     -- | Block compilation functions.
-    processBlock pid ([SDeclOpt cSpec]) initSt blocksByBID =
+    processBlock pid ([SDeclOpt cSpec]) stbs syms blocksByBID =
       abortcatch pid blocksByBID $ do
+        initSt <- either (throwM . ErrorCall) (return . putTransformSyms syms) $ SC.decode stbs
         start <- liftIO getTime
         startP <- liftIO getPOSIXTime
         wlogM $ boxToString $ ["Worker blocks start"] %$ (indent 2 [show startP])
@@ -1066,7 +1066,7 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
         wlogM $ boxToString $ ["Worker local time"] %$ (indent 2 [secs $ end - start])
         sendC wworker $ BlockDone wid pid cBlocksByBID $ ST.report finalSt
 
-    processBlock _ _ _ _ = werrM $ "Invalid worker compile stages"
+    processBlock _ _ _ _ _ = werrM $ "Invalid worker compile stages"
 
     abortcatch pid blocksByBID m = m `catchIOError` (\e -> abortBlock pid blocksByBID $ show e)
 

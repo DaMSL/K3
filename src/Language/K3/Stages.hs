@@ -117,11 +117,13 @@ instance Binary StageSpec
 instance Binary CompilerSpec
 instance Binary TransformReport
 instance Binary TransformSt
+instance Binary TransformStSymS
 
 instance Serialize StageSpec
 instance Serialize CompilerSpec
 instance Serialize TransformReport
 instance Serialize TransformSt
+instance Serialize TransformStSymS
 
 ss0 :: StageSpec
 ss0 = StageSpec Nothing Nothing Map.empty
@@ -169,15 +171,17 @@ mergeTransformSt d agg new = rewindTransformStSyms new $
 getTransformSyms :: TransformSt -> TransformStSymS
 getTransformSyms s = TransformStSymS (nextuid s) (cseCnt s) (Provenance.pcnt $ penv s) (SEffects.fcnt $ fenv s)
 
+putTransformSyms :: TransformStSymS -> TransformSt -> TransformSt
+putTransformSyms syms s =
+    s { nextuid = uidSym syms
+      , cseCnt  = cseSym syms
+      , penv    = (penv s) { Provenance.pcnt = prvSym syms }
+      , fenv    = (fenv s) { SEffects.fcnt   = effSym syms } }
+
 mapTransformStSyms :: (Monad m) => (TransformStSymS -> m TransformStSymS) -> TransformSt -> m TransformSt
-mapTransformStSyms f s = rebuild $ f $ getTransformSyms s
-  where
-    rebuild m = do
-      rsyms <- m
-      return $ s { nextuid = uidSym rsyms
-                 , cseCnt  = cseSym rsyms
-                 , penv    = (penv s) { Provenance.pcnt = prvSym rsyms }
-                 , fenv    = (fenv s) { SEffects.fcnt   = effSym rsyms } }
+mapTransformStSyms f s = do
+    rsyms <- f $ getTransformSyms s
+    return $ putTransformSyms rsyms s
 
 advanceTransformStSyms :: Int -> TransformSt -> Maybe TransformSt
 advanceTransformStSyms delta s = mapTransformStSyms advance s
