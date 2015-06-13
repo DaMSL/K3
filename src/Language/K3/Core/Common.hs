@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -49,7 +50,9 @@ import Control.Concurrent.MVar
 import Control.DeepSeq
 
 import Data.Binary ( Binary )
+import Data.Serialize ( Serialize )
 import qualified Data.Binary as B
+import qualified Data.Serialize as S
 
 import Data.Char
 import Data.Hashable ( Hashable(..) )
@@ -58,6 +61,8 @@ import Data.Typeable
 
 import Data.HashMap.Lazy ( HashMap )
 import qualified Data.HashMap.Lazy as HashMap ( toList, fromList )
+
+import Criterion.Types
 
 import GHC.Generics (Generic)
 
@@ -130,8 +135,8 @@ forksymS i (ParGenSymS str off cur)
 gensym :: ParGenSymS -> (ParGenSymS, Int)
 gensym (ParGenSymS str off cur) = (ParGenSymS str off (cur + str), cur + off)
 
-instance Binary ParGenSymS
-
+instance Binary    ParGenSymS
+instance Serialize ParGenSymS
 
 -- |Mutability modes for @CNone@.  These are kept distinct from the expression
 --  annotations because e.g. @mut (mut None mut, mut None mut)@ must have a
@@ -199,6 +204,12 @@ instance Binary Span
 instance Binary UID
 instance Binary NoneMutability
 instance Binary EndpointSpec
+
+instance Serialize Address
+instance Serialize Span
+instance Serialize UID
+instance Serialize NoneMutability
+instance Serialize EndpointSpec
 
 instance Show Address where
   show (Address (host, port)) = host ++ ":" ++ show port
@@ -283,3 +294,16 @@ class HasSpan a where
 instance (Binary k, Binary v, Eq k, Hashable k) => Binary (HashMap k v) where
     put = B.put . HashMap.toList
     get = fmap HashMap.fromList B.get
+
+instance (Serialize k, Serialize v, Eq k, Hashable k) => Serialize (HashMap k v) where
+    put = S.put . HashMap.toList
+    get = fmap HashMap.fromList S.get
+
+instance Serialize Measured where
+    put Measured{..} = do
+      S.put measTime; S.put measCpuTime; S.put measCycles; S.put measIters
+      S.put measAllocated; S.put measNumGcs; S.put measBytesCopied
+      S.put measMutatorWallSeconds; S.put measMutatorCpuSeconds
+      S.put measGcWallSeconds; S.put measGcCpuSeconds
+    get = Measured <$> S.get <*> S.get <*> S.get <*> S.get
+                   <*> S.get <*> S.get <*> S.get <*> S.get <*> S.get <*> S.get <*> S.get

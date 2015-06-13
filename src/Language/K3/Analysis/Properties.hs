@@ -10,6 +10,8 @@ import Control.Monad.State
 import Control.Monad.Trans.Either
 
 import Data.Binary ( Binary )
+import Data.Serialize ( Serialize )
+
 import Data.List
 import Data.Maybe
 import Data.Tree
@@ -43,7 +45,8 @@ instance Monoid PIEnv where
   mempty = PIEnv mempty mempty
   mappend (PIEnv e a) (PIEnv e' a') = PIEnv (e <> e') (a <> a')
 
-instance Binary PIEnv
+instance Binary    PIEnv
+instance Serialize PIEnv
 
 {- NamedEnv helpers -}
 neenv0 :: NamedEnv a

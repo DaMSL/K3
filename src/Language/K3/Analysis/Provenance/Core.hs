@@ -10,6 +10,8 @@ import Control.DeepSeq
 import GHC.Generics (Generic)
 
 import Data.Binary
+import Data.Serialize
+
 import Data.List
 import Data.Tree
 import Data.Typeable
@@ -64,6 +66,10 @@ instance NFData (Annotation Provenance)
 instance Binary PMatVar
 instance Binary Provenance
 instance Binary (Annotation Provenance)
+
+instance Serialize PMatVar
+instance Serialize Provenance
+instance Serialize (Annotation Provenance)
 
 {- Annotation extractors -}
 isPDeclared :: Annotation Provenance -> Bool

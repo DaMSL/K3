@@ -40,6 +40,8 @@ executable k3
         bits,
         bytestring,
         Cabal,
+        cereal,
+        cereal-vector,
         clock,
         containers,
         criterion >= 1.0.2.0,

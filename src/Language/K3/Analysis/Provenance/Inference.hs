@@ -33,6 +33,8 @@ import Control.Monad.Trans.Except
 import Data.Functor.Identity
 
 import Data.Binary ( Binary )
+import Data.Serialize ( Serialize )
+
 import Data.List
 import Data.Maybe
 import Data.Tree
@@ -139,6 +141,9 @@ type PInfM = ExceptT Text (State PIEnv)
 {- Provenance instances -}
 instance Binary ProvErrorCtxt
 instance Binary PIEnv
+
+instance Serialize ProvErrorCtxt
+instance Serialize PIEnv
 
 {- Data.Text helpers -}
 mkErr :: String -> Except Text a

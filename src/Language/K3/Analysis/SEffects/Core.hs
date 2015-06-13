@@ -10,6 +10,8 @@ import Control.DeepSeq
 import GHC.Generics (Generic)
 
 import Data.Binary
+import Data.Serialize
+
 import Data.List
 import Data.Tree
 import Data.Typeable
@@ -76,6 +78,10 @@ instance NFData (Annotation Effect)
 instance Binary FMatVar
 instance Binary Effect
 instance Binary (Annotation Effect)
+
+instance Serialize FMatVar
+instance Serialize Effect
+instance Serialize (Annotation Effect)
 
 {- Annotation extractors -}
 isFDeclared :: Annotation Effect -> Bool

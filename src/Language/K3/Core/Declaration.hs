@@ -41,6 +41,8 @@ module Language.K3.Core.Declaration (
 import Control.DeepSeq
 
 import Data.Binary
+import Data.Serialize
+
 import Data.List
 import Data.Tree
 import Data.Typeable
@@ -141,6 +143,12 @@ instance Binary AnnMemDecl
 instance Binary Polarity
 instance Binary (Annotation Declaration)
 instance Binary UnorderedConflict
+
+instance Serialize Declaration
+instance Serialize AnnMemDecl
+instance Serialize Polarity
+instance Serialize (Annotation Declaration)
+instance Serialize UnorderedConflict
 
 {- HasUID instances -}
 instance HasUID (Annotation Declaration) where

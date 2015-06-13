@@ -16,8 +16,11 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
 
-import Data.Binary ( Binary, encode, decode )
+import Data.Binary ( Binary )
+import Data.Serialize ( Serialize )
 import Data.ByteString.Char8 ( ByteString )
+import qualified Data.Binary as SB
+import qualified Data.Serialize as SC
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy.Char8 as LBC
 
@@ -82,7 +85,8 @@ data CProtocol = Register       String
                | Quit
                deriving (Eq, Read, Show, Generic)
 
-instance Binary CProtocol
+instance Binary    CProtocol
+instance Serialize CProtocol
 
 -- | Service thread state, encapsulating task workers and connection workers.
 data ThreadState = ThreadState { sthread    :: Maybe (Async ())
@@ -475,15 +479,17 @@ initService sOpts m = initializeTime >> slog (serviceLog sOpts) >> m
 -- | Compiler service master.
 runServiceMaster :: ServiceOptions -> ServiceMasterOptions -> Options -> IO ()
 runServiceMaster sOpts@(serviceId -> msid) smOpts opts = initService sOpts $ runZMQ $ do
+    let bqid = "mbackend"
     sv <- liftIO $ svm0 (scompileOpts sOpts)
+
     frontend <- socket Router
     bind frontend mconn
-    backend <- workqueue sv nworkers "mbackend" $ processMasterConn sOpts smOpts opts sv
+    backend <- workqueue sv nworkers bqid $ processMasterConn sOpts smOpts opts sv
     as <- async $ proxy frontend backend Nothing
     noticeM $ unwords ["Service Master", show $ asyncThreadId as, mconn]
 
-    void $ async $ heartbeatLoop sv frontend
-    flip finally (shutdownRemote sv frontend) $ liftIO $ do
+    void $ async $ heartbeatLoop sv bqid
+    flip finally (stopService sv bqid) $ liftIO $ do
       modifyTSIO_ sv $ \tst -> tst { sthread = Just as }
       wait sv
 
@@ -491,10 +497,21 @@ runServiceMaster sOpts@(serviceId -> msid) smOpts opts = initService sOpts $ run
     mconn = tcpConnStr sOpts
     nworkers = serviceThreads sOpts
 
-    heartbeatLoop :: ServiceMSTVar -> Socket z Router -> ZMQ z ()
-    heartbeatLoop sv sck = forever $ do
-      liftIO $ threadDelay heartbeatPeriod
-      pingRemote msid sv sck
+    stopService :: ServiceMSTVar -> String -> ZMQ z ()
+    stopService sv qid = do
+      wsock <- socket Dealer
+      connect wsock $ "inproc://" ++ qid
+      shutdownRemote sv wsock
+      liftIO $ threadDelay $ 5 * 1000 * 1000
+
+    heartbeatLoop :: ServiceMSTVar -> String -> ZMQ z ()
+    heartbeatLoop sv qid = do
+      wsock <- socket Dealer
+      connect wsock $ "inproc://" ++ qid
+      liftIO $ putStrLn "Heartbeat worker started"
+      forever $ do
+        liftIO $ threadDelay heartbeatPeriod
+        pingRemote msid sv wsock
 
     heartbeatPeriod = seconds $ sHeartbeatEpoch sOpts
     seconds x = x * 1000000
@@ -577,7 +594,6 @@ shutdownRemote sv master = do
     forM_ (Map.elems wm) $ \wsid -> do
       noticeM $ "Shutting down service worker " ++ (show $ BC.unpack wsid)
       sendCI wsid master Quit
-    liftIO $ threadDelay $ 5 * 1000 * 1000
 
 pingRemote :: (SocketType t, Sender t) => String -> ServiceMSTVar -> Socket z t -> ZMQ z ()
 pingRemote rqid sv master = do
@@ -589,7 +605,7 @@ pingRemote rqid sv master = do
 
 -- | Messaging primitives.
 sendC :: (SocketType t, Sender t) => Socket z t -> CProtocol -> ZMQ z ()
-sendC s m = let msg = LBC.toStrict $ encode m in do
+sendC s m = let msg = SC.encode m in do
     noticeM $ unwords ["Message size for ", cshow m, show $ BC.length msg]
     send s [] msg
 
@@ -607,7 +623,7 @@ requestreply :: (SocketType t, Receiver t, Sender t) => t -> ServiceOptions -> C
 requestreply t sOpts req replyF = runClient t sOpts $ \client -> do
   sendC client req
   rep <- receive client
-  replyF $ decode $ LBC.fromStrict rep
+  either errorM replyF $ SC.decode rep
 
 
 -- | Compiler service protocol handlers.
@@ -632,7 +648,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     zm :: ServiceMM z a -> ZMQ z a
     zm m = runServiceZ sv m >>= either (throwM . ErrorCall) return
 
-    logmHandler sid (decode . LBC.fromStrict -> msg) = mlogM (cshow msg) >> mHandler sid msg
+    logmHandler sid (SC.decode -> msgE) = either merrM (\msg -> mlogM (cshow msg) >> mHandler sid msg) msgE
 
     mHandler sid (Program rq prog jobOpts) = do
       rid' <- zm $ do
@@ -999,7 +1015,7 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
     zm :: ServiceWM z a -> ZMQ z a
     zm m = runServiceZ sv m >>= either (throwM . ErrorCall) return
 
-    logmHandler (decode . LBC.fromStrict -> msg) = wlogM (cshow msg) >> mHandler msg
+    logmHandler (SC.decode -> msgE) = either werrM (\msg -> wlogM (cshow msg) >> mHandler msg) msgE
 
     -- | Worker message processing.
     mHandler (Block pid cstages st blocksByBID) = processBlock pid cstages st blocksByBID
@@ -1064,7 +1080,7 @@ submitJob sOpts@(serviceId -> rq) rjOpts opts = do
       noticeM $ "Client submitting compilation job " ++ rq
       sendC client $ Program rq prog rjOpts
       msg <- receive client
-      mHandler start $ decode $ LBC.fromStrict msg
+      either errorM (mHandler start) $ SC.decode msg
 
     mHandler :: forall z. Double -> CProtocol -> ZMQ z ()
     mHandler start (ProgramDone rrq prog report) | rq == rrq = liftIO $ do

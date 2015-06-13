@@ -24,7 +24,9 @@ import Control.Concurrent
 import Criterion.Measurement
 import Criterion.Types
 
-import Data.Binary hiding ( get, put )
+import Data.Binary ( Binary )
+import Data.Serialize ( Serialize )
+
 import Data.Function
 import Data.Functor.Identity
 import Data.List
@@ -115,6 +117,11 @@ instance Binary StageSpec
 instance Binary CompilerSpec
 instance Binary TransformReport
 instance Binary TransformSt
+
+instance Serialize StageSpec
+instance Serialize CompilerSpec
+instance Serialize TransformReport
+instance Serialize TransformSt
 
 ss0 :: StageSpec
 ss0 = StageSpec Nothing Nothing Map.empty
