@@ -167,7 +167,7 @@ data SMST = SMST { cworkers     :: WorkersMap
 type ServiceMState = ServiceState SMST
 
 -- | Compiler service worker state. Note: workers are stateless.
-type SWST = ()
+data SWST = SWST { registerThread :: Maybe (Async ()) }
 
 type ServiceWState = ServiceState SWST
 
@@ -203,7 +203,7 @@ svm0 :: CompileOptions -> IO ServiceMSTVar
 svm0 cOpts = newEmptyMVar >>= \trmv0 -> newMVar $ sstm0 trmv0 cOpts
 
 sstw0 :: MVar () -> CompileOptions -> ServiceWState
-sstw0 trmv cOpts = sst0 trmv cOpts ()
+sstw0 trmv cOpts = sst0 trmv cOpts $ SWST Nothing
 
 svw0 :: CompileOptions -> IO ServiceWSTVar
 svw0 cOpts = newEmptyMVar >>= \trmv0 -> newMVar $ sstw0 trmv0 cOpts
@@ -387,6 +387,11 @@ getW = getSt >>= return . compileSt
 putW :: SWST -> ServiceWM z ()
 putW ncst = modifyM_ $ \st -> st { compileSt = ncst }
 
+modifyWR_ :: (Maybe (Async ()) -> Maybe (Async ())) -> ServiceWM z ()
+modifyWR_ f = modifyWM_ $ \wst -> wst {registerThread = f $ registerThread wst}
+
+getWR :: ServiceWM z (Maybe (Async ()))
+getWR = getW >>= return . registerThread
 
 {- Misc -}
 putStrLnM :: String -> ServiceM z a ()
@@ -531,25 +536,30 @@ runServiceWorker sOpts@(serviceId -> wid) = initService sOpts $ runZMQ $ do
     as <- async $ proxy frontend backend Nothing
     noticeM $ unwords ["Service Worker", wid, show $ asyncThreadId as, mconn]
 
-    registerWorker bqid
+    registerWorker sv bqid
     liftIO $ do
       modifyTSIO_ sv $ \tst -> tst { sthread = Just as }
       wait sv
 
   where
-    registerWorker :: String -> ZMQ z ()
-    registerWorker qid = do
+    registerWorker :: ServiceWSTVar -> String -> ZMQ z ()
+    registerWorker sv qid = do
       wsock <- socket Dealer
       connect wsock $ "inproc://" ++ qid
-      liftIO $ threadDelay registerPeriod
       noticeM $ unwords ["Worker", wid, "registering"]
-      sendC wsock $ Register wid
+      as <- async $ forever $ do
+        liftIO $ threadDelay registerPeriod
+        sendC wsock $ Register wid
+      zm sv $ modifyWR_ $ const $ Just as
 
     registerPeriod = seconds 3
     seconds x = x * 1000000
 
     mconn = tcpConnStr sOpts
     nworkers = serviceThreads sOpts
+
+    zm :: ServiceWSTVar -> ServiceWM z a -> ZMQ z a
+    zm sv m = runServiceZ sv m >>= either (throwM . ErrorCall) return
 
 
 runClient :: (SocketType t) => t -> ServiceOptions -> ClientHandler t -> IO ()
@@ -1035,6 +1045,10 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
     mHandler (RegisterAck cOpts) = zm $ do
       wlogM $ unwords ["Registered", show cOpts]
       modifyCO_ $ mergeCompileOpts cOpts
+      rtOpt <- getWR
+      case rtOpt of
+        Nothing -> return ()
+        Just as -> liftIO $ cancel as
 
     mHandler (Heartbeat hbid) = sendC wworker $ HeartbeatAck hbid
     mHandler Quit = liftIO $ terminate sv
