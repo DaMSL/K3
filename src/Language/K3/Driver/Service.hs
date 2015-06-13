@@ -509,9 +509,10 @@ runServiceMaster sOpts@(serviceId -> msid) smOpts opts = initService sOpts $ run
       wsock <- socket Dealer
       connect wsock $ "inproc://" ++ qid
       liftIO $ putStrLn "Heartbeat worker started"
-      forever $ do
+      void $ forever $ do
         liftIO $ threadDelay heartbeatPeriod
         pingRemote msid sv wsock
+      close wsock
 
     heartbeatPeriod = seconds $ sHeartbeatEpoch sOpts
     seconds x = x * 1000000
@@ -520,24 +521,30 @@ runServiceMaster sOpts@(serviceId -> msid) smOpts opts = initService sOpts $ run
 -- | Compiler service worker.
 runServiceWorker :: ServiceOptions -> IO ()
 runServiceWorker sOpts@(serviceId -> wid) = initService sOpts $ runZMQ $ do
+    let bqid = "wbackend"
     sv <- liftIO $ svw0 (scompileOpts sOpts)
     frontend <- socket Dealer
     setRandomIdentity frontend
     connect frontend mconn
-    backend <- workqueue sv nworkers "wbackend" $ processWorkerConn sOpts sv
+    backend <- workqueue sv nworkers bqid $ processWorkerConn sOpts sv
     as <- async $ proxy frontend backend Nothing
-
-    liftIO $ threadDelay registerPeriod
-    noticeM $ unwords ["Worker", wid, "registering"]
-    sendC frontend $ Register wid
-
     noticeM $ unwords ["Service Worker", wid, show $ asyncThreadId as, mconn]
+
+    registerWorker bqid
     liftIO $ do
       modifyTSIO_ sv $ \tst -> tst { sthread = Just as }
       wait sv
 
   where
-    registerPeriod = seconds 1
+    registerWorker :: String -> ZMQ z ()
+    registerWorker qid = do
+      wsock <- socket Dealer
+      connect wsock $ "inproc://" ++ qid
+      liftIO $ threadDelay registerPeriod
+      noticeM $ unwords ["Worker", wid, "registering"]
+      sendC wsock $ Register wid
+
+    registerPeriod = seconds 3
     seconds x = x * 1000000
 
     mconn = tcpConnStr sOpts
