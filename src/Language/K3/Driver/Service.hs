@@ -476,7 +476,6 @@ initService sOpts m = initializeTime >> slog (serviceLog sOpts) >> m
 runServiceMaster :: ServiceOptions -> ServiceMasterOptions -> Options -> IO ()
 runServiceMaster sOpts@(serviceId -> msid) smOpts opts = initService sOpts $ runZMQ $ do
     sv <- liftIO $ svm0 (scompileOpts sOpts)
-    setIoThreads 4
     frontend <- socket Router
     bind frontend mconn
     backend <- workqueue sv nworkers "mbackend" $ processMasterConn sOpts smOpts opts sv
@@ -590,9 +589,9 @@ pingRemote rqid sv master = do
 
 -- | Messaging primitives.
 sendC :: (SocketType t, Sender t) => Socket z t -> CProtocol -> ZMQ z ()
-sendC s m = let msg = encode m in do
-    noticeM $ unwords ["Message size for ", cshow m, show $ LBC.length msg]
-    send s [] $ LBC.toStrict msg
+sendC s m = let msg = LBC.toStrict $ encode m in do
+    noticeM $ unwords ["Message size for ", cshow m, show $ BC.length msg]
+    send s [] msg
 
 sendCI :: (SocketType t, Sender t) => SocketID -> Socket z t -> CProtocol -> ZMQ z ()
 sendCI sid s m = send s [SendMore] sid >> sendC s m
