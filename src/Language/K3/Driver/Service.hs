@@ -493,7 +493,7 @@ runServiceMaster sOpts@(serviceId -> msid) smOpts opts = initService sOpts $ run
     as <- async $ proxy frontend backend Nothing
     noticeM $ unwords ["Service Master", show $ asyncThreadId as, mconn]
 
-    void $ async $ heartbeatLoop sv bqid
+    -- void $ async $ heartbeatLoop sv bqid
     flip finally (stopService sv bqid) $ liftIO $ do
       modifyTSIO_ sv $ \tst -> tst { sthread = Just as }
       wait sv
@@ -531,7 +531,6 @@ runServiceWorker sOpts@(serviceId -> wid) = initService sOpts $ runZMQ $ do
     frontend <- socket Dealer
     setRandomIdentity frontend
     connect frontend mconn
-    liftIO $ threadDelay $ seconds 2
     backend <- workqueue sv nworkers bqid $ processWorkerConn sOpts sv
     as <- async $ proxy frontend backend Nothing
     noticeM $ unwords ["Service Worker", wid, show $ asyncThreadId as, mconn]
