@@ -541,7 +541,7 @@ runServiceWorker sOpts@(serviceId -> wid) = initService sOpts $ runZMQ $ do
     heartbeatLoop :: ServiceWSTVar -> ZMQ z ()
     heartbeatLoop sv = do
       hbsock <- socket Dealer
-      bind hbsock wconn
+      connect hbsock wconn
       liftIO $ putStrLn "Heartbeat loop started"
       void $ forever $ do
         liftIO $ threadDelay heartbeatPeriod
