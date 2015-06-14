@@ -64,7 +64,7 @@ if __FILE__ == $0
     schema_mapping[table_name] = columns.split(",").map(&:to_i)
   end
 
-  union_schema_width = schema_mapping.values.flatten.max
+  union_schema_width = schema_mapping.values.flatten.max + 1
 
   CSV.open(out_file, "wb", {:col_sep => "|"}) do |out_handle|
     while !table_sources.empty?
