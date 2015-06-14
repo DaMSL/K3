@@ -1,0 +1,17 @@
+---
+- hosts: '{{ hosts }}'
+  sudo: yes
+
+  vars_files:
+   - "config.yml"
+
+  tasks:
+   - name: Check docker image
+     docker:
+       name: '{{ cname }}'
+       image: damsl/k3-vanilla
+       state: present
+       pull: always
+     register: image 
+
+   - debug: var=image.stdout_lines
