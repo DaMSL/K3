@@ -628,9 +628,7 @@ shutdownRemote sv master = do
 
 -- | Messaging primitives.
 sendC :: (SocketType t, Sender t) => Socket z t -> CProtocol -> ZMQ z ()
-sendC s m = let msg = SC.encode m in do
-    noticeM $ unwords ["Message size for ", cshow m, show $ BC.length msg]
-    send s [] msg
+sendC s m = send s [] $ SC.encode m
 
 sendCI :: (SocketType t, Sender t) => SocketID -> Socket z t -> CProtocol -> ZMQ z ()
 sendCI sid s m = send s [SendMore] sid >> sendC s m
@@ -814,6 +812,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     mkMessages pid (jobBlockSize &&& rcStages -> (blockSz, remoteStages)) initSt cBlocksByWID = do
       let forkFactor = blockSz * Map.size cBlocksByWID
       let initStBS = SC.encode initSt
+      mlogM $ unwords ["State size for", show pid, show $ BC.length initStBS]
       liftM fst $ foldMapKeyM (return ([], [0..])) cBlocksByWID $ \m wid cb -> do
         (msgacc, offgen) <- m
         (wsym, restidx) <- maybe wstateError return $ workerSyms forkFactor offgen
