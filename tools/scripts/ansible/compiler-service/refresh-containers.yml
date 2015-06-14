@@ -25,7 +25,7 @@
 
    - name: Compile K3
      when: container|success
-     shell: docker exec -ti {{ cname }} bash -c "cd /k3/K3 && git checkout stages-parallelization && git pull && cabal install --only-dependencies -j && cabal build -j"
+     shell: docker exec -ti {{ cname }} bash -c "cd /k3/K3 && git checkout stages-parallelization && git pull && cabal install --only-dependencies -j && cabal build -j --ghc-option=-O2"
      register: compile
 
    - debug: var=compile.stdout_lines

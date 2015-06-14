@@ -1,0 +1,8 @@
+---
+hosts       : QPDOCKER2 
+master      : QPDOCKER2[0]
+workers     : QPDOCKER2[1-13] 
+client      : QPDOCKER2[2]
+masteridx   : 0
+cname       : yanif-k3
+port        : 41702

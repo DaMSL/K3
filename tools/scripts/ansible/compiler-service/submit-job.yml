@@ -14,7 +14,7 @@
 
   tasks:
    - name: Submit compile job
-     shell: docker exec -ti {{ cname }} /k3/K3/tools/scripts/run/service.sh submit --svid client-{{ ansible_hostname }} --host {{ masterip }} --port {{ port }} {{ compileargs }} +RTS -N -RTS 
+     shell: docker exec -ti {{ cname }} /k3/K3/tools/scripts/run/service-log.sh /k3/K3/logs/client-{{ ansible_hostname }}.out submit --svid client-{{ ansible_hostname }} --host {{ masterip }} --port {{ port }} --svlog /k3/K3/logs/client-{{ ansible_hostname }}.log {{ compileargs }} +RTS -N -RTS 
      register: client
 
    - debug: var=client.stdout_lines

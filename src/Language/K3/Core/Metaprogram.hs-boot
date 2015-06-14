@@ -6,6 +6,7 @@ module Language.K3.Core.Metaprogram where
 import Control.DeepSeq
 
 import Data.Binary
+import Data.Serialize
 import Data.Map ( Map )
 import Data.Typeable
 
@@ -23,37 +24,41 @@ data MPAnnMemDecl
 type SpliceEnv     = Map Identifier SpliceValue
 type SpliceContext = [SpliceEnv]
 
-instance Eq       SpliceType
-instance Ord      SpliceType
-instance Read     SpliceType
-instance Show     SpliceType
-instance Typeable SpliceType
-instance NFData   SpliceType
-instance Binary   SpliceType
+instance Eq        SpliceType
+instance Ord       SpliceType
+instance Read      SpliceType
+instance Show      SpliceType
+instance Typeable  SpliceType
+instance NFData    SpliceType
+instance Binary    SpliceType
+instance Serialize SpliceType
 
-instance Eq       SpliceValue
-instance Ord      SpliceValue
-instance Read     SpliceValue
-instance Show     SpliceValue
-instance Typeable SpliceValue
-instance NFData   SpliceValue
-instance Binary   SpliceValue
+instance Eq        SpliceValue
+instance Ord       SpliceValue
+instance Read      SpliceValue
+instance Show      SpliceValue
+instance Typeable  SpliceValue
+instance NFData    SpliceValue
+instance Binary    SpliceValue
+instance Serialize SpliceValue
 
-instance Eq       MPAnnMemDecl
-instance Ord      MPAnnMemDecl
-instance Read     MPAnnMemDecl
-instance Show     MPAnnMemDecl
-instance Typeable MPAnnMemDecl
-instance NFData   MPAnnMemDecl
-instance Binary   MPAnnMemDecl
+instance Eq        MPAnnMemDecl
+instance Ord       MPAnnMemDecl
+instance Read      MPAnnMemDecl
+instance Show      MPAnnMemDecl
+instance Typeable  MPAnnMemDecl
+instance NFData    MPAnnMemDecl
+instance Binary    MPAnnMemDecl
+instance Serialize MPAnnMemDecl
 
-instance Eq       MPDeclaration
-instance Ord      MPDeclaration
-instance Read     MPDeclaration
-instance Show     MPDeclaration
-instance Typeable MPDeclaration
-instance NFData   MPDeclaration
-instance Binary   MPDeclaration
+instance Eq        MPDeclaration
+instance Ord       MPDeclaration
+instance Read      MPDeclaration
+instance Show      MPDeclaration
+instance Typeable  MPDeclaration
+instance NFData    MPDeclaration
+instance Binary    MPDeclaration
+instance Serialize MPDeclaration
 
 instance Pretty SpliceValue
 instance Pretty SpliceEnv

@@ -12,6 +12,9 @@ import Control.Arrow
 import Control.Monad
 
 import Data.Binary
+import Data.Serialize
+import Data.Vector.Serialize
+
 import Data.Bits
 import Data.Bits.Extras
 import Data.Char
@@ -76,10 +79,15 @@ data AIVEnv = AIVEnv { avtenv :: AVTraversalEnv }
               deriving (Eq, Read, Show, Generic)
 
 {- Instances -}
-instance Binary IndexedScope
-instance Binary VarPosEnv
-instance Binary AIVEnv
-instance Binary (Annotation BVector)
+instance Binary    IndexedScope
+instance Binary    VarPosEnv
+instance Binary    AIVEnv
+instance Binary    (Annotation BVector)
+
+instance Serialize IndexedScope
+instance Serialize VarPosEnv
+instance Serialize AIVEnv
+instance Serialize (Annotation BVector)
 
 
 {- BVector helpers -}

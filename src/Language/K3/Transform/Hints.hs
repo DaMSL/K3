@@ -5,6 +5,7 @@ module Language.K3.Transform.Hints where
 
 import Control.DeepSeq
 import Data.Binary
+import Data.Serialize
 import Data.Typeable
 import GHC.Generics (Generic)
 
@@ -34,5 +35,6 @@ data OptHint
     | GlobalHint
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
-instance NFData OptHint
-instance Binary OptHint
+instance NFData    OptHint
+instance Binary    OptHint
+instance Serialize OptHint

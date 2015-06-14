@@ -7,7 +7,7 @@
 
   tasks:
    - name: Start master
-     shell: docker exec -d {{ cname }} /k3/K3/tools/scripts/run/service.sh master --svid master-{{ ansible_hostname }} --host {{ ansible_default_ipv4.address }} --port {{ port }} +RTS -N -RTS 
+     shell: docker exec -d {{ cname }} /k3/K3/tools/scripts/run/service-log.sh /k3/K3/logs/master-{{ ansible_hostname }}.out master --svid master-{{ ansible_hostname }} --host {{ ansible_default_ipv4.address }} --port {{ port }} --workers 16 --svlog /k3/K3/logs/master-{{ ansible_hostname}}.log +RTS -N -RTS 
      register: master
 
    - debug: var=master.stdout_lines
@@ -22,6 +22,6 @@
 
   tasks:
    - name: Start worker
-     shell: docker exec -d {{ cname }} /k3/K3/tools/scripts/run/service.sh worker --svid worker-{{ ansible_hostname }} --host {{ masterip }} --port {{ port }} +RTS -N -RTS 
+     shell: docker exec -d {{ cname }} /k3/K3/tools/scripts/run/service-log.sh /k3/K3/logs/worker-{{ ansible_hostname }}.out worker --svid worker-{{ ansible_hostname }} --host {{ masterip }} --port {{ port }} --workers 16 --heartbeat 30 --svlog /k3/K3/logs/worker-{{ ansible_hostname }}.log +RTS -N -RTS 
      register: worker
 

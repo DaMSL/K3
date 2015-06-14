@@ -12,6 +12,8 @@ import Control.DeepSeq
 import GHC.Generics (Generic)
 
 import Data.Binary
+import Data.Serialize
+
 import Data.List
 import Data.Tree
 import Data.Typeable
@@ -88,6 +90,13 @@ instance Binary QTBase
 instance Binary QTData
 instance Binary QTOp
 instance Binary (Annotation QType)
+
+instance Serialize QPType
+instance Serialize QType
+instance Serialize QTBase
+instance Serialize QTData
+instance Serialize QTOp
+instance Serialize (Annotation QType)
 
 -- | Type constructors
 tleaf :: QType -> K3 QType

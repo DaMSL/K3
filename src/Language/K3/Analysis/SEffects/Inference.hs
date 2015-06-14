@@ -20,6 +20,8 @@ import Control.Monad.Trans.Except
 import Data.Functor.Identity
 
 import Data.Binary ( Binary )
+import Data.Serialize ( Serialize )
+
 import Data.List
 import Data.Maybe
 import Data.Tree
@@ -139,6 +141,9 @@ type ExtInferF a = K3 Effect -> a -> FIEnv -> K3 Effect
 {- Effect instances -}
 instance Binary EffectErrorCtxt
 instance Binary FIEnv
+
+instance Serialize EffectErrorCtxt
+instance Serialize FIEnv
 
 {- Data.Text helpers -}
 mkErr :: String -> Except Text a

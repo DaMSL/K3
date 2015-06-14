@@ -7,7 +7,7 @@
 
   tasks:
    - name: Check docker image
-     docker: name="damsl/k3-vanilla" state=present
+     docker: image="damsl/k3-vanilla" state=present
      register: image 
 
    - name: Start docker container

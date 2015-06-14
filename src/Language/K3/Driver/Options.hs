@@ -9,6 +9,8 @@ import Control.Applicative
 import Options.Applicative
 
 import Data.Binary
+import Data.Serialize
+
 import Data.Char
 import qualified Data.Map as Map
 import Data.List.Split
@@ -167,6 +169,12 @@ instance Binary CPPCompiler
 instance Binary CPPStages
 instance Binary PrintMode
 
+instance Serialize RemoteJobOptions
+instance Serialize CompileOptions
+instance Serialize CompileStage
+instance Serialize CPPCompiler
+instance Serialize CPPStages
+instance Serialize PrintMode
 
 {- Option parsing utilities -}
 

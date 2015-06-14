@@ -9,7 +9,7 @@
 
   tasks:
    - name: Kill compiler service
-     shell: docker exec -ti {{ cname }} /usr/bin/killall k3
+     shell: docker exec -ti {{ cname }} /usr/bin/killall -9 k3
      register: client
 
    - debug: var=client.stdout_lines
