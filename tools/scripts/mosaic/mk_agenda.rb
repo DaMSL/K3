@@ -91,6 +91,5 @@ if __FILE__ == $0
         out_handle << union_schema
       end
     end
-    out_handle << [-1] + schema_defs.flatten
   end
 end
