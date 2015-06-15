@@ -62,6 +62,11 @@ end
 def run_mosaic(k3_path, mosaic_path, source)
   stage "Creating mosaic files"
   run("#{File.join(mosaic_path, "tests", "auto_test.py")} --no-interp -d -f #{source}")
+  
+  # change the k3 file to use the dynamic path
+  s = File.read(k3_path)
+  s.sub!(/file "[^"]+" psv/, "file switch_path psv")
+  File.write(k3_path, s)
 end
 
 def run_create_k3(k3_path, script_path)
@@ -74,12 +79,6 @@ def run_create_k3(k3_path, script_path)
 end
 
 def run_compile_k3(bin_file, k3_path, k3_cpp_path, k3_root_path, script_path)
-
-  # change the cpp file to use the dynamic path
-  s = File.read(k3_cpp_path)
-  s.sub!(/"switch", "[^"]+", "psv"/, '"switch", switch_path, "psv"')
-  File.write(k3_cpp_path, s)
-
   stage "Compiling k3 cpp file"
   brew = $options[:osx_brew] ? "_brew" : ""
   compile = File.join(script_path, "..", "run", "compile#{brew}.sh")
