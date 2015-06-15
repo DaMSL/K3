@@ -197,6 +197,13 @@ public:
     if (hostParams["logging"]) {
             k3_cmd += " -l INFO ";
     }
+    if (hostParams["jsonlog"]) {
+            exec("mkdir $MESOS_SANDBOX/json");
+            k3_cmd += " -j json ";
+    }
+    if (hostParams["jsonfinal"]) {
+            k3_cmd += " --json_final_only ";
+    }
     if (hostParams["resultVar"]) {
       k3_cmd += " --result_path $MESOS_SANDBOX --result_var " + hostParams["resultVar"].as<string>();
     }

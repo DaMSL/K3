@@ -266,7 +266,7 @@ def shutdown():
     #  /kill - Kill the server  (TODO: Clean this up)
     #------------------------------------------------------------------------------
     """
-    logging.warngin ("[FLASKWEB] Shutting down the driver")
+    logging.warning ("[FLASKWEB] Shutting down the driver")
     shutdown_server()
     return 'Server is going down...'
 
@@ -284,7 +284,7 @@ def staticFile(path):
   #           Otherwise, you will get a 302 redirect to the actual file
   #------------------------------------------------------------------------------
   """
-  logger.debug('[FLASKWEB  /fs] Static File Request for `%s`' % path)
+  logger.info('[FLASKWEB  /fs] Static File Request for `%s`' % path)
   local = os.path.join(webapp.config['DIR'], path)
   if not os.path.exists(local):
     return returnError("File not found: %s" % path, 404)
@@ -302,9 +302,14 @@ def staticFile(path):
   else:
     if 'stdout' in local or 'output' in local or local.split('.')[-1] in ['txt', 'yaml', 'yml', 'json', 'log']:
       with open(local, 'r') as file:
+        # output = unicode(file.read(), 'utf-8')
         output = file.read()
-      return (output, 200 if request.headers['Accept'] == 'application/json'
-        else render_template("output.html", output=output.encode(encoding='utf-8')))
+
+        if request.headers['Accept'] == 'application/json':
+          return output, 200
+        else:
+          return render_template("output.html", output=output)
+
     return send_from_directory(webapp.config['DIR'], path)
 
 
@@ -325,7 +330,8 @@ def uploadApp():
   #------------------------------------------------------------------------------
   #  /apps, /app - Application Level interface    
   #     POST   Upload new application
-  #       curl -i -X POST -H "Accept: application/json" -F file=@<filename> http://<host>:<port>/apps
+  #       curl -i -X POST -H "Accept: application/json" 
+  #           -F file=@<filename> http://<host>:<port>/apps
   #
   #     GET    Display both list of loaded apps and form to upload new ones
   #
@@ -420,7 +426,7 @@ def archiveApp(appName, appUID):
   #------------------------------------------------------------------------------
   #  /apps/<appName>/<appUID> - Specific Application Level interface
   #         POST   (Upload archive data (C++, Source, etc....)
-  #            curl -i -H "Accept: application/json"
+  #            curl -i -X POST -H "Accept: application/json"
   #                    -F "file=<filename>" http://qp1:5000/apps/<addName>/<addUID>
   #
   #         GET    (TODO) Display archived files...  NotImplemented
@@ -531,7 +537,12 @@ def createJob(appName, appUID):
   #  /jobs/<appName>
   #  /jobs/<appName>/<appUID  - Launch a new K3 Job
   #         POST    Create new K3 Job
-  #          curl -i -X POST -H "Accept: application/json" -F "file=@<rolefile>" http://qp1:5000/jobs/<appName>/<appUID>
+  #          curl -i -X POST -H "Accept: application/json" 
+  #             -F "file=@<rolefile>" 
+  #             -F logging=[True | False]
+  #             -F jsonlog=[True | False]
+  #             -F jsonfinal=[True | False]
+  #             -F http://<host>:<port>/jobs/<appName>/<appUID>
   #             NOTE: if appUID is omitted, job will be submitted to latest version of this app
   #
   #         GET    Display job list for this application
@@ -546,12 +557,17 @@ def createJob(appName, appUID):
         # TODO: Get user
         file = request.files['file']
         text = request.form['text'] if 'text' in request.form else None
-        k3logging = request.form['logging'] if 'logging' in request.form else False
+        k3logging = True if 'logging' in request.form else False
+        jsonlog = True if 'jsonlog' in request.form else False
+        jsonfinal = True if 'jsonfinal' in request.form else False
         stdout = request.form['stdout'] if 'stdout' in request.form else False
         user = request.form['user'] if 'user' in request.form else 'anonymous'
         tag = request.form['tag'] if 'tag' in request.form else ''
 
+
         logger.debug("K3 LOGGING is :  %s" %  ("ON" if k3logging else "OFF"))
+        logger.debug("JSON LOGGING is :  %s" %  ("ON" if jsonlog else "OFF"))
+        logger.debug("JSON FINAL LOGGING is :  %s" %  ("ON" if jsonfinal else "OFF"))
         # trials = int(request.form['trials']) if 'trials' in request.form else 1
 
         # Check for valid submission
@@ -584,7 +600,8 @@ def createJob(appName, appUID):
         apploc = webapp.config['ADDR']+os.path.join(webapp.config['UPLOADED_APPS_URL'], appName, appUID, appName)
 
         newJob = Job(binary=apploc, appName=appName, jobId=jobId,
-                     rolefile=os.path.join(path, filename), logging=k3logging)
+                     rolefile=os.path.join(path, filename), logging=k3logging, 
+                     jsonlog=jsonlog, jsonfinal=jsonfinal)
 
         # Submit to Mesos
         dispatcher.submit(newJob)
@@ -692,7 +709,7 @@ def replayJob(appName, jobId):
   #------------------------------------------------------------------------------
   #  /jobs/<appName>/<appUID/replay  - Replay a previous K3 Job
   #         POST    Create new K3 Job
-  #          curl -i -X POST -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<appUID>/replay
+  #          curl -i -X POST -H "Accept: application/json" http://<host>:<port>/jobs/<appName>/<appUID>/replay
   #------------------------------------------------------------------------------
   """
   global dispatcher
@@ -762,8 +779,8 @@ def archiveJob(appName, jobId):
     #  /jobs/<appName>/<jobId>/archive - Endpoint to receive & archive files
     #         GET     returns curl command
     #         POST    Accept files for archiving here
-    #           curl -i -H "Accept: application/json"
-    #              -F file=@<filename> http://qp1:5000/<appName>/<jobId>/archive
+    #           curl -i -X POST -H "Accept: application/json"
+    #              -F file=@<filename> http://<host>:<post>/<appName>/<jobId>/archive
     #------------------------------------------------------------------------------
     """
     job_id = str(jobId).encode('utf8', 'ignore')
@@ -787,7 +804,7 @@ def archiveJob(appName, jobId):
     elif request.method == 'GET':
         return '''
 Upload your file using the following CURL command:\n\n
-   curl -i -H "Accept: application/json" -F file=@<filename> http://<server>:<port>/<appName>/<jobId>/archive
+   curl -i -X POST -H "Accept: application/json" -F file=@<filename> http://<server>:<port>/<appName>/<jobId>/archive
 ''', 200
 
 
@@ -886,32 +903,36 @@ def compile():
     #  /compile
     #         GET     Form for compiling new K3 Executable OR status of compiling tasks
     #         POST    Submit new K3 Compile task
-    #           curl -i -X POST -H "Accept: application/json" -F name=<appName> 
-    #                   -F file=@<sourceFile> -F blocksize=<blocksize>
-    #                   -F numworkers=<numworkers> -F options=<compileOptions>
+    #           curl -i -X POST -H "Accept: application/json"
+    #                   -F name=<appName>  
+    #                   -F file=@<sourceFile> 
+    #                   -F blocksize=<blocksize> 
+    #                   -F compilestage=<compilestage>
+    #                   -F numworkers=<numworkers> 
+    #                   -F options=<compileOptions>
     #                   -F user=<userName> http://<host>:<port>/compile
-    #           NOTE: Username, blocksize, numworkers & Options are optional fields
-    #             default vals:  numworkers=1,  blocksize=4
+    #    NOTE: Username, blocksize, numworkers, compilestate & Options are optional
+    #             default vals:  numworkers=1,  blocksize=4, compilestage=""
     #------------------------------------------------------------------------------
     """
     if webapp.config['COMPILE_OFF']:
       logger.warning("Compilation requested, but denied (Feature not turned on)")
       return returnError("Compilation Features are not available", 400)
 
+    logging.debug("[FLASKWEB /compile]   REQUEST ")
+
     if request.method == 'POST':
       file = request.files['file']
-      text = request.form['text']
-      name = request.form['name']
+      text = request.form['text'] if 'text' in request.form else None
+      name = request.form['name'] if 'name' in request.form else None
       options = request.form['options'] if 'options' in request.form else ''
       user = request.form['user'] if 'user' in request.form else 'someone'
       tag = request.form['tag'] if 'tag' in request.form else ''
-      compilestage = request.form['compilestage'] if 'compilestage' in request.form else ""
-      blocksize = request.form['blocksize'] if 'blocksize' in request.form else 4
-      numworkers = int(request.form['numworkers']) if 'numworkers' in request.form else 1
-      logger.debug("Compile requested for application: %s", name)
+      stage = request.form['compilestage'] if 'compilestage' in request.form else "both"
 
-      if not file and not text:
-          return renderError("Invalid Compile request", 400)
+      blocksize = request.form['blocksize'] if 'blocksize' in request.form else 4
+      numworkers = int(request.form['numworkers']) if 'numworkers' in request.form else len(workerNodes)
+      logger.debug("Compile requested for application: %s", name)
 
       # Create a unique ID
       uid = getUID()
@@ -922,7 +943,14 @@ def compile():
           srcfile = secure_filename(file.filename)
           name = srcfile.split('.')[0]
         else:
-          return render_template("errors/404.html", message="No name provided for K3 program")
+          return returnError("No name provided for K3 program", 400)
+
+      if stage not in ['both', 'cpp', 'bin']:
+        return returnError("Invalid Input on key `comilestage`. Valid entries are ['both', 'cpp', 'bin']", 400)
+
+      compilestage = getCompileStage(stage)
+
+
 
       uname = '%s-%s' % (name, uid)
       path = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], uname).encode(encoding='utf8')
@@ -942,11 +970,11 @@ def compile():
       # source = webapp.config['ADDR'] + os.path.join(url, src_file)
 
       # Create Symlink for easy access to latest compiled task
-      # symlink = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], name).encode(encoding='utf8')
-      if os.path.exists(name):
-        os.remove(name)
+      link = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], name).encode(encoding='utf8')
+      if os.path.exists(link):
+        os.remove(link)
 
-      os.symlink(uname + '/', name)
+      os.symlink(uname, link)
       url = os.path.join(webapp.config['UPLOADED_BUILD_URL'], uname).encode(encoding='utf8')
 
       # TODO: Add in Git hash
@@ -993,9 +1021,10 @@ def compile():
     else:
       # TODO: Return list of Active/Completed Compiling Tasks
       if request.headers['Accept'] == 'application/json':
-        return 'CURL FORMAT:\n\n\tcurl -i -H "Accept: application/json" -F name=<appName> -F file=@<sourceFile> -F options=<compileOptions> -F user=<userName> http://qp1:5000/compile'
+        return 'CURL FORMAT:\n\n\tcurl -i -X POST -H "Accept: application/json" -F name=<appName> -F file=@<sourceFile> -F blocksize=<blocksize> -F compilestage=<compilestage> -F numworkers=<numworkers> http://<host>:<port>/compile'
       else:
         return render_template("compile.html")
+
 
 def getCompilerOutput(uname):
     """
@@ -1004,7 +1033,7 @@ def getCompilerOutput(uname):
     fname = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], uname, 'output').encode('utf8')
     if os.path.exists(fname):
       stdout_file = open(fname, 'r')
-      output = stdout_file.read()
+      output = unicode(stdout_file.read(), 'utf-8')
       stdout_file.close()
       # return output.encode(encoding='utf-8')
       return output
@@ -1012,26 +1041,71 @@ def getCompilerOutput(uname):
       return None
 
 
-@webapp.route('/compile/<uname>', methods=['GET'])
-def getCompile(uname):
-    """
-    #------------------------------------------------------------------------------
-    #  /compile/<uname>
-    #         GET     displays STDOUT & STDERR consolidated output for compile task
-    #------------------------------------------------------------------------------
-    """
-    if webapp.config['COMPILE_OFF']:
-      return returnError("Compilation Features are not available", 400)
+@webapp.route('/compile/<uid>', methods=['GET'])
+def getCompile(uid):
+  """
+  #------------------------------------------------------------------------------
+  #  /compile/<uid>
+  #         GET     displays STDOUT & STDERR consolidated output for compile task
+  #------------------------------------------------------------------------------
+  """
+  if webapp.config['COMPILE_OFF']:
+    return returnError("Compilation Features are not available", 400)
 
-    output = getCompilerOutput(uname).encode(encoding='utf-8')
-    if output:
-      if request.headers['Accept'] == 'application/json':
-        return output, 200
-      else:
-        return render_template("output.html", output=output)
+  logger.debug("[FLASKWEB] Retrieving last compilation status")
 
+  
+  result = db.getCompiles(uid=uid)
+  if len(result) == 0:
+    result = db.getCompiles(uid=AppID.getUID(uid))
+
+  if len(result) == 0:
+    return returnError("No output found for compilation, %s\n\n" % uid, 400)
+  else:
+    output = result[0]
+    output['uname'] = AppID.getAppId(output['name'], output['uid'])
+    local = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], output['uname'])
+    output['sandbox'] = sorted (os.listdir(local))
+
+    if request.headers['Accept'] == 'application/json':
+      return jsonify(output), 200
     else:
-      return returnError("No output found for compilation, %s\n\n" % uname, 400)
+      return render_template("last.html", lastcompile=output)
+
+  # output = getCompilerOutput(uname).encode(encoding='utf-8')
+  # if output:
+  #   if request.headers['Accept'] == 'application/json':
+  #     return output, 200
+  #   else:
+  #     return render_template("output.html", output=output)
+
+  # else:
+  #   return returnError("No output found for compilation, %s\n\n" % uname, 400)
+
+
+@webapp.route('/compilestatus')
+def getCompileStatus():
+  global lastCompile
+  """
+  #------------------------------------------------------------------------------
+  #  /compilestatus - Provide simple output of current (or most recent) Compilation Job
+  #------------------------------------------------------------------------------
+  """
+  logger.debug("[FLASKWEB] Retrieving last compilation status")
+
+  if lastCompile == None:
+    output = dict(name="N/A", status="There are no compilation jobs to display")
+  else:
+    output = db.getCompiles(uid=lastCompile.uid)[0]
+    output['uname'] = ParseName.makeuname(output['name'], output['uid'])
+    local = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], output['uname'])
+    output['sandbox'] = sorted (os.listdir(local))
+
+  if request.headers['Accept'] == 'application/json':
+    return jsonify(output), 200
+  else:
+    return render_template("last.html", lastcompile=output)
+
 
 @webapp.route('/compilelog')
 def getCompileLog():
@@ -1057,39 +1131,40 @@ def getCompileLog():
 
 
 
-@webapp.route('/compile/<uname>/kill', methods=['GET'])
-def killCompile(uname):
-    """
-    #------------------------------------------------------------------------------
-    #  /compile/<uname>/kill
-    #         GET     Kills an active compiling tasks (or removes and orphaned one
-    #------------------------------------------------------------------------------
-    """
-    if webapp.config['COMPILE_OFF']:
-      return returnError("Compilation Features are not available", 400)
+@webapp.route('/compile/<uid>/kill', methods=['GET'])
+def killCompile(uid):
+  """
+  #------------------------------------------------------------------------------
+  #  /compile/<uname>/kill
+  #         GET     Kills an active compiling tasks (or removes and orphaned one
+  #------------------------------------------------------------------------------
+  """
+  if webapp.config['COMPILE_OFF']:
+    return returnError("Compilation Features are not available", 400)
 
 
-    name = AppID.getName(uname)
-    uid = AppID.getUID(uname)
+  complist = db.getCompiles(uid=uid)
+  if len(complist) == 0:
+    complist = db.getCompiles(uid=AppID.getUID(uid))
 
-    complist = db.getCompiles(uid=uid)
-    if len(complist) == 0:
-      return returnError("Not currently tracking the compile task %s" % uname, 400)
+  if len(complist) == 0:
+    return returnError("Not currently tracking the compile task %s" % uid, 400)
+
+  else:
+    c = complist[0]
+    logging.info ("[FLASKWEB] Asked to KILL Compile UID #%s. Current status is %s" % (c['uid'], c['status']))
+
+    if c['status'] != CompileState.COMPLETE:
+      db.updateCompile(uid, status='KILLED', done=True)
+
+    if uid in compile_tasks.keys():
+      compile_tasks[uid].kill()
+      c['status'] = 'KILLED'
+
+    if request.headers['Accept'] == 'application/json':
+      return jsonify(c), 200
     else:
-      c = complist[0]
-      logging.info ("[FLASKWEB] Asked to KILL Compile UID #%s. Current status is %s" % (c['uid'], c['status']))
-
-      if c['status'] != CompileState.COMPLETE:
-        db.updateCompile(uid, status='KILLED', done=True)
-
-      if uid in compile_tasks.keys():
-        compile_tasks[uid].kill()
-        c['status'] = 'KILLED'
-
-      if request.headers['Accept'] == 'application/json':
-        return jsonify(c), 200
-      else:
-        return redirect(url_for('listJobs')), 302
+      return redirect(url_for('listJobs')), 302
 
 @webapp.route('/delete/compiles', methods=['POST'])
 def deleteCompiles():
@@ -1105,7 +1180,7 @@ def deleteCompiles():
 
   deleteList = request.form.getlist("delete_compiles")
   for uid in deleteList:
-
+    logger.info("[FLASKWEB /delete/compiles] DELETING compile job uid=" + uid)
     job = db.getCompiles(uid=uid)[0]
     # TODO: COMPLETE
     # path = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], job['appName'], jobId)
@@ -1116,7 +1191,7 @@ def deleteCompiles():
 @socketio.on('connect', namespace='/compile')
 def test_connect():
     logger.info('[FLASKWEB] Client is connected to /connect stream')
-    emit('my response', 'Connected to Compile Log Steam')
+    emit('my response', 'Connected to Compile Log Stream')
     # thread = CountThread()
     # thread.start()
 

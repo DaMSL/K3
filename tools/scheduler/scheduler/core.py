@@ -2,7 +2,7 @@
 import os, re, yaml
 import tarfile
 import logging
-
+from common import *
 
 class K3JobError(Exception):
   def __init__(self, msg):
@@ -80,7 +80,10 @@ class CompileJob:
     self.options   = kwargs.get('options', '')
     self.blocksize = kwargs.get('blocksize', 4)
     self.numworkers = kwargs.get('numworkers', 1)
-    self.compilestage = kwargs.get('compilestage', '')
+
+    stage = kwargs.get('compilestage', CompileStage.BOTH)
+    self.compilestage = stage.value
+    
     self.path     = kwargs.get('path', '')
 
     self.url      = kwargs.get('path', '')
@@ -90,10 +93,11 @@ class CompileJob:
   def __dict__(self):
     return dict(name=self.name, uid=self.uid, path=self.path, tag=self.tag,
                 user=self.user, options=self.options, blocksize=self.blocksize,
-                numworkers=self.numworkers, url=self.url)
+                numworkers=self.numworkers, url=self.url, uname=self.uname())
 
   def uname(self):
     return self.name + '-' + self.uid
+
 
 
 class Job:

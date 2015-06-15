@@ -247,7 +247,7 @@ def getCompiles(**kwargs):
   uid     = kwargs.get('uid', None)
   active  = kwargs.get('active', False)
 
-  filter = ("WHERE appName='%s'" % appName if appName
+  filter = ("WHERE name='%s'" % appName if appName
               else "WHERE uid='%s'" % uid if uid
                   else "")
 

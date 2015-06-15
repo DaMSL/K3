@@ -11,11 +11,41 @@
           </h2>
         {% endif %}
         {% if lastcompile %}
+        <div class="row">
+            <div class="col-md-12">
             <h3>Compling {{ lastcompile.name }} with UID: # {{ lastcompile.uid }} <br>
-                Status: {{ lastcompile.status }} at {{ lastcompile.time }}</h3>
-            <h4>View Compile Output: <a href="{{ lastcompile.outputurl }}" target="_blank">STDOUT</a></h4>
-            <h4>Download CPP Source Output: <a href="{{ lastcompile.cppsrc }}">CPP Source</a></h4>
-            <h4>Check progress: <a href="{{ lastcompile.url }}" target="_blank">Mesos</a></h4>
+                Status: <strong>{{ lastcompile.status }}</strong> at {{ lastcompile.time }}</h3><h4>
+          </div></div>
+        <div class="row">
+          <div class="col-md-7">
+            <br>
+            <h4><ul style="list-style-type:disc">
+            <li class="list-group-item">       
+
+              Streaming WebSocket Log (Active session only):
+              <a href='/compilelog'>Compile LOG</a></li>
+            <li class="list-group-item">
+              View Compile Output:
+              <a href="/fs/build/{{lastcompile.uname}}/output" target="_blank">STDOUT</a></li>
+            <li class="list-group-item">
+              Download CPP Source Output:
+              <a href="/fs/build/{{lastcompile.uname}}/{{lastcompile.name}}.cpp">CPP Source</a></li>
+            <li class="list-group-item">
+              Check progress: 
+              <a href="http://qp2:5050" target="_blank">Mesos</a></li>
+            </ul></h4>
+          </div>
+          <div class="col-md-5">
+            {% if lastcompile.sandbox %}
+                <h4 class="text-center">Build Directory</h4>
+                <ul style="list-style-type:disc">
+                {% for entry in lastcompile.sandbox %}
+                    <li><a href="/fs/build/{{lastcompile.uname}}/{{entry}}">{{entry}}</a></li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+          </div></div>
+
         {% endif %}
         {% if lastjob %}
         <div class="row">
@@ -29,12 +59,12 @@
             <br>
             <h4 class="text-center">Job Environment</h4>
             <ul class="list-group">
+              {% if lastjob.uid %}
+                <li class="list-group-item">UID: <span class="text-info">{{ lastjob.uid }}</span></li>{% endif %}
               {% if lastjob.hash %}
                 <li class="list-group-item">App Version UID: <span class="text-info">{{ lastjob.hash }}</span></li>{% endif %}
               {% if lastjob.user %}
                 <li class="list-group-item">Username <span class="text-info">{{ lastjob.user }}</span></li>{% endif %}
-              {% if lastjob.url %}
-                <li class="list-group-item">Link to Mesos: <span class="text-info"><a href="{{ lastjob.url }}" target="_blank">{{ lastjob.url }}</a></span></li>{% endif %}
               {% if lastjob.tag %}
                 <li class="list-group-item">Tag Notes: <span class="text-info">{{ lastjob.tag }}</span></li>{% endif %}
               {% if lastjob.time %}

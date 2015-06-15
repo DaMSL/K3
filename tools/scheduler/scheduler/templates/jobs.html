@@ -9,8 +9,8 @@
           {% for job in compilelist %}
                 {% if job.status != "COMPLETE" and job.status != "KILLED" and job.status != "FAILED" %}
                 <tr>
-                  <td><a href="/fs/build/{{job.name}}/{{job.uid}}">{{job.name}}-{{job.uid}}</a></td>
-                  <td><a href="/compile/{{job.name}}-{{job.uid}}">Output</a></td>
+                  <td><a href="/compile/{{job.name}}-{{job.uid}}">{{job.name}}-{{job.uid}}</a></td>
+                  <td><a href="/fs/build/{{job.name}}-{{job.uid}}/output">Output</a></td>
                     <td>{{job.submit}}</td>
                     <td>{{job.complete}}</td>
                     <td>{{job.status}}</td>
@@ -61,8 +61,8 @@
             <tr> <th>Build</th><th>Output</th><th>Time Submit</th><th>Time Complete</th><th>Status</th><th>Kill</th></tr>
           {% for job in compilelist %}
                 <tr>
-                    <td><a href="/fs/build/{{job.name}}-{{job.uid}}">{{job.name}}-{{job.uid}}</a></td>
-                    <td><a href="/compile/{{job.name}}-{{job.uid}}">Output</a></td>
+                    <td><a href="/compile/{{job.name}}-{{job.uid}}">{{job.name}}-{{job.uid}}</a></td>
+                    <td><a href="/fs/build/{{job.name}}-{{job.uid}}/output">Output</a></td>
                     <td>{{job.submit}}</td>
                     <td>{{job.complete}}</td>
                     <td>{{job.status}}</td>

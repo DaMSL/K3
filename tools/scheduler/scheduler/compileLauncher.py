@@ -34,11 +34,6 @@ from mesosutils import *
 import db
 
 
-masterNodes =  ['qp3']
-# workerNodes =  ['qp-hm' + str(i) for i in range(1,9)]
-# workerNodes =  ['qp4']
-workerNodes =  ['qp-hm' + str(i) for i in range(1,9)] + ['qp-hd' + str(i) for i in [1, 3, 4, 6, 7, 8, 10, 12]]
-clientNodes =  ['qp5']
 
 class CompileLauncher(mesos.interface.Scheduler):
     def __init__(self, job, **kwargs):

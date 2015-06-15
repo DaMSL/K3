@@ -1,7 +1,7 @@
 import logging
 import datetime
 import uuid
-from enum import enum
+from enum import enum, Enum
 
 
 heartbeat_delay = 60  # secs. move to common
@@ -14,7 +14,28 @@ def getUID():
   return str(uuid.uuid1()).split('-')[0]
 
 
+masterNodes =  ['qp-hm1']
+# workerNodes =  ['qp-hm' + str(i) for i in range(1,9)]
+# workerNodes =  ['qp4']
+workerNodes =  ['qp' + str(i) for i in range(3,6)] + ['qp-hm' + str(i) for i in range(2,9)] + ['qp-hd' + str(i) for i in [1, 3, 4, 6, 7, 8, 10, 12]]
+clientNodes =  ['qp-hd16']
+
+
 CompileState = enum.Enum('CompileState', 'INIT DISPATCH MASTER_WAIT WORKER_WAIT CLIENT_WAIT SUBMIT COMPILE UPLOAD COMPLETE FAILED KILLED')
+
+class CompileStage(Enum):
+  FIRST = '-1'
+  SECOND = '-2'
+  BOTH = ''
+
+compileStageValues = ['both', 'cpp', 'bin']
+ 
+def getCompileStage(stage):
+    inputmap = dict(both=CompileStage.BOTH, 
+                  cpp=CompileStage.FIRST, 
+                  bin=CompileStage.SECOND)
+    return inputmap[stage]
+
 
 
 class JobStatus:
@@ -46,3 +67,23 @@ class ServiceFormatter(logging.Formatter):
           t = ct.strftime("%H:%M:%S")
           s = "%s.%03d" % (t, record.msecs)
       return s
+
+
+class ParseName:
+
+  @classmethod
+  def splituname(cls, uname):
+    return uname.split('-')
+
+  @classmethod
+  def uname2name(cls, uname):
+    return uname.split('-')[0]
+
+  @classmethod
+  def uname2uid(cls, uname):
+    return uname.split('-')[1]
+
+  @classmethod
+  def makeuname(cls, name, uid):
+    return name + '-' + uid
+

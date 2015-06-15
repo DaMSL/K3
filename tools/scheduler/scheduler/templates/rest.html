@@ -1,3 +1,4 @@
+
 {% extends "layout/base.html" %}
 
 {% block content %}
@@ -169,21 +170,31 @@
   /compile
          GET     Form for compiling new K3 Executable OR status of compiling tasks
          POST    Submit new K3 Compile task
-           curl -i -X POST -H "Accept: application/json" -F name=<appName>
-                   -F file=@<sourceFile> -F blocksize=<blocksize>
-                   -F numworkers=<numworkers> -F options=<compileOptions>
+           curl -i -X POST -H "Accept: application/json"
+                   -F name=<appName>
+                   -F file=@<sourceFile>
+                   -F blocksize=<blocksize>
+                   -F compilestage=<compilestage>
+                   -F numworkers=<numworkers>
+                   -F options=<compileOptions>
                    -F user=<userName> http://<host>:<port>/compile
-           NOTE: Username, blocksize, numworkers & Options are optional fields
-             default vals:  numworkers=1,  blocksize=4
+    NOTE: Username, blocksize, numworkers, compilestate & Options are optional
+             default vals:  numworkers=1,  blocksize=4, compilestage=""
 -------------------------------------------------------------------------------
 @webapp.route('/compile', methods=['GET', 'POST'])
 
 
 ===============================================================================
-  /compile/<uname>
+  /compile/<uid>
          GET     displays STDOUT & STDERR consolidated output for compile task
 -------------------------------------------------------------------------------
-@webapp.route('/compile/<uname>', methods=['GET'])
+@webapp.route('/compile/<uid>', methods=['GET'])
+
+
+===============================================================================
+  /compilestatus - Provide simple output of current (or most recent) Compilation Job
+-------------------------------------------------------------------------------
+@webapp.route('/compilestatus')
 
 
 ===============================================================================
@@ -196,7 +207,7 @@
   /compile/<uname>/kill
          GET     Kills an active compiling tasks (or removes and orphaned one
 -------------------------------------------------------------------------------
-@webapp.route('/compile/<uname>/kill', methods=['GET'])
+@webapp.route('/compile/<uid>/kill', methods=['GET'])
 
 
 ===============================================================================
@@ -204,11 +215,9 @@
          POST     Deletes list of compile jobs
 -------------------------------------------------------------------------------
 @webapp.route('/delete/compiles', methods=['POST'])
-</pre>
 
+{% extends "layout/base.html" %}
 
-{% endblock %}
+{% block content %}
 
-{% block footer %}
-  {% include "include/footer.html" %}
-{% endblock %}
+<pre>
