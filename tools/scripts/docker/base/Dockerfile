@@ -48,14 +48,15 @@ RUN add-apt-repository -y ppa:avsm/ppa && apt-get update && \
     opam install ocamlfind && \
     /bin/echo -e "\neval \`opam config env\`\n" >> /root/.bashrc
 
-RUN mkdir -p /software/boost-1.56 && \
-    cd /software/boost-1.56 && \
-    wget --no-verbose -T 10 http://downloads.sourceforge.net/boost/boost_1_56_0.tar.bz2 && \
-    tar xvfj boost_1_56_0.tar.bz2 && \
-    cd /software/boost-1.56/boost_1_56_0 && \
-    ./bootstrap.sh --without-libraries=python --prefix=/usr && \
-    ./b2 -j 8 stage   threading=multi link=shared && \
-    ./b2 -j 8 install threading=multi link=shared
+RUN wget http://sourceforge.net/projects/boost/files/boost/1.57.0/boost_1_57_0.tar.bz2/download && \
+  tar --bzip2 -xvf ./download && \
+  rm download && \
+  cd boost_1_57_0 &&  \
+  ./bootstrap.sh --with-libraries=serialization,system,thread,log,program_options,filesystem --prefix=/usr/local libdir=/usr/local/lib && \
+  ./b2 stage threading=multi link=shared &&  \
+  ./b2 install threading=multi link=shared && \
+  cd .. && \
+  rm -Rf boost_1_57_0
 
 # Install GHC and cabal
 ENV PATH /opt/ghc/7.10.1/bin:/opt/cabal/1.22/bin:/opt/alex/3.1.4/bin:/opt/happy/1.19.5/bin:/root/.cabal/bin/:$PATH
