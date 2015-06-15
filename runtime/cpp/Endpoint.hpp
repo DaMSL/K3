@@ -219,22 +219,32 @@ namespace K3
   protected:
     shared_ptr<Codec> codec_;
 
+enum class CodecFormat {K3, K3B, K3YB, K3YBT, K3X, CSV, PSV, JSON, YAML};
+
     template<typename T> shared_ptr<T> specializedDecode(const string& s) {
       shared_ptr<T> result;
       if (codec_) {
         if (codec_->format() == Codec::CodecFormat::K3) {
           shared_ptr<K3Codec> k3codec = std::dynamic_pointer_cast<K3Codec, Codec>(codec_);
           result = k3codec->decode<T>(s);
-        } else if ( codec_->format() == Codec::CodecFormat::K3B ) {
-          shared_ptr<K3BCodec> k3bcodec = std::dynamic_pointer_cast<K3BCodec, Codec>(codec_);
-          result = k3bcodec->decode<T>(s);
-        } else if ( codec_->format() == Codec::CodecFormat::CSV ) {
+        }
+        else if ( codec_->format() == Codec::CodecFormat::CSV ) {
           shared_ptr<CSVCodec> csvcodec = std::dynamic_pointer_cast<CSVCodec, Codec>(codec_);
           result = csvcodec->decode<T>(s);
-        } else if ( codec_->format() == Codec::CodecFormat::PSV ) {
+        }
+        else if ( codec_->format() == Codec::CodecFormat::PSV ) {
           shared_ptr<PSVCodec> psvcodec = std::dynamic_pointer_cast<PSVCodec, Codec>(codec_);
           result = psvcodec->decode<T>(s);
-        } else if ( codec_->format() == Codec::CodecFormat::K3X ) {
+        }
+        else if ( codec_->format() == Codec::CodecFormat::K3B ) {
+          shared_ptr<K3BCodec> k3bcodec = std::dynamic_pointer_cast<K3BCodec, Codec>(codec_);
+          result = k3bcodec->decode<T>(s);
+        }
+        else if ( codec_->format() == Codec::CodecFormat::K3YB ) {
+          shared_ptr<K3YBCodec> k3ybcodec = std::dynamic_pointer_cast<K3YBCodec, Codec>(codec_);
+          result = k3ybcodec->decode<T>(s);
+        }
+        else if ( codec_->format() == Codec::CodecFormat::K3X ) {
           shared_ptr<K3XCodec> k3xcodec = std::dynamic_pointer_cast<K3XCodec, Codec>(codec_);
           result = k3xcodec->decode<T>(s);
         }
@@ -248,13 +258,24 @@ namespace K3
         if ( codec_->format() == Codec::CodecFormat::K3 ) {
           shared_ptr<K3Codec> k3codec = std::dynamic_pointer_cast<K3Codec, Codec>(codec_);
           return k3codec->encode<T>(v);
-        } else if ( codec_->format() == Codec::CodecFormat::K3B ) {
-          shared_ptr<K3BCodec> k3bcodec = std::dynamic_pointer_cast<K3BCodec, Codec>(codec_);
-          return k3bcodec->encode<T>(v);
-        } else if ( codec_->format() == Codec::CodecFormat::CSV ) {
+        }
+        else if ( codec_->format() == Codec::CodecFormat::CSV ) {
           shared_ptr<CSVCodec> csvcodec = std::dynamic_pointer_cast<CSVCodec, Codec>(codec_);
           return csvcodec->encode<T>(v);
-        } else if ( codec_->format() == Codec::CodecFormat::K3X ) {
+        }
+        else if ( codec_->format() == Codec::CodecFormat::PSV ) {
+          shared_ptr<PSVCodec> psvcodec = std::dynamic_pointer_cast<PSVCodec, Codec>(codec_);
+          return psvcodec->encode<T>(v);
+        }
+        else if ( codec_->format() == Codec::CodecFormat::K3B ) {
+          shared_ptr<K3BCodec> k3bcodec = std::dynamic_pointer_cast<K3BCodec, Codec>(codec_);
+          return k3bcodec->encode<T>(v);
+        }
+        else if ( codec_->format() == Codec::CodecFormat::K3YB ) {
+          shared_ptr<K3YBCodec> k3ybcodec = std::dynamic_pointer_cast<K3YBCodec, Codec>(codec_);
+          return k3ybcodec->encode<T>(v);
+        }
+        else if ( codec_->format() == Codec::CodecFormat::K3X ) {
           shared_ptr<K3XCodec> k3xcodec = std::dynamic_pointer_cast<K3XCodec, Codec>(codec_);
           return k3xcodec->encode<T>(v);
         }
