@@ -1,6 +1,8 @@
 include "Core/Builtins.k3"
 
 declare x : mut int = 0
+
+// This should be run with a valid path via runtime patching.
 declare fpath : mut string = "foo.txt"
 
 trigger t : int = \_ -> (
