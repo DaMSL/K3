@@ -7,6 +7,10 @@ annotation Vector given type a, b {
     with effects \_ -> [R[i]; R[self]]
 
   @:CArgs 2
+  provides lifted update_at: int -> content -> content
+    with effects \i -> \c -> [R[i]; R[c]; W[self]]
+
+  @:CArgs 2
   provides lifted set : int -> content -> ()
     with effects \i -> \elem -> [R[self]; R[i]; R[elem]; W[self]]
 

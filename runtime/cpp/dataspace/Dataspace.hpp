@@ -1488,6 +1488,12 @@ class Vector: public VectorDS<K3::Vector, Elem> {
     return vec[i];
   }
 
+  Elem update_at(int i, Elem n) {
+    auto old = Super::getContainer()[i];
+    Super::getContainer()[i] = n;
+    return old;
+  }
+
   // TODO bounds checking
   unit_t set(int i, Elem f) {
     auto& vec = Super::getContainer();
