@@ -219,8 +219,6 @@ namespace K3
   protected:
     shared_ptr<Codec> codec_;
 
-enum class CodecFormat {K3, K3B, K3YB, K3YBT, K3X, CSV, PSV, JSON, YAML};
-
     template<typename T> shared_ptr<T> specializedDecode(const string& s) {
       shared_ptr<T> result;
       if (codec_) {
