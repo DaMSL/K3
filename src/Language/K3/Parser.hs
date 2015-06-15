@@ -1055,13 +1055,13 @@ builtin isSource = mkBuiltin <$> builtinChannels <*> format
         builtinSpec idE formatE = BuiltinEP <$> S.symbolS idE <*> S.symbolS formatE
 
 file :: Bool -> K3Parser EndpointBuilder
-file isSource = mkFile <$> (symbol "file" *> eCString) <*> format
+file isSource = mkFile <$> (symbol "file" *> eTerminal) <*> format
   where mkFile argE formatE n t =
           fileSpec argE formatE >>= \s -> return $ endpointMethods isSource s argE formatE n t
         fileSpec argE formatE = FileEP <$> S.exprS argE <*> S.symbolS formatE
 
 network :: Bool -> K3Parser EndpointBuilder
-network isSource = mkNetwork <$> (symbol "network" *> eAddress) <*> format
+network isSource = mkNetwork <$> (symbol "network" *> eTerminal) <*> format
   where mkNetwork addrE formatE n t =
           networkSpec addrE formatE >>= \s -> return $ endpointMethods isSource s addrE formatE n t
         networkSpec addrE formatE = NetworkEP <$> S.exprS addrE <*> S.symbolS formatE
