@@ -37,7 +37,7 @@ import db
 masterNodes =  ['qp3']
 # workerNodes =  ['qp-hm' + str(i) for i in range(1,9)]
 # workerNodes =  ['qp4']
-workerNodes =  ['qp-hd' + str(i) for i in [1, 3, 4, 6, 7, 8, 10, 12]]
+workerNodes =  ['qp-hm' + str(i) for i in range(1,9)] + ['qp-hd' + str(i) for i in [1, 3, 4, 6, 7, 8, 10, 12]]
 clientNodes =  ['qp5']
 
 class CompileLauncher(mesos.interface.Scheduler):
@@ -216,7 +216,7 @@ class CompileLauncher(mesos.interface.Scheduler):
             db.updateCompile(self.uid, status=self.state.name)
 
         if update.state == mesos_pb2.TASK_RUNNING:
-          logging.debug(update.data)
+          # logging.debug(update.data)
           if update.message == 'client':
             self.state = CompileState.COMPILE
             db.updateCompile(self.uid, status=self.state.name)

@@ -304,7 +304,7 @@ def staticFile(path):
       with open(local, 'r') as file:
         output = file.read()
       return (output, 200 if request.headers['Accept'] == 'application/json'
-        else render_template("output.html", output=output))
+        else render_template("output.html", output=output.encode(encoding='utf-8')))
     return send_from_directory(webapp.config['DIR'], path)
 
 
@@ -942,11 +942,11 @@ def compile():
       # source = webapp.config['ADDR'] + os.path.join(url, src_file)
 
       # Create Symlink for easy access to latest compiled task
-      symlink = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], name).encode(encoding='utf8')
-      if os.path.exists(symlink):
-        os.remove(symlink)
+      # symlink = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], name).encode(encoding='utf8')
+      if os.path.exists(name):
+        os.remove(name)
 
-      os.symlink(path, symlink)
+      os.symlink(uname + '/', name)
       url = os.path.join(webapp.config['UPLOADED_BUILD_URL'], uname).encode(encoding='utf8')
 
       # TODO: Add in Git hash
@@ -1006,7 +1006,10 @@ def getCompilerOutput(uname):
       stdout_file = open(fname, 'r')
       output = stdout_file.read()
       stdout_file.close()
-    return output.encode(encoding='utf-8')
+      # return output.encode(encoding='utf-8')
+      return output
+    else:
+      return None
 
 
 @webapp.route('/compile/<uname>', methods=['GET'])
@@ -1020,8 +1023,8 @@ def getCompile(uname):
     if webapp.config['COMPILE_OFF']:
       return returnError("Compilation Features are not available", 400)
 
-      output = getCompilerOutput(uname)
-
+    output = getCompilerOutput(uname).encode(encoding='utf-8')
+    if output:
       if request.headers['Accept'] == 'application/json':
         return output, 200
       else:
@@ -1044,7 +1047,7 @@ def getCompileLog():
   if lastCompile == None:
     output = "Waiting for compile task to launch.....\n"
   else:
-    output = getCompilerOutput(lastCompile.uname())
+    output = getCompilerOutput(lastCompile.uname()).encode(encoding='utf-8')
 
   if request.headers['Accept'] == 'application/json':
     # TODO: Return command line based data (??)
@@ -1055,7 +1058,7 @@ def getCompileLog():
 
 
 @webapp.route('/compile/<uname>/kill', methods=['GET'])
-def kill_compile(uname):
+def killCompile(uname):
     """
     #------------------------------------------------------------------------------
     #  /compile/<uname>/kill
@@ -1089,7 +1092,7 @@ def kill_compile(uname):
         return redirect(url_for('listJobs')), 302
 
 @webapp.route('/delete/compiles', methods=['POST'])
-def delete_compiles():
+def deleteCompiles():
   """
   #------------------------------------------------------------------------------
   #  /delete/compiles
@@ -1102,11 +1105,12 @@ def delete_compiles():
 
   deleteList = request.form.getlist("delete_compiles")
   for uid in deleteList:
+
     job = db.getCompiles(uid=uid)[0]
     # TODO: COMPLETE
-    # path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], job['appName'], jobId)
+    # path = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], job['appName'], jobId)
     # shutil.rmtree(path, ignore_errors=True)
-    # db.deleteJob(jobId)
+    db.deleteCompile(jobId)
   return redirect(url_for('listJobs')), 302
 
 @socketio.on('connect', namespace='/compile')
