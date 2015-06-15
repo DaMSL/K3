@@ -62,7 +62,7 @@ end
 def run_mosaic(k3_path, mosaic_path, source)
   stage "Creating mosaic files"
   run("#{File.join(mosaic_path, "tests", "auto_test.py")} --no-interp -d -f #{source}")
-  
+
   # change the k3 file to use the dynamic path
   s = File.read(k3_path)
   s.sub!(/file "[^"]+" psv/, "file switch_path psv")
@@ -87,6 +87,11 @@ def run_compile_k3(bin_file, k3_path, k3_cpp_path, k3_root_path, script_path)
   bin_src_file = File.join(k3_root_path, "__build", "A")
 
   FileUtils.copy_file(bin_src_file, bin_file)
+end
+
+def run_compile_k3_remote(server_url, k3_path)
+  stage "Remote compiling K3 file to binary."
+  curl(server_url, "/compile", file: k3_path, post: true, json: true)
 end
 
 ### Deployment stage ###
@@ -114,17 +119,14 @@ def curl(server, url, args:{}, file:"", post:false, json:false, getfile:false)
   run("curl http://#{server}#{url} #{cmd}")
 end
 
-def run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
+def run_deploy_k3(name, deploy_server, nice_name, script_path)
   role_file = nice_name + ".yaml"
-
-  stage "Sending binary to mesos"
-  curl(deploy_server, '/apps', file:bin_file, post:true, json:true)
 
   # Genereate mesos yaml file"
   gen_yaml(role_file, script_path)
 
   stage "Creating new mesos job"
-  res = curl(deploy_server, "/jobs/#{bin_file}", json:true, post:true, file:role_file, args:{'jsonfinal' => 'yes'})
+  res = curl(deploy_server, "/jobs/#{name}", json:true, post:true, file:role_file, args:{'jsonfinal' => 'yes'})
   i = res =~ /{/
   if i then res = res[i..-1] end
 
@@ -402,7 +404,7 @@ def main()
   dbt_name = "dbt_" + nice_name
   dbt_name_hpp = dbt_name + ".hpp"
 
-  deploy_server = "qp1:5000"
+  deploy_server = "qp2:5000"
 
   bin_file = nice_name
   dbt_results = []
@@ -413,17 +415,15 @@ def main()
   if $options[:mosaic]
     run_mosaic(k3_path, mosaic_path, source)
   end
-  if $options[:create_k3]
-    run_create_k3(k3_path, script_path)
-  end
+
   if $options[:compile_k3]
-    run_compile_k3(bin_file, k3_path, k3_cpp_path, k3_root_path, script_path)
+    run_compile_k3_remote(deploy_server, k3_path)
   end
   if $options[:deploy_k3]
     if $options[:local]
       run_deploy_k3_local(bin_file, nice_name, script_path)
     else
-      run_deploy_k3(bin_file, deploy_server, nice_name, script_path)
+      run_deploy_k3(File.basename(k3_path, ".k3"), deploy_server, nice_name, script_path)
     end
   end
 
