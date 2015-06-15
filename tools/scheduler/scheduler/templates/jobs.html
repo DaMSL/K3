@@ -60,7 +60,6 @@
           <table class="table table-striped">
             <tr> <th>Build</th><th>Output</th><th>Time Submit</th><th>Time Complete</th><th>Status</th><th>Kill</th></tr>
           {% for job in compilelist %}
-              {{job.status}}
                 <tr>
                     <td><a href="/fs/build/{{job.name}}-{{job.uid}}">{{job.name}}-{{job.uid}}</a></td>
                     <td><a href="/compile/{{job.name}}-{{job.uid}}">Output</a></td>

@@ -272,7 +272,7 @@ def updateCompile(uid, **kwargs):
       cur.execute("UPDATE compiles SET complete='%s' WHERE uid='%s';" % (time, uid))
       conn.commit()
 
-def deleteJob(uid):
+def deleteCompile(uid):
   conn = getConnection()
   cur = conn.cursor()
   cur.execute("DELETE FROM compiles WHERE uid=%s;" % uid)
