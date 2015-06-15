@@ -3,14 +3,18 @@ include "Core/Builtins.k3"
 
 declare x : mut int = 0
 
-trigger t : int = \n -> (
-  (sink1, me) <- n; 
-  x = x + 1
+trigger t : () = \_ -> (
+  (sink1, me) <- (1, "one");
+  (sink1, me) <- (2, "two");
+  (sink1, me) <- (3, "three");
+  (stop, me)  <- ()
 )
 
-source s1 : int = file "file1.csv" text csv
-feed s1 |> t
-source s2 : int = file "file2.csv" text csv
-feed s2 |> t
+trigger stop : () = \_ -> (
+  haltEngine()
+)
 
-sink sink1 : int = file "out.csv" text csv
+source s1 : () = value ()
+feed s1 |> t
+
+sink sink1 : (int, string) = file "out.csv" text psv

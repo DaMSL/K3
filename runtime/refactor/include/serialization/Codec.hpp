@@ -140,12 +140,12 @@ class CSVCodec : public Codec {
   CodecFormat format_ = CodecFormat::CSV;
 };
 
-template <class T>
+template <class T, char sep = ','>
 std::enable_if_t<is_flat<T>::value, shared_ptr<Codec>> makeCSVCodec() {
-  return make_shared<CSVCodec<T>>();
+  return make_shared<CSVCodec<T, sep>>();
 }
 
-template <class T>
+template <class T, char sep = ','>
 std::enable_if_t<!is_flat<T>::value, shared_ptr<Codec>> makeCSVCodec() {
   throw std::runtime_error("Invalid csv type");
 }
@@ -159,6 +159,8 @@ shared_ptr<Codec> Codec::getCodec(CodecFormat format) {
       return make_shared<BoostCodec<T>>();
     case CodecFormat::CSV:
       return makeCSVCodec<T>();
+    case CodecFormat::PSV:
+      return makeCSVCodec<T, '|'>();
     default:
       throw std::runtime_error("Unrecognized codec format");
   }

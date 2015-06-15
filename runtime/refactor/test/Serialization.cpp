@@ -129,3 +129,18 @@ TEST(CSV, String) {
 
   ASSERT_EQ(s, *result->as<string>());
 }
+
+TEST(PSV, Tuple) {
+  auto codec = Codec::getCodec<tuple<int, string>>(CodecFormat::PSV);
+
+  tuple<int, string> s = std::make_tuple(1, "one");
+  auto val = make_shared<TNativeValue<tuple<int, string>>>(s);
+
+  auto packed = codec->pack(*val);
+  string str = string(packed->buf(), packed->length());
+  std::cout << str << std::endl;
+  auto result = codec->unpack(*packed);
+
+  ASSERT_EQ(std::get<0>(s), std::get<0>(*result->as<tuple<int, string>>()));
+  ASSERT_EQ(std::get<1>(s), std::get<1>(*result->as<tuple<int, string>>()));
+}
