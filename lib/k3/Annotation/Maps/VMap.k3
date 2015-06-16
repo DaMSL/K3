@@ -24,7 +24,6 @@ annotation VMap given type a,b {
   //////////////////////////////
   // Exact version operations.
 
-  @:CArgs 2
   provides lifted peek : int -> option content
     with effects \version -> [R[version]; R[self]]
 
@@ -99,6 +98,12 @@ annotation VMap given type a,b {
   provides lifted update_suffix : int -> content -> (int -> content -> content) -> ()
     with effects \version -> \elem -> \updateF -> [R[version]; R[self]; R[elem]; (updateF content)*; W[self]]
 
+  ///////////////////////////////////////////////
+  // Most-recent version operations.
+
+  provides lifted peek_now : () -> option content
+    with effects \_ -> [R[self]]
+
 
   /////////////////////////////////////////////////////////////////////////////
   // Transformers.
@@ -139,5 +144,9 @@ annotation VMap given type a,b {
   provides lifted ext : int -> (content -> collection {key : a, value: b} @VMap)
                          -> collection {key : a, value: b} @VMap
     with effects \version -> \extF -> [R[version]; R[self]; ([R[content]; extF content])*]
+
+  @:{CArgs 3}
+  provides lifted fold_after : int -> (a -> (int -> (content -> a))) -> a -> a
+    with effects \version -> \foldF -> \z -> [R[version]; R[self]; R[z]; ([R[content]; (((foldF z) version) content)])*]
 
 }

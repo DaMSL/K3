@@ -15,6 +15,10 @@ trigger t : () = \_ -> (
   			++ " non-existing: " ++ (itos (c.size 9))
   			++ "\\n" ));
 
+  (case c.peek_now () of
+    {Some x -> print ("Latest element: " ++ (itos x.key) ++ " " ++ (itos x.value) ++ "\\n")}
+    {None   -> print "No latest element found.\\n"});
+
   // Exact lookup test on a non-existing version. This should indicate the version does not exist.
   (c.lookup_with2 5 {key: 7, value: 0}
   		(\_ -> print "Non-existant value\\n")
@@ -45,7 +49,10 @@ trigger t : () = \_ -> (
   // Print the frontiers at v14, v16, v18. The values at v16 and v18 should be greater than 1000.
   (c.iterate 14 (\r -> print ("VMap frontier 14: " ++ " " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
   (c.iterate 16 (\r -> print ("VMap frontier 16: " ++ " " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
-  (c.iterate 18 (\r -> print ("VMap frontier 18: " ++ " " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")))
+  (c.iterate 18 (\r -> print ("VMap frontier 18: " ++ " " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
+
+  // Print the frontiers at v16 and v18 in a single call with fold_after.
+  c.fold_after 15 (\_ -> (\v -> (\elem -> print ((itos v) ++ ": " ++ (itos elem.key) ++ " " ++ (itos elem.value) ++ "\\n")))) ()
 )
 
 source s1 : () = value ()

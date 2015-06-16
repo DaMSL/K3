@@ -1358,11 +1358,14 @@ class VMap {
   ////////////////////////////
   // Exact version methods.
 
-  shared_ptr<R> peek(const unit_t&) const {
+  shared_ptr<R> peek(const Version& v) const {
     shared_ptr<R> res(nullptr);
-    auto it = container.begin();
-    if (it != container.end()) {
-      res = std::make_shared<R>(it->second);
+    for (const auto& elem : container) {
+      auto vit = elem.second.find(v);
+      if ( vit != elem.second.end() ) {
+        res = std::make_shared<R>(vit->second);
+        break;
+      }
     }
     return res;
   }
@@ -1570,6 +1573,22 @@ class VMap {
   }
 
 
+  //////////////////////////////////
+  // Most-recent version methods.
+
+  shared_ptr<R> peek_now(const unit_t&) const {
+    shared_ptr<R> res(nullptr);
+    for (const auto& p : container) {
+      auto vit = p.second.begin();
+      if ( vit != p.second.end() ) {
+        res = std::make_shared<R>(vit->second);
+        break;
+      }
+    }
+    return res;
+  }
+
+
   /////////////////
   // Transformers.
 
@@ -1686,6 +1705,20 @@ class VMap {
 
     return result;
   }
+
+  // Inclusive fold over elements greater than or equal to a version.
+  template<typename Fun, typename Acc>
+  Acc fold_after(const Version& v, Fun f, Acc acc) const {
+    for (const auto& p : container) {
+      auto vstart = p.second.begin();
+      auto vless  = p.second.upper_bound(v);
+      for (; vstart != vless; vstart++) {
+        acc = f(std::move(acc))(vstart->first)(vstart->second);
+      }
+    }
+    return acc;
+  }
+
 
   //////////////////
   // Comparators.
