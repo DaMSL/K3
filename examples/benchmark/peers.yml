@@ -1,6 +1,6 @@
 ---
-role: [{n: s4}]
-total_messages: 16000
+role: [{n: s2}]
+total_messages: 160000
 batch_size: 1600
 me: [127.0.0.1, 30000]
 master: [127.0.0.1, 30000]

@@ -104,10 +104,9 @@ program (tag &&& children -> (DRole name, decls)) = do
     let dispatchTableDecl isNative = R.GlobalDefn $ R.Forward $ R.ScalarDecl
                      (R.Name $ tableName isNative)
                      (R.Named $ R.Qualified (R.Name "std") $ R.Specialized
-                           [R.Primitive R.PInt,
-                             R.Function
+                           [ R.Function
                                [R.Pointer $ R.Named $ R.Name $ valType isNative, R.Primitive R.PInt, R.Const $ R.Reference $ R.Named $ R.Name "Address"]
-                            R.Void] (R.Name "map"))
+                            R.Void] (R.Name "vector"))
                      Nothing
 
     let patchFn = R.FunctionDefn (R.Qualified contextName (R.Name "__patch"))
@@ -213,7 +212,7 @@ main = do
     let engineDecl = R.Forward $ R.ScalarDecl (R.Name "engine") (R.Named $ R.Name "Engine") Nothing
 
     let runProgram = R.Ignore $ R.Call
-                       (R.Project (R.Variable $ R.Name "engine") (R.Specialized [R.Named $ R.Name "__global_context"] (R.Name "run"))) 
+                       (R.Project (R.Variable $ R.Name "engine") (R.Specialized [R.Named $ R.Name "__global_context"] (R.Name "run")))
                        [ R.Variable $ R.Name "opt" ]
     let joinProgram = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "join")) []
 
@@ -305,7 +304,11 @@ generateStaticContextMembers = do
 generateDispatchPopulation :: Bool -> CPPGenM [R.Statement]
 generateDispatchPopulation isNative = do
   triggerS <- triggers <$> get
-  mapM genDispatch triggerS
+  let numTrigs = length triggerS
+  let resize = R.Ignore $ R.Call (R.Project table (R.Name "resize")) [R.Literal $ R.LInt numTrigs]
+  dispatches <- mapM genDispatch triggerS
+  return $ resize:dispatches
+
   where
      table = R.Variable $ R.Name $ if isNative then "native_dispatch_table" else "packed_dispatch_table"
      genDispatch (tName, tType) = do
@@ -317,7 +320,7 @@ generateDispatchPopulation isNative = do
        let unpacked = R.Forward $ R.ScalarDecl (R.Name "native_val") R.Inferred $ Just $ R.Call (R.Project (R.Dereference $ codec) (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "payload"]
        let native_val = if isNative then "payload" else "native_val"
        let codec_decls = if isNative then [] else [unpacked]
-       let casted_val = R.Forward $ R.ScalarDecl (R.Name "casted") (R.Reference $ R.Inferred) $ Just $ R.Dereference $ R.Call (R.Project (R.Dereference $ R.Variable $ R.Name native_val) ( R.Specialized [kType] (R.Name "as"))) [] 
+       let casted_val = R.Forward $ R.ScalarDecl (R.Name "casted") (R.Reference $ R.Inferred) $ Just $ R.Dereference $ R.Call (R.Project (R.Dereference $ R.Variable $ R.Name native_val) ( R.Specialized [kType] (R.Name "as"))) []
        let encoded_payload = R.Call (R.Variable $ R.Specialized [kType] (R.Name "K3::serialization::json::encode")) [R.Variable $ R.Name "casted"]
        let frozen = R.Lambda [R.RefCapture $ Just ("casted", Nothing)] [] True (Just $ R.Primitive $ R.PString) [R.Return $ encoded_payload]
        let log_message = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Name "logJson")) [R.Variable $ R.Name "me", i, R.Variable $ R.Name "source", frozen]
@@ -328,11 +331,11 @@ generateDispatchPopulation isNative = do
                              , ("source", R.Const $ R.Reference $ R.Named $ R.Name "Address")
                              ]
                              False Nothing
-                             ( 
-                             codec_decls 
+                             (
+                             codec_decls
                              ++
                              [ casted_val, log_message ]
-                             ++ 
+                             ++
                              [ R.Ignore $ R.Call (R.Variable $ R.Name tName) [R.Variable $ R.Name "casted"] ]
                              )
 

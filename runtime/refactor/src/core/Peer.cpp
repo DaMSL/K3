@@ -34,7 +34,7 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
 
   // Peer's event processing loop
   auto work = [this, fac, peer_config, ready_callback]() {
-    queue_ = make_shared<Queue>();
+    queue_ = make_shared<LockFreeQueue>();
     context_ = (*fac)();
     context_->__patch(peer_config);
     context_->initDecls(unit_t{});
@@ -101,14 +101,14 @@ Address Peer::address() { return address_; }
 shared_ptr<ProgramContext> Peer::getContext() { return context_; }
 
 void Peer::logMessage(const Message& m) {
-  if (logger_->level() >= spdlog::level::trace) {
+  if (logger_->level() == spdlog::level::trace) {
     string trig = ProgramContext::__triggerName(m.trigger());
     logger_->trace() << "Received:: @" << trig;
   }
 }
 
 void Peer::logGlobals(const Message& m) {
-  if (logger_->level() >= spdlog::level::trace) {
+  if (logger_->level() == spdlog::level::trace) {
     std::ostringstream oss;
     string trig = ProgramContext::__triggerName(m.trigger());
     oss << "Processed:: @" << trig << std::endl;

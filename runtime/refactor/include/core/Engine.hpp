@@ -74,6 +74,7 @@ void Engine::run(const Options& opts) {
   }
 
   setLogLevel(opts.log_level_);
+  toggleLocalSends(opts.local_sends_enabled_);
   auto peer_configs = opts.peer_strs_;
   running_ = true;
   logger_->info("The Engine has started.");

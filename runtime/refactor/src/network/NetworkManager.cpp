@@ -22,7 +22,9 @@ NetworkManager::NetworkManager() {
   external_out_conns_ = make_shared<ExternalConnectionMap>();
   internal_format_ = K3_INTERNAL_FORMAT;
   running_ = true;
-  addThread();
+  for (int i =0; i < 4; i++) {
+    addThread();
+  }
 }
 
 NetworkManager::~NetworkManager() {
