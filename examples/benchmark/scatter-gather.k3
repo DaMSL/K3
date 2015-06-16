@@ -1,0 +1,162 @@
+include "Annotation/Collection.k3"
+include "Core/Builtins.k3"
+include "Core/Barrier.k3"
+
+
+declare total_messages: int = 10000
+declare master: address
+declare rounds: mut int 
+declare batch_size: int
+
+control SGBenchmark [lbl          : label,
+                     message_type : type,
+                     message_val  : expr] {
+  () => ($[lbl]_init, me) <- ()
+     +> {
+       declare $[lbl]_start_ms: mut int
+       declare $[lbl]_end_ms: mut int
+
+       declare $[lbl]_val : mut $[message_type]
+       declare $[lbl]_messages_out : mut int = 0
+
+       trigger $[lbl]_init: () = \_ -> (
+         if master == me then (
+           rounds = total_messages / batch_size;
+           $[lbl]_start_ms = now_int();
+           ($[lbl]_scatter, me) <- ()
+         ) else ()
+       )
+
+       trigger $[lbl]_scatter: () = \_ -> (
+         if rounds == 0 then (
+           ($[lbl]_finished, master) <- ()
+         ) else (
+           rounds = rounds - 1;
+           peers.iterate (\p ->
+             let ns = range (batch_size / peers.size()) in
+             ns.iterate (\i ->
+               ($[lbl]_recv, p.addr) <- $[message_val]
+             )
+           )
+         )
+       )
+
+       trigger $[lbl]_recv : $[message_type] = \t -> (
+         $[lbl]_val  = t;
+         ($[lbl]_ack, master) <- ()
+       )
+
+       trigger $[lbl]_ack: () = \_ -> (
+         ($[lbl]_scatter, master) <- ()
+       ) @OnCounter(id=[# $[lbl]_bar], eq=[$ batch_size], reset=[$ true], profile=[$ false])
+       
+       trigger $[lbl]_finished: () = \_ -> (
+         $[lbl]_end_ms = now_int();
+         print (itos ($[lbl]_end_ms - $[lbl]_start_ms));
+         peers.iterate (\p ->
+           ($[lbl]_shutdown, p.addr) <- ()
+         )
+       )
+       
+       trigger $[lbl]_shutdown: () = \_ -> haltEngine()
+     }
+}
+
+trigger two: () = \_ -> () @SGBenchmark(lbl=[# two],
+                                        message_type=[: (int, string)],
+                                        message_val=[$ (10, "1234567890")])
+
+trigger four: () = \_ -> () @SGBenchmark(lbl=[# four],
+                                         message_type=[: (int, string, int, string)],
+                                         message_val=[$ (10, "1234567890", 10, "1234567890")])
+
+trigger eight: () = \_ -> () @SGBenchmark(lbl=[# eight],
+                                          message_type=[: (int, 
+                                                           string, 
+                                                           int, 
+                                                           string,
+                                                           int,
+                                                           string,
+                                                           int,
+                                                           string)],
+                                          message_val=[$ (10, 
+                                                          "1234567890", 
+                                                          10, 
+                                                          "1234567890",
+                                                          10, 
+                                                          "1234567890",
+                                                          10, 
+                                                          "1234567890"
+                                                          )])
+
+trigger twelve: () = \_ -> () @SGBenchmark(lbl=[# twelve],
+                                           message_type=[: (int, 
+                                                            string, 
+                                                            int, 
+                                                            string,
+                                                            int,
+                                                            string,
+                                                            int, 
+                                                            string,
+                                                            int, 
+                                                            string,
+                                                            int,
+                                                            string)],
+                                           message_val=[$ (10, 
+                                                           "1234567890", 
+                                                           10, 
+                                                           "1234567890",
+                                                           10, 
+                                                           "1234567890",
+                                                           10, 
+                                                           "1234567890",
+                                                           10, 
+                                                           "1234567890",
+                                                           10, 
+                                                           "1234567890")])
+
+trigger sixteen: () = \_ -> () @SGBenchmark(lbl=[# sixteen],
+                                            message_type=[: (int, 
+                                                             string, 
+                                                             int, 
+                                                             string,
+                                                             int,
+                                                             string,
+                                                             int, 
+                                                             string,
+                                                             int,
+                                                             string,
+                                                             int, 
+                                                             string,
+                                                             int, 
+                                                             string,
+                                                             int,
+                                                             string)],
+                                          message_val=[$ (10, 
+                                                          "1234567890", 
+                                                          10, 
+                                                          "1234567890",
+                                                          10, 
+                                                          "1234567890",
+                                                          10, 
+                                                          "1234567890",
+                                                          10, 
+                                                          "1234567890",
+                                                          10, 
+                                                          "1234567890",
+                                                          10, 
+                                                          "1234567890",
+                                                          10, 
+                                                          "1234567890"
+                                                          )])
+source s2: () = value ()
+feed s2 |> two
+
+source s4: () = value ()
+feed s4 |> four
+
+source s8: () = value ()
+feed s8 |> eight
+
+source s16: () = value ()
+feed s16 |> sixteen
