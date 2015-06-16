@@ -11,12 +11,14 @@ using boost::thread;
 namespace K3 {
 
     void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<MessageCodec> _msgcodec,
-                           string log_l, string log_p, bool j_final, string result_v, string result_p, shared_ptr<const MessageQueues> qs)
+                           string log_l, string log_p, bool j_final, string result_v, string result_p, shared_ptr<const MessageQueues> qs, bool local_sends)
     {
       queues = qs;
       msgcodec = _msgcodec;
       log_enabled = false;
       log_json = false;
+      local_sends_enabled = local_sends;
+      std::cout << "Local sends: " << local_sends_enabled << std::endl;
       if (log_l == "final") {
         log_final = true;
       } else if (log_l != "") {
@@ -82,7 +84,7 @@ namespace K3 {
                       shared_ptr<Dispatcher> disp, Address src) {
       if (queues) {
         bool local_address = queues->isLocal(addr);
-        bool shortCircuit = local_address;
+        bool shortCircuit = local_sends_enabled && local_address;
 
         if (shortCircuit) {
           // Directly enqueue.

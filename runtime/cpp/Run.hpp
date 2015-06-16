@@ -17,6 +17,7 @@ namespace K3 {
     bool j_final_only = opt.json_final_only;
     std::string result_var = opt.result_var;
     std::string result_path = opt.result_path;
+    bool local_sends = opt.local_sends;
 
     std::vector<std::string> configurations;
 
@@ -49,7 +50,7 @@ namespace K3 {
       queues->addQueue(gc->me);
       peers.push_back(gc->me);
       SystemEnvironment se = defaultEnvironment(getAddrs(contexts));
-      engine->configure(simulation, se, make_shared<DefaultMessageCodec>(), log_level, log_path, j_final_only,result_var, result_path, queues);
+      engine->configure(simulation, se, make_shared<DefaultMessageCodec>(), log_level, log_path, j_final_only,result_var, result_path, queues, local_sends);
       processRoles(contexts);
       auto t = tuple<e_ptr, ctxt_map>(engine, contexts);
       engines.push_back(t);

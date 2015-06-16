@@ -22,6 +22,7 @@ class Options {
     bool json_final_only = false;
     string result_var;
     string result_path;
+    bool local_sends = true;
 };
 
 }

@@ -15,7 +15,8 @@ int Options::parse(int argc, const char *const argv[]) {
     ("json,j",po::value<string>(), "directory for json logging")
     ("json_final_only,f", "only jsonify final environment")
     ("result_var,r", po::value<string>(), "result variable to log (must be a flat collection)")
-    ("result_path,o", po::value<string>(), "path to store the result variable");
+    ("result_path,o", po::value<string>(), "path to store the result variable")
+    ("disable_local_messages,d", "path to store the result variable");
 
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -74,6 +75,12 @@ int Options::parse(int argc, const char *const argv[]) {
 
   } else {
     result_path  = "";
+  }
+
+  if (vm.count("disable_local_messages")) {
+    local_sends = false;
+  } else {
+    local_sends = true;
   }
 
   return 0;
