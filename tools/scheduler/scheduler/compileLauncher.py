@@ -183,6 +183,10 @@ class CompileLauncher(mesos.interface.Scheduler):
         # state = mesos_pb2.TaskCompileState.Name(update.state)
         # logging.debug("[UPDATE - %s]: %s {%s}" % (update.message, state, update.data))
 
+        # Ignore Heart Beat Messages
+        if "eartbeat" in update.data:
+          return
+          
         self.wslog.info(update.data)
         #  TODO: CHANGE this to logging module
         with open(os.path.join(self.localpath, 'output'), 'a') as out:

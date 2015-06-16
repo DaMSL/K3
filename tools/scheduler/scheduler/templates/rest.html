@@ -54,7 +54,8 @@
 ===============================================================================
   /apps, /app - Application Level interface
      POST   Upload new application
-       curl -i -X POST -H "Accept: application/json" -F file=@<filename> http://<host>:<port>/apps
+       curl -i -X POST -H "Accept: application/json"
+           -F file=@<filename> http://<host>:<port>/apps
 
      GET    Display both list of loaded apps and form to upload new ones
 
@@ -75,7 +76,7 @@
 ===============================================================================
   /apps/<appName>/<appUID> - Specific Application Level interface
          POST   (Upload archive data (C++, Source, etc....)
-            curl -i -H "Accept: application/json"
+            curl -i -X POST -H "Accept: application/json"
                     -F "file=<filename>" http://qp1:5000/apps/<addName>/<addUID>
 
          GET    (TODO) Display archived files...  NotImplemented
@@ -106,7 +107,12 @@
   /jobs/<appName>
   /jobs/<appName>/<appUID  - Launch a new K3 Job
          POST    Create new K3 Job
-          curl -i -X POST -H "Accept: application/json" -F "file=@<rolefile>" http://qp1:5000/jobs/<appName>/<appUID>
+          curl -i -X POST -H "Accept: application/json"
+             -F "file=@<rolefile>"
+             -F logging=[True | False]
+             -F jsonlog=[True | False]
+             -F jsonfinal=[True | False]
+             -F http://<host>:<port>/jobs/<appName>/<appUID>
              NOTE: if appUID is omitted, job will be submitted to latest version of this app
 
          GET    Display job list for this application
@@ -126,7 +132,7 @@
 ===============================================================================
   /jobs/<appName>/<appUID/replay  - Replay a previous K3 Job
          POST    Create new K3 Job
-          curl -i -X POST -H "Accept: application/json" http://qp1:5000/jobs/<appName>/<appUID>/replay
+          curl -i -X POST -H "Accept: application/json" http://<host>:<port>/jobs/<appName>/<appUID>/replay
 -------------------------------------------------------------------------------
 @webapp.route('/job/<jobId>/replay')
 @webapp.route('/jobs/<appName>/<jobId>/replay', methods=['GET', 'POST'])
@@ -136,8 +142,8 @@
   /jobs/<appName>/<jobId>/archive - Endpoint to receive & archive files
          GET     returns curl command
          POST    Accept files for archiving here
-           curl -i -H "Accept: application/json"
-              -F file=@<filename> http://qp1:5000/<appName>/<jobId>/archive
+           curl -i -X POST -H "Accept: application/json"
+              -F file=@<filename> http://<host>:<post>/<appName>/<jobId>/archive
 -------------------------------------------------------------------------------
 @webapp.route('/job/<jobId>/archive', methods=['GET', 'POST'])
 @webapp.route('/jobs/<appName>/<jobId>/archive', methods=['GET', 'POST'])
@@ -216,8 +222,10 @@
 -------------------------------------------------------------------------------
 @webapp.route('/delete/compiles', methods=['POST'])
 
-{% extends "layout/base.html" %}
+</pre>
 
-{% block content %}
+{% endblock %}
 
-<pre>
+{% block footer %}
+  {% include "include/footer.html" %}
+{% endblock %}

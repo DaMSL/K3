@@ -54,7 +54,7 @@ for line in src:
     text.write(line.strip()[1:] + '\n')
     html.write(line.strip()[1:] + '\n')
 
-html.write(html_header)
+html.write(html_footer)
 
 text.close()
 html.close()
