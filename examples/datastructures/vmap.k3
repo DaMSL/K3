@@ -51,8 +51,8 @@ trigger t : () = \_ -> (
   (c.iterate 16 (\r -> print ("VMap frontier 16: " ++ " " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
   (c.iterate 18 (\r -> print ("VMap frontier 18: " ++ " " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
 
-  // Print the frontiers at v16 and v18 in a single call with fold_after.
-  c.fold_after 15 (\_ -> (\v -> (\elem -> print ((itos v) ++ ": " ++ (itos elem.key) ++ " " ++ (itos elem.value) ++ "\\n")))) ()
+  // Print the same thing in a single call with fold_after.
+  c.fold_all (\_ -> (\v -> (\elem -> print ((itos v) ++ ": " ++ (itos elem.key) ++ " " ++ (itos elem.value) ++ "\\n")))) ()
 )
 
 source s1 : () = value ()

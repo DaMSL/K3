@@ -1706,14 +1706,11 @@ class VMap {
     return result;
   }
 
-  // Inclusive fold over elements greater than or equal to a version.
   template<typename Fun, typename Acc>
-  Acc fold_after(const Version& v, Fun f, Acc acc) const {
+  Acc fold_all(Fun f, Acc acc) const {
     for (const auto& p : container) {
-      auto vstart = p.second.begin();
-      auto vless  = p.second.upper_bound(v);
-      for (; vstart != vless; vstart++) {
-        acc = f(std::move(acc))(vstart->first)(vstart->second);
+      for (const auto& velem : p.second) {
+        acc = f(std::move(acc))(velem.first)(velem.second);
       }
     }
     return acc;
