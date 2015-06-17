@@ -157,6 +157,7 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
 
   if task_data['jsonlog'] == False:
     del task_data['jsonlog']
+
   if task_data['jsonfinal'] == False:
     del task_data['jsonfinal']
 
@@ -235,6 +236,7 @@ def compileTask(**kwargs):
   uid     = kwargs.get('uid', None)
   r_cpu   = kwargs.get('cpu', 4)
   r_mem   = kwargs.get('mem', 4*1024)
+  r_port  = kwargs.get('port', None)
   daemon  = kwargs.get('daemon')
 
   if slave == None:
@@ -296,7 +298,17 @@ def compileTask(**kwargs):
   mem.type = mesos_pb2.Value.SCALAR
   mem.scalar.value = r_mem
 
-  logging.debug("Compile Task Resources: cpu=%s, mem=%s" % (r_cpu, r_mem))
+  # Ports are only added if set and are defined as a range of 1 port
+  if r_port:
+    port = task.resources.add()
+    port.name = "ports"
+    port.type = mesos_pb2.Value.RANGES
+    portrange = port.ranges.range.add()
+    portrange.begin = r_port
+    portrange.end = r_port
+    logging.debug("Compile Task Resources: cpu=%s, mem=%s, port=%s" % (r_cpu, r_mem, r_port))
+  else:
+    logging.debug("Compile Task Resources: cpu=%s, mem=%s" % (r_cpu, r_mem))
 
   return task
 

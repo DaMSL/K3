@@ -936,7 +936,10 @@ def compile():
       stage = request.form['compilestage'] if 'compilestage' in request.form else "both"
 
       blocksize = request.form['blocksize'] if 'blocksize' in request.form else 4
-      numworkers = int(request.form['numworkers']) if 'numworkers' in request.form else len(workerNodes)
+      if 'numworkers' not in request.form or request.form['numworkers'] == '':
+        numworkers = len(workerNodes)
+      else:
+        numworkers = int(request.form['numworkers'])
       logger.debug("Compile requested for application: %s", name)
 
       # Create a unique ID
@@ -1014,7 +1017,8 @@ def compile():
       cppsrc = '/fs/archive/%s/%s.cpp' % (uname, name)
 
       thiscompile = dict(compileJob.__dict__, url=dispatcher.getSandboxURL(uname),
-                         status='SUBMITTED', outputurl=outputurl, cppsrc=cppsrc)
+                         status='SUBMITTED', outputurl=outputurl, cppsrc=cppsrc,
+                         uname=AppID.getAppId(name, uid))
 
 
       if request.headers['Accept'] == 'application/json':
