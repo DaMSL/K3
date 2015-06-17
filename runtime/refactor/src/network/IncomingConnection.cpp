@@ -51,7 +51,7 @@ void InternalIncomingConnection::receiveMessages(
               pv = make_shared<BufferPackedValue>(std::move(*payload_buf),
                                                   this_shared->format_);
               m->setValue(pv);
-              (*m_handler)(m);
+              (*m_handler)(std::make_unique<Message>(std::move(*m)));
 
               // Recurse to receive the next message
               this_shared->receiveMessages(m_handler, e_handler);
@@ -99,10 +99,10 @@ void ExternalIncomingConnection::receiveMessages(
                   shared_ptr<PackedValue> pv;
                   pv = make_shared<BufferPackedValue>(std::move(*payload_buf),
                                                       this_shared->format_);
-                  auto m = make_shared<Message>(this_shared->peer_addr_,
+                  auto m = std::make_unique<Message>(this_shared->peer_addr_,
                                                 this_shared->peer_addr_,
                                                 this_shared->trigger_, pv);
-                  (*m_handler)(m);
+                  (*m_handler)(std::move(m));
 
                   // Recurse to receive the next message
                   this_shared->receiveMessages(m_handler, e_handler);

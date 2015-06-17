@@ -46,7 +46,7 @@ typedef ConnectionMap<ExternalOutgoingConnection>
     ExternalConnectionMap;
 typedef ConcurrentMap<Address, shared_ptr<IncomingConnection>>
     IncomingConnectionMap;
-typedef std::function<void(shared_ptr<Message>)> MessageHandler;
+typedef std::function<void(std::unique_ptr<Message>)> MessageHandler;
 typedef std::function<void(boost_error)> ErrorHandler;
 
 

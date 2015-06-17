@@ -51,7 +51,7 @@ void Listener::registerConnection(shared_ptr<IncomingConnection> c) {
 
   shared_ptr<Peer> peer = peer_;
   shared_ptr<MessageHandler> m_handler = make_shared<MessageHandler>(
-      [peer](shared_ptr<Message> m) { peer->enqueue(m); });
+      [peer](std::unique_ptr<Message> m) { peer->enqueue(std::move(m)); });
 
   shared_ptr<IncomingConnectionMap> conn_map = in_conns_;
   shared_ptr<ErrorHandler> e_handler;

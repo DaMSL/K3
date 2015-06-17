@@ -32,7 +32,7 @@ class Peer {
   void start();
   void processRole();
   void join();
-  void enqueue(shared_ptr<Message> m);
+  void enqueue(std::unique_ptr<Message> m);
 
   template <class F>
   void logJson(int trigger, const Address& src, F f);

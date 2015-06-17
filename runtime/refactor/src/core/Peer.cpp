@@ -78,7 +78,7 @@ void Peer::start() {
   start_processing_ = true;
 }
 
-void Peer::enqueue(shared_ptr<Message> m) {
+void Peer::enqueue(std::unique_ptr<Message> m) {
   if (!queue_) {
     throw std::runtime_error("Peer enqueue(): null queue ptr");
   }

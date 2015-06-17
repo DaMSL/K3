@@ -51,7 +51,7 @@ class EngineTest : public ::testing::Test {
     addr2_ = make_address("127.0.0.1", 40000);
     external_addr_ = make_address("127.0.0.1", 50000);
 
-    peer_configs_ = K3::Options(configs, 0, "", false);
+    peer_configs_ = K3::Options(configs, 0, "", false, true);
   }
 
   ~EngineTest() {}
