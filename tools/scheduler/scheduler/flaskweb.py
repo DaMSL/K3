@@ -223,7 +223,9 @@ def restapi():
   if request.headers['Accept'] == 'application/json':
     return redirect(url_for('staticFile', filename="rest.txt"))
   else:
-    return render_template('rest.html')
+    with open('static/rest.txt') as restapi:
+      rest = restapi.read()
+      return render_template('rest.html', api=rest)
 
 
 @webapp.route('/log')
@@ -528,8 +530,11 @@ def createJobLatest(appName):
   """
   logger.debug('[FLASKWEB  /jobs/<appName>] Redirect to current version of /jobs/%s' % appName)
   app = db.getApp(appName)
-  return createJob(appName, app['uid'])
-
+  if app:
+    return createJob(appName, app['uid'])
+  else:
+    return returnError("Application %s does not exist" % appName, 404)
+    
 @webapp.route('/jobs/<appName>/<appUID>', methods=['GET', 'POST'])
 def createJob(appName, appUID):
   """
@@ -548,7 +553,7 @@ def createJob(appName, appUID):
   #         GET    Display job list for this application
   #------------------------------------------------------------------------------
   """
-  logger.debug('[FLASKWEB  /jobs/<appName>] Job Request for %s' % appName)
+  logger.debug('[FLASKWEB  /jobs/<appName>/<appUID>] Job Request for %s' % appName)
   global dispatcher
   applist = [a['name'] for a in db.getAllApps()]
   if appName in applist:
@@ -1155,10 +1160,11 @@ def killCompile(uid):
     logging.info ("[FLASKWEB] Asked to KILL Compile UID #%s. Current status is %s" % (c['uid'], c['status']))
 
     if c['status'] != CompileState.COMPLETE:
-      db.updateCompile(uid, status='KILLED', done=True)
+      logging.info ("[FLASKWEB] KILLING Compile UID #%s. " % (c['uid']))
+      db.updateCompile(c['uid'], status='KILLED', done=True)
 
-    if uid in compile_tasks.keys():
-      compile_tasks[uid].kill()
+    if c['uid'] in compile_tasks.keys():
+      compile_tasks[c['uid']].kill()
       c['status'] = 'KILLED'
 
     if request.headers['Accept'] == 'application/json':
@@ -1178,14 +1184,14 @@ def deleteCompiles():
     return returnError("Compilation Features are not available", 400)
 
 
-  deleteList = request.form.getlist("delete_compiles")
+  deleteList = request.form.getlist("delete_compile")
   for uid in deleteList:
     logger.info("[FLASKWEB /delete/compiles] DELETING compile job uid=" + uid)
     job = db.getCompiles(uid=uid)[0]
     # TODO: COMPLETE
     # path = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], job['appName'], jobId)
     # shutil.rmtree(path, ignore_errors=True)
-    db.deleteCompile(jobId)
+    db.deleteCompile(job['uid'])
   return redirect(url_for('listJobs')), 302
 
 @socketio.on('connect', namespace='/compile')

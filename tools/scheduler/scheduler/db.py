@@ -146,7 +146,7 @@ def getApp(appName, appUID=None):
     cur.execute(
       "SELECT a.name, v.uid, v.date FROM apps AS a, app_versions as V WHERE a.name=v.name AND a.latest=v.uid AND a.name='%s';" % appName)
   r = cur.fetchone()
-  return dict(name=r[0], uid=r[1], date=r[2])
+  return dict(name=r[0], uid=r[1], date=r[2]) if r else None
 
 def getAllApps(appName=None):
   cur = getConnection().cursor()
@@ -275,7 +275,7 @@ def updateCompile(uid, **kwargs):
 def deleteCompile(uid):
   conn = getConnection()
   cur = conn.cursor()
-  cur.execute("DELETE FROM compiles WHERE uid=%s;" % uid)
+  cur.execute("DELETE FROM compiles WHERE uid='%s';" % uid)
   conn.commit()
 
 

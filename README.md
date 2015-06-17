@@ -78,16 +78,15 @@ Alternatively, we have developed EC2 Cloud Formation templates which will automa
 We **strongly** recommend you use our docker container unless you're comfortable with Haskell, cabal and C++ compilers. You'll only need to build this repository if you plan to work directly on the compiler toolchain.
 
 ####Dependencies
-Haskell platform: https://www.haskell.org/platform/
-- version: 2014.2.0.0
-- alternatively: [ghc >= 7.8.3](http://www.haskell.org/ghc/download_ghc_7_8_3) and [cabal >= 1.20](http://www.haskell.org/ghc/download_ghc_7_8_3)
+Haskell Platform:
 
-We use [cabal](http://www.haskell.org/cabal/) for managing Haskell package and library dependencies.
+ - [GHC >=7.10.1](http://www.haskell.org/ghc/download_ghc_7_10_1) 
+ - [Cabal >= 1.22](http://www.haskell.org/cabal/)
 
 For second-stage compilation:
-- any Clang/LLVM (>= 3.4) or gcc (>= 4.9) version with C++14 support
-- the [Boost C++ libraries](http://www.boost.org/)
 
+ - any Clang/LLVM (>= 3.4) or gcc (>= 4.9) version with C++14 support
+ - the [Boost C++ libraries](http://www.boost.org/)
 
 ####Full Toolchain Installation
 Assuming you've installed the Haskell platform:

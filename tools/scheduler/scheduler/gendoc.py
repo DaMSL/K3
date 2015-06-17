@@ -1,3 +1,5 @@
+from string import replace
+
 HR1 = '\n\n===============================================================================\n'
 HR2 = '-------------------------------------------------------------------------------\n'
 
@@ -19,6 +21,9 @@ html_footer="""
   {% include "include/footer.html" %}
 {% endblock %}
 """
+
+def escape(s):
+  return replace(replace (s, "<", "&lt;"), ">", "&gt;")
 
 header = False
 endblock = False
@@ -43,7 +48,7 @@ for line in src:
       html.write(HR2)
       for ep in endpoints:
         text.write(ep + '\n')
-        html.write(ep + '\n')
+        html.write(escape(ep) + '\n')
       endpoints = []
     else:
       text.write(HR1)
@@ -52,9 +57,9 @@ for line in src:
     continue
   if header:
     text.write(line.strip()[1:] + '\n')
-    html.write(line.strip()[1:] + '\n')
+    html.write(escape(line.strip()[1:]) + '\n')
 
-html.write(html_header)
+html.write(html_footer)
 
 text.close()
 html.close()

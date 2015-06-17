@@ -23,6 +23,13 @@
 
           <h3>Active K3 Jobs</h3>
           <table class="table table-striped">
+            <tr>
+              <th>Job ID</th>
+              <th>Application</th>
+              <th>User</th>
+              <th>Submitted</th>
+              <th>Status</th>
+              <th>Kill</th></tr>
           {% for job in joblist %}
             {% if job.status == "SUBMITTED" or job.status == "RUNNING" %}
             <tr><td><a href="/jobs/{{job.appName}}/{{job.jobId}}/status">{{job.jobId}}</a></td>
