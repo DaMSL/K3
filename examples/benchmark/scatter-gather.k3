@@ -52,7 +52,7 @@ control SGBenchmark [lbl          : label,
        
        trigger $[lbl]_finished: () = \_ -> (
          $[lbl]_end_ms = now_int();
-         print (itos ($[lbl]_end_ms - $[lbl]_start_ms));
+         (time_sink, me) <- $[lbl]_end_ms - $[lbl]_start_ms;
          peers.iterate (\p ->
            ($[lbl]_shutdown, p.addr) <- ()
          )
@@ -149,6 +149,9 @@ trigger sixteen: () = \_ -> () @SGBenchmark(lbl=[# sixteen],
                                                           10, 
                                                           "1234567890"
                                                           )])
+
+sink time_sink: int = file "time.csv" text csv
+
 source s2: () = value ()
 feed s2 |> two
 
@@ -157,6 +160,9 @@ feed s4 |> four
 
 source s8: () = value ()
 feed s8 |> eight
+
+source s12: () = value ()
+feed s12 |> twelve
 
 source s16: () = value ()
 feed s16 |> sixteen
