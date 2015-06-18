@@ -34,7 +34,10 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
 
   // Peer's event processing loop
   auto work = [this, fac, peer_config, ready_callback]() {
-    queue_ = make_shared<LockFreeQueue>();
+    queue_ = make_shared<Queue>();
+    p_token_ = queue_->producerToken();
+    c_token_ = queue_->consumerToken();
+
     context_ = (*fac)();
     context_->__patch(peer_config);
     context_->initDecls(unit_t{});
@@ -45,10 +48,10 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
       // all peers have processed their role (sent initial message)
       while (!start_processing_) continue;
 
-      vector<std::unique_ptr<Message>> ms(1000);
+      vector<std::unique_ptr<Message>> ms(5000);
       while (true) {
         //auto m = queue_->dequeue();
-        size_t num = queue_->dequeueBulk(ms);
+        size_t num = queue_->dequeueBulk(*c_token_, ms);
         for (int i = 0; i < num; i++) {
           auto m = std::move(ms[i]);
           logMessage(*m);
