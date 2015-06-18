@@ -43,10 +43,10 @@ class ProgramContext : public StandardBuiltins,
   static string __triggerName(int trig);
   virtual string __jsonifyMessage(const Message& m);
 
+  static map<TriggerID, string> __trigger_names_;
  protected:
   CodecFormat __internal_format_ = K3_INTERNAL_FORMAT;
   Engine& __engine_;
-  static map<TriggerID, string> __trigger_names_;
 };
 
 typedef std::function<shared_ptr<ProgramContext>()> ContextFactory;
