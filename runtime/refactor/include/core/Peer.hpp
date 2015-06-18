@@ -46,6 +46,9 @@ class Peer {
   shared_ptr<spdlog::logger> logger_;
   shared_ptr<boost::thread> thread_;
   shared_ptr<Queue> queue_;
+  shared_ptr<moodycamel::ProducerToken> p_token_;
+  shared_ptr<moodycamel::ConsumerToken> c_token_;
+
   shared_ptr<ProgramContext> context_;
 
   // Configuration
