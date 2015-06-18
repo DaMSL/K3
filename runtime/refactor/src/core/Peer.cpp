@@ -45,13 +45,17 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
       // all peers have processed their role (sent initial message)
       while (!start_processing_) continue;
 
+      vector<std::unique_ptr<Message>> ms(1000);
       while (true) {
-        shared_ptr<Message> m = queue_->dequeue();
-        logMessage(*m);
-
-        m->value()->dispatchIntoContext(context_.get(), m->trigger(),
-                                        m->source());
-        logGlobals(*m);
+        //auto m = queue_->dequeue();
+        size_t num = queue_->dequeueBulk(ms);
+        for (int i = 0; i < num; i++) {
+          auto m = std::move(ms[i]);
+          logMessage(*m);
+          m->value()->dispatchIntoContext(context_.get(), m->trigger(),
+                                          m->source());
+          logGlobals(*m);
+        }
       }
     } catch (EndOfProgramException e) {
       finished_ = true;

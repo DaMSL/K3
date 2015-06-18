@@ -22,6 +22,7 @@ class Queue {
 public:
   virtual void enqueue(std::unique_ptr<Message> m) = 0;
   virtual std::unique_ptr<Message> dequeue() = 0;
+  virtual size_t dequeueBulk(vector<std::unique_ptr<Message>>&) = 0;
 };
 
 class LockFreeQueue : public Queue {
@@ -29,6 +30,10 @@ class LockFreeQueue : public Queue {
   LockFreeQueue() {}
 
   void enqueue(std::unique_ptr<Message> m) { queue_.enqueue(std::move(m)); }
+
+  size_t dequeueBulk(vector<std::unique_ptr<Message>>& ms) {
+    return queue_.wait_dequeue_bulk(ms.data(), ms.size());
+  }
 
   std::unique_ptr<Message> dequeue() {
     std::unique_ptr<Message> m;
