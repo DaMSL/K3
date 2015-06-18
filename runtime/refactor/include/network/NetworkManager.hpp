@@ -1,13 +1,9 @@
 #ifndef K3_NETWORKMANAGER
 #define K3_NETWORKMANAGER
 
-// Networking for the K3 Runtime. Provides ability to start Listeners (for
-// receiving messages)
-// and send messages to other peers and external sinks
-
-#include "boost/asio.hpp"
-#include "boost/asio/read.hpp"
-#include "boost/thread.hpp"
+#include <boost/asio.hpp>
+#include <boost/asio/read.hpp>
+#include <boost/thread.hpp>
 
 #include "Common.hpp"
 #include "types/Message.hpp"
@@ -21,6 +17,7 @@ class IncomingConnection;
 class Peer;
 class Listener;
 
+// TODO(jbw) move elsewhere
 template <class Connection>
 class ConnectionMap : public ConcurrentMap<Address, shared_ptr<Connection>> {
  public:
@@ -42,17 +39,15 @@ class ConnectionMap : public ConcurrentMap<Address, shared_ptr<Connection>> {
 
 typedef ConcurrentMap<Address, shared_ptr<Listener>> ListenerMap;
 typedef ConnectionMap<InternalOutgoingConnection> InternalConnectionMap;
-typedef ConnectionMap<ExternalOutgoingConnection>
-    ExternalConnectionMap;
+typedef ConnectionMap<ExternalOutgoingConnection> ExternalConnectionMap;
 typedef ConcurrentMap<Address, shared_ptr<IncomingConnection>>
     IncomingConnectionMap;
 typedef std::function<void(std::unique_ptr<Message>)> MessageHandler;
 typedef std::function<void(boost_error)> ErrorHandler;
 
-
 class NetworkManager {
  public:
-  // Core
+  // Core Interface
   NetworkManager();
   ~NetworkManager();
   void stop();
@@ -72,13 +67,17 @@ class NetworkManager {
   shared_ptr<ExternalOutgoingConnection> connectExternal(const Address& a);
   void addThread();
 
+  shared_ptr<spdlog::logger> logger_;
+
   // IO service related members
   shared_ptr<asio::io_service> io_service_;
   shared_ptr<asio::io_service::work> work_;
   shared_ptr<boost::thread_group> threads_;
+
   // Listeners
   shared_ptr<ListenerMap> internal_listeners_;
   shared_ptr<ListenerMap> external_listeners_;
+
   // Connections
   shared_ptr<InternalConnectionMap> internal_out_conns_;
   shared_ptr<ExternalConnectionMap> external_out_conns_;
@@ -86,9 +85,6 @@ class NetworkManager {
 
   // State
   std::atomic<bool> running_;
-
-  // Logger
-  shared_ptr<spdlog::logger> logger_;
 };
 
 }  // namespace K3

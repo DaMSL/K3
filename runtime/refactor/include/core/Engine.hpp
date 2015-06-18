@@ -7,18 +7,20 @@
 #include <memory>
 #include <string>
 
+#include <spdlog/spdlog.h>
+
 #include "Common.hpp"
 #include "Options.hpp"
 #include "network/NetworkManager.hpp"
 #include "storage/StorageManager.hpp"
+#include "serialization/Codec.hpp"
 #include "Peer.hpp"
-#include "spdlog/spdlog.h"
 
 namespace K3 {
 
 class Engine {
  public:
-  // Core
+  // Core Interface
   Engine();
   ~Engine();
   template <class Context>
@@ -29,23 +31,22 @@ class Engine {
             shared_ptr<Codec> cdec);
 
   // Utilities
-  template <class F>
-  void logJson(const Address& dest, int trigger, const Address& src, F f);
+  bool running();
   shared_ptr<Peer> getPeer(const Address& addr);
   shared_ptr<NetworkManager> getNetworkManager();
   shared_ptr<StorageManager> getStorageManager();
-  bool running();
+  template <class F>  // TODO(jbw) Remove this function (push into ProgramContext)
+  void logJson(const Address& dest, int trigger, const Address& src, F f);
 
   // Configuration
   void toggleLocalSends(bool enabled);
   void setLogLevel(int level);
 
  protected:
-  // Helpers
+  // Helper Functions
   Address meFromYAML(const YAML::Node& peer_config);
   shared_ptr<map<Address, shared_ptr<Peer>>> createPeers(
-      const Options& opts,
-      shared_ptr<ContextFactory> context_factory);
+      const Options& opts, shared_ptr<ContextFactory> context_factory);
 
   // Components
   shared_ptr<spdlog::logger> logger_;
@@ -63,7 +64,8 @@ class Engine {
 };
 
 template <class F>
-void Engine::logJson(const Address& dest, int trigger, const Address& src, F f) {
+void Engine::logJson(const Address& dest, int trigger, const Address& src,
+                     F f) {
   getPeer(dest)->logJson(trigger, src, f);
 }
 
@@ -73,34 +75,30 @@ void Engine::run(const Options& opts) {
     throw std::runtime_error("Engine run(): already running");
   }
 
+  // Configuration
   setLogLevel(opts.log_level_);
   toggleLocalSends(opts.local_sends_enabled_);
-  auto peer_configs = opts.peer_strs_;
-  running_ = true;
   logger_->info("The Engine has started.");
 
-  // Peers start their own thread, create a context and check in
+  // Peers start their own thread, create a context, check in
   auto context_factory = make_shared<ContextFactory>(
       [this]() { return make_shared<Context>(*this); });
   peers_ = createPeers(opts, context_factory);
-
   total_peers_ = peers_->size();
   while (total_peers_ > ready_peers_) continue;
   logger_->info("All peers are ready.");
 
-  // Once peers check in, start a listener for each peer
-  // and allow each peer to send its initial message (processRole)
   // This must happen AFTER peers_ has been initialized
   for (auto it : *peers_) {
     network_manager_->listenInternal(it.second);
     it.second->processRole();
   }
 
-  // Once all roles have been processed, signal peers to start to processing
-  // messages
+  // All roles are processed: signal peers to start message loop
   for (auto it : *peers_) {
     it.second->start();
   }
+  running_ = true;
   return;
 }
 

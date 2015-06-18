@@ -1,40 +1,38 @@
 #ifndef K3_CODEC
 #define K3_CODEC
 
-// Codec is an interface for conversion between Packed and Native Values.
+#include <csvpp/csv.h>
+#include <csvpp/string.h>
+#include <csvpp/array.h>
+#include <csvpp/deque.h>
+#include <csvpp/list.h>
+#include <csvpp/set.h>
+#include <csvpp/vector.h>
 
 #include <memory>
 #include <string>
 
-#include "yas/mem_streams.hpp"
-#include "yas/binary_iarchive.hpp"
-#include "yas/binary_oarchive.hpp"
-#include "yas/text_iarchive.hpp"
-#include "yas/text_oarchive.hpp"
-#include "yas/serializers/std_types_serializers.hpp"
-#include "yas/serializers/boost_types_serializers.hpp"
+#include <yas/mem_streams.hpp>
+#include <yas/binary_iarchive.hpp>
+#include <yas/binary_oarchive.hpp>
+#include <yas/text_iarchive.hpp>
+#include <yas/text_oarchive.hpp>
+#include <yas/serializers/std_types_serializers.hpp>
+#include <yas/serializers/boost_types_serializers.hpp>
 
-#include "boost/archive/binary_oarchive.hpp"
-#include "boost/archive/binary_iarchive.hpp"
-#include "boost/archive/text_oarchive.hpp"
-#include "boost/archive/text_iarchive.hpp"
-#include "boost/serialization/split_free.hpp"
-#include "boost/iostreams/stream_buffer.hpp"
-#include "boost/iostreams/stream.hpp"
-#include "boost/iostreams/device/back_inserter.hpp"
-#include "boost/serialization/vector.hpp"
-#include "boost/serialization/set.hpp"
-#include "boost/serialization/list.hpp"
-#include "boost/serialization/base_object.hpp"
-#include "boost/serialization/nvp.hpp"
-
-#include "csvpp/csv.h"
-#include "csvpp/string.h"
-#include "csvpp/array.h"
-#include "csvpp/deque.h"
-#include "csvpp/list.h"
-#include "csvpp/set.h"
-#include "csvpp/vector.h"
+#include <boost/archive/binary_oarchive.hpp>
+#include <boost/archive/binary_iarchive.hpp>
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/serialization/split_free.hpp>
+#include <boost/iostreams/stream_buffer.hpp>
+#include <boost/iostreams/stream.hpp>
+#include <boost/iostreams/device/back_inserter.hpp>
+#include <boost/serialization/vector.hpp>
+#include <boost/serialization/set.hpp>
+#include <boost/serialization/list.hpp>
+#include <boost/serialization/base_object.hpp>
+#include <boost/serialization/nvp.hpp>
 
 #include "Common.hpp"
 #include "Flat.hpp"
@@ -56,10 +54,9 @@ class Codec {
   static CodecFormat getFormat(const string& s);
 };
 
-// Boost Codec
-// TODO(jbw) Add a text archive based codec?
 namespace io = boost::iostreams;
 typedef io::stream<io::back_insert_device<Buffer>> OByteStream;
+
 template <class T>
 class BoostCodec : public Codec {
  public:
@@ -76,7 +73,6 @@ class BoostCodec : public Codec {
     io::basic_array_source<char> source(pv.buf(), pv.length());
     io::stream<io::basic_array_source<char>> input_stream(source);
     boost::archive::binary_iarchive ia(input_stream);
-
     T t;
     ia >> t;
     return make_shared<TNativeValue<T>>(std::move(t));

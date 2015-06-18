@@ -1,12 +1,6 @@
 #ifndef K3_INCOMINGCONNECTION
 #define K3_INCOMINGCONNECTION
 
-// Incoming connects provide the ability to receive K3 messages.
-// Internal connections read full messages (with destination address and
-// trigger) from the wire.
-// External connections read values only, and are associated with a particular
-// address and trigger
-
 #include "Common.hpp"
 #include "NetworkManager.hpp"
 
@@ -25,6 +19,7 @@ class IncomingConnection {
   CodecFormat format_;
 };
 
+// Read Messages from the network
 class InternalIncomingConnection
     : public IncomingConnection,
       public enable_shared_from_this<InternalIncomingConnection> {
@@ -34,6 +29,7 @@ class InternalIncomingConnection
                                shared_ptr<ErrorHandler>);
 };
 
+// Read Values from the network. Associated with a particular trigger and address.
 class ExternalIncomingConnection
     : public IncomingConnection,
       public enable_shared_from_this<ExternalIncomingConnection> {

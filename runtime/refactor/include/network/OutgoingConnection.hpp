@@ -1,10 +1,6 @@
 #ifndef K3_OUTGOINGCONNECTION
 #define K3_OUTGOINGCONNECTION
 
-// Outgoing connections provide the ability to send over the wire.
-// Internal connections send full messages, while External connections send
-// values only to a specified address.
-
 #include <queue>
 
 #include "Common.hpp"

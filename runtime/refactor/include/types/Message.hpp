@@ -9,9 +9,10 @@
 
 namespace K3 {
 
+// Message container. Holds any type of Value.
 class Message {
  public:
-  Message() {}
+  Message();
   Message(const Address&, const Address&, TriggerID, shared_ptr<Value>);
   Message(const MessageHeader&, shared_ptr<Value>);
   Address source() const;
@@ -24,15 +25,11 @@ class Message {
   shared_ptr<Value> value_;
 };
 
+// Sub-class that can be directly read/written for network IO
 class NetworkMessage : public Message {
  public:
-  NetworkMessage() : Message() {
-    payload_length_ = 0;
-  }
-  NetworkMessage(const MessageHeader& head, shared_ptr<PackedValue> v)
-      : Message(head, v) {
-    payload_length_ = v->length();
-  }
+  NetworkMessage();
+  NetworkMessage(const MessageHeader& head, shared_ptr<PackedValue> v);
   shared_ptr<std::vector<boost::asio::const_buffer>> outputBuffers() const;
   shared_ptr<std::vector<boost::asio::mutable_buffer>> inputBuffers();
   void setValue(shared_ptr<Value> v);

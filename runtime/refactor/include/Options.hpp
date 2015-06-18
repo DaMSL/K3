@@ -21,7 +21,8 @@ class Options {
     local_sends_enabled_ = true;
   }
 
-  Options(const vector<string>& strs, int log_level, const string& json_folder, bool json_final, bool local_sends_enabled) {
+  Options(const vector<string>& strs, int log_level, const string& json_folder,
+          bool json_final, bool local_sends_enabled) {
     peer_strs_ = strs;
     log_level_ = log_level;
     json_folder_ = json_folder;
@@ -29,7 +30,7 @@ class Options {
     local_sends_enabled_ = local_sends_enabled;
   }
 
-  int parse(int argc, const char *const argv[]);
+  int parse(int argc, const char* const argv[]);
 
   vector<string> peer_strs_;
   int log_level_;

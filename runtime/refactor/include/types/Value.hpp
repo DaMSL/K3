@@ -6,7 +6,7 @@
 #include <utility>
 #include <string>
 
-#include "yas/buffers.hpp"
+#include <yas/buffers.hpp>
 
 #include "Common.hpp"
 
@@ -14,11 +14,8 @@ namespace K3 {
 
 class ProgramContext;
 
-// Interface
-// Can contain either native, packed, or sentinel values.
-// The 'dispatchIntoContext' method calls the correct 'dispatch' overload on a
-// ProgramContext
-// based on the underlying value type (native, packed, or sentinel).
+// Values can be dispatched into a program context.
+// A 'dispatch' overload is chosen based on the Value implementation (Native, Packed, or Sentinel)
 class Value {
  public:
   virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig, const Address& source) = 0;
@@ -26,47 +23,19 @@ class Value {
 
 // Boxes a native C++ value.
 // The as<T>() and asConst<T>() functions enable casting to (any) native type.
-// A ProgramContext knows the true underlying type based on the trigger
-// that this value is intended for.
+// The generated program knows the correct choice of T given the destination trigger
 class NativeValue : public Value {
  public:
   virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig, const Address& source);
-
-  template <class T>
-  T* as() {
-    return static_cast<T*>(this->materialize());
-  }
-
-  template <class T>
-  const T* asConst() const {
-    return static_cast<const T*>(this->materializeConst());
-  }
+  template <class T> T* as();
+  template <class T> const T* asConst() const;
 
  protected:
   virtual void* materialize() = 0;
   virtual const void* materializeConst() const = 0;
 };
 
-// Templated instantiation of the NativeValue class
-template <class T>
-class TNativeValue : public NativeValue {
- public:
-  template <class X>
-  explicit TNativeValue(X&& x)
-      : value_(std::forward<X>(x)) {}
-
- protected:
-  virtual void* materialize() { return static_cast<void*>(&value_); }
-
-  virtual const void* materializeConst() const {
-    return static_cast<const void*>(&value_);
-  }
-
-  T value_;
-};
-
 // Interface that represents a packed C++ value.
-class Codec;
 class PackedValue : public Value {
  public:
   PackedValue( CodecFormat format);
@@ -79,6 +48,39 @@ class PackedValue : public Value {
   CodecFormat format_;
 };
 
+// Sentinel values throw an EndOfProgramException upon dispatch
+class SentinelValue : public Value {
+ public:
+  SentinelValue();
+  virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig, const Address& source);
+};
+
+// Native Value Implementation
+template <class T>
+T* NativeValue::as() {
+  return static_cast<T*>(this->materialize());
+}
+
+template <class T>
+const T* NativeValue::asConst() const {
+  return static_cast<const T*>(this->materializeConst());
+}
+
+// Templated instantiation of the NativeValue class
+template <class T>
+class TNativeValue : public NativeValue {
+ public:
+  template <class X>
+  explicit TNativeValue(X&& x) : value_(std::forward<X>(x)) {}
+
+ protected:
+  virtual void* materialize() { return static_cast<void*>(&value_); }
+  virtual const void* materializeConst() const { return static_cast<const void*>(&value_); }
+  T value_;
+};
+
+// Packed Value Implementations
+// Vector-based
 class BufferPackedValue : public PackedValue {
  public:
   BufferPackedValue(Buffer&& b, CodecFormat format);
@@ -90,6 +92,7 @@ class BufferPackedValue : public PackedValue {
   std::unique_ptr<Buffer> buffer_;
 };
 
+// String-based
 class StringPackedValue : public PackedValue {
  public:
   StringPackedValue(string&& b, CodecFormat format);
@@ -101,6 +104,7 @@ class StringPackedValue : public PackedValue {
   std::unique_ptr<string> string_;
 };
 
+// YAS-shared-buffer-based
 class YASPackedValue : public PackedValue {
  public:
   YASPackedValue(yas::shared_buffer b, CodecFormat format);
@@ -110,16 +114,6 @@ class YASPackedValue : public PackedValue {
 
  protected:
   yas::shared_buffer buf_;
-};
-
-
-
-// Sentinel value throws EndofProgram exception
-// when converted to NativeValue
-class SentinelValue : public Value {
- public:
-  SentinelValue();
-  virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig, const Address& source);
 };
 
 }  // namespace K3

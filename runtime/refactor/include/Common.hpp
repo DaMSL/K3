@@ -32,6 +32,8 @@ using std::list;
 using std::map;
 using std::vector;
 using std::enable_shared_from_this;
+using std::unique_ptr;
+using std::make_unique;
 
 #define K3_LOG_ID "K3"
 #define USE_CUSTOM_HASHMAPS 1

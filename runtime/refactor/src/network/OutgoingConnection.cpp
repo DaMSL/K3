@@ -28,9 +28,9 @@ OutgoingConnection::OutgoingConnection(const Address& addr,
   }
 
   if (!connected_) {
-    // TODO(jbw) print address
     throw std::runtime_error(
-        "InternalOutgoingConnection connect(): failed to connect");
+        "InternalOutgoingConnection connect(): failed to connect to " +
+        addr.toString());
   }
 }
 

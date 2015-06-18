@@ -5,6 +5,8 @@
 
 namespace K3 {
 
+Message::Message() {}
+
 Message::Message(const Address& src, const Address& dst, TriggerID trig,
                  shared_ptr<Value> val)
     : header_(src, dst, trig) {
@@ -23,6 +25,16 @@ Address Message::destination() const { return header_.destination(); }
 TriggerID Message::trigger() const { return header_.trigger(); }
 
 shared_ptr<Value> Message::value() const { return value_; }
+
+NetworkMessage::NetworkMessage() : Message() {
+  payload_length_ = 0;
+}
+
+NetworkMessage::NetworkMessage(const MessageHeader& head,
+                               shared_ptr<PackedValue> v)
+    : Message(head, v) {
+  payload_length_ = v->length();
+}
 
 shared_ptr<vector<asio::const_buffer>> NetworkMessage::outputBuffers() const {
   // Wrap members in boost buffers for an immeninent call to async_write

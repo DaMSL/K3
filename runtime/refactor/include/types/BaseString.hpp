@@ -18,8 +18,6 @@ namespace K3 {
 
 char* dupstr(const char*) throw();
 
-// TODO(jbw) rename to BaseString
-// TODO(jbw) revisit commented out sections (serialization, json, etc)
 class base_string {
  public:
   // Constructors/Destructors/Assignment.
@@ -136,9 +134,6 @@ void base_string::serialize(csv::parser& a, const unsigned int);
 
 template <>
 void base_string::serialize(csv::writer& a, const unsigned int);
-
-// Turn off class information tracking in boost serialization for base_strings.
-//BOOST_CLASS_IMPLEMENTATION(base_string, boost::serialization::object_serializable);
 
 }  // namespace K3
 

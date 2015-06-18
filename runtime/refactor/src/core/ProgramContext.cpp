@@ -18,6 +18,14 @@ void ProgramContext::__dispatch(SentinelValue* sv) {
   throw EndOfProgramException();
 }
 
+void ProgramContext::__patch(const YAML::Node& node) {
+  return;
+}
+
+unit_t ProgramContext::initDecls(unit_t) { return unit_t{}; }
+
+unit_t ProgramContext::processRole(unit_t) { return unit_t{}; }
+
 map<string, string> ProgramContext::__prettify() {
   return map<string, string>();
 }
@@ -34,9 +42,13 @@ string ProgramContext::__triggerName(int trig) {
   return s;
 }
 
-unit_t ProgramContext::initDecls(unit_t) { return unit_t{}; }
+string ProgramContext::__jsonifyMessage(const Message& m) {
+  return "";
+}
 
 std::map<TriggerID, string> ProgramContext::__trigger_names_;
+
+// Dummy Context Implementation:
 
 DummyContext::DummyContext(Engine& e) : ProgramContext(e) {
   state_ = make_shared<DummyState>();

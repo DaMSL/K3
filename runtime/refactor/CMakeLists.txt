@@ -33,6 +33,7 @@ set (srcs src/core/Engine.cpp
           src/core/ProgramContext.cpp
           src/types/BaseString.cpp
           src/types/Message.cpp
+          src/types/Queue.cpp
           src/types/Value.cpp
           src/network/NetworkManager.cpp
           src/network/Listener.cpp

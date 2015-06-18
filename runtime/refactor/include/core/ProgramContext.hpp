@@ -1,14 +1,11 @@
 #ifndef K3_PROGRAMCONTEXT
 #define K3_PROGRAMCONTEXT
 
-// A ProgramContext contains all code and data associated with a K3 Program.
-// A K3-Program specific implementation will be created by the code generator
-
 #include <memory>
 #include <string>
 #include <map>
 
-#include "boost/asio.hpp"
+#include <boost/asio.hpp>
 
 #include "builtins/Builtins.hpp"
 #include "Common.hpp"
@@ -29,32 +26,39 @@ class ProgramContext : public StandardBuiltins,
                        public AmplabLoaders {
  public:
   explicit ProgramContext(Engine& e);
+
+  // Dispatch overloads: One for each Value type
   virtual void __dispatch(NativeValue* nv, TriggerID trig, const Address& source) = 0;
   virtual void __dispatch(PackedValue* pv, TriggerID trig, const Address& source) = 0;
   void __dispatch(SentinelValue* sv);
-  virtual void __patch(const YAML::Node& node) = 0;
+
+  // Program initialization
+  virtual void __patch(const YAML::Node& node);
+  virtual unit_t initDecls(unit_t);
+  virtual unit_t processRole(unit_t);
+
+  // Logging Helper Functions
   virtual map<string, string> __prettify();
   virtual map<string, string> __jsonify();
-  virtual unit_t initDecls(unit_t);
-  virtual unit_t processRole(const unit_t&) = 0;
   static string __triggerName(int trig);
-
-  static map<TriggerID, string> __trigger_names_;
+  virtual string __jsonifyMessage(const Message& m);
 
  protected:
   CodecFormat __internal_format_ = K3_INTERNAL_FORMAT;
   Engine& __engine_;
+  static map<TriggerID, string> __trigger_names_;
 };
 
+typedef std::function<shared_ptr<ProgramContext>()> ContextFactory;
+
+// A Dummy Context implementation, for simple tests.
+// TODO(jbw) move to separate file
 class DummyState {
  public:
   int my_int_ = 0;
   std::string my_string_ = "";
 };
 
-typedef std::function<shared_ptr<ProgramContext>()> ContextFactory;
-
-// A Dummy Context implementation, for simple tests.
 class DummyContext : public ProgramContext {
  public:
   explicit DummyContext(Engine& e);

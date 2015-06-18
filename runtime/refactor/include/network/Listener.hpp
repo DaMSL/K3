@@ -1,8 +1,6 @@
 #ifndef K3_LISTENER
 #define K3_LISTENER
 
-// Listeners wrap a boost acceptor to listen for incoming connections.
-
 #include <memory>
 
 #include "network/NetworkManager.hpp"

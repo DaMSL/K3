@@ -12,7 +12,6 @@ NetworkManager::NetworkManager() {
   if (!logger_) {
     logger_ = spdlog::stdout_logger_mt("engine");
   }
-
   io_service_ = make_shared<asio::io_service>();
   work_ = make_shared<asio::io_service::work>(*io_service_);
   threads_ = make_shared<boost::thread_group>();
@@ -22,6 +21,7 @@ NetworkManager::NetworkManager() {
   external_out_conns_ = make_shared<ExternalConnectionMap>();
   internal_format_ = K3_INTERNAL_FORMAT;
   running_ = true;
+  // TODO(jbw) Make this configurable
   for (int i =0; i < 4; i++) {
     addThread();
   }

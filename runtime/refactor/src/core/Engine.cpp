@@ -17,10 +17,9 @@ Engine::Engine() {
     spdlog::set_level(spdlog::level::warn);
     spdlog::set_pattern("[%T.%f %l %n] %v");
   }
-
   network_manager_ = make_shared<NetworkManager>();
   storage_manager_ = make_shared<StorageManager>();
-  peers_ = nullptr;  // Intialized during run()
+  peers_ = NULL;  // Initialized during run()
   running_ = false;
   ready_peers_ = 0;
   total_peers_ = 0;
@@ -37,13 +36,12 @@ Engine::~Engine() {
 void Engine::stop() {
   // Place a Sentintel on each Peer's queue
   for (auto& it : *peers_) {
-    auto m = std::make_unique<Message>(it.first, it.first, -1,
+    auto m = make_unique<Message>(it.first, it.first, -1,
                                   make_shared<SentinelValue>());
     it.second->enqueue(std::move(m));
   }
-
   network_manager_->stop();
-  logger_->info("The Engine has stopped.");
+  logger_->info("Stopping the Engine.");
 }
 
 void Engine::join() {
@@ -52,10 +50,10 @@ void Engine::join() {
       it.second->join();
     }
   }
-
   network_manager_->stop();
   network_manager_->join();
   running_ = false;
+  logger_->info("The Engine has Joined.");
 }
 
 void Engine::send(const MessageHeader& header, shared_ptr<NativeValue> value,
@@ -64,15 +62,15 @@ void Engine::send(const MessageHeader& header, shared_ptr<NativeValue> value,
     throw std::runtime_error(
         "Engine send(): Can't send before peers_ is initialized");
   }
-
-  logger_->info() << "Message: " << header.source().toString() << " --> "
-                  << header.destination().toString() << " @"
-                  << ProgramContext::__triggerName(header.trigger());
-
+  if (logger_->level() >= spdlog::level::info) {
+    logger_->info() << "Message: " << header.source().toString() << " --> "
+                    << header.destination().toString() << " @"
+                    << ProgramContext::__triggerName(header.trigger());
+  }
   auto it = peers_->find(header.destination());
   if (local_sends_enabled_ && it != peers_->end()) {
     // Direct enqueue for local messages
-    auto m = std::make_unique<Message>(header, value);
+    auto m = make_unique<Message>(header, value);
     it->second->enqueue(std::move(m));
   } else {
     // Serialize and send over the network, otherwise
@@ -81,6 +79,8 @@ void Engine::send(const MessageHeader& header, shared_ptr<NativeValue> value,
     network_manager_->sendInternal(m);
   }
 }
+
+bool Engine::running() { return running_; }
 
 shared_ptr<Peer> Engine::getPeer(const Address& addr) {
   auto it = peers_->find(addr);
@@ -124,8 +124,6 @@ void Engine::setLogLevel(int level) {
   }
 }
 
-bool Engine::running() { return running_; }
-
 Address Engine::meFromYAML(const YAML::Node& peer_config) {
   if (!peer_config.IsMap()) {
     throw std::runtime_error("Engine run(): Invalid YAML. Not a map: " +
@@ -143,10 +141,9 @@ Address Engine::meFromYAML(const YAML::Node& peer_config) {
 shared_ptr<map<Address, shared_ptr<Peer>>> Engine::createPeers(
     const Options& opts, shared_ptr<ContextFactory> factory) {
   auto result = make_shared<map<Address, shared_ptr<Peer>>>();
-
+  // Parse YAML to grab 'me' address for each peer
   auto peer_configs = opts.peer_strs_;
   vector<YAML::Node> nodes;
-
   for (auto config : peer_configs) {
     if (config.length() == 0) {
       throw std::runtime_error(
@@ -159,7 +156,7 @@ shared_ptr<map<Address, shared_ptr<Peer>>> Engine::createPeers(
       nodes.push_back(YAML::Load(config));
     }
   }
-
+  // Construct each peer, place in map
   for (auto node : nodes) {
     Address addr = meFromYAML(node);
     auto ready_callback = [this]() { ready_peers_++; };
@@ -171,8 +168,6 @@ shared_ptr<map<Address, shared_ptr<Peer>>> Engine::createPeers(
     }
     (*result)[addr] = p;
   }
-
   return result;
 }
-
 }  // namespace K3
