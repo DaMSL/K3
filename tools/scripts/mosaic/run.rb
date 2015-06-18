@@ -139,17 +139,17 @@ def run_create_compile_k3_remote(server_url, bin_file, k3_cpp_name, k3_path, k3_
   status = curl_status_loop(server_url, "/compile/#{uid}", "COMPLETE")
 
   # get the output file (before exiting on error)
-  path = "/fs/build/#{nice_name}-#{uid}/output/"
+  path = "/fs/build/#{nice_name}-#{uid}/output"
   curl(server_url, path, getfile:true)
 
   check_status(status, "COMPLETE", "Remote compilation")
 
   # get the cpp file
-  path = "/fs/build/#{nice_name}-#{uid}/#{k3_cpp_name}/"
+  path = "/fs/build/#{nice_name}-#{uid}/#{k3_cpp_name}"
   curl(server_url, path, getfile:true)
 
   # get the bin file
-  path = "/fs/build/#{nice_name}-#{uid}/#{bin_file}/"
+  path = "/fs/build/#{nice_name}-#{uid}/#{bin_file}"
   curl(server_url, path, getfile:true)
 
   # copy cpp to proper path
@@ -169,13 +169,13 @@ def run_create_k3_remote(server_url, k3_cpp_name, k3_path, k3_root_path, nice_na
   status = curl_status_loop(server_url, "/compile/#{uid}", "COMPLETE")
 
   # get the output file
-  path = "/fs/build/#{nice_name}-#{uid}/output/"
+  path = "/fs/build/#{nice_name}-#{uid}/output"
   curl(server_url, path, getfile:true)
 
   check_status(status, "COMPLETE", "Remote compilation")
 
   # get the cpp file
-  path = "/fs/build/#{nice_name}-#{uid}/#{k3_cpp_name}/"
+  path = "/fs/build/#{nice_name}-#{uid}/#{k3_cpp_name}"
   curl(server_url, path, getfile:true)
 
   # move to proper path
@@ -237,7 +237,7 @@ def run_deploy_k3_remote(uid, name, deploy_server, nice_name, script_path)
     file_paths << [s] if File.extname s == '.tar'
   end
   file_paths.for_each do |f|
-    curl(deploy_server, "/fs/jobs/#{nice_name}/#{jobid}/#{f}/", getfile:true)
+    curl(deploy_server, "/fs/jobs/#{nice_name}/#{jobid}/#{f}", getfile:true)
     run("tar xvzf #{filename}")
   end
 end
@@ -372,6 +372,7 @@ end
 
 def main()
   $options = {}
+  uid = nil
 
   usage = "Usage: #{$PROGRAM_NAME} sql_file options"
   parser = OptionParser.new do |opts|
@@ -387,6 +388,7 @@ def main()
     opts.on("--create-local", "Create the cpp file locally") { $options[:create_local] = true }
     opts.on("--compile-local", "Compile locally") { $options[:compile_local] = true }
     opts.on("-j", "--json [JSON]", String, "JSON file to load options") {|s| $options[:json_file] = s}
+    opts.on("--uid [UID]", String, "UID of file") {|s| $options[:uid] = s}
 
     # stages
     opts.on("-a", "--all", "All stages") {
@@ -486,7 +488,8 @@ def main()
     run_mosaic(k3_path, mosaic_path, source)
   end
 
-  uid = nil
+  # either nil or take from command line
+  uid = if $options[:uid] then $options[:uid] else nil end
 
   # check for doing everything remotely
   if !$options[:compile_local] && !$options[:create_local] && ($options[:create_k3] || $options[:compile_k3]) then
