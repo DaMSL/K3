@@ -72,15 +72,19 @@ end
 ## Create/Compile stage ###
 
 # handle all curl requests through here
-def curl(server, url, args:{}, file:"", post:false, json:false, getfile:false)
+def curl(server, url, args:{}, file:"", post:false, json:false, getfile:nil)
   cmd = ""
-  cmd << if getfile then '-O ' else '-i ' end
+  # Getfile needs json to remove html, but don't parse as json
+  cmd << if getfile.nil? then '-i ' else '-H "Accept: application/json" ' end
   if post then cmd << '-X POST ' end
   if json then cmd << '-H "Accept: application/json" ' end
   if file != "" then cmd << "-F \"file=@#{file}\" " end
   args.each_pair { |k,v| cmd << "-F \"#{k}=#{v}\" " }
 
-  res = run("curl http://#{server}#{url} #{cmd}")
+  pipe = if getfile.nil? then '' else "> #{getfile}" end
+  if !getfile.nil? then url << getfile << "/" end
+
+  res = run("curl http://#{server}#{url} #{cmd}#{pipe}")
   # clean up json output
   if json
     i = res =~ /{/
@@ -139,18 +143,18 @@ def run_create_compile_k3_remote(server_url, bin_file, k3_cpp_name, k3_path, k3_
   status = curl_status_loop(server_url, "/compile/#{uid}", "COMPLETE")
 
   # get the output file (before exiting on error)
-  path = "/fs/build/#{nice_name}-#{uid}/output"
-  curl(server_url, path, getfile:true)
+  path = "/fs/build/#{nice_name}-#{uid}/"
+  curl(server_url, path, getfile:"output")
 
   check_status(status, "COMPLETE", "Remote compilation")
 
   # get the cpp file
-  path = "/fs/build/#{nice_name}-#{uid}/#{k3_cpp_name}"
-  curl(server_url, path, getfile:true)
+  path = "/fs/build/#{nice_name}-#{uid}/"
+  curl(server_url, path, getfile:k3_cpp_name)
 
   # get the bin file
-  path = "/fs/build/#{nice_name}-#{uid}/#{bin_file}"
-  curl(server_url, path, getfile:true)
+  path = "/fs/build/#{nice_name}-#{uid}/"
+  curl(server_url, path, getfile:bin_file)
 
   # copy cpp to proper path
   dest_path = File.join(k3_root_path, "__build")
@@ -169,14 +173,14 @@ def run_create_k3_remote(server_url, k3_cpp_name, k3_path, k3_root_path, nice_na
   status = curl_status_loop(server_url, "/compile/#{uid}", "COMPLETE")
 
   # get the output file
-  path = "/fs/build/#{nice_name}-#{uid}/output"
-  curl(server_url, path, getfile:true)
+  path = "/fs/build/#{nice_name}-#{uid}/"
+  curl(server_url, path, getfile:"output")
 
   check_status(status, "COMPLETE", "Remote compilation")
 
   # get the cpp file
-  path = "/fs/build/#{nice_name}-#{uid}/#{k3_cpp_name}"
-  curl(server_url, path, getfile:true)
+  path = "/fs/build/#{nice_name}-#{uid}/"
+  curl(server_url, path, getfile:k3_cpp_name)
 
   # move to proper path
   dest_path = File.join(k3_root_path, "__build", k3_cpp_name)
@@ -237,7 +241,7 @@ def run_deploy_k3_remote(uid, name, deploy_server, nice_name, script_path)
     file_paths << [s] if File.extname s == '.tar'
   end
   file_paths.for_each do |f|
-    curl(deploy_server, "/fs/jobs/#{nice_name}/#{jobid}/#{f}", getfile:true)
+    curl(deploy_server, "/fs/jobs/#{nice_name}/#{jobid}/", getfile:f)
     run("tar xvzf #{filename}")
   end
 end
