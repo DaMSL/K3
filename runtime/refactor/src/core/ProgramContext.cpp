@@ -24,7 +24,7 @@ void ProgramContext::__patch(const YAML::Node& node) {
 
 unit_t ProgramContext::initDecls(unit_t) { return unit_t{}; }
 
-unit_t ProgramContext::processRole(unit_t) { return unit_t{}; }
+unit_t ProgramContext::processRole(const unit_t&) { return unit_t{}; }
 
 map<string, string> ProgramContext::__prettify() {
   return map<string, string>();

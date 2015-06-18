@@ -95,14 +95,14 @@ void Peer::processBatch() {
 }
 
 void Peer::logMessage(const Message& m) {
-  if (logger_->level() >= spdlog::level::trace) {
+  if (logger_->level() <= spdlog::level::trace) {
     string trig = ProgramContext::__triggerName(m.trigger());
     logger_->trace() << "Received:: @" << trig;
   }
 }
 
 void Peer::logGlobals(const Message& m) {
-  if (logger_->level() >= spdlog::level::trace) {
+  if (logger_->level() <= spdlog::level::trace) {
     std::ostringstream oss;
     string trig = ProgramContext::__triggerName(m.trigger());
     oss << "Processed:: @" << trig << std::endl;
