@@ -124,5 +124,11 @@ RUN git checkout development && \
 RUN apt-get autoremove -y && \
     apt-get autoclean -y
 
-CMD git pull && git checkout $K3_BRANCH && cabal build
+# Add pull script
+RUN echo '#!/bin/bash' > /k3/start.sh && \
+    echo 'cd /k3/K3' >> /k3/start.sh && \
+    echo 'git pull && git checkout $K3_BRANCH' >> /k3/start.sh && \
+    chmod +x /k3/start.sh
+
+ENTRYPOINT['/k3/start.sh']
 

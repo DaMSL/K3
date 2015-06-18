@@ -36,54 +36,79 @@ import db
 
 
 class CompileLauncher(mesos.interface.Scheduler):
-    def __init__(self, job, **kwargs):
+    # def __init__(self, job, **kwargs):
+
+    @classmethod
+    def compileSettings(cls):
+      return dict(
+        options='', 
+        user='', 
+        tag='',
+        path='',
+        url='',
+        webaddr='',
+        blocksize=4,
+        numworkers=len(workerNodes),
+        compilestage='both',
+        branch='development',
+        gitpull=True,
+        cabalbuild=False)
+
+    def __init__(self, name, uid, builddir, settings):
         logging.debug ("[COMPILER] Initializing........")
 
-        self.state    = CompileState.INIT
+        # Initialize framework state
+        self.state      = CompileState.INIT
         self.launched   = False
         self.terminate  = False
-        self.driver = None
+        self.success    = False
+        self.driver     = None
 
-        self.name = job.name
-        self.localpath = job.path
-        self.uid  = job.uid
-        self.numworkers = job.numworkers
-        self.blocksize = job.blocksize
-        self.source   = kwargs.get('source', None)
-        self.webaddr  = kwargs.get('webaddr', None)
-        self.compilestage = job.compilestage
+        # Set compiler meta-date and compile configuration settings
+        self.name         = name
+        self.uid          = uid
+        self.localpath    = builddir
+        self.settings     = settings
+
+        self.numworkers   = int(settings['numworkers'])
+        self.compilestage = getCompileStage(settings['compilestage']).value
+        # self.blocksize    = job.blocksize
+        # self.compilestage = job.compilestage
+        # self.gitpull      = job.gitpull
+        # self.branch       = job.branch
+        # self.source       = kwargs.get('source', None)
+        # self.webaddr      = kwargs.get('webaddr', None)
 
         self.tasks    = {}  # Map (svid: taskInfo) 
         self.offers   = {}  # Map (svid: offer.id)
 
-        self.master = None
-        self.workers = []
-        self.client  = None
+        self.master     = None
+        self.workers    = []
+        self.client     = None
         self.masterHost = None
         self.masterPort = 0
         self.readyworkers = 0
-        self.idle = 0
-        self.success = False
+        self.idle       = 0
 
 
         self.wslog = logging.getLogger("compiler")
 
         logging.info("[COMPILER] Posting new job into DB: %s", self.name)
-        logging.info("    Name:          " + self.name)
-        logging.info("    uid:           " + str(self.uid))
-        logging.info("    blocksize:     " + str(self.blocksize))
-        logging.info("    # Workers:     " + str(self.numworkers))
-        logging.info("    Compile Stage: " + str(self.compilestage))
-        logging.info("    Build Dir:     " + str(self.localpath))
+        logging.info("    %-15s" % 'Name:' + self.name)
+        logging.info("    %-15s" % 'UID:' + str(self.uid))
+        logging.info("    %-15s" % 'Build Dir:' + str(self.localpath))
+        for k, v in self.settings.items():
+          logging.info("    %-15s" % (k+':') + str(v))
 
-        db.insertCompile(job.__dict__)
-        # for c in db.getCompiles():
-        #   logging.debug("COMPILE JOB FOUND!!!  --- " + c['name'])
+        db.insertCompile(dict(self.settings, name=self.name, uid=self.uid, path=self.localpath))
 
-
+    def getItems(self):
+      return dict(self.settings, name=self.name, uid=self.uid, path=self.localpath)
 
     def registered(self, driver, frameworkId, masterInfo):
         logging.info("[COMPILER] Compiler is registered with Mesos. ID %s" % frameworkId.value)
+
+        # Save the driver, in case we need to stop it later
         self.driver = driver
 
     #  This Gets invoked when Mesos offers resources to my framework & we decide what to do with the recources (e.g. launch task, set mem/cpu, etc...)
@@ -110,7 +135,7 @@ class CompileLauncher(mesos.interface.Scheduler):
 
           logging.info('  Resources:  cpu=%s, mem=%s' % (cpu, mem))
 
-          daemon = None
+          role = None
 
           # Match offers with requirements (master, client, & all workers) 
           if self.master == None and offer.hostname in masterNodes:
@@ -124,48 +149,51 @@ class CompileLauncher(mesos.interface.Scheduler):
             self.masterPort = portRanges[0][0]
             port = self.masterPort
 
-            daemon = dict(role='master', svid='master', hostname=offer.hostname)
-            self.master = daemon
+            role = dict(role='master', svid='master', hostname=offer.hostname)
+            self.master = role
 
-          elif len(self.workers) < self.numworkers and offer.hostname in workerNodes:
+          elif len(self.workers) < self.settings['numworkers'] and offer.hostname in workerNodes:
             workerNum = len(self.workers) + 1
             logging.debug("Creating Worker #%d role" % workerNum)
-            daemon = dict(role='worker', svid='worker%d' % workerNum, hostname=offer.hostname,)
-            self.workers.append (daemon)
-            logging.debug ("Worker %d out of %d assigned" % (len(self.workers), self.numworkers))
+            role = dict(role='worker', svid='worker%d' % workerNum, hostname=offer.hostname)
+            self.workers.append (role)
+            logging.debug ("Worker %d out of %d assigned" % (len(self.workers), self.settings['numworkers']))
 
           elif self.client == None and offer.hostname in clientNodes:
             logging.debug("Creating Client role")
-            daemon = dict(role='client', svid='client', 
-              hostname=offer.hostname, blocksize=self.blocksize, compilestage=self.compilestage)
-            self.client = daemon
+            role = dict(role='client', svid='client', hostname=offer.hostname)
+            self.client = role
 
           else:
             logging.debug("DECLINING Offer from %s (unneeded resource). Current state: %s" % (offer.hostname, self.state))
             driver.declineOffer(offer.id)
 
-          if daemon == None:
+          if role == None:
             continue
 
-          # Complete common daemon info for each node
-          daemon.update(dict(hostname=offer.hostname, webaddr=self.webaddr, 
-                             name=self.name, uid=self.uid))
+          # Complete common role info for each node
+          role.update(self.settings)
+
+          #hack for now
+          role.update(compilestage=self.compilestage)
 
           # Define the protobuf taskInfo message which will launch the task via Mesos
-          task = compileTask(name=self.name,
-                             uid=self.uid,
-                             source=self.source,
-                             webaddr=self.webaddr,
-                             mem=mem,
-                             cpu=cpu,
-                             port=port,
-                             slave=offer.slave_id.value,
-                             daemon=daemon)
-          logging.debug("CREATED TASK for:  %s " % daemon['svid'])
+          # task = compileTask(name=self.name,
+          #                    uid=self.uid,
+          #                    # source=self.source,
+          #                    # webaddr=self.webaddr,
+          #                    mem=mem,
+          #                    cpu=cpu,
+          #                    port=port, 
+          #                    slave=offer.slave_id.value,
+          #                    daemon=role)
+          
+          task = compileTask(AppID(self.name, self.uid),offer.slave_id.value, role, cpu, mem, port)
+          logging.debug("CREATED TASK for:  %s " % role['svid'])
 
           # Store this offer & taskInfo message
-          self.offers[daemon['svid']] = offer.id 
-          self.tasks[daemon['svid']]  = task
+          self.offers[role['svid']] = offer.id 
+          self.tasks[role['svid']]  = task
 
           # Check if all requirements are met
           if self.master and self.client and len(self.workers) == self.numworkers:

@@ -71,32 +71,29 @@ class Task:
     return "%s.%s" % (jobid, self.taskid)
 
 
-class CompileJob:
-  def __init__(self, **kwargs):
-    self.name    = kwargs.get('name', 'CompileTask')
-    self.uid      = kwargs.get('uid', '')
-    self.user     = kwargs.get('user', '')
-    self.tag       = kwargs.get('tag', '')
-    self.options   = kwargs.get('options', '')
-    self.blocksize = kwargs.get('blocksize', 4)
-    self.numworkers = kwargs.get('numworkers', 1)
+# class CompileJob:
+#   def __init__(self, **kwargs):
+#     self.name    = kwargs.get('name', 'CompileTask')
+#     self.uid      = kwargs.get('uid', '')
+#     self.user     = kwargs.get('user', '')
+#     self.tag       = kwargs.get('tag', '')
+#     self.options   = kwargs.get('options', '')
+#     self.blocksize = kwargs.get('blocksize', 4)
+#     self.numworkers = kwargs.get('numworkers', 1)
+#     self.gitpull = kwargs.get('gitpull', True)
+#     self.branch = kwargs.get('branch', 'development')
+#     # stage = kwargs.get('compilestage', CompileStage.BOTH)
+#     # self.compilestage = stage.value
+#     self.path     = kwargs.get('path', '')
+#     self.url      = kwargs.get('path', '')
+#   def __dict__(self):
+#     return dict(name=self.name, uid=self.uid, path=self.path, tag=self.tag,
+#                 user=self.user, options=self.options, blocksize=self.blocksize,
+#                 numworkers=self.numworkers, url=self.url, uname=self.uname(),
+#                 gitpull=gitpull, branch=branch)
 
-    stage = kwargs.get('compilestage', CompileStage.BOTH)
-    self.compilestage = stage.value
-    
-    self.path     = kwargs.get('path', '')
-
-    self.url      = kwargs.get('path', '')
-
-    # os.path.join(kwargs.get('webaddr'), 'fs', 'archive', self.name, self.uid)
-
-  def __dict__(self):
-    return dict(name=self.name, uid=self.uid, path=self.path, tag=self.tag,
-                user=self.user, options=self.options, blocksize=self.blocksize,
-                numworkers=self.numworkers, url=self.url, uname=self.uname())
-
-  def uname(self):
-    return self.name + '-' + self.uid
+#   def uname(self):
+#     return self.name + '-' + self.uid
 
 
 

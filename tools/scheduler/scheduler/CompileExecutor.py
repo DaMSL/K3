@@ -68,6 +68,18 @@ class CompilerExecutor(mesos.interface.Executor):
 
       name = str(task.name.encode('utf8', 'ignore'))
       logging.debug("Task Name = %s" % name)
+      os.chdir('/k3/K3')
+
+      if daemon['gitpull']:
+        gitpull = 'cd /k3/K3 && git pull && git checkout %s' % daemon['branch']
+        logging.info("GIT PULL Requested: %s " % gitpull)
+        subprocess.call(gitpull, shell=True)
+        logging.debug('Local K3 successfully updated (not rebuilt)')
+
+      if daemon['cabalbuild']:
+        logging.info("CABAL BUILD requested")
+        subprocess.call('cd /k3/K3 && cabal build -j', shell=True)
+        logging.debug('Cabal build complete')
 
       daemon['k3src'] = DEBUG_FILE if DEBUG else '$MESOS_SANDBOX/%s.k3' % daemon['name']
 
@@ -83,12 +95,15 @@ class CompilerExecutor(mesos.interface.Executor):
 
 
       self.status.message = daemon['role']
-      self.status.data = "%s is ready." % daemon['svid']
+      self.status.data += "%s is ready." % daemon['svid']
+      if daemon['gitpull']:
+        self.status.data += ' Pulled GIT BRANCH: %s.' % daemon['branch']
+      if daemon['cabalbuild']:
+        self.status.data += ' CABAL Re-built K3.'
       self.status.task_id.value = task.task_id.value
       driver.sendStatusUpdate(self.status)
 
       # Start the service (in current thread with stderr/stdout redirected from Mesos)
-      os.chdir('/k3/K3')
       proc = subprocess.Popen(cmd, shell=True,
                               stdin=None,
                               stdout=subprocess.PIPE,
