@@ -273,6 +273,10 @@ class base_string {
     return b == s;
   }
 
+  inline bool operator!=(char const* s, base_string const& b) {
+    return b != s;
+  }
+
   inline bool operator<(char const* s, base_string const& b) {
     return b >= s;
   }
