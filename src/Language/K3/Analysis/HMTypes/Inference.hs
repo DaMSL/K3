@@ -21,6 +21,7 @@
 --
 module Language.K3.Analysis.HMTypes.Inference where
 
+import Control.Arrow ( (&&&) )
 import Control.Monad
 import Control.Monad.Identity
 import Control.Monad.State
@@ -189,6 +190,9 @@ tdiff env1 env2 = BEnv.foldl partdiff (BEnv.empty, BEnv.empty) env2
           case BEnv.mlookup env1 n of
             Nothing -> (diffs, BEnv.push news n qt)
             Just l -> (if qt `notElem` l then BEnv.push diffs n qt else diffs, news)
+
+tmap :: TEnv -> (QPType -> QPType) -> TEnv
+tmap env f = BEnv.map (map f) env
 
 
 {- TAEnv helpers -}
@@ -649,19 +653,27 @@ unifyv v t = getTVE >>= \tve -> do
     then do { localLog $ prettyTaggedSPair "unifyv noc" v t;
               modify $ mtive $ \tve' -> tvext tve' v t }
 
-    else do { subQt <- tvsub False t;
-              boundQt <- return $ substituteSelfQt t;
-              localLog $ prettyTaggedTriple (unwords ["unifyv yoc", show v]) t subQt boundQt;
-              modify $ mtive $ \tve' -> tvext (tvmap tve' substituteSelfQt) v boundQt; }
+    else do { selfvars <- return $ findSelfVars tve v t;
+              subQt <- tvsub False t;
+              boundQt <- return $ substituteSelfQt selfvars t;
+              localLog $ prettyTaggedTriple (unwords ["unifyv yoc", show v, show selfvars]) t subQt boundQt;
+              modify $ mtive $ \tve' -> tvext (tvmap tve' $ substituteSelfQt selfvars) v boundQt; }
 
   where
-    substituteSelfQt t'@(tag -> QTVar _) = t'
-    substituteSelfQt t' = aux t'
-      where aux n@(Node (QTVar v2 :@: anns) _)
-              | v == v2   = foldl (@+) tself anns
+    findSelfVars tve _ (tag &&& tvchase tve -> (QTVar v', t''))
+      | occurs v t'' tve = findSelfVars tve v' t''
+      | otherwise = []
+
+    findSelfVars _ curv (tag &&& (all isQTRecord . children) -> (QTOperator QTLower, True)) = [curv]
+    findSelfVars tve curv (Node _ ch) = concatMap (findSelfVars tve curv) ch
+
+    substituteSelfQt _ t'@(tag -> QTVar _) = t'
+    substituteSelfQt selfvars t' = aux selfvars t'
+      where aux sv n@(Node (QTVar v2 :@: anns) _)
+              | v2 `elem` sv = foldl (@+) tself anns
               | otherwise = n
 
-            aux (Node tg ch) = Node tg (map aux ch)
+            aux sv (Node tg ch) = Node tg (map (aux sv) ch)
 
 
 -- | Unification driver type synonyms.

@@ -209,6 +209,10 @@ isQTLower :: K3 QType -> Bool
 isQTLower (tag -> QTOperator QTLower) = True
 isQTLower _ = False
 
+isQTRecord :: K3 QType -> Bool
+isQTRecord (tag -> QTCon (QTRecord _)) = True
+isQTRecord _ = False
+
 instance Pretty QTVarId where
   prettyLines x = [show x]
 
