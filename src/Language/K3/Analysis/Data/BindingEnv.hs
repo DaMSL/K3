@@ -54,6 +54,9 @@ union = Map.union
 unions :: [BindingEnv a] -> BindingEnv a
 unions = Map.unions
 
+map :: (a -> b) -> BindingEnv a -> BindingEnv b
+map f env = Map.map f env
+
 foldl :: (b -> Identifier -> a -> b) -> b -> BindingEnv a -> b
 foldl f z env = Map.foldlWithKey' f z env
 
