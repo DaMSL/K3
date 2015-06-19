@@ -9,7 +9,6 @@ module Language.K3.Driver.Service where
 import Control.Arrow ( (&&&), second )
 import Control.Concurrent
 import Control.Concurrent.Async ( Async, asyncThreadId, cancel )
-import Control.Exception ( ErrorCall(..) )
 import Control.Monad
 import Control.Monad.Catch ( throwM, catchIOError, finally )
 import Control.Monad.IO.Class
@@ -50,6 +49,7 @@ import System.Random
 import System.ZMQ4.Monadic
 
 import System.IO ( Handle, stdout, stderr )
+import System.IO.Error ( userError )
 import qualified System.Log.Logger         as Log
 import qualified System.Log.Formatter      as LogF
 import qualified System.Log.Handler        as LogH
@@ -664,7 +664,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     merrM msg =  errorM $ mPfxM ++ msg
 
     zm :: ServiceMM z a -> ZMQ z a
-    zm m = runServiceZ sv m >>= either (throwM . ErrorCall) return
+    zm m = runServiceZ sv m >>= either (throwM . userError) return
 
     mkReport n profs = TransformReport (Map.singleton n profs) Map.empty
 
@@ -1038,7 +1038,7 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
     werrM msg =  errorM $ wPfxM ++ msg
 
     zm :: ServiceWM z a -> ZMQ z a
-    zm m = runServiceZ sv m >>= either (throwM . ErrorCall) return
+    zm m = runServiceZ sv m >>= either (throwM . userError) return
 
     logmHandler (SC.decode -> msgE) = either werrM (\msg -> wlogM (cshow msg) >> mHandler msg) msgE
 
@@ -1064,7 +1064,7 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
     -- | Block compilation functions.
     processBlock pid ([SDeclOpt cSpec]) stbs syms blocksByBID =
       abortcatch pid blocksByBID $ do
-        initSt <- either (throwM . ErrorCall) (return . putTransformSyms syms) $ SC.decode stbs
+        initSt <- either (throwM . userError) (return . putTransformSyms syms) $ SC.decode stbs
         start <- liftIO getTime
         startP <- liftIO getPOSIXTime
         wlogM $ boxToString $ ["Worker blocks start"] %$ (indent 2 [show startP])
