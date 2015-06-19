@@ -223,7 +223,9 @@ def restapi():
   if request.headers['Accept'] == 'application/json':
     return redirect(url_for('staticFile', filename="rest.txt"))
   else:
-    return render_template('rest.html')
+    with open('static/rest.txt') as restapi:
+      rest = restapi.read()
+      return render_template('rest.html', api=rest)
 
 
 @webapp.route('/log')
@@ -528,8 +530,11 @@ def createJobLatest(appName):
   """
   logger.debug('[FLASKWEB  /jobs/<appName>] Redirect to current version of /jobs/%s' % appName)
   app = db.getApp(appName)
-  return createJob(appName, app['uid'])
-
+  if app:
+    return createJob(appName, app['uid'])
+  else:
+    return returnError("Application %s does not exist" % appName, 404)
+    
 @webapp.route('/jobs/<appName>/<appUID>', methods=['GET', 'POST'])
 def createJob(appName, appUID):
   """
@@ -548,7 +553,7 @@ def createJob(appName, appUID):
   #         GET    Display job list for this application
   #------------------------------------------------------------------------------
   """
-  logger.debug('[FLASKWEB  /jobs/<appName>] Job Request for %s' % appName)
+  logger.debug('[FLASKWEB  /jobs/<appName>/<appUID>] Job Request for %s' % appName)
   global dispatcher
   applist = [a['name'] for a in db.getAllApps()]
   if appName in applist:
@@ -907,12 +912,15 @@ def compile():
     #                   -F name=<appName>  
     #                   -F file=@<sourceFile> 
     #                   -F blocksize=<blocksize> 
-    #                   -F compilestage=<compilestage>
+    #                   -F compilestage=['both'|'cpp'|'bin']
     #                   -F numworkers=<numworkers> 
     #                   -F options=<compileOptions>
+    #                   -F gitpull=[True|False]
+    #                   -F branch=<k3_branch>
     #                   -F user=<userName> http://<host>:<port>/compile
     #    NOTE: Username, blocksize, numworkers, compilestate & Options are optional
-    #             default vals:  numworkers=1,  blocksize=4, compilestage=""
+    #             default vals:  numworkers=1,  blocksize=4, compilestage="both",
+    #                   gitpull=True, branch='development'
     #------------------------------------------------------------------------------
     """
     if webapp.config['COMPILE_OFF']:
@@ -925,19 +933,44 @@ def compile():
       file = request.files['file']
       text = request.form['text'] if 'text' in request.form else None
       name = request.form['name'] if 'name' in request.form else None
-      options = request.form['options'] if 'options' in request.form else ''
-      user = request.form['user'] if 'user' in request.form else 'someone'
-      tag = request.form['tag'] if 'tag' in request.form else ''
-      stage = request.form['compilestage'] if 'compilestage' in request.form else "both"
-
-      blocksize = request.form['blocksize'] if 'blocksize' in request.form else 4
-      numworkers = int(request.form['numworkers']) if 'numworkers' in request.form else len(workerNodes)
-      logger.debug("Compile requested for application: %s", name)
 
       # Create a unique ID
       uid = getUID()
 
-      # Determine application name
+      # Set default settings for a Compile Job
+      settings = CompileLauncher.compileSettings()
+
+      # update settings & error check where necessary
+      settings['options'] = request.form.get('options', settings['options'])
+      settings['user'] = request.form.get('user', settings['user'])
+      settings['tag'] = request.form.get('tag', settings['tag'])
+      settings['branch'] = request.form.get('branch', settings['branch'])
+
+      stage = request.form.get('compilestage', settings['compilestage'])
+      if stage not in ['both', 'cpp', 'bin']:
+        return returnError("Invalid Input on key `compilestage`. Valid entries are ['both', 'cpp', 'bin']", 400)
+      else:
+        settings['compilestage'] = stage #getCompileStage(stage).value
+
+      blocksize = request.form.get('blocksize', settings['blocksize'])
+      if isinstance(blocksize, int):
+        settings['blocksize'] = blocksize
+      elif blocksize.isdigit():
+        settings['blocksize'] = int(blocksize)
+
+      gitpull = request.form.get('gitpull', settings['gitpull'])
+      settings['gitpull'] = gitpull if isinstance(gitpull, bool) else (gitpull.upper() == 'TRUE')
+
+      cabalbuild = request.form.get('cabalbuild', settings['cabalbuild'])
+      settings['cabalbuild'] = cabalbuild if isinstance(cabalbuild, bool) else (cabalbuild.upper() == 'TRUE')
+
+
+      if 'numworkers' not in request.form or request.form['numworkers'] == '':
+        settings['numworkers'] = len(workerNodes)
+      else:
+        settings['numworkers'] = int(request.form['numworkers'])
+
+      # Determine application name (for pass-thru naming)
       if not name:
         if file:
           srcfile = secure_filename(file.filename)
@@ -945,29 +978,23 @@ def compile():
         else:
           return returnError("No name provided for K3 program", 400)
 
-      if stage not in ['both', 'cpp', 'bin']:
-        return returnError("Invalid Input on key `comilestage`. Valid entries are ['both', 'cpp', 'bin']", 400)
-
-      compilestage = getCompileStage(stage)
-
-
+      app = AppID(name, uid)
 
       uname = '%s-%s' % (name, uid)
       path = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], uname).encode(encoding='utf8')
 
       # Save K3 source to file (either from file or text input)
-      src_file = ('%s.k3' % name)
+      settings['source'] = ('%s.k3' % name)
+      settings['webaddr'] = webapp.config['ADDR']
       if not os.path.exists(path):
         os.mkdir(path)
 
       if file:
-          file.save(os.path.join(path, src_file))
+          file.save(os.path.join(path, settings['source']))
       else:
-          file = open(os.path.join(path, src_file).encode(encoding='utf8'), 'w')
+          file = open(os.path.join(path, settings['source']).encode(encoding='utf8'), 'w')
           file.write(text)
           file.close()
-
-      # source = webapp.config['ADDR'] + os.path.join(url, src_file)
 
       # Create Symlink for easy access to latest compiled task
       link = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], name).encode(encoding='utf8')
@@ -978,13 +1005,18 @@ def compile():
       url = os.path.join(webapp.config['UPLOADED_BUILD_URL'], uname).encode(encoding='utf8')
 
       # TODO: Add in Git hash
-      compileJob   = CompileJob(name=name, uid=uid, options=options, user=user, tag=tag,
-              path=path, blocksize=blocksize, numworkers=numworkers, compilestage=compilestage, url=url)
+      # compileJob   = CompileJob(name=name, uid=uid, options=options, user=user, tag=tag,
+      #         path=path, blocksize=blocksize, numworkers=numworkers, 
+      #         compilestage=compilestage, url=url, branch=branch, gitpull=gitpull)
 
 
       # Create the Mesos Scheduler to manage the compilation
-      # compileDriver = CompileDriver(compileJob, webapp.config['MESOS'], source=source, script=script, webaddr=webapp.config['ADDR'])
-      launcher = CompileLauncher(compileJob, source=src_file, webaddr=webapp.config['ADDR'])
+      # launcher = CompileLauncher(compileJob, source=src_file, webaddr=webapp.config['ADDR'])
+      launcher  = CompileLauncher(name, uid, path, settings)
+
+      # dict( (name,eval(name)) for name in 
+      #   ['options', 'user', 'tag', 'path', 'url', 'blocksize', 'numworkers', 'compilestage', 'branch', 'gitpull', 'cabalbuild'])
+
 
       # Note: Each compile job runs as as a separate framework
       framework = mesos_pb2.FrameworkInfo()
@@ -994,7 +1026,7 @@ def compile():
       # Create the Mesos Driver to register with Mesos
       driver = mesos.native.MesosSchedulerDriver(launcher, framework, webapp.config['MESOS'])
       compile_tasks[uid] = launcher
-      lastCompile = compileJob
+      lastCompile = launcher.getItems()
 
       # Start the Driver in its own thread
       t = threading.Thread(target=driver.run)
@@ -1006,10 +1038,10 @@ def compile():
 
       # outputurl = "http://qp1:%d/compile/%s" % (webapp.config['PORT'], uname)
       outputurl = "/compile/%s" % uname
-      cppsrc = '/fs/archive/%s/%s.cpp' % (uname, name)
+      cppsrc = os.path.join(webapp.config['UPLOADED_BUILD_URL'], uname, settings['source'])
 
-      thiscompile = dict(compileJob.__dict__, url=dispatcher.getSandboxURL(uname),
-                         status='SUBMITTED', outputurl=outputurl, cppsrc=cppsrc)
+      thiscompile = dict(lastCompile, url=dispatcher.getSandboxURL(uname),
+                         status='SUBMITTED', outputurl=outputurl, cppsrc=cppsrc,uname=uname)
 
 
       if request.headers['Accept'] == 'application/json':
@@ -1155,10 +1187,11 @@ def killCompile(uid):
     logging.info ("[FLASKWEB] Asked to KILL Compile UID #%s. Current status is %s" % (c['uid'], c['status']))
 
     if c['status'] != CompileState.COMPLETE:
-      db.updateCompile(uid, status='KILLED', done=True)
+      logging.info ("[FLASKWEB] KILLING Compile UID #%s. " % (c['uid']))
+      db.updateCompile(c['uid'], status='KILLED', done=True)
 
-    if uid in compile_tasks.keys():
-      compile_tasks[uid].kill()
+    if c['uid'] in compile_tasks.keys():
+      compile_tasks[c['uid']].kill()
       c['status'] = 'KILLED'
 
     if request.headers['Accept'] == 'application/json':
@@ -1178,14 +1211,14 @@ def deleteCompiles():
     return returnError("Compilation Features are not available", 400)
 
 
-  deleteList = request.form.getlist("delete_compiles")
+  deleteList = request.form.getlist("delete_compile")
   for uid in deleteList:
     logger.info("[FLASKWEB /delete/compiles] DELETING compile job uid=" + uid)
     job = db.getCompiles(uid=uid)[0]
     # TODO: COMPLETE
     # path = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], job['appName'], jobId)
     # shutil.rmtree(path, ignore_errors=True)
-    db.deleteCompile(jobId)
+    db.deleteCompile(job['uid'])
   return redirect(url_for('listJobs')), 302
 
 @socketio.on('connect', namespace='/compile')

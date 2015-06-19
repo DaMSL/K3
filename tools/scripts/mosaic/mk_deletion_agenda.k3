@@ -91,12 +91,11 @@ declare toggle_delete: TPCH -> TPCH = \r -> {
   _R39: r._R39
 }
 
-declare in_file: string
-declare out_file: string
+declare in_file: string = "/local/data/insertion_agenda.tbl"
+declare out_file: string = "/local/data/deletion_agenda.tbl"
 
-// TODO: Fix inability to put variables as the location of files.
-source input: TPCH = file "/in_file" psv
-sink output: TPCH = file "/out_file" csv
+source input: TPCH = file in_file psv
+sink output: TPCH = file out_file psv
 
 declare stash: collection TPCH @ { Vector }
 

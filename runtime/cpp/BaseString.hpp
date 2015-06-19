@@ -269,6 +269,30 @@ class base_string {
   char* buffer;
 };
 
+  inline bool operator==(char const* s, base_string const& b) {
+    return b == s;
+  }
+
+  inline bool operator!=(char const* s, base_string const& b) {
+    return b != s;
+  }
+
+  inline bool operator<(char const* s, base_string const& b) {
+    return b >= s;
+  }
+
+  inline bool operator<=(char const* s, base_string const& b) {
+    return b > s;
+  }
+
+  inline bool operator>(char const* s, base_string const& b) {
+    return b <= s;
+  }
+
+  inline bool operator>=(char const* s, base_string const& b) {
+    return b < s;
+  }
+
 inline base_string operator + (base_string s, base_string const& t) {
   return s += t;
 }

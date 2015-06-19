@@ -157,6 +157,7 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
 
   if task_data['jsonlog'] == False:
     del task_data['jsonlog']
+
   if task_data['jsonfinal'] == False:
     del task_data['jsonfinal']
 
@@ -226,37 +227,40 @@ def addTaskLabel(task, key, value):
   lab.value = str(value)
   # task.labels.MergeFrom(config)
 
-def compileTask(**kwargs):
-  app     = kwargs.get('name', 'myprog')
-  webaddr = kwargs.get('webaddr', 'http://localhost:5000')
-  # script  = kwargs.get('script', None)
-  source  = kwargs.get('source', None)
-  slave   = kwargs.get('slave', None)
-  uid     = kwargs.get('uid', None)
-  r_cpu   = kwargs.get('cpu', 4)
-  r_mem   = kwargs.get('mem', 4*1024)
-  daemon  = kwargs.get('daemon')
+# def compileTask(**kwargs):
+def compileTask(app, slave, daemon, r_cpu, r_mem, r_port):
+  # app     = kwargs.get('name', 'myprog')
+  # uid     = kwargs.get('uid', None)
+  # slave   = kwargs.get('slave', None)
+
+  # webaddr = kwargs.get('webaddr', 'http://localhost:5000')
+  # # script  = kwargs.get('script', None)
+  # source  = kwargs.get('source', None)
+  # r_cpu   = kwargs.get('cpu', 4)
+  # r_mem   = kwargs.get('mem', 4*1024)
+  # r_port  = kwargs.get('port', None)
+  # daemon  = kwargs.get('daemon')
 
   if slave == None:
     logging.error("Error. No mesos slave provided")
 
-  uname = app if uid == None else "%s-%s" % (app, uid)
+  # uname = app if uid == None else "%s-%s" % (app, uid)
 
   executor = mesos_pb2.ExecutorInfo()
-  executor.executor_id.value = app
-  executor.name = 'K3-Compiler-%s' % app
+  executor.executor_id.value = app.get()
+  executor.name = 'K3-Compiler-%s' % app.get()
 
   command = mesos_pb2.CommandInfo()
   command.value = 'python $MESOS_SANDBOX/CompileExecutor.py'
 
   comp_exec = command.uris.add()
-  comp_exec.value = "%s/fs/CompileExecutor.py" % webaddr
+  comp_exec.value = "%s/fs/CompileExecutor.py" % daemon['webaddr']
   comp_exec.executable = False
   comp_exec.extract = False
 
   if daemon['role'] == 'client':
     src = command.uris.add()
-    src.value = "%s/fs/build/%s-%s/%s" % (webaddr, app, uid, source)
+    src.value = "%s/fs/build/%s/%s" % (daemon['webaddr'], app.get(), daemon['source'])
     src.executable = False
     src.extract = False
 
@@ -271,12 +275,21 @@ def compileTask(**kwargs):
   executor.command.MergeFrom(command)
   executor.container.MergeFrom(container)
 
+  #  TO set ENVAR for K3_BRANCH  (may remove)
+  # environment = mesos_pb2.Environment()
+  # envar = environment.variables.add()
+  # envar.name = 'K3_BRANCH'
+  # envar.value = daemon['branch']
+  # command.environment.MergeFrom(environment)
+
   task = mesos_pb2.TaskInfo()
-  task.name = app
+  task.name = app.get()
   task.task_id.value = daemon['svid']
   task.slave_id.value = slave
 
   # ADD ALL LABELS HERE to pass to executor
+  daemon['name'] = app.name
+  daemon['uid'] = app.uid
   config = mesos_pb2.Labels()
   for k, v in daemon.items():
     lab = config.labels.add()
@@ -296,7 +309,17 @@ def compileTask(**kwargs):
   mem.type = mesos_pb2.Value.SCALAR
   mem.scalar.value = r_mem
 
-  logging.debug("Compile Task Resources: cpu=%s, mem=%s" % (r_cpu, r_mem))
+  # Ports are only added if set and are defined as a range of 1 port
+  if r_port:
+    port = task.resources.add()
+    port.name = "ports"
+    port.type = mesos_pb2.Value.RANGES
+    portrange = port.ranges.range.add()
+    portrange.begin = r_port
+    portrange.end = r_port
+    logging.debug("Compile Task Resources: cpu=%s, mem=%s, port=%s" % (r_cpu, r_mem, r_port))
+  else:
+    logging.debug("Compile Task Resources: cpu=%s, mem=%s" % (r_cpu, r_mem))
 
   return task
 

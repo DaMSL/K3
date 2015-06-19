@@ -157,10 +157,10 @@ namespace K3 {
       string result_p,
       shared_ptr<const MessageQueues> qs
     ): LogMT("Engine") {
-      configure(simulation, sys_env, _msgcodec, log_level, log_path, false, result_v, result_p, qs);
+      configure(simulation, sys_env, _msgcodec, log_level, log_path, false, result_v, result_p, qs, true);
     }
 
-    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<MessageCodec> _msgcodec, string log_level,string log_path, bool json_final, string result_var, string result_path, shared_ptr<const MessageQueues> qs);
+    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<MessageCodec> _msgcodec, string log_level,string log_path, bool json_final, string result_var, string result_path, shared_ptr<const MessageQueues> qs, bool local_sends);
 
     //-----------
     // Messaging.
@@ -408,6 +408,7 @@ namespace K3 {
     bool                            log_final = false;
     bool                            log_json;
     bool                            log_json_final = false;
+    bool                            local_sends_enabled = true;
 
     // Tuple of (eventLog, globalsLog)
     std::map<Address, tuple<shared_ptr<ofstream>, shared_ptr<ofstream>>> log_streams;

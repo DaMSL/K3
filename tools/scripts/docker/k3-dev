@@ -10,13 +10,27 @@
 # Debian: Jesse
 FROM debian:sid
 
+ENV BOOST_VER 1.57.0
+ENV BOOST_DIR boost_1_57_0
+
+ENV PROTO_VER 2.5.0
+
+ENV MESOS_VER 0.22.1
+ENV MESOS_INT_VER 0.22.1.1
+
+ENV CABAL_VER 1.22
+ENV GHC_VER 7.10.1
+ENV HAPPY_VER 1.19.5
+ENV ALEX_VER 3.1.4
+
 # Install basic packages to build the image
 RUN apt-get update && apt-get install -y \
     bzip2 unzip autoconf Libtool \
     gcc g++ make cmake git curl wget \
-    aptitude vim tmux \
-    libyaml-cpp-dev ruby2.2 \
-    subversion clang-3.5 \
+    aptitude vim tmux && \
+    apt-get update && \
+    apt-get install -y libyaml-cpp-dev \
+    ruby2.2 subversion clang-3.5 \
     python python-dev python-pip \
     software-properties-common \
     python-software-properties \
@@ -29,16 +43,16 @@ RUN apt-get update && apt-get install -y \
     pip install enum34 && \
     pip install Flask-SocketIO
 
-# Install Boost v1.57.0
-RUN wget http://sourceforge.net/projects/boost/files/boost/1.57.0/boost_1_57_0.tar.bz2/download && \
+# Install Boost
+RUN wget http://sourceforge.net/projects/boost/files/boost/$BOOST_VER/$BOOST_DIR.tar.bz2/download && \
   tar --bzip2 -xvf ./download && \
   rm download && \
-  cd boost_1_57_0 &&  \
+  cd $BOOST_DIR &&  \
   ./bootstrap.sh --with-libraries=serialization,system,thread,log,program_options,filesystem --prefix=/usr/local libdir=/usr/local/lib && \
   ./b2 stage threading=multi link=shared &&  \
   ./b2 install threading=multi link=shared && \
   cd .. && \
-  rm -Rf boost_1_57_0
+  rm -Rf $BOOST_DIR
 
 # Install CSV++
 RUN git clone https://git01.codeplex.com/forks/wjjt/csvpp && \
@@ -59,16 +73,16 @@ RUN git clone https://github.com/DaMSL/libdynamic && \
   cd .. && \
   rm -Rf libdynamic
 
-# Copy in Mesos v0.22.1 libs && install python eggs
-ADD libmesos-0.22.1.so /usr/lib/
+# Copy in Mesos libs & include files
+ADD libmesos-$MESOS_VER.so /usr/lib/
 ADD libmesos.la /usr/lib/
 ADD include/mesos /usr/include/mesos/
 
-# Install Protobf v2.5
-RUN wget https://github.com/google/protobuf/releases/download/v2.5.0/protobuf-2.5.0.tar.bz2 && \
-  tar -xvf protobuf-2.5.0.tar.bz2 && \
-  rm protobuf-2.5.0.tar.bz2 && \
-  cd protobuf-2.5.0 && \
+# Install Protobuf
+RUN wget https://github.com/google/protobuf/releases/download/v$PROTO_VER/protobuf-$PROTO_VER.tar.bz2 && \
+  tar -xvf protobuf-$PROTO_VER.tar.bz2 && \
+  rm protobuf-$PROTO_VER.tar.bz2 && \
+  cd protobuf-$PROTO_VER && \
   ./autogen.sh && \
   ./configure --prefix=/usr && \
   make && \
@@ -76,52 +90,30 @@ RUN wget https://github.com/google/protobuf/releases/download/v2.5.0/protobuf-2.
   make install && \
   protoc --proto_path=/usr/include/mesos --cpp_out=/usr/include/mesos/ /usr/include/mesos/mesos.proto && \
   cd .. && \
-  rm -Rf /protobuf-2.5.0
+  rm -Rf /protobuf-$PROTO_VER
 
 # Install Mesos Eggs
-RUN ln -s /usr/lib/libmesos-0.22.1.so /usr/lib/libmesos.so && \
-    wget http://downloads.mesosphere.io/master/ubuntu/14.04/mesos-0.22.1-py2.7-linux-x86_64.egg && \
-    wget https://pypi.python.org/packages/2.7/m/mesos.interface/mesos.interface-0.22.1.1-py2.7.egg && \
-    easy_install mesos.interface-0.22.1.1-py2.7.egg && \
-    easy_install --no-deps mesos-0.22.1-py2.7-linux-x86_64.egg && \
-    rm mesos.interface-0.22.1.1-py2.7.egg && \
-    rm mesos-0.22.1-py2.7-linux-x86_64.egg
+RUN ln -s /usr/lib/libmesos-$MESOS_VER.so /usr/lib/libmesos.so && \
+    wget http://downloads.mesosphere.io/master/ubuntu/14.04/mesos-$MESOS_VER-py2.7-linux-x86_64.egg && \
+    wget https://pypi.python.org/packages/2.7/m/mesos.interface/mesos.interface-$MESOS_INT_VER-py2.7.egg && \
+    easy_install mesos.interface-$MESOS_INT_VER-py2.7.egg && \
+    easy_install --no-deps mesos-$MESOS_VER-py2.7-linux-x86_64.egg && \
+    rm mesos.interface-$MESOS_INT_VER-py2.7.egg && \
+    rm mesos-$MESOS_VER-py2.7-linux-x86_64.egg
 
 
 # Install GHC and cabal
 WORKDIR /
 ENV LANG C.UTF-8
-ENV PATH /opt/ghc/7.10.1/bin:/opt/cabal/1.22/bin:/opt/alex/3.1.4/bin:/opt/happy/1.19.5/bin:/root/.cabal/bin/:$PATH
+ENV PATH /opt/ghc/$GHC_VER/bin:/opt/cabal/$CABAL_VER/bin:/opt/alex/$ALEX_VER/bin:/opt/happy/$HAPPY_VER/bin:/root/.cabal/bin/:$PATH
 
 RUN echo 'deb http://ppa.launchpad.net/hvr/ghc/ubuntu trusty main' > /etc/apt/sources.list.d/ghc.list && \
     apt-key adv --keyserver keyserver.ubuntu.com --recv-keys F6F88286 && \
     apt-get update && \
-    apt-get install -y --no-install-recommends zlib1g-dev cabal-install-1.22 ghc-7.10.1 happy-1.19.5 alex-3.1.4 && \
+    apt-get install -y --no-install-recommends zlib1g-dev cabal-install-$CABAL_VER ghc-$GHC_VER happy-$HAPPY_VER alex-$ALEX_VER && \
     rm -rf /var/lib/apt/lists/*  && \
     cabal update && \
     cabal install cabal-install -j
-
-# Clone Repo
-RUN mkdir -p /k3/K3 && \
-    git clone https://github.com/DaMSL/K3.git /k3/K3
-
-# Build K3
-WORKDIR /k3/K3
-
-ENV K3_BRANCH development
-
-RUN git checkout development && \
-    cabal sandbox init && \
-    cabal install --only-dependencies --disable-documentation && \
-    cabal configure && \
-    apt-get update && \
-    apt-get install -y libtinfo-dev && \
-    cabal build
-
-# Clone K3, K3-Mosaic from Git
-RUN mkdir -p /k3/K3 /k3/K3-Mosaic && \
-    git clone https://github.com/DaMSL/K3.git /k3/K3 && \
-    git clone https://github.com/DaMSL/K3-Mosaic.git /k3/K3-Mosaic
 
 # Install decent vim configuration
 RUN mkdir /root/.vim && \
@@ -143,9 +135,30 @@ RUN mkdir /root/.vim && \
     git clone https://github.com/justinmk/vim-sneak.git /root/.vim/bundle; \
     echo 'execute pathogen#infect() | syntax on | filetype plugin indent on' > /root/.vimrc
 
+# Clone Repo
+RUN mkdir -p /k3/K3 && \
+    git clone https://github.com/DaMSL/K3.git /k3/K3
+
+# Build K3
+WORKDIR /k3/K3
+
+ENV K3_BRANCH development
+
+RUN git checkout development && \
+    cabal sandbox init && \
+    cabal install --only-dependencies --disable-documentation && \
+    cabal configure && \
+    apt-get update && \
+    apt-get install -y libtinfo-dev && \
+    cabal build
+
+# Clone K3, K3-Mosaic from Git
+RUN mkdir -p /k3/K3-Mosaic && \
+    git clone https://github.com/DaMSL/K3-Mosaic.git /k3/K3-Mosaic
+
 # Clean up
 RUN apt-get autoremove -y && \
     apt-get autoclean -y
 
-CMD git pull && git checkout $K3_BRANCH && cabal build
+ADD bashrc /root/.bashrc
 

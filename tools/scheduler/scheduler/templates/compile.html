@@ -18,13 +18,24 @@
                 <div class="col-md-8"><input type=text name=numworkers value=1 size="80"></div>
             </div>
             <div class="row">
+                <div class="col-md-2"><h4>Force Git Pull:</h4></div>
+                <div class="col-md-8"><input type=text name=gitpull value=True></div>
+            </div>
+            <div class="row">
+                <div class="col-md-2"><h4>Force Cabal Build:</h4></div>
+                <div class="col-md-8"><input type=text name=cabalbuild value=False></div>
+            </div>
+            <div class="row">
+                <div class="col-md-2"><h4>Branch or Commit hash to pull:</h4></div>
+                <div class="col-md-8"><input type=text name=branch value="development" size="80"></div>
+            </div> 
+            <div class="row">
                 <div class="col-md-2"><h4>Compile Stage</h4></div>
                 <div class="col-md-8">
                     <select name = "compilestage">
-                        <option selected = "selected">Select...</option>
-                        <option value = "cpp">First Stage:   K3->CPP</option>
-                        <option value = "bin">Second Stage: CPP->bin</option>
-                          <option value = "both">Both Stages:   K3->bin</option>
+                        <option value = "both">Both: K3->bin</option>
+                        <option value = "cpp">First:  K3->CPP</option>
+                        <option value = "bin">Second: CPP->bin</option>
                     </select>
                   </div>
             </div>

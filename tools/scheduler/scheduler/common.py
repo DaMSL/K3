@@ -9,16 +9,15 @@ gc_delay = 8
 offer_wait = 8
 
 
-# Returns unique time stamp uid (unique to this machine only (for now)
+# Returns unique time stamp uid (unique to this machine only)
 def getUID():
   return str(uuid.uuid1()).split('-')[0]
 
 
 masterNodes =  ['qp-hm1']
-# workerNodes =  ['qp-hm' + str(i) for i in range(1,9)]
-# workerNodes =  ['qp4']
 workerNodes =  ['qp' + str(i) for i in range(3,6)] + ['qp-hm' + str(i) for i in range(2,9)] + ['qp-hd' + str(i) for i in [1, 3, 4, 6, 7, 8, 10, 12]]
 clientNodes =  ['qp-hd16']
+allNodes    =  masterNodes + workerNodes + clientNodes
 
 
 CompileState = enum.Enum('CompileState', 'INIT DISPATCH MASTER_WAIT WORKER_WAIT CLIENT_WAIT SUBMIT COMPILE UPLOAD COMPLETE FAILED KILLED')
