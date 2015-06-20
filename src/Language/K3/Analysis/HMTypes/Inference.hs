@@ -518,8 +518,8 @@ tvshallowLowerRcr rcr a b =
       (QTCon (QTCollection _), QTSelf) -> return a
       (QTSelf, QTCon (QTCollection _)) -> return b
 
-      (QTCon (QTRecord _), QTSelf)     -> return b
-      (QTSelf, QTCon (QTRecord _))     -> return a
+      (QTCon (QTRecord _), QTSelf)     -> return a
+      (QTSelf, QTCon (QTRecord _))     -> return b
 
       (_, _)
         | (isQTLower a && isQTLower b) || isQTLower a || isQTLower b -> do
@@ -720,8 +720,8 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
     unifyDrv' t1@(tag -> QTCon (QTCollection _)) (tag -> QTSelf) = return t1
     unifyDrv' (tag -> QTSelf) t2@(tag -> QTCon (QTCollection _)) = return t2
 
-    unifyDrv' (tag -> QTCon (QTRecord _)) t2@(tag -> QTSelf) = return t2
-    unifyDrv' t1@(tag -> QTSelf) (tag -> QTCon (QTRecord _)) = return t1
+    unifyDrv' t1@(tag -> QTCon (QTRecord _)) (tag -> QTSelf) = return t1
+    unifyDrv' (tag -> QTSelf) t2@(tag -> QTCon (QTRecord _)) = return t2
 
     -- | Record subtyping for projection
     unifyDrv' t1@(tag -> QTCon d1@(QTRecord f1)) t2@(tag -> QTCon d2@(QTRecord f2))
