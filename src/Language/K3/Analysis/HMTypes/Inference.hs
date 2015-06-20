@@ -513,13 +513,13 @@ tvshallowLowerRcr rcr a b =
           else annLower a b >>= return . foldl (@+) (tfun (head $ children a) retlb)
 
       -- | Self type lower bounds
-      (QTSelf, QTSelf)                 -> return a
+      (QTSelf _, QTSelf _)               -> return a
 
-      (QTCon (QTCollection _), QTSelf) -> return a
-      (QTSelf, QTCon (QTCollection _)) -> return b
+      (QTCon (QTCollection _), QTSelf _) -> return a
+      (QTSelf _, QTCon (QTCollection _)) -> return b
 
-      (QTCon (QTRecord _), QTSelf)     -> return a
-      (QTSelf, QTCon (QTRecord _))     -> return b
+      (QTCon (QTRecord _), QTSelf _)     -> return b
+      (QTSelf _, QTCon (QTRecord _))     -> return a
 
       (_, _)
         | (isQTLower a && isQTLower b) || isQTLower a || isQTLower b -> do
@@ -657,27 +657,37 @@ unifyv v t = getTVE >>= \tve -> do
     then do { localLog $ prettyTaggedSPair "unifyv noc" v t;
               modify $ mtive $ \tve' -> tvext tve' v t }
 
-    else do { selfvars <- return $ findSelfVars tve v t;
+    else do { selfvars <- findSelfVars tve (initSelfPath t) t;
+              truncatedQt <- return $ substituteSelfQt selfvars (\i -> tself $ Just i) t;
               subQt <- tvsub False t;
-              boundQt <- return $ substituteSelfQt selfvars t;
-              localLog $ prettyTaggedTriple (unwords ["unifyv yoc", show v, show selfvars]) t subQt boundQt;
-              modify $ mtive $ \tve' -> tvext (tvmap tve' $ substituteSelfQt selfvars) v boundQt; }
+              localLog $ prettyTaggedTriple (unwords ["unifyv yoc", show v, show selfvars]) t subQt truncatedQt;
+              modify $ mtive $ \tve' -> tvext (tvmap tve' $ substituteSelfQt [v] $ const truncatedQt) v t; }
 
   where
-    findSelfVars tve _ (tag &&& tvchase tve -> (QTVar v', t''))
-      | occurs v t'' tve = findSelfVars tve v' t''
-      | otherwise = []
+    isSelfCandidate (tag &&& (all isQTRecord . children) -> (QTOperator QTLower, True)) = True
+    isSelfCandidate _ = False
 
-    findSelfVars _ curv (tag &&& (all isQTRecord . children) -> (QTOperator QTLower, True)) = [curv]
-    findSelfVars tve curv (Node _ ch) = concatMap (findSelfVars tve curv) ch
+    initSelfPath qt | isSelfCandidate qt = [v]
+                    | otherwise = []
 
-    substituteSelfQt _ t'@(tag -> QTVar _) = t'
-    substituteSelfQt selfvars t' = aux selfvars t'
-      where aux sv n@(Node (QTVar v2 :@: anns) _)
-              | v2 `elem` sv = foldl (@+) tself anns
-              | otherwise = n
+    findSelfVars tve vpath (tag &&& tvchase tve -> (QTVar v', t''))
+      | v == v' = case vpath of
+                    [] -> serrorM "Invalid path for self variable extraction."
+                    _  -> return [head vpath]
 
-            aux sv (Node tg ch) = Node tg (map (aux sv) ch)
+      | occurs v t'' tve =
+          let nvpath = if isSelfCandidate t'' then vpath ++ [v'] else vpath
+          in findSelfVars tve nvpath t''
+
+      | otherwise = return []
+
+    findSelfVars tve vpath (Node _ ch) = mapM (findSelfVars tve vpath) ch >>= return . concat
+
+    substituteSelfQt selfvars nt t'@(Node (QTVar v2 :@: anns) _)
+      | v2 `elem` selfvars = foldl (@+) (nt v2) anns
+      | otherwise = t'
+
+    substituteSelfQt selfvars nt (Node tg ch) = Node tg (map (substituteSelfQt selfvars nt) ch)
 
 
 -- | Unification driver type synonyms.
@@ -717,11 +727,11 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
       | otherwise = primitiveErr p1 p2
 
     -- | Self type unification
-    unifyDrv' t1@(tag -> QTCon (QTCollection _)) (tag -> QTSelf) = return t1
-    unifyDrv' (tag -> QTSelf) t2@(tag -> QTCon (QTCollection _)) = return t2
+    unifyDrv' t1@(tag -> QTCon (QTCollection _)) (tag -> QTSelf _) = return t1
+    unifyDrv' (tag -> QTSelf _) t2@(tag -> QTCon (QTCollection _)) = return t2
 
-    unifyDrv' t1@(tag -> QTCon (QTRecord _)) (tag -> QTSelf) = return t1
-    unifyDrv' (tag -> QTSelf) t2@(tag -> QTCon (QTRecord _)) = return t2
+    unifyDrv' (tag -> QTCon (QTRecord _)) t2@(tag -> QTSelf _) = return t2
+    unifyDrv' t1@(tag -> QTSelf _) (tag -> QTCon (QTRecord _)) = return t1
 
     -- | Record subtyping for projection
     unifyDrv' t1@(tag -> QTCon d1@(QTRecord f1)) t2@(tag -> QTCon d2@(QTRecord f2))
@@ -858,8 +868,8 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
 
     substituteSelfQt :: K3 QType -> K3 QType -> TInfM (K3 QType)
     substituteSelfQt ct@(tag -> QTCon (QTCollection _)) qt = mapTree sub qt
-      where sub _ (tag -> QTSelf) = return $ ct
-            sub ch (Node n _)     = return $ Node n ch
+      where sub _ (tag -> QTSelf _) = return $ ct
+            sub ch (Node n _)       = return $ Node n ch
 
     substituteSelfQt ct _ = subSelfErr ct
 
@@ -1022,8 +1032,14 @@ substituteDeepQt e = mapTree subNode e
           nanns <- mapM subAnns anns
           return (Node (tg :@: nanns) ch)
 
-        subAnns (EQType qt) = tvsub False qt >>= return . EQType
+        subAnns (EQType qt) = tvsub False qt >>= subSelfs >>= return . EQType
         subAnns x = return x
+
+        subSelfs qt = modifyTree subSelf qt
+        subSelf (tag -> QTSelf (Just v)) = do
+          tve <- getTVE
+          return $ tvchase tve $ tvar v
+        subSelf n = return n
 
 {- Type initialization -}
 
@@ -1615,7 +1631,7 @@ qType t = foldMapTree mkQType (ttup []) t >>= return . mutabilityT t
 
     mkQType _ (tag -> TBuiltIn TContent)   = return tcontent
     mkQType _ (tag -> TBuiltIn TStructure) = return tfinal
-    mkQType _ (tag -> TBuiltIn TSelf)      = return tself
+    mkQType _ (tag -> TBuiltIn TSelf)      = return $ tself Nothing
 
     mkQType _ (tag -> TDeclaredVar x) = get >>= \tienv -> liftExceptM (tilkupdv tienv x)
 
@@ -1690,7 +1706,7 @@ translateQType toplevel_expr expr spanOpt qt = mapTree translateWithMutability q
           | QTTop        <- tag qt' = return TC.top
           | QTContent    <- tag qt' = return $ TC.builtIn TContent
           | QTFinal      <- tag qt' = return $ TC.builtIn TStructure
-          | QTSelf       <- tag qt' = return $ TC.builtIn TSelf
+          | QTSelf _     <- tag qt' = return $ TC.builtIn TSelf
           | QTVar v      <- tag qt' = return $ TC.declaredVar ("v" ++ show v)
           | QTOperator _ <- tag qt' =
               let msg = "Invalid qtype translation for qtype operator"

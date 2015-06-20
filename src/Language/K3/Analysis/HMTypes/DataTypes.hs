@@ -38,7 +38,7 @@ data QType
         | QTOperator  QTOp
         | QTContent
         | QTFinal
-        | QTSelf
+        | QTSelf      (Maybe QTVarId)
         | QTTop
       deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
@@ -123,8 +123,8 @@ tcontent = tleaf QTContent
 tfinal :: K3 QType
 tfinal = tleaf QTFinal
 
-tself :: K3 QType
-tself = tleaf QTSelf
+tself :: Maybe QTVarId -> K3 QType
+tself i = tleaf $ QTSelf i
 
 
 -- | Datatype constructors
