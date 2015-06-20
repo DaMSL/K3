@@ -816,8 +816,8 @@ unifyDrvWithPaths preF postF path1 path2 qt1 qt2 =
       unifyDrvWithPaths preF postF npath1 npath2 a b
 
     onCollectionPair :: [Identifier] -> K3 QType -> K3 QType -> TInfM (K3 QType)
-    onCollectionPair annIds t1 t2 =
-      rcr (head $ children t1) (head $ children t2) >>= return . flip tcol annIds
+    onCollectionPair annIds t1@(annotations -> a1) t2@(annotations -> a2) =
+      rcr (head $ children t1) (head $ children t2) >>= \cqt -> return (tcol cqt annIds @<- (nub $ a1 ++ a2))
 
     onCollection :: K3 QType -> [Identifier] -> K3 QType -> K3 QType -> TInfM (K3 QType)
     onCollection sQt liftedAttrIds
