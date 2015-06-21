@@ -177,7 +177,7 @@ namespace K3 {
   }
 
   template <class C1, class C, class F>
-  C read_records_into_container(C1& paths, F read_record) {
+  C read_records_into_container(C1& paths, C& dummy_container, F read_record) {
     C container;
     for (auto rec : paths) {
       std::ifstream in;

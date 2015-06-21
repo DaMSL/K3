@@ -280,7 +280,9 @@ genLoader fixedSize projectedLoader asReturn sep suf (children -> [_,f]) name = 
 
  let readRecordsCall = if asReturn
                        then R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "read_records_into_container")
-                              [ R.Variable $ R.Name "paths", readRecordFn ]
+                              [ R.Variable $ R.Name "paths"
+                              , R.Variable $ R.Name "c"
+                              , readRecordFn ]
                        else
                         (if fixedSize
                          then R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "read_records_with_resize")
@@ -295,12 +297,12 @@ genLoader fixedSize projectedLoader asReturn sep suf (children -> [_,f]) name = 
                                 , readRecordFn
                                 ])
 
- let defaultArgs = [ ("paths", R.Named $ R.Specialized
-                        [R.Named $ R.Specialized [R.Named $ R.Name "string_impl"] (R.Name "R_path")]
-                        (R.Name "_Collection")) ]
+ let defaultArgs = [  ("paths", R.Named $ R.Specialized
+                         [R.Named $ R.Specialized [R.Named $ R.Name "string_impl"] (R.Name "R_path")]
+                         (R.Name "_Collection"))
+                    , ("c", R.Reference cColType) ]
 
  let args = defaultArgs
-              ++ (if asReturn then [] else [ ("c", R.Reference cColType) ])
               ++ (if projectedLoader then [("_rec", R.Reference $ fromJust cfRecType)] else [])
               ++ (if fixedSize       then [("size", R.Primitive R.PInt)] else [])
 
