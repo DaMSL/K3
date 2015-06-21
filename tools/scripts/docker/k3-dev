@@ -146,11 +146,11 @@ ENV K3_BRANCH development
 
 RUN git checkout development && \
     cabal sandbox init && \
-    cabal install --only-dependencies --disable-documentation && \
+    cabal install -j --only-dependencies --disable-documentation && \
     cabal configure && \
     apt-get update && \
     apt-get install -y libtinfo-dev && \
-    cabal build
+    cabal build -j
 
 # Clone K3, K3-Mosaic from Git
 RUN mkdir -p /k3/K3-Mosaic && \
