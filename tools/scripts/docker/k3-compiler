@@ -62,9 +62,9 @@ RUN git clone https://github.com/DaMSL/libdynamic && \
   rm -Rf libdynamic
 
 # Copy in Mesos v0.22.1 libs && install python eggs
-ADD libmesos-0.22.1.so /usr/lib/
-ADD libmesos.la /usr/lib/
-ADD include/mesos /usr/include/mesos/
+ADD assets/libmesos-0.22.1.so /usr/lib/
+ADD assets/libmesos.la /usr/lib/
+ADD assets/include/mesos /usr/include/mesos/
 
 # Install Protobf v2.5
 RUN wget https://github.com/google/protobuf/releases/download/v2.5.0/protobuf-2.5.0.tar.bz2 && \
@@ -130,5 +130,5 @@ RUN echo '#!/bin/bash' > /k3/start.sh && \
     echo 'git pull && git checkout $K3_BRANCH' >> /k3/start.sh && \
     chmod +x /k3/start.sh
 
-ENTRYPOINT['/k3/start.sh']
+ENTRYPOINT ["/k3/start.sh"]
 

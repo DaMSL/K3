@@ -70,8 +70,8 @@ RUN wget https://github.com/google/protobuf/releases/download/v2.5.0/protobuf-2.
   rm -Rf /protobuf-2.5.0
 
 # Copy in Mesos v0.22.1 libs
-ADD libmesos-0.22.1.so /usr/lib/
-ADD libmesos.la /usr/lib/
+ADD assets/libmesos-0.22.1.so /usr/lib/
+ADD assets/libmesos.la /usr/lib/
 
 # Finish & Clean up
 RUN ln -s /usr/lib/libmesos-0.22.1.so /usr/lib/libmesos.so && \
@@ -91,5 +91,4 @@ RUN ln -s /usr/lib/libmesos-0.22.1.so /usr/lib/libmesos.so && \
     rm -rf /var/cache/* && \
     rm -rf /var/log/* && \
     rm -rf /usr/include/*
-    
     

@@ -74,9 +74,9 @@ RUN git clone https://github.com/DaMSL/libdynamic && \
   rm -Rf libdynamic
 
 # Copy in Mesos libs & include files
-ADD libmesos-$MESOS_VER.so /usr/lib/
-ADD libmesos.la /usr/lib/
-ADD include/mesos /usr/include/mesos/
+ADD assets/libmesos-$MESOS_VER.so /usr/lib/
+ADD assets/libmesos.la /usr/lib/
+ADD assets/include/mesos /usr/include/mesos/
 
 # Install Protobuf
 RUN wget https://github.com/google/protobuf/releases/download/v$PROTO_VER/protobuf-$PROTO_VER.tar.bz2 && \
@@ -160,5 +160,5 @@ RUN mkdir -p /k3/K3-Mosaic && \
 RUN apt-get autoremove -y && \
     apt-get autoclean -y
 
-ADD bashrc /root/.bashrc
+ADD assets/bashrc /root/.bashrc
 
