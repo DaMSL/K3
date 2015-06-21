@@ -23,25 +23,36 @@ ENV GHC_VER 7.10.1
 ENV HAPPY_VER 1.19.5
 ENV ALEX_VER 3.1.4
 
+ENV OPAMYES 1
+
 # Install basic packages to build the image
 RUN apt-get update && apt-get install -y \
-    bzip2 unzip autoconf Libtool \
-    gcc g++ make cmake git curl wget \
-    aptitude vim tmux && \
+                       bzip2 unzip autoconf Libtool \
+                       gcc g++ clang-3.5 make cmake git curl wget subversion pkgconf \
+                       aptitude vim tmux time && \
     apt-get update && \
-    apt-get install -y libyaml-cpp-dev \
-    ruby2.2 subversion clang-3.5 \
-    python python-dev python-pip \
-    software-properties-common \
-    python-software-properties \
-    python-setuptools \
-    libzmq3-dev pkgconf \
-    libre2-dev numactl && \
+    apt-get install -y software-properties-common python-software-properties python-setuptools \
+                       ocaml opam ocaml-native-compilers camlp4-extra \
+                       ruby2.2 python python-dev python-pip \
+                       libyaml-cpp-dev libzmq3-dev libre2-dev numactl && \
     pip install pyyaml && \
     pip install flask && \
     pip install pytz && \
     pip install enum34 && \
-    pip install Flask-SocketIO
+    pip install Flask-SocketIO && \
+    update-alternatives \
+      --install /usr/bin/ruby ruby /usr/bin/ruby2.2 50 \
+      --slave /usr/bin/irb irb /usr/bin/irb2.2 \
+      --slave /usr/bin/rake rake /usr/bin/rake2.2 \
+      --slave /usr/bin/gem gem /usr/bin/gem2.2 \
+      --slave /usr/bin/rdoc rdoc /usr/bin/rdoc2.2 \
+      --slave /usr/bin/testrb testrb /usr/bin/testrb2.2 \
+      --slave /usr/bin/erb erb /usr/bin/erb2.2 \
+      --slave /usr/bin/ri ri /usr/bin/ri2.2 && \
+    opam init -a && \
+    opam install ocamlfind && \
+    /bin/echo -e "\neval \`opam config env\`\n" >> /root/.bashrc
+
 
 # Install Boost
 RUN wget http://sourceforge.net/projects/boost/files/boost/$BOOST_VER/$BOOST_DIR.tar.bz2/download && \
@@ -160,5 +171,4 @@ RUN mkdir -p /k3/K3-Mosaic && \
 RUN apt-get autoremove -y && \
     apt-get autoclean -y
 
-ADD assets/bashrc /root/.bashrc
 
