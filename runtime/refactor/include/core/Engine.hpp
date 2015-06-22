@@ -32,8 +32,8 @@ class Engine {
   // Utilities
   bool running();
   shared_ptr<Peer> getPeer(const Address& addr);
-  shared_ptr<NetworkManager> getNetworkManager();
-  shared_ptr<StorageManager> getStorageManager();
+  NetworkManager& getNetworkManager();
+  StorageManager& getStorageManager();
   template <class F>  // TODO(jbw) Remove this function (push into ProgramContext)
   void logJson(const Address& dest, int trigger, const Address& src, F f);
 
@@ -49,8 +49,8 @@ class Engine {
 
   // Components
   shared_ptr<spdlog::logger> logger_;
-  shared_ptr<NetworkManager> network_manager_;
-  shared_ptr<StorageManager> storage_manager_;
+  NetworkManager network_manager_;
+  StorageManager storage_manager_;
   shared_ptr<const map<Address, shared_ptr<Peer>>> peers_;
 
   // Configuration
@@ -89,7 +89,7 @@ void Engine::run(const Options& opts) {
 
   // This must happen AFTER peers_ has been initialized
   for (auto& it : *peers_) {
-    network_manager_->listenInternal(it.second);
+    network_manager_.listenInternal(it.second);
     it.second->processRole();
   }
 

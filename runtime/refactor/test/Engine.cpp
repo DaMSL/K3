@@ -144,13 +144,13 @@ TEST_F(EngineTest, ExternalMessages) {
   auto peer1 = engine_.getPeer(addr1_);
   auto dc1 = std::dynamic_pointer_cast<DummyContext>(peer1->getContext());
 
-  auto mgr = engine_.getNetworkManager();
-  mgr->listenExternal(peer1, external_addr_, 1, CodecFormat::BoostBinary);
+  auto& mgr = engine_.getNetworkManager();
+  mgr.listenExternal(peer1, external_addr_, 1, CodecFormat::BoostBinary);
 
   shared_ptr<Codec> codec = Codec::getCodec<int>(CodecFormat::BoostBinary);
   for (int i = 0; i < 100; i++) {
     auto val = make_unique<TNativeValue<int>>(i);
-    mgr->sendExternal(external_addr_, codec->pack(*val));
+    mgr.sendExternal(external_addr_, codec->pack(*val));
   }
 
   for (int retries = 1000; retries > 0; retries--) {
@@ -162,7 +162,6 @@ TEST_F(EngineTest, ExternalMessages) {
     ASSERT_NE(1, retries);
   }
 
-  mgr.reset();
   engine_.stop();
   engine_.join();
 }
