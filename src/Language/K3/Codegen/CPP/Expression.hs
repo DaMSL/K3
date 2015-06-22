@@ -290,13 +290,13 @@ inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@
     let className = R.Specialized [trigTypes] (R.Name "TNativeValue")
         classInst = R.Forward $ R.ScalarDecl (R.Name d) R.Inferred
                       (Just $ R.Call (R.Variable $ R.Specialized [R.Named className]
-                                           (R.Qualified (R.Name "std" ) $ R.Name "make_shared")) [vv])
+                                           (R.Qualified (R.Name "std" ) $ R.Name "make_unique")) [vv])
         messageHeader = R.Call (R.Variable $ R.Name "MessageHeader") [R.Variable $ R.Name "me", av, R.Variable $ R.Name tIdName]
     return (concat [te, ae, ve]
                  ++ [ classInst
                     , codec
                     , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Name "send")) [
-                                    messageHeader, R.Variable (R.Name d), (R.Variable $ R.Name d2) ]
+                                    messageHeader, R.Move $ R.Variable (R.Name d), (R.Variable $ R.Name d2) ]
                     ]
              , R.Initialization R.Unit [])
     where

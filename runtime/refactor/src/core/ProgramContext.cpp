@@ -89,12 +89,12 @@ unit_t DummyContext::processRole(const unit_t&) {
   if (role == "int") {
     MessageHeader h(me, me, 1);
     static shared_ptr<Codec> codec = Codec::getCodec<int>(__internal_format_);
-    __engine_.send(h, make_shared<TNativeValue<int>>(5), codec);
+    __engine_.send(h, make_unique<TNativeValue<int>>(5), codec);
   } else if (role == "string") {
     MessageHeader h(me, me, 2);
     static shared_ptr<Codec> codec =
         Codec::getCodec<std::string>(__internal_format_);
-    __engine_.send(h, make_shared<TNativeValue<std::string>>("hi"), codec);
+    __engine_.send(h, make_unique<TNativeValue<std::string>>("hi"), codec);
   }
 
   return unit_t{};

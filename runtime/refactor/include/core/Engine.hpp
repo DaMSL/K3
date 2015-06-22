@@ -23,11 +23,10 @@ class Engine {
   // Core Interface
   Engine();
   ~Engine();
-  template <class Context>
-  void run(const Options& opts);
+  template <class Context> void run(const Options& opts);
   void stop();
   void join();
-  void send(const MessageHeader& m, shared_ptr<NativeValue> v,
+  void send(const MessageHeader& m, unique_ptr<NativeValue> v,
             shared_ptr<Codec> cdec);
 
   // Utilities
@@ -89,13 +88,13 @@ void Engine::run(const Options& opts) {
   logger_->info("All peers are ready.");
 
   // This must happen AFTER peers_ has been initialized
-  for (auto it : *peers_) {
+  for (auto& it : *peers_) {
     network_manager_->listenInternal(it.second);
     it.second->processRole();
   }
 
   // All roles are processed: signal peers to start message loop
-  for (auto it : *peers_) {
+  for (auto& it : *peers_) {
     it.second->start();
   }
   running_ = true;

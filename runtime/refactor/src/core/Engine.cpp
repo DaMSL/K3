@@ -37,7 +37,7 @@ void Engine::stop() {
   // Place a Sentintel on each Peer's queue
   for (auto& it : *peers_) {
     auto m = make_unique<Message>(it.first, it.first, -1,
-                                  make_shared<SentinelValue>());
+                                  make_unique<SentinelValue>());
     it.second->enqueue(std::move(m));
   }
   network_manager_->stop();
@@ -56,7 +56,7 @@ void Engine::join() {
   logger_->info("The Engine has Joined.");
 }
 
-void Engine::send(const MessageHeader& header, shared_ptr<NativeValue> value,
+void Engine::send(const MessageHeader& header, unique_ptr<NativeValue> value,
                   shared_ptr<Codec> codec) {
   if (!peers_) {
     throw std::runtime_error(
@@ -70,12 +70,12 @@ void Engine::send(const MessageHeader& header, shared_ptr<NativeValue> value,
   auto it = peers_->find(header.destination());
   if (local_sends_enabled_ && it != peers_->end()) {
     // Direct enqueue for local messages
-    auto m = make_unique<Message>(header, value);
+    auto m = make_unique<Message>(header, std::move(value));
     it->second->enqueue(std::move(m));
   } else {
     // Serialize and send over the network, otherwise
-    shared_ptr<PackedValue> pv = codec->pack(*value);
-    shared_ptr<NetworkMessage> m = make_shared<NetworkMessage>(header, pv);
+    unique_ptr<PackedValue> pv = codec->pack(*value);
+    shared_ptr<NetworkMessage> m = make_shared<NetworkMessage>(header, std::move(pv));
     network_manager_->sendInternal(m);
   }
 }

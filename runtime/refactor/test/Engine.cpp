@@ -19,6 +19,7 @@
 
 using std::shared_ptr;
 using std::make_shared;
+using std::make_unique;
 using std::vector;
 using std::string;
 using std::tuple;
@@ -81,10 +82,10 @@ TEST_F(EngineTest, LocalSends) {
     shared_ptr<Codec> codec = Codec::getCodec<int>(K3_INTERNAL_FORMAT);
     if (i % 2 == 0) {
       MessageHeader h(addr2_, addr1_, 1);
-      engine_.send(h, make_shared<TNativeValue<int>>(i), codec);
+      engine_.send(h, make_unique<TNativeValue<int>>(i), codec);
     } else {
       MessageHeader h(addr1_, addr2_, 1);
-      engine_.send(h, make_shared<TNativeValue<int>>(i), codec);
+      engine_.send(h, make_unique<TNativeValue<int>>(i), codec);
     }
   }
 
@@ -113,10 +114,10 @@ TEST_F(EngineTest, NetworkSends) {
     shared_ptr<Codec> codec = Codec::getCodec<int>(K3_INTERNAL_FORMAT);
     if (i % 2 == 0) {
       MessageHeader h(addr2_, addr1_, 1);
-      engine_.send(h, make_shared<TNativeValue<int>>(i), codec);
+      engine_.send(h, make_unique<TNativeValue<int>>(i), codec);
     } else {
       MessageHeader h(addr1_, addr2_, 1);
-      engine_.send(h, make_shared<TNativeValue<int>>(i), codec);
+      engine_.send(h, make_unique<TNativeValue<int>>(i), codec);
     }
   }
 
@@ -148,7 +149,7 @@ TEST_F(EngineTest, ExternalMessages) {
 
   shared_ptr<Codec> codec = Codec::getCodec<int>(CodecFormat::BoostBinary);
   for (int i = 0; i < 100; i++) {
-    auto val = make_shared<TNativeValue<int>>(i);
+    auto val = make_unique<TNativeValue<int>>(i);
     mgr->sendExternal(external_addr_, codec->pack(*val));
   }
 

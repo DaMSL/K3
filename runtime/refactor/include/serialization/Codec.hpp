@@ -45,8 +45,8 @@ namespace K3 {
 // Codec Interface
 class Codec {
  public:
-  virtual shared_ptr<PackedValue> pack(const NativeValue&) = 0;
-  virtual shared_ptr<NativeValue> unpack(const PackedValue& pv) = 0;
+  virtual unique_ptr<PackedValue> pack(const NativeValue&) = 0;
+  virtual unique_ptr<NativeValue> unpack(const PackedValue& pv) = 0;
   virtual CodecFormat format() = 0;
 
   template <typename T>
@@ -60,22 +60,22 @@ typedef io::stream<io::back_insert_device<Buffer>> OByteStream;
 template <class T>
 class BoostCodec : public Codec {
  public:
-  virtual shared_ptr<PackedValue> pack(const NativeValue& nv) {
+  virtual unique_ptr<PackedValue> pack(const NativeValue& nv) {
     Buffer buf;
     OByteStream output_stream(buf);
     boost::archive::binary_oarchive oa(output_stream);
     oa << *nv.asConst<T>();
     output_stream.flush();
-    return make_shared<BufferPackedValue>(std::move(buf), format());
+    return make_unique<BufferPackedValue>(std::move(buf), format());
   }
 
-  virtual shared_ptr<NativeValue> unpack(const PackedValue& pv) {
+  virtual unique_ptr<NativeValue> unpack(const PackedValue& pv) {
     io::basic_array_source<char> source(pv.buf(), pv.length());
     io::stream<io::basic_array_source<char>> input_stream(source);
     boost::archive::binary_iarchive ia(input_stream);
     T t;
     ia >> t;
-    return make_shared<TNativeValue<T>>(std::move(t));
+    return make_unique<TNativeValue<T>>(std::move(t));
   }
 
   virtual CodecFormat format() { return format_; }
@@ -87,19 +87,19 @@ class BoostCodec : public Codec {
 template <class T>
 class YASCodec : public Codec {
  public:
-  virtual shared_ptr<PackedValue> pack(const NativeValue& nv) {
+  virtual unique_ptr<PackedValue> pack(const NativeValue& nv) {
     yas::mem_ostream os;
     yas::binary_oarchive<yas::mem_ostream> oa(os);
     oa&* nv.asConst<T>();
-    return make_shared<YASPackedValue>(os.get_shared_buffer(), format_);
+    return make_unique<YASPackedValue>(os.get_shared_buffer(), format_);
   }
 
-  virtual shared_ptr<NativeValue> unpack(const PackedValue& pv) {
+  virtual unique_ptr<NativeValue> unpack(const PackedValue& pv) {
     yas::mem_istream is(pv.buf(), pv.length());
     yas::binary_iarchive<yas::mem_istream> ia(is);
     T t;
     ia& t;
-    return make_shared<TNativeValue<T>>(std::move(t));
+    return make_unique<TNativeValue<T>>(std::move(t));
   }
 
   virtual CodecFormat format() { return format_; }
@@ -111,23 +111,23 @@ class YASCodec : public Codec {
 template <class T, char sep = ','>
 class CSVCodec : public Codec {
  public:
-  virtual shared_ptr<PackedValue> pack(const NativeValue& nv) {
+  virtual unique_ptr<PackedValue> pack(const NativeValue& nv) {
     Buffer buf;
     OByteStream output_stream(buf);
     csv::writer oa(output_stream, sep);
     oa << *nv.asConst<T>();
     output_stream.flush();
-    return make_shared<BufferPackedValue>(std::move(buf), format());
+    return make_unique<BufferPackedValue>(std::move(buf), format());
   }
 
-  virtual shared_ptr<NativeValue> unpack(const PackedValue& pv) {
+  virtual unique_ptr<NativeValue> unpack(const PackedValue& pv) {
     io::basic_array_source<char> source(pv.buf(), pv.length());
     io::stream<io::basic_array_source<char>> input_stream(source);
     csv::parser ia(input_stream, sep);
 
     T t;
     ia >> t;
-    return make_shared<TNativeValue<T>>(std::move(t));
+    return make_unique<TNativeValue<T>>(std::move(t));
   }
 
   virtual CodecFormat format() { return format_; }

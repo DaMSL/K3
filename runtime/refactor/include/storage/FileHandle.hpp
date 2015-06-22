@@ -18,12 +18,10 @@ class FileHandle {
     virtual bool hasRead()   {return false;}
     virtual bool hasWrite()  {return false;}
 
-    virtual shared_ptr<PackedValue> doRead()  = 0;
-    virtual void doWrite(shared_ptr<PackedValue> val)  = 0;
-    virtual void close()      = 0;
+    virtual shared_ptr<PackedValue> doRead() = 0;
+    virtual void doWrite(shared_ptr<PackedValue> val) = 0;
+    virtual void close() = 0;
 };
-
-
 
 //  SourceFileHande Class
 //    Binary File Handle  (explicit sized delimited values)
