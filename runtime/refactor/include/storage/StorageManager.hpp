@@ -7,7 +7,6 @@
 
 namespace K3 {
 
-
 using std::pair;
 using std::make_shared;
 
@@ -31,7 +30,6 @@ class StorageManager {
   bool hasWrite(Address peer, Identifier id);
   void doWrite(Address peer, Identifier id, shared_ptr<PackedValue> val);
   void doBlockWrite(Address peer, Identifier id, vector<shared_ptr<PackedValue>> vals);
-
 
  private:
   shared_ptr<ConcurrentMap<pair<Address, Identifier>, shared_ptr<FileHandle>>> files_;

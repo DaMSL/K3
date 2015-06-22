@@ -8,14 +8,14 @@ namespace K3 {
 Message::Message() {}
 
 Message::Message(const Address& src, const Address& dst, TriggerID trig,
-                 shared_ptr<Value> val)
+                 unique_ptr<Value> val)
     : header_(src, dst, trig) {
-  value_ = val;
+  value_ = std::move(val);
 }
 
-Message::Message(const MessageHeader& head, shared_ptr<Value> val)
+Message::Message(const MessageHeader& head, unique_ptr<Value> val)
     : header_(head) {
-  value_ = val;
+  value_ = std::move(val);
 }
 
 Address Message::source() const { return header_.source(); }
@@ -24,15 +24,13 @@ Address Message::destination() const { return header_.destination(); }
 
 TriggerID Message::trigger() const { return header_.trigger(); }
 
-shared_ptr<Value> Message::value() const { return value_; }
-
 NetworkMessage::NetworkMessage() : Message() {
   payload_length_ = 0;
 }
 
 NetworkMessage::NetworkMessage(const MessageHeader& head,
-                               shared_ptr<PackedValue> v)
-    : Message(head, v) {
+                               unique_ptr<PackedValue> v)
+    : Message(head, std::move(v)) {
   payload_length_ = v->length();
 }
 
@@ -66,7 +64,7 @@ shared_ptr<vector<asio::const_buffer>> NetworkMessage::outputBuffers() const {
       reinterpret_cast<const char*>(&payload_length_), sizeof(payload_length_)));
 
   // Payload Bytes
-  shared_ptr<PackedValue> pv = std::dynamic_pointer_cast<PackedValue>(value_);
+  PackedValue* pv = dynamic_cast<PackedValue*>(value_.get());
   result->push_back(asio::buffer(pv->buf(), pv->length()));
 
   return result;
@@ -108,6 +106,6 @@ size_t NetworkMessage::networkHeaderSize() {
          sizeof(header_.trigger_) + sizeof(payload_length_);
 }
 
-void NetworkMessage::setValue(shared_ptr<Value> v) { value_ = v; }
+void NetworkMessage::setValue(unique_ptr<Value> v) { value_ = std::move(v); }
 
 }  // namespace K3

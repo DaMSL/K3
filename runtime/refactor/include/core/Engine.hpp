@@ -23,18 +23,17 @@ class Engine {
   // Core Interface
   Engine();
   ~Engine();
-  template <class Context>
-  void run(const Options& opts);
+  template <class Context> void run(const Options& opts);
   void stop();
   void join();
-  void send(const MessageHeader& m, shared_ptr<NativeValue> v,
+  void send(const MessageHeader& m, unique_ptr<NativeValue> v,
             shared_ptr<Codec> cdec);
 
   // Utilities
   bool running();
   shared_ptr<Peer> getPeer(const Address& addr);
-  shared_ptr<NetworkManager> getNetworkManager();
-  shared_ptr<StorageManager> getStorageManager();
+  NetworkManager& getNetworkManager();
+  StorageManager& getStorageManager();
   template <class F>  // TODO(jbw) Remove this function (push into ProgramContext)
   void logJson(const Address& dest, int trigger, const Address& src, F f);
 
@@ -50,8 +49,8 @@ class Engine {
 
   // Components
   shared_ptr<spdlog::logger> logger_;
-  shared_ptr<NetworkManager> network_manager_;
-  shared_ptr<StorageManager> storage_manager_;
+  NetworkManager network_manager_;
+  StorageManager storage_manager_;
   shared_ptr<const map<Address, shared_ptr<Peer>>> peers_;
 
   // Configuration
@@ -89,13 +88,13 @@ void Engine::run(const Options& opts) {
   logger_->info("All peers are ready.");
 
   // This must happen AFTER peers_ has been initialized
-  for (auto it : *peers_) {
-    network_manager_->listenInternal(it.second);
+  for (auto& it : *peers_) {
+    network_manager_.listenInternal(it.second);
     it.second->processRole();
   }
 
   // All roles are processed: signal peers to start message loop
-  for (auto it : *peers_) {
+  for (auto& it : *peers_) {
     it.second->start();
   }
   running_ = true;

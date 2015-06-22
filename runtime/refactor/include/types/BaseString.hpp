@@ -68,7 +68,6 @@ class base_string {
   char* begin() const;
   char* end() const;
 
-
   template <class archive>
   void serialize(archive& a, const unsigned int) {
     std::size_t len;

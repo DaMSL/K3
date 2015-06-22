@@ -70,7 +70,7 @@ void NetworkManager::listenInternal(shared_ptr<Peer> peer) {
 
 void NetworkManager::listenExternal(shared_ptr<Peer> peer, Address listen_addr,
                                     TriggerID trig, CodecFormat format) {
-  // Consrtuct Listener
+  // Construct Listener
   auto peer_addr = peer->address();
   auto fac_ptr = make_shared<IncomingConnectionFactory>(
       [peer_addr, trig](asio::io_service& service, CodecFormat format) {

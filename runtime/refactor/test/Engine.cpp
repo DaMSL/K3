@@ -19,6 +19,7 @@
 
 using std::shared_ptr;
 using std::make_shared;
+using std::make_unique;
 using std::vector;
 using std::string;
 using std::tuple;
@@ -81,10 +82,10 @@ TEST_F(EngineTest, LocalSends) {
     shared_ptr<Codec> codec = Codec::getCodec<int>(K3_INTERNAL_FORMAT);
     if (i % 2 == 0) {
       MessageHeader h(addr2_, addr1_, 1);
-      engine_.send(h, make_shared<TNativeValue<int>>(i), codec);
+      engine_.send(h, make_unique<TNativeValue<int>>(i), codec);
     } else {
       MessageHeader h(addr1_, addr2_, 1);
-      engine_.send(h, make_shared<TNativeValue<int>>(i), codec);
+      engine_.send(h, make_unique<TNativeValue<int>>(i), codec);
     }
   }
 
@@ -113,10 +114,10 @@ TEST_F(EngineTest, NetworkSends) {
     shared_ptr<Codec> codec = Codec::getCodec<int>(K3_INTERNAL_FORMAT);
     if (i % 2 == 0) {
       MessageHeader h(addr2_, addr1_, 1);
-      engine_.send(h, make_shared<TNativeValue<int>>(i), codec);
+      engine_.send(h, make_unique<TNativeValue<int>>(i), codec);
     } else {
       MessageHeader h(addr1_, addr2_, 1);
-      engine_.send(h, make_shared<TNativeValue<int>>(i), codec);
+      engine_.send(h, make_unique<TNativeValue<int>>(i), codec);
     }
   }
 
@@ -143,13 +144,13 @@ TEST_F(EngineTest, ExternalMessages) {
   auto peer1 = engine_.getPeer(addr1_);
   auto dc1 = std::dynamic_pointer_cast<DummyContext>(peer1->getContext());
 
-  auto mgr = engine_.getNetworkManager();
-  mgr->listenExternal(peer1, external_addr_, 1, CodecFormat::BoostBinary);
+  auto& mgr = engine_.getNetworkManager();
+  mgr.listenExternal(peer1, external_addr_, 1, CodecFormat::BoostBinary);
 
   shared_ptr<Codec> codec = Codec::getCodec<int>(CodecFormat::BoostBinary);
   for (int i = 0; i < 100; i++) {
-    auto val = make_shared<TNativeValue<int>>(i);
-    mgr->sendExternal(external_addr_, codec->pack(*val));
+    auto val = make_unique<TNativeValue<int>>(i);
+    mgr.sendExternal(external_addr_, codec->pack(*val));
   }
 
   for (int retries = 1000; retries > 0; retries--) {
@@ -161,7 +162,6 @@ TEST_F(EngineTest, ExternalMessages) {
     ASSERT_NE(1, retries);
   }
 
-  mgr.reset();
   engine_.stop();
   engine_.join();
 }

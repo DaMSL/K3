@@ -51,7 +51,7 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
       logger_->error() << "Peer failed: " << e.what();
     }
   };
-  thread_ = make_shared<boost::thread>(work);
+  thread_ = make_shared<std::thread>(work);
 }
 
 void Peer::processRole() {
@@ -89,7 +89,7 @@ void Peer::processBatch() {
   for (int i = 0; i < num; i++) {
     auto m = std::move(batch_[i]);
     logMessage(*m);
-    m->value()->dispatchIntoContext(context_.get(), m->trigger(), m->source());
+    m->value_->dispatchIntoContext(context_.get(), m->trigger(), m->source());
     logGlobals(*m);
   }
 }

@@ -10,15 +10,13 @@
 
 namespace K3 {
 
-Engine::Engine() {
+Engine::Engine() : network_manager_(), storage_manager_() {
   logger_ = spdlog::get("engine");
   if (!logger_) {
     logger_ = spdlog::stdout_logger_mt("engine");
     spdlog::set_level(spdlog::level::warn);
     spdlog::set_pattern("[%T.%f %l %n] %v");
   }
-  network_manager_ = make_shared<NetworkManager>();
-  storage_manager_ = make_shared<StorageManager>();
   peers_ = NULL;  // Initialized during run()
   running_ = false;
   ready_peers_ = 0;
@@ -37,10 +35,10 @@ void Engine::stop() {
   // Place a Sentintel on each Peer's queue
   for (auto& it : *peers_) {
     auto m = make_unique<Message>(it.first, it.first, -1,
-                                  make_shared<SentinelValue>());
+                                  make_unique<SentinelValue>());
     it.second->enqueue(std::move(m));
   }
-  network_manager_->stop();
+  network_manager_.stop();
   logger_->info("Stopping the Engine.");
 }
 
@@ -50,13 +48,13 @@ void Engine::join() {
       it.second->join();
     }
   }
-  network_manager_->stop();
-  network_manager_->join();
+  network_manager_.stop();
+  network_manager_.join();
   running_ = false;
   logger_->info("The Engine has Joined.");
 }
 
-void Engine::send(const MessageHeader& header, shared_ptr<NativeValue> value,
+void Engine::send(const MessageHeader& header, unique_ptr<NativeValue> value,
                   shared_ptr<Codec> codec) {
   if (!peers_) {
     throw std::runtime_error(
@@ -70,13 +68,13 @@ void Engine::send(const MessageHeader& header, shared_ptr<NativeValue> value,
   auto it = peers_->find(header.destination());
   if (local_sends_enabled_ && it != peers_->end()) {
     // Direct enqueue for local messages
-    auto m = make_unique<Message>(header, value);
+    auto m = make_unique<Message>(header, std::move(value));
     it->second->enqueue(std::move(m));
   } else {
     // Serialize and send over the network, otherwise
-    shared_ptr<PackedValue> pv = codec->pack(*value);
-    shared_ptr<NetworkMessage> m = make_shared<NetworkMessage>(header, pv);
-    network_manager_->sendInternal(m);
+    unique_ptr<PackedValue> pv = codec->pack(*value);
+    shared_ptr<NetworkMessage> m = make_shared<NetworkMessage>(header, std::move(pv));
+    network_manager_.sendInternal(m);
   }
 }
 
@@ -91,11 +89,11 @@ shared_ptr<Peer> Engine::getPeer(const Address& addr) {
   }
 }
 
-shared_ptr<NetworkManager> Engine::getNetworkManager() {
+NetworkManager& Engine::getNetworkManager() {
   return network_manager_;
 }
 
-shared_ptr<StorageManager> Engine::getStorageManager() {
+StorageManager& Engine::getStorageManager() {
   return storage_manager_;
 }
 
