@@ -280,9 +280,9 @@ def parse_dbt_results(dbt_name)
   dbt_results = {}
   r.elements['boost_serialization/snap'].each do |result|
     # complex results
+    res = []
     if result.has_elements?
       result.each do |item|
-        res = []
         if item.name == 'item'
           item.each { |e| res << str_to_val(e.text) }
         end
@@ -315,7 +315,9 @@ def parse_k3_results(script_path, dbt_results)
     map_data = csv[3]
     unless dbt_results.has_key? map_name then next end
     map_data_j = JSON.parse(map_data)
-
+    if map_data_j.empty?
+	    next
+    end
     # frontier operation
     max_map = {}
     # check if we're dealing with simple values
@@ -329,7 +331,9 @@ def parse_k3_results(script_path, dbt_results)
       end
       # add the max map to the combined maps
       max_map.each_pair do |key,value|
-        if combined_maps[map_name].has_key?(key)
+        if !combined_maps.has_key?(map_name)
+          combined_maps[map_name] = { key => value[1] }
+        elsif combined_maps[map_name].has_key?(key)
           combined_maps[map_name][key] += value[1]
         else
           combined_maps[map_name][key] = value[1]
