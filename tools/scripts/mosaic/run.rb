@@ -29,11 +29,24 @@ def stage(s)
   puts ">> " + s
 end
 
+### Mosaic stage ###
+
+def run_mosaic(k3_path, mosaic_path, source)
+  stage "[1] Creating mosaic files"
+  run("#{File.join(mosaic_path, "tests", "auto_test.py")} --no-interp -d -f #{source}")
+
+  # change the k3 file to use the dynamic path
+  s = File.read(k3_path)
+  s.sub!(/file "[^"]+" psv/, "file switch_path psv")
+  File.write(k3_path, s)
+end
+
+
 ### DBToaster stage ###
 
 def run_dbtoaster(test_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
 
-  stage "[1] Creating dbtoaster hpp file"
+  stage "[2] Creating dbtoaster hpp file"
   Dir.chdir(test_path)
   run("#{File.join(dbt_plat, "dbtoaster")} --read-agenda -l cpp #{source_path} > #{File.join(start_path, dbt_name_hpp)}")
   Dir.chdir(start_path)
@@ -50,23 +63,11 @@ def run_dbtoaster(test_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, sou
   mt = dbt_plat == "dbt_osx" ? "-mt" : ""
   boost_libs.map! { |lib| "-l" + lib + mt }
 
-  stage "[1] Compiling dbtoaster"
+  stage "[2] Compiling dbtoaster"
   run("g++ #{File.join(dbt_lib_path, "main.cpp")} -std=c++11 -include #{dbt_name_hpp} -o #{dbt_name} -O3 -I#{dbt_lib_path} -L#{dbt_lib_path} -ldbtoaster -lpthread #{boost_libs.join ' '}")
 
-  stage "[1] Running DBToaster"
+  stage "[2] Running DBToaster"
   run("#{File.join(".", dbt_name)} > #{dbt_name}.xml", [/File not found/])
-end
-
-### Mosaic stage ###
-
-def run_mosaic(k3_path, mosaic_path, source)
-  stage "[2] Creating mosaic files"
-  run("#{File.join(mosaic_path, "tests", "auto_test.py")} --no-interp -d -f #{source}")
-
-  # change the k3 file to use the dynamic path
-  s = File.read(k3_path)
-  s.sub!(/file "[^"]+" psv/, "file switch_path psv")
-  File.write(k3_path, s)
 end
 
 ## Create/Compile stage ###
@@ -81,10 +82,10 @@ def curl(server, url, args:{}, file:"", post:false, json:false, getfile:nil)
   if file != "" then cmd << "-F \"file=@#{file}\" " end
   args.each_pair { |k,v| cmd << "-F \"#{k}=#{v}\" " }
 
-  pipe = if getfile.nil? then '' else "> #{getfile}" end
-  if !getfile.nil? then url << getfile << "/" end
+  pipe = if getfile.nil? then '' else "-o #{getfile}" end
+  url2 = if !getfile.nil? then url + getfile + "/" else url end
 
-  res = run("curl http://#{server}#{url} #{cmd}#{pipe}")
+  res = run("curl -s http://#{server}#{url2} #{cmd}#{pipe}")
   # clean up json output
   if json
     i = res =~ /{/
@@ -131,11 +132,7 @@ def run_create_k3(k3_path, script_path)
   File.write("k3.log", res)
 end
 
-# do both creation and compilation remotely (returns uid)
-def run_create_compile_k3_remote(server_url, bin_file, k3_cpp_name, k3_path, k3_root_path, nice_name)
-  stage "[3-4] Remote creating && compiling K3 file to binary"
-  res = curl(server_url, "/compile", file: k3_path, post: true, json: true, args:{ "compilestage" => "both"})
-  uid = res["uid"]
+def wait_and_fetch_remote_compile(server_url, bin_file, k3_cpp_name, k3_root_path, nice_name, uid)
 
   puts "UID = #{uid}"
 
@@ -144,21 +141,32 @@ def run_create_compile_k3_remote(server_url, bin_file, k3_cpp_name, k3_path, k3_
 
   # get the output file (before exiting on error)
   path = "/fs/build/#{nice_name}-#{uid}/"
+
   curl(server_url, path, getfile:"output")
 
   check_status(status, "COMPLETE", "Remote compilation")
 
   # get the cpp file
-  path = "/fs/build/#{nice_name}-#{uid}/"
+  puts k3_cpp_name
   curl(server_url, path, getfile:k3_cpp_name)
-
-  # get the bin file
-  path = "/fs/build/#{nice_name}-#{uid}/"
-  curl(server_url, path, getfile:bin_file)
 
   # copy cpp to proper path
   dest_path = File.join(k3_root_path, "__build")
   FileUtils.copy_file(k3_cpp_name, File.join(dest_path, k3_cpp_name))
+
+  if !bin_file.nil?
+    # get the bin file
+    curl(server_url, path, getfile:bin_file)
+  end
+end
+
+# do both creation and compilation remotely (returns uid)
+def run_create_compile_k3_remote(server_url, bin_file, k3_cpp_name, k3_path, k3_root_path, nice_name)
+  stage "[3-4] Remote creating && compiling K3 file to binary"
+  res = curl(server_url, "/compile", file: k3_path, post: true, json: true, args:{ "compilestage" => "both"})
+  uid = res["uid"]
+
+  wait_and_fetch_remote_compile(server_url, bin_file, k3_cpp_name, k3_root_path, nice_name, uid)
 
   return uid
 end
@@ -169,22 +177,8 @@ def run_create_k3_remote(server_url, k3_cpp_name, k3_path, k3_root_path, nice_na
   res = curl(server_url, "/compile", file: k3_path, post: true, json: true, args:{ "compilestage" => "cpp"})
   uid = res["uid"]
 
-  # get status
-  status = curl_status_loop(server_url, "/compile/#{uid}", "COMPLETE")
-
-  # get the output file
-  path = "/fs/build/#{nice_name}-#{uid}/"
-  curl(server_url, path, getfile:"output")
-
-  check_status(status, "COMPLETE", "Remote compilation")
-
   # get the cpp file
-  path = "/fs/build/#{nice_name}-#{uid}/"
-  curl(server_url, path, getfile:k3_cpp_name)
-
-  # move to proper path
-  dest_path = File.join(k3_root_path, "__build", k3_cpp_name)
-  FileUtils.copy_file(k3_cpp_name, dest_path)
+  wait_and_fetch_remote_compile(server_url, nil, k3_cpp_name, k3_root_path, nice_name, uid)
 end
 
 # compile cpp->bin locally
@@ -212,13 +206,32 @@ def gen_yaml(role_file, script_path)
   File.write(role_file, yaml)
 end
 
-def run_deploy_k3_remote(uid, name, deploy_server, nice_name, script_path)
+def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
+
+  stage "[#{stage_num}] Waiting for Mesos job to finish..."
+  status = curl_status_loop(server_url, "/job/#{jobid}", "FINISHED")
+
+  check_status(status, "FINISHED", "Mesos job")
+
+  stage "[#{stage_num}] Getting result data"
+  `rm -rf json`
+  file_paths = []
+  res['sandbox'].each_pair do |s|
+    file_paths << [s] if File.extname s == '.tar'
+  end
+  file_paths.for_each do |f|
+    curl(server_url, "/fs/jobs/#{nice_name}/#{jobid}/", getfile:f)
+    run("tar xvzf #{filename}")
+  end
+end
+
+def run_deploy_k3_remote(uid, name, server_url, nice_name, script_path)
   role_file = nice_name + ".yaml"
 
   # we can either have a uid from a previous stage, or send a binary and get a uid now
   if uid.nil? then
     stage "[5] Sending binary to mesos"
-    res = curl(deploy_server, '/apps', file:bin_file, post:true, json:true)
+    res = curl(server_url, '/apps', file:bin_file, post:true, json:true)
     uid = res['uid']
   end
 
@@ -226,24 +239,11 @@ def run_deploy_k3_remote(uid, name, deploy_server, nice_name, script_path)
   gen_yaml(role_file, script_path)
 
   stage "[5] Creating new mesos job"
-  res = curl(deploy_server, "/jobs/#{name}/#{uid}", json:true, post:true, file:role_file, args:{'jsonfinal' => 'yes'})
+  res = curl(server_url, "/jobs/#{name}/#{uid}", json:true, post:true, file:role_file, args:{'jsonfinal' => 'yes'})
   jobid = res['jobId']
 
-  stage "[5] Waiting for Mesos job to finish..."
-  status = curl_status_loop(server_url, "/job/#{jobid}", "FINISHED")
-
-  check_status(status, "FINISHED", "Mesos job")
-
-  stage "[5] Getting result data"
-  `rm -rf json`
-  file_paths = []
-  res['sandbox'].each_pair do |s|
-    file_paths << [s] if File.extname s == '.tar'
-  end
-  file_paths.for_each do |f|
-    curl(deploy_server, "/fs/jobs/#{nice_name}/#{jobid}/", getfile:f)
-    run("tar xvzf #{filename}")
-  end
+  # Wait for job to finish and get results
+  wait_and_fetch_results(5, jobid, server_url, nice_name)
 end
 
 # local deployment
@@ -402,7 +402,11 @@ def main()
     opts.on("--compile-local", "Compile locally") { $options[:compile_local] = true }
     opts.on("-j", "--json [JSON]", String, "JSON file to load options") {|s| $options[:json_file] = s}
     opts.on("--uid [UID]", String, "UID of file") {|s| $options[:uid] = s}
+    opts.on("--jobid [JOBID]", String, "JOBID of job") {|s| $options[:jobid] = s}
     opts.on("--mosaic-path [PATH]", String, "Path for mosaic") {|s| $options[:mosaic_path] = s}
+    opts.on("--fetch-cpp", "Fetch a cpp file after remote creation") {|s| $options[:fetch_cpp] = true}
+    opts.on("--fetch-bin", "Fetch bin + cpp files after remote compilation") {|s| $options[:fetch_bin] = true}
+    opts.on("--fetch-results", "Fetch results after job") {|s| $options[:fetch_results] = true}
 
     # stages
     opts.on("-a", "--all", "All stages") {
@@ -413,8 +417,8 @@ def main()
       $options[:deploy_k3]  = true
       $options[:compare]    = true
     }
-    opts.on("-1", "--dbtoaster", "DBToaster stage")                                { $options[:dbtoaster]  = true }
-    opts.on("-2", "--mosaic",    "Mosaic stage (creates Mosaic K3 program)")       { $options[:mosaic]     = true }
+    opts.on("-1", "--mosaic",    "Mosaic stage (creates Mosaic K3 program)")       { $options[:mosaic]     = true }
+    opts.on("-2", "--dbtoaster", "DBToaster stage")                                { $options[:dbtoaster]  = true }
     opts.on("-3", "--create",    "Create K3 stage (creates Mosaic CPP program)")   { $options[:create_k3]  = true }
     opts.on("-4", "--compile",   "Compile K3 stage (compiles Mosaic CPP program)") { $options[:compile_k3] = true }
     opts.on("-5", "--deploy",    "Deploy stage")                                   { $options[:deploy_k3]  = true }
@@ -491,30 +495,38 @@ def main()
   dbt_name = "dbt_" + nice_name
   dbt_name_hpp = dbt_name + ".hpp"
 
-  deploy_server = "qp2:5000"
+  server_url = "qp2:5000"
 
   bin_file = nice_name
   dbt_results = []
 
-  if $options[:dbtoaster]
-    run_dbtoaster(test_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
-  end
   if $options[:mosaic]
     run_mosaic(k3_path, mosaic_path, source)
   end
 
+  if $options[:dbtoaster]
+    run_dbtoaster(test_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
+  end
   # either nil or take from command line
   uid = if $options[:uid] then $options[:uid] else nil end
+  jobid = if $options[:jobid] then $options[:jobid] else nil end
+  
+  # options to fetch cpp/binary (ie. all) given a uid
+  if $options[:fetch_cpp]
+    wait_and_fetch_remote_compile(server_url, nil, k3_cpp_name, k3_root_path, nice_name, uid)
+  elsif $options[:fetch_bin]
+    wait_and_fetch_remote_compile(server_url, bin_file, k3_cpp_name, k3_root_path, nice_name, uid)
+  end
 
   # check for doing everything remotely
   if !$options[:compile_local] && !$options[:create_local] && ($options[:create_k3] || $options[:compile_k3]) then
-      uid = run_create_compile_k3_remote(deploy_server, bin_file, k3_cpp_name, k3_path, k3_root_path, nice_name)
+      uid = run_create_compile_k3_remote(server_url, bin_file, k3_cpp_name, k3_path, k3_root_path, nice_name)
   else
     if $options[:create_k3]
       if $options[:create_local]
         run_create_k3(k3_path, script_path)
       else
-        run_create_k3_remote(deploy_server, k3_cpp_name, k3_path, k3_root_path, nice_name)
+        run_create_k3_remote(server_url, k3_cpp_name, k3_path, k3_root_path, nice_name)
       end
     end
     # if we're not doing everything remotely, we can only compile locally
@@ -527,8 +539,13 @@ def main()
     if $options[:run_local]
       run_deploy_k3_local(bin_file, nice_name, script_path)
     else
-      run_deploy_k3_remote(uid, File.basename(k3_path, ".k3"), deploy_server, nice_name, script_path)
+      run_deploy_k3_remote(uid, File.basename(k3_path, ".k3"), server_url, nice_name, script_path)
     end
+  end
+
+  # options to fetch to job results
+  if $options[:fetch_results]
+    wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
   end
 
   if $options[:compare]
