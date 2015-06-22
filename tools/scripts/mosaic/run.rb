@@ -81,7 +81,7 @@ def curl(server, url, args:{}, file:"", post:false, json:false, getfile:nil)
   if file != "" then cmd << "-F \"file=@#{file}\" " end
   args.each_pair { |k,v| cmd << "-F \"#{k}=#{v}\" " }
 
-  pipe = if getfile.nil? then '' else "> #{getfile}" end
+  pipe = if getfile.nil? then '' else "-o #{getfile}" end
   if !getfile.nil? then url << getfile << "/" end
 
   res = run("curl http://#{server}#{url} #{cmd}#{pipe}")
@@ -109,7 +109,7 @@ def curl_status_loop(server_url, url, success_status)
       puts "Status: " + status + " "
     end
   end
-  return status
+  return status, res
 end
 
 def check_status(status, success, process_nm)
@@ -140,7 +140,7 @@ def run_create_compile_k3_remote(server_url, bin_file, k3_cpp_name, k3_path, k3_
   puts "UID = #{uid}"
 
   # get status
-  status = curl_status_loop(server_url, "/compile/#{uid}", "COMPLETE")
+  status, _ = curl_status_loop(server_url, "/compile/#{uid}", "COMPLETE")
 
   # get the output file (before exiting on error)
   path = "/fs/build/#{nice_name}-#{uid}/"
@@ -170,7 +170,7 @@ def run_create_k3_remote(server_url, k3_cpp_name, k3_path, k3_root_path, nice_na
   uid = res["uid"]
 
   # get status
-  status = curl_status_loop(server_url, "/compile/#{uid}", "COMPLETE")
+  status, _ = curl_status_loop(server_url, "/compile/#{uid}", "COMPLETE")
 
   # get the output file
   path = "/fs/build/#{nice_name}-#{uid}/"
@@ -226,23 +226,24 @@ def run_deploy_k3_remote(uid, name, deploy_server, nice_name, script_path)
   gen_yaml(role_file, script_path)
 
   stage "Creating new mesos job"
-  res = curl(deploy_server, "/jobs/#{name}/#{uid}", json:true, post:true, file:role_file, args:{'jsonfinal' => 'yes'})
+  res = curl(deploy_server, "/jobs/#{name}/#{uid}", json:true, post:true, file:role_file, args:{'jsonfinal' => true})
   jobid = res['jobId']
 
   stage "Waiting for Mesos job to finish..."
-  status = curl_status_loop(server_url, "/job/#{jobid}", "FINISHED")
-
+  status, final_res = curl_status_loop(deploy_server, "/job/#{jobid}", "FINISHED")
   check_status(status, "FINISHED", "Mesos job")
 
   stage "Getting result data"
   `rm -rf json`
   file_paths = []
-  res['sandbox'].each_pair do |s|
-    file_paths << [s] if File.extname s == '.tar'
+  final_res['sandbox'].each do |s|
+    if File.extname(s) == '.tar'
+	    file_paths << s
+    end
   end
-  file_paths.for_each do |f|
+  file_paths.each do |f|
     curl(deploy_server, "/fs/jobs/#{nice_name}/#{jobid}/", getfile:f)
-    run("tar xvzf #{filename}")
+    run("tar xvf #{f}")
   end
 end
 
@@ -280,9 +281,9 @@ def parse_dbt_results(dbt_name)
   dbt_results = {}
   r.elements['boost_serialization/snap'].each do |result|
     # complex results
+    res = []
     if result.has_elements?
       result.each do |item|
-        res = []
         if item.name == 'item'
           item.each { |e| res << str_to_val(e.text) }
         end
