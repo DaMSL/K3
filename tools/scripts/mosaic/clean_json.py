@@ -6,20 +6,35 @@ import csv
 import json
 import re
 
+def int_of_label(s):
+    total = 0
+    for c in s:
+        total += ord(c) - ord('a') + 1
+    return total
+
+def label_of_int(i):
+    s = ""
+    maxint = ord('z') - ord('a') + 1
+    while i > maxint:
+        s += 'z'
+        i -= maxint
+    s += chr(i + ord('a') - 1)
+
+
 def convert_dict(d):
     # for addresses, options, records, etc, just dereference
     if "type" in d and d["type"] in ["address", "option_or_ind", "record", "tuple", "Collection", "Map", "Seq", "Set"]:
         return convert_any(d["value"])
     # change record mapping back to tuple
-    elif "r1" in d:
+    elif "ra" in d:
         res = []
         max = 0
         for key in d:
-            k = int(key[1:])
+            k = int_of_label(key[1:])
             if k > max:
                 max = k
         for i in range(max): # +1 for record fields
-            res.append(convert_any(d["r" + str(i+1)]))
+            res.append(convert_any(d["r" + label_of_int(i+1)]))
         return res
     elif "key" in d and "value" in d:
         res = []
