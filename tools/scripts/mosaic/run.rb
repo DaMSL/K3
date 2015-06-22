@@ -393,6 +393,7 @@ def main()
     opts.on("--compile-local", "Compile locally") { $options[:compile_local] = true }
     opts.on("-j", "--json [JSON]", String, "JSON file to load options") {|s| $options[:json_file] = s}
     opts.on("--uid [UID]", String, "UID of file") {|s| $options[:uid] = s}
+    opts.on("--mosaic-path [PATH]", String, "Path for mosaic") {|s| $options[:mosaic_path] = s}
 
     # stages
     opts.on("-a", "--all", "All stages") {
@@ -446,6 +447,7 @@ def main()
   k3_root_path = File.join(script_path, "..", "..", "..")
   common_path  = File.join(k3_root_path, "..")
   mosaic_path  = File.join(common_path, "K3-Mosaic")
+  mosaic_path  = if $options[:mosaic_path] then $options[:mosaic_path] else mosaic_path end
 
   start_path = File.expand_path(Dir.pwd)
 

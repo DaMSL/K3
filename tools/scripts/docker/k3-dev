@@ -53,8 +53,10 @@ RUN apt-get update && apt-get install -y \
     opam switch 4.02.1 && \
     eval `opam config env` && \
     opam install ocamlfind && \
-    /bin/echo -e "\neval \`opam config env\`\n" >> /root/.bashrc
-
+    /bin/echo -e "\neval \`opam config env\`\n" >> /root/.bashrc && \
+    eval `opam config env` && \
+    opam switch 4.02.1 && \
+    eval `opam config env`
 
 # Install Boost
 RUN wget http://sourceforge.net/projects/boost/files/boost/$BOOST_VER/$BOOST_DIR.tar.bz2/download && \
