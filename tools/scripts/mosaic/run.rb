@@ -33,7 +33,7 @@ end
 
 def run_dbtoaster(test_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
 
-  stage "Creating dbtoaster hpp file"
+  stage "[1] Creating dbtoaster hpp file"
   Dir.chdir(test_path)
   run("#{File.join(dbt_plat, "dbtoaster")} --read-agenda -l cpp #{source_path} > #{File.join(start_path, dbt_name_hpp)}")
   Dir.chdir(start_path)
@@ -50,17 +50,17 @@ def run_dbtoaster(test_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, sou
   mt = dbt_plat == "dbt_osx" ? "-mt" : ""
   boost_libs.map! { |lib| "-l" + lib + mt }
 
-  stage "Compiling dbtoaster"
+  stage "[1] Compiling dbtoaster"
   run("g++ #{File.join(dbt_lib_path, "main.cpp")} -std=c++11 -include #{dbt_name_hpp} -o #{dbt_name} -O3 -I#{dbt_lib_path} -L#{dbt_lib_path} -ldbtoaster -lpthread #{boost_libs.join ' '}")
 
-  stage "Running DBToaster"
+  stage "[1] Running DBToaster"
   run("#{File.join(".", dbt_name)} > #{dbt_name}.xml", [/File not found/])
 end
 
 ### Mosaic stage ###
 
 def run_mosaic(k3_path, mosaic_path, source)
-  stage "Creating mosaic files"
+  stage "[2] Creating mosaic files"
   run("#{File.join(mosaic_path, "tests", "auto_test.py")} --no-interp -d -f #{source}")
 
   # change the k3 file to use the dynamic path
@@ -81,7 +81,7 @@ def curl(server, url, args:{}, file:"", post:false, json:false, getfile:nil)
   if file != "" then cmd << "-F \"file=@#{file}\" " end
   args.each_pair { |k,v| cmd << "-F \"#{k}=#{v}\" " }
 
-  pipe = if getfile.nil? then '' else "-o #{getfile}" end
+  pipe = if getfile.nil? then '' else "> #{getfile}" end
   if !getfile.nil? then url << getfile << "/" end
 
   res = run("curl http://#{server}#{url} #{cmd}#{pipe}")
@@ -109,7 +109,7 @@ def curl_status_loop(server_url, url, success_status)
       puts "Status: " + status + " "
     end
   end
-  return status, res
+  return status
 end
 
 def check_status(status, success, process_nm)
@@ -125,7 +125,7 @@ end
 
 # create the k3 cpp file locally
 def run_create_k3(k3_path, script_path)
-  stage "Creating K3 cpp file"
+  stage "[3] Creating K3 cpp file locally"
   compile = File.join(script_path, "..", "run", "compile.sh")
   res = run("time #{compile} -1 #{k3_path} +RTS -N -RTS")
   File.write("k3.log", res)
@@ -133,14 +133,14 @@ end
 
 # do both creation and compilation remotely (returns uid)
 def run_create_compile_k3_remote(server_url, bin_file, k3_cpp_name, k3_path, k3_root_path, nice_name)
-  stage "Remote creating && compiling K3 file to binary"
+  stage "[3-4] Remote creating && compiling K3 file to binary"
   res = curl(server_url, "/compile", file: k3_path, post: true, json: true, args:{ "compilestage" => "both"})
   uid = res["uid"]
 
   puts "UID = #{uid}"
 
   # get status
-  status, _ = curl_status_loop(server_url, "/compile/#{uid}", "COMPLETE")
+  status = curl_status_loop(server_url, "/compile/#{uid}", "COMPLETE")
 
   # get the output file (before exiting on error)
   path = "/fs/build/#{nice_name}-#{uid}/"
@@ -165,12 +165,12 @@ end
 
 # create the k3 cpp file remotely and copy the cpp locally
 def run_create_k3_remote(server_url, k3_cpp_name, k3_path, k3_root_path, nice_name)
-  stage "Remote creating K3 cpp file."
+  stage "[3] Remote creating K3 cpp file."
   res = curl(server_url, "/compile", file: k3_path, post: true, json: true, args:{ "compilestage" => "cpp"})
   uid = res["uid"]
 
   # get status
-  status, _ = curl_status_loop(server_url, "/compile/#{uid}", "COMPLETE")
+  status = curl_status_loop(server_url, "/compile/#{uid}", "COMPLETE")
 
   # get the output file
   path = "/fs/build/#{nice_name}-#{uid}/"
@@ -189,7 +189,7 @@ end
 
 # compile cpp->bin locally
 def run_compile_k3(bin_file, k3_path, k3_cpp_path, k3_root_path, script_path)
-  stage "Compiling k3 cpp file"
+  stage "[4] Compiling k3 cpp file"
   brew = $options[:osx_brew] ? "_brew" : ""
   compile = File.join(script_path, "..", "run", "compile#{brew}.sh")
   run("#{compile} -2 #{k3_path}")
@@ -217,7 +217,7 @@ def run_deploy_k3_remote(uid, name, deploy_server, nice_name, script_path)
 
   # we can either have a uid from a previous stage, or send a binary and get a uid now
   if uid.nil? then
-    stage "Sending binary to mesos"
+    stage "[5] Sending binary to mesos"
     res = curl(deploy_server, '/apps', file:bin_file, post:true, json:true)
     uid = res['uid']
   end
@@ -225,25 +225,24 @@ def run_deploy_k3_remote(uid, name, deploy_server, nice_name, script_path)
   # Genereate mesos yaml file"
   gen_yaml(role_file, script_path)
 
-  stage "Creating new mesos job"
-  res = curl(deploy_server, "/jobs/#{name}/#{uid}", json:true, post:true, file:role_file, args:{'jsonfinal' => true})
+  stage "[5] Creating new mesos job"
+  res = curl(deploy_server, "/jobs/#{name}/#{uid}", json:true, post:true, file:role_file, args:{'jsonfinal' => 'yes'})
   jobid = res['jobId']
 
-  stage "Waiting for Mesos job to finish..."
-  status, final_res = curl_status_loop(deploy_server, "/job/#{jobid}", "FINISHED")
+  stage "[5] Waiting for Mesos job to finish..."
+  status = curl_status_loop(server_url, "/job/#{jobid}", "FINISHED")
+
   check_status(status, "FINISHED", "Mesos job")
 
-  stage "Getting result data"
+  stage "[5] Getting result data"
   `rm -rf json`
   file_paths = []
-  final_res['sandbox'].each do |s|
-    if File.extname(s) == '.tar'
-	    file_paths << s
-    end
+  res['sandbox'].each_pair do |s|
+    file_paths << [s] if File.extname s == '.tar'
   end
-  file_paths.each do |f|
+  file_paths.for_each do |f|
     curl(deploy_server, "/fs/jobs/#{nice_name}/#{jobid}/", getfile:f)
-    run("tar xvf #{f}")
+    run("tar xvzf #{filename}")
   end
 end
 
@@ -252,7 +251,7 @@ def run_deploy_k3_local(bin_file, nice_name, script_path)
   role_file = nice_name + "_local.yaml"
   gen_yaml(role_file, script_path)
 
-  stage "Running K3 executable locally"
+  stage "[5] Running K3 executable locally"
   `rm -rf json`
   `mkdir json`
   run("./#{bin_file} -p #{role_file} --json json --json_final_only")
@@ -272,7 +271,7 @@ end
 # Parsing stage
 
 def parse_dbt_results(dbt_name)
-  stage "Parsing DBToaster results"
+  stage "[6] Parsing DBToaster results"
   dbt_xml_out = File.read("#{dbt_name}.xml")
   dbt_xml_out.gsub!(/(Could not find insert.+$|Initializing program:|Running program:|Printing final result:)/,'')
   dbt_xml_out.gsub!(/\n\s*/,'')
@@ -281,9 +280,9 @@ def parse_dbt_results(dbt_name)
   dbt_results = {}
   r.elements['boost_serialization/snap'].each do |result|
     # complex results
-    res = []
     if result.has_elements?
       result.each do |item|
+        res = []
         if item.name == 'item'
           item.each { |e| res << str_to_val(e.text) }
         end
@@ -298,7 +297,7 @@ def parse_dbt_results(dbt_name)
 end
 
 def parse_k3_results(script_path, dbt_results)
-  stage "Parsing K3 results"
+  stage "[6] Parsing K3 results"
   files = []
   Dir.entries("json").each do |f|
     if f =~ /.*Globals.dsv/ then files << File.join("json", f) end
@@ -362,17 +361,17 @@ def run_compare(dbt_results, k3_results)
   # Compare results
   dbt_results.each_pair do |k,v1|
     v2 = k3_results[k]
-    if !v2 then puts "Mismatch at key #{k}: missing k3 value"; exit 1; end
+    if !v2 then stage "[6] Mismatch at key #{k}: missing k3 value"; exit 1; end
     if v1.respond_to?(:sort!) && v2.respond_to?(:sort!)
       v1.sort!
       v2.sort!
     end
     if (v1 <=> v2) != 0
-      puts "Mismatch at key #{k}\nv1:#{v1}\nv2:#{v2}"
+      stage "[6] Mismatch at key #{k}\nv1:#{v1}\nv2:#{v2}"
       exit 1
     end
   end
-  stage "Results check...OK"
+  stage "[6] Results check...OK"
 end
 
 def main()
@@ -389,7 +388,7 @@ def main()
     opts.on("-s", "--switches [NUM]", Integer, "Set the number of switches") { |i| $options[:num_switches] = i }
     opts.on("-n", "--nodes [NUM]", Integer, "Set the number of nodes") { |i| $options[:num_nodes] = i }
     opts.on("--brew", "Use homebrew (OSX)") { $options[:osx_brew] = true }
-    opts.on("--local", "Run locally") { $options[:run_local] = true }
+    opts.on("--run-local", "Run locally") { $options[:run_local] = true }
     opts.on("--create-local", "Create the cpp file locally") { $options[:create_local] = true }
     opts.on("--compile-local", "Compile locally") { $options[:compile_local] = true }
     opts.on("-j", "--json [JSON]", String, "JSON file to load options") {|s| $options[:json_file] = s}
