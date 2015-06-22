@@ -83,6 +83,8 @@
               {% if lastjob.master %}
                 <li class="list-group-item">Master at <span class="text-info">{{ lastjob.master }}</span>
                 (<a href="/fs/jobs/{{appName}}/{{lastjob.jobId}}/stdout_{{lastjob.master}}">Master OUTPUT </a>)</li>{% endif %}
+              {% if lastjob.url %}
+                <li class="list-group-item">Mesos: <a href="{{ lastjob.url }}">Framework Status </a>)</li>{% endif %}
               {% if lastjob.roles %}
                 <li class="list-group-item">Roles<br><pre>{{ lastjob.roles }}</pre></li> {% endif %}
             </ul>

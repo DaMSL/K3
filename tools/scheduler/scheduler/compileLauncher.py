@@ -105,6 +105,9 @@ class CompileLauncher(mesos.interface.Scheduler):
     def getItems(self):
       return dict(self.settings, name=self.name, uid=self.uid, path=self.localpath)
 
+    def uname(self):
+      return AppID.getAppId(self.name, self.uid)
+
     def registered(self, driver, frameworkId, masterInfo):
         logging.info("[COMPILER] Compiler is registered with Mesos. ID %s" % frameworkId.value)
 

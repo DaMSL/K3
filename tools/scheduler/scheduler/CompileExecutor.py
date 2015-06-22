@@ -70,16 +70,25 @@ class CompilerExecutor(mesos.interface.Executor):
       logging.debug("Task Name = %s" % name)
       os.chdir('/k3/K3')
 
-      if daemon['gitpull']:
+      if bool(daemon['gitpull']):
         gitpull = 'cd /k3/K3 && git pull && git checkout %s' % daemon['branch']
         logging.info("GIT PULL Requested: %s " % gitpull)
-        subprocess.call(gitpull, shell=True)
-        logging.debug('Local K3 successfully updated (not rebuilt)')
+        gitpulled = subprocess.call(gitpull, shell=True)
+        if gitpulled == 0:
+          logging.info('Local K3 successfully updated')
+        else:
+          logging.warning('Local K3 update FAILED (continuing with compilation)')
 
-      if daemon['cabalbuild']:
+
+      if bool(daemon['cabalbuild']):
+
         logging.info("CABAL BUILD requested")
-        subprocess.call('cd /k3/K3 && cabal build -j', shell=True)
-        logging.debug('Cabal build complete')
+        path = '/opt/ghc/7.10.1/bin:/opt/cabal/1.22/bin:/opt/alex/3.1.4/bin:/opt/happy/1.19.5/bin:/root/.cabal/bin/:$PATH'
+        cabalbuilt = subprocess.call('export PATH=%s && echo $PATH && cd /k3/K3 && cabal build -j' % path, shell=True)
+        if cabalbuilt == 0:
+            logging.info('Cabal build complete')
+        else:
+            logging.warning('CABAL build has FAILED (continuing with compilation)')
 
       daemon['k3src'] = DEBUG_FILE if DEBUG else '$MESOS_SANDBOX/%s.k3' % daemon['name']
 
@@ -145,7 +154,7 @@ class CompilerExecutor(mesos.interface.Executor):
       builddir = '/k3/K3/__build/'
 
       #  TODO: Need a way to check success/failure
-      if daemon['role'] == 'client':
+      if daemon['role'] == 'client' and os.path.exists(builddir):
         logging.debug("Client is copying all files in build dir")
         self.status.data = "CLIENT ----> Uploading Application, %s" % daemon['name']
         driver.sendStatusUpdate(self.status)
