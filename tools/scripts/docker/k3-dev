@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y \
                        aptitude vim tmux time && \
     apt-get update && \
     apt-get install -y software-properties-common python-software-properties python-setuptools \
-                       ocaml opam ocaml-native-compilers camlp4-extra \
+                       opam \
                        ruby2.2 python python-dev python-pip \
                        libyaml-cpp-dev libzmq3-dev libre2-dev numactl && \
     pip install pyyaml && \
@@ -50,6 +50,8 @@ RUN apt-get update && apt-get install -y \
       --slave /usr/bin/erb erb /usr/bin/erb2.2 \
       --slave /usr/bin/ri ri /usr/bin/ri2.2 && \
     opam init -a && \
+    opam switch 4.02.1 && \
+    eval `opam config env` && \
     opam install ocamlfind && \
     /bin/echo -e "\neval \`opam config env\`\n" >> /root/.bashrc
 
