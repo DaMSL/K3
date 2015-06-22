@@ -221,7 +221,7 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
   end
   file_paths.for_each do |f|
     curl(server_url, "/fs/jobs/#{nice_name}/#{jobid}/", getfile:f)
-    run("tar xvf #{filename}")
+    run("tar xvf #{f}")
   end
 end
 
