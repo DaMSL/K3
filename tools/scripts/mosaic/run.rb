@@ -110,7 +110,7 @@ def curl_status_loop(server_url, url, success_status)
       puts "Status: " + status + " "
     end
   end
-  return status
+  return status, res
 end
 
 def check_status(status, success, process_nm)
@@ -137,7 +137,7 @@ def wait_and_fetch_remote_compile(server_url, bin_file, k3_cpp_name, k3_root_pat
   puts "UID = #{uid}"
 
   # get status
-  status = curl_status_loop(server_url, "/compile/#{uid}", "COMPLETE")
+  status, _ = curl_status_loop(server_url, "/compile/#{uid}", "COMPLETE")
 
   # get the output file (before exiting on error)
   path = "/fs/build/#{nice_name}-#{uid}/"
@@ -209,7 +209,7 @@ end
 def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
 
   stage "[#{stage_num}] Waiting for Mesos job to finish..."
-  status = curl_status_loop(server_url, "/job/#{jobid}", "FINISHED")
+  status, res = curl_status_loop(server_url, "/job/#{jobid}", "FINISHED")
 
   check_status(status, "FINISHED", "Mesos job")
 
@@ -221,7 +221,7 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
   end
   file_paths.for_each do |f|
     curl(server_url, "/fs/jobs/#{nice_name}/#{jobid}/", getfile:f)
-    run("tar xvzf #{filename}")
+    run("tar xvf #{filename}")
   end
 end
 
