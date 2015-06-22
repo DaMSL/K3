@@ -18,6 +18,7 @@ class ProgramContext;
 // A 'dispatch' overload is chosen based on the Value implementation (Native, Packed, or Sentinel)
 class Value {
  public:
+  virtual ~Value() { }
   virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig, const Address& source) = 0;
 };
 
@@ -26,6 +27,7 @@ class Value {
 // The generated program knows the correct choice of T given the destination trigger
 class NativeValue : public Value {
  public:
+  virtual ~NativeValue() { }
   virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig, const Address& source);
   template <class T> T* as();
   template <class T> const T* asConst() const;
@@ -38,7 +40,8 @@ class NativeValue : public Value {
 // Interface that represents a packed C++ value.
 class PackedValue : public Value {
  public:
-  PackedValue( CodecFormat format);
+  virtual ~PackedValue() { }
+  PackedValue(CodecFormat format);
   virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig, const Address& source);
   CodecFormat format() const;
   virtual const char* buf() const = 0;

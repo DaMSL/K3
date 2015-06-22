@@ -26,6 +26,7 @@ class ProgramContext : public StandardBuiltins,
                        public AmplabLoaders {
  public:
   explicit ProgramContext(Engine& e);
+  virtual ~ProgramContext() { }
 
   // Dispatch overloads: One for each Value type
   virtual void __dispatch(NativeValue* nv, TriggerID trig, const Address& source) = 0;

@@ -13,6 +13,7 @@ namespace K3 {
 class Message {
  public:
   Message();
+  virtual ~Message() { }
   Message(const Address&, const Address&, TriggerID, shared_ptr<Value>);
   Message(const MessageHeader&, shared_ptr<Value>);
   Address source() const;

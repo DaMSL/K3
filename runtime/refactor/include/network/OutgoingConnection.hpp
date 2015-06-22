@@ -13,7 +13,7 @@ namespace K3 {
 class OutgoingConnection {
  public:
   OutgoingConnection(const Address& addr, asio::io_service& service);
-  ~OutgoingConnection();
+  virtual ~OutgoingConnection();
   shared_ptr<asio::ip::tcp::socket> getSocket();
   bool connected();
 

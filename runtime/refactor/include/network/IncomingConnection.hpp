@@ -9,7 +9,7 @@ namespace K3 {
 class IncomingConnection {
  public:
   IncomingConnection(asio::io_service&, CodecFormat);
-  ~IncomingConnection();
+  virtual ~IncomingConnection();
   shared_ptr<asio::ip::tcp::socket> getSocket();
   virtual void receiveMessages(shared_ptr<MessageHandler>,
                                shared_ptr<ErrorHandler>) = 0;

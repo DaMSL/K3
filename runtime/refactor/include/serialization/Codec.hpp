@@ -45,6 +45,7 @@ namespace K3 {
 // Codec Interface
 class Codec {
  public:
+  virtual ~Codec() { }
   virtual shared_ptr<PackedValue> pack(const NativeValue&) = 0;
   virtual shared_ptr<NativeValue> unpack(const PackedValue& pv) = 0;
   virtual CodecFormat format() = 0;

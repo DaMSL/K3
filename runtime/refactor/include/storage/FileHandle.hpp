@@ -15,6 +15,7 @@ namespace K3 {
 //    Abstract class for both sources & sinks
 class FileHandle {
   public:
+    virtual ~FileHandle() { }
     virtual bool hasRead()   {return false;}
     virtual bool hasWrite()  {return false;}
 
