@@ -216,9 +216,12 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
   stage "[#{stage_num}] Getting result data"
   `rm -rf json`
   file_paths = []
-  res['sandbox'].each_pair do |s|
-    file_paths << [s] if File.extname s == '.tar'
+  res['sandbox'].each do |s|
+    if File.extname(s) == '.tar'
+      file_paths << s
+    end
   end
+
   file_paths.for_each do |f|
     curl(server_url, "/fs/jobs/#{nice_name}/#{jobid}/", getfile:f)
     run("tar xvf #{f}")
