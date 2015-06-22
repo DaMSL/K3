@@ -299,25 +299,30 @@ end
 def parse_k3_results(script_path, dbt_results)
   stage "[6] Parsing K3 results"
   files = []
-  Dir.entries("json").each do |f|
-    if f =~ /.*Globals.dsv/ then files << File.join("json", f) end
+  if Dir.exists?("json")
+    Dir.entries("json").each do |f|
+      if f =~ /.*Globals.dsv/ then files << File.join("json", f) end
+    end
   end
 
   # Run script to convert json format
-  run("#{File.join(script_path, "clean_json.py")} #{files.join(" ")}")
+  unless files.empty?
+    run("#{File.join(script_path, "clean_json.py")} #{files.join(" ")}")
+  end
 
   # We assume only final state data
   combined_maps = {}
   str = File.read('globals.dsv')
+  stage "[6] Found K3 globals.csv"
   str.each_line do |line|
     csv = line.split('|')
     map_name = csv[2]
     map_data = csv[3]
+    # skip irrelevant maps
     unless dbt_results.has_key? map_name then next end
     map_data_j = JSON.parse(map_data)
-    if map_data_j.empty?
-	    next
-    end
+    # skip empty maps
+    if map_data_j.empty? then next end
     # frontier operation
     max_map = {}
     # check if we're dealing with simple values
@@ -333,10 +338,10 @@ def parse_k3_results(script_path, dbt_results)
       max_map.each_pair do |key,value|
         if !combined_maps.has_key?(map_name)
           combined_maps[map_name] = { key => value[1] }
-        elsif combined_maps[map_name].has_key?(key)
-          combined_maps[map_name][key] += value[1]
-        else
+        elsif !combined_maps[map_name].has_key?(key)
           combined_maps[map_name][key] = value[1]
+        else
+          combined_maps[map_name][key] += value[1]
         end
       end
     else # simple data type
