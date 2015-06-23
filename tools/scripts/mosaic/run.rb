@@ -226,9 +226,8 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
 
   file_paths.each do |f|
     curl(server_url, "/fs/jobs/#{nice_name}/#{jobid}/", getfile:f)
-    run("tar xvf #{f}")
+    run("tar xvf #{File.join($workdir, f)} -C #{$workdir}")
   end
-  `mv json #{File.join($workdir, 'json')}`
 end
 
 def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, script_path)
