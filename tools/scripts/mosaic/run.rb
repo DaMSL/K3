@@ -202,7 +202,7 @@ def gen_yaml(k3_data_path, role_file, script_path)
   cmd = ""
   cmd << "--switches " << $options[:num_switches].to_s << " " if $options[:num_switches]
   cmd << "--nodes " << $options[:num_nodes].to_s << " " if $options[:num_nodes]
-  cmd << "--file " << k3_data_path
+  cmd << "--file " << k3_data_path << " "
   cmd << "--dist " if !$options[:run_local]
   yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
   File.write(role_file, yaml)
