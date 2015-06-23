@@ -123,7 +123,7 @@ def process_files(files, prefix_path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("json_files", type=str, nargs='+', help="Specify path")
-    parser.add_argument("prefix_path", type=str, help="Specify prefix to output", default="")
+    parser.add_argument("--prefix_path", type=str, help="Specify prefix to output", default="")
     args = parser.parse_args()
     process_files(args.json_files, args.prefix_path)
 
