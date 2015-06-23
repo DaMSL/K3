@@ -69,7 +69,7 @@ def run_dbtoaster(test_path, dbt_platform, dbt_lib_path, dbt_name, dbt_name_hpp,
   run("g++ #{File.join(dbt_lib_path, "main.cpp")} -std=c++11 -include #{dbt_name_hpp_path} -o #{dbt_name_path} -O3 -I#{dbt_lib_path} -L#{dbt_lib_path} -ldbtoaster -lpthread #{boost_libs.join ' '}")
 
   stage "[2] Running DBToaster"
-  run("#{File.join(".", dbt_name_path)} > #{dbt_name_path}.xml", [/File not found/])
+  run("#{dbt_name_path} > #{dbt_name_path}.xml", [/File not found/])
 end
 
 ## Create/Compile stage ###
@@ -78,7 +78,7 @@ end
 def curl(server, url, args:{}, file:"", post:false, json:false, getfile:nil)
   cmd = ""
   # Getfile needs json to remove html, but don't parse as json
-  cmd << getfile.nil? ? '-i ' : '-H "Accept: application/json" '
+  cmd << if getfile.nil? then '-i ' else '-H "Accept: application/json" ' end
   cmd << '-X POST ' if post
   cmd << '-H "Accept: application/json" ' if json
   cmd << "-F \"file=@#{file}\" " if file != ""
@@ -87,7 +87,7 @@ def curl(server, url, args:{}, file:"", post:false, json:false, getfile:nil)
   pipe = getfile.nil? ? '' : '-o ' + File.join($workdir, getfile)
   url2 = !getfile.nil? ? url + getfile + "/" : url
 
-  res = run("curl -s http://#{server}#{url2} #{cmd}#{pipe}")
+  res = run("curl http://#{server}#{url2} #{cmd}#{pipe}")
   # clean up json output
   if json
     i = res =~ /{/
@@ -149,7 +149,6 @@ def wait_and_fetch_remote_compile(server_url, bin_file, k3_cpp_name, nice_name, 
   check_status(status, "COMPLETE", "Remote compilation")
 
   # get the cpp file
-  puts k3_cpp_name
   curl(server_url, fs_path, getfile:k3_cpp_name)
 
   if !bin_file.nil?
@@ -193,7 +192,7 @@ def run_compile_k3(bin_file, k3_path, k3_cpp_name, k3_cpp_path, k3_root_path, sc
 
   bin_src_file = File.join(k3_root_path, "__build", "A")
 
-  FileUtils.copy_file(bin_src_file, bin_file)
+  FileUtils.copy_file(bin_src_file, File.join($workdir, bin_file))
 end
 
 ### Deployment stage ###
@@ -229,15 +228,16 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
     curl(server_url, "/fs/jobs/#{nice_name}/#{jobid}/", getfile:f)
     run("tar xvf #{f}")
   end
+  `mv json #{File.join($workdir, 'json')}`
 end
 
-def run_deploy_k3_remote(uid, server_url, bin_file, nice_name, script_path)
+def run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path)
   role_path = File.join($workdir, nice_name + ".yaml")
 
   # we can either have a uid from a previous stage, or send a binary and get a uid now
   if uid.nil?
     stage "[5] Sending binary to mesos"
-    res = curl(server_url, '/apps', file:bin_file, post:true, json:true)
+    res = curl(server_url, '/apps', file:bin_path, post:true, json:true)
     uid = res['uid']
   end
 
@@ -253,7 +253,7 @@ def run_deploy_k3_remote(uid, server_url, bin_file, nice_name, script_path)
 end
 
 # local deployment
-def run_deploy_k3_local(bin_file, nice_name, script_path)
+def run_deploy_k3_local(bin_path, nice_name, script_path)
   role_file = File.join($workdir, nice_name + "_local.yaml")
   gen_yaml(role_file, script_path)
 
@@ -262,7 +262,7 @@ def run_deploy_k3_local(bin_file, nice_name, script_path)
   stage "[5] Running K3 executable locally"
   `rm -rf #{json_dist_path}`
   `mkdir -p #{json_dist_path}`
-  run("./#{bin_file} -p #{role_file} --json #{json_dist_path} --json_final_only")
+  run("./#{bin_path} -p #{role_file} --json #{json_dist_path} --json_final_only")
 end
 
 # convert a string to the narrowest value
@@ -420,7 +420,7 @@ def main()
     opts.on("--fetch-cpp", "Fetch a cpp file after remote creation") { $options[:fetch_cpp] = true}
     opts.on("--fetch-bin", "Fetch bin + cpp files after remote compilation") { $options[:fetch_bin] = true}
     opts.on("--fetch-results", "Fetch results after job") { $options[:fetch_results] = true }
-    opts.on("-p", "--path", "Path in which to create files") {|s| $options[:path] = s}
+    opts.on("-w", "--workdir [PATH]", "Path in which to create files") {|s| $options[:workdir] = s}
 
     # stages
     opts.on("-a", "--all", "All stages") {
@@ -476,6 +476,7 @@ def main()
   mosaic_path  = File.join(common_root_path, "K3-Mosaic")
   mosaic_path  = $options[:mosaic_path] ? $options[:mosaic_path] : mosaic_path
   $workdir     = $options[:workdir] ? $options[:workdir] : "temp"
+  $workdir     = File.expand_path($workdir)
 
   start_path = File.expand_path(Dir.pwd)
 
@@ -512,7 +513,8 @@ def main()
 
   server_url = "qp2:5000"
 
-  bin_file = File.join($workdir, nice_name)
+  bin_file = nice_name
+  bin_path = File.join($workdir, bin_file)
   dbt_results = []
 
   if $options[:mosaic]
@@ -552,9 +554,9 @@ def main()
 
   if $options[:deploy_k3]
     if $options[:run_local]
-      run_deploy_k3_local(bin_file, nice_name, script_path)
+      run_deploy_k3_local(bin_path, nice_name, script_path)
     else
-      run_deploy_k3_remote(uid, bin_file, server_url, nice_name, script_path)
+      run_deploy_k3_remote(uid, bin_path, server_url, nice_name, script_path)
     end
   end
 
