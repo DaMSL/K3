@@ -545,7 +545,7 @@ runServiceWorker sOpts@(serviceId -> wid) = initService sOpts $ runZMQ $ do
       hbsock <- socket Dealer
       setRandomIdentity hbsock
       connect hbsock wconn
-      liftIO $ putStrLn "Heartbeat loop started"
+      liftIO $ putStrLn $ unwords ["Heartbeat loop started with period", show heartbeatPeriod, "us."]
       void $ forever $ do
         liftIO $ threadDelay heartbeatPeriod
         pingPongHeartbeat sv hbsock
@@ -699,9 +699,9 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
         mlogM $ unwords ["Processing program", rq, "(", show rid, ")"]
         (initP, initSt, ppProfs) <- preprocess prog
         let ppRep = mkReport "Master preprocessing" ppProfs
-        (pid, blocksByWID) <- assignBlocks rid rq jobOpts initP ppRep
+        (pid, blocksByWID, wConfig) <- assignBlocks rid rq jobOpts initP ppRep
         (_, sProf) <- ST.profile $ const $ do
-          msgs <- mkMessages pid jobOpts initSt blocksByWID
+          msgs <- mkMessages pid (rcStages jobOpts) wConfig initSt blocksByWID
           liftZ $ sendCIs mworker msgs
         let sRep = mkReport "Master distribution" [sProf]
         modifyMJ_ $ \jbs -> Map.adjust (adjustProfile sRep) pid jbs
@@ -734,10 +734,10 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       mlogM $ unwords ["Assigning blocks for program:", show pid]
 
       -- Get the current worker weights, and use them to partition the program.
-      ((wBlocks', nassigns', pending', wjs'), aProf) <- ST.profile $ const $ do
-        wWeights <- workerWeights
+      ((wConfig', wBlocks', nassigns', pending', wjs'), aProf) <- ST.profile $ const $ do
+        (wWeights, wConfig) <- workerWeightsAndConfig jobOpts
         when ( Heap.null wWeights ) $ assignError pid
-        (nwWeights, wBlocks, jobCosts) <- partitionProgram (jobBlockSize jobOpts) wWeights initP
+        (nwWeights, wBlocks, jobCosts) <- partitionProgram wConfig wWeights initP
 
         -- Compute assignment map delta.
         -- Extract block ids per worker, and join with new weights per worker to compute
@@ -749,7 +749,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
         -- Compute new job state.
         let pending = foldl (\acc cb -> acc `Set.union` (Set.fromList $ map fst cb)) Set.empty wBlocks
         let wjs     = Map.intersectionWith (\w c -> WorkerJobState w c $ Map.size c) nwaWeights jobCosts
-        return (wBlocks, nassigns, pending, wjs)
+        return (wConfig, wBlocks, nassigns, pending, wjs)
 
       let aRep = mkReport "Master assignment" [aProf]
       js <- js0 rid rq pending' wjs' $ ppRep <> aRep
@@ -757,34 +757,56 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       modifyMA_ $ \assigns -> Map.unionWith incrWorkerAssignments assigns nassigns'
 
       logAssignment pid nassigns' js
-      return (pid, wBlocks')
+      return (pid, wBlocks', wConfig')
+
+    wcBlock  wid wConfig = maybe blockSizeErr (return . fst) $ Map.lookup wid wConfig
+    wcFactor wid wConfig = maybe factorErr    (return . snd) $ Map.lookup wid wConfig
 
     -- | Compute a min-heap of worker assignment weights, returning a zero-heap if no assignments exist.
-    workerWeights = do
-      weightHeap <- flip foldMA Heap.empty $ \acc wid assigns -> Heap.insert (waweight assigns, wid) acc
+    --   We also pattern match against worker-specific metadata available in the job options.
+    workerWeightsAndConfig jobOpts = do
+      (weightHeap, configMap) <- flip foldMA wp0 accumWorker
       if Heap.null weightHeap
-        then getMW >>= return . Map.foldlWithKey (\acc wid _ -> Heap.insert (0.0, wid) acc) Heap.empty
-        else return weightHeap
+        then getMW >>= return . Map.foldlWithKey initWorker wp0
+        else return (weightHeap, configMap)
+
+      where wp0 = (Heap.empty, Map.empty)
+
+            initWorker (hacc, macc) wid _ =
+              (Heap.insert (0.0, wid) hacc,
+               Map.insert wid (workerBlock wid, workerAssignFactor wid) macc)
+
+            accumWorker (hacc, macc) wid assigns =
+              (Heap.insert (waweight assigns, wid) hacc,
+               Map.insert wid (workerBlock wid, workerAssignFactor wid) macc)
+
+            blockSize              = defaultBlockSize jobOpts
+            workerBlock        wid = Map.foldlWithKey (matchWorker wid) blockSize $ workerBlockSize jobOpts
+            workerAssignFactor wid = Map.foldlWithKey (matchWorker wid) 1 $ workerFactor jobOpts
+
+            matchWorker wid rv matchstr matchv = if matchstr `isInfixOf` wid then matchv else rv
+
 
     -- | Cost-based program partitioning.
     --   This performs assignments at a per-declaration granularity rather than per-block,
     --   using a greedy heuristic to balance work across each worker (the k-partition problem).
     --   This returns final worker weights, new compile block assignments, and the job costs per worker.
-    partitionProgram blockSize wWeights (tnc -> (DRole _, ch)) =
-      let (total_cost, swich) = sortByCost ch in do
-        (nwWeights, newAssigns) <- greedyPartition wWeights swich
-        (wcBlocks, wcosts) <- foldMapKeyM (return (Map.empty, Map.empty)) newAssigns $ chunkAssigns blockSize
+    partitionProgram wConfig wWeights (tnc -> (DRole _, ch)) =
+      let (totalCost, sCostAndCh) = sortByCost ch in do
+        (nwWeights, newAssigns) <- greedyPartition wConfig wWeights sCostAndCh
+        (wcBlocks, wcosts) <- foldMapKeyM (return (Map.empty, Map.empty)) newAssigns $ chunkAssigns wConfig
         return (nwWeights, Map.map reverse wcBlocks, wcosts)
 
     partitionProgram _ _ _ = throwE "Top level declaration is not a role."
 
     -- Creates compile block chunks per worker, and sums up costs per chunk.
-    chunkAssigns blockSize accM wid wbwl = do
+    chunkAssigns wConfig accM wid wbwl = do
+      blockSize <- wcBlock wid wConfig
       (wcbm,wcm) <- accM
       biwsl <- forM (chunksOf blockSize wbwl) $ \bwl -> do
                  let (chunkcb, chunkcost) = second sum $ unzip bwl
                  bid <- blockIDM
-                 return ((bid, sortOn fst chunkcb), (bid, chunkcost))
+                 return ((bid, sortOn fst chunkcb), (bid, fromIntegral chunkcost))
       let (wcompileblock, wblockcosts) = second Map.fromList $ unzip biwsl
       return $ ( Map.insertWith (++) wid wcompileblock wcbm
                , Map.insertWith mergeBlockCosts wid wblockcosts wcm )
@@ -797,33 +819,60 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     cost (tag -> DTrigger _ _ (treesize -> n))       = n
     cost _                                           = 1
 
-    -- | Greedy solution to the k-partitioning problem.
-    --   We maintain a heap of weights, to easily pick the partition with minimum weight,
-    --   and update the corresponding partition with the new element.
-    greedyPartition wWeights swich = foldM greedy (wWeights, Map.empty) swich
-      where
-        greedy (heap, assignsAndCosts) (w, ich) =
-          maybe partitionError (assign assignsAndCosts w ich) $ Heap.uncons heap
+    -- | Greedy solution to the weighted k-partitioning problem.
+    --   We maintain a list of heaps (buckets) to make an assignment, where each
+    --   bucket corresponds to a weight class.
+    --   We consider each bucket as a candidate and greedily pick the bucket which
+    --   leads to the smallest imbalance across assignments.
+    greedyPartition wConfig wWeights sCostAndCh = do
+        wWeightsByFactor <- foldM groupByFactor Map.empty wWeights
+        (_, rassigns) <- foldM greedy (wWeightsByFactor, Map.empty) sCostAndCh
+        let rheap = Heap.map (rebuildWeights rassigns) wWeights
+        return (rheap, rassigns)
 
-        assign acm (fromIntegral -> w) ich ((sz,wid), restheap) =
-          return ( Heap.insert (sz + w, wid) restheap, Map.insertWith (++) wid [(ich,w)] acm )
+      where
+        rebuildWeights assigns (sz, wid) =
+          let ichwl = maybe [] id $ Map.lookup wid assigns
+          in (foldl (\rsz (_, w) -> rsz + fromIntegral w) sz ichwl, wid)
+
+        groupByFactor acc (sz, wid) = do
+          f <- wcFactor wid wConfig
+          return $ Map.insertWith Heap.union f (Heap.singleton (sz, wid)) acc
+
+        greedy (scaledHeap, assignsAndCosts) (w, ich) = do
+            let candidates  = Map.mapWithKey candidateCost scaledHeap
+            (cf,cwid,_)     <- maybe partitionError return $ Map.foldlWithKey pick Nothing candidates
+            let nscaledHeap = Map.mapWithKey (rebuildS cf) candidates
+            let nassigns    = Map.insertWith (++) cwid [(ich, w)] assignsAndCosts
+            return (nscaledHeap, nassigns)
+
+          where
+            candidateCost f h = do
+              ((sz, wid), h') <- Heap.uncons h
+              return (sz, sz + (fromIntegral w / fromIntegral f), wid, h')
+
+            pick rOpt _ Nothing = rOpt
+            pick Nothing f (Just (_, nsz, wid, _)) = Just (f, wid, nsz)
+            pick rOpt@(Just (_, _, rsz)) f (Just (_, nsz, wid, _)) = if rsz < nsz then rOpt else Just (f, wid, nsz)
+
+            rebuildS _ _ Nothing = Heap.empty
+            rebuildS cf f (Just (sz,nsz,wid,h)) = Heap.insert (if f == cf then nsz else sz, wid) h
+
 
     -- | Compile block messages construction.
-    mkMessages pid (jobBlockSize &&& rcStages -> (blockSz, remoteStages)) initSt cBlocksByWID = do
-      let forkFactor = blockSz * Map.size cBlocksByWID
-      let initStBS = SC.encode initSt
+    mkMessages pid remoteStages wConfig initSt cBlocksByWID = do
       mlogM $ unwords ["State size for", show pid, show $ BC.length initStBS]
-      liftM fst $ foldMapKeyM (return ([], [0..])) cBlocksByWID $ \m wid cb -> do
-        (msgacc, offgen) <- m
-        (wsym, restidx) <- maybe wstateError return $ workerSyms forkFactor offgen
+      forkFactor <- foldMapKeyM (return 0) cBlocksByWID $ \m wid _ -> (+) <$> m <*> wcBlock wid wConfig
+      liftM fst $ foldMapKeyM (return ([], 0)) cBlocksByWID $ \m wid cb -> do
+        wDelta <- wcBlock wid wConfig
+        (msgacc, wOffset) <- m
+        wsym <- maybe wstateError (return . getTransformSyms)
+                  $ ST.partitionTransformStSyms forkFactor wOffset initSt
         wsockid <- getMWI wid >>= maybe (workerError wid) return
-        return $ (msgacc ++ [(wsockid, Block pid remoteStages initStBS wsym cb)], restidx)
+        return $ (msgacc ++ [(wsockid, Block pid remoteStages initStBS wsym cb)], wOffset + wDelta)
 
-      where workerSyms factor offgen = do
-              (widx, restidx) <- uncons offgen
-              let wOffset = widx * blockSz
-              wst <- ST.partitionTransformStSyms factor wOffset initSt
-              return (getTransformSyms wst, restidx)
+      where initStBS = SC.encode initSt
+
 
     -- Map helpers to supply fold function as last argument.
     foldMapKeyM a m f = Map.foldlWithKey f a m
@@ -1015,6 +1064,9 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
                     %$ ["Time"]                %$ (i 1 timereport)
 
     parseError = "Could not parse input: "
+
+    blockSizeErr     = throwE $ "Could not find a worker's block size."
+    factorErr        = throwE $ "Could not find a worker's assignment factor."
 
     wstateError      = throwE $ "Could not create a worker symbol state."
     partitionError   = throwE $ "Could not greedily pick a partition"

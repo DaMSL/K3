@@ -6,12 +6,14 @@
 module Language.K3.Driver.Options where
 
 import Control.Applicative
+import Control.Arrow ( second )
 import Options.Applicative
 
 import Data.Binary
 import Data.Serialize
 
 import Data.Char
+import Data.Map ( Map )
 import qualified Data.Map as Map
 import Data.List.Split
 import Data.Maybe
@@ -150,8 +152,10 @@ data ServiceMasterOptions
         = ServiceMasterOptions { sfinalStages  :: CompileStages }
         deriving (Eq, Read, Show)
 
-data RemoteJobOptions = RemoteJobOptions { jobBlockSize  :: Int
-                                         , rcStages      :: CompileStages }
+data RemoteJobOptions = RemoteJobOptions { workerFactor     :: Map String Int
+                                         , workerBlockSize  :: Map String Int
+                                         , defaultBlockSize :: Int
+                                         , rcStages         :: CompileStages }
                       deriving (Eq, Read, Show, Generic)
 
 -- | Verbosity levels.
@@ -672,8 +676,11 @@ serviceHeartbeatOpt = option auto (   long    "heartbeat"
                                    <> metavar "PERIOD" )
 
 remoteJobOpt :: Parser RemoteJobOptions
-remoteJobOpt = RemoteJobOptions <$> jobBlockSizeOpt
+remoteJobOpt = RemoteJobOptions <$> workerFactorOpt
+                                <*> workerBlockSizeOpt
+                                <*> jobBlockSizeOpt
                                 <*> compileStagesOpt ServiceClientRemote
+
 
 jobBlockSizeOpt :: Parser Int
 jobBlockSizeOpt = option auto (
@@ -681,6 +688,24 @@ jobBlockSizeOpt = option auto (
                     <> value   16
                     <> help    "Remote job block size"
                     <> metavar "SIZE" )
+
+workerFactorOpt :: Parser (Map String Int)
+workerFactorOpt = extract . keyValList ""
+                    <$> strOption (    long    "workerfactor"
+                                    <> value   ""
+                                    <> help    "Worker assignment factor"
+                                    <> metavar "WAFACTOR" )
+
+  where extract = Map.fromList . map (second read)
+
+workerBlockSizeOpt :: Parser (Map String Int)
+workerBlockSizeOpt = extract . keyValList ""
+                       <$> strOption (    long    "workerblocks"
+                                       <> value   ""
+                                       <> help    "Worker block sizes"
+                                       <> metavar "WBLOCKS" )
+
+  where extract = Map.fromList . map (second read)
 
 
 {- Top-level options -}
