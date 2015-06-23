@@ -123,7 +123,7 @@ def initWeb(port, **kwargs):
   #  Configure rotating log file
   logfile = os.path.join(args.dir, 'log', 'web.log')
   webapp.config['LOGFILE'] = logfile
-  log_file = logging.handlers.RotatingFileHandler(logfile, maxBytes=1024*1024, backupCount=5, mode='w')
+  log_file = logging.handlers.RotatingFileHandler(logfile, maxBytes=2*1024*1024, backupCount=5, mode='w')
   log_file.setFormatter(log_fmt)
   logger.addHandler(log_file)
 
@@ -569,6 +569,17 @@ def createJob(appName, appUID):
         user = request.form['user'] if 'user' in request.form else 'anonymous'
         tag = request.form['tag'] if 'tag' in request.form else ''
 
+        # text = request.form.get('text', None)
+        # k3logging = True if 'logging' in request.form else False
+        # jsonlog = True if 'jsonlog' in request.form else False
+        # jsonfinal = True if 'jsonfinal' in request.form else False
+        # stdout = request.form['stdout'] if 'stdout' in request.form else False
+        # user = request.form['user'] if 'user' in request.form else 'anonymous'
+        # tag = request.form['tag'] if 'tag' in request.form else ''
+
+        # User handling: jsonfinal is a qualifier flag for the json logging flag
+        if jsonfinal and not jsonlog:
+          jsonlog = True
 
         logger.debug("K3 LOGGING is :  %s" %  ("ON" if k3logging else "OFF"))
         logger.debug("JSON LOGGING is :  %s" %  ("ON" if jsonlog else "OFF"))
@@ -610,7 +621,8 @@ def createJob(appName, appUID):
 
         # Submit to Mesos
         dispatcher.submit(newJob)
-        thisjob = dict(thisjob, url='http://localhost:5050', status='SUBMITTED')
+
+        thisjob = dict(thisjob, url=dispatcher.getSandboxURL(jobId), status='SUBMITTED')
 
 
 
@@ -1128,7 +1140,7 @@ def getCompileStatus():
   if lastCompile == None:
     output = dict(name="N/A", status="There are no compilation jobs to display")
   else:
-    output = db.getCompiles(uid=lastCompile.uid)[0]
+    output = db.getCompiles(uid=lastCompile['uid'])[0]
     output['uname'] = ParseName.makeuname(output['name'], output['uid'])
     local = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], output['uname'])
     output['sandbox'] = sorted (os.listdir(local))
@@ -1153,7 +1165,8 @@ def getCompileLog():
   if lastCompile == None:
     output = "Waiting for compile task to launch.....\n"
   else:
-    output = getCompilerOutput(lastCompile.uname()).encode(encoding='utf-8')
+    uname = lastCompile['name'] + '-' + lastCompile['uid']
+    output = getCompilerOutput(uname)
 
   if request.headers['Accept'] == 'application/json':
     # TODO: Return command line based data (??)

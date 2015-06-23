@@ -266,12 +266,11 @@ class Dispatcher(mesos.interface.Scheduler):
     self.finished[jobId] = job
 #    self.tryTerminate()
 
-  def getSandboxURL(self, jobId):
+  def getSandboxURL(self, jobId=None):
 
     # For now, return Mesos URL to Framework:
-#    return 'http://' + self.mesosmaster
     master = resolve(self.mesosmaster).strip()
-    url = os.path.join('http://', master)
+    url = os.path.join('http://', master, '#', 'frameworks', self.frameworkId)
     return url
 
 
