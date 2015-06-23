@@ -44,7 +44,7 @@ end
 
 ### DBToaster stage ###
 
-def run_dbtoaster(test_path, dbt_platform, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
+def run_dbtoaster(test_path, dbt_data_path, dbt_platform, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
   dbt_name_hpp_path = File.join($workdir, dbt_name_hpp)
   dbt_name_path = File.join($workdir, dbt_name)
 
@@ -53,12 +53,10 @@ def run_dbtoaster(test_path, dbt_platform, dbt_lib_path, dbt_name, dbt_name_hpp,
   run("#{File.join(dbt_platform, "dbtoaster")} --read-agenda -l cpp #{source_path} > #{dbt_name_hpp_path}")
   Dir.chdir(start_path)
 
-  # if requested, change the data path
-  if $options.has_key?(:dbt_data_path)
-    s = File.read(dbt_name_hpp_path)
-    s.sub!(/agenda.csv/,$options[:dbt_data_path])
-    File.write(dbt_name_hpp_path, s)
-  end
+  # change the data path
+  s = File.read(dbt_name_hpp_path)
+  s.sub!(/agenda.csv/,$options[:dbt_data_path])
+  File.write(dbt_name_hpp_path, s)
 
   # adjust boost libs for OS
   boost_libs = %w(boost_program_options boost_serialization boost_system boost_filesystem boost_chrono boost_thread)
@@ -135,6 +133,7 @@ def run_create_k3_local(k3_path, script_path)
 end
 
 def wait_and_fetch_remote_compile(server_url, bin_file, k3_cpp_name, nice_name, uid)
+  check_param(uid, "--uid")
 
   puts "UID = #{uid}"
 
@@ -197,18 +196,19 @@ end
 
 ### Deployment stage ###
 
-def gen_yaml(role_file, script_path)
+def gen_yaml(k3_data_path, role_file, script_path)
   # Genereate yaml file"
   cmd = ""
   cmd << "--switches " << $options[:num_switches].to_s << " " if $options[:num_switches]
   cmd << "--nodes " << $options[:num_nodes].to_s << " " if $options[:num_nodes]
-  cmd << "--file " << $options[:k3_data_path] << " " if $options[:k3_data_path]
+  cmd << "--file " << k3_data_path
   cmd << "--dist " if !$options[:run_local]
   yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
   File.write(role_file, yaml)
 end
 
 def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
+  check_param(jobid, "--jobid")
 
   stage "[#{stage_num}] Waiting for Mesos job to finish..."
   status, res = curl_status_loop(server_url, "/job/#{jobid}", "FINISHED")
@@ -231,7 +231,7 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
   `mv json #{File.join($workdir, 'json')}`
 end
 
-def run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path)
+def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, script_path)
   role_path = File.join($workdir, nice_name + ".yaml")
 
   # we can either have a uid from a previous stage, or send a binary and get a uid now
@@ -242,27 +242,28 @@ def run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path)
   end
 
   # Genereate mesos yaml file"
-  gen_yaml(role_path, script_path)
+  gen_yaml(k3_data_path, role_path, script_path)
 
   stage "[5] Creating new mesos job"
   res = curl(server_url, "/jobs/#{nice_name}/#{uid}", json:true, post:true, file:role_path, args:{'jsonfinal' => 'yes'})
   jobid = res['jobId']
+  puts "JOBID = #{jobid}"
 
   # Wait for job to finish and get results
   wait_and_fetch_results(5, jobid, server_url, nice_name)
 end
 
 # local deployment
-def run_deploy_k3_local(bin_path, nice_name, script_path)
+def run_deploy_k3_local(bin_path, k3_data_path, nice_name, script_path)
   role_file = File.join($workdir, nice_name + "_local.yaml")
-  gen_yaml(role_file, script_path)
+  gen_yaml(k3_data_path, role_file, script_path)
 
   json_dist_path = File.join($workdir, 'json')
 
   stage "[5] Running K3 executable locally"
   `rm -rf #{json_dist_path}`
   `mkdir -p #{json_dist_path}`
-  run("./#{bin_path} -p #{role_file} --json #{json_dist_path} --json_final_only")
+  run("#{bin_path} -p #{role_file} --json #{json_dist_path} --json_final_only")
 end
 
 # convert a string to the narrowest value
@@ -396,6 +397,13 @@ def run_compare(dbt_results, k3_results)
   stage "[6] Results check...OK"
 end
 
+def check_param(p, nm)
+  if p.nil?
+    puts "Please provide #{nm} param"
+    exit(1)
+  end
+end
+
 def main()
   $options = {}
   uid = nil
@@ -511,6 +519,9 @@ def main()
   dbt_name = "dbt_" + nice_name
   dbt_name_hpp = dbt_name + ".hpp"
 
+  k3_data_path = $options[:k3_data_path] ? $options[:k3_data_path] : File.join($workdir, nice_name + ".csv")
+  dbt_data_path = $options[:dbt_data_path] ? $options[:dbt_data_path] : File.join($workdir, nice_name + ".csv")
+
   server_url = "qp2:5000"
 
   bin_file = nice_name
@@ -522,7 +533,7 @@ def main()
   end
 
   if $options[:dbtoaster]
-    run_dbtoaster(test_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
+    run_dbtoaster(test_path, dbt_data_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
   end
   # either nil or take from command line
   uid = $options[:uid] ? $options[:uid] : nil
@@ -554,9 +565,9 @@ def main()
 
   if $options[:deploy_k3]
     if $options[:run_local]
-      run_deploy_k3_local(bin_path, nice_name, script_path)
+      run_deploy_k3_local(bin_path, k3_data_path, nice_name, script_path)
     else
-      run_deploy_k3_remote(uid, bin_path, server_url, nice_name, script_path)
+      run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, script_path)
     end
   end
 
