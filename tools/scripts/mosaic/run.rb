@@ -153,6 +153,7 @@ def wait_and_fetch_remote_compile(server_url, bin_file, k3_cpp_name, nice_name, 
   if !bin_file.nil?
     # get the bin file
     curl(server_url, fs_path, getfile:bin_file)
+    `chmod +x #{File.join($workdir, bin_file)}`
   end
 end
 
