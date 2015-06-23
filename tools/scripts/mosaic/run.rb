@@ -241,11 +241,14 @@ def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, scr
     uid = res['uid']
   end
 
+  # for latest, don't put uid in the command
+  uid_s = uid == "latest" ? "" : "/#{uid}"
+
   # Genereate mesos yaml file"
   gen_yaml(k3_data_path, role_path, script_path)
 
   stage "[5] Creating new mesos job"
-  res = curl(server_url, "/jobs/#{nice_name}/#{uid}", json:true, post:true, file:role_path, args:{'jsonfinal' => 'yes'})
+  res = curl(server_url, "/jobs/#{nice_name}#{uid_s}", json:true, post:true, file:role_path, args:{'jsonfinal' => 'yes'})
   jobid = res['jobId']
   puts "JOBID = #{jobid}"
 
@@ -429,6 +432,7 @@ def main()
     opts.on("--fetch-bin", "Fetch bin + cpp files after remote compilation") { $options[:fetch_bin] = true}
     opts.on("--fetch-results", "Fetch results after job") { $options[:fetch_results] = true }
     opts.on("-w", "--workdir [PATH]", "Path in which to create files") {|s| $options[:workdir] = s}
+    opts.on("--latest-uid",  "Use the latest uid on the server") { $options[:latest_uid] = true}
 
     # stages
     opts.on("-a", "--all", "All stages") {
@@ -536,7 +540,7 @@ def main()
     run_dbtoaster(test_path, dbt_data_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
   end
   # either nil or take from command line
-  uid = $options[:uid] ? $options[:uid] : nil
+  uid = $options[:uid] ? $options[:uid] : $options[:latest_uid] ? "latest" : nil
   jobid = $options[:jobid] ? $options[:jobid] : nil
 
   # options to fetch cpp/binary (ie. all) given a uid
