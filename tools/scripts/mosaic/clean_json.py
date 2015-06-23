@@ -5,6 +5,7 @@ import argparse
 import csv
 import json
 import re
+import os
 
 def int_of_label(s):
     total = 0
@@ -19,11 +20,11 @@ def label_of_int(i):
         s += 'z'
         i -= maxint
     s += chr(i + ord('a') - 1)
-
+    return s
 
 def convert_dict(d):
     # for addresses, options, records, etc, just dereference
-    if "type" in d and d["type"] in ["address", "option_or_ind", "record", "tuple", "Collection", "Map", "Seq", "Set"]:
+    if "type" in d and d["type"] in ["address", "option_or_ind", "record", "tuple", "Collection", "Map", "Seq", "Set", "VMap"]:
         return convert_any(d["value"])
     # change record mapping back to tuple
     elif "ra" in d:
@@ -108,9 +109,9 @@ def convert_file(file_nm, writer, treat_as_ints):
             writer.writerow(res)
             i += 1
 
-def process_files(files):
-    with open("messages.dsv", "w", newline='') as msg_file:
-        with open("globals.dsv", "w", newline='') as glb_file:
+def process_files(files, prefix_path):
+    with open(os.path.join(prefix_path, "messages.dsv"), "w", newline='') as msg_file:
+        with open(os.path.join(prefix_path, "globals.dsv"), "w", newline='') as glb_file:
             msg_writer = csv.writer(msg_file, delimiter='|', quotechar="'")
             glb_writer = csv.writer(glb_file, delimiter='|', quotechar="'")
             for f in files:
@@ -123,8 +124,9 @@ def process_files(files):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("json_files", type=str, nargs='+', help="Specify path")
+    parser.add_argument("--prefix_path", type=str, help="Specify prefix to output", default="")
     args = parser.parse_args()
-    process_files(args.json_files)
+    process_files(args.json_files, args.prefix_path)
 
 if __name__=='__main__':
     main ()
