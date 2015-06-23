@@ -20,11 +20,11 @@ def label_of_int(i):
         s += 'z'
         i -= maxint
     s += chr(i + ord('a') - 1)
-
+    return s
 
 def convert_dict(d):
     # for addresses, options, records, etc, just dereference
-    if "type" in d and d["type"] in ["address", "option_or_ind", "record", "tuple", "Collection", "Map", "Seq", "Set"]:
+    if "type" in d and d["type"] in ["address", "option_or_ind", "record", "tuple", "Collection", "Map", "Seq", "Set", "VMap"]:
         return convert_any(d["value"])
     # change record mapping back to tuple
     elif "ra" in d:
