@@ -22,9 +22,9 @@
 #include <climits>
 #include <functional>
 #include <boost/thread/mutex.hpp>
-
 #include <boost/thread/thread.hpp>
 
+#include <regex>
 #include "re2/re2.h"
 
 #include "BaseTypes.hpp"
@@ -555,6 +555,11 @@ namespace K3 {
     int countChar(const string_impl& s, const string_impl& splitter);
     int tpch_date(const string_impl& s);
     string_impl tpch_date_to_string(const int& date);
+
+    int regex_match_int(const R_key_value<string_impl, string_impl>& r) {
+      bool b = std::regex_match(r.value.c_str(), std::regex(r.key.c_str()));
+      return b ? 1 : 0;
+    }
   };
 
 
