@@ -13,15 +13,15 @@ K3 is a work in progress at all levels (language, compiler, runtime). We're deve
 ---
 ##Getting Started
 The easiest way to try out K3 is with our docker container:
-https://registry.hub.docker.com/u/damsl/k3-vanilla/
+https://registry.hub.docker.com/u/damsl/k3-dev/
 
 1. Our docker image contains the K3 github codebase, as well as the dependencies and libraries listed below. From any docker installation, pull this with:
 
-    `docker pull damsl/k3-vanilla`
+    `docker pull damsl/k3-dev`
 
 2. Run your docker container:
 
-    `docker run -i -t damsl/k3-vanilla /bin/bash`
+    `docker run -i -t damsl/k3-dev /bin/bash`
 
 3. Ensure you are in the correct directory for K3 development. Think of this as your K3 "workspace" :
 
