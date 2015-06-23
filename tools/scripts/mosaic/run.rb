@@ -55,7 +55,7 @@ def run_dbtoaster(test_path, dbt_data_path, dbt_platform, dbt_lib_path, dbt_name
 
   # change the data path
   s = File.read(dbt_name_hpp_path)
-  s.sub!(/agenda.csv/,$options[:dbt_data_path])
+  s.sub!(/agenda.csv/,dbt_data_path)
   File.write(dbt_name_hpp_path, s)
 
   # adjust boost libs for OS
