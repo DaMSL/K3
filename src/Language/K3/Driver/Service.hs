@@ -83,6 +83,8 @@ data CProtocol = Register       String
                | Block          ProgramID CompileStages ByteString TransformStSymS CompileBlock
                | BlockDone      WorkerID ProgramID CompileBlock TransformReport
                | BlockAborted   WorkerID ProgramID [BlockID] String
+               | Query          ServiceQuery
+               | QueryResponse  ServiceResponse
                | Quit
                deriving (Eq, Read, Show, Generic)
 
@@ -187,6 +189,32 @@ type ServiceWM z = ServiceM z ServiceWState
 type SocketAction   z = Int -> Socket z Dealer -> ZMQ z ()
 type ClientHandler  t = forall z. Socket z t -> ZMQ z ()
 type MessageHandler   = forall z. CProtocol -> ZMQ z ()
+
+-- | Service querying datatypes.
+data SJobStatus = SJobStatus { jobPending :: BlockSet, jobCompleted :: BlockSet }
+                deriving (Eq, Read, Show, Generic)
+
+data SWorkerStatus = SWorkerStatus { wNumBlocks :: Int, wWeight :: Double }
+                    deriving (Eq, Read, Show, Generic)
+
+data ServiceQuery = SQJobStatus    [ProgramID]
+                  | SQWorkerStatus [WorkerID]
+                  deriving (Eq, Read, Show, Generic)
+
+data ServiceResponse = SRJobStatus    (Map ProgramID SJobStatus)
+                     | SRWorkerStatus (Map WorkerID  SWorkerStatus)
+                     deriving (Eq, Read, Show, Generic)
+
+instance Binary SJobStatus
+instance Binary SWorkerStatus
+instance Binary ServiceQuery
+instance Binary ServiceResponse
+
+instance Serialize SJobStatus
+instance Serialize SWorkerStatus
+instance Serialize ServiceQuery
+instance Serialize ServiceResponse
+
 
 {- Initial states -}
 
@@ -471,6 +499,8 @@ cshow = \case
           Block pid _ _ _ bids        -> unwords ["Block", show pid, intercalate "," $ map (show . fst) bids]
           BlockDone wid pid bids _    -> unwords ["BlockDone", show wid, show pid, intercalate "," $ map (show . fst) bids]
           BlockAborted wid pid bids _ -> unwords ["BlockAborted", show wid, show pid, intercalate "," $ map show bids]
+          Query sq                    -> unwords ["Query", show sq]
+          QueryResponse sr            -> unwords ["QueryResponse", show sr]
           Quit                        -> "Quit"
 
 
@@ -687,6 +717,10 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     -- TODO: detect worker changes.
     mHandler sid (Heartbeat hbid) = sendCI sid mworker $ HeartbeatAck hbid
 
+    -- Query processing.
+    mHandler sid (Query sq) = processQuery sid sq
+
+    -- Service shutdown.
     mHandler _ Quit = liftIO $ terminate sv
     mHandler _ m = merrM $ boxToString $ ["Invalid message:"] %$ [show m]
 
@@ -731,7 +765,6 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     -- | Cost-based compile block assignment.
     assignBlocks rid rq jobOpts initP ppRep = do
       pid <- progIDM
-      mlogM $ unwords ["Assigning blocks for program:", show pid]
 
       -- Get the current worker weights, and use them to partition the program.
       ((wConfig', wBlocks', nassigns', pending', wjs'), aProf) <- ST.profile $ const $ do
@@ -756,7 +789,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       modifyMJ_ $ \jbs -> Map.insert pid js jbs
       modifyMA_ $ \assigns -> Map.unionWith incrWorkerAssignments assigns nassigns'
 
-      logAssignment pid nassigns' js
+      logAssignment pid wConfig' nassigns' js
       return (pid, wBlocks', wConfig')
 
     wcBlock  wid wConfig = maybe blockSizeErr (return . fst) $ Map.lookup wid wConfig
@@ -892,16 +925,19 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     jprof0 workerjs pprep = liftIO getTime >>= \start -> return $ JobProfile start Map.empty workerjs pprep []
     js0 rid rq pending workerjs pprep = jprof0 workerjs pprep >>= \prof -> return $ JobState rid rq prof pending Map.empty []
 
-    logAssignment pid nassigns js =
+    logAssignment pid wConfig nassigns js =
       let wk wid s = wid ++ ":" ++ s
 
+          wcstr (wid, (bs,f))               = wk wid $ unwords [" bs:", show bs, "af:", show f]
           wastr (wid, WorkerAssignment b w) = (wk wid $ show $ length b, wk wid $ show w)
           wststr (wid, jwassign -> jbc)     = wk wid $ show $ foldl (+) 0.0 jbc
 
+          wconf       = map wcstr $ Map.toList wConfig
           (wlens, ww) = unzip $ map wastr $ Map.toList nassigns
           wcontrib    = map wststr $ Map.toList $ jworkerst $ jprofile $ js
       in
         mlogM $ boxToString $  ["Assignment for program: " ++ show pid]
+                            %$ ["Worker config:"]      %$ (indent 2 wconf)
                             %$ ["Worker weights:"]     %$ (indent 2 ww)
                             %$ ["Block distribution:"] %$ (indent 2 wlens)
                             %$ ["Load distribution:"]  %$ (indent 2 wcontrib)
@@ -1022,6 +1058,43 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       let nrs = Set.delete rid rs in
       (if null nrs then Map.delete cid cm else Map.insert cid nrs cm, Just cid)
 
+    {------------------------
+      - Query processing.
+      -----------------------}
+
+    processQuery sid (SQJobStatus qJobs) = do
+      jstm <- zm $ do
+                jm <- getMJ
+                pqueryJobs qJobs jm
+      sendCI sid mworker $ QueryResponse $ SRJobStatus jstm
+
+    processQuery sid (SQWorkerStatus qWorkers) = do
+      wstm <- zm $ do
+                wam  <- getMA
+                pqueryWorkers qWorkers wam
+      sendCI sid mworker $ QueryResponse $ SRWorkerStatus wstm
+
+    pqueryJobs jobIds jm =
+      let qjobs = if null jobIds then Map.keys jm else jobIds
+      in return $ foldl (summarizeJob jm) Map.empty qjobs
+
+    summarizeJob jm resultAcc pid = adjustMap resultAcc pid $ do
+      js <- Map.lookup pid jm
+      return $ SJobStatus (jpending js) (Map.keysSet $ jcompleted js)
+
+    pqueryWorkers wrkIds wam =
+      let workers = if null wrkIds then Map.keys wam else wrkIds
+      in return $ foldl (summarizeWorker wam) Map.empty workers
+
+    summarizeWorker wam resultAcc wid = adjustMap resultAcc wid $ do
+      wa <- Map.lookup wid wam
+      return $ SWorkerStatus (Set.size $ wablocks wa) (waweight wa)
+
+    adjustMap m k opt = maybe m (\v -> Map.insert k v m) opt
+
+    {------------------------
+      - Reporting.
+      -----------------------}
 
     -- | Compilation report construction.
     generateReport profile finalreport =
@@ -1177,3 +1250,22 @@ submitJob sOpts@(serviceId -> rq) rjOpts opts = do
 
 shutdownService :: ServiceOptions -> IO ()
 shutdownService sOpts = command Dealer sOpts Quit
+
+queryService :: ServiceOptions -> QueryOptions -> IO ()
+queryService sOpts (QueryOptions args) = either (queryWorkers sOpts) (queryJobs sOpts) args
+
+queryWorkers :: ServiceOptions -> [WorkerID] -> IO ()
+queryWorkers sOpts wids = requestreply Dealer sOpts (Query $ SQWorkerStatus wids) mHandler
+  where mHandler (QueryResponse (SRWorkerStatus wsm)) = noticeM $ boxToString $ ["Workers"] %$ (map wststr $ Map.toList wsm)
+        mHandler m = errorM $ boxToString $ ["Invalid worker query response:"] %$ [show m]
+
+        wststr (wid, SWorkerStatus n w) = unwords [wid, ":", show n, show w]
+
+queryJobs :: ServiceOptions -> [ProgramID] -> IO ()
+queryJobs sOpts pids = requestreply Dealer sOpts (Query $ SQJobStatus pids) mHandler
+  where mHandler (QueryResponse (SRJobStatus jsm)) = noticeM $ boxToString $ ["Jobs"] %$ (concatMap jststr $ Map.toList jsm)
+        mHandler m = errorM $ boxToString $ ["Invalid worker query response:"] %$ [show m]
+
+        jststr (pid, SJobStatus pb cb) = [show pid]
+                                            %$ (indent 2 $ [unwords ["Pending:", show pb]])
+                                            %$ (indent 2 $ [unwords ["Completed:", show cb]])

@@ -132,10 +132,11 @@ data PathOptions = PathOptions { includes :: [FilePath] }
                  deriving (Eq, Read, Show)
 
 -- | K3 compiler service options
-data ServiceOperation = RunMaster ServiceOptions ServiceMasterOptions
-                      | RunWorker ServiceOptions
-                      | SubmitJob ServiceOptions RemoteJobOptions
-                      | Shutdown  ServiceOptions
+data ServiceOperation = RunMaster    ServiceOptions ServiceMasterOptions
+                      | RunWorker    ServiceOptions
+                      | SubmitJob    ServiceOptions RemoteJobOptions
+                      | Shutdown     ServiceOptions
+                      | QueryService ServiceOptions QueryOptions
                       deriving (Eq, Read, Show, Generic)
 
 data ServiceOptions = ServiceOptions { serviceId       :: String
@@ -157,6 +158,9 @@ data RemoteJobOptions = RemoteJobOptions { workerFactor     :: Map String Int
                                          , defaultBlockSize :: Int
                                          , rcStages         :: CompileStages }
                       deriving (Eq, Read, Show, Generic)
+
+data QueryOptions = QueryOptions { qsargs :: Either [String] [Int] }
+                    deriving (Eq, Read, Show, Generic)
 
 -- | Verbosity levels.
 data Verbosity
@@ -604,16 +608,19 @@ serviceOperOpt = helper <*> subparser (
          command "master" (info smasterOpt  $ progDesc smasterDesc)
       <> command "worker" (info sworkerOpt  $ progDesc sworkerDesc)
       <> command "submit" (info sjobOpt     $ progDesc sjobDesc)
+      <> command "query"  (info squeryOpt   $ progDesc squeryDesc)
       <> command "halt"   (info shaltOpt    $ progDesc shaltDesc)
     )
-  where smasterOpt = RunMaster <$> serviceOpts ServicePrepare <*> serviceMasterOpts
-        sworkerOpt = RunWorker <$> serviceOpts ServiceParallel
-        sjobOpt    = SubmitJob <$> serviceOpts ServiceClient <*> remoteJobOpt
-        shaltOpt   = Shutdown  <$> serviceOpts ServiceClient
+  where smasterOpt = RunMaster    <$> serviceOpts ServicePrepare <*> serviceMasterOpts
+        sworkerOpt = RunWorker    <$> serviceOpts ServiceParallel
+        sjobOpt    = SubmitJob    <$> serviceOpts ServiceClient <*> remoteJobOpt
+        squeryOpt  = QueryService <$> serviceOpts ServiceClient <*> querySOpt
+        shaltOpt   = Shutdown     <$> serviceOpts ServiceClient
 
         smasterDesc   = "Run a K3 compiler service master"
         sworkerDesc   = "Run a K3 compiler service worker"
         sjobDesc      = "Submit a K3 compilation job"
+        squeryDesc    = "Query the K3 compiler service"
         shaltDesc     = "Halt the K3 compiler service"
 
 serviceOpts :: CompilerType -> Parser ServiceOptions
@@ -681,7 +688,6 @@ remoteJobOpt = RemoteJobOptions <$> workerFactorOpt
                                 <*> jobBlockSizeOpt
                                 <*> compileStagesOpt ServiceClientRemote
 
-
 jobBlockSizeOpt :: Parser Int
 jobBlockSizeOpt = option auto (
                        long    "blocksize"
@@ -706,6 +712,33 @@ workerBlockSizeOpt = extract . keyValList ""
                                        <> metavar "WBLOCKS" )
 
   where extract = Map.fromList . map (second read)
+
+querySOpt :: Parser QueryOptions
+querySOpt = qworkerOpt <|> qprogOpt <|> allWorkerOpt <|> allProgOpt
+
+qworkerOpt :: Parser QueryOptions
+qworkerOpt = (\w -> QueryOptions $ Left w) . splitOn ","
+                <$> strOption (   long    "qworkers"
+                               <> value   ""
+                               <> help    "Workers to query"
+                               <> metavar "WAQUERY" )
+
+qprogOpt :: Parser QueryOptions
+qprogOpt = (\p -> QueryOptions $ Right $ map read p) . splitOn ","
+                <$> strOption (   long    "qjobs"
+                               <> value   ""
+                               <> help    "Jobs to query"
+                               <> metavar "JSQUERY" )
+
+allWorkerOpt :: Parser QueryOptions
+allWorkerOpt = flag' (QueryOptions $ Left [])
+                 (    long    "qaworkers"
+                   <> help    "Query all workers statuses" )
+
+allProgOpt :: Parser QueryOptions
+allProgOpt = flag' (QueryOptions $ Right [])
+               (    long    "qajobs"
+                 <> help    "Query all job statuses" )
 
 
 {- Top-level options -}

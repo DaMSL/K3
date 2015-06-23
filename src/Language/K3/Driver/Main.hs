@@ -14,10 +14,11 @@ run :: Options -> DriverM ()
 run opts = do
   void $ initialize opts
   case mode opts of
-    Service (RunMaster sOpts smOpts) -> liftIO $ runServiceMaster sOpts smOpts opts
-    Service (RunWorker sOpts)        -> liftIO $ runServiceWorker sOpts
-    Service (SubmitJob sOpts rjOpts) -> liftIO $ submitJob        sOpts rjOpts opts
-    Service (Shutdown  sOpts)        -> liftIO $ shutdownService  sOpts
+    Service (RunMaster sOpts smOpts)   -> liftIO $ runServiceMaster sOpts smOpts opts
+    Service (RunWorker sOpts)          -> liftIO $ runServiceWorker sOpts
+    Service (SubmitJob sOpts rjOpts)   -> liftIO $ submitJob        sOpts rjOpts opts
+    Service (QueryService sOpts qOpts) -> liftIO $ queryService     sOpts qOpts
+    Service (Shutdown  sOpts)          -> liftIO $ shutdownService  sOpts
     Compile copts | ccStage copts == Stage2 -> compile opts copts (DC.role "__global" [])
     _ -> k3in opts >>= metaprogram opts >>= dispatch opts
 
