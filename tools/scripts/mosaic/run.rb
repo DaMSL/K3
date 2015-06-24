@@ -542,7 +542,7 @@ def main()
     exit(1)
   end
 
-  source = $options[:source] ? $options[:source] : ARGV[0]
+  source = ARGV.size == 1 ? ARGV[0] : $options[:source]
   $options[:source] = source
 
   persist_options()
