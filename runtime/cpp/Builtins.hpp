@@ -282,6 +282,24 @@ namespace K3 {
 
     }
 
+    template <class C, class A, class B>
+    C max(const R_key_value<A, B>& r) {
+      if (r.key > r.value) {
+        return r.key;
+      } else {
+        return r.value;
+      }
+    }
+
+    template <class C>
+    C min(const R_key_value<C, C>& r) {
+      if (r.key < r.value) {
+        return r.key;
+      } else {
+        return r.value;
+      }
+    }
+
     unit_t haltEngine(unit_t);
 
     unit_t drainEngine(unit_t);

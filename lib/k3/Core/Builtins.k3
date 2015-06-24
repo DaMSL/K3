@@ -35,8 +35,10 @@ declare tpch_date_to_string : int -> string
 declare now_int : () -> int
   with effects \_ -> io
 
-declare max: {key: int, value: int} -> int = \r -> if r.key > r.value then r.key else r.value
-declare min: {key: int, value: int} -> int = \r -> if r.key < r.value then r.key else r.value
+@:ErrorFn
+declare max: forall a. {key: a, value: a} -> a
+@:ErrorFn
+declare min: forall a. {key: a, value: a} -> a
 
 ///////////////////////
 //
