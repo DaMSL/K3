@@ -99,15 +99,20 @@ module Language.K3.Core.Utils
 , stripDeclTypeAndEffectAnns
 , stripAllTypeAndEffectAnns
 
+, indexProgramDecls
 ) where
 
 import Control.Applicative
 import Control.Arrow
 import Control.Monad
+
 import Data.Functor.Identity
 import Data.List
 import Data.Maybe
 import Data.Tree
+
+import Data.Map ( Map )
+import qualified Data.Map as Map
 
 import Debug.Trace
 
@@ -960,3 +965,7 @@ collectProgramUIDs d = fst $ foldProgramUID (flip (:)) [] d
 
 duplicateProgramUIDs :: K3 Declaration -> [UID]
 duplicateProgramUIDs d = let uids = collectProgramUIDs d in uids \\ nub uids
+
+indexProgramDecls :: (Monad m) => K3 Declaration -> m (Map Int (K3 Declaration))
+indexProgramDecls prog = foldTree indexDecl Map.empty prog
+  where indexDecl idx d = return $ maybe idx (\case {DUID (UID i) -> Map.insert i d idx; _ -> idx}) $ d @~ isDUID

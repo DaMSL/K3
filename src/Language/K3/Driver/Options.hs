@@ -6,12 +6,14 @@
 module Language.K3.Driver.Options where
 
 import Control.Applicative
+import Control.Arrow ( second )
 import Options.Applicative
 
 import Data.Binary
 import Data.Serialize
 
 import Data.Char
+import Data.Map ( Map )
 import qualified Data.Map as Map
 import Data.List.Split
 import Data.Maybe
@@ -130,10 +132,11 @@ data PathOptions = PathOptions { includes :: [FilePath] }
                  deriving (Eq, Read, Show)
 
 -- | K3 compiler service options
-data ServiceOperation = RunMaster ServiceOptions ServiceMasterOptions
-                      | RunWorker ServiceOptions
-                      | SubmitJob ServiceOptions RemoteJobOptions
-                      | Shutdown  ServiceOptions
+data ServiceOperation = RunMaster    ServiceOptions ServiceMasterOptions
+                      | RunWorker    ServiceOptions
+                      | SubmitJob    ServiceOptions RemoteJobOptions
+                      | Shutdown     ServiceOptions
+                      | QueryService ServiceOptions QueryOptions
                       deriving (Eq, Read, Show, Generic)
 
 data ServiceOptions = ServiceOptions { serviceId       :: String
@@ -150,9 +153,14 @@ data ServiceMasterOptions
         = ServiceMasterOptions { sfinalStages  :: CompileStages }
         deriving (Eq, Read, Show)
 
-data RemoteJobOptions = RemoteJobOptions { jobBlockSize  :: Int
-                                         , rcStages      :: CompileStages }
+data RemoteJobOptions = RemoteJobOptions { workerFactor     :: Map String Int
+                                         , workerBlockSize  :: Map String Int
+                                         , defaultBlockSize :: Int
+                                         , rcStages         :: CompileStages }
                       deriving (Eq, Read, Show, Generic)
+
+data QueryOptions = QueryOptions { qsargs :: Either [String] [Int] }
+                    deriving (Eq, Read, Show, Generic)
 
 -- | Verbosity levels.
 data Verbosity
@@ -600,16 +608,19 @@ serviceOperOpt = helper <*> subparser (
          command "master" (info smasterOpt  $ progDesc smasterDesc)
       <> command "worker" (info sworkerOpt  $ progDesc sworkerDesc)
       <> command "submit" (info sjobOpt     $ progDesc sjobDesc)
+      <> command "query"  (info squeryOpt   $ progDesc squeryDesc)
       <> command "halt"   (info shaltOpt    $ progDesc shaltDesc)
     )
-  where smasterOpt = RunMaster <$> serviceOpts ServicePrepare <*> serviceMasterOpts
-        sworkerOpt = RunWorker <$> serviceOpts ServiceParallel
-        sjobOpt    = SubmitJob <$> serviceOpts ServiceClient <*> remoteJobOpt
-        shaltOpt   = Shutdown  <$> serviceOpts ServiceClient
+  where smasterOpt = RunMaster    <$> serviceOpts ServicePrepare <*> serviceMasterOpts
+        sworkerOpt = RunWorker    <$> serviceOpts ServiceParallel
+        sjobOpt    = SubmitJob    <$> serviceOpts ServiceClient <*> remoteJobOpt
+        squeryOpt  = QueryService <$> serviceOpts ServiceClient <*> querySOpt
+        shaltOpt   = Shutdown     <$> serviceOpts ServiceClient
 
         smasterDesc   = "Run a K3 compiler service master"
         sworkerDesc   = "Run a K3 compiler service worker"
         sjobDesc      = "Submit a K3 compilation job"
+        squeryDesc    = "Query the K3 compiler service"
         shaltDesc     = "Halt the K3 compiler service"
 
 serviceOpts :: CompilerType -> Parser ServiceOptions
@@ -672,7 +683,9 @@ serviceHeartbeatOpt = option auto (   long    "heartbeat"
                                    <> metavar "PERIOD" )
 
 remoteJobOpt :: Parser RemoteJobOptions
-remoteJobOpt = RemoteJobOptions <$> jobBlockSizeOpt
+remoteJobOpt = RemoteJobOptions <$> workerFactorOpt
+                                <*> workerBlockSizeOpt
+                                <*> jobBlockSizeOpt
                                 <*> compileStagesOpt ServiceClientRemote
 
 jobBlockSizeOpt :: Parser Int
@@ -681,6 +694,51 @@ jobBlockSizeOpt = option auto (
                     <> value   16
                     <> help    "Remote job block size"
                     <> metavar "SIZE" )
+
+workerFactorOpt :: Parser (Map String Int)
+workerFactorOpt = extract . keyValList ""
+                    <$> strOption (    long    "workerfactor"
+                                    <> value   ""
+                                    <> help    "Worker assignment factor"
+                                    <> metavar "WAFACTOR" )
+
+  where extract = Map.fromList . map (second read)
+
+workerBlockSizeOpt :: Parser (Map String Int)
+workerBlockSizeOpt = extract . keyValList ""
+                       <$> strOption (    long    "workerblocks"
+                                       <> value   ""
+                                       <> help    "Worker block sizes"
+                                       <> metavar "WBLOCKS" )
+
+  where extract = Map.fromList . map (second read)
+
+querySOpt :: Parser QueryOptions
+querySOpt = qworkerOpt <|> qprogOpt <|> allWorkerOpt <|> allProgOpt
+
+qworkerOpt :: Parser QueryOptions
+qworkerOpt = (\w -> QueryOptions $ Left w) . splitOn ","
+                <$> strOption (   long    "qworkers"
+                               <> value   ""
+                               <> help    "Workers to query"
+                               <> metavar "WAQUERY" )
+
+qprogOpt :: Parser QueryOptions
+qprogOpt = (\p -> QueryOptions $ Right $ map read p) . splitOn ","
+                <$> strOption (   long    "qjobs"
+                               <> value   ""
+                               <> help    "Jobs to query"
+                               <> metavar "JSQUERY" )
+
+allWorkerOpt :: Parser QueryOptions
+allWorkerOpt = flag' (QueryOptions $ Left [])
+                 (    long    "qaworkers"
+                   <> help    "Query all workers statuses" )
+
+allProgOpt :: Parser QueryOptions
+allProgOpt = flag' (QueryOptions $ Right [])
+               (    long    "qajobs"
+                 <> help    "Query all job statuses" )
 
 
 {- Top-level options -}

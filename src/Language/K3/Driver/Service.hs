@@ -56,17 +56,19 @@ import qualified System.Log.Handler        as LogH
 import qualified System.Log.Handler.Simple as LogHS
 
 import Language.K3.Core.Annotation
+import Language.K3.Core.Common
 import Language.K3.Core.Declaration
+import Language.K3.Core.Utils
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
 import Language.K3.Parser ( parseK3 )
 
-import Language.K3.Stages ( TransformReport(..), TransformStSymS, getTransformSyms, putTransformSyms )
+import Language.K3.Stages ( TransformReport(..) )
 import qualified Language.K3.Stages as ST
 
 import Language.K3.Driver.Common
 import Language.K3.Driver.Options
-import Language.K3.Driver.Driver hiding ( reasonM )
+import Language.K3.Driver.Driver hiding ( liftEitherM, reasonM )
 import qualified Language.K3.Driver.CompilerTarget.CPP     as CPPC
 
 import Language.K3.Utils.Pretty
@@ -80,9 +82,11 @@ data CProtocol = Register       String
                | Program        Request String RemoteJobOptions
                | ProgramDone    Request (K3 Declaration) String
                | ProgramAborted Request String
-               | Block          ProgramID CompileStages ByteString TransformStSymS CompileBlock
-               | BlockDone      WorkerID ProgramID CompileBlock TransformReport
+               | Block          ProgramID BlockCompileSpec CompileBlockU (K3 Declaration)
+               | BlockDone      WorkerID ProgramID CompileBlockD TransformReport
                | BlockAborted   WorkerID ProgramID [BlockID] String
+               | Query          ServiceQuery
+               | QueryResponse  ServiceResponse
                | Quit
                deriving (Eq, Read, Show, Generic)
 
@@ -103,7 +107,19 @@ type DeclID    = Int
 type BlockID   = Int
 type ProgramID = Int
 
-type CompileBlock = [(BlockID, [(DeclID, K3 Declaration)])]
+-- | Block compilation datatypes.
+data BlockCompileSpec = BlockCompileSpec { bprepStages    :: CompileStages
+                                         , bcompileStages :: CompileStages
+                                         , wSymForkFactor :: Int
+                                         , wSymOffset     :: Int }
+                      deriving (Eq, Read, Show, Generic)
+
+type CompileBlock a = [(BlockID, [(DeclID, a)])]
+type CompileBlockU = CompileBlock UID
+type CompileBlockD = CompileBlock (K3 Declaration)
+
+instance Binary    BlockCompileSpec
+instance Serialize BlockCompileSpec
 
 -- | Compilation progress state per program.
 data JobState = JobState { jrid         :: RequestID
@@ -187,6 +203,32 @@ type ServiceWM z = ServiceM z ServiceWState
 type SocketAction   z = Int -> Socket z Dealer -> ZMQ z ()
 type ClientHandler  t = forall z. Socket z t -> ZMQ z ()
 type MessageHandler   = forall z. CProtocol -> ZMQ z ()
+
+-- | Service querying datatypes.
+data SJobStatus = SJobStatus { jobPending :: BlockSet, jobCompleted :: BlockSet }
+                deriving (Eq, Read, Show, Generic)
+
+data SWorkerStatus = SWorkerStatus { wNumBlocks :: Int, wWeight :: Double }
+                    deriving (Eq, Read, Show, Generic)
+
+data ServiceQuery = SQJobStatus    [ProgramID]
+                  | SQWorkerStatus [WorkerID]
+                  deriving (Eq, Read, Show, Generic)
+
+data ServiceResponse = SRJobStatus    (Map ProgramID SJobStatus)
+                     | SRWorkerStatus (Map WorkerID  SWorkerStatus)
+                     deriving (Eq, Read, Show, Generic)
+
+instance Binary SJobStatus
+instance Binary SWorkerStatus
+instance Binary ServiceQuery
+instance Binary ServiceResponse
+
+instance Serialize SJobStatus
+instance Serialize SWorkerStatus
+instance Serialize ServiceQuery
+instance Serialize ServiceResponse
+
 
 {- Initial states -}
 
@@ -468,9 +510,11 @@ cshow = \case
           Program rq _ _              -> "Program " ++ rq
           ProgramDone rq _ _          -> "ProgramDone " ++ rq
           ProgramAborted rq _         -> "ProgramAborted " ++ rq
-          Block pid _ _ _ bids        -> unwords ["Block", show pid, intercalate "," $ map (show . fst) bids]
+          Block pid _ bids _          -> unwords ["Block", show pid, intercalate "," $ map (show . fst) bids]
           BlockDone wid pid bids _    -> unwords ["BlockDone", show wid, show pid, intercalate "," $ map (show . fst) bids]
           BlockAborted wid pid bids _ -> unwords ["BlockAborted", show wid, show pid, intercalate "," $ map show bids]
+          Query sq                    -> unwords ["Query", show sq]
+          QueryResponse sr            -> unwords ["QueryResponse", show sr]
           Quit                        -> "Quit"
 
 
@@ -545,7 +589,7 @@ runServiceWorker sOpts@(serviceId -> wid) = initService sOpts $ runZMQ $ do
       hbsock <- socket Dealer
       setRandomIdentity hbsock
       connect hbsock wconn
-      liftIO $ putStrLn "Heartbeat loop started"
+      noticeM $ unwords ["Heartbeat loop started with period", show heartbeatPeriod, "us."]
       void $ forever $ do
         liftIO $ threadDelay heartbeatPeriod
         pingPongHeartbeat sv hbsock
@@ -589,7 +633,7 @@ worker :: Int -> String -> Maybe (SocketAction z) -> SocketAction z -> ZMQ z ()
 worker i qid initFOpt workerF = do
     wsock <- socket Dealer
     connect wsock $ "inproc://" ++ qid
-    liftIO $ putStrLn "Worker started"
+    noticeM "Worker started"
     void $ maybe (return ()) (\f -> f i wsock) initFOpt
     forever $ workerF i wsock
 
@@ -687,8 +731,13 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     -- TODO: detect worker changes.
     mHandler sid (Heartbeat hbid) = sendCI sid mworker $ HeartbeatAck hbid
 
+    -- Query processing.
+    mHandler sid (Query sq) = processQuery sid sq
+
+    -- Service shutdown.
     mHandler _ Quit = liftIO $ terminate sv
     mHandler _ m = merrM $ boxToString $ ["Invalid message:"] %$ [show m]
+
 
     -- | Compilation functions
     nfP        = noFeed $ input opts
@@ -697,14 +746,16 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     process prog jobOpts rq rid = abortcatch rid rq $ do
       void $ zm $ do
         mlogM $ unwords ["Processing program", rq, "(", show rid, ")"]
-        (initP, initSt, ppProfs) <- preprocess prog
+        (initP, ppProfs) <- preprocess prog
         let ppRep = mkReport "Master preprocessing" ppProfs
-        (pid, blocksByWID) <- assignBlocks rid rq jobOpts initP ppRep
+        (pid, blocksByWID, wConfig) <- assignBlocks rid rq jobOpts initP ppRep
         (_, sProf) <- ST.profile $ const $ do
-          msgs <- mkMessages pid jobOpts initSt blocksByWID
+          msgs <- mkMessages pid bcStages wConfig blocksByWID initP
           liftZ $ sendCIs mworker msgs
         let sRep = mkReport "Master distribution" [sProf]
         modifyMJ_ $ \jbs -> Map.adjust (adjustProfile sRep) pid jbs
+
+      where bcStages = (coStages $ scompileOpts $ sOpts, rcStages jobOpts)
 
     abortcatch rid rq m = m `catchIOError` (\e -> abortProgram Nothing rid rq $ show e)
 
@@ -716,8 +767,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       mlogM $ "Parsing with paths " ++ show includesP
       (pP, pProf) <- reasonM parseError . liftMeasured $ parseK3 nfP includesP prog
       (mP, mProf) <- liftMeasured $ runDriverM $ metaprogram opts pP
-      (((initP, _), initSt), iProf) <- liftMeasured $ runTransform Nothing (coStages $ scompileOpts $ sOpts) mP
-      return (initP, initSt, [pProf, mProf, iProf])
+      return (mP, [pProf, mProf])
 
     liftMeasured :: IO (Either String a) -> ServiceMM z (a, Measured)
     liftMeasured m = liftIE $ do
@@ -731,13 +781,12 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     -- | Cost-based compile block assignment.
     assignBlocks rid rq jobOpts initP ppRep = do
       pid <- progIDM
-      mlogM $ unwords ["Assigning blocks for program:", show pid]
 
       -- Get the current worker weights, and use them to partition the program.
-      ((wBlocks', nassigns', pending', wjs'), aProf) <- ST.profile $ const $ do
-        wWeights <- workerWeights
+      ((wConfig', wBlocks', nassigns', pending', wjs'), aProf) <- ST.profile $ const $ do
+        (wWeights, wConfig) <- workerWeightsAndConfig jobOpts
         when ( Heap.null wWeights ) $ assignError pid
-        (nwWeights, wBlocks, jobCosts) <- partitionProgram (jobBlockSize jobOpts) wWeights initP
+        (nwWeights, wBlocks, jobCosts) <- partitionProgram wConfig wWeights initP
 
         -- Compute assignment map delta.
         -- Extract block ids per worker, and join with new weights per worker to compute
@@ -749,81 +798,131 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
         -- Compute new job state.
         let pending = foldl (\acc cb -> acc `Set.union` (Set.fromList $ map fst cb)) Set.empty wBlocks
         let wjs     = Map.intersectionWith (\w c -> WorkerJobState w c $ Map.size c) nwaWeights jobCosts
-        return (wBlocks, nassigns, pending, wjs)
+        return (wConfig, wBlocks, nassigns, pending, wjs)
 
       let aRep = mkReport "Master assignment" [aProf]
       js <- js0 rid rq pending' wjs' $ ppRep <> aRep
       modifyMJ_ $ \jbs -> Map.insert pid js jbs
       modifyMA_ $ \assigns -> Map.unionWith incrWorkerAssignments assigns nassigns'
 
-      logAssignment pid nassigns' js
-      return (pid, wBlocks')
+      logAssignment pid wConfig' nassigns' js
+      return (pid, wBlocks', wConfig')
+
+    wcBlock  wid wConfig = maybe blockSizeErr (return . fst) $ Map.lookup wid wConfig
+    wcFactor wid wConfig = maybe factorErr    (return . snd) $ Map.lookup wid wConfig
 
     -- | Compute a min-heap of worker assignment weights, returning a zero-heap if no assignments exist.
-    workerWeights = do
-      weightHeap <- flip foldMA Heap.empty $ \acc wid assigns -> Heap.insert (waweight assigns, wid) acc
+    --   We also pattern match against worker-specific metadata available in the job options.
+    workerWeightsAndConfig jobOpts = do
+      (weightHeap, configMap) <- flip foldMA wp0 accumWorker
       if Heap.null weightHeap
-        then getMW >>= return . Map.foldlWithKey (\acc wid _ -> Heap.insert (0.0, wid) acc) Heap.empty
-        else return weightHeap
+        then getMW >>= return . Map.foldlWithKey initWorker wp0
+        else return (weightHeap, configMap)
+
+      where wp0 = (Heap.empty, Map.empty)
+
+            initWorker (hacc, macc) wid _ =
+              (Heap.insert (0.0, wid) hacc,
+               Map.insert wid (workerBlock wid, workerAssignFactor wid) macc)
+
+            accumWorker (hacc, macc) wid assigns =
+              (Heap.insert (waweight assigns, wid) hacc,
+               Map.insert wid (workerBlock wid, workerAssignFactor wid) macc)
+
+            blockSize              = defaultBlockSize jobOpts
+            workerBlock        wid = Map.foldlWithKey (matchWorker wid) blockSize $ workerBlockSize jobOpts
+            workerAssignFactor wid = Map.foldlWithKey (matchWorker wid) 1 $ workerFactor jobOpts
+
+            matchWorker wid rv matchstr matchv = if matchstr `isInfixOf` wid then matchv else rv
+
 
     -- | Cost-based program partitioning.
     --   This performs assignments at a per-declaration granularity rather than per-block,
     --   using a greedy heuristic to balance work across each worker (the k-partition problem).
     --   This returns final worker weights, new compile block assignments, and the job costs per worker.
-    partitionProgram blockSize wWeights (tnc -> (DRole _, ch)) =
-      let (total_cost, swich) = sortByCost ch in do
-        (nwWeights, newAssigns) <- greedyPartition wWeights swich
-        (wcBlocks, wcosts) <- foldMapKeyM (return (Map.empty, Map.empty)) newAssigns $ chunkAssigns blockSize
-        return (nwWeights, Map.map reverse wcBlocks, wcosts)
+    partitionProgram wConfig wWeights (tnc -> (DRole _, ch)) = do
+      (totalCost, sCostAndCh) <- sortByCost ch
+      (nwWeights, newAssigns) <- greedyPartition wConfig wWeights sCostAndCh
+      (wcBlocks, wcosts) <- foldMapKeyM (return (Map.empty, Map.empty)) newAssigns $ chunkAssigns wConfig
+      return (nwWeights, Map.map reverse wcBlocks, wcosts)
 
     partitionProgram _ _ _ = throwE "Top level declaration is not a role."
 
-    -- Creates compile block chunks per worker, and sums up costs per chunk.
-    chunkAssigns blockSize accM wid wbwl = do
-      (wcbm,wcm) <- accM
-      biwsl <- forM (chunksOf blockSize wbwl) $ \bwl -> do
-                 let (chunkcb, chunkcost) = second sum $ unzip bwl
-                 bid <- blockIDM
-                 return ((bid, sortOn fst chunkcb), (bid, chunkcost))
-      let (wcompileblock, wblockcosts) = second Map.fromList $ unzip biwsl
-      return $ ( Map.insertWith (++) wid wcompileblock wcbm
-               , Map.insertWith mergeBlockCosts wid wblockcosts wcm )
-
     -- | A simple compilation cost model
-    sortByCost ch = second (sortOn fst) $ foldl foldCost (0,[]) $ zip [0..] ch
-    foldCost (total, acc) (i, d@(cost -> c)) = (total + c, acc ++ [(c, (i,d))])
+    sortByCost ch = do
+      (tc, cich) <- foldM foldCost (0,[]) $ zip [0..] ch
+      return (tc, sortOn fst cich)
+
+    foldCost (total, acc) (i, d@(cost -> c)) = do
+      uid <- liftEitherM $ uidOfD d
+      return (total + c, acc ++ [(c, (i, uid))])
 
     cost (tag -> DGlobal _ _ (Just (treesize -> n))) = n
     cost (tag -> DTrigger _ _ (treesize -> n))       = n
     cost _                                           = 1
 
-    -- | Greedy solution to the k-partitioning problem.
-    --   We maintain a heap of weights, to easily pick the partition with minimum weight,
-    --   and update the corresponding partition with the new element.
-    greedyPartition wWeights swich = foldM greedy (wWeights, Map.empty) swich
-      where
-        greedy (heap, assignsAndCosts) (w, ich) =
-          maybe partitionError (assign assignsAndCosts w ich) $ Heap.uncons heap
+    -- | Greedy solution to the weighted k-partitioning problem.
+    --   We maintain a list of heaps (buckets) to make an assignment, where each
+    --   bucket corresponds to a weight class.
+    --   We consider each bucket as a candidate and greedily pick the bucket which
+    --   leads to the smallest imbalance across assignments.
+    greedyPartition wConfig wWeights sCostAndCh = do
+        wWeightsByFactor <- foldM groupByFactor Map.empty wWeights
+        (_, rassigns) <- foldM greedy (wWeightsByFactor, Map.empty) sCostAndCh
+        let rheap = Heap.map (rebuildWeights rassigns) wWeights
+        return (rheap, rassigns)
 
-        assign acm (fromIntegral -> w) ich ((sz,wid), restheap) =
-          return ( Heap.insert (sz + w, wid) restheap, Map.insertWith (++) wid [(ich,w)] acm )
+      where
+        rebuildWeights assigns (sz, wid) =
+          let ichwl = maybe [] id $ Map.lookup wid assigns
+          in (foldl (\rsz (_, w) -> rsz + fromIntegral w) sz ichwl, wid)
+
+        groupByFactor acc (sz, wid) = do
+          f <- wcFactor wid wConfig
+          return $ Map.insertWith Heap.union f (Heap.singleton (sz, wid)) acc
+
+        greedy (scaledHeap, assignsAndCosts) (w, ich) = do
+            let candidates  = Map.mapWithKey candidateCost scaledHeap
+            (cf,cwid,_)     <- maybe partitionError return $ Map.foldlWithKey pick Nothing candidates
+            let nscaledHeap = Map.mapWithKey (rebuildS cf) candidates
+            let nassigns    = Map.insertWith (++) cwid [(ich, w)] assignsAndCosts
+            return (nscaledHeap, nassigns)
+
+          where
+            candidateCost f h = do
+              ((sz, wid), h') <- Heap.uncons h
+              return (sz, sz + (fromIntegral w / fromIntegral f), wid, h')
+
+            pick rOpt _ Nothing = rOpt
+            pick Nothing f (Just (_, nsz, wid, _)) = Just (f, wid, nsz)
+            pick rOpt@(Just (_, _, rsz)) f (Just (_, nsz, wid, _)) = if rsz < nsz then rOpt else Just (f, wid, nsz)
+
+            rebuildS _ _ Nothing = Heap.empty
+            rebuildS cf f (Just (sz,nsz,wid,h)) = Heap.insert (if f == cf then nsz else sz, wid) h
+
+
+    -- Creates compile block chunks per worker, and sums up costs per chunk.
+    chunkAssigns wConfig accM wid wbwl = do
+      blockSize <- wcBlock wid wConfig
+      (wcbm,wcm) <- accM
+      biwsl <- forM (chunksOf blockSize wbwl) $ \bwl -> do
+                 let (chunkcb, chunkcost) = second sum $ unzip bwl
+                 bid <- blockIDM
+                 return ((bid, sortOn fst chunkcb), (bid, fromIntegral chunkcost))
+      let (wcompileblock, wblockcosts) = second Map.fromList $ unzip biwsl
+      return $ ( Map.insertWith (++) wid wcompileblock wcbm
+               , Map.insertWith mergeBlockCosts wid wblockcosts wcm )
 
     -- | Compile block messages construction.
-    mkMessages pid (jobBlockSize &&& rcStages -> (blockSz, remoteStages)) initSt cBlocksByWID = do
-      let forkFactor = blockSz * Map.size cBlocksByWID
-      let initStBS = SC.encode initSt
-      mlogM $ unwords ["State size for", show pid, show $ BC.length initStBS]
-      liftM fst $ foldMapKeyM (return ([], [0..])) cBlocksByWID $ \m wid cb -> do
-        (msgacc, offgen) <- m
-        (wsym, restidx) <- maybe wstateError return $ workerSyms forkFactor offgen
+    mkMessages pid (prepStages, cStages) wConfig cBlocksByWID initP = do
+      forkFactor <- foldMapKeyM (return 0) cBlocksByWID $ \m wid _ -> (+) <$> m <*> wcBlock wid wConfig
+      liftM fst $ foldMapKeyM (return ([], 0)) cBlocksByWID $ \m wid cb -> do
+        wDelta <- wcBlock wid wConfig
+        (msgacc, wOffset) <- m
+        let bcSpec = BlockCompileSpec prepStages cStages forkFactor wOffset
         wsockid <- getMWI wid >>= maybe (workerError wid) return
-        return $ (msgacc ++ [(wsockid, Block pid remoteStages initStBS wsym cb)], restidx)
+        return $ (msgacc ++ [(wsockid, Block pid bcSpec cb initP)], wOffset + wDelta)
 
-      where workerSyms factor offgen = do
-              (widx, restidx) <- uncons offgen
-              let wOffset = widx * blockSz
-              wst <- ST.partitionTransformStSyms factor wOffset initSt
-              return (getTransformSyms wst, restidx)
 
     -- Map helpers to supply fold function as last argument.
     foldMapKeyM a m f = Map.foldlWithKey f a m
@@ -843,16 +942,19 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     jprof0 workerjs pprep = liftIO getTime >>= \start -> return $ JobProfile start Map.empty workerjs pprep []
     js0 rid rq pending workerjs pprep = jprof0 workerjs pprep >>= \prof -> return $ JobState rid rq prof pending Map.empty []
 
-    logAssignment pid nassigns js =
+    logAssignment pid wConfig nassigns js =
       let wk wid s = wid ++ ":" ++ s
 
+          wcstr (wid, (bs,f))               = wk wid $ unwords [" bs:", show bs, "af:", show f]
           wastr (wid, WorkerAssignment b w) = (wk wid $ show $ length b, wk wid $ show w)
           wststr (wid, jwassign -> jbc)     = wk wid $ show $ foldl (+) 0.0 jbc
 
+          wconf       = map wcstr $ Map.toList wConfig
           (wlens, ww) = unzip $ map wastr $ Map.toList nassigns
           wcontrib    = map wststr $ Map.toList $ jworkerst $ jprofile $ js
       in
         mlogM $ boxToString $  ["Assignment for program: " ++ show pid]
+                            %$ ["Worker config:"]      %$ (indent 2 wconf)
                             %$ ["Worker weights:"]     %$ (indent 2 ww)
                             %$ ["Block distribution:"] %$ (indent 2 wlens)
                             %$ ["Load distribution:"]  %$ (indent 2 wcontrib)
@@ -973,6 +1075,43 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       let nrs = Set.delete rid rs in
       (if null nrs then Map.delete cid cm else Map.insert cid nrs cm, Just cid)
 
+    {------------------------
+      - Query processing.
+      -----------------------}
+
+    processQuery sid (SQJobStatus qJobs) = do
+      jstm <- zm $ do
+                jm <- getMJ
+                pqueryJobs qJobs jm
+      sendCI sid mworker $ QueryResponse $ SRJobStatus jstm
+
+    processQuery sid (SQWorkerStatus qWorkers) = do
+      wstm <- zm $ do
+                wam  <- getMA
+                pqueryWorkers qWorkers wam
+      sendCI sid mworker $ QueryResponse $ SRWorkerStatus wstm
+
+    pqueryJobs jobIds jm =
+      let qjobs = if null jobIds then Map.keys jm else jobIds
+      in return $ foldl (summarizeJob jm) Map.empty qjobs
+
+    summarizeJob jm resultAcc pid = adjustMap resultAcc pid $ do
+      js <- Map.lookup pid jm
+      return $ SJobStatus (jpending js) (Map.keysSet $ jcompleted js)
+
+    pqueryWorkers wrkIds wam =
+      let workers = if null wrkIds then Map.keys wam else wrkIds
+      in return $ foldl (summarizeWorker wam) Map.empty workers
+
+    summarizeWorker wam resultAcc wid = adjustMap resultAcc wid $ do
+      wa <- Map.lookup wid wam
+      return $ SWorkerStatus (Set.size $ wablocks wa) (waweight wa)
+
+    adjustMap m k opt = maybe m (\v -> Map.insert k v m) opt
+
+    {------------------------
+      - Reporting.
+      -----------------------}
 
     -- | Compilation report construction.
     generateReport profile finalreport =
@@ -1014,9 +1153,14 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
                     %$ (i 1 ["Cost accuracy"]  %$ (i 2 costreport))
                     %$ ["Time"]                %$ (i 1 timereport)
 
+
+    uidOfD d = maybe uidErrD (\case {(DUID u) -> return u ; _ ->  uidErrD}) $ d @~ isDUID
+      where uidErrD = Left $ boxToString $ ["No uid found on "] %+ prettyLines d
+
     parseError = "Could not parse input: "
 
-    wstateError      = throwE $ "Could not create a worker symbol state."
+    blockSizeErr     = throwE $ "Could not find a worker's block size."
+    factorErr        = throwE $ "Could not find a worker's assignment factor."
     partitionError   = throwE $ "Could not greedily pick a partition"
     assignError  pid = throwE $ unwords ["Could not assign program", show pid, "(no workers available)"]
     workerError  wid = throwE $ "No worker named " ++ show wid
@@ -1043,7 +1187,7 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
     logmHandler (SC.decode -> msgE) = either werrM (\msg -> wlogM (cshow msg) >> mHandler msg) msgE
 
     -- | Worker message processing.
-    mHandler (Block pid cstages stbs syms blocksByBID) = processBlock pid cstages stbs syms blocksByBID
+    mHandler (Block pid bcSpec ublocksByBID prog) = processBlock pid bcSpec ublocksByBID prog
 
     mHandler (RegisterAck cOpts) = zm $ do
       wlogM $ unwords ["Registered", show cOpts]
@@ -1062,28 +1206,39 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
                                             , optimizationLevel = optimizationLevel $ mcopts }
 
     -- | Block compilation functions.
-    processBlock pid ([SDeclOpt cSpec]) stbs syms blocksByBID =
-      abortcatch pid blocksByBID $ do
-        initSt <- either (throwM . userError) (return . putTransformSyms syms) $ SC.decode stbs
+    processBlock pid (BlockCompileSpec prepSpec [SDeclOpt cSpec] wForkFactor wOffset) ublocksByBID prog =
+      abortcatch pid ublocksByBID $ do
         start <- liftIO getTime
         startP <- liftIO getPOSIXTime
         wlogM $ boxToString $ ["Worker blocks start"] %$ (indent 2 [show startP])
-        (cBlocksByBID, finalSt) <- zm $ foldM (compileBlock pid cSpec) ([], initSt) blocksByBID
+        (cBlocksByBID, finalSt) <- zm $ compileAllBlocks pid prepSpec cSpec wForkFactor wOffset ublocksByBID prog
         end <- liftIO getTime
         wlogM $ boxToString $ ["Worker local time"] %$ (indent 2 [secs $ end - start])
         sendC wworker $ BlockDone wid pid cBlocksByBID $ ST.report finalSt
 
-    processBlock _ _ _ _ _ = werrM $ "Invalid worker compile stages"
+    processBlock pid _ ublocksByBID _ = abortBlock pid ublocksByBID $ "Invalid worker compile stages"
 
-    abortcatch pid blocksByBID m = m `catchIOError` (\e -> abortBlock pid blocksByBID $ show e)
+    abortcatch pid ublocksByBID m = m `catchIOError` (\e -> abortBlock pid ublocksByBID $ show e)
 
-    abortBlock pid blocksByBID reason =
-      sendC wworker $ BlockAborted wid pid (map fst blocksByBID) reason
+    abortBlock pid ublocksByBID reason =
+      sendC wworker $ BlockAborted wid pid (map fst ublocksByBID) reason
+
+    compileAllBlocks pid prepSpec cSpec wForkFactor wOffset ublocksByBID prog = do
+      ((initP, _), initSt) <- liftIE $ runTransform Nothing prepSpec prog
+      workerSt <- maybe wstateErr return $ ST.partitionTransformStSyms wForkFactor wOffset initSt
+      dblocksByBID <- extractBlocksByUID initP ublocksByBID
+      foldM (compileBlock pid cSpec) ([], workerSt) dblocksByBID
 
     compileBlock pid cSpec (blacc, st) (bid, unzip -> (ids, block)) = do
       (nblock, nst) <- debugCompileBlock pid bid (unwords [show $ length block])
                         $ liftIE $ ST.runTransformM st $ ST.runDeclOptPassesBLM cSpec Nothing block
-      return (blacc ++ [(bid, zip ids nblock)], nst)
+      return (blacc ++ [(bid, zip ids nblock)], ST.mergeTransformStReport st nst)
+
+    extractBlocksByUID prog ublocksByBID = do
+      declsByUID <- indexProgramDecls prog
+      forM ublocksByBID $ \(bid,idul) -> do
+        iddl <- forM idul $ \(i, UID j) -> maybe (uidErr j) (return . (i,)) $ Map.lookup j declsByUID
+        return (bid, iddl)
 
     debugCompileBlock pid bid str m = do
       wlogM $ unwords ["got block", show pid, show bid, str]
@@ -1091,6 +1246,8 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
       wlogM $ unwords ["finished block", show pid, show bid]
       return result
 
+    uidErr duid = throwE $ "Could not find declaration " ++ show duid
+    wstateErr   = throwE $ "Could not create a worker symbol state."
 
 -- | One-shot connection to submit a remote job and wait for compilation to complete.
 submitJob :: ServiceOptions -> RemoteJobOptions -> Options -> IO ()
@@ -1125,3 +1282,22 @@ submitJob sOpts@(serviceId -> rq) rjOpts opts = do
 
 shutdownService :: ServiceOptions -> IO ()
 shutdownService sOpts = command Dealer sOpts Quit
+
+queryService :: ServiceOptions -> QueryOptions -> IO ()
+queryService sOpts (QueryOptions args) = either (queryWorkers sOpts) (queryJobs sOpts) args
+
+queryWorkers :: ServiceOptions -> [WorkerID] -> IO ()
+queryWorkers sOpts wids = requestreply Dealer sOpts (Query $ SQWorkerStatus wids) mHandler
+  where mHandler (QueryResponse (SRWorkerStatus wsm)) = noticeM $ boxToString $ ["Workers"] %$ (map wststr $ Map.toList wsm)
+        mHandler m = errorM $ boxToString $ ["Invalid worker query response:"] %$ [show m]
+
+        wststr (wid, SWorkerStatus n w) = unwords [wid, ":", show n, show w]
+
+queryJobs :: ServiceOptions -> [ProgramID] -> IO ()
+queryJobs sOpts pids = requestreply Dealer sOpts (Query $ SQJobStatus pids) mHandler
+  where mHandler (QueryResponse (SRJobStatus jsm)) = noticeM $ boxToString $ ["Jobs"] %$ (concatMap jststr $ Map.toList jsm)
+        mHandler m = errorM $ boxToString $ ["Invalid worker query response:"] %$ [show m]
+
+        jststr (pid, SJobStatus pb cb) = [show pid]
+                                            %$ (indent 2 $ [unwords ["Pending:", show pb]])
+                                            %$ (indent 2 $ [unwords ["Completed:", show cb]])

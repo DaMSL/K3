@@ -168,6 +168,10 @@ mergeTransformSt d agg new = rewindTransformStSyms new $
       , fenv    = SEffects.mergeFIEnv   d (fenv agg) (fenv new)
       , report  = (report agg) <> (report new) }
 
+-- | A merge function that propagates only the transform report.
+mergeTransformStReport :: TransformSt -> TransformSt -> TransformSt
+mergeTransformStReport st1 st2 = rewindTransformStSyms st2 $ st1 { report  = (report st1) <> (report st2) }
+
 getTransformSyms :: TransformSt -> TransformStSymS
 getTransformSyms s = TransformStSymS (nextuid s) (cseCnt s) (Provenance.pcnt $ penv s) (SEffects.fcnt $ fenv s)
 
