@@ -494,11 +494,6 @@ def main()
   end
   parser.parse!
 
-  unless ARGV.size == 1 || $options[:source]
-    puts parser.help
-    exit(1)
-  end
-
   # if only one data file, take that one
   if $options.has_key?(:dbt_data_path) && !$options.has_key?(:k3_data_path)
     $options[:k3_data_path] = $options[:dbt_data_path]
@@ -539,6 +534,12 @@ def main()
   # handle json options
   if $options.has_key?(:json_file)
     update_from_json(JSON.parse($options[:json_file]))
+  end
+
+  # check that we have a source
+  unless ARGV.size == 1 || $options[:source]
+    puts parser.help
+    exit(1)
   end
 
   source = $options[:source] ? $options[:source] : ARGV[0]
