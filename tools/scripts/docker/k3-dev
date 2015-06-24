@@ -53,6 +53,7 @@ RUN apt-get update && apt-get install -y \
     opam switch 4.02.1 && \
     eval `opam config env` && \
     opam install ocamlfind && \
+    opam install yojson && \
     /bin/echo -e "\neval \`opam config env\`\n" >> /root/.bashrc 
 
 # Install Boost
