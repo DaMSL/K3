@@ -165,7 +165,7 @@ namespace K3 {
 
   unit_t __standard_context::print(string_impl message) {
     boost::lock_guard<boost::mutex> lock(mutex_);
-    std::cout << message;
+    std::cout << message << std::flush;
     return unit_t();
   }
 
