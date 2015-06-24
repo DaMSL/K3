@@ -13,7 +13,7 @@ import httplib
 import logging, logging.handlers
 
 import socket
-from threading import Thread
+from threading import Thread, Event
 from time import sleep
 
 from flask import (Flask, request, redirect, url_for, jsonify,
@@ -35,8 +35,15 @@ logger = logging.getLogger("")
 
 dispatcher = None
 
-driver = None
-driver_t = None
+dispatcherTerminate = Event()
+webserverTerminate  = Event()
+haltFlag = Event()
+
+# driver = None
+# driver_t = None
+# driverInitilize = Event()
+
+compileService = None
 lastCompile = None
 compile_tasks = {}
 
@@ -45,7 +52,6 @@ index_message = 'Welcome to K3'
 
 class SocketIOHandler(logging.Handler):
     def emit(self, record):
-        #socketio.send(msg)
         socketio.emit('my response', record.getMessage(), namespace='/compile')
 
 #===============================================================================
@@ -63,12 +69,6 @@ def initWeb(port, **kwargs):
   logger.setLevel(logging.DEBUG)
   logger.addHandler(log_console)
 
-  compile_fmt = ServiceFormatter('[%(asctime)s] %(message)s')
-  sio = SocketIOHandler()
-  sio.setFormatter(compile_fmt)
-  compileLogger = logging.getLogger("compiler")
-  compileLogger.addHandler(sio)
-  # logger.addHandler(sio)
 
   logger.debug("Setting up directory structure")
 
@@ -97,6 +97,7 @@ def initWeb(port, **kwargs):
   ARCHIVE_URL = os.path.join(SERVER_URL, ARCHIVE_TARGET)
   BUILD_DEST = os.path.join(LOCAL_DIR, BUILD_TARGET)
   BUILD_URL = os.path.join(SERVER_URL, BUILD_TARGET)
+  LOG_DEST  = os.path.join(LOCAL_DIR, LOG_TARGET)
 
   #  Store dir structures in web context
   webapp.config['DIR']      = LOCAL_DIR
@@ -112,6 +113,7 @@ def initWeb(port, **kwargs):
   webapp.config['UPLOADED_ARCHIVE_URL']   = ARCHIVE_URL
   webapp.config['UPLOADED_BUILD_DEST']  = BUILD_DEST
   webapp.config['UPLOADED_BUILD_URL']   = BUILD_URL
+  webapp.config['LOG_DEST']             = LOG_DEST
   webapp.config['COMPILE_OFF']  = not(kwargs.get('compile', False))
 
   # Create dirs, if necessary
@@ -121,13 +123,13 @@ def initWeb(port, **kwargs):
       os.mkdir(path)
 
   #  Configure rotating log file
-  logfile = os.path.join(args.dir, 'log', 'web.log')
+  logfile = os.path.join(LOG_DEST, 'web.log')
   webapp.config['LOGFILE'] = logfile
   log_file = logging.handlers.RotatingFileHandler(logfile, maxBytes=2*1024*1024, backupCount=5, mode='w')
   log_file.setFormatter(log_fmt)
   logger.addHandler(log_file)
 
-  logger.info("\n\n====================  <<<<< K3 >>>>> ===================================")
+  logger.info("\n\n\n\n\n====================  <<<<< K3 >>>>> ===================================")
   logger.info("FLASK WEB Initializing:\n" +
     "    Host  : %s\n" % host +
     "    Port  : %d\n" % port +
@@ -136,11 +138,33 @@ def initWeb(port, **kwargs):
     "    Server: %s\n" % SERVER_URL +
     "    Port  : %d\n" % port)
 
-  # Check for executor(s), build if necessary
-  compiler_exec = os.path.join(LOCAL_DIR, 'CompileExecutor.py')
-  if not os.path.exists(compiler_exec):
-    logger.info("Compiler executor not found. Copying to web root dir.")
-    shutil.copyfile('CompileExecutor.py', compiler_exec)
+
+  # Configure Compilation Service
+  if not webapp.config['COMPILE_OFF']:
+
+    compileLogger = logging.getLogger("compiler")
+
+    sio_fmt = ServiceFormatter('\n' + u'[%(asctime)s] %(message)s\n'.encode("utf8", errors='ignore'))
+    sio = SocketIOHandler()
+    sio.setFormatter(sio_fmt)
+    compileLogger.addHandler(sio)
+
+    compileFile = os.path.join(LOG_DEST, 'compiler.log')
+    webapp.config['COMPILELOG'] = compileFile
+
+    compile_fmt = ServiceFormatter(u'[%(asctime)s] %(message)s'.encode("utf8", errors='ignore'))
+    compile_file = logging.handlers.RotatingFileHandler(compileFile, maxBytes=1024*1024, backupCount=5, mode='w')
+    compile_file.setFormatter(compile_fmt)
+    compileLogger.addHandler(compile_file)
+
+    compileLogger.info("\n\n\n\n\n====================  <<<<< Compiler Service Initiated >>>>> ===================================")
+
+    # Check for executor(s), build if necessary
+    compiler_exec = os.path.join(LOCAL_DIR, 'CompileExecutor.py')
+    if not os.path.exists(compiler_exec):
+      logger.info("Compiler executor not found. Copying to web root dir.")
+      shutil.copyfile('CompileExecutor.py', compiler_exec)
+
   launcher_exec = os.path.join(LOCAL_DIR, 'k3executor')
   if not os.path.exists(launcher_exec):
     logger.info("K3 Executor not found. Making & Copying to web root dir.")
@@ -155,6 +179,7 @@ def returnError(msg, errcode):
   """
     returnError -- Helper function to format & return error messages & codes
   """
+  logger.warning("[FLASKWEB] Returning error code %d, `%s`" % (errcode, msg))
   if request.headers['Accept'] == 'application/json':
     return msg, errcode
   else:
@@ -162,16 +187,23 @@ def returnError(msg, errcode):
 
 
 def shutdown_server():
+    global dispatcher
     logging.warning ("[FLASKWEB] Attempting to kill the server")
     func = request.environ.get('werkzeug.server.shutdown')
     if func is None:
         raise RuntimeError("Not running the server")
     func()
-    driver.stop()
-    driver_t.join() 
+    webserverTerminate.set()
+    dispatcher.terminate = True
+
+def shutdown_dispatcher():
+    # driver.stop()
+    # driver_t.join() 
     for k, v in compile_tasks.items():
       v.kill()
-    logging.info ("[FLASKWEB] Mesos is down")
+    logging.info ("[FLASKWEB] Detached from Mesos")
+    dispatcherTerminate.set()
+
 
 
 #===============================================================================
@@ -261,6 +293,19 @@ def trace():
   return jsonify(output), 200
 
 
+@webapp.route('/restart')
+def restart():
+    """
+    #------------------------------------------------------------------------------
+    #  /restart - Restart the K3 Dispatch Service (kills/cleans all running tasks)
+    #------------------------------------------------------------------------------
+    """
+    logging.warning ("[FLASKWEB] Shutting down K3 Dispatcher....")
+    shutdown_dispatcher()
+    return 'Dispatcher is restarting.....Give me a millisec'
+
+
+
 @webapp.route('/kill')
 def shutdown():
     """
@@ -268,8 +313,12 @@ def shutdown():
     #  /kill - Kill the server  (TODO: Clean this up)
     #------------------------------------------------------------------------------
     """
-    logging.warning ("[FLASKWEB] Shutting down the driver")
+    logging.warning ("[FLASKWEB] Shutting down Flask Web Server....")
     shutdown_server()
+    logging.warning ("[FLASKWEB] Shutting down K3 Dispatcher....")
+    shutdown_dispatcher()
+
+    haltFlag.set()
     return 'Server is going down...'
 
 
@@ -446,7 +495,7 @@ def archiveApp(appName, appUID):
       file = request.files['file']
       if file:
           filename = secure_filename(file.filename)
-          path = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], uname).encode(encoding='utf8')
+          path = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], uname).encode(encoding='utf8', errors='ignore')
           logger.debug("Archiving file, %s, to %s" % (filename, path))
           if not os.path.exists(path):
             os.mkdir(path)
@@ -569,14 +618,6 @@ def createJob(appName, appUID):
         user = request.form['user'] if 'user' in request.form else 'anonymous'
         tag = request.form['tag'] if 'tag' in request.form else ''
 
-        # text = request.form.get('text', None)
-        # k3logging = True if 'logging' in request.form else False
-        # jsonlog = True if 'jsonlog' in request.form else False
-        # jsonfinal = True if 'jsonfinal' in request.form else False
-        # stdout = request.form['stdout'] if 'stdout' in request.form else False
-        # user = request.form['user'] if 'user' in request.form else 'anonymous'
-        # tag = request.form['tag'] if 'tag' in request.form else ''
-
         # User handling: jsonfinal is a qualifier flag for the json logging flag
         if jsonfinal and not jsonlog:
           jsonlog = True
@@ -691,8 +732,8 @@ def getJob(appName, jobId):
     thisjob = dict(job, url=dispatcher.getSandboxURL(jobId))
     if k3job != None:
       thisjob['master'] = k3job.master
-    local = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(jobId)).encode(encoding='utf8')
-    path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(jobId),'role.yaml').encode(encoding='utf8')
+    local = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(jobId)).encode(encoding='utf8', errors='ignore')
+    path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, str(jobId),'role.yaml').encode(encoding='utf8', errors='ignore')
     if os.path.exists(local) and os.path.exists(path):
       with open(path, 'r') as role:
         thisjob['roles'] = role.read()
@@ -812,7 +853,7 @@ def archiveJob(appName, jobId):
         file = request.files['file']
         if file:
             filename = secure_filename(file.filename)
-            path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, job_id, filename).encode(encoding='utf8')
+            path = os.path.join(webapp.config['UPLOADED_JOBS_DEST'], appName, job_id, filename).encode(encoding='utf8', errors='ignore')
             file.save(path)
             return "File Uploaded & archived", 202
         else:
@@ -900,12 +941,143 @@ def deleteJobs():
 #     link = resolve(MASTER)
 #     print link
 #     sandbox = dispatcher.getSandboxURL(jobId)
-#     if sandbox:
+#     if sandbox:if 
 #       print sandbox
 #       return '<a href="%s">%s</a>' % (sandbox, sandbox)
 #     else:
 #       return 'test'
 
+
+
+#===============================================================================
+#   Compile End Points
+#===============================================================================
+@webapp.route('/compileservice')
+def compService():
+  """
+  #------------------------------------------------------------------------------
+  #  /compileservice
+  #         GET       Return compile service status
+  #------------------------------------------------------------------------------
+  """
+  return jsonify(compileService.getItems())
+
+
+@webapp.route('/compileservice/check')
+def compServiceCheck():
+  """
+  #------------------------------------------------------------------------------
+  #  /compileservice/check
+  #         GET       Quick check for status
+  #------------------------------------------------------------------------------
+  """
+  # global compileService
+  return compileService.state.name
+
+@webapp.route('/compileservice/up', methods=['GET', 'POST'])
+def compServiceUp():
+  """
+  #------------------------------------------------------------------------------
+  #  /compileservice/up
+  #        POST     Starts compile service
+  #           curl -i -X POST -H "Accept: application/json"
+  #                   -F numworkers=<numworkers> 
+  #                   -F gitpull=[True|False]
+  #                   -F branch=<k3_branch>
+  #                   -F cabalbuild=[True|False] 
+  #                   -F m_workerthread=<#master_service_threads> 
+  #                   -F w_workerthread=<#worker_service_threads> 
+  #                   -F heartbeat=<heartbeat_interval_in_secs> 
+  #                   -F cppthread=<#client_threads_for_cpp> 
+  #                   http://<host>:<port>/compile
+  #
+  #    Default vals:  numworkers=(max workers), gitpull=True, 
+  #                   branch=development, cabalbuild=False, 
+  #                   m_workerthread=1, w_workerthread=1, 
+  #                   heartbeat=300, cppthread=12 
+
+  #
+  #        GET     Redirect to Compile Form (html) or compile service setting (json)
+  #------------------------------------------------------------------------------
+  """
+  global compileService
+  if request.method == 'POST' and compileService.isDown():
+    settings = dict(webaddr=webapp.config['ADDR'])
+
+    settings['branch'] = request.form.get('branch', 'development')
+    gitpull = request.form.get('gitpull', True)
+    settings['gitpull'] = gitpull if isinstance(gitpull, bool) else (gitpull.upper() == 'TRUE')
+    cabalbuild = request.form.get('cabalbuild', False)
+    settings['cabalbuild'] = cabalbuild if isinstance(cabalbuild, bool) else (cabalbuild.upper() == 'TRUE')
+
+    if 'm_workerthread' in request.form:
+      settings['m_workerthread'] = request.form['m_workerthread']
+
+    if 'w_workerthread' in request.form:
+      settings['w_workerthread'] = request.form['w_workerthread']
+
+    if 'heartbeat' in request.form:
+      settings['heartbeat'] = request.form['heartbeat']
+
+    if 'cppthread' in request.form:
+      settings['cppthread'] = request.form['cppthread']
+
+
+    logger.debug ("[FLASKWEB] User GIT PULL Request    (?): %s" % str(settings['gitpull']))
+    logger.debug ("[FLASKWEB] User CABAL BUILD Request (?): %s" % str(settings['cabalbuild']))
+
+    # TODO: Set Worker Nodes here (dynamic allocation of workers)
+    if 'numworkers' not in request.form or request.form['numworkers'] == '':
+      settings['numworkers'] = len(workerNodes)
+    else:
+      settings['numworkers'] = int(request.form['numworkers'])
+
+    compileService.update(settings)
+    compileService.goUp(settings['numworkers'])
+
+  if request.headers['Accept'] == 'application/json':
+    return jsonify(compileService.getItems()), 200
+  else:
+    return render_template("compile.html", status=compileService.state.name)    
+
+
+
+@webapp.route('/compileservice/stop')
+def compServiceStop():
+  """
+  #------------------------------------------------------------------------------
+  #  /compileservice/stop
+  #         GET     Stop compile service Immediately
+  #
+  #       NOTE:  Be careful, it kills all jobs (There is no confirmation check)
+  #------------------------------------------------------------------------------
+  """
+  global compileService
+  compileService.goDown()
+
+  if request.headers['Accept'] == 'application/json':
+    return jsonify(compileService.getItems()), 200
+  else:
+    return render_template("compile.html", status=compileService.state.name)    
+
+
+@webapp.route('/compileservice/down')
+def compServiceDown():
+  """
+  #------------------------------------------------------------------------------
+  #  /compileservice/down
+  #         GET     Shuts down compile service gracefully
+  #
+  #       NOTE:  Clears all pendings tasks
+  #------------------------------------------------------------------------------
+  """
+  global compileService
+  compileService.goDownGracefully()
+
+  if request.headers['Accept'] == 'application/json':
+    return jsonify(compileService.getItems()), 200
+  else:
+    return render_template("compile.html", status=compileService.state.name)
 
 
 
@@ -918,21 +1090,21 @@ def compile():
     """
     #------------------------------------------------------------------------------
     #  /compile
-    #         GET     Form for compiling new K3 Executable OR status of compiling tasks
-    #         POST    Submit new K3 Compile task
+    #        POST    Submit new K3 Compile task
     #           curl -i -X POST -H "Accept: application/json"
     #                   -F name=<appName>  
     #                   -F file=@<sourceFile> 
     #                   -F blocksize=<blocksize> 
     #                   -F compilestage=['both'|'cpp'|'bin']
-    #                   -F numworkers=<numworkers> 
-    #                   -F options=<compileOptions>
-    #                   -F gitpull=[True|False]
-    #                   -F branch=<k3_branch>
+    #                   -F compileargs=<compile_args>
+    #                   -F workload=['balanced'|'moderate'|'extreme']
     #                   -F user=<userName> http://<host>:<port>/compile
-    #    NOTE: Username, blocksize, numworkers, compilestate & Options are optional
-    #             default vals:  numworkers=1,  blocksize=4, compilestage="both",
-    #                   gitpull=True, branch='development'
+    #
+    #    NOTE:  -user & compileargs are optional. 
+    #           -If name is omitted, it is inferred from filename
+    #    Default vals:  blocksize=8, compilestage='both', workload='balanced'
+    #
+    #         GET     Form for compiling new K3 Executable OR status of compiling tasks
     #------------------------------------------------------------------------------
     """
     if webapp.config['COMPILE_OFF']:
@@ -942,21 +1114,39 @@ def compile():
     logging.debug("[FLASKWEB /compile]   REQUEST ")
 
     if request.method == 'POST':
+
+      if not compileService.isUp():
+        logger.warning("Compilation requested, but denied (Compiler Service not ready)")
+        return returnError("Compiler Service is not running. Ensure it is up before initiating a compilation task.", 400)
+
+      if compileService.gracefulHalt:
+        logger.warning("Compilation requested, but denied (Compiler Service is flagged to shut down, gracefully)")
+        return returnError("Sorry. Your compilation request is denied because the Compiler Service is flagged to shut down, gracefully.", 400)
+
+
       file = request.files['file']
-      text = request.form['text'] if 'text' in request.form else None
-      name = request.form['name'] if 'name' in request.form else None
+      text = request.form.get('text', None)
+      name = request.form.get('name', None)
 
       # Create a unique ID
       uid = getUID()
 
       # Set default settings for a Compile Job
-      settings = CompileLauncher.compileSettings()
+      # TODO: Update Settings
+      settings = compileService.getItems()
 
       # update settings & error check where necessary
-      settings['options'] = request.form.get('options', settings['options'])
+      settings['compileargs'] = request.form.get('compileargs', settings['compileargs'])
       settings['user'] = request.form.get('user', settings['user'])
       settings['tag'] = request.form.get('tag', settings['tag'])
-      settings['branch'] = request.form.get('branch', settings['branch'])
+
+      workload = request.form.get('workload', '').lower()
+
+      if settings['compileargs'] == '':
+        settings['compileargs'] = workloadOptions[workload]
+
+      mem = int(request.form['mem']) if 'mem' in request.form else None
+      cpu = int(request.form['cpu']) if 'cpu' in request.form else None
 
       stage = request.form.get('compilestage', settings['compilestage'])
       if stage not in ['both', 'cpp', 'bin']:
@@ -970,18 +1160,6 @@ def compile():
       elif blocksize.isdigit():
         settings['blocksize'] = int(blocksize)
 
-      gitpull = request.form.get('gitpull', settings['gitpull'])
-      settings['gitpull'] = gitpull if isinstance(gitpull, bool) else (gitpull.upper() == 'TRUE')
-
-      cabalbuild = request.form.get('cabalbuild', settings['cabalbuild'])
-      settings['cabalbuild'] = cabalbuild if isinstance(cabalbuild, bool) else (cabalbuild.upper() == 'TRUE')
-
-
-      if 'numworkers' not in request.form or request.form['numworkers'] == '':
-        settings['numworkers'] = len(workerNodes)
-      else:
-        settings['numworkers'] = int(request.form['numworkers'])
-
       # Determine application name (for pass-thru naming)
       if not name:
         if file:
@@ -991,9 +1169,8 @@ def compile():
           return returnError("No name provided for K3 program", 400)
 
       app = AppID(name, uid)
-
       uname = '%s-%s' % (name, uid)
-      path = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], uname).encode(encoding='utf8')
+      path = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], uname).encode(encoding='utf8', errors='ignore')
 
       # Save K3 source to file (either from file or text input)
       settings['source'] = ('%s.k3' % name)
@@ -1004,51 +1181,25 @@ def compile():
       if file:
           file.save(os.path.join(path, settings['source']))
       else:
-          file = open(os.path.join(path, settings['source']).encode(encoding='utf8'), 'w')
+          file = open(os.path.join(path, settings['source']).encode(encoding='utf8', errors='ignore'), 'w')
           file.write(text)
           file.close()
 
       # Create Symlink for easy access to latest compiled task
-      link = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], name).encode(encoding='utf8')
+      link = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], name).encode(encoding='utf8', errors='ignore')
       if os.path.exists(link):
         os.remove(link)
 
       os.symlink(uname, link)
-      url = os.path.join(webapp.config['UPLOADED_BUILD_URL'], uname).encode(encoding='utf8')
+      url = os.path.join(webapp.config['UPLOADED_BUILD_URL'], uname).encode(encoding='utf8', errors='ignore')
 
-      # TODO: Add in Git hash
-      # compileJob   = CompileJob(name=name, uid=uid, options=options, user=user, tag=tag,
-      #         path=path, blocksize=blocksize, numworkers=numworkers, 
-      #         compilestage=compilestage, url=url, branch=branch, gitpull=gitpull)
+      job = CompileJob(name, uid, path, settings, mem=mem, cpu=cpu)
+      lastCompile = job.getItems()
 
+      logger.info("[FLASKWEB] Submitting Compilation job for " + name)
+      compileService.submit(job)
 
-      # Create the Mesos Scheduler to manage the compilation
-      # launcher = CompileLauncher(compileJob, source=src_file, webaddr=webapp.config['ADDR'])
-      launcher  = CompileLauncher(name, uid, path, settings)
-
-      # dict( (name,eval(name)) for name in 
-      #   ['options', 'user', 'tag', 'path', 'url', 'blocksize', 'numworkers', 'compilestage', 'branch', 'gitpull', 'cabalbuild'])
-
-
-      # Note: Each compile job runs as as a separate framework
-      framework = mesos_pb2.FrameworkInfo()
-      framework.user = ""
-      framework.name = "Compile %s" % name
-
-      # Create the Mesos Driver to register with Mesos
-      driver = mesos.native.MesosSchedulerDriver(launcher, framework, webapp.config['MESOS'])
-      compile_tasks[uid] = launcher
-      lastCompile = launcher.getItems()
-
-      # Start the Driver in its own thread
-      t = threading.Thread(target=driver.run)
-      try:
-        t.start()
-      except e:
-        driver.stop()
-        t.join()
-
-      # outputurl = "http://qp1:%d/compile/%s" % (webapp.config['PORT'], uname)
+      # Prepare results to send back to the user
       outputurl = "/compile/%s" % uname
       cppsrc = os.path.join(webapp.config['UPLOADED_BUILD_URL'], uname, settings['source'])
 
@@ -1056,18 +1207,22 @@ def compile():
                          status='SUBMITTED', outputurl=outputurl, cppsrc=cppsrc,uname=uname)
 
 
+      # Return feedback to user
       if request.headers['Accept'] == 'application/json':
         return jsonify(thiscompile), 200
       else:
-        return render_template("last.html", appName=name, lastcompile=thiscompile)
-
+        return render_template("last.html", appName=name, lastcompile=thiscompile, status=compileService.state.name)
 
     else:
       # TODO: Return list of Active/Completed Compiling Tasks
       if request.headers['Accept'] == 'application/json':
-        return 'CURL FORMAT:\n\n\tcurl -i -X POST -H "Accept: application/json" -F name=<appName> -F file=@<sourceFile> -F blocksize=<blocksize> -F compilestage=<compilestage> -F numworkers=<numworkers> http://<host>:<port>/compile'
+        return ('TO SUBMIT A NEW COMPILATION:\n\n\tcurl -i -X POST -H "Accept: application/json" \
+-F name=<appName> -F file=@<sourceFile> -F blocksize=<blocksize> -F compilestage=<compilestage> \
+http://<host>:<port>/compile' if compileService.isUp() 
+          else 'START THE SERVICE: curl -i -H "Accept: application/json" http://<host>:<port>/compileservice/up')
+
       else:
-        return render_template("compile.html")
+        return render_template("compile.html", status=compileService.state.name)
 
 
 def getCompilerOutput(uname):
@@ -1079,10 +1234,9 @@ def getCompilerOutput(uname):
       stdout_file = open(fname, 'r')
       output = unicode(stdout_file.read(), 'utf-8')
       stdout_file.close()
-      # return output.encode(encoding='utf-8')
       return output
     else:
-      return None
+      return returnError("Output not available for " + uname, 404)
 
 
 @webapp.route('/compile/<uid>', methods=['GET'])
@@ -1097,7 +1251,6 @@ def getCompile(uid):
     return returnError("Compilation Features are not available", 400)
 
   logger.debug("[FLASKWEB] Retrieving last compilation status")
-
   
   result = db.getCompiles(uid=uid)
   if len(result) == 0:
@@ -1116,60 +1269,42 @@ def getCompile(uid):
     else:
       return render_template("last.html", lastcompile=output)
 
-  # output = getCompilerOutput(uname).encode(encoding='utf-8')
-  # if output:
-  #   if request.headers['Accept'] == 'application/json':
-  #     return output, 200
-  #   else:
-  #     return render_template("output.html", output=output)
-
-  # else:
-  #   return returnError("No output found for compilation, %s\n\n" % uname, 400)
 
 
 @webapp.route('/compilestatus')
 def getCompileStatus():
-  global lastCompile
   """
   #------------------------------------------------------------------------------
-  #  /compilestatus - Provide simple output of current (or most recent) Compilation Job
+  #  /compilestatus - Short list of active jobs & current statuses
   #------------------------------------------------------------------------------
   """
-  logger.debug("[FLASKWEB] Retrieving last compilation status")
+  logger.debug("[FLASKWEB] Retrieving current active compilation status")
 
-  if lastCompile == None:
-    output = dict(name="N/A", status="There are no compilation jobs to display")
-  else:
-    output = db.getCompiles(uid=lastCompile['uid'])[0]
-    output['uname'] = ParseName.makeuname(output['name'], output['uid'])
-    local = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], output['uname'])
-    output['sandbox'] = sorted (os.listdir(local))
+  jobs = compileService.getActiveState()
+  title = "Active Compiling Tasks" if jobs else "NO Active Compiling Jobs"
 
   if request.headers['Accept'] == 'application/json':
-    return jsonify(output), 200
+    return jsonify(jobs), 200
   else:
-    return render_template("last.html", lastcompile=output)
+    return render_template("keyvalue.html", title=title, store=jobs)
 
 
 @webapp.route('/compilelog')
 def getCompileLog():
-  global lastCompile
   """
   #------------------------------------------------------------------------------
   #  /compilelog - Connects User to compile log websocket
   #------------------------------------------------------------------------------
   """
+  if webapp.config['COMPILE_OFF']:
+    return returnError("Compilation Features are not available", 400)
+
   logger.debug("[FLASKWEB] Connecting user to Compile Log WebSocket")
 
-
-  if lastCompile == None:
-    output = "Waiting for compile task to launch.....\n"
-  else:
-    uname = lastCompile['name'] + '-' + lastCompile['uid']
-    output = getCompilerOutput(uname)
+  with open(webapp.config['COMPILELOG'], 'r') as logfile:
+    output = logfile.read().split('<<<<< Compiler Service Initiated >>>>>')[-1]
 
   if request.headers['Accept'] == 'application/json':
-    # TODO: Return command line based data (??)
     return output, 200
   else:
     return render_template("socket.html", namespace='/compile', prefetch=output)
@@ -1180,8 +1315,8 @@ def getCompileLog():
 def killCompile(uid):
   """
   #------------------------------------------------------------------------------
-  #  /compile/<uname>/kill
-  #         GET     Kills an active compiling tasks (or removes and orphaned one
+  #  /compile/<uid>/kill
+  #         GET     Kills an active compiling tasks (or removes an orphaned one from DB)
   #------------------------------------------------------------------------------
   """
   if webapp.config['COMPILE_OFF']:
@@ -1199,13 +1334,13 @@ def killCompile(uid):
     c = complist[0]
     logging.info ("[FLASKWEB] Asked to KILL Compile UID #%s. Current status is %s" % (c['uid'], c['status']))
 
-    if c['status'] != CompileState.COMPLETE:
+    if c['status'] not in compileTerminatedStates:
       logging.info ("[FLASKWEB] KILLING Compile UID #%s. " % (c['uid']))
-      db.updateCompile(c['uid'], status='KILLED', done=True)
+      c['status'] = CompileState.KILLED.name
+      db.updateCompile(c['uid'], status=c['status'], done=True)
 
-    if c['uid'] in compile_tasks.keys():
-      compile_tasks[c['uid']].kill()
-      c['status'] = 'KILLED'
+    svid = AppID.getAppId(c['name'], c['uid'])
+    compileService.killJob(svid)
 
     if request.headers['Accept'] == 'application/json':
       return jsonify(c), 200
@@ -1217,7 +1352,7 @@ def deleteCompiles():
   """
   #------------------------------------------------------------------------------
   #  /delete/compiles
-  #         POST     Deletes list of compile jobs
+  #         POST     Deletes list of inactive compile jobs
   #------------------------------------------------------------------------------
   """
   if webapp.config['COMPILE_OFF']:
@@ -1228,9 +1363,6 @@ def deleteCompiles():
   for uid in deleteList:
     logger.info("[FLASKWEB /delete/compiles] DELETING compile job uid=" + uid)
     job = db.getCompiles(uid=uid)[0]
-    # TODO: COMPLETE
-    # path = os.path.join(webapp.config['UPLOADED_BUILD_DEST'], job['appName'], jobId)
-    # shutil.rmtree(path, ignore_errors=True)
     db.deleteCompile(job['uid'])
   return redirect(url_for('listJobs')), 302
 
@@ -1238,8 +1370,6 @@ def deleteCompiles():
 def test_connect():
     logger.info('[FLASKWEB] Client is connected to /connect stream')
     emit('my response', 'Connected to Compile Log Stream')
-    # thread = CountThread()
-    # thread.start()
 
 @socketio.on('message', namespace='/log')
 def test_message(message):
@@ -1266,7 +1396,7 @@ if __name__ == '__main__':
   # log.addHandler(console)
 
   # logging.basicConfig(format='[%(asctime)s %(levelname)-5s %(name)s] %(message)s', level=logging.DEBUG, datefmt='%H:%M:%S')
-  logger.info("K3 Dispatcher is initiating.....")
+  logger.info("K3 Flask Web Service is initiating.....")
 
 
   #  Program Initialization
@@ -1290,45 +1420,72 @@ if __name__ == '__main__':
     compile=args.compile
   )
 
+
   #  Create long running framework, dispatcher, & driver
-  framework = mesos_pb2.FrameworkInfo()
-  framework.user = "" # Have Mesos fill in the current user.
-  framework.name = "K3 FLASK (With Compiler)"
+  frameworkDispatch = mesos_pb2.FrameworkInfo()
+  frameworkDispatch.user = "" # Have Mesos fill in the current user.
+  frameworkDispatch.name = "[DEV] Dispatcher"
 
-  dispatcher = Dispatcher(master, webapp.config['ADDR'], daemon=True)
-  if dispatcher == None:
-    logger.error("Failed to create dispatcher. Aborting")
-    sys.exit(1)
-
-  driver = mesos.native.MesosSchedulerDriver(dispatcher, framework, master)
-  driver_t = threading.Thread(target = driver.run)
+  # Note: Each compile job runs as as a separate framework
+  frameworkCompiler = mesos_pb2.FrameworkInfo()
+  frameworkCompiler.user = ""
+  frameworkCompiler.name = "[DEV] Compiler"
 
   # Start mesos schedulers & flask web service
   try:
-    logger.info("Starting Mesos Dispatcher...")
-    driver_t.start()
-    logger.info("Starting FlaskWeb Server...")
 
-    # webapp.run(host='0.0.0.0', port=port, threaded=True, use_reloader=False)
+
+    # Create Job Dispatcher
+    logging.debug("[FLASKWEB] Dispatch Driver is initializing")
+    dispatcher = Dispatcher(master, webapp.config['ADDR'], daemon=True)
+    if dispatcher == None:
+      logger.error("[FLASKWEB] Failed to create dispatcher. Aborting")
+      sys.exit(1)
+    driverDispatch = mesos.native.MesosSchedulerDriver(dispatcher, frameworkDispatch, master)
+    threadDispatch = threading.Thread(target=driverDispatch.run)
+    threadDispatch.start()
+
+    # Create Compiler Service 
+    logging.debug("[FLASKWEB] Compiler Service is initializing")
+    compileService = CompileServiceManager(webapp.config['LOG_DEST'], webapp.config['ADDR'])
+    if compileService == None:
+      logger.error("[FLASKWEB] Failed to create compiler service. Aborting")
+      sys.exit(1)
+    driverCompiler = mesos.native.MesosSchedulerDriver(compileService, frameworkCompiler, master)
+    threadCompiler = threading.Thread(target=driverCompiler.run)
+    threadCompiler.start()
+
+    logger.info("[FLASKWEB] Starting FlaskWeb Server...")
     socketio.run(webapp, host='0.0.0.0', port=port, use_reloader=False)
-    terminate = False
-    while not terminate:
-      time.sleep(1)
-      terminate = dispatcher.terminate
-    logger.info("Server is terminating")
-    driver.stop()
-    driver_t.join()
+    webserverTerminate.clear()
+    initSocketIO = False
+
+    # Block until flagged to halt
+    haltFlag.wait()
+
+    compileService.kill()
+    logger.info("[FLASKWEB] Server is terminating")
+    driverDispatch.stop()
+    threadDispatch.join()
+    logging.debug("[FLASKWEB] Driver thread complete")
+    driverCompiler.stop()
+    threadCompiler.join()
+    logging.debug("[FLASKWEB] Compiler thread complete")
 
   except socket.error:
-    logger.error("Flask web cannot start: Port not available.")
-    driver.stop()
-    driver_t.join()
+    logger.error("[FLASKWEB] Flask web cannot start: Port not available.")
+    compileService.kill()
+    driverDispatch.stop()
+    threadDispatch.join()
+    driverCompiler.stop()
+    threadCompiler.join()
 
   except KeyboardInterrupt:
-    logger.warning("INTERRUPT")
-    driver.stop()
-    driver_t.join()
-    for k, v in compile_tasks.items():
-      v.kill()
+    logger.warning("[FLASKWEB] KEYBOARD INTERRUPT -- Shutting Down")
+    compileService.kill()
+    driverDispatch.stop()
+    threadDispatch.join()
+    driverCompiler.stop()
+    threadCompiler.join()
 
 

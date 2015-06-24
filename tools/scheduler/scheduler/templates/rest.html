@@ -38,6 +38,12 @@
 
 
 ===============================================================================
+  /restart - Restart the K3 Dispatch Service (kills/cleans all running tasks)
+-------------------------------------------------------------------------------
+@webapp.route('/restart')
+
+
+===============================================================================
   /kill - Kill the server  (TODO: Clean this up)
 -------------------------------------------------------------------------------
 @webapp.route('/kill')
@@ -173,19 +179,62 @@
 
 
 ===============================================================================
+  /compileservice
+         GET       Return compile service status
+-------------------------------------------------------------------------------
+@webapp.route('/compileservice')
+
+
+===============================================================================
+  /compileservice/check
+         GET       Quick check for status
+-------------------------------------------------------------------------------
+@webapp.route('/compileservice/check')
+
+
+===============================================================================
+  /compileservice/up
+        POST     Starts compile service
+           curl -i -X POST -H "Accept: application/json"
+                   -F numworkers=&lt;numworkers&gt;
+                   -F gitpull=[True|False]
+                   -F branch=&lt;k3_branch&gt;
+                   -F cabalbuild=[True|False]
+                   http://&lt;host&gt;:&lt;port&gt;/compile
+
+    Default vals:  numworkers=(max workers), gitpull=True,
+                   branch=development, cabalbuild=False
+
+        GET     Redirect to Compile Form (html) or compile service setting (json)
+-------------------------------------------------------------------------------
+@webapp.route('/compileservice/up', methods=['GET', 'POST'])
+
+
+===============================================================================
+  /compileservice/down
+         GET     Shuts down compile service
+
+       NOTE:  Be careful, it kills all jobs (There is no confirmation check)
+-------------------------------------------------------------------------------
+@webapp.route('/compileservice/down')
+
+
+===============================================================================
   /compile
-         GET     Form for compiling new K3 Executable OR status of compiling tasks
-         POST    Submit new K3 Compile task
+        POST    Submit new K3 Compile task
            curl -i -X POST -H "Accept: application/json"
                    -F name=&lt;appName&gt;
                    -F file=@&lt;sourceFile&gt;
                    -F blocksize=&lt;blocksize&gt;
-                   -F compilestage=&lt;compilestage&gt;
-                   -F numworkers=&lt;numworkers&gt;
+                   -F compilestage=['both'|'cpp'|'bin']
                    -F options=&lt;compileOptions&gt;
                    -F user=&lt;userName&gt; http://&lt;host&gt;:&lt;port&gt;/compile
-    NOTE: Username, blocksize, numworkers, compilestate & Options are optional
-             default vals:  numworkers=1,  blocksize=4, compilestage=""
+
+    NOTE:  -Username & Options are optional.
+           -If name is omitted, it is inferred from filename
+    Default vals:  blocksize=4, compilestage="both"
+
+         GET     Form for compiling new K3 Executable OR status of compiling tasks
 -------------------------------------------------------------------------------
 @webapp.route('/compile', methods=['GET', 'POST'])
 
@@ -198,7 +247,7 @@
 
 
 ===============================================================================
-  /compilestatus - Provide simple output of current (or most recent) Compilation Job
+  /compilestatus - Short list of active jobs & current statuses
 -------------------------------------------------------------------------------
 @webapp.route('/compilestatus')
 
@@ -210,15 +259,15 @@
 
 
 ===============================================================================
-  /compile/&lt;uname&gt;/kill
-         GET     Kills an active compiling tasks (or removes and orphaned one
+  /compile/&lt;uid&gt;/kill
+         GET     Kills an active compiling tasks (or removes an orphaned one from DB)
 -------------------------------------------------------------------------------
 @webapp.route('/compile/&lt;uid&gt;/kill', methods=['GET'])
 
 
 ===============================================================================
   /delete/compiles
-         POST     Deletes list of compile jobs
+         POST     Deletes list of inactive compile jobs
 -------------------------------------------------------------------------------
 @webapp.route('/delete/compiles', methods=['POST'])
 

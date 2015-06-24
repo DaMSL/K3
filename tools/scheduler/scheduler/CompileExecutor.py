@@ -37,7 +37,8 @@ BUFFER_SIZE = 256
 DEBUG = False
 DEBUG_FILE = 'examples/sql/tpch/queries/k3/q1.k3'
 
-
+def isTrue(boolstr):
+  return boolstr.upper() == 'TRUE'
 
 class CompilerExecutor(mesos.interface.Executor):
   def __init__(self):
@@ -66,11 +67,13 @@ class CompilerExecutor(mesos.interface.Executor):
         logging.debug("%s = %s" % (l.key, l.value) )
         daemon[l.key] = str(l.value)
 
+      self.status.message = daemon['role']
+
       name = str(task.name.encode('utf8', 'ignore'))
       logging.debug("Task Name = %s" % name)
       os.chdir('/k3/K3')
 
-      if bool(daemon['gitpull']):
+      if isTrue(daemon['gitpull']):
         gitpull = 'cd /k3/K3 && git pull && git checkout %s' % daemon['branch']
         logging.info("GIT PULL Requested: %s " % gitpull)
         gitpulled = subprocess.call(gitpull, shell=True)
@@ -80,7 +83,7 @@ class CompilerExecutor(mesos.interface.Executor):
           logging.warning('Local K3 update FAILED (continuing with compilation)')
 
 
-      if bool(daemon['cabalbuild']):
+      if isTrue(daemon['cabalbuild']):
 
         logging.info("CABAL BUILD requested")
         path = '/opt/ghc/7.10.1/bin:/opt/cabal/1.22/bin:/opt/alex/3.1.4/bin:/opt/happy/1.19.5/bin:/root/.cabal/bin/:$PATH'
@@ -90,25 +93,22 @@ class CompilerExecutor(mesos.interface.Executor):
         else:
             logging.warning('CABAL build has FAILED (continuing with compilation)')
 
-      daemon['k3src'] = DEBUG_FILE if DEBUG else '$MESOS_SANDBOX/%s.k3' % daemon['name']
-
       # Set Compiling service command line
       if daemon['role'] == 'client':
-        cmd = './tools/scripts/run/service.sh submit --svid %(svid)s --host %(host)s --port %(port)s  --blocksize %(blocksize)s -j 12 %(compilestage)s %(k3src)s +RTS -N -RTS' % daemon
+        daemon['k3src'] = DEBUG_FILE if DEBUG else '$MESOS_SANDBOX/%s.k3' % daemon['name']
+        cmd = './tools/scripts/run/service.sh submit --svid %(svid)s --host %(host)s --port %(port)s  --blocksize %(blocksize)s -j %(cppthread)s %(compilestage)s %(compileargs)s %(k3src)s +RTS -N -RTS' % daemon
       elif daemon['role'] == 'master':
-        cmd = './tools/scripts/run/service.sh %(role)s --svid %(svid)s --host %(host)s --port %(port)s --workers 8 --heartbeat 300 +RTS -N -RTS' % daemon
+        cmd = './tools/scripts/run/service.sh %(role)s --svid %(svid)s --host %(host)s --port %(port)s --workers %(m_workerthread)s +RTS -N -RTS' % daemon
       else:
-        cmd = './tools/scripts/run/service.sh %(role)s --svid %(svid)s --host %(host)s --port %(port)s --workers 8 +RTS -N -RTS' % daemon
+        cmd = './tools/scripts/run/service.sh %(role)s --svid %(svid)s --host %(host)s --port %(port)s --workers %(w_workerthread)s --heartbeat %(heartbeat)s +RTS -N -RTS' % daemon
 
       logging.info("CMD = %s" % cmd)
 
-
-      self.status.message = daemon['role']
-      self.status.data += "%s is ready." % daemon['svid']
-      if daemon['gitpull']:
-        self.status.data += ' Pulled GIT BRANCH: %s.' % daemon['branch']
-      if daemon['cabalbuild']:
-        self.status.data += ' CABAL Re-built K3.'
+      self.status.data += "%s is ready.\n" % daemon['svid']
+      if isTrue(daemon['gitpull']):
+        self.status.data += 'Pulled GIT BRANCH: %s.\n' % daemon['branch']
+      if isTrue(daemon['cabalbuild']):
+        self.status.data += 'CABAL Re-built K3.\n'
       self.status.task_id.value = task.task_id.value
       driver.sendStatusUpdate(self.status)
 
@@ -128,12 +128,12 @@ class CompilerExecutor(mesos.interface.Executor):
       # NOTE: Buffered output reduces message traffic via mesos
       while True:
         output = proc.stdout.readline()
+        logging.info(output)
         self.buffer += output
         if output == '' and proc.poll() != None:
             self.status.data = self.buffer
             driver.sendStatusUpdate(self.status)
             break
-        logging.info(output)
 
         # If buffer-size is reached: send update message
         if len(self.buffer) > BUFFER_SIZE:
@@ -142,7 +142,6 @@ class CompilerExecutor(mesos.interface.Executor):
           self.buffer = ""
 
       exitCode = proc.returncode
-      self.status.message = "complete,%s,%d" % (daemon['svid'], exitCode)
       self.success = (exitCode == 0)
       driver.sendStatusUpdate(self.status)
       logging.info("Compile Task COMPLETED for %s" % daemon['svid'])
@@ -154,15 +153,15 @@ class CompilerExecutor(mesos.interface.Executor):
       builddir = '/k3/K3/__build/'
 
       #  TODO: Need a way to check success/failure
-      if daemon['role'] == 'client' and os.path.exists(builddir):
+      if daemon['role'] == 'client':
         logging.debug("Client is copying all files in build dir")
-        self.status.data = "CLIENT ----> Uploading Application, %s" % daemon['name']
+        self.status.data = "CLIENT ----> EXIT CODE=%d Uploading Application, %s" % (exitCode, daemon['name'])
         driver.sendStatusUpdate(self.status)
         archive_target = daemon['webaddr'] + '/apps/' + daemon['name'] + '/' + daemon['uid']
         curlcmd = curlPrefix + ' -F "file=@' + builddir + '%s" ' + archive_target
 
         # User requested binary compilation. Try to upload new app
-        if daemon['compilestage'] == '':
+        if daemon['compilestage'] == '' and os.path.exists(builddir):
 
           # Compilation Successful: upload it with same UID
           if os.path.exists(builddir + 'A'):
@@ -178,33 +177,33 @@ class CompilerExecutor(mesos.interface.Executor):
             # NOTE: compilation "fails" with no binary, even if client exited w/zero status
             self.success = False
 
+        if os.path.exists(builddir):
+          logging.debug("CLIENT __build: ")
+          self.status.data = "CLIENT ----> Sending build dir to server"
+          driver.sendStatusUpdate(self.status)
+          for f in os.listdir(builddir):
+            #  Upload binary to flask server & copy to sandbox
+            logging.debug('  Shipping FILE: ' + f)
+            curl = curlcmd % f
+            subprocess.call(curl, shell=True)
 
-        logging.debug("CLIENT __build: ")
-        self.status.data = "CLIENT ----> Sending build dir to server"
-        driver.sendStatusUpdate(self.status)
-        for f in os.listdir(builddir):
-          #  Upload binary to flask server & copy to sandbox
-          logging.debug('  Shipping FILE: ' + f)
-          curl = curlcmd % f
-          subprocess.call(curl, shell=True)
+      # #  SET IF CASE FOR A "HALT ROLE"
+      #   haltcmd = './tools/scripts/run/service.sh halt --svid %(svid)s --host %(host)s --port %(port)s' % daemon
+      #   subprocess.call(haltcmd, shell=True)
+      #   logging.info("Client sent HALT command and is terminating")
 
-
-        haltcmd = './tools/scripts/run/service.sh halt --svid %(svid)s --host %(host)s --port %(port)s' % daemon
-        subprocess.call(haltcmd, shell=True)
-        logging.info("Client sent HALT command and is terminating")
       else:
         logging.info("`%s` Terminated", daemon['svid'])
 
-      self.status.message = daemon['svid']
       if self.success:
         self.status.state = mesos_pb2.TASK_FINISHED
         self.status.data = "terminated normally."
-        if daemon['svid'] == 'client':
+        if daemon['role'] == 'client':
           self.status.data += " Compilation Job was SUCCESSFUL."
       else:
         self.status.state = mesos_pb2.TASK_FAILED
         self.status.data = "Terminated"
-        if daemon['svid'] == 'client':
+        if daemon['role'] == 'client':
           self.status.data += " Compilation FAILED."
       driver.sendStatusUpdate(self.status)
 

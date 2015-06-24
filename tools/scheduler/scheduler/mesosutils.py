@@ -225,21 +225,9 @@ def addTaskLabel(task, key, value):
   lab = task.labels.labels.add()
   lab.key = str(key)
   lab.value = str(value)
-  # task.labels.MergeFrom(config)
 
 # def compileTask(**kwargs):
 def compileTask(app, slave, daemon, r_cpu, r_mem, r_port):
-  # app     = kwargs.get('name', 'myprog')
-  # uid     = kwargs.get('uid', None)
-  # slave   = kwargs.get('slave', None)
-
-  # webaddr = kwargs.get('webaddr', 'http://localhost:5000')
-  # # script  = kwargs.get('script', None)
-  # source  = kwargs.get('source', None)
-  # r_cpu   = kwargs.get('cpu', 4)
-  # r_mem   = kwargs.get('mem', 4*1024)
-  # r_port  = kwargs.get('port', None)
-  # daemon  = kwargs.get('daemon')
 
   if slave == None:
     logging.error("Error. No mesos slave provided")

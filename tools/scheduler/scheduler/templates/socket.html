@@ -29,7 +29,7 @@
             });
 
             socket.on('my response', function(msg) {
-                $('#log').append('<br>' + msg);
+                $('#log').append('<br /> ' + msg + '\n');
                 $('#log').scrollTop($('#log')[0].scrollHeight);
             });
 

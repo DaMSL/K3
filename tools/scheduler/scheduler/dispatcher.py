@@ -270,7 +270,7 @@ class Dispatcher(mesos.interface.Scheduler):
 
     # For now, return Mesos URL to Framework:
     master = resolve(self.mesosmaster).strip()
-    url = os.path.join('http://', master, '#', 'frameworks', self.frameworkId)
+    url = 'http://' + master + '/#/frameworks/' + self.frameworkId.value
     return url
 
 
@@ -390,4 +390,12 @@ but is neither pending nor active. Killing it now." % job)
     if offer.id in self.offers:
       del self.offers[offer.id.value]
    
+
+  def kill(self, driver):
+    for jobId in self.active.keys() + self.pending.keys():
+      logging.warning("[DISPATCHER] KILLING job, %s" % jobId)
+      self.cancelJob(jobId, driver)
+    self.terminate = True
+    logging.info("[DISPATCHER] Terminating")
+
 
