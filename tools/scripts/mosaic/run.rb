@@ -164,7 +164,8 @@ end
 # do both creation and compilation remotely (returns uid)
 def run_create_compile_k3_remote(server_url, bin_file, block_on_compile, k3_cpp_name, k3_path, nice_name)
   stage "[3-4] Remote creating && compiling K3 file to binary"
-  res = curl(server_url, "/compile", file: k3_path, post: true, json: true, args:{ "compilestage" => "both"})
+  res = curl(server_url, "/compile", file: k3_path, post: true, json: true,
+            args:{ "compilestage" => "both", "workload" => $options[:skew].to_s})
   uid = res["uid"]
   update_options_if_empty(:uid, uid)
   persist_options()
@@ -179,7 +180,8 @@ end
 # create the k3 cpp file remotely and copy the cpp locally
 def run_create_k3_remote(server_url, block_on_compile, k3_cpp_name, k3_path, nice_name)
   stage "[3] Remote creating K3 cpp file."
-  res = curl(server_url, "/compile", file: k3_path, post: true, json: true, args:{ "compilestage" => "cpp"})
+  res = curl(server_url, "/compile", file: k3_path, post: true, json: true,
+            args:{ "compilestage" => "cpp", "workload" => $options[:skew].to_s})
   uid = res["uid"]
   update_options_if_empty(:uid, uid)
   persist_options()
@@ -439,6 +441,7 @@ def persist_options()
   update_if_there(options, :mosaic_path)
   update_if_there(options, :uid)
   update_if_there(options, :jobid)
+  update_if_there(options, :skew)
   File.write($last_path, JSON.dump(options))
 end
 
@@ -469,6 +472,8 @@ def main()
     opts.on("--fetch-results", "Fetch results after job") { $options[:fetch_results] = true }
     opts.on("-w", "--workdir [PATH]", "Path in which to create files") {|s| $options[:workdir] = s}
     opts.on("--latest-uid",  "Use the latest uid on the server") { $options[:latest_uid] = true}
+    opts.on("--moderate",  "Query is of moderate skew (and size)") { $options[:skew] = :moderate}
+    opts.on("--extreme",  "Query is of extreme skew (and size)") { $options[:skew] = :extreme}
 
     # stages
     opts.on("-a", "--all", "All stages") {
@@ -499,6 +504,9 @@ def main()
   elsif $options.has_key?(:k3_data_path) && !$options.has_key?(:dbt_data_path)
     $options[:dbt_data_path] = $options[:k3_data_path]
   end
+
+  # skew is balanced if nothing there
+  $options[:skew] = :balanced unless $options[:skew]
 
   # get directory of script
   script_path = File.expand_path(File.dirname(__FILE__))
