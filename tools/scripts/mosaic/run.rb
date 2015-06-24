@@ -474,6 +474,7 @@ def main()
     opts.on("--latest-uid",  "Use the latest uid on the server") { $options[:latest_uid] = true}
     opts.on("--moderate",  "Query is of moderate skew (and size)") { $options[:skew] = :moderate}
     opts.on("--extreme",  "Query is of extreme skew (and size)") { $options[:skew] = :extreme}
+    opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
 
     # stages
     opts.on("-a", "--all", "All stages") {
@@ -618,14 +619,14 @@ def main()
   # check for doing everything remotely
   if !$options[:compile_local] && !$options[:create_local] && ($options[:create_k3] || $options[:compile_k3])
       # only block if we need to ie. if we have deployment of some source
-      block_on_compile = $options[:deploy_k3] || $options[:run_local]
+      block_on_compile = $options[:deploy_k3] || $options[:run_local] || $options[:dots]
       uid = run_create_compile_k3_remote(server_url, bin_file, block_on_compile, k3_cpp_name, k3_path, nice_name)
   else
     if $options[:create_k3]
       if $options[:create_local]
         run_create_k3_local(k3_path, script_path)
       else
-        block_on_compile = $options[:compile_k3] || $options[:deploy_k3]
+        block_on_compile = $options[:compile_k3] || $options[:deploy_k3] || $options[:dots]
         run_create_k3_remote(server_url, block_on_compile, k3_cpp_name, k3_path, nice_name)
       end
     end
