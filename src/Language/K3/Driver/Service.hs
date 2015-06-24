@@ -56,17 +56,19 @@ import qualified System.Log.Handler        as LogH
 import qualified System.Log.Handler.Simple as LogHS
 
 import Language.K3.Core.Annotation
+import Language.K3.Core.Common
 import Language.K3.Core.Declaration
+import Language.K3.Core.Utils
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
 import Language.K3.Parser ( parseK3 )
 
-import Language.K3.Stages ( TransformReport(..), TransformStSymS, getTransformSyms, putTransformSyms )
+import Language.K3.Stages ( TransformReport(..) )
 import qualified Language.K3.Stages as ST
 
 import Language.K3.Driver.Common
 import Language.K3.Driver.Options
-import Language.K3.Driver.Driver hiding ( reasonM )
+import Language.K3.Driver.Driver hiding ( liftEitherM, reasonM )
 import qualified Language.K3.Driver.CompilerTarget.CPP     as CPPC
 
 import Language.K3.Utils.Pretty
@@ -80,8 +82,8 @@ data CProtocol = Register       String
                | Program        Request String RemoteJobOptions
                | ProgramDone    Request (K3 Declaration) String
                | ProgramAborted Request String
-               | Block          ProgramID CompileStages ByteString TransformStSymS CompileBlock
-               | BlockDone      WorkerID ProgramID CompileBlock TransformReport
+               | Block          ProgramID BlockCompileSpec CompileBlockU (K3 Declaration)
+               | BlockDone      WorkerID ProgramID CompileBlockD TransformReport
                | BlockAborted   WorkerID ProgramID [BlockID] String
                | Query          ServiceQuery
                | QueryResponse  ServiceResponse
@@ -105,7 +107,19 @@ type DeclID    = Int
 type BlockID   = Int
 type ProgramID = Int
 
-type CompileBlock = [(BlockID, [(DeclID, K3 Declaration)])]
+-- | Block compilation datatypes.
+data BlockCompileSpec = BlockCompileSpec { bprepStages    :: CompileStages
+                                         , bcompileStages :: CompileStages
+                                         , wSymForkFactor :: Int
+                                         , wSymOffset     :: Int }
+                      deriving (Eq, Read, Show, Generic)
+
+type CompileBlock a = [(BlockID, [(DeclID, a)])]
+type CompileBlockU = CompileBlock UID
+type CompileBlockD = CompileBlock (K3 Declaration)
+
+instance Binary    BlockCompileSpec
+instance Serialize BlockCompileSpec
 
 -- | Compilation progress state per program.
 data JobState = JobState { jrid         :: RequestID
@@ -496,7 +510,7 @@ cshow = \case
           Program rq _ _              -> "Program " ++ rq
           ProgramDone rq _ _          -> "ProgramDone " ++ rq
           ProgramAborted rq _         -> "ProgramAborted " ++ rq
-          Block pid _ _ _ bids        -> unwords ["Block", show pid, intercalate "," $ map (show . fst) bids]
+          Block pid _ bids _          -> unwords ["Block", show pid, intercalate "," $ map (show . fst) bids]
           BlockDone wid pid bids _    -> unwords ["BlockDone", show wid, show pid, intercalate "," $ map (show . fst) bids]
           BlockAborted wid pid bids _ -> unwords ["BlockAborted", show wid, show pid, intercalate "," $ map show bids]
           Query sq                    -> unwords ["Query", show sq]
@@ -575,7 +589,7 @@ runServiceWorker sOpts@(serviceId -> wid) = initService sOpts $ runZMQ $ do
       hbsock <- socket Dealer
       setRandomIdentity hbsock
       connect hbsock wconn
-      liftIO $ putStrLn $ unwords ["Heartbeat loop started with period", show heartbeatPeriod, "us."]
+      noticeM $ unwords ["Heartbeat loop started with period", show heartbeatPeriod, "us."]
       void $ forever $ do
         liftIO $ threadDelay heartbeatPeriod
         pingPongHeartbeat sv hbsock
@@ -619,7 +633,7 @@ worker :: Int -> String -> Maybe (SocketAction z) -> SocketAction z -> ZMQ z ()
 worker i qid initFOpt workerF = do
     wsock <- socket Dealer
     connect wsock $ "inproc://" ++ qid
-    liftIO $ putStrLn "Worker started"
+    noticeM "Worker started"
     void $ maybe (return ()) (\f -> f i wsock) initFOpt
     forever $ workerF i wsock
 
@@ -724,6 +738,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     mHandler _ Quit = liftIO $ terminate sv
     mHandler _ m = merrM $ boxToString $ ["Invalid message:"] %$ [show m]
 
+
     -- | Compilation functions
     nfP        = noFeed $ input opts
     includesP  = (includes $ paths opts)
@@ -731,14 +746,16 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     process prog jobOpts rq rid = abortcatch rid rq $ do
       void $ zm $ do
         mlogM $ unwords ["Processing program", rq, "(", show rid, ")"]
-        (initP, initSt, ppProfs) <- preprocess prog
+        (initP, ppProfs) <- preprocess prog
         let ppRep = mkReport "Master preprocessing" ppProfs
         (pid, blocksByWID, wConfig) <- assignBlocks rid rq jobOpts initP ppRep
         (_, sProf) <- ST.profile $ const $ do
-          msgs <- mkMessages pid (rcStages jobOpts) wConfig initSt blocksByWID
+          msgs <- mkMessages pid bcStages wConfig blocksByWID initP
           liftZ $ sendCIs mworker msgs
         let sRep = mkReport "Master distribution" [sProf]
         modifyMJ_ $ \jbs -> Map.adjust (adjustProfile sRep) pid jbs
+
+      where bcStages = (coStages $ scompileOpts $ sOpts, rcStages jobOpts)
 
     abortcatch rid rq m = m `catchIOError` (\e -> abortProgram Nothing rid rq $ show e)
 
@@ -750,8 +767,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       mlogM $ "Parsing with paths " ++ show includesP
       (pP, pProf) <- reasonM parseError . liftMeasured $ parseK3 nfP includesP prog
       (mP, mProf) <- liftMeasured $ runDriverM $ metaprogram opts pP
-      (((initP, _), initSt), iProf) <- liftMeasured $ runTransform Nothing (coStages $ scompileOpts $ sOpts) mP
-      return (initP, initSt, [pProf, mProf, iProf])
+      return (mP, [pProf, mProf])
 
     liftMeasured :: IO (Either String a) -> ServiceMM z (a, Measured)
     liftMeasured m = liftIE $ do
@@ -824,29 +840,22 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     --   This performs assignments at a per-declaration granularity rather than per-block,
     --   using a greedy heuristic to balance work across each worker (the k-partition problem).
     --   This returns final worker weights, new compile block assignments, and the job costs per worker.
-    partitionProgram wConfig wWeights (tnc -> (DRole _, ch)) =
-      let (totalCost, sCostAndCh) = sortByCost ch in do
-        (nwWeights, newAssigns) <- greedyPartition wConfig wWeights sCostAndCh
-        (wcBlocks, wcosts) <- foldMapKeyM (return (Map.empty, Map.empty)) newAssigns $ chunkAssigns wConfig
-        return (nwWeights, Map.map reverse wcBlocks, wcosts)
+    partitionProgram wConfig wWeights (tnc -> (DRole _, ch)) = do
+      (totalCost, sCostAndCh) <- sortByCost ch
+      (nwWeights, newAssigns) <- greedyPartition wConfig wWeights sCostAndCh
+      (wcBlocks, wcosts) <- foldMapKeyM (return (Map.empty, Map.empty)) newAssigns $ chunkAssigns wConfig
+      return (nwWeights, Map.map reverse wcBlocks, wcosts)
 
     partitionProgram _ _ _ = throwE "Top level declaration is not a role."
 
-    -- Creates compile block chunks per worker, and sums up costs per chunk.
-    chunkAssigns wConfig accM wid wbwl = do
-      blockSize <- wcBlock wid wConfig
-      (wcbm,wcm) <- accM
-      biwsl <- forM (chunksOf blockSize wbwl) $ \bwl -> do
-                 let (chunkcb, chunkcost) = second sum $ unzip bwl
-                 bid <- blockIDM
-                 return ((bid, sortOn fst chunkcb), (bid, fromIntegral chunkcost))
-      let (wcompileblock, wblockcosts) = second Map.fromList $ unzip biwsl
-      return $ ( Map.insertWith (++) wid wcompileblock wcbm
-               , Map.insertWith mergeBlockCosts wid wblockcosts wcm )
-
     -- | A simple compilation cost model
-    sortByCost ch = second (sortOn fst) $ foldl foldCost (0,[]) $ zip [0..] ch
-    foldCost (total, acc) (i, d@(cost -> c)) = (total + c, acc ++ [(c, (i,d))])
+    sortByCost ch = do
+      (tc, cich) <- foldM foldCost (0,[]) $ zip [0..] ch
+      return (tc, sortOn fst cich)
+
+    foldCost (total, acc) (i, d@(cost -> c)) = do
+      uid <- liftEitherM $ uidOfD d
+      return (total + c, acc ++ [(c, (i, uid))])
 
     cost (tag -> DGlobal _ _ (Just (treesize -> n))) = n
     cost (tag -> DTrigger _ _ (treesize -> n))       = n
@@ -892,19 +901,27 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
             rebuildS cf f (Just (sz,nsz,wid,h)) = Heap.insert (if f == cf then nsz else sz, wid) h
 
 
+    -- Creates compile block chunks per worker, and sums up costs per chunk.
+    chunkAssigns wConfig accM wid wbwl = do
+      blockSize <- wcBlock wid wConfig
+      (wcbm,wcm) <- accM
+      biwsl <- forM (chunksOf blockSize wbwl) $ \bwl -> do
+                 let (chunkcb, chunkcost) = second sum $ unzip bwl
+                 bid <- blockIDM
+                 return ((bid, sortOn fst chunkcb), (bid, fromIntegral chunkcost))
+      let (wcompileblock, wblockcosts) = second Map.fromList $ unzip biwsl
+      return $ ( Map.insertWith (++) wid wcompileblock wcbm
+               , Map.insertWith mergeBlockCosts wid wblockcosts wcm )
+
     -- | Compile block messages construction.
-    mkMessages pid remoteStages wConfig initSt cBlocksByWID = do
-      mlogM $ unwords ["State size for", show pid, show $ BC.length initStBS]
+    mkMessages pid (prepStages, cStages) wConfig cBlocksByWID initP = do
       forkFactor <- foldMapKeyM (return 0) cBlocksByWID $ \m wid _ -> (+) <$> m <*> wcBlock wid wConfig
       liftM fst $ foldMapKeyM (return ([], 0)) cBlocksByWID $ \m wid cb -> do
         wDelta <- wcBlock wid wConfig
         (msgacc, wOffset) <- m
-        wsym <- maybe wstateError (return . getTransformSyms)
-                  $ ST.partitionTransformStSyms forkFactor wOffset initSt
+        let bcSpec = BlockCompileSpec prepStages cStages forkFactor wOffset
         wsockid <- getMWI wid >>= maybe (workerError wid) return
-        return $ (msgacc ++ [(wsockid, Block pid remoteStages initStBS wsym cb)], wOffset + wDelta)
-
-      where initStBS = SC.encode initSt
+        return $ (msgacc ++ [(wsockid, Block pid bcSpec cb initP)], wOffset + wDelta)
 
 
     -- Map helpers to supply fold function as last argument.
@@ -1136,12 +1153,14 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
                     %$ (i 1 ["Cost accuracy"]  %$ (i 2 costreport))
                     %$ ["Time"]                %$ (i 1 timereport)
 
+
+    uidOfD d = maybe uidErrD (\case {(DUID u) -> return u ; _ ->  uidErrD}) $ d @~ isDUID
+      where uidErrD = Left $ boxToString $ ["No uid found on "] %+ prettyLines d
+
     parseError = "Could not parse input: "
 
     blockSizeErr     = throwE $ "Could not find a worker's block size."
     factorErr        = throwE $ "Could not find a worker's assignment factor."
-
-    wstateError      = throwE $ "Could not create a worker symbol state."
     partitionError   = throwE $ "Could not greedily pick a partition"
     assignError  pid = throwE $ unwords ["Could not assign program", show pid, "(no workers available)"]
     workerError  wid = throwE $ "No worker named " ++ show wid
@@ -1168,7 +1187,7 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
     logmHandler (SC.decode -> msgE) = either werrM (\msg -> wlogM (cshow msg) >> mHandler msg) msgE
 
     -- | Worker message processing.
-    mHandler (Block pid cstages stbs syms blocksByBID) = processBlock pid cstages stbs syms blocksByBID
+    mHandler (Block pid bcSpec ublocksByBID prog) = processBlock pid bcSpec ublocksByBID prog
 
     mHandler (RegisterAck cOpts) = zm $ do
       wlogM $ unwords ["Registered", show cOpts]
@@ -1187,28 +1206,39 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
                                             , optimizationLevel = optimizationLevel $ mcopts }
 
     -- | Block compilation functions.
-    processBlock pid ([SDeclOpt cSpec]) stbs syms blocksByBID =
-      abortcatch pid blocksByBID $ do
-        initSt <- either (throwM . userError) (return . putTransformSyms syms) $ SC.decode stbs
+    processBlock pid (BlockCompileSpec prepSpec [SDeclOpt cSpec] wForkFactor wOffset) ublocksByBID prog =
+      abortcatch pid ublocksByBID $ do
         start <- liftIO getTime
         startP <- liftIO getPOSIXTime
         wlogM $ boxToString $ ["Worker blocks start"] %$ (indent 2 [show startP])
-        (cBlocksByBID, finalSt) <- zm $ foldM (compileBlock pid cSpec) ([], initSt) blocksByBID
+        (cBlocksByBID, finalSt) <- zm $ compileAllBlocks pid prepSpec cSpec wForkFactor wOffset ublocksByBID prog
         end <- liftIO getTime
         wlogM $ boxToString $ ["Worker local time"] %$ (indent 2 [secs $ end - start])
         sendC wworker $ BlockDone wid pid cBlocksByBID $ ST.report finalSt
 
-    processBlock _ _ _ _ _ = werrM $ "Invalid worker compile stages"
+    processBlock pid _ ublocksByBID _ = abortBlock pid ublocksByBID $ "Invalid worker compile stages"
 
-    abortcatch pid blocksByBID m = m `catchIOError` (\e -> abortBlock pid blocksByBID $ show e)
+    abortcatch pid ublocksByBID m = m `catchIOError` (\e -> abortBlock pid ublocksByBID $ show e)
 
-    abortBlock pid blocksByBID reason =
-      sendC wworker $ BlockAborted wid pid (map fst blocksByBID) reason
+    abortBlock pid ublocksByBID reason =
+      sendC wworker $ BlockAborted wid pid (map fst ublocksByBID) reason
+
+    compileAllBlocks pid prepSpec cSpec wForkFactor wOffset ublocksByBID prog = do
+      ((initP, _), initSt) <- liftIE $ runTransform Nothing prepSpec prog
+      workerSt <- maybe wstateErr return $ ST.partitionTransformStSyms wForkFactor wOffset initSt
+      dblocksByBID <- extractBlocksByUID initP ublocksByBID
+      foldM (compileBlock pid cSpec) ([], workerSt) dblocksByBID
 
     compileBlock pid cSpec (blacc, st) (bid, unzip -> (ids, block)) = do
       (nblock, nst) <- debugCompileBlock pid bid (unwords [show $ length block])
                         $ liftIE $ ST.runTransformM st $ ST.runDeclOptPassesBLM cSpec Nothing block
-      return (blacc ++ [(bid, zip ids nblock)], nst)
+      return (blacc ++ [(bid, zip ids nblock)], ST.mergeTransformStReport st nst)
+
+    extractBlocksByUID prog ublocksByBID = do
+      declsByUID <- indexProgramDecls prog
+      forM ublocksByBID $ \(bid,idul) -> do
+        iddl <- forM idul $ \(i, UID j) -> maybe (uidErr j) (return . (i,)) $ Map.lookup j declsByUID
+        return (bid, iddl)
 
     debugCompileBlock pid bid str m = do
       wlogM $ unwords ["got block", show pid, show bid, str]
@@ -1216,6 +1246,8 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
       wlogM $ unwords ["finished block", show pid, show bid]
       return result
 
+    uidErr duid = throwE $ "Could not find declaration " ++ show duid
+    wstateErr   = throwE $ "Could not create a worker symbol state."
 
 -- | One-shot connection to submit a remote job and wait for compilation to complete.
 submitJob :: ServiceOptions -> RemoteJobOptions -> Options -> IO ()
