@@ -159,10 +159,10 @@ ENV K3_BRANCH development
 RUN git checkout development && \
     cabal sandbox init && \
     cabal install -j --only-dependencies --disable-documentation && \
-    cabal configure && \
+    cabal configure --ghc-options="-O2" && \
     apt-get update && \
     apt-get install -y libtinfo-dev && \
-    cabal build -j
+    cabal build -j --ghc-options="-O2"
 
 # Clone K3, K3-Mosaic from Git
 RUN mkdir -p /k3/K3-Mosaic && \

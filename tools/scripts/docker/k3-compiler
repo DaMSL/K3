@@ -115,10 +115,10 @@ ENV K3_BRANCH development
 RUN git checkout development && \
     cabal sandbox init && \
     cabal install -j --only-dependencies --disable-documentation && \
-    cabal configure && \
+    cabal configure --ghc-options="-O2" && \
     apt-get update && \
     apt-get install -y libtinfo-dev && \
-    cabal build -j
+    cabal build -j --ghc-options="-O2"
 
 # Clean up
 RUN apt-get autoremove -y && \
