@@ -93,7 +93,7 @@ annotation VMap given type a,b {
   provides lifted erase_prefix : int -> content -> ()
     with effects \version -> \elem -> [R[version]; R[self]; R[elem]; W[self]]
 
-  // Inclusive update of all values greater than or equal to specific version.
+  // Inclusive update of all values greater than the given version.
   @:CArgs 3
   provides lifted update_suffix : int -> content -> (int -> content -> content) -> ()
     with effects \version -> \elem -> \updateF -> [R[version]; R[self]; R[elem]; ((updateF none) content)*; W[self]]

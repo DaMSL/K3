@@ -27,6 +27,9 @@ trigger t : () = \_ -> (
   // Lower-bound lookup test on a non-existing version. This should print the entry at version 4.
   (c.lookup_with_before 5 {key: 7, value: 0} (\r -> print ("VMap before 5: " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
 
+  // Lower-bound lookup test on an existing version. This should also print the entry at version 4.
+  (c.lookup_with_before 6 {key: 7, value: 0} (\r -> print ("VMap before 6: " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
+
   // Print the frontier at version 7, which should print all values at version 6 in this instance.
   ((c.filter  7 (\_ -> true))
   	 .iterate 7 (\r -> print ("VMap frontier 7: " ++ " " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
@@ -43,10 +46,10 @@ trigger t : () = \_ -> (
   			++ " v18: " ++ (itos (c.size 18))
   			++ "\\n" ));
 
-  // Update v16 onwards with update_suffix.
+  // Update at v16 with update_suffix. This should update v18 onwards.
   ((range 10).iterate (\s -> c.update_suffix 16 {key: s.i, value: 0} (\v -> (\r -> {key: r.key, value: r.value + 1000}))));
 
-  // Print the frontiers at v14, v16, v18. The values at v16 and v18 should be greater than 1000.
+  // Print the frontiers at v14, v16, v18. The values at v18 should be greater than 1000.
   (c.iterate 14 (\r -> print ("VMap frontier 14: " ++ " " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
   (c.iterate 16 (\r -> print ("VMap frontier 16: " ++ " " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
   (c.iterate 18 (\r -> print ("VMap frontier 18: " ++ " " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));

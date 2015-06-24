@@ -1490,11 +1490,13 @@ class VMap {
 
   //////////////////////////////////////////////////
   // Frontier-based map retrieval.
+  // These methods apply to the nearest version that is strictly less
+  // than the version specified as an argument.
 
   shared_ptr<R> lookup_before(const Version& v, const R& r) const {
     auto it = container.find(r.key);
     if (it != container.end()) {
-      auto vit = it->second.lower_bound(v);
+      auto vit = it->second.upper_bound(v);
       if ( vit != it->second.end() ) {
         return std::make_shared<R>(vit->second);
       }
@@ -1506,7 +1508,7 @@ class VMap {
   unit_t lookup_with_before(const Version& v, R const& r, F f) const {
     auto it = container.find(r.key);
     if (it != container.end()) {
-      auto vit = it->second.lower_bound(v);
+      auto vit = it->second.upper_bound(v);
       if ( vit != it->second.end() ) {
         return f(vit->second);
       }
@@ -1520,7 +1522,7 @@ class VMap {
     if (it == container.end()) {
       return f(unit_t {});
     } else {
-      auto vit = it->second.lower_bound(v);
+      auto vit = it->second.upper_bound(v);
       if ( vit == it->second.end() ) {
         return f(unit_t {});
       } else {
@@ -1533,7 +1535,7 @@ class VMap {
   auto lookup_with3_before(const Version& v, R const& r, F f) const {
     auto it = container.find(r.key);
     if (it != container.end()) {
-      auto vit = it->second.lower_bound(v);
+      auto vit = it->second.upper_bound(v);
       if ( vit != it->second.end() ) {
         return f(vit->second);
       }
@@ -1558,14 +1560,14 @@ class VMap {
     return unit_t();
   }
 
-  // Inclusive update greater than or equal to a version.
+  // Inclusive update greater than a given version.
   template <class F>
   unit_t update_suffix(const Version& v, const R& rec, F f) {
     auto it = container.find(rec.key);
     if (it != container.end()) {
       auto vstart = it->second.begin();
-      auto vless  = it->second.upper_bound(v);
-      for (; vstart != vless; vstart++) {
+      auto vlteq  = it->second.lower_bound(v);
+      for (; vstart != vlteq; vstart++) {
         container[rec.key][vstart->first] = f(vstart->first)(std::move(vstart->second));
       }
     }
