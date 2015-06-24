@@ -162,28 +162,36 @@ def wait_and_fetch_remote_compile(server_url, bin_file, k3_cpp_name, nice_name, 
 end
 
 # do both creation and compilation remotely (returns uid)
-def run_create_compile_k3_remote(server_url, bin_file, k3_cpp_name, k3_path, nice_name)
+def run_create_compile_k3_remote(server_url, bin_file, block_on_compile, k3_cpp_name, k3_path, nice_name)
   stage "[3-4] Remote creating && compiling K3 file to binary"
   res = curl(server_url, "/compile", file: k3_path, post: true, json: true, args:{ "compilestage" => "both"})
   uid = res["uid"]
+  update_options_if_empty(:uid, uid)
+  persist_options()
 
-  wait_and_fetch_remote_compile(server_url, bin_file, k3_cpp_name, nice_name, uid)
+  if block_on_compile
+    wait_and_fetch_remote_compile(server_url, bin_file, k3_cpp_name, nice_name, uid)
+  end
 
   return uid
 end
 
 # create the k3 cpp file remotely and copy the cpp locally
-def run_create_k3_remote(server_url, k3_cpp_name, k3_path, nice_name)
+def run_create_k3_remote(server_url, block_on_compile, k3_cpp_name, k3_path, nice_name)
   stage "[3] Remote creating K3 cpp file."
   res = curl(server_url, "/compile", file: k3_path, post: true, json: true, args:{ "compilestage" => "cpp"})
   uid = res["uid"]
+  update_options_if_empty(:uid, uid)
+  persist_options()
 
-  # get the cpp file
-  wait_and_fetch_remote_compile(server_url, nil, k3_cpp_name, nice_name, uid)
+  if block_on_compile
+    # get the cpp file
+    wait_and_fetch_remote_compile(server_url, nil, k3_cpp_name, nice_name, uid)
+  end
 end
 
 # compile cpp->bin locally
-def run_compile_k3(bin_file, k3_path, k3_cpp_name, k3_cpp_path, k3_root_path, script_path)
+def run_compile_k3_local(bin_file, k3_path, k3_cpp_name, k3_cpp_path, k3_root_path, script_path)
   stage "[4] Compiling k3 cpp file"
   brew = $options[:osx_brew] ? "_brew" : ""
 
@@ -243,6 +251,8 @@ def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, scr
     stage "[5] Sending binary to mesos"
     res = curl(server_url, '/apps', file:bin_path, post:true, json:true)
     uid = res['uid']
+    update_options_if_empty(:uid, uid)
+    persist_options()
   end
 
   # for latest, don't put uid in the command
@@ -254,6 +264,8 @@ def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, scr
   stage "[5] Creating new mesos job"
   res = curl(server_url, "/jobs/#{nice_name}#{uid_s}", json:true, post:true, file:role_path, args:{'jsonfinal' => 'yes'})
   jobid = res['jobId']
+  update_options_if_empty(:jobid, jobid)
+  persist_options()
   puts "JOBID = #{jobid}"
 
   # Wait for job to finish and get results
@@ -411,6 +423,26 @@ def check_param(p, nm)
   end
 end
 
+def update_options_if_empty(k, v)
+  $options[k] = v unless $options[k]
+end
+
+# persist source, data paths, and others
+def persist_options()
+  def update_if_there(opts, x)
+    opts[x] = $options[x] if $options[x]
+  end
+  options = {}
+  update_if_there(options, :source)
+  update_if_there(options, :k3_data_path)
+  update_if_there(options, :dbt_data_path)
+  update_if_there(options, :mosaic_path)
+  update_if_there(options, :uid)
+  update_if_there(options, :jobid)
+  File.write($last_path, JSON.dump(options))
+end
+
+
 def main()
   $options = {}
   uid = nil
@@ -479,7 +511,7 @@ def main()
 
   # File for saving settings
   last_file = "last.json"
-  last_path = File.join($workdir, last_file)
+  $last_path = File.join($workdir, last_file)
 
   def update_from_json(options)
     options.each_pair do |k,v|
@@ -491,8 +523,8 @@ def main()
   end
 
   # load old options from last run
-  if File.exists?(last_path)
-    update_from_json(JSON.parse(File.read(last_path)))
+  if File.exists?($last_path)
+    update_from_json(JSON.parse(File.read($last_path)))
   end
 
   # handle json options
@@ -500,19 +532,10 @@ def main()
     update_from_json(JSON.parse($options[:json_file]))
   end
 
-  source       = $options[:source] ? $options[:source] : ARGV[0]
+  source = $options[:source] ? $options[:source] : ARGV[0]
+  $options[:source] = source
 
-  # save source and data paths
-  def update_if_there(opts, x)
-    opts[x] = $options[x] if $options[x]
-  end
-
-  options = {}
-  options[:source]        = source
-  update_if_there(options, :k3_data_path)
-  update_if_there(options, :dbt_data_path)
-  update_if_there(options, :mosaic_path)
-  File.write(last_path, JSON.dump(options))
+  persist_options()
 
   # split path components
   ext          = File.extname(source)
@@ -586,18 +609,21 @@ def main()
 
   # check for doing everything remotely
   if !$options[:compile_local] && !$options[:create_local] && ($options[:create_k3] || $options[:compile_k3])
-      uid = run_create_compile_k3_remote(server_url, bin_file, k3_cpp_name, k3_path, nice_name)
+      # only block if we need to ie. if we have deployment of some source
+      block_on_compile = $options[:deploy_k3] || $options[:run_local]
+      uid = run_create_compile_k3_remote(server_url, bin_file, block_on_compile, k3_cpp_name, k3_path, nice_name)
   else
     if $options[:create_k3]
       if $options[:create_local]
         run_create_k3_local(k3_path, script_path)
       else
-        run_create_k3_remote(server_url, k3_cpp_name, k3_path, nice_name)
+        block_on_compile = $options[:compile_k3] || $options[:deploy_k3]
+        run_create_k3_remote(server_url, block_on_compile, k3_cpp_name, k3_path, nice_name)
       end
     end
     # if we're not doing everything remotely, we can only compile locally
     if $options[:compile_k3]
-        run_compile_k3(bin_file, k3_path, k3_cpp_name, k3_cpp_path, k3_root_path, script_path)
+        run_compile_k3_local(bin_file, k3_path, k3_cpp_name, k3_cpp_path, k3_root_path, script_path)
     end
   end
 
