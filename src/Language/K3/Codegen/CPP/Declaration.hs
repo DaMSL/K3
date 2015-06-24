@@ -238,7 +238,8 @@ genDoWrite suf typ name = do
 -- TODO: Loader is not quite valid K3. The collection should be passed by indirection so we are not working with a copy
 -- (since the collection is technically passed-by-value)
 genLoader :: Bool -> Bool -> Bool -> String -> String -> K3 Type -> String -> CPPGenM R.Definition
-genLoader fixedSize projectedLoader asReturn sep suf (children -> [_,f]) name = do
+genLoader fixedSize projectedLoader asReturn sep suf ft@(children -> [_,f]) name = do
+ void (genCType ft) -- Force full type to generate potential record/collection variants.
  (colType, recType, fullRecTypeOpt) <- return $ getColType f
  cColType      <- genCType colType
  cRecType      <- genCType recType
