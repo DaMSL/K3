@@ -43,8 +43,8 @@ annotation VMap given type a,b {
   provides lifted erase : int -> content -> ()
     with effects \version -> \elem -> [R[version]; R[self]; R[elem]; W[self]]
 
-  @:CArgs 2
-  provides lifted update : int -> content -> (content -> ())
+  @:CArgs 3
+  provides lifted update : int -> content -> content -> ()
     with effects \version -> \oldElem -> \newElem -> [R[version]; R[self]; R[oldElem]; R[newElem]; W[self]]
 
   // Returns if a value at the exact version is present in the VMap.
