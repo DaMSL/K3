@@ -7,19 +7,23 @@ require 'net/http'
 require 'json'
 require 'rexml/document'
 require 'csv'
+require 'open3'
 
 def run(cmd, checks=[])
   puts cmd if $options[:debug]
-  out = `#{cmd} 2>&1`
+  out, err, s = Open3.capture3(cmd)
   puts out if $options[:debug]
-  res = $?.success?
+  puts err if $options[:debug]
+  res = s.success?
   # other tests
-  checks.each do |err|
-    res = false if out =~ err
+  checks.each do |check|
+    res = false if out =~ check
+    res = false if err =~ check
   end
   if !res
     puts "\nERROR\n"
     puts out unless $options[:debug]
+    puts err unless $options[:debug]
     exit(1)
   end
   return out
