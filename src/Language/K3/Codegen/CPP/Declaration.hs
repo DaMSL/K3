@@ -268,6 +268,9 @@ genLoader fixedSize projectedLoader asReturn sep suf (children -> [_,f]) name = 
                       (map (\(x,y) -> (x, y, x `notElem` (map fst fts))))
                       fullfts
 
+ let containerDecl = R.Forward $ R.ScalarDecl (R.Name "c2") cColType Nothing
+ let container = R.Variable $ R.Name (if asReturn then "c2" else "c")
+
  let recordGetLines = recordDecl
                       ++ concat [readField field ft skip False | (field, ft, skip)  <- init ftsWSkip]
                       ++ (\(a,b,c) -> readField a b c True) (last ftsWSkip)
@@ -281,34 +284,34 @@ genLoader fixedSize projectedLoader asReturn sep suf (children -> [_,f]) name = 
  let readRecordsCall = if asReturn
                        then R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "read_records_into_container")
                               [ R.Variable $ R.Name "paths"
-                              , R.Variable $ R.Name "c"
+                              , container
                               , readRecordFn ]
                        else
                         (if fixedSize
                          then R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "read_records_with_resize")
                                 [ R.Variable $ R.Name "size"
                                 , R.Variable $ R.Name "paths"
-                                , R.Variable $ R.Name "c"
+                                , container
                                 , readRecordFn
                                 ]
                          else R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "read_records")
                                 [ R.Variable $ R.Name "paths"
-                                , R.Variable $ R.Name "c"
+                                , container
                                 , readRecordFn
                                 ])
 
  let defaultArgs = [  ("paths", R.Named $ R.Specialized
                          [R.Named $ R.Specialized [R.Named $ R.Name "string_impl"] (R.Name "R_path")]
-                         (R.Name "_Collection"))
-                    , ("c", R.Reference cColType) ]
+                         (R.Name "_Collection"))]
 
  let args = defaultArgs
+              ++ [("c", (if asReturn then R.Const else id) $ R.Reference cColType)]
               ++ (if projectedLoader then [("_rec", R.Reference $ fromJust cfRecType)] else [])
               ++ (if fixedSize       then [("size", R.Primitive R.PInt)] else [])
 
  let returnType   = if asReturn then cColType else R.Named $ R.Name "unit_t"
  let functionBody = if asReturn
-                      then [ R.Return $ readRecordsCall ]
+                      then [ containerDecl, R.Return $ readRecordsCall ]
                       else [ R.Ignore $ readRecordsCall, R.Return $ R.Initialization R.Unit [] ]
 
  return $ R.FunctionDefn (R.Name $ coll_name ++ suf) args (Just $ returnType) [] False functionBody
