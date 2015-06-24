@@ -25,6 +25,8 @@ declare regex_matcher : string -> (string -> collection {elem: string} @ Collect
 declare regex_matcher_q4 : string -> collection {elem: string} @ Collection
 declare regex_match_int : {key: string, value: string} -> int
 
+declare date_part: {key: string, value: int} -> int
+
 // TPCH date parsing.
 declare tpch_date : string -> int
 declare tpch_date_to_string : int -> string
@@ -33,8 +35,10 @@ declare tpch_date_to_string : int -> string
 declare now_int : () -> int
   with effects \_ -> io
 
-declare max: {key: int, value: int} -> int = \r -> if r.key > r.value then r.key else r.value
-declare min: {key: int, value: int} -> int = \r -> if r.key < r.value then r.key else r.value
+@:ErrorFn
+declare max: forall a. {key: a, value: a} -> a
+@:ErrorFn
+declare min: forall a. {key: a, value: a} -> a
 
 ///////////////////////
 //

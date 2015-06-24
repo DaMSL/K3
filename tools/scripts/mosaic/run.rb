@@ -7,19 +7,23 @@ require 'net/http'
 require 'json'
 require 'rexml/document'
 require 'csv'
+require 'open3'
 
 def run(cmd, checks=[])
   puts cmd if $options[:debug]
-  out = `#{cmd} 2>&1`
+  out, err, s = Open3.capture3(cmd)
   puts out if $options[:debug]
-  res = $?.success?
+  puts err if $options[:debug]
+  res = s.success?
   # other tests
-  checks.each do |err|
-    res = false if out =~ err
+  checks.each do |check|
+    res = false if out =~ check
+    res = false if err =~ check
   end
   if !res
     puts "\nERROR\n"
     puts out unless $options[:debug]
+    puts err unless $options[:debug]
     exit(1)
   end
   return out
@@ -452,9 +456,9 @@ def main()
   end
   parser.parse!
 
-  unless ARGV.size == 1
+  unless ARGV.size == 1 || $options[:source]
     puts parser.help
-    exit
+    exit(1)
   end
 
   # if only one data file, take that one
@@ -464,21 +468,53 @@ def main()
     $options[:dbt_data_path] = $options[:k3_data_path]
   end
 
-  # handle json options
-  if $options.has_key?(:json_file)
-    options = JSON.parse($options[:json_file])
+  # get directory of script
+  script_path = File.expand_path(File.dirname(__FILE__))
+
+  # a lot can be inferred once we have the workdir
+  $workdir     = $options[:workdir] ? $options[:workdir] : "temp"
+  $workdir     = File.expand_path($workdir)
+
+  `mkdir -p #{$workdir}` unless Dir.exists?($workdir)
+
+  # File for saving settings
+  last_file = "last.json"
+  last_path = File.join($workdir, last_file)
+
+  def update_from_json(options)
     options.each_pair do |k,v|
-      unless $options.has_key?(k)
-        $options[k] = v
+      k2 = k.to_sym
+      unless $options.has_key?(k2)
+        $options[k2] = v
       end
     end
   end
 
-  # get directory of script
-  script_path = File.expand_path(File.dirname(__FILE__))
+  # load old options from last run
+  if File.exists?(last_path)
+    update_from_json(JSON.parse(File.read(last_path)))
+  end
+
+  # handle json options
+  if $options.has_key?(:json_file)
+    update_from_json(JSON.parse($options[:json_file]))
+  end
+
+  source       = $options[:source] ? $options[:source] : ARGV[0]
+
+  # save source and data paths
+  def update_if_there(opts, x)
+    opts[x] = $options[x] if $options[x]
+  end
+
+  options = {}
+  options[:source]        = source
+  update_if_there(options, :k3_data_path)
+  update_if_there(options, :dbt_data_path)
+  update_if_there(options, :mosaic_path)
+  File.write(last_path, JSON.dump(options))
 
   # split path components
-  source       = ARGV[0]
   ext          = File.extname(source)
   basename     = File.basename(source, ext)
   lastpath     = File.split(File.split(source)[0])[1]
@@ -487,8 +523,6 @@ def main()
   common_root_path  = File.join(k3_root_path, "..")
   mosaic_path  = File.join(common_root_path, "K3-Mosaic")
   mosaic_path  = $options[:mosaic_path] ? $options[:mosaic_path] : mosaic_path
-  $workdir     = $options[:workdir] ? $options[:workdir] : "temp"
-  $workdir     = File.expand_path($workdir)
 
   start_path = File.expand_path(Dir.pwd)
 

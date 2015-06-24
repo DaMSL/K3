@@ -282,6 +282,24 @@ namespace K3 {
 
     }
 
+    template <class C, class A, class B>
+    C max(const R_key_value<A, B>& r) {
+      if (r.key > r.value) {
+        return r.key;
+      } else {
+        return r.value;
+      }
+    }
+
+    template <class C>
+    C min(const R_key_value<C, C>& r) {
+      if (r.key < r.value) {
+        return r.key;
+      } else {
+        return r.value;
+      }
+    }
+
     unit_t haltEngine(unit_t);
 
     unit_t drainEngine(unit_t);
@@ -555,6 +573,19 @@ namespace K3 {
     int countChar(const string_impl& s, const string_impl& splitter);
     int tpch_date(const string_impl& s);
     string_impl tpch_date_to_string(const int& date);
+
+    int date_part(const R_key_value<string_impl, int>& r) {
+      if (r.key == "day" || r.key == "DAY") {
+        return r.value % 100;
+      }
+      if (r.key == "month" || r.key == "MONTH") {
+        return (r.value % 10000) / 100;
+      }
+      if (r.key == "year" || r.key == "YEAR") {
+        return (r.value / 10000);
+      }
+      throw std::runtime_error("Unrecognized date part key: " + r.key);
+    }
 
     int regex_match_int(const R_key_value<string_impl, string_impl>& r) {
       bool b = std::regex_match(r.value.c_str(), std::regex(r.key.c_str()));
