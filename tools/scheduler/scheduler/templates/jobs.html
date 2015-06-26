@@ -9,6 +9,8 @@ href="http://cdn.datatables.net/1.10.2/css/jquery.dataTables.min.css"></style>
 src="http://cdn.datatables.net/1.10.2/js/jquery.dataTables.min.js"></script>
 <script type="text/javascript" 
 src="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.10.3/moment.min.js"></script>
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/livestamp/1.1.2/livestamp.min.js"></script>
 {% endblock %}
 
 {% block content %}
@@ -22,8 +24,8 @@ src="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></scrip
                 <tr>
                   <td><a href="/compile/{{job.name}}-{{job.uid}}">{{job.name}}-{{job.uid}}</a></td>
                   <td><a href="/fs/build/{{job.name}}-{{job.uid}}/output">Output</a></td>
-                    <td>{{job.submit}}</td>
-                    <td>{{job.complete}}</td>
+                    <td><abbr title="{{job.submit}}" data-livestamp="{{job.submit}}"></abbr></td>
+                    <td><abbr title="{{job.complete}}" data-livestamp="{{job.complete}}"></abbr></td>
                     <td>{{job.status}}</td>
                     <td><a href="/compile/{{job.name}}-{{job.uid}}/kill">
                         <button class="btn btn-danger btn-sm">Kill</button></a></td>
@@ -44,7 +46,7 @@ src="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></scrip
           {% for job in joblist %}
             {% if job.status == "SUBMITTED" or job.status == "RUNNING" %}
             <tr><td><a href="/jobs/{{job.appName}}/{{job.jobId}}/status">{{job.jobId}}</a></td>
-                <td>{{job.appName}}</td><td>{{job.user}}</td><td>{{job.time}}</td><td>{{job.status}}</td>
+                <td>{{job.appName}}</td><td>{{job.user}}</td><td><abbr title="{{job.time}}" data-livestamp="{{job.time}}"></abbr></td><td>{{job.status}}</td>
                 <td><a href="/jobs/{{job.appName}}/{{job.jobId}}/kill">
                     <button class="btn btn-danger btn-sm">Kill</button></a></td>
             </tr>
@@ -61,7 +63,7 @@ src="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></scrip
           {% for job in joblist %}
             {% if job.status != "SUBMITTED" and job.status != "RUNNING" %}
             <tr><td><a href="/jobs/{{job.appName}}/{{job.jobId}}/status">{{job.jobId}}</a></td>
-                <td>{{job.appName}}</td><td>{{job.user}}</td><td>{{job.time}}</td><td>{{job.status}}</td>
+                <td>{{job.appName}}</td><td>{{job.user}}</td><td><abbr title="{{job.time}}" data-livestamp="{{job.time}}"></abbr></td><td>{{job.status}}</td>
                 <td><a href="/jobs/{{job.appName}}/{{job.jobId}}/replay">Replay {{job.jobId}}</a></td>
                     <td><input type="checkbox" name="delete_job" value="{{job.jobId}}"></td>
             </tr>
@@ -78,14 +80,16 @@ src="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></scrip
           <table id="inactiveCompiles" class="display table table-striped">
             <tr> <th>Build</th><th>Output</th><th>Time Submit</th><th>Time Complete</th><th>Status</th><th>Kill</th></tr>
           {% for job in compilelist %}
+            {% if job.status == "COMPLETE" or job.status == "KILLED" or job.status == "FAILED" %}
                 <tr>
                     <td><a href="/compile/{{job.name}}-{{job.uid}}">{{job.name}}-{{job.uid}}</a></td>
                     <td><a href="/fs/build/{{job.name}}-{{job.uid}}/output">Output</a></td>
-                    <td>{{job.submit}}</td>
-                    <td>{{job.complete}}</td>
+                    <td><abbr title="{{job.submit}}" data-livestamp="{{job.submit}}"></abbr></td>
+                    <td><abbr title="{{job.complete}}" data-livestamp="{{job.complete}}"></abbr></td>
                     <td>{{job.status}}</td>
                 <td><input type="checkbox" name="delete_compile" value="{{job.uid}}"></td>
                 </tr>
+            {% endif %}
           {% endfor %}
           </table>
           <div class="row text-right"><button type=submit class="btn btn-danger btn-md">

@@ -557,10 +557,17 @@ def listJobs():
   #------------------------------------------------------------------------------
   """
   logger.debug('[FLASKWEB  /jobs] Request for job listing')
-  jobs = db.getJobs() 
+  jobs = db.getJobs()
+  for job in jobs:
+    job['time'] = datetime.datetime.strptime(job['time'], db.TS_FMT).replace(tzinfo=db.timezone('UTC')).isoformat()
 
   #  Garbage Collect Orpahened jobs
   compiles = db.getCompiles()
+  for compile in compiles:
+    if compile['submit']:
+      compile['submit'] = datetime.datetime.strptime(compile['submit'], db.TS_FMT).replace(tzinfo=db.timezone('UTC')).isoformat()
+    if compile['complete']:
+      compile['complete'] = datetime.datetime.strptime(compile['complete'], db.TS_FMT).replace(tzinfo=db.timezone('UTC')).isoformat()
   # for c in compiles:
   #   if c['uid'] not in compile_tasks.keys():
   #     db.updateCompile(c['uid'], status='KILLED', done=True)
@@ -988,7 +995,6 @@ def compServiceUp():
   #                   -F m_workerthread=<#master_service_threads> 
   #                   -F w_workerthread=<#worker_service_threads> 
   #                   -F heartbeat=<heartbeat_interval_in_secs> 
-  #                   -F cppthread=<#client_threads_for_cpp> 
   #                   http://<host>:<port>/compile
   #
   #    Default vals:  numworkers=(max workers), gitpull=True, 
@@ -1019,8 +1025,8 @@ def compServiceUp():
     if 'heartbeat' in request.form:
       settings['heartbeat'] = request.form['heartbeat']
 
-    if 'cppthread' in request.form:
-      settings['cppthread'] = request.form['cppthread']
+    # if 'cppthread' in request.form:
+    #   settings['cppthread'] = request.form['cppthread']
 
 
     logger.debug ("[FLASKWEB] User GIT PULL Request    (?): %s" % str(settings['gitpull']))
@@ -1097,7 +1103,9 @@ def compile():
     #                   -F blocksize=<blocksize> 
     #                   -F compilestage=['both'|'cpp'|'bin']
     #                   -F compileargs=<compile_args>
-    #                   -F workload=['balanced'|'moderate'|'extreme']
+    #                   -F mem=<mem_in_GB>
+    #                   -F cpu=<#cores>
+    #                   -F workload=['balanced'|'moderate'|'moderate2'|'extreme']
     #                   -F user=<userName> http://<host>:<port>/compile
     #
     #    NOTE:  -user & compileargs are optional. 

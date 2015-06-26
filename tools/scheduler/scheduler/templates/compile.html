@@ -42,10 +42,6 @@
                 <div class="col-md-8"><input type=text name=w_workerthread value="1" size="80"></div>
             </div> 
             <div class="row">
-                <div class="col-md-4"><h4>Client CPP Threads:</h4></div>
-                <div class="col-md-8"><input type=text name=cppthread value="12" size="80"></div>
-            </div> 
-            <div class="row">
                 <div class="col-md-4"><h4>Heartbeat interval:</h4></div>
                 <div class="col-md-8"><input type=text name=heartbeat value="300" size="80"></div>
             </div> 
@@ -85,11 +81,11 @@
             </div>
             <div class="row">
                 <div class="col-md-2"><h4>CPU (# cores):</h4></div>
-                <div class="col-md-8"><input type=text name=cpu value=4 size="80"></div>
+                <div class="col-md-8"><input type=text name=cpu value=16 size="80"></div>
             </div>
             <div class="row">
                 <div class="col-md-2"><h4>Mem (in GB):</h4></div>
-                <div class="col-md-8"><input type=text name=mem value=4 size="80"></div>
+                <div class="col-md-8"><input type=text name=mem value=32 size="80"></div>
             </div>
             <div class="row">
                 <div class="col-md-2"><h4>Compile Workload Skew</h4></div>
@@ -97,6 +93,7 @@
                     <select name = "workload">
                         <option value = "balanced">Balanced</option>
                         <option value = "moderate">Moderate</option>
+                        <option value = "moderate2">Moderate-2</option>
                         <option value = "extreme">Extreme</option>
                     </select>
                   </div>

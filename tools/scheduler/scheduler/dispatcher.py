@@ -342,9 +342,9 @@ class Dispatcher(mesos.interface.Scheduler):
     ts = time.time()
 
     # Heart Beat logging
-    if ts > self.idle:
-      logging.info("[DISPATCHER] HeartBeatting with Mesos. # Offers: %d", len(offers))
-      self.idle = ts + heartbeat_delay
+    # if ts > self.idle:
+    logging.info("[DISPATCHER] HeartBeatting with Mesos. # Offers: %d", len(offers))
+      # self.idle = ts + heartbeat_delay
 
     # Crude Garbage Collection to police up jobs in bad state
     if ts > self.gc:

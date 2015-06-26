@@ -200,10 +200,16 @@
                    -F gitpull=[True|False]
                    -F branch=&lt;k3_branch&gt;
                    -F cabalbuild=[True|False]
+                   -F m_workerthread=&lt;#master_service_threads&gt;
+                   -F w_workerthread=&lt;#worker_service_threads&gt;
+                   -F heartbeat=&lt;heartbeat_interval_in_secs&gt;
                    http://&lt;host&gt;:&lt;port&gt;/compile
 
     Default vals:  numworkers=(max workers), gitpull=True,
-                   branch=development, cabalbuild=False
+                   branch=development, cabalbuild=False,
+                   m_workerthread=1, w_workerthread=1,
+                   heartbeat=300, cppthread=12
+
 
         GET     Redirect to Compile Form (html) or compile service setting (json)
 -------------------------------------------------------------------------------
@@ -211,10 +217,19 @@
 
 
 ===============================================================================
-  /compileservice/down
-         GET     Shuts down compile service
+  /compileservice/stop
+         GET     Stop compile service Immediately
 
        NOTE:  Be careful, it kills all jobs (There is no confirmation check)
+-------------------------------------------------------------------------------
+@webapp.route('/compileservice/stop')
+
+
+===============================================================================
+  /compileservice/down
+         GET     Shuts down compile service gracefully
+
+       NOTE:  Clears all pendings tasks
 -------------------------------------------------------------------------------
 @webapp.route('/compileservice/down')
 
@@ -227,12 +242,15 @@
                    -F file=@&lt;sourceFile&gt;
                    -F blocksize=&lt;blocksize&gt;
                    -F compilestage=['both'|'cpp'|'bin']
-                   -F options=&lt;compileOptions&gt;
+                   -F compileargs=&lt;compile_args&gt;
+                   -F mem=&lt;mem_in_GB&gt;
+                   -F cpu=&lt;#cores&gt;
+                   -F workload=['balanced'|'moderate'|'moderate2'|'extreme']
                    -F user=&lt;userName&gt; http://&lt;host&gt;:&lt;port&gt;/compile
 
-    NOTE:  -Username & Options are optional.
+    NOTE:  -user & compileargs are optional.
            -If name is omitted, it is inferred from filename
-    Default vals:  blocksize=4, compilestage="both"
+    Default vals:  blocksize=8, compilestage='both', workload='balanced'
 
          GET     Form for compiling new K3 Executable OR status of compiling tasks
 -------------------------------------------------------------------------------
