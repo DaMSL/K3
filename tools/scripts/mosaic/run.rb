@@ -164,7 +164,8 @@ end
 # do both creation and compilation remotely (returns uid)
 def run_create_compile_k3_remote(server_url, bin_file, block_on_compile, k3_cpp_name, k3_path, nice_name)
   stage "[3-4] Remote creating && compiling K3 file to binary"
-  res = curl(server_url, "/compile", file: k3_path, post: true, json: true, args:{ "compilestage" => "both"})
+  res = curl(server_url, "/compile", file: k3_path, post: true, json: true,
+            args:{ "compilestage" => "both", "workload" => $options[:skew].to_s})
   uid = res["uid"]
   update_options_if_empty(:uid, uid)
   persist_options()
@@ -179,7 +180,8 @@ end
 # create the k3 cpp file remotely and copy the cpp locally
 def run_create_k3_remote(server_url, block_on_compile, k3_cpp_name, k3_path, nice_name)
   stage "[3] Remote creating K3 cpp file."
-  res = curl(server_url, "/compile", file: k3_path, post: true, json: true, args:{ "compilestage" => "cpp"})
+  res = curl(server_url, "/compile", file: k3_path, post: true, json: true,
+            args:{ "compilestage" => "cpp", "workload" => $options[:skew].to_s})
   uid = res["uid"]
   update_options_if_empty(:uid, uid)
   persist_options()
@@ -214,6 +216,8 @@ def gen_yaml(k3_data_path, role_file, script_path)
   cmd = ""
   cmd << "--switches " << $options[:num_switches].to_s << " " if $options[:num_switches]
   cmd << "--nodes " << $options[:num_nodes].to_s << " " if $options[:num_nodes]
+  cmd << "--nmask " << $options[:nmask] << " " if $options[:nmask]
+  cmd << "--perhost " << $options[:perhost] << " " if $options[:perhost]
   cmd << "--file " << k3_data_path << " "
   cmd << "--dist " if !$options[:run_local]
   yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
@@ -439,6 +443,7 @@ def persist_options()
   update_if_there(options, :mosaic_path)
   update_if_there(options, :uid)
   update_if_there(options, :jobid)
+  update_if_there(options, :skew)
   File.write($last_path, JSON.dump(options))
 end
 
@@ -456,6 +461,9 @@ def main()
     opts.on("--json_debug", "Debug queries that won't die") { $options[:json_debug] = true }
     opts.on("-s", "--switches [NUM]", Integer, "Set the number of switches") { |i| $options[:num_switches] = i }
     opts.on("-n", "--nodes [NUM]", Integer, "Set the number of nodes") { |i| $options[:num_nodes] = i }
+    opts.on("--perhost [NUM]", Integer, "How many peers to run per host") {|s| $options[:perhost] = s}
+    opts.on("--nmask [MASK]", String, "Mask for node deployment") {|s| $options[:nmask] = s}
+    opts.on("--highmem", "High memory deployment (HM only)") { $options[:nmask] = 'qp-hm.'}
     opts.on("--brew", "Use homebrew (OSX)") { $options[:osx_brew] = true }
     opts.on("--run-local", "Run locally") { $options[:run_local] = true }
     opts.on("--create-local", "Create the cpp file locally") { $options[:create_local] = true }
@@ -469,6 +477,9 @@ def main()
     opts.on("--fetch-results", "Fetch results after job") { $options[:fetch_results] = true }
     opts.on("-w", "--workdir [PATH]", "Path in which to create files") {|s| $options[:workdir] = s}
     opts.on("--latest-uid",  "Use the latest uid on the server") { $options[:latest_uid] = true}
+    opts.on("--moderate",  "Query is of moderate skew (and size)") { $options[:skew] = :moderate}
+    opts.on("--extreme",  "Query is of extreme skew (and size)") { $options[:skew] = :extreme}
+    opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
 
     # stages
     opts.on("-a", "--all", "All stages") {
@@ -488,23 +499,12 @@ def main()
   end
   parser.parse!
 
-  unless ARGV.size == 1 || $options[:source]
-    puts parser.help
-    exit(1)
-  end
-
-  # if only one data file, take that one
-  if $options.has_key?(:dbt_data_path) && !$options.has_key?(:k3_data_path)
-    $options[:k3_data_path] = $options[:dbt_data_path]
-  elsif $options.has_key?(:k3_data_path) && !$options.has_key?(:dbt_data_path)
-    $options[:dbt_data_path] = $options[:k3_data_path]
-  end
-
   # get directory of script
   script_path = File.expand_path(File.dirname(__FILE__))
 
   # a lot can be inferred once we have the workdir
   $workdir     = $options[:workdir] ? $options[:workdir] : "temp"
+  puts "WORKDIR = #{$workdir}"
   $workdir     = File.expand_path($workdir)
 
   `mkdir -p #{$workdir}` unless Dir.exists?($workdir)
@@ -532,7 +532,23 @@ def main()
     update_from_json(JSON.parse($options[:json_file]))
   end
 
-  source = $options[:source] ? $options[:source] : ARGV[0]
+  ### fill in default options (must happen after filling in from json)
+  # if only one data file, take that one
+  if $options.has_key?(:dbt_data_path) && !$options.has_key?(:k3_data_path)
+    $options[:k3_data_path] = $options[:dbt_data_path]
+  elsif $options.has_key?(:k3_data_path) && !$options.has_key?(:dbt_data_path)
+    $options[:dbt_data_path] = $options[:k3_data_path]
+  end
+  # skew is balanced if missing
+  $options[:skew] = :balanced unless $options[:skew]
+
+  # check that we have a source
+  unless ARGV.size == 1 || $options[:source]
+    puts parser.help
+    exit(1)
+  end
+
+  source = ARGV.size == 1 ? ARGV[0] : $options[:source]
   $options[:source] = source
 
   persist_options()
@@ -610,14 +626,14 @@ def main()
   # check for doing everything remotely
   if !$options[:compile_local] && !$options[:create_local] && ($options[:create_k3] || $options[:compile_k3])
       # only block if we need to ie. if we have deployment of some source
-      block_on_compile = $options[:deploy_k3] || $options[:run_local]
+      block_on_compile = $options[:deploy_k3] || $options[:run_local] || $options[:dots]
       uid = run_create_compile_k3_remote(server_url, bin_file, block_on_compile, k3_cpp_name, k3_path, nice_name)
   else
     if $options[:create_k3]
       if $options[:create_local]
         run_create_k3_local(k3_path, script_path)
       else
-        block_on_compile = $options[:compile_k3] || $options[:deploy_k3]
+        block_on_compile = $options[:compile_k3] || $options[:deploy_k3] || $options[:dots]
         run_create_k3_remote(server_url, block_on_compile, k3_cpp_name, k3_path, nice_name)
       end
     end
