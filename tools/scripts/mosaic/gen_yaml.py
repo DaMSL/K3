@@ -76,9 +76,9 @@ def create_dist_file(num_switches, perhost, num_nodes, nmask, file_path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-s", "--switches", type=int, help="number of switches", dest="num_switches", default=1)
-    parser.add_argument("-n", "--nodes", type=int, help="number of nodes", dest="num_nodes", default=8)
+    parser.add_argument("-n", "--nodes", type=int, help="number of nodes", dest="num_nodes", default=4)
     parser.add_argument("--nmask", type=str, help="mask for nodes", default="qp-hm.|qp-hd.?")
-    parser.add_argument("--perhost", type=int, help="peers per host", default=1)
+    parser.add_argument("--perhost", type=int, help="peers per host", default=2)
     parser.add_argument("-d", "--dist", action='store_true', dest="dist_mode", default=False)
     parser.add_argument("-f", "--file", type=str, dest="file_path", help="file path", default="/local/agenda.csv")
     args = parser.parse_args()
