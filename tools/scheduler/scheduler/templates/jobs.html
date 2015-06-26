@@ -78,6 +78,7 @@ src="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></scrip
           <table id="inactiveCompiles" class="display table table-striped">
             <tr> <th>Build</th><th>Output</th><th>Time Submit</th><th>Time Complete</th><th>Status</th><th>Kill</th></tr>
           {% for job in compilelist %}
+            {% if job.status == "COMPLETE" or job.status == "KILLED" or job.status == "FAILED" %}
                 <tr>
                     <td><a href="/compile/{{job.name}}-{{job.uid}}">{{job.name}}-{{job.uid}}</a></td>
                     <td><a href="/fs/build/{{job.name}}-{{job.uid}}/output">Output</a></td>
@@ -86,6 +87,7 @@ src="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></scrip
                     <td>{{job.status}}</td>
                 <td><input type="checkbox" name="delete_compile" value="{{job.uid}}"></td>
                 </tr>
+            {% endif %}
           {% endfor %}
           </table>
           <div class="row text-right"><button type=submit class="btn btn-danger btn-md">

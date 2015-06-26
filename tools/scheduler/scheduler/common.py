@@ -14,12 +14,15 @@ def getUID():
   return str(uuid.uuid1()).split('-')[0]
 
 
-masterNodes =  ['qp-hd2']
-workerNodes =  ['qp-hd9', 'qp-hd15']
-clientNodes =  ['qp6']
-# masterNodes =  ['qp-hm1']
-# workerNodes =  ['qp' + str(i) for i in range(3,6)] + ['qp-hm' + str(i) for i in range(2,9)] + ['qp-hd' + str(i) for i in [1, 3, 4, 6, 7, 8, 10, 12]]
-# clientNodes =  ['qp-hd16']
+# masterNodes =  ['qp-hd2']
+# workerNodes =  ['qp-hd9', 'qp-hd15']
+# clientNodes =  ['qp6']
+masterNodes =  ['qp-hm1']
+workerNodes =  ['qp3', 'qp4', 'qp5', 'qp6'] + ['qp-hm' + str(i) for i in range(2,9)] + ['qp-hd' + str(i) for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13]]
+# workerNodes =  ['qp' + str(i) for i in range(3,6)] + ['qp-hm' + str(i) for i in range(2,9)]
+clientNodes =  ['qp-hd14', 'qp-hd15', 'qp-hd16']
+
+
 compilerNodes    =  masterNodes + workerNodes + clientNodes
 
 
@@ -45,6 +48,7 @@ def getCompileStage(stage):
 
 workloadOptions = {'balanced': '',
                    'moderate': '--workerfactor hm=3 --workerblocks hd=4:qp3=4:qp4=4:qp5=4:qp6=4',
+                   'moderate2': '--workerfactor hm=3 --workerblocks hd=2:qp3=2:qp4=2:qp5=2:qp6=2',
                    'extreme': '--workerfactor hm=4 --workerblocks hd=1:qp3=1:qp4=1:qp5=1:qp6=1'}
 
 

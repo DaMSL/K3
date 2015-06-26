@@ -34,8 +34,8 @@ from mesosutils import *
 import db
 
 
-DEFAULT_MEM = 4
-DEFAULT_CPU = 4
+DEFAULT_MEM = 32
+DEFAULT_CPU = 16
 
 
 class CompileJob():
@@ -133,7 +133,7 @@ class CompileServiceManager(mesos.interface.Scheduler):
         gitpull=True,
         cabalbuild=False,
         compileargs='',
-        cppthread=12,
+        cppthread=DEFAULT_CPU,
         m_workerthread=1,
         w_workerthread=1,
         heartbeat=300)
@@ -281,7 +281,7 @@ class CompileServiceManager(mesos.interface.Scheduler):
       cpu = getResource(offer.resources, "cpus")
       port = None
 
-      self.log.info('  Resources:  cpu=%s, mem=%s' % (cpu, mem))
+      self.log.info(' Checking offer from %s, Resources:  cpu=%s, mem=%s' % (offer.hostname, cpu, mem))
 
       role = None
 
@@ -303,7 +303,7 @@ class CompileServiceManager(mesos.interface.Scheduler):
       elif len(self.workers) < self.numworkers and offer.hostname in workerNodes:
         workerNum = len(self.workers) + 1
         self.log.debug("Creating Worker #%d role" % workerNum)
-        role = dict(role='worker', svid='worker%d' % workerNum, hostname=offer.hostname)
+        role = dict(role='worker', svid='worker-%s' % offer.hostname, hostname=offer.hostname)
         self.workers.append (role)
         self.log.debug ("Worker %d out of %d assigned" % (len(self.workers), self.numworkers))
 
@@ -326,7 +326,7 @@ class CompileServiceManager(mesos.interface.Scheduler):
       logging.debug("Creating Client role")
 
       self.compileJobs += 1
-      job.update(dict(hostname=offer.hostname, host=self.masterHost, port=self.masterPort))
+      job.update(dict(hostname=offer.hostname, host=self.masterHost, port=self.masterPort, cppthread=cpu))
       
       task = compileTask(AppID(job.name, job.uid),offer.slave_id.value, job.getItems(), cpu, mem, None)
       logging.debug("CREATED TASK for:  %s " % job.svid)
@@ -436,11 +436,10 @@ class CompileServiceManager(mesos.interface.Scheduler):
         self.active[svid].updateState(CompileState.COMPILE)
 
       # Client has failed or is lost
-      if update.state == mesos_pb2.TASK_FAILED or update.state == mesos_pb2.TASK_LOST:
+      if update.state == mesos_pb2.TASK_FAILED or update.state == mesos_pb2.TASK_LOST or update.state == mesos_pb2.TASK_KILLED or update.state == mesos_pb2.TASK_KILLED:
         clientTerminated = True  
         self.log.warning("[COMPILER]  -- FAILED TASK [%s]: %s.  Killing the job", update.message, update.data)
         self.active[svid].state = CompileState.FAILED
-        self.active[svid].kill()
 
       # Client has finished (successfully)
       if update.state == mesos_pb2.TASK_FINISHED:
