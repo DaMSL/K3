@@ -216,6 +216,8 @@ def gen_yaml(k3_data_path, role_file, script_path)
   cmd = ""
   cmd << "--switches " << $options[:num_switches].to_s << " " if $options[:num_switches]
   cmd << "--nodes " << $options[:num_nodes].to_s << " " if $options[:num_nodes]
+  cmd << "--nmask " << $options[:nmask] << " " if $options[:nmask]
+  cmd << "--perhost " << $options[:perhost] << " " if $options[:perhost]
   cmd << "--file " << k3_data_path << " "
   cmd << "--dist " if !$options[:run_local]
   yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
@@ -459,6 +461,9 @@ def main()
     opts.on("--json_debug", "Debug queries that won't die") { $options[:json_debug] = true }
     opts.on("-s", "--switches [NUM]", Integer, "Set the number of switches") { |i| $options[:num_switches] = i }
     opts.on("-n", "--nodes [NUM]", Integer, "Set the number of nodes") { |i| $options[:num_nodes] = i }
+    opts.on("--perhost [NUM]", Integer, "How many peers to run per host") {|s| $options[:perhost] = s}
+    opts.on("--nmask [MASK]", String, "Mask for node deployment") {|s| $options[:nmask] = s}
+    opts.on("--highmem", "High memory deployment (HM only)") { $options[:nmask] = 'qp-hm.'}
     opts.on("--brew", "Use homebrew (OSX)") { $options[:osx_brew] = true }
     opts.on("--run-local", "Run locally") { $options[:run_local] = true }
     opts.on("--create-local", "Create the cpp file locally") { $options[:create_local] = true }
@@ -494,21 +499,12 @@ def main()
   end
   parser.parse!
 
-  # if only one data file, take that one
-  if $options.has_key?(:dbt_data_path) && !$options.has_key?(:k3_data_path)
-    $options[:k3_data_path] = $options[:dbt_data_path]
-  elsif $options.has_key?(:k3_data_path) && !$options.has_key?(:dbt_data_path)
-    $options[:dbt_data_path] = $options[:k3_data_path]
-  end
-
-  # skew is balanced if nothing there
-  $options[:skew] = :balanced unless $options[:skew]
-
   # get directory of script
   script_path = File.expand_path(File.dirname(__FILE__))
 
   # a lot can be inferred once we have the workdir
   $workdir     = $options[:workdir] ? $options[:workdir] : "temp"
+  puts "WORKDIR = #{$workdir}"
   $workdir     = File.expand_path($workdir)
 
   `mkdir -p #{$workdir}` unless Dir.exists?($workdir)
@@ -535,6 +531,16 @@ def main()
   if $options.has_key?(:json_file)
     update_from_json(JSON.parse($options[:json_file]))
   end
+
+  ### fill in default options (must happen after filling in from json)
+  # if only one data file, take that one
+  if $options.has_key?(:dbt_data_path) && !$options.has_key?(:k3_data_path)
+    $options[:k3_data_path] = $options[:dbt_data_path]
+  elsif $options.has_key?(:k3_data_path) && !$options.has_key?(:dbt_data_path)
+    $options[:dbt_data_path] = $options[:k3_data_path]
+  end
+  # skew is balanced if missing
+  $options[:skew] = :balanced unless $options[:skew]
 
   # check that we have a source
   unless ARGV.size == 1 || $options[:source]
