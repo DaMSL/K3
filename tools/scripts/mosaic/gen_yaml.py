@@ -44,8 +44,8 @@ def create_file(num_switches, num_nodes, file_path):
 def create_dist_file(num_switches, perhost, num_nodes, nmask, file_path):
     # for now, each peer is on a different node
     peers = []
-    peers += [('Master', 'master', 'qp3', None, None)]
-    peers += [('Timer',  'timer',  'qp3', None, None)]
+    peers += [('Master', 'master', 'qp6', None, None)]
+    peers += [('Timer',  'timer',  'qp7', None, None)]
     peers += [('Switch1', 'switch', 'qp3', file_path, None)]
     peers += [('Node' + str(i), 'node', nmask, None, perhost) for i in range(1, num_nodes+1)]
     if num_switches > 1:
@@ -65,7 +65,7 @@ def create_dist_file(num_switches, perhost, num_nodes, nmask, file_path):
                     'volumes':[{'host':'/local', 'container':'/local'}],
                     'k3_globals':k3_globals
                    }
-        if perh is not None: 
+        if perh is not None:
             newpeer['peers_per_host'] = perh
 
         peers2 += [newpeer]
@@ -78,7 +78,7 @@ def main():
     parser.add_argument("-s", "--switches", type=int, help="number of switches", dest="num_switches", default=1)
     parser.add_argument("-n", "--nodes", type=int, help="number of nodes", dest="num_nodes", default=8)
     parser.add_argument("--nmask", type=str, help="mask for nodes", default="qp-hm.|qp-hd.?")
-    parser.add_argument("--perhost", type=int, help="peers per host", default=3)
+    parser.add_argument("--perhost", type=int, help="peers per host", default=1)
     parser.add_argument("-d", "--dist", action='store_true', dest="dist_mode", default=False)
     parser.add_argument("-f", "--file", type=str, dest="file_path", help="file path", default="/local/agenda.csv")
     args = parser.parse_args()
