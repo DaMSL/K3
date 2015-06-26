@@ -66,7 +66,7 @@ def create_dist_file(num_switches, perhost, num_nodes, nmask, file_path):
                     'k3_globals':k3_globals
                    }
         if perh is not None: 
-            newpeer['peersperhost'] = perh
+            newpeer['peers_per_host'] = perh
 
         peers2 += [newpeer]
 
