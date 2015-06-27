@@ -394,4 +394,7 @@ record (sort -> ids) = do
            , jsonStructDefn, yamlStructDefn, hashStructDefn]
 
 reservedAnnotations :: [Identifier]
-reservedAnnotations = ["Collection", "External", "Seq", "Set", "Sorted", "Map", "IntMap", "StrMap", "Vector", "MultiIndex", "VMap"]
+reservedAnnotations =
+  [ "Collection", "External", "Seq", "Set", "Sorted", "Map", "Vector"
+  , "IntMap", "StrMap", "MultiIndex", "VMap", "OrderedMap"
+  ]

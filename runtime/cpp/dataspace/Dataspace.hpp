@@ -1146,7 +1146,7 @@ class Sorted {
   friend class boost::serialization::access;
 }; // Class Sorted
 
-// TODO reorder functions to match the others
+
 template<class R>
 class Map {
   using Key = typename R::KeyType;
