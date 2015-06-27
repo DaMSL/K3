@@ -6,7 +6,7 @@ from enum import enum, Enum
 
 heartbeat_delay = 60  # secs. move to common
 gc_delay = 15
-offer_wait = 15
+offer_wait = 5
 
 
 # Returns unique time stamp uid (unique to this machine only)

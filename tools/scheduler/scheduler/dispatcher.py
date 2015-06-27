@@ -22,6 +22,8 @@ import logging
 
 DEFAULT_MEM = 4 * 1024
 
+OFFER_HOLD = 5
+
 
 class Dispatcher(mesos.interface.Scheduler):
   def __init__(self, master, webaddr, daemon=True):
@@ -44,7 +46,11 @@ class Dispatcher(mesos.interface.Scheduler):
     self.gc = time.time()
     self.offerRelease = 0
 
+    self.offerHold = {}
+
     logging.info("[DISPATCHER] Initializing with master at %s" % master)
+
+
 
  
   def submit(self, job):
@@ -97,26 +103,39 @@ class Dispatcher(mesos.interface.Scheduler):
     availableCPU = {i: int(getResource(o.resources, "cpus")) for i, o in self.offers.items()}
     availableMEM = {i: getResource(o.resources, "mem") for i, o in self.offers.items()}
     availablePorts = {i: PortList(getResource(o.resources, "ports")) for i, o in self.offers.items()}
+    committed = {i: False for i in self.offers}
 
     # Try to satisy each role, sequentially
     for roleId in nextJob.roles.keys():
       unassignedPeers = nextJob.roles[roleId].peers
       committedResources[roleId] = {}
 
-      for offerId in self.offers:
+      logging.debug("Trying to fill role, %s", roleId)
+
+      for offerId, offer in self.offers.items():
+
+
+        if committed[offerId]:
+          logging.debug("  Offer from %s, but it is already committed", offer.hostname)
+          continue
+
         if availableMEM[offerId] == None or availableMEM[offerId] == 0:
+          logging.debug("  Offer from %s has NO MEM", offer.hostname)
           continue
+
         if availableCPU[offerId] == 0:
+          logging.debug("  Offer from %s has NO CPU", offer.hostname)
           continue
+
 
         #  Check Hostmask requirement
         hostmask = nextJob.roles[roleId].hostmask
         host = self.offers[offerId].hostname.encode('utf8','ignore')
         r = re.compile(hostmask)
         if not r.match(host):
-          logging.debug("%s does not match hostmask. DECLINING offer" % host)
+          logging.debug("  Offer from %s does not match hostmask. DECLINING offer" % host)
           continue
-        logging.debug("%s MATCHES hostmask. Checking offer" % host)
+        logging.debug("Offer %s MATCHES hostmask. Checking offer against role requirements" % host)
 
         # Allocate CPU Resource
         requestedCPU = min(unassignedPeers, availableCPU[offerId])
@@ -127,6 +146,7 @@ class Dispatcher(mesos.interface.Scheduler):
             continue
           else:
             requestedCPU = peer_per_host
+
 
         # Allocate Memory Resource
         requestedMEM = availableMEM[offerId]
@@ -156,7 +176,13 @@ class Dispatcher(mesos.interface.Scheduler):
 
         committedResources[roleId][offerId]['ports'] = availablePorts[offerId]
 
-        logging.debug("UNASSIGNED PEERS = %d" % unassignedPeers)
+
+        # Check if this offer is fully committed or not
+        if availableCPU[offerId] == 0 or availableMEM[offerId] == 0:
+          committed[offerId] = True
+
+        logging.debug(" Remaining resources on %s:  CPU=%d   MEM=%d", host, availableCPU[offerId], availableMEM[offerId])
+        logging.debug(" UNASSIGNED PEERS for Role `%s` = %d", roleId, unassignedPeers)
         if unassignedPeers <= 0:
           # All peers for this role have been assigned
           break
@@ -192,6 +218,11 @@ class Dispatcher(mesos.interface.Scheduler):
       
     #  Iterate through the reservations for each role / offer: create peers & tasks
     allPeers = []
+
+
+    # for offerId, offer in role.items():
+
+
     for roleId, role in reservation.items():
       logging.debug("[DISPATCHER] Preparing role, %s" % roleId)
       vars = nextJob.roles[roleId].variables
