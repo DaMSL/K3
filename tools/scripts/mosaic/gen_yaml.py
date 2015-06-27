@@ -44,8 +44,8 @@ def create_file(num_switches, num_nodes, file_path):
 def create_dist_file(num_switches, perhost, num_nodes, nmask, file_path):
     # for now, each peer is on a different node
     peers = []
-    peers += [('Master', 'master', 'qp6', None, None)]
-    peers += [('Timer',  'timer',  'qp7', None, None)]
+    peers += [('Master', 'master', 'qp5', None, None)]
+    peers += [('Timer',  'timer',  'qp6', None, None)]
     peers += [('Switch1', 'switch', 'qp3', file_path, None)]
     peers += [('Node' + str(i), 'node', nmask, None, perhost) for i in range(1, num_nodes+1)]
     if num_switches > 1:
