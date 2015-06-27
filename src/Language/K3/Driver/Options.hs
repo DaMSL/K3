@@ -156,6 +156,7 @@ data ServiceMasterOptions
 data RemoteJobOptions = RemoteJobOptions { workerFactor     :: Map String Int
                                          , workerBlockSize  :: Map String Int
                                          , defaultBlockSize :: Int
+                                         , reportSize       :: Int
                                          , rcStages         :: CompileStages }
                       deriving (Eq, Read, Show, Generic)
 
@@ -686,6 +687,7 @@ remoteJobOpt :: Parser RemoteJobOptions
 remoteJobOpt = RemoteJobOptions <$> workerFactorOpt
                                 <*> workerBlockSizeOpt
                                 <*> jobBlockSizeOpt
+                                <*> reportSizeOpt
                                 <*> compileStagesOpt ServiceClientRemote
 
 jobBlockSizeOpt :: Parser Int
@@ -694,6 +696,13 @@ jobBlockSizeOpt = option auto (
                     <> value   16
                     <> help    "Remote job block size"
                     <> metavar "SIZE" )
+
+reportSizeOpt :: Parser Int
+reportSizeOpt = option auto (
+                       long    "reportsize"
+                    <> value   20
+                    <> help    "Compile job report size"
+                    <> metavar "REPSIZE" )
 
 workerFactorOpt :: Parser (Map String Int)
 workerFactorOpt = extract . keyValList ""

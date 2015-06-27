@@ -149,9 +149,17 @@ data NoneMutability
 -- | Endpoint types.
 data EndpointSpec
   = ValueEP
-  | BuiltinEP String String    -- ^ Builtin endpoint type (stdin/stdout/stderr), format
-  | FileEP    String String    -- ^ File path, format
-  | NetworkEP String String    -- ^ Address, format
+  | BuiltinEP String String
+    -- ^ Builtin endpoint type (stdin/stdout/stderr), format
+
+  | FileEP    String String
+    -- ^ File path (as expression or literal), format
+
+  | FileSeqEP String String
+    -- ^ File sequence path collection (as expression), format
+
+  | NetworkEP String String
+    -- ^ Address, format
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Union two spans.

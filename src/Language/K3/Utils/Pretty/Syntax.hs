@@ -276,6 +276,7 @@ endpoint kw n specOpt t' eOpt' = case specOpt of
   Just (BuiltinEP kind fmt) -> common . Just $ text kind <+> text fmt
   Just (FileEP path fmt)    -> common . Just $ text "file" <+> text path <+> text fmt
   Just (NetworkEP addr fmt) -> common . Just $ text "network" <+> text addr <+> text fmt
+  Just (FileSeqEP pathCollection fmt) -> common . Just $ text "fileseq" <+> text pathCollection <+> text fmt
 
   where
     common initializer =
