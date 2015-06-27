@@ -30,6 +30,8 @@ import Data.Time.Clock.POSIX ( getPOSIXTime )
 import Data.Time.LocalTime
 
 import Data.Monoid
+import Data.Ord
+import Data.Function
 import Data.List
 import Data.List.Split
 import Data.Heap ( Heap )
@@ -127,7 +129,8 @@ data JobState = JobState { jrid         :: RequestID
                          , jprofile     :: JobProfile
                          , jpending     :: BlockSet
                          , jcompleted   :: BlockSourceMap
-                         , jaborted     :: [String] }
+                         , jaborted     :: [String]
+                         , jreportsize  :: Int }
                 deriving (Eq, Read, Show)
 
 -- | Profiling information per worker and block.
@@ -801,7 +804,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
         return (wConfig, wBlocks, nassigns, pending, wjs)
 
       let aRep = mkReport "Master assignment" [aProf]
-      js <- js0 rid rq pending' wjs' $ ppRep <> aRep
+      js <- js0 rid rq pending' wjs' (reportSize jobOpts) $ ppRep <> aRep
       modifyMJ_ $ \jbs -> Map.insert pid js jbs
       modifyMA_ $ \assigns -> Map.unionWith incrWorkerAssignments assigns nassigns'
 
@@ -939,8 +942,11 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       WorkerAssignment (Set.delete bid blocks) (weight - dw)
 
     -- | Job state constructors.
-    jprof0 workerjs pprep = liftIO getTime >>= \start -> return $ JobProfile start Map.empty workerjs pprep []
-    js0 rid rq pending workerjs pprep = jprof0 workerjs pprep >>= \prof -> return $ JobState rid rq prof pending Map.empty []
+    jprof0 workerjs pprep =
+      liftIO getTime >>= \start -> return $ JobProfile start Map.empty workerjs pprep []
+
+    js0 rid rq pending workerjs reportsz pprep =
+      jprof0 workerjs pprep >>= \prof -> return $ JobState rid rq prof pending Map.empty [] reportsz
 
     logAssignment pid wConfig nassigns js =
       let wk wid s = wid ++ ":" ++ s
@@ -1009,7 +1015,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
           (nprof, bcontrib) = updateProfile time wid bid $ jprofile js
 
       in if Set.null npend
-            then Left $ ((jrid js, jrq js, jaborted js, nprof, ncomp), bcontrib)
+            then Left $ ((jrid js, jrq js, jaborted js, nprof, ncomp, jreportsize js), bcontrib)
             else Right $ (js { jpending = npend, jcompleted = ncomp, jprofile = nprof }, bcontrib)
 
     abortJobBlock time wid bid reason js =
@@ -1036,7 +1042,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
      -----------------------------}
 
     -- | Program completion processing. This garbage collects client request state.
-    completeProgram pid (rid, rq, aborts, profile, sources) = do
+    completeProgram pid (rid, rq, aborts, profile, sources, reportsz) = do
       let prog = DC.role "__global" $ map snd $ sortOn fst $ concatMap snd $ Map.toAscList sources
       (nprogrpE, fpProf) <- liftIO $ ST.profile $ const $ evalTransform Nothing (sfinalStages $ smOpts) prog
       case (aborts, nprogrpE) of
@@ -1047,7 +1053,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
             case clOpt of
               Nothing -> zm $ requestError rid
               Just cid -> let fpRep = TransformReport (Map.singleton "Master finalization" [fpProf]) Map.empty
-                          in completeRequest pid cid rid rq nprog $ generateReport profile fpRep
+                          in completeRequest pid cid rid rq nprog $ generateReport reportsz profile fpRep
 
     completeRequest pid cid rid rq prog report = do
       mlogM $ unwords ["Completed program", show pid]
@@ -1114,7 +1120,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       -----------------------}
 
     -- | Compilation report construction.
-    generateReport profile finalreport =
+    generateReport reportsz profile finalreport =
       let mkspan s e = e - s
           mkwtrep  (wid, tspan) = wid ++ ": " ++ (secs $ tspan)
           mkwvstr  (wid, v)     = wid ++ ": " ++ (show v)
@@ -1138,14 +1144,20 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
 
           -- Reports.
           masterreport  = prettyLines $ mconcat [jppreport profile, finalreport]
-          profreport    = prettyLines $ mconcat $ jreports profile
+          profreport    = prettyLines $ limitReport reportsz $ mconcat $ jreports profile
           timereport    = map mkwtrep $ Map.toList workertimes
           wtratioreport = map mkwvstr $ Map.toList workertratios
           wcratioreport = map mkwvstr $ Map.toList workercratios
           costreport    = map mkwvstr $ Map.toList wtcratiodiff
 
+          limitReport l (TransformReport st sn) = TransformReport (limitMeasures l st) sn
+          limitMeasures l st = Map.filterWithKey (\k _ -> Set.member k $ limitKeys l st) st
+          limitKeys     l st = Set.fromList $ take l $ map fst $ sortBy (compare `on` (Down . snd)) $ limitTimes st
+          limitTimes      st = map (second $ sum . map measTime) $ Map.toList st
+
           i x = indent $ 2*x
-      in boxToString $ ["Workers"]             %$ (i 1 profreport)
+      in
+         boxToString $ ["Workers"]             %$ (i 1 profreport)
                     %$ ["Sequential"]          %$ (i 1 masterreport)
                     %$ ["Compiler service"]
                     %$ (i 1 ["Time ratios"]    %$ (i 2 wtratioreport))
