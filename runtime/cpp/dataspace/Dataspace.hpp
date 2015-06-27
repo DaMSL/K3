@@ -498,6 +498,11 @@ class Collection: public VectorDS<K3::Collection, Elem> {
     }
   }
 
+  template <class F>
+  auto at_with(int i, F f) {
+    return f(Super::getConstContainer()[i]);
+  }
+
   template <class G, class F, class Z>
   Collection<R_key_value<RT<G, Elem>, RT<RT<F, Z>, Elem>>> groupByContiguous(G grouper, F folder, const Z& zero, const int& size) const {
     typedef RT<RT<F, Z>, Elem> Z2;
@@ -512,11 +517,6 @@ class Collection: public VectorDS<K3::Collection, Elem> {
       table[i].key = i;
     }
     return Collection<R_key_value<int,Z2>>(std::move(wrapper));
-  }
-
-  template <class F>
-  auto at_with(int i, F f) {
-    return f(Super::getConstContainer()[i]);
   }
 
   template<class Archive>

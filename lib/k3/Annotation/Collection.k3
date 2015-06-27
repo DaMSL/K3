@@ -3,6 +3,13 @@ annotation Collection given type a, b
   provides lifted peek : () -> option content
     with effects \_ -> R[self]
 
+  provides lifted at: int -> option content
+    with effects \i -> [R[i]; R[self]]
+
+  @:CArgs 2
+  provides lifted at_with: int -> (content -> a) -> a
+    with effects \i -> \f -> [R[i]; R[self]; f content]
+
   provides lifted insert : content -> ()
     with effects \elem -> [R[self]; R[elem]; W[self]]
 
@@ -63,10 +70,4 @@ annotation Collection given type a, b
   provides lifted sample : (a -> content -> a) -> a -> int -> a
     with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
 
-  provides lifted at: int -> option content
-    with effects \i -> [R[i]; R[self]]
-
-  @:CArgs 2
-  provides lifted at_with: int -> (content -> a) -> a
-    with effects \i -> \f -> [R[i]; R[self]; f content]
 }
