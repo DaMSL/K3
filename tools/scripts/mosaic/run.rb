@@ -212,12 +212,12 @@ end
 ### Deployment stage ###
 
 def gen_yaml(k3_data_path, role_file, script_path)
-  # Genereate yaml file"
+  # Generate yaml file"
   cmd = ""
   cmd << "--switches " << $options[:num_switches].to_s << " " if $options[:num_switches]
   cmd << "--nodes " << $options[:num_nodes].to_s << " " if $options[:num_nodes]
   cmd << "--nmask " << $options[:nmask] << " " if $options[:nmask]
-  cmd << "--perhost " << $options[:perhost] << " " if $options[:perhost]
+  cmd << "--perhost " << $options[:perhost].to_s << " " if $options[:perhost]
   cmd << "--file " << k3_data_path << " "
   cmd << "--dist " if !$options[:run_local]
   yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
@@ -455,30 +455,32 @@ def main()
   usage = "Usage: #{$PROGRAM_NAME} sql_file options"
   parser = OptionParser.new do |opts|
     opts.banner = usage
+    opts.on("-w", "--workdir [PATH]", "Path in which to create files") {|s| $options[:workdir] = s}
     opts.on("-d", "--dbtdata [PATH]", String, "Set the path of the dbt data file") { |s| $options[:dbt_data_path] = s }
     opts.on("-k", "--k3data [PATH]", String, "Set the path of the k3 data file") { |s| $options[:k3_data_path] = s }
-    opts.on("--debug", "Debug mode") { $options[:debug] = true }
-    opts.on("--json_debug", "Debug queries that won't die") { $options[:json_debug] = true }
     opts.on("-s", "--switches [NUM]", Integer, "Set the number of switches") { |i| $options[:num_switches] = i }
     opts.on("-n", "--nodes [NUM]", Integer, "Set the number of nodes") { |i| $options[:num_nodes] = i }
-    opts.on("--perhost [NUM]", Integer, "How many peers to run per host") {|s| $options[:perhost] = s}
+    opts.on("-j", "--json [JSON]", String, "JSON file to load options") {|s| $options[:json_file] = s}
+    opts.on("--debug", "Debug mode") { $options[:debug] = true }
+    opts.on("--json_debug", "Debug queries that won't die") { $options[:json_debug] = true }
+    opts.on("--perhost [NUM]", Integer, "How many peers to run per host") {|i| $options[:perhost] = i}
     opts.on("--nmask [MASK]", String, "Mask for node deployment") {|s| $options[:nmask] = s}
     opts.on("--highmem", "High memory deployment (HM only)") { $options[:nmask] = 'qp-hm.'}
     opts.on("--brew", "Use homebrew (OSX)") { $options[:osx_brew] = true }
     opts.on("--run-local", "Run locally") { $options[:run_local] = true }
     opts.on("--create-local", "Create the cpp file locally") { $options[:create_local] = true }
     opts.on("--compile-local", "Compile locally") { $options[:compile_local] = true }
-    opts.on("-j", "--json [JSON]", String, "JSON file to load options") {|s| $options[:json_file] = s}
     opts.on("--uid [UID]", String, "UID of file") {|s| $options[:uid] = s}
     opts.on("--jobid [JOBID]", String, "JOBID of job") {|s| $options[:jobid] = s}
     opts.on("--mosaic-path [PATH]", String, "Path for mosaic") {|s| $options[:mosaic_path] = s}
     opts.on("--fetch-cpp", "Fetch a cpp file after remote creation") { $options[:fetch_cpp] = true}
     opts.on("--fetch-bin", "Fetch bin + cpp files after remote compilation") { $options[:fetch_bin] = true}
     opts.on("--fetch-results", "Fetch results after job") { $options[:fetch_results] = true }
-    opts.on("-w", "--workdir [PATH]", "Path in which to create files") {|s| $options[:workdir] = s}
     opts.on("--latest-uid",  "Use the latest uid on the server") { $options[:latest_uid] = true}
     opts.on("--moderate",  "Query is of moderate skew (and size)") { $options[:skew] = :moderate}
+    opts.on("--moderate2",  "Query is of moderate skew (and size), class 2") { $options[:skew] = :moderate2}
     opts.on("--extreme",  "Query is of extreme skew (and size)") { $options[:skew] = :extreme}
+    opts.on("--dry-run",  "Dry run for Mosaic deployment (generates K3 YAML topology)") { $options[:dry_run] = true}
     opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
 
     # stages
@@ -644,7 +646,10 @@ def main()
   end
 
   if $options[:deploy_k3]
-    if $options[:run_local]
+    if $options[:dry_run]
+      role_file = File.join($workdir, nice_name + "_local.yaml")
+      gen_yaml(k3_data_path, role_file, script_path)
+    elsif $options[:run_local]
       run_deploy_k3_local(bin_path, k3_data_path, nice_name, script_path)
     else
       run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, script_path)
