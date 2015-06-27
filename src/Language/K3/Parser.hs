@@ -1041,7 +1041,8 @@ equateQExpr = symbol "=" *> qualifiedExpr
 {- Endpoints -}
 
 endpoint :: Bool -> K3Parser EndpointBuilder
-endpoint isSource = if isSource then choice $ [value]++common else choice common
+endpoint isSource = if isSource then choice $ [value, try fileseq] ++ common
+                                else choice common
   where common = [builtin isSource, file isSource, network isSource]
 
 value :: K3Parser EndpointBuilder
@@ -1056,9 +1057,19 @@ builtin isSource = mkBuiltin <$> builtinChannels <*> format
 
 file :: Bool -> K3Parser EndpointBuilder
 file isSource = mkFile <$> (symbol "file" *> eTerminal) <*> format
-  where mkFile argE formatE n t =
-          fileSpec argE formatE >>= \s -> return $ endpointMethods isSource s argE formatE n t
+  where mkFile argE formatE n t = do
+          s <- fileSpec argE formatE
+          return $ endpointMethods isSource s argE formatE n t
+
         fileSpec argE formatE = FileEP <$> S.exprS argE <*> S.symbolS formatE
+
+fileseq :: K3Parser EndpointBuilder
+fileseq = mkFileSeq <$> (symbol "fileseq" *> eVariable) <*> format
+  where mkFileSeq argE formatE n t = do
+          s <- fileSeqSpec argE formatE
+          return $ endpointMethods True s argE formatE n t
+
+        fileSeqSpec argE formatE = FileSeqEP <$> S.exprS argE <*> S.symbolS formatE
 
 network :: Bool -> K3Parser EndpointBuilder
 network isSource = mkNetwork <$> (symbol "network" *> eTerminal) <*> format
