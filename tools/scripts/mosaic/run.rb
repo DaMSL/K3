@@ -357,8 +357,9 @@ def parse_k3_results(script_path, dbt_results, jobid)
   job_sandbox_path = File.join($workdir, jobid)
   if Dir.exists?(job_sandbox_path)
     Dir.entries(job_sandbox_path).each do |d|
-      if File.directory?(e) && Dir.exists?(File.join(e, "json"))
-        json_path = File.join(e, "json")
+      node_sandbox_path = File.join(job_sandbox_path, d)
+      json_path = File.join(node_sandbox_path, "json")
+      if File.directory?(node_sandbox_path) && Dir.exists?(json_path)
         Dir.entries(json_path).each do |f|
           files << File.join(json_path, f) if f =~ /.*Globals.dsv/
         end
