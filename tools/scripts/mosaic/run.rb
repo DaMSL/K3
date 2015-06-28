@@ -524,8 +524,8 @@ def main()
     opts.on("--extreme",  "Query is of extreme skew (and size)") { $options[:skew] = :extreme}
     opts.on("--dry-run",  "Dry run for Mosaic deployment (generates K3 YAML topology)") { $options[:dry_run] = true}
     opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
-    opts.on("--gc-epoch", "Set gc epoch time (ms)") { |i| $options[:gc_epoch] = i }
-    opts.on("--msg-delay", "Set switch message delay (ms)") { |i| $options[:msg_delay] = i }
+    opts.on("--gc-epoch [MS]", "Set gc epoch time (ms)") { |i| $options[:gc_epoch] = i }
+    opts.on("--msg-delay [MS]", "Set switch message delay (ms)") { |i| $options[:msg_delay] = i }
 
     # stages
     opts.on("-a", "--all", "All stages") {
