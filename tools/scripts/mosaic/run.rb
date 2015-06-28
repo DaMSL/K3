@@ -432,6 +432,7 @@ end
 
 def run_compare(dbt_results, k3_results)
   # Compare results
+  pass = true
   dbt_results.each_pair do |map,v1|
     v2 = k3_results[map]
     if !v2
@@ -443,10 +444,16 @@ def run_compare(dbt_results, k3_results)
     end
     if (v1 <=> v2) != 0
       stage "[6] Mismatch in map #{map}\nv1:#{v1.to_s}\nv2:#{v2.to_s}"
-      exit 1
+      pass = false
+    else
+      stage "[6] Map #{map}: OK"
     end
   end
-  stage "[6] Results check...OK"
+  if pass
+    stage "[6] Results check...OK"
+  else
+    stage "[6] Results check...FAIL"
+  end
 end
 
 def check_param(p, nm)
