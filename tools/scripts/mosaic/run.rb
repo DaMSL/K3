@@ -254,10 +254,13 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
   end
 
   file_paths.each do |f|
+    f_path = File.join($workdir, f)
+    f_final_path = File.join(sandbox_path, f)
     f_sandbox_path = File.join(sandbox_path, File.basename(f, ".*"))
     `mkdir -p #{f_sandbox_path}` unless Dir.exists?(f_sandbox_path)
     curl(server_url, "/fs/jobs/#{nice_name}/#{jobid}/", getfile:f)
-    run("tar xvf #{File.join($workdir, f)} -C #{f_sandbox_path}")
+    run("tar xvf #{f_path} -C #{f_sandbox_path}")
+    `mv #{f_path} #{f_final_path}`
   end
 end
 
