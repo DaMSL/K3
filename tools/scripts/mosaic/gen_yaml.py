@@ -42,36 +42,38 @@ def create_file(num_switches, num_nodes, file_path):
     dump_yaml(peers2)
 
 def create_dist_file(num_switches, perhost, num_nodes, nmask, file_path):
-    # for now, each peer is on a different node
-    peers = []
-    peers += [('Master', 'master', 'qp5', None, None)]
-    peers += [('Timer',  'timer',  'qp6', None, None)]
-    peers += [('Switch1', 'switch', 'qp3', file_path, None)]
-    peers += [('Node' + str(i), 'node', nmask, None, perhost) for i in range(1, num_nodes+1)]
+    master_role = {'role': 'master'}
+    timer_role  = {'role': 'timer'}
+    switch_role = {'role': 'switch', 'switch_path': file_path}
+    node_role   = {'role': 'node'}
+    switch1_env = {'peer_globals': [master_role, timer_role, switch_role]}
+    switch_env  = {'k3_globals': switch_role}
+    node_env    = {'k3_globals': node_role}
+
+    k3_roles = []
+    k3_roles += [('Switch1', 'qp3', 3, None, switch1_env)]
     if num_switches > 1:
-        peers += [('Switch' + str(i + 1), 'switch', 'qp' + str((i % 4) + 3), file_path, None) for i in range(1, num_switches)]
+        k3_roles += [('Switch' + str(i + 1), 'qp' + str((i % 4) + 3), 1, None, switch_env) for i in range(1, num_switches)]
 
-    peers2 = []
-    for (name, role, addr, path, perh) in peers:
-        k3_globals = {'role':role}
-        # add path for switch
-        if path is not None:
-            k3_globals['switch_path'] = path
+    k3_roles += [('Node' + str(i), nmask, 1, perhost, node_env) for i in range(1, num_nodes+1)]
 
-        newpeer = { 'name':name,
-                    'peers':1,
-                    'hostmask':addr,
-                    'privileged':False,
-                    'volumes':[{'host':'/local', 'container':'/local'}],
-                    'k3_globals':k3_globals
+    launch_roles = []
+    for (name, addr, peers, perh, peer_envs) in k3_roles:
+        newrole = { 'hostmask'     : addr,
+                    'name'         : name,
+                    'peers'        : peers,
+                    'privileged'   : False,
+                    'volumes'      : [{'host':'/local', 'container':'/local'}],
                    }
-        if perh is not None:
-            newpeer['peers_per_host'] = perh
 
-        peers2 += [newpeer]
+        if perh is not None:
+            newrole['peers_per_host'] = perh
+
+        newrole.update(peer_envs)
+        launch_roles += [newrole]
 
     # dump out
-    dump_yaml(peers2)
+    dump_yaml(launch_roles)
 
 def main():
     parser = argparse.ArgumentParser()
