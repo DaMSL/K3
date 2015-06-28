@@ -48,28 +48,30 @@ end
 
 ### DBToaster stage ###
 
-def run_dbtoaster(test_path, dbt_data_path, dbt_platform, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
+def run_dbtoaster(exec_only, test_path, dbt_data_path, dbt_platform, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
   dbt_name_hpp_path = File.join($workdir, dbt_name_hpp)
   dbt_name_path = File.join($workdir, dbt_name)
 
-  stage "[2] Creating dbtoaster hpp file"
-  Dir.chdir(test_path)
-  run("#{File.join(dbt_platform, "dbtoaster")} --read-agenda -l cpp #{source_path} > #{dbt_name_hpp_path}")
+  if not exec_only
+    stage "[2] Creating dbtoaster hpp file"
+    Dir.chdir(test_path)
+    run("#{File.join(dbt_platform, "dbtoaster")} --read-agenda -l cpp #{source_path} > #{dbt_name_hpp_path}")
+    Dir.chdir(start_path)
+
+    # change the data path
+    s = File.read(dbt_name_hpp_path)
+    s.sub!(/agenda.csv/,dbt_data_path)
+    File.write(dbt_name_hpp_path, s)
+
+    # adjust boost libs for OS
+    boost_libs = %w(boost_program_options boost_serialization boost_system boost_filesystem boost_chrono boost_thread)
+    mt = dbt_platform == "dbt_osx" ? "-mt" : ""
+    boost_libs.map! { |lib| "-l" + lib + mt }
+
+    stage "[2] Compiling dbtoaster"
+    run("g++ #{File.join(dbt_lib_path, "main.cpp")} -std=c++11 -include #{dbt_name_hpp_path} -o #{dbt_name_path} -O3 -I#{dbt_lib_path} -L#{dbt_lib_path} -ldbtoaster -lpthread #{boost_libs.join ' '}")
+
   Dir.chdir(start_path)
-
-  # change the data path
-  s = File.read(dbt_name_hpp_path)
-  s.sub!(/agenda.csv/,dbt_data_path)
-  File.write(dbt_name_hpp_path, s)
-
-  # adjust boost libs for OS
-  boost_libs = %w(boost_program_options boost_serialization boost_system boost_filesystem boost_chrono boost_thread)
-  mt = dbt_platform == "dbt_osx" ? "-mt" : ""
-  boost_libs.map! { |lib| "-l" + lib + mt }
-
-  stage "[2] Compiling dbtoaster"
-  run("g++ #{File.join(dbt_lib_path, "main.cpp")} -std=c++11 -include #{dbt_name_hpp_path} -o #{dbt_name_path} -O3 -I#{dbt_lib_path} -L#{dbt_lib_path} -ldbtoaster -lpthread #{boost_libs.join ' '}")
-
   stage "[2] Running DBToaster"
   run("#{dbt_name_path} > #{dbt_name_path}.xml", [/File not found/])
 end
@@ -507,14 +509,15 @@ def main()
     opts.on("--json_debug", "Debug queries that won't die") { $options[:json_debug] = true }
     opts.on("--perhost [NUM]", Integer, "How many peers to run per host") {|i| $options[:perhost] = i}
     opts.on("--nmask [MASK]", String, "Mask for node deployment") {|s| $options[:nmask] = s}
+    opts.on("--uid [UID]", String, "UID of file") {|s| $options[:uid] = s}
+    opts.on("--jobid [JOBID]", String, "JOBID of job") {|s| $options[:jobid] = s}
+    opts.on("--mosaic-path [PATH]", String, "Path for mosaic") {|s| $options[:mosaic_path] = s}
     opts.on("--highmem", "High memory deployment (HM only)") { $options[:nmask] = 'qp-hm.'}
     opts.on("--brew", "Use homebrew (OSX)") { $options[:osx_brew] = true }
     opts.on("--run-local", "Run locally") { $options[:run_local] = true }
     opts.on("--create-local", "Create the cpp file locally") { $options[:create_local] = true }
     opts.on("--compile-local", "Compile locally") { $options[:compile_local] = true }
-    opts.on("--uid [UID]", String, "UID of file") {|s| $options[:uid] = s}
-    opts.on("--jobid [JOBID]", String, "JOBID of job") {|s| $options[:jobid] = s}
-    opts.on("--mosaic-path [PATH]", String, "Path for mosaic") {|s| $options[:mosaic_path] = s}
+    opts.on("--dbt-exec-only", "Execute DBToaster only (skipping query build)") { $options[:dbt_exec_only] = true }
     opts.on("--fetch-cpp", "Fetch a cpp file after remote creation") { $options[:fetch_cpp] = true}
     opts.on("--fetch-bin", "Fetch bin + cpp files after remote compilation") { $options[:fetch_bin] = true}
     opts.on("--fetch-results", "Fetch results after job") { $options[:fetch_results] = true }
@@ -656,7 +659,7 @@ def main()
   end
 
   if $options[:dbtoaster]
-    run_dbtoaster(test_path, dbt_data_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
+    run_dbtoaster($options[:dbt_exec_only], test_path, dbt_data_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
   end
   # either nil or take from command line
   uid = $options[:uid] ? $options[:uid] : $options[:latest_uid] ? "latest" : nil
