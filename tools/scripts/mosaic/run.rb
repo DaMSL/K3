@@ -70,6 +70,7 @@ def run_dbtoaster(exec_only, test_path, dbt_data_path, dbt_platform, dbt_lib_pat
 
     stage "[2] Compiling dbtoaster"
     run("g++ #{File.join(dbt_lib_path, "main.cpp")} -std=c++11 -include #{dbt_name_hpp_path} -o #{dbt_name_path} -O3 -I#{dbt_lib_path} -L#{dbt_lib_path} -ldbtoaster -lpthread #{boost_libs.join ' '}")
+  end
 
   Dir.chdir(start_path)
   stage "[2] Running DBToaster"
