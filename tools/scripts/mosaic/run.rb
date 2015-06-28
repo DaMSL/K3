@@ -481,6 +481,59 @@ def run_compare(dbt_results, k3_results)
   end
 end
 
+# Loads k3 trace data (messages, globals) from a job into postgres.
+def run_ktrace(script_path, jobid)
+
+  def initialize_db(dbconn, required_tables)
+    init = false
+    db_init_script = File.join(script_path, 'ktrace_schema.sql')
+    required_tables.each do |t|
+      res = dbconn.exec("SELECT to_regclass('public.#{t}');")
+      if res[0][0].nil?
+        init = true
+        break
+      end
+    end
+    if init
+      conn.exec(File.read(db_init_script))
+    end
+  end
+
+  def ingest_file(dbconn, table_name, file_path)
+    dbconn.copy_data "COPY #{table_name} FROM STDIN delimiter '|' quote '`' csv" do
+      str = File.read(file_path)
+      str.each_line do |line|
+        dbconn.put_copy_data jobid + "|" + line
+      end
+      dbconn.put_copy_end
+    end
+  end
+
+  stage "[7] Initializing KTrace database"
+  job_sandbox_path = File.join($workdir, "job_#{jobid}")
+
+  if Dir.exists?(job_sandbox_path)
+    globals_path  = File.join(job_sandbox_path, "globals.dsv")
+    messages_path = File.join(job_sandbox_path, "messages.dsv")
+    if File.file?(globals_path) && File.file?(messages_path)
+      stage "[7] Found trace data, now copying."
+      conn = PG.connect()
+      initialize_db(conn, ['Globals', 'Messages'])
+
+      ingest_file(conn, "Globals", globals_path)
+      stage "[7] Copied globals trace data."
+
+      ingest_file(conn, "Messages", messages_path)
+      stage "[7] Copied messages trace data."
+
+      # TODO: automatic querying and verification of job logs.
+    else
+      stage "[7] ERROR: No ktrace data found for job #{jobid}"
+    end
+  end
+
+end
+
 def check_param(p, nm)
   if p.nil?
     puts "Please provide #{nm} param"
@@ -547,7 +600,8 @@ def main()
     opts.on("--gc-epoch [MS]", "Set gc epoch time (ms)") { |i| $options[:gc_epoch] = i }
     opts.on("--msg-delay [MS]", "Set switch message delay (ms)") { |i| $options[:msg_delay] = i }
 
-    # stages
+    # Stages.
+    # Ktrace is not run by default.
     opts.on("-a", "--all", "All stages") {
       $options[:dbtoaster]  = true
       $options[:mosaic]     = true
@@ -556,12 +610,14 @@ def main()
       $options[:deploy_k3]  = true
       $options[:compare]    = true
     }
+
     opts.on("-1", "--mosaic",    "Mosaic stage (creates Mosaic K3 program)")       { $options[:mosaic]     = true }
     opts.on("-2", "--dbtoaster", "DBToaster stage")                                { $options[:dbtoaster]  = true }
     opts.on("-3", "--create",    "Create K3 stage (creates Mosaic CPP program)")   { $options[:create_k3]  = true }
     opts.on("-4", "--compile",   "Compile K3 stage (compiles Mosaic CPP program)") { $options[:compile_k3] = true }
     opts.on("-5", "--deploy",    "Deploy stage")                                   { $options[:deploy_k3]  = true }
     opts.on("-6", "--compare",   "Compare stage")                                  { $options[:compare]    = true }
+    opts.on("-7", "--ktrace",    "KTrace stage")                                   { $options[:ktrace]     = true }
   end
   parser.parse!
 
@@ -729,6 +785,10 @@ def main()
     dbt_results = parse_dbt_results(dbt_name)
     k3_results  = parse_k3_results(script_path, dbt_results, jobid)
     run_compare(dbt_results, k3_results)
+  end
+
+  if $options[:ktrace]
+    run_ktrace(script_path, jobid)
   end
 end
 
