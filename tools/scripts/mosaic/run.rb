@@ -242,9 +242,13 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
   check_status(status, "FINISHED", "Mesos job")
 
   stage "[#{stage_num}] Getting result data"
-  `rm -rf json`
+
+  sandbox_path = File.join($workdir, "sandbox_#{jobid}")
+  `mkdir -p #{sandbox_path}` unless Dir.exists?(sandbox_path)
+
   file_paths = []
   res['sandbox'].each do |s|
+    puts "Result file: " + s
     if File.extname(s) == '.tar'
       file_paths << s
     end
@@ -252,7 +256,7 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
 
   file_paths.each do |f|
     curl(server_url, "/fs/jobs/#{nice_name}/#{jobid}/", getfile:f)
-    run("tar xvf #{File.join($workdir, f)} -C #{$workdir}")
+    run("tar xvf #{File.join($workdir, f)} -C #{sandbox_path}")
   end
 end
 
