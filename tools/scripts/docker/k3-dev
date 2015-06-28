@@ -24,9 +24,9 @@ ENV ALEX_VER 3.1.4
 
 ENV OPAMYES 1
 
-ENV PGHOST=qp2
-ENV PGHOSTADDR=192.168.0.11
-ENV PGUSER=postgres
+ENV PGHOST qp2
+ENV PGHOSTADDR 192.168.0.11
+ENV PGUSER postgres
 
 # Install basic packages to build the image
 RUN apt-get update && apt-get install -y \
