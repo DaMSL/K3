@@ -243,20 +243,21 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
 
   stage "[#{stage_num}] Getting result data"
 
-  sandbox_path = File.join($workdir, "sandbox_#{jobid}")
+  sandbox_path = File.join($workdir, "job_#{jobid}")
   `mkdir -p #{sandbox_path}` unless Dir.exists?(sandbox_path)
 
   file_paths = []
   res['sandbox'].each do |s|
-    puts "Result file: " + s
     if File.extname(s) == '.tar'
       file_paths << s
     end
   end
 
   file_paths.each do |f|
+    f_sandbox_path = File.join(sandbox_path, File.basename(f, ".*"))
+    `mkdir -p #{f_sandbox_path}` unless Dir.exists?(f_sandbox_path)
     curl(server_url, "/fs/jobs/#{nice_name}/#{jobid}/", getfile:f)
-    run("tar xvf #{File.join($workdir, f)} -C #{sandbox_path}")
+    run("tar xvf #{File.join($workdir, f)} -C #{f_sandbox_path}")
   end
 end
 
