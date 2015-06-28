@@ -349,24 +349,33 @@ def parse_dbt_results(dbt_name)
   return dbt_results
 end
 
-def parse_k3_results(script_path, dbt_results)
+def parse_k3_results(script_path, dbt_results, jobid)
   stage "[6] Parsing K3 results"
   files = []
-  json_path = File.join($workdir, "json")
-  if Dir.exists?(json_path)
-    Dir.entries(json_path).each do |f|
-      files << File.join(json_path, f) if f =~ /.*Globals.dsv/
+
+  # Retrieve all Globals.dsv files in the job sandbox.
+  job_sandbox_path = File.join($workdir, jobid)
+  if Dir.exists?(job_sandbox_path)
+    Dir.entries(job_sandbox_path).each do |d|
+      if File.directory?(e) && Dir.exists?(File.join(e, "json"))
+        json_path = File.join(e, "json")
+        Dir.entries(json_path).each do |f|
+          files << File.join(json_path, f) if f =~ /.*Globals.dsv/
+        end
+      end
     end
   end
 
+  puts "Parse k3 raw results: " + files.to_s
+
   # Run script to convert json format
   unless files.empty?
-    run("#{File.join(script_path, "clean_json.py")} --prefix_path #{$workdir} #{files.join(" ")}")
+    run("#{File.join(script_path, "clean_json.py")} --prefix_path #{job_sandbox_path} #{files.join(" ")}")
   end
 
   # We assume only final state data
   combined_maps = {}
-  str = File.read(File.join($workdir, 'globals.dsv'))
+  str = File.read(File.join(job_sandbox_path, 'globals.dsv'))
   stage "[6] Found K3 globals.csv"
   str.each_line do |line|
     csv = line.split('|')
@@ -716,7 +725,7 @@ def main()
 
   if $options[:compare]
     dbt_results = parse_dbt_results(dbt_name)
-    k3_results  = parse_k3_results(script_path, dbt_results)
+    k3_results  = parse_k3_results(script_path, dbt_results, jobid)
     run_compare(dbt_results, k3_results)
   end
 end
