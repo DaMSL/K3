@@ -220,6 +220,12 @@ def gen_yaml(k3_data_path, role_file, script_path)
   cmd << "--perhost " << $options[:perhost].to_s << " " if $options[:perhost]
   cmd << "--file " << k3_data_path << " "
   cmd << "--dist " if !$options[:run_local]
+
+  extra_args = []
+  extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
+  extra_args << "sw_driver_sleep=" + $options[:msg_delay] if $options[:msg_delay]
+  cmd << "--extra-args " << extra_args.join(',') << " " if extra_args.size > 0
+
   yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
   File.write(role_file, yaml)
 end
@@ -518,6 +524,8 @@ def main()
     opts.on("--extreme",  "Query is of extreme skew (and size)") { $options[:skew] = :extreme}
     opts.on("--dry-run",  "Dry run for Mosaic deployment (generates K3 YAML topology)") { $options[:dry_run] = true}
     opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
+    opts.on("--gc-epoch", "Set gc epoch time (ms)") { |i| $options[:gc_epoch] = i }
+    opts.on("--msg-delay", "Set switch message delay (ms)") { |i| $options[:msg_delay] = i }
 
     # stages
     opts.on("-a", "--all", "All stages") {
