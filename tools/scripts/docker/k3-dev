@@ -36,13 +36,9 @@ RUN apt-get update && apt-get install -y \
     apt-get update && \
     apt-get install -y software-properties-common python-software-properties python-setuptools \
                        opam \
-                       ruby2.2 python python-dev python-pip postgresql-client-9.4 \
+                       ruby2.2 ruby2.2-dev python python-dev python-pip \
+                       postgresql-client-9.4 libpq-dev \
                        libyaml-cpp-dev libzmq3-dev libre2-dev numactl && \
-    pip install pyyaml && \
-    pip install flask && \
-    pip install pytz && \
-    pip install enum34 && \
-    pip install Flask-SocketIO && \
     update-alternatives \
       --install /usr/bin/ruby ruby /usr/bin/ruby2.2 50 \
       --slave /usr/bin/irb irb /usr/bin/irb2.2 \
@@ -52,6 +48,12 @@ RUN apt-get update && apt-get install -y \
       --slave /usr/bin/testrb testrb /usr/bin/testrb2.2 \
       --slave /usr/bin/erb erb /usr/bin/erb2.2 \
       --slave /usr/bin/ri ri /usr/bin/ri2.2 && \
+    pip install pyyaml && \
+    pip install flask && \
+    pip install pytz && \
+    pip install enum34 && \
+    pip install Flask-SocketIO && \
+    gem install pg && \
     opam init -a && \
     opam switch 4.02.1 && \
     eval `opam config env` && \
