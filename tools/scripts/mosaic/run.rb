@@ -313,16 +313,21 @@ def parse_dbt_results(dbt_name)
   r = REXML::Document.new(dbt_xml_out)
   dbt_results = {}
   r.elements['boost_serialization/snap'].each do |result|
-    # complex results
-    res = []
+    # results with keys
     if result.has_elements?
       result.each do |item|
         if item.name == 'item'
+          res = []
           item.each { |e| res << str_to_val(e.text) }
+
+          if dbt_results.has_key?(result.name)
+            dbt_results[result.name][res[0...-1]] = res[-1]
+          else
+            dbt_results[result.name] = {res[0...-1] => res[-1]}
+          end
         end
       end
-      dbt_results[result.name] = res if res.size > 0
-    # simple result
+    # results without keys
     else
       dbt_results[result.name] = str_to_val(result.text)
     end
@@ -358,38 +363,62 @@ def parse_k3_results(script_path, dbt_results)
     map_data_j = JSON.parse(map_data)
     # skip empty maps
     next if map_data_j.empty?
+
+    # convert to [k,v] rather than flat [k,v,k,v...]
+    vid = nil
+    map_data_k = []
+    map_data_j.each do |v|
+      if vid.nil?
+        vid = v
+      else
+        map_data_k << [vid, v]
+        vid = nil
+      end
+    end
+
     # frontier operation
     max_map = {}
-    # check if we're dealing with simple values
-    if map_data_j[0].size > 2
-      map_data_j.each do |v|
-        key = v[1..-2]
+    # check if we're dealing with maps without keys
+    # format of elements: array of [vid, [key, value], vid, [k3y, value]...]
+    # check for existence of first element's key (ie. key-less maps)
+    if map_data_k[0][1].size > 1
+      map_data_k.each do |e|
+        vid = e[0]
+        key = e[1][0]
+        val = e[1][1]
         max_vid, _ = max_map[key]
-        if !max_vid || ((v[0] <=> max_vid) == 1)
-          max_map[key] = [v[0], v[-1]]
+        # compare vids to see if greater
+        if !max_vid || ((vid <=> max_vid) == 1)
+          max_map[key] = [vid, val]
         end
       end
-      # add the max map to the combined maps
+      # add the max map to the combined maps and discard vids
       max_map.each_pair do |key,value|
         if !combined_maps.has_key?(map_name)
           combined_maps[map_name] = { key => value[1] }
         elsif !combined_maps[map_name].has_key?(key)
           combined_maps[map_name][key] = value[1]
         else
+          # this can happen because each data node has the same maps,
+          # and they're zeroed out by default, so adding should work out.
           combined_maps[map_name][key] += value[1]
         end
       end
-    else # simple data type
+    else # key-less maps
       max_vid  = nil
       max_data = nil
-      map_data_j.each do |v|
-        if !max_vid || ((v[0] <=> max_vid) == 1)
-          max_vid  = v[0]
-          max_data = v[1]
+      map_data_k.each do |e|
+        vid = e[0]
+        val = e[1]
+        if !max_vid || ((vid <=> max_vid) == 1)
+          max_vid  = vid
+          max_data = val
         end
       end
       unless !max_vid
         if combined_maps.has_key?(map_name)
+          # again, this works because there's a 0 value in every data node
+          # for this map_name, and adding will take care of that
           combined_maps[map_name] += max_data
         else
           combined_maps[map_name] = max_data
@@ -397,23 +426,23 @@ def parse_k3_results(script_path, dbt_results)
       end
     end
   end
-  puts "combined: #{combined_maps}"
+  # puts "combined: #{combined_maps}"
   return combined_maps
 end
 
 def run_compare(dbt_results, k3_results)
   # Compare results
-  dbt_results.each_pair do |k,v1|
-    v2 = k3_results[k]
+  dbt_results.each_pair do |map,v1|
+    v2 = k3_results[map]
     if !v2
-      stage "[6] Mismatch at key #{k}: missing k3 value"; exit 1
+      stage "[6] Mismatch at map #{map}: missing k3 values"; exit 1
     end
     if v1.respond_to?(:sort!) && v2.respond_to?(:sort!)
       v1.sort!
       v2.sort!
     end
     if (v1 <=> v2) != 0
-      stage "[6] Mismatch at key #{k}\nv1:#{v1}\nv2:#{v2}"
+      stage "[6] Mismatch in map #{map}\nv1:#{v1.to_s}\nv2:#{v2.to_s}"
       exit 1
     end
   end
