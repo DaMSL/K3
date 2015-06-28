@@ -24,6 +24,10 @@ ENV ALEX_VER 3.1.4
 
 ENV OPAMYES 1
 
+ENV PGHOST=qp2
+ENV PGHOSTADDR=192.168.0.11
+ENV PGUSER=postgres
+
 # Install basic packages to build the image
 RUN apt-get update && apt-get install -y \
                        bzip2 unzip autoconf Libtool \
@@ -32,7 +36,7 @@ RUN apt-get update && apt-get install -y \
     apt-get update && \
     apt-get install -y software-properties-common python-software-properties python-setuptools \
                        opam \
-                       ruby2.2 python python-dev python-pip \
+                       ruby2.2 python python-dev python-pip postgresql-client-9.4 \
                        libyaml-cpp-dev libzmq3-dev libre2-dev numactl && \
     pip install pyyaml && \
     pip install flask && \
@@ -53,7 +57,9 @@ RUN apt-get update && apt-get install -y \
     eval `opam config env` && \
     opam install ocamlfind && \
     opam install yojson && \
-    /bin/echo -e "\neval \`opam config env\`\n" >> /root/.bashrc 
+    /bin/echo -e "\neval \`opam config env\`\n" >> /root/.bashrc && \
+    /bin/echo -e "qp2:*:*:postgres:mosaic_ktrace_db\n" >> /root/.pgpass && \
+    chmod 0600 /root/.pgpass
 
 # Install Boost
 RUN wget http://sourceforge.net/projects/boost/files/boost/$BOOST_VER/$BOOST_DIR.tar.bz2/download && \
