@@ -354,7 +354,7 @@ def parse_k3_results(script_path, dbt_results, jobid)
   files = []
 
   # Retrieve all Globals.dsv files in the job sandbox.
-  job_sandbox_path = File.join($workdir, jobid)
+  job_sandbox_path = File.join($workdir, "job_#{jobid}")
   if Dir.exists?(job_sandbox_path)
     Dir.entries(job_sandbox_path).each do |d|
       node_sandbox_path = File.join(job_sandbox_path, d)
@@ -366,8 +366,6 @@ def parse_k3_results(script_path, dbt_results, jobid)
       end
     end
   end
-
-  puts "Parse k3 raw results: " + files.to_s
 
   # Run script to convert json format
   unless files.empty?
