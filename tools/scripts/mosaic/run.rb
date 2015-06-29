@@ -4,6 +4,7 @@
 require 'optparse'
 require 'fileutils'
 require 'net/http'
+require 'yaml'
 require 'json'
 require 'rexml/document'
 require 'csv'
@@ -255,6 +256,7 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
   end
 
   files_to_clean = []
+  peer_yaml_files = []
   file_paths.each do |f|
     f_path = File.join($workdir, f)
     f_final_path = File.join(sandbox_path, f)
@@ -275,11 +277,27 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
         end
       end
     end
+
+    # Track peer yamls.
+    Dir.entries(node_sandbox_path).each do |nsf|
+      if nsf =~ /peers.*.yaml/
+        peer_yaml_files << File.join(node_sandbox_path, nsf)
+      end
+    end
   end
 
   # Run script to convert json format
   unless files_to_clean.empty?
     run("#{File.join(script_path, "clean_json.py")} --prefix_path #{sandbox_path} #{files_to_clean.join(" ")}")
+  end
+
+  unless peer_yaml_files.empty?
+    peer_yaml_files.each do |pf|
+      peer_bootstrap = YAML.load_file(pf)
+      puts peer_bootstrap.to_s
+      puts peer_bootstrap['me'].to_s
+      puts peer_bootstrap['role'].to_s
+    end
   end
 
 end
