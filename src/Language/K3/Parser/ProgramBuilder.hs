@@ -76,9 +76,23 @@ cfpName :: Identifier -> Identifier
 cfpName n = n++"FilePath"
 
 {- Runtime functions -}
+openBuiltinFn :: K3 Expression
+openBuiltinFn = EC.variable "openBuiltin"
+
+openFileFn :: K3 Expression
+openFileFn = EC.variable "openFile"
+
+openSocketFn :: K3 Expression
+openSocketFn = EC.variable "openSocket"
+
+closeFn :: K3 Expression
+closeFn = EC.variable "close"
 
 resolveFn :: K3 Expression
 resolveFn = EC.variable "resolve"
+
+registerSocketDataTriggerFn :: K3 Expression
+registerSocketDataTriggerFn = EC.variable "registerSocketDataTrigger"
 
 {- Top-level functions -}
 roleId :: Identifier
@@ -150,17 +164,17 @@ processInitsAndRoles (Node t c) endpointBQGs = Node t $ c ++ initializerFns
 {- Code generation methods-}
 -- TODO: replace with Template Haskell
 
-endpointMethods :: Bool -> EndpointSpec -> Identifier -> K3 Type
+endpointMethods :: Bool -> EndpointSpec -> K3 Expression -> K3 Expression -> Identifier -> K3 Type
                 -> (EndpointSpec, Maybe (K3 Expression), [K3 Declaration])
-endpointMethods isSource eSpec n t =
+endpointMethods isSource eSpec argE formatE n t =
   if isSource then sourceDecls else sinkDecls
   where
-    sourceDecls = (eSpec, Nothing, (map mkMethod [mkInit, mkStart, mkFinal, sourceHasRead, sourceRead]) ++ [sourceController])
+    sourceDecls = (eSpec, Nothing, (map mkMethod [mkInit, mkStart, mkFinal, sourceHasRead, sourceRead]) ++ [sourceController] ++ sourceExtraDecls)
     sinkDecls = (eSpec, Just sinkImpl, map mkMethod [mkInit, mkFinal, sinkHasWrite, sinkWrite])
 
     -- Endpoint-specific declarations
     sourceExtraDecls = case eSpec of
-      FileSeqEP _ _ -> [ builtinGlobal (cfiName n) (TC.int    @+ TMutable) Nothing
+      FileSeqEP _ _ _ -> [ builtinGlobal (cfiName n) (TC.int    @+ TMutable) Nothing
                        , builtinGlobal (cfpName n) (TC.string @+ TMutable) Nothing ]
       _ -> []
 
@@ -168,12 +182,12 @@ endpointMethods isSource eSpec n t =
       builtinGlobal (n++m) (qualifyT $ TC.function argT retT)
         $ maybe Nothing (Just . qualifyE) eOpt
 
-    mkInit  = ("Init",  TC.unit, TC.unit, Just $ EC.lambda "_" $ initE)
-    mkStart = ("Start", TC.unit, TC.unit, Just $ EC.lambda "_" $ startE)
-    mkFinal = ("Final", TC.unit, TC.unit, Just $ EC.lambda "_" $ closeE)
+    mkInit  = ("Init",  TC.unit, TC.unit, Nothing) 
+    mkStart = ("Start", TC.unit, TC.unit, Nothing) 
+    mkFinal = ("Final", TC.unit, TC.unit, Nothing) 
 
     sourceController = case eSpec of
-      FileSeqEP _ _ -> seqSrcController
+      FileSeqEP _ _ _ -> seqSrcController
       _ -> singleSrcController
 
     sinkImpl =
@@ -183,13 +197,6 @@ endpointMethods isSource eSpec n t =
           (EC.applyMany (EC.variable $ cwName n) [EC.variable "__msg"])
           (EC.unit))
 
-    sourceController = builtinTrigger (ccName n) TC.unit $
-      EC.lambda "_"
-        (EC.ifThenElse
-          (EC.applyMany (EC.variable $ chrName n) [EC.unit])
-          (EC.block [EC.applyMany (EC.variable $ cpName n) [EC.unit], (EC.send (EC.variable $ ccName n) myAddr EC.unit)])
-          EC.unit)
-    
     singleSrcController = builtinTrigger (ccName n) TC.unit $
       EC.lambda "_" $
         EC.ifThenElse
@@ -228,23 +235,17 @@ endpointMethods isSource eSpec n t =
     -- External functions
     cleanT = stripTUIDSpan t
 
-    mkInit  = ("Init",  TC.unit, TC.unit, Nothing)
-    mkStart = ("Start", TC.unit, TC.unit, Nothing)
-    mkFinal = ("Final", TC.unit, TC.unit, Nothing)
-
     sourceHasRead = ("HasRead",  TC.unit, TC.bool, Nothing)
     sourceRead    = ("Read",     TC.unit, cleanT,  Nothing)
     sinkHasWrite  = ("HasWrite", TC.unit, TC.bool, Nothing)
     sinkWrite     = ("Write",    cleanT,  TC.unit, Nothing)
 
-<<<<<<< HEAD
-=======
-    initE = case eSpec of
-      BuiltinEP _ _ -> EC.applyMany openBuiltinFn [sourceId n, argE, formatE]
-      FileEP    _ _ -> openFnE openFileFn
-      FileSeqEP _ _ -> openFileSeqFnE openFileFn
-      NetworkEP _ _ -> openFnE openSocketFn
-      _             -> error "Invalid endpoint argument"
+    --initE = case eSpec of
+    --  BuiltinEP _ _   -> EC.applyMany openBuiltinFn [sourceId n, argE, formatE]
+    --  FileEP    _ _ _ -> openFnE openFileFn
+    --  FileSeqEP _ _ _ -> openFileSeqFnE openFileFn
+    --  NetworkEP _ _ _ -> openFnE openSocketFn
+    --  _             -> error "Invalid endpoint argument"
 
     openFnE openFn = EC.applyMany openFn [sourceId n, argE, formatE, modeE]
 
@@ -254,10 +255,10 @@ endpointMethods isSource eSpec n t =
     modeE = EC.constant . CString $ if isSource then "r" else "w"
 
     startE = case eSpec of
-      BuiltinEP _ _ -> fileStartE
-      FileEP    _ _ -> fileStartE
-      FileSeqEP _ _ -> fileStartE
-      NetworkEP _ _ -> EC.applyMany registerSocketDataTriggerFn [sourceId n, EC.variable $ ccName n]
+      BuiltinEP _ _   -> fileStartE
+      FileEP    _ _ _ -> fileStartE
+      FileSeqEP _ _ _ -> fileStartE
+      NetworkEP _ _ _ -> EC.applyMany registerSocketDataTriggerFn [sourceId n, EC.variable $ ccName n]
       _             -> error "Invalid endpoint argument"
 
     fileStartE = EC.send (EC.variable (ccName n)) myAddr EC.unit
@@ -265,10 +266,10 @@ endpointMethods isSource eSpec n t =
     closeE = EC.applyMany closeFn [sourceId n]
 
     controlE processE = case eSpec of
-      BuiltinEP _ _ -> fileControlE processE
-      FileEP    _ _ -> fileControlE processE
-      FileSeqEP _ _ -> fileControlE processE
-      NetworkEP _ _ -> processE
+      BuiltinEP _ _   -> fileControlE processE
+      FileEP    _ _ _ -> fileControlE processE
+      FileSeqEP _ _ _ -> fileControlE processE
+      NetworkEP _ _ _ -> processE
       _             -> error "Invalid endpoint argument"
 
     fileControlE processE = EC.block [processE, controlRcrE]
@@ -276,7 +277,6 @@ endpointMethods isSource eSpec n t =
 
     sourceId n' = EC.constant $ CString n'
 
->>>>>>> development
 -- | Rewrites a source declaration's process method to access and
 --   dispatch the next available event to all its bindings.
 bindSource :: [(Identifier, Identifier)] -> K3 Declaration -> (K3 Declaration, [K3 Declaration])

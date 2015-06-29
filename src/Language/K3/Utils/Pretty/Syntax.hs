@@ -274,9 +274,9 @@ endpoint kw n specOpt t' eOpt' = case specOpt of
   Nothing                   -> common Nothing
   Just ValueEP              -> common $ maybe Nothing (Just . (text "value" <+>)) eOpt'
   Just (BuiltinEP kind fmt) -> common . Just $ text kind <+> text fmt
-  Just (FileEP path fmt)    -> common . Just $ text "file" <+> text path <+> text fmt
-  Just (NetworkEP addr fmt) -> common . Just $ text "network" <+> text addr <+> text fmt
-  Just (FileSeqEP pathCollection fmt) -> common . Just $ text "fileseq" <+> text pathCollection <+> text fmt
+  Just (FileEP path txt fmt)    -> common . Just $ text "file" <+> text path <+> text (txtOrBin txt) <+> text fmt
+  Just (NetworkEP addr txt fmt) -> common . Just $ text "network" <+> text addr <+> text (txtOrBin txt) <+> text fmt
+  Just (FileSeqEP pathCollection txt fmt) -> common . Just $ text "fileseq" <+> text pathCollection <+> text (txtOrBin txt) <+> text fmt
 
   where
     common initializer =

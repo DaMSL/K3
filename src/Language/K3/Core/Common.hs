@@ -152,13 +152,13 @@ data EndpointSpec
   | BuiltinEP String String
     -- ^ Builtin endpoint type (stdin/stdout/stderr), format
 
-  | FileEP    String String
-    -- ^ File path (as expression or literal), format
+  | FileEP    String Bool String
+    -- ^ File path (as expression or literal), text/binary, format
 
-  | FileSeqEP String String
-    -- ^ File sequence path collection (as expression), format
+  | FileSeqEP String Bool String
+    -- ^ File sequence path collection (as expression), text/binary, format
 
-  | NetworkEP String String
+  | NetworkEP String Bool String
     -- ^ Address, format
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 

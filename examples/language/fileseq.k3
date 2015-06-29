@@ -5,5 +5,5 @@ declare fpaths : collection {path:string} @Collection
 
 trigger t : int = \i -> print ((itos i) ++ "\\n")
 
-source s1 : int = fileseq fpaths k3
+source s1 : int = fileseq fpaths text k3
 feed s1 |> t
