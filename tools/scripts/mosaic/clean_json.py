@@ -6,6 +6,9 @@ import csv
 import json
 import re
 import os
+import sys
+
+csv.field_size_limit(sys.maxsize)
 
 def int_of_label(s):
     total = 0
