@@ -8,6 +8,7 @@ require 'json'
 require 'rexml/document'
 require 'csv'
 require 'open3'
+require 'pg'
 
 def run(cmd, checks=[])
   puts cmd if $options[:debug]
@@ -484,32 +485,32 @@ end
 # Loads k3 trace data (messages, globals) from a job into postgres.
 def run_ktrace(script_path, jobid)
 
-  def initialize_db(dbconn, required_tables)
+  initialize_db = lambda {|dbconn, required_tables|
     init = false
     db_init_script = File.join(script_path, 'ktrace_schema.sql')
     required_tables.each do |t|
       res = dbconn.exec("SELECT to_regclass('public.#{t}');")
-      if res[0][0].nil?
+      if res.values[0][0].nil?
         init = true
         break
       end
     end
     if init
+      stage "[7] Initializing KTrace DB"
       conn.exec(File.read(db_init_script))
     end
-  end
+  }
 
-  def ingest_file(dbconn, table_name, file_path)
+  ingest_file = lambda {|dbconn, table_name, file_path|
     dbconn.copy_data "COPY #{table_name} FROM STDIN delimiter '|' quote '`' csv" do
       str = File.read(file_path)
       str.each_line do |line|
         dbconn.put_copy_data jobid + "|" + line
       end
-      dbconn.put_copy_end
     end
-  end
+  }
 
-  stage "[7] Initializing KTrace database"
+  stage "[7] Populating KTrace DB"
   job_sandbox_path = File.join($workdir, "job_#{jobid}")
 
   if Dir.exists?(job_sandbox_path)
@@ -518,12 +519,12 @@ def run_ktrace(script_path, jobid)
     if File.file?(globals_path) && File.file?(messages_path)
       stage "[7] Found trace data, now copying."
       conn = PG.connect()
-      initialize_db(conn, ['Globals', 'Messages'])
+      initialize_db.call(conn, ['Globals', 'Messages'])
 
-      ingest_file(conn, "Globals", globals_path)
+      ingest_file.call(conn, "Globals", globals_path)
       stage "[7] Copied globals trace data."
 
-      ingest_file(conn, "Messages", messages_path)
+      ingest_file.call(conn, "Messages", messages_path)
       stage "[7] Copied messages trace data."
 
       # TODO: automatic querying and verification of job logs.
