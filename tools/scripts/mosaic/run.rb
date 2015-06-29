@@ -284,7 +284,7 @@ def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, scr
   gen_yaml(k3_data_path, role_path, script_path)
 
   stage "[5] Creating new mesos job"
-  curl_args = full_ktrace ? {'jsonlog' => 'yes', 'jsonfinal' => 'yes'} : {'jsonfinal' => 'yes'}
+  curl_args = full_ktrace ? {'jsonlog' => 'yes'} : {'jsonfinal' => 'yes'}
   res = curl(server_url, "/jobs/#{nice_name}#{uid_s}", json:true, post:true, file:role_path, args:curl_args)
   jobid = res['jobId']
   update_options_if_empty(:jobid, jobid)
