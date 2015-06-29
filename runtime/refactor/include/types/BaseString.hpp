@@ -126,6 +126,23 @@ class base_string {
  private:
   char* buffer_;
 };
+
+inline bool operator==(char const* s, base_string const& b) { return b == s; }
+
+inline bool operator<(char const* s, base_string const& b) { return b >= s; }
+
+inline bool operator<=(char const* s, base_string const& b) { return b > s; }
+
+inline bool operator>(char const* s, base_string const& b) { return b <= s; }
+
+inline bool operator>=(char const* s, base_string const& b) { return b < s; }
+
+inline bool operator!=(char const* s, base_string const& b) { return b != s; }
+
+inline base_string operator+(base_string s, base_string const& t) {
+  return s += t;
+}
+
   
 // Specializations for CSV parsing/writing, skipping the length field.
 template <>
