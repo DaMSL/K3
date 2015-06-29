@@ -22,12 +22,12 @@ def dump_yaml(col):
             print "---"
 
 def parse_extra_args(args):
+    extra_args = {}
     if args is not None:
         args = args.split(",")
-    extra_args = {}
-    for arg in args:
-        val = arg.split("=", 1)
-        extra_args[val[0]] = val[1]
+        for arg in args:
+            val = arg.split("=", 1)
+            extra_args[val[0]] = val[1]
     return extra_args
 
 def create_file(num_switches, num_nodes, file_path, extra_args):
@@ -66,11 +66,11 @@ def create_dist_file(num_switches, perhost, num_nodes, nmask, file_path, extra_a
     node_env    = {'k3_globals': node_role}
 
     k3_roles = []
-    k3_roles.append(('Switch1', 'qp3', 3, None, switch1_env))
+    k3_roles += [('Switch1', 'qp3', 3, None, switch1_env)]
     if num_switches > 1:
-        k3_roles.append(('Switch' + str(i + 1), 'qp' + str((i % 4) + 3), 1, None, switch_env) for i in range(1, num_switches))
+        k3_roles += [('Switch' + str(i + 1), 'qp' + str((i % 4) + 3), 1, None, switch_env) for i in range(1, num_switches)]
 
-    k3_roles.append(('Node' + str(i), nmask, 1, perhost, node_env) for i in range(1, num_nodes+1))
+    k3_roles += [('Node' + str(i), nmask, 1, perhost, node_env) for i in range(1, num_nodes+1)]
 
     launch_roles = []
     for (name, addr, peers, perh, peer_envs) in k3_roles:
