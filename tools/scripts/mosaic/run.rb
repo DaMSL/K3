@@ -296,11 +296,18 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
 
   # Collect peer roles from yaml bootstrap files
   peer_roles = {}
+  role_counters = {}
   unless peer_yaml_files.empty?
     peer_yaml_files.each do |pf|
       peer_bootstrap = YAML.load_file(pf)
       if peer_bootstrap.has_key?('me') && peer_bootstrap.has_key?('role')
-        peer_roles[peer_bootstrap['me']] = peer_bootstrap['role']
+        if !role_counters.has_key?(peer_bootstrap['role'])
+          role_counters[peer_bootstrap['role']] = 0
+        else
+          role_counters[peer_bootstrap['role']] += 1
+        end
+        peer_roles[peer_bootstrap['me']] =
+          peer_bootstrap['role'] + role_counters[peer_bootstrap['role']].to_s
       else
         stage "[#{stage_num}] ERROR: No me/role entries found in peer yaml #{pf}"
       end
@@ -537,7 +544,7 @@ def run_ktrace(script_path, jobid)
     end
     if init
       stage "[7] Initializing KTrace DB"
-      conn.exec(File.read(db_init_script))
+      dbconn.exec(File.read(db_init_script))
     end
   }
 
@@ -558,7 +565,7 @@ def run_ktrace(script_path, jobid)
     messages_path  = File.join(job_sandbox_path, "messages.dsv")
     peer_role_path = File.join(job_sandbox_path, "peers.dsv")
 
-    if [globals_path, messages_path, peer_role_path].all {|f| File.file?(f) }
+    if [globals_path, messages_path, peer_role_path].all? {|f| File.file?(f) }
       stage "[7] Found trace data, now copying."
       conn = PG.connect()
       initialize_db.call(conn, ['Globals', 'Messages', 'Peers'])

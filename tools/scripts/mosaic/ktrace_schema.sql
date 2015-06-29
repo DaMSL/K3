@@ -20,7 +20,7 @@ create table Messages (
 );
 
 drop table if exists peers;
-create table peers(job_id int, address text, name text);
+create table peers(job_id int, address json, name text);
 
 drop table if exists keys;
 create table keys(job_id int, key text);
