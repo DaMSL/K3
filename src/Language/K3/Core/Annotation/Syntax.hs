@@ -8,6 +8,8 @@
 module Language.K3.Core.Annotation.Syntax where
 
 import Control.DeepSeq
+import Data.Binary
+import Data.Serialize
 import Data.Typeable
 import GHC.Generics (Generic)
 
@@ -24,4 +26,6 @@ data SyntaxAnnotation
 -- | A list of triggers ids fed by an endpoint. Only valid for sources.
 type EndpointBindings = [Identifier]
 
-instance NFData SyntaxAnnotation
+instance NFData    SyntaxAnnotation
+instance Binary    SyntaxAnnotation
+instance Serialize SyntaxAnnotation

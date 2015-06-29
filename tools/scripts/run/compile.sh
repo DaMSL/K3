@@ -1,3 +1,4 @@
+#! /bin/sh
 # Command for compiling cpp file in k3
 # Since it's a little tricky to come up with the full command line, you can just use this
 # You might need to adjust it to suit your system

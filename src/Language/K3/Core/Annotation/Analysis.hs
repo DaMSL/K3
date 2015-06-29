@@ -8,6 +8,8 @@
 module Language.K3.Core.Annotation.Analysis where
 
 import Control.DeepSeq
+import Data.Binary
+import Data.Serialize
 import Data.Typeable
 import GHC.Generics (Generic)
 
@@ -28,4 +30,6 @@ data AnalysisAnnotation
     --          due to name conflicts
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
-instance NFData AnalysisAnnotation
+instance NFData    AnalysisAnnotation
+instance Binary    AnalysisAnnotation
+instance Serialize AnalysisAnnotation

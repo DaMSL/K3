@@ -1,4 +1,8 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 module Language.K3.Driver.Common where
+
+import GHC.Generics ( Generic )
 
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (joinPath, replaceExtension, takeBaseName)
@@ -6,10 +10,40 @@ import System.IO
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
-import Language.K3.Parser ( parseK3 )
+import Language.K3.Parser ( parseK3, stitchK3 )
 import Language.K3.Runtime.Common ( SystemEnvironment )
+import Language.K3.Stages ( CompilerSpec(..) )
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
+
+{- Common data types used throughout the driver. -}
+
+-- | Variant type used to define compilation stages.
+data CompilerType = LocalCompiler
+                  | ServicePrepare
+                  | ServiceParallel
+                  | ServiceFinal
+                  | ServiceClient
+                  | ServiceClientRemote
+                  deriving (Eq, Read, Show, Generic)
+
+-- | Coarse-grained compilation stages.
+data CompileStage = SBatchOpt
+                  | SDeclPrepare
+                  | SDeclOpt CompilerSpec
+                  | SCodegen
+                  deriving (Eq, Ord, Read, Show, Generic)
+
+type CompileStages = [CompileStage]
+
+-- | Printing specification.
+data PrintMode
+    = PrintAST    { stripEffects :: Bool
+                  , stripTypes   :: Bool
+                  , stripCmts    :: Bool
+                  , stripProps   :: Bool }
+    | PrintSyntax
+  deriving (Eq, Read, Show, Generic)
 
 {- Constants -}
 defaultPrompt :: String
@@ -47,10 +81,18 @@ outputStrFile str (path, file) = do
   createDirectoryIfMissing True path
   writeFile file str
 
+readK3Input :: [FilePath] -> FilePath -> IO [String]
+readK3Input searchPaths path = do
+    h <- openFileOrStdIn path
+    s <- hGetContents h
+    return [s]
+    -- stitchK3 searchPaths s
+
 parseK3Input :: Bool -> [FilePath] -> FilePath -> IO (Either String (K3 Declaration))
 parseK3Input includeOverride searchPaths path = do
     h <- openFileOrStdIn path
-    parseK3 includeOverride searchPaths =<< hGetContents h
+    s <- hGetContents h
+    parseK3 includeOverride searchPaths s
 
 parseSplicedASTInput :: FilePath -> IO (K3 Declaration)
 parseSplicedASTInput path = do

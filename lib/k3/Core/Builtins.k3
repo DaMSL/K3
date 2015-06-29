@@ -23,6 +23,9 @@ declare strcomp : string -> string -> int
 // TODO: move to String.k3
 declare regex_matcher : string -> (string -> collection {elem: string} @ Collection)
 declare regex_matcher_q4 : string -> collection {elem: string} @ Collection
+declare regex_match_int : {key: string, value: string} -> int
+
+declare date_part: {key: string, value: int} -> int
 
 // TPCH date parsing.
 declare tpch_date : string -> int
@@ -31,6 +34,11 @@ declare tpch_date_to_string : int -> string
 // TODO: move to Time.k3
 declare now_int : () -> int
   with effects \_ -> io
+
+@:ErrorFn
+declare max: forall a. {key: a, value: a} -> a
+@:ErrorFn
+declare min: forall a. {key: a, value: a} -> a
 
 ///////////////////////
 //

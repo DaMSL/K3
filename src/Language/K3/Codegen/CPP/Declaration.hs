@@ -167,14 +167,15 @@ source_builtin_map :: [(String, (String -> K3 Type -> String -> CPPGenM R.Defini
 source_builtin_map = extraSuffixes
 
         -- These suffixes are for data loading hacks.
-  where extraSuffixes = [("Loader",    genLoader False False "," ),
-                         ("LoaderC",   genLoader False True  "," ),
-                         ("LoaderF",   genLoader True  False ","),
-                         ("LoaderFC",  genLoader True  True  "," ),
-                         ("LoaderP",   genLoader False False "|" ),
-                         ("LoaderPC",  genLoader False True  "|" ),
-                         ("LoaderPF",  genLoader True  False "|"),
-                         ("LoaderPFC", genLoader True  True  "|" ),
+  where extraSuffixes = [("Loader",    genLoader False False False "," ),
+                         ("LoaderC",   genLoader False True  False "," ),
+                         ("LoaderF",   genLoader True  False False ","),
+                         ("LoaderFC",  genLoader True  True  False "," ),
+                         ("LoaderP",   genLoader False False False "|" ),
+                         ("LoaderPC",  genLoader False True  False "|" ),
+                         ("LoaderPF",  genLoader True  False False "|"),
+                         ("LoaderPFC", genLoader True  True  False "|" ),
+                         ("LoaderRP",  genLoader False False True  "|" ),
                          ("Logger",    genLogger)]
 
 source_builtins :: [String]
@@ -249,8 +250,9 @@ genDoWrite suf typ name = do
 
 -- TODO: Loader is not quite valid K3. The collection should be passed by indirection so we are not working with a copy
 -- (since the collection is technically passed-by-value)
-genLoader :: Bool -> Bool -> String -> String -> K3 Type -> String -> CPPGenM R.Definition
-genLoader fixedSize projectedLoader sep suf (children -> [_,f]) name = do
+genLoader :: Bool -> Bool -> Bool -> String -> String -> K3 Type -> String -> CPPGenM R.Definition
+genLoader fixedSize projectedLoader asReturn sep suf ft@(children -> [_,f]) name = do
+ void (genCType ft) -- Force full type to generate potential record/collection variants.
  (colType, recType, fullRecTypeOpt) <- return $ getColType f
  cColType      <- genCType colType
  cRecType      <- genCType recType
@@ -280,6 +282,9 @@ genLoader fixedSize projectedLoader sep suf (children -> [_,f]) name = do
                       (map (\(x,y) -> (x, y, x `notElem` (map fst fts))))
                       fullfts
 
+ let containerDecl = R.Forward $ R.ScalarDecl (R.Name "c2") cColType Nothing
+ let container = R.Variable $ R.Name (if asReturn then "c2" else "c")
+
  let recordGetLines = recordDecl
                       ++ concat [readField field ft skip False | (field, ft, skip)  <- init ftsWSkip]
                       ++ (\(a,b,c) -> readField a b c True) (last ftsWSkip)
@@ -290,33 +295,41 @@ genLoader fixedSize projectedLoader sep suf (children -> [_,f]) name = do
                     , ("tmp_buffer", (R.Reference $ R.Named $ (R.Qualified (R.Name "std") (R.Name "string"))))
                     ] False Nothing recordGetLines
 
- let readRecordsCall = if fixedSize
-                       then R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "read_records_with_resize")
-                              [ R.Variable $ R.Name "size"
-                              , R.Variable $ R.Name "paths"
-                              , R.Variable $ R.Name "c"
-                              , readRecordFn
-                              ]
-                       else R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "read_records")
+ let readRecordsCall = if asReturn
+                       then R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "read_records_into_container")
                               [ R.Variable $ R.Name "paths"
-                              , R.Variable $ R.Name "c"
-                              , readRecordFn
-                              ]
+                              , container
+                              , readRecordFn ]
+                       else
+                        (if fixedSize
+                         then R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "read_records_with_resize")
+                                [ R.Variable $ R.Name "size"
+                                , R.Variable $ R.Name "paths"
+                                , container
+                                , readRecordFn
+                                ]
+                         else R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "read_records")
+                                [ R.Variable $ R.Name "paths"
+                                , container
+                                , readRecordFn
+                                ])
 
- let defaultArgs = [ ("paths", R.Named $ R.Specialized [R.Named $ R.Specialized [R.Named $ R.Name "string_impl"] (R.Name "R_path")] (R.Name "_Collection"))
-                     , ("c", R.Reference cColType)
-                   ]
+ let defaultArgs = [  ("paths", R.Named $ R.Specialized
+                         [R.Named $ R.Specialized [R.Named $ R.Name "string_impl"] (R.Name "R_path")]
+                         (R.Name "_Collection"))]
 
  let args = defaultArgs
+              ++ [("c", (if asReturn then R.Const else id) $ R.Reference cColType)]
               ++ (if projectedLoader then [("_rec", R.Reference $ fromJust cfRecType)] else [])
               ++ (if fixedSize       then [("size", R.Primitive R.PInt)] else [])
 
- return $ R.FunctionDefn (R.Name $ coll_name ++ suf)
-            args
-            (Just $ R.Named $ R.Name "unit_t") [] False
-            [ readRecordsCall
-            , R.Return $ R.Initialization R.Unit []
-            ]
+ let returnType   = if asReturn then cColType else R.Named $ R.Name "unit_t"
+ let functionBody = if asReturn
+                      then [ containerDecl, R.Return $ readRecordsCall ]
+                      else [ R.Ignore $ readRecordsCall, R.Return $ R.Initialization R.Unit [] ]
+
+ return $ R.FunctionDefn (R.Name $ coll_name ++ suf) args (Just $ returnType) [] False functionBody
+
  where
    typeMap :: K3 Type -> R.Expression -> R.Expression
    typeMap (tag &&& (@~ isTDateInt) -> (TInt, Just _)) e =
@@ -350,7 +363,7 @@ genLoader fixedSize projectedLoader sep suf (children -> [_,f]) name = do
 
    type_mismatch = error "Invalid type for Loader function. Should Be String -> Collection R -> ()"
 
-genLoader _ _ _ _ _ _ =  error "Invalid type for Loader function."
+genLoader _ _ _ _ _ _ _ =  error "Invalid type for Loader function."
 
 genLogger :: String -> K3 Type -> String -> CPPGenM R.Definition
 genLogger _ (children -> [_,f]) name = do

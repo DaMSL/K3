@@ -1,51 +1,132 @@
 {% extends "layout/base.html" %}
 
+{% block head %}
+  {% if status != "DOWN" and status != "UP" %}
+    <meta http-equiv="refresh" content="2;url=/compile" />
+  {% endif %}
+{% endblock %}
+
 {% block content %}
   <div class="container">
-    <div class="starter-template">
-      <h2>Compile a new K3 Application from source</h2>
-        <form action="" method=post enctype=multipart/form-data>
+    <div class="jumbotron">
             <div class="row">
-                <div class="col-md-4"><h4>Application Name: </h4></div>
+                <div class="col-md-4"><h3> Compile Service Status:</h3></div>
+                <div class="col-md-4 text-center bg-info"><h2> {{status}} </h2></div>
+      {% if status == "DOWN" %}
+          <form action="compileservice/up" method=post enctype=multipart/form-data>
+            <span class="lead text-right"><button type=submit class="btn btn-success btn-md">  START COMPILER SERVICE</button>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4"><h4># of Worker Nodes:</h4></div>
+                <div class="col-md-8"><input type=text name=numworkers size="80"></div>
+            </div>
+            <div class="row">
+                <div class="col-md-4"><h4>Force Git Pull:</h4></div>
+                <div class="col-md-8"><input type=text name=gitpull value=True></div>
+            </div>
+            <div class="row">
+                <div class="col-md-4"><h4>Force Cabal Build:</h4></div>
+                <div class="col-md-8"><input type=text name=cabalbuild value=False></div>
+            </div>
+            <div class="row">
+                <div class="col-md-4"><h4>Branch or Commit hash to pull:</h4></div>
+                <div class="col-md-8"><input type=text name=branch value="development" size="80"></div>
+            </div> 
+            <div class="row">
+                <div class="col-md-4"><h4>Master Service Threads:</h4></div>
+                <div class="col-md-8"><input type=text name=m_workerthread value="1" size="80"></div>
+            </div> 
+            <div class="row">
+                <div class="col-md-4"><h4>Worker Service Threads:</h4></div>
+                <div class="col-md-8"><input type=text name=w_workerthread value="1" size="80"></div>
+            </div> 
+            <div class="row">
+                <div class="col-md-4"><h4>Heartbeat interval:</h4></div>
+                <div class="col-md-8"><input type=text name=heartbeat value="300" size="80"></div>
+            </div> 
+
+         </form>
+      
+      {% elif status == "UP" %}
+      <div class="col-md-4 text-right">
+
+        <div class="row"><a href="/compileservice/down"><button type=submit class="btn btn-primary btn-sm"> GRACEFULLY Shut Down Compiler Service</button></a></div>
+        <div class="row"><a href="/compileservice/stop"><button type=submit class="btn btn-danger btn-sm"> STOP Compiler Service IMMEDIATELY</button></a></div>
+
+      </div>
+
+
+      </div>
+
+      <h2>Compile a New K3 Application from source</h2>
+        <form action="compile" method=post enctype=multipart/form-data>
+            <div class="row">
+                <div class="col-md-2"><h4>Application Name: </h4></div>
                 <div class="col-md-8"><input type=text name=name></div>
             </div>
             <div class="row">
-                <div class="col-md-4"><h4>User (optional):</h4></div>
-                <div class="col-md-8"><input type=text name=user></div>
+                <div class="col-md-2"><h4>Blocksize:</h4></div>
+                <div class="col-md-8"><input type=text name=blocksize value=8 size="80"></div>
             </div>
-            <div class="row" class="col-md-12">
-                <div class="col-md-4"><h4>Compilation Options (optional):</h4></div>
-                <div class="col-md-8"><input type=text name=options size="80"></div>
-            </div>
-            <div class="row" class="col-md-12">
-                <div class="col-md-4"><h4>Tag/Notes (optional):</h4></div>
-                <div class="col-md-8"><input type=text name=tag size="80"></div>
-            </div>
-            <h4>Select a file or paste your raw source text below</h4>
             <div class="row">
-              <div class="col-md-3">
-                 <h4>Upload K3 Source File (.k3) </h4>
-                 <input type=file class="btn btn-file btn-md" name=file>
-              </div>
-                 <h4>Paste raw K3 Source below</h4>
-              <div id="editor" class="col-md-9">
-                <textarea class="form-control" name=text cols=20 rows=30></textarea>
-              </div>
+                <div class="col-md-2"><h4>Compile Stage</h4></div>
+                <div class="col-md-8">
+                    <select name = "compilestage">
+                        <option value = "both">Both: K3->bin</option>
+                        <option value = "cpp">First:  K3->CPP</option>
+                        <option value = "bin">Second: CPP->bin</option>
+                    </select>
+                  </div>
+            </div>
+            <div class="row">
+                <div class="col-md-2"><h4>CPU (# cores):</h4></div>
+                <div class="col-md-8"><input type=text name=cpu value=16 size="80"></div>
+            </div>
+            <div class="row">
+                <div class="col-md-2"><h4>Mem (in GB):</h4></div>
+                <div class="col-md-8"><input type=text name=mem value=32 size="80"></div>
+            </div>
+            <div class="row">
+                <div class="col-md-2"><h4>Compile Workload Skew</h4></div>
+                <div class="col-md-8">
+                    <select name = "workload">
+                        <option value = "balanced">Balanced</option>
+                        <option value = "moderate">Moderate</option>
+                        <option value = "moderate2">Moderate-2</option>
+                        <option value = "extreme">Extreme</option>
+                    </select>
+                  </div>
             </div>
 
+             <div class="row">
+                <div class="col-md-2"><h4>Compilation Options (overrides workload setting):</h4></div>
+                <div class="col-md-8"><input type=text name=compileargs size="80"></div>
+            </div>
+            <h2>K3 Source</h2>
+              <div class="row">
+                 <span class="lead text-left"> Option A: Upload K3 Source File (.k3)</span>
+                 <input type=file class="btn btn-file btn-md" name=file>
+                 <span class="lead text-center"><button type=submit class="btn btn-primary btn-md">Submit</button></span>
+              </div>
+            <br>
+            <div id="editor" class="row">
+                 <span class="lead text-left">Option B: Paste raw K3 Source</span>
+                 <textarea class="form-control" name=text cols=20 rows=30></textarea>
+            </div>
       <p>
-            <span class="lead text-center"><button type=submit class="btn btn-primary btn-md">Submit</button></span>
-                </p>
+         <span class="lead text-center"><button type=submit class="btn btn-primary btn-md">Submit</button></span>
+      </p>
          </form>
+    {% else %}
+      </div>
+      <h3> Compile Service is intializing. Please be stand by..... </h3>
+    {% endif %}
     </div>
   </div>
 {% endblock %}
-<!--<script src="/src/ace.js" type="text/javascript" charset="utf-8"></script>
-<script>
-    var editor = ace.edit("editor");
-    editor.setTheme("ace/theme/monokai");
-    editor.getSession().setMode("ace/mode/javascript");
-</script>-->
+
+
 {% block footer %}
   {% include "include/footer.html" %}
 {% endblock %}

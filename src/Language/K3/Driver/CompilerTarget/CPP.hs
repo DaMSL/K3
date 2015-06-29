@@ -4,6 +4,8 @@ module Language.K3.Driver.CompilerTarget.CPP (compile) where
 
 import Prelude hiding ((*>))
 
+import Control.Monad
+
 import qualified Data.List as L
 import Data.Maybe
 
@@ -33,7 +35,7 @@ type CompileContinuation = (K3 Declaration -> IO ()) -> K3 Declaration -> IO ()
 buildOutputFilePath :: String -> Options -> CompileOptions -> Either String (FilePath, FilePath)
 buildOutputFilePath ext opts copts = case buildDir copts of
     Nothing   -> Left "Error: no build directory specified."
-    Just path -> Right $ outputFilePath path (input opts) ext
+    Just path -> Right $ outputFilePath path (inputProgram $ input opts) ext
 
 cppOutFile :: Options -> CompileOptions -> Either String [FilePath]
 cppOutFile opts copts = either Left (\(_,f) -> Right [f]) $ buildOutputFilePath "cpp" opts copts
@@ -51,9 +53,12 @@ cppCodegenStage opts copts (cont, prog) = genCPP irRes
     genCPP (Left _)      = putStrLn "Error in Imperative Transformation."
 
     genCPPCont p = do
-      (if saveAST opts then outputAST P.pretty "k3ast" p else return ())
-      (if saveRawAST opts then outputAST show "k3ar" p else return ())
+      saveASTOutputs p
       outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt) (CPP.stringifyProgram p)
+
+    saveASTOutputs p = do
+      when (saveAST    $ input opts) (outputAST P.pretty "k3ast" p)
+      when (saveRawAST $ input opts) (outputAST show     "k3ar"  p)
 
     outputCPP (Right doc) =
       either putStrLn (outputDoc doc) $ buildOutputFilePath "cpp" opts copts

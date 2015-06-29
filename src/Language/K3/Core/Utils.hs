@@ -34,7 +34,7 @@ module Language.K3.Core.Utils
 , biFoldMapRebuildTree
 , mapIn1RebuildTree
 , foldIn1RebuildTree
-, foldMapIn1RebuildTree
+, biFoldMapIn1RebuildTree
 
 , foldProgramWithDecl
 , foldProgram
@@ -58,12 +58,6 @@ module Language.K3.Core.Utils
 , mapReturnExpression
 
 , defaultExpression
-, freeVariables
-, bindingVariables
-, modifiedVariables
-
-, lambdaClosures
-, lambdaClosuresDecl
 
 , compareDAST
 , compareEAST
@@ -105,18 +99,20 @@ module Language.K3.Core.Utils
 , stripDeclTypeAndEffectAnns
 , stripAllTypeAndEffectAnns
 
+, indexProgramDecls
 ) where
 
 import Control.Applicative
 import Control.Arrow
 import Control.Monad
+
 import Data.Functor.Identity
 import Data.List
 import Data.Maybe
 import Data.Tree
 
-import Data.IntMap ( IntMap )
-import qualified Data.IntMap as IntMap
+import Data.Map ( Map )
+import qualified Data.Map as Map
 
 import Debug.Trace
 
@@ -178,9 +174,7 @@ mapTree f n@(Node _ ch) = mapM (mapTree f) ch >>= flip f n
 --   The children of a node are pre-transformed recursively
 modifyTree :: (Monad m) => (Tree a -> m (Tree a)) -> Tree a -> m (Tree a)
 modifyTree f n@(Node _ []) = f n
-modifyTree f   (Node x ch) = do
-   ch' <- mapM (modifyTree f) ch
-   f (Node x ch')
+modifyTree f n@(Node _ ch) = mapM (modifyTree f) ch >>= f . replaceCh n
 
 -- | Map an accumulator over a tree, recurring independently over each child.
 --   The result is produced by transforming independent subresults in bottom-up fashion.
@@ -354,23 +348,23 @@ foldIn1RebuildTree preCh1F postCh1F mergeF allChF acc n@(Node _ ch) = do
 --           over the other children.
 -- allChF:   The all-child function takes the post child's single accumulator, the processed children,
 --           and the node, and returns a new tree.
-foldMapIn1RebuildTree :: (Monad m)
+biFoldMapIn1RebuildTree :: (Monad m)
                   => (c -> Tree a -> Tree a -> m c)
                   -> (c -> d -> Tree b -> Tree a -> m (c, [c]))
                   -> (c -> [d] -> [Tree b] -> Tree a -> m (d, Tree b))
                   -> c -> d -> Tree a -> m (d, Tree b)
-foldMapIn1RebuildTree _ _ allChF tdAcc buAcc n@(Node _ []) = allChF tdAcc [buAcc] [] n
-foldMapIn1RebuildTree preCh1F postCh1F allChF tdAcc buAcc n@(Node _ ch) = do
+biFoldMapIn1RebuildTree _ _ allChF tdAcc buAcc n@(Node _ []) = allChF tdAcc [buAcc] [] n
+biFoldMapIn1RebuildTree preCh1F postCh1F allChF tdAcc buAcc n@(Node _ ch) = do
     nCh1Acc          <- preCh1F tdAcc (head ch) n
     (nCh1BuAcc, nc1) <- rcr nCh1Acc $ head ch
     (nAcc, chAccs)   <- postCh1F nCh1Acc nCh1BuAcc nc1 n
     if length chAccs /= (length $ tail ch)
-      then fail "Invalid foldMapIn1RebuildTree accumulation"
+      then fail "Invalid biFoldMapIn1RebuildTree accumulation"
       else do
         (chBuAcc, nRestCh) <- zipWithM rcr chAccs (tail ch) >>= return . unzip
         allChF nAcc (nCh1BuAcc:chBuAcc) (nc1:nRestCh) n
 
-  where rcr a b = foldMapIn1RebuildTree preCh1F postCh1F allChF a buAcc b
+  where rcr a b = biFoldMapIn1RebuildTree preCh1F postCh1F allChF a buAcc b
 
 -- | Fold a declaration and expression reducer and accumulator over the given program.
 foldProgramWithDecl :: (Monad m)
@@ -687,79 +681,8 @@ defaultExpression typ = mapTree mkExpr typ
                              Just TImmutable -> return $ EC.immut e
                              _ -> return $ e
 
--- | Retrieves all free variables in an expression.
-freeVariables :: K3 Expression -> [Identifier]
-freeVariables expr = either (const []) id $ foldMapTree extractVariable [] expr
-  where
-    extractVariable chAcc (tag -> EVariable n) = return $ concat chAcc ++ [n]
-    extractVariable chAcc (tag -> EAssign i)   = return $ concat chAcc ++ [i]
-    extractVariable chAcc (tag -> ELambda n)   = return $ filter (/= n) $ concat chAcc
-    extractVariable chAcc (tag -> EBindAs b)   = return $ (chAcc !! 0) ++ (filter (`notElem` bindingVariables b) $ chAcc !! 1)
-    extractVariable chAcc (tag -> ELetIn i)    = return $ (chAcc !! 0) ++ (filter (/= i) $ chAcc !! 1)
-    extractVariable chAcc (tag -> ECaseOf i)   = return $ let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
-    extractVariable chAcc _                    = return $ concat chAcc
 
--- | Retrieves all variables introduced by a binder
-bindingVariables :: Binder -> [Identifier]
-bindingVariables (BIndirection i) = [i]
-bindingVariables (BTuple is)      = is
-bindingVariables (BRecord ivs)    = snd (unzip ivs)
-
--- | Retrieves all variables modified in an expression.
-modifiedVariables :: K3 Expression -> [Identifier]
-modifiedVariables expr = either (const []) id $ foldMapTree extractVariable [] expr
-  where
-    extractVariable chAcc (tag -> EAssign n)   = return $ concat chAcc ++ [n]
-    extractVariable chAcc (tag -> ELambda n)   = return $ filter (/= n) $ concat chAcc
-    extractVariable chAcc (tag -> EBindAs b)   = return $ (chAcc !! 0) ++ (filter (`notElem` bindingVariables b) $ chAcc !! 1)
-    extractVariable chAcc (tag -> ELetIn i)    = return $ (chAcc !! 0) ++ (filter (/= i) $ chAcc !! 1)
-    extractVariable chAcc (tag -> ECaseOf i)   = return $ let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
-    extractVariable chAcc _                    = return $ concat chAcc
-
--- | Computes the closure variables captured at lambda expressions.
---   This is a one-pass bottom-up implementation.
-type ClosureEnv = IntMap [Identifier]
-
-lambdaClosures :: K3 Declaration -> Either String ClosureEnv
-lambdaClosures p = foldExpression lambdaClosuresExpr IntMap.empty p >>= return . fst
-
-lambdaClosuresDecl :: Identifier -> ClosureEnv -> K3 Declaration -> Either String (ClosureEnv, K3 Declaration)
-lambdaClosuresDecl n lc p = foldNamedDeclExpression n lambdaClosuresExpr lc p
-
-lambdaClosuresExpr :: ClosureEnv -> K3 Expression -> Either String (ClosureEnv, K3 Expression)
-lambdaClosuresExpr lc expr = do
-  (lcenv,_) <- biFoldMapTree bind extract [] (IntMap.empty, []) expr
-  return $ (IntMap.union lcenv lc, expr)
-
-  where
-    bind :: [Identifier] -> K3 Expression -> Either String ([Identifier], [[Identifier]])
-    bind l (tag -> ELambda i) = return (l, [i:l])
-    bind l (tag -> ELetIn  i) = return (l, [l, i:l])
-    bind l (tag -> EBindAs b) = return (l, [l, bindingVariables b ++ l])
-    bind l (tag -> ECaseOf i) = return (l, [l, i:l, l])
-    bind l (children -> ch)   = return (l, replicate (length ch) l)
-
-    extract :: [Identifier] -> [(ClosureEnv, [Identifier])] -> K3 Expression -> Either String (ClosureEnv, [Identifier])
-    extract _ chAcc (tag -> EVariable i) = rt chAcc (++[i])
-    extract _ chAcc (tag -> EAssign i)   = rt chAcc (++[i])
-    extract l (concatLc -> (lcAcc,chAcc)) e@(tag -> ELambda n) = extendLc lcAcc e $ filter (onlyLocals n l) $ concat chAcc
-    extract _ (concatLc -> (lcAcc,chAcc))   (tag -> EBindAs b) = return . (lcAcc,) $ (chAcc !! 0) ++ (filter (`notElem` bindingVariables b) $ chAcc !! 1)
-    extract _ (concatLc -> (lcAcc,chAcc))   (tag -> ELetIn i)  = return . (lcAcc,) $ (chAcc !! 0) ++ (filter (/= i) $ chAcc !! 1)
-    extract _ (concatLc -> (lcAcc,chAcc))   (tag -> ECaseOf i) = return . (lcAcc,) $ let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
-    extract _ chAcc _ = rt chAcc id
-
-    onlyLocals n l i = i /= n && i `elem` l
-
-    concatLc :: [(ClosureEnv, [Identifier])] -> (ClosureEnv, [[Identifier]])
-    concatLc subAcc = let (x,y) = unzip subAcc in (IntMap.unions x, y)
-
-    extendLc :: ClosureEnv -> K3 Expression -> [Identifier] -> Either String (ClosureEnv, [Identifier])
-    extendLc lcenv e ids = case e @~ isEUID of
-      Just (EUID (UID i)) -> return $ (IntMap.insert i (nub ids) lcenv, ids)
-      _ -> Left $ boxToString $ ["No UID found on lambda"] %$ prettyLines e
-
-    rt subAcc f = return $ second (f . concat) $ concatLc subAcc
-
+{- AST comparators -}
 
 -- | Compares declarations and expressions for identical AST structures
 --  while ignoring annotations and properties (such as UIDs, spans, etc.)
@@ -933,81 +856,83 @@ stripAllTypeAndEffectAnns = stripDeclAnnotations isAnyDEffectAnn isAnyETypeOrEff
 
 -- | Ensures every node has a valid UID and Span.
 --   This currently does not handle literals.
-repairProgram :: String -> Maybe Int -> K3 Declaration -> (Int, K3 Declaration)
-repairProgram repairMsg nextUIDOpt p =
-    let nextUID = maybe (let UID maxUID = maxProgramUID p in maxUID + 1) id nextUIDOpt
-    in runIdentity $ foldProgram repairDecl repairMem repairExpr (Just repairType) nextUID p
+repairProgram :: String -> Maybe ParGenSymS -> K3 Declaration -> (ParGenSymS, K3 Declaration)
+repairProgram repairMsg symSOpt p =
+    let UID maxUID = maxProgramUID p
+        symS       = maybe (contigsymAtS $ maxUID + 1) id symSOpt
+    in runIdentity $ foldProgram repairDecl repairMem repairExpr (Just repairType) symS p
 
   where
-        repairDecl :: Int -> K3 Declaration -> Identity (Int, K3 Declaration)
-        repairDecl uid n = validateD uid (children n) n
+    repairDecl :: ParGenSymS -> K3 Declaration -> Identity (ParGenSymS, K3 Declaration)
+    repairDecl symS n = validateD symS (children n) n
 
-        repairExpr :: Int -> K3 Expression -> Identity (Int, K3 Expression)
-        repairExpr uid n = foldRebuildTree validateE uid n
+    repairExpr :: ParGenSymS -> K3 Expression -> Identity (ParGenSymS, K3 Expression)
+    repairExpr symS n = foldRebuildTree validateE symS n
 
-        repairType :: Int -> K3 Type -> Identity (Int, K3 Type)
-        repairType uid n = foldRebuildTree validateT uid n
+    repairType :: ParGenSymS -> K3 Type -> Identity (ParGenSymS, K3 Type)
+    repairType symS n = foldRebuildTree validateT symS n
 
-        repairMem uid (Lifted      pol n t eOpt anns) = rebuildMem uid anns $ Lifted      pol n (repairTQualifier t) eOpt
-        repairMem uid (Attribute   pol n t eOpt anns) = rebuildMem uid anns $ Attribute   pol n (repairTQualifier t) eOpt
-        repairMem uid (MAnnotation pol n anns)        = rebuildMem uid anns $ MAnnotation pol n
+    repairMem symS (Lifted      pol n t eOpt anns) = rebuildMem symS anns $ Lifted      pol n (repairTQualifier t) eOpt
+    repairMem symS (Attribute   pol n t eOpt anns) = rebuildMem symS anns $ Attribute   pol n (repairTQualifier t) eOpt
+    repairMem symS (MAnnotation pol n anns)        = rebuildMem symS anns $ MAnnotation pol n
 
-        validateD :: Int -> [K3 Declaration] -> K3 Declaration -> Identity (Int, K3 Declaration)
-        validateD uid ch n = ensureUIDSpan uid DUID isDUID DSpan isDSpan ch n >>= return . second repairDQualifier
+    validateD :: ParGenSymS -> [K3 Declaration] -> K3 Declaration -> Identity (ParGenSymS, K3 Declaration)
+    validateD symS ch n = ensureUIDSpan symS DUID isDUID DSpan isDSpan ch n >>= return . second repairDQualifier
 
-        validateE :: Int -> [K3 Expression] -> K3 Expression -> Identity (Int, K3 Expression)
-        validateE uid ch n = ensureUIDSpan uid EUID isEUID ESpan isESpan ch n >>= return . second repairEQualifier
+    validateE :: ParGenSymS -> [K3 Expression] -> K3 Expression -> Identity (ParGenSymS, K3 Expression)
+    validateE symS ch n = ensureUIDSpan symS EUID isEUID ESpan isESpan ch n >>= return . second repairEQualifier
 
-        validateT :: Int -> [K3 Type] -> K3 Type -> Identity (Int, K3 Type)
-        validateT uid ch n = ensureUIDSpan uid TUID isTUID TSpan isTSpan ch n >>= return . second repairTQualifier
+    validateT :: ParGenSymS -> [K3 Type] -> K3 Type -> Identity (ParGenSymS, K3 Type)
+    validateT symS ch n = ensureUIDSpan symS TUID isTUID TSpan isTSpan ch n >>= return . second repairTQualifier
 
-        repairDQualifier d = case tag d of
-          DGlobal  n t eOpt -> replaceTag d (DGlobal n (repairTQualifier t) eOpt)
-          DTrigger n t e    -> replaceTag d (DTrigger n (repairTQualifier t) e)
-          _ -> d
+    repairDQualifier d = case tag d of
+      DGlobal  n t eOpt -> replaceTag d (DGlobal  n (repairTQualifier t) eOpt)
+      DTrigger n t e    -> replaceTag d (DTrigger n (repairTQualifier t) e)
+      _ -> d
 
-        repairEQualifier :: K3 Expression -> K3 Expression
-        repairEQualifier n = case tnc n of
-          (EConstant (CEmpty t), _) -> let nt = runIdentity $ modifyTree (return . repairTQualifier) t
-                                       in replaceTag n $ EConstant $ CEmpty nt
-          (ELetIn _, [t, b]) -> replaceCh n [repairEQAnn t, b]
-          (ESome,     ch)    -> replaceCh n $ map repairEQAnn ch
-          (EIndirect, ch)    -> replaceCh n $ map repairEQAnn ch
-          (ETuple,    ch)    -> replaceCh n $ map repairEQAnn ch
-          (ERecord _, ch)    -> replaceCh n $ map repairEQAnn ch
-          _ -> n
+    repairEQualifier :: K3 Expression -> K3 Expression
+    repairEQualifier n = case tnc n of
+      (EConstant (CEmpty t), _) -> let nt = runIdentity $ modifyTree (return . repairTQualifier) t
+                                   in replaceTag n $ EConstant $ CEmpty nt
+      (ELetIn _, [t, b]) -> replaceCh n [repairEQAnn t, b]
+      (ESome,     ch)    -> replaceCh n $ map repairEQAnn ch
+      (EIndirect, ch)    -> replaceCh n $ map repairEQAnn ch
+      (ETuple,    ch)    -> replaceCh n $ map repairEQAnn ch
+      (ERecord _, ch)    -> replaceCh n $ map repairEQAnn ch
+      _ -> n
 
-        repairEQAnn n@((@~ isEQualified) -> Nothing) = n @+ EImmutable
-        repairEQAnn n = n
+    repairEQAnn n@((@~ isEQualified) -> Nothing) = n @+ EImmutable
+    repairEQAnn n = n
 
-        repairTQualifier n = case tnc n of
-          (TOption,      ch) -> replaceCh n $ map repairTQAnn ch
-          (TIndirection, ch) -> replaceCh n $ map repairTQAnn ch
-          (TTuple,       ch) -> replaceCh n $ map repairTQAnn ch
-          (TRecord _,    ch) -> replaceCh n $ map repairTQAnn ch
-          _ -> n
+    repairTQualifier n = case tnc n of
+      (TOption,      ch) -> replaceCh n $ map repairTQAnn ch
+      (TIndirection, ch) -> replaceCh n $ map repairTQAnn ch
+      (TTuple,       ch) -> replaceCh n $ map repairTQAnn ch
+      (TRecord _,    ch) -> replaceCh n $ map repairTQAnn ch
+      _ -> n
 
-        repairTQAnn n@((@~ isTQualified) -> Nothing) = n @+ TImmutable
-        repairTQAnn n = n
+    repairTQAnn n@((@~ isTQualified) -> Nothing) = n @+ TImmutable
+    repairTQAnn n = n
 
-        rebuildMem uid anns ctor = return $ (\(nuid, nanns) -> (nuid, ctor nanns)) $ validateMem uid anns
+    rebuildMem symS anns ctor = return $ (\(nsymS, nanns) -> (nsymS, ctor nanns)) $ validateMem symS anns
 
-        validateMem uid anns =
-          let (nuid, extraAnns) =
-                (\spa -> maybe (uid+1, [DUID $ UID uid]++spa) (const (uid, spa)) $ find isDUID anns)
-                  $ maybe ([DSpan $ GeneratedSpan repairMsg]) (const []) $ find isDSpan anns
-          in (nuid, anns ++ extraAnns)
+    validateMem symS anns =
+      let spa               = maybe ([DSpan $ GeneratedSpan repairMsg]) (const []) $ find isDSpan anns
+          (nsymS, u)         = gensym symS
+          (rsymS, extraAnns) = maybe (nsymS, [DUID $ UID u]++spa) (const (symS, spa)) $ find isDUID anns
+      in (rsymS, anns ++ extraAnns)
 
-        ensureUIDSpan uid uCtor uT sCtor sT ch (Node tg _) =
-          return $ ensureUID uid uCtor uT $ snd $ ensureSpan sCtor sT $ Node tg ch
+    ensureUIDSpan symS uCtor uT sCtor sT ch (Node tg _) =
+      return $ ensureUID symS uCtor uT $ snd $ ensureSpan sCtor sT $ Node tg ch
 
-        ensureSpan :: (Eq (Annotation a)) => (Span -> Annotation a) -> (Annotation a -> Bool) -> K3 a -> ((), K3 a)
-        ensureSpan    ctor t n = addAnn () () (ctor $ GeneratedSpan repairMsg) t n
+    ensureSpan :: (Eq (Annotation a)) => (Span -> Annotation a) -> (Annotation a -> Bool) -> K3 a -> ((), K3 a)
+    ensureSpan ctor t n = addAnn () () (ctor $ GeneratedSpan repairMsg) t n
 
-        ensureUID :: (Eq (Annotation a)) => Int -> (UID -> Annotation a) -> (Annotation a -> Bool) -> (K3 a) -> (Int, K3 a)
-        ensureUID uid ctor t n = addAnn (uid+1) uid (ctor $ UID uid) t n
+    ensureUID :: (Eq (Annotation a)) => ParGenSymS -> (UID -> Annotation a) -> (Annotation a -> Bool) -> (K3 a) -> (ParGenSymS, K3 a)
+    ensureUID symS ctor t n = addAnn nsymS symS (ctor $ UID uid) t n
+      where (nsymS, uid) = gensym symS
 
-        addAnn rUsed rNotUsed a t n = maybe (rUsed, n @+ a) (const (rNotUsed, n)) (n @~ t)
+    addAnn rUsed rNotUsed a t n = maybe (rUsed, n @+ a) (const (rNotUsed, n)) (n @~ t)
 
 
 -- | Fold an accumulator over all program UIDs.
@@ -1040,3 +965,7 @@ collectProgramUIDs d = fst $ foldProgramUID (flip (:)) [] d
 
 duplicateProgramUIDs :: K3 Declaration -> [UID]
 duplicateProgramUIDs d = let uids = collectProgramUIDs d in uids \\ nub uids
+
+indexProgramDecls :: (Monad m) => K3 Declaration -> m (Map Int (K3 Declaration))
+indexProgramDecls prog = foldTree indexDecl Map.empty prog
+  where indexDecl idx d = return $ maybe idx (\case {DUID (UID i) -> Map.insert i d idx; _ -> idx}) $ d @~ isDUID

@@ -5,6 +5,8 @@
 module Language.K3.Codegen.CPP.Materialization.Hints where
 
 import Control.DeepSeq
+import Data.Binary
+import Data.Serialize
 import Data.Typeable
 import GHC.Generics (Generic)
 
@@ -29,3 +31,9 @@ defaultDecision = Decision { inD = Copied, outD = Copied }
 {- Typeclass Instances -}
 instance NFData Method
 instance NFData Decision
+
+instance Binary Method
+instance Binary Decision
+
+instance Serialize Method
+instance Serialize Decision

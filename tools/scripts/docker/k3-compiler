@@ -1,0 +1,134 @@
+#  Dockerfile:  k3-compiler
+#
+#  Description:  Image for use with K3 compilation service.
+#
+#  Version:   GHC (7.10.1), Boost (1.57), Mesos (0.22.1), Protobuf (2.5)
+#
+#  Requirements:  Copy mesos libs (libmesos-<version>.so, libmesos.la) to local work dir
+
+# Debian: Sid
+FROM debian:sid
+
+# Install basic packages to build the image
+RUN apt-get update && apt-get install -y \
+    bzip2 unzip autoconf Libtool \
+    gcc g++ make cmake git curl wget \
+    libyaml-cpp-dev \
+    subversion \
+    python \
+    software-properties-common \
+    python-software-properties \
+    python-setuptools \
+    libzmq3-dev pkgconf
+
+# Install Boost v1.57.0
+RUN wget http://sourceforge.net/projects/boost/files/boost/1.57.0/boost_1_57_0.tar.bz2/download && \
+  tar --bzip2 -xvf ./download && \
+  rm download && \
+  cd boost_1_57_0 &&  \
+  ./bootstrap.sh --with-libraries=serialization,system,thread,log,program_options,filesystem --prefix=/usr/local libdir=/usr/local/lib && \
+  ./b2 stage threading=multi link=shared &&  \
+  ./b2 install threading=multi link=shared && \
+  cd .. && \
+  rm -Rf boost_1_57_0
+
+# Install Google Regex (re2) lib
+RUN git clone https://github.com/google/re2.git && \
+ cd re2  && \
+ make && \
+ make test && \
+ make install && \
+ cd .. && \
+ rm -Rf re2
+
+# Install CSV++
+RUN git clone https://git01.codeplex.com/forks/wjjt/csvpp && \
+  cd csvpp && \
+  cmake . && \
+  make && \
+  mv libcsvpp.so /usr/lib/ && \
+  cd .. && \
+  rm -Rf csvpp
+
+# Install libdynamic
+RUN git clone https://github.com/DaMSL/libdynamic && \
+  cd libdynamic &&  \
+  ./autogen.sh && \
+  ./configure --prefix=/usr && \
+  make && \
+  make install && \
+  cd .. && \
+  rm -Rf libdynamic
+
+# Copy in Mesos v0.22.1 libs && install python eggs
+ADD assets/libmesos-0.22.1.so /usr/lib/
+ADD assets/libmesos.la /usr/lib/
+ADD assets/include/mesos /usr/include/mesos/
+
+# Install Protobf v2.5
+RUN wget https://github.com/google/protobuf/releases/download/v2.5.0/protobuf-2.5.0.tar.bz2 && \
+  tar -xvf protobuf-2.5.0.tar.bz2 && \
+  rm protobuf-2.5.0.tar.bz2 && \
+  cd protobuf-2.5.0 && \
+  ./autogen.sh && \
+  ./configure --prefix=/usr && \
+  make && \
+  make check && \
+  make install && \
+  protoc --proto_path=/usr/include/mesos --cpp_out=/usr/include/mesos/ /usr/include/mesos/mesos.proto && \
+  cd .. && \
+  rm -Rf /protobuf-2.5.0
+
+# Install Mesos Eggs
+RUN ln -s /usr/lib/libmesos-0.22.1.so /usr/lib/libmesos.so && \
+    wget http://downloads.mesosphere.io/master/ubuntu/14.04/mesos-0.22.1-py2.7-linux-x86_64.egg && \
+    wget https://pypi.python.org/packages/2.7/m/mesos.interface/mesos.interface-0.22.1.1-py2.7.egg && \
+    easy_install mesos.interface-0.22.1.1-py2.7.egg && \
+    easy_install --no-deps mesos-0.22.1-py2.7-linux-x86_64.egg && \
+    rm mesos.interface-0.22.1.1-py2.7.egg && \
+    rm mesos-0.22.1-py2.7-linux-x86_64.egg
+
+
+# Install GHC and cabal
+WORKDIR /
+ENV LANG C.UTF-8
+ENV PATH /opt/ghc/7.10.1/bin:/opt/cabal/1.22/bin:/opt/alex/3.1.4/bin:/opt/happy/1.19.5/bin:/root/.cabal/bin/:$PATH
+
+RUN echo 'deb http://ppa.launchpad.net/hvr/ghc/ubuntu trusty main' > /etc/apt/sources.list.d/ghc.list && \
+    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys F6F88286 && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends zlib1g-dev cabal-install-1.22 ghc-7.10.1 happy-1.19.5 alex-3.1.4 && \
+    rm -rf /var/lib/apt/lists/*  && \
+    cabal update && \
+    cabal install cabal-install -j
+
+# Clone Repo
+RUN mkdir -p /k3/K3 && \
+    git clone https://github.com/DaMSL/K3.git /k3/K3
+
+# Build K3
+WORKDIR /k3/K3
+
+ENV K3_BRANCH development
+
+RUN git checkout development && \
+    cabal sandbox init && \
+    cabal install -j --only-dependencies --disable-documentation && \
+    cabal configure --ghc-options="-O2" && \
+    apt-get update && \
+    apt-get install -y libtinfo-dev && \
+    cabal build -j --ghc-options="-O2"
+
+# Clean up
+RUN apt-get autoremove -y && \
+    apt-get autoclean -y
+
+# Add pull script
+RUN echo '#!/bin/bash' > /k3/start.sh && \
+    echo 'cd /k3/K3' >> /k3/start.sh && \
+    echo 'git pull && git checkout $K3_BRANCH' >> /k3/start.sh && \
+    echo '$@' >> /k3/start.sh && \
+    chmod +x /k3/start.sh
+
+ENTRYPOINT ["/k3/start.sh"]
+

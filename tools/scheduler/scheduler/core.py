@@ -1,24 +1,8 @@
 # scheduler.core: Data structures for managing K3 jobs.
 import os, re, yaml
 import tarfile
-
-
-
-class JobStatus:
-  INITIATED = 'INITIATED'
-  SUBMITTED = 'SUBMITTED'
-  RUNNING   = 'RUNNING'
-  COMPILING = 'COMPILING'
-  ARCHIVING = 'ARCHIVING'
-  FAILED    = 'FAILED'
-  KILLED    = 'KILLED'
-  FINISHED  = 'FINISHED'
-
-  @classmethod
-  def done(cls, s):
-    return s in [JobStatus.FAILED, JobStatus.KILLED, JobStatus.FINISHED]
-
-
+import logging
+from common import *
 
 class K3JobError(Exception):
   def __init__(self, msg):
@@ -87,20 +71,6 @@ class Task:
     return "%s.%s" % (jobid, self.taskid)
 
 
-class CompileJob:
-  def __init__(self, **kwargs):
-    self.name    = kwargs.get('name', 'CompileTask')
-    self.uid      = kwargs.get('uid', '')
-    self.path     = kwargs.get('path', '')
-    self.url      = kwargs.get('url', '')
-    self.git_hash = kwargs.get('git_hash', 'latest')
-    self.user     = kwargs.get('user', '')
-    self.tag       = kwargs.get('tag', '')
-    self.options   = kwargs.get('options', '')
-  def __dict__(self):
-    return dict(name=self.name, uid=self.uid, path=self.path, tag=self.tag,
-                git_hash=self.git_hash, user=self.user, options=self.options)
-
 
 class Job:
   def __init__(self, **kwargs):
@@ -111,6 +81,8 @@ class Job:
     self.jobId      = kwargs.get("jobId", '1000')
     roleFile        = kwargs.get("rolefile", None)
     self.logging    = kwargs.get("logging", False)
+    self.jsonlog    = kwargs.get("jsonlog", False)
+    self.jsonfinal    = kwargs.get("jsonfinal", False)
     self.stdout     = kwargs.get("stdout", False)
     self.roles      = {}
     self.tasks      = []
@@ -119,19 +91,24 @@ class Job:
     self.master     = None
 
     if self.binary_url == None:
-      print ("Error. No binary provided to Job")
+      logging.error("[FLASKWEB] Error. No binary provided to Job")
       return
 
     print "BINARY URL = %s " % self.binary_url
 
     if roleFile == None:
-      print ("Error. No YAML file provided to Job")
+      logging.error("[FLASKWEB] Error. No YAML file provided to Job")
       return
 
     roles = None
     with open(roleFile, "r") as f:
-      contents = f.read()
-      roles = yaml.load_all(contents)
+      try:
+        contents = f.read()
+        roles = yaml.load_all(contents)
+      except yaml.YAMLError, exc:
+        if hasattr(exc, 'problem_mark'):
+          mark = exc.problem_mark
+          logging.error("[FLASKWEB] YAML Format Error position: (%s:%s)" % (mark.line+1, mark.column+1))
 
     for doc in roles:
       try:
@@ -165,18 +142,12 @@ class Job:
       self.roles[name] = r
 
 
-
-
-
-
-
 class PortList():
    def __init__(self, ranges=[]):
        self.index = 0
        self.offset = 0
        self.ports = [] if ranges == 0 else ranges
-       print self.ports
-
+       
    def addRange(self, r):
        ports.append(r)
 
@@ -202,6 +173,7 @@ class PortList():
      else:
          self.offset += 1
      return int(result)
+
 
 
 

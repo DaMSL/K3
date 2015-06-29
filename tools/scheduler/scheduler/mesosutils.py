@@ -3,8 +3,9 @@ import yaml
 import re
 import subprocess
 import httplib
+import logging
 
-#from protobuf_to_dict import protobuf_to_dict
+#from protobuf_to_dict import protobuf_to_dictd
 import json
 
 
@@ -14,12 +15,19 @@ import mesos.native
 
 DEBUG_EXECUTOR = True
 
-# EXECUTOR_URL = "http://qp1:8002/k3executor"
-# COMPEXEC_URL = "http://qp1:8002/CompileExecutor.py"
+# K3_DOCKER_NAME = "damsl/k3-run:exec"
+K3_COMPILER_IMAGE = "damsl/k3-compiler"
+K3_DOCKER_NAME = "damsl/k3-app"
+#K3_COMPILER_IMAGE = "damsl/k3-run:compile"
 
-# EXECUTOR_URL =
-# COMPEXEC_URL =
-K3_DOCKER_NAME = "damsl/k3-run:exec"
+
+
+def addLabel(labelMap, key, value):
+  # Labels:  New In Mesos v 0.22
+  # config = mesos_pb2.Labels()
+  lab = labelMap.labels.add()
+  lab.key = key
+  lab.value = value
 
 
 
@@ -97,7 +105,7 @@ def executorInfo(k3job, tnum, webaddr): #, jobid, binary_url, volumes=[], enviro
   docker.privileged = k3job.privileged
 
   if docker.privileged:
-    print ("NOTE: running privileged mode")
+    logging.warning ("NOTE: running privileged mode")
 
    
   # Create the Container
@@ -138,6 +146,8 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
       "archive_endpoint" : "%s/jobs/" % webaddr,
       "data": [role.inputs for p in range(len(k3task.peers))],
       "logging":  k3job.logging,
+      "jsonlog":  k3job.jsonlog,
+      "jsonfinal":  k3job.jsonfinal,
       "stdout": k3job.stdout}
 
   # TODO:  When logging is fully implemented, remove this & update executor to accept
@@ -145,7 +155,15 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
   if task_data['logging'] == False:
     del task_data['logging']
 
-  print 'ARCHIVE ADDR: %s' % webaddr
+  if task_data['jsonlog'] == False:
+    del task_data['jsonlog']
+
+  if task_data['jsonfinal'] == False:
+    del task_data['jsonfinal']
+
+
+
+
   executor = executorInfo(k3job, tnum, webaddr)
 
   task = mesos_pb2.TaskInfo()
@@ -176,9 +194,8 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
   portlist.end = max(peerPorts)
 
 
-  print "PEERS IN MESOSUTIL:"
   for p in k3task.peers:
-    print p.ip, p.port
+    logging.debug("   %s, %s" % (p.ip, p.port))
   # nextPort = peerPorts[0]
   # portlist = ports.ranges.range.add()
   #
@@ -201,58 +218,42 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
 
 
 
-def compileTask(**kwargs):
-  app     = kwargs.get('name', 'myprog')
-  webaddr = kwargs.get('webaddr', 'http://localhost:5000')
-  script  = kwargs.get('script', None)
-  source  = kwargs.get('source', None)
-  slave   = kwargs.get('slave', None)
-  uid     = kwargs.get('uid', None)
-  r_cpu   = kwargs.get('cpu', 4)
-  r_mem   = kwargs.get('mem', 4*1024)
+def addTaskLabel(task, key, value):
+  # Labels:  New In Mesos v 0.22
+  # config = mesos_pb2.Labels()
+  # lab = config.labels.add()
+  lab = task.labels.labels.add()
+  lab.key = str(key)
+  lab.value = str(value)
 
-  print 'WEB ADDR: %s' % webaddr
-
-  if script == None or source == None:
-    print ("Error. Cannot run compiler (missing source and/or compiler script)")
-    return
+# def compileTask(**kwargs):
+def compileTask(app, slave, daemon, r_cpu, r_mem, r_port):
 
   if slave == None:
-    print ("Error. No mesos slave provided")
+    logging.error("Error. No mesos slave provided")
 
-  uname = app if uid == None else "%s-%s" % (app, uid)
+  # uname = app if uid == None else "%s-%s" % (app, uid)
 
   executor = mesos_pb2.ExecutorInfo()
-  executor.executor_id.value = app
-  executor.name = 'K3-Compiler-%s' % app
+  executor.executor_id.value = app.get()
+  executor.name = 'K3-Compiler-%s' % app.get()
 
   command = mesos_pb2.CommandInfo()
   command.value = 'python $MESOS_SANDBOX/CompileExecutor.py'
 
-  # TODO:  Pull Specific K3-Build Version
-  # env = mesos_pb2.Environment()
-  # var = environment.variables.add()
-  # var.name = 'K3_BUILD'
-  # var.value = <git-hash>
-  # command.environment.MergeFrom(environment)
-
   comp_exec = command.uris.add()
-  comp_exec.value = "%s/fs/CompileExecutor.py" % webaddr
+  comp_exec.value = "%s/fs/CompileExecutor.py" % daemon['webaddr']
   comp_exec.executable = False
   comp_exec.extract = False
 
-  sh = command.uris.add()
-  sh.value = script
-  sh.executable = True
-  sh.extract = False
-
-  src = command.uris.add()
-  src.value = source
-  src.executable = False
-  src.extract = False
+  if daemon['role'] == 'client':
+    src = command.uris.add()
+    src.value = "%s/fs/build/%s/%s" % (daemon['webaddr'], app.get(), daemon['source'])
+    src.executable = False
+    src.extract = False
 
   docker = mesos_pb2.ContainerInfo.DockerInfo()
-  docker.image = K3_DOCKER_NAME
+  docker.image = K3_COMPILER_IMAGE
   docker.network = docker.HOST
 
   container = mesos_pb2.ContainerInfo()
@@ -262,18 +263,28 @@ def compileTask(**kwargs):
   executor.command.MergeFrom(command)
   executor.container.MergeFrom(container)
 
+  #  TO set ENVAR for K3_BRANCH  (may remove)
+  # environment = mesos_pb2.Environment()
+  # envar = environment.variables.add()
+  # envar.name = 'K3_BRANCH'
+  # envar.value = daemon['branch']
+  # command.environment.MergeFrom(environment)
+
   task = mesos_pb2.TaskInfo()
-  task.name = app
-  task.task_id.value = uname
+  task.name = app.get()
+  task.task_id.value = daemon['svid']
   task.slave_id.value = slave
 
-  # Labels:  New In Mesos v 0.22
-  # config = mesos_pb2.Labels()
-  # l_app = config.labels.add()
-  # l_app.key = 'appName'
-  # l_app.value = app
-  # task.labels.MergeFrom(config)
+  # ADD ALL LABELS HERE to pass to executor
+  daemon['name'] = app.name
+  daemon['uid'] = app.uid
+  config = mesos_pb2.Labels()
+  for k, v in daemon.items():
+    lab = config.labels.add()
+    lab.key = str(k)
+    lab.value = str(v)
 
+  task.labels.MergeFrom(config)
   task.executor.MergeFrom(executor)
 
   cpus = task.resources.add()
@@ -285,6 +296,18 @@ def compileTask(**kwargs):
   mem.name = "mem"
   mem.type = mesos_pb2.Value.SCALAR
   mem.scalar.value = r_mem
+
+  # Ports are only added if set and are defined as a range of 1 port
+  if r_port:
+    port = task.resources.add()
+    port.name = "ports"
+    port.type = mesos_pb2.Value.RANGES
+    portrange = port.ranges.range.add()
+    portrange.begin = r_port
+    portrange.end = r_port
+    logging.debug("Compile Task Resources: cpu=%s, mem=%s, port=%s" % (r_cpu, r_mem, r_port))
+  else:
+    logging.debug("Compile Task Resources: cpu=%s, mem=%s" % (r_cpu, r_mem))
 
   return task
 
@@ -299,8 +322,6 @@ def cmd_exists(cmd):
         stdout=subprocess.PIPE, stderr=subprocess.PIPE) == 0
 
 def resolve(master):
-
-
     if subprocess.call("type mesos-resolve", shell=True,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE) != 0:
 

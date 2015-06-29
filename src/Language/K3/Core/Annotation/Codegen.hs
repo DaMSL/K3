@@ -6,6 +6,8 @@
 module Language.K3.Core.Annotation.Codegen where
 
 import Control.DeepSeq
+import Data.Binary
+import Data.Serialize
 import Data.Typeable
 import GHC.Generics (Generic)
 
@@ -30,3 +32,11 @@ data PStructure
 instance NFData EmbeddingAnnotation
 instance NFData PQualifier
 instance NFData PStructure
+
+instance Binary EmbeddingAnnotation
+instance Binary PQualifier
+instance Binary PStructure
+
+instance Serialize EmbeddingAnnotation
+instance Serialize PQualifier
+instance Serialize PStructure

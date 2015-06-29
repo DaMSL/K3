@@ -1,10 +1,12 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE NoMonoLocalBinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE ParallelListComp #-}
 
 -- | High-level API to K3 toolchain stages.
 module Language.K3.Stages where
@@ -13,19 +15,33 @@ import Control.Arrow hiding ( left )
 import Control.DeepSeq
 import Control.Exception
 import Control.Monad
+import Control.Monad.IO.Class
 import Control.Monad.State
-import Control.Monad.Trans.Either
+import Control.Monad.Trans.Except
+
+import Control.Concurrent
 
 import Criterion.Measurement
 import Criterion.Types
 
+import Data.Binary ( Binary )
+import Data.Serialize ( Serialize )
+
 import Data.Function
+import Data.Functor.Identity
 import Data.List
+import Data.List.Split
 import Data.Map ( Map )
+import Data.Monoid
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
+import Data.Tree
+import Data.Tuple
+
 import Debug.Trace
+
+import GHC.Generics ( Generic )
 
 import qualified Text.Printf as TPF
 
@@ -34,12 +50,15 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Utils
 
-import Language.K3.Analysis.HMTypes.Inference hiding ( liftEitherM, tenv, inferDeclTypes )
+import Language.K3.Analysis.Core
+import Language.K3.Analysis.HMTypes.Inference hiding ( tenv, inferDeclTypes )
 
 import qualified Language.K3.Analysis.Properties           as Properties
 import qualified Language.K3.Analysis.CArgs                as CArgs
 import qualified Language.K3.Analysis.Provenance.Inference as Provenance
 import qualified Language.K3.Analysis.SEffects.Inference   as SEffects
+
+import qualified Language.K3.Analysis.SendGraph as SG
 
 import Language.K3.Transform.Simplification
 import Language.K3.Transform.TriggerSymbols (triggerSymbols)
@@ -57,27 +76,54 @@ type SnapshotSpec = Map String [String]
 data StageSpec = StageSpec { passesToRun    :: Maybe [Identifier]
                            , passesToFilter :: Maybe [Identifier]
                            , snapshotSpec   :: SnapshotSpec }
-                 deriving (Eq, Ord, Read, Show)
+                 deriving (Eq, Ord, Read, Show, Generic)
 
 -- | Configuration metadata for compiler stages
 data CompilerSpec = CompilerSpec { blockSize :: Int
                                  , stageSpec :: StageSpec }
-                    deriving (Eq, Ord, Read, Show)
+                    deriving (Eq, Ord, Read, Show, Generic)
 
 -- | Compilation profiling
 data TransformReport = TransformReport { statistics :: Map String [Measured]
                                        , snapshots  :: Map String [K3 Declaration] }
+                      deriving (Eq, Read, Show, Generic)
 
 -- | The program transformation composition monad
-data TransformSt = TransformSt { nextuid    :: Int
-                               , cseCnt     :: Int
+data TransformSt = TransformSt { nextuid    :: ParGenSymS
+                               , cseCnt     :: ParGenSymS
                                , tenv       :: TIEnv
                                , prenv      :: Properties.PIEnv
                                , penv       :: Provenance.PIEnv
                                , fenv       :: SEffects.FIEnv
                                , report     :: TransformReport }
+                  deriving (Eq, Read, Show, Generic)
 
-type TransformM = EitherT String (StateT TransformSt IO)
+-- | Monoid instance for transform reports.
+instance Monoid TransformReport where
+  mempty = TransformReport Map.empty Map.empty
+
+  mappend (TransformReport ast asn) (TransformReport bst bsn) =
+    TransformReport (ast <> bst) (asn <> bsn)
+
+data TransformStSymS = TransformStSymS { uidSym :: ParGenSymS, cseSym :: ParGenSymS
+                                       , prvSym :: ParGenSymS, effSym :: ParGenSymS }
+                      deriving (Eq, Ord, Read, Show, Generic)
+
+-- | Stage-based transformation monad.
+type TransformM = ExceptT String (StateT TransformSt IO)
+
+{- Stage-based transform instances -}
+instance Binary StageSpec
+instance Binary CompilerSpec
+instance Binary TransformReport
+instance Binary TransformSt
+instance Binary TransformStSymS
+
+instance Serialize StageSpec
+instance Serialize CompilerSpec
+instance Serialize TransformReport
+instance Serialize TransformSt
+instance Serialize TransformStSymS
 
 ss0 :: StageSpec
 ss0 = StageSpec Nothing Nothing Map.empty
@@ -88,30 +134,85 @@ cs0 = CompilerSpec 16 ss0
 rp0 :: TransformReport
 rp0 = TransformReport Map.empty Map.empty
 
-st0 :: K3 Declaration -> IO (Either String TransformSt)
-st0 prog = do
+st0 :: Maybe ParGenSymS -> K3 Declaration -> IO (Either String TransformSt)
+st0 symSOpt prog =
   return $ mkEnv >>= \(stpe, stfe) ->
-    return $ TransformSt puid 0 tienv0 Properties.pienv0 stpe stfe rp0
+    return $ TransformSt uidSymS cseSymS tienv0 Properties.pienv0 stpe stfe rp0
 
   where puid = let UID i = maxProgramUID prog in i + 1
+        uidSymS = maybe (contigsymAtS puid) (lowerboundsymS puid) symSOpt
+        [cseSymS, prvSymS, effSymS] = replicate 3 $ resetsymS uidSymS
         mkEnv = do
-          lcenv <- lambdaClosures prog
-          let pe = Provenance.pienv0 lcenv
-          return (pe, SEffects.fienv0 (Provenance.ppenv pe) lcenv)
+          vpenv <- variablePositions prog
+          let pe = Provenance.pienv0 (Just prvSymS) vpenv
+          return (pe, SEffects.fienv0 (Just effSymS) (Provenance.ppenv pe) $ lcenv vpenv)
 
-runTransformStM :: TransformSt -> TransformM a -> IO (Either String (a, TransformSt))
-runTransformStM st m = do
-  (a, s) <- runStateT (runEitherT m) st
+runTransformM :: TransformSt -> TransformM a -> IO (Either String (a, TransformSt))
+runTransformM st m = do
+  (a, s) <- runStateT (runExceptT m) st
   return $ either Left (Right . (,s)) a
 
-runTransformM :: TransformSt -> TransformM a -> IO (Either String a)
-runTransformM st m = do
-  e <- runTransformStM st m
+evalTransformM :: TransformSt -> TransformM a -> IO (Either String a)
+evalTransformM st m = do
+  e <- runTransformM st m
   return $ either Left (Right . fst) e
 
 liftEitherM :: Either String a -> TransformM a
-liftEitherM = either left return
+liftEitherM = either throwE return
 
+{- TransformSt utilities -}
+-- | Left-associative merge for transform states.
+mergeTransformSt :: Maybe Identifier -> TransformSt -> TransformSt -> TransformSt
+mergeTransformSt d agg new = rewindTransformStSyms new $
+  agg { penv    = Provenance.mergePIEnv d (penv agg) (penv new)
+      , fenv    = SEffects.mergeFIEnv   d (fenv agg) (fenv new)
+      , report  = (report agg) <> (report new) }
+
+-- | A merge function that propagates only the transform report.
+mergeTransformStReport :: TransformSt -> TransformSt -> TransformSt
+mergeTransformStReport st1 st2 = rewindTransformStSyms st2 $ st1 { report  = (report st1) <> (report st2) }
+
+getTransformSyms :: TransformSt -> TransformStSymS
+getTransformSyms s = TransformStSymS (nextuid s) (cseCnt s) (Provenance.pcnt $ penv s) (SEffects.fcnt $ fenv s)
+
+putTransformSyms :: TransformStSymS -> TransformSt -> TransformSt
+putTransformSyms syms s =
+    s { nextuid = uidSym syms
+      , cseCnt  = cseSym syms
+      , penv    = (penv s) { Provenance.pcnt = prvSym syms }
+      , fenv    = (fenv s) { SEffects.fcnt   = effSym syms } }
+
+mapTransformStSyms :: (Monad m) => (TransformStSymS -> m TransformStSymS) -> TransformSt -> m TransformSt
+mapTransformStSyms f s = do
+    rsyms <- f $ getTransformSyms s
+    return $ putTransformSyms rsyms s
+
+advanceTransformStSyms :: Int -> TransformSt -> Maybe TransformSt
+advanceTransformStSyms delta s = mapTransformStSyms advance s
+  where adv = advancesymS delta
+        advance (TransformStSymS a b c d) = TransformStSymS <$> adv a <*> adv b <*> adv c <*> adv d
+
+rewindTransformStSyms :: TransformSt -> TransformSt -> TransformSt
+rewindTransformStSyms s t = runIdentity $ mapTransformStSyms (rewind $ getTransformSyms s) t
+  where rw a b = return $ rewindsymS a b
+        rewind (TransformStSymS a b c d) (TransformStSymS a' b' c' d') =
+          TransformStSymS <$> rw a a' <*> rw b b' <*> rw c c' <*> rw d d'
+
+forkTransformStSyms :: Int -> TransformSt -> TransformSt
+forkTransformStSyms factor s = runIdentity $ mapTransformStSyms fork s
+  where f = return . forksymS factor
+        fork (TransformStSymS a b c d) = TransformStSymS <$> f a <*> f b <*> f c <*> f d
+
+partitionTransformStSyms :: Int -> Int -> TransformSt -> Maybe TransformSt
+partitionTransformStSyms forkFactor assignOffset s = mapTransformStSyms part s
+  where p = advancesymS assignOffset . forksymS forkFactor
+        part (TransformStSymS a b c d) = TransformStSymS <$> p a <*> p b <*> p c <*> p d
+
+ensureParallelStSyms :: Int -> TransformM ()
+ensureParallelStSyms parFactor = modify $ \s -> runIdentity $ mapTransformStSyms ensure s
+  where e sym@(ParGenSymS str off cur) | str < parFactor = return $ ParGenSymS parFactor off cur
+                                       | otherwise = return sym
+        ensure (TransformStSymS a b c d) = TransformStSymS <$> e a <*> e b <*> e c <*> e d
 
 {-- Transform utilities --}
 type ProgramTransform = K3 Declaration -> TransformM (K3 Declaration)
@@ -170,7 +271,7 @@ debugPass n f p = mkTg ("Before " ++ n) p (f p) >>= \np -> mkTg ("After " ++ n) 
 -- | Measure the execution time of a transform
 timePass :: String -> ProgramTransform -> ProgramTransform
 timePass n f prog = do
-  (npE, sample) <- get >>= liftIO . profile f prog
+  (npE, sample) <- get >>= \st -> liftIO (profile $ const $ runTransformM st $ f prog)
   (np, nst)     <- liftEitherM npE
   void $ put $ addMeasurement n sample nst
   return np
@@ -181,26 +282,26 @@ timePass n f prog = do
           nrp = rp {statistics = Map.insertWith (++) n' [sample] $ statistics rp}
       in st {report = nrp}
 
-    -- This is a reimplementation of Criterion.Measurement.measure
-    -- while actually returning the value computed.
-    profile tr arg st = do
-      startStats     <- getGCStats
-      startTime      <- getTime
-      startCpuTime   <- getCPUTime
-      startCycles    <- getCycles
-      resultE        <- runTransformStM st $ tr arg
-      wresultE       <- evaluate resultE
-      endTime        <- getTime
-      endCpuTime     <- getCPUTime
-      endCycles      <- getCycles
-      endStats       <- getGCStats
-      let !m = applyGCStats endStats startStats $ measured {
-                 measTime    = max 0 (endTime - startTime)
-               , measCpuTime = max 0 (endCpuTime - startCpuTime)
-               , measCycles  = max 0 (fromIntegral (endCycles - startCycles))
-               , measIters   = 1
-               }
-      return (wresultE, m)
+-- This is a reimplementation of Criterion.Measurement.measure that returns the value computed.
+profile :: (MonadIO m) => (() -> m a) -> m (a, Measured)
+profile m = do
+  startStats     <- liftIO getGCStats
+  startTime      <- liftIO getTime
+  startCpuTime   <- liftIO getCPUTime
+  startCycles    <- liftIO getCycles
+  resultE        <- m () >>= liftIO . evaluate
+  endTime        <- liftIO getTime
+  endCpuTime     <- liftIO getCPUTime
+  endCycles      <- liftIO getCycles
+  endStats       <- liftIO getGCStats
+  let msr = applyGCStats endStats startStats $ measured {
+              measTime    = max 0 (endTime - startTime)
+            , measCpuTime = max 0 (endCpuTime - startCpuTime)
+            , measCycles  = max 0 (fromIntegral (endCycles - startCycles))
+            , measIters   = 1
+            }
+  return (resultE, msr)
+
 
 -- | Take a snapshot of the result of a transform
 type SnapshotCombineF = [K3 Declaration] -> [K3 Declaration] -> [K3 Declaration]
@@ -236,7 +337,7 @@ withPropertyTransform f p = do
 
 withTypeTransform :: TypTrE -> ProgramTransform
 withTypeTransform f p = do
-  void $ ensureNoDuplicateUIDs p
+  --void $ ensureNoDuplicateUIDs p
   st <- get
   (np, te) <- liftEitherM $ f (tenv st) p
   void $ put $ st {tenv=te}
@@ -370,9 +471,9 @@ ensureNoDuplicateUIDs :: ProgramTransform
 ensureNoDuplicateUIDs p =
   let dupUids = duplicateProgramUIDs p
   in if null dupUids then return p
-     else left $ T.unpack $ PT.boxToString $ [T.pack "Found duplicate uids:"]
-                                       PT.%$ [T.pack $ show dupUids]
-                                       PT.%$ PT.prettyLines p
+     else throwE $ T.unpack $ PT.boxToString $ [T.pack "Found duplicate uids:"]
+                                         PT.%$ [T.pack $ show dupUids]
+                                         PT.%$ PT.prettyLines p
 
 inferTypes :: ProgramTransform
 inferTypes prog = do
@@ -384,9 +485,11 @@ inferTypes prog = do
 
 inferEffects :: ProgramTransform
 inferEffects prog = do
-  (p,  pienv) <- liftEitherM $ Provenance.inferProgramProvenance prog
-  (p', fienv) <- liftEitherM $ SEffects.inferProgramEffects Nothing (Provenance.ppenv pienv) (debugEffects "After provenance" p)
-  void $ modify $ \st -> st {penv = pienv, fenv = fienv}
+  st <- get
+  (p,  pienv) <- liftEitherM $ Provenance.inferProgramProvenance (Just $ Provenance.pcnt $ penv st) prog
+  (p', fienv) <- liftEitherM $ SEffects.inferProgramEffects Nothing (Just $ SEffects.fcnt $ fenv st)
+                                 (Provenance.ppenv pienv) (debugEffects "After provenance" p)
+  void $ modify $ \st' -> st' {penv = pienv, fenv = fienv}
   return (debugEffects "After effects" p')
 
   where debugEffects tg p = if True then p else flip trace p $ boxToString $ [tg] %$ prettyLines p
@@ -455,6 +558,7 @@ optPasses = map prepareOpt [ (simplifyWCSE, "opt-simplify-prefuse")
 
 cgPasses :: [ProgramTransform]
 cgPasses = [ withRepair "TID" $ transformE triggerSymbols
+           , \d -> (liftIO (SG.generateSendGraph d) >> return d)
            , \d -> return (mangleReservedNames d)
            , refreshProgram
            , transformF CArgs.runAnalysis
@@ -466,18 +570,6 @@ runOptPassesM prog = runPasses optPasses $ stripTypeAndEffectAnns prog
 
 runCGPassesM :: ProgramTransform
 runCGPassesM prog = runPasses cgPasses prog
-
--- Legacy methods.
-runOptPasses :: K3 Declaration -> IO (Either String (K3 Declaration, TransformReport))
-runOptPasses prog = st0 prog >>= either (return . Left) run
-  where run st = do
-          resE <- runTransformStM st $ runOptPassesM prog
-          return (resE >>= return . second report)
-
-runCGPasses :: K3 Declaration -> IO (Either String (K3 Declaration))
-runCGPasses prog = do
-  stE <- st0 prog
-  either (return . Left) (\st -> runTransformM st $ runCGPassesM prog) stE
 
 
 {- Declaration-at-a-time analyses and optimizations. -}
@@ -495,51 +587,67 @@ mapProgramDecls :: (K3 Declaration -> [ProgramTransform]) -> ProgramTransform
 mapProgramDecls passesF prog =
   foldProgramDecls (\_ d -> ((), passesF d)) () prog >>= return . snd
 
-blockMapProgramDecls :: Int -> [ProgramTransform] -> (K3 Declaration -> [ProgramTransform]) -> ProgramTransform
-blockMapProgramDecls blockSize blockPassesF declPassesF prog = blockDriver emptySeen prog
+parmapProgramDeclsBlock :: (K3 Declaration -> [ProgramTransform]) -> [K3 Declaration] -> TransformM [K3 Declaration]
+parmapProgramDeclsBlock declPassesF block = do
+    initState <- get
+    result <- debugBlock block $ liftIO $ runParallelBlock initState block
+    case result of
+      Left s -> throwE s
+      Right (st', nblock) -> put st' >> return nblock
+
   where
-    emptySeen              = (Set.empty, [])
-    addNamedSeen   (n,u) i = (Set.insert i n, u)
-    addUnnamedSeen (n,u) i = (n, i:u)
-    seenNamed      (n,_) i = Set.member i n
-    seenUnnamed    (_,u) i = i `elem` u
+    runParallelBlock :: TransformSt -> [K3 Declaration] -> IO (Either String (TransformSt, [K3 Declaration]))
+    runParallelBlock st ds = do
+      locks <- sequence $ newEmptyMVar <$ ds
+      sequence_ [runParallelDecl i lock d st | lock <- locks | d <- ds | i <- [0..]]
+      newSDs <- mapM takeMVar locks
+      return $ foldl mergeEitherStateDecl (Right (st, [])) newSDs
 
-    blockDriver seen p = do
-      ((nseen, anyNew), np) <- blockedPass seen p
-      np' <- debugBlock seen nseen $ runPasses blockPassesF np
-      if not anyNew && compareDAST np' p then return np'
-      else blockDriver nseen np'
+    stateError :: IO a
+    stateError = throwIO $ userError "Invalid parallel compilation state."
 
-    blockedPass seen p = do
-      let z = (seen, blockSize, False)
-      ((nseen, _, anyNew), np) <- foldProgramDecls passesWSkip z p
-      return ((nseen, anyNew), np)
+    runParallelDecl :: Int -> MVar (Either String (TransformSt, K3 Declaration)) -> K3 Declaration -> TransformSt -> IO ThreadId
+    runParallelDecl i m d s = flip (maybe stateError) (advanceTransformStSyms i s) $ \s' ->
+      forkIO $ runTransformM s' (fixD (mapProgramDecls declPassesF) compareDAST d) >>= putMVar m . fmap swap
 
-    passesWSkip (seen, cnt, anyNew) d@(nameOfDecl -> nOpt) =
-      let thisSeen        = maybe (seenUnnamed seen d) (seenNamed seen) nOpt
-          nAnyNew         = anyNew || not thisSeen
-          (nseen, passes) = if thisSeen then (seen, []) else (case nOpt of
-                              Nothing -> (addUnnamedSeen seen d, declPassesF d)
-                              Just n  -> if cnt == 0 then (seen, [])
-                                         else (addNamedSeen seen n, declPassesF d))
-      in
-      let ncnt = maybe cnt (const $ if cnt == 0 || thisSeen then cnt else (cnt-1)) nOpt
-          nacc = (nseen, ncnt, nAnyNew)
-      in (nacc, passes)
+    mergeEitherStateDecl :: Either String (TransformSt, [K3 Declaration]) -> Either String (TransformSt, K3 Declaration)
+                         -> Either String (TransformSt, [K3 Declaration])
+    mergeEitherStateDecl (Left s) _ = (Left s)
+    mergeEitherStateDecl _ (Left s) = (Left s)
+    mergeEitherStateDecl (Right (aggState, aggDecls)) (Right (newState, newDecl)) =
+      let resultSt = mergeTransformSt (declName newDecl) aggState newState
+      in debugMergeReport (statistics $ report aggState) (statistics $ report newState) (statistics $ report resultSt)
+          $ Right (resultSt, aggDecls++[newDecl])
 
-    nameOfDecl (tag -> DGlobal  n _ _) = Just n
-    nameOfDecl (tag -> DTrigger n _ _) = Just n
-    nameOfDecl _ = Nothing
+    debugMergeReport srp1 srp2 srprest r = if True then r else
+      flip trace r $ boxToString $ ["Report 1"]      ++ (indent 2 $ map fst (Map.toList srp1)) ++
+                                   ["Report 2"]      ++ (indent 2 $ map fst (Map.toList srp2)) ++
+                                   ["Report result"] ++ (indent 2 $ map fst (Map.toList srprest))
 
-    debugBlock old new r = flip trace r $ "Compiled a block: " ++
-                            (sep $ (Set.toList $ ((Set.\\) `on` fst) new old)
-                                ++ (map showDuid $ ((\\) `on` snd) new old))
+    fixD f (===) d = f d >>= \d' -> if d === d' then return d else fixD f (===) d'
 
-    sep = concat . intersperse ", "
+    debugBlock :: [K3 Declaration] -> a -> a
+    debugBlock ds = trace ("Compiling a block: " ++ intercalate ", " (map showDuid ds))
+
     showDuid d = maybe invalidUid duid $ d @~ isDUID
     duid (DUID (UID i)) = "DUID " ++ show i
     duid _ = invalidUid
     invalidUid = "<no duid>"
+
+blockMapProgramDecls :: Int -> [ProgramTransform] -> (K3 Declaration -> [ProgramTransform]) -> ProgramTransform
+blockMapProgramDecls blockSz blockPassesF declPassesF prog =
+  let chunks = chunksOf blockSz $ topLevelDecls prog
+  in (rebuild . concat <$> mapM (parmapProgramDeclsBlock declPassesF) chunks) >>= runPasses blockPassesF
+
+  where
+    rebuild :: [K3 Declaration] -> K3 Declaration
+    rebuild = Node (DRole "__global" :@: [])
+
+    topLevelDecls :: K3 Declaration -> [K3 Declaration]
+    topLevelDecls d =
+      case d of
+        (tag -> DRole _) -> children prog
+        _ -> error "Top level declaration is not a role."
 
 inferDeclProperties :: Identifier -> ProgramTransform
 inferDeclProperties n = withPropertyTransform $ \pre p ->
@@ -553,10 +661,10 @@ inferDeclTypes n = withTypeTransform $ \te p -> reinferProgDeclTypes te n p
 
 inferDeclEffects :: Maybe (SEffects.ExtInferF a, a) -> Identifier -> ProgramTransform
 inferDeclEffects extInfOpt n = withEffectTransform $ \pe fe p -> do
-  (nlc, _)   <- lambdaClosuresDecl n (Provenance.plcenv pe) p
-  let pe'     = pe {Provenance.plcenv = nlc}
-  (np,  npe) <- {-debugPretty ("Reinfer P\n" ++ show nlc) p $-} Provenance.reinferProgDeclProvenance pe' n p
-  let fe'     = fe {SEffects.fppenv = Provenance.ppenv npe, SEffects.flcenv = nlc}
+  (nvp, _)   <- variablePositionsDecl n (Provenance.pvpenv pe) p
+  let pe'     = pe {Provenance.pvpenv = nvp}
+  (np,  npe) <- {-debugPretty ("Reinfer P\n" ++ show nvp) p $-} Provenance.reinferProgDeclProvenance pe' n p
+  let fe'     = fe {SEffects.fppenv = Provenance.ppenv npe, SEffects.flcenv = lcenv nvp}
   (np', nfe) <- {-debugPretty "Reinfer F" fe' $-} SEffects.reinferProgDeclEffects extInfOpt fe' n np
   return (np', npe, nfe)
   where debugPretty tg a b = trace (T.unpack $ PT.boxToString $ [T.pack tg] PT.%$ PT.prettyLines a) b
@@ -689,17 +797,19 @@ declOptPasses stSpec extInfOpt d = case nameOfDecl d of
         nameOfDecl (tag -> DTrigger n _ _) = Just n
         nameOfDecl _ = Nothing
 
+runDeclPreparePassesM :: ProgramTransform
+runDeclPreparePassesM = runPasses [refreshProgram]
+
 runDeclOptPassesM :: CompilerSpec -> Maybe (SEffects.ExtInferF a, a) -> ProgramTransform
-runDeclOptPassesM cSpec extInfOpt =
-  runPasses [refreshProgram, blockMapProgramDecls (blockSize cSpec) [refreshProgram] passes]
+runDeclOptPassesM cSpec extInfOpt prog = do
+  ensureParallelStSyms $ blockSize cSpec
+  runPasses [blockMapProgramDecls (blockSize cSpec) [refreshProgram] passes] prog
   where passes = declOptPasses (stageSpec cSpec) extInfOpt
 
-runDeclOptPasses :: CompilerSpec -> Maybe (SEffects.ExtInferF a, a)
-                 -> K3 Declaration -> IO (Either String (K3 Declaration, TransformReport))
-runDeclOptPasses cSpec extInfOpt prog = st0 prog >>= either (return . Left) run
-  where run st = do
-          resE <- runTransformStM st $ runDeclOptPassesM cSpec extInfOpt prog
-          return (resE >>= return . second report)
+runDeclOptPassesBLM :: CompilerSpec -> Maybe (SEffects.ExtInferF a, a)
+                    -> [K3 Declaration] -> TransformM [K3 Declaration]
+runDeclOptPassesBLM cSpec extInfOpt block =
+  parmapProgramDeclsBlock (declOptPasses (stageSpec cSpec) extInfOpt) block
 
 
 {- Instances -}

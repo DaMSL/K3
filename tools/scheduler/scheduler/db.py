@@ -5,6 +5,8 @@ from pytz import timezone
 import sys
 import os
 
+from common import *
+
 SQLITE_DB = 'data.db'
 
 #  Load Postgres Connection Data from enviornment (or load defaults)
@@ -65,18 +67,29 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE TABLE IF NOT EXISTS compiles (
     name        text,
     uid         text,
-    git_hash    text,
     username    text,
     options     text,
+    tag         text,
+    blocksize   text,
+    numworkers  text,
     submit      timestamp,
     complete    timestamp,
-    tag         text,
     status      text
+);''',
+  'state': '''
+CREATE TABLE IF NOT EXISTS state (
+    key text,
+    value text
 );'''
 }
 
-
+# -------------------------------------------------
+#   DDL Querries to build/destroy db
+#--------------------------------------------------
 def createTables():
+  """
+    Create all the tables for flask service
+  """
   conn = getConnection()
   try:
     cur = conn.cursor()
@@ -88,12 +101,16 @@ def createTables():
     print(ex)
     sys.exit(1)
 
-def dropTables():
+def dropTables(t=None):
+  """
+    Delete all the tables for flask service
+  """
+  tablelist = tables.keys if t == None else [t]
   conn = getConnection()
   try:
     cur = conn.cursor()
     for table in tables.keys():
-      query = "DROP TABLE IF EXISTS %s CASCADE;" % table
+      query = "DROP TABLE IF EXISTS %s;" % table
       cur.execute(query)
       conn.commit()
   except Exception as ex:
@@ -101,6 +118,10 @@ def dropTables():
     print(ex)
     sys.exit(1)
 
+
+# -------------------------------------------------
+#   Application (app, app_versions) DML {C, R, U, D}
+#--------------------------------------------------
 def insertApp(app):  #name, version):
   conn = getConnection()
   cur = conn.cursor()
@@ -125,7 +146,7 @@ def getApp(appName, appUID=None):
     cur.execute(
       "SELECT a.name, v.uid, v.date FROM apps AS a, app_versions as V WHERE a.name=v.name AND a.latest=v.uid AND a.name='%s';" % appName)
   r = cur.fetchone()
-  return dict(name=r[0], uid=r[1], date=r[2])
+  return dict(name=r[0], uid=r[1], date=r[2]) if r else None
 
 def getAllApps(appName=None):
   cur = getConnection().cursor()
@@ -140,16 +161,30 @@ def getVersions(appName, limit=None):
     cur = getConnection().cursor()
     limitRows = '' if not limit else 'LIMIT %d' % limit
     cur.execute('''
-SELECT name, uid, name || '-' || uid as version, date, git_hash, username, options
-FROM app_versions LEFT OUTER JOIN compiles USING (name, uid) WHERE name='%s' ORDER BY date DESC %s;
+SELECT name, uid, name || '-' || uid as version, date
+FROM app_versions WHERE name='%s' ORDER BY date DESC %s;
 ''' % (appName, limitRows))
-    return [dict(name=r[0], uid=r[1], version=r[2], date=r[3], git_hash=r[4], user=r[5], options=r[6]) for r in cur.fetchall()]
+    return [dict(name=r[0], uid=r[1], version=r[2], date=r[3]) for r in cur.fetchall()]
+
+def deleteAllApps(appName):
+  conn = getConnection()
+  cur = conn.cursor()
+  cur.execute("DELETE FROM apps WHERE name='%s';" % appName)
+  conn.commit()
+  cur.execute("DELETE FROM app_versions WHERE name='%s';" % appName)
+  conn.commit()
+
 
 def checkHash(hash):
   cur = getConnection().cursor()
   cur.execute("SELECT COUNT(*) FROM app_versions WHERE hash='%s';" % hash)
   return False if int(cur.fetchone()[0]) == 0 else True
 
+
+
+# -------------------------------------------------
+#   Job (job) DML {C, R, U, D}
+#--------------------------------------------------
 def insertJob(job):
   conn = getConnection()
   cur = conn.cursor()
@@ -192,16 +227,35 @@ def deleteJob(jobId):
   cur.execute("DELETE FROM jobs WHERE jobId=%s;" % jobId)
   conn.commit()
 
+
+#-------------------------------------------------
+#   Job (job) DML {C, R, U, D}
+#--------------------------------------------------
 def insertCompile(comp):
   conn = getConnection()
   cur = conn.cursor()
   time = str(getTS_utc())
   cur.execute('''
-INSERT INTO compiles (name, uid, git_hash, username, options, submit, tag, status)
-VALUES('%(name)s', '%(uid)s', '%(git_hash)s', '%(user)s', '%(options)s', '%(time)s', '%(tag)s', '%(status)s');
-''' % dict(comp, time=time, status='SUBMITTED'))
+INSERT INTO compiles (name, uid, username, options, tag, blocksize, numworkers, submit, status)
+VALUES('%(name)s', '%(uid)s', '%(user)s', '%(options)s', '%(tag)s', '%(blocksize)s', '%(numworkers)s', '%(time)s','%(status)s');
+''' % dict(comp, time=time, status='INITIALIZED'))
   conn.commit()
   return getTS_est(time)
+
+def getCompiles(**kwargs):
+  appName = kwargs.get('appName', None)
+  uid     = kwargs.get('uid', None)
+  active  = kwargs.get('active', False)
+
+  filter = ("WHERE name='%s'" % appName if appName
+              else "WHERE uid='%s'" % uid if uid
+                  else "")
+
+  cur = getConnection().cursor()
+  cur.execute("SELECT * from compiles %s ORDER BY submit DESC;" % filter)
+  return [dict(name=r[0], uid=r[1], user=r[2], options=r[3], tag=r[4], 
+        blocksize=r[5], numworkers=r[6], submit=r[7], complete=r[8],
+               status=r[9]) for r in cur.fetchall()]
 
 def updateCompile(uid, **kwargs):
   status    = kwargs.get("status", None)
@@ -218,20 +272,28 @@ def updateCompile(uid, **kwargs):
       cur.execute("UPDATE compiles SET complete='%s' WHERE uid='%s';" % (time, uid))
       conn.commit()
 
-def getCompiles(**kwargs):
-  appName = kwargs.get('appName', None)
-  uid     = kwargs.get('uid', None)
-  active  = kwargs.get('active', False)
-
-  filter = ("WHERE appName='%s'" % appName if appName
-              else "WHERE uid='%s'" % uid if uid
-                  else "")
-
-  cur = getConnection().cursor()
-  cur.execute("SELECT * from compiles %s ORDER BY submit DESC;" % filter)
-  return [dict(name=r[0], uid=r[1], git_hash=r[2], user=r[3],
-               options=r[4], submit=r[5], complete=r[6],
-               tag=r[7], status=r[8]) for r in cur.fetchall()]
+def deleteCompile(uid):
+  conn = getConnection()
+  cur = conn.cursor()
+  cur.execute("DELETE FROM compiles WHERE uid='%s';" % uid)
+  conn.commit()
 
 
+# -------------------------------------------------
+#   State DML {C, R, U}
+#--------------------------------------------------
+def setState (key, value):
+  conn = getConnection()
+  cur = conn.cursor()
+  cur.execute("SELECT COUNT(*) FROM state WHERE key='%s';" % key)
+  if int(cur.fetchone()[0]) != 0:
+    cur.execute("DELETE FROM state WHERE key='%s';" % key)
+    comm.commit()
+  cur.execute("INSERT INTO state VALUES ('%s', '%s');" % (key, value))
+  conn.commit()
+
+def getState(key):
+  conn = getConnection()
+  cur = conn.cursor()
+  cur.execute("SELECT value FROM state WHERE key='%s';" % key)
 

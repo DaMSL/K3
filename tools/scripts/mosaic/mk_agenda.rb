@@ -1,53 +1,95 @@
 #! /usr/bin/env ruby
-# Samples randomly from a set of CSV files, creating a null-padded union-schema. Individual rows are
-# in alphabetical order of source file names, regardless of order specified.
+# Parses a SQL file with schema definitions and an agenda mapping, to create a unified agenda.
 
 require 'csv'
+require 'pathname'
+
+DATA_PATH = "."
+DATA_EXTN = ".tbl"
+DATA_DELM = "|"
+
+MAPPING_RXP = /mapping\s*:=\s*'([^']*)'/, 1
+STREAM_RXP = /CREATE STREAM (\w*) \(((?:.|\n)*?)\)\s*FROM FILE '([^']*)'/
 
 if __FILE__ == $0
   begin
-    out_file = ARGV.shift
-    in_handles = ARGV.sort.collect do |path|
-      CSV.open(path, "r", {:col_sep => "|"})
+    sql_dump = File.new($*.shift).read
+  rescue
+    puts "usage: #{$0} <path/to/schema.sql> <path/to/output.psv>"
+  end
+
+  begin
+    out_file = File.new($*.shift, "w")
+  rescue
+    puts "usage: #{$0} <path/to/schema.sql> <path/to/output.psv>"
+    exit
+  end
+
+  begin
+    table_sources = {}
+    default_map = {}
+    sql_dump.scan(STREAM_RXP).each do |name, contents, path|
+      if name == "AGENDA"
+        types = contents.strip.split(/\s*,\s*/).map(&:split).transpose[1]
+        types.each_with_index do |t, i|
+          case t
+          when /CHAR/
+            default_map[i] = nil
+          when /VARCHAR/
+            default_map[i] = nil
+          when /INT/
+            default_map[i] = 0
+          when /DATE/
+            default_map[i] = nil
+          when /DECIMAL/
+            default_map[i] = 0.0
+          end
+        end
+        next
+      end
+      table_sources[name] = CSV::open(
+        Pathname.new(DATA_PATH) + Pathname.new(path).basename.sub_ext(DATA_EXTN),
+        "r",
+        {:col_sep => ","},
+       )
     end
   rescue
-    puts "Incorrect filename, verify."
+    puts "Unable to open source stream file."
+    exit
   end
 
-  schema_widths = in_handles.map do |in_handle|
-    width = in_handle.shift.length
-    in_handle.rewind
-    width
+  schema_mapping = {}
+  sql_dump[*MAPPING_RXP].split(/;\s*/).each do |line|
+    table_name, columns = line.split(":")
+    schema_mapping[table_name] = columns.split(",").map(&:to_i)
   end
 
-  schema_defs = in_handles.map do |in_handle|
-    vals = in_handle.shift.map do |val|
-        if /^\d+$/ =~ val then 0
-        elsif /^\d+\.\d*$/ =~ val then 0
-        elsif /^(true|false)$/ =~ val then false
-        else ""
-        end
-    end
-    in_handle.rewind
-    vals
-  end
-
-  active = (0..in_handles.length - 1).to_a
+  union_schema_width = schema_mapping.values.flatten.max + 1
 
   CSV.open(out_file, "wb", {:col_sep => "|"}) do |out_handle|
-    while !active.empty?
-      # choose a random in_handle to read from
-      index = active.sample
-      in_handle = in_handles[index]
+    while !table_sources.empty?
+      index = table_sources.keys.sample
+      in_handle = table_sources[index]
       row = in_handle.shift
       if row.nil?
-        active.delete(index)
+        table_sources.delete(index)
       else
-        before = schema_defs[0...index].flatten
-        after = schema_defs[index + 1..-1].flatten
-        out_handle << [index] + before + row + after
+        union_schema = [nil] * union_schema_width
+        row.zip(schema_mapping[index]).each do |r, f|
+          union_schema[f] = r
+        end
+        union_schema[0] = index
+        union_schema[1] = 1
+
+        union_schema.each_with_index do |u, i|
+          if u.nil?
+            union_schema[i] = default_map[i]
+          else
+            union_schema[i] = u
+          end
+        end
+        out_handle << union_schema
       end
     end
-    out_handle << [-1] + schema_defs.flatten
   end
 end

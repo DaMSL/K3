@@ -3,11 +3,13 @@
 -- | Provenance data type constructors
 module Language.K3.Analysis.Provenance.Constructors where
 
+import Data.Function
 import Data.List
 import Data.Tree
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
+import Language.K3.Analysis.Core
 import Language.K3.Analysis.Provenance.Core
 
 leaf :: Provenance -> K3 Provenance
@@ -33,10 +35,24 @@ simplifyChildren tagF ch = nub $ filter (\p -> tag p /= PTemporary) $ concatMap 
   where flatCh (tnc -> (tagF -> True, gch)) = gch
         flatCh p = [p]
 
+simplifyChildrenTI :: (Provenance -> Bool) -> [TrIndex] -> [K3 Provenance] -> ([TrIndex], [K3 Provenance])
+simplifyChildrenTI tagF tich ch =
+	unzip $ nubBy ((==) `on` snd)
+		  $ filter (\(_,p) -> tag p /= PTemporary)
+		  $ concatMap flatCh $ zip tich ch
+  where flatCh (children -> tigch, tnc -> (tagF -> True, gch)) = zip tigch gch
+        flatCh (ti,p) = [(ti,p)]
+
+
 pset :: [K3 Provenance] -> K3 Provenance
 pset ch = mkNode $ simplifyChildren (== PSet) ch
   where mkNode []  = ptemp
         mkNode chl = Node (PSet :@: []) chl
+
+psetTI :: Int -> [TrIndex] -> [K3 Provenance] -> (TrIndex, K3 Provenance)
+psetTI sz tich ch = mkNode $ simplifyChildrenTI (== PSet) tich ch
+  where mkNode (_, []) = (tileaf $ zerobv sz, ptemp)
+        mkNode (tichl, chl) = (orti tichl, Node (PSet :@: []) chl)
 
 pchoice :: [K3 Provenance] -> K3 Provenance
 pchoice ch = Node (PChoice :@: []) ch
@@ -45,6 +61,11 @@ pderived :: [K3 Provenance] -> K3 Provenance
 pderived ch = mkNode $ simplifyChildren (== PDerived) ch
   where mkNode []  = ptemp
         mkNode chl = Node (PDerived :@: []) chl
+
+pderivedTI :: Int -> [TrIndex] -> [K3 Provenance] -> (TrIndex, K3 Provenance)
+pderivedTI sz tich ch = mkNode $ simplifyChildrenTI (== PDerived) tich ch
+  where mkNode (_,[]) = (tileaf $ zerobv sz, ptemp)
+        mkNode (tichl, chl) = (orti tichl, Node (PDerived :@: []) chl)
 
 pdata :: Maybe [Identifier] -> [K3 Provenance] -> K3 Provenance
 pdata idsOpt ch = Node (PData idsOpt :@: []) ch

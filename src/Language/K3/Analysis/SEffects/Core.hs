@@ -9,6 +9,9 @@ module Language.K3.Analysis.SEffects.Core where
 import Control.DeepSeq
 import GHC.Generics (Generic)
 
+import Data.Binary
+import Data.Serialize
+
 import Data.List
 import Data.Tree
 import Data.Typeable
@@ -51,11 +54,12 @@ data Effect
                           --    and a result effect structure.
                           -- ii. 2-child variant:
                           --     lambda effect structure, and arg effect structure.
+                          -- iii. 1-child variant: result effect structure
                           --
                           -- Note after simplification, we introduce a 3-child variant as a
                           -- simplified form of the 5-child version:
-                          -- iii. initializer execution effects, result execution effects,
-                          --      and a result effect structure.
+                          -- iv. initializer execution effects, result execution effects,
+                          --     and a result effect structure.
 
     | FSet                     -- Set of effects, all of which are possible.
     | FSeq
@@ -70,6 +74,14 @@ data instance Annotation Effect = FDeclared (K3 Effect)
 instance NFData FMatVar
 instance NFData Effect
 instance NFData (Annotation Effect)
+
+instance Binary FMatVar
+instance Binary Effect
+instance Binary (Annotation Effect)
+
+instance Serialize FMatVar
+instance Serialize Effect
+instance Serialize (Annotation Effect)
 
 {- Annotation extractors -}
 isFDeclared :: Annotation Effect -> Bool

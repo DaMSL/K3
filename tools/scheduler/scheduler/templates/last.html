@@ -1,0 +1,111 @@
+{% extends "layout/base.html" %}
+
+{% block content %}
+  <div class="container">
+    <div class="starter-template">
+        {% if appName %}
+          <h2>Application: <span class="text-info"><a href="/jobs/{{appName}}">{{appName}}</a></span>
+          {% if jobId %}
+           - Job: <span class="text-info">{{jobId}}</span>
+          {% endif %}
+          </h2>
+        {% endif %}
+        {% if lastcompile %}
+        <div class="row">
+            <div class="col-md-12">
+            <h3>Compling {{ lastcompile.name }} with UID: # {{ lastcompile.uid }} <br>
+                Status: <strong>{{ lastcompile.status }}</strong> at {{ lastcompile.time }}</h3><h4>
+          </div></div>
+        <div class="row">
+          <div class="col-md-7">
+            <br>
+            <h4><ul style="list-style-type:disc">
+            <li class="list-group-item">       
+
+              Streaming WebSocket Log (Active session only):
+              <a href='/compilelog'>Compile LOG</a></li>
+            <li class="list-group-item">
+              View Compile Output:
+              <a href="/fs/build/{{lastcompile.uname}}/output" target="_blank">STDOUT</a></li>
+            <li class="list-group-item">
+              Download CPP Source Output:
+              <a href="/fs/build/{{lastcompile.uname}}/{{lastcompile.name}}.cpp">CPP Source</a></li>
+            <li class="list-group-item">
+              Check progress: 
+              <a href="http://qp2:5050" target="_blank">Mesos</a></li>
+            <li class="list-group-item"># Workers: {{lastcompile.numworkers}}</li>
+            <li class="list-group-item">Blocksize: {{lastcompile.blocksize}}</li>
+            <li class="list-group-item">Compile Stage: {{lastcompile.compilestage}}</li>
+            <li class="list-group-item">Pulling Git Repo: {{lastcompile.gitpull}}</li>
+            <li class="list-group-item">Git Branch: {{lastcompile.branch}}</li>
+            <li class="list-group-item">Cabal Build: {{lastcompile.cabalbuild}}</li>
+            <li class="list-group-item">
+              Check progress: 
+              <a href="http://qp2:5050" target="_blank">Mesos</a></li>
+            </ul></h4>
+          </div>
+          <div class="col-md-5">
+            {% if lastcompile.sandbox %}
+                <h4 class="text-center">Build Directory</h4>
+                <ul style="list-style-type:disc">
+                {% for entry in lastcompile.sandbox %}
+                    <li><a href="/fs/build/{{lastcompile.uname}}/{{entry}}">{{entry}}</a></li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+          </div></div>
+
+        {% endif %}
+        {% if lastjob %}
+        <div class="row">
+            <div class="col-md-12">
+                <h3>Job # {{ lastjob.jobId }} {{ lastjob.status }} at {{ lastjob.time }}</h3>
+                <h4>Check tasks on <a href="{{ lastjob.url }}" target="_blank">Mesos</a></h4>
+            </div>
+        </div>
+        <div class="row">
+          <div class="col-md-7">
+            <br>
+            <h4 class="text-center">Job Environment</h4>
+            <ul class="list-group">
+              {% if lastjob.uid %}
+                <li class="list-group-item">UID: <span class="text-info">{{ lastjob.uid }}</span></li>{% endif %}
+              {% if lastjob.hash %}
+                <li class="list-group-item">App Version UID: <span class="text-info">{{ lastjob.hash }}</span></li>{% endif %}
+              {% if lastjob.user %}
+                <li class="list-group-item">Username <span class="text-info">{{ lastjob.user }}</span></li>{% endif %}
+              {% if lastjob.tag %}
+                <li class="list-group-item">Tag Notes: <span class="text-info">{{ lastjob.tag }}</span></li>{% endif %}
+              {% if lastjob.time %}
+                <li class="list-group-item">Time Submitted <span class="text-info">{{ lastjob.time }}</span></li>{% endif %}
+              {% if lastjob.complete %}
+                <li class="list-group-item">Time Completed <span class="text-info">{{ lastjob.complete }}</span></li>{% endif %}
+              {% if lastjob.master %}
+                <li class="list-group-item">Master at <span class="text-info">{{ lastjob.master }}</span>
+                (<a href="/fs/jobs/{{appName}}/{{lastjob.jobId}}/stdout_{{lastjob.master}}">Master OUTPUT </a>)</li>{% endif %}
+              {% if lastjob.url %}
+                <li class="list-group-item">Mesos: <a href="{{ lastjob.url }}">Framework Status </a>)</li>{% endif %}
+              {% if lastjob.roles %}
+                <li class="list-group-item">Roles<br><pre>{{ lastjob.roles }}</pre></li> {% endif %}
+            </ul>
+          </div>
+          <div class="col-md-5">
+              {% if lastjob.sandbox %}
+                <h4 class="text-center">Sandbox Files</h4>
+                <ul style="list-style-type:disc">
+                {% for entry in lastjob.sandbox %}
+                    <li><a href="/fs/jobs/{{appName}}/{{lastjob.jobId}}/{{entry}}">{{entry}}</a></li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+          </div>
+        </div>
+            <br><br><h4><a href="/jobs">return to jobs</a></h4>
+        {% endif %}
+    </div>
+  </div>
+{% endblock %}
+
+{% block footer %}
+  {% include "include/footer.html" %}
+{% endblock %}

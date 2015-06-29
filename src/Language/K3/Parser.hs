@@ -27,6 +27,7 @@ module Language.K3.Parser {-(
   parseDeclaration,
   parseSimpleK3,
   parseK3,
+  stitchK3,
   ensureUIDs
 )-} where
 
@@ -89,6 +90,13 @@ parseDeclaration s = either (const Nothing) mkRole $ runK3Parser Nothing (head <
 
 parseSimpleK3 :: String -> Maybe (K3 Declaration)
 parseSimpleK3 s = either (const Nothing) Just $ runK3Parser Nothing (program True) s
+
+stitchK3 :: [FilePath] -> String -> IO [String]
+stitchK3 includePaths s = do
+  searchPaths   <- if null includePaths then getSearchPath else return includePaths
+  subFiles      <- processIncludes searchPaths (lines s) []
+  subFileCtnts  <- trace (unwords ["subfiles:", show subFiles]) $ mapM readFile subFiles
+  return $ subFileCtnts ++ [s]
 
 parseK3 :: Bool -> [FilePath] -> String -> IO (Either String (K3 Declaration))
 parseK3 noFeed includePaths s = do
@@ -1023,7 +1031,8 @@ equateQExpr = symbol "=" *> qualifiedExpr
 {- Endpoints -}
 
 endpoint :: Bool -> K3Parser EndpointBuilder
-endpoint isSource = if isSource then choice $ [value]++common else choice common
+endpoint isSource = if isSource then choice $ [value, try fileseq] ++ common
+                                else choice common
   where common = [builtin isSource, file isSource, network isSource]
 
 value :: K3Parser EndpointBuilder
@@ -1037,16 +1046,26 @@ builtin isSource = mkBuiltin <$> builtinChannels <*> format
         builtinSpec idE formatE = BuiltinEP <$> S.symbolS idE <*> S.symbolS formatE
 
 file :: Bool -> K3Parser EndpointBuilder
-file isSource = mkFile <$> (symbol "file" *> eCString) <*> textOrBinary <*> format
-  where textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
-        mkFile argE asText formatE n t = fileSpec argE asText formatE >>= \s -> return $ endpointMethods isSource s n t
-        fileSpec argE asText formatE = (\p f -> FileEP p asText f) <$> S.exprS argE <*> S.symbolS formatE
+file isSource = mkFile <$> (symbol "file" *> eTerminal) <*> format
+  where mkFile argE formatE n t = do
+          s <- fileSpec argE formatE
+          return $ endpointMethods isSource s argE formatE n t
+
+        fileSpec argE formatE = FileEP <$> S.exprS argE <*> S.symbolS formatE
+
+fileseq :: K3Parser EndpointBuilder
+fileseq = mkFileSeq <$> (symbol "fileseq" *> eVariable) <*> format
+  where mkFileSeq argE formatE n t = do
+          s <- fileSeqSpec argE formatE
+          return $ endpointMethods True s argE formatE n t
+
+        fileSeqSpec argE formatE = FileSeqEP <$> S.exprS argE <*> S.symbolS formatE
 
 network :: Bool -> K3Parser EndpointBuilder
-network isSource = mkNetwork <$> (symbol "network" *> eAddress) <*> textOrBinary <*> format
-  where textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
-        mkNetwork addrE asText formatE n t = networkSpec addrE asText formatE >>= \s -> return $ endpointMethods isSource s n t
-        networkSpec addrE asText formatE = (\a f -> NetworkEP a asText f) <$> S.exprS addrE <*> S.symbolS formatE
+network isSource = mkNetwork <$> (symbol "network" *> eTerminal) <*> format
+  where mkNetwork addrE formatE n t =
+          networkSpec addrE formatE >>= \s -> return $ endpointMethods isSource s addrE formatE n t
+        networkSpec addrE formatE = NetworkEP <$> S.exprS addrE <*> S.symbolS formatE
 
 builtinChannels :: ExpressionParser
 builtinChannels = choice [ch "stdin", ch "stdout", ch "stderr"]

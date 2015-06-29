@@ -9,6 +9,9 @@ module Language.K3.Analysis.Provenance.Core where
 import Control.DeepSeq
 import GHC.Generics (Generic)
 
+import Data.Binary
+import Data.Serialize
+
 import Data.List
 import Data.Tree
 import Data.Typeable
@@ -36,7 +39,7 @@ data Provenance =
     | PSet                              -- Non-deterministic (if-then-else or case)
     | PChoice                           -- One of the cases must be chosen ie. they're exclusive
     | PDerived                          -- A value derived from named children e.g. x + y ==> [x;y]
-    | PData        (Maybe [Identifier]) -- A value derived from a data constructor (optionally with named comoonents)
+    | PData        (Maybe [Identifier]) -- A value derived from a data constructor (optionally with named components)
     | PRecord      Identifier
     | PTuple       Int
     | PIndirection
@@ -55,10 +58,18 @@ data Provenance =
 data instance Annotation Provenance = PDeclared (K3 Provenance)
                                     deriving (Eq, Ord, Read, Show, Generic)
 
-{- SEffect instances -}
+{- Provenance instances -}
 instance NFData PMatVar
 instance NFData Provenance
 instance NFData (Annotation Provenance)
+
+instance Binary PMatVar
+instance Binary Provenance
+instance Binary (Annotation Provenance)
+
+instance Serialize PMatVar
+instance Serialize Provenance
+instance Serialize (Annotation Provenance)
 
 {- Annotation extractors -}
 isPDeclared :: Annotation Provenance -> Bool

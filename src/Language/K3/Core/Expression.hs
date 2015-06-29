@@ -46,6 +46,9 @@ module Language.K3.Core.Expression (
 
 import Control.DeepSeq
 
+import Data.Binary
+import Data.Serialize
+
 import Data.List
 import Data.Tree
 import Data.Typeable
@@ -196,6 +199,22 @@ instance NFData Operator
 instance NFData Binder
 instance NFData (Annotation Expression)
 instance NFData Conflict
+
+instance Binary Expression
+instance Binary ImperativeExpression
+instance Binary Constant
+instance Binary Operator
+instance Binary Binder
+instance Binary (Annotation Expression)
+instance Binary Conflict
+
+instance Serialize Expression
+instance Serialize ImperativeExpression
+instance Serialize Constant
+instance Serialize Operator
+instance Serialize Binder
+instance Serialize (Annotation Expression)
+instance Serialize Conflict
 
 {- HasUID instances. -}
 instance HasUID (Annotation Expression) where
