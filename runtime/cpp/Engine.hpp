@@ -2,6 +2,7 @@
 #define K3_RUNTIME_ENGINE_H
 
 #include <atomic>
+#include <chrono>
 #include <string>
 #include <list>
 #include <map>
@@ -35,11 +36,9 @@ namespace K3 {
   }
 
   static inline std::string currentTime() {
-    time_t now = time(0);
-    tm *ltm = localtime(&now);
-    std::ostringstream oss;
-    oss << ltm->tm_hour << ":" << ltm->tm_min << ":" << ltm->tm_sec;
-    return oss.str();
+    std::chrono::milliseconds ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch());
+    return std::to_string(ms.count());
   }
 
   //---------------

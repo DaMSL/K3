@@ -12,6 +12,8 @@ declare takeUntil : string -> string -> string
 @:CArgs 2
 declare countChar : string -> string -> int
 
+declare toJson: forall a. a -> string
+
 // TODO: move to String.k3
 @:CArgs 3
 declare slice_string : string -> int -> int -> string

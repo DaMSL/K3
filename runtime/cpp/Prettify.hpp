@@ -2,6 +2,7 @@
 #define K3_RUNTIME_PRETTIFY_H
 
 #include "Common.hpp"
+#include "BaseString.hpp"
 #include "dataspace/Dataspace.hpp"
 
 namespace K3 {
