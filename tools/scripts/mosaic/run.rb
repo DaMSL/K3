@@ -411,7 +411,7 @@ def parse_dbt_results(dbt_name)
   return dbt_results
 end
 
-def parse_k3_results(dbt_results, jobid)
+def parse_k3_results(dbt_results, jobid, full_ktrace)
   stage "[6] Parsing K3 results"
   files = []
 
@@ -427,13 +427,31 @@ def parse_k3_results(dbt_results, jobid)
   combined_maps = {}
   str = File.read(globals_path)
   stage "[6] Found K3 globals.csv"
+
+  if full_ktrace
+    max_msg_ids = {}
+    str.each_line do |line|
+      fields = line.split('|')
+      msg_id = fields[0]
+      peer = fields[1]
+      max_msg_ids[peer] = max_msg_ids.has_key?(peer) ? [max_msg_ids[peer], msg_id].max() : msg_id
+    end
+  end
+
   str.each_line do |line|
     csv = line.split('|')
+    msg_id   = csv[0]
+    peer     = csv[1]
     map_name = csv[2]
     map_data = csv[3]
+
+    # skip intermediate state if using full ktrace
+    next if full_ktrace && msg_id != max_msg_ids[peer]
+
     # skip irrelevant maps
     next unless dbt_results.has_key? map_name
     map_data_j = JSON.parse(map_data)
+
     # skip empty maps
     next if map_data_j.empty?
 
@@ -452,7 +470,7 @@ def parse_k3_results(dbt_results, jobid)
     # frontier operation
     max_map = {}
     # check if we're dealing with maps without keys
-    # format of elements: array of [vid, [key, value], vid, [k3y, value]...]
+    # format of elements: array of [vid, [key, value], vid, [key, value]...]
     # check for existence of first element's key (ie. key-less maps)
     if map_data_k[0][1].size > 1
       map_data_k.each do |e|
@@ -837,7 +855,7 @@ def main()
 
   if $options[:compare]
     dbt_results = parse_dbt_results(dbt_name)
-    k3_results  = parse_k3_results(dbt_results, jobid)
+    k3_results  = parse_k3_results(dbt_results, jobid, $options[:full_ktrace])
     run_compare(dbt_results, k3_results)
   end
 
