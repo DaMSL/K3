@@ -287,9 +287,12 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
   end
 
   # Run script to convert json format
+  stage "[#{stage_num}] Extracting consolidated logs"
   unless files_to_clean.empty?
     run("#{File.join(script_path, "clean_json.py")} --prefix_path #{sandbox_path} #{files_to_clean.join(" ")}")
   end
+
+  stage "[#{stage_num}] Extracting peer roles"
 
   # Collect peer roles from yaml bootstrap files
   peer_roles = {}
