@@ -291,13 +291,23 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
     run("#{File.join(script_path, "clean_json.py")} --prefix_path #{sandbox_path} #{files_to_clean.join(" ")}")
   end
 
+  # Collect peer roles from yaml bootstrap files
+  peer_roles = {}
   unless peer_yaml_files.empty?
     peer_yaml_files.each do |pf|
       peer_bootstrap = YAML.load_file(pf)
-      puts peer_bootstrap.to_s
-      puts peer_bootstrap['me'].to_s
-      puts peer_bootstrap['role'].to_s
+      if peer_bootstrap.has_key?('me') && peer_bootstrap.has_key?('role')
+        peer_roles[peer_bootstrap['me']] = peer_bootstrap['role']
+      else
+        stage "[#{stage_num}] ERROR: No me/role entries found in peer yaml #{pf}"
+      end
     end
+  end
+
+  # Write out peer address, role pairs as a pipe-delimited csv.
+  peers_dsv_file = File.join(sandbox_path, "peers.dsv")
+  CSV.open(peers_dsv_file, "w", {:col_sep = '|'}) do |dsv|
+    peer_roles.each {|key, value| dsv << [key, value]}
   end
 
 end
