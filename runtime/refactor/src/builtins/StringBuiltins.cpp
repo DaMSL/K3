@@ -49,4 +49,9 @@ int StringBuiltins::strcomp(const string_impl& s1, const string_impl& s2) {
   return s1.strcomp(s2);
 }
 
+int regex_match_int(const R_key_value<string_impl, string_impl>& r) {
+  bool b = std::regex_match(r.value.c_str(), std::regex(r.key.c_str()));
+  return b ? 1 : 0;
+}
+
 }  // namespace K3
