@@ -254,15 +254,34 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
     end
   end
 
+  files_to_clean = []
   file_paths.each do |f|
     f_path = File.join($workdir, f)
     f_final_path = File.join(sandbox_path, f)
-    f_sandbox_path = File.join(sandbox_path, File.basename(f, ".*"))
+    node_sandbox_path = File.join(sandbox_path, File.basename(f, ".*"))
     `mkdir -p #{f_sandbox_path}` unless Dir.exists?(f_sandbox_path)
+
+    # Retrieve, extract and move node sandbox.
     curl(server_url, "/fs/jobs/#{nice_name}/#{jobid}/", getfile:f)
-    run("tar xvf #{f_path} -C #{f_sandbox_path}")
+    run("tar xvf #{f_path} -C #{node_sandbox_path}")
     `mv #{f_path} #{f_final_path}`
+
+    # Track node logs.
+    json_path = File.join(node_sandbox_path, "json")
+    if Dir.exists?(json_path)
+      Dir.entries(json_path).each do |f|
+        if f =~ /.*Globals.dsv/ || f =~ /.*Messages.dsv/
+          files_to_clean << File.join(json_path, f)
+        end
+      end
+    end
   end
+
+  # Run script to convert json format
+  unless files.empty?
+    run("#{File.join(script_path, "clean_json.py")} --prefix_path #{job_sandbox_path} #{files.join(" ")}")
+  end
+
 end
 
 def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, script_path, full_ktrace)
@@ -284,7 +303,7 @@ def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, scr
   gen_yaml(k3_data_path, role_path, script_path)
 
   stage "[5] Creating new mesos job"
-  curl_args = full_ktrace ? {'jsonlog' => 'yes', 'jsonfinal' => 'yes'} : {'jsonfinal' => 'yes'}
+  curl_args = full_ktrace ? {'jsonlog' => 'yes', 'jsonfinal' => 'yes', 'logging' => 'yes'} : {'jsonfinal' => 'yes'}
   res = curl(server_url, "/jobs/#{nice_name}#{uid_s}", json:true, post:true, file:role_path, args:curl_args)
   jobid = res['jobId']
   update_options_if_empty(:jobid, jobid)
@@ -358,28 +377,17 @@ def parse_k3_results(script_path, dbt_results, jobid)
   stage "[6] Parsing K3 results"
   files = []
 
-  # Retrieve all Globals.dsv files in the job sandbox.
   job_sandbox_path = File.join($workdir, "job_#{jobid}")
-  if Dir.exists?(job_sandbox_path)
-    Dir.entries(job_sandbox_path).each do |d|
-      node_sandbox_path = File.join(job_sandbox_path, d)
-      json_path = File.join(node_sandbox_path, "json")
-      if File.directory?(node_sandbox_path) && Dir.exists?(json_path)
-        Dir.entries(json_path).each do |f|
-          files << File.join(json_path, f) if f =~ /.*Globals.dsv/
-        end
-      end
-    end
-  end
+  globals_path = File.join(job_sandbox_path, 'globals.dsv')
 
-  # Run script to convert json format
-  unless files.empty?
-    run("#{File.join(script_path, "clean_json.py")} --prefix_path #{job_sandbox_path} #{files.join(" ")}")
+  if !Dir.exists?(job_sandbox_path) || !File.file?(globals_path)
+    stage "[6] ERROR, could not find job sandbox for #{jobid}"
+    return nil
   end
 
   # We assume only final state data
   combined_maps = {}
-  str = File.read(File.join(job_sandbox_path, 'globals.dsv'))
+  str = File.read()
   stage "[6] Found K3 globals.csv"
   str.each_line do |line|
     csv = line.split('|')
