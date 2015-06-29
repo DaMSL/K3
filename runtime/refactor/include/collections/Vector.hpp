@@ -169,6 +169,12 @@ class Vector : public STLDS<K3::Vector, std::vector, Elem> {
 
     return result;
   }
+
+  Elem update_at(int i, Elem n) {
+    auto old = Super::getContainer()[i];
+    Super::getContainer()[i] = n;
+    return old;
+  }
 };
 
 }  // namespace K3
