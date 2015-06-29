@@ -516,7 +516,7 @@ def run_compare(dbt_results, k3_results)
       v2.sort!
     end
     if (v1 <=> v2) != 0
-      stage "[6] Mismatch in map #{map}\ndbt:#{v1.to_s}\nmosaic:#{v2.to_s}"
+      stage "[6] Mismatch in map #{map}\ndbt:#{v1.to_s}\nmos:#{v2.to_s}"
       pass = false
     else
       stage "[6] Map #{map}: OK"
