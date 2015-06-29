@@ -57,10 +57,18 @@ def create_file(num_switches, num_nodes, file_path, extra_args):
 def create_dist_file(num_switches, perhost, num_nodes, nmask, file_path, extra_args):
     extra_args = parse_extra_args(extra_args)
 
-    master_role = {'role': 'master'}.update(extra_args)
-    timer_role  = {'role': 'timer'}.update(extra_args)
-    switch_role = {'role': 'switch', 'switch_path': file_path}.update(extra_args)
-    node_role   = {'role': 'node'}.update(extra_args)
+    master_role = {'role': 'master'}
+    master_role.update(extra_args)
+
+    timer_role = {'role': 'timer'}
+    timer_role.update(extra_args)
+
+    switch_role = {'role': 'switch', 'switch_path': file_path}
+    switch_role.update(extra_args)
+
+    node_role = {'role': 'node'}
+    node_role.update(extra_args)
+
     switch1_env = {'peer_globals': [master_role, timer_role, switch_role]}
     switch_env  = {'k3_globals': switch_role}
     node_env    = {'k3_globals': node_role}
