@@ -306,7 +306,7 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
 
   # Write out peer address, role pairs as a pipe-delimited csv.
   peers_dsv_file = File.join(sandbox_path, "peers.dsv")
-  CSV.open(peers_dsv_file, "w", {:col_sep = '|'}) do |dsv|
+  CSV.open(peers_dsv_file, "w", {:col_sep => "|", :quote_char => "'"}) do |dsv|
     peer_roles.each {|key, value| dsv << [key, value]}
   end
 
