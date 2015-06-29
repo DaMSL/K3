@@ -432,7 +432,7 @@ def parse_k3_results(dbt_results, jobid, full_ktrace)
     max_msg_ids = {}
     str.each_line do |line|
       fields = line.split('|')
-      msg_id = fields[0]
+      msg_id = Integer(fields[0])
       peer = fields[1]
       max_msg_ids[peer] = max_msg_ids.has_key?(peer) ? [max_msg_ids[peer], msg_id].max() : msg_id
     end
@@ -440,7 +440,7 @@ def parse_k3_results(dbt_results, jobid, full_ktrace)
 
   str.each_line do |line|
     csv = line.split('|')
-    msg_id   = csv[0]
+    msg_id   = Integer(csv[0])
     peer     = csv[1]
     map_name = csv[2]
     map_data = csv[3]
