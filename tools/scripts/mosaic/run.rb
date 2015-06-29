@@ -425,7 +425,7 @@ def parse_k3_results(dbt_results, jobid)
 
   # We assume only final state data
   combined_maps = {}
-  str = File.read()
+  str = File.read(globals_path)
   stage "[6] Found K3 globals.csv"
   str.each_line do |line|
     csv = line.split('|')
