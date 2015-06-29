@@ -234,7 +234,7 @@ def gen_yaml(k3_data_path, role_file, script_path)
   File.write(role_file, yaml)
 end
 
-def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
+def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
   check_param(jobid, "--jobid")
 
   stage "[#{stage_num}] Waiting for Mesos job to finish..."
@@ -259,7 +259,7 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
     f_path = File.join($workdir, f)
     f_final_path = File.join(sandbox_path, f)
     node_sandbox_path = File.join(sandbox_path, File.basename(f, ".*"))
-    `mkdir -p #{f_sandbox_path}` unless Dir.exists?(f_sandbox_path)
+    `mkdir -p #{node_sandbox_path}` unless Dir.exists?(node_sandbox_path)
 
     # Retrieve, extract and move node sandbox.
     curl(server_url, "/fs/jobs/#{nice_name}/#{jobid}/", getfile:f)
@@ -269,17 +269,17 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
     # Track node logs.
     json_path = File.join(node_sandbox_path, "json")
     if Dir.exists?(json_path)
-      Dir.entries(json_path).each do |f|
-        if f =~ /.*Globals.dsv/ || f =~ /.*Messages.dsv/
-          files_to_clean << File.join(json_path, f)
+      Dir.entries(json_path).each do |jf|
+        if jf =~ /.*Globals.dsv/ || jf =~ /.*Messages.dsv/
+          files_to_clean << File.join(json_path, jf)
         end
       end
     end
   end
 
   # Run script to convert json format
-  unless files.empty?
-    run("#{File.join(script_path, "clean_json.py")} --prefix_path #{job_sandbox_path} #{files.join(" ")}")
+  unless files_to_clean.empty?
+    run("#{File.join(script_path, "clean_json.py")} --prefix_path #{sandbox_path} #{files_to_clean.join(" ")}")
   end
 
 end
@@ -311,7 +311,7 @@ def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, scr
   puts "JOBID = #{jobid}"
 
   # Wait for job to finish and get results
-  wait_and_fetch_results(5, jobid, server_url, nice_name)
+  wait_and_fetch_results(5, jobid, server_url, nice_name, script_path)
 end
 
 # local deployment
@@ -373,7 +373,7 @@ def parse_dbt_results(dbt_name)
   return dbt_results
 end
 
-def parse_k3_results(script_path, dbt_results, jobid)
+def parse_k3_results(dbt_results, jobid)
   stage "[6] Parsing K3 results"
   files = []
 
@@ -789,12 +789,12 @@ def main()
 
   # options to fetch to job results
   if $options[:fetch_results]
-    wait_and_fetch_results(5, jobid, server_url, nice_name)
+    wait_and_fetch_results(5, jobid, server_url, nice_name, script_path)
   end
 
   if $options[:compare]
     dbt_results = parse_dbt_results(dbt_name)
-    k3_results  = parse_k3_results(script_path, dbt_results, jobid)
+    k3_results  = parse_k3_results(dbt_results, jobid)
     run_compare(dbt_results, k3_results)
   end
 
