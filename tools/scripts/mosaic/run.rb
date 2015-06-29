@@ -554,18 +554,23 @@ def run_ktrace(script_path, jobid)
   job_sandbox_path = File.join($workdir, "job_#{jobid}")
 
   if Dir.exists?(job_sandbox_path)
-    globals_path  = File.join(job_sandbox_path, "globals.dsv")
-    messages_path = File.join(job_sandbox_path, "messages.dsv")
-    if File.file?(globals_path) && File.file?(messages_path)
+    globals_path   = File.join(job_sandbox_path, "globals.dsv")
+    messages_path  = File.join(job_sandbox_path, "messages.dsv")
+    peer_role_path = File.join(job_sandbox_path, "peers.dsv")
+
+    if [globals_path, messages_path, peer_role_path].all {|f| File.file?(f) }
       stage "[7] Found trace data, now copying."
       conn = PG.connect()
-      initialize_db.call(conn, ['Globals', 'Messages'])
+      initialize_db.call(conn, ['Globals', 'Messages', 'Peers'])
 
       ingest_file.call(conn, "Globals", globals_path)
       stage "[7] Copied globals trace data."
 
       ingest_file.call(conn, "Messages", messages_path)
       stage "[7] Copied messages trace data."
+
+      ingest_file.call(conn, "Peers", peer_role_path)
+      stage "[7] Copied peer role data."
 
       # TODO: automatic querying and verification of job logs.
     else
