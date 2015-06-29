@@ -265,7 +265,7 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
   end
 end
 
-def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, script_path)
+def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, script_path, full_ktrace)
   role_path = File.join($workdir, nice_name + ".yaml")
 
   # we can either have a uid from a previous stage, or send a binary and get a uid now
@@ -284,7 +284,8 @@ def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, scr
   gen_yaml(k3_data_path, role_path, script_path)
 
   stage "[5] Creating new mesos job"
-  res = curl(server_url, "/jobs/#{nice_name}#{uid_s}", json:true, post:true, file:role_path, args:{'jsonfinal' => 'yes'})
+  curl_args = full_ktrace? {'jsonlog' => 'yes', 'jsonfinal' => 'yes'} : {'jsonfinal' => 'yes'}
+  res = curl(server_url, "/jobs/#{nice_name}#{uid_s}", json:true, post:true, file:role_path, args:curl_args)
   jobid = res['jobId']
   update_options_if_empty(:jobid, jobid)
   persist_options()
@@ -597,6 +598,7 @@ def main()
     opts.on("--moderate2",  "Query is of moderate skew (and size), class 2") { $options[:skew] = :moderate2}
     opts.on("--extreme",  "Query is of extreme skew (and size)") { $options[:skew] = :extreme}
     opts.on("--dry-run",  "Dry run for Mosaic deployment (generates K3 YAML topology)") { $options[:dry_run] = true}
+    opts.on("--full-ktrace", "Turn on JSON logging for ktrace") { $options[:full_ktrace] = true }
     opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
     opts.on("--gc-epoch [MS]", "Set gc epoch time (ms)") { |i| $options[:gc_epoch] = i }
     opts.on("--msg-delay [MS]", "Set switch message delay (ms)") { |i| $options[:msg_delay] = i }
@@ -773,7 +775,7 @@ def main()
     elsif $options[:run_local]
       run_deploy_k3_local(bin_path, k3_data_path, nice_name, script_path)
     else
-      run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, script_path)
+      run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, script_path, $options[:full_ktrace])
     end
   end
 
