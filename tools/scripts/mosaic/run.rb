@@ -496,7 +496,11 @@ def parse_k3_results(dbt_results, jobid, full_ktrace)
       max_map.each_pair do |key,value|
         key = !unit_key && promote_key_array ? [key] : key
         if unit_key
-          combined_maps[map_name] += value[1]
+          if !combined_maps.has_key?(map_name)
+            combined_maps[map_name] = value[1]
+          else
+            combined_maps[map_name] += value[1]
+          end
         else
           if !combined_maps.has_key?(map_name)
             combined_maps[map_name] = { key => value[1] }
