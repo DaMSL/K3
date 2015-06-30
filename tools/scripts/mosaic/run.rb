@@ -473,6 +473,11 @@ def parse_k3_results(dbt_results, jobid, full_ktrace)
     # format of elements: array of [vid, [key, value], vid, [key, value]...]
     # check for existence of first element's key (ie. key-less maps)
     if map_data_k[0][1].size > 1
+
+      # DBToaster XML parsing ensures that keys are always arrays.
+      # Check if we need to promote the key type for k3 results.
+      promote_key_array = false
+
       map_data_k.each do |e|
         vid = e[0]
         key = e[1][0]
@@ -482,9 +487,11 @@ def parse_k3_results(dbt_results, jobid, full_ktrace)
         if !max_vid || ((vid <=> max_vid) == 1)
           max_map[key] = [vid, val]
         end
+        promote_key_array = !key.is_a?(Array)
       end
       # add the max map to the combined maps and discard vids
       max_map.each_pair do |key,value|
+        key = promote_key_array ? [key] : key
         if !combined_maps.has_key?(map_name)
           combined_maps[map_name] = { key => value[1] }
         elsif !combined_maps[map_name].has_key?(key)
