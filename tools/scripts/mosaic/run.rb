@@ -172,7 +172,7 @@ def run_create_compile_k3_remote(server_url, bin_file, block_on_compile, k3_cpp_
   res = curl(server_url, "/compile", file: k3_path, post: true, json: true,
             args:{ "compilestage" => "both", "workload" => $options[:skew].to_s})
   uid = res["uid"]
-  update_options_if_empty(:uid, uid)
+  $options[:uid] = uid
   persist_options()
 
   if block_on_compile
@@ -188,7 +188,7 @@ def run_create_k3_remote(server_url, block_on_compile, k3_cpp_name, k3_path, nic
   res = curl(server_url, "/compile", file: k3_path, post: true, json: true,
             args:{ "compilestage" => "cpp", "workload" => $options[:skew].to_s})
   uid = res["uid"]
-  update_options_if_empty(:uid, uid)
+  $options[:uid] = uid
   persist_options()
 
   if block_on_compile
@@ -330,7 +330,7 @@ def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, scr
     stage "[5] Sending binary to mesos"
     res = curl(server_url, '/apps', file:bin_path, post:true, json:true)
     uid = res['uid']
-    update_options_if_empty(:uid, uid)
+    $options[:uid] = uid
     persist_options()
   end
 
@@ -344,7 +344,7 @@ def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, scr
   curl_args = full_ktrace ? {'jsonlog' => 'yes'} : {'jsonfinal' => 'yes'}
   res = curl(server_url, "/jobs/#{nice_name}#{uid_s}", json:true, post:true, file:role_path, args:curl_args)
   jobid = res['jobId']
-  update_options_if_empty(:jobid, jobid)
+  $options[:jobid] = jobid
   persist_options()
   puts "JOBID = #{jobid}"
 
@@ -413,7 +413,6 @@ end
 
 def parse_k3_results(dbt_results, jobid, full_ktrace)
   stage "[6] Parsing K3 results"
-  files = []
 
   job_sandbox_path = File.join($workdir, "job_#{jobid}")
   globals_path = File.join(job_sandbox_path, 'globals.dsv')
@@ -617,10 +616,6 @@ def check_param(p, nm)
     puts "Please provide #{nm} param"
     exit(1)
   end
-end
-
-def update_options_if_empty(k, v)
-  $options[k] = v unless $options[k]
 end
 
 # persist source, data paths, and others
