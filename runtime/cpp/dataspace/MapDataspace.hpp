@@ -1593,6 +1593,9 @@ class VMap {
 
   /////////////////
   // Transformers.
+  //
+  // For transformers that apply to a version, these methods apply
+  // to the nearest version that is strictly less than the argument.
 
   VMap combine(const VMap& other) const {
     // copy this DS
@@ -1622,7 +1625,7 @@ class VMap {
   template <typename Fun>
   unit_t iterate(const Version& v, Fun f) const {
     for (const auto& p : container) {
-      auto it = p.second.lower_bound(v);
+      auto it = p.second.upper_bound(v);
       if ( it != p.second.end() ) {
         f(it->second);
       }
@@ -1634,7 +1637,7 @@ class VMap {
   auto map(const Version& v, Fun f) const -> VMap< RT<Fun, R> > {
     VMap< RT<Fun,R> > result;
     for (const auto& p : container) {
-      auto it = p.second.lower_bound(v);
+      auto it = p.second.upper_bound(v);
       if ( it != p.second.end() ) {
         result.insert(it->first, f(it->second));
       }
@@ -1646,7 +1649,7 @@ class VMap {
   VMap<R> filter(const Version& v, Fun predicate) const {
     VMap<R> result;
     for (const auto& p : container) {
-      auto it = p.second.lower_bound(v);
+      auto it = p.second.upper_bound(v);
       if ( it != p.second.end() && predicate(it->second) ) {
         result.insert(it->first, it->second);
       }
@@ -1657,7 +1660,7 @@ class VMap {
   template<typename Fun, typename Acc>
   Acc fold(const Version& v, Fun f, Acc acc) const {
     for (const auto& p : container) {
-      auto it = p.second.lower_bound(v);
+      auto it = p.second.upper_bound(v);
       if ( it != p.second.end() ) {
         acc = f(std::move(acc))(it->second);
       }
@@ -1672,7 +1675,7 @@ class VMap {
     unordered_map<K, VContainer<Z>> accs;
 
     for (const auto& it : container) {
-      auto vit = it->second.lower_bound(v);
+      auto vit = it->second.upper_bound(v);
       if ( vit != it->second.end() ) {
         K key = grouper(vit->second);
         if (accs.find(key) == accs.end()) {
@@ -1697,7 +1700,7 @@ class VMap {
     typedef typename RT<Fun, R>::ElemType T;
     VMap<T> result;
     for (const auto& it : container) {
-      auto vit = it->second.lower_bound(v);
+      auto vit = it->second.upper_bound(v);
       if ( vit != it->second.end() ) {
         for (auto& it2 : expand(vit->second).container) {
           result.insert(vit->first, it2.second);
