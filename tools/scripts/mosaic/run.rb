@@ -469,6 +469,8 @@ def parse_k3_results(dbt_results, jobid, full_ktrace)
 
     # frontier operation
     max_map = {}
+    unit_value = "()"
+
     # check if we're dealing with maps without keys
     # format of elements: array of [vid, [key, value], vid, [key, value]...]
     # check for existence of first element's key (ie. key-less maps)
@@ -476,6 +478,7 @@ def parse_k3_results(dbt_results, jobid, full_ktrace)
 
       # DBToaster XML parsing ensures that keys are always arrays.
       # Check if we need to promote the key type for k3 results.
+      unit_key = false
       promote_key_array = false
 
       map_data_k.each do |e|
@@ -487,19 +490,24 @@ def parse_k3_results(dbt_results, jobid, full_ktrace)
         if !max_vid || ((vid <=> max_vid) == 1)
           max_map[key] = [vid, val]
         end
+        unit_key = key == "()"
         promote_key_array = !key.is_a?(Array)
       end
       # add the max map to the combined maps and discard vids
       max_map.each_pair do |key,value|
-        key = promote_key_array ? [key] : key
-        if !combined_maps.has_key?(map_name)
-          combined_maps[map_name] = { key => value[1] }
-        elsif !combined_maps[map_name].has_key?(key)
-          combined_maps[map_name][key] = value[1]
+        key = !unit_key && promote_key_array ? [key] : key
+        if unit_key
+          combined_maps[map_name] += value[1]
         else
-          # this can happen because each data node has the same maps,
-          # and they're zeroed out by default, so adding should work out.
-          combined_maps[map_name][key] += value[1]
+          if !combined_maps.has_key?(map_name)
+            combined_maps[map_name] = { key => value[1] }
+          elsif !combined_maps[map_name].has_key?(key)
+            combined_maps[map_name][key] = value[1]
+          else
+            # this can happen because each data node has the same maps,
+            # and they're zeroed out by default, so adding should work out.
+            combined_maps[map_name][key] += value[1]
+          end
         end
       end
     else # key-less maps
