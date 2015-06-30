@@ -36,9 +36,9 @@ namespace K3 {
   }
 
   static inline std::string currentTime() {
-    std::chrono::milliseconds ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+    std::chrono::nanoseconds ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::system_clock::now().time_since_epoch());
-    return std::to_string(ms.count());
+    return std::to_string(ns.count());
   }
 
   //---------------
