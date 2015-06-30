@@ -14,13 +14,13 @@ class Message {
  public:
   Message();
   virtual ~Message() { }
-  Message(const Address&, const Address&, TriggerID, unique_ptr<Value>);
-  Message(const MessageHeader&, unique_ptr<Value>);
+  Message(const Address&, const Address&, TriggerID, unique_ptr<PackedValue>);
+  Message(const MessageHeader&, unique_ptr<PackedValue>);
   Address source() const;
   Address destination() const;
   TriggerID trigger() const;
 
-  unique_ptr<Value> value_;
+  unique_ptr<PackedValue> value_;
  protected:
   MessageHeader header_;
 };
@@ -37,7 +37,7 @@ class NetworkMessage : public Message {
   NetworkMessage(const MessageHeader& head, unique_ptr<PackedValue> v);
   shared_ptr<std::vector<boost::asio::const_buffer>> outputBuffers() const;
   shared_ptr<std::vector<boost::asio::mutable_buffer>> inputBuffers();
-  void setValue(unique_ptr<Value> v);
+  void setValue(unique_ptr<PackedValue> v);
   size_t networkHeaderSize();
 
   size_t payload_length_;

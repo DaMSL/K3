@@ -9,6 +9,7 @@
 
 #include "builtins/Builtins.hpp"
 #include "Common.hpp"
+#include "types/Dispatcher.hpp"
 #include "types/Message.hpp"
 #include "serialization/Yaml.hpp"
 #include "serialization/Json.hpp"
@@ -16,6 +17,8 @@
 namespace K3 {
 
 class NativeValue;
+class PackedValue;
+class SentinelValue;
 class Engine;
 
 class ProgramContext : public StandardBuiltins,
@@ -29,9 +32,13 @@ class ProgramContext : public StandardBuiltins,
   virtual ~ProgramContext() { }
 
   // Dispatch overloads: One for each Value type
-  virtual void __dispatch(NativeValue* nv, TriggerID trig, const Address& source) = 0;
-  virtual void __dispatch(PackedValue* pv, TriggerID trig, const Address& source) = 0;
-  void __dispatch(SentinelValue* sv);
+  //virtual void __dispatch(NativeValue* nv, TriggerID trig, const Address& source) = 0;
+  //virtual void __dispatch(PackedValue* pv, TriggerID trig, const Address& source) = 0;
+  //void __dispatch(SentinelValue* sv);
+
+  virtual unique_ptr<Dispatcher> __getDispatcher(unique_ptr<NativeValue>, TriggerID trig) = 0;
+  virtual unique_ptr<Dispatcher> __getDispatcher(unique_ptr<PackedValue>, TriggerID trig) = 0;
+  unique_ptr<Dispatcher> __getDispatcher(unique_ptr<SentinelValue>);
 
   // Program initialization
   virtual void __patch(const YAML::Node& node);
@@ -63,17 +70,16 @@ class DummyState {
 class DummyContext : public ProgramContext {
  public:
   explicit DummyContext(Engine& e);
-  virtual void __dispatch(NativeValue* nv, TriggerID trig, const Address& source);
-  virtual void __dispatch(PackedValue* pv, TriggerID trig, const Address& source);
+  //virtual void __dispatch(NativeValue* nv, TriggerID trig, const Address& source);
+  //virtual void __dispatch(PackedValue* pv, TriggerID trig, const Address& source);
+  virtual unique_ptr<Dispatcher> __getDispatcher(unique_ptr<NativeValue>, TriggerID trig);
+  virtual unique_ptr<Dispatcher> __getDispatcher(unique_ptr<PackedValue>, TriggerID trig);
   virtual void __patch(const YAML::Node& node);
   virtual unit_t processRole(const unit_t&);
   void intTrigger(int i);
   void stringTrigger(std::string s);
-  void startTrigger(int i);
-  void loopTrigger(int i);
   Address me;
   std::string role;
-  int max_loops;
   shared_ptr<DummyState> state_;
 };
 
@@ -90,7 +96,6 @@ struct convert<K3::DummyContext> {
     _node["my_int"] = convert<int>::encode(context.state_->my_int_);
     _node["my_string"] =
         convert<std::string>::encode(context.state_->my_string_);
-    _node["max_loops"] = convert<int>::encode(context.max_loops);
     return _node;
   }
   static bool decode(const Node& node, K3::DummyContext& context) {
@@ -108,9 +113,6 @@ struct convert<K3::DummyContext> {
     }
     if (node["my_string"]) {
       context.state_->my_string_ = node["my_string"].as<std::string>();
-    }
-    if (node["max_loops"]) {
-      context.max_loops = node["max_loops"].as<int>();
     }
     return true;
   }

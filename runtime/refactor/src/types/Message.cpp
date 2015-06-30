@@ -8,12 +8,12 @@ namespace K3 {
 Message::Message() {}
 
 Message::Message(const Address& src, const Address& dst, TriggerID trig,
-                 unique_ptr<Value> val)
+                 unique_ptr<PackedValue> val)
     : header_(src, dst, trig) {
   value_ = std::move(val);
 }
 
-Message::Message(const MessageHeader& head, unique_ptr<Value> val)
+Message::Message(const MessageHeader& head, unique_ptr<PackedValue> val)
     : header_(head) {
   value_ = std::move(val);
 }
@@ -106,6 +106,6 @@ size_t NetworkMessage::networkHeaderSize() {
          sizeof(header_.trigger_) + sizeof(payload_length_);
 }
 
-void NetworkMessage::setValue(unique_ptr<Value> v) { value_ = std::move(v); }
+void NetworkMessage::setValue(unique_ptr<PackedValue> v) { value_ = std::move(v); }
 
 }  // namespace K3

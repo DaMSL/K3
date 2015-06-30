@@ -11,7 +11,7 @@
 #include <spdlog/spdlog.h>
 #include <yaml-cpp/yaml.h>
 
-#include "types/Message.hpp"
+#include "types/Dispatcher.hpp"
 #include "ProgramContext.hpp"
 #include "types/Queue.hpp"
 
@@ -26,7 +26,7 @@ class Peer {
   void start();
   void processRole();
   void join();
-  void enqueue(std::unique_ptr<Message> m);
+  void enqueue(std::unique_ptr<Dispatcher> m);
 
   // Utilities
   bool finished();
@@ -58,7 +58,7 @@ class Peer {
   std::atomic<bool> start_processing_;
   std::atomic<bool> finished_;
   int message_counter_;
-  vector<unique_ptr<Message>> batch_;
+  vector<unique_ptr<Dispatcher>> batch_;
 };
 
 template <class F>

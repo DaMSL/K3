@@ -6,19 +6,19 @@
 
 #include <concurrentqueue/blockingconcurrentqueue.h>
 
-#include "types/Message.hpp"
+#include "types/Dispatcher.hpp"
 
 namespace K3 {
 
 class Queue { 
  public:
   Queue();
-  void enqueue(std::unique_ptr<Message> m);
-  std::unique_ptr<Message> dequeue();
-  size_t dequeueBulk(vector<std::unique_ptr<Message>>& ms);
+  void enqueue(std::unique_ptr<Dispatcher> m);
+  std::unique_ptr<Dispatcher> dequeue();
+  size_t dequeueBulk(vector<std::unique_ptr<Dispatcher>>& ms);
 
  protected:
-  moodycamel::BlockingConcurrentQueue<std::unique_ptr<Message>> queue_;
+  moodycamel::BlockingConcurrentQueue<std::unique_ptr<Dispatcher>> queue_;
 };
 
 }  // namespace K3

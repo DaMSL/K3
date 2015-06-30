@@ -71,11 +71,11 @@ void Peer::join() {
   return;
 }
 
-void Peer::enqueue(std::unique_ptr<Message> m) {
+void Peer::enqueue(std::unique_ptr<Dispatcher> d) {
   if (!queue_) {
     throw std::runtime_error("Peer enqueue(): null queue ptr");
   }
-  queue_->enqueue(std::move(m));
+  queue_->enqueue(std::move(d));
 }
 
 bool Peer::finished() { return finished_.load(); }
@@ -87,10 +87,10 @@ shared_ptr<ProgramContext> Peer::getContext() { return context_; }
 void Peer::processBatch() {
   size_t num = queue_->dequeueBulk(batch_);
   for (int i = 0; i < num; i++) {
-    auto m = std::move(batch_[i]);
-    logMessage(*m);
-    m->value_->dispatchIntoContext(context_.get(), m->trigger(), m->source());
-    logGlobals(*m);
+    auto d = std::move(batch_[i]);
+    //logMessage(*m);
+    (*d)();
+    //logGlobals(*m);
   }
 }
 

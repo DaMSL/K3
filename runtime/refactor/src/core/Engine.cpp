@@ -34,9 +34,8 @@ Engine::~Engine() {
 void Engine::stop() {
   // Place a Sentintel on each Peer's queue
   for (auto& it : *peers_) {
-    auto m = make_unique<Message>(it.first, it.first, -1,
-                                  make_unique<SentinelValue>());
-    it.second->enqueue(std::move(m));
+    auto d = it.second->getContext()->__getDispatcher(make_unique<SentinelValue>());
+    it.second->enqueue(std::move(d));
   }
   network_manager_.stop();
   logger_->info("Stopping the Engine.");
@@ -68,8 +67,8 @@ void Engine::send(const MessageHeader& header, unique_ptr<NativeValue> value,
   auto it = peers_->find(header.destination());
   if (local_sends_enabled_ && it != peers_->end()) {
     // Direct enqueue for local messages
-    auto m = make_unique<Message>(header, std::move(value));
-    it->second->enqueue(std::move(m));
+    auto d = it->second->getContext()->__getDispatcher(std::move(value), header.trigger());
+    it->second->enqueue(std::move(d));
   } else {
     // Serialize and send over the network, otherwise
     unique_ptr<PackedValue> pv = codec->pack(*value);
