@@ -829,15 +829,14 @@ class Seq : public ListDS<K3::Seq, Elem> {
   Seq(Super&& c): Super(std::move(c)) { }
 
   // Seq specific functions
-  Seq sort(F<F<int(Elem)>(Elem)> comp) {
-    auto& l(Super::getContainer());
-    auto f = [&] (Elem& a, Elem& b) mutable {
-      return comp(a)(b) < 0;
+  template<typename Fun>
+  Seq sort(Fun comp) {
+    auto f = [&comp] (Elem& a, Elem& b) mutable {
+      return ( comp(a)(b) < 0 );
     };
+    auto l(Super::getContainer());
     l.sort(f);
-    // Force Move into ListDS class.
-    // Dont reference l again
-    return Seq(Super(std::move(l)));
+    return Seq(std::move(l));
   }
 
   Elem at(int i) const {
