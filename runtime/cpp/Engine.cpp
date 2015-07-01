@@ -183,8 +183,14 @@ namespace K3 {
           logAt(trivial::trace, "Contents: " + contents);
         }
 
+        auto tid = next_message->id();
+        auto start_time = std::chrono::high_resolution_clock::now();
+
         // If there was a message, return the result of processing that message.
         LoopStatus res =  mp->process(*next_message);
+
+        statistics[tid].total_time += std::chrono::high_resolution_clock::now() - start_time;
+        statistics[tid].total_count++;
 
         // Log Env
         if (log_enabled) {
@@ -208,7 +214,7 @@ namespace K3 {
       while(true) {
         if (control->terminate()) {
             logAt(trivial::trace, "Finished Message Processing Loop.");
-            return;
+            break;
         }
         switch (curr_status) {
           // If we are not in error, process the next message.
@@ -219,7 +225,7 @@ namespace K3 {
           // If we were in error, exit out with error.
           case LoopStatus::Error:
             //TODO silent error?
-            return;
+            break;
 
           // If there are no messages on the queues,
           //  - If the terminate flag has been set, exit out normally.
@@ -235,6 +241,17 @@ namespace K3 {
             break;
         }
         curr_status = next_status;
+      }
+
+      std::cout << "Trigger Statistics" << std::endl;
+      for (auto i: statistics) {
+        auto count = i.second.total_count;
+        auto time = std::chrono::duration_cast<std::chrono::duration<float, std::ratio<1>>>(i.second.total_time).count();
+        std::cout << __k3_context::__get_trigger_name(i.first) << ": "
+                  << i.second.total_count << " call(s), "
+                  << time << "s total time spent, "
+                  << time/count << "s average per call."
+                  << std::endl;
       }
     }
 

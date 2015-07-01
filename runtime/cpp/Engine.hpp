@@ -41,6 +41,13 @@ namespace K3 {
     return std::to_string(ns.count());
   }
 
+  // Statistics
+  class trigger_statistics {
+   public:
+    int total_count;
+    std::chrono::nanoseconds total_time;
+  };
+
   //---------------
   // Configuration
 
@@ -417,6 +424,8 @@ namespace K3 {
 
 
     unsigned int                    message_counter;
+
+    std::map<int, trigger_statistics> statistics;
 
     void logMessageLoop(string s);
 
