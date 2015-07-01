@@ -83,6 +83,8 @@ program (tag &&& children -> (DRole name, decls)) = do
 
     let yamlStructDefn = mkYamlStructDefn contextName patchables''
 
+    nativeDispatchers <- generateDispatchers True
+    packedDispatchers <- generateDispatchers False
     nativeDispatchPop <- generateDispatchPopulation True
     packedDispatchPop <- generateDispatchPopulation False
 
@@ -91,22 +93,20 @@ program (tag &&& children -> (DRole name, decls)) = do
     let valType   isNative = if isNative then "NativeValue" else "PackedValue"
     let tableName isNative = if isNative then "native_dispatch_table" else "packed_dispatch_table"
 
-    let dispatchDecl isNative = R.FunctionDefn (R.Name "__dispatch")
-                       [ ("payload", R.Pointer $ R.Named $ R.Name $ valType isNative)
+    let dispatchDecl isNative = R.FunctionDefn (R.Name "__getDispatcher")
+                       [ ("payload", R.UniquePointer $ R.Named $ R.Name $ valType isNative)
                        , ("trigger_id", R.Primitive R.PInt)
-                       , ("source", R.Const $ R.Reference $ R.Named $ R.Name "Address")
                        ]
-                       (Just R.Void) [] False
-                       [R.Ignore $ R.Call
-                         (R.Subscript (R.Variable $ R.Name $ tableName isNative) (R.Variable $ R.Name "trigger_id"))
-                         [R.Variable $ R.Name "payload", R.Variable $ R.Name "trigger_id", R.Variable $ R.Name "source"]
+                       (Just $ R.UniquePointer $ R.Named $ R.Name "Dispatcher") [] False
+                       [R.Return $ R.Call
+                         (R.Subscript (R.Variable $ R.Name $ tableName isNative) (R.Variable $ R.Name "trigger_id")) [R.Move $ R.Variable $ R.Name "payload"]
                        ]
     let dispatchTableDecl isNative = R.GlobalDefn $ R.Forward $ R.ScalarDecl
                      (R.Name $ tableName isNative)
                      (R.Named $ R.Qualified (R.Name "std") $ R.Specialized
                            [ R.Function
-                               [R.Pointer $ R.Named $ R.Name $ valType isNative, R.Primitive R.PInt, R.Const $ R.Reference $ R.Named $ R.Name "Address"]
-                            R.Void] (R.Name "vector"))
+                               [R.UniquePointer $ R.Named $ R.Name $ valType isNative]
+                            (R.UniquePointer $ R.Named $ R.Name "Dispatcher")] (R.Name "vector"))
                      Nothing
 
     let patchFn = R.FunctionDefn (R.Qualified contextName (R.Name "__patch"))
@@ -136,7 +136,7 @@ program (tag &&& children -> (DRole name, decls)) = do
 
     -- Return all top-level definitions.
     return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ concat compositeDefns ++
-               [contextClassDefn] ++ pinned ++ [yamlStructDefn, patchFn] ++ mainFn
+               nativeDispatchers ++ packedDispatchers ++ [contextClassDefn] ++ pinned ++ [yamlStructDefn, patchFn] ++ mainFn
 
   where
     mkContextConstructor contextName body =
@@ -240,6 +240,7 @@ requiredAliases = return
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Engine"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "make_address"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "MessageHeader"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "Dispatcher"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "NativeValue"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "TNativeValue"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "PackedValue"), Nothing)
@@ -254,6 +255,7 @@ requiredAliases = return
                   , (Right (R.Qualified (R.Name "std")$ R.Name "get" ), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "map"), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "list"), Nothing)
+                  , (Right (R.Qualified (R.Name "std")$ R.Name "unique_ptr"), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "ostringstream"), Nothing)
                   ]
 
@@ -275,6 +277,7 @@ requiredIncludes = return
                    , "serialization/Codec.hpp"
                    , "serialization/Yaml.hpp"
                    , "types/BaseString.hpp"
+                   , "types/Dispatcher.hpp"
 
                    , "collections/AllCollections.hpp"
                    ]
@@ -299,6 +302,35 @@ generateStaticContextMembers = do
       let table = R.Variable $ R.Qualified (R.Name "K3::ProgramContext") (R.Name "__trigger_names_")
       return $ R.Assignment (R.Subscript table i) nameStr
 
+generateDispatchers :: Bool -> CPPGenM [R.Definition]
+generateDispatchers isNative = do
+  triggerS <- triggers <$> get
+  dispatches <- mapM genDispatcher triggerS
+  return $ dispatches
+  where
+     genDispatcher (tName, tType) = do
+       argType <- genCType tType
+       let valName = if isNative then "Native" else "Packed"
+       let members = [ R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name "context_") (R.Reference $ R.Named $ R.Name "CONTEXT") Nothing,
+                       R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name "value_") (R.UniquePointer $ R.Named $ R.Name $ valName ++ "Value") Nothing
+                     ] ++ if isNative then [] else [R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name "codec_") (R.SharedPointer $ R.Named $ R.Name "Codec") Nothing]
+       let constructor = R.FunctionDefn (R.Name $ tName ++ valName ++ "Dispatcher")
+                           [("ctxt", R.Reference $ R.Named $ R.Name  "CONTEXT"), ("val", R.UniquePointer $ R.Named $ R.Name $ valName ++ "Value")]
+                           Nothing
+                           [R.Call (R.Variable $ R.Name "context_") [R.Variable $ R.Name "ctxt"], R.Call (R.Variable $ R.Name "value_") [R.Move $ R.Variable $ R.Name "val"]]
+                           False
+                           (if isNative then [] else [R.Assignment (R.Variable $ R.Name "codec_")
+                                                       (R.Call (R.Variable $ R.Qualified (R.Name "Codec") (R.Specialized [argType] (R.Name "getCodec")))
+                                                       [R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "value_") (R.Name "format")) []])
+                                                     ])
+       let unpacked = R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "codec_") (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "value_"]
+       let native_val = if isNative then (R.Variable $ R.Name "value_") else unpacked
+       let casted_val = R.Forward $ R.ScalarDecl (R.Name "casted") (R.Reference $ R.Inferred) $ Just $ R.Dereference $ R.Call (R.Project (R.Dereference $ native_val) ( R.Specialized [argType] (R.Name "template as"))) []
+       let call_op = R.FunctionDefn (R.Name $ "operator()") [] (Just $ R.Void) [] False
+                      ([casted_val, R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "context_") (R.Name tName)) [R.Variable $ R.Name "casted"]])
+
+       let methods = [constructor, call_op]
+       return $ R.TemplateDefn [("CONTEXT", Nothing)] (R.ClassDefn (R.Name $ tName ++ valName ++ "Dispatcher") [] [R.Named $ R.Name "Dispatcher"] methods [] members)
 
 
 generateDispatchPopulation :: Bool -> CPPGenM [R.Statement]
@@ -311,40 +343,18 @@ generateDispatchPopulation isNative = do
 
   where
      table = R.Variable $ R.Name $ if isNative then "native_dispatch_table" else "packed_dispatch_table"
+     dispatcher name = R.Named $ R.Specialized [R.Named $ R.Name "__global_context"] (R.Name $ name ++ (if isNative then "Native" else "Packed") ++ "Dispatcher")
+     value = if isNative then "NativeValue" else "PackedValue"
      genDispatch (tName, tType) = do
-       kType <- genCType tType
-       let i = R.Variable $ R.Name (idOfTrigger tName)
-       let engine = R.Project (R.Dereference $ R.Variable $ R.Name "this") (R.Name "__engine_")
-       d <- genSym
-       let codec = if isNative then [] else (:[]) $
-                   R.Forward $ R.ScalarDecl (R.Name d) (R.Static R.Inferred) $ Just $
-                   R.Call
-                     (R.Variable $ R.Qualified (R.Name "Codec") (R.Specialized [kType] (R.Name "getCodec")))
-                     [R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "payload") (R.Name "format")) []]
-       let unpacked = R.Forward $ R.ScalarDecl (R.Name "native_val") R.Inferred $ Just $ R.Call (R.Project (R.Dereference $ R.Variable $ R.Name d) (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "payload"]
-       let native_val = if isNative then "payload" else "native_val"
-       let codec_decls = if isNative then [] else [unpacked]
-       let casted_val = R.Forward $ R.ScalarDecl (R.Name "casted") (R.Reference $ R.Inferred) $ Just $ R.Dereference $ R.Call (R.Project (R.Dereference $ R.Variable $ R.Name native_val) ( R.Specialized [kType] (R.Name "as"))) []
-       let encoded_payload = R.Call (R.Variable $ R.Specialized [kType] (R.Name "K3::serialization::json::encode")) [R.Variable $ R.Name "casted"]
-       let frozen = R.Lambda [R.RefCapture $ Just ("casted", Nothing)] [] True (Just $ R.Primitive $ R.PString) [R.Return $ encoded_payload]
-       let log_message = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Name "logJson")) [R.Variable $ R.Name "me", i, R.Variable $ R.Name "source", frozen]
        let dispatchWrapper = R.Lambda
                              [R.ValueCapture $ Just ("this", Nothing)]
-                             [ ("payload", R.Pointer $ R.Named $ R.Name $ if isNative then "NativeValue" else "PackedValue")
-                             , ("trigger_id", R.Primitive R.PInt)
-                             , ("source", R.Const $ R.Reference $ R.Named $ R.Name "Address")
+                             [("payload", R.UniquePointer $ R.Named $ R.Name value)]
+                             False
+                             Nothing
+                             [
+                             R.Return $ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Specialized [dispatcher tName] (R.Name "make_unique"))) ([R.Dereference $ R.Variable $ R.Name "this", R.Move $ R.Variable $ R.Name "payload"])
                              ]
-                             False Nothing
-                             (
-                             codec
-                             ++
-                             codec_decls
-                             ++
-                             [ casted_val, log_message ]
-                             ++
-                             [ R.Ignore $ R.Call (R.Variable $ R.Name tName) [R.Variable $ R.Name "casted"] ]
-                             )
-
+       let i = R.Variable $ R.Name (idOfTrigger tName)
        return $ R.Assignment (R.Subscript table i) dispatchWrapper
 
 
