@@ -224,7 +224,12 @@ def gen_yaml(k3_data_path, role_file, script_path)
   cmd << "--nmask " << $options[:nmask] << " " if $options[:nmask]
   cmd << "--perhost " << $options[:perhost].to_s << " " if $options[:perhost]
   cmd << "--file " << k3_data_path << " "
-  cmd << "--dist " if !$options[:run_local]
+
+  if $options[:run_mode] == "multicore"
+    cmd << "--multicore"
+  elsif $options[:run_mode] == "dist"
+    cmd << "--dist"
+  end
 
   extra_args = []
   extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
@@ -649,6 +654,8 @@ end
 
 def main()
   $options = {}
+  $options[:run_mode] = "dist"
+
   uid = nil
 
   usage = "Usage: #{$PROGRAM_NAME} sql_file options"
@@ -669,7 +676,8 @@ def main()
     opts.on("--mosaic-path [PATH]", String, "Path for mosaic") {|s| $options[:mosaic_path] = s}
     opts.on("--highmem", "High memory deployment (HM only)") { $options[:nmask] = 'qp-hm.'}
     opts.on("--brew", "Use homebrew (OSX)") { $options[:osx_brew] = true }
-    opts.on("--run-local", "Run locally") { $options[:run_local] = true }
+    opts.on("--run-local", "Run locally") { $options[:run_mode] = "local" }
+    opts.on("--run-multicore", "Run all data nodes on the same host") { $options[:run_mode] = "multicore" }
     opts.on("--create-local", "Create the cpp file locally") { $options[:create_local] = true }
     opts.on("--compile-local", "Compile locally") { $options[:compile_local] = true }
     opts.on("--dbt-exec-only", "Execute DBToaster only (skipping query build)") { $options[:dbt_exec_only] = true }
