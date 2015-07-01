@@ -18,7 +18,6 @@ namespace K3 {
       log_enabled = false;
       log_json = false;
       local_sends_enabled = local_sends;
-      std::cout << "Local sends: " << local_sends_enabled << std::endl;
       if (log_l == "final") {
         log_final = true;
       } else if (log_l != "") {
