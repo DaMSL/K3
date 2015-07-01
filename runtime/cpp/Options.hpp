@@ -23,6 +23,7 @@ class Options {
     string result_var;
     string result_path;
     bool local_sends = true;
+    bool profile;
 };
 
 }

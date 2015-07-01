@@ -12,7 +12,7 @@ fi
 echo "K3_CXXFLAGS: ${K3_CXXFLAGS}"
 
 dist/build/k3/k3 \
-  -I lib/k3 -I examples/sql \
+  -I lib/k3 -I examples/sql -I examples/distributed/amplab/compact \
   --mpargs package-db=$SNDPATH --mpsearch src \
   compile \
     $CXX -l cpp \

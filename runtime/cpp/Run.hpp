@@ -18,6 +18,7 @@ namespace K3 {
     std::string result_var = opt.result_var;
     std::string result_path = opt.result_path;
     bool local_sends = opt.local_sends;
+    bool profile = opt.profile;
 
     std::vector<std::string> configurations;
 
@@ -50,7 +51,7 @@ namespace K3 {
       queues->addQueue(gc->me);
       peers.push_back(gc->me);
       SystemEnvironment se = defaultEnvironment(getAddrs(contexts));
-      engine->configure(simulation, se, make_shared<DefaultMessageCodec>(), log_level, log_path, j_final_only,result_var, result_path, queues, local_sends);
+      engine->configure(simulation, se, make_shared<DefaultMessageCodec>(), log_level, log_path, j_final_only,result_var, result_path, queues, local_sends, profile);
       processRoles(contexts);
       auto t = tuple<e_ptr, ctxt_map>(engine, contexts);
       engines.push_back(t);
@@ -68,6 +69,10 @@ namespace K3 {
      // Block until completion
      for (auto th : l) {
        th->join();
+     }
+
+     for (auto& t : engines) {
+       get<0>(t)->printStatistics();
      }
 
   }

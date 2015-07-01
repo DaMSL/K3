@@ -16,6 +16,7 @@ int Options::parse(int argc, const char *const argv[]) {
     ("json_final_only,f", "only jsonify final environment")
     ("result_var,r", po::value<string>(), "result variable to log (must be a flat collection)")
     ("result_path,o", po::value<string>(), "path to store the result variable")
+    ("profile", "Enable triger profiling")
     ("disable_local_messages,d", "path to store the result variable");
 
   po::variables_map vm;
@@ -76,6 +77,12 @@ int Options::parse(int argc, const char *const argv[]) {
   } else {
     result_path  = "";
   }
+
+  if (vm.count("profile")) {
+    profile = true;
+  } else {
+    profile = true; //TODO set to false once we have hooked this into Mesos
+  } 
 
   if (vm.count("disable_local_messages")) {
     local_sends = false;

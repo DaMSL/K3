@@ -163,10 +163,10 @@ namespace K3 {
       string result_p,
       shared_ptr<const MessageQueues> qs
     ): LogMT("Engine") {
-      configure(simulation, sys_env, _msgcodec, log_level, log_path, false, result_v, result_p, qs, true);
+      configure(simulation, sys_env, _msgcodec, log_level, log_path, false, result_v, result_p, qs, true, false);
     }
 
-    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<MessageCodec> _msgcodec, string log_level,string log_path, bool json_final, string result_var, string result_path, shared_ptr<const MessageQueues> qs, bool local_sends);
+    void configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<MessageCodec> _msgcodec, string log_level,string log_path, bool json_final, string result_var, string result_path, shared_ptr<const MessageQueues> qs, bool local_sends, bool profile);
 
     //-----------
     // Messaging.
@@ -287,8 +287,8 @@ namespace K3 {
     void logFinalEnvironment(const Address& a);
     MPStatus processMessage(shared_ptr<MessageProcessor> mp);
 
+    void printStatistics();
     void runMessages(shared_ptr<MessageProcessor>& mp, MPStatus init_st);
-
     void runEngine(shared_ptr<MessageProcessor> mp);
 
     // Return a new thread running runEngine()
@@ -426,6 +426,7 @@ namespace K3 {
     unsigned int                    message_counter;
 
     std::map<int, trigger_statistics> statistics;
+    bool profile = false;
 
     void logMessageLoop(string s);
 

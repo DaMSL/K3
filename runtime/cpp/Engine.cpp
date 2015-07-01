@@ -11,13 +11,14 @@ using boost::thread;
 namespace K3 {
 
     void Engine::configure(bool simulation, SystemEnvironment& sys_env, shared_ptr<MessageCodec> _msgcodec,
-                           string log_l, string log_p, bool j_final, string result_v, string result_p, shared_ptr<const MessageQueues> qs, bool local_sends)
+                           string log_l, string log_p, bool j_final, string result_v, string result_p, shared_ptr<const MessageQueues> qs, bool local_sends, bool prof)
     {
       queues = qs;
       msgcodec = _msgcodec;
       log_enabled = false;
       log_json = false;
       local_sends_enabled = local_sends;
+      profile = prof;
       if (log_l == "final") {
         log_final = true;
       } else if (log_l != "") {
@@ -183,14 +184,20 @@ namespace K3 {
           logAt(trivial::trace, "Contents: " + contents);
         }
 
-        auto tid = next_message->id();
-        auto start_time = std::chrono::high_resolution_clock::now();
+	int tid = 0;
+	std::chrono::high_resolution_clock::time_point start_time;
+	if (profile) {
+          tid = next_message->id();
+          start_time = std::chrono::high_resolution_clock::now();
+	}
 
         // If there was a message, return the result of processing that message.
         LoopStatus res =  mp->process(*next_message);
 
-        statistics[tid].total_time += std::chrono::high_resolution_clock::now() - start_time;
-        statistics[tid].total_count++;
+	if (profile) {
+          statistics[tid].total_time += std::chrono::high_resolution_clock::now() - start_time;
+          statistics[tid].total_count++;
+	}
 
         // Log Env
         if (log_enabled) {
@@ -204,6 +211,23 @@ namespace K3 {
       }
     }
 
+    void Engine::printStatistics() {
+      if (profile) {
+        double total = 0.0;
+        std::cout << "===Trigger Statistics @" << addressAsString(*me) << "===" << std::endl;
+        for (auto i: statistics) {
+          auto count = i.second.total_count;
+          auto time = std::chrono::duration_cast<std::chrono::duration<float, std::ratio<1>>>(i.second.total_time).count();
+          total += time;
+          std::cout << std::setw(20) << __k3_context::__get_trigger_name(i.first) << ": "
+                    << std::setw(6) << i.second.total_count << " call(s), "
+                    << std::setw(15) << time << "s total time spent, "
+                    << std::setw(6) << time/count << "s average per call."
+                    << std::endl;
+        }
+        std::cout << "Total time in all triggers: " << total << std::endl;
+      }
+    }
     void Engine::runMessages(shared_ptr<MessageProcessor>& mp, MPStatus init_st)
     {
       mp_ = mp;
@@ -242,18 +266,8 @@ namespace K3 {
         }
         curr_status = next_status;
       }
-
-      std::cout << "Trigger Statistics" << std::endl;
-      for (auto i: statistics) {
-        auto count = i.second.total_count;
-        auto time = std::chrono::duration_cast<std::chrono::duration<float, std::ratio<1>>>(i.second.total_time).count();
-        std::cout << __k3_context::__get_trigger_name(i.first) << ": "
-                  << i.second.total_count << " call(s), "
-                  << time << "s total time spent, "
-                  << time/count << "s average per call."
-                  << std::endl;
-      }
     }
+
 
     void Engine::runEngine(shared_ptr<MessageProcessor> mp) {
       // TODO MessageProcessor initialize() is empty.
