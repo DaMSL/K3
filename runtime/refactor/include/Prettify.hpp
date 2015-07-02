@@ -7,6 +7,7 @@
 
 #include "Common.hpp"
 #include "types/BaseString.hpp"
+#include "collections/AllCollections.hpp"
 
 namespace K3 {
 
@@ -51,7 +52,7 @@ string_impl prettify_collection(const C& c, F f) {
   std::ostringstream oss;
   int i = 0;
   oss << "[";
-  for (auto& elem : c) {
+  auto wrapped = [&f, &i, &oss] (auto& elem) {
     if (i != 0) {
       oss << ",";
     }
@@ -59,11 +60,35 @@ string_impl prettify_collection(const C& c, F f) {
     i++;
     if (i == 10) {
       oss << ",...";
-      break;
+      return;
     }
-  }
+  };
+  c.iterate(wrapped);
   oss << "]";
   return string_impl(oss.str());
+}
+
+template <class C, class F>
+string_impl prettify_vmap(const C& c, F f) {
+  std::ostringstream oss;
+  oss << "[";
+  for (auto& elem : c) {
+    oss << "Version: " << elem.first << std::endl;
+    oss << "[";
+    int i = 0;
+    if (i != 0) {
+      oss << ",";
+    }
+    oss << f(elem.second);
+    i++;
+    if (i == 10) {
+      oss << ",...";
+      break;
+    }
+  };
+  oss << "]";
+  return string_impl(oss.str());
+
 }
 
 // Template magic for tuples

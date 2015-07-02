@@ -169,7 +169,6 @@ struct convert<K3::base_string> {
 };
 }
 
-K3::base_string operator+(K3::base_string s, K3::base_string const& t);
 K3::base_string operator+(K3::base_string s, char const* t);
 K3::base_string operator+(char const* t, K3::base_string const& s);
 

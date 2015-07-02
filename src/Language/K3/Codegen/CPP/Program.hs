@@ -244,7 +244,6 @@ requiredAliases = return
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "NativeValue"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "TNativeValue"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "PackedValue"), Nothing)
-                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "SentinelValue"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Options"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "string_impl"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "unit_t"), Nothing)
@@ -446,7 +445,7 @@ prettifyExpr base_t e =
    ((tag &&& children) -> (TIndirection, [t])) -> ind_to_string t
    ((tag &&& children) -> (TTuple, ts))        -> tup_to_string ts
    ((tag &&& children) -> (TRecord ids, ts))   -> rec_to_string ids ts
-   ((tag &&& children) -> (TCollection, [et])) -> coll_to_string base_t et
+   ((details) -> (TCollection, [et], as)) -> coll_to_string base_t et as
    _                                           -> return $ lit_string "Cant Show!"
  where
    -- Utils
@@ -493,6 +492,10 @@ prettifyExpr base_t e =
        return $ call_prettify "record" [e, f]
 
    -- Collection
-   coll_to_string t et = do
+   coll_to_string t et as = do
        f <- wrap_inner et
-       return $ call_prettify "collection" [e, f]
+       let str = maybe "collection" (const "vmap") (as @~ isVMap)
+       return $ call_prettify str [e, f]
+
+   isVMap (TAnnotation "VMap") = True
+   isVMap _ = False

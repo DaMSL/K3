@@ -244,10 +244,6 @@ void base_string::serialize(csv::writer& a, const unsigned int) {
 
 }  // namespace K3
 
-K3::base_string operator+(K3::base_string s, K3::base_string const& t) {
-  return s += t;
-}
-
 K3::base_string operator+(K3::base_string s, char const* t) { return s += t; }
 
 K3::base_string operator+(char const* t, K3::base_string const& s) {
