@@ -213,16 +213,28 @@ namespace K3 {
 
     void Engine::printStatistics() {
       if (profile) {
+
+        // Associate each statistic with its trigger id, since sorting will reorder the statistics vector
+        for (int i = 0; i < statistics.size(); i++) {
+	  statistics[i].trig_id = __k3_context::__get_trigger_name(i);
+	}
+
         double total = 0.0;
         std::cout << "===Trigger Statistics @" << addressAsString(*me) << "===" << std::endl;
-        for (auto i: statistics) {
-          auto count = i.second.total_count;
-          auto time = std::chrono::duration_cast<std::chrono::duration<float, std::ratio<1>>>(i.second.total_time).count();
+	std::sort(statistics.begin(), statistics.end(), [] (const trigger_statistics& a, const trigger_statistics& b) {
+		return a.total_time > b.total_time;
+	});;
+
+        int k = 10;
+	int max = statistics.size() < k ? statistics.size() : k;
+        for (int i = 0; i < max; i++) {
+          auto count = statistics[i].total_count;
+          auto time = std::chrono::duration_cast<std::chrono::duration<float, std::ratio<1>>>(statistics[i].total_time).count();
           total += time;
-          std::cout << std::setw(20) << __k3_context::__get_trigger_name(i.first) << ": "
-                    << std::setw(6) << i.second.total_count << " call(s), "
-                    << std::setw(15) << time << "s total time spent, "
-                    << std::setw(6) << time/count << "s average per call."
+          std::cout << std::setw(70) << statistics[i].trig_id << ": "
+                    << std::setw(6) << count << " call(s), "
+                    << std::setw(15) << std::scientific << std::setprecision(15) << time << "s total time spent, "
+                    << std::setw(6) << std::scientific << std::setprecision(15) << time/count << "s average per call."
                     << std::endl;
         }
         std::cout << "Total time in all triggers: " << total << std::endl;
@@ -233,6 +245,7 @@ namespace K3 {
       mp_ = mp;
       MPStatus curr_status = init_st;
       MPStatus next_status;
+      statistics.resize(__k3_context::__trigger_names.size());
       logAt(trivial::trace, "Starting the Message Processing Loop");
 
       while(true) {

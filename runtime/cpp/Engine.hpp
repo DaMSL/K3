@@ -44,6 +44,7 @@ namespace K3 {
   // Statistics
   class trigger_statistics {
    public:
+    std::string trig_id;
     int total_count;
     std::chrono::nanoseconds total_time;
   };
@@ -425,7 +426,7 @@ namespace K3 {
 
     unsigned int                    message_counter;
 
-    std::map<int, trigger_statistics> statistics;
+    std::vector<trigger_statistics> statistics;
     bool profile = false;
 
     void logMessageLoop(string s);
