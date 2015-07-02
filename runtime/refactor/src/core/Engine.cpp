@@ -7,6 +7,7 @@
 #include "core/Engine.hpp"
 #include "core/Peer.hpp"
 #include "serialization/Codec.hpp"
+#include "types/Dispatcher.hpp"
 
 namespace K3 {
 
@@ -34,7 +35,7 @@ Engine::~Engine() {
 void Engine::stop() {
   // Place a Sentintel on each Peer's queue
   for (auto& it : *peers_) {
-    auto d = it.second->getContext()->__getDispatcher(make_unique<SentinelValue>());
+    auto d = make_unique<SentinelDispatcher>(); 
     it.second->enqueue(std::move(d));
   }
   network_manager_.stop();

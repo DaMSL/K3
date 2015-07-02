@@ -9,7 +9,7 @@ set (CMAKE_RUNTIME_OUTPUT_DIRECTORY ./bin)
 include(CheckCXXCompilerFlag)
 CHECK_CXX_COMPILER_FLAG(-std=c++14 COMPILER_SUPPORTS_CXX14)
 if(COMPILER_SUPPORTS_CXX14)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g -std=c++14 -DYAS_SERIALIZE_BOOST_TYPES=1")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ferror-limit=100 -O0 -g -std=c++14 -DYAS_SERIALIZE_BOOST_TYPES=1")
 else()
   message(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++14 support. Please use a different C++ compiler.")
 endif()
@@ -35,6 +35,7 @@ set (srcs src/core/Engine.cpp
           src/types/Message.cpp
           src/types/Queue.cpp
           src/types/Value.cpp
+          src/types/Dispatcher.cpp
           src/network/NetworkManager.cpp
           src/network/Listener.cpp
           src/network/IncomingConnection.cpp

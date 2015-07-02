@@ -14,21 +14,12 @@ namespace K3 {
 
 class ProgramContext;
 
-// Values can be dispatched into a program context.
-// A 'dispatch' overload is chosen based on the Value implementation (Native, Packed, or Sentinel)
-class Value {
- public:
-  virtual ~Value() { }
-  virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig, const Address& source) = 0;
-};
-
 // Boxes a native C++ value.
 // The as<T>() and asConst<T>() functions enable casting to (any) native type.
 // The generated program knows the correct choice of T given the destination trigger
-class NativeValue : public Value {
+class NativeValue {
  public:
   virtual ~NativeValue() { }
-  virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig, const Address& source);
   template <class T> T* as();
   template <class T> const T* asConst() const;
 
@@ -38,24 +29,16 @@ class NativeValue : public Value {
 };
 
 // Interface that represents a packed C++ value.
-class PackedValue : public Value {
+class PackedValue {
  public:
   virtual ~PackedValue() { }
   PackedValue(CodecFormat format);
-  virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig, const Address& source);
   CodecFormat format() const;
   virtual const char* buf() const = 0;
   virtual size_t length() const = 0;
 
  protected:
   CodecFormat format_;
-};
-
-// Sentinel values throw an EndOfProgramException upon dispatch
-class SentinelValue : public Value {
- public:
-  SentinelValue();
-  virtual void dispatchIntoContext(ProgramContext* pc, TriggerID trig, const Address& source);
 };
 
 // Native Value Implementation

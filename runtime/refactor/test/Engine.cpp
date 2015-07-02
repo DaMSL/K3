@@ -32,12 +32,15 @@ using K3::Peer;
 using K3::Listener;
 using K3::NetworkManager;
 using K3::ProgramContext;
-using K3::DummyContext;
-using K3::Value;
+using K3::PackedValue;
 using K3::TNativeValue;
 using K3::NativeValue;
 using K3::StringPackedValue;
 using K3::MessageHeader;
+using K3::unit_t;
+using std::unique_ptr;
+using K3::Dispatcher;
+using K3::TriggerID;
 
 class EngineTest : public ::testing::Test {
  public:
@@ -64,6 +67,186 @@ class EngineTest : public ::testing::Test {
   Address addr2_;
   Address external_addr_;
 };
+
+// A Dummy Context implementation, for simple tests.
+// TODO(jbw) move to separate file
+class DummyState {
+ public:
+  int my_int_ = 0;
+  std::string my_string_ = "";
+};
+
+class DummyContext : public ProgramContext {
+ public:
+  explicit DummyContext(Engine& e);
+  virtual unique_ptr<Dispatcher> __getDispatcher(unique_ptr<NativeValue>, TriggerID trig);
+  virtual unique_ptr<Dispatcher> __getDispatcher(unique_ptr<PackedValue>, TriggerID trig);
+  virtual void __patch(const YAML::Node& node);
+  virtual unit_t processRole(const unit_t&);
+  void intTrigger(int i);
+  void stringTrigger(std::string s);
+  Address me;
+  std::string role;
+  shared_ptr<DummyState> state_;
+};
+
+namespace YAML {
+template <>
+struct convert<DummyContext> {
+ public:
+  static Node encode(const DummyContext& context) {
+    Node _node;
+    _node["me"] = convert<K3::Address>::encode(context.me);
+    _node["role"] = convert<std::string>::encode(context.role);
+    _node["my_int"] = convert<int>::encode(context.state_->my_int_);
+    _node["my_string"] =
+        convert<std::string>::encode(context.state_->my_string_);
+    return _node;
+  }
+  static bool decode(const Node& node, DummyContext& context) {
+    if (!node.IsMap()) {
+      return false;
+    }
+    if (node["me"]) {
+      context.me = node["me"].as<K3::Address>();
+    }
+    if (node["role"]) {
+      context.role = node["role"].as<std::string>();
+    }
+    if (node["my_int"]) {
+      context.state_->my_int_ = node["my_int"].as<int>();
+    }
+    if (node["my_string"]) {
+      context.state_->my_string_ = node["my_string"].as<std::string>();
+    }
+    return true;
+  }
+};
+}  // namespace YAML
+
+// Dummy Context Implementation:
+class IntTriggerNativeDispatcher : public Dispatcher {
+  public:
+    IntTriggerNativeDispatcher(DummyContext& c, unique_ptr<NativeValue> val) : context_(c) {
+      value_ = std::move(val);
+    }
+
+    void operator()() {
+      context_.intTrigger(*value_->as<int>());
+    }
+
+  protected:
+    DummyContext& context_;
+    unique_ptr<NativeValue> value_;
+};
+
+class IntTriggerPackedDispatcher : public Dispatcher {
+  public:
+    IntTriggerPackedDispatcher(DummyContext& c, unique_ptr<PackedValue> val) : context_(c) {
+      value_ = std::move(val);
+      codec_ = Codec::getCodec<int>(value_->format());
+    }
+
+    void operator()() {
+      auto native = codec_->unpack(*value_);
+      context_.intTrigger(*native->as<int>());
+    }
+
+  protected:
+    DummyContext& context_;
+    unique_ptr<PackedValue> value_;
+    shared_ptr<Codec> codec_;
+};
+
+class StringTriggerNativeDispatcher : public Dispatcher {
+  public:
+    StringTriggerNativeDispatcher(DummyContext& c, unique_ptr<NativeValue> val) : context_(c) {
+      value_ = std::move(val);
+    }
+
+    void operator()() {
+      context_.stringTrigger(*value_->as<string>());
+    }
+
+  protected:
+    DummyContext& context_;
+    unique_ptr<NativeValue> value_;
+};
+
+class StringTriggerPackedDispatcher : public Dispatcher {
+  public:
+    StringTriggerPackedDispatcher(DummyContext& c, unique_ptr<PackedValue> val) : context_(c) {
+
+      value_ = std::move(val);
+      codec_ = Codec::getCodec<string>(value_->format());
+    }
+
+    void operator()() {
+      auto native = codec_->unpack(*value_);
+      context_.stringTrigger(*native->as<string>());
+    }
+
+  protected:
+    DummyContext& context_;
+    unique_ptr<PackedValue> value_;
+    shared_ptr<Codec> codec_;
+};
+
+DummyContext::DummyContext(Engine& e) : ProgramContext(e) {
+  state_ = make_shared<DummyState>();
+}
+
+unique_ptr<Dispatcher> DummyContext::__getDispatcher(unique_ptr<NativeValue> nv, TriggerID t) {
+  if (t == 1) {
+    return make_unique<IntTriggerNativeDispatcher>(*this, std::move(nv));
+  } else if (t == 2) {
+    return make_unique<StringTriggerNativeDispatcher>(*this, std::move(nv));
+  } else {
+    throw std::runtime_error("Invalid trigger ID");
+  }
+}
+
+unique_ptr<Dispatcher> DummyContext::__getDispatcher(unique_ptr<PackedValue> pv, TriggerID t) {
+  if (t == 1) {
+    return make_unique<IntTriggerPackedDispatcher>(*this, std::move(pv));
+  } else if (t == 2) {
+    return make_unique<StringTriggerPackedDispatcher>(*this, std::move(pv));
+  } else {
+    throw std::runtime_error("Ipvalid trigger ID");
+  }
+}
+
+void DummyContext::__patch(const YAML::Node& node) {
+  YAML::convert<DummyContext>::decode(node, *this);
+}
+
+unit_t DummyContext::processRole(const unit_t&) {
+  if (role == "int") {
+    MessageHeader h(me, me, 1);
+    static shared_ptr<Codec> codec = Codec::getCodec<int>(__internal_format_);
+    __engine_.send(h, make_unique<TNativeValue<int>>(5), codec);
+  } else if (role == "string") {
+    MessageHeader h(me, me, 2);
+    static shared_ptr<Codec> codec =
+        Codec::getCodec<std::string>(__internal_format_);
+    __engine_.send(h, make_unique<TNativeValue<std::string>>("hi"), codec);
+  }
+
+  return unit_t{};
+}
+
+void DummyContext::intTrigger(int i) {
+  state_->my_int_ = i;
+  return;
+}
+
+void DummyContext::stringTrigger(std::string s) {
+  state_->my_string_ = s;
+  return;
+}
+
+
+
 
 TEST(Map, base_string) {
   K3::base_string k = "hello!";

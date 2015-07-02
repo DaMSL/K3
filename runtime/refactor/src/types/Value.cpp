@@ -7,17 +7,7 @@
 
 namespace K3 {
 
-void NativeValue::dispatchIntoContext(ProgramContext* pc, TriggerID trig,
-                                      const Address& addr) {
-  //return pc->__dispatch(this, trig, addr);
-}
-
 PackedValue::PackedValue(CodecFormat format) { format_ = format; }
-
-void PackedValue::dispatchIntoContext(ProgramContext* pc, TriggerID trig,
-                                      const Address& addr) {
-  //return pc->__dispatch(this, trig, addr);
-}
 
 CodecFormat PackedValue::format() const { return format_; }
 
@@ -71,12 +61,5 @@ YASPackedValue::YASPackedValue(yas::shared_buffer b, CodecFormat format)
 const char* YASPackedValue::buf() const { return buf_.data.get(); }
 
 size_t YASPackedValue::length() const { return buf_.size; }
-
-SentinelValue::SentinelValue() {}
-
-void SentinelValue::dispatchIntoContext(ProgramContext* pc, TriggerID trig,
-                                        const Address& source) {
-  //return pc->__dispatch(this);
-}
 
 }  // namespace K3

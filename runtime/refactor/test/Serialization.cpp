@@ -18,7 +18,6 @@ using K3::Codec;
 using K3::CodecFormat;
 using K3::Address;
 using K3::make_address;
-using K3::Value;
 using K3::TNativeValue;
 using K3::NativeValue;
 using K3::StringPackedValue;
