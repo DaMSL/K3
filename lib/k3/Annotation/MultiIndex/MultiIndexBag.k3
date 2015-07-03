@@ -1,0 +1,99 @@
+include "Annotation/Collection.k3"
+
+//////////////////////////////////////////////////////////////
+// A container supporting multiple indexes.
+//
+// The base container is simply a bag of content records.
+// Additional indexes may be added with the various Index annotations
+// provided below.
+//
+// See examples/datastructures/multi_index.k3 for usage.
+
+annotation MultiIndexBag given type a, b
+{
+  provides lifted peek : () -> option content
+    with effects \_ -> R[self]
+
+  provides lifted insert : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
+  provides lifted erase : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
+  @:CArgs 2
+  provides lifted update : content -> (content -> ())
+    with effects \oldElem -> \newElem -> [R[self]; R[oldElem]; R[newElem]; W[self]]
+
+  provides lifted size : () -> int
+    with effects \_ -> R[self]
+
+  @:Transformer
+  provides lifted combine : self -> self
+    with effects \other -> [R[self]; R[other]]
+
+  @:Transformer
+  provides lifted split : () -> (self, self)
+    with effects \_ -> R[self]
+
+  @:Transformer
+  provides lifted iterate : (content -> ()) -> ()
+    with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
+
+  @:Transformer
+  provides lifted map : (content -> a) -> collection {elem : a} @MultiIndexBag
+    with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
+
+  @:Transformer
+  provides lifted filter : (content -> bool) -> self
+    with effects \filterF -> [R[self]; ([R[content]; filterF content])*]
+
+  @:{Transformer, CArgs 2}
+  provides lifted fold : (a -> (content -> a)) -> a -> a
+    with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+  @:{Transformer, CArgs 3}
+  provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
+                          -> collection { key : a, value : b } @MultiIndexBag
+    with effects
+      \gbF -> \gaccF -> \z ->
+        [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
+
+  @:Transformer
+  provides lifted ext : (content -> collection {elem : a} @MultiIndexBag)
+                      -> collection {elem : a} @MultiIndexBag
+    with effects \extF -> [R[self]; ([R[content]; extF content])*]
+
+  @:{Transformer, CArgs 3}
+  provides lifted sample : (a -> content -> a) -> a -> int -> a
+    with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
+
+}
+
+
+///////////////////////////////////////////////////////
+//
+// Index annotations for composing with MultiIndexBags.
+
+// A hash index implementation.
+annotation BagIndex[key : [labeltype]]
+{
+  provides lifted lookup_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> option content
+    with effects \key -> [R[self]; R[key]]
+
+  provides lifted slice_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> self
+    with effects \key -> [R[self]; R[key]]
+}
+
+// A tree-based index implementation, additionally providing a two-sided range query operation.
+annotation OrderedBagIndex[key : [labeltype]]
+{
+  provides lifted lookup_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> option content
+    with effects \key -> [R[self]; R[key]]
+
+  provides lifted slice_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> self
+    with effects \key -> [R[self]; R[key]]
+
+  @:CArgs 2
+  provides lifted range_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> $[|mkRecord 'key|] -> self
+    with effects \lower_key -> \upper_key -> [R[self]; R[lower_key]; R[upper_key]]
+}

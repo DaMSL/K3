@@ -281,6 +281,7 @@ requiredIncludes = return
                    , "tuple"
 
                    , "boost/multi_index_container.hpp"
+                   , "boost/multi_index/hashed_index.hpp"
                    , "boost/multi_index/ordered_index.hpp"
                    , "boost/multi_index/member.hpp"
                    , "boost/multi_index/composite_key.hpp"
@@ -302,6 +303,7 @@ requiredIncludes = return
 
                    , "dataspace/Dataspace.hpp"
                    , "dataspace/MapDataspace.hpp"
+                   , "dataspace/MultiIndexDataspace.hpp"
 
                    , "yaml-cpp/yaml.h"
                    ]

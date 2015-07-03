@@ -6,7 +6,7 @@
 module Language.K3.Codegen.CPP.Collections where
 
 import Data.Char
-import Data.List (intercalate, partition, sort, isInfixOf)
+import Data.List (elemIndex, intercalate, partition, sort, isInfixOf)
 
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
@@ -37,7 +37,7 @@ composite name ans = do
     -- Split data and method declarations, for access specifiers.
     -- let (dataDecls, methDecls) = partition isDataDecl positives
 
-    -- When dealing with Indexes, we need to specialize the MultiIndex class on each index type
+    -- When dealing with Indexes, we need to specialize the MultiIndex* classes on each index type
     (indexTypes, indexDefns) <- indexes name as
 
     let addnSpecializations n = if "MultiIndex" `isInfixOf` n then indexTypes else []
@@ -245,9 +245,13 @@ record (sort -> ids) = do
                   (Just $ R.Named $ R.Name "void")
                   [] False $ serializeStatements asYas)
 
+    let typedefs = case "key" `elemIndex` ids of
+                     Just idx -> [R.TypeDefn (R.Named $ R.Name $ templateVars !! idx) "KeyType"]
+                     Nothing -> []
+
     let constructors = (defaultConstructor:initConstructors)
     let comparators = [equalityOperator, logicOp "!=", logicOp "<", logicOp ">", logicOp "<=", logicOp ">="]
-    let members = constructors ++ comparators ++ [serializeFn False, serializeFn True] ++ fieldDecls
+    let members = typedefs ++ constructors ++ comparators ++ [serializeFn False, serializeFn True] ++ fieldDecls
 
     let recordStructDefn
             = R.GuardedDefn ("K3_" ++ recordName) $
@@ -396,5 +400,6 @@ record (sort -> ids) = do
 reservedAnnotations :: [Identifier]
 reservedAnnotations =
   [ "Collection", "External", "Seq", "Set", "Sorted", "Map", "Vector"
-  , "IntMap", "StrMap", "MultiIndex", "VMap", "OrderedMap"
+  , "IntMap", "StrMap", "VMap", "OrderedMap"
+  , "MultiIndexBag", "MultiIndexMap"
   ]

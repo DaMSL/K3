@@ -1,27 +1,44 @@
-include "Annotation/MultiIndex.k3"
+include "Annotation/MultiIndex/MultiIndexBag.k3"
+include "Annotation/MultiIndex/MultiIndexMap.k3"
 
-annotation Index[key : [labeltype] ] {
-  provides lifted lookup_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> option content
-  	with effects \key -> [R[self]; R[key]]
+typedef EmployeeC = collection {key: int, name: string, age: int}
+                      @{MultiIndexBag, OrderedBagIndex(key=[name]), BagIndex(key=[age]), BagIndex(key=[age, key])}
 
-  @:CArgs 2
-  provides lifted slice_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> $[|mkRecord 'key|] -> self
-  	with effects \lower_key -> \upper_key -> [R[self]; R[lower_key]; R[upper_key]]
-}
+typedef EmployeeM = collection {key: int, name: string, age: int}
+                      @{MultiIndexMap, OrderedMapIndex(key=[name]), MapIndex(key=[age]), MapIndex(key=[age, key])}
 
+declare employeesC : mut EmployeeC
+declare employeesM : mut EmployeeM
 
-declare employees : mut collection {id: int, name: string, age: int} @{MultiIndex, Index(key=[name]), Index(key=[age, id])}
-
-
-declare result1 : mut option {id: int, name: string, age: int}
-declare result2 : mut option {id: int, name: string, age: int}
+declare result1 : mut option {key: int, name: string, age: int}
+declare result2 : mut option {key: int, name: string, age: int}
 
 trigger t : () = \_ -> (
-                        employees.insert {id: 1, name: "John", age: 30};
-                        employees.insert {id:2, name: "alice", age: 40};
-                        result1 = employees.lookup_by_name {name: "John"};
-                        result2 = employees.lookup_by_ageid {age: 40, id: 2};
-                        employees = employees.slice_by_name {name: "a"} {name: "b"})
+    employeesC.insert {key: 1, name: "John",    age: 30};
+    employeesC.insert {key: 2, name: "alice",   age: 40};
+    employeesC.insert {key: 3, name: "bob",     age: 40};
+    employeesC.insert {key: 4, name: "charles", age: 45};
+
+    result1    = employeesC.lookup_by_name   {name: "John"};
+    result2    = employeesC.lookup_by_agekey {age: 40, key: 2};
+    employeesC = employeesC.range_by_name    {name: "a"} {name: "d"};
+    employeesC = employeesC.slice_by_age     {age: 40}
+)
+
+trigger t2 : () = \_ -> (
+    employeesM.insert {key: 1, name: "John",    age: 30};
+    employeesM.insert {key: 2, name: "alice",   age: 40};
+    employeesM.insert {key: 3, name: "bob",     age: 40};
+    employeesM.insert {key: 4, name: "charles", age: 45};
+
+    result1    = employeesM.lookup_by_name   {name: "John"};
+    result2    = employeesM.lookup_by_agekey {age: 40, key: 2};
+    employeesM = employeesM.range_by_name    {name: "a"} {name: "d"};
+    employeesM = employeesM.slice_by_age     {age: 40}
+)
 
 source s1 : () = value ()
 feed s1 |> t
+
+source s2 : () = value ()
+feed s2 |> t2

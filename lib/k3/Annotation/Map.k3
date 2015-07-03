@@ -1,5 +1,10 @@
+/////////////////////////////////////////////////////////////////////////
+// An associative container annotation.
+//
 // Maps are expected to contain only records with fields key and value
-annotation Map given type a,b {
+
+annotation Map given type a,b
+{
   provides lifted peek    : () -> option content
     with effects \_ -> R[self]
 
