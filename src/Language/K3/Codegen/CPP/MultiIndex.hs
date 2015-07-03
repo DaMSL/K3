@@ -17,13 +17,9 @@ import Data.Functor ((<$>))
 import Data.List (isInfixOf, nub)
 import Data.Maybe (catMaybes, fromMaybe)
 
-
-
-
--- Given a list of annotations
--- Return a tuple
--- fst: List of index types to use for specializing K3::MultiIndex
--- snd: List of function definitions to attach as members for this annotation combination (lookup functions)
+-- Given a list of annotations, return a pair of:
+-- i.  index types to use for specializing K3::MultiIndex
+-- ii. function definitions to attach as members for this annotation combination (lookup functions)
 indexes ::  Identifier -> [(Identifier, [AnnMemDecl])] -> CPPGenM ([R.Type], [R.Definition])
 indexes name ans = do
   let indexed = zip [1..] ans
@@ -44,10 +40,7 @@ indexes name ans = do
     get_key_type _ = Nothing
 
     index_type :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Type)
-    index_type ((_,n), decl) =
-      if "Index" `isInfixOf` n
-        then extract_type n decl
-        else  return Nothing
+    index_type ((_,n), decl) = if "Index" `isInfixOf` n then extract_type n decl else return Nothing
 
     -- Build a boost index type e.g. ordered_non_unique
     extract_type :: Identifier -> AnnMemDecl -> CPPGenM (Maybe R.Type)
@@ -55,13 +48,8 @@ indexes name ans = do
         let key_t = get_key_type t
         let fields = maybe Nothing get_fields key_t
         types <- maybe (return Nothing) (\x -> mapM single_field_type x >>= return . Just) fields
-        let i_t ts =
-             R.Named $
-                    R.Specialized
-                      [ R.Named $ R.Specialized
-                        (elem_type : ts)
-                        ( bmi $ R.Name "composite_key")
-                      ]
+        let i_t ts = R.Named $ R.Specialized
+                      [ R.Named $ R.Specialized (elem_type : ts) (bmi $ R.Name "composite_key") ]
                       (bmi $ R.Name "ordered_non_unique")
         return $ i_t <$> types
     extract_type _ _ = return Nothing
@@ -73,14 +61,9 @@ indexes name ans = do
     single_field_type :: (Identifier, K3 Type) -> CPPGenM R.Type
     single_field_type (n, t) = do
       cType <- genCType t
-      return $
-              R.Named $ R.Specialized
-                [ elem_type
-                ,   cType
-                , R.Named $ R.Qualified elem_r (R.Name n)
-                ]
-                ( bmi $ R.Name "member")
-
+      return $ R.Named $ R.Specialized
+                [elem_type, cType, R.Named $ R.Qualified elem_r (R.Name n)]
+                (bmi $ R.Name "member")
 
     tuple :: R.Name -> K3 Type -> R.Expression
     tuple n t =
@@ -89,33 +72,27 @@ indexes name ans = do
           projs = map (R.Project (R.Variable n) . R.Name) ids
       in R.Call (R.Variable $ R.Qualified (R.Name "boost") (R.Name "make_tuple")) projs
 
-
     -- Build a lookup function, wrapping boost 'find'
     lookup_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
     lookup_fn ((i,_) ,Lifted _ fname t _ _ ) = do
-
-      let key_t = get_key_type t
-      let this = R.Dereference $ R.Variable $ R.Name "this"
-
-      let container = R.Call
-                       (R.Project this (R.Name "getConstContainer") )
-                       []
+      let key_t     = get_key_type t
+      let this      = R.Dereference $ R.Variable $ R.Name "this"
+      let container = R.Call (R.Project this $ R.Name "getConstContainer") []
 
       let index = R.Call
                     (R.Variable $ (R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")))
                     [container]
 
-      let look k_t = R.Call
-                   (R.Project this (R.Name "lookup_with_index") )
-                   [index,  tuple (R.Name "key") k_t]
+      let look k_t = R.Call (R.Project this (R.Name "lookup_with_index") )
+                            [index, tuple (R.Name "key") k_t]
 
-      let defn k_t c_t = R.FunctionDefn
-                       (R.Name fname)
-                       [("key", c_t)]
-                       (Just $ R.Named $ R.Specialized [R.Named $ R.Name  "__CONTENT"] (R.Name "shared_ptr"))
-                       []
-                       False
-                       [R.Return $ look k_t]
+      let defn k_t c_t = R.FunctionDefn (R.Name fname)
+                            [("key", c_t)]
+                            (Just $ R.Named $ R.Specialized [R.Named $ R.Name  "__CONTENT"] (R.Name "shared_ptr"))
+                            []
+                            False
+                            [R.Return $ look k_t]
+
       cType <- maybe (return Nothing) (\x -> genCType x >>= return . Just) key_t
       let result = key_t >>= \k_t -> cType >>= \c_t -> Just $ defn k_t c_t
       return $ if "lookup" `isInfixOf` fname then result else Nothing
@@ -126,27 +103,24 @@ indexes name ans = do
     slice_fn ((i,_),Lifted _ fname t _ _ ) = do
       let key_t = get_key_type t
       let this = R.Dereference $ R.Variable $ R.Name "this"
-
-      let container = R.Call
-                       (R.Project this (R.Name "getConstContainer") )
-                       []
+      let container = R.Call (R.Project this $ R.Name "getConstContainer") []
 
       let index = R.Call
                     ((R.Variable $ R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")))
                     [container]
 
-      let slice k_t = R.Call
-                   (R.Project this (R.Name "slice_with_index") )
-                   [index, tuple (R.Name "a") k_t, tuple (R.Name "b") k_t]
+      let slice k_t = R.Call (R.Project this (R.Name "slice_with_index") )
+                             [index, tuple (R.Name "a") k_t, tuple (R.Name "b") k_t]
 
-      let defn k_t c_t = R.FunctionDefn
-                       (R.Name fname)
-                       [("a", c_t), ("b", c_t)]
-                       (Just $ R.Named $ R.Specialized [R.Named $ R.Name  "__CONTENT"] (R.Name name))
-                       []
-                       False
-                       [R.Return $ slice k_t]
+      let defn k_t c_t = R.FunctionDefn (R.Name fname)
+                           [("a", c_t), ("b", c_t)]
+                           (Just $ R.Named $ R.Specialized [R.Named $ R.Name  "__CONTENT"] (R.Name name))
+                           []
+                           False
+                           [R.Return $ slice k_t]
+
       cType <- maybe (return Nothing) (\x -> genCType x >>= return . Just)  key_t
       let result = key_t >>= \k_t -> cType >>= \c_t -> Just $ defn k_t c_t
       return $ if "slice" `isInfixOf` fname then result else Nothing
+
     slice_fn _ = return Nothing

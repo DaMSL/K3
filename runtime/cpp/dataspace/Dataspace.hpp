@@ -1792,7 +1792,6 @@ class MultiIndex {
       MultiIndex<R_key_value<RT<F1, Elem>,Z>> result;
       for(const auto& it : accs) {
         result.insert(R_key_value<K, Z>{std::move(it.first), std::move(it.second)});
-
       }
 
       return result;
@@ -1849,11 +1848,9 @@ class MultiIndex {
   template <class Index, class Key>
   shared_ptr<Elem> lookup_with_index(const Index& index, Key key) const {
     const auto& it = index.find(key);
-
     shared_ptr<Elem> result;
     if (it != index.end()) {
       result = make_shared<Elem>(*it);
-
     }
     return result;
   }
@@ -1861,12 +1858,11 @@ class MultiIndex {
   template <class Index, class Key>
   MultiIndex<Elem, Indexes...> slice_with_index(const Index& index, Key a, Key b) const {
     MultiIndex<Elem, Indexes...> result;
-    std::pair<typename Index::iterator, typename Index::iterator> p = index.range(a <= boost::lambda::_1, b >= boost::lambda::_1);
+    std::pair<typename Index::iterator, typename Index::iterator> p =
+      index.range(a <= boost::lambda::_1, b >= boost::lambda::_1);
     for (typename Index::iterator it = p.first; it != p.second; it++) {
       result.insert(*it);
-
     }
-
     return result;
   }
 

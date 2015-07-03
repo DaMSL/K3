@@ -2,9 +2,11 @@ include "Annotation/MultiIndex.k3"
 
 annotation Index[key : [labeltype] ] {
   provides lifted lookup_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> option content
+  	with effects \key -> [R[self]; R[key]]
 
   @:CArgs 2
   provides lifted slice_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> $[|mkRecord 'key|] -> self
+  	with effects \lower_key -> \upper_key -> [R[self]; R[lower_key]; R[upper_key]]
 }
 
 

@@ -40,7 +40,7 @@ composite name ans = do
     -- When dealing with Indexes, we need to specialize the MultiIndex class on each index type
     (indexTypes, indexDefns) <- indexes name as
 
-    let addnSpecializations n = if "MultiIndex" `isInfixOf` n  then indexTypes else []
+    let addnSpecializations n = if "MultiIndex" `isInfixOf` n then indexTypes else []
 
     let baseClass (n,_) = R.Qualified (R.Name "K3")
                           (R.Specialized ((R.Named $ R.Name "__CONTENT"): addnSpecializations n) (R.Name n))
