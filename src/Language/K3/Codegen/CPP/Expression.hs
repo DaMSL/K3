@@ -72,6 +72,14 @@ instance Show RContext where
 -- TODO: Check for transformer property.
 pattern Fold c <- Node (EProject "fold" :@: _) [c]
 
+hasMoveProperty :: Annotation Expression -> Bool
+hasMoveProperty ae = case ae of
+                       (EProperty s) -> ePropertyName s == "Move"
+                       _ -> False
+
+forceMoveP :: K3 Expression -> Bool
+forceMoveP e = isJust (e @~ hasMoveProperty)
+
 -- | Realization of unary operators.
 unarySymbol :: Operator -> CPPGenM Identifier
 unarySymbol ONot = return "!"
@@ -207,6 +215,16 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
   (fe, fv) <- inline f
   (ze, zv) <- inline z
 
+  outerMtrlzn' <- case e @~ isEMaterialization of
+                   Just (EMaterialization ms) -> return ms
+                   Nothing -> return (M.fromList [("", defaultDecision)])
+
+  let outerMtrlzn = M.adjust (\d -> if forceMoveP e then d { inD = Moved } else d) "" outerMtrlzn'
+
+  pass <- case inD (fromJust (M.lookup "" outerMtrlzn)) of
+            Copied -> return zv
+            Moved -> return (move z zv)
+
   let isVectorizeProp  = \case { EProperty (ePropertyName -> "Vectorize")  -> True; _ -> False }
   let isInterleaveProp = \case { EProperty (ePropertyName -> "Interleave") -> True; _ -> False }
 
@@ -231,13 +249,22 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
   g <- genSym
   acc <- genSym
 
-  let loopInit = [R.Forward $ R.ScalarDecl (R.Name acc) R.Inferred (Just zv)]
+  let loopInit = [R.Forward $ R.ScalarDecl (R.Name acc) R.Inferred (Just pass)]
   let loopBody =
           [ R.Assignment (R.Variable $ R.Name acc) $
               R.Call (R.Call fv [ R.Move (R.Variable $ R.Name acc)]) [R.Variable $ R.Name g]
           ]
   let loop = R.ForEach g (R.Const $ R.Reference $ R.Inferred) cv (R.Block loopBody)
   return (ce ++ fe ++ ze ++ loopInit ++ loopPragmas ++ [loop], R.Move $ R.Variable $ R.Name acc)
+ where
+   move e a =
+     case e of
+       (tag -> EConstant _) -> a
+       (tag -> EOperate _) -> a
+       (tag -> ETuple) -> a
+       (tag -> ERecord _) -> a
+       _ -> R.Move a
+
 
 inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
     -- Inline both function and argument for call.
@@ -246,9 +273,11 @@ inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
     (fe, fv) <- inline f
     (ae, av) <- inline a
 
-    mtrlzns <- case e @~ isEMaterialization of
-                 Just (EMaterialization ms) -> return ms
-                 Nothing -> return $ M.fromList [("", defaultDecision)]
+    mtrlzns' <- case e @~ isEMaterialization of
+                  Just (EMaterialization ms) -> return ms
+                  Nothing -> return $ M.fromList [("", defaultDecision)]
+
+    let mtrlzns = M.adjust (\d -> if forceMoveP e then d { inD = Moved } else d) "" mtrlzns'
 
     pass <- case inD (fromJust (M.lookup "" mtrlzns)) of
               Copied -> return av
