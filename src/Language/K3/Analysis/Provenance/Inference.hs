@@ -639,7 +639,7 @@ simplifyApply pienv eOpt lp argp lti argti = do
               --let mkapp p = papply (Just imv) lp argp p
               --let rti' = tinode (rootbv $ rti) [lti, argti, rti]
               let mkapp p = pmaterialize [imv] p
-              let rti' = tinode (rootbv $ rti) [rti]
+              let rti' = tinode (rootbv rti) [rti]
               return (chacc ++ [(mkapp rp, mkapp rip, rti')], reacc)
 
             Nothing -> do
@@ -653,9 +653,10 @@ simplifyApply pienv eOpt lp argp lti argti = do
         -- Handle recursive functions, and forward declarations
         -- by using an opaque return value.
         (PBVar _, _) ->
-          let rp  = papply Nothing lp argp ptemp
-              rti = tileaf $ bzerobv $ Vector.length $ rootbv lti'
-          in return (chacc ++ [(rp, rp, rti)], eacc)
+          let rp   = papply Nothing lp argp ptemp
+              rti  = tileaf $ bzerobv $ Vector.length $ rootbv lti'
+              rti' = tinode (rootbv rti) [lti, argti, rti]
+          in return (chacc ++ [(rp, rp, rti')], eacc)
 
         -- Handle higher-order and external functions as an unsimplified apply.
         (PFVar _, _) ->
