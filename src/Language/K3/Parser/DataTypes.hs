@@ -401,6 +401,9 @@ defaultEntries :: EnvFrame -> DefaultEntries
 defaultEntries = snd
 -}
 
+sourceEndpointSpecs :: EndpointsBQG -> [(Identifier, EndpointSpec)]
+sourceEndpointSpecs s = map (\(x,(e,_,_,_)) -> (x,e)) s
+
 sourceBindings :: EndpointsBQG -> [(Identifier, Identifier)]
 sourceBindings s = concatMap extractBindings s
   where extractBindings (x,(_,Just b,_,_))  = map ((,) x) b

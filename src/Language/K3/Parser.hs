@@ -1041,9 +1041,13 @@ equateQExpr = symbol "=" *> qualifiedExpr
 {- Endpoints -}
 
 endpoint :: Bool -> K3Parser EndpointBuilder
-endpoint isSource = if isSource then choice $ [value, try fileseq] ++ common
-                                else choice common
-  where common = [builtin isSource, file isSource, network isSource]
+endpoint isSource = if isSource
+                      then choice $ [ value
+                                    , try $ filemux
+                                    , try $ file True "fileseq" FileSeqEP eVariable
+                                    ] ++ common
+                      else choice common
+  where common = [builtin isSource, file isSource "file" FileEP eTerminal, network isSource]
 
 value :: K3Parser EndpointBuilder
 value = mkValueStream <$> (symbol "value" *> expr)
@@ -1055,21 +1059,23 @@ builtin isSource = mkBuiltin <$> builtinChannels <*> format
           builtinSpec idE formatE >>= \s -> return $ endpointMethods isSource s idE formatE n t
         builtinSpec idE formatE = BuiltinEP <$> S.symbolS idE <*> S.symbolS formatE
 
-file :: Bool -> K3Parser EndpointBuilder
-file isSource = mkFile <$> (symbol "file" *> eTerminal) <*> format
-  where mkFile argE formatE n t = do
-          s <- fileSpec argE formatE
+file :: Bool -> String -> (String -> String -> EndpointSpec) -> ExpressionParser
+     -> K3Parser EndpointBuilder
+file isSource sym ctor prsr = mkFileSrc <$> (symbol sym *> prsr) <*> format
+  where mkFileSrc argE formatE n t = do
+          s <- spec argE formatE
           return $ endpointMethods isSource s argE formatE n t
 
-        fileSpec argE formatE = FileEP <$> S.exprS argE <*> S.symbolS formatE
+        spec argE formatE = ctor <$> S.exprS argE <*> S.symbolS formatE
 
-fileseq :: K3Parser EndpointBuilder
-fileseq = mkFileSeq <$> (symbol "fileseq" *> eVariable) <*> format
-  where mkFileSeq argE formatE n t = do
-          s <- fileSeqSpec argE formatE
+filemux :: K3Parser EndpointBuilder
+filemux = mkFMuxSrc <$> (symbol "filemux" *> eVariable) <*> natural <*> format
+  where mkFMuxSrc argE (fromIntegral -> numChans) formatE n t = do
+          s <- fMuxSpec argE numChans formatE
           return $ endpointMethods True s argE formatE n t
 
-        fileSeqSpec argE formatE = FileSeqEP <$> S.exprS argE <*> S.symbolS formatE
+        fMuxSpec argE numChans formatE =
+          (\a b -> FileMultiplexerEP a numChans b) <$> S.exprS argE <*> S.symbolS formatE
 
 network :: Bool -> K3Parser EndpointBuilder
 network isSource = mkNetwork <$> (symbol "network" *> eTerminal) <*> format
@@ -1160,7 +1166,7 @@ postProcessRole n (dl, frame) =
           let (ndl, extrasl) = unzip dAndExtras
           in modifyBuilderDeclsF_ (Right . ((concat extrasl) ++)) >> return ndl
 
-        attachSource s = bindSource $ sourceBindings s
+        attachSource s = bindSource (sourceEndpointSpecs s) $ sourceBindings s
         annotateEndpoint s (d, extraDecls)
           | DGlobal en t _ <- tag d, TSource <- tag t = (maybe d (d @+) $ syntaxAnnotation en s, extraDecls)
           | DGlobal en t _ <- tag d, TSink   <- tag t = (maybe d (d @+) $ syntaxAnnotation en s, extraDecls)

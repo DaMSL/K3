@@ -158,6 +158,9 @@ data EndpointSpec
   | FileSeqEP String String
     -- ^ File sequence path collection (as expression), format
 
+  | FileMultiplexerEP String Int String
+    -- ^ File path collection (as expression), number of subchannels, format
+
   | NetworkEP String String
     -- ^ Address, format
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
