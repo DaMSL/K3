@@ -1069,13 +1069,20 @@ file isSource sym ctor prsr = mkFileSrc <$> (symbol sym *> prsr) <*> format
         spec argE formatE = ctor <$> S.exprS argE <*> S.symbolS formatE
 
 filemux :: K3Parser EndpointBuilder
-filemux = mkFMuxSrc <$> (symbol "filemux" *> eVariable) <*> natural <*> format
-  where mkFMuxSrc argE (fromIntegral -> numChans) formatE n t = do
-          s <- fMuxSpec argE numChans formatE
-          return $ endpointMethods True s argE formatE n t
+filemux = mkFMuxSrc <$> syms ["filemuxseq", "filemux"] <*> eVariable <*> natural <*> format
+  where
+    syms l = choice $ map symbol l
 
-        fMuxSpec argE numChans formatE =
-          (\a b -> FileMultiplexerEP a numChans b) <$> S.exprS argE <*> S.symbolS formatE
+    mkFMuxSrc sym argE (fromIntegral -> numChans) formatE n t = do
+      s <- fMuxSpec (ctorOfSym sym numChans) argE formatE
+      return $ endpointMethods True s argE formatE n t
+
+    fMuxSpec ctor argE formatE = ctor <$> S.exprS argE <*> S.symbolS formatE
+
+    ctorOfSym s n =
+      if s == "filemux" then (\a b -> FileMuxEP a n b)
+      else if s == "filemuxseq" then (\a b -> FileMuxseqEP a n b)
+      else fail "Invalid file mux kind"
 
 network :: Bool -> K3Parser EndpointBuilder
 network isSource = mkNetwork <$> (symbol "network" *> eTerminal) <*> format

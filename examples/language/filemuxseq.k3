@@ -1,0 +1,12 @@
+include "Annotation/Collection.k3"
+include "Annotation/Maps/OrderedMap.k3"
+include "Annotation/Map.k3"
+include "Core/Builtins.k3"
+
+typedef fileseq = collection {path: string} @Collection
+declare fpaths : collection {paths: fileseq} @Collection
+
+trigger t : int = \i -> print ((itos i) ++ "\\n")
+
+source s1 : int = filemuxseq fpaths 3 csv
+feed s1 |> t

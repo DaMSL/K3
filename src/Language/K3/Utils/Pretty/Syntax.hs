@@ -287,8 +287,11 @@ endpoint kw n specOpt t' eOpt' = case specOpt of
   Just (NetworkEP addr fmt) -> common . Just $ text "network" <+> text addr <+> text fmt
   Just (FileSeqEP pathcol fmt) -> common . Just $ text "fileseq" <+> text pathcol <+> text fmt
 
-  Just (FileMultiplexerEP pathcol cnt fmt) ->
+  Just (FileMuxEP pathcol cnt fmt) ->
     common . Just $ text "filemux" <+> text pathcol <+> text (show cnt) <+> text fmt
+
+  Just (FileMuxseqEP pathcol cnt fmt) ->
+    common . Just $ text "filemuxseq" <+> text pathcol <+> text (show cnt) <+> text fmt
 
   where
     common initializer =

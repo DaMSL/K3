@@ -43,21 +43,19 @@ indexes name ans = do
 
     index_type :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Type)
     index_type ((_,n), decl) =
-      if "MultiIndex" `isInfixOf` n
-        then return Nothing
-        else (if "Index" `isInfixOf` n then extract_type n decl else return Nothing)
+      if "Index" `isInfixOf` n then extract_type n decl else return Nothing
 
     -- Build a boost index type e.g. ordered_non_unique
     extract_type :: Identifier -> AnnMemDecl -> CPPGenM (Maybe R.Type)
     extract_type n (Lifted _ _ t _ _) = do
       let key_t = get_key_type t
       let fields = maybe Nothing get_fields key_t
-      types <- maybe (return Nothing) (\x -> mapM single_field_type x >>= return . Just) fields
-      let bmi_t  = if "Ordered" `isInfixOf` n then "ordered_non_unique" else "hashed_non_unique"
+      extractor_types <- maybe (return Nothing) (\x -> mapM field_extractor_type x >>= return . Just) fields
+      let idx_t = if "Ordered" `isInfixOf` n then "ordered_non_unique" else "hashed_non_unique"
       let i_t ts = R.Named $ R.Specialized
                      [ R.Named $ R.Specialized (elem_type : ts) (bmi $ R.Name "composite_key") ]
-                     (bmi $ R.Name bmi_t)
-      return $ i_t <$> types
+                     (bmi $ R.Name idx_t)
+      return $ i_t <$> extractor_types
 
     extract_type _ _ = return Nothing
 
@@ -65,8 +63,8 @@ indexes name ans = do
     get_fields (tag &&& children -> (TRecord ids, ts) ) = Just $ zip ids ts
     get_fields _ = Nothing
 
-    single_field_type :: (Identifier, K3 Type) -> CPPGenM R.Type
-    single_field_type (n, t) = do
+    field_extractor_type :: (Identifier, K3 Type) -> CPPGenM R.Type
+    field_extractor_type (n, t) = do
       cType <- genCType t
       return $ R.Named $ R.Specialized
                 [elem_type, cType, R.Named $ R.Qualified elem_r (R.Name n)]
