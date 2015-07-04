@@ -39,6 +39,7 @@ declare now_int : () -> int
 
 @:ErrorFn
 declare max: forall a. {key: a, value: a} -> a
+
 @:ErrorFn
 declare min: forall a. {key: a, value: a} -> a
 
@@ -107,9 +108,11 @@ with effects \_ -> \_ -> \_ -> \_ -> io
 
 // close: channel id -> ()
 declare close : string -> ()
+with effects \_ -> io
 
 declare lineCountFile: string -> int
 with effects \_ -> io
+
 //////////////////////////////////
 //
 // Builtins on primitives/values
