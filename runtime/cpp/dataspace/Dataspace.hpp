@@ -498,7 +498,7 @@ class Collection : public VectorDS<K3::Collection, Elem> {
   }
 
   template <class F>
-  auto at_with(int i, F f) {
+  auto at_with(int i, F f) const {
     return f(Super::getConstContainer()[i]);
   }
 
