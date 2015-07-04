@@ -358,18 +358,18 @@ endpointMethods isSource eSpec argE formatE n t =
     muxSeqNextChan openFn i =
       EC.applyMany (EC.project "at_with" $ argE)
         [ muxidx i
-        , EC.lambda "seq" $
+        , EC.lambda "seqc" $
             EC.applyMany (EC.project "lookup_with" $ EC.variable $ cfiName n)
               [ muxSeqIdx i $ EC.constant $ CInt 0
               , EC.lambda "seqidx" $
-                  EC.ifThenElse (muxSeqNotLastFileIndexE "seq" "seqidx")
-                    (EC.block [muxSeqNextFileE openFn "seq" "seqidx" i])
+                  EC.ifThenElse (muxSeqNotLastFileIndexE "seqc" "seqidx")
+                    (EC.block [muxSeqNextFileE openFn "seqc" "seqidx" i])
                     (EC.block [muxFinishChan i, muxSeqFinishChan i]) ]]
 
     muxSeqNextFileE openFn seqvar idxvar i =
       EC.letIn "nextidx"
         (EC.binop OAdd (EC.project "value" $ EC.variable idxvar) $ EC.constant $ CInt 1)
-        (EC.applyMany (EC.project "at_with" $ EC.project "paths" $ EC.variable seqvar)
+        (EC.applyMany (EC.project "at_with" $ EC.project "seq" $ EC.variable seqvar)
           [ EC.variable "nextidx"
           , EC.lambda "f" $ EC.block
               [ EC.applyMany closeFn [sourceId $ muxchanid n i]
@@ -380,7 +380,7 @@ endpointMethods isSource eSpec argE formatE n t =
 
     muxSeqNotLastFileIndexE seqvar idxvar =
       EC.binop OLth (EC.project "value" $ EC.variable idxvar) $
-        EC.binop OSub (EC.applyMany (EC.project "size" $ EC.project "paths" $ EC.variable seqvar) [EC.unit])
+        EC.binop OSub (EC.applyMany (EC.project "size" $ EC.project "seq" $ EC.variable seqvar) [EC.unit])
                       (EC.constant $ CInt 1)
 
     muxSeqFinishChan i = EC.block
@@ -427,8 +427,8 @@ endpointMethods isSource eSpec argE formatE n t =
 
     openFileMuxSeqChanFnE openFn i =
       EC.applyMany (EC.project "at_with" argE)
-        [ muxidx i, EC.lambda "seq" $
-          EC.applyMany (EC.project "at_with" $ EC.project "paths" $ EC.variable "seq")
+        [ muxidx i, EC.lambda "seqc" $
+          EC.applyMany (EC.project "at_with" $ EC.project "seq" $ EC.variable "seqc")
           [ EC.constant $ CInt 0
           , EC.lambda "f" $ EC.block
             [ EC.applyMany (EC.project "insert" $ EC.variable $ cfiName n) [muxSeqIdx i $ EC.constant $ CInt 0]
