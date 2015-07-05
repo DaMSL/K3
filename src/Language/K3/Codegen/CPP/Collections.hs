@@ -403,5 +403,5 @@ reservedAnnotations :: [Identifier]
 reservedAnnotations =
   [ "Collection", "External", "Seq", "Set", "Sorted", "Map", "Vector"
   , "IntMap", "StrMap", "VMap", "OrderedMap"
-  , "MultiIndexBag", "MultiIndexMap"
+  , "MultiIndexBag", "MultiIndexMap", "MultiIndexVMap"
   ]

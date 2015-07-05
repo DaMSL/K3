@@ -579,8 +579,10 @@ pisub pienv i dp dip sp dti sti = do
 chaseLambda :: PIEnv -> [PPtr] -> TrIndex -> K3 Provenance -> Except Text [(K3 Provenance, TrIndex)]
 chaseLambda _ _ ti p@(tag -> PLambda _)  = return [(p, ti)]
 chaseLambda _ _ ti p@(tag -> PFVar _)    = return [(p, ti)]
+
+-- The following two cases address partial application of externals and forward declarations.
 chaseLambda _ _ ti p@(tag -> PTemporary) = return [(p, ti)]
-  -- For partial application of externals and forward declarations.
+chaseLambda _ _ ti (tag -> PDerived)     = return [(ptemp, ti)]
 
 chaseLambda env path ti p@(tag -> PBVar (pmvptr -> i))
   | i `elem` path = return [(p, ti)]

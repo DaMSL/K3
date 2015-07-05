@@ -1,11 +1,13 @@
 include "Annotation/MultiIndex/MultiIndexBag.k3"
 include "Annotation/MultiIndex/MultiIndexMap.k3"
 
-typedef EmployeeC = collection {key: int, name: string, age: int}
-                      @{MultiIndexBag, OrderedBagIndex(key=[name]), BagIndex(key=[age]), BagIndex(key=[age, key])}
+typedef EmployeeC =
+    collection {key: int, name: string, age: int}
+      @{MultiIndexBag, OrderedBagIndex(key=[name]), BagIndex(key=[age]), BagIndex(key=[age, key])}
 
-typedef EmployeeM = collection {key: int, name: string, age: int}
-                      @{MultiIndexMap, OrderedMapIndex(key=[name]), MapIndex(key=[age]), MapIndex(key=[age, key])}
+typedef EmployeeM =
+    collection {key: int, name: string, age: int}
+      @{MultiIndexMap, OrderedMapIndex(key=[name]), MapIndex(key=[age]), MapIndex(key=[age, key])}
 
 declare employeesC : mut EmployeeC
 declare employeesM : mut EmployeeM

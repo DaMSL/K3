@@ -1,0 +1,26 @@
+include "Annotation/MultiIndex/MultiIndexVMap.k3"
+
+typedef EmployeeV =
+  collection {key: {id: int, name: string}, value: {age: int}}
+    @{MultiIndexVMap,
+	    VMapIndexE(key=[:> id=>int], extractors=[$#> id=>"key.id"]),
+      OrderedVMapIndexE(key=[:> name=>string], extractors=[$#> name=>"key.name"])}
+
+declare employeesV : mut EmployeeV
+
+declare result1 : mut option {key: {id: int, name: string}, value: {age: int}}
+declare result2 : mut option {key: {id: int, name: string}, value: {age: int}}
+
+trigger t1 : () = \_ -> (
+    employeesV.insert 1 {key: {id: 1, name: "John"   }, value: {age: 30}};
+    employeesV.insert 1 {key: {id: 2, name: "alice"  }, value: {age: 40}};
+    employeesV.insert 1 {key: {id: 3, name: "bob"    }, value: {age: 40}};
+    employeesV.insert 1 {key: {id: 4, name: "charles"}, value: {age: 45}};
+
+    result1    = employeesV.lookup_by_id   2 {id: 2};
+    result2    = employeesV.lookup_by_name 2 {name: "John"};
+    employeesV = employeesV.range_by_name  2 {name: "a"} {name: "d"}
+)
+
+source s1 : () = value ()
+feed s1 |> t1

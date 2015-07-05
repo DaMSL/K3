@@ -1254,7 +1254,6 @@ class VMap {
   using Key = typename R::KeyType;
 
   // The VMap stores versions in decreasing order.
-  // The VMap stores versions in decreasing order.
   template<typename Elem> using VContainer = map<Version, Elem, std::greater<Version>>;
   using Container = unordered_map<Key, VContainer<R>>;
 

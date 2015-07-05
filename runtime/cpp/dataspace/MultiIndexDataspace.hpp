@@ -6,6 +6,7 @@
 
 #include <boost/serialization/base_object.hpp>
 #include <boost/multi_index_container.hpp>
+#include <boost/multi_index/tag.hpp>
 #include <boost/multi_index/sequenced_index.hpp>
 #include <boost/lambda/lambda.hpp>
 
@@ -43,7 +44,7 @@ public:
   {}
 
   template<typename Arg>
-  result_type operator()(Arg& arg)const
+  result_type operator()(Arg& arg) const
   {
     return key1(key2(arg));
   }
@@ -52,6 +53,7 @@ private:
   KeyExtractor1 key1;
   KeyExtractor2 key2;
 };
+
 
 // Multi-index implementations.
 template <template <typename, typename...> class Derived, typename Elem, typename BaseIndex, typename... Indexes>
@@ -487,6 +489,606 @@ class MultiIndexMap : public MultiIndexDS<K3::MultiIndexMap, R, HashUniqueIndex<
   friend class boost::serialization::access;
 };
 
+
+template<typename R, typename Version> using VElem
+  = std::tuple<typename R::KeyType, std::map<Version, R, std::greater<Version>>>;
+
+// MultiIndexVMap tags and extractors.
+struct vmapkey {};
+
+template<typename R, typename Version>
+struct VKeyExtractor
+{
+public:
+  typedef typename R::KeyType result_type;
+
+  VKeyExtractor() {}
+
+  result_type operator()(const VElem<R, Version>& arg) const {
+    return std::get<0>(arg);
+  }
+};
+
+template <typename R, typename... Indexes>
+class MultiIndexVMap
+{
+ public:
+  using Version = int;
+
+ protected:
+  using Key     = typename R::KeyType;
+  using Elem    = VElem<R, Version>;
+
+  template<typename E>
+  using VContainer = std::map<Version, E, std::greater<Version>>;
+  using VMap = VContainer<R>;
+
+  using HashUniqueVKeyIndex =
+    boost::multi_index::hashed_unique<
+      boost::multi_index::tag<vmapkey>, VKeyExtractor<R, Version>>;
+
+  typedef boost::multi_index_container<
+    Elem,
+    boost::multi_index::indexed_by<
+      HashUniqueVKeyIndex,
+      Indexes...>
+  > Container;
+
+  typedef typename Container::iterator iterator;
+
+  Container container;
+
+ public:
+  MultiIndexVMap(): container() {}
+  MultiIndexVMap(const Container& con): container(con) {}
+  MultiIndexVMap(Container&& con): container(std::move(con)) {}
+
+  // Construct from (container) iterators
+  template<typename Iterator>
+  MultiIndexVMap(Iterator begin, Iterator end): container(begin,end) {}
+
+  R elemToRecord(const Elem& e) const {
+    auto& vmap = std::get<1>(e);
+    return (vmap.begin() == vmap.end())? std::move(R()) : vmap.begin()->second;
+  }
+
+  //////////////////////////////
+  // VMap methods.
+
+  int size(const Version& v) const {
+    int r = 0;
+    for (const auto& elem : container.get<vmapkey>()) {
+      auto& vmap = std::get<1>(elem);
+      r += (vmap.lower_bound(v) == vmap.end()) ? 0 : 1;
+    }
+    return r;
+  }
+
+  int total_size(unit_t) const {
+    int r = 0;
+    for (const auto& elem : container) {
+      r += std::get<1>(elem).size();
+    }
+    return r;
+  }
+
+  ////////////////////////////
+  // Exact version methods.
+
+  shared_ptr<R> peek(const Version& v) const {
+    shared_ptr<R> res(nullptr);
+    for (const auto& elem : container) {
+      const auto& vmap = std::get<1>(elem);
+      auto vit = vmap.find(v);
+      if ( vit != vmap.end() ) {
+        res = std::make_shared<R>(vit->second);
+        break;
+      }
+    }
+    return res;
+  }
+
+  template <class Q>
+  unit_t insert(const Version& v, Q&& q) {
+    auto existing = container.find(q.key);
+    if ( existing == container.end() ) {
+      Key k = q.key;
+      VMap vmap; vmap[v] = std::forward<Q>(q);
+      container.emplace(std::move(std::make_tuple(std::move(k), std::move(vmap))));
+    } else {
+      container.modify(existing, [&](auto& elem){
+        auto& vmap = std::get<1>(elem);
+        vmap[v] = std::forward<Q>(q);
+      });
+    }
+    return unit_t();
+  }
+
+  template <class F>
+  unit_t insert_with(const Version& v, const R& rec, F f) {
+    auto existing = container.find(rec.key);
+    if ( existing == container.end() ) {
+      Key k = rec.key;
+      VMap vmap; vmap[v] = rec;
+      container.emplace(std::move(std::make_tuple(std::move(k), std::move(vmap))));
+    } else {
+      container.modify(existing, [&](auto& elem){
+        auto& vmap = std::get<1>(elem);
+        auto vexisting = vmap.find(v);
+        if ( vexisting == vmap.end() ) {
+          vmap[v] = rec;
+        } else {
+          vmap[v] = f(std::move(vexisting->second))(rec);
+        }
+      });
+    }
+    return unit_t {};
+  }
+
+  template <class F, class G>
+  unit_t upsert_with(const Version& v, const R& rec, F f, G g) {
+    auto existing = container.find(rec.key);
+    if ( existing == container.end() ) {
+      Key k = rec.key;
+      VMap vmap; vmap[v] = f(unit_t {});
+      container.emplace(std::move(std::make_tuple(std::move(k), std::move(vmap))));
+    } else {
+      container.modify([&](auto& elem){
+        auto& vmap = std::get<1>(elem);
+        auto vexisting = vmap.find(v);
+        if ( vexisting == vmap.end() ) {
+          vmap[v] = f(unit_t {});
+        } else {
+          vmap[v] = g(std::move(vexisting->second));
+        }
+      });
+    }
+    return unit_t {};
+  }
+
+  unit_t erase(const Version& v, const R& rec) {
+    auto it = container.find(rec.key);
+    if (it != container.end()) {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.find(v);
+      if ( vit != vmap.end() ) {
+        vmap.erase(vit);
+        if ( vmap.empty() ) {
+          container.erase(it);
+        }
+      }
+    }
+    return unit_t();
+  }
+
+  unit_t update(const Version& v, const R& rec1, const R& rec2) {
+    auto it = container.find(rec1.key);
+    if (it != container.end()) {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.find(v);
+      if ( vit != vmap.end() ) {
+        vmap.erase(vit);
+        insert(v, rec2);
+      }
+    }
+    return unit_t();
+  }
+
+  bool member(const Version& v, const R& r) const {
+    auto it = container.find(r.key);
+    return it != container.end() && std::get<1>(*it).find(v) != std::get<1>(*it).end();
+  }
+
+  shared_ptr<R> lookup(const Version& v, const R& r) const {
+    auto it = container.find(r.key);
+    if (it != container.end()) {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.find(v);
+      if ( vit != vmap.end() ) {
+        return std::make_shared<R>(vit->second);
+      }
+    }
+    return nullptr;
+  }
+
+  template <class F>
+  unit_t lookup_with(const Version& v, R const& r, F f) const {
+    auto it = container.find(r.key);
+    if (it != container.end()) {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.find(v);
+      if ( vit != vmap.end() ) {
+        return f(vit->second);
+      }
+    }
+    return unit_t {};
+  }
+
+  template <class F, class G>
+  auto lookup_with2(const Version& v, R const& r, F f, G g) const {
+    auto it = container.find(r.key);
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.find(v);
+      if ( vit == vmap.end() ) {
+        return f(unit_t {});
+      } else {
+        return g(vit->second);
+      }
+    }
+  }
+
+  template <class F>
+  auto lookup_with3(const Version& v, R const& r, F f) const {
+    auto it = container.find(r.key);
+    if (it != container.end()) {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.find(v);
+      if ( vit != vmap.end() ) {
+        return f(vit->second);
+      }
+    }
+    throw std::runtime_error("No match on Map.lookup_with3");
+  }
+
+  //////////////////////////////////////////////////
+  // Frontier-based map retrieval.
+  // These methods apply to the nearest version that is strictly less
+  // than the version specified as an argument.
+
+  shared_ptr<R> lookup_before(const Version& v, const R& r) const {
+    auto it = container.find(r.key);
+    if (it != container.end()) {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.upper_bound(v);
+      if ( vit != vmap.end() ) {
+        return std::make_shared<R>(vit->second);
+      }
+    }
+    return nullptr;
+  }
+
+  template <class F>
+  unit_t lookup_with_before(const Version& v, R const& r, F f) const {
+    auto it = container.find(r.key);
+    if (it != container.end()) {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.upper_bound(v);
+      if ( vit != vmap.end() ) {
+        return f(vit->second);
+      }
+    }
+    return unit_t {};
+  }
+
+  template <class F, class G>
+  auto lookup_with2_before(const Version& v, R const& r, F f, G g) const {
+    auto it = container.find(r.key);
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.upper_bound(v);
+      if ( vit == vmap.end() ) {
+        return f(unit_t {});
+      } else {
+        return g(vit->second);
+      }
+    }
+  }
+
+  template <class F>
+  auto lookup_with3_before(const Version& v, R const& r, F f) const {
+    auto it = container.find(r.key);
+    if (it != container.end()) {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.upper_bound(v);
+      if ( vit != vmap.end() ) {
+        return f(vit->second);
+      }
+    }
+    throw std::runtime_error("No match on Map.lookup_with3_before");
+  }
+
+  // Non-inclusive erase less than version.
+  unit_t erase_prefix(const Version& v, const R& rec) {
+    auto it = container.find(rec.key);
+    if (it != container.end()) {
+      bool erase_elem = false;
+      container.modify(it, [&](auto& elem){
+        auto& vmap = std::get<1>(elem);
+        auto vlteq = vmap.lower_bound(v);
+        auto vless = vmap.upper_bound(v);
+        auto vend  = vmap.end();
+        if ( vless != vmap.end() ) {
+          vmap.erase((vlteq == vless)? ++vless : vless, vend);
+          erase_elem = vmap.empty();
+        }
+      });
+      if ( erase_elem ) { container.erase(it); }
+    }
+    return unit_t();
+  }
+
+  // Inclusive update greater than a given version.
+  template <class F>
+  unit_t update_suffix(const Version& v, const R& rec, F f) {
+    auto it = container.find(rec.key);
+    if (it != container.end()) {
+      container.modify(it, [&](auto& elem){
+        auto& vmap = std::get<1>(elem);
+        auto vstart = vmap.begin();
+        auto vlteq  = vmap.lower_bound(v);
+        for (; vstart != vlteq; vstart++) {
+          vmap[vstart->first] = f(vstart->first)(std::move(vstart->second));
+        }
+      });
+    }
+    return unit_t();
+  }
+
+
+  //////////////////////////////////
+  // Most-recent version methods.
+
+  shared_ptr<R> peek_now(const unit_t&) const {
+    shared_ptr<R> res(nullptr);
+    for (const auto& elem : container) {
+      auto& vmap = std::get<1>(elem);
+      auto vit = vmap.begin();
+      if ( vit != vmap.end() ) {
+        res = std::make_shared<R>(vit->second);
+        break;
+      }
+    }
+    return res;
+  }
+
+
+  /////////////////
+  // Transformers.
+  //
+  // For transformers that apply to a version, these methods apply
+  // to the nearest version that is strictly less than the argument.
+
+  MultiIndexVMap combine(const MultiIndexVMap& other) const {
+    // copy this DS
+    MultiIndexVMap result = MultiIndexVMap(*this);
+    // copy other DS
+    for (const auto& elem : other.container) {
+      for (const auto& velem : std::get<1>(elem)) {
+        result.insert(velem.first, velem.second);
+      }
+    }
+    return result;
+  }
+
+  tuple<MultiIndexVMap, MultiIndexVMap> split(const unit_t&) const {
+    // Find midpoint
+    const size_t size = container.size();
+    const size_t half = size / 2;
+    // Setup iterators
+    auto beg = container.begin();
+    auto mid = container.begin();
+    std::advance(mid, half);
+    auto end = container.end();
+    // Construct DS from iterators
+    return std::make_tuple(MultiIndexVMap(beg, mid), MultiIndexVMap(mid, end));
+  }
+
+  template <typename Fun>
+  unit_t iterate(const Version& v, Fun f) const {
+    for (const auto& elem : container) {
+      auto& vmap = std::get<1>(elem);
+      auto it = vmap.upper_bound(v);
+      if ( it != vmap.end() ) {
+        f(it->second);
+      }
+    }
+    return unit_t();
+  }
+
+  template<typename Fun>
+  auto map(const Version& v, Fun f) const -> MultiIndexVMap< RT<Fun, R> > {
+    MultiIndexVMap< RT<Fun,R> > result;
+    for (const auto& elem : container) {
+      auto& vmap = std::get<1>(elem);
+      auto it = vmap.upper_bound(v);
+      if ( it != vmap.end() ) {
+        result.insert(it->first, f(it->second));
+      }
+    }
+    return result;
+  }
+
+  template <typename Fun>
+  MultiIndexVMap<R, Indexes...> filter(const Version& v, Fun predicate) const {
+    MultiIndexVMap<R, Indexes...> result;
+    for (const auto& elem : container) {
+      auto& vmap = std::get<1>(elem);
+      auto it = vmap.upper_bound(v);
+      if ( it != vmap.end() && predicate(it->second) ) {
+        result.insert(it->first, it->second);
+      }
+    }
+    return result;
+  }
+
+  template<typename Fun, typename Acc>
+  Acc fold(const Version& v, Fun f, Acc acc) const {
+    for (const auto& elem : container) {
+      auto& vmap = std::get<1>(elem);
+      auto it = vmap.upper_bound(v);
+      if ( it != vmap.end() ) {
+        acc = f(std::move(acc))(it->second);
+      }
+    }
+    return acc;
+  }
+
+  template<typename F1, typename F2, typename Z>
+  MultiIndexVMap<R_key_value<RT<F1, R>, Z>>
+  groupBy(const Version& v, F1 grouper, F2 folder, const Z& init) const
+  {
+    // Create a map to hold partial results
+    using K = RT<F1, R>;
+    unordered_map<K, VContainer<Z>> accs;
+
+    for (const auto& elem : container) {
+      auto& vmap = std::get<1>(elem);
+      auto vit = vmap.upper_bound(v);
+      if ( vit != vmap.end() ) {
+        K key = grouper(vit->second);
+        if (accs.find(key) == accs.end()) {
+          accs[key][vit->first] = init;
+        }
+        accs[key][vit->first] = folder(std::move(accs[key][vit->first]))(vit->second);
+      }
+    }
+
+    MultiIndexVMap<R_key_value<K,Z>> result;
+    for (auto& it : accs) {
+      for (auto&& vit : it.second) {
+        result.insert(std::move(vit.first), std::move(R_key_value<K, Z> {it.first, std::move(vit.second)}));
+      }
+    }
+
+    return result;
+  }
+
+  template <class Fun>
+  auto ext(const Version& v, Fun expand) const -> MultiIndexVMap < typename RT<Fun, R>::ElemType >  {
+    typedef typename RT<Fun, R>::ElemType T;
+    MultiIndexVMap<T> result;
+    for (const auto& elem : container) {
+      auto& vmap = std::get<1>(elem);
+      auto vit = vmap.upper_bound(v);
+      if ( vit != vmap.end() ) {
+        for (auto& it2 : expand(vit->second).container) {
+          result.insert(vit->first, it2.second);
+        }
+      }
+    }
+    return result;
+  }
+
+  template<typename Fun, typename Acc>
+  Acc fold_all(Fun f, Acc acc) const {
+    for (const auto& elem : container) {
+      for (const auto& velem : std::get<1>(elem)) {
+        acc = f(std::move(acc))(velem.first)(velem.second);
+      }
+    }
+    return acc;
+  }
+
+
+  ///////////////////////////////////////////
+  //
+  // Index operations.
+
+  template <class Index, class Key>
+  shared_ptr<R> lookup_with_index(const Index& index, const Version& v, Key key) const {
+    const auto& it = index.find(key);
+    shared_ptr<R> result;
+    if (it != index.end()) {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.upper_bound(v);
+      if ( vit != vmap.end() ) {
+        result = make_shared<R>(vit->second);
+      }
+    }
+    return result;
+  }
+
+  template <class Index, class Key>
+  MultiIndexVMap<R, Indexes...> slice_with_index(const Index& index, const Version& v, Key key) const
+  {
+    MultiIndexVMap<R, Indexes...> result;
+    std::pair<typename Index::iterator, typename Index::iterator> p = index.equal_range(key);
+    for (typename Index::iterator it = p.first; it != p.second; it++) {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.upper_bound(v);
+      if ( vit != vmap.end() ) {
+        result.insert(vit->first, vit->second);
+      }
+    }
+    return result;
+  }
+
+  template <class Index, class Key>
+  MultiIndexVMap<R, Indexes...> range_with_index(const Index& index, const Version& v, Key a, Key b) const
+  {
+    MultiIndexVMap<R, Indexes...> result;
+    std::pair<typename Index::iterator, typename Index::iterator> p =
+      index.range(a <= boost::lambda::_1, b >= boost::lambda::_1);
+    for (typename Index::iterator it = p.first; it != p.second; it++) {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.upper_bound(v);
+      if ( vit != vmap.end() ) {
+        result.insert(vit->first, vit->second);
+      }
+    }
+    return result;
+  }
+
+  //////////////////
+  // Comparators.
+
+  bool operator==(const MultiIndexVMap& other) const {
+    return container == other.container;
+  }
+
+  bool operator!=(const MultiIndexVMap& other) const {
+    return container != other.container;
+  }
+
+  bool operator<(const MultiIndexVMap& other) const {
+    return container < other.container;
+  }
+
+  bool operator>(const MultiIndexVMap& other) const {
+    return container > other.container;
+  }
+
+  Container& getContainer() { return container; }
+
+  // Return a constant reference to the container
+  const Container& getConstContainer() const {return container;}
+
+  template<class Archive>
+  void serialize(Archive &ar) const {
+    ar.write(container.size());
+    for (const auto& elem : container) {
+      ar & elem;
+    }
+  }
+
+  template<class Archive>
+  void serialize(Archive &ar) {
+    size_t sz = 0;
+    ar.read(sz);
+    while ( sz > 0 ) {
+      Elem elem;
+      ar & elem;
+      container.emplace(elem);
+      sz--;
+    }
+  }
+
+  template<class Archive>
+  void serialize(Archive &ar, const unsigned int) {
+    ar & boost::serialization::make_nvp("__K3MultiIndexVMap", container);
+  }
+
+ private:
+  friend class boost::serialization::access;
+
+};
+
+
 } // Namespace K3
 
 namespace boost {
@@ -506,6 +1108,14 @@ namespace boost {
         typedef  mpl::int_<object_serializable> type;
         BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
     };
+
+    template <class _T0, class... _T1>
+    class implementation_level<K3::MultiIndexVMap<_T0, _T1...>> {
+      public:
+        typedef  mpl::integral_c_tag tag;
+        typedef  mpl::int_<object_serializable> type;
+        BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
+    };
   }
 }
 
@@ -516,6 +1126,11 @@ std::size_t hash_value(K3::MultiIndexBag<Args...> const& b) {
 
 template <typename... Args>
 std::size_t hash_value(K3::MultiIndexMap<Args...> const& b) {
+  return hash_collection(b);
+}
+
+template <typename... Args>
+std::size_t hash_value(K3::MultiIndexVMap<Args...> const& b) {
   return hash_collection(b);
 }
 
@@ -556,12 +1171,33 @@ namespace JSON {
     }
   };
 
+  template <class E, typename... Indexes>
+  struct convert<K3::MultiIndexVMap<E, Indexes...>> {
+    template <class Allocator>
+    static Value encode(const K3::MultiIndexVMap<E, Indexes...>& c, Allocator& al) {
+     Value v;
+     v.SetObject();
+     v.AddMember("type", Value("MultiIndexVMap"), al);
+     Value inner;
+     inner.SetArray();
+     for (const auto& e : c.getConstContainer()) {
+      for (const auto& ve : std::get<1>(e)) {
+       inner.PushBack(convert<typename K3::MultiIndexVMap<E, Indexes...>::Version>::encode(ve.first, al), al);
+       inner.PushBack(convert<E>::encode(ve.second, al), al);
+      }
+     }
+     v.AddMember("value", inner.Move(), al);
+     return v;
+    }
+  };
+
 }
 
 
 namespace YAML {
   template <class E, typename... Indexes>
-  struct convert<K3::MultiIndexBag<E, Indexes...>> {
+  struct convert<K3::MultiIndexBag<E, Indexes...>>
+  {
     static Node encode(const K3::MultiIndexBag<E, Indexes...>& c) {
       Node node;
       for (auto i: c.getConstContainer()) {
@@ -579,7 +1215,8 @@ namespace YAML {
   };
 
   template <class E, typename... Indexes>
-  struct convert<K3::MultiIndexMap<E, Indexes...>> {
+  struct convert<K3::MultiIndexMap<E, Indexes...>>
+  {
     static Node encode(const K3::MultiIndexMap<E, Indexes...>& c) {
       Node node;
       auto container = c.getConstContainer();
@@ -596,6 +1233,38 @@ namespace YAML {
     static bool decode(const Node& node, K3::MultiIndexMap<E, Indexes...>& c) {
       for (auto& i: node) {
         c.insert(i.as<E>());
+      }
+      return true;
+    }
+  };
+
+  template <class E, typename... Indexes>
+  struct convert<K3::MultiIndexVMap<E, Indexes...>>
+  {
+    static Node encode(const K3::MultiIndexVMap<E, Indexes...>& c) {
+      Node node;
+      auto container = c.getConstContainer();
+      if (container.size() > 0) {
+        for (auto i: container) {
+          for (auto j : std::get<1>(i)) {
+            node.push_back(convert<typename K3::MultiIndexVMap<E, Indexes...>::Version>::encode(j.first));
+            node.push_back(convert<E>::encode(j.second));
+          }
+        }
+      }
+      else {
+        node = YAML::Load("[]");
+      }
+      return node;
+    }
+
+    static bool decode(const Node& node, K3::MultiIndexVMap<E, Indexes...>& c) {
+      bool asVersion = true;
+      typename K3::MultiIndexVMap<E, Indexes...>::Version v;
+      for (auto& i: node) {
+        if ( asVersion ) { v = i.as<typename K3::MultiIndexVMap<E, Indexes...>::Version>(); }
+        else { c.insert(v, i.as<E>()); }
+        asVersion = !asVersion;
       }
       return true;
     }

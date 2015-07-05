@@ -1,7 +1,7 @@
-include "Annotation/Maps/VMap.k3"
+include "Annotation/MultiIndex/MultiIndexVMap.k3"
 include "Core/Builtins.k3"
 
-declare c : collection {key:int, value:int} @VMap
+declare c : collection {key:int, value:int} @MultiIndexVMap
 
 trigger t : () = \_ -> (
   ((range 10).iterate (\r ->

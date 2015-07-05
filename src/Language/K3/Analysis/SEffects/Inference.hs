@@ -639,11 +639,12 @@ simplifyApply fienv extInfOpt defer eOpt ef lrf arf = do
 
     uidP eOpt' = case eOpt' of
       Nothing -> return Nothing
-      Just e  -> (\a b -> Just (a,b)) <$> uidOf e <*> argP e
+      Just e  -> (\a bOpt -> bOpt >>= return . (a,)) <$> uidOf e <*> argP e
 
     argP e = provOf e >>= \case
-                            (tag -> PApply (Just mv))  -> return $ pbvar mv
-                            (tag -> PMaterialize [mv]) -> return $ pbvar mv
+                            (tag -> PApply Nothing)    -> return Nothing
+                            (tag -> PApply (Just mv))  -> return $ Just $ pbvar mv
+                            (tag -> PMaterialize [mv]) -> return $ Just $ pbvar mv
                             _ -> argPErr e
 
     fexec ef' = Just $ fseq $ catMaybes ef'
