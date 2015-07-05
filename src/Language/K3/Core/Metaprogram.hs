@@ -236,6 +236,9 @@ spliceVTSym  = "typ"
 spliceVESym :: Identifier
 spliceVESym  = "expr"
 
+spliceVLSym :: Identifier
+spliceVLSym  = "lit"
+
 lookupSpliceE :: Identifier -> SpliceEnv -> Maybe SpliceValue
 lookupSpliceE n senv = Map.lookup n senv
 

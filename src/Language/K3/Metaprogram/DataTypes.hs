@@ -263,6 +263,7 @@ defaultMPEvalOptions = MPEvalOptions dInterpArgs dSearchPaths dLoadPaths dImport
                     , "Language.K3.Core.Type"
                     , "Language.K3.Core.Expression"
                     , "Language.K3.Core.Declaration"
+                    , "Language.K3.Core.Literal"
                     , "Language.K3.Core.Metaprogram"
                     , "Language.K3.Metaprogram.Primitives.Values"
                     , "Language.K3.Metaprogram.Primitives.Distributed" ]

@@ -63,10 +63,11 @@ program (tag &&& children -> (DRole name, decls)) = do
     includeDefns <- map R.IncludeDefn <$> requiredIncludes
     aliasDefns   <- map (R.GlobalDefn . R.Forward . uncurry R.UsingDecl) <$> requiredAliases
     compositeDefns <- do
-        currentComposites <- composites <$> get
-        currentAnnotations <- annotationMap <$> get
-        forM (S.toList $ S.filter (not . S.null) currentComposites) $ \(S.toList -> als) ->
-            composite (annotationComboId als) [(a, M.findWithDefault [] a currentAnnotations) | a <- als]
+      currentComposites <- composites <$> get
+      currentAnnotations <- annotationMap <$> get
+      forM (M.toList $ M.filterWithKey (\k _ -> not $ S.null k) currentComposites) $
+        \(S.toList -> als, ts) ->
+          composite (annotationComboId als) [(a, M.findWithDefault [] a currentAnnotations) | a <- als] ts
     records <- map (map fst) . snd . unzip . M.toList . recordMap <$> get
     recordDefns <- mapM record records
 
@@ -318,10 +319,10 @@ idOfTrigger t = "__" ++ unmangleReservedId t ++ "_tid"
 generateStaticContextMembers :: CPPGenM [R.Statement]
 generateStaticContextMembers = do
   triggerS        <- triggers <$> get
-  initializations <- staticInitializations <$> get
+  inits           <- staticInitializations <$> get
   names           <- mapM assignTrigName triggerS
   dispatchers     <- mapM assignClonableDispatcher triggerS
-  return $ initializations ++ names ++ dispatchers
+  return $ inits ++ names ++ dispatchers
   where
     assignTrigName (tName, _) = do
       let i = R.Variable $ R.Qualified (R.Name "__global_context") (R.Name (idOfTrigger tName))
@@ -408,9 +409,6 @@ genJsonify = do
      rhs_exprs  <- mapM (\(n,t) -> jsonifyExpr t n) new_nts
      return $ zipWith R.Assignment lhs_exprs rhs_exprs
      where
-       isTUnit (tnc -> (TTuple, [])) = True
-       isTUnit _ = False
-
        jsonifyExpr t n = do
          cType <- genCType t
          return $ R.Call (R.Variable $ R.Specialized [cType] (R.Name "K3::serialization::json::encode")) [n]
@@ -478,7 +476,7 @@ prettifyExpr base_t e =
    _                                           -> return $ lit_string "Cant Show!"
  where
    -- Utils
-   call_prettify x exp =  R.Call (R.Variable (R.Qualified (R.Name "K3") (R.Name $ "prettify_" ++ x))) exp
+   call_prettify x e' =  R.Call (R.Variable (R.Qualified (R.Name "K3") (R.Name $ "prettify_" ++ x))) e'
    wrap_inner t = do
      cType <- genCType t
      inner <- prettifyExpr t (R.Variable $ R.Name "x")
@@ -521,6 +519,6 @@ prettifyExpr base_t e =
        return $ call_prettify "record" [e, f]
 
    -- Collection
-   coll_to_string t et = do
+   coll_to_string _ et = do
        f <- wrap_inner et
        return $ call_prettify "collection" [e, f]

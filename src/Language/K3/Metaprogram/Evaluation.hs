@@ -19,6 +19,8 @@ import qualified Data.Map as Map
 import Data.Maybe
 import Data.Tree
 
+import Debug.Trace
+
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
@@ -462,15 +464,15 @@ evalLiteralSplice _ (Right l) = return l
 evalSumEmbedding :: String -> SpliceContext -> [MPEmbedding] -> GeneratorM SpliceValue
 evalSumEmbedding tg sctxt l = maybe sumError return =<< foldM concatSpliceVal Nothing l
   where
-        sumError :: GeneratorM a
-        sumError = spliceFail $ "Inconsistent " ++ tg ++ " splice parts " ++ show l ++ " " ++ show sctxt
+    sumError :: GeneratorM a
+    sumError = spliceFail $ "Inconsistent " ++ tg ++ " splice parts " ++ show l ++ " " ++ show sctxt
 
-        concatSpliceVal Nothing se           = evalEmbedding sctxt se >>= return . Just
-        concatSpliceVal (Just (SLabel i)) se = evalEmbedding sctxt se >>= doConcat (SLabel i)
-        concatSpliceVal (Just _) _           = sumError
+    concatSpliceVal Nothing se           = evalEmbedding sctxt se >>= return . Just
+    concatSpliceVal (Just (SLabel i)) se = evalEmbedding sctxt se >>= doConcat (SLabel i)
+    concatSpliceVal (Just _) _           = sumError
 
-        doConcat (SLabel i) (SLabel j) = return . Just . SLabel $ i ++ j
-        doConcat _ _ = sumError
+    doConcat (SLabel i) (SLabel j) = return . Just . SLabel $ i ++ j
+    doConcat _ _ = sumError
 
 evalEmbedding :: SpliceContext -> MPEmbedding -> GeneratorM SpliceValue
 evalEmbedding _ (MPENull i) = return $ SLabel i

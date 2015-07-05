@@ -8,8 +8,10 @@ module Language.K3.Codegen.CPP.Collections where
 import Data.Char
 import Data.List (elemIndex, intercalate, partition, sort, isInfixOf)
 
+import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
+import Language.K3.Core.Type
 
 import Language.K3.Codegen.CPP.Types
 import Language.K3.Codegen.CPP.MultiIndex (indexes)
@@ -27,8 +29,8 @@ import qualified Language.K3.Codegen.CPP.Representation as R
 --      - Copy constructor.
 --      - Superclass constructor.
 --  - Serialization function, which should proxy the dataspace serialization.
-composite :: Identifier -> [(Identifier, [AnnMemDecl])] -> CPPGenM [R.Definition]
-composite name ans = do
+composite :: Identifier -> [(Identifier, [AnnMemDecl])] -> [K3 Type] -> CPPGenM [R.Definition]
+composite name ans content_ts = do
     let (ras, as) = partition (\(aname, _) -> aname `elem` reservedAnnotations) ans
 
     -- Inlining is only done for provided (positive) declarations.
@@ -38,7 +40,7 @@ composite name ans = do
     -- let (dataDecls, methDecls) = partition isDataDecl positives
 
     -- When dealing with Indexes, we need to specialize the MultiIndex* classes on each index type
-    (indexTypes, indexDefns) <- indexes name as
+    (indexTypes, indexDefns) <- indexes name as content_ts
 
     let addnSpecializations n = if "MultiIndex" `isInfixOf` n then indexTypes else []
 

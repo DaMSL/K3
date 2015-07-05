@@ -837,7 +837,9 @@ tProperties = nproperties $ TProperty . Left
 
 {- Metaprogramming -}
 stTerm :: K3Parser SpliceType
-stTerm = choice $ map try [stLabel, stType, stExpr, stDecl, stLiteral, stLabelType, stRecord, stList]
+stTerm = choice $ map try [ stLabel, stType, stExpr, stDecl, stLiteral
+                          , stLabelType, stLabelExpr, stLabelLit
+                          , stRecord, stList ]
   where
     stLabel     = STLabel     <$ keyword "label"
     stType      = STType      <$ keyword "type"
@@ -845,10 +847,14 @@ stTerm = choice $ map try [stLabel, stType, stExpr, stDecl, stLiteral, stLabelTy
     stDecl      = STDecl      <$ keyword "decl"
     stLiteral   = STLiteral   <$ keyword "literal"
     stLabelType = mkLabelType <$ keyword "labeltype"
+    stLabelExpr = mkLabelExpr <$ keyword "labelexpr"
+    stLabelLit  = mkLabelLit  <$ keyword "labellit"
     stList      = spliceListT   <$> brackets stTerm
     stRecord    = spliceRecordT <$> braces (commaSep1 stField)
     stField     = (,) <$> identifier <* colon <*> stTerm
     mkLabelType = spliceRecordT [(spliceVIdSym, STLabel), (spliceVTSym, STType)]
+    mkLabelExpr = spliceRecordT [(spliceVIdSym, STLabel), (spliceVESym, STExpr)]
+    mkLabelLit  = spliceRecordT [(spliceVIdSym, STLabel), (spliceVLSym, STLiteral)]
 
 stVar :: K3Parser TypedSpliceVar
 stVar = try (flip (,) <$> identifier <* colon <*> stTerm)
@@ -858,7 +864,9 @@ spliceParameterDecls = brackets (commaSep stVar)
 
 -- TODO: strip literal uid/span
 svTerm :: K3Parser SpliceValue
-svTerm = choice $ map try [sVar, sLabel, sType, sExpr, sDecl, sLiteral, sLabelType, sRecord, sList]
+svTerm = choice $ map try [ sVar
+                          , svTypeDict, svExprDict, svLiteralDict
+                          , sLabel, sType, sExpr, sDecl, sLiteral, sLabelType, sRecord, sList ]
   where
     sVar        = SVar                  <$> identifier
     sLabel      = SLabel                <$> wrap "[#"  "]" identifier
@@ -876,6 +884,24 @@ svTerm = choice $ map try [sVar, sLabel, sType, sExpr, sDecl, sLiteral, sLabelTy
     mkDecl _   = P.parserFail "Invalid splice declaration"
 
     wrap l r p = between (symbol l) (symbol r) p
+
+svDict :: String -> Identifier -> K3Parser SpliceValue -> K3Parser SpliceValue
+svDict bracketSuffix valRecId valParser =
+  mkDict <$> wrap ("[" ++ bracketSuffix) "]"
+    (commaSep1 ((,) <$> identifier <* symbol "=>" <*> valParser))
+
+  where mkDict nl = SList $ map recCtor nl
+        recCtor (n, v) = spliceRecord [(spliceVIdSym, SLabel n), (valRecId, v)]
+        wrap l r p = between (symbol l) (symbol r) p
+
+svTypeDict :: K3Parser SpliceValue
+svTypeDict = svDict ":>" spliceVTSym (SType . stripTUIDSpan <$> typeExpr)
+
+svExprDict :: K3Parser SpliceValue
+svExprDict = svDict "$>" spliceVESym (SExpr . stripEUIDSpan <$> expr)
+
+svLiteralDict :: K3Parser SpliceValue
+svLiteralDict = svDict "$#>" spliceVLSym (SLiteral <$> literal)
 
 spliceParameter :: K3Parser (Maybe (Identifier, SpliceValue))
 spliceParameter = try ((\a b -> Just (a,b)) <$> identifier <* symbol "=" <*> parseInMode Splice svTerm)

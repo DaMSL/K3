@@ -128,7 +128,7 @@ declaration d@(tag -> DGlobal i t me) = do
     addFn globalInit
 
     -- Add any annotation to the state
-    when (tag t == TCollection) $ addComposite (namedTAnnotations $ annotations t)
+    when (tag t == TCollection) $ addComposite (namedTAnnotations $ annotations t) (head $ children t)
 
     -- Return the class-scope-declaration including the set variable if needed
     let setOp = if False then [] else

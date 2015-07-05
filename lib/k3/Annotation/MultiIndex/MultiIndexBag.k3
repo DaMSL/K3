@@ -97,3 +97,31 @@ annotation OrderedBagIndex[key : [labeltype]]
   provides lifted range_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> $[|mkRecord 'key|] -> self
     with effects \lower_key -> \upper_key -> [R[self]; R[lower_key]; R[upper_key]]
 }
+
+// A hash index implementation with customizable extractors.
+annotation BagIndexE[key : [labeltype], extractors: [labellit]]
+{
+  @:IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"
+  provides lifted lookup_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> option content
+    with effects \key -> [R[self]; R[key]]
+
+  @:IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"
+  provides lifted slice_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> self
+    with effects \key -> [R[self]; R[key]]
+}
+
+// A tree-based index implementation, additionally providing a two-sided range query operation.
+annotation OrderedBagIndexE[key : [labeltype], extractors: [labellit]]
+{
+  @:IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"
+  provides lifted lookup_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> option content
+    with effects \key -> [R[self]; R[key]]
+
+  @:IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"
+  provides lifted slice_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> self
+    with effects \key -> [R[self]; R[key]]
+
+  @:{CArgs 2, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted range_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> $[|mkRecord 'key|] -> self
+    with effects \lower_key -> \upper_key -> [R[self]; R[lower_key]; R[upper_key]]
+}
