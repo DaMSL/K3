@@ -120,7 +120,7 @@ optimizeMaterialization (p, f) d = fst $ runMaterializationM (materializationD d
 materializationD :: K3 Declaration -> MaterializationM (K3 Declaration)
 materializationD (Node (d :@: as) cs)
   = case d of
-      DGlobal i t me -> traverse materializationE me >>= \me' -> Node (DGlobal i t me' :@: as) <$> cs'
+      DGlobal i t me -> setCurrentGlobal True >> traverse materializationE me >>= \me' -> Node (DGlobal i t me' :@: as) <$> cs'
       DTrigger i t e -> materializationE e >>= \e' -> Node (DTrigger i t e' :@: as) <$> cs'
       DRole i -> Node (DRole i :@: as) <$> cs'
       _ -> Node (d :@: as) <$> cs'
@@ -174,7 +174,14 @@ materializationE e@(Node (t :@: as) cs)
              return (Node (t :@: (EMaterialization decisions:as)) [f, x])
 
       ELambda x -> do
+             cg <- currentGlobal <$> get
+             when cg $ case tag (head cs) of
+                         ELambda _ -> return ()
+                         otherwise -> setCurrentGlobal False
+
              [b] <- mapM materializationE cs
+
+             setCurrentGlobal cg -- Probably not necessary to restore.
 
              let lambdaEffects = getEffects e
              let (deferredEffects, returnedEffects)
@@ -216,7 +223,9 @@ materializationE e@(Node (t :@: as) cs)
                        then if moveable
                               then d { inD = Moved }
                               else d { inD = Copied }
-                       else d { inD = Referenced }
+                       else if cg
+                              then d { inD = Moved }
+                              else d { inD = Referenced }
                setDecision (getUID e) s $ closureDecision defaultDecision
              decisions <- dLookupAll (getUID e)
              return $ (Node (t :@: (EMaterialization decisions:as)) [b])
