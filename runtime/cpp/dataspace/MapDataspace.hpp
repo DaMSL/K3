@@ -123,7 +123,6 @@ class IntMap {
 
   R elemToRecord(const R& e) const { return e; }
 
-  // DS Operations:
   // Maybe return the first element in the DS
   shared_ptr<R> peek(const unit_t&) const {
     shared_ptr<R> res(nullptr);
@@ -132,6 +131,16 @@ class IntMap {
       res = std::make_shared<R>(*static_cast<R*>(it));
     }
     return res;
+  }
+
+  template<typename F, typename G>
+  auto peek_with(F f, G g) const {
+    auto it = mapi_begin(get_mapi());
+    if (it < mapi_end(get_mapi()) ) {
+      return g(*static_cast<R*>(it));
+    } else {
+      return f(unit_t {});
+    }
   }
 
   // TODO: Fix insert semantics to replace value if key exists.
@@ -420,6 +429,21 @@ class IntMap {
     throw std::runtime_error("No match on IntMap.lookup_with3");
   }
 
+  template <class F, class G>
+  auto lookup_with4(R const& r, F f, G g) const {
+    mapi* m = get_mapi();
+    if ( m->size == 0 ) {
+      return f(unit_t {});
+    } else {
+      auto existing = mapi_find(m, r.key);
+      if (existing == nullptr) {
+        return f(unit_t {});
+      } else {
+        return g(*static_cast<R*>(existing));
+      }
+    }
+  }
+
   bool operator==(const IntMap& other) const {
     return get_mapi() == other.get_mapi()
             || ( size() == other.size()
@@ -670,8 +694,6 @@ class StrMap {
 
   R elemToRecord(const R& e) const { return e; }
 
-  // DS Operations:
-  // Maybe return the first element in the DS
   shared_ptr<R> peek(const unit_t&) const {
     shared_ptr<R> res(nullptr);
     map_str* m = get_map_str();
@@ -680,6 +702,17 @@ class StrMap {
       res = std::make_shared<R>(*map_str_get(m, it));
     }
     return res;
+  }
+
+  template<typename F, typename G>
+  auto peek_with(F f, G g) const {
+    map_str* m = get_map_str();
+    auto it = map_str_begin(m);
+    if (it < map_str_end(m) ) {
+      return g(*map_str_get(m, it));
+    } else {
+      return f(unit_t {});
+    }
   }
 
   size_t insert_aux(const R& q) {
@@ -955,6 +988,21 @@ class StrMap {
       }
     }
     throw std::runtime_error("No match on StrMap.lookup_with3");
+  }
+
+  template <class F, class G>
+  auto lookup_with4(R const& r, F f, G g) const {
+    map_str* m = get_map_str();
+    if ( m->size == 0 ) {
+      return f(unit_t {});
+    } else {
+      auto existing = map_str_find(m, r.key.begin());
+      if (existing == map_str_end(m)) {
+        return f(unit_t {});
+      } else {
+        return g(*map_str_get(m,existing));
+      }
+    }
   }
 
   bool operator==(const StrMap& other) const {
@@ -1486,6 +1534,20 @@ class VMap {
     throw std::runtime_error("No match on Map.lookup_with3");
   }
 
+  template <class F, class G>
+  auto lookup_with4(const Version& v, R const& r, F f, G g) const {
+    auto it = container.find(r.key);
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      auto vit = it->second.find(v);
+      if ( vit == it->second.end() ) {
+        return f(unit_t {});
+      } else {
+        return g(vit->second);
+      }
+    }
+  }
 
   //////////////////////////////////////////////////
   // Frontier-based map retrieval.
@@ -1540,6 +1602,21 @@ class VMap {
       }
     }
     throw std::runtime_error("No match on Map.lookup_with3_before");
+  }
+
+  template <class F, class G>
+  auto lookup_with4_before(const Version& v, R const& r, F f, G g) const {
+    auto it = container.find(r.key);
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      auto vit = it->second.upper_bound(v);
+      if ( vit == it->second.end() ) {
+        return f(unit_t {});
+      } else {
+        return g(vit->second);
+      }
+    }
   }
 
   // Non-inclusive erase less than version.
@@ -1859,8 +1936,6 @@ class OrderedMap {
     return const_iterator(container.cend());
   }
 
-  // DS Operations:
-  // Maybe return the first element in the DS
   shared_ptr<R> peek(const unit_t&) const {
     shared_ptr<R> res(nullptr);
     auto it = container.begin();
@@ -1868,6 +1943,16 @@ class OrderedMap {
       res = std::make_shared<R>(it->second);
     }
     return res;
+  }
+
+  template<typename F, typename G>
+  auto peek_with(F f, G g) const {
+    auto it = container.begin();
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(it->second);
+    }
   }
 
   template <class Q>
@@ -2073,6 +2158,16 @@ class OrderedMap {
       return f(it->second);
     }
     throw std::runtime_error("No match on Map.lookup_with3");
+  }
+
+  template <class F, class G>
+  auto lookup_with4(R const& r, F f, G g) const {
+    auto it = container.find(r.key);
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(it->second);
+    }
   }
 
   // Extremal key operations.

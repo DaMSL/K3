@@ -57,6 +57,11 @@ annotation MultiIndexVMap given type a,b {
   provides lifted lookup_with3 : int -> content -> (content -> a) -> a
     with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
 
+  @:CArgs 4
+  provides lifted lookup_with4 : int -> content -> (() -> a) -> (content -> a) -> a
+    with effects \version -> \elem -> \noneF -> \someF -> [R[self]; R[version]; R[elem]; noneF content; someF content]
+
+
   //////////////////////////////////////////////////
   // Frontier-based map retrieval operations.
   // These apply to the nearest version specified.
@@ -76,6 +81,10 @@ annotation MultiIndexVMap given type a,b {
   @:CArgs 3
   provides lifted lookup_with3_before : int -> content -> (content -> a) -> a
     with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
+
+  @:CArgs 4
+  provides lifted lookup_with4_before : int -> content -> (() -> a) -> (content -> a) -> a
+    with effects \version -> \elem -> \noneF -> \someF -> [R[self]; R[version]; R[elem]; noneF content; someF content]
 
   // Non-inclusive modifications of all values before the given version.
   @:CArgs 2

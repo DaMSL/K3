@@ -88,6 +88,16 @@ class MultiIndexDS {
     return res;
   }
 
+  template<typename F, typename G>
+  auto peek_with(F f, G g) const {
+    auto it = container.begin();
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(*it);
+    }
+  }
+
    // Insert by move
   unit_t insert(Elem &&e) {
     container.insert(container.end(), std::move(e));
@@ -481,6 +491,17 @@ class MultiIndexMap : public MultiIndexDS<K3::MultiIndexMap, R, HashUniqueIndex<
     throw std::runtime_error("No match on Map.lookup_with3");
   }
 
+  template <class F, class G>
+  auto lookup_with4(R const& r, F f, G g) const {
+    auto& c = Super::getConstContainer();
+    auto it = c.find(r.key);
+    if (it == c.end()) {
+      return f(unit_t {});
+    } else {
+      return g(it->second);
+    }
+  }
+
   template<class Archive>
   void serialize(Archive &ar) {
     ar & yas::base_object<Super>(*this);
@@ -740,6 +761,22 @@ class MultiIndexVMap
     throw std::runtime_error("No match on Map.lookup_with3");
   }
 
+  template <class F, class G>
+  auto lookup_with4(const Version& v, R const& r, F f, G g) const {
+    auto it = container.find(r.key);
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.find(v);
+      if ( vit == vmap.end() ) {
+        return f(unit_t {});
+      } else {
+        return g(vit->second);
+      }
+    }
+  }
+
   //////////////////////////////////////////////////
   // Frontier-based map retrieval.
   // These methods apply to the nearest version that is strictly less
@@ -797,6 +834,22 @@ class MultiIndexVMap
       }
     }
     throw std::runtime_error("No match on Map.lookup_with3_before");
+  }
+
+  template <class F, class G>
+  auto lookup_with4_before(const Version& v, R const& r, F f, G g) const {
+    auto it = container.find(r.key);
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.upper_bound(v);
+      if ( vit == vmap.end() ) {
+        return f(unit_t {});
+      } else {
+        return g(vit->second);
+      }
+    }
   }
 
   // Non-inclusive erase less than version.

@@ -4,9 +4,13 @@
 // While there currently is no type enforcement, it should only be used
 // with key :: int
 //
-annotation IntMap given type a,b {
+annotation IntMap given type a,b
+{
   provides lifted peek    : () -> option content
     with effects \_ -> R[self]
+
+  provides lifted peek_with : (() -> a) -> (content -> a) -> a
+    with effects \f -> \g -> [R[self]; f content; g content]
 
   provides lifted insert  : content -> ()
     with effects \elem -> [R[self]; R[elem]; W[self]]
@@ -69,7 +73,10 @@ annotation IntMap given type a,b {
   provides lifted sample : (a -> content -> a) -> a -> int -> a
     with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
 
-  // Lookup ignores the value of the provided element.
+
+  provides lifted member: content -> bool
+    with effects \elem -> [R[self]; R[elem]]
+
   provides lifted lookup : content -> option content
     with effects \elem -> [R[self]; R[elem]]
 
@@ -85,13 +92,14 @@ annotation IntMap given type a,b {
   provides lifted lookup_with3 : content -> (content -> a) -> a
     with effects \elem -> \lookupF -> [R[self]; R[elem]; lookupF content]
 
-  provides lifted member: content -> bool
-    with effects \elem -> [R[self]; R[elem]]
+  @:CArgs 3
+  provides lifted lookup_with4 : content -> (() -> a) -> (content -> a) -> a
+    with effects \elem -> \noneF -> \someF -> [R[self]; R[elem]; noneF content; someF content]
 
   @:CArgs 3
   provides lifted key_update: int -> (() -> content) -> (content -> content) -> ()
     with effects \elem -> \f -> \g -> [R[self]; R[elem]; f none; g content; W[self]]
-  
+
   @:CArgs 2
   provides lifted key_lookup_with : int -> (content -> ()) -> ()
     with effects \elem -> \lookupF -> [R[self]; R[elem]; lookupF content]

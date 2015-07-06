@@ -11,8 +11,8 @@
 // not less than the supplied version. That is, the method applied on a tree whose version id
 // is lower-bounded by the supplied version id.
 
-annotation VMap given type a,b {
-
+annotation VMap given type a,b
+{
   // Returns the size of the frontier specified by the version.
   provides lifted size : int -> int
     with effects \version -> [R[version]; R[self]]
@@ -66,7 +66,12 @@ annotation VMap given type a,b {
 
   @:CArgs 3
   provides lifted lookup_with3 : int -> content -> (content -> a) -> a
-    with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
+    with effects \version -> \elem -> \lookupF -> [R[self]; R[version]; R[elem]; lookupF content]
+
+  @:CArgs 4
+  provides lifted lookup_with4 : int -> content -> (() -> a) -> (content -> a) -> a
+    with effects \version -> \elem -> \noneF -> \someF -> [R[self]; R[version]; R[elem]; noneF content; someF content]
+
 
   //////////////////////////////////////////////////
   // Frontier-based map retrieval operations.
@@ -87,6 +92,10 @@ annotation VMap given type a,b {
   @:CArgs 3
   provides lifted lookup_with3_before : int -> content -> (content -> a) -> a
     with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
+
+  @:CArgs 4
+  provides lifted lookup_with4_before : int -> content -> (() -> a) -> (content -> a) -> a
+    with effects \version -> \elem -> \noneF -> \someF -> [R[self]; R[version]; R[elem]; noneF content; someF content]
 
   // Non-inclusive modifications of all values before the given version.
   @:CArgs 2

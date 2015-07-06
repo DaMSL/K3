@@ -3,6 +3,9 @@ annotation Collection given type a, b
   provides lifted peek : () -> option content
     with effects \_ -> R[self]
 
+  provides lifted peek_with : (() -> a) -> (content -> a) -> a
+    with effects \f -> \g -> [R[self]; f content; g content]
+
   provides lifted at: int -> option content
     with effects \i -> [R[i]; R[self]]
 

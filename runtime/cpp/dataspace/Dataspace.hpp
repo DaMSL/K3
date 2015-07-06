@@ -218,7 +218,6 @@ class StlDS
 
   Elem elemToRecord(const Elem& e) const { return e; }
 
-  // Maybe return the first element in the ds
   shared_ptr<Elem> peek(unit_t) const {
     shared_ptr<Elem> res(nullptr);
     const_iterator_type it = container.begin();
@@ -226,6 +225,16 @@ class StlDS
       res = std::make_shared<Elem>(*it);
     }
     return res;
+  }
+
+  template<typename F, typename G>
+  auto peek_with(F f, G g) const {
+    auto it = container.begin();
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(*it);
+    }
   }
 
   template <class T>
@@ -477,6 +486,10 @@ template <template <class> class Derived, class Elem>
 using VectorDS = StlDS<Derived, std::vector, Elem>;
 
 
+///////////////////////////////////////////////////
+//
+// Collection (i.e., Bag)
+//
 // The Collection variants inherit functionality from a dataspace.
 // Each variant may also add extra functionality.
 template <class Elem>
@@ -533,8 +546,10 @@ class Collection : public VectorDS<K3::Collection, Elem> {
   friend class boost::serialization::access;
 };
 
-// StlDS provides the basic Collection transformers via generic implementations
-// that should work with any STL container.
+
+///////////////////////////////////////////////////
+//
+// Set
 template <class Elem>
 class Set {
   // Iterator Types:
@@ -562,15 +577,6 @@ class Set {
 
   Elem elemToRecord(const Elem& e) const { return e; }
 
-  shared_ptr<Elem> peek(unit_t) const {
-    shared_ptr<Elem> res(nullptr);
-    const_iterator_type it = container.begin();
-    if (it != container.end()) {
-      res = std::make_shared<Elem>(*it);
-    }
-    return res;
-  }
-
   using iterator = typename Container::iterator;
   using const_iterator = typename Container::const_iterator;
 
@@ -588,6 +594,25 @@ class Set {
 
   const_iterator end() const {
     return const_iterator(container.cend());
+  }
+
+  shared_ptr<Elem> peek(unit_t) const {
+    shared_ptr<Elem> res(nullptr);
+    const_iterator_type it = container.begin();
+    if (it != container.end()) {
+      res = std::make_shared<Elem>(*it);
+    }
+    return res;
+  }
+
+  template<typename F, typename G>
+  auto peek_with(F f, G g) const {
+    auto it = container.begin();
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(*it);
+    }
   }
 
   template <class T>
@@ -744,7 +769,6 @@ class Set {
         next_skip = seqSampler.next();
       }
     }
-
     return acc;
   }
 
@@ -819,6 +843,10 @@ class Set {
   friend class boost::serialization::access;
 }; // class Set
 
+
+///////////////////////////////////////////////////
+//
+// Seq
 template <class Elem>
 class Seq : public ListDS<K3::Seq, Elem> {
   using Super = ListDS<K3::Seq, Elem>;
@@ -860,8 +888,10 @@ class Seq : public ListDS<K3::Seq, Elem> {
   friend class boost::serialization::access;
 };
 
-// StlDS provides the basic Collection transformers via generic implementations
-// that should work with any STL container.
+
+///////////////////////////////////////////////////
+//
+// Sorted multiset.
 template <class Elem>
 class Sorted {
   // Iterator Types:
@@ -897,6 +927,16 @@ class Sorted {
       res = std::make_shared<Elem>(*it);
     }
     return res;
+  }
+
+  template<typename F, typename G>
+  auto peek_with(F f, G g) const {
+    auto it = container.begin();
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(*it);
+    }
   }
 
    // Insert by move
@@ -1220,8 +1260,6 @@ class Map {
     return const_iterator(container.cend());
   }
 
-  // DS Operations:
-  // Maybe return the first element in the DS
   shared_ptr<R> peek(const unit_t&) const {
     shared_ptr<R> res(nullptr);
     auto it = container.begin();
@@ -1229,6 +1267,16 @@ class Map {
       res = std::make_shared<R>(it->second);
     }
     return res;
+  }
+
+  template<typename F, typename G>
+  auto peek_with(F f, G g) const {
+    auto it = container.begin();
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(it->second);
+    }
   }
 
   template <class Q>
@@ -1436,6 +1484,16 @@ class Map {
       return f(it->second);
     }
     throw std::runtime_error("No match on Map.lookup_with3");
+  }
+
+  template <class F, class G>
+  auto lookup_with4(R const& r, F f, G g) const {
+    auto it = container.find(r.key);
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(it->second);
+    }
   }
 
   bool operator==(const Map& other) const {
