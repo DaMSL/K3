@@ -158,11 +158,11 @@ data EndpointSpec
   | FileSeqEP String String
     -- ^ File sequence path collection (as expression), format
 
-  | FileMuxEP String Int String
-    -- ^ File path collection (as expression), number of subchannels, format
+  | FileMuxEP String String
+    -- ^ File path collection (as expression), format
 
-  | FileMuxseqEP String Int String
-    -- ^ File sequence collection (as expression), number of subchannels, format
+  | FileMuxseqEP String String
+    -- ^ File sequence collection (as expression), format
 
   | NetworkEP String String
     -- ^ Address, format

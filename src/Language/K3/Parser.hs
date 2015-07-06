@@ -1095,19 +1095,19 @@ file isSource sym ctor prsr = mkFileSrc <$> (symbol sym *> prsr) <*> format
         spec argE formatE = ctor <$> S.exprS argE <*> S.symbolS formatE
 
 filemux :: K3Parser EndpointBuilder
-filemux = mkFMuxSrc <$> syms ["filemxsq", "filemux"] <*> eVariable <*> natural <*> format
+filemux = mkFMuxSrc <$> syms ["filemxsq", "filemux"] <*> eVariable <*> format
   where
     syms l = choice $ map (try . symbol) l
 
-    mkFMuxSrc sym argE (fromIntegral -> numChans) formatE n t = do
-      s <- fMuxSpec (ctorOfSym sym numChans) argE formatE
+    mkFMuxSrc sym argE formatE n t = do
+      s <- fMuxSpec (ctorOfSym sym) argE formatE
       return $ endpointMethods True s argE formatE n t
 
     fMuxSpec ctor argE formatE = ctor <$> S.exprS argE <*> S.symbolS formatE
 
-    ctorOfSym s n =
-      if s == "filemux" then (\a b -> FileMuxEP a n b)
-      else if s == "filemxsq" then (\a b -> FileMuxseqEP a n b)
+    ctorOfSym s =
+      if s == "filemux" then FileMuxEP
+      else if s == "filemxsq" then FileMuxseqEP
       else fail "Invalid file mux kind"
 
 network :: Bool -> K3Parser EndpointBuilder

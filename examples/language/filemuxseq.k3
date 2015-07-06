@@ -8,5 +8,5 @@ declare fpaths : collection {seq: fileseq} @Collection
 
 trigger t : int = \i -> print ((itos i) ++ "\\n")
 
-source s1 : int = filemxsq fpaths 3 csv
+source s1 : int = filemxsq fpaths csv
 feed s1 |> t

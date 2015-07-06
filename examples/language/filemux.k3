@@ -7,5 +7,5 @@ declare fpaths : collection {path:string} @Collection
 
 trigger t : int = \i -> print ((itos i) ++ "\\n")
 
-source s1 : int = filemux fpaths 3 csv
+source s1 : int = filemux fpaths csv
 feed s1 |> t
