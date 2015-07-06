@@ -14,30 +14,31 @@ template <template <typename> class Derived, class Elem>
 using SetDS = STLDS<Derived, std::unordered_set, Elem>;
 
 template <class Elem>
-class Set {
+class Set : public SetDS<K3::Set, Elem> {
+  using Super = SetDS<K3::Set, Elem>;
   typedef std::unordered_set<Elem> Container;
   typedef typename Container::const_iterator const_iterator_type;
   typedef typename Container::iterator iterator_type;
 
  public:
   typedef Elem ElemType;
-  Set() : container() {}
-  Set(const Container& con) : container(con) {}
-  Set(Container&& con) : container(std::move(con)) {}
+  Set() : Super() {}
+  Set(const Super& c) : Super(c) {}
+  Set(Super&& c) : Super(std::move(c)) {}
   template <typename Iterator>
   Set(Iterator begin, Iterator end)
       : container(begin, end) {}
 
-  using iterator = typename Container::iterator;
-  using const_iterator = typename Container::const_iterator;
+  //using iterator = typename Container::iterator;
+  //using const_iterator = typename Container::const_iterator;
 
-  iterator begin() { return iterator(container.begin()); }
+  //iterator begin() { return iterator(container.begin()); }
 
-  iterator end() { return iterator(container.end()); }
+  //iterator end() { return iterator(container.end()); }
 
-  const_iterator begin() const { return const_iterator(container.cbegin()); }
+  //const_iterator begin() const { return const_iterator(container.cbegin()); }
 
-  const_iterator end() const { return const_iterator(container.cend()); }
+  //const_iterator end() const { return const_iterator(container.cend()); }
 
   // Set specific functions
   bool member(const Elem& e) const {

@@ -181,7 +181,7 @@ class STLDS {
   // Iterators
   using iterator = typename Container::iterator;
   using const_iterator = typename Container::const_iterator;
-  using reverse_iterator = typename Container::reverse_iterator;
+  //using reverse_iterator = typename Container::reverse_iterator;
 
   iterator begin() {
     return container.begin();
@@ -207,13 +207,13 @@ class STLDS {
     return container.cend();
   }
 
-  reverse_iterator rbegin() {
-    return container.rbegin();
-  }
+  //reverse_iterator rbegin() {
+  //  return container.rbegin();
+  //}
 
-  reverse_iterator rend() {
-    return container.rend();
-  }
+  //reverse_iterator rend() {
+  //  return container.rend();
+  //}
 
 
   bool operator==(const STLDS& other) const {

@@ -324,9 +324,9 @@ declareBuiltins d
           mkGlobal peersId peersT     Nothing,
           mkGlobal roleId  roleT      Nothing]
 
-        peersT = mkCollection [("addr", TC.address)]
-        roleT  = mkCollection [(roleElemLbl, TC.string)]
+        peersT = mkCollection [("addr", TC.address)] "Collection"
+        roleT  = mkCollection [(roleElemLbl, TC.string)] "Set"
 
         mkGlobal n t eOpt = builtinGlobal n (qualifyT t) $ maybe Nothing (Just . qualifyE) eOpt
 
-        mkCollection fields = (TC.collection $ TC.record $ map (qualifyT <$>) fields) @+ TAnnotation "Collection"
+        mkCollection fields ann = (TC.collection $ TC.record $ map (qualifyT <$>) fields) @+ TAnnotation ann
