@@ -172,7 +172,7 @@ def run_create_compile_k3_remote(server_url, bin_file, block_on_compile, k3_cpp_
   res = curl(server_url, "/compile", file: k3_path, post: true, json: true,
             args:{ "compilestage" => "both", "workload" => $options[:skew].to_s})
   uid = res["uid"]
-  update_options_if_empty(:uid, uid)
+  $options[:uid] = uid
   persist_options()
 
   if block_on_compile
@@ -188,7 +188,7 @@ def run_create_k3_remote(server_url, block_on_compile, k3_cpp_name, k3_path, nic
   res = curl(server_url, "/compile", file: k3_path, post: true, json: true,
             args:{ "compilestage" => "cpp", "workload" => $options[:skew].to_s})
   uid = res["uid"]
-  update_options_if_empty(:uid, uid)
+  $options[:uid] = uid
   persist_options()
 
   if block_on_compile
@@ -224,7 +224,12 @@ def gen_yaml(k3_data_path, role_file, script_path)
   cmd << "--nmask " << $options[:nmask] << " " if $options[:nmask]
   cmd << "--perhost " << $options[:perhost].to_s << " " if $options[:perhost]
   cmd << "--file " << k3_data_path << " "
-  cmd << "--dist " if !$options[:run_local]
+
+  if $options[:run_mode] == "multicore"
+    cmd << "--multicore"
+  elsif $options[:run_mode] == "dist"
+    cmd << "--dist"
+  end
 
   extra_args = []
   extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
@@ -330,7 +335,7 @@ def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, scr
     stage "[5] Sending binary to mesos"
     res = curl(server_url, '/apps', file:bin_path, post:true, json:true)
     uid = res['uid']
-    update_options_if_empty(:uid, uid)
+    $options[:uid] = uid
     persist_options()
   end
 
@@ -344,7 +349,7 @@ def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, scr
   curl_args = full_ktrace ? {'jsonlog' => 'yes'} : {'jsonfinal' => 'yes'}
   res = curl(server_url, "/jobs/#{nice_name}#{uid_s}", json:true, post:true, file:role_path, args:curl_args)
   jobid = res['jobId']
-  update_options_if_empty(:jobid, jobid)
+  $options[:jobid] = jobid
   persist_options()
   puts "JOBID = #{jobid}"
 
@@ -413,7 +418,6 @@ end
 
 def parse_k3_results(dbt_results, jobid, full_ktrace)
   stage "[6] Parsing K3 results"
-  files = []
 
   job_sandbox_path = File.join($workdir, "job_#{jobid}")
   globals_path = File.join(job_sandbox_path, 'globals.dsv')
@@ -469,10 +473,18 @@ def parse_k3_results(dbt_results, jobid, full_ktrace)
 
     # frontier operation
     max_map = {}
+    unit_value = "()"
+
     # check if we're dealing with maps without keys
     # format of elements: array of [vid, [key, value], vid, [key, value]...]
     # check for existence of first element's key (ie. key-less maps)
     if map_data_k[0][1].size > 1
+
+      # DBToaster XML parsing ensures that keys are always arrays.
+      # Check if we need to promote the key type for k3 results.
+      unit_key = false
+      promote_key_array = false
+
       map_data_k.each do |e|
         vid = e[0]
         key = e[1][0]
@@ -482,17 +494,28 @@ def parse_k3_results(dbt_results, jobid, full_ktrace)
         if !max_vid || ((vid <=> max_vid) == 1)
           max_map[key] = [vid, val]
         end
+        unit_key = key == "()"
+        promote_key_array = !key.is_a?(Array)
       end
       # add the max map to the combined maps and discard vids
       max_map.each_pair do |key,value|
-        if !combined_maps.has_key?(map_name)
-          combined_maps[map_name] = { key => value[1] }
-        elsif !combined_maps[map_name].has_key?(key)
-          combined_maps[map_name][key] = value[1]
+        key = !unit_key && promote_key_array ? [key] : key
+        if unit_key
+          if !combined_maps.has_key?(map_name)
+            combined_maps[map_name] = value[1]
+          else
+            combined_maps[map_name] += value[1]
+          end
         else
-          # this can happen because each data node has the same maps,
-          # and they're zeroed out by default, so adding should work out.
-          combined_maps[map_name][key] += value[1]
+          if !combined_maps.has_key?(map_name)
+            combined_maps[map_name] = { key => value[1] }
+          elsif !combined_maps[map_name].has_key?(key)
+            combined_maps[map_name][key] = value[1]
+          else
+            # this can happen because each data node has the same maps,
+            # and they're zeroed out by default, so adding should work out.
+            combined_maps[map_name][key] += value[1]
+          end
         end
       end
     else # key-less maps
@@ -612,10 +635,6 @@ def check_param(p, nm)
   end
 end
 
-def update_options_if_empty(k, v)
-  $options[k] = v unless $options[k]
-end
-
 # persist source, data paths, and others
 def persist_options()
   def update_if_there(opts, x)
@@ -635,6 +654,8 @@ end
 
 def main()
   $options = {}
+  $options[:run_mode] = "dist"
+
   uid = nil
 
   usage = "Usage: #{$PROGRAM_NAME} sql_file options"
@@ -655,7 +676,8 @@ def main()
     opts.on("--mosaic-path [PATH]", String, "Path for mosaic") {|s| $options[:mosaic_path] = s}
     opts.on("--highmem", "High memory deployment (HM only)") { $options[:nmask] = 'qp-hm.'}
     opts.on("--brew", "Use homebrew (OSX)") { $options[:osx_brew] = true }
-    opts.on("--run-local", "Run locally") { $options[:run_local] = true }
+    opts.on("--run-local", "Run locally") { $options[:run_mode] = "local" }
+    opts.on("--run-multicore", "Run all data nodes on the same host") { $options[:run_mode] = "multicore" }
     opts.on("--create-local", "Create the cpp file locally") { $options[:create_local] = true }
     opts.on("--compile-local", "Compile locally") { $options[:compile_local] = true }
     opts.on("--dbt-exec-only", "Execute DBToaster only (skipping query build)") { $options[:dbt_exec_only] = true }

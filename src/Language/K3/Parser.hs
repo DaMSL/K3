@@ -1046,7 +1046,7 @@ builtin isSource = mkBuiltin <$> builtinChannels <*> format
         builtinSpec idE formatE = BuiltinEP <$> S.symbolS idE <*> S.symbolS formatE
 
 file :: Bool -> K3Parser EndpointBuilder
-file isSource = mkFile <$> (symbol "file" *> eCString) <*> textOrBinary <*> format
+file isSource = mkFile <$> (symbol "file" *> eTerminal) <*> textOrBinary <*> format
   where textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False) 
         mkFile argE asText formatE n t = do
           s <- fileSpec argE asText formatE
@@ -1064,7 +1064,7 @@ fileseq = mkFileSeq <$> (symbol "fileseq" *> eVariable) <*> textOrBinary <*> for
         fileSeqSpec argE asText formatE = (\p f -> FileSeqEP p asText f) <$> S.exprS argE <*> S.symbolS formatE
 
 network :: Bool -> K3Parser EndpointBuilder
-network isSource = mkNetwork <$> (symbol "network" *> eAddress) <*> textOrBinary <*> format
+network isSource = mkNetwork <$> (symbol "network" *> eTerminal) <*> textOrBinary <*> format
   where textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
         mkNetwork addrE asText formatE n t =
           networkSpec addrE asText formatE >>= \s -> return $ endpointMethods isSource s addrE formatE n t
