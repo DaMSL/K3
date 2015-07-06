@@ -1,0 +1,10 @@
+include "Core/Log.k3"
+
+declare myint : mut int = 0
+
+trigger t: () = \_ -> (
+  myint = 100 @Log(tag=[$ "myint update"])
+)
+
+source s1 : () = value ()
+feed s1 |> t

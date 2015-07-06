@@ -99,24 +99,52 @@ def create_dist_file(num_switches, perhost, num_nodes, nmask, file_path, extra_a
     # dump out
     dump_yaml(launch_roles)
 
+def create_multicore_file(num_switches, perhost, num_nodes, nmask, file_path, extra_args):
+    if num_switches > 1:
+        raise ValueError("Can't create multicore deployment with more than one switch just yet.")
+
+    extra_args = parse_extra_args(extra_args)
+
+    role = {
+        "hostmask": "qp3",
+        "name": "Everything",
+        "peer_globals": [
+            {"role": "master"}, {"role": "timer"}, {"role": "switch", "switch_path": file_path}
+        ] + [{"role": "node"} for _ in range(num_nodes)],
+        "privileged": False,
+        'volumes'   : [{'host':'/local', 'container':'/local'}],
+    }
+
+    role["peers"] = len(role["peer_globals"])
+
+    for peer_role in role["peer_globals"]:
+        peer_role.update(extra_args)
+
+    dump_yaml([role])
+
 def main():
     parser = argparse.ArgumentParser()
+    parser.set_defaults(run_mode = "local")
+    parser.add_argument("-d", "--dist", action='store_const', dest="run_mode", const="dist")
+    parser.add_argument("-m", "--multicore", action='store_const', dest="run_mode", const="multicore")
     parser.add_argument("-s", "--switches", type=int, help="number of switches",
                         dest="num_switches", default=1)
     parser.add_argument("-n", "--nodes", type=int, help="number of nodes",
                         dest="num_nodes", default=4)
     parser.add_argument("--nmask", type=str, help="mask for nodes", default="qp-hm.|qp-hd.?")
     parser.add_argument("--perhost", type=int, help="peers per host", default=1)
-    parser.add_argument("-d", "--dist", action='store_true', dest="dist_mode", default=False)
     parser.add_argument("-f", "--file", type=str, dest="file_path", help="file path",
                         default="/local/agenda.csv")
     parser.add_argument("--extra-args", type=str, help="extra arguments in x=y format")
     args = parser.parse_args()
-    if args.dist_mode:
+    if args.run_mode == "dist":
         create_dist_file(args.num_switches, args.perhost, args.num_nodes, args.nmask,
                          args.file_path, args.extra_args)
-    else:
+    elif args.run_mode == "local":
         create_file(args.num_switches, args.num_nodes, args.file_path, args.extra_args)
+    elif args.run_mode == "multicore":
+        create_multicore_file(args.num_switches, args.perhost, args.num_nodes, args.nmask,
+                              args.file_path, args.extra_args)
 
 
 if __name__ == '__main__':
