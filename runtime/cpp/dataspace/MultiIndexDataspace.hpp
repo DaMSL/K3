@@ -247,21 +247,8 @@ class MultiIndexDS {
     return acc;
   }
 
-  bool operator==(const MultiIndexDS& other) const {
-    return container == other.container;
-  }
-
-  bool operator!=(const MultiIndexDS& other) const {
-    return container != other.container;
-  }
-
-  bool operator<(const MultiIndexDS& other) const {
-    return container < other.container;
-  }
-
-  bool operator>(const MultiIndexDS& other) const {
-    return container > other.container;
-  }
+  ////////////////////////
+  // Index operations.
 
   template <class Index, class Key>
   shared_ptr<Elem> lookup_with_index(const Index& index, Key key) const {
@@ -292,6 +279,26 @@ class MultiIndexDS {
       result.insert(*it);
     }
     return result;
+  }
+
+
+  /////////////////
+  // Comparators.
+
+  bool operator==(const MultiIndexDS& other) const {
+    return container == other.container;
+  }
+
+  bool operator!=(const MultiIndexDS& other) const {
+    return container != other.container;
+  }
+
+  bool operator<(const MultiIndexDS& other) const {
+    return container < other.container;
+  }
+
+  bool operator>(const MultiIndexDS& other) const {
+    return container > other.container;
   }
 
   Container& getContainer() { return container; }
@@ -974,6 +981,10 @@ class MultiIndexVMap
     return result;
   }
 
+
+  ///////////////////////////////
+  // Multi-version methods.
+
   template<typename Fun, typename Acc>
   Acc fold_all(Fun f, Acc acc) const {
     for (const auto& elem : container) {
@@ -984,6 +995,29 @@ class MultiIndexVMap
     return acc;
   }
 
+  // Non-inclusive erase less than version.
+  unit_t erase_prefix_all(const Version& v) {
+    auto end = container.end();
+    for (auto it = container.begin(); it != end;) {
+      bool erase_elem = false;
+      container.modify(it, [&](auto& elem){
+        auto& vmap = std::get<1>(elem);
+        auto vlteq = vmap.lower_bound(v);
+        auto vless = vmap.upper_bound(v);
+        auto vend  = vmap.end();
+        if ( vless != vend ) {
+          vmap.erase((vlteq == vless)? ++vless : vless, vend);
+          erase_elem = vmap.empty();
+        }
+      });
+      if ( erase_elem ) {
+        it = container.erase(it);
+      } else {
+        ++it;
+      }
+    }
+    return unit_t();
+  }
 
   ///////////////////////////////////////////
   //
@@ -1032,6 +1066,35 @@ class MultiIndexVMap
       }
     }
     return result;
+  }
+
+  template <class Index, class Key, typename Fun, typename Acc>
+  Acc fold_slice_with_index(const Index& index, const Version& v, Key key, Fun f, Acc acc) const
+  {
+    std::pair<typename Index::iterator, typename Index::iterator> p = index.equal_range(key);
+    for (typename Index::iterator it = p.first; it != p.second; it++) {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.upper_bound(v);
+      if ( vit != vmap.end() ) {
+        acc = f(std::move(acc))(vit->second);
+      }
+    }
+    return acc;
+  }
+
+  template <class Index, class Key, typename Fun, typename Acc>
+  Acc fold_range_with_index(const Index& index, const Version& v, Key a, Key b, Fun f, Acc acc) const
+  {
+    std::pair<typename Index::iterator, typename Index::iterator> p =
+      index.range(a <= boost::lambda::_1, b >= boost::lambda::_1);
+    for (typename Index::iterator it = p.first; it != p.second; it++) {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.upper_bound(v);
+      if ( vit != vmap.end() ) {
+        acc = f(std::move(acc))(vit->second);
+      }
+    }
+    return acc;
   }
 
   //////////////////

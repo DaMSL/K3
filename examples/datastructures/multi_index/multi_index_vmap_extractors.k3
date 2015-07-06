@@ -1,3 +1,4 @@
+include "Annotation/Collection.k3"
 include "Annotation/MultiIndex/MultiIndexVMap.k3"
 
 typedef EmployeeV =
@@ -7,6 +8,7 @@ typedef EmployeeV =
       OrderedVMapIndexE(key=[:> name=>string], extractors=[$#> name=>"key.name"])}
 
 declare employeesV : mut EmployeeV
+declare flatEmployees : mut collection {id:int, name:string, age:int} @Collection
 
 declare result1 : mut option {key: {id: int, name: string}, value: {age: int}}
 declare result2 : mut option {key: {id: int, name: string}, value: {age: int}}
@@ -17,9 +19,13 @@ trigger t1 : () = \_ -> (
     employeesV.insert 1 {key: {id: 3, name: "bob"    }, value: {age: 40}};
     employeesV.insert 1 {key: {id: 4, name: "charles"}, value: {age: 45}};
 
-    result1    = employeesV.lookup_by_id   2 {id: 2};
-    result2    = employeesV.lookup_by_name 2 {name: "John"};
-    employeesV = employeesV.range_by_name  2 {name: "a"} {name: "d"}
+    result1       = employeesV.lookup_by_id       2 {id: 2};
+    result2       = employeesV.lookup_by_name     2 {name: "John"};
+    employeesV    = employeesV.range_by_name      2 {name: "a"} {name: "d"};
+
+    flatEmployees = employeesV.fold_range_by_name 2 {name: "a"} {name: "c"}
+                      (\acc -> (\r -> ((acc.insert {id: r.key.id, name: r.key.name, age:r.value.age}); acc)))
+                      (empty {id:int, name:string, age:int} @Collection)
 )
 
 source s1 : () = value ()

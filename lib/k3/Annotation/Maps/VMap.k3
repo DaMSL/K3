@@ -98,6 +98,7 @@ annotation VMap given type a,b {
   provides lifted update_suffix : int -> content -> (int -> content -> content) -> ()
     with effects \version -> \elem -> \updateF -> [R[version]; R[self]; R[elem]; ((updateF none) content)*; W[self]]
 
+
   ///////////////////////////////////////////////
   // Most-recent version operations.
 
@@ -145,8 +146,17 @@ annotation VMap given type a,b {
                          -> collection {key : a, value: b} @VMap
     with effects \version -> \extF -> [R[version]; R[self]; ([R[content]; extF content])*]
 
+
+  //////////////////////////////
+  //
+  // Multi-version methods.
+
   @:{CArgs 2}
   provides lifted fold_all : (a -> (int -> (content -> a))) -> a -> a
     with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; (((foldF z) none) content)])*]
+
+  // Non-inclusive modifications of all values before the given version.
+  provides lifted erase_prefix_all : int -> ()
+    with effects \version -> [R[version]; R[self]; W[self]]
 
 }

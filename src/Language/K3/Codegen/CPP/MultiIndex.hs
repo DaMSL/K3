@@ -1,3 +1,4 @@
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Codegen.CPP.MultiIndex where
@@ -9,8 +10,7 @@ import Data.Functor ((<$>))
 import Data.List (elemIndex, isInfixOf, nub)
 import Data.List.Split (splitOn)
 import Data.Maybe (catMaybes, fromMaybe)
-
-import Debug.Trace
+import Data.Tree
 
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
@@ -34,11 +34,13 @@ indexes ::  Identifier -> [(Identifier, [AnnMemDecl])] -> [K3 Type] -> CPPGenM (
 indexes name ans content_ts = do
   let indexed   = zip [1..] ans
   let flattened = filter is_index_mem $ concatMap (\(n, (i, mems)) -> zip (repeat (n,i)) mems) indexed
-  index_types  <- (nub . catMaybes) <$> mapM index_type flattened
-  lookup_defns <- catMaybes <$> mapM lookup_fn flattened
-  slice_defns  <- catMaybes <$> mapM slice_fn flattened
-  range_defns  <- catMaybes <$> mapM range_fn flattened
-  return (index_types, lookup_defns ++ slice_defns ++ range_defns)
+  index_types      <- (nub . catMaybes) <$> mapM index_type flattened
+  lookup_defns     <- catMaybes <$> mapM lookup_fn flattened
+  slice_defns      <- catMaybes <$> mapM slice_fn flattened
+  range_defns      <- catMaybes <$> mapM range_fn flattened
+  fold_slice_defns <- catMaybes <$> mapM fold_slice_fn flattened
+  fold_range_defns <- catMaybes <$> mapM fold_range_fn flattened
+  return (index_types, lookup_defns ++ slice_defns ++ range_defns ++ fold_slice_defns ++ fold_range_defns)
   where
     elem_type = R.Named $ R.Name "__CONTENT"
     elem_r =  R.Name "&__CONTENT"
@@ -47,11 +49,12 @@ indexes name ans content_ts = do
     is_index_mem ((_,n),_) = not ("MultiIndex" `isInfixOf` n) && ("Index" `isInfixOf` n)
 
     get_key_type :: Identifier -> K3 Type -> Maybe (K3 Type)
-    get_key_type n (tag &&& children -> (TFunction, [k, f]))
-      | "VMap" `isInfixOf` n = case tnc f of
-                                (TFunction, [vk, _]) -> Just vk
-                                _ -> Nothing
+    get_key_type n (PTFunction k f _)
+      | "VMap" `isInfixOf` n = case f of
+                                 (PTFunction vk _ _) -> Just vk
+                                 _ -> Nothing
       | otherwise = Just k
+
     get_key_type _ _ = Nothing
 
     index_type :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Type)
@@ -84,11 +87,11 @@ indexes name ans content_ts = do
         _ -> throwE $ CPPGenE "Invalid content type error argument"
 
     get_fields :: K3 Type -> Maybe [(Identifier, K3 Type)]
-    get_fields (tag &&& children -> (TRecord ids, ts) ) = Just $ zip ids ts
+    get_fields (PTRecord ids ts _) = Just $ zip ids ts
     get_fields _ = Nothing
 
     get_extractor_root_types :: Identifier -> K3 Type -> R.Type -> CPPGenM (K3 Type, [(Identifier, R.Type)])
-    get_extractor_root_types n t@(tnc -> (TRecord ids, ch)) ct
+    get_extractor_root_types n t@(PTRecord ids ch _) ct
       | "VMap" `isInfixOf` n
         = return $ ( (TC.record $ filter ((== "key") . fst) $ zip ids ch) @<- annotations t
                    , [("key", R.Named $ R.Specialized [ct, R.Primitive $ R.PInt] $ R.Name "K3::VKeyExtractor")] )
@@ -226,7 +229,8 @@ indexes name ans content_ts = do
     lookup_fn _ = return Nothing
 
     slice_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
-    slice_fn ((i,n), Lifted _ fname t _ _) = do
+    slice_fn (_, Lifted _ fname _ _ _) | "fold_slice_by" `isInfixOf` fname = return Nothing
+    slice_fn ((i,n), Lifted _ fname t _ _) | "slice_by" `isInfixOf` fname = do
       let key_t = get_key_type n t
       let this = R.Dereference $ R.Variable $ R.Name "this"
       let container = R.Call (R.Project this $ R.Name "getConstContainer") []
@@ -247,12 +251,13 @@ indexes name ans content_ts = do
 
       cType <- maybe (return Nothing) (\x -> genCType x >>= return . Just)  key_t
       let result = key_t >>= \k_t -> cType >>= \c_t -> Just $ defn k_t c_t
-      return $ if "slice_by" `isInfixOf` fname then result else Nothing
+      return result
 
     slice_fn _ = return Nothing
 
     range_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
-    range_fn ((i,n), Lifted _ fname t _ _) = do
+    range_fn (_, Lifted _ fname _ _ _) | "fold_range_by" `isInfixOf` fname = return Nothing
+    range_fn ((i,n), Lifted _ fname t _ _) | "range_by" `isInfixOf` fname = do
       let key_t = get_key_type n t
       let this = R.Dereference $ R.Variable $ R.Name "this"
       let container = R.Call (R.Project this $ R.Name "getConstContainer") []
@@ -273,6 +278,74 @@ indexes name ans content_ts = do
 
       cType <- maybe (return Nothing) (\x -> genCType x >>= return . Just)  key_t
       let result = key_t >>= \k_t -> cType >>= \c_t -> Just $ defn k_t c_t
-      return $ if "range_by" `isInfixOf` fname then result else Nothing
+      return result
 
     range_fn _ = return Nothing
+
+
+    fold_slice_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
+    fold_slice_fn ((i,n), Lifted _ fname t _ _) | "fold_slice_by" `isInfixOf` fname = do
+      let key_t = get_key_type n t
+      let f_t   = R.Named $ R.Name "Fun"
+      let acc_t = R.Named $ R.Name "Acc"
+      let this = R.Dereference $ R.Variable $ R.Name "this"
+      let container = R.Call (R.Project this $ R.Name "getConstContainer") []
+
+      let index = R.Call
+                    ((R.Variable $ R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")))
+                    [container]
+
+      let slice k_t = R.Call (R.Project this $ R.Name "fold_slice_with_index")
+                        $ call_args n index [ tuple (R.Name "key") k_t
+                                            , R.Variable $ R.Name "f", R.Variable $ R.Name "acc" ]
+
+      let defn k_t c_t = R.TemplateDefn [("Fun", Nothing), ("Acc", Nothing)] $
+                         R.FunctionDefn (R.Name fname)
+                           (defn_args n [("key", c_t), ("f", f_t), ("acc", acc_t)])
+                           (Just $ acc_t)
+                           []
+                           False
+                           [R.Return $ slice k_t]
+
+      cType <- maybe (return Nothing) (\x -> genCType x >>= return . Just)  key_t
+      let result = key_t >>= \k_t -> cType >>= \c_t -> Just $ defn k_t c_t
+      return result
+
+    fold_slice_fn _ = return Nothing
+
+
+    fold_range_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
+    fold_range_fn ((i,n), Lifted _ fname t _ _) | "fold_range_by" `isInfixOf` fname = do
+      let key_t = get_key_type n t
+      let f_t   = R.Named $ R.Name "Fun"
+      let acc_t = R.Named $ R.Name "Acc"
+      let this = R.Dereference $ R.Variable $ R.Name "this"
+      let container = R.Call (R.Project this $ R.Name "getConstContainer") []
+
+      let index = R.Call
+                    ((R.Variable $ R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")))
+                    [container]
+
+      let range k_t = R.Call (R.Project this $ R.Name "fold_range_with_index")
+                        $ call_args n index [ tuple (R.Name "a") k_t, tuple (R.Name "b") k_t
+                                            , R.Variable $ R.Name "f", R.Variable $ R.Name "acc" ]
+
+      let defn k_t c_t = R.TemplateDefn [("Fun", Nothing), ("Acc", Nothing)] $
+                         R.FunctionDefn (R.Name fname)
+                           (defn_args n [("a", c_t), ("b", c_t), ("f", f_t), ("acc", acc_t)])
+                           (Just $ acc_t)
+                           []
+                           False
+                           [R.Return $ range k_t]
+
+      cType <- maybe (return Nothing) (\x -> genCType x >>= return . Just)  key_t
+      let result = key_t >>= \k_t -> cType >>= \c_t -> Just $ defn k_t c_t
+      return result
+
+    fold_range_fn _ = return Nothing
+
+
+{- Pattern synonyms for index functions. -}
+
+pattern PTRecord ids ch anns = Node (TRecord ids :@: anns) ch
+pattern PTFunction arg rt anns = Node (TFunction :@: anns) [arg, rt]

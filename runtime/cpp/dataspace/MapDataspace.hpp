@@ -1549,7 +1549,7 @@ class VMap {
       auto vlteq = it->second.lower_bound(v);
       auto vless = it->second.upper_bound(v);
       auto vend  = it->second.end();
-      if ( vless != it->second.end() ) {
+      if ( vless != vend ) {
         it->second.erase((vlteq == vless)? ++vless : vless, vend);
         if ( it->second.empty() ) {
           container.erase(it);
@@ -1710,6 +1710,10 @@ class VMap {
     return result;
   }
 
+
+  //////////////////////////
+  // Multi-version methods.
+
   template<typename Fun, typename Acc>
   Acc fold_all(Fun f, Acc acc) const {
     for (const auto& p : container) {
@@ -1720,6 +1724,26 @@ class VMap {
     return acc;
   }
 
+  // Non-inclusive erase less than version.
+  unit_t erase_prefix_all(const Version& v) {
+    auto end = container.end();
+    for (auto it = container.begin(); it != end;) {
+      auto vlteq = it->second.lower_bound(v);
+      auto vless = it->second.upper_bound(v);
+      auto vend  = it->second.end();
+      if ( vless != vend ) {
+        it->second.erase((vlteq == vless)? ++vless : vless, vend);
+        if ( it->second.empty() ) {
+          it = container.erase(it);
+        } else {
+          ++it;
+        }
+      } else {
+        ++it;
+      }
+    }
+    return unit_t();
+  }
 
   //////////////////
   // Comparators.
