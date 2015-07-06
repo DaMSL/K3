@@ -40,21 +40,29 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Common hiding (getUID)
 
+import Control.Monad
+
 type Table = I.IntMap (M.Map Identifier Decision)
 
-type MaterializationS = (Table, PIEnv, FIEnv, [K3 Expression])
+data MaterializationS = MaterializationS { decisionTable :: Table
+                                         , pienv :: PIEnv
+                                         , fienv :: FIEnv
+                                         , downstreams :: [K3 Expression]
+                                         , currentGlobal :: Bool
+                                         }
+
 type MaterializationM = StateT MaterializationS Identity
 
 -- State Accessors
 
 dLookup :: Int -> Identifier -> MaterializationM Decision
-dLookup u i = get >>= \(t, _, _, _) -> return $ fromMaybe defaultDecision (I.lookup u t >>= M.lookup i)
+dLookup u i = decisionTable <$> get >>= \t -> return $ fromMaybe defaultDecision (I.lookup u t >>= M.lookup i)
 
 dLookupAll :: Int -> MaterializationM (M.Map Identifier Decision)
-dLookupAll u = get >>= \(t, _, _, _) -> return (I.findWithDefault M.empty u t)
+dLookupAll u = decisionTable <$> get >>= \t -> return (I.findWithDefault M.empty u t)
 
 pLookup :: PPtr -> MaterializationM (K3 Provenance)
-pLookup p = get >>= \(_, e, _, _) -> return (fromMaybe (error "Dangling provenance pointer") (I.lookup p (ppenv e)))
+pLookup p = pienv <$> get >>= \e -> return (fromMaybe (error "Dangling provenance pointer") (I.lookup p (ppenv e)))
 
 pLookupDeep :: PPtr -> MaterializationM (K3 Provenance)
 pLookupDeep p = pLookup p >>= \case
@@ -64,11 +72,11 @@ pLookupDeep p = pLookup p >>= \case
 -- A /very/ rough approximation of ReaderT's ~local~ for StateT.
 withLocalDS :: [K3 Expression] -> MaterializationM a -> MaterializationM a
 withLocalDS nds m = do
-  (t, e, f, ds) <- get
-  put (t, e, f, (nds ++ ds))
+  s <- get
+  put (s { downstreams = nds ++ (downstreams s)})
   r <- m
-  (t', e', f', _) <- get
-  put (t', e', f', ds)
+  s' <- get
+  put (s' { downstreams = downstreams s})
   return r
 
 getUID :: K3 Expression -> Int
@@ -90,13 +98,16 @@ getFStructure e = let EFStructure f = fromMaybe (error "No effects on expression
 
 
 setDecision :: Int -> Identifier -> Decision -> MaterializationM ()
-setDecision u i d = modify $ \(t, e, f, ds) -> (I.insertWith M.union u (M.singleton i d) t, e, f, ds)
+setDecision u i d = modify $ \s -> s { decisionTable = I.insertWith M.union u (M.singleton i d) (decisionTable s)}
 
 getClosureSymbols :: Int -> MaterializationM [Identifier]
-getClosureSymbols i = get >>= \(_, pvpenv -> e, _, _) -> return $ concat $ maybeToList (I.lookup i $ lcenv e)
+getClosureSymbols i = (pvpenv . pienv) <$> get >>= \e -> return $ concat $ maybeToList (I.lookup i $ lcenv e)
 
 pmvloc' :: PMatVar -> Int
 pmvloc' pmv = let UID u = pmvloc pmv in u
+
+setCurrentGlobal :: Bool -> MaterializationM ()
+setCurrentGlobal b = modify $ \s -> s { currentGlobal = b }
 
 -- Table Construction/Attachment
 
@@ -104,7 +115,7 @@ runMaterializationM :: MaterializationM a -> MaterializationS -> (a, Materializa
 runMaterializationM m s = runIdentity $ runStateT m s
 
 optimizeMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> K3 Declaration
-optimizeMaterialization (p, f) d = fst $ runMaterializationM (materializationD d) (I.empty, p, f, [])
+optimizeMaterialization (p, f) d = fst $ runMaterializationM (materializationD d) (MaterializationS I.empty p f [] True)
 
 materializationD :: K3 Declaration -> MaterializationM (K3 Declaration)
 materializationD (Node (d :@: as) cs)
@@ -449,7 +460,7 @@ isMoveableIn x c = do
 
 isMoveableNow :: K3 Expression -> MaterializationM Bool
 isMoveableNow x = do
-  (_, _, _, downstreams) <- get
+  ds <- downstreams <$> get
   isMoveable1 <- isMoveable x
-  allMoveable <- allM (isMoveableIn x) downstreams
+  allMoveable <- allM (isMoveableIn x) ds
   return $ isMoveable1 && allMoveable
