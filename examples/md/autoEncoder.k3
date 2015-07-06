@@ -7,39 +7,38 @@ declare totalError : mut real
 declare topology : collection {elem : int} @Vector
 
 declare inputValues : mut collection {elem : real } @Vector
-declare targetValue: mut collection {elem : real } @Vector
+declare targetValue : mut collection {elem : real } @Vector
 declare outputValue : collection {elem : real } @Vector // l layers * n neurons_per_layer
-declare zValue : collection {elem : real } @Vector // l layers * n neurons_per_layer
-declare deltaValue : collection {elem : real } @Vector // l layers * n neurons_per_layer
-declare gradient :  collection {elem : real } @Vector // l layers * n neurons_per_layer
+declare zValue      : collection {elem : real } @Vector // l layers * n neurons_per_layer
+declare deltaValue  : collection {elem : real } @Vector // l layers * n neurons_per_layer
+declare gradient    : collection {elem : real } @Vector // l layers * n neurons_per_layer
 
-declare eta : mut real = 0.50
-declare alpha : mut real = 0.30
-declare lambda : mut real = 0.20
+// declare eta         : mut real = 0.50
+declare alpha       : mut real = 0.30
+declare lambda      : mut real = 0.20
 
-declare weight : collection {elem : real } @Vector // l layers * n neurons_per_layer * n neurons_per_next_layer
+declare weight      : collection {elem : real } @Vector // l layers * n neurons_per_layer * n neurons_per_next_layer
 declare deltaWeight : collection {elem : real } @Vector // l layers * n neurons_per_layer * n neurons_per_next_layer
 
 declare weightUpdateBroadcast : mut collection {elem : real } @Vector // l layers * n neurons_per_layer * n neurons_per_next_layer
-declare weightsLastUpdated : mut collection {elem : real } @Vector // l layers * n neurons_per_layer * n neurons_per_next_layer
+declare weightsLastUpdated    : mut collection {elem : real } @Vector // l layers * n neurons_per_layer * n neurons_per_next_layer
 
-declare row_number : mut int = -1
-declare epochSize : int = 8
+declare row_number           : mut int = -1
+declare epochSize            : int = 8
 declare peerMessagesReceived : mut int 
 
-declare s: mut int 
+declare s : mut int 
 
 declare allData : collection {elem : {i: real , j : real , k : real} } @Vector
 
 declare accessPrev : int -> int = \layerNum -> (
 	if (layerNum <0)
-	then 0
+		then 0
 	else (
 		if (layerNum == 0 )
-		then ((topology.at layerNum).elem )
+			then ((topology.at layerNum).elem )
 		else ((topology.at layerNum).elem + accessPrev (layerNum-1))
 	)
-
 )
 
 declare access1LayerNeuron : int -> int -> int = \layerNum -> \neuronNum -> (
@@ -48,17 +47,17 @@ declare access1LayerNeuron : int -> int -> int = \layerNum -> \neuronNum -> (
 
 declare accessPrev2 : int -> int = \layerNum -> (
 	if (layerNum < 0)
-	then 0
+		then 0
 	else (
 		if (layerNum == 0 )
-		then (((topology.at(layerNum)).elem) * ((topology.at(layerNum+1)).elem) )
+			then (((topology.at(layerNum)).elem) * ((topology.at(layerNum+1)).elem) )
 		else (((topology.at(layerNum)).elem) * ((topology.at(layerNum+1)).elem) + accessPrev2 (layerNum-1))
 	)
 )
 
 declare access2 : {e1: int , e2: int , e3: int} -> int = \x -> 
 	bind x as {e1: layerNum , e2: neuronNum , e3 :outputNeuronNum } in  (
-	let t = (accessPrev2 (layerNum-1)) in 
+	let t = (accessPrev2 (layerNum-1)) in
   t +(topology.at(layerNum + 1)).elem * neuronNum + outputNeuronNum
 )
 
