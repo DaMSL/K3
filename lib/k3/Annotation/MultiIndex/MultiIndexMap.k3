@@ -15,6 +15,7 @@ annotation MultiIndexMap given type a, b
   provides lifted peek : () -> option content
     with effects \_ -> R[self]
 
+  @:CArgs 2
   provides lifted peek_with : (() -> a) -> (content -> a) -> a
     with effects \f -> \g -> [R[self]; f content; g content]
 
