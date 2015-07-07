@@ -7,7 +7,8 @@ typedef EmployeeV =
 	    VMapIndexE(key=[:> id=>int], extractors=[$#> id=>"key.id"]),
       OrderedVMapIndexE(key=[:> name=>string], extractors=[$#> name=>"key.name"])}
 
-declare employeesV : mut EmployeeV
+declare employeesV  : mut EmployeeV
+declare employeesV2 : mut EmployeeV
 declare flatEmployees : mut collection {id:int, name:string, age:int} @Collection
 
 declare result1 : mut option {key: {id: int, name: string}, value: {age: int}}
@@ -22,6 +23,7 @@ trigger t1 : () = \_ -> (
     result1       = employeesV.lookup_by_id       2 {id: 2};
     result2       = employeesV.lookup_by_name     2 {name: "John"};
     employeesV    = employeesV.range_by_name      2 {name: "a"} {name: "d"};
+    employeesV2   = employeesV.range_by_name      2 {name: "a"} {name: "bz"};
 
     flatEmployees = employeesV.fold_range_by_name 2 {name: "a"} {name: "c"}
                       (\acc -> (\r -> ((acc.insert {id: r.key.id, name: r.key.name, age:r.value.age}); acc)))
