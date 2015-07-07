@@ -114,6 +114,7 @@ defaultMetaRepair p = return $ snd $ repairProgram "metaprogram" Nothing p
 nullMetaAnalysis :: K3 Declaration -> GeneratorM (K3 Declaration)
 nullMetaAnalysis p = return p
 
+-- | Adds parametric annotations as generator functions in the generator state.
 runMpGenerators :: K3 Declaration -> GeneratorM (K3 Declaration)
 runMpGenerators mp = mapTree evalMPDecl mp
   where
@@ -208,14 +209,15 @@ applyDAnnotation aCtor annId sEnv = do
           $ lookupDSPGenE annId gEnv
 
   where
-    expectSpliceAnnotation sctxt (SRDecl p) = do
-      decl <- p
-      case tag decl of
-        DDataAnnotation n _ _ -> do
-          ndecl <- bindDAnnVars sctxt decl
-          modifyGDeclsF_ (Right . addDGenDecl annId ndecl) >> return (aCtor n)
+    expectSpliceAnnotation sctxt (SRGenDecl p) = do
+      declE <- p
+      flip (either (\n -> return $ aCtor n)) declE $ \decl ->
+        case tag decl of
+          DDataAnnotation n _ _ -> do
+            ndecl <- bindDAnnVars sctxt decl
+            modifyGDeclsF_ (Right . addDGenDecl annId ndecl) >> return (aCtor n)
 
-        _ -> throwG $ boxToString $ ["Invalid data annotation splice"] %+ prettyLines decl
+          _ -> throwG $ boxToString $ ["Invalid data annotation splice"] %+ prettyLines decl
 
     expectSpliceAnnotation _ _ = throwG "Invalid data annotation splice"
 
@@ -316,10 +318,15 @@ globalSplicer n t eOpt = Splicer $ \spliceEnv -> SRDecl $ do
   return $ DC.global n nt neOpt
 
 annotationSplicer :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> [Either MPAnnMemDecl AnnMemDecl] -> K3Generator
-annotationSplicer n spliceParams typeParams mems = Splicer $ \spliceEnv -> SRDecl $ do
+annotationSplicer n spliceParams typeParams mems = Splicer $ \spliceEnv -> SRGenDecl $ do
   let vspliceEnv = validateSplice spliceParams spliceEnv
   nmems <- generateInSpliceEnv vspliceEnv $ mapM (either spliceMPAnnMem (\m -> spliceAnnMem m >>= return . (:[]))) mems
-  withGUID $ \i -> DC.dataAnnotation (concat [n, "_", show i]) typeParams $ concat nmems
+  trace (debugAS n vspliceEnv) $ withGUID n vspliceEnv $
+      \case
+        Left  i -> Left $ concat [n, "_", show i]
+        Right i -> Right $ DC.dataAnnotation (concat [n, "_", show i]) typeParams $ concat nmems
+
+  where debugAS n vspliceEnv = boxToString $ [unwords ["MPGenKey", n, ":"]] ++ prettyLines vspliceEnv
 
 exprSplicer :: K3 Expression -> K3Generator
 exprSplicer e = Splicer $ \spliceEnv -> SRExpr $ generateInSpliceEnv spliceEnv $ spliceExpression e

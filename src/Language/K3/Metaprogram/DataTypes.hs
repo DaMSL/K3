@@ -6,10 +6,10 @@ module Language.K3.Metaprogram.DataTypes where
 import Control.Monad.State
 import Control.Monad.Trans.Either
 
-import qualified Data.Map as Map
 import Data.Map ( Map )
-import qualified Data.Set as Set
 import Data.Set ( Set )
+import qualified Data.Map as Map
+import qualified Data.Set as Set
 
 import Language.Haskell.Interpreter ( Interpreter )
 import qualified Language.Haskell.Interpreter as HI
@@ -22,13 +22,14 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Type
 import Language.K3.Core.Literal
 import Language.K3.Core.Metaprogram
+import Language.K3.Core.Utils
 
 import Language.K3.Parser.DataTypes
 
 import Language.K3.Utils.Logger
 
 {-| Metaprogram environment -}
-data K3Generator = Splicer  (SpliceEnv -> SpliceResult GeneratorM)
+data K3Generator = Splicer      (SpliceEnv -> SpliceResult GeneratorM)
                  | TypeRewriter (K3 Type -> SpliceEnv -> SpliceResult GeneratorM)
                  | ExprRewriter (K3 Expression -> SpliceEnv -> SpliceResult GeneratorM)
                  | DeclRewriter (K3 Declaration -> SpliceEnv -> SpliceResult GeneratorM)
@@ -46,7 +47,12 @@ data MPEvalOptions = MPEvalOptions { mpInterpArgs   :: [String]
                                    , mpImportPaths  :: [String]
                                    , mpQImportPaths :: [(String, Maybe String)] }
 
-data GeneratorState = GeneratorState { generatorUid    :: Int
+-- | Annotation generation is performed per name-parameter combination.
+type MPGeneratorKey = (Identifier, SpliceEnv)
+type MPGensymS = Map MPGeneratorKey Int
+
+-- | Metaprogramming state.
+data GeneratorState = GeneratorState { mpGensymS       :: MPGensymS
                                      , generatorEnv    :: GeneratorEnv
                                      , spliceCtxt      :: SpliceContext
                                      , generatorDecls  :: GeneratorDecls
@@ -85,6 +91,14 @@ liftHI = lift . lift
 throwG :: String -> GeneratorM a
 throwG msg = Control.Monad.Trans.Either.left msg
 
+{- Annotation symbol generation -}
+mpgensym :: Identifier -> SpliceEnv -> MPGensymS -> (Either Int Int, MPGensymS)
+mpgensym n env symS = maybe newsymS (\i -> (Left i, symS)) $ Map.lookup k symS
+  where k = (n, Map.map stripSCompare env)
+        newsym  = 1 + Map.foldl max 0 symS
+        newsymS = (Right newsym, Map.insert k newsym symS)
+
+
 {- Generator state constructors and accessors -}
 emptyGeneratorEnv :: GeneratorEnv
 emptyGeneratorEnv = GeneratorEnv Map.empty Map.empty
@@ -97,14 +111,14 @@ emptyGeneratorDecls = GeneratorDecls Map.empty Map.empty
 
 emptyGeneratorState :: GeneratorState
 emptyGeneratorState =
-  GeneratorState 0 emptyGeneratorEnv emptySpliceContext emptyGeneratorDecls defaultMPEvalOptions
+  GeneratorState Map.empty emptyGeneratorEnv emptySpliceContext emptyGeneratorDecls defaultMPEvalOptions
 
 mkGeneratorState :: MPEvalOptions -> GeneratorState
 mkGeneratorState evalOpts =
-  GeneratorState 0 emptyGeneratorEnv emptySpliceContext emptyGeneratorDecls evalOpts
+  GeneratorState Map.empty emptyGeneratorEnv emptySpliceContext emptyGeneratorDecls evalOpts
 
-getGeneratorUID :: GeneratorState -> Int
-getGeneratorUID  = generatorUid
+getMPGensymS :: GeneratorState -> MPGensymS
+getMPGensymS  = mpGensymS
 
 getGeneratorEnv :: GeneratorState -> GeneratorEnv
 getGeneratorEnv = generatorEnv
@@ -130,8 +144,10 @@ modifyGeneratedDecls f gs = either Left (\(ngd,r) -> Right (gs {generatorDecls =
 modifyGeneratorState :: (GeneratorState -> Either String (GeneratorState, a)) -> GeneratorM a
 modifyGeneratorState f = get >>= \st -> either throwG (\(nst,r) -> put nst >> return r) $ f st
 
-generatorWithGUID :: (Int -> GeneratorM a) -> GeneratorM a
-generatorWithGUID f = get >>= \gs -> put (gs {generatorUid = (getGeneratorUID gs + 1)}) >> (f $ getGeneratorUID gs)
+generatorWithMPGensymS :: Identifier -> SpliceEnv -> (Either Int Int -> GeneratorM a) -> GeneratorM a
+generatorWithMPGensymS n env f = get >>= \gs -> do
+  let (iE, nsymS) = mpgensym n env $ getMPGensymS gs
+  put (gs {mpGensymS = nsymS}) >> f iE
 
 generatorWithGEnv :: (GeneratorEnv -> GeneratorM a) -> GeneratorM a
 generatorWithGEnv f = get >>= f . getGeneratorEnv
@@ -145,8 +161,8 @@ generatorWithSCtxt f = get >>= f . getSpliceContext
 generatorWithEvalOptions :: (MPEvalOptions -> GeneratorM a) -> GeneratorM a
 generatorWithEvalOptions f = get >>= f . getMPEvalOptions
 
-withGUID :: (Int -> a) -> GeneratorM a
-withGUID f = generatorWithGUID $ return . f
+withGUID :: Identifier -> SpliceEnv -> (Either Int Int -> a) -> GeneratorM a
+withGUID n env f = generatorWithMPGensymS n env $ return . f
 
 withGEnv :: (GeneratorEnv -> a) -> GeneratorM a
 withGEnv f = generatorWithGEnv $ return . f
