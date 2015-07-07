@@ -21,6 +21,7 @@ import Language.K3.Core.Type
 import qualified Language.K3.Core.Constructor.Declaration as D
 import qualified Language.K3.Core.Constructor.Type as T
 
+import Language.K3.Codegen.CPP.Preprocessing
 import Language.K3.Codegen.CPP.Expression
 import Language.K3.Codegen.CPP.Primitives
 import Language.K3.Codegen.CPP.Types
@@ -46,7 +47,8 @@ send_unit tid =
 initEndpoint :: String -> Bool -> EndpointSpec -> CPPGenM [R.Definition]
 initEndpoint _ _ ValueEP = return []
 initEndpoint _ _ (BuiltinEP _ _) = return []
-initEndpoint name isSource (FileEP path isText format) = do
+initEndpoint name' isSource (FileEP path isText format) = do
+  let name = unmangleReservedId name'
   let args = [ R.Variable $ R.Name "me"
              , R.Literal $ R.LString name
              , R.Variable $ R.Name $ path -- Not a literal string, because path already contains quotes
@@ -60,22 +62,25 @@ initEndpoint name isSource (FileEP path isText format) = do
 initEndpoint _ _ (NetworkEP _ _ _) = return []
 
 startSource :: String -> CPPGenM [R.Definition]
-startSource name = do
+startSource name' = do
+  let name = unmangleReservedId name'
   let controllerTid = "__" ++ name ++ "Controller_tid"
   let send = R.Ignore $ send_unit controllerTid
   let ret = R.Return $ R.Initialization (unit_t) []
   return $ [R.FunctionDefn (R.Name $ name ++ "Start") [("_", unit_t)] (Just $ unit_t) [] False [send, ret]]
 
 hasRead :: String -> CPPGenM [R.Definition]
-hasRead source  = do
+hasRead source'  = do
+    let source = unmangleReservedId source'
     let s_has_r = R.Project (R.Variable $ R.Name "__storage_") (R.Name "hasRead")
     let ret = R.Return $ R.Call s_has_r [R.Variable $ R.Name "me", R.Literal $ R.LString source]
     return $ [R.FunctionDefn (R.Name $ source ++ "HasRead") [("_", unit_t)]
       (Just $ R.Primitive R.PBool) [] False [storage, ret]]
 
 doRead :: String -> K3 Type -> CPPGenM [R.Definition]
-doRead source typ = do
+doRead source' typ = do
     ret_type    <- genCType $ typ
+    let source = unmangleReservedId source'
     let packed_dec = R.Forward $ R.ScalarDecl (R.Name "packed") R.Inferred $ Just $
                        (R.Call (R.Project (R.Variable $ R.Name "__storage_") (R.Name "doRead"))
                                [R.Variable $ R.Name "me", R.Literal $ R.LString source])
@@ -92,14 +97,16 @@ doRead source typ = do
       (Just ret_type) [] False ([storage, packed_dec, codec, return_stmt])]
 
 hasWrite :: String -> CPPGenM [R.Definition]
-hasWrite sink  = do
+hasWrite sink'  = do
+    let sink = unmangleReservedId sink'
     let s_has_r = R.Project (R.Variable $ R.Name "__storage_") (R.Name "hasWrite")
     let ret = R.Return $ R.Call s_has_r [R.Variable $ R.Name "me", R.Literal $ R.LString sink]
     return $ [R.FunctionDefn (R.Name $ sink ++ "HasWrite") [("_", unit_t)]
       (Just $ R.Primitive R.PBool) [] False [storage, ret]]
 
 doWrite :: R.Expression -> String -> K3 Type -> CPPGenM [R.Definition]
-doWrite fmt sink typ = do
+doWrite fmt sink' typ = do
+    let sink = unmangleReservedId sink'
     elem_type <- genCType $ typ
     let codec = R.Forward $ R.ScalarDecl (R.Name "__codec_") R.Inferred $ Just $
                   R.Call (R.Variable $ R.Specialized [elem_type] (R.Qualified (R.Name "Codec") (R.Name "getCodec")))
@@ -123,7 +130,8 @@ epDetails as =
 endpoint :: String -> K3 Type -> Bool -> EndpointSpec -> CPPGenM [R.Definition]
 endpoint _ _ _ ValueEP = return []
 endpoint _ _ _ (BuiltinEP _ _) = error "Builtin sources/sinks (stdin, stdout, stderr) not yet supported"
-endpoint n t isSrc spec@(FileEP _ _ _) = do
+endpoint n' t isSrc spec@(FileEP _ _ _) = do
+  let n = unmangleReservedId n'
   -- Common
   init <- initEndpoint n isSrc spec
   -- Sources
