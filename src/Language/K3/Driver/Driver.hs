@@ -146,14 +146,15 @@ k3in opts = if splicedInput ioOpts
 -- | Save out K3's internal representation.
 k3out :: IOOptions -> ParseOptions -> K3 Declaration -> DriverM ()
 k3out ioOpts pOpts prog = liftIO $ do
-  when (saveAST    ioOpts) (outputAST pOpts pretty "k3ast" prog)
-  when (saveRawAST ioOpts) (outputAST pOpts show   "k3ar"  prog)
+  when (saveAST    ioOpts) (outputAST pOpts pretty "k3ast" (parsePrintMode pOpts) prog)
+  when (saveRawAST ioOpts) (outputAST pOpts show   "k3ar"  (parsePrintMode pOpts) prog)
+  when (saveSyntax ioOpts) (outputAST pOpts show   "k3s"   PrintSyntax            prog)
 
-  where outputAST popts toStr ext p = do
+  where outputAST popts toStr ext printMode p = do
           cwd <- getCurrentDirectory
           let output = case inputProgram ioOpts of {"-" -> "a"; x -> x }
           either putStrLn (\s -> outputStrFile s $ outputFilePath cwd output ext)
-            $ formatAST toStr (parsePrintMode popts) p
+            $ formatAST toStr printMode p
 
 
 -- | Evaluate any metaprograms present in a program.

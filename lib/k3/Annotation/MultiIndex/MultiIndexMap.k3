@@ -109,20 +109,32 @@ annotation MultiIndexMap given type a, b
 // Index annotations for composing with MultiIndexMaps.
 
 // A hash index implementation.
-annotation MapIndex[key : [labeltype]]
+annotation MapIndex[key : [labeltype]] given type a
 {
   provides lifted lookup_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> option content
     with effects \key -> [R[self]; R[key]]
+
+  @:CArgs 3
+  provides lifted lookup_with_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \key -> \f -> \g -> [R[self]; R[key]; f content; g content]
 
   provides lifted slice_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> self
     with effects \key -> [R[self]; R[key]]
+
+  @:CArgs 3
+  provides lifted fold_slice_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> (a -> (content -> a)) -> a -> a
+    with effects \key -> \foldF -> \z -> [R[self]; R[key]; R[z]; ([R[content]; ((foldF z) content)])*]
 }
 
 // A tree-based index implementation, additionally providing a two-sided range query operation.
-annotation OrderedMapIndex[key : [labeltype]]
+annotation OrderedMapIndex[key : [labeltype]] given type a
 {
   provides lifted lookup_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> option content
     with effects \key -> [R[self]; R[key]]
+
+  @:CArgs 3
+  provides lifted lookup_with_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \key -> \f -> \g -> [R[self]; R[key]; f content; g content]
 
   provides lifted slice_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> self
     with effects \key -> [R[self]; R[key]]
@@ -130,26 +142,46 @@ annotation OrderedMapIndex[key : [labeltype]]
   @:CArgs 2
   provides lifted range_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> $[|mkRecord 'key|] -> self
     with effects \lower_key -> \upper_key -> [R[self]; R[lower_key]; R[upper_key]]
+
+  @:CArgs 3
+  provides lifted fold_slice_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> (a -> (content -> a)) -> a -> a
+    with effects \key -> \foldF -> \z -> [R[self]; R[key]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+  @:CArgs 4
+  provides lifted fold_range_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> $[|mkRecord 'key|] -> (a -> (content -> a)) -> a -> a
+    with effects \lower_key -> \upper_key -> \foldF -> \z -> [R[self]; R[lower_key]; R[upper_key]; R[z]; ([R[content]; ((foldF z) content)])*]
 }
 
 // A hash index implementation with customizable extractors.
-annotation MapIndexE[key : [labeltype], extractors: [labellit]]
+annotation MapIndexE[key : [labeltype], extractors: [labellit]] given type a
 {
   @:IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"
   provides lifted lookup_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> option content
     with effects \key -> [R[self]; R[key]]
+
+  @:{CArgs 3, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted lookup_with_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \key -> \f -> \g -> [R[self]; R[key]; f content; g content]
 
   @:IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"
   provides lifted slice_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> self
     with effects \key -> [R[self]; R[key]]
+
+  @:{CArgs 3, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted fold_slice_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> (a -> (content -> a)) -> a -> a
+    with effects \key -> \foldF -> \z -> [R[self]; R[key]; R[z]; ([R[content]; ((foldF z) content)])*]
 }
 
 // A tree-based index implementation, additionally providing a two-sided range query operation.
-annotation OrderedMapIndexE[key : [labeltype], extractors: [labellit]]
+annotation OrderedMapIndexE[key : [labeltype], extractors: [labellit]] given type a
 {
   @:IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"
   provides lifted lookup_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> option content
     with effects \key -> [R[self]; R[key]]
+
+  @:{CArgs 3, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted lookup_with_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \key -> \f -> \g -> [R[self]; R[key]; f content; g content]
 
   @:IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"
   provides lifted slice_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> self
@@ -158,4 +190,12 @@ annotation OrderedMapIndexE[key : [labeltype], extractors: [labellit]]
   @:{CArgs 2, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
   provides lifted range_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> $[|mkRecord 'key|] -> self
     with effects \lower_key -> \upper_key -> [R[self]; R[lower_key]; R[upper_key]]
+
+  @:{CArgs 3, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted fold_slice_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> (a -> (content -> a)) -> a -> a
+    with effects \key -> \foldF -> \z -> [R[self]; R[key]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+  @:{CArgs 4, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted fold_range_by_$[|concatLabels $ listLabels 'key|] : $[|mkRecord 'key|] -> $[|mkRecord 'key|] -> (a -> (content -> a)) -> a -> a
+    with effects \lower_key -> \upper_key -> \foldF -> \z -> [R[self]; R[lower_key]; R[upper_key]; R[z]; ([R[content]; ((foldF z) content)])*]
 }

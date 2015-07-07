@@ -59,7 +59,7 @@ cppCodegenStage opts copts (cont, prog) = genCPP irRes
     saveASTOutputs p = do
       when (saveAST    $ input opts) (outputAST P.pretty "k3ast" (astPrintMode copts) p)
       when (saveRawAST $ input opts) (outputAST show     "k3ar"  (astPrintMode copts) p)
-      when (saveSyntax $ input opts) (outputAST show     "k3ar"  PrintSyntax          p)
+      when (saveSyntax $ input opts) (outputAST show     "k3s"   PrintSyntax          p)
 
     outputCPP (Right doc) =
       either putStrLn (outputDoc doc) $ buildOutputFilePath "cpp" opts copts

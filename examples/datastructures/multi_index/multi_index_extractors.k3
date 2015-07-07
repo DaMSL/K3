@@ -18,8 +18,9 @@ typedef EmployeeM =
 declare employeesC : mut EmployeeC
 declare employeesM : mut EmployeeM
 
-declare result1 : mut option {key: int, value: {name: string, age: int}}
-declare result2 : mut option {key: int, value: {name: string, age: int}}
+declare result1  : mut option {key: int, value: {name: string, age: int}}
+declare result2  : mut option {key: int, value: {name: string, age: int}}
+declare result2w : mut        {key: int, value: {name: string, age: int}}
 
 trigger t1 : () = \_ -> (
     employeesC.insert {key: 1, value: {name: "John",    age: 30}};
@@ -29,6 +30,7 @@ trigger t1 : () = \_ -> (
 
     result1    = employeesC.lookup_by_name   {name: "John"};
     result2    = employeesC.lookup_by_agekey {age: 40, key: 2};
+    (employeesC.lookup_with_by_agekey        {age: 40, key: 2} (\_ -> ()) (\r -> result2w = r));
     employeesC = employeesC.range_by_name    {name: "a"} {name: "d"};
     employeesC = employeesC.slice_by_age     {age: 40}
 )
@@ -41,6 +43,7 @@ trigger t2 : () = \_ -> (
 
     result1    = employeesM.lookup_by_name   {name: "John"};
     result2    = employeesM.lookup_by_agekey {age: 40, key: 2};
+    (employeesM.lookup_with_by_agekey        {age: 40, key: 2} (\_ -> ()) (\r -> result2w = r));
     employeesM = employeesM.range_by_name    {name: "a"} {name: "d"};
     employeesM = employeesM.slice_by_age     {age: 40}
 )

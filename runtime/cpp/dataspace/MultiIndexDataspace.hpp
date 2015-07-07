@@ -261,7 +261,7 @@ class MultiIndexDS {
   // Index operations.
 
   template <class Index, class Key>
-  shared_ptr<Elem> lookup_with_index(const Index& index, Key key) const {
+  shared_ptr<Elem> lookup_by_index(const Index& index, Key key) const {
     const auto& it = index.find(key);
     shared_ptr<Elem> result;
     if (it != index.end()) {
@@ -270,8 +270,18 @@ class MultiIndexDS {
     return result;
   }
 
+  template <class Index, class Key, typename F, typename G>
+  auto lookup_with_by_index(const Index& index, Key key, F f, G g) const {
+    const auto& it = index.find(key);
+    if (it == index.end()) {
+      return f(unit_t {});
+    } else {
+      return g(*it);
+    }
+  }
+
   template <class Index, class Key>
-  Derived<Elem, Indexes...> slice_with_index(const Index& index, Key key) const {
+  Derived<Elem, Indexes...> slice_by_index(const Index& index, Key key) const {
     Derived<Elem, Indexes...> result;
     std::pair<typename Index::iterator, typename Index::iterator> p = index.equal_range(key);
     for (typename Index::iterator it = p.first; it != p.second; it++) {
@@ -281,7 +291,7 @@ class MultiIndexDS {
   }
 
   template <class Index, class Key>
-  Derived<Elem, Indexes...> range_with_index(const Index& index, Key a, Key b) const {
+  Derived<Elem, Indexes...> range_by_index(const Index& index, Key a, Key b) const {
     Derived<Elem, Indexes...> result;
     std::pair<typename Index::iterator, typename Index::iterator> p =
       index.range(a <= boost::lambda::_1, b >= boost::lambda::_1);
@@ -289,6 +299,27 @@ class MultiIndexDS {
       result.insert(*it);
     }
     return result;
+  }
+
+  template <class Index, class Key, typename Fun, typename Acc>
+  Acc fold_slice_by_index(const Index& index, Key key, Fun f, Acc acc) const
+  {
+    std::pair<typename Index::iterator, typename Index::iterator> p = index.equal_range(key);
+    for (typename Index::iterator it = p.first; it != p.second; it++) {
+      acc = f(std::move(acc))(*it);
+    }
+    return acc;
+  }
+
+  template <class Index, class Key, typename Fun, typename Acc>
+  Acc fold_range_by_index(const Index& index, Key a, Key b, Fun f, Acc acc) const
+  {
+    std::pair<typename Index::iterator, typename Index::iterator> p =
+      index.range(a <= boost::lambda::_1, b >= boost::lambda::_1);
+    for (typename Index::iterator it = p.first; it != p.second; it++) {
+      acc = f(std::move(acc))(*it);
+    }
+    return acc;
   }
 
 
@@ -1077,7 +1108,7 @@ class MultiIndexVMap
   // Index operations.
 
   template <class Index, class Key>
-  shared_ptr<R> lookup_with_index(const Index& index, const Version& v, Key key) const {
+  shared_ptr<R> lookup_by_index(const Index& index, const Version& v, Key key) const {
     const auto& it = index.find(key);
     shared_ptr<R> result;
     if (it != index.end()) {
@@ -1090,8 +1121,24 @@ class MultiIndexVMap
     return result;
   }
 
+  template <class Index, class Key, typename F, typename G>
+  auto lookup_with_by_index(const Index& index, const Version& v, Key key, F f, G g) const {
+    const auto& it = index.find(key);
+    if (it == index.end()) {
+      return f(unit_t {});
+    } else {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.upper_bound(v);
+      if ( vit == vmap.end() ) {
+        return f(unit_t {});
+      } else {
+        return g(vit->second);
+      }
+    }
+  }
+
   template <class Index, class Key>
-  MultiIndexVMap<R, Indexes...> slice_with_index(const Index& index, const Version& v, Key key) const
+  MultiIndexVMap<R, Indexes...> slice_by_index(const Index& index, const Version& v, Key key) const
   {
     MultiIndexVMap<R, Indexes...> result;
     std::pair<typename Index::iterator, typename Index::iterator> p = index.equal_range(key);
@@ -1106,7 +1153,7 @@ class MultiIndexVMap
   }
 
   template <class Index, class Key>
-  MultiIndexVMap<R, Indexes...> range_with_index(const Index& index, const Version& v, Key a, Key b) const
+  MultiIndexVMap<R, Indexes...> range_by_index(const Index& index, const Version& v, Key a, Key b) const
   {
     MultiIndexVMap<R, Indexes...> result;
     std::pair<typename Index::iterator, typename Index::iterator> p =
@@ -1122,7 +1169,7 @@ class MultiIndexVMap
   }
 
   template <class Index, class Key, typename Fun, typename Acc>
-  Acc fold_slice_with_index(const Index& index, const Version& v, Key key, Fun f, Acc acc) const
+  Acc fold_slice_by_index(const Index& index, const Version& v, Key key, Fun f, Acc acc) const
   {
     std::pair<typename Index::iterator, typename Index::iterator> p = index.equal_range(key);
     for (typename Index::iterator it = p.first; it != p.second; it++) {
@@ -1136,7 +1183,7 @@ class MultiIndexVMap
   }
 
   template <class Index, class Key, typename Fun, typename Acc>
-  Acc fold_range_with_index(const Index& index, const Version& v, Key a, Key b, Fun f, Acc acc) const
+  Acc fold_range_by_index(const Index& index, const Version& v, Key a, Key b, Fun f, Acc acc) const
   {
     std::pair<typename Index::iterator, typename Index::iterator> p =
       index.range(a <= boost::lambda::_1, b >= boost::lambda::_1);

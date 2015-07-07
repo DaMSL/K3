@@ -34,13 +34,16 @@ indexes ::  Identifier -> [(Identifier, [AnnMemDecl])] -> [K3 Type] -> CPPGenM (
 indexes name ans content_ts = do
   let indexed   = zip [1..] ans
   let flattened = filter is_index_mem $ concatMap (\(n, (i, mems)) -> zip (repeat (n,i)) mems) indexed
-  index_types      <- (nub . catMaybes) <$> mapM index_type flattened
-  lookup_defns     <- catMaybes <$> mapM lookup_fn flattened
-  slice_defns      <- catMaybes <$> mapM slice_fn flattened
-  range_defns      <- catMaybes <$> mapM range_fn flattened
-  fold_slice_defns <- catMaybes <$> mapM fold_slice_fn flattened
-  fold_range_defns <- catMaybes <$> mapM fold_range_fn flattened
-  return (index_types, lookup_defns ++ slice_defns ++ range_defns ++ fold_slice_defns ++ fold_range_defns)
+  index_types       <- (nub . catMaybes) <$> mapM index_type flattened
+  lookup_defns      <- catMaybes <$> mapM lookup_fn flattened
+  lookup_with_defns <- catMaybes <$> mapM lookup_with_fn flattened
+  slice_defns       <- catMaybes <$> mapM slice_fn flattened
+  range_defns       <- catMaybes <$> mapM range_fn flattened
+  fold_slice_defns  <- catMaybes <$> mapM fold_slice_fn flattened
+  fold_range_defns  <- catMaybes <$> mapM fold_range_fn flattened
+  return (index_types, lookup_defns ++ lookup_with_defns
+                        ++ slice_defns ++ range_defns
+                        ++ fold_slice_defns ++ fold_range_defns)
   where
     elem_type = R.Named $ R.Name "__CONTENT"
     elem_r =  R.Name "&__CONTENT"
@@ -212,7 +215,7 @@ indexes name ans content_ts = do
                     (R.Variable $ (R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")))
                     [container]
 
-      let look k_t = R.Call (R.Project this $ R.Name "lookup_with_index")
+      let look k_t = R.Call (R.Project this $ R.Name "lookup_by_index")
                        $ call_args n index [tuple (R.Name "key") k_t]
 
       let defn k_t c_t = R.FunctionDefn (R.Name fname)
@@ -228,6 +231,37 @@ indexes name ans content_ts = do
 
     lookup_fn _ = return Nothing
 
+    lookup_with_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
+    lookup_with_fn ((i,n), Lifted _ fname t _ _) = do
+      let key_t     = get_key_type n t
+      let f_t       = R.Named $ R.Name "F"
+      let g_t       = R.Named $ R.Name "G"
+      let this      = R.Dereference $ R.Variable $ R.Name "this"
+      let container = R.Call (R.Project this $ R.Name "getConstContainer") []
+
+      let index = R.Call
+                    (R.Variable $ (R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")))
+                    [container]
+
+      let look k_t = R.Call (R.Project this $ R.Name "lookup_with_by_index")
+                       $ call_args n index [ tuple (R.Name "key") k_t
+                                           , R.Variable $ R.Name "f"
+                                           , R.Variable $ R.Name "g" ]
+
+      let defn k_t c_t = R.TemplateDefn [("F", Nothing), ("G", Nothing)] $
+                         R.FunctionDefn (R.Name fname)
+                            (defn_args n [("key", c_t), ("f", f_t), ("g", g_t)])
+                            (Just $ R.Named $ R.Name "auto")
+                            []
+                            False
+                            [R.Return $ look k_t]
+
+      cType <- maybe (return Nothing) (\x -> genCType x >>= return . Just) key_t
+      let result = key_t >>= \k_t -> cType >>= \c_t -> Just $ defn k_t c_t
+      return $ if "lookup_with_by" `isInfixOf` fname then result else Nothing
+
+    lookup_with_fn _ = return Nothing
+
     slice_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
     slice_fn (_, Lifted _ fname _ _ _) | "fold_slice_by" `isInfixOf` fname = return Nothing
     slice_fn ((i,n), Lifted _ fname t _ _) | "slice_by" `isInfixOf` fname = do
@@ -239,7 +273,7 @@ indexes name ans content_ts = do
                     ((R.Variable $ R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")))
                     [container]
 
-      let slice k_t = R.Call (R.Project this $ R.Name "slice_with_index")
+      let slice k_t = R.Call (R.Project this $ R.Name "slice_by_index")
                         $ call_args n index [tuple (R.Name "key") k_t]
 
       let defn k_t c_t = R.FunctionDefn (R.Name fname)
@@ -266,7 +300,7 @@ indexes name ans content_ts = do
                     ((R.Variable $ R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")))
                     [container]
 
-      let range k_t = R.Call (R.Project this (R.Name "range_with_index") )
+      let range k_t = R.Call (R.Project this (R.Name "range_by_index") )
                         $ call_args n index [tuple (R.Name "a") k_t, tuple (R.Name "b") k_t]
 
       let defn k_t c_t = R.FunctionDefn (R.Name fname)
@@ -295,7 +329,7 @@ indexes name ans content_ts = do
                     ((R.Variable $ R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")))
                     [container]
 
-      let slice k_t = R.Call (R.Project this $ R.Name "fold_slice_with_index")
+      let slice k_t = R.Call (R.Project this $ R.Name "fold_slice_by_index")
                         $ call_args n index [ tuple (R.Name "key") k_t
                                             , R.Variable $ R.Name "f", R.Variable $ R.Name "acc" ]
 
@@ -326,7 +360,7 @@ indexes name ans content_ts = do
                     ((R.Variable $ R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")))
                     [container]
 
-      let range k_t = R.Call (R.Project this $ R.Name "fold_range_with_index")
+      let range k_t = R.Call (R.Project this $ R.Name "fold_range_by_index")
                         $ call_args n index [ tuple (R.Name "a") k_t, tuple (R.Name "b") k_t
                                             , R.Variable $ R.Name "f", R.Variable $ R.Name "acc" ]
 

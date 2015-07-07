@@ -11,8 +11,9 @@ declare employeesV  : mut EmployeeV
 declare employeesV2 : mut EmployeeV
 declare flatEmployees : mut collection {id:int, name:string, age:int} @Collection
 
-declare result1 : mut option {key: {id: int, name: string}, value: {age: int}}
-declare result2 : mut option {key: {id: int, name: string}, value: {age: int}}
+declare result1  : mut option {key: {id: int, name: string}, value: {age: int}}
+declare result2  : mut option {key: {id: int, name: string}, value: {age: int}}
+declare result2w : mut        {key: {id: int, name: string}, value: {age: int}}
 
 trigger t1 : () = \_ -> (
     employeesV.insert 1 {key: {id: 1, name: "John"   }, value: {age: 30}};
@@ -22,6 +23,7 @@ trigger t1 : () = \_ -> (
 
     result1       = employeesV.lookup_by_id       2 {id: 2};
     result2       = employeesV.lookup_by_name     2 {name: "John"};
+    (employeesV.lookup_with_by_agekey             2 {age: 40, key: 2} (\_ -> ()) (\r -> result2w = r));
     employeesV    = employeesV.range_by_name      2 {name: "a"} {name: "d"};
     employeesV2   = employeesV.range_by_name      2 {name: "a"} {name: "bz"};
 

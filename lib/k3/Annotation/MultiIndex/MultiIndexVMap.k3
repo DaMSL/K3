@@ -169,6 +169,10 @@ annotation VMapIndex[key : [labeltype]] given type a
   provides lifted lookup_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> option content
     with effects \version -> \key -> [R[self]; R[version]; R[key]]
 
+  @:CArgs 4
+  provides lifted lookup_with_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \version -> \key -> \f -> \g -> [R[self]; R[version]; R[key]; f content; g content]
+
   @:CArgs 2
   provides lifted slice_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> self
     with effects \version -> \key -> [R[self]; R[version]; R[key]]
@@ -176,10 +180,6 @@ annotation VMapIndex[key : [labeltype]] given type a
   @:CArgs 4
   provides lifted fold_slice_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (a -> (content -> a)) -> a -> a
     with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; ((foldF z) content)])*]
-
-  @:CArgs 5
-  provides lifted fold_range_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> $[|mkRecord 'key|] -> (a -> (content -> a)) -> a -> a
-    with effects \version -> \lower_key -> \upper_key -> \foldF -> \z -> [R[self]; R[version]; R[lower_key]; R[upper_key]; R[z]; ([R[content]; ((foldF z) content)])*]
 }
 
 // A tree-based index implementation, additionally providing a two-sided range query operation.
@@ -188,6 +188,10 @@ annotation OrderedVMapIndex[key : [labeltype]] given type a
   @:CArgs 2
   provides lifted lookup_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> option content
     with effects \version -> \key -> [R[self]; R[version]; R[key]]
+
+  @:CArgs 4
+  provides lifted lookup_with_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \version -> \key -> \f -> \g -> [R[self]; R[version]; R[key]; f content; g content]
 
   @:CArgs 2
   provides lifted slice_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> self
@@ -213,6 +217,10 @@ annotation VMapIndexE[key : [labeltype], extractors: [labellit]] given type a
   provides lifted lookup_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> option content
     with effects \version -> \key -> [R[self]; R[version]; R[key]]
 
+  @:{CArgs 4, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted lookup_with_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \version -> \key -> \f -> \g -> [R[self]; R[version]; R[key]; f content; g content]
+
   @:{CArgs 2, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
   provides lifted slice_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> self
     with effects \version -> \key -> [R[self]; R[version]; R[key]]
@@ -220,10 +228,6 @@ annotation VMapIndexE[key : [labeltype], extractors: [labellit]] given type a
   @:{CArgs 4, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
   provides lifted fold_slice_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (a -> (content -> a)) -> a -> a
     with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; ((foldF z) content)])*]
-
-  @:{CArgs 5, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
-  provides lifted fold_range_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> $[|mkRecord 'key|] -> (a -> (content -> a)) -> a -> a
-    with effects \version -> \lower_key -> \upper_key -> \foldF -> \z -> [R[self]; R[version]; R[lower_key]; R[upper_key]; R[z]; ([R[content]; ((foldF z) content)])*]
 }
 
 // A tree-based index implementation, additionally providing a two-sided range query operation.
@@ -232,6 +236,10 @@ annotation OrderedVMapIndexE[key : [labeltype], extractors: [labellit]] given ty
   @:{CArgs 2, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
   provides lifted lookup_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> option content
     with effects \version -> \key -> [R[self]; R[version]; R[key]]
+
+  @:{CArgs 4, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted lookup_with_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \version -> \key -> \f -> \g -> [R[self]; R[version]; R[key]; f content; g content]
 
   @:{CArgs 2, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
   provides lifted slice_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> self
