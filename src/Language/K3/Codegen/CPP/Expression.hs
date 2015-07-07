@@ -164,12 +164,16 @@ inline (tag &&& children -> (ETuple, cs)) = do
 
 inline e@(tag &&& children -> (ERecord is, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
-    let vs' = snd . unzip . sortBy (comparing fst) $ zip is vs
+    mtrlzns <- case e @~ isEMaterialization of
+                 Just (EMaterialization ms) -> return ms
+                 Nothing -> return $ M.fromList [(i, defaultDecision) | i <- is]
+    let vs' = [maybe v (\m -> if inD m == Moved then move c v else v) (M.lookup i mtrlzns) | c <- cs | v <- vs | i <- is]
+    let vs'' = snd . unzip . sortBy (comparing fst) $ zip is vs'
     t <- getKType e
     case t of
         (tag &&& children -> (TRecord _, _)) -> do
             sig <- genCType t
-            return (concat es, R.Initialization sig vs')
+            return (concat es, R.Initialization sig vs'')
         _ -> throwE $ CPPGenE $ "Invalid Record Type " ++ show t
 
 inline (tag &&& children -> (EOperate uop, [c])) = do
