@@ -97,7 +97,7 @@ ENV PATH /opt/ghc/7.10.1/bin:/opt/cabal/1.22/bin:/opt/alex/3.1.4/bin:/opt/happy/
 RUN echo 'deb http://ppa.launchpad.net/hvr/ghc/ubuntu trusty main' > /etc/apt/sources.list.d/ghc.list && \
     apt-key adv --keyserver keyserver.ubuntu.com --recv-keys F6F88286 && \
     apt-get update && \
-    apt-get install -y --no-install-recommends zlib1g-dev cabal-install-1.22 ghc-7.10.1 happy-1.19.5 alex-3.1.4 && \
+    apt-get install -y --no-install-recommends zlib1g-dev cabal-install-1.22 ghc-7.10.1 happy-1.19.5 alex-3.1.4 libtinfo-dev && \
     rm -rf /var/lib/apt/lists/*  && \
     cabal update && \
     cabal install cabal-install -j
@@ -115,8 +115,6 @@ RUN git checkout development && \
     cabal sandbox init && \
     cabal install -j --only-dependencies --disable-documentation && \
     cabal configure --ghc-options="-O2" && \
-    apt-get update && \
-    apt-get install -y libtinfo-dev && \
     cabal build -j --ghc-options="-O2"
 
 # Clean up
