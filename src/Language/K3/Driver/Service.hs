@@ -1281,7 +1281,7 @@ submitJob sOpts@(serviceId -> rq) rjOpts opts = do
       end <- getTime
       noticeM $ unwords ["Client finalizing request", rq]
       noticeM $ clientReport (end - start) report
-      CPPC.compile (ensureSaves opts) (scompileOpts sOpts) ($) $ prog
+      CPPC.compile opts (scompileOpts sOpts) ($) $ prog
 
     mHandler _ (ProgramAborted rrq reason) | rq == rrq = liftIO $ do
       errorM $ unwords ["Failed to compile request", rq, ":", reason]
