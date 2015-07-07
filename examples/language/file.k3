@@ -1,4 +1,5 @@
 include "Annotation/Collection.k3"
+include "Annotation/Set.k3"
 include "Core/Builtins.k3"
 
 declare x : mut int = 0
@@ -10,11 +11,18 @@ trigger t : () = \_ -> (
   (stop, me)  <- ()
 )
 
+trigger t2 : int = \i -> (
+  print (itos i)
+)
+
 trigger stop : () = \_ -> (
   haltEngine()
 )
 
 source s1 : () = value ()
 feed s1 |> t
+
+source s2 : int = file "in.csv" text csv
+feed s2 |> t2
 
 sink sink1 : (int, string) = file "out.csv" text psv

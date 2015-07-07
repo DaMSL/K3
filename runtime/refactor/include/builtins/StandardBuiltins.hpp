@@ -1,6 +1,7 @@
 #ifndef K3_STANDARDBUILTINS
 #define K3_STANDARDBUILTINS
 
+#include <climits>
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/thread.hpp>
 
@@ -55,7 +56,9 @@ class StandardBuiltins {
     }
     throw std::runtime_error("Unrecognized date part key: " + r.key);
   }
-
+  double real_of_int(int n) { return (double)n; }
+  int get_max_int(unit_t) { return INT_MAX; }
+  int truncate(double n) { return (int)n; }
  protected:
   Engine& __engine_;
   boost::mutex __mutex_;

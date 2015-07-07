@@ -86,12 +86,14 @@ const char* base_string::c_str() const { return buffer_; }
 
 // Comparisons
 bool base_string::operator==(const base_string& other) const {
-  return strcmp(buffer_ ? buffer_ : "", other.buffer_ ? other.buffer_ : "") ==
+  bool b = strcmp(buffer_ ? buffer_ : "", other.buffer_ ? other.buffer_ : "") ==
          0;
+  return b;
 }
 
 bool base_string::operator==(const char* other) const {
-  return strcmp(buffer_ ? buffer_ : "", other ? other : "") == 0;
+  bool b =  strcmp(buffer_ ? buffer_ : "", other ? other : "") == 0;
+  return b;
 }
 
 bool base_string::operator!=(const base_string& other) const {

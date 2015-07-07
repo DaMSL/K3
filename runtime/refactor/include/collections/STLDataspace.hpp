@@ -242,7 +242,7 @@ class STLDS {
     ar & container;
   }
 
- private:
+ protected:
   Container container;
   friend class boost::serialization::access;
 };

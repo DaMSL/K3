@@ -46,6 +46,7 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
       }
     } catch (EndOfProgramException e) {
       finished_ = true;
+      logGlobals();
       logFinalState();
     } catch (const std::exception& e) {
       logger_->error() << "Peer failed: " << e.what();
@@ -90,7 +91,7 @@ void Peer::processBatch() {
     auto d = std::move(batch_[i]);
     //logMessage(*m);
     (*d)();
-    //logGlobals(*m);
+    logGlobals();
   }
 }
 
@@ -101,11 +102,11 @@ void Peer::logMessage(const Message& m) {
   }
 }
 
-void Peer::logGlobals(const Message& m) {
+void Peer::logGlobals() {
   if (logger_->level() <= spdlog::level::trace) {
     std::ostringstream oss;
-    string trig = ProgramContext::__triggerName(m.trigger());
-    oss << "Processed:: @" << trig << std::endl;
+    //string trig = ProgramContext::__triggerName(m.trigger());
+    //oss << "Processed:: @" << trig << std::endl;
     oss << "Environment: " << std::endl;
     bool first = true;
     for (const auto& it : context_->__prettify()) {

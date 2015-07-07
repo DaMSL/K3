@@ -39,7 +39,7 @@ class Peer {
   // Helper Functions
   void processBatch();
   void logMessage(const Message& m);
-  void logGlobals(const Message& m);
+  void logGlobals();
   void logFinalState();
 
   // Components

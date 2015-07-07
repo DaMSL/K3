@@ -16,37 +16,20 @@ using SetDS = STLDS<Derived, std::unordered_set, Elem>;
 template <class Elem>
 class Set : public SetDS<K3::Set, Elem> {
   using Super = SetDS<K3::Set, Elem>;
-  typedef std::unordered_set<Elem> Container;
-  typedef typename Container::const_iterator const_iterator_type;
-  typedef typename Container::iterator iterator_type;
 
  public:
   typedef Elem ElemType;
   Set() : Super() {}
   Set(const Super& c) : Super(c) {}
   Set(Super&& c) : Super(std::move(c)) {}
-  template <typename Iterator>
-  Set(Iterator begin, Iterator end)
-      : container(begin, end) {}
-
-  //using iterator = typename Container::iterator;
-  //using const_iterator = typename Container::const_iterator;
-
-  //iterator begin() { return iterator(container.begin()); }
-
-  //iterator end() { return iterator(container.end()); }
-
-  //const_iterator begin() const { return const_iterator(container.cbegin()); }
-
-  //const_iterator end() const { return const_iterator(container.cend()); }
 
   // Set specific functions
   bool member(const Elem& e) const {
-    return container.find(e) != container.end();
+    return Super::container.find(e) != Super::container.end();
   }
 
   bool isSubsetOf(const Set<Elem>& other) const {
-    for (const auto& x : getConstContainer()) {
+    for (const auto& x : this->getConstContainer()) {
       if (!other.member(x)) {
         return false;
       }
@@ -57,7 +40,7 @@ class Set : public SetDS<K3::Set, Elem> {
   // union is a reserved word
   Set<Elem> union1(const Set<Elem>& other) const {
     Set<Elem> result;
-    for (const auto& x : getConstContainer()) {
+    for (const auto& x : this->getConstContainer()) {
       result.insert(x);
     }
     for (const auto& x : other.getConstContainer()) {
@@ -68,7 +51,7 @@ class Set : public SetDS<K3::Set, Elem> {
 
   Set<Elem> intersect(const Set<Elem>& other) const {
     Set<Elem> result;
-    for (const auto& x : getConstContainer()) {
+    for (const auto& x : this->getConstContainer()) {
       if (other.member(x)) {
         result.insert(x);
       }
@@ -78,20 +61,13 @@ class Set : public SetDS<K3::Set, Elem> {
 
   Set<Elem> difference(const Set<Elem>& other) const {
     Set<Elem> result;
-    for (const auto& x : getConstContainer()) {
+    for (const auto& x : this->getConstContainer()) {
       if (!other.member(x)) {
         result.insert(x);
       }
     }
     return result;
   }
-
-  Container& getContainer() { return container; }
-
-  // Return a constant reference to the container
-  const Container& getConstContainer() const { return container; }
-
-  Container container;
 
   template<class Archive>
   void serialize(Archive &ar) {
