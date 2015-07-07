@@ -23,7 +23,7 @@ trigger t1 : () = \_ -> (
 
     result1       = employeesV.lookup_by_id       2 {id: 2};
     result2       = employeesV.lookup_by_name     2 {name: "John"};
-    (employeesV.lookup_with_by_agekey             2 {age: 40, key: 2} (\_ -> ()) (\r -> result2w = r));
+    (employeesV.lookup_with_by_name               2 {name: "John"} (\_ -> ()) (\r -> result2w = r));
     employeesV    = employeesV.range_by_name      2 {name: "a"} {name: "d"};
     employeesV2   = employeesV.range_by_name      2 {name: "a"} {name: "bz"};
 
