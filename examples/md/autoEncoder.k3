@@ -1,0 +1,433 @@
+include "Annotation/Vector.k3"
+include "Core/Builtins.k3"
+
+declare master: address = 127.0.0.1:40000
+
+declare totalError : mut real 
+declare topology : collection {elem : int} @Vector
+
+declare inputValues : mut collection {elem : real } @Vector
+declare targetValue : mut collection {elem : real } @Vector
+declare outputValue : collection {elem : real } @Vector // l layers * n neurons_per_layer
+declare zValue      : collection {elem : real } @Vector // l layers * n neurons_per_layer
+declare deltaValue  : collection {elem : real } @Vector // l layers * n neurons_per_layer
+declare gradient    : collection {elem : real } @Vector // l layers * n neurons_per_layer
+
+// declare eta         : mut real = 0.50
+declare alpha       : mut real = 0.30
+declare lambda      : mut real = 0.20
+
+declare weight      : collection {elem : real } @Vector // l layers * n neurons_per_layer * n neurons_per_next_layer
+declare deltaWeight : collection {elem : real } @Vector // l layers * n neurons_per_layer * n neurons_per_next_layer
+
+declare weightUpdateBroadcast : mut collection {elem : real } @Vector // l layers * n neurons_per_layer * n neurons_per_next_layer
+declare weightsLastUpdated    : mut collection {elem : real } @Vector // l layers * n neurons_per_layer * n neurons_per_next_layer
+
+declare row_number           : mut int = -1
+declare epochSize            : int = 8
+declare peerMessagesReceived : mut int 
+
+declare s : mut int 
+
+declare allData : collection {elem : {i: real , j : real , k : real} } @Vector
+
+declare accessPrev : int -> int = \layerNum -> (
+	if (layerNum <0)
+		then 0
+	else (
+		if (layerNum == 0 )
+			then ((topology.at layerNum).elem )
+		else ((topology.at layerNum).elem + accessPrev (layerNum-1))
+	)
+)
+
+declare access1LayerNeuron : int -> int -> int = \layerNum -> \neuronNum -> (
+	neuronNum + (accessPrev (layerNum-1)) 
+)
+
+declare accessPrev2 : int -> int = \layerNum -> (
+	if (layerNum < 0)
+		then 0
+	else (
+		if (layerNum == 0 )
+			then (((topology.at(layerNum)).elem) * ((topology.at(layerNum+1)).elem) )
+		else (((topology.at(layerNum)).elem) * ((topology.at(layerNum+1)).elem) + accessPrev2 (layerNum-1))
+	)
+)
+
+declare access2 : {e1: int , e2: int , e3: int} -> int = \x -> 
+	bind x as {e1: layerNum , e2: neuronNum , e3 :outputNeuronNum } in  (
+	let t = (accessPrev2 (layerNum-1)) in
+  t +(topology.at(layerNum + 1)).elem * neuronNum + outputNeuronNum
+)
+
+declare copyFirstLayer : () -> () = \_ -> (
+	(range (((topology.at(0)).elem) -1)).iterate (\pos -> (
+		(outputValue.set (pos.i) {elem : ((inputValues.at(pos.i)).elem)});
+		(zValue.set (pos.i) {elem : ((inputValues.at(pos.i)).elem)})
+	))
+)
+declare xrange : int -> int -> collection {i: int } @Seq = \start -> \end -> (
+	(range end).filter (\x -> x.i >= start)
+)
+
+declare activationFunction : real -> real = \x -> (
+	tanh x
+)
+
+declare activationFunctionDerivative : real -> real = \x -> (
+	1 - x*x
+)
+
+declare neuronCalculateZValue : int -> int -> real = \layerId -> \neuronId -> (
+ 	let previousLayerId = (layerId-1) in 
+ 	((range( (topology.at previousLayerId).elem )).fold (\acc ->  \previousNeuronId -> (
+		let a1 = access1LayerNeuron (previousLayerId) (previousNeuronId.i) in 
+		(let a2 = access2 {e1: (previousLayerId), e2: (previousNeuronId.i), e3: neuronId} in 
+		(acc + ((outputValue.at a1).elem) * ((weight.at a2).elem) )
+		)
+		
+	) ) 0.0)
+)
+
+declare neuronFeedForward : int -> int -> real = \layerId -> \neuronId -> (
+	activationFunction (neuronCalculateZValue (layerId) (neuronId))
+)
+
+declare calculateError : int -> real = \i -> (
+
+	 let lastLayerFirstNeuronIndex = (access1LayerNeuron ((topology.at( (topology.size ()) -1 )).elem ) (0)) in  (
+	 (range ( targetValue.size () )).fold (\acc -> \pos -> (  (  (outputValue.at(pos.i + lastLayerFirstNeuronIndex )).elem + acc +(targetValue.at(pos.i)).elem  )) ) 0.0 
+	)
+)
+
+declare neuronIdAccess : int -> int = \index -> (
+	bind (
+		topology.fold(\acc -> \t -> (  
+		if (acc.flag) then (if (acc.nid < t.elem ) then ({nid:acc.nid, flag:false}) else ({nid: acc.nid-t.elem, flag: true})) else ({nid: acc.nid, flag : false}) )) {nid: index, flag : true}
+	) as { nid : nid, flag : flag } in (nid)
+)
+
+
+declare layerIdAccess : int -> int = \index -> (
+	bind (
+		(range(topology.size())).fold (\acc -> \i -> ( let t = ((topology.at(i.i)).elem) in  
+		( if (acc.flag)  then (if (acc.num < t ) then ({num : (i.i), flag:false}) else ({num : (acc.num-t), flag : true}) ) else ({num: acc.num, flag: false}) )
+		 )) {num : index, flag : true}
+	
+	) as { num : num, flag : flag} in (num)
+)
+
+declare initializeMaster : () -> () = \_ -> (
+
+	//Architecture of the network
+	topology.insert {elem : 3};
+	topology.insert {elem : 4};
+	topology.insert {elem : 2};
+
+	//Create the weights with random values 
+	let secondLastLayer = (topology.size () -2 ) in 
+	let lastNeuronInSecondLastLayer = ( (topology.at(secondLastLayer)).elem -1 ) in 
+	let lastNeuronInLastLayer = ( (topology.at( (topology.size () - 1 ) )).elem -1  ) in 
+	(
+		(range (access2 {e1: secondLastLayer, e2: lastNeuronInSecondLastLayer, e3 : lastNeuronInLastLayer} +1 )).iterate (\i -> (
+			weight.insert {elem : (randomFraction ()) };
+			deltaWeight.insert {elem : 0.0};
+			weightsLastUpdated.insert {elem : 0.0};	
+			weightUpdateBroadcast.insert {elem : 0.0}	
+		))
+	)
+)
+
+declare initialize : () -> () = \_ -> (
+
+	//Architecture of the network
+	(initializeMaster ());
+
+	//Create the vectors (some with random values)
+	let finalLayerNum = (topology.size () -1 ) in 
+	let finalNeuronNum = ((topology.at((topology.size ()) - 1)).elem -1) in (
+		(range((access1LayerNeuron finalLayerNum  finalNeuronNum)+1)).iterate (\i-> ( 
+			outputValue.insert {elem : (randomFraction ()) }; // set outputValue to random numbers
+			deltaValue.insert {elem : (randomFraction ()) }; // set outputValue to random numbers    
+			zValue.insert {elem : (randomFraction ()) }; // set outputValue to random numbers    
+			gradient.insert {elem : (randomFraction ())} // set gradients to random numbers , basicaly done to create the gradient vector of the required size
+		))	
+	);	
+	
+	//Set ouputputValues of the bias neurons to 1
+	(range (topology.size ()) ).iterate (\i -> (
+	let pos = (access1LayerNeuron (i.i) ((topology.at(i.i)).elem -1) ) in
+	outputValue.set pos {elem : 1.0}
+	))
+)
+
+declare setDeltaWeightsTozero : () -> () = \_ -> (
+  // Update the weights
+  (range ((topology.size ()) -1)).iterate(\layerId -> (
+    let numPresentLayerNeurons = (topology.at layerId.i).elem in
+    let numNextLayerNeurons = (topology.at (layerId.i + 1)).elem in
+    (
+      (range (numPresentLayerNeurons)).iterate(\presentLayerNeuronId -> (
+        (range (numNextLayerNeurons -1 ) ).iterate(\nextLayerNeuronId -> (
+          let index2Weight = access2 {e1 : layerId.i, e2 : presentLayerNeuronId.i, e3 : nextLayerNeuronId.i } in 
+          (weight.set index2Weight {elem : 0.0} )
+        ))    
+      ))
+    )
+  ))	
+)
+
+trigger startMaster : () = \_ -> (
+	initializeMaster ()
+)
+
+trigger receiveAtMaster : collection {elem : real } @Vector = \updateOnWeights -> (
+
+	(weight.inPlaceAdd (updateOnWeights.sub weightUpdateBroadcast));
+	if (peerMessagesReceived == peers.size ())
+	then ( 
+		(weightUpdateBroadcast = weight.sub weightsLastUpdated);
+		peers.iterate (\peer -> (
+			(receiveAtSlave, peer.addr) <- (weightUpdateBroadcast)
+		));
+		(weightsLastUpdated = weight);
+		peerMessagesReceived = 0		
+	)
+	else (
+		peerMessagesReceived = peerMessagesReceived + 1
+	)	
+) 
+
+trigger receiveAtSlave : collection {elem : real } @Vector = \updateOnWeights -> (
+	weight.inPlaceAdd (updateOnWeights)
+)
+
+declare slaveFeedForward : () -> () = \_ ->(
+	
+	//FEED-FORWARD
+	
+	// Output from the first layer is just the input layer values
+	copyFirstLayer ();
+	
+	//feed-forward the subsequent layers
+	(xrange 1 (topology.size ()) ).iterate ( \layerId -> (
+		(range ((topology.at(layerId.i)).elem -1 )).iterate ( \neuronId -> ( 
+			//output of the last neuron is not modified as it is the bias neuron
+			let a1 = (access1LayerNeuron layerId.i neuronId.i) in (
+				(outputValue.set (a1) {elem:(neuronFeedForward layerId.i neuronId.i)});		
+				(zValue.set (a1) {elem:(neuronCalculateZValue layerId.i neuronId.i)})		
+			)	
+		))
+	))
+)
+
+declare slaveBackPropagation : () -> () = \_ -> (
+
+	//BACK-PROPAGATION
+	//Calculate the overall error
+	totalError =  (
+	 let lastLayerFirstNeuronIndex = (access1LayerNeuron ((topology.at( (topology.size ()) -1 )).elem ) (0)) in  (
+	 let r = range ( targetValue.size () ) in 
+	 r.fold (\acc -> \pos -> ( 
+	 	let val =  ((outputValue.at((pos.i+ lastLayerFirstNeuronIndex))).elem) in  
+	 	let val2 = ((targetValue.at(pos.i)).elem)  in 
+	 	(  ((0.0 - val ) + val2)*((0.0 - val ) + val2) + acc   )
+	 	) ) 0.0 
+	)
+	);
+	
+	totalError = sqrt (totalError/  ( (targetValue.size ()) - 1));
+  
+  //calculate the output layer deltas 
+	let outputLayerId = (topology.size ()-1) in 
+	let numNeuronsOutLayer = (topology.at outputLayerId).elem in 
+	( (range numNeuronsOutLayer).iterate ( \neuronId -> (
+		let index = (access1LayerNeuron outputLayerId neuronId.i) in 
+		deltaValue.set index {elem : 
+				(  ((outputValue.at index).elem - (targetValue.at neuronId.i).elem ) *
+           (activationFunctionDerivative (zValue.at index).elem)  ) }	
+	)) 
+	);
+    /*
+    //print "weights : ";
+    //weight.iterate(\w -> print (rtos (w.elem)));
+    print "target values :";
+    targetValue.iterate(\tv -> print (rtos tv.elem));
+    print "Output values : ";
+    outputValue.iterate(\ov -> print (rtos (ov.elem)));
+    print "delta values : ";
+    deltaValue.iterate(\dv -> print (rtos dv.elem));
+    print "z values : ";
+    zValue.iterate(\zv -> print (rtos zv.elem));
+    */
+
+  //calculate the hidden layer deltas
+	((xrange 2 (topology.size ()+1) ).iterate (\i -> (
+	  let presentLayerId = (  (topology.size ()) - i.i) in
+	  let numNeuronsPresentLayer = ((topology.at presentLayerId).elem) in 
+	  let numNeuronsNextLayer = ((topology.at (presentLayerId+1)).elem) in 
+	  ( 
+      //print "present Layer id : ";
+      //print (itos presentLayerId);
+	    (range numNeuronsPresentLayer).iterate(\neuronId -> (
+	      let presentLayerNeuronIndex = (access1LayerNeuron presentLayerId neuronId.i) in
+	      let nextLayerIndices = (range (outputValue.size ())).filter (\index -> ((layerIdAccess index.i) == (presentLayerId+1) )) in
+	      ( 
+          //print "nextLayerIndices are : ";
+          //nextLayerIndices.iterate(\i -> print (itos i.i));
+
+	        deltaValue.set 
+	        presentLayerNeuronIndex 
+	        {elem : let productWeightDelta = (nextLayerIndices.fold (\acc -> \nextLayerNeuronIndex -> 
+	              ( let nextLayerNeuronId = (neuronIdAccess nextLayerNeuronIndex.i) in
+	                let index2 = (access2 {e1:presentLayerId, e2:neuronId.i, e3: nextLayerNeuronId} ) in  
+	                ( 
+                  //print "multiplying the pair of values and adding them up";
+                  //print (rtos (weight.at index2).elem);
+                  //print (rtos (deltaValue.at nextLayerNeuronIndex.i).elem);
+                  ((weight.at index2).elem) * ((deltaValue.at nextLayerNeuronIndex.i).elem) + acc ) 
+	              ) ) 0.0 ) in 
+                ( //print "productWeightDelta = ";
+                  //print (rtos productWeightDelta);
+                  productWeightDelta * (activationFunctionDerivative (zValue.at presentLayerNeuronIndex).elem )
+                  )
+	        }  
+	      )
+	    ))
+	  )
+	)));
+    //print "weights : ";
+    //weight.iterate(\w -> print (rtos w.elem));
+    
+    //print "zValues : ";
+    //zValue.iterate(\z -> print (rtos z.elem)); 
+
+    //print "Outputvalues : ";
+    //outputValue.iterate(\ov -> print (rtos ov.elem));
+
+    //print "Targetvalues : ";
+    //targetValue.iterate(\tv -> print (rtos tv.elem)); 
+
+    //print "Delta values :";
+    //deltaValue.iterate(\dv -> print (rtos dv.elem));
+  
+  //print "Old DeltaWeights : ";
+  //deltaWeight.iterate(\dv -> print (rtos dv.elem));
+  
+  // calculate the delta weights
+  (range ((topology.size ()) -1)).iterate(\layerId -> (
+    let numPresentLayerNeurons = (topology.at layerId.i).elem in
+    let numNextLayerNeurons = (topology.at (layerId.i + 1)).elem in
+    (
+      (range (numPresentLayerNeurons)).iterate(\presentLayerNeuronId -> (
+        (range (numNextLayerNeurons ) ).iterate(\nextLayerNeuronId -> (
+          let index2DeltaWeight = access2 {e1 : layerId.i, e2 : presentLayerNeuronId.i, e3 : nextLayerNeuronId.i } in 
+          let index1DeltaValue = (access1LayerNeuron (layerId.i +1) (nextLayerNeuronId.i)) in
+          let index1OutputValue = (access1LayerNeuron (layerId.i) (presentLayerNeuronId.i)) in 
+          (
+            deltaWeight.set 
+            index2DeltaWeight 
+            {elem : (deltaWeight.at index2DeltaWeight).elem + 
+                    ((outputValue.at index1OutputValue).elem * (deltaValue.at index1DeltaValue).elem)}
+          )
+        ))    
+      ))
+    )
+  ));	
+
+  //print "DeltaWeights : ";
+  //deltaWeight.iterate(\dv -> print (rtos dv.elem));
+  //print "old weights : ";
+  //weight.iterate(\w -> print (rtos w.elem));
+
+  // Update the weights
+  (range ((topology.size ()) -1)).iterate(\layerId -> (
+    let numPresentLayerNeurons = (topology.at layerId.i).elem in
+    let numNextLayerNeurons = (topology.at (layerId.i + 1)).elem in
+    (
+      (range numPresentLayerNeurons).iterate(\presentLayerNeuronId -> (
+        (range numNextLayerNeurons).iterate(\nextLayerNeuronId -> (
+          let index2Weight = access2 {e1 : layerId.i, e2 : presentLayerNeuronId.i, e3 : nextLayerNeuronId.i } in 
+          (weight.set index2Weight 
+          {elem : (weight.at index2Weight).elem  - 
+                  alpha * (((deltaWeight.at index2Weight).elem)/(allData.size ())  +  
+                            ( if ( (topology.at layerId.i).elem != (presentLayerNeuronId.i + 1))
+                             then(lambda*((weight.at index2Weight).elem))
+                             else (0)
+                            )
+                          )
+          } )
+        ))    
+      ))
+    )
+  ))
+  //print "value of m " ; print  (itos (allData.size ()));
+  //print "new weights : ";
+  //weight.iterate(\w -> print (rtos w.elem))
+	
+  
+)
+
+trigger startSlave : () = \_ -> (
+
+	(range 20).iterate (\r -> (	
+  //print "Starting a new iteration";
+	allData.iterate( \csvData -> (
+    //print "Reading a new frame";
+    inputValues = empty {elem : real} @Vector;
+		//Create the input and output values
+		inputValues.insert {elem : csvData.elem.i};
+		inputValues.insert {elem : csvData.elem.j};
+		inputValues.insert {elem : 1.0};
+	
+    targetValue = empty {elem : real} @Vector;
+		targetValue.insert {elem : csvData.elem.k};
+		targetValue.insert {elem : 1.0};
+
+		
+		(if (row_number == -1) then (initialize ()) else ());
+		row_number = row_number + 1;
+
+    print (itos row_number);		
+    /*
+		(if (row_number % epochSize == 0) 
+		then (
+			(receiveAtMaster, master) <- (weight.sub weightsLastUpdated);
+			weightsLastUpdated = weight
+		) 
+		else () );
+    */
+		(slaveFeedForward ());
+		(slaveBackPropagation ());
+    /*
+    print "weights : ";
+    weight.iterate(\w -> print (rtos (w.elem)));
+    print "Output values : ";
+    outputValue.iterate(\ov -> print (rtos (ov.elem)));
+    print "zValues : ";
+    zValue.iterate(\z -> print (rtos (z.elem))); 
+    print (rtos totalError);
+    */
+		//(results_sink, me) <- { addr : me, iter : r.i , totalError : totalError}
+    print "Done with an iteration of ff and bp"
+	))
+	))
+)
+
+declare rows : mut int = 0 
+
+trigger storeData :  {i: real, j: real, k : real} = \csvData -> (
+	allData.insert {elem : {i: csvData.i, j: csvData.j, k: csvData.k} };
+	rows = rows +1;
+  (if (rows==8) then ((startSlave, me) <- ()) else ())
+)
+
+//sink results_sink : real = stdout csv
+//sink results_sink : {addr : address,   iter: int , totalError : real } = stdout csv
+
+source masterSource : () = value ()
+feed masterSource |> startMaster 
+
+source slaveSource1 :  {i: real , j: real , k : real}  = file "f1.csv" csv 
+feed slaveSource1 |> storeData
