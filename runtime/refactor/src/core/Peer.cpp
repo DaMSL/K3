@@ -27,6 +27,7 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
         json_path + "/" + address_.toString() + "_Messages.dsv");
   }
   json_final_state_only_ = json_final_only;
+  message_counter_ = 0;
 
   // Create work to run in new thread
   auto work = [this, fac, peer_config, ready_callback]() {
@@ -46,8 +47,7 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
       }
     } catch (EndOfProgramException e) {
       finished_ = true;
-      logGlobals();
-      logFinalState();
+      logGlobals(true);
     } catch (const std::exception& e) {
       logger_->error() << "Peer failed: " << e.what();
     }
@@ -89,24 +89,37 @@ void Peer::processBatch() {
   size_t num = queue_->dequeueBulk(batch_);
   for (int i = 0; i < num; i++) {
     auto d = std::move(batch_[i]);
-    //logMessage(*m);
+    logMessage(*d);
     (*d)();
-    logGlobals();
+    logGlobals(false);
   }
 }
 
-void Peer::logMessage(const Message& m) {
+void Peer::logMessage(const Dispatcher& d) {
+#ifdef K3DEBUG
+  string trig = ProgramContext::__triggerName(d.header_.trigger());
   if (logger_->level() <= spdlog::level::trace) {
-    string trig = ProgramContext::__triggerName(m.trigger());
     logger_->trace() << "Received:: @" << trig;
   }
+
+  if (json_messages_log_ && !json_final_state_only_) {
+    *json_messages_log_ << message_counter_ << "|";
+    *json_messages_log_ << K3::serialization::json::encode<Address>(
+                               d.header_.destination()) << "|";
+    *json_messages_log_ << trig << "|";
+    *json_messages_log_ << K3::serialization::json::encode<Address>(
+                               d.header_.source()) << "|";
+    *json_messages_log_ << d.jsonify() << "|";
+    *json_messages_log_ << currentTime() << std::endl;
+  }
+  message_counter_++;
+#endif  // K3DEBUG
 }
 
-void Peer::logGlobals() {
+void Peer::logGlobals(bool final) {
+#ifdef K3DEBUG
   if (logger_->level() <= spdlog::level::trace) {
     std::ostringstream oss;
-    //string trig = ProgramContext::__triggerName(m.trigger());
-    //oss << "Processed:: @" << trig << std::endl;
     oss << "Environment: " << std::endl;
     bool first = true;
     for (const auto& it : context_->__prettify()) {
@@ -120,19 +133,16 @@ void Peer::logGlobals() {
     logger_->trace() << oss.str();
   }
 
-  if (json_globals_log_ && !json_final_state_only_) {
-    for (const auto& it : context_->__jsonify()) {
-      *json_globals_log_ << it.first << "|" << it.second << std::endl;
-    }
-  }
-}
 
-void Peer::logFinalState() {
-  if (json_globals_log_ && json_final_state_only_) {
+  if ((json_globals_log_ && !json_final_state_only_) || (json_final_state_only_ && final)) {
     for (const auto& it : context_->__jsonify()) {
-      *json_globals_log_ << it.first << "|" << it.second << std::endl;
+      *json_globals_log_ << message_counter_ << "|"
+                         << K3::serialization::json::encode<Address>(address_) << "|"
+                         << it.first << "|"
+                         << it.second << std::endl;
     }
   }
+#endif // K3DEBUG
 }
 
 }  // namespace K3

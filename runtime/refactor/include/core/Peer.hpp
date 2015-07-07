@@ -38,9 +38,8 @@ class Peer {
  protected:
   // Helper Functions
   void processBatch();
-  void logMessage(const Message& m);
-  void logGlobals();
-  void logFinalState();
+  void logMessage(const Dispatcher& d);
+  void logGlobals(bool final);
 
   // Components
   shared_ptr<spdlog::logger> logger_;

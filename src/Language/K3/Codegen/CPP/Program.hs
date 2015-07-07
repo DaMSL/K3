@@ -328,7 +328,9 @@ generateDispatchers isNative = do
        let call_op = R.FunctionDefn (R.Name $ "operator()") [] (Just $ R.Void) [] False
                       ([casted_val, R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "context_") (R.Name tName)) [R.Variable $ R.Name "casted"]])
 
-       let methods = [constructor, call_op]
+       let jsonify = R.FunctionDefn (R.Name $ "jsonify") [] (Just $ R.Primitive $ R.PString) [] True
+                      ([casted_val, R.Return $ R.Call (R.Variable $ R.Specialized [argType] (R.Qualified (R.Name "K3") (R.Qualified (R.Name "serialization") (R.Qualified (R.Name "json") (R.Name "encode"))))) [R.Variable $ R.Name "casted"] ])
+       let methods = [constructor, call_op, jsonify]
        return $ R.TemplateDefn [("CONTEXT", Nothing)] (R.ClassDefn (R.Name $ tName ++ valName ++ "Dispatcher") [] [R.Named $ R.Name "Dispatcher"] methods [] members)
 
 

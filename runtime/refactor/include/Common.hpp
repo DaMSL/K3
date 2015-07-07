@@ -154,6 +154,13 @@ enum class CodecFormat { BoostBinary, CSV, PSV, YASBinary };
 enum class StorageFormat { Binary, Text };
 enum class IOMode { Read, Write };
 
+static inline std::string currentTime() {
+  std::chrono::nanoseconds ns =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::high_resolution_clock::now().time_since_epoch());
+  return std::to_string(ns.count());
+}
+
 class EndOfProgramException : public std::runtime_error {
  public:
   EndOfProgramException() : runtime_error("Peer terminated.") {}
