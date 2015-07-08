@@ -206,59 +206,69 @@ indexes name ans content_ts = do
       where version_t = R.Primitive R.PInt
 
     lookup_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
-    lookup_fn ((i,n), Lifted _ fname t _ _) = do
-      let key_t     = get_key_type n t
-      let this      = R.Dereference $ R.Variable $ R.Name "this"
-      let container = R.Call (R.Project this $ R.Name "getConstContainer") []
+    lookup_fn ((i,n), Lifted _ fname t _ _)
+      | ("lookup_by" `isInfixOf` fname)
+        || ("VMap" `isInfixOf` n && "lookup_before_by" `isInfixOf` fname)
+      = do
+        let key_t     = get_key_type n t
+        let this      = R.Dereference $ R.Variable $ R.Name "this"
+        let container = R.Call (R.Project this $ R.Name "getConstContainer") []
 
-      let index = R.Call
-                    (R.Variable $ (R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")))
-                    [container]
+        let index = R.Call
+                      (R.Variable $ (R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")))
+                      [container]
 
-      let look k_t = R.Call (R.Project this $ R.Name "lookup_by_index")
-                       $ call_args n index [tuple (R.Name "key") k_t]
+        let c_fname = if "VMap" `isInfixOf` n then "lookup_before_by_index"
+                                              else "lookup_by_index"
 
-      let defn k_t c_t = R.FunctionDefn (R.Name fname)
-                            (defn_args n [("key", c_t)])
-                            (Just $ R.Named $ R.Specialized [R.Named $ R.Name  "__CONTENT"] (R.Name "shared_ptr"))
-                            []
-                            False
-                            [R.Return $ look k_t]
+        let look k_t = R.Call (R.Project this $ R.Name c_fname)
+                         $ call_args n index [tuple (R.Name "key") k_t]
 
-      cType <- maybe (return Nothing) (\x -> genCType x >>= return . Just) key_t
-      let result = key_t >>= \k_t -> cType >>= \c_t -> Just $ defn k_t c_t
-      return $ if "lookup_by" `isInfixOf` fname then result else Nothing
+        let defn k_t c_t = R.FunctionDefn (R.Name fname)
+                              (defn_args n [("key", c_t)])
+                              (Just $ R.Named $ R.Specialized [R.Named $ R.Name  "__CONTENT"] (R.Name "shared_ptr"))
+                              []
+                              False
+                              [R.Return $ look k_t]
+
+        cType <- maybe (return Nothing) (\x -> genCType x >>= return . Just) key_t
+        return (key_t >>= \k_t -> cType >>= \c_t -> Just $ defn k_t c_t)
 
     lookup_fn _ = return Nothing
 
     lookup_with_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
-    lookup_with_fn ((i,n), Lifted _ fname t _ _) = do
-      let key_t     = get_key_type n t
-      let f_t       = R.Named $ R.Name "F"
-      let g_t       = R.Named $ R.Name "G"
-      let this      = R.Dereference $ R.Variable $ R.Name "this"
-      let container = R.Call (R.Project this $ R.Name "getConstContainer") []
+    lookup_with_fn ((i,n), Lifted _ fname t _ _)
+      | ("lookup_with_by" `isInfixOf` fname)
+        || ("VMap" `isInfixOf` n && "lookup_with_before_by" `isInfixOf` fname)
+      = do
+        let key_t     = get_key_type n t
+        let f_t       = R.Named $ R.Name "F"
+        let g_t       = R.Named $ R.Name "G"
+        let this      = R.Dereference $ R.Variable $ R.Name "this"
+        let container = R.Call (R.Project this $ R.Name "getConstContainer") []
 
-      let index = R.Call
-                    (R.Variable $ (R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")))
-                    [container]
+        let index = R.Call
+                      (R.Variable $ (R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")))
+                      [container]
 
-      let look k_t = R.Call (R.Project this $ R.Name "lookup_with_by_index")
-                       $ call_args n index [ tuple (R.Name "key") k_t
-                                           , R.Variable $ R.Name "f"
-                                           , R.Variable $ R.Name "g" ]
+        let c_fname = if "VMap" `isInfixOf` n then "lookup_with_before_by_index"
+                                              else "lookup_with_by_index"
 
-      let defn k_t c_t = R.TemplateDefn [("F", Nothing), ("G", Nothing)] $
-                         R.FunctionDefn (R.Name fname)
-                            (defn_args n [("key", c_t), ("f", f_t), ("g", g_t)])
-                            (Just $ R.Named $ R.Name "auto")
-                            []
-                            False
-                            [R.Return $ look k_t]
+        let look k_t = R.Call (R.Project this $ R.Name c_fname)
+                         $ call_args n index [ tuple (R.Name "key") k_t
+                                             , R.Variable $ R.Name "f"
+                                             , R.Variable $ R.Name "g" ]
 
-      cType <- maybe (return Nothing) (\x -> genCType x >>= return . Just) key_t
-      let result = key_t >>= \k_t -> cType >>= \c_t -> Just $ defn k_t c_t
-      return $ if "lookup_with_by" `isInfixOf` fname then result else Nothing
+        let defn k_t c_t = R.TemplateDefn [("F", Nothing), ("G", Nothing)] $
+                           R.FunctionDefn (R.Name fname)
+                              (defn_args n [("key", c_t), ("f", f_t), ("g", g_t)])
+                              (Just $ R.Named $ R.Name "auto")
+                              []
+                              False
+                              [R.Return $ look k_t]
+
+        cType <- maybe (return Nothing) (\x -> genCType x >>= return . Just) key_t
+        return (key_t >>= \k_t -> cType >>= \c_t -> Just $ defn k_t c_t)
 
     lookup_with_fn _ = return Nothing
 

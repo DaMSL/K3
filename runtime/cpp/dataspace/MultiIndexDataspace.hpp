@@ -476,6 +476,19 @@ class MultiIndexMap : public MultiIndexDS<K3::MultiIndexMap, R, HashUniqueIndex<
     return unit_t();
   }
 
+  template<typename Result, typename F, typename G>
+  Result update_with(const R& rec, const Result& r, F f, G g) {
+    auto& c = Super::getContainer();
+    auto it = c.find(rec.key);
+    if (it == c.end()) {
+      return r;
+    } else {
+      Result r2(g(*it));
+      *it = f(std::move(*it));
+      return r2;
+    }
+  }
+
   bool member(const R& r) const {
     auto& c = Super::getConstContainer();
     return c.find(r.key) != c.end();
@@ -692,7 +705,7 @@ class MultiIndexVMap
       VMap vmap; vmap[v] = f(unit_t {});
       container.emplace(std::move(std::make_tuple(std::move(k), std::move(vmap))));
     } else {
-      container.modify([&](auto& elem){
+      container.modify(existing, [&](auto& elem){
         auto& vmap = std::get<1>(elem);
         auto vexisting = vmap.find(v);
         if ( vexisting == vmap.end() ) {
@@ -731,6 +744,26 @@ class MultiIndexVMap
       }
     }
     return unit_t();
+  }
+
+  template<typename Result, typename F, typename G>
+  auto update_with(const Version& v, const R& rec, const Result& r, F f, G g) {
+    auto it = container.find(rec.key);
+    if (it == container.end()) {
+      return r;
+    } else {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.find(v);
+      if ( vit != vmap.end() ) {
+        Result r2 = g(vit->second);
+        R rec2 = f(std::move(vit->second));
+        container.modify(it, [&](auto& elem){ std::get<1>(elem).erase(vit); });
+        insert(v, std::move(rec2));
+        return r2;
+      } else {
+        return r;
+      }
+    }
   }
 
   bool member(const Version& v, const R& r) const {
@@ -1108,7 +1141,7 @@ class MultiIndexVMap
   // Index operations.
 
   template <class Index, class Key>
-  shared_ptr<R> lookup_by_index(const Index& index, const Version& v, Key key) const {
+  shared_ptr<R> lookup_before_by_index(const Index& index, const Version& v, Key key) const {
     const auto& it = index.find(key);
     shared_ptr<R> result;
     if (it != index.end()) {
@@ -1122,7 +1155,7 @@ class MultiIndexVMap
   }
 
   template <class Index, class Key, typename F, typename G>
-  auto lookup_with_by_index(const Index& index, const Version& v, Key key, F f, G g) const {
+  auto lookup_with_before_by_index(const Index& index, const Version& v, Key key, F f, G g) const {
     const auto& it = index.find(key);
     if (it == index.end()) {
       return f(unit_t {});

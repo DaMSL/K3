@@ -37,6 +37,12 @@ annotation MultiIndexMap given type a, b
   provides lifted update : content -> (content -> ())
     with effects \oldElem -> \newElem -> [R[self]; R[oldElem]; R[newElem]; W[self]]
 
+  @:CArgs 4
+  provides lifted update_with : content -> a -> (content -> content) -> (content -> a) -> a
+    with effects \oldElem -> \defaultV -> \newContentF -> \resultF ->
+                    [R[self]; R[oldElem]; R[defaultV]; (newContentF content); (resultF content); W[self]]
+
+
   provides lifted size : () -> int
     with effects \_ -> R[self]
 

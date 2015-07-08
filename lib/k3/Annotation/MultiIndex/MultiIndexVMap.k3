@@ -36,6 +36,11 @@ annotation MultiIndexVMap given type a,b {
   provides lifted update : int -> content -> content -> ()
     with effects \version -> \oldElem -> \newElem -> [R[version]; R[self]; R[oldElem]; R[newElem]; W[self]]
 
+  @:CArgs 5
+  provides lifted update_with : int -> content -> a -> (content -> content) -> (content -> a) -> a
+    with effects \version -> \oldElem -> \defaultV -> \newContentF -> \resultF ->
+                    [R[self]; R[version]; R[oldElem]; R[defaultV]; (newContentF content); (resultF content); W[self]]
+
   // Returns if a value at the exact version is present in the VMap.
   @:CArgs 2
   provides lifted member : int -> content -> bool
@@ -166,11 +171,11 @@ annotation MultiIndexVMap given type a,b {
 annotation VMapIndex[key : [labeltype]] given type a
 {
   @:CArgs 2
-  provides lifted lookup_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> option content
+  provides lifted lookup_before_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> option content
     with effects \version -> \key -> [R[self]; R[version]; R[key]]
 
   @:CArgs 4
-  provides lifted lookup_with_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+  provides lifted lookup_with_before_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
     with effects \version -> \key -> \f -> \g -> [R[self]; R[version]; R[key]; f content; g content]
 
   @:CArgs 2
@@ -186,11 +191,11 @@ annotation VMapIndex[key : [labeltype]] given type a
 annotation OrderedVMapIndex[key : [labeltype]] given type a
 {
   @:CArgs 2
-  provides lifted lookup_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> option content
+  provides lifted lookup_before_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> option content
     with effects \version -> \key -> [R[self]; R[version]; R[key]]
 
   @:CArgs 4
-  provides lifted lookup_with_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+  provides lifted lookup_with_before_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
     with effects \version -> \key -> \f -> \g -> [R[self]; R[version]; R[key]; f content; g content]
 
   @:CArgs 2
@@ -214,11 +219,11 @@ annotation OrderedVMapIndex[key : [labeltype]] given type a
 annotation VMapIndexE[key : [labeltype], extractors: [labellit]] given type a
 {
   @:{CArgs 2, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
-  provides lifted lookup_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> option content
+  provides lifted lookup_before_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> option content
     with effects \version -> \key -> [R[self]; R[version]; R[key]]
 
   @:{CArgs 4, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
-  provides lifted lookup_with_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+  provides lifted lookup_with_before_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
     with effects \version -> \key -> \f -> \g -> [R[self]; R[version]; R[key]; f content; g content]
 
   @:{CArgs 2, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
@@ -234,11 +239,11 @@ annotation VMapIndexE[key : [labeltype], extractors: [labellit]] given type a
 annotation OrderedVMapIndexE[key : [labeltype], extractors: [labellit]] given type a
 {
   @:{CArgs 2, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
-  provides lifted lookup_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> option content
+  provides lifted lookup_before_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> option content
     with effects \version -> \key -> [R[self]; R[version]; R[key]]
 
   @:{CArgs 4, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
-  provides lifted lookup_with_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+  provides lifted lookup_with_before_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
     with effects \version -> \key -> \f -> \g -> [R[self]; R[version]; R[key]; f content; g content]
 
   @:{CArgs 2, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
