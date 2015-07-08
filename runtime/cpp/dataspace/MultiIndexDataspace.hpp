@@ -1256,7 +1256,7 @@ class MultiIndexVMap
       auto& vmap = std::get<1>(*it);
       auto vit = vmap.upper_bound(v);
       if ( vit != vmap.end() ) {
-        acc = f(vit->first)(std::move(acc))(vit->second);
+        acc = f(std::move(acc))(vit->first)(vit->second);
       }
     }
     return acc;

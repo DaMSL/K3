@@ -195,7 +195,7 @@ annotation VMapIndex[key : [labeltype]] given type a
     with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; ((foldF z) content)])*]
 
   @:CArgs 4
-  provides lifted fold_slice_vid_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (int -> (a -> (content -> a))) -> a -> a
+  provides lifted fold_slice_vid_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (a -> (int -> (content -> a))) -> a -> a
     with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; (((foldF z) none) content)])*]
 }
 
@@ -227,7 +227,7 @@ annotation OrderedVMapIndex[key : [labeltype]] given type a
     with effects \version -> \lower_key -> \upper_key -> \foldF -> \z -> [R[self]; R[version]; R[lower_key]; R[upper_key]; R[z]; ([R[content]; ((foldF z) content)])*]
 
   @:CArgs 4
-  provides lifted fold_slice_vid_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (int -> (a -> (content -> a))) -> a -> a
+  provides lifted fold_slice_vid_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (a -> (int -> (content -> a))) -> a -> a
     with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; (((foldF z) none) content)])*]
 }
 
@@ -251,7 +251,7 @@ annotation VMapIndexE[key : [labeltype], extractors: [labellit]] given type a
     with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; ((foldF z) content)])*]
 
   @:{CArgs 4,IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
-  provides lifted fold_slice_vid_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (int -> (a -> (content -> a))) -> a -> a
+  provides lifted fold_slice_vid_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (a -> (int -> (content -> a))) -> a -> a
     with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; (((foldF z) none) content)])*]
 }
 
@@ -283,6 +283,6 @@ annotation OrderedVMapIndexE[key : [labeltype], extractors: [labellit]] given ty
     with effects \version -> \lower_key -> \upper_key -> \foldF -> \z -> [R[self]; R[version]; R[lower_key]; R[upper_key]; R[z]; ([R[content]; ((foldF z) content)])*]
 
   @:{CArgs 4, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
-  provides lifted fold_slice_vid_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (int -> (a -> (content -> a))) -> a -> a
+  provides lifted fold_slice_vid_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (a -> (int -> (content -> a))) -> a -> a
     with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; (((foldF z) none) content)])*]
 }
