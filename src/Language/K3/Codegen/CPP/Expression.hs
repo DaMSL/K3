@@ -80,6 +80,12 @@ hasMoveProperty ae = case ae of
 forceMoveP :: K3 Expression -> Bool
 forceMoveP e = isJust (e @~ hasMoveProperty)
 
+-- Get the materializaitons of a given expression
+getMDecisions :: K3 Expression -> M.Map Identifier Decision
+getMDecisions e = case e @~ isEMaterialization of
+                   Just (EMaterialization ms) -> ms
+                   Nothing -> M.empty
+
 -- Helper to avoid cluttering unnecessary moves when they oul
 move e a = case e of
              (tag -> EConstant _) -> a
@@ -164,12 +170,16 @@ inline (tag &&& children -> (ETuple, cs)) = do
 
 inline e@(tag &&& children -> (ERecord is, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
-    let vs' = snd . unzip . sortBy (comparing fst) $ zip is vs
+    mtrlzns <- case e @~ isEMaterialization of
+                 Just (EMaterialization ms) -> return ms
+                 Nothing -> return $ M.fromList [(i, defaultDecision) | i <- is]
+    let vs' = [maybe v (\m -> if inD m == Moved then move c v else v) (M.lookup i mtrlzns) | c <- cs | v <- vs | i <- is]
+    let vs'' = snd . unzip . sortBy (comparing fst) $ zip is vs'
     t <- getKType e
     case t of
         (tag &&& children -> (TRecord _, _)) -> do
             sig <- genCType t
-            return (concat es, R.Initialization sig vs')
+            return (concat es, R.Initialization sig vs'')
         _ -> throwE $ CPPGenE $ "Invalid Record Type " ++ show t
 
 inline (tag &&& children -> (EOperate uop, [c])) = do
@@ -294,20 +304,22 @@ inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
         else return $ R.Bind fn [arg] (n - 1)
     call fn arg n = return $ R.Bind fn [arg] (n - 1)
 
-inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
+inline e@(tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
     d <- genSym
+    let mtrlzns = getMDecisions e
     tIdName <- case trig @~ isEProperty of
                  Just (EProperty (ePropertyValue -> Just (tag -> LString nm))) -> return nm
                  _ -> throwE $ CPPGenE $ "No trigger id property attached to " ++ tName
     (te, _)  <- inline trig
     (ae, av)  <- inline addr
     (ve, vv)  <- inline val
+    let messageValue = let m = M.findWithDefault defaultDecision "" mtrlzns in if inD m == Moved then move val vv else vv
     trigList  <- triggers <$> get
     trigTypes <- getKType val >>= genCType
     let className = R.Specialized [trigTypes] (R.Qualified (R.Name "K3" ) $ R.Name "ValDispatcher")
         classInst = R.Forward $ R.ScalarDecl (R.Name d) R.Inferred
                       (Just $ R.Call (R.Variable $ R.Specialized [R.Named className]
-                                           (R.Qualified (R.Name "std" ) $ R.Name "make_shared")) [vv])
+                                           (R.Qualified (R.Name "std" ) $ R.Name "make_shared")) [messageValue])
     return (concat [te, ae, ve]
                  ++ [ classInst
                     , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine") (R.Name "send")) [

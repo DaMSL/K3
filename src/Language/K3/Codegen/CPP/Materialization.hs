@@ -130,6 +130,17 @@ materializationD (Node (d :@: as) cs)
 materializationE :: K3 Expression -> MaterializationM (K3 Expression)
 materializationE e@(Node (t :@: as) cs)
   = case t of
+      ERecord is -> do
+        fs <- mapM materializationE cs
+
+        let moveDecision i x = isMoveableNow x >>= \m -> return $ if m then defaultDecision { inD = Moved } else defaultDecision
+
+        decisions <- zipWithM moveDecision is fs
+        zipWithM_ (setDecision (getUID e)) is decisions
+        ds <- dLookupAll (getUID e)
+
+        return (Node (t :@: (EMaterialization ds:as)) fs)
+
       EOperate OApp -> do
              [f, x] <- mapM materializationE cs
 
@@ -172,6 +183,14 @@ materializationE e@(Node (t :@: as) cs)
              decisions <- dLookupAll (getUID e)
 
              return (Node (t :@: (EMaterialization decisions:as)) [f, x])
+
+      EOperate OSnd -> do
+        [target, message] <- mapM materializationE cs
+        moveable <- isMoveableNow message
+        let decision = if moveable then defaultDecision { inD = Moved } else defaultDecision
+        setDecision (getUID e) "" decision
+        ds <- dLookupAll (getUID e)
+        return (Node (t :@: (EMaterialization ds:as)) [target, message])
 
       ELambda x -> do
              cg <- currentGlobal <$> get
