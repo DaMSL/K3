@@ -21,7 +21,6 @@ class Message {
   TriggerID trigger() const;
 
   unique_ptr<PackedValue> value_;
- protected:
   MessageHeader header_;
 };
 

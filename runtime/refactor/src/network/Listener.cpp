@@ -53,6 +53,9 @@ void Listener::registerConnection(shared_ptr<IncomingConnection> c) {
   shared_ptr<MessageHandler> m_handler = make_shared<MessageHandler>(
       [peer](std::unique_ptr<Message> m) { 
         auto d = peer->getContext()->__getDispatcher(std::move(m->value_), m->trigger());
+        #ifdef K3DEBUG
+        d->header_ = m->header_;
+        #endif
         peer->enqueue(std::move(d));
       });
 

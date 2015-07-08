@@ -86,16 +86,15 @@ bool SinkFileHandle::hasWrite() {
 
 
 // Note: value size limits are 32-bit ints (4GB per value)
-void SinkFileHandle::doWrite(shared_ptr<PackedValue> val) {
-  // file_.write ((char *) static_cast<uint32_t>(val->length()), 4);
-  file_ << static_cast<uint32_t>(val->length());
-  file_.write (val->buf(), val->length());
+void SinkFileHandle::doWrite(const PackedValue& val) {
+  file_ << static_cast<uint32_t>(val.length());
+  file_.write (val.buf(), val.length());
 }
 
 
 
-void SinkTextHandle::doWrite(shared_ptr<PackedValue> val) {
-  file_.write (val->buf(), val->length());
+void SinkTextHandle::doWrite(const PackedValue& val) {
+  file_.write (val.buf(), val.length());
   file_ << std::endl;
 }
 

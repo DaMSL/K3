@@ -91,7 +91,7 @@ class YASCodec : public Codec {
   virtual unique_ptr<PackedValue> pack(const NativeValue& nv) {
     yas::mem_ostream os;
     yas::binary_oarchive<yas::mem_ostream> oa(os);
-    oa&* nv.asConst<T>();
+    oa& *nv.asConst<T>();
     return make_unique<YASPackedValue>(os.get_shared_buffer(), format_);
   }
 

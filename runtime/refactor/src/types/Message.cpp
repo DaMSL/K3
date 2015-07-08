@@ -31,7 +31,7 @@ NetworkMessage::NetworkMessage() : Message() {
 NetworkMessage::NetworkMessage(const MessageHeader& head,
                                unique_ptr<PackedValue> v)
     : Message(head, std::move(v)) {
-  payload_length_ = v->length();
+  payload_length_ = value_->length();
 }
 
 shared_ptr<vector<asio::const_buffer>> NetworkMessage::outputBuffers() const {
@@ -39,6 +39,7 @@ shared_ptr<vector<asio::const_buffer>> NetworkMessage::outputBuffers() const {
   shared_ptr<vector<asio::const_buffer>> result;
   result = make_shared<vector<asio::const_buffer>>();
 
+  #ifdef K3DEBUG
   // Source Address
   auto& s_ip = header_.source_.ip;
   auto& s_port = header_.source_.port;
@@ -54,6 +55,7 @@ shared_ptr<vector<asio::const_buffer>> NetworkMessage::outputBuffers() const {
       asio::buffer(reinterpret_cast<const char*>(&d_ip), sizeof(d_ip)));
   result->push_back(
       asio::buffer(reinterpret_cast<const char*>(&d_port), sizeof(d_port)));
+  #endif
 
   // Trigger
   result->push_back(asio::buffer(
@@ -76,6 +78,7 @@ shared_ptr<vector<asio::mutable_buffer>> NetworkMessage::inputBuffers() {
   result = make_shared<vector<asio::mutable_buffer>>();
 
   // Source Address
+  #ifdef K3DEBUG
   auto& s_ip = header_.source_.ip;
   auto& s_port = header_.source_.port;
   result->push_back(asio::buffer(reinterpret_cast<char*>(&s_ip), sizeof(s_ip)));
@@ -88,6 +91,7 @@ shared_ptr<vector<asio::mutable_buffer>> NetworkMessage::inputBuffers() {
   result->push_back(asio::buffer(reinterpret_cast<char*>(&d_ip), sizeof(d_ip)));
   result->push_back(
       asio::buffer(reinterpret_cast<char*>(&d_port), sizeof(d_port)));
+  #endif
 
   // Trigger
   result->push_back(
@@ -101,9 +105,13 @@ shared_ptr<vector<asio::mutable_buffer>> NetworkMessage::inputBuffers() {
 }
 
 size_t NetworkMessage::networkHeaderSize() {
-  return sizeof(header_.source_.ip) + sizeof(header_.source_.port) +
-         sizeof(header_.destination_.ip) + sizeof(header_.destination_.port) +
-         sizeof(header_.trigger_) + sizeof(payload_length_);
+  size_t size = 0;
+  #ifdef K3DEBUG
+  size += sizeof(header_.source_.ip) + sizeof(header_.source_.port) +
+         sizeof(header_.destination_.ip) + sizeof(header_.destination_.port);
+  #endif
+  size += sizeof(header_.trigger_) + sizeof(payload_length_);
+  return size;
 }
 
 void NetworkMessage::setValue(unique_ptr<PackedValue> v) { value_ = std::move(v); }

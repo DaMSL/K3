@@ -20,7 +20,7 @@ class FileHandle {
     virtual bool hasWrite()  {return false;}
 
     virtual shared_ptr<PackedValue> doRead() = 0;
-    virtual void doWrite(shared_ptr<PackedValue> val) = 0;
+    virtual void doWrite(const PackedValue& val) = 0;
     virtual void close() = 0;
 };
 
@@ -35,7 +35,7 @@ public:
   virtual bool hasRead();
   virtual shared_ptr<PackedValue> doRead();
 
-  virtual void doWrite(shared_ptr<PackedValue> val) {
+  virtual void doWrite(const PackedValue& val) {
     throw std::ios_base::failure ("ERROR trying to write to source.");
   }
 
@@ -65,7 +65,7 @@ public:
   SinkFileHandle (std::string path);
 
   virtual bool hasWrite();
-  virtual void doWrite(shared_ptr<PackedValue> val);
+  virtual void doWrite(const PackedValue& val);
 
 
   virtual shared_ptr<PackedValue> doRead() {
@@ -86,7 +86,7 @@ protected:
 class SinkTextHandle : public SinkFileHandle  {
 public:
   SinkTextHandle (std::string path) : SinkFileHandle (path) {}
-  virtual void doWrite(shared_ptr<PackedValue> val);
+  virtual void doWrite(const PackedValue& val);
 };
 
 

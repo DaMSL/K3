@@ -69,9 +69,9 @@ void Engine::send(const MessageHeader& header, unique_ptr<NativeValue> value,
   if (local_sends_enabled_ && it != peers_->end()) {
     // Direct enqueue for local messages
     auto d = it->second->getContext()->__getDispatcher(std::move(value), header.trigger());
-#ifdef K3DEBUG
+    #ifdef K3DEBUG
     d->header_ = header;
-#endif
+    #endif
     it->second->enqueue(std::move(d));
   } else {
     // Serialize and send over the network, otherwise

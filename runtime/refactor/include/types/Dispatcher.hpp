@@ -8,7 +8,7 @@ namespace K3 {
 class Dispatcher {
  public:
   virtual void operator()() = 0;
-  virtual base_string jsonify() const = 0;
+  virtual base_string jsonify() const;
 #ifdef K3DEBUG
   MessageHeader header_;
 #endif

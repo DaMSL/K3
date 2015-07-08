@@ -111,10 +111,8 @@ doWrite fmt sink' typ = do
     let codec = R.Forward $ R.ScalarDecl (R.Name "__codec_") R.Inferred $ Just $
                   R.Call (R.Variable $ R.Specialized [elem_type] (R.Qualified (R.Name "Codec") (R.Name "getCodec")))
                     [fmt]
-    let native = R.Call (R.Variable $ R.Specialized [elem_type] (R.Name "TNativeValue")) [R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "move")) [R.Variable $ R.Name "arg"]]
-    let packed = R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "__codec_") (R.Name "pack")) [native]
     let write = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__storage_") (R.Name "doWrite"))
-                               [R.Variable $ R.Name "me", R.Literal $ R.LString sink, packed]
+                               [R.Variable $ R.Name "me", R.Literal $ R.LString sink, R.Variable $ R.Name "arg", fmt]
     let return_stmt = R.Return $ R.Initialization unit_t []
     return $ [R.FunctionDefn (R.Name $ sink ++ "Write") [("arg", elem_type)]
       (Just unit_t) [] False ([storage, codec, write, return_stmt])]

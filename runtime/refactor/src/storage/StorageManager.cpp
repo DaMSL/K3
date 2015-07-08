@@ -44,66 +44,9 @@ bool StorageManager::hasRead(Address peer, Identifier id)  {
   return files_->lookup(make_pair(peer, id))->hasRead();
 }
 
-
-shared_ptr<PackedValue> StorageManager::doRead(Address peer, Identifier id)  {
-  try {
-    auto val = files_->lookup(make_pair(peer, id))->doRead();
-    return val;
-  }
-  catch (std::ios_base::failure e) {
-    logger_->error ("ERROR Reading from {}", id);
-    throw std::runtime_error ("File I/O Error. Program is Halting.");
-  }
-}
-
-vector<shared_ptr<PackedValue>> StorageManager::doBlockRead(
-      Address peer, Identifier id, int max_blocksize)  {
-  vector<shared_ptr<PackedValue>> vals;
-  try {
-    auto file = files_->lookup(make_pair(peer, id));
-    for (int i = 0; i < max_blocksize; i++) {
-      vals.push_back(file->doRead());
-    }
-  }
-  catch (std::exception e)  {
-    logger_->error ("ERROR Reading from {}", id);
-    throw std::runtime_error ("File I/O Error. Program is Halting.");
-  }
-    return vals;
-
-}
-
 bool StorageManager::hasWrite(Address peer, Identifier id)  {
   auto file = files_->lookup(make_pair(peer, id));
   return file->hasWrite();
-}
-
-void StorageManager::doWrite(Address peer, Identifier id, 
-              shared_ptr<PackedValue> val)  {
-  try {
-    auto file = files_->lookup(make_pair(peer, id));
-    file->doWrite(val);
-  }
-  catch (std::ios_base::failure e) {
-    logger_->error ("ERROR Writing to {}", id);
-    throw std::runtime_error ("File I/O Error. Program is Halting.");
-  }
-
-}
-
-void StorageManager::doBlockWrite(Address peer, Identifier id, 
-      vector<shared_ptr<PackedValue>> vals) {
-  try  {
-    auto file = files_->lookup(make_pair(peer, id));
-    for (vector<shared_ptr<PackedValue>>::iterator itr = vals.begin(); 
-          itr != vals.end(); ++itr) {
-      file->doWrite(*itr);
-    }
-  }
-  catch (std::exception e)  {
-    logger_->error ("ERROR Writing to {}", id);
-    throw std::runtime_error ("File I/O Error. Program is Halting.");
-  }
 }
 
 }  // namespace K3
