@@ -916,6 +916,27 @@ class MultiIndexVMap
     }
   }
 
+  template <class F, class G>
+  unit_t upsert_with_before(const Version& v, const R& rec, F f, G g) {
+    auto existing = container.find(rec.key);
+    if ( existing == container.end() ) {
+      Key k = rec.key;
+      VMap vmap; vmap[v] = f(unit_t {});
+      container.emplace(std::move(std::make_tuple(std::move(k), std::move(vmap))));
+    } else {
+      container.modify(existing, [&](auto& elem){
+        auto& vmap = std::get<1>(elem);
+        auto vit = vmap.upper_bound(v);
+        if ( vit == vmap.end() ) {
+          vmap[v] = f(unit_t {});
+        } else {
+          vmap[v] = g(std::move(vit->second));
+        }
+      });
+    }
+    return unit_t {};
+  }
+
   // Non-inclusive erase less than version.
   unit_t erase_prefix(const Version& v, const R& rec) {
     auto it = container.find(rec.key);
@@ -1103,6 +1124,18 @@ class MultiIndexVMap
   // Multi-version methods.
 
   template<typename Fun, typename Acc>
+  Acc fold_vid(const Version& v, Fun f, Acc acc) const {
+    for (const auto& elem : container) {
+      auto& vmap = std::get<1>(elem);
+      auto it = vmap.upper_bound(v);
+      if ( it != vmap.end() ) {
+        acc = f(it->first)(std::move(acc))(it->second);
+      }
+    }
+    return acc;
+  }
+
+  template<typename Fun, typename Acc>
   Acc fold_all(Fun f, Acc acc) const {
     for (const auto& elem : container) {
       for (const auto& velem : std::get<1>(elem)) {
@@ -1210,6 +1243,20 @@ class MultiIndexVMap
       auto vit = vmap.upper_bound(v);
       if ( vit != vmap.end() ) {
         acc = f(std::move(acc))(vit->second);
+      }
+    }
+    return acc;
+  }
+
+  template <class Index, class Key, typename Fun, typename Acc>
+  Acc fold_slice_vid_by_index(const Index& index, const Version& v, Key key, Fun f, Acc acc) const
+  {
+    std::pair<typename Index::iterator, typename Index::iterator> p = index.equal_range(key);
+    for (typename Index::iterator it = p.first; it != p.second; it++) {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.upper_bound(v);
+      if ( vit != vmap.end() ) {
+        acc = f(vit->first)(std::move(acc))(vit->second);
       }
     }
     return acc;

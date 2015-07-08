@@ -41,9 +41,10 @@ indexes name ans content_ts = do
   range_defns       <- catMaybes <$> mapM range_fn flattened
   fold_slice_defns  <- catMaybes <$> mapM fold_slice_fn flattened
   fold_range_defns  <- catMaybes <$> mapM fold_range_fn flattened
+  fold_slice_vid_defns <- catMaybes <$> mapM fold_slice_vid_fn flattened
   return (index_types, lookup_defns ++ lookup_with_defns
                         ++ slice_defns ++ range_defns
-                        ++ fold_slice_defns ++ fold_range_defns)
+                        ++ fold_slice_defns ++ fold_range_defns ++ fold_slice_vid_defns)
   where
     elem_type = R.Named $ R.Name "__CONTENT"
     elem_r =  R.Name "&__CONTENT"
@@ -389,6 +390,36 @@ indexes name ans content_ts = do
       return result
 
     fold_range_fn _ = return Nothing
+
+    fold_slice_vid_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
+    fold_slice_vid_fn ((i,n), Lifted _ fname t _ _) | "fold_slice_vid_by" `isInfixOf` fname = do
+      let key_t = get_key_type n t
+      let f_t   = R.Named $ R.Name "Fun"
+      let acc_t = R.Named $ R.Name "Acc"
+      let this = R.Dereference $ R.Variable $ R.Name "this"
+      let container = R.Call (R.Project this $ R.Name "getConstContainer") []
+
+      let index = R.Call
+                    ((R.Variable $ R.Specialized [R.Named $ R.Name $ show i] (R.Name "get")))
+                    [container]
+
+      let slice k_t = R.Call (R.Project this $ R.Name "fold_slice_vid_by_index")
+                        $ call_args n index [ tuple (R.Name "key") k_t
+                                            , R.Variable $ R.Name "f", R.Variable $ R.Name "acc" ]
+
+      let defn k_t c_t = R.TemplateDefn [("Fun", Nothing), ("Acc", Nothing)] $
+                         R.FunctionDefn (R.Name fname)
+                           (defn_args n [("key", c_t), ("f", f_t), ("acc", acc_t)])
+                           (Just $ acc_t)
+                           []
+                           False
+                           [R.Return $ slice k_t]
+
+      cType <- maybe (return Nothing) (\x -> genCType x >>= return . Just)  key_t
+      let result = key_t >>= \k_t -> cType >>= \c_t -> Just $ defn k_t c_t
+      return result
+
+    fold_slice_vid_fn _ = return Nothing
 
 
 {- Pattern synonyms for index functions. -}

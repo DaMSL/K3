@@ -10,7 +10,9 @@ typedef EmployeeV =
 
 declare employeesV  : mut EmployeeV
 declare employeesV2 : mut EmployeeV
-declare flatEmployees : mut collection {id:int, id2:int, name:string, age:int} @Collection
+
+declare flatEmployees  : mut collection {id:int, id2:int, name:string, age:int} @Collection
+declare flatEmployeesV : mut collection {vid: int, id:int, id2:int, name:string, age:int} @Collection
 
 declare updated  : mut bool = false
 
@@ -37,11 +39,17 @@ trigger t1 : () = \_ -> (
     employeesV    = employeesV.range_by_name         2 {name: "a"} {name: "d"};
     employeesV2   = employeesV.range_by_name         2 {name: "a"} {name: "bz"};
 
-    flatEmployees = employeesV.fold_range_by_name 2 {name: "a"} {name: "c"}
-                      (\acc -> (\r -> ((acc.insert {id: r.key.id, id2: r.key.id2,
-                                                    name: r.key.name, age:r.value.age});
-                                        acc)))
-                      (empty {id:int, id2:int, name:string, age:int} @Collection)
+    (flatEmployees = employeesV.fold_range_by_name 2 {name: "a"} {name: "c"}
+                       (\acc -> (\r -> ((acc.insert {id: r.key.id, id2: r.key.id2,
+                                                     name: r.key.name, age:r.value.age});
+                                         acc)))
+                       (empty {id:int, id2:int, name:string, age:int} @Collection));
+
+    flatEmployeesV = employeesV.fold_slice_vid_by_name 2 {name: "alice"}
+                       (\vid -> (\acc -> (\r -> ((acc.insert {vid: vid, id: r.key.id, id2: r.key.id2,
+                                                              name: r.key.name, age:r.value.age});
+                                                  acc))))
+                       (empty {vid: int, id:int, id2:int, name:string, age:int} @Collection)
 )
 
 source s1 : () = value ()

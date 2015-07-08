@@ -91,6 +91,10 @@ annotation MultiIndexVMap given type a,b {
   provides lifted lookup_with4_before : int -> content -> (() -> a) -> (content -> a) -> a
     with effects \version -> \elem -> \noneF -> \someF -> [R[self]; R[version]; R[elem]; noneF content; someF content]
 
+  @:CArgs 4
+  provides lifted upsert_with_before : int -> content -> (() -> content) -> (content -> content) -> ()
+    with effects \version -> \elem -> \f -> \g -> [R[version]; R[self]; R[elem]; f content; g content; W[self]]
+
   // Non-inclusive modifications of all values before the given version.
   @:CArgs 2
   provides lifted erase_prefix : int -> content -> ()
@@ -153,6 +157,10 @@ annotation MultiIndexVMap given type a,b {
   //
   // Multi-version methods.
 
+  @:{CArgs 3}
+  provides lifted fold_vid : int -> (int -> (a -> (content -> a))) -> a -> a
+    with effects \version -> \foldF -> \z -> [R[version]; R[self]; R[z]; ([R[content]; (((foldF z) none) content)])*]
+
   @:{CArgs 2}
   provides lifted fold_all : (a -> (int -> (content -> a))) -> a -> a
     with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; (((foldF z) none) content)])*]
@@ -185,6 +193,10 @@ annotation VMapIndex[key : [labeltype]] given type a
   @:CArgs 4
   provides lifted fold_slice_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (a -> (content -> a)) -> a -> a
     with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+  @:CArgs 4
+  provides lifted fold_slice_vid_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (int -> (a -> (content -> a))) -> a -> a
+    with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; (((foldF z) none) content)])*]
 }
 
 // A tree-based index implementation, additionally providing a two-sided range query operation.
@@ -213,6 +225,10 @@ annotation OrderedVMapIndex[key : [labeltype]] given type a
   @:CArgs 5
   provides lifted fold_range_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> $[|mkRecord 'key|] -> (a -> (content -> a)) -> a -> a
     with effects \version -> \lower_key -> \upper_key -> \foldF -> \z -> [R[self]; R[version]; R[lower_key]; R[upper_key]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+  @:CArgs 4
+  provides lifted fold_slice_vid_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (int -> (a -> (content -> a))) -> a -> a
+    with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; (((foldF z) none) content)])*]
 }
 
 // A hash index implementation with customizable extractors.
@@ -233,6 +249,10 @@ annotation VMapIndexE[key : [labeltype], extractors: [labellit]] given type a
   @:{CArgs 4, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
   provides lifted fold_slice_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (a -> (content -> a)) -> a -> a
     with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+  @:{CArgs 4,IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted fold_slice_vid_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (int -> (a -> (content -> a))) -> a -> a
+    with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; (((foldF z) none) content)])*]
 }
 
 // A tree-based index implementation, additionally providing a two-sided range query operation.
@@ -261,4 +281,8 @@ annotation OrderedVMapIndexE[key : [labeltype], extractors: [labellit]] given ty
   @:{CArgs 5, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
   provides lifted fold_range_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> $[|mkRecord 'key|] -> (a -> (content -> a)) -> a -> a
     with effects \version -> \lower_key -> \upper_key -> \foldF -> \z -> [R[self]; R[version]; R[lower_key]; R[upper_key]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+  @:{CArgs 4, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted fold_slice_vid_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (int -> (a -> (content -> a))) -> a -> a
+    with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; (((foldF z) none) content)])*]
 }
