@@ -158,7 +158,7 @@ annotation MultiIndexVMap given type a,b {
   // Multi-version methods.
 
   @:{CArgs 3}
-  provides lifted fold_vid : int -> (int -> (a -> (content -> a))) -> a -> a
+  provides lifted fold_vid : int -> (a -> (int -> (content -> a))) -> a -> a
     with effects \version -> \foldF -> \z -> [R[version]; R[self]; R[z]; ([R[content]; (((foldF z) none) content)])*]
 
   @:{CArgs 2}

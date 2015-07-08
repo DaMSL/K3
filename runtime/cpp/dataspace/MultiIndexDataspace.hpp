@@ -1129,7 +1129,7 @@ class MultiIndexVMap
       auto& vmap = std::get<1>(elem);
       auto it = vmap.upper_bound(v);
       if ( it != vmap.end() ) {
-        acc = f(it->first)(std::move(acc))(it->second);
+        acc = f(std::move(acc))(it->first)(it->second);
       }
     }
     return acc;
