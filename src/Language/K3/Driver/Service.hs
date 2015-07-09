@@ -1288,7 +1288,7 @@ submitJob sOpts@(serviceId -> rq) rjOpts opts = do
 
     mHandler _ m = errorM $ boxToString $ ["Invalid message:"] %$ [show m]
 
-    ensureSaves opts' = opts' {input = (input opts') {saveSyntax = True}}
+    ensureSaves opts' = opts' {input = (input opts') {saveRawAST = True}}
 
     clientReport time report =
       boxToString $  ["Compile report:"] %$ (indent 4 $ lines $ report)
