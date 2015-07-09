@@ -27,9 +27,8 @@ trigger t1 : () = \_ -> (
     employeesV.insert 1 {key: {id: 3, id2: 13, name: "bob"    }, value: {age: 40}};
     employeesV.insert 1 {key: {id: 4, id2: 14, name: "charles"}, value: {age: 45}};
 
-    let ck = {id: 4, id2: 14, name: "charles"} in
-    updated = (employeesV.update_with 1 {key: ck, value: {age: 0}} false
-                (\_ -> {key: ck, value: {age: 42}})
+    updated = (employeesV.update_with 1 {key: {id: 4, id2: 14, name: "charles"}, value: {age: 0}} false
+                (\_ -> {key: {id: 4, id2: 14, name: "charles"}, value: {age: 42}})
                 (\_ -> true));
 
     result1       = employeesV.lookup_before_by_id   2 {id: 2};
@@ -37,7 +36,9 @@ trigger t1 : () = \_ -> (
     result3       = employeesV.lookup_before_by_rarb 2 {ra: 3, rb: 13};
     (employeesV.lookup_with_before_by_name           2 {name: "John"} (\_ -> ()) (\r -> result2w = r));
     employeesV    = employeesV.range_by_name         2 {name: "a"} {name: "d"};
-    employeesV2   = employeesV.range_by_name         2 {name: "a"} {name: "bz"};
+    employeesV2   = employeesV.range_by_name         2 {name: "a"} {name: "bz"}
+
+    /*
 
     (flatEmployees = employeesV.fold_range_by_name 2 {name: "a"} {name: "c"}
                        (\acc -> (\r -> ((acc.insert {id: r.key.id, id2: r.key.id2,
@@ -53,6 +54,8 @@ trigger t1 : () = \_ -> (
 
     employeesV.update 1 {key: {id:2, id2:12, name: "alice"}, value: {age: 40}}
                         {key: {id:2, id2:12, name: "alice"}, value: {age: 35}}
+
+    */
 )
 
 source s1 : () = value ()
