@@ -369,15 +369,15 @@ reify r (tag &&& children -> (EOperate OSeq, [a, b])) = do
     be <- reify r b
     return $ ae ++ be
 
-reify r (tag &&& children -> (ELetIn x, [e, b])) = do
-    -- TODO: Push declaration into reification.
-    ct <- getKType e
-    g <- genSym
-    d <- cDecl ct g
-    ee <- reify (RName g) e
-    let d' = [R.Forward $ R.ScalarDecl (R.Name x) (R.Reference R.Inferred) (Just $ R.Variable $ R.Name g)]
-    be <- reify r b
-    return [R.Block $ d ++ ee ++ d' ++ be]
+reify r lt@(tag &&& children -> (ELetIn x, [e, b])) = do
+  let mtrlzns = getMDecisions lt
+  ct <- getKType e
+  d <- cDecl ct x
+  (ee, ev) <- inline e
+  let initD = M.findWithDefault defaultDecision x mtrlzns
+  let initE = [R.Assignment (R.Variable $ R.Name x) (if inD initD == Moved then R.Move ev else ev)]
+  be <- reify r b
+  return [R.Block $ d ++ ee ++ initE ++ be]
 
 -- case `e' of { some `x' -> `s' } { none -> `n' }
 reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do

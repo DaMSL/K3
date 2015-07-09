@@ -7,7 +7,6 @@ module Language.K3.Codegen.CPP.Materialization where
 
 import Prelude hiding (concat, mapM, mapM_, or, and)
 
-import Control.Applicative
 import Control.Arrow
 
 import Control.Monad.Identity (Identity(..), runIdentity)
@@ -291,10 +290,16 @@ materializationE e@(Node (t :@: as) cs)
 
       ELetIn i -> do
              let [x, b] = cs
-             x' <- withLocalDS [b] (materializationE x)
+             (x', d) <- withLocalDS [b] $ do
+               x'' <- materializationE x
+
+               -- Decision processing for the initializer move needs to be performed inside the
+               -- context of the extra downstream.
+               m <- isMoveableNow x''
+               return (x'', if m then defaultDecision { inD = Moved } else defaultDecision)
              b' <- materializationE b
 
-             setDecision (getUID e) i defaultDecision
+             setDecision (getUID e) i d
              decisions <- dLookupAll (getUID e)
              return (Node (t :@: (EMaterialization decisions:as)) [x', b'])
       _ -> (Node (t :@: as)) <$> mapM materializationE cs
