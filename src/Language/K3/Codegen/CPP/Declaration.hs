@@ -120,7 +120,7 @@ declaration d@(tag -> DGlobal i t me) = do
     addStaticDeclaration staticGlobalDecl
 
     -- Initialize the variable.
-    let rName = RName $ if pinned then "__global_context::" ++ i else i
+    let rName = RName (if pinned then "__global_context::" ++ i else i) Nothing
     globalInit <- maybe (return []) (liftM (addSetCheck pinned i) . reify rName) me
 
     -- Add to proper initialization list

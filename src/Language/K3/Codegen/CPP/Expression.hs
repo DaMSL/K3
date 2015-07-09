@@ -53,11 +53,11 @@ data RContext
     -- | Indicates that the calling context is a C++ function, in which case the result may be
     -- 'returned' from the callee. A true payload indicates that the return value needs to be
     -- manually move wrapped
-    | RReturn { moveReturn :: Bool }
+    | RReturn { byMove :: Bool }
 
     -- | Indicates that the calling context requires the callee's result to be stored in a variable
     -- of a pre-specified name.
-    | RName Identifier
+    | RName { target :: Identifier, maybeByMove :: Maybe Bool}
 
     -- | A free-form reification context, for special cases.
     | RSplice ([CPPGenR] -> CPPGenR)
@@ -65,7 +65,7 @@ data RContext
 instance Show RContext where
     show RForget = "RForget"
     show (RReturn b) = "RReturn " ++ show b
-    show (RName i) = "RName \"" ++ i ++ "\""
+    show (RName i b) = "RName \"" ++ i ++ "\"" ++ " " ++ show b
     show (RSplice _) = "RSplice <opaque>"
 
 -- | Patterns
@@ -341,7 +341,7 @@ inline e@(tag &&& children -> (EProject v, [k])) = do
     (ke, kv) <- inline k
     return (ke, R.Project kv (R.Name v))
 
-inline (tag &&& children -> (EAssign x, [e])) = reify (RName x) e >>= \a -> return (a, R.Initialization R.Unit [])
+inline (tag &&& children -> (EAssign x, [e])) = reify (RName x Nothing) e >>= \a -> return (a, R.Initialization R.Unit [])
 
 inline (tag &&& children -> (EAddress, [h, p])) = do
     (he, hv) <- inline h
@@ -352,7 +352,7 @@ inline e = do
     k <- genSym
     ct <- getKType e
     decl <- cDecl ct k
-    effects <- reify (RName k) e
+    effects <- reify (RName k Nothing) e
     return (decl ++ effects, R.Variable $ R.Name k)
 
 -- | The generic function to generate code for an expression whose result is to be reified. The
@@ -399,7 +399,7 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
         EVariable k -> return (k, [])
         _ -> do
           g <- genSym
-          ee <- reify (RName g) e
+          ee <- reify (RName g Nothing) e
           return (g, [R.Forward $ R.ScalarDecl (R.Name g) initCType Nothing] ++ ee)
 
     let initExpr = R.Dereference $ R.Variable $ R.Name initName
@@ -432,8 +432,8 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
           returnType <- getKType k >>= genCType
           let returnDecl = [R.Forward $ R.ScalarDecl (R.Name returnName) returnType Nothing]
           let returnStmt = if m then R.Move (R.Variable $ R.Name returnName) else (R.Variable $ R.Name returnName)
-          someE <- reify (RName returnName) s
-          noneE <- reify (RName returnName) n
+          someE <- reify (RName returnName Nothing) s
+          noneE <- reify (RName returnName Nothing) n
 
           return (someE, noneE, returnDecl, [R.Return returnStmt])
         _ -> do
@@ -464,7 +464,7 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
       EVariable v -> return (v, [])
       _ -> do
         g <- genSym
-        ee <- reify (RName g) a
+        ee <- reify (RName g Nothing) a
         return (g, [R.Forward $ R.ScalarDecl (R.Name g) initCType Nothing] ++ ee)
 
   let initExpr = R.Variable (R.Name initName)
@@ -508,7 +508,7 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
         returnType <- getKType k >>= genCType
         let returnDecl = [R.Forward $ R.ScalarDecl (R.Name returnName) returnType Nothing]
         let returnExpr = if m then R.Move (R.Variable $ R.Name returnName) else (R.Variable $ R.Name returnName)
-        bindBody <- reify (RName returnName) e
+        bindBody <- reify (RName returnName (Just m)) e
         return (bindBody, returnDecl, [R.Return returnExpr])
       _ -> do
         bindBody <- reify r e
@@ -527,7 +527,7 @@ reify r e = do
     (effects, value) <- inline e
     reification <- case r of
         RForget -> return []
-        RName k -> return [R.Assignment (R.Variable $ R.Name k) value]
+        RName k b -> return [R.Assignment (R.Variable $ R.Name k) (if fromMaybe False b then R.Move value else value)]
         RReturn b -> return $ [R.Return $ (if b then R.Move else id) value]
         RSplice _ -> throwE $ CPPGenE "Unsupported reification by splice."
     return $ effects ++ reification
