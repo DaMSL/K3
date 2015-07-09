@@ -721,14 +721,16 @@ class MultiIndexVMap
   unit_t erase(const Version& v, const R& rec) {
     auto it = container.find(rec.key);
     if (it != container.end()) {
-      auto& vmap = std::get<1>(*it);
-      auto vit = vmap.find(v);
-      if ( vit != vmap.end() ) {
-        vmap.erase(vit);
-        if ( vmap.empty() ) {
-          container.erase(it);
+      container.modify(it, [&](auto& elem){
+        auto& vmap = std::get<1>(elem);
+        auto vit = vmap.find(v);
+        if ( vit != vmap.end() ) {
+          vmap.erase(vit);
+          if ( vmap.empty() ) {
+            container.erase(it);
+          }
         }
-      }
+      });
     }
     return unit_t();
   }
@@ -736,10 +738,20 @@ class MultiIndexVMap
   unit_t update(const Version& v, const R& rec1, const R& rec2) {
     auto it = container.find(rec1.key);
     if (it != container.end()) {
-      auto& vmap = std::get<1>(*it);
-      auto vit = vmap.find(v);
-      if ( vit != vmap.end() ) {
-        vmap.erase(vit);
+      bool do_insert = false;
+      container.modify(it, [&](auto& elem){
+        auto& vmap = std::get<1>(elem);
+        auto vit = vmap.find(v);
+        if ( vit != vmap.end() ) {
+          std::cout << "Update found" << endl;
+          vmap.erase(vit);
+          do_insert = true;
+        } else {
+          std::cout << "Update failed" << endl;
+        }
+      });
+      if ( do_insert ) {
+        std::cout << "Update inserting" << endl;
         insert(v, rec2);
       }
     }

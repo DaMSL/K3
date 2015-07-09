@@ -45,11 +45,14 @@ trigger t1 : () = \_ -> (
                                          acc)))
                        (empty {id:int, id2:int, name:string, age:int} @Collection));
 
-    flatEmployeesV = employeesV.fold_slice_vid_by_name 2 {name: "alice"}
-                       (\acc -> (\vid -> (\r -> ((acc.insert {vid: vid, id: r.key.id, id2: r.key.id2,
-                                                              name: r.key.name, age:r.value.age});
-                                                  acc))))
-                       (empty {vid: int, id:int, id2:int, name:string, age:int} @Collection)
+    (flatEmployeesV = employeesV.fold_slice_vid_by_name 2 {name: "alice"}
+                        (\acc -> (\vid -> (\r -> ((acc.insert {vid: vid, id: r.key.id, id2: r.key.id2,
+                                                               name: r.key.name, age:r.value.age});
+                                                   acc))))
+                        (empty {vid: int, id:int, id2:int, name:string, age:int} @Collection));
+
+    employeesV.update 1 {key: {id:2, id2:12, name: "alice"}, value: {age: 40}}
+                        {key: {id:2, id2:12, name: "alice"}, value: {age: 35}}
 )
 
 source s1 : () = value ()
