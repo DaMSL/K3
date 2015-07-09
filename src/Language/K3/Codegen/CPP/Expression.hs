@@ -490,16 +490,16 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
         case d of
           Referenced -> []
           ConstReferenced -> []
-          Moved -> [R.Assignment (R.Variable $ R.Name old) (R.Move new)]
-          Copied -> [R.Assignment (R.Variable $ R.Name old) new]
+          Moved -> [R.Assignment old (R.Move new)]
+          Copied -> [R.Assignment old new]
 
   let bindWriteBack =
         case b of
-          BIndirection i -> wbByDecision (outD $ mtrlzns M.! i) i initExpr
+          BIndirection i -> wbByDecision (outD $ mtrlzns M.! i) initExpr (R.Variable $ R.Name i)
           BTuple is ->
-            concat [wbByDecision (outD $ mtrlzns M.! i) i (R.TGet initExpr n) | i <- is | n <- [0..]]
+            concat [wbByDecision (outD $ mtrlzns M.! i) (R.TGet initExpr n) (R.Variable $ R.Name i) | i <- is | n <- [0..]]
           BRecord iis ->
-            concat [wbByDecision (outD $ mtrlzns M.! i) i (R.Project initExpr (R.Name f)) | (f, i) <- iis]
+            concat [wbByDecision (outD $ mtrlzns M.! i) (R.Project initExpr (R.Name f)) (R.Variable $ R.Name i) | (f, i) <- iis]
 
   (bindBody, returnDecl, returnStmt) <-
     case r of
