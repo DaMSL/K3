@@ -38,6 +38,7 @@ class Peer {
   void processBatch();
   void logMessage(const Dispatcher& d);
   void logGlobals(bool final);
+  void printStatistics();
 
   // Components
   shared_ptr<spdlog::logger> logger_;
@@ -54,6 +55,7 @@ class Peer {
   Address address_;
   std::atomic<bool> start_processing_;
   std::atomic<bool> finished_;
+  std::vector<TriggerStatistics> statistics_;
   int message_counter_;
   vector<unique_ptr<Dispatcher>> batch_;
 };

@@ -43,9 +43,16 @@ using K3::Dispatcher;
 using K3::TriggerID;
 using K3::EndOfProgramException;
 
+
 class EngineTest : public ::testing::Test {
  public:
   EngineTest() {
+    ProgramContext::__trigger_names_[0] = "null";
+    ProgramContext::__trigger_names_[1] = "IntTrigger";
+    ProgramContext::__trigger_names_[2] = "StringTrigger";
+    ProgramContext::__trigger_names_[3] = "MainTrigger";
+    ProgramContext::__trigger_names_[4] = "StopTrigger";
+
     std::string config1 = "{me: [127.0.0.1, 30000], buddy: [127.0.0.1, 40000], role: main}";
     std::string config2 = "{me: [127.0.0.1, 40000], buddy: [127.0.0.1, 30000], role: main}";
     vector<std::string> configs;

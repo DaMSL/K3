@@ -41,6 +41,7 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
     // Signal that peer is initialized, wait for 'go' signal
     ready_callback();
     while (!start_processing_) continue;
+    statistics_.resize(ProgramContext::__trigger_names_.size());
 
     try {
       while (true) {
@@ -49,6 +50,7 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
     } catch (EndOfProgramException e) {
       finished_ = true;
       logGlobals(true);
+      printStatistics();
     } catch (const std::exception& e) {
       logger_->error() << "Peer failed: " << e.what();
     }
@@ -91,7 +93,17 @@ void Peer::processBatch() {
   for (int i = 0; i < num; i++) {
     auto d = std::move(batch_[i]);
     logMessage(*d);
+    #ifdef K3DEBUG
+    TriggerID tid = d->header_.trigger();
+    std::chrono::high_resolution_clock::time_point start_time = std::chrono::high_resolution_clock::now();
+    #endif
+
     (*d)();
+    
+    #ifdef K3DEBUG
+    statistics_[tid].total_time += std::chrono::high_resolution_clock::now() - start_time;
+    statistics_[tid].total_count++;
+    #endif
     logGlobals(false);
   }
 }
@@ -146,4 +158,36 @@ void Peer::logGlobals(bool final) {
 #endif // K3DEBUG
 }
 
+void Peer::printStatistics() {
+  // Associate each statistic with its trigger id, since sorting will reorder
+  // the statistics_ vector
+  for (int i = 0; i < statistics_.size(); i++) {
+    statistics_[i].trig_id = ProgramContext::__triggerName(i);
+  }
+
+  double total = 0.0;
+  std::cout << "===Trigger Statistics @" << addressAsString(address_)
+            << "===" << std::endl;
+  std::sort(statistics_.begin(), statistics_.end(),
+            [](const TriggerStatistics& a, const TriggerStatistics& b) {
+              return a.total_time > b.total_time;
+            });
+
+  int k = 10;
+  int max = statistics_.size() < k ? statistics_.size() : k;
+  for (int i = 0; i < max; i++) {
+    auto count = statistics_[i].total_count;
+    auto time =
+        std::chrono::duration_cast<std::chrono::duration<float, std::ratio<1>>>(
+            statistics_[i].total_time)
+            .count();
+    total += time;
+    std::cout << std::setw(70) << statistics_[i].trig_id << ": " << std::setw(6)
+              << count << " call(s), " << std::setw(15) << std::scientific
+              << std::setprecision(15) << time << "s total time spent, "
+              << std::setw(6) << std::scientific << std::setprecision(15)
+              << time / count << "s average per call." << std::endl;
+  }
+  std::cout << "Total time in all triggers: " << total << std::endl;
+}
 }  // namespace K3

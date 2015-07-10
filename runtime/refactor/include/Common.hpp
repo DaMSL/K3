@@ -40,6 +40,13 @@ using std::make_unique;
 #define HAS_LIBDYNAMIC 1
 #define K3_INTERNAL_FORMAT CodecFormat::YASBinary
 
+class TriggerStatistics {
+ public:
+  std::string trig_id;
+  int total_count;
+  std::chrono::nanoseconds total_time;
+};
+
 namespace asio = boost::asio;
 typedef const boost::system::error_code& boost_error;
 
