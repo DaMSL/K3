@@ -465,7 +465,7 @@ minimalProgramDecls declIds prog = fixpointAcc [] declIds
       if all (isJust . flip lookup nacc) next then return nacc else fixpointAcc nacc next
 
     filterDeclIds ids p = foldProgram (accF ids) idF idF Nothing [] p
-    accF ids a d = return $ maybe (a,d) (\i -> (if i `elem` ids then a ++ [(i,d)] else a, d)) $ declarationName d
+    accF ids a d = return $ maybe (a,d) (\i -> (if any (`isInfixOf` i) ids then a ++ [(i,d)] else a, d)) $ declarationName d
     idF a b = return (a,b)
 
     declGlobals acc (_,d) = maybe (return acc) (extractGlobals acc) $ declarationExpr d

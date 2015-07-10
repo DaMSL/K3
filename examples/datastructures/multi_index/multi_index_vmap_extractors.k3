@@ -20,6 +20,7 @@ declare result1  : mut option {key: {id: int, id2: int, name: string}, value: {a
 declare result2  : mut option {key: {id: int, id2: int, name: string}, value: {age: int}}
 declare result2w : mut        {key: {id: int, id2: int, name: string}, value: {age: int}}
 declare result3  : mut option {key: {id: int, id2: int, name: string}, value: {age: int}}
+declare result4  : mut        {vid: int, val: {key: {id: int, id2: int, name: string}, value: {age: int}}}
 
 trigger t1 : () = \_ -> (
     employeesV.insert 1 {key: {id: 1, id2: 11, name: "John"   }, value: {age: 30}};
@@ -34,7 +35,15 @@ trigger t1 : () = \_ -> (
     result1       = employeesV.lookup_before_by_id   2 {id: 2};
     result2       = employeesV.lookup_before_by_name 2 {name: "John"};
     result3       = employeesV.lookup_before_by_rarb 2 {ra: 3, rb: 13};
-    (employeesV.lookup_with_before_by_name           2 {name: "John"} (\_ -> ()) (\r -> result2w = r));
+
+    (employeesV.lookup_with_before_by_name           2 {name: "John"}
+                                                       (\_ -> ())
+                                                       (\r -> result2w = r));
+
+    (employeesV.lookup_with4_before_vid              2 {key: {id:1, id2: 11, name: "John"}, value: {age: 0}}
+                                                       (\_ -> ())
+                                                       (\v -> (\r -> result4 = {vid: v, val: r})));
+
     employeesV    = employeesV.range_by_name         2 {name: "a"} {name: "d"};
     employeesV2   = employeesV.range_by_name         2 {name: "a"} {name: "bz"}
 

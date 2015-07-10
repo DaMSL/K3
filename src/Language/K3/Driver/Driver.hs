@@ -108,14 +108,12 @@ printTransformReport rp = do
   putStrLn $ boxToString rp
   where sep = replicate 20 '='
 
-printMinimal :: IOOptions -> ([String], [(String, K3 Declaration)]) -> IO ()
-printMinimal ioOpts (userdecls, reqdecls) = do
+printMinimal :: IOOptions -> ParseOptions -> ([String], [(String, K3 Declaration)]) -> IO ()
+printMinimal ioOpts pOpts (userdecls, reqdecls) = do
   putStrLn $ unwords $ ["Declarations needed for:"] ++ userdecls
   putStrLn $ unlines $ map fst reqdecls
-  let progE = programS $ DC.role "__global" $ map snd reqdecls
-  cwd <- getCurrentDirectory
-  let output = case inputProgram ioOpts of {"-" -> "a"; x -> x }
-  either putStrLn (\s -> outputStrFile s $ outputFilePath cwd output "k3s") progE
+  k3outIO ioOpts pOpts $ DC.role "__global" $ map snd reqdecls
+
 
 -- | AST formatting.
 formatAST :: (K3 Declaration -> String) -> PrintMode -> K3 Declaration -> Either String String
@@ -149,18 +147,20 @@ k3in opts = if splicedInput ioOpts
         parseError = "Could not parse input: "
 
 -- | Save out K3's internal representation.
-k3out :: IOOptions -> ParseOptions -> K3 Declaration -> DriverM ()
-k3out ioOpts pOpts prog = liftIO $ do
-  when (saveAST    ioOpts) (outputAST pOpts pretty "k3ast" (parsePrintMode pOpts) prog)
-  when (saveRawAST ioOpts) (outputAST pOpts show   "k3ar"  (parsePrintMode pOpts) prog)
-  when (saveSyntax ioOpts) (outputAST pOpts show   "k3s"   PrintSyntax            prog)
+k3outIO :: IOOptions -> ParseOptions -> K3 Declaration -> IO ()
+k3outIO ioOpts pOpts prog = do
+  when (saveAST    ioOpts) (outputAST pretty "k3ast" (parsePrintMode pOpts) prog)
+  when (saveRawAST ioOpts) (outputAST show   "k3ar"  (parsePrintMode pOpts) prog)
+  when (saveSyntax ioOpts) (outputAST show   "k3s"   PrintSyntax            prog)
 
-  where outputAST popts toStr ext printMode p = do
+  where outputAST toStr ext printMode p = do
           cwd <- getCurrentDirectory
           let output = case inputProgram ioOpts of {"-" -> "a"; x -> x }
           either putStrLn (\s -> outputStrFile s $ outputFilePath cwd output ext)
             $ formatAST toStr printMode p
 
+k3out :: IOOptions -> ParseOptions -> K3 Declaration -> DriverM ()
+k3out ioOpts pOpts prog = liftIO $ k3outIO ioOpts pOpts prog
 
 -- | Evaluate any metaprograms present in a program.
 metaprogram :: Options -> K3 Declaration -> DriverM (K3 Declaration)
@@ -185,7 +185,7 @@ parse ioOpts pOpts prog = do
     (xP, report) <- liftE $ evalTransform Nothing (poStages pOpts) prog
     k3out ioOpts pOpts xP
     minP <- reasonM syntaxError $ minimize pOpts (xP, report)
-    liftIO $ either (printStages pOpts) (printMinimal ioOpts) minP
+    liftIO $ either (printStages pOpts) (printMinimal ioOpts pOpts) minP
 
   where syntaxError = "Could not print program: "
 

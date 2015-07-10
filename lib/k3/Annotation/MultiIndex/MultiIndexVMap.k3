@@ -95,6 +95,10 @@ annotation MultiIndexVMap given type a,b {
   provides lifted upsert_with_before : int -> content -> (() -> content) -> (content -> content) -> ()
     with effects \version -> \elem -> \f -> \g -> [R[version]; R[self]; R[elem]; f content; g content; W[self]]
 
+  @:CArgs 4
+  provides lifted lookup_with4_before_vid : int -> content -> (() -> a) -> (int -> (content -> a)) -> a
+    with effects \version -> \elem -> \noneF -> \someF -> [R[self]; R[version]; R[elem]; noneF content; (someF none) content]
+
   // Non-inclusive modifications of all values before the given version.
   @:CArgs 2
   provides lifted erase_prefix : int -> content -> ()

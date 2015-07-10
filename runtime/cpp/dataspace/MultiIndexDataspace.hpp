@@ -949,6 +949,22 @@ class MultiIndexVMap
     return unit_t {};
   }
 
+  template <class F, class G>
+  auto lookup_with4_before_vid(const Version& v, R const& r, F f, G g) const {
+    auto it = container.find(r.key);
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      auto& vmap = std::get<1>(*it);
+      auto vit = vmap.upper_bound(v);
+      if ( vit == vmap.end() ) {
+        return f(unit_t {});
+      } else {
+        return g(vit->first)(vit->second);
+      }
+    }
+  }
+
   // Non-inclusive erase less than version.
   unit_t erase_prefix(const Version& v, const R& rec) {
     auto it = container.find(rec.key);
