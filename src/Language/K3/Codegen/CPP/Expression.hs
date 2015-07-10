@@ -360,7 +360,7 @@ inline (tag &&& children -> (EAddress, [h, p])) = do
 inline e = do
     k <- genSym
     effects <- reify (RDecl k Nothing) e
-    return (decl ++ effects, R.Variable $ R.Name k)
+    return (effects, R.Variable $ R.Name k)
 
 -- | The generic function to generate code for an expression whose result is to be reified. The
 -- method of reification is indicated by the @RContext@ argument.
