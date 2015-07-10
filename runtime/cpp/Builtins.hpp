@@ -264,7 +264,7 @@ namespace K3 {
     }
 
     // TODO add a member to base_string, call that instead
-    int strcomp(const string_impl& s1,const string_impl& s2) {
+    int strcomp(const string_impl& s1, const string_impl& s2) {
       const char* c1 = s1.c_str();
       const char* c2 = s2.c_str();
       if (c1 && c2) {
@@ -283,21 +283,13 @@ namespace K3 {
     }
 
     template <class C, class A, class B>
-    C max(const R_key_value<A, B>& r) {
-      if (r.key > r.value) {
-        return r.key;
-      } else {
-        return r.value;
-      }
+    C max(const A x, const B y) {
+      return (x > y ? x : y);
     }
 
-    template <class C>
-    C min(const R_key_value<C, C>& r) {
-      if (r.key < r.value) {
-        return r.key;
-      } else {
-        return r.value;
-      }
+    template <class C, class A, class B>
+    C min(const A x, const B y) {
+      return (x < y ? x : y);
     }
 
     unit_t haltEngine(unit_t);
@@ -574,26 +566,24 @@ namespace K3 {
     int tpch_date(const string_impl& s);
     string_impl tpch_date_to_string(const int& date);
 
-    int date_part(const R_key_value<string_impl, int>& r) {
-      if (r.key == "day" || r.key == "DAY") {
-        return r.value % 100;
+    int date_part(const string_impl &x, int y) {
+      if (x == "day" || x == "DAY") {
+        return y % 100;
       }
-      if (r.key == "month" || r.key == "MONTH") {
-        return (r.value % 10000) / 100;
+      if (x == "month" || x == "MONTH") {
+        return (y % 10000) / 100;
       }
-      if (r.key == "year" || r.key == "YEAR") {
-        return (r.value / 10000);
+      if (x == "year" || x == "YEAR") {
+        return (y / 10000);
       }
-      throw std::runtime_error("Unrecognized date part key: " + r.key);
+      throw std::runtime_error("Unrecognized date part key: " + x);
     }
 
-    int regex_match_int(const R_key_value<string_impl, string_impl>& r) {
-      bool b = std::regex_match(r.value.c_str(), std::regex(r.key.c_str()));
+    int regex_match_int(const string_impl &x, const string_impl &y) {
+      bool b = std::regex_match(y.c_str(), std::regex(x.c_str()));
       return b ? 1 : 0;
     }
   };
-
-
 
 } // namespace K3
 
