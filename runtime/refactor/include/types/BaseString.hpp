@@ -95,7 +95,7 @@ class base_string {
 
   template <class archive>
   void serialize(archive& a) const {
-    uint64_t len = length();
+    size_t len = length();
     a& len;
     if (buffer_) {
       a.write(buffer_, len);
@@ -104,7 +104,7 @@ class base_string {
 
   template <class archive>
   void serialize(archive& a) {
-    uint64_t len;
+    size_t len;
     a& len;
     if (buffer_) {
       delete[] buffer_;

@@ -221,7 +221,7 @@ class IntMap {
   unit_t iterate(Fun f) const {
     mapi* m = get_mapi();
     for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
-      f(*o);
+      f(*static_cast<R*>(o));
     }
     return unit_t();
   }
