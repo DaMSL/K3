@@ -8,8 +8,18 @@ typedef EmployeeV =
       VMapIndexE(key=[:> ra=>int, rb=>int], extractors=[$#> ra=>"key.id", rb=>"key.id2"]),
       OrderedVMapIndexE(key=[:> name=>string], extractors=[$#> name=>"key.name"])}
 
+
+typedef EmployeeV3 =
+  collection {key: {id: int, id2: int, id3: int, name: string}, value: {age: int}}
+    @{MultiIndexVMap,
+      VMapIndexE(key=[:> id=>int], extractors=[$#> id=>"key.id"]),
+      VMapIndexE(key=[:> ra=>int, rb=>int], extractors=[$#> ra=>"key.id", rb=>"key.id2"]),
+      OrderedVMapIndexE(key=[:> name=>string], extractors=[$#> name=>"key.name"])}
+
+
 declare employeesV  : mut EmployeeV
 declare employeesV2 : mut EmployeeV
+declare employeesV3 : mut EmployeeV3
 
 declare flatEmployees  : mut collection {id:int, id2:int, name:string, age:int} @Collection
 declare flatEmployeesV : mut collection {vid: int, id:int, id2:int, name:string, age:int} @Collection
