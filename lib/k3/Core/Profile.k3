@@ -43,6 +43,7 @@ control TimeSink[lbl : label, tag : expr, sink_expr: expr] {
                      $[lbl]_end_ms     = now_int();
                      $[lbl]_elapsed_ms = $[lbl]_end_ms - $[lbl]_start_ms;
                      ( ($[sink_expr], me) <- (tag ++ (itos $[lbl]_elapsed_ms )));
+                     ( print (tag ++ (itos $[lbl]_elapsed_ms)) );
                      result
 
   shared { declare $[lbl]_start_ms   : mut int = 0
