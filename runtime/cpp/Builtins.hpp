@@ -282,13 +282,13 @@ namespace K3 {
 
     }
 
-    template <class C, class A, class B>
-    C max(const A x, const B y) {
+    template <class A>
+    A max(const A x, const A y) {
       return (x > y ? x : y);
     }
 
-    template <class C, class A, class B>
-    C min(const A x, const B y) {
+    template <class A>
+    A min(const A x, const A y) {
       return (x < y ? x : y);
     }
 
