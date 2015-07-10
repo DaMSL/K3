@@ -236,7 +236,7 @@ class StrMap {
     map_str* m = get_map_str();
     for (auto o = map_str_begin(m); o < map_str_end(m);
          o = map_str_next(m, o)) {
-      f(*map_str_get(m, o));
+      f(*static_cast<R*>(map_str_get(m, o)));
     }
     return unit_t();
   }

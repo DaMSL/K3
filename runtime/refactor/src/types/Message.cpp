@@ -31,7 +31,7 @@ NetworkMessage::NetworkMessage() : Message() {
 NetworkMessage::NetworkMessage(const MessageHeader& head,
                                unique_ptr<PackedValue> v)
     : Message(head, std::move(v)) {
-  payload_length_ = v->length();
+  payload_length_ = value_->length();
 }
 
 shared_ptr<vector<asio::const_buffer>> NetworkMessage::outputBuffers() const {

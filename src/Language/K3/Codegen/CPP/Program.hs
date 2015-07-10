@@ -322,14 +322,14 @@ generateDispatchers isNative = do
                                                        (R.Call (R.Variable $ R.Qualified (R.Name "Codec") (R.Specialized [argType] (R.Name "getCodec")))
                                                        [R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "value_") (R.Name "format")) []])
                                                      ])
-       let unpacked = R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "codec_") (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "value_"]
-       let native_val = if isNative then (R.Variable $ R.Name "value_") else unpacked
-       let casted_val = R.Forward $ R.ScalarDecl (R.Name "casted") (R.Reference $ R.Inferred) $ Just $ R.Dereference $ R.Call (R.Project (R.Dereference $ native_val) ( R.Specialized [argType] (R.Name "template as"))) []
+       let unpacked = if isNative then [] else (:[]) $ R.Forward $ R.ScalarDecl (R.Name "nv") (R.UniquePointer $ R.Named $ R.Name "NativeValue") $ Just $ R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "codec_") (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "value_"]
+       let native_val = if isNative then (R.Variable $ R.Name "value_") else R.Variable $ R.Name "nv"
+       let casted_val = R.Forward $ R.ScalarDecl (R.Name "casted") (R.Pointer $ argType) $ Just $ R.Call (R.Project (R.Dereference $ native_val) ( R.Specialized [argType] (R.Name "template as"))) []
        let call_op = R.FunctionDefn (R.Name $ "operator()") [] (Just $ R.Void) [] False
-                      ([casted_val, R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "context_") (R.Name tName)) [R.Variable $ R.Name "casted"]])
+                      (unpacked ++ [casted_val, R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "context_") (R.Name tName)) [R.Dereference $ R.Variable $ R.Name "casted"]])
 
        let jsonify = R.FunctionDefn (R.Name $ "jsonify") [] (Just $ R.Primitive $ R.PString) [] True
-                      ([casted_val, R.Return $ R.Call (R.Variable $ R.Specialized [argType] (R.Qualified (R.Name "K3") (R.Qualified (R.Name "serialization") (R.Qualified (R.Name "json") (R.Name "encode"))))) [R.Variable $ R.Name "casted"] ])
+                      (unpacked ++ [casted_val, R.Return $ R.Call (R.Variable $ R.Specialized [argType] (R.Qualified (R.Name "K3") (R.Qualified (R.Name "serialization") (R.Qualified (R.Name "json") (R.Name "encode"))))) [R.Dereference $ R.Variable $ R.Name "casted"] ])
        let methods = [constructor, call_op, jsonify]
        return $ R.TemplateDefn [("CONTEXT", Nothing)] (R.ClassDefn (R.Name $ tName ++ valName ++ "Dispatcher") [] [R.Named $ R.Name "Dispatcher"] methods [] members)
 
