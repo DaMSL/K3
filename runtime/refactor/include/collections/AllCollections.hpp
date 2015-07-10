@@ -7,6 +7,7 @@
 #include "collections/IntMap.hpp"
 #include "collections/StrMap.hpp"
 #include "collections/Vector.hpp"
+#include "collections/MultiIndex.hpp"
 #include "collections/VMap.hpp"
 #include "collections/OrderedMap.hpp"
 #include "HashCollections.hpp"
