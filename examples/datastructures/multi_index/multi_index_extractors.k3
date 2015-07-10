@@ -1,0 +1,55 @@
+include "Annotation/MultiIndex/MultiIndexBag.k3"
+include "Annotation/MultiIndex/MultiIndexMap.k3"
+
+typedef EmployeeC =
+  collection {key: int, value: {name: string, age: int}}
+    @{MultiIndexBag,
+      OrderedBagIndexE(key=[:> name=>string], extractors=[$#> name=>"value.name"]),
+      BagIndexE(key=[:> age=>int], extractors=[$#> age=>"value.age"]),
+      BagIndexE(key=[:> age=>int, key=>int], extractors=[$#> age=>"value.age", key=>"key"])}
+
+typedef EmployeeM =
+  collection {key: int, value: {name: string, age: int}}
+    @{MultiIndexMap,
+	    OrderedMapIndexE(key=[:> name=>string], extractors=[$#> name=>"value.name"]),
+	    MapIndexE(key=[:> age=>int], extractors=[$#> age=>"value.age"]),
+      MapIndexE(key=[:> age=>int, key=>int], extractors=[$#> age=>"value.age", key=>"key"])}
+
+declare employeesC : mut EmployeeC
+declare employeesM : mut EmployeeM
+
+declare result1  : mut option {key: int, value: {name: string, age: int}}
+declare result2  : mut option {key: int, value: {name: string, age: int}}
+declare result2w : mut        {key: int, value: {name: string, age: int}}
+
+trigger t1 : () = \_ -> (
+    employeesC.insert {key: 1, value: {name: "John",    age: 30}};
+    employeesC.insert {key: 2, value: {name: "alice",   age: 40}};
+    employeesC.insert {key: 3, value: {name: "bob",     age: 40}};
+    employeesC.insert {key: 4, value: {name: "charles", age: 45}};
+
+    result1    = employeesC.lookup_by_name   {name: "John"};
+    result2    = employeesC.lookup_by_agekey {age: 40, key: 2};
+    (employeesC.lookup_with_by_agekey        {age: 40, key: 2} (\_ -> ()) (\r -> result2w = r));
+    employeesC = employeesC.range_by_name    {name: "a"} {name: "d"};
+    employeesC = employeesC.slice_by_age     {age: 40}
+)
+
+trigger t2 : () = \_ -> (
+    employeesM.insert {key: 1, value: {name: "John",    age: 30}};
+    employeesM.insert {key: 2, value: {name: "alice",   age: 40}};
+    employeesM.insert {key: 3, value: {name: "bob",     age: 40}};
+    employeesM.insert {key: 4, value: {name: "charles", age: 45}};
+
+    result1    = employeesM.lookup_by_name   {name: "John"};
+    result2    = employeesM.lookup_by_agekey {age: 40, key: 2};
+    (employeesM.lookup_with_by_agekey        {age: 40, key: 2} (\_ -> ()) (\r -> result2w = r));
+    employeesM = employeesM.range_by_name    {name: "a"} {name: "d"};
+    employeesM = employeesM.slice_by_age     {age: 40}
+)
+
+source s1 : () = value ()
+feed s1 |> t1
+
+source s2 : () = value ()
+feed s2 |> t2

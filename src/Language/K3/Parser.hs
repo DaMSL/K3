@@ -827,7 +827,9 @@ tProperties = nproperties $ TProperty . Left
 
 {- Metaprogramming -}
 stTerm :: K3Parser SpliceType
-stTerm = choice $ map try [stLabel, stType, stExpr, stDecl, stLiteral, stLabelType, stRecord, stList]
+stTerm = choice $ map try [ stLabel, stType, stExpr, stDecl, stLiteral
+                          , stLabelType, stLabelExpr, stLabelLit
+                          , stRecord, stList ]
   where
     stLabel     = STLabel     <$ keyword "label"
     stType      = STType      <$ keyword "type"
@@ -835,10 +837,14 @@ stTerm = choice $ map try [stLabel, stType, stExpr, stDecl, stLiteral, stLabelTy
     stDecl      = STDecl      <$ keyword "decl"
     stLiteral   = STLiteral   <$ keyword "literal"
     stLabelType = mkLabelType <$ keyword "labeltype"
+    stLabelExpr = mkLabelExpr <$ keyword "labelexpr"
+    stLabelLit  = mkLabelLit  <$ keyword "labellit"
     stList      = spliceListT   <$> brackets stTerm
     stRecord    = spliceRecordT <$> braces (commaSep1 stField)
     stField     = (,) <$> identifier <* colon <*> stTerm
     mkLabelType = spliceRecordT [(spliceVIdSym, STLabel), (spliceVTSym, STType)]
+    mkLabelExpr = spliceRecordT [(spliceVIdSym, STLabel), (spliceVESym, STExpr)]
+    mkLabelLit  = spliceRecordT [(spliceVIdSym, STLabel), (spliceVLSym, STLiteral)]
 
 stVar :: K3Parser TypedSpliceVar
 stVar = try (flip (,) <$> identifier <* colon <*> stTerm)
@@ -848,7 +854,9 @@ spliceParameterDecls = brackets (commaSep stVar)
 
 -- TODO: strip literal uid/span
 svTerm :: K3Parser SpliceValue
-svTerm = choice $ map try [sVar, sLabel, sType, sExpr, sDecl, sLiteral, sLabelType, sRecord, sList]
+svTerm = choice $ map try [ sVar
+                          , svTypeDict, svExprDict, svLiteralDict
+                          , sLabel, sType, sExpr, sDecl, sLiteral, sLabelType, sRecord, sList ]
   where
     sVar        = SVar                  <$> identifier
     sLabel      = SLabel                <$> wrap "[#"  "]" identifier
@@ -866,6 +874,24 @@ svTerm = choice $ map try [sVar, sLabel, sType, sExpr, sDecl, sLiteral, sLabelTy
     mkDecl _   = P.parserFail "Invalid splice declaration"
 
     wrap l r p = between (symbol l) (symbol r) p
+
+svDict :: String -> Identifier -> K3Parser SpliceValue -> K3Parser SpliceValue
+svDict bracketSuffix valRecId valParser =
+  mkDict <$> wrap ("[" ++ bracketSuffix) "]"
+    (commaSep1 ((,) <$> identifier <* symbol "=>" <*> valParser))
+
+  where mkDict nl = SList $ map recCtor nl
+        recCtor (n, v) = spliceRecord [(spliceVIdSym, SLabel n), (valRecId, v)]
+        wrap l r p = between (symbol l) (symbol r) p
+
+svTypeDict :: K3Parser SpliceValue
+svTypeDict = svDict ":>" spliceVTSym (SType . stripTUIDSpan <$> typeExpr)
+
+svExprDict :: K3Parser SpliceValue
+svExprDict = svDict "$>" spliceVESym (SExpr . stripEUIDSpan <$> expr)
+
+svLiteralDict :: K3Parser SpliceValue
+svLiteralDict = svDict "$#>" spliceVLSym (SLiteral <$> literal)
 
 spliceParameter :: K3Parser (Maybe (Identifier, SpliceValue))
 spliceParameter = try ((\a b -> Just (a,b)) <$> identifier <* symbol "=" <*> parseInMode Splice svTerm)
@@ -1031,9 +1057,13 @@ equateQExpr = symbol "=" *> qualifiedExpr
 {- Endpoints -}
 
 endpoint :: Bool -> K3Parser EndpointBuilder
-endpoint isSource = if isSource then choice $ [value, try fileseq] ++ common
-                                else choice common
-  where common = [builtin isSource, file isSource, network isSource]
+endpoint isSource = if isSource
+                      then choice $ [ value
+                                    , try $ filemux
+                                    , try $ file True "fileseq" FileSeqEP eVariable
+                                    ] ++ common
+                      else choice common
+  where common = [builtin isSource, file isSource "file" FileEP eTerminal, network isSource]
 
 value :: K3Parser EndpointBuilder
 value = mkValueStream <$> (symbol "value" *> expr)
@@ -1045,23 +1075,30 @@ builtin isSource = mkBuiltin <$> builtinChannels <*> format
           builtinSpec idE formatE >>= \s -> return $ endpointMethods isSource s idE formatE n t
         builtinSpec idE formatE = BuiltinEP <$> S.symbolS idE <*> S.symbolS formatE
 
-file :: Bool -> K3Parser EndpointBuilder
-file isSource = mkFile <$> (symbol "file" *> eTerminal) <*> textOrBinary <*> format
-  where textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False) 
-        mkFile argE asText formatE n t = do
-          s <- fileSpec argE asText formatE
-          return $ endpointMethods isSource s argE formatE n t
+file :: Bool -> String -> (String -> Bool -> String -> EndpointSpec) -> ExpressionParser
+     -> K3Parser EndpointBuilder
+file isSource sym ctor prsr = mkFileSrc <$> (symbol sym *> prsr) <*> textOrBinary <*> format
+  where mkFileSrc argE asTxt formatE n t = do
+          spec argE asTxt formatE >>= \s -> return $ endpointMethods isSource s argE formatE n t
+        spec argE asTxt formatE = (\a f -> ctor a asTxt f) <$> S.exprS argE <*> S.symbolS formatE
+        textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
 
-        fileSpec argE asText formatE = (\p f -> FileEP p asText f) <$> S.exprS argE <*> S.symbolS formatE
+filemux :: K3Parser EndpointBuilder
+filemux = mkFMuxSrc <$> syms ["filemxsq", "filemux"] <*> eVariable <*> textOrBinary <*> format
+  where
+    textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
+    syms l = choice $ map (try . symbol) l
 
-fileseq :: K3Parser EndpointBuilder
-fileseq = mkFileSeq <$> (symbol "fileseq" *> eVariable) <*> textOrBinary <*> format
-  where textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
-        mkFileSeq argE asText formatE n t = do
-          s <- fileSeqSpec argE asText formatE
-          return $ endpointMethods True s argE formatE n t
+    mkFMuxSrc sym argE asTxt formatE n t = do
+      s <- fMuxSpec (ctorOfSym sym) argE asTxt formatE
+      return $ endpointMethods True s argE formatE n t
 
-        fileSeqSpec argE asText formatE = (\p f -> FileSeqEP p asText f) <$> S.exprS argE <*> S.symbolS formatE
+    fMuxSpec ctor argE asTxt formatE = (\a f -> ctor a asTxt f) <$> S.exprS argE <*> S.symbolS formatE
+
+    ctorOfSym s =
+      if s == "filemux" then FileMuxEP
+      else if s == "filemxsq" then FileMuxseqEP
+      else fail "Invalid file mux kind"
 
 network :: Bool -> K3Parser EndpointBuilder
 network isSource = mkNetwork <$> (symbol "network" *> eTerminal) <*> textOrBinary <*> format
@@ -1077,8 +1114,6 @@ builtinChannels = choice [ch "stdin", ch "stdout", ch "stderr"]
 format :: ExpressionParser
 format = choice [fmt "k3", fmt "k3b", fmt "k3yb", fmt "k3ybt", fmt "csv", fmt "psv", fmt "k3x"]
   where fmt s = try (symbol s >> return (EC.constant $ CString s))
-
-
 
 {- Declaration helpers -}
 namedIdentifier :: String -> String -> (K3Parser Identifier -> K3Parser a) -> K3Parser a
@@ -1147,7 +1182,7 @@ postProcessRole decls frame =
           let (ndl, extrasl) = unzip dAndExtras
           in modifyBuilderDeclsF_ (Right . ((concat extrasl) ++)) >> return ndl
 
-        attachSource s = bindSource $ sourceBindings s
+        attachSource s = bindSource (sourceEndpointSpecs s) $ sourceBindings s
         annotateEndpoint s (d, extraDecls)
           | DGlobal en t _ <- tag d, TSource <- tag t = (maybe d (d @+) $ syntaxAnnotation en s, extraDecls)
           | DGlobal en t _ <- tag d, TSink   <- tag t = (maybe d (d @+) $ syntaxAnnotation en s, extraDecls)

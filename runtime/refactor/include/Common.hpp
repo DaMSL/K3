@@ -45,6 +45,8 @@ typedef const boost::system::error_code& boost_error;
 
 typedef int TriggerID;
 typedef std::vector<char> Buffer;
+class ProgramContext;
+typedef std::function<shared_ptr<ProgramContext>()> ContextFactory;
 
 struct Address {
  public:
@@ -153,6 +155,8 @@ inline std::string addressAsString(const Address& addr) {
 enum class CodecFormat { BoostBinary, CSV, PSV, YASBinary };
 enum class StorageFormat { Binary, Text };
 enum class IOMode { Read, Write };
+
+IOMode getIOMode(const string& s);
 
 static inline std::string currentTime() {
   std::chrono::nanoseconds ns =

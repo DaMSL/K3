@@ -25,11 +25,9 @@ class Seq : public ListDS<K3::Seq, Elem> {
   // Seq specific functions
   template <class F>
   Seq sort(F comp) {
-    auto& l(Super::getContainer());
+    auto l(Super::getContainer());
     auto f = [&](Elem& a, Elem& b) mutable { return comp(a)(b) < 0; };
     l.sort(f);
-    // Force Move into ListDS class.
-    // Dont reference l again
     return Seq(Super(std::move(l)));
   }
 

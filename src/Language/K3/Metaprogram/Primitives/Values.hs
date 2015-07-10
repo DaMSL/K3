@@ -1,10 +1,15 @@
 {-# LANGUAGE ViewPatterns #-}
 module Language.K3.Metaprogram.Primitives.Values where
 
+import Data.List
+import Data.Maybe
+import qualified Data.Map as Map
+
 import Language.K3.Core.Common
 import Language.K3.Core.Annotation
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
+import Language.K3.Core.Literal
 
 import Language.K3.Core.Constructor.Type       as TC
 import Language.K3.Core.Constructor.Literal    as LC
@@ -85,6 +90,7 @@ exprType :: SpliceValue -> SpliceValue
 exprType (SType t) = SExpr  $ EC.constant $ CString $ show t
 exprType _ =  error "Invalid splice type for exprType"
 
+{- Map specialization helpers. -}
 specializeMapTypeByKV :: SpliceValue -> SpliceValue
 specializeMapTypeByKV (SType t@(tnc -> (TRecord ["key", "value"], [(tag -> kt), _]))) =
   case kt of
@@ -103,3 +109,32 @@ specializeMapEmptyByKV (SType t@(tnc -> (TRecord ["key", "value"], [(tag -> kt),
 
 specializeMapEmptyByKV sv = error $ "Invalid key-value record element for specializeMapEmptyByKV " ++ show sv
 
+{- Index extractor spec contruction helpers. -}
+mkIndexExtractor :: SpliceValue -> SpliceValue -> SpliceValue
+mkIndexExtractor (SList keyLT) (SList specLL) =
+  if length matches /= length keyLT
+    then error "Invalid index extractor specifiers"
+    else SLiteral $ LC.string $ intercalate ";" $ map extractor matches
+
+  where extractor (SLabel k, _, SLiteral pathlit) =
+          case tag pathlit of
+            LString path -> k ++ "=" ++ path
+            _ -> error "Invalid extractor field path"
+
+        extractor _ = error "Invalid extractor spec"
+
+        matches = join (map extractLT keyLT) (map extractLL specLL)
+
+        join lt ll = catMaybes $ map (\(lbl, t) -> lookup lbl ll >>= \lit -> return (lbl, t, lit)) lt
+
+        extractLL (SRecord fields) =
+          case (Map.lookup spliceVIdSym fields, Map.lookup spliceVLSym fields) of
+            (Just lbl, Just lit) -> (lbl, lit)
+            (_, _) -> error "Invalid index extractor"
+
+        extractLT (SRecord fields) =
+          case (Map.lookup spliceVIdSym fields, Map.lookup spliceVTSym fields) of
+            (Just lbl, Just typ) -> (lbl, typ)
+            (_, _) -> error "Invalid index key"
+
+mkIndexExtractor _ _ = error "Invalid index extraction arguments"

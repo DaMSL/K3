@@ -57,16 +57,17 @@ cppCodegenStage opts copts (cont, prog) = genCPP irRes
       outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt) (CPP.stringifyProgram p)
 
     saveASTOutputs p = do
-      when (saveAST    $ input opts) (outputAST P.pretty "k3ast" p)
-      when (saveRawAST $ input opts) (outputAST show     "k3ar"  p)
+      when (saveAST    $ input opts) (outputAST P.pretty "k3ast" (astPrintMode copts) p)
+      when (saveRawAST $ input opts) (outputAST show     "k3ar"  (astPrintMode copts) p)
+      when (saveSyntax $ input opts) (outputAST show     "k3s"   PrintSyntax          p)
 
     outputCPP (Right doc) =
       either putStrLn (outputDoc doc) $ buildOutputFilePath "cpp" opts copts
 
     outputCPP (Left (CPP.CPPGenE e)) = putStrLn e
 
-    outputAST toStr ext p =
-      either putStrLn (outputStrFile $ formatAST toStr (astPrintMode copts) p)
+    outputAST toStr ext printMode p =
+      either putStrLn (outputStrFile $ formatAST toStr printMode p)
         $ buildOutputFilePath ext opts copts
 
     -- Print out the program

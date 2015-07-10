@@ -9,7 +9,7 @@ require 'json'
 require 'rexml/document'
 require 'csv'
 require 'open3'
-require 'pg'
+#require 'pg'
 
 def run(cmd, checks=[])
   puts cmd if $options[:debug]
@@ -185,8 +185,11 @@ end
 # create the k3 cpp file remotely and copy the cpp locally
 def run_create_k3_remote(server_url, block_on_compile, k3_cpp_name, k3_path, nice_name)
   stage "[3] Remote creating K3 cpp file."
-  res = curl(server_url, "/compile", file: k3_path, post: true, json: true,
-            args:{ "compilestage" => "cpp", "workload" => $options[:skew].to_s})
+  args = { "compilestage" => "cpp", 
+           "workload" => $options[:skew].to_s}
+  args["compileargs"] = $options[:compileargs] if $options[:compileargs]
+
+  res = curl(server_url, "/compile", file: k3_path, post: true, json: true, args:args)
   uid = res["uid"]
   $options[:uid] = uid
   persist_options()
@@ -693,6 +696,7 @@ def main()
     opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
     opts.on("--gc-epoch [MS]", "Set gc epoch time (ms)") { |i| $options[:gc_epoch] = i }
     opts.on("--msg-delay [MS]", "Set switch message delay (ms)") { |i| $options[:msg_delay] = i }
+    opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
 
     # Stages.
     # Ktrace is not run by default.

@@ -127,7 +127,7 @@ declaration d@(tag -> DGlobal i t me) = do
     addStaticDeclaration staticGlobalDecl
 
     -- Initialize the variable.
-    let rName = RName $ if pinned then "__global_context::" ++ i else i
+    let rName = RName (if pinned then "__global_context::" ++ i else i) Nothing
     globalInit <- maybe (return []) (liftM (addSetCheck pinned i) . reify rName) me
 
     -- Add to proper initialization list
@@ -135,7 +135,7 @@ declaration d@(tag -> DGlobal i t me) = do
     addFn globalInit
 
     -- Add any annotation to the state
-    when (tag t == TCollection) $ addComposite (namedTAnnotations $ annotations t)
+    when (tag t == TCollection) $ addComposite (namedTAnnotations $ annotations t) (head $ children t)
 
     -- Return the class-scope-declaration including the set variable if needed
     let setOp = if False then [] else
@@ -164,7 +164,13 @@ declaration _ = return []
 -- Map special builtin suffix to a function that will generate the builtin.
 -- These suffixes are taken from L.K3.Parser.ProgramBuilder.hs
 source_builtin_map :: [(String, (String -> K3 Type -> String -> CPPGenM R.Definition))]
-source_builtin_map = extraSuffixes
+source_builtin_map = [("MuxHasRead", genHasRead True),
+                      ("MuxRead",    genDoRead True),
+                      ("HasRead",    genHasRead False),
+                      ("Read",       genDoRead False),
+                      ("HasWrite",   genHasWrite),
+                      ("Write",      genDoWrite)]
+                     ++ extraSuffixes
 
         -- These suffixes are for data loading hacks.
   where extraSuffixes = [("Loader",    genLoader False False False "," ),
@@ -197,43 +203,44 @@ getSourceBuiltin k =
         []         -> error $ "Could not find builtin with name" ++ k
         ((_,f):_) -> f k
 
-
-genHasRead :: String -> K3 Type -> String -> CPPGenM R.Definition
-genHasRead suf _ name = do
-    let storage = R.Forward $ R.ScalarDecl (R.Name "__storage_") R.Inferred 
-                    (Just $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Name "getStorageManager")) [])
+genHasRead :: Bool -> String -> K3 Type -> String -> CPPGenM R.Definition
+genHasRead asMux suf _ name = do
     let source_name = stripSuffix suf name
-    let s_has_r = R.Project (R.Dereference $ R.Variable $ R.Name "__storage_") (R.Name "hasRead")
-    let ret = R.Return $ R.Call s_has_r [R.Variable $ R.Name "me", R.Literal $ R.LString source_name]
-    return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")]
-      (Just $ R.Primitive R.PBool) [] False [storage, ret]
+    let e_has_r = R.Variable $ R.Name "hasRead"
+    let source_e = R.Literal $ R.LString $ source_name ++ if asMux then "_" else ""
+    concatId <- binarySymbol OConcat
+    let call_args = [R.Variable $ R.Name "me"] ++ 
+                    if asMux then [R.Binary concatId source_e $
+                                   R.Call (R.Variable $ R.Name "itos") [R.Variable $ R.Name "muxid"]]
+                             else [source_e]
+    let body = R.Return $ R.Call e_has_r call_args
+    let args = if asMux then [("muxid", R.Primitive R.PInt)]
+                        else [("_", R.Named $ R.Name "unit_t")]
+    return $ R.FunctionDefn (R.Name $ source_name ++ suf) args
+      (Just $ R.Primitive R.PBool) [] False [body]
 
-genDoRead :: String -> K3 Type -> String -> CPPGenM R.Definition
-genDoRead suf typ name = do
+genDoRead :: Bool -> String -> K3 Type -> String -> CPPGenM R.Definition
+genDoRead asMux suf typ name = do
     ret_type    <- genCType $ last $ children typ
-    let storage = R.Forward $ R.ScalarDecl (R.Name "__storage_") R.Inferred 
-                    (Just $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Name "getStorageManager")) [])
     let source_name =  stripSuffix suf name
-    let packed_dec = R.Forward $ R.ScalarDecl (R.Name "packed") R.Inferred $ Just $
-                       (R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "__storage_") (R.Name "doRead"))
-                               [R.Variable $ R.Name "me", R.Literal $ R.LString source_name])
-    let codec = R.Forward $ R.ScalarDecl (R.Name "__codec_") R.Inferred $ Just $
-                  R.Call (R.Variable $ R.Specialized [ret_type] (R.Qualified (R.Name "Codec") (R.Name "getCodec")))
-                    [R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "packed") (R.Name "format")) []]
-    let unpacked = R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "__codec_") (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "packed"]
-    let return_stmt = R.IfThenElse (R.Variable $ R.Name "packed")
-                        [R.Return $ R.Dereference $ 
-                          R.Call (R.Project (R.Dereference unpacked) (R.Specialized [ret_type] (R.Name "as"))) []
-                        ]
-                        [R.Ignore $ R.ThrowRuntimeErr $ R.Literal $ R.LString $ "Invalid doRead for " ++ source_name]
-    return $ R.FunctionDefn (R.Name $ source_name ++ suf) [("_", R.Named $ R.Name "unit_t")]
-      (Just ret_type) [] False ([storage, packed_dec, codec, return_stmt])
+    let source_e = R.Literal $ R.LString $ source_name ++ if asMux then "_" else ""
+    concatId <- binarySymbol OConcat
+    let call_args = [R.Variable $ R.Name "me"] ++  
+                    if asMux then [R.Binary concatId source_e $
+                                   R.Call (R.Variable $ R.Name "itos") [R.Variable $ R.Name "muxid"]]
+                             else [source_e]
+    let return_stmt = R.Return $ (R.Call (R.Variable (R.Specialized [ret_type] $ R.Name "doRead"))
+                               call_args)
+    let args = if asMux then [("muxid", R.Primitive R.PInt)]
+                        else [("_", R.Named $ R.Name "unit_t")]
+    return $ R.FunctionDefn (R.Name $ source_name ++ suf) args
+      (Just ret_type) [] False ([return_stmt])
 
 genHasWrite :: String -> K3 Type -> String -> CPPGenM R.Definition
 genHasWrite suf _ name = do
     let sink_name = stripSuffix suf name
-    let e_has_w = R.Project (R.Variable $ R.Name "__engine_") (R.Name "hasWrite")
-    let body = R.Return $ R.Call e_has_w [R.Literal $ R.LString sink_name]
+    let e_has_w = R.Variable (R.Name "hasWrite")
+    let body = R.Return $ R.Call e_has_w [R.Variable $ R.Name "me", R.Literal $ R.LString sink_name]
     return $ R.FunctionDefn (R.Name $ sink_name ++ suf) [("_", R.Named $ R.Name "unit_t")]
       (Just $ R.Primitive R.PBool) [] False [body]
 
@@ -241,9 +248,8 @@ genDoWrite :: String -> K3 Type -> String -> CPPGenM R.Definition
 genDoWrite suf typ name = do
     val_type    <- genCType $ head $ children typ
     let sink_name =  stripSuffix suf name
-    let write_expr = R.Call (R.Project (R.Variable $ R.Name "__engine_")
-                                       (R.Specialized [val_type] $ R.Name "doWriteExternal"))
-                            [R.Literal $ R.LString sink_name, R.Variable $ R.Name "v"]
+    let write_expr = R.Call (R.Variable $ (R.Specialized [val_type] $ R.Name "doWrite"))
+                            [R.Variable $ R.Name "me", R.Literal $ R.LString sink_name, R.Variable $ R.Name "v"]
     return $ R.FunctionDefn (R.Name $ sink_name ++ suf) [("v", R.Const $ R.Reference val_type)]
       (Just $ R.Named $ R.Name "unit_t") [] False
       ([R.Ignore write_expr, R.Return $ R.Initialization R.Unit []])

@@ -24,6 +24,8 @@ class ProgramContext : public StandardBuiltins,
                        public TimeBuiltins,
                        public StringBuiltins,
                        public ProfilingBuiltins,
+                       public FileBuiltins,
+                       public MosaicBuiltins, 
                        public VectorBuiltins,
                        public AmplabLoaders {
  public:
@@ -50,7 +52,6 @@ class ProgramContext : public StandardBuiltins,
   Engine& __engine_;
 };
 
-typedef std::function<shared_ptr<ProgramContext>()> ContextFactory;
 
 }  // namespace K3
 

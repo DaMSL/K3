@@ -577,8 +577,12 @@ pisub pienv i dp dip sp dti sti = do
 {- Apply simplification -}
 
 chaseLambda :: PIEnv -> [PPtr] -> TrIndex -> K3 Provenance -> Except Text [(K3 Provenance, TrIndex)]
-chaseLambda _ _ ti p@(tag -> PLambda _) = return [(p, ti)]
-chaseLambda _ _ ti p@(tag -> PFVar _)   = return [(p, ti)]
+chaseLambda _ _ ti p@(tag -> PLambda _)  = return [(p, ti)]
+chaseLambda _ _ ti p@(tag -> PFVar _)    = return [(p, ti)]
+
+-- The following two cases address partial application of externals and forward declarations.
+chaseLambda _ _ ti p@(tag -> PTemporary) = return [(p, ti)]
+chaseLambda _ _ ti (tag -> PDerived)     = return [(ptemp, ti)]
 
 chaseLambda env path ti p@(tag -> PBVar (pmvptr -> i))
   | i `elem` path = return [(p, ti)]
@@ -597,7 +601,7 @@ chaseLambda env path ti (tnc -> (PSet, rl)) = do
   cl <- mapM (\(cp,cti) -> chaseLambda env path cti cp) (zip rl $ children ti)
   return $ concat cl
 
-chaseLambda env _ ti p = throwE $ PT.boxToString $ [T.pack "Invalid application or lambda: "]
+chaseLambda env _ ti p = throwE $ PT.boxToString $ [T.pack "Invalid input for chase lambda: "]
                                %$ PT.prettyLines p %$ [T.pack "Env:"] %$ PT.prettyLines env
 
 chaseAppArg :: TrIndex -> K3 Provenance -> Except Text (K3 Provenance, TrIndex)
@@ -639,7 +643,7 @@ simplifyApply pienv eOpt lp argp lti argti = do
               --let mkapp p = papply (Just imv) lp argp p
               --let rti' = tinode (rootbv $ rti) [lti, argti, rti]
               let mkapp p = pmaterialize [imv] p
-              let rti' = tinode (rootbv $ rti) [rti]
+              let rti' = tinode (rootbv rti) [rti]
               return (chacc ++ [(mkapp rp, mkapp rip, rti')], reacc)
 
             Nothing -> do
@@ -653,15 +657,23 @@ simplifyApply pienv eOpt lp argp lti argti = do
         -- Handle recursive functions, and forward declarations
         -- by using an opaque return value.
         (PBVar _, _) ->
-          let rp  = papply Nothing lp argp ptemp
-              rti = tileaf $ bzerobv $ Vector.length $ rootbv lti'
-          in return (chacc ++ [(rp, rp, rti)], eacc)
+          let rp   = papply Nothing lp argp ptemp
+              rti  = tileaf $ bzerobv $ Vector.length $ rootbv lti'
+              rti' = tinode (rootbv rti) [lti, argti, rti]
+          in return (chacc ++ [(rp, rp, rti')], eacc)
 
         -- Handle higher-order and external functions as an unsimplified apply.
         (PFVar _, _) ->
           let rp = papplyExt lp argp
               rti = orti [lti', argti']
           in return (chacc ++ [(rp, rp, rti)], eacc)
+
+        -- Partial application of externals and forward declarations.
+        (PTemporary, _) ->
+          let rp   = papply Nothing lp argp ptemp
+              rti  = tileaf $ bzerobv $ Vector.length $ rootbv lti'
+              rti' = tinode (rootbv rti) [lti, argti, rti]
+          in return (chacc ++ [(rp, rp, rti')], eacc)
 
         _ -> appLambdaErr lp'
 

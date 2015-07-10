@@ -1,0 +1,11 @@
+include "Annotation/Collection.k3"
+include "Annotation/Maps/OrderedMap.k3"
+include "Annotation/Map.k3"
+include "Core/Builtins.k3"
+
+declare fpaths : collection {path:string} @Collection
+
+trigger t : int = \i -> print ((itos i) ++ "\\n")
+
+source s1 : int = filemux fpaths csv
+feed s1 |> t

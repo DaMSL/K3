@@ -12,11 +12,11 @@
 #include <yaml-cpp/yaml.h>
 
 #include "types/Dispatcher.hpp"
-#include "ProgramContext.hpp"
 #include "types/Queue.hpp"
 
 namespace K3 {
 
+class ProgramContext;
 class Peer {
  public:
   // Core Interface
@@ -32,8 +32,6 @@ class Peer {
   bool finished();
   Address address();
   shared_ptr<ProgramContext> getContext();
-  template <class F>  // TODO(jbw) Remove this function
-  void logJson(int trigger, const Address& src, F f);
 
  protected:
   // Helper Functions
@@ -59,24 +57,6 @@ class Peer {
   int message_counter_;
   vector<unique_ptr<Dispatcher>> batch_;
 };
-
-template <class F>
-void Peer::logJson(int trigger, const Address& src, F f) {
-  if (json_messages_log_ && !json_final_state_only_) {
-    auto t = std::chrono::system_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        t.time_since_epoch());
-    auto time = elapsed.count();
-    *json_messages_log_ << message_counter_ << "|";
-    *json_messages_log_ << K3::serialization::json::encode<Address>(address_)
-                        << "|";
-    *json_messages_log_ << ProgramContext::__triggerName(trigger) << "|";
-    *json_messages_log_ << K3::serialization::json::encode<Address>(src) << "|";
-    *json_messages_log_ << f() << "|";
-    *json_messages_log_ << time << std::endl;
-    message_counter_++;
-  }
-}
 
 }  // namespace K3
 

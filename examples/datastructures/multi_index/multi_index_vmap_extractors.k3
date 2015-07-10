@@ -1,0 +1,71 @@
+include "Annotation/Collection.k3"
+include "Annotation/MultiIndex/MultiIndexVMap.k3"
+
+typedef EmployeeV =
+  collection {key: {id: int, id2: int, name: string}, value: {age: int}}
+    @{MultiIndexVMap,
+	    VMapIndexE(key=[:> id=>int], extractors=[$#> id=>"key.id"]),
+      VMapIndexE(key=[:> ra=>int, rb=>int], extractors=[$#> ra=>"key.id", rb=>"key.id2"]),
+      OrderedVMapIndexE(key=[:> name=>string], extractors=[$#> name=>"key.name"])}
+
+declare employeesV  : mut EmployeeV
+declare employeesV2 : mut EmployeeV
+
+declare flatEmployees  : mut collection {id:int, id2:int, name:string, age:int} @Collection
+declare flatEmployeesV : mut collection {vid: int, id:int, id2:int, name:string, age:int} @Collection
+
+declare updated  : mut bool = false
+
+declare result1  : mut option {key: {id: int, id2: int, name: string}, value: {age: int}}
+declare result2  : mut option {key: {id: int, id2: int, name: string}, value: {age: int}}
+declare result2w : mut        {key: {id: int, id2: int, name: string}, value: {age: int}}
+declare result3  : mut option {key: {id: int, id2: int, name: string}, value: {age: int}}
+declare result4  : mut        {vid: int, val: {key: {id: int, id2: int, name: string}, value: {age: int}}}
+
+trigger t1 : () = \_ -> (
+    employeesV.insert 1 {key: {id: 1, id2: 11, name: "John"   }, value: {age: 30}};
+    employeesV.insert 1 {key: {id: 2, id2: 12, name: "alice"  }, value: {age: 40}};
+    employeesV.insert 1 {key: {id: 3, id2: 13, name: "bob"    }, value: {age: 40}};
+    employeesV.insert 1 {key: {id: 4, id2: 14, name: "charles"}, value: {age: 45}};
+
+    updated = (employeesV.update_with 1 {key: {id: 4, id2: 14, name: "charles"}, value: {age: 0}} false
+                (\_ -> {key: {id: 4, id2: 14, name: "charles"}, value: {age: 42}})
+                (\_ -> true));
+
+    result1       = employeesV.lookup_before_by_id   2 {id: 2};
+    result2       = employeesV.lookup_before_by_name 2 {name: "John"};
+    result3       = employeesV.lookup_before_by_rarb 2 {ra: 3, rb: 13};
+
+    (employeesV.lookup_with_before_by_name           2 {name: "John"}
+                                                       (\_ -> ())
+                                                       (\r -> result2w = r));
+
+    (employeesV.lookup_with4_before_vid              2 {key: {id:1, id2: 11, name: "John"}, value: {age: 0}}
+                                                       (\_ -> ())
+                                                       (\v -> (\r -> result4 = {vid: v, val: r})));
+
+    employeesV    = employeesV.range_by_name         2 {name: "a"} {name: "d"};
+    employeesV2   = employeesV.range_by_name         2 {name: "a"} {name: "bz"}
+
+    /*
+
+    (flatEmployees = employeesV.fold_range_by_name 2 {name: "a"} {name: "c"}
+                       (\acc -> (\r -> ((acc.insert {id: r.key.id, id2: r.key.id2,
+                                                     name: r.key.name, age:r.value.age});
+                                         acc)))
+                       (empty {id:int, id2:int, name:string, age:int} @Collection));
+
+    (flatEmployeesV = employeesV.fold_slice_vid_by_name 2 {name: "alice"}
+                        (\acc -> (\vid -> (\r -> ((acc.insert {vid: vid, id: r.key.id, id2: r.key.id2,
+                                                               name: r.key.name, age:r.value.age});
+                                                   acc))))
+                        (empty {vid: int, id:int, id2:int, name:string, age:int} @Collection));
+
+    employeesV.update 1 {key: {id:2, id2:12, name: "alice"}, value: {age: 40}}
+                        {key: {id:2, id2:12, name: "alice"}, value: {age: 35}}
+
+    */
+)
+
+source s1 : () = value ()
+feed s1 |> t1

@@ -12,7 +12,7 @@
 
 namespace K3 {
 
-ProgramContext::ProgramContext(Engine& e) : StandardBuiltins(e), __engine_(e) {}
+ProgramContext::ProgramContext(Engine& e) : StandardBuiltins(e), FileBuiltins(e), __engine_(e) {}
 
 void ProgramContext::__patch(const YAML::Node& node) {
   return;

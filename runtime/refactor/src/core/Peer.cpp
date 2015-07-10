@@ -6,6 +6,7 @@
 
 #include "core/Peer.hpp"
 #include "core/Engine.hpp"
+#include "core/ProgramContext.hpp"
 #include "network/NetworkManager.hpp"
 
 namespace K3 {

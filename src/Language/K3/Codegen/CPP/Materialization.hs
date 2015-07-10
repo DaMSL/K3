@@ -7,7 +7,6 @@ module Language.K3.Codegen.CPP.Materialization where
 
 import Prelude hiding (concat, mapM, mapM_, or, and)
 
-import Control.Applicative
 import Control.Arrow
 
 import Control.Monad.Identity (Identity(..), runIdentity)
@@ -40,21 +39,29 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Common hiding (getUID)
 
+import Control.Monad
+
 type Table = I.IntMap (M.Map Identifier Decision)
 
-type MaterializationS = (Table, PIEnv, FIEnv, [K3 Expression])
+data MaterializationS = MaterializationS { decisionTable :: Table
+                                         , pienv :: PIEnv
+                                         , fienv :: FIEnv
+                                         , downstreams :: [K3 Expression]
+                                         , currentGlobal :: Bool
+                                         }
+
 type MaterializationM = StateT MaterializationS Identity
 
 -- State Accessors
 
 dLookup :: Int -> Identifier -> MaterializationM Decision
-dLookup u i = get >>= \(t, _, _, _) -> return $ fromMaybe defaultDecision (I.lookup u t >>= M.lookup i)
+dLookup u i = decisionTable <$> get >>= \t -> return $ fromMaybe defaultDecision (I.lookup u t >>= M.lookup i)
 
 dLookupAll :: Int -> MaterializationM (M.Map Identifier Decision)
-dLookupAll u = get >>= \(t, _, _, _) -> return (I.findWithDefault M.empty u t)
+dLookupAll u = decisionTable <$> get >>= \t -> return (I.findWithDefault M.empty u t)
 
 pLookup :: PPtr -> MaterializationM (K3 Provenance)
-pLookup p = get >>= \(_, e, _, _) -> return (fromMaybe (error "Dangling provenance pointer") (I.lookup p (ppenv e)))
+pLookup p = pienv <$> get >>= \e -> return (fromMaybe (error "Dangling provenance pointer") (I.lookup p (ppenv e)))
 
 pLookupDeep :: PPtr -> MaterializationM (K3 Provenance)
 pLookupDeep p = pLookup p >>= \case
@@ -64,11 +71,11 @@ pLookupDeep p = pLookup p >>= \case
 -- A /very/ rough approximation of ReaderT's ~local~ for StateT.
 withLocalDS :: [K3 Expression] -> MaterializationM a -> MaterializationM a
 withLocalDS nds m = do
-  (t, e, f, ds) <- get
-  put (t, e, f, (nds ++ ds))
+  s <- get
+  put (s { downstreams = nds ++ (downstreams s)})
   r <- m
-  (t', e', f', _) <- get
-  put (t', e', f', ds)
+  s' <- get
+  put (s' { downstreams = downstreams s})
   return r
 
 getUID :: K3 Expression -> Int
@@ -90,13 +97,16 @@ getFStructure e = let EFStructure f = fromMaybe (error "No effects on expression
 
 
 setDecision :: Int -> Identifier -> Decision -> MaterializationM ()
-setDecision u i d = modify $ \(t, e, f, ds) -> (I.insertWith M.union u (M.singleton i d) t, e, f, ds)
+setDecision u i d = modify $ \s -> s { decisionTable = I.insertWith M.union u (M.singleton i d) (decisionTable s)}
 
 getClosureSymbols :: Int -> MaterializationM [Identifier]
-getClosureSymbols i = get >>= \(_, pvpenv -> e, _, _) -> return $ concat $ maybeToList (I.lookup i $ lcenv e)
+getClosureSymbols i = (pvpenv . pienv) <$> get >>= \e -> return $ concat $ maybeToList (I.lookup i $ lcenv e)
 
 pmvloc' :: PMatVar -> Int
 pmvloc' pmv = let UID u = pmvloc pmv in u
+
+setCurrentGlobal :: Bool -> MaterializationM ()
+setCurrentGlobal b = modify $ \s -> s { currentGlobal = b }
 
 -- Table Construction/Attachment
 
@@ -104,12 +114,12 @@ runMaterializationM :: MaterializationM a -> MaterializationS -> (a, Materializa
 runMaterializationM m s = runIdentity $ runStateT m s
 
 optimizeMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> K3 Declaration
-optimizeMaterialization (p, f) d = fst $ runMaterializationM (materializationD d) (I.empty, p, f, [])
+optimizeMaterialization (p, f) d = fst $ runMaterializationM (materializationD d) (MaterializationS I.empty p f [] True)
 
 materializationD :: K3 Declaration -> MaterializationM (K3 Declaration)
 materializationD (Node (d :@: as) cs)
   = case d of
-      DGlobal i t me -> traverse materializationE me >>= \me' -> Node (DGlobal i t me' :@: as) <$> cs'
+      DGlobal i t me -> setCurrentGlobal True >> traverse materializationE me >>= \me' -> Node (DGlobal i t me' :@: as) <$> cs'
       DTrigger i t e -> materializationE e >>= \e' -> Node (DTrigger i t e' :@: as) <$> cs'
       DRole i -> Node (DRole i :@: as) <$> cs'
       _ -> Node (d :@: as) <$> cs'
@@ -119,6 +129,17 @@ materializationD (Node (d :@: as) cs)
 materializationE :: K3 Expression -> MaterializationM (K3 Expression)
 materializationE e@(Node (t :@: as) cs)
   = case t of
+      ERecord is -> do
+        fs <- mapM materializationE cs
+
+        let moveDecision i x = isMoveableNow x >>= \m -> return $ if m then defaultDecision { inD = Moved } else defaultDecision
+
+        decisions <- zipWithM moveDecision is fs
+        zipWithM_ (setDecision (getUID e)) is decisions
+        ds <- dLookupAll (getUID e)
+
+        return (Node (t :@: (EMaterialization ds:as)) fs)
+
       EOperate OApp -> do
              [f, x] <- mapM materializationE cs
 
@@ -162,8 +183,29 @@ materializationE e@(Node (t :@: as) cs)
 
              return (Node (t :@: (EMaterialization decisions:as)) [f, x])
 
+      EOperate OSnd -> do
+        [target, message] <- mapM materializationE cs
+        moveable <- isMoveableNow message
+        let decision = if moveable then defaultDecision { inD = Moved } else defaultDecision
+        setDecision (getUID e) "" decision
+        ds <- dLookupAll (getUID e)
+        return (Node (t :@: (EMaterialization ds:as)) [target, message])
+
+      EOperate OSeq -> do
+        let [x, y] = cs
+        x' <- withLocalDS [y] $ materializationE x
+        y' <- materializationE y
+        return $ (Node (t :@: as)) [x', y']
+
       ELambda x -> do
+             cg <- currentGlobal <$> get
+             when cg $ case tag (head cs) of
+                         ELambda _ -> return ()
+                         otherwise -> setCurrentGlobal False
+
              [b] <- mapM materializationE cs
+
+             setCurrentGlobal cg -- Probably not necessary to restore.
 
              let lambdaEffects = getEffects e
              let (deferredEffects, returnedEffects)
@@ -205,7 +247,9 @@ materializationE e@(Node (t :@: as) cs)
                        then if moveable
                               then d { inD = Moved }
                               else d { inD = Copied }
-                       else d { inD = Referenced }
+                       else if cg
+                              then d { inD = Moved }
+                              else d { inD = Referenced }
                setDecision (getUID e) s $ closureDecision defaultDecision
              decisions <- dLookupAll (getUID e)
              return $ (Node (t :@: (EMaterialization decisions:as)) [b])
@@ -216,9 +260,10 @@ materializationE e@(Node (t :@: as) cs)
              y' <- materializationE y
 
              let xp = getProvenance x
-             mention <- (||) <$> hasReadInP xp y' <*> hasWriteInP xp y'
+             readMention <- hasReadInP xp y'
+             writeMention <- hasWriteInP xp y'
 
-             let referenceBind d = if not mention then d { inD = Referenced, outD = Referenced } else d
+             let referenceBind d = if not writeMention then d { inD = Referenced, outD = Referenced } else d
 
              case b of
                BIndirection i -> setDecision (getUID e) i $ referenceBind defaultDecision
@@ -252,10 +297,16 @@ materializationE e@(Node (t :@: as) cs)
 
       ELetIn i -> do
              let [x, b] = cs
-             x' <- withLocalDS [b] (materializationE x)
+             (x', d) <- withLocalDS [b] $ do
+               x'' <- materializationE x
+
+               -- Decision processing for the initializer move needs to be performed inside the
+               -- context of the extra downstream.
+               m <- isMoveableNow x''
+               return (x'', if m then defaultDecision { inD = Moved } else defaultDecision)
              b' <- materializationE b
 
-             setDecision (getUID e) i defaultDecision
+             setDecision (getUID e) i d
              decisions <- dLookupAll (getUID e)
              return (Node (t :@: (EMaterialization decisions:as)) [x', b'])
       _ -> (Node (t :@: as)) <$> mapM materializationE cs
@@ -449,7 +500,7 @@ isMoveableIn x c = do
 
 isMoveableNow :: K3 Expression -> MaterializationM Bool
 isMoveableNow x = do
-  (_, _, _, downstreams) <- get
+  ds <- downstreams <$> get
   isMoveable1 <- isMoveable x
-  allMoveable <- allM (isMoveableIn x) downstreams
+  allMoveable <- allM (isMoveableIn x) ds
   return $ isMoveable1 && allMoveable

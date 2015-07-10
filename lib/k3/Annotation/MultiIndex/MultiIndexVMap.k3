@@ -1,0 +1,292 @@
+// A VMap, supporting multiple indexes over its keys.
+//
+annotation MultiIndexVMap given type a,b {
+
+  // Returns the size of the frontier specified by the version.
+  provides lifted size : int -> int
+    with effects \version -> [R[version]; R[self]]
+
+  // Returns the total size of the map. Linear time in the domain of the map.
+  provides lifted total_size : () -> int
+    with effects \_ -> R[self]
+
+  //////////////////////////////
+  // Exact version operations.
+
+  provides lifted peek : int -> option content
+    with effects \version -> [R[version]; R[self]]
+
+  @:CArgs 2
+  provides lifted insert : int -> content -> ()
+    with effects \version -> \elem -> [R[version]; R[self]; R[elem]; W[self]]
+
+  @:CArgs 3
+  provides lifted insert_with : int -> content -> (content -> content -> content) -> ()
+    with effects \version -> \elem -> \f -> [R[version]; R[self]; R[elem]; ((f content) content); W[self]]
+
+  @:CArgs 4
+  provides lifted upsert_with : int -> content -> (() -> content) -> (content -> content) -> ()
+    with effects \version -> \elem -> \f -> \g -> [R[version]; R[self]; R[elem]; f content; g content; W[self]]
+
+  @:CArgs 2
+  provides lifted erase : int -> content -> ()
+    with effects \version -> \elem -> [R[version]; R[self]; R[elem]; W[self]]
+
+  @:CArgs 3
+  provides lifted update : int -> content -> content -> ()
+    with effects \version -> \oldElem -> \newElem -> [R[version]; R[self]; R[oldElem]; R[newElem]; W[self]]
+
+  @:CArgs 5
+  provides lifted update_with : int -> content -> a -> (content -> content) -> (content -> a) -> a
+    with effects \version -> \oldElem -> \defaultV -> \newContentF -> \resultF ->
+                    [R[self]; R[version]; R[oldElem]; R[defaultV]; (newContentF content); (resultF content); W[self]]
+
+  // Returns if a value at the exact version is present in the VMap.
+  @:CArgs 2
+  provides lifted member : int -> content -> bool
+    with effects \version -> \elem -> [R[version]; R[self]; R[elem]]
+
+  @:CArgs 2
+  provides lifted lookup : int -> content -> option content
+    with effects \version -> \elem -> [R[version]; R[self]; R[elem]]
+
+  @:CArgs 3
+  provides lifted lookup_with : int -> content -> (content -> ()) -> ()
+    with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
+
+  @:CArgs 4
+  provides lifted lookup_with2 : int -> content -> (() -> ()) -> (content -> ()) -> ()
+    with effects \version -> \elem -> \noneF -> \someF -> [R[version]; R[self]; R[elem]; noneF content; someF content]
+
+  @:CArgs 3
+  provides lifted lookup_with3 : int -> content -> (content -> a) -> a
+    with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
+
+  @:CArgs 4
+  provides lifted lookup_with4 : int -> content -> (() -> a) -> (content -> a) -> a
+    with effects \version -> \elem -> \noneF -> \someF -> [R[self]; R[version]; R[elem]; noneF content; someF content]
+
+
+  //////////////////////////////////////////////////
+  // Frontier-based map retrieval operations.
+  // These apply to the nearest version specified.
+
+  @:CArgs 2
+  provides lifted lookup_before : int -> content -> option content
+    with effects \version -> \elem -> [R[version]; R[self]; R[elem]]
+
+  @:CArgs 3
+  provides lifted lookup_with_before : int -> content -> (content -> ()) -> ()
+    with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
+
+  @:CArgs 4
+  provides lifted lookup_with2_before : int -> content -> (() -> ()) -> (content -> ()) -> ()
+    with effects \version -> \elem -> \noneF -> \someF -> [R[version]; R[self]; R[elem]; noneF content; someF content]
+
+  @:CArgs 3
+  provides lifted lookup_with3_before : int -> content -> (content -> a) -> a
+    with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
+
+  @:CArgs 4
+  provides lifted lookup_with4_before : int -> content -> (() -> a) -> (content -> a) -> a
+    with effects \version -> \elem -> \noneF -> \someF -> [R[self]; R[version]; R[elem]; noneF content; someF content]
+
+  @:CArgs 4
+  provides lifted upsert_with_before : int -> content -> (() -> content) -> (content -> content) -> ()
+    with effects \version -> \elem -> \f -> \g -> [R[version]; R[self]; R[elem]; f content; g content; W[self]]
+
+  @:CArgs 4
+  provides lifted lookup_with4_before_vid : int -> content -> (() -> a) -> (int -> (content -> a)) -> a
+    with effects \version -> \elem -> \noneF -> \someF -> [R[self]; R[version]; R[elem]; noneF content; (someF none) content]
+
+  // Non-inclusive modifications of all values before the given version.
+  @:CArgs 2
+  provides lifted erase_prefix : int -> content -> ()
+    with effects \version -> \elem -> [R[version]; R[self]; R[elem]; W[self]]
+
+  // Inclusive update of all values greater than the given version.
+  @:CArgs 3
+  provides lifted update_suffix : int -> content -> (int -> content -> content) -> ()
+    with effects \version -> \elem -> \updateF -> [R[version]; R[self]; R[elem]; ((updateF none) content)*; W[self]]
+
+  ///////////////////////////////////////////////
+  // Most-recent version operations.
+
+  provides lifted peek_now : () -> option content
+    with effects \_ -> [R[self]]
+
+
+  /////////////////////////////////////////////////////////////////////////////
+  // Transformers.
+  // Note these do not include the transformer property with fusion
+  // being unsupported on VMaps.
+  // Other than combine and split, these also operate on a frontier of values.
+
+  provides lifted combine : self -> self
+    with effects \other -> [R[self]; R[other]]
+
+  provides lifted split   : () -> (self, self)
+    with effects \_ -> R[self]
+
+  @:{CArgs 2}
+  provides lifted iterate : int -> (content -> ()) -> ()
+    with effects \version -> \iterF -> [R[version]; R[self]; ([R[content]; iterF content])*]
+
+  @:{CArgs 2}
+  provides lifted map     : int -> (content -> {key: a, value: b}) -> collection {key: a, value: b} @VMap
+    with effects \version -> \mapF -> [R[version]; R[self]; ([R[content]; mapF content])*]
+
+  @:{CArgs 2}
+  provides lifted filter  : int -> (content -> bool) -> self
+    with effects \version -> \filterF -> [R[version]; R[self]; ([R[content]; filterF content])*]
+
+  @:{CArgs 3}
+  provides lifted fold    : int -> (a -> (content -> a)) -> a -> a
+    with effects \version -> \foldF -> \z -> [R[version]; R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+  @:{CArgs 4}
+  provides lifted groupBy : int -> (content -> a) -> (b -> content -> b) -> b
+                             -> collection { key : a, value : b } @VMap
+    with effects
+      \version -> \gbF -> \gaccF -> \z ->
+        [R[version]; R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
+
+  @:{CArgs 2}
+  provides lifted ext : int -> (content -> collection {key : a, value: b} @VMap)
+                         -> collection {key : a, value: b} @VMap
+    with effects \version -> \extF -> [R[version]; R[self]; ([R[content]; extF content])*]
+
+
+  //////////////////////////////
+  //
+  // Multi-version methods.
+
+  @:{CArgs 3}
+  provides lifted fold_vid : int -> (a -> (int -> (content -> a))) -> a -> a
+    with effects \version -> \foldF -> \z -> [R[version]; R[self]; R[z]; ([R[content]; (((foldF z) none) content)])*]
+
+  @:{CArgs 2}
+  provides lifted fold_all : (a -> (int -> (content -> a))) -> a -> a
+    with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; (((foldF z) none) content)])*]
+
+  // Non-inclusive modifications of all values before the given version.
+  provides lifted erase_prefix_all : int -> ()
+    with effects \version -> [R[version]; R[self]; W[self]]
+
+}
+
+///////////////////////////////////////////////////////
+//
+// Index annotations for composing with MultiIndexVMaps.
+
+// A hash index implementation.
+annotation VMapIndex[key : [labeltype]] given type a
+{
+  @:CArgs 2
+  provides lifted lookup_before_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> option content
+    with effects \version -> \key -> [R[self]; R[version]; R[key]]
+
+  @:CArgs 4
+  provides lifted lookup_with_before_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \version -> \key -> \f -> \g -> [R[self]; R[version]; R[key]; f content; g content]
+
+  @:CArgs 2
+  provides lifted slice_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> self
+    with effects \version -> \key -> [R[self]; R[version]; R[key]]
+
+  @:CArgs 4
+  provides lifted fold_slice_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (a -> (content -> a)) -> a -> a
+    with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+  @:CArgs 4
+  provides lifted fold_slice_vid_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (a -> (int -> (content -> a))) -> a -> a
+    with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; (((foldF z) none) content)])*]
+}
+
+// A tree-based index implementation, additionally providing a two-sided range query operation.
+annotation OrderedVMapIndex[key : [labeltype]] given type a
+{
+  @:CArgs 2
+  provides lifted lookup_before_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> option content
+    with effects \version -> \key -> [R[self]; R[version]; R[key]]
+
+  @:CArgs 4
+  provides lifted lookup_with_before_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \version -> \key -> \f -> \g -> [R[self]; R[version]; R[key]; f content; g content]
+
+  @:CArgs 2
+  provides lifted slice_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> self
+    with effects \version -> \key -> [R[self]; R[version]; R[key]]
+
+  @:CArgs 3
+  provides lifted range_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> $[|mkRecord 'key|] -> self
+    with effects \version -> \lower_key -> \upper_key -> [R[self]; R[version]; R[lower_key]; R[upper_key]]
+
+  @:CArgs 4
+  provides lifted fold_slice_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (a -> (content -> a)) -> a -> a
+    with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+  @:CArgs 5
+  provides lifted fold_range_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> $[|mkRecord 'key|] -> (a -> (content -> a)) -> a -> a
+    with effects \version -> \lower_key -> \upper_key -> \foldF -> \z -> [R[self]; R[version]; R[lower_key]; R[upper_key]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+  @:CArgs 4
+  provides lifted fold_slice_vid_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (a -> (int -> (content -> a))) -> a -> a
+    with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; (((foldF z) none) content)])*]
+}
+
+// A hash index implementation with customizable extractors.
+annotation VMapIndexE[key : [labeltype], extractors: [labellit]] given type a
+{
+  @:{CArgs 2, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted lookup_before_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> option content
+    with effects \version -> \key -> [R[self]; R[version]; R[key]]
+
+  @:{CArgs 4, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted lookup_with_before_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \version -> \key -> \f -> \g -> [R[self]; R[version]; R[key]; f content; g content]
+
+  @:{CArgs 2, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted slice_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> self
+    with effects \version -> \key -> [R[self]; R[version]; R[key]]
+
+  @:{CArgs 4, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted fold_slice_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (a -> (content -> a)) -> a -> a
+    with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+  @:{CArgs 4,IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted fold_slice_vid_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (a -> (int -> (content -> a))) -> a -> a
+    with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; (((foldF z) none) content)])*]
+}
+
+// A tree-based index implementation, additionally providing a two-sided range query operation.
+annotation OrderedVMapIndexE[key : [labeltype], extractors: [labellit]] given type a
+{
+  @:{CArgs 2, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted lookup_before_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> option content
+    with effects \version -> \key -> [R[self]; R[version]; R[key]]
+
+  @:{CArgs 4, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted lookup_with_before_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \version -> \key -> \f -> \g -> [R[self]; R[version]; R[key]; f content; g content]
+
+  @:{CArgs 2, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted slice_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> self
+    with effects \version -> \key -> [R[self]; R[version]; R[key]]
+
+  @:{CArgs 3, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted range_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> $[|mkRecord 'key|] -> self
+    with effects \version -> \lower_key -> \upper_key -> [R[self]; R[version]; R[lower_key]; R[upper_key]]
+
+  @:{CArgs 4, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted fold_slice_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (a -> (content -> a)) -> a -> a
+    with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+  @:{CArgs 5, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted fold_range_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> $[|mkRecord 'key|] -> (a -> (content -> a)) -> a -> a
+    with effects \version -> \lower_key -> \upper_key -> \foldF -> \z -> [R[self]; R[version]; R[lower_key]; R[upper_key]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+  @:{CArgs 4, IndexExtractor "$[|mkIndexExtractor 'key 'extractors|]"}
+  provides lifted fold_slice_vid_by_$[|concatLabels $ listLabels 'key|] : int -> $[|mkRecord 'key|] -> (a -> (int -> (content -> a))) -> a -> a
+    with effects \version -> \key -> \foldF -> \z -> [R[self]; R[version]; R[key]; R[z]; ([R[content]; (((foldF z) none) content)])*]
+}

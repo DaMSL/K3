@@ -63,10 +63,11 @@ program (tag &&& children -> (DRole name, decls)) = do
     includeDefns <- map R.IncludeDefn <$> requiredIncludes
     aliasDefns   <- map (R.GlobalDefn . R.Forward . uncurry R.UsingDecl) <$> requiredAliases
     compositeDefns <- do
-        currentComposites <- composites <$> get
-        currentAnnotations <- annotationMap <$> get
-        forM (S.toList $ S.filter (not . S.null) currentComposites) $ \(S.toList -> als) ->
-            composite (annotationComboId als) [(a, M.findWithDefault [] a currentAnnotations) | a <- als]
+      currentComposites <- composites <$> get
+      currentAnnotations <- annotationMap <$> get
+      forM (M.toList $ M.filterWithKey (\k _ -> not $ S.null k) currentComposites) $
+        \(S.toList -> als, ts) ->
+          composite (annotationComboId als) [(a, M.findWithDefault [] a currentAnnotations) | a <- als] ts
     records <- map (map fst) . snd . unzip . M.toList . recordMap <$> get
     recordDefns <- mapM record records
 
@@ -267,6 +268,12 @@ requiredIncludes = return
                    , "string"
                    , "tuple"
 
+                   , "boost/multi_index_container.hpp"
+                   , "boost/multi_index/hashed_index.hpp"
+                   , "boost/multi_index/ordered_index.hpp"
+                   , "boost/multi_index/member.hpp"
+                   , "boost/multi_index/composite_key.hpp"
+
                    , "Common.hpp"
                    , "Options.hpp"
                    , "Prettify.hpp"
@@ -279,6 +286,8 @@ requiredIncludes = return
                    , "types/Dispatcher.hpp"
 
                    , "collections/AllCollections.hpp"
+
+                   , "yaml-cpp/yaml.h"
                    ]
 
 
@@ -291,9 +300,9 @@ idOfTrigger t = "__" ++ unmangleReservedId t ++ "_tid"
 generateStaticContextMembers :: CPPGenM [R.Statement]
 generateStaticContextMembers = do
   triggerS        <- triggers <$> get
-  initializations <- staticInitializations <$> get
+  inits           <- staticInitializations <$> get
   names           <- mapM assignTrigName triggerS
-  return $ initializations ++ names
+  return $ inits ++ names
   where
     assignTrigName (tName, _) = do
       let i = R.Variable $ R.Qualified (R.Name "__global_context") (R.Name (idOfTrigger tName))
@@ -382,9 +391,6 @@ genJsonify = do
      rhs_exprs  <- mapM (\(n,t) -> jsonifyExpr t n) new_nts
      return $ zipWith R.Assignment lhs_exprs rhs_exprs
      where
-       isTUnit (tnc -> (TTuple, [])) = True
-       isTUnit _ = False
-
        jsonifyExpr t n = do
          cType <- genCType t
          return $ R.Call (R.Variable $ R.Specialized [cType] (R.Name "K3::serialization::json::encode")) [n]

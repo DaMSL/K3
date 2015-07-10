@@ -5,15 +5,17 @@ import Data.Functor
 import Control.Monad.State
 import Control.Monad.Trans.Either
 
+import Data.List
 import qualified Data.Map as M
 import qualified Data.Set as S
 
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 import Language.K3.Core.Annotation
-import Language.K3.Core.Common
+import Language.K3.Core.Common hiding ( current )
 import Language.K3.Core.Type
 import Language.K3.Core.Declaration
+import Language.K3.Core.Utils
 
 import qualified Language.K3.Codegen.CPP.Representation as R
 
@@ -68,8 +70,9 @@ data CPPGenS = CPPGenS {
         -- declaration of composite classes.
         annotationMap :: M.Map Identifier [AnnMemDecl],
 
-        -- | Set of annotation combinations actually encountered during the program.
-        composites :: S.Set (S.Set Identifier),
+        -- | Map form annotation combinations actually encountered during the program, to
+        --   the content types used in the combinations.
+        composites :: M.Map (S.Set Identifier) [K3 Type],
 
         -- | List of triggers declared in a program, used to populate the dispatch table.
         triggers :: [(Identifier, K3 Type)],
@@ -91,7 +94,7 @@ data CPPGenS = CPPGenS {
 
 -- | The default code generation state.
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 [] [] [] [] [] [] [] [] M.empty M.empty S.empty [] BoostSerialization 0 False False
+defaultCPPGenS = CPPGenS 0 [] [] [] [] [] [] [] [] M.empty M.empty M.empty [] BoostSerialization 0 False False
 
 refreshCPPGenS :: CPPGenM ()
 refreshCPPGenS = do
@@ -126,8 +129,9 @@ addAnnotation :: Identifier -> [AnnMemDecl] -> CPPGenM ()
 addAnnotation i amds = modify (\s -> s { annotationMap = M.insert i amds (annotationMap s) })
 
 -- | Add a new composite specification to the code generation state.
-addComposite :: [Identifier] -> CPPGenM ()
-addComposite is = modify (\s -> s { composites = S.insert (S.fromList is) (composites s) })
+addComposite :: [Identifier] -> K3 Type -> CPPGenM ()
+addComposite is t = modify (\s -> s { composites = addC (composites s) })
+  where addC c = M.insertWith (\a b -> nub $ a ++ b) (S.fromList is) [stripTUIDSpan t] c
 
 -- | Add a new record specification to the code generation state.
 addRecord :: Identifier -> [(Identifier, K3 Type)] -> CPPGenM ()

@@ -87,6 +87,7 @@ popSCtxt         :: SpliceContext -> SpliceContext
 spliceVIdSym :: Identifier
 spliceVTSym :: Identifier
 spliceVESym :: Identifier
+spliceVLSym :: Identifier
 
 lookupSpliceE      :: Identifier -> SpliceEnv -> Maybe SpliceValue
 addSpliceE         :: Identifier -> SpliceValue -> SpliceEnv -> SpliceEnv

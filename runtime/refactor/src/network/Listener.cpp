@@ -1,6 +1,7 @@
 #include <string>
 
 #include "core/Peer.hpp"
+#include "core/ProgramContext.hpp"
 #include "network/Listener.hpp"
 #include "network/IncomingConnection.hpp"
 

@@ -6,6 +6,7 @@
 
 #include "core/Engine.hpp"
 #include "core/Peer.hpp"
+#include "core/ProgramContext.hpp"
 #include "serialization/Codec.hpp"
 #include "types/Dispatcher.hpp"
 

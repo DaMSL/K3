@@ -194,7 +194,10 @@ identParts = token $ some (choice $ map try parts)
   where parts = [MPENull <$> (nonTokenIdent k3Idents), spliceEmbedding]
 
 spliceSymbols :: [(String, [Identifier])]
-spliceSymbols = map (,[]) ["$"] ++ [("$#", [spliceVIdSym]), ("$::", [spliceVTSym]), ("$.", [spliceVESym])]
+spliceSymbols = map (,[]) ["$"] ++ [ ("$#",  [spliceVIdSym])
+                                   , ("$::", [spliceVTSym])
+                                   , ("$.",  [spliceVESym])
+                                   , ("$!",  [spliceVLSym])]
 
 splicePath :: K3Parser [String]
 splicePath = i `sepBy1` (string ".")
@@ -234,7 +237,7 @@ exprEmbedding :: K3EmbeddingParser Expression
 exprEmbedding = choice [try (Left <$> identParts), Right . EC.variable <$> identifier]
 
 literalEmbedding :: K3EmbeddingParser Literal
-literalEmbedding = choice [try (Left <$> identParts), Right . LC.string <$> many anyChar]
+literalEmbedding = choice [try (Left <$> (some $ try spliceEmbedding)), Right . LC.string <$> many anyChar]
 
 
 {- Comments -}
@@ -389,6 +392,17 @@ parseInMode mode p = parserWithPMode $ \curPMode -> do
 
 
 {- Parser environment accessors  -}
+
+{- Note: unused
+sourceState :: EnvFrame -> EndpointsBQG
+sourceState = fst
+
+defaultEntries :: EnvFrame -> DefaultEntries
+defaultEntries = snd
+-}
+
+sourceEndpointSpecs :: EndpointsBQG -> [(Identifier, EndpointSpec)]
+sourceEndpointSpecs s = map (\(x,(e,_,_,_)) -> (x,e)) s
 
 sourceBindings :: EndpointsBQG -> [(Identifier, Identifier)]
 sourceBindings s = concatMap extractBindings s

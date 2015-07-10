@@ -60,7 +60,8 @@ data IOOptions = IOOptions { inputProgram :: FilePath
                            , noMP         :: Bool
                            , splicedInput :: Bool
                            , saveAST      :: Bool
-                           , saveRawAST   :: Bool }
+                           , saveRawAST   :: Bool
+                           , saveSyntax   :: Bool }
                deriving (Eq, Read, Show)
 
 -- | Parsing options.
@@ -236,6 +237,7 @@ ioOptions = IOOptions <$> inputProgramOpt
                       <*> splicedInputOpt
                       <*> saveAstOpt
                       <*> saveRawAstOpt
+                      <*> saveSyntaxOpt
 
 inputProgramOpt :: Parser FilePath
 inputProgramOpt = last . fileOrStdin <$> (many $ argument str (   metavar "FILE"
@@ -263,6 +265,9 @@ saveRawAstOpt :: Parser Bool
 saveRawAstOpt = switch (   long "save-raw-ast"
                         <> help "Save K3 AST used from compilation" )
 
+saveSyntaxOpt :: Parser Bool
+saveSyntaxOpt = switch (   long "save-syntax"
+                        <> help "Save pretty-printed K3 program from compilation" )
 
 
 {- Parsing mode options -}

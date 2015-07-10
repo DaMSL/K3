@@ -71,51 +71,55 @@ startSource name' = do
 
 hasRead :: String -> CPPGenM [R.Definition]
 hasRead source'  = do
-    let source = unmangleReservedId source'
-    let s_has_r = R.Project (R.Variable $ R.Name "__storage_") (R.Name "hasRead")
-    let ret = R.Return $ R.Call s_has_r [R.Variable $ R.Name "me", R.Literal $ R.LString source]
-    return $ [R.FunctionDefn (R.Name $ source ++ "HasRead") [("_", unit_t)]
-      (Just $ R.Primitive R.PBool) [] False [storage, ret]]
+    return []
+    --let source = unmangleReservedId source'
+    --let s_has_r = R.Project (R.Variable $ R.Name "__storage_") (R.Name "hasRead")
+    --let ret = R.Return $ R.Call s_has_r [R.Variable $ R.Name "me", R.Literal $ R.LString source]
+    --return $ [R.FunctionDefn (R.Name $ source ++ "HasRead") [("_", unit_t)]
+    --  (Just $ R.Primitive R.PBool) [] False [storage, ret]]
 
 doRead :: String -> K3 Type -> CPPGenM [R.Definition]
 doRead source' typ = do
-    ret_type    <- genCType $ typ
-    let source = unmangleReservedId source'
-    let packed_dec = R.Forward $ R.ScalarDecl (R.Name "packed") R.Inferred $ Just $
-                       (R.Call (R.Project (R.Variable $ R.Name "__storage_") (R.Name "doRead"))
-                               [R.Variable $ R.Name "me", R.Literal $ R.LString source])
-    let codec = R.Forward $ R.ScalarDecl (R.Name "__codec_") R.Inferred $ Just $
-                  R.Call (R.Variable $ R.Specialized [ret_type] (R.Qualified (R.Name "Codec") (R.Name "getCodec")))
-                    [R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "packed") (R.Name "format")) []]
-    let unpacked = R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "__codec_") (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "packed"]
-    let return_stmt = R.IfThenElse (R.Variable $ R.Name "packed")
-                        [R.Return $ R.Dereference $
-                          R.Call (R.Project (R.Dereference unpacked) (R.Specialized [ret_type] (R.Name "as"))) []
-                        ]
-                        [R.Ignore $ R.ThrowRuntimeErr $ R.Literal $ R.LString $ "Invalid doRead for " ++ source]
-    return $ [R.FunctionDefn (R.Name $ source ++ "Read") [("_", unit_t)]
-      (Just ret_type) [] False ([storage, packed_dec, codec, return_stmt])]
+    return []
+    --ret_type    <- genCType $ typ
+    --let source = unmangleReservedId source'
+    --let packed_dec = R.Forward $ R.ScalarDecl (R.Name "packed") R.Inferred $ Just $
+    --                   (R.Call (R.Project (R.Variable $ R.Name "__storage_") (R.Name "doRead"))
+    --                           [R.Variable $ R.Name "me", R.Literal $ R.LString source])
+    --let codec = R.Forward $ R.ScalarDecl (R.Name "__codec_") R.Inferred $ Just $
+    --              R.Call (R.Variable $ R.Specialized [ret_type] (R.Qualified (R.Name "Codec") (R.Name "getCodec")))
+    --                [R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "packed") (R.Name "format")) []]
+    --let unpacked = R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "__codec_") (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "packed"]
+    --let return_stmt = R.IfThenElse (R.Variable $ R.Name "packed")
+    --                    [R.Return $ R.Dereference $
+    --                      R.Call (R.Project (R.Dereference unpacked) (R.Specialized [ret_type] (R.Name "as"))) []
+    --                    ]
+    --                    [R.Ignore $ R.ThrowRuntimeErr $ R.Literal $ R.LString $ "Invalid doRead for " ++ source]
+    --return $ [R.FunctionDefn (R.Name $ source ++ "Read") [("_", unit_t)]
+    --  (Just ret_type) [] False ([storage, packed_dec, codec, return_stmt])]
 
 hasWrite :: String -> CPPGenM [R.Definition]
 hasWrite sink'  = do
-    let sink = unmangleReservedId sink'
-    let s_has_r = R.Project (R.Variable $ R.Name "__storage_") (R.Name "hasWrite")
-    let ret = R.Return $ R.Call s_has_r [R.Variable $ R.Name "me", R.Literal $ R.LString sink]
-    return $ [R.FunctionDefn (R.Name $ sink ++ "HasWrite") [("_", unit_t)]
-      (Just $ R.Primitive R.PBool) [] False [storage, ret]]
+    return []
+    --let sink = unmangleReservedId sink'
+    --let s_has_r = R.Project (R.Variable $ R.Name "__storage_") (R.Name "hasWrite")
+    --let ret = R.Return $ R.Call s_has_r [R.Variable $ R.Name "me", R.Literal $ R.LString sink]
+    --return $ [R.FunctionDefn (R.Name $ sink ++ "HasWrite") [("_", unit_t)]
+    --  (Just $ R.Primitive R.PBool) [] False [storage, ret]]
 
 doWrite :: R.Expression -> String -> K3 Type -> CPPGenM [R.Definition]
 doWrite fmt sink' typ = do
-    let sink = unmangleReservedId sink'
-    elem_type <- genCType $ typ
-    let codec = R.Forward $ R.ScalarDecl (R.Name "__codec_") R.Inferred $ Just $
-                  R.Call (R.Variable $ R.Specialized [elem_type] (R.Qualified (R.Name "Codec") (R.Name "getCodec")))
-                    [fmt]
-    let write = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__storage_") (R.Name "doWrite"))
-                               [R.Variable $ R.Name "me", R.Literal $ R.LString sink, R.Variable $ R.Name "arg", fmt]
-    let return_stmt = R.Return $ R.Initialization unit_t []
-    return $ [R.FunctionDefn (R.Name $ sink ++ "Write") [("arg", elem_type)]
-      (Just unit_t) [] False ([storage, codec, write, return_stmt])]
+    return []
+    --let sink = unmangleReservedId sink'
+    --elem_type <- genCType $ typ
+    --let codec = R.Forward $ R.ScalarDecl (R.Name "__codec_") R.Inferred $ Just $
+    --              R.Call (R.Variable $ R.Specialized [elem_type] (R.Qualified (R.Name "Codec") (R.Name "getCodec")))
+    --                [fmt]
+    --let write = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__storage_") (R.Name "doWrite"))
+    --                           [R.Variable $ R.Name "me", R.Literal $ R.LString sink, R.Variable $ R.Name "arg", fmt]
+    --let return_stmt = R.Return $ R.Initialization unit_t []
+    --return $ [R.FunctionDefn (R.Name $ sink ++ "Write") [("arg", elem_type)]
+    --  (Just unit_t) [] False ([storage, codec, write, return_stmt])]
 
 epDetails :: [Annotation Declaration] -> EndpointSpec
 epDetails as =

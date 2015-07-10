@@ -555,6 +555,8 @@ chaseLambda env _ msg path f = chaseApplied env msg path f
   where chaseApplied _ _ _ f@(tag -> FLambda _) = return [f]
         chaseApplied _ _ _ f@(tnc -> (FApply _, [_,_])) = return [f]
         chaseApplied _ _ _ f@(tag -> FFVar _)   = return [f]
+        chaseApplied _ _ _ f@(tag -> FNone)     = return [f]
+          -- For partial application of externals and forward declarations.
 
         chaseApplied env msg path f@(tag -> FBVar (fmvptr -> i))
           | i `elem` path = return [f]
@@ -594,8 +596,6 @@ simplifyApply fienv extInfOpt defer eOpt ef lrf arf = do
             (nbef,n2eacc) <- fisub neacc  extInfOpt False i ifbv bef p
             (nbrf,n3eacc) <- fisub n2eacc extInfOpt True  i ifbv brf p
             let appef = fromJust $ fexec $ ef ++ [Just nbef]
-            --let apprf = fapply (Just imv) lrf arf (fromJust $ fexec ef) (fromJust $ fexec [Just nbef]) nbrf
-            --let apprf = nbrf
             let apprf = fapplyRT (Just imv) nbrf
             return (facc++[(appef, apprf)], n3eacc)
 
@@ -607,15 +607,13 @@ simplifyApply fienv extInfOpt defer eOpt ef lrf arf = do
             (nbef,neacc)  <- fisub eacc  extInfOpt False i arf' bef ptemp
             (nbrf,n2eacc) <- fisub neacc extInfOpt True  i arf' brf ptemp
             let appef = fromJust $ fexec $ ef ++ [Just nbef]
-            --let apprf = fapply Nothing lrf arf (fromJust $ fexec ef) (fromJust $ fexec [Just nbef]) nbrf
-            --let apprf = nbrf
             let apprf = fapplyRT Nothing nbrf
             return (facc++[(appef,apprf)], n2eacc)
 
         -- Handle recursive functions and forward declarations by using an opaque return value.
         (FBVar _, _) ->
           let appef = fromJust $ fexec ef
-              apprf = fapply Nothing lrf arf (fromJust $ fexec ef) fnone fnone
+              apprf = fapplyRT Nothing fnone
           in return (facc ++ [(appef, apprf)], eacc)
 
         -- Handle higher-order and external functions as an unsimplified apply.
@@ -624,6 +622,12 @@ simplifyApply fienv extInfOpt defer eOpt ef lrf arf = do
 
         (FApply _, [_,_]) -> let appef = fromJust $ fexec ef
                              in return (facc ++ [(appef, fapplyExt lrf arf)], eacc)
+
+        -- For partial application of externals and forward declarations.
+        (FNone, _) ->
+          let appef = fromJust $ fexec ef
+              apprf = fapplyRT Nothing fnone
+          in return (facc ++ [(appef, apprf)], eacc)
 
         _ -> applyLambdaErr "match" lrf
 
@@ -635,11 +639,12 @@ simplifyApply fienv extInfOpt defer eOpt ef lrf arf = do
 
     uidP eOpt' = case eOpt' of
       Nothing -> return Nothing
-      Just e  -> (\a b -> Just (a,b)) <$> uidOf e <*> argP e
+      Just e  -> (\a bOpt -> bOpt >>= return . (a,)) <$> uidOf e <*> argP e
 
     argP e = provOf e >>= \case
-                            (tag -> PApply (Just mv))  -> return $ pbvar mv
-                            (tag -> PMaterialize [mv]) -> return $ pbvar mv
+                            (tag -> PApply Nothing)    -> return Nothing
+                            (tag -> PApply (Just mv))  -> return $ Just $ pbvar mv
+                            (tag -> PMaterialize [mv]) -> return $ Just $ pbvar mv
                             _ -> argPErr e
 
     fexec ef' = Just $ fseq $ catMaybes ef'
