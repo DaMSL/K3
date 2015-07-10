@@ -23,6 +23,8 @@ import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Utils
 
+import qualified Language.K3.Core.Constructor.Declaration as DC
+
 import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
@@ -106,11 +108,14 @@ printTransformReport rp = do
   putStrLn $ boxToString rp
   where sep = replicate 20 '='
 
-printMinimal :: [String] -> [String] -> IO ()
-printMinimal userdecls reqdecls = do
+printMinimal :: IOOptions -> ([String], [(String, K3 Declaration)]) -> IO ()
+printMinimal ioOpts (userdecls, reqdecls) = do
   putStrLn $ unwords $ ["Declarations needed for:"] ++ userdecls
-  putStrLn $ unlines reqdecls
-
+  putStrLn $ unlines $ map fst reqdecls
+  let progE = programS $ DC.role "__global" $ map snd reqdecls
+  cwd <- getCurrentDirectory
+  let output = case inputProgram ioOpts of {"-" -> "a"; x -> x }
+  either putStrLn (\s -> outputStrFile s $ outputFilePath cwd output "k3s") progE
 
 -- | AST formatting.
 formatAST :: (K3 Declaration -> String) -> PrintMode -> K3 Declaration -> Either String String
@@ -180,14 +185,14 @@ parse ioOpts pOpts prog = do
     (xP, report) <- liftE $ evalTransform Nothing (poStages pOpts) prog
     k3out ioOpts pOpts xP
     minP <- reasonM syntaxError $ minimize pOpts (xP, report)
-    liftIO $ either (printStages pOpts) (uncurry printMinimal) minP
+    liftIO $ either (printStages pOpts) (printMinimal ioOpts) minP
 
   where syntaxError = "Could not print program: "
 
 
 -- | Program minimization.
 minimize :: ParseOptions -> (K3 Declaration, [String])
-         -> DriverM (Either (K3 Declaration, [String]) ([String], [String]))
+         -> DriverM (Either (K3 Declaration, [String]) ([String], [(String, K3 Declaration)]))
 minimize (poMinimize -> userdecls) (p,rp) =
   if null userdecls
     then return $ Left (p,rp)

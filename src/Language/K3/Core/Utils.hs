@@ -22,6 +22,9 @@ module Language.K3.Core.Utils
 , check8Children
 , prependToRole
 
+, declarationName
+, declarationExpr
+
 , mapTree
 , modifyTree
 , foldMapTree
@@ -164,6 +167,18 @@ $(
   in
   concat <$> mapM mkCheckChildren [0::Int .. 8]
  )
+
+-- Returns the name of a declaration if available.
+declarationName :: K3 Declaration -> Maybe Identifier
+declarationName (tag -> DGlobal  n _ _) = Just n
+declarationName (tag -> DTrigger n _ _) = Just n
+declarationName _ = Nothing
+
+-- Returns the initializer expression for a declaration if available.
+declarationExpr :: K3 Declaration -> Maybe (K3 Expression)
+declarationExpr (tag -> DGlobal  _ _ eOpt) = eOpt
+declarationExpr (tag -> DTrigger _ _ e) = Just e
+declarationExpr _ = Nothing
 
 -- Prepend declarations to the beginning of a role
 prependToRole :: K3 Declaration -> [K3 Declaration] -> K3 Declaration
