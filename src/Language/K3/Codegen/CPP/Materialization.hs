@@ -254,9 +254,10 @@ materializationE e@(Node (t :@: as) cs)
              y' <- materializationE y
 
              let xp = getProvenance x
-             mention <- (||) <$> hasReadInP xp y' <*> hasWriteInP xp y'
+             readMention <- hasReadInP xp y'
+             writeMention <- hasWriteInP xp y'
 
-             let referenceBind d = if not mention then d { inD = Referenced, outD = Referenced } else d
+             let referenceBind d = if not writeMention then d { inD = Referenced, outD = Referenced } else d
 
              case b of
                BIndirection i -> setDecision (getUID e) i $ referenceBind defaultDecision
