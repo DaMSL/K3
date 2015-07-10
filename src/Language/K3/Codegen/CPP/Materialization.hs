@@ -191,6 +191,12 @@ materializationE e@(Node (t :@: as) cs)
         ds <- dLookupAll (getUID e)
         return (Node (t :@: (EMaterialization ds:as)) [target, message])
 
+      EOperate OSeq -> do
+        let [x, y] = cs
+        x' <- withLocalDS [y] $ materializationE x
+        y' <- materializationE y
+        return $ (Node (t :@: as)) [x', y']
+
       ELambda x -> do
              cg <- currentGlobal <$> get
              when cg $ case tag (head cs) of
