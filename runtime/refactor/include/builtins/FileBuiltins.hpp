@@ -23,7 +23,7 @@ class FileBuiltins {
     return unit_t{};
   }
 
-  unit_t closeFile(const Address& peer, const string_impl& id) {
+  unit_t close(const Address& peer, const string_impl& id) {
     __engine_.getStorageManager().closeFile(peer, id);
     return unit_t{};
   }

@@ -91,31 +91,34 @@ with effects \_ -> io
 declare openBuiltin : string -> string -> string -> ()
 with effects \_ -> \_ -> \_ -> io
 
-// openFile: channel id -> path -> format -> mode -> ()
-@:CArgs 4
-declare openFile : string -> string -> string -> string -> ()
-with effects \_ -> \_ -> \_ -> \_ -> io
+// openFile: addr -> channel id -> path -> format -> isText -> mode -> ()
+@:CArgs 6
+declare openFile : address -> string -> string -> string -> bool -> string -> ()
+with effects \_ -> \_ -> \_ -> \_ -> \_ -> \_ -> io
 
 // hasRead: channel id -> bool
-declare hasRead: string ->  bool
-with effects \_ -> io
-
-// doRead: channel id -> string
-declare doRead: string -> string
-with effects \_ -> io
-
-// doReadBlock: channel id -> block size -> block
 @:CArgs 2
-declare doReadBlock: string -> int -> collection {elem: string} @Collection
+declare hasRead: address -> string ->  bool
 with effects \_ -> \_ -> io
 
-// hasWrite: channel id -> bool
-declare hasWrite: string ->  bool
-with effects \_ -> io
-
-// doWrite: channel id -> string -> ()
+// doRead: address -> channel id -> string
 @:CArgs 2
-declare doWrite: string -> string -> ()
+declare doRead: address -> string -> string
+with effects \_ -> \_ -> io
+
+//// doReadBlock: channel id -> block size -> block
+//@:CArgs 2
+//declare doReadBlock: string -> int -> collection {elem: string} @Collection
+//with effects \_ -> \_ -> io
+
+// hasWrite: address -> channel id -> bool
+@:CArgs 2
+declare hasWrite: address -> string ->  bool
+with effects \_ -> \_ -> io
+
+// doWrite: address -> channel id -> string -> ()
+@:CArgs 3
+declare doWrite: address -> string -> string -> ()
 with effects \_ -> \_ -> io
 
 // openSocket: channel id -> address -> format -> mode -> ()
@@ -123,9 +126,10 @@ with effects \_ -> \_ -> io
 declare openSocket : string -> address -> string -> string -> ()
 with effects \_ -> \_ -> \_ -> \_ -> io
 
-// close: channel id -> ()
-declare close : string -> ()
-with effects \_ -> io
+// close: address -> channel id -> ()
+@:CArgs 2
+declare close : address -> string -> ()
+with effects \_ -> \_ -> io
 
 declare lineCountFile: string -> int
 with effects \_ -> io

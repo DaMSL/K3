@@ -70,7 +70,7 @@ class base_string {
 
   template <class archive>
   void serialize(archive& a, const unsigned int) {
-    std::size_t len;
+    uint64_t len;
     if (archive::is_saving::value) {
       len = length();
     }
@@ -95,7 +95,7 @@ class base_string {
 
   template <class archive>
   void serialize(archive& a) const {
-    size_t len = length();
+    uint64_t len = length();
     a& len;
     if (buffer_) {
       a.write(buffer_, len);
@@ -104,7 +104,7 @@ class base_string {
 
   template <class archive>
   void serialize(archive& a) {
-    size_t len;
+    uint64_t len;
     a& len;
     if (buffer_) {
       delete[] buffer_;

@@ -26,7 +26,6 @@ import qualified Language.K3.Core.Constructor.Type as T
 import Language.K3.Codegen.CPP.Expression
 import Language.K3.Codegen.CPP.Primitives
 import Language.K3.Codegen.CPP.Types
-import qualified Language.K3.Codegen.CPP.Endpoint as EP
 
 import Language.K3.Codegen.CPP.Materialization.Hints
 
@@ -39,16 +38,11 @@ skip_builtins :: [String]
 skip_builtins = ["hasRead", "doRead", "doReadBlock", "hasWrite", "doWrite"]
     
 declaration :: K3 Declaration -> CPPGenM [R.Definition]
-declaration (tna -> ((DGlobal n (tnc -> (TSource, [t])) _), as)) = do
-  let details = EP.epDetails as
-  EP.endpoint n t True details
+declaration (tna -> ((DGlobal n (tnc -> (TSource, [t])) _), as)) = return []
 
 -- Sinks with a valid body are handled in the same way as triggers.
 declaration d@(tna -> (DGlobal i (tnc -> (TSink, [t])) (Just e), as)) = do
-  let details = EP.epDetails as
-  trig <- declaration $ D.global i (T.function t T.unit) $ Just e
-  ep <- EP.endpoint i t False details 
-  return $ trig ++ ep
+  declaration $ D.global i (T.function t T.unit) $ Just e
 
 declaration (tag -> DGlobal i (tag -> TSink) Nothing) =
   throwE $ CPPGenE $ unwords ["Invalid sink trigger", i, "(missing body)"]
