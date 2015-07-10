@@ -461,6 +461,18 @@ hasWriteInP prov expr =
       let sendHasWrite = inD sendDecision == Moved && messageOccurs
       return (messageHasWrite || sendHasWrite)
 
+    (tag &&& children -> (ERecord is, cs)) -> do
+      childrenHaveWrite <- anyM (hasWriteInP prov) cs
+
+      moveDecisions <- dLookupAll (getUID expr)
+      let f i c = do
+            let currentDecision = M.findWithDefault defaultDecision i moveDecisions
+            if inD currentDecision == Moved
+               then occursIn True prov (getProvenance c)
+               else return False
+      constructorsHaveMoveWrite <- or <$> zipWithM f is cs
+      return (constructorsHaveMoveWrite || childrenHaveWrite)
+
     _ -> do
       genericHasWrite <- isWrittenInF prov (getEffects expr)
       childHasWrite <- anyM (hasWriteInP prov) (children expr)
