@@ -1,0 +1,7 @@
+role: slaveSource1
+me: [127.0.0.1,41000]
+peers: [{addr: [127.0.0.1,40000]},{addr: [127.0.0.1,42000]} ]
+---
+role: masterSource
+peers: [{addr: [127.0.0.1,41000]}]
+me: [127.0.0.1,40000]
