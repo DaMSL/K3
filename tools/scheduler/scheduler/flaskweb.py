@@ -34,6 +34,7 @@ socketio = SocketIO(webapp)
 logger = logging.getLogger("")
 
 dispatcher = None
+driverDispatch = None
 
 dispatcherTerminate = Event()
 webserverTerminate  = Event()
@@ -44,6 +45,8 @@ haltFlag = Event()
 # driverInitilize = Event()
 
 compileService = None
+driverCompiler = None
+
 lastCompile = None
 compile_tasks = {}
 
@@ -269,6 +272,21 @@ def getLog():
   """
   with open(webapp.config['LOGFILE'], 'r') as logfile:
     output = logfile.read()
+  if request.headers['Accept'] == 'application/json':
+    return output, 200
+  else:
+    return render_template("output.html", output=output)
+
+
+@webapp.route('/yamlinstructions')
+def getYamlInstructions():
+  """
+  #------------------------------------------------------------------------------
+  #  /yamlinstructions - Displays YAML Instructions
+  #------------------------------------------------------------------------------
+  """
+  with open('role_file_template.yaml', 'r') as yamlfile:
+    output = yamlfile.read()
   if request.headers['Accept'] == 'application/json':
     return output, 200
   else:
@@ -909,7 +927,7 @@ def killJob(appName, jobId):
     if int(jobId) in dispatcher.getActiveJobs():
       status = 'KILLED'
       logging.debug('[FLASKWEB] Job %s is active. Signaling to kill in mesos.' % jobId)
-      dispatcher.cancelJob(int(jobId), driver)
+      dispatcher.cancelJob(int(jobId), driverDispatch)
     else:
       status = 'ORPHANED and CLEANED'
       logging.debug('[FLASKWEB] Job # %s is ORPHANED and does not exist in current state. Cleaning up.' % jobId)
