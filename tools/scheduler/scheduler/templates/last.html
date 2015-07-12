@@ -71,7 +71,7 @@
               {% if lastjob.uid %}
                 <li class="list-group-item">UID: <span class="text-info">{{ lastjob.uid }}</span></li>{% endif %}
               {% if lastjob.hash %}
-                <li class="list-group-item">App Version UID: <span class="text-info">{{ lastjob.hash }}</span></li>{% endif %}
+                <li class="list-group-item">App Build Dir: <span class="text-info"><a href='/fs/build/{{appName}}-{{lastjob.hash}}'>{{appName}}-{{lastjob.hash}}</a></span></li>{% endif %}
               {% if lastjob.user %}
                 <li class="list-group-item">Username <span class="text-info">{{ lastjob.user }}</span></li>{% endif %}
               {% if lastjob.tag %}
