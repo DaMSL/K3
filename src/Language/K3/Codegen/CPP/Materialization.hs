@@ -50,6 +50,8 @@ data MaterializationS = MaterializationS { decisionTable :: Table
                                          , fienv :: FIEnv
                                          , downstreams :: [K3 Expression]
                                          , currentGlobal :: Bool
+                                         -- | Identifiers currently in scope, and their bind points.
+                                         , scopeMap :: M.Map Identifier Int
                                          }
 
 type MaterializationM = StateT MaterializationS Identity
@@ -74,6 +76,18 @@ withLocalDS nds m = do
   s' <- get
   put (s' { downstreams = downstreams s})
   return r
+
+withLocalBindings :: [Identifier] -> Int -> MaterializationM a -> MaterializationM a
+withLocalBindings is u m = do
+  s <- get
+  put $ s { scopeMap = M.union (M.fromList $ zip is (repeat u)) (scopeMap s)}
+  r <- m
+  s' <- get
+  put $ s' { scopeMap = scopeMap s }
+  return r
+
+getBindingUID :: Identifier -> MaterializationM (Maybe Int)
+getBindingUID i = M.lookup i . scopeMap <$> get
 
 getUID :: K3 Expression -> Int
 getUID e = let EUID (UID u) = fromMaybe (error "No UID on expression.")
@@ -111,7 +125,7 @@ runMaterializationM :: MaterializationM a -> MaterializationS -> (a, Materializa
 runMaterializationM m s = runIdentity $ runStateT m s
 
 optimizeMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> K3 Declaration
-optimizeMaterialization (p, f) d = fst $ runMaterializationM (materializationD d) (MaterializationS I.empty p f [] True)
+optimizeMaterialization (p, f) d = fst $ runMaterializationM (materializationD d) (MaterializationS I.empty p f [] True M.empty)
 
 materializationD :: K3 Declaration -> MaterializationM (K3 Declaration)
 materializationD (Node (d :@: as) cs)
@@ -196,11 +210,13 @@ materializationE e@(Node (t :@: as) cs)
 
       ELambda x -> do
              cg <- currentGlobal <$> get
+             closureSymbols <- getClosureSymbols (getUID e)
+
              when cg $ case tag (head cs) of
                          ELambda _ -> return ()
                          otherwise -> setCurrentGlobal False
 
-             [b] <- mapM materializationE cs
+             [b] <- withLocalBindings (x:closureSymbols) (getUID e) $ mapM materializationE cs
 
              setCurrentGlobal cg -- Probably not necessary to restore.
 
@@ -234,11 +250,14 @@ materializationE e@(Node (t :@: as) cs)
 
              setDecision (getUID e) x $ readOnlyDecision $ nrvoDecision $ defaultDecision
 
-             closureSymbols <- getClosureSymbols (getUID e)
-
              forM_ closureSymbols $ \s -> do
-               closureHasWrite <- hasWriteInI s b
-               moveable <- return True
+               let innerProxyProvenance = P.pbvar $ PMatVar { pmvn = s, pmvloc = UID (getUID e), pmvptr = -1}
+
+               sc <- scopeMap <$> get
+               outerBindUID <- UID . fromMaybe (error $ (show s) ++ " " ++ (show sc)) <$> getBindingUID s
+               let outerProxyProvenance = P.pbvar $ PMatVar { pmvn = s, pmvloc = outerBindUID, pmvptr = -1}
+               closureHasWrite <- hasWriteInP innerProxyProvenance b
+               moveable <- isMoveableNow outerProxyProvenance
                let closureDecision d =
                      if closureHasWrite
                        then if moveable
@@ -273,7 +292,7 @@ materializationE e@(Node (t :@: as) cs)
       ECaseOf i -> do
              let [x, s, n] = cs
              x' <- withLocalDS [s, n] (materializationE x)
-             s' <- materializationE s
+             s' <- withLocalBindings [i] (getUID e) $ materializationE s
              n' <- materializationE n
 
              let xp = getProvenance x
@@ -301,7 +320,7 @@ materializationE e@(Node (t :@: as) cs)
                -- context of the extra downstream.
                m <- isMoveableNow (getProvenance x'')
                return (x'', if m then defaultDecision { inD = Moved } else defaultDecision)
-             b' <- materializationE b
+             b' <- withLocalBindings [i] (getUID e) $ materializationE b
 
              setDecision (getUID e) i d
              decisions <- dLookupAll (getUID e)
