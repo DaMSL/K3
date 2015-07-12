@@ -70,25 +70,25 @@ string_impl prettify_collection(const C& c, F f) {
 
 template <class C, class F>
 string_impl prettify_vmap(const C& c, F f) {
-  std::ostringstream oss;
-  oss << "[";
-  for (auto& elem : c) {
-    oss << "Version: " << elem.first << std::endl;
-    oss << "[";
-    int i = 0;
-    if (i != 0) {
-      oss << ",";
-    }
-    oss << f(elem.second);
-    i++;
-    if (i == 10) {
-      oss << ",...";
-      break;
-    }
-  };
-  oss << "]";
-  return string_impl(oss.str());
-
+  //std::ostringstream oss;
+  //oss << "[";
+  //for (auto& elem : c) {
+  //  oss << "Version: " << elem.first << std::endl;
+  //  oss << "[";
+  //  int i = 0;
+  //  if (i != 0) {
+  //    oss << ",";
+  //  }
+  //  oss << f(elem.second);
+  //  i++;
+  //  if (i == 10) {
+  //    oss << ",...";
+  //    break;
+  //  }
+  //};
+  //oss << "]";
+  //return string_impl(oss.str());
+  return string_impl("<VMAP>");  // TODO(jbw) fix implementation for multiIndexVMap
 }
 
 // Template magic for tuples
