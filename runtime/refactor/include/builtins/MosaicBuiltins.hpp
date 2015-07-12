@@ -11,6 +11,7 @@
 namespace K3 {
 
 class MosaicBuiltins {
+ public:
   template <class C>
   C max(C a, C b) {
     return (a > b ? a : b);

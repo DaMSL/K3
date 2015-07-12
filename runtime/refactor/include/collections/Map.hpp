@@ -76,7 +76,7 @@ class Map {
     if (it == container.end()) {
       return f(unit_t {});
     } else {
-      return g(*it);
+      return g(it->second);
     }
   }
 

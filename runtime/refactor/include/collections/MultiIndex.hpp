@@ -14,7 +14,7 @@
 
 #include <Common.hpp>
 
-#include <serialization/json.hpp>
+#include <serialization/Json.hpp>
 #include <rapidjson/document.h>
 #include <rapidjson/writer.h>
 #include <rapidjson/stringbuffer.h>

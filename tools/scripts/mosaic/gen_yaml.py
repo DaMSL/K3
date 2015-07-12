@@ -8,6 +8,9 @@ import yaml
 def address(port):
     return ['127.0.0.1', port]
 
+def wrapRole(role):
+    return [{'n': role}]
+
 def create_peers(peers):
     res = []
     for peer in peers:
@@ -46,7 +49,7 @@ def create_file(num_switches, num_nodes, file_path, extra_args):
     # convert to dictionaries
     peers2 = []
     for (role, port) in peers:
-        peer = {'role':role, 'me':address(port), 'switch_path':file_path,
+        peer = {'role': wrapRole(role), 'me':address(port), 'switch_path':file_path,
                 'peers':create_peers(peers)}
         peer.update(extra_args)
         peers2.append(peer)
@@ -57,16 +60,16 @@ def create_file(num_switches, num_nodes, file_path, extra_args):
 def create_dist_file(num_switches, perhost, num_nodes, nmask, file_path, extra_args):
     extra_args = parse_extra_args(extra_args)
 
-    master_role = {'role': 'master'}
+    master_role = {'role': wrapRole('master')}
     master_role.update(extra_args)
 
-    timer_role = {'role': 'timer'}
+    timer_role = {'role': wrapRole('timer')}
     timer_role.update(extra_args)
 
-    switch_role = {'role': 'switch', 'switch_path': file_path}
+    switch_role = {'role': wrapRole('switch'), 'switch_path': file_path}
     switch_role.update(extra_args)
 
-    node_role = {'role': 'node'}
+    node_role = {'role': wrapRole('node')}
     node_role.update(extra_args)
 
     switch1_env = {'peer_globals': [master_role, timer_role, switch_role]}
@@ -109,8 +112,8 @@ def create_multicore_file(num_switches, perhost, num_nodes, nmask, file_path, ex
         "hostmask": "qp3",
         "name": "Everything",
         "peer_globals": [
-            {"role": "master"}, {"role": "timer"}, {"role": "switch", "switch_path": file_path}
-        ] + [{"role": "node"} for _ in range(num_nodes)],
+            {"role": wrapRole("master")}, {"role": wrapRole("timer")}, {"role": wrapRole("switch"), "switch_path": file_path}
+        ] + [{"role": wrapRole("node")} for _ in range(num_nodes)],
         "privileged": False,
         'volumes'   : [{'host':'/local', 'container':'/local'}],
     }

@@ -505,5 +505,5 @@ prettifyExpr base_t e =
        let str = maybe "collection" (const "vmap") (as @~ isVMap)
        return $ call_prettify str [e, f]
 
-   isVMap (TAnnotation "VMap") = True
+   isVMap (TAnnotation s) = "VMap" `L.isInfixOf` s
    isVMap _ = False
