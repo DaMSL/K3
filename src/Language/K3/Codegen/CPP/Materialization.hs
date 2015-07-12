@@ -417,9 +417,11 @@ hasWriteInI ident expr =
     -- TODO: Other shadow cases.
 
     _ -> do
+      moveDecisions <- dLookupAll (getUID expr)
+      let localHasWriteByMove = maybe False (\d -> inD d == Moved) (M.lookup ident moveDecisions)
       localHasWrite <- hasWriteInIF ident (getEffects expr)
       childHasWrite <- anyM (hasWriteInI ident) (children expr)
-      return (localHasWrite || childHasWrite)
+      return (localHasWriteByMove || localHasWrite || childHasWrite)
 
 pVarName :: K3 Provenance -> Maybe Identifier
 pVarName p =
@@ -451,7 +453,30 @@ hasWriteInP prov expr =
 
       return (functionHasWrite || argHasWrite || appHasWrite || appHasIntrinsicWrite)
 
-    _ -> (||) <$> isWrittenInF prov (getEffects expr) <*> anyM (hasWriteInP prov) (children expr)
+    (tag &&& children -> (EOperate OSnd, [_, x])) -> do
+      let messageProv = getProvenance x
+      messageOccurs <- occursIn True prov messageProv
+      sendDecision <- dLookup (getUID expr) ""
+      messageHasWrite <- hasWriteInP prov x
+      let sendHasWrite = inD sendDecision == Moved && messageOccurs
+      return (messageHasWrite || sendHasWrite)
+
+    (tag &&& children -> (ERecord is, cs)) -> do
+      childrenHaveWrite <- anyM (hasWriteInP prov) cs
+
+      moveDecisions <- dLookupAll (getUID expr)
+      let f i c = do
+            let currentDecision = M.findWithDefault defaultDecision i moveDecisions
+            if inD currentDecision == Moved
+               then occursIn True prov (getProvenance c)
+               else return False
+      constructorsHaveMoveWrite <- or <$> zipWithM f is cs
+      return (constructorsHaveMoveWrite || childrenHaveWrite)
+
+    _ -> do
+      genericHasWrite <- isWrittenInF prov (getEffects expr)
+      childHasWrite <- anyM (hasWriteInP prov) (children expr)
+      return (genericHasWrite || childHasWrite)
 
 hasReadInP :: K3 Provenance -> K3 Expression -> MaterializationM Bool
 hasReadInP prov expr =

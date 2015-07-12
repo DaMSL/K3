@@ -20,7 +20,7 @@ name: role 1
 # peers: (required) Total number of peers to run. Peers are allocated on a 1 
 #   peer per CPU basis. If you try to assign more peers than available CPUs, 
 #   your program will not run 
-peers: 4
+peers: 3
 
 # peers_per_host: (optional) Specifies the exact # of peers you want running
 #   on each host. Again, ensure you allocate on a 1 peer per CPU basis
@@ -31,7 +31,13 @@ peers_per_host: 2
 #   will ONLY accept offers from hosts whose hostnames match this filter
 hostmask: ".*"
 
-# mem: (optional) specify the amount of memory. Accepted values include: 
+# cpu:  (optional) Amount of CPU Cores to allocate per peer. You can allocate
+#   less than a core per peer (e.g. 0.25) or more. Be sure not to over allocate 
+#   and do your math. The dispatcher will deadlock if you request too much
+#   If omitted, the default is 1 core per peer
+cpu: 0.1
+
+# mem: (optional) specify the amount of memory PER HOST. Accepted values include: 
 #     all:   use all available memory in accepts hosts' offers
 #     some:  use "some" memory (the smaller of 25% available or 4GB)
 #     <num>: Use exactly <num> GB of memory. Note: offers will be declined
@@ -44,16 +50,29 @@ mem: ".*"
 #   privileged mode. Use with caution!
 privileged: False
 
-# k3_globals: (required) list of internal K3 Global declarations with their
-#   initial value. The 'role' declaration is required. Any others are 
-#   specific to your application. Also, note that we have included an 
-#   "auto" feature to automatically assign a master peer. By setting 
+# k3_globals: (required, if peer_globals are omitted) list of internal K3 Global
+#   declarations with their initial value. The 'role' declaration is required. 
+#   Any others are specific to your application. Also, note that we have included  
+#   an "auto" feature to automatically assign a master peer. By setting 
 #   a K3 variable to "auto," the dispatcher will automatically assign the
 #   first peer tasked on the first host as the master.
 k3_globals:
   role: rows
   master: auto
-  
+
+
+# peer_globals: (optional) list of internal K3 Global declarations FOR EACH PEER
+#   If k3_globals are omitted, you musts explicitly list each k3 global for each 
+#   peer as exemplified below. Ensure you have the correct # of peers set in 
+#   the peer field above. If you use both the peer_global and the k3_global, the
+#   dispatcher will allocated all globals in this list first and then use the
+#   k3_globals to set the remaining peers' globals
+peer_globals:
+  - {role: master, var_x: 1}
+  - {role: switch, var_x: 2}
+  - {role: timer, var_x: 3}
+
+
 # envars: (optional) Environment variables to pass to the docker container
 envars:
   - {name: LD_PRELOAD, value: /usr/local/lib/libjemalloc.so}

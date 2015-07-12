@@ -48,7 +48,7 @@ data MPEvalOptions = MPEvalOptions { mpInterpArgs   :: [String]
                                    , mpQImportPaths :: [(String, Maybe String)] }
 
 -- | Annotation generation is performed per name-parameter combination.
-type MPGeneratorKey = (Identifier, SpliceEnv)
+type MPGeneratorKey = (Identifier, SpliceEnv, Maybe (K3 Type))
 type MPGensymS = Map MPGeneratorKey Int
 
 -- | Metaprogramming state.
@@ -92,9 +92,9 @@ throwG :: String -> GeneratorM a
 throwG msg = Control.Monad.Trans.Either.left msg
 
 {- Annotation symbol generation -}
-mpgensym :: Identifier -> SpliceEnv -> MPGensymS -> (Either Int Int, MPGensymS)
-mpgensym n env symS = maybe newsymS (\i -> (Left i, symS)) $ Map.lookup k symS
-  where k = (n, Map.map stripSCompare env)
+mpgensym :: Identifier -> SpliceEnv -> Maybe (K3 Type) -> MPGensymS -> (Either Int Int, MPGensymS)
+mpgensym n env tOpt symS = maybe newsymS (\i -> (Left i, symS)) $ Map.lookup k symS
+  where k = (n, Map.map stripSCompare env, maybe Nothing (Just . stripTCompare) tOpt)
         newsym  = 1 + Map.foldl max 0 symS
         newsymS = (Right newsym, Map.insert k newsym symS)
 
@@ -144,9 +144,9 @@ modifyGeneratedDecls f gs = either Left (\(ngd,r) -> Right (gs {generatorDecls =
 modifyGeneratorState :: (GeneratorState -> Either String (GeneratorState, a)) -> GeneratorM a
 modifyGeneratorState f = get >>= \st -> either throwG (\(nst,r) -> put nst >> return r) $ f st
 
-generatorWithMPGensymS :: Identifier -> SpliceEnv -> (Either Int Int -> GeneratorM a) -> GeneratorM a
-generatorWithMPGensymS n env f = get >>= \gs -> do
-  let (iE, nsymS) = mpgensym n env $ getMPGensymS gs
+generatorWithMPGensymS :: Identifier -> SpliceEnv -> Maybe (K3 Type) -> (Either Int Int -> GeneratorM a) -> GeneratorM a
+generatorWithMPGensymS n env tOpt f = get >>= \gs -> do
+  let (iE, nsymS) = mpgensym n env tOpt $ getMPGensymS gs
   put (gs {mpGensymS = nsymS}) >> f iE
 
 generatorWithGEnv :: (GeneratorEnv -> GeneratorM a) -> GeneratorM a
@@ -161,8 +161,8 @@ generatorWithSCtxt f = get >>= f . getSpliceContext
 generatorWithEvalOptions :: (MPEvalOptions -> GeneratorM a) -> GeneratorM a
 generatorWithEvalOptions f = get >>= f . getMPEvalOptions
 
-withGUID :: Identifier -> SpliceEnv -> (Either Int Int -> a) -> GeneratorM a
-withGUID n env f = generatorWithMPGensymS n env $ return . f
+withGUID :: Identifier -> SpliceEnv -> Maybe (K3 Type) -> (Either Int Int -> a) -> GeneratorM a
+withGUID n env tOpt f = generatorWithMPGensymS n env tOpt $ return . f
 
 withGEnv :: (GeneratorEnv -> a) -> GeneratorM a
 withGEnv f = generatorWithGEnv $ return . f

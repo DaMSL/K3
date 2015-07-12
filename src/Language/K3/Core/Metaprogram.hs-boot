@@ -1,5 +1,6 @@
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE RoleAnnotations #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Language.K3.Core.Metaprogram where
 
@@ -16,6 +17,11 @@ import Language.K3.Utils.Pretty
 data SpliceType
 data SpliceValue
 type TypedSpliceVar = (SpliceType, Identifier)
+
+type role SpliceDeclGenerator nominal
+data SpliceDeclGenerator (m :: * -> *)
+
+type role SpliceResult nominal
 data SpliceResult (m :: * -> *)
 
 data MPDeclaration

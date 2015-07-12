@@ -127,6 +127,16 @@ class IntMap {
     return res;
   }
 
+  template<typename F, typename G>
+  auto peek_with(F f, G g) const {
+    auto it = mapi_begin(get_mapi());
+    if (it < mapi_end(get_mapi()) ) {
+      return g(*static_cast<R*>(it));
+    } else {
+      return f(unit_t {});
+    }
+  }
+
   // TODO(yanif): Fix insert semantics to replace value if key exists.
   unit_t insert(const R& q) {
     mapi_insert(get_mapi(), const_cast<void*>(static_cast<const void*>(&q)));

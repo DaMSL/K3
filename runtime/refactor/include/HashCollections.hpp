@@ -59,8 +59,29 @@ struct hash<K3::VMap<Elem>> {
 };
 
 template <class Elem>
-struct hash<K3::OrderedMap<Elem>> {
-  size_t operator()(K3::OrderedMap<Elem> const& b) const {
+struct hash<K3::SortedMap<Elem>> {
+  size_t operator()(K3::SortedMap<Elem> const& b) const {
+    return hash_collection(b);
+  }
+};
+
+template <typename... Args>
+struct hash<K3::MultiIndexBag<Args...>> {
+  size_t operator()(K3::MultiIndexBag<Args...> const& b) {
+    return hash_collection(b);
+  }
+};
+
+template <typename... Args>
+struct hash<K3::MultiIndexMap<Args...>> {
+  size_t operator()(K3::MultiIndexMap<Args...> const& b) {
+    return hash_collection(b);
+  }
+};
+
+template <typename... Args>
+struct hash<K3::MultiIndexVMap<Args...>> {
+  size_t operator()(K3::MultiIndexVMap<Args...> const& b) {
     return hash_collection(b);
   }
 };

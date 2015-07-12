@@ -9,5 +9,7 @@
 #include "collections/Vector.hpp"
 #include "collections/MultiIndex.hpp"
 #include "collections/VMap.hpp"
-#include "collections/OrderedMap.hpp"
+#include "collections/SortedMap.hpp"
+#include "collections/SortedSet.hpp"
+#include "collections/MapE.hpp"
 #include "HashCollections.hpp"

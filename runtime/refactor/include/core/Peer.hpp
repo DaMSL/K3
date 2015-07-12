@@ -32,13 +32,13 @@ class Peer {
   bool finished();
   Address address();
   shared_ptr<ProgramContext> getContext();
+  void printStatistics();
 
  protected:
   // Helper Functions
   void processBatch();
   void logMessage(const Dispatcher& d);
   void logGlobals(bool final);
-  void printStatistics();
 
   // Components
   shared_ptr<spdlog::logger> logger_;

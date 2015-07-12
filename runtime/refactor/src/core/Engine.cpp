@@ -47,12 +47,16 @@ void Engine::join() {
   if (running_ && peers_) {
     for (auto& it : *peers_) {
       it.second->join();
+      std::cout << it.first.toString() << std::endl;
+      it.second->printStatistics();
     }
   }
   network_manager_.stop();
   network_manager_.join();
   running_ = false;
   logger_->info("The Engine has Joined.");
+
+
 }
 
 void Engine::send(const MessageHeader& header, unique_ptr<NativeValue> value,

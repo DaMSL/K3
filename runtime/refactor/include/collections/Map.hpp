@@ -70,6 +70,16 @@ class Map {
     return res;
   }
 
+  template<typename F, typename G>
+  auto peek_with(F f, G g) const {
+    auto it = container.begin();
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(*it);
+    }
+  }
+
   using iterator = map_iterator<typename Container::iterator>;
   using const_iterator = map_iterator<typename Container::const_iterator>;
 
@@ -266,6 +276,16 @@ class Map {
       return f(it->second);
     }
     throw std::runtime_error("No match on Map.lookup_with3");
+  }
+
+  template <class F, class G>
+  auto lookup_with4(R const& r, F f, G g) const {
+    auto it = container.find(r.key);
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(it->second);
+    }
   }
 
   bool operator==(const Map& other) const {

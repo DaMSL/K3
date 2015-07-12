@@ -1,5 +1,5 @@
-#ifndef K3_MULTIINDEX
-#define K3_MULTIINDEX
+#ifndef K3_MULTIINDEX 
+#define K3_MULTIINDEX 
 
 #include <math.h>
 #include <random>
@@ -8,9 +8,8 @@
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/tag.hpp>
 #include <boost/multi_index/sequenced_index.hpp>
-#include <boost/multi_index/ordered_index.hpp>
-#include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/member.hpp>
+#include <boost/multi_index/hashed_index.hpp>
 #include <boost/lambda/lambda.hpp>
 
 #include <Common.hpp>
@@ -725,15 +724,12 @@ class MultiIndexVMap
         auto& vmap = std::get<1>(elem);
         auto vit = vmap.find(v);
         if ( vit != vmap.end() ) {
-          std::cout << "Update found" << std::endl;
           vmap.erase(vit);
           do_insert = true;
         } else {
-          std::cout << "Update failed" << std::endl;
         }
       });
       if ( do_insert ) {
-        std::cout << "Update inserting" << std::endl;
         insert(v, rec2);
       }
     }
@@ -1372,20 +1368,6 @@ namespace boost {
   }
 }
 
-template <typename... Args>
-std::size_t hash_value(K3::MultiIndexBag<Args...> const& b) {
-  return hash_collection(b);
-}
-
-template <typename... Args>
-std::size_t hash_value(K3::MultiIndexMap<Args...> const& b) {
-  return hash_collection(b);
-}
-
-template <typename... Args>
-std::size_t hash_value(K3::MultiIndexVMap<Args...> const& b) {
-  return hash_collection(b);
-}
 
 namespace JSON {
   using namespace rapidjson;

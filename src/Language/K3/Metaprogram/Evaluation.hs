@@ -156,25 +156,25 @@ applyDAnnGens mp = mapProgram applyDAnnDecl applyDAnnMemDecl applyDAnnExprTree (
 
     applyDAnnExpr ch n@(tag -> EConstant (CEmpty t)) = do
       nt    <- applyDAnnTypeTree t
-      nanns <- mapM eApplyAnn $ annotations n
+      nanns <- mapM (eApplyAnn t) $ annotations n
       rebuildNode (EC.constant $ CEmpty nt) (Just nanns) ch
 
     applyDAnnExpr ch n = rebuildNode n Nothing ch
 
     applyDAnnType ch n@(tag -> TCollection) = do
-      nanns <- mapM tApplyAnn $ annotations n
+      nanns <- mapM (tApplyAnn $ head $ children n) $ annotations n
       rebuildNode (TC.collection $ head $ children n) (Just nanns) ch
 
     applyDAnnType ch n = rebuildNode n Nothing ch
 
     applyDAnnLiteral ch n@(tag -> LEmpty t) = do
       nt    <- applyDAnnTypeTree t
-      nanns <- mapM lApplyAnn $ annotations n
+      nanns <- mapM (lApplyAnn t) $ annotations n
       rebuildNode (LC.empty nt) (Just nanns) ch
 
     applyDAnnLiteral ch n@(tag -> LCollection t) = do
       nt    <- applyDAnnTypeTree t
-      nanns <- mapM lApplyAnn $ annotations n
+      nanns <- mapM (lApplyAnn t) $ annotations n
       rebuildNode (LC.collection nt $ children n) (Just nanns) ch
 
     applyDAnnLiteral ch n = rebuildNode n Nothing ch
@@ -183,24 +183,24 @@ applyDAnnGens mp = mapProgram applyDAnnDecl applyDAnnMemDecl applyDAnnExprTree (
     dApplyAnn (DProperty (Right (n, Just l))) = applyDAnnLitTree l >>= return . DProperty . Right . (n,) . Just
     dApplyAnn x = return x
 
-    eApplyAnn (EApplyGen False n senv) = applyDAnnotation EAnnotation n senv
-    eApplyAnn (EProperty (Left  (n, Just l))) = applyDAnnLitTree l >>= return . EProperty . Left  . (n,) . Just
-    eApplyAnn (EProperty (Right (n, Just l))) = applyDAnnLitTree l >>= return . EProperty . Right . (n,) . Just
-    eApplyAnn x = return x
+    eApplyAnn t (EApplyGen False n senv) = applyDAnnotation EAnnotation n senv t
+    eApplyAnn _ (EProperty (Left  (n, Just l))) = applyDAnnLitTree l >>= return . EProperty . Left  . (n,) . Just
+    eApplyAnn _ (EProperty (Right (n, Just l))) = applyDAnnLitTree l >>= return . EProperty . Right . (n,) . Just
+    eApplyAnn _ x = return x
 
-    tApplyAnn (TApplyGen n senv) = applyDAnnotation TAnnotation n senv
-    tApplyAnn x = return x
+    tApplyAnn t (TApplyGen n senv) = applyDAnnotation TAnnotation n senv t
+    tApplyAnn _ x = return x
 
-    lApplyAnn (LApplyGen n senv) = applyDAnnotation LAnnotation n senv
-    lApplyAnn x = return x
+    lApplyAnn t (LApplyGen n senv) = applyDAnnotation LAnnotation n senv t
+    lApplyAnn _ x = return x
 
     rebuildNode (Node (t :@: anns) _) Nothing      ch = return $ Node (t :@: anns) ch
     rebuildNode (Node (t :@: anns) _) (Just nanns) ch = return $ Node (t :@: (nub $ anns ++ nanns)) ch
 
     rebuildNodeWithAnns (Node (t :@: _) ch) anns = return $ Node (t :@: anns) ch
 
-applyDAnnotation :: AnnotationCtor a -> Identifier -> SpliceEnv -> GeneratorM (Annotation a)
-applyDAnnotation aCtor annId sEnv = do
+applyDAnnotation :: AnnotationCtor a -> Identifier -> SpliceEnv -> K3 Type -> GeneratorM (Annotation a)
+applyDAnnotation aCtor annId sEnv t = do
     (gEnv, sCtxt) <- get >>= return . (getGeneratorEnv &&& getSpliceContext)
     nsEnv         <- evalBindings sCtxt sEnv
     let postSCtxt = pushSCtxt nsEnv sCtxt
@@ -210,8 +210,16 @@ applyDAnnotation aCtor annId sEnv = do
 
   where
     expectSpliceAnnotation sctxt (SRGenDecl p) = do
-      declE <- p
-      flip (either (\n -> return $ aCtor n)) declE $ \decl ->
+      declGen <- p
+      case declGen of
+        SGContentDependent contentF -> contentF t >>= processSpliceDGen sctxt
+        _ -> processSpliceDGen sctxt declGen
+
+    expectSpliceAnnotation _ _ = throwG "Invalid data annotation splice"
+
+    processSpliceDGen sctxt declGen = case declGen of
+      SGNamed n -> return $ aCtor n
+      SGDecl decl ->
         case tag decl of
           DDataAnnotation n _ _ -> do
             ndecl <- bindDAnnVars sctxt decl
@@ -219,7 +227,7 @@ applyDAnnotation aCtor annId sEnv = do
 
           _ -> throwG $ boxToString $ ["Invalid data annotation splice"] %+ prettyLines decl
 
-    expectSpliceAnnotation _ _ = throwG "Invalid data annotation splice"
+      _ -> throwG $ boxToString $ ["Invalid splice data generator"]
 
     spliceLookupErr n = throwG $ unwords ["Could not find data macro", n]
 
@@ -321,12 +329,16 @@ annotationSplicer :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> [Either 
 annotationSplicer n spliceParams typeParams mems = Splicer $ \spliceEnv -> SRGenDecl $ do
   let vspliceEnv = validateSplice spliceParams spliceEnv
   nmems <- generateInSpliceEnv vspliceEnv $ mapM (either spliceMPAnnMem (\m -> spliceAnnMem m >>= return . (:[]))) mems
-  trace (debugAS n vspliceEnv) $ withGUID n vspliceEnv $
-      \case
-        Left  i -> Left $ concat [n, "_", show i]
-        Right i -> Right $ DC.dataAnnotation (concat [n, "_", show i]) typeParams $ concat nmems
+  if isContentDependent n
+    then return $ SGContentDependent $ \t -> withGUID n vspliceEnv (Just t) $ onGenerated nmems
+    else withGUID n vspliceEnv Nothing $ onGenerated nmems
 
-  where debugAS n vspliceEnv = boxToString $ [unwords ["MPGenKey", n, ":"]] ++ prettyLines vspliceEnv
+  where
+  onGenerated _     (Left i)  = SGNamed $ concat [n, "_", show i]
+  onGenerated nmems (Right i) = SGDecl $ DC.dataAnnotation (concat [n, "_", show i]) typeParams $ concat nmems
+
+  isContentDependent n' = "VMapIndex" `isInfixOf` n' || "MapE" `isInfixOf` n
+
 
 exprSplicer :: K3 Expression -> K3Generator
 exprSplicer e = Splicer $ \spliceEnv -> SRExpr $ generateInSpliceEnv spliceEnv $ spliceExpression e

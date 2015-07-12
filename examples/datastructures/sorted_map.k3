@@ -1,13 +1,13 @@
-include "Annotation/Maps/OrderedMap.k3"
+include "Annotation/Maps/SortedMap.k3"
 include "Core/Builtins.k3"
 
-declare c : collection {key:int, value:int} @OrderedMap
+declare c : collection {key:int, value:int} @SortedMap
 
 trigger t : () = \_ -> (
   ((range 10).iterate (\r -> c.insert {key: r.i, value: r.i + 100 }));
 
   // Print total size.
-  (print ("OrderedMap size: " ++ (itos (c.size ())) ++ "\\n"));
+  (print ("SortedMap size: " ++ (itos (c.size ())) ++ "\\n"));
 
   // min_with applies to the element with the minimum key.
   // This should be {key: 0, value: 100}.

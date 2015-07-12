@@ -31,6 +31,8 @@ import qualified Data.Map as Map
 import Data.Maybe
 import Data.List hiding ( group )
 
+import Debug.Trace
+
 import Language.K3.Core.Common
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Syntax
@@ -306,19 +308,30 @@ endpoint kw n specOpt t' eOpt' = case specOpt of
 expr :: K3 Expression -> SyntaxPrinter
 expr e@(details -> (_,_,anns)) = attachComments (commentE anns) $ (expr' e >>= return . exdoc)
 
-exrs :: Doc -> Either ([Doc], Operator) Doc
+exrs :: Doc -> Either ([Either Doc Doc], Operator) Doc
 exrs = Right
 
-exdoc :: Either ([Doc], Operator) Doc -> Doc
-exdoc (Left (l, op)) = align $ fillCat $ punctuate lsep l
+exdoc :: Either ([Either Doc Doc], Operator) Doc -> Doc
+exdoc (Left (l, op)) = align $ fillCatArgs $ punctuateArgs lsep l
   where lsep = case op of
                  OApp -> space
-                 OSeq -> semi
+                 OSeq -> semi <> space
                  _ -> error "Invalid exdoc operator"
+
+        fillCatArgs :: [Either Doc Doc] -> Doc
+        fillCatArgs [] = empty
+        fillCatArgs [h] = either id (\d -> hardline <> d) h
+        fillCatArgs (h:t) = (either (\d -> (d <//>)) (\d -> ((hardline <> d) <//>)) h) $ fillCatArgs t
+
+        punctuateArgs :: Doc -> [Either Doc Doc] -> [Either Doc Doc]
+        punctuateArgs _ []      = []
+        punctuateArgs _ [dE]    = [dE]
+        punctuateArgs p (dE:ds) = (either (\d -> Left $ d <> p) (\d -> Right $ d <> p) dE) : punctuateArgs p ds
+
 
 exdoc (Right d) = d
 
-expr' :: K3 Expression -> Printer (Either ([Doc], Operator) Doc)
+expr' :: K3 Expression -> Printer (Either ([Either Doc Doc], Operator) Doc)
 expr' (details -> (EConstant c, _, anns)) =
   case c of
     CBool b   -> return . exrs . text $ if b then "true" else "false"
@@ -355,7 +368,7 @@ expr' (tag -> ELambda _)               = exprError "lambda"
 expr' (details -> (EOperate otag, cs, _))
     | otag `elem` [ONeg, ONot], [a] <- cs    = expr a >>= unary otag
     | otag `elem` [OApp, OSeq], [a, b] <- cs = uncurry (binarychain a b otag) =<< ((,) C.<$> expr' a <*> expr' b)
-    | otherwise, [a, b] <- cs                = uncurry (binary otag) =<< ((,) C.<$> expr a <*> expr b)
+    | otherwise, [a, b] <- cs                = uncurry (binary otag $ isELambda b) =<< ((,) C.<$> expr a <*> expr b)
     | otherwise                              = exprError "operator"
 
 expr' (details -> (EProject i, [r], _)) = expr r >>= return . exrs . projectExpr i
@@ -383,30 +396,38 @@ expr' (tag -> ESelf) = return . exrs $ keyword "self"
 
 expr' _ = exprError "unknown"
 
-unary :: Operator -> Doc -> Printer (Either ([Doc], Operator) Doc)
-unary ONeg e = return . exrs $ text "-" <//> e
+isELambda :: K3 Expression -> Bool
+isELambda (tag -> ELambda _) = True
+isELambda _ = False
+
+unary :: Operator -> Doc -> Printer (Either ([Either Doc Doc], Operator) Doc)
+unary ONeg e = return . exrs $ text "-" <> e
 unary ONot e = return . exrs $ text "not" <+> e
 unary op _   = throwSP $ "Invalid unary operator '" ++ show op ++ "'"
 
-bccomments :: K3 Expression -> Either ([Doc], Operator) Doc -> Doc
+bccomments :: K3 Expression -> Either ([Either Doc Doc], Operator) Doc -> Doc
 bccomments e d = attachCommentsD (commentE $ annotations e) $ exdoc d
 
-bccommentsL :: K3 Expression -> [Doc] -> [Doc]
+bccommentsL :: K3 Expression -> [Either Doc Doc] -> [Either Doc Doc]
 bccommentsL e dl = attachCommentsL (commentE $ annotations e) dl
 
-binarychain :: K3 Expression -> K3 Expression
-            -> Operator -> Either ([Doc], Operator) Doc -> Either ([Doc], Operator) Doc
-            -> Printer (Either ([Doc], Operator) Doc)
+binarychain :: K3 Expression -> K3 Expression -> Operator
+            -> Either ([Either Doc Doc], Operator) Doc
+            -> Either ([Either Doc Doc], Operator) Doc
+            -> Printer (Either ([Either Doc Doc], Operator) Doc)
 binarychain e1 e2 OSeq (Left (l1, OSeq)) (Left (l2, OSeq)) =
   return $ Left ((bccommentsL e1 l1) ++ (bccommentsL e2 l2), OSeq)
 
+binarychain e1 e2@(tag -> ELambda _) op (Left (l1, op1)) r | op == op1 =
+  return $ Left (bccommentsL e1 l1 ++ [Right $ bccomments e2 r], op)
+
 binarychain e1 e2 op (Left (l1, op1)) r | op == op1 =
-  return $ Left (bccommentsL e1 l1 ++ [bccomments e2 r], op)
+  return $ Left (bccommentsL e1 l1 ++ [Left $ bccomments e2 r], op)
 
-binarychain le re op l r = binary op (bccomments le l) (bccomments re r)
+binarychain le re op l r = binary op (isELambda re) (bccomments le l) (bccomments re r)
 
-binary :: Operator -> Doc -> Doc -> Printer (Either ([Doc], Operator) Doc)
-binary op e e' =
+binary :: Operator -> Bool -> Doc -> Doc -> Printer (Either ([Either Doc Doc], Operator) Doc)
+binary op rLambda e e' =
   case op of
     OAdd    -> infixOp "+"
     OSub    -> infixOp "-"
@@ -422,8 +443,8 @@ binary op e e' =
     OGth    -> infixOp ">"
     OGeq    -> infixOp ">="
     OConcat -> infixOp "++"
-    OSeq    -> return $ Left ([e, e'], op)
-    OApp    -> return $ Left ([e, e'], op)
+    OSeq    -> return $ Left ([Left e, Left e'], op)
+    OApp    -> return $ Left ([Left e, if rLambda then Right e' else Left e'], op)
     OSnd    -> infixOpSL "<-"
     _       -> throwSP $ "Invalid binary operator '" ++ show op ++ "'"
 
@@ -451,7 +472,7 @@ eQualifier = qualifier "expr mutability" isEQualified eqSyntax
     eqSyntax EMutable   = return $ Just $ text "mut"
     eqSyntax _          = throwSP "Invalid expression qualifier"
 
-exprError :: String -> Printer (Either ([Doc], Operator) Doc)
+exprError :: String -> Printer (Either ([Either Doc Doc], Operator) Doc)
 exprError msg = throwSP $ "Invalid " ++ msg ++ " expression"
 
 -- | Type expression syntax printing.
@@ -627,7 +648,7 @@ recordExpr ids qualC =
              $ zip ids $ map (\(qOpt, e) -> maybe e (<+> e) qOpt) qualC
 
 lambdaExpr :: Identifier -> Doc -> Doc
-lambdaExpr n b = parens $ hang 2 $ (backslash <> text n </> text "->") </> b
+lambdaExpr n b = parens $ (backslash <> text n </> text "->") </> b
 
 projectExpr :: Identifier -> Doc -> Doc
 projectExpr n r = r <//> dot <> text n
@@ -732,12 +753,14 @@ attachCommentsD (Just pre, Nothing)   body = pre <> body
 attachCommentsD (Nothing, Just post)  body = body <+> post
 attachCommentsD (Just pre, Just post) body = pre <> body <+> post
 
-attachCommentsL :: (Maybe Doc, Maybe Doc) -> [Doc] -> [Doc]
+attachCommentsL :: (Maybe Doc, Maybe Doc) -> [Either Doc Doc] -> [Either Doc Doc]
 attachCommentsL _ [] = []
 attachCommentsL (Nothing, Nothing)    dl = dl
-attachCommentsL (Just pre, Nothing)   (h:t) = (pre <> h):t
-attachCommentsL (Nothing, Just post)  dl    = init dl ++ [last dl <+> post]
-attachCommentsL (Just pre, Just post) (h:t) = [pre <> h] ++ init t ++ [last t <+> post]
+attachCommentsL (Just pre, Nothing)   (h:t) = (either (Left . (pre <>)) (Right . (pre <>)) h):t
+attachCommentsL (Nothing, Just post)  dl    = init dl ++ [either (Left . (<+> post)) (Right . (<+> post)) $ last dl]
+attachCommentsL (Just pre, Just post) (h:t) = [either (Left . (pre <>)) (Right . (pre <>)) h]
+                                                ++ init t
+                                                ++ [either (Left . (<+> post)) (Right . (<+> post)) $ last t]
 
 {- Helpers -}
 

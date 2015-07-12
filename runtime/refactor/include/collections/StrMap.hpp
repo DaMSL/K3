@@ -125,6 +125,17 @@ class StrMap {
     return res;
   }
 
+  template<typename F, typename G>
+  auto peek_with(F f, G g) const {
+    map_str* m = get_map_str();
+    auto it = map_str_begin(m);
+    if (it < map_str_end(m) ) {
+      return g(*map_str_get(m, it));
+    } else {
+      return f(unit_t {});
+    }
+  }
+
   size_t insert_aux(const R& q) {
     map_str* m = get_map_str();
     auto pos = map_str_insert(m, q.key.begin(),

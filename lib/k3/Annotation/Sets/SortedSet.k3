@@ -1,20 +1,20 @@
-annotation Sorted given type a, b
+annotation SortedSet given type a, b
 {
-  provides lifted peek : () -> option content
+  provides lifted peek    : () -> option content
     with effects \_ -> R[self]
 
   @:CArgs 2
   provides lifted peek_with : (() -> a) -> (content -> a) -> a
     with effects \f -> \g -> [R[self]; f content; g content]
 
-  provides lifted insert : content -> ()
+  provides lifted insert  : content -> ()
     with effects \elem -> [R[self]; R[elem]; W[self]]
 
-  provides lifted erase : content -> ()
+  provides lifted erase  : content -> ()
     with effects \elem -> [R[self]; R[elem]; W[self]]
 
   @:CArgs 2
-  provides lifted update : content -> (content -> ())
+  provides lifted update  : content -> (content -> ())
     with effects \oldElem -> \newElem -> [R[self]; R[oldElem]; R[newElem]; W[self]]
 
   provides lifted size : () -> int
@@ -33,12 +33,8 @@ annotation Sorted given type a, b
     with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
 
   @:Transformer
-  provides lifted map : (content -> a) -> collection {elem : a} @Sorted
+  provides lifted map : (content -> a) -> collection {elem : a} @ {Set}
     with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
-
-  @:Transformer
-  provides lifted selfMap : (content -> a) -> collection {elem : a} @Sorted
-    with effects \selfMapF -> [R[self]; ([R[content]; selfMapF content])*]
 
   @:Transformer
   provides lifted filter : (content -> bool) -> self
@@ -50,26 +46,48 @@ annotation Sorted given type a, b
 
   @:{Transformer, CArgs 3}
   provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @Sorted
+                             -> collection { key : a, value : b } @ {Set}
     with effects
       \gbF -> \gaccF -> \z ->
         [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:Transformer
-  provides lifted ext : (content -> collection {elem : a} @Sorted)
-                         -> collection {elem : a} @Sorted
+  provides lifted ext : (content -> collection {elem : a} @ {Set})
+                         -> collection {elem : a} @ {Set}
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
 
   @:{Transformer, CArgs 3}
   provides lifted sample : (a -> content -> a) -> a -> int -> a
     with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
 
-  // Point retrieval
+  // Set operations.
+  provides lifted member : content -> bool
+    with effects \elem -> [R[self]; R[elem]]
+
+  provides lifted isSubsetOf : self -> bool
+    with effects \other -> [R[self]; R[other]]
+
+  provides lifted union : self -> self
+    with effects \other -> [R[self]; R[other]]
+
+  provides lifted intersect : self -> self
+    with effects \other -> [R[self]; R[other]]
+
+  provides lifted difference : self -> self
+    with effects \other -> [R[self]; R[other]]
+
+  // Point retrieval based on sort order.
   provides lifted min : () -> option content
     with effects \_ -> R[self]
 
   provides lifted max : () -> option content
     with effects \_ -> R[self]
+
+  provides lifted min_with : (content -> ()) -> ()
+    with effects \lookupF -> [R[self]; lookupF content]
+
+  provides lifted max_with : (content -> ()) -> ()
+    with effects \lookupF -> [R[self]; lookupF content]
 
   provides lifted lower_bound : content -> option content
     with effects \elem -> [R[self]; R[elem]]
@@ -77,7 +95,7 @@ annotation Sorted given type a, b
   provides lifted upper_bound : content -> option content
     with effects \elem -> [R[self]; R[elem]]
 
-  // Range retrieval.
+  // Range retrieval based on sort order.
   provides lifted filter_lt : content -> self
     with effects \elem -> [R[self]; R[elem]]
 
@@ -86,4 +104,14 @@ annotation Sorted given type a, b
 
   provides lifted between : content -> (content -> self)
     with effects \elem -> [R[self]; R[elem]]
+
+  // Range-based modification.
+
+  // Erases all elements less than, but not including, the given key.
+  provides lifted erase_prefix : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
+  // Erases all elements greater than the given key.
+  provides lifted erase_suffix : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
 }

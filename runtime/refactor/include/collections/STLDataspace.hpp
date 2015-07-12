@@ -56,6 +56,16 @@ class STLDS {
     return res;
   }
 
+  template <class F, class G>
+  auto peek_with(F f, G g) const {
+    auto it = container.begin();
+    if (it == container.end()) {
+      return f(unit_t{});
+    } else {
+      return g(*it);
+    }
+  }
+
   template <class T>
   unit_t insert(T &&e) {
     container.insert(container.end(), std::forward<T>(e));

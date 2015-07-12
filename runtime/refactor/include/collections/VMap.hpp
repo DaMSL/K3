@@ -6,7 +6,6 @@
 #include <unordered_map>
 
 namespace K3 {
-
 template <class R>
 class VMap {
  public:
@@ -15,7 +14,6 @@ class VMap {
  protected:
   using Key = typename R::KeyType;
 
-  // The VMap stores versions in decreasing order.
   // The VMap stores versions in decreasing order.
   template <typename Elem>
   using VContainer = map<Version, Elem, std::greater<Version>>;
@@ -240,6 +238,21 @@ class VMap {
     throw std::runtime_error("No match on Map.lookup_with3");
   }
 
+  template <class F, class G>
+  auto lookup_with4(const Version& v, R const& r, F f, G g) const {
+    auto it = container.find(r.key);
+    if (it == container.end()) {
+      return f(unit_t{});
+    } else {
+      auto vit = it->second.find(v);
+      if (vit == it->second.end()) {
+        return f(unit_t{});
+      } else {
+        return g(vit->second);
+      }
+    }
+  }
+
   //////////////////////////////////////////////////
   // Frontier-based map retrieval.
   // These methods apply to the nearest version that is strictly less
@@ -295,6 +308,21 @@ class VMap {
     throw std::runtime_error("No match on Map.lookup_with3_before");
   }
 
+  template <class F, class G>
+  auto lookup_with4_before(const Version& v, R const& r, F f, G g) const {
+    auto it = container.find(r.key);
+    if (it == container.end()) {
+      return f(unit_t{});
+    } else {
+      auto vit = it->second.upper_bound(v);
+      if (vit == it->second.end()) {
+        return f(unit_t{});
+      } else {
+        return g(vit->second);
+      }
+    }
+  }
+
   // Non-inclusive erase less than version.
   unit_t erase_prefix(const Version& v, const R& rec) {
     auto it = container.find(rec.key);
@@ -302,7 +330,7 @@ class VMap {
       auto vlteq = it->second.lower_bound(v);
       auto vless = it->second.upper_bound(v);
       auto vend = it->second.end();
-      if (vless != it->second.end()) {
+      if (vless != vend) {
         it->second.erase((vlteq == vless) ? ++vless : vless, vend);
         if (it->second.empty()) {
           container.erase(it);
@@ -467,6 +495,9 @@ class VMap {
     return result;
   }
 
+  //////////////////////////
+  // Multi-version methods.
+
   template <typename Fun, typename Acc>
   Acc fold_all(Fun f, Acc acc) const {
     for (const auto& p : container) {
@@ -475,6 +506,27 @@ class VMap {
       }
     }
     return acc;
+  }
+
+  // Non-inclusive erase less than version.
+  unit_t erase_prefix_all(const Version& v) {
+    auto end = container.end();
+    for (auto it = container.begin(); it != end;) {
+      auto vlteq = it->second.lower_bound(v);
+      auto vless = it->second.upper_bound(v);
+      auto vend = it->second.end();
+      if (vless != vend) {
+        it->second.erase((vlteq == vless) ? ++vless : vless, vend);
+        if (it->second.empty()) {
+          it = container.erase(it);
+        } else {
+          ++it;
+        }
+      } else {
+        ++it;
+      }
+    }
+    return unit_t();
   }
 
   //////////////////
@@ -516,6 +568,7 @@ class VMap {
   friend class boost::serialization::access;
 
 };  // class VMap
+
 }  // namespace K3
 
 namespace boost {

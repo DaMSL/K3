@@ -1,6 +1,7 @@
 # scheduler.dispatcher: Scheduler logic for matching resource offers to job requests.
 import os
 import sys
+import math
 import time
 import threading
 import socket
@@ -100,7 +101,7 @@ class Dispatcher(mesos.interface.Scheduler):
   def allocateResources(self, nextJob): #, driver):
 
     committedResources = {}
-    availableCPU = {i: int(getResource(o.resources, "cpus")) for i, o in self.offers.items()}
+    availableCPU = {i: float(getResource(o.resources, "cpus")) for i, o in self.offers.items()}
     availableMEM = {i: getResource(o.resources, "mem") for i, o in self.offers.items()}
     availablePorts = {i: PortList(getResource(o.resources, "ports")) for i, o in self.offers.items()}
     committed = {i: False for i in self.offers}
@@ -138,14 +139,19 @@ class Dispatcher(mesos.interface.Scheduler):
         logging.debug("Offer %s MATCHES hostmask. Checking offer against role requirements" % host)
 
         # Allocate CPU Resource
-        requestedCPU = min(unassignedPeers, availableCPU[offerId])
+        cpuPerPeer = nextJob.roles[roleId].params.get('cpu', 1)
+        requestedCPU = min(unassignedPeers * cpuPerPeer, availableCPU[offerId])
+        requestedPeers = int(math.floor(requestedCPU / cpuPerPeer))
+
         if 'peers_per_host' in nextJob.roles[roleId].params:
-          peer_per_host = nextJob.roles[roleId].params['peers_per_host']
-          if peer_per_host > availableCPU[offerId]:
+          explicitPeerRequest = nextJob.roles[roleId].params['peers_per_host']
+          explicitCPURequest = explicitPeerRequest * cpuPerPeer 
+          if explicitCPURequest > availableCPU[offerId]:
             # Cannot satisfy specific peers-to-host requirement
             continue
           else:
-            requestedCPU = peer_per_host
+            requestedCPU = explicitCPURequest 
+            requestedPeers = explicitPeerRequest
 
 
         # Allocate Memory Resource
@@ -165,10 +171,10 @@ class Dispatcher(mesos.interface.Scheduler):
         # Commit Resources for this offer with this role
         committedResources[roleId][offerId] = {}
 
-        # Assumes a 1:1 Peer:CPU ratio & USE ALL MEM (for now)
+        # NO LONGER Assumes a 1:1 Peer:CPU ratio or ALL MEM
         committedResources[roleId][offerId]['cpus'] = requestedCPU
-        committedResources[roleId][offerId]['peers'] = requestedCPU
-        unassignedPeers -= requestedCPU
+        committedResources[roleId][offerId]['peers'] = requestedPeers  #requestedCPU / assignedPeersInRole
+        unassignedPeers -= requestedPeers #assignedPeersInRole  #requestedCPU
         availableCPU[offerId] -= requestedCPU
 
         committedResources[roleId][offerId]['mem'] = requestedMEM
@@ -225,7 +231,10 @@ class Dispatcher(mesos.interface.Scheduler):
 
     for roleId, role in reservation.items():
       logging.debug("[DISPATCHER] Preparing role, %s" % roleId)
-      vars = nextJob.roles[roleId].variables
+      
+      defaultVars = nextJob.roles[roleId].variables
+      peerVars = nextJob.roles[roleId].getPeerVarIter()
+      
       for offerId, offer in role.items():
         peers = []
         host = self.offers[offerId].hostname.encode('utf8','ignore')
@@ -236,6 +245,11 @@ class Dispatcher(mesos.interface.Scheduler):
           nextPort = offer['ports'].getNext()
 
           # CHECK:  Switched to hostnames
+          try:
+            vars = peerVars.next()
+          except StopIteration:
+            vars = defaultVars
+
           p = Peer(len(allPeers), vars, ip, nextPort)
           peers.append(p)
           allPeers.append(p)
@@ -263,16 +277,29 @@ class Dispatcher(mesos.interface.Scheduler):
     self.jobsCreated += 1
     nextJob.status = "RUNNING"
     db.updateJob(nextJob.jobId, status=nextJob.status)
-    # Build Mesos TaskInfo Protobufs for each k3 task and launch them through the driver
+
+    # Group tasks by offer 
+    offerTasks = {}
     for taskNum, k3task in enumerate(nextJob.tasks):
-
+      if k3task.offerid not in offerTasks:
+        offerTasks[k3task.offerid] = []
       task = taskInfo(nextJob, taskNum, self.webaddr, self.offers[k3task.offerid].slave_id)
+      offerTasks[k3task.offerid].append(task)
 
+
+
+    # Build Mesos TaskInfo Protobufs for each k3 task and launch them through the driver
+    # for taskNum, k3task in enumerate(nextJob.tasks):
+
+    #   logging.debug ("  OFFER ID ========> " + k3task.offerid)
+    #   task = taskInfo(nextJob, taskNum, self.webaddr, self.offers[k3task.offerid].slave_id)
+
+    for offerid, tasklist in offerTasks.items():    
       oid = mesos_pb2.OfferID()
-      oid.value = k3task.offerid
-      driver.launchTasks(oid, [task])
+      oid.value = offerid
+      driver.launchTasks(oid, tasklist)
       # Stop considering the offer, since we just used it.
-      del self.offers[k3task.offerid]
+      del self.offers[offerid]
 
     # # Decline all remaining offers
     logging.info("[DISPATCHER] DECLINING remaining offers (Task Launched)")
@@ -331,6 +358,7 @@ class Dispatcher(mesos.interface.Scheduler):
     logging.info ("[DISPATCHER] Registered with framework ID %s" % frameworkId.value)
     self.connected = True
     self.frameworkId = frameworkId
+    self.driver = driver
 
   def statusUpdate(self, driver, update):
     s = update.task_id.value.encode('utf8','ignore')
@@ -398,6 +426,7 @@ but is neither pending nor active. Killing it now." % job)
 
     for offer in offers:
       self.offers[offer.id.value] = offer
+      logging.debug ("OFFER ID =====>>>  " + offer.id.value)
     nextJob = self.prepareNextJob()
 
     if nextJob != None:

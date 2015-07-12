@@ -60,10 +60,14 @@ type NamedSpliceValues = Map Identifier SpliceValue
 type NamedSpliceTypes  = Map Identifier SpliceType
 type TypedSpliceVar    = (SpliceType, Identifier)
 
+data SpliceDeclGenerator m = SGNamed            Identifier
+                           | SGDecl             (K3 Declaration)
+                           | SGContentDependent (K3 Type -> m (SpliceDeclGenerator m))
+
 data SpliceResult m = SRType    (m (K3 Type))
                     | SRExpr    (m (K3 Expression))
                     | SRDecl    (m (K3 Declaration))
-                    | SRGenDecl (m (Either Identifier (K3 Declaration)))
+                    | SRGenDecl (m (SpliceDeclGenerator m))
                     | SRLiteral (m (K3 Literal))
                     | SRRewrite (m (K3 Expression, [K3 Declaration]), SpliceEnv)
 
