@@ -28,7 +28,9 @@ import Data.Functor
 import Data.Traversable
 import Data.Foldable
 
-import Data.Maybe (fromMaybe, maybeToList)
+import Data.Maybe (fromMaybe, maybeToList, fromJust)
+import Data.Ord (comparing)
+import Data.List (sortBy, tails)
 import Data.Tree
 
 import qualified Data.Map as M
@@ -130,14 +132,14 @@ materializationE :: K3 Expression -> MaterializationM (K3 Expression)
 materializationE e@(Node (t :@: as) cs)
   = case t of
       ERecord is -> do
-        fs <- mapM materializationE cs
-
-        let moveDecision i x = isMoveableNow x >>= \m -> return $ if m then defaultDecision { inD = Moved } else defaultDecision
-
-        decisions <- zipWithM moveDecision is fs
-        zipWithM_ (setDecision (getUID e)) is decisions
+        let decisionForField c ds = withLocalDS ds $ do
+              rf <- materializationE c
+              mn <- isMoveableNow (getProvenance c)
+              return (if mn then defaultDecision { inD = Moved } else defaultDecision, rf)
+        let (is', cs') = unzip . sortBy (comparing fst) $ zip is cs
+        (decisions, fs) <- unzip <$> zipWithM decisionForField cs' (tail $ tails cs')
+        zipWithM_ (setDecision (getUID e)) is' decisions
         ds <- dLookupAll (getUID e)
-
         return (Node (t :@: (EMaterialization ds:as)) fs)
 
       EOperate OApp -> do
