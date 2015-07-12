@@ -172,7 +172,7 @@ materializationE e@(Node (t :@: as) cs)
                      _ -> return False
                  _ -> return False
 
-             moveable <- isMoveableNow x
+             moveable <- isMoveableNow (getProvenance x)
 
              let applicationDecision d =
                    if (conservativeDoMoveLocal || conservativeDoMoveReturn) && moveable
@@ -187,7 +187,7 @@ materializationE e@(Node (t :@: as) cs)
 
       EOperate OSnd -> do
         [target, message] <- mapM materializationE cs
-        moveable <- isMoveableNow message
+        moveable <- isMoveableNow (getProvenance message)
         let decision = if moveable then defaultDecision { inD = Moved } else defaultDecision
         setDecision (getUID e) "" decision
         ds <- dLookupAll (getUID e)
@@ -304,7 +304,7 @@ materializationE e@(Node (t :@: as) cs)
 
                -- Decision processing for the initializer move needs to be performed inside the
                -- context of the extra downstream.
-               m <- isMoveableNow x''
+               m <- isMoveableNow (getProvenance x'')
                return (x'', if m then defaultDecision { inD = Moved } else defaultDecision)
              b' <- materializationE b
 
@@ -351,10 +351,8 @@ occursIn wide a b
 
       _ -> return False
 
-isReadIn :: K3 Expression -> K3 Expression -> MaterializationM Bool
-isReadIn x f =
-  case f of
-    _ -> isReadInF (getProvenance x) (getEffects f)
+isReadIn :: K3 Provenance -> K3 Expression -> MaterializationM Bool
+isReadIn x f = isReadInF x (getEffects f)
 
 isReadInF :: K3 Provenance -> K3 Effect -> MaterializationM Bool
 isReadInF xp ff =
@@ -367,10 +365,8 @@ isReadInF xp ff =
 
     _ -> return False
 
-isWrittenIn :: K3 Expression -> K3 Expression -> MaterializationM Bool
-isWrittenIn x f =
-  case f of
-    _ -> isWrittenInF (getProvenance x) (getEffects f)
+isWrittenIn :: K3 Provenance -> K3 Expression -> MaterializationM Bool
+isWrittenIn x f = isWrittenInF x (getEffects f)
 
 isWrittenInF :: K3 Provenance -> K3 Effect -> MaterializationM Bool
 isWrittenInF xp ff =
@@ -513,21 +509,20 @@ isGlobalP ep =
 
     _ -> return False
 
-isMoveable :: K3 Expression -> MaterializationM Bool
-isMoveable e =
-  case e of
-    (tag -> ELambda _) -> return False
-    _ -> not <$> isGlobalP (getProvenance e)
+isMoveable :: K3 Provenance -> MaterializationM Bool
+isMoveable p = case tag p of
+                 PLambda _ -> return False
+                 _ -> not <$> isGlobalP p
 
-isMoveableIn :: K3 Expression -> K3 Expression -> MaterializationM Bool
+isMoveableIn :: K3 Provenance -> K3 Expression -> MaterializationM Bool
 isMoveableIn x c = do
   isRead <- isReadIn x c
   isWritten <- isWrittenIn x c
   return $ not (isRead || isWritten)
 
-isMoveableNow :: K3 Expression -> MaterializationM Bool
-isMoveableNow x = do
+isMoveableNow :: K3 Provenance -> MaterializationM Bool
+isMoveableNow p = do
   ds <- downstreams <$> get
-  isMoveable1 <- isMoveable x
-  allMoveable <- allM (isMoveableIn x) ds
+  isMoveable1 <- isMoveable p
+  allMoveable <- allM (isMoveableIn p) ds
   return $ isMoveable1 && allMoveable
