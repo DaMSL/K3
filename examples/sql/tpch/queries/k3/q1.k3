@@ -107,7 +107,7 @@ trigger start : () = \_ -> (
 )
 
 sink results_sink : q1_result_r = file "results.csv" text csv
-sink query_time_sink : string = file "time.csv" text csv
+sink time_sink : int = file "time.csv" text csv
 
 source rows : () = value ()
 feed rows |> start

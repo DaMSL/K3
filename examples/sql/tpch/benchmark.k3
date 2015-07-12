@@ -78,7 +78,9 @@ control TPCHBenchmarkWithoutMaster
       // A 'finished' trigger which optionally shuts down all the nodes. This is invoked at the master.
       trigger finished : $[finishArgT] = \finishArg -> (
         ($[preTestFinishExpr] finishArg);
-        (((( $[preFinishExpr]) @:StopTimer) @TimeSink(lbl=[# Query], tag=[$ "Time "], sink_expr=[$ query_time_sink]));
+        (($[preFinishExpr]);
+        (end_ms = now_int());
+        ( ((time_sink, me) <- (end_ms - start_ms)));
         if $[finishAsShutdownExpr] then $[nodes].iterate (\p -> (shutdown, p.addr) <- ()) else ()
         ) @OnCounter(id=[# query_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
       )
@@ -90,10 +92,10 @@ control TPCHBenchmarkWithoutMaster
           (let load_time = (now_int () - program_start_ts)
            in print ("Time Load:" ++  (itos load_time)) );
           (peers.iterate (\p -> (start_profiler, p.addr) <- () ));
-          ( $[onReadyExpr] @:StartTimer) @TimeSink(lbl=[# Query], tag=[$ "Time "], sink_expr=[$ query_time_sink])
+          ( (start_ms = now_int()); $[onReadyExpr])
           ) @OnCounter(id=[#  nodes_ready], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false]))
       )
- 
+
       trigger start_profiler : () = \_ -> (
         ((tcmallocStart ()); (jemallocStart ()); (pcmStart ())) @IfMachineMaster
       )
@@ -101,9 +103,12 @@ control TPCHBenchmarkWithoutMaster
       trigger load_all : () = \_ -> (
         program_start_ts = now_int ();
         $[preLoadExpr];
-        $[loadExpr]; 
+        $[loadExpr];
         ( peers.iterate (\p -> (hello, p.addr) <- ()) )
       )
+
+      declare start_ms : mut int
+      declare end_ms : mut int
     }
 }
 
