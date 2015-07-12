@@ -381,11 +381,8 @@ reify (RDecl i b) x@(tag -> ELetIn _) = precludeRDecl i b x
 reify r lt@(tag &&& children -> (ELetIn x, [e, b])) = do
   let mtrlzns = getMDecisions lt
   ct <- getKType e
-  -- d <- cDecl ct x
-  -- (ee, ev) <- inline e
   let initD = M.findWithDefault defaultDecision x mtrlzns
   ee <- reify (RDecl x (Just $ inD initD == Moved)) e
-  -- let initE = [R.Assignment (R.Variable $ R.Name x) (if inD initD == Moved then R.Move ev else ev)]
   be <- reify r b
   return [R.Block $ ee ++ be]
 
@@ -543,9 +540,9 @@ reify r e = do
     (effects, value) <- inline e
     reification <- case r of
         RForget -> return []
-        RName k b -> return [R.Assignment (R.Variable $ R.Name k) (if fromMaybe False b then R.Move value else value)]
+        RName k b -> return [R.Assignment (R.Variable $ R.Name k) (if fromMaybe False b then move e value else value)]
         RDecl i b -> return [R.Forward $ R.ScalarDecl (R.Name i) (R.Inferred)
-                             (Just $ if fromMaybe False b then R.Move value else value)]
+                             (Just $ if fromMaybe False b then move e value else value)]
         RReturn b -> return $ [R.Return $ (if b then R.Move else id) value]
         RSplice _ -> throwE $ CPPGenE "Unsupported reification by splice."
     return $ effects ++ reification
