@@ -305,6 +305,7 @@ requiredIncludes = return
                    , "dataspace/Dataspace.hpp"
                    , "dataspace/MapDataspace.hpp"
                    , "dataspace/MultiIndexDataspace.hpp"
+                   , "dataspace/SetDataspace.hpp"
 
                    , "yaml-cpp/yaml.h"
                    ]

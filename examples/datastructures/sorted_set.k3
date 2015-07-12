@@ -1,0 +1,38 @@
+include "Annotation/Sets/SortedSet.k3"
+include "Core/Builtins.k3"
+
+declare c :     collection {key:int, value:int} @SortedSet
+declare d : mut collection {key:int, value:int} @SortedSet
+
+trigger t : () = \_ -> (
+  ((range 10).iterate (\r -> c.insert {key: r.i, value: r.i + 100 }));
+
+  // Print total size.
+  (print ("SortedSet size: " ++ (itos (c.size ())) ++ "\\n"));
+
+  // min_with applies to the element with the minimum key.
+  // This should be {key: 0, value: 100}.
+  (c.min_with (\r -> print ("Minimum; key: " ++ (itos r.key) ++ " value: " ++ (itos r.value) ++ "\\n")));
+
+  // max_with applies to the element with the maximum key.
+  // This should be {key: 9, value: 109}.
+  (c.max_with (\r -> print ("Maximum; key: " ++ (itos r.key) ++ " value: " ++ (itos r.value) ++ "\\n")));
+
+  // Filter up to, but not including the item with key 4.
+  (d = c.filter_lt {key:4, value: 0});
+
+  // Items with keys 1,2,3 should be present in d.
+  (d.iterate (\r -> print ("Remaining in d; key: " ++ (itos r.key) ++ " value: " ++ (itos r.value) ++ "\\n")));
+
+  // erase_prefix up to, and including the item with key 4 (based on the supplied value).
+  (c.erase_prefix {key: 4, value: 105});
+
+  // erase_suffix all items from key 7 to the end of the map.
+  (c.erase_suffix {key: 7, value: 0});
+
+  // Items with keys 5,6 should be left in c.
+  c.iterate (\r -> print ("Remaining in c; key: " ++ (itos r.key) ++ " value: " ++ (itos r.value) ++ "\\n"))
+)
+
+source s1 : () = value ()
+feed s1 |> t

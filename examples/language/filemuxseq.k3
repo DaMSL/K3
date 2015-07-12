@@ -1,5 +1,5 @@
 include "Annotation/Collection.k3"
-include "Annotation/Maps/OrderedMap.k3"
+include "Annotation/Maps/SortedMap.k3"
 include "Annotation/Map.k3"
 include "Core/Builtins.k3"
 

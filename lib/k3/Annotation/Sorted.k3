@@ -64,18 +64,26 @@ annotation Sorted given type a, b
   provides lifted sample : (a -> content -> a) -> a -> int -> a
     with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
 
+  // Point retrieval
   provides lifted min : () -> option content
     with effects \_ -> R[self]
 
   provides lifted max : () -> option content
     with effects \_ -> R[self]
 
-  provides lifted lowerBound : content -> option content
+  provides lifted lower_bound : content -> option content
     with effects \elem -> [R[self]; R[elem]]
 
-  provides lifted upperBound : content -> option content
+  provides lifted upper_bound : content -> option content
     with effects \elem -> [R[self]; R[elem]]
 
-  provides lifted slice : content -> (content -> self)
+  // Range retrieval.
+  provides lifted filter_lt : content -> self
+    with effects \elem -> [R[self]; R[elem]]
+
+  provides lifted filter_gt : content -> self
+    with effects \elem -> [R[self]; R[elem]]
+
+  provides lifted between : content -> (content -> self)
     with effects \elem -> [R[self]; R[elem]]
 }

@@ -1862,18 +1862,18 @@ class VMap {
 
 
 template<class R>
-class OrderedMap {
+class SortedMap {
   using Key = typename R::KeyType;
 
  public:
   // Default Constructor
-  OrderedMap(): container() {}
-  OrderedMap(const std::map<Key,R>& con): container(con) {}
-  OrderedMap(std::map<Key, R>&& con): container(std::move(con)) {}
+  SortedMap(): container() {}
+  SortedMap(const std::map<Key,R>& con): container(con) {}
+  SortedMap(std::map<Key, R>&& con): container(std::move(con)) {}
 
   // Construct from (container) iterators
   template<typename Iterator>
-  OrderedMap(Iterator begin, Iterator end): container(begin,end) {}
+  SortedMap(Iterator begin, Iterator end): container(begin,end) {}
 
   template <class Pair>
   R elemToRecord(const Pair& e) const { return e.second; }
@@ -2004,9 +2004,9 @@ class OrderedMap {
 
   int size(unit_t) const { return container.size(); }
 
-  OrderedMap combine(const OrderedMap& other) const {
+  SortedMap combine(const SortedMap& other) const {
     // copy this DS
-    OrderedMap result = OrderedMap(*this);
+    SortedMap result = SortedMap(*this);
     // copy other DS
     for (const auto& p: other.container) {
       result.container[p.first] = p.second;
@@ -2014,7 +2014,7 @@ class OrderedMap {
     return result;
   }
 
-  tuple<OrderedMap, OrderedMap> split(const unit_t&) const {
+  tuple<SortedMap, SortedMap> split(const unit_t&) const {
     // Find midpoint
     const size_t size = container.size();
     const size_t half = size / 2;
@@ -2024,7 +2024,7 @@ class OrderedMap {
     std::advance(mid, half);
     auto end = container.end();
     // Construct DS from iterators
-    return std::make_tuple(OrderedMap(beg, mid), OrderedMap(mid, end));
+    return std::make_tuple(SortedMap(beg, mid), SortedMap(mid, end));
   }
 
   template <typename Fun>
@@ -2036,8 +2036,8 @@ class OrderedMap {
   }
 
   template<typename Fun>
-  auto map(Fun f) const -> OrderedMap< RT<Fun, R> > {
-    OrderedMap< RT<Fun,R> > result;
+  auto map(Fun f) const -> SortedMap< RT<Fun, R> > {
+    SortedMap< RT<Fun,R> > result;
     for (const auto& p : container) {
       result.insert( f(p.second) );
     }
@@ -2045,8 +2045,8 @@ class OrderedMap {
   }
 
   template <typename Fun>
-  OrderedMap<R> filter(Fun predicate) const {
-    OrderedMap<R> result;
+  SortedMap<R> filter(Fun predicate) const {
+    SortedMap<R> result;
     for (const auto& p : container) {
       if (predicate(p.second)) {
         result.insert(p.second);
@@ -2064,7 +2064,7 @@ class OrderedMap {
   }
 
   template<typename F1, typename F2, typename Z>
-  OrderedMap< R_key_value< RT<F1, R>,Z >> groupBy(F1 grouper, F2 folder, const Z& init) const {
+  SortedMap< R_key_value< RT<F1, R>,Z >> groupBy(F1 grouper, F2 folder, const Z& init) const {
     // Create a map to hold partial results
     typedef RT<F1, R> K;
     std::map<K, Z> accs;
@@ -2078,7 +2078,7 @@ class OrderedMap {
     }
 
     // TODO more efficient implementation?
-    OrderedMap<R_key_value<K,Z>> result;
+    SortedMap<R_key_value<K,Z>> result;
     for (auto&& it : accs) {
       result.insert(std::move(R_key_value<K, Z> {std::move(it.first), std::move(it.second)}));
     }
@@ -2086,9 +2086,9 @@ class OrderedMap {
   }
 
   template <class Fun>
-  auto ext(Fun expand) const -> OrderedMap < typename RT<Fun, R>::ElemType >  {
+  auto ext(Fun expand) const -> SortedMap < typename RT<Fun, R>::ElemType >  {
     typedef typename RT<Fun, R>::ElemType T;
-    OrderedMap<T> result;
+    SortedMap<T> result;
     for (const auto& it : container) {
       for (auto& it2 : expand(it.second).container) {
         result.insert(it2.second);
@@ -2228,19 +2228,19 @@ class OrderedMap {
     return unit_t();
   }
 
-  bool operator==(const OrderedMap& other) const {
+  bool operator==(const SortedMap& other) const {
     return container == other.container;
   }
 
-  bool operator!=(const OrderedMap& other) const {
+  bool operator!=(const SortedMap& other) const {
     return container != other.container;
   }
 
-  bool operator<(const OrderedMap& other) const {
+  bool operator<(const SortedMap& other) const {
     return container < other.container;
   }
 
-  bool operator>(const OrderedMap& other) const {
+  bool operator>(const SortedMap& other) const {
     return container > other.container;
   }
 
@@ -2253,7 +2253,7 @@ class OrderedMap {
 
   template<class Archive>
   void serialize(Archive &ar, const unsigned int) {
-    ar & boost::serialization::make_nvp("__K3OrderedMap", container);
+    ar & boost::serialization::make_nvp("__K3SortedMap", container);
   }
 
  protected:
@@ -2261,7 +2261,7 @@ class OrderedMap {
 
  private:
   friend class boost::serialization::access;
-}; // class OrderedMap
+}; // class SortedMap
 
 
 } // Namespace K3
@@ -2277,7 +2277,7 @@ namespace boost {
     };
 
     template <class _T0>
-    class implementation_level<K3::OrderedMap<_T0>> {
+    class implementation_level<K3::SortedMap<_T0>> {
       public:
         typedef  mpl::integral_c_tag tag;
         typedef  mpl::int_<object_serializable> type;
@@ -2293,7 +2293,7 @@ std::size_t hash_value(K3::VMap<Elem> const& b) {
 }
 
 template <class Elem>
-std::size_t hash_value(K3::OrderedMap<Elem> const& b) {
+std::size_t hash_value(K3::SortedMap<Elem> const& b) {
   return hash_collection(b);
 }
 
@@ -2321,12 +2321,12 @@ namespace JSON {
   };
 
   template <class E>
-  struct convert<K3::OrderedMap<E>> {
+  struct convert<K3::SortedMap<E>> {
     template <class Allocator>
-    static Value encode(const K3::OrderedMap<E>& c, Allocator& al) {
+    static Value encode(const K3::SortedMap<E>& c, Allocator& al) {
      Value v;
      v.SetObject();
-     v.AddMember("type", Value("OrderedMap"), al);
+     v.AddMember("type", Value("SortedMap"), al);
      Value inner;
      inner.SetArray();
      for (const auto& e : c.getConstContainer()) {
@@ -2372,8 +2372,8 @@ namespace YAML {
   };
 
   template <class R>
-  struct convert<K3::OrderedMap<R>> {
-    static Node encode(const K3::OrderedMap<R>& c) {
+  struct convert<K3::SortedMap<R>> {
+    static Node encode(const K3::SortedMap<R>& c) {
       Node node;
       auto container = c.getConstContainer();
       if (container.size() > 0) {
@@ -2387,7 +2387,7 @@ namespace YAML {
       return node;
     }
 
-    static bool decode(const Node& node, K3::OrderedMap<R>& c) {
+    static bool decode(const Node& node, K3::SortedMap<R>& c) {
       for (auto& i: node) {
         c.insert(i.as<R>());
       }

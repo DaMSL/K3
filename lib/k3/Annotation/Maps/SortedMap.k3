@@ -1,5 +1,5 @@
 // Maps are expected to contain only records with fields key and value
-annotation OrderedMap given type a,b
+annotation SortedMap given type a,b
 {
   provides lifted peek    : () -> option content
     with effects \_ -> R[self]
@@ -110,9 +110,9 @@ annotation OrderedMap given type a,b
 
   // Erases all elements less than, but not including, the given key.
   provides lifted erase_prefix : content -> ()
-    with effects \elem -> [R[self]; R[elem]]
+    with effects \elem -> [R[self]; R[elem]; W[self]]
 
   // Erases all elements greater than the given key.
   provides lifted erase_suffix : content -> ()
-    with effects \elem -> [R[self]; R[elem]]
+    with effects \elem -> [R[self]; R[elem]; W[self]]
 }

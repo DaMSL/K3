@@ -553,7 +553,7 @@ class Collection : public VectorDS<K3::Collection, Elem> {
 template <class Elem>
 class Set {
   // Iterator Types:
-  typedef std::set<Elem> Container;
+  typedef std::unordered_set<Elem> Container;
   typedef typename Container::const_iterator const_iterator_type;
   typedef typename Container::iterator iterator_type;
 
@@ -704,26 +704,26 @@ class Set {
   // Group By
   template<typename F1, typename F2, typename Z>
   Set<R_key_value<RT<F1, Elem>,Z>> groupBy(F1 grouper, F2 folder, const Z& init) const {
-       // Create a map to hold partial results
-       typedef RT<F1, Elem> K;
-       unordered_map<K, Z> accs;
+    // Create a map to hold partial results
+    typedef RT<F1, Elem> K;
+    unordered_map<K, Z> accs;
 
-       for (const auto& elem : container) {
-          K key = grouper(elem);
-          if (accs.find(key) == accs.end()) {
-            accs[key] = init;
-          }
-
-          accs[key] = folder(std::move(accs[key]))(elem);
-       }
-
-      // Build the R_key_value records and insert them into result
-      Set<R_key_value<RT<F1, Elem>,Z>> result;
-      for(auto& it : accs) {
-        // move out of the map as we iterate
-        result.insert(R_key_value<K, Z>{std::move(it.first), std::move(it.second)});
+    for (const auto& elem : container) {
+      K key = grouper(elem);
+      if (accs.find(key) == accs.end()) {
+        accs[key] = init;
       }
-      return result;
+
+      accs[key] = folder(std::move(accs[key]))(elem);
+    }
+
+    // Build the R_key_value records and insert them into result
+    Set<R_key_value<RT<F1, Elem>,Z>> result;
+    for(auto& it : accs) {
+      // move out of the map as we iterate
+      result.insert(R_key_value<K, Z>{std::move(it.first), std::move(it.second)});
+    }
+    return result;
   }
 
   template <class G, class F, class Z>
@@ -1024,25 +1024,26 @@ class Sorted {
   // Group By
   template<typename F1, typename F2, typename Z>
   Sorted<R_key_value<RT<F1, Elem>,Z>> groupBy(F1 grouper, F2 folder, const Z& init) const {
-       // Create a map to hold partial results
-       typedef RT<F1, Elem> K;
-       unordered_map<K, Z> accs;
+    // Create a map to hold partial results
+    typedef RT<F1, Elem> K;
+    unordered_map<K, Z> accs;
 
-       for (const auto& elem : container) {
-          K key = grouper(elem);
-          if (accs.find(key) == accs.end()) {
-            accs[key] = init;
-          }
-
-          accs[key] = folder(std::move(accs[key]))(elem);
-       }
-      // Build the R_key_value records and insert them into result
-      Sorted<R_key_value<RT<F1, Elem>,Z>> result;
-      for(auto& it : accs) {
-        // move out of the map as we iterate
-        result.insert(R_key_value<K, Z>{std::move(it.first), std::move(it.second)});
+    for (const auto& elem : container) {
+      K key = grouper(elem);
+      if (accs.find(key) == accs.end()) {
+        accs[key] = init;
       }
-      return result;
+
+      accs[key] = folder(std::move(accs[key]))(elem);
+    }
+
+    // Build the R_key_value records and insert them into result
+    Sorted<R_key_value<RT<F1, Elem>,Z>> result;
+    for(auto& it : accs) {
+      // move out of the map as we iterate
+      result.insert(R_key_value<K, Z>{std::move(it.first), std::move(it.second)});
+    }
+    return result;
   }
 
   template <class G, class F, class Z>
@@ -1131,7 +1132,7 @@ class Sorted {
      return result;
   }
 
-  std::shared_ptr<Elem> lowerBound(const Elem& e) const {
+  std::shared_ptr<Elem> lower_bound(const Elem& e) const {
     const auto& x = getConstContainer();
     auto it = x.lower_bound(e);
     std::shared_ptr<Elem> result(nullptr);
@@ -1141,7 +1142,7 @@ class Sorted {
     return result;
   }
 
-  std::shared_ptr<Elem> upperBound(const Elem& e) const {
+  std::shared_ptr<Elem> upper_bound(const Elem& e) const {
     const auto& x = getConstContainer();
     auto it = x.upper_bound(e);
     std::shared_ptr<Elem> result(nullptr);
@@ -1151,26 +1152,48 @@ class Sorted {
     return result;
   }
 
-  Sorted<Elem> slice(const Elem& a, const Elem& b) const {
+  Sorted<Elem> filter_lt(const Elem& bound) const {
     const auto& x = getConstContainer();
     Sorted<Elem> result;
-    for (Elem e : x) {
-      if (e >= a && e <= b) {
-        result.insert(e);
+    auto it = x.lower_bound(bound);
+    if ( it != x.end() ) {
+      while ( *it >= bound ) {
+        if ( it == x.begin() )
+          break;
+        --it;
       }
-      if (e > b) {
-        break;
+      if ( it == x.begin() && *it >= bound ){
+        return Sorted<Elem>();
+      } else {
+        return Sorted<Elem>(x.begin(), it);
       }
+    } else {
+      return Sorted<Elem>(x.begin(), it);
     }
-    return result;
   }
 
-  std::multiset<Elem>& getContainer() { return container; }
+  Sorted<Elem> filter_gt(const Elem& bound) const {
+    const auto& x = getConstContainer();
+    auto it = x.upper_bound(bound);
+    return Sorted<Elem>(it, x.end());
+  }
 
-  // Return a constant reference to the container
-  const std::multiset<Elem>& getConstContainer() const {return container;}
+  Sorted<Elem> between(const Elem& a, const Elem& b) const {
+    const auto& x = getConstContainer();
+    auto it = x.lower_bound(a);
+    auto end = x.upper_bound(b);
+    if ( it != x.end() ){
+      return Sorted<Elem>(it, end);
+    } else {
+      return Sorted<Elem>();
+    }
+  }
 
-  std::multiset<Elem> container;
+  Container& getContainer() { return container; }
+
+  const Container& getConstContainer() const {return container;}
+
+  Container container;
 
   template<class Archive>
   void serialize(Archive &ar) { ar & container; }
@@ -1801,7 +1824,6 @@ namespace JSON {
      v.AddMember("value", inner.Move(), al);
      return v;
     }
-
   };
 
   template <class E>
@@ -1819,7 +1841,6 @@ namespace JSON {
      v.AddMember("value", inner.Move(), al);
      return v;
     }
-
   };
 
   template <class E>
@@ -1837,7 +1858,6 @@ namespace JSON {
      v.AddMember("value", inner.Move(), al);
      return v;
     }
-
   };
 
   template <class E>
@@ -1855,7 +1875,6 @@ namespace JSON {
      v.AddMember("value", inner.Move(), al);
      return v;
     }
-
   };
 
   template <class E>
@@ -1873,7 +1892,6 @@ namespace JSON {
      v.AddMember("value", inner.Move(), al);
      return v;
     }
-
   };
 
   template <class E>
@@ -1891,7 +1909,6 @@ namespace JSON {
      v.AddMember("value", inner.Move(), al);
      return v;
     }
-
   };
 
 }
@@ -1907,43 +1924,14 @@ namespace YAML {
         for (auto i: container) {
           node.push_back(convert<E>::encode(i));
         }
-      }
-      else {
+      } else {
         node = YAML::Load("[]");
       }
       return node;
     }
 
     static bool decode(const Node& node, K3::Collection<E>& c) {
-      for (auto& i: node) {
-        c.insert(i.as<E>());
-      }
-
-      return true;
-    }
-  };
-
-  template <class E>
-  struct convert<K3::Vector<E>> {
-    static Node encode(const K3::Vector<E>& c) {
-      Node node;
-      auto container = c.getConstContainer();
-      if (container.size() > 0) {
-        for (auto i: container) {
-          node.push_back(convert<E>::encode(i));
-        }
-      }
-      else {
-        node = YAML::Load("[]");
-      }
-      return node;
-    }
-
-    static bool decode(const Node& node, K3::Vector<E>& c) {
-      for (auto& i: node) {
-        c.insert(i.as<E>());
-      }
-
+      for (auto& i: node) { c.insert(i.as<E>()); }
       return true;
     }
   };
@@ -1957,11 +1945,9 @@ namespace YAML {
         for (auto i: container) {
           node.push_back(convert<E>::encode(i));
         }
-      }
-      else {
+      } else {
         node = YAML::Load("[]");
       }
-
       return node;
     }
 
@@ -1969,7 +1955,69 @@ namespace YAML {
       for (auto& i: node) {
         c.insert(i.as<E>());
       }
+      return true;
+    }
+  };
 
+  template <class E>
+  struct convert<K3::Set<E>> {
+    static Node encode(const K3::Set<E>& c) {
+      Node node;
+      auto container = c.getConstContainer();
+      if (container.size() > 0 ) {
+        for (auto i: container) {
+          node.push_back(convert<E>::encode(i));
+        }
+      } else {
+        node = YAML::Load("[]");
+      }
+      return node;
+    }
+
+    static bool decode(const Node& node, K3::Set<E>& c) {
+      for (auto& i: node) { c.insert(i.as<E>()); }
+      return true;
+    }
+  };
+
+  template <class E>
+  struct convert<K3::Sorted<E>> {
+    static Node encode(const K3::Sorted<E>& c) {
+      Node node;
+      auto container = c.getConstContainer();
+      if (container.size() > 0 ) {
+        for (auto i: container) {
+          node.push_back(convert<E>::encode(i));
+        }
+      } else {
+        node = YAML::Load("[]");
+      }
+      return node;
+    }
+
+    static bool decode(const Node& node, K3::Sorted<E>& c) {
+      for (auto& i: node) { c.insert(i.as<E>()); }
+      return true;
+    }
+  };
+
+  template <class E>
+  struct convert<K3::Vector<E>> {
+    static Node encode(const K3::Vector<E>& c) {
+      Node node;
+      auto container = c.getConstContainer();
+      if (container.size() > 0) {
+        for (auto i: container) {
+          node.push_back(convert<E>::encode(i));
+        }
+      } else {
+        node = YAML::Load("[]");
+      }
+      return node;
+    }
+
+    static bool decode(const Node& node, K3::Vector<E>& c) {
+      for (auto& i: node) { c.insert(i.as<E>()); }
       return true;
     }
   };
@@ -1983,39 +2031,14 @@ namespace YAML {
         for (auto i: container) {
           node.push_back(convert<R>::encode(i.second));
         }
-      }
-      else {
+      } else {
         node = YAML::Load("[]");
       }
-
       return node;
     }
 
     static bool decode(const Node& node, K3::Map<R>& c) {
-      for (auto& i: node) {
-        c.insert(i.as<R>());
-      }
-
-      return true;
-    }
-  };
-
-  template <class E>
-  struct convert<K3::Set<E>> {
-    static Node encode(const K3::Set<E>& c) {
-      Node node;
-      for (auto i: c.getConstContainer()) {
-        node.push_back(convert<E>::encode(i));
-      }
-
-      return node;
-    }
-
-    static bool decode(const Node& node, K3::Set<E>& c) {
-      for (auto& i: node) {
-        c.insert(i.as<E>());
-      }
-
+      for (auto& i: node) { c.insert(i.as<R>()); }
       return true;
     }
   };

@@ -402,6 +402,6 @@ record (sort -> ids) = do
 reservedAnnotations :: [Identifier]
 reservedAnnotations =
   [ "Collection", "External", "Seq", "Set", "Sorted", "Map", "Vector"
-  , "IntMap", "StrMap", "VMap", "OrderedMap"
+  , "IntMap", "StrMap", "VMap", "SortedMap", "SortedSet"
   , "MultiIndexBag", "MultiIndexMap", "MultiIndexVMap"
   ]

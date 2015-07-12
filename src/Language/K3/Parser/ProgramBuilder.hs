@@ -253,7 +253,7 @@ endpointMethods isSource eSpec argE formatE n t =
     muxSeqLabel  = "order"
     muxDataLabel = "value"
 
-    muxPosMap = mkCollection [("key", TC.int), ("value", TC.int)] "OrderedMap"
+    muxPosMap = mkCollection [("key", TC.int), ("value", TC.int)] "SortedMap"
     muxBuffer = mkCollection [("key", TC.int), ("value", t)] "Map"
     muxFullT  = TC.record [("order", TC.int), ("value", t)]
 
