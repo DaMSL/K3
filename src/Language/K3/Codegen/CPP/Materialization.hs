@@ -62,13 +62,8 @@ dLookup u i = decisionTable <$> get >>= \t -> return $ fromMaybe defaultDecision
 dLookupAll :: Int -> MaterializationM (M.Map Identifier Decision)
 dLookupAll u = decisionTable <$> get >>= \t -> return (I.findWithDefault M.empty u t)
 
-pLookup :: PPtr -> MaterializationM (K3 Provenance)
-pLookup p = pienv <$> get >>= \e -> return (fromMaybe (error "Dangling provenance pointer") (I.lookup p (ppenv e)))
-
-pLookupDeep :: PPtr -> MaterializationM (K3 Provenance)
-pLookupDeep p = pLookup p >>= \case
-  (tag -> PBVar (PMatVar { pmvptr })) -> pLookupDeep pmvptr
-  p' -> return p'
+pLookup :: PPtr -> MaterializationM (Maybe (K3 Provenance))
+pLookup p = pienv <$> get >>= \e -> return (I.lookup p (ppenv e))
 
 -- A /very/ rough approximation of ReaderT's ~local~ for StateT.
 withLocalDS :: [K3 Expression] -> MaterializationM a -> MaterializationM a
@@ -329,14 +324,15 @@ occursIn wide a b
   = case tag b of
 
       -- Everything occurs in itself.
-      _ | a == b -> return True
+      _ | a =*= b -> return True
 
       -- Something occurs in a bound variable if it occurs in anything that was used to initialize
       -- that bound variable, and that bound variable was initialized using a non-isolating method.
       PBVar mv -> do
              decision <- dLookup (pmvloc' mv) (pmvn mv)
              if inD decision == Referenced || inD decision == ConstReferenced
-               then pLookup (pmvptr mv) >>= occursIn wide a
+               then pLookup (pmvptr mv) >>=
+                    maybe (error "Attempted to occurs-check a dangling provenance pointer.") (occursIn wide a)
                else return False
 
       -- Something occurs in substructure if it occurs in any superstructure, and wide effects are
@@ -503,7 +499,7 @@ isGlobalP :: K3 Provenance -> MaterializationM Bool
 isGlobalP ep =
   case ep of
     (tag -> PGlobal _) -> return True
-    (tag -> PBVar pmv) -> pLookup (pmvptr pmv) >>= isGlobalP
+    (tag -> PBVar pmv) -> pLookup (pmvptr pmv) >>= maybe (return False) isGlobalP
 
     (tag &&& children -> (PProject _, [pp])) -> isGlobalP pp
 
@@ -526,3 +522,12 @@ isMoveableNow p = do
   isMoveable1 <- isMoveable p
   allMoveable <- allM (isMoveableIn p) ds
   return $ isMoveable1 && allMoveable
+
+(=*=) :: K3 Provenance -> K3 Provenance -> Bool
+a =*= b = case (tag a, tag b) of
+            (PBVar mva, PBVar mvb) -> pmvn mva == pmvn mvb && pmvloc mva == pmvloc mvb
+            (PFVar ia, PFVar ib) -> ia == ib
+            (PGlobal ia, PGlobal ib) -> ia == ib
+
+            -- TODO: Handle more cases.
+            _ -> a == b
