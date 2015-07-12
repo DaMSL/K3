@@ -31,7 +31,9 @@ import qualified Language.K3.Codegen.CPP.Representation as R
 --  - Serialization function, which should proxy the dataspace serialization.
 composite :: Identifier -> [(Identifier, [AnnMemDecl])] -> [K3 Type] -> CPPGenM [R.Definition]
 composite name ans content_ts = do
-    let (ras, as) = partition (\(aname, _) -> aname `elem` reservedAnnotations) ans
+    let overrideGeneratedName n = if "MapE" `isInfixOf` n then "MapE" else n
+    let isReserved (aname, _) = overrideGeneratedName aname `elem` reservedAnnotations
+    let (ras, as) = partition isReserved ans
 
     -- Inlining is only done for provided (positive) declarations.
     -- let positives = filter isPositiveDecl (concat . snd $ unzip nras)
@@ -45,7 +47,8 @@ composite name ans content_ts = do
     let addnSpecializations n = if "MultiIndex" `isInfixOf` n then indexTypes else []
 
     let baseClass (n,_) = R.Qualified (R.Name "K3")
-                          (R.Specialized ((R.Named $ R.Name "__CONTENT"): addnSpecializations n) (R.Name n))
+                           (R.Specialized ((R.Named $ R.Name "__CONTENT"): addnSpecializations n)
+                           (R.Name $ overrideGeneratedName n))
 
     let baseClasses = map baseClass ras
 
@@ -402,6 +405,6 @@ record (sort -> ids) = do
 reservedAnnotations :: [Identifier]
 reservedAnnotations =
   [ "Collection", "External", "Seq", "Set", "Sorted", "Map", "Vector"
-  , "IntMap", "StrMap", "VMap", "SortedMap", "SortedSet"
+  , "IntMap", "StrMap", "VMap", "SortedMap", "SortedSet", "MapE"
   , "MultiIndexBag", "MultiIndexMap", "MultiIndexVMap"
   ]
