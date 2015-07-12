@@ -553,7 +553,7 @@ class Collection : public VectorDS<K3::Collection, Elem> {
 template <class Elem>
 class Set {
   // Iterator Types:
-  typedef std::unordered_set<Elem> Container;
+  typedef std::set<Elem> Container;
   typedef typename Container::const_iterator const_iterator_type;
   typedef typename Container::iterator iterator_type;
 
