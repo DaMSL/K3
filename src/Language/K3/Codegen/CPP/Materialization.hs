@@ -273,7 +273,9 @@ materializationE e@(Node (t :@: as) cs)
       EBindAs b -> do
              let [x, y] = cs
              x' <- withLocalDS [y] (materializationE x)
-             y' <- materializationE y
+
+             let newBindings = case b of { BIndirection i -> [i]; BTuple is -> is; BRecord iis -> fst (unzip iis) }
+             y' <- withLocalBindings newBindings (getUID e) $ materializationE y
 
              let xp = getProvenance x
              readMention <- hasReadInP xp y'
