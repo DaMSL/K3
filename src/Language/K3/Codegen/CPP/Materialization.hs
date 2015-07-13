@@ -30,7 +30,7 @@ import Data.Foldable
 
 import Data.Maybe (fromMaybe, maybeToList, fromJust)
 import Data.Ord (comparing)
-import Data.List (sortBy, tails)
+import Data.List (elemIndex, sortBy, tails)
 import Data.Tree
 
 import qualified Data.Map as M
@@ -149,7 +149,8 @@ materializationE e@(Node (t :@: as) cs)
         (decisions, fs) <- unzip <$> zipWithM decisionForField cs' (tail $ tails cs')
         zipWithM_ (setDecision (getUID e)) is' decisions
         ds <- dLookupAll (getUID e)
-        return (Node (t :@: (EMaterialization ds:as)) fs)
+        let fs' = map (\i -> fs !! (fromJust $ elemIndex i is')) is
+        return (Node (t :@: (EMaterialization ds:as)) fs')
 
       EOperate OApp -> do
              [f, x] <- mapM materializationE cs
