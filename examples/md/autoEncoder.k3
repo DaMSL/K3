@@ -300,7 +300,7 @@ declare slaveBackPropagation : () -> () = \_ -> (
     //print "Old DeltaWeights : ";
     //deltaWeight.iterate(\dv -> print (rtos dv.elem));
 
-    // calculate the delta weights
+    // Calculate the delta weights
     (range ((topology.size ()) -1)).iterate(\layerId -> (
     	let numPresentLayerNeurons = (topology.at layerId.i).elem in
     	let numNextLayerNeurons = (topology.at (layerId.i + 1)).elem in ((range (numPresentLayerNeurons)).iterate(\presentLayerNeuronId -> (
@@ -338,7 +338,8 @@ declare slaveBackPropagation : () -> () = \_ -> (
             ))    
         ))
     )))
-    //print "value of m " ; print  (itos (allData.size ()));
+    //print "value of m " ;
+    //print (itos (allData.size ()));
     //print "new weights : ";
     //weight.iterate(\w -> print (rtos w.elem))
 )
@@ -393,15 +394,13 @@ trigger startSlave : () = \_ -> (
 	row_number = row_number + 1;
     print (itos row_number);
 
-    /*
-		(if (row_number % epochSize == 0) 
+    (if (row_number % epochSize == 0) 
 		then (
 			(receiveAtMaster, master) <- (weight.sub weightsLastUpdated);
 			weightsLastUpdated = weight
 		) 
 		else ());
-    */
-		(slaveFeedForward ());
+    	(slaveFeedForward ());
 		(slaveBackPropagation ());
 
     /*
