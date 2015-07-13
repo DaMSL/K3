@@ -337,7 +337,7 @@ inline e@(tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [tri
                  ++ [ classInst
                     , codec
                     , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Name "send")) [
-                                    messageHeader,  R.Variable (R.Name d), (R.Variable $ R.Name d2) ]
+                                    messageHeader,  R.Move $ R.Variable (R.Name d), (R.Variable $ R.Name d2) ]
                     ]
              , R.Initialization R.Unit [])
     where
