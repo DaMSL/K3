@@ -106,6 +106,25 @@ annotation SortedMap given type a,b
   provides lifted max_with : (content -> ()) -> ()
     with effects \lookupF -> [R[self]; lookupF content]
 
+  provides lifted lower_bound : content -> option content
+    with effects \elem -> [R[self]; R[elem]]
+
+  provides lifted upper_bound : content -> option content
+    with effects \elem -> [R[self]; R[elem]]
+
+  // Range retrieval based on sort order.
+  provides lifted filter_lt : content -> self
+    with effects \elem -> [R[self]; R[elem]]
+
+  provides lifted filter_gt : content -> self
+    with effects \elem -> [R[self]; R[elem]]
+
+  provides lifted filter_geq : content -> self
+    with effects \elem -> [R[self]; R[elem]]
+
+  provides lifted between : content -> (content -> self)
+    with effects \elem -> [R[self]; R[elem]]
+
   // Range-based modification.
 
   // Erases all elements less than, but not including, the given key.

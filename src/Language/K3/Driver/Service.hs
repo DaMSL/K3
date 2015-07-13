@@ -746,6 +746,8 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     nfP        = noFeed $ input opts
     includesP  = (includes $ paths opts)
 
+    abortcatch rid rq m = m `catchIOError` (\e -> abortProgram Nothing rid rq $ show e)
+
     process prog jobOpts rq rid = abortcatch rid rq $ do
       void $ zm $ do
         mlogM $ unwords ["Processing program", rq, "(", show rid, ")"]
@@ -759,8 +761,6 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
         modifyMJ_ $ \jbs -> Map.adjust (adjustProfile sRep) pid jbs
 
       where bcStages = (coStages $ scompileOpts $ sOpts, rcStages jobOpts)
-
-    abortcatch rid rq m = m `catchIOError` (\e -> abortProgram Nothing rid rq $ show e)
 
     adjustProfile rep js@(jprofile -> jprof@(jppreport -> jpp)) =
       js {jprofile = jprof {jppreport = jpp `mappend` rep}}
@@ -1042,7 +1042,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
      -----------------------------}
 
     -- | Program completion processing. This garbage collects client request state.
-    completeProgram pid (rid, rq, aborts, profile, sources, reportsz) = do
+    completeProgram pid (rid, rq, aborts, profile, sources, reportsz) = abortcatch rid rq $ do
       let prog = DC.role "__global" $ map snd $ sortOn fst $ concatMap snd $ Map.toAscList sources
       (nprogrpE, fpProf) <- liftIO $ ST.profile $ const $ evalTransform Nothing (sfinalStages $ smOpts) prog
       case (aborts, nprogrpE) of

@@ -334,7 +334,6 @@ class SortedSet {
 
   SortedSet<Elem> filter_lt(const Elem& bound) const {
     const auto& x = getConstContainer();
-    SortedSet<Elem> result;
     auto it = x.lower_bound(bound);
     return SortedSet<Elem>(x.begin(), it);
   }
@@ -342,6 +341,12 @@ class SortedSet {
   SortedSet<Elem> filter_gt(const Elem& bound) const {
     const auto& x = getConstContainer();
     auto it = x.upper_bound(bound);
+    return SortedSet<Elem>(it, x.end());
+  }
+
+  SortedSet<Elem> filter_geq(const Elem& bound) const {
+    const auto& x = getConstContainer();
+    auto it = x.lower_bound(bound);
     return SortedSet<Elem>(it, x.end());
   }
 

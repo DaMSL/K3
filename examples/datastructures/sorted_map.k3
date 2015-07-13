@@ -1,7 +1,8 @@
 include "Annotation/Maps/SortedMap.k3"
 include "Core/Builtins.k3"
 
-declare c : collection {key:int, value:int} @SortedMap
+declare c :     collection {key:int, value:int} @SortedMap
+declare d : mut collection {key:int, value:int} @SortedMap
 
 trigger t : () = \_ -> (
   ((range 10).iterate (\r -> c.insert {key: r.i, value: r.i + 100 }));
@@ -17,6 +18,12 @@ trigger t : () = \_ -> (
   // This should be {key: 9, value: 109}.
   (c.max_with (\r -> print ("Maximum; key: " ++ (itos r.key) ++ " value: " ++ (itos r.value) ++ "\\n")));
 
+  // Filter up to, but not including the item with key 4.
+  (d = c.filter_lt {key:4, value: 0});
+
+  // Items with keys 1,2,3 should be present in d.
+  (d.iterate (\r -> print ("Remaining in d; key: " ++ (itos r.key) ++ " value: " ++ (itos r.value) ++ "\\n")));
+
   // erase_prefix up to, but not including the item with key 4
   (c.erase_prefix {key: 4, value: 0});
 
@@ -24,7 +31,7 @@ trigger t : () = \_ -> (
   (c.erase_suffix {key: 7, value: 0});
 
   // Items with keys 4,5,6 should be left in the map.
-  c.iterate (\r -> print ("Remaining; key: " ++ (itos r.key) ++ " value: " ++ (itos r.value) ++ "\\n"))
+  c.iterate (\r -> print ("Remaining in c; key: " ++ (itos r.key) ++ " value: " ++ (itos r.value) ++ "\\n"))
 )
 
 source s1 : () = value ()
