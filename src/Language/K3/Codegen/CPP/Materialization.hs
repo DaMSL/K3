@@ -274,7 +274,7 @@ materializationE e@(Node (t :@: as) cs)
              let [x, y] = cs
              x' <- withLocalDS [y] (materializationE x)
 
-             let newBindings = case b of { BIndirection i -> [i]; BTuple is -> is; BRecord iis -> fst (unzip iis) }
+             let newBindings = case b of { BIndirection i -> [i]; BTuple is -> is; BRecord iis -> snd (unzip iis) }
              y' <- withLocalBindings newBindings (getUID e) $ materializationE y
 
              let xp = getProvenance x
