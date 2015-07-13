@@ -271,6 +271,16 @@ class SortedMap {
     throw std::runtime_error("No match on Map.lookup_with3");
   }
 
+  template <class F, class G>
+  auto lookup_with4(R const& r, F f, G g) const {
+    auto it = container.find(r.key);
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(it->second);
+    }
+  }
+
   // Extremal key operations.
 
   shared_ptr<R> min(const unit_t&) const {
