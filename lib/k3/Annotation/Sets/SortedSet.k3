@@ -102,6 +102,9 @@ annotation SortedSet given type a, b
   provides lifted filter_gt : content -> self
     with effects \elem -> [R[self]; R[elem]]
 
+  provides lifted filter_geq : content -> self
+    with effects \elem -> [R[self]; R[elem]]
+
   provides lifted between : content -> (content -> self)
     with effects \elem -> [R[self]; R[elem]]
 

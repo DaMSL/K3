@@ -1864,6 +1864,7 @@ class VMap {
 template<class R>
 class SortedMap {
   using Key = typename R::KeyType;
+  using Container = std::map<Key, R>;
 
  public:
   // Default Constructor
@@ -2210,10 +2211,59 @@ class SortedMap {
     return unit_t {};
   }
 
+  std::shared_ptr<R> lower_bound(const R& rec) const {
+    const auto& x = getConstContainer();
+    auto it = x.lower_bound(rec.key);
+    std::shared_ptr<R> result(nullptr);
+    if (it != x.end()) {
+      result = std::make_shared<R>(it->second);
+    }
+    return result;
+  }
+
+  std::shared_ptr<R> upper_bound(const R& rec) const {
+    const auto& x = getConstContainer();
+    auto it = x.upper_bound(rec.key);
+    std::shared_ptr<R> result(nullptr);
+    if (it != x.end()) {
+      result = std::make_shared<R>(it->second);
+    }
+    return result;
+  }
+
+  SortedMap<R> filter_lt(const R& rec) const {
+    const auto& x = getConstContainer();
+    auto it = x.lower_bound(rec.key);
+    return SortedMap<R>(x.begin(), it);
+  }
+
+  SortedMap<R> filter_gt(const R& rec) const {
+    const auto& x = getConstContainer();
+    auto it = x.upper_bound(rec.key);
+    return SortedMap<R>(it, x.end());
+  }
+
+  SortedMap<R> filter_geq(const R& rec) const {
+    const auto& x = getConstContainer();
+    auto it = x.lower_bound(rec.key);
+    return SortedMap<R>(it, x.end());
+  }
+
+  SortedMap<R> between(const R& a, const R& b) const {
+    const auto& x = getConstContainer();
+    auto it = x.lower_bound(a.key);
+    auto end = x.upper_bound(b.key);
+    if ( it != x.end() ){
+      return SortedMap<R>(it, end);
+    } else {
+      return SortedMap<R>();
+    }
+  }
+
   // Range-based modification, exclusive of the given key.
 
   unit_t erase_prefix(const R& rec) {
-    auto it = container.find(rec.key);
+    auto it = container.lower_bound(rec.key);
     if (it != container.end()) {
         container.erase(container.cbegin(), it);
     }
@@ -2221,7 +2271,7 @@ class SortedMap {
   }
 
   unit_t erase_suffix(const R& rec) {
-    auto it = container.find(rec.key);
+    auto it = container.upper_bound(rec.key);
     if (it != container.end()) {
         container.erase(it, container.cend());
     }
@@ -2244,9 +2294,9 @@ class SortedMap {
     return container > other.container;
   }
 
-  std::map<Key, R>& getContainer() { return container; }
+  Container& getContainer() { return container; }
 
-  const std::map<Key, R>& getConstContainer() const { return container; }
+  const Container& getConstContainer() const { return container; }
 
   template<class Archive>
   void serialize(Archive &ar) { ar & container; }
