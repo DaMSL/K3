@@ -28,7 +28,9 @@ import Data.Functor
 import Data.Traversable
 import Data.Foldable
 
-import Data.Maybe (fromMaybe, maybeToList)
+import Data.Maybe (fromMaybe, maybeToList, fromJust)
+import Data.Ord (comparing)
+import Data.List (sortBy, tails)
 import Data.Tree
 
 import qualified Data.Map as M
@@ -48,6 +50,8 @@ data MaterializationS = MaterializationS { decisionTable :: Table
                                          , fienv :: FIEnv
                                          , downstreams :: [K3 Expression]
                                          , currentGlobal :: Bool
+                                         -- | Identifiers currently in scope, and their bind points.
+                                         , scopeMap :: M.Map Identifier Int
                                          }
 
 type MaterializationM = StateT MaterializationS Identity
@@ -60,13 +64,8 @@ dLookup u i = decisionTable <$> get >>= \t -> return $ fromMaybe defaultDecision
 dLookupAll :: Int -> MaterializationM (M.Map Identifier Decision)
 dLookupAll u = decisionTable <$> get >>= \t -> return (I.findWithDefault M.empty u t)
 
-pLookup :: PPtr -> MaterializationM (K3 Provenance)
-pLookup p = pienv <$> get >>= \e -> return (fromMaybe (error "Dangling provenance pointer") (I.lookup p (ppenv e)))
-
-pLookupDeep :: PPtr -> MaterializationM (K3 Provenance)
-pLookupDeep p = pLookup p >>= \case
-  (tag -> PBVar (PMatVar { pmvptr })) -> pLookupDeep pmvptr
-  p' -> return p'
+pLookup :: PPtr -> MaterializationM (Maybe (K3 Provenance))
+pLookup p = pienv <$> get >>= \e -> return (I.lookup p (ppenv e))
 
 -- A /very/ rough approximation of ReaderT's ~local~ for StateT.
 withLocalDS :: [K3 Expression] -> MaterializationM a -> MaterializationM a
@@ -77,6 +76,18 @@ withLocalDS nds m = do
   s' <- get
   put (s' { downstreams = downstreams s})
   return r
+
+withLocalBindings :: [Identifier] -> Int -> MaterializationM a -> MaterializationM a
+withLocalBindings is u m = do
+  s <- get
+  put $ s { scopeMap = M.union (M.fromList $ zip is (repeat u)) (scopeMap s)}
+  r <- m
+  s' <- get
+  put $ s' { scopeMap = scopeMap s }
+  return r
+
+getBindingUID :: Identifier -> MaterializationM (Maybe Int)
+getBindingUID i = M.lookup i . scopeMap <$> get
 
 getUID :: K3 Expression -> Int
 getUID e = let EUID (UID u) = fromMaybe (error "No UID on expression.")
@@ -114,7 +125,7 @@ runMaterializationM :: MaterializationM a -> MaterializationS -> (a, Materializa
 runMaterializationM m s = runIdentity $ runStateT m s
 
 optimizeMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> K3 Declaration
-optimizeMaterialization (p, f) d = fst $ runMaterializationM (materializationD d) (MaterializationS I.empty p f [] True)
+optimizeMaterialization (p, f) d = fst $ runMaterializationM (materializationD d) (MaterializationS I.empty p f [] True M.empty)
 
 materializationD :: K3 Declaration -> MaterializationM (K3 Declaration)
 materializationD (Node (d :@: as) cs)
@@ -130,14 +141,14 @@ materializationE :: K3 Expression -> MaterializationM (K3 Expression)
 materializationE e@(Node (t :@: as) cs)
   = case t of
       ERecord is -> do
-        fs <- mapM materializationE cs
-
-        let moveDecision i x = isMoveableNow x >>= \m -> return $ if m then defaultDecision { inD = Moved } else defaultDecision
-
-        decisions <- zipWithM moveDecision is fs
-        zipWithM_ (setDecision (getUID e)) is decisions
+        let decisionForField c ds = withLocalDS ds $ do
+              rf <- materializationE c
+              mn <- isMoveableNow (getProvenance c)
+              return (if mn then defaultDecision { inD = Moved } else defaultDecision, rf)
+        let (is', cs') = unzip . sortBy (comparing fst) $ zip is cs
+        (decisions, fs) <- unzip <$> zipWithM decisionForField cs' (tail $ tails cs')
+        zipWithM_ (setDecision (getUID e)) is' decisions
         ds <- dLookupAll (getUID e)
-
         return (Node (t :@: (EMaterialization ds:as)) fs)
 
       EOperate OApp -> do
@@ -170,7 +181,7 @@ materializationE e@(Node (t :@: as) cs)
                      _ -> return False
                  _ -> return False
 
-             moveable <- isMoveableNow x
+             moveable <- isMoveableNow (getProvenance x)
 
              let applicationDecision d =
                    if (conservativeDoMoveLocal || conservativeDoMoveReturn) && moveable
@@ -185,7 +196,7 @@ materializationE e@(Node (t :@: as) cs)
 
       EOperate OSnd -> do
         [target, message] <- mapM materializationE cs
-        moveable <- isMoveableNow message
+        moveable <- isMoveableNow (getProvenance message)
         let decision = if moveable then defaultDecision { inD = Moved } else defaultDecision
         setDecision (getUID e) "" decision
         ds <- dLookupAll (getUID e)
@@ -199,11 +210,13 @@ materializationE e@(Node (t :@: as) cs)
 
       ELambda x -> do
              cg <- currentGlobal <$> get
+             closureSymbols <- getClosureSymbols (getUID e)
+
              when cg $ case tag (head cs) of
                          ELambda _ -> return ()
                          otherwise -> setCurrentGlobal False
 
-             [b] <- mapM materializationE cs
+             [b] <- withLocalBindings (x:closureSymbols) (getUID e) $ mapM materializationE cs
 
              setCurrentGlobal cg -- Probably not necessary to restore.
 
@@ -237,11 +250,14 @@ materializationE e@(Node (t :@: as) cs)
 
              setDecision (getUID e) x $ readOnlyDecision $ nrvoDecision $ defaultDecision
 
-             closureSymbols <- getClosureSymbols (getUID e)
-
              forM_ closureSymbols $ \s -> do
-               closureHasWrite <- hasWriteInI s b
-               moveable <- return True
+               let innerProxyProvenance = P.pbvar $ PMatVar { pmvn = s, pmvloc = UID (getUID e), pmvptr = -1}
+
+               sc <- scopeMap <$> get
+               outerBindUID <- UID . fromMaybe (error $ (show s) ++ " " ++ (show sc)) <$> getBindingUID s
+               let outerProxyProvenance = P.pbvar $ PMatVar { pmvn = s, pmvloc = outerBindUID, pmvptr = -1}
+               closureHasWrite <- hasWriteInP innerProxyProvenance b
+               moveable <- isMoveableNow outerProxyProvenance
                let closureDecision d =
                      if closureHasWrite
                        then if moveable
@@ -276,7 +292,7 @@ materializationE e@(Node (t :@: as) cs)
       ECaseOf i -> do
              let [x, s, n] = cs
              x' <- withLocalDS [s, n] (materializationE x)
-             s' <- materializationE s
+             s' <- withLocalBindings [i] (getUID e) $ materializationE s
              n' <- materializationE n
 
              let xp = getProvenance x
@@ -302,9 +318,9 @@ materializationE e@(Node (t :@: as) cs)
 
                -- Decision processing for the initializer move needs to be performed inside the
                -- context of the extra downstream.
-               m <- isMoveableNow x''
+               m <- isMoveableNow (getProvenance x'')
                return (x'', if m then defaultDecision { inD = Moved } else defaultDecision)
-             b' <- materializationE b
+             b' <- withLocalBindings [i] (getUID e) $ materializationE b
 
              setDecision (getUID e) i d
              decisions <- dLookupAll (getUID e)
@@ -327,14 +343,15 @@ occursIn wide a b
   = case tag b of
 
       -- Everything occurs in itself.
-      _ | a == b -> return True
+      _ | a =*= b -> return True
 
       -- Something occurs in a bound variable if it occurs in anything that was used to initialize
       -- that bound variable, and that bound variable was initialized using a non-isolating method.
       PBVar mv -> do
              decision <- dLookup (pmvloc' mv) (pmvn mv)
              if inD decision == Referenced || inD decision == ConstReferenced
-               then pLookup (pmvptr mv) >>= occursIn wide a
+               then pLookup (pmvptr mv) >>=
+                    maybe (error "Attempted to occurs-check a dangling provenance pointer.") (occursIn wide a)
                else return False
 
       -- Something occurs in substructure if it occurs in any superstructure, and wide effects are
@@ -349,10 +366,8 @@ occursIn wide a b
 
       _ -> return False
 
-isReadIn :: K3 Expression -> K3 Expression -> MaterializationM Bool
-isReadIn x f =
-  case f of
-    _ -> isReadInF (getProvenance x) (getEffects f)
+isReadIn :: K3 Provenance -> K3 Expression -> MaterializationM Bool
+isReadIn x f = isReadInF x (getEffects f)
 
 isReadInF :: K3 Provenance -> K3 Effect -> MaterializationM Bool
 isReadInF xp ff =
@@ -365,10 +380,8 @@ isReadInF xp ff =
 
     _ -> return False
 
-isWrittenIn :: K3 Expression -> K3 Expression -> MaterializationM Bool
-isWrittenIn x f =
-  case f of
-    _ -> isWrittenInF (getProvenance x) (getEffects f)
+isWrittenIn :: K3 Provenance -> K3 Expression -> MaterializationM Bool
+isWrittenIn x f = isWrittenInF x (getEffects f)
 
 isWrittenInF :: K3 Provenance -> K3 Effect -> MaterializationM Bool
 isWrittenInF xp ff =
@@ -505,27 +518,35 @@ isGlobalP :: K3 Provenance -> MaterializationM Bool
 isGlobalP ep =
   case ep of
     (tag -> PGlobal _) -> return True
-    (tag -> PBVar pmv) -> pLookup (pmvptr pmv) >>= isGlobalP
+    (tag -> PBVar pmv) -> pLookup (pmvptr pmv) >>= maybe (return False) isGlobalP
 
     (tag &&& children -> (PProject _, [pp])) -> isGlobalP pp
 
     _ -> return False
 
-isMoveable :: K3 Expression -> MaterializationM Bool
-isMoveable e =
-  case e of
-    (tag -> ELambda _) -> return False
-    _ -> not <$> isGlobalP (getProvenance e)
+isMoveable :: K3 Provenance -> MaterializationM Bool
+isMoveable p = case tag p of
+                 PLambda _ -> return False
+                 _ -> not <$> isGlobalP p
 
-isMoveableIn :: K3 Expression -> K3 Expression -> MaterializationM Bool
+isMoveableIn :: K3 Provenance -> K3 Expression -> MaterializationM Bool
 isMoveableIn x c = do
   isRead <- isReadIn x c
   isWritten <- isWrittenIn x c
   return $ not (isRead || isWritten)
 
-isMoveableNow :: K3 Expression -> MaterializationM Bool
-isMoveableNow x = do
+isMoveableNow :: K3 Provenance -> MaterializationM Bool
+isMoveableNow p = do
   ds <- downstreams <$> get
-  isMoveable1 <- isMoveable x
-  allMoveable <- allM (isMoveableIn x) ds
+  isMoveable1 <- isMoveable p
+  allMoveable <- allM (isMoveableIn p) ds
   return $ isMoveable1 && allMoveable
+
+(=*=) :: K3 Provenance -> K3 Provenance -> Bool
+a =*= b = case (tag a, tag b) of
+            (PBVar mva, PBVar mvb) -> pmvn mva == pmvn mvb && pmvloc mva == pmvloc mvb
+            (PFVar ia, PFVar ib) -> ia == ib
+            (PGlobal ia, PGlobal ib) -> ia == ib
+
+            -- TODO: Handle more cases.
+            _ -> a == b
