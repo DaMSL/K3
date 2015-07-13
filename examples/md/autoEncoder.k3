@@ -238,17 +238,17 @@ declare slaveBackPropagation : () -> () = \_ -> (
 				(((outputValue.at index).elem - (targetValue.at neuronId.i).elem ) * (activationFunctionDerivative (zValue.at index).elem))}	
 	))
 	);
-	
-    print ("weights : ");
-    weight.iterate(\w -> print (rtos (w.elem)));
-    print ("target values : ");
-    targetValue.iterate(\tv -> print (rtos tv.elem));
-    print ("Output values : ");
-    outputValue.iterate(\ov -> print (rtos (ov.elem)));
-    print ("delta values : ");
-    deltaValue.iterate(\dv -> print (rtos dv.elem));
-    print ("z values : ");
-    zValue.iterate(\zv -> print (rtos zv.elem));
+
+    print ("weights : ")
+    weight.iterate(\w -> print (rtos (w.elem)))
+    print ("target values : ")
+    targetValue.iterate(\tv -> print (rtos tv.elem))
+    print ("Output values : ")
+    outputValue.iterate(\ov -> print (rtos (ov.elem)))
+    print ("delta values : ")
+    deltaValue.iterate(\dv -> print (rtos dv.elem))
+    print ("z values : ")
+    zValue.iterate(\zv -> print (rtos zv.elem))
 
     //calculate the hidden layer deltas
 	((xrange 2 (topology.size ()+1) ).iterate (\i -> (
