@@ -238,6 +238,7 @@ declare slaveBackPropagation : () -> () = \_ -> (
 				(((outputValue.at index).elem - (targetValue.at neuronId.i).elem ) * (activationFunctionDerivative (zValue.at index).elem))}	
 	))
 	);
+	
     print ("weights : ");
     weight.iterate(\w -> print (rtos (w.elem)));
     print ("target values : ");
