@@ -1,22 +1,22 @@
 // Maps are expected to contain only records with fields key and value
 annotation SortedMap given type a,b
 {
-  provides lifted peek    : () -> option content
+  provides lifted peek : () -> option content
     with effects \_ -> R[self]
 
   @:CArgs 2
   provides lifted peek_with : (() -> a) -> (content -> a) -> a
     with effects \f -> \g -> [R[self]; f content; g content]
 
-  provides lifted insert  : content -> ()
+  provides lifted insert : content -> ()
     with effects \elem -> [R[self]; R[elem]; W[self]]
 
   @:CArgs 2
-  provides lifted insert_with: content -> (content -> content -> content) -> ()
+  provides lifted insert_with : content -> (content -> content -> content) -> ()
     with effects \elem -> \f -> [R[self]; R[elem]; ((f content) content); W[self]]
 
   @:CArgs 3
-  provides lifted upsert_with: content -> (() -> content) -> (content -> content) -> ()
+  provides lifted upsert_with : content -> (() -> content) -> (content -> content) -> ()
     with effects \elem -> \f -> \g -> [R[self]; R[elem]; f content; g content; W[self]]
 
   provides lifted erase  : content -> ()
@@ -34,7 +34,7 @@ annotation SortedMap given type a,b
     with effects \other -> [R[self]; R[other]]
 
   @:Transformer
-  provides lifted split   : () -> (self, self)
+  provides lifted split : () -> (self, self)
     with effects \_ -> R[self]
 
   @:Transformer
@@ -42,7 +42,7 @@ annotation SortedMap given type a,b
     with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
 
   @:Transformer
-  provides lifted map     : (content -> {key: a, value: b}) -> collection {key: a, value: b} @Map
+  provides lifted map : (content -> {key: a, value: b}) -> collection {key: a, value: b} @Map
     with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
 
   @:Transformer
@@ -61,8 +61,8 @@ annotation SortedMap given type a,b
         [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:Transformer
-  provides lifted ext     : (content -> collection {key : a, value: b} @Map)
-                             -> collection {key : a, value: b} @Map
+  provides lifted ext : (content -> collection {key : a, value: b} @Map)
+                         -> collection {key : a, value: b} @Map
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
 
   @:{Transformer, CArgs 3}
