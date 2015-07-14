@@ -3,10 +3,8 @@
 
 module Language.K3.Codegen.CPP.MultiIndex where
 
-import Control.Arrow ( (&&&) )
 import Control.Monad
 
-import Data.Functor ((<$>))
 import Data.List (elemIndex, isInfixOf, nub)
 import Data.List.Split (splitOn)
 import Data.Maybe (catMaybes, fromMaybe)
