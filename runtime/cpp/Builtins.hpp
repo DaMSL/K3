@@ -25,7 +25,6 @@
 #include <boost/thread/thread.hpp>
 
 #include <regex>
-#include "re2/re2.h"
 
 #include "BaseTypes.hpp"
 #include "BaseString.hpp"
@@ -543,7 +542,6 @@ namespace K3 {
 
   class __string_context {
     public:
-    shared_ptr<RE2> pattern;
     __string_context();
 
     string_impl itos(int i);
@@ -551,9 +549,6 @@ namespace K3 {
     string_impl rtos(double d);
 
     string_impl atos(Address a);
-
-    F<Collection<R_elem<string_impl>>(const string_impl &)> regex_matcher(const string_impl&);
-    Collection<R_elem<string_impl>> regex_matcher_q4(const string_impl&);
 
     template <class S> S slice_string(const S& s, int x, int y) {
       return s.substr(x, y);

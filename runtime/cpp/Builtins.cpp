@@ -215,37 +215,6 @@ namespace K3 {
     return unit_t();
   }
 
-  // TODO fix copies related to base_str / std::sring conversion
-  F<Collection<R_elem<string_impl>>(const string_impl &)> __string_context::regex_matcher(const string_impl& regex) {
-    auto pattern = make_shared<RE2>(regex);
-    return [pattern] (const string_impl& in_str) {
-      std::string str = in_str;
-      re2::StringPiece input(str);
-      Collection<R_elem<string_impl>> results;
-      std::string s;
-      while(RE2::FindAndConsume(&input, *pattern, &s)) {
-        results.insert(string_impl(s));
-      }
-      return results;
-    };
-
-  }
-
-  Collection<R_elem<string_impl>> __string_context::regex_matcher_q4(const string_impl& in_str) {
-    if (!pattern) {
-      pattern = make_shared<RE2>("(?P<url>https?://[^\\s]+)");
-    }
-    std::string str = in_str;
-    re2::StringPiece input(str);
-    Collection<R_elem<string_impl>> results;
-    std::string s;
-    while(RE2::FindAndConsume(&input, *pattern, &s)) {
-      results.insert(string_impl(s));
-    }
-    return results;
-
-  }
-
   Vector<R_elem<double>> __standard_context::zeroVector(int i) {
     Vector<R_elem<double>> result;
     auto& c = result.getContainer();
