@@ -100,17 +100,23 @@ annotation SortedMap given type a,b
   provides lifted max : () -> option content
     with effects \_ -> R[self]
 
-  provides lifted min_with : (content -> ()) -> ()
-    with effects \lookupF -> [R[self]; lookupF content]
+  provides lifted min_with : (() -> a) -> (content -> a) -> a
+    with effects \noneF -> \someF -> [R[self]; noneF content; someF content]
 
-  provides lifted max_with : (content -> ()) -> ()
-    with effects \lookupF -> [R[self]; lookupF content]
+  provides lifted max_with : (() -> a) -> (content -> a) -> a
+    with effects \noneF -> \someF -> [R[self]; noneF content; someF content]
 
   provides lifted lower_bound : content -> option content
     with effects \elem -> [R[self]; R[elem]]
 
   provides lifted upper_bound : content -> option content
     with effects \elem -> [R[self]; R[elem]]
+
+  provides lifted lower_bound_with : content -> (() -> a) -> (content -> a) -> a
+    with effects \elem -> \noneF -> \someF -> [R[self]; R[elem]; noneF content; someF content]
+
+  provides lifted upper_bound_with : content -> (() -> a) -> (content -> a) -> a
+    with effects \elem -> \noneF -> \someF -> [R[self]; R[elem]; noneF content; someF content]
 
   // Range retrieval based on sort order.
   provides lifted filter_lt : content -> self
