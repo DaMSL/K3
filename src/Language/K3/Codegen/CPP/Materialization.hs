@@ -203,7 +203,7 @@ materializationE e@(Node (t :@: as) cs)
         ds <- dLookupAll (getUID e)
         return (Node (t :@: (EMaterialization ds:as)) [target, message])
 
-      EOperate OSeq -> do
+      EOperate _ -> do
         let [x, y] = cs
         x' <- withLocalDS [y] $ materializationE x
         y' <- materializationE y
