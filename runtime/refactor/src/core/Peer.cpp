@@ -42,7 +42,6 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
     ready_callback();
     while (!start_processing_) continue;
     statistics_.resize(ProgramContext::__trigger_names_.size());
-
     try {
       while (true) {
         processBatch();
@@ -93,7 +92,7 @@ void Peer::processBatch() {
     auto d = std::move(batch_[i]);
     logMessage(*d);
     #ifdef K3DEBUG
-    TriggerID tid = d->header_.trigger();
+    TriggerID tid = d->trigger_;
     std::chrono::high_resolution_clock::time_point start_time = std::chrono::high_resolution_clock::now();
     #endif
 
@@ -109,7 +108,7 @@ void Peer::processBatch() {
 
 void Peer::logMessage(const Dispatcher& d) {
 #ifdef K3DEBUG
-  string trig = ProgramContext::__triggerName(d.header_.trigger());
+  string trig = ProgramContext::__triggerName(d.trigger_);
   if (logger_->level() <= spdlog::level::trace) {
     logger_->trace() << "Received:: @" << trig;
   }
@@ -117,10 +116,10 @@ void Peer::logMessage(const Dispatcher& d) {
   if (json_messages_log_ && !json_final_state_only_) {
     *json_messages_log_ << message_counter_ << "|";
     *json_messages_log_ << K3::serialization::json::encode<Address>(
-                               d.header_.destination()) << "|";
+                               d.destination_) << "|";
     *json_messages_log_ << trig << "|";
     *json_messages_log_ << K3::serialization::json::encode<Address>(
-                               d.header_.source()) << "|";
+                               d.source_) << "|";
     *json_messages_log_ << d.jsonify() << "|";
     *json_messages_log_ << currentTime() << std::endl;
   }

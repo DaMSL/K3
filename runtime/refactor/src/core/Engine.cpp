@@ -59,30 +59,36 @@ void Engine::join() {
 
 }
 
-void Engine::send(const MessageHeader& header, unique_ptr<NativeValue> value,
+void Engine::send(const Address& src, const Address& dst, TriggerID trig, unique_ptr<NativeValue> value,
                   shared_ptr<Codec> codec) {
   if (!peers_) {
     throw std::runtime_error(
         "Engine send(): Can't send before peers_ is initialized");
   }
   if (logger_->level() >= spdlog::level::info) {
-    logger_->info() << "Message: " << header.source().toString() << " --> "
-                    << header.destination().toString() << " @"
-                    << ProgramContext::__triggerName(header.trigger());
+    logger_->info() << "Message: " << src.toString() << " --> "
+                    << dst.toString() << " @"
+                    << ProgramContext::__triggerName(trig);
   }
-  auto it = peers_->find(header.destination());
+  auto it = peers_->find(dst);
   if (local_sends_enabled_ && it != peers_->end()) {
     // Direct enqueue for local messages
-    auto d = it->second->getContext()->__getDispatcher(std::move(value), header.trigger());
+    auto d = it->second->getContext()->__getDispatcher(std::move(value), trig);
     #ifdef K3DEBUG
-    d->header_ = header;
+    d->trigger_ = trig;
+    d->source_ = src;
+    d->destination_ = dst;
     #endif
     it->second->enqueue(std::move(d));
   } else {
     // Serialize and send over the network, otherwise
     unique_ptr<PackedValue> pv = codec->pack(*value);
-    shared_ptr<NetworkMessage> m = make_shared<NetworkMessage>(header, std::move(pv));
-    network_manager_.sendInternal(m);
+    shared_ptr<NetworkMessage> m = make_shared<NetworkMessage>(trig, std::move(pv));
+    #ifdef K3DEBUG
+    m->source_ = src;
+    m->destination_ = dst;
+    #endif
+    network_manager_.sendInternal(dst, m);
   }
 }
 

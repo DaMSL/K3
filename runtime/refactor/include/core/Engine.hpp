@@ -26,8 +26,7 @@ class Engine {
   template <class Context> void run(const Options& opts);
   void stop();
   void join();
-  void send(const MessageHeader& m, unique_ptr<NativeValue> v,
-            shared_ptr<Codec> cdec);
+  void send(const Address& src, const Address& dst, TriggerID trig, unique_ptr<NativeValue> v, shared_ptr<Codec> cdec);
 
   // Utilities
   bool running();

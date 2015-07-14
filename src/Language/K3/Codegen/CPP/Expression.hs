@@ -332,12 +332,12 @@ inline e@(tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [tri
         classInst = R.Forward $ R.ScalarDecl (R.Name d) R.Inferred
                       (Just $ R.Call (R.Variable $ R.Specialized [R.Named className]
                                            (R.Qualified (R.Name "std" ) $ R.Name "make_unique")) [messageValue])
-        messageHeader = R.Call (R.Variable $ R.Name "MessageHeader") [R.Variable $ R.Name "me", av, R.Variable $ R.Name tIdName]
+        me = R.Variable $ R.Name "me"
     return (concat [te, ae, ve]
                  ++ [ classInst
                     , codec
-                    , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Name "send")) [
-                                    messageHeader,  R.Move $ R.Variable (R.Name d), (R.Variable $ R.Name d2) ]
+                    , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Name "send"))
+                                    [me, av, R.Variable $ R.Name tIdName,  R.Move $ R.Variable (R.Name d), (R.Variable $ R.Name d2) ]
                     ]
              , R.Initialization R.Unit [])
     where

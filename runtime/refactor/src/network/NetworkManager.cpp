@@ -91,16 +91,16 @@ void NetworkManager::listenExternal(shared_ptr<Peer> peer, Address listen_addr,
   listener->acceptConnection(e_handler);
 }
 
-void NetworkManager::sendInternal(shared_ptr<NetworkMessage> pm) {
+void NetworkManager::sendInternal(const Address& dst, shared_ptr<NetworkMessage> pm) {
   // Check for an existing connection, creating one if necessary
   shared_ptr<InternalOutgoingConnection> c =
-      internal_out_conns_->lookupOrCreate(pm->destination(), *io_service_);
+      internal_out_conns_->lookupOrCreate(dst, *io_service_);
 
   // Send, removing the connection upon error
   shared_ptr<InternalConnectionMap> conn_map = internal_out_conns_;
-  auto e_handler = make_shared<ErrorHandler>([conn_map, pm](boost_error ec) {
+  auto e_handler = make_shared<ErrorHandler>([conn_map, dst, pm](boost_error ec) {
     std::cout << "Send error: " << ec.message() << std::endl;
-    conn_map->erase(pm->destination());
+    conn_map->erase(dst);
   });
 
   c->send(pm, e_handler);

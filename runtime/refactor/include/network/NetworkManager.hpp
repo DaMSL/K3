@@ -55,7 +55,7 @@ class NetworkManager {
   void listenInternal(shared_ptr<Peer> p);
   void listenExternal(shared_ptr<Peer> p, Address listen_addr, TriggerID trig,
                       CodecFormat format);
-  void sendInternal(shared_ptr<NetworkMessage> pm);
+  void sendInternal(const Address& dst, shared_ptr<NetworkMessage> pm);
   void sendExternal(const Address& a, shared_ptr<PackedValue> pv);
 
   // Utilities

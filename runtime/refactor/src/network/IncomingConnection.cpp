@@ -98,9 +98,11 @@ void ExternalIncomingConnection::receiveMessages(
                   // handler
                   auto pv = make_unique<BufferPackedValue>(std::move(*payload_buf),
                                                       this_shared->format_);
-                  auto m = std::make_unique<Message>(this_shared->peer_addr_,
-                                                this_shared->peer_addr_,
-                                                this_shared->trigger_, std::move(pv));
+                  auto m = std::make_unique<Message>(this_shared->trigger_, std::move(pv));
+                  #ifdef K3DEBUG
+                  m->source_ = this_shared->peer_addr_;
+                  m->destination_ = this_shared->peer_addr_;
+                  #endif
                   (*m_handler)(std::move(m));
 
                   // Recurse to receive the next message

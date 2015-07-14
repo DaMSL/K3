@@ -7,30 +7,20 @@ namespace K3 {
 
 Message::Message() {}
 
-Message::Message(const Address& src, const Address& dst, TriggerID trig,
-                 unique_ptr<PackedValue> val)
-    : header_(src, dst, trig) {
+Message::Message(TriggerID trig,
+                 unique_ptr<PackedValue> val) {
+  trigger_ = trig;
   value_ = std::move(val);
 }
 
-Message::Message(const MessageHeader& head, unique_ptr<PackedValue> val)
-    : header_(head) {
-  value_ = std::move(val);
-}
-
-Address Message::source() const { return header_.source(); }
-
-Address Message::destination() const { return header_.destination(); }
-
-TriggerID Message::trigger() const { return header_.trigger(); }
 
 NetworkMessage::NetworkMessage() : Message() {
   payload_length_ = 0;
 }
 
-NetworkMessage::NetworkMessage(const MessageHeader& head,
+NetworkMessage::NetworkMessage(TriggerID t,
                                unique_ptr<PackedValue> v)
-    : Message(head, std::move(v)) {
+    : Message(t, std::move(v)) {
   payload_length_ = value_->length();
 }
 
@@ -41,16 +31,16 @@ shared_ptr<vector<asio::const_buffer>> NetworkMessage::outputBuffers() const {
 
   #ifdef K3DEBUG
   // Source Address
-  auto& s_ip = header_.source_.ip;
-  auto& s_port = header_.source_.port;
+  auto& s_ip = source_.ip;
+  auto& s_port = source_.port;
   result->push_back(
       asio::buffer(reinterpret_cast<const char*>(&s_ip), sizeof(s_ip)));
   result->push_back(
       asio::buffer(reinterpret_cast<const char*>(&s_port), sizeof(s_port)));
 
   // Destination Address
-  auto& d_ip = header_.destination_.ip;
-  auto& d_port = header_.destination_.port;
+  auto& d_ip = destination_.ip;
+  auto& d_port = destination_.port;
   result->push_back(
       asio::buffer(reinterpret_cast<const char*>(&d_ip), sizeof(d_ip)));
   result->push_back(
@@ -59,7 +49,7 @@ shared_ptr<vector<asio::const_buffer>> NetworkMessage::outputBuffers() const {
 
   // Trigger
   result->push_back(asio::buffer(
-      reinterpret_cast<const char*>(&header_.trigger_), sizeof(header_.trigger_)));
+      reinterpret_cast<const char*>(&trigger_), sizeof(trigger_)));
 
   // Packed Payload Length
   result->push_back(asio::buffer(
@@ -79,15 +69,15 @@ shared_ptr<vector<asio::mutable_buffer>> NetworkMessage::inputBuffers() {
 
   // Source Address
   #ifdef K3DEBUG
-  auto& s_ip = header_.source_.ip;
-  auto& s_port = header_.source_.port;
+  auto& s_ip = source_.ip;
+  auto& s_port = source_.port;
   result->push_back(asio::buffer(reinterpret_cast<char*>(&s_ip), sizeof(s_ip)));
   result->push_back(
       asio::buffer(reinterpret_cast<char*>(&s_port), sizeof(s_port)));
 
   // Destination Address
-  auto& d_ip = header_.destination_.ip;
-  auto& d_port = header_.destination_.port;
+  auto& d_ip = destination_.ip;
+  auto& d_port = destination_.port;
   result->push_back(asio::buffer(reinterpret_cast<char*>(&d_ip), sizeof(d_ip)));
   result->push_back(
       asio::buffer(reinterpret_cast<char*>(&d_port), sizeof(d_port)));
@@ -95,7 +85,7 @@ shared_ptr<vector<asio::mutable_buffer>> NetworkMessage::inputBuffers() {
 
   // Trigger
   result->push_back(
-      asio::buffer(reinterpret_cast<char*>(&header_.trigger_), sizeof(header_.trigger_)));
+      asio::buffer(reinterpret_cast<char*>(&trigger_), sizeof(trigger_)));
 
   // Payload Length
   result->push_back(
@@ -107,10 +97,10 @@ shared_ptr<vector<asio::mutable_buffer>> NetworkMessage::inputBuffers() {
 size_t NetworkMessage::networkHeaderSize() {
   size_t size = 0;
   #ifdef K3DEBUG
-  size += sizeof(header_.source_.ip) + sizeof(header_.source_.port) +
-         sizeof(header_.destination_.ip) + sizeof(header_.destination_.port);
+  size += sizeof(source_.ip) + sizeof(source_.port) +
+         sizeof(destination_.ip) + sizeof(destination_.port);
   #endif
-  size += sizeof(header_.trigger_) + sizeof(payload_length_);
+  size += sizeof(trigger_) + sizeof(payload_length_);
   return size;
 }
 

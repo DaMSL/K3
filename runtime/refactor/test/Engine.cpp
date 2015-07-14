@@ -296,9 +296,8 @@ void DummyContext::__patch(const YAML::Node& node) {
 
 unit_t DummyContext::processRole(const unit_t&) {
   if (role == "main") {
-    MessageHeader h(me, me, 3);
     static shared_ptr<Codec> codec = Codec::getCodec<int>(__internal_format_);
-    __engine_.send(h, make_unique<TNativeValue<unit_t>>(unit_t {}), codec);
+    __engine_.send(me, me, 3, make_unique<TNativeValue<unit_t>>(unit_t {}), codec);
   }
   return unit_t{};
 }
@@ -316,11 +315,9 @@ void DummyContext::stringTrigger(std::string s) {
 void DummyContext::mainTrigger(unit_t) {
   shared_ptr<Codec> codec = Codec::getCodec<int>(K3_INTERNAL_FORMAT);
   for (int i = 0; i < 100; i++) {
-    MessageHeader h(me, me, 1);
-    __engine_.send(h, make_unique<TNativeValue<int>>(i), codec);
+    __engine_.send(me, me, 1, make_unique<TNativeValue<int>>(i), codec);
   }
-  MessageHeader h(me, me, 4);
-  __engine_.send(h, make_unique<TNativeValue<unit_t>>(unit_t {}), codec);
+  __engine_.send(me, me, 4, make_unique<TNativeValue<unit_t>>(unit_t {}), codec);
   return;
 }
 

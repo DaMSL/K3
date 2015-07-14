@@ -14,14 +14,14 @@ class Message {
  public:
   Message();
   virtual ~Message() { }
-  Message(const Address&, const Address&, TriggerID, unique_ptr<PackedValue>);
-  Message(const MessageHeader&, unique_ptr<PackedValue>);
-  Address source() const;
-  Address destination() const;
-  TriggerID trigger() const;
+  Message(TriggerID, unique_ptr<PackedValue>);
 
   unique_ptr<PackedValue> value_;
-  MessageHeader header_;
+  TriggerID trigger_;
+  #ifdef K3DEBUG
+  Address source_;
+  Address destination_;
+  #endif
 };
 
 // Sub-class that can be directly read/written for network IO
@@ -29,11 +29,15 @@ class NetworkMessage : public Message {
  public:
   NetworkMessage();
   NetworkMessage (NetworkMessage&& other) {
-    header_ = std::move(other.header_);
-    value_ = std::move(other.value_); 
+    trigger_ = other.trigger_;
+    value_ = std::move(other.value_);
     payload_length_ = other.payload_length_;
+    #ifdef K3DEBUG
+    source_ = std::move(other.source_);
+    destination_ = std::move(other.destination_);
+    #endif
   }
-  NetworkMessage(const MessageHeader& head, unique_ptr<PackedValue> v);
+  NetworkMessage(TriggerID trig, unique_ptr<PackedValue> v);
   shared_ptr<std::vector<boost::asio::const_buffer>> outputBuffers() const;
   shared_ptr<std::vector<boost::asio::mutable_buffer>> inputBuffers();
   void setValue(unique_ptr<PackedValue> v);
