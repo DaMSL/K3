@@ -2191,24 +2191,24 @@ class SortedMap {
     return res;
   }
 
-  template <class F>
-  unit_t min_with(F f) const {
+  template<typename F, typename G>
+  auto min_with(F f, G g) const {
     auto it = container.begin();
-    if (it != container.end()) {
-      return f(it->second);
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(it->second);
     }
-
-    return unit_t {};
   }
 
-  template <class F>
-  unit_t max_with(F f) const {
+  template<typename F, typename G>
+  auto max_with(F f, G g) const {
     auto it = container.rbegin();
-    if (it != container.rend()) {
-      return f(it->second);
+    if (it == container.rend()) {
+      return f(unit_t {});
+    } else {
+      return g(it->second);
     }
-
-    return unit_t {};
   }
 
   std::shared_ptr<R> lower_bound(const R& rec) const {
@@ -2229,6 +2229,26 @@ class SortedMap {
       result = std::make_shared<R>(it->second);
     }
     return result;
+  }
+
+  template<typename R, typename F, typename G>
+  auto upper_bound_with(const R& rec, F f, G g) const {
+    auto it = container.upper_bound(rec.key);
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(it->second);
+    }
+  }
+
+  template<typename R, typename F, typename G>
+  auto lower_bound_with(const R& rec, F f, G g) const {
+    auto it = container.lower_bound(rec.key);
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(it->second);
+    }
   }
 
   SortedMap<R> filter_lt(const R& rec) const {
