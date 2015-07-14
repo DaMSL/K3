@@ -193,8 +193,8 @@ materializationE e@(Node (t :@: as) cs)
         return (Node (t :@: (EMaterialization decisions:as)) [f', x'])
 
       EOperate OSnd -> do
-        let [t, m] = cs
-        t' <- withLocalDS [m] $ materializationE t
+        let [h, m] = cs
+        h' <- withLocalDS [m] $ materializationE h
         m' <- materializationE m
 
         moveable <- isMoveableNow (getProvenance m')
@@ -202,7 +202,7 @@ materializationE e@(Node (t :@: as) cs)
         setDecision (getUID e) "" decision
         ds <- dLookupAll (getUID e)
 
-        return (Node (t :@: (EMaterialization ds:as)) [t', m'])
+        return (Node (t :@: (EMaterialization ds:as)) [h', m'])
 
       EOperate _ -> do
         let [x, y] = cs
