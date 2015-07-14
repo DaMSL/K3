@@ -386,6 +386,10 @@ inline e = do
 -- method of reification is indicated by the @RContext@ argument.
 reify :: RContext -> K3 Expression -> CPPGenM [R.Statement]
 
+reify RForget e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [Fold _, _])), _])) = do
+  (ee, _) <- inline e
+  return ee
+
 -- TODO: Is this the fix we need for the unnecessary reification issues?
 reify RForget e@(tag -> EOperate OApp) = do
     (ee, ev) <- inline e
