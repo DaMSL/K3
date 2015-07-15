@@ -120,9 +120,7 @@ struct convert<::K3::unit_t> {
     return node;
   }
 
-  static bool decode(const Node& node, K3::unit_t& addr) {
-    return true;
-  }
+  static bool decode(const Node& node, K3::unit_t& addr) { return true; }
 };
 
 }  // namespace YAML
@@ -146,9 +144,40 @@ struct yaml {
     YAML::Node node = YAML::Load(s);
     return node.as<T>();
   }
+
+  static vector<YAML::Node> parsePeers(const vector<string>& peer_configs) {
+    vector<YAML::Node> nodes;
+    for (auto config : peer_configs) {
+      if (config.length() == 0) {
+        throw std::runtime_error("parsePeers(): Empty YAML peer configuration");
+      } else if (config[0] != '{') {
+        for (auto n : YAML::LoadAllFromFile(config)) {
+          nodes.push_back(n);
+        }
+      } else {
+        nodes.push_back(YAML::Load(config));
+      }
+    }
+    return nodes;
+  }
+
+  static Address meFromYAML(const YAML::Node& peer_config) {
+    if (!peer_config.IsMap()) {
+      throw std::runtime_error("Engine run(): Invalid YAML. Not a map: " +
+                               YAML::Dump(peer_config));
+    }
+    if (!peer_config["me"]) {
+      string err = "Engine run(): Invalid YAML. Missing 'me': " +
+                   YAML::Dump(peer_config);
+      throw std::runtime_error(err);
+    }
+    auto addr = peer_config["me"].as<Address>();
+    return addr;
+  }
 };
 
 }  // namespace serialization
+
 }  // namespace K3
 
 #endif

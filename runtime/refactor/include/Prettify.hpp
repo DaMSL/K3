@@ -50,22 +50,23 @@ string_impl prettify_record(const R& r, F f) {
 template <class C, class F>
 string_impl prettify_collection(const C& c, F f) {
   std::ostringstream oss;
-  int i = 0;
-  oss << "[";
-  auto wrapped = [&f, &i, &oss] (auto& elem) {
-    if (i != 0) {
-      oss << ",";
-    }
-    oss << f(elem);
-    i++;
-    if (i == 10) {
-      oss << ",...";
-      return;
-    }
-  };
-  c.iterate(wrapped);
-  oss << "]";
-  return string_impl(oss.str());
+  //int i = 0;
+  //oss << "[";
+  //auto wrapped = [&f, &i, &oss] (auto& elem) {
+  //  if (i != 0) {
+  //    oss << ",";
+  //  }
+  //  oss << f(elem);
+  //  i++;
+  //  if (i == 10) {
+  //    oss << ",...";
+  //    return;
+  //  }
+  //};
+  //c.iterate(wrapped);
+  //oss << "]";
+  //return string_impl(oss.str());
+  return string_impl("<COLLECTION>"); // TODO(jbw) fix implementation: use iterator directly
 }
 
 template <class C, class F>

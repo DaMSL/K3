@@ -21,7 +21,6 @@ using K3::make_address;
 using K3::TNativeValue;
 using K3::NativeValue;
 using K3::StringPackedValue;
-using K3::MessageHeader;
 
 
 TEST(BOOST, unorderedmap) {

@@ -18,7 +18,6 @@
 #include "boost/serialization/nvp.hpp"
 #include "boost/serialization/array.hpp"
 #include "boost/functional/hash.hpp"
-
 #include "serialization/YAS.hpp"
 
 namespace K3 {
@@ -110,6 +109,7 @@ struct Address {
   unsigned short port;
 };
 
+
 class unit_t {
  public:
   template <class archive>
@@ -125,26 +125,6 @@ class unit_t {
 };
 
 typedef std::string Identifier;
-
-class MessageHeader {
- public:
-  MessageHeader() {}
-  MessageHeader(Address src, Address dest, TriggerID trig) {
-    source_ = src;
-    destination_ = dest;
-    trigger_ = trig;
-  }
-
-  Address source() const { return source_; }
-
-  Address destination() const { return destination_; }
-
-  TriggerID trigger() const { return trigger_; }
-
-  Address source_;
-  Address destination_;
-  TriggerID trigger_;
-};
 
 inline Address make_address(const std::string& host, unsigned short port) {
   return Address(boost::asio::ip::address::from_string(host).to_v4().to_ulong(),

@@ -210,11 +210,11 @@ main = do
 
     staticContextMembersPop <- generateStaticContextMembers
 
-    let engineDecl = R.Forward $ R.ScalarDecl (R.Name "engine") (R.Named $ R.Name "Engine") Nothing
+    let engineDecl = R.Ignore $ R.Call (R.Variable $ R.Name "Engine engine") [R.Variable $ R.Name "opt"]
 
     let runProgram = R.Ignore $ R.Call
                        (R.Project (R.Variable $ R.Name "engine") (R.Specialized [R.Named $ R.Name "__global_context"] (R.Name "run")))
-                       [ R.Variable $ R.Name "opt" ]
+                       [ ]
     let joinProgram = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "join")) []
 
     return [
@@ -240,7 +240,6 @@ requiredAliases = return
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "CodecFormat"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Engine"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "make_address"), Nothing)
-                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "MessageHeader"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Dispatcher"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "NativeValue"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "TNativeValue"), Nothing)

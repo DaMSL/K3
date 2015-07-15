@@ -109,7 +109,7 @@ void Peer::processBatch() {
 void Peer::logMessage(const Dispatcher& d) {
 #ifdef K3DEBUG
   string trig = ProgramContext::__triggerName(d.trigger_);
-  if (logger_->level() <= spdlog::level::trace) {
+  if (logger_->level() >= spdlog::level::trace) {
     logger_->trace() << "Received:: @" << trig;
   }
 
@@ -129,7 +129,7 @@ void Peer::logMessage(const Dispatcher& d) {
 
 void Peer::logGlobals(bool final) {
 #ifdef K3DEBUG
-  if (logger_->level() <= spdlog::level::trace) {
+  if (logger_->level() >= spdlog::level::trace) {
     std::ostringstream oss;
     oss << "Environment: " << std::endl;
     bool first = true;

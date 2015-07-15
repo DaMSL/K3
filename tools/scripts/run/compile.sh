@@ -16,5 +16,5 @@ dist/build/k3/k3 \
   --mpargs package-db=$SNDPATH --mpsearch src \
   compile \
     $CXX -l cpp \
-    --cpp-flags="-DBOOST_LOG_DYN_LINK -DYAS_SERIALIZE_BOOST_TYPES=1 -Iruntime/refactor/include/ -Iruntime/refactor/include/external ${K3_CXXFLAGS} -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -ldynamic -ftemplate-depth-1024 -O4" \
+    --cpp-flags="-DK3DEBUG -DBOOST_LOG_DYN_LINK -DYAS_SERIALIZE_BOOST_TYPES=1 -Iruntime/refactor/include/ -Iruntime/refactor/include/external ${K3_CXXFLAGS} -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -ldynamic -ftemplate-depth-1024 -O4" \
     -r runtime $@

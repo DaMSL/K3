@@ -24,6 +24,7 @@ using std::vector;
 using std::string;
 using std::tuple;
 using K3::Engine;
+using K3::Options;
 using K3::Codec;
 using K3::CodecFormat;
 using K3::Address;
@@ -36,13 +37,23 @@ using K3::PackedValue;
 using K3::TNativeValue;
 using K3::NativeValue;
 using K3::StringPackedValue;
-using K3::MessageHeader;
 using K3::unit_t;
 using std::unique_ptr;
 using K3::Dispatcher;
 using K3::TriggerID;
 using K3::EndOfProgramException;
 
+Options getOptions(bool local_sends) {
+  std::string config1 =
+      "{me: [127.0.0.1, 30000], buddy: [127.0.0.1, 40000], role: main}";
+  std::string config2 =
+      "{me: [127.0.0.1, 40000], buddy: [127.0.0.1, 30000], role: main}";
+
+  vector<std::string> configs;
+  configs.push_back(config1);
+  configs.push_back(config2);
+  return Options(configs, 0, "", false, local_sends);
+}
 
 class EngineTest : public ::testing::Test {
  public:
@@ -53,24 +64,13 @@ class EngineTest : public ::testing::Test {
     ProgramContext::__trigger_names_[3] = "MainTrigger";
     ProgramContext::__trigger_names_[4] = "StopTrigger";
 
-    std::string config1 = "{me: [127.0.0.1, 30000], buddy: [127.0.0.1, 40000], role: main}";
-    std::string config2 = "{me: [127.0.0.1, 40000], buddy: [127.0.0.1, 30000], role: main}";
-    vector<std::string> configs;
-    configs.push_back(config1);
-    configs.push_back(config2);
-
     addr1_ = make_address("127.0.0.1", 30000);
     addr2_ = make_address("127.0.0.1", 40000);
     external_addr_ = make_address("127.0.0.1", 50000);
-
-    peer_configs_ = K3::Options(configs, 0, "", false, true);
   }
 
   ~EngineTest() {}
-
-  Engine engine_;
-
-  K3::Options peer_configs_;
+  
   Address addr1_;
   Address addr2_;
   Address external_addr_;
@@ -336,31 +336,33 @@ TEST(Map, base_string) {
 }
 
 TEST_F(EngineTest, LocalSends) {
-  engine_.run<DummyContext>(peer_configs_);
+  Engine engine_(getOptions(true));
+  engine_.run<DummyContext>();
   engine_.join();
 
-  auto peer1 = engine_.getPeer(addr1_);
-  auto peer2 = engine_.getPeer(addr2_);
-  auto dc1 = std::dynamic_pointer_cast<DummyContext>(peer1->getContext());
-  auto dc2 = std::dynamic_pointer_cast<DummyContext>(peer2->getContext());
+  auto& c1 = engine_.getContext(addr1_);
+  auto& c2 = engine_.getContext(addr2_);
+  auto& dc1 = dynamic_cast<DummyContext&>(c1);
+  auto& dc2 = dynamic_cast<DummyContext&>(c2);
 
-  ASSERT_EQ(99, dc1->my_int_);
-  ASSERT_EQ(99, dc2->my_int_);
+  ASSERT_EQ(99, dc1.my_int_);
+  ASSERT_EQ(99, dc2.my_int_);
 }
 
 TEST_F(EngineTest, NetworkSends) {
-  engine_.toggleLocalSends(false);
-  engine_.run<DummyContext>(peer_configs_);
+  Engine engine_(getOptions(false));
+  engine_.run<DummyContext>();
   engine_.join();
 
-  auto peer1 = engine_.getPeer(addr1_);
-  auto peer2 = engine_.getPeer(addr2_);
-  auto dc1 = std::dynamic_pointer_cast<DummyContext>(peer1->getContext());
-  auto dc2 = std::dynamic_pointer_cast<DummyContext>(peer2->getContext());
+  auto& c1 = engine_.getContext(addr1_);
+  auto& c2 = engine_.getContext(addr2_);
+  auto& dc1 = dynamic_cast<DummyContext&>(c1);
+  auto& dc2 = dynamic_cast<DummyContext&>(c2);
 
-  ASSERT_EQ(99, dc1->my_int_);
-  ASSERT_EQ(99, dc2->my_int_);
+  ASSERT_EQ(99, dc1.my_int_);
+  ASSERT_EQ(99, dc2.my_int_);
 }
+
 //
 //TEST_F(EngineTest, ExternalMessages) {
 //  engine_.run<DummyContext>(peer_configs_);
@@ -379,7 +381,7 @@ TEST_F(EngineTest, NetworkSends) {
 //  }
 //
 //  for (int retries = 1000; retries > 0; retries--) {
-//    if (dc1->my_int_ == 99) {
+//    if (dc1.my_int_ == 99) {
 //      break;
 //    }
 //    std::this_thread::sleep_for(std::chrono::milliseconds(1));
