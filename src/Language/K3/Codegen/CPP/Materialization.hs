@@ -224,7 +224,7 @@ materializationE e@(Node (t :@: as) cs)
 
         let returnedProvenance =
               case getProvenance e of
-                (tag &&& children -> (PLambda _, [rp])) -> rp
+                (tag &&& children -> (PLambda _ _, [rp])) -> rp
                 _ -> error "Invalid provenance structure"
 
         readOnly <- not <$> hasWriteInP (P.pfvar x) b
@@ -519,7 +519,7 @@ isGlobalP ep =
 
 isMoveable :: K3 Provenance -> MaterializationM Bool
 isMoveable p = case tag p of
-                 PLambda _ -> return False
+                 PLambda _ _ -> return False
                  _ -> not <$> isGlobalP p
 
 isMoveableIn :: K3 Provenance -> K3 Expression -> MaterializationM Bool

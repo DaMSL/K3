@@ -356,7 +356,7 @@ fiseterrce env eOpt = env {ferrctxt = (ferrctxt env) {fcurrentExpr = eOpt}}
 
 {- Fresh pointer and binding construction. -}
 
--- | Self-referential provenance pointer construction
+-- | Self-referential effect pointer construction
 fifreshfp :: FIEnv -> Identifier -> UID -> (K3 Effect, FIEnv)
 fifreshfp fienv i u =
   let (nfcnt,j) = gensym $ fcnt fienv
@@ -369,13 +369,13 @@ fifreshbp fienv i u f =
       f' = fbvar $ FMatVar i u j
   in (f', fiextp (fienv {fcnt=nfcnt}) j f)
 
--- | Self-referential provenance pointer construction
+-- | Self-referential effect pointer construction
 --   This adds a new named pointer to both the named and pointer environments.
 fifreshs :: FIEnv -> Identifier -> UID -> (K3 Effect, FIEnv)
 fifreshs fienv n u =
   let (f, nenv) = fifreshfp fienv n u in (f, fiexte nenv n f)
 
--- | Provenance linked pointer construction.
+-- | Effect linked pointer construction.
 fifresh :: FIEnv -> Identifier -> UID -> K3 Effect -> (K3 Effect, FIEnv)
 fifresh fienv n u f =
   let (f', nenv) = fifreshbp fienv n u f in (f', fiexte nenv n f')
@@ -392,7 +392,7 @@ fifreshAs fienv n memN =
 
 {- Effect pointer helpers -}
 
--- | Retrieves the provenance value referenced by a named pointer
+-- | Retrieves the effect value referenced by a named pointer
 fiload :: FIEnv -> Identifier -> Except Text (K3 Effect)
 fiload fienv n = do
   f <- filkupe fienv n
@@ -400,7 +400,7 @@ fiload fienv n = do
     FBVar mv -> filkupp fienv $ fmvptr mv
     _ -> throwE $ PT.boxToString $ [T.pack "Invalid load on pointer"] %$ PT.prettyLines f
 
--- | Sets the provenance value referenced by a named pointer
+-- | Sets the effect value referenced by a named pointer
 fistore :: FIEnv -> Identifier -> UID -> K3 Effect -> Except Text FIEnv
 fistore fienv n u f = do
   f' <- filkupe fienv n
@@ -462,7 +462,7 @@ fisub fienv extInfOpt asStructure i df sf p = do
       return (env, subs, f')
 
     -- TODO: we can short-circuit descending into the body if we
-    -- are willing to stash the expression uid in a PLambda, using
+    -- are willing to stash the expression uid in a FLambda, using
     -- this uid to lookup i's presence in our precomputed closures.
     acyclicSub env _ subs _ f@(tag -> FLambda j) | i == j = return (env, subs, f)
 
@@ -970,7 +970,7 @@ inferEffects extInfOpt expr = do
 
     extInferM f = maybe (return f) (\(infF, infSt) -> get >>= return . infF f infSt) extInfOpt
 
-    topdown m _ (tag -> ELambda i) = m >> fiexteM i (ffvar i) >> fiextepM i (pfvar i) >> return iu
+    topdown m _ e@(tag -> ELambda i) = m >> uidOf e >>= \u -> fiexteM i (ffvar i) >> fiextepM i (pfvar i) >> ppushClosure u e >> return iu
     topdown m _ _ = m >> return iu
 
     -- Effect bindings reference lambda effects where necessary to ensure
@@ -1034,6 +1034,7 @@ inferEffects extInfOpt expr = do
       UID u    <- uidOf e
       clv      <- filkupcM u
       clf      <- mapM filkupepM clv >>= mapM (liftExceptM . chaseProvenance) >>= mapM (extInferM . fread)
+      ppopClosure (UID u) e
       popVars i
       rt "lambda" False e mv (Just fnone, flambda i (fseq clf) (fseq $ catMaybes ef) rf)
 
@@ -1188,6 +1189,23 @@ inferEffects extInfOpt expr = do
       mapM_ (mkRecFresh e u) $ zip3 bi tl subf
 
     freshRecM _ _ _ t _ = recTErrM t
+
+    -- | Closure variable management
+    ppushClosure (UID i) e = filkupcM i >>= \cli -> (provOf e >>= lambdaClmvs) >>= \clmvs -> (mapM_ liftClosureVar $ zip cli clmvs)
+    ppopClosure  (UID i) e = filkupcM i >>= mapM_ (lowerClosureVar e)
+
+    lambdaClmvs (tag -> PLambda _ clmvs) = return clmvs
+    lambdaClmvs _ = return []
+
+    liftClosureVar (n, mv) = filkupepM n >>= \p -> fidelepM n >> fiextepM n (pbvar mv)
+    lowerClosureVar e n = filkupepM n >>= \p -> unwrapClosure e p >>= \p' -> fidelepM n >> fiextepM n p'
+
+    unwrapClosure _ (tag -> PBVar mv) = filkupppM (pmvptr mv)
+    unwrapClosure e p = errorM $ PT.boxToString
+                           $ [T.pack "Invalid closure variable "] %+ PT.prettyLines p
+                          %$ [T.pack "at expr:"] %$ PT.prettyLines e
+
+
 
     -- Simlutaneously removes any effects on the given provenance symbols,
     -- and reduces effect structures
