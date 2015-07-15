@@ -4,8 +4,6 @@ include "Distributed/Transformers.k3"
 include "tpch/schema.k3"
 include "tpch/loader.k3"
 
-declare ignore : forall a. a -> () = \_ -> ()
-
 control TPCHBenchmarkWithoutMaster
                      [nodes                : expr,
                       loadExpr             : expr,

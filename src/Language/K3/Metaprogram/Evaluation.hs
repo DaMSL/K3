@@ -150,9 +150,19 @@ applyDAnnGens mp = mapProgram applyDAnnDecl applyDAnnMemDecl applyDAnnExprTree (
 
     applyDAnnDecl d = mapM dApplyAnn (annotations d) >>= rebuildNodeWithAnns d
 
-    applyDAnnMemDecl (Lifted      p n t eOpt anns) = mapM dApplyAnn anns >>= return . Lifted    p n t eOpt
-    applyDAnnMemDecl (Attribute   p n t eOpt anns) = mapM dApplyAnn anns >>= return . Attribute p n t eOpt
-    applyDAnnMemDecl (MAnnotation p n anns)        = mapM dApplyAnn anns >>= return . MAnnotation p n
+    applyDAnnMemDecl (Lifted p n t eOpt anns) = do
+      nanns <- mapM dApplyAnn anns
+      nt <- applyDAnnTypeTree t
+      neOpt <- maybe (return Nothing) (\e -> applyDAnnExprTree e >>= return . Just) eOpt
+      return $ Lifted p n nt neOpt nanns
+
+    applyDAnnMemDecl (Attribute p n t eOpt anns) = do
+      nanns <- mapM dApplyAnn anns
+      nt <- applyDAnnTypeTree t
+      neOpt <- maybe (return Nothing) (\e -> applyDAnnExprTree e >>= return . Just) eOpt
+      return $ Attribute p n nt neOpt nanns
+
+    applyDAnnMemDecl (MAnnotation p n anns) = mapM dApplyAnn anns >>= return . MAnnotation p n
 
     applyDAnnExpr ch n@(tag -> EConstant (CEmpty t)) = do
       nt    <- applyDAnnTypeTree t
@@ -199,37 +209,38 @@ applyDAnnGens mp = mapProgram applyDAnnDecl applyDAnnMemDecl applyDAnnExprTree (
 
     rebuildNodeWithAnns (Node (t :@: _) ch) anns = return $ Node (t :@: anns) ch
 
-applyDAnnotation :: AnnotationCtor a -> Identifier -> SpliceEnv -> K3 Type -> GeneratorM (Annotation a)
-applyDAnnotation aCtor annId sEnv t = do
-    (gEnv, sCtxt) <- get >>= return . (getGeneratorEnv &&& getSpliceContext)
-    nsEnv         <- evalBindings sCtxt sEnv
-    let postSCtxt = pushSCtxt nsEnv sCtxt
-    maybe (spliceLookupErr annId)
-          (expectSpliceAnnotation postSCtxt . ($ nsEnv))
-          $ lookupDSPGenE annId gEnv
+    applyDAnnotation :: AnnotationCtor a -> Identifier -> SpliceEnv -> K3 Type -> GeneratorM (Annotation a)
+    applyDAnnotation aCtor annId sEnv t = do
+        (gEnv, sCtxt) <- get >>= return . (getGeneratorEnv &&& getSpliceContext)
+        nsEnv         <- evalBindings sCtxt sEnv
+        let postSCtxt = pushSCtxt nsEnv sCtxt
+        maybe (spliceLookupErr annId)
+              (expectSpliceAnnotation postSCtxt . ($ nsEnv))
+              $ lookupDSPGenE annId gEnv
 
-  where
-    expectSpliceAnnotation sctxt (SRGenDecl p) = do
-      declGen <- p
-      case declGen of
-        SGContentDependent contentF -> contentF t >>= processSpliceDGen sctxt
-        _ -> processSpliceDGen sctxt declGen
+      where
+        expectSpliceAnnotation sctxt (SRGenDecl p) = do
+          declGen <- p
+          case declGen of
+            SGContentDependent contentF -> contentF t >>= processSpliceDGen sctxt
+            _ -> processSpliceDGen sctxt declGen
 
-    expectSpliceAnnotation _ _ = throwG "Invalid data annotation splice"
+        expectSpliceAnnotation _ _ = throwG "Invalid data annotation splice"
 
-    processSpliceDGen sctxt declGen = case declGen of
-      SGNamed n -> return $ aCtor n
-      SGDecl decl ->
-        case tag decl of
-          DDataAnnotation n _ _ -> do
-            ndecl <- bindDAnnVars sctxt decl
-            modifyGDeclsF_ (Right . addDGenDecl annId ndecl) >> return (aCtor n)
+        processSpliceDGen sctxt declGen = case declGen of
+          SGNamed n -> return $ aCtor n
+          SGDecl decl ->
+            case tag decl of
+              DDataAnnotation n tvs mems -> do
+                nmems <- mapM applyDAnnMemDecl mems
+                ndecl <- bindDAnnVars sctxt $ (DC.dataAnnotation n tvs nmems) @<- annotations decl
+                modifyGDeclsF_ (Right . addDGenDecl annId ndecl) >> return (aCtor n)
 
-          _ -> throwG $ boxToString $ ["Invalid data annotation splice"] %+ prettyLines decl
+              _ -> throwG $ boxToString $ ["Invalid data annotation splice"] %+ prettyLines decl
 
-      _ -> throwG $ boxToString $ ["Invalid splice data generator"]
+          _ -> throwG $ boxToString $ ["Invalid splice data generator"]
 
-    spliceLookupErr n = throwG $ unwords ["Could not find data macro", n]
+        spliceLookupErr n = throwG $ unwords ["Could not find data macro", n]
 
 
 applyCAnnGens :: K3 Declaration -> GeneratorM (K3 Declaration)

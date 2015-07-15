@@ -513,7 +513,7 @@ pisub pienv i dp dip sp dti sti = do
     -- TODO: we can short-circuit descending into the body if we
     -- are willing to stash the expression uid in a PLambda, using
     -- this uid to lookup i's presence in our precomputed closures.
-    acyclicSub env subs _ ti p@(tag -> PLambda j) | i == j
+    acyclicSub env subs _ ti p@(tag -> PLambda j _) | i == j
       = return (env, subs, p, p, ti)
 
     -- Avoid descent into materialization points of shadowed variables.
@@ -577,8 +577,8 @@ pisub pienv i dp dip sp dti sti = do
 {- Apply simplification -}
 
 chaseLambda :: PIEnv -> [PPtr] -> TrIndex -> K3 Provenance -> Except Text [(K3 Provenance, TrIndex)]
-chaseLambda _ _ ti p@(tag -> PLambda _)  = return [(p, ti)]
-chaseLambda _ _ ti p@(tag -> PFVar _)    = return [(p, ti)]
+chaseLambda _ _ ti p@(tag -> PLambda _ _)  = return [(p, ti)]
+chaseLambda _ _ ti p@(tag -> PFVar _)      = return [(p, ti)]
 
 -- The following two cases address partial application of externals and forward declarations.
 chaseLambda _ _ ti p@(tag -> PTemporary) = return [(p, ti)]
@@ -632,7 +632,7 @@ simplifyApply pienv eOpt lp argp lti argti = do
   where
     doSimplify uOpt argp' argti' (chacc, eacc) (lp', lti') =
       case tnc lp' of
-        (PLambda i, [bp]) ->
+        (PLambda i _, [bp]) ->
           case uOpt of
             Just uid -> do
               let (ip, neacc) = pifreshbp eacc i uid argp'
@@ -1114,9 +1114,9 @@ inferProvenance expr = do
 
     infer _ [ti] [p] e@(tag -> ELambda i) = do
       u <- uidOf e
-      popClosure u e
+      cmvs <- popClosure u e
       pideleM i
-      nrt "lambda" e (tising (truncateLast $ rootbv ti) ti) $ plambda i p
+      nrt "lambda" e (tising (truncateLast $ rootbv ti) ti) $ plambda i cmvs p
 
     -- Return a papply with three children: the lambda, argument, and return value provenance.
     infer _ [lti,argti] [lp, argp] e@(tag -> EOperate OApp) = do
@@ -1198,12 +1198,12 @@ inferProvenance expr = do
 
     -- | Closure variable management
     pushClosure su u@(UID i) e = pilkupcM i >>= mapM_ (liftClosureVar su u e)
-    popClosure       (UID i) e = pilkupcM i >>= mapM_ (lowerClosureVar e)
+    popClosure       (UID i) e = pilkupcM i >>= mapM  (lowerClosureVar e)
 
     liftClosureVar su u _ n = pilkupeM n >>= \p -> pideleM n >> varti su p >>= \pti -> freshM n u pti p
-    lowerClosureVar e n = pilkupeM n >>= \p -> unwrapClosure e p >>= \p' -> pideleM n >> piexteM n p'
+    lowerClosureVar e n = pilkupeM n >>= \p -> unwrapClosure e p >>= \(mv, p') -> pideleM n >> piexteM n p' >> return mv
 
-    unwrapClosure _ (tag -> PBVar mv) = pilkuppM (pmvptr mv)
+    unwrapClosure _ (tag -> PBVar mv) = pilkuppM (pmvptr mv) >>= return . (mv,)
     unwrapClosure e p = errorM $ PT.boxToString
                            $ [T.pack "Invalid closure variable "] %+ PT.prettyLines p
                           %$ [T.pack "at expr:"] %$ PT.prettyLines e
@@ -1313,7 +1313,7 @@ provOfType args t | isTFunction t =
     (TForall _, [ch])      -> provOfType args ch
     (TFunction, [_, retT]) -> let a = mkArg (length args + 1) in do
                                 (ti,p) <- provOfType (args++[a]) retT
-                                return (tising (zerobv $ length args) ti, plambda a p)
+                                return (tising (zerobv $ length args) ti, plambda a [] p)
     _ -> errorM $ PT.boxToString $ [T.pack "Invalid function type"] %+ PT.prettyLines t
   where mkArg i = "__arg" ++ show i
 
@@ -1351,7 +1351,7 @@ simplifyProvenance p = modifyTree simplify p
 
 tiOfExternalProv :: K3 Provenance -> PInfM TrIndex
 tiOfExternalProv p = aux 0 p
-  where aux sz (tnc -> (PLambda _, [b])) = sing sz b
+  where aux sz (tnc -> (PLambda _ _, [b])) = sing sz b
         aux sz (tnc -> (PMaterialize _, [b])) = sing sz b
         aux sz (Node _ ch) = mapM (aux sz) ch >>= return . tinode (zerobv sz)
 

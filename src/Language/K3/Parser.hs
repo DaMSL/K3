@@ -923,7 +923,7 @@ effectSignature asAttrMem = mkSigAnn =<< (keyword "with" *> keyword "effects" *>
     mkSigAnn (f, rOpt) = return $
       [DEffect $ Left f] ++ maybe [DProvenance $ Left $ provOfEffect [] f] (\p -> [DProvenance $ Left p]) rOpt
 
-    provOfEffect args (tnc -> (FS.FLambda i, [_, _, sf])) = PC.plambda i $ provOfEffect (args++[i]) sf
+    provOfEffect args (tnc -> (FS.FLambda i, [_, _, sf])) = PC.plambda i [] $ provOfEffect (args++[i]) sf
     provOfEffect args _ = PC.pderived $ map PC.pfvar args
 
 effTerm :: Bool -> K3Parser (K3 FS.Effect)
@@ -976,7 +976,7 @@ provTerm =  pApply pTerm <?> "provenance term"
 
     pInd = mkInd <$> (symbol "!" *> provTerm)
     pDerived = PC.pderived <$> (symbol "~" *> choice [provTerm >>= return . (:[]), parens (commaSep1 provTerm)])
-    pLambda  = PC.plambda <$> choice [iArrow "fun", iArrowS "\\"] <*> provTerm
+    pLambda  = (\a b -> PC.plambda a [] b) <$> choice [iArrow "fun", iArrowS "\\"] <*> provTerm
 
     pPrj = flip mkPrj <$> (dot        *> identifier)
     pRec = flip mkRec <$> (colon      *> identifier)

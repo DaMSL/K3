@@ -10,7 +10,7 @@ import Prelude hiding (concat, mapM, mapM_, or, and)
 import Control.Arrow
 
 import Control.Monad.Identity (Identity(..), runIdentity)
-import Control.Monad.State (StateT(..), MonadState(..), modify, runState)
+import Control.Monad.State (StateT(..), MonadState(..), modify)
 
 import Language.K3.Analysis.Core
 
@@ -24,7 +24,6 @@ import Language.K3.Analysis.SEffects.Inference (FIEnv(..))
 
 import Language.K3.Codegen.CPP.Materialization.Hints
 
-import Data.Functor
 import Data.Traversable
 import Data.Foldable
 
@@ -130,7 +129,10 @@ optimizeMaterialization (p, f) d = fst $ runMaterializationM (materializationD d
 materializationD :: K3 Declaration -> MaterializationM (K3 Declaration)
 materializationD (Node (d :@: as) cs)
   = case d of
-      DGlobal i t me -> setCurrentGlobal True >> traverse materializationE me >>= \me' -> Node (DGlobal i t me' :@: as) <$> cs'
+      DGlobal i t me -> do
+        setCurrentGlobal True
+        me' <- traverse materializationE me
+        Node (DGlobal i t me' :@: as) <$> cs'
       DTrigger i t e -> materializationE e >>= \e' -> Node (DTrigger i t e' :@: as) <$> cs'
       DRole i -> Node (DRole i :@: as) <$> cs'
       _ -> Node (d :@: as) <$> cs'
@@ -153,181 +155,169 @@ materializationE e@(Node (t :@: as) cs)
         return (Node (t :@: (EMaterialization ds:as)) fs')
 
       EOperate OApp -> do
-             [f, x] <- mapM materializationE cs
+        let [f, x] = cs
+        f' <- withLocalDS [x] $ materializationE f
+        x' <- materializationE x
 
-             let applicationEffects = getFStructure e
-             let executionEffects = getEffects e
-             let (returnEffects, formalParameter) =
-                   case applicationEffects of
-                     (tag &&& children -> (FApply (Just fmv), [returnEffects])) -> (returnEffects, fmv)
-                     _ -> error "Invalid effect structure"
-             {-
-             let (executionEffects, returnEffects, formalParameter) =
-                   case applicationEffects of
-                     (tag &&& children -> (FApply (Just fmv), [_, executionEffects, returnEffects])) ->
-                         (executionEffects, returnEffects, fmv)
-                     _ -> error "Invalid effect structure"
-             -}
+        let applicationEffects = getFStructure e
+        let executionEffects = getEffects e
+        let formalParameter =
+              case applicationEffects of
+                (tag -> FApply (Just fmv)) -> fmv
+                _ -> error "Invalid effect structure"
 
-             conservativeDoMoveLocal <- hasWriteInIF (fmvn formalParameter) executionEffects
+        conservativeDoMoveLocal <- hasWriteInIF (fmvn formalParameter) executionEffects
 
-             conservativeDoMoveReturn <-
-               case f of
-                 (tag &&& children -> (ELambda i, [f'])) ->
-                   case f' of
-                     (tag -> ELambda _) -> do
-                       let f'id = getUID f'
-                       f'd <- dLookup f'id i
-                       return $ inD f'd == Moved
-                     _ -> return False
-                 _ -> return False
+        conservativeDoMoveReturn <-
+          case f' of
+            (tag &&& children -> (ELambda i, [f''])) ->
+              case f'' of
+                (tag -> ELambda _) -> do
+                  let f''id = getUID f''
+                  f''d <- dLookup f''id i
+                  return $ inD f''d == Moved
+                _ -> return False
+            _ -> return False
 
-             moveable <- isMoveableNow (getProvenance x)
+        moveable <- isMoveableNow (getProvenance x)
 
-             let applicationDecision d =
-                   if (conservativeDoMoveLocal || conservativeDoMoveReturn) && moveable
-                     then d { inD = Moved }
-                     else d
+        let applicationDecision d =
+              if (conservativeDoMoveLocal || conservativeDoMoveReturn) && moveable
+                then d { inD = Moved }
+                else d
 
-             setDecision (getUID e) "" $ applicationDecision defaultDecision
+        setDecision (getUID e) "" $ applicationDecision defaultDecision
 
-             decisions <- dLookupAll (getUID e)
+        decisions <- dLookupAll (getUID e)
 
-             return (Node (t :@: (EMaterialization decisions:as)) [f, x])
+        return (Node (t :@: (EMaterialization decisions:as)) [f', x'])
 
       EOperate OSnd -> do
-        [target, message] <- mapM materializationE cs
-        moveable <- isMoveableNow (getProvenance message)
+        let [h, m] = cs
+        h' <- withLocalDS [m] $ materializationE h
+        m' <- materializationE m
+
+        moveable <- isMoveableNow (getProvenance m')
         let decision = if moveable then defaultDecision { inD = Moved } else defaultDecision
         setDecision (getUID e) "" decision
         ds <- dLookupAll (getUID e)
-        return (Node (t :@: (EMaterialization ds:as)) [target, message])
 
-      EOperate OSeq -> do
+        return (Node (t :@: (EMaterialization ds:as)) [h', m'])
+
+      EOperate _ -> do
         let [x, y] = cs
         x' <- withLocalDS [y] $ materializationE x
         y' <- materializationE y
         return $ (Node (t :@: as)) [x', y']
 
       ELambda x -> do
-             cg <- currentGlobal <$> get
-             closureSymbols <- getClosureSymbols (getUID e)
+        cg <- currentGlobal <$> get
+        closureSymbols <- getClosureSymbols (getUID e)
 
-             when cg $ case tag (head cs) of
-                         ELambda _ -> return ()
-                         otherwise -> setCurrentGlobal False
+        when cg $ case tag (head cs) of
+                    ELambda _ -> return ()
+                    _ -> setCurrentGlobal False
 
-             [b] <- withLocalBindings (x:closureSymbols) (getUID e) $ mapM materializationE cs
+        [b] <- withLocalBindings (x:closureSymbols) (getUID e) $ mapM materializationE cs
 
-             setCurrentGlobal cg -- Probably not necessary to restore.
+        setCurrentGlobal cg
 
-             let lambdaEffects = getEffects e
-             let (deferredEffects, returnedEffects)
-                   = case lambdaEffects of
-                       (tag &&& children -> (FLambda _, [_, deferredEffects, returnedEffects]))
-                         -> (deferredEffects, returnedEffects)
-                       _ -> error "Invalid effect structure"
+        let returnedProvenance =
+              case getProvenance e of
+                (tag &&& children -> (PLambda _ _, [rp])) -> rp
+                _ -> error "Invalid provenance structure"
 
-             let lambdaProvenance = getProvenance e
+        readOnly <- not <$> hasWriteInP (P.pfvar x) b
 
-             let returnedProvenance =
-                   case getProvenance e of
-                     (tag &&& children -> (PLambda _, [returnedProvenance])) -> returnedProvenance
-                     _ -> error "Invalid provenance structure"
+        let nrvoProvenance q =
+              case q of
+                (tag -> PFVar _) -> return True
+                (tag -> PBVar _) -> not <$> isGlobalP q
+                (tag -> PSet) -> anyM nrvoProvenance (children q)
+                _ -> return False
 
-             readOnly <- not <$> hasWriteInP (P.pfvar x) b
+        nrvo <- nrvoProvenance returnedProvenance
 
-             let nrvoProvenance q =
-                   case q of
-                     (tag -> PFVar _) -> return True
-                     (tag -> PBVar _) -> not <$> isGlobalP q
-                     (tag -> PSet) -> anyM nrvoProvenance (children q)
-                     _ -> return False
+        let readOnlyDecision d = if readOnly then d { inD = ConstReferenced } else d
+        let nrvoDecision d = if nrvo then d { outD = Moved } else d
 
-             nrvo <- nrvoProvenance returnedProvenance
+        setDecision (getUID e) x $ readOnlyDecision $ nrvoDecision $ defaultDecision
 
-             let readOnlyDecision d = if readOnly then d { inD = ConstReferenced } else d
-             let nrvoDecision d = if nrvo then d { outD = Moved } else d
+        forM_ closureSymbols $ \s -> do
+          let innerProxyProvenance = P.pbvar $ PMatVar { pmvn = s, pmvloc = UID (getUID e), pmvptr = -1}
 
-             setDecision (getUID e) x $ readOnlyDecision $ nrvoDecision $ defaultDecision
-
-             forM_ closureSymbols $ \s -> do
-               let innerProxyProvenance = P.pbvar $ PMatVar { pmvn = s, pmvloc = UID (getUID e), pmvptr = -1}
-
-               sc <- scopeMap <$> get
-               outerBindUID <- UID . fromMaybe (error $ (show s) ++ " " ++ (show sc)) <$> getBindingUID s
-               let outerProxyProvenance = P.pbvar $ PMatVar { pmvn = s, pmvloc = outerBindUID, pmvptr = -1}
-               closureHasWrite <- hasWriteInP innerProxyProvenance b
-               moveable <- isMoveableNow outerProxyProvenance
-               let closureDecision d =
-                     if closureHasWrite
-                       then if moveable
-                              then d { inD = Moved }
-                              else d { inD = Copied }
-                       else if cg
-                              then d { inD = Moved }
-                              else d { inD = Referenced }
-               setDecision (getUID e) s $ closureDecision defaultDecision
-             decisions <- dLookupAll (getUID e)
-             return $ (Node (t :@: (EMaterialization decisions:as)) [b])
+          sc <- scopeMap <$> get
+          outerBindUID <- UID . fromMaybe (error $ (show s) ++ " " ++ (show sc)) <$> getBindingUID s
+          let outerProxyProvenance = P.pbvar $ PMatVar { pmvn = s, pmvloc = outerBindUID, pmvptr = -1}
+          closureHasWrite <- hasWriteInP innerProxyProvenance b
+          moveable <- isMoveableNow outerProxyProvenance
+          let closureDecision d =
+                if closureHasWrite
+                  then if moveable
+                         then d { inD = Moved }
+                         else d { inD = Copied }
+                  else if cg
+                         then d { inD = Moved }
+                         else d { inD = Referenced }
+          setDecision (getUID e) s $ closureDecision defaultDecision
+        decisions <- dLookupAll (getUID e)
+        return $ (Node (t :@: (EMaterialization decisions:as)) [b])
 
       EBindAs b -> do
-             let [x, y] = cs
-             x' <- withLocalDS [y] (materializationE x)
+        let [x, y] = cs
+        x' <- withLocalDS [y] (materializationE x)
 
-             let newBindings = case b of { BIndirection i -> [i]; BTuple is -> is; BRecord iis -> snd (unzip iis) }
-             y' <- withLocalBindings newBindings (getUID e) $ materializationE y
+        let newBindings = case b of { BIndirection i -> [i]; BTuple is -> is; BRecord iis -> snd (unzip iis) }
+        y' <- withLocalBindings newBindings (getUID e) $ materializationE y
 
-             let xp = getProvenance x
-             readMention <- hasReadInP xp y'
-             writeMention <- hasWriteInP xp y'
+        let xp = getProvenance x
+        writeMention <- hasWriteInP xp y'
 
-             let referenceBind d = if not writeMention then d { inD = Referenced, outD = Referenced } else d
+        let referenceBind d = if not writeMention then d { inD = Referenced, outD = Referenced } else d
 
-             case b of
-               BIndirection i -> setDecision (getUID e) i $ referenceBind defaultDecision
-               BTuple is -> mapM_ (\i -> setDecision (getUID e) i $ referenceBind defaultDecision) is
-               BRecord iis -> mapM_ (\(_, i) -> setDecision (getUID e) i $ referenceBind defaultDecision) iis
+        case b of
+          BIndirection i -> setDecision (getUID e) i $ referenceBind defaultDecision
+          BTuple is -> mapM_ (\i -> setDecision (getUID e) i $ referenceBind defaultDecision) is
+          BRecord iis -> mapM_ (\(_, i) -> setDecision (getUID e) i $ referenceBind defaultDecision) iis
 
-             decisions <- dLookupAll (getUID e)
-             return (Node (t :@: (EMaterialization decisions:as)) [x', y'])
+        decisions <- dLookupAll (getUID e)
+        return (Node (t :@: (EMaterialization decisions:as)) [x', y'])
 
       ECaseOf i -> do
-             let [x, s, n] = cs
-             x' <- withLocalDS [s, n] (materializationE x)
-             s' <- withLocalBindings [i] (getUID e) $ materializationE s
-             n' <- materializationE n
+        let [x, s, n] = cs
+        x' <- withLocalDS [s, n] (materializationE x)
+        s' <- withLocalBindings [i] (getUID e) $ materializationE s
+        n' <- materializationE n
 
-             let xp = getProvenance x
+        let xp = getProvenance x
 
-             -- TODO: Slightly conservative, although it takes reasonably unusual code to trigger
-             -- those cases.
-             noMention <- do
-               sMention <- (||) <$> hasReadInP xp s' <*> hasWriteInP xp s'
-               nMention <- (||) <$> hasReadInP xp n' <*> hasWriteInP xp n'
+        -- TODO: Slightly conservative, although it takes reasonably unusual code to trigger
+        -- those cases.
+        noMention <- do
+          sMention <- (||) <$> hasReadInP xp s' <*> hasWriteInP xp s'
+          nMention <- (||) <$> hasReadInP xp n' <*> hasWriteInP xp n'
 
-               return $ not (sMention || nMention)
+          return $ not (sMention || nMention)
 
-             let referenceBind d = if noMention then d { inD = Referenced, outD = Referenced } else d
+        let referenceBind d = if noMention then d { inD = Referenced, outD = Referenced } else d
 
-             setDecision (getUID e) i $ referenceBind defaultDecision
-             decisions <- dLookupAll (getUID e)
-             return (Node (t :@: (EMaterialization decisions:as)) [x', s', n'])
+        setDecision (getUID e) i $ referenceBind defaultDecision
+        decisions <- dLookupAll (getUID e)
+        return (Node (t :@: (EMaterialization decisions:as)) [x', s', n'])
 
       ELetIn i -> do
-             let [x, b] = cs
-             (x', d) <- withLocalDS [b] $ do
-               x'' <- materializationE x
+        let [x, b] = cs
+        (x', d) <- withLocalDS [b] $ do
+          x'' <- materializationE x
+          m <- isMoveableNow (getProvenance x'')
+          return (x'', if m then defaultDecision { inD = Moved } else defaultDecision)
 
-               -- Decision processing for the initializer move needs to be performed inside the
-               -- context of the extra downstream.
-               m <- isMoveableNow (getProvenance x'')
-               return (x'', if m then defaultDecision { inD = Moved } else defaultDecision)
-             b' <- withLocalBindings [i] (getUID e) $ materializationE b
+        b' <- withLocalBindings [i] (getUID e) $ materializationE b
 
-             setDecision (getUID e) i d
-             decisions <- dLookupAll (getUID e)
-             return (Node (t :@: (EMaterialization decisions:as)) [x', b'])
+        setDecision (getUID e) i d
+        decisions <- dLookupAll (getUID e)
+        return (Node (t :@: (EMaterialization decisions:as)) [x', b'])
+
       _ -> (Node (t :@: as)) <$> mapM materializationE cs
 
 -- Queries
@@ -425,7 +415,7 @@ hasWriteInI ident expr =
              Copied -> return False
 
     (tag &&& children -> (ELetIn i, [e, _])) | i == ident -> hasWriteInI ident e
-    (tag &&& children -> (ELetIn j, [e, b])) -> do
+    (tag &&& children -> (ELetIn _, [e, b])) -> do
       eHasWriteInI <- hasWriteInI ident e
       bHasWriteInI <- hasWriteInI ident b
       (||) <$> hasWriteInI ident e <*> hasWriteInI ident b
@@ -449,7 +439,7 @@ pVarName p =
 hasWriteInP :: K3 Provenance -> K3 Expression -> MaterializationM Bool
 hasWriteInP prov expr =
   case expr of
-    (tag &&& children -> (ELambda i, [b])) -> do
+    (tag &&& children -> (ELambda _, [b])) -> do
       closureDecisions <- dLookupAll (getUID expr)
       let writeInClosure = maybe False (\j -> maybe False (\d -> inD d == Moved) $ M.lookup j closureDecisions)
                            (pVarName prov)
@@ -497,7 +487,7 @@ hasWriteInP prov expr =
 hasReadInP :: K3 Provenance -> K3 Expression -> MaterializationM Bool
 hasReadInP prov expr =
   case expr of
-    (tag &&& children -> (ELambda i, [b])) -> do
+    (tag &&& children -> (ELambda _, [b])) -> do
       closureDecisions <- dLookupAll (getUID expr)
       let readInClosure = maybe False (\j -> maybe False (\d -> inD d == Copied) $ M.lookup j closureDecisions)
                            (pVarName prov)
@@ -529,7 +519,7 @@ isGlobalP ep =
 
 isMoveable :: K3 Provenance -> MaterializationM Bool
 isMoveable p = case tag p of
-                 PLambda _ -> return False
+                 PLambda _ _ -> return False
                  _ -> not <$> isGlobalP p
 
 isMoveableIn :: K3 Provenance -> K3 Expression -> MaterializationM Bool

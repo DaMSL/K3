@@ -28,8 +28,6 @@ typedef rk_record = {
 typedef uv_bag = collection uv_record @Collection
 typedef rk_bag = collection rk_record @Collection
 
-declare ignore : forall a. a -> () = \_ -> ()
-
 declare master    : address = 127.0.0.1:40000
 declare peers_seq : collection {addr: address} @Seq
 

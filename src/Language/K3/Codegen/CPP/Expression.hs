@@ -12,13 +12,10 @@ import Control.Arrow ((&&&))
 import Control.Monad.State
 
 import Data.Foldable
-import Data.Functor
 import Data.List (nub, sortBy, (\\))
 import Data.Maybe
 import Data.Ord (comparing)
 import Data.Tree
-
-import Safe
 
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -95,13 +92,35 @@ getMDecisions e = case e @~ isEMaterialization of
                    Just (EMaterialization ms) -> ms
                    Nothing -> M.empty
 
--- Helper to avoid cluttering unnecessary moves when they oul
-move e a = case e of
-             (tag -> EConstant _) -> a
-             (tag -> EOperate _) -> a
-             (tag -> ETuple) -> a
-             (tag -> ERecord _) -> a
-             _ -> R.Move a
+-- Move heuristic to avoid code clutter.
+move :: K3 Type -> K3 Expression -> Bool
+move t e = moveByTypeForm t && moveByExprForm e
+ where
+  moveByTypeForm :: K3 Type -> Bool
+  moveByTypeForm t =
+    case t of
+      (tag -> TString) -> True
+      (tag &&& children -> (TTuple, cs)) -> any moveByTypeForm cs
+      (tag &&& children -> (TRecord _, cs)) -> any moveByTypeForm cs
+      (tag -> TCollection) -> True
+      _ -> False
+
+  moveByExprForm :: K3 Expression -> Bool
+  moveByExprForm e =
+    case e of
+      (tag -> EVariable _) -> True
+      (tag -> EProject _) -> True
+      (tag -> ELetIn _) -> True
+      (tag -> EBindAs _) -> True
+      (tag -> ECaseOf _) -> True
+      (tag -> EIfThenElse) -> True
+      _ -> False
+
+gMoveByE :: K3 Expression -> R.Expression -> R.Expression
+gMoveByE e x = fromMaybe x (getKTypeP e >>= \t -> return $ if move t e then R.Move x else x)
+
+gMoveByDE :: (Decision -> Method) -> Decision -> K3 Expression -> R.Expression -> R.Expression
+gMoveByDE m d e x = if m d == Moved then gMoveByE e x else x
 
 -- | Realization of unary operators.
 unarySymbol :: Operator -> CPPGenM Identifier
@@ -182,7 +201,7 @@ inline e@(tag &&& children -> (ERecord is, cs)) = do
     mtrlzns <- case e @~ isEMaterialization of
                  Just (EMaterialization ms) -> return ms
                  Nothing -> return $ M.fromList [(i, defaultDecision) | i <- is]
-    let vs' = [maybe v (\m -> if inD m == Moved then move c v else v) (M.lookup i mtrlzns) | c <- cs | v <- vs | i <- is]
+    let vs' = [maybe v (\m -> gMoveByDE inD m c v) (M.lookup i mtrlzns) | c <- cs | v <- vs | i <- is]
     let vs'' = snd . unzip . sortBy (comparing fst) $ zip is vs'
     t <- getKType e
     case t of
@@ -250,7 +269,7 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
 
   pass <- case inD (fromJust (M.lookup "" outerMtrlzn)) of
             Copied -> return zv
-            Moved -> return (move z zv)
+            Moved -> return (gMoveByE z zv)
 
   let isVectorizeProp  = \case { EProperty (ePropertyName -> "Vectorize")  -> True; _ -> False }
   let isInterleaveProp = \case { EProperty (ePropertyName -> "Interleave") -> True; _ -> False }
@@ -299,7 +318,7 @@ inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
 
     pass <- case inD (fromJust (M.lookup "" mtrlzns)) of
               Copied -> return av
-              Moved -> return (move a av)
+              Moved -> return (gMoveByE a av)
 
     c <- call fv pass cargs
     return (fe ++ ae, c)
@@ -323,7 +342,7 @@ inline e@(tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [tri
     (te, _)  <- inline trig
     (ae, av)  <- inline addr
     (ve, vv)  <- inline val
-    let messageValue = let m = M.findWithDefault defaultDecision "" mtrlzns in if inD m == Moved then move val vv else vv
+    let messageValue = let m = M.findWithDefault defaultDecision "" mtrlzns in gMoveByDE inD m val vv 
     trigTypes <- getKType val >>= genCType
     let codec = R.Forward $ R.ScalarDecl (R.Name d2) (R.Static R.Inferred) $ Just $
                R.Call (R.Variable $ R.Qualified (R.Name "Codec") (R.Specialized [trigTypes] (R.Name "getCodec")))
@@ -369,6 +388,10 @@ inline e = do
 -- | The generic function to generate code for an expression whose result is to be reified. The
 -- method of reification is indicated by the @RContext@ argument.
 reify :: RContext -> K3 Expression -> CPPGenM [R.Statement]
+
+reify RForget e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [Fold _, _])), _])) = do
+  (ee, _) <- inline e
+  return ee
 
 -- TODO: Is this the fix we need for the unnecessary reification issues?
 reify RForget e@(tag -> EOperate OApp) = do
@@ -544,9 +567,10 @@ reify r e = do
     (effects, value) <- inline e
     reification <- case r of
         RForget -> return []
-        RName k b -> return [R.Assignment (R.Variable $ R.Name k) (if fromMaybe False b then move e value else value)]
+        RName k b -> return [R.Assignment (R.Variable $ R.Name k)
+                             (if fromMaybe False b then gMoveByE e value else value)]
         RDecl i b -> return [R.Forward $ R.ScalarDecl (R.Name i) (R.Inferred)
-                             (Just $ if fromMaybe False b then move e value else value)]
+                             (Just $ if fromMaybe False b then gMoveByE e value else value)]
         RReturn b -> return $ [R.Return $ (if b then R.Move else id) value]
         RSplice _ -> throwE $ CPPGenE "Unsupported reification by splice."
     return $ effects ++ reification
