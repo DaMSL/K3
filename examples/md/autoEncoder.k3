@@ -250,8 +250,8 @@ declare slaveBackPropagation : () -> () = \_ -> (
 	)) 
 	);
     /*
-    print "weights : ";
-    weight.iterate(\w -> print (rtos (w.elem)));
+    //print "weights : ";
+    //weight.iterate(\w -> print (rtos (w.elem)));
     print "target values :";
     targetValue.iterate(\tv -> print (rtos tv.elem));
     print "Output values : ";
@@ -260,7 +260,8 @@ declare slaveBackPropagation : () -> () = \_ -> (
     deltaValue.iterate(\dv -> print (rtos dv.elem));
     print "z values : ";
     zValue.iterate(\zv -> print (rtos zv.elem));
-    
+    */
+
   //calculate the hidden layer deltas
 	((xrange 2 (topology.size ()+1) ).iterate (\i -> (
 	  let presentLayerId = (  (topology.size ()) - i.i) in
@@ -430,4 +431,3 @@ feed masterSource |> startMaster
 
 source slaveSource1 :  {i: real , j: real , k : real}  = file "f1.csv" csv 
 feed slaveSource1 |> storeData
-
