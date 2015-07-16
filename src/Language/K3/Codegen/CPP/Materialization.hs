@@ -29,7 +29,7 @@ import Data.Foldable
 
 import Data.Maybe (fromMaybe, maybeToList, fromJust)
 import Data.Ord (comparing)
-import Data.List (elemIndex, sortBy, tails)
+import Data.List (elemIndex, sortBy, tails, zip4)
 import Data.Tree
 
 import qualified Data.Map as M
@@ -201,18 +201,18 @@ materializationE e@(Node (t :@: as) cs)
               mn <- isMoveableNow (getProvenance c)
               return (if mn then defaultDecision { inD = Moved } else defaultDecision, rf, mn)
         let (is', cs') = unzip . sortBy (comparing fst) $ zip is cs
-        (decisions, fs, mns) <- unzip3 <$> zipWithM decisionForField cs' (tail $ tails cs')
+        (decisions, fs, mns) <- unzip3 <$> zipWithM decisionForField (reverse cs') (reverse $ tail $ tails cs')
         zipWithM_ (setDecision (getUID e)) is' decisions
         ds <- dLookupAll (getUID e)
-        let fs' = map (\i -> fs !! (fromJust $ elemIndex i is')) is
+        let fs' = map (\i -> fs !! (fromJust $ elemIndex i $ reverse is')) is
         eds <- downstreams <$> get
         say (getUID e) $ MRRecord $ zip4 is' mns (map (map getUID . (eds ++)) $ tail $ tails cs') decisions
         return (Node (t :@: (EMaterialization ds:as)) fs')
 
       EOperate OApp -> do
         let [f, x] = cs
-        f' <- withLocalDS [x] $ materializationE f
         x' <- materializationE x
+        f' <- withLocalDS [x] $ materializationE f
 
         let applicationEffects = getFStructure e
         let executionEffects = getEffects e
@@ -249,8 +249,8 @@ materializationE e@(Node (t :@: as) cs)
 
       EOperate OSnd -> do
         let [h, m] = cs
-        h' <- withLocalDS [m] $ materializationE h
         m' <- materializationE m
+        h' <- withLocalDS [m] $ materializationE h
 
         moveable <- isMoveableNow (getProvenance m')
         let decision = if moveable then defaultDecision { inD = Moved } else defaultDecision
@@ -261,8 +261,8 @@ materializationE e@(Node (t :@: as) cs)
 
       EOperate _ -> do
         let [x, y] = cs
-        x' <- withLocalDS [y] $ materializationE x
         y' <- materializationE y
+        x' <- withLocalDS [y] $ materializationE x
         return $ (Node (t :@: as)) [x', y']
 
       ELambda x -> do
@@ -324,10 +324,9 @@ materializationE e@(Node (t :@: as) cs)
 
       EBindAs b -> do
         let [x, y] = cs
-        x' <- withLocalDS [y] (materializationE x)
-
         let newBindings = case b of { BIndirection i -> [i]; BTuple is -> is; BRecord iis -> snd (unzip iis) }
         y' <- withLocalBindings newBindings (getUID e) $ materializationE y
+        x' <- withLocalDS [y] (materializationE x)
 
         let xp = getProvenance x
         writeMention <- hasWriteInP xp y'
@@ -344,9 +343,9 @@ materializationE e@(Node (t :@: as) cs)
 
       ECaseOf i -> do
         let [x, s, n] = cs
-        x' <- withLocalDS [s, n] (materializationE x)
-        s' <- withLocalBindings [i] (getUID e) $ materializationE s
         n' <- materializationE n
+        s' <- withLocalBindings [i] (getUID e) $ materializationE s
+        x' <- withLocalDS [s, n] (materializationE x)
 
         let xp = getProvenance x
 
@@ -366,12 +365,11 @@ materializationE e@(Node (t :@: as) cs)
 
       ELetIn i -> do
         let [x, b] = cs
+        b' <- withLocalBindings [i] (getUID e) $ materializationE b
         (x', d) <- withLocalDS [b] $ do
           x'' <- materializationE x
           m <- isMoveableNow (getProvenance x'')
           return (x'', if m then defaultDecision { inD = Moved } else defaultDecision)
-
-        b' <- withLocalBindings [i] (getUID e) $ materializationE b
 
         setDecision (getUID e) i d
         decisions <- dLookupAll (getUID e)
