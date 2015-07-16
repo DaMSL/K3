@@ -62,7 +62,7 @@ data MaterializationR
   | MRLet
   | MRCase
   | MRSend
-  | MRRecord [(Identifier, [Identifier], Bool, Decision)]
+  | MRRecord [(Identifier, Bool, Decision)]
  deriving (Eq, Read, Show)
 
 formatMR :: [(Int, MaterializationR)] -> IO ()
