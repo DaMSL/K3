@@ -11,6 +11,7 @@ import Control.Arrow
 
 import Control.Monad.Identity (Identity(..), runIdentity)
 import Control.Monad.State (StateT(..), MonadState(..), modify)
+import Control.Monad.Writer
 
 import Language.K3.Analysis.Core
 
@@ -24,7 +25,6 @@ import Language.K3.Analysis.SEffects.Inference (FIEnv(..))
 
 import Language.K3.Codegen.CPP.Materialization.Hints
 
-import Data.Traversable
 import Data.Foldable
 
 import Data.Maybe (fromMaybe, maybeToList, fromJust)
@@ -40,7 +40,7 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Common hiding (getUID)
 
-import Control.Monad
+import Text.Printf
 
 type Table = I.IntMap (M.Map Identifier Decision)
 
@@ -53,7 +53,34 @@ data MaterializationS = MaterializationS { decisionTable :: Table
                                          , scopeMap :: M.Map Identifier Int
                                          }
 
-type MaterializationM = StateT MaterializationS Identity
+-- Reporting
+
+data MaterializationR
+  = MRLambda
+  | MRApply
+  | MRBind
+  | MRLet
+  | MRCase
+  | MRSend
+  | MRRecord [(Identifier, [Identifier], Bool, Decision)]
+ deriving (Eq, Read, Show)
+
+formatMR :: [(Int, MaterializationR)] -> IO ()
+formatMR r = putStrLn "Materialization Report" >> mapM_ (uncurry formatR) r
+  where
+   formatR :: Int -> MaterializationR -> IO ()
+   formatR u t = case t of
+     MRRecord imnds -> do
+       printf "Materialized record at UID %d\n" u
+       forM_ imnds $ \(i, mn, d) -> do
+         printf "  Field %s:\n" i
+         printf "    Moveable: %s\n" (show mn)
+         printf "    Decision: %s\n" (show $ inD d)
+
+say :: Int -> MaterializationR -> MaterializationM ()
+say u r = tell [(u, r)]
+
+type MaterializationM = WriterT [(Int, MaterializationR)] (StateT MaterializationS Identity)
 
 -- State Accessors
 
@@ -120,11 +147,14 @@ setCurrentGlobal b = modify $ \s -> s { currentGlobal = b }
 
 -- Table Construction/Attachment
 
-runMaterializationM :: MaterializationM a -> MaterializationS -> (a, MaterializationS)
-runMaterializationM m s = runIdentity $ runStateT m s
+runMaterializationM :: MaterializationM a -> MaterializationS -> ((a, [(Int, MaterializationR)]), MaterializationS)
+runMaterializationM m s = runIdentity $ runStateT (runWriterT m) s
 
-optimizeMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> K3 Declaration
-optimizeMaterialization (p, f) d = fst $ runMaterializationM (materializationD d) (MaterializationS I.empty p f [] True M.empty)
+optimizeMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> IO (K3 Declaration)
+optimizeMaterialization (p, f) d = do
+  let ((nd, report), _) = runMaterializationM (materializationD d) (MaterializationS I.empty p f [] True M.empty)
+  formatMR report
+  return nd
 
 materializationD :: K3 Declaration -> MaterializationM (K3 Declaration)
 materializationD (Node (d :@: as) cs)
@@ -146,12 +176,13 @@ materializationE e@(Node (t :@: as) cs)
         let decisionForField c ds = withLocalDS ds $ do
               rf <- materializationE c
               mn <- isMoveableNow (getProvenance c)
-              return (if mn then defaultDecision { inD = Moved } else defaultDecision, rf)
+              return (if mn then defaultDecision { inD = Moved } else defaultDecision, rf, mn)
         let (is', cs') = unzip . sortBy (comparing fst) $ zip is cs
-        (decisions, fs) <- unzip <$> zipWithM decisionForField cs' (tail $ tails cs')
+        (decisions, fs, mns) <- unzip3 <$> zipWithM decisionForField cs' (tail $ tails cs')
         zipWithM_ (setDecision (getUID e)) is' decisions
         ds <- dLookupAll (getUID e)
         let fs' = map (\i -> fs !! (fromJust $ elemIndex i is')) is
+        say (getUID e) $ MRRecord $ zip3 is' mns decisions
         return (Node (t :@: (EMaterialization ds:as)) fs')
 
       EOperate OApp -> do
