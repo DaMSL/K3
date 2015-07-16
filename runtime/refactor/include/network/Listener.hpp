@@ -2,8 +2,8 @@
 #define K3_LISTENER
 
 #include <memory>
-
 #include "network/NetworkManager.hpp"
+#include <concurrentqueue/blockingconcurrentqueue.h>
 
 namespace K3 {
 

@@ -32,7 +32,7 @@ class Engine {
             unique_ptr<NativeValue> v, shared_ptr<Codec> cdec);
 
   // Accessors
-  ProgramContext& getContext(const Address& addr);
+  shared_ptr<ProgramContext> getContext(const Address& addr);
   NetworkManager& getNetworkManager();
   StorageManager& getStorageManager();
 

@@ -26,7 +26,8 @@ class Peer {
   void start();
   void processRole();
   void join();
-  void enqueue(std::unique_ptr<Dispatcher> m);
+
+  Queue& getQueue();
 
   // Utilities
   bool finished();

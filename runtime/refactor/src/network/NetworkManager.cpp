@@ -21,8 +21,7 @@ NetworkManager::NetworkManager() {
   external_out_conns_ = make_shared<ExternalConnectionMap>();
   internal_format_ = K3_INTERNAL_FORMAT;
   running_ = true;
-  // TODO(jbw) Make this configurable
-  for (int i =0; i < 4; i++) {
+  for (int i = 0; i < 4; i ++) {
     addThread();
   }
 }

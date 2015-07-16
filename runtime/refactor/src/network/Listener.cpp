@@ -51,15 +51,17 @@ void Listener::registerConnection(shared_ptr<IncomingConnection> c) {
   in_conns_->insert(a, c);
 
   shared_ptr<Peer> peer = peer_;
+  auto tok = peer_->getQueue().newProducerToken();
+
   shared_ptr<MessageHandler> m_handler = make_shared<MessageHandler>(
-      [peer](std::unique_ptr<Message> m) { 
+      [peer, tok](std::unique_ptr<Message> m) {
         auto d = peer->getContext()->__getDispatcher(std::move(m->value_), m->trigger_);
         #ifdef K3DEBUG
         d->trigger_ = m->trigger_;
         d->source_ = m->source_;
         d->destination_ = m->destination_;
         #endif
-        peer->enqueue(std::move(d));
+        peer->getQueue().enqueue(tok, std::move(d));
       });
 
   shared_ptr<IncomingConnectionMap> conn_map = in_conns_;

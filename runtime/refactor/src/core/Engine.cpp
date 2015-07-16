@@ -54,7 +54,7 @@ void Engine::stop() {
   // Place a Sentintel on each Peer's queue
   for (auto& it : *peers_) {
     auto d = make_unique<SentinelDispatcher>();
-    it.second->enqueue(std::move(d));
+    it.second->getQueue().enqueue(std::move(d));
   }
   network_manager_.stop();
   logger_->info("Stopping the Engine.");
@@ -62,13 +62,12 @@ void Engine::stop() {
 
 void Engine::join() {
   if (running_ && peers_) {
-#ifdef K3DEBUG
     for (auto& it : *peers_) {
       it.second->join();
-      std::cout << it.first.toString() << std::endl;
+#ifdef K3DEBUG
       it.second->printStatistics();
-    }
 #endif
+    }
   }
   network_manager_.stop();
   network_manager_.join();
@@ -96,7 +95,7 @@ void Engine::send(const Address& src, const Address& dst, TriggerID trig,
     d->source_ = src;
     d->destination_ = dst;
 #endif
-    it->second->enqueue(std::move(d));
+    it->second->getQueue().enqueue(std::move(d));
   } else {
     // Serialize and send over the network, otherwise
     unique_ptr<PackedValue> pv = codec->pack(*value);
@@ -110,10 +109,10 @@ void Engine::send(const Address& src, const Address& dst, TriggerID trig,
   }
 }
 
-ProgramContext& Engine::getContext(const Address& addr) {
+shared_ptr<ProgramContext> Engine::getContext(const Address& addr) {
   auto it = peers_->find(addr);
   if (it != peers_->end()) {
-    return *it->second->getContext();
+    return it->second->getContext();
   } else {
     throw std::runtime_error("Engine getPeer(): Peer not found");
   }

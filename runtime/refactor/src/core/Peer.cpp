@@ -73,11 +73,8 @@ void Peer::join() {
   return;
 }
 
-void Peer::enqueue(std::unique_ptr<Dispatcher> d) {
-  if (!queue_) {
-    throw std::runtime_error("Peer enqueue(): null queue ptr");
-  }
-  queue_->enqueue(std::move(d));
+Queue& Peer::getQueue() {
+  return *queue_;
 }
 
 bool Peer::finished() { return finished_.load(); }

@@ -13,7 +13,6 @@ Message::Message(TriggerID trig,
   value_ = std::move(val);
 }
 
-
 NetworkMessage::NetworkMessage() : Message() {
   payload_length_ = 0;
 }

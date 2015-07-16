@@ -1,6 +1,7 @@
 #include <string>
 #include <chrono>
 #include <thread>
+#include <mutex>
 #include <vector>
 #include <tuple>
 
@@ -87,12 +88,19 @@ class DummyContext : public ProgramContext {
   void mainTrigger(unit_t);
   void intTrigger(int i);
   void stringTrigger(std::string s);
+  static void print(const std::string& s) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::cout << s << std::endl;
+  }
 
   Address me;
   std::string role;
   int my_int_;
   string my_string_;
+  static std::mutex mutex_;
 };
+
+std::mutex DummyContext::mutex_;
 
 namespace YAML {
 template <>
@@ -217,6 +225,7 @@ class IntTriggerPackedDispatcher : public Dispatcher {
 
     void operator()() {
       auto native = codec_->unpack(*value_);
+      int i = *native->as<int>();
       context_.intTrigger(*native->as<int>());
     }
 
@@ -278,7 +287,10 @@ unique_ptr<Dispatcher> DummyContext::__getDispatcher(unique_ptr<NativeValue> nv,
 
 unique_ptr<Dispatcher> DummyContext::__getDispatcher(unique_ptr<PackedValue> pv, TriggerID t) {
   if (t == 1) {
-    return make_unique<IntTriggerPackedDispatcher>(*this, std::move(pv));
+     auto codec_ = Codec::getCodec<int>(pv->format());
+     auto native = codec_->unpack(*pv);
+     int i = *native->as<int>();
+     return make_unique<IntTriggerPackedDispatcher>(*this, std::move(pv));
   } else if (t == 2) {
     return make_unique<StringTriggerPackedDispatcher>(*this, std::move(pv));
   } else if (t == 3) {
@@ -340,27 +352,26 @@ TEST_F(EngineTest, LocalSends) {
   engine_.run<DummyContext>();
   engine_.join();
 
-  auto& c1 = engine_.getContext(addr1_);
-  auto& c2 = engine_.getContext(addr2_);
-  auto& dc1 = dynamic_cast<DummyContext&>(c1);
-  auto& dc2 = dynamic_cast<DummyContext&>(c2);
+  auto c1 = engine_.getContext(addr1_);
+  auto c2 = engine_.getContext(addr2_);
+  auto dc1 = std::dynamic_pointer_cast<DummyContext>(c1);
+  auto dc2 = std::dynamic_pointer_cast<DummyContext>(c2);
 
-  ASSERT_EQ(99, dc1.my_int_);
-  ASSERT_EQ(99, dc2.my_int_);
+  ASSERT_EQ(99, dc1->my_int_);
+  ASSERT_EQ(99, dc2->my_int_);
 }
 
 TEST_F(EngineTest, NetworkSends) {
   Engine engine_(getOptions(false));
   engine_.run<DummyContext>();
+  std::cout << "Running" << std::endl;
   engine_.join();
 
-  auto& c1 = engine_.getContext(addr1_);
-  auto& c2 = engine_.getContext(addr2_);
-  auto& dc1 = dynamic_cast<DummyContext&>(c1);
-  auto& dc2 = dynamic_cast<DummyContext&>(c2);
+  auto dc1 = std::dynamic_pointer_cast<DummyContext>(engine_.getContext(addr1_));
+  auto dc2 = std::dynamic_pointer_cast<DummyContext>(engine_.getContext(addr2_));
 
-  ASSERT_EQ(99, dc1.my_int_);
-  ASSERT_EQ(99, dc2.my_int_);
+  ASSERT_EQ(99, dc1->my_int_);
+  ASSERT_EQ(99, dc2->my_int_);
 }
 
 //
