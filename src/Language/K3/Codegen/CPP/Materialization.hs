@@ -555,8 +555,8 @@ isMoveable p = case tag p of
 
 isMoveableIn :: K3 Provenance -> K3 Expression -> MaterializationM Bool
 isMoveableIn x c = do
-  isRead <- isReadIn x c
-  isWritten <- isWrittenIn x c
+  isRead <- hasReadInP x c
+  isWritten <- hasWriteInP x c
   return $ not (isRead || isWritten)
 
 isMoveableNow :: K3 Provenance -> MaterializationM Bool
