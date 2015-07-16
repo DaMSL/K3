@@ -56,13 +56,19 @@ data MaterializationS = MaterializationS { decisionTable :: Table
 -- Reporting
 
 data MaterializationR
-  = MRLambda
+  = MRLambda { currentlyGlobal :: Bool
+             , argReadOnly :: Bool
+             , nrvoRequired :: Bool
+             , argD :: Decision
+             , closureReport :: [(Identifier, Int, Bool, Bool, Decision)]
+             , downstreamsConsidered :: [Int]
+             }
   | MRApply
   | MRBind
   | MRLet
   | MRCase
   | MRSend
-  | MRRecord [(Identifier, Bool, Decision)]
+  | MRRecord [(Identifier, Bool, [Int], Decision)]
  deriving (Eq, Read, Show)
 
 formatMR :: [(Int, MaterializationR)] -> IO ()
@@ -70,11 +76,28 @@ formatMR r = putStrLn "Materialization Report" >> mapM_ (uncurry formatR) r
   where
    formatR :: Int -> MaterializationR -> IO ()
    formatR u t = case t of
+     MRLambda cg aro nr ad cr dc -> do
+       printf "Materialized lambda at UID %d\n" u
+       printf "  Lambda is part of currently global chain: %s\n" (show cg)
+       printf "  Argument is read-only inside lambda: %s\n" (show aro)
+       printf "  Lambda requires manual NRVO: %s\n" (show nr)
+       printf "  Incoming decision for argument: %s\n" (show $ inD ad)
+       printf "  Outgoing decision for argument: %s\n" (show $ outD ad)
+       printf "  Downstreams considered for all decisions: %s\n" (show dc)
+       unless (null cr) $ do
+         printf "  Closure Variables:\n"
+         forM_ cr $ \(i, ob, hw, b, d) -> do
+           printf "    Variable: %s\n" i
+           printf "      Captured from variable bound at: %d\n" ob
+           printf "      Is written to inside lambda: %s\n" (show hw)
+           printf "      Moveable: %s\n" (show b)
+           printf "      Decision: %s\n" (show $ inD d)
      MRRecord imnds -> do
        printf "Materialized record at UID %d\n" u
-       forM_ imnds $ \(i, mn, d) -> do
+       forM_ imnds $ \(i, mn, ds, d) -> do
          printf "  Field %s:\n" i
          printf "    Moveable: %s\n" (show mn)
+         printf "      Downstreams considered: %s\n" (show ds)
          printf "    Decision: %s\n" (show $ inD d)
 
 say :: Int -> MaterializationR -> MaterializationM ()
@@ -182,7 +205,8 @@ materializationE e@(Node (t :@: as) cs)
         zipWithM_ (setDecision (getUID e)) is' decisions
         ds <- dLookupAll (getUID e)
         let fs' = map (\i -> fs !! (fromJust $ elemIndex i is')) is
-        say (getUID e) $ MRRecord $ zip3 is' mns decisions
+        eds <- downstreams <$> get
+        say (getUID e) $ MRRecord $ zip4 is' mns (map (map getUID . (eds ++)) $ tail $ tails cs') decisions
         return (Node (t :@: (EMaterialization ds:as)) fs')
 
       EOperate OApp -> do
@@ -274,11 +298,11 @@ materializationE e@(Node (t :@: as) cs)
 
         setDecision (getUID e) x $ readOnlyDecision $ nrvoDecision $ defaultDecision
 
-        forM_ closureSymbols $ \s -> do
+        cr <- forM closureSymbols $ \s -> do
           let innerProxyProvenance = P.pbvar $ PMatVar { pmvn = s, pmvloc = UID (getUID e), pmvptr = -1}
-
           sc <- scopeMap <$> get
-          outerBindUID <- UID . fromMaybe (error $ (show s) ++ " " ++ (show sc)) <$> getBindingUID s
+          ob <- fromMaybe (error $ (show s) ++ " " ++ (show sc)) <$> getBindingUID s
+          let outerBindUID = UID ob
           let outerProxyProvenance = P.pbvar $ PMatVar { pmvn = s, pmvloc = outerBindUID, pmvptr = -1}
           closureHasWrite <- hasWriteInP innerProxyProvenance b
           moveable <- isMoveableNow outerProxyProvenance
@@ -291,7 +315,11 @@ materializationE e@(Node (t :@: as) cs)
                          then d { inD = Moved }
                          else d { inD = Referenced }
           setDecision (getUID e) s $ closureDecision defaultDecision
+          return (s, ob, closureHasWrite, moveable, closureDecision defaultDecision)
         decisions <- dLookupAll (getUID e)
+
+        eds <- map getUID . downstreams <$> get
+        say (getUID e) $ MRLambda cg readOnly nrvo (M.findWithDefault defaultDecision x decisions) cr eds
         return $ (Node (t :@: (EMaterialization decisions:as)) [b])
 
       EBindAs b -> do
