@@ -5,7 +5,7 @@
 // This variant requires parameters defining the key-value decomposition
 // of the content type, and exploits these parameters where suitable in its API.
 
-annotation MapE[key: [labeltype], value: [labeltype]] given type a,b
+annotation SortedMapE[key: [labeltype], value: [labeltype]] given type a,b
 {
   provides lifted peek : () -> option content
     with effects \_ -> R[self]
@@ -48,7 +48,7 @@ annotation MapE[key: [labeltype], value: [labeltype]] given type a,b
     with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
 
   @:Transformer
-  provides lifted map : (content -> {key: a, value: b}) -> collection {key: a, value: b} @MapE
+  provides lifted map : (content -> {key: a, value: b}) -> collection {key: a, value: b} @SortedMapE
     with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
 
   @:Transformer
@@ -61,19 +61,20 @@ annotation MapE[key: [labeltype], value: [labeltype]] given type a,b
 
   @:{Transformer, CArgs 3}
   provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @MapE
+                             -> collection { key : a, value : b } @SortedMapE
     with effects
       \gbF -> \gaccF -> \z ->
         [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:Transformer
-  provides lifted ext : (content -> collection {key : a, value: b} @MapE)
-                         -> collection {key : a, value: b} @MapE
+  provides lifted ext : (content -> collection {key : a, value: b} @SortedMapE)
+                         -> collection {key : a, value: b} @SortedMapE
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
 
   @:{Transformer, CArgs 3}
   provides lifted sample : (a -> content -> a) -> a -> int -> a
     with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
+
 
 
   //////////////////////////////////////////////////////////
@@ -101,5 +102,53 @@ annotation MapE[key: [labeltype], value: [labeltype]] given type a,b
   @:CArgs 3
   provides lifted lookup_with4 : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
     with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
+
+  // Extremal key retrieval.
+  provides lifted min : () -> option content
+    with effects \_ -> R[self]
+
+  provides lifted max : () -> option content
+    with effects \_ -> R[self]
+
+  provides lifted min_with : (() -> a) -> (content -> a) -> a
+    with effects \noneF -> \someF -> [R[self]; noneF content; someF content]
+
+  provides lifted max_with : (() -> a) -> (content -> a) -> a
+    with effects \noneF -> \someF -> [R[self]; noneF content; someF content]
+
+  provides lifted lower_bound : $[|mkRecord 'key|] -> option content
+    with effects \key -> [R[self]; R[key]]
+
+  provides lifted upper_bound : $[|mkRecord 'key|] -> option content
+    with effects \key -> [R[self]; R[key]]
+
+  provides lifted lower_bound_with : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
+
+  provides lifted upper_bound_with : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
+
+  // Range retrieval based on sort order.
+  provides lifted filter_lt : $[|mkRecord 'key|] -> self
+    with effects \key -> [R[self]; R[key]]
+
+  provides lifted filter_gt : $[|mkRecord 'key|] -> self
+    with effects \key -> [R[self]; R[key]]
+
+  provides lifted filter_geq : $[|mkRecord 'key|] -> self
+    with effects \key -> [R[self]; R[key]]
+
+  provides lifted between : $[|mkRecord 'key|] -> (content -> self)
+    with effects \key -> [R[self]; R[key]]
+
+  // Range-based modification.
+
+  // Erases all elements less than, but not including, the given key.
+  provides lifted erase_prefix : $[|mkRecord 'key|] -> ()
+    with effects \key -> [R[self]; R[key]; W[self]]
+
+  // Erases all elements greater than the given key.
+  provides lifted erase_suffix : $[|mkRecord 'key|] -> ()
+    with effects \key -> [R[self]; R[key]; W[self]]
 }
 
