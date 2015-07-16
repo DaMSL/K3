@@ -29,7 +29,7 @@ simplifyCPPExpression expr =
       vs' <- mapM simplifyCPPExpression vs
 
       case f' of
-        Bind f'' vs'' n' -> return (Bind f'' (vs'' ++ vs') n)
+        Bind f'' vs'' _ -> return (Bind f'' (vs'' ++ vs') n)
         _ -> return (Bind f' vs' n)
 
     Call f vs -> do
