@@ -52,6 +52,7 @@ data Mode
     | Interpret InterpretOptions
     | Typecheck TypecheckOptions
     | Service   ServiceOperation
+    | SQL
   deriving (Eq, Read, Show)
 
 -- | Compiler input and output options.
@@ -220,12 +221,14 @@ modeOptions = subparser (
       <> command "interpret" (info interpretOptions $ progDesc interpretDesc)
       <> command "typecheck" (info typecheckOptions $ progDesc typeDesc)
       <> command "service"   (info serviceOptions   $ progDesc serviceDesc)
+      <> command "sql"       (info sqlOptions       $ progDesc sqlDesc)
     )
   where parseDesc     = "Parse a K3 program"
         compileDesc   = "Compile a K3 binary"
         interpretDesc = "Interpret a K3 program"
         typeDesc      = "Typecheck a K3 program"
         serviceDesc   = "Start a K3 compiler service"
+        sqlDesc       = "Compile a SQL query"
 
 
 {- Compiler input parsing -}
@@ -755,6 +758,12 @@ allProgOpt = flag' (QueryOptions $ Right [])
                  <> help    "Query all job statuses" )
 
 
+{- SQL mode options -}
+
+-- | SQL mode
+sqlOptions :: Parser Mode
+sqlOptions = pure SQL
+
 {- Top-level options -}
 
 -- | Logging options.
@@ -823,6 +832,7 @@ instance Pretty Mode where
   prettyLines (Interpret iOpts) = ["Interpret "] ++ (indent 2 $ prettyLines iOpts)
   prettyLines (Typecheck tOpts) = ["Typecheck " ++ show tOpts]
   prettyLines (Service   sOpts) = ["Service " ++ show sOpts]
+  prettyLines SQL               = ["SQL"]
 
 instance Pretty InterpretOptions where
   prettyLines (Batch net env expr par printConf console cstages) =
