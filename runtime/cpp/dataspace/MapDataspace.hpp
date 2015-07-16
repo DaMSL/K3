@@ -2231,7 +2231,7 @@ class SortedMap {
     return result;
   }
 
-  template<typename R, typename F, typename G>
+  template<typename F, typename G>
   auto upper_bound_with(const R& rec, F f, G g) const {
     auto it = container.upper_bound(rec.key);
     if (it == container.end()) {
@@ -2241,7 +2241,7 @@ class SortedMap {
     }
   }
 
-  template<typename R, typename F, typename G>
+  template<typename F, typename G>
   auto lower_bound_with(const R& rec, F f, G g) const {
     auto it = container.lower_bound(rec.key);
     if (it == container.end()) {
@@ -2704,7 +2704,7 @@ class SortedMapE {
     return result;
   }
 
-  template<typename R, typename F, typename G>
+  template<typename F, typename G>
   auto upper_bound_with(const R& rec, F f, G g) const {
     auto it = container.upper_bound(rec.key);
     if (it == container.end()) {
@@ -2714,7 +2714,7 @@ class SortedMapE {
     }
   }
 
-  template<typename R, typename F, typename G>
+  template<typename F, typename G>
   auto lower_bound_with(const R& rec, F f, G g) const {
     auto it = container.lower_bound(rec.key);
     if (it == container.end()) {
