@@ -179,10 +179,12 @@ declare setDeltaWeightsTozero : () -> () = \_ -> (
 )
 
 trigger startMaster : () = \_ -> (
+	print ("start");
 	initializeMaster ()
 )
 
 trigger receiveAtMaster : collection {elem : real } @Vector = \updateOnWeights -> (
+	print ("here_master");
 
 	(weight.inPlaceAdd (updateOnWeights.sub weightUpdateBroadcast));
 	if (peerMessagesReceived == peers.size ())
@@ -200,6 +202,7 @@ trigger receiveAtMaster : collection {elem : real } @Vector = \updateOnWeights -
 ) 
 
 trigger receiveAtSlave : collection {elem : real } @Vector = \updateOnWeights -> (
+	print ("here_slave");
 	weight.inPlaceAdd (updateOnWeights)
 )
 
