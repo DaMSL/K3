@@ -520,8 +520,11 @@ hasReadInP prov expr =
   case expr of
     (tag &&& children -> (ELambda _, [b])) -> do
       closureDecisions <- dLookupAll (getUID expr)
-      let readInClosure = maybe False (\j -> maybe False (\d -> inD d == Copied) $ M.lookup j closureDecisions)
-                           (pVarName prov)
+      let readInClosure = fromMaybe False $ do
+            j <- pVarName prov
+            d <- M.lookup j closureDecisions
+            return $ inD d == Copied || inD d == Moved
+
       childHasRead <- hasReadInP prov b
       return (readInClosure || childHasRead)
 
