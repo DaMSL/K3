@@ -130,7 +130,7 @@ declare layerIdAccess : int -> int = \index -> (
 	) as { num : num, flag : flag} in (num)
 )
 
-// Set up number of neurons to each layer(intpu, hidden, output)
+// Set up number of neurons to each layer(intput, hidden, output)
 declare initializeMaster : () -> () = \_ -> (
 
 	//Architecture of the network
@@ -146,7 +146,7 @@ declare initializeMaster : () -> () = \_ -> (
 		(range (access2 {e1: secondLastLayer, e2: lastNeuronInSecondLastLayer, e3 : lastNeuronInLastLayer} +1 )).iterate (\i -> (
 			weight.insert {elem : (randomFraction ()) };
 			deltaWeight.insert {elem : 0.0};
-			weightsLastUpdated.insert {elem : 0.0};	
+			weightsLastUpdated.insert {elem : 0.0};
 			weightUpdateBroadcast.insert {elem : 0.0}
 		))
 	)
@@ -159,13 +159,13 @@ declare initialize : () -> () = \_ -> (
 	(initializeMaster ());
 
 	//Create the vectors (some with random values)
-	let finalLayerNum = (topology.size () -1 ) in 
-	let finalNeuronNum = ((topology.at((topology.size ()) - 1)).elem -1) in (
+	let finalLayerNum = (topology.size () - 1 ) in 
+	let finalNeuronNum = ((topology.at((topology.size ()) - 1)).elem - 1) in (
 		(range((access1LayerNeuron finalLayerNum  finalNeuronNum)+1)).iterate (\i-> ( 
 			outputValue.insert {elem : (randomFraction ()) }; // set outputValue to random numbers
 			deltaValue.insert {elem : (randomFraction ()) }; // set outputValue to random numbers    
 			zValue.insert {elem : (randomFraction ()) }; // set outputValue to random numbers    
-			gradient.insert {elem : (randomFraction ())} // set gradients to random numbers , basicaly done to create the gradient vector of the required size
+			gradient.insert {elem : (randomFraction ())} // set gradients to random numbers , basically done to create the gradient vector of the required size
 		))	
 	);	
 	
@@ -345,34 +345,13 @@ declare slaveBackPropagation : () -> () = \_ -> (
 )
 
 trigger startMaster : () = \_ -> (
-	print ("hello");
-	initializeMaster ()
+	print ("Starts Master");
+	initializeMaster()
 )
-
-trigger receiveAtMaster : collection {elem : real } @Vector = \updateOnWeights -> (
-	print ("here");
-
-	(weight.inPlaceAdd (updateOnWeights.sub weightUpdateBroadcast));
-	if (peerMessagesReceived == peers.size ())
-	then ( 
-		(weightUpdateBroadcast = weight.sub weightsLastUpdated);
-		peers.iterate (\peer -> (
-			(receiveAtSlave, peer.addr) <- (weightUpdateBroadcast)
-		));
-		(weightsLastUpdated = weight);
-		peerMessagesReceived = 0		
-	)
-	else (
-		peerMessagesReceived = peerMessagesReceived + 1
-	)	
-) 
-
-trigger receiveAtSlave : collection {elem : real } @Vector = \updateOnWeights -> (
-	weight.inPlaceAdd (updateOnWeights)
-)
-
 
 trigger startSlave : () = \_ -> (
+
+	print ("Starts Slave");
 
 	(range 20).iterate (\r -> (
 	//print "Starting a new iteration";
@@ -394,12 +373,15 @@ trigger startSlave : () = \_ -> (
 	row_number = row_number + 1;
     print (itos row_number);
 
+    /*
     (if (row_number % epochSize == 0) 
 		then (
 			(receiveAtMaster, master) <- (weight.sub weightsLastUpdated);
 			weightsLastUpdated = weight
-		) 
-		else ());
+		)
+	else ()
+	);*/
+
     	(slaveFeedForward ());
 		(slaveBackPropagation ());
 
@@ -416,20 +398,43 @@ trigger startSlave : () = \_ -> (
 	//(results_sink, me) <- { addr : me, iter : r.i , totalError : totalError}
     print ("Done with an iteration of ff and bp")))
 	))
+)
+
+trigger receiveAtMaster : collection {elem : real} @Vector = \updateOnWeights -> (
+	
+	(weight.inPlaceAdd (updateOnWeights.sub weightUpdateBroadcast));
+	if (peerMessagesReceived == peers.size ())
+	then ( 
+		(weightUpdateBroadcast = weight.sub weightsLastUpdated);
+		peers.iterate (\peer -> (
+			(receiveAtSlave, peer.addr) <- (weightUpdateBroadcast)
+		));
+		(weightsLastUpdated = weight);
+		peerMessagesReceived = 0		
+	)
+	else (
+		peerMessagesReceived = peerMessagesReceived + 1
+	)	
 ) 
 
+trigger receiveAtSlave : collection {elem : real} @Vector = \updateOnWeights -> (
+	weight.inPlaceAdd (updateOnWeights)
+)
+
 trigger storeData :  {i: real, j: real, k : real} = \csvData -> (
+	print ("here");
 	allData.insert {elem : {i: csvData.i, j: csvData.j, k: csvData.k} };
 	rows = rows +1;
-  (if (rows==8) then ((startSlave, me) <- ()) else ())
+    (if (rows==8)
+    	then ((startSlave, me) <- ())
+    else ())
 )
 
 //sink results_sink : real = stdout csv
-//sink results_sink : {addr : address,   iter: int , totalError : real } = stdout csv
+//sink results_sink : {addr : address, iter: int , totalError : real} = stdout csv
 
 source masterSource : () = value ()
-feed masterSource |> startMaster 
+feed masterSource |> startMaster
 
-source slaveSource1 :  {i: real , j: real , k : real}  = file "f1.csv" csv 
+source slaveSource1 :  {i: real, j: real, k: real} = file "f1.csv" csv 
 feed slaveSource1 |> storeData
-
