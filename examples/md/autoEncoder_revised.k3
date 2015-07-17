@@ -352,9 +352,9 @@ trigger startSlave : () = \_ -> (
 	print ("Starts Slave");
 
 	(range 20).iterate (\r -> (
-	print ("Starting a new iteration");
+	//print ("Starting a new iteration");
 	allData.iterate(\csvData -> (
-	print ("Reading a new frame");
+	//print ("Reading a new frame");
 	inputValues = empty {elem : real} @Vector;
 
 	//Create the input and output values
@@ -372,14 +372,13 @@ trigger startSlave : () = \_ -> (
 	row_number = row_number + 1;
     print (itos row_number);
 
-    /*
     (if (row_number % epochSize == 0) 
 		then (
 			(receiveAtMaster, master) <- (weight.sub weightsLastUpdated);
 			weightsLastUpdated = weight
 		)
 	else ()
-	);*/
+	);
 
     	(slaveFeedForward ());
 		(slaveBackPropagation ());
