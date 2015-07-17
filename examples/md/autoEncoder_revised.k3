@@ -344,7 +344,7 @@ declare slaveBackPropagation : () -> () = \_ -> (
 
 trigger startMaster : () = \_ -> (
 	print ("Starts Master");
-	initializeMaster();
+	initializeMaster()
 )
 
 trigger startSlave : () = \_ -> (
