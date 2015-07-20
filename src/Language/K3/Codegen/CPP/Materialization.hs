@@ -280,10 +280,15 @@ materializationE e@(Node (t :@: as) cs)
         return (Node (t :@: (EMaterialization ds:as)) [h', m'])
 
       EOperate _ -> do
-        let [x, y] = cs
-        y' <- materializationE y
-        x' <- withLocalDS [y] $ materializationE x
-        return $ (Node (t :@: as)) [x', y']
+        case cs of
+          [x] -> do
+            x' <- materializationE x
+            return $ (Node (t :@: as)) [x']
+          [x, y] -> do
+            y' <- materializationE y
+            x' <- withLocalDS [y] $ materializationE x
+            return $ (Node (t :@: as)) [x', y']
+          _ -> error "Invalid argument form for operator."
 
       ELambda x -> do
         cg <- currentGlobal <$> get
