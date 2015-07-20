@@ -18,10 +18,6 @@ create table lineitem (
    l_comment       varchar(44)   not null
 );
 
-
-.import tools/ktrace/data/tpch/lineitem0 lineitem
-.import tools/ktrace/data/tpch/lineitem1 lineitem
-
 drop table if exists customer;
 create table customer (
    c_custkey    integer       not null,
@@ -33,9 +29,6 @@ create table customer (
    c_mktsegment char(10)      not null,
    c_comment    varchar(117)  not null
 );
-
-.import tools/ktrace/data/tpch/customer0 customer
-.import tools/ktrace/data/tpch/customer1 customer
 
 drop table if exists orders;
 create table orders (
@@ -50,9 +43,6 @@ create table orders (
 	   o_comment       varchar(79)   not null
 );
 
-.import tools/ktrace/data/tpch/orders0 orders
-.import tools/ktrace/data/tpch/orders1 orders
-
 drop table if exists supplier;
 create table supplier (
    s_suppkey   integer       not null,
@@ -64,9 +54,6 @@ create table supplier (
    s_comment   varchar(101)  not null
 );
 
-.import tools/ktrace/data/tpch/supplier0 supplier
-.import tools/ktrace/data/tpch/supplier1 supplier
-
 drop table if exists nation;
 create table nation (
    n_nationkey integer      not null,
@@ -75,7 +62,6 @@ create table nation (
    n_comment   varchar(152) not null
 );
 
-.import tools/ktrace/data/tpch/nation.tbl nation
 
 drop table if exists region;
 create table region (
@@ -84,7 +70,6 @@ create table region (
    r_comment   varchar(152) not null
 );
 
-.import tools/ktrace/data/tpch/region.tbl region
 
 drop table if exists partsupp;
 create table partsupp (
@@ -95,9 +80,6 @@ create table partsupp (
 	   ps_comment    varchar(199)  not null
 );
 
-.import tools/ktrace/data/tpch/partsupp0 partsupp 
-.import tools/ktrace/data/tpch/partsupp1 partsupp 
-
 DROP TABLE IF EXISTS rankings;
 CREATE TABLE rankings (
   pageURL text,
@@ -105,9 +87,6 @@ CREATE TABLE rankings (
   avgDuration int
 );
 
-.separator ","
-.import tools/ktrace/data/rankings1 rankings
-.import tools/ktrace/data/rankings2 rankings
 
 DROP TABLE IF EXISTS uservisits;
 CREATE TABLE uservisits (
@@ -122,5 +101,3 @@ CREATE TABLE uservisits (
   duration int
 );
 
-.import tools/ktrace/data/uservisits1 uservisits
-.import tools/ktrace/data/uservisits2 uservisits
