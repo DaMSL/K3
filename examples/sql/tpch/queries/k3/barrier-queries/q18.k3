@@ -57,8 +57,8 @@ typedef loc_q_by_ncodt_r   = { key: {nm:string, ck:int, ok:int, od:int, tp:real}
 typedef loc_q_by_ncodt_map = collection loc_q_by_ncodt_r @Map
 
 declare q18_peer_result : loc_q_by_ncodt_map
-declare results : collection {name: string, custkey: int, orderkey: int, orderdate:string, totalprice: real, sum: real} @Collection
-
+typedef q18_result = collection {name: string, custkey: int, orderkey: int, orderdate:string, totalprice: real, sum: real} @Collection
+declare results : q18_result
 
 // Q18 intermediates.
 typedef o_cdt_by_ok_r = {key : int, value : { o_custkey    : int
@@ -255,6 +255,20 @@ trigger loc_aggregate : loc_q_by_ncodt_map = \vals -> (
   ) @OnCounter(id=[# loc_aggregate_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 )
 
+typedef q18_result = collection {name: string, custkey: int, orderkey: int, orderdate:string, totalprice: real, sum: real} @Collection
+declare finalize : collection {key: address, value: q18_result} @Map -> () = \x -> (
+  (x.iterate (\t ->
+    t.value.iterate (\v ->
+      (results_sink, me) <- (v.name,
+                             v.custkey,
+                             v.orderkey,
+                             v.orderdate,
+                             v.totalprice,
+                             v.sum)
+    )
+   ))
+)
+
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes                = [$ peers ],
   loadExpr             = [$ ( q18_lineitemLoaderPC lineitemFiles lineitem lineitem_r;
@@ -270,18 +284,18 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                               results.insert { name: r.key.nm, custkey: r.key.ck, orderkey: r.key.ok
                                              , orderdate: tpch_date_to_string r.key.od, totalprice: r.key.tp, sum: r.value} )
                             ); (
-                            () @GatherResultsAsCSV(
-                                    query_cl = [* [% ci: [# results], csink: [$ results_sink]] ]
+                            (ignore results) @GatherCollection(
+                                   lbl       = [# result]
                                   , nodes    = [$ peers]
-                                  , next     = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ])
+                                  , next     = [$ (\a -> (finalize a; peers.iterate (\p -> (shutdown, p.addr) <- ()))) ])
                             )
                          ],
   preShutdownExpr      = [$ () ],
   finishAsShutdownExpr = [$ false]
 )
 
-sink results_sink : {name: string, custkey: int, orderkey: int, orderdate: string, totalprice: real, sum: real} = file "results.csv" text csv
-sink query_time_sink : string = file "time.csv" text csv
+sink results_sink: (string, int, int, string, real, real) = file "results.csv" time psv
+sink query_time_sink : int = stdout time csv
 
 source rows : () = value ()
 feed rows |> start

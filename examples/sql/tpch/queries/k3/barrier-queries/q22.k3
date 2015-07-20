@@ -60,8 +60,9 @@ typedef c_nt_by_cc_r   = {key: string, value: {nc:int, tab:real}}
 typedef c_nt_by_cc_map = collection c_nt_by_cc_r @StrMap
 
 declare q22_result : c_nt_by_cc_map
-declare results    : collection { cntrycode: string, numcust: int, totacctbal: real} @Collection
+typedef q22_result = collection { cntrycode: string, numcust: int, totacctbal: real} @Collection
 
+declare results : q22_result
 declare merge_c_nt_by_cc : c_nt_by_cc_r -> c_nt_by_cc_r -> c_nt_by_cc_r
   = \a -> \b -> {key: a.key, value: {nc:a.value.nc + b.value.nc, tab:a.value.tab + b.value.tab}}
 
@@ -179,6 +180,17 @@ trigger q22_final_peer_barrier : () = \_ -> (
   ) @OnCounter(id=[# q22_aggregate_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 )
 
+
+declare finalize : collection {key: address, value: q22_result} @Map -> () = \x -> (
+  (x.iterate (\t ->
+    t.value.iterate (\v ->
+      (results_sink, me) <- (v.cntrycode,
+			     v.numcust,
+			     v.totacctbal)
+    )
+   ))
+)
+
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes                = [$ peers ],
   loadExpr             = [$ q22_ordersLoaderPC   ordersFiles   orders   orders_r;
@@ -190,17 +202,17 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   finishArgT           = [: ()],
   preTestFinishExpr    = [$ (\_ -> ())],
   preFinishExpr        = [$ (q22_result.iterate (\r -> results.insert {cntrycode: r.key, numcust: r.value.nc, totacctbal: r.value.tab} ));
-                            () @GatherResultsAsCSV(
-                                    query_cl = [* [% ci: [# results], csink: [$ results_sink]] ]
+                            (ignore results) @GatherResultsAsCSV(
+                                    lbl      = [# result]
                                   , nodes    = [$ peers]
-                                  , next     = [$ peers.iterate (\p -> (shutdown, p.addr) <- ())])
+                                  , next     = [$ (\a -> ( finalize a; peers.iterate (\p -> (shutdown, p.addr) <- ())))])
                          ],
   preShutdownExpr      = [$ () ],
   finishAsShutdownExpr = [$ false]
 )
 
-sink results_sink : { cntrycode: string, numcust: int, totacctbal: real} = file "results.csv" text csv
-sink query_time_sink : string = file "time.csv" text csv
+sink results_sink : (string, int, real) = file "results.csv" text psv
+sink query_time_sink : int = file "time.csv" text csv
 
 source rows : () = value ()
 feed rows |> start

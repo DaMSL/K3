@@ -10,7 +10,8 @@ import Prelude hiding (concat, mapM, mapM_, or, and)
 import Control.Arrow
 
 import Control.Monad.Identity (Identity(..), runIdentity)
-import Control.Monad.State (StateT(..), MonadState(..), modify)
+import Control.Monad.State (StateT(..), MonadState(..), modify, gets)
+import Control.Monad.Writer
 
 import Language.K3.Analysis.Core
 
@@ -24,12 +25,11 @@ import Language.K3.Analysis.SEffects.Inference (FIEnv(..))
 
 import Language.K3.Codegen.CPP.Materialization.Hints
 
-import Data.Traversable
 import Data.Foldable
 
 import Data.Maybe (fromMaybe, maybeToList, fromJust)
 import Data.Ord (comparing)
-import Data.List (elemIndex, sortBy, tails)
+import Data.List (elemIndex, sortBy, tails, zip4)
 import Data.Tree
 
 import qualified Data.Map as M
@@ -40,9 +40,9 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Common hiding (getUID)
 
-import Control.Monad
+import Text.Printf
 
-type Table = I.IntMap (M.Map Identifier Decision)
+type Table = I.IntMap (M.Map (Identifier, Maybe Int) Decision)
 
 data MaterializationS = MaterializationS { decisionTable :: Table
                                          , pienv :: PIEnv
@@ -53,15 +53,74 @@ data MaterializationS = MaterializationS { decisionTable :: Table
                                          , scopeMap :: M.Map Identifier Int
                                          }
 
-type MaterializationM = StateT MaterializationS Identity
+-- Reporting
+
+data MaterializationR
+  = MRLambda { currentlyGlobal :: Bool
+             , argReadOnly :: Bool
+             , nrvoRequired :: Bool
+             , argD :: Decision
+             , closureReport :: [(Identifier, Int, Bool, Bool, Decision)]
+             , downstreamsConsidered :: [Int]
+             }
+  | MRApply
+  | MRBind
+  | MRLet
+  | MRCase
+  | MRSend
+  | MRRecord [(Identifier, Bool, [Int], Decision)]
+ deriving (Eq, Read, Show)
+
+formatMR :: [(Int, MaterializationR)] -> IO ()
+formatMR r = putStrLn "Materialization Report" >> mapM_ (uncurry formatR) r
+  where
+   formatR :: Int -> MaterializationR -> IO ()
+   formatR u t = case t of
+     MRLambda cg aro nr ad cr dc -> do
+       printf "Materialized lambda at UID %d\n" u
+       printf "  Lambda is part of currently global chain: %s\n" (show cg)
+       printf "  Argument is read-only inside lambda: %s\n" (show aro)
+       printf "  Lambda requires manual NRVO: %s\n" (show nr)
+       printf "  Incoming decision for argument: %s\n" (show $ inD ad)
+       printf "  Outgoing decision for argument: %s\n" (show $ outD ad)
+       printf "  Downstreams considered for all decisions: %s\n" (show dc)
+       unless (null cr) $ do
+         printf "  Closure Variables:\n"
+         forM_ cr $ \(i, ob, hw, b, d) -> do
+           printf "    Variable: %s\n" i
+           printf "      Captured from variable bound at: %d\n" ob
+           printf "      Is written to inside lambda: %s\n" (show hw)
+           printf "      Moveable: %s\n" (show b)
+           printf "      Decision: %s\n" (show $ inD d)
+     MRRecord imnds -> do
+       printf "Materialized record at UID %d\n" u
+       forM_ imnds $ \(i, mn, ds, d) -> do
+         printf "  Field %s:\n" i
+         printf "    Moveable: %s\n" (show mn)
+         printf "      Downstreams considered: %s\n" (show ds)
+         printf "    Decision: %s\n" (show $ inD d)
+
+say :: Int -> MaterializationR -> MaterializationM ()
+say u r = tell [(u, r)]
+
+type MaterializationM = WriterT [(Int, MaterializationR)] (StateT MaterializationS Identity)
 
 -- State Accessors
 
+lookupFst :: Eq k => k -> M.Map (k, a) v -> Maybe v
+lookupFst k m = case M.toList (M.filterWithKey (\(i, b) _ -> i == k) m) of
+  [] -> Nothing
+  [(_, v)] -> Just v
+  _ -> error "Non-unique mapping."
+
 dLookup :: Int -> Identifier -> MaterializationM Decision
-dLookup u i = decisionTable <$> get >>= \t -> return $ fromMaybe defaultDecision (I.lookup u t >>= M.lookup i)
+dLookup u i = decisionTable <$> get >>= \t -> return $ fromMaybe defaultDecision (I.lookup u t >>= lookupFst i)
 
 dLookupAll :: Int -> MaterializationM (M.Map Identifier Decision)
-dLookupAll u = decisionTable <$> get >>= \t -> return (I.findWithDefault M.empty u t)
+dLookupAll u = dLookupAllWithBindings u >>= \d -> return $ M.fromList [(k, v) | ((k, _), v) <- M.toList d]
+
+dLookupAllWithBindings :: Int -> MaterializationM (M.Map (Identifier, Maybe Int) Decision)
+dLookupAllWithBindings u = gets decisionTable >>= \t -> return $ I.findWithDefault M.empty u t
 
 pLookup :: PPtr -> MaterializationM (Maybe (K3 Provenance))
 pLookup p = pienv <$> get >>= \e -> return (I.lookup p (ppenv e))
@@ -106,8 +165,16 @@ getFStructure e = let EFStructure f = fromMaybe (error "No effects on expression
                                       (e @~ \case { EFStructure _ -> True; _ -> False }) in f
 
 
+setNullDecision :: Int -> Identifier -> Decision -> MaterializationM ()
+setNullDecision u i d = setFullDecision u (i, Nothing) d
+
 setDecision :: Int -> Identifier -> Decision -> MaterializationM ()
-setDecision u i d = modify $ \s -> s { decisionTable = I.insertWith M.union u (M.singleton i d) (decisionTable s)}
+setDecision u i d = gets scopeMap >>= \sm -> case M.lookup i sm of
+  Nothing -> setFullDecision u (i, Nothing) d
+  Just bp -> setFullDecision u (i, Just bp) d
+
+setFullDecision :: Int -> (Identifier, Maybe Int) -> Decision -> MaterializationM ()
+setFullDecision u i d = modify $ \s -> s { decisionTable = I.insertWith M.union u (M.singleton i d) (decisionTable s)}
 
 getClosureSymbols :: Int -> MaterializationM [Identifier]
 getClosureSymbols i = (pvpenv . pienv) <$> get >>= \e -> return $ concat $ maybeToList (I.lookup i $ lcenv e)
@@ -120,11 +187,14 @@ setCurrentGlobal b = modify $ \s -> s { currentGlobal = b }
 
 -- Table Construction/Attachment
 
-runMaterializationM :: MaterializationM a -> MaterializationS -> (a, MaterializationS)
-runMaterializationM m s = runIdentity $ runStateT m s
+runMaterializationM :: MaterializationM a -> MaterializationS -> ((a, [(Int, MaterializationR)]), MaterializationS)
+runMaterializationM m s = runIdentity $ runStateT (runWriterT m) s
 
-optimizeMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> K3 Declaration
-optimizeMaterialization (p, f) d = fst $ runMaterializationM (materializationD d) (MaterializationS I.empty p f [] True M.empty)
+optimizeMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> IO (K3 Declaration)
+optimizeMaterialization (p, f) d = do
+  let ((nd, report), _) = runMaterializationM (materializationD d) (MaterializationS I.empty p f [] True M.empty)
+  formatMR report
+  return nd
 
 materializationD :: K3 Declaration -> MaterializationM (K3 Declaration)
 materializationD (Node (d :@: as) cs)
@@ -146,18 +216,20 @@ materializationE e@(Node (t :@: as) cs)
         let decisionForField c ds = withLocalDS ds $ do
               rf <- materializationE c
               mn <- isMoveableNow (getProvenance c)
-              return (if mn then defaultDecision { inD = Moved } else defaultDecision, rf)
+              return (if mn then defaultDecision { inD = Moved } else defaultDecision, rf, mn)
         let (is', cs') = unzip . sortBy (comparing fst) $ zip is cs
-        (decisions, fs) <- unzip <$> zipWithM decisionForField cs' (tail $ tails cs')
+        (decisions, fs, mns) <- unzip3 <$> zipWithM decisionForField (reverse cs') (reverse $ tail $ tails cs')
         zipWithM_ (setDecision (getUID e)) is' decisions
         ds <- dLookupAll (getUID e)
-        let fs' = map (\i -> fs !! (fromJust $ elemIndex i is')) is
+        let fs' = map (\i -> fs !! (fromJust $ elemIndex i $ reverse is')) is
+        eds <- downstreams <$> get
+        say (getUID e) $ MRRecord $ zip4 is' mns (map (map getUID . (eds ++)) $ tail $ tails cs') decisions
         return (Node (t :@: (EMaterialization ds:as)) fs')
 
       EOperate OApp -> do
         let [f, x] = cs
-        f' <- withLocalDS [x] $ materializationE f
         x' <- materializationE x
+        f' <- withLocalDS [x] $ materializationE f
 
         let applicationEffects = getFStructure e
         let executionEffects = getEffects e
@@ -194,8 +266,8 @@ materializationE e@(Node (t :@: as) cs)
 
       EOperate OSnd -> do
         let [h, m] = cs
-        h' <- withLocalDS [m] $ materializationE h
         m' <- materializationE m
+        h' <- withLocalDS [m] $ materializationE h
 
         moveable <- isMoveableNow (getProvenance m')
         let decision = if moveable then defaultDecision { inD = Moved } else defaultDecision
@@ -206,8 +278,8 @@ materializationE e@(Node (t :@: as) cs)
 
       EOperate _ -> do
         let [x, y] = cs
-        x' <- withLocalDS [y] $ materializationE x
         y' <- materializationE y
+        x' <- withLocalDS [y] $ materializationE x
         return $ (Node (t :@: as)) [x', y']
 
       ELambda x -> do
@@ -243,11 +315,11 @@ materializationE e@(Node (t :@: as) cs)
 
         setDecision (getUID e) x $ readOnlyDecision $ nrvoDecision $ defaultDecision
 
-        forM_ closureSymbols $ \s -> do
+        cr <- forM closureSymbols $ \s -> do
           let innerProxyProvenance = P.pbvar $ PMatVar { pmvn = s, pmvloc = UID (getUID e), pmvptr = -1}
-
           sc <- scopeMap <$> get
-          outerBindUID <- UID . fromMaybe (error $ (show s) ++ " " ++ (show sc)) <$> getBindingUID s
+          ob <- fromMaybe (error $ (show s) ++ " " ++ (show sc)) <$> getBindingUID s
+          let outerBindUID = UID ob
           let outerProxyProvenance = P.pbvar $ PMatVar { pmvn = s, pmvloc = outerBindUID, pmvptr = -1}
           closureHasWrite <- hasWriteInP innerProxyProvenance b
           moveable <- isMoveableNow outerProxyProvenance
@@ -260,15 +332,18 @@ materializationE e@(Node (t :@: as) cs)
                          then d { inD = Moved }
                          else d { inD = Referenced }
           setDecision (getUID e) s $ closureDecision defaultDecision
+          return (s, ob, closureHasWrite, moveable, closureDecision defaultDecision)
         decisions <- dLookupAll (getUID e)
+
+        eds <- map getUID . downstreams <$> get
+        say (getUID e) $ MRLambda cg readOnly nrvo (M.findWithDefault defaultDecision x decisions) cr eds
         return $ (Node (t :@: (EMaterialization decisions:as)) [b])
 
       EBindAs b -> do
         let [x, y] = cs
-        x' <- withLocalDS [y] (materializationE x)
-
         let newBindings = case b of { BIndirection i -> [i]; BTuple is -> is; BRecord iis -> snd (unzip iis) }
         y' <- withLocalBindings newBindings (getUID e) $ materializationE y
+        x' <- withLocalDS [y] (materializationE x)
 
         let xp = getProvenance x
         writeMention <- hasWriteInP xp y'
@@ -285,9 +360,9 @@ materializationE e@(Node (t :@: as) cs)
 
       ECaseOf i -> do
         let [x, s, n] = cs
-        x' <- withLocalDS [s, n] (materializationE x)
-        s' <- withLocalBindings [i] (getUID e) $ materializationE s
         n' <- materializationE n
+        s' <- withLocalBindings [i] (getUID e) $ materializationE s
+        x' <- withLocalDS [s, n] (materializationE x)
 
         let xp = getProvenance x
 
@@ -307,12 +382,11 @@ materializationE e@(Node (t :@: as) cs)
 
       ELetIn i -> do
         let [x, b] = cs
+        b' <- withLocalBindings [i] (getUID e) $ materializationE b
         (x', d) <- withLocalDS [b] $ do
           x'' <- materializationE x
           m <- isMoveableNow (getProvenance x'')
           return (x'', if m then defaultDecision { inD = Moved } else defaultDecision)
-
-        b' <- withLocalBindings [i] (getUID e) $ materializationE b
 
         setDecision (getUID e) i d
         decisions <- dLookupAll (getUID e)
@@ -429,20 +503,22 @@ hasWriteInI ident expr =
       childHasWrite <- anyM (hasWriteInI ident) (children expr)
       return (localHasWriteByMove || localHasWrite || childHasWrite)
 
-pVarName :: K3 Provenance -> Maybe Identifier
-pVarName p =
+pBindInfo :: K3 Provenance -> Maybe (Identifier, Maybe Int)
+pBindInfo p =
   case p of
-    (tag -> PFVar j) -> Just j
-    (tag -> PBVar pmv) -> Just $ pmvn pmv
+    (tag -> PFVar j) -> Just (j, Nothing)
+    (tag -> PBVar (PMatVar { pmvn = n, pmvloc = (UID u) })) -> Just (n, Just u)
     _ -> Nothing
 
 hasWriteInP :: K3 Provenance -> K3 Expression -> MaterializationM Bool
 hasWriteInP prov expr =
   case expr of
     (tag &&& children -> (ELambda _, [b])) -> do
-      closureDecisions <- dLookupAll (getUID expr)
-      let writeInClosure = maybe False (\j -> maybe False (\d -> inD d == Moved) $ M.lookup j closureDecisions)
-                           (pVarName prov)
+      closureDecisions <- dLookupAllWithBindings (getUID expr)
+      let writeInClosure = fromMaybe False $ do
+            (j, mb) <- pBindInfo prov
+            d <- M.lookup (j, mb) closureDecisions
+            return $ inD d == Moved
       childHasWrite <- hasWriteInP prov b
       return (writeInClosure || childHasWrite)
 
@@ -488,9 +564,12 @@ hasReadInP :: K3 Provenance -> K3 Expression -> MaterializationM Bool
 hasReadInP prov expr =
   case expr of
     (tag &&& children -> (ELambda _, [b])) -> do
-      closureDecisions <- dLookupAll (getUID expr)
-      let readInClosure = maybe False (\j -> maybe False (\d -> inD d == Copied) $ M.lookup j closureDecisions)
-                           (pVarName prov)
+      closureDecisions <- dLookupAllWithBindings (getUID expr)
+      let readInClosure = fromMaybe False $ do
+            (j, mb) <- pBindInfo prov
+            d <- M.lookup (j, mb) closureDecisions
+            return $ inD d == Copied || inD d == Moved
+
       childHasRead <- hasReadInP prov b
       return (readInClosure || childHasRead)
 
@@ -524,8 +603,8 @@ isMoveable p = case tag p of
 
 isMoveableIn :: K3 Provenance -> K3 Expression -> MaterializationM Bool
 isMoveableIn x c = do
-  isRead <- isReadIn x c
-  isWritten <- isWrittenIn x c
+  isRead <- hasReadInP x c
+  isWritten <- hasWriteInP x c
   return $ not (isRead || isWritten)
 
 isMoveableNow :: K3 Provenance -> MaterializationM Bool

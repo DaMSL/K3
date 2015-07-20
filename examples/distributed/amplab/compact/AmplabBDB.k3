@@ -65,9 +65,10 @@ control AmplabBenchmark[queryTrigger       : expr,
       // Signal to the master that a peer has finished the query locally.
       trigger finished : $[finishArgT] = \finishArg -> (
         ($[preTestFinishExpr] finishArg);
-        (((( $[preFinishExpr] @:StopTimer) @TimeSink(lbl=[# Query], tag=[$ "Time "], sink_expr=[$ query_time_sink]));
-          peers.iterate (\p -> (shutdown, p.addr) <- ()))
-        ) @OnCounter(id=[# query_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+        (((( () @:StopTimer) @TimeSink(lbl=[# Query], tag=[$ "Time "], sink_expr=[$ query_time_sink])
+        );
+        $[preFinishExpr]
+        )) @OnCounter(id=[# query_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
       )
 
       // Signal to the master that a peer is ready.
@@ -79,7 +80,7 @@ control AmplabBenchmark[queryTrigger       : expr,
               @:StartTimer) @TimeSink(lbl=[# Query], tag=[$ "Time "], sink_expr=[$ query_time_sink])
         ) @OnCounter(id=[# peers_ready], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
       )
-      
+
       trigger start_profiler : () = \_ -> (
         ((tcmallocStart ()); (jemallocStart ()); (pcmStart ())) @IfMachineMaster
       )

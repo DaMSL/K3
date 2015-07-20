@@ -986,7 +986,7 @@ inferEffects extInfOpt expr = do
     sideways m _ rf e@(tag -> ECaseOf i) = m >> do
       u <- uidOf e
       case (head $ children e) @~ isEType of
-        Just (EType t) -> srt [freshOptM e i u t rf, setcaseM i >> popVars i]
+        Just (EType t) -> srt [freshOptM e i u t rf, setcaseM i >> popVars u i]
         _ -> tAnnErr e
 
       where setcaseM j = ((,) <$> (filkupeM j >>= fmv) <*> (filkupepM j >>= pmv)) >>= fipushcaseM
@@ -1035,7 +1035,7 @@ inferEffects extInfOpt expr = do
       clv      <- filkupcM u
       clf      <- mapM filkupepM clv >>= mapM (liftExceptM . chaseProvenance) >>= mapM (extInferM . fread)
       ppopClosure (UID u) e
-      popVars i
+      popVars (UID u) i
       rt "lambda" False e mv (Just fnone, flambda i (fseq clf) (fseq $ catMaybes ef) rf)
 
     infer m (onSub -> (ef, mv)) [lrf,arf] e@(tag -> EOperate OApp) = m >> do
@@ -1083,21 +1083,23 @@ inferEffects extInfOpt expr = do
       m >> rt "if-then-else" False e mv (fexec [pe, Just $ fset $ catMaybes [te, ee]], fset [tr,er])
 
     infer m (onSub -> ([initef,bef], submv)) [_,rf] e@(tag -> ELetIn  i) = m >> do
+      u   <- uidOf e
       smv <- pmvOf e
       mv  <- filkupeM i >>= fmv
-      popVars i
+      popVars u i
       let nmv = smv ++ submv
       let nrf = fscope [mv] (fromJust $ fexec [initef]) (fromJust $ fexec [bef]) fnone rf
       nef <- pruneAndSimplify "letef" Nothing False nmv $ fexec [initef, bef]
       rt "let-in" True e nmv (nef, nrf)
 
     infer m (onSub -> ([initef,bef], mv)) [_,rf] e@(tag -> EBindAs b) = m >> do
+      u     <- uidOf e
       initp <- provOf $ head $ children e
       smvs  <- pmvOf e
       fmvs  <- mapM filkupeM (bindingVariables b) >>= mapM fmv
       pbvs  <- mapM filkupepM (bindingVariables b)
       ps    <- mapM pmv pbvs >>= mapM (filkupppM . pmvptr)
-      mapM_ popVars (bindingVariables b)
+      mapM_ (popVars u) (bindingVariables b)
       let nmv  = smvs ++ mv
       let nief = fromJust $ fexec [initef]
       let nbef = fromJust $ fexec [bef]
@@ -1138,7 +1140,7 @@ inferEffects extInfOpt expr = do
     onSub efmv = let (x,y) = unzip efmv in (x, foldl union [] y)
 
     fexec ef = Just $ fseq $ catMaybes ef
-    popVars i = fideleM i >> fidelepM i
+    popVars u i = fideleM i >> fidelepM i
 
     matchLambdaEff f@(tag -> FLambda _) = return $ Just f
     matchLambdaEff f@(tag -> FFVar _)   = return $ Just f
@@ -1157,11 +1159,11 @@ inferEffects extInfOpt expr = do
     freshM asCase e i u t f =
       case e @~ isEProvenance of
         Just (EProvenance (tag -> PMaterialize mvs)) -> do
-          mapM_ (\mv -> fiextepM (pmvn mv) (pbvar mv)) mvs
+          void $ maybe (return ()) (\mv -> fiextepM (pmvn mv) (pbvar mv)) $ find ((== i) . pmvn) mvs
           forceLambdaEff t f >>= void . fifreshM i u
 
         Just (EProvenance (tnc -> (PSet, (safeHead -> Just (tag -> PMaterialize mvs))))) | asCase -> do
-          mapM_ (\mv -> fiextepM (pmvn mv) (pbvar mv)) mvs
+          void $ maybe (return ()) (\mv -> fiextepM (pmvn mv) (pbvar mv)) $ find ((== i) . pmvn) mvs
           forceLambdaEff t f >>= void . fifreshM i u
 
         _ -> matErr e
@@ -1202,8 +1204,8 @@ inferEffects extInfOpt expr = do
 
     unwrapClosure _ (tag -> PBVar mv) = filkupppM (pmvptr mv)
     unwrapClosure e p = errorM $ PT.boxToString
-                           $ [T.pack "Invalid closure variable "] %+ PT.prettyLines p
-                          %$ [T.pack "at expr:"] %$ PT.prettyLines e
+                               $ [T.pack "Invalid closure variable "] %+ PT.prettyLines p
+                              %$ [T.pack "at expr:"] %$ PT.prettyLines e
 
 
 

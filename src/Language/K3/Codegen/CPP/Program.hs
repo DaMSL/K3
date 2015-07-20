@@ -9,9 +9,6 @@ import Control.Monad.State
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Data.Maybe (isJust)
-
-import Data.Functor
 
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
