@@ -113,7 +113,6 @@ template <class T, char sep = ','>
 class CSVCodec : public Codec {
  public:
   virtual unique_ptr<PackedValue> pack(const NativeValue& nv) {
-    std::cout << "Sep is: " << sep << std::endl;
     Buffer buf;
     OByteStream output_stream(buf);
     csv::writer oa(output_stream, sep);
@@ -158,7 +157,6 @@ shared_ptr<Codec> Codec::getCodec(CodecFormat format) {
     case CodecFormat::CSV:
       return makeCSVCodec<T>();
     case CodecFormat::PSV:
-      std::cout << "PSV CODEC" << std::endl;
       return makeCSVCodec<T, '|'>();
     default:
       throw std::runtime_error("Unrecognized codec format");

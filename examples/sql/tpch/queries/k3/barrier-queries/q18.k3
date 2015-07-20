@@ -294,8 +294,8 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   finishAsShutdownExpr = [$ false]
 )
 
-sink results_sink: (string, int, int, string, real, real) = file "results.csv" time psv
-sink query_time_sink : int = stdout time csv
+sink results_sink: (string, int, int, string, real, real) = file "results.csv" text psv
+sink query_time_sink : int = file "time.csv" text csv
 
 source rows : () = value ()
 feed rows |> start
