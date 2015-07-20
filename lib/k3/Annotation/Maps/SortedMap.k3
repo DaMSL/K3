@@ -100,9 +100,11 @@ annotation SortedMap given type a,b
   provides lifted max : () -> option content
     with effects \_ -> R[self]
 
+  @:CArgs 2
   provides lifted min_with : (() -> a) -> (content -> a) -> a
     with effects \noneF -> \someF -> [R[self]; noneF content; someF content]
 
+  @:CArgs 2
   provides lifted max_with : (() -> a) -> (content -> a) -> a
     with effects \noneF -> \someF -> [R[self]; noneF content; someF content]
 
@@ -112,9 +114,11 @@ annotation SortedMap given type a,b
   provides lifted upper_bound : content -> option content
     with effects \elem -> [R[self]; R[elem]]
 
+  @:CArgs 3
   provides lifted lower_bound_with : content -> (() -> a) -> (content -> a) -> a
     with effects \elem -> \noneF -> \someF -> [R[self]; R[elem]; noneF content; someF content]
 
+  @:CArgs 3
   provides lifted upper_bound_with : content -> (() -> a) -> (content -> a) -> a
     with effects \elem -> \noneF -> \someF -> [R[self]; R[elem]; noneF content; someF content]
 
