@@ -86,30 +86,44 @@ trigger q1 : () = \_ -> (
       profile     = [$ true] )
 )
 
+declare finalize : collection {key: address, value: q1_result} @Map -> () = \x -> (
+  (x.iterate (\t ->
+    t.value.iterate (\v ->
+      (results_sink, me) <- (v.l_returnflag,
+                             v.l_linestatus,
+                             v.sum_qty,
+                             v.sum_base_price,
+                             v.sum_disc_price,
+                             v.sum_charge,
+                             v.avg_qty,
+                             v.avg_price,
+                             v.avg_disc,
+                             v.count_order)
+    )
+   ))
+)
+
 trigger start : () = \_ -> (
   (() @:Start) @TPCHBenchmarkWithoutMaster(
     nodes                = [$ peers],
-    loadExpr             = [$ dataLineCountFiles.iterate (\e -> lineitemRows = lineitemRows + (lineCountFile e.path));
-			                        print ("Lineitem rows: " ++ (itos lineitemRows));
-                              q1_lineitemLoaderPFC dataFiles lineitem lineitem_r lineitemRows
-                           ],
+    loadExpr             = [$ q1_lineitemLoaderPC lineitemFiles lineitem lineitem_r ],
     preLoadExpr          = [$ ()],
     preReadyExpr         = [$ ()],
     onReadyExpr          = [$ (q1, me) <- ()],
     finishArgT           = [: ()],
     preTestFinishExpr    = [$ (\_ -> ())],
-    preFinishExpr        = [$ () @GatherResultsAsCSV(
-                                    query_cl = [* [% ci: [# results], csink: [$ results_sink]] ]
-                                  , nodes    = [$ peers]
-                                  , next     = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ])
+    preFinishExpr        = [$ (ignore results) @GatherCollection(
+                                                    lbl   = [# groupby],
+                                                    nodes = [$ peers],
+                                                    next  = [$ (\a -> (finalize a; peers.iterate (\p -> (shutdown, p.addr) <- ()) ))])
                            ],
     preShutdownExpr      = [$ ()],
     finishAsShutdownExpr = [$ false]
   )
 )
 
-sink results_sink : q1_result_r = file "results.csv" csv
-sink query_time_sink : string = stdout csv
+sink results_sink : (string, string, real, real, real, real, real, real, real, int)  = file "results.csv" psv
+sink query_time_sink : string = file "time.csv" csv
 
 source rows : () = value ()
 feed rows |> start

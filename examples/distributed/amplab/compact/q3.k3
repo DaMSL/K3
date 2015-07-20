@@ -1,4 +1,5 @@
 include "compact/AmplabBDB.k3"
+include "Core/IO.k3"
 
 typedef rk_by_url_elem     = {key: string, value: int}
 typedef rk_by_url_map      = collection rk_by_url_elem @ Map
@@ -97,16 +98,20 @@ trigger count_merges : () = \_ -> (
 
 trigger start : () = \_ -> (() @:Start) @AmplabBenchmark(
   queryTrigger       = [$ q3_local],
-  loadExpr           = [$ loadUVQ3 uservisitsFiles user_visits; 
-                          loadRKQ3 rankingsFiles rk_by_url ], 
+  loadExpr           = [$ loadUVQ3 uservisitsFiles user_visits;
+                          loadRKQ3 rankingsFiles rk_by_url ],
   preLoadExpr        = [$ peers.iterate (\i -> peers_seq.insert i)],
   preReadyExpr       = [$ ()],
   finishArgT         = [: aggs_by_ip_elem],
   preTestFinishExpr  = [$ (\kv -> (if (kv.value.arSum > global_max.value.arSum)
                                    then (global_max = kv) else ())) ],
-  preFinishExpr      = [$ print ("Global max.key: " ++ global_max.key) ],
+  preFinishExpr      = [$ ((results_sink, me) <- (global_max.key, global_max.value.arSum, global_max.value.prSum / global_max.value.prCount) );
+                          peers.iterate (\p -> (shutdown, p.addr) <- () )
+                       ],
   preShutdownExpr    = [$ ()]
 )
 
+sink results_sink : (string, real, real) = file "results.csv" psv
+sink query_time_sink : string = file "time.csv" csv
 source rows : () = value ()
 feed rows |> start

@@ -1,37 +1,30 @@
 #!/bin/bash
-# Run from K3 Base directory
+# run from k3 base directory
 
 set -e
 
-if [  $# -ne 3 ] 
-then 
-  echo "Usage: $0 k3_source test_dir results_var" 
+if [  $# -ne 3 ]
+then
+  echo "usage: $0 path/to/k3/source path/to/run/yaml path/to/correct/csv"
+
   exit 1
-fi 
+fi
 
-INFILE=$1
-TESTDIR=$2
-RESULTVAR=$3
-KTRACE=./tools/ktrace
+SOURCE=$1
+YAML=$2
+CORRECT=$3
 
-# Remove old executables
-rm __build/A __build/__build/* || true
+# remove old executables
+./tools/scripts/run/clean.sh &> /dev/null || true
 
-# Compile the K3 executable
-./tools/scripts/run/compile.sh $INFILE
+# compile the k3 executable
+echo "Compiling $SOURCE ..."
+./tools/scripts/run/compile.sh $SOURCE &> /dev/null || echo "Failed"
 
-# Create a directory for K3 Results
-mkdir $TESTDIR/results || rm $TESTDIR/results/* || true
+# run the k3 executable
+echo "Running $YAML ..."
+__build/A -p $YAML &> /dev/null || echo "Failed"
 
-# Run the K3 Executable, stash results
-__build/A -p $TESTDIR/peers.yaml --result_var $RESULTVAR --result_path $TESTDIR/results/
-
-# Run KTrace to populate the database with K3 Results
-python $KTRACE/driver.py $(pwd) $INFILE $RESULTVAR $(pwd)/$TESTDIR/results/ | psql
-
-# Compute the correct results
-psql -f $(pwd)/$TESTDIR/correctResult.sql
-
-# Compute the diff, ensure 0 rows are produced
-psql -c 'select * from compute_diff;' | grep "(0 rows)"
-echo "SUCCESS"
+# diff results
+echo "Comparing results ..."
+python2 tools/ktrace/csv_diff.py $CORRECT results.csv && echo "Success"

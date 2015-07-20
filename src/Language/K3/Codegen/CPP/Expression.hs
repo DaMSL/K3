@@ -310,6 +310,8 @@ inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
     (fe, fv) <- inline f
     (ae, av) <- inline a
 
+    g <- genSym
+
     mtrlzns' <- case e @~ isEMaterialization of
                   Just (EMaterialization ms) -> return ms
                   Nothing -> return $ M.fromList [("", defaultDecision)]
@@ -320,8 +322,16 @@ inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
               Copied -> return av
               Moved -> return (gMoveByE a av)
 
-    c <- call fv pass cargs
-    return (fe ++ ae, c)
+    let gDecl = R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just pass)
+    let pass' = R.Call (R.Variable
+                        (R.Qualified
+                         (R.Name "std")
+                         (R.Specialized [(R.ConstExpr $ R.Call
+                                          (R.Variable $ R.Name "decltype") [R.Variable $ R.Name g])]
+                          (R.Name "forward")))) [R.Variable $ R.Name g]
+
+    c <- call fv pass' cargs
+    return (fe ++ ae ++ [gDecl], c)
   where
     call fn@(R.Variable i) arg n =
       if isJust $ f @~ CArgs.isErrorFn
