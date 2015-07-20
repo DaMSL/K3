@@ -239,14 +239,23 @@ declare slaveBackPropagation : () -> () = \_ -> (
 
     print ("weights : ");
     weight.iterate(\w -> print (rtos (w.elem)));
+    print ("\\n");
+
     print ("target values : ");
     targetValue.iterate(\tv -> print (rtos tv.elem));
+    print ("\\n");
+
     print ("Output values : ");
     outputValue.iterate(\ov -> print (rtos (ov.elem)));
+    print ("\\n");
+
     print ("delta values : ");
     deltaValue.iterate(\dv -> print (rtos dv.elem));
+    print ("\\n");
+
     print ("z values : ");
     zValue.iterate(\zv -> print (rtos zv.elem));
+    print ("\\n");
 
     //calculate the hidden layer deltas
 	((xrange 2 (topology.size ()+1) ).iterate (\i -> (
@@ -280,18 +289,29 @@ declare slaveBackPropagation : () -> () = \_ -> (
 			))
 		)
 	)));
-    print ("weights : ");
-    weight.iterate(\w -> print (rtos w.elem));
-    print ("zValues : ");
-    zValue.iterate(\z -> print (rtos z.elem)); 
-    print ("Outputvalues : ");
-    outputValue.iterate(\ov -> print (rtos ov.elem));
-    print ("Targetvalues : ");
-    targetValue.iterate(\tv -> print (rtos tv.elem)); 
-    print ("Delta values :");
-    deltaValue.iterate(\dv -> print (rtos dv.elem));
-    print ("Old DeltaWeights : ");
-    deltaWeight.iterate(\dv -> print (rtos dv.elem));
+    //print ("weights : ");
+    //weight.iterate(\w -> print (rtos w.elem));
+    //print ("\\n");
+
+    //print ("zValues : ");
+    //zValue.iterate(\z -> print (rtos z.elem)); 
+    //print ("\\n");
+
+    //print ("Outputvalues : ");
+    //outputValue.iterate(\ov -> print (rtos ov.elem));
+    //print ("\\n");
+
+    //print ("Targetvalues : ");
+    //targetValue.iterate(\tv -> print (rtos tv.elem));
+    //print ("\\n");
+
+    //print ("Delta values :");
+    //deltaValue.iterate(\dv -> print (rtos dv.elem));
+    //print ("\\n");
+
+    //print ("Old DeltaWeights : ");
+    //deltaWeight.iterate(\dv -> print (rtos dv.elem));
+    //print ("\\n");
 
     // Calculate the delta weights
     (range ((topology.size ()) -1)).iterate(\layerId -> (
@@ -311,8 +331,11 @@ declare slaveBackPropagation : () -> () = \_ -> (
     
     print ("DeltaWeights : ");
     deltaWeight.iterate(\dv -> print (rtos dv.elem));
+    print ("\\n");
+
     print ("old weights : ");
     weight.iterate(\w -> print (rtos w.elem));
+    print ("\\n");
 
     // Update the weights
     (range ((topology.size ()) -1)).iterate(\layerId -> (
