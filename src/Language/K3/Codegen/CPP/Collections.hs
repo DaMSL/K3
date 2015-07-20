@@ -31,7 +31,9 @@ import qualified Language.K3.Codegen.CPP.Representation as R
 --  - Serialization function, which should proxy the dataspace serialization.
 composite :: Identifier -> [(Identifier, [AnnMemDecl])] -> [K3 Type] -> CPPGenM [R.Definition]
 composite name ans content_ts = do
-    let overrideGeneratedName n = if "MapE" `isInfixOf` n then "MapE" else n
+    let overrideGeneratedName n = if "SortedMapE" `isInfixOf` n then "SortedMapE"
+                                  else if "MapE" `isInfixOf` n then "MapE"
+                                  else n
     let isReserved (aname, _) = overrideGeneratedName aname `elem` reservedAnnotations
     let (ras, as) = partition isReserved ans
 
