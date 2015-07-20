@@ -63,13 +63,12 @@ class StorageManager {
   bool hasWrite(Address peer, Identifier id);
 
   template <class T>
-  void doWrite(Address peer, Identifier id, const T& val, CodecFormat fmt) {
+  void doWrite(Address peer, Identifier id, const T& val) {
     try {
       // TODO(jbw) avoid copies when creating the native-value wrappers
       auto file = files_->lookup(make_pair(peer, id));
       TNativeValue<T> nv(val);
-      auto pv = Codec::getCodec<T>(fmt)->pack(nv);
-      file->doWrite(*pv);
+      file->doWrite<T>(nv);
     }
     catch (std::ios_base::failure e) {
       logger_->error ("ERROR Writing to {}", id);
@@ -84,8 +83,7 @@ class StorageManager {
         auto file = files_->lookup(make_pair(peer, id));
         for (const auto& elem : vals) {
           TNativeValue<T> nv(elem);
-          auto pv = Codec::getCodec<T>(fmt)->pack(nv);
-          file->doWrite(*pv);
+          file->doWrite<T>(nv);
         }
       }
       catch (std::exception e)  {

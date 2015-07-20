@@ -42,16 +42,8 @@ class FileBuiltins {
   }
 
   template <class T>
-  unit_t doWrite(const Address& peer, const string_impl& id, const T& t, const string_impl& cfmt) {
-    CodecFormat c_format = Codec::getFormat(cfmt);
-    __engine_.getStorageManager().doWrite<T>(peer, id, t, c_format);
-    return unit_t{};
-  }
- 
-  // TODO(jbw) remove this after code generation is fixed to include format
-  template <class T>
   unit_t doWrite(const Address& peer, const string_impl& id, const T& t) {
-    __engine_.getStorageManager().doWrite<T>(peer, id, t, CodecFormat::CSV);
+    __engine_.getStorageManager().doWrite<T>(peer, id, t);
     return unit_t{};
   }
 

@@ -5,7 +5,7 @@ using std::pair;
 
 
 void StorageManager::openFile (Address peer, Identifier id, std::string path, 
-                      StorageFormat fmt, CodecFormat codec, IOMode io) {
+                      StorageFormat fmt, CodecFormat cfmt, IOMode io) {
   pair<Address, Identifier> key = std::make_pair (peer, id);
 
   logger_->info("Opening file `{}`, id={}", path, id);
@@ -14,18 +14,18 @@ void StorageManager::openFile (Address peer, Identifier id, std::string path,
     switch (io) {
       case IOMode::Read:
         if (fmt == StorageFormat::Binary) {
-          files_->insert (key, make_shared<SourceFileHandle> (path, codec));
+          files_->insert (key, make_shared<SourceFileHandle> (path, cfmt));
         }
         else {
-          files_->insert (key, make_shared<SourceTextHandle> (path, codec));
+          files_->insert (key, make_shared<SourceTextHandle> (path, cfmt));
         }
         break;
       case IOMode::Write:
         if (fmt == StorageFormat::Binary) {
-          files_->insert (key, make_shared<SinkFileHandle> (path));
+          files_->insert (key, make_shared<SinkFileHandle> (path, cfmt));
         }
         else {
-          files_->insert (key, make_shared<SinkTextHandle> (path));
+          files_->insert (key, make_shared<SinkTextHandle> (path, cfmt));
         }
         break;
     }

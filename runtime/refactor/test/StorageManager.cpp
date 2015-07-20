@@ -32,12 +32,12 @@ TEST(Storage, BinaryFile) {
   string s1 = "Foo";
   string s2 = "FooBar";
   string s3 = "The quick Brown Fox Jumps Over the Lazy Dog/nQuietly!";
-  storage.doWrite<int>(a1, "sink1", 1, CodecFormat::BoostBinary);
-  storage.doWrite<int>(a1, "sink1", 2, CodecFormat::BoostBinary);
-  storage.doWrite<int>(a1, "sink2", 3, CodecFormat::BoostBinary);
-  storage.doWrite<string>(a1, "sink1", s1 , CodecFormat::BoostBinary);
-  storage.doWrite<string>(a1, "sink1", s2, CodecFormat::BoostBinary);
-  storage.doWrite<string>(a1, "sink2", s3, CodecFormat::BoostBinary);
+  storage.doWrite<int>(a1, "sink1", 1);
+  storage.doWrite<int>(a1, "sink1", 2);
+  storage.doWrite<int>(a1, "sink2", 3);
+  storage.doWrite<string>(a1, "sink1", s1);
+  storage.doWrite<string>(a1, "sink1", s2);
+  storage.doWrite<string>(a1, "sink2", s3);
 
   vector<int> int_vec;
   for (int i = 0; i < 10; i++) {
@@ -91,8 +91,8 @@ TEST(Storage, TextFile) {
   tuple<int, string> row1 = std::make_tuple(1, "one");
   tuple<int, string> row2 = std::make_tuple(2, "two");
 
-  storage.doWrite<tuple<int, string>>(a1, "sink", row1, CodecFormat::CSV);
-  storage.doWrite<tuple<int, string>>(a1, "sink", row2, CodecFormat::CSV);
+  storage.doWrite<tuple<int, string>>(a1, "sink", row1);
+  storage.doWrite<tuple<int, string>>(a1, "sink", row2);
 
   storage.closeFile(a1, "sink");
 

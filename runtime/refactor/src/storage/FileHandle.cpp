@@ -1,11 +1,12 @@
 #include "storage/FileHandle.hpp"
+#include "serialization/Codec.hpp"
 
 namespace K3 {
 
 using std::ios_base;
 
 //  SOURCE FILE HANDLE (binary file access)
-SourceFileHandle::SourceFileHandle (std::string path, CodecFormat codec) {
+SourceFileHandle::SourceFileHandle (std::string path, CodecFormat fmt) : FileHandle(fmt) {
 
     file_.exceptions (ios_base::failbit | std::ios_base::badbit );
     try {
@@ -14,10 +15,7 @@ SourceFileHandle::SourceFileHandle (std::string path, CodecFormat codec) {
     catch (ios_base::failure e) {
       throw e;
     }
-  
-    fmt_ = codec;
-  }
-
+}
 
 bool SourceFileHandle::hasRead() {
   return file_.good() && (file_.peek() != EOF);
@@ -41,9 +39,7 @@ shared_ptr<PackedValue> SourceFileHandle::doRead() {
   return result;  
 }
 
-
-
-SourceTextHandle::SourceTextHandle (std::string path, CodecFormat codec) {
+SourceTextHandle::SourceTextHandle (std::string path, CodecFormat fmt) {
     file_.exceptions (std::ifstream::failbit | std::ifstream::badbit );
     try {
       file_.open (path, std::ios::in); 
@@ -51,8 +47,8 @@ SourceTextHandle::SourceTextHandle (std::string path, CodecFormat codec) {
     catch (std::ifstream::failure e) {
       throw e;
     }
-    fmt_ = codec;    
-  }
+  fmt_ = fmt;
+}
 
 
 shared_ptr<PackedValue> SourceTextHandle::doRead()  {
@@ -70,7 +66,7 @@ shared_ptr<PackedValue> SourceTextHandle::doRead()  {
 
 
 //  SINK FILE HANDLE (binary file access)
-SinkFileHandle::SinkFileHandle (std::string path)  {
+SinkFileHandle::SinkFileHandle (std::string path, CodecFormat fmt) : FileHandle(fmt) {
     file_.exceptions (std::ofstream::failbit | std::ofstream::badbit );
     try {
       file_.open (path);
@@ -86,15 +82,16 @@ bool SinkFileHandle::hasWrite() {
 
 
 // Note: value size limits are 32-bit ints (4GB per value)
-void SinkFileHandle::doWrite(const PackedValue& val) {
-  file_ << static_cast<uint32_t>(val.length());
-  file_.write (val.buf(), val.length());
+void SinkFileHandle::doWriteHelper(const NativeValue& nval, shared_ptr<Codec> cdec) {
+  auto val = cdec->pack(nval);
+  file_ << static_cast<uint32_t>(val->length());
+  file_.write (val->buf(), val->length());
 }
 
 
-
-void SinkTextHandle::doWrite(const PackedValue& val) {
-  file_.write (val.buf(), val.length());
+void SinkTextHandle::doWriteHelper(const NativeValue& nval, shared_ptr<Codec> cdec) {
+  auto val = cdec->pack(nval);
+  file_.write (val->buf(), val->length());
   file_ << std::endl;
 }
 
