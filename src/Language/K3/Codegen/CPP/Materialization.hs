@@ -55,6 +55,9 @@ data MaterializationS = MaterializationS { decisionTable :: Table
 
 -- Reporting
 
+dumpMaterializationReport :: Bool
+dumpMaterializationReport = False
+
 data MaterializationR
   = MRLambda { currentlyGlobal :: Bool
              , argReadOnly :: Bool
@@ -193,7 +196,7 @@ runMaterializationM m s = runIdentity $ runStateT (runWriterT m) s
 optimizeMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> IO (K3 Declaration)
 optimizeMaterialization (p, f) d = do
   let ((nd, report), _) = runMaterializationM (materializationD d) (MaterializationS I.empty p f [] True M.empty)
-  formatMR report
+  when dumpMaterializationReport $ formatMR report
   return nd
 
 materializationD :: K3 Declaration -> MaterializationM (K3 Declaration)
