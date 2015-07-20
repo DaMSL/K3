@@ -3058,8 +3058,8 @@ class SortedMapE {
   }
 
   template<typename K, typename F, typename G>
-  auto lower_bound_with(const K& key, F f, G g) const {
-    auto it = container.lower_bound(key);
+  auto lower_bound_with(const K& k, F f, G g) const {
+    auto it = container.lower_bound(k.key);
     if (it == container.end()) {
       return f(unit_t {});
     } else {
@@ -3068,8 +3068,8 @@ class SortedMapE {
   }
 
   template<typename K, typename F, typename G>
-  auto upper_bound_with(const K& key, F f, G g) const {
-    auto it = container.upper_bound(key);
+  auto upper_bound_with(const K& k, F f, G g) const {
+    auto it = container.upper_bound(k.key);
     if (it == container.end()) {
       return f(unit_t {});
     } else {
@@ -3078,31 +3078,31 @@ class SortedMapE {
   }
 
   template<typename K>
-  SortedMapE<R> filter_lt(const K& key) const {
+  SortedMapE<R> filter_lt(const K& k) const {
     const auto& x = getConstContainer();
-    auto it = x.lower_bound(key);
+    auto it = x.lower_bound(k.key);
     return SortedMapE<R>(x.begin(), it);
   }
 
   template<typename K>
-  SortedMapE<R> filter_gt(const K& key) const {
+  SortedMapE<R> filter_gt(const K& k) const {
     const auto& x = getConstContainer();
-    auto it = x.upper_bound(key);
+    auto it = x.upper_bound(k.key);
     return SortedMapE<R>(it, x.end());
   }
 
   template<typename K>
-  SortedMapE<R> filter_geq(const K& rec) const {
+  SortedMapE<R> filter_geq(const K& k) const {
     const auto& x = getConstContainer();
-    auto it = x.lower_bound(key);
+    auto it = x.lower_bound(k.key);
     return SortedMapE<R>(it, x.end());
   }
 
   template<typename K>
   SortedMapE<R> between(const K& a, const K& b) const {
     const auto& x = getConstContainer();
-    auto it = x.lower_bound(a);
-    auto end = x.upper_bound(b);
+    auto it = x.lower_bound(a.key);
+    auto end = x.upper_bound(b.key);
     if ( it != x.end() ){
       return SortedMapE<R>(it, end);
     } else {
@@ -3113,8 +3113,8 @@ class SortedMapE {
   // Range-based modification, exclusive of the given key.
 
   template<typename K>
-  unit_t erase_prefix(const K& key) {
-    auto it = container.lower_bound(key);
+  unit_t erase_prefix(const K& k) {
+    auto it = container.lower_bound(k.key);
     if (it != container.end()) {
         container.erase(container.cbegin(), it);
     }
@@ -3122,8 +3122,8 @@ class SortedMapE {
   }
 
   template<typename K>
-  unit_t erase_suffix(const K& key) {
-    auto it = container.upper_bound(key);
+  unit_t erase_suffix(const K& k) {
+    auto it = container.upper_bound(k.key);
     if (it != container.end()) {
         container.erase(it, container.cend());
     }
