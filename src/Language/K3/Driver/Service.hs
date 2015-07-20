@@ -10,7 +10,7 @@ module Language.K3.Driver.Service where
 import Control.Arrow ( (&&&), second )
 import Control.Concurrent
 import Control.Concurrent.Async ( Async, asyncThreadId, cancel )
-import Control.Exception ( IOException(..), ErrorCall(..) )
+import Control.Exception ( IOException, ErrorCall(..), PatternMatchFail(..) )
 import Control.Monad
 import Control.Monad.Catch ( Handler(..), throwM, catches, finally )
 import Control.Monad.IO.Class
@@ -749,8 +749,9 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     includesP  = (includes $ paths opts)
 
     abortcatch rid rq m = m `catches`
-      [Handler (\(e :: IOException) -> abortProgram Nothing rid rq $ show e),
-       Handler (\(e :: ErrorCall)   -> abortProgram Nothing rid rq $ show e)]
+      [Handler (\(e :: IOException)      -> abortProgram Nothing rid rq $ show e),
+       Handler (\(e :: PatternMatchFail) -> abortProgram Nothing rid rq $ show e),
+       Handler (\(e :: ErrorCall)        -> abortProgram Nothing rid rq $ show e)]
 
     process prog jobOpts rq rid = abortcatch rid rq $ do
       void $ zm $ do
@@ -1235,8 +1236,9 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
     processBlock pid _ ublocksByBID _ = abortBlock pid ublocksByBID $ "Invalid worker compile stages"
 
     abortcatch pid ublocksByBID m = m `catches`
-      [Handler (\(e :: IOException) -> abortBlock pid ublocksByBID $ show e),
-       Handler (\(e :: ErrorCall)   -> abortBlock pid ublocksByBID $ show e)]
+      [Handler (\(e :: IOException)      -> abortBlock pid ublocksByBID $ show e),
+       Handler (\(e :: PatternMatchFail) -> abortBlock pid ublocksByBID $ show e),
+       Handler (\(e :: ErrorCall)        -> abortBlock pid ublocksByBID $ show e)]
 
     abortBlock pid ublocksByBID reason =
       sendC wworker $ BlockAborted wid pid (map fst ublocksByBID) reason
