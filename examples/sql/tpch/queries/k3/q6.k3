@@ -22,10 +22,7 @@ trigger q6_local : () = \_ -> (
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
   nodes                = [$ peers],
   onReadyExpr          = [$ peers.iterate (\x -> (q6_local, x.addr) <- () ) ],
-  loadExpr             = [$ dataLineCountFiles.iterate (\e -> lineitemRows = lineitemRows + (lineCountFile e.path));
-			                      print ("Lineitem rows: " ++ (itos lineitemRows));
-                            q6_lineitemLoaderPFC dataFiles lineitem lineitem_r lineitemRows
-                         ],
+  loadExpr             = [$ q6_lineitemLoaderPFC lineitemFiles lineitem lineitem_r lineitemRows ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],
   finishArgT           = [: real],
@@ -39,7 +36,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
 )
 
 sink results_sink : real = file "results.csv" csv
-sink query_time_sink : string = stdout csv
+sink query_time_sink : string = file "time.csv" csv
 
 source rows : () = value ()
 feed rows |> start

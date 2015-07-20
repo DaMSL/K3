@@ -251,16 +251,17 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                         ],
   finishArgT          = [: ()],
   preTestFinishExpr   = [$ (\_ -> ())],
-  preFinishExpr       = [$ (print ("Q5 num results:" ++ (itos (q5_result.size()))));
-                           (q5_result.iterate (\r -> ((results.insert r); ((results_sink, me) <- r ))));
+  preFinishExpr       = [$ (q5_result.iterate (\r -> ((results.insert r);
+                                                     ((results_sink, me) <- (r.key, r.value) ))
+                           ));
                            peers.iterate (\p -> (shutdown, p.addr) <- ())
                         ],
   preShutdownExpr     = [$ ()],
   finishAsShutdownExpr = [$ false]
 )
 
-sink results_sink : {key: string, value: real} = file "results.csv" csv
-sink query_time_sink : string = stdout csv
+sink results_sink : (string, real) = file "results.csv" psv
+sink query_time_sink : string = file "time.csv"  csv
 
 source rows : () = value ()
 feed rows |> start

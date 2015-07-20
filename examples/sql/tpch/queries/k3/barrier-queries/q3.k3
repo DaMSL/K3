@@ -217,8 +217,16 @@ declare finalizeResult: () -> () = \_ -> (
                      , shippriority: r.key.sp })
 )
 
+typedef q3_result = collection {orderkey: int, revenue: real, orderdate: string, shippriority: int} @Collection
+declare finalize : collection {key: address, value: q3_result} @Map -> () = \x -> (
+  (x.iterate (\t ->
+    t.value.iterate (\v ->
+      (results_sink, me) <- (v.orderkey, v.revenue, v.orderdate, v.shippriority)
+   )))
+)
+
 // For ktrace:
-declare results: collection {orderkey: int, revenue: real, orderdate: string, shippriority: int} @Collection
+declare results: q3_result
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes                = [$ peers ],
@@ -241,17 +249,17 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   onReadyExpr          = [$ (lineitem_orders, me) <- ()],
   finishArgT           = [: ()],
   preTestFinishExpr    = [$ (\_ -> ())],
-  preFinishExpr        = [$ ( () @GatherResultsAsCSV(
-                                    query_cl = [* [% ci: [# results], csink: [$ results_sink]] ]
-                                  , nodes    = [$ peers]
-                                  , next     = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ]) )
+  preFinishExpr        = [$ (ignore results) @GatherCollection(
+                                                  lbl   = [# groupby],
+                                                  nodes = [$ peers],
+                                                  next  = [$ (\a -> (finalize a; peers.iterate (\p -> (shutdown, p.addr) <- ()) ))])
                          ],
   preShutdownExpr      = [$ () ],
   finishAsShutdownExpr = [$ false]
 )
 
-sink results_sink : {orderkey: int, revenue: real, orderdate: string, shippriority: int} = file "results.csv" csv
-sink query_time_sink : string = stdout csv
+sink results_sink: (int, real, string, int) = file "results.csv" psv
+sink query_time_sink : string = file "time.csv" csv
 
 source rows : () = value ()
 feed rows |> start

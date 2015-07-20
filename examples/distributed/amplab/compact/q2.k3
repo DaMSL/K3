@@ -1,4 +1,5 @@
 include "compact/AmplabBDB.k3"
+include "Core/IO.k3"
 include "Distributed/Transformers.k3"
 
 typedef adRevByIp = collection {key:string, value:real} @Collection
@@ -9,12 +10,13 @@ declare num_results : mut int = 0
 
 // Data
 declare local_uservisits: collection {adRevenue: real, sourceIP: string} @Collection
-declare results : mut collection {key: string, value: real} @Collection
+typedef q2_result = collection {key: string, value: real} @Collection
+declare results : mut q2_result
 
 // Perform the query on the local dataset (local group by on ad revenue).
 // Then, group by destination peer address and send.
 trigger q2_local : () = \_ -> (
-  if master != me 
+  if master != me
   then ()
   else
     (ignore
@@ -36,6 +38,14 @@ trigger q2_local : () = \_ -> (
         profile     = [$ true] )
 )
 
+declare finalize : collection {key: address, value: q2_result} @Map -> () = \x -> (
+  (x.iterate (\t ->
+    t.value.iterate (\v ->
+      (results_sink, me) <- (v.key, v.value)
+    )
+  ))
+)
+
 trigger start : () = \_ -> (() @:Start) @AmplabBenchmark(
   queryTrigger       = [$ q2_local],
   loadExpr           = [$ loadQ2 uservisitsFiles local_uservisits],
@@ -43,9 +53,15 @@ trigger start : () = \_ -> (() @:Start) @AmplabBenchmark(
   preReadyExpr       = [$ ()],
   finishArgT         = [: int],
   preTestFinishExpr  = [$ (\n -> num_results = num_results + n)],
-  preFinishExpr      = [$ print ("# Results: " ++ (itos num_results))],
+  preFinishExpr      = [$ (ignore results) @GatherCollection(
+                                                 lbl   = [# result],
+                                                 nodes = [$ peers],
+                                                 next  = [$ (\x -> (finalize x; peers.iterate (\p -> (shutdown, p.addr) <- () )))])
+                       ],
   preShutdownExpr    = [$ ()]
 )
 
+sink results_sink : (string, real) = file "results.csv" psv
+sink query_time_sink : string = file "time.csv" csv
 source rows : () = value ()
 feed rows |> start
