@@ -10,7 +10,7 @@ module Language.K3.Driver.Service where
 import Control.Arrow ( (&&&), second )
 import Control.Concurrent
 import Control.Concurrent.Async ( Async, asyncThreadId, cancel )
-import Control.Exception ( IOException(..), ErrorCall(..) )
+import Control.Exception ( IOException, ErrorCall(..) )
 import Control.Monad
 import Control.Monad.Catch ( Handler(..), throwM, catches, finally )
 import Control.Monad.IO.Class
