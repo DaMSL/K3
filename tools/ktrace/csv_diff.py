@@ -23,9 +23,9 @@ def loadCSV(path):
 
 # Check if two fields are approximately equal
 def approxEq(field1, field2):
-  if (isinstance(field1, float) and isinstance(field2, float)):
-    err = abs(field1 - field2) / field1
-    if err > .1:
+  if (isinstance(field1, float) or isinstance(field2, float)):
+    err = abs(field1 - field2) / float(field1)
+    if err > .01:
       return False
     return True
 
