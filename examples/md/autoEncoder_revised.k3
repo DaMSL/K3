@@ -237,25 +237,25 @@ declare slaveBackPropagation : () -> () = \_ -> (
 	))
 	);
 
-    print ("weights : ");
-    weight.iterate(\w -> print (rtos (w.elem)));
-    print ("\\n");
+    //print ("weights : ");
+    //weight.iterate(\w -> print (rtos (w.elem)));
+    //print ("\\n");
 
-    print ("target values : ");
-    targetValue.iterate(\tv -> print (rtos tv.elem));
-    print ("\\n");
+    //print ("target values : ");
+    //targetValue.iterate(\tv -> print (rtos tv.elem));
+    //print ("\\n");
 
-    print ("Output values : ");
-    outputValue.iterate(\ov -> print (rtos (ov.elem)));
-    print ("\\n");
+    //print ("Output values : ");
+    //outputValue.iterate(\ov -> print (rtos (ov.elem)));
+    //print ("\\n");
 
-    print ("delta values : ");
-    deltaValue.iterate(\dv -> print (rtos dv.elem));
-    print ("\\n");
+    //print ("delta values : ");
+    //deltaValue.iterate(\dv -> print (rtos dv.elem));
+    //print ("\\n");
 
-    print ("z values : ");
-    zValue.iterate(\zv -> print (rtos zv.elem));
-    print ("\\n");
+    //print ("z values : ");
+    //zValue.iterate(\zv -> print (rtos zv.elem));
+    //print ("\\n");
 
     //calculate the hidden layer deltas
 	((xrange 2 (topology.size ()+1) ).iterate (\i -> (
@@ -400,16 +400,17 @@ trigger startSlave : () = \_ -> (
 		(slaveFeedForward ());
 		(slaveBackPropagation ());
 
-    /*
-    print "weights : ";
-    weight.iterate(\w -> print (rtos (w.elem)));
-    print "Output values : ";
-    outputValue.iterate(\ov -> print (rtos (ov.elem)));
-    print "zValues : ";
-    zValue.iterate(\z -> print (rtos (z.elem))); 
-    print (rtos totalError);
-    */
+    //print ("weights : ");
+    //weight.iterate(\w -> print (rtos (w.elem)));
 
+    //print ("Output values : ");
+    //outputValue.iterate(\ov -> print (rtos (ov.elem)));
+
+    //print ("zValues : ");
+    //zValue.iterate(\z -> print (rtos (z.elem))); 
+
+    //print (rtos totalError);
+    
 	//(results_sink, me) <- { addr : me, iter : r.i , totalError : totalError}
     print ("Done with an iteration of FeedForward and BackPropagation\\n")
     ))
@@ -440,7 +441,7 @@ trigger receiveAtSlave : collection {elem : real} @Vector = \updateOnWeights -> 
 
 trigger storeData :  {i: real, j: real, k : real} = \csvData -> (
 	allData.insert {elem : {i: csvData.i, j: csvData.j, k: csvData.k} };
-	rows = rows + 1;
+	rows = rows + 1; // Wait until number of rows equals to 8 for input values.
     (if (rows == 8) then ((startSlave, me) <- ()) else ())
 )
 
