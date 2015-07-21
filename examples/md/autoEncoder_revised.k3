@@ -329,13 +329,13 @@ declare slaveBackPropagation : () -> () = \_ -> (
     	))
     )));
     
-    print ("DeltaWeights : ");
-    deltaWeight.iterate(\dv -> print (rtos dv.elem));
-    print ("\\n");
+    //print ("DeltaWeights : ");
+    //deltaWeight.iterate(\dv -> print (rtos dv.elem));
+    //print ("\\n");
 
-    print ("old weights : ");
-    weight.iterate(\w -> print (rtos w.elem));
-    print ("\\n");
+    //print ("old weights : ");
+    //weight.iterate(\w -> print (rtos w.elem));
+    //print ("\\n");
 
     // Update the weights
     (range ((topology.size ()) -1)).iterate(\layerId -> (
@@ -361,13 +361,13 @@ declare slaveBackPropagation : () -> () = \_ -> (
 )
 
 trigger startMaster : () = \_ -> (
-	print ("Starts Master");
+	print ("Starts Master\\n");
 	initializeMaster()
 )
 
 trigger startSlave : () = \_ -> (
 
-	print ("Starts Slave");
+	print ("Starts Slave\\n");
 
 	(range 20).iterate (\r -> (	
     //print "Starting a new iteration";
@@ -412,6 +412,7 @@ trigger startSlave : () = \_ -> (
 
 	//(results_sink, me) <- { addr : me, iter : r.i , totalError : totalError}
     print ("Done with an iteration of FeedForward and BackPropagation")
+    print ("\\n");
 	))
 	))
 )
