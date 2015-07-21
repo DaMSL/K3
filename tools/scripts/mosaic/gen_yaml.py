@@ -9,7 +9,7 @@ def address(port):
     return ['127.0.0.1', port]
 
 def wrap_role(role):
-    return [{'n': role}]
+    return [{'i': role}]
 
 def create_peers(peers):
     res = []
