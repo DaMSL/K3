@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TupleSections #-}
 
 -- | Machinery for making decisions about C++ level materialization for K3.
 module Language.K3.Codegen.CPP.Materialization where
@@ -44,11 +45,14 @@ import Text.Printf
 
 type Table = I.IntMap (M.Map (Identifier, Maybe Int) Decision)
 
+type Downstream = (K3 Expression, (Maybe (Identifier, Int)))
+
 data MaterializationS = MaterializationS { decisionTable :: Table
                                          , pienv :: PIEnv
                                          , fienv :: FIEnv
-                                         , downstreams :: [K3 Expression]
+                                         , downstreams :: [Downstream]
                                          , currentGlobal :: Bool
+                                         , currentActivePFVar :: Maybe (Identifier, Int)
                                          -- | Identifiers currently in scope, and their bind points.
                                          , scopeMap :: M.Map Identifier Int
                                          }
@@ -56,7 +60,7 @@ data MaterializationS = MaterializationS { decisionTable :: Table
 -- Reporting
 
 dumpMaterializationReport :: Bool
-dumpMaterializationReport = False
+dumpMaterializationReport = True
 
 data MaterializationR
   = MRLambda { currentlyGlobal :: Bool
@@ -64,14 +68,14 @@ data MaterializationR
              , nrvoRequired :: Bool
              , argD :: Decision
              , closureReport :: [(Provenance, Provenance, Bool, Bool, Decision)]
-             , downstreamsConsidered :: [Int]
+             , downstreamsConsidered :: [Downstream]
              }
   | MRApply
   | MRBind
   | MRLet
   | MRCase
   | MRSend
-  | MRRecord [(Identifier, Bool, [Int], Decision)]
+  | MRRecord [(Identifier, Bool, [Downstream], Decision)]
  deriving (Eq, Read, Show)
 
 formatMR :: [(Int, MaterializationR)] -> IO ()
@@ -86,14 +90,14 @@ formatMR r = putStrLn "Materialization Report" >> mapM_ (uncurry formatR) r
        printf "  Lambda requires manual NRVO: %s\n" (show nr)
        printf "  Incoming decision for argument: %s\n" (show $ inD ad)
        printf "  Outgoing decision for argument: %s\n" (show $ outD ad)
-       printf "  Downstreams considered for all decisions: %s\n" (show dc)
+       printf "  Downstreams considered for all decisions: %s\n" (show $ map (getUID . fst) dc)
        unless (null cr) $ do
          printf "  Closure Variables:\n"
          forM_ cr $ \(ip, op, hw, b, d) -> do
            printf "    Variable: %s\n" $ case ip of
              PBVar (PMatVar { pmvn }) -> pmvn
              _ -> error "Incorrect Closure Provenance"
-           printf "      Captured from: %d\n" $ case op of
+           printf "      Captured from: %s\n" $ case op of
              PBVar (PMatVar { pmvloc = (UID i) }) -> "identifier bound at " ++ show i
              PFVar _ -> "free variable in parent scope."
            printf "      Is written to inside lambda: %s\n" (show hw)
@@ -104,7 +108,7 @@ formatMR r = putStrLn "Materialization Report" >> mapM_ (uncurry formatR) r
        forM_ imnds $ \(i, mn, ds, d) -> do
          printf "  Field %s:\n" i
          printf "    Moveable: %s\n" (show mn)
-         printf "      Downstreams considered: %s\n" (show ds)
+         printf "      Downstreams considered: %s\n" (show $ map (getUID . fst) ds)
          printf "    Decision: %s\n" (show $ inD d)
 
 say :: Int -> MaterializationR -> MaterializationM ()
@@ -136,10 +140,19 @@ pLookup p = pienv <$> get >>= \e -> return (I.lookup p (ppenv e))
 withLocalDS :: [K3 Expression] -> MaterializationM a -> MaterializationM a
 withLocalDS nds m = do
   s <- get
-  put (s { downstreams = nds ++ (downstreams s)})
+  put (s { downstreams = (zip nds $ repeat $ currentActivePFVar s) ++ (downstreams s)})
   r <- m
   s' <- get
   put (s' { downstreams = downstreams s})
+  return r
+
+withActivePFVar :: Identifier -> Int -> MaterializationM a -> MaterializationM a
+withActivePFVar i u m = do
+  s <- get
+  put (s { currentActivePFVar = Just (i, u) })
+  r <- m
+  s' <- get
+  put (s' { currentActivePFVar = currentActivePFVar s })
   return r
 
 withLocalBindings :: [Identifier] -> Int -> MaterializationM a -> MaterializationM a
@@ -192,6 +205,11 @@ pmvloc' pmv = let UID u = pmvloc pmv in u
 setCurrentGlobal :: Bool -> MaterializationM ()
 setCurrentGlobal b = modify $ \s -> s { currentGlobal = b }
 
+type ProxyProvenance = (K3 Provenance, Maybe (Identifier, Int))
+
+makeCurrentPP :: K3 Provenance -> MaterializationM ProxyProvenance
+makeCurrentPP p = (p,) <$> gets currentActivePFVar
+
 -- Table Construction/Attachment
 
 runMaterializationM :: MaterializationM a -> MaterializationS -> ((a, [(Int, MaterializationR)]), MaterializationS)
@@ -199,7 +217,7 @@ runMaterializationM m s = runIdentity $ runStateT (runWriterT m) s
 
 optimizeMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> IO (K3 Declaration)
 optimizeMaterialization (p, f) d = do
-  let ((nd, report), _) = runMaterializationM (materializationD d) (MaterializationS I.empty p f [] True M.empty)
+  let ((nd, report), _) = runMaterializationM (materializationD d) (MaterializationS I.empty p f [] True Nothing M.empty)
   when dumpMaterializationReport $ formatMR report
   return nd
 
@@ -222,7 +240,7 @@ materializationE e@(Node (t :@: as) cs)
       ERecord is -> do
         let decisionForField c ds = withLocalDS ds $ do
               rf <- materializationE c
-              mn <- isMoveableNow (getProvenance c)
+              mn <- makeCurrentPP (getProvenance c) >>= isMoveableNow
               return (if mn then defaultDecision { inD = Moved } else defaultDecision, rf, mn)
         let (is', cs') = unzip . sortBy (comparing fst) $ zip is cs
         (decisions, fs, mns) <- unzip3 <$> zipWithM decisionForField (reverse cs') (reverse $ tail $ tails cs')
@@ -230,7 +248,8 @@ materializationE e@(Node (t :@: as) cs)
         ds <- dLookupAll (getUID e)
         let fs' = map (\i -> fs !! (fromJust $ elemIndex i $ reverse is')) is
         eds <- downstreams <$> get
-        say (getUID e) $ MRRecord $ zip4 is' mns (map (map getUID . (eds ++)) $ tail $ tails cs') decisions
+        cs'' <- zip cs' . repeat <$> gets currentActivePFVar
+        say (getUID e) $ MRRecord $ zip4 is' mns (map (eds ++) $ tail $ tails cs'') decisions
         return (Node (t :@: (EMaterialization ds:as)) fs')
 
       EOperate OApp -> do
@@ -258,7 +277,7 @@ materializationE e@(Node (t :@: as) cs)
                 _ -> return False
             _ -> return False
 
-        moveable <- isMoveableNow (getProvenance x)
+        moveable <- makeCurrentPP (getProvenance x) >>= isMoveableNow
 
         let applicationDecision d =
               if (conservativeDoMoveLocal || conservativeDoMoveReturn) && moveable
@@ -276,7 +295,7 @@ materializationE e@(Node (t :@: as) cs)
         m' <- materializationE m
         h' <- withLocalDS [m] $ materializationE h
 
-        moveable <- isMoveableNow (getProvenance m')
+        moveable <- makeCurrentPP (getProvenance m') >>= isMoveableNow
         let decision = if moveable then defaultDecision { inD = Moved } else defaultDecision
         setDecision (getUID e) "" decision
         ds <- dLookupAll (getUID e)
@@ -305,7 +324,8 @@ materializationE e@(Node (t :@: as) cs)
                     ELambda _ -> return ()
                     _ -> setCurrentGlobal False
 
-        [b] <- withLocalBindings (x : map pmvn closureSymbols) (getUID e) $ mapM materializationE cs
+        [b] <- withLocalBindings (x : map pmvn closureSymbols) (getUID e) $
+               withActivePFVar x (getUID e) $ mapM materializationE cs
 
         setCurrentGlobal cg
 
@@ -334,7 +354,7 @@ materializationE e@(Node (t :@: as) cs)
           let innerProxyProvenance = P.pbvar s
           outerProxyProvenance <- fromMaybe (error "Dangling closure provenance.") <$> pLookup (pmvptr s)
           closureHasWrite <- hasWriteInP innerProxyProvenance b
-          moveable <- isMoveableNow outerProxyProvenance
+          moveable <- makeCurrentPP outerProxyProvenance >>= isMoveableNow
           let closureDecision d =
                 if closureHasWrite
                   then if moveable
@@ -358,7 +378,7 @@ materializationE e@(Node (t :@: as) cs)
                  )
         decisions <- dLookupAll (getUID e)
 
-        eds <- map getUID . downstreams <$> get
+        eds <- downstreams <$> get
         say (getUID e) $ MRLambda cg readOnly nrvo (M.findWithDefault defaultDecision x decisions) cr eds
         return $ (Node (t :@: (EMaterialization decisions:as)) [b])
 
@@ -408,7 +428,7 @@ materializationE e@(Node (t :@: as) cs)
         b' <- withLocalBindings [i] (getUID e) $ materializationE b
         (x', d) <- withLocalDS [b] $ do
           x'' <- materializationE x
-          m <- isMoveableNow (getProvenance x'')
+          m <- makeCurrentPP (getProvenance x'') >>= isMoveableNow
           return (x'', if m then defaultDecision { inD = Moved } else defaultDecision)
 
         setDecision (getUID e) i d
@@ -536,6 +556,7 @@ pBindInfo p =
 hasWriteInP :: K3 Provenance -> K3 Expression -> MaterializationM Bool
 hasWriteInP prov expr =
   case expr of
+    (tag -> ELambda x) | (PFVar x) == tag prov -> return False
     (tag &&& children -> (ELambda _, [b])) -> do
       closureDecisions <- dLookupAllWithBindings (getUID expr)
       let writeInClosure = fromMaybe False $ do
@@ -624,16 +645,27 @@ isMoveable p = case tag p of
                  PLambda _ _ -> return False
                  _ -> not <$> isGlobalP p
 
-isMoveableIn :: K3 Provenance -> K3 Expression -> MaterializationM Bool
-isMoveableIn x c = do
+isMoveableIn :: ProxyProvenance -> Downstream -> MaterializationM Bool
+isMoveableIn (p, m) (d, n) =
+  case tag p of
+    PFVar i -> case m of
+      Just (j, u) | j == i -> case n of
+        Just (k, v) | (j, u) == (k, v) -> isMoveableIn' p d
+        _ -> return True
+      _ -> error "Found an impossible free variable."
+    _ -> isMoveableIn' p d
+
+
+isMoveableIn' :: K3 Provenance -> K3 Expression -> MaterializationM Bool
+isMoveableIn' x c = do
   isRead <- hasReadInP x c
   isWritten <- hasWriteInP x c
   return $ not (isRead || isWritten)
 
-isMoveableNow :: K3 Provenance -> MaterializationM Bool
+isMoveableNow :: ProxyProvenance -> MaterializationM Bool
 isMoveableNow p = do
   ds <- downstreams <$> get
-  isMoveable1 <- isMoveable p
+  isMoveable1 <- isMoveable (fst p)
   allMoveable <- allM (isMoveableIn p) ds
   return $ isMoveable1 && allMoveable
 
