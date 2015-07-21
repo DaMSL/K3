@@ -1,25 +1,31 @@
-#ifndef K3_ORDEREDMAP
-#define K3_ORDEREDMAP
+#ifndef K3_SORTEDMAPE
+#define K3_SORTEDMAPE
 
 #include <iterator>
 #include <map>
 
-namespace K3 {
+#include <functional>
+#include <stdexcept>
 
+#include <boost/serialization/array.hpp>
+#include <boost/serialization/binary_object.hpp>
+#include <boost/serialization/string.hpp>
+#include <csvpp/csv.h>
 template<class R>
-class SortedMap {
+class SortedMapE {
   using Key = typename R::KeyType;
+  using Value = typename R::ValueType;
   using Container = std::map<Key, R>;
 
  public:
   // Default Constructor
-  SortedMap(): container() {}
-  SortedMap(const std::map<Key,R>& con): container(con) {}
-  SortedMap(std::map<Key, R>&& con): container(std::move(con)) {}
+  SortedMapE(): container() {}
+  SortedMapE(const std::map<Key,R>& con): container(con) {}
+  SortedMapE(std::map<Key, R>&& con): container(std::move(con)) {}
 
   // Construct from (container) iterators
   template<typename Iterator>
-  SortedMap(Iterator begin, Iterator end): container(begin,end) {}
+  SortedMapE(Iterator begin, Iterator end): container(begin,end) {}
 
   template <class Pair>
   R elemToRecord(const Pair& e) const { return e.second; }
@@ -119,40 +125,38 @@ class SortedMap {
     return unit_t {};
   }
 
-  template <class F, class G>
-  unit_t upsert_with(const R& rec, F f, G g) {
-    auto existing = container.find(rec.key);
+  template <typename K, typename F, typename G>
+  unit_t upsert_with(const K& k, F f, G g) {
+    auto existing = container.find(k.key);
     if (existing == std::end(container)) {
-      container[rec.key] = f(unit_t {});
+      container[k.key] = f(unit_t {});
     } else {
-      container[rec.key] = g(std::move(existing->second));
+      container[k.key] = g(std::move(existing->second));
     }
 
     return unit_t {};
   }
 
-  unit_t erase(const R& rec) {
-    auto it = container.find(rec.key);
-    if (it != container.end()) {
-        container.erase(it);
-    }
+  template<typename K>
+  unit_t erase(const K& k) {
+    container.erase(k.key);
     return unit_t();
   }
 
-  unit_t update(const R& rec1, const R& rec2) {
-    auto it = container.find(rec1.key);
+  template<typename K, typename V>
+  unit_t update(const K& k, V&& val) {
+    auto it = container.find(k.key);
     if (it != container.end()) {
-        container.erase(it);
-        container[rec2.key] = rec2;
+      container[k.key].value = std::move(val.value);
     }
     return unit_t();
   }
 
   int size(unit_t) const { return container.size(); }
 
-  SortedMap combine(const SortedMap& other) const {
+  SortedMapE combine(const SortedMapE& other) const {
     // copy this DS
-    SortedMap result = SortedMap(*this);
+    SortedMapE result = SortedMapE(*this);
     // copy other DS
     for (const auto& p: other.container) {
       result.container[p.first] = p.second;
@@ -160,7 +164,7 @@ class SortedMap {
     return result;
   }
 
-  tuple<SortedMap, SortedMap> split(const unit_t&) const {
+  tuple<SortedMapE, SortedMapE> split(const unit_t&) const {
     // Find midpoint
     const size_t size = container.size();
     const size_t half = size / 2;
@@ -170,7 +174,7 @@ class SortedMap {
     std::advance(mid, half);
     auto end = container.end();
     // Construct DS from iterators
-    return std::make_tuple(SortedMap(beg, mid), SortedMap(mid, end));
+    return std::make_tuple(SortedMapE(beg, mid), SortedMapE(mid, end));
   }
 
   template <typename Fun>
@@ -182,8 +186,8 @@ class SortedMap {
   }
 
   template<typename Fun>
-  auto map(Fun f) const -> SortedMap< RT<Fun, R> > {
-    SortedMap< RT<Fun,R> > result;
+  auto map(Fun f) const -> SortedMapE< RT<Fun, R> > {
+    SortedMapE< RT<Fun,R> > result;
     for (const auto& p : container) {
       result.insert( f(p.second) );
     }
@@ -191,8 +195,8 @@ class SortedMap {
   }
 
   template <typename Fun>
-  SortedMap<R> filter(Fun predicate) const {
-    SortedMap<R> result;
+  SortedMapE<R> filter(Fun predicate) const {
+    SortedMapE<R> result;
     for (const auto& p : container) {
       if (predicate(p.second)) {
         result.insert(p.second);
@@ -210,7 +214,7 @@ class SortedMap {
   }
 
   template<typename F1, typename F2, typename Z>
-  SortedMap< R_key_value< RT<F1, R>,Z >> groupBy(F1 grouper, F2 folder, const Z& init) const {
+  SortedMapE< R_key_value< RT<F1, R>,Z >> groupBy(F1 grouper, F2 folder, const Z& init) const {
     // Create a map to hold partial results
     typedef RT<F1, R> K;
     std::map<K, Z> accs;
@@ -224,7 +228,7 @@ class SortedMap {
     }
 
     // TODO more efficient implementation?
-    SortedMap<R_key_value<K,Z>> result;
+    SortedMapE<R_key_value<K,Z>> result;
     for (auto&& it : accs) {
       result.insert(std::move(R_key_value<K, Z> {std::move(it.first), std::move(it.second)}));
     }
@@ -232,9 +236,9 @@ class SortedMap {
   }
 
   template <class Fun>
-  auto ext(Fun expand) const -> SortedMap < typename RT<Fun, R>::ElemType >  {
+  auto ext(Fun expand) const -> SortedMapE < typename RT<Fun, R>::ElemType >  {
     typedef typename RT<Fun, R>::ElemType T;
-    SortedMap<T> result;
+    SortedMapE<T> result;
     for (const auto& it : container) {
       for (auto& it2 : expand(it.second).container) {
         result.insert(it2.second);
@@ -244,9 +248,17 @@ class SortedMap {
     return result;
   }
 
-  // lookup ignores the value of the argument
-  shared_ptr<R> lookup(const R& r) const {
-      auto it = container.find(r.key);
+  // SortedMap retrieval.
+  // For a SortedMapE, these methods expect a key argument instead of a key-value struct.
+
+  template<typename K>
+  bool member(const K& k) const {
+    return container.find(k.key) != container.end();
+  }
+
+  template<typename K>
+  shared_ptr<R> lookup(const K& k) const {
+      auto it = container.find(k.key);
       if (it != container.end()) {
         return std::make_shared<R>(it->second);
       } else {
@@ -254,13 +266,9 @@ class SortedMap {
       }
   }
 
-  bool member(const R& r) const {
-    return container.find(r.key) != container.end();
-  }
-
-  template <class F>
-  unit_t lookup_with(R const& r, F f) const {
-    auto it = container.find(r.key);
+  template <typename K, class F>
+  unit_t lookup_with(K const& k, F f) const {
+    auto it = container.find(k.key);
     if (it != container.end()) {
       return f(it->second);
     }
@@ -268,9 +276,9 @@ class SortedMap {
     return unit_t {};
   }
 
-  template <class F, class G>
-  auto lookup_with2(R const& r, F f, G g) const {
-    auto it = container.find(r.key);
+  template <typename K, class F, class G>
+  auto lookup_with2(K const& k, F f, G g) const {
+    auto it = container.find(k.key);
     if (it == container.end()) {
       return f(unit_t {});
     } else {
@@ -278,18 +286,18 @@ class SortedMap {
     }
   }
 
-  template <class F>
-  auto lookup_with3(R const& r, F f) const {
-    auto it = container.find(r.key);
+  template <typename K, class F>
+  auto lookup_with3(K const& k, F f) const {
+    auto it = container.find(k.key);
     if (it != container.end()) {
       return f(it->second);
     }
     throw std::runtime_error("No match on Map.lookup_with3");
   }
 
-  template <class F, class G>
-  auto lookup_with4(R const& r, F f, G g) const {
-    auto it = container.find(r.key);
+  template <typename K, class F, class G>
+  auto lookup_with4(K const& k, F f, G g) const {
+    auto it = container.find(k.key);
     if (it == container.end()) {
       return f(unit_t {});
     } else {
@@ -357,9 +365,9 @@ class SortedMap {
     return result;
   }
 
-  template<typename F, typename G>
-  auto upper_bound_with(const R& rec, F f, G g) const {
-    auto it = container.upper_bound(rec.key);
+  template<typename K, typename F, typename G>
+  auto lower_bound_with(const K& k, F f, G g) const {
+    auto it = container.lower_bound(k.key);
     if (it == container.end()) {
       return f(unit_t {});
     } else {
@@ -367,9 +375,9 @@ class SortedMap {
     }
   }
 
-  template<typename F, typename G>
-  auto lower_bound_with(const R& rec, F f, G g) const {
-    auto it = container.lower_bound(rec.key);
+  template<typename K, typename F, typename G>
+  auto upper_bound_with(const K& k, F f, G g) const {
+    auto it = container.upper_bound(k.key);
     if (it == container.end()) {
       return f(unit_t {});
     } else {
@@ -377,66 +385,72 @@ class SortedMap {
     }
   }
 
-  SortedMap<R> filter_lt(const R& rec) const {
+  template<typename K>
+  SortedMapE<R> filter_lt(const K& k) const {
     const auto& x = getConstContainer();
-    auto it = x.lower_bound(rec.key);
-    return SortedMap<R>(x.begin(), it);
+    auto it = x.lower_bound(k.key);
+    return SortedMapE<R>(x.begin(), it);
   }
 
-  SortedMap<R> filter_gt(const R& rec) const {
+  template<typename K>
+  SortedMapE<R> filter_gt(const K& k) const {
     const auto& x = getConstContainer();
-    auto it = x.upper_bound(rec.key);
-    return SortedMap<R>(it, x.end());
+    auto it = x.upper_bound(k.key);
+    return SortedMapE<R>(it, x.end());
   }
 
-  SortedMap<R> filter_geq(const R& rec) const {
+  template<typename K>
+  SortedMapE<R> filter_geq(const K& k) const {
     const auto& x = getConstContainer();
-    auto it = x.lower_bound(rec.key);
-    return SortedMap<R>(it, x.end());
+    auto it = x.lower_bound(k.key);
+    return SortedMapE<R>(it, x.end());
   }
 
-  SortedMap<R> between(const R& a, const R& b) const {
+  template<typename K>
+  SortedMapE<R> between(const K& a, const K& b) const {
     const auto& x = getConstContainer();
     auto it = x.lower_bound(a.key);
     auto end = x.upper_bound(b.key);
     if ( it != x.end() ){
-      return SortedMap<R>(it, end);
+      return SortedMapE<R>(it, end);
     } else {
-      return SortedMap<R>();
+      return SortedMapE<R>();
     }
   }
 
   // Range-based modification, exclusive of the given key.
 
-  unit_t erase_prefix(const R& rec) {
-    auto it = container.lower_bound(rec.key);
+  template<typename K>
+  unit_t erase_prefix(const K& k) {
+    auto it = container.lower_bound(k.key);
     if (it != container.end()) {
         container.erase(container.cbegin(), it);
     }
     return unit_t();
   }
 
-  unit_t erase_suffix(const R& rec) {
-    auto it = container.upper_bound(rec.key);
+  template<typename K>
+  unit_t erase_suffix(const K& k) {
+    auto it = container.upper_bound(k.key);
     if (it != container.end()) {
         container.erase(it, container.cend());
     }
     return unit_t();
   }
 
-  bool operator==(const SortedMap& other) const {
+  bool operator==(const SortedMapE& other) const {
     return container == other.container;
   }
 
-  bool operator!=(const SortedMap& other) const {
+  bool operator!=(const SortedMapE& other) const {
     return container != other.container;
   }
 
-  bool operator<(const SortedMap& other) const {
+  bool operator<(const SortedMapE& other) const {
     return container < other.container;
   }
 
-  bool operator>(const SortedMap& other) const {
+  bool operator>(const SortedMapE& other) const {
     return container > other.container;
   }
 
@@ -449,7 +463,7 @@ class SortedMap {
 
   template<class Archive>
   void serialize(Archive &ar, const unsigned int) {
-    ar & boost::serialization::make_nvp("__K3SortedMap", container);
+    ar & boost::serialization::make_nvp("__K3SortedMapE", container);
   }
 
  protected:
@@ -457,45 +471,12 @@ class SortedMap {
 
  private:
   friend class boost::serialization::access;
-}; // class SortedMap
-}  // namespace K3
-
-namespace boost {
-namespace serialization {
-template <class _T0>
-class implementation_level<K3::SortedMap<_T0>> {
- public:
-  typedef mpl::integral_c_tag tag;
-  typedef mpl::int_<object_serializable> type;
-  BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
-};
-}  // namespace serialization
-}  // namespace boost
-
-namespace JSON {
-using namespace rapidjson;
-template <class E>
-struct convert<K3::SortedMap<E>> {
-  template <class Allocator>
-  static Value encode(const K3::SortedMap<E>& c, Allocator& al) {
-    Value v;
-    v.SetObject();
-    v.AddMember("type", Value("SortedMap"), al);
-    Value inner;
-    inner.SetArray();
-    for (const auto& e : c.getConstContainer()) {
-      inner.PushBack(convert<E>::encode(e.second, al), al);
-    }
-    v.AddMember("value", inner.Move(), al);
-    return v;
-  }
-};
-}  // namespace JSON
+}; // class SortedMapE
 
 namespace YAML {
 template <class R>
-struct convert<K3::SortedMap<R>> {
-  static Node encode(const K3::SortedMap<R>& c) {
+struct convert<K3::SortedMapE<R>> {
+  static Node encode(const K3::SortedMapE<R>& c) {
     Node node;
     auto container = c.getConstContainer();
     if (container.size() > 0) {
@@ -508,14 +489,32 @@ struct convert<K3::SortedMap<R>> {
     return node;
   }
 
-  static bool decode(const Node& node, K3::SortedMap<R>& c) {
+  static bool decode(const Node& node, K3::SortedMapE<R>& c) {
     for (auto& i : node) {
       c.insert(i.as<R>());
     }
     return true;
   }
 };
+}
 
-}  // namespace YAML
+namespace JSON {
+template <class E>
+struct convert<K3::SortedMapE<E>> {
+  template <class Allocator>
+  static Value encode(const K3::SortedMapE<E>& c, Allocator& al) {
+    Value v;
+    v.SetObject();
+    v.AddMember("type", Value("SortedMapE"), al);
+    Value inner;
+    inner.SetArray();
+    for (const auto& e : c.getConstContainer()) {
+      inner.PushBack(convert<E>::encode(e.second, al), al);
+    }
+    v.AddMember("value", inner.Move(), al);
+    return v;
+  }
+};
+}
 
 #endif

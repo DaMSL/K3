@@ -11,7 +11,7 @@
 namespace K3 {
 
 template <template <typename> class Derived, class Elem>
-using SetDS = STLDS<Derived, std::unordered_set, Elem>;
+using SetDS = STLDS<Derived, std::set, Elem>;
 
 template <class Elem>
 class Set : public SetDS<K3::Set, Elem> {

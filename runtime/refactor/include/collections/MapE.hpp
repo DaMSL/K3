@@ -337,6 +337,51 @@ class MapE {
  private:
   friend class boost::serialization::access;
 };  // class MapE
+
+}  // namespace K3
+
+namespace YAML {
+template <class R>
+struct convert<K3::MapE<R>> {
+  static Node encode(const K3::MapE<R>& c) {
+    Node node;
+    auto container = c.getConstContainer();
+    if (container.size() > 0) {
+      for (auto i : container) {
+        node.push_back(convert<R>::encode(i.second));
+      }
+    } else {
+      node = YAML::Load("[]");
+    }
+    return node;
+  }
+
+  static bool decode(const Node& node, K3::MapE<R>& c) {
+    for (auto& i : node) {
+      c.insert(i.as<R>());
+    }
+    return true;
+  }
+};
+}
+
+namespace JSON {
+template <class E>
+struct convert<K3::MapE<E>> {
+  template <class Allocator>
+  static Value encode(const K3::MapE<E>& c, Allocator& al) {
+    Value v;
+    v.SetObject();
+    v.AddMember("type", Value("MapE"), al);
+    Value inner;
+    inner.SetArray();
+    for (const auto& e : c.getConstContainer()) {
+      inner.PushBack(convert<E>::encode(e.second, al), al);
+    }
+    v.AddMember("value", inner.Move(), al);
+    return v;
+  }
+};
 }
 
 #endif
