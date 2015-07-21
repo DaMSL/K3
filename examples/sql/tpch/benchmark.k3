@@ -76,16 +76,9 @@ control TPCHBenchmarkWithoutMaster
       // A 'finished' trigger which optionally shuts down all the nodes. This is invoked at the master.
       trigger finished : $[finishArgT] = \finishArg -> (
         ($[preTestFinishExpr] finishArg);
-<<<<<<< HEAD
-        ((end_ms = now_int());
-        ( ((query_time_sink, me) <- (end_ms - start_ms)));
-        ($[preFinishExpr]);
-        if $[finishAsShutdownExpr] then $[nodes].iterate (\p -> (shutdown, p.addr) <- ()) else ()
-=======
         ((( () @:StopTimer) @TimeSink(lbl=[# Query], tag=[$ "Time "], sink_expr=[$ query_time_sink]));
             $[preFinishExpr];
             if $[finishAsShutdownExpr] then $[nodes].iterate (\p -> (shutdown, p.addr) <- ()) else ()
->>>>>>> development
         ) @OnCounter(id=[# query_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
       )
 
