@@ -11,6 +11,8 @@
 #include <boost/serialization/binary_object.hpp>
 #include <boost/serialization/string.hpp>
 #include <csvpp/csv.h>
+
+namespace K3 {
 template<class R>
 class SortedMapE {
   using Key = typename R::KeyType;
@@ -472,6 +474,8 @@ class SortedMapE {
  private:
   friend class boost::serialization::access;
 }; // class SortedMapE
+
+}
 
 namespace YAML {
 template <class R>

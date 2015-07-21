@@ -12,5 +12,5 @@
 #include "collections/SortedMap.hpp"
 #include "collections/SortedSet.hpp"
 #include "collections/MapE.hpp"
-#include "collection/SortedMapE.hpp"
+#include "collections/SortedMapE.hpp"
 #include "HashCollections.hpp"

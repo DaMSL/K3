@@ -1,0 +1,51 @@
+include "Annotation/Collection.k3"
+include "Annotation/Seq.k3"
+include "Annotation/Set.k3"
+
+declare R : collection {elem: {a: int, b: int}} @Collection = {|elem: {a:int, b:int}| {a:10, b:0}, {a:20, b:1}, {a:30, b:2} |} @Collection
+declare S : collection {elem: {c: int, d: int}} @Collection = {|elem: {c:int, d:int}| {c:0, d:10}, {c:1, d:20}, {c:2, d:30} |} @Collection
+
+declare R_seq : collection {elem: {a: int, b: int}} @Seq = {|elem: {a:int, b:int}| {a:10, b:0}, {a:20, b:1}, {a:30, b:2} |} @Seq
+declare S_seq : collection {elem: {c: int, d: int}} @Seq = {|elem: {c:int, d:int}| {c:0, d:10}, {c:1, d:20}, {c:2, d:30} |} @Seq
+
+declare R_set : collection {elem: {a: int, b: int}} @Set = {|elem: {a:int, b:int}| {a:10, b:0}, {a:20, b:1}, {a:30, b:2} |} @Set
+declare S_set : collection {elem: {c: int, d: int}} @Set = {|elem: {c:int, d:int}| {c:0, d:10}, {c:1, d:20}, {c:2, d:30} |} @Set
+
+declare sum_ad : mut int = 0
+declare sum_ad_equi : mut int = 0
+
+declare sum_ad_seq : mut int = 0
+declare sum_ad_equi_seq : mut int = 0
+
+declare sum_ad_set : mut int = 0
+declare sum_ad_equi_set : mut int = 0
+
+trigger t : () = \_ -> (
+  (sum_ad = (R.join S (\r -> \s -> r.elem.b == s.elem.c)
+                      (\r -> \s -> {a: r.elem.a, d: s.elem.d}))
+              .fold   (\acc -> \t -> acc + (t.elem.a * t.elem.d)) 0.0);
+
+  (sum_ad_equi = (R.equijoin S (\r -> r.elem.b) (\s -> s.elem.c)
+                               (\r -> \s -> {a: r.elem.a, d: s.elem.d}))
+                   .fold       (\acc -> \t -> acc + (t.elem.a * t.elem.d)) 0.0);
+
+  (sum_ad_seq = (R_seq.join S_seq (\r -> \s -> r.elem.b == s.elem.c)
+                                  (\r -> \s -> {a: r.elem.a, d: s.elem.d}))
+                      .fold       (\acc -> \t -> acc + (t.elem.a * t.elem.d)) 0.0);
+
+  (sum_ad_equi_seq = (R_seq.equijoin S_seq (\r -> r.elem.b) (\s -> s.elem.c)
+                                           (\r -> \s -> {a: r.elem.a, d: s.elem.d}))
+                           .fold           (\acc -> \t -> acc + (t.elem.a * t.elem.d)) 0.0);
+
+  (sum_ad_set = (R_set.join S_set (\r -> \s -> r.elem.b == s.elem.c)
+                                  (\r -> \s -> {a: r.elem.a, d: s.elem.d}))
+                      .fold       (\acc -> \t -> acc + (t.elem.a * t.elem.d)) 0.0);
+
+  (sum_ad_equi_set = (R_set.equijoin S_set (\r -> r.elem.b) (\s -> s.elem.c)
+                                           (\r -> \s -> {a: r.elem.a, d: s.elem.d}))
+                           .fold           (\acc -> \t -> acc + (t.elem.a * t.elem.d)) 0.0)
+
+)
+
+source s1 : () = value ()
+feed s1 |> t

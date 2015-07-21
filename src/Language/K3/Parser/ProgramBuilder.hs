@@ -298,7 +298,7 @@ endpointMethods isSource eSpec argE formatE n t =
           (EC.binop OLth (EC.constant $ CInt 0) $
              EC.applyMany (EC.project "size" $ EC.variable $ cfmpName n) [EC.unit])
           (controlE $ EC.applyMany (EC.project "min_with" $ EC.variable $ cfmpName n)
-                        [EC.lambda muxid $ doMuxNext onFileDoneE])
+                        [EC.lambda "_" EC.unit, EC.lambda muxid $ doMuxNext onFileDoneE])
           EC.unit
 
     muxSrcController = muxSrcControllerTrig muxFinishChan

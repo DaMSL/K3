@@ -416,7 +416,7 @@ trigger startSlave : () = \_ -> (
     print "Done with an iteration of ff and bp"
 	))
 	))
-)
+) 
 
 declare rows : mut int = 0 
 
