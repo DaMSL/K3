@@ -411,30 +411,27 @@ trigger startSlave : () = \_ -> (
     */
 
 	//(results_sink, me) <- { addr : me, iter : r.i , totalError : totalError}
-    print ("Done with an iteration of FeedForward and BackPropagation")
-    print ("\\n");
-	))
+    print ("Done with an iteration of FeedForward and BackPropagation\\n");
+    ))
 	))
 )
 
 trigger receiveAtMaster : collection {elem : real} @Vector = \updateOnWeights -> (
-
-	print ("Receives from Master");
-	
+	print ("Receives from Master");	
 	(weight.inPlaceAdd (updateOnWeights.sub weightUpdateBroadcast));
 	if (peerMessagesReceived == peers.size ())
-	then ( 
-		(weightUpdateBroadcast = weight.sub weightsLastUpdated);
-		peers.iterate (\peer -> (
-			(receiveAtSlave, peer.addr) <- (weightUpdateBroadcast)
-		));
-		(weightsLastUpdated = weight);
-		peerMessagesReceived = 0		
-	)
+		then (
+			(weightUpdateBroadcast = weight.sub weightsLastUpdated);
+			peers.iterate (\peer -> (
+				(receiveAtSlave, peer.addr) <- (weightUpdateBroadcast)
+			));
+			(weightsLastUpdated = weight);
+			peerMessagesReceived = 0		
+		)
 	else (
 		peerMessagesReceived = peerMessagesReceived + 1
 	)	
-) 
+)
 
 trigger receiveAtSlave : collection {elem : real} @Vector = \updateOnWeights -> (
 	print ("Receives from Slave");
