@@ -22,6 +22,7 @@ namespace K3
 
     IOHandle(shared_ptr<FrameCodec> frme) : LogMT("IOHandle"), frame(frme) {}
 
+    virtual ~IOHandle() { }
     virtual bool isInput() = 0;
     virtual bool isOutput() = 0;
     virtual bool hasRead() = 0;

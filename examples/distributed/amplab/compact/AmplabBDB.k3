@@ -65,11 +65,12 @@ control AmplabBenchmark[queryTrigger       : expr,
 
       // Signal to the master that a peer has finished the query locally.
       trigger finished : $[finishArgT] = \finishArg -> (
+
         ($[preTestFinishExpr] finishArg);
-        (((( () @:StopTimer) @Time(lbl=[# Query], tag=[$ "Time "], sink_expr=[$ query_time_sink])
-        );
+        (
+        ((() @:StopTimer) @TimeSink(lbl=[# Query], tag=[$ "Time "], sink_expr=[$ query_time_sink]));
         $[preFinishExpr]
-        )) @OnCounter(id=[# query_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+        ) @OnCounter(id=[# query_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
       )
 
       // Signal to the master that a peer is ready.
