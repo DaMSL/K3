@@ -60,7 +60,7 @@ data MaterializationS = MaterializationS { decisionTable :: Table
 -- Reporting
 
 dumpMaterializationReport :: Bool
-dumpMaterializationReport = True
+dumpMaterializationReport = False
 
 data MaterializationR
   = MRLambda { currentlyGlobal :: Bool
