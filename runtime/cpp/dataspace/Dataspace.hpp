@@ -412,6 +412,46 @@ class StlDS
     return result;
   }
 
+  template<class E, class F, class G>
+  auto join(Derived<R_elem<E>> other, F f, G g) const -> Derived<R_elem<RT<RT<G, Elem>, E>>> const
+  {
+    Derived<R_elem<RT<RT<G, Elem>, E>>> result;
+    for (const auto& elem : container) {
+      for (const auto& otherelem : other.container) {
+        if ( f(elem)(otherelem) ) {
+          result.insert(g(elem)(otherelem));
+        }
+      }
+    }
+    return result;
+  }
+
+  template<class E, class F, class G, class H>
+  auto equijoin(Derived<R_elem<E>> other, F f, G g, H h) const -> Derived<R_elem<RT<RT<H, Elem>, E>>> const
+  {
+    Derived<R_elem<RT<RT<H, Elem>, E>>> result;
+
+    // Build.
+    unordered_map<RT<F, Elem>, std::multiset<Elem>> lhsHT;
+
+    for (const auto& elem : container) {
+      lhsHT[f(elem)].insert(elem);
+    }
+
+    // Probe.
+    for (const auto& otherelem : other.container) {
+      RT<G,E> key(g(otherelem));
+      auto it = lhsHT.find(key);
+      if ( it != lhsHT.end() ) {
+        for (const auto& probeelem : it->second) {
+          result.insert(h(probeelem)(otherelem));
+        }
+      }
+    }
+
+    return result;
+  }
+
   template <class Fun>
   auto ext(Fun expand) const -> Derived<typename RT<Fun, Elem>::ElemType> {
     typedef typename RT<Fun, Elem>::ElemType T;
@@ -739,6 +779,46 @@ class Set {
       // move out of the map as we iterate
       result.insert(R_key_value<int, Z>{i, std::move(table[i])});
     }
+    return result;
+  }
+
+  template<class E, class F, class G>
+  auto join(Set<R_elem<E>> other, F f, G g) const -> Set<R_elem<RT<RT<G, Elem>, E>>> const
+  {
+    Set<R_elem<RT<RT<G, Elem>, E>>> result;
+    for (const auto& elem : container) {
+      for (const auto& otherelem : other.container) {
+        if ( f(elem)(otherelem) ) {
+          result.insert(g(elem)(otherelem));
+        }
+      }
+    }
+    return result;
+  }
+
+  template<class E, class F, class G, class H>
+  auto equijoin(Set<R_elem<E>> other, F f, G g, H h) const -> Set<R_elem<RT<RT<H, Elem>, E>>> const
+  {
+    Set<R_elem<RT<RT<H, Elem>, E>>> result;
+
+    // Build.
+    unordered_map<RT<F, Elem>, std::multiset<Elem>> lhsHT;
+
+    for (const auto& elem : container) {
+      lhsHT[f(elem)].insert(elem);
+    }
+
+    // Probe.
+    for (const auto& otherelem : other.container) {
+      RT<G,E> key(g(otherelem));
+      auto it = lhsHT.find(key);
+      if ( it != lhsHT.end() ) {
+        for (const auto& probeelem : it->second) {
+          result.insert(h(probeelem)(otherelem));
+        }
+      }
+    }
+
     return result;
   }
 
