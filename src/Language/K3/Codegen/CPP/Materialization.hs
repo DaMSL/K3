@@ -55,12 +55,15 @@ data MaterializationS = MaterializationS { decisionTable :: Table
 
 -- Reporting
 
+dumpMaterializationReport :: Bool
+dumpMaterializationReport = False
+
 data MaterializationR
   = MRLambda { currentlyGlobal :: Bool
              , argReadOnly :: Bool
              , nrvoRequired :: Bool
              , argD :: Decision
-             , closureReport :: [(Identifier, Int, Bool, Bool, Decision)]
+             , closureReport :: [(Provenance, Provenance, Bool, Bool, Decision)]
              , downstreamsConsidered :: [Int]
              }
   | MRApply
@@ -86,9 +89,13 @@ formatMR r = putStrLn "Materialization Report" >> mapM_ (uncurry formatR) r
        printf "  Downstreams considered for all decisions: %s\n" (show dc)
        unless (null cr) $ do
          printf "  Closure Variables:\n"
-         forM_ cr $ \(i, ob, hw, b, d) -> do
-           printf "    Variable: %s\n" i
-           printf "      Captured from variable bound at: %d\n" ob
+         forM_ cr $ \(ip, op, hw, b, d) -> do
+           printf "    Variable: %s\n" $ case ip of
+             PBVar (PMatVar { pmvn }) -> pmvn
+             _ -> error "Incorrect Closure Provenance"
+           printf "      Captured from: %d\n" $ case op of
+             PBVar (PMatVar { pmvloc = (UID i) }) -> "identifier bound at " ++ show i
+             PFVar _ -> "free variable in parent scope."
            printf "      Is written to inside lambda: %s\n" (show hw)
            printf "      Moveable: %s\n" (show b)
            printf "      Decision: %s\n" (show $ inD d)
@@ -108,7 +115,7 @@ type MaterializationM = WriterT [(Int, MaterializationR)] (StateT Materializatio
 -- State Accessors
 
 lookupFst :: Eq k => k -> M.Map (k, a) v -> Maybe v
-lookupFst k m = case M.toList (M.filterWithKey (\(i, b) _ -> i == k) m) of
+lookupFst k m = case M.toList (M.filterWithKey (\(i, _) _ -> i == k) m) of
   [] -> Nothing
   [(_, v)] -> Just v
   _ -> error "Non-unique mapping."
@@ -193,7 +200,7 @@ runMaterializationM m s = runIdentity $ runStateT (runWriterT m) s
 optimizeMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> IO (K3 Declaration)
 optimizeMaterialization (p, f) d = do
   let ((nd, report), _) = runMaterializationM (materializationD d) (MaterializationS I.empty p f [] True M.empty)
-  formatMR report
+  when dumpMaterializationReport $ formatMR report
   return nd
 
 materializationD :: K3 Declaration -> MaterializationM (K3 Declaration)
@@ -277,20 +284,28 @@ materializationE e@(Node (t :@: as) cs)
         return (Node (t :@: (EMaterialization ds:as)) [h', m'])
 
       EOperate _ -> do
-        let [x, y] = cs
-        y' <- materializationE y
-        x' <- withLocalDS [y] $ materializationE x
-        return $ (Node (t :@: as)) [x', y']
+        case cs of
+          [x] -> do
+            x' <- materializationE x
+            return $ (Node (t :@: as)) [x']
+          [x, y] -> do
+            y' <- materializationE y
+            x' <- withLocalDS [y] $ materializationE x
+            return $ (Node (t :@: as)) [x', y']
+          _ -> error "Invalid argument form for operator."
 
       ELambda x -> do
         cg <- currentGlobal <$> get
-        closureSymbols <- getClosureSymbols (getUID e)
+        let fp = getProvenance e
+        let closureSymbols = case tag fp of
+              PLambda _ mvs -> mvs
+              _ -> error "Invalid provenance on lambda form."
 
         when cg $ case tag (head cs) of
                     ELambda _ -> return ()
                     _ -> setCurrentGlobal False
 
-        [b] <- withLocalBindings (x:closureSymbols) (getUID e) $ mapM materializationE cs
+        [b] <- withLocalBindings (x : map pmvn closureSymbols) (getUID e) $ mapM materializationE cs
 
         setCurrentGlobal cg
 
@@ -316,11 +331,8 @@ materializationE e@(Node (t :@: as) cs)
         setDecision (getUID e) x $ readOnlyDecision $ nrvoDecision $ defaultDecision
 
         cr <- forM closureSymbols $ \s -> do
-          let innerProxyProvenance = P.pbvar $ PMatVar { pmvn = s, pmvloc = UID (getUID e), pmvptr = -1}
-          sc <- scopeMap <$> get
-          ob <- fromMaybe (error $ (show s) ++ " " ++ (show sc)) <$> getBindingUID s
-          let outerBindUID = UID ob
-          let outerProxyProvenance = P.pbvar $ PMatVar { pmvn = s, pmvloc = outerBindUID, pmvptr = -1}
+          let innerProxyProvenance = P.pbvar s
+          outerProxyProvenance <- fromMaybe (error "Dangling closure provenance.") <$> pLookup (pmvptr s)
           closureHasWrite <- hasWriteInP innerProxyProvenance b
           moveable <- isMoveableNow outerProxyProvenance
           let closureDecision d =
@@ -331,8 +343,19 @@ materializationE e@(Node (t :@: as) cs)
                   else if cg
                          then d { inD = Moved }
                          else d { inD = Referenced }
-          setDecision (getUID e) s $ closureDecision defaultDecision
-          return (s, ob, closureHasWrite, moveable, closureDecision defaultDecision)
+
+          let decisionSetter = case tag outerProxyProvenance of
+                PBVar _ -> setDecision
+                PFVar _ -> setNullDecision
+
+          decisionSetter (getUID e) (pmvn s) $ closureDecision defaultDecision
+
+          return ( tag innerProxyProvenance
+                 , tag outerProxyProvenance
+                 , closureHasWrite
+                 , moveable
+                 , closureDecision defaultDecision
+                 )
         decisions <- dLookupAll (getUID e)
 
         eds <- map getUID . downstreams <$> get

@@ -110,9 +110,11 @@ annotation SortedMapE[key: [labeltype], value: [labeltype]] given type a,b
   provides lifted max : () -> option content
     with effects \_ -> R[self]
 
+  @:CArgs 2
   provides lifted min_with : (() -> a) -> (content -> a) -> a
     with effects \noneF -> \someF -> [R[self]; noneF content; someF content]
 
+  @:CArgs 2
   provides lifted max_with : (() -> a) -> (content -> a) -> a
     with effects \noneF -> \someF -> [R[self]; noneF content; someF content]
 
@@ -122,9 +124,11 @@ annotation SortedMapE[key: [labeltype], value: [labeltype]] given type a,b
   provides lifted upper_bound : $[|mkRecord 'key|] -> option content
     with effects \key -> [R[self]; R[key]]
 
+  @:CArgs 3
   provides lifted lower_bound_with : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
     with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
 
+  @:CArgs 3
   provides lifted upper_bound_with : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
     with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
 

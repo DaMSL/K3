@@ -237,16 +237,25 @@ declare slaveBackPropagation : () -> () = \_ -> (
 	))
 	);
 
-    //print ("weights : ");
-    //weight.iterate(\w -> print (rtos (w.elem)));
-    //print ("target values : ");
-    //targetValue.iterate(\tv -> print (rtos tv.elem));
-    //print ("Output values : ");
-    //outputValue.iterate(\ov -> print (rtos (ov.elem)));
-    //print ("delta values : ");
-    //deltaValue.iterate(\dv -> print (rtos dv.elem));
-    //print ("z values : ");
-    //zValue.iterate(\zv -> print (rtos zv.elem));
+    print ("weights : ");
+    weight.iterate(\w -> print (rtos (w.elem)));
+    print ("\\n");
+
+    print ("target values : ");
+    targetValue.iterate(\tv -> print (rtos tv.elem));
+    print ("\\n");
+
+    print ("Output values : ");
+    outputValue.iterate(\ov -> print (rtos (ov.elem)));
+    print ("\\n");
+
+    print ("delta values : ");
+    deltaValue.iterate(\dv -> print (rtos dv.elem));
+    print ("\\n");
+
+    print ("z values : ");
+    zValue.iterate(\zv -> print (rtos zv.elem));
+    print ("\\n");
 
     //calculate the hidden layer deltas
 	((xrange 2 (topology.size ()+1) ).iterate (\i -> (
@@ -282,21 +291,27 @@ declare slaveBackPropagation : () -> () = \_ -> (
 	)));
     //print ("weights : ");
     //weight.iterate(\w -> print (rtos w.elem));
-    
+    //print ("\\n");
+
     //print ("zValues : ");
     //zValue.iterate(\z -> print (rtos z.elem)); 
+    //print ("\\n");
 
     //print ("Outputvalues : ");
     //outputValue.iterate(\ov -> print (rtos ov.elem));
+    //print ("\\n");
 
     //print ("Targetvalues : ");
-    //targetValue.iterate(\tv -> print (rtos tv.elem)); 
-    
+    //targetValue.iterate(\tv -> print (rtos tv.elem));
+    //print ("\\n");
+
     //print ("Delta values :");
     //deltaValue.iterate(\dv -> print (rtos dv.elem));
+    //print ("\\n");
 
     //print ("Old DeltaWeights : ");
     //deltaWeight.iterate(\dv -> print (rtos dv.elem));
+    //print ("\\n");
 
     // Calculate the delta weights
     (range ((topology.size ()) -1)).iterate(\layerId -> (
@@ -316,8 +331,11 @@ declare slaveBackPropagation : () -> () = \_ -> (
     
     //print ("DeltaWeights : ");
     //deltaWeight.iterate(\dv -> print (rtos dv.elem));
+    //print ("\\n");
+
     //print ("old weights : ");
     //weight.iterate(\w -> print (rtos w.elem));
+    //print ("\\n");
 
     // Update the weights
     (range ((topology.size ()) -1)).iterate(\layerId -> (
@@ -343,11 +361,13 @@ declare slaveBackPropagation : () -> () = \_ -> (
 )
 
 trigger startMaster : () = \_ -> (
-	print ("Starts Master");
+	print ("Starts Master\\n");
 	initializeMaster()
 )
 
 trigger startSlave : () = \_ -> (
+
+	print ("Starts Slave\\n");
 
 	(range 20).iterate (\r -> (	
     //print "Starting a new iteration";
@@ -391,34 +411,34 @@ trigger startSlave : () = \_ -> (
     */
 
 	//(results_sink, me) <- { addr : me, iter : r.i , totalError : totalError}
-    print "Done with an iteration of ff and bp"
-	))
+    print ("Done with an iteration of FeedForward and BackPropagation\\n")
+    ))
 	))
 )
 
 trigger receiveAtMaster : collection {elem : real} @Vector = \updateOnWeights -> (
-	
+	print ("Receives from Master");	
 	(weight.inPlaceAdd (updateOnWeights.sub weightUpdateBroadcast));
 	if (peerMessagesReceived == peers.size ())
-	then ( 
-		(weightUpdateBroadcast = weight.sub weightsLastUpdated);
-		peers.iterate (\peer -> (
-			(receiveAtSlave, peer.addr) <- (weightUpdateBroadcast)
-		));
-		(weightsLastUpdated = weight);
-		peerMessagesReceived = 0		
-	)
+		then (
+			(weightUpdateBroadcast = weight.sub weightsLastUpdated);
+			peers.iterate (\peer -> (
+				(receiveAtSlave, peer.addr) <- (weightUpdateBroadcast)
+			));
+			(weightsLastUpdated = weight);
+			peerMessagesReceived = 0		
+		)
 	else (
 		peerMessagesReceived = peerMessagesReceived + 1
 	)	
-) 
+)
 
 trigger receiveAtSlave : collection {elem : real} @Vector = \updateOnWeights -> (
+	print ("Receives from Slave");
 	weight.inPlaceAdd (updateOnWeights)
 )
 
 trigger storeData :  {i: real, j: real, k : real} = \csvData -> (
-	print ("here");
 	allData.insert {elem : {i: csvData.i, j: csvData.j, k: csvData.k} };
 	rows = rows + 1;
     (if (rows == 8) then ((startSlave, me) <- ()) else ())
