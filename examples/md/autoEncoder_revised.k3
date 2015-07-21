@@ -411,7 +411,7 @@ trigger startSlave : () = \_ -> (
     */
 
 	//(results_sink, me) <- { addr : me, iter : r.i , totalError : totalError}
-    print ("Done with an iteration of FeedForward and BackPropagation\\n");
+    print ("Done with an iteration of FeedForward and BackPropagation\\n")
     ))
 	))
 )
