@@ -129,7 +129,7 @@ roleElemVar :: K3 Expression
 roleElemVar = EC.variable roleElemId
 
 roleElemLbl :: Identifier
-roleElemLbl = "n"
+roleElemLbl = "i"
 
 roleFnId :: Identifier
 roleFnId = "processRole"
