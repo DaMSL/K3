@@ -1,5 +1,6 @@
 include "Annotation/Collection.k3"
 include "Annotation/Vector.k3"
+include "Annotation/Set.k3"
 include "Core/Builtins.k3"
 include "Core/CppBuiltins.k3"
 include "Core/MachineMessaging.k3"
@@ -104,8 +105,8 @@ trigger aggregate : collection {elem: real} @Vector  = \local_params -> (
 // Average local parameters from each peer, then start a new iteration.
 trigger maximize : () = \_ -> (
   parameters = (aggregates.sum).scalarMult (1.0 / aggregates.count);
-  //print "Loss:";
-  //print (rtos (svm_loss_avg ()));
+  print "Loss:";
+  print (rtos (svm_loss_avg ()));
   aggregates = {count:0, sum: (zeroVector dimensionality)};
   iter_end = now_int();
   time_stats = {iter_count: time_stats.iter_count + 1, iter_time_sum: time_stats.iter_time_sum + (iter_end - iter_start)};
@@ -138,11 +139,11 @@ trigger ready : () = \_ -> (
 
 trigger shutdown: () = \_ -> (((tcmallocStop ()); (jemallocStop ()); (pcmStop ())) @IfMachineMaster; haltEngine ())
 
-// TODO: fix loader
 trigger load_all : () = \_ -> (
+  dimensionality = dimensionality - 1; // Hack that enables k_means/sgd to share the same dataset/YAML config
   dataFiles.iterate (\f -> loadVectorLabel dimensionality f.path data);
   ( peers.iterate (\p -> (hello, p.addr) <- ()) )
 )
 
-source points : () = value ()
-feed points |> load_all
+source s1 : () = value ()
+feed s1 |> load_all

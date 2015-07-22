@@ -1,5 +1,6 @@
 include "Annotation/Vector.k3"
 include "Annotation/Map.k3"
+include "Annotation/Set.k3"
 include "Annotation/Seq.k3"
 include "Core/Builtins.k3"
 include "Core/CppBuiltins.k3"
