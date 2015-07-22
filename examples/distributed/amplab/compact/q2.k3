@@ -29,7 +29,10 @@ trigger q2_local : () = \_ -> (
     ) @DistributedGroupBy(
         lbl         = [# groupby],
         clear_expr  = [$ () ],
-        peer_next   = [$ (\x -> (( ignore ((x.size ()) @:Result) @AmplabBenchmark))) ],
+        peer_next   = [$ (\x -> ((( ignore ((x.size ()) @:Result) @AmplabBenchmark));
+                                x.iterate (\e -> results.insert e))
+                         )
+                      ],
         next        = [$ ()],
         merge       = [$ (\x -> \y -> x + y)],
         coordinator = [$ master],

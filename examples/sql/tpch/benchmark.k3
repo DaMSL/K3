@@ -89,7 +89,8 @@ control TPCHBenchmarkWithoutMaster
           (let load_time = (now_int () - program_start_ts)
            in print ("Time Load:" ++  (itos load_time)) );
           (peers.iterate (\p -> (start_profiler, p.addr) <- () ));
-          ( (start_ms = now_int()); $[onReadyExpr])
+          (( () @:StartTimer) @TimeSink(lbl=[# Query], tag=[$ "Time "], sink_expr=[$ query_time_sink]));
+          ( $[onReadyExpr] )
           ) @OnCounter(id=[#  nodes_ready], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false]))
       )
 
