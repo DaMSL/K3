@@ -85,6 +85,7 @@ shared_ptr<ProgramContext> Peer::getContext() { return context_; }
 
 void Peer::processBatch() {
   size_t num = queue_->dequeueBulk(batch_);
+
   for (int i = 0; i < num; i++) {
     auto d = std::move(batch_[i]);
     logMessage(*d);
@@ -104,10 +105,10 @@ void Peer::processBatch() {
 }
 
 void Peer::logMessage(const Dispatcher& d) {
-#ifdef K3DEBUG
+  #ifdef K3DEBUG
   string trig = ProgramContext::__triggerName(d.trigger_);
-  if (logger_->level() >= spdlog::level::trace) {
-    logger_->trace() << "Received:: @" << trig;
+  if (logger_->level() <= spdlog::level::debug) {
+    logger_->debug() << "Received:: @" << trig;
   }
 
   if (json_messages_log_ && !json_final_state_only_) {
@@ -121,12 +122,12 @@ void Peer::logMessage(const Dispatcher& d) {
     *json_messages_log_ << currentTime() << std::endl;
   }
   message_counter_++;
-#endif  // K3DEBUG
+  #endif  // K3DEBUG
 }
 
 void Peer::logGlobals(bool final) {
-#ifdef K3DEBUG
-  if (logger_->level() >= spdlog::level::trace) {
+  #ifdef K3DEBUG
+  if (logger_->level() <= spdlog::level::trace) {
     std::ostringstream oss;
     oss << "Environment: " << std::endl;
     bool first = true;
@@ -150,7 +151,7 @@ void Peer::logGlobals(bool final) {
                          << it.second << std::endl;
     }
   }
-#endif // K3DEBUG
+  #endif // K3DEBUG
 }
 
 void Peer::printStatistics() {

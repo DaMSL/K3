@@ -81,8 +81,8 @@ void Engine::send(const Address& src, const Address& dst, TriggerID trig,
     throw std::runtime_error(
         "Engine send(): Can't send before peers_ is initialized");
   }
-  if (logger_->level() >= spdlog::level::info) {
-    logger_->info() << "Message: " << src.toString() << " --> "
+  if (logger_->level() <= spdlog::level::debug) {
+    logger_->debug() << "Message: " << src.toString() << " --> "
                     << dst.toString() << " @"
                     << ProgramContext::__triggerName(trig);
   }
