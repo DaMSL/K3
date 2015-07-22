@@ -6,6 +6,7 @@
 
 #include "Common.hpp"
 #include "collections/Vector.hpp"
+#include "collections/RealVector.hpp"
 #include "types/BaseString.hpp"
 
 namespace K3 {
@@ -13,8 +14,8 @@ namespace K3 {
 class VectorBuiltins {
  public:
   VectorBuiltins();
-  Vector<R_elem<double>> zeroVector(int i);
-  Vector<R_elem<double>> randomVector(int i);
+  RealVector<R_elem<double>> zeroVector(int i);
+  RealVector<R_elem<double>> randomVector(int i);
   template <template <typename S> class C, class V>
   unit_t loadVector(string_impl filepath, C<R_elem<V>>& c) {
     std::string line;

@@ -2,16 +2,16 @@ include "Annotation/Vector.k3"
 
 // Vector Utilities
 @:CArgs 2
-declare loadVector : string -> collection {elem: collection {elem: real} @ {Vector} } @Collection -> ()
+declare loadVector : string -> collection {elem: collection {elem: real} @RealVector } @Collection -> ()
   with effects \x -> \y -> io
 
 @:CArgs 3
-declare loadVectorLabel : int -> string -> collection {elem: collection {elem: real} @ {Vector}, class_label: real } @Collection -> ()
+declare loadVectorLabel : int -> string -> collection {elem: collection {elem: real} @RealVector, class_label: real } @Collection -> ()
   with effects \i -> \x -> \y -> io
 
 @:CArgs 2
 declare loadStrings: string -> collection {elem: string} @Collection -> ()
 
-declare zeroVector : int -> collection {elem: real} @ {Vector}
+declare zeroVector : int -> collection {elem: real} @RealVector
 
-declare randomVector : int -> collection {elem: real} @ {Vector}
+declare randomVector : int -> collection {elem: real} @RealVector

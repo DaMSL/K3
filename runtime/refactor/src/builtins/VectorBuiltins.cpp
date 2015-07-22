@@ -7,8 +7,8 @@ VectorBuiltins::VectorBuiltins() {
   seed_ = time(NULL);
 }
 
-Vector<R_elem<double>> VectorBuiltins::zeroVector(int i) {
-  Vector<R_elem<double>> result;
+RealVector<R_elem<double>> VectorBuiltins::zeroVector(int i) {
+  RealVector<R_elem<double>> result;
   auto& c = result.getContainer();
   c.resize(i);
   for (int j = 0; j < i; j++) {
@@ -18,8 +18,8 @@ Vector<R_elem<double>> VectorBuiltins::zeroVector(int i) {
 }
 
 // Elements must have random values in [0,1)
-Vector<R_elem<double>> VectorBuiltins::randomVector(int i) {
-  Vector<R_elem<double>> result;
+RealVector<R_elem<double>> VectorBuiltins::randomVector(int i) {
+  RealVector<R_elem<double>> result;
   auto& c = result.getContainer();
   c.resize(i);
   for (int j = 0; j < i; j++) {

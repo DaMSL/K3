@@ -1,5 +1,5 @@
 include "Annotation/Collection.k3"
-include "Annotation/Vector.k3"
+include "Annotation/RealVector.k3"
 include "Annotation/Set.k3"
 include "Core/Builtins.k3"
 include "Core/CppBuiltins.k3"
@@ -10,7 +10,7 @@ include "Annotation/Map.k3"
 declare master: address = 127.0.0.1:40000
 declare peers_ready: mut int = 0
 declare iterations_remaining: mut int = 10
-declare dimensionality: int = 2
+declare dimensionality: mut int = 2
 declare dataFiles: collection {path: string} @Collection
 
 declare start_ms: mut int
@@ -33,14 +33,14 @@ declare step_size: mut real = 0.1
 declare lambda: mut real = 0.1
 
 // Master
-declare aggregates: mut {count: int, sum: collection {elem: real} @Vector }
+declare aggregates: mut {count: int, sum: collection {elem: real} @RealVector }
 
 // All Nodes:
-declare parameters: mut collection {elem: real} @Vector
-declare data: collection { elem: collection {elem: real}@Vector, class_label: real } @ { Collection }
+declare parameters: mut collection {elem: real} @RealVector
+declare data: collection { elem: collection {elem: real}@RealVector, class_label: real } @ { Collection }
 
 // SVM Loss at 1 point.
-declare svm_loss : collection {elem: real} @Vector  -> real -> real = \x -> \y -> (
+declare svm_loss : collection {elem: real} @RealVector  -> real -> real = \x -> \y -> (
   let q = 1 - (y * (parameters.dot x))
   in (lambda * (parameters.dot parameters) + (if q < 0 then 0 else q))
 )
@@ -57,7 +57,7 @@ declare svm_loss_avg : () -> real = \_ -> (
 )
 
 // Update parameters based on a single point
-declare update_parameters: collection {elem: real} @Vector  -> real -> () = \point -> \class_label -> (
+declare update_parameters: collection {elem: real} @RealVector  -> real -> () = \point -> \class_label -> (
   let flag = class_label * (parameters.dot point) in
   let update =
     if flag > 1
@@ -80,7 +80,7 @@ declare print_results : () -> () = \_ -> (
 // 0) Receive updated parameters from master
 // 1) Update local parameters once per data point (randomly ordered/drawn)
 // 2) Send local parameters to master for aggregation
-trigger local_sgd : collection {elem: real} @Vector  = \new_params -> (
+trigger local_sgd : collection {elem: real} @RealVector  = \new_params -> (
   (parameters = new_params);
   (data.iterate (\d -> update_parameters d.elem d.class_label));
   (aggregate, master) <- parameters;
@@ -88,7 +88,7 @@ trigger local_sgd : collection {elem: real} @Vector  = \new_params -> (
 )
 
 // Barrier: Stash local aggregates until all peers are finished. Then maximize.
-trigger aggregate : collection {elem: real} @Vector  = \local_params -> (
+trigger aggregate : collection {elem: real} @RealVector  = \local_params -> (
   let new_sum = local_params.add (aggregates.sum) in
   let new_count = 1 + aggregates.count
   in (
