@@ -270,6 +270,7 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
   pass <- case inD (fromJust (M.lookup "" outerMtrlzn)) of
             Copied -> return zv
             Moved -> return (gMoveByE z zv)
+            _ -> return zv
 
   let isVectorizeProp  = \case { EProperty (ePropertyName -> "Vectorize")  -> True; _ -> False }
   let isInterleaveProp = \case { EProperty (ePropertyName -> "Interleave") -> True; _ -> False }
@@ -318,20 +319,21 @@ inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
 
     let mtrlzns = M.adjust (\d -> if forceMoveP e then d { inD = Moved } else d) "" mtrlzns'
 
-    pass <- case inD (fromJust (M.lookup "" mtrlzns)) of
-              Copied -> return av
-              Moved -> return (gMoveByE a av)
+    let pd = inD (fromJust (M.lookup "" mtrlzns))
 
-    let gDecl = R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just pass)
-    let pass' = R.Call (R.Variable
-                        (R.Qualified
-                         (R.Name "std")
-                         (R.Specialized [(R.ConstExpr $ R.Call
-                                          (R.Variable $ R.Name "decltype") [R.Variable $ R.Name g])]
-                          (R.Name "forward")))) [R.Variable $ R.Name g]
+    let (pe, pv) = case pd of
+          Copied -> ( [R.Forward $ R.ScalarDecl (R.Name g) R.Inferred (Just av)]
+                    , R.Move (R.Variable $ R.Name g)
+                    )
+          Moved -> ( [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just $ gMoveByE a av)]
+                   , R.Variable $ R.Name g
+                   )
+          Referenced -> ( [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just av)]
+                        , R.Variable $ R.Name g
+                        )
 
-    c <- call fv pass' cargs
-    return (fe ++ ae ++ [gDecl], c)
+    c <- call fv pv cargs
+    return (fe ++ ae ++ pe, c)
   where
     call fn@(R.Variable i) arg n =
       if isJust $ f @~ CArgs.isErrorFn

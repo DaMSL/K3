@@ -278,11 +278,14 @@ materializationE e@(Node (t :@: as) cs)
             _ -> return False
 
         moveable <- makeCurrentPP (getProvenance x) >>= isMoveableNow
+        referenceable <- makeCurrentPP (getProvenance x) >>= isReferenceableNow
 
         let applicationDecision d =
               if (conservativeDoMoveLocal || conservativeDoMoveReturn) && moveable
                 then d { inD = Moved }
-                else d
+                else if (not conservativeDoMoveLocal && referenceable)
+                       then d { inD = Referenced }
+                       else d
 
         setDecision (getUID e) "" $ applicationDecision defaultDecision
 
@@ -668,6 +671,27 @@ isMoveableNow p = do
   isMoveable1 <- isMoveable (fst p)
   allMoveable <- allM (isMoveableIn p) ds
   return $ isMoveable1 && allMoveable
+
+isReferenceableIn' :: K3 Provenance -> K3 Expression -> MaterializationM Bool
+isReferenceableIn' x c = do
+  isWritten <- hasWriteInP x c
+  return $ not isWritten
+
+isReferenceableIn :: ProxyProvenance -> Downstream -> MaterializationM Bool
+isReferenceableIn (p, m) (d, n) =
+  case tag p of
+    PFVar i -> case m of
+      Just (j, u) | j == i -> case n of
+        Just (k, v) | (j, u) == (k, v) -> isReferenceableIn' p d
+        _ -> return True
+      _ -> error "Found an impossible free variable."
+    _ -> isReferenceableIn' p d
+
+isReferenceableNow :: ProxyProvenance -> MaterializationM Bool
+isReferenceableNow p = do
+  ds <- downstreams <$> get
+  allReferenceable <- allM (isReferenceableIn p) ds
+  return allReferenceable
 
 (=*=) :: K3 Provenance -> K3 Provenance -> Bool
 a =*= b = case (tag a, tag b) of
