@@ -7,6 +7,7 @@ import Options.Applicative( (<>) )
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
 import Language.K3.Parser.SQL
+import Language.K3.Driver.Common
 import Language.K3.Driver.Driver
 import Language.K3.Driver.Options
 import Language.K3.Driver.Service
@@ -21,7 +22,9 @@ run opts = do
     Service (QueryService sOpts qOpts) -> liftIO $ queryService     sOpts qOpts
     Service (Shutdown  sOpts)          -> liftIO $ shutdownService  sOpts
     Compile copts | ccStage copts == Stage2 -> compile opts copts (DC.role "__global" [])
-    SQL -> liftIO $ k3ofsql True $ inputProgram $ input opts
+    SQL sqlOpts -> let iprog = inputProgram $ input opts
+                       asSyntax = case sqlPrintMode sqlOpts of { PrintAST _ _ _ _ -> False; PrintSyntax -> True}
+                   in liftIO $ k3ofsql asSyntax iprog
     _ -> k3in opts >>= metaprogram opts >>= dispatch opts
 
 -- | Top-Level.

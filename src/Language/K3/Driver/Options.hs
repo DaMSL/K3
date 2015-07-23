@@ -52,7 +52,7 @@ data Mode
     | Interpret InterpretOptions
     | Typecheck TypecheckOptions
     | Service   ServiceOperation
-    | SQL
+    | SQL       SQLOptions
   deriving (Eq, Read, Show)
 
 -- | Compiler input and output options.
@@ -164,6 +164,10 @@ data RemoteJobOptions = RemoteJobOptions { workerFactor     :: Map String Int
 
 data QueryOptions = QueryOptions { qsargs :: Either [String] [Int] }
                     deriving (Eq, Read, Show, Generic)
+
+-- | SQL frontend options.
+data SQLOptions = SQLOptions { sqlPrintMode :: PrintMode }
+                deriving (Eq, Read, Show, Generic)
 
 -- | Verbosity levels.
 data Verbosity
@@ -762,7 +766,7 @@ allProgOpt = flag' (QueryOptions $ Right [])
 
 -- | SQL mode
 sqlOptions :: Parser Mode
-sqlOptions = pure SQL
+sqlOptions = SQL <$> ( SQLOptions <$> printModeOpt "" )
 
 {- Top-level options -}
 
@@ -832,7 +836,7 @@ instance Pretty Mode where
   prettyLines (Interpret iOpts) = ["Interpret "] ++ (indent 2 $ prettyLines iOpts)
   prettyLines (Typecheck tOpts) = ["Typecheck " ++ show tOpts]
   prettyLines (Service   sOpts) = ["Service " ++ show sOpts]
-  prettyLines SQL               = ["SQL"]
+  prettyLines (SQL       sOpts) = ["SQL" ++ show sOpts]
 
 instance Pretty InterpretOptions where
   prettyLines (Batch net env expr par printConf console cstages) =
