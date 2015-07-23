@@ -19,6 +19,8 @@ import Data.Set ( Set )
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
+import Debug.Trace
+
 import Database.HsSqlPpp.Ast
 import Database.HsSqlPpp.Annotation hiding ( Annotation )
 import qualified Database.HsSqlPpp.Annotation as HA ( Annotation )
@@ -196,8 +198,8 @@ tblaliasM :: ParseResult -> SQLParseM Identifier
 tblaliasM (palias -> (Just a)) = return a
 tblaliasM _ = throwE $ "Invalid table alias"
 
-expraliasesGenM :: [ParseResult] -> SQLParseM [Identifier]
-expraliasesGenM l = foldM ensure (0::Int,[]) l >>= return . snd
+expraliasesGenM :: Int -> [ParseResult] -> SQLParseM (Int, [Identifier])
+expraliasesGenM start l = foldM ensure (start,[]) l
   where ensure (i, acc) r = return $ maybe (i+1, acc ++ ["f" ++ show i]) (\a -> (i,acc++[a])) $ palias r
 
 telemM :: K3 Type -> SQLParseM (K3 Type)
@@ -298,6 +300,12 @@ concatE (AEnv (tag -> TRecord ids, tvm) _) = do
     TVMComposite fvm -> compositeRecordE fvm ids
 
 concatE (AEnv (t, _) _) = throwE $ boxToString $ ["Unable to concat type"] %$ prettyLines t
+
+
+zeroE :: [(Identifier, K3 Type)] -> SQLParseM (K3 Expression)
+zeroE [] = return EC.unit
+zeroE [(_,t)] = either throwE return $ defaultExpression t
+zeroE l = either throwE return $ defaultExpression $ TC.record l
 
 
 aggE :: Identifier -> (Identifier, K3 Expression) -> K3 Expression
@@ -409,17 +417,42 @@ sqlwhere tables whereEOpt = flip (maybe $ return tables) whereEOpt $ \whereE -> 
 sqlproject :: ParseResult -> SelectList -> SQLParseM ParseResult
 sqlproject limits (SelectList _ projections) = do
   aenv     <- aenv1 limits
-  eprs     <- mapM (sqlprojection aenv) projections
-  eAliases <- expraliasesGenM eprs
-  let (exprs, types) = unzip $ map (pexpr &&& prt) eprs
-  (iOpt, be) <- bindE aenv "x" $ EC.record $ zip eAliases exprs
-  mapF <- maybe (tblaliasM limits) return iOpt >>= \a -> return $ EC.lambda a be
-  let rexpr  = EC.applyMany (EC.project "map" $ pexpr limits) [mapF]
-  let ralias = Just "R"
-  rt   <- tcolM $ TC.record $ zip eAliases types
-  kt   <- twrapcolelemM rt
-  tmap <- telemtmapM
-  return $ ParseResult rexpr rt kt tmap ralias
+  (nprojects, aggprs) <- mapM (sqlaggregate aenv) projections >>= return . partitionEithers
+  case (nprojects, aggprs) of
+    ([], prs) -> aggregate aenv prs
+    (prjl, []) -> project aenv prjl
+    (_, _) -> throwE $ "Invalid mixed select list of aggregates and non-aggregates"
+
+  where
+    aggregate aenv aggprs = do
+      let (aggexprs, aggtypes) = unzip $ map (pexpr &&& prt) aggprs
+      (_, aAliases) <- expraliasesGenM 0 aggprs
+      let aidt = zip aAliases aggtypes
+      (aiOpt, abe) <- bindE aenv "x" $ case aggexprs of
+                        []  -> EC.variable "acc"
+                        [e] -> EC.applyMany e [EC.variable "acc"]
+                        _   -> EC.record $ zip aAliases $ map (aggE "acc") $ zip aAliases aggexprs
+
+      aggF <- maybe (tblaliasM limits) return aiOpt >>= \a -> return $ EC.lambda "acc" $ EC.lambda a abe
+      zF   <- zeroE aidt
+
+      let rexpr = EC.applyMany (EC.project "fold" $ pexpr limits) [aggF, zF]
+      let ral = Just "R"
+      rt <- tcolM $ TC.record aidt
+      return $ ParseResult rexpr rt rt Nothing ral
+
+    project aenv prjl = do
+      eprs <- mapM (sqlprojection aenv) prjl
+      (_, eAliases) <- expraliasesGenM 0 eprs
+      let (exprs, types) = unzip $ map (pexpr &&& prt) eprs
+      (iOpt, be) <- bindE aenv "x" $ EC.record $ zip eAliases exprs
+      mapF <- maybe (tblaliasM limits) return iOpt >>= \a -> return $ EC.lambda a be
+      let rexpr  = EC.applyMany (EC.project "map" $ pexpr limits) [mapF]
+      let ralias = Just "R"
+      rt   <- tcolM $ TC.record $ zip eAliases types
+      kt   <- twrapcolelemM rt
+      tmap <- telemtmapM
+      return $ ParseResult rexpr rt kt tmap ralias
 
 
 sqlgroupby :: ParseResult -> SelectList -> ScalarExprList -> SQLParseM (ParseResult, SelectList)
@@ -432,8 +465,8 @@ sqlgroupby selects (SelectList slann projections) gbL = do
   let (gbexprs, gbtypes) = unzip $ map (pexpr &&& prt) gbprs
   let (aggexprs, aggtypes) = unzip $ map (pexpr &&& prt) aggprs
 
-  gAliases <- expraliasesGenM gbprs
-  aAliases <- expraliasesGenM aggprs
+  (gaid, gAliases) <- expraliasesGenM 0 gbprs
+  (aaid, aAliases) <- expraliasesGenM (if null gbprs then 1 else gaid) aggprs
 
   (giOpt, gbe) <- bindE aenv "x" $ case gbexprs of
                     [] -> EC.unit
@@ -448,29 +481,32 @@ sqlgroupby selects (SelectList slann projections) gbL = do
                     _   -> EC.record $ zip aAliases $ map (aggE "acc") $ zip aAliases aggexprs
 
   aggF <- maybe (tblaliasM selects) return aiOpt >>= \a -> return $ EC.lambda "acc" $ EC.lambda a abe
+  zF <- zeroE $ zip aAliases aggtypes
 
   let tpmap p idtl = map (\(i,_) -> (i, [p, i])) idtl
 
   let gidt = zip gAliases gbtypes
-  let (kidt, keyT, ktpl, aid0) = case gbtypes of
-                                   []  -> ([("f0", TC.unit)], TC.unit, [("f0", ["key"])], "f1")
-                                   [t] -> (gidt, t, [(fst $ head gidt, ["key"])], "f0")
-                                   _   -> (gidt, TC.record gidt, tpmap "key" gidt, "f0")
+  let (kidt, keyT, ktpl) = case gbtypes of
+                             []  -> ([("f0", TC.unit)], TC.unit, [("f0", ["key"])])
+                             [t] -> (gidt, t, [(fst $ head gidt, ["key"])])
+                             _   -> (gidt, TC.record gidt, tpmap "key" gidt)
 
+  let aid0 = if null gbprs then "f1" else "f" ++ show gaid
   let aidt = zip aAliases aggtypes
   let (vidt, valT, vtpl) = case aggtypes of
                              []  -> ([(aid0, TC.unit)], TC.unit, [(aid0, ["value"])])
                              [t] -> (aidt, t, [(fst $ head aidt, ["value"])])
                              _   -> (aidt, TC.record aidt, tpmap "value" aidt)
 
-  let rexpr  = EC.applyMany (EC.project "groupBy" $ pexpr selects) [groupF, aggF]
+  let rexpr  = EC.applyMany (EC.project "groupBy" $ pexpr selects) [groupF, aggF, zF]
   let tmap = Just $ Right $ (Map.fromList ktpl) <> (Map.fromList vtpl)
   let ral = Just "R"
 
   rt <- tcolM $ TC.record $ kidt ++ vidt
   kt <- tcolM $ TC.record [("key", keyT), ("value", valT)]
 
-  return (ParseResult rexpr rt kt tmap ral, SelectList slann nprojects)
+  let naggprojects = map (\(i,_) -> SelExp emptyAnnotation $ Identifier emptyAnnotation $ Nmc i) vidt
+  return (ParseResult rexpr rt kt tmap ral, SelectList slann $ nprojects ++ naggprojects)
 
 
 -- TODO
@@ -489,7 +525,10 @@ sqljoinexpr aenv (JoinOn _ e) = sqlscalar aenv e
 sqljoinexpr _ je@(JoinUsing _ _) = throwE $ "Unhandled join expression" ++ show je
 
 sqlaggregate :: AEnv -> SelectItem -> SQLParseM (Either SelectItem ParseResult)
-sqlaggregate _ si = return $ Left si
+sqlaggregate aenv si@(SelExp _ e) = sqlaggexpr aenv e >>= return . maybe (Left si) Right
+sqlaggregate aenv si@(SelectItem _ e nm) = do
+  prOpt <- sqlaggexpr aenv e
+  return $ maybe (Left si) (\pr -> Right $ pr { palias = Just (sqlnmcomponent nm) }) prOpt
 
 sqlprojection :: AEnv -> SelectItem -> SQLParseM ParseResult
 sqlprojection aenv (SelExp _ e) = sqlscalar aenv e
@@ -501,15 +540,35 @@ sqlprojection aenv (SelectItem _ e nm) = do
 pr0 :: K3 Type -> K3 Expression -> SQLParseM ParseResult
 pr0 t e = return $ ParseResult e t t Nothing Nothing
 
+pri0 :: Identifier -> K3 Type -> K3 Expression -> SQLParseM ParseResult
+pri0 i t e = return $ ParseResult e t t Nothing $ Just i
+
+-- TODO: avg
+sqlaggexpr :: AEnv -> ScalarExpr -> SQLParseM (Maybe ParseResult)
+sqlaggexpr aenv (FunCall _ nm args) = do
+  let fn = sqlnm nm
+  case (fn, args) of
+    ("sum"  , [e]) -> sqlscalar aenv e >>= aggop "sum_" (\a b -> EC.binop OAdd a b)
+    ("count", [e]) -> sqlscalar aenv e >>= aggop "cnt_" (\a _ -> EC.binop OAdd a $ EC.constant $ CInt 1)
+    ("min"  , [e]) -> sqlscalar aenv e >>= aggop "min_" (\a b -> EC.applyMany (EC.variable "min") [a, b])
+    ("max"  , [e]) -> sqlscalar aenv e >>= aggop "max_" (\a b -> EC.applyMany (EC.variable "max") [a, b])
+    (_, _) -> return Nothing
+
+  where
+    aggop i f pr = return $ Just $ pr { pexpr  = EC.lambda "aggacc" $ f (EC.variable "aggacc") (pexpr pr)
+                                      , palias = maybe Nothing (\j -> Just $ i ++ j) $ palias pr }
+
+sqlaggexpr _ _ = return Nothing
+
 -- TODO
 sqlscalar :: AEnv -> ScalarExpr -> SQLParseM ParseResult
 sqlscalar _ (BooleanLit _ b)  = pr0 TC.bool   $ EC.constant $ CBool b
 sqlscalar _ (NumberLit _ i)   = pr0 TC.int    $ EC.constant $ CInt $ read i  -- TODO: double?
 sqlscalar _ (StringLit _ s)   = pr0 TC.string $ EC.constant $ CString s
 
-sqlscalar (AEnv (tnc -> (TRecord ids, ch), _) _) (Identifier _ (sqlnmcomponent -> i)) =
-    maybe (varerror i) (\t -> pr0 t $ EC.variable i) $ lookup i (zip ids ch)
-  where varerror n = throwE $ "Unknown unqualified variable " ++ n
+sqlscalar (AEnv (ret@(tnc -> (TRecord ids, ch)), _) _) (Identifier _ (sqlnmcomponent -> i)) =
+    maybe (varerror i) (\t -> pri0 i t $ EC.variable i) $ lookup i (zip ids ch)
+  where varerror n = throwE $ boxToString $ ["Unknown unqualified variable " ++ n] %$ prettyLines ret
 
 sqlscalar aenv (FunCall _ nm args) = do
   let fn = sqlnm nm
@@ -531,31 +590,6 @@ sqlscalar (AEnv (ret@(tag -> TRecord ids), _) _) (Star _) =
   pr0 ret $ EC.record $ map (\i -> (i, EC.variable i)) ids
 
 sqlscalar _ e = throwE $ "Unhandled scalar expr: " ++ show e
-
--- Unhandled:
--- AggregateFn Annotation Distinct ScalarExpr ScalarExprDirectionPairList
--- AntiScalarExpr String
--- Case Annotation CaseScalarExprListScalarExprPairList MaybeScalarExpr
--- CaseSimple Annotation ScalarExpr CaseScalarExprListScalarExprPairList MaybeScalarExpr
--- Cast Annotation ScalarExpr TypeName
--- Exists Annotation QueryExpr
--- Extract Annotation ExtractField ScalarExpr
--- FunCall Annotation Name ScalarExprList
--- Identifier Annotation NameComponent
--- InPredicate Annotation ScalarExpr Bool InList
--- Interval Annotation String IntervalField (Maybe Int)
--- LiftOperator Annotation String LiftFlavour ScalarExprList
--- NullLit Annotation
--- NumberLit Annotation String
--- Placeholder Annotation
--- PositionalArg Annotation Integer
--- QIdentifier Annotation [NameComponent]
--- QStar Annotation NameComponent
--- ScalarSubQuery Annotation QueryExpr
--- Star Annotation
--- StringLit Annotation String
--- TypedStringLit Annotation TypeName String
--- WindowFn Annotation ScalarExpr ScalarExprList ScalarExprDirectionPairList FrameClause
 
 
 sqloperator :: String -> ScalarExprList -> Maybe OperatorFn
