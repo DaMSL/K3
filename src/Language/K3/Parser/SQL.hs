@@ -4,13 +4,20 @@
 
 module Language.K3.Parser.SQL where
 
+import Control.Arrow ( (&&&), second )
 import Control.Monad
 import Control.Monad.State
 import Control.Monad.Trans.Except
+
 import Data.Functor.Identity
+import Data.Monoid
+import Data.Either ( partitionEithers )
+import Data.Tuple ( swap )
 
 import Data.Map ( Map )
+import Data.Set ( Set )
 import qualified Data.Map as Map
+import qualified Data.Set as Set
 
 import Database.HsSqlPpp.Ast
 import Database.HsSqlPpp.Annotation hiding ( Annotation )
@@ -44,8 +51,42 @@ data SQLEnv = SQLEnv { relations :: RTypeEnv }
 -- | A stateful SQL parsing monad.
 type SQLParseM = ExceptT String (State SQLEnv)
 
--- | Type aliases
-type K3ExpType = (K3 Expression, K3 Type)
+-- | Relational-K3 type mapping, indicating
+--   i. no type prefix
+--   ii. common type path prefix for all fields
+--   iii. per-field full paths
+type TypePath      = [Identifier]
+type TypePathMap   = Map Identifier TypePath
+type TLabelMapping = Maybe (Either Identifier TypePathMap)
+
+-- | Relational value-type mappings, indicating a relational type as a
+--   i. single variable-and-type mapping
+--   ii. per-field variable-and-type mapping
+type VTMapping = (Identifier, TLabelMapping)
+type FieldVTMap = Map Identifier VTMapping
+data TValueMapping = TVMType      TLabelMapping
+                   | TVMNamed     VTMapping
+                   | TVMComposite FieldVTMap
+                   deriving (Eq, Show)
+
+-- | Mapped relational types.
+type MRType  = (K3 Type, TLabelMapping)
+type MERType = (K3 Type, TValueMapping)
+
+-- | Qualified attribute env
+type AQEnv = Map Identifier (Either MRType [Identifier])
+
+-- | Attribute binding env
+data AEnv = AEnv { aeuq :: MERType, aeq :: AQEnv }
+            deriving (Eq, Show)
+
+data ParseResult = ParseResult { pexpr  :: K3 Expression
+                               , prt    :: K3 Type
+                               , pkt    :: K3 Type
+                               , ptmap  :: TLabelMapping
+                               , palias :: Maybe Identifier }
+                  deriving (Eq, Show)
+
 
 {- Data.Text helpers -}
 
@@ -88,7 +129,7 @@ evalSQLParseM env m = fst $ runSQLParseM env m
 
 reasonM :: (String -> String) -> SQLParseM a -> SQLParseM a
 reasonM errf = mapExceptT $ \m -> m >>= \case
-  Left  err -> get >>= \env -> (return . Left $ errf "")
+  Left  err -> return $ Left $ errf err
   Right r   -> return $ Right r
 
 errorM :: String -> SQLParseM a
@@ -100,10 +141,174 @@ liftExceptM = mapExceptT (return . runIdentity)
 liftEitherM :: Either String a -> SQLParseM a
 liftEitherM = either throwE return
 
+{- Attribute environment helpers. -}
+mrtype :: ParseResult -> SQLParseM MRType
+mrtype r = telemM (prt r) >>= \ret -> return (ret, ptmap r)
+
+mertype :: ParseResult -> SQLParseM MERType
+mertype r = do
+  ret <- telemM (prt r)
+  return (ret, maybe (TVMType $ ptmap r) (\i -> TVMNamed (i, ptmap r)) $ palias r)
+
+aqenv0 :: [(Identifier, MRType)] -> AQEnv
+aqenv0 l = Map.fromList $ map (second Left) l
+
+aqenv1 :: ParseResult -> SQLParseM AQEnv
+aqenv1 r = do
+  mrt <- mrtype r
+  return $ maybe Map.empty (\i -> aqenv0 [(i, mrt)]) $ palias r
+
+aqenvl :: [ParseResult] -> SQLParseM AQEnv
+aqenvl l = mapM aqenv1 l >>= return . mconcat
+
+aenv0 :: MERType -> AQEnv -> AEnv
+aenv0 u q = AEnv u q
+
+aenv1 :: ParseResult -> SQLParseM AEnv
+aenv1 r = (\mert q -> aenv0 mert q) <$> mertype r <*> aqenv1 r
+
+aenvl :: [ParseResult] -> SQLParseM AEnv
+aenvl l = (\mert q -> aenv0 mert q) <$> mr0 <*> aqenvl l
+  where mr0 = mapM mertype l >>= return . concatmer
+        concatmer merl =
+          let (uniqids, idt, idvt) = foldl accmer (Set.empty, [], []) merl
+              uidt  = filter ((`Set.member` uniqids) . fst) idt
+              uidvt = concatMap (fieldvt uniqids) idvt
+          in (TC.record uidt, TVMComposite $ Map.fromList uidvt)
+
+        accmer (accS, accL, tvmaccL) (tnc -> (TRecord ids, ch), tvm) =
+          let new     = Set.fromList ids
+              common  = Set.intersection accS new
+              newaccS = Set.difference (Set.union accS new) common
+          in (newaccS, accL ++ zip ids ch, tvmaccL ++ map (, extractvt tvm) ids)
+
+        accmer acc _ = acc
+
+        fieldvt uniqids (i,vt) = if i `Set.member` uniqids then maybe [] (\x -> [(i,x)]) vt else []
+
+        extractvt (TVMNamed vt) = Just vt
+        extractvt _ = Nothing
+
+
+{- Type and alias helpers. -}
+
+tblaliasM :: ParseResult -> SQLParseM Identifier
+tblaliasM (palias -> (Just a)) = return a
+tblaliasM _ = throwE $ "Invalid table alias"
+
+expraliasesGenM :: [ParseResult] -> SQLParseM [Identifier]
+expraliasesGenM l = foldM ensure (0::Int,[]) l >>= return . snd
+  where ensure (i, acc) r = return $ maybe (i+1, acc ++ ["f" ++ show i]) (\a -> (i,acc++[a])) $ palias r
+
+telemM :: K3 Type -> SQLParseM (K3 Type)
+telemM (tnc -> (TCollection, [t])) = return t
+telemM t = throwE $ boxToString $ ["Invalid relation type"] %$ prettyLines t
+
+tcolM :: K3 Type -> SQLParseM (K3 Type)
+tcolM t = return $ (TC.collection t) @+ TAnnotation "Collection"
+
+taliaselemM :: TableAlias -> K3 Type -> SQLParseM (K3 Type)
+taliaselemM alias t@(tnc -> (TRecord ids, ch)) =
+  case alias of
+    NoAlias _      -> return t
+    TableAlias _ _ -> return t
+    FullAlias _ _ fnc | length fnc == length ids -> return $ TC.record $ zip (map sqlnmcomponent fnc) ch
+    FullAlias _ _ _ -> throwE $ "Mismatched alias fields length"
+
+taliaselemM _ t = throwE $ boxToString $ ["Invalid relation element type"] %$ prettyLines t
+
+taliascolM :: TableAlias -> K3 Type -> SQLParseM (K3 Type)
+taliascolM alias t@(tnc -> (TCollection, [et@(tag -> TRecord _)])) =
+  taliaselemM alias et >>= \net -> return $ (TC.collection net) @<- (annotations t)
+
+taliascolM _ t = throwE $ boxToString $ ["Invalid relation type"] %$ prettyLines t
+
+-- | Wraps a K3 record type with a 'elem' label
+twrapelemM :: K3 Type -> SQLParseM (K3 Type)
+twrapelemM t@(tag -> TRecord _) = return $ TC.record [("elem", t)]
+twrapelemM t = throwE $ boxToString $ ["Invalid element type for wrapping:"] %$ prettyLines t
+
+-- | Wraps a collection's element type with an 'elem' label
+twrapcolelemM :: K3 Type -> SQLParseM (K3 Type)
+twrapcolelemM t@(tnc -> (TCollection, [et])) = twrapelemM et >>= \net -> return $ (TC.collection net) @<- annotations t
+twrapcolelemM t = throwE $ boxToString $ ["Invalid collection type for wrapping:"] %$ prettyLines t
+
+-- | Creates a type map for an 'elem' wrapped record.
+telemtmapM :: SQLParseM TLabelMapping
+telemtmapM = return $ Just $ Left "elem"
+
+tresolvetmapM :: Identifier -> TLabelMapping -> SQLParseM [Identifier]
+tresolvetmapM i tlm = maybe (return []) resolve tlm
+  where resolve (Left j) = return [j, i]
+        resolve (Right tpm) = maybe resolveerr return $ Map.lookup i tpm
+        resolveerr = throwE $ "Unknown type mapping field " ++ i
+
+
+{- Expression construction helpers -}
+
+projectE :: Identifier -> Identifier -> (Identifier, K3 Expression)
+projectE i f = (f, EC.project f $ EC.variable i)
+
+projectPathE :: K3 Expression -> [Identifier] -> K3 Expression
+projectPathE e p = foldl (\accE i -> EC.project i accE) e p
+
+fieldE :: Identifier -> TLabelMapping -> Identifier -> SQLParseM (K3 Expression)
+fieldE v tmap i = do
+  path <- tresolvetmapM i tmap
+  return $ if null path then EC.project i $ EC.variable v
+                        else projectPathE (EC.variable v) path
+
+namedRecordE :: Identifier -> TLabelMapping -> [Identifier] -> SQLParseM (K3 Expression)
+namedRecordE v (Just (Left prefix)) _ = return $ EC.project prefix $ EC.variable v
+namedRecordE v tmap ids = foldM field [] ids >>= return . EC.record
+  where field acc i = fieldE v tmap i >>= \f -> return $ acc ++ [(i,f)]
+
+
+compositeRecordE :: FieldVTMap -> [Identifier] -> SQLParseM (K3 Expression)
+compositeRecordE fvm ids = foldM fieldOpt [] ids >>= return . EC.record
+  where fieldOpt acc i = maybe (compositeErr i) (field acc i) $ Map.lookup i fvm
+        field acc i (v, tmap) = fieldE v tmap i >>= \f -> return $ acc ++ [(i,f)]
+
+        compositeErr i = throwE $ "Cannot find field-specific mapping for " ++ i
+
+
+bindE :: AEnv -> Identifier -> K3 Expression -> SQLParseM (Maybe Identifier, K3 Expression)
+bindE (AEnv (tag -> TRecord ids, tvm) _) backupvar e = do
+  case tvm of
+    TVMType tmap -> do
+      initE <- namedRecordE backupvar tmap ids
+      return (Just backupvar, EC.bindAs initE (BRecord $ zip ids ids) e)
+
+    TVMNamed (i, tmap) -> do
+      initE <- namedRecordE i tmap ids
+      return (Just i, EC.bindAs initE (BRecord $ zip ids ids) e)
+
+    TVMComposite fvm -> do
+      initE <- compositeRecordE fvm ids
+      return (Nothing, EC.bindAs initE (BRecord $ zip ids ids) e)
+
+bindE (AEnv (t, _) _) _ _ = throwE $ boxToString $ ["Unable to bind type"] %$ prettyLines t
+
+
+concatE :: AEnv -> SQLParseM (K3 Expression)
+concatE (AEnv (tag -> TRecord ids, tvm) _) = do
+  case tvm of
+    TVMType _ -> throwE $ "Cannot concat type-only attribute env"
+    TVMNamed (i, tmap) -> namedRecordE i tmap ids
+    TVMComposite fvm -> compositeRecordE fvm ids
+
+concatE (AEnv (t, _) _) = throwE $ boxToString $ ["Unable to concat type"] %$ prettyLines t
+
+
+aggE :: Identifier -> (Identifier, K3 Expression) -> K3 Expression
+aggE i (f, e) = EC.applyMany e [EC.project f $ EC.variable i]
+
+
+{- Parsing toplevel. -}
 k3ofsql :: FilePath -> IO ()
 k3ofsql path = do
-	stmtE <- parseStatementsFromFile path
-	either (putStrLn . show) k3program stmtE
+  stmtE <- parseStatementsFromFile path
+  either (putStrLn . show) k3program stmtE
 
   where
     k3program stmts = do
@@ -111,7 +316,7 @@ k3ofsql path = do
       either putStrLn (putStrLn . pretty . DC.role "__global") $ evalSQLParseM sqlenv0 declsM
 
 sqlstmt :: Statement -> SQLParseM (K3 Declaration)
-sqlstmt (CreateTable _ nm attrs cstrs) = do
+sqlstmt (CreateTable _ nm attrs _) = do
   t <- sqltabletype attrs
   sqeextM (sqlnm nm) t
   return $ DC.global (sqlnm nm) t Nothing
@@ -120,97 +325,212 @@ sqlstmt (QueryStatement _ query) = sqlquerystmt query
 sqlstmt s = throwE $ "Unimplemented SQL stmt: " ++ show s
 
 -- TODO: declare global for results, and assign to this global.
+sqlquerystmt :: QueryExpr -> SQLParseM (K3 Declaration)
 sqlquerystmt q = do
-  (expr, _) <- sqlquery q
-  return $ DC.trigger "query" TC.unit $ EC.applyMany (EC.variable "ignore") [expr]
+  qpr <- sqlquery q
+  return $ DC.trigger "query" TC.unit $ EC.applyMany (EC.variable "ignore") [pexpr qpr]
 
 
 -- | Expression construction, and inlined type inference.
-sqlquery :: QueryExpr -> SQLParseM K3ExpType
-sqlquery q@(Select _ distinct selectL tableL whereE gbL havingE orderL limitE offsetE) = do
+sqlquery :: QueryExpr -> SQLParseM ParseResult
+sqlquery (Select _ distinct selectL tableL whereE gbL havingE orderL limitE offsetE) = do
   tables  <- sqltablelist tableL
   selects <- sqlwhere tables whereE
-  groupby <- sqlgroupby selects gbL
+  (groupby, nselectL) <- sqlgroupby selects selectL gbL
   having  <- sqlhaving groupby havingE
   sorted  <- sqlsort having orderL
   limited <- sqltopk sorted limitE offsetE
-  sqlproject groupby selectL
+  sqlproject limited nselectL
 
 sqlquery q = throwE $ "Unhandled query " ++ show q
 
-sqltablelist :: TableRefList -> SQLParseM K3ExpType
-sqltablelist [x] = sqltableexpr x
-sqltablelist []  = throwE $ "Empty from clause"    -- TODO: empty collection?
-sqltablelist l   = throwE $ "Multiple table list"  -- TODO: natural join?
 
--- TODO: aliases
--- TODO: join types and join predicate.
-sqltableexpr :: TableRef -> SQLParseM K3ExpType
-sqltableexpr (Tref _ nm _) = sqelkupM tnm >>= return . (EC.variable tnm,)
+sqltablelist :: TableRefList -> SQLParseM ParseResult
+sqltablelist [] = throwE $ "Empty from clause"    -- TODO: empty collection?
+sqltablelist [x] = sqltableexpr x
+sqltablelist (h:t) = do
+  hpr <- sqltableexpr h
+  foldM cartesian_product hpr t
+
+  where cartesian_product lpr r = do
+          rpr <- sqltableexpr r
+          aenv@(AEnv (ct, _) _) <- aenvl [lpr, rpr]
+          (al, ar) <- (,) <$> tblaliasM lpr <*> tblaliasM rpr
+          ce   <- concatE aenv
+          rt   <- tcolM ct
+          kt   <- twrapcolelemM rt
+          tmap <- telemtmapM
+          let matchF   = EC.lambda "_" $ EC.lambda "_" $ EC.constant $ CBool True
+          let combineF = EC.lambda al $ EC.lambda ar ce
+          let rexpr    = EC.applyMany (EC.project "join" $ pexpr lpr) [pexpr rpr, matchF, combineF]
+          return $ ParseResult rexpr rt kt tmap $ Just "CP"
+
+
+sqltableexpr :: TableRef -> SQLParseM ParseResult
+sqltableexpr (Tref _ nm al) = do
+    t  <- sqelkupM tnm
+    rt <- taliascolM al t
+    kt <- twrapcolelemM rt
+    tmap <- telemtmapM
+    return $ ParseResult (EC.variable tnm) rt kt tmap $ sqltablealias (sqlnm nm) al
   where tnm = sqlnm nm
 
-sqltableexpr t@(JoinTref _ lt nat jointy rt onE _) = do
-  (le, _) <- sqltableexpr lt
-  (re, _) <- sqltableexpr rt
-  return . (, TC.unit) $ EC.applyMany (EC.project "join" le) [re, EC.lambda "x" $ EC.lambda "y" $ EC.constant $ CBool True]
+-- TODO: nat, jointy
+sqltableexpr (JoinTref _ jlt nat jointy jrt onE jal) = do
+  lpr <- sqltableexpr jlt
+  rpr <- sqltableexpr jrt
+  aenv@(AEnv (ct, _) _) <- aenvl [lpr, rpr]
+  (al, ar) <- (,) <$> tblaliasM lpr <*> tblaliasM rpr
+  joinpr   <- maybe (return joinpr0) (sqljoinexpr aenv) onE
+  ce   <- concatE aenv
+  rt   <- tcolM ct >>= taliascolM jal
+  kt   <- twrapcolelemM rt
+  tmap <- telemtmapM
+  (Nothing, be) <- bindE aenv "x" (pexpr joinpr)
+  let matchF   = EC.lambda al $ EC.lambda ar be
+  let combineF = EC.lambda al $ EC.lambda ar ce
+  return $ ParseResult (EC.applyMany (EC.project "join" $ pexpr lpr) [pexpr rpr, matchF, combineF]) rt kt tmap $ sqltablealias "JR" jal
+
+  where joinpr0 = ParseResult (EC.constant $ CBool True) TC.bool TC.bool Nothing Nothing
 
 sqltableexpr t@(SubTref _ subqE _) = throwE $ "Unhandled table ref: " ++ show t
 sqltableexpr t@(FunTref _ funE _)  = throwE $ "Unhandled table ref: " ++ show t
 
--- TODO: argvars.
--- TODO: bind fields for expr.
-sqlwhere :: K3ExpType -> MaybeBoolExpr -> SQLParseM K3ExpType
+
+sqlwhere :: ParseResult -> MaybeBoolExpr -> SQLParseM ParseResult
 sqlwhere tables whereEOpt = flip (maybe $ return tables) whereEOpt $ \whereE -> do
-  (expr, ty) <- sqlscalar (snd tables) whereE
-  return . (, ty) $ EC.applyMany (EC.project "filter" $ fst tables) [EC.lambda "x" expr]
+  aenv <- aenv1 tables
+  wpr  <- sqlscalar aenv whereE
+  (iOpt, be) <- bindE aenv "x" (pexpr wpr)
+  filterF <- maybe (tblaliasM tables) return iOpt >>= \a -> return $ EC.lambda a be
+  return $ tables { pexpr = EC.applyMany (EC.project "filter" $ pexpr tables) [filterF] }
 
--- TODO: extract type from projections
-sqlproject :: K3ExpType -> SelectList -> SQLParseM K3ExpType
+
+sqlproject :: ParseResult -> SelectList -> SQLParseM ParseResult
 sqlproject limits (SelectList _ projections) = do
-  exprtypes <- mapM (sqlprojection $ snd limits) projections
-  let (exprs, _) = unzip exprtypes
-  return . (, TC.unit) $ EC.applyMany (EC.project "map" $ fst limits) [EC.lambda "x" $ EC.tuple exprs]
+  aenv     <- aenv1 limits
+  eprs     <- mapM (sqlprojection aenv) projections
+  eAliases <- expraliasesGenM eprs
+  let (exprs, types) = unzip $ map (pexpr &&& prt) eprs
+  (iOpt, be) <- bindE aenv "x" $ EC.record $ zip eAliases exprs
+  mapF <- maybe (tblaliasM limits) return iOpt >>= \a -> return $ EC.lambda a be
+  let rexpr  = EC.applyMany (EC.project "map" $ pexpr limits) [mapF]
+  let ralias = Just "R"
+  rt   <- tcolM $ TC.record $ zip eAliases types
+  kt   <- twrapcolelemM rt
+  tmap <- telemtmapM
+  return $ ParseResult rexpr rt kt tmap ralias
 
--- TODO: SelectItem name
-sqlprojection :: K3 Type -> SelectItem -> SQLParseM K3ExpType
-sqlprojection t (SelExp _ e)       = sqlscalar t e
-sqlprojection t (SelectItem _ e _) = sqlscalar t e
 
--- TODO: aggregation function? Needs to extract functions from select list.
-sqlgroupby :: K3ExpType -> ScalarExprList -> SQLParseM K3ExpType
-sqlgroupby selects [] = return selects
-sqlgroupby selects gbL = do
-  gbets <- mapM (sqlscalar $ snd selects) gbL
-  let (gbexprs, _) = unzip gbets
-  return . (, TC.unit) $ EC.applyMany (EC.project "groupBy" $ fst selects) [EC.lambda "x" $ EC.tuple gbexprs]
+sqlgroupby :: ParseResult -> SelectList -> ScalarExprList -> SQLParseM (ParseResult, SelectList)
+sqlgroupby selects projections [] = return (selects, projections)
+sqlgroupby selects (SelectList slann projections) gbL = do
+  aenv  <- aenv1 selects
+  gbprs <- mapM (sqlscalar aenv) gbL
+  (nprojects, aggprs) <- mapM (sqlaggregate aenv) projections >>= return . partitionEithers
+
+  let (gbexprs, gbtypes) = unzip $ map (pexpr &&& prt) gbprs
+  let (aggexprs, aggtypes) = unzip $ map (pexpr &&& prt) aggprs
+
+  gAliases <- expraliasesGenM gbprs
+  aAliases <- expraliasesGenM aggprs
+
+  (giOpt, gbe) <- bindE aenv "x" $ case gbexprs of
+                    [] -> EC.unit
+                    [e] -> e
+                    _ -> EC.record $ zip gAliases gbexprs
+
+  groupF <- maybe (tblaliasM selects) return giOpt >>= \a -> return $ EC.lambda a gbe
+
+  (aiOpt, abe) <- bindE aenv "x" $ case aggexprs of
+                    []  -> EC.variable "acc"
+                    [e] -> EC.applyMany e [EC.variable "acc"]
+                    _   -> EC.record $ zip aAliases $ map (aggE "acc") $ zip aAliases aggexprs
+
+  aggF <- maybe (tblaliasM selects) return aiOpt >>= \a -> return $ EC.lambda "acc" $ EC.lambda a abe
+
+  let tpmap p idtl = map (\(i,_) -> (i, [p, i])) idtl
+
+  let gidt = zip gAliases gbtypes
+  let (kidt, keyT, ktpl, aid0) = case gbtypes of
+                                   []  -> ([("f0", TC.unit)], TC.unit, [("f0", ["key"])], "f1")
+                                   [t] -> (gidt, t, [(fst $ head gidt, ["key"])], "f0")
+                                   _   -> (gidt, TC.record gidt, tpmap "key" gidt, "f0")
+
+  let aidt = zip aAliases aggtypes
+  let (vidt, valT, vtpl) = case aggtypes of
+                             []  -> ([(aid0, TC.unit)], TC.unit, [(aid0, ["value"])])
+                             [t] -> (aidt, t, [(fst $ head aidt, ["value"])])
+                             _   -> (aidt, TC.record aidt, tpmap "value" aidt)
+
+  let rexpr  = EC.applyMany (EC.project "groupBy" $ pexpr selects) [groupF, aggF]
+  let tmap = Just $ Right $ (Map.fromList ktpl) <> (Map.fromList vtpl)
+  let ral = Just "R"
+
+  rt <- tcolM $ TC.record $ kidt ++ vidt
+  kt <- tcolM $ TC.record [("key", keyT), ("value", valT)]
+
+  return (ParseResult rexpr rt kt tmap ral, SelectList slann nprojects)
+
 
 -- TODO
-sqlhaving :: K3ExpType -> MaybeBoolExpr -> SQLParseM K3ExpType
+sqlhaving :: ParseResult -> MaybeBoolExpr -> SQLParseM ParseResult
 sqlhaving groupby havingE = return groupby
 
-sqlsort :: K3ExpType -> ScalarExprDirectionPairList -> SQLParseM K3ExpType
+sqlsort :: ParseResult -> ScalarExprDirectionPairList -> SQLParseM ParseResult
 sqlsort having orderL = return having
 
-sqltopk :: K3ExpType -> MaybeBoolExpr -> MaybeBoolExpr -> SQLParseM K3ExpType
+sqltopk :: ParseResult -> MaybeBoolExpr -> MaybeBoolExpr -> SQLParseM ParseResult
 sqltopk sorted limitE offsetE = return sorted
 
+
+sqljoinexpr :: AEnv -> JoinExpr -> SQLParseM ParseResult
+sqljoinexpr aenv (JoinOn _ e) = sqlscalar aenv e
+sqljoinexpr _ je@(JoinUsing _ _) = throwE $ "Unhandled join expression" ++ show je
+
+sqlaggregate :: AEnv -> SelectItem -> SQLParseM (Either SelectItem ParseResult)
+sqlaggregate _ si = return $ Left si
+
+sqlprojection :: AEnv -> SelectItem -> SQLParseM ParseResult
+sqlprojection aenv (SelExp _ e) = sqlscalar aenv e
+sqlprojection aenv (SelectItem _ e nm) = do
+  pr <- sqlscalar aenv e
+  return pr { palias = Just (sqlnmcomponent nm) }
+
+
+pr0 :: K3 Type -> K3 Expression -> SQLParseM ParseResult
+pr0 t e = return $ ParseResult e t t Nothing Nothing
+
 -- TODO
-sqlscalar :: K3 Type -> ScalarExpr -> SQLParseM K3ExpType
-sqlscalar _ (BooleanLit _ b)  = return . (, TC.unit) $ EC.constant $ CBool b
-sqlscalar _ (NumberLit _ i)   = return . (, TC.unit) $ EC.constant $ CInt $ read i  -- TODO: double?
-sqlscalar _ (StringLit _ s)   = return . (, TC.unit) $ EC.constant $ CString s
-sqlscalar _ (Identifier _ nc) = return . (, TC.unit) $ EC.variable $ sqlnmcomponent nc
-sqlscalar t (FunCall _ nm args) = do
+sqlscalar :: AEnv -> ScalarExpr -> SQLParseM ParseResult
+sqlscalar _ (BooleanLit _ b)  = pr0 TC.bool   $ EC.constant $ CBool b
+sqlscalar _ (NumberLit _ i)   = pr0 TC.int    $ EC.constant $ CInt $ read i  -- TODO: double?
+sqlscalar _ (StringLit _ s)   = pr0 TC.string $ EC.constant $ CString s
+
+sqlscalar (AEnv (tnc -> (TRecord ids, ch), _) _) (Identifier _ (sqlnmcomponent -> i)) =
+    maybe (varerror i) (\t -> pr0 t $ EC.variable i) $ lookup i (zip ids ch)
+  where varerror n = throwE $ "Unknown unqualified variable " ++ n
+
+sqlscalar aenv (FunCall _ nm args) = do
   let fn = sqlnm nm
   case sqloperator fn args of
-    (Just (UnaryOp  o x))   -> (\a -> (EC.unop o $ fst a, snd a)) <$> sqlscalar t x
-    (Just (BinaryOp o x y)) -> (\a b -> (EC.binop o (fst a) (fst b), TC.unit)) <$> sqlscalar t x <*> sqlscalar t y
-    _ -> mapM (sqlscalar t) args >>= return . (, TC.unit) . EC.applyMany (EC.variable fn) . map fst
+    (Just (UnaryOp  o x))   -> do
+      xpr <- sqlscalar aenv x
+      return (xpr {pexpr = EC.unop o $ pexpr xpr})
+
+    (Just (BinaryOp o x y)) -> do
+      xpr <- sqlscalar aenv x
+      ypr <- sqlscalar aenv y
+      pr0 (prt xpr) $ EC.binop o (pexpr xpr) $ pexpr ypr
+
+    _ -> do
+      aprl <- mapM (sqlscalar aenv) args
+      pr0 TC.unit $ EC.applyMany (EC.variable fn) $ map pexpr aprl -- TODO: return type?
+
+sqlscalar (AEnv (ret@(tag -> TRecord ids), _) _) (Star _) =
+  pr0 ret $ EC.record $ map (\i -> (i, EC.variable i)) ids
 
 sqlscalar _ e = throwE $ "Unhandled scalar expr: " ++ show e
-
--- NullLit Annotation
--- Star Annotation
 
 -- Unhandled:
 -- AggregateFn Annotation Distinct ScalarExpr ScalarExprDirectionPairList
@@ -239,26 +559,31 @@ sqlscalar _ e = throwE $ "Unhandled scalar expr: " ++ show e
 
 
 sqloperator :: String -> ScalarExprList -> Maybe OperatorFn
-sqloperator "-"  [x]   = Just (UnaryOp  ONeg x)
-sqloperator "+"  [x,y] = Just (BinaryOp OAdd x y)
-sqloperator "-"  [x,y] = Just (BinaryOp OSub x y)
-sqloperator "*"  [x,y] = Just (BinaryOp OMul x y)
-sqloperator "/"  [x,y] = Just (BinaryOp ODiv x y)
-sqloperator "==" [x,y] = Just (BinaryOp OEqu x y)
-sqloperator "!=" [x,y] = Just (BinaryOp ONeq x y)
-sqloperator "<"  [x,y] = Just (BinaryOp OLth x y)
-sqloperator "<=" [x,y] = Just (BinaryOp OGeq x y)
-sqloperator ">"  [x,y] = Just (BinaryOp OGth x y)
-sqloperator ">=" [x,y] = Just (BinaryOp OGeq x y)
+sqloperator "-"    [x]   = Just (UnaryOp  ONeg x)
+sqloperator "!not" [x]   = Just (UnaryOp  ONot x)
+sqloperator "+"    [x,y] = Just (BinaryOp OAdd x y)
+sqloperator "-"    [x,y] = Just (BinaryOp OSub x y)
+sqloperator "*"    [x,y] = Just (BinaryOp OMul x y)
+sqloperator "/"    [x,y] = Just (BinaryOp ODiv x y)
+sqloperator "%"    [x,y] = Just (BinaryOp OMod x y)
+sqloperator "="    [x,y] = Just (BinaryOp OEqu x y)
+sqloperator "!="   [x,y] = Just (BinaryOp ONeq x y)
+sqloperator "<>"   [x,y] = Just (BinaryOp ONeq x y)
+sqloperator "<"    [x,y] = Just (BinaryOp OLth x y)
+sqloperator "<="   [x,y] = Just (BinaryOp OGeq x y)
+sqloperator ">"    [x,y] = Just (BinaryOp OGth x y)
+sqloperator ">="   [x,y] = Just (BinaryOp OGeq x y)
+sqloperator "!and" [x,y] = Just (BinaryOp OAnd x y)
+sqloperator "!or"  [x,y] = Just (BinaryOp OOr  x y)
 sqloperator _ _ = Nothing
 
 
 -- | Type construction
 sqltabletype :: AttributeDefList -> SQLParseM (K3 Type)
-sqltabletype attrs = sqlrectype attrs >>= \rt -> return $ (TC.collection rt) @+ TAnnotation "Collection"
+sqltabletype attrs = sqlrectype attrs >>= tcolM
 
 sqlrectype :: AttributeDefList -> SQLParseM (K3 Type)
-sqlrectype attrs = mapM sqlattr attrs >>= return . TC.record
+sqlrectype attrs = mapM sqlattr attrs >>= \ts -> return (TC.record ts)
 
 sqlattr :: AttributeDef -> SQLParseM (Identifier, K3 Type)
 sqlattr (AttributeDef _ nm typ _ _) = sqltypename typ >>= sqltype >>= return . (sqlnmcomponent nm,)
@@ -282,3 +607,9 @@ sqlnmcomponent (QNmc s) = s
 sqltypename :: TypeName -> SQLParseM String
 sqltypename (SimpleTypeName _ t) = return t
 sqltypename t = throwE $ "Invalid sql typename " ++ show t
+
+sqltablealias :: Identifier -> TableAlias -> Maybe Identifier
+sqltablealias def alias = case alias of
+    NoAlias _        -> Just def
+    TableAlias _ nc  -> Just $ sqlnmcomponent nc
+    FullAlias _ nc _ -> Just $ sqlnmcomponent nc
