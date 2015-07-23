@@ -254,8 +254,19 @@ materializationE e@(Node (t :@: as) cs)
 
       EOperate OApp -> do
         let [f, x] = cs
-        x' <- materializationE x
+        x'' <- materializationE x
         f' <- withLocalDS [x] $ materializationE f
+
+        -- Manually reset external move capture decisions for fold lambdas.
+        when (tag f' == EProject "fold") $ do
+          case tag x'' of
+            ELambda i -> do
+              mFD <- dLookupAllWithBindings (getUID x'')
+              void $ flip M.traverseWithKey mFD $ \(u, mi) -> \d -> do
+                when (u /= i && inD d == Moved) $ setFullDecision (getUID x'') (u, mi) (d { inD = Copied })
+
+        ds' <- dLookupAll (getUID x'')
+        let x' = let Node (t' :@: as') cs' = x'' in Node (t' :@: (EMaterialization ds':as')) cs'
 
         let applicationEffects = getFStructure e
         let executionEffects = getEffects e
