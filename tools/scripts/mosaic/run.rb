@@ -315,7 +315,7 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
           role_counters[peer_bootstrap['role']] += 1
         end
         peer_roles[peer_bootstrap['me']] =
-          peer_bootstrap['role'] + role_counters[peer_bootstrap['role']].to_s
+          peer_bootstrap['role'][0]['n'] + role_counters[peer_bootstrap['role'][0]['n']].to_s
       else
         stage "[#{stage_num}] ERROR: No me/role entries found in peer yaml #{pf}"
       end

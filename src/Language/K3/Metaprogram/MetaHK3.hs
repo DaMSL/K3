@@ -35,7 +35,7 @@ import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 
 metaHK3TraceLogging :: Bool
-metaHK3TraceLogging = True
+metaHK3TraceLogging = False
 
 localLog :: (Functor m, Monad m) => String -> m ()
 localLog = logVoid metaHK3TraceLogging

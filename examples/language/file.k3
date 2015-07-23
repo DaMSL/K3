@@ -1,11 +1,28 @@
+include "Annotation/Collection.k3"
+include "Annotation/Set.k3"
 include "Core/Builtins.k3"
 
 declare x : mut int = 0
 
-trigger t : int = \_ -> (
-  x = x + 1
+trigger t : () = \_ -> (
+  (sink1, me) <- (1, "one");
+  (sink1, me) <- (2, "two");
+  (sink1, me) <- (3, "three");
+  (stop, me)  <- ()
 )
 
-source s1 : int = file "data/expr-i.txt" k3
+trigger t2 : int = \i -> (
+  print (itos i)
+)
 
+trigger stop : () = \_ -> (
+  haltEngine()
+)
+
+source s1 : () = value ()
 feed s1 |> t
+
+source s2 : int = file "in.csv" text csv
+feed s2 |> t2
+
+sink sink1 : (int, string) = file "out.csv" text psv

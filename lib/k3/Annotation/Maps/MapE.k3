@@ -48,7 +48,7 @@ annotation MapE[key: [labeltype], value: [labeltype]] given type a,b
     with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
 
   @:Transformer
-  provides lifted map : (content -> {key: a, value: b}) -> collection {key: a, value: b} @Map
+  provides lifted map : (content -> {key: a, value: b}) -> collection {key: a, value: b} @MapE
     with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
 
   @:Transformer
@@ -61,14 +61,14 @@ annotation MapE[key: [labeltype], value: [labeltype]] given type a,b
 
   @:{Transformer, CArgs 3}
   provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @Map
+                             -> collection { key : a, value : b } @MapE
     with effects
       \gbF -> \gaccF -> \z ->
         [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:Transformer
-  provides lifted ext : (content -> collection {key : a, value: b} @Map)
-                         -> collection {key : a, value: b} @Map
+  provides lifted ext : (content -> collection {key : a, value: b} @MapE)
+                         -> collection {key : a, value: b} @MapE
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
 
   @:{Transformer, CArgs 3}

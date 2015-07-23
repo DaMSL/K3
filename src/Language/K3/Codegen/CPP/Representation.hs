@@ -13,6 +13,7 @@ module Language.K3.Codegen.CPP.Representation (
     pattern Collection,
     pattern Byte,
     pattern SharedPointer,
+    pattern UniquePointer,
     pattern Unit,
     pattern Tuple,
     pattern Void,
@@ -123,12 +124,14 @@ data Type
     | RValueReference Type
     | Static Type
     | TypeLit Literal
+    | ConstExpr Expression
   deriving (Eq, Ord, Read, Show)
 
 pattern Address = Named (Name "Address")
 pattern Collection c t = Named (Specialized [t] (Name c))
 pattern Byte = Named (Name "unsigned char")
 pattern SharedPointer t = Named (Specialized [t] (Name "shared_ptr"))
+pattern UniquePointer t = Named (Specialized [t] (Name "unique_ptr"))
 pattern Unit = Named (Name "unit_t")
 pattern Tuple ts = Named (Specialized ts (Qualified (Name "std") (Name "tuple")))
 pattern Void = Named (Name "void")
@@ -146,6 +149,7 @@ instance Stringifiable Type where
     stringify (RValueReference t) = stringify t <> "&&"
     stringify (Static c) = "static" <+> stringify c
     stringify (TypeLit c) = stringify c
+    stringify (ConstExpr e) = stringify e
 
 data Literal
     = LBool Bool

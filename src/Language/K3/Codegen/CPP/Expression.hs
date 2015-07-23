@@ -270,6 +270,7 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
   pass <- case inD (fromJust (M.lookup "" outerMtrlzn)) of
             Copied -> return zv
             Moved -> return (gMoveByE z zv)
+            _ -> return zv
 
   let isVectorizeProp  = \case { EProperty (ePropertyName -> "Vectorize")  -> True; _ -> False }
   let isInterleaveProp = \case { EProperty (ePropertyName -> "Interleave") -> True; _ -> False }
@@ -310,18 +311,29 @@ inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
     (fe, fv) <- inline f
     (ae, av) <- inline a
 
+    g <- genSym
+
     mtrlzns' <- case e @~ isEMaterialization of
                   Just (EMaterialization ms) -> return ms
                   Nothing -> return $ M.fromList [("", defaultDecision)]
 
     let mtrlzns = M.adjust (\d -> if forceMoveP e then d { inD = Moved } else d) "" mtrlzns'
 
-    pass <- case inD (fromJust (M.lookup "" mtrlzns)) of
-              Copied -> return av
-              Moved -> return (gMoveByE a av)
+    let pd = inD (fromJust (M.lookup "" mtrlzns))
 
-    c <- call fv pass cargs
-    return (fe ++ ae, c)
+    let (pe, pv) = case pd of
+          Copied -> ( [R.Forward $ R.ScalarDecl (R.Name g) R.Inferred (Just av)]
+                    , R.Move (R.Variable $ R.Name g)
+                    )
+          Moved -> ( [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just $ gMoveByE a av)]
+                   , R.Variable $ R.Name g
+                   )
+          Referenced -> ( [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just av)]
+                        , R.Variable $ R.Name g
+                        )
+
+    c <- call fv pv cargs
+    return (fe ++ ae ++ pe, c)
   where
     call fn@(R.Variable i) arg n =
       if isJust $ f @~ CArgs.isErrorFn
@@ -334,6 +346,7 @@ inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
 
 inline e@(tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
     d <- genSym
+    d2 <- genSym
     let mtrlzns = getMDecisions e
     tIdName <- case trig @~ isEProperty of
                  Just (EProperty (ePropertyValue -> Just (tag -> LString nm))) -> return nm
@@ -341,19 +354,21 @@ inline e@(tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [tri
     (te, _)  <- inline trig
     (ae, av)  <- inline addr
     (ve, vv)  <- inline val
-
-    let messageValue = let m = M.findWithDefault defaultDecision "" mtrlzns in gMoveByDE inD m val vv
-    trigList  <- triggers <$> get
+    let messageValue = let m = M.findWithDefault defaultDecision "" mtrlzns in gMoveByDE inD m val vv 
     trigTypes <- getKType val >>= genCType
-    let className = R.Specialized [trigTypes] (R.Qualified (R.Name "K3" ) $ R.Name "ValDispatcher")
+    let codec = R.Forward $ R.ScalarDecl (R.Name d2) (R.Static R.Inferred) $ Just $
+               R.Call (R.Variable $ R.Qualified (R.Name "Codec") (R.Specialized [trigTypes] (R.Name "getCodec")))
+               [R.Variable $ R.Name "__internal_format_"]
+    let className = R.Specialized [trigTypes] (R.Name "TNativeValue")
         classInst = R.Forward $ R.ScalarDecl (R.Name d) R.Inferred
                       (Just $ R.Call (R.Variable $ R.Specialized [R.Named className]
-                                           (R.Qualified (R.Name "std" ) $ R.Name "make_shared")) [messageValue])
+                                           (R.Qualified (R.Name "std" ) $ R.Name "make_unique")) [messageValue])
+        me = R.Variable $ R.Name "me"
     return (concat [te, ae, ve]
                  ++ [ classInst
-                    , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine") (R.Name "send")) [
-                                    av, R.Variable (R.Name $ tIdName), R.Variable $ R.Name d, R.Variable (R.Name "me")
-                                   ]
+                    , codec
+                    , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Name "send"))
+                                    [me, av, R.Variable $ R.Name tIdName,  R.Move $ R.Variable (R.Name d), (R.Variable $ R.Name d2) ]
                     ]
              , R.Initialization R.Unit [])
     where

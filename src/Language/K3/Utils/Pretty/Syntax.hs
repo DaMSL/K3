@@ -285,21 +285,23 @@ endpoint kw n specOpt t' eOpt' = case specOpt of
   Nothing                   -> common Nothing
   Just ValueEP              -> common $ maybe Nothing (Just . (text "value" <+>)) eOpt'
   Just (BuiltinEP kind fmt) -> common . Just $ text kind <+> text fmt
-  Just (FileEP path fmt)    -> common . Just $ text "file" <+> text path <+> text fmt
-  Just (NetworkEP addr fmt) -> common . Just $ text "network" <+> text addr <+> text fmt
-  Just (FileSeqEP pathcol fmt) -> common . Just $ text "fileseq" <+> text pathcol <+> text fmt
+  Just (FileEP path txt fmt)    -> common . Just $ text "file" <+> text path  <+> text (txtOrBin txt) <+> text fmt
+  Just (NetworkEP addr txt fmt) -> common . Just $ text "network" <+> text addr <+> text (txtOrBin txt) <+> text fmt
+  Just (FileSeqEP pathcol txt fmt) -> common . Just $ text "fileseq" <+> text pathcol <+> text (txtOrBin txt) <+> text fmt
 
-  Just (FileMuxEP pathcol fmt) ->
-    common . Just $ text "filemux" <+> text pathcol <+> text fmt
+  Just (FileMuxEP pathcol txt fmt) ->
+    common . Just $ text "filemux" <+> text pathcol <+> text (txtOrBin txt) <+> text fmt
 
-  Just (FileMuxseqEP seqcol fmt) ->
-    common . Just $ text "filemxsq" <+> text seqcol <+> text fmt
+  Just (FileMuxseqEP seqcol txt fmt) ->
+    common . Just $ text "filemxsq" <+> text seqcol <+> text (txtOrBin txt) <+> text fmt
 
   where
     common initializer =
       hang 2 $ text kw <+> text n
                        <+> colon <+> (align t')
                        <+> maybe empty (equals <$>) initializer <> line
+
+    txtOrBin t = if t then "text" else "binary"
 
 
 -- | Expression syntax printing.

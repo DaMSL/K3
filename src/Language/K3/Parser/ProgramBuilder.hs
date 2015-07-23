@@ -15,11 +15,8 @@ module Language.K3.Parser.ProgramBuilder (
   resolveFn
 ) where
 
-import Control.Applicative
-
 import Data.List
 import Data.Tree
-import Debug.Trace
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -44,9 +41,6 @@ myId = "me"
 
 peersId :: Identifier
 peersId = "peers"
-
-argsId :: Identifier
-argsId = "args"
 
 myAddr :: K3 Expression
 myAddr = EC.variable myId
@@ -115,25 +109,11 @@ openSocketFn = EC.variable "openSocket"
 closeFn :: K3 Expression
 closeFn = EC.variable "close"
 
-{- -- Unused
-registerFileDataTriggerFn :: K3 Expression
-registerFileDataTriggerFn = EC.variable "registerFileDataTrigger"
-
-registerFileCloseTriggerFn :: K3 Expression
-registerFileCloseTriggerFn = EC.variable "registerFileCloseTrigger"
-
-registerSocketAcceptTriggerFn :: K3 Expression
-registerSocketAcceptTriggerFn = EC.variable "registerSocketAcceptTrigger"
-
-registerSocketCloseTriggerFn :: K3 Expression
-registerSocketCloseTriggerFn = EC.variable "registerSocketCloseTrigger"
--}
+resolveFn :: K3 Expression
+resolveFn = EC.variable "resolve"
 
 registerSocketDataTriggerFn :: K3 Expression
 registerSocketDataTriggerFn = EC.variable "registerSocketDataTrigger"
-
-resolveFn :: K3 Expression
-resolveFn = EC.variable "resolve"
 
 {- Top-level functions -}
 roleId :: Identifier
@@ -142,12 +122,17 @@ roleId = "role"
 roleVar :: K3 Expression
 roleVar = EC.variable roleId
 
+roleElemId :: Identifier
+roleElemId = "rolerec"
+
+roleElemVar :: K3 Expression
+roleElemVar = EC.variable roleElemId
+
+roleElemLbl :: Identifier
+roleElemLbl = "i"
+
 roleFnId :: Identifier
 roleFnId = "processRole"
-
-roleFn :: K3 Expression
-roleFn = EC.variable roleFnId
-
 
 {- Declaration construction -}
 builtinGlobal :: Identifier -> K3 Type -> Maybe (K3 Expression) -> K3 Declaration
@@ -166,42 +151,35 @@ qualifyE e = if null $ filter isEQualified $ annotations e then e @+ EImmutable 
 {- Desugaring methods -}
 -- TODO: replace with Template Haskell
 
-processInitsAndRoles :: K3 Declaration -> [(Identifier, EndpointInfo)] -> [(Identifier, Identifier)]
-                     -> K3 Declaration
-processInitsAndRoles (Node t c) endpointBQGs roleDefaults = Node t $ c ++ initializerFns
+processInitsAndRoles :: K3 Declaration -> [(Identifier, EndpointInfo)] -> K3 Declaration
+processInitsAndRoles (Node t c) endpointBQGs = Node t $ c ++ initializerFns
   where
-        (sinkEndpoints, sourceEndpoints) = partition matchSink endpointBQGs
-        matchSink (_,(_, Nothing, _, _)) = True
-        matchSink _ = False
+    (sinkEndpoints, sourceEndpoints) = partition matchSink endpointBQGs
+    matchSink (_,(_, Nothing, _, _)) = True
+    matchSink _ = False
 
-        initializerFns =
-            [ builtinGlobal roleFnId (qualifyT unitFnT)
-                $ Just . qualifyE $ mkRoleBody sourceEndpoints sinkEndpoints roleDefaults ]
+    initializerFns =
+        [ builtinGlobal roleFnId (qualifyT unitFnT)
+            $ Just . qualifyE $ mkRoleBody sourceEndpoints sinkEndpoints ]
 
-        sinkInitE acc (_,(_, Nothing, _, Just e)) = acc ++ [e]
-        sinkInitE acc _ = acc
+    sinkInitE acc (_,(_, Nothing, _, Just e)) = acc ++ [e]
+    sinkInitE acc _ = acc
 
-        mkRoleBody sources sinks defaults =
-          EC.lambda "_" $ EC.block $
-            (trace ("Sinks " ++ show sinks) $ foldl sinkInitE [] sinks) ++
-            [uncurry (foldl dispatchId) $ defaultAndRestIds sources defaults]
+    -- TODO handle empty sinks or sources
+    mkRoleBody sources sinks =
+      EC.lambda "_" $ EC.block $
+        (foldl sinkInitE [] sinks) ++
+        [EC.applyMany (EC.project "iterate" roleVar)
+           [EC.lambda roleElemId $ foldl dispatchId EC.unit sources]]
 
-        defaultAndRestIds sources defaults = (defaultE sources $ lookup "" defaults, sources)
-        dispatchId elseE (n,(_,_,y,goE))  = EC.ifThenElse (eqRole y) (runE n goE) elseE
+    dispatchId elseE (n,(_,_,y,goE)) = EC.ifThenElse (eqRole y) (runE n goE) elseE
 
-        eqRole n = EC.binop OEqu roleVar (EC.constant $ CString n)
+    eqRole n = EC.binop OEqu (EC.project roleElemLbl roleElemVar) (EC.constant $ CString n)
 
-        runE _ (Just goE) = goE
-        runE n Nothing    = EC.applyMany (EC.variable $ cpName n) [EC.unit]
+    runE _ (Just goE) = goE
+    runE n Nothing    = EC.applyMany (EC.variable $ cpName n) [EC.unit]
 
-        defaultE s (Just x) = case find ((x ==) . third . snd) s of
-                                Just (n,(_,_,_,goE)) -> runE n goE
-                                Nothing              -> EC.unit
-        defaultE _ Nothing   = EC.unit
-
-        third (_,_,x,_) = x
-
-        unitFnT = TC.function TC.unit TC.unit
+    unitFnT = TC.function TC.unit TC.unit
 
 
 {- Code generation methods-}
@@ -219,35 +197,34 @@ endpointMethods isSource eSpec argE formatE n t =
 
     sinkDecls = (eSpec, Just sinkImpl, map mkMethod [mkInit, mkFinal, sinkHasWrite, sinkWrite])
 
-    mkInit  = ("Init",  TC.unit, TC.unit, Just $ EC.lambda "_" $ initE)
-    mkStart = ("Start", TC.unit, TC.unit, Just $ EC.lambda "_" $ startE)
-    mkFinal = ("Final", TC.unit, TC.unit, Just $ EC.lambda "_" $ closeE)
-
     -- Endpoint-specific declarations
     sourceReadDecls = case eSpec of
-                        FileMuxEP    _ _ -> [sourceMuxHasRead, sourceMuxRead]
-                        FileMuxseqEP _ _ -> [sourceMuxHasRead, sourceMuxRead]
+                        FileMuxEP    _ _ _ -> [sourceMuxHasRead, sourceMuxRead]
+                        FileMuxseqEP _ _ _ -> [sourceMuxHasRead, sourceMuxRead]
                         _ -> [sourceHasRead, sourceRead]
 
     sourceExtraDecls = case eSpec of
-      FileSeqEP _ _ -> [ builtinGlobal (cfiName n) (TC.int    @+ TMutable) Nothing
-                       , builtinGlobal (cfpName n) (TC.string @+ TMutable) Nothing ]
-      FileMuxEP _ _ -> [ builtinGlobal (cfmpName n) muxPosMap Nothing
-                       , builtinGlobal (cfmbName n) muxBuffer Nothing
-                       , builtinGlobal (cfmdName n) t Nothing
-                       , builtinGlobal (cmcName n) (TC.int @+ TMutable) (Just $ EC.constant $ CInt 0) ]
-      FileMuxseqEP _ _ -> [ builtinGlobal (cfmpName n) muxPosMap Nothing
-                          , builtinGlobal (cfmbName n) muxBuffer Nothing
-                          , builtinGlobal (cfmdName n) t Nothing
-                          , builtinGlobal (cfiName n) muxSeqIdxMap Nothing
-                          , builtinGlobal (cfpName n) muxSeqPathMap Nothing
-                          , builtinGlobal (cmcName n) (TC.int @+ TMutable) (Just $ EC.constant $ CInt 0) ]
+      FileSeqEP _ _ _ -> [ builtinGlobal (cfiName n) (TC.int    @+ TMutable) Nothing
+                         , builtinGlobal (cfpName n) (TC.string @+ TMutable) Nothing ]
+      FileMuxEP _ _ _ -> [ builtinGlobal (cfmpName n) muxPosMap Nothing
+                         , builtinGlobal (cfmbName n) muxBuffer Nothing
+                         , builtinGlobal (cfmdName n) t Nothing
+                         , builtinGlobal (cmcName n) (TC.int @+ TMutable) (Just $ EC.constant $ CInt 0) ]
+      FileMuxseqEP _ _ _ -> [ builtinGlobal (cfmpName n) muxPosMap Nothing
+                            , builtinGlobal (cfmbName n) muxBuffer Nothing
+                            , builtinGlobal (cfmdName n) t Nothing
+                            , builtinGlobal (cfiName n) muxSeqIdxMap Nothing
+                            , builtinGlobal (cfpName n) muxSeqPathMap Nothing
+                            , builtinGlobal (cmcName n) (TC.int @+ TMutable) (Just $ EC.constant $ CInt 0) ]
       _ -> []
 
     mkMethod (m, argT, retT, eOpt) =
       builtinGlobal (n++m) (qualifyT $ TC.function argT retT)
         $ maybe Nothing (Just . qualifyE) eOpt
 
+    mkInit  = ("Init",  TC.unit, TC.unit, Just $ EC.lambda "_" $ initE) 
+    mkStart = ("Start", TC.unit, TC.unit, Just $ EC.lambda "_" $ startE) 
+    mkFinal = ("Final", TC.unit, TC.unit, Just $ EC.lambda "_" $ closeE) 
     mkCollection fields ctype = (TC.collection $ TC.record $ map (qualifyT <$>) fields) @+ TAnnotation ctype
 
     muxSeqLabel  = "order"
@@ -261,9 +238,9 @@ endpointMethods isSource eSpec argE formatE n t =
     muxSeqPathMap = mkCollection [("key", TC.int), ("value", TC.string)] "Map"
 
     sourceController = case eSpec of
-      FileSeqEP    _ _ -> seqSrcController
-      FileMuxEP    _ _ -> muxSrcController
-      FileMuxseqEP _ _ -> muxSeqSrcController
+      FileSeqEP    _ txt _ -> seqSrcController txt
+      FileMuxEP    _ txt _ -> muxSrcController
+      FileMuxseqEP _ txt _ -> muxSeqSrcController txt
       _ -> singleSrcController
 
     sinkImpl =
@@ -283,7 +260,7 @@ endpointMethods isSource eSpec argE formatE n t =
     {-----------------------------------------
      - File sequence controler and utilities.
      -----------------------------------------}
-    seqSrcController = builtinTrigger (ccName n) TC.unit $
+    seqSrcController txt = builtinTrigger (ccName n) TC.unit $
       EC.lambda "_" $
         EC.ifThenElse
           (EC.applyMany (EC.variable $ chrName n) [EC.unit])
@@ -291,7 +268,7 @@ endpointMethods isSource eSpec argE formatE n t =
           $ EC.block
               [ nextFileIndexE
               , EC.ifThenElse notLastFileIndexE
-                  (EC.block [openSeqNextFileE False True openFileFn, controlRcrE])
+                  (EC.block [openSeqNextFileE False True openFileFn txt, controlRcrE])
                   EC.unit ]
 
     nextFileIndexE =
@@ -300,11 +277,11 @@ endpointMethods isSource eSpec argE formatE n t =
     notLastFileIndexE =
       EC.binop OLth (EC.variable $ cfiName n) (EC.applyMany (EC.project "size" argE) [EC.unit])
 
-    openSeqNextFileE withTest withClose openFn = openSeqWithTest withTest $
+    openSeqNextFileE withTest withClose openFn txt = openSeqWithTest withTest $
       EC.block $
         [ EC.applyMany (EC.project "at_with" argE) [EC.variable $ cfiName n, assignSeqPathE] ]
         ++ (if withClose then [closeE] else [])
-        ++ [ EC.applyMany openFn [sourceId n, EC.variable (cfpName n), formatE, modeE] ]
+        ++ [ EC.applyMany openFn [EC.variable "me", sourceId n, EC.variable (cfpName n), formatE, EC.constant $ CBool txt, modeE] ]
 
     assignSeqPathE = EC.lambda "r" $ EC.assign (cfpName n) (EC.project "path" $ EC.variable "r")
 
@@ -321,11 +298,11 @@ endpointMethods isSource eSpec argE formatE n t =
           (EC.binop OLth (EC.constant $ CInt 0) $
              EC.applyMany (EC.project "size" $ EC.variable $ cfmpName n) [EC.unit])
           (controlE $ EC.applyMany (EC.project "min_with" $ EC.variable $ cfmpName n)
-                        [EC.lambda muxid $ doMuxNext onFileDoneE])
+                        [EC.lambda "_" EC.unit, EC.lambda muxid $ doMuxNext onFileDoneE])
           EC.unit
 
     muxSrcController = muxSrcControllerTrig muxFinishChan
-    muxSeqSrcController = muxSrcControllerTrig $ muxSeqNextChan openFileFn
+    muxSeqSrcController txt = muxSrcControllerTrig $ muxSeqNextChan openFileFn txt
 
     muxid        = "muxnext"
     muxvar       = EC.variable muxid
@@ -367,7 +344,7 @@ endpointMethods isSource eSpec argE formatE n t =
           [EC.record [("key", muxidx), ("value", EC.variable $ cfmdName n)]]
       , EC.applyMany (EC.project "erase" $ EC.variable $ cfmpName n) [muxvar]]
 
-    muxSeqNextChan openFn =
+    muxSeqNextChan openFn txt =
       EC.applyMany (EC.project "at_with" $ argE)
         [ muxidx
         , EC.lambda "seqc" $
@@ -375,19 +352,19 @@ endpointMethods isSource eSpec argE formatE n t =
               [ muxSeqIdx $ EC.constant $ CInt 0
               , EC.lambda "seqidx" $
                   EC.ifThenElse (muxSeqNotLastFileIndexE "seqc" "seqidx")
-                    (EC.block [muxSeqNextFileE openFn "seqc" "seqidx"])
+                    (EC.block [muxSeqNextFileE openFn "seqc" "seqidx" txt])
                     (EC.block [muxFinishChan, muxSeqFinishChan]) ]]
 
-    muxSeqNextFileE openFn seqvar idxvar =
+    muxSeqNextFileE openFn seqvar idxvar txt =
       EC.letIn "nextidx"
         (EC.binop OAdd (EC.project "value" $ EC.variable idxvar) $ EC.constant $ CInt 1)
         (EC.applyMany (EC.project "at_with" $ EC.project "seq" $ EC.variable seqvar)
           [ EC.variable "nextidx"
           , EC.lambda "f" $ EC.block
-              [ EC.applyMany closeFn [cntrlrMuxChanIdE]
+              [ EC.applyMany closeFn [EC.variable "me", cntrlrMuxChanIdE]
               , EC.applyMany (EC.project "insert" $ EC.variable $ cfiName n) [muxSeqIdx $ EC.variable "nextidx"]
               , EC.applyMany (EC.project "insert" $ EC.variable $ cfpName n) [muxSeqIdx $ EC.project "path" $ EC.variable "f"]
-              , EC.applyMany openFn [cntrlrMuxChanIdE, EC.project "path" $ EC.variable "f", formatE, modeE]
+              , EC.applyMany openFn [EC.variable "me", cntrlrMuxChanIdE, EC.project "path" $ EC.variable "f", formatE, EC.constant $ CBool txt, modeE]
               , muxSafeRefreshChan True EC.unit muxidx]])
 
     muxSeqNotLastFileIndexE seqvar idxvar =
@@ -406,8 +383,8 @@ endpointMethods isSource eSpec argE formatE n t =
 
     -- External functions
     cleanT = stripTUIDSpan $ case eSpec of
-               FileMuxEP    _ _ -> muxFullT
-               FileMuxseqEP _ _ -> muxFullT
+               FileMuxEP    _ _ _ -> muxFullT
+               FileMuxseqEP _ _ _ -> muxFullT
                _ -> t
 
     sourceHasRead = ("HasRead", TC.unit, TC.bool, Nothing)
@@ -421,28 +398,28 @@ endpointMethods isSource eSpec argE formatE n t =
 
     initE = case eSpec of
       BuiltinEP    _ _ -> EC.applyMany openBuiltinFn [sourceId n, argE, formatE]
-      FileEP       _ _ -> openFnE openFileFn
-      FileSeqEP    _ _ -> openFileSeqFnE openFileFn
-      FileMuxEP    _ _ -> openFileMuxChanFnE openFileFn
-      FileMuxseqEP _ _ -> openFileMuxSeqChanFnE openFileFn
-      NetworkEP    _ _ -> openFnE openSocketFn
+      FileEP       _ txt _ -> openFnE openFileFn txt
+      FileSeqEP    _ txt _ -> openFileSeqFnE openFileFn txt
+      FileMuxEP    _ txt _ -> openFileMuxChanFnE openFileFn txt
+      FileMuxseqEP _ txt _ -> openFileMuxSeqChanFnE openFileFn txt
+      NetworkEP    _ txt _ -> openFnE openSocketFn txt
       _                -> error "Invalid endpoint argument"
 
-    openFnE openFn = EC.applyMany openFn [sourceId n, argE, formatE, modeE]
+    openFnE openFn txt = EC.applyMany openFn [EC.variable "me", sourceId n, argE, formatE, EC.constant $ CBool txt, modeE]
 
-    openFileSeqFnE openFn =
-      EC.block [ EC.assign (cfiName n) (EC.constant $ CInt 0), openSeqNextFileE True False openFn ]
+    openFileSeqFnE openFn txt =
+      EC.block [ EC.assign (cfiName n) (EC.constant $ CInt 0), openSeqNextFileE True False openFn txt]
 
     openMuxSeqIdx e = EC.record [("key", EC.variable $ cmcName n), ("value", e)]
 
-    openFileMuxChanFnE openFn =
+    openFileMuxChanFnE openFn txt =
       EC.applyMany (EC.project "iterate" argE)
         [EC.lambda "f" $ EC.block
-          [ EC.applyMany openFn [globalMuxChanIdE, EC.project "path" $ EC.variable "f", formatE, modeE]
+          [ EC.applyMany openFn [EC.variable "me", globalMuxChanIdE, EC.project "path" $ EC.variable "f", formatE, EC.constant $ CBool txt, modeE]
           , muxSafeRefreshChan False EC.unit $ EC.variable $ cmcName n
           , EC.assign (cmcName n) $ EC.binop OAdd (EC.variable $ cmcName n) (EC.constant $ CInt 1) ]]
 
-    openFileMuxSeqChanFnE openFn =
+    openFileMuxSeqChanFnE openFn txt =
       EC.applyMany (EC.project "iterate" argE)
         [ EC.lambda "seqc" $
           EC.applyMany (EC.project "at_with" $ EC.project "seq" $ EC.variable "seqc")
@@ -450,7 +427,7 @@ endpointMethods isSource eSpec argE formatE n t =
           , EC.lambda "f" $ EC.block
             [ EC.applyMany (EC.project "insert" $ EC.variable $ cfiName n) [openMuxSeqIdx $ EC.constant $ CInt 0]
             , EC.applyMany (EC.project "insert" $ EC.variable $ cfpName n) [openMuxSeqIdx $ EC.project "path" $ EC.variable "f"]
-            , EC.applyMany openFn [globalMuxChanIdE, EC.project "path" $ EC.variable "f", formatE, modeE]
+            , EC.applyMany openFn [EC.variable "me", globalMuxChanIdE, EC.project "path" $ EC.variable "f", formatE, EC.constant $ CBool txt, modeE]
             , muxSafeRefreshChan False EC.unit $ EC.variable $ cmcName n
             , EC.assign (cmcName n) $ EC.binop OAdd (EC.variable $ cmcName n) (EC.constant $ CInt 1) ]]]
 
@@ -458,30 +435,30 @@ endpointMethods isSource eSpec argE formatE n t =
 
     startE = case eSpec of
       BuiltinEP    _ _ -> fileStartE
-      FileEP       _ _ -> fileStartE
-      FileSeqEP    _ _ -> fileStartE
-      FileMuxEP    _ _ -> fileStartE
-      FileMuxseqEP _ _ -> fileStartE
-      NetworkEP    _ _ -> EC.applyMany registerSocketDataTriggerFn [sourceId n, EC.variable $ ccName n]
+      FileEP       _ _ _ -> fileStartE
+      FileSeqEP    _ _ _ -> fileStartE
+      FileMuxEP    _ _ _ -> fileStartE
+      FileMuxseqEP _ _ _ -> fileStartE
+      NetworkEP    _ _ _ -> EC.applyMany registerSocketDataTriggerFn [sourceId n, EC.variable $ ccName n]
       _                -> error "Invalid endpoint argument"
 
     fileStartE = EC.send (EC.variable $ ccName n) myAddr EC.unit
 
     closeE = case eSpec of
-      FileMuxEP    _ _ -> closeMuxE
-      FileMuxseqEP _ _ -> closeMuxE
-      _ -> EC.applyMany closeFn [sourceId n]
+      FileMuxEP    _ _ _ -> closeMuxE
+      FileMuxseqEP _ _ _ -> closeMuxE
+      _ -> EC.applyMany closeFn [EC.variable "me", sourceId n]
 
     closeMuxE = EC.applyMany (EC.project "iterate" $ EC.applyMany (EC.variable "range") [EC.variable $ cmcName n])
-                  [EC.lambda "r" $ EC.applyMany closeFn [muxChanIdE $ EC.project "i" $ EC.variable "r"]]
+                  [EC.lambda "r" $ EC.applyMany closeFn [EC.variable "me", muxChanIdE $ EC.project "i" $ EC.variable "r"]]
 
     controlE processE = case eSpec of
       BuiltinEP    _ _ -> fileControlE processE
-      FileEP       _ _ -> fileControlE processE
-      FileSeqEP    _ _ -> fileControlE processE
-      FileMuxEP    _ _ -> fileControlE processE
-      FileMuxseqEP _ _ -> fileControlE processE
-      NetworkEP    _ _ -> processE
+      FileEP       _ _ _ -> fileControlE processE
+      FileSeqEP    _ _ _ -> fileControlE processE
+      FileMuxEP    _ _ _ -> fileControlE processE
+      FileMuxseqEP _ _ _ -> fileControlE processE
+      NetworkEP    _ _ _ -> processE
       _                -> error "Invalid endpoint argument"
 
     fileControlE processE = EC.block [processE, controlRcrE]
@@ -503,8 +480,8 @@ bindSource specs bindings d
   where
     -- | Constructs a dispatch function declaration for a source.
     mkDispatchFn n eOpt t = case lookup n specs of
-                              Just (FileMuxEP    _ _) -> mkFeedFn n $ head $ children t
-                              Just (FileMuxseqEP _ _) -> mkFeedFn n $ head $ children t
+                              Just (FileMuxEP    _ _ _) -> mkFeedFn n $ head $ children t
+                              Just (FileMuxseqEP _ _ _) -> mkFeedFn n $ head $ children t
                               Just _  -> mkProcessFn n eOpt
                               Nothing -> error $ "Could not find source endpoint spec for " ++ n
 
@@ -539,26 +516,15 @@ declareBuiltins :: K3 Declaration -> K3 Declaration
 declareBuiltins d
   | DRole n <- tag d, n == defaultRoleName = replaceCh d new_children
   | otherwise = d
-  where new_children = runtimeDecls ++ peerDecls ++ (children d)
-
-        runtimeDecls = [
-          mkGlobal "registerFileDataTrigger"     (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing,
-          mkGlobal "registerFileCloseTrigger"    (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing,
-          mkGlobal "registerSocketAcceptTrigger" (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing,
-          mkGlobal "registerSocketDataTrigger"   (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing,
-          mkGlobal "registerSocketCloseTrigger"  (mkCurriedFnT [idT, TC.trigger TC.unit, TC.unit]) Nothing ]
+  where new_children = peerDecls ++ (children d)
 
         peerDecls = [
           mkGlobal myId    TC.address Nothing,
           mkGlobal peersId peersT     Nothing,
-          mkGlobal argsId  progArgT   Nothing,
-          mkGlobal roleId  TC.string  Nothing]
+          mkGlobal roleId  roleT      Nothing]
 
-        idT      = TC.string
-        progArgT = TC.tuple [qualifyT argT, qualifyT paramsT]
-        peersT   = mkCollection [("addr", TC.address)]
-        argT     = mkCollection [("arg", TC.string)]
-        paramsT  = mkCollection [("key", TC.string), ("value", TC.string)]
+        peersT = mkCollection [("addr", TC.address)] "Collection"
+        roleT  = mkCollection [(roleElemLbl, TC.string)] "Set"
 
         mkGlobal n t eOpt = builtinGlobal n (qualifyT t) $ maybe Nothing (Just . qualifyE) eOpt
 
@@ -568,4 +534,4 @@ declareBuiltins d
         --mkRUnitFnT rt = TC.function TC.unit rt
         --unitFnT       = TC.function TC.unit TC.unit
 
-        mkCollection fields = (TC.collection $ TC.record $ map (qualifyT <$>) fields) @+ TAnnotation "Collection"
+        mkCollection fields ann = (TC.collection $ TC.record $ map (qualifyT <$>) fields) @+ TAnnotation ann

@@ -1,4 +1,5 @@
 include "tpch/benchmark.k3"
+include "Annotation/Set.k3"
 
 declare lineitem_r : lineitem_r
 declare lineitem   : mut q6_lineitem_bag
@@ -22,24 +23,21 @@ trigger q6_local : () = \_ -> (
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
   nodes                = [$ peers],
   onReadyExpr          = [$ peers.iterate (\x -> (q6_local, x.addr) <- () ) ],
-  loadExpr             = [$ dataLineCountFiles.iterate (\e -> lineitemRows = lineitemRows + (lineCountFile e.path));
-			                      print ("Lineitem rows: " ++ (itos lineitemRows));
-                            q6_lineitemLoaderPFC dataFiles lineitem lineitem_r lineitemRows
+  loadExpr             = [$ q6_lineitemLoaderPC lineitemFiles lineitem lineitem_r
                          ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],
   finishArgT           = [: real],
   preTestFinishExpr    = [$ (\x -> q6_result = q6_result + x)],
   preFinishExpr        = [$ ( (results.insert {revenue: q6_result});
-                              (results_sink, me) <- q6_result );
-                              (peers.iterate (\p -> (shutdown, p.addr) <- () ))
+                              (results_sink, me) <- q6_result )
                          ],
   preShutdownExpr      = [$ ()],
-  finishAsShutdownExpr = [$ false ]
+  finishAsShutdownExpr = [$ true ]
 )
 
-sink results_sink : real = file "results.csv" csv
-sink query_time_sink : string = stdout csv
+sink results_sink : real = file "results.csv" text csv
+sink query_time_sink : int = file "time.csv" text csv
 
 source rows : () = value ()
 feed rows |> start

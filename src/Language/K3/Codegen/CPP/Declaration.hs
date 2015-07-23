@@ -14,6 +14,7 @@ import qualified Data.List as L
 import qualified Data.Map as M
 
 import Language.K3.Core.Annotation
+import Language.K3.Core.Annotation.Syntax
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
@@ -35,12 +36,12 @@ import Language.K3.Utils.Pretty
 -- Builtin names to explicitly skip.
 skip_builtins :: [String]
 skip_builtins = ["hasRead", "doRead", "doReadBlock", "hasWrite", "doWrite"]
-
+    
 declaration :: K3 Declaration -> CPPGenM [R.Definition]
-declaration (tag -> DGlobal _ (tag -> TSource) _) = return []
+declaration (tna -> ((DGlobal n (tnc -> (TSource, [t])) _), as)) = return []
 
 -- Sinks with a valid body are handled in the same way as triggers.
-declaration d@(tag -> DGlobal i (tnc -> (TSink, [t])) (Just e)) =
+declaration d@(tna -> (DGlobal i (tnc -> (TSink, [t])) (Just e), as)) = do
   declaration $ D.global i (T.function t T.unit) $ Just e
 
 declaration (tag -> DGlobal i (tag -> TSink) Nothing) =
@@ -199,10 +200,11 @@ getSourceBuiltin k =
 genHasRead :: Bool -> String -> K3 Type -> String -> CPPGenM R.Definition
 genHasRead asMux suf _ name = do
     let source_name = stripSuffix suf name
-    let e_has_r = R.Project (R.Variable $ R.Name "__engine") (R.Name "hasRead")
+    let e_has_r = R.Variable $ R.Name "hasRead"
     let source_e = R.Literal $ R.LString $ source_name ++ if asMux then "_" else ""
     concatId <- binarySymbol OConcat
-    let call_args = if asMux then [R.Binary concatId source_e $
+    let call_args = [R.Variable $ R.Name "me"] ++ 
+                    if asMux then [R.Binary concatId source_e $
                                    R.Call (R.Variable $ R.Name "itos") [R.Variable $ R.Name "muxid"]]
                              else [source_e]
     let body = R.Return $ R.Call e_has_r call_args
@@ -217,26 +219,22 @@ genDoRead asMux suf typ name = do
     let source_name =  stripSuffix suf name
     let source_e = R.Literal $ R.LString $ source_name ++ if asMux then "_" else ""
     concatId <- binarySymbol OConcat
-    let call_args = if asMux then [R.Binary concatId source_e $
+    let call_args = [R.Variable $ R.Name "me"] ++  
+                    if asMux then [R.Binary concatId source_e $
                                    R.Call (R.Variable $ R.Name "itos") [R.Variable $ R.Name "muxid"]]
                              else [source_e]
-    let result_dec = R.Forward $ R.ScalarDecl (R.Name "result") (R.SharedPointer ret_type) $ Just $
-                       (R.Call (R.Project (R.Variable $ R.Name "__engine")
-                                          (R.Specialized [ret_type] $ R.Name "doReadExternal"))
+    let return_stmt = R.Return $ (R.Call (R.Variable (R.Specialized [ret_type] $ R.Name "doRead"))
                                call_args)
-    let return_stmt = R.IfThenElse (R.Variable $ R.Name "result")
-                        [R.Return $ R.Dereference $ R.Variable $ R.Name "result"]
-                        [R.Ignore $ R.ThrowRuntimeErr $ R.Literal $ R.LString $ "Invalid doRead for " ++ source_name]
     let args = if asMux then [("muxid", R.Primitive R.PInt)]
                         else [("_", R.Named $ R.Name "unit_t")]
     return $ R.FunctionDefn (R.Name $ source_name ++ suf) args
-      (Just ret_type) [] False ([result_dec, return_stmt])
+      (Just ret_type) [] False ([return_stmt])
 
 genHasWrite :: String -> K3 Type -> String -> CPPGenM R.Definition
 genHasWrite suf _ name = do
     let sink_name = stripSuffix suf name
-    let e_has_w = R.Project (R.Variable $ R.Name "__engine") (R.Name "hasWrite")
-    let body = R.Return $ R.Call e_has_w [R.Literal $ R.LString sink_name]
+    let e_has_w = R.Variable (R.Name "hasWrite")
+    let body = R.Return $ R.Call e_has_w [R.Variable $ R.Name "me", R.Literal $ R.LString sink_name]
     return $ R.FunctionDefn (R.Name $ sink_name ++ suf) [("_", R.Named $ R.Name "unit_t")]
       (Just $ R.Primitive R.PBool) [] False [body]
 
@@ -244,9 +242,8 @@ genDoWrite :: String -> K3 Type -> String -> CPPGenM R.Definition
 genDoWrite suf typ name = do
     val_type    <- genCType $ head $ children typ
     let sink_name =  stripSuffix suf name
-    let write_expr = R.Call (R.Project (R.Variable $ R.Name "__engine")
-                                       (R.Specialized [val_type] $ R.Name "doWriteExternal"))
-                            [R.Literal $ R.LString sink_name, R.Variable $ R.Name "v"]
+    let write_expr = R.Call (R.Variable $ (R.Specialized [val_type] $ R.Name "doWrite"))
+                            [R.Variable $ R.Name "me", R.Literal $ R.LString sink_name, R.Variable $ R.Name "v"]
     return $ R.FunctionDefn (R.Name $ sink_name ++ suf) [("v", R.Const $ R.Reference val_type)]
       (Just $ R.Named $ R.Name "unit_t") [] False
       ([R.Ignore write_expr, R.Return $ R.Initialization R.Unit []])

@@ -133,7 +133,7 @@ annotation MultiIndexVMap given type a,b {
     with effects \version -> \iterF -> [R[version]; R[self]; ([R[content]; iterF content])*]
 
   @:{CArgs 2}
-  provides lifted map     : int -> (content -> {key: a, value: b}) -> collection {key: a, value: b} @VMap
+  provides lifted map     : int -> (content -> {key: a, value: b}) -> collection {key: a, value: b} @MultiIndexVMap
     with effects \version -> \mapF -> [R[version]; R[self]; ([R[content]; mapF content])*]
 
   @:{CArgs 2}
@@ -146,14 +146,14 @@ annotation MultiIndexVMap given type a,b {
 
   @:{CArgs 4}
   provides lifted groupBy : int -> (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @VMap
+                             -> collection { key : a, value : b } @MultiIndexVMap
     with effects
       \version -> \gbF -> \gaccF -> \z ->
         [R[version]; R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:{CArgs 2}
-  provides lifted ext : int -> (content -> collection {key : a, value: b} @VMap)
-                         -> collection {key : a, value: b} @VMap
+  provides lifted ext : int -> (content -> collection {key : a, value: b} @MultiIndexVMap)
+                         -> collection {key : a, value: b} @MultiIndexVMap
     with effects \version -> \extF -> [R[version]; R[self]; ([R[content]; extF content])*]
 
 
