@@ -342,8 +342,9 @@ k3ofsql asSyntax path = do
 sqlstmt :: Statement -> SQLParseM [K3 Declaration]
 sqlstmt (CreateTable _ nm attrs _) = do
   t <- sqltabletype attrs
+  wt <- twrapcolelemM t
   sqeextM (sqlnm nm) t
-  return [DC.global (sqlnm nm) t Nothing]
+  return [DC.global (sqlnm nm) wt Nothing]
 
 sqlstmt (QueryStatement _ query) = sqlquerystmt query
 sqlstmt s = throwE $ "Unimplemented SQL stmt: " ++ show s
@@ -642,7 +643,7 @@ extractaggregates aggaprs aenv i e@(FunCall ann nm args) = do
 extractaggregates _ _ i e = return (i,e,[])
 
 
--- TODO
+-- TODO: case, null, qualified expressions
 sqlscalar :: AEnv -> ScalarExpr -> SQLParseM ParseResult
 sqlscalar _ (BooleanLit _ b)  = pr0 TC.bool   $ EC.constant $ CBool b
 sqlscalar _ (NumberLit _ i)   = pr0 TC.int    $ EC.constant $ CInt $ read i  -- TODO: double?
