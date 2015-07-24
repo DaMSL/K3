@@ -292,7 +292,7 @@ class MapE {
   }
 
   template <typename K, class F, class G>
-  auto lookup_with4(K const& k, F f, G g) const {
+  RT<G,R> lookup_with4(K const& k, F f, G g) const {
     auto it = container.find(k.key);
     if (it == container.end()) {
       return f(unit_t{});
