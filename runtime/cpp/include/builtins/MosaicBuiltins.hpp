@@ -12,13 +12,13 @@ namespace K3 {
 
 class MosaicBuiltins {
  public:
-  template <class C>
-  C max(C a, C b) {
+  template <class A, class B>
+  auto max(A a, B b) {
     return (a > b ? a : b);
   }
 
-  template <class C>
-  C min(C a, C b) {
+  template <class A, class B>
+  auto min(A a, B b) {
     return (a < b ? a : b);
   }
 

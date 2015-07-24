@@ -54,7 +54,7 @@ declare tpch_date_to_string : int -> string
 declare now_int : () -> int
   with effects \_ -> io
 
-@:{CArgs 2, ErrorFn}
+@:CArgs 2
 declare max: forall a. a -> a -> a
   with effects \x -> \y -> [R[x]; R[y]]
 
