@@ -66,9 +66,11 @@ struct hash<tuple<T...>> {
 }  // namespace std
 
 // Boost-hash compatibility:
+namespace K3 {
 template <class T>
 std::size_t hash_value(T const& b) {
   std::hash<T> hasher;
   return hasher(b);
+}
 }
 #endif

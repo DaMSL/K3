@@ -283,8 +283,8 @@ class R_key_value {
 };
 #endif  // K3_R_key_value
 
-#ifndef K3_R_key_value_hash_value
-#define K3_R_key_value_hash_value
+#ifndef K3_R_key_value_hash
+#define K3_R_key_value_hash
 namespace std {
 template <class _T0, class _T1>
 class hash<R_key_value<_T0, _T1>> {
