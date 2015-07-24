@@ -4,14 +4,14 @@
 
 module Language.K3.Parser.SQL where
 
-import Control.Arrow ( (&&&), second )
+import Control.Arrow ( (&&&), first, second )
 import Control.Monad
 import Control.Monad.State
 import Control.Monad.Trans.Except
 
 import Data.Functor.Identity
 import Data.Monoid
-import Data.Either ( partitionEithers )
+import Data.Either ( isLeft, partitionEithers )
 import Data.List ( find, isInfixOf, nub, reverse )
 import Data.Tuple ( swap )
 
@@ -49,7 +49,21 @@ data OperatorFn = UnaryOp Operator ScalarExpr
 -- | Relation names and types.
 type RTypeEnv = Map Identifier (K3 Type)
 
-data SQLEnv = SQLEnv { relations :: RTypeEnv }
+-- | Attribute dependency graph.
+type ADGPtr = Int
+
+data ADGNode = ADGNode { adnn  :: Identifier
+                       , adnr  :: Identifier
+                       , adne  :: Maybe ScalarExpr
+                       , adnch :: [ADGPtr] }
+              deriving (Eq, Show)
+
+type ADGraph = Map ADGPtr ADGNode
+
+-- | Parsing state environment.
+data SQLEnv = SQLEnv { relations :: RTypeEnv
+                     , adgraph   :: ADGraph
+                     , adpsym    :: ParGenSymS }
             deriving (Eq, Show)
 
 -- | A stateful SQL parsing monad.
@@ -88,19 +102,20 @@ data ParseResult = ParseResult { pexpr  :: K3 Expression
                                , prt    :: K3 Type
                                , pkt    :: K3 Type
                                , ptmap  :: TLabelMapping
-                               , palias :: Maybe Identifier }
+                               , palias :: Maybe Identifier
+                               , pptrs  :: [ADGPtr] }
                   deriving (Eq, Show)
 
 
 {- Data.Text helpers -}
 
 sqlenv0 :: SQLEnv
-sqlenv0 = SQLEnv Map.empty
+sqlenv0 = SQLEnv Map.empty Map.empty contigsymS
 
+-- | Relation type accessors
 stlkup :: RTypeEnv -> Identifier -> Except String (K3 Type)
 stlkup env x = maybe err return $ Map.lookup x env
-  where err = throwE msg
-        msg = "Unknown relation in sql parser environment: " ++ show x
+  where err = throwE $ "Unknown relation in sql parser environment: " ++ show x
 
 stext :: RTypeEnv -> Identifier -> K3 Type -> RTypeEnv
 stext env x t = Map.insert x t env
@@ -108,6 +123,17 @@ stext env x t = Map.insert x t env
 stdel :: RTypeEnv -> Identifier -> RTypeEnv
 stdel env x = Map.delete x env
 
+-- | Dependency graph accessors.
+sglkup :: ADGraph -> ADGPtr -> Except String ADGNode
+sglkup g p = maybe err return $ Map.lookup p g
+  where err = throwE $ "Unknown attribute node in sql parser environment: " ++ show p
+
+sgext :: ADGraph -> ADGNode -> ParGenSymS -> (ADGPtr, ParGenSymS, ADGraph)
+sgext g n sym = (ptr, nsym, Map.insert ptr n g)
+  where (nsym, ptr) = gensym sym
+
+
+-- | State accessors.
 sqelkup :: SQLEnv -> Identifier -> Except String (K3 Type)
 sqelkup senv n = stlkup (relations senv) n
 
@@ -117,12 +143,90 @@ sqeext senv n t = senv { relations = stext (relations senv) n t }
 sqedel :: SQLEnv -> Identifier -> SQLEnv
 sqedel senv n = senv { relations = stdel (relations senv) n }
 
+sqglkup :: SQLEnv -> ADGPtr -> Except String ADGNode
+sqglkup senv p = sglkup (adgraph senv) p
+
+sqgext :: SQLEnv -> ADGNode -> (ADGPtr, SQLEnv)
+sqgext senv n = (ptr, senv {adgraph = ng, adpsym = nsym})
+  where (ptr, nsym, ng) = sgext (adgraph senv) n (adpsym senv)
+
+-- | Monadic accessors.
 sqelkupM :: Identifier -> SQLParseM (K3 Type)
 sqelkupM n = get >>= liftExceptM . (\env -> sqelkup env n)
 
 sqeextM :: Identifier -> K3 Type -> SQLParseM ()
 sqeextM n t = get >>= \env -> return (sqeext env n t) >>= put
 
+sqglkupM :: ADGPtr -> SQLParseM ADGNode
+sqglkupM p = get >>= liftExceptM . (\env -> sqglkup env p)
+
+sqgextM :: ADGNode -> SQLParseM ADGPtr
+sqgextM n = get >>= \env -> return (sqgext env n) >>= \(r, nenv) -> put nenv >> return r
+
+-- | Adds base relation attributes to the ADG.
+sqgextSchemaM :: Maybe Identifier -> K3 Type -> SQLParseM [ADGPtr]
+sqgextSchemaM (Just n) t = do
+    rt <- telemM t
+    case tag rt of
+      TRecord ids -> mapM sqgextM $ map (\i -> ADGNode i n Nothing []) ids
+      _ -> throwE $ boxToString $ ["Invalid relational element type"] %$ prettyLines rt
+
+sqgextSchemaM _ _ = throwE "No relation name specified when extending attribute graph"
+
+-- | Adds unchanged derived schema attributes to the ADG
+sqgextIdentityM :: Maybe Identifier -> K3 Type -> [ADGPtr] -> SQLParseM [ADGPtr]
+sqgextIdentityM (Just n) t ptrs = do
+  rt <- telemM t
+  case tag rt of
+    TRecord ids -> mapM sqgextM $ map (\(i, p) -> ADGNode i n (Just $ Identifier emptyAnnotation $ Nmc i) [p])
+                                $ zip ids ptrs
+    _ -> throwE $ boxToString $ ["Invalid relational element type"] %$ prettyLines rt
+
+sqgextIdentityM _ _ _ = throwE "Invalid identity arguments when extending attribute graph"
+
+-- | Extend the attribute graph for a relation type derived directly from another relation.
+sqgextAliasM :: Maybe Identifier -> K3 Type -> K3 Type -> [ADGPtr] -> SQLParseM [ADGPtr]
+sqgextAliasM (Just n) (tag -> TRecord dstids) (tag -> TRecord srcids) inputptrs
+  | length dstids == length srcids
+  = do { idx <- indexPtrs;
+         nodes <- mapM (mknode idx) $ zip dstids srcids;
+         mapM sqgextM nodes }
+
+  where mknode ptridx (d, s) = do
+          p <- maybe (lkuperr s) return $ Map.lookup s ptridx
+          return $ ADGNode d n (Just $ Identifier emptyAnnotation $ Nmc s) [p]
+
+        indexPtrs = do
+          l <- mapM (\p -> sqglkupM p >>= \node -> return (adnn node, p)) inputptrs
+          return $ Map.fromList l
+
+        lkuperr v = throwE $ "No attribute graph node found for " ++ v
+
+sqgextAliasM _ _ _ _ = throwE "Invalid alias arguments when extending attribute graph"
+
+-- | Extend the attribute graph for a relation type computed from the given expressions.
+sqgextExprM :: Maybe Identifier -> K3 Type -> [ScalarExpr] -> [ADGPtr] -> SQLParseM [ADGPtr]
+sqgextExprM (Just n) t exprs inputptrs = do
+  rt <- telemM t
+  case tag rt of
+    TRecord ids | length ids == length exprs -> do
+      idx <- indexPtrs
+      nodes <- mapM (mknode idx) (zip ids exprs)
+      mapM sqgextM nodes
+
+    _ -> throwE $ boxToString $ ["Invalid relational element type"] %$ prettyLines rt
+
+  where mknode ptridx (i, e) = do
+          ps <- mapM (\v -> maybe (lkuperr v) return $ Map.lookup v ptridx) $ extractvars e
+          return $ ADGNode i n (Just e) ps
+
+        indexPtrs = do
+          l <- mapM (\p -> sqglkupM p >>= \node -> return (adnn node, p)) inputptrs
+          return $ Map.fromList l
+
+        lkuperr v = throwE $ "No attribute graph node found for " ++ v
+
+sqgextExprM _ _ _ _ = throwE "Invalid expr arguments when extending attribute graph"
 
 {- SQLParseM helpers. -}
 
@@ -197,6 +301,29 @@ aenvl l = (\mert q -> aenv0 mert q) <$> mr0 <*> aqenvl l
 
         extractvt (TVMNamed vt) = Just vt
         extractvt _ = Nothing
+
+
+{- SQL AST helpers. -}
+
+projectionexprs :: SelectItem -> ScalarExpr
+projectionexprs (SelExp _ e) = e
+projectionexprs (SelectItem _ e _) = e
+
+-- TODO: correlated variables in subqueries.
+extractvars :: ScalarExpr -> [Identifier]
+extractvars (Identifier _ (sqlnmcomponent -> i)) = [i]
+extractvars (FunCall _ _ args) = concatMap extractvars args
+
+extractvars (Case _ whense elsee) =
+  concatMap (\(whenel, thene) -> concatMap extractvars whenel ++ extractvars thene) whense
+    ++ maybe [] extractvars elsee
+
+extractvars (CaseSimple _ e whense elsee) =
+  extractvars e
+    ++ concatMap (\(whenel, thene) -> concatMap extractvars whenel ++ extractvars thene) whense
+    ++ maybe [] extractvars elsee
+
+extractvars _ = []
 
 
 {- Type and alias helpers. -}
@@ -361,16 +488,22 @@ k3ofsql asSyntax printParse path = do
     k3program stmts = do
       void $ if printParse then printStmts stmts else return ()
       let declsM = mapM sqlstmt stmts
-      let progE = do { decls <- evalSQLParseM sqlenv0 declsM;
-                        return $ DC.role "__global" $ concat decls }
+      let (progE, finalSt) = first (either Left (Right . DC.role "__global" . concat)) $ runSQLParseM sqlenv0 declsM
       if asSyntax
         then either putStrLn (either putStrLn putStrLn . programS) progE
         else either putStrLn (putStrLn . pretty) progE
+      printState finalSt
 
     printStmts stmts = do
       putStrLn $ replicate 40 '='
       void $ forM stmts $ \s -> putStrLn $ show s
       putStrLn $ replicate 40 '='
+
+    printState st = do
+      putStrLn $ replicate 40 '=' ++ " Dependency Graph"
+      forM_ (Map.toList $ adgraph st) $ \(p, node) ->
+        putStrLn $ unwords [show p, show $ adnn node, show $ adnr node, show $ adnch node ]
+
 
 sqlstmt :: Statement -> SQLParseM [K3 Declaration]
 sqlstmt (CreateTable _ nm attrs _) = do
@@ -421,16 +554,20 @@ sqltablelist (h:t) = do
           let matchF   = EC.lambda "_" $ EC.lambda "_" $ EC.constant $ CBool True
           let combineF = EC.lambda al $ EC.lambda ar ce
           let rexpr    = EC.applyMany (EC.project "join" $ pexpr lpr) [pexpr rpr, matchF, combineF]
-          return $ ParseResult rexpr rt kt tmap $ Just "__CP"
+          let tid = Just "__CP"
+          aptrs <- sqgextAliasM tid ct ct (pptrs lpr ++ pptrs rpr)
+          return $ ParseResult rexpr rt kt tmap tid aptrs
 
 
 sqltableexpr :: TableRef -> SQLParseM ParseResult
 sqltableexpr (Tref _ nm al) = do
+    let tid = sqltablealias ("__" ++ sqlnm nm) al
     t  <- sqelkupM tnm
     rt <- taliascolM al t
     kt <- twrapcolelemM rt
     tmap <- telemtmapM
-    return $ ParseResult (EC.variable tnm) rt kt tmap $ sqltablealias ("__" ++ sqlnm nm) al
+    aptrs <- sqgextSchemaM tid rt
+    return $ ParseResult (EC.variable tnm) rt kt tmap tid aptrs
   where tnm = sqlnm nm
 
 -- TODO: nat, jointy
@@ -447,9 +584,13 @@ sqltableexpr (JoinTref _ jlt nat jointy jrt onE jal) = do
   (Nothing, be) <- bindE aenv "x" (pexpr joinpr)
   let matchF   = EC.lambda al $ EC.lambda ar be
   let combineF = EC.lambda al $ EC.lambda ar ce
-  return $ ParseResult (EC.applyMany (EC.project "join" $ pexpr lpr) [pexpr rpr, matchF, combineF]) rt kt tmap $ sqltablealias "__JR" jal
+  let tid = sqltablealias "__JR" jal
+  ret   <- telemM rt
+  aptrs <- sqgextAliasM tid ret ct (pptrs lpr ++ pptrs rpr)
+  return $ ParseResult (EC.applyMany (EC.project "join" $ pexpr lpr) [pexpr rpr, matchF, combineF]) rt kt tmap tid aptrs
 
-  where joinpr0 = ParseResult (EC.constant $ CBool True) TC.bool TC.bool Nothing Nothing
+  where joinpr0 = ParseResult (EC.constant $ CBool True) TC.bool TC.bool Nothing Nothing []
+
 
 sqltableexpr (SubTref _ query al) = do
   qpr  <- sqlquery query
@@ -458,15 +599,18 @@ sqltableexpr (SubTref _ query al) = do
   tmap <- telemtmapM
 
   aenv@(AEnv (tag -> TRecord ids, _) _) <- aenv1 qpr
+  let tid = sqltablealias "__RN" al
   ret <- telemM rt
+  sqet <- telemM $ prt qpr
+  aptrs <- sqgextAliasM tid ret sqet (pptrs qpr)
   case tag ret of
-    TRecord nids | ids == nids -> return qpr { palias = sqltablealias "__RN" al }
+    TRecord nids | ids == nids -> return qpr { palias = tid, pptrs = aptrs }
 
     TRecord nids | length ids == length nids -> do
       (iOpt, be) <- bindE aenv "x" $ recE $ map (\(n,o) -> (n, EC.variable o)) $ zip nids ids
       mapF <- maybe (tblaliasM qpr) return iOpt >>= \a -> return $ EC.lambda a be
       let rexpr = EC.applyMany (EC.project "map" $ pexpr qpr) [mapF]
-      return $ ParseResult rexpr rt kt tmap $ sqltablealias "__RN" al
+      return $ ParseResult rexpr rt kt tmap tid aptrs
 
     _ -> throwE $ "Invalid subquery alias"
 
@@ -479,20 +623,22 @@ sqlwhere tables whereEOpt = flip (maybe $ return tables) whereEOpt $ \whereE -> 
   wpr  <- sqlscalar aenv whereE
   (iOpt, be) <- bindE aenv "x" (pexpr wpr)
   filterF <- maybe (tblaliasM tables) return iOpt >>= \a -> return $ EC.lambda a be
-  return $ tables { pexpr = EC.applyMany (EC.project "filter" $ pexpr tables) [filterF] }
+  aptrs <- sqgextIdentityM (palias tables) (prt tables) (pptrs tables)
+  return $ tables { pexpr = EC.applyMany (EC.project "filter" $ pexpr tables) [filterF], pptrs = aptrs }
 
 
 sqlproject :: ParseResult -> SelectList -> SQLParseM ParseResult
 sqlproject limits (SelectList _ projections) = do
-  aenv     <- aenv1 limits
-  (nprojects, aggprs) <- mapM (sqlaggregate aenv) projections >>= return . partitionEithers
-  case (nprojects, aggprs) of
-    ([], prs) -> aggregate aenv prs
+  aenv  <- aenv1 limits
+  aggsE <- mapM (sqlaggregate aenv) projections
+
+  case partitionEithers aggsE of
+    ([], prs) -> aggregate aenv aggsE prs
     (prjl, []) -> project aenv prjl
     (_, _) -> throwE $ "Invalid mixed select list of aggregates and non-aggregates"
 
   where
-    aggregate aenv aggprs = do
+    aggregate aenv aggsE aggprs = do
       let (aggexprs, aggtypes) = unzip $ map (pexpr &&& prt) aggprs
       (_, aAliases) <- expraliasesGenM 0 aggprs
       let aidt = zip aAliases aggtypes
@@ -507,7 +653,10 @@ sqlproject limits (SelectList _ projections) = do
       let rexpr = EC.applyMany (EC.project "fold" $ pexpr limits) [aggF, zF]
       let ral = Just "__R"
       rt <- tcolM $ recT aidt
-      return $ ParseResult rexpr rt rt Nothing ral
+      let aggprojections = zip aggsE $ map projectionexprs projections
+      let sqlaggs = concatMap (\(ae, e) -> if isLeft ae then [] else [e]) aggprojections
+      aptrs <- sqgextExprM ral rt sqlaggs (pptrs limits)
+      return $ ParseResult rexpr rt rt Nothing ral aptrs
 
     project aenv prjl = do
       eprs <- mapM (sqlprojection aenv) prjl
@@ -520,7 +669,8 @@ sqlproject limits (SelectList _ projections) = do
       rt   <- tcolM $ recT $ zip eAliases types
       kt   <- twrapcolelemM rt
       tmap <- telemtmapM
-      return $ ParseResult rexpr rt kt tmap ralias
+      aptrs <- sqgextExprM ralias rt (map projectionexprs prjl) (pptrs limits)
+      return $ ParseResult rexpr rt kt tmap ralias aptrs
 
 
 sqlgroupby :: ParseResult -> SelectList -> MaybeBoolExpr -> ScalarExprList -> SQLParseM (ParseResult, SelectList)
@@ -530,7 +680,8 @@ sqlgroupby selects (SelectList slann projections) having [] =
 sqlgroupby selects (SelectList slann projections) having gbL = do
   aenv  <- aenv1 selects
   gbprs <- mapM (sqlscalar aenv) gbL
-  (nprojects, aggprs) <- mapM (sqlaggregate aenv) projections >>= return . partitionEithers
+  aggsE <- mapM (sqlaggregate aenv) projections
+  let (nprojects, aggprs) = partitionEithers aggsE
 
   let ugbprs  = nub gbprs
   let uaggprs = nub aggprs
@@ -591,8 +742,12 @@ sqlgroupby selects (SelectList slann projections) having gbL = do
 
   hrexpr <- havingexpr rt tmap ral aenv nhaving rexpr
 
+  let aggprojections = zip aggsE $ map projectionexprs projections
+  let sqlaggs = concatMap (\(ae, e) -> if isLeft ae then [] else [e]) aggprojections
+  aptrs <- sqgextExprM ral rt (sqlaggs ++ maybe [] (:[]) having) (pptrs selects)
+
   let naggprojects = map (\(i,_) -> SelExp emptyAnnotation $ Identifier emptyAnnotation $ Nmc i) vidt
-  return (ParseResult hrexpr rt kt tmap ral, SelectList slann $ nprojects ++ naggprojects)
+  return (ParseResult hrexpr rt kt tmap ral aptrs, SelectList slann $ nprojects ++ naggprojects)
 
   where havingexpr _ _ _ _ Nothing e = return e
         havingexpr rt tmap alias (AEnv _ q) (Just he) e = do
@@ -635,10 +790,10 @@ sqlprojection aenv (SelectItem _ e nm) = do
 
 
 pr0 :: K3 Type -> K3 Expression -> SQLParseM ParseResult
-pr0 t e = return $ ParseResult e t t Nothing Nothing
+pr0 t e = return $ ParseResult e t t Nothing Nothing []
 
 pri0 :: Identifier -> K3 Type -> K3 Expression -> SQLParseM ParseResult
-pri0 i t e = return $ ParseResult e t t Nothing $ Just i
+pri0 i t e = return $ ParseResult e t t Nothing (Just i) []
 
 -- TODO: avg
 sqlaggexpr :: AEnv -> ScalarExpr -> SQLParseM (Maybe ParseResult)
@@ -656,6 +811,7 @@ sqlaggexpr aenv (FunCall _ nm args) = do
                                       , palias = maybe Nothing (\j -> Just $ i ++ j) $ palias pr }
 
 sqlaggexpr _ _ = return Nothing
+
 
 extractaggregates :: [(Identifier, ParseResult)] -> AEnv -> Int -> ScalarExpr
                   -> SQLParseM (Int, ScalarExpr, [ScalarExpr])
