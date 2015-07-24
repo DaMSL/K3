@@ -201,13 +201,24 @@ inline e@(tag &&& children -> (ERecord is, cs)) = do
     mtrlzns <- case e @~ isEMaterialization of
                  Just (EMaterialization ms) -> return ms
                  Nothing -> return $ M.fromList [(i, defaultDecision) | i <- is]
-    let vs' = [maybe v (\m -> gMoveByDE inD m c v) (M.lookup i mtrlzns) | c <- cs | v <- vs | i <- is]
+    let reifyConstructorField (i, c, v) = do
+          let m = mtrlzns M.! i
+          if inD m == Moved
+            then do
+              let needsMove = fromMaybe True (flip move c <$> getKTypeP c)
+              let reifyModifier = if needsMove then R.RValueReference else id
+              g <- genSym
+              return ( [R.Forward $ R.ScalarDecl (R.Name g) (reifyModifier R.Inferred) (Just $ if needsMove then R.Move v else v)]
+                     , R.Move $ R.Variable $ R.Name g)
+            else
+              return ([], v)
+    (concat -> rs, vs') <- unzip <$> mapM reifyConstructorField (zip3 is cs vs)
     let vs'' = snd . unzip . sortBy (comparing fst) $ zip is vs'
     t <- getKType e
     case t of
         (tag &&& children -> (TRecord _, _)) -> do
             sig <- genCType t
-            return (concat es, R.Initialization sig vs'')
+            return (concat es ++ rs, R.Initialization sig vs'')
         _ -> throwE $ CPPGenE $ "Invalid Record Type " ++ show t
 
 inline (tag &&& children -> (EOperate uop, [c])) = do
