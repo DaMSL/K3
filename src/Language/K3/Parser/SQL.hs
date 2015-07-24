@@ -419,13 +419,16 @@ sqltableexpr (JoinTref _ jlt nat jointy jrt onE jal) = do
   where joinpr0 = ParseResult (EC.constant $ CBool True) TC.bool TC.bool Nothing Nothing
 
 sqltableexpr (SubTref _ query al) = do
-  qpr <- sqlquery query
+  qpr  <- sqlquery query
   rt   <- taliascolM al (prt qpr)
   kt   <- twrapcolelemM rt
   tmap <- telemtmapM
 
   aenv@(AEnv (tag -> TRecord ids, _) _) <- aenv1 qpr
-  case tag rt of
+  ret <- telemM rt
+  case tag ret of
+    TRecord nids | ids == nids -> return qpr
+
     TRecord nids | length ids == length nids -> do
       (iOpt, be) <- bindE aenv "x" $ recE $ map (\(n,o) -> (n, EC.variable o)) $ zip nids ids
       mapF <- maybe (tblaliasM qpr) return iOpt >>= \a -> return $ EC.lambda a be
