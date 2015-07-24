@@ -12,6 +12,7 @@ import Control.Monad.Trans.Except
 import Data.Functor.Identity
 import Data.Monoid
 import Data.Either ( partitionEithers )
+import Data.List ( find, nub )
 import Data.Tuple ( swap )
 
 import Data.Map ( Map )
@@ -150,10 +151,13 @@ liftEitherM = either throwE return
 mrtype :: ParseResult -> SQLParseM MRType
 mrtype r = telemM (prt r) >>= \ret -> return (ret, ptmap r)
 
+mertypeR :: K3 Type -> TLabelMapping -> Maybe Identifier -> SQLParseM MERType
+mertypeR t tmap alias = do
+  ret <- telemM t
+  return (ret, maybe (TVMType tmap) (\i -> TVMNamed (i, tmap)) alias)
+
 mertype :: ParseResult -> SQLParseM MERType
-mertype r = do
-  ret <- telemM (prt r)
-  return (ret, maybe (TVMType $ ptmap r) (\i -> TVMNamed (i, ptmap r)) $ palias r)
+mertype r = mertypeR (prt r) (ptmap r) $ palias r
 
 aqenv0 :: [(Identifier, MRType)] -> AQEnv
 aqenv0 l = Map.fromList $ map (second Left) l
@@ -357,9 +361,8 @@ sqlquery :: QueryExpr -> SQLParseM ParseResult
 sqlquery (Select _ distinct selectL tableL whereE gbL havingE orderL limitE offsetE) = do
   tables  <- sqltablelist tableL
   selects <- sqlwhere tables whereE
-  (groupby, nselectL) <- sqlgroupby selects selectL gbL
-  having  <- sqlhaving groupby havingE
-  sorted  <- sqlsort having orderL
+  (groupby, nselectL) <- sqlgroupby selects selectL havingE gbL
+  sorted  <- sqlsort groupby orderL
   limited <- sqltopk sorted limitE offsetE
   sqlproject limited nselectL
 
@@ -414,7 +417,22 @@ sqltableexpr (JoinTref _ jlt nat jointy jrt onE jal) = do
 
   where joinpr0 = ParseResult (EC.constant $ CBool True) TC.bool TC.bool Nothing Nothing
 
-sqltableexpr t@(SubTref _ subqE _) = throwE $ "Unhandled table ref: " ++ show t
+sqltableexpr (SubTref _ query al) = do
+  qpr <- sqlquery query
+  rt   <- taliascolM al (prt qpr)
+  kt   <- twrapcolelemM rt
+  tmap <- telemtmapM
+
+  aenv@(AEnv (tag -> TRecord ids, _) _) <- aenv1 qpr
+  case tag rt of
+    TRecord nids | length ids == length nids -> do
+      (iOpt, be) <- bindE aenv "x" $ recE $ map (\(n,o) -> (n, EC.variable o)) $ zip nids ids
+      mapF <- maybe (tblaliasM qpr) return iOpt >>= \a -> return $ EC.lambda a be
+      let rexpr = EC.applyMany (EC.project "map" $ pexpr qpr) [mapF]
+      return $ ParseResult rexpr rt kt tmap $ sqltablealias "RN" al
+
+    _ -> throwE $ "Invalid subquery alias"
+
 sqltableexpr t@(FunTref _ funE _)  = throwE $ "Unhandled table ref: " ++ show t
 
 
@@ -468,18 +486,30 @@ sqlproject limits (SelectList _ projections) = do
       return $ ParseResult rexpr rt kt tmap ralias
 
 
-sqlgroupby :: ParseResult -> SelectList -> ScalarExprList -> SQLParseM (ParseResult, SelectList)
-sqlgroupby selects projections [] = return (selects, projections)
-sqlgroupby selects (SelectList slann projections) gbL = do
+sqlgroupby :: ParseResult -> SelectList -> MaybeBoolExpr -> ScalarExprList -> SQLParseM (ParseResult, SelectList)
+sqlgroupby selects (SelectList slann projections) having [] =
+  return (selects, SelectList slann $ projections ++ maybe [] (\e -> [SelExp emptyAnnotation e]) having)
+
+sqlgroupby selects (SelectList slann projections) having gbL = do
   aenv  <- aenv1 selects
   gbprs <- mapM (sqlscalar aenv) gbL
   (nprojects, aggprs) <- mapM (sqlaggregate aenv) projections >>= return . partitionEithers
 
-  let (gbexprs, gbtypes) = unzip $ map (pexpr &&& prt) gbprs
-  let (aggexprs, aggtypes) = unzip $ map (pexpr &&& prt) aggprs
+  let ugbprs  = nub gbprs
+  let uaggprs = nub aggprs
 
-  (gaid, gAliases) <- expraliasesGenM 0 gbprs
-  (_, aAliases)    <- expraliasesGenM (if null gbprs then 1 else gaid) aggprs
+  let (gbexprs, gbtypes)   = unzip $ map (pexpr &&& prt) ugbprs
+  let (aggexprs, aggtypes) = unzip $ map (pexpr &&& prt) uaggprs
+
+  (gaid, gAliases) <- expraliasesGenM 0 ugbprs
+  (_, aAliases)    <- expraliasesGenM (if null ugbprs then 1 else gaid) uaggprs
+
+  (hcnt, nhaving, havingaggs) <- maybe (return (0, Nothing, [])) (havingaggregates (zip aAliases uaggprs) aenv) having
+  ([], havingprs) <- mapM (sqlaggregate aenv) havingaggs >>= return . partitionEithers
+
+  let uhvprs = nub havingprs
+  let (hvexprs, hvtypes) = unzip $ map (pexpr &&& prt) uhvprs
+  let hAliases = if null havingaggs then [] else ["h" ++ show i | i <- [0..hcnt-1]]
 
   (giOpt, gbe) <- bindE aenv "x" $ case gbexprs of
                     [] -> EC.unit
@@ -488,13 +518,17 @@ sqlgroupby selects (SelectList slann projections) gbL = do
 
   groupF <- maybe (tblaliasM selects) return giOpt >>= \a -> return $ EC.lambda a gbe
 
-  (aiOpt, abe) <- bindE aenv "x" $ case aggexprs of
+  let auaggexprs = aggexprs ++ hvexprs
+  let auaggtypes = aggtypes ++ hvtypes
+  let auAliases  = aAliases ++ hAliases
+
+  (aiOpt, abe) <- bindE aenv "x" $ case auaggexprs of
                     []  -> EC.variable "acc"
                     [e] -> EC.applyMany e [EC.variable "acc"]
-                    _   -> recE $ zip aAliases $ map (aggE "acc") $ zip aAliases aggexprs
+                    _   -> recE $ zip auAliases $ map (aggE "acc") $ zip auAliases auaggexprs
 
   aggF <- maybe (tblaliasM selects) return aiOpt >>= \a -> return $ EC.lambda "acc" $ EC.lambda a abe
-  zF <- zeroE $ zip aAliases aggtypes
+  zF <- zeroE $ zip auAliases auaggtypes
 
   let tpmap p idtl = map (\(i,_) -> (i, [p, i])) idtl
 
@@ -504,9 +538,9 @@ sqlgroupby selects (SelectList slann projections) gbL = do
                              [t] -> (gidt, t, [(fst $ head gidt, ["key"])])
                              _   -> (gidt, recT gidt, tpmap "key" gidt)
 
-  let aid0 = if null gbprs then "f1" else "f" ++ show gaid
-  let aidt = zip aAliases aggtypes
-  let (vidt, valT, vtpl) = case aggtypes of
+  let aid0 = if null ugbprs then "f1" else "f" ++ show gaid
+  let aidt = zip auAliases auaggtypes
+  let (vidt, valT, vtpl) = case auaggtypes of
                              []  -> ([(aid0, TC.unit)], TC.unit, [(aid0, ["value"])])
                              [t] -> (aidt, t, [(fst $ head aidt, ["value"])])
                              _   -> (aidt, recT aidt, tpmap "value" aidt)
@@ -518,14 +552,27 @@ sqlgroupby selects (SelectList slann projections) gbL = do
   rt <- tcolM $ recT $ kidt ++ vidt
   kt <- tcolM $ recT [("key", keyT), ("value", valT)]
 
+  hrexpr <- havingexpr rt tmap ral aenv nhaving rexpr
+
   let naggprojects = map (\(i,_) -> SelExp emptyAnnotation $ Identifier emptyAnnotation $ Nmc i) vidt
-  return (ParseResult rexpr rt kt tmap ral, SelectList slann $ nprojects ++ naggprojects)
+  return (ParseResult hrexpr rt kt tmap ral, SelectList slann $ nprojects ++ naggprojects)
+
+  where havingexpr _ _ _ _ Nothing e = return e
+        havingexpr rt tmap alias (AEnv _ q) (Just he) e = do
+          nmert <- mertypeR rt tmap alias
+          let aenv = AEnv nmert q
+          hpr <- sqlscalar aenv he
+          (iOpt, be) <- bindE aenv "x" (pexpr hpr)
+          filterF <- maybe (return "R") return iOpt >>= \a -> return $ EC.lambda a be
+          return $ EC.applyMany (EC.project "filter" $ e) [filterF]
+
+        havingaggregates aggaprs aenv e = do
+          (a,b,c) <- extractaggregates aggaprs aenv 0 e
+          nc <- mapM (\e -> return $ SelExp emptyAnnotation e) c
+          return (a, Just b, nc)
 
 
 -- TODO
-sqlhaving :: ParseResult -> MaybeBoolExpr -> SQLParseM ParseResult
-sqlhaving groupby havingE = return groupby
-
 sqlsort :: ParseResult -> ScalarExprDirectionPairList -> SQLParseM ParseResult
 sqlsort having orderL = return having
 
@@ -572,6 +619,28 @@ sqlaggexpr aenv (FunCall _ nm args) = do
                                       , palias = maybe Nothing (\j -> Just $ i ++ j) $ palias pr }
 
 sqlaggexpr _ _ = return Nothing
+
+extractaggregates :: [(Identifier, ParseResult)] -> AEnv -> Int -> ScalarExpr
+                  -> SQLParseM (Int, ScalarExpr, [ScalarExpr])
+extractaggregates aggaprs aenv i e@(FunCall ann nm args) = do
+  aggeopt <- sqlaggexpr aenv e
+  case aggeopt of
+    Nothing -> do
+      (ni, nxagg, nargs) <- foldM foldOnChild (i,[],[]) args
+      return (ni, FunCall ann nm nargs, nxagg)
+
+    Just pr -> let aprOpt = find (\(_,aggpr) -> pr == aggpr) aggaprs
+                   (nid, nex) = maybe (aggnm i, [e]) (\(a,_) -> (Nmc a, [])) aprOpt
+               in return (i+1, Identifier emptyAnnotation nid, nex)
+
+  where foldOnChild (j,acc,argacc) ce = do
+          (nj, nce, el) <- extractaggregates aggaprs aenv j ce
+          return (nj, acc++el, argacc++[nce])
+
+        aggnm j = Nmc $ "h" ++ show j
+
+extractaggregates _ _ i e = return (i,e,[])
+
 
 -- TODO
 sqlscalar :: AEnv -> ScalarExpr -> SQLParseM ParseResult
