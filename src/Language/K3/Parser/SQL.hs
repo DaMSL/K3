@@ -12,7 +12,7 @@ import Control.Monad.Trans.Except
 import Data.Functor.Identity
 import Data.Monoid
 import Data.Either ( partitionEithers )
-import Data.List ( find, nub )
+import Data.List ( find, isInfixOf, nub, reverse )
 import Data.Tuple ( swap )
 
 import Data.Map ( Map )
@@ -254,6 +254,13 @@ tresolvetmapM i tlm = maybe (return []) resolve tlm
 
 
 {- Expression construction helpers -}
+
+immutE :: K3 Expression -> K3 Expression
+immutE e = e @<- ((filter (not . isEQualified) $ annotations e) ++ [EImmutable])
+
+mutE :: K3 Expression -> K3 Expression
+mutE e = e @<- ((filter (not . isEQualified) $ annotations e) ++ [EMutable])
+
 recE :: [(Identifier, K3 Expression)] -> K3 Expression
 recE ide = EC.record $ map (\(i,e) -> (i, e @<- ((filter (not . isEQualified) $ annotations e) ++ [EImmutable]))) ide
 
@@ -323,21 +330,47 @@ zeroE l = either throwE return $ defaultExpression $ recT l
 aggE :: Identifier -> (Identifier, K3 Expression) -> K3 Expression
 aggE i (f, e) = EC.applyMany e [EC.project f $ EC.variable i]
 
+-- TODO: gensym
+memoE :: K3 Expression -> (K3 Expression -> K3 Expression) -> K3 Expression
+memoE srcE bodyF = case tag srcE of
+  EConstant _ -> bodyF srcE
+  EVariable _ -> bodyF srcE
+  _ -> EC.letIn "__memo" (immutE srcE) $ bodyF $ EC.variable "__memo"
+
+
+matchE :: K3 Expression -> K3 Expression -> K3 Expression
+matchE elemexpr colexpr =
+  memoE (immutE elemexpr) $ \e -> EC.applyMany (EC.project "filter" $ colexpr) [matchF e]
+  where matchF e = EC.lambda "__x" $ EC.binop OEqu (EC.variable "__x") e
+
+memberE :: Bool -> K3 Expression -> K3 Expression -> K3 Expression
+memberE asMem elemexpr colexpr  = emptyE (not asMem) $ matchE elemexpr colexpr
+
+emptyE :: Bool -> K3 Expression -> K3 Expression
+emptyE asEmpty colexpr = EC.binop (if asEmpty then OEqu else ONeq)
+  (EC.applyMany (EC.project "size" colexpr) [EC.unit]) $ EC.constant $ CInt 0
+
 
 {- Parsing toplevel. -}
-k3ofsql :: Bool -> FilePath -> IO ()
-k3ofsql asSyntax path = do
+k3ofsql :: Bool -> Bool -> FilePath -> IO ()
+k3ofsql asSyntax printParse path = do
   stmtE <- parseStatementsFromFile path
   either (putStrLn . show) k3program stmtE
 
   where
     k3program stmts = do
+      void $ if printParse then printStmts stmts else return ()
       let declsM = mapM sqlstmt stmts
       let progE = do { decls <- evalSQLParseM sqlenv0 declsM;
                         return $ DC.role "__global" $ concat decls }
       if asSyntax
         then either putStrLn (either putStrLn putStrLn . programS) progE
         else either putStrLn (putStrLn . pretty) progE
+
+    printStmts stmts = do
+      putStrLn $ replicate 40 '='
+      void $ forM stmts $ \s -> putStrLn $ show s
+      putStrLn $ replicate 40 '='
 
 sqlstmt :: Statement -> SQLParseM [K3 Declaration]
 sqlstmt (CreateTable _ nm attrs _) = do
@@ -354,7 +387,7 @@ sqlquerystmt :: QueryExpr -> SQLParseM [K3 Declaration]
 sqlquerystmt q = do
   qpr <- sqlquery q
   return [ DC.global "result" (pkt qpr) Nothing
-         , DC.trigger "query" TC.unit $ EC.assign "result" $ pexpr qpr ]
+         , DC.trigger "query" TC.unit $ EC.lambda "_" $ EC.assign "result" $ pexpr qpr ]
 
 
 -- | Expression construction, and inlined type inference.
@@ -388,7 +421,7 @@ sqltablelist (h:t) = do
           let matchF   = EC.lambda "_" $ EC.lambda "_" $ EC.constant $ CBool True
           let combineF = EC.lambda al $ EC.lambda ar ce
           let rexpr    = EC.applyMany (EC.project "join" $ pexpr lpr) [pexpr rpr, matchF, combineF]
-          return $ ParseResult rexpr rt kt tmap $ Just "CP"
+          return $ ParseResult rexpr rt kt tmap $ Just "__CP"
 
 
 sqltableexpr :: TableRef -> SQLParseM ParseResult
@@ -397,7 +430,7 @@ sqltableexpr (Tref _ nm al) = do
     rt <- taliascolM al t
     kt <- twrapcolelemM rt
     tmap <- telemtmapM
-    return $ ParseResult (EC.variable tnm) rt kt tmap $ sqltablealias (sqlnm nm) al
+    return $ ParseResult (EC.variable tnm) rt kt tmap $ sqltablealias ("__" ++ sqlnm nm) al
   where tnm = sqlnm nm
 
 -- TODO: nat, jointy
@@ -414,7 +447,7 @@ sqltableexpr (JoinTref _ jlt nat jointy jrt onE jal) = do
   (Nothing, be) <- bindE aenv "x" (pexpr joinpr)
   let matchF   = EC.lambda al $ EC.lambda ar be
   let combineF = EC.lambda al $ EC.lambda ar ce
-  return $ ParseResult (EC.applyMany (EC.project "join" $ pexpr lpr) [pexpr rpr, matchF, combineF]) rt kt tmap $ sqltablealias "JR" jal
+  return $ ParseResult (EC.applyMany (EC.project "join" $ pexpr lpr) [pexpr rpr, matchF, combineF]) rt kt tmap $ sqltablealias "__JR" jal
 
   where joinpr0 = ParseResult (EC.constant $ CBool True) TC.bool TC.bool Nothing Nothing
 
@@ -433,7 +466,7 @@ sqltableexpr (SubTref _ query al) = do
       (iOpt, be) <- bindE aenv "x" $ recE $ map (\(n,o) -> (n, EC.variable o)) $ zip nids ids
       mapF <- maybe (tblaliasM qpr) return iOpt >>= \a -> return $ EC.lambda a be
       let rexpr = EC.applyMany (EC.project "map" $ pexpr qpr) [mapF]
-      return $ ParseResult rexpr rt kt tmap $ sqltablealias "RN" al
+      return $ ParseResult rexpr rt kt tmap $ sqltablealias "__RN" al
 
     _ -> throwE $ "Invalid subquery alias"
 
@@ -472,7 +505,7 @@ sqlproject limits (SelectList _ projections) = do
       zF   <- zeroE aidt
 
       let rexpr = EC.applyMany (EC.project "fold" $ pexpr limits) [aggF, zF]
-      let ral = Just "R"
+      let ral = Just "__R"
       rt <- tcolM $ recT aidt
       return $ ParseResult rexpr rt rt Nothing ral
 
@@ -483,7 +516,7 @@ sqlproject limits (SelectList _ projections) = do
       (iOpt, be) <- bindE aenv "x" $ recE $ zip eAliases exprs
       mapF <- maybe (tblaliasM limits) return iOpt >>= \a -> return $ EC.lambda a be
       let rexpr  = EC.applyMany (EC.project "map" $ pexpr limits) [mapF]
-      let ralias = Just "R"
+      let ralias = Just "__R"
       rt   <- tcolM $ recT $ zip eAliases types
       kt   <- twrapcolelemM rt
       tmap <- telemtmapM
@@ -551,7 +584,7 @@ sqlgroupby selects (SelectList slann projections) having gbL = do
 
   let rexpr  = EC.applyMany (EC.project "groupBy" $ pexpr selects) [groupF, aggF, zF]
   let tmap = Just $ Right $ (Map.fromList ktpl) <> (Map.fromList vtpl)
-  let ral = Just "R"
+  let ral = Just "__R"
 
   rt <- tcolM $ recT $ kidt ++ vidt
   kt <- tcolM $ recT [("key", keyT), ("value", valT)]
@@ -567,12 +600,12 @@ sqlgroupby selects (SelectList slann projections) having gbL = do
           let aenv = AEnv nmert q
           hpr <- sqlscalar aenv he
           (iOpt, be) <- bindE aenv "x" (pexpr hpr)
-          filterF <- maybe (return "R") return iOpt >>= \a -> return $ EC.lambda a be
+          filterF <- maybe (return "__R") return iOpt >>= \a -> return $ EC.lambda a be
           return $ EC.applyMany (EC.project "filter" $ e) [filterF]
 
         havingaggregates aggaprs aenv e = do
           (a,b,c) <- extractaggregates aggaprs aenv 0 e
-          nc <- mapM (\e -> return $ SelExp emptyAnnotation e) c
+          nc <- mapM (\ae -> return $ SelExp emptyAnnotation ae) c
           return (a, Just b, nc)
 
 
@@ -646,10 +679,15 @@ extractaggregates aggaprs aenv i e@(FunCall ann nm args) = do
 extractaggregates _ _ i e = return (i,e,[])
 
 
+-- TODO: variable access in correlated subqueries
 -- TODO: case, null, qualified expressions
 sqlscalar :: AEnv -> ScalarExpr -> SQLParseM ParseResult
-sqlscalar _ (BooleanLit _ b)  = pr0 TC.bool   $ EC.constant $ CBool b
-sqlscalar _ (NumberLit _ i)   = pr0 TC.int    $ EC.constant $ CInt $ read i  -- TODO: double?
+sqlscalar _ (BooleanLit _ b)  = pr0 TC.bool $ EC.constant $ CBool b
+
+sqlscalar _ (NumberLit _ i)   = if "." `isInfixOf` i
+                                  then pr0 TC.real $ EC.constant $ CReal $ read i
+                                  else pr0 TC.int  $ EC.constant $ CInt $ read i
+
 sqlscalar _ (StringLit _ s)   = pr0 TC.string $ EC.constant $ CString s
 
 sqlscalar (AEnv (ret@(tnc -> (TRecord ids, ch)), _) _) (Identifier _ (sqlnmcomponent -> i)) =
@@ -669,11 +707,69 @@ sqlscalar aenv (FunCall _ nm args) = do
       pr0 (prt xpr) $ EC.binop o (pexpr xpr) $ pexpr ypr
 
     _ -> do
-      aprl <- mapM (sqlscalar aenv) args
-      pr0 TC.unit $ EC.applyMany (EC.variable fn) $ map pexpr aprl -- TODO: return type?
+      case (fn, args) of
+        ("!between", [_,_,_]) -> do
+          [apr,bpr,cpr] <- mapM (sqlscalar aenv) args
+          pr0 TC.bool $ EC.binop OAnd (EC.binop OLeq (pexpr bpr) $ pexpr apr)
+                                     $ EC.binop OLeq (pexpr apr) $ pexpr cpr
+
+        (_, _) -> do
+          aprl <- mapM (sqlscalar aenv) args
+          pr0 TC.unit $ EC.applyMany (EC.variable fn) $ map pexpr aprl -- TODO: return type?
 
 sqlscalar (AEnv (ret@(tag -> TRecord ids), _) _) (Star _) =
   pr0 ret $ recE $ map (\i -> (i, EC.variable i)) ids
+
+sqlscalar aenv (Case _ whense elsee) = do
+  prl <- forM whense $ \(whenel, thene) -> (,) <$> mapM (sqlscalar aenv) whenel <*> sqlscalar aenv thene
+  (eT, eE, wprl) <- case (prl, elsee) of
+    ([], Nothing) -> throwE $ "Invalid case expression"
+    (l, Nothing) -> let t = prt $ snd $ head l
+                    in either throwE (\de -> return (t, de, l)) $ defaultExpression t
+    (l, Just e) -> sqlscalar aenv e >>= \epr -> return (prt epr, pexpr epr, l)
+
+  pr0 eT $ foldl (\accE (wprs, tpr) -> EC.ifThenElse (andE wprs) (pexpr tpr) accE) eE $ reverse wprl
+
+  where andE [] = EC.constant $ CBool False
+        andE (h:t) = foldl (\accE wpr -> EC.binop OAnd accE $ pexpr wpr) (pexpr h) t
+
+sqlscalar aenv (CaseSimple _ e whense elsee) = do
+  vpr <- sqlscalar aenv e
+  prl <- forM whense $ \(whenel, thene) -> (,) <$> mapM (sqlscalar aenv) whenel <*> sqlscalar aenv thene
+  (eT, eE, wprl) <- case (prl, elsee) of
+    ([], Nothing) -> throwE $ "Invalid case expression"
+    (l, Nothing) -> let t = prt $ snd $ head l
+                    in either throwE (\de -> return (t, de, l)) $ defaultExpression t
+    (l, Just ee) -> sqlscalar aenv ee >>= \epr -> return (prt epr, pexpr epr, l)
+
+  pr0 eT $ memoE (pexpr vpr) $ \ve ->
+    foldl (\accE (wprs, tpr) -> EC.ifThenElse (andE ve wprs) (pexpr tpr) accE) eE $ reverse wprl
+
+  where andE _ [] = EC.constant $ CBool False
+        andE ve (h:t) = foldl (\accE wpr -> EC.binop OAnd accE $ EC.binop OEqu ve $ pexpr wpr) (EC.binop OEqu ve $ pexpr h) t
+
+sqlscalar _ (ScalarSubQuery _ qe) = sqlquery qe
+
+sqlscalar _ (Exists _ qe) = do
+  qpr <- sqlquery qe
+  pr0 TC.bool $ emptyE False $ pexpr qpr
+
+sqlscalar aenv (InPredicate _ e isIn inl) = do
+  epr <- sqlscalar aenv e
+  case inl of
+    InList _ el -> do
+      eprl <- mapM (sqlscalar aenv) el
+      case eprl of
+        [] -> pr0 TC.bool $ EC.constant $ CBool $ not isIn
+        (h:t) -> pr0 TC.bool $ memoE (immutE $ pexpr epr) $
+                      \ve -> foldl (\accE p -> mergeE accE $ testE ve p) (testE ve h) t
+
+    InQueryExpr _ q -> do
+      qpr <- sqlquery q
+      pr0 TC.bool $ memberE isIn (pexpr epr) $ pexpr qpr
+
+  where testE ve pr = EC.binop (if isIn then OEqu else ONeq) ve $ pexpr pr
+        mergeE accE nE = EC.binop (if isIn then OOr else OAnd) accE nE
 
 sqlscalar _ e = throwE $ "Unhandled scalar expr: " ++ show e
 
@@ -731,5 +827,5 @@ sqltypename t = throwE $ "Invalid sql typename " ++ show t
 sqltablealias :: Identifier -> TableAlias -> Maybe Identifier
 sqltablealias def alias = case alias of
     NoAlias _        -> Just def
-    TableAlias _ nc  -> Just $ sqlnmcomponent nc
-    FullAlias _ nc _ -> Just $ sqlnmcomponent nc
+    TableAlias _ nc  -> Just $ "__" ++ sqlnmcomponent nc
+    FullAlias _ nc _ -> Just $ "__" ++ sqlnmcomponent nc

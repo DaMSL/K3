@@ -24,7 +24,7 @@ run opts = do
     Compile copts | ccStage copts == Stage2 -> compile opts copts (DC.role "__global" [])
     SQL sqlOpts -> let iprog = inputProgram $ input opts
                        asSyntax = case sqlPrintMode sqlOpts of { PrintAST _ _ _ _ -> False; PrintSyntax -> True}
-                   in liftIO $ k3ofsql asSyntax iprog
+                   in liftIO $ k3ofsql asSyntax (sqlPrintParse sqlOpts) iprog
     _ -> k3in opts >>= metaprogram opts >>= dispatch opts
 
 -- | Top-Level.

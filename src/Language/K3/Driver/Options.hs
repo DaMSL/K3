@@ -166,7 +166,8 @@ data QueryOptions = QueryOptions { qsargs :: Either [String] [Int] }
                     deriving (Eq, Read, Show, Generic)
 
 -- | SQL frontend options.
-data SQLOptions = SQLOptions { sqlPrintMode :: PrintMode }
+data SQLOptions = SQLOptions { sqlPrintMode  :: PrintMode
+                             , sqlPrintParse :: Bool }
                 deriving (Eq, Read, Show, Generic)
 
 -- | Verbosity levels.
@@ -766,7 +767,11 @@ allProgOpt = flag' (QueryOptions $ Right [])
 
 -- | SQL mode
 sqlOptions :: Parser Mode
-sqlOptions = SQL <$> ( SQLOptions <$> printModeOpt "" )
+sqlOptions = SQL <$> ( SQLOptions <$> printModeOpt "" <*> sqlPrintParseOpt )
+
+sqlPrintParseOpt :: Parser Bool
+sqlPrintParseOpt = switch (   long "sqlast"
+                           <> help "Print SQL AST parsed." )
 
 {- Top-level options -}
 
