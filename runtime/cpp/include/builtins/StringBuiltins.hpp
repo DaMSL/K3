@@ -19,7 +19,6 @@ class StringBuiltins {
   template <class S>
   S slice_string(const S& s, int x, int y);
   int strcomp(const string_impl& s1, const string_impl& s2);
-  int regex_match_int(const R_key_value<string_impl, string_impl>& r);
 };
 
 template <class S>

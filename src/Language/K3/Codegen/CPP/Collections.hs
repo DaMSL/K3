@@ -308,7 +308,7 @@ record (sort -> ids) = do
     -}
 
     let isTypeFlat t = R.Variable $
-                          R.Qualified 
+                          R.Qualified
                            (R.Specialized [R.Named $ R.Name t] (R.Name "is_flat"))
                            (R.Name "value")
     let isFlatDefn
@@ -322,31 +322,39 @@ record (sort -> ids) = do
                [ R.GlobalDefn $ R.Forward $ R.ScalarDecl
                    (R.Name "value")
                    (R.Static $ R.Named $ R.Name "constexpr bool")
-                   (Just $ foldl1 (R.Binary "&&") (map isTypeFlat templateVars)) 
+                   (Just $ foldl1 (R.Binary "&&") (map isTypeFlat templateVars))
                ]
                []
                []
            ]
     let hashCombine x = R.Call (R.Variable $ (R.Name "hash_combine")) [R.Variable $ R.Name "seed", x]
+    let hashBody = [R.Forward $ R.ScalarDecl (R.Name "seed") (R.Named $ R.Qualified (R.Name "std") (R.Name "size_t")) (Just $ R.Literal $ R.LInt 0)]
+                   ++ (map (R.Ignore . hashCombine) [R.Project (R.Variable $ R.Name "r") (R.Name i) | i <- ids])
+                   ++ [R.Return $ R.Variable $ R.Name "seed" ]
+
     let hashStructDefn
-            = R.NamespaceDefn "std" [ 
-              R.GuardedDefn ("K3_" ++ recordName ++ "_hash_value") $ R.TemplateDefn (zip templateVars (repeat Nothing)) $
+            = R.NamespaceDefn "std" [
+              R.GuardedDefn ("K3_" ++ recordName ++ "_hash") $ R.TemplateDefn (zip templateVars (repeat Nothing)) $
                 R.ClassDefn (R.Name "hash") [recordType] []
                 [
-                  R.FunctionDefn 
-                    (R.Name "operator()") 
+                  R.FunctionDefn
+                    (R.Name "operator()")
                     [("r", R.Const $ R.Reference recordType)]
                     (Just $ R.Named $ R.Qualified (R.Name "std") (R.Name "size_t"))
                     []
                     True
-                    (    [R.Forward $ R.ScalarDecl (R.Name "seed") (R.Named $ R.Qualified (R.Name "std") (R.Name "size_t")) (Just $ R.Literal $ R.LInt 0)]
-                      ++ (map (R.Ignore . hashCombine) [R.Project (R.Variable $ R.Name "r") (R.Name i) | i <- ids])
-                      ++ [R.Return $ R.Variable $ R.Name "seed" ]
-                    )
+                    hashBody
                 ]
                 []
                 []
               ]
+    let hashValueDefn = R.TemplateDefn (zip templateVars (repeat Nothing)) $ R.FunctionDefn
+                          (R.Name "hash_value")
+                          [("r", R.Const $ R.Reference recordType)]
+                          (Just $ R.Named $ R.Qualified (R.Name "std") (R.Name "size_t"))
+                          []
+                          False
+                          hashBody
 
     let yamlStructDefn = R.NamespaceDefn "YAML"
                          [ R.TemplateDefn (zip templateVars (repeat Nothing)) $
@@ -433,7 +441,7 @@ record (sort -> ids) = do
                             ] [] []
                             ]
     return [ recordStructDefn, compactSerializationDefn {-, noTrackingDefn, bitwiseSerializableDefn-}
-           , yamlStructDefn, hashStructDefn, isFlatDefn, jsonStructDefn]
+           , yamlStructDefn, hashStructDefn, hashValueDefn, isFlatDefn, jsonStructDefn]
 
 reservedAnnotations :: [Identifier]
 reservedAnnotations =
