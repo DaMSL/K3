@@ -37,6 +37,10 @@ class MosaicBuiltins {
   double real_of_int(int n) { return (double)n; }
   int get_max_int(unit_t) { return INT_MAX; }
   int truncate(double n) { return (int)n; }
+  int regex_match_int(const string_impl& s1, const string_impl& s2) {
+    bool b = std::regex_match(s2.c_str(), std::regex(s1.c_str()));
+    return b ? 1 : 0;
+  }
 };
 
 }  // namespace K3
