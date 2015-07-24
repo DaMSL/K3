@@ -460,7 +460,7 @@ sqltableexpr (SubTref _ query al) = do
   aenv@(AEnv (tag -> TRecord ids, _) _) <- aenv1 qpr
   ret <- telemM rt
   case tag ret of
-    TRecord nids | ids == nids -> return qpr
+    TRecord nids | ids == nids -> return qpr { palias = sqltablealias "__RN" al }
 
     TRecord nids | length ids == length nids -> do
       (iOpt, be) <- bindE aenv "x" $ recE $ map (\(n,o) -> (n, EC.variable o)) $ zip nids ids
@@ -679,8 +679,7 @@ extractaggregates aggaprs aenv i e@(FunCall ann nm args) = do
 extractaggregates _ _ i e = return (i,e,[])
 
 
--- TODO: variable access in correlated subqueries
--- TODO: case, null, qualified expressions
+-- TODO: variable access in correlated subqueries, nulls
 sqlscalar :: AEnv -> ScalarExpr -> SQLParseM ParseResult
 sqlscalar _ (BooleanLit _ b)  = pr0 TC.bool $ EC.constant $ CBool b
 
@@ -693,6 +692,27 @@ sqlscalar _ (StringLit _ s)   = pr0 TC.string $ EC.constant $ CString s
 sqlscalar (AEnv (ret@(tnc -> (TRecord ids, ch)), _) _) (Identifier _ (sqlnmcomponent -> i)) =
     maybe (varerror i) (\t -> pri0 i t $ EC.variable i) $ lookup i (zip ids ch)
   where varerror n = throwE $ boxToString $ ["Unknown unqualified variable " ++ n] %$ prettyLines ret
+
+sqlscalar (AEnv _ q) e@(QIdentifier _ nmcl) =
+  case nmcl of
+    [x,y] -> qpair x y
+    _ -> qiderr
+
+  where qpair (sqlnmcomponent -> nx) (sqlnmcomponent -> ny) =
+          let knx = "__" ++ nx in
+          case Map.lookup knx q of
+            Just (Left (tnc -> (TRecord ids, ch), _)) ->
+              let idt = zip ids ch in
+              maybe qidterr (\t -> pr0 t $ EC.project ny $ EC.variable knx) $ lookup ny idt
+
+            Just _  -> qidelemerr
+            Nothing -> qidlkuperr
+
+        qiderr     = throwE $ unwords ["Invalid qualified identifier:", show e, show $ Map.keys q]
+        qidterr    = throwE $ unwords ["Unknown qualified identifier type:", show e, show $ Map.keys q]
+        qidelemerr = throwE $ unwords ["Invalid element for qid:", show e, show $ Map.keys q]
+        qidlkuperr = throwE $ unwords ["Unknown qid component:", show e, show $ Map.keys q]
+
 
 sqlscalar aenv (FunCall _ nm args) = do
   let fn = sqlnm nm
@@ -719,6 +739,13 @@ sqlscalar aenv (FunCall _ nm args) = do
 
 sqlscalar (AEnv (ret@(tag -> TRecord ids), _) _) (Star _) =
   pr0 ret $ recE $ map (\i -> (i, EC.variable i)) ids
+
+sqlscalar (AEnv _ q) (QStar _ (sqlnmcomponent -> n)) = do
+  let kn = "__" ++ n
+  case Map.lookup kn q of
+    Just (Left (qt@(tag -> TRecord ids), _)) -> pr0 qt $ recE $ map (\i -> (i, EC.project i $ EC.variable kn)) ids
+    Nothing -> throwE $ "Invalid qualified name in qstar"
+    Just _ -> throwE $ "Invalid element type in qualified environment"
 
 sqlscalar aenv (Case _ whense elsee) = do
   prl <- forM whense $ \(whenel, thene) -> (,) <$> mapM (sqlscalar aenv) whenel <*> sqlscalar aenv thene
