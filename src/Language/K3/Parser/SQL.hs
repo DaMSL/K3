@@ -4,7 +4,7 @@
 
 module Language.K3.Parser.SQL where
 
-import Control.Arrow ( (&&&), first, second )
+import Control.Arrow ( (***), (&&&), first )
 import Control.Monad
 import Control.Monad.State
 import Control.Monad.Trans.Except
@@ -88,11 +88,14 @@ data TValueMapping = TVMType      TLabelMapping
                    deriving (Eq, Show)
 
 -- | Mapped relational types.
-type MRType  = (K3 Type, TLabelMapping)
+type MRType  = (K3 Type, TLabelMapping, [ADGPtr])
 type MERType = (K3 Type, TValueMapping)
 
 -- | Qualified attribute env
-type AQEnv = Map Identifier (Either MRType [Identifier])
+type AQEnv = Map Identifier MRType
+
+-- | Attribute pointer env
+type ADGPtrEnv = ([ADGPtr], [(Identifier, [ADGPtr])])
 
 -- | Attribute binding env
 data AEnv = AEnv { aeuq :: MERType, aeq :: AQEnv }
@@ -163,6 +166,12 @@ sqglkupM p = get >>= liftExceptM . (\env -> sqglkup env p)
 sqgextM :: ADGNode -> SQLParseM ADGPtr
 sqgextM n = get >>= \env -> return (sqgext env n) >>= \(r, nenv) -> put nenv >> return r
 
+sqgidxM :: [ADGPtr] -> SQLParseM (Map Identifier ADGPtr)
+sqgidxM ptrs = do
+  l <- mapM (\p -> sqglkupM p >>= \node -> return (adnn node, p)) ptrs
+  return $ Map.fromList l
+
+
 -- | Adds base relation attributes to the ADG.
 sqgextSchemaM :: Maybe Identifier -> K3 Type -> SQLParseM [ADGPtr]
 sqgextSchemaM (Just n) t = do
@@ -188,7 +197,7 @@ sqgextIdentityM _ _ _ = throwE "Invalid identity arguments when extending attrib
 sqgextAliasM :: Maybe Identifier -> K3 Type -> K3 Type -> [ADGPtr] -> SQLParseM [ADGPtr]
 sqgextAliasM (Just n) (tag -> TRecord dstids) (tag -> TRecord srcids) inputptrs
   | length dstids == length srcids
-  = do { idx <- indexPtrs;
+  = do { idx <- sqgidxM inputptrs;
          nodes <- mapM (mknode idx) $ zip dstids srcids;
          mapM sqgextM nodes }
 
@@ -196,33 +205,32 @@ sqgextAliasM (Just n) (tag -> TRecord dstids) (tag -> TRecord srcids) inputptrs
           p <- maybe (lkuperr s) return $ Map.lookup s ptridx
           return $ ADGNode d n (Just $ Identifier emptyAnnotation $ Nmc s) [p]
 
-        indexPtrs = do
-          l <- mapM (\p -> sqglkupM p >>= \node -> return (adnn node, p)) inputptrs
-          return $ Map.fromList l
-
         lkuperr v = throwE $ "No attribute graph node found for " ++ v
 
 sqgextAliasM _ _ _ _ = throwE "Invalid alias arguments when extending attribute graph"
 
 -- | Extend the attribute graph for a relation type computed from the given expressions.
-sqgextExprM :: Maybe Identifier -> K3 Type -> [ScalarExpr] -> [ADGPtr] -> SQLParseM [ADGPtr]
-sqgextExprM (Just n) t exprs inputptrs = do
+sqgextExprM :: Maybe Identifier -> K3 Type -> [ScalarExpr] -> ADGPtrEnv -> SQLParseM [ADGPtr]
+sqgextExprM (Just n) t exprs penv = do
   rt <- telemM t
   case tag rt of
     TRecord ids | length ids == length exprs -> do
-      idx <- indexPtrs
-      nodes <- mapM (mknode idx) (zip ids exprs)
+      uidx <- sqgidxM $ fst penv
+      qidx <- Map.fromList <$> mapM (\(i,ps) -> sqgidxM ps >>= return . (i,)) (snd penv)
+      nodes <- mapM (mknode uidx qidx) (zip ids exprs)
       mapM sqgextM nodes
 
     _ -> throwE $ boxToString $ ["Invalid relational element type"] %$ prettyLines rt
 
-  where mknode ptridx (i, e) = do
-          ps <- mapM (\v -> maybe (lkuperr v) return $ Map.lookup v ptridx) $ extractvars e
-          return $ ADGNode i n (Just e) ps
+  where mknode uidx qidx (i, e) = do
+          let (uv, qv) = extractvars e
+          ps <- mapM (lkupu uidx) $ uv
+          qps <- mapM (lkupq qidx) qv
+          return $ ADGNode i n (Just e) $ ps ++ qps
 
-        indexPtrs = do
-          l <- mapM (\p -> sqglkupM p >>= \node -> return (adnn node, p)) inputptrs
-          return $ Map.fromList l
+        lkupu uidx v = maybe (lkuperr v) return $ Map.lookup v uidx
+        lkupq qidx [x,y] = maybe (lkuperr x) (\idx -> lkupu idx y) $ Map.lookup x qidx
+        lkupq _ _ = throwE $ "Invalid pair qualified identifer"
 
         lkuperr v = throwE $ "No attribute graph node found for " ++ v
 
@@ -253,7 +261,7 @@ liftEitherM = either throwE return
 
 {- Attribute environment helpers. -}
 mrtype :: ParseResult -> SQLParseM MRType
-mrtype r = telemM (prt r) >>= \ret -> return (ret, ptmap r)
+mrtype r = telemM (prt r) >>= \ret -> return (ret, ptmap r, pptrs r)
 
 mertypeR :: K3 Type -> TLabelMapping -> Maybe Identifier -> SQLParseM MERType
 mertypeR t tmap alias = do
@@ -264,7 +272,7 @@ mertype :: ParseResult -> SQLParseM MERType
 mertype r = mertypeR (prt r) (ptmap r) $ palias r
 
 aqenv0 :: [(Identifier, MRType)] -> AQEnv
-aqenv0 l = Map.fromList $ map (second Left) l
+aqenv0 l = Map.fromList l
 
 aqenv1 :: ParseResult -> SQLParseM AQEnv
 aqenv1 r = do
@@ -274,20 +282,35 @@ aqenv1 r = do
 aqenvl :: [ParseResult] -> SQLParseM AQEnv
 aqenvl l = mapM aqenv1 l >>= return . mconcat
 
+adgenv1 :: ParseResult -> SQLParseM ADGPtrEnv
+adgenv1 r = return (pptrs r, maybe [] (\i -> [(i, pptrs r)]) $ palias r)
+
+adgenvql :: [ParseResult] -> SQLParseM [(Identifier, [ADGPtr])]
+adgenvql rl = return $ concatMap (\r -> maybe [] (\i -> [(i, pptrs r)]) $ palias r) rl
+
 aenv0 :: MERType -> AQEnv -> AEnv
 aenv0 u q = AEnv u q
 
-aenv1 :: ParseResult -> SQLParseM AEnv
-aenv1 r = (\mert q -> aenv0 mert q) <$> mertype r <*> aqenv1 r
+aenv1 :: ParseResult -> SQLParseM (AEnv, ADGPtrEnv)
+aenv1 r = (\mert q p -> (aenv0 mert q, p)) <$> mertype r <*> aqenv1 r <*> adgenv1 r
 
-aenvl :: [ParseResult] -> SQLParseM AEnv
-aenvl l = (\mert q -> aenv0 mert q) <$> mr0 <*> aqenvl l
-  where mr0 = mapM mertype l >>= return . concatmer
+aenvl :: [ParseResult] -> SQLParseM (AEnv, ADGPtrEnv)
+aenvl l = (\(mert, p) q pq -> (aenv0 mert q, (p, pq))) <$> mr0 <*> aqenvl l <*> adgenvql l
+  where mr0 = do
+          merl <- mapM mertype l
+          let (ids, t, tvm) = concatmer merl
+          p <- pp0 ids
+          return ((t,tvm),p)
+
+        pp0 uids = do
+          idx <- sqgidxM $ concatMap pptrs l
+          mapM (\i -> maybe (lkuperr i) return $ Map.lookup i idx) $ Set.toList uids
+
         concatmer merl =
           let (uniqids, idt, idvt) = foldl accmer (Set.empty, [], []) merl
               uidt  = filter ((`Set.member` uniqids) . fst) idt
               uidvt = concatMap (fieldvt uniqids) idvt
-          in (recT uidt, TVMComposite $ Map.fromList uidvt)
+          in (uniqids, recT uidt, TVMComposite $ Map.fromList uidvt)
 
         accmer (accS, accL, tvmaccL) (tnc -> (TRecord ids, ch), tvm) =
           let new     = Set.fromList ids
@@ -302,6 +325,8 @@ aenvl l = (\mert q -> aenv0 mert q) <$> mr0 <*> aqenvl l
         extractvt (TVMNamed vt) = Just vt
         extractvt _ = Nothing
 
+        lkuperr v = throwE $ "No attribute graph node found for " ++ v
+
 
 {- SQL AST helpers. -}
 
@@ -310,20 +335,30 @@ projectionexprs (SelExp _ e) = e
 projectionexprs (SelectItem _ e _) = e
 
 -- TODO: correlated variables in subqueries.
-extractvars :: ScalarExpr -> [Identifier]
-extractvars (Identifier _ (sqlnmcomponent -> i)) = [i]
-extractvars (FunCall _ _ args) = concatMap extractvars args
+extractvars :: ScalarExpr -> ([Identifier], [[Identifier]])
+extractvars e = case e of
+  (Identifier _ (sqlnmcomponent -> i)) -> ([i], [])
 
-extractvars (Case _ whense elsee) =
-  concatMap (\(whenel, thene) -> concatMap extractvars whenel ++ extractvars thene) whense
-    ++ maybe [] extractvars elsee
+  (QIdentifier _ nmcl) -> case nmcl of
+                            [x,y] -> ([], [["__" ++ sqlnmcomponent x, sqlnmcomponent y]])
+                            _ -> zero
 
-extractvars (CaseSimple _ e whense elsee) =
-  extractvars e
-    ++ concatMap (\(whenel, thene) -> concatMap extractvars whenel ++ extractvars thene) whense
-    ++ maybe [] extractvars elsee
+  (FunCall _ _ args) -> maprcr args
+  (Case _ whense elsee) ->
+    many (\(whenel, thene) -> maprcr whenel `rconcat` extractvars thene) whense
+      `rconcat` maybe zero extractvars elsee
 
-extractvars _ = []
+  (CaseSimple _ ce whense elsee) ->
+    extractvars ce
+      `rconcat` many (\(whenel, thene) -> maprcr whenel `rconcat` extractvars thene) whense
+      `rconcat` maybe zero extractvars elsee
+
+  _ -> ([], [])
+
+  where maprcr l = (concat *** concat) $ unzip $ map extractvars l
+        many f l = (concat *** concat) $ unzip $ map f l
+        rconcat (a,c) (b,d) = (a++b, c++d)
+        zero = ([], [])
 
 
 {- Type and alias helpers. -}
@@ -545,7 +580,7 @@ sqltablelist (h:t) = do
 
   where cartesian_product lpr r = do
           rpr <- sqltableexpr r
-          aenv@(AEnv (ct, _) _) <- aenvl [lpr, rpr]
+          (aenv@(AEnv (ct, _) _), penv) <- aenvl [lpr, rpr]
           (al, ar) <- (,) <$> tblaliasM lpr <*> tblaliasM rpr
           ce   <- concatE aenv
           rt   <- tcolM ct
@@ -555,7 +590,7 @@ sqltablelist (h:t) = do
           let combineF = EC.lambda al $ EC.lambda ar ce
           let rexpr    = EC.applyMany (EC.project "join" $ pexpr lpr) [pexpr rpr, matchF, combineF]
           let tid = Just "__CP"
-          aptrs <- sqgextAliasM tid ct ct (pptrs lpr ++ pptrs rpr)
+          aptrs <- sqgextAliasM tid ct ct $ fst penv
           return $ ParseResult rexpr rt kt tmap tid aptrs
 
 
@@ -574,7 +609,7 @@ sqltableexpr (Tref _ nm al) = do
 sqltableexpr (JoinTref _ jlt nat jointy jrt onE jal) = do
   lpr <- sqltableexpr jlt
   rpr <- sqltableexpr jrt
-  aenv@(AEnv (ct, _) _) <- aenvl [lpr, rpr]
+  (aenv@(AEnv (ct, _) _), penv) <- aenvl [lpr, rpr]
   (al, ar) <- (,) <$> tblaliasM lpr <*> tblaliasM rpr
   joinpr   <- maybe (return joinpr0) (sqljoinexpr aenv) onE
   ce   <- concatE aenv
@@ -586,7 +621,7 @@ sqltableexpr (JoinTref _ jlt nat jointy jrt onE jal) = do
   let combineF = EC.lambda al $ EC.lambda ar ce
   let tid = sqltablealias "__JR" jal
   ret   <- telemM rt
-  aptrs <- sqgextAliasM tid ret ct (pptrs lpr ++ pptrs rpr)
+  aptrs <- sqgextAliasM tid ret ct $ fst penv
   return $ ParseResult (EC.applyMany (EC.project "join" $ pexpr lpr) [pexpr rpr, matchF, combineF]) rt kt tmap tid aptrs
 
   where joinpr0 = ParseResult (EC.constant $ CBool True) TC.bool TC.bool Nothing Nothing []
@@ -598,11 +633,11 @@ sqltableexpr (SubTref _ query al) = do
   kt   <- twrapcolelemM rt
   tmap <- telemtmapM
 
-  aenv@(AEnv (tag -> TRecord ids, _) _) <- aenv1 qpr
+  (aenv@(AEnv (tag -> TRecord ids, _) _), penv) <- aenv1 qpr
   let tid = sqltablealias "__RN" al
   ret <- telemM rt
   sqet <- telemM $ prt qpr
-  aptrs <- sqgextAliasM tid ret sqet (pptrs qpr)
+  aptrs <- sqgextAliasM tid ret sqet $ fst penv
   case tag ret of
     TRecord nids | ids == nids -> return qpr { palias = tid, pptrs = aptrs }
 
@@ -619,26 +654,26 @@ sqltableexpr t@(FunTref _ funE _)  = throwE $ "Unhandled table ref: " ++ show t
 
 sqlwhere :: ParseResult -> MaybeBoolExpr -> SQLParseM ParseResult
 sqlwhere tables whereEOpt = flip (maybe $ return tables) whereEOpt $ \whereE -> do
-  aenv <- aenv1 tables
+  (aenv, penv) <- aenv1 tables
   wpr  <- sqlscalar aenv whereE
   (iOpt, be) <- bindE aenv "x" (pexpr wpr)
   filterF <- maybe (tblaliasM tables) return iOpt >>= \a -> return $ EC.lambda a be
-  aptrs <- sqgextIdentityM (palias tables) (prt tables) (pptrs tables)
+  aptrs <- sqgextIdentityM (palias tables) (prt tables) $ fst penv
   return $ tables { pexpr = EC.applyMany (EC.project "filter" $ pexpr tables) [filterF], pptrs = aptrs }
 
 
 sqlproject :: ParseResult -> SelectList -> SQLParseM ParseResult
 sqlproject limits (SelectList _ projections) = do
-  aenv  <- aenv1 limits
+  (aenv, penv) <- aenv1 limits
   aggsE <- mapM (sqlaggregate aenv) projections
 
   case partitionEithers aggsE of
-    ([], prs) -> aggregate aenv aggsE prs
-    (prjl, []) -> project aenv prjl
+    ([], prs) -> aggregate aenv penv aggsE prs
+    (prjl, []) -> project aenv penv prjl
     (_, _) -> throwE $ "Invalid mixed select list of aggregates and non-aggregates"
 
   where
-    aggregate aenv aggsE aggprs = do
+    aggregate aenv penv aggsE aggprs = do
       let (aggexprs, aggtypes) = unzip $ map (pexpr &&& prt) aggprs
       (_, aAliases) <- expraliasesGenM 0 aggprs
       let aidt = zip aAliases aggtypes
@@ -655,10 +690,10 @@ sqlproject limits (SelectList _ projections) = do
       rt <- tcolM $ recT aidt
       let aggprojections = zip aggsE $ map projectionexprs projections
       let sqlaggs = concatMap (\(ae, e) -> if isLeft ae then [] else [e]) aggprojections
-      aptrs <- sqgextExprM ral rt sqlaggs (pptrs limits)
+      aptrs <- sqgextExprM ral rt sqlaggs penv
       return $ ParseResult rexpr rt rt Nothing ral aptrs
 
-    project aenv prjl = do
+    project aenv penv prjl = do
       eprs <- mapM (sqlprojection aenv) prjl
       (_, eAliases) <- expraliasesGenM 0 eprs
       let (exprs, types) = unzip $ map (pexpr &&& prt) eprs
@@ -669,7 +704,7 @@ sqlproject limits (SelectList _ projections) = do
       rt   <- tcolM $ recT $ zip eAliases types
       kt   <- twrapcolelemM rt
       tmap <- telemtmapM
-      aptrs <- sqgextExprM ralias rt (map projectionexprs prjl) (pptrs limits)
+      aptrs <- sqgextExprM ralias rt (map projectionexprs prjl) penv
       return $ ParseResult rexpr rt kt tmap ralias aptrs
 
 
@@ -678,7 +713,7 @@ sqlgroupby selects (SelectList slann projections) having [] =
   return (selects, SelectList slann $ projections ++ maybe [] (\e -> [SelExp emptyAnnotation e]) having)
 
 sqlgroupby selects (SelectList slann projections) having gbL = do
-  aenv  <- aenv1 selects
+  (aenv, penv) <- aenv1 selects
   gbprs <- mapM (sqlscalar aenv) gbL
   aggsE <- mapM (sqlaggregate aenv) projections
   let (nprojects, aggprs) = partitionEithers aggsE
@@ -744,7 +779,7 @@ sqlgroupby selects (SelectList slann projections) having gbL = do
 
   let aggprojections = zip aggsE $ map projectionexprs projections
   let sqlaggs = concatMap (\(ae, e) -> if isLeft ae then [] else [e]) aggprojections
-  aptrs <- sqgextExprM ral rt (sqlaggs ++ maybe [] (:[]) having) (pptrs selects)
+  aptrs <- sqgextExprM ral rt (sqlaggs ++ maybe [] (:[]) having) penv
 
   let naggprojects = map (\(i,_) -> SelExp emptyAnnotation $ Identifier emptyAnnotation $ Nmc i) vidt
   return (ParseResult hrexpr rt kt tmap ral aptrs, SelectList slann $ nprojects ++ naggprojects)
@@ -857,7 +892,7 @@ sqlscalar (AEnv _ q) e@(QIdentifier _ nmcl) =
   where qpair (sqlnmcomponent -> nx) (sqlnmcomponent -> ny) =
           let knx = "__" ++ nx in
           case Map.lookup knx q of
-            Just (Left (tnc -> (TRecord ids, ch), _)) ->
+            Just (tnc -> (TRecord ids, ch), _, _) ->
               let idt = zip ids ch in
               maybe qidterr (\t -> pr0 t $ EC.project ny $ EC.variable knx) $ lookup ny idt
 
@@ -899,7 +934,7 @@ sqlscalar (AEnv (ret@(tag -> TRecord ids), _) _) (Star _) =
 sqlscalar (AEnv _ q) (QStar _ (sqlnmcomponent -> n)) = do
   let kn = "__" ++ n
   case Map.lookup kn q of
-    Just (Left (qt@(tag -> TRecord ids), _)) -> pr0 qt $ recE $ map (\i -> (i, EC.project i $ EC.variable kn)) ids
+    Just (qt@(tag -> TRecord ids), _, _) -> pr0 qt $ recE $ map (\i -> (i, EC.project i $ EC.variable kn)) ids
     Nothing -> throwE $ "Invalid qualified name in qstar"
     Just _ -> throwE $ "Invalid element type in qualified environment"
 
