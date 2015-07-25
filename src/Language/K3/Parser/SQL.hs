@@ -37,6 +37,7 @@ import Language.K3.Core.Utils
 
 import qualified Language.K3.Core.Constructor.Declaration as DC
 import qualified Language.K3.Core.Constructor.Expression  as EC
+import qualified Language.K3.Core.Constructor.Literal     as LC
 import qualified Language.K3.Core.Constructor.Type        as TC
 
 import Language.K3.Utils.Pretty
@@ -282,6 +283,9 @@ aqenv1 r = do
 aqenvl :: [ParseResult] -> SQLParseM AQEnv
 aqenvl l = mapM aqenv1 l >>= return . mconcat
 
+adgenv1R :: [ADGPtr] -> Maybe Identifier -> SQLParseM ADGPtrEnv
+adgenv1R ptrs al = return (ptrs, maybe [] (\i -> [(i, ptrs)]) al)
+
 adgenv1 :: ParseResult -> SQLParseM ADGPtrEnv
 adgenv1 r = return (pptrs r, maybe [] (\i -> [(i, pptrs r)]) $ palias r)
 
@@ -416,6 +420,10 @@ tresolvetmapM i tlm = maybe (return []) resolve tlm
 
 
 {- Expression construction helpers -}
+
+-- | Property construction helper
+sqlAttrProp :: ADGPtr -> Annotation Expression
+sqlAttrProp p = EProperty $ Left ("SQLAttr", Just $ LC.int p)
 
 immutE :: K3 Expression -> K3 Expression
 immutE e = e @<- ((filter (not . isEQualified) $ annotations e) ++ [EImmutable])
@@ -611,7 +619,7 @@ sqltableexpr (JoinTref _ jlt nat jointy jrt onE jal) = do
   rpr <- sqltableexpr jrt
   (aenv@(AEnv (ct, _) _), penv) <- aenvl [lpr, rpr]
   (al, ar) <- (,) <$> tblaliasM lpr <*> tblaliasM rpr
-  joinpr   <- maybe (return joinpr0) (sqljoinexpr aenv) onE
+  joinpr   <- maybe (return joinpr0) (sqljoinexpr aenv penv) onE
   ce   <- concatE aenv
   rt   <- tcolM ct >>= taliascolM jal
   kt   <- twrapcolelemM rt
@@ -655,7 +663,7 @@ sqltableexpr t@(FunTref _ funE _)  = throwE $ "Unhandled table ref: " ++ show t
 sqlwhere :: ParseResult -> MaybeBoolExpr -> SQLParseM ParseResult
 sqlwhere tables whereEOpt = flip (maybe $ return tables) whereEOpt $ \whereE -> do
   (aenv, penv) <- aenv1 tables
-  wpr  <- sqlscalar aenv whereE
+  wpr  <- sqlscalar aenv penv whereE
   (iOpt, be) <- bindE aenv "x" (pexpr wpr)
   filterF <- maybe (tblaliasM tables) return iOpt >>= \a -> return $ EC.lambda a be
   aptrs <- sqgextIdentityM (palias tables) (prt tables) $ fst penv
@@ -665,7 +673,7 @@ sqlwhere tables whereEOpt = flip (maybe $ return tables) whereEOpt $ \whereE -> 
 sqlproject :: ParseResult -> SelectList -> SQLParseM ParseResult
 sqlproject limits (SelectList _ projections) = do
   (aenv, penv) <- aenv1 limits
-  aggsE <- mapM (sqlaggregate aenv) projections
+  aggsE <- mapM (sqlaggregate aenv penv) projections
 
   case partitionEithers aggsE of
     ([], prs) -> aggregate aenv penv aggsE prs
@@ -694,7 +702,7 @@ sqlproject limits (SelectList _ projections) = do
       return $ ParseResult rexpr rt rt Nothing ral aptrs
 
     project aenv penv prjl = do
-      eprs <- mapM (sqlprojection aenv) prjl
+      eprs <- mapM (sqlprojection aenv penv) prjl
       (_, eAliases) <- expraliasesGenM 0 eprs
       let (exprs, types) = unzip $ map (pexpr &&& prt) eprs
       (iOpt, be) <- bindE aenv "x" $ recE $ zip eAliases exprs
@@ -714,8 +722,8 @@ sqlgroupby selects (SelectList slann projections) having [] =
 
 sqlgroupby selects (SelectList slann projections) having gbL = do
   (aenv, penv) <- aenv1 selects
-  gbprs <- mapM (sqlscalar aenv) gbL
-  aggsE <- mapM (sqlaggregate aenv) projections
+  gbprs <- mapM (sqlscalar aenv penv) gbL
+  aggsE <- mapM (sqlaggregate aenv penv) projections
   let (nprojects, aggprs) = partitionEithers aggsE
 
   let ugbprs  = nub gbprs
@@ -727,8 +735,8 @@ sqlgroupby selects (SelectList slann projections) having gbL = do
   (gaid, gAliases) <- expraliasesGenM 0 ugbprs
   (_, aAliases)    <- expraliasesGenM (if null ugbprs then 1 else gaid) uaggprs
 
-  (hcnt, nhaving, havingaggs) <- maybe (return (0, Nothing, [])) (havingaggregates (zip aAliases uaggprs) aenv) having
-  ([], havingprs) <- mapM (sqlaggregate aenv) havingaggs >>= return . partitionEithers
+  (hcnt, nhaving, havingaggs) <- maybe (return (0, Nothing, [])) (havingaggregates (zip aAliases uaggprs) aenv penv) having
+  ([], havingprs) <- mapM (sqlaggregate aenv penv) havingaggs >>= return . partitionEithers
 
   let uhvprs = nub havingprs
   let (hvexprs, hvtypes) = unzip $ map (pexpr &&& prt) uhvprs
@@ -775,7 +783,7 @@ sqlgroupby selects (SelectList slann projections) having gbL = do
   rt <- tcolM $ recT $ kidt ++ vidt
   kt <- tcolM $ recT [("key", keyT), ("value", valT)]
 
-  hrexpr <- havingexpr rt tmap ral aenv nhaving rexpr
+  hrexpr <- havingexpr rt tmap ral (fst penv) aenv nhaving rexpr
 
   let aggprojections = zip aggsE $ map projectionexprs projections
   let sqlaggs = concatMap (\(ae, e) -> if isLeft ae then [] else [e]) aggprojections
@@ -784,17 +792,18 @@ sqlgroupby selects (SelectList slann projections) having gbL = do
   let naggprojects = map (\(i,_) -> SelExp emptyAnnotation $ Identifier emptyAnnotation $ Nmc i) vidt
   return (ParseResult hrexpr rt kt tmap ral aptrs, SelectList slann $ nprojects ++ naggprojects)
 
-  where havingexpr _ _ _ _ Nothing e = return e
-        havingexpr rt tmap alias (AEnv _ q) (Just he) e = do
+  where havingexpr _ _ _ _ _ Nothing e = return e
+        havingexpr rt tmap alias ptrs (AEnv _ q) (Just he) e = do
           nmert <- mertypeR rt tmap alias
           let aenv = AEnv nmert q
-          hpr <- sqlscalar aenv he
+          penv <- adgenv1R ptrs alias
+          hpr <- sqlscalar aenv penv he
           (iOpt, be) <- bindE aenv "x" (pexpr hpr)
           filterF <- maybe (return "__R") return iOpt >>= \a -> return $ EC.lambda a be
           return $ EC.applyMany (EC.project "filter" $ e) [filterF]
 
-        havingaggregates aggaprs aenv e = do
-          (a,b,c) <- extractaggregates aggaprs aenv 0 e
+        havingaggregates aggaprs aenv penv e = do
+          (a,b,c) <- extractaggregates aggaprs aenv penv 0 e
           nc <- mapM (\ae -> return $ SelExp emptyAnnotation ae) c
           return (a, Just b, nc)
 
@@ -807,20 +816,20 @@ sqltopk :: ParseResult -> MaybeBoolExpr -> MaybeBoolExpr -> SQLParseM ParseResul
 sqltopk sorted limitE offsetE = return sorted
 
 
-sqljoinexpr :: AEnv -> JoinExpr -> SQLParseM ParseResult
-sqljoinexpr aenv (JoinOn _ e) = sqlscalar aenv e
-sqljoinexpr _ je@(JoinUsing _ _) = throwE $ "Unhandled join expression" ++ show je
+sqljoinexpr :: AEnv -> ADGPtrEnv -> JoinExpr -> SQLParseM ParseResult
+sqljoinexpr aenv penv (JoinOn _ e) = sqlscalar aenv penv e
+sqljoinexpr _ _ je@(JoinUsing _ _) = throwE $ "Unhandled join expression" ++ show je
 
-sqlaggregate :: AEnv -> SelectItem -> SQLParseM (Either SelectItem ParseResult)
-sqlaggregate aenv si@(SelExp _ e) = sqlaggexpr aenv e >>= return . maybe (Left si) Right
-sqlaggregate aenv si@(SelectItem _ e nm) = do
-  prOpt <- sqlaggexpr aenv e
+sqlaggregate :: AEnv -> ADGPtrEnv -> SelectItem -> SQLParseM (Either SelectItem ParseResult)
+sqlaggregate aenv penv si@(SelExp _ e) = sqlaggexpr aenv penv e >>= return . maybe (Left si) Right
+sqlaggregate aenv penv si@(SelectItem _ e nm) = do
+  prOpt <- sqlaggexpr aenv penv e
   return $ maybe (Left si) (\pr -> Right $ pr { palias = Just (sqlnmcomponent nm) }) prOpt
 
-sqlprojection :: AEnv -> SelectItem -> SQLParseM ParseResult
-sqlprojection aenv (SelExp _ e) = sqlscalar aenv e
-sqlprojection aenv (SelectItem _ e nm) = do
-  pr <- sqlscalar aenv e
+sqlprojection :: AEnv -> ADGPtrEnv -> SelectItem -> SQLParseM ParseResult
+sqlprojection aenv penv (SelExp _ e) = sqlscalar aenv penv e
+sqlprojection aenv penv (SelectItem _ e nm) = do
+  pr <- sqlscalar aenv penv e
   return pr { palias = Just (sqlnmcomponent nm) }
 
 
@@ -831,27 +840,27 @@ pri0 :: Identifier -> K3 Type -> K3 Expression -> SQLParseM ParseResult
 pri0 i t e = return $ ParseResult e t t Nothing (Just i) []
 
 -- TODO: avg
-sqlaggexpr :: AEnv -> ScalarExpr -> SQLParseM (Maybe ParseResult)
-sqlaggexpr aenv (FunCall _ nm args) = do
+sqlaggexpr :: AEnv -> ADGPtrEnv -> ScalarExpr -> SQLParseM (Maybe ParseResult)
+sqlaggexpr aenv penv (FunCall _ nm args) = do
   let fn = sqlnm nm
   case (fn, args) of
-    ("sum"  , [e]) -> sqlscalar aenv e >>= aggop "sum_" (\a b -> EC.binop OAdd a b)
-    ("count", [e]) -> sqlscalar aenv e >>= aggop "cnt_" (\a _ -> EC.binop OAdd a $ EC.constant $ CInt 1)
-    ("min"  , [e]) -> sqlscalar aenv e >>= aggop "min_" (\a b -> EC.applyMany (EC.variable "min") [a, b])
-    ("max"  , [e]) -> sqlscalar aenv e >>= aggop "max_" (\a b -> EC.applyMany (EC.variable "max") [a, b])
+    ("sum"  , [e]) -> sqlscalar aenv penv e >>= aggop "sum_" (\a b -> EC.binop OAdd a b)
+    ("count", [e]) -> sqlscalar aenv penv e >>= aggop "cnt_" (\a _ -> EC.binop OAdd a $ EC.constant $ CInt 1)
+    ("min"  , [e]) -> sqlscalar aenv penv e >>= aggop "min_" (\a b -> EC.applyMany (EC.variable "min") [a, b])
+    ("max"  , [e]) -> sqlscalar aenv penv e >>= aggop "max_" (\a b -> EC.applyMany (EC.variable "max") [a, b])
     (_, _) -> return Nothing
 
   where
     aggop i f pr = return $ Just $ pr { pexpr  = EC.lambda "aggacc" $ f (EC.variable "aggacc") (pexpr pr)
                                       , palias = maybe Nothing (\j -> Just $ i ++ j) $ palias pr }
 
-sqlaggexpr _ _ = return Nothing
+sqlaggexpr _ _ _ = return Nothing
 
 
-extractaggregates :: [(Identifier, ParseResult)] -> AEnv -> Int -> ScalarExpr
+extractaggregates :: [(Identifier, ParseResult)] -> AEnv -> ADGPtrEnv -> Int -> ScalarExpr
                   -> SQLParseM (Int, ScalarExpr, [ScalarExpr])
-extractaggregates aggaprs aenv i e@(FunCall ann nm args) = do
-  aggeopt <- sqlaggexpr aenv e
+extractaggregates aggaprs aenv penv i e@(FunCall ann nm args) = do
+  aggeopt <- sqlaggexpr aenv penv e
   case aggeopt of
     Nothing -> do
       (ni, nxagg, nargs) <- foldM foldOnChild (i,[],[]) args
@@ -862,39 +871,47 @@ extractaggregates aggaprs aenv i e@(FunCall ann nm args) = do
                in return (i+1, Identifier emptyAnnotation nid, nex)
 
   where foldOnChild (j,acc,argacc) ce = do
-          (nj, nce, el) <- extractaggregates aggaprs aenv j ce
+          (nj, nce, el) <- extractaggregates aggaprs aenv penv j ce
           return (nj, acc++el, argacc++[nce])
 
         aggnm j = Nmc $ "h" ++ show j
 
-extractaggregates _ _ i e = return (i,e,[])
+extractaggregates _ _ _ i e = return (i,e,[])
 
 
 -- TODO: variable access in correlated subqueries, nulls
-sqlscalar :: AEnv -> ScalarExpr -> SQLParseM ParseResult
-sqlscalar _ (BooleanLit _ b)  = pr0 TC.bool $ EC.constant $ CBool b
+sqlscalar :: AEnv -> ADGPtrEnv -> ScalarExpr -> SQLParseM ParseResult
+sqlscalar _ _ (BooleanLit _ b) = pr0 TC.bool $ EC.constant $ CBool b
 
-sqlscalar _ (NumberLit _ i)   = if "." `isInfixOf` i
+sqlscalar _ _ (NumberLit _ i) = if "." `isInfixOf` i
                                   then pr0 TC.real $ EC.constant $ CReal $ read i
                                   else pr0 TC.int  $ EC.constant $ CInt $ read i
 
-sqlscalar _ (StringLit _ s)   = pr0 TC.string $ EC.constant $ CString s
+sqlscalar _ _ (StringLit _ s) = pr0 TC.string $ EC.constant $ CString s
 
-sqlscalar (AEnv (ret@(tnc -> (TRecord ids, ch)), _) _) (Identifier _ (sqlnmcomponent -> i)) =
-    maybe (varerror i) (\t -> pri0 i t $ EC.variable i) $ lookup i (zip ids ch)
-  where varerror n = throwE $ boxToString $ ["Unknown unqualified variable " ++ n] %$ prettyLines ret
+sqlscalar (AEnv (ret@(tnc -> (TRecord ids, ch)), _) _) penv (Identifier _ (sqlnmcomponent -> i)) = do
+    idx <- sqgidxM $ fst penv
+    p <- maybe (plkuperr i) return $ Map.lookup i idx
+    maybe (varerror i) (\t -> pri0 i t $ EC.variable i @+ (sqlAttrProp p)) $ lookup i (zip ids ch)
 
-sqlscalar (AEnv _ q) e@(QIdentifier _ nmcl) =
+  where
+    varerror n = throwE $ boxToString $ ["Unknown unqualified variable " ++ n] %$ prettyLines ret
+    plkuperr n = throwE $ "No attribute graph node found for " ++ n
+
+
+sqlscalar (AEnv _ q) penv e@(QIdentifier _ nmcl) =
   case nmcl of
     [x,y] -> qpair x y
     _ -> qiderr
 
-  where qpair (sqlnmcomponent -> nx) (sqlnmcomponent -> ny) =
-          let knx = "__" ++ nx in
+  where qpair (sqlnmcomponent -> nx) (sqlnmcomponent -> ny) = do
+          let knx = "__" ++ nx
+          qidx <- Map.fromList <$> mapM (\(i,ps) -> sqgidxM ps >>= return . (i,)) (snd penv)
+          p <- maybe (lkuperr knx) (\idx -> maybe (lkuperr ny) return $ Map.lookup ny idx) $ Map.lookup knx qidx
           case Map.lookup knx q of
             Just (tnc -> (TRecord ids, ch), _, _) ->
               let idt = zip ids ch in
-              maybe qidterr (\t -> pr0 t $ EC.project ny $ EC.variable knx) $ lookup ny idt
+              maybe qidterr (\t -> pr0 t $ (EC.project ny $ EC.variable knx) @+ sqlAttrProp p) $ lookup ny idt
 
             Just _  -> qidelemerr
             Nothing -> qidlkuperr
@@ -903,62 +920,62 @@ sqlscalar (AEnv _ q) e@(QIdentifier _ nmcl) =
         qidterr    = throwE $ unwords ["Unknown qualified identifier type:", show e, show $ Map.keys q]
         qidelemerr = throwE $ unwords ["Invalid element for qid:", show e, show $ Map.keys q]
         qidlkuperr = throwE $ unwords ["Unknown qid component:", show e, show $ Map.keys q]
+        lkuperr  v = throwE $ "No attribute graph node found for " ++ v
 
-
-sqlscalar aenv (FunCall _ nm args) = do
+sqlscalar aenv penv (FunCall _ nm args) = do
   let fn = sqlnm nm
   case sqloperator fn args of
     (Just (UnaryOp  o x))   -> do
-      xpr <- sqlscalar aenv x
+      xpr <- sqlscalar aenv penv x
       return (xpr {pexpr = EC.unop o $ pexpr xpr})
 
     (Just (BinaryOp o x y)) -> do
-      xpr <- sqlscalar aenv x
-      ypr <- sqlscalar aenv y
+      xpr <- sqlscalar aenv penv x
+      ypr <- sqlscalar aenv penv y
       pr0 (prt xpr) $ EC.binop o (pexpr xpr) $ pexpr ypr
 
     _ -> do
       case (fn, args) of
         ("!between", [_,_,_]) -> do
-          [apr,bpr,cpr] <- mapM (sqlscalar aenv) args
+          [apr,bpr,cpr] <- mapM (sqlscalar aenv penv) args
           pr0 TC.bool $ EC.binop OAnd (EC.binop OLeq (pexpr bpr) $ pexpr apr)
                                      $ EC.binop OLeq (pexpr apr) $ pexpr cpr
 
         (_, _) -> do
-          aprl <- mapM (sqlscalar aenv) args
+          aprl <- mapM (sqlscalar aenv penv) args
           pr0 TC.unit $ EC.applyMany (EC.variable fn) $ map pexpr aprl -- TODO: return type?
 
-sqlscalar (AEnv (ret@(tag -> TRecord ids), _) _) (Star _) =
+sqlscalar (AEnv (ret@(tag -> TRecord ids), _) _) _ (Star _) =
   pr0 ret $ recE $ map (\i -> (i, EC.variable i)) ids
 
-sqlscalar (AEnv _ q) (QStar _ (sqlnmcomponent -> n)) = do
+sqlscalar (AEnv _ q) _ (QStar _ (sqlnmcomponent -> n)) = do
   let kn = "__" ++ n
   case Map.lookup kn q of
     Just (qt@(tag -> TRecord ids), _, _) -> pr0 qt $ recE $ map (\i -> (i, EC.project i $ EC.variable kn)) ids
     Nothing -> throwE $ "Invalid qualified name in qstar"
     Just _ -> throwE $ "Invalid element type in qualified environment"
 
-sqlscalar aenv (Case _ whense elsee) = do
-  prl <- forM whense $ \(whenel, thene) -> (,) <$> mapM (sqlscalar aenv) whenel <*> sqlscalar aenv thene
+sqlscalar aenv penv (Case _ whense elsee) = do
+  prl <- forM whense $ \(whenel, thene) -> (,) <$> mapM (sqlscalar aenv penv) whenel <*> sqlscalar aenv penv thene
   (eT, eE, wprl) <- case (prl, elsee) of
     ([], Nothing) -> throwE $ "Invalid case expression"
     (l, Nothing) -> let t = prt $ snd $ head l
                     in either throwE (\de -> return (t, de, l)) $ defaultExpression t
-    (l, Just e) -> sqlscalar aenv e >>= \epr -> return (prt epr, pexpr epr, l)
+    (l, Just e) -> sqlscalar aenv penv e >>= \epr -> return (prt epr, pexpr epr, l)
 
   pr0 eT $ foldl (\accE (wprs, tpr) -> EC.ifThenElse (andE wprs) (pexpr tpr) accE) eE $ reverse wprl
 
   where andE [] = EC.constant $ CBool False
         andE (h:t) = foldl (\accE wpr -> EC.binop OAnd accE $ pexpr wpr) (pexpr h) t
 
-sqlscalar aenv (CaseSimple _ e whense elsee) = do
-  vpr <- sqlscalar aenv e
-  prl <- forM whense $ \(whenel, thene) -> (,) <$> mapM (sqlscalar aenv) whenel <*> sqlscalar aenv thene
+sqlscalar aenv penv (CaseSimple _ e whense elsee) = do
+  vpr <- sqlscalar aenv penv e
+  prl <- forM whense $ \(whenel, thene) -> (,) <$> mapM (sqlscalar aenv penv) whenel <*> sqlscalar aenv penv thene
   (eT, eE, wprl) <- case (prl, elsee) of
     ([], Nothing) -> throwE $ "Invalid case expression"
     (l, Nothing) -> let t = prt $ snd $ head l
                     in either throwE (\de -> return (t, de, l)) $ defaultExpression t
-    (l, Just ee) -> sqlscalar aenv ee >>= \epr -> return (prt epr, pexpr epr, l)
+    (l, Just ee) -> sqlscalar aenv penv ee >>= \epr -> return (prt epr, pexpr epr, l)
 
   pr0 eT $ memoE (pexpr vpr) $ \ve ->
     foldl (\accE (wprs, tpr) -> EC.ifThenElse (andE ve wprs) (pexpr tpr) accE) eE $ reverse wprl
@@ -966,17 +983,17 @@ sqlscalar aenv (CaseSimple _ e whense elsee) = do
   where andE _ [] = EC.constant $ CBool False
         andE ve (h:t) = foldl (\accE wpr -> EC.binop OAnd accE $ EC.binop OEqu ve $ pexpr wpr) (EC.binop OEqu ve $ pexpr h) t
 
-sqlscalar _ (ScalarSubQuery _ qe) = sqlquery qe
+sqlscalar _ _ (ScalarSubQuery _ qe) = sqlquery qe
 
-sqlscalar _ (Exists _ qe) = do
+sqlscalar _ _ (Exists _ qe) = do
   qpr <- sqlquery qe
   pr0 TC.bool $ emptyE False $ pexpr qpr
 
-sqlscalar aenv (InPredicate _ e isIn inl) = do
-  epr <- sqlscalar aenv e
+sqlscalar aenv penv (InPredicate _ e isIn inl) = do
+  epr <- sqlscalar aenv penv e
   case inl of
     InList _ el -> do
-      eprl <- mapM (sqlscalar aenv) el
+      eprl <- mapM (sqlscalar aenv penv) el
       case eprl of
         [] -> pr0 TC.bool $ EC.constant $ CBool $ not isIn
         (h:t) -> pr0 TC.bool $ memoE (immutE $ pexpr epr) $
@@ -989,7 +1006,7 @@ sqlscalar aenv (InPredicate _ e isIn inl) = do
   where testE ve pr = EC.binop (if isIn then OEqu else ONeq) ve $ pexpr pr
         mergeE accE nE = EC.binop (if isIn then OOr else OAnd) accE nE
 
-sqlscalar _ e = throwE $ "Unhandled scalar expr: " ++ show e
+sqlscalar _ _ e = throwE $ "Unhandled scalar expr: " ++ show e
 
 
 sqloperator :: String -> ScalarExprList -> Maybe OperatorFn
