@@ -141,6 +141,7 @@ simplifyCPPStatement stmt =
   case stmt of
     Assignment x y -> Assignment <$> simplifyCPPExpression x <*> simplifyCPPExpression y
     Block ss -> Block <$> mapM simplifyCPPStatement ss
+    Comment s -> return (Comment s)
     ForEach i t e s -> ForEach i <$> simplifyCPPType t <*> simplifyCPPExpression e <*> simplifyCPPStatement s
     Forward d -> Forward <$> simplifyCPPDeclaration d
     IfThenElse p ts es -> IfThenElse <$> simplifyCPPExpression p <*> mapM simplifyCPPStatement ts

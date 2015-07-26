@@ -242,15 +242,19 @@ materializationE e@(Node (t :@: as) cs)
               rf <- materializationE c
               mn <- makeCurrentPP (getProvenance c) >>= isMoveableNow
               return (if mn then defaultDecision { inD = Moved } else defaultDecision, rf, mn)
-        let (is', cs') = unzip . sortBy (comparing fst) $ zip is cs
-        (decisions, fs, mns) <- unzip3 <$> zipWithM decisionForField (reverse cs') (reverse $ tail $ tails cs')
-        zipWithM_ (setDecision (getUID e)) is' decisions
+
+        let cds = reverse $ zip cs (tail $ tails cs)
+        (decisions, fs, mns) <- unzip3 . reverse <$> mapM (uncurry decisionForField) cds
+        zipWithM_ (setDecision (getUID e)) is decisions
         ds <- dLookupAll (getUID e)
-        let fs' = map (\i -> fs !! (fromJust $ elemIndex i $ reverse is')) is
-        eds <- downstreams <$> get
-        cs'' <- zip cs' . repeat <$> gets currentActivePFVar
-        say (getUID e) $ MRRecord $ zip4 is' mns (map (eds ++) $ tail $ tails cs'') decisions
-        return (Node (t :@: (EMaterialization ds:as)) fs')
+        -- let (is', cs') = unzip . sortBy (comparing fst) $ zip is cs
+        -- (decisions, fs, mns) <- unzip3 <$> zipWithM decisionForField (reverse cs') (reverse $ tail $ tails cs')
+        -- zipWithM_ (setDecision (getUID e)) is' decisions
+        -- ds <- dLookupAll (getUID e)
+        -- let fs' = map (\i -> fs !! (fromJust $ elemIndex i $ reverse is')) is
+        -- cs'' <- zip cs' . repeat <$> gets currentActivePFVar
+        -- say (getUID e) $ MRRecord $ zip4 is' mns (map (eds ++) $ tail $ tails cs'') decisions
+        return (Node (t :@: (EMaterialization ds:as)) fs)
 
       EOperate OApp -> do
         let [f, x] = cs

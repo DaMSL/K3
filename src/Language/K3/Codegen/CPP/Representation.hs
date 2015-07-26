@@ -269,6 +269,7 @@ instance Stringifiable Declaration where
 data Statement
     = Assignment Expression Expression
     | Block [Statement]
+    | Comment String
     | ForEach Identifier Type Expression Statement
     | Forward Declaration
     | IfThenElse Expression [Statement] [Statement]
@@ -280,6 +281,7 @@ data Statement
 instance Stringifiable Statement where
     stringify (Assignment a e) = stringify a <+> equals <+> stringify e <> semi
     stringify (Block ss) = hangBrace (vsep [stringify s | s <- ss])
+    stringify (Comment s) = "//" <+> fromString s
     stringify (ForEach i t e s)
         = "for" <+> parens (stringify t <+> fromString i <> colon <+> stringify e) <+> stringify s
     stringify (Forward d) = stringify d <> semi
