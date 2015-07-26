@@ -35,7 +35,6 @@ import Control.Applicative
 import Control.Arrow
 import Control.Monad
 
-import Data.Function
 import Data.Maybe
 import Data.Tree
 
@@ -104,7 +103,11 @@ parseK3 noFeed includePaths s = do
   subFiles      <- processIncludes searchPaths (lines s) []
   subFileCtnts  <- trace (unwords ["subfiles:", show subFiles]) $ mapM readFile subFiles
   let fileContents = map (False,) subFileCtnts ++ [(True,s)]
-  let parseE       = foldl chainValidParse (return (DC.role defaultRoleName [], Nothing)) fileContents
+  parseK3WithIncludes noFeed fileContents $ DC.role defaultRoleName []
+
+parseK3WithIncludes :: Bool -> [(Bool, String)] -> K3 Declaration -> IO (Either String (K3 Declaration))
+parseK3WithIncludes noFeed fileContents initProg = do
+  let parseE = foldl chainValidParse (return (initProg, Nothing)) fileContents
   case parseE of
     Left msg -> return $ Left msg
     Right (prog, _) -> return $ Right prog
@@ -113,11 +116,8 @@ parseK3 noFeed includePaths s = do
 
     parseAndCompose src asDriver (prog, parseEnvOpt) = do
       (prog', nEnv) <- parseAtLevel asDriver parseEnvOpt src
-      let (ptnc, ptnc') = ((,) `on` (tag &&& children)) prog prog'
-      case (ptnc, ptnc') of
-        ((DRole n, ch), (DRole n2, ch2))
-          | n == defaultRoleName && n == n2 -> return (DC.role n $ ch++ch2, Just $ nEnv)
-        _                                   -> programError
+      nprog <- concatProgram prog prog'
+      return (nprog, Just $ nEnv)
 
     parseAtLevel asDriver parseEnvOpt src =
       stringifyError $ flip (runK3Parser parseEnvOpt) src $ do
@@ -125,7 +125,14 @@ parseK3 noFeed includePaths s = do
         env  <- P.getState
         return (decl, env)
 
-    programError = Left "Invalid program, expected top-level role."
+stitchK3Includes :: Bool -> [FilePath] -> [String] -> K3 Declaration -> IO (Either String (K3 Declaration))
+stitchK3Includes noFeed includePaths includes prog = do
+  searchPaths   <- if null includePaths then getSearchPath else return includePaths
+  subFiles      <- processIncludes searchPaths includes []
+  subFileCtnts  <- trace (unwords ["subfiles:", show subFiles]) $ mapM readFile subFiles
+  let fileContents = map (False,) subFileCtnts
+  iprogE <- parseK3WithIncludes noFeed fileContents $ DC.role defaultRoleName []
+  return (iprogE >>= \p -> concatProgram p prog)
 
 
 {- K3 grammar parsers -}
@@ -1173,7 +1180,7 @@ trackEndpoint eSpec d
 -- | Completes any stateful processing needed for the role.
 --   This includes handling 'feed' clauses, and checking and qualifying role defaults.
 postProcessRole :: [K3 Declaration] -> EnvFrame -> K3Parser [K3 Declaration]
-postProcessRole decls frame = 
+postProcessRole decls frame =
   mergeFrame frame >> processEndpoints frame
 
   where processEndpoints s = addBuilderDecls $ map (annotateEndpoint s . attachSource s) decls

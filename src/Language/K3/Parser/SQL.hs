@@ -44,6 +44,8 @@ import qualified Language.K3.Core.Constructor.Literal     as LC
 import qualified Language.K3.Core.Constructor.Type        as TC
 
 import Language.K3.Analysis.Core hiding ( ScopeEnv )
+import Language.K3.Analysis.HMTypes.Inference ( inferProgramTypes, translateProgramTypes )
+
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
@@ -114,7 +116,8 @@ data SQLEnv = SQLEnv { relations :: RTypeEnv
                      , adgraph   :: ADGraph
                      , adpsym    :: ParGenSymS
                      , scopeenv  :: ScopeEnv
-                     , spsym     :: ParGenSymS }
+                     , spsym     :: ParGenSymS
+                     , stgsym    :: ParGenSymS }
             deriving (Eq, Show)
 
 -- | A stateful SQL parsing monad.
@@ -123,7 +126,7 @@ type SQLParseM = ExceptT String (State SQLEnv)
 {- Data.Text helpers -}
 
 sqlenv0 :: SQLEnv
-sqlenv0 = SQLEnv Map.empty Map.empty contigsymS Map.empty contigsymS
+sqlenv0 = SQLEnv Map.empty Map.empty contigsymS Map.empty contigsymS contigsymS
 
 -- | Relation type accessors
 stlkup :: RTypeEnv -> Identifier -> Except String (K3 Type)
@@ -179,6 +182,10 @@ sqcext :: SQLEnv -> AEnv -> (ScopePtr, SQLEnv)
 sqcext senv n = (ptr, senv {scopeenv = ne, spsym = nsym})
   where (ptr, nsym, ne) = scext (scopeenv senv) n (spsym senv)
 
+sqsext :: SQLEnv -> (Int, SQLEnv)
+sqsext senv = (n, senv {stgsym = nsym})
+  where (nsym, n) = gensym (stgsym senv)
+
 
 -- | Monadic accessors.
 sqelkupM :: Identifier -> SQLParseM (K3 Type)
@@ -198,6 +205,9 @@ sqclkupM p = get >>= liftExceptM . (\env -> sqclkup env p)
 
 sqcextM :: AEnv -> SQLParseM ScopePtr
 sqcextM n = get >>= \env -> return (sqcext env n) >>= \(r, nenv) -> put nenv >> return r
+
+sqsextM :: SQLParseM Int
+sqsextM = get >>= \env -> return (sqsext env) >>= \(i, nenv) -> put nenv >> return i
 
 
 {- Attribute dependency graph accessors. -}
@@ -296,6 +306,10 @@ adgchaseM p = get >>= \env -> aux (adgraph env) [] p
 
 runSQLParseM :: SQLEnv -> SQLParseM a -> (Either String a, SQLEnv)
 runSQLParseM env m = flip runState env $ runExceptT m
+
+runSQLParseEM :: SQLEnv -> SQLParseM a -> Either String (a, SQLEnv)
+runSQLParseEM env m = r >>= return . (,e)
+  where (r,e) = runSQLParseM env m
 
 evalSQLParseM :: SQLEnv -> SQLParseM a -> Either String a
 evalSQLParseM env m = fst $ runSQLParseM env m
@@ -503,6 +517,9 @@ sqlAEnvProp p = EProperty $ Left ("SQLAEnv", Just $ LC.int p)
 sqlPEnvProp :: ADGPtrEnv -> Annotation Expression
 sqlPEnvProp penv = EProperty $ Left ("SQLPEnv", Just $ LC.string $ show penv)
 
+sqlStagedProp :: Annotation Expression
+sqlStagedProp = EProperty $ Left ("Staged", Nothing)
+
 isSqlAttrProp :: Annotation Expression -> Bool
 isSqlAttrProp (EProperty (Left ("SQLAttr", _))) = True
 isSqlAttrProp _ = False
@@ -523,6 +540,15 @@ isSqlPEnvProp :: Annotation Expression -> Bool
 isSqlPEnvProp (EProperty (Left ("SQLPEnv", _))) = True
 isSqlPEnvProp _ = False
 
+isSqlStagedProp :: Annotation Expression -> Bool
+isSqlStagedProp (EProperty (Left ("Staged", _))) = True
+isSqlStagedProp _ = False
+
+immutT :: K3 Type -> K3 Type
+immutT t = t @<- ((filter (not . isTQualified) $ annotations t) ++ [TImmutable])
+
+mutT :: K3 Type -> K3 Type
+mutT t = t @<- ((filter (not . isTQualified) $ annotations t) ++ [TMutable])
 
 immutE :: K3 Expression -> K3 Expression
 immutE e = e @<- ((filter (not . isEQualified) $ annotations e) ++ [EImmutable])
@@ -530,11 +556,15 @@ immutE e = e @<- ((filter (not . isEQualified) $ annotations e) ++ [EImmutable])
 mutE :: K3 Expression -> K3 Expression
 mutE e = e @<- ((filter (not . isEQualified) $ annotations e) ++ [EMutable])
 
+tupE :: [K3 Expression] -> K3 Expression
+tupE [e] = immutE e
+tupE el = EC.tuple $ map immutE el
+
 recE :: [(Identifier, K3 Expression)] -> K3 Expression
-recE ide = EC.record $ map (\(i,e) -> (i, e @<- ((filter (not . isEQualified) $ annotations e) ++ [EImmutable]))) ide
+recE ide = EC.record $ map (\(i,e) -> (i, immutE e)) ide
 
 recT :: [(Identifier, K3 Type)] -> K3 Type
-recT idt = TC.record $ map (\(i,t) -> (i, t @<- ((filter (not . isTQualified) $ annotations t) ++ [TImmutable]))) idt
+recT idt = TC.record $ map (\(i,t) -> (i, immutT t)) idt
 
 projectE :: Identifier -> Identifier -> (Identifier, K3 Expression)
 projectE i f = (f, EC.project f $ EC.variable i)
@@ -621,32 +651,6 @@ emptyE asEmpty colexpr = EC.binop (if asEmpty then OEqu else ONeq)
 
 
 {- Parsing toplevel. -}
-k3ofsql :: Bool -> Bool -> FilePath -> IO ()
-k3ofsql asSyntax printParse path = do
-  stmtE <- parseStatementsFromFile path
-  either (putStrLn . show) k3program stmtE
-
-  where
-    k3program stmts = do
-      void $ if printParse then printStmts stmts else return ()
-      let declsM = mapM sqlstmt stmts
-      let (progE, finalSt) = first (either Left (Right . DC.role "__global" . concat)) $ runSQLParseM sqlenv0 declsM
-      if asSyntax
-        then either putStrLn (either putStrLn putStrLn . programS) progE
-        else either putStrLn (putStrLn . pretty) progE
-      printState finalSt
-
-    printStmts stmts = do
-      putStrLn $ replicate 40 '='
-      void $ forM stmts $ \s -> putStrLn $ show s
-      putStrLn $ replicate 40 '='
-
-    printState st = do
-      putStrLn $ replicate 40 '=' ++ " Dependency Graph"
-      forM_ (Map.toList $ adgraph st) $ \(p, node) ->
-        putStrLn $ unwords [show p, show $ adnn node, show $ adnr node, show $ adnch node ]
-
-
 sqlstmt :: Statement -> SQLParseM [K3 Declaration]
 sqlstmt (CreateTable _ nm attrs _) = do
   t <- sqltabletype attrs
@@ -662,8 +666,8 @@ sqlquerystmt :: QueryExpr -> SQLParseM [K3 Declaration]
 sqlquerystmt q = do
   qpr <- sqlquery q
   qexpr <- sqloptimize $ pexpr qpr
-  return [ DC.global "result" (pkt qpr) Nothing
-         , DC.trigger "query" TC.unit $ EC.lambda "_" $ EC.assign "result" qexpr ]
+  return [ DC.global "result" (mutT $ pkt qpr) Nothing
+         , DC.trigger "query" TC.unit $ EC.lambda "_" $ EC.assign "result" (qexpr @+ sqlStagedProp) ]
 
 
 -- | Expression construction, and inlined type inference.
@@ -1277,7 +1281,7 @@ sqloptimize queryexpr = do
           return $ PCJoin lE rE predE cE [] [] [] jAs
 
           where
-            er e = EC.record [("elem", e)]
+            er e = recE [("elem", e)]
             composeE = case outE of
               PLam2Bind i j _ _ _ _ _ _ -> return $
                 PLam2App i j mapE (er $ PApp2 outE (EC.variable i) (EC.variable j) [] []) [] [] []
@@ -1443,13 +1447,45 @@ sqloptimize queryexpr = do
         extractJoinKey _ _ (lacc,racc,uacc) e = return (lacc, racc, uacc ++ [e])
 
         mkJoinKey aenv alias l = do
-          (iOpt, be) <- bindE aenv "x" $ EC.tuple l
+          (iOpt, be) <- bindE aenv "x" $ tupE l
           i <- maybe (return alias) return iOpt
           return $ EC.lambda i be
 
         pruneConjuncts  l = filter (\e -> case tag e of {EConstant (CBool True) -> False; _ -> True}) l
         mkConjunctive  [] = return $ EC.constant $ CBool True
         mkConjunctive   l = return $ foldl1 (\a b -> EC.binop OAnd a b) l
+
+
+sqlstages :: K3 Declaration -> SQLParseM (K3 Declaration)
+sqlstages prog = do
+  tprog <- either throwE return $ do
+      (qtprog,_) <- inferProgramTypes $ stripTypeAndEffectAnns prog
+      translateProgramTypes qtprog
+  (newDecls, nprog) <- foldExpression stageExpr [] tprog
+  case tnc nprog of
+    (DRole n, declch) -> return $ DC.role n $ declch ++ newDecls
+    (tg,_) -> throwE $ "Invalid program toplevel: " ++ show tg
+
+  where
+    stageExpr acc e = foldMapRebuildTree stage acc e
+
+    stage acc ch n@((@~ isSqlStagedProp) -> Just (EProperty _)) = return $ (concat acc, replaceCh n ch)
+    stage acc ch n@(PJoin _ _ _ _ _) = mkStage acc ch n
+    stage acc ch n@(PEJoin _ _ _ _ _ _) = mkStage acc ch n
+    stage acc ch n@(PGroupBy _ _ _ _) = mkStage acc ch n
+    stage acc ch n = return (concat acc, replaceCh n ch)
+
+    mkStage acc ch n =
+      case find isEType $ annotations n of
+        Just (EType t) -> do
+          stgid <- sqsextM
+          let dsid    = "output" ++ show stgid
+          let tid     = "stage" ++ show stgid
+          let stgds   = DC.global dsid (mutT t) Nothing
+          let stgtrig = DC.trigger tid TC.unit $ EC.lambda "_" $ EC.assign dsid $ replaceCh n ch
+          return (concat acc ++ [stgds, stgtrig], EC.variable dsid)
+
+        _ -> throwE $ boxToString $ ["No type found for"] %$ prettyLines n
 
 
 {- Optimization patterns -}
@@ -1488,13 +1524,22 @@ pattern PMap cE lamE <- PPrjApp cE "map" _ lamE _
 
 pattern PJoin lE rE predE outE jAs <- PPrjApp3 lE "join" _ rE predE outE _ _ jAs
 
-pattern PEJoin lE rE lkeyE rkeyE outE jAs <- PPrjApp4 lE "join" _ rE lkeyE rkeyE outE _ _ _ jAs
+pattern PEJoin lE rE lkeyE rkeyE outE jAs <- PPrjApp4 lE "equijoin" _ rE lkeyE rkeyE outE _ _ _ jAs
+
+pattern PGroupBy cE gbF accF zE <- PPrjApp3 cE "groupBy" _ gbF accF zE _ _ _
+
+pattern PCFilter cE lamE pAs app1As <- PPrjApp cE "filter" pAs lamE app1As
+
+pattern PCMap cE lamE pAs app1As <- PPrjApp cE "map" pAs lamE app1As
 
 pattern PCJoin lE rE predE outE pAs app1As app2As app3As =
   PPrjApp3 lE "join" pAs rE predE outE app1As app2As app3As
 
 pattern PCEJoin lE rE lkeyE rkeyE outE pAs app1As app2As app3As app4As =
   PPrjApp4 lE "equijoin" pAs rE lkeyE rkeyE outE app1As app2As app3As app4As
+
+pattern PCGroupBy cE gbF accF zE fAs app1As app2As app3As =
+  PPrjApp3 cE "groupBy" fAs gbF accF zE app1As app2As app3As
 
 pattern PFilterJoin lE rE filterE predE outE jAs <- PFilter (PJoin lE rE predE outE jAs) filterE
 

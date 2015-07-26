@@ -10,11 +10,12 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Except
 import Control.Monad.State
 
-import Criterion.Measurement
-
 import Data.Char
 import Data.Maybe
+import qualified Data.Map as Map
 
+import Criterion.Measurement
+import Database.HsSqlPpp.Parser
 import GHC.IO.Encoding
 import System.Directory (getCurrentDirectory)
 
@@ -28,6 +29,9 @@ import qualified Language.K3.Core.Constructor.Declaration as DC
 import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
+
+import Language.K3.Parser ( stitchK3Includes )
+import Language.K3.Parser.SQL hiding ( liftEitherM, reasonM )
 
 import Language.K3.Metaprogram.DataTypes
 import Language.K3.Metaprogram.Evaluation
@@ -265,3 +269,43 @@ initialize opts = liftIO $ do
 
   void $ mapM_ configureByInstruction $ logging $ inform opts
     -- ^ Process logging directives
+
+sql :: SQLOptions -> Options -> DriverM ()
+sql sqlopts opts = do
+  stmtE <- liftIO $ parseStatementsFromFile path
+  either (liftIO . putStrLn . show) k3program stmtE
+
+  where
+    dependencies = map (\s -> "include \"" ++ s ++ "\"") ["Annotation/Collection.k3"]
+    path = inputProgram $ input opts
+    includePaths = includes $ paths opts
+    nf = noFeed $ input opts
+    printParse = sqlPrintParse sqlopts
+    asSyntax = case sqlPrintMode sqlopts of
+                 PrintSyntax -> True
+                 _ -> False
+
+    k3program stmts = do
+      void $ if printParse then printStmts stmts else return ()
+      (prog, psqlenv) <- liftEitherM $ runSQLParseEM sqlenv0 $ do
+          qstmts <- mapM sqlstmt stmts;
+          return $ DC.role "__global" $ concat qstmts
+      stageprogram psqlenv prog
+
+    stageprogram env prog = do
+      sprog <- liftE $ stitchK3Includes nf includePaths dependencies prog
+      mprog <- metaprogram opts sprog
+      (nprog, psqlenv) <- liftEitherM $ runSQLParseEM env $ sqlstages mprog
+      encprog <- if asSyntax then liftEitherM $ programS nprog else return $ pretty nprog
+      liftIO $ putStrLn encprog
+      printState psqlenv
+
+    printStmts stmts = liftIO $ do
+      putStrLn $ replicate 40 '='
+      void $ forM stmts $ \s -> putStrLn $ show s
+      putStrLn $ replicate 40 '='
+
+    printState st = liftIO $ do
+      putStrLn $ replicate 40 '=' ++ " Dependency Graph"
+      forM_ (Map.toList $ adgraph st) $ \(p, node) ->
+        putStrLn $ unwords [show p, show $ adnn node, show $ adnr node, show $ adnch node ]
