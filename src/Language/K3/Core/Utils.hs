@@ -107,6 +107,7 @@ module Language.K3.Core.Utils
 , stripDeclTypeAndEffectAnns
 , stripAllTypeAndEffectAnns
 
+, concatProgram
 , indexProgramDecls
 ) where
 
@@ -133,6 +134,7 @@ import Language.K3.Core.Literal
 import Language.K3.Core.Metaprogram
 
 import qualified Language.K3.Core.Constructor.Expression as EC
+import qualified Language.K3.Core.Constructor.Declaration as DC
 
 import Language.K3.Utils.Pretty hiding ( wrap )
 
@@ -1021,6 +1023,14 @@ collectProgramUIDs d = fst $ foldProgramUID (flip (:)) [] d
 
 duplicateProgramUIDs :: K3 Declaration -> [UID]
 duplicateProgramUIDs d = let uids = collectProgramUIDs d in uids \\ nub uids
+
+concatProgram :: K3 Declaration -> K3 Declaration -> Either String (K3 Declaration)
+concatProgram (tnc -> ptnc) (tnc -> ptnc') =
+  case (ptnc, ptnc') of
+    ((DRole n, ch), (DRole n2, ch2)) | n == n2 -> return $ DC.role n $ ch++ch2
+    _ -> programError
+
+  where programError = Left "Invalid program, expected top-level role."
 
 indexProgramDecls :: (Monad m) => K3 Declaration -> m (Map Int (K3 Declaration))
 indexProgramDecls prog = foldTree indexDecl Map.empty prog
