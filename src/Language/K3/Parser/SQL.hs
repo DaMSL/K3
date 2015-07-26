@@ -1,10 +1,11 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns  #-}
 
 module Language.K3.Parser.SQL where
 
-import Control.Arrow ( (***), (&&&), first )
+import Control.Arrow ( (***), (&&&), first, second )
 import Control.Monad
 import Control.Monad.State
 import Control.Monad.Trans.Except
@@ -12,7 +13,8 @@ import Control.Monad.Trans.Except
 import Data.Functor.Identity
 import Data.Monoid
 import Data.Either ( isLeft, partitionEithers )
-import Data.List ( find, isInfixOf, nub, reverse )
+import Data.List ( find, intersect, isInfixOf, nub, reverse )
+import Data.Tree
 import Data.Tuple ( swap )
 
 import Data.Map ( Map )
@@ -33,6 +35,7 @@ import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
+import Language.K3.Core.Literal
 import Language.K3.Core.Utils
 
 import qualified Language.K3.Core.Constructor.Declaration as DC
@@ -40,6 +43,7 @@ import qualified Language.K3.Core.Constructor.Expression  as EC
 import qualified Language.K3.Core.Constructor.Literal     as LC
 import qualified Language.K3.Core.Constructor.Type        as TC
 
+import Language.K3.Analysis.Core hiding ( ScopeEnv )
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
@@ -60,15 +64,6 @@ data ADGNode = ADGNode { adnn  :: Identifier
               deriving (Eq, Show)
 
 type ADGraph = Map ADGPtr ADGNode
-
--- | Parsing state environment.
-data SQLEnv = SQLEnv { relations :: RTypeEnv
-                     , adgraph   :: ADGraph
-                     , adpsym    :: ParGenSymS }
-            deriving (Eq, Show)
-
--- | A stateful SQL parsing monad.
-type SQLParseM = ExceptT String (State SQLEnv)
 
 -- | Relational-K3 type mapping, indicating
 --   i. no type prefix
@@ -110,11 +105,25 @@ data ParseResult = ParseResult { pexpr  :: K3 Expression
                                , pptrs  :: [ADGPtr] }
                   deriving (Eq, Show)
 
+-- | Scope environments.
+type ScopePtr = Int
+type ScopeEnv = Map ScopePtr AEnv
+
+-- | Parsing state environment.
+data SQLEnv = SQLEnv { relations :: RTypeEnv
+                     , adgraph   :: ADGraph
+                     , adpsym    :: ParGenSymS
+                     , scopeenv  :: ScopeEnv
+                     , spsym     :: ParGenSymS }
+            deriving (Eq, Show)
+
+-- | A stateful SQL parsing monad.
+type SQLParseM = ExceptT String (State SQLEnv)
 
 {- Data.Text helpers -}
 
 sqlenv0 :: SQLEnv
-sqlenv0 = SQLEnv Map.empty Map.empty contigsymS
+sqlenv0 = SQLEnv Map.empty Map.empty contigsymS Map.empty contigsymS
 
 -- | Relation type accessors
 stlkup :: RTypeEnv -> Identifier -> Except String (K3 Type)
@@ -136,6 +145,15 @@ sgext :: ADGraph -> ADGNode -> ParGenSymS -> (ADGPtr, ParGenSymS, ADGraph)
 sgext g n sym = (ptr, nsym, Map.insert ptr n g)
   where (nsym, ptr) = gensym sym
 
+-- | Scope environment accessors.
+sclkup :: ScopeEnv -> ScopePtr -> Except String AEnv
+sclkup e p = maybe err return $ Map.lookup p e
+  where err = throwE $ "Unknown scope in sql parser environment: " ++ show p
+
+scext :: ScopeEnv -> AEnv -> ParGenSymS -> (ScopePtr, ParGenSymS, ScopeEnv)
+scext se ae sym = (ptr, nsym, Map.insert ptr ae se)
+  where (nsym, ptr) = gensym sym
+
 
 -- | State accessors.
 sqelkup :: SQLEnv -> Identifier -> Except String (K3 Type)
@@ -154,6 +172,14 @@ sqgext :: SQLEnv -> ADGNode -> (ADGPtr, SQLEnv)
 sqgext senv n = (ptr, senv {adgraph = ng, adpsym = nsym})
   where (ptr, nsym, ng) = sgext (adgraph senv) n (adpsym senv)
 
+sqclkup :: SQLEnv -> ScopePtr -> Except String AEnv
+sqclkup senv p = sclkup (scopeenv senv) p
+
+sqcext :: SQLEnv -> AEnv -> (ScopePtr, SQLEnv)
+sqcext senv n = (ptr, senv {scopeenv = ne, spsym = nsym})
+  where (ptr, nsym, ne) = scext (scopeenv senv) n (spsym senv)
+
+
 -- | Monadic accessors.
 sqelkupM :: Identifier -> SQLParseM (K3 Type)
 sqelkupM n = get >>= liftExceptM . (\env -> sqelkup env n)
@@ -167,6 +193,16 @@ sqglkupM p = get >>= liftExceptM . (\env -> sqglkup env p)
 sqgextM :: ADGNode -> SQLParseM ADGPtr
 sqgextM n = get >>= \env -> return (sqgext env n) >>= \(r, nenv) -> put nenv >> return r
 
+sqclkupM :: ScopePtr -> SQLParseM AEnv
+sqclkupM p = get >>= liftExceptM . (\env -> sqclkup env p)
+
+sqcextM :: AEnv -> SQLParseM ScopePtr
+sqcextM n = get >>= \env -> return (sqcext env n) >>= \(r, nenv) -> put nenv >> return r
+
+
+{- Attribute dependency graph accessors. -}
+
+-- | Inverse indexing for attribute nodes.
 sqgidxM :: [ADGPtr] -> SQLParseM (Map Identifier ADGPtr)
 sqgidxM ptrs = do
   l <- mapM (\p -> sqglkupM p >>= \node -> return (adnn node, p)) ptrs
@@ -237,6 +273,25 @@ sqgextExprM (Just n) t exprs penv = do
 
 sqgextExprM _ _ _ _ = throwE "Invalid expr arguments when extending attribute graph"
 
+-- | Returns the set of pointers present in an pointer environment.
+adgproots :: ADGPtrEnv -> [ADGPtr]
+adgproots penv = nub $ fst penv ++ (concatMap snd $ snd penv)
+
+-- | Chases a given attribute pointer to its set of source nodes.
+adgchaseM :: ADGPtr -> SQLParseM [ADGNode]
+adgchaseM p = get >>= \env -> aux (adgraph env) [] p
+  where aux g path n = case Map.lookup n g of
+          Nothing -> lookuperr n
+          Just node ->
+            if null $ adnch node then return [node]
+            else
+              let nch   = filter (`notElem` path) $ adnch node
+                  npath = path ++ nch
+              in mapM (aux g npath) nch >>= return . concat
+
+        lookuperr n = throwE $ "No attribute graph node found for " ++ show n
+
+
 {- SQLParseM helpers. -}
 
 runSQLParseM :: SQLEnv -> SQLParseM a -> (Either String a, SQLEnv)
@@ -261,6 +316,7 @@ liftEitherM = either throwE return
 
 
 {- Attribute environment helpers. -}
+
 mrtype :: ParseResult -> SQLParseM MRType
 mrtype r = telemM (prt r) >>= \ret -> return (ret, ptmap r, pptrs r)
 
@@ -297,6 +353,16 @@ aenv0 u q = AEnv u q
 
 aenv1 :: ParseResult -> SQLParseM (AEnv, ADGPtrEnv)
 aenv1 r = (\mert q p -> (aenv0 mert q, p)) <$> mertype r <*> aqenv1 r <*> adgenv1 r
+
+aenvsub :: Identifier -> AEnv -> SQLParseM AEnv
+aenvsub i (AEnv _ q) = do
+    imrt@(rt, tmap, _) <- mrt
+    rct <- tcolM rt
+    mert <- mertypeR rct tmap $ Just i
+    return $ aenv0 mert $ aqenv0 [(i,imrt)]
+
+  where mrt = maybe mrterr return $ Map.lookup i q
+        mrterr = throwE $ "Invalid sub aenv qualifier " ++ show i
 
 aenvl :: [ParseResult] -> SQLParseM (AEnv, ADGPtrEnv)
 aenvl l = (\(mert, p) q pq -> (aenv0 mert q, (p, pq))) <$> mr0 <*> aqenvl l <*> adgenvql l
@@ -424,6 +490,39 @@ tresolvetmapM i tlm = maybe (return []) resolve tlm
 -- | Property construction helper
 sqlAttrProp :: ADGPtr -> Annotation Expression
 sqlAttrProp p = EProperty $ Left ("SQLAttr", Just $ LC.int p)
+
+sqlPred1Prop :: Annotation Expression
+sqlPred1Prop = EProperty $ Left ("SQLPred1", Nothing)
+
+sqlPredEquiProp :: Annotation Expression
+sqlPredEquiProp = EProperty $ Left ("SQLPredEqui", Nothing)
+
+sqlAEnvProp :: ScopePtr -> Annotation Expression
+sqlAEnvProp p = EProperty $ Left ("SQLAEnv", Just $ LC.int p)
+
+sqlPEnvProp :: ADGPtrEnv -> Annotation Expression
+sqlPEnvProp penv = EProperty $ Left ("SQLPEnv", Just $ LC.string $ show penv)
+
+isSqlAttrProp :: Annotation Expression -> Bool
+isSqlAttrProp (EProperty (Left ("SQLAttr", _))) = True
+isSqlAttrProp _ = False
+
+isSqlPred1Prop :: Annotation Expression -> Bool
+isSqlPred1Prop (EProperty (Left ("SQLPred1", _))) = True
+isSqlPred1Prop _ = False
+
+isSqlPredEquiProp :: Annotation Expression -> Bool
+isSqlPredEquiProp (EProperty (Left ("SQLPredEqui", _))) = True
+isSqlPredEquiProp _ = False
+
+isSqlAEnvProp :: Annotation Expression -> Bool
+isSqlAEnvProp (EProperty (Left ("SQLAEnv", _))) = True
+isSqlAEnvProp _ = False
+
+isSqlPEnvProp :: Annotation Expression -> Bool
+isSqlPEnvProp (EProperty (Left ("SQLPEnv", _))) = True
+isSqlPEnvProp _ = False
+
 
 immutE :: K3 Expression -> K3 Expression
 immutE e = e @<- ((filter (not . isEQualified) $ annotations e) ++ [EImmutable])
@@ -562,8 +661,9 @@ sqlstmt s = throwE $ "Unimplemented SQL stmt: " ++ show s
 sqlquerystmt :: QueryExpr -> SQLParseM [K3 Declaration]
 sqlquerystmt q = do
   qpr <- sqlquery q
+  qexpr <- sqloptimize $ pexpr qpr
   return [ DC.global "result" (pkt qpr) Nothing
-         , DC.trigger "query" TC.unit $ EC.lambda "_" $ EC.assign "result" $ pexpr qpr ]
+         , DC.trigger "query" TC.unit $ EC.lambda "_" $ EC.assign "result" qexpr ]
 
 
 -- | Expression construction, and inlined type inference.
@@ -590,13 +690,15 @@ sqltablelist (h:t) = do
           rpr <- sqltableexpr r
           (aenv@(AEnv (ct, _) _), penv) <- aenvl [lpr, rpr]
           (al, ar) <- (,) <$> tblaliasM lpr <*> tblaliasM rpr
+          sptr <- sqcextM aenv
           ce   <- concatE aenv
           rt   <- tcolM ct
           kt   <- twrapcolelemM rt
           tmap <- telemtmapM
           let matchF   = EC.lambda "_" $ EC.lambda "_" $ EC.constant $ CBool True
           let combineF = EC.lambda al $ EC.lambda ar ce
-          let rexpr    = EC.applyMany (EC.project "join" $ pexpr lpr) [pexpr rpr, matchF, combineF]
+          let jexpr    = EC.applyMany (EC.project "join" $ pexpr lpr) [pexpr rpr, matchF, combineF]
+          let rexpr    = (jexpr @+ sqlPEnvProp penv) @+ sqlAEnvProp sptr
           let tid = Just "__CP"
           aptrs <- sqgextAliasM tid ct ct $ fst penv
           return $ ParseResult rexpr rt kt tmap tid aptrs
@@ -619,18 +721,21 @@ sqltableexpr (JoinTref _ jlt nat jointy jrt onE jal) = do
   rpr <- sqltableexpr jrt
   (aenv@(AEnv (ct, _) _), penv) <- aenvl [lpr, rpr]
   (al, ar) <- (,) <$> tblaliasM lpr <*> tblaliasM rpr
-  joinpr   <- maybe (return joinpr0) (sqljoinexpr aenv penv) onE
-  ce   <- concatE aenv
-  rt   <- tcolM ct >>= taliascolM jal
-  kt   <- twrapcolelemM rt
-  tmap <- telemtmapM
+  sptr   <- sqcextM aenv
+  joinpr <- maybe (return joinpr0) (sqljoinexpr aenv penv) onE
+  ce     <- concatE aenv
+  rt     <- tcolM ct >>= taliascolM jal
+  kt     <- twrapcolelemM rt
+  tmap   <- telemtmapM
   (Nothing, be) <- bindE aenv "x" (pexpr joinpr)
   let matchF   = EC.lambda al $ EC.lambda ar be
   let combineF = EC.lambda al $ EC.lambda ar ce
+  let jexpr    = EC.applyMany (EC.project "join" $ pexpr lpr) [pexpr rpr, matchF, combineF]
+  let rexpr    = (jexpr @+ sqlPEnvProp penv) @+ sqlAEnvProp sptr
   let tid = sqltablealias "__JR" jal
   ret   <- telemM rt
   aptrs <- sqgextAliasM tid ret ct $ fst penv
-  return $ ParseResult (EC.applyMany (EC.project "join" $ pexpr lpr) [pexpr rpr, matchF, combineF]) rt kt tmap tid aptrs
+  return $ ParseResult rexpr rt kt tmap tid aptrs
 
   where joinpr0 = ParseResult (EC.constant $ CBool True) TC.bool TC.bool Nothing Nothing []
 
@@ -663,11 +768,21 @@ sqltableexpr t@(FunTref _ funE _)  = throwE $ "Unhandled table ref: " ++ show t
 sqlwhere :: ParseResult -> MaybeBoolExpr -> SQLParseM ParseResult
 sqlwhere tables whereEOpt = flip (maybe $ return tables) whereEOpt $ \whereE -> do
   (aenv, penv) <- aenv1 tables
-  wpr  <- sqlscalar aenv penv whereE
-  (iOpt, be) <- bindE aenv "x" (pexpr wpr)
-  filterF <- maybe (tblaliasM tables) return iOpt >>= \a -> return $ EC.lambda a be
-  aptrs <- sqgextIdentityM (palias tables) (prt tables) $ fst penv
-  return $ tables { pexpr = EC.applyMany (EC.project "filter" $ pexpr tables) [filterF], pptrs = aptrs }
+  wpr <- sqlscalar aenv penv whereE
+  (onesided, equi, remdr) <- cascadePredicate $ pexpr wpr
+  foldM mkFilterL tables [ (onesided, Just sqlPred1Prop)
+                         , (equi, Just sqlPredEquiProp)
+                         , maybe ([], Nothing) (\e -> ([e], Nothing)) remdr ]
+  where
+    mkFilterL accpr (el, classp) = foldM (mkFilter classp) accpr el
+    mkFilter classp inpr predicate = do
+      (aenv, penv) <- aenv1 inpr
+      (iOpt, be) <- bindE aenv "x" predicate
+      filterF <- maybe (tblaliasM inpr) return iOpt >>= \a -> return $ EC.lambda a be
+      aptrs <- sqgextIdentityM (palias inpr) (prt inpr) $ fst penv
+      let fexpr = EC.applyMany (EC.project "filter" $ pexpr inpr) [filterF]
+      let rexpr = maybe fexpr (fexpr @+) classp
+      return $ inpr { pexpr = rexpr, pptrs = aptrs }
 
 
 sqlproject :: ParseResult -> SelectList -> SQLParseM ParseResult
@@ -1028,6 +1143,16 @@ sqloperator "!and" [x,y] = Just (BinaryOp OAnd x y)
 sqloperator "!or"  [x,y] = Just (BinaryOp OOr  x y)
 sqloperator _ _ = Nothing
 
+-- TODO
+sqlsubexpr :: [(Identifier, ScalarExpr)] -> ScalarExpr -> SQLParseM (ScalarExpr)
+sqlsubexpr cenv e@(Identifier _ (sqlnmcomponent -> i)) = maybe (return e) return $ lookup i cenv
+
+sqlsubexpr cenv (FunCall anns nm args) = do
+  nargs <- mapM (sqlsubexpr cenv) args
+  return $ FunCall anns nm nargs
+
+sqlsubexpr _ e = return e
+
 
 -- | Type construction
 sqltabletype :: AttributeDefList -> SQLParseM (K3 Type)
@@ -1064,3 +1189,313 @@ sqltablealias def alias = case alias of
     NoAlias _        -> Just def
     TableAlias _ nc  -> Just $ "__" ++ sqlnmcomponent nc
     FullAlias _ nc _ -> Just $ "__" ++ sqlnmcomponent nc
+
+
+{- K3 optimizations -}
+
+-- | Returns SQL attribute pointers in an expression, without descending into lambdas (e.g., subqueries).
+sqlAttrs :: K3 Expression -> SQLParseM [ADGPtr]
+sqlAttrs e = foldTree extract [] e
+  where extract acc (tag -> ELambda _) = return acc
+        extract acc n = return $ nub $ acc ++ (concatMap extractADGPtr $ filter isSqlAttrProp $ annotations n)
+        extractADGPtr (EProperty (Left (_, Just (tag -> LInt p)))) = [p]
+        extractADGPtr _ = []
+
+baseRelationsP :: [ADGPtr] -> SQLParseM [Identifier]
+baseRelationsP ps = foldM baserel [] ps
+  where baserel acc p = adgchaseM p >>= \nodes -> return $ nub $ acc ++ map adnr nodes
+
+baseRelationsE :: K3 Expression -> SQLParseM [Identifier]
+baseRelationsE e = sqlAttrs e >>= baseRelationsP
+
+-- TODO: group expressions by base relations.
+cascadePredicate :: K3 Expression -> SQLParseM ([K3 Expression], [K3 Expression], Maybe (K3 Expression))
+cascadePredicate predicate = do foldMapTree extract zero predicate
+  where
+    extract acc n@(tnc -> (EOperate OAnd, _)) =
+      let (n1, nequi, restch) = accflatten acc in
+      case restch of
+        [Nothing, Nothing] -> return (n1, nequi, Nothing)
+        [Just nx, Nothing] -> return (n1, nequi, Just nx)
+        [Nothing, Just ny] -> return (n1, nequi, Just ny)
+        [Just nx, Just ny] -> return (n1, nequi, Just $ (EC.binop OAnd nx ny) @<- annotations n)
+        _ -> throwE $ "Invalid boolean operator children"
+
+    extract _ n = classify n
+
+    classify e@(tnc -> (EOperate OEqu, [x,y])) = do
+      xrels <- baseRelationsE x
+      yrels <- baseRelationsE y
+      case (xrels, yrels) of
+        ([a],[b]) | a /= b -> return ([], [e], Nothing)
+        (i,j) | length (nub $ i ++ j) == 1 -> return ([e], [], Nothing)
+        _ -> return ([], [], Just e)
+
+    classify e = do
+      rels <- baseRelationsE e
+      case rels of
+        []  -> return ([],  [], Just e)
+        [_] -> return ([e], [], Nothing)
+        _   -> return ([],  [], Just e)
+
+    accflatten l = let (x,y,z) = unzip3 l in (concat x, concat y, z)
+
+    zero = ([], [], Nothing)
+
+sqloptimize :: K3 Expression -> SQLParseM (K3 Expression)
+sqloptimize queryexpr = do
+    rexpr <- optimizeexpr queryexpr
+    if rexpr `compareEAST` queryexpr
+      then pickjoinalg rexpr
+      else sqloptimize rexpr
+
+  where optimizeexpr e = modifyTree optimize e
+        pickjoinalg e = modifyTree joinalg e
+
+        -- Transformer fusion for SQL-K3.
+        optimize e@(PFilterJoin lE rE filterE predE outE jAs) = do
+          filterBodyE <- case filterE of
+                           PLamBind _ _ _ pe _ _ -> return pe
+                           PLam _ pe _ -> return pe
+                           _ -> throwE $ boxToString $ ["Invalid predicate "] %$ prettyLines filterE
+
+          case predE of
+            PLam2Bind i j srcE bnd bodyE _ _ _ -> do
+              nfilterE <- rewritePredicate jAs filterE
+              let npredE = PLam2Bind i j srcE bnd (EC.binop OAnd bodyE nfilterE) [] [] []
+              return $ PCJoin lE rE npredE outE [] [] [] jAs
+
+            PLam2 i j bodyE _ _ -> do
+              nfilterE <- rewritePredicate jAs filterBodyE
+              let npredE = PLam2 i j (EC.binop OAnd bodyE nfilterE) [] []
+              return $ PCJoin lE rE npredE outE [] [] [] jAs
+
+            _ -> return e
+
+        optimize (PMapJoin lE rE mapE predE outE jAs) = do
+          cE <- composeE
+          return $ PCJoin lE rE predE cE [] [] [] jAs
+
+          where
+            er e = EC.record [("elem", e)]
+            composeE = case outE of
+              PLam2Bind i j _ _ _ _ _ _ -> return $
+                PLam2App i j mapE (er $ PApp2 outE (EC.variable i) (EC.variable j) [] []) [] [] []
+
+              PLam2App i j _ _ _ _ _ -> return $
+                PLam2App i j mapE (er $ PApp2 outE (EC.variable i) (EC.variable j) [] []) [] [] []
+
+              PLam2 i j bodyE _ _ -> return $
+                PLam2App i j mapE (er bodyE) [] [] []
+
+              _ -> throwE $ boxToString $ ["Invalid join combiner expression"] %$ prettyLines outE
+
+        optimize (PJoin lE rE predE outE jAs) = do
+          pbodyE <- case predE of
+                      PLam2Bind _ _ _ _ bodyE _ _ _ -> return bodyE
+                      PLam2 _ _ bodyE _ _ -> return bodyE
+                      _ -> throwE $ boxToString $ ["Invalid predicate "] %$ prettyLines predE
+
+          (lal, ral, _, _, lbr, rbr, _, _, laenv, raenv) <- joinInfo jAs
+
+          (onesided, equi, remdr) <- cascadePredicate pbodyE
+          pushdownCands <- mapM (\pe -> baseRelationsE pe >>= return . (,pe)) $ onesided ++ equi
+
+          jclassified <- forM pushdownCands $ \(rels,pe) ->
+                           if (rels `intersect` lbr) == rels then return $ (([pe], []), [])
+                           else if (rels `intersect` rbr) == rels then return $ (([], [pe]), [])
+                           else return $ (([], []), [pe])
+
+          let (pushdowns, jequi) = second concat $ unzip jclassified
+          let (lpush, rpush) = (concat *** concat) $ unzip pushdowns
+          nlE <- mkPredicates laenv lal sqlPred1Prop lE lpush
+          nrE <- mkPredicates raenv ral sqlPred1Prop rE rpush
+          let jConjuncts = pruneConjuncts $ jequi ++ maybe [] (:[]) remdr
+          npredE <- rebuildPredE predE jConjuncts
+          return $ PCJoin nlE nrE npredE outE [] [] [] jAs
+
+        optimize n = return n
+
+
+        -- Promote joins to equi-joins.
+        joinalg (PJoin lE rE predE outE jAs) = do
+          pbodyE <- case predE of
+                      PLam2Bind _ _ _ _ bodyE _ _ _ -> return bodyE
+                      PLam2 _ _ bodyE _ _ -> return bodyE
+                      _ -> throwE $ boxToString $ ["Invalid predicate "] %$ prettyLines predE
+
+          (lal, ral, _, _, lbr, rbr, _, _, laenv, raenv) <- joinInfo jAs
+
+          (onesided, equi, remdr) <- cascadePredicate pbodyE
+          pushdownCands <- mapM (\pe -> baseRelationsE pe >>= return . (,pe)) $ onesided ++ equi
+
+          jclassified <- forM pushdownCands $ \(rels,pe) ->
+                           if (rels `intersect` lbr) == rels then return $ (([pe], []), [])
+                           else if (rels `intersect` rbr) == rels then return $ (([], [pe]), [])
+                           else return $ (([], []), [pe])
+
+          let (pushdowns, jequi') = second concat $ unzip jclassified
+          let (lpush, rpush) = (concat *** concat) $ unzip pushdowns
+
+          case (lpush, rpush, jequi') of
+            ([], [], jequi) ->
+              let jConjuncts = pruneConjuncts $ jequi ++ maybe [] (:[]) remdr in
+              if jConjuncts /= jequi
+                then do
+                  npredE <- rebuildPredE predE jConjuncts
+                  return $ PCJoin lE rE npredE outE [] [] [] jAs
+
+                -- TODO: partial equality join API.
+                else do
+                  (lk,rk,crem) <- extractJoinKeys lbr rbr jConjuncts
+                  case crem of
+                    [] -> do
+                      lkeyE <- mkJoinKey laenv lal lk
+                      rkeyE <- mkJoinKey raenv ral rk
+                      return $ PCEJoin lE rE lkeyE rkeyE outE [] [] [] [] jAs
+
+                    _ -> do
+                      npredE <- rebuildPredE predE jConjuncts
+                      return $ PCJoin lE rE npredE outE [] [] [] jAs
+
+            (_, _, _) -> throwE $ "Incomplete optimization fixpoint"
+
+        joinalg n = return n
+
+
+        joinInfo anns = case (filter isSqlAEnvProp anns, filter isSqlPEnvProp anns) of
+          ([EProperty (Left (_, Just (tag -> LInt sp)))],
+           [EProperty (Left (_, Just (tag -> LString (read -> penv))))]) -> do
+             aenv <- sqclkupM sp
+             let roots = adgproots penv
+             baserels <- mapM (\(_, ps) -> baseRelationsP ps) $ snd penv
+             let (lal, ral) = (fst $ head $ snd penv, fst $ head $ tail $ snd penv)
+             laenv <- aenvsub lal aenv
+             raenv <- aenvsub ral aenv
+             (lbr, rbr) <- case baserels of
+                              [l,r] -> return (l,r)
+                              _ -> throwE $ "Invalid binary join base relations."
+
+             return (lal, ral, roots, baserels, lbr, rbr, penv, aenv, laenv, raenv)
+
+
+          _ -> throwE $ "Invalid join expression for metadata extraction"
+
+        rewriteAttr :: [ADGPtr] -> AEnv -> ADGPtrEnv -> ADGPtr -> SQLParseM (K3 Expression)
+        rewriteAttr roots aenv penv ptr = do
+          (_, sqlexpr) <- rcrsub ptr
+          pr <- sqlscalar aenv penv sqlexpr
+          return $ pexpr pr
+
+          where
+            sub p node | p `elem` roots = return $ Identifier emptyAnnotation $ Nmc $ adnn node
+
+            sub _ (adne &&& adnch -> (Just def, chp)) = do
+              cenv <- mapM rcrsub chp
+              sqlsubexpr cenv def
+
+            sub p _ = throwE $ "Rewrite substitution failed for " ++ show p
+
+            rcrsub p = sqglkupM p >>= \n -> sub p n >>= return . (adnn n,)
+
+        rewritePredicate :: [Annotation Expression] -> K3 Expression -> SQLParseM (K3 Expression)
+        rewritePredicate joinAnns e = do
+            (_, _, roots, _, _, _, penv, aenv, _, _) <- joinInfo joinAnns
+            modifyTree (rewrite roots aenv penv) e
+          where
+            rewrite roots aenv penv (attrptr -> Just p) = rewriteAttr roots aenv penv p
+            rewrite _ _ _ re = return re
+
+            attrptr :: K3 Expression -> Maybe Int
+            attrptr ((@~ isSqlAttrProp) -> Just (EProperty (Left (_, Just (tag -> LInt p))))) = Just p
+            attrptr _ = Nothing
+
+        mkPredicates aenv alias classp e el = foldM (mkPredicate aenv alias classp) e el
+        mkPredicate aenv alias classp acce predicate = do
+          (iOpt, be) <- bindE aenv "x" predicate
+          filterF <- maybe (return alias) return iOpt >>= \a -> return $ EC.lambda a be
+          let fexpr = EC.applyMany (EC.project "filter" acce) [filterF]
+          let rexpr = fexpr @+ classp
+          return rexpr
+
+        rebuildPredE pE conjuncts = case pE of
+          PLam2Bind i j srcE bnd _ _ _ _ -> do
+            nbodyE <- mkConjunctive conjuncts
+            return $ PLam2Bind i j srcE bnd nbodyE [] [] []
+
+          PLam2 i j _ _ _ -> do
+            nbodyE <- mkConjunctive conjuncts
+            return $ PLam2 i j nbodyE [] []
+
+          _ -> throwE $ boxToString $ ["Invalid predicate "] %$ prettyLines pE
+
+        extractJoinKeys lbr rbr conjuncts = foldM (extractJoinKey lbr rbr) ([], [], []) conjuncts
+        extractJoinKey lbr rbr (lacc,racc,uacc) e@(tnc -> (EOperate OEqu, [x,y])) = do
+          xrels <- baseRelationsE x
+          yrels <- baseRelationsE y
+          let (xl, xr) = (xrels `intersect` lbr == xrels, xrels `intersect` rbr == xrels)
+          let (yl, yr) = (yrels `intersect` lbr == yrels, yrels `intersect` rbr == yrels)
+          case (xl, xr, yl, yr) of
+            (True, False, False, True) -> return (lacc ++ [x], racc ++ [y], uacc)
+            (False, True, True, False) -> return (lacc ++ [y], racc ++ [x], uacc)
+            _ -> return (lacc, racc, uacc ++ [e])
+
+        extractJoinKey _ _ (lacc,racc,uacc) e = return (lacc, racc, uacc ++ [e])
+
+        mkJoinKey aenv alias l = do
+          (iOpt, be) <- bindE aenv "x" $ EC.tuple l
+          i <- maybe (return alias) return iOpt
+          return $ EC.lambda i be
+
+        pruneConjuncts  l = filter (\e -> case tag e of {EConstant (CBool True) -> False; _ -> True}) l
+        mkConjunctive  [] = return $ EC.constant $ CBool True
+        mkConjunctive   l = return $ foldl1 (\a b -> EC.binop OAnd a b) l
+
+
+{- Optimization patterns -}
+
+pattern PVar i        iAs   = Node (EVariable i   :@: iAs)   []
+pattern PApp fE argE  appAs = Node (EOperate OApp :@: appAs) [fE, argE]
+pattern PSeq lE rE    seqAs = Node (EOperate OSeq :@: seqAs) [lE, rE]
+pattern PLam i  bodyE iAs   = Node (ELambda i     :@: iAs)   [bodyE]
+pattern PPrj cE fId   fAs   = Node (EProject fId  :@: fAs)   [cE]
+
+pattern PBindAs srcE bnd bodyE bAs = Node (EBindAs bnd :@: bAs) [srcE, bodyE]
+
+pattern PLamBind i srcE bnd bodyE lAs bAs = PLam i (PBindAs srcE bnd bodyE bAs) lAs
+pattern PLamApp i fE argE appAs iAs = PLam i (PApp fE argE appAs) iAs
+
+pattern PPrjApp cE fId fAs fArg iAppAs = PApp (PPrj cE fId fAs) fArg iAppAs
+
+pattern PLam2 i j bodyE iAs jAs = PLam i (PLam j bodyE jAs) iAs
+pattern PApp2 f arg1 arg2 iAppAs oAppAs  = PApp (PApp f arg1 iAppAs) arg2 oAppAs
+
+pattern PLam2Bind i j srcE bnd bodyE iAs jAs bAs = PLam i (PLamBind j srcE bnd bodyE jAs bAs) iAs
+pattern PLam2App i j fE argE iAs jAs appAs = PLam i (PLamApp j fE argE appAs jAs) iAs
+
+pattern PPrjApp2 cE fId fAs fArg1 fArg2 app1As app2As
+  = PApp (PApp (PPrj cE fId fAs) fArg1 app1As) fArg2 app2As
+
+pattern PPrjApp3 cE fId fAs fArg1 fArg2 fArg3 app1As app2As app3As
+  = PApp (PApp (PApp (PPrj cE fId fAs) fArg1 app1As) fArg2 app2As) fArg3 app3As
+
+pattern PPrjApp4 cE fId fAs fArg1 fArg2 fArg3 fArg4 app1As app2As app3As app4As
+  = PApp (PApp (PApp (PApp (PPrj cE fId fAs) fArg1 app1As) fArg2 app2As) fArg3 app3As) fArg4 app4As
+
+pattern PFilter cE lamE <- PPrjApp cE "filter" _ lamE _
+
+pattern PMap cE lamE <- PPrjApp cE "map" _ lamE _
+
+pattern PJoin lE rE predE outE jAs <- PPrjApp3 lE "join" _ rE predE outE _ _ jAs
+
+pattern PEJoin lE rE lkeyE rkeyE outE jAs <- PPrjApp4 lE "join" _ rE lkeyE rkeyE outE _ _ _ jAs
+
+pattern PCJoin lE rE predE outE pAs app1As app2As app3As =
+  PPrjApp3 lE "join" pAs rE predE outE app1As app2As app3As
+
+pattern PCEJoin lE rE lkeyE rkeyE outE pAs app1As app2As app3As app4As =
+  PPrjApp4 lE "equijoin" pAs rE lkeyE rkeyE outE app1As app2As app3As app4As
+
+pattern PFilterJoin lE rE filterE predE outE jAs <- PFilter (PJoin lE rE predE outE jAs) filterE
+
+pattern PMapJoin lE rE mapE predE outE jAs <- PMap (PJoin lE rE predE outE jAs) mapE
