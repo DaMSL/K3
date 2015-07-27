@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <string>
+#include <regex>
 #include <sstream>
 
 #include "core/Peer.hpp"
@@ -13,7 +14,9 @@ namespace K3 {
 
 Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
            const YAML::Node& peer_config, std::function<void()> ready_callback,
-           const string& json_path, bool json_final_only) {
+           const string& json_path, bool json_final_only,
+           const string& json_globals_regex,
+           const string& json_messages_regex) {
   logger_ = spdlog::get(addr.toString());
   if (!logger_) {
     logger_ = spdlog::stdout_logger_mt(addr.toString());
@@ -28,6 +31,8 @@ Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
         json_path + "/" + address_.toString() + "_Messages.dsv");
   }
   json_final_state_only_ = json_final_only;
+  json_globals_regex_ = json_globals_regex;
+  json_messages_regex_ = json_messages_regex;
   message_counter_ = 0;
 
   // Create work to run in new thread
@@ -73,9 +78,7 @@ void Peer::join() {
   return;
 }
 
-Queue& Peer::getQueue() {
-  return *queue_;
-}
+Queue& Peer::getQueue() { return *queue_; }
 
 bool Peer::finished() { return finished_.load(); }
 
@@ -89,44 +92,46 @@ void Peer::processBatch() {
   for (int i = 0; i < num; i++) {
     auto d = std::move(batch_[i]);
     logMessage(*d);
-    #ifdef K3DEBUG
+#ifdef K3DEBUG
     TriggerID tid = d->trigger_;
-    std::chrono::high_resolution_clock::time_point start_time = std::chrono::high_resolution_clock::now();
-    #endif
+    std::chrono::high_resolution_clock::time_point start_time =
+        std::chrono::high_resolution_clock::now();
+#endif
 
     (*d)();
-    
-    #ifdef K3DEBUG
-    statistics_[tid].total_time += std::chrono::high_resolution_clock::now() - start_time;
+
+#ifdef K3DEBUG
+    statistics_[tid].total_time +=
+        std::chrono::high_resolution_clock::now() - start_time;
     statistics_[tid].total_count++;
-    #endif
+#endif
     logGlobals(false);
   }
 }
 
 void Peer::logMessage(const Dispatcher& d) {
-  #ifdef K3DEBUG
+#ifdef K3DEBUG
   string trig = ProgramContext::__triggerName(d.trigger_);
   if (logger_->level() <= spdlog::level::debug) {
     logger_->debug() << "Received:: @" << trig;
   }
 
-  if (json_messages_log_ && !json_final_state_only_) {
+  if (json_messages_log_ && !json_final_state_only_ && std::regex_match(trig, std::regex(json_messages_regex_))) {
     *json_messages_log_ << message_counter_ << "|";
     *json_messages_log_ << K3::serialization::json::encode<Address>(
                                d.destination_) << "|";
     *json_messages_log_ << trig << "|";
-    *json_messages_log_ << K3::serialization::json::encode<Address>(
-                               d.source_) << "|";
+    *json_messages_log_ << K3::serialization::json::encode<Address>(d.source_)
+                        << "|";
     *json_messages_log_ << d.jsonify() << "|";
     *json_messages_log_ << currentTime() << std::endl;
   }
   message_counter_++;
-  #endif  // K3DEBUG
+#endif  // K3DEBUG
 }
 
 void Peer::logGlobals(bool final) {
-  #ifdef K3DEBUG
+#ifdef K3DEBUG
   if (logger_->level() <= spdlog::level::trace) {
     std::ostringstream oss;
     oss << "Environment: " << std::endl;
@@ -142,16 +147,17 @@ void Peer::logGlobals(bool final) {
     logger_->trace() << oss.str();
   }
 
-
-  if ((json_globals_log_ && !json_final_state_only_) || (json_final_state_only_ && final)) {
-    for (const auto& it : context_->__jsonify()) {
-      *json_globals_log_ << message_counter_ << "|"
-                         << K3::serialization::json::encode<Address>(address_) << "|"
-                         << it.first << "|"
-                         << it.second << std::endl;
+  if ((json_globals_log_ && !json_final_state_only_) ||
+      (json_final_state_only_ && final)) {
+    for (const auto& global : context_->__globalNames()) {
+      if (std::regex_match(global.c_str(), std::regex(json_globals_regex_.c_str()))) {
+        *json_globals_log_ << message_counter_ << "|"
+                           << K3::serialization::json::encode<Address>(address_)
+                           << "|" << global << "|" << context_->__jsonify(global) << std::endl;
+      }
     }
   }
-  #endif // K3DEBUG
+#endif  // K3DEBUG
 }
 
 void Peer::printStatistics() {

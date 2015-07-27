@@ -69,7 +69,9 @@ void Engine::run() {
     Address addr = serialization::yaml::meFromYAML(node);
     auto p = make_shared<Peer>(addr, context_factory, node, ready_callback,
                                options_.json_folder_,
-                               options_.json_final_state_only_);
+                               options_.json_final_state_only_,
+                               options_.json_globals_regex_,
+                               options_.json_messages_regex_);
     if (tmp_peers->find(addr) != tmp_peers->end()) {
       throw std::runtime_error("Engine createPeers(): Duplicate address: " +
                                addr.toString());
