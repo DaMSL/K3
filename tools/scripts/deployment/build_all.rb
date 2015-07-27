@@ -167,7 +167,13 @@ def harvest(statuses, out_folder)
       master_folder = "#{run_folder}/#{name}/"
 
       # Stash tarball and extract in a dir for this run
-      results[key] = {"status" => "RAN", "output" => master_folder}
+      run_folder = "#{out_folder}/#{key['role']}_#{key['name']}"
+      `mkdir -p #{run_folder}`
+      file = File.new("#{run_folder}/sandbox.tar", 'w')
+      file.write response
+      file.close
+      `tar -xvf #{run_folder}/sandbox.tar -C #{run_folder}`
+      results[key] = {"status" => "RAN", "output" => run_folder}
     else
       results[key] = {"status" => "FAILED"}
     end
