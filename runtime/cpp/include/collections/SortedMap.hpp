@@ -400,30 +400,30 @@ class SortedMap {
   }
 
 
-  SortedMapE<R> filter_lt(const R& k) const {
+  SortedMap<R> filter_lt(const R& k) const {
     const auto& x = getConstContainer();
     auto it = x.lower_bound(k.key);
     if (it != x.begin()) --it;
-    return SortedMapE<R>(x.begin(), it);
+    return SortedMap<R>(x.begin(), it);
   }
 
-  SortedMapE<R> filter_gt(const R& k) const {
+  SortedMap<R> filter_gt(const R& k) const {
     const auto& x = getConstContainer();
     auto it = x.upper_bound(k.key);
-    return SortedMapE<R>(it, x.end());
+    return SortedMap<R>(it, x.end());
   }
 
-  SortedMapE<R> filter_geq(const R& k) const {
+  SortedMap<R> filter_geq(const R& k) const {
     const auto& x = getConstContainer();
     auto it = x.lower_bound(k.key);
-    return SortedMapE<R>(it, x.end());
+    return SortedMap<R>(it, x.end());
   }
 
-  SortedMapE<R> filter_leq(const R& k) const {
+  SortedMap<R> filter_leq(const R& k) const {
     const auto& x = getConstContainer();
     auto it = x.upper_bound(k.key);
     if (it != x.begin()) --it;
-    return SortedMapE<R>(x.begin(), it);
+    return SortedMap<R>(x.begin(), it);
   }
 
   SortedMap<R> between(const R& a, const R& b) const {
