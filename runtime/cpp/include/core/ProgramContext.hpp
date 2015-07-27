@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <map>
+#include <list>
 
 #include <boost/asio.hpp>
 
@@ -25,7 +26,7 @@ class ProgramContext : public StandardBuiltins,
                        public StringBuiltins,
                        public ProfilingBuiltins,
                        public FileBuiltins,
-                       public MosaicBuiltins, 
+                       public MosaicBuiltins,
                        public VectorBuiltins,
                        public AmplabLoaders {
  public:
@@ -42,7 +43,9 @@ class ProgramContext : public StandardBuiltins,
 
   // Logging Helper Function
   virtual map<string, string> __prettify();
-  virtual map<string, string> __jsonify();
+  virtual std::list<string_impl> __globalNames();
+  virtual string_impl __jsonify(const string_impl& global);
+
   static string __triggerName(int trig);
   virtual string __jsonifyMessage(const Message& m);
 

@@ -18,6 +18,8 @@ class Options {
     log_level_ = 0;
     json_folder_ = "";
     json_final_state_only_ = false;
+    json_globals_regex_ = "";
+    json_messages_regex_ = "";
     local_sends_enabled_ = true;
   }
 
@@ -36,6 +38,8 @@ class Options {
   int log_level_;
   string json_folder_;
   bool json_final_state_only_;
+  string json_globals_regex_;
+  string json_messages_regex_;
   bool local_sends_enabled_;
 };
 }  // namespace K3

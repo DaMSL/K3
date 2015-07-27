@@ -14,6 +14,8 @@ int Options::parse(int argc, const char *const argv[]) {
       ("log_level,l", po::value<int>(), "Engine log level: (1,2,3)")
       ("json,j", po::value<string>(), "Directory for json log files")
       ("json_final_only,f", "json log final state only")
+      ("json_messages_regex,m", po::value<string>(),  "Regex to filter json messages based on destination trigger ")
+      ("json_globals_regex,g", po::value<string>(), "Regex to filter json globals based on variable name")
       ("disable_local_messages,d", "force serialization of all messages)");
 
   po::variables_map vm;
@@ -48,6 +50,18 @@ int Options::parse(int argc, const char *const argv[]) {
     json_final_state_only_ = true;
   } else {
     json_final_state_only_ = false;
+  }
+
+  if (vm.count("json_globals_regex")) {
+    json_globals_regex_ = vm["json_globals_regex"].as<string>();
+  } else {
+    json_globals_regex_ = ".*";
+  }
+
+  if (vm.count("json_messages_regex")) {
+    json_messages_regex_ = vm["json_messages_regex"].as<string>();
+  } else {
+    json_messages_regex_ = ".*";
   }
 
   if (vm.count("disable_local_messages")) {
