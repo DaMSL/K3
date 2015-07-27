@@ -368,7 +368,28 @@ class SortedMapE {
   }
 
   template<typename K, typename F, typename G>
-  auto lower_bound_with(const K& k, F f, G g) const {
+  auto lookup_lt_with(const K& k, F f, G g) const {
+    auto it = container.lower_bound(k.key);
+    if (it != container.begin()) {
+      --it;
+      return g(it->second);
+    } else {
+      return f(unit_t {});
+    }
+  }
+
+  template<typename K, typename F, typename G>
+  auto lookup_gt_with(const K& k, F f, G g) const {
+    auto it = container.upper_bound(k.key);
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(it->second);
+    }
+  }
+
+  template<typename K, typename F, typename G>
+  auto lookup_geq_with(const K& k, F f, G g) const {
     auto it = container.lower_bound(k.key);
     if (it == container.end()) {
       return f(unit_t {});
@@ -378,12 +399,13 @@ class SortedMapE {
   }
 
   template<typename K, typename F, typename G>
-  auto upper_bound_with(const K& k, F f, G g) const {
+  auto lookup_leq_with(const K& k, F f, G g) const {
     auto it = container.upper_bound(k.key);
-    if (it == container.end()) {
-      return f(unit_t {});
-    } else {
+    if (it != container.begin()) {
+      --it;
       return g(it->second);
+    } else {
+      return f(unit_t {});
     }
   }
 
@@ -391,6 +413,7 @@ class SortedMapE {
   SortedMapE<R> filter_lt(const K& k) const {
     const auto& x = getConstContainer();
     auto it = x.lower_bound(k.key);
+    if (it != x.begin()) --it;
     return SortedMapE<R>(x.begin(), it);
   }
 
@@ -406,6 +429,14 @@ class SortedMapE {
     const auto& x = getConstContainer();
     auto it = x.lower_bound(k.key);
     return SortedMapE<R>(it, x.end());
+  }
+
+  template<typename K>
+  SortedMapE<R> filter_leq(const K& k) const {
+    const auto& x = getConstContainer();
+    auto it = x.upper_bound(k.key);
+    if (it != x.begin()) --it;
+    return SortedMapE<R>(x.begin(), it);
   }
 
   template<typename K>

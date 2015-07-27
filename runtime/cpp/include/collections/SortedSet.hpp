@@ -343,6 +343,7 @@ class SortedSet {
   SortedSet<Elem> filter_lt(const Elem& bound) const {
     const auto& x = getConstContainer();
     auto it = x.lower_bound(bound);
+    if (it != x.begin()) --it;
     return SortedSet<Elem>(x.begin(), it);
   }
 
@@ -356,6 +357,13 @@ class SortedSet {
     const auto& x = getConstContainer();
     auto it = x.lower_bound(bound);
     return SortedSet<Elem>(it, x.end());
+  }
+
+  SortedSet<Elem> filter_leq(const Elem& bound) const {
+    const auto& x = getConstContainer();
+    auto it = x.upper_bound(bound);
+    if (it != x.begin()) --it;
+    return SortedSet<Elem>(x.begin(), it);
   }
 
   SortedSet<Elem> between(const Elem& a, const Elem& b) const {
