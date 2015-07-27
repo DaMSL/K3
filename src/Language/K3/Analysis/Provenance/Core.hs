@@ -44,7 +44,7 @@ data Provenance =
     | PTuple       Int
     | PIndirection
     | POption
-    | PLambda      Identifier
+    | PLambda      Identifier [PMatVar] -- Lambda argument identifier, and new bound variables introduced for closure-captures.
 
     | PApply       (Maybe PMatVar) -- The lambda, argument, and return value provenances of the application.
                                    -- The apply also tracks any provenance variable binding needed for the lambda.

@@ -1,4 +1,5 @@
 include "tpch/benchmark.k3"
+include "Annotation/Set.k3"
 
 /**********************
 * SQL query
@@ -231,19 +232,14 @@ trigger q5_result_aggregate : q5_r_by_n_map = \vals -> (
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes               = [$ peers],
-  loadExpr            = [$ ( lineitemLineCountFiles.iterate (\e -> lineitemRows = lineitemRows + (lineCountFile e.path));
-                             ordersLineCountFiles.iterate   (\e -> ordersRows = ordersRows + (lineCountFile e.path));
-                             customerLineCountFiles.iterate (\e -> customerRows = customerRows + (lineCountFile e.path));
-                             supplierLineCountFiles.iterate (\e -> supplierRows = supplierRows + (lineCountFile e.path));
-
-                             q5_lineitemLoaderPFC lineitemFiles lineitem lineitem_r lineitemRows;
-                             q5_ordersLoaderPFC   ordersFiles   orders   orders_r   ordersRows;
-                             q5_customerLoaderPFC customerFiles customer customer_r customerRows;
-                             q5_supplierLoaderPFC supplierFiles supplier supplier_r supplierRows;
-                             q5_nationLoaderPC    nationFiles   nation   nation_r;
-                             q5_regionLoaderPC    regionFiles   region   region_r;
+  loadExpr            = [$ q5_lineitemLoaderPC lineitemFiles lineitem lineitem_r;
+                           q5_ordersLoaderPC   ordersFiles   orders   orders_r ;
+                           q5_customerLoaderPC customerFiles customer customer_r;
+                           q5_supplierLoaderPC supplierFiles supplier supplier_r;
+                           q5_nationLoaderPC    nationFiles   nation   nation_r;
+                           q5_regionLoaderPC    regionFiles   region   region_r;
                              ( (q5_prep, me) <- () )
-                           ) ],
+                        ],
   preLoadExpr         = [$ ()],
   preReadyExpr        = [$ ()],
   onReadyExpr         = [$ (( (q5_sl_start, me) <- () );
@@ -251,16 +247,17 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                         ],
   finishArgT          = [: ()],
   preTestFinishExpr   = [$ (\_ -> ())],
-  preFinishExpr       = [$ (print ("Q5 num results:" ++ (itos (q5_result.size()))));
-                           (q5_result.iterate (\r -> ((results.insert r); ((results_sink, me) <- r ))));
+  preFinishExpr       = [$ (q5_result.iterate (\r -> ((results.insert r);
+                                                     ((results_sink, me) <- (r.key, r.value) ))
+                           ));
                            peers.iterate (\p -> (shutdown, p.addr) <- ())
                         ],
   preShutdownExpr     = [$ ()],
-  finishAsShutdownExpr = [$ false]
+  finishAsShutdownExpr = [$ true]
 )
 
-sink results_sink : {key: string, value: real} = file "results.csv" csv
-sink query_time_sink : string = stdout csv
+sink results_sink : (string, real) = file "results.csv" text psv
+sink query_time_sink : int = file "time.csv" text csv
 
 source rows : () = value ()
 feed rows |> start

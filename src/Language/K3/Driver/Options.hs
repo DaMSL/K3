@@ -52,6 +52,7 @@ data Mode
     | Interpret InterpretOptions
     | Typecheck TypecheckOptions
     | Service   ServiceOperation
+    | SQL       SQLOptions
   deriving (Eq, Read, Show)
 
 -- | Compiler input and output options.
@@ -60,7 +61,8 @@ data IOOptions = IOOptions { inputProgram :: FilePath
                            , noMP         :: Bool
                            , splicedInput :: Bool
                            , saveAST      :: Bool
-                           , saveRawAST   :: Bool }
+                           , saveRawAST   :: Bool
+                           , saveSyntax   :: Bool }
                deriving (Eq, Read, Show)
 
 -- | Parsing options.
@@ -163,6 +165,11 @@ data RemoteJobOptions = RemoteJobOptions { workerFactor     :: Map String Int
 data QueryOptions = QueryOptions { qsargs :: Either [String] [Int] }
                     deriving (Eq, Read, Show, Generic)
 
+-- | SQL frontend options.
+data SQLOptions = SQLOptions { sqlPrintMode  :: PrintMode
+                             , sqlPrintParse :: Bool }
+                deriving (Eq, Read, Show, Generic)
+
 -- | Verbosity levels.
 data Verbosity
     = NullV
@@ -219,12 +226,14 @@ modeOptions = subparser (
       <> command "interpret" (info interpretOptions $ progDesc interpretDesc)
       <> command "typecheck" (info typecheckOptions $ progDesc typeDesc)
       <> command "service"   (info serviceOptions   $ progDesc serviceDesc)
+      <> command "sql"       (info sqlOptions       $ progDesc sqlDesc)
     )
   where parseDesc     = "Parse a K3 program"
         compileDesc   = "Compile a K3 binary"
         interpretDesc = "Interpret a K3 program"
         typeDesc      = "Typecheck a K3 program"
         serviceDesc   = "Start a K3 compiler service"
+        sqlDesc       = "Compile a SQL query"
 
 
 {- Compiler input parsing -}
@@ -236,6 +245,7 @@ ioOptions = IOOptions <$> inputProgramOpt
                       <*> splicedInputOpt
                       <*> saveAstOpt
                       <*> saveRawAstOpt
+                      <*> saveSyntaxOpt
 
 inputProgramOpt :: Parser FilePath
 inputProgramOpt = last . fileOrStdin <$> (many $ argument str (   metavar "FILE"
@@ -263,6 +273,9 @@ saveRawAstOpt :: Parser Bool
 saveRawAstOpt = switch (   long "save-raw-ast"
                         <> help "Save K3 AST used from compilation" )
 
+saveSyntaxOpt :: Parser Bool
+saveSyntaxOpt = switch (   long "save-syntax"
+                        <> help "Save pretty-printed K3 program from compilation" )
 
 
 {- Parsing mode options -}
@@ -750,6 +763,16 @@ allProgOpt = flag' (QueryOptions $ Right [])
                  <> help    "Query all job statuses" )
 
 
+{- SQL mode options -}
+
+-- | SQL mode
+sqlOptions :: Parser Mode
+sqlOptions = SQL <$> ( SQLOptions <$> printModeOpt "" <*> sqlPrintParseOpt )
+
+sqlPrintParseOpt :: Parser Bool
+sqlPrintParseOpt = switch (   long "sqlast"
+                           <> help "Print SQL AST parsed." )
+
 {- Top-level options -}
 
 -- | Logging options.
@@ -818,6 +841,7 @@ instance Pretty Mode where
   prettyLines (Interpret iOpts) = ["Interpret "] ++ (indent 2 $ prettyLines iOpts)
   prettyLines (Typecheck tOpts) = ["Typecheck " ++ show tOpts]
   prettyLines (Service   sOpts) = ["Service " ++ show sOpts]
+  prettyLines (SQL       sOpts) = ["SQL" ++ show sOpts]
 
 instance Pretty InterpretOptions where
   prettyLines (Batch net env expr par printConf console cstages) =

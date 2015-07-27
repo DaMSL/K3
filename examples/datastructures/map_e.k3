@@ -1,0 +1,18 @@
+include "Annotation/Maps/MapE.k3"
+include "Core/Builtins.k3"
+
+declare c : mut collection {key: int, value: int} @{MapE(key=[:> key=>int], value=[:> value=>int])}
+
+trigger t : () = \_ -> (
+  (c.insert {key: 1, value: 1});
+  (c.insert {key: 2, value: 2});
+  (c.insert {key: 3, value: 3});
+  (c.insert {key: 4, value: 4});
+
+  (c.update       {key: 3} {value: 6});
+  (c.upsert_with  {key: 5} (\_ -> {key:5, value: 5}) (\r -> {key: 5, value: r.value + 5}));
+  (c.lookup_with4 {key: 4} (\_ -> ()) (\r -> print ("Found @4: " ++ (itos r.value))))
+)
+
+source s1 : () = value ()
+feed s1 |> t

@@ -9,9 +9,6 @@ import Control.Monad.State
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Data.Maybe (isJust)
-
-import Data.Functor
 
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
@@ -63,10 +60,11 @@ program (tag &&& children -> (DRole name, decls)) = do
     includeDefns <- map R.IncludeDefn <$> requiredIncludes
     aliasDefns   <- map (R.GlobalDefn . R.Forward . uncurry R.UsingDecl) <$> requiredAliases
     compositeDefns <- do
-        currentComposites <- composites <$> get
-        currentAnnotations <- annotationMap <$> get
-        forM (S.toList $ S.filter (not . S.null) currentComposites) $ \(S.toList -> als) ->
-            composite (annotationComboId als) [(a, M.findWithDefault [] a currentAnnotations) | a <- als]
+      currentComposites <- composites <$> get
+      currentAnnotations <- annotationMap <$> get
+      forM (M.toList $ M.filterWithKey (\k _ -> not $ S.null k) currentComposites) $
+        \(S.toList -> als, ts) ->
+          composite (annotationComboId als) [(a, M.findWithDefault [] a currentAnnotations) | a <- als] ts
     records <- map (map fst) . snd . unzip . M.toList . recordMap <$> get
     recordDefns <- mapM record records
 
@@ -83,86 +81,68 @@ program (tag &&& children -> (DRole name, decls)) = do
 
     let yamlStructDefn = mkYamlStructDefn contextName patchables''
 
-    dispatchPop <- generateDispatchPopulation
+    nativeDispatchers <- generateDispatchers True
+    packedDispatchers <- generateDispatchers False
+    nativeDispatchPop <- generateDispatchPopulation True
+    packedDispatchPop <- generateDispatchPopulation False
 
-    let contextConstructor = mkContextConstructor contextName (inits ++ dispatchPop)
-    let dispatchDecl = R.FunctionDefn (R.Name "__dispatch")
-                       [ ("trigger_id", R.Primitive R.PInt)
-                       , ("payload", R.Named $ R.Name "void*")
-                       , ("source",  R.Const $ R.Reference $ R.Named $ R.Name "Address")
+    let contextConstructor = mkContextConstructor contextName (inits ++ nativeDispatchPop ++ packedDispatchPop)
+
+    let valType   isNative = if isNative then "NativeValue" else "PackedValue"
+    let tableName isNative = if isNative then "native_dispatch_table" else "packed_dispatch_table"
+
+    let dispatchDecl isNative = R.FunctionDefn (R.Name "__getDispatcher")
+                       [ ("payload", R.UniquePointer $ R.Named $ R.Name $ valType isNative)
+                       , ("trigger_id", R.Primitive R.PInt)
                        ]
-                       (Just R.Void) [] False
-                       [R.Ignore $ R.Call
-                         (R.Subscript (R.Variable $ R.Name "dispatch_table") (R.Variable $ R.Name "trigger_id"))
-                         [R.Variable $ R.Name "payload", R.Variable $ R.Name "source"]
+                       (Just $ R.UniquePointer $ R.Named $ R.Name "Dispatcher") [] False
+                       [R.Return $ R.Call
+                         (R.Subscript (R.Variable $ R.Name $ tableName isNative) (R.Variable $ R.Name "trigger_id")) [R.Move $ R.Variable $ R.Name "payload"]
                        ]
-    let dispatchTableDecl  = R.GlobalDefn $ R.Forward $ R.ScalarDecl
-                     (R.Name "dispatch_table")
+    let dispatchTableDecl isNative = R.GlobalDefn $ R.Forward $ R.ScalarDecl
+                     (R.Name $ tableName isNative)
                      (R.Named $ R.Qualified (R.Name "std") $ R.Specialized
-                           [R.Primitive R.PInt,
-                             R.Function
-                               [R.Named $ R.Name "void*", R.Const $ R.Reference $ R.Named $ R.Name "Address"]
-                            R.Void] (R.Name "map"))
+                           [ R.Function
+                               [R.UniquePointer $ R.Named $ R.Name $ valType isNative]
+                            (R.UniquePointer $ R.Named $ R.Name "Dispatcher")] (R.Name "vector"))
                      Nothing
 
     let patchFn = R.FunctionDefn (R.Qualified contextName (R.Name "__patch"))
-                  [("s", R.Named $ R.Qualified (R.Name "std") (R.Name "string"))]
+                  [("node", R.Const $ R.Reference $ R.Named $ R.Qualified (R.Name "YAML") (R.Name "Node"))]
                   (Just R.Void) [] False
                   [ R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "YAML") $ R.Qualified (R.Specialized
                                                          [R.Named contextName]
                                                          (R.Name "convert"))
                                        (R.Name "decode"))
-                               [ R.Call (R.Variable $ R.Qualified (R.Name "YAML") (R.Name "Load"))
-                                            [R.Variable $ R.Name "s"]
+                               [ R.Variable $ R.Name "node"
                                , R.Dereference (R.Variable $ R.Name "this")]
                   ]
 
     let patchFnDecl = R.GlobalDefn $ R.Forward $ R.FunctionDecl (R.Name "__patch")
-                      [R.Named $ R.Qualified (R.Name "std") (R.Name "string")] R.Void
+                      [R.Const $ R.Reference $ R.Named $ R.Qualified (R.Name "YAML") (R.Name "Node")] R.Void
 
     let contextDefns = [contextConstructor] ++ programDefns  ++ [initDeclDefn] ++
-                       [patchFnDecl, prettify, jsonify, dispatchDecl]
+                       [patchFnDecl, prettify, jsonify, dispatchDecl True, dispatchDecl False]
 
     let contextClassDefn = R.ClassDefn contextName []
-                             [ R.Named $ R.Qualified (R.Name "K3") $ R.Name "__standard_context"
-                             , R.Named $ R.Qualified (R.Name "K3") $ R.Name "__string_context"
-                             , R.Named $ R.Qualified (R.Name "K3") $ R.Name "__time_context"
-                             , R.Named $ R.Qualified (R.Name "K3") $ R.Name "__pcm_context"
-                             , R.Named $ R.Qualified (R.Name "K3") $ R.Name "__tcmalloc_context"
-                             , R.Named $ R.Qualified (R.Name "K3") $ R.Name "__jemalloc_context"
+                             [ R.Named $ R.Qualified (R.Name "K3") $ R.Name "ProgramContext"
                              ]
-                             contextDefns [] [dispatchTableDecl]
+                             contextDefns [] [dispatchTableDecl True, dispatchTableDecl False]
 
     pinned <- (map R.GlobalDefn) <$> definePinnedGlobals
     mainFn <- main
 
     -- Return all top-level definitions.
     return $ includeDefns ++ aliasDefns ++ concat recordDefns ++ concat compositeDefns ++
-               [contextClassDefn] ++ pinned ++ [yamlStructDefn, patchFn] ++ mainFn
+               nativeDispatchers ++ packedDispatchers ++ [contextClassDefn] ++ pinned ++ [yamlStructDefn, patchFn] ++ mainFn
 
   where
     mkContextConstructor contextName body =
       R.FunctionDefn contextName [("__engine", R.Reference $ R.Named (R.Name "Engine"))]
         Nothing
         [ R.Call
-            (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__standard_context")
+            (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "ProgramContext")
             [R.Variable $ R.Name "__engine"]
-        -- builtin mixins:
-        , R.Call
-            (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__string_context")
-            []
-
-        , R.Call
-            (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__time_context")
-            []
-
-        , R.Call
-            (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__pcm_context")
-            []
-
-        , R.Call
-            (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "__tcmalloc_context")
-            []
         ]
         False
         body
@@ -227,10 +207,12 @@ main = do
 
     staticContextMembersPop <- generateStaticContextMembers
 
+    let engineDecl = R.Ignore $ R.Call (R.Variable $ R.Name "Engine engine") [R.Variable $ R.Name "opt"]
 
     let runProgram = R.Ignore $ R.Call
-                       (R.Variable $ R.Specialized [R.Named $ R.Name "__global_context"] (R.Name "runProgram"))
-                       [ R.Variable $ R.Name "opt" ]
+                       (R.Project (R.Variable $ R.Name "engine") (R.Specialized [R.Named $ R.Name "__global_context"] (R.Name "run")))
+                       [ ]
+    let joinProgram = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "join")) []
 
     return [
         R.FunctionDefn (R.Name "main") [("argc", R.Primitive R.PInt), ("argv", R.Named (R.Name "char**"))]
@@ -239,7 +221,9 @@ main = do
              staticContextMembersPop ++
              [ optionDecl
              , optionCall
+             , engineDecl
              , runProgram
+             , joinProgram
              ]
              )
        ]
@@ -247,27 +231,27 @@ main = do
 requiredAliases :: CPPGenM [(Either R.Name R.Name, Maybe R.Name)]
 requiredAliases = return
                   [ (Right (R.Qualified (R.Name "K3" )$ R.Name "Address"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "Codec"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "StorageFormat"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "IOMode"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "CodecFormat"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Engine"), Nothing)
-                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "string_impl"), Nothing)
-                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "Options"), Nothing)
-                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "ValDispatcher"), Nothing)
-                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "Dispatcher"), Nothing)
-                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "virtualizing_message_processor"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "make_address"), Nothing)
-                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "__k3_context"), Nothing)
-                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "runProgram"), Nothing)
-                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "SystemEnvironment"), Nothing)
-                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "processRoles"), Nothing)
-                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "defaultEnvironment"), Nothing)
-                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "createContexts"), Nothing)
-                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "getAddrs"), Nothing)
-                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "currentTime"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "Dispatcher"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "NativeValue"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "TNativeValue"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "PackedValue"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "Options"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "string_impl"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "unit_t"), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "make_tuple" ), Nothing)
+                  , (Right (R.Qualified (R.Name "std")$ R.Name "tuple" ), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "make_shared" ), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "shared_ptr" ), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "get" ), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "map"), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "list"), Nothing)
+                  , (Right (R.Qualified (R.Name "std")$ R.Name "unique_ptr"), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "ostringstream"), Nothing)
                   ]
 
@@ -281,27 +265,23 @@ requiredIncludes = return
                    , "tuple"
 
                    , "boost/multi_index_container.hpp"
+                   , "boost/multi_index/hashed_index.hpp"
                    , "boost/multi_index/ordered_index.hpp"
                    , "boost/multi_index/member.hpp"
                    , "boost/multi_index/composite_key.hpp"
 
-                   , "BaseTypes.hpp"
-                   , "BaseString.hpp"
                    , "Common.hpp"
-                   , "Context.hpp"
-                   , "Dispatch.hpp"
-                   , "Engine.hpp"
-                   , "MessageProcessor.hpp"
-                   , "Literals.hpp"
-                   , "Serialization.hpp"
-                   , "serialization/yaml.hpp"
-                   , "serialization/json.hpp"
-                   , "Builtins.hpp"
-                   , "Run.hpp"
+                   , "Options.hpp"
                    , "Prettify.hpp"
+                   , "builtins/Builtins.hpp"
+                   , "core/Engine.hpp"
+                   , "core/ProgramContext.hpp"
+                   , "serialization/Codec.hpp"
+                   , "serialization/Yaml.hpp"
+                   , "types/BaseString.hpp"
+                   , "types/Dispatcher.hpp"
 
-                   , "dataspace/Dataspace.hpp"
-                   , "dataspace/MapDataspace.hpp"
+                   , "collections/AllCollections.hpp"
 
                    , "yaml-cpp/yaml.h"
                    ]
@@ -316,69 +296,71 @@ idOfTrigger t = "__" ++ unmangleReservedId t ++ "_tid"
 generateStaticContextMembers :: CPPGenM [R.Statement]
 generateStaticContextMembers = do
   triggerS        <- triggers <$> get
-  initializations <- staticInitializations <$> get
+  inits           <- staticInitializations <$> get
   names           <- mapM assignTrigName triggerS
-  dispatchers     <- mapM assignClonableDispatcher triggerS
-  return $ initializations ++ names ++ dispatchers
+  return $ inits ++ names
   where
     assignTrigName (tName, _) = do
       let i = R.Variable $ R.Qualified (R.Name "__global_context") (R.Name (idOfTrigger tName))
       let nameStr = R.Literal $ R.LString tName
-      let table = R.Variable $ R.Qualified (R.Name "__k3_context") (R.Name "__trigger_names")
+      let table = R.Variable $ R.Qualified (R.Name "K3::ProgramContext") (R.Name "__trigger_names_")
       return $ R.Assignment (R.Subscript table i) nameStr
 
-    assignClonableDispatcher (tName, tType) = do
-      kType <- genCType tType
-      let i = R.Variable $ R.Qualified (R.Name "__global_context") (R.Name (idOfTrigger tName))
-      let table = R.Variable $ R.Qualified (R.Name "__k3_context") (R.Name "__clonable_dispatchers")
-      let dispatcher = R.Call
-                         (R.Variable $ R.Specialized [R.Named $ R.Specialized [kType] (R.Name "ValDispatcher")] (R.Name "make_shared"))
-                         []
-      return $ R.Assignment (R.Subscript table i) dispatcher
-
-
-generateDispatchPopulation :: CPPGenM [R.Statement]
-generateDispatchPopulation = do
+generateDispatchers :: Bool -> CPPGenM [R.Definition]
+generateDispatchers isNative = do
   triggerS <- triggers <$> get
-  mapM genDispatch triggerS
+  dispatches <- mapM genDispatcher triggerS
+  return $ dispatches
   where
-     table = R.Variable $ R.Name "dispatch_table"
+     genDispatcher (tName, tType) = do
+       argType <- genCType tType
+       let valName = if isNative then "Native" else "Packed"
+       let members = [ R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name "context_") (R.Reference $ R.Named $ R.Name "CONTEXT") Nothing,
+                       R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name "value_") (R.UniquePointer $ R.Named $ R.Name $ valName ++ "Value") Nothing
+                     ] ++ if isNative then [] else [R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name "codec_") (R.SharedPointer $ R.Named $ R.Name "Codec") Nothing]
+       let constructor = R.FunctionDefn (R.Name $ tName ++ valName ++ "Dispatcher")
+                           [("ctxt", R.Reference $ R.Named $ R.Name  "CONTEXT"), ("val", R.UniquePointer $ R.Named $ R.Name $ valName ++ "Value")]
+                           Nothing
+                           [R.Call (R.Variable $ R.Name "context_") [R.Variable $ R.Name "ctxt"], R.Call (R.Variable $ R.Name "value_") [R.Move $ R.Variable $ R.Name "val"]]
+                           False
+                           (if isNative then [] else [R.Assignment (R.Variable $ R.Name "codec_")
+                                                       (R.Call (R.Variable $ R.Qualified (R.Name "Codec") (R.Specialized [argType] (R.Name "getCodec")))
+                                                       [R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "value_") (R.Name "format")) []])
+                                                     ])
+       let unpacked = if isNative then [] else (:[]) $ R.Forward $ R.ScalarDecl (R.Name "nv") (R.UniquePointer $ R.Named $ R.Name "NativeValue") $ Just $ R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "codec_") (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "value_"]
+       let native_val = if isNative then (R.Variable $ R.Name "value_") else R.Variable $ R.Name "nv"
+       let casted_val = R.Forward $ R.ScalarDecl (R.Name "casted") (R.Pointer $ argType) $ Just $ R.Call (R.Project (R.Dereference $ native_val) ( R.Specialized [argType] (R.Name "template as"))) []
+       let call_op = R.FunctionDefn (R.Name $ "operator()") [] (Just $ R.Void) [] False
+                      (unpacked ++ [casted_val, R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "context_") (R.Name tName)) [R.Dereference $ R.Variable $ R.Name "casted"]])
+
+       let jsonify = R.FunctionDefn (R.Name $ "jsonify") [] (Just $ R.Primitive $ R.PString) [] True
+                      (unpacked ++ [casted_val, R.Return $ R.Call (R.Variable $ R.Specialized [argType] (R.Qualified (R.Name "K3") (R.Qualified (R.Name "serialization") (R.Qualified (R.Name "json") (R.Name "encode"))))) [R.Dereference $ R.Variable $ R.Name "casted"] ])
+       let methods = [constructor, call_op, jsonify]
+       return $ R.TemplateDefn [("CONTEXT", Nothing)] (R.ClassDefn (R.Name $ tName ++ valName ++ "Dispatcher") [] [R.Named $ R.Name "Dispatcher"] methods [] members)
+
+
+generateDispatchPopulation :: Bool -> CPPGenM [R.Statement]
+generateDispatchPopulation isNative = do
+  triggerS <- triggers <$> get
+  let numTrigs = length triggerS
+  let resize = R.Ignore $ R.Call (R.Project table (R.Name "resize")) [R.Literal $ R.LInt numTrigs]
+  dispatches <- mapM genDispatch triggerS
+  return $ resize:dispatches
+
+  where
+     table = R.Variable $ R.Name $ if isNative then "native_dispatch_table" else "packed_dispatch_table"
+     dispatcher name = R.Named $ R.Specialized [R.Named $ R.Name "__global_context"] (R.Name $ name ++ (if isNative then "Native" else "Packed") ++ "Dispatcher")
+     value = if isNative then "NativeValue" else "PackedValue"
      genDispatch (tName, tType) = do
-       kType <- genCType tType
-
-       let i = R.Variable $ R.Name (idOfTrigger tName)
-
-       let engine = R.Project (R.Dereference $ R.Variable $ R.Name "this") (R.Name "__engine")
-       let ctDecl = R.Forward $ R.ScalarDecl (R.Name "ct") R.Inferred
-                      (Just $ R.Call (R.Variable $ R.Name "currentTime") [])
-       let encoded_payload = R.Call (R.Variable $ R.Specialized [kType] (R.Name "K3::serialization::json::encode"))
-                               [R.Variable $ R.Name "v"]
        let dispatchWrapper = R.Lambda
                              [R.ValueCapture $ Just ("this", Nothing)]
-                             [ ("payload", R.Named $ R.Name "void*")
-                             , ("source", R.Const $ R.Reference $ R.Named $ R.Name "Address")
+                             [("payload", R.UniquePointer $ R.Named $ R.Name value)]
+                             False
+                             Nothing
+                             [
+                             R.Return $ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Specialized [dispatcher tName] (R.Name "make_unique"))) ([R.Dereference $ R.Variable $ R.Name "this", R.Move $ R.Variable $ R.Name "payload"])
                              ]
-
-                             False Nothing
-                             [ ctDecl
-                             , R.Forward $ R.ScalarDecl (R.Name "v") R.Inferred
-                                 (Just $ R.Dereference $ R.Call (R.Variable $ R.Specialized [R.Pointer kType] $
-                                                             R.Name "static_cast") [R.Variable $ R.Name "payload"])
-                             , R.Ignore $ R.Call (R.Variable $ R.Name tName)
-                                   [R.Variable $ R.Name "v"]
-                             , R.IfThenElse (R.Call (R.Project engine (R.Name "logJsonEnabled")) [])
-                                 [ R.Ignore $ R.Call ((R.Project engine) (R.Name "logJson"))
-                                    [ R.Variable $ R.Name "ct"
-                                    , R.Variable $ R.Name "me"
-                                    , R.Literal $ R.LString tName
-                                    , encoded_payload
-                                    , R.Call (R.Variable $ R.Name "__jsonify") []
-                                    , R.Variable $ R.Name "source"
-                                    ]
-                                 ]
-                                 []
-                             ]
-
+       let i = R.Variable $ R.Name (idOfTrigger tName)
        return $ R.Assignment (R.Subscript table i) dispatchWrapper
 
 
@@ -386,7 +368,6 @@ genJsonify :: CPPGenM R.Definition
 genJsonify = do
    currentS <- get
    body    <- genBody $ showables currentS
-   --let body = [R.Return $ R.Initialization result_type []]
    return $ R.FunctionDefn (R.Name "__jsonify") [] (Just result_type) [] False body
   where
    genBody  :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
@@ -406,9 +387,6 @@ genJsonify = do
      rhs_exprs  <- mapM (\(n,t) -> jsonifyExpr t n) new_nts
      return $ zipWith R.Assignment lhs_exprs rhs_exprs
      where
-       isTUnit (tnc -> (TTuple, [])) = True
-       isTUnit _ = False
-
        jsonifyExpr t n = do
          cType <- genCType t
          return $ R.Call (R.Variable $ R.Specialized [cType] (R.Name "K3::serialization::json::encode")) [n]
@@ -426,7 +404,6 @@ genPrettify :: CPPGenM R.Definition
 genPrettify = do
    currentS <- get
    body    <- genBody $ showables currentS
-   --let body = [R.Return $ R.Initialization result_type []]
    return $ R.FunctionDefn prettifyName [] (Just result_type) [] False body
  where
    p_string = R.Named $ R.Qualified (R.Name "std") (R.Name "string")
@@ -455,7 +432,7 @@ genPrettify = do
        isTUnit (tnc -> (TTuple, [])) = True
        isTUnit _ = False
 
--- | Generate an expression that represents an expression of the given type as a string
+-- | Generate a C++  expression that represents a K3 expression of the given type as a string
 prettifyExpr :: K3 Type -> R.Expression -> CPPGenM R.Expression
 prettifyExpr base_t e =
  case base_t of
@@ -472,11 +449,11 @@ prettifyExpr base_t e =
    ((tag &&& children) -> (TIndirection, [t])) -> ind_to_string t
    ((tag &&& children) -> (TTuple, ts))        -> tup_to_string ts
    ((tag &&& children) -> (TRecord ids, ts))   -> rec_to_string ids ts
-   ((tag &&& children) -> (TCollection, [et])) -> coll_to_string base_t et
+   ((details) -> (TCollection, [et], as)) -> coll_to_string base_t et as
    _                                           -> return $ lit_string "Cant Show!"
  where
    -- Utils
-   call_prettify x exp =  R.Call (R.Variable (R.Qualified (R.Name "K3") (R.Name $ "prettify_" ++ x))) exp
+   call_prettify x args =  R.Call (R.Variable (R.Qualified (R.Name "K3") (R.Name $ "prettify_" ++ x))) args
    wrap_inner t = do
      cType <- genCType t
      inner <- prettifyExpr t (R.Variable $ R.Name "x")
@@ -500,9 +477,9 @@ prettifyExpr base_t e =
        f <- wrap_inner ct
        return $ call_prettify "indirection" [e, f]
 
-   -- TODO
-   -- Tuple
-   tup_to_string _ = return $ call_prettify "tuple" [e]
+   -- Tuple (TODO)
+   tup_to_string cts = mapM wrap_inner cts >>= return . call_prettify "tuple" . (e:)
+
    -- Record
    rec_to_string ids cts = do
        cType  <- genCType base_t
@@ -519,6 +496,10 @@ prettifyExpr base_t e =
        return $ call_prettify "record" [e, f]
 
    -- Collection
-   coll_to_string t et = do
+   coll_to_string t et as = do
        f <- wrap_inner et
-       return $ call_prettify "collection" [e, f]
+       let str = maybe "collection" (const "vmap") (as @~ isVMap)
+       return $ call_prettify str [e, f]
+
+   isVMap (TAnnotation s) = "VMap" `L.isInfixOf` s
+   isVMap _ = False

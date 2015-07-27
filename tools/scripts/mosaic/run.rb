@@ -4,10 +4,12 @@
 require 'optparse'
 require 'fileutils'
 require 'net/http'
+require 'yaml'
 require 'json'
 require 'rexml/document'
 require 'csv'
 require 'open3'
+#require 'pg'
 
 def run(cmd, checks=[])
   puts cmd if $options[:debug]
@@ -48,28 +50,31 @@ end
 
 ### DBToaster stage ###
 
-def run_dbtoaster(test_path, dbt_data_path, dbt_platform, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
+def run_dbtoaster(exec_only, test_path, dbt_data_path, dbt_platform, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
   dbt_name_hpp_path = File.join($workdir, dbt_name_hpp)
   dbt_name_path = File.join($workdir, dbt_name)
 
-  stage "[2] Creating dbtoaster hpp file"
-  Dir.chdir(test_path)
-  run("#{File.join(dbt_platform, "dbtoaster")} --read-agenda -l cpp #{source_path} > #{dbt_name_hpp_path}")
+  if not exec_only
+    stage "[2] Creating dbtoaster hpp file"
+    Dir.chdir(test_path)
+    run("#{File.join(dbt_platform, "dbtoaster")} --read-agenda -l cpp #{source_path} > #{dbt_name_hpp_path}")
+    Dir.chdir(start_path)
+
+    # change the data path
+    s = File.read(dbt_name_hpp_path)
+    s.sub!(/agenda.csv/,dbt_data_path)
+    File.write(dbt_name_hpp_path, s)
+
+    # adjust boost libs for OS
+    boost_libs = %w(boost_program_options boost_serialization boost_system boost_filesystem boost_chrono boost_thread)
+    mt = dbt_platform == "dbt_osx" ? "-mt" : ""
+    boost_libs.map! { |lib| "-l" + lib + mt }
+
+    stage "[2] Compiling dbtoaster"
+    run("g++ #{File.join(dbt_lib_path, "main.cpp")} -std=c++11 -include #{dbt_name_hpp_path} -o #{dbt_name_path} -O3 -I#{dbt_lib_path} -L#{dbt_lib_path} -ldbtoaster -lpthread #{boost_libs.join ' '}")
+  end
+
   Dir.chdir(start_path)
-
-  # change the data path
-  s = File.read(dbt_name_hpp_path)
-  s.sub!(/agenda.csv/,dbt_data_path)
-  File.write(dbt_name_hpp_path, s)
-
-  # adjust boost libs for OS
-  boost_libs = %w(boost_program_options boost_serialization boost_system boost_filesystem boost_chrono boost_thread)
-  mt = dbt_platform == "dbt_osx" ? "-mt" : ""
-  boost_libs.map! { |lib| "-l" + lib + mt }
-
-  stage "[2] Compiling dbtoaster"
-  run("g++ #{File.join(dbt_lib_path, "main.cpp")} -std=c++11 -include #{dbt_name_hpp_path} -o #{dbt_name_path} -O3 -I#{dbt_lib_path} -L#{dbt_lib_path} -ldbtoaster -lpthread #{boost_libs.join ' '}")
-
   stage "[2] Running DBToaster"
   run("#{dbt_name_path} > #{dbt_name_path}.xml", [/File not found/])
 end
@@ -167,7 +172,7 @@ def run_create_compile_k3_remote(server_url, bin_file, block_on_compile, k3_cpp_
   res = curl(server_url, "/compile", file: k3_path, post: true, json: true,
             args:{ "compilestage" => "both", "workload" => $options[:skew].to_s})
   uid = res["uid"]
-  update_options_if_empty(:uid, uid)
+  $options[:uid] = uid
   persist_options()
 
   if block_on_compile
@@ -180,10 +185,13 @@ end
 # create the k3 cpp file remotely and copy the cpp locally
 def run_create_k3_remote(server_url, block_on_compile, k3_cpp_name, k3_path, nice_name)
   stage "[3] Remote creating K3 cpp file."
-  res = curl(server_url, "/compile", file: k3_path, post: true, json: true,
-            args:{ "compilestage" => "cpp", "workload" => $options[:skew].to_s})
+  args = { "compilestage" => "cpp", 
+           "workload" => $options[:skew].to_s}
+  args["compileargs"] = $options[:compileargs] if $options[:compileargs]
+
+  res = curl(server_url, "/compile", file: k3_path, post: true, json: true, args:args)
   uid = res["uid"]
-  update_options_if_empty(:uid, uid)
+  $options[:uid] = uid
   persist_options()
 
   if block_on_compile
@@ -212,19 +220,30 @@ end
 ### Deployment stage ###
 
 def gen_yaml(k3_data_path, role_file, script_path)
-  # Genereate yaml file"
+  # Generate yaml file"
   cmd = ""
   cmd << "--switches " << $options[:num_switches].to_s << " " if $options[:num_switches]
   cmd << "--nodes " << $options[:num_nodes].to_s << " " if $options[:num_nodes]
   cmd << "--nmask " << $options[:nmask] << " " if $options[:nmask]
-  cmd << "--perhost " << $options[:perhost] << " " if $options[:perhost]
+  cmd << "--perhost " << $options[:perhost].to_s << " " if $options[:perhost]
   cmd << "--file " << k3_data_path << " "
-  cmd << "--dist " if !$options[:run_local]
+
+  if $options[:run_mode] == "multicore"
+    cmd << "--multicore"
+  elsif $options[:run_mode] == "dist"
+    cmd << "--dist"
+  end
+
+  extra_args = []
+  extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
+  extra_args << "sw_driver_sleep=" + $options[:msg_delay] if $options[:msg_delay]
+  cmd << "--extra-args " << extra_args.join(',') << " " if extra_args.size > 0
+
   yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
   File.write(role_file, yaml)
 end
 
-def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
+def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
   check_param(jobid, "--jobid")
 
   stage "[#{stage_num}] Waiting for Mesos job to finish..."
@@ -233,7 +252,10 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
   check_status(status, "FINISHED", "Mesos job")
 
   stage "[#{stage_num}] Getting result data"
-  `rm -rf json`
+
+  sandbox_path = File.join($workdir, "job_#{jobid}")
+  `mkdir -p #{sandbox_path}` unless Dir.exists?(sandbox_path)
+
   file_paths = []
   res['sandbox'].each do |s|
     if File.extname(s) == '.tar'
@@ -241,13 +263,74 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name)
     end
   end
 
+  files_to_clean = []
+  peer_yaml_files = []
   file_paths.each do |f|
+    f_path = File.join($workdir, f)
+    f_final_path = File.join(sandbox_path, f)
+    node_sandbox_path = File.join(sandbox_path, File.basename(f, ".*"))
+    `mkdir -p #{node_sandbox_path}` unless Dir.exists?(node_sandbox_path)
+
+    # Retrieve, extract and move node sandbox.
     curl(server_url, "/fs/jobs/#{nice_name}/#{jobid}/", getfile:f)
-    run("tar xvf #{File.join($workdir, f)} -C #{$workdir}")
+    run("tar xvf #{f_path} -C #{node_sandbox_path}")
+    `mv #{f_path} #{f_final_path}`
+
+    # Track node logs.
+    json_path = File.join(node_sandbox_path, "json")
+    if Dir.exists?(json_path)
+      Dir.entries(json_path).each do |jf|
+        if jf =~ /.*Globals.dsv/ || jf =~ /.*Messages.dsv/
+          files_to_clean << File.join(json_path, jf)
+        end
+      end
+    end
+
+    # Track peer yamls.
+    Dir.entries(node_sandbox_path).each do |nsf|
+      if nsf =~ /peers.*.yaml/
+        peer_yaml_files << File.join(node_sandbox_path, nsf)
+      end
+    end
   end
+
+  # Run script to convert json format
+  stage "[#{stage_num}] Extracting consolidated logs"
+  unless files_to_clean.empty?
+    run("#{File.join(script_path, "clean_json.py")} --prefix_path #{sandbox_path} #{files_to_clean.join(" ")}")
+  end
+
+  stage "[#{stage_num}] Extracting peer roles"
+
+  # Collect peer roles from yaml bootstrap files
+  peer_roles = {}
+  role_counters = {}
+  unless peer_yaml_files.empty?
+    peer_yaml_files.each do |pf|
+      peer_bootstrap = YAML.load_file(pf)
+      if peer_bootstrap.has_key?('me') && peer_bootstrap.has_key?('role')
+        if !role_counters.has_key?(peer_bootstrap['role'])
+          role_counters[peer_bootstrap['role']] = 0
+        else
+          role_counters[peer_bootstrap['role']] += 1
+        end
+        peer_roles[peer_bootstrap['me']] =
+          peer_bootstrap['role'][0]['n'] + role_counters[peer_bootstrap['role'][0]['n']].to_s
+      else
+        stage "[#{stage_num}] ERROR: No me/role entries found in peer yaml #{pf}"
+      end
+    end
+  end
+
+  # Write out peer address, role pairs as a pipe-delimited csv.
+  peers_dsv_file = File.join(sandbox_path, "peers.dsv")
+  CSV.open(peers_dsv_file, "w", {:col_sep => "|", :quote_char => "'"}) do |dsv|
+    peer_roles.each {|key, value| dsv << [key, value]}
+  end
+
 end
 
-def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, script_path)
+def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, script_path, full_ktrace)
   role_path = File.join($workdir, nice_name + ".yaml")
 
   # we can either have a uid from a previous stage, or send a binary and get a uid now
@@ -255,7 +338,7 @@ def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, scr
     stage "[5] Sending binary to mesos"
     res = curl(server_url, '/apps', file:bin_path, post:true, json:true)
     uid = res['uid']
-    update_options_if_empty(:uid, uid)
+    $options[:uid] = uid
     persist_options()
   end
 
@@ -266,14 +349,15 @@ def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, scr
   gen_yaml(k3_data_path, role_path, script_path)
 
   stage "[5] Creating new mesos job"
-  res = curl(server_url, "/jobs/#{nice_name}#{uid_s}", json:true, post:true, file:role_path, args:{'jsonfinal' => 'yes'})
+  curl_args = full_ktrace ? {'jsonlog' => 'yes'} : {'jsonfinal' => 'yes'}
+  res = curl(server_url, "/jobs/#{nice_name}#{uid_s}", json:true, post:true, file:role_path, args:curl_args)
   jobid = res['jobId']
-  update_options_if_empty(:jobid, jobid)
+  $options[:jobid] = jobid
   persist_options()
   puts "JOBID = #{jobid}"
 
   # Wait for job to finish and get results
-  wait_and_fetch_results(5, jobid, server_url, nice_name)
+  wait_and_fetch_results(5, jobid, server_url, nice_name, script_path)
 end
 
 # local deployment
@@ -313,16 +397,21 @@ def parse_dbt_results(dbt_name)
   r = REXML::Document.new(dbt_xml_out)
   dbt_results = {}
   r.elements['boost_serialization/snap'].each do |result|
-    # complex results
-    res = []
+    # results with keys
     if result.has_elements?
       result.each do |item|
         if item.name == 'item'
+          res = []
           item.each { |e| res << str_to_val(e.text) }
+
+          if dbt_results.has_key?(result.name)
+            dbt_results[result.name][res[0...-1]] = res[-1]
+          else
+            dbt_results[result.name] = {res[0...-1] => res[-1]}
+          end
         end
       end
-      dbt_results[result.name] = res if res.size > 0
-    # simple result
+    # results without keys
     else
       dbt_results[result.name] = str_to_val(result.text)
     end
@@ -330,66 +419,123 @@ def parse_dbt_results(dbt_name)
   return dbt_results
 end
 
-def parse_k3_results(script_path, dbt_results)
+def parse_k3_results(dbt_results, jobid, full_ktrace)
   stage "[6] Parsing K3 results"
-  files = []
-  json_path = File.join($workdir, "json")
-  if Dir.exists?(json_path)
-    Dir.entries(json_path).each do |f|
-      files << File.join(json_path, f) if f =~ /.*Globals.dsv/
-    end
-  end
 
-  # Run script to convert json format
-  unless files.empty?
-    run("#{File.join(script_path, "clean_json.py")} --prefix_path #{$workdir} #{files.join(" ")}")
+  job_sandbox_path = File.join($workdir, "job_#{jobid}")
+  globals_path = File.join(job_sandbox_path, 'globals.dsv')
+
+  if !Dir.exists?(job_sandbox_path) || !File.file?(globals_path)
+    stage "[6] ERROR, could not find job sandbox for #{jobid}"
+    return nil
   end
 
   # We assume only final state data
   combined_maps = {}
-  str = File.read(File.join($workdir, 'globals.dsv'))
+  str = File.read(globals_path)
   stage "[6] Found K3 globals.csv"
+
+  if full_ktrace
+    max_msg_ids = {}
+    str.each_line do |line|
+      fields = line.split('|')
+      msg_id = Integer(fields[0])
+      peer = fields[1]
+      max_msg_ids[peer] = max_msg_ids.has_key?(peer) ? [max_msg_ids[peer], msg_id].max() : msg_id
+    end
+  end
+
   str.each_line do |line|
     csv = line.split('|')
+    msg_id   = Integer(csv[0])
+    peer     = csv[1]
     map_name = csv[2]
     map_data = csv[3]
+
+    # skip intermediate state if using full ktrace
+    next if full_ktrace && msg_id != max_msg_ids[peer]
+
     # skip irrelevant maps
     next unless dbt_results.has_key? map_name
     map_data_j = JSON.parse(map_data)
+
     # skip empty maps
     next if map_data_j.empty?
+
+    # convert to [k,v] rather than flat [k,v,k,v...]
+    vid = nil
+    map_data_k = []
+    map_data_j.each do |v|
+      if vid.nil?
+        vid = v
+      else
+        map_data_k << [vid, v]
+        vid = nil
+      end
+    end
+
     # frontier operation
     max_map = {}
-    # check if we're dealing with simple values
-    if map_data_j[0].size > 2
-      map_data_j.each do |v|
-        key = v[1..-2]
+    unit_value = "()"
+
+    # check if we're dealing with maps without keys
+    # format of elements: array of [vid, [key, value], vid, [key, value]...]
+    # check for existence of first element's key (ie. key-less maps)
+    if map_data_k[0][1].size > 1
+
+      # DBToaster XML parsing ensures that keys are always arrays.
+      # Check if we need to promote the key type for k3 results.
+      unit_key = false
+      promote_key_array = false
+
+      map_data_k.each do |e|
+        vid = e[0]
+        key = e[1][0]
+        val = e[1][1]
         max_vid, _ = max_map[key]
-        if !max_vid || ((v[0] <=> max_vid) == 1)
-          max_map[key] = [v[0], v[-1]]
+        # compare vids to see if greater
+        if !max_vid || ((vid <=> max_vid) == 1)
+          max_map[key] = [vid, val]
         end
+        unit_key = key == "()"
+        promote_key_array = !key.is_a?(Array)
       end
-      # add the max map to the combined maps
+      # add the max map to the combined maps and discard vids
       max_map.each_pair do |key,value|
-        if !combined_maps.has_key?(map_name)
-          combined_maps[map_name] = { key => value[1] }
-        elsif !combined_maps[map_name].has_key?(key)
-          combined_maps[map_name][key] = value[1]
+        key = !unit_key && promote_key_array ? [key] : key
+        if unit_key
+          if !combined_maps.has_key?(map_name)
+            combined_maps[map_name] = value[1]
+          else
+            combined_maps[map_name] += value[1]
+          end
         else
-          combined_maps[map_name][key] += value[1]
+          if !combined_maps.has_key?(map_name)
+            combined_maps[map_name] = { key => value[1] }
+          elsif !combined_maps[map_name].has_key?(key)
+            combined_maps[map_name][key] = value[1]
+          else
+            # this can happen because each data node has the same maps,
+            # and they're zeroed out by default, so adding should work out.
+            combined_maps[map_name][key] += value[1]
+          end
         end
       end
-    else # simple data type
+    else # key-less maps
       max_vid  = nil
       max_data = nil
-      map_data_j.each do |v|
-        if !max_vid || ((v[0] <=> max_vid) == 1)
-          max_vid  = v[0]
-          max_data = v[1]
+      map_data_k.each do |e|
+        vid = e[0]
+        val = e[1]
+        if !max_vid || ((vid <=> max_vid) == 1)
+          max_vid  = vid
+          max_data = val
         end
       end
       unless !max_vid
         if combined_maps.has_key?(map_name)
+          # again, this works because there's a 0 value in every data node
+          # for this map_name, and adding will take care of that
           combined_maps[map_name] += max_data
         else
           combined_maps[map_name] = max_data
@@ -397,27 +543,92 @@ def parse_k3_results(script_path, dbt_results)
       end
     end
   end
-  puts "combined: #{combined_maps}"
+  # puts "combined: #{combined_maps}"
   return combined_maps
 end
 
 def run_compare(dbt_results, k3_results)
   # Compare results
-  dbt_results.each_pair do |k,v1|
-    v2 = k3_results[k]
+  pass = true
+  dbt_results.each_pair do |map,v1|
+    v2 = k3_results[map]
     if !v2
-      stage "[6] Mismatch at key #{k}: missing k3 value"; exit 1
+      stage "[6] Mismatch at map #{map}: missing k3 values"; exit 1
     end
     if v1.respond_to?(:sort!) && v2.respond_to?(:sort!)
       v1.sort!
       v2.sort!
     end
     if (v1 <=> v2) != 0
-      stage "[6] Mismatch at key #{k}\nv1:#{v1}\nv2:#{v2}"
-      exit 1
+      stage "[6] Mismatch in map #{map}\ndbt:#{v1.to_s}\nmos:#{v2.to_s}"
+      pass = false
+    else
+      stage "[6] Map #{map}: OK"
     end
   end
-  stage "[6] Results check...OK"
+  if pass
+    stage "[6] Results check...OK"
+  else
+    stage "[6] Results check...FAIL"
+  end
+end
+
+# Loads k3 trace data (messages, globals) from a job into postgres.
+def run_ktrace(script_path, jobid)
+
+  initialize_db = lambda {|dbconn, required_tables|
+    init = false
+    db_init_script = File.join(script_path, 'ktrace_schema.sql')
+    required_tables.each do |t|
+      res = dbconn.exec("SELECT to_regclass('public.#{t}');")
+      if res.values[0][0].nil?
+        init = true
+        break
+      end
+    end
+    if init
+      stage "[7] Initializing KTrace DB"
+      dbconn.exec(File.read(db_init_script))
+    end
+  }
+
+  ingest_file = lambda {|dbconn, table_name, file_path|
+    dbconn.copy_data "COPY #{table_name} FROM STDIN delimiter '|' quote '`' csv" do
+      str = File.read(file_path)
+      str.each_line do |line|
+        dbconn.put_copy_data jobid + "|" + line
+      end
+    end
+  }
+
+  stage "[7] Populating KTrace DB"
+  job_sandbox_path = File.join($workdir, "job_#{jobid}")
+
+  if Dir.exists?(job_sandbox_path)
+    globals_path   = File.join(job_sandbox_path, "globals.dsv")
+    messages_path  = File.join(job_sandbox_path, "messages.dsv")
+    peer_role_path = File.join(job_sandbox_path, "peers.dsv")
+
+    if [globals_path, messages_path, peer_role_path].all? {|f| File.file?(f) }
+      stage "[7] Found trace data, now copying."
+      conn = PG.connect()
+      initialize_db.call(conn, ['Globals', 'Messages', 'Peers'])
+
+      ingest_file.call(conn, "Globals", globals_path)
+      stage "[7] Copied globals trace data."
+
+      ingest_file.call(conn, "Messages", messages_path)
+      stage "[7] Copied messages trace data."
+
+      ingest_file.call(conn, "Peers", peer_role_path)
+      stage "[7] Copied peer role data."
+
+      # TODO: automatic querying and verification of job logs.
+    else
+      stage "[7] ERROR: No ktrace data found for job #{jobid}"
+    end
+  end
+
 end
 
 def check_param(p, nm)
@@ -425,10 +636,6 @@ def check_param(p, nm)
     puts "Please provide #{nm} param"
     exit(1)
   end
-end
-
-def update_options_if_empty(k, v)
-  $options[k] = v unless $options[k]
 end
 
 # persist source, data paths, and others
@@ -450,38 +657,49 @@ end
 
 def main()
   $options = {}
+  $options[:run_mode] = "dist"
+
   uid = nil
 
   usage = "Usage: #{$PROGRAM_NAME} sql_file options"
   parser = OptionParser.new do |opts|
     opts.banner = usage
+    opts.on("-w", "--workdir [PATH]", "Path in which to create files") {|s| $options[:workdir] = s}
     opts.on("-d", "--dbtdata [PATH]", String, "Set the path of the dbt data file") { |s| $options[:dbt_data_path] = s }
     opts.on("-k", "--k3data [PATH]", String, "Set the path of the k3 data file") { |s| $options[:k3_data_path] = s }
-    opts.on("--debug", "Debug mode") { $options[:debug] = true }
-    opts.on("--json_debug", "Debug queries that won't die") { $options[:json_debug] = true }
     opts.on("-s", "--switches [NUM]", Integer, "Set the number of switches") { |i| $options[:num_switches] = i }
     opts.on("-n", "--nodes [NUM]", Integer, "Set the number of nodes") { |i| $options[:num_nodes] = i }
-    opts.on("--perhost [NUM]", Integer, "How many peers to run per host") {|s| $options[:perhost] = s}
-    opts.on("--nmask [MASK]", String, "Mask for node deployment") {|s| $options[:nmask] = s}
-    opts.on("--highmem", "High memory deployment (HM only)") { $options[:nmask] = 'qp-hm.'}
-    opts.on("--brew", "Use homebrew (OSX)") { $options[:osx_brew] = true }
-    opts.on("--run-local", "Run locally") { $options[:run_local] = true }
-    opts.on("--create-local", "Create the cpp file locally") { $options[:create_local] = true }
-    opts.on("--compile-local", "Compile locally") { $options[:compile_local] = true }
     opts.on("-j", "--json [JSON]", String, "JSON file to load options") {|s| $options[:json_file] = s}
+    opts.on("--debug", "Debug mode") { $options[:debug] = true }
+    opts.on("--json_debug", "Debug queries that won't die") { $options[:json_debug] = true }
+    opts.on("--perhost [NUM]", Integer, "How many peers to run per host") {|i| $options[:perhost] = i}
+    opts.on("--nmask [MASK]", String, "Mask for node deployment") {|s| $options[:nmask] = s}
     opts.on("--uid [UID]", String, "UID of file") {|s| $options[:uid] = s}
     opts.on("--jobid [JOBID]", String, "JOBID of job") {|s| $options[:jobid] = s}
     opts.on("--mosaic-path [PATH]", String, "Path for mosaic") {|s| $options[:mosaic_path] = s}
+    opts.on("--highmem", "High memory deployment (HM only)") { $options[:nmask] = 'qp-hm.'}
+    opts.on("--brew", "Use homebrew (OSX)") { $options[:osx_brew] = true }
+    opts.on("--run-local", "Run locally") { $options[:run_mode] = "local" }
+    opts.on("--run-multicore", "Run all data nodes on the same host") { $options[:run_mode] = "multicore" }
+    opts.on("--create-local", "Create the cpp file locally") { $options[:create_local] = true }
+    opts.on("--compile-local", "Compile locally") { $options[:compile_local] = true }
+    opts.on("--dbt-exec-only", "Execute DBToaster only (skipping query build)") { $options[:dbt_exec_only] = true }
     opts.on("--fetch-cpp", "Fetch a cpp file after remote creation") { $options[:fetch_cpp] = true}
     opts.on("--fetch-bin", "Fetch bin + cpp files after remote compilation") { $options[:fetch_bin] = true}
     opts.on("--fetch-results", "Fetch results after job") { $options[:fetch_results] = true }
-    opts.on("-w", "--workdir [PATH]", "Path in which to create files") {|s| $options[:workdir] = s}
     opts.on("--latest-uid",  "Use the latest uid on the server") { $options[:latest_uid] = true}
     opts.on("--moderate",  "Query is of moderate skew (and size)") { $options[:skew] = :moderate}
+    opts.on("--moderate2",  "Query is of moderate skew (and size), class 2") { $options[:skew] = :moderate2}
     opts.on("--extreme",  "Query is of extreme skew (and size)") { $options[:skew] = :extreme}
+    opts.on("--dry-run",  "Dry run for Mosaic deployment (generates K3 YAML topology)") { $options[:dry_run] = true}
+    opts.on("--full-ktrace", "Turn on JSON logging for ktrace") { $options[:full_ktrace] = true }
     opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
+    opts.on("--gc-epoch [MS]", "Set gc epoch time (ms)") { |i| $options[:gc_epoch] = i }
+    opts.on("--msg-delay [MS]", "Set switch message delay (ms)") { |i| $options[:msg_delay] = i }
+    opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
 
-    # stages
+    # Stages.
+    # Ktrace is not run by default.
     opts.on("-a", "--all", "All stages") {
       $options[:dbtoaster]  = true
       $options[:mosaic]     = true
@@ -490,12 +708,14 @@ def main()
       $options[:deploy_k3]  = true
       $options[:compare]    = true
     }
+
     opts.on("-1", "--mosaic",    "Mosaic stage (creates Mosaic K3 program)")       { $options[:mosaic]     = true }
     opts.on("-2", "--dbtoaster", "DBToaster stage")                                { $options[:dbtoaster]  = true }
     opts.on("-3", "--create",    "Create K3 stage (creates Mosaic CPP program)")   { $options[:create_k3]  = true }
     opts.on("-4", "--compile",   "Compile K3 stage (compiles Mosaic CPP program)") { $options[:compile_k3] = true }
     opts.on("-5", "--deploy",    "Deploy stage")                                   { $options[:deploy_k3]  = true }
     opts.on("-6", "--compare",   "Compare stage")                                  { $options[:compare]    = true }
+    opts.on("-7", "--ktrace",    "KTrace stage")                                   { $options[:ktrace]     = true }
   end
   parser.parse!
 
@@ -610,7 +830,7 @@ def main()
   end
 
   if $options[:dbtoaster]
-    run_dbtoaster(test_path, dbt_data_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
+    run_dbtoaster($options[:dbt_exec_only], test_path, dbt_data_path, dbt_plat, dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
   end
   # either nil or take from command line
   uid = $options[:uid] ? $options[:uid] : $options[:latest_uid] ? "latest" : nil
@@ -644,22 +864,29 @@ def main()
   end
 
   if $options[:deploy_k3]
-    if $options[:run_local]
+    if $options[:dry_run]
+      role_file = File.join($workdir, nice_name + "_local.yaml")
+      gen_yaml(k3_data_path, role_file, script_path)
+    elsif $options[:run_local]
       run_deploy_k3_local(bin_path, k3_data_path, nice_name, script_path)
     else
-      run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, script_path)
+      run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, script_path, $options[:full_ktrace])
     end
   end
 
   # options to fetch to job results
   if $options[:fetch_results]
-    wait_and_fetch_results(5, jobid, server_url, nice_name)
+    wait_and_fetch_results(5, jobid, server_url, nice_name, script_path)
   end
 
   if $options[:compare]
     dbt_results = parse_dbt_results(dbt_name)
-    k3_results  = parse_k3_results(script_path, dbt_results)
+    k3_results  = parse_k3_results(dbt_results, jobid, $options[:full_ktrace])
     run_compare(dbt_results, k3_results)
+  end
+
+  if $options[:ktrace]
+    run_ktrace(script_path, jobid)
   end
 end
 

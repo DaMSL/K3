@@ -1,7 +1,11 @@
-annotation Seq given type a,b
+annotation Seq given type a, b, c
 {
   provides lifted peek    : () -> option content
     with effects \_ -> R[self]
+
+  @:CArgs 2
+  provides lifted peek_with : (() -> a) -> (content -> a) -> a
+    with effects \f -> \g -> [R[self]; f content; g content]
 
   provides lifted insert  : content -> ()
     with effects \elem -> [R[self]; R[elem]; W[self]]
@@ -53,6 +57,20 @@ annotation Seq given type a,b
     with effects
       \gbF -> \gaccF -> \z -> \s ->
         [R[self]; R[z]; ([R[content]; gbF content; gaccF content])*]
+
+  @:{Transformer, CArgs 3}
+  provides lifted join : collection {elem: a} @Seq
+                        -> (content -> {elem: a} -> bool) -> (content -> {elem: a} -> c)
+                        -> collection {elem: c} @Seq
+    with effects \other -> \matchF -> \outputF ->
+                   [R[self]; ([R[other]; R[content]; matchF content none; outputF content none])*]
+
+  @:{Transformer, CArgs 4}
+  provides lifted equijoin : collection {elem: a} @Seq
+                           -> (content -> b) -> ({elem:a} -> b) -> (content -> {elem: a} -> c)
+                           -> collection {elem: c} @Seq
+    with effects \other -> \matchLF -> \matchRF -> \outputF ->
+                   [R[self]; ([R[other]; R[content]; matchLF content; matchRF none; outputF content none])*]
 
   @:Transformer
   provides lifted ext     : (content -> collection {elem : a} @Seq)

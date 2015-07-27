@@ -22,6 +22,9 @@ module Language.K3.Core.Utils
 , check8Children
 , prependToRole
 
+, declarationName
+, declarationExpr
+
 , mapTree
 , modifyTree
 , foldMapTree
@@ -70,9 +73,11 @@ module Language.K3.Core.Utils
 , stripNamedDeclAnnotations
 , stripExprAnnotations
 , stripTypeAnnotations
+, stripLiteralAnnotations
 , stripAllDeclAnnotations
 , stripAllExprAnnotations
 , stripAllTypeAnnotations
+, stripAllLiteralAnnotations
 
 , repairProgram
 , foldProgramUID
@@ -83,6 +88,9 @@ module Language.K3.Core.Utils
 
 , stripDCompare
 , stripECompare
+, stripTCompare
+, stripLCompare
+, stripSCompare
 , stripComments
 , stripDUIDSpan
 , stripEUIDSpan
@@ -99,6 +107,7 @@ module Language.K3.Core.Utils
 , stripDeclTypeAndEffectAnns
 , stripAllTypeAndEffectAnns
 
+, concatProgram
 , indexProgramDecls
 ) where
 
@@ -121,8 +130,11 @@ import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
+import Language.K3.Core.Literal
+import Language.K3.Core.Metaprogram
 
 import qualified Language.K3.Core.Constructor.Expression as EC
+import qualified Language.K3.Core.Constructor.Declaration as DC
 
 import Language.K3.Utils.Pretty hiding ( wrap )
 
@@ -157,6 +169,18 @@ $(
   in
   concat <$> mapM mkCheckChildren [0::Int .. 8]
  )
+
+-- Returns the name of a declaration if available.
+declarationName :: K3 Declaration -> Maybe Identifier
+declarationName (tag -> DGlobal  n _ _) = Just n
+declarationName (tag -> DTrigger n _ _) = Just n
+declarationName _ = Nothing
+
+-- Returns the initializer expression for a declaration if available.
+declarationExpr :: K3 Declaration -> Maybe (K3 Expression)
+declarationExpr (tag -> DGlobal  _ _ eOpt) = eOpt
+declarationExpr (tag -> DTrigger _ _ e) = Just e
+declarationExpr _ = Nothing
 
 -- Prepend declarations to the beginning of a role
 prependToRole :: K3 Declaration -> [K3 Declaration] -> K3 Declaration
@@ -767,6 +791,21 @@ stripTypeAnnotations :: (Annotation Type -> Bool) -> K3 Type -> K3 Type
 stripTypeAnnotations tStripF t = runIdentity $ mapTree strip t
   where strip ch n = return $ Node (tag n :@: (filter (not . tStripF) $ annotations n)) ch
 
+-- | Strips all annotations from a literal given annotation filtering functions.
+stripLiteralAnnotations :: (Annotation Literal -> Bool) -> (Annotation Type -> Bool)
+                        -> K3 Literal -> K3 Literal
+stripLiteralAnnotations lStripF tStripF l = runIdentity $ mapTree strip l
+  where
+    strip ch n@(tag -> LEmpty t) =
+      return $ Node (LEmpty (stripTypeAnnotations tStripF t) :@: stripLAnns n) ch
+
+    strip ch n@(tag -> LCollection t) =
+      return $ Node (LCollection (stripTypeAnnotations tStripF t) :@: stripLAnns n) ch
+
+    strip ch n = return $ Node (tag n :@: (filter (not . lStripF) $ annotations n)) ch
+
+    stripLAnns n = filter (not . lStripF) $ annotations n
+
 -- | Strips all annotations from a declaration deeply.
 stripAllDeclAnnotations :: K3 Declaration -> K3 Declaration
 stripAllDeclAnnotations = stripDeclAnnotations (const True) (const True) (const True)
@@ -778,6 +817,10 @@ stripAllExprAnnotations = stripExprAnnotations (const True) (const True)
 -- | Strips all annotations from a type deeply.
 stripAllTypeAnnotations :: K3 Type -> K3 Type
 stripAllTypeAnnotations = stripTypeAnnotations (const True)
+
+-- | Strips all annotations from a literal deeply.
+stripAllLiteralAnnotations :: K3 Literal -> K3 Literal
+stripAllLiteralAnnotations = stripLiteralAnnotations (const True) (const True)
 
 
 {- Annotation removal -}
@@ -794,6 +837,21 @@ stripECompare = stripExprAnnotations cleanExpr cleanType
 
 stripTCompare :: K3 Type -> K3 Type
 stripTCompare = stripTypeAnnotations (not . isTAnnotation)
+
+stripLCompare :: K3 Literal -> K3 Literal
+stripLCompare = stripLiteralAnnotations cleanLiteral cleanType
+  where cleanLiteral a = not (isLQualified a || isLAnnotation a)
+        cleanType    a = not (isTAnnotation a || isTUserProperty a)
+
+stripSCompare :: SpliceValue -> SpliceValue
+stripSCompare s = case s of
+                    SType t -> SType $ stripTCompare t
+                    SExpr e -> SExpr $ stripECompare e
+                    SDecl d -> SDecl $ stripDCompare d
+                    SLiteral l -> SLiteral $ stripLCompare l
+                    SRecord nsmap -> SRecord $ Map.map stripSCompare nsmap
+                    SList sl -> SList $ map stripSCompare sl
+                    _ -> s
 
 stripComments :: K3 Declaration -> K3 Declaration
 stripComments = stripDeclAnnotations isDSyntax isESyntax (const False)
@@ -965,6 +1023,14 @@ collectProgramUIDs d = fst $ foldProgramUID (flip (:)) [] d
 
 duplicateProgramUIDs :: K3 Declaration -> [UID]
 duplicateProgramUIDs d = let uids = collectProgramUIDs d in uids \\ nub uids
+
+concatProgram :: K3 Declaration -> K3 Declaration -> Either String (K3 Declaration)
+concatProgram (tnc -> ptnc) (tnc -> ptnc') =
+  case (ptnc, ptnc') of
+    ((DRole n, ch), (DRole n2, ch2)) | n == n2 -> return $ DC.role n $ ch++ch2
+    _ -> programError
+
+  where programError = Left "Invalid program, expected top-level role."
 
 indexProgramDecls :: (Monad m) => K3 Declaration -> m (Map Int (K3 Declaration))
 indexProgramDecls prog = foldTree indexDecl Map.empty prog

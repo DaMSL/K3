@@ -1,8 +1,0 @@
-# Put system dependent paths into here
-# so they will be included into the Makefile
-
-BOOSTIN = /usr/local/Cellar/boost/1.55.0/include/
-BOOSTLIB = /usr/local/Cellar/boost/1.55.0/lib/
-
-XUNITIN = /Users/joshwheeler/software/xunit/xUnit++/
-XUNITLIB = /Users/joshwheeler/software/xunit/bin/xUnit++/

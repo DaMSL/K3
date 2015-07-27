@@ -60,9 +60,14 @@ type NamedSpliceValues = Map Identifier SpliceValue
 type NamedSpliceTypes  = Map Identifier SpliceType
 type TypedSpliceVar    = (SpliceType, Identifier)
 
+data SpliceDeclGenerator m = SGNamed            Identifier
+                           | SGDecl             (K3 Declaration)
+                           | SGContentDependent (K3 Type -> m (SpliceDeclGenerator m))
+
 data SpliceResult m = SRType    (m (K3 Type))
                     | SRExpr    (m (K3 Expression))
                     | SRDecl    (m (K3 Declaration))
+                    | SRGenDecl (m (SpliceDeclGenerator m))
                     | SRLiteral (m (K3 Literal))
                     | SRRewrite (m (K3 Expression, [K3 Declaration]), SpliceEnv)
 
@@ -199,7 +204,7 @@ lookupSCtxt :: Identifier -> SpliceContext -> Maybe SpliceValue
 lookupSCtxt n ctxt = find (Map.member n) ctxt >>= Map.lookup n
 
 lookupSCtxtPath :: [Identifier] -> SpliceContext -> Maybe SpliceValue
-lookupSCtxtPath [] ctxt = Nothing
+lookupSCtxtPath [] _ = Nothing
 lookupSCtxtPath (var:path) ctxt = lookupSCtxt var ctxt >>= flip matchPath path
   where matchPath v [] = return v
         matchPath v (h:t) = spliceRecordField v h >>= flip matchPath t
@@ -235,6 +240,9 @@ spliceVTSym  = "typ"
 
 spliceVESym :: Identifier
 spliceVESym  = "expr"
+
+spliceVLSym :: Identifier
+spliceVLSym  = "lit"
 
 lookupSpliceE :: Identifier -> SpliceEnv -> Maybe SpliceValue
 lookupSpliceE n senv = Map.lookup n senv

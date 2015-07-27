@@ -10,11 +10,12 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Except
 import Control.Monad.State
 
-import Criterion.Measurement
-
 import Data.Char
 import Data.Maybe
+import qualified Data.Map as Map
 
+import Criterion.Measurement
+import Database.HsSqlPpp.Parser
 import GHC.IO.Encoding
 import System.Directory (getCurrentDirectory)
 
@@ -23,9 +24,14 @@ import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Utils
 
+import qualified Language.K3.Core.Constructor.Declaration as DC
+
 import Language.K3.Utils.Logger
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
+
+import Language.K3.Parser ( stitchK3Includes )
+import Language.K3.Parser.SQL hiding ( liftEitherM, reasonM )
 
 import Language.K3.Metaprogram.DataTypes
 import Language.K3.Metaprogram.Evaluation
@@ -106,10 +112,11 @@ printTransformReport rp = do
   putStrLn $ boxToString rp
   where sep = replicate 20 '='
 
-printMinimal :: [String] -> [String] -> IO ()
-printMinimal userdecls reqdecls = do
+printMinimal :: IOOptions -> ParseOptions -> ([String], [(String, K3 Declaration)]) -> IO ()
+printMinimal ioOpts pOpts (userdecls, reqdecls) = do
   putStrLn $ unwords $ ["Declarations needed for:"] ++ userdecls
-  putStrLn $ unlines reqdecls
+  putStrLn $ unlines $ map fst reqdecls
+  k3outIO ioOpts pOpts $ DC.role "__global" $ map snd reqdecls
 
 
 -- | AST formatting.
@@ -144,17 +151,20 @@ k3in opts = if splicedInput ioOpts
         parseError = "Could not parse input: "
 
 -- | Save out K3's internal representation.
-k3out :: IOOptions -> ParseOptions -> K3 Declaration -> DriverM ()
-k3out ioOpts pOpts prog = liftIO $ do
-  when (saveAST    ioOpts) (outputAST pOpts pretty "k3ast" prog)
-  when (saveRawAST ioOpts) (outputAST pOpts show   "k3ar"  prog)
+k3outIO :: IOOptions -> ParseOptions -> K3 Declaration -> IO ()
+k3outIO ioOpts pOpts prog = do
+  when (saveAST    ioOpts) (outputAST pretty "k3ast" (parsePrintMode pOpts) prog)
+  when (saveRawAST ioOpts) (outputAST show   "k3ar"  (parsePrintMode pOpts) prog)
+  when (saveSyntax ioOpts) (outputAST show   "k3s"   PrintSyntax            prog)
 
-  where outputAST popts toStr ext p = do
+  where outputAST toStr ext printMode p = do
           cwd <- getCurrentDirectory
           let output = case inputProgram ioOpts of {"-" -> "a"; x -> x }
           either putStrLn (\s -> outputStrFile s $ outputFilePath cwd output ext)
-            $ formatAST toStr (parsePrintMode popts) p
+            $ formatAST toStr printMode p
 
+k3out :: IOOptions -> ParseOptions -> K3 Declaration -> DriverM ()
+k3out ioOpts pOpts prog = liftIO $ k3outIO ioOpts pOpts prog
 
 -- | Evaluate any metaprograms present in a program.
 metaprogram :: Options -> K3 Declaration -> DriverM (K3 Declaration)
@@ -179,14 +189,14 @@ parse ioOpts pOpts prog = do
     (xP, report) <- liftE $ evalTransform Nothing (poStages pOpts) prog
     k3out ioOpts pOpts xP
     minP <- reasonM syntaxError $ minimize pOpts (xP, report)
-    liftIO $ either (printStages pOpts) (uncurry printMinimal) minP
+    liftIO $ either (printStages pOpts) (printMinimal ioOpts pOpts) minP
 
   where syntaxError = "Could not print program: "
 
 
 -- | Program minimization.
 minimize :: ParseOptions -> (K3 Declaration, [String])
-         -> DriverM (Either (K3 Declaration, [String]) ([String], [String]))
+         -> DriverM (Either (K3 Declaration, [String]) ([String], [(String, K3 Declaration)]))
 minimize (poMinimize -> userdecls) (p,rp) =
   if null userdecls
     then return $ Left (p,rp)
@@ -259,3 +269,43 @@ initialize opts = liftIO $ do
 
   void $ mapM_ configureByInstruction $ logging $ inform opts
     -- ^ Process logging directives
+
+sql :: SQLOptions -> Options -> DriverM ()
+sql sqlopts opts = do
+  stmtE <- liftIO $ parseStatementsFromFile path
+  either (liftIO . putStrLn . show) k3program stmtE
+
+  where
+    dependencies = map (\s -> "include \"" ++ s ++ "\"") ["Annotation/Collection.k3"]
+    path = inputProgram $ input opts
+    includePaths = includes $ paths opts
+    nf = noFeed $ input opts
+    printParse = sqlPrintParse sqlopts
+    asSyntax = case sqlPrintMode sqlopts of
+                 PrintSyntax -> True
+                 _ -> False
+
+    k3program stmts = do
+      void $ if printParse then printStmts stmts else return ()
+      (prog, psqlenv) <- liftEitherM $ runSQLParseEM sqlenv0 $ do
+          qstmts <- mapM sqlstmt stmts;
+          return $ DC.role "__global" $ concat qstmts
+      stageprogram psqlenv prog
+
+    stageprogram env prog = do
+      sprog <- liftE $ stitchK3Includes nf includePaths dependencies prog
+      mprog <- metaprogram opts sprog
+      (nprog, psqlenv) <- liftEitherM $ runSQLParseEM env $ sqlstages mprog
+      encprog <- if asSyntax then liftEitherM $ programS nprog else return $ pretty nprog
+      liftIO $ putStrLn encprog
+      printState psqlenv
+
+    printStmts stmts = liftIO $ do
+      putStrLn $ replicate 40 '='
+      void $ forM stmts $ \s -> putStrLn $ show s
+      putStrLn $ replicate 40 '='
+
+    printState st = liftIO $ do
+      putStrLn $ replicate 40 '=' ++ " Dependency Graph"
+      forM_ (Map.toList $ adgraph st) $ \(p, node) ->
+        putStrLn $ unwords [show p, show $ adnn node, show $ adnr node, show $ adnch node ]

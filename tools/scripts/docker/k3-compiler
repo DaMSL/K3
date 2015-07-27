@@ -1,14 +1,13 @@
-#  Dockerfile:  k3-app
+#  Dockerfile:  k3-compiler
 #
-#  Description:  Image for use with K3 to run applications ONLY
-#    Contains minimal amount of libs & dependencies
+#  Description:  Image for use with K3 compilation service.
 #
-#  Version:   Boost (1.57), Mesos (0.22.1), Protobuf (2.5)
+#  Version:   GHC (7.10.1), Boost (1.57), Mesos (0.22.1), Protobuf (2.5)
 #
 #  Requirements:  Copy mesos libs (libmesos-<version>.so, libmesos.la) to local work dir
 
-# Debian: Jesse
-FROM debian:jessie
+# Debian: Sid
+FROM debian:sid
 
 # Install basic packages to build the image
 RUN apt-get update && apt-get install -y \
@@ -98,7 +97,7 @@ ENV PATH /opt/ghc/7.10.1/bin:/opt/cabal/1.22/bin:/opt/alex/3.1.4/bin:/opt/happy/
 RUN echo 'deb http://ppa.launchpad.net/hvr/ghc/ubuntu trusty main' > /etc/apt/sources.list.d/ghc.list && \
     apt-key adv --keyserver keyserver.ubuntu.com --recv-keys F6F88286 && \
     apt-get update && \
-    apt-get install -y --no-install-recommends zlib1g-dev cabal-install-1.22 ghc-7.10.1 happy-1.19.5 alex-3.1.4 && \
+    apt-get install -y --no-install-recommends zlib1g-dev cabal-install-1.22 ghc-7.10.1 happy-1.19.5 alex-3.1.4 libtinfo-dev && \
     rm -rf /var/lib/apt/lists/*  && \
     cabal update && \
     cabal install cabal-install -j
@@ -116,8 +115,6 @@ RUN git checkout development && \
     cabal sandbox init && \
     cabal install -j --only-dependencies --disable-documentation && \
     cabal configure --ghc-options="-O2" && \
-    apt-get update && \
-    apt-get install -y libtinfo-dev && \
     cabal build -j --ghc-options="-O2"
 
 # Clean up

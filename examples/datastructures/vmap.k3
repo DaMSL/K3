@@ -49,12 +49,16 @@ trigger t : () = \_ -> (
   // Update at v16 with update_suffix. This should update v18 onwards.
   ((range 10).iterate (\s -> c.update_suffix 16 {key: s.i, value: 0} (\v -> (\r -> {key: r.key, value: r.value + 1000}))));
 
-  // Print the frontiers at v14, v16, v18. The values at v18 should be greater than 1000.
+  // Print the frontiers at v14, v16, v18.
+  // Since VMap transformers also work with frontiers that are strictly less than the vid,
+  // the frontier access at 16 should print the map at version 14, and similarly frontier access 18
+  // should print the map at version 16.
   (c.iterate 14 (\r -> print ("VMap frontier 14: " ++ " " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
   (c.iterate 16 (\r -> print ("VMap frontier 16: " ++ " " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
   (c.iterate 18 (\r -> print ("VMap frontier 18: " ++ " " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
 
-  // Print the same thing in a single call with fold_after.
+  // Print all values in the VMap in a single call with fold_after.
+  // The values at v18 should be greater than 1000.
   c.fold_all (\_ -> (\v -> (\elem -> print ((itos v) ++ ": " ++ (itos elem.key) ++ " " ++ (itos elem.value) ++ "\\n")))) ()
 )
 

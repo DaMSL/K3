@@ -82,8 +82,8 @@ pindirect p = sing p $ PIndirection
 poption :: K3 Provenance -> K3 Provenance
 poption p = sing p $ POption
 
-plambda :: Identifier -> K3 Provenance -> K3 Provenance
-plambda i p = sing p $ PLambda i
+plambda :: Identifier -> [PMatVar] -> K3 Provenance -> K3 Provenance
+plambda i mvs p = sing p $ PLambda i mvs
 
 papply :: Maybe PMatVar -> K3 Provenance -> K3 Provenance -> K3 Provenance -> K3 Provenance
 papply mvOpt f a r = Node (PApply mvOpt :@: []) [f, a, r]

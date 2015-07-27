@@ -41,9 +41,8 @@ triggerSymbols prog = do
         declF acc d = return (acc, d)
 
         accIdF acc v = return (acc, v)
-        idF        v = return v
 
         mkSyms trigSyms = map (\(n,i) -> mkSymGlobal n i @+ symAnnot) trigSyms
-        mkSymGlobal n i = DC.global (symId n) TC.int $ Just $ EC.constant $ CInt i
+        mkSymGlobal n i = DC.global (symId n) (TC.int @+ TImmutable) $ Just $ (EC.constant $ CInt i) @+ EImmutable
         symAnnot = DProperty $ Left ("Pinned", Nothing)
         symId n = "__" ++ n ++ "_tid"

@@ -46,7 +46,7 @@ import qualified Language.K3.Analysis.SEffects.Constructors   as FC
 import qualified Language.K3.Analysis.SEffects.Inference      as SE
 
 import Language.K3.Transform.Common
-import Language.K3.Interpreter.Data.Accessors
+import Language.K3.Interpreter.Data.Accessors hiding ( elemE )
 import Language.K3.Interpreter.Data.Types
 
 import Language.K3.Utils.Logger
@@ -338,7 +338,7 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
     -- Projection simplification on a constant record.
     -- Since we do not simplify collections, VCollections cannot appear
     -- as the source of the projection expression.
-    simplifyConstants ch n@(tag -> EProject i) = rebuildNode n ch
+    simplifyConstants ch n@(tag -> EProject _) = rebuildNode n ch
     {-
     simplifyConstants ch n@(tag -> EProject i) =
         case head ch of
@@ -561,6 +561,8 @@ betaReductionDelta expr = foldMapTree reduce ([], False) expr >>= return . first
         (False, PAppLam i bodyE argE _ _) -> reduceOnOccurrences n' i argE bodyE
         (_, _) -> return ([n'], False)
 
+    reduce _ _ = Left "Invalid betaReductionDelta.reduce pattern match"
+
     -- This reduction is extremely conservative: we proceed only if both the target and
     -- substitution are read only. A more general form is if there are no writes to any
     -- variables in the substitution in the target, in the prefix of all substitution points.
@@ -608,7 +610,7 @@ simpleBetaReduction :: K3 Expression -> K3 Expression
 simpleBetaReduction expr = let r = runIdentity $ modifyTree reduce expr
                            in if compareEAST r expr then r else simpleBetaReduction r
   where
-    reduce n@(PAppLam i bodyE argE@(tag -> EVariable _) _ _) = return $ substituteImmutBinding i (cleanExpr argE) bodyE
+    reduce (PAppLam i bodyE argE@(tag -> EVariable _) _ _) = return $ substituteImmutBinding i (cleanExpr argE) bodyE
     reduce n = return n
 
     cleanExpr e = stripExprAnnotations cleanAnns (const False) e
@@ -729,6 +731,8 @@ eliminateDeadCodeDelta expr = foldMapTree pruneExpr ([],False) expr >>= return .
 
         _ -> rtf n'
 
+    pruneExpr _ _ = Left "Invalid eliminateDeadCodeDelta.pruneExpr pattern match"
+
     onSub ch = (concat *** any id) $ unzip ch
     rtt e = return ([e], True)
     rtf e = return ([e], False)
@@ -841,12 +845,12 @@ commonSubexprElim cseCntOpt expr = do
               candTreeNode  = Node (uid, localCands) $ concat ctCh
               nStrippedExpr = Node (tag t :@: cseValidAnnotations t) $ concat sExprCh
               nCands        = case (tag t, n @~ isEType) of
-                                (EProject _, _) -> []
+                                (EProject _, _) -> filteredCands ++ []
                                 (_, Just (EType (isTFunction -> True))) -> []
-                                (_, _) -> [nStrippedExpr]
+                                (_, _) -> filteredCands ++ [nStrippedExpr]
           in do
             nRO <- readOnly False n
-            let propagatedExprs = if nRO then filteredCands ++ nCands else []
+            let propagatedExprs = if nRO then nCands else []
             return $ ([candTreeNode], [nStrippedExpr], propagatedExprs)
 
         _ -> uidError n
@@ -950,6 +954,7 @@ commonSubexprElim cseCntOpt expr = do
         doSub compareE newE n = return $ if compareEAST compareE n then qualifySub n newE else n
         qualifySub ((@~ isEQualified) -> Nothing)   n = n
         qualifySub ((@~ isEQualified) -> Just qAnn) n = n @+ qAnn
+        qualifySub _ _ = error "Invalid commonSubexprElim.qualifySub pattern match"
 
     uidError e = Left $ "No UID found on " ++ show e
 
@@ -1006,6 +1011,7 @@ encodeTransformers restChanged expr = do
       let uid = case filter isEUID as of
                   [] -> -1
                   (head -> EUID (UID u)) -> u
+                  _ -> error "Invalid encodeTransformers.debugEncode pattern match"
 
           str = unwords [ "debugEncode", trid, "UID", show uid, ":"
                         , show $ any isETransformer as
@@ -1943,9 +1949,9 @@ fuseFoldTransformers expr = do
                   nmissE       = EC.lambda "_" $ EC.record [("key", EC.project "key" $ EC.variable leti), ("value", EC.applyMany missingAccFE [zE, jV])]
               in (rleti, rentryE, nmissE, npresE)
 
-          seqApp entryE =
+          seqApp entryE' =
             PSeq (EC.applyMany (EC.project "upsert_with" iV)
-                               [entryE, missingE, presentE])
+                               [entryE', missingE, presentE])
               iV []
       in
       return $ EC.lambda i $ EC.lambda j $ EC.letIn leti entryE $ seqApp $ EC.variable leti

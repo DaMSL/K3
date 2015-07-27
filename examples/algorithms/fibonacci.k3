@@ -1,4 +1,6 @@
 include "Annotation/Collection.k3"
+include "Annotation/Set.k3"
+
 declare final : mut int = 0
 
 declare logthis: collection {id: int, name: string} @Collection

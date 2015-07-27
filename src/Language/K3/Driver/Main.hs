@@ -20,6 +20,7 @@ run opts = do
     Service (QueryService sOpts qOpts) -> liftIO $ queryService     sOpts qOpts
     Service (Shutdown  sOpts)          -> liftIO $ shutdownService  sOpts
     Compile copts | ccStage copts == Stage2 -> compile opts copts (DC.role "__global" [])
+    SQL sqlOpts -> sql sqlOpts opts
     _ -> k3in opts >>= metaprogram opts >>= dispatch opts
 
 -- | Top-Level.

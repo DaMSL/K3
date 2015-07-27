@@ -374,7 +374,7 @@ drawExprAnnotations as =
                          [t, l, u]  -> drawETypeAnnotation t
                                         %+ indent 2 (drawETypeAnnotation l
                                         %+ indent 2 (drawETypeAnnotation u))
-                         _     -> error "Invalid type bound annotations"
+                         _     -> error $ "Invalid type bound annotations " ++ show typeAnns
 
       prettyAnns = drawGroup $ [prettyTypeAnns] ++ map drawEEffectAnnotations effectAnns
                                                 ++ map drawPrettyAnns restPAnns

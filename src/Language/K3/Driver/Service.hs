@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -9,8 +10,9 @@ module Language.K3.Driver.Service where
 import Control.Arrow ( (&&&), second )
 import Control.Concurrent
 import Control.Concurrent.Async ( Async, asyncThreadId, cancel )
+import Control.Exception ( IOException, ErrorCall(..), PatternMatchFail(..) )
 import Control.Monad
-import Control.Monad.Catch ( throwM, catchIOError, finally )
+import Control.Monad.Catch ( Handler(..), throwM, catches, finally )
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
@@ -746,6 +748,11 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     nfP        = noFeed $ input opts
     includesP  = (includes $ paths opts)
 
+    abortcatch rid rq m = m `catches`
+      [Handler (\(e :: IOException)      -> abortProgram Nothing rid rq $ show e),
+       Handler (\(e :: PatternMatchFail) -> abortProgram Nothing rid rq $ show e),
+       Handler (\(e :: ErrorCall)        -> abortProgram Nothing rid rq $ show e)]
+
     process prog jobOpts rq rid = abortcatch rid rq $ do
       void $ zm $ do
         mlogM $ unwords ["Processing program", rq, "(", show rid, ")"]
@@ -759,8 +766,6 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
         modifyMJ_ $ \jbs -> Map.adjust (adjustProfile sRep) pid jbs
 
       where bcStages = (coStages $ scompileOpts $ sOpts, rcStages jobOpts)
-
-    abortcatch rid rq m = m `catchIOError` (\e -> abortProgram Nothing rid rq $ show e)
 
     adjustProfile rep js@(jprofile -> jprof@(jppreport -> jpp)) =
       js {jprofile = jprof {jppreport = jpp `mappend` rep}}
@@ -1042,7 +1047,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
      -----------------------------}
 
     -- | Program completion processing. This garbage collects client request state.
-    completeProgram pid (rid, rq, aborts, profile, sources, reportsz) = do
+    completeProgram pid (rid, rq, aborts, profile, sources, reportsz) = abortcatch rid rq $ do
       let prog = DC.role "__global" $ map snd $ sortOn fst $ concatMap snd $ Map.toAscList sources
       (nprogrpE, fpProf) <- liftIO $ ST.profile $ const $ evalTransform Nothing (sfinalStages $ smOpts) prog
       case (aborts, nprogrpE) of
@@ -1230,7 +1235,10 @@ processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
 
     processBlock pid _ ublocksByBID _ = abortBlock pid ublocksByBID $ "Invalid worker compile stages"
 
-    abortcatch pid ublocksByBID m = m `catchIOError` (\e -> abortBlock pid ublocksByBID $ show e)
+    abortcatch pid ublocksByBID m = m `catches`
+      [Handler (\(e :: IOException)      -> abortBlock pid ublocksByBID $ show e),
+       Handler (\(e :: PatternMatchFail) -> abortBlock pid ublocksByBID $ show e),
+       Handler (\(e :: ErrorCall)        -> abortBlock pid ublocksByBID $ show e)]
 
     abortBlock pid ublocksByBID reason =
       sendC wworker $ BlockAborted wid pid (map fst ublocksByBID) reason
@@ -1281,12 +1289,14 @@ submitJob sOpts@(serviceId -> rq) rjOpts opts = do
       end <- getTime
       noticeM $ unwords ["Client finalizing request", rq]
       noticeM $ clientReport (end - start) report
-      CPPC.compile opts (scompileOpts $ sOpts) ($) $ prog
+      CPPC.compile (ensureSaves opts) (scompileOpts sOpts) ($) $ prog
 
     mHandler _ (ProgramAborted rrq reason) | rq == rrq = liftIO $ do
       errorM $ unwords ["Failed to compile request", rq, ":", reason]
 
     mHandler _ m = errorM $ boxToString $ ["Invalid message:"] %$ [show m]
+
+    ensureSaves opts' = opts' {input = (input opts') {saveRawAST = True}}
 
     clientReport time report =
       boxToString $  ["Compile report:"] %$ (indent 4 $ lines $ report)

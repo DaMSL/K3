@@ -1,13 +1,12 @@
-#  Dockerfile:  k3-app
+#  Dockerfile:  k3-dev
 #
-#  Description:  Image for use with K3 to run applications ONLY
-#    Contains minimal amount of libs & dependencies
+#  Description:  Full development image for K3 and Mosaic
 #
-#  Version:   Boost (1.57), Mesos (0.22.1), Protobuf (2.5)
+#  Version:   GHC (7.10.1), OCaml (4.02.1), Boost (1.57), Mesos (0.22.1), Protobuf (2.5)
 #
 #  Requirements:  Copy mesos libs (libmesos-<version>.so, libmesos.la) to local work dir
 
-# Debian: Jesse
+# Debian: Sid
 FROM debian:sid
 
 ENV BOOST_VER 1.57.0
@@ -25,6 +24,12 @@ ENV ALEX_VER 3.1.4
 
 ENV OPAMYES 1
 
+ENV LD_LIBRARY_PATH /usr/local/lib
+
+ENV PGHOST qp2
+ENV PGHOSTADDR 192.168.0.11
+ENV PGUSER postgres
+
 # Install basic packages to build the image
 RUN apt-get update && apt-get install -y \
                        bzip2 unzip autoconf Libtool \
@@ -33,13 +38,9 @@ RUN apt-get update && apt-get install -y \
     apt-get update && \
     apt-get install -y software-properties-common python-software-properties python-setuptools \
                        opam \
-                       ruby2.2 python python-dev python-pip \
+                       ruby2.2 ruby2.2-dev python python-dev python-pip \
+                       postgresql-client-9.4 libpq-dev \
                        libyaml-cpp-dev libzmq3-dev libre2-dev numactl && \
-    pip install pyyaml && \
-    pip install flask && \
-    pip install pytz && \
-    pip install enum34 && \
-    pip install Flask-SocketIO && \
     update-alternatives \
       --install /usr/bin/ruby ruby /usr/bin/ruby2.2 50 \
       --slave /usr/bin/irb irb /usr/bin/irb2.2 \
@@ -49,12 +50,20 @@ RUN apt-get update && apt-get install -y \
       --slave /usr/bin/testrb testrb /usr/bin/testrb2.2 \
       --slave /usr/bin/erb erb /usr/bin/erb2.2 \
       --slave /usr/bin/ri ri /usr/bin/ri2.2 && \
+    pip install pyyaml && \
+    pip install flask && \
+    pip install pytz && \
+    pip install enum34 && \
+    pip install Flask-SocketIO && \
+    gem install pg && \
     opam init -a && \
     opam switch 4.02.1 && \
     eval `opam config env` && \
     opam install ocamlfind && \
     opam install yojson && \
-    /bin/echo -e "\neval \`opam config env\`\n" >> /root/.bashrc 
+    /bin/echo -e "\neval \`opam config env\`\n" >> /root/.bashrc && \
+    /bin/echo -e "qp2:*:*:postgres:mosaic_ktrace_db\n" >> /root/.pgpass && \
+    chmod 0600 /root/.pgpass
 
 # Install Boost
 RUN wget http://sourceforge.net/projects/boost/files/boost/$BOOST_VER/$BOOST_DIR.tar.bz2/download && \
