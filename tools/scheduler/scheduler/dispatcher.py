@@ -5,7 +5,7 @@ import math
 import time
 import threading
 import socket
-from collections import deque
+from collections import deque, OrderedDict
 
 from common import *
 from core import *
@@ -225,17 +225,15 @@ class Dispatcher(mesos.interface.Scheduler):
     #  Iterate through the reservations for each role / offer: create peers & tasks
     allPeers = []
 
-
-    # for offerId, offer in role.items():
-
-
     for roleId, role in reservation.items():
       logging.debug("[DISPATCHER] Preparing role, %s" % roleId)
       
       defaultVars = nextJob.roles[roleId].variables
       peerVars = nextJob.roles[roleId].getPeerVarIter()
       
-      for offerId, offer in role.items():
+      # Sort offers for this role by hostname, to ensure deterministic allocation of resources:
+      offersheet = OrderedDict(sorted(role.items(), key=lambda r: self.offers[r[0]].hostname))
+      for offerId, offer in offersheet.items():
         peers = []
         host = self.offers[offerId].hostname.encode('utf8','ignore')
         ip = socket.gethostbyname(host)
@@ -328,7 +326,7 @@ class Dispatcher(mesos.interface.Scheduler):
 
     # For now, return Mesos URL to Framework:
     master = resolve(self.mesosmaster).strip()
-    url = 'http://' + master + '/#/frameworks/' + self.frameworkId.value
+    url = master + '/#/frameworks/' + self.frameworkId.value
     return url
 
 
