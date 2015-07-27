@@ -13,6 +13,7 @@ offer_wait = 5
 def getUID():
   return str(uuid.uuid1()).split('-')[0]
 
+roleParameters = ['peers_per_host', 'mem', 'cpu']
 
 # masterNodes =  ['qp-hd2']
 # workerNodes =  ['qp-hd9', 'qp-hd15']

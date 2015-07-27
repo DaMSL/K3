@@ -16,6 +16,13 @@ src="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></scrip
 {% block content %}
   <div class="container">
     <div class="starter-template">
+	<table class="table" style="border:0"><tr>
+		<td> <a href="{{request.path}}#ActiveCompile"><button type="button" class="btn btn-primary">Active Compiling </button></a></td>
+		<td> <a href="{{request.path}}#InactiveCompile"><button type="button" class="btn btn-info">Finished Compiled</button></a> </td>
+		<td> <a href="{{request.path}}#ActiveJob"><button type="button" class="btn btn-success">Running Jobs</button></a></td>
+		<td> <a href="{{request.path}}#InactiveJob"><button type="button" class="btn btn-warning">Terminated Jobs</button> </a></td>
+	</tr></table>
+	<a name="ActiveCompile"></a>
           <h3>Active Compiling Jobs</h3>
           <table id="activeCompiles" class="table table-striped">
             <tr> <th>Build</th><th>Output</th><th>Time Submit</th><th>Time Complete</th><th>Status</th><th>Kill</th><th></th></tr>
@@ -34,6 +41,7 @@ src="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></scrip
           {% endfor %}
           </table>
 
+	<a name="ActiveJob"></a>
           <h3>Active K3 Jobs</h3>
           <table id="activeJobs" class="table table-striped">
             <tr>
@@ -55,6 +63,7 @@ src="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></scrip
           </table>
 
 
+	<a name="InactiveJob"></a>
           <h3>Inactive K3 Jobs</h3>
             <form action="/delete/jobs" method=post enctype=multipart/form-data>
           <table id="inactiveJobs" class="table table-striped">
@@ -75,6 +84,7 @@ src="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></scrip
         </form>
 
 
+	<a name="InactiveCompile"></a>
           <h3>Inactive Compiling Jobs</h3>
           <form action="/delete/compiles" method=post enctype=multipart/form-data>
           <table id="inactiveCompiles" class="display table table-striped">

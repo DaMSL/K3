@@ -37,6 +37,7 @@ class Role:
   def __init__(self, **kwargs):
     self.peers      = kwargs.get("peers", 0)
     self.variables  = kwargs.get("variables", {})
+    self.peerVars   = kwargs.get("peerVars", {})
     self.hostmask   = kwargs.get("hostmask", r".*")
     self.params     = kwargs.get("params", {})
     self.volumes    = kwargs.get("volumes", [])
@@ -47,6 +48,10 @@ class Role:
     print ("  ROLE ")
     print ("    # peers = %d" % self.peers)
     print ("    # vars  = ", self.variables)
+
+  def getPeerVarIter(self):
+    for vars in self.peerVars:
+      yield vars
 
 
 
@@ -111,33 +116,41 @@ class Job:
           logging.error("[FLASKWEB] YAML Format Error position: (%s:%s)" % (mark.line+1, mark.column+1))
 
     for doc in roles:
-      try:
-        name = doc['name']
-        peers = int(doc['peers'])
-        variables = doc['k3_globals']
-      except KeyError as err:
-        raise K3JobError('Input YAML File missing entry for: %s' % err.message)
+      # try:
+      name = doc['name']
+      peers = int(doc['peers'])
+      globalVars = doc.get('k3_globals', [])
+      peerVars = doc.get('peer_globals', [])
+      # except KeyError as err:
+        # raise K3JobError('Input YAML File missing entry for: %s' % err.message)
 
       self.privileged = False if 'privileged' not in doc else doc['privileged']
 
       mask = r".*" if "hostmask" not in doc else doc['hostmask']
-      volumes = [] if 'volumes' not in doc else doc['volumes']
-      envars = [] if 'envars' not in doc else doc['envars']
-      inputs = [] if 'k3_data' not in doc else doc['k3_data']
+      volumes = doc.get('volumes', []) 
+      envars = doc.get('envars', []) 
+      inputs = doc.get('k3_data', [])
 
       # Parameters:  Just add additional parameters here to receive them
       #  from YAML -- the dispather will need to handle them
       params = {}
-      if 'peers_per_host' in doc:
-        params['peers_per_host'] = doc['peers_per_host']
-      if 'mem' in doc:
-        params['mem'] = doc['mem']
+
+      for p in roleParameters:
+        if p in doc:
+          params[p] = doc[p]        
+
+      # if 'peers_per_host' in doc:
+      #   params['peers_per_host'] = doc['peers_per_host']
+      # if 'mem' in doc:
+      #   params['mem'] = doc['mem']
+      # if 'cpu' in doc:
+      #   params['cpu'] = doc['cpu']
 
       # self.volumes.extend(volumes)
       # self.envars.extend(envars)
       # self.inputs.extend(inputs)
 
-      r = Role(peers=peers, variables=variables, hostmask=mask,
+      r = Role(peers=peers, variables=globalVars, peerVars=peerVars, hostmask=mask,
                volumes=volumes, params=params, envars=envars, inputs=inputs)
       self.roles[name] = r
 
