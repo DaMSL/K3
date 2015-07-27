@@ -15,8 +15,8 @@ QUERIES = {
       #"100g" => "tpch_100g.yml",
     },
     :queries => {
-      "q1" => "examples/sql/tpch/queries/k3/q1.k3",
-      #"q3" => "examples/sql/tpch/queries/k3/barrier-queries/q3.k3",
+      #"q1" => "examples/sql/tpch/queries/k3/q1.k3",
+      "q3" => "examples/sql/tpch/queries/k3/barrier-queries/q3.k3",
       #"q5" => "examples/sql/tpch/queries/k3/barrier-queries/q5_bushy_broadcast_broj2.k3",
       #"q6" => "examples/sql/tpch/queries/k3/q6.k3",
       #"q18" => "examples/sql/tpch/queries/k3/barrier-queries/q18.k3",
@@ -133,11 +133,13 @@ def poll(jobs, message)
   statuses = statusAll(jobs)
   for key, val in statuses
     status = val['status']
-    if status != "FINISHED" and status != "KILLED" and status != "FAILED"
+    #TODO add "KILLED" to this list after bug is fixed: jobs are reported as KILLED before they run
+    if status != "FINISHED" and status != "FAILED"
       sleep(4)
       return poll(jobs, ".")
     end
   end
+  return statuses
 end
 
 def harvest(statuses, out_folder)
@@ -145,20 +147,28 @@ def harvest(statuses, out_folder)
   results = {}
   for key, val in statuses
     if val['status'] == "FINISHED"
-      # GET tar from master (contains results.csv)
-      master_tar = val['sandbox'].select { |x| x =~ /.*\.0_.*/}[0]
-      url = "http://qp2:5000/fs/jobs/#{key['name']}/#{val['job_id']}/#{master_tar}"
-      response = RC.get(url)
-
-      # Stash tarball and extract in a dir for this run
       run_folder = "#{out_folder}/#{key['role']}_#{key['name']}"
       `mkdir -p #{run_folder}`
-      file = File.new("#{run_folder}/sandbox.tar", 'w')
-      file.write response 
-      file.close
-      `tar -xvf #{run_folder}/sandbox.tar -C #{run_folder}`
-      results[key] = {"status" => "RAN", "output" => run_folder}
-    else 
+
+      # GET tar from master (contains results.csv)
+      tars = val['sandbox'].select { |x| x =~ /.*.tar/}
+      for tar in tars
+        url = "http://qp2:5000/fs/jobs/#{key['name']}/#{val['job_id']}/#{tar}"
+        name = File.basename(tar, ".tar")
+        `mkdir -p #{run_folder}/#{name}`
+        response = RC.get(url)
+        file = File.new("#{run_folder}/#{name}/sandbox.tar", 'w')
+        file.write response
+        file.close
+        `tar -xvf #{run_folder}/#{name}/sandbox.tar -C #{run_folder}/#{name}`
+      end
+      master_tar = tars.select { |x| x =~ /.*\.0_.*/}[0]
+      name = File.basename(master_tar, ".tar")
+      master_folder = "#{run_folder}/#{name}/"
+
+      # Stash tarball and extract in a dir for this run
+      results[key] = {"status" => "RAN", "output" => master_folder}
+    else
       results[key] = {"status" => "FAILED"}
     end
   end
@@ -174,14 +184,15 @@ def check(folders)
       run_id = "#{key['role']}_#{key['name']}"
       correct = "#{ktrace_dir}/correct_results/#{run_id}.csv"
       actual = "#{val["output"]}/results.csv"
-      result = system("python2 #{diff} #{correct} #{actual}")
-      if result
+      output = `python2 #{diff} #{correct} #{actual}`
+      if $?.to_i == 0
         time_file = "#{val["output"]}/time.csv"
         file = File.open(time_file, "rb")
         time_ms = file.read.strip
         puts("#{key} => CORRECT RESULTS. Time: #{time_ms} ms.")
       else
         puts("#{key} => FAILED: INCORRECT RESULTS")
+        puts(output)
       end
     else
       puts("#{key} => FAILED: DID NOT RUN AND/OR NO OUTPUT")
@@ -199,6 +210,6 @@ if __FILE__ == $0
   jobs = run(ARGF.argv[0])
   statuses = poll(jobs, "Polling until complete")
   puts("")
-  folders = harvest(statuses, ARGF.argv[0]) 
+  folders = harvest(statuses, ARGF.argv[0])
   check(folders)
 end
