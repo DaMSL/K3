@@ -56,6 +56,9 @@ int StandardBuiltins::hash(const T& t) {
   return hasher(t);
 }
 
+template<>
+int StandardBuiltins::hash(const int&);
+
 }  // namespace K3
 
 #endif
