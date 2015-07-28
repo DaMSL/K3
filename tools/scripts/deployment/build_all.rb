@@ -15,8 +15,8 @@ QUERIES = {
       #"100g" => "tpch_100g.yml",
     },
     :queries => {
-      #"q1" => "examples/sql/tpch/queries/k3/q1.k3",
-      "q3" => "examples/sql/tpch/queries/k3/barrier-queries/q3.k3",
+      "q1" => "examples/sql/tpch/queries/k3/q1.k3",
+      #"q3" => "examples/sql/tpch/queries/k3/barrier-queries/q3.k3",
       #"q5" => "examples/sql/tpch/queries/k3/barrier-queries/q5_bushy_broadcast_broj2.k3",
       #"q6" => "examples/sql/tpch/queries/k3/q6.k3",
       #"q18" => "examples/sql/tpch/queries/k3/barrier-queries/q18.k3",
@@ -26,25 +26,25 @@ QUERIES = {
 
   #"amplab" => {
   #  :roles => {
-  #    #"sf5" => "amplab_sf5.yml",
+  #    "sf5" => "amplab_sf5.yml",
   #  },
   #  :queries => {
-  #    #"amplab_q1" => "examples/distributed/amplab/compact/q1.k3",
-  #    #"amplab_q2" => "examples/distributed/amplab/compact/q2.k3",
-  #    #"amplab_q3" => "examples/distributed/amplab/compact/q3.k3",
+  #    "amplab_q1" => "examples/distributed/amplab/compact/q1.k3",
+  #    "amplab_q2" => "examples/distributed/amplab/compact/q2.k3",
+  #    "amplab_q3" => "examples/distributed/amplab/compact/q3.k3",
   #  }
   #},
 
-
-  #   :roles => {
-      # "10g" => "ml_10g.yml",
-  #     "100g" => "ml_100g.yml",
-  #   },
-  #   :queries => {
-       #"k_means" => "examples/distributed/ml/k_means.k3",
-       #"sgd" => "examples/distributed/ml/sgd.k3",
-  #   }
-  # },
+  #"ml" => {
+  #  :roles => {
+  #   "10g" => "ml_10g.yml",
+  #   "100g" => "ml_100g.yml",
+  #  },
+  #  :queries => {
+  #   "k_means" => "examples/distributed/ml/k_means.k3",
+  #   "sgd" => "examples/distributed/ml/sgd.k3",
+  #  }
+  #},
 
   # "graph" => {
   #   :roles => {},
@@ -150,7 +150,7 @@ def harvest(statuses, out_folder)
       run_folder = "#{out_folder}/#{key['role']}_#{key['name']}"
       `mkdir -p #{run_folder}`
 
-      # GET tar from master (contains results.csv)
+      # GET tar from each node
       tars = val['sandbox'].select { |x| x =~ /.*.tar/}
       for tar in tars
         url = "http://qp2:5000/fs/jobs/#{key['name']}/#{val['job_id']}/#{tar}"
@@ -162,18 +162,11 @@ def harvest(statuses, out_folder)
         file.close
         `tar -xvf #{run_folder}/#{name}/sandbox.tar -C #{run_folder}/#{name}`
       end
+      # Find the master tar, for results.csv
       master_tar = tars.select { |x| x =~ /.*\.0_.*/}[0]
       name = File.basename(master_tar, ".tar")
       master_folder = "#{run_folder}/#{name}/"
-
-      # Stash tarball and extract in a dir for this run
-      run_folder = "#{out_folder}/#{key['role']}_#{key['name']}"
-      `mkdir -p #{run_folder}`
-      file = File.new("#{run_folder}/sandbox.tar", 'w')
-      file.write response
-      file.close
-      `tar -xvf #{run_folder}/sandbox.tar -C #{run_folder}`
-      results[key] = {"status" => "RAN", "output" => run_folder}
+      results[key] = {"status" => "RAN", "output" => master_folder}
     else
       results[key] = {"status" => "FAILED"}
     end
@@ -212,7 +205,8 @@ if __FILE__ == $0
     exit
   end
   puts "Running build for #{ARGF.argv[0]}"
-  #build(ARGF.argv[0])
+  build(ARGF.argv[0])
+  submit(ARGF.argv[0])
   jobs = run(ARGF.argv[0])
   statuses = poll(jobs, "Polling until complete")
   puts("")
