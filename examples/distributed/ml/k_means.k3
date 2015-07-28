@@ -45,8 +45,8 @@ declare start_timer: () -> () = \_ -> (
 declare printStats: () -> () = \_ -> (
   let s = times.fold (\a -> \t -> a + t.ms) 0 in
   let avg = (1.0 / times.size()) * s in
+  ((time_sink, me) <- avg);
   print ("Avg time per iteration:" ++ (rtos avg))
-
 )
 
 // Utility functions
@@ -202,8 +202,8 @@ trigger maximize: () = \_ -> (
     then (
       print "Zero iterations remaining. Final means: ";
       printMeans ();
-      peers.iterate (\p -> (shutdown, p.addr) <- () );
-      printStats ()
+      printStats ();
+      peers.iterate (\p -> (shutdown, p.addr) <- () )
     )
     else (
       aggregates = empty {key:int, value: {count: int, sum: collection {elem: real} @RealVector}} @ {Map};
@@ -216,6 +216,7 @@ trigger maximize: () = \_ -> (
 
 trigger shutdown: () = \_ -> (((tcmallocStop ()); (jemallocStop ()); (pcmStop ())) @IfMachineMaster; haltEngine ())
 
+sink time_sink : real = file "time.csv" text csv
 
 source s1: () = value ()
 feed s1 |> load_all

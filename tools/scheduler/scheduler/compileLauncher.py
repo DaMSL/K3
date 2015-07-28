@@ -148,14 +148,22 @@ class CompileServiceManager(mesos.interface.Scheduler):
         self.gracefulHalt = False
 
         self.driver       = None
-        self.numworkers   = len(workerNodes)
         self.idle       = 0
         self.settings     = self.compileSettings()
         self.webaddr      = webaddr
 
+
         # Master & Workers
         self.nodes    = {}  # Map (svid: taskInfo) 
         self.offers   = {}  # Map (svid: offer.id)
+
+        # TODO: Export defaults for saved sessions
+        self.masterNodes = DEFAULT.masterNodes
+        self.workerNodes = DEFAULT.workerNodes
+        self.clientNodes = DEFAULT.clientNodes
+        self.allNodes = self.masterNodes + self.workerNodes + self.clientNodes
+        self.numworkers   = len(self.workerNodes)
+
 
         self.master     = None
         self.workers    = []
@@ -192,9 +200,9 @@ class CompileServiceManager(mesos.interface.Scheduler):
           db.updateCompile(c['uid'], status='KILLED', done=True)
 
 
-    def goUp(self, workers):
+    def goUp(self):
       if self.state == CompileServiceState.DOWN:
-        self.numworkers = workers
+        self.numworkers = len(self.workerNodes)    #workers
         self.state = CompileServiceState.INIT
       self.running.set()
 
@@ -275,6 +283,27 @@ class CompileServiceManager(mesos.interface.Scheduler):
 
         self.pending.append(job)
 
+    def getAllNodes(self):
+      none = [h for h in self.allNodes if h not in self.getCompileNodes()]
+      all = sorted(self.masterNodes) + sorted(self.workerNodes) + sorted(self.clientNodes) + sorted(none)
+      return dict(master=sorted(self.masterNodes),
+                  worker=sorted(self.workerNodes),
+                  client=sorted(self.clientNodes),
+                  none=sorted(none),
+                  all=all)
+
+    def getCompileNodes(self):
+      return self.masterNodes + self.workerNodes + self.clientNodes
+
+    def setNodes(self, nodeList):
+      self.masterNodes = nodeList['master']
+      self.workerNodes = nodeList['worker']
+      self.clientNodes = nodeList['client']
+      self.log.debug('Setting master, worker, & client nodes:')
+      self.log.debug('  Master: %s ' % str(self.masterNodes))
+      self.log.debug('  Worker: %s ' % str(self.workerNodes))
+      self.log.debug('  Client: %s ' % str(self.clientNodes))
+
     def initiateCompilerNode(self, offer):
 
       mem = getResource(offer.resources, "mem")
@@ -286,7 +315,7 @@ class CompileServiceManager(mesos.interface.Scheduler):
       role = None
 
       # Match offers with requirements (master, client, & all workers) 
-      if self.master == None and offer.hostname in masterNodes:
+      if self.master == None and offer.hostname in self.masterNodes:
         self.log.debug("Creating Master role")
 
         #update master host
@@ -300,7 +329,7 @@ class CompileServiceManager(mesos.interface.Scheduler):
         role = dict(role='master', svid='master', hostname=offer.hostname)
         self.master = role
 
-      elif len(self.workers) < self.numworkers and offer.hostname in workerNodes:
+      elif len(self.workers) < self.numworkers and offer.hostname in self.workerNodes:
         workerNum = len(self.workers) + 1
         self.log.debug("Creating Worker #%d role" % workerNum)
         role = dict(role='worker', svid='worker-%s' % offer.hostname, hostname=offer.hostname)
@@ -367,8 +396,10 @@ class CompileServiceManager(mesos.interface.Scheduler):
         # Iterate through each offer & either accept & hold OR decline it
         for offer in offers:
 
-          if (self.state == CompileServiceState.DOWN) or (offer.hostname not in compilerNodes):
+          if (self.state == CompileServiceState.DOWN) or (offer.hostname not in self.getCompileNodes()):
             driver.declineOffer(offer.id)
+            if offer.hostname not in self.allNodes:
+              self.allNodes.append(offer.hostname)
             # self.log.debug("DECLINING Offer from %s" % offer.hostname)
             continue
 
@@ -393,7 +424,7 @@ class CompileServiceManager(mesos.interface.Scheduler):
               self.state = CompileServiceState.DISPATCH
 
           # Service is Running: Process a Compilation Task (of any are pending)
-          elif self.state == CompileServiceState.UP and offer.hostname in clientNodes:
+          elif self.state == CompileServiceState.UP and offer.hostname in self.clientNodes:
             if len(self.pending) == 0:
               driver.declineOffer(offer.id)
               continue

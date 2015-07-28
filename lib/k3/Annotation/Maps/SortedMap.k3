@@ -115,11 +115,19 @@ annotation SortedMap given type a,b
     with effects \elem -> [R[self]; R[elem]]
 
   @:CArgs 3
-  provides lifted lower_bound_with : content -> (() -> a) -> (content -> a) -> a
+  provides lifted lookup_lt_with : content -> (() -> a) -> (content -> a) -> a
     with effects \elem -> \noneF -> \someF -> [R[self]; R[elem]; noneF content; someF content]
 
   @:CArgs 3
-  provides lifted upper_bound_with : content -> (() -> a) -> (content -> a) -> a
+  provides lifted lookup_gt_with : content -> (() -> a) -> (content -> a) -> a
+    with effects \elem -> \noneF -> \someF -> [R[self]; R[elem]; noneF content; someF content]
+
+  @:CArgs 3
+  provides lifted lookup_geq_with : content -> (() -> a) -> (content -> a) -> a
+    with effects \elem -> \noneF -> \someF -> [R[self]; R[elem]; noneF content; someF content]
+
+  @:CArgs 3
+  provides lifted lookup_leq_with : content -> (() -> a) -> (content -> a) -> a
     with effects \elem -> \noneF -> \someF -> [R[self]; R[elem]; noneF content; someF content]
 
   // Range retrieval based on sort order.

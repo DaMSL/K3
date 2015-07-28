@@ -125,11 +125,19 @@ annotation SortedMapE[key: [labeltype], value: [labeltype]] given type a,b
     with effects \key -> [R[self]; R[key]]
 
   @:CArgs 3
-  provides lifted lower_bound_with : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+  provides lifted lookup_lt_with : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
     with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
 
   @:CArgs 3
-  provides lifted upper_bound_with : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+  provides lifted lookup_gt_with : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
+
+  @:CArgs 3
+  provides lifted lookup_geq_with : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
+
+  @:CArgs 3
+  provides lifted lookup_leq_with : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
     with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
 
   // Range retrieval based on sort order.
@@ -140,6 +148,9 @@ annotation SortedMapE[key: [labeltype], value: [labeltype]] given type a,b
     with effects \key -> [R[self]; R[key]]
 
   provides lifted filter_geq : $[|mkRecord 'key|] -> self
+    with effects \key -> [R[self]; R[key]]
+
+  provides lifted filter_leq : $[|mkRecord 'key|] -> self
     with effects \key -> [R[self]; R[key]]
 
   provides lifted between : $[|mkRecord 'key|] -> (content -> self)
