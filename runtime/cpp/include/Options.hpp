@@ -12,35 +12,34 @@ using std::vector;
 
 namespace K3 {
 
+class JSONOptions {
+ public:
+  JSONOptions() {
+    final_state_only_ = false;
+    output_folder_ = "";
+    globals_regex_ = "";
+    messages_regex_ = "";
+  }
+
+  bool final_state_only_;
+  string output_folder_;
+  string globals_regex_;
+  string messages_regex_;
+};
+
 class Options {
  public:
   Options() {
     log_level_ = 0;
-    json_folder_ = "";
-    json_final_state_only_ = false;
-    json_globals_regex_ = "";
-    json_messages_regex_ = "";
     local_sends_enabled_ = true;
-  }
-
-  Options(const vector<string>& strs, int log_level, const string& json_folder,
-          bool json_final, bool local_sends_enabled) {
-    peer_strs_ = strs;
-    log_level_ = log_level;
-    json_folder_ = json_folder;
-    json_final_state_only_ = json_final;
-    local_sends_enabled_ = local_sends_enabled;
   }
 
   int parse(int argc, const char* const argv[]);
 
   vector<string> peer_strs_;
   int log_level_;
-  string json_folder_;
-  bool json_final_state_only_;
-  string json_globals_regex_;
-  string json_messages_regex_;
   bool local_sends_enabled_;
+  JSONOptions json_;
 };
 }  // namespace K3
 

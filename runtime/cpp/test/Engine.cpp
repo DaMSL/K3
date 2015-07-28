@@ -53,7 +53,11 @@ Options getOptions(bool local_sends) {
   vector<std::string> configs;
   configs.push_back(config1);
   configs.push_back(config2);
-  return Options(configs, 0, "", false, local_sends);
+  Options o;
+  o.peer_strs_ = configs;
+  o.log_level_ = 0;
+  o.local_sends_enabled_ = local_sends;
+  return o;
 }
 
 class EngineTest : public ::testing::Test {

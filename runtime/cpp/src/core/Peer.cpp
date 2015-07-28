@@ -12,52 +12,56 @@
 
 namespace K3 {
 
-Peer::Peer(const Address& addr, shared_ptr<ContextFactory> fac,
-           const YAML::Node& peer_config, std::function<void()> ready_callback,
-           const string& json_path, bool json_final_only,
-           const string& json_globals_regex,
-           const string& json_messages_regex) {
-  logger_ = spdlog::get(addr.toString());
-  if (!logger_) {
-    logger_ = spdlog::stdout_logger_mt(addr.toString());
-  }
-  address_ = addr;
+Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
+           std::function<void()> callback, const JSONOptions& opts) {
+  // Initialization
+  address_ = serialization::yaml::meFromYAML(config);
   start_processing_ = false;
   finished_ = false;
+  message_counter_ = 0;
+  statistics_.resize(ProgramContext::__trigger_names_.size());
+  json_opts_ = opts;
+
+  // Log configuration
+  logger_ = spdlog::get(address_.toString());
+  if (!logger_) {
+    logger_ = spdlog::stdout_logger_mt(address_.toString());
+  }
+  string json_path = json_opts_.output_folder_;
   if (json_path != "") {
     json_globals_log_ = make_shared<std::ofstream>(
         json_path + "/" + address_.toString() + "_Globals.dsv");
     json_messages_log_ = make_shared<std::ofstream>(
         json_path + "/" + address_.toString() + "_Messages.dsv");
   }
-  json_final_state_only_ = json_final_only;
-  json_globals_regex_ = json_globals_regex;
-  json_messages_regex_ = json_messages_regex;
-  message_counter_ = 0;
 
   // Create work to run in new thread
-  auto work = [this, fac, peer_config, ready_callback]() {
+  auto work = [this, fac, config, callback]() {
+    // Queue and batch are allocated on worker thread for locality
     queue_ = make_shared<Queue>();
     batch_.resize(1000);
     context_ = (*fac)();
-    context_->__patch(peer_config);
+    context_->__patch(config);
     context_->initDecls(unit_t{});
 
     // Signal that peer is initialized, wait for 'go' signal
-    ready_callback();
+    callback();
     while (!start_processing_) continue;
-    statistics_.resize(ProgramContext::__trigger_names_.size());
     try {
       while (true) {
         processBatch();
       }
     } catch (EndOfProgramException e) {
       finished_ = true;
+#ifdef K3DEBUG
       logGlobals(true);
+#endif
     } catch (const std::exception& e) {
       logger_->error() << "Peer failed: " << e.what();
     }
   };
+
+  // Execute in new thread
   thread_ = make_shared<std::thread>(work);
 }
 
@@ -91,21 +95,21 @@ void Peer::processBatch() {
 
   for (int i = 0; i < num; i++) {
     auto d = std::move(batch_[i]);
-    logMessage(*d);
 #ifdef K3DEBUG
+    logMessage(*d);
     TriggerID tid = d->trigger_;
     std::chrono::high_resolution_clock::time_point start_time =
         std::chrono::high_resolution_clock::now();
-#endif
+#endif // K3DEBUG
 
-    (*d)();
+    (*d)();  // Call the dispatcher (process a message)
 
 #ifdef K3DEBUG
     statistics_[tid].total_time +=
         std::chrono::high_resolution_clock::now() - start_time;
     statistics_[tid].total_count++;
-#endif
     logGlobals(false);
+#endif // K3DEBUG
   }
 }
 
@@ -116,7 +120,8 @@ void Peer::logMessage(const Dispatcher& d) {
     logger_->debug() << "Received:: @" << trig;
   }
 
-  if (json_messages_log_ && !json_final_state_only_ && std::regex_match(trig, std::regex(json_messages_regex_))) {
+  if (json_messages_log_ && !json_opts_.final_state_only_ &&
+      std::regex_match(trig, std::regex(json_opts_.messages_regex_))) {
     *json_messages_log_ << message_counter_ << "|";
     *json_messages_log_ << K3::serialization::json::encode<Address>(
                                d.destination_) << "|";
@@ -127,7 +132,7 @@ void Peer::logMessage(const Dispatcher& d) {
     *json_messages_log_ << currentTime() << std::endl;
   }
   message_counter_++;
-#endif  // K3DEBUG
+#endif // K3DEBUG
 }
 
 void Peer::logGlobals(bool final) {
@@ -147,17 +152,19 @@ void Peer::logGlobals(bool final) {
     logger_->trace() << oss.str();
   }
 
-  if ((json_globals_log_ && !json_final_state_only_) ||
-      (json_final_state_only_ && final)) {
+  if ((json_globals_log_ && !json_opts_.final_state_only_) ||
+      (json_opts_.final_state_only_ && final)) {
     for (const auto& global : context_->__globalNames()) {
-      if (std::regex_match(global.c_str(), std::regex(json_globals_regex_.c_str()))) {
+      if (std::regex_match(global.c_str(),
+                           std::regex(json_opts_.globals_regex_.c_str()))) {
         *json_globals_log_ << message_counter_ << "|"
                            << K3::serialization::json::encode<Address>(address_)
-                           << "|" << global << "|" << context_->__jsonify(global) << std::endl;
+                           << "|" << global << "|"
+                           << context_->__jsonify(global) << std::endl;
       }
     }
   }
-#endif  // K3DEBUG
+#endif // K3DEBUG
 }
 
 void Peer::printStatistics() {

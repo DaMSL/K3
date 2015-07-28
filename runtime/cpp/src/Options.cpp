@@ -41,27 +41,27 @@ int Options::parse(int argc, const char *const argv[]) {
   }
 
   if (vm.count("json")) {
-    json_folder_ = vm["json"].as<string>();
+    json_.output_folder_ = vm["json"].as<string>();
   } else {
-    json_folder_ = "";
+    json_.output_folder_ = "";
   }
 
   if (vm.count("json_final_only")) {
-    json_final_state_only_ = true;
+    json_.final_state_only_ = true;
   } else {
-    json_final_state_only_ = false;
+    json_.final_state_only_ = false;
   }
 
   if (vm.count("json_globals_regex")) {
-    json_globals_regex_ = vm["json_globals_regex"].as<string>();
+    json_.globals_regex_ = vm["json_globals_regex"].as<string>();
   } else {
-    json_globals_regex_ = ".*";
+    json_.globals_regex_ = ".*";
   }
 
   if (vm.count("json_messages_regex")) {
-    json_messages_regex_ = vm["json_messages_regex"].as<string>();
+    json_.messages_regex_ = vm["json_messages_regex"].as<string>();
   } else {
-    json_messages_regex_ = ".*";
+    json_.messages_regex_ = ".*";
   }
 
   if (vm.count("disable_local_messages")) {

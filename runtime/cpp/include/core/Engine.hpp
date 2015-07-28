@@ -4,7 +4,6 @@
 #include <atomic>
 #include <vector>
 #include <map>
-#include <memory>
 
 #include <spdlog/spdlog.h>
 
@@ -60,22 +59,20 @@ void Engine::run() {
   logger_->info("The Engine has started.");
 
   // Create peers from their command line arguments
-  auto tmp_peers = make_shared<map<Address, shared_ptr<Peer>>>();
-  auto context_factory = make_shared<ContextFactory>(
+  auto ctxt_fac = make_shared<ContextFactory>(
       [this]() { return make_shared<Context>(*this); });
-  auto ready_callback = [this]() { ready_peers_++; };
-  vector<YAML::Node> nodes = serialization::yaml::parsePeers(options_.peer_strs_);
+  auto rdy_callback = [this]() { ready_peers_++; };
+
+  auto tmp_peers = make_shared<map<Address, shared_ptr<Peer>>>();
+  vector<YAML::Node> nodes =
+      serialization::yaml::parsePeers(options_.peer_strs_);
   for (auto node : nodes) {
     Address addr = serialization::yaml::meFromYAML(node);
-    auto p = make_shared<Peer>(addr, context_factory, node, ready_callback,
-                               options_.json_folder_,
-                               options_.json_final_state_only_,
-                               options_.json_globals_regex_,
-                               options_.json_messages_regex_);
     if (tmp_peers->find(addr) != tmp_peers->end()) {
       throw std::runtime_error("Engine createPeers(): Duplicate address: " +
                                addr.toString());
     }
+    auto p = make_shared<Peer>(ctxt_fac, node, rdy_callback, options_.json_);
     (*tmp_peers)[addr] = p;
   }
   peers_ = tmp_peers;
