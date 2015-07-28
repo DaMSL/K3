@@ -188,6 +188,44 @@ class STLDS {
     }
   }
 
+  template<class E, class F, class G>
+  auto join(Derived<R_elem<E>> other, F f, G g) const -> Derived<R_elem<RT<RT<G, Elem>, E>>> const {
+    Derived<R_elem<RT<RT<G, Elem>, E>>> result;
+    for (const auto& elem : container) {
+      for (const auto& otherelem : other.container) {
+        if ( f(elem)(otherelem) ) {
+          result.insert(g(elem)(otherelem));
+        }
+      }
+    }
+    return result;
+  }
+
+  template<class E, class F, class G, class H>
+  auto equijoin(Derived<R_elem<E>> other, F f, G g, H h) const -> Derived<R_elem<RT<RT<H, Elem>, E>>> const {
+    Derived<R_elem<RT<RT<H, Elem>, E>>> result;
+
+    // Build.
+    unordered_map<RT<F, Elem>, std::multiset<Elem>> lhsHT;
+
+    for (const auto& elem : container) {
+      lhsHT[f(elem)].insert(elem);
+    }
+
+    // Probe.
+    for (const auto& otherelem : other.container) {
+      RT<G,E> key(g(otherelem));
+      auto it = lhsHT.find(key);
+      if ( it != lhsHT.end() ) {
+        for (const auto& probeelem : it->second) {
+          result.insert(h(probeelem)(otherelem));
+        }
+      }
+    }
+
+    return result;
+  }
+
   // Iterators
   using iterator = typename Container::iterator;
   using const_iterator = typename Container::const_iterator;
