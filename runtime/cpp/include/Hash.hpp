@@ -7,17 +7,13 @@
 
 #include "Common.hpp"
 
-
 namespace std {
 // Unit
 template <>
 struct hash<K3::unit_t> {
-  size_t operator()(const K3::unit_t&) const {
-    return 0; 
-  }
+  size_t operator()(const K3::unit_t&) const { return 0; }
 };
 
-  
 // Address
 template <>
 struct hash<K3::Address> {
@@ -61,7 +57,6 @@ struct hash<tuple<T...>> {
     return seed;
   }
 };
-
 
 }  // namespace std
 

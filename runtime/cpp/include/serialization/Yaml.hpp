@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 #include <tuple>
 
 #include "boost/asio.hpp"

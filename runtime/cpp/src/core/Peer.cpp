@@ -1,5 +1,6 @@
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <regex>
@@ -100,7 +101,7 @@ void Peer::processBatch() {
     TriggerID tid = d->trigger_;
     std::chrono::high_resolution_clock::time_point start_time =
         std::chrono::high_resolution_clock::now();
-#endif // K3DEBUG
+#endif  // K3DEBUG
 
     (*d)();  // Call the dispatcher (process a message)
 
@@ -109,7 +110,7 @@ void Peer::processBatch() {
         std::chrono::high_resolution_clock::now() - start_time;
     statistics_[tid].total_count++;
     logGlobals(false);
-#endif // K3DEBUG
+#endif  // K3DEBUG
   }
 }
 
@@ -132,7 +133,7 @@ void Peer::logMessage(const Dispatcher& d) {
     *json_messages_log_ << currentTime() << std::endl;
   }
   message_counter_++;
-#endif // K3DEBUG
+#endif  // K3DEBUG
 }
 
 void Peer::logGlobals(bool final) {
@@ -164,7 +165,7 @@ void Peer::logGlobals(bool final) {
       }
     }
   }
-#endif // K3DEBUG
+#endif  // K3DEBUG
 }
 
 void Peer::printStatistics() {

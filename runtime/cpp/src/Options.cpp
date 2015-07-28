@@ -14,8 +14,8 @@ int Options::parse(int argc, const char *const argv[]) {
       ("log_level,l", po::value<int>(), "Engine log level: (1,2,3)")
       ("json,j", po::value<string>(), "Directory for json log files")
       ("json_final_only,f", "json log final state only")
-      ("json_messages_regex,m", po::value<string>(),  "Regex to filter json messages based on destination trigger ")
-      ("json_globals_regex,g", po::value<string>(), "Regex to filter json globals based on variable name")
+      ("json_messages_regex,m", po::value<string>(),  "Filter message log by trigger")
+      ("json_globals_regex,g", po::value<string>(), "Filter globals log by variable name")
       ("disable_local_messages,d", "force serialization of all messages)");
 
   po::variables_map vm;

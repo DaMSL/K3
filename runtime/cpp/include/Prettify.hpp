@@ -50,9 +50,9 @@ string_impl prettify_record(const R& r, F f) {
 template <class C, class F>
 string_impl prettify_collection(const C& c, F f) {
   std::ostringstream oss;
-  //int i = 0;
-  //oss << "[";
-  //auto wrapped = [&f, &i, &oss] (auto& elem) {
+  // int i = 0;
+  // oss << "[";
+  // auto wrapped = [&f, &i, &oss] (auto& elem) {
   //  if (i != 0) {
   //    oss << ",";
   //  }
@@ -63,17 +63,18 @@ string_impl prettify_collection(const C& c, F f) {
   //    return;
   //  }
   //};
-  //c.iterate(wrapped);
-  //oss << "]";
-  //return string_impl(oss.str());
-  return string_impl("<COLLECTION>"); // TODO(jbw) fix implementation: use iterator directly
+  // c.iterate(wrapped);
+  // oss << "]";
+  // return string_impl(oss.str());
+  return string_impl(
+      "<COLLECTION>");  // TODO(jbw) fix implementation: use iterator directly
 }
 
 template <class C, class F>
 string_impl prettify_vmap(const C& c, F f) {
-  //std::ostringstream oss;
-  //oss << "[";
-  //for (auto& elem : c) {
+  // std::ostringstream oss;
+  // oss << "[";
+  // for (auto& elem : c) {
   //  oss << "Version: " << elem.first << std::endl;
   //  oss << "[";
   //  int i = 0;
@@ -87,9 +88,10 @@ string_impl prettify_vmap(const C& c, F f) {
   //    break;
   //  }
   //};
-  //oss << "]";
-  //return string_impl(oss.str());
-  return string_impl("<VMAP>");  // TODO(jbw) fix implementation for multiIndexVMap
+  // oss << "]";
+  // return string_impl(oss.str());
+  return string_impl(
+      "<VMAP>");  // TODO(jbw) fix implementation for multiIndexVMap
 }
 
 // Template magic for tuples
@@ -113,7 +115,6 @@ string_impl prettify_tuple(const std::tuple<T...>& tup, FS... funs) {
   os << ")";
   return os.str();
 }
-
 
 }  // namespace K3
 

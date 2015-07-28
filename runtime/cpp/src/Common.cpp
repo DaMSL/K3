@@ -1,3 +1,4 @@
+#include <string>
 #include "Common.hpp"
 
 namespace K3 {
@@ -10,4 +11,4 @@ IOMode getIOMode(const string& s) {
   }
   throw std::runtime_error("Unrecognized IO Mode string: " + s);
 }
-}
+}  // namespace K3

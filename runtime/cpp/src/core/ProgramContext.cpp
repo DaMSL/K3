@@ -1,5 +1,6 @@
 #include <iostream>
 #include <memory>
+#include <list>
 #include <string>
 #include <map>
 
