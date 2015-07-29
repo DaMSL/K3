@@ -480,7 +480,7 @@ evalExprSplice :: SpliceContext -> Either [MPEmbedding] (K3 Expression) -> ExprG
 evalExprSplice sctxt (Left ml) = evalSumEmbedding "expr" sctxt ml >>= \case
     SExpr e  -> return e
     SLabel i -> return $ EC.variable i
-    _ -> spliceFail $ "Invalid splice expression value " ++ show ml
+    sv -> spliceFail $ boxToString $ ["Invalid splice expression value " ++ show ml] %$ prettyLines sv
 
 evalExprSplice _ (Right e) = return e
 

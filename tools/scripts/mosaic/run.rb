@@ -237,6 +237,7 @@ def gen_yaml(k3_data_path, role_file, script_path)
   extra_args = []
   extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
   extra_args << "sw_driver_sleep=" + $options[:msg_delay] if $options[:msg_delay]
+  extra_args << "corrective_mode=false" if $options[:no_corrective]
   cmd << "--extra-args " << extra_args.join(',') << " " if extra_args.size > 0
 
   yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
@@ -696,6 +697,7 @@ def main()
     opts.on("--gc-epoch [MS]", "Set gc epoch time (ms)") { |i| $options[:gc_epoch] = i }
     opts.on("--msg-delay [MS]", "Set switch message delay (ms)") { |i| $options[:msg_delay] = i }
     opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
+    opts.on("--no-correctives", "Run in no-corrective mode") { $options[:no_corrective] = true }
 
     # Stages.
     # Ktrace is not run by default.
