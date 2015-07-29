@@ -16,11 +16,11 @@ QUERIES = {
     },
     :queries => {
       "q1" => "examples/sql/tpch/queries/k3/q1.k3",
-      #"q3" => "examples/sql/tpch/queries/k3/barrier-queries/q3.k3",
-      #"q5" => "examples/sql/tpch/queries/k3/barrier-queries/q5_bushy_broadcast_broj2.k3",
-      #"q6" => "examples/sql/tpch/queries/k3/q6.k3",
-      #"q18" => "examples/sql/tpch/queries/k3/barrier-queries/q18.k3",
-      #"q22" => "examples/sql/tpch/queries/k3/barrier-queries/q22.k3",
+      "q3" => "examples/sql/tpch/queries/k3/barrier-queries/q3.k3",
+      "q5" => "examples/sql/tpch/queries/k3/barrier-queries/q5_bushy_broadcast_broj2.k3",
+      "q6" => "examples/sql/tpch/queries/k3/q6.k3",
+      "q18" => "examples/sql/tpch/queries/k3/barrier-queries/q18.k3",
+      "q22" => "examples/sql/tpch/queries/k3/barrier-queries/q22.k3",
     }
   },
 
@@ -184,13 +184,13 @@ def check(folders)
       correct = "#{ktrace_dir}/correct_results/#{run_id}.csv"
       actual = "#{val["output"]}/results.csv"
       output = `python2 #{diff} #{correct} #{actual}`
+      time_file = "#{val["output"]}/time.csv"
+      file = File.open(time_file, "rb")
+      time_ms = file.read.strip
       if $?.to_i == 0
-        time_file = "#{val["output"]}/time.csv"
-        file = File.open(time_file, "rb")
-        time_ms = file.read.strip
         puts("#{key} => CORRECT RESULTS. Time: #{time_ms} ms.")
       else
-        puts("#{key} => FAILED: INCORRECT RESULTS")
+        puts("#{key} => FAILED: INCORRECT RESULTS. Time: #{time_ms} ms.")
         puts(output)
       end
     else
