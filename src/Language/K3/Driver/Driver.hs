@@ -31,6 +31,7 @@ import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
 import Language.K3.Parser ( stitchK3Includes )
+import Language.K3.Parser.ProgramBuilder ( defaultRoleName )
 import Language.K3.Parser.SQL hiding ( liftEitherM, reasonM )
 
 import Language.K3.Metaprogram.DataTypes
@@ -116,7 +117,7 @@ printMinimal :: IOOptions -> ParseOptions -> ([String], [(String, K3 Declaration
 printMinimal ioOpts pOpts (userdecls, reqdecls) = do
   putStrLn $ unwords $ ["Declarations needed for:"] ++ userdecls
   putStrLn $ unlines $ map fst reqdecls
-  k3outIO ioOpts pOpts $ DC.role "__global" $ map snd reqdecls
+  k3outIO ioOpts pOpts $ DC.role defaultRoleName $ map snd reqdecls
 
 
 -- | AST formatting.
@@ -276,7 +277,11 @@ sql sqlopts opts = do
   either (liftIO . putStrLn . show) k3program stmtE
 
   where
-    dependencies = map (\s -> "include \"" ++ s ++ "\"") ["Annotation/Collection.k3"]
+    dependencies = map (\s -> "include \"" ++ s ++ "\"")
+                     [ "Annotation/Collection.k3"
+                     , "Core/Barrier.k3"
+                     , "Distributed/SQLTransformers.k3" ]
+
     path = inputProgram $ input opts
     includePaths = includes $ paths opts
     nf = noFeed $ input opts
@@ -289,14 +294,17 @@ sql sqlopts opts = do
       void $ if printParse then printStmts stmts else return ()
       (prog, psqlenv) <- liftEitherM $ runSQLParseEM sqlenv0 $ do
           qstmts <- mapM sqlstmt stmts;
-          return $ DC.role "__global" $ concat qstmts
-      stageprogram psqlenv prog
+          return $ DC.role defaultRoleName $ concat qstmts
+      if sqlUntyped sqlopts
+        then liftIO $ putStrLn $ pretty prog
+        else stageprogram psqlenv prog
 
     stageprogram env prog = do
       sprog <- liftE $ stitchK3Includes nf includePaths dependencies prog
       mprog <- metaprogram opts sprog
-      (nprog, psqlenv) <- liftEitherM $ runSQLParseEM env $ sqlstages mprog
-      encprog <- if asSyntax then liftEitherM $ programS nprog else return $ pretty nprog
+      (nprog, psqlenv) <- liftEitherM $ runSQLParseEM env $ sqlstages (sqlDistributedPlan sqlopts) mprog
+      smprog <- metaprogram opts nprog
+      encprog <- if asSyntax then liftEitherM $ programS smprog else return $ pretty smprog
       liftIO $ putStrLn encprog
       printState psqlenv
 
