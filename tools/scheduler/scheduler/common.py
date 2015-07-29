@@ -9,22 +9,27 @@ gc_delay = 15
 offer_wait = 5
 
 
+class DEFAULT:
+  # masterNodes =  ['qp-hm1']
+  # workerNodes =  ['qp3', 'qp4', 'qp5', 'qp6'] + ['qp-hm' + str(i) for i in range(2,9)] + ['qp-hd' + str(i) for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13]]
+  # clientNodes =  ['qp-hd14', 'qp-hd15', 'qp-hd16']
+
+  masterNodes =  ['qp-hd1']
+  workerNodes =  ['qp3', 'qp4', 'qp5', 'qp6'] + ['qp-hd' + str(i) for i in [2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13]]
+  clientNodes =  ['qp-hd14', 'qp-hd15', 'qp-hd16']
+
+# compilerNodes    =  masterNodes + workerNodes + clientNodes
+
+
+
 # Returns unique time stamp uid (unique to this machine only)
 def getUID():
   return str(uuid.uuid1()).split('-')[0]
 
 roleParameters = ['peers_per_host', 'mem', 'cpu']
 
-# masterNodes =  ['qp-hd2']
-# workerNodes =  ['qp-hd9', 'qp-hd15']
-# clientNodes =  ['qp6']
-masterNodes =  ['qp-hm1']
-workerNodes =  ['qp3', 'qp4', 'qp5', 'qp6'] + ['qp-hm' + str(i) for i in range(2,9)] + ['qp-hd' + str(i) for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13]]
-# workerNodes =  ['qp' + str(i) for i in range(3,6)] + ['qp-hm' + str(i) for i in range(2,9)]
-clientNodes =  ['qp-hd14', 'qp-hd15', 'qp-hd16']
 
 
-compilerNodes    =  masterNodes + workerNodes + clientNodes
 
 
 CompileServiceState = enum.Enum('Service', 'DOWN INIT DISPATCH MASTER_WAIT WORKER_WAIT UP')

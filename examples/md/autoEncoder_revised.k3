@@ -1,4 +1,5 @@
 include "Annotation/Vector.k3"
+include "Annotation/Set.k3"
 include "Core/Builtins.k3"
 
 declare master: address = 127.0.0.1:40000
@@ -205,7 +206,7 @@ declare slaveFeedForward : () -> () = \_ ->(
 			let a1 = (access1LayerNeuron layerId.i neuronId.i) in (
 				(outputValue.set (a1) {elem:(neuronFeedForward layerId.i neuronId.i)});		
 				(zValue.set (a1) {elem:(neuronCalculateZValue layerId.i neuronId.i)})		
-			)	
+			)
 		))
 	))
 )
@@ -387,7 +388,7 @@ trigger startSlave : () = \_ -> (
 		(if (row_number == -1) then (initialize ()) else ());
 		row_number = row_number + 1;
 
-    print (itos row_number);		
+    print (itos row_number);
     /*
 		(if (row_number % epochSize == 0) 
 		then (
@@ -441,12 +442,19 @@ trigger receiveAtSlave : collection {elem : real} @Vector = \updateOnWeights -> 
 
 trigger storeData :  {i: real, j: real, k : real} = \csvData -> (
 	allData.insert {elem : {i: csvData.i, j: csvData.j, k: csvData.k} };
-	rows = rows + 1; // Wait until number of rows equals to 8 for input values.
-    (if (rows == 8) then ((startSlave, me) <- ()) else ())
+
+	// Wait until number of rows equals to 8 for input values
+	rows = rows + 1; 
+    (if (rows == 8) 
+    	then ((startSlave, me) <- ()) 
+    else ())
 )
 
 //sink results_sink : real = stdout csv
 //sink results_sink : {addr : address, iter: int , totalError : real} = stdout csv
+
+// sink results_sink : (real) = file "out.csv" psv
+// sink results_sink : (real) = file "out.csv" text psv
 
 source masterSource : () = value ()
 feed masterSource |> startMaster

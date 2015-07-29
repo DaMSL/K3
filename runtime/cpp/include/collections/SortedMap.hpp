@@ -358,8 +358,19 @@ class SortedMap {
   }
 
   template<typename F, typename G>
-  auto upper_bound_with(const R& rec, F f, G g) const {
-    auto it = container.upper_bound(rec.key);
+  auto lookup_lt_with(const R& k, F f, G g) const {
+    auto it = container.lower_bound(k.key);
+    if (it != container.begin()) {
+      --it;
+      return g(it->second);
+    } else {
+      return f(unit_t {});
+    }
+  }
+
+  template<typename F, typename G>
+  auto lookup_gt_with(const R& k, F f, G g) const {
+    auto it = container.upper_bound(k.key);
     if (it == container.end()) {
       return f(unit_t {});
     } else {
@@ -368,8 +379,8 @@ class SortedMap {
   }
 
   template<typename F, typename G>
-  auto lower_bound_with(const R& rec, F f, G g) const {
-    auto it = container.lower_bound(rec.key);
+  auto lookup_geq_with(const R& k, F f, G g) const {
+    auto it = container.lower_bound(k.key);
     if (it == container.end()) {
       return f(unit_t {});
     } else {
@@ -377,22 +388,42 @@ class SortedMap {
     }
   }
 
-  SortedMap<R> filter_lt(const R& rec) const {
+  template<typename F, typename G>
+  auto lookup_leq_with(const R& k, F f, G g) const {
+    auto it = container.upper_bound(k.key);
+    if (it != container.begin()) {
+      --it;
+      return g(it->second);
+    } else {
+      return f(unit_t {});
+    }
+  }
+
+
+  SortedMap<R> filter_lt(const R& k) const {
     const auto& x = getConstContainer();
-    auto it = x.lower_bound(rec.key);
+    auto it = x.lower_bound(k.key);
+    if (it != x.begin()) --it;
     return SortedMap<R>(x.begin(), it);
   }
 
-  SortedMap<R> filter_gt(const R& rec) const {
+  SortedMap<R> filter_gt(const R& k) const {
     const auto& x = getConstContainer();
-    auto it = x.upper_bound(rec.key);
+    auto it = x.upper_bound(k.key);
     return SortedMap<R>(it, x.end());
   }
 
-  SortedMap<R> filter_geq(const R& rec) const {
+  SortedMap<R> filter_geq(const R& k) const {
     const auto& x = getConstContainer();
-    auto it = x.lower_bound(rec.key);
+    auto it = x.lower_bound(k.key);
     return SortedMap<R>(it, x.end());
+  }
+
+  SortedMap<R> filter_leq(const R& k) const {
+    const auto& x = getConstContainer();
+    auto it = x.upper_bound(k.key);
+    if (it != x.begin()) --it;
+    return SortedMap<R>(x.begin(), it);
   }
 
   SortedMap<R> between(const R& a, const R& b) const {

@@ -13,13 +13,16 @@ namespace K3 {
 
 class FileBuiltins {
  public:
-  FileBuiltins(Engine& engine) : __engine_(engine) { }
+  FileBuiltins(Engine& engine) : __engine_(engine) {}
 
-  unit_t openFile(const Address& peer, const string_impl& id, const string_impl& path, const string_impl& fmt, bool txt, const string_impl& mode) {
+  unit_t openFile(const Address& peer, const string_impl& id,
+                  const string_impl& path, const string_impl& fmt, bool txt,
+                  const string_impl& mode) {
     CodecFormat c_format = Codec::getFormat(fmt);
     IOMode io_mode = getIOMode(mode);
     StorageFormat s_format = txt ? StorageFormat::Text : StorageFormat::Binary;
-    __engine_.getStorageManager().openFile(peer, id, path, s_format, c_format, io_mode);
+    __engine_.getStorageManager().openFile(peer, id, path, s_format, c_format,
+                                           io_mode);
     return unit_t{};
   }
 

@@ -72,6 +72,7 @@ program (tag &&& children -> (DRole name, decls)) = do
 
     inits <- initializations <$> get
 
+    globalNames <- genGlobalNames
     prettify <- genPrettify
     jsonify <- genJsonify
 
@@ -122,7 +123,7 @@ program (tag &&& children -> (DRole name, decls)) = do
                       [R.Const $ R.Reference $ R.Named $ R.Qualified (R.Name "YAML") (R.Name "Node")] R.Void
 
     let contextDefns = [contextConstructor] ++ programDefns  ++ [initDeclDefn] ++
-                       [patchFnDecl, prettify, jsonify, dispatchDecl True, dispatchDecl False]
+                       [patchFnDecl, globalNames, prettify, jsonify, dispatchDecl True, dispatchDecl False]
 
     let contextClassDefn = R.ClassDefn contextName []
                              [ R.Named $ R.Qualified (R.Name "K3") $ R.Name "ProgramContext"
@@ -364,36 +365,37 @@ generateDispatchPopulation isNative = do
        return $ R.Assignment (R.Subscript table i) dispatchWrapper
 
 
+genGlobalNames :: CPPGenM R.Definition
+genGlobalNames = do
+  n_ts <- showables <$> get
+  lits <- return $ map (\(n,_) -> R.Literal $ R.LString n) n_ts
+  ini  <- return $ R.Initialization listType lits
+  return $ R.FunctionDefn (R.Name "__globalNames") [] (Just $ listType) [] False [R.Return $ ini]
+
+  where listType = R.Named $ R.Specialized [R.Primitive R.PString] (R.Name "list")
+
 genJsonify :: CPPGenM R.Definition
 genJsonify = do
    currentS <- get
-   body    <- genBody $ showables currentS
-   return $ R.FunctionDefn (R.Name "__jsonify") [] (Just result_type) [] False body
+   body    <- genReturns $ showables currentS
+   return $ R.FunctionDefn (R.Name "__jsonify") [("global", R.Const $ R.Reference $ R.Primitive $ R.PString)] (Just $ R.Primitive R.PString) [] False body
   where
-   genBody  :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
-   genBody n_ts = do
-     result_decl <- return $ R.Forward $ R.ScalarDecl (R.Name result) result_type Nothing
-     inserts     <- genInserts n_ts
-     return_st   <- return $ R.Return $ R.Variable $ R.Name result
-     return $ (result_decl : inserts) ++ [return_st]
-
-   -- Insert key-value pairs into the map
-   genInserts :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
-   genInserts n_ts = do
-     let names     = map fst n_ts
-         name_vars = map (R.Variable . R.Name) names
-         new_nts   = zip name_vars $ map snd n_ts
-         lhs_exprs = map (\x -> R.Subscript (R.Variable $ R.Name result) (R.Literal $ R.LString x)) names
-     rhs_exprs  <- mapM (\(n,t) -> jsonifyExpr t n) new_nts
-     return $ zipWith R.Assignment lhs_exprs rhs_exprs
+   genReturns :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
+   genReturns n_ts = do
+         rs <- mapM mkReturn n_ts
+         return $ rs ++ [R.Return $ R.Literal $ R.LString ("Global variable not found")]
      where
-       jsonifyExpr t n = do
+       mkReturn (n,t) = do
+         json <- jsonifyExpr (R.Variable $ R.Name n) t
+         return $ R.IfThenElse (R.Binary "==" (R.Variable $ R.Name "global") (R.Literal $ R.LString n))
+                    [R.Return $ json]
+                    []
+
+       jsonifyExpr n t = do
          cType <- genCType t
          return $ R.Call (R.Variable $ R.Specialized [cType] (R.Name "K3::serialization::json::encode")) [n]
 
    p_string = R.Named $ R.Qualified (R.Name "std") (R.Name "string")
-   result_type  = R.Named $ R.Qualified (R.Name "std") (R.Specialized [p_string, p_string] (R.Name "map"))
-   result  = "__result"
 
 -- Generate a function to help print the current environment (global vars and their values).
 -- Currently, this function returns a map from string (variable name) to string (string representation of value)

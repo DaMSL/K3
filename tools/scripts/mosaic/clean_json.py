@@ -27,7 +27,7 @@ def label_of_int(i):
 
 def convert_dict(d):
     # for addresses, options, records, etc, just dereference
-    if "type" in d and d["type"] in ["address", "option_or_ind", "record", "tuple", "Collection", "Map", "Seq", "Set", "VMap"]:
+    if "type" in d and d["type"] in ["address", "option_or_ind", "record", "tuple", "Collection", "Map", "Seq", "Set", "VMap", "MapE", "SortedMapE", "SortedMap", "SortedSet", "Vector", "MultiIndexVMap"]:
         return convert_any(d["value"])
     # change record mapping back to tuple
     elif "ra" in d:
@@ -42,7 +42,8 @@ def convert_dict(d):
         return res
     elif "key" in d and "value" in d:
         res = []
-        res.append(convert_any(d["key"]))
+        if d["key"] != "()":
+            res.append(convert_any(d["key"]))
         res.append(convert_any(d["value"]))
         return res
     elif "i" in d:

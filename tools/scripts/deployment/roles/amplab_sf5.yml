@@ -1,0 +1,15 @@
+---
+volumes:
+  - {host: /local, container: /local}
+name: role 1
+peers: 128
+hostmask: ".*hm.*"
+k3_globals:
+  role: [{i: rows}]
+  #role: rows
+  master: auto
+  thresh: 1000
+  slice_length: 8
+k3_data:
+  - {var: rankingsFiles, path: /local/data/amplab/1024/rankings, policy: global}
+  - {var: uservisitsFiles, path: /local/data/amplab/1024/uservisits, policy: global}

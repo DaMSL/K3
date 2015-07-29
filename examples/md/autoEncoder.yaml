@@ -1,8 +1,8 @@
-role: masterSource
+role: [{n: masterSource}]
 me: [127.0.0.1,40000]
 peers: [{addr: [127.0.0.1,41000]}]
 ---
-role: slaveSource1
+role: [{n: slaveSource1}]
 me: [127.0.0.1,41000]
 peers: [{addr: [127.0.0.1,40000]}, {addr: [127.0.0.1,42000]}]
 #role: slaveSource1

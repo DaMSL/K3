@@ -1,5 +1,6 @@
 #include <iostream>
 #include <memory>
+#include <list>
 #include <string>
 #include <map>
 
@@ -18,6 +19,10 @@ void ProgramContext::__patch(const YAML::Node& node) {
   return;
 }
 
+std::list<string_impl> ProgramContext::__globalNames() {
+  return std::list<string_impl>();
+}
+
 unit_t ProgramContext::initDecls(unit_t) { return unit_t{}; }
 
 unit_t ProgramContext::processRole(const unit_t&) { return unit_t{}; }
@@ -26,8 +31,8 @@ map<string, string> ProgramContext::__prettify() {
   return map<string, string>();
 }
 
-map<string, string> ProgramContext::__jsonify() {
-  return map<string, string>();
+string_impl ProgramContext::__jsonify(const string_impl& global) {
+  return "";
 }
 
 string ProgramContext::__triggerName(int trig) {

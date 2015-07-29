@@ -7,25 +7,30 @@
 
 #include "Common.hpp"
 
-
 namespace std {
 // Unit
 template <>
 struct hash<K3::unit_t> {
-  size_t operator()(const K3::unit_t&) const {
-    return 0; 
-  }
+  size_t operator()(const K3::unit_t&) const { return 0; }
 };
 
-  
 // Address
 template <>
 struct hash<K3::Address> {
-  size_t operator()(const K3::Address& addr) const {
-    size_t seed = 0;
-    hash_combine(seed, addr.ip);
-    hash_combine(seed, addr.port);
-    return seed;
+  size_t operator()(const K3::Address& b) const {
+    const unsigned int fnv_prime = 0x811C9DC5;
+    unsigned int hash = 0;
+    const char* p = (const char*)&(b.ip);
+    for (std::size_t i = 0; i < sizeof(unsigned long); i++) {
+      hash *= fnv_prime;
+      hash ^= p[i];
+    }
+    p = (const char*)&(b.port);
+    for (std::size_t i = 0; i < sizeof(unsigned short); i++) {
+      hash *= fnv_prime;
+      hash ^= p[i];
+    }
+    return hash;
   }
 };
 
@@ -61,7 +66,6 @@ struct hash<tuple<T...>> {
     return seed;
   }
 };
-
 
 }  // namespace std
 

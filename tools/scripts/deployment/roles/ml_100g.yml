@@ -1,0 +1,14 @@
+---
+volumes:
+  - {host: /local, container: /local}
+name: role 1
+peers: 128
+hostmask: ".*qp-hm.*"
+k3_globals:
+  role: [{i: s1}]
+  master: auto
+  dimensionality: 33
+  iterations_remaining: 10
+  k: 5
+k3_data:
+  - {var: dataFiles, path: /local/data/sgd_100G, policy: global}
