@@ -232,18 +232,25 @@ spliceType = \case
 spliceValue :: SpliceValue -> SyntaxPrinter
 spliceValue = \case
     SVar     i    -> return $ text i
-    SLabel   i    -> return $ text i
-    SType    t    -> typ  t
-    SExpr    e    -> expr e
-    SDecl    d    -> decl d
-    SLiteral l    -> literal l
-    SRecord  nsvs -> mapM spliceField (recordElemsAsList nsvs) >>= return . braces . cat . punctuate comma
-    SList    svs  -> mapM spliceValue svs >>= return . brackets . cat . punctuate comma
+    SLabel   i    -> return $ brackets $ text "#" <+> text i
+    SType    t    -> typ t >>= \td -> return $ brackets $ colon <+> td
+    SExpr    e    -> expr e >>= \ed -> return $ brackets $ text "$" <+> ed
+    SDecl    d    -> decl d >>= \dd -> return $ brackets $ text "$^" <+> dd
+    SLiteral l    -> literal l >>= \ld -> return $ brackets $ text "$#" <+> ld
+    SRecord  nsvs -> mapM spliceField (recordElemsAsList nsvs) >>= \fdl -> return $ brackets $ text "%" <+> (cat $ punctuate comma fdl)
+    SList    svs  -> mapM spliceValue svs >>= \fdl -> return $ brackets $ text "*" <+> (cat $ punctuate comma fdl)
 
   where spliceField (i,v) = spliceValue v >>= return . ((text i <+> colon) <+>)
 
 typedSpliceVar :: TypedSpliceVar -> SyntaxPrinter
 typedSpliceVar (t, i) = spliceType t >>= return . ((text i <+> colon) <+>)
+
+spliceEnv :: SpliceEnv -> SyntaxPrinter
+spliceEnv env = do
+    entriesD <- mapM spliceEnvEntry $ Map.toList env
+    return $ cat $ punctuate comma entriesD
+  where
+    spliceEnvEntry (i, sv) = spliceValue sv >>= \svd -> return $ text i <> equals <> svd
 
 subDecls :: [K3 Declaration] -> Printer [Doc]
 subDecls d = mapM decl {-$ filter (not . generatedDecl)-} d
@@ -308,11 +315,23 @@ endpoint kw n specOpt t' eOpt' = case specOpt of
 expr :: K3 Expression -> SyntaxPrinter
 expr e@(details -> (_,_,anns)) = attachComments (commentE anns) $ (expr' e >>= return . exdoc)
 
-exrs :: Doc -> Either ([Either Doc Doc], Operator) Doc
-exrs = Right
+type OperatorChainDoc = ([Either Doc Doc], [[Annotation Expression]], Operator)
 
-exdoc :: Either ([Either Doc Doc], Operator) Doc -> Doc
-exdoc (Left (l, op)) = align $ fillCatArgs $ punctuateArgs lsep l
+exrs :: [Annotation Expression] -> Doc -> Printer (Either OperatorChainDoc Doc)
+exrs anns d = do
+  dl <- mapM applyAnns anns
+  let anndl = (map text $ concatMap annIds anns) ++ concat dl
+  return $ Right $ if null anndl then d else parens d </> annotated anndl
+  where
+    annIds (EAnnotation n) = [n]
+    annIds _ = []
+
+    applyAnns (EApplyGen True n env) = spliceEnv env >>= \envD -> return [text n <> parens envD]
+    applyAnns _ = return []
+
+
+exdoc :: Either OperatorChainDoc Doc -> Doc
+exdoc (Left (l, _, op)) = align $ fillCatArgs $ punctuateArgs lsep l
   where lsep = case op of
                  OApp -> space
                  OSeq -> semi <> space
@@ -331,16 +350,16 @@ exdoc (Left (l, op)) = align $ fillCatArgs $ punctuateArgs lsep l
 
 exdoc (Right d) = d
 
-expr' :: K3 Expression -> Printer (Either ([Either Doc Doc], Operator) Doc)
+expr' :: K3 Expression -> Printer (Either OperatorChainDoc Doc)
 expr' (details -> (EConstant c, _, anns)) =
   case c of
-    CBool b   -> return . exrs . text $ if b then "true" else "false"
-    CInt i    -> return . exrs $ int i
-    CByte w   -> return . exrs $ integer $ toInteger w
-    CReal r   -> return . exrs $ double r
-    CString s -> return . exrs $ dquotes $ text s
-    CNone q   -> return . exrs $ text "None" <+> nQualifier q
-    CEmpty t  -> typ t >>= return . exrs . emptyCollection (namedEAnnotations anns)
+    CBool b   -> exrs anns . text $ if b then "true" else "false"
+    CInt i    -> exrs anns $ int i
+    CByte w   -> exrs anns $ integer $ toInteger w
+    CReal r   -> exrs anns $ double r
+    CString s -> exrs anns $ dquotes $ text s
+    CNone q   -> exrs anns $ text "None" <+> nQualifier q
+    CEmpty t  -> typ t >>= exrs (filter (not . isEAnnotation) anns) . emptyCollection (namedEAnnotations anns)
 
   where
     emptyCollection annIds t = text "empty" </> t <+> annotated (map text annIds)
@@ -348,51 +367,51 @@ expr' (details -> (EConstant c, _, anns)) =
     nQualifier NoneMut   = text "mut"
     nQualifier NoneImmut = text "immut"
 
-expr' (tag -> EVariable i) = return . exrs $ text i
+expr' (tna -> (EVariable i, anns)) = exrs anns $ text i
 
-expr' (details -> (ESome, [x], _)) = qualifierAndExpr x >>= return . exrs . uncurry someExpr
-expr' (tag -> ESome)               = exprError "some"
+expr' (details -> (ESome, [x], anns)) = qualifierAndExpr x >>= exrs anns . uncurry someExpr
+expr' (tag -> ESome)                  = exprError "some"
 
-expr' (details -> (EIndirect, [x], _)) = qualifierAndExpr x >>= return . exrs . uncurry indirectionExpr
-expr' (tag -> EIndirect)               = exprError "indirection"
+expr' (details -> (EIndirect, [x], anns)) = qualifierAndExpr x >>= exrs anns . uncurry indirectionExpr
+expr' (tag -> EIndirect)                  = exprError "indirection"
 
-expr' (details -> (ETuple, cs, _)) = mapM qualifierAndExpr cs >>= return . exrs . tupleExpr
-expr' (tag -> ETuple)              = exprError "tuple"
+expr' (details -> (ETuple, cs, anns)) = mapM qualifierAndExpr cs >>= exrs anns . tupleExpr
+expr' (tag -> ETuple)                 = exprError "tuple"
 
-expr' (details -> (ERecord is, cs, _)) = mapM qualifierAndExpr cs >>= return . exrs . recordExpr is
-expr' (tag -> ERecord _)               = exprError "record"
+expr' (details -> (ERecord is, cs, anns)) = mapM qualifierAndExpr cs >>= exrs anns . recordExpr is
+expr' (tag -> ERecord _)                  = exprError "record"
 
-expr' (details -> (ELambda i, [b], _)) = expr b >>= return . exrs . lambdaExpr i
-expr' (tag -> ELambda _)               = exprError "lambda"
+expr' (details -> (ELambda i, [b], anns)) = expr b >>= exrs anns .lambdaExpr i
+expr' (tag -> ELambda _)                  = exprError "lambda"
 
-expr' (details -> (EOperate otag, cs, _))
-    | otag `elem` [ONeg, ONot], [a] <- cs    = expr a >>= unary otag
-    | otag `elem` [OApp, OSeq], [a, b] <- cs = uncurry (binarychain a b otag) =<< ((,) C.<$> expr' a <*> expr' b)
-    | otherwise, [a, b] <- cs                = uncurry (binary otag $ isELambda b) =<< ((,) C.<$> expr a <*> expr b)
+expr' (details -> (EOperate otag, cs, anns))
+    | otag `elem` [ONeg, ONot], [a] <- cs    = expr a >>= unary otag anns
+    {- | otag `elem` [OApp, OSeq], [a, b] <- cs = uncurry (binarychain a b otag anns) =<< ((,) C.<$> expr' a <*> expr' b) -}
+    | otherwise, [a, b] <- cs                = uncurry (binary otag anns $ isELambda b) =<< ((,) C.<$> expr a <*> expr b)
     | otherwise                              = exprError "operator"
 
-expr' (details -> (EProject i, [r], _)) = expr r >>= return . exrs . projectExpr i
-expr' (tag -> EProject _)               = exprError "project"
+expr' (details -> (EProject i, [r], anns)) = expr r >>= exrs anns . projectExpr i
+expr' (tag -> EProject _)                  = exprError "project"
 
-expr' (details -> (ELetIn i, [e, b], _)) = (letExpr i C.<$> qualifierAndExpr e <*> expr b) >>= return . exrs
-expr' (tag -> ELetIn _)                  = exprError "let"
+expr' (details -> (ELetIn i, [e, b], anns)) = (letExpr i C.<$> qualifierAndExpr e <*> expr b) >>= exrs anns
+expr' (tag -> ELetIn _)                     = exprError "let"
 
-expr' (details -> (EAssign i, [e], _)) = expr e >>= return . exrs . assignExpr i
-expr' (tag -> EAssign _)               = exprError "assign"
+expr' (details -> (EAssign i, [e], anns)) = expr e >>= exrs anns . assignExpr i
+expr' (tag -> EAssign _)                  = exprError "assign"
 
-expr' (details -> (ECaseOf i, [e, s, n], _)) = (caseExpr i C.<$> expr e <*> expr s <*> expr n) >>= return . exrs
-expr' (tag -> ECaseOf _)                     = exprError "case-of"
+expr' (details -> (ECaseOf i, [e, s, n], anns)) = (caseExpr i C.<$> expr e <*> expr s <*> expr n) >>= exrs anns
+expr' (tag -> ECaseOf _)                        = exprError "case-of"
 
-expr' (details -> (EBindAs b, [e, f], _)) = (bindExpr b C.<$> expr e <*> expr f) >>= return . exrs
-expr' (tag -> EBindAs _)                  = exprError "bind-as"
+expr' (details -> (EBindAs b, [e, f], anns)) = (bindExpr b C.<$> expr e <*> expr f) >>= exrs anns
+expr' (tag -> EBindAs _)                     = exprError "bind-as"
 
-expr' (details -> (EIfThenElse, [p, t, e], _)) = (branchExpr C.<$> expr p <*> expr t <*> expr e) >>= return . exrs
-expr' (tag -> EIfThenElse)                     = exprError "if-then-else"
+expr' (details -> (EIfThenElse, [p, t, e], anns)) = (branchExpr C.<$> expr p <*> expr t <*> expr e) >>= exrs anns
+expr' (tag -> EIfThenElse)                        = exprError "if-then-else"
 
-expr' (details -> (EAddress, [h, p], _)) = address h p >>= return . exrs
-expr' (tag -> EAddress)                  = exprError "address"
+expr' (details -> (EAddress, [h, p], anns)) = address h p >>= exrs anns
+expr' (tag -> EAddress)                     = exprError "address"
 
-expr' (tag -> ESelf) = return . exrs $ keyword "self"
+expr' (tna -> (ESelf, anns)) = exrs anns $ keyword "self"
 
 expr' _ = exprError "unknown"
 
@@ -400,34 +419,35 @@ isELambda :: K3 Expression -> Bool
 isELambda (tag -> ELambda _) = True
 isELambda _ = False
 
-unary :: Operator -> Doc -> Printer (Either ([Either Doc Doc], Operator) Doc)
-unary ONeg e = return . exrs $ text "-" <> e
-unary ONot e = return . exrs $ text "not" <+> e
-unary op _   = throwSP $ "Invalid unary operator '" ++ show op ++ "'"
+unary :: Operator -> [Annotation Expression] -> Doc -> Printer (Either OperatorChainDoc Doc)
+unary ONeg anns e = exrs anns $ text "-" <> e
+unary ONot anns e = exrs anns $ text "not" <+> e
+unary op _ _      = throwSP $ "Invalid unary operator '" ++ show op ++ "'"
 
-bccomments :: K3 Expression -> Either ([Either Doc Doc], Operator) Doc -> Doc
+bccomments :: K3 Expression -> Either OperatorChainDoc Doc -> Doc
 bccomments e d = attachCommentsD (commentE $ annotations e) $ exdoc d
 
 bccommentsL :: K3 Expression -> [Either Doc Doc] -> [Either Doc Doc]
 bccommentsL e dl = attachCommentsL (commentE $ annotations e) dl
 
-binarychain :: K3 Expression -> K3 Expression -> Operator
-            -> Either ([Either Doc Doc], Operator) Doc
-            -> Either ([Either Doc Doc], Operator) Doc
-            -> Printer (Either ([Either Doc Doc], Operator) Doc)
-binarychain e1 e2 OSeq (Left (l1, OSeq)) (Left (l2, OSeq)) =
-  return $ Left ((bccommentsL e1 l1) ++ (bccommentsL e2 l2), OSeq)
+binarychain :: K3 Expression -> K3 Expression -> Operator -> [Annotation Expression]
+            -> Either OperatorChainDoc Doc
+            -> Either OperatorChainDoc Doc
+            -> Printer (Either OperatorChainDoc Doc)
+binarychain e1 e2 OSeq anns (Left (l1, anns1, OSeq)) (Left (l2, anns2, OSeq)) =
+  return $ Left ((bccommentsL e1 l1) ++ (bccommentsL e2 l2), anns1 ++ anns2 ++ [anns], OSeq)
 
-binarychain e1 e2@(tag -> ELambda _) op (Left (l1, op1)) r | op == op1 =
-  return $ Left (bccommentsL e1 l1 ++ [Right $ bccomments e2 r], op)
+binarychain e1 e2@(tag -> ELambda _) op anns (Left (l1, anns1, op1)) r | op == op1 =
+  return $ Left (bccommentsL e1 l1 ++ [Right $ bccomments e2 r], anns1 ++ [anns], op)
 
-binarychain e1 e2 op (Left (l1, op1)) r | op == op1 =
-  return $ Left (bccommentsL e1 l1 ++ [Left $ bccomments e2 r], op)
+binarychain e1 e2 op anns (Left (l1, anns1, op1)) r | op == op1 =
+  return $ Left (bccommentsL e1 l1 ++ [Left $ bccomments e2 r], anns1 ++ [anns], op)
 
-binarychain le re op l r = binary op (isELambda re) (bccomments le l) (bccomments re r)
+binarychain le re op anns l r = binary op anns (isELambda re) (bccomments le l) (bccomments re r)
 
-binary :: Operator -> Bool -> Doc -> Doc -> Printer (Either ([Either Doc Doc], Operator) Doc)
-binary op rLambda e e' =
+binary :: Operator -> [Annotation Expression] -> Bool -> Doc -> Doc
+       -> Printer (Either OperatorChainDoc Doc)
+binary op anns rLambda e e' =
   case op of
     OAdd    -> infixOp "+"
     OSub    -> infixOp "-"
@@ -443,13 +463,16 @@ binary op rLambda e e' =
     OGth    -> infixOp ">"
     OGeq    -> infixOp ">="
     OConcat -> infixOp "++"
-    OSeq    -> return $ Left ([Left e, Left e'], op)
-    OApp    -> return $ Left ([Left e, if rLambda then Right e' else Left e'], op)
+    OSeq    -> exrs anns $ e <> semi <$> e'
+    OApp    -> exrs anns $ e <+> e'
+    -- OSeq    -> return $ Left ([Left e, Left e'], [anns], op)
+    -- OApp    -> return $ Left ([Left e, if rLambda then Right e' else Left e'], [anns], op)
     OSnd    -> infixOpSL "<-"
     _       -> throwSP $ "Invalid binary operator '" ++ show op ++ "'"
 
-  where infixOp   opStr = return . exrs $ e <+> text opStr <+> e'
-        infixOpSL opStr = return . exrs $ e <+> text opStr </> e'
+
+  where infixOp   opStr = exrs anns $ e <+> text opStr <+> e'
+        infixOpSL opStr = exrs anns $ e <+> text opStr </> e'
 
 address :: K3 Expression -> K3 Expression -> SyntaxPrinter
 address h p
@@ -472,7 +495,7 @@ eQualifier = qualifier "expr mutability" isEQualified eqSyntax
     eqSyntax EMutable   = return $ Just $ text "mut"
     eqSyntax _          = throwSP "Invalid expression qualifier"
 
-exprError :: String -> Printer (Either ([Either Doc Doc], Operator) Doc)
+exprError :: String -> Printer (Either OperatorChainDoc Doc)
 exprError msg = throwSP $ "Invalid " ++ msg ++ " expression"
 
 -- | Type expression syntax printing.
