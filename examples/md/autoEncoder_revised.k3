@@ -1,5 +1,4 @@
 include "Annotation/Vector.k3"
-include "Annotation/Set.k3"
 include "Core/Builtins.k3"
 
 declare master: address = 127.0.0.1:40000
@@ -453,8 +452,8 @@ trigger storeData :  {i: real, j: real, k : real} = \csvData -> (
 //sink results_sink : real = stdout csv
 //sink results_sink : {addr : address, iter: int , totalError : real} = stdout csv
 
-// sink results_sink : (real) = file "out.csv" psv
-// sink results_sink : (real) = file "out.csv" text psv
+//sink results_sink : (real) = file "out.csv" psv
+//sink results_sink : (real) = file "out.csv" text psv
 
 source masterSource : () = value ()
 feed masterSource |> startMaster
