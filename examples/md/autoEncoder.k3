@@ -179,10 +179,12 @@ declare setDeltaWeightsTozero : () -> () = \_ -> (
 )
 
 trigger startMaster : () = \_ -> (
+	print ("start");
 	initializeMaster ()
 )
 
 trigger receiveAtMaster : collection {elem : real } @Vector = \updateOnWeights -> (
+	print ("here_master");
 
 	(weight.inPlaceAdd (updateOnWeights.sub weightUpdateBroadcast));
 	if (peerMessagesReceived == peers.size ())
@@ -200,6 +202,7 @@ trigger receiveAtMaster : collection {elem : real } @Vector = \updateOnWeights -
 ) 
 
 trigger receiveAtSlave : collection {elem : real } @Vector = \updateOnWeights -> (
+	print ("here_slave");
 	weight.inPlaceAdd (updateOnWeights)
 )
 
@@ -297,23 +300,23 @@ declare slaveBackPropagation : () -> () = \_ -> (
 	    ))
 	  )
 	)));
-    //print "weights : ";
-    //weight.iterate(\w -> print (rtos w.elem));
+    print "weights : ";
+    weight.iterate(\w -> print (rtos w.elem));
     
-    //print "zValues : ";
-    //zValue.iterate(\z -> print (rtos z.elem)); 
+    print "zValues : ";
+    zValue.iterate(\z -> print (rtos z.elem)); 
 
-    //print "Outputvalues : ";
-    //outputValue.iterate(\ov -> print (rtos ov.elem));
+    print "Outputvalues : ";
+    outputValue.iterate(\ov -> print (rtos ov.elem));
 
-    //print "Targetvalues : ";
-    //targetValue.iterate(\tv -> print (rtos tv.elem)); 
+    print "Targetvalues : ";
+    targetValue.iterate(\tv -> print (rtos tv.elem)); 
 
-    //print "Delta values :";
-    //deltaValue.iterate(\dv -> print (rtos dv.elem));
+    print "Delta values :";
+    deltaValue.iterate(\dv -> print (rtos dv.elem));
   
-  //print "Old DeltaWeights : ";
-  //deltaWeight.iterate(\dv -> print (rtos dv.elem));
+    print "Old DeltaWeights : ";
+    deltaWeight.iterate(\dv -> print (rtos dv.elem));
   
   // calculate the delta weights
   (range ((topology.size ()) -1)).iterate(\layerId -> (
@@ -413,7 +416,7 @@ trigger startSlave : () = \_ -> (
     print "Done with an iteration of ff and bp"
 	))
 	))
-)
+) 
 
 declare rows : mut int = 0 
 
@@ -431,4 +434,3 @@ feed masterSource |> startMaster
 
 source slaveSource1 :  {i: real , j: real , k : real}  = file "f1.csv" csv 
 feed slaveSource1 |> storeData
-
