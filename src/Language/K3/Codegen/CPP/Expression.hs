@@ -122,6 +122,14 @@ gMoveByE e x = fromMaybe x (getKTypeP e >>= \t -> return $ if move t e then R.Mo
 gMoveByDE :: (Decision -> Method) -> Decision -> K3 Expression -> R.Expression -> R.Expression
 gMoveByDE m d e x = if m d == Moved then gMoveByE e x else x
 
+rollLambdaChain :: K3 Expression -> ([(Identifier, K3 Expression)], K3 Expression)
+rollLambdaChain e@(tag &&& children -> (ELambda i, [f])) = let (ies, b) = rollLambdaChain f in ((i, e):ies, b)
+rollLambdaChain e = ([], e)
+
+rollAppChain :: K3 Expression -> (K3 Expression, [K3 Expression])
+rollAppChain e@(tag &&& children -> (EOperate OApp, [f, x])) = let (f', xs) = rollAppChain f in (f', xs ++ [e])
+rollAppChain e = (e, [])
+
 -- | Realization of unary operators.
 unarySymbol :: Operator -> CPPGenM Identifier
 unarySymbol ONot = return "!"

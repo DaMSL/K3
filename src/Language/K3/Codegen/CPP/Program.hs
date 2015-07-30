@@ -355,7 +355,7 @@ generateDispatchPopulation isNative = do
      genDispatch (tName, tType) = do
        let dispatchWrapper = R.Lambda
                              [R.ValueCapture $ Just ("this", Nothing)]
-                             [("payload", R.UniquePointer $ R.Named $ R.Name value)]
+                             [(Just "payload", R.UniquePointer $ R.Named $ R.Name value)]
                              False
                              Nothing
                              [
@@ -459,7 +459,7 @@ prettifyExpr base_t e =
    wrap_inner t = do
      cType <- genCType t
      inner <- prettifyExpr t (R.Variable $ R.Name "x")
-     return $ R.Lambda [] [("x", cType)] False Nothing [R.Return $ inner]
+     return $ R.Lambda [] [(Just "x", cType)] False Nothing [R.Return $ inner]
 
    oss_decl = R.Forward $ R.ScalarDecl (R.Name "oss") (R.Named $ R.Name "ostringstream") Nothing
    oss_concat = R.Binary "<<"
@@ -494,7 +494,7 @@ prettifyExpr base_t e =
        let str = R.Call (R.Project oss (R.Name "str")) []
        let ret = R.Return $ R.Call (R.Variable $ R.Name "string_impl") [str]
        let body = [oss_decl, front] ++ done ++ [end, ret]
-       let f =  R.Lambda [] [("x", cType)] False Nothing body
+       let f =  R.Lambda [] [(Just "x", cType)] False Nothing body
        return $ call_prettify "record" [e, f]
 
    -- Collection

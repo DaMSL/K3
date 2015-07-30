@@ -291,8 +291,8 @@ genLoader fixedSize projectedLoader asReturn sep suf ft@(children -> [_,f]) name
                       ++ [R.Return $ R.Variable $ R.Name "record"]
 
  let readRecordFn = R.Lambda [R.ValueCapture $ Just ("this", Nothing)]
-                    [ ("in", (R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "istream")))
-                    , ("tmp_buffer", (R.Reference $ R.Named $ (R.Qualified (R.Name "std") (R.Name "string"))))
+                    [ (Just "in", (R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "istream")))
+                    , (Just "tmp_buffer", (R.Reference $ R.Named $ (R.Qualified (R.Name "std") (R.Name "string"))))
                     ] False Nothing recordGetLines
 
  let readRecordsCall = if asReturn
@@ -374,9 +374,9 @@ genLogger _ (children -> [_,f]) name = do
   cRecType <- genCType recType
   cColType <- genCType colType
   let printRecordFn = R.Lambda []
-                    [ ("file", R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "ofstream"))
-                    , ("elem", R.Const $ R.Reference cRecType)
-                    , ("sep", R.Const $ R.Reference $ R.Named $ R.Name "string")
+                    [ (Just "file", R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "ofstream"))
+                    , (Just "elem", R.Const $ R.Reference cRecType)
+                    , (Just "sep", R.Const $ R.Reference $ R.Named $ R.Name "string")
                     ] False Nothing (map R.Ignore allLogs)
 
   return $ R.FunctionDefn (R.Name name)
@@ -427,7 +427,7 @@ genCsvParserImpl elemType childTypes accessor = do
   let fields = concatMap (uncurry readField) (zip childTypes [0,1..])
   return $ R.Lambda
                []
-               [("str", R.Const $ R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "string"))]
+               [(Just "str", R.Const $ R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "string"))]
                False
                Nothing
                ( [iss_decl, iss_str, tup_decl et, token_decl] ++ fields ++ [R.Return tup])
