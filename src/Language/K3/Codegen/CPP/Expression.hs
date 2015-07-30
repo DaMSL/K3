@@ -8,7 +8,7 @@
 module Language.K3.Codegen.CPP.Expression where
 
 import Prelude hiding (any, concat)
-import Control.Arrow ((&&&))
+import Control.Arrow ((&&&), (***), (>>>))
 import Control.Monad.State
 
 import Data.Foldable
@@ -239,41 +239,59 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     (be, bv) <- inline b
     return (ae ++ be, bv)
 
-inline e@(tag &&& children -> (ELambda arg, [body])) = do
+inline e@(tag -> ELambda _) = do
     resetApplyLevel
 
-    mtrlzns <- case e @~ isEMaterialization of
-                 Just (EMaterialization ms) -> return ms
-                 Nothing -> do
-                   globVals <- fst . unzip . globals <$> get
-                   let fvs = (nub $ filter (/= arg) $ freeVariables body) \\ globVals
-                   return $ M.fromList [(i, defaultDecision) | i <- (arg:fvs)]
+    let (unzip -> (argNames, fExprs), b) = rollLambdaChain e
 
-    ta <- getKType e >>= \case
-          (tag &&& children -> (TFunction, [ta, tr])) -> genCInferredType ta
-          _ -> throwE $ CPPGenE "Invalid Function Form"
+    let formalArgNames = ["_A" ++ show i | i <- [0..] | _ <- argNames]
 
-    let thisCapture = R.ValueCapture (Just ("this", Nothing))
+    -- TODO: Need return types, or allow inferral? Need it iff multiple branches return different
+    -- but coercible types.
+    formalArgTypes <- forM_ fExprs $ \f -> getKType f >>= \case
+      (tag &&& children -> (TFunction, [ta, _])) -> return ta
+      _ -> throwE $ CPPGenE "Invalid Function Form"
+
+    mtrlznss <- forM fExprs $ \f -> do
+      case f @~ isEMaterialization of
+        Just (EMaterialization ms) -> return ms
+        Nothing -> throwE $ CPPGenE "Materialization absent for function."
+
+    let getArg (tag -> ELambda i) = i
+    let (outerArg, innerArg) = (head &&& last) >>> (getArg *** getArg) $ fExprs
+    let (outerMtrlzns, innerMtrlzns) = (head &&& last) mtrlznss
+
+    let nrvo = outD (innerMtrlzns M.! innerArg) == Moved
+
+    body <- reify (RReturn nrvo) b
 
     let captureByMtrlzn i d = case inD d of
-                                ConstReferenced -> R.ValueCapture (Just (i, Just $ R.CRef $ R.Variable $ R.Name i))
-                                Referenced -> R.RefCapture (Just (i, Nothing))
-                                Moved -> R.ValueCapture (Just (i, Just $ R.Move $ R.Variable $ R.Name i))
-                                Copied -> R.ValueCapture (Just (i, Nothing))
+          ConstReferenced -> R.ValueCapture (Just (i, Just $ R.CRef $ R.Variable $ R.Name i))
+          Referenced -> R.RefCapture (Just (i, Nothing))
+          Moved -> R.ValueCapture (Just (i, Just $ R.Move $ R.Variable $ R.Name i))
+          Copied -> R.ValueCapture (Just (i, Nothing))
 
     let captures = [R.ValueCapture (Just ("this", Nothing))] ++
-                   (M.elems $ M.mapWithKey captureByMtrlzn $ M.filterWithKey (\k _ -> k /= arg) mtrlzns)
+                   (M.elems $ M.mapWithKey captureByMtrlzn $ M.filterWithKey (\k _ -> k /= outerArg) outerMtrlzns)
 
-    let argMtrlznType = case inD (mtrlzns M.! arg) of
-                          ConstReferenced -> R.Const (R.Reference ta)
-                          Referenced -> R.Reference ta
-                          _ -> ta
+    let reifyArg a m g = if a == "_" then [] else
+          let reifyType = case inD (m M.! a) of
+                ConstReferenced -> R.Reference $ R.Const R.Inferred
+                Copied -> R.Inferred
+                Moved -> R.RValueReference R.Inferred
+                Referenced -> R.Reference R.Inferred
+          in [R.Forward $ R.ScalarDecl (R.Name a) reifyType (Just $ R.Variable $ R.Name g)]
 
-    let nrvo = outD (mtrlzns M.! arg) == Moved
+    let argReifications = concat [reifyArg a m g | a <- argNames | m <- mtrlznss | g <- formalArgNames]
 
-    body' <- reify (RReturn nrvo) body
+    let fullBody = argReifications ++ body
 
-    return ([], R.Lambda captures [(arg, argMtrlznType)] True Nothing body')
+    let argList = [ (if fi == "_" then Nothing else Just ai, R.RValueReference R.Inferred)
+                  | ai <- formalArgNames
+                  | fi <- argNames
+                  ]
+
+    return ([], R.Lambda captures argList True Nothing fullBody)
 
 inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [Fold c, f])), z])) = do
   (ce, cv) <- inline c
