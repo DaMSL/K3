@@ -140,7 +140,7 @@ instance Stringifiable Type where
     stringify Inferred = "auto"
     stringify (Function ats rt) = stringify (Qualified (Name "std") (Name "function"))
                                   <> angles (stringify rt <> parens (commaSep (map stringify ats)))
-    stringify (Const t) = "const" <+> stringify t
+    stringify (Const t) = stringify t <+> "const"
     stringify (Named n) = stringify n
     stringify (Parameter i) = fromString i
     stringify (Pointer t) = stringify t <> "*"
@@ -190,7 +190,7 @@ data Expression
     | Dereference Expression
     | TakeReference Expression
     | Initialization Type [Expression]
-    | Lambda [Capture] [(Identifier, Type)] IsMutable (Maybe Type) [Statement]
+    | Lambda [Capture] [(Maybe Identifier, Type)] IsMutable (Maybe Type) [Statement]
     | Literal Literal
     | Project Expression Name
     | Subscript Expression Expression
@@ -215,7 +215,7 @@ instance Stringifiable Expression where
       where
         cs'  = brackets $ commaSep (map stringify cs)
         mut' = if mut then "mutable" <> space else space
-        as'  = parens $ commaSep [stringify t <+> fromString i | (i, t) <- as]
+        as'  = parens $ commaSep [stringify t <> maybe empty ((space <>) . fromString) i | (i, t) <- as]
         rt'  = maybe empty (\rt'' -> "->" <+> stringify rt'' <> space) rt
         bd'  = hangBrace $ vsep $ map stringify bd
     stringify (Literal lt) = stringify lt
