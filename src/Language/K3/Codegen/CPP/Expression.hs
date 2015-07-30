@@ -338,48 +338,39 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
           [ R.Assignment (R.Variable $ R.Name acc) $
               R.Call (R.Call fv [ R.Move (R.Variable $ R.Name acc)]) [R.Variable $ R.Name g]
           ]
-  let loop = R.ForEach g (R.Const $ R.Reference $ R.Inferred) cv (R.Block loopBody)
+  let loop = R.ForEach g (R.Reference $ R.Const $ R.Inferred) cv (R.Block loopBody)
   return (ce ++ fe ++ ze ++ loopInit ++ loopPragmas ++ [loop], R.Move $ R.Variable $ R.Name acc)
 
-inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
-    -- Inline both function and argument for call.
-    incApplyLevel
-    let cargs = CArgs.eCArgs f
-    (fe, fv) <- inline f
-    (ae, av) <- inline a
+inline e@(tag -> EOperate OApp) = do
+  -- Inline both function and argument for call.
+  incApplyLevel
 
-    g <- genSym
+  let (f, as) = rollAppChain e
+  (fe, fv) <- inline f
+  let xs = map (last . children) as
+  (unzip -> (xes, xvs)) <- mapM inline xs
 
-    mtrlzns' <- case e @~ isEMaterialization of
-                  Just (EMaterialization ms) -> return ms
-                  Nothing -> return $ M.fromList [("", defaultDecision)]
+  mtrlznss <- forM as $ \x -> case x @~ isEMaterialization of
+    Just (EMaterialization ms) -> return ms
+    Nothing -> return $ M.fromList [("", defaultDecision)]
 
-    let mtrlzns = M.adjust (\d -> if forceMoveP e then d { inD = Moved } else d) "" mtrlzns'
+  gs <- mapM (const genSym) xs
 
-    let pd = inD (fromJust (M.lookup "" mtrlzns))
+  let argDecls = [ R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred)
+                     (Just $ gMoveByDE inD (m M.! "") x xv)
+                 | g <- gs
+                 | xv <- xvs
+                 | x <- xs
+                 | m <- mtrlznss
+                 ]
 
-    let (pe, pv) = case pd of
-          Copied -> ( [R.Forward $ R.ScalarDecl (R.Name g) R.Inferred (Just av)]
-                    , R.Move (R.Variable $ R.Name g)
-                    )
-          Moved -> ( [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just $ gMoveByE a av)]
-                   , R.Variable $ R.Name g
-                   )
-          Referenced -> ( [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just av)]
-                        , R.Variable $ R.Name g
-                        )
+  fv' <- case fv of
+    R.Variable i | isJust (f @~ CArgs.isErrorFn) -> do
+                     returnType <- getKType e >>= genCType
+                     return $ R.Variable (R.Specialized [returnType] i)
+    _ -> return fv
 
-    c <- call fv pv cargs
-    return (fe ++ ae ++ pe, c)
-  where
-    call fn@(R.Variable i) arg n =
-      if isJust $ f @~ CArgs.isErrorFn
-        then do
-          kType <- getKType e
-          returnType <- genCType kType
-          return $ R.Call (R.Variable $ R.Specialized [returnType] i) [arg]
-        else return $ R.Bind fn [arg] (n - 1)
-    call fn arg n = return $ R.Bind fn [arg] (n - 1)
+  return (fe ++ concat xes ++ argDecls , R.Call fv' (map (R.Variable . R.Name) gs))
 
 inline e@(tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
     d <- genSym
@@ -391,7 +382,7 @@ inline e@(tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [tri
     (te, _)  <- inline trig
     (ae, av)  <- inline addr
     (ve, vv)  <- inline val
-    let messageValue = let m = M.findWithDefault defaultDecision "" mtrlzns in gMoveByDE inD m val vv 
+    let messageValue = let m = M.findWithDefault defaultDecision "" mtrlzns in gMoveByDE inD m val vv
     trigTypes <- getKType val >>= genCType
     let codec = R.Forward $ R.ScalarDecl (R.Name d2) (R.Static R.Inferred) $ Just $
                R.Call (R.Variable $ R.Qualified (R.Name "Codec") (R.Specialized [trigTypes] (R.Name "getCodec")))
@@ -496,7 +487,7 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
             Copied -> [R.Forward $ R.ScalarDecl cx innerCType (Just initExpr)]
             Moved -> [R.Forward $ R.ScalarDecl cx innerCType (Just $ R.Move initExpr)]
             Referenced -> [R.Forward $ R.ScalarDecl cx (R.Reference innerCType) (Just initExpr)]
-            ConstReferenced -> [R.Forward $ R.ScalarDecl cx (R.Const $ R.Reference innerCType) (Just initExpr)]
+            ConstReferenced -> [R.Forward $ R.ScalarDecl cx (R.Reference $ R.Const innerCType) (Just initExpr)]
 
     let writeBackSome = case outD mtrlzn of
                           Copied -> [R.Assignment (R.Variable $ R.Name initName) (R.Variable $ R.Name x)]
