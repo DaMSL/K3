@@ -202,8 +202,8 @@ indexes name ans content_ts = do
                              then [idx_e, R.Variable $ R.Name "version"] ++ el
                              else [idx_e] ++ el
 
-    defn_args :: Identifier -> [(Identifier, R.Type)] -> [(Identifier, R.Type)]
-    defn_args n ntl = if "VMap" `isInfixOf` n then ("version", version_t) : ntl else ntl
+    defn_args :: Identifier -> [(Maybe Identifier, R.Type)] -> [(Maybe Identifier, R.Type)]
+    defn_args n ntl = if "VMap" `isInfixOf` n then (Just "version", version_t) : ntl else ntl
       where version_t = R.Primitive R.PInt
 
     lookup_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
@@ -226,7 +226,7 @@ indexes name ans content_ts = do
                          $ call_args n index [tuple (R.Name "key") k_t]
 
         let defn k_t c_t = R.FunctionDefn (R.Name fname)
-                              (defn_args n [("key", c_t)])
+                              (defn_args n [(Just "key", c_t)])
                               (Just $ R.Named $ R.Specialized [R.Named $ R.Name  "__CONTENT"] (R.Name "shared_ptr"))
                               []
                               False
@@ -262,7 +262,7 @@ indexes name ans content_ts = do
 
         let defn k_t c_t = R.TemplateDefn [("F", Nothing), ("G", Nothing)] $
                            R.FunctionDefn (R.Name fname)
-                              (defn_args n [("key", c_t), ("f", f_t), ("g", g_t)])
+                              (defn_args n [(Just "key", c_t), (Just "f", f_t), (Just "g", g_t)])
                               (Just $ R.Named $ R.Name "auto")
                               []
                               False
@@ -288,7 +288,7 @@ indexes name ans content_ts = do
                         $ call_args n index [tuple (R.Name "key") k_t]
 
       let defn k_t c_t = R.FunctionDefn (R.Name fname)
-                           (defn_args n [("key", c_t)])
+                           (defn_args n [(Just "key", c_t)])
                            (Just $ R.Named $ R.Specialized [R.Named $ R.Name  "__CONTENT"] (R.Name name))
                            []
                            False
@@ -315,7 +315,7 @@ indexes name ans content_ts = do
                         $ call_args n index [tuple (R.Name "a") k_t, tuple (R.Name "b") k_t]
 
       let defn k_t c_t = R.FunctionDefn (R.Name fname)
-                           (defn_args n [("a", c_t), ("b", c_t)])
+                           (defn_args n [(Just "a", c_t), (Just "b", c_t)])
                            (Just $ R.Named $ R.Specialized [R.Named $ R.Name  "__CONTENT"] (R.Name name))
                            []
                            False
@@ -346,7 +346,7 @@ indexes name ans content_ts = do
 
       let defn k_t c_t = R.TemplateDefn [("Fun", Nothing), ("Acc", Nothing)] $
                          R.FunctionDefn (R.Name fname)
-                           (defn_args n [("key", c_t), ("f", f_t), ("acc", acc_t)])
+                           (defn_args n [(Just "key", c_t), (Just "f", f_t), (Just "acc", acc_t)])
                            (Just $ acc_t)
                            []
                            False
@@ -377,7 +377,7 @@ indexes name ans content_ts = do
 
       let defn k_t c_t = R.TemplateDefn [("Fun", Nothing), ("Acc", Nothing)] $
                          R.FunctionDefn (R.Name fname)
-                           (defn_args n [("a", c_t), ("b", c_t), ("f", f_t), ("acc", acc_t)])
+                           (defn_args n [(Just "a", c_t), (Just "b", c_t), (Just "f", f_t), (Just "acc", acc_t)])
                            (Just $ acc_t)
                            []
                            False
@@ -407,7 +407,7 @@ indexes name ans content_ts = do
 
       let defn k_t c_t = R.TemplateDefn [("Fun", Nothing), ("Acc", Nothing)] $
                          R.FunctionDefn (R.Name fname)
-                           (defn_args n [("key", c_t), ("f", f_t), ("acc", acc_t)])
+                           (defn_args n [(Just "key", c_t), (Just "f", f_t), (Just "acc", acc_t)])
                            (Just $ acc_t)
                            []
                            False
