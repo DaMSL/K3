@@ -179,18 +179,11 @@ inline (tag -> EConstant c) = constant c >>= \c' -> return ([], R.Literal c')
 --
 -- Add this binding to global functions.
 inline e@(tag -> EVariable v) = do
-  env <- get
-  resetApplyLevel
-  let cargs = CArgs.eCArgs e
-  -- Check if we have a function, and not a builtin
-  case lookup v (globals env) of
-    Just (tag -> TFunction, False) | applyLevel env < cargs -> return ([], addBind v cargs)
-    Just (tag -> TForall _, False) | applyLevel env < cargs -> return ([], addBind v cargs)
-    _                              -> return ([], R.Variable defVar)
-  where
-    defVar = R.Name v
-    addBind x n = R.Bind (R.TakeReference $ R.Variable $ R.Qualified (R.Name "__global_context") defVar)
-                  [R.WRef $ R.Dereference $ R.Variable $ R.Name "this"] n
+  gEnv <- gets globals
+  case lookup v gEnv of
+    Just (tag -> TFunction, _) -> return ([], R.Project (R.Dereference $ R.Variable $ R.Name "this") (R.Name v))
+    Just (tag -> TForall _, _) -> return ([], R.Project (R.Dereference $ R.Variable $ R.Name "this") (R.Name v))
+    _ -> return ([], R.Variable (R.Name v))
 
 inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
     (e, v) <- inline c
