@@ -23,10 +23,6 @@ std::list<string_impl> ProgramContext::__globalNames() {
   return std::list<string_impl>();
 }
 
-unit_t ProgramContext::initDecls(unit_t) { return unit_t{}; }
-
-unit_t ProgramContext::processRole(const unit_t&) { return unit_t{}; }
-
 map<string, string> ProgramContext::__prettify() {
   return map<string, string>();
 }
