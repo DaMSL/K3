@@ -328,10 +328,12 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
   g <- genSym
   acc <- genSym
 
-  let loopInit = [R.Forward $ R.ScalarDecl (R.Name acc) R.Inferred (Just pass)]
+  fg <- genSym
+
+  let loopInit = [R.Forward $ R.ScalarDecl (R.Name fg) (R.RValueReference R.Inferred) (Just fv), R.Forward $ R.ScalarDecl (R.Name acc) R.Inferred (Just pass)]
   let loopBody =
           [ R.Assignment (R.Variable $ R.Name acc) $
-              R.Call (R.Call fv [ R.Move (R.Variable $ R.Name acc)]) [R.Variable $ R.Name g]
+              R.Call (R.Variable $ R.Name fg) [ R.Move (R.Variable $ R.Name acc), R.Variable $ R.Name g]
           ]
   let loop = R.ForEach g (R.Reference $ R.Const $ R.Inferred) cv (R.Block loopBody)
   return (ce ++ fe ++ ze ++ loopInit ++ loopPragmas ++ [loop], R.Move $ R.Variable $ R.Name acc)
