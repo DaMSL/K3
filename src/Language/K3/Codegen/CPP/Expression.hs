@@ -286,7 +286,7 @@ inline e@(tag -> ELambda _) = do
                   | fi <- argNames
                   ]
 
-    return ([], R.Lambda captures argList True Nothing fullBody)
+    return ([], R.Lambda captures argList True returnType fullBody)
 
 inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [Fold c, f])), z])) = do
   (ce, cv) <- inline c
