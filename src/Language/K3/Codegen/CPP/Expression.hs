@@ -361,11 +361,12 @@ inline e@(tag -> EOperate OApp) = do
                  | m <- mtrlznss
                  ]
 
+  let eName i = maybe (return i) (const $ getKType e >>= genCType >>= \rt -> return $ R.Specialized [rt] i)
+                  (f @~ CArgs.isErrorFn)
   fv' <- case fv of
-    R.Variable i | isJust (f @~ CArgs.isErrorFn) -> do
-                     returnType <- getKType e >>= genCType
-                     return $ R.Variable (R.Specialized [returnType] i)
-    _ -> return fv
+           R.Project s i -> R.Project s <$> eName i
+           R.Variable i -> R.Variable <$> eName i
+           _ -> return fv
 
   return (fe ++ concat xes ++ argDecls , R.Call fv' (map (R.Variable . R.Name) gs))
 
