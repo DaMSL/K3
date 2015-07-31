@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ParallelListComp #-}
 
 module Language.K3.Codegen.CPP.Declaration where
 
@@ -36,7 +37,7 @@ import Language.K3.Utils.Pretty
 -- Builtin names to explicitly skip.
 skip_builtins :: [String]
 skip_builtins = ["hasRead", "doRead", "doReadBlock", "hasWrite", "doWrite"]
-    
+
 declaration :: K3 Declaration -> CPPGenM [R.Definition]
 declaration (tna -> ((DGlobal n (tnc -> (TSource, [t])) _), as)) = return []
 
@@ -60,24 +61,34 @@ declaration (tag -> DGlobal _ (tag &&& children -> (TForall _, [tag &&& children
 -- Global monomorphic function with direct implementations.
 declaration (tag -> DGlobal i t@(tag &&& children -> (TFunction, [ta, tr]))
                       (Just e@(tag &&& children -> (ELambda x, [body])))) = do
-    cta <- genCType ta
-    ctr <- genCType tr
+  ([], R.Lambda _ mits _ mrt b) <- inline e
 
-    cbody <- reify (RReturn False) body
+  let flattenFnType ft = case ft of
+        (tag &&& children -> (TFunction, [fta, ftr])) -> let (ftas, ftf) = flattenFnType ftr in (fta:ftas, ftf)
+        _ -> ([], ft)
 
-    addForward $ R.FunctionDecl (R.Name i) [cta] ctr
+  let (argTypes, returnType) = flattenFnType t
 
-    mtrlzns <- case e @~ isEMaterialization of
-                 Just (EMaterialization ms) -> return ms
-                 Nothing -> return $ M.fromList [(x, defaultDecision)]
+  returnCType <- genCType returnType
 
-    let argMtrlznType = case inD (mtrlzns M.! x) of
-                          ConstReferenced -> R.Const (R.Reference cta)
-                          Referenced -> R.Reference cta
-                          _ | i == "processRole" -> R.Const (R.Reference cta)
-                          _ -> cta
+  let templateVarTypes = ["_T" ++ show i | i <- [0..] | _ <- argTypes]
 
-    return [R.FunctionDefn (R.Name i) [(x, argMtrlznType)] (Just ctr) [] False cbody]
+  let copyTypeQualifiers ct = case ct of
+        R.Const ct' -> R.Const . copyTypeQualifiers ct'
+        R.Reference ct' -> R.Reference . copyTypeQualifiers ct'
+        R.RValueReference ct' -> R.RValueReference . copyTypeQualifiers ct'
+        _ -> id
+
+  let concreteArgList = flip map (zip templateVarTypes mits) $ \(at, (mi, lt)) ->
+        (mi, copyTypeQualifiers lt $ R.Named (R.Name at))
+
+  let (cAList, fDefnModifier) =
+        if i == "processRole"
+          then ([(Nothing, R.Reference $ R.Const $ R.Unit)], id)
+          else (concreteArgList, R.TemplateDefn (zip templateVarTypes $ repeat Nothing))
+
+  addForward $ R.FunctionDecl (R.Name i) (map snd cAList) returnCType
+  return [fDefnModifier $ R.FunctionDefn (R.Name i) cAList (Just returnCType) [] False b]
 
 -- Global polymorphic functions with direct implementations.
 declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children -> (TFunction, [ta, tr])]))
@@ -98,12 +109,12 @@ declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children
                  Nothing -> return $ M.fromList [(x, defaultDecision)]
 
     let argMtrlznType = case inD (mtrlzns M.! x) of
-                          ConstReferenced -> R.Const (R.Reference argumentType)
+                          ConstReferenced -> R.Reference (R.Const argumentType)
                           Referenced -> R.Reference argumentType
                           _ -> argumentType
 
     body' <- reify (RReturn False) body
-    return [templatize $ R.FunctionDefn (R.Name i) [(x, argMtrlznType)] (Just returnType) [] False body']
+    return [templatize $ R.FunctionDefn (R.Name i) [(Just x, argMtrlznType)] (Just returnType) [] False body']
 
 -- Global scalars.
 declaration d@(tag -> DGlobal i t me) = do
