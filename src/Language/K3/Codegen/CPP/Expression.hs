@@ -241,9 +241,11 @@ inline e@(tag -> ELambda _) = do
 
     -- TODO: Need return types, or allow inferral? Need it iff multiple branches return different
     -- but coercible types.
-    formalArgTypes <- forM_ fExprs $ \f -> getKType f >>= \case
-      (tag &&& children -> (TFunction, [ta, _])) -> return ta
-      _ -> throwE $ CPPGenE "Invalid Function Form"
+    -- formalArgTypes <- forM_ fExprs $ \f -> getKType f >>= \case
+    --   (tag &&& children -> (TFunction, [ta, _])) -> return ta
+    --   _ -> throwE $ CPPGenE "Invalid Function Form"
+
+    returnType <- sequence $ fmap (genCType . last . children) (getKTypeP $ last fExprs)
 
     mtrlznss <- forM fExprs $ \f -> do
       case f @~ isEMaterialization of
