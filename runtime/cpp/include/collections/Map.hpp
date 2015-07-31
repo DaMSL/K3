@@ -103,7 +103,7 @@ class Map {
     if (existing == std::end(container)) {
       container[rec.key] = rec;
     } else {
-      container[rec.key] = f(std::move(existing->second))(rec);
+      container[rec.key] = f(std::move(existing->second), rec);
     }
 
     return unit_t{};
