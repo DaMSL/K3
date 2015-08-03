@@ -12,16 +12,16 @@ K3 = "/k3/K3"
 QUERIES = {
   "tpch" => {
     :roles => {
-      "10g" => "tpch_10g.yml",
-      #"100g" => "tpch_100g.yml",
+      #"10g" => "tpch_10g.yml",
+      "100g" => "tpch_100g.yml",
     },
     :queries => {
-      "q1" => "examples/sql/tpch/queries/k3/q1.k3",
-      "q3" => "examples/sql/tpch/queries/k3/barrier-queries/q3.k3",
-      "q5" => "examples/sql/tpch/queries/k3/barrier-queries/q5_bushy_broadcast_broj2.k3",
-      #"q6" => "examples/sql/tpch/queries/k3/q6.k3",
-      #"q18" => "examples/sql/tpch/queries/k3/barrier-queries/q18.k3",
-      #"q22" => "examples/sql/tpch/queries/k3/barrier-queries/q22.k3",
+      "1" => "examples/sql/tpch/queries/k3/q1.k3",
+      "3" => "examples/sql/tpch/queries/k3/barrier-queries/q3.k3",
+      "5" => "examples/sql/tpch/queries/k3/barrier-queries/q5_bushy_broadcast_broj2.k3",
+      "6" => "examples/sql/tpch/queries/k3/q6.k3",
+      "18" => "examples/sql/tpch/queries/k3/barrier-queries/q18.k3",
+      "22" => "examples/sql/tpch/queries/k3/barrier-queries/q22.k3",
     }
   },
 
@@ -30,9 +30,9 @@ QUERIES = {
   #    "sf5" => "amplab_sf5.yml",
   #  },
   #  :queries => {
-  #    "amplab_q1" => "examples/distributed/amplab/compact/q1.k3",
-  #    "amplab_q2" => "examples/distributed/amplab/compact/q2.k3",
-  #    "amplab_q3" => "examples/distributed/amplab/compact/q3.k3",
+  #    "1" => "examples/distributed/amplab/compact/q1.k3",
+  #    "2" => "examples/distributed/amplab/compact/q2.k3",
+  #    "3" => "examples/distributed/amplab/compact/q3.k3",
   #  }
   #},
 
@@ -56,7 +56,7 @@ QUERIES = {
 }
 
 def slugify(experiment, query)
-  return "#{experiment}_#{query}"
+  return "#{experiment}-#{query}"
 end
 
 def build(name)
@@ -193,11 +193,12 @@ end
 def check(folders)
   puts("Checking for correctness")
   ktrace_dir = "#{K3}/tools/ktrace/"
+  correct_dir = "/local/correct/correct/"
   diff = "#{ktrace_dir}/csv_diff.py"
   for key, val in folders
     if val["status"] == "RAN"
-      run_id = "#{key[:role]}_#{key[:name]}"
-      correct = "#{ktrace_dir}/correct_results/#{run_id}.csv"
+      run_id = "#{key[:role]}-#{key[:name]}"
+      correct = "#{correct_dir}/#{run_id}.out"
       actual = "#{val["output"]}/results.csv"
       output = `python2 #{diff} #{correct} #{actual}`
       if $?.to_i == 0
@@ -223,7 +224,7 @@ def postprocess()
 end
 
 def main()
-  $options = { :workdir => ".", :trials => 1 }
+  $options = { :workdir => ".", :trials => 1, :correctdir => "/local/correct/correct/" }
   $stats = {}
   usage = "Usage: #{$PROGRAM_NAME} options"
 
@@ -236,9 +237,10 @@ def main()
     opts.on("-1", "--build", "Build/Submit stage")  { $options[:build] = true }
     opts.on("-2", "--run",   "Run stage")           { $options[:run]   = true }
 
-    opts.on("-c", "--check",                   "Check correctness") {     $options[:check]    = true }
-    opts.on("-w", "--workdir [PATH]", String,  "Working Directory") { |s| $options[:workdir]  = s    }
-    opts.on("-t", "--trials [NUM]",   Integer, "Number of Trials")  { |i| $options[:trials]   = i    }
+    opts.on("-c", "--check",                      "Check correctness") {     $options[:check]        = true }
+    opts.on("-w", "--workdir [PATH]",    String,  "Working Directory") { |s| $options[:workdir]      = s    }
+    opts.on("-t", "--trials [NUM]",      Integer, "Number of Trials")  { |i| $options[:trials]       = i    }
+    opts.on("-d", "--correctdir [PATH]", Integer, "Number of Trials")  { |s| $options[:correctdir]   = s    }
   end
   parser.parse!
 
