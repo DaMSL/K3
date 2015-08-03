@@ -3,7 +3,7 @@ include "Core/Builtins.k3"
 
 declare master: address = 127.0.0.1:40000
 
-declare totalError : mut real 
+declare totalError : mut real
 declare topology : collection {elem : int} @RealVector
 
 declare inputValues : mut collection {elem : real } @RealVector
@@ -459,5 +459,5 @@ trigger storeData :  {i: real, j: real, k : real} = \csvData -> (
 source masterSource : () = value ()
 feed masterSource |> startMaster
 
-source slaveSource1 : {i: real, j: real, k: real} = file "f1.csv" csv 
+source slaveSource1 : {i: real, j: real, k: real} = file "f1.csv" text csv 
 feed slaveSource1 |> storeData
