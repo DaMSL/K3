@@ -107,7 +107,26 @@ materializeD d = case tag d of
   _ -> traverse_ materializeD (children d)
 
 materializeE :: K3 Expression -> InferM ()
-materializeE e = case tag e of
+materializeE e@(Node (t :@: _) cs) = case t of
+  ERecord is -> do
+    u <- eUID e
+
+    -- Each field decision for a record needs to be made in the context where each of the subsequent
+    -- children of the record are downstreams for the current field.
+    for_ (zip3 is cs (tail $ L.tails cs)) $ \(i, c, os) -> do
+      os' <- traverse contextualizeNow os
+      withDownstreams os' $ do
+        materializeE c
+
+        -- Determine if the field argument is moveable within the current expression.
+        moveableNow <- eProv c >>= contextualizeNow >>= isMoveableNow
+
+        -- Determine if the field argument is owned by the containing expression.
+        bindingContext <- eProv c >>= contextualizeNow >>= bindPoint
+        let moveableInContext = maybe (mBool True) (\bc -> mOneOf (mVar bc) [Moved, Copied]) bindingContext
+
+        constrain u i $ mITE (moveableNow -&&- moveableInContext) (mAtom Moved) (mAtom Copied)
+
   _ -> traverse_ materializeE (children e)
 
 -- * Queries
