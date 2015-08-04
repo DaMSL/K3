@@ -18,6 +18,9 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Writer
 
+import Text.Printf
+
+import qualified Data.IntMap as I
 import qualified Data.Map as M
 
 import Language.K3.Core.Common
@@ -26,9 +29,9 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 
-import Language.K3.Analysis.Provenance.Core (Provenance(..), PMatVar(..))
+import Language.K3.Analysis.Provenance.Core (Provenance(..), PMatVar(..), PPtr(..))
 
-import Language.K3.Analysis.Provenance.Inference (PIEnv)
+import Language.K3.Analysis.Provenance.Inference (PIEnv, ppenv)
 import Language.K3.Analysis.SEffects.Inference (FIEnv)
 
 import Language.K3.Codegen.CPP.Materialization.Constructors
@@ -69,8 +72,8 @@ logR :: Juncture -> K3 MExpr -> InferM ()
 logR j m = tell [IReport { juncture = j, constraint = m }]
 
 formatIReport :: [IReport] -> IO ()
-formatIReport = traverse_ $ \ir -> do
-  putStrLn $ "At juncture " ++ show (juncture ir) ++ ": constrained " ++ show (constraint ir)
+formatIReport = traverse_ $ \(IReport j m) -> do
+  printf "Juncture %d/%s: %s\n" (gUID $ fst $ jLoc j) (snd $ jLoc j) (simpleShowE m)
 
 -- ** Errors
 newtype IError = IError String
@@ -91,9 +94,17 @@ contextualizeNow a = asks nearestBind >>= \n -> return $ Contextual (a, n)
 withDownstreams :: [Downstream] -> InferM a -> InferM a
 withDownstreams nds m = local (\s -> s { downstreams = nds ++ downstreams s }) m
 
+chasePPtr :: PPtr -> InferM (K3 Provenance)
+chasePPtr p = do
+  ppEnv <- asks $ ppenv . pEnv
+  case I.lookup p ppEnv of
+    Nothing -> throwError $ IError "Invalid pointer in provenance chase"
+    Just p' -> return p'
+
 bindPoint :: Contextual (K3 Provenance) -> InferM (Maybe Juncture)
 bindPoint (Contextual (p, u)) = case tag p of
   PFVar i | Just u' <- u -> return $ Just $ Juncture (u', i)
+  PBVar (PMatVar i u' _) -> return $ Just $ Juncture (u', i)
   _ -> return Nothing
 
 -- * Inference Algorithm
