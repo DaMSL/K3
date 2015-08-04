@@ -49,7 +49,7 @@ class MosaicBuiltins {
       const std::unordered_map<int, R_key_value<int, Seq<R_i<int>>>> &dim_bounds,
       const std::vector<R_i> free_dims,
       std::vector<R_i>::const_iterator free_it,
-      std::function<Address(int)> get_ring_node,
+      std::function<std::function<Address(int)>(int)> get_ring_node,
       int val,
       int max_val) {
     // Assume it exists -- don't check for error

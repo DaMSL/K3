@@ -10,9 +10,9 @@ include "Annotation/Seq.k3"
 @:CArgs 5
 declare free_buckets_builtin :
           collection {key:int, value:{key:int, value:collection {i:int} @ {Seq}}}
-            @ {MapE(key=[:> key=>int], value=[:> value=>{key:int, value:collection {i:int} @ {Seq}}} ->
+            @ {MapE(key=[:> key=>int], value=[:> value=>{key:int, value:collection {i:int} @ {Seq}}])} ->
           collection {i:int} @ {Collection} ->
-          (int -> address) -> int -> int ->
+          (int -> int -> address) -> int -> int ->
           collection {i:address} @ {Set}
 
 with effects \dim_bounds -> \free_dims -> \get_ring_node -> \bound_bucket -> \max_val -> 
