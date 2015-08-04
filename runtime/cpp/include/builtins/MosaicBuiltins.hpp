@@ -48,6 +48,7 @@ class MosaicBuiltins {
   }
 
   // For routing
+  /*
   void free_buckets_loop(
       Set<R_i<Address>> &results,
       const std::unordered_map<int, R_key_value<int, R_key_value<int, Seq<R_i<int>>>>> &dim_bounds,
@@ -72,6 +73,7 @@ class MosaicBuiltins {
       }
     }
   }
+  */
 
   Set<R_i<Address>> free_buckets_builtin(
       const std::unordered_map<int, R_key_value<int, R_key_value<int, Seq<R_i<int>>>>> &dim_bounds,
