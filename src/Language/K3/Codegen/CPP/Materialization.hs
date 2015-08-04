@@ -12,7 +12,6 @@ import Control.Arrow
 
 import Control.Monad.Identity (Identity(..), runIdentity)
 import Control.Monad.State (StateT(..), MonadState(..), modify, gets)
-import Control.Monad.Reader
 import Control.Monad.Writer
 
 import Language.K3.Analysis.Core
@@ -44,15 +43,26 @@ import Language.K3.Core.Common hiding (getUID)
 
 import Text.Printf
 
--- Types
+type Table = I.IntMap (M.Map (Identifier, Maybe Int) Decision)
 
--- Basic operating monad. Report entries are emitted through a writer for deferred printing, scoped
--- state is stored in a reader, while unscoped state is stored in state. Errors are reported through
--- except.
-type MaterializationM = WriterT [(Int, MReport)] (ReaderT MScope (StateT MState (ExceptT MError Identity))
+type Downstream = (K3 Expression, (Maybe (Identifier, Int)))
+
+data MaterializationS = MaterializationS { decisionTable :: Table
+                                         , pienv :: PIEnv
+                                         , fienv :: FIEnv
+                                         , downstreams :: [Downstream]
+                                         , currentGlobal :: Bool
+                                         , currentActivePFVar :: Maybe (Identifier, Int)
+                                         -- | Identifiers currently in scope, and their bind points.
+                                         , scopeMap :: M.Map Identifier Int
+                                         }
 
 -- Reporting
-data MReport
+
+dumpMaterializationReport :: Bool
+dumpMaterializationReport = False
+
+data MaterializationR
   = MRLambda { currentlyGlobal :: Bool
              , argReadOnly :: Bool
              , nrvoRequired :: Bool
@@ -68,13 +78,10 @@ data MReport
   | MRRecord [(Identifier, Bool, [Downstream], Decision)]
  deriving (Eq, Read, Show)
 
-dumpMReporteport :: Bool
-dumpMReporteport = False
-
-formatMR :: [(Int, MReport)] -> IO ()
+formatMR :: [(Int, MaterializationR)] -> IO ()
 formatMR r = putStrLn "Materialization Report" >> mapM_ (uncurry formatR) r
   where
-   formatR :: Int -> MReport -> IO ()
+   formatR :: Int -> MaterializationR -> IO ()
    formatR u t = case t of
      MRLambda cg aro nr ad cr dc -> do
        printf "Materialized lambda at UID %d\n" u
@@ -104,101 +111,99 @@ formatMR r = putStrLn "Materialization Report" >> mapM_ (uncurry formatR) r
          printf "      Downstreams considered: %s\n" (show $ map (getUID . fst) ds)
          printf "    Decision: %s\n" (show $ inD d)
 
-reportAt :: Int -> MReport -> MaterializationM ()
-reportAt u r = tell [(u, r)]
+say :: Int -> MaterializationR -> MaterializationM ()
+say u r = tell [(u, r)]
 
--- Scoping
-data MScope = MScope { downstreams :: [Downstream]
-                     , nearestBind :: Int
+type MaterializationM = WriterT [(Int, MaterializationR)] (StateT MaterializationS Identity)
 
-                     , pEnv :: PIEnv
-                     , fEnv :: FIEnv
-                     }
+-- State Accessors
 
-type Contextual a = (a, Maybe Int)
+lookupFst :: Eq k => k -> M.Map (k, a) v -> Maybe v
+lookupFst k m = case M.toList (M.filterWithKey (\(i, _) _ -> i == k) m) of
+  [] -> Nothing
+  [(_, v)] -> Just v
+  _ -> error "Non-unique mapping."
 
--- A downstream is a technically just an expression, but we need to augment with the UID of the
--- nearest bind point above the expression in context. This indicates the expression which was the
--- binding point of any free variable in the downstream whose binding point itself was not in the
--- downstream.
-type Downstream = Contextual (K3 Expression)
+dLookup :: Int -> Identifier -> MaterializationM Decision
+dLookup u i = decisionTable <$> get >>= \t -> return $ fromMaybe defaultDecision (I.lookup u t >>= lookupFst i)
 
--- Run a materialization with an additional set of downstreams. Any expression with more than one
--- subexpression should use this to make the materialization system aware of order-of-execution.
-withDownstreams :: [Downstream] -> MaterializationM a -> MaterializationM a
-withDownstreams ds = local (\s -> s { downstreams = ds ++ downstreams s })
+dLookupAll :: Int -> MaterializationM (M.Map Identifier Decision)
+dLookupAll u = dLookupAllWithBindings u >>= \d -> return $ M.fromList [(k, v) | ((k, _), v) <- M.toList d]
 
--- Run a materialization computation with a different nearest binding expression. This is almost
--- always done at lambdas, by setting the nearest bind to the lambda's own UID.
-withNearestBind :: Int -> MaterializationM a -> MaterializationM a
-withNearestBind bi = local (\s -> s { nearestBind = bi })
+dLookupAllWithBindings :: Int -> MaterializationM (M.Map (Identifier, Maybe Int) Decision)
+dLookupAllWithBindings u = gets decisionTable >>= \t -> return $ I.findWithDefault M.empty u t
 
-chasePPtr :: PPtr -> MaterializationM (K3 Provenance)
-chasePPtr p = gets pEnv >>= fromMaybe (throwE "Invalid pointer in provenance chase") . I.lookup p
+pLookup :: PPtr -> MaterializationM (Maybe (K3 Provenance))
+pLookup p = pienv <$> get >>= \e -> return (I.lookup p (ppenv e))
 
--- State
-data MState = MState { constraints :: CTable, dependencies :: RTable }
+-- A /very/ rough approximation of ReaderT's ~local~ for StateT.
+withLocalDS :: [K3 Expression] -> MaterializationM a -> MaterializationM a
+withLocalDS nds m = do
+  s <- get
+  put (s { downstreams = (zip nds $ repeat $ currentActivePFVar s) ++ (downstreams s)})
+  r <- m
+  s' <- get
+  put (s' { downstreams = downstreams s})
+  return r
 
--- Generic type of table keyed on expression UID and identifier at that expression.
-type Table = I.IntMap (M.Map (Contextual Identifier))
+withActivePFVar :: Identifier -> Int -> MaterializationM a -> MaterializationM a
+withActivePFVar i u m = do
+  s <- get
+  put (s { currentActivePFVar = Just (i, u) })
+  r <- m
+  s' <- get
+  put (s' { currentActivePFVar = currentActivePFVar s })
+  return r
 
-insertN :: Int -> Contextual Identifier -> a -> Table a -> Table a
-insertN u ci a = I.insertWith (M.insert ci a) (M.insert ci a M.empty)
+withLocalBindings :: [Identifier] -> Int -> MaterializationM a -> MaterializationM a
+withLocalBindings is u m = do
+  s <- get
+  put $ s { scopeMap = M.union (M.fromList $ zip is (repeat u)) (scopeMap s)}
+  r <- m
+  s' <- get
+  put $ s' { scopeMap = scopeMap s }
+  return r
 
--- Table of concrete decisions.
-type DTable = Table Decision
+getBindingUID :: Identifier -> MaterializationM (Maybe Int)
+getBindingUID i = M.lookup i . scopeMap <$> get
 
--- Table of constrained decisions.
-type CTable = Table (DTable -> Decision)
+getUID :: K3 Expression -> Int
+getUID e = let EUID (UID u) = fromMaybe (error "No UID on expression.")
+                        (e @~ \case { EUID _ -> True; _ -> False }) in u
 
--- Table of running constraint satisfaction.
-type RTable = Table (S.Set (Int, Identifier))
+getProvenance :: K3 Expression -> K3 Provenance
+getProvenance e = let EProvenance p = fromMaybe (error "No provenance on expression.")
+                                      (e @~ \case { EProvenance _ -> True; _ -> False}) in p
 
--- Lodge a constrained decision, given the location and name of the decision target, a list of
--- dependencies, and the constraint itself.
-lodge :: Int -> Identifier -> [(Int, Identifier)] -> (DTable -> Decision) -> MaterializationM ()
-lodge u i (S.fromList -> ds) f = do
-  nb <- asks nearestBind
-  let upI = M.insert (i, nb)
-  modify $ \s ->
-    s { constraints = insertN u (i, nb) f (constraints s)
-      , dependencies = insertN u (i, nb) ds (dependencies s)
-      }
 
--- Lodge an independent decision.
-lodgeI Int -> Identifier -> Decision -> MaterializationM ()
-lodgeI u i d = lodge u i [] (const d)
+getEffects :: K3 Expression -> K3 Effect
+getEffects e = let ESEffect f = fromMaybe (error "No effects on expression.")
+                                (e @~ \case { ESEffect _ -> True; _ -> False }) in f
 
--- Errors
-newtype MError = MError String
+getFStructure :: K3 Expression -> K3 Effect
+getFStructure e = let EFStructure f = fromMaybe (error "No effects on expression.")
+                                      (e @~ \case { EFStructure _ -> True; _ -> False }) in f
 
--- Expression accessors
 
-eUID :: K3 Expression -> MaterializationM Int
-eUID e = let EUID (UID u)
-                 = fromMaybe (throwE "Attempted to get UID of expression " ++ show e) (e @~ isEUID)
-         in u
+setNullDecision :: Int -> Identifier -> Decision -> MaterializationM ()
+setNullDecision u i d = setFullDecision u (i, Nothing) d
 
-ePrv :: K3 Expression -> MaterializationM (K3 Provenance)
-ePrv e = let (EProvenance p)
-                 = fromMaybe (eUID e >>= \u throwE "Attempted to get provenance of expression " ++ show u)
-                             (e @~ isEProvenance)
-         in p
+setDecision :: Int -> Identifier -> Decision -> MaterializationM ()
+setDecision u i d = gets scopeMap >>= \sm -> case M.lookup i sm of
+  Nothing -> setFullDecision u (i, Nothing) d
+  Just bp -> setFullDecision u (i, Just bp) d
 
-eEff :: K3 Expression -> MaterializationM (K3 Effect)
-eEff e = let ESEffect f
-                 = fromMaybe (eUID e >>= \u -> throwE "Attempted to get effects of expression " ++ show u)
-                             (e @~ isESEffect)
-         in f
+setFullDecision :: Int -> (Identifier, Maybe Int) -> Decision -> MaterializationM ()
+setFullDecision u i d = modify $ \s -> s { decisionTable = I.insertWith M.union u (M.singleton i d) (decisionTable s)}
 
-eEfs :: K3 Expression -> MaterializationM (K3 Effect)
-eEfs e = let EFStructure f
-                 = fromMaybe (eUID e >>= \u -> throwE "Attempted to get effect structure of expression " ++ show u)
-                             (e @~ isEFStructure)
-         in f
+getClosureSymbols :: Int -> MaterializationM [Identifier]
+getClosureSymbols i = (pvpenv . pienv) <$> get >>= \e -> return $ concat $ maybeToList (I.lookup i $ lcenv e)
 
 pmvloc' :: PMatVar -> Int
 pmvloc' pmv = let UID u = pmvloc pmv in u
+
+setCurrentGlobal :: Bool -> MaterializationM ()
+setCurrentGlobal b = modify $ \s -> s { currentGlobal = b }
 
 type ProxyProvenance = (K3 Provenance, Maybe (Identifier, Int))
 
@@ -207,13 +212,13 @@ makeCurrentPP p = (p,) <$> gets currentActivePFVar
 
 -- Table Construction/Attachment
 
-runMaterializationM :: MaterializationM a -> MState -> ((a, [(Int, MReport)]), MState)
-runMaterializationM m s = runIdentity $ runStateT (RrunWriterT m) s
+runMaterializationM :: MaterializationM a -> MaterializationS -> ((a, [(Int, MaterializationR)]), MaterializationS)
+runMaterializationM m s = runIdentity $ runStateT (runWriterT m) s
 
 optimizeMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> IO (K3 Declaration)
 optimizeMaterialization (p, f) d = do
-  let ((nd, report), _) = runMaterializationM (materializationD d) (MState I.empty p f [] True Nothing M.empty)
-  when dumpMReporteport $ formatMR report
+  let ((nd, report), _) = runMaterializationM (materializationD d) (MaterializationS I.empty p f [] True Nothing M.empty)
+  when dumpMaterializationReport $ formatMR report
   return nd
 
 materializationD :: K3 Declaration -> MaterializationM (K3 Declaration)
