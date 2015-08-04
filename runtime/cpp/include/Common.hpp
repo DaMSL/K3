@@ -238,6 +238,44 @@ class R_elem {
 };
 #endif  // K3_R_elem
 
+#ifndef K3_R_i
+#define K3_R_i
+template <class _T0>
+class R_i {
+  public:
+      R_i(): i()  {}
+      R_i(const _T0& _i): i(_i)  {}
+      R_i(_T0&& _i): i(std::move(_i))  {}
+      bool operator==(const R_i<_T0>& __other) const {
+        return i == __other.i;
+      }
+      bool operator!=(const R_i<_T0>& __other) const {
+        return std::tie(i) != std::tie(__other.i);
+      }
+      bool operator<(const R_i<_T0>& __other) const {
+        return std::tie(i) < std::tie(__other.i);
+      }
+      bool operator>(const R_i<_T0>& __other) const {
+        return std::tie(i) > std::tie(__other.i);
+      }
+      bool operator<=(const R_i<_T0>& __other) const {
+        return std::tie(i) <= std::tie(__other.i);
+      }
+      bool operator>=(const R_i<_T0>& __other) const {
+        return std::tie(i) >= std::tie(__other.i);
+      }
+      template <class archive>
+      void serialize(archive& _archive, const unsigned int _version)  {
+        _archive & BOOST_SERIALIZATION_NVP(i);
+      }
+      template <class archive>
+      void serialize(archive& _archive)  {
+        _archive & i;
+      }
+      _T0 i;
+};
+#endif // K3_R_i
+
 #ifndef K3_R_key_value
 #define K3_R_key_value
 
