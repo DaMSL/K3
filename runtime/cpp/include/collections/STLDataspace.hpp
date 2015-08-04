@@ -213,7 +213,7 @@ class STLDS {
     }
 
     // Probe.
-    for (const auto& otherelem : other.container) {
+    for (const auto& otherelem : other.getConstContainer()) {
       RT<G,E> key(g(otherelem));
       auto it = lhsHT.find(key);
       if ( it != lhsHT.end() ) {
