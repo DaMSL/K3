@@ -149,3 +149,26 @@ hasWrite = undefined
 
 occursIn :: Contextual (K3 Provenance) -> Contextual (K3 Provenance) -> InferM (K3 MPred)
 occursIn = undefined
+
+isGlobalP :: Contextual (K3 Provenance) -> InferM (K3 MPred)
+isGlobalP (Contextual (p, k)) = case tag p of
+  (PGlobal _) -> return (mBool True)
+  (PBVar (PMatVar n u p)) -> do
+    -- TODO: k isn't the right context for the recursive call to isGlobalP. What is?
+    parent <- chasePPtr p >>= \p' -> isGlobalP (Contextual (p', k))
+    return $ mOneOf (mVar (Juncture (u, n))) [Referenced, ConstReferenced] -&&- parent
+  -- (tag &&& children -> (PProject _, [pp])) -> isGlobalP pp
+  --   _ -> return False
+
+isMoveable :: Contextual (K3 Provenance) -> InferM (K3 MPred)
+isMoveable (Contextual (p, c)) = undefined
+
+isMoveableIn :: Contextual (K3 Provenance) -> Contextual (K3 Expression) -> InferM (K3 MPred)
+isMoveableIn (Contextual (p, cp)) (Contextual (e, ce)) = undefined
+
+isMoveableNow :: Contextual (K3 Provenance) -> InferM (K3 MPred)
+isMoveableNow cp = do
+  ds <- asks downstreams
+  isMoveable1 <- isMoveable cp
+  allMoveable <- foldr (-&&-) (mBool True) <$> traverse (isMoveableIn cp) ds
+  return $ isMoveable1 -&&- allMoveable
