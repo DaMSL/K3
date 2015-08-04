@@ -94,7 +94,7 @@ data Span
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Unique identifiers for AST nodes.
-data UID = UID Int deriving (Eq, Ord, Read, Show, Typeable, Generic)
+data UID = UID { gUID :: Int } deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 
 {- Symbol generation -}
