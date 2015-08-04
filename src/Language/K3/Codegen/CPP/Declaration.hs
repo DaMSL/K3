@@ -177,6 +177,7 @@ source_builtin_map = [("MuxHasRead", genHasRead True),
                          ("LoaderPF",  genLoader False True  False False "|"),
                          ("LoaderPFC", genLoader False True  True  False "|"),
                          ("LoaderRP",  genLoader False False False True  "|"),
+                         ("LoaderPE",  genLoader True  False False False "|"),
                          ("Logger",    genLogger)]
 
 source_builtins :: [String]

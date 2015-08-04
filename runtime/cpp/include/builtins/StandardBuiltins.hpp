@@ -27,7 +27,7 @@ class StandardBuiltins {
   int hash(const T& t);
  protected:
   Engine& __engine_;
-  boost::mutex __mutex_;
+  static boost::mutex __mutex_;
 };
 
 template <class T>
