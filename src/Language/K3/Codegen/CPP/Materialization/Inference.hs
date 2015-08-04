@@ -51,8 +51,25 @@ type IReport = ()
 newtype IError = IError String
 
 -- * Helpers
-type Contextual a = (a, UID)
+newtype Contextual a = Contextual (a, Maybe UID)
 type Downstream = Contextual (K3 Expression)
+
+eUID :: K3 Expression -> InferM UID
+eUID e = maybe (throwError $ IError "Invalid UID") (\(EUID u) -> return u) (e @~ isEUID)
+
+eProv :: K3 Expression -> InferM (K3 Provenance)
+eProv e = maybe (throwError $ IError "Invalid Provenance") (\(EProvenance p) -> return p) (e @~ isEProvenance)
+
+contextualizeNow :: a -> InferM (Contextual a)
+contextualizeNow a = asks nearestBind >>= \n -> return $ Contextual (a, n)
+
+withDownstreams :: [Downstream] -> InferM a -> InferM a
+withDownstreams nds m = local (\s -> s { downstreams = nds ++ downstreams s }) m
+
+bindPoint :: Contextual (K3 Provenance) -> InferM (Maybe Juncture)
+bindPoint (Contextual (p, u)) = case tag p of
+  PFVar i | Just u' <- u -> return $ Just $ Juncture (u', i)
+  _ -> return Nothing
 
 -- * Inference Algorithm
 
