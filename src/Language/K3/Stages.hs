@@ -67,6 +67,7 @@ import Language.K3.Utils.Pretty
 import qualified Language.K3.Utils.PrettyText as PT
 
 import Language.K3.Codegen.CPP.Materialization
+import Language.K3.Codegen.CPP.Materialization.Inference
 import Language.K3.Codegen.CPP.Preprocessing
 
 -- | Snapshot specifications are a list of pass names to capture per declaration.
@@ -562,7 +563,7 @@ cgPasses = [ withRepair "TID" $ transformE triggerSymbols
            , \d -> return (mangleReservedNames d)
            , refreshProgram
            , transformF CArgs.runAnalysis
-           , \d -> get >>= \s -> liftIO $ optimizeMaterialization (penv s, fenv s) d
+           , \d -> get >>= \s -> liftIO (inferMaterialization (penv s, fenv s) d) >>= either throwE return
            ]
 
 runOptPassesM :: ProgramTransform

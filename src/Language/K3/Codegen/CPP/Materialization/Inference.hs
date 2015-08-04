@@ -1,10 +1,16 @@
+{-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE TypeOperators #-}
 
 module Language.K3.Codegen.CPP.Materialization.Inference (
   inferMaterialization
 ) where
 
+import qualified Data.List as L
+
 import Data.Foldable
+import Data.Maybe
+import Data.Traversable
+import Data.Tree
 
 import Control.Monad.Except
 import Control.Monad.Identity
@@ -20,32 +26,51 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 
-import Language.K3.Analysis.Provenance.Core (Provenance(..))
+import Language.K3.Analysis.Provenance.Core (Provenance(..), PMatVar(..))
 
 import Language.K3.Analysis.Provenance.Inference (PIEnv)
 import Language.K3.Analysis.SEffects.Inference (FIEnv)
 
+import Language.K3.Codegen.CPP.Materialization.Constructors
 import Language.K3.Codegen.CPP.Materialization.Core
 import Language.K3.Codegen.CPP.Materialization.Hints
 
 -- * Entry-Point
-inferMaterialization :: K3 Expression -> K3 Expression
-inferMaterialization = undefined
+inferMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> IO (Either String (K3 Declaration))
+inferMaterialization (p, f) d = case runInferM (materializeD d) defaultIState defaultIScope of
+  Left (IError msg) -> return $ Left msg
+  Right ((_, _), r) -> formatIReport r >> return (Right d)
+ where
+  defaultIState = IState { cTable = M.empty }
+  defaultIScope = IScope { downstreams = [], nearestBind = Nothing, pEnv = p, fEnv = f }
 
 -- * Types
 
 -- ** Monads
-type InferT m = StateT IState (ReaderT IScope (WriterT IReport (ExceptT IError m)))
+type InferT m = StateT IState (ReaderT IScope (WriterT [IReport] (ExceptT IError m)))
 type InferM = InferT Identity
 
+runInferM :: InferM a -> IState -> IScope -> Either IError ((a, IState), [IReport])
+runInferM m st sc = runIdentity $ runExceptT $ runWriterT $ flip runReaderT sc $ runStateT m st
+
 -- ** Non-scoping State
-data IState = IState { cTable :: M.Map (Contextual Identifier) MExpr }
+data IState = IState { cTable :: M.Map Juncture (K3 MExpr) }
+
+constrain :: UID -> Identifier -> K3 MExpr -> InferM ()
+constrain u i m = let j = Juncture (u, i) in logR j m >> modify (\s -> s { cTable = M.insert j m (cTable s) })
 
 -- ** Scoping state
-data IScope = IScope { downstreams :: [Downstream], nearestBind :: UID, pEnv :: PIEnv, fEnv :: FIEnv }
+data IScope = IScope { downstreams :: [Downstream], nearestBind :: Maybe UID, pEnv :: PIEnv, fEnv :: FIEnv }
 
 -- ** Reporting
-type IReport = ()
+data IReport = IReport { juncture :: Juncture, constraint :: K3 MExpr }
+
+logR :: Juncture -> K3 MExpr -> InferM ()
+logR j m = tell [IReport { juncture = j, constraint = m }]
+
+formatIReport :: [IReport] -> IO ()
+formatIReport = traverse_ $ \ir -> do
+  putStrLn $ "At juncture " ++ show (juncture ir) ++ ": constrained " ++ show (constraint ir)
 
 -- ** Errors
 newtype IError = IError String
