@@ -1,0 +1,103 @@
+include "tpch/benchmark.k3"
+include "Annotation/Set.k3"
+include "Distributed/SQLTransformers.k3"
+
+// Relations / Loaders
+declare master: address
+declare lineitem: mut lineitem_bag
+declare orders: mut collection {elem: orders_r} @Collection
+@:CArgs 2
+declare ordersLoaderPE: collection {path: string} @Collection -> collection {elem: orders_r} @Collection -> ()
+
+// Helpers
+declare valid_lineitem: lineitem_r -> bool = (\l ->
+      (l.l_shipmode == "MAIL" or l.l_shipmode == "SHIP")
+  and (l.l_commitdate < l.l_receiptdate)
+  and (l.l_shipdate < l.l_commitdate)
+  and (l.l_receiptdate >= 19940101)
+  and (l.l_receiptdate < 19950101)
+)
+
+declare high_priority: string -> bool = \p -> (
+  (p == "1-URGENT") or (p == "2-HIGH")
+)
+
+declare merge_aggs: {high: int, low: int} -> {high: int, low: int} -> {high: int, low: int} = \a -> \b -> (
+  {high: a.high + b.high, low: a.low + b.low}
+)
+
+// Intermediates
+declare lineitem_orders: mut collection {elem: {shipmode: string, priority: string}} @Collection
+declare lo_aggs: mut collection {key: string, value: {high: int, low: int}} @Collection
+
+// Triggers
+// Filter lineitem locally, followed by distributed hash join on orderkey
+trigger q12_stage1: () = \_ -> (
+  lineitem_orders = (
+    (lineitem.filter
+               valid_lineitem
+    ).equijoin
+       orders
+       (\l -> l.l_orderkey)
+       (\oe -> oe.elem.o_orderkey)
+       (\l -> \oe -> {shipmode: l.l_shipmode, priority: oe.elem.o_orderpriority})
+  );
+  (q12_stage2, me) <- ()
+) @DistributedHashJoin2(lbl=[# lineitem_part])
+
+// Distributed group-by on shipmode
+trigger q12_stage2: () = \_ -> (
+  lo_aggs =
+    (lineitem_orders.groupBy
+      (\loe -> loe.elem.shipmode)
+      (\a -> \loe ->
+        if high_priority loe.elem.priority
+        then {high: a.high + 1, low: a.low}
+        else {high: a.high, low: a.low + 1}
+      )
+      {high: 0, low: 0}
+    );
+  (q12_finalize, me) <- ()
+) @DistributedGroupBy2(lbl=[# lo_groupby], merge=[$ merge_aggs])
+
+trigger q12_finalize: () = \_ -> (
+  (() @:Result) @TPCHBenchmarkWithoutMaster
+)
+
+// Result collection / Post-Processing
+typedef q12_agg = collection {key: string, value: {high: int, low: int}} @Collection
+declare post_process: collection {key: address, value: q12_agg} @Map -> () = \x -> (
+  x.iterate (\kv1 ->
+    kv1.value.iterate (\kv2 ->
+      (results_sink, me) <- (kv2.key, kv2.value.high, kv2.value.low)
+    )
+  )
+)
+
+// TODO loaders with pushdown
+trigger start: () = \_ -> (
+  (() @:Start) @TPCHBenchmarkWithoutMaster(
+    nodes                = [$ peers],
+    loadExpr             = [$ lineitemLoaderP lineitemFiles lineitem;
+                              ordersLoaderPE ordersFiles orders
+                           ],
+    preLoadExpr          = [$ ()],
+    preReadyExpr         = [$ ()],
+    onReadyExpr          = [$ (q12_stage1, me) <- ()],
+    finishArgT           = [: ()],
+    preTestFinishExpr    = [$ (\_ -> () )],
+    preFinishExpr        = [$ (ignore lo_aggs) @GatherCollection(
+                                                    lbl   = [# groupby],
+                                                    nodes = [$ peers],
+                                                    next  = [$ (\a -> (post_process a; peers.iterate (\p -> (shutdown, p.addr) <- ()) ))])
+                           ],
+    preShutdownExpr      = [$ ()],
+    finishAsShutdownExpr = [$ false]
+  )
+)
+
+sink results_sink: (string, int, int) = file "results.csv" text csv
+sink query_time_sink: int = file "time.csv" text csv
+
+source rows : () = value ()
+feed rows |> start

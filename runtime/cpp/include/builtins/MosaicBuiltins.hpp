@@ -75,18 +75,18 @@ class MosaicBuiltins {
   }
   */
 
-  Set<R_i<Address>> free_buckets_builtin(
-      const std::unordered_map<int, R_key_value<int, R_key_value<int, Seq<R_i<int>>>>> &dim_bounds,
-      const Collection<R_i<int>> &free_dims,
-      std::function<std::function<Address(int)>(int)> get_ring_node,
-      int bound_bucket,
-      int max_val) {
-    Set<R_i<Address>> results;
-    auto &free_dims_c = free_dims.getConstContainer();
-    free_buckets_loop(results, dim_bounds, free_dims_c, free_dims_c.begin(),
-        get_ring_node, bound_bucket, max_val);
-    return results;
-  }
+  //Set<R_i<Address>> free_buckets_builtin(
+  //    const std::unordered_map<int, R_key_value<int, R_key_value<int, Seq<R_i<int>>>>> &dim_bounds,
+  //    const Collection<R_i<int>> &free_dims,
+  //    std::function<std::function<Address(int)>(int)> get_ring_node,
+  //    int bound_bucket,
+  //    int max_val) {
+  //  Set<R_i<Address>> results;
+  //  auto &free_dims_c = free_dims.getConstContainer();
+  //  free_buckets_loop(results, dim_bounds, free_dims_c, free_dims_c.begin(),
+  //      get_ring_node, bound_bucket, max_val);
+  //  return results;
+  //}
 
   }; // class
 
