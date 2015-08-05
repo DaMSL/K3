@@ -68,7 +68,7 @@ control DistributedHashJoin2 [ lbl : label ]
   ( (?var = (( ?lqueryE : ?LQueryT ).equijoin ( ?rqueryE : ?RQueryT ) ( ?lkeyE : ?LKeyT ) ( ?rkeyE : ?RKeyT ) ?outputE));
     (?dtrig, ?daddr) <- ()
   )
-  => ( peers.iterate (\p -> ($[lbl]_lhs_redistribute, p.addr) <- () ))
+  => ( ($[lbl]_lhs_redistribute, me) <- () )
   +> { declare $[lbl]_next : () -> () = (\_ -> ($.[dtrig], $.[daddr]) <- ()) }
 
   ( ?var = (( ?lqueryE : ?LQueryT ).equijoin ( ?rqueryE : ?RQueryT ) ( ?lkeyE : ?LKeyT ) ( ?rkeyE : ?RKeyT ) ?outputE) )

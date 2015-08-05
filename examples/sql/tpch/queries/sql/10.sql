@@ -29,27 +29,3 @@ group by
         c_comment
 order by
         revenue desc
-
-
-stage1 => cno
-  (customer equijoin nation)
-    DHJ
-  (orders.filter valid_orderdate)
-
-stage2 => cnol
-  cno
-    DHJ
-  lineitem
-    .filter valid_returnflag
-    .groupBy
-    (\l -> l.l_orderkey)
-    (\a -> \e -> a + (e.l_extendedprice * (1 - e.l_discount)) )
-    0.0
-
-stage 3:
- cnol
-  DGB
-
-  `
-
-

@@ -9,7 +9,6 @@ declare nation: mut collection {elem: nation_r} @Collection
 declare orders: mut collection {elem: orders_r} @Collection
 declare lineitem: mut lineitem_bag
 
-
 @:CArgs 2
 declare customerLoaderPE: collection {path: string} @Collection -> collection {elem: customer_r} @Collection -> ()
 @:CArgs 2
@@ -18,6 +17,9 @@ declare ordersLoaderPE: collection {path: string} @Collection -> collection {ele
 declare nationLoaderPE: collection {path: string} @Collection -> collection {elem: nation_r} @Collection -> ()
 
 // Helpers
+declare valid_orderdate: {elem: orders_r} -> bool = \oe -> (
+  (oe.elem.o_orderdate >= 19931001) and (oe.elem.o_orderdate < 19940101)
+)
 
 // Intermediates
 declare lo : mut collection {elem: {custkey: int, orderkey: int, revenue: real}} @Collection
@@ -25,7 +27,7 @@ declare locn: mut collection {elem: {okey: int, ckey: {c_custkey: int, c_name: s
 declare locn_agg : mut collection {key: {c_custkey: int, c_name: string, c_acctbal: real, c_address: string, n_name: string, c_phone: string, c_comments: string}, value: real} @Collection
 
 // Triggers
-// TODO consider bushy plan ( lo JOIN cn)
+// TODO consider deep plan (N-C JOIN O JOIN L)
 trigger q10_stage1: () = \_ -> (
   lo = 
     (((lineitem.filter 
@@ -35,7 +37,7 @@ trigger q10_stage1: () = \_ -> (
       (\a -> \e -> a + (e.l_extendedprice * (1 - e.l_discount)))
       0.0
     ).equijoin
-      orders
+      (orders.filter valid_orderdate)
       (\lkv -> lkv.key)
       (\oe -> oe.elem.o_orderkey)
       (\lkv -> \oe -> {custkey: oe.elem.o_custkey, orderkey: lkv.key, revenue: lkv.value})
@@ -59,7 +61,6 @@ trigger q10_stage2: () = \_ -> (
   (q10_stage3, me) <- () 
 ) @DistributedHashJoin2(lbl=[# locn])
 
-
 trigger q10_stage3: () = \_ -> (
   locn_agg = 
     (locn.groupBy
@@ -73,6 +74,22 @@ trigger q10_finalize: () = \_ -> (
   (() @:Result) @TPCHBenchmarkWithoutMaster
 )
 
+typedef final_agg = collection {key: {c_custkey: int, c_name: string, c_acctbal: real, c_address: string, n_name: string, c_phone: string, c_comments: string}, value: real} @Collection
+declare post_process: collection {key: address, value: final_agg} @Map -> () = \x -> (
+  x.iterate (\kv1 ->
+    kv1.value.iterate (\kv2 ->
+      (results_sink, me) <- ( kv2.key.c_custkey
+                            , kv2.key.c_name
+                            , kv2.value
+                            , kv2.key.c_acctbal
+                            , kv2.key.n_name
+                            , kv2.key.c_address
+                            , kv2.key.c_phone
+                            , kv2.key.c_comments )
+    )
+  )
+)
+
 // TODO loaders with pushdown
 trigger start: () = \_ -> (
   (() @:Start) @TPCHBenchmarkWithoutMaster(
@@ -84,16 +101,20 @@ trigger start: () = \_ -> (
                            ],
     preLoadExpr          = [$ ()],
     preReadyExpr         = [$ ()],
-    onReadyExpr          = [$ (q10_stage1, me) <- ()],
+    onReadyExpr          = [$ peers.iterate (\p -> (q10_stage1, p.addr) <- () )],
     finishArgT           = [: ()],
     preTestFinishExpr    = [$ (\_ -> () )],
-    preFinishExpr        = [$ () ],
+    preFinishExpr        = [$ (ignore locn_agg) @GatherCollection(
+                                                    lbl   = [# groupby],
+                                                    nodes = [$ peers],
+                                                    next  = [$ (\a -> (post_process a; peers.iterate (\p -> (shutdown, p.addr) <- ()) ))])
+                           ],
     preShutdownExpr      = [$ ()],
-    finishAsShutdownExpr = [$ true]
+    finishAsShutdownExpr = [$ false]
   )
 )
 
-sink results_sink: (string, int, int) = file "results.csv" text csv
+sink results_sink: (int, string, real, real, string, string, string, string) = file "results.csv" text psv
 sink query_time_sink: int = file "time.csv" text csv
 
 source rows : () = value ()

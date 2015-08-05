@@ -56,7 +56,7 @@ trigger start: () = \_ -> (
                            ],
     preLoadExpr          = [$ ()],
     preReadyExpr         = [$ ()],
-    onReadyExpr          = [$ (q14, me) <- ()],
+    onReadyExpr          = [$ peers.iterate (\p -> (q14, p.addr) <- () )],
     finishArgT           = [: {num: real, denom: real}],
     preTestFinishExpr    = [$ (\x -> finals = {num: finals.num + x.num, denom: finals.denom + x.denom})
                            ],
@@ -66,7 +66,7 @@ trigger start: () = \_ -> (
   )
 )
 
-sink results_sink: real = file "results.csv" text csv
+sink results_sink: real = file "results.csv" text psv
 sink query_time_sink: int = file "time.csv" text csv
 
 source rows : () = value ()
