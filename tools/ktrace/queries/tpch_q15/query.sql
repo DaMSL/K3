@@ -5,8 +5,8 @@ with revenue as (
 	from
 		lineitem
 	where
-		l_shipdate >= date '1996-01-01'
-		and l_shipdate < date '1996-04-01'
+		l_shipdate >= '1996-01-01'
+		and l_shipdate < '1996-04-01'
 	group by
 		l_suppkey)
 select
@@ -27,4 +27,4 @@ where
 			revenue
 	)
 order by
-	s_suppkey
+	s_suppkey;
