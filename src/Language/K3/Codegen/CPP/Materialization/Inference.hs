@@ -105,6 +105,7 @@ bindPoint :: Contextual (K3 Provenance) -> InferM (Maybe Juncture)
 bindPoint (Contextual (p, u)) = case tag p of
   PFVar i | Just u' <- u -> return $ Just $ Juncture (u', i)
   PBVar (PMatVar i u' _) -> return $ Just $ Juncture (u', i)
+  PProject _ -> bindPoint (Contextual (head (children p), u))
   _ -> return Nothing
 
 -- * Inference Algorithm
