@@ -26,5 +26,15 @@ mBool b = Node (MBool b :@: []) []
 mOneOf :: K3 MExpr -> [Method] -> K3 MPred
 mOneOf m ms = Node (MOneOf m ms :@: []) []
 
+mNot :: K3 MPred -> K3 MPred
+mNot m = Node (MNot :@: []) [m]
+
 (-&&-) :: K3 MPred -> K3 MPred -> K3 MPred
 (-&&-) a b = Node (MAnd :@: []) [a, b]
+
+(-||-) :: K3 MPred -> K3 MPred -> K3 MPred
+(-||-) a b = Node (MOr :@: []) [a, b]
+
+(->>-) :: K3 MPred -> K3 MPred -> K3 MPred
+(->>-) a b = (mNot a) -||- b
+
