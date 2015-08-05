@@ -197,27 +197,50 @@ hasReadIn (Contextual (p, cp)) (Contextual (e, ce)) = case tag e of
     (fehr, fihr) <- hasReadIn (Contextual (p, cp)) (Contextual (f, ce))
     (xehr, xihr) <- hasReadIn (Contextual (p, cp)) (Contextual (x, ce))
 
-hasWrite :: Contextual (K3 Provenance) -> Contextual (K3 Expression) -> InferM (K3 MPred)
-hasWrite = undefined
+    u <- eUID e
+    xp <- ePrv x
+
+    occurs <- occursIn (Contextual (p, cp)) (Contextual (xp, ce))
+
+    let aihr = occurs -&&- mOneOf (mVar (Juncture (u, anon))) [Copied, Moved]
+    return (fehr -||- xehr, fihr -&&- xihr -&&- aihr)
+
+  _ -> do
+    eff <- eEff e
+    ehr <- hasReadInF (Contextual (p, cp)) (Contextual (eff, ce))
+    return (ehr, mBool False)
+
+hasReadInF :: Contextual (K3 Provenance) -> Contextual (K3 Effect) -> InferM (K3 MPred)
+hasReadInF p (Contextual (f, cf)) = case f of
+  (tag -> FRead p') -> occursIn p (Contextual (p', cf))
+  (tag -> FScope _) -> foldr (-||-) (mBool False) <$> traverse (hasReadInF p) (map (Contextual . (,cf)) $ children f)
+  (tag -> FSeq) -> foldr (-||-) (mBool False) <$> traverse (hasReadInF p) (map (Contextual . (,cf)) $ children f)
+  (tag -> FSet) -> foldr (-||-) (mBool False) <$> traverse (hasReadInF p) (map (Contextual . (,cf)) $ children f)
+  _ -> return (mBool False)
+
+hasWriteIn :: Contextual (K3 Provenance) -> Contextual (K3 Expression) -> InferM (K3 MPred, K3 MPred)
+hasWriteIn _ _ = return (mBool False, mBool True)
+
+isGlobal :: K3 Provenance -> InferM (K3 MPred)
+isGlobal p = case tag p of
+  (PGlobal _) -> return (mBool True)
+  (PBVar (PMatVar n u ptr)) -> do
+    parent <- chasePPtr ptr >>= isGlobal
+    return $ mOneOf (mVar (Juncture (u, n))) [Referenced, ConstReferenced] -&&- parent
+  (PProject _) -> isGlobal (head $ children p)
+  _ -> return $ mBool False
 
 occursIn :: Contextual (K3 Provenance) -> Contextual (K3 Provenance) -> InferM (K3 MPred)
-occursIn = undefined
-
-isGlobalP :: Contextual (K3 Provenance) -> InferM (K3 MPred)
-isGlobalP (Contextual (p, k)) = case tag p of
-  (PGlobal _) -> return (mBool True)
-  (PBVar (PMatVar n u p)) -> do
-    -- TODO: k isn't the right context for the recursive call to isGlobalP. What is?
-    parent <- chasePPtr p >>= \p' -> isGlobalP (Contextual (p', k))
-    return $ mOneOf (mVar (Juncture (u, n))) [Referenced, ConstReferenced] -&&- parent
-  -- (tag &&& children -> (PProject _, [pp])) -> isGlobalP pp
-  --   _ -> return False
+occursIn _ _ = return (mBool True)
 
 isMoveable :: Contextual (K3 Provenance) -> InferM (K3 MPred)
-isMoveable (Contextual (p, c)) = undefined
+isMoveable (Contextual (p, _)) = isGlobal p
 
 isMoveableIn :: Contextual (K3 Provenance) -> Contextual (K3 Expression) -> InferM (K3 MPred)
-isMoveableIn (Contextual (p, cp)) (Contextual (e, ce)) = undefined
+isMoveableIn cp ce = do
+  (ehr, ihr) <- hasReadIn cp ce
+  (ehw, ihw) <- hasWriteIn cp ce
+  return (ehr -||- ihr -||- ehw -||- ihw)
 
 isMoveableNow :: Contextual (K3 Provenance) -> InferM (K3 MPred)
 isMoveableNow cp = do
