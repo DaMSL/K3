@@ -141,8 +141,28 @@ materializeE e@(Node (t :@: _) cs) = case t of
   _ -> traverse_ materializeE (children e)
 
 -- * Queries
-hasRead :: Contextual (K3 Provenance) -> Contextual (K3 Expression) -> InferM (K3 MPred)
-hasRead = undefined
+hasReadIn :: Contextual (K3 Provenance) -> Contextual (K3 Expression) -> InferM (K3 MPred, K3 MPred)
+hasReadIn (Contextual (tag -> PFVar _, cp)) (Contextual (_, ce)) | cp /= ce = return (mBool False, mBool False)
+hasReadIn (Contextual (p, cp)) (Contextual (e, ce)) = case tag e of
+  ELambda _ -> do
+    cls <- ePrv e >>= \case
+      (tag -> PLambda _ cls) -> return cls
+      _ -> do
+        u <- eUID e
+        throwError $ IError $ printf "Expected lambda provenance on lambda expression at UID %s." (show u)
+
+    -- In order for a write effect on `p` to occur at this lambda node, the following must hold true
+    -- for at least one closure variable `c`: `p` must occur in `c`, and `c` must be materialized by
+    -- either a copy or a move.
+    closurePs <- for cls $ \m@(PMatVar n u _) -> do
+      occurs <- occursIn (Contextual (p, cp)) (Contextual ((pbvar m), ce))
+      return $ occurs -&&- mOneOf (mVar $ Juncture (u, n)) [Copied, Moved]
+    return (foldr (-||-) (mBool False) closurePs, mBool False)
+
+  EOperate OApp -> do
+    let [f, x] = children e
+    (fehr, fihr) <- hasReadIn (Contextual (p, cp)) (Contextual (f, ce))
+    (xehr, xihr) <- hasReadIn (Contextual (p, cp)) (Contextual (x, ce))
 
 hasWrite :: Contextual (K3 Provenance) -> Contextual (K3 Expression) -> InferM (K3 MPred)
 hasWrite = undefined
