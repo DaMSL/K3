@@ -146,13 +146,30 @@ materializeE e@(Node (t :@: _) cs) = case t of
         materializeE c
 
         -- Determine if the field argument is moveable within the current expression.
-        moveableNow <- eProv c >>= contextualizeNow >>= isMoveableNow
+        moveableNow <- ePrv c >>= contextualizeNow >>= isMoveableNow
 
         -- Determine if the field argument is owned by the containing expression.
-        bindingContext <- eProv c >>= contextualizeNow >>= bindPoint
+        bindingContext <- ePrv c >>= contextualizeNow >>= bindPoint
         let moveableInContext = maybe (mBool True) (\bc -> mOneOf (mVar bc) [Moved, Copied]) bindingContext
 
         constrain u i $ mITE (moveableNow -&&- moveableInContext) (mAtom Moved) (mAtom Copied)
+
+  ELambda i -> do
+    let [body] = cs
+
+    u <- eUID e
+
+    arg <- withNearestBind u $ do
+      materializeE body
+      contextualizeNow (pfvar i)
+
+    fProv <- ePrv e >>= contextualizeNow
+    nrvo <- occursIn arg fProv
+
+    (ehw, _) <- contextualizeNow body >>= hasWriteIn arg
+
+    constrain u i $ mITE ehw (mAtom Copied) (mAtom ConstReferenced)
+    constrain u anon $ mITE nrvo (mAtom Moved) (mAtom Copied)
 
   _ -> traverse_ materializeE (children e)
 
