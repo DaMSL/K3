@@ -203,7 +203,7 @@ hasReadIn (Contextual (p, cp)) (Contextual (e, ce)) = case tag e of
     occurs <- occursIn (Contextual (p, cp)) (Contextual (xp, ce))
 
     let aihr = occurs -&&- mOneOf (mVar (Juncture (u, anon))) [Copied, Moved]
-    return (fehr -||- xehr, fihr -&&- xihr -&&- aihr)
+    return (fehr -||- xehr, fihr -||- xihr -||- aihr)
 
   _ -> do
     eff <- eEff e
