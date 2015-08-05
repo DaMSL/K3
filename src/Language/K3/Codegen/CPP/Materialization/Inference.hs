@@ -1,5 +1,8 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Codegen.CPP.Materialization.Inference (
   inferMaterialization
@@ -8,7 +11,6 @@ module Language.K3.Codegen.CPP.Materialization.Inference (
 import qualified Data.List as L
 
 import Data.Foldable
-import Data.Maybe
 import Data.Traversable
 import Data.Tree
 
@@ -29,7 +31,10 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 
-import Language.K3.Analysis.Provenance.Core (Provenance(..), PMatVar(..), PPtr(..))
+import Language.K3.Analysis.Provenance.Core (Provenance(..), PMatVar(..), PPtr)
+import Language.K3.Analysis.Provenance.Constructors (pbvar, pfvar)
+
+import Language.K3.Analysis.SEffects.Core (Effect(..))
 
 import Language.K3.Analysis.Provenance.Inference (PIEnv, ppenv)
 import Language.K3.Analysis.SEffects.Inference (FIEnv)
@@ -65,6 +70,18 @@ constrain u i m = let j = Juncture (u, i) in logR j m >> modify (\s -> s { cTabl
 -- ** Scoping state
 data IScope = IScope { downstreams :: [Downstream], nearestBind :: Maybe UID, pEnv :: PIEnv, fEnv :: FIEnv }
 
+newtype Contextual a = Contextual (a, Maybe UID)
+type Downstream = Contextual (K3 Expression)
+
+contextualizeNow :: a -> InferM (Contextual a)
+contextualizeNow a = asks nearestBind >>= \n -> return $ Contextual (a, n)
+
+withDownstreams :: [Downstream] -> InferM a -> InferM a
+withDownstreams nds = local (\s -> s { downstreams = nds ++ downstreams s })
+
+withNearestBind :: UID -> InferM a -> InferM a
+withNearestBind u = local (\s -> s { nearestBind = Just u })
+
 -- ** Reporting
 data IReport = IReport { juncture :: Juncture, constraint :: K3 MExpr }
 
@@ -73,26 +90,24 @@ logR j m = tell [IReport { juncture = j, constraint = m }]
 
 formatIReport :: [IReport] -> IO ()
 formatIReport = traverse_ $ \(IReport j m) -> do
-  printf "Juncture %d/%s: %s\n" (gUID $ fst $ jLoc j) (snd $ jLoc j) (simpleShowE m)
+  printf "J%d/%s: %s\n" (gUID $ fst $ jLoc j) (snd $ jLoc j) (simpleShowE m)
 
 -- ** Errors
 newtype IError = IError String
 
 -- * Helpers
-newtype Contextual a = Contextual (a, Maybe UID)
-type Downstream = Contextual (K3 Expression)
+
+anon :: Identifier
+anon = "!"
 
 eUID :: K3 Expression -> InferM UID
 eUID e = maybe (throwError $ IError "Invalid UID") (\(EUID u) -> return u) (e @~ isEUID)
 
-eProv :: K3 Expression -> InferM (K3 Provenance)
-eProv e = maybe (throwError $ IError "Invalid Provenance") (\(EProvenance p) -> return p) (e @~ isEProvenance)
+ePrv :: K3 Expression -> InferM (K3 Provenance)
+ePrv e = maybe (throwError $ IError "Invalid Provenance") (\(EProvenance p) -> return p) (e @~ isEProvenance)
 
-contextualizeNow :: a -> InferM (Contextual a)
-contextualizeNow a = asks nearestBind >>= \n -> return $ Contextual (a, n)
-
-withDownstreams :: [Downstream] -> InferM a -> InferM a
-withDownstreams nds m = local (\s -> s { downstreams = nds ++ downstreams s }) m
+eEff :: K3 Expression -> InferM (K3 Effect)
+eEff e = maybe (throwError $ IError "Invalid Provenance") (\(ESEffect f) -> return f) (e @~ isESEffect)
 
 chasePPtr :: PPtr -> InferM (K3 Provenance)
 chasePPtr p = do
