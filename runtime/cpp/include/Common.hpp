@@ -35,7 +35,7 @@ using std::unique_ptr;
 using std::make_unique;
 
 #define K3_LOG_ID "K3"
-#define USE_CUSTOM_HASHMAPS 1
+#define USE_CUSTOM_HASHMAPS 0
 #define HAS_LIBDYNAMIC 1
 #define K3_INTERNAL_FORMAT CodecFormat::YASBinary
 
