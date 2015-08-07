@@ -221,7 +221,52 @@ hasReadInF p (Contextual f cf) = case f of
   _ -> return (mBool False)
 
 hasWriteIn :: Contextual (K3 Provenance) -> Contextual (K3 Expression) -> InferM (K3 MPred, K3 MPred)
-hasWriteIn _ _ = return (mBool False, mBool True)
+hasWriteIn (Contextual (tag -> PFVar _) cp) (Contextual _ ce) | cp /= ce = return $ traceShow (cp, ce) $ (mBool False, mBool False)
+hasWriteIn (Contextual p cp) (Contextual e ce) = case tag e of
+  ELambda _ -> do
+    cls <- ePrv e >>= \case
+      (tag -> PLambda _ cls) -> return cls
+      _ -> do
+        u <- eUID e
+        throwError $ IError $ printf "Expected lambda provenance on lambda expression at UID %s." (show u)
+
+    -- In order for a write effect on `p` to occur at this lambda node, the following must hold true
+    -- for at least one closure variable `c`: `p` must occur in `c`, and `c` must be materialized by
+    -- a move.
+    closurePs <- for cls $ \m@(PMatVar n u _) -> do
+      occurs <- occursIn (Contextual p cp) (Contextual (pbvar m) ce)
+      return $ occurs -&&- mOneOf (mVar u n In) [Moved]
+    return (foldr (-||-) (mBool False) closurePs, mBool False)
+
+  EOperate OApp -> do
+    let [f, x] = children e
+    (fehw, fihw) <- hasWriteIn (Contextual p cp) (Contextual f ce)
+    (xehw, xihw) <- hasWriteIn (Contextual p cp) (Contextual x ce)
+
+    u <- eUID e
+    xp <- ePrv x
+
+    occurs <- occursIn (Contextual p cp) (Contextual xp ce)
+
+    let aihw = occurs -&&- mOneOf (mVar u anon In) [Moved]
+
+    aEff <- eEff e
+    aehw <- hasWriteInF (Contextual p cp) (Contextual aEff ce)
+
+    return (fehw -||- xehw -||- aehw, fihw -||- xihw -||- aihw)
+
+  _ -> do
+    eff <- eEff e
+    ehw <- hasWriteInF (Contextual p cp) (Contextual eff ce)
+    return (ehw, mBool False)
+
+hasWriteInF :: Contextual (K3 Provenance) -> Contextual (K3 Effect) -> InferM (K3 MPred)
+hasWriteInF p (Contextual f cf) = case f of
+  (tag -> FWrite p') -> occursIn p (Contextual p' cf)
+  (tag -> FScope _) -> foldr (-||-) (mBool False) <$> traverse (hasWriteInF p) (map (flip Contextual cf) $ children f)
+  (tag -> FSeq) -> foldr (-||-) (mBool False) <$> traverse (hasWriteInF p) (map (flip Contextual cf) $ children f)
+  (tag -> FSet) -> foldr (-||-) (mBool False) <$> traverse (hasWriteInF p) (map (flip Contextual cf) $ children f)
+  _ -> return (mBool False)
 
 isGlobal :: K3 Provenance -> InferM (K3 MPred)
 isGlobal p = case tag p of
