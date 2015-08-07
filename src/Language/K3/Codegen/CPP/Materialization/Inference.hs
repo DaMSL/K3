@@ -185,14 +185,16 @@ materializeE e@(Node (t :@: _) cs) = case t of
 
     u <- eUID e
 
-    arg <- withNearestBind u $ do
+    (ci, cb) <- withNearestBind u $ do
       materializeE body
-      contextualizeNow (pfvar i)
+      ci' <- contextualizeNow (pfvar i)
+      cb' <- contextualizeNow body
+      return (ci', cb')
 
     fProv <- ePrv e >>= contextualizeNow
-    nrvo <- occursIn arg fProv
+    nrvo <- occursIn ci fProv
 
-    (ehw, _) <- contextualizeNow body >>= hasWriteIn arg
+    (ehw, _) <- hasWriteIn ci cb
 
     constrain u i In $ mITE ehw (mAtom Copied) (mAtom ConstReferenced)
     constrain u i Ex $ mITE nrvo (mAtom Moved) (mAtom Copied)
