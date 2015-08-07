@@ -297,3 +297,18 @@ topoSortWithDependencySets m
  where
    (rootSet, remaining) = M.partition S.null m
    reducedMap = M.map (S.\\ (M.keysSet rootSet)) remaining
+
+-- ** Solving
+solveForE :: K3 MExpr -> SolverM Method
+solveForE m = case tag m of
+  MVar j d -> getMethod (j, d)
+  MAtom a -> return a
+  MIfThenElse p -> let [t, e] = children m in solveForP p >>= \r -> if r then solveForE t else solveForE e
+
+solveForP :: K3 MPred -> SolverM Bool
+solveForP p = case tag p of
+  MNot -> let [x] = children p in not <$> solveForP x
+  MAnd -> let [x, y] = children p in (&&) <$> solveForP x <*> solveForP y
+  MOr -> let [x, y] = children p in (||) <$> solveForP x <*> solveForP y
+  MOneOf e m -> flip elem m <$> solveForE e
+  MBool b -> return b
