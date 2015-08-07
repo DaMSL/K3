@@ -66,7 +66,6 @@ import Language.K3.Transform.TriggerSymbols (triggerSymbols)
 import Language.K3.Utils.Pretty
 import qualified Language.K3.Utils.PrettyText as PT
 
-import Language.K3.Codegen.CPP.Materialization
 import Language.K3.Codegen.CPP.Materialization.Inference
 import Language.K3.Codegen.CPP.Preprocessing
 
@@ -563,7 +562,7 @@ cgPasses = [ withRepair "TID" $ transformE triggerSymbols
            , \d -> return (mangleReservedNames d)
            , refreshProgram
            , transformF CArgs.runAnalysis
-           , \d -> get >>= \s -> liftIO (inferMaterialization (penv s, fenv s) d) >>= either throwE return
+           , \d -> get >>= \s -> liftIO (optimizeMaterialization (penv s, fenv s) d) >>= either throwE return
            ]
 
 runOptPassesM :: ProgramTransform
