@@ -104,11 +104,11 @@ declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children
     addForward $ maybe id (\t -> R.TemplateDecl [(t, Nothing)]) template $
                    R.FunctionDecl (R.Name i) [argumentType] returnType
 
-    mtrlzns <- case e @~ isEMaterialization of
-                 Just (EMaterialization ms) -> return ms
-                 Nothing -> return $ M.fromList [(x, defaultDecision)]
+    -- mtrlzns <- case e @~ isEMaterialization of
+    --              Just (EMaterialization ms) -> return ms
+    --              Nothing -> return $ M.fromList [(x, defaultDecision)]
 
-    let argMtrlznType = case inD (mtrlzns M.! x) of
+    let argMtrlznType = case getInMethodFor x e of
                           ConstReferenced -> R.Reference (R.Const argumentType)
                           Referenced -> R.Reference argumentType
                           _ -> argumentType
