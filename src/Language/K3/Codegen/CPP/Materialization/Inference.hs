@@ -62,19 +62,21 @@ runInferM :: InferM a -> IState -> IScope -> Either IError ((a, IState), [IRepor
 runInferM m st sc = runIdentity $ runExceptT $ runWriterT $ flip runReaderT sc $ runStateT m st
 
 -- ** Non-scoping State
-data IState = IState { cTable :: M.Map Juncture (K3 MExpr) }
+data IState = IState { cTable :: M.Map DKey (K3 MExpr) }
 
-constrain :: UID -> Identifier -> K3 MExpr -> InferM ()
-constrain u i m = let j = Juncture (u, i) in logR j m >> modify (\s -> s { cTable = M.insert j m (cTable s) })
+type DKey = (Juncture, Direction)
+
+constrain :: UID -> Identifier -> Direction -> K3 MExpr -> InferM ()
+constrain u i d m = let j = (Juncture u i) in logR j d m >> modify (\s -> s { cTable = M.insert (j, d) m (cTable s) })
 
 -- ** Scoping state
 data IScope = IScope { downstreams :: [Downstream], nearestBind :: Maybe UID, pEnv :: PIEnv, fEnv :: FIEnv }
 
-newtype Contextual a = Contextual (a, Maybe UID)
+data Contextual a = Contextual a (Maybe UID) deriving (Eq, Ord, Read, Show)
 type Downstream = Contextual (K3 Expression)
 
 contextualizeNow :: a -> InferM (Contextual a)
-contextualizeNow a = asks nearestBind >>= \n -> return $ Contextual (a, n)
+contextualizeNow a = asks nearestBind >>= \n -> return $ Contextual a n
 
 withDownstreams :: [Downstream] -> InferM a -> InferM a
 withDownstreams nds = local (\s -> s { downstreams = nds ++ downstreams s })
@@ -150,7 +152,7 @@ materializeE e@(Node (t :@: _) cs) = case t of
 
         -- Determine if the field argument is owned by the containing expression.
         bindingContext <- ePrv c >>= contextualizeNow >>= bindPoint
-        let moveableInContext = maybe (mBool True) (\(Juncture u' i') -> mOneOf (mVar u' i') [Moved, Copied]) bindingContext
+        let moveableInContext = maybe (mBool True) (\(Juncture u' i') -> mOneOf (mVar u' i' In) [Moved, Copied]) bindingContext
 
         constrain u i In $ mITE (moveableNow -&&- moveableInContext) (mAtom Moved) (mAtom Copied)
 
@@ -175,8 +177,8 @@ materializeE e@(Node (t :@: _) cs) = case t of
 
 -- * Queries
 hasReadIn :: Contextual (K3 Provenance) -> Contextual (K3 Expression) -> InferM (K3 MPred, K3 MPred)
-hasReadIn (Contextual (tag -> PFVar _, cp)) (Contextual (_, ce)) | cp /= ce = return (mBool False, mBool False)
-hasReadIn (Contextual (p, cp)) (Contextual (e, ce)) = case tag e of
+hasReadIn (Contextual (tag -> PFVar _) cp) (Contextual _ ce) | cp /= ce = return (mBool False, mBool False)
+hasReadIn (Contextual p cp) (Contextual e ce) = case tag e of
   ELambda _ -> do
     cls <- ePrv e >>= \case
       (tag -> PLambda _ cls) -> return cls
@@ -184,12 +186,12 @@ hasReadIn (Contextual (p, cp)) (Contextual (e, ce)) = case tag e of
         u <- eUID e
         throwError $ IError $ printf "Expected lambda provenance on lambda expression at UID %s." (show u)
 
-    -- In order for a write effect on `p` to occur at this lambda node, the following must hold true
+    -- In order for a read effect on `p` to occur at this lambda node, the following must hold true
     -- for at least one closure variable `c`: `p` must occur in `c`, and `c` must be materialized by
     -- either a copy or a move.
     closurePs <- for cls $ \m@(PMatVar n u _) -> do
       occurs <- occursIn (Contextual p cp) (Contextual (pbvar m) ce)
-      return $ occurs -&&- mOneOf (mVar u n) [Copied, Moved]
+      return $ occurs -&&- mOneOf (mVar u n In) [Copied, Moved]
     return (foldr (-||-) (mBool False) closurePs, mBool False)
 
   EOperate OApp -> do
@@ -202,7 +204,7 @@ hasReadIn (Contextual (p, cp)) (Contextual (e, ce)) = case tag e of
 
     occurs <- occursIn (Contextual p cp) (Contextual xp ce)
 
-    let aihr = occurs -&&- mOneOf (mVar u anon) [Copied, Moved]
+    let aihr = occurs -&&- mOneOf (mVar u anon In) [Copied, Moved]
     return (fehr -||- xehr, fihr -||- xihr -||- aihr)
 
   _ -> do
@@ -226,7 +228,7 @@ isGlobal p = case tag p of
   (PGlobal _) -> return (mBool True)
   (PBVar (PMatVar n u ptr)) -> do
     parent <- chasePPtr ptr >>= isGlobal
-    return $ mOneOf (mVar u n) [Referenced, ConstReferenced] -&&- parent
+    return $ mOneOf (mVar u n In) [Referenced, ConstReferenced] -&&- parent
   (PProject _) -> isGlobal (head $ children p)
   _ -> return $ mBool False
 
