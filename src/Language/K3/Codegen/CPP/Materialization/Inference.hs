@@ -1,11 +1,12 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Codegen.CPP.Materialization.Inference (
-  inferMaterialization
+  optimizeMaterialization
 ) where
 
 import qualified Data.List as L
@@ -24,6 +25,7 @@ import Text.Printf
 
 import qualified Data.IntMap as I
 import qualified Data.Map as M
+import qualified Data.Set as S
 
 import Language.K3.Core.Common
 
@@ -42,15 +44,37 @@ import Language.K3.Analysis.SEffects.Inference (FIEnv)
 import Language.K3.Codegen.CPP.Materialization.Constructors
 import Language.K3.Codegen.CPP.Materialization.Core
 import Language.K3.Codegen.CPP.Materialization.Hints
+import Language.K3.Codegen.CPP.Materialization.Common
 
 -- * Entry-Point
-inferMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> IO (Either String (K3 Declaration))
-inferMaterialization (p, f) d = case runInferM (materializeD d) defaultIState defaultIScope of
-  Left (IError msg) -> return $ Left msg
-  Right ((_, _), r) -> formatIReport r >> return (Right d)
+
+optimizeMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> IO (Either String (K3 Declaration))
+optimizeMaterialization (p, f) d = runExceptT $ inferMaterialization >>= solveMaterialization >>= attachMaterialization d
  where
-  defaultIState = IState { cTable = M.empty }
-  defaultIScope = IScope { downstreams = [], nearestBind = Nothing, pEnv = p, fEnv = f }
+  inferMaterialization = case runInferM (materializeD d) defaultIState defaultIScope of
+    Left (IError msg) -> throwError msg
+    Right ((_, IState ct), r) -> liftIO (formatIReport r) >> return ct
+   where defaultIState = IState { cTable = M.empty }
+         defaultIScope = IScope { downstreams = [], nearestBind = Nothing, pEnv = p, fEnv = f }
+
+  solveMaterialization ct = case runSolverM solveAction defaultSState of
+    Left (SError msg) -> throwError msg
+    Right (_, SState mp) -> return mp
+   where
+    solveAction = (mkDependencyList ct >>= traverse_ (\k -> solveForE (ct M.! k) >>= \e -> traceShow (k, e, ct M.! k) (setMethod k e)))
+
+  attachMaterialization k m = return $ attachD <$> k
+   where
+     attachD g = case g of
+       DGlobal i t (Just e) :@: as -> (DGlobal i t (Just $ attachE <$> e)) :@: as
+       DTrigger i t e :@: as -> (DTrigger i t (attachE <$> e)) :@: as
+       t :@: as -> t :@: as
+
+     attachE e = case e of
+       (t :@: as) -> (t :@: (EMaterialization as' : as))
+      where
+        Just u = e @~ isEUID >>= getUID
+        as' = M.fromList [((i, r), q) | ((Juncture u' i, r), q) <- M.toList m, u' == u]
 
 -- * Types
 
