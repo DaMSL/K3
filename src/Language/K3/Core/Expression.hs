@@ -174,7 +174,7 @@ data instance Annotation Expression
     | ESEffect    (K3 S.Effect)
     | EFStructure (K3 S.Effect)
     | EOpt        OptHint
-    | EMaterialization (M.Map Identifier Z.Decision)
+    | EMaterialization (M.Map (Identifier, Z.Direction) Z.Method)
     | EType       (K3 Type)
     | EQType      (K3 QType)
     | ETypeLB     (K3 Type)
