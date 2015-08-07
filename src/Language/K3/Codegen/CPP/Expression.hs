@@ -87,10 +87,25 @@ forceMoveP :: K3 Expression -> Bool
 forceMoveP e = isJust (e @~ hasMoveProperty)
 
 -- Get the materializaitons of a given expression
-getMDecisions :: K3 Expression -> M.Map Identifier Decision
+getMDecisions :: K3 Expression -> M.Map (Identifier, Direction) Method
 getMDecisions e = case e @~ isEMaterialization of
                    Just (EMaterialization ms) -> ms
                    Nothing -> M.empty
+
+getInDecisions :: K3 Expression -> M.Map Identifier Method
+getInDecisions e = M.fromList [(i, m) | ((i, r), m) <- M.toList (getMDecisions e), r == In]
+
+getExDecisions :: K3 Expression -> M.Map Identifier Method
+getExDecisions e = M.fromList [(i, m) | ((i, r), m) <- M.toList (getMDecisions e), r == Ex]
+
+getMethodFor :: Identifier -> Direction -> K3 Expression -> Method
+getMethodFor i d e = M.findWithDefault defaultMethod (i, d) (getMDecisions e)
+
+getInMethodFor :: Identifier -> K3 Expression -> Method
+getInMethodFor i e = getMethodFor i In e
+
+getExMethodFor :: Identifier -> K3 Expression -> Method
+getExMethodFor i e = getMethodFor i Ex e
 
 -- Move heuristic to avoid code clutter.
 move :: K3 Type -> K3 Expression -> Bool
@@ -119,9 +134,6 @@ move t e = moveByTypeForm t && moveByExprForm e
 gMoveByE :: K3 Expression -> R.Expression -> R.Expression
 gMoveByE e x = fromMaybe x (getKTypeP e >>= \t -> return $ if move t e then R.Move x else x)
 
-gMoveByDE :: (Decision -> Method) -> Decision -> K3 Expression -> R.Expression -> R.Expression
-gMoveByDE m d e x = if m d == Moved then gMoveByE e x else x
-
 rollLambdaChain :: K3 Expression -> ([(Identifier, K3 Expression)], K3 Expression)
 rollLambdaChain e@(tag &&& children -> (ELambda i, [f])) = let (ies, b) = rollLambdaChain f in ((i, e):ies, b)
 rollLambdaChain e = ([], e)
@@ -129,6 +141,8 @@ rollLambdaChain e = ([], e)
 rollAppChain :: K3 Expression -> (K3 Expression, [K3 Expression])
 rollAppChain e@(tag &&& children -> (EOperate OApp, [f, x])) = let (f', xs) = rollAppChain f in (f', xs ++ [e])
 rollAppChain e = (e, [])
+gMoveByDE :: Method -> K3 Expression -> R.Expression -> R.Expression
+gMoveByDE m e x = if m == Moved then gMoveByE e x else x
 
 -- | Realization of unary operators.
 unarySymbol :: Operator -> CPPGenM Identifier
