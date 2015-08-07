@@ -278,7 +278,14 @@ isGlobal p = case tag p of
   _ -> return $ mBool False
 
 occursIn :: Contextual (K3 Provenance) -> Contextual (K3 Provenance) -> InferM (K3 MPred)
-occursIn _ _ = return (mBool True)
+occursIn a@(Contextual pa ca) b@(Contextual pb cb) = case tag pb of
+  PFVar i -> traceShow (a, b) $ case tag pa of
+    PFVar j | i == j && ca == cb -> return (mBool True)
+    _ -> return (mBool False)
+  PBVar (PMatVar n u ptr) -> do
+    pOccurs <- chasePPtr ptr >>= \p' -> occursIn a (Contextual p' cb)
+    return $ mOneOf (mVar u n In) [Referenced, ConstReferenced] -&&- pOccurs
+  _ -> return (mBool False)
 
 isMoveable :: Contextual (K3 Provenance) -> InferM (K3 MPred)
 isMoveable (Contextual p _) = isGlobal p
