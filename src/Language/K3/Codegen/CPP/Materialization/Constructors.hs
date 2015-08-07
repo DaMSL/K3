@@ -3,14 +3,15 @@ module Language.K3.Codegen.CPP.Materialization.Constructors where
 import Data.Tree
 
 import Language.K3.Core.Annotation
+import Language.K3.Core.Common
 
 import Language.K3.Codegen.CPP.Materialization.Core
 import Language.K3.Codegen.CPP.Materialization.Hints
 
 -- * MExpr Constructors
 
-mVar :: Juncture -> K3 MExpr
-mVar j = Node (MVar j :@: []) []
+mVar :: UID -> Identifier -> K3 MExpr
+mVar u i = Node (MVar (Juncture u i) :@: []) []
 
 mAtom :: Method -> K3 (MExpr)
 mAtom m = Node (MAtom m :@: []) []

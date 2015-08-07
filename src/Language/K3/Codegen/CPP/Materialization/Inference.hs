@@ -83,14 +83,14 @@ withNearestBind :: UID -> InferM a -> InferM a
 withNearestBind u = local (\s -> s { nearestBind = Just u })
 
 -- ** Reporting
-data IReport = IReport { juncture :: Juncture, constraint :: K3 MExpr }
+data IReport = IReport { juncture :: Juncture, direction :: Direction, constraint :: K3 MExpr }
 
-logR :: Juncture -> K3 MExpr -> InferM ()
-logR j m = tell [IReport { juncture = j, constraint = m }]
+logR :: Juncture -> Direction -> K3 MExpr -> InferM ()
+logR j d m = tell [IReport { juncture = j, direction = d, constraint = m }]
 
 formatIReport :: [IReport] -> IO ()
-formatIReport = traverse_ $ \(IReport j m) -> do
-  printf "J%d/%s: %s\n" (gUID $ fst $ jLoc j) (snd $ jLoc j) (simpleShowE m)
+formatIReport = traverse_ $ \(IReport (Juncture u i) d m) -> do
+  printf "J%d/%s/%s: %s\n" (gUID u) i (show d) (simpleShowE m)
 
 -- ** Errors
 newtype IError = IError String
@@ -117,10 +117,10 @@ chasePPtr p = do
     Just p' -> return p'
 
 bindPoint :: Contextual (K3 Provenance) -> InferM (Maybe Juncture)
-bindPoint (Contextual (p, u)) = case tag p of
-  PFVar i | Just u' <- u -> return $ Just $ Juncture (u', i)
-  PBVar (PMatVar i u' _) -> return $ Just $ Juncture (u', i)
-  PProject _ -> bindPoint (Contextual (head (children p), u))
+bindPoint (Contextual p u) = case tag p of
+  PFVar i | Just u' <- u -> return $ Just $ Juncture u' i
+  PBVar (PMatVar i u' _) -> return $ Just $ Juncture u' i
+  PProject _ -> bindPoint (Contextual (head $ children p) u)
   _ -> return Nothing
 
 -- * Inference Algorithm
@@ -150,9 +150,9 @@ materializeE e@(Node (t :@: _) cs) = case t of
 
         -- Determine if the field argument is owned by the containing expression.
         bindingContext <- ePrv c >>= contextualizeNow >>= bindPoint
-        let moveableInContext = maybe (mBool True) (\bc -> mOneOf (mVar bc) [Moved, Copied]) bindingContext
+        let moveableInContext = maybe (mBool True) (\(Juncture u' i') -> mOneOf (mVar u' i') [Moved, Copied]) bindingContext
 
-        constrain u i $ mITE (moveableNow -&&- moveableInContext) (mAtom Moved) (mAtom Copied)
+        constrain u i In $ mITE (moveableNow -&&- moveableInContext) (mAtom Moved) (mAtom Copied)
 
   ELambda i -> do
     let [body] = cs
@@ -168,8 +168,8 @@ materializeE e@(Node (t :@: _) cs) = case t of
 
     (ehw, _) <- contextualizeNow body >>= hasWriteIn arg
 
-    constrain u i $ mITE ehw (mAtom Copied) (mAtom ConstReferenced)
-    constrain u anon $ mITE nrvo (mAtom Moved) (mAtom Copied)
+    constrain u i In $ mITE ehw (mAtom Copied) (mAtom ConstReferenced)
+    constrain u i Ex $ mITE nrvo (mAtom Moved) (mAtom Copied)
 
   _ -> traverse_ materializeE (children e)
 
@@ -188,34 +188,34 @@ hasReadIn (Contextual (p, cp)) (Contextual (e, ce)) = case tag e of
     -- for at least one closure variable `c`: `p` must occur in `c`, and `c` must be materialized by
     -- either a copy or a move.
     closurePs <- for cls $ \m@(PMatVar n u _) -> do
-      occurs <- occursIn (Contextual (p, cp)) (Contextual ((pbvar m), ce))
-      return $ occurs -&&- mOneOf (mVar $ Juncture (u, n)) [Copied, Moved]
+      occurs <- occursIn (Contextual p cp) (Contextual (pbvar m) ce)
+      return $ occurs -&&- mOneOf (mVar u n) [Copied, Moved]
     return (foldr (-||-) (mBool False) closurePs, mBool False)
 
   EOperate OApp -> do
     let [f, x] = children e
-    (fehr, fihr) <- hasReadIn (Contextual (p, cp)) (Contextual (f, ce))
-    (xehr, xihr) <- hasReadIn (Contextual (p, cp)) (Contextual (x, ce))
+    (fehr, fihr) <- hasReadIn (Contextual p cp) (Contextual f ce)
+    (xehr, xihr) <- hasReadIn (Contextual p cp) (Contextual x ce)
 
     u <- eUID e
     xp <- ePrv x
 
-    occurs <- occursIn (Contextual (p, cp)) (Contextual (xp, ce))
+    occurs <- occursIn (Contextual p cp) (Contextual xp ce)
 
-    let aihr = occurs -&&- mOneOf (mVar (Juncture (u, anon))) [Copied, Moved]
+    let aihr = occurs -&&- mOneOf (mVar u anon) [Copied, Moved]
     return (fehr -||- xehr, fihr -||- xihr -||- aihr)
 
   _ -> do
     eff <- eEff e
-    ehr <- hasReadInF (Contextual (p, cp)) (Contextual (eff, ce))
+    ehr <- hasReadInF (Contextual p cp) (Contextual eff ce)
     return (ehr, mBool False)
 
 hasReadInF :: Contextual (K3 Provenance) -> Contextual (K3 Effect) -> InferM (K3 MPred)
-hasReadInF p (Contextual (f, cf)) = case f of
-  (tag -> FRead p') -> occursIn p (Contextual (p', cf))
-  (tag -> FScope _) -> foldr (-||-) (mBool False) <$> traverse (hasReadInF p) (map (Contextual . (,cf)) $ children f)
-  (tag -> FSeq) -> foldr (-||-) (mBool False) <$> traverse (hasReadInF p) (map (Contextual . (,cf)) $ children f)
-  (tag -> FSet) -> foldr (-||-) (mBool False) <$> traverse (hasReadInF p) (map (Contextual . (,cf)) $ children f)
+hasReadInF p (Contextual f cf) = case f of
+  (tag -> FRead p') -> occursIn p (Contextual p' cf)
+  (tag -> FScope _) -> foldr (-||-) (mBool False) <$> traverse (hasReadInF p) (map (flip Contextual cf) $ children f)
+  (tag -> FSeq) -> foldr (-||-) (mBool False) <$> traverse (hasReadInF p) (map (flip Contextual cf) $ children f)
+  (tag -> FSet) -> foldr (-||-) (mBool False) <$> traverse (hasReadInF p) (map (flip Contextual cf) $ children f)
   _ -> return (mBool False)
 
 hasWriteIn :: Contextual (K3 Provenance) -> Contextual (K3 Expression) -> InferM (K3 MPred, K3 MPred)
@@ -226,7 +226,7 @@ isGlobal p = case tag p of
   (PGlobal _) -> return (mBool True)
   (PBVar (PMatVar n u ptr)) -> do
     parent <- chasePPtr ptr >>= isGlobal
-    return $ mOneOf (mVar (Juncture (u, n))) [Referenced, ConstReferenced] -&&- parent
+    return $ mOneOf (mVar u n) [Referenced, ConstReferenced] -&&- parent
   (PProject _) -> isGlobal (head $ children p)
   _ -> return $ mBool False
 
@@ -234,7 +234,7 @@ occursIn :: Contextual (K3 Provenance) -> Contextual (K3 Provenance) -> InferM (
 occursIn _ _ = return (mBool True)
 
 isMoveable :: Contextual (K3 Provenance) -> InferM (K3 MPred)
-isMoveable (Contextual (p, _)) = isGlobal p
+isMoveable (Contextual p _) = isGlobal p
 
 isMoveableIn :: Contextual (K3 Provenance) -> Contextual (K3 Expression) -> InferM (K3 MPred)
 isMoveableIn cp ce = do

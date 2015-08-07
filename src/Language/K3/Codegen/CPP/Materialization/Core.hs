@@ -20,7 +20,7 @@ data MExpr
 
 simpleShowE :: K3 MExpr -> String
 simpleShowE m = case tag m of
-  MVar (Juncture (u, i)) -> printf "%d/%s" (gUID u) i
+  MVar (Juncture u i) -> printf "%d/%s" (gUID u) i
   MAtom t -> show t
   MIfThenElse p ->
     let [t, e] = children m
@@ -53,4 +53,6 @@ deriving instance Eq (Annotation MPred)
 deriving instance Read (Annotation MPred)
 deriving instance Show (Annotation MPred)
 
-newtype Juncture = Juncture { jLoc :: (UID, Identifier) } deriving (Eq, Ord, Read, Show)
+data Direction = In | Ex deriving (Eq, Ord, Read, Show)
+
+data Juncture = Juncture UID Identifier deriving (Eq, Ord, Read, Show)
