@@ -250,3 +250,50 @@ isMoveableNow cp = do
   isMoveable1 <- isMoveable cp
   allMoveable <- foldr (-&&-) (mBool True) <$> traverse (isMoveableIn cp) ds
   return $ isMoveable1 -&&- allMoveable
+
+-- * Solver
+
+type SolverT m = StateT SState (ExceptT SError m)
+type SolverM a = SolverT Identity a
+
+data SState = SState { assignments :: M.Map DKey Method }
+newtype SError = SError String
+
+defaultSState :: SState
+defaultSState = SState []
+
+runSolverM :: SolverM a -> SState -> Either SError (a, SState)
+runSolverM m st = runIdentity $ runExceptT $ runStateT m st
+
+setMethod :: DKey -> Method -> SolverM ()
+setMethod k m = modify $ \s -> s { assignments = M.insert k m (assignments s) }
+
+getMethod :: DKey -> SolverM Method
+getMethod k = gets assignments >>= maybe (throwError $ SError $ "Unconfirmed decision for " ++ show k) return . M.lookup k
+
+-- ** Sorting
+mkDependencyList :: M.Map DKey (K3 MExpr) -> SolverM [DKey]
+mkDependencyList m = mkDependencySets m >>= topoSortWithDependencySets
+
+mkDependencySets :: M.Map DKey (K3 MExpr) -> SolverM (M.Map DKey (S.Set DKey))
+mkDependencySets = traverse findDependenciesE
+
+findDependenciesE :: K3 MExpr -> SolverM (S.Set DKey)
+findDependenciesE e = case tag e of
+  MVar j d -> return [(j, d)]
+  MAtom _ -> return []
+  MIfThenElse p -> findDependenciesP p
+
+findDependenciesP :: K3 MPred -> SolverM (S.Set DKey)
+findDependenciesP p = case tag p of
+  MOneOf e _ -> findDependenciesE e
+  _ -> S.unions <$> traverse findDependenciesP (children p)
+
+topoSortWithDependencySets :: M.Map DKey (S.Set DKey) -> SolverM [DKey]
+topoSortWithDependencySets m
+  | M.null m = return []
+  | M.null rootSet = throwError $ SError $ "cycle in materialization dependencies." ++ show remaining
+  | otherwise = (M.keys rootSet ++) <$> topoSortWithDependencySets reducedMap
+ where
+   (rootSet, remaining) = M.partition S.null m
+   reducedMap = M.map (S.\\ (M.keysSet rootSet)) remaining
