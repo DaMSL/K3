@@ -10,17 +10,17 @@ import Language.K3.Core.Common
 
 import Language.K3.Utils.Pretty
 
-import Language.K3.Codegen.CPP.Materialization.Hints (Method(..))
+import Language.K3.Codegen.CPP.Materialization.Hints (Method(..), Direction(..))
 
 data MExpr
-  = MVar Juncture
+  = MVar Juncture Direction
   | MAtom Method
   | MIfThenElse (K3 MPred)
  deriving (Eq, Read, Show)
 
 simpleShowE :: K3 MExpr -> String
 simpleShowE m = case tag m of
-  MVar (Juncture u i) -> printf "%d/%s" (gUID u) i
+  MVar (Juncture u i) d -> printf "%d/%s/%s" (gUID u) i (show d)
   MAtom t -> show t
   MIfThenElse p ->
     let [t, e] = children m
@@ -52,7 +52,5 @@ data instance Annotation MPred
 deriving instance Eq (Annotation MPred)
 deriving instance Read (Annotation MPred)
 deriving instance Show (Annotation MPred)
-
-data Direction = In | Ex deriving (Eq, Ord, Read, Show)
 
 data Juncture = Juncture UID Identifier deriving (Eq, Ord, Read, Show)
