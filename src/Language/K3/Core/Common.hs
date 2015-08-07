@@ -8,8 +8,10 @@
 -- | Primitive Definitions for Compiler-Wide Terms.
 module Language.K3.Core.Common (
     Identifier,
-    UID(..),
     NoneMutability(..),
+
+    UID(..),
+    gUID,
 
     ParGenSymS(..),
     zerosymS,
@@ -94,7 +96,10 @@ data Span
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Unique identifiers for AST nodes.
-data UID = UID { gUID :: Int } deriving (Eq, Ord, Read, Show, Typeable, Generic)
+data UID = UID Int deriving (Eq, Ord, Read, Show, Typeable, Generic)
+
+gUID :: UID -> Int
+gUID (UID i) = i
 
 
 {- Symbol generation -}
