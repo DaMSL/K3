@@ -61,7 +61,7 @@ optimizeMaterialization (p, f) d = runExceptT $ inferMaterialization >>= solveMa
     Left (SError msg) -> throwError msg
     Right (_, SState mp) -> return mp
    where
-    solveAction = (mkDependencyList ct >>= traverse_ (\k -> solveForE (ct M.! k) >>= \e -> traceShow (k, e, ct M.! k) (setMethod k e)))
+    solveAction = (mkDependencyList ct >>= traverse_ (\k -> solveForE (ct M.! k) >>= setMethod k e))
 
   attachMaterialization k m = return $ attachD <$> k
    where
@@ -198,6 +198,67 @@ materializeE e@(Node (t :@: _) cs) = case t of
 
     constrain u i In $ mITE ehw (mAtom Copied) (mAtom ConstReferenced)
     constrain u i Ex $ mITE nrvo (mAtom Moved) (mAtom Copied)
+
+  EOperate OApp -> do
+    let [f, x] = cs
+    contextualizeNow x >>= \x' -> withDownstreams [x'] $ materializeE f
+    materializeE x
+
+    moveable <- ePrv x >>= contextualizeNow >>= isMoveableNow
+
+    ownContext <- ePrv x >>= contextualizeNow >>= bindPoint >>= \case
+      Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied]
+      Nothing -> return $ mBool True
+
+    u <- eUID e
+    constrain u anon In $ mITE (moveable -&&- ownContext) (mAtom Moved) (mAtom Copied)
+
+  EOperate OSnd -> do
+    let [h, m] = cs
+    contextualizeNow m >>= \m' -> withDownstreams [m'] $ materializeE h
+    materializeE m
+
+    moveable <- ePrv m >>= contextualizeNow >>= isMoveableNow
+    ownContext <- ePrv m >>= contextualizeNow >>= bindPoint >>= \case
+      Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied]
+      Nothing -> return $ mBool True
+
+    u <- eUID e
+    constrain u anon In $ mITE (moveable -&&- ownContext) (mAtom Moved) (mAtom Copied)
+
+  EOperate _ -> case cs of
+    [x] -> materializeE x
+    [x, y] -> contextualizeNow y >>= \y' -> withDownstreams [y'] (materializeE x) >> materializeE y
+    _ -> throwError $ IError "Unreachable: More than two operators for operator."
+
+
+  EBindAs _ -> do
+    let [initB, body] = cs
+    contextualizeNow body >>= \body' -> withDownstreams [body'] (materializeE initB)
+    materializeE body
+
+  ELetIn _ -> do
+    let [initB, body] = cs
+    contextualizeNow body >>= \body' -> withDownstreams [body'] (materializeE initB)
+    materializeE body
+
+  ECaseOf _ -> do
+    let [initB, some, none] = cs
+    some' <- contextualizeNow some
+    none' <- contextualizeNow none
+
+    withDownstreams [some', none'] $ materializeE initB
+    materializeE some
+    materializeE none
+
+  EIfThenElse -> do
+    let [cond, thenB, elseB] = cs
+    thenB' <- contextualizeNow thenB
+    elseB' <- contextualizeNow elseB
+
+    withDownstreams [thenB', elseB'] $ materializeE cond
+    materializeE thenB
+    materializeE elseB
 
   _ -> traverse_ materializeE (children e)
 
