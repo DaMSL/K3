@@ -211,6 +211,25 @@ materializeE e@(Node (t :@: _) cs) = case t of
     constrain u i In $ mITE ehw (mAtom Copied) (mAtom ConstReferenced)
     constrain u i Ex $ mITE nrvo (mAtom Moved) (mAtom Copied)
 
+    cls <- ePrv e >>= \case
+      (tag -> PLambda _ cls) -> return cls
+      _ -> do
+        u <- eUID e
+        throwError $ IError $ printf "Expected lambda provenance on lambda expression at UID %s." (show u)
+
+    for_ cls $ \m@(PMatVar name loc ptr) -> do
+      needsOwn <- withNearestBind u $ do
+        innerP <- contextualizeNow (pbvar m)
+        (ehw, _) <- contextualizeNow body >>= hasWriteIn innerP
+        return $ ehw -??- printf "Lambda needs ownership of closure variable %s?" name
+
+      outerP <- chasePPtr ptr
+      ownContext <- contextualizeNow outerP >>= bindPoint >>= \case
+        Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied] -??- "Owned by containing context?"
+        Nothing -> return $ mBool True -??- "Temporary."
+
+      constrain u name In $ mITE (needsOwn -&&- ownContext) (mAtom Moved) (mAtom Copied)
+
   EOperate OApp -> do
     let [f, x] = cs
     contextualizeNow x >>= \x' -> withDownstreams [x'] $ materializeE f
