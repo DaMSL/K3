@@ -352,7 +352,15 @@ hasWriteIn (Contextual p cp) (Contextual e ce) = case tag e of
     aEff <- eEff e
     aehw <- hasWriteInF (Contextual p cp) (Contextual aEff ce)
 
-    return (fehw -||- xehw -||- aehw, fihw -||- xihw -||- aihw)
+    return ( mOr [ fehw -??- "Explicit write in function?"
+                 , xehw -??- "Explicit write in argument?"
+                 , aehw -??- "Explicit write in application?"
+                 ]
+           , mOr [ fihw -??- "Implicit write in function?"
+                 , xihw -??- "Implicit write in argument?"
+                 , aihw -??- "Implicit write in application?"
+                 ]
+           )
 
   _ -> do
     eff <- eEff e
@@ -393,7 +401,13 @@ isMoveableIn :: Contextual (K3 Provenance) -> Contextual (K3 Expression) -> Infe
 isMoveableIn cp ce = do
   (ehr, ihr) <- hasReadIn cp ce
   (ehw, ihw) <- hasWriteIn cp ce
-  return (ehr -||- ihr -||- ehw -||- ihw)
+
+  eu <- let (Contextual e _) = ce in eUID e
+  return $ foldr1 (-||-) ([ ehr -??- (printf "Explicit reads in downstream %d?" (gUID eu))
+                          , ihr -??- (printf "Implicit reads in downstream %d?" (gUID eu))
+                          , ehw -??- (printf "Explicit writes in downstream %d?" (gUID eu))
+                          , ihw -??- (printf "Explicit writes in downstream %d?" (gUID eu))
+                          ] :: [K3 MPred]) -??- printf "Moveable in downstream %d?" (gUID eu)
 
 isMoveableNow :: Contextual (K3 Provenance) -> InferM (K3 MPred)
 isMoveableNow cp = do
@@ -459,7 +473,7 @@ solveForE m = case tag m of
 solveForP :: K3 MPred -> SolverM Bool
 solveForP p = case tag p of
   MNot -> let [x] = children p in not <$> solveForP x
-  MAnd -> let [x, y] = children p in (&&) <$> solveForP x <*> solveForP y
-  MOr -> let [x, y] = children p in (||) <$> solveForP x <*> solveForP y
+  MAnd -> and <$> traverse solveForP (children p)
+  MOr -> or <$> traverse solveForP (children p)
   MOneOf e m -> flip elem m <$> solveForE e
   MBool b -> return b
