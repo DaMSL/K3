@@ -354,7 +354,7 @@ hasWriteIn (Contextual p cp) (Contextual e ce) = case tag e of
     closurePs <- for cls $ \m@(PMatVar n u _) -> do
       occurs <- occursIn (Contextual p cp) (Contextual (pbvar m) ce)
       return $ occurs -&&- mOneOf (mVar u n In) [Moved]
-    return (foldr (-||-) (mBool False) closurePs, mBool False)
+    return (mBool False, foldr (-||-) (mBool False) closurePs)
 
   EOperate OApp -> do
     let [f, x] = children e
