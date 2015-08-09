@@ -186,11 +186,11 @@ materializeE e@(Node (t :@: _) cs) = case t of
         -- Determine if the field argument is moveable within the current expression.
         moveableNow <- ePrv c >>= contextualizeNow >>= isMoveableNow
 
-        -- Determine if the field argument is owned by the containing expression.
-        bindingContext <- ePrv c >>= contextualizeNow >>= bindPoint
-        let moveableInContext = maybe (mBool True) (\(Juncture u' i') -> mOneOf (mVar u' i' In) [Moved, Copied]) bindingContext
+        ownContext <- ePrv c >>= contextualizeNow >>= bindPoint >>= \case
+          Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied] -??- "Owned by containing context?"
+          Nothing -> return $ mBool True -??- "Temporary."
 
-        constrain u i In $ mITE (moveableNow -&&- moveableInContext) (mAtom Moved) (mAtom Copied)
+        constrain u i In $ mITE (moveableNow -&&- ownContext) (mAtom Moved) (mAtom Copied)
 
   ELambda i -> do
     let [body] = cs
@@ -219,8 +219,8 @@ materializeE e@(Node (t :@: _) cs) = case t of
     moveable <- ePrv x >>= contextualizeNow >>= isMoveableNow
 
     ownContext <- ePrv x >>= contextualizeNow >>= bindPoint >>= \case
-      Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied]
-      Nothing -> return $ mBool True
+      Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied] -??- "Owned by containing context?"
+      Nothing -> return $ mBool True -??- "Temporary"
 
     u <- eUID e
     constrain u anon In $ mITE (moveable -&&- ownContext) (mAtom Moved) (mAtom Copied)
@@ -290,8 +290,8 @@ hasReadIn (Contextual p cp) (Contextual e ce) = case tag e of
     -- either a copy or a move.
     closurePs <- for cls $ \m@(PMatVar n u _) -> do
       occurs <- occursIn (Contextual p cp) (Contextual (pbvar m) ce)
-      return $ occurs -&&- mOneOf (mVar u n In) [Copied, Moved]
-    return (foldr (-||-) (mBool False) closurePs, mBool False)
+      return $ occurs -&&- mOneOf (mVar u n In) [Copied, Moved] -??- "Owned by closure?"
+    return (mBool False, foldr (-||-) (mBool False) closurePs)
 
   EOperate OApp -> do
     let [f, x] = children e
@@ -400,7 +400,7 @@ isMoveableNow cp = do
   ds <- asks downstreams
   isMoveable1 <- isMoveable cp
   allMoveable <- foldr (-&&-) (mBool True) <$> traverse (isMoveableIn cp) ds
-  return $ isMoveable1 -&&- allMoveable
+  return $ (isMoveable1 -??- "Global?" -&&- allMoveable -??- "Moveable in all downstreams?") -??- "Moveable?"
 
 -- * Solver
 
