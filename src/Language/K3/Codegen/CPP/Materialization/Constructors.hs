@@ -33,9 +33,17 @@ mNot m = Node (MNot :@: []) [m]
 (-&&-) :: K3 MPred -> K3 MPred -> K3 MPred
 (-&&-) a b = Node (MAnd :@: []) [a, b]
 
+mOr :: [K3 MPred] -> K3 MPred
+mOr = Node (MOr :@: [])
+
 (-||-) :: K3 MPred -> K3 MPred -> K3 MPred
 (-||-) a b = Node (MOr :@: []) [a, b]
+
+mAnd :: [K3 MPred] -> K3 MPred
+mAnd = Node (MAnd :@: [])
 
 (->>-) :: K3 MPred -> K3 MPred -> K3 MPred
 (->>-) a b = (mNot a) -||- b
 
+infixr 3 -&&-
+infixr 2 -||-
