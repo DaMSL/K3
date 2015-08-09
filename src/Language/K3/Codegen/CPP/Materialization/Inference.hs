@@ -408,9 +408,11 @@ occursIn a@(Contextual pa ca) b@(Contextual pb cb) = case tag pb of
   PFVar i -> case tag pa of
     PFVar j | i == j && ca == cb -> return (mBool True)
     _ -> return (mBool False)
-  PBVar (PMatVar n u ptr) -> do
-    pOccurs <- chasePPtr ptr >>= \p' -> occursIn a (Contextual p' cb)
-    return $ mOneOf (mVar u n In) [Referenced, ConstReferenced] -&&- pOccurs
+  PBVar (PMatVar n u ptr) -> case tag pa of
+    PBVar (PMatVar n' u' _) | n' == n && u' == u -> return (mBool True)
+    _ -> do
+      pOccurs <- chasePPtr ptr >>= \p' -> occursIn a (Contextual p' cb)
+      return $ mOneOf (mVar u n In) [Referenced, ConstReferenced] -&&- pOccurs
   _ -> return (mBool False)
 
 isMoveable :: Contextual (K3 Provenance) -> InferM (K3 MPred)
