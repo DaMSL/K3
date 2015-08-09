@@ -46,6 +46,8 @@ import Language.K3.Codegen.CPP.Materialization.Core
 import Language.K3.Codegen.CPP.Materialization.Hints
 import Language.K3.Codegen.CPP.Materialization.Common
 
+import Language.K3.Utils.Pretty
+
 -- * Entry-Point
 
 optimizeMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> IO (Either String (K3 Declaration))
@@ -53,7 +55,7 @@ optimizeMaterialization (p, f) d = runExceptT $ inferMaterialization >>= solveMa
  where
   inferMaterialization = case runInferM (materializeD d) defaultIState defaultIScope of
     Left (IError msg) -> throwError msg
-    Right ((_, IState ct), r) -> liftIO (formatIReport r) >> return ct
+    Right ((_, IState ct), r) -> liftIO (formatIReport reportVerbosity r) >> return ct
    where defaultIState = IState { cTable = M.empty }
          defaultIScope = IScope { downstreams = [], nearestBind = Nothing, pEnv = p, fEnv = f }
 
@@ -114,9 +116,19 @@ data IReport = IReport { juncture :: Juncture, direction :: Direction, constrain
 logR :: Juncture -> Direction -> K3 MExpr -> InferM ()
 logR j d m = tell [IReport { juncture = j, direction = d, constraint = m }]
 
-formatIReport :: [IReport] -> IO ()
-formatIReport = traverse_ $ \(IReport (Juncture u i) d m) -> do
-  printf "J%d/%s/%s: %s\n" (gUID u) i (show d) (simpleShowE m)
+data ReportVerbosity = None | Short | Long
+
+reportVerbosity :: ReportVerbosity
+reportVerbosity = Long
+
+formatIReport :: ReportVerbosity -> [IReport] -> IO ()
+formatIReport rv ir = do
+  putStrLn "--- Begin Materialization Inference Report ---"
+  for_ ir $ \(IReport (Juncture u i) d m) -> case reportVerbosity of
+    None -> return ()
+    Short -> printf "J%d/%s/%s: %s\n" (gUID u) i (show d) (ppShortE m)
+    Long -> printf "--- Juncture %d/%s/%s:\n%s" (gUID u) i (show d) (pretty m)
+  putStrLn "--- End Materialization Inference Report ---"
 
 -- ** Errors
 newtype IError = IError String
