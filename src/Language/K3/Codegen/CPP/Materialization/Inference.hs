@@ -61,7 +61,7 @@ optimizeMaterialization (p, f) d = runExceptT $ inferMaterialization >>= solveMa
     Left (SError msg) -> throwError msg
     Right (_, SState mp) -> return mp
    where
-    solveAction = (mkDependencyList ct >>= traverse_ (\k -> solveForE (ct M.! k) >>= setMethod k e))
+    solveAction = (mkDependencyList ct >>= traverse_ (\k -> solveForE (ct M.! k) >>= setMethod k))
 
   attachMaterialization k m = return $ attachD <$> k
    where
