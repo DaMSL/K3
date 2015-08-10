@@ -39,7 +39,7 @@ class ProgramContext : public StandardBuiltins,
   // Program initialization
   virtual void __patch(const YAML::Node& node);
   virtual unit_t initDecls(unit_t) = 0;
-  virtual unit_t processRole(const unit_t&) = 0;
+  virtual unit_t processRole(const unit_t&) const = 0;
 
   // Logging Helper Function
   virtual map<string, string> __prettify();
