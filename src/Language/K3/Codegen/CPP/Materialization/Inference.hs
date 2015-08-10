@@ -135,9 +135,6 @@ newtype IError = IError String
 
 -- * Helpers
 
-anon :: Identifier
-anon = "!"
-
 dUID :: K3 Declaration -> InferM UID
 dUID d = maybe (throwError $ IError "Invalid UID") (\(DUID u) -> return u) (d @~ isDUID)
 
@@ -208,12 +205,10 @@ materializeE e@(Node (t :@: _) cs) = case t of
       return (ci', cb')
 
     fProv <- ePrv e >>= contextualizeNow
-    nrvo <- occursIn ci fProv
 
     (ehw, _) <- hasWriteIn ci cb
 
     constrain u i In $ mITE ehw (mAtom Copied) (mAtom ConstReferenced)
-    constrain u i Ex $ mITE nrvo (mAtom Moved) (mAtom Copied)
 
     cls <- ePrv e >>= \case
       (tag -> PLambda _ cls) -> return cls
@@ -233,6 +228,10 @@ materializeE e@(Node (t :@: _) cs) = case t of
         Nothing -> return $ mBool True -??- "Temporary."
 
       constrain u name In $ mITE (needsOwn -&&- ownContext) (mAtom Moved) (mAtom Copied)
+
+    clps <- sequence [withNearestBind u (contextualizeNow $ pbvar m) | m <- cls]
+    nrvo <- mOr <$> traverse (`occursIn` fProv) (ci:clps)
+    constrain u anon Ex $ mITE nrvo (mAtom Moved) (mAtom Copied)
 
   EOperate OApp -> do
     let [f, x] = cs

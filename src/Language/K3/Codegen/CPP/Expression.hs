@@ -255,7 +255,7 @@ inline e@(tag -> ELambda _) = do
     let (outerFExpr, innerFExpr) = (head &&& last) fExprs
     let (outerArg, innerArg) = (getArg outerFExpr, getArg innerFExpr)
 
-    let nrvo = getInMethodFor innerArg innerFExpr == Moved
+    let nrvo = getExMethodFor anon innerFExpr == Moved
 
     body <- reify (RReturn nrvo) b
 

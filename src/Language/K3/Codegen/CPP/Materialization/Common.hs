@@ -15,3 +15,6 @@ rollLambdaChain e = ([], e)
 rollAppChain :: K3 Expression -> (K3 Expression, [K3 Expression])
 rollAppChain e@(tag &&& children -> (EOperate OApp, [f, x])) = let (f', xs) = rollAppChain f in (f', xs ++ [e])
 rollAppChain e = (e, [])
+
+anon :: Identifier
+anon = "!"
