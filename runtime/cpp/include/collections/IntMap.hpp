@@ -159,7 +159,7 @@ class IntMap {
       if (existing == nullptr) {
         mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec)));
       } else {
-        *existing = f(std::move(*existing))(rec);
+        *existing = f(std::move(*existing), rec);
       }
     }
     return unit_t{};
