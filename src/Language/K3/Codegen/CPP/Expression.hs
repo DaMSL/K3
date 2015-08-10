@@ -342,13 +342,15 @@ inline e@(tag -> EOperate OApp) = do
 
   gs <- mapM (const genSym) xs
 
-  let argDecls = [ R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred)
-                     (Just $ gMoveByDE (getInMethodFor "!" m) x xv)
-                 | g <- gs
-                 | xv <- xvs
-                 | x <- xs
-                 | m <- as
-                 ]
+  let argDecl g x xv m = do
+        gs <- gets globals
+        return $ case x of
+          (tag -> EVariable i) | i `elem` map fst gs -> ([], xv)
+          _ -> ([R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just $ gMoveByDE (getInMethodFor "!" m) x xv)]
+               , R.Variable $ R.Name g
+               )
+
+  (argDecls, argPasses) <- unzip <$> sequence [argDecl g x xv m | g <- gs | xv <- xvs | x <- xs | m <- as]
 
   let eName i = maybe (return i) (const $ getKType e >>= genCType >>= \rt -> return $ R.Specialized [rt] i)
                   (f @~ CArgs.isErrorFn)
@@ -357,7 +359,7 @@ inline e@(tag -> EOperate OApp) = do
            R.Variable i -> R.Variable <$> eName i
            _ -> return fv
 
-  return (fe ++ concat xes ++ argDecls , R.Call fv' (map (R.Variable . R.Name) gs))
+  return (fe ++ concat xes ++ concat argDecls , R.Call fv' argPasses)
 
 inline e@(tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
     d <- genSym
