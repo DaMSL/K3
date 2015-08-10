@@ -138,6 +138,9 @@ newtype IError = IError String
 anon :: Identifier
 anon = "!"
 
+dUID :: K3 Declaration -> InferM UID
+dUID d = maybe (throwError $ IError "Invalid UID") (\(DUID u) -> return u) (d @~ isDUID)
+
 eUID :: K3 Expression -> InferM UID
 eUID e = maybe (throwError $ IError "Invalid UID") (\(EUID u) -> return u) (e @~ isEUID)
 
@@ -167,7 +170,8 @@ bindPoint (Contextual p u) = case tag p of
 -- TODO: Add constraint between decision for declaration and root expression of initializer.
 materializeD :: K3 Declaration -> InferM ()
 materializeD d = case tag d of
-  DGlobal _ _ (Just e) -> materializeE e
+  DGlobal i _ (Just e) -> materializeE e >> dUID d >>= \u -> constrain u i In (mAtom Referenced -??- "Hack")
+  DGlobal i _ Nothing -> dUID d >>= \u -> constrain u i In (mAtom Referenced -??- "Hack")
   DTrigger _ _ e -> materializeE e
   _ -> traverse_ materializeD (children d)
 
