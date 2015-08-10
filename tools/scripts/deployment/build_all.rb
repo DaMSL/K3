@@ -199,7 +199,24 @@ def check(folders)
   end
 end
 
-if __FILE__ == $0
+def postprocess()
+  puts "Summary"
+  for key, val in $stats
+    sum = val.reduce(:+)
+    cnt = val.size
+    avg = 1.0 * sum / cnt
+    var = val.map{|x| (x - avg) * (x - avg)}.reduce(:+) / (1.0 * cnt)
+    dev = Math.sqrt(var)
+    puts "\t#{key} => Succesful Trials: #{cnt}/#{$options[:trials]}. Avg: #{avg}. StdDev: #{dev}"
+  end
+end
+
+def main()
+  STDOUT.sync = true
+  $options = { :workdir => ".", :trials => 1, :correctdir => "/local/correct/correct/" }
+  $stats = {}
+  usage = "Usage: #{$PROGRAM_NAME} options"
+
   if ARGF.argv.empty?
     puts "usage: #{$0} path/to/build/dir"
     exit
@@ -213,3 +230,6 @@ if __FILE__ == $0
   folders = harvest(statuses, ARGF.argv[0])
   check(folders)
 end
+
+if __FILE__ == $0
+  main
