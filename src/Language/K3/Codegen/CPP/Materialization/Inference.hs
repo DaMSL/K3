@@ -504,11 +504,12 @@ findDependenciesP p = case tag p of
 topoSortWithDependencySets :: M.Map DKey (S.Set DKey) -> SolverM [DKey]
 topoSortWithDependencySets m
   | M.null m = return []
-  | M.null rootSet = throwError $ SError $ "cycle in materialization dependencies." ++ show remaining
+  | M.null rootSet = throwError $ SError $ "cycle in materialization dependencies." ++ show remaining ++ show missingVariables
   | otherwise = (M.keys rootSet ++) <$> topoSortWithDependencySets reducedMap
  where
-   (rootSet, remaining) = M.partition S.null m
-   reducedMap = M.map (S.\\ (M.keysSet rootSet)) remaining
+  (rootSet, remaining) = M.partition S.null m
+  reducedMap = M.map (S.\\ (M.keysSet rootSet)) remaining
+  missingVariables = S.unions (M.elems m) S.\\ M.keysSet m
 
 -- ** Solving
 solveForE :: K3 MExpr -> SolverM Method
