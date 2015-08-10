@@ -163,7 +163,7 @@ class StrMap {
         insert(rec);
       } else {
         auto* v = static_cast<R*>(map_str_get(m, existing));
-        *v = f(std::move(*v))(rec);
+        *v = f(std::move(*v), rec);
         map_str_stabilize_key(m, existing, v->key.begin());
       }
     }
