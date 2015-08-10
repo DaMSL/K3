@@ -119,7 +119,7 @@ logR j d m = tell [IReport { juncture = j, direction = d, constraint = m }]
 data ReportVerbosity = None | Short | Long
 
 reportVerbosity :: ReportVerbosity
-reportVerbosity = Long
+reportVerbosity = None
 
 formatIReport :: ReportVerbosity -> [IReport] -> IO ()
 formatIReport rv ir = do
