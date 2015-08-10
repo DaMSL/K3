@@ -30,6 +30,7 @@ module Language.K3.Codegen.CPP.Representation (
     pattern ThrowRuntimeErr,
 
     bind,
+    flattenFnType,
 
     Declaration(..),
     Statement(..),
@@ -135,6 +136,12 @@ pattern UniquePointer t = Named (Specialized [t] (Name "unique_ptr"))
 pattern Unit = Named (Name "unit_t")
 pattern Tuple ts = Named (Specialized ts (Qualified (Name "std") (Name "tuple")))
 pattern Void = Named (Name "void")
+
+flattenFnType :: Type -> Type
+flattenFnType (Function ts rt) = case flattenFnType rt of
+  Function ts' rt' -> Function (ts ++ ts') rt'
+  t -> Function ts t
+flattenFnType t = t
 
 instance Stringifiable Type where
     stringify Inferred = "auto"
