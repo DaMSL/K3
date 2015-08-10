@@ -1572,11 +1572,12 @@ sqlstages distributed prog = do
 
     stageD _ _ acc ch n@((@~ isSqlQueryResultProp) -> Just (EProperty (Left (_, Just (tag -> LString stgid))))) =
       case n of
+        PAssign _ (PJoin _ _ _ _ _) _ -> annotateDJoin stgid (replaceCh n ch) >>= return . (aconcat acc,)
         PAssign _ (PEJoin _ _ _ _ _ _) _ -> annotateDEJoin stgid (replaceCh n ch) >>= return . (aconcat acc,)
         PAssign _ (PGroupBy _ _ _ _ gbAs) _ -> annotateDGroupBy gbAs stgid (replaceCh n ch) >>= return . (aconcat acc,)
         _ -> return (aconcat acc, replaceCh n ch)
 
-    stageD _ symOpt acc ch n@(PJoin _ _ _ _ _)       = mkStage 2 (Right annotateJoin) symOpt acc ch n
+    stageD _ symOpt acc ch n@(PJoin _ _ _ _ _)       = mkStage 2 (Right $ (\a _ c -> annotateDJoin a c)) symOpt acc ch n
     stageD _ symOpt acc ch n@(PEJoin _ _ _ _ _ _)    = mkStage 2 (Right $ (\a _ c -> annotateDEJoin a c)) symOpt acc ch n
     stageD _ symOpt acc ch n@(PGroupBy _ _ _ _ gbAs) = mkStage 1 (Right $ (\a _ c -> annotateDGroupBy gbAs a c)) symOpt acc ch n
 
@@ -1585,6 +1586,9 @@ sqlstages distributed prog = do
       in return (nacc, replaceCh n ch)
 
     stageD _ _ acc ch n = return (aconcat acc, replaceCh n ch)
+
+    annotateDJoin stgid bodye =
+      return $ bodye @+ (EApplyGen True "BroadcastJoin" $ Map.fromList [("lbl", SLabel stgid)])
 
     annotateDEJoin stgid bodye =
       return $ bodye @+ (EApplyGen True "DistributedHashJoin" $ Map.fromList [("lbl", SLabel stgid)])

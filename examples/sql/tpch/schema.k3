@@ -68,7 +68,7 @@ typedef part_r = {
       p_mfgr             : string,
       p_brand            : string,
       p_type             : string,
-      p_p_size           : int,
+      p_size             : int,
       p_container        : string,
       p_retailprice      : real,
       p_comments         : string

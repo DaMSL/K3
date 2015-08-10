@@ -1,0 +1,86 @@
+include "tpch/benchmark.k3"
+include "Annotation/Set.k3"
+include "Distributed/SQLTransformers.k3"
+
+// Relations / Loaders
+declare master: address
+declare lineitem: mut lineitem_bag
+declare orders: mut collection {elem: orders_r} @Collection
+@:CArgs 2
+declare ordersLoaderPE: collection {path: string} @Collection -> collection {elem: orders_r} @Collection -> ()
+
+// Helpers
+declare valid_orderdate: {elem: orders_r} -> bool = \oe -> (
+  (oe.elem.o_orderdate >= 19930701) and (oe.elem.o_orderdate < 19931001)
+)
+
+// Intermediates
+declare lineitem_orders: mut collection {elem: string} @Collection
+declare local_aggs : mut collection {key: string, value: int} @Collection
+
+trigger q4_stage1: () = \_ -> (
+  (lineitem_orders = (((lineitem.filter
+                 (\l -> l.l_commitdate < l.l_receiptdate)
+               )
+               .groupBy
+                 (\l -> l.l_orderkey)
+                 (\_ -> \_ -> () )
+                 ()
+               )
+               .equijoin
+                 (orders.filter valid_orderdate)
+                 (\lkv -> lkv.key)
+                 (\oe -> oe.elem.o_orderkey)
+                 (\lkv -> \oe -> oe.elem.o_orderpriority)
+               ));
+  (q4_stage2, me) <- ()
+) @DistributedHashJoin2(lbl=[# lo])
+
+trigger q4_stage2: () = \_ -> (
+  local_aggs =
+    (lineitem_orders.groupBy
+      (\e -> e.elem)
+      (\a -> \_ -> a + 1)
+      0);
+  (q4_finalize, me) <- ()
+) @DistributedGroupBy2(lbl=[# lo_groupby], merge=[$ \a -> \b -> a + b])
+
+trigger q4_finalize: () = \_ -> (
+  (() @:Result) @TPCHBenchmarkWithoutMaster
+)
+
+declare post_process: collection {key: address, value: collection {key: string, value: int} @Collection} @Map -> () = \x -> (
+  x.iterate (\kv1 ->
+    kv1.value.iterate (\kv2 ->
+      (results_sink, me) <- (kv2.key, kv2.value)
+    )
+  )
+)
+
+// TODO loaders with pushdown
+trigger start: () = \_ -> (
+  (() @:Start) @TPCHBenchmarkWithoutMaster(
+    nodes                = [$ peers],
+    loadExpr             = [$ lineitemLoaderP lineitemFiles lineitem;
+                              ordersLoaderPE ordersFiles orders
+                           ],
+    preLoadExpr          = [$ ()],
+    preReadyExpr         = [$ ()],
+    onReadyExpr          = [$ peers.iterate (\p -> (q4_stage1, p.addr) <- () )],
+    finishArgT           = [: ()],
+    preTestFinishExpr    = [$ (\_ -> () )],
+    preFinishExpr        = [$ (ignore local_aggs) @GatherCollection(
+                                                    lbl   = [# groupby],
+                                                    nodes = [$ peers],
+                                                    next  = [$ (\a -> (post_process a; peers.iterate (\p -> (shutdown, p.addr) <- ()) ))])
+                           ],
+    preShutdownExpr      = [$ ()],
+    finishAsShutdownExpr = [$ false]
+  )
+)
+
+sink results_sink: (string, int) = file "results.csv" text psv
+sink query_time_sink: int = file "time.csv" text csv
+
+source rows : () = value ()
+feed rows |> start
