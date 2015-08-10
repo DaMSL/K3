@@ -1,0 +1,99 @@
+include "tpch/benchmark.k3"
+include "Annotation/Set.k3"
+include "Distributed/SQLTransformers.k3"
+
+// Relations / Loaders
+declare master: address
+declare lineitem: mut collection {elem: lineitem_r} @Collection
+declare part: mut collection {elem: part_r} @Collection
+@:CArgs 2
+declare partLoaderPE: collection {path: string} @Collection -> collection {elem: part_r} @Collection -> ()
+@:CArgs 2
+declare lineitemLoaderPE: collection {path: string} @Collection -> collection {elem: lineitem_r} @Collection -> ()
+
+// Helpers
+declare valid_part: {elem: part_r} -> bool = \pe -> (
+  pe.elem.p_brand == "Brand#23"
+//  and pe.elem.p_container == "MED BOX"
+)
+
+// Intermediates
+// TODO tuple vs record for value
+declare avgs: mut collection {key: int, value: {count: real, sum: real}} @Collection
+declare lineitem_avgs: mut collection {elem: {partkey: int, quantity: real, average: real, ep: real}} @Collection
+declare aggs: mut collection {elem: real} @Collection
+
+// Compute avg extendedprice group by partkey
+trigger q17_stage1: () = \_ -> (
+  (avgs =
+    (lineitem.groupBy
+      (\le -> le.elem.l_partkey)
+      (\a -> \le -> {count: a.count + 1, sum: a.sum + le.elem.l_extendedprice})
+      {count: 0.0, sum: 0.0}
+    ));
+  (q17_stage2, me) <- ()
+) @DistributedGroupBy2(lbl=[# lineitem_groupby], merge=[$ \a -> \b -> {count: a.count + b.count, sum: a.sum + b.sum}])
+
+// Filter lineitem to only those where quantity < .2*avg. Then join with part
+trigger q17_stage2: () = \_ -> (
+  lineitem_avgs =
+    (avgs.equijoin
+           lineitem
+           (\avg -> avg.key)
+           (\le -> le.elem.l_partkey)
+           (\avg -> \le -> {partkey: avg.key, quantity: le.elem.l_quantity, average: (avg.value.sum / avg.value.count), ep: le.elem.l_extendedprice})
+         );
+  (q17_stage3, me) <- ()
+) @DistributedHashJoin2(lbl=[#lineitem_avgs])
+
+trigger q17_stage3: () = \_ -> ()
+//  aggs =
+//    (((lineitem_avgs.filter
+//                    (\le -> le.elem.quantity < (0.2 * le.elem.avg))
+//                  )
+//                  .groupBy
+//                    (\le -> le.elem.partkey)
+//                    (\a -> \le -> a + le.elem.ep)
+//                    0.0
+//                  )
+//    .equijoin
+//      (part.filter valid_part)
+//      (\lkv -> lkv.key)
+//      (\pe -> pe.elem.p_partkey)
+//      (\lkv -> \pe -> lkv.value)
+//    );
+//  (local_sum, me) <- ()
+//)
+//
+//trigger local_sum: () = \_ -> (
+//  let result =
+//    aggs.fold
+//      (\a -> \e -> a + e.elem)
+//      0.0
+//  in ignore ((result @:Result) @TPCHBenchmarkWithoutMaster)
+//)
+
+declare total: mut real = 0.0
+// TODO loaders with pushdown
+trigger start: () = \_ -> (
+  (() @:Start) @TPCHBenchmarkWithoutMaster(
+    nodes                = [$ peers],
+    loadExpr             = [$ lineitemLoaderPE lineitemFiles lineitem;
+                              partLoaderPE partFiles part
+                           ],
+    preLoadExpr          = [$ ()],
+    preReadyExpr         = [$ ()],
+    onReadyExpr          = [$ peers.iterate (\p -> (q17_stage1, p.addr) <- () )],
+    finishArgT           = [: real],
+    preTestFinishExpr    = [$ (\x -> total = total + x)],
+    preFinishExpr        = [$ (results_sink, me) <- total],
+    preShutdownExpr      = [$ ()],
+    finishAsShutdownExpr = [$ true]
+  )
+)
+
+sink results_sink: real = file "results.csv" text psv
+sink query_time_sink: int = file "time.csv" text csv
+
+source rows : () = value ()
+feed rows |> start

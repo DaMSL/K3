@@ -1,0 +1,121 @@
+include "tpch/benchmark.k3"
+include "Annotation/Set.k3"
+include "Distributed/SQLTransformers.k3"
+
+// Relations / Loaders
+declare master: address
+declare customer: mut collection {elem: customer_r} @Collection
+declare nation: mut collection {elem: nation_r} @Collection
+declare orders: mut collection {elem: orders_r} @Collection
+declare lineitem: mut lineitem_bag
+
+@:CArgs 2
+declare customerLoaderPE: collection {path: string} @Collection -> collection {elem: customer_r} @Collection -> ()
+@:CArgs 2
+declare ordersLoaderPE: collection {path: string} @Collection -> collection {elem: orders_r} @Collection -> ()
+@:CArgs 2
+declare nationLoaderPE: collection {path: string} @Collection -> collection {elem: nation_r} @Collection -> ()
+
+// Helpers
+declare valid_orderdate: {elem: orders_r} -> bool = \oe -> (
+  (oe.elem.o_orderdate >= 19931001) and (oe.elem.o_orderdate < 19940101)
+)
+
+// Intermediates
+declare lo : mut collection {elem: {custkey: int, orderkey: int, revenue: real}} @Collection
+declare locn: mut collection {elem: {okey: int, ckey: {c_custkey: int, c_name: string, c_acctbal: real, c_address: string, n_name: string, c_phone: string, c_comments: string}, revenue: real}} @Collection 
+declare locn_agg : mut collection {key: {c_custkey: int, c_name: string, c_acctbal: real, c_address: string, n_name: string, c_phone: string, c_comments: string}, value: real} @Collection
+
+// Triggers
+// TODO consider deep plan (N-C JOIN O JOIN L)
+trigger q10_stage1: () = \_ -> (
+  lo = 
+    (((lineitem.filter 
+      (\l -> l.l_returnflag == "R")
+    ).groupBy
+      (\l -> l.l_orderkey)
+      (\a -> \e -> a + (e.l_extendedprice * (1 - e.l_discount)))
+      0.0
+    ).equijoin
+      (orders.filter valid_orderdate)
+      (\lkv -> lkv.key)
+      (\oe -> oe.elem.o_orderkey)
+      (\lkv -> \oe -> {custkey: oe.elem.o_custkey, orderkey: lkv.key, revenue: lkv.value})
+    );
+  (q10_stage2, me) <- ()
+) @DistributedHashJoin2(lbl=[# lo])
+
+trigger q10_stage2: () = \_ -> (
+  locn = 
+    (lo.equijoin
+      (customer.equijoin
+        nation
+        (\ce -> ce.elem.c_nationkey)
+        (\ne -> ne.elem.n_nationkey)
+        (\ce -> \ne -> {c_custkey: ce.elem.c_custkey, c_name: ce.elem.c_name, c_acctbal: ce.elem.c_acctbal, c_address: ce.elem.c_address, n_name: ne.elem.n_name, c_phone: ce.elem.c_phone, c_comments: ce.elem.c_comments})
+      )
+    (\loe -> loe.elem.custkey)
+    (\cne -> cne.elem.c_custkey)
+    (\loe -> \cne -> {okey: loe.elem.orderkey, ckey: cne.elem, revenue: loe.elem.revenue})
+    );
+  (q10_stage3, me) <- () 
+) @DistributedHashJoin2(lbl=[# locn])
+
+trigger q10_stage3: () = \_ -> (
+  locn_agg = 
+    (locn.groupBy
+      (\locne -> locne.elem.ckey)
+      (\a -> \e -> a + e.elem.revenue)
+      0.0);
+  (q10_finalize, me) <- ()
+) @DistributedGroupBy2(lbl=[#locn_groupby], merge=[$ (\a -> \b -> a + b) ])
+
+trigger q10_finalize: () = \_ -> (
+  (() @:Result) @TPCHBenchmarkWithoutMaster
+)
+
+typedef final_agg = collection {key: {c_custkey: int, c_name: string, c_acctbal: real, c_address: string, n_name: string, c_phone: string, c_comments: string}, value: real} @Collection
+declare post_process: collection {key: address, value: final_agg} @Map -> () = \x -> (
+  x.iterate (\kv1 ->
+    kv1.value.iterate (\kv2 ->
+      (results_sink, me) <- ( kv2.key.c_custkey
+                            , kv2.key.c_name
+                            , kv2.value
+                            , kv2.key.c_acctbal
+                            , kv2.key.n_name
+                            , kv2.key.c_address
+                            , kv2.key.c_phone
+                            , kv2.key.c_comments )
+    )
+  )
+)
+
+// TODO loaders with pushdown
+trigger start: () = \_ -> (
+  (() @:Start) @TPCHBenchmarkWithoutMaster(
+    nodes                = [$ peers],
+    loadExpr             = [$ customerLoaderPE customerFiles customer; 
+                              lineitemLoaderP lineitemFiles lineitem;
+                              nationLoaderPE nationFiles nation;
+                              ordersLoaderPE ordersFiles orders
+                           ],
+    preLoadExpr          = [$ ()],
+    preReadyExpr         = [$ ()],
+    onReadyExpr          = [$ peers.iterate (\p -> (q10_stage1, p.addr) <- () )],
+    finishArgT           = [: ()],
+    preTestFinishExpr    = [$ (\_ -> () )],
+    preFinishExpr        = [$ (ignore locn_agg) @GatherCollection(
+                                                    lbl   = [# groupby],
+                                                    nodes = [$ peers],
+                                                    next  = [$ (\a -> (post_process a; peers.iterate (\p -> (shutdown, p.addr) <- ()) ))])
+                           ],
+    preShutdownExpr      = [$ ()],
+    finishAsShutdownExpr = [$ false]
+  )
+)
+
+sink results_sink: (int, string, real, real, string, string, string, string) = file "results.csv" text psv
+sink query_time_sink: int = file "time.csv" text csv
+
+source rows : () = value ()
+feed rows |> start

@@ -1,0 +1,120 @@
+include "tpch/benchmark.k3"
+include "Annotation/Set.k3"
+include "Distributed/SQLTransformers.k3"
+
+// Relations / Loaders
+declare master: address
+declare lineitem: mut lineitem_bag
+declare part: mut collection {elem: part_r} @Collection
+@:CArgs 2
+declare partLoaderPE: collection {path: string} @Collection -> collection {elem: part_r} @Collection -> ()
+
+// Helpers 
+declare valid_lineitem_prejoin: lineitem_r -> bool = \l -> (
+  ((l.l_shipmode == "AIR") or (l.l_shipmode == "AIR REG"))
+  and (l.l_shipinstruct == "DELIVER IN PERSON")
+  and (l.l_quantity >= 1)
+  and (l.l_quantity <= 30)
+)
+
+typedef lp_r = {elem: {partkey: int, quantity: real, brand: string, container: string, size: int, revenue: real}}
+
+declare valid1: lp_r -> bool = \lpe -> (
+  (lpe.elem.brand == "Brand#12")
+  and ( (lpe.elem.container == "SM CASE" or lpe.elem.container == "SM BOX" or lpe.elem.container == "SM PACK" or lpe.elem.container == "SM PKG") )
+  and (lpe.elem.quantity >= 1)
+  and (lpe.elem.quantity <= 11)
+  and (lpe.elem.size >= 1)
+  and (lpe.elem.size <= 5)
+)
+
+declare valid2: lp_r -> bool = \lpe -> (
+  (lpe.elem.brand == "Brand#23")
+  and ( (lpe.elem.container == "MED BAG" or lpe.elem.container == "MED BOX" or lpe.elem.container == "MED PKG" or lpe.elem.container == "MED PACK") )
+  and (lpe.elem.quantity >= 10)
+  and (lpe.elem.quantity <= 20)
+  and (lpe.elem.size >= 1)
+  and (lpe.elem.size <= 10)
+)
+
+declare valid3: lp_r -> bool = \lpe -> (
+  (lpe.elem.brand == "Brand#34")
+  and ( (lpe.elem.container == "LG CASE" or lpe.elem.container == "LG BOX" or lpe.elem.container == "LG PACK" or lpe.elem.container == "LG PKG") )
+  and (lpe.elem.quantity >= 20)
+  and (lpe.elem.quantity <= 30)
+  and (lpe.elem.size >= 1)
+  and (lpe.elem.size <= 15)
+)
+
+declare valid_or: lp_r -> bool = \x -> (
+  valid1 x
+  or valid2 x
+  or valid3 x
+)
+
+// Intermediates
+declare partials: mut collection lp_r @Collection
+
+// TODO should the pre-aggregation be removed?
+trigger q19: () = \_ -> (
+  partials =
+    (((lineitem.filter
+                 valid_lineitem_prejoin
+               )
+               .groupBy
+                 (\l -> {partkey: l.l_partkey, quantity: l.l_quantity})
+                 (\a -> \e -> a + (e.l_extendedprice * (1.0 - e.l_discount)))
+                 0.0
+               )
+               .equijoin
+                 part
+                 (\lkv -> lkv.key.partkey)
+                 (\pe -> pe.elem.p_partkey )
+                 (\lkv -> \pe ->
+                   { partkey: lkv.key.partkey,
+                     quantity: lkv.key.quantity,
+                     brand: pe.elem.p_brand,
+                     container: pe.elem.p_container,
+                     size: pe.elem.p_size,
+                     revenue: lkv.value
+                   }
+                 )
+               );
+  (local_sum, me) <- ()
+) @DistributedHashJoin2(lbl=[# lineitem_part])
+
+trigger local_sum: () = \_ -> (
+  let result =
+    (partials
+      .filter valid_or)
+      .fold
+        (\a -> \e -> a + e.elem.revenue )
+        0.0
+  in ignore ((result @:Result) @TPCHBenchmarkWithoutMaster)
+)
+
+declare total: mut real = 0.0
+
+// TODO loaders with pushdown
+trigger start: () = \_ -> (
+  (() @:Start) @TPCHBenchmarkWithoutMaster(
+    nodes                = [$ peers],
+    loadExpr             = [$ lineitemLoaderP lineitemFiles lineitem;
+                              partLoaderPE partFiles part
+                           ],
+    preLoadExpr          = [$ ()],
+    preReadyExpr         = [$ ()],
+    onReadyExpr          = [$ peers.iterate (\p -> (q19, p.addr) <- () )],
+    finishArgT           = [: real],
+    preTestFinishExpr    = [$ (\x -> total = total + x)],
+    preFinishExpr        = [$ (results_sink, me) <- total],
+    preShutdownExpr      = [$ ()],
+    finishAsShutdownExpr = [$ true]
+  )
+)
+
+sink results_sink: real = file "results.csv" text psv
+sink query_time_sink: int = file "time.csv" text csv
+
+source rows : () = value ()
+feed rows |> start

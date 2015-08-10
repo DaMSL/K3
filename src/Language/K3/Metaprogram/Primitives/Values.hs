@@ -156,3 +156,18 @@ equijoinMapType _ _ = error "Invalid key/value types for equijoin map type"
 equijoinEmptyMap :: SpliceValue -> SpliceValue -> SpliceValue
 equijoinEmptyMap (SType (tnc -> (TFunction, [_, kt]))) (SType vt) = SExpr $ (EC.empty $ TC.record [("key", kt), ("value", vt)]) @+ EAnnotation "Map"
 equijoinEmptyMap _ _ = error "Invalid key/value types for equijoin empty map"
+
+broadcastJoinLHSVar :: SpliceValue -> SpliceValue -> SpliceValue
+broadcastJoinLHSVar (SLabel lbl) (SExpr e) = case tag e of
+    EVariable _ -> SExpr e
+    _ -> SExpr $ EC.variable $ lbl ++ "_lhs"
+
+broadcastJoinLHSVar _ _ = error "Invalid broadcast join lhsvar arguments"
+
+broadcastjoinMaterialize :: SpliceValue -> SpliceValue -> SpliceValue
+broadcastjoinMaterialize (SLabel lbl) (SExpr e) = case tag e of
+    EVariable _ -> SExpr $ EC.unit
+    _ -> SExpr $ EC.assign (lbl ++ "_lhs") e
+
+broadcastjoinMaterialize _ _ = error "Invalid broadcast join materialization arguments"
+

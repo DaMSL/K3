@@ -8,7 +8,9 @@
 namespace K3 {
 
 StandardBuiltins::StandardBuiltins(Engine& engine)
-    : __engine_(engine), __mutex_() {}
+    : __engine_(engine) {}
+
+boost::mutex StandardBuiltins::__mutex_;
 
 unit_t StandardBuiltins::print(string_impl message) {
   boost::lock_guard<boost::mutex> lock(__mutex_);

@@ -1,0 +1,144 @@
+include "tpch/benchmark.k3"
+include "Annotation/Set.k3"
+include "Distributed/SQLTransformers.k3"
+
+// Relations / Loaders
+declare master: address
+declare partsupp: mut collection {elem: partsupp_r} @Collection
+declare part: mut collection {elem: part_r} @Collection
+declare supplier: mut collection {elem: supplier_r} @Collection
+declare nation: mut collection {elem: nation_r} @Collection
+declare lineitem: mut lineitem_bag
+
+@:CArgs 2
+declare partsuppLoaderPE: collection {path: string} @Collection -> collection {elem: partsupp_r} @Collection -> ()
+@:CArgs 2
+declare partLoaderPE: collection {path: string} @Collection -> collection {elem: part_r} @Collection -> ()
+@:CArgs 2
+declare supplierLoaderPE: collection {path: string} @Collection -> collection {elem: supplier_r} @Collection -> ()
+@:CArgs 2
+declare nationLoaderPE: collection {path: string} @Collection -> collection {elem: nation_r} @Collection -> ()
+
+// Helpers
+declare valid_lineitem: lineitem_r -> bool = \l -> (
+  (l.l_shipdate >= 19940101)
+  and (l.l_shipdate <= 19950101)
+)
+
+declare valid_part: {elem: part_r} -> bool = \pe -> (
+  (regex_match_int "forest.*" pe.elem.p_name) == 1
+)
+
+declare high_qty: {elem: {partkey: int, suppkey: int, qty: int, sum_qty: real}} -> bool = \x -> (
+  x.elem.qty > x.elem.sum_qty
+)
+
+// Intermediates
+declare l_ps: mut collection {elem: {partkey: int, suppkey: int, qty: int, sum_qty: real}} @Collection
+declare l_ps_p: mut collection {elem: int} @Collection
+declare l_ps_p_distinct: mut collection {key: int, value: ()} @Collection
+declare result: mut collection {elem: {name: string, address: string}} @Collection
+
+// Triggers
+trigger q20_stage1: () = \_ -> (
+  l_ps =
+    ((lineitem.filter
+                 valid_lineitem
+               )
+               .groupBy
+                 (\l -> {partkey: l.l_partkey, suppkey: l.l_suppkey})
+                 (\a -> \e -> a + (0.5 * e.l_quantity) )
+                 0.0
+               )
+               .equijoin
+                 partsupp
+                 (\lkv -> lkv.key)
+                 (\pse -> {partkey: pse.elem.ps_partkey, suppkey: pse.elem.ps_suppkey})
+                 (\lkv -> \pse -> {partkey: pse.elem.ps_partkey, suppkey: pse.elem.ps_suppkey, qty: pse.elem.ps_availqty, sum_qty: lkv.value}
+               );
+    (q20_stage2, me) <- ()
+) @DistributedHashJoin2(lbl=[# l_ps])
+
+trigger q20_stage2: () = \_ -> (
+  l_ps_p =
+    ((l_ps.filter
+            high_qty
+          )
+          .equijoin
+            (part.filter valid_part)
+            (\lpse -> lpse.elem.partkey)
+            (\pe -> pe.elem.p_partkey)
+            (\lpse -> \_ -> lpse.elem.suppkey)
+          );
+  (q20_stage3, me) <- ()
+) @DistributedHashJoin2(lbl=[#l_ps_p])
+
+// TODO is this DISTINCT necessary (alternatively, could it be applied to the last stage instead?)
+trigger q20_stage3: () = \_ -> (
+  l_ps_p_distinct =
+    (l_ps_p.groupBy
+             (\lpspe -> lpspe.elem)
+             (\_ -> \_ -> () )
+             ()
+           );
+  (q20_stage4, me) <- ()
+) @DistributedGroupBy2(lbl=[# lpspdistinct], merge=[$ \_ -> \_ -> ()])
+
+trigger q20_stage4: () = \_ -> (
+  result =
+    (l_ps_p_distinct.equijoin
+                      (supplier.equijoin
+                                 (nation.filter (\ne -> ne.elem.n_name == "CANADA"))
+                                 (\se -> se.elem.s_nationkey)
+                                 (\ne -> ne.elem.n_nationkey)
+                                 (\se -> \ne -> {suppkey: se.elem.s_suppkey, name: se.elem.s_name, address: se.elem.s_address})
+                      )
+                      (\kv -> kv.key)
+                      (\se -> se.elem.suppkey)
+                      (\kv -> \se -> {name: se.elem.name, address: se.elem.address})
+                   );
+  (q20_finalize, me) <- ()
+) @DistributedHashJoin2(lbl=[# lpspsn])
+
+trigger q20_finalize: () = \_ -> (
+  (() @:Result) @TPCHBenchmarkWithoutMaster
+)
+
+declare post_process: collection {key: address, value: collection {elem: {address: string, name: string}} @Collection} @Map -> () = \x -> (
+  x.iterate (\kv1 ->
+    kv1.value.iterate (\e ->
+      (results_sink, me) <- ( e.elem.name, e.elem.address)
+    )
+  )
+)
+
+// TODO loaders with pushdown
+trigger start: () = \_ -> (
+  (() @:Start) @TPCHBenchmarkWithoutMaster(
+    nodes                = [$ peers],
+    loadExpr             = [$ lineitemLoaderP lineitemFiles lineitem;
+                              partsuppLoaderPE partsuppFiles partsupp;
+                              supplierLoaderPE supplierFiles supplier;
+                              nationLoaderPE nationFiles nation;
+                              partLoaderPE partFiles part
+                           ],
+    preLoadExpr          = [$ ()],
+    preReadyExpr         = [$ ()],
+    onReadyExpr          = [$ peers.iterate (\p -> (q20_stage1, p.addr) <- () )],
+    finishArgT           = [: ()],
+    preTestFinishExpr    = [$ (\_ -> () )],
+    preFinishExpr        = [$ (ignore result) @GatherCollection(
+                                                    lbl   = [# groupby],
+                                                    nodes = [$ peers],
+                                                    next  = [$ (\a -> (post_process a; peers.iterate (\p -> (shutdown, p.addr) <- ()) ))])
+                           ],
+    preShutdownExpr      = [$ ()],
+    finishAsShutdownExpr = [$ false]
+  )
+)
+
+sink results_sink: (string, string) = file "results.csv" text psv
+sink query_time_sink: int = file "time.csv" text csv
+
+source rows : () = value ()
+feed rows |> start

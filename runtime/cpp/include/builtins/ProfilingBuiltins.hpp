@@ -3,6 +3,7 @@
 
 #include <string>
 #include <chrono>
+#include <atomic>
 
 #ifdef K3_PCM
 #include <cpucounters.h>

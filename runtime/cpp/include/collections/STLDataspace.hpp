@@ -192,7 +192,7 @@ class STLDS {
   auto join(Derived<R_elem<E>> other, F f, G g) const -> Derived<R_elem<RT<RT<G, Elem>, E>>> const {
     Derived<R_elem<RT<RT<G, Elem>, E>>> result;
     for (const auto& elem : container) {
-      for (const auto& otherelem : other.container) {
+      for (const auto& otherelem : other.getConstContainer()) {
         if ( f(elem)(otherelem) ) {
           result.insert(g(elem)(otherelem));
         }
@@ -213,7 +213,7 @@ class STLDS {
     }
 
     // Probe.
-    for (const auto& otherelem : other.container) {
+    for (const auto& otherelem : other.getConstContainer()) {
       RT<G,E> key(g(otherelem));
       auto it = lhsHT.find(key);
       if ( it != lhsHT.end() ) {
