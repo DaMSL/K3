@@ -274,7 +274,9 @@ inline e@(tag -> ELambda _) = do
                 ConstReferenced -> R.Reference $ R.Const R.Inferred
                 Referenced -> R.Reference R.Inferred
                 _ -> R.Inferred
-          in [R.Forward $ R.ScalarDecl (R.Name a) reifyType (Just $ R.Variable $ R.Name g)]
+          in [R.Forward $ R.ScalarDecl (R.Name a) reifyType
+               (Just $ R.SForward (R.ConstExpr $ R.Call (R.Variable $ R.Name "decltype") [R.Variable $ R.Name g])
+                         (R.Variable $ R.Name g))]
 
     let argReifications = concat [reifyArg a g | a <- argNames | g <- formalArgNames]
 

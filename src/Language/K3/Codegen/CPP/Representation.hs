@@ -28,6 +28,7 @@ module Language.K3.Codegen.CPP.Representation (
     pattern TGet,
     pattern Throw,
     pattern ThrowRuntimeErr,
+    pattern SForward,
 
     bind,
     flattenFnType,
@@ -242,6 +243,8 @@ pattern TGet e n = Call (Variable (Qualified (Name "std") (Specialized [TypeLit 
 pattern Throw e  = Call (Variable (Name "throw")) [e]
 pattern ThrowRuntimeErr s = Call (Variable (Name "throw"))
                               [Call (Variable (Qualified (Name "std") (Name "runtime_error"))) [s]]
+
+pattern SForward t e = Call (Variable (Qualified (Name "std") (Specialized [t] (Name "forward")))) [e]
 
 bind :: Expression -> Expression -> Int -> Expression
 bind f a 1 = Call f [a]
