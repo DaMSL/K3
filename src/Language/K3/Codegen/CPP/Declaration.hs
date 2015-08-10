@@ -60,35 +60,14 @@ declaration (tag -> DGlobal _ (tag &&& children -> (TForall _, [tag &&& children
 
 -- Global monomorphic function with direct implementations.
 declaration (tag -> DGlobal i t@(tag &&& children -> (TFunction, [ta, tr]))
-                      (Just e@(tag &&& children -> (ELambda x, [body])))) = do
-  ([], R.Lambda _ mits _ mrt b) <- inline e
-
-  let flattenFnType ft = case ft of
-        (tag &&& children -> (TFunction, [fta, ftr])) -> let (ftas, ftf) = flattenFnType ftr in (fta:ftas, ftf)
-        _ -> ([], ft)
-
-  let (argTypes, returnType) = flattenFnType t
-
-  returnCType <- genCType returnType
-
-  let templateVarTypes = ["_T" ++ show i | i <- [0..] | _ <- argTypes]
-
-  let copyTypeQualifiers ct = case ct of
-        R.Const ct' -> R.Const . copyTypeQualifiers ct'
-        R.Reference ct' -> R.Reference . copyTypeQualifiers ct'
-        R.RValueReference ct' -> R.RValueReference . copyTypeQualifiers ct'
-        _ -> id
-
-  let concreteArgList = flip map (zip templateVarTypes mits) $ \(at, (mi, lt)) ->
-        (mi, copyTypeQualifiers lt $ R.Named (R.Name at))
-
-  let (cAList, fDefnModifier) =
-        if i == "processRole"
-          then ([(Nothing, R.Reference $ R.Const $ R.Unit)], id)
-          else (concreteArgList, R.TemplateDefn (zip templateVarTypes $ repeat Nothing))
-
-  addForward $ R.FunctionDecl (R.Name i) (map snd cAList) returnCType
-  return [fDefnModifier $ R.FunctionDefn (R.Name i) cAList (Just returnCType) [] False b]
+                      (Just e@(tag &&& children -> (ELambda x, [body]))))
+  | i == "processRole" = do
+      ([], R.Lambda _ mits _ _ body) <- inline e
+      return $ [R.FunctionDefn (R.Name i) [(Nothing, R.Reference $ R.Const $ R.Unit)] (Just R.Unit) [] True body]
+  | otherwise = do
+      ([], e') <- inline e
+      ct <- R.flattenFnType <$> genCType t
+      return [R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name i) ct $ Just e']
 
 -- Global polymorphic functions with direct implementations.
 declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children -> (TFunction, [ta, tr])]))
