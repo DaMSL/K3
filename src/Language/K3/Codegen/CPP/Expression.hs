@@ -269,15 +269,14 @@ inline e@(tag -> ELambda _) = do
                    (M.elems $ M.mapWithKey captureByMtrlzn $ M.filterWithKey (\k _ -> k /= outerArg)
                             $ getInDecisions outerFExpr)
 
-    let reifyArg a m g = if a == "_" then [] else
-          let reifyType = case m of
+    let reifyArg a g = if a == "_" then [] else
+          let reifyType = case (getInMethodFor a innerFExpr) of
                 ConstReferenced -> R.Reference $ R.Const R.Inferred
-                Copied -> R.Inferred
-                Moved -> R.RValueReference R.Inferred
                 Referenced -> R.Reference R.Inferred
+                _ -> R.Inferred
           in [R.Forward $ R.ScalarDecl (R.Name a) reifyType (Just $ R.Variable $ R.Name g)]
 
-    let argReifications = concat [reifyArg a (getInMethodFor a f) g | a <- argNames | f <- fExprs | g <- formalArgNames]
+    let argReifications = concat [reifyArg a g | a <- argNames | g <- formalArgNames]
 
     let fullBody = argReifications ++ body
 
