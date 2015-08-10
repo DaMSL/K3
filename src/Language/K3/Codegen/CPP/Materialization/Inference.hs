@@ -263,15 +263,41 @@ materializeE e@(Node (t :@: _) cs) = case t of
     _ -> throwError $ IError "Unreachable: More than two operators for operator."
 
 
-  EBindAs _ -> do
+  EBindAs binder -> do
     let [initB, body] = cs
     contextualizeNow body >>= \body' -> withDownstreams [body'] (materializeE initB)
     materializeE body
 
-  ELetIn _ -> do
+    bindings <- ePrv e >>= \case
+      (tag -> PMaterialize bindings) -> return bindings
+      _ -> throwError $ IError "Unknown provenance form on EBindAs."
+
+    sourceMoveableNow <- ePrv initB >>= contextualizeNow >>= isMoveableNow
+    sourceOwnContext <- ePrv initB >>= contextualizeNow >>= bindPoint >>= \case
+      Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied] -??- "Owned by containing context?"
+      Nothing -> return $ mBool True -??- "Temporary."
+
+    let sourceMoveable = sourceMoveableNow -&&- sourceOwnContext
+
+    u <- eUID e
+
+    for_ bindings $ \m@(PMatVar name loc ptr) -> do
+      cpBody <- contextualizeNow body
+      cpBinding <- contextualizeNow (pbvar m)
+      (ehw, _) <- hasWriteIn cpBinding cpBody
+
+      let bindNeedsOwn = ehw
+      constrain u name In $ mITE bindNeedsOwn (mITE sourceMoveable (mAtom Moved) (mAtom Copied)) (mAtom Referenced)
+      constrain u name Ex $ mITE (mOneOf (mVar u name In) [Copied, Moved]) (mAtom Moved) (mAtom Referenced)
+
+
+  ELetIn i -> do
     let [initB, body] = cs
     contextualizeNow body >>= \body' -> withDownstreams [body'] (materializeE initB)
     materializeE body
+
+    u <- eUID e
+    constrain u i In $ mAtom Referenced -??- "Default let materialization strategy."
 
   ECaseOf _ -> do
     let [initB, some, none] = cs
