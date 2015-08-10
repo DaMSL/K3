@@ -443,6 +443,9 @@ occursIn a@(Contextual pa ca) b@(Contextual pb cb) = case tag pb of
     _ -> do
       pOccurs <- chasePPtr ptr >>= \p' -> occursIn a (Contextual p' cb)
       return $ mOneOf (mVar u n In) [Referenced, ConstReferenced] -&&- pOccurs
+  PSet -> mOr <$> traverse (\pb' -> occursIn a (Contextual pb' cb)) (children pb)
+  PLambda _ _ -> mOr <$> traverse (\pb' -> occursIn a (Contextual pb' cb)) (children pb)
+  PProject _ -> mOr <$> traverse (\pb' -> occursIn a (Contextual pb' cb)) (children pb)
   _ -> return (mBool False)
 
 isMoveable :: Contextual (K3 Provenance) -> InferM (K3 MPred)
