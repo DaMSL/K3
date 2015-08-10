@@ -302,7 +302,7 @@ materializeE e@(Node (t :@: _) cs) = case t of
     u <- eUID e
     constrain u i In $ mAtom Referenced -??- "Default let materialization strategy."
 
-  ECaseOf _ -> do
+  ECaseOf i -> do
     let [initB, some, none] = cs
     some' <- contextualizeNow some
     none' <- contextualizeNow none
@@ -310,6 +310,20 @@ materializeE e@(Node (t :@: _) cs) = case t of
     withDownstreams [some', none'] $ materializeE initB
     materializeE some
     materializeE none
+
+    sourceMoveableNow <- ePrv initB >>= contextualizeNow >>= isMoveableNow
+    sourceOwnContext <- ePrv initB >>= contextualizeNow >>= bindPoint >>= \case
+      Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied] -??- "Owned by containing context?"
+      Nothing -> return $ mBool True -??- "Temporary."
+
+    u <- eUID e
+    ip <- contextualizeNow (pbvar $ PMatVar i u (-1))
+
+    let sourceMoveable = sourceMoveableNow -&&- sourceOwnContext
+
+    (ehw, _) <- hasWriteIn ip some'
+    let caseNeedsOwn = ehw
+    constrain u i In $ mITE caseNeedsOwn (mITE sourceMoveable (mAtom Moved) (mAtom Copied)) (mAtom Referenced)
 
   EIfThenElse -> do
     let [cond, thenB, elseB] = cs
