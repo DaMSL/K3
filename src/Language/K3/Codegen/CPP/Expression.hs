@@ -255,9 +255,9 @@ inline e@(tag -> ELambda _) = do
     let (outerFExpr, innerFExpr) = (head &&& last) fExprs
     let (outerArg, innerArg) = (getArg outerFExpr, getArg innerFExpr)
 
-    let nrvo = getExMethodFor anon innerFExpr == Moved
+    -- let nrvo = getExMethodFor anon innerFExpr == Moved
 
-    body <- reify (RReturn nrvo) b
+    body <- reify (RReturn False) b
 
     let captureByMtrlzn i m = case m of
           ConstReferenced -> R.RefCapture (Just (i, Nothing))
