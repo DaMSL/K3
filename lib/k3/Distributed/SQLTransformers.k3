@@ -17,7 +17,7 @@ control SQL {
 
 // Requires: peers, master
 // Assumes: var is a global.
-control DistributedGroupBy[lbl : label, merge : expr]
+control DistributedGroupBy2[lbl : label, merge : expr]
 {
   ( (?var = ( (?e.groupBy ?groupF ?aggF ?accE) : collection ?T ) );
     (?dtrig, ?daddr) <- ()
@@ -63,7 +63,7 @@ control DistributedGroupBy[lbl : label, merge : expr]
 
 // Requires: peers, master
 // Assumes: var is a global.
-control DistributedHashJoin [ lbl : label ]
+control DistributedHashJoin2 [ lbl : label ]
 {
   ( (?var = (( ?lqueryE : ?LQueryT ).equijoin ( ?rqueryE : ?RQueryT ) ( ?lkeyE : ?LKeyT ) ( ?rkeyE : ?RKeyT ) ?outputE));
     (?dtrig, ?daddr) <- ()
@@ -146,7 +146,7 @@ control DistributedHashJoin [ lbl : label ]
 
 // Requires: peers, master, masters, peer_masters
 // Assumes: var is a global.
-control BroadcastJoin [ lbl : label ]
+control BroadcastJoin2 [ lbl : label ]
 {
   ( (?var = (( ?LQueryE : ?LQueryT ).join ( ?RQueryE : ?RQueryT ) ?matchE ?outputE));
     (?dtrig, ?daddr) <- ()

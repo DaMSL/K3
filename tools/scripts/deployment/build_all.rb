@@ -1,5 +1,6 @@
 #!/usr/bin/env ruby
 require 'rest-client'
+require 'optparse'
 require 'json'
 require 'pathname'
 
@@ -11,16 +12,16 @@ K3 = "/k3/K3"
 QUERIES = {
   "tpch" => {
     :roles => {
-      "10g" => "tpch_10g.yml",
-      #"100g" => "tpch_100g.yml",
+      #"10g" => "tpch_10g.yml",
+      "100g" => "tpch_100g.yml",
     },
     :queries => {
-      "q1" => "examples/sql/tpch/queries/k3/q1.k3",
-      "q3" => "examples/sql/tpch/queries/k3/barrier-queries/q3.k3",
-      "q5" => "examples/sql/tpch/queries/k3/barrier-queries/q5_bushy_broadcast_broj2.k3",
-      "q6" => "examples/sql/tpch/queries/k3/q6.k3",
-      "q18" => "examples/sql/tpch/queries/k3/barrier-queries/q18.k3",
-      "q22" => "examples/sql/tpch/queries/k3/barrier-queries/q22.k3",
+      "1" => "examples/sql/tpch/queries/k3/q1.k3",
+      "3" => "examples/sql/tpch/queries/k3/barrier-queries/q3.k3",
+      "5" => "examples/sql/tpch/queries/k3/barrier-queries/q5_bushy_broadcast_broj2.k3",
+      "6" => "examples/sql/tpch/queries/k3/q6.k3",
+      "18" => "examples/sql/tpch/queries/k3/barrier-queries/q18.k3",
+      "22" => "examples/sql/tpch/queries/k3/barrier-queries/q22.k3",
     }
   },
 
@@ -29,9 +30,9 @@ QUERIES = {
   #    "sf5" => "amplab_sf5.yml",
   #  },
   #  :queries => {
-  #    "amplab_q1" => "examples/distributed/amplab/compact/q1.k3",
-  #    "amplab_q2" => "examples/distributed/amplab/compact/q2.k3",
-  #    "amplab_q3" => "examples/distributed/amplab/compact/q3.k3",
+  #    "1" => "examples/distributed/amplab/compact/q1.k3",
+  #    "2" => "examples/distributed/amplab/compact/q2.k3",
+  #    "3" => "examples/distributed/amplab/compact/q3.k3",
   #  }
   #},
 
@@ -55,7 +56,7 @@ QUERIES = {
 }
 
 def slugify(experiment, query)
-  return "#{experiment}_#{query}"
+  return "#{experiment}-#{query}"
 end
 
 def build(name)
@@ -92,20 +93,23 @@ def submit(name)
 end
 
 def run(name)
+  puts "Submitting Run Jobs"
   jobs = {}
   for experiment, description in QUERIES do
     for query, _ in description[:queries] do
       for role, yml in description[:roles] do
-        puts "Submitting #{role} for #{experiment}/#{query}"
-        response = RC.post(
-          "http://qp2:5000/jobs/#{slugify(experiment, query)}",
-          {:file => File.new("#{name}/roles/#{yml}")},
-          :accept => :json
-        )
-        json = JSON.parse response
-        job_id = json['jobId']
-        key = {'role' => role, 'name' => slugify(experiment, query)}
-        jobs[key] = job_id
+        for i in 1..($options[:trials]) do
+          puts "\tSubmitting #{role} for #{experiment}/#{query} trial #{i}"
+          response = RC.post(
+            "http://qp2:5000/jobs/#{slugify(experiment, query)}",
+            {:file => File.new("#{name}/roles/#{yml}")},
+            :accept => :json
+          )
+          json = JSON.parse response
+          job_id = json['jobId']
+          key = {:role => role, :name => slugify(experiment, query), :trial => i}
+          jobs[key] = job_id
+        end
       end
     end
   end
@@ -139,6 +143,7 @@ def poll(jobs, message)
       return poll(jobs, ".")
     end
   end
+  puts("")
   return statuses
 end
 
@@ -147,13 +152,13 @@ def harvest(statuses, out_folder)
   results = {}
   for key, val in statuses
     if val['status'] == "FINISHED"
-      run_folder = "#{out_folder}/#{key['role']}_#{key['name']}"
+      run_folder = "#{out_folder}/#{key[:role]}_#{key[:name]}"
       `mkdir -p #{run_folder}`
 
       # GET tar from each node
       tars = val['sandbox'].select { |x| x =~ /.*.tar/}
       for tar in tars
-        url = "http://qp2:5000/fs/jobs/#{key['name']}/#{val['job_id']}/#{tar}"
+        url = "http://qp2:5000/fs/jobs/#{key[:name]}/#{val['job_id']}/#{tar}"
         name = File.basename(tar, ".tar")
         `mkdir -p #{run_folder}/#{name}`
         response = RC.get(url)
@@ -167,8 +172,19 @@ def harvest(statuses, out_folder)
       name = File.basename(master_tar, ".tar")
       master_folder = "#{run_folder}/#{name}/"
       results[key] = {"status" => "RAN", "output" => master_folder}
+      time_file = "#{master_folder}/time.csv"
+      file = File.open(time_file, "rb")
+      time_ms = file.read.strip.to_i
+      puts "\t#{key} Ran in #{time_ms} ms."
+      group_key = {:role => key[:role], :name => key[:name]}
+      if not $stats.has_key?(group_key)
+        $stats[group_key] = [time_ms]
+      else
+        $stats[group_key] << time_ms
+      end
     else
       results[key] = {"status" => "FAILED"}
+      puts "\t#{key} FAILED."
     end
   end
   return results
@@ -177,39 +193,76 @@ end
 def check(folders)
   puts("Checking for correctness")
   ktrace_dir = "#{K3}/tools/ktrace/"
+  correct_dir = "/local/correct/correct/"
   diff = "#{ktrace_dir}/csv_diff.py"
   for key, val in folders
     if val["status"] == "RAN"
-      run_id = "#{key['role']}_#{key['name']}"
-      correct = "#{ktrace_dir}/correct_results/#{run_id}.csv"
+      run_id = "#{key[:role]}-#{key[:name]}"
+      correct = "#{correct_dir}/#{run_id}.out"
       actual = "#{val["output"]}/results.csv"
       output = `python2 #{diff} #{correct} #{actual}`
-      time_file = "#{val["output"]}/time.csv"
-      file = File.open(time_file, "rb")
-      time_ms = file.read.strip
       if $?.to_i == 0
-        puts("#{key} => CORRECT RESULTS. Time: #{time_ms} ms.")
+        puts("\t#{key} => CORRECT RESULTS.")
       else
-        puts("#{key} => FAILED: INCORRECT RESULTS. Time: #{time_ms} ms.")
+        puts("\t#{key} => INCORRECT RESULTS")
         puts(output)
       end
-    else
-      puts("#{key} => FAILED: DID NOT RUN AND/OR NO OUTPUT")
     end
   end
 end
 
-if __FILE__ == $0
-  if ARGF.argv.empty?
-    puts "usage: #{$0} path/to/build/dir"
-    exit
+def postprocess()
+  puts "Summary"
+  for key, val in $stats
+    sum = val.reduce(:+)
+    cnt = val.size
+    avg = 1.0 * sum / cnt
+    var = val.map{|x| (x - avg) * (x - avg)}.reduce(:+) / (1.0 * cnt)
+    dev = Math.sqrt(var)
+    puts "\t#{key} => Succesful Trials: #{cnt}/#{$options[:trials]}. Avg: #{avg}. StdDev: #{dev}"
   end
-  puts "Running build for #{ARGF.argv[0]}"
-  build(ARGF.argv[0])
-  submit(ARGF.argv[0])
-  jobs = run(ARGF.argv[0])
+end
+
+def main()
+  $options = { :workdir => ".", :trials => 1, :correctdir => "/local/correct/correct/" }
+  $stats = {}
+  usage = "Usage: #{$PROGRAM_NAME} options"
+
+  if ARGF.argv.empty?
+    puts usage
+  end
+
+  parser = OptionParser.new do |opts|
+    opts.banner = usage
+    opts.on("-1", "--build", "Build/Submit stage")  { $options[:build] = true }
+    opts.on("-2", "--run",   "Run stage")           { $options[:run]   = true }
+
+    opts.on("-c", "--check",                      "Check correctness") {     $options[:check]        = true }
+    opts.on("-w", "--workdir [PATH]",    String,  "Working Directory") { |s| $options[:workdir]      = s    }
+    opts.on("-t", "--trials [NUM]",      Integer, "Number of Trials")  { |i| $options[:trials]       = i    }
+    opts.on("-d", "--correctdir [PATH]", Integer, "Number of Trials")  { |s| $options[:correctdir]   = s    }
+  end
+  parser.parse!
+
+  workdir = $options[:workdir]
+  if $options[:build]
+    build(workdir)
+    submit(workdir)
+  end
+
+  if not $options[:run]
+    return
+  end
+
+  jobs = run(workdir)
   statuses = poll(jobs, "Polling until complete")
-  puts("")
-  folders = harvest(statuses, ARGF.argv[0])
-  check(folders)
+  folders = harvest(statuses, workdir)
+  if $options[:check]
+    check(folders)
+  end
+  postprocess()
+end
+
+if __FILE__ == $0
+  main
 end

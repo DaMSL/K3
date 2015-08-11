@@ -228,16 +228,14 @@ def gen_yaml(k3_data_path, role_file, script_path)
   cmd << "--perhost " << $options[:perhost].to_s << " " if $options[:perhost]
   cmd << "--file " << k3_data_path << " "
 
-  if $options[:run_mode] == "multicore"
-    cmd << "--multicore"
-  elsif $options[:run_mode] == "dist"
-    cmd << "--dist"
-  end
+  cmd << "--multicore" if $options[:run_mode] == :multicore
+  cmd << "--dist" if $options[:run_mode] == :dist
 
   extra_args = []
   extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
   extra_args << "sw_driver_sleep=" + $options[:msg_delay] if $options[:msg_delay]
   extra_args << "corrective_mode=false" if $options[:no_corrective]
+  #extra_args << "builtin_route=true"
   cmd << "--extra-args " << extra_args.join(',') << " " if extra_args.size > 0
 
   yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
@@ -371,7 +369,10 @@ def run_deploy_k3_local(bin_path, k3_data_path, nice_name, script_path)
   stage "[5] Running K3 executable locally"
   `rm -rf #{json_dist_path}`
   `mkdir -p #{json_dist_path}`
-  run("#{bin_path} -p #{role_file} --json #{json_dist_path} --json_final_only")
+  args = ""
+  args << "--json #{json_dist_path} " unless $options[:logging] == :none
+  args << "--json_final_only " if $options[:logging] == :final
+  run("#{bin_path} -p #{role_file} #{args}")
 end
 
 # convert a string to the narrowest value
@@ -657,7 +658,8 @@ end
 
 def main()
   $options = {}
-  $options[:run_mode] = "dist"
+  $options[:run_mode] = :dist
+  $options[:logging] = :final
 
   uid = nil
 
@@ -679,8 +681,8 @@ def main()
     opts.on("--mosaic-path [PATH]", String, "Path for mosaic") {|s| $options[:mosaic_path] = s}
     opts.on("--highmem", "High memory deployment (HM only)") { $options[:nmask] = 'qp-hm.'}
     opts.on("--brew", "Use homebrew (OSX)") { $options[:osx_brew] = true }
-    opts.on("--run-local", "Run locally") { $options[:run_mode] = "local" }
-    opts.on("--run-multicore", "Run all data nodes on the same host") { $options[:run_mode] = "multicore" }
+    opts.on("--run-local", "Run locally without mesos") { $options[:run_mode] = :local }
+    opts.on("--run-multicore", "Run all data nodes on the same host, via mesos") { $options[:run_mode] = :multicore }
     opts.on("--create-local", "Create the cpp file locally") { $options[:create_local] = true }
     opts.on("--compile-local", "Compile locally") { $options[:compile_local] = true }
     opts.on("--dbt-exec-only", "Execute DBToaster only (skipping query build)") { $options[:dbt_exec_only] = true }
@@ -692,7 +694,8 @@ def main()
     opts.on("--moderate2",  "Query is of moderate skew (and size), class 2") { $options[:skew] = :moderate2}
     opts.on("--extreme",  "Query is of extreme skew (and size)") { $options[:skew] = :extreme}
     opts.on("--dry-run",  "Dry run for Mosaic deployment (generates K3 YAML topology)") { $options[:dry_run] = true}
-    opts.on("--full-ktrace", "Turn on JSON logging for ktrace") { $options[:full_ktrace] = true }
+    opts.on("--full-ktrace", "Turn on JSON logging for ktrace") { $options[:logging] = :full }
+    opts.on("--no-ktrace", "Turn off JSON logging for ktrace") { $options[:logging] = :none }
     opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
     opts.on("--gc-epoch [MS]", "Set gc epoch time (ms)") { |i| $options[:gc_epoch] = i }
     opts.on("--msg-delay [MS]", "Set switch message delay (ms)") { |i| $options[:msg_delay] = i }
@@ -847,7 +850,7 @@ def main()
   # check for doing everything remotely
   if !$options[:compile_local] && !$options[:create_local] && ($options[:create_k3] || $options[:compile_k3])
       # only block if we need to ie. if we have deployment of some source
-      block_on_compile = $options[:deploy_k3] || $options[:run_local] || $options[:dots]
+      block_on_compile = $options[:deploy_k3] || $options[:run_mode] == :local || $options[:dots]
       uid = run_create_compile_k3_remote(server_url, bin_file, block_on_compile, k3_cpp_name, k3_path, nice_name)
   else
     if $options[:create_k3]
@@ -868,10 +871,10 @@ def main()
     if $options[:dry_run]
       role_file = File.join($workdir, nice_name + "_local.yaml")
       gen_yaml(k3_data_path, role_file, script_path)
-    elsif $options[:run_local]
+    elsif $options[:run_mode] == :local
       run_deploy_k3_local(bin_path, k3_data_path, nice_name, script_path)
     else
-      run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, script_path, $options[:full_ktrace])
+      run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, script_path, $options[:logging] == :full)
     end
   end
 
@@ -882,7 +885,7 @@ def main()
 
   if $options[:compare]
     dbt_results = parse_dbt_results(dbt_name)
-    k3_results  = parse_k3_results(dbt_results, jobid, $options[:full_ktrace])
+    k3_results  = parse_k3_results(dbt_results, jobid, $options[:logging] == :full)
     run_compare(dbt_results, k3_results)
   end
 

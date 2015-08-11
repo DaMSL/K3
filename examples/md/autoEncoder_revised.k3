@@ -1,27 +1,27 @@
-include "Annotation/Set.k3"
+include "Annotation/RealVector.k3"
 include "Core/Builtins.k3"
 
 declare master: address = 127.0.0.1:40000
 
-declare totalError : mut real 
-declare topology : collection {elem : int} @Set
+declare totalError : mut real
+declare topology : collection {elem : int} @RealVector
 
-declare inputValues : mut collection {elem : real } @Set
-declare targetValue : mut collection {elem : real } @Set
-declare outputValue : collection {elem : real } @Set // l layers * n neurons_per_layer
-declare zValue      : collection {elem : real } @Set // l layers * n neurons_per_layer
-declare deltaValue  : collection {elem : real } @Set // l layers * n neurons_per_layer
-declare gradient    : collection {elem : real } @Set // l layers * n neurons_per_layer
+declare inputValues : mut collection {elem : real } @RealVector
+declare targetValue : mut collection {elem : real } @RealVector
+declare outputValue : collection {elem : real } @RealVector // l layers * n neurons_per_layer
+declare zValue      : collection {elem : real } @RealVector // l layers * n neurons_per_layer
+declare deltaValue  : collection {elem : real } @RealVector // l layers * n neurons_per_layer
+declare gradient    : collection {elem : real } @RealVector // l layers * n neurons_per_layer
 
 //declare eta         : mut real = 0.50
 declare alpha       : mut real = 0.30
 declare lambda      : mut real = 0.20
 
-declare weight      : collection {elem : real } @Set // l layers * n neurons_per_layer * n neurons_per_next_layer
-declare deltaWeight : collection {elem : real } @Set // l layers * n neurons_per_layer * n neurons_per_next_layer
+declare weight      : collection {elem : real } @RealVector // l layers * n neurons_per_layer * n neurons_per_next_layer
+declare deltaWeight : collection {elem : real } @RealVector // l layers * n neurons_per_layer * n neurons_per_next_layer
 
-declare weightUpdateBroadcast : mut collection {elem : real } @Set // l layers * n neurons_per_layer * n neurons_per_next_layer
-declare weightsLastUpdated    : mut collection {elem : real } @Set // l layers * n neurons_per_layer * n neurons_per_next_layer
+declare weightUpdateBroadcast : mut collection {elem : real } @RealVector // l layers * n neurons_per_layer * n neurons_per_next_layer
+declare weightsLastUpdated    : mut collection {elem : real } @RealVector // l layers * n neurons_per_layer * n neurons_per_next_layer
 
 declare row_number           : mut int = -1
 declare epochSize            : int = 8
@@ -30,7 +30,7 @@ declare rows : mut int = 0
 
 declare s : mut int 
 
-declare allData : collection {elem : {i: real , j : real , k : real} } @Set
+declare allData : collection {elem : {i: real , j : real , k : real} } @RealVector
 
 // Access all neruons for previous layer
 declare accessPrev : int -> int = \layerNum -> (
@@ -373,13 +373,13 @@ trigger startSlave : () = \_ -> (
     //print "Starting a new iteration";
 	allData.iterate( \csvData -> (
     //print "Reading a new frame";
-    inputValues = empty {elem : real} @Set;
+    inputValues = empty {elem : real} @RealVector;
 		//Create the input and output values
 		inputValues.insert {elem : csvData.elem.i};
 		inputValues.insert {elem : csvData.elem.j};
 		inputValues.insert {elem : 1.0};
 	
-    	targetValue = empty {elem : real} @Set;
+    	targetValue = empty {elem : real} @RealVector;
 		targetValue.insert {elem : csvData.elem.k};
 		targetValue.insert {elem : 1.0};
 
@@ -388,6 +388,7 @@ trigger startSlave : () = \_ -> (
 		row_number = row_number + 1;
 
     print (itos row_number);
+    print ("\\n");
     /*
 		(if (row_number % epochSize == 0) 
 		then (
@@ -417,7 +418,7 @@ trigger startSlave : () = \_ -> (
 	))
 )
 
-trigger receiveAtMaster : collection {elem : real} @Set = \updateOnWeights -> (
+trigger receiveAtMaster : collection {elem : real} @RealVector = \updateOnWeights -> (
 	print ("Receives from Master");	
 	(weight.inPlaceAdd (updateOnWeights.sub weightUpdateBroadcast));
 	if (peerMessagesReceived == peers.size ())
@@ -434,7 +435,7 @@ trigger receiveAtMaster : collection {elem : real} @Set = \updateOnWeights -> (
 	)	
 )
 
-trigger receiveAtSlave : collection {elem : real} @Set = \updateOnWeights -> (
+trigger receiveAtSlave : collection {elem : real} @RealVector = \updateOnWeights -> (
 	print ("Receives from Slave");
 	weight.inPlaceAdd (updateOnWeights)
 )
@@ -458,5 +459,5 @@ trigger storeData :  {i: real, j: real, k : real} = \csvData -> (
 source masterSource : () = value ()
 feed masterSource |> startMaster
 
-source slaveSource1 : {i: real, j: real, k: real} = file "f1.csv" csv 
+source slaveSource1 : {i: real, j: real, k: real} = file "f1.csv" text csv 
 feed slaveSource1 |> storeData

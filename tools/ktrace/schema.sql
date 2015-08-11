@@ -70,6 +70,18 @@ create table region (
    r_comment   varchar(152) not null
 );
 
+drop table if exists part;
+create table part (
+  p_partkey integer not null,
+  p_name varchar(25) not null,
+  p_mfgr char(25),
+  p_brand char(10),
+  p_type char(25),
+  p_size integer,
+  p_container char(10),
+  p_retailprice double precision,
+  p_comment varchar(23)
+);
 
 drop table if exists partsupp;
 create table partsupp (

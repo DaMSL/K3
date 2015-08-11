@@ -1,0 +1,73 @@
+include "tpch/benchmark.k3"
+include "Annotation/Set.k3"
+include "Distributed/SQLTransformers.k3"
+
+// Relations / Loaders
+declare master: address
+declare lineitem: mut lineitem_bag
+declare part: mut collection {elem: part_r} @Collection
+@:CArgs 2
+declare partLoaderPE: collection {path: string} @Collection -> collection {elem: part_r} @Collection -> ()
+
+// Intermediates
+declare partials: mut collection {elem: {num: real, denom: real}} @Collection // Local aggregates (per-peer)
+declare finals: mut {num: real, denom: real} = {num: 0.0, denom: 0.0}         // Global aggregates (at master)
+
+// Local group by on-lineitem, followed by distributed hash join.
+trigger q14: () = \_ -> (
+  partials =
+    (((lineitem.filter
+                 (\e -> 19950901 <= e.l_shipdate and e.l_shipdate < 19951001)
+               )
+               .groupBy
+                 (\l -> l.l_partkey)
+                 (\a -> \e -> a + (e.l_extendedprice * (1.0 - e.l_discount)))
+                 0.0
+               )
+               .equijoin
+                 part
+                 (\lkv -> lkv.key)
+                 (\pe -> pe.elem.p_partkey )
+                 (\lkv -> \pe ->
+                   {num: lkv.value * (regex_match_int "PROMO.*" pe.elem.p_type), denom: lkv.value}
+                 )
+               );
+  (local_combine, me) <- ()
+) @DistributedHashJoin2(lbl=[# lineitem_part])
+
+// Combine local aggregates, then send to master for finialization.
+trigger local_combine: () = \_ -> (
+  let aggs =
+    partials.fold
+      (\a -> \e ->
+        {num: a.num + e.elem.num, denom: a.denom + e.elem.denom}
+      )
+      {num: 0.0, denom: 0.0}
+  in
+    ignore ((aggs @:Result) @TPCHBenchmarkWithoutMaster)
+)
+
+// TODO loaders with pushdown
+trigger start: () = \_ -> (
+  (() @:Start) @TPCHBenchmarkWithoutMaster(
+    nodes                = [$ peers],
+    loadExpr             = [$ lineitemLoaderP lineitemFiles lineitem;
+                              partLoaderPE partFiles part
+                           ],
+    preLoadExpr          = [$ ()],
+    preReadyExpr         = [$ ()],
+    onReadyExpr          = [$ peers.iterate (\p -> (q14, p.addr) <- () )],
+    finishArgT           = [: {num: real, denom: real}],
+    preTestFinishExpr    = [$ (\x -> finals = {num: finals.num + x.num, denom: finals.denom + x.denom})
+                           ],
+    preFinishExpr        = [$ (results_sink, me) <- (100.0 * (finals.num / finals.denom))],
+    preShutdownExpr      = [$ ()],
+    finishAsShutdownExpr = [$ true]
+  )
+)
+
+sink results_sink: real = file "results.csv" text psv
+sink query_time_sink: int = file "time.csv" text csv
+
+source rows : () = value ()
+feed rows |> start
