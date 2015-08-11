@@ -227,7 +227,7 @@ materializeE e@(Node (t :@: _) cs) = case t of
         Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied] -??- "Owned by containing context?"
         Nothing -> return $ mBool True -??- "Temporary."
 
-      constrain u name In $ mITE (needsOwn -&&- ownContext) (mAtom Moved) (mAtom Copied)
+      constrain u name In $ mITE needsOwn (mITE ownContext (mAtom Moved) (mAtom Copied)) (mAtom ConstReferenced)
 
     clps <- sequence [withNearestBind u (contextualizeNow $ pbvar m) | m <- cls]
     nrvo <- mOr <$> traverse (`occursIn` fProv) (ci:clps)
@@ -514,7 +514,7 @@ findDependenciesE :: K3 MExpr -> SolverM (S.Set DKey)
 findDependenciesE e = case tag e of
   MVar j d -> return [(j, d)]
   MAtom _ -> return []
-  MIfThenElse p -> findDependenciesP p
+  MIfThenElse p -> S.union <$> (S.unions <$> traverse findDependenciesE (children e)) <*> findDependenciesP p
 
 findDependenciesP :: K3 MPred -> SolverM (S.Set DKey)
 findDependenciesP p = case tag p of
