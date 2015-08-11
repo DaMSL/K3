@@ -3,6 +3,7 @@
 
 #include <tuple>
 #include <unordered_map>
+#include <type_traits>
 
 #include "boost/serialization/vector.hpp"
 #include "boost/serialization/set.hpp"
@@ -25,7 +26,8 @@ using std::tuple;
 using std::unordered_map;
 
 // Utility to give the return type of a Function F expecting an Element E as an argument:
-template <class F, class E> using RT = decltype(std::declval<F>()(std::declval<E>()));
+//template <class F, class E> using RT = decltype(std::declval<F>()(std::declval<E>()));
+template <class F, typename... Args> using RT = typename std::result_of<F(Args...)>::type;
 
 // A Generic STL based dataspace.
 template <template <typename> class Derived, template<typename...> class STLContainer, class Elem>
@@ -189,12 +191,12 @@ class STLDS {
   }
 
   template<class E, class F, class G>
-  auto join(Derived<R_elem<E>> other, F f, G g) const -> Derived<R_elem<RT<RT<G, Elem>, E>>> const {
-    Derived<R_elem<RT<RT<G, Elem>, E>>> result;
+  Derived<R_elem<RT<G, Elem, E>>> join(Derived<E> other, F f, G g) const {
+    Derived<R_elem<RT<G, Elem, E>>> result;
     for (const auto& elem : container) {
       for (const auto& otherelem : other.getConstContainer()) {
-        if ( f(elem)(otherelem) ) {
-          result.insert(g(elem)(otherelem));
+        if ( f(elem, otherelem) ) {
+          result.insert(g(elem, otherelem));
         }
       }
     }
@@ -202,8 +204,8 @@ class STLDS {
   }
 
   template<class E, class F, class G, class H>
-  auto equijoin(Derived<R_elem<E>> other, F f, G g, H h) const -> Derived<R_elem<RT<RT<H, Elem>, E>>> const {
-    Derived<R_elem<RT<RT<H, Elem>, E>>> result;
+  Derived<R_elem<RT<H, Elem, E>>> equijoin(Derived<E> other, F f, G g, H h) const {
+    Derived<R_elem<RT<H, Elem, E>>> result;
 
     // Build.
     unordered_map<RT<F, Elem>, std::multiset<Elem>> lhsHT;
@@ -218,7 +220,7 @@ class STLDS {
       auto it = lhsHT.find(key);
       if ( it != lhsHT.end() ) {
         for (const auto& probeelem : it->second) {
-          result.insert(h(probeelem)(otherelem));
+          result.insert(h(probeelem, otherelem));
         }
       }
     }

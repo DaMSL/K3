@@ -12,16 +12,16 @@ K3 = "/k3/K3"
 QUERIES = {
   "tpch" => {
     :roles => {
-      #"10g" => "tpch_10g.yml",
-      "100g" => "tpch_100g.yml",
+      "10g" => "tpch_10g.yml",
+      #"100g" => "tpch_100g.yml",
     },
     :queries => {
-      "1" => "examples/sql/tpch/queries/k3/q1.k3",
-      "3" => "examples/sql/tpch/queries/k3/barrier-queries/q3.k3",
+      #"1" => "examples/sql/tpch/queries/k3/q1.k3",
+      #"3" => "examples/sql/tpch/queries/k3/barrier-queries/q3.k3",
       "5" => "examples/sql/tpch/queries/k3/barrier-queries/q5_bushy_broadcast_broj2.k3",
-      "6" => "examples/sql/tpch/queries/k3/q6.k3",
-      "18" => "examples/sql/tpch/queries/k3/barrier-queries/q18.k3",
-      "22" => "examples/sql/tpch/queries/k3/barrier-queries/q22.k3",
+      #"6" => "examples/sql/tpch/queries/k3/q6.k3",
+      #"18" => "examples/sql/tpch/queries/k3/barrier-queries/q18.k3",
+      #"22" => "examples/sql/tpch/queries/k3/barrier-queries/q22.k3",
     }
   },
 
@@ -267,6 +267,3 @@ end
 if __FILE__ == $0
   main
 end
-
-if __FILE__ == $0
-  main

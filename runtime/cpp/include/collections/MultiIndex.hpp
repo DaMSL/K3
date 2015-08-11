@@ -27,9 +27,7 @@
 #include <yas/serializers/boost_types_serializers.hpp>
 
 namespace K3 {
-
-// Utility to give the return type of a Function F expecting an Element E as an argument:
-template <class F, class E> using RT = decltype(std::declval<F>()(std::declval<E>()));
+template <class F, typename... Args> using RT = typename std::result_of<F(Args...)>::type;
 
 // Key extraction utilities.
 template<class KeyExtractor1, class KeyExtractor2>
