@@ -260,7 +260,7 @@ inline e@(tag -> ELambda _) = do
     body <- reify (RReturn nrvo) b
 
     let captureByMtrlzn i m = case m of
-          ConstReferenced -> R.ValueCapture (Just (i, Just $ R.CRef $ R.Variable $ R.Name i))
+          ConstReferenced -> R.RefCapture (Just (i, Nothing))
           Referenced -> R.RefCapture (Just (i, Nothing))
           Moved -> R.ValueCapture (Just (i, Just $ R.Move $ R.Variable $ R.Name i))
           Copied -> R.ValueCapture (Just (i, Nothing))
