@@ -110,17 +110,8 @@ getExMethodFor i e = getMethodFor i Ex e
 
 -- Move heuristic to avoid code clutter.
 move :: K3 Type -> K3 Expression -> Bool
-move t e = moveByTypeForm t && moveByExprForm e
+move t e = isNonScalarType t && moveByExprForm e
  where
-  moveByTypeForm :: K3 Type -> Bool
-  moveByTypeForm t =
-    case t of
-      (tag -> TString) -> True
-      (tag &&& children -> (TTuple, cs)) -> any moveByTypeForm cs
-      (tag &&& children -> (TRecord _, cs)) -> any moveByTypeForm cs
-      (tag -> TCollection) -> True
-      _ -> False
-
   moveByExprForm :: K3 Expression -> Bool
   moveByExprForm e =
     case e of
