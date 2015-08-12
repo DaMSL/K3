@@ -152,6 +152,13 @@ class StrMap {
     return unit_t{};
   }
 
+  unit_t insert(R&& q) {
+    map_str_clone(get_map_str(), (CloneFn)&StrMap<R>::moveElem);
+    insert_aux(q);
+    map_str_clone(get_map_str(), (CloneFn)&StrMap<R>::cloneElem);
+    return unit_t{};
+  }
+
   template <class F>
   unit_t insert_with(const R& rec, F f) {
     map_str* m = get_map_str();
@@ -438,11 +445,13 @@ class StrMap {
     ar.write(reinterpret_cast<const char*>(&m->deleted), sizeof(m->deleted));
     ar & m->max_load_factor;
 
+    map_str_clone(get_map_str(), (CloneFn)&StrMap<R>::moveElem);
     for (auto o = map_str_begin(m); o < map_str_end(m);
          o = map_str_next(m, o)) {
       R* v = static_cast<R*>(map_str_get(m, o));
       ar&* v;
     }
+    map_str_clone(get_map_str(), (CloneFn)&StrMap<R>::cloneElem);
   }
 
   template <class archive>
@@ -491,6 +500,10 @@ class StrMap {
 
   static inline void cloneElem(void* dest, void* src, size_t sz) {
     new (dest) R(*static_cast<R*>(src));
+  }
+
+  static inline void moveElem(void* dest, void* src, size_t sz) {
+    new (dest) R(std::move(*static_cast<R*>(src)));
   }
 
   map_str* get_map_str() const {

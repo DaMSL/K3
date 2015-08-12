@@ -239,6 +239,7 @@ def main()
     opts.on("-2", "--run",   "Run stage")           { $options[:run]   = true }
 
     opts.on("-c", "--check",                      "Check correctness") {     $options[:check]        = true }
+    opts.on("-s", "--submit",                     "Submit binary")     {     $options[:submit]       = true }
     opts.on("-w", "--workdir [PATH]",    String,  "Working Directory") { |s| $options[:workdir]      = s    }
     opts.on("-t", "--trials [NUM]",      Integer, "Number of Trials")  { |i| $options[:trials]       = i    }
     opts.on("-d", "--correctdir [PATH]", Integer, "Number of Trials")  { |s| $options[:correctdir]   = s    }
@@ -248,6 +249,9 @@ def main()
   workdir = $options[:workdir]
   if $options[:build]
     build(workdir)
+  end
+
+  if $options[:build] or $options[:submit]
     submit(workdir)
   end
 

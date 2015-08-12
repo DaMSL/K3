@@ -144,8 +144,9 @@ class IntMap {
   }
 
   unit_t insert(R&& q) {
-    R tmp(std::move(q));
-    mapi_insert(get_mapi(), static_cast<void*>(&tmp));
+    mapi_clone(get_mapi(), (CloneFn)&IntMap<R>::moveElem);
+    mapi_insert(get_mapi(), static_cast<void*>(&q));
+    mapi_clone(get_mapi(), (CloneFn)&IntMap<R>::cloneElem);
     return unit_t();
   }
 
@@ -470,12 +471,15 @@ class IntMap {
       mapi* n = get_mapi();
       mapi_empty_key(n, empty_key);
       mapi_rehash(n, capacity);
+      mapi_clone(get_mapi(), (CloneFn)&IntMap<R>::moveElem);
 
       for (auto i = 0; i < container_size; ++i) {
         R r;
         ar& r;
         mapi_insert(n, &r);
       }
+
+      mapi_clone(get_mapi(), (CloneFn)&IntMap<R>::cloneElem);
     } else {
       throw std::runtime_error(
           "Failed to instantiate IntMap for deserialization");
@@ -486,6 +490,10 @@ class IntMap {
 
   static inline void cloneElem(void* dest, void* src, size_t sz) {
     new (dest) R(*static_cast<R*>(src));
+  }
+
+  static inline void moveElem(void* dest, void* src, size_t sz) {
+    new (dest) R(std::move(*static_cast<R*>(src)));
   }
 
  protected:
