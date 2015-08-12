@@ -474,7 +474,7 @@ occursIn a@(Contextual pa ca) b@(Contextual pb cb) = case tag pb of
   _ -> return (mBool False)
 
 isMoveable :: Contextual (K3 Provenance) -> InferM (K3 MPred)
-isMoveable (Contextual p _) = isGlobal p
+isMoveable (Contextual p _) = mNot <$> isGlobal p
 
 isMoveableIn :: Contextual (K3 Provenance) -> Contextual (K3 Expression) -> InferM (K3 MPred)
 isMoveableIn cp ce = do
@@ -482,11 +482,11 @@ isMoveableIn cp ce = do
   (ehw, ihw) <- hasWriteIn cp ce
 
   eu <- let (Contextual e _) = ce in eUID e
-  return $ foldr1 (-||-) ([ ehr -??- (printf "Explicit reads in downstream %d?" (gUID eu))
-                          , ihr -??- (printf "Implicit reads in downstream %d?" (gUID eu))
-                          , ehw -??- (printf "Explicit writes in downstream %d?" (gUID eu))
-                          , ihw -??- (printf "Explicit writes in downstream %d?" (gUID eu))
-                          ] :: [K3 MPred]) -??- printf "Moveable in downstream %d?" (gUID eu)
+  return $ (mNot $ foldr1 (-||-) ([ ehr -??- (printf "Explicit reads in downstream %d?" (gUID eu))
+                                  , ihr -??- (printf "Implicit reads in downstream %d?" (gUID eu))
+                                  , ehw -??- (printf "Explicit writes in downstream %d?" (gUID eu))
+                                  , ihw -??- (printf "Explicit writes in downstream %d?" (gUID eu))
+                                  ] :: [K3 MPred])) -??- printf "Moveable in downstream %d?" (gUID eu)
 
 isMoveableNow :: Contextual (K3 Provenance) -> InferM (K3 MPred)
 isMoveableNow cp = do
