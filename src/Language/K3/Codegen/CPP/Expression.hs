@@ -110,17 +110,8 @@ getExMethodFor i e = getMethodFor i Ex e
 
 -- Move heuristic to avoid code clutter.
 move :: K3 Type -> K3 Expression -> Bool
-move t e = moveByTypeForm t && moveByExprForm e
+move t e = isNonScalarType t && moveByExprForm e
  where
-  moveByTypeForm :: K3 Type -> Bool
-  moveByTypeForm t =
-    case t of
-      (tag -> TString) -> True
-      (tag &&& children -> (TTuple, cs)) -> any moveByTypeForm cs
-      (tag &&& children -> (TRecord _, cs)) -> any moveByTypeForm cs
-      (tag -> TCollection) -> True
-      _ -> False
-
   moveByExprForm :: K3 Expression -> Bool
   moveByExprForm e =
     case e of
@@ -238,6 +229,7 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
 
 inline e@(tag -> ELambda _) = do
     resetApplyLevel
+    let isAccumulating = isJust $ e @~ (\case { EProperty (ePropertyName -> "AccumulatingTransformer") -> True; _ -> False })
 
     let (unzip -> (argNames, fExprs), b) = rollLambdaChain e
 
@@ -257,7 +249,7 @@ inline e@(tag -> ELambda _) = do
 
     -- let nrvo = getExMethodFor anon innerFExpr == Moved
 
-    body <- reify (RReturn False) b
+    body <- reify (if isAccumulating then RForget else RReturn False) b
 
     let captureByMtrlzn i m = case m of
           ConstReferenced -> R.RefCapture (Just (i, Nothing))
@@ -270,10 +262,10 @@ inline e@(tag -> ELambda _) = do
                             $ getInDecisions outerFExpr)
 
     let reifyArg a g = if a == "_" then [] else
-          let reifyType = case (getInMethodFor a innerFExpr) of
-                ConstReferenced -> R.Reference $ R.Const R.Inferred
-                Referenced -> R.Reference R.Inferred
-                _ -> R.Inferred
+          let reifyType = case if a == head (argNames) && isAccumulating then Referenced else (getInMethodFor a innerFExpr) of
+                  ConstReferenced -> R.Reference $ R.Const R.Inferred
+                  Referenced -> R.Reference R.Inferred
+                  _ -> R.Inferred
           in [R.Forward $ R.ScalarDecl (R.Name a) reifyType
                (Just $ R.SForward (R.ConstExpr $ R.Call (R.Variable $ R.Name "decltype") [R.Variable $ R.Name g])
                          (R.Variable $ R.Name g))]
@@ -289,9 +281,12 @@ inline e@(tag -> ELambda _) = do
 
     return ([], R.Lambda captures argList True returnType fullBody)
 
-inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [Fold c, f])), z])) = do
+inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [prj@(Fold c), f])), z])) = do
+  let isAccumulating = prj @~ (\case { EProperty (ePropertyName -> "AccumulatingTransformer") -> True; _ -> False })
+  let isAP = isJust isAccumulating
+
   (ce, cv) <- inline c
-  (fe, fv) <- inline f
+  (fe, fv) <- inline (maybe f (f @+) isAccumulating)
   (ze, zv) <- inline z
 
   pass <- case if forceMoveP e then Moved else getInMethodFor "!" e of
@@ -327,8 +322,8 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
 
   let loopInit = [R.Forward $ R.ScalarDecl (R.Name fg) (R.RValueReference R.Inferred) (Just fv), R.Forward $ R.ScalarDecl (R.Name acc) R.Inferred (Just pass)]
   let loopBody =
-          [ R.Assignment (R.Variable $ R.Name acc) $
-              R.Call (R.Variable $ R.Name fg) [ R.Move (R.Variable $ R.Name acc), R.Variable $ R.Name g]
+          [ (if isAP then R.Ignore else R.Assignment (R.Variable $ R.Name acc)) $
+              R.Call (R.Variable $ R.Name fg) [ (if isAP then id else R.Move) (R.Variable $ R.Name acc), R.Variable $ R.Name g]
           ]
   let loop = R.ForEach g (R.Reference $ R.Const $ R.Inferred) cv (R.Block loopBody)
   return (ce ++ fe ++ ze ++ loopInit ++ loopPragmas ++ [loop], R.Move $ R.Variable $ R.Name acc)
@@ -349,7 +344,7 @@ inline e@(tag -> EOperate OApp) = do
         return $ case x of
           (tag -> EVariable i) | i `elem` map fst gs -> ([], xv)
           _ -> ([R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just $ gMoveByDE (getInMethodFor "!" m) x xv)]
-               , R.Variable $ R.Name g
+               , R.Call (R.Variable $ R.Name "_F") [R.Variable $ R.Name g]
                )
 
   (argDecls, argPasses) <- unzip <$> sequence [argDecl g x xv m | g <- gs | xv <- xvs | x <- xs | m <- as]
