@@ -11,6 +11,8 @@ module Language.K3.Codegen.CPP.Materialization.Inference (
 
 import qualified Data.List as L
 
+import Control.Arrow
+
 import Data.Foldable
 import Data.Traversable
 import Data.Tree
@@ -32,6 +34,7 @@ import Language.K3.Core.Common
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
+import Language.K3.Core.Type
 
 import Language.K3.Analysis.Provenance.Core (Provenance(..), PMatVar(..), PPtr)
 import Language.K3.Analysis.Provenance.Constructors (pbvar, pfvar)
@@ -57,7 +60,7 @@ optimizeMaterialization (p, f) d = runExceptT $ inferMaterialization >>= solveMa
     Left (IError msg) -> throwError msg
     Right ((_, IState ct), r) -> liftIO (formatIReport reportVerbosity r) >> return ct
    where defaultIState = IState { cTable = M.empty }
-         defaultIScope = IScope { downstreams = [], nearestBind = Nothing, pEnv = p, fEnv = f }
+         defaultIScope = IScope { downstreams = [], nearestBind = Nothing, pEnv = p, fEnv = f, topLevel = True }
 
   solveMaterialization ct = case runSolverM solveAction defaultSState of
     Left (SError msg) -> throwError msg
@@ -96,7 +99,7 @@ constrain :: UID -> Identifier -> Direction -> K3 MExpr -> InferM ()
 constrain u i d m = let j = (Juncture u i) in logR j d m >> modify (\s -> s { cTable = M.insert (j, d) m (cTable s) })
 
 -- ** Scoping state
-data IScope = IScope { downstreams :: [Downstream], nearestBind :: Maybe UID, pEnv :: PIEnv, fEnv :: FIEnv }
+data IScope = IScope { downstreams :: [Downstream], nearestBind :: Maybe UID, pEnv :: PIEnv, fEnv :: FIEnv, topLevel :: Bool }
 
 data Contextual a = Contextual a (Maybe UID) deriving (Eq, Ord, Read, Show)
 type Downstream = Contextual (K3 Expression)
@@ -109,6 +112,9 @@ withDownstreams nds = local (\s -> s { downstreams = nds ++ downstreams s })
 
 withNearestBind :: UID -> InferM a -> InferM a
 withNearestBind u = local (\s -> s { nearestBind = Just u })
+
+withTopLevel :: Bool -> InferM a -> InferM a
+withTopLevel b = local (\s -> s { topLevel = b })
 
 -- ** Reporting
 data IReport = IReport { juncture :: Juncture, direction :: Direction, constraint :: K3 MExpr }
@@ -199,7 +205,7 @@ materializeE e@(Node (t :@: _) cs) = case t of
     u <- eUID e
 
     (ci, cb) <- withNearestBind u $ do
-      materializeE body
+      withTopLevel False $ materializeE body
       ci' <- contextualizeNow (pfvar i)
       cb' <- contextualizeNow body
       return (ci', cb')
@@ -208,7 +214,13 @@ materializeE e@(Node (t :@: _) cs) = case t of
 
     (ehw, _) <- hasWriteIn ci cb
 
-    constrain u i In $ mITE ehw (mAtom Copied) (mAtom ConstReferenced)
+    topL <- asks topLevel
+
+    let argShouldBeMoved = case (e @~ \case { EType _ -> True; _ -> False }) of
+          Just (EType (tag &&& children -> (TFunction, [t, _]))) -> isNonScalarType t
+          _ -> False
+
+    constrain u i In $ mITE (ehw -||- mBool (topL && argShouldBeMoved)) (mAtom Copied) (mAtom ConstReferenced)
 
     cls <- ePrv e >>= \case
       (tag -> PLambda _ cls) -> return cls
