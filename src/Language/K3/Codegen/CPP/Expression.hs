@@ -344,7 +344,7 @@ inline e@(tag -> EOperate OApp) = do
         return $ case x of
           (tag -> EVariable i) | i `elem` map fst gs -> ([], xv)
           _ -> ([R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just $ gMoveByDE (getInMethodFor "!" m) x xv)]
-               , R.Variable $ R.Name g
+               , R.Call (R.Variable $ R.Name "_F") [R.Variable $ R.Name g]
                )
 
   (argDecls, argPasses) <- unzip <$> sequence [argDecl g x xv m | g <- gs | xv <- xvs | x <- xs | m <- as]
