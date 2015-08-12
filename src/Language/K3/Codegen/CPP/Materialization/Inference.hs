@@ -456,6 +456,10 @@ isGlobal p = case tag p of
     parent <- chasePPtr ptr >>= isGlobal
     return $ mOneOf (mVar u n In) [Referenced, ConstReferenced] -&&- parent
   (PProject _) -> isGlobal (head $ children p)
+  PSet -> mOr <$> traverse isGlobal (children p)
+  (PRecord _) -> mOr <$> traverse isGlobal (children p)
+  (PTuple _) -> mOr <$> traverse isGlobal (children p)
+  POption -> mOr <$> traverse isGlobal (children p)
   _ -> return $ mBool False
 
 occursIn :: Contextual (K3 Provenance) -> Contextual (K3 Provenance) -> InferM (K3 MPred)
@@ -474,7 +478,7 @@ occursIn a@(Contextual pa ca) b@(Contextual pb cb) = case tag pb of
   _ -> return (mBool False)
 
 isMoveable :: Contextual (K3 Provenance) -> InferM (K3 MPred)
-isMoveable (Contextual p _) = isGlobal p
+isMoveable (Contextual p _) = mNot <$> isGlobal p
 
 isMoveableIn :: Contextual (K3 Provenance) -> Contextual (K3 Expression) -> InferM (K3 MPred)
 isMoveableIn cp ce = do
@@ -482,11 +486,11 @@ isMoveableIn cp ce = do
   (ehw, ihw) <- hasWriteIn cp ce
 
   eu <- let (Contextual e _) = ce in eUID e
-  return $ foldr1 (-||-) ([ ehr -??- (printf "Explicit reads in downstream %d?" (gUID eu))
-                          , ihr -??- (printf "Implicit reads in downstream %d?" (gUID eu))
-                          , ehw -??- (printf "Explicit writes in downstream %d?" (gUID eu))
-                          , ihw -??- (printf "Explicit writes in downstream %d?" (gUID eu))
-                          ] :: [K3 MPred]) -??- printf "Moveable in downstream %d?" (gUID eu)
+  return $ (mNot $ foldr1 (-||-) ([ ehr -??- (printf "Explicit reads in downstream %d?" (gUID eu))
+                                  , ihr -??- (printf "Implicit reads in downstream %d?" (gUID eu))
+                                  , ehw -??- (printf "Explicit writes in downstream %d?" (gUID eu))
+                                  , ihw -??- (printf "Explicit writes in downstream %d?" (gUID eu))
+                                  ] :: [K3 MPred])) -??- printf "Moveable in downstream %d?" (gUID eu)
 
 isMoveableNow :: Contextual (K3 Provenance) -> InferM (K3 MPred)
 isMoveableNow cp = do
