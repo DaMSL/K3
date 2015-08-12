@@ -456,6 +456,10 @@ isGlobal p = case tag p of
     parent <- chasePPtr ptr >>= isGlobal
     return $ mOneOf (mVar u n In) [Referenced, ConstReferenced] -&&- parent
   (PProject _) -> isGlobal (head $ children p)
+  PSet -> mOr <$> traverse isGlobal (children p)
+  (PRecord _) -> mOr <$> traverse isGlobal (children p)
+  (PTuple _) -> mOr <$> traverse isGlobal (children p)
+  POption -> mOr <$> traverse isGlobal (children p)
   _ -> return $ mBool False
 
 occursIn :: Contextual (K3 Provenance) -> Contextual (K3 Provenance) -> InferM (K3 MPred)
