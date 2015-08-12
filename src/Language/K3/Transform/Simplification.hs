@@ -112,6 +112,7 @@ data FusionAccFClass = UCondVal -- Direct return of accumulator value (e.g., ite
                      | ICond1   -- Accumulation in one accumulator-independent condition branch
                      | ICondN   -- Accumulation in many accumulator-independent condition branches
                      | DCond2   -- Accumulation in two accumulator-dependent condition branches
+                     | Halt     -- An explicit class to prevent further fusion.
                      | Open     -- General accumulation function with unknown structure
                      deriving (Enum, Eq, Ord, Read, Show)
 
@@ -1627,7 +1628,7 @@ fuseFoldTransformers expr = do
 
                     nf  = PChainLambda1 li lj nfE [] []
                 in
-                return $ Just (updateFusionSpec rAs (Open, DepTr), nf)
+                return $ Just (updateFusionSpec rAs (Halt, DepTr), nf)
                   -- ^ TODO: for now, we pick a restrictive fusion spec that disallows further
                   --   fusion with downstream operations.
 
@@ -1662,7 +1663,7 @@ fuseFoldTransformers expr = do
 
                     nf  = PChainLambda1 li lj nfE [] []
                 in
-                return $ Just (updateFusionSpec rAs (Open, DepTr), nf)
+                return $ Just (updateFusionSpec rAs (Halt, DepTr), nf)
                   -- ^ TODO: for now, we pick a restrictive fusion spec that disallows further
                   --   fusion with downstream operations.
 
@@ -1695,7 +1696,7 @@ fuseFoldTransformers expr = do
 
                     nf  = PChainLambda1 li lj nfE [] []
                 in
-                return $ Just (updateFusionSpec rAs (Open, DepTr), nf)
+                return $ Just (updateFusionSpec rAs (Halt, DepTr), nf)
                   -- ^ TODO: for now, we pick a restrictive fusion spec that disallows further
                   --   fusion with downstream operations.
 
@@ -1746,7 +1747,7 @@ fuseFoldTransformers expr = do
 
                     nf  = PChainLambda1 li lj nfE [] []
                 in
-                return $ Just (updateFusionSpec rAs (Open, DepTr), nf)
+                return $ Just (updateFusionSpec rAs (Halt, DepTr), nf)
                   -- ^ TODO: for now, we pick a restrictive fusion spec that disallows further
                   --   fusion with downstream operations.
 
@@ -1769,7 +1770,7 @@ fuseFoldTransformers expr = do
 
                     nf  = PChainLambda1 li lj nfE [] []
                 in
-                return $ Just (updateFusionSpec rAs (Open, DepTr), nf)
+                return $ Just (updateFusionSpec rAs (Halt, DepTr), nf)
 
               (_, _) -> Right Nothing
 
@@ -1980,7 +1981,9 @@ fuseFoldTransformers expr = do
     cleanAnns a = isEUID a || isESpan a || isAnyETypeOrEffectAnn a
 
     -- Fusion spec helpers
-    updateFusionSpec as spec = nub $ filter (not . isEFusionSpec) as ++ [pFusionSpec spec, pAccumulatingTransformer]
+    updateFusionSpec as spec = nub $ filter (not . isEFusionSpec) as
+                                  ++ [pFusionSpec spec]
+                                  ++ (case fst spec of {Open -> []; _ -> [pAccumulatingTransformer]})
 
     promoteTCls a b = toEnum $ max (fromEnum a) (fromEnum b)
 
