@@ -279,7 +279,7 @@ inline e@(tag -> ELambda _) = do
                   | fi <- argNames
                   ]
 
-    return ([], R.Lambda captures argList True returnType fullBody)
+    return ([], R.Lambda captures argList True (if isAccumulating then Just R.Void else returnType) fullBody)
 
 inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [prj@(Fold c), f])), z])) = do
   let isAccumulating = prj @~ (\case { EProperty (ePropertyName -> "AccumulatingTransformer") -> True; _ -> False })
