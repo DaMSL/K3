@@ -29,6 +29,9 @@ class Engine {
   template <class T>
   void send(const Address& src, const Address& dst, TriggerID trig,
             const T& value);
+  template <class T>
+  void send(const Address& src, const Address& dst, TriggerID trig,
+            T&& value);
   // Accessors
   shared_ptr<ProgramContext> getContext(const Address& addr);
   NetworkManager& getNetworkManager();
@@ -100,7 +103,7 @@ string getTriggerName(int);
 
 template <class T>
 void Engine::send(const Address& src, const Address& dst, TriggerID trig,
-                  const T& value) {
+                  T&& value) {
   if (!peers_) {
     throw std::runtime_error(
         "Engine send(): Can't send before peers_ is initialized");
@@ -113,7 +116,7 @@ void Engine::send(const Address& src, const Address& dst, TriggerID trig,
   auto it = peers_->find(dst);
   if (options_.local_sends_enabled_ && it != peers_->end()) {
     // Direct enqueue for local messages
-    unique_ptr<NativeValue> nv = std::make_unique<TNativeValue<T>>(value);
+    unique_ptr<NativeValue> nv = std::make_unique<TNativeValue<T>>(std::move(value));
     auto d = getDispatcher(it->second, std::move(nv), trig);
 #ifdef K3DEBUG
     d->trigger_ = trig;
@@ -132,6 +135,12 @@ void Engine::send(const Address& src, const Address& dst, TriggerID trig,
 #endif
     network_manager_.sendInternal(dst, m);
   }
+}
+
+template <class T>
+void Engine::send(const Address& src, const Address& dst, TriggerID trig,
+                  const T& value) {
+  send(src, dst, trig, T(value));
 }
 
 }  // namespace K3

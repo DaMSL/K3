@@ -371,7 +371,7 @@ inline e@(tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [tri
     let me = R.Variable $ R.Name "me"
     return (concat [te, ae, ve]
                  ++ [ R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Specialized [trigTypes] (R.Name "send")))
-                                    [me, av, R.Variable $ R.Name tIdName, R.Move $ messageValue]
+                                    [me, av, R.Variable $ R.Name tIdName, messageValue]
                     ]
              , R.Initialization R.Unit [])
     where
