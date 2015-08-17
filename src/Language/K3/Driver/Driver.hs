@@ -33,6 +33,7 @@ import Language.K3.Utils.Pretty.Syntax
 import Language.K3.Parser ( stitchK3Includes )
 import Language.K3.Parser.ProgramBuilder ( defaultRoleName )
 import Language.K3.Parser.SQL hiding ( liftEitherM, reasonM )
+import qualified Language.K3.Parser.NewSQL as NewSQL
 
 import Language.K3.Metaprogram.DataTypes
 import Language.K3.Metaprogram.Evaluation
@@ -272,6 +273,59 @@ initialize opts = liftIO $ do
     -- ^ Process logging directives
 
 sql :: SQLOptions -> Options -> DriverM ()
+sql sqlopts opts | sqlNewCompiler sqlopts = do
+  stmtE <- liftIO $ parseStatementsFromFile path
+  flip (either (liftIO . putStrLn . show)) stmtE $ \stmts -> do
+    (env, isg) <- sqlstmts stmts
+    sqlcg env isg
+
+  where
+    dependencies = map (\s -> "include \"" ++ s ++ "\"")
+                     [ "Annotation/Collection.k3"
+                     , "Core/Barrier.k3"
+                     , "Distributed/SQLTransformers.k3" ]
+
+    path         = inputProgram $ input opts
+    includePaths = includes $ paths opts
+    nf           = noFeed $ input opts
+
+    printParse = sqlPrintParse sqlopts
+    asSyntax   = case sqlPrintMode sqlopts of
+                   PrintSyntax -> True
+                   _ -> False
+
+    sqlstmts stmts = do
+      void $ if printParse then printStmts stmts else return ()
+      ((rstmts, stggraph, pstr, gstrs), env) <- liftEitherM $ NewSQL.runSQLParseEM NewSQL.sqlenv0 $ do
+          nstmts <- NewSQL.sqloptimize stmts
+          (sstmts, stggraph) <- NewSQL.sqlstage nstmts
+          (\a b -> (sstmts, stggraph, unlines a, b)) <$> NewSQL.sqlstringify sstmts <*> NewSQL.sqldepgraph sstmts
+
+      liftIO $ putStrLn $ boxToString $ ["Program", pstr, "", "Dependency Graph"] %$ gstrs
+      return (env, (rstmts, stggraph))
+
+    sqlcg env sg = do
+      (prog, _) <- liftEitherM $ NewSQL.runSQLParseEM env $ NewSQL.sqlcodegen (sqlDistributedPlan sqlopts) sg
+      if sqlUntyped sqlopts
+        then liftIO $ putStrLn $ pretty prog
+        else sqlprog prog
+
+    sqlprog prog = do
+      sprog <- liftE $ stitchK3Includes nf includePaths dependencies prog
+      mprog <- metaprogram opts sprog
+      case (sqlDoCompile sqlopts, sqlCompile sqlopts) of
+        (True, Just cOpts) -> dispatch (opts {mode = Compile cOpts}) mprog
+
+        (_, _) -> do
+          encprog <- if asSyntax then liftEitherM $ programS mprog else return $ pretty mprog
+          liftIO $ putStrLn encprog
+
+    printStmts stmts = liftIO $ do
+      putStrLn $ replicate 40 '='
+      void $ forM stmts $ \s -> putStrLn $ show s
+      putStrLn $ replicate 40 '='
+
+
 sql sqlopts opts = do
   stmtE <- liftIO $ parseStatementsFromFile path
   either (liftIO . putStrLn . show) k3program stmtE
@@ -304,9 +358,14 @@ sql sqlopts opts = do
       mprog <- metaprogram opts sprog
       (nprog, psqlenv) <- liftEitherM $ runSQLParseEM env $ sqlstages (sqlDistributedPlan sqlopts) mprog
       smprog <- metaprogram opts nprog
-      encprog <- if asSyntax then liftEitherM $ programS smprog else return $ pretty smprog
-      liftIO $ putStrLn encprog
-      printState psqlenv
+      case (sqlDoCompile sqlopts, sqlCompile sqlopts) of
+        (True, Just cOpts) -> dispatch (opts {mode = Compile cOpts}) smprog
+
+        (_, _) -> do
+          encprog <- if asSyntax then liftEitherM $ programS smprog else return $ pretty smprog
+          liftIO $ putStrLn encprog
+          printState psqlenv
+
 
     printStmts stmts = liftIO $ do
       putStrLn $ replicate 40 '='
