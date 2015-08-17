@@ -66,7 +66,7 @@ optimizeMaterialization (p, f) d = runExceptT $ inferMaterialization >>= solveMa
     Left (SError msg) -> throwError msg
     Right (_, SState mp) -> return mp
    where
-    solveAction = (mkDependencyList ct >>= traverse_ (\k -> solveForE (ct M.! k) >>= setMethod k))
+    solveAction = (mkDependencyList ct >>= traverse_ (flip solveForAll ct))
 
   attachMaterialization k m = return $ attachD <$> k
    where
@@ -520,34 +520,56 @@ getMethod :: DKey -> SolverM Method
 getMethod k = gets assignments >>= maybe (throwError $ SError $ "Unconfirmed decision for " ++ show k) return . M.lookup k
 
 -- ** Sorting
-mkDependencyList :: M.Map DKey (K3 MExpr) -> SolverM [DKey]
+mkDependencyList :: M.Map DKey (K3 MExpr) -> SolverM [S.Set DKey]
 mkDependencyList m = mkDependencySets m >>= topoSortWithDependencySets
 
 mkDependencySets :: M.Map DKey (K3 MExpr) -> SolverM (M.Map DKey (S.Set DKey))
-mkDependencySets = traverse findDependenciesE
+mkDependencySets = return . fmap findDependenciesE
 
-findDependenciesE :: K3 MExpr -> SolverM (S.Set DKey)
+findDependenciesE :: K3 MExpr -> S.Set DKey
 findDependenciesE e = case tag e of
-  MVar j d -> return [(j, d)]
-  MAtom _ -> return []
-  MIfThenElse p -> S.union <$> (S.unions <$> traverse findDependenciesE (children e)) <*> findDependenciesP p
+  MVar j d -> [(j, d)]
+  MAtom _ -> []
+  MIfThenElse p -> S.union (S.unions $ fmap findDependenciesE (children e)) (findDependenciesP p)
 
-findDependenciesP :: K3 MPred -> SolverM (S.Set DKey)
+findDependenciesP :: K3 MPred -> S.Set DKey
 findDependenciesP p = case tag p of
   MOneOf e _ -> findDependenciesE e
-  _ -> S.unions <$> traverse findDependenciesP (children p)
+  _ -> S.unions $ fmap findDependenciesP (children p)
 
-topoSortWithDependencySets :: M.Map DKey (S.Set DKey) -> SolverM [DKey]
+topoSortWithDependencySets :: M.Map DKey (S.Set DKey) -> SolverM [S.Set DKey]
 topoSortWithDependencySets m
   | M.null m = return []
-  | M.null rootSet = throwError $ SError $ "cycle in materialization dependencies." ++ show remaining ++ show missingVariables
-  | otherwise = (M.keys rootSet ++) <$> topoSortWithDependencySets reducedMap
+  | M.null rootSet = if not (S.null missingVariables)
+                       then throwError $ SError $ "Missing variables in constraint set: " ++ show missingVariables
+                       else case identifyDepCycle m [] (fst $ M.findMin m) of
+                         Nothing -> throwError $ SError $ "No missing variables or cycles, yet errors abound."
+                         Just ds -> let marginalized = M.map (S.\\ (S.fromList ds)) $ foldr M.delete m ds
+                                    in (S.fromList ds:) <$> topoSortWithDependencySets marginalized
+  | otherwise = (map S.singleton (M.keys rootSet) ++) <$> topoSortWithDependencySets reducedMap
  where
   (rootSet, remaining) = M.partition S.null m
   reducedMap = M.map (S.\\ (M.keysSet rootSet)) remaining
   missingVariables = S.unions (M.elems m) S.\\ M.keysSet m
 
+identifyDepCycle :: M.Map DKey (S.Set DKey) -> [DKey] -> DKey -> Maybe [DKey]
+identifyDepCycle m path d =
+  if d `elem` path
+    then (Just path)
+    else let deps = M.findWithDefault S.empty d m
+             subCycles = mapMaybe (identifyDepCycle m (d:path)) (S.toList deps)
+         in if null subCycles then Nothing else (Just $ minimumBy (comparing length) subCycles)
+
 -- ** Solving
+solveForAll :: S.Set DKey -> M.Map DKey (K3 MExpr) -> SolverM ()
+solveForAll ks m = solveForAll' (L.sortBy (comparing Down) (S.toList ks)) m
+
+solveForAll' :: [DKey] -> M.Map DKey (K3 MExpr) -> SolverM ()
+solveForAll' ks m = case ks of
+  [] -> return ()
+  [x] -> solveForE (m M.! x) >>= setMethod x
+  (x:xs) -> setMethod x Copied >> solveForAll' xs m
+
 solveForE :: K3 MExpr -> SolverM Method
 solveForE m = case tag m of
   MVar j d -> getMethod (j, d)
