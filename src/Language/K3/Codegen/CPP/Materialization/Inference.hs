@@ -66,7 +66,7 @@ optimizeMaterialization (p, f) d = runExceptT $ inferMaterialization >>= solveMa
     Left (SError msg) -> throwError msg
     Right (_, SState mp) -> return mp
    where
-    solveAction = (mkDependencyList ct >>= traverse_ (flip solveForAll ct))
+    solveAction = (mkDependencyList ct d >>= flip solveForAll ct)
 
   attachMaterialization k m = return $ attachD <$> k
    where
@@ -520,11 +520,39 @@ getMethod :: DKey -> SolverM Method
 getMethod k = gets assignments >>= maybe (throwError $ SError $ "Unconfirmed decision for " ++ show k) return . M.lookup k
 
 -- ** Sorting
-mkDependencyList :: M.Map DKey (K3 MExpr) -> SolverM [S.Set DKey]
-mkDependencyList m = mkDependencySets m >>= topoSortWithDependencySets
+mkDependencyList :: M.Map DKey (K3 MExpr) -> K3 Declaration -> SolverM [Either DKey DKey]
+mkDependencyList m p = return (buildHybridDepList graph)
+ where
+  graph = [(k, k, S.toList (findDependenciesE $ m M.! k)) | k <- M.keys m]
+  collapseSCCs scc = case scc of
+    G.AcyclicSCC (v, _, _) -> [Right v]
+    G.CyclicSCC vs -> let ((v', _, _):vs') = sortByProgramUID vs p
+                      in Left v' : (buildHybridDepList vs')
+  buildHybridDepList g = concatMap collapseSCCs (G.stronglyConnCompR g)
 
-mkDependencySets :: M.Map DKey (K3 MExpr) -> SolverM (M.Map DKey (S.Set DKey))
-mkDependencySets = return . fmap findDependenciesE
+  sortByProgramUID :: [(DKey, DKey, [DKey])] -> K3 Declaration -> [(DKey, DKey, [DKey])]
+  sortByProgramUID ks d = fst $ fst $ foldProgramUID' moveToFront ([], ks) d
+
+  moveToFront (ns, os) u = let (ns', os') = L.partition (\(_, (Juncture k _, _), _) -> k == u) os in (ns' ++ ns, os')
+
+  foldProgramUID' :: (a -> UID -> a) -> a -> K3 Declaration -> (a, K3 Declaration)
+  foldProgramUID' uidF z d = runIdentity $ foldProgram onDecl onMem onExpr (Just onType) z d
+    where onDecl a n = return $ (dUID a n, n)
+          onExpr a n = foldTree' (\a' n' -> return $ eUID a' n') a n >>= return . (,n)
+          onType a n = foldTree' (\a' n' -> return $ tUID a' n') a n >>= return . (,n)
+
+          onMem a mem@(Lifted    _ _ _ _ anns) = return $ (dMemUID a anns, mem)
+          onMem a mem@(Attribute _ _ _ _ anns) = return $ (dMemUID a anns, mem)
+          onMem a mem@(MAnnotation   _ _ anns) = return $ (dMemUID a anns, mem)
+
+          dUID a n = maybe a (\case {DUID b -> uidF a b; _ -> a}) $ n @~ isDUID
+          eUID a n = maybe a (\case {EUID b -> uidF a b; _ -> a}) $ n @~ isEUID
+          tUID a n = maybe a (\case {TUID b -> uidF a b; _ -> a}) $ n @~ isTUID
+
+          dMemUID a anns = maybe a (\case {DUID b -> uidF a b; _ -> a}) $ find isDUID anns
+
+  foldTree' f x n@(Node _ []) = f x n
+  foldTree' f x n@(Node _ ch) = f x n >>= flip (foldM (foldTree' f)) ch
 
 findDependenciesE :: K3 MExpr -> S.Set DKey
 findDependenciesE e = case tag e of
@@ -537,38 +565,11 @@ findDependenciesP p = case tag p of
   MOneOf e _ -> findDependenciesE e
   _ -> S.unions $ fmap findDependenciesP (children p)
 
-topoSortWithDependencySets :: M.Map DKey (S.Set DKey) -> SolverM [S.Set DKey]
-topoSortWithDependencySets m
-  | M.null m = return []
-  | M.null rootSet = if not (S.null missingVariables)
-                       then throwError $ SError $ "Missing variables in constraint set: " ++ show missingVariables
-                       else case identifyDepCycle m [] (fst $ M.findMin m) of
-                         Nothing -> throwError $ SError $ "No missing variables or cycles, yet errors abound."
-                         Just ds -> let marginalized = M.map (S.\\ (S.fromList ds)) $ foldr M.delete m ds
-                                    in (S.fromList ds:) <$> topoSortWithDependencySets marginalized
-  | otherwise = (map S.singleton (M.keys rootSet) ++) <$> topoSortWithDependencySets reducedMap
- where
-  (rootSet, remaining) = M.partition S.null m
-  reducedMap = M.map (S.\\ (M.keysSet rootSet)) remaining
-  missingVariables = S.unions (M.elems m) S.\\ M.keysSet m
-
-identifyDepCycle :: M.Map DKey (S.Set DKey) -> [DKey] -> DKey -> Maybe [DKey]
-identifyDepCycle m path d =
-  if d `elem` path
-    then (Just path)
-    else let deps = M.findWithDefault S.empty d m
-             subCycles = mapMaybe (identifyDepCycle m (d:path)) (S.toList deps)
-         in if null subCycles then Nothing else (Just $ minimumBy (comparing length) subCycles)
-
 -- ** Solving
-solveForAll :: S.Set DKey -> M.Map DKey (K3 MExpr) -> SolverM ()
-solveForAll ks m = solveForAll' (L.sortBy (comparing Down) (S.toList ks)) m
-
-solveForAll' :: [DKey] -> M.Map DKey (K3 MExpr) -> SolverM ()
-solveForAll' ks m = case ks of
-  [] -> return ()
-  [x] -> solveForE (m M.! x) >>= setMethod x
-  (x:xs) -> setMethod x Copied >> solveForAll' xs m
+solveForAll :: [Either DKey DKey] -> M.Map DKey (K3 MExpr) -> SolverM ()
+solveForAll eks m = for_ eks $ \case
+  Left fk -> setMethod fk Copied
+  Right rk -> solveForE (m M.! rk) >>= setMethod rk
 
 solveForE :: K3 MExpr -> SolverM Method
 solveForE m = case tag m of
