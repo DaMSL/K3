@@ -85,6 +85,7 @@ class StringPackedValue : public PackedValue {
   CodecFormat format() const;
   virtual const char* buf() const;
   virtual size_t length() const;
+  string steal();
 
  protected:
   std::unique_ptr<string> string_;

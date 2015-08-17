@@ -36,7 +36,7 @@ import Language.K3.Utils.Pretty
 
 -- Builtin names to explicitly skip.
 skip_builtins :: [String]
-skip_builtins = ["hasRead", "doRead", "doReadBlock", "hasWrite", "doWrite"]
+skip_builtins = ["hasRead", "doRead", "doBlockRead", "hasWrite", "doWrite"]
 
 declaration :: K3 Declaration -> CPPGenM [R.Definition]
 declaration (tna -> ((DGlobal n (tnc -> (TSource, [t])) _), as)) = return []

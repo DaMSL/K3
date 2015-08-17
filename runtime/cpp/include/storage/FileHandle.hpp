@@ -22,7 +22,7 @@ class FileHandle {
     virtual bool hasRead()   {return false;}
     virtual bool hasWrite()  {return false;}
 
-    virtual shared_ptr<PackedValue> doRead() = 0;
+    virtual unique_ptr<PackedValue> doRead() = 0;
     template<class T>
     void doWrite(const T& val) {
       auto pv = pack<T>(val, fmt_);
@@ -44,7 +44,7 @@ public:
   SourceFileHandle (std::string path, CodecFormat codec);
 
   virtual bool hasRead();
-  virtual shared_ptr<PackedValue> doRead();
+  virtual unique_ptr<PackedValue> doRead();
 
   virtual void doWriteHelper(const PackedValue& val) {
     throw std::ios_base::failure ("ERROR trying to write to source.");
@@ -63,7 +63,7 @@ protected:
 class SourceTextHandle : public SourceFileHandle  {
 public:
   SourceTextHandle (std::string path, CodecFormat codec);
-  virtual shared_ptr<PackedValue> doRead();
+  virtual unique_ptr<PackedValue> doRead();
 };
 
 
@@ -76,7 +76,7 @@ public:
   virtual void doWriteHelper(const PackedValue& val);
 
 
-  virtual shared_ptr<PackedValue> doRead() {
+  virtual unique_ptr<PackedValue> doRead() {
     throw std::ios_base::failure ("ERROR trying to read from sink.");
   }
 

@@ -32,7 +32,7 @@ using K3::StringPackedValue;
 //      Codec::getCodec<std::unordered_map<int, int>>(CodecFormat::BoostBinary);
 //  auto packed = cdec->pack(
 //      *make_shared<TNativeValue<std::unordered_map<int, int>>>(std::move(m)));
-//  auto unpacked = cdec->unpack(*packed);
+//  auto unpacked = cdec->unpack(std::move(packed));
 //  auto m2 = *unpacked->as<std::unordered_map<int, int>>();
 //  ASSERT_EQ(1, m2[1]);
 //  ASSERT_EQ(2, m2[2]);

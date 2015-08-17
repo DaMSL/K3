@@ -108,6 +108,11 @@ with effects \_ -> \_ -> io
 declare doRead: address -> string -> string
 with effects \_ -> \_ -> io
 
+// doRead: address -> channel id -> string
+@:CArgs 3
+declare doBlockRead: address -> string -> int -> collection { elem: string} @Collection
+with effects \_ -> \_ -> \_ -> io
+
 //// doReadBlock: channel id -> block size -> block
 //@:CArgs 2
 //declare doReadBlock: string -> int -> collection {elem: string} @Collection

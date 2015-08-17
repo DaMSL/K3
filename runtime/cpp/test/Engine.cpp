@@ -165,7 +165,7 @@ class MainTriggerPackedDispatcher : public Dispatcher {
   }
 
   void operator()() {
-    auto native = unpack<unit_t>(*value_, value_->format());
+    auto native = unpack<unit_t>(std::move(value_));
     context_.mainTrigger(*native);
   }
 
@@ -195,7 +195,7 @@ class StopTriggerPackedDispatcher : public Dispatcher {
   }
 
   void operator()() {
-    auto native = unpack<unit_t>(*value_, value_->format());
+    auto native = unpack<unit_t>(std::move(value_));
     context_.stopTrigger(*native);
   }
 
@@ -226,7 +226,7 @@ class IntTriggerPackedDispatcher : public Dispatcher {
   }
 
   void operator()() {
-    auto native = unpack<int>(*value_, value_->format());
+    auto native = unpack<int>(std::move(value_));
     context_.intTrigger(*native);
   }
 
@@ -257,7 +257,7 @@ class StringTriggerPackedDispatcher : public Dispatcher {
   }
 
   void operator()() {
-    auto native = unpack<string>(*value_, value_->format());
+    auto native = unpack<string>(std::move(value_));
     context_.stringTrigger(*native);
   }
 

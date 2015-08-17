@@ -18,7 +18,7 @@ class StorageManager {
       files_ = make_shared<ConcurrentMap<pair<Address, Identifier>, shared_ptr<FileHandle>>> ();
       logger_ = spdlog::get("engine");
   }
-  void openFile(Address peer, Identifier id, std::string path, 
+  void openFile(Address peer, Identifier id, std::string path,
                       StorageFormat fmt, CodecFormat codec, IOMode io);
   void closeFile(Address peer, Identifier id);
 
@@ -29,30 +29,34 @@ class StorageManager {
     try {
       auto handle = files_->lookup(make_pair(peer, id));
       auto pval = handle->doRead();
-      return *unpack<T>(*pval, handle->format());
+      return *unpack<T>(std::move(pval));
     }
     catch (std::ios_base::failure e) {
       logger_->error ("ERROR Reading from {}", id);
       throw std::runtime_error ("File I/O Error. Program is Halting.");
     }
   }
- 
+
   template <class T>
   vector<T> doBlockRead(Address peer, Identifier id, int max_blocksize) {
     vector<T> vals;
     try {
       auto file = files_->lookup(make_pair(peer, id));
       for (int i = 0; i < max_blocksize; i++) {
-        auto val = file->doRead(); 
-        T t = std::move(*unpack<T>(*val, file->format()));
-        vals.push_back(std::move(t));
+        if (file->hasRead()) {
+          auto val = file->doRead();
+          auto t = unpack<T>(std::move(val));
+          vals.push_back(std::move(*t));
+        } else {
+          break;
+        }
       }
     }
     catch (std::exception e)  {
       logger_->error ("ERROR Reading from {}", id);
       throw std::runtime_error ("File I/O Error. Program is Halting.");
     }
-    return vals;
+    return std::move(vals);
   }
 
   // Writing
@@ -70,8 +74,8 @@ class StorageManager {
       throw std::runtime_error ("File I/O Error. Program is Halting.");
     }
   }
-  
-  template <class T> 
+
+  template <class T>
   void doBlockWrite(Address peer, Identifier id, const vector<T>& vals, CodecFormat fmt) {
       // TODO(jbw) avoid copies when creating the native-value wrappers
       try  {

@@ -53,6 +53,14 @@ size_t StringPackedValue::length() const {
   }
 }
 
+string StringPackedValue::steal() {
+  if (string_) {
+    return std::move(*string_);
+  } else {
+    throw std::runtime_error("StringPackedValue steal(): string pointer null");
+  }
+}
+
 YASPackedValue::YASPackedValue(yas::shared_buffer b, CodecFormat format)
     : PackedValue(format) {
   buf_ = b;
