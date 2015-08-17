@@ -1,7 +1,16 @@
+{-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns  #-}
+
+-- TODO:
+-- 3. chain simplification
+-- 5. expression case completion
+-- 6. pushdown in subqueries
+-- 7. subqueries in gbs, prjs, aggs
+-- 8. correlated subqueries, and query decorrelation
+-- x. more groupByPushdown, subquery and distributed plan testing
 
 module Language.K3.Parser.SQL where
 
@@ -10,16 +19,16 @@ import Control.Monad
 import Control.Monad.State
 import Control.Monad.Trans.Except
 
-import Data.Functor.Identity
 import Data.Function ( on )
+import Data.Functor.Identity
+import Data.Maybe ( catMaybes )
+import Data.Either ( partitionEithers )
 import Data.Monoid
-import Data.Either ( isLeft, partitionEithers )
-import Data.List ( find, intersect, isInfixOf, nub, nubBy, reverse )
-import Data.Tree
-import Data.Tuple ( swap )
+import Data.List ( (\\), intersect, nub, isInfixOf, isPrefixOf, sortBy, unzip4 )
 
 import Data.Map ( Map )
 import Data.Set ( Set )
+import Data.Tree
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
@@ -45,17 +54,18 @@ import qualified Language.K3.Core.Constructor.Expression  as EC
 import qualified Language.K3.Core.Constructor.Literal     as LC
 import qualified Language.K3.Core.Constructor.Type        as TC
 
-import Language.K3.Parser.ProgramBuilder ( declareBuiltins )
-
-import Language.K3.Analysis.Core hiding ( ScopeEnv )
-import Language.K3.Analysis.HMTypes.Inference ( inferProgramTypes, translateProgramTypes )
-
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
 data OperatorFn = UnaryOp Operator ScalarExpr
                 | BinaryOp Operator ScalarExpr ScalarExpr
                 deriving (Eq, Show)
+
+data AggregateFn = AggSum
+                 | AggCount
+                 | AggMin
+                 | AggMax
+                 deriving (Eq, Read, Show)
 
 -- | Relation names and types.
 type RTypeEnv = Map Identifier (K3 Type)
@@ -64,71 +74,99 @@ type RTypeEnv = Map Identifier (K3 Type)
 type ADGPtr = Int
 
 data ADGNode = ADGNode { adnn  :: Identifier
-                       , adnr  :: Identifier
+                       , adnt  :: K3 Type
+                       , adnr  :: Maybe Identifier
                        , adne  :: Maybe ScalarExpr
                        , adnch :: [ADGPtr] }
               deriving (Eq, Show)
 
 type ADGraph = Map ADGPtr ADGNode
 
--- | Relational-K3 type mapping, indicating
---   i. no type prefix
---   ii. common type path prefix for all fields
---   iii. per-field full paths
-type TypePath      = [Identifier]
-type TypePathMap   = Map Identifier TypePath
-type TLabelMapping = Maybe (Either Identifier TypePathMap)
+-- | Scope frames are mappings of name paths (qualified or unqualified) to attributes.
+type AttrPath   = [Identifier]
+type Qualifiers = [[Identifier]]
+type AttrEnv    = Map AttrPath ADGPtr
+type ScopeFrame = (AttrEnv, [AttrPath], Qualifiers)
 
--- | Relational value-type mappings, indicating a relational type as a
---   i. single variable-and-type mapping
---   ii. per-field variable-and-type mapping
-type VTMapping = (Identifier, TLabelMapping)
-type FieldVTMap = Map Identifier VTMapping
-data TValueMapping = TVMType      TLabelMapping
-                   | TVMNamed     VTMapping
-                   | TVMComposite FieldVTMap
-                   deriving (Eq, Show)
+-- | Scope environments store bindings throughout a query's subexpressions.
+type ScopeId  = Int
+type ScopeEnv = Map ScopeId ScopeFrame
 
--- | Mapped relational types.
-type MRType  = (K3 Type, TLabelMapping, [ADGPtr])
-type MERType = (K3 Type, TValueMapping)
+-- | Internal query plan representation.
+data QueryClosure = QueryClosure { qcfree  :: [AttrPath]
+                                 , qcplan  :: QueryPlan }
+                    deriving (Eq, Show)
 
--- | Qualified attribute env
-type AQEnv = Map Identifier MRType
+type SubqueryBindings = [(ScalarExpr, (Identifier, QueryClosure))]
 
--- | Attribute pointer env
-type ADGPtrEnv = ([ADGPtr], [(Identifier, [ADGPtr])])
+data PlanCPath = PlanCPath { pcoutsid     :: ScopeId
+                           , pcselects    :: ScalarExprList
+                           , pcgroupbys   :: ScalarExprList
+                           , pcprojects   :: SelectItemList
+                           , pcaggregates :: SelectItemList
+                           , pchaving     :: MaybeBoolExpr
+                           , pcbindings   :: SubqueryBindings }
+                deriving (Eq, Show)
 
--- | Attribute binding env
-data AEnv = AEnv { aeuq :: MERType, aeq :: AQEnv }
-            deriving (Eq, Show)
+data PlanNode = PJoin     { pnjprocsid    :: ScopeId
+                          , pnjoutsid     :: ScopeId
+                          , pnjtype       :: Maybe (Natural, JoinType)
+                          , pnjequalities :: [(ScalarExpr, ScalarExpr)]
+                          , pnjpredicates :: ScalarExprList
+                          , pnjpredbinds  :: SubqueryBindings
+                          , pnjpath       :: [PlanCPath] }
 
-data ParseResult = ParseResult { pexpr  :: K3 Expression
-                               , prt    :: K3 Type
-                               , pkt    :: K3 Type
-                               , ptmap  :: TLabelMapping
-                               , palias :: Maybe Identifier
-                               , pptrs  :: [ADGPtr] }
-                  deriving (Eq, Show)
+              | PSubquery { pnsqoutsid   :: ScopeId
+                          , pnqclosure   :: QueryClosure }
 
--- | Scope environments.
-type ScopePtr = Int
-type ScopeEnv = Map ScopePtr AEnv
+              | PTable    { pntid        :: Identifier
+                          , pntoutsid    :: ScopeId
+                          , pntref       :: Maybe TableRef
+                          , pntbindmap   :: Maybe BindingMap
+                          , pntpath      :: [PlanCPath] }
+              deriving (Eq, Show)
+
+type PlanTree = Tree PlanNode
+
+data QueryPlan = QueryPlan { qjoinTree   :: Maybe PlanTree
+                           , qpath       :: [PlanCPath]
+                           , qstageid    :: Maybe Identifier }
+                deriving (Eq, Show)
+
+-- | Binding mappings
+type TypePrefix  = Identifier
+type TypePath    = [Identifier]
+type TypeMapping = Maybe (Either TypePrefix TypePath)
+
+data BindingMap = BMNone
+                | BMTPrefix      Identifier
+                | BMTFieldMap    (Map Identifier TypePath)
+                | BMTVPartition  (Map Identifier (Identifier, TypeMapping))
+                deriving (Eq, Show)
 
 -- | Parsing state environment.
 data SQLEnv = SQLEnv { relations :: RTypeEnv
-                     , aliassym  :: ParGenSymS
                      , adgraph   :: ADGraph
-                     , adpsym    :: ParGenSymS
                      , scopeenv  :: ScopeEnv
+                     , aliassym  :: ParGenSymS
+                     , adpsym    :: ParGenSymS
                      , spsym     :: ParGenSymS
+                     , sqsym     :: ParGenSymS
                      , stgsym    :: ParGenSymS
-                     , slblsym   :: ParGenSymS }
+                     , slblsym   :: ParGenSymS
+                     , aggdsym   :: ParGenSymS }
             deriving (Eq, Show)
 
 -- | A stateful SQL parsing monad.
 type SQLParseM = ExceptT String (State SQLEnv)
 
+-- | SQL program statements
+data SQLDecl = SQLRel   (Identifier, K3 Type)
+             | SQLStage (Identifier, K3 Type)
+             | SQLQuery QueryPlan
+             deriving (Eq, Show)
+
+type StageGraph = [Either Identifier (Identifier, Identifier)]
 
 {- Naming helpers. -}
 
@@ -139,350 +177,29 @@ stageId :: Identifier -> Identifier
 stageId n = "stage" ++ n
 
 
-{- Data.Text helpers -}
-
-sqlenv0 :: SQLEnv
-sqlenv0 = SQLEnv Map.empty contigsymS Map.empty contigsymS Map.empty contigsymS contigsymS contigsymS
-
--- | Relation type accessors
-stlkup :: RTypeEnv -> Identifier -> Except String (K3 Type)
-stlkup env x = maybe err return $ Map.lookup x env
-  where err = throwE $ "Unknown relation in sql parser environment: " ++ show x
-
-stext :: RTypeEnv -> Identifier -> K3 Type -> RTypeEnv
-stext env x t = Map.insert x t env
-
-stdel :: RTypeEnv -> Identifier -> RTypeEnv
-stdel env x = Map.delete x env
-
--- | Dependency graph accessors.
-sglkup :: ADGraph -> ADGPtr -> Except String ADGNode
-sglkup g p = maybe err return $ Map.lookup p g
-  where err = throwE $ "Unknown attribute node in sql parser environment: " ++ show p
-
-sgext :: ADGraph -> ADGNode -> ParGenSymS -> (ADGPtr, ParGenSymS, ADGraph)
-sgext g n sym = (ptr, nsym, Map.insert ptr n g)
-  where (nsym, ptr) = gensym sym
-
--- | Scope environment accessors.
-sclkup :: ScopeEnv -> ScopePtr -> Except String AEnv
-sclkup e p = maybe err return $ Map.lookup p e
-  where err = throwE $ "Unknown scope in sql parser environment: " ++ show p
-
-scext :: ScopeEnv -> AEnv -> ParGenSymS -> (ScopePtr, ParGenSymS, ScopeEnv)
-scext se ae sym = (ptr, nsym, Map.insert ptr ae se)
-  where (nsym, ptr) = gensym sym
-
-
--- | State accessors.
-sqelkup :: SQLEnv -> Identifier -> Except String (K3 Type)
-sqelkup senv n = stlkup (relations senv) n
-
-sqeext :: SQLEnv -> Identifier -> K3 Type -> SQLEnv
-sqeext senv n t = senv { relations = stext (relations senv) n t }
-
-sqedel :: SQLEnv -> Identifier -> SQLEnv
-sqedel senv n = senv { relations = stdel (relations senv) n }
-
-sqglkup :: SQLEnv -> ADGPtr -> Except String ADGNode
-sqglkup senv p = sglkup (adgraph senv) p
-
-sqgext :: SQLEnv -> ADGNode -> (ADGPtr, SQLEnv)
-sqgext senv n = (ptr, senv {adgraph = ng, adpsym = nsym})
-  where (ptr, nsym, ng) = sgext (adgraph senv) n (adpsym senv)
-
-sqclkup :: SQLEnv -> ScopePtr -> Except String AEnv
-sqclkup senv p = sclkup (scopeenv senv) p
-
-sqcext :: SQLEnv -> AEnv -> (ScopePtr, SQLEnv)
-sqcext senv n = (ptr, senv {scopeenv = ne, spsym = nsym})
-  where (ptr, nsym, ne) = scext (scopeenv senv) n (spsym senv)
-
-sqsext :: SQLEnv -> (Int, SQLEnv)
-sqsext senv = (n, senv {stgsym = nsym})
-  where (nsym, n) = gensym (stgsym senv)
-
-sasext :: SQLEnv -> (Int, SQLEnv)
-sasext senv = (n, senv {aliassym = nsym})
-  where (nsym, n) = gensym (aliassym senv)
-
-slblsext :: SQLEnv -> (Int, SQLEnv)
-slblsext senv = (n, senv {slblsym = nsym})
-  where (nsym, n) = gensym (slblsym senv)
-
--- | Monadic accessors.
-sqelkupM :: Identifier -> SQLParseM (K3 Type)
-sqelkupM n = get >>= liftExceptM . (\env -> sqelkup env n)
-
-sqeextM :: Identifier -> K3 Type -> SQLParseM ()
-sqeextM n t = get >>= \env -> return (sqeext env n t) >>= put
-
-sqglkupM :: ADGPtr -> SQLParseM ADGNode
-sqglkupM p = get >>= liftExceptM . (\env -> sqglkup env p)
-
-sqgextM :: ADGNode -> SQLParseM ADGPtr
-sqgextM n = get >>= \env -> return (sqgext env n) >>= \(r, nenv) -> put nenv >> return r
-
-sqclkupM :: ScopePtr -> SQLParseM AEnv
-sqclkupM p = get >>= liftExceptM . (\env -> sqclkup env p)
-
-sqcextM :: AEnv -> SQLParseM ScopePtr
-sqcextM n = get >>= \env -> return (sqcext env n) >>= \(r, nenv) -> put nenv >> return r
-
-sqsextM :: SQLParseM Int
-sqsextM = get >>= \env -> return (sqsext env) >>= \(i, nenv) -> put nenv >> return i
-
-sasextM :: SQLParseM Int
-sasextM = get >>= \env -> return (sasext env) >>= \(i, nenv) -> put nenv >> return i
-
-slblsextM :: SQLParseM Int
-slblsextM = get >>= \env -> return (slblsext env) >>= \(i, nenv) -> put nenv >> return i
-
-{- Attribute dependency graph accessors. -}
-
--- | Inverse indexing for attribute nodes.
-sqgidxM :: [ADGPtr] -> SQLParseM (Map Identifier ADGPtr)
-sqgidxM ptrs = do
-  l <- mapM (\p -> sqglkupM p >>= \node -> return (adnn node, p)) ptrs
-  return $ Map.fromList l
-
-
--- | Adds base relation attributes to the ADG.
-sqgextSchemaM :: Maybe Identifier -> K3 Type -> SQLParseM [ADGPtr]
-sqgextSchemaM (Just n) t = do
-    rt <- telemM t
-    case tag rt of
-      TRecord ids -> mapM sqgextM $ map (\i -> ADGNode i n Nothing []) ids
-      _ -> throwE $ boxToString $ ["Invalid relational element type"] %$ prettyLines rt
-
-sqgextSchemaM _ _ = throwE "No relation name specified when extending attribute graph"
-
--- | Adds unchanged derived schema attributes to the ADG
-sqgextIdentityM :: Maybe Identifier -> K3 Type -> [ADGPtr] -> SQLParseM [ADGPtr]
-sqgextIdentityM (Just n) t ptrs = do
-  rt <- telemM t
-  case tag rt of
-    TRecord ids -> mapM sqgextM $ map (\(i, p) -> ADGNode i n (Just $ Identifier emptyAnnotation $ Nmc i) [p])
-                                $ zip ids ptrs
-    _ -> throwE $ boxToString $ ["Invalid relational element type"] %$ prettyLines rt
-
-sqgextIdentityM _ _ _ = throwE "Invalid identity arguments when extending attribute graph"
-
--- | Extend the attribute graph for a relation type derived directly from another relation.
-sqgextAliasM :: Maybe Identifier -> K3 Type -> K3 Type -> [ADGPtr] -> SQLParseM [ADGPtr]
-sqgextAliasM (Just n) (tag -> TRecord dstids) (tag -> TRecord srcids) inputptrs
-  | length dstids == length srcids
-  = do { idx <- sqgidxM inputptrs;
-         nodes <- mapM (mknode idx) $ zip dstids srcids;
-         mapM sqgextM nodes }
-
-  where mknode ptridx (d, s) = do
-          p <- maybe (lkuperr s) return $ Map.lookup s ptridx
-          return $ ADGNode d n (Just $ Identifier emptyAnnotation $ Nmc s) [p]
-
-        lkuperr v = throwE $ "No attribute graph node found for " ++ v
-
-sqgextAliasM _ _ _ _ = throwE "Invalid alias arguments when extending attribute graph"
-
--- | Extend the attribute graph for a relation type computed from the given expressions.
-sqgextExprM :: String -> Maybe Identifier -> K3 Type -> [ScalarExpr] -> ADGPtrEnv -> SQLParseM [ADGPtr]
-sqgextExprM usetag (Just n) t exprs penv = do
-  rt <- telemM t
-  case tag rt of
-    TRecord ids | length ids == length exprs -> do
-      uidx <- sqgidxM $ fst penv
-      qidx <- Map.fromList <$> mapM (\(i,ps) -> sqgidxM ps >>= return . (i,)) (snd penv)
-      nodes <- mapM (mknode uidx qidx) (zip ids exprs)
-      mapM sqgextM nodes
-
-    _ -> throwE $ boxToString $ ["Invalid relational element type for " ++ usetag ++ " attributes"]
-                              %$ prettyLines rt
-
-  where mknode uidx qidx (i, e) = do
-          let (uv, qv) = extractvars e
-          ps <- mapM (lkupu uidx) $ uv
-          qps <- mapM (lkupq qidx) qv
-          return $ ADGNode i n (Just e) $ ps ++ qps
-
-        lkupu uidx v = maybe (lkuperr v) return $ Map.lookup v uidx
-        lkupq qidx [x,y] = maybe (lkuperr x) (\idx -> lkupu idx y) $ Map.lookup x qidx
-        lkupq _ _ = throwE $ "Invalid pair qualified identifer"
-
-        lkuperr v = throwE $ "No attribute graph node found for " ++ v
-
-sqgextExprM _ _ _ _ _ = throwE "Invalid expr arguments when extending attribute graph"
-
--- | Returns the set of pointers present in an pointer environment.
-adgproots :: ADGPtrEnv -> [ADGPtr]
-adgproots penv = nub $ fst penv ++ (concatMap snd $ snd penv)
-
--- | Chases a given attribute pointer to its set of source nodes.
-adgchaseM :: ADGPtr -> SQLParseM [ADGNode]
-adgchaseM p = get >>= \env -> aux (adgraph env) [] p
-  where aux g path n = case Map.lookup n g of
-          Nothing -> lookuperr n
-          Just node ->
-            if null $ adnch node then return [node]
-            else
-              let nch   = filter (`notElem` path) $ adnch node
-                  npath = path ++ nch
-              in mapM (aux g npath) nch >>= return . concat
-
-        lookuperr n = throwE $ "No attribute graph node found for " ++ show n
-
-
-{- SQLParseM helpers. -}
-
-runSQLParseM :: SQLEnv -> SQLParseM a -> (Either String a, SQLEnv)
-runSQLParseM env m = flip runState env $ runExceptT m
-
-runSQLParseEM :: SQLEnv -> SQLParseM a -> Either String (a, SQLEnv)
-runSQLParseEM env m = r >>= return . (,e)
-  where (r,e) = runSQLParseM env m
-
-evalSQLParseM :: SQLEnv -> SQLParseM a -> Either String a
-evalSQLParseM env m = fst $ runSQLParseM env m
-
-reasonM :: (String -> String) -> SQLParseM a -> SQLParseM a
-reasonM errf = mapExceptT $ \m -> m >>= \case
-  Left  err -> return $ Left $ errf err
-  Right r   -> return $ Right r
-
-errorM :: String -> SQLParseM a
-errorM msg = reasonM id $ throwE msg
-
-liftExceptM :: Except String a -> SQLParseM a
-liftExceptM = mapExceptT (return . runIdentity)
-
-liftEitherM :: Either String a -> SQLParseM a
-liftEitherM = either throwE return
-
-
-{- Attribute environment helpers. -}
-
-mrtype :: ParseResult -> SQLParseM MRType
-mrtype r = telemM (prt r) >>= \ret -> return (ret, ptmap r, pptrs r)
-
-mertypeR :: K3 Type -> TLabelMapping -> Maybe Identifier -> SQLParseM MERType
-mertypeR t tmap alias = do
-  ret <- telemM t
-  return (ret, maybe (TVMType tmap) (\i -> TVMNamed (i, tmap)) alias)
-
-mertype :: ParseResult -> SQLParseM MERType
-mertype r = mertypeR (prt r) (ptmap r) $ palias r
-
-aqenv0 :: [(Identifier, MRType)] -> AQEnv
-aqenv0 l = Map.fromList l
-
-aqenv1 :: ParseResult -> SQLParseM AQEnv
-aqenv1 r = do
-  mrt <- mrtype r
-  return $ maybe Map.empty (\i -> aqenv0 [(i, mrt)]) $ palias r
-
-aqenvl :: [ParseResult] -> SQLParseM AQEnv
-aqenvl l = mapM aqenv1 l >>= return . mconcat
-
-adgenv1R :: [ADGPtr] -> Maybe Identifier -> SQLParseM ADGPtrEnv
-adgenv1R ptrs al = return (ptrs, maybe [] (\i -> [(i, ptrs)]) al)
-
-adgenv1 :: ParseResult -> SQLParseM ADGPtrEnv
-adgenv1 r = return (pptrs r, maybe [] (\i -> [(i, pptrs r)]) $ palias r)
-
-adgenvql :: [ParseResult] -> SQLParseM [(Identifier, [ADGPtr])]
-adgenvql rl = return $ concatMap (\r -> maybe [] (\i -> [(i, pptrs r)]) $ palias r) rl
-
-aenv0 :: MERType -> AQEnv -> AEnv
-aenv0 u q = AEnv u q
-
-aenv1 :: ParseResult -> SQLParseM (AEnv, ADGPtrEnv)
-aenv1 r = (\mert q p -> (aenv0 mert q, p)) <$> mertype r <*> aqenv1 r <*> adgenv1 r
-
-aenvsub :: Identifier -> AEnv -> SQLParseM AEnv
-aenvsub i (AEnv _ q) = do
-    imrt@(rt, tmap, _) <- mrt
-    rct <- tcolM rt
-    mert <- mertypeR rct tmap $ Just i
-    return $ aenv0 mert $ aqenv0 [(i,imrt)]
-
-  where mrt = maybe mrterr return $ Map.lookup i q
-        mrterr = throwE $ "Invalid sub aenv qualifier " ++ show i
-
-aenvl :: [ParseResult] -> SQLParseM (AEnv, ADGPtrEnv)
-aenvl l = (\(mert, p) q pq -> (aenv0 mert q, (p, pq))) <$> mr0 <*> aqenvl l <*> adgenvql l
-  where mr0 = do
-          merl <- mapM mertype l
-          let (ids, t, tvm) = concatmer merl
-          p <- pp0 ids
-          return ((t,tvm),p)
-
-        pp0 uids = do
-          idx <- sqgidxM $ concatMap pptrs l
-          mapM (\i -> maybe (lkuperr i) return $ Map.lookup i idx) $ Set.toList uids
-
-        concatmer merl =
-          let (uniqids, idt, idvt) = foldl accmer (Set.empty, [], []) merl
-              uidt  = filter ((`Set.member` uniqids) . fst) idt
-              uidvt = concatMap (fieldvt uniqids) idvt
-          in (uniqids, recT uidt, TVMComposite $ Map.fromList uidvt)
-
-        accmer (accS, accL, tvmaccL) (tnc -> (TRecord ids, ch), tvm) =
-          let new     = Set.fromList ids
-              common  = Set.intersection accS new
-              newaccS = Set.difference (Set.union accS new) common
-          in (newaccS, accL ++ zip ids ch, tvmaccL ++ map (, extractvt tvm) ids)
-
-        accmer acc _ = acc
-
-        fieldvt uniqids (i,vt) = if i `Set.member` uniqids then maybe [] (\x -> [(i,x)]) vt else []
-
-        extractvt (TVMNamed vt) = Just vt
-        extractvt _ = Nothing
-
-        lkuperr v = throwE $ "No attribute graph node found for " ++ v
-
-
-{- SQL AST helpers. -}
-
-projectionexprs :: SelectItem -> ScalarExpr
-projectionexprs (SelExp _ e) = e
-projectionexprs (SelectItem _ e _) = e
-
--- TODO: correlated variables in subqueries.
-extractvars :: ScalarExpr -> ([Identifier], [[Identifier]])
-extractvars e = case e of
-  (Identifier _ (sqlnmcomponent -> i)) -> ([i], [])
-
-  (QIdentifier _ nmcl) -> case nmcl of
-                            [x,y] -> ([], [["__" ++ sqlnmcomponent x, sqlnmcomponent y]])
-                            _ -> zero
-
-  (FunCall _ _ args) -> maprcr args
-  (Case _ whense elsee) ->
-    many (\(whenel, thene) -> maprcr whenel `rconcat` extractvars thene) whense
-      `rconcat` maybe zero extractvars elsee
-
-  (CaseSimple _ ce whense elsee) ->
-    extractvars ce
-      `rconcat` many (\(whenel, thene) -> maprcr whenel `rconcat` extractvars thene) whense
-      `rconcat` maybe zero extractvars elsee
-
-  _ -> ([], [])
-
-  where maprcr l = (concat *** concat) $ unzip $ map extractvars l
-        many f l = (concat *** concat) $ unzip $ map f l
-        rconcat (a,c) (b,d) = (a++b, c++d)
-        zero = ([], [])
-
-
 {- Type and alias helpers. -}
 
-tblaliasM :: ParseResult -> SQLParseM Identifier
-tblaliasM (palias -> (Just a)) = return a
-tblaliasM _ = throwE $ "Invalid table alias"
+immutT :: K3 Type -> K3 Type
+immutT t = t @<- ((filter (not . isTQualified) $ annotations t) ++ [TImmutable])
 
-expraliasesGenM :: Int -> [ParseResult] -> SQLParseM (Int, [Identifier])
-expraliasesGenM start l = foldM ensure (start,[]) l
-  where ensure (i, acc) r = return $ maybe (i+1, acc ++ ["f" ++ show i]) (\a -> (i,acc++[a])) $ palias r
+mutT :: K3 Type -> K3 Type
+mutT t = t @<- ((filter (not . isTQualified) $ annotations t) ++ [TMutable])
+
+immutE :: K3 Expression -> K3 Expression
+immutE e = e @<- ((filter (not . isEQualified) $ annotations e) ++ [EImmutable])
+
+mutE :: K3 Expression -> K3 Expression
+mutE e = e @<- ((filter (not . isEQualified) $ annotations e) ++ [EMutable])
+
+tupE :: [K3 Expression] -> K3 Expression
+tupE [e] = immutE e
+tupE el = EC.tuple $ map immutE el
+
+recE :: [(Identifier, K3 Expression)] -> K3 Expression
+recE ide = EC.record $ map (\(i,e) -> (i, immutE e)) ide
+
+recT :: [(Identifier, K3 Type)] -> K3 Type
+recT idt = TC.record $ map (\(i,t) -> (i, immutT t)) idt
 
 telemM :: K3 Type -> SQLParseM (K3 Type)
 telemM (tnc -> (TCollection, [t])) = return t
@@ -517,733 +234,285 @@ twrapcolelemM :: K3 Type -> SQLParseM (K3 Type)
 twrapcolelemM t@(tnc -> (TCollection, [et])) = twrapelemM et >>= \net -> return $ (TC.collection net) @<- annotations t
 twrapcolelemM t = throwE $ boxToString $ ["Invalid collection type for wrapping:"] %$ prettyLines t
 
--- | Creates a type map for an 'elem' wrapped record.
-telemtmapM :: SQLParseM TLabelMapping
-telemtmapM = return $ Just $ Left "elem"
 
-tresolvetmapM :: Identifier -> TLabelMapping -> SQLParseM [Identifier]
-tresolvetmapM i tlm = maybe (return []) resolve tlm
-  where resolve (Left j) = return [j, i]
-        resolve (Right tpm) = maybe resolveerr return $ Map.lookup i tpm
-        resolveerr = throwE $ "Unknown type mapping field " ++ i
+{- SQLParseM helpers. -}
 
+runSQLParseM :: SQLEnv -> SQLParseM a -> (Either String a, SQLEnv)
+runSQLParseM env m = flip runState env $ runExceptT m
 
-{- Expression construction helpers -}
+runSQLParseEM :: SQLEnv -> SQLParseM a -> Either String (a, SQLEnv)
+runSQLParseEM env m = r >>= return . (,e)
+  where (r,e) = runSQLParseM env m
 
--- | Property construction helper
-sqlAttrProp :: ADGPtr -> Annotation Expression
-sqlAttrProp p = EProperty $ Left ("SQLAttr", Just $ LC.int p)
+evalSQLParseM :: SQLEnv -> SQLParseM a -> Either String a
+evalSQLParseM env m = fst $ runSQLParseM env m
 
-sqlPred1Prop :: Annotation Expression
-sqlPred1Prop = EProperty $ Left ("SQLPred1", Nothing)
+reasonM :: (String -> String) -> SQLParseM a -> SQLParseM a
+reasonM errf = mapExceptT $ \m -> m >>= \case
+  Left  err -> return $ Left $ errf err
+  Right r   -> return $ Right r
 
-sqlPredEquiProp :: Annotation Expression
-sqlPredEquiProp = EProperty $ Left ("SQLPredEqui", Nothing)
+errorM :: String -> SQLParseM a
+errorM msg = reasonM id $ throwE msg
 
-sqlAEnvProp :: ScopePtr -> Annotation Expression
-sqlAEnvProp p = EProperty $ Left ("SQLAEnv", Just $ LC.int p)
+liftExceptM :: Except String a -> SQLParseM a
+liftExceptM = mapExceptT (return . runIdentity)
 
-sqlPEnvProp :: ADGPtrEnv -> Annotation Expression
-sqlPEnvProp penv = EProperty $ Left ("SQLPEnv", Just $ LC.string $ show penv)
+liftEitherM :: Either String a -> SQLParseM a
+liftEitherM = either throwE return
 
-sqlStagedProp :: String -> Annotation Expression
-sqlStagedProp n = EProperty $ Left ("Staged", Just $ LC.string n)
 
-sqlMaterializedProp :: Annotation Expression
-sqlMaterializedProp = EProperty $ Left ("Materialized", Nothing)
+{- SQLEnv helpers -}
 
-sqlQueryResultProp :: String -> Annotation Expression
-sqlQueryResultProp n = EProperty $ Left ("QueryResult", Just $ LC.string n)
+sqlenv0 :: SQLEnv
+sqlenv0 = SQLEnv Map.empty Map.empty Map.empty contigsymS contigsymS contigsymS contigsymS contigsymS contigsymS contigsymS
 
-sqlAggMergeProp :: K3 Expression -> Annotation Expression
-sqlAggMergeProp f = EProperty $ Left ("AggMerge", Just $ LC.string $ show f)
+-- | Relation type accessors
+srlkup :: RTypeEnv -> Identifier -> Except String (K3 Type)
+srlkup env x = maybe err return $ Map.lookup x env
+  where err = throwE $ "Unknown relation in sql parser environment: " ++ show x
 
-isSqlAttrProp :: Annotation Expression -> Bool
-isSqlAttrProp (EProperty (Left ("SQLAttr", _))) = True
-isSqlAttrProp _ = False
+srext :: RTypeEnv -> Identifier -> K3 Type -> RTypeEnv
+srext env x t = Map.insert x t env
 
-isSqlPred1Prop :: Annotation Expression -> Bool
-isSqlPred1Prop (EProperty (Left ("SQLPred1", _))) = True
-isSqlPred1Prop _ = False
+srdel :: RTypeEnv -> Identifier -> RTypeEnv
+srdel env x = Map.delete x env
 
-isSqlPredEquiProp :: Annotation Expression -> Bool
-isSqlPredEquiProp (EProperty (Left ("SQLPredEqui", _))) = True
-isSqlPredEquiProp _ = False
+-- | Dependency graph accessors.
+sglkup :: ADGraph -> ADGPtr -> Except String ADGNode
+sglkup g p = maybe err return $ Map.lookup p g
+  where err = throwE $ "Unknown attribute node in sql parser environment: " ++ show p
 
-isSqlAEnvProp :: Annotation Expression -> Bool
-isSqlAEnvProp (EProperty (Left ("SQLAEnv", _))) = True
-isSqlAEnvProp _ = False
+sgext :: ADGraph -> ADGNode -> ParGenSymS -> (ADGPtr, ParGenSymS, ADGraph)
+sgext g n sym = (ptr, nsym, Map.insert ptr n g)
+  where (nsym, ptr) = gensym sym
 
-isSqlPEnvProp :: Annotation Expression -> Bool
-isSqlPEnvProp (EProperty (Left ("SQLPEnv", _))) = True
-isSqlPEnvProp _ = False
+-- | Scope environment accessors.
+sflkup :: ScopeFrame -> [Identifier] -> Except String ADGPtr
+sflkup (fr,_,_) path = maybe err return $ Map.lookup path fr
+  where err = throwE $ unwords ["Invalid scope path:", show path, "in", show fr]
 
-isSqlStagedProp :: Annotation Expression -> Bool
-isSqlStagedProp (EProperty (Left ("Staged", _))) = True
-isSqlStagedProp _ = False
+sftrylkup :: ScopeFrame -> [Identifier] -> Maybe ADGPtr
+sftrylkup (fr,_,_) path = Map.lookup path fr
 
-isSqlMaterializedProp :: Annotation Expression -> Bool
-isSqlMaterializedProp (EProperty (Left ("Materialized", _))) = True
-isSqlMaterializedProp _ = False
+sfptrs :: ScopeFrame -> Except String [ADGPtr]
+sfptrs sf@(fr, ord, _) = mapM (\p -> sflkup sf p) ord
 
-isSqlQueryResultProp :: Annotation Expression -> Bool
-isSqlQueryResultProp (EProperty (Left ("QueryResult", _))) = True
-isSqlQueryResultProp _ = False
+sfpush :: ScopeFrame -> [Identifier] -> ADGPtr -> ScopeFrame
+sfpush (fr,ord,q) path ptr = (Map.insert path ptr fr, ord ++ [path], nq)
+  where nq = if length path > 1 then (if init path `notElem` q then q ++ [init path] else q) else q
 
-isSqlAggMergeProp :: Annotation Expression -> Bool
-isSqlAggMergeProp (EProperty (Left ("AggMerge", _))) = True
-isSqlAggMergeProp _ = False
+sfpop :: ScopeFrame -> [Identifier] -> (Maybe ADGPtr, ScopeFrame)
+sfpop (fr,ord,q) path = (npopt, (nfr, filter (== path) ord, newq))
+  where (npopt, nfr) = Map.updateLookupWithKey (\_ _ -> Nothing) path fr
+        newquals = filter (not . null) $ map (\p -> if length p > 1 then init p else []) $ Map.keys nfr
+        newq = filter (`elem` newquals) q
 
+sclkup :: ScopeEnv -> ScopeId -> Except String ScopeFrame
+sclkup env p = maybe err return $ Map.lookup p env
+  where err = throwE $ "Unknown scope: " ++ show p
 
-immutT :: K3 Type -> K3 Type
-immutT t = t @<- ((filter (not . isTQualified) $ annotations t) ++ [TImmutable])
+scpush :: ScopeEnv -> ScopeFrame -> ParGenSymS -> (ScopeId, ParGenSymS, ScopeEnv)
+scpush env fr sym = (ptr, nsym, Map.insert ptr fr env)
+  where (nsym, ptr) = gensym sym
 
-mutT :: K3 Type -> K3 Type
-mutT t = t @<- ((filter (not . isTQualified) $ annotations t) ++ [TMutable])
+scpop :: ScopeEnv -> (Maybe ScopeFrame, ScopeEnv)
+scpop env = if Map.null env then (Nothing, env) else (Just fr, Map.delete sp env)
+  where (sp, fr) = Map.findMax env
 
-immutE :: K3 Expression -> K3 Expression
-immutE e = e @<- ((filter (not . isEQualified) $ annotations e) ++ [EImmutable])
+scflkup :: ScopeEnv -> ScopeId -> [Identifier] -> Except String ADGPtr
+scflkup env sp path = sclkup env sp >>= \fr -> sflkup fr path
 
-mutE :: K3 Expression -> K3 Expression
-mutE e = e @<- ((filter (not . isEQualified) $ annotations e) ++ [EMutable])
+scftrylkup :: ScopeEnv -> ScopeId -> [Identifier] -> Except String (Maybe ADGPtr)
+scftrylkup env sp path = sclkup env sp >>= \fr -> return $ sftrylkup fr path
 
-tupE :: [K3 Expression] -> K3 Expression
-tupE [e] = immutE e
-tupE el = EC.tuple $ map immutE el
+scfptrs :: ScopeEnv -> ScopeId -> Except String [ADGPtr]
+scfptrs env sp = sclkup env sp >>= sfptrs
 
-recE :: [(Identifier, K3 Expression)] -> K3 Expression
-recE ide = EC.record $ map (\(i,e) -> (i, immutE e)) ide
+scfpush :: ScopeEnv -> [Identifier] -> ADGPtr -> ParGenSymS -> (ScopeId, ParGenSymS, ScopeEnv)
+scfpush env path np sym = if Map.null env then scpush env (Map.singleton path np, [path], pathqual) sym
+                                          else (sp, sym, Map.insert sp (sfpush fr path np) env)
+  where (sp,fr) = Map.findMax env
+        pathqual = if length path > 1 then [init path] else []
 
-recT :: [(Identifier, K3 Type)] -> K3 Type
-recT idt = TC.record $ map (\(i,t) -> (i, immutT t)) idt
+scfpop :: ScopeEnv -> [Identifier] -> (Maybe ADGPtr, ScopeEnv)
+scfpop env path = if Map.null env then (Nothing, env) else (npopt, Map.insert sp nfr env)
+  where (sp, fr) = Map.findMax env
+        (npopt, nfr) = sfpop fr path
 
-projectE :: Identifier -> Identifier -> (Identifier, K3 Expression)
-projectE i f = (f, EC.project f $ EC.variable i)
 
-projectPathE :: K3 Expression -> [Identifier] -> K3 Expression
-projectPathE e p = foldl (\accE i -> EC.project i accE) e p
+-- | Symbol generation.
+sasext :: SQLEnv -> (Int, SQLEnv)
+sasext senv = (n, senv {aliassym = nsym})
+  where (nsym, n) = gensym (aliassym senv)
 
-fieldE :: Identifier -> TLabelMapping -> Identifier -> SQLParseM (K3 Expression)
-fieldE v tmap i = do
-  path <- tresolvetmapM i tmap
-  return $ if null path then EC.project i $ EC.variable v
-                        else projectPathE (EC.variable v) path
+stgsext :: SQLEnv -> (Int, SQLEnv)
+stgsext senv = (n, senv {stgsym = nsym})
+  where (nsym, n) = gensym (stgsym senv)
 
-namedRecordE :: Identifier -> TLabelMapping -> [Identifier] -> SQLParseM (K3 Expression)
-namedRecordE v (Just (Left prefix)) _ = return $ EC.project prefix $ EC.variable v
-namedRecordE v tmap ids = foldM field [] ids >>= return . recE
-  where field acc i = fieldE v tmap i >>= \f -> return $ acc ++ [(i,f)]
+ssqsext :: SQLEnv -> (Int, SQLEnv)
+ssqsext senv = (n, senv {sqsym = nsym})
+  where (nsym, n) = gensym (sqsym senv)
 
+slblsext :: SQLEnv -> (Int, SQLEnv)
+slblsext senv = (n, senv {slblsym = nsym})
+  where (nsym, n) = gensym (slblsym senv)
 
-compositeRecordE :: FieldVTMap -> [Identifier] -> SQLParseM (K3 Expression)
-compositeRecordE fvm ids = foldM fieldOpt [] ids >>= return . recE
-  where fieldOpt acc i = maybe (compositeErr i) (field acc i) $ Map.lookup i fvm
-        field acc i (v, tmap) = fieldE v tmap i >>= \f -> return $ acc ++ [(i,f)]
+saggsext :: SQLEnv -> (Int, SQLEnv)
+saggsext senv = (n, senv {aggdsym = nsym})
+  where (nsym, n) = gensym (aggdsym senv)
 
-        compositeErr i = throwE $ "Cannot find field-specific mapping for " ++ i
+-- | State accessors.
+sqrlkup :: SQLEnv -> Identifier -> Except String (K3 Type)
+sqrlkup senv n = srlkup (relations senv) n
 
+sqrext :: SQLEnv -> Identifier -> K3 Type -> SQLEnv
+sqrext senv n t = senv { relations = srext (relations senv) n t }
 
-bindE :: AEnv -> Identifier -> K3 Expression -> SQLParseM (Maybe Identifier, K3 Expression)
-bindE (AEnv (tag -> TRecord ids, tvm) _) backupvar e = do
-  case tvm of
-    TVMType tmap -> do
-      initE <- namedRecordE backupvar tmap ids
-      return (Just backupvar, EC.bindAs initE (BRecord $ zip ids ids) e)
+sqrdel :: SQLEnv -> Identifier -> SQLEnv
+sqrdel senv n = senv { relations = srdel (relations senv) n }
 
-    TVMNamed (i, tmap) -> do
-      initE <- namedRecordE i tmap ids
-      return (Just i, EC.bindAs initE (BRecord $ zip ids ids) e)
+sqglkup :: SQLEnv -> ADGPtr -> Except String ADGNode
+sqglkup senv p = sglkup (adgraph senv) p
 
-    TVMComposite fvm -> do
-      initE <- compositeRecordE fvm ids
-      return (Nothing, EC.bindAs initE (BRecord $ zip ids ids) e)
+sqgext :: SQLEnv -> ADGNode -> (ADGPtr, SQLEnv)
+sqgext senv n = (ptr, senv {adgraph = ng, adpsym = nsym})
+  where (ptr, nsym, ng) = sgext (adgraph senv) n (adpsym senv)
 
-bindE (AEnv (t, _) _) _ _ = throwE $ boxToString $ ["Unable to bind type"] %$ prettyLines t
+sqclkup :: SQLEnv -> ScopeId -> Except String ScopeFrame
+sqclkup env p = sclkup (scopeenv env) p
 
+sqcpush :: SQLEnv -> ScopeFrame -> (ScopeId, SQLEnv)
+sqcpush env fr = (nsp, env {scopeenv = nenv, spsym = nsym})
+  where (nsp, nsym, nenv) = scpush (scopeenv env) fr (spsym env)
 
-concatE :: AEnv -> SQLParseM (K3 Expression)
-concatE (AEnv (tag -> TRecord ids, tvm) _) = do
-  case tvm of
-    TVMType _ -> throwE $ "Cannot concat type-only attribute env"
-    TVMNamed (i, tmap) -> namedRecordE i tmap ids
-    TVMComposite fvm -> compositeRecordE fvm ids
+sqcpop :: SQLEnv -> (Maybe ScopeFrame, SQLEnv)
+sqcpop env = (fropt, env { scopeenv = nsenv })
+  where (fropt, nsenv) = scpop (scopeenv env)
 
-concatE (AEnv (t, _) _) = throwE $ boxToString $ ["Unable to concat type"] %$ prettyLines t
+sqcflkup :: SQLEnv -> ScopeId -> [Identifier] -> Except String ADGPtr
+sqcflkup env sp path = scflkup (scopeenv env) sp path
 
-
-zeroE :: [(Identifier, K3 Type)] -> SQLParseM (K3 Expression)
-zeroE [] = return EC.unit
-zeroE [(_,t)] = either throwE return $ defaultExpression t
-zeroE l = either throwE return $ defaultExpression $ recT l
-
-
-aggE :: Identifier -> (Identifier, K3 Expression) -> K3 Expression
-aggE i (f, e) = EC.applyMany e [EC.project f $ EC.variable i]
-
-aggMergeE :: Identifier -> Identifier -> (Identifier, K3 Expression) -> K3 Expression
-aggMergeE i j (f, mergeF) = EC.applyMany mergeF [EC.project f $ EC.variable i, EC.project f $ EC.variable j]
-
-
--- TODO: gensym
-memoE :: K3 Expression -> (K3 Expression -> K3 Expression) -> K3 Expression
-memoE srcE bodyF = case tag srcE of
-  EConstant _ -> bodyF srcE
-  EVariable _ -> bodyF srcE
-  _ -> EC.letIn "__memo" (immutE srcE) $ bodyF $ EC.variable "__memo"
-
-
-matchE :: K3 Expression -> K3 Expression -> K3 Expression
-matchE elemexpr colexpr =
-  memoE (immutE elemexpr) $ \e -> EC.applyMany (EC.project "filter" $ colexpr) [matchF e]
-  where matchF e = EC.lambda "__x" $ EC.binop OEqu (EC.variable "__x") e
-
-memberE :: Bool -> K3 Expression -> K3 Expression -> K3 Expression
-memberE asMem elemexpr colexpr  = emptyE (not asMem) $ matchE elemexpr colexpr
-
-emptyE :: Bool -> K3 Expression -> K3 Expression
-emptyE asEmpty colexpr = EC.binop (if asEmpty then OEqu else ONeq)
-  (EC.applyMany (EC.project "size" colexpr) [EC.unit]) $ EC.constant $ CInt 0
-
-
-{- Parsing toplevel. -}
-sqlstmt :: Statement -> SQLParseM [K3 Declaration]
-sqlstmt (CreateTable _ nm attrs _) = do
-  t <- sqltabletype attrs
-  wt <- twrapcolelemM t
-  sqeextM (sqlnm nm) t
-  return [DC.global (sqlnm nm) wt Nothing]
-
-sqlstmt (QueryStatement _ query) = sqlquerystmt query
-sqlstmt s = throwE $ "Unimplemented SQL stmt: " ++ show s
-
-
-sqlquerystmt :: QueryExpr -> SQLParseM [K3 Declaration]
-sqlquerystmt q = do
-  qpr <- sqlquery q
-  qexpr <- sqloptimize $ pexpr qpr
-  s <- sqsextM >>= return . show
-  let outid = materializeId s
-  let trigid = stageId s
-  return [ DC.global outid (mutT $ pkt qpr) Nothing
-         , DC.trigger trigid TC.unit $ EC.lambda "_" $
-            (EC.assign outid (qexpr @+ sqlStagedProp trigid)) @+ (sqlQueryResultProp trigid) ]
-
-
--- | Expression construction, and inlined type inference.
-sqlquery :: QueryExpr -> SQLParseM ParseResult
-sqlquery (Select _ distinct selectL tableL whereE gbL havingE orderL limitE offsetE) = do
-  tables  <- sqltablelist tableL
-  selects <- sqlwhere tables whereE
-  (groupby, nselectL) <- sqlgroupby selects selectL havingE gbL
-  sorted  <- sqlsort groupby orderL
-  limited <- sqltopk sorted limitE offsetE
-  sqlproject limited nselectL
-
-sqlquery q = throwE $ "Unhandled query " ++ show q
-
-
-sqltablelist :: TableRefList -> SQLParseM ParseResult
-sqltablelist [] = throwE $ "Empty from clause"    -- TODO: empty collection?
-sqltablelist [x] = sqltableexpr x
-sqltablelist (h:t) = do
-  hpr <- sqltableexpr h
-  foldM cartesian_product hpr t
-
-  where cartesian_product lpr r = do
-          rpr <- sqltableexpr r
-          (aenv@(AEnv (ct, _) _), penv) <- aenvl [lpr, rpr]
-          (al, ar) <- (,) <$> tblaliasM lpr <*> tblaliasM rpr
-          sptr <- sqcextM aenv
-          ce   <- concatE aenv
-          rt   <- tcolM ct
-          kt   <- twrapcolelemM rt
-          tmap <- telemtmapM
-          let matchF   = EC.lambda "_" $ EC.lambda "_" $ EC.constant $ CBool True
-          let combineF = EC.lambda al $ EC.lambda ar ce
-          let jexpr    = EC.applyMany (EC.project "join" $ pexpr lpr) [pexpr rpr, matchF, combineF]
-          let rexpr    = (jexpr @+ sqlPEnvProp penv) @+ sqlAEnvProp sptr
-          let tid = Just "__CP"
-          aptrs <- sqgextAliasM tid ct ct $ fst penv
-          return $ ParseResult rexpr rt kt tmap tid aptrs
-
-
-sqltableexpr :: TableRef -> SQLParseM ParseResult
-sqltableexpr (Tref _ nm al) = do
-    let tid = sqltablealias ("__" ++ sqlnm nm) al
-    t  <- sqelkupM tnm
-    rt <- taliascolM al t
-    kt <- twrapcolelemM rt
-    tmap <- telemtmapM
-    aptrs <- sqgextSchemaM tid rt
-    return $ ParseResult (EC.variable tnm) rt kt tmap tid aptrs
-  where tnm = sqlnm nm
-
--- TODO: nat, jointy
-sqltableexpr (JoinTref _ jlt nat jointy jrt onE jal) = do
-  lpr <- sqltableexpr jlt
-  rpr <- sqltableexpr jrt
-  (aenv@(AEnv (ct, _) _), penv) <- aenvl [lpr, rpr]
-  (al, ar) <- (,) <$> tblaliasM lpr <*> tblaliasM rpr
-  sptr   <- sqcextM aenv
-  joinpr <- maybe (return joinpr0) (sqljoinexpr aenv penv) onE
-  ce     <- concatE aenv
-  rt     <- tcolM ct >>= taliascolM jal
-  kt     <- twrapcolelemM rt
-  tmap   <- telemtmapM
-  (Nothing, be) <- bindE aenv "x" (pexpr joinpr)
-  let matchF   = EC.lambda al $ EC.lambda ar be
-  let combineF = EC.lambda al $ EC.lambda ar ce
-  let jexpr    = EC.applyMany (EC.project "join" $ pexpr lpr) [pexpr rpr, matchF, combineF]
-  let rexpr    = (jexpr @+ sqlPEnvProp penv) @+ sqlAEnvProp sptr
-  jrsym <- sasextM
-  let tid = sqltablealias ("__JR" ++ show jrsym) jal
-  ret   <- telemM rt
-  aptrs <- sqgextAliasM tid ret ct $ fst penv
-  return $ ParseResult rexpr rt kt tmap tid aptrs
-
-  where joinpr0 = ParseResult (EC.constant $ CBool True) TC.bool TC.bool Nothing Nothing []
-
-
-sqltableexpr (SubTref _ query al) = do
-  qpr  <- sqlquery query
-  rt   <- taliascolM al (prt qpr)
-  kt   <- twrapcolelemM rt
-  tmap <- telemtmapM
-
-  (aenv@(AEnv (tag -> TRecord ids, _) _), penv) <- aenv1 qpr
-  rnsym <- sasextM
-  let tid = sqltablealias ("__RN" ++ show rnsym) al
-  ret <- telemM rt
-  sqet <- telemM $ prt qpr
-  aptrs <- sqgextAliasM tid ret sqet $ fst penv
-  case tag ret of
-    TRecord nids | ids == nids -> return qpr { palias = tid, pptrs = aptrs }
-
-    TRecord nids | length ids == length nids -> do
-      (iOpt, be) <- bindE aenv "x" $ recE $ map (\(n,o) -> (n, EC.variable o)) $ zip nids ids
-      mapF <- maybe (tblaliasM qpr) return iOpt >>= \a -> return $ EC.lambda a be
-      let rexpr = EC.applyMany (EC.project "map" $ pexpr qpr) [mapF]
-      return $ ParseResult rexpr rt kt tmap tid aptrs
-
-    _ -> throwE $ "Invalid subquery alias"
-
-sqltableexpr t@(FunTref _ funE _)  = throwE $ "Unhandled table ref: " ++ show t
-
-
-sqlwhere :: ParseResult -> MaybeBoolExpr -> SQLParseM ParseResult
-sqlwhere tables whereEOpt = flip (maybe $ return tables) whereEOpt $ \whereE -> do
-  (aenv, penv) <- aenv1 tables
-  wpr <- sqlscalar aenv penv whereE
-  (onesided, equi, remdr) <- cascadePredicate $ pexpr wpr
-  foldM mkFilterL tables [ (onesided, Just sqlPred1Prop)
-                         , (equi, Just sqlPredEquiProp)
-                         , maybe ([], Nothing) (\e -> ([e], Nothing)) remdr ]
-  where
-    mkFilterL accpr (el, classp) = foldM (mkFilter classp) accpr el
-    mkFilter classp inpr predicate = do
-      (aenv, penv) <- aenv1 inpr
-      (iOpt, be) <- bindE aenv "x" predicate
-      filterF <- maybe (tblaliasM inpr) return iOpt >>= \a -> return $ EC.lambda a be
-      aptrs <- sqgextIdentityM (palias inpr) (prt inpr) $ fst penv
-      let fexpr = EC.applyMany (EC.project "filter" $ pexpr inpr) [filterF]
-      let rexpr = maybe fexpr (fexpr @+) classp
-      return $ inpr { pexpr = rexpr, pptrs = aptrs }
-
-
-sqlproject :: ParseResult -> SelectList -> SQLParseM ParseResult
-sqlproject limits (SelectList _ projections) = do
-  (aenv, penv) <- aenv1 limits
-  aggsE <- mapM (sqlaggregate aenv penv) projections
-
-  case partitionEithers aggsE of
-    ([], prs) -> aggregate aenv penv aggsE $ map (\(a,_,_) -> a) prs
-    (prjl, []) -> project aenv penv prjl
-    (_, _) -> throwE $ "Invalid mixed select list of aggregates and non-aggregates"
-
-  where
-    aggregate aenv penv aggsE aggprs = do
-      let (aggexprs, aggtypes) = unzip $ map (pexpr &&& prt) aggprs
-      (_, aAliases) <- expraliasesGenM 0 aggprs
-      let aidt = zip aAliases aggtypes
-      (aiOpt, abe) <- bindE aenv "x" $ case aggexprs of
-                        []  -> EC.variable "acc"
-                        [e] -> EC.applyMany e [EC.variable "acc"]
-                        _   -> recE $ zip aAliases $ map (aggE "acc") $ zip aAliases aggexprs
-
-      aggF <- maybe (tblaliasM limits) return aiOpt >>= \a -> return $ EC.lambda "acc" $ EC.lambda a abe
-      zF   <- zeroE aidt
-
-      let rexpr = EC.applyMany (EC.project "fold" $ pexpr limits) [aggF, zF]
-      let ral = Just "__R"
-      rt <- tcolM $ recT aidt
-      let aggprojections = zip aggsE $ map projectionexprs projections
-      let sqlaggs = concatMap (\(ae, e) -> if isLeft ae then [] else [e]) aggprojections
-      aptrs <- sqgextExprM "aggregate" ral rt sqlaggs penv
-      return $ ParseResult rexpr rt rt Nothing ral aptrs
-
-    project aenv penv prjl = do
-      eprs <- mapM (sqlprojection aenv penv) prjl
-      (_, eAliases) <- expraliasesGenM 0 eprs
-      let (exprs, types) = unzip $ map (pexpr &&& prt) eprs
-      (iOpt, be) <- bindE aenv "x" $ recE $ zip eAliases exprs
-      mapF <- maybe (tblaliasM limits) return iOpt >>= \a -> return $ EC.lambda a be
-      let rexpr  = EC.applyMany (EC.project "map" $ pexpr limits) [mapF]
-      let ralias = Just "__R"
-      rt   <- tcolM $ recT $ zip eAliases types
-      kt   <- twrapcolelemM rt
-      tmap <- telemtmapM
-      aptrs <- sqgextExprM "projection" ralias rt (map projectionexprs prjl) penv
-      return $ ParseResult rexpr rt kt tmap ralias aptrs
-
-
-sqlgroupby :: ParseResult -> SelectList -> MaybeBoolExpr -> ScalarExprList -> SQLParseM (ParseResult, SelectList)
-sqlgroupby selects (SelectList slann projections) having [] =
-  return (selects, SelectList slann $ projections ++ maybe [] (\e -> [SelExp emptyAnnotation e]) having)
-
-sqlgroupby selects (SelectList slann projections) having gbL = do
-  (aenv, penv) <- aenv1 selects
-  gbprs <- mapM (sqlscalar aenv penv) gbL
-  aggsE <- mapM (sqlaggregate aenv penv) projections
-  let (nprojects, aggsqeprs) = foldl partitionEitherPairs ([], []) $ zip aggsE projections
-
-  let (ugbprs, ugbsqlexprs) = unzip $ nubBy ((==) `on` fst) $ zip gbprs gbL
-  let (uaggprs, uaggmerges, uaggsqlexprs) = unzip3 $ nubBy ((==) `on` (\(a,_,_) -> a)) aggsqeprs
-
-  let (gbexprs, gbtypes)   = unzip $ map (pexpr &&& prt) ugbprs
-  let (aggexprs, aggtypes) = unzip $ map (pexpr &&& prt) uaggprs
-
-  (gaid, gAliases) <- expraliasesGenM 0 ugbprs
-  (_, aAliases)    <- expraliasesGenM (if null ugbprs then 1 else gaid) uaggprs
-
-  (hcnt, nhaving, havingaggs) <- maybe (return (0, Nothing, [])) (havingaggregates (zip aAliases uaggprs) aenv penv) having
-  havingAggsE <- mapM (sqlaggregate aenv penv) havingaggs
-  let ([], havingaggsqeprs) = foldl partitionEitherPairs ([], []) $ zip havingAggsE havingaggs
-
-  let (uhvprs, uhmerges, uhsqlexprs) = unzip3 $ nubBy ((==) `on` (\(a,_,_) -> a)) havingaggsqeprs
-  let (hvexprs, hvtypes) = unzip $ map (pexpr &&& prt) uhvprs
-  let hAliases = if null havingaggs then [] else ["h" ++ show i | i <- [0..hcnt-1]]
-
-  (giOpt, gbe) <- bindE aenv "x" $ case gbexprs of
-                    [] -> EC.unit
-                    [e] -> e
-                    _ -> recE $ zip gAliases gbexprs
-
-  groupF <- maybe (tblaliasM selects) return giOpt >>= \a -> return $ EC.lambda a gbe
-
-  let auaggexprs = aggexprs ++ hvexprs
-  let auaggtypes = aggtypes ++ hvtypes
-  let auAliases  = aAliases ++ hAliases
-  let aumerges   = uaggmerges ++ uhmerges
-
-  (aiOpt, abe) <- bindE aenv "x" $ case auaggexprs of
-                    []  -> EC.variable "acc"
-                    [e] -> EC.applyMany e [EC.variable "acc"]
-                    _   -> recE $ zip auAliases $ map (aggE "acc") $ zip auAliases auaggexprs
-
-  aggF <- maybe (tblaliasM selects) return aiOpt >>= \a -> return $ EC.lambda "acc" $ EC.lambda a abe
-  zF <- zeroE $ zip auAliases auaggtypes
-
-  mergeF <- case aumerges of
-              [] -> return $ EC.lambda "_" $ EC.lambda "_" $ EC.unit
-              [e] -> return $ e
-              _ -> return $ EC.lambda "acc1" $ EC.lambda "acc2" $ recE $ zip auAliases $
-                      map (aggMergeE "acc1" "acc2") $ zip auAliases aumerges
-
-  let tpmap p idtl = map (\(i,_) -> (i, [p, i])) idtl
-
-  let gidt = zip gAliases gbtypes
-  let (kidt, keyT, ktpl) = case gbtypes of
-                             []  -> ([("f0", TC.unit)], TC.unit, [("f0", ["key"])])
-                             [t] -> (gidt, t, [(fst $ head gidt, ["key"])])
-                             _   -> (gidt, recT gidt, tpmap "key" gidt)
-
-  let aid0 = if null ugbprs then "f1" else "f" ++ show gaid
-  let aidt = zip auAliases auaggtypes
-  let (vidt, valT, vtpl) = case auaggtypes of
-                             []  -> ([(aid0, TC.unit)], TC.unit, [(aid0, ["value"])])
-                             [t] -> (aidt, t, [(fst $ head aidt, ["value"])])
-                             _   -> (aidt, recT aidt, tpmap "value" aidt)
-
-  let rexpr = (EC.applyMany (EC.project "groupBy" $ pexpr selects) [groupF, aggF, zF])
-                  @+ sqlAggMergeProp mergeF
-
-  let tmap = Just $ Right $ (Map.fromList ktpl) <> (Map.fromList vtpl)
-  let ral = Just "__R"
-
-  rt <- tcolM $ recT $ kidt ++ vidt
-  kt <- tcolM $ recT [("key", keyT), ("value", valT)]
-
-  hrexpr <- havingexpr rt tmap ral (fst penv) aenv nhaving rexpr
-
-  let exprdeps = ugbsqlexprs ++ (map projectionexprs $ uaggsqlexprs ++ uhsqlexprs)
-  aptrs <- sqgextExprM "group-by" ral rt exprdeps penv
-
-  let naggprojects = map (\(i,_) -> SelExp emptyAnnotation $ Identifier emptyAnnotation $ Nmc i) vidt
-  return (ParseResult hrexpr rt kt tmap ral aptrs, SelectList slann $ nprojects ++ naggprojects)
-
-  where havingexpr _ _ _ _ _ Nothing e = return e
-        havingexpr rt tmap alias ptrs (AEnv _ q) (Just he) e = do
-          nmert <- mertypeR rt tmap alias
-          let aenv = AEnv nmert q
-          penv <- adgenv1R ptrs alias
-          hpr <- sqlscalar aenv penv he
-          (iOpt, be) <- bindE aenv "x" (pexpr hpr)
-          filterF <- maybe (return "__R") return iOpt >>= \a -> return $ EC.lambda a be
-          return $ EC.applyMany (EC.project "filter" $ e) [filterF]
-
-        havingaggregates aggaprs aenv penv e = do
-          (a,b,c) <- extractaggregates aggaprs aenv penv 0 e
-          nc <- mapM (\ae -> return $ SelExp emptyAnnotation ae) c
-          return (a, Just b, nc)
-
-        partitionEitherPairs (pacc,aacc) (e, sqe) = case e of
-          Left si -> (pacc++[si], aacc)
-          Right (pr,me,_) -> (pacc, aacc++[(pr,me,sqe)])
-
-
--- TODO
-sqlsort :: ParseResult -> ScalarExprDirectionPairList -> SQLParseM ParseResult
-sqlsort having orderL = return having
-
-sqltopk :: ParseResult -> MaybeBoolExpr -> MaybeBoolExpr -> SQLParseM ParseResult
-sqltopk sorted limitE offsetE = return sorted
-
-
-sqljoinexpr :: AEnv -> ADGPtrEnv -> JoinExpr -> SQLParseM ParseResult
-sqljoinexpr aenv penv (JoinOn _ e) = sqlscalar aenv penv e
-sqljoinexpr _ _ je@(JoinUsing _ _) = throwE $ "Unhandled join expression" ++ show je
-
-sqlaggregate :: AEnv -> ADGPtrEnv -> SelectItem
-             -> SQLParseM (Either SelectItem (ParseResult, K3 Expression, Maybe (K3 Expression)))
-sqlaggregate aenv penv si@(SelExp _ e) = sqlaggexpr aenv penv e >>= return . maybe (Left si) Right
-sqlaggregate aenv penv si@(SelectItem _ e nm) = do
-  prOpt <- sqlaggexpr aenv penv e
-  return $ maybe (Left si) rename prOpt
-
-  where rename (pr,merge,final) = Right (pr { palias = Just (sqlnmcomponent nm) }, merge, final)
-
-sqlprojection :: AEnv -> ADGPtrEnv -> SelectItem -> SQLParseM ParseResult
-sqlprojection aenv penv (SelExp _ e) = sqlscalar aenv penv e
-sqlprojection aenv penv (SelectItem _ e nm) = do
-  pr <- sqlscalar aenv penv e
-  return pr { palias = Just (sqlnmcomponent nm) }
-
-
-pr0 :: K3 Type -> K3 Expression -> SQLParseM ParseResult
-pr0 t e = return $ ParseResult e t t Nothing Nothing []
-
-pri0 :: Identifier -> K3 Type -> K3 Expression -> SQLParseM ParseResult
-pri0 i t e = return $ ParseResult e t t Nothing (Just i) []
-
--- TODO: avg, use finalization.
-sqlaggexpr :: AEnv -> ADGPtrEnv -> ScalarExpr
-           -> SQLParseM (Maybe (ParseResult, K3 Expression, Maybe (K3 Expression)))
-sqlaggexpr aenv penv (FunCall _ nm args) = do
-  let fn = sqlnm nm
-  case (fn, args) of
-    ("sum"  , [e]) -> sqlscalar aenv penv e >>= aggop "sum_" sumMergeE Nothing (\a b -> EC.binop OAdd a b)
-    ("count", [e]) -> sqlscalar aenv penv e >>= aggop "cnt_" sumMergeE Nothing (\a _ -> EC.binop OAdd a $ EC.constant $ CInt 1)
-    ("min"  , [e]) -> sqlscalar aenv penv e >>= aggop "min_" minMergeE Nothing (\a b -> EC.applyMany (EC.variable "min") [a, b])
-    ("max"  , [e]) -> sqlscalar aenv penv e >>= aggop "max_" maxMergeE Nothing (\a b -> EC.applyMany (EC.variable "max") [a, b])
-    (_, _) -> return Nothing
-
-  where
-    aggop i merge final f pr = return $ Just $
-      (pr { pexpr  = EC.lambda "aggacc" $ f (EC.variable "aggacc") (pexpr pr)
-          , palias = maybe Nothing (\j -> Just $ i ++ j) $ palias pr }
-      , merge
-      , final)
-
-    sumMergeE = EC.lambda "a" $ EC.lambda "b" $ EC.binop OAdd (EC.variable "a") (EC.variable "b")
-    minMergeE = EC.lambda "a" $ EC.lambda "b" $ EC.applyMany (EC.variable "min") [EC.variable "a", EC.variable "b"]
-    maxMergeE = EC.lambda "a" $ EC.lambda "b" $ EC.applyMany (EC.variable "max") [EC.variable "a", EC.variable "b"]
-
-sqlaggexpr _ _ _ = return Nothing
-
-
-extractaggregates :: [(Identifier, ParseResult)] -> AEnv -> ADGPtrEnv -> Int -> ScalarExpr
-                  -> SQLParseM (Int, ScalarExpr, [ScalarExpr])
-extractaggregates aggaprs aenv penv i e@(FunCall ann nm args) = do
-  aggeopt <- sqlaggexpr aenv penv e
-  case aggeopt of
-    Nothing -> do
-      (ni, nxagg, nargs) <- foldM foldOnChild (i,[],[]) args
-      return (ni, FunCall ann nm nargs, nxagg)
-
-    Just (pr,_,_) -> let aprOpt = find (\(_,aggpr) -> pr == aggpr) aggaprs
-                         (nid, nex) = maybe (aggnm i, [e]) (\(a,_) -> (Nmc a, [])) aprOpt
-                     in return (i+1, Identifier emptyAnnotation nid, nex)
-
-  where foldOnChild (j,acc,argacc) ce = do
-          (nj, nce, el) <- extractaggregates aggaprs aenv penv j ce
-          return (nj, acc++el, argacc++[nce])
-
-        aggnm j = Nmc $ "h" ++ show j
-
-extractaggregates _ _ _ i e = return (i,e,[])
-
-
--- TODO: variable access in correlated subqueries, nulls
-sqlscalar :: AEnv -> ADGPtrEnv -> ScalarExpr -> SQLParseM ParseResult
-sqlscalar _ _ (BooleanLit _ b) = pr0 TC.bool $ EC.constant $ CBool b
-
-sqlscalar _ _ (NumberLit _ i) = if "." `isInfixOf` i
-                                  then pr0 TC.real $ EC.constant $ CReal $ read i
-                                  else pr0 TC.int  $ EC.constant $ CInt $ read i
-
-sqlscalar _ _ (StringLit _ s) = pr0 TC.string $ EC.constant $ CString s
-
-sqlscalar (AEnv (ret@(tnc -> (TRecord ids, ch)), _) _) penv (Identifier _ (sqlnmcomponent -> i)) = do
-    idx <- sqgidxM $ fst penv
-    p <- maybe (plkuperr i) return $ Map.lookup i idx
-    maybe (varerror i) (\t -> pri0 i t $ EC.variable i @+ (sqlAttrProp p)) $ lookup i (zip ids ch)
-
-  where
-    varerror n = throwE $ boxToString $ ["Unknown unqualified variable " ++ n] %$ prettyLines ret
-    plkuperr n = throwE $ "No attribute graph node found for " ++ n
-
-
-sqlscalar (AEnv _ q) penv e@(QIdentifier _ nmcl) =
-  case nmcl of
-    [x,y] -> qpair x y
-    _ -> qiderr
-
-  where qpair (sqlnmcomponent -> nx) (sqlnmcomponent -> ny) = do
-          let knx = "__" ++ nx
-          qidx <- Map.fromList <$> mapM (\(i,ps) -> sqgidxM ps >>= return . (i,)) (snd penv)
-          p <- maybe (lkuperr knx) (\idx -> maybe (lkuperr ny) return $ Map.lookup ny idx) $ Map.lookup knx qidx
-          case Map.lookup knx q of
-            Just (tnc -> (TRecord ids, ch), _, _) ->
-              let idt = zip ids ch in
-              maybe qidterr (\t -> pr0 t $ (EC.project ny $ EC.variable knx) @+ sqlAttrProp p) $ lookup ny idt
-
-            Just _  -> qidelemerr
-            Nothing -> qidlkuperr
-
-        qiderr     = throwE $ unwords ["Invalid qualified identifier:", show e, show $ Map.keys q]
-        qidterr    = throwE $ unwords ["Unknown qualified identifier type:", show e, show $ Map.keys q]
-        qidelemerr = throwE $ unwords ["Invalid element for qid:", show e, show $ Map.keys q]
-        qidlkuperr = throwE $ unwords ["Unknown qid component:", show e, show $ Map.keys q]
-        lkuperr  v = throwE $ "No attribute graph node found for " ++ v
-
-sqlscalar aenv penv (FunCall _ nm args) = do
-  let fn = sqlnm nm
-  case sqloperator fn args of
-    (Just (UnaryOp  o x))   -> do
-      xpr <- sqlscalar aenv penv x
-      return (xpr {pexpr = EC.unop o $ pexpr xpr})
-
-    (Just (BinaryOp o x y)) -> do
-      xpr <- sqlscalar aenv penv x
-      ypr <- sqlscalar aenv penv y
-      pr0 (prt xpr) $ EC.binop o (pexpr xpr) $ pexpr ypr
-
-    _ -> do
-      case (fn, args) of
-        ("!between", [_,_,_]) -> do
-          [apr,bpr,cpr] <- mapM (sqlscalar aenv penv) args
-          pr0 TC.bool $ EC.binop OAnd (EC.binop OLeq (pexpr bpr) $ pexpr apr)
-                                     $ EC.binop OLeq (pexpr apr) $ pexpr cpr
-
-        (_, _) -> do
-          aprl <- mapM (sqlscalar aenv penv) args
-          pr0 TC.unit $ EC.applyMany (EC.variable fn) $ map pexpr aprl -- TODO: return type?
-
-sqlscalar (AEnv (ret@(tag -> TRecord ids), _) _) _ (Star _) =
-  pr0 ret $ recE $ map (\i -> (i, EC.variable i)) ids
-
-sqlscalar (AEnv _ q) _ (QStar _ (sqlnmcomponent -> n)) = do
-  let kn = "__" ++ n
-  case Map.lookup kn q of
-    Just (qt@(tag -> TRecord ids), _, _) -> pr0 qt $ recE $ map (\i -> (i, EC.project i $ EC.variable kn)) ids
-    Nothing -> throwE $ "Invalid qualified name in qstar"
-    Just _ -> throwE $ "Invalid element type in qualified environment"
-
-sqlscalar aenv penv (Case _ whense elsee) = do
-  prl <- forM whense $ \(whenel, thene) -> (,) <$> mapM (sqlscalar aenv penv) whenel <*> sqlscalar aenv penv thene
-  (eT, eE, wprl) <- case (prl, elsee) of
-    ([], Nothing) -> throwE $ "Invalid case expression"
-    (l, Nothing) -> let t = prt $ snd $ head l
-                    in either throwE (\de -> return (t, de, l)) $ defaultExpression t
-    (l, Just e) -> sqlscalar aenv penv e >>= \epr -> return (prt epr, pexpr epr, l)
-
-  pr0 eT $ foldl (\accE (wprs, tpr) -> EC.ifThenElse (andE wprs) (pexpr tpr) accE) eE $ reverse wprl
-
-  where andE [] = EC.constant $ CBool False
-        andE (h:t) = foldl (\accE wpr -> EC.binop OAnd accE $ pexpr wpr) (pexpr h) t
-
-sqlscalar aenv penv (CaseSimple _ e whense elsee) = do
-  vpr <- sqlscalar aenv penv e
-  prl <- forM whense $ \(whenel, thene) -> (,) <$> mapM (sqlscalar aenv penv) whenel <*> sqlscalar aenv penv thene
-  (eT, eE, wprl) <- case (prl, elsee) of
-    ([], Nothing) -> throwE $ "Invalid case expression"
-    (l, Nothing) -> let t = prt $ snd $ head l
-                    in either throwE (\de -> return (t, de, l)) $ defaultExpression t
-    (l, Just ee) -> sqlscalar aenv penv ee >>= \epr -> return (prt epr, pexpr epr, l)
-
-  pr0 eT $ memoE (pexpr vpr) $ \ve ->
-    foldl (\accE (wprs, tpr) -> EC.ifThenElse (andE ve wprs) (pexpr tpr) accE) eE $ reverse wprl
-
-  where andE _ [] = EC.constant $ CBool False
-        andE ve (h:t) = foldl (\accE wpr -> EC.binop OAnd accE $ EC.binop OEqu ve $ pexpr wpr) (EC.binop OEqu ve $ pexpr h) t
-
-sqlscalar _ _ (ScalarSubQuery _ qe) = sqlquery qe
-
-sqlscalar _ _ (Exists _ qe) = do
-  qpr <- sqlquery qe
-  pr0 TC.bool $ emptyE False $ pexpr qpr
-
-sqlscalar aenv penv (InPredicate _ e isIn inl) = do
-  epr <- sqlscalar aenv penv e
-  case inl of
-    InList _ el -> do
-      eprl <- mapM (sqlscalar aenv penv) el
-      case eprl of
-        [] -> pr0 TC.bool $ EC.constant $ CBool $ not isIn
-        (h:t) -> pr0 TC.bool $ memoE (immutE $ pexpr epr) $
-                      \ve -> foldl (\accE p -> mergeE accE $ testE ve p) (testE ve h) t
-
-    InQueryExpr _ q -> do
-      qpr <- sqlquery q
-      pr0 TC.bool $ memberE isIn (pexpr epr) $ pexpr qpr
-
-  where testE ve pr = EC.binop (if isIn then OEqu else ONeq) ve $ pexpr pr
-        mergeE accE nE = EC.binop (if isIn then OOr else OAnd) accE nE
-
-sqlscalar _ _ e = throwE $ "Unhandled scalar expr: " ++ show e
-
-
-sqloperator :: String -> ScalarExprList -> Maybe OperatorFn
-sqloperator "-"    [x]   = Just (UnaryOp  ONeg x)
-sqloperator "!not" [x]   = Just (UnaryOp  ONot x)
-sqloperator "+"    [x,y] = Just (BinaryOp OAdd x y)
-sqloperator "-"    [x,y] = Just (BinaryOp OSub x y)
-sqloperator "*"    [x,y] = Just (BinaryOp OMul x y)
-sqloperator "/"    [x,y] = Just (BinaryOp ODiv x y)
-sqloperator "%"    [x,y] = Just (BinaryOp OMod x y)
-sqloperator "="    [x,y] = Just (BinaryOp OEqu x y)
-sqloperator "!="   [x,y] = Just (BinaryOp ONeq x y)
-sqloperator "<>"   [x,y] = Just (BinaryOp ONeq x y)
-sqloperator "<"    [x,y] = Just (BinaryOp OLth x y)
-sqloperator "<="   [x,y] = Just (BinaryOp OGeq x y)
-sqloperator ">"    [x,y] = Just (BinaryOp OGth x y)
-sqloperator ">="   [x,y] = Just (BinaryOp OGeq x y)
-sqloperator "!and" [x,y] = Just (BinaryOp OAnd x y)
-sqloperator "!or"  [x,y] = Just (BinaryOp OOr  x y)
-sqloperator _ _ = Nothing
-
--- TODO
-sqlsubexpr :: [(Identifier, ScalarExpr)] -> ScalarExpr -> SQLParseM (ScalarExpr)
-sqlsubexpr cenv e@(Identifier _ (sqlnmcomponent -> i)) = maybe (return e) return $ lookup i cenv
-
-sqlsubexpr cenv (FunCall anns nm args) = do
-  nargs <- mapM (sqlsubexpr cenv) args
-  return $ FunCall anns nm nargs
-
-sqlsubexpr _ e = return e
-
-
--- | Type construction
+sqcftrylkup :: SQLEnv -> ScopeId -> [Identifier] -> Except String (Maybe ADGPtr)
+sqcftrylkup env sp path = scftrylkup (scopeenv env) sp path
+
+sqcfptrs :: SQLEnv -> ScopeId -> Except String [ADGPtr]
+sqcfptrs env sp = scfptrs (scopeenv env) sp
+
+sqcfpush :: SQLEnv -> [Identifier] -> ADGPtr -> (ScopeId, SQLEnv)
+sqcfpush env path np = (nsp, env {scopeenv = nsenv, spsym = nsym})
+  where (nsp, nsym, nsenv) = scfpush (scopeenv env) path np (spsym env)
+
+sqcfpop :: SQLEnv -> [Identifier] -> (Maybe ADGPtr, SQLEnv)
+sqcfpop env path = (npopt, env {scopeenv = nsenv})
+  where (npopt, nsenv) = scfpop (scopeenv env) path
+
+
+-- | Monadic accessors.
+sqrlkupM :: Identifier -> SQLParseM (K3 Type)
+sqrlkupM n = get >>= liftExceptM . (\env -> sqrlkup env n)
+
+sqrextM :: Identifier -> K3 Type -> SQLParseM ()
+sqrextM n t = get >>= \env -> return (sqrext env n t) >>= put
+
+sqglkupM :: ADGPtr -> SQLParseM ADGNode
+sqglkupM p = get >>= liftExceptM . (\env -> sqglkup env p)
+
+sqgextM :: ADGNode -> SQLParseM ADGPtr
+sqgextM n = get >>= \env -> return (sqgext env n) >>= \(r, nenv) -> put nenv >> return r
+
+sqclkupM :: ScopeId -> SQLParseM ScopeFrame
+sqclkupM sp = get >>= liftExceptM . (\env -> sqclkup env sp)
+
+sqcpushM :: ScopeFrame -> SQLParseM ScopeId
+sqcpushM fr = get >>= \env -> return (sqcpush env fr) >>= \(r, nenv) -> put nenv >> return r
+
+sqcpopM :: SQLParseM (Maybe ScopeFrame)
+sqcpopM = get >>= \env -> return (sqcpop env) >>= \(r, nenv) -> put nenv >> return r
+
+sqcflkupM :: ScopeId -> [Identifier] -> SQLParseM ADGPtr
+sqcflkupM sp path = get >>= liftExceptM . (\env -> sqcflkup env sp path)
+
+sqcftrylkupM :: ScopeId -> [Identifier] -> SQLParseM (Maybe ADGPtr)
+sqcftrylkupM sp path = get >>= liftExceptM . (\env -> sqcftrylkup env sp path)
+
+sqcfptrsM :: ScopeId -> SQLParseM [ADGPtr]
+sqcfptrsM sp = get >>= liftExceptM . (\env -> sqcfptrs env sp)
+
+sqcfpushM :: [Identifier] -> ADGPtr -> SQLParseM ScopeId
+sqcfpushM path np = get >>= \env -> return (sqcfpush env path np) >>= \(r, nenv) -> put nenv >> return r
+
+sqcfpopM :: [Identifier] -> SQLParseM (Maybe ADGPtr)
+sqcfpopM path = get >>= \env -> return (sqcfpop env path) >>= \(r, nenv) -> put nenv >> return r
+
+sasextM :: SQLParseM Int
+sasextM = get >>= \env -> return (sasext env) >>= \(i, nenv) -> put nenv >> return i
+
+stgsextM :: SQLParseM Int
+stgsextM =  get >>= \env -> return (stgsext env) >>= \(i, nenv) -> put nenv >> return i
+
+ssqsextM :: SQLParseM Int
+ssqsextM = get >>= \env -> return (ssqsext env) >>= \(i, nenv) -> put nenv >> return i
+
+slblsextM :: SQLParseM Int
+slblsextM = get >>= \env -> return (slblsext env) >>= \(i, nenv) -> put nenv >> return i
+
+saggsextM :: SQLParseM Int
+saggsextM = get >>= \env -> return (saggsext env) >>= \(i, nenv) -> put nenv >> return i
+
+
+{- Scope construction -}
+sqgextScopeM :: Identifier -> [Identifier] -> [ADGPtr] -> SQLParseM ScopeId
+sqgextScopeM qualifier ids ptrs = do
+    let paths = map (:[]) ids
+    let qpaths = map (\i -> [qualifier,i]) ids
+    sqcpushM (Map.fromList $ zip paths ptrs ++ zip qpaths ptrs, paths, [[qualifier]])
+
+sqgextSchemaM :: Maybe Identifier -> K3 Type -> SQLParseM ScopeId
+sqgextSchemaM (Just n) t = do
+    rt <- telemM t
+    case tnc rt of
+      (TRecord ids, ch) -> do
+        ptrs <- mapM sqgextM $ map (\(i, ct) -> ADGNode i ct (Just n) Nothing []) $ zip ids ch
+        sqgextScopeM n ids ptrs
+
+      _ -> throwE $ boxToString $ ["Invalid relational element type"] %$ prettyLines rt
+
+sqgextSchemaM _ _ = throwE "No relation name specified when extending attribute graph"
+
+sqgextAliasM :: Maybe Identifier -> K3 Type -> [ADGPtr] -> SQLParseM ScopeId
+sqgextAliasM (Just n) t srcptrs = do
+  rt <- telemM t
+  case tag rt of
+    TRecord dstids | length dstids == length srcptrs -> do
+      destnodes <- mapM mknode $ zip dstids srcptrs
+      destptrs <- mapM sqgextM destnodes
+      sqgextScopeM n dstids destptrs
+
+    _ -> throwE $ boxToString $ ["Invalid alias type when extending attribute graph"] %$ prettyLines rt
+
+  where mknode (d, ptr) = do
+          node <- sqglkupM ptr
+          return $ ADGNode d (adnt node) (Just n) (Just $ Identifier emptyAnnotation $ Nmc $ adnn node) [ptr]
+
+sqgextAliasM _ _ _ = throwE "Invalid alias arguments when extending attribute graph"
+
+-- | Extend the attribute graph for a relation type computed from the given expressions.
+sqgextExprM :: ScopeId -> Maybe Identifier -> [(Identifier, K3 Type, ScalarExpr)] -> SQLParseM ScopeId
+sqgextExprM sid (Just n) exprs = do
+    nodes <- mapM mknode exprs
+    ptrs <- mapM sqgextM nodes
+    sqgextScopeM n (map (\(i,_,_) -> i) exprs) ptrs
+
+  where mknode (i, t, e) = do
+          eptrs <- exprAttrs sid e
+          return $ ADGNode i t (Just n) (Just e) eptrs
+
+sqgextExprM _ _ _ = throwE "Invalid expr arguments when extending attribute graph"
+
+
+{- Relation type and name construciton. -}
+
 sqltabletype :: AttributeDefList -> SQLParseM (K3 Type)
 sqltabletype attrs = sqlrectype attrs >>= tcolM
 
@@ -1269,6 +538,9 @@ sqlnmcomponent :: NameComponent -> String
 sqlnmcomponent (Nmc s) = s
 sqlnmcomponent (QNmc s) = s
 
+sqlnmpath :: [NameComponent] -> [String]
+sqlnmpath nmcl = map sqlnmcomponent nmcl
+
 sqltypename :: TypeName -> SQLParseM String
 sqltypename (SimpleTypeName _ t) = return t
 sqltypename t = throwE $ "Invalid sql typename " ++ show t
@@ -1279,412 +551,1347 @@ sqltablealias def alias = case alias of
     TableAlias _ nc  -> Just $ "__" ++ sqlnmcomponent nc
     FullAlias _ nc _ -> Just $ "__" ++ sqlnmcomponent nc
 
+sqloperator :: String -> ScalarExprList -> Maybe OperatorFn
+sqloperator "-"    [x]   = Just (UnaryOp  ONeg x)
+sqloperator "!not" [x]   = Just (UnaryOp  ONot x)
+sqloperator "+"    [x,y] = Just (BinaryOp OAdd x y)
+sqloperator "-"    [x,y] = Just (BinaryOp OSub x y)
+sqloperator "*"    [x,y] = Just (BinaryOp OMul x y)
+sqloperator "/"    [x,y] = Just (BinaryOp ODiv x y)
+sqloperator "%"    [x,y] = Just (BinaryOp OMod x y)
+sqloperator "="    [x,y] = Just (BinaryOp OEqu x y)
+sqloperator "!="   [x,y] = Just (BinaryOp ONeq x y)
+sqloperator "<>"   [x,y] = Just (BinaryOp ONeq x y)
+sqloperator "<"    [x,y] = Just (BinaryOp OLth x y)
+sqloperator "<="   [x,y] = Just (BinaryOp OGeq x y)
+sqloperator ">"    [x,y] = Just (BinaryOp OGth x y)
+sqloperator ">="   [x,y] = Just (BinaryOp OGeq x y)
+sqloperator "!and" [x,y] = Just (BinaryOp OAnd x y)
+sqloperator "!or"  [x,y] = Just (BinaryOp OOr  x y)
+sqloperator _ _ = Nothing
 
-{- K3 optimizations -}
 
--- | Returns SQL attribute pointers in an expression, without descending into lambdas (e.g., subqueries).
-sqlAttrs :: K3 Expression -> SQLParseM [ADGPtr]
-sqlAttrs e = foldTree extract [] e
-  where extract acc (tag -> ELambda _) = return acc
-        extract acc n = return $ nub $ acc ++ (concatMap extractADGPtr $ filter isSqlAttrProp $ annotations n)
-        extractADGPtr (EProperty (Left (_, Just (tag -> LInt p)))) = [p]
-        extractADGPtr _ = []
+{- SQL AST helpers. -}
+projectionexprs :: SelectItemList -> ScalarExprList
+projectionexprs sl = map projectionexpr sl
 
-baseRelationsP :: [ADGPtr] -> SQLParseM [Identifier]
-baseRelationsP ps = foldM baserel [] ps
-  where baserel acc p = adgchaseM p >>= \nodes -> return $ nub $ acc ++ map adnr nodes
+projectionexpr :: SelectItem -> ScalarExpr
+projectionexpr (SelExp _ e) = e
+projectionexpr (SelectItem _ e _) = e
 
-baseRelationsE :: K3 Expression -> SQLParseM [Identifier]
-baseRelationsE e = sqlAttrs e >>= baseRelationsP
+mkprojection :: ScalarExpr -> SelectItem
+mkprojection e = SelExp emptyAnnotation e
 
-allRelations :: SQLParseM [(Identifier, K3 Type)]
-allRelations = get >>= \env -> return $ Map.toList $ relations env
+aggregateexprs :: SelectItemList -> SQLParseM (ScalarExprList, [AggregateFn])
+aggregateexprs sl = mapM aggregateexpr sl >>= return . unzip
 
--- TODO: group expressions by base relations.
-cascadePredicate :: K3 Expression -> SQLParseM ([K3 Expression], [K3 Expression], Maybe (K3 Expression))
-cascadePredicate predicate = do foldMapTree extract zero predicate
+aggregateexpr :: SelectItem -> SQLParseM (ScalarExpr, AggregateFn)
+aggregateexpr (projectionexpr -> e) = case e of
+  FunCall _ nm args -> do
+      let fn = sqlnm nm
+      case (fn, args) of
+        ("sum"  , [e']) -> return (e', AggSum)
+        ("count", [e']) -> return (e', AggCount)
+        ("min"  , [e']) -> return (e', AggMin)
+        ("max"  , [e']) -> return (e', AggMax)
+        (_, _) -> throwE $ "Invalid aggregate expression: " ++ show e
+
+  _ -> throwE $ "Invalid aggregate expression: " ++ show e
+
+mkaggregate :: AggregateFn -> SelectItem -> ScalarExpr -> SQLParseM SelectItem
+mkaggregate fn agg e = case fn of
+  AggSum   -> rt agg $ FunCall emptyAnnotation (Name emptyAnnotation [Nmc "sum"])   [e]
+  AggCount -> rt agg $ FunCall emptyAnnotation (Name emptyAnnotation [Nmc "count"]) [e]
+  AggMin   -> rt agg $ FunCall emptyAnnotation (Name emptyAnnotation [Nmc "min"])   [e]
+  AggMax   -> rt agg $ FunCall emptyAnnotation (Name emptyAnnotation [Nmc "max"])   [e]
+
+  where rt (SelExp _ _) e' = return (SelExp emptyAnnotation e')
+        rt (SelectItem _ _ nmc) e' = return (SelectItem emptyAnnotation e' nmc)
+
+isAggregate :: ScalarExpr -> SQLParseM Bool
+isAggregate (FunCall _ nm args) = do
+  let fn = sqlnm nm
+  case (fn, args) of
+    ("sum"  , [_]) -> return True
+    ("count", [_]) -> return True
+    ("min"  , [_]) -> return True
+    ("max"  , [_]) -> return True
+    (_, _) -> return False
+
+isAggregate _ = return False
+
+-- TODO: qualified, more expression types
+substituteExpr :: [(Identifier, ScalarExpr)] -> ScalarExpr -> SQLParseM ScalarExpr
+substituteExpr bindings e =  case e of
+  (Identifier _ (sqlnmcomponent -> i)) -> return $ maybe e id $ lookup i bindings
+  (QIdentifier _ _) -> throwE "Cannot substitute qualified expressions."
+  (FunCall ann nm args) -> mapM (substituteExpr bindings) args >>= \nargs -> return $ FunCall ann nm nargs
+  _ -> return e
+
+
+{- Scope accessors. -}
+attrIds :: AttrEnv -> SQLParseM [Identifier]
+attrIds env = mapM (\ptr -> adnn <$> sqglkupM ptr) $ Map.elems env
+
+singletonPath :: AttrPath -> SQLParseM Identifier
+singletonPath [i] = return i
+singletonPath p = throwE $ "Invalid singleton path: " ++ show p
+
+uniqueScopeQualifier :: ScopeId -> SQLParseM Identifier
+uniqueScopeQualifier sid = do
+    (_, _, quals) <- sqclkupM sid
+    case quals of
+      [[q]] -> return q
+      _ -> throwE $ "Invalid unique scope qualifier: " ++ show quals
+
+unqualifiedAttrs :: ScopeFrame -> SQLParseM [Identifier]
+unqualifiedAttrs (_, ord, _) = forM ord $ singletonPath
+
+qualifiedAttrs :: AttrPath -> ScopeFrame -> SQLParseM AttrEnv
+qualifiedAttrs prefix (fr, _, q)
+  | prefix `elem` q = return $ Map.filterWithKey (\path _ -> prefix `isPrefixOf` path) fr
+  | otherwise = throwE $ unwords ["Could not find qualifier:", show prefix, "(", show q, ")"]
+
+partitionAttrEnv :: ScopeFrame -> SQLParseM (AttrEnv, AttrEnv)
+partitionAttrEnv (fr,_,_) = return $ Map.partitionWithKey (\path _ -> length path <= 1) fr
+
+partitionCommonQualifedAttrEnv :: ScopeFrame -> SQLParseM (Map AttrPath AttrEnv)
+partitionCommonQualifedAttrEnv (fr, ord, _) = return $ Map.foldlWithKey (addQualifiedCommon ord) Map.empty fr
   where
-    extract acc n@(tnc -> (EOperate OAnd, _)) =
-      let (n1, nequi, restch) = accflatten acc in
-      case restch of
-        [Nothing, Nothing] -> return (n1, nequi, Nothing)
-        [Just nx, Nothing] -> return (n1, nequi, Just nx)
-        [Nothing, Just ny] -> return (n1, nequi, Just ny)
-        [Just nx, Just ny] -> return (n1, nequi, Just $ (EC.binop OAnd nx ny) @<- annotations n)
-        _ -> throwE $ "Invalid boolean operator children"
+    addQualifiedCommon commons acc path ptr
+      | length path <= 1 = acc
+      | otherwise =
+        let (qual, attr) = (init path, last path) in
+        if [attr] `notElem` commons then acc else Map.alter (inject [attr] ptr) qual acc
 
-    extract _ n = classify n
+    inject path ptr Nothing = Just $ Map.singleton path ptr
+    inject path ptr (Just aenv) = Just $ Map.insert path ptr aenv
 
-    classify e@(tnc -> (EOperate OEqu, [x,y])) = do
-      xrels <- baseRelationsE x
-      yrels <- baseRelationsE y
-      case (xrels, yrels) of
-        ([a],[b]) | a /= b -> return ([], [e], Nothing)
-        (i,j) | length (nub $ i ++ j) == 1 -> return ([e], [], Nothing)
-        _ -> return ([], [], Just e)
+unqualifiedScopeFrame :: ScopeFrame -> SQLParseM ScopeFrame
+unqualifiedScopeFrame (fr, ord, _)
+  | all (\path -> length path == 1) ord = return (Map.filterWithKey (\path _ -> length path == 1) fr, ord, [])
+  | otherwise = throwE "Unable to extract unqualified scope (lossy order specification)"
 
-    classify e = do
-      rels <- baseRelationsE e
-      case rels of
-        []  -> return ([],  [], Just e)
-        [_] -> return ([e], [], Nothing)
-        _   -> return ([],  [], Just e)
+qualifiedScopeFrame :: ScopeFrame -> SQLParseM ScopeFrame
+qualifiedScopeFrame (fr, _, q) = return (Map.filterWithKey (\path _ -> length path > 1) fr, [], q)
 
-    accflatten l = let (x,y,z) = unzip3 l in (concat x, concat y, z)
+renameScopeFrame :: Identifier -> ScopeFrame -> SQLParseM ScopeFrame
+renameScopeFrame i sf = do
+  (ufr, ord, _) <- unqualifiedScopeFrame sf
+  return (ufr <> Map.mapKeys (\path -> [i] ++ path) ufr, ord, [[i]])
 
-    zero = ([], [], Nothing)
+concatScopeFrames :: ScopeFrame -> ScopeFrame -> SQLParseM ScopeFrame
+concatScopeFrames (lfr,lord,lq) (rfr,rord,rq) = return (lfr <> rfr, lord ++ rord, lq++rq)
 
-sqloptimize :: K3 Expression -> SQLParseM (K3 Expression)
-sqloptimize queryexpr = do
-    rexpr <- optimizeexpr queryexpr
-    if rexpr `compareEAST` queryexpr
-      then pickjoinalg rexpr
-      else sqloptimize rexpr
+mergeScopeFrames :: ScopeFrame -> ScopeFrame -> SQLParseM ScopeFrame
+mergeScopeFrames lsf@(_, lord, lquals) rsf@(_, rord, rquals) = do
+  let common = lord `intersect` rord
+  let nord = (nub $ lord ++ rord) \\ common
+  ((lu,lq), (ru,rq)) <- (,) <$> partitionAttrEnv lsf <*> partitionAttrEnv rsf
+  let nu = (foldl (flip Map.delete) lu common) <> (foldl (flip Map.delete) ru common)
+  return (nu <> lq <> rq, nord, lquals ++ rquals)
 
-  where optimizeexpr e = modifyTree optimize e
-        pickjoinalg e = modifyTree joinalg e
+mergeScopes :: ScopeId -> ScopeId -> SQLParseM ScopeId
+mergeScopes id1 id2 = do
+  (lsf, rsf) <- (,) <$> sqclkupM id1 <*> sqclkupM id2
+  nsf <- mergeScopeFrames lsf rsf
+  sqcpushM nsf
 
-        -- Transformer fusion for SQL-K3.
-        optimize e@(PFilterJoin lE rE filterE predE outE jAs) = do
-          filterBodyE <- case filterE of
-                           PLamBind _ _ _ pe _ _ -> return pe
-                           PLam _ pe _ -> return pe
-                           _ -> throwE $ boxToString $ ["Invalid predicate "] %$ prettyLines filterE
+outputTypeAndQualifier :: K3 Type -> Identifier -> Maybe TableAlias -> SQLParseM (K3 Type, Maybe Identifier)
+outputTypeAndQualifier t pfx alOpt = do
+    sym <- sasextM
+    case alOpt of
+      Nothing -> return (t, Just $ pfx ++ show sym)
+      Just al -> (,) <$> taliascolM al t <*> return (sqltablealias (pfx ++ show sym) al)
 
-          case predE of
-            PLam2Bind i j srcE bnd bodyE _ _ _ -> do
-              nfilterE <- rewritePredicate jAs filterE
-              let npredE = PLam2Bind i j srcE bnd (EC.binop OAnd bodyE nfilterE) [] [] []
-              return $ PCJoin lE rE npredE outE [] [] [] jAs
+typedOutputScope :: K3 Type -> Identifier -> Maybe TableAlias -> SQLParseM ScopeId
+typedOutputScope t pfx alOpt = do
+    (rt, tid) <- outputTypeAndQualifier t pfx alOpt
+    sqgextSchemaM tid rt
 
-            PLam2 i j bodyE _ _ -> do
-              nfilterE <- rewritePredicate jAs filterBodyE
-              let npredE = PLam2 i j (EC.binop OAnd bodyE nfilterE) [] []
-              return $ PCJoin lE rE npredE outE [] [] [] jAs
+outputScope :: ScopeId -> Identifier -> Maybe TableAlias -> SQLParseM ScopeId
+outputScope sid pfx alOpt = do
+    t <- scopeType sid
+    typedOutputScope t pfx alOpt
 
-            _ -> return e
+aliasedOutputScope :: ScopeId -> Identifier -> Maybe TableAlias -> SQLParseM ScopeId
+aliasedOutputScope sid pfx alOpt = do
+    (t, ptrs) <- (,) <$> scopeType sid <*> sqcfptrsM sid
+    (rt, tid) <- outputTypeAndQualifier t pfx alOpt
+    sqgextAliasM tid rt ptrs
 
-        optimize (PMapJoin lE rE mapE predE outE jAs) = do
-          cE <- composeE
-          return $ PCJoin lE rE predE cE [] [] [] jAs
-
-          where
-            er e = recE [("elem", e)]
-            composeE = case outE of
-              PLam2Bind i j _ _ _ _ _ _ -> return $
-                PLam2App i j mapE (er $ PApp2 outE (EC.variable i) (EC.variable j) [] []) [] [] []
-
-              PLam2App i j _ _ _ _ _ -> return $
-                PLam2App i j mapE (er $ PApp2 outE (EC.variable i) (EC.variable j) [] []) [] [] []
-
-              PLam2 i j bodyE _ _ -> return $
-                PLam2App i j mapE (er bodyE) [] [] []
-
-              _ -> throwE $ boxToString $ ["Invalid join combiner expression"] %$ prettyLines outE
-
-        optimize (PJoin lE rE predE outE jAs) = do
-          pbodyE <- case predE of
-                      PLam2Bind _ _ _ _ bodyE _ _ _ -> return bodyE
-                      PLam2 _ _ bodyE _ _ -> return bodyE
-                      _ -> throwE $ boxToString $ ["Invalid predicate "] %$ prettyLines predE
-
-          (lal, ral, _, _, lbr, rbr, _, _, laenv, raenv) <- joinInfo jAs
-
-          (onesided, equi, remdr) <- cascadePredicate pbodyE
-          pushdownCands <- mapM (\pe -> baseRelationsE pe >>= return . (,pe)) $ onesided ++ equi
-
-          jclassified <- forM pushdownCands $ \(rels,pe) ->
-                           if (rels `intersect` lbr) == rels then return $ (([pe], []), [])
-                           else if (rels `intersect` rbr) == rels then return $ (([], [pe]), [])
-                           else return $ (([], []), [pe])
-
-          let (pushdowns, jequi) = second concat $ unzip jclassified
-          let (lpush, rpush) = (concat *** concat) $ unzip pushdowns
-          nlE <- mkPredicates laenv lal sqlPred1Prop lE lpush
-          nrE <- mkPredicates raenv ral sqlPred1Prop rE rpush
-          let jConjuncts = pruneConjuncts $ jequi ++ maybe [] (:[]) remdr
-          npredE <- rebuildPredE predE jConjuncts
-          return $ PCJoin nlE nrE npredE outE [] [] [] jAs
-
-        optimize n = return n
+exprOutputScope :: ScopeId -> Identifier -> [(Identifier, K3 Type, ScalarExpr)] -> SQLParseM ScopeId
+exprOutputScope sid pfx exprs = do
+    sym <- sasextM
+    let qual = Just $ pfx ++ show sym
+    sqgextExprM sid qual exprs
 
 
-        -- Promote joins to equi-joins.
-        joinalg (PJoin lE rE predE outE jAs) = do
-          pbodyE <- case predE of
-                      PLam2Bind _ _ _ _ bodyE _ _ _ -> return bodyE
-                      PLam2 _ _ bodyE _ _ -> return bodyE
-                      _ -> throwE $ boxToString $ ["Invalid predicate "] %$ prettyLines predE
+{- Binding map helpers. -}
+bmelem :: BindingMap
+bmelem = BMTPrefix "elem"
 
-          (lal, ral, _, _, lbr, rbr, _, _, laenv, raenv) <- joinInfo jAs
+{- Query plan accessors. -}
+ttag :: PlanTree -> PlanNode
+ttag (Node tg _) = tg
 
-          (onesided, equi, remdr) <- cascadePredicate pbodyE
-          pushdownCands <- mapM (\pe -> baseRelationsE pe >>= return . (,pe)) $ onesided ++ equi
+replaceData :: Tree a -> a -> Tree a
+replaceData (Node _ ch) n = Node n ch
 
-          jclassified <- forM pushdownCands $ \(rels,pe) ->
-                           if (rels `intersect` lbr) == rels then return $ (([pe], []), [])
-                           else if (rels `intersect` rbr) == rels then return $ (([], [pe]), [])
-                           else return $ (([], []), [pe])
+isEquiJoin :: PlanTree -> Bool
+isEquiJoin (ttag -> PJoin _ _ _ (_:_) [] _ _) = True
+isEquiJoin _ = False
 
-          let (pushdowns, jequi') = second concat $ unzip jclassified
-          let (lpush, rpush) = (concat *** concat) $ unzip pushdowns
+isJoin :: PlanTree -> Bool
+isJoin (ttag -> PJoin _ _ _ _ _ _ _) = True
+isJoin _ = False
 
-          case (lpush, rpush, jequi') of
-            ([], [], jequi) ->
-              let jConjuncts = pruneConjuncts $ jequi ++ maybe [] (:[]) remdr in
-              if jConjuncts /= jequi
-                then do
-                  npredE <- rebuildPredE predE jConjuncts
-                  return $ PCJoin lE rE npredE outE [] [] [] jAs
+{- Path/chain accessors. -}
+trypath :: Maybe ScopeId -> SQLParseM a -> (ADGPtr -> SQLParseM a) -> AttrPath -> SQLParseM a
+trypath sidOpt rfail rsuccess path = (\f -> maybe rfail f sidOpt) $ \sid -> do
+  pOpt <- sqcftrylkupM sid path
+  maybe rfail rsuccess pOpt
 
-                -- TODO: partial equality join API.
-                else do
-                  (lk,rk,crem) <- extractJoinKeys lbr rbr jConjuncts
-                  case crem of
-                    [] -> do
-                      lkeyE <- mkJoinKey laenv lal lk
-                      rkeyE <- mkJoinKey raenv ral rk
-                      return $ PCEJoin lE rE lkeyE rkeyE outE [] [] [] [] jAs
+isAggregatePath :: PlanCPath -> Bool
+isAggregatePath (PlanCPath _ _ [] [] _ _ _) = True
+isAggregatePath _ = False
 
-                    _ -> do
-                      npredE <- rebuildPredE predE jConjuncts
-                      return $ PCJoin lE rE npredE outE [] [] [] jAs
+isGroupByAggregatePath :: PlanCPath -> Bool
+isGroupByAggregatePath (PlanCPath _ _ (_:_) _ (_:_) _ _) = True
+isGroupByAggregatePath _ = False
 
-            (_, _, _) -> throwE $ "Incomplete optimization fixpoint"
+isNonAggregatePath :: PlanCPath -> Bool
+isNonAggregatePath (PlanCPath _ _ [] _ [] Nothing _) = True
+isNonAggregatePath _ = False
 
-        joinalg n = return n
+planNodeChains :: PlanNode -> Maybe [PlanCPath]
+planNodeChains (PJoin _ _ _ _ _ _ chains) = Just chains
+planNodeChains (PTable _ _ _ _ chains) = Just chains
+planNodeChains (PSubquery _ qcl) = queryClosureChains qcl
 
+treeChains :: PlanTree -> Maybe [PlanCPath]
+treeChains (Node n _) = planNodeChains n
 
-        joinInfo anns = case (filter isSqlAEnvProp anns, filter isSqlPEnvProp anns) of
-          ([EProperty (Left (_, Just (tag -> LInt sp)))],
-           [EProperty (Left (_, Just (tag -> LString (read -> penv))))]) -> do
-             aenv <- sqclkupM sp
-             let roots = adgproots penv
-             baserels <- mapM (\(_, ps) -> baseRelationsP ps) $ snd penv
-             let (lal, ral) = (fst $ head $ snd penv, fst $ head $ tail $ snd penv)
-             laenv <- aenvsub lal aenv
-             raenv <- aenvsub ral aenv
-             (lbr, rbr) <- case baserels of
-                              [l,r] -> return (l,r)
-                              _ -> throwE $ "Invalid binary join base relations."
+queryPlanChains :: QueryPlan -> Maybe [PlanCPath]
+queryPlanChains (QueryPlan tOpt chains _) = if null chains then maybe Nothing treeChains tOpt else Just chains
 
-             return (lal, ral, roots, baserels, lbr, rbr, penv, aenv, laenv, raenv)
+queryClosureChains :: QueryClosure -> Maybe [PlanCPath]
+queryClosureChains (QueryClosure _ plan) = queryPlanChains plan
 
+pcext :: PlanCPath -> PlanTree -> SQLParseM PlanTree
+pcext p (Node n ch) = case n of
+  PJoin psid osid jt jeq jp jpb chains -> return $ Node (PJoin psid osid jt jeq jp jpb $ chains ++ [p]) ch
+  PTable i tsid trOpt bmOpt chains -> return $ Node (PTable i tsid trOpt bmOpt $ chains ++ [p]) ch
+  PSubquery osid qcl -> pcextclosure p qcl >>= \nqcl -> return $ Node (PSubquery osid nqcl) ch
 
-          _ -> throwE $ "Invalid join expression for metadata extraction"
+  where pcextclosure p (QueryClosure fvs plan) = pcextplan p plan >>= \nplan -> return $ QueryClosure fvs nplan
+        pcextplan p (QueryPlan tOpt chains stgOpt) = return $ QueryPlan tOpt (chains ++ [p]) stgOpt
 
-        rewriteAttr :: [ADGPtr] -> AEnv -> ADGPtrEnv -> ADGPtr -> SQLParseM (K3 Expression)
-        rewriteAttr roots aenv penv ptr = do
-          (_, sqlexpr) <- rcrsub ptr
-          pr <- sqlscalar aenv penv sqlexpr
-          return $ pexpr pr
+pcextSelect :: ScopeId -> SubqueryBindings -> ScalarExpr -> [PlanCPath] -> [PlanCPath]
+pcextSelect sid qbs p [] = [PlanCPath sid [p] [] [] [] Nothing qbs]
+pcextSelect _ qbs p pcl@(last -> c) = init pcl ++ [c {pcselects = pcselects c ++ [p], pcbindings = pcbindings c ++ qbs}]
 
-          where
-            sub p node | p `elem` roots = return $ Identifier emptyAnnotation $ Nmc $ adnn node
+pcextGroupBy :: SelectItemList -> SelectItemList -> PlanNode -> SQLParseM PlanNode
+pcextGroupBy gbs aggs n@(PJoin _ osid _ _ _ _ chains) = do
+  aggsid <- aggregateSchema (Just $ chainSchema osid chains) gbs aggs
+  return $ n { pnjpath = chains ++ [PlanCPath aggsid [] (projectionexprs gbs) gbs aggs Nothing []] }
 
-            sub _ (adne &&& adnch -> (Just def, chp)) = do
-              cenv <- mapM rcrsub chp
-              sqlsubexpr cenv def
+pcextGroupBy gbs aggs n@(PTable _ sid _ _ chains) = do
+  aggsid <- aggregateSchema (Just $ chainSchema sid chains) gbs aggs
+  return $ n { pntpath = chains ++ [PlanCPath aggsid [] (projectionexprs gbs) gbs aggs Nothing []] }
 
-            sub p _ = throwE $ "Rewrite substitution failed for " ++ show p
+pcextGroupBy gbs aggs n@(PSubquery _ qcl) = extPlan (qcplan qcl) >>= \p -> return $ n { pnqclosure = qcl { qcplan = p } }
+  where extPlan p@(QueryPlan tOpt chains stgOpt) = do
+          sid <- planSchema p
+          aggsid <- aggregateSchema (Just sid) gbs aggs
+          return $ QueryPlan tOpt (chains ++ [PlanCPath aggsid [] (projectionexprs gbs) gbs aggs Nothing []]) stgOpt
 
-            rcrsub p = sqglkupM p >>= \n -> sub p n >>= return . (adnn n,)
+pcNonAggExprs :: ScopeId -> [PlanCPath] -> [(ScopeId, ScalarExprList)]
+pcNonAggExprs _ [] = []
+pcNonAggExprs sid (h:t) = snd $ foldl accum (pcoutsid h, [extract sid h]) t
+  where accum (sid', expracc) pcp = (pcoutsid pcp, expracc ++ [extract sid' pcp])
+        extract sid' (PlanCPath _ selects groupbys projects _ _ _) = (sid', selects ++ groupbys ++ projectionexprs projects)
 
-        rewritePredicate :: [Annotation Expression] -> K3 Expression -> SQLParseM (K3 Expression)
-        rewritePredicate joinAnns e = do
-            (_, _, roots, _, _, _, penv, aenv, _, _) <- joinInfo joinAnns
-            modifyTree (rewrite roots aenv penv) e
-          where
-            rewrite roots aenv penv (attrptr -> Just p) = rewriteAttr roots aenv penv p
-            rewrite _ _ _ re = return re
+pcAggExprs :: ScopeId -> [PlanCPath] -> [(ScopeId, ScalarExprList)]
+pcAggExprs _ [] = []
+pcAggExprs sid (h:t) = snd $ foldl accum (pcoutsid h, [extract sid h]) t
+  where accum (sid', expracc) pcp = (pcoutsid pcp, expracc ++ [extract sid' pcp])
+        extract sid' (PlanCPath _ _ _ _ aggs _ _) = (sid', projectionexprs aggs)
 
-            attrptr :: K3 Expression -> Maybe Int
-            attrptr ((@~ isSqlAttrProp) -> Just (EProperty (Left (_, Just (tag -> LInt p))))) = Just p
-            attrptr _ = Nothing
+chainSchema :: ScopeId -> [PlanCPath] -> ScopeId
+chainSchema sid chains = if null chains then sid else pcoutsid $ last chains
 
-        mkPredicates aenv alias classp e el = foldM (mkPredicate aenv alias classp) e el
-        mkPredicate aenv alias classp acce predicate = do
-          (iOpt, be) <- bindE aenv "x" predicate
-          filterF <- maybe (return alias) return iOpt >>= \a -> return $ EC.lambda a be
-          let fexpr = EC.applyMany (EC.project "filter" acce) [filterF]
-          let rexpr = fexpr @+ classp
-          return rexpr
+treeSchema :: PlanTree -> SQLParseM ScopeId
+treeSchema (ttag -> PJoin _ sid _ _ _ _ chains) = return $ chainSchema sid chains
+treeSchema (ttag -> PSubquery sid _) = return sid
+treeSchema (ttag -> PTable _ sid _ _ chains) = return $ chainSchema sid chains
+treeSchema _ = throwE "Invalid plan node input for treeSchema"
 
-        rebuildPredE pE conjuncts = case pE of
-          PLam2Bind i j srcE bnd _ _ _ _ -> do
-            nbodyE <- mkConjunctive conjuncts
-            return $ PLam2Bind i j srcE bnd nbodyE [] [] []
+planSchema :: QueryPlan -> SQLParseM ScopeId
+planSchema (QueryPlan Nothing [] _) = throwE "Invalid query plan with no tables or expressions"
+planSchema (QueryPlan (Just t) [] _) = treeSchema t
+planSchema (QueryPlan _ chains _) = return $ pcoutsid $ last chains
 
-          PLam2 i j _ _ _ -> do
-            nbodyE <- mkConjunctive conjuncts
-            return $ PLam2 i j nbodyE [] []
+aggregateSchema :: Maybe ScopeId -> SelectItemList -> SelectItemList -> SQLParseM ScopeId
+aggregateSchema (Just sid) [] [] = return sid
+aggregateSchema sidOpt projects aggregates = do
+    let pexprs = projectionexprs projects
+    let aexprs = projectionexprs aggregates
+    (prji, prjids) <- foldM selectItemIdAcc (0, []) projects
+    (_, aggids) <- foldM selectItemIdAcc (prji, []) aggregates
+    prjt <- mapM (scalarexprType sidOpt) pexprs
+    aggt <- mapM (aggregateType sidOpt) aexprs
+    case sidOpt of
+      Nothing -> typedOutputScope (recT $ zip prjids prjt ++ zip aggids aggt) "__RN" Nothing
+      Just sid -> exprOutputScope sid "__AGG" $ (zip3 prjids prjt pexprs) ++ (zip3 aggids aggt aexprs)
 
-          _ -> throwE $ boxToString $ ["Invalid predicate "] %$ prettyLines pE
+refreshInputSchema :: PlanNode -> [PlanTree] -> SQLParseM PlanNode
+refreshInputSchema (PJoin _ _ jt jeq jp jpb chains) [l,r] = do
+    (lsid, rsid)  <- (,) <$> treeSchema l <*> treeSchema r
+    jpsid         <- mergeScopes lsid rsid
+    josid         <- outputScope jpsid "__JR" Nothing
+    return $ PJoin jpsid josid jt jeq jp jpb chains
 
-        extractJoinKeys lbr rbr conjuncts = foldM (extractJoinKey lbr rbr) ([], [], []) conjuncts
-        extractJoinKey lbr rbr (lacc,racc,uacc) e@(tnc -> (EOperate OEqu, [x,y])) = do
-          xrels <- baseRelationsE x
-          yrels <- baseRelationsE y
-          let (xl, xr) = (xrels `intersect` lbr == xrels, xrels `intersect` rbr == xrels)
-          let (yl, yr) = (yrels `intersect` lbr == yrels, yrels `intersect` rbr == yrels)
-          case (xl, xr, yl, yr) of
-            (True, False, False, True) -> return (lacc ++ [x], racc ++ [y], uacc)
-            (False, True, True, False) -> return (lacc ++ [y], racc ++ [x], uacc)
-            _ -> return (lacc, racc, uacc ++ [e])
+refreshInputSchema n [] = return n
+refreshInputSchema _ _ = throwE "Invalid plan tree node for refreshInputSchema"
 
-        extractJoinKey _ _ (lacc,racc,uacc) e = return (lacc, racc, uacc ++ [e])
+scopeType :: ScopeId -> SQLParseM (K3 Type)
+scopeType sid = do
+  sf@(_, ord, _) <- sqclkupM sid >>= unqualifiedScopeFrame
+  ptrs <- mapM (\path -> liftExceptM $ sflkup sf path) ord
+  nodes <- mapM sqglkupM ptrs
+  tcolM $ recT $ map (adnn &&& adnt) nodes
 
-        mkJoinKey aenv alias l = do
-          (iOpt, be) <- bindE aenv "x" $ tupE l
-          i <- maybe (return alias) return iOpt
-          return $ EC.lambda i be
-
-        pruneConjuncts  l = filter (\e -> case tag e of {EConstant (CBool True) -> False; _ -> True}) l
-        mkConjunctive  [] = return $ EC.constant $ CBool True
-        mkConjunctive   l = return $ foldl1 (\a b -> EC.binop OAnd a b) l
-
-
-sqlstages :: Bool -> K3 Declaration -> SQLParseM (K3 Declaration)
-sqlstages distributed prog = do
-  tprog <- either throwE return $ do
-      (qtprog,_) <- inferProgramTypes $ stripTypeAndEffectAnns prog
-      translateProgramTypes qtprog
-
-  allrels <- allRelations
-  ((newDecls, inits, _), nprog) <- stageExpressions (map fst allrels) tprog
-
-  case tnc nprog of
-    (DRole n, declch) -> do
-      strigD <- startTrig inits
-      return $ declareBuiltins$ DC.role n $
-        declch ++ newDecls ++ [strigD] ++ if distributed then loadersAndPeerLocal allrels ++ [master] else []
-
-    (tg,_) -> throwE $ "Invalid program toplevel: " ++ show tg
+k3ScopeType :: ScopeId -> BindingMap -> SQLParseM (K3 Type)
+k3ScopeType sid bm = do
+  t <- scopeType sid
+  rt <- telemM t
+  case (tnc rt, bm) of
+    ((TRecord ids, ch), BMNone) -> return t
+    ((TRecord ids, ch), BMTPrefix j) -> tcolM $ recT [(j,rt)]
+    ((TRecord ids, ch), BMTFieldMap fb) -> namedRecordT fb (zip ids ch) >>= tcolM
+    ((TRecord ids, ch), BMTVPartition pb) -> throwE "BMTVPartition mapping unsupported in k3ScopeType"
+    _ -> throwE "Invalid k3ScopeType element type"
 
   where
-    stageExpressions allrels qprog = foldExpression stageF ([], [], []) qprog
-      where stageF = if distributed then stageDistributed allrels else stageSingleThreaded allrels
+    namedRecordT fb idt = foldM (field fb) [] idt >>= return . recT
+    field fb acc (j,t) = maybe (err j) (extendNestedRecord t acc) $ Map.lookup j fb
 
-    {- Distributed staging. -}
-    stageDistributed rels acc e = biFoldMapRebuildTree stageSTSym (stageD rels) (Nothing, Nothing) acc e
+    extendNestedRecord _ fieldsAcc [] = throwE "Invalid nested record extension"
+    extendNestedRecord t fieldsAcc [i] = return $ fieldsAcc ++ [(i,t)]
+    extendNestedRecord t fieldsAcc (h:rest) =
+      case lookup h fieldsAcc of
+        Nothing -> do
+          subfields <- extendNestedRecord t [] rest
+          return $ fieldsAcc ++ [(h, recT subfields)]
 
-    stageD _ _ acc ch n@((@~ isSqlStagedProp) -> Just _) = return (aconcat acc, replaceCh n ch)
+        Just (tnc -> (TRecord ids, tch)) -> do
+          subfields <- extendNestedRecord t (zip ids tch) rest
+          return $ map (replaceField h $ recT subfields) fieldsAcc
 
-    stageD _ _ acc ch n@((@~ isSqlQueryResultProp) -> Just (EProperty (Left (_, Just (tag -> LString stgid))))) =
-      case n of
-        PAssign _ (PJoin _ _ _ _ _) _ -> annotateDJoin stgid (replaceCh n ch) >>= return . (aconcat acc,)
-        PAssign _ (PEJoin _ _ _ _ _ _) _ -> annotateDEJoin stgid (replaceCh n ch) >>= return . (aconcat acc,)
-        PAssign _ (PGroupBy _ _ _ _ gbAs) _ -> annotateDGroupBy gbAs stgid (replaceCh n ch) >>= return . (aconcat acc,)
-        _ -> return (aconcat acc, replaceCh n ch)
+        Just _ -> throwE $ "Existing non-record field when attempting to extend nested record"
 
-    stageD _ symOpt acc ch n@(PJoin _ _ _ _ _)       = mkStage 2 (Right $ (\a _ c -> annotateDJoin a c)) symOpt acc ch n
-    stageD _ symOpt acc ch n@(PEJoin _ _ _ _ _ _)    = mkStage 2 (Right $ (\a _ c -> annotateDEJoin a c)) symOpt acc ch n
-    stageD _ symOpt acc ch n@(PGroupBy _ _ _ _ gbAs) = mkStage 1 (Right $ (\a _ c -> annotateDGroupBy gbAs a c)) symOpt acc ch n
+    replaceField dst nt (src,t) | src == dst = (dst, nt)
+                                | otherwise = (src, t)
 
-    stageD rels (_,sym) (aconcat -> (decls, inits, [])) ch n@(tag -> EVariable i) =
-      let nacc = if i `elem` rels then (decls, inits, [(i, sym)]) else (decls, inits, [])
-      in return (nacc, replaceCh n ch)
+    err j = throwE $ "No field binding found in namedRecordT for " ++ show j
 
-    stageD _ _ acc ch n = return (aconcat acc, replaceCh n ch)
+k3PlanType :: BindingMap -> QueryPlan -> SQLParseM (K3 Type)
+k3PlanType _ (QueryPlan Nothing [] _) = throwE "Invalid query plan with no tables or expressions"
+k3PlanType bm p = do
+  sid <- planSchema p
+  case queryPlanChains p of
+    Just [] -> k3ScopeType sid bm
+    Just l | isAggregatePath (last l) -> do
+      t <- k3ScopeType sid bm
+      rt <- telemM t
+      case tnc rt of
+        (TRecord ids, ch) -> zeroT $ zip ids ch
+        _ -> throwE "Invalid k3 aggregate plan type"
 
-    annotateDJoin stgid bodye =
-      return $ bodye @+ (EApplyGen True "BroadcastJoin" $ Map.fromList [("lbl", SLabel stgid)])
+    _ -> k3ScopeType sid bm
 
-    annotateDEJoin stgid bodye =
-      return $ bodye @+ (EApplyGen True "DistributedHashJoin" $ Map.fromList [("lbl", SLabel stgid)])
 
-    annotateDGroupBy gbAs stgid bodye =
-      case filter isSqlAggMergeProp gbAs of
-        [EProperty (Left (_, Just (tag -> LString (read -> mergeF))))] ->
-          return $ bodye @+ (EApplyGen True "DistributedGroupBy" $ groupByArgs stgid mergeF)
-        _ -> throwE "No merge function found for distributed group-by"
+-- TODO: case, function types
+scalarexprType :: Maybe ScopeId -> ScalarExpr -> SQLParseM (K3 Type)
+scalarexprType _ (BooleanLit _ _) = return TC.bool
+scalarexprType _ (StringLit _ _) = return TC.string
+scalarexprType _ (NumberLit _ i) = return $ if "." `isInfixOf` i then TC.real else TC.int
 
-    groupByArgs stgid mergeF = Map.fromList [ ("lbl", SLabel stgid)
-                                            , ("merge", SExpr mergeF) ]
+scalarexprType sidOpt (Identifier _ (sqlnmcomponent -> i)) = do
+  sf <- maybe (return Nothing) (\i -> sqclkupM i >>= return . Just) sidOpt
+  trypath sidOpt (trace (unwords ["bottom", i, show sidOpt, show sf]) $ return TC.bottom) (\ptr -> sqglkupM ptr >>= return . adnt) [i]
 
-    {- Single-machine staging. -}
-    stageSingleThreaded rels acc e = biFoldMapRebuildTree stageSTSym (stageST rels) (Nothing, Nothing) acc e
+scalarexprType sidOpt (QIdentifier _ (sqlnmpath -> path)) = do
+  sf <- maybe (return Nothing) (\i -> sqclkupM i >>= return . Just) sidOpt
+  trypath sidOpt (trace (unwords ["bottom", show path, show sidOpt, show sf]) $ return TC.bottom) (\ptr -> sqglkupM ptr >>= return . adnt) path
 
-    stageSTSym (_,psym) n@((@~ isSqlStagedProp) -> Just (EProperty (Left (_, Just (tag -> LString i))))) =
-      let nsympair = (psym, Just i) in
-      return (nsympair, replicate (length $ children n) nsympair)
+scalarexprType sidOpt (FunCall _ nm args) = do
+  let fn = sqlnm nm
+  case sqloperator fn args of
+    (Just (UnaryOp  _ x))   -> scalarexprType sidOpt x
+    (Just (BinaryOp _ x y)) -> do
+      xt <- scalarexprType sidOpt x
+      yt <- scalarexprType sidOpt y
+      if xt == yt then return xt
+                  else throwE $ boxToString $ ["Binary operator sql type mismatch"]
+                              %$ prettyLines xt %$ prettyLines yt
 
-    stageSTSym (_, psym) n@(PJoin _ _ _ _ _)    = mkSym psym n
-    stageSTSym (_, psym) n@(PEJoin _ _ _ _ _ _) = mkSym psym n
-    stageSTSym (_, psym) n@(PGroupBy _ _ _ _ _) = mkSym psym n
-    stageSTSym td n = return (td, replicate (length $ children n) td)
+    _ -> do
+      case (fn, args) of
+        ("!between", [_,_,_]) -> return TC.bool
+        (_, _) -> trace (unwords ["bottom", fn]) $ return TC.bottom -- TODO: type?
 
-    stageST _ _ acc ch n@((@~ isSqlStagedProp) -> Just (EProperty _)) = return (aconcat acc, replaceCh n ch)
-    stageST _ _ acc ch n@((@~ isSqlQueryResultProp) -> Just _) = finalBarrier acc $ replaceCh n ch
-    stageST _ symOpt acc ch n@(PJoin _ _ _ _ _)    = mkStage 2 (Right annotateJoin)   symOpt acc ch n
-    stageST _ symOpt acc ch n@(PEJoin _ _ _ _ _ _) = mkStage 2 (Right annotateJoin)   symOpt acc ch n
-    stageST _ symOpt acc ch n@(PGroupBy _ _ _ _ _) = mkStage 1 (Right $ \_ _ e -> return e) symOpt acc ch n
+scalarexprType (Just sid) (Star _) = scopeType sid >>= telemM
+scalarexprType (Just sid) (QStar _ (sqlnmcomponent -> n)) = do
+  (fr,_,_) <- sqclkupM sid
+  let ptrs = Map.elems $ Map.filterWithKey (\k _ -> [n] `isPrefixOf` k) fr
+  idt <- mapM (\p -> sqglkupM p >>= return . (adnn &&& adnt)) ptrs
+  return $ recT idt
 
-    stageST rels (_,sym) (aconcat -> (decls, inits, [])) ch n@(tag -> EVariable i) =
-      let nacc = if i `elem` rels then (decls, inits, [(i, sym)]) else (decls, inits, [])
-      in return (nacc, replaceCh n ch)
+scalarexprType _ (ScalarSubQuery _ _) = return TC.bool
+scalarexprType _ (Exists _ _) = return TC.bool
+scalarexprType _ (InPredicate _ _ _ _) = return TC.bool
 
-    stageST _ _ acc ch n = return (aconcat acc, replaceCh n ch)
+scalarexprType _ e = throwE $ "Type inference unsupported for: " ++ show e
 
-    aconcat acc = (concat decls, concat inits, concat accrels)
-      where (decls, inits, accrels) = unzip3 acc
 
-    mkSym psym n = do
-      s <- sqsextM
-      let nsympair = (psym, Just $ show s)
-      return (nsympair, replicate (length $ children n) $ nsympair)
+aggregateType :: Maybe ScopeId -> ScalarExpr -> SQLParseM (K3 Type)
+aggregateType sidOpt agg@(FunCall _ nm args) = do
+      let fn = sqlnm nm
+      case (fn, args) of
+        ("sum"  , [e]) -> scalarexprType sidOpt e
+        ("count", [e]) -> return $ TC.int
+        ("min"  , [e]) -> scalarexprType sidOpt e
+        ("max"  , [e]) -> scalarexprType sidOpt e
+        (_, _) -> throwE $ "Invalid aggregate expression: " ++ show agg
 
-    mkStage relsForInit annotF (psymOpt, symOpt) (aconcat -> (decls, inits, rels)) ch n =
-      case find isEType $ annotations n of
-        Just (EType t) -> do
-          let nexpr = replaceCh n ch
+aggregateType _ agg = throwE $ "Invalid aggregate expression: " ++ show agg
 
-          stgid <- maybe (sqsextM >>= return . show) return symOpt
-          let dsid     = materializeId stgid
-          let tid      = stageId stgid
-          let stgds    = DC.global dsid (mutT t) Nothing
+selectItemId :: Int -> SelectItem -> SQLParseM (Int, Identifier)
+selectItemId i (SelExp _ (Identifier _ (Nmc n))) = return (i, n)
+selectItemId i (SelExp _ _) = return (i+1, "f" ++ show i)
+selectItemId i (SelectItem _ _ (sqlnmcomponent -> n)) = return (i, n)
 
-          let ninits = if length rels == relsForInit then inits ++ [(tid, distributed)] else inits
+selectItemIdAcc :: (Int, [Identifier]) -> SelectItem -> SQLParseM (Int, [Identifier])
+selectItemIdAcc (i, acc) (SelExp _ (Identifier _ (Nmc n))) = return (i, acc ++ [n])
+selectItemIdAcc (i, acc) (SelExp _ _) = return (i+1, acc ++ ["f" ++ show i])
+selectItemIdAcc (i, acc) (SelectItem _ _ (sqlnmcomponent -> n)) = return (i, acc ++ [n])
 
-          annotasgnexpr <- case annotF of
-                             Left f -> f tid nexpr >>= \e -> return $ EC.assign dsid e
-                             _ -> return $ EC.assign dsid nexpr
 
-          let asgnsendexpr psym = EC.block [annotasgnexpr, EC.send (EC.variable psym) (EC.variable "me") EC.unit]
-          let bodyexpr          = maybe annotasgnexpr asgnsendexpr $ psymOpt
+nodeBindingMap :: PlanNode -> SQLParseM BindingMap
+nodeBindingMap (PJoin _ _ _ _ _ _ _) = return bmelem
+nodeBindingMap _ = return BMNone
 
-          annotbexpr <- case annotF of
-                            Right f -> f tid nexpr bodyexpr
-                            _ -> return bodyexpr
+chainBindingMap :: PlanCPath -> SQLParseM BindingMap
+chainBindingMap (PlanCPath _ _ gbs prjs aggs _ _)
+  | null gbs && null aggs = return bmelem
+  | otherwise = do
+    (prji, prjids) <- foldM selectItemIdAcc (0, []) prjs
+    (_, aggids) <- foldM selectItemIdAcc (prji, []) aggs
+    let (nidx, keyPaths) = prefixTypePath (0::Int) "key" prjids
+    let (_, valPaths) = prefixTypePath nidx "value" aggids
+    return $ BMTFieldMap $ Map.fromList $ keyPaths ++ valPaths
 
-          let stgtrig  = DC.trigger tid TC.unit $ EC.lambda "_" annotbexpr
-          return ((decls ++ [stgds, stgtrig], ninits, rels), (EC.variable dsid) @+ sqlMaterializedProp)
+  where prefixTypePath i pfx l = case l of
+          []  -> (i+1, [("f" ++ show i, [pfx])])
+          [j] -> (i, [(j, [pfx])])
+          _   -> (i, map (\j -> (j, [pfx, j])) l)
 
-        _ -> throwE $ boxToString $ ["No type found for"] %$ prettyLines n
+treeBindingMap :: PlanTree -> SQLParseM BindingMap
+treeBindingMap t = case treeChains t of
+  Nothing -> nodeBindingMap $ ttag t
+  Just [] -> nodeBindingMap $ ttag t
+  Just l -> chainBindingMap $ last l
 
-    materializedE e = foldMapTree matE False e
+planBindingMap :: QueryPlan -> SQLParseM BindingMap
+planBindingMap (QueryPlan Nothing chains _)
+  | null chains = throwE "Invalid query plan with empty tree and chains"
+  | otherwise = chainBindingMap $ last chains
+
+planBindingMap (QueryPlan (Just t) chains _)
+  | null chains = treeBindingMap t
+  | otherwise = chainBindingMap $ last chains
+
+
+keyValuePrefix :: TypePath -> Bool
+keyValuePrefix tp = ["key"] `isPrefixOf` tp || ["value"] `isPrefixOf` tp
+
+keyValueMapping :: TypeMapping -> Bool
+keyValueMapping tm = maybe False (either (\pfx -> pfx `elem` ["key", "value"]) keyValuePrefix) tm
+
+isKVBindingMap :: BindingMap -> SQLParseM Bool
+isKVBindingMap (BMTFieldMap fields) = return $ Map.foldl (\acc tp -> acc && keyValuePrefix tp) True fields
+isKVBindingMap (BMTVPartition partitions) = return $ Map.foldl (\acc (_,tm) -> acc && keyValueMapping tm) True partitions
+isKVBindingMap _ = return False
+
+{- Rewriting helpers. -}
+
+-- TODO: case, etc.
+-- This function does not descend into subqueries.
+-- However, it should include free variables present in the subquery, and defined in
+-- the given scope.
+exprAttrs :: ScopeId -> ScalarExpr -> SQLParseM [ADGPtr]
+exprAttrs sid e = case e of
+  (Identifier _ (sqlnmcomponent -> i)) -> sqcflkupM sid [i] >>= return . (:[])
+  (QIdentifier _ (sqlnmpath -> path)) -> sqcflkupM sid path >>= return . (:[])
+  (FunCall _ _ args) -> mapM (exprAttrs sid) args >>= return . concat
+  _ -> return []
+
+-- | Returns pointers bound in a scope frame.
+attrEnvPtrs :: ScopeFrame -> [ADGPtr]
+attrEnvPtrs (fr, _, _) = nub $ Map.elems fr
+
+-- | Chases a given attribute pointer to the provided roots (or its set of source nodes if
+--   no roots are given).
+adgchaseM :: [ADGPtr] -> ADGPtr -> SQLParseM [(ADGPtr, ADGNode)]
+adgchaseM roots ptr = sqglkupM ptr >>= \n -> chase [] ptr n
+  where chase path p n
+          | p `elem` path || p `elem` roots = return [(p, n)]
+          | null (adnch n) = return [(p, n)]
+          | otherwise = mapM (\c -> sqglkupM c >>= chase (path ++ [p]) c) (adnch n) >>= return . concat
+
+adgchaseExprM :: [ADGPtr] -> ScopeId -> ScalarExpr -> SQLParseM ScalarExpr
+adgchaseExprM roots sid expression = exprAttrs sid expression >>= \ptrs -> chase [] expression ptrs
+  where chase path e ptrs = do
+          let remptrs = filter (\p -> p `notElem` roots && p `notElem` path) ptrs
+          if null remptrs
+            then return e
+            else do
+              nodes <- mapM sqglkupM remptrs
+              let env = concatMap (\(i,eOpt) -> maybe [] (\e' -> [(i,e')]) eOpt) $ map (adnn &&& adne) nodes
+              ne <- substituteExpr env e
+              chase (path ++ remptrs) ne $ concatMap adnch nodes
+
+-- | Returns a set of nodes visited during a chase on a given list of roots and a starting pointer.
+adgchaseNodesM :: [ADGPtr] -> ADGPtr -> SQLParseM [(ADGPtr, ADGNode)]
+adgchaseNodesM roots ptr = sqglkupM ptr >>= \node -> chase [(ptr,node)] [] ptr node
+  where chase acc path p n
+          | p `elem` path || p `elem` roots || null (adnch n) = return acc
+          | otherwise = foldM (rcr p path) acc (adnch n)
+
+        rcr p path acc cp = sqglkupM cp >>= \cn -> chase (acc ++ [(cp,cn)]) (path ++ [p]) cp cn
+
+
+baseRelationsP :: ADGPtr -> SQLParseM [Identifier]
+baseRelationsP ptr = adgchaseM [] ptr >>= return . nub . catMaybes . map (adnr . snd)
+
+baseRelationsE :: ScopeId -> ScalarExpr -> SQLParseM [Identifier]
+baseRelationsE sid expression = do
+  ptrs <- exprAttrs sid expression
+  mapM (adgchaseM []) ptrs >>= return . nub . catMaybes . map (adnr . snd) . concat
+
+baseRelationsS :: ScopeId -> SQLParseM [Identifier]
+baseRelationsS sid = do
+  ptrs <- sqcfptrsM sid
+  mapM (adgchaseM []) ptrs >>= return . nub . catMaybes . map (adnr . snd) . concat
+
+rebaseAttrsToRoots :: [ADGPtr] -> [ADGPtr] -> SQLParseM [ADGPtr]
+rebaseAttrsToRoots roots ptrs = mapM (adgchaseM roots) ptrs >>= return . nub . map fst . concat
+
+rebaseAttrs :: ScopeId -> [ADGPtr] -> SQLParseM [ADGPtr]
+rebaseAttrs sid ptrs = sqclkupM sid >>= \fr -> rebaseAttrsToRoots (attrEnvPtrs fr) ptrs
+
+rebaseExprsToRoots :: ScopeId -> [ADGPtr] -> ScalarExprList -> SQLParseM ScalarExprList
+rebaseExprsToRoots sid roots exprs = mapM (adgchaseExprM roots sid) exprs
+
+rebaseExprs :: ScopeId -> [ScopeId] -> ScalarExprList -> SQLParseM ScalarExprList
+rebaseExprs ssid dsidl exprs = do
+  frs <- mapM sqclkupM dsidl
+  let ptrs = nub $ concatMap attrEnvPtrs frs
+  rebaseExprsToRoots ssid ptrs exprs
+
+rebaseSelectItemsToRoots :: ScopeId -> [ADGPtr] -> SelectItemList -> SQLParseM SelectItemList
+rebaseSelectItemsToRoots ssid roots items = mapM rebase items
+  where rebase (SelExp ann e) = adgchaseExprM roots ssid e >>= \ne -> return (SelExp ann ne)
+        rebase (SelectItem ann e nmc) = adgchaseExprM roots ssid e >>= \ne -> return (SelectItem ann ne nmc)
+
+rebaseSelectItems :: ScopeId -> [ScopeId] -> SelectItemList -> SQLParseM SelectItemList
+rebaseSelectItems ssid dsidl items = do
+  frs <- mapM sqclkupM dsidl
+  let ptrs = nub $ concatMap attrEnvPtrs frs
+  rebaseSelectItemsToRoots ssid ptrs items
+
+
+localizeInputExprs :: ScopeId -> ScopeId -> ScopeId -> ScalarExprList -> SQLParseM (ScalarExprList, ScalarExprList, ScalarExprList)
+localizeInputExprs sid lsid rsid exprs = do
+    [lfr, rfr] <- mapM sqclkupM [lsid, rsid]
+    let (lroots, rroots) = (nub $ attrEnvPtrs lfr, nub $ attrEnvPtrs rfr)
+    foldM (localize lroots rroots $ nub $ concat [lroots, rroots]) ([], [], []) exprs
+
+  where
+    localize lroots rroots roots (lacc, racc, acc) e = do
+      eptrs <- exprAttrs sid e
+      reptrs <- rebaseAttrsToRoots roots eptrs
+      return $
+        if reptrs `intersect` lroots == reptrs then (lacc++[e], racc, acc)
+        else if reptrs `intersect` rroots == reptrs then (lacc, racc++[e], acc)
+        else (lacc, racc, acc++[e])
+
+
+
+{- Optimization -}
+
+-- TODO: query decorrelation
+sqloptimize :: [Statement] -> SQLParseM [SQLDecl]
+sqloptimize l = mapM stmt l
+  where
+    stmt (CreateTable _ nm attrs _) = do
+      t <- sqltabletype attrs
+      sqrextM (sqlnm nm) t
+      return $ SQLRel (sqlnm nm, t)
+
+    stmt (QueryStatement _ q) = do
+      qcl <- query q
+      return $ SQLQuery $ qcplan qcl
+
+    stmt s = throwE $ "Unimplemented SQL stmt: " ++ show s
+
+    -- TODO: distinct, order, limit, offset
+    query (Select _ _ selectL tableL whereE gbL havingE _ _ _) = queryPlan selectL tableL whereE gbL havingE
+    query q = throwE $ "Unhandled query " ++ show q
+
+    -- TODO: simplify chains with join tree before adding to top-level plan.
+    queryPlan selectL tableL whereE gbL havingE = do
+      tfvOpt <- joinTree tableL
+      case tfvOpt of
+        Nothing -> do
+          (prjs, aggs, gsid) <- aggregatePath Nothing selectL
+          (efvs, subqs) <- varsAndQueries Nothing $ projectionexprs $ prjs ++ aggs
+          return $ QueryClosure efvs $ QueryPlan Nothing [PlanCPath gsid [] [] prjs aggs Nothing subqs] Nothing
+
+        Just (t, fvs) -> do
+          sid <- treeSchema t
+          conjuncts <- maybe (return []) splitConjuncts whereE
+          (nt, remconjuncts) <- predicatePushdown (Just sid) conjuncts t
+          (prjs, aggs, gsid) <- aggregatePath (Just sid) selectL
+          if all null [remconjuncts, gbL, projectionexprs prjs, projectionexprs aggs]
+            then return $ QueryClosure fvs $ QueryPlan (Just nt) [] Nothing
+            else do
+              (gnt, naggs) <- if null gbL then return (nt, aggs) else groupByPushdown nt sid (map mkprojection gbL) aggs
+              (efvs, subqs) <- trace (boxToString $ ["GB pushdown result"] %$ prettyLines gnt)
+                                 $ varsAndQueries (Just sid) $ remconjuncts ++ gbL ++ (projectionexprs $ prjs ++ naggs)
+              (hfvs, hsubqs) <- maybe (return ([], [])) (\e -> varsAndQueries (Just gsid) [e]) havingE
+              let chains = [PlanCPath gsid remconjuncts gbL prjs naggs havingE $ subqs ++ hsubqs]
+              return $ QueryClosure (nub $ fvs ++ efvs ++ hfvs) $ QueryPlan (Just gnt) chains Nothing
+
+    joinTree [] = return Nothing
+    joinTree (h:t) = do
+      n <- unaryNode h
+      (tree, tfvs) <- foldM binaryNode n t
+      return $ Just (tree, tfvs)
+
+    binaryNode (lhs, lfvs) n = do
+      (rhs, rfvs) <- unaryNode n
+      (lsid, rsid) <- (,) <$> treeSchema lhs <*> treeSchema rhs
+      jpsid <- mergeScopes lsid rsid
+      josid <- aliasedOutputScope jpsid "__CP" Nothing
+      return (Node (PJoin jpsid josid Nothing [] [] [] []) [lhs, rhs], nub $ lfvs ++ rfvs)
+
+    unaryNode n@(Tref _ nm al) = do
+      let tid = sqltablealias ("__" ++ sqlnm nm) al
+      t    <- sqrlkupM $ sqlnm nm
+      rt   <- taliascolM al t
+      tsid <- sqgextSchemaM tid rt
+      return (Node (PTable (sqlnm nm) tsid (Just n) Nothing []) [], [])
+
+    unaryNode (SubTref _ q al) = do
+      qcl    <- query q
+      nqsid  <- planSchema $ qcplan qcl
+      qalsid <- outputScope nqsid "__RN" (Just al)
+      return (Node (PSubquery qalsid qcl) [], qcfree qcl)
+
+    unaryNode (JoinTref _ jlt nat jointy jrt onE jal) = do
+      (lhs, lfvs)          <- unaryNode jlt
+      (rhs, rfvs)          <- unaryNode jrt
+      (lsid, rsid)         <- (,) <$> treeSchema lhs <*> treeSchema rhs
+      jpsid                <- mergeScopes lsid rsid
+      (jeq, jp, pfvs, psq) <- joinPredicate jpsid lsid rsid onE
+      josid                <- aliasedOutputScope jpsid "__JR" (Just jal)
+      return (Node (PJoin jpsid josid (Just (nat,jointy)) jeq jp psq []) [lhs, rhs], nub $ lfvs ++ rfvs ++ pfvs)
+
+    unaryNode (FunTref _ _ _) = throwE "Table-valued functions are not supported"
+
+    joinPredicate :: ScopeId -> ScopeId -> ScopeId -> OnExpr -> SQLParseM ([(ScalarExpr, ScalarExpr)], ScalarExprList, [AttrPath], SubqueryBindings)
+    joinPredicate sid lsid rsid (Just (JoinOn _ joinE)) = do
+      conjuncts <- splitConjuncts joinE
+      (sepcons, nsepcons) <- classifyConjuncts sid lsid rsid conjuncts >>= return . partitionEithers
+      let (lseps, rseps) = unzip sepcons
+      (lcvs, lsubqs) <- varsAndQueries (Just sid) lseps
+      (rcvs, rsubqs) <- varsAndQueries (Just sid) rseps
+      (cvs, subqs) <- varsAndQueries (Just sid) nsepcons
+      return (sepcons, nsepcons, nub $ lcvs ++ rcvs ++ cvs, nub $ lsubqs ++ rsubqs ++ subqs)
+
+    joinPredicate sid _ _ (Just (JoinUsing _ nmcs)) = do
+      (_, _, [[lqual], [rqual]]) <- sqclkupM sid
+      let eqs = map (\i -> (QIdentifier emptyAnnotation [Nmc lqual, i], QIdentifier emptyAnnotation [Nmc rqual, i])) nmcs
+      return (eqs, [], [], [])
+
+    joinPredicate _ _ _ _ = return ([], [], [], [])
+
+    splitConjuncts :: ScalarExpr -> SQLParseM ScalarExprList
+    splitConjuncts e@(FunCall _ nm args) = do
+      let fn = sqlnm nm
+      case (fn, args) of
+        ("!and", [x,y]) -> (++) <$> splitConjuncts x <*> splitConjuncts y
+        _ -> return [e]
+
+    splitConjuncts e = return [e]
+
+    classifyConjuncts :: ScopeId -> ScopeId -> ScopeId -> ScalarExprList -> SQLParseM [Either (ScalarExpr, ScalarExpr) ScalarExpr]
+    classifyConjuncts sid lsid rsid es = do
+      (lrels, rrels) <- (,) <$> baseRelationsS lsid <*> baseRelationsS rsid
+      mapM (classifyConjunct sid lsid rsid lrels rrels) es
+
+    classifyConjunct :: ScopeId -> ScopeId -> ScopeId -> [Identifier] -> [Identifier] -> ScalarExpr
+                     -> SQLParseM (Either (ScalarExpr, ScalarExpr) ScalarExpr)
+    classifyConjunct sid lsid rsid lrels rrels e@(FunCall _ nm args) = do
+      let fn = sqlnm nm
+      case sqloperator fn args of
+        (Just (BinaryOp OEqu x y)) -> do
+          (xrels, yrels) <- (,) <$> baseRelationsE sid x <*> baseRelationsE sid y
+          classify x y xrels yrels
+        _ -> return $ Right e
+
       where
-        matE _ ((@~ isSqlMaterializedProp) -> Just (EProperty _)) = return True
-        matE _ (tag -> ELambda _) = return False
-        matE l _ = return $ any id l
+        classify x y (nub -> xrels) (nub -> yrels)
+          | xrels `intersect` lrels == xrels && yrels `intersect` rrels == yrels = do
+              [nx] <- rebaseExprs sid [lsid] [x]
+              [ny] <- rebaseExprs sid [rsid] [y]
+              return $ Left (x,y)
 
-    annotateJoin _ e re = do
-      barrier <- joinBarrier e
-      if barrier then mkCountBarrier re (EC.constant $ CInt 2) else return re
+          | xrels `intersect` rrels == xrels && yrels `intersect` lrels == yrels = do
+              [ny] <- rebaseExprs sid [lsid] [y]
+              [nx] <- rebaseExprs sid [rsid] [x]
+              return $ Left (y,x)
 
-    joinBarrier (PJoin lE rE _ _ _) = binaryBarrier lE rE
-    joinBarrier (PEJoin lE rE _ _ _ _) = binaryBarrier lE rE
-    joinBarrier _ = return False
+          | otherwise = return $ Right e
 
-    binaryBarrier lE rE = (&&) <$> materializedE lE <*> materializedE rE
+    classifyConjunct _ _ _ _ _ e = return $ Right e
 
-    finalBarrier acc n@(PAssign _ e _) = assignBarrier acc e n
-    finalBarrier acc n = return (aconcat acc, n)
+    aggregatePath :: Maybe ScopeId -> SelectList -> SQLParseM (SelectItemList, SelectItemList, ScopeId)
+    aggregatePath sidOpt (SelectList _ selectL) = do
+      (prjs, aggs) <- mapM classifySelectItem selectL >>= return . partitionEithers
+      asid <- aggregateSchema sidOpt prjs aggs
+      return (prjs, aggs, asid)
 
-    assignBarrier acc assignE e = do
-      barrier <- joinBarrier assignE
-      be <- if barrier then mkCountBarrier e (EC.constant $ CInt 2) else return e
-      return (aconcat acc, be)
+    classifySelectItem :: SelectItem -> SQLParseM (Either SelectItem SelectItem)
+    classifySelectItem si@(SelExp _ e) = isAggregate e >>= \agg -> return $ if agg then Right si else Left si
+    classifySelectItem si@(SelectItem _ e _) = isAggregate e >>= \agg -> return $ if agg then Right si else Left si
+
+    -- TODO: case, qstar
+    varsAndQueries :: Maybe ScopeId -> ScalarExprList -> SQLParseM ([AttrPath], SubqueryBindings)
+    varsAndQueries sidOpt exprs = processMany exprs
+      where process (FunCall _ _ args) = processMany args
+            process (Identifier _ (sqlnmcomponent -> i)) = trypath sidOpt (return ([[i]], [])) (const $ return ([], [])) [i]
+            process (QIdentifier _ (sqlnmpath -> path)) = trypath sidOpt (return ([path], [])) (const $ return ([], [])) path
+
+            process e@(Exists _ q) = bindSubquery e q
+            process e@(ScalarSubQuery _ q) = bindSubquery e q
+
+            process (InPredicate _ ine _ (InList _ el)) = processMany $ ine : el
+
+            process e@(InPredicate _ ine _ (InQueryExpr _ q)) = do
+              (invs, inbs) <- process ine
+              (qvs, qbs) <- bindSubquery e q
+              return (invs ++ qvs, inbs ++ qbs)
+
+            process _ = return ([], [])
+
+            processMany el = do
+              rl <- mapM process el
+              let (vs, qs) = unzip rl
+              return (nub $ concat vs, concat qs)
+
+            bindSubquery e q = do
+              sym <- ssqsextM
+              qcl <- query q
+              vbl <- mapM (\path -> trypath sidOpt (return ([path], [])) (const $ return ([], [])) path) $ qcfree qcl
+              return (concat $ map fst vbl, [(e, ("__subquery" ++ show sym, qcl))])
+
+
+    predicatePushdown :: Maybe ScopeId -> ScalarExprList -> PlanTree -> SQLParseM (PlanTree, ScalarExprList)
+    predicatePushdown Nothing preds jtree = return (jtree, preds)
+    predicatePushdown (Just sid) preds jtree = foldM push (jtree, []) preds
+      where
+        push (t, remdr) p = do
+          rels <- baseRelationsE sid p
+          (nt, accs) <- onRelLCA t rels $ inject p
+          return (nt, if any id accs then remdr ++ [p] else remdr)
+
+        inject p _ n@(ttag -> PTable tid tsid trOpt bmOpt chains) = do
+          [np] <- rebaseExprs sid [tsid] [p]
+          (_, npqbs) <- varsAndQueries (Just tsid) [np]
+          return (replaceData n $ PTable tid tsid trOpt bmOpt $ pcextSelect sid npqbs np chains, False)
+
+        inject p [lrels, rrels] n@(Node (PJoin psid osid jt jeq jp jpb chains) [l,r]) = do
+          (lsid, rsid) <- (,) <$> treeSchema l <*> treeSchema r
+          [np] <- rebaseExprs sid [psid] [p]
+          sepE <- classifyConjunct sid lsid rsid lrels rrels np
+          (njeq, njp, nsubqbs) <- case sepE of
+                                    Left (lsep,rsep) -> do
+                                      (_, lqbs) <- varsAndQueries (Just lsid) [lsep]
+                                      (_, rqbs) <- varsAndQueries (Just rsid) [rsep]
+                                      return (jeq ++ [(lsep,rsep)], jp, lqbs ++ rqbs)
+
+                                    Right nonsep -> do
+                                      (_, rqbs) <- varsAndQueries (Just psid) [nonsep]
+                                      return (jeq, jp ++ [nonsep], rqbs)
+
+          return (replaceData n $ PJoin psid osid jt njeq njp (jpb ++ nsubqbs) chains, False)
+
+        inject _ _ n = return (n, True)
+
+
+    onRelLCA :: PlanTree -> [Identifier] -> ([[Identifier]] -> PlanTree -> SQLParseM (PlanTree, a)) -> SQLParseM (PlanTree, [a])
+    onRelLCA t rels f = do
+        (_,_,x,y) <- foldMapTree go (False, [], [], []) t
+        return (head x, y)
+
+      where
+        go (conc -> (True, _, nch, acc)) n = return (True, [], [replaceCh n nch], acc)
+
+        go (conc -> (False, relsByCh@(concat -> chrels), nch, acc)) n@(ttag -> PTable (("__" ++) -> i) _ _ _ _)
+          | rels `intersect` (chrels ++ [i]) == rels = f relsByCh (replaceCh n nch) >>= \(n',r) -> return (True, [], [n'], acc++[r])
+          | otherwise = return (False, chrels++[i], [replaceCh n nch], acc)
+
+        go (conc -> (False, relsByCh@(concat -> chrels), nch, acc)) n
+          | rels `intersect` chrels == rels = f relsByCh (replaceCh n nch) >>= \(n', r) -> return (True, [], [n'], acc++[r])
+          | otherwise = return (False, chrels, [replaceCh n nch], acc)
+
+        go _ _ = throwE "onRelLCA pattern mismatch"
+
+        conc cl = (\(a,b,c,d) -> (any id a, b, concat c, concat d)) $ unzip4 cl
+
+
+    groupByPushdown :: PlanTree -> ScopeId -> SelectItemList -> SelectItemList -> SQLParseM (PlanTree, SelectItemList)
+    groupByPushdown jtree s g a = walk s g a jtree
+      where
+        walk sid gbs aggs e@(Node n ch) = do
+          let onRoot = n == ttag jtree
+          continue <- trace (boxToString $ ["GB walk"] %$ prettyLines e) $ trypush sid gbs aggs ch n
+          case continue of
+            Left doExtend -> complete onRoot doExtend aggs sid gbs aggs $ Node n ch
+            Right (doExtend, naggs, chsga) -> do
+              nch <- mapM (\((cs,cg,ca), c) -> walk cs cg ca c >>= return . fst) $ zip chsga ch
+              complete onRoot doExtend naggs sid gbs naggs $ Node n nch
+
+        trypush sid gbs aggs [lt,rt] n@(PJoin psid osid _ jeq jp _ chains)
+          | not $ null jeq = do
+            jptrs <- joinAttrs psid osid jeq jp chains
+            aptrs <- aggAttrs psid sid aggs
+            let caggs = chainAggregates osid chains
+            let overlaps = jptrs `intersect` aptrs
+            case (caggs, overlaps) of
+              ([],[]) -> do
+                (lsid, rsid) <- (,) <$> treeSchema lt <*> treeSchema rt
+                (lgbs, rgbs, remgbs) <- localizeJoin lsid rsid psid sid gbs jptrs
+                (laggs, raggs, remaggs, naggs) <- decomposeAggregates lsid rsid psid sid aggs
+                if debugAggDecomp psid osid lgbs rgbs remgbs laggs raggs remaggs naggs $ not (null remgbs && null remaggs)
+                  then return $ Left True
+                  else return $ Right (True, naggs, [(lsid, lgbs, laggs), (rsid, rgbs, raggs)])
+
+              (_,_) -> return $ Left $ null caggs
+
+          | otherwise = return $ Left $ null $ chainAggregates osid chains
+
+        trypush _ _ _ _ (PJoin _ _ _ _ _ _ _) = throwE "Invalid binary join node"
+        trypush _ _ _ ch n@(PTable _ tsid _ _ chains) = return $ Left $ null $ chainAggregates tsid chains
+        trypush _ _ _ ch n@(PSubquery _ _) = return $ Left True
+
+        debugAggDecomp psid osid lgbs rgbs remgbs laggs raggs naggs remaggs m =
+          trace (unwords ["Agg decomp", show psid, show osid
+                         , "GBs:", show $ length lgbs, show $ length rgbs, show $ length remgbs
+                         , "Aggs:", show $ length laggs, show $ length raggs, show $ length naggs, show $ length remaggs]) m
+
+        complete onRoot doExtend raggs sid gbs aggs (Node n ch) = do
+          n' <- refreshInputSchema n ch
+          n'' <- if not onRoot && doExtend then pcextGroupBy gbs aggs n' else return n'
+          trace (boxToString $ ["Completed"] %$ prettyLines (Node n'' ch)) $
+            return (Node n'' ch, if onRoot then raggs else [])
+
+        chainAggregates sid chains = concatMap snd $ pcAggExprs sid chains
+
+        joinAttrs dsid sid1 eqexprs neqexprs chains = do
+          eqptrs  <- mapM (\(x,y) -> (++) <$> exprAttrs dsid x <*> exprAttrs dsid y) eqexprs >>= return . concat
+          neqptrs <- mapM (exprAttrs dsid) neqexprs >>= return . concat
+          let sidAndExprs = pcNonAggExprs sid1 chains
+          exprptrs <- concatMapM (\(ssid,el) -> concatMapM (exprAttrs ssid) el) sidAndExprs
+          rexprptrs <- rebaseAttrs dsid exprptrs
+          return $ nub $ eqptrs ++ neqptrs ++ rexprptrs
+
+        aggAttrs dsid ssid aggs = do
+          aggptrs <- concatMapM (exprAttrs ssid) $ projectionexprs aggs
+          rebaseAttrs dsid $ nub aggptrs
+
+        localizeJoin lsid rsid psid sid gbs jptrs = do
+          gbptrs <- concatMapM (exprAttrs sid) $ projectionexprs gbs
+          rgbptrs <- rebaseAttrs psid gbptrs
+          localizeAttrs lsid rsid psid $ rgbptrs ++ jptrs
+
+        localizeAttrs lsid rsid psid ptrs = do
+          nodes <- mapM sqglkupM $ nub $ ptrs
+          (lexprs, rexprs, rest) <- localizeInputExprs psid lsid rsid $ map (\n -> Identifier emptyAnnotation $ Nmc $ adnn n) nodes
+          return (map mkprojection lexprs, map mkprojection rexprs, rest)
+
+        decomposeAggregates lsid rsid psid sid aggs = do
+          (aggexprs, aggFns) <- aggregateexprs aggs
+          raggptrs <- mapM (\e -> exprAttrs sid e >>= rebaseAttrs psid) aggexprs
+          ragglocals <- mapM (localizeAttrs lsid rsid psid) raggptrs
+          foldM (decomposeAggByFn lsid rsid sid) ([], [], [], []) $ zip3 ragglocals (zip aggs aggexprs) aggFns
+
+        decomposeAggByFn lsid rsid sid (lacc, racc, acc, nacc) ((ldeps, rdeps, deps), (agg,e), fn) =
+          if null deps then do
+            (eagg, cagg, nagg) <- rewriteAgg sid (if null rdeps then lsid else rsid) fn agg e
+            let (nlacc, nracc) = if null rdeps then (lacc ++ [eagg], racc ++ [cagg]) else (lacc ++ [cagg], racc ++ [eagg])
+            return (nlacc, nracc, acc, nacc ++ [nagg])
+          else return (lacc, racc, acc ++ [e], nacc)
+
+        rewriteAgg ssid dsid aggFn agg e = do
+          ne <- rebaseExprs ssid [dsid] [e] >>= return . head
+          (ei, ci) <- (\a b -> ("__AGGD" ++ show a, "__AGGD" ++ show b)) <$> saggsextM <*> saggsextM
+          (,,) <$> mkaggregate aggFn    (SelectItem emptyAnnotation e $ Nmc ei) ne
+               <*> mkaggregate AggCount (SelectItem emptyAnnotation e $ Nmc ci) (Star emptyAnnotation)
+               <*> mkaggregate aggFn    agg                                     (FunCall emptyAnnotation (Name emptyAnnotation [Nmc "*"])
+                                                                                  [Identifier emptyAnnotation $ Nmc ei
+                                                                                  ,Identifier emptyAnnotation $ Nmc ci])
+
+        concatMapM f x = mapM f x >>= return . concat
+
+
+sqlstage :: [SQLDecl] -> SQLParseM ([SQLDecl], StageGraph)
+sqlstage stmts = mapM stage stmts >>= return . (concat *** concat) . unzip
+  where
+    stage s@(SQLRel _) = return ([s], [])
+    stage s@(SQLStage _) = throwE "SQLStage called with existing stage declarations"
+    stage (SQLQuery plan) = stagePlan plan >>= \(_,l,g) -> return (l,g)
+
+    stagePlan (QueryPlan tOpt chains stgOpt) = do
+      (ntOpt, (tstages, tstgg)) <- maybe (return (Nothing, ([], []))) (\t -> stageTree t >>= return . first Just) tOpt
+      (nplan, cstages, nstgg) <- stagePlanChains tstgg ntOpt stgOpt chains
+      return (nplan, tstages ++ cstages, nstgg)
+
+    stageTree jtree = (\((a,b),c) -> (c,(a,b))) <$> foldMapRebuildTree stageNode ([],[]) jtree
+
+    stageNode (aconcat -> (acc, [lstgg,rstgg])) ch n@(ttag -> PJoin psid osid jt jeq jp jpb chains) = do
+      stgid <- stgsextM >>= return . stageId . show
+      let (jchains, schains) = nonAggregatePrefix chains
+      let jtOpt = Just $ Node (PJoin psid osid jt jeq jp jpb jchains) ch
+      let jstage = SQLQuery $ QueryPlan jtOpt [] (Just stgid)
+      let nt = Node (PTable stgid osid Nothing Nothing []) []
+      let jstgg = stgEdges [lstgg, rstgg] stgid
+      (st, nstages, nstgg) <- stageNodeChains jstgg nt schains
+      let nstgg' = lstgg ++ rstgg ++ nstgg
+      kt <- k3ScopeType osid bmelem
+      return ((acc ++ [SQLStage (stgid, kt), jstage] ++ nstages, nstgg'), st)
+
+    stageNode (aconcat -> (acc, stgg)) ch n@(ttag -> PTable i tsid trOpt bmOpt chains) = do
+      let (tchains, schains) = nonAggregatePrefix chains
+      let nt = Node (PTable i tsid trOpt bmOpt tchains) ch
+      (st, nstages, nstgg) <- stageNodeChains [Left i] nt schains
+      return ((acc ++ nstages, concat stgg ++ nstgg), st)
+
+    stageNode (aconcat -> (acc, stgg)) ch n@(ttag -> PSubquery osid (QueryClosure fvs plan)) = do
+      (nplan, nstages, nstgg) <- stagePlan plan
+      return ((acc ++ nstages, concat stgg ++ nstgg), Node (PSubquery osid $ QueryClosure fvs nplan) ch)
+
+    stageNode _ _ n = throwE $ boxToString $ ["Invalid tree node for staging"] %$ prettyLines n
+
+    stagePlanChains stgg Nothing stgOpt chains = return (QueryPlan Nothing chains stgOpt, [], stgg)
+    stagePlanChains stgg (Just t) stgOpt chains = do
+      let (pchains, schains) = nonAggregatePrefix chains
+      nt <- foldM (flip pcext) t pchains
+      (st, nstages, nstgg) <- stageNodeChains stgg nt schains
+      return (QueryPlan (Just st) [] stgOpt, nstages, nstgg)
+
+    stageNodeChains stgg t chains = foldM onPath (t,[],stgg) chains
+      where onPath (t, acc, stggacc) p = do
+              pt <- pcext p t
+              if isNonAggregatePath p
+                then return (pt, acc, stggacc)
+                else do
+                  stgid <- stgsextM >>= return . stageId . show
+                  let pstage = SQLQuery $ QueryPlan (Just pt) [] (Just stgid)
+                  osid <- treeSchema pt
+                  bm <- treeBindingMap pt
+                  kt <- k3ScopeType osid bm
+                  rkt <- if not $ isAggregatePath p
+                          then return kt
+                          else do
+                            et <- telemM kt
+                            case tnc et of
+                              (TRecord ids, ch) -> zeroT $ zip ids ch
+                              _ -> throwE "Invalid k3 aggregate plan type"
+
+                  let nt = Node (PTable stgid osid Nothing (Just bm) []) []
+                  let nstgg = stggacc ++ stgEdges [stggacc] stgid
+                  return (nt, acc ++ [SQLStage (stgid, rkt), pstage], nstgg)
+
+    stgEdges ll i = map (Right . (,i)) $ catMaybes $ stgCh ll
+    stgCh ll = map (\l -> if null l then Nothing else Just $ either id snd $ last l) ll
+
+    nonAggregatePrefix chains = fst $ foldl accum (([],[]), False) chains
+      where accum ((nagg,agg), found) p | not found && isNonAggregatePath p = ((nagg ++ [p], agg), False)
+                                        | otherwise = ((nagg, agg++[p]), True)
+
+    aconcat = (concat *** id) . unzip
+
+
+sqlcodegen :: Bool -> ([SQLDecl], StageGraph) -> SQLParseM (K3 Declaration)
+sqlcodegen distributed (stmts, stgg) = do
+    (decls, inits) <- foldM cgstmt ([], []) stmts
+    initDecl <- mkInit
+    return $ DC.role "__global" $ [master] ++ decls ++ mkPeerInit inits ++ initDecl
+
+  where
+    trig i = i ++ "_trigger"
+
+    (leaves, edges) = partitionEithers stgg
+    stagechildren = foldl (\acc (s,t) -> Map.insertWith (++) t [s] acc) Map.empty edges
+    stageinits = Map.foldlWithKey (\acc p ch -> if ch `intersect` leaves == ch then acc ++ [p] else acc) [] stagechildren
+
+    cgstmt (dacc, iacc) (SQLRel (i, t)) = do
+      gt <- twrapcolelemM t
+      (ldecls, linit) <- mkLoader (i,t)
+      return (dacc ++ [DC.global i gt Nothing] ++ ldecls, iacc ++ [linit])
+
+    cgstmt (dacc, iacc) (SQLStage (i, t)) = return (dacc ++ [DC.global i (mutT t) Nothing], iacc)
+
+    cgstmt (dacc, iacc) (SQLQuery plan) = do
+      (e,sid,bm,merge) <- cgplan plan
+      t <- k3PlanType bm plan
+      (outid, trigid, decls) <- case qstageid plan of
+                                  Just i -> return (i, trig i, [])
+                                  Nothing -> do
+                                    s  <- stgsextM >>= return . show
+                                    let i = materializeId s
+                                    return (i, stageId s, [DC.global i t Nothing])
+
+      let execStageF i e = case lookup i edges of
+                             Nothing -> return e
+                             Just next ->
+                               let nextE = EC.send (EC.variable $ trig next) (EC.variable "me") EC.unit
+                                   execE = EC.block [e, nextE]
+                               in annotateTriggerBody i plan merge execE
+
+      trigBodyE <- execStageF outid $ EC.assign outid e
+      return (dacc ++ decls ++ [ DC.trigger trigid TC.unit $ EC.lambda "_" trigBodyE ], iacc)
+
+    cgclosure (QueryClosure free plan)
+      | null free = cgplan plan
+      | otherwise = throwE "Code generation not supported for correlated queries"
+
+    cgplan (QueryPlan tOpt chains _) = do
+      esbmOpt <- maybe (return Nothing) (\t -> cgtree t >>= return . Just) tOpt
+      cgchains esbmOpt chains
+
+    cgtree n@(Node (PJoin psid osid jtOpt jeq jp jsubqbs chains) [l,r]) = do
+      sf@(_,_,[[lqual],[rqual]]) <- sqclkupM psid
+      cqaenv <- partitionCommonQualifedAttrEnv sf
+      (lexpr, lsid, lbm, _) <- cgtree l
+      (rexpr, rsid, rbm, _) <- cgtree r
+      (li, ri) <- (,) <$> uniqueScopeQualifier lsid <*> uniqueScopeQualifier rsid
+      jbm <- bindingMap [(lqual, Map.lookup [lqual] cqaenv, lbm), (rqual, Map.lookup [rqual] cqaenv, rbm)]
+      case (jeq, jp) of
+        ((_:_), []) -> do
+          let (lexprs, rexprs) = unzip jeq
+          lkbodyE  <- mapM (cgexpr jsubqbs Nothing lsid) lexprs >>= \es -> bindE lsid lbm (Just li) $ tupE es
+          rkbodyE  <- mapM (cgexpr jsubqbs Nothing rsid) rexprs >>= \es -> bindE rsid rbm (Just ri) $ tupE es
+          obodyE <- concatE psid jbm Nothing
+          let lkeyE  = EC.lambda lqual lkbodyE
+          let rkeyE  = EC.lambda rqual rkbodyE
+          let outE   = EC.lambda lqual $ EC.lambda rqual obodyE
+          joinKV <- isKVBindingMap rbm
+          let joinE  = EC.applyMany (EC.project (if joinKV then "equijoinKV" else "equijoin") lexpr) [rexpr, lkeyE, rkeyE, outE]
+          cgchains (Just (joinE, osid, bmelem, Nothing)) chains
+
+        (_, _) -> do
+          mbodyE <- case jp of
+                      [] -> bindE psid jbm Nothing $ EC.constant $ CBool True
+                      (h:t) -> cgexpr jsubqbs Nothing psid h >>= \he -> foldM (cgconjunct jsubqbs psid) he t >>= \e -> bindE psid jbm Nothing e
+          obodyE <- concatE psid jbm Nothing
+          let matchE = EC.lambda lqual $ EC.lambda rqual mbodyE
+          let outE   = EC.lambda lqual $ EC.lambda rqual obodyE
+          joinKV <- isKVBindingMap rbm
+          let joinE  = EC.applyMany (EC.project (if joinKV then "joinKV" else "join") lexpr) [rexpr, matchE, outE]
+          cgchains (Just (joinE, osid, bmelem, Nothing)) chains
+
+    cgtree (Node (PSubquery _ qcl) ch) = cgclosure qcl
+    cgtree n@(Node (PTable i tsid _ bmOpt chains) []) = cgchains (Just (EC.variable i, tsid, maybe bmelem id bmOpt, Nothing)) chains
+    cgtree _ = throwE "Invalid plan tree"
+
+    cgchains esbmOpt chains = do
+      resbmOpt <- foldM cgchain esbmOpt chains
+      maybe (throwE "Invalid chain result") return resbmOpt
+
+    cgchain (Just (e,sid,bm,_)) (PlanCPath osid selects gbs prjs aggs having subqbs) = do
+      fe <- case selects of
+              [] -> return e
+              l -> foldM (filterChainE sid bm subqbs) e l
+      case (gbs, prjs, aggs, having) of
+        ([], [], [], Nothing) -> return $ Just (fe, osid, bm, Nothing)
+        ([], _, _, Nothing) -> cgselectlist sid osid bm subqbs fe prjs aggs
+        (h:t, _, _, _) -> cggroupby sid osid bm subqbs fe gbs prjs aggs having
+        _ -> throwE $ "Invalid group-by and having expression pair"
+
+    cgchain Nothing (PlanCPath osid [] [] prjs [] Nothing []) = cglitselectlist [] osid prjs
+    cgchain Nothing _ = throwE "Invalid scalar chain component"
+
+    cggroupby sid osid bm subqbs e gbs prjs aggs having = do
+      i <- uniqueScopeQualifier sid
+      o <- uniqueScopeQualifier osid
+
+      gbie <- (\f -> foldM f (0,[]) gbs >>= return . snd) $ \(i,acc) gbe -> do
+                gbke <- cgexpr subqbs Nothing sid gbe
+                case gbe of
+                  (Identifier _ (Nmc n)) -> return (i, acc++[(n,gbke)])
+                  _ -> return (i+1, acc++[("f" ++ show i, gbke)])
+
+      gbbodyE <- bindE sid bm (Just i) $ case gbie of
+                   [] -> EC.unit
+                   [(_,e)] -> e
+                   _ -> recE gbie
+      let groupF = EC.lambda i gbbodyE
+
+      (prjsymidx, prjie) <- cgprojections subqbs 0 sid prjs
+      prjt <- mapM (scalarexprType $ Just sid) $ projectionexprs prjs
+      unless (all (\((_,a), (_,b)) -> compareEAST a b) $ zip prjie gbie) $ throwE "Mismatched groupbys and projections"
+
+      (_, aggie, mergeie) <- cgaggregates subqbs prjsymidx sid aggs
+      aggbodyE <- bindE sid bm (Just i) $ case aggie of
+                      [] -> EC.variable "acc"
+                      [(_,e)] -> EC.applyMany e [EC.variable "acc"]
+                      _ -> recE $ map (aggE "acc") aggie
+      let aggF = EC.lambda "acc" $ EC.lambda i $ aggbodyE
+
+      mergeF <- case mergeie of
+                  [] -> return $ EC.lambda "_" $ EC.lambda "_" $ EC.unit
+                  [(_,e)] -> return $ e
+                  _ -> return $ EC.lambda "acc1" $ EC.lambda "acc2"
+                              $ recE $ map (aggMergeE "acc1" "acc2") mergeie
+
+      aggt <- mapM (aggregateType $ Just sid) $ projectionexprs aggs
+      let aggit = zip (map fst aggie) aggt
+      zE <- zeroE aggit
+
+      let rE = EC.applyMany (EC.project "groupBy" e) [groupF, aggF, zE]
+
+      let prefixTypePath i pfx l = case l of
+                                     []  -> (i+1, [("f" ++ show i, [pfx])])
+                                     [j] -> (i, [(j, [pfx])])
+                                     _   -> (i, map (\j -> (j, [pfx, j])) l)
+
+      let (nidx, keyPaths) = prefixTypePath (0::Int) "key" $ map fst prjie
+      let (_, valPaths) = prefixTypePath nidx "value" $ map fst aggie
+      let rbm = BMTFieldMap $ Map.fromList $ keyPaths ++ valPaths
+
+      hve <- maybe (return Nothing) (havingE aggie osid rbm o) having
+      let hrE = maybe rE (\h -> EC.applyMany (EC.project "filter" rE) [EC.lambda o h]) hve
+
+      return $ Just (hrE, osid, rbm, Just mergeF)
+
+      where havingE aggie osid rbm o e = do
+              let aggei = map (\(a,b) -> (b,a)) aggie
+              he <- cgexpr subqbs (Just $ subAgg aggei) osid e
+              hbodyE <- bindE osid rbm (Just o) $ he
+              return $ Just hbodyE
+
+            subAgg aggei e = do
+              case lookup e aggei of
+                Nothing -> return e
+                Just i -> return $ EC.variable i
+
+    cgselectlist sid osid bm subqbs e prjs aggs = case (prjs, aggs) of
+      (p, []) -> do
+        i <- uniqueScopeQualifier sid
+        mbodyE <- cgprojections subqbs 0 sid prjs >>= \(_, fields) -> bindE sid bm (Just i) $ recE fields
+        let prjE = EC.applyMany (EC.project "map" e) [EC.lambda i mbodyE]
+        return $ Just (prjE, osid, bmelem, Nothing)
+
+      ([], a) -> do
+        i <- uniqueScopeQualifier sid
+        (_, aggfields, mergeie) <- cgaggregates subqbs 0 sid aggs
+        aggbodyE <- bindE sid bm (Just i) $ case aggfields of
+                      [] -> EC.variable "acc"
+                      [(_,e)] -> EC.applyMany e [EC.variable "acc"]
+                      _ -> recE $ map (aggE "acc") aggfields
+        let aggF = EC.lambda "acc" $ EC.lambda i $ aggbodyE
+
+        mergeF <- case mergeie of
+                    [] -> return $ EC.lambda "_" $ EC.lambda "_" $ EC.unit
+                    [(_,e)] -> return $ e
+                    _ -> return $ EC.lambda "acc1" $ EC.lambda "acc2"
+                                $ recE $ map (aggMergeE "acc1" "acc2") mergeie
+
+        rElemT <- scopeType osid >>= telemM
+        zE <- case tnc rElemT of
+                (TRecord ids, ch) -> zeroE $ zip ids ch
+                _ -> throwE "Invalid aggregate result type"
+
+        let rexpr = EC.applyMany (EC.project "fold" e) [aggF, zE]
+        return $ Just (rexpr, osid, BMNone, Just mergeF)
+
+      _ -> throwE $ "Invalid mutually exclusive projection-aggregate combination"
+
+    -- TODO: we should not pass down sid here, or state assumption that sid is not used.
+    cglitselectlist subqbs sid prjs = cgprojections subqbs 0 sid prjs >>= \(_, ide) -> return $ Just (recE ide, sid, BMNone, Nothing)
+
+    cgprojections subqbs i sid l = foldM (cgprojection subqbs sid) (i, []) l
+    cgprojection subqbs sid (i, acc) si = do
+      (ni, n) <- selectItemId i si
+      cgaccprojection subqbs sid acc ni n $ projectionexpr si
+
+    cgaccprojection subqbs sid acc i n e = cgexpr subqbs Nothing sid e >>= \rE -> return (i, acc ++ [(n, rE)])
+
+    cgaggregates subqbs i sid l = foldM (cgaggregate subqbs sid) (i, [], []) l
+    cgaggregate subqbs sid (i, eacc, mrgacc) si = do
+      (ni, n) <- selectItemId i si
+      cgaccaggregate subqbs sid eacc mrgacc ni n si
+
+    cgaccaggregate subqbs sid eacc mrgacc i n si =
+      cgaggexpr subqbs sid si >>= \(rE, mergeE) -> return (i, eacc ++ [(n, rE)], mrgacc ++ [(n, mergeE)])
+
+    cgconjunct subqbs sid eacc e = cgexpr subqbs Nothing sid e >>= \e' -> return $ EC.binop OAnd eacc e'
+
+    cgaggexpr subqbs sid si = do
+      (e, aggFn) <- aggregateexpr si
+      aE <- cgexpr subqbs Nothing sid e
+      return $ case aggFn of
+        AggSum   -> (binagg OAdd aE, mergeagg OAdd)
+        AggCount -> (binagg OAdd $ EC.constant $ CInt 1, mergeagg OAdd)
+        AggMin   -> (binapp "min" aE, mergeapp "min")
+        AggMax   -> (binapp "max" aE, mergeapp "max")
+
+      where binagg op e = EC.lambda "aggacc" $ EC.binop op (EC.variable "aggacc") e
+            binapp f e  = EC.lambda "aggacc" $ EC.applyMany (EC.variable f) [EC.variable "aggacc", e]
+            mergeagg op = EC.lambda "a" $ EC.lambda "b" $ EC.binop op (EC.variable "a") $ EC.variable "b"
+            mergeapp f  = EC.lambda "a" $ EC.lambda "b" $ EC.applyMany (EC.variable f) [EC.variable "a", EC.variable "b"]
+
+    -- TODO: case, correlated subqueries.
+    cgexpr _ _ _ (BooleanLit _ b) = return $ EC.constant $ CBool b
+    cgexpr _ _ _ (NumberLit _ i) = return $ if "." `isInfixOf` i
+                                     then EC.constant $ CReal $ read i
+                                     else EC.constant $ CInt $ read i
+
+    cgexpr _ _ _ (StringLit _ s) = return $ EC.constant $ CString s
+
+    cgexpr _ _ _ (Identifier _ (sqlnmcomponent -> i)) = return $ EC.variable i
+
+    cgexpr _ _ sid (QIdentifier _ nmcl) = do
+      ptr <- sqcflkupM sid $ sqlnmpath nmcl
+      EC.variable . adnn <$> sqglkupM ptr
+
+    cgexpr subqbs f sid e@(FunCall _ nm args) = do
+      isAgg <- isAggregate e
+      if isAgg then do
+        (agge,_) <- cgaggexpr subqbs sid (SelExp emptyAnnotation e)
+        maybe err ($ agge) f
+
+      else do
+        let fn = sqlnm nm
+        case sqloperator fn args of
+          (Just (UnaryOp  o x)) -> EC.unop o <$> cgexpr subqbs f sid x
+          (Just (BinaryOp o x y)) -> EC.binop o <$> cgexpr subqbs f sid x <*> cgexpr subqbs f sid y
+          _ -> do
+            case (fn, args) of
+              ("!between", [x,y,z]) ->
+                let cg a b c = EC.binop OAnd (EC.binop OLeq b a) $ EC.binop OLeq a c
+                in cg <$> cgexpr subqbs f sid x <*> cgexpr subqbs f sid y <*> cgexpr subqbs f sid z
+
+              (_, _) -> EC.applyMany (EC.variable fn) <$> mapM (cgexpr subqbs f sid) args
+
+      where err = throwE "Invalid aggregate expression in cgexpr"
+
+    cgexpr _ _ sid (Star _) = do
+      (_, ord, _) <- sqclkupM sid >>= unqualifiedScopeFrame
+      recE <$> mapM (\p -> singletonPath p >>= \j -> return (j, EC.variable j)) ord
+
+    cgexpr _ _ sid (QStar _ (sqlnmcomponent -> i)) = do
+      qattrs <- sqclkupM sid >>= qualifiedAttrs [i] >>= attrIds
+      recE <$> mapM (\j -> return (j, EC.variable j)) qattrs
+
+    cgexpr subqbs _ _ e@(Exists _ _) = do
+      subexpr <- cgsubquery subqbs e
+      return $ emptyE False subexpr
+
+    cgexpr subqbs _ _ e@(ScalarSubQuery _ _) = cgsubquery subqbs e
+
+    cgexpr subqbs f sid (InPredicate _ ine isIn (InList _ el)) = do
+      testexpr <- cgexpr subqbs f sid ine
+      valexprs <- mapM (cgexpr subqbs f sid) el
+
+      return $ case valexprs of
+        [] -> EC.constant $ CBool $ not isIn
+        (h:t) -> memoE (immutE $ testexpr) $
+                   \vare -> foldl (\accE vale -> mergeE accE $ testE vare vale) (testE vare h) t
+
+      where testE vare vale = EC.binop (if isIn then OEqu else ONeq) vare vale
+            mergeE acce nexte = EC.binop (if isIn then OOr else OAnd) acce nexte
+
+    cgexpr subqbs f sid e@(InPredicate _ ine isIn (InQueryExpr _ _)) = do
+      testexpr <- cgexpr subqbs f sid ine
+      subexpr <- cgsubquery subqbs e
+      return $ memberE isIn testexpr subexpr
+
+    cgexpr _ _ _ e = throwE $ "Unhandled expression in codegen: " ++ show e
+
+    cgsubquery subqbs e =
+      case lookup e subqbs of
+        Nothing -> throwE $ "Found a subquery without a binding: " ++ show e
+        Just (_, qcl) -> cgclosure qcl >>= \(r,_,_,_) -> return r
+
+    bindingMap l = foldM qualifyBindings (BMTVPartition Map.empty) l
+
+    qualifyBindings (BMTVPartition acc) (qual, Just aenv, bm) = do
+      f <- case bm of
+                BMNone -> return $ commonNoneBinding qual
+                BMTPrefix i -> return $ commonPrefixBinding qual i
+                BMTFieldMap fb -> return $ commonFieldBinding qual fb
+                _ -> throwE "Cannot qualify partitioned bindings"
+      return $ BMTVPartition $ Map.foldlWithKey f acc aenv
+
+    qualifyBindings _ _ = throwE "Cannot qualify partitioned bindings"
+
+    commonNoneBinding qual acc path _ = case path of
+      [i] -> Map.insert i (qual, Nothing) acc
+      _ -> acc
+
+    commonPrefixBinding qual pfx acc path _ = case path of
+      [i] -> Map.insert i (qual, Just $ Left pfx) acc
+      _ -> acc
+
+    commonFieldBinding qual fb acc path _ = case path of
+      [i] -> maybe acc (\typePath -> Map.insert i (qual, Just $ Right typePath) acc) $ Map.lookup i fb
+      _ -> acc
+
+    filterChainE :: ScopeId -> BindingMap -> SubqueryBindings -> K3 Expression -> ScalarExpr -> SQLParseM (K3 Expression)
+    filterChainE sid bm subqbs eacc e = do
+      i <- uniqueScopeQualifier sid
+      filterE <- cgexpr subqbs Nothing sid e
+      bodyE <- bindE sid bm (Just i) filterE
+      return $ EC.applyMany (EC.project "filter" eacc) [EC.lambda i bodyE]
+
+    annotateTriggerBody i (QueryPlan tOpt chains _) mergeOpt e = do
+      if distributed
+        then case tOpt of
+               Just (isEquiJoin -> True) ->
+                 return $ e @+ (EApplyGen True "DistributedHashJoin2" $ Map.fromList [("lbl", SLabel i)])
+
+               Just (isJoin -> True) ->
+                 return $ e @+ (EApplyGen True "BroadcastJoin2" $ Map.fromList [("lbl", SLabel i)])
+
+               Just (treeChains -> Just chains) | not (null chains) && isGroupByAggregatePath (last chains) ->
+                 case mergeOpt of
+                   Just mergeF -> return $ e @+ (EApplyGen True "DistributedGroupBy2"
+                                         $ Map.fromList [("lbl", SLabel i), ("merge", SExpr mergeF)])
+
+                   Nothing -> throwE "No merge function found for group-by stage"
+
+               _ -> return e
+
+        else maybe (return e) (const $ joinBarrier e) $ Map.lookup i stagechildren
+
+    joinBarrier e = mkCountBarrier e $ EC.constant $ CInt 2
 
     mkCountBarrier e countE = do
       args <- barrierArgs countE
@@ -1697,91 +1904,177 @@ sqlstages distributed prog = do
                             , ("reset", SExpr $ EC.constant $ CBool False)
                             , ("profile", SExpr $ EC.constant $ CBool False) ]
 
-    startTrig inits = do
-      sendsE <- mapM mkSend inits
-      return $ DC.trigger "start" TC.unit $ EC.lambda "_" $ EC.block $ [EC.unit @+ EApplyGen True "SQL" Map.empty] ++ sendsE
-
-    mkSend (i, distributedInit) =
-      if distributedInit
-        then
-          let iterateF = EC.lambda "p" $ EC.send (EC.variable i) (EC.project "addr" $ EC.variable "p") EC.unit
-          in mkCountBarrier (EC.applyMany (EC.project "iterate" $ EC.variable "peers") [iterateF])
-                           $ EC.applyMany (EC.project "size" $ EC.variable "peers") [EC.unit]
-        else return $ EC.send (EC.variable i) (EC.variable "me") EC.unit
-
-    loadersAndPeerLocal allrels =
-      let (loaderDecls, loaderExprs) = unzip $ map mkLoader allrels in
-      concat loaderDecls ++
-      [DC.trigger "startPeer" TC.unit $ EC.lambda "_" $
-        EC.block $ loaderExprs ++ [EC.send (EC.variable "start") (EC.variable "master") EC.unit]]
-
-    mkLoader (i,t) =
-      let pathCT = (TC.collection $ recT [("path", TC.string)]) @+ TAnnotation "Collection"
-          rexpr = EC.applyMany (EC.variable $ i ++ "LoaderP") [EC.variable $ i ++ "Files", EC.variable i, EC.variable $ i ++ "_r"]
-      in
-      ([DC.global (i ++ "LoaderP") (immutT $ TC.function pathCT $ TC.function t TC.unit) Nothing,
-        DC.global (i ++ "Files") (immutT pathCT) Nothing],
-       -- rexpr)
-       EC.unit)
-
     master = DC.global "master" (immutT TC.address) Nothing
 
+    mkLoader (i,t) = do
+      dt <- twrapcolelemM t
+      let pathCT = (TC.collection $ recT [("path", TC.string)]) @+ TAnnotation "Collection"
+      let rexpr = EC.applyMany (EC.variable $ i ++ "LoaderE") [EC.variable $ i ++ "Files", EC.variable i]
+      return $
+        ([(DC.global (i ++ "LoaderE") (immutT $ TC.function pathCT $ TC.function dt TC.unit) Nothing) @+ cArgsProp 2,
+          DC.global (i ++ "Files") (immutT pathCT) Nothing],
+         rexpr)
 
-{- Optimization patterns -}
+    mkPeerInit exprs =
+        [DC.trigger "startPeer" TC.unit $ EC.lambda "_" $
+          EC.block $ exprs ++ [EC.send (EC.variable "start") (EC.variable "master") EC.unit]]
 
-pattern PVar i        iAs   = Node (EVariable i   :@: iAs)   []
-pattern PApp fE argE  appAs = Node (EOperate OApp :@: appAs) [fE, argE]
-pattern PSeq lE rE    seqAs = Node (EOperate OSeq :@: seqAs) [lE, rE]
-pattern PLam i  bodyE iAs   = Node (ELambda i     :@: iAs)   [bodyE]
-pattern PPrj cE fId   fAs   = Node (EProject fId  :@: fAs)   [cE]
+    mkInit = do
+      sendsE <- if distributed then
+                  let startE = EC.block $ flip map stageinits $ \i ->
+                                 EC.applyMany (EC.project "iterate" $ EC.variable "peers")
+                                   [EC.lambda "p" $ EC.send (EC.variable $ trig i) (EC.project "addr" $ EC.variable "p") EC.unit]
 
-pattern PBindAs srcE bnd bodyE bAs = Node (EBindAs bnd :@: bAs) [srcE, bodyE]
+                  in mkCountBarrier startE $ EC.applyMany (EC.project "size" $ EC.variable "peers") [EC.unit]
+                else return $ EC.block $ map (\i -> EC.send (EC.variable $ trig i) (EC.variable "me") EC.unit) stageinits
 
-pattern PAssign i assignE aAs = Node (EAssign i :@: aAs) [assignE]
+      return $ [DC.trigger "start" TC.unit $ EC.lambda "_" $
+                  EC.block $ [EC.unit @+ EApplyGen True "SQL" Map.empty, sendsE]]
 
-pattern PLamBind i srcE bnd bodyE lAs bAs = PLam i (PBindAs srcE bnd bodyE bAs) lAs
-pattern PLamApp i fE argE appAs iAs = PLam i (PApp fE argE appAs) iAs
 
-pattern PPrjApp cE fId fAs fArg iAppAs = PApp (PPrj cE fId fAs) fArg iAppAs
+sqlstringify :: [SQLDecl] -> SQLParseM [String]
+sqlstringify stmts = mapM prettystmt stmts
+  where prettystmt (SQLRel   (i, t)) = return $ boxToString $ [unwords ["Table:", i]] %$ prettyLines t
+        prettystmt (SQLStage (i, t)) = return $ boxToString $ [unwords ["Stage:", i]] %$ prettyLines t
+        prettystmt (SQLQuery plan)   = return $ boxToString $ ["Plan: "] %$ prettyLines plan
 
-pattern PLam2 i j bodyE iAs jAs = PLam i (PLam j bodyE jAs) iAs
-pattern PApp2 f arg1 arg2 iAppAs oAppAs  = PApp (PApp f arg1 iAppAs) arg2 oAppAs
 
-pattern PLam2Bind i j srcE bnd bodyE iAs jAs bAs = PLam i (PLamBind j srcE bnd bodyE jAs bAs) iAs
-pattern PLam2App i j fE argE iAs jAs appAs = PLam i (PLamApp j fE argE appAs jAs) iAs
+sqldepgraph :: [SQLDecl] -> SQLParseM [String]
+sqldepgraph stmts = mapM depgraph stmts >>= return . concat
+  where depgraph (SQLRel _) = return []
+        depgraph (SQLStage _) = return []
+        depgraph (SQLQuery (QueryPlan Nothing [] _)) = return []
+        depgraph (SQLQuery (QueryPlan Nothing chains _)) = chaseScope $ pcoutsid $ last chains
+        depgraph (SQLQuery (QueryPlan (Just t) chains _)) = treeSchema t >>= \sid -> chaseScope $ chainSchema sid chains
 
-pattern PPrjApp2 cE fId fAs fArg1 fArg2 app1As app2As
-  = PApp (PApp (PPrj cE fId fAs) fArg1 app1As) fArg2 app2As
+        chaseScope sid = do
+          sf <- sqclkupM sid
+          ptrs <- sqcfptrsM sid
+          nodes <- mapM (adgchaseNodesM []) ptrs >>= return . nub . concat
+          return $ [unwords ["Scope", show sid, show sf, show ptrs]] ++ (indent 2 $ adgnodes nodes)
 
-pattern PPrjApp3 cE fId fAs fArg1 fArg2 fArg3 app1As app2As app3As
-  = PApp (PApp (PApp (PPrj cE fId fAs) fArg1 app1As) fArg2 app2As) fArg3 app3As
+        adgnodes nodes = map (\(p,node) -> unwords [show p, show $ adnn node, show $ adnr node, show $ adnch node])
+                            $ sortBy (compare `on` fst) nodes
 
-pattern PPrjApp4 cE fId fAs fArg1 fArg2 fArg3 fArg4 app1As app2As app3As app4As
-  = PApp (PApp (PApp (PApp (PPrj cE fId fAs) fArg1 app1As) fArg2 app2As) fArg3 app3As) fArg4 app4As
 
-pattern PFilter cE lamE <- PPrjApp cE "filter" _ lamE _
+{- Code generation helpers. -}
+projectPathE :: K3 Expression -> [Identifier] -> K3 Expression
+projectPathE e p = foldl (\accE i -> EC.project i accE) e p
 
-pattern PMap cE lamE <- PPrjApp cE "map" _ lamE _
+fieldE :: TypeMapping -> Identifier -> K3 Expression -> K3 Expression
+fieldE Nothing _ e = e
+fieldE (Just (Left pfx)) i e = EC.project i $ EC.project pfx e
+fieldE (Just (Right tp)) _ e = projectPathE e tp
 
-pattern PJoin lE rE predE outE jAs <- PPrjApp3 lE "join" _ rE predE outE _ _ jAs
+namedRecordE :: Identifier -> Map Identifier TypePath -> [Identifier] -> SQLParseM (K3 Expression)
+namedRecordE i fb ids = foldM field [] ids >>= return . recE
+  where field acc j = maybe (err j) (\tp -> return $ acc ++ [(j, projectPathE (EC.variable i) tp)]) $ Map.lookup j fb
+        err j = throwE $ "No field binding found in namedRecordE for " ++ show j
 
-pattern PEJoin lE rE lkeyE rkeyE outE jAs <- PPrjApp4 lE "equijoin" _ rE lkeyE rkeyE outE _ _ _ jAs
+compositeRecordE :: Map Identifier (Identifier, TypeMapping) -> [Identifier] -> SQLParseM (K3 Expression)
+compositeRecordE pb ids = foldM field [] ids >>= return . recE
+  where field acc i = maybe (err i) (\(v, tm) -> return $ acc ++ [(i, fieldE tm i $ EC.variable v)]) $ Map.lookup i pb
+        err i = throwE $ "No field binding found in compositeRecordE for " ++ show i
 
-pattern PGroupBy cE gbF accF zE gbAs <- PPrjApp3 cE "groupBy" _ gbF accF zE _ _ gbAs
+bindE :: ScopeId -> BindingMap -> Maybe Identifier -> K3 Expression -> SQLParseM (K3 Expression)
+bindE sid bm iOpt e = do
+  ids <- sqclkupM sid >>= unqualifiedAttrs
+  case (iOpt, bm) of
+    (Just i, BMNone) -> return $ EC.bindAs (EC.variable i) (BRecord $ zip ids ids) e
+    (Just i, BMTPrefix j) -> return $ EC.bindAs (EC.project j $ EC.variable i) (BRecord $ zip ids ids) e
+    (Just i, BMTFieldMap fb) -> do
+      initE <- namedRecordE i fb ids
+      return $ EC.bindAs initE (BRecord $ zip ids ids) e
 
-pattern PCFilter cE lamE pAs app1As <- PPrjApp cE "filter" pAs lamE app1As
+    (_, BMTVPartition pb) -> do
+      initE <- compositeRecordE pb ids
+      return $ EC.bindAs initE (BRecord $ zip ids ids) e
 
-pattern PCMap cE lamE pAs app1As <- PPrjApp cE "map" pAs lamE app1As
+    _ -> throwE "Invalid binding variable in bindE"
 
-pattern PCJoin lE rE predE outE pAs app1As app2As app3As =
-  PPrjApp3 lE "join" pAs rE predE outE app1As app2As app3As
+concatE :: ScopeId -> BindingMap -> Maybe Identifier -> SQLParseM (K3 Expression)
+concatE sid bm iOpt = do
+  ids <- sqclkupM sid >>= unqualifiedAttrs
+  case (iOpt, bm) of
+    (Just i, BMNone) -> return $ EC.variable i
+    (Just i, BMTPrefix j) -> return $ EC.project j $ EC.variable i
+    (Just i, BMTFieldMap fb) -> namedRecordE i fb ids
+    (_, BMTVPartition pb) -> compositeRecordE pb ids
+    _ -> throwE "Invalid binding variable in bindE"
 
-pattern PCEJoin lE rE lkeyE rkeyE outE pAs app1As app2As app3As app4As =
-  PPrjApp4 lE "equijoin" pAs rE lkeyE rkeyE outE app1As app2As app3As app4As
+aggE :: Identifier -> (Identifier, K3 Expression) -> (Identifier, K3 Expression)
+aggE i (f, e) = (f, EC.applyMany e [EC.project f $ EC.variable i])
 
-pattern PCGroupBy cE gbF accF zE fAs app1As app2As app3As =
-  PPrjApp3 cE "groupBy" fAs gbF accF zE app1As app2As app3As
+aggMergeE :: Identifier -> Identifier -> (Identifier, K3 Expression) -> (Identifier, K3 Expression)
+aggMergeE i j (f, mergeF) = (f, EC.applyMany mergeF [EC.project f $ EC.variable i, EC.project f $ EC.variable j])
 
-pattern PFilterJoin lE rE filterE predE outE jAs <- PFilter (PJoin lE rE predE outE jAs) filterE
+zeroE :: [(Identifier, K3 Type)] -> SQLParseM (K3 Expression)
+zeroE [] = return EC.unit
+zeroE [(_,t)] = either throwE return $ defaultExpression t
+zeroE l = either throwE return $ defaultExpression $ recT l
 
-pattern PMapJoin lE rE mapE predE outE jAs <- PMap (PJoin lE rE predE outE jAs) mapE
+zeroT :: [(Identifier, K3 Type)] -> SQLParseM (K3 Type)
+zeroT [] = return TC.unit
+zeroT [(_,t)] = return t
+zeroT l = return $ recT l
+
+-- TODO: gensym
+memoE :: K3 Expression -> (K3 Expression -> K3 Expression) -> K3 Expression
+memoE srcE bodyF = case tag srcE of
+  EConstant _ -> bodyF srcE
+  EVariable _ -> bodyF srcE
+  _ -> EC.letIn "__memo" (immutE srcE) $ bodyF $ EC.variable "__memo"
+
+matchE :: K3 Expression -> K3 Expression -> K3 Expression
+matchE elemexpr colexpr =
+  memoE (immutE elemexpr) $ \e -> EC.applyMany (EC.project "filter" $ colexpr) [matchF e]
+  where matchF e = EC.lambda "__x" $ EC.binop OEqu (EC.variable "__x") e
+
+memberE :: Bool -> K3 Expression -> K3 Expression -> K3 Expression
+memberE asMem elemexpr colexpr  = emptyE (not asMem) $ matchE elemexpr colexpr
+
+emptyE :: Bool -> K3 Expression -> K3 Expression
+emptyE asEmpty colexpr = EC.binop (if asEmpty then OEqu else ONeq)
+  (EC.applyMany (EC.project "size" colexpr) [EC.unit]) $ EC.constant $ CInt 0
+
+
+-- | Property construction helper
+cArgsProp :: Int -> Annotation Declaration
+cArgsProp i = DProperty $ Left ("CArgs", Just $ LC.int i)
+
+
+{- Query plan pretty printing. -}
+
+prettyList :: (Pretty a) => [a] -> [String]
+prettyList [] = []
+prettyList [x] = "|" : (shift "`- " "   " $ prettyLines x)
+prettyList l = "|" : (concatMap (\x -> shift "+- " "|  " $ prettyLines x) (init l)
+                      ++ ["|"] ++ (shift "`- " "   " $ prettyLines $ last l))
+
+instance Pretty (Tree PlanNode) where
+    prettyLines (Node (PJoin psid osid jt jeq jp _ chains) ch) =
+      [unwords ["Join", show psid, show osid, show jt, "equalities", show $ length jeq, "preds", show $ length jp]]
+        ++ prettyList chains ++ drawSubTrees ch
+
+    prettyLines (Node (PTable n sid _ _ chains) _) =
+      [unwords ["Table", n, show sid]] ++ prettyList chains
+
+    prettyLines (Node (PSubquery _ qcl) _) = ["Subquery", "|"] ++ (shift "`- " "   " $ prettyLines qcl)
+
+instance Pretty QueryClosure where
+    prettyLines (QueryClosure _ plan) = ["QueryClosure", "|"] ++ (shift "`- " "   " $ prettyLines plan)
+
+instance Pretty QueryPlan where
+    prettyLines (QueryPlan treeOpt chains stgOpt) =
+      ["QueryPlan " ++ maybe "" id stgOpt] ++ (maybe [] treeF treeOpt) ++ prettyList chains
+      where treeF t = if null chains then "|" : (shift "`- " "   " $ prettyLines t)
+                                     else "|" : (shift "+- " "|  " $ prettyLines t)
+
+instance Pretty PlanCPath where
+    prettyLines (PlanCPath sid selects gbs prjs aggs having _) =
+      [unwords ["PlanCPath", show sid
+                , "sels", show $ length selects
+                , "gbys", show $ length gbs
+                , "prjs", show $ length prjs
+                , "aggs", show $ length aggs
+                , maybe "<no having>" (const "having") having]]

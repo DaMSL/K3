@@ -190,22 +190,22 @@ class STLDS {
     }
   }
 
-  template<class E, class F, class G>
-  Derived<R_elem<RT<G, Elem, E>>> join(Derived<E> other, F f, G g) const {
-    Derived<R_elem<RT<G, Elem, E>>> result;
+  template<class Other, class F, class G>
+  Derived<R_elem<RT<G, Elem, Other>>> join(Derived<Other> other, F f, G g) const {
+    Derived<R_elem<RT<G, Elem, Other>>> result;
     for (const auto& elem : container) {
       for (const auto& otherelem : other.getConstContainer()) {
         if ( f(elem, otherelem) ) {
-          result.insert(g(elem, otherelem));
+          result.insert(R_elem<RT<G, Elem, Other>> { g(elem, otherelem) });
         }
       }
     }
     return result;
   }
 
-  template<class E, class F, class G, class H>
-  Derived<R_elem<RT<H, Elem, E>>> equijoin(Derived<E> other, F f, G g, H h) const {
-    Derived<R_elem<RT<H, Elem, E>>> result;
+  template<class Other, class F, class G, class H>
+  Derived<R_elem<RT<H, Elem, Other>>> equijoin(Derived<Other> other, F f, G g, H h) const {
+    Derived<R_elem<RT<H, Elem, Other>>> result;
 
     // Build.
     unordered_map<RT<F, Elem>, std::multiset<Elem>> lhsHT;
@@ -216,17 +216,27 @@ class STLDS {
 
     // Probe.
     for (const auto& otherelem : other.getConstContainer()) {
-      RT<G,E> key(g(otherelem));
+      RT<G, Other> key(g(otherelem));
       auto it = lhsHT.find(key);
       if ( it != lhsHT.end() ) {
         for (const auto& probeelem : it->second) {
-          result.insert(h(probeelem, otherelem));
+          result.insert(R_elem<RT<H, Elem, Other>> { h(probeelem, otherelem) });
         }
       }
     }
-
     return result;
   }
+
+  template<class Other, class F, class G>
+  Derived<R_elem<RT<G, Elem, Other>>> joinKV(Derived<Other> other, F f, G g) const {
+    return join<Other,F,G>(other, f, g);
+  }
+
+  template<class Other, class F, class G, class H>
+  Derived<R_elem<RT<H, Elem, Other>>> equijoinKV(Derived<Other> other, F f, G g, H h) const {
+    return equijoin<Other,F,G,H>(other, f, g, h);
+  }
+
 
   // Iterators
   using iterator = typename Container::iterator;

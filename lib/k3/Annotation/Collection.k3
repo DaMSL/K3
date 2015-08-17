@@ -1,4 +1,4 @@
-annotation Collection given type a, b, c
+annotation Collection given type a, b, c, d
 {
   provides lifted peek : () -> option content
     with effects \_ -> R[self]
@@ -67,8 +67,8 @@ annotation Collection given type a, b, c
 
   @:{Transformer, CArgs 3}
   provides lifted join : collection {elem: a} @Collection
-                        -> (content -> {elem: a} -> bool) -> (content -> {elem: a} -> c)
-                        -> collection {elem: c} @Collection
+                        -> (content -> {elem: a} -> bool) -> (content -> {elem: a} -> b)
+                        -> collection {elem: b} @Collection
     with effects \other -> \matchF -> \outputF ->
                    [R[self]; ([R[other]; R[content]; matchF content none; outputF content none])*]
 
@@ -76,6 +76,20 @@ annotation Collection given type a, b, c
   provides lifted equijoin : collection {elem: a} @Collection
                            -> (content -> b) -> ({elem:a} -> b) -> (content -> {elem: a} -> c)
                            -> collection {elem: c} @Collection
+    with effects \other -> \matchLF -> \matchRF -> \outputF ->
+                   [R[self]; ([R[other]; R[content]; matchLF content; matchRF none; outputF content none])*]
+
+  @:{Transformer, CArgs 3}
+  provides lifted joinKV : collection {key: a, value: b} @Collection
+                          -> (content -> {key: a, value: b} -> bool) -> (content -> {key: a, value: b} -> c)
+                          -> collection {elem: c} @Collection
+    with effects \other -> \matchF -> \outputF ->
+                   [R[self]; ([R[other]; R[content]; matchF content none; outputF content none])*]
+
+  @:{Transformer, CArgs 4}
+  provides lifted equijoinKV : collection {key: a, value: b} @Collection
+                             -> (content -> c) -> ({key: a, value: b} -> c) -> (content -> {key: a, value: b} -> d)
+                             -> collection {elem: d} @Collection
     with effects \other -> \matchLF -> \matchRF -> \outputF ->
                    [R[self]; ([R[other]; R[content]; matchLF content; matchRF none; outputF content none])*]
 
