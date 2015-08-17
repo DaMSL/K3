@@ -188,22 +188,22 @@ class STLDS {
     }
   }
 
-  template<class E, class F, class G>
-  auto join(Derived<R_elem<E>> other, F f, G g) const -> Derived<R_elem<RT<RT<G, Elem>, E>>> const {
-    Derived<R_elem<RT<RT<G, Elem>, E>>> result;
+  template<class Other, class F, class G>
+  auto join(Derived<Other> other, F f, G g) const -> Derived<R_elem<RT<RT<G, Elem>, Other>>> const {
+    Derived<R_elem<RT<RT<G, Elem>, Other>>> result;
     for (const auto& elem : container) {
       for (const auto& otherelem : other.getConstContainer()) {
         if ( f(elem)(otherelem) ) {
-          result.insert(g(elem)(otherelem));
+          result.insert(R_elem<RT<RT<G, Elem>, Other>> { g(elem)(otherelem) });
         }
       }
     }
     return result;
   }
 
-  template<class E, class F, class G, class H>
-  auto equijoin(Derived<R_elem<E>> other, F f, G g, H h) const -> Derived<R_elem<RT<RT<H, Elem>, E>>> const {
-    Derived<R_elem<RT<RT<H, Elem>, E>>> result;
+  template<class Other, class F, class G, class H>
+  auto equijoin(Derived<Other> other, F f, G g, H h) const -> Derived<R_elem<RT<RT<H, Elem>, Other>>> const {
+    Derived<R_elem<RT<RT<H, Elem>, Other>>> result;
 
     // Build.
     unordered_map<RT<F, Elem>, std::multiset<Elem>> lhsHT;
@@ -214,17 +214,27 @@ class STLDS {
 
     // Probe.
     for (const auto& otherelem : other.getConstContainer()) {
-      RT<G,E> key(g(otherelem));
+      RT<G, Other> key(g(otherelem));
       auto it = lhsHT.find(key);
       if ( it != lhsHT.end() ) {
         for (const auto& probeelem : it->second) {
-          result.insert(h(probeelem)(otherelem));
+          result.insert(R_elem<RT<RT<H, Elem>, Other>> { h(probeelem)(otherelem) });
         }
       }
     }
-
     return result;
   }
+
+  template<class Other, class F, class G>
+  auto joinKV(Derived<Other> other, F f, G g) const -> Derived<R_elem<RT<RT<G, Elem>, Other>>> const {
+    return join<Other,F,G>(other, f, g);
+  }
+
+  template<class Other, class F, class G, class H>
+  auto equijoinKV(Derived<Other> other, F f, G g, H h) const -> Derived<R_elem<RT<RT<H, Elem>, Other>>> const {
+    return equijoin<Other,F,G,H>(other, f, g, h);
+  }
+
 
   // Iterators
   using iterator = typename Container::iterator;
