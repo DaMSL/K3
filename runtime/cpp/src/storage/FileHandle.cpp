@@ -52,7 +52,6 @@ SourceTextHandle::SourceTextHandle (std::string path, CodecFormat fmt) {
 
 
 shared_ptr<PackedValue> SourceTextHandle::doRead()  {
-
   // allocate buffer
   std::string buf;
 
@@ -61,7 +60,6 @@ shared_ptr<PackedValue> SourceTextHandle::doRead()  {
 
   shared_ptr<PackedValue> result = make_shared<StringPackedValue>(std::move(buf), fmt_);
   return result;  
-
 }
 
 
@@ -80,18 +78,14 @@ bool SinkFileHandle::hasWrite() {
   return (file_.good());  
 }
 
-
 // Note: value size limits are 32-bit ints (4GB per value)
-void SinkFileHandle::doWriteHelper(const NativeValue& nval, shared_ptr<Codec> cdec) {
-  auto val = cdec->pack(nval);
-  file_ << static_cast<uint32_t>(val->length());
-  file_.write (val->buf(), val->length());
+void SinkFileHandle::doWriteHelper(const PackedValue& val) {
+  file_ << static_cast<uint32_t>(val.length());
+  file_.write (val.buf(), val.length());
 }
 
-
-void SinkTextHandle::doWriteHelper(const NativeValue& nval, shared_ptr<Codec> cdec) {
-  auto val = cdec->pack(nval);
-  file_.write (val->buf(), val->length());
+void SinkTextHandle::doWriteHelper(const PackedValue& val) {
+  file_.write (val.buf(), val.length());
   file_ << std::endl;
 }
 

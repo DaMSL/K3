@@ -26,11 +26,12 @@ using std::string;
 using std::tuple;
 using K3::Engine;
 using K3::Options;
-using K3::Codec;
 using K3::CodecFormat;
 using K3::Address;
 using K3::make_address;
 using K3::Peer;
+using K3::unpack;
+using K3::pack;
 using K3::Listener;
 using K3::NetworkManager;
 using K3::ProgramContext;
@@ -84,16 +85,17 @@ class EngineTest : public ::testing::Test {
 class DummyContext : public ProgramContext {
  public:
   explicit DummyContext(Engine& e);
-  virtual unique_ptr<Dispatcher> __getDispatcher(unique_ptr<NativeValue>,
+  unique_ptr<Dispatcher> __getDispatcher(unique_ptr<NativeValue>,
                                                  TriggerID trig);
-  virtual unique_ptr<Dispatcher> __getDispatcher(unique_ptr<PackedValue>,
+  unique_ptr<Dispatcher> __getDispatcher(unique_ptr<PackedValue>,
                                                  TriggerID trig);
   virtual void __patch(const YAML::Node& node);
-  virtual unit_t processRole(const unit_t&);
+  unit_t processRole(const unit_t&) const;
   void stopTrigger(unit_t);
   void mainTrigger(unit_t);
   void intTrigger(int i);
   void stringTrigger(std::string s);
+  unit_t initDecls(unit_t) { return unit_t{}; }
   static void print(const std::string& s) {
     std::lock_guard<std::mutex> lock(mutex_);
     std::cout << s << std::endl;
@@ -160,18 +162,16 @@ class MainTriggerPackedDispatcher : public Dispatcher {
   MainTriggerPackedDispatcher(DummyContext& c, unique_ptr<PackedValue> val)
       : context_(c) {
     value_ = std::move(val);
-    codec_ = Codec::getCodec<unit_t>(value_->format());
   }
 
   void operator()() {
-    auto native = codec_->unpack(*value_);
-    context_.mainTrigger(*native->as<unit_t>());
+    auto native = unpack<unit_t>(*value_, value_->format());
+    context_.mainTrigger(*native);
   }
 
  protected:
   DummyContext& context_;
   unique_ptr<PackedValue> value_;
-  shared_ptr<Codec> codec_;
 };
 
 class StopTriggerNativeDispatcher : public Dispatcher {
@@ -192,18 +192,16 @@ class StopTriggerPackedDispatcher : public Dispatcher {
   StopTriggerPackedDispatcher(DummyContext& c, unique_ptr<PackedValue> val)
       : context_(c) {
     value_ = std::move(val);
-    codec_ = Codec::getCodec<unit_t>(value_->format());
   }
 
   void operator()() {
-    auto native = codec_->unpack(*value_);
-    context_.stopTrigger(*native->as<unit_t>());
+    auto native = unpack<unit_t>(*value_, value_->format());
+    context_.stopTrigger(*native);
   }
 
  protected:
   DummyContext& context_;
   unique_ptr<PackedValue> value_;
-  shared_ptr<Codec> codec_;
 };
 
 class IntTriggerNativeDispatcher : public Dispatcher {
@@ -225,19 +223,16 @@ class IntTriggerPackedDispatcher : public Dispatcher {
   IntTriggerPackedDispatcher(DummyContext& c, unique_ptr<PackedValue> val)
       : context_(c) {
     value_ = std::move(val);
-    codec_ = Codec::getCodec<int>(value_->format());
   }
 
   void operator()() {
-    auto native = codec_->unpack(*value_);
-    int i = *native->as<int>();
-    context_.intTrigger(*native->as<int>());
+    auto native = unpack<int>(*value_, value_->format());
+    context_.intTrigger(*native);
   }
 
  protected:
   DummyContext& context_;
   unique_ptr<PackedValue> value_;
-  shared_ptr<Codec> codec_;
 };
 
 class StringTriggerNativeDispatcher : public Dispatcher {
@@ -259,18 +254,16 @@ class StringTriggerPackedDispatcher : public Dispatcher {
   StringTriggerPackedDispatcher(DummyContext& c, unique_ptr<PackedValue> val)
       : context_(c) {
     value_ = std::move(val);
-    codec_ = Codec::getCodec<string>(value_->format());
   }
 
   void operator()() {
-    auto native = codec_->unpack(*value_);
-    context_.stringTrigger(*native->as<string>());
+    auto native = unpack<string>(*value_, value_->format());
+    context_.stringTrigger(*native);
   }
 
  protected:
   DummyContext& context_;
   unique_ptr<PackedValue> value_;
-  shared_ptr<Codec> codec_;
 };
 
 DummyContext::DummyContext(Engine& e) : ProgramContext(e) {}
@@ -293,9 +286,6 @@ unique_ptr<Dispatcher> DummyContext::__getDispatcher(unique_ptr<NativeValue> nv,
 unique_ptr<Dispatcher> DummyContext::__getDispatcher(unique_ptr<PackedValue> pv,
                                                      TriggerID t) {
   if (t == 1) {
-    auto codec_ = Codec::getCodec<int>(pv->format());
-    auto native = codec_->unpack(*pv);
-    int i = *native->as<int>();
     return make_unique<IntTriggerPackedDispatcher>(*this, std::move(pv));
   } else if (t == 2) {
     return make_unique<StringTriggerPackedDispatcher>(*this, std::move(pv));
@@ -312,11 +302,9 @@ void DummyContext::__patch(const YAML::Node& node) {
   YAML::convert<DummyContext>::decode(node, *this);
 }
 
-unit_t DummyContext::processRole(const unit_t&) {
+unit_t DummyContext::processRole(const unit_t&) const {
   if (role == "main") {
-    static shared_ptr<Codec> codec = Codec::getCodec<int>(__internal_format_);
-    __engine_.send(me, me, 3, make_unique<TNativeValue<unit_t>>(unit_t{}),
-                   codec);
+    __engine_.send<unit_t>(me, me, 3, unit_t{});
   }
   return unit_t{};
 }
@@ -332,11 +320,10 @@ void DummyContext::stringTrigger(std::string s) {
 }
 
 void DummyContext::mainTrigger(unit_t) {
-  shared_ptr<Codec> codec = Codec::getCodec<int>(K3_INTERNAL_FORMAT);
   for (int i = 0; i < 100; i++) {
-    __engine_.send(me, me, 1, make_unique<TNativeValue<int>>(i), codec);
+    __engine_.send<int>(me, me, 1, i);
   }
-  __engine_.send(me, me, 4, make_unique<TNativeValue<unit_t>>(unit_t{}), codec);
+  __engine_.send<unit_t>(me, me, 4, unit_t{});
   return;
 }
 

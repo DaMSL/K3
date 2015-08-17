@@ -23,14 +23,14 @@ class FileHandle {
     virtual bool hasWrite()  {return false;}
 
     virtual shared_ptr<PackedValue> doRead() = 0;
-    // TODO(jbw) top level could take const T& instead
     template<class T>
-    void doWrite(const NativeValue& val) {
-      auto cdec = Codec::getCodec<T>(fmt_);
-      return this->doWriteHelper(val, cdec);
+    void doWrite(const T& val) {
+      auto pv = pack<T>(val, fmt_);
+      return this->doWriteHelper(*pv);
     }
-    virtual void doWriteHelper(const NativeValue& val, shared_ptr<Codec> cdec) = 0;
+    virtual void doWriteHelper(const PackedValue& val) = 0;
     virtual void close() = 0;
+    CodecFormat format() { return fmt_; }
 
   protected:
     CodecFormat fmt_;
@@ -46,7 +46,7 @@ public:
   virtual bool hasRead();
   virtual shared_ptr<PackedValue> doRead();
 
-  virtual void doWriteHelper(const NativeValue& val, shared_ptr<Codec> cdec) {
+  virtual void doWriteHelper(const PackedValue& val) {
     throw std::ios_base::failure ("ERROR trying to write to source.");
   }
 
@@ -73,7 +73,7 @@ public:
   SinkFileHandle (std::string path, CodecFormat fmt);
 
   virtual bool hasWrite();
-  virtual void doWriteHelper(const NativeValue& val, shared_ptr<Codec> cdec);
+  virtual void doWriteHelper(const PackedValue& val);
 
 
   virtual shared_ptr<PackedValue> doRead() {
@@ -88,15 +88,11 @@ protected:
   std::ofstream file_;
 };
 
-
-
-
 class SinkTextHandle : public SinkFileHandle  {
 public:
   SinkTextHandle (std::string path, CodecFormat fmt) : SinkFileHandle (path, fmt) {}
-  virtual void doWriteHelper(const NativeValue& val, shared_ptr<Codec> cdec);
+  virtual void doWriteHelper(const PackedValue& val);
 };
-
 
 }  // namespace K3
 #endif

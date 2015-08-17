@@ -360,7 +360,6 @@ inline e@(tag -> EOperate OApp) = do
 
 inline e@(tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
     d <- genSym
-    d2 <- genSym
     tIdName <- case trig @~ isEProperty of
                  Just (EProperty (ePropertyValue -> Just (tag -> LString nm))) -> return nm
                  _ -> throwE $ CPPGenE $ "No trigger id property attached to " ++ tName
@@ -369,19 +368,10 @@ inline e@(tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [tri
     (ve, vv)  <- inline val
     let messageValue = gMoveByDE (getInMethodFor "!" e) val vv
     trigTypes <- getKType val >>= genCType
-    let codec = R.Forward $ R.ScalarDecl (R.Name d2) (R.Static R.Inferred) $ Just $
-               R.Call (R.Variable $ R.Qualified (R.Name "Codec") (R.Specialized [trigTypes] (R.Name "getCodec")))
-               [R.Variable $ R.Name "__internal_format_"]
-    let className = R.Specialized [trigTypes] (R.Name "TNativeValue")
-        classInst = R.Forward $ R.ScalarDecl (R.Name d) R.Inferred
-                      (Just $ R.Call (R.Variable $ R.Specialized [R.Named className]
-                                           (R.Qualified (R.Name "std" ) $ R.Name "make_unique")) [messageValue])
-        me = R.Variable $ R.Name "me"
+    let me = R.Variable $ R.Name "me"
     return (concat [te, ae, ve]
-                 ++ [ classInst
-                    , codec
-                    , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Name "send"))
-                                    [me, av, R.Variable $ R.Name tIdName,  R.Move $ R.Variable (R.Name d), (R.Variable $ R.Name d2) ]
+                 ++ [ R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Specialized [trigTypes] (R.Name "send")))
+                                    [me, av, R.Variable $ R.Name tIdName, R.Move $ messageValue]
                     ]
              , R.Initialization R.Unit [])
     where

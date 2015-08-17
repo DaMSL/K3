@@ -27,11 +27,9 @@ class StorageManager {
   template <class T>
   T doRead(Address peer, Identifier id) {
     try {
-      auto val = files_->lookup(make_pair(peer, id))->doRead();
-      auto cdec = Codec::getCodec<T>(val->format());
-      auto native = cdec->unpack(*val);
-      T t = std::move(*native->template as<T>());
-      return t;
+      auto handle = files_->lookup(make_pair(peer, id));
+      auto pval = handle->doRead();
+      return *unpack<T>(*pval, handle->format());
     }
     catch (std::ios_base::failure e) {
       logger_->error ("ERROR Reading from {}", id);
@@ -46,9 +44,7 @@ class StorageManager {
       auto file = files_->lookup(make_pair(peer, id));
       for (int i = 0; i < max_blocksize; i++) {
         auto val = file->doRead(); 
-        auto cdec = Codec::getCodec<T>(val->format());
-        auto native = cdec->unpack(*val);
-        T t = std::move(*native->template as<T>());
+        T t = std::move(*unpack<T>(*val, file->format()));
         vals.push_back(std::move(t));
       }
     }
@@ -67,8 +63,7 @@ class StorageManager {
     try {
       // TODO(jbw) avoid copies when creating the native-value wrappers
       auto file = files_->lookup(make_pair(peer, id));
-      TNativeValue<T> nv(val);
-      file->doWrite<T>(nv);
+      file->doWrite(val);
     }
     catch (std::ios_base::failure e) {
       logger_->error ("ERROR Writing to {}", id);
@@ -82,8 +77,7 @@ class StorageManager {
       try  {
         auto file = files_->lookup(make_pair(peer, id));
         for (const auto& elem : vals) {
-          TNativeValue<T> nv(elem);
-          file->doWrite<T>(nv);
+          file->doWrite<T>(elem);
         }
       }
       catch (std::exception e)  {

@@ -16,7 +16,6 @@
 #include "Peer.hpp"
 
 namespace K3 {
-
 class ProgramContext;
 class Engine {
  public:
@@ -27,9 +26,9 @@ class Engine {
   void run();
   void stop();
   void join();
+  template <class T>
   void send(const Address& src, const Address& dst, TriggerID trig,
-            unique_ptr<NativeValue> v, shared_ptr<Codec> cdec);
-
+            const T& value);
   // Accessors
   shared_ptr<ProgramContext> getContext(const Address& addr);
   NetworkManager& getNetworkManager();
@@ -94,6 +93,45 @@ void Engine::run() {
   }
   running_ = true;
   return;
+}
+
+unique_ptr<Dispatcher> getDispatcher(shared_ptr<Peer>, unique_ptr<NativeValue>, TriggerID trig);
+string getTriggerName(int);
+
+template <class T>
+void Engine::send(const Address& src, const Address& dst, TriggerID trig,
+                  const T& value) {
+  if (!peers_) {
+    throw std::runtime_error(
+        "Engine send(): Can't send before peers_ is initialized");
+  }
+  if (logger_->level() <= spdlog::level::debug) {
+    logger_->debug() << "Message: " << src.toString() << " --> "
+                    << dst.toString() << " @"
+                    << getTriggerName(trig);
+  }
+  auto it = peers_->find(dst);
+  if (options_.local_sends_enabled_ && it != peers_->end()) {
+    // Direct enqueue for local messages
+    unique_ptr<NativeValue> nv = std::make_unique<TNativeValue<T>>(value);
+    auto d = getDispatcher(it->second, std::move(nv), trig);
+#ifdef K3DEBUG
+    d->trigger_ = trig;
+    d->source_ = src;
+    d->destination_ = dst;
+#endif
+    it->second->getQueue().enqueue(std::move(d));
+  } else {
+    // Serialize and send over the network, otherwise
+    unique_ptr<PackedValue> pv = pack<T>(value, K3_INTERNAL_FORMAT);
+    shared_ptr<NetworkMessage> m =
+        make_shared<NetworkMessage>(trig, std::move(pv));
+#ifdef K3DEBUG
+    m->source_ = src;
+    m->destination_ = dst;
+#endif
+    network_manager_.sendInternal(dst, m);
+  }
 }
 
 }  // namespace K3
