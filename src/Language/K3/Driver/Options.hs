@@ -171,7 +171,6 @@ data SQLOptions = SQLOptions { sqlPrintMode       :: PrintMode
                              , sqlUntyped         :: Bool
                              , sqlDistributedPlan :: Bool
                              , sqlDoCompile       :: Bool
-                             , sqlNewCompiler     :: Bool
                              , sqlCompile         :: Maybe CompileOptions }
                 deriving (Eq, Read, Show, Generic)
 
@@ -773,7 +772,7 @@ allProgOpt = flag' (QueryOptions $ Right [])
 -- | SQL mode
 sqlOptions :: Parser Mode
 sqlOptions = SQL <$> ( SQLOptions <$> printModeOpt "" <*> sqlPrintParseOpt <*> sqlUntypedOpt
-                                  <*> sqlDistributedOpt <*> sqlDoCompileOpt <*> sqlNewCompilerOpt
+                                  <*> sqlDistributedOpt <*> sqlDoCompileOpt
                                   <*> optional (compileOpts LocalCompiler) )
 
 sqlPrintParseOpt :: Parser Bool
@@ -792,9 +791,6 @@ sqlDoCompileOpt :: Parser Bool
 sqlDoCompileOpt = switch (  long "sqlcompile"
                            <> help "Compile SQL binary." )
 
-sqlNewCompilerOpt :: Parser Bool
-sqlNewCompilerOpt = switch (  long "sqlnew"
-                            <> help "Use new SQL compiler." )
 
 {- Top-level options -}
 

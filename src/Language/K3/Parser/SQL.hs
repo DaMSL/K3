@@ -12,7 +12,7 @@
 -- 8. correlated subqueries, and query decorrelation
 -- x. more groupByPushdown, subquery and distributed plan testing
 
-module Language.K3.Parser.NewSQL where
+module Language.K3.Parser.SQL where
 
 import Control.Arrow ( (***), (&&&), first, second )
 import Control.Monad
@@ -122,6 +122,7 @@ data PlanNode = PJoin     { pnjprocsid    :: ScopeId
               | PTable    { pntid        :: Identifier
                           , pntoutsid    :: ScopeId
                           , pntref       :: Maybe TableRef
+                          , pntbindmap   :: Maybe BindingMap
                           , pntpath      :: [PlanCPath] }
               deriving (Eq, Show)
 
@@ -765,7 +766,7 @@ isNonAggregatePath _ = False
 
 planNodeChains :: PlanNode -> Maybe [PlanCPath]
 planNodeChains (PJoin _ _ _ _ _ _ chains) = Just chains
-planNodeChains (PTable _ _ _ chains) = Just chains
+planNodeChains (PTable _ _ _ _ chains) = Just chains
 planNodeChains (PSubquery _ qcl) = queryClosureChains qcl
 
 treeChains :: PlanTree -> Maybe [PlanCPath]
@@ -780,7 +781,7 @@ queryClosureChains (QueryClosure _ plan) = queryPlanChains plan
 pcext :: PlanCPath -> PlanTree -> SQLParseM PlanTree
 pcext p (Node n ch) = case n of
   PJoin psid osid jt jeq jp jpb chains -> return $ Node (PJoin psid osid jt jeq jp jpb $ chains ++ [p]) ch
-  PTable i tsid trOpt chains -> return $ Node (PTable i tsid trOpt $ chains ++ [p]) ch
+  PTable i tsid trOpt bmOpt chains -> return $ Node (PTable i tsid trOpt bmOpt $ chains ++ [p]) ch
   PSubquery osid qcl -> pcextclosure p qcl >>= \nqcl -> return $ Node (PSubquery osid nqcl) ch
 
   where pcextclosure p (QueryClosure fvs plan) = pcextplan p plan >>= \nplan -> return $ QueryClosure fvs nplan
@@ -795,7 +796,7 @@ pcextGroupBy gbs aggs n@(PJoin _ osid _ _ _ _ chains) = do
   aggsid <- aggregateSchema (Just $ chainSchema osid chains) gbs aggs
   return $ n { pnjpath = chains ++ [PlanCPath aggsid [] (projectionexprs gbs) gbs aggs Nothing []] }
 
-pcextGroupBy gbs aggs n@(PTable _ sid _ chains) = do
+pcextGroupBy gbs aggs n@(PTable _ sid _ _ chains) = do
   aggsid <- aggregateSchema (Just $ chainSchema sid chains) gbs aggs
   return $ n { pntpath = chains ++ [PlanCPath aggsid [] (projectionexprs gbs) gbs aggs Nothing []] }
 
@@ -823,7 +824,7 @@ chainSchema sid chains = if null chains then sid else pcoutsid $ last chains
 treeSchema :: PlanTree -> SQLParseM ScopeId
 treeSchema (ttag -> PJoin _ sid _ _ _ _ chains) = return $ chainSchema sid chains
 treeSchema (ttag -> PSubquery sid _) = return sid
-treeSchema (ttag -> PTable _ sid _ chains) = return $ chainSchema sid chains
+treeSchema (ttag -> PTable _ sid _ _ chains) = return $ chainSchema sid chains
 treeSchema _ = throwE "Invalid plan node input for treeSchema"
 
 planSchema :: QueryPlan -> SQLParseM ScopeId
@@ -1013,6 +1014,17 @@ planBindingMap (QueryPlan (Just t) chains _)
   | otherwise = chainBindingMap $ last chains
 
 
+keyValuePrefix :: TypePath -> Bool
+keyValuePrefix tp = ["key"] `isPrefixOf` tp || ["value"] `isPrefixOf` tp
+
+keyValueMapping :: TypeMapping -> Bool
+keyValueMapping tm = maybe False (either (\pfx -> pfx `elem` ["key", "value"]) keyValuePrefix) tm
+
+isKVBindingMap :: BindingMap -> SQLParseM Bool
+isKVBindingMap (BMTFieldMap fields) = return $ Map.foldl (\acc tp -> acc && keyValuePrefix tp) True fields
+isKVBindingMap (BMTVPartition partitions) = return $ Map.foldl (\acc (_,tm) -> acc && keyValueMapping tm) True partitions
+isKVBindingMap _ = return False
+
 {- Rewriting helpers. -}
 
 -- TODO: case, etc.
@@ -1181,7 +1193,7 @@ sqloptimize l = mapM stmt l
       t    <- sqrlkupM $ sqlnm nm
       rt   <- taliascolM al t
       tsid <- sqgextSchemaM tid rt
-      return (Node (PTable (sqlnm nm) tsid (Just n) []) [], [])
+      return (Node (PTable (sqlnm nm) tsid (Just n) Nothing []) [], [])
 
     unaryNode (SubTref _ q al) = do
       qcl    <- query q
@@ -1307,10 +1319,10 @@ sqloptimize l = mapM stmt l
           (nt, accs) <- onRelLCA t rels $ inject p
           return (nt, if any id accs then remdr ++ [p] else remdr)
 
-        inject p _ n@(ttag -> PTable tid tsid trOpt chains) = do
+        inject p _ n@(ttag -> PTable tid tsid trOpt bmOpt chains) = do
           [np] <- rebaseExprs sid [tsid] [p]
           (_, npqbs) <- varsAndQueries (Just tsid) [np]
-          return (replaceData n $ PTable tid tsid trOpt $ pcextSelect sid npqbs np chains, False)
+          return (replaceData n $ PTable tid tsid trOpt bmOpt $ pcextSelect sid npqbs np chains, False)
 
         inject p [lrels, rrels] n@(Node (PJoin psid osid jt jeq jp jpb chains) [l,r]) = do
           (lsid, rsid) <- (,) <$> treeSchema l <*> treeSchema r
@@ -1339,7 +1351,7 @@ sqloptimize l = mapM stmt l
       where
         go (conc -> (True, _, nch, acc)) n = return (True, [], [replaceCh n nch], acc)
 
-        go (conc -> (False, relsByCh@(concat -> chrels), nch, acc)) n@(ttag -> PTable (("__" ++) -> i) _ _ _)
+        go (conc -> (False, relsByCh@(concat -> chrels), nch, acc)) n@(ttag -> PTable (("__" ++) -> i) _ _ _ _)
           | rels `intersect` (chrels ++ [i]) == rels = f relsByCh (replaceCh n nch) >>= \(n',r) -> return (True, [], [n'], acc++[r])
           | otherwise = return (False, chrels++[i], [replaceCh n nch], acc)
 
@@ -1384,7 +1396,7 @@ sqloptimize l = mapM stmt l
           | otherwise = return $ Left $ null $ chainAggregates osid chains
 
         trypush _ _ _ _ (PJoin _ _ _ _ _ _ _) = throwE "Invalid binary join node"
-        trypush _ _ _ ch n@(PTable _ tsid _ chains) = return $ Left $ null $ chainAggregates tsid chains
+        trypush _ _ _ ch n@(PTable _ tsid _ _ chains) = return $ Left $ null $ chainAggregates tsid chains
         trypush _ _ _ ch n@(PSubquery _ _) = return $ Left True
 
         debugAggDecomp psid osid lgbs rgbs remgbs laggs raggs naggs remaggs m =
@@ -1466,16 +1478,16 @@ sqlstage stmts = mapM stage stmts >>= return . (concat *** concat) . unzip
       let (jchains, schains) = nonAggregatePrefix chains
       let jtOpt = Just $ Node (PJoin psid osid jt jeq jp jpb jchains) ch
       let jstage = SQLQuery $ QueryPlan jtOpt [] (Just stgid)
-      kt <- k3ScopeType osid bmelem
-      let nt = Node (PTable stgid osid Nothing []) []
+      let nt = Node (PTable stgid osid Nothing Nothing []) []
       let jstgg = stgEdges [lstgg, rstgg] stgid
       (st, nstages, nstgg) <- stageNodeChains jstgg nt schains
       let nstgg' = lstgg ++ rstgg ++ nstgg
+      kt <- k3ScopeType osid bmelem
       return ((acc ++ [SQLStage (stgid, kt), jstage] ++ nstages, nstgg'), st)
 
-    stageNode (aconcat -> (acc, stgg)) ch n@(ttag -> PTable i tsid tr chains) = do
+    stageNode (aconcat -> (acc, stgg)) ch n@(ttag -> PTable i tsid trOpt bmOpt chains) = do
       let (tchains, schains) = nonAggregatePrefix chains
-      let nt = Node (PTable i tsid tr tchains) ch
+      let nt = Node (PTable i tsid trOpt bmOpt tchains) ch
       (st, nstages, nstgg) <- stageNodeChains [Left i] nt schains
       return ((acc ++ nstages, concat stgg ++ nstgg), st)
 
@@ -1511,7 +1523,7 @@ sqlstage stmts = mapM stage stmts >>= return . (concat *** concat) . unzip
                               (TRecord ids, ch) -> zeroT $ zip ids ch
                               _ -> throwE "Invalid k3 aggregate plan type"
 
-                  let nt = Node (PTable stgid osid Nothing []) []
+                  let nt = Node (PTable stgid osid Nothing (Just bm) []) []
                   let nstgg = stggacc ++ stgEdges [stggacc] stgid
                   return (nt, acc ++ [SQLStage (stgid, rkt), pstage], nstgg)
 
@@ -1589,7 +1601,8 @@ sqlcodegen distributed (stmts, stgg) = do
           let lkeyE  = EC.lambda lqual lkbodyE
           let rkeyE  = EC.lambda rqual rkbodyE
           let outE   = EC.lambda lqual $ EC.lambda rqual obodyE
-          let joinE  = EC.applyMany (EC.project "equijoin" lexpr) [rexpr, lkeyE, rkeyE, outE]
+          joinKV <- isKVBindingMap rbm
+          let joinE  = EC.applyMany (EC.project (if joinKV then "equijoinKV" else "equijoin") lexpr) [rexpr, lkeyE, rkeyE, outE]
           cgchains (Just (joinE, osid, bmelem, Nothing)) chains
 
         (_, _) -> do
@@ -1599,11 +1612,12 @@ sqlcodegen distributed (stmts, stgg) = do
           obodyE <- concatE psid jbm Nothing
           let matchE = EC.lambda lqual $ EC.lambda rqual mbodyE
           let outE   = EC.lambda lqual $ EC.lambda rqual obodyE
-          let joinE  = EC.applyMany (EC.project "join" lexpr) [rexpr, matchE, outE]
+          joinKV <- isKVBindingMap rbm
+          let joinE  = EC.applyMany (EC.project (if joinKV then "joinKV" else "join") lexpr) [rexpr, matchE, outE]
           cgchains (Just (joinE, osid, bmelem, Nothing)) chains
 
     cgtree (Node (PSubquery _ qcl) ch) = cgclosure qcl
-    cgtree n@(Node (PTable i tsid _ chains) []) = cgchains (Just (EC.variable i, tsid, bmelem, Nothing)) chains
+    cgtree n@(Node (PTable i tsid _ bmOpt chains) []) = cgchains (Just (EC.variable i, tsid, maybe bmelem id bmOpt, Nothing)) chains
     cgtree _ = throwE "Invalid plan tree"
 
     cgchains esbmOpt chains = do
@@ -1861,14 +1875,14 @@ sqlcodegen distributed (stmts, stgg) = do
       if distributed
         then case tOpt of
                Just (isEquiJoin -> True) ->
-                 return $ e @+ (EApplyGen True "DistributedHashJoin" $ Map.fromList [("lbl", SLabel i)])
+                 return $ e @+ (EApplyGen True "DistributedHashJoin2" $ Map.fromList [("lbl", SLabel i)])
 
                Just (isJoin -> True) ->
-                 return $ e @+ (EApplyGen True "BroadcastJoin" $ Map.fromList [("lbl", SLabel i)])
+                 return $ e @+ (EApplyGen True "BroadcastJoin2" $ Map.fromList [("lbl", SLabel i)])
 
                Just (treeChains -> Just chains) | not (null chains) && isGroupByAggregatePath (last chains) ->
                  case mergeOpt of
-                   Just mergeF -> return $ e @+ (EApplyGen True "DistributedGroupBy"
+                   Just mergeF -> return $ e @+ (EApplyGen True "DistributedGroupBy2"
                                          $ Map.fromList [("lbl", SLabel i), ("merge", SExpr mergeF)])
 
                    Nothing -> throwE "No merge function found for group-by stage"
@@ -1909,10 +1923,10 @@ sqlcodegen distributed (stmts, stgg) = do
       sendsE <- if distributed then
                   let startE = EC.block $ flip map stageinits $ \i ->
                                  EC.applyMany (EC.project "iterate" $ EC.variable "peers")
-                                   [EC.lambda "p" $ EC.send (EC.variable i) (EC.project "addr" $ EC.variable "p") EC.unit]
+                                   [EC.lambda "p" $ EC.send (EC.variable $ trig i) (EC.project "addr" $ EC.variable "p") EC.unit]
 
                   in mkCountBarrier startE $ EC.applyMany (EC.project "size" $ EC.variable "peers") [EC.unit]
-                else return $ EC.block $ map (\i -> EC.send (EC.variable i) (EC.variable "me") EC.unit) stageinits
+                else return $ EC.block $ map (\i -> EC.send (EC.variable $ trig i) (EC.variable "me") EC.unit) stageinits
 
       return $ [DC.trigger "start" TC.unit $ EC.lambda "_" $
                   EC.block $ [EC.unit @+ EApplyGen True "SQL" Map.empty, sendsE]]
@@ -2042,7 +2056,7 @@ instance Pretty (Tree PlanNode) where
       [unwords ["Join", show psid, show osid, show jt, "equalities", show $ length jeq, "preds", show $ length jp]]
         ++ prettyList chains ++ drawSubTrees ch
 
-    prettyLines (Node (PTable n sid _ chains) _) =
+    prettyLines (Node (PTable n sid _ _ chains) _) =
       [unwords ["Table", n, show sid]] ++ prettyList chains
 
     prettyLines (Node (PSubquery _ qcl) _) = ["Subquery", "|"] ++ (shift "`- " "   " $ prettyLines qcl)
