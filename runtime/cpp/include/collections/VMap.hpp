@@ -107,21 +107,69 @@ class VMap {
   ////////////////////////////
   // Exact version methods.
 
-  shared_ptr<R> peek(const Version& v) const {
-    shared_ptr<R> res(nullptr);
+  template<typename F, typename G>
+  auto peek(const Version& v, F f, G g) const {
     for (const auto& elem : container) {
       auto vit = elem.second.find(v);
       if (vit != elem.second.end()) {
-        res = std::make_shared<R>(vit->second);
-        break;
+        return g(vit->second);
       }
     }
-    return res;
+    return f(unit_t {});
   }
+
+  bool member(const Version& v, const R& r) const {
+    auto it = container.find(r.key);
+    return it != container.end() && it->second.find(v) != it->second.end();
+  }
+
+  template <class F, class G>
+  auto lookup(const Version& v, R const& r, F f, G g) const {
+    auto it = container.find(r.key);
+    if (it == container.end()) {
+      return f(unit_t{});
+    } else {
+      auto vit = it->second.find(v);
+      if (vit == it->second.end()) {
+        return f(unit_t{});
+      } else {
+        return g(vit->second);
+      }
+    }
+  }
+
+  /////////////////////////////////////////
+  // Exact version map modification.
 
   template <class Q>
   unit_t insert(const Version& v, Q&& q) {
     container[q.key][v] = std::forward<Q>(q);
+    return unit_t();
+  }
+
+  unit_t update(const Version& v, const R& rec1, const R& rec2) {
+    auto it = container.find(rec1.key);
+    if (it != container.end()) {
+      auto vit = it->second.find(v);
+      if (vit != it->second.end()) {
+        it->second.erase(vit);
+        container[rec2.key][v] = rec2;
+      }
+    }
+    return unit_t();
+  }
+
+  unit_t erase(const Version& v, const R& rec) {
+    auto it = container.find(rec.key);
+    if (it != container.end()) {
+      auto vit = it->second.find(v);
+      if (vit != it->second.end()) {
+        it->second.erase(vit);
+        if (it->second.empty()) {
+          container.erase(it);
+        }
+      }
+    }
     return unit_t();
   }
 
@@ -135,7 +183,7 @@ class VMap {
     if (vexisting == std::end(container[rec.key])) {
       container[rec.key][v] = rec;
     } else {
-      container[rec.key][v] = f(std::move(vexisting->second))(rec);
+      container[rec.key][v] = f(std::move(vexisting->second), rec);
     }
 
     return unit_t{};
@@ -157,159 +205,14 @@ class VMap {
     return unit_t{};
   }
 
-  unit_t erase(const Version& v, const R& rec) {
-    auto it = container.find(rec.key);
-    if (it != container.end()) {
-      auto vit = it->second.find(v);
-      if (vit != it->second.end()) {
-        it->second.erase(vit);
-        if (it->second.empty()) {
-          container.erase(it);
-        }
-      }
-    }
-    return unit_t();
-  }
-
-  unit_t update(const Version& v, const R& rec1, const R& rec2) {
-    auto it = container.find(rec1.key);
-    if (it != container.end()) {
-      auto vit = it->second.find(v);
-      if (vit != it->second.end()) {
-        it->second.erase(vit);
-        container[rec2.key][v] = rec2;
-      }
-    }
-    return unit_t();
-  }
-
-  bool member(const Version& v, const R& r) const {
-    auto it = container.find(r.key);
-    return it != container.end() && it->second.find(v) != it->second.end();
-  }
-
-  shared_ptr<R> lookup(const Version& v, const R& r) const {
-    auto it = container.find(r.key);
-    if (it != container.end()) {
-      auto vit = it->second.find(v);
-      if (vit != it->second.end()) {
-        return std::make_shared<R>(vit->second);
-      }
-    }
-    return nullptr;
-  }
-
-  template <class F>
-  unit_t lookup_with(const Version& v, R const& r, F f) const {
-    auto it = container.find(r.key);
-    if (it != container.end()) {
-      auto vit = it->second.find(v);
-      if (vit != it->second.end()) {
-        return f(vit->second);
-      }
-    }
-    return unit_t{};
-  }
-
-  template <class F, class G>
-  auto lookup_with2(const Version& v, R const& r, F f, G g) const {
-    auto it = container.find(r.key);
-    if (it == container.end()) {
-      return f(unit_t{});
-    } else {
-      auto vit = it->second.find(v);
-      if (vit == it->second.end()) {
-        return f(unit_t{});
-      } else {
-        return g(vit->second);
-      }
-    }
-  }
-
-  template <class F>
-  auto lookup_with3(const Version& v, R const& r, F f) const {
-    auto it = container.find(r.key);
-    if (it != container.end()) {
-      auto vit = it->second.find(v);
-      if (vit != it->second.end()) {
-        return f(vit->second);
-      }
-    }
-    throw std::runtime_error("No match on Map.lookup_with3");
-  }
-
-  template <class F, class G>
-  auto lookup_with4(const Version& v, R const& r, F f, G g) const {
-    auto it = container.find(r.key);
-    if (it == container.end()) {
-      return f(unit_t{});
-    } else {
-      auto vit = it->second.find(v);
-      if (vit == it->second.end()) {
-        return f(unit_t{});
-      } else {
-        return g(vit->second);
-      }
-    }
-  }
 
   //////////////////////////////////////////////////
   // Frontier-based map retrieval.
   // These methods apply to the nearest version that is strictly less
   // than the version specified as an argument.
 
-  shared_ptr<R> lookup_before(const Version& v, const R& r) const {
-    auto it = container.find(r.key);
-    if (it != container.end()) {
-      auto vit = it->second.upper_bound(v);
-      if (vit != it->second.end()) {
-        return std::make_shared<R>(vit->second);
-      }
-    }
-    return nullptr;
-  }
-
-  template <class F>
-  unit_t lookup_with_before(const Version& v, R const& r, F f) const {
-    auto it = container.find(r.key);
-    if (it != container.end()) {
-      auto vit = it->second.upper_bound(v);
-      if (vit != it->second.end()) {
-        return f(vit->second);
-      }
-    }
-    return unit_t{};
-  }
-
   template <class F, class G>
-  auto lookup_with2_before(const Version& v, R const& r, F f, G g) const {
-    auto it = container.find(r.key);
-    if (it == container.end()) {
-      return f(unit_t{});
-    } else {
-      auto vit = it->second.upper_bound(v);
-      if (vit == it->second.end()) {
-        return f(unit_t{});
-      } else {
-        return g(vit->second);
-      }
-    }
-  }
-
-  template <class F>
-  auto lookup_with3_before(const Version& v, R const& r, F f) const {
-    auto it = container.find(r.key);
-    if (it != container.end()) {
-      auto vit = it->second.upper_bound(v);
-      if (vit != it->second.end()) {
-        return f(vit->second);
-      }
-    }
-    throw std::runtime_error("No match on Map.lookup_with3_before");
-  }
-
-  template <class F, class G>
-  auto lookup_with4_before(const Version& v, R const& r, F f, G g) const {
+  auto lookup_before(const Version& v, R const& r, F f, G g) const {
     auto it = container.find(r.key);
     if (it == container.end()) {
       return f(unit_t{});
@@ -324,7 +227,7 @@ class VMap {
   }
 
   // Non-inclusive erase less than version.
-  unit_t erase_prefix(const Version& v, const R& rec) {
+  unit_t erase_before(const Version& v, const R& rec) {
     auto it = container.find(rec.key);
     if (it != container.end()) {
       auto vlteq = it->second.lower_bound(v);
@@ -342,14 +245,14 @@ class VMap {
 
   // Inclusive update greater than a given version.
   template <class F>
-  unit_t update_suffix(const Version& v, const R& rec, F f) {
+  unit_t update_after(const Version& v, const R& rec, F f) {
     auto it = container.find(rec.key);
     if (it != container.end()) {
       auto vstart = it->second.begin();
       auto vlteq = it->second.lower_bound(v);
       for (; vstart != vlteq; vstart++) {
         container[rec.key][vstart->first] =
-            f(vstart->first)(std::move(vstart->second));
+            f(vstart->first, std::move(vstart->second));
       }
     }
     return unit_t();
@@ -358,16 +261,49 @@ class VMap {
   //////////////////////////////////
   // Most-recent version methods.
 
-  shared_ptr<R> peek_now(const unit_t&) const {
-    shared_ptr<R> res(nullptr);
-    for (const auto& p : container) {
-      auto vit = p.second.begin();
-      if (vit != p.second.end()) {
-        res = std::make_shared<R>(vit->second);
-        break;
+  template<typename F, typename G>
+  auto peek_now(F f, G g) const {
+    for (const auto& elem : container) {
+      auto it = elem.second.begin();
+      if (it != elem.second.end()) {
+        return g(it->second);
       }
     }
-    return res;
+    return f(unit_t {});
+  }
+
+  //////////////////////////
+  // Multi-version methods.
+
+  template <typename Fun, typename Acc>
+  Acc fold_all(Fun f, Acc acc) const {
+    for (const auto& p : container) {
+      for (const auto& velem : p.second) {
+        acc = f(std::move(acc), velem.first, velem.second);
+      }
+    }
+    return acc;
+  }
+
+  // Non-inclusive erase less than version.
+  unit_t erase_all_before(const Version& v) {
+    auto end = container.end();
+    for (auto it = container.begin(); it != end;) {
+      auto vlteq = it->second.lower_bound(v);
+      auto vless = it->second.upper_bound(v);
+      auto vend = it->second.end();
+      if (vless != vend) {
+        it->second.erase((vlteq == vless) ? ++vless : vless, vend);
+        if (it->second.empty()) {
+          it = container.erase(it);
+        } else {
+          ++it;
+        }
+      } else {
+        ++it;
+      }
+    }
+    return unit_t();
   }
 
   /////////////////
@@ -441,15 +377,16 @@ class VMap {
     for (const auto& p : container) {
       auto it = p.second.upper_bound(v);
       if (it != p.second.end()) {
-        acc = f(std::move(acc))(it->second);
+        acc = f(std::move(acc), it->second);
       }
     }
     return acc;
   }
 
   template <typename F1, typename F2, typename Z>
-  VMap<R_key_value<RT<F1, R>, Z>> groupBy(const Version& v, F1 grouper,
-                                          F2 folder, const Z& init) const {
+  VMap<R_key_value<RT<F1, R>, Z>>
+  groupBy(const Version& v, F1 grouper, F2 folder, const Z& init) const
+  {
     // Create a map to hold partial results
     using K = RT<F1, R>;
     unordered_map<K, VContainer<Z>> accs;
@@ -461,8 +398,7 @@ class VMap {
         if (accs.find(key) == accs.end()) {
           accs[key][vit->first] = init;
         }
-        accs[key][vit->first] =
-            folder(std::move(accs[key][vit->first]))(vit->second);
+        accs[key][vit->first] = folder(std::move(accs[key][vit->first]), vit->second);
       }
     }
 
@@ -478,9 +414,36 @@ class VMap {
     return result;
   }
 
+  template <class F1, class F2, class Z>
+  VMap<R_key_value<RT<F1, R>, Z>>
+  groupByContiguous(const Version& v, F1 grouper, F2 folder, const Z& zero, const int& size) const
+  {
+    auto table = std::vector<VContainer<Z>>(size);
+    for (const auto& it : container) {
+      auto vit = it->second.upper_bound(v);
+      if (vit != it->second.end()) {
+        auto key = grouper(vit->second);
+        if (table[key].empty()) {
+          table[key][vit->first] = zero;
+        }
+        table[key][vit->first] = folder(std::move(table[key][vit->first]), vit->second);
+      }
+    }
+
+    VMap<R_key_value<RT<F1, R>, Z>> result;
+    for (auto i = 0; i < table.size(); ++i) {
+      for (auto&& vit : table[i]) {
+        result.insert(
+            std::move(vit.first),
+            std::move(R_key_value<int, Z>{i, std::move(table[i])}));
+      }
+    }
+    return result;
+  }
+
   template <class Fun>
-  auto ext(const Version& v,
-           Fun expand) const -> VMap<typename RT<Fun, R>::ElemType> {
+  auto ext(const Version& v, Fun expand) const -> VMap<typename RT<Fun, R>::ElemType>
+  {
     typedef typename RT<Fun, R>::ElemType T;
     VMap<T> result;
     for (const auto& it : container) {
@@ -493,40 +456,6 @@ class VMap {
     }
 
     return result;
-  }
-
-  //////////////////////////
-  // Multi-version methods.
-
-  template <typename Fun, typename Acc>
-  Acc fold_all(Fun f, Acc acc) const {
-    for (const auto& p : container) {
-      for (const auto& velem : p.second) {
-        acc = f(std::move(acc))(velem.first)(velem.second);
-      }
-    }
-    return acc;
-  }
-
-  // Non-inclusive erase less than version.
-  unit_t erase_prefix_all(const Version& v) {
-    auto end = container.end();
-    for (auto it = container.begin(); it != end;) {
-      auto vlteq = it->second.lower_bound(v);
-      auto vless = it->second.upper_bound(v);
-      auto vend = it->second.end();
-      if (vless != vend) {
-        it->second.erase((vlteq == vless) ? ++vless : vless, vend);
-        if (it->second.empty()) {
-          it = container.erase(it);
-        } else {
-          ++it;
-        }
-      } else {
-        ++it;
-      }
-    }
-    return unit_t();
   }
 
   //////////////////

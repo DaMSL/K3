@@ -112,29 +112,51 @@ class IntMap {
     return const_iterator(m, mapi_end(m));
   }
 
-  int size(unit_t) const { return mapi_size(get_mapi()); }
-
   R elemToRecord(const R& e) const { return e; }
 
-  // DS Operations:
-  // Maybe return the first element in the DS
-  shared_ptr<R> peek(const unit_t&) const {
-    shared_ptr<R> res(nullptr);
-    auto it = mapi_begin(get_mapi());
-    if (it < mapi_end(get_mapi())) {
-      res = std::make_shared<R>(*static_cast<R*>(it));
-    }
-    return res;
-  }
+  // Functionality
+  int size(unit_t) const { return mapi_size(get_mapi()); }
 
   template<typename F, typename G>
-  auto peek_with(F f, G g) const {
+  auto peek(F f, G g) const {
     auto it = mapi_begin(get_mapi());
     if (it < mapi_end(get_mapi()) ) {
       return g(*static_cast<R*>(it));
     } else {
       return f(unit_t {});
     }
+  }
+
+  bool member(const R& r) const {
+    mapi* m = get_mapi();
+    return m->size == 0 ? false : (mapi_find(m, r.key) != nullptr);
+  }
+
+  template <class F, class G>
+  auto lookup(R const& r, F f, G g) const {
+    mapi* m = get_mapi();
+    if (m->size == 0) {
+      return f(unit_t{});
+    } else {
+      auto existing = mapi_find(m, r.key);
+      if (existing == nullptr) {
+        return f(unit_t{});
+      } else {
+        return g(*static_cast<R*>(existing));
+      }
+    }
+  }
+
+  template <class F>
+  unit_t lookup_key(int key, F f) const {
+    mapi* m = get_mapi();
+    if (m->size > 0) {
+      auto existing = mapi_find(m, key);
+      if (existing != nullptr) {
+        return f(*static_cast<R*>(existing));
+      }
+    }
+    return unit_t{};
   }
 
   // TODO(yanif): Fix insert semantics to replace value if key exists.
@@ -147,6 +169,49 @@ class IntMap {
     mapi_clone(get_mapi(), (CloneFn)&IntMap<R>::moveElem);
     mapi_insert(get_mapi(), static_cast<void*>(&q));
     mapi_clone(get_mapi(), (CloneFn)&IntMap<R>::cloneElem);
+    return unit_t();
+  }
+
+  unit_t update(const R& rec1, R& rec2) {
+    mapi* m = get_mapi();
+    if (m->size > 0) {
+      auto existing = mapi_find(m, rec1.key);
+      if (existing != nullptr) {
+        mapi_erase(m, rec1.key);
+        mapi_insert(m, &rec2);
+      }
+    }
+    return unit_t();
+  }
+
+  template <class F, class G>
+  unit_t update_key(int key, F f, G g) {
+    mapi* m = get_mapi();
+    if (m->size == 0) {
+      auto rec = f(unit_t{});
+      auto* placement = static_cast<R*>(
+          mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec))));
+    } else {
+      auto* existing = static_cast<R*>(mapi_find(m, key));
+      if (existing == nullptr) {
+        auto rec = f(unit_t{});
+        auto* placement = static_cast<R*>(
+            mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec))));
+      } else {
+        *existing = g(std::move(*existing));
+      }
+    }
+    return unit_t{};
+  }
+
+  unit_t erase(const R& rec) {
+    mapi* m = get_mapi();
+    if (m->size > 0) {
+      auto existing = mapi_find(m, rec.key);
+      if (existing != nullptr) {
+        mapi_erase(m, rec.key);
+      }
+    }
     return unit_t();
   }
 
@@ -186,65 +251,17 @@ class IntMap {
     return unit_t{};
   }
 
-  unit_t erase(const R& rec) {
-    mapi* m = get_mapi();
-    if (m->size > 0) {
-      auto existing = mapi_find(m, rec.key);
-      if (existing != nullptr) {
-        mapi_erase(m, rec.key);
-      }
-    }
-    return unit_t();
-  }
 
-  unit_t update(const R& rec1, R& rec2) {
-    mapi* m = get_mapi();
-    if (m->size > 0) {
-      auto existing = mapi_find(m, rec1.key);
-      if (existing != nullptr) {
-        mapi_erase(m, rec1.key);
-        mapi_insert(m, &rec2);
-      }
-    }
-    return unit_t();
-  }
+  //////////////////////////////////////////////////////////////
+  // Bulk transformations.
 
-  template <typename Fun, typename Acc>
-  Acc fold(Fun f, Acc acc) const {
-    mapi* m = get_mapi();
+  IntMap combine(const IntMap& other) const {
+    // copy this DS
+    IntMap result = IntMap(*this);
+    // copy other DS
+    mapi* m = other.get_mapi();
     for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
-      acc = f(std::move(acc))(*o);
-    }
-    return acc;
-  }
-
-  template <typename Fun>
-  auto map(Fun f) const -> IntMap<RT<Fun, R>> {
-    mapi* m = get_mapi();
-    IntMap<RT<Fun, R>> result;
-    for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
-      result.insert(f(*o));
-    }
-    return result;
-  }
-
-  template <typename Fun>
-  unit_t iterate(Fun f) const {
-    mapi* m = get_mapi();
-    for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
-      f(*static_cast<R*>(o));
-    }
-    return unit_t();
-  }
-
-  template <typename Fun>
-  IntMap<R> filter(Fun predicate) const {
-    mapi* m = get_mapi();
-    IntMap<R> result;
-    for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
-      if (predicate(*o)) {
-        result.insert(*o);
-      }
+      result.insert(*o);
     }
     return result;
   }
@@ -267,20 +284,49 @@ class IntMap {
                            IntMap(iterator(m, mid), end()));
   }
 
-  IntMap combine(const IntMap& other) const {
-    // copy this DS
-    IntMap result = IntMap(*this);
-    // copy other DS
-    mapi* m = other.get_mapi();
+  template <typename Fun>
+  unit_t iterate(Fun f) const {
+    mapi* m = get_mapi();
     for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
-      result.insert(*o);
+      f(*static_cast<R*>(o));
+    }
+    return unit_t();
+  }
+
+  template <typename Fun>
+  auto map(Fun f) const -> IntMap<RT<Fun, R>> {
+    mapi* m = get_mapi();
+    IntMap<RT<Fun, R>> result;
+    for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
+      result.insert(f(*o));
     }
     return result;
   }
 
+  template <typename Fun>
+  IntMap<R> filter(Fun predicate) const {
+    mapi* m = get_mapi();
+    IntMap<R> result;
+    for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
+      if (predicate(*o)) {
+        result.insert(*o);
+      }
+    }
+    return result;
+  }
+
+  template <typename Fun, typename Acc>
+  Acc fold(Fun f, Acc acc) const {
+    mapi* m = get_mapi();
+    for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
+      acc = f(std::move(acc), *o);
+    }
+    return acc;
+  }
+
   template <typename F1, typename F2, typename Z>
-  IntMap<R_key_value<RT<F1, R>, Z>> groupBy(F1 grouper, F2 folder,
-                                            const Z& init) const {
+  IntMap<R_key_value<RT<F1, R>, Z>> groupBy(F1 grouper, F2 folder, const Z& init) const
+  {
     // Create a map to hold partial results
     typedef RT<F1, R> K;
     IntMap<R_key_value<K, Z>> result;
@@ -292,14 +338,37 @@ class IntMap {
       K key = grouper(*o);
       auto existing_acc = mapi_find(n, key);
       if (existing_acc == nullptr) {
-        R_key_value<K, Z> elem(key, std::move(folder(init)(*o)));
+        R_key_value<K, Z> elem(key, std::move(folder(init, *o)));
         mapi_insert(n, &elem);
       } else {
         R_key_value<K, Z> elem(
-            key, std::move(folder(std::move(existing_acc->value))(*o)));
+            key, std::move(folder(std::move(existing_acc->value), *o)));
         mapi_erase(n, key);
         mapi_insert(n, &elem);
       }
+    }
+    return result;
+  }
+
+  template <typename F1, typename F2, typename Z>
+  IntMap<R_key_value<RT<F1, R>, Z>> groupByContiguous(F1 grouper, F2 folder, const Z& init, const int& size) const
+  {
+    typedef RT<F1, R> K;
+    IntMap<R_key_value<K, Z>> result;
+
+    mapi* m = get_mapi();
+    mapi* n = result.get_mapi();
+    auto table = std::vector<Z>(size, zero);
+
+    for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
+      auto key = grouper(*o);
+      table[key] = folder(std::move(table[key]), elem);
+    }
+
+    for (auto i = 0; i < table.size(); ++i) {
+      // move out of the array as we iterate
+      R_key_value<K, Z> elem(i, std::move(table[i]));
+      mapi_insert(n, &elem);
     }
     return result;
   }
@@ -320,96 +389,6 @@ class IntMap {
     return result;
   }
 
-  // lookup ignores the value of the argument
-  shared_ptr<R> lookup(const R& r) const {
-    mapi* m = get_mapi();
-    if (m->size == 0) {
-      return nullptr;
-    } else {
-      auto existing = mapi_find(m, r.key);
-      if (existing == nullptr) {
-        return nullptr;
-      } else {
-        return std::make_shared<R>(*static_cast<R*>(existing));
-      }
-    }
-  }
-
-  bool member(const R& r) const {
-    mapi* m = get_mapi();
-    return m->size == 0 ? false : (mapi_find(m, r.key) != nullptr);
-  }
-
-  template <class F, class G>
-  unit_t key_update(int key, F f, G g) {
-    mapi* m = get_mapi();
-    if (m->size == 0) {
-      auto rec = f(unit_t{});
-      auto* placement = static_cast<R*>(
-          mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec))));
-    } else {
-      auto* existing = static_cast<R*>(mapi_find(m, key));
-      if (existing == nullptr) {
-        auto rec = f(unit_t{});
-        auto* placement = static_cast<R*>(
-            mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec))));
-      } else {
-        *existing = g(std::move(*existing));
-      }
-    }
-    return unit_t{};
-  }
-
-  template <class F>
-  unit_t key_lookup_with(int key, F f) const {
-    mapi* m = get_mapi();
-    if (m->size > 0) {
-      auto existing = mapi_find(m, key);
-      if (existing != nullptr) {
-        return f(*static_cast<R*>(existing));
-      }
-    }
-    return unit_t{};
-  }
-
-  template <class F>
-  unit_t lookup_with(R const& r, F f) const {
-    mapi* m = get_mapi();
-    if (m->size > 0) {
-      auto existing = mapi_find(m, r.key);
-      if (existing != nullptr) {
-        return f(*static_cast<R*>(existing));
-      }
-    }
-    return unit_t{};
-  }
-
-  template <class F, class G>
-  auto lookup_with2(R const& r, F f, G g) const {
-    mapi* m = get_mapi();
-    if (m->size == 0) {
-      return f(unit_t{});
-    } else {
-      auto existing = mapi_find(m, r.key);
-      if (existing == nullptr) {
-        return f(unit_t{});
-      } else {
-        return g(*static_cast<R*>(existing));
-      }
-    }
-  }
-
-  template <class F>
-  auto lookup_with3(R const& r, F f) const {
-    mapi* m = get_mapi();
-    if (m->size > 0) {
-      auto existing = mapi_find(m, r.key);
-      if (existing != nullptr) {
-        return f(*static_cast<R*>(existing));
-      }
-    }
-    throw std::runtime_error("No match on IntMap.lookup_with3");
-  }
 
   bool operator==(const IntMap& other) const {
     return get_mapi() == other.get_mapi() ||

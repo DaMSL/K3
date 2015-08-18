@@ -90,18 +90,27 @@ class SortedMapE {
     return const_iterator(container.cend());
   }
 
-  shared_ptr<R> peek(const unit_t&) const {
-    shared_ptr<R> res(nullptr);
-    auto it = container.begin();
-    if (it != container.end()) {
-      res = std::make_shared<R>(it->second);
-    }
-    return res;
-  }
+  // Functionality
+  int size(unit_t) const { return container.size(); }
 
   template<typename F, typename G>
-  auto peek_with(F f, G g) const {
+  auto peek(F f, G g) const {
     auto it = container.begin();
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(it->second);
+    }
+  }
+
+  template<typename K>
+  bool member(const K& k) const {
+    return container.find(k.key) != container.end();
+  }
+
+  template <typename K, class F, class G>
+  RT<G, R> lookup(K const& k, F f, G g) const {
+    auto it = container.find(k.key);
     if (it == container.end()) {
       return f(unit_t {});
     } else {
@@ -115,13 +124,28 @@ class SortedMapE {
     return unit_t();
   }
 
+  template<typename K, typename V>
+  unit_t update(const K& k, V&& val) {
+    auto it = container.find(k.key);
+    if (it != container.end()) {
+      container[k.key].value = std::move(val.value);
+    }
+    return unit_t();
+  }
+
+  template<typename K>
+  unit_t erase(const K& k) {
+    container.erase(k.key);
+    return unit_t();
+  }
+
   template <class F>
   unit_t insert_with(const R& rec, F f) {
     auto existing = container.find(rec.key);
     if (existing == std::end(container)) {
       container[rec.key] = rec;
     } else {
-      container[rec.key] = f(std::move(existing->second))(rec);
+      container[rec.key] = f(std::move(existing->second), rec);
     }
 
     return unit_t {};
@@ -135,26 +159,162 @@ class SortedMapE {
     } else {
       container[k.key] = g(std::move(existing->second));
     }
-
     return unit_t {};
   }
 
-  template<typename K>
-  unit_t erase(const K& k) {
-    container.erase(k.key);
-    return unit_t();
+  //////////////////////////////////////////////////////////
+  // Sort-order methods.
+  // For a SortedMapE, these methods expect a key argument instead of a key-value struct.
+
+  // Extremal key operations.
+  template<typename F, typename G>
+  auto min(F f, G g) const {
+    auto it = container.begin();
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(it->second);
+    }
   }
 
-  template<typename K, typename V>
-  unit_t update(const K& k, V&& val) {
-    auto it = container.find(k.key);
+  template<typename F, typename G>
+  auto max(F f, G g) const {
+    auto it = container.rbegin();
+    if (it == container.rend()) {
+      return f(unit_t {});
+    } else {
+      return g(it->second);
+    }
+  }
+
+  template <class K, class F, class G>
+  auto lower_bound(const K& k, F f, G g) const {
+    const auto& x = Super::getConstContainer();
+    auto it = x.lower_bound(k.key);
+    if (it == x.end()) {
+      return f(unit_t{});
+    } else {
+      return g(*it);
+    }
+  }
+
+  template <class K, class F, class G>
+  auto upper_bound(const K& k, F f, G g) const {
+    const auto& x = Super::getConstContainer();
+    auto it = x.upper_bound(k.key);
+    if (it == x.end()) {
+      return f(unit_t{});
+    } else {
+      return g(*it);
+    }
+  }
+
+  template<typename K, typename F, typename G>
+  auto lookup_lt(const K& k, F f, G g) const {
+    auto it = container.lower_bound(k.key);
+    if (it != container.begin()) {
+      --it;
+      return g(it->second);
+    } else {
+      return f(unit_t {});
+    }
+  }
+
+  template<typename K, typename F, typename G>
+  auto lookup_gt(const K& k, F f, G g) const {
+    auto it = container.upper_bound(k.key);
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(it->second);
+    }
+  }
+
+  template<typename K, typename F, typename G>
+  auto lookup_geq(const K& k, F f, G g) const {
+    auto it = container.lower_bound(k.key);
+    if (it == container.end()) {
+      return f(unit_t {});
+    } else {
+      return g(it->second);
+    }
+  }
+
+  template<typename K, typename F, typename G>
+  auto lookup_leq(const K& k, F f, G g) const {
+    auto it = container.upper_bound(k.key);
+    if (it != container.begin()) {
+      --it;
+      return g(it->second);
+    } else {
+      return f(unit_t {});
+    }
+  }
+
+  template<typename K>
+  SortedMapE<R> filter_lt(const K& k) const {
+    const auto& x = getConstContainer();
+    auto it = x.lower_bound(k.key);
+    if (it != x.begin()) --it;
+    return SortedMapE<R>(x.begin(), it);
+  }
+
+  template<typename K>
+  SortedMapE<R> filter_gt(const K& k) const {
+    const auto& x = getConstContainer();
+    auto it = x.upper_bound(k.key);
+    return SortedMapE<R>(it, x.end());
+  }
+
+  template<typename K>
+  SortedMapE<R> filter_geq(const K& k) const {
+    const auto& x = getConstContainer();
+    auto it = x.lower_bound(k.key);
+    return SortedMapE<R>(it, x.end());
+  }
+
+  template<typename K>
+  SortedMapE<R> filter_leq(const K& k) const {
+    const auto& x = getConstContainer();
+    auto it = x.upper_bound(k.key);
+    if (it != x.begin()) --it;
+    return SortedMapE<R>(x.begin(), it);
+  }
+
+  template<typename K>
+  SortedMapE<R> between(const K& a, const K& b) const {
+    const auto& x = getConstContainer();
+    auto it = x.lower_bound(a.key);
+    auto end = x.upper_bound(b.key);
+    if ( it != x.end() ){
+      return SortedMapE<R>(it, end);
+    } else {
+      return SortedMapE<R>();
+    }
+  }
+
+  // Range-based modification, exclusive of the given key.
+
+  template<typename K>
+  unit_t erase_before(const K& k) {
+    auto it = container.lower_bound(k.key);
     if (it != container.end()) {
-      container[k.key].value = std::move(val.value);
+        container.erase(container.cbegin(), it);
     }
     return unit_t();
   }
 
-  int size(unit_t) const { return container.size(); }
+  template<typename K>
+  unit_t erase_after(const K& k) {
+    auto it = container.upper_bound(k.key);
+    if (it != container.end()) {
+        container.erase(it, container.cend());
+    }
+    return unit_t();
+  }
+
+  //////////////////////////////////////////////////////////////
+  // Bulk transformations.
 
   SortedMapE combine(const SortedMapE& other) const {
     // copy this DS
@@ -210,7 +370,7 @@ class SortedMapE {
   template<typename Fun, typename Acc>
   Acc fold(Fun f, Acc acc) const {
     for (const auto& p : container) {
-      acc = f(std::move(acc))(p.second);
+      acc = f(std::move(acc), p.second);
     }
     return acc;
   }
@@ -226,13 +386,31 @@ class SortedMapE {
       if (accs.find(key) == accs.end()) {
         accs[key] = init;
       }
-      accs[key] = folder(std::move(accs[key]))(it.second);
+      accs[key] = folder(std::move(accs[key]), it.second);
     }
 
     // TODO more efficient implementation?
     SortedMapE<R_key_value<K,Z>> result;
     for (auto&& it : accs) {
       result.insert(std::move(R_key_value<K, Z> {std::move(it.first), std::move(it.second)}));
+    }
+    return result;
+  }
+
+  template <class F1, class F2, class Z>
+  SortedMapE<R_key_value<RT<F1, R>, Z>>
+  groupByContiguous(F1 grouper, F2 folder, const Z& zero, const int& size) const
+  {
+    auto table = std::vector<Z>(size, zero);
+    for (const auto& elem : container) {
+      auto key = grouper(elem);
+      table[key] = folder(std::move(table[key]), elem);
+    }
+    // Build the R_key_value records and insert them into result
+    SortedMapE<R_key_value<RT<F1, R>, Z>> result;
+    for (auto i = 0; i < table.size(); ++i) {
+      // move out of the map as we iterate
+      result.insert(R_key_value<int, Z>{i, std::move(table[i])});
     }
     return result;
   }
@@ -248,227 +426,6 @@ class SortedMapE {
     }
 
     return result;
-  }
-
-  // SortedMap retrieval.
-  // For a SortedMapE, these methods expect a key argument instead of a key-value struct.
-
-  template<typename K>
-  bool member(const K& k) const {
-    return container.find(k.key) != container.end();
-  }
-
-  template<typename K>
-  shared_ptr<R> lookup(const K& k) const {
-      auto it = container.find(k.key);
-      if (it != container.end()) {
-        return std::make_shared<R>(it->second);
-      } else {
-        return nullptr;
-      }
-  }
-
-  template <typename K, class F>
-  unit_t lookup_with(K const& k, F f) const {
-    auto it = container.find(k.key);
-    if (it != container.end()) {
-      return f(it->second);
-    }
-
-    return unit_t {};
-  }
-
-  template <typename K, class F, class G>
-  auto lookup_with2(K const& k, F f, G g) const {
-    auto it = container.find(k.key);
-    if (it == container.end()) {
-      return f(unit_t {});
-    } else {
-      return g(it->second);
-    }
-  }
-
-  template <typename K, class F>
-  auto lookup_with3(K const& k, F f) const {
-    auto it = container.find(k.key);
-    if (it != container.end()) {
-      return f(it->second);
-    }
-    throw std::runtime_error("No match on Map.lookup_with3");
-  }
-
-  template <typename K, class F, class G>
-  RT<G, R> lookup_with4(K const& k, F f, G g) const {
-    auto it = container.find(k.key);
-    if (it == container.end()) {
-      return f(unit_t {});
-    } else {
-      return g(it->second);
-    }
-  }
-
-  // Extremal key operations.
-
-  shared_ptr<R> min(const unit_t&) const {
-    shared_ptr<R> res(nullptr);
-    auto it = container.begin();
-    if (it != container.end()) {
-      res = std::make_shared<R>(it->second);
-    }
-    return res;
-  }
-
-  shared_ptr<R> max(const unit_t&) const {
-    shared_ptr<R> res(nullptr);
-    auto it = container.rbegin();
-    if (it != container.rend()) {
-      res = std::make_shared<R>(it->second);
-    }
-    return res;
-  }
-
-  template<typename F, typename G>
-  auto min_with(F f, G g) const {
-    auto it = container.begin();
-    if (it == container.end()) {
-      return f(unit_t {});
-    } else {
-      return g(it->second);
-    }
-  }
-
-  template<typename F, typename G>
-  auto max_with(F f, G g) const {
-    auto it = container.rbegin();
-    if (it == container.rend()) {
-      return f(unit_t {});
-    } else {
-      return g(it->second);
-    }
-  }
-
-  std::shared_ptr<R> lower_bound(const R& rec) const {
-    const auto& x = getConstContainer();
-    auto it = x.lower_bound(rec.key);
-    std::shared_ptr<R> result(nullptr);
-    if (it != x.end()) {
-      result = std::make_shared<R>(it->second);
-    }
-    return result;
-  }
-
-  std::shared_ptr<R> upper_bound(const R& rec) const {
-    const auto& x = getConstContainer();
-    auto it = x.upper_bound(rec.key);
-    std::shared_ptr<R> result(nullptr);
-    if (it != x.end()) {
-      result = std::make_shared<R>(it->second);
-    }
-    return result;
-  }
-
-  template<typename K, typename F, typename G>
-  auto lookup_lt_with(const K& k, F f, G g) const {
-    auto it = container.lower_bound(k.key);
-    if (it != container.begin()) {
-      --it;
-      return g(it->second);
-    } else {
-      return f(unit_t {});
-    }
-  }
-
-  template<typename K, typename F, typename G>
-  auto lookup_gt_with(const K& k, F f, G g) const {
-    auto it = container.upper_bound(k.key);
-    if (it == container.end()) {
-      return f(unit_t {});
-    } else {
-      return g(it->second);
-    }
-  }
-
-  template<typename K, typename F, typename G>
-  auto lookup_geq_with(const K& k, F f, G g) const {
-    auto it = container.lower_bound(k.key);
-    if (it == container.end()) {
-      return f(unit_t {});
-    } else {
-      return g(it->second);
-    }
-  }
-
-  template<typename K, typename F, typename G>
-  auto lookup_leq_with(const K& k, F f, G g) const {
-    auto it = container.upper_bound(k.key);
-    if (it != container.begin()) {
-      --it;
-      return g(it->second);
-    } else {
-      return f(unit_t {});
-    }
-  }
-
-  template<typename K>
-  SortedMapE<R> filter_lt(const K& k) const {
-    const auto& x = getConstContainer();
-    auto it = x.lower_bound(k.key);
-    if (it != x.begin()) --it;
-    return SortedMapE<R>(x.begin(), it);
-  }
-
-  template<typename K>
-  SortedMapE<R> filter_gt(const K& k) const {
-    const auto& x = getConstContainer();
-    auto it = x.upper_bound(k.key);
-    return SortedMapE<R>(it, x.end());
-  }
-
-  template<typename K>
-  SortedMapE<R> filter_geq(const K& k) const {
-    const auto& x = getConstContainer();
-    auto it = x.lower_bound(k.key);
-    return SortedMapE<R>(it, x.end());
-  }
-
-  template<typename K>
-  SortedMapE<R> filter_leq(const K& k) const {
-    const auto& x = getConstContainer();
-    auto it = x.upper_bound(k.key);
-    if (it != x.begin()) --it;
-    return SortedMapE<R>(x.begin(), it);
-  }
-
-  template<typename K>
-  SortedMapE<R> between(const K& a, const K& b) const {
-    const auto& x = getConstContainer();
-    auto it = x.lower_bound(a.key);
-    auto end = x.upper_bound(b.key);
-    if ( it != x.end() ){
-      return SortedMapE<R>(it, end);
-    } else {
-      return SortedMapE<R>();
-    }
-  }
-
-  // Range-based modification, exclusive of the given key.
-
-  template<typename K>
-  unit_t erase_prefix(const K& k) {
-    auto it = container.lower_bound(k.key);
-    if (it != container.end()) {
-        container.erase(container.cbegin(), it);
-    }
-    return unit_t();
-  }
-
-  template<typename K>
-  unit_t erase_suffix(const K& k) {
-    auto it = container.upper_bound(k.key);
-    if (it != container.end()) {
-        container.erase(it, container.cend());
-    }
-    return unit_t();
   }
 
   bool operator==(const SortedMapE& other) const {

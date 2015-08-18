@@ -1,3 +1,5 @@
+include "Annotation/Maps/SortedMap.k3"
+
 /////////////////////////////////////////////////////////////////////////
 // An associative container annotation.
 //
@@ -7,15 +9,36 @@
 
 annotation SortedMapE[key: [labeltype], value: [labeltype]] given type a,b
 {
-  provides lifted peek : () -> option content
+  provides lifted size : () -> int
     with effects \_ -> R[self]
 
+  //////////////////////////////////////////////////////////
+  // Map retrieval, with explicit keys.
+
   @:CArgs 2
-  provides lifted peek_with : (() -> a) -> (content -> a) -> a
+  provides lifted peek : (() -> a) -> (content -> a) -> a
     with effects \f -> \g -> [R[self]; f content; g content]
+
+  provides lifted member: $[|mkRecord 'key|] -> bool
+    with effects \key -> [R[self]; R[key]]
+
+  @:CArgs 3
+  provides lifted lookup : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
+
+
+  ///////////////////////////////////////////////////////
+  // Map modification.
 
   provides lifted insert : content -> ()
     with effects \elem -> [R[self]; R[elem]; W[self]]
+
+  @:CArgs 2
+  provides lifted update : $[|mkRecord 'key|] -> $[|mkRecord 'value|] -> ()
+    with effects \key -> \value -> [R[self]; R[key]; R[value]; W[self]]
+
+  provides lifted erase : $[|mkRecord 'key|] -> ()
+    with effects \key -> [R[self]; R[key]; W[self]]
 
   @:CArgs 2
   provides lifted insert_with : content -> (content -> content -> content) -> ()
@@ -25,15 +48,74 @@ annotation SortedMapE[key: [labeltype], value: [labeltype]] given type a,b
   provides lifted upsert_with : $[|mkRecord 'key|] -> (() -> content) -> (content -> content) -> ()
     with effects \key -> \f -> \g -> [R[self]; R[key]; f content; g content; W[self]]
 
-  provides lifted erase : $[|mkRecord 'key|] -> ()
-    with effects \key -> [R[self]; R[key]; W[self]]
+
+  //////////////////////////////////////////////////////////
+  // Sort-order methods.
+
+  // Point retrieval
+  @CArgs 2
+  provides lifted min : (() -> a) -> (content -> a) -> a
+    with effects \f -> \g -> [R[self]; f content; g content]
+
+  @CArgs 2
+  provides lifted max : (() -> a) -> (content -> a) -> a
+    with effects \f -> \g -> [R[self]; f content; g content]
+
+  @CArgs 3
+  provides lifted lower_bound : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \elem -> \f -> \g -> [R[self]; R[elem]; f content; g content]
+
+  @CArgs 3
+  provides lifted upper_bound : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \elem -> \f -> \g -> [R[self]; R[elem]; f content; g content]
+
+  @:CArgs 3
+  provides lifted lookup_lt : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
+
+  @:CArgs 3
+  provides lifted lookup_gt : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
+
+  @:CArgs 3
+  provides lifted lookup_geq : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
+
+  @:CArgs 3
+  provides lifted lookup_leq : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
+
+
+  // Range retrieval.
+  provides lifted filter_lt : $[|mkRecord 'key|] -> self
+    with effects \key -> [R[self]; R[key]]
+
+  provides lifted filter_gt : $[|mkRecord 'key|] -> self
+    with effects \key -> [R[self]; R[key]]
+
+  provides lifted filter_geq : $[|mkRecord 'key|] -> self
+    with effects \key -> [R[self]; R[key]]
+
+  provides lifted filter_leq : $[|mkRecord 'key|] -> self
+    with effects \key -> [R[self]; R[key]]
 
   @:CArgs 2
-  provides lifted update : $[|mkRecord 'key|] -> $[|mkRecord 'value|] -> ()
-    with effects \key -> \value -> [R[self]; R[key]; R[value]; W[self]]
+  provides lifted between : $[|mkRecord 'key|] -> $[|mkRecord 'key|] -> self
+    with effects \key -> [R[self]; R[key]]
 
-  provides lifted size : () -> int
-    with effects \_ -> R[self]
+  // Range-based modification.
+
+  // Erases all elements less than, but not including, the given key.
+  provides lifted erase_before : $[|mkRecord 'key|] -> ()
+    with effects \key -> [R[self]; R[key]; W[self]]
+
+  // Erases all elements greater than the given key.
+  provides lifted erase_after : $[|mkRecord 'key|] -> ()
+    with effects \key -> [R[self]; R[key]; W[self]]
+
+
+  //////////////////////////////////////////////////////////////
+  // Bulk transformations.
 
   @:Transformer
   provides lifted combine : self -> self
@@ -66,6 +148,13 @@ annotation SortedMapE[key: [labeltype], value: [labeltype]] given type a,b
       \gbF -> \gaccF -> \z ->
         [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
+  @:{Transformer, CArgs 4}
+  provides lifted groupByContiguous : (content -> a) -> (b -> content -> b) -> b -> int
+                                       -> collection { key : a, value : b } @SortedMapE
+    with effects
+      \gbF -> \gaccF -> \z -> \s ->
+        [R[self]; R[z]; R[s]; ([R[content]; gbF content; gaccF content])*]
+
   @:Transformer
   provides lifted ext : (content -> collection {key : a, value: b} @SortedMapE)
                          -> collection {key : a, value: b} @SortedMapE
@@ -75,95 +164,5 @@ annotation SortedMapE[key: [labeltype], value: [labeltype]] given type a,b
   provides lifted sample : (a -> content -> a) -> a -> int -> a
     with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
 
-
-
-  //////////////////////////////////////////////////////////
-  // Map retrieval.
-  // These methods ignore the value of the provided element.
-
-  provides lifted member: $[|mkRecord 'key|] -> bool
-    with effects \key -> [R[self]; R[key]]
-
-  provides lifted lookup : $[|mkRecord 'key|] -> option content
-    with effects \key -> [R[self]; R[key]]
-
-  @:CArgs 2
-  provides lifted lookup_with : $[|mkRecord 'key|]-> (content -> ()) -> ()
-    with effects \key -> \lookupF -> [R[self]; R[key]; lookupF content]
-
-  @:CArgs 3
-  provides lifted lookup_with2 : $[|mkRecord 'key|] -> (() -> ()) -> (content -> ()) -> ()
-    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
-
-  @:CArgs 2
-  provides lifted lookup_with3 : $[|mkRecord 'key|] -> (content -> a) -> a
-    with effects \key -> \lookupF -> [R[self]; R[key]; lookupF content]
-
-  @:CArgs 3
-  provides lifted lookup_with4 : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
-    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
-
-  // Extremal key retrieval.
-  provides lifted min : () -> option content
-    with effects \_ -> R[self]
-
-  provides lifted max : () -> option content
-    with effects \_ -> R[self]
-
-  @:CArgs 2
-  provides lifted min_with : (() -> a) -> (content -> a) -> a
-    with effects \noneF -> \someF -> [R[self]; noneF content; someF content]
-
-  @:CArgs 2
-  provides lifted max_with : (() -> a) -> (content -> a) -> a
-    with effects \noneF -> \someF -> [R[self]; noneF content; someF content]
-
-  provides lifted lower_bound : $[|mkRecord 'key|] -> option content
-    with effects \key -> [R[self]; R[key]]
-
-  provides lifted upper_bound : $[|mkRecord 'key|] -> option content
-    with effects \key -> [R[self]; R[key]]
-
-  @:CArgs 3
-  provides lifted lookup_lt_with : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
-    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
-
-  @:CArgs 3
-  provides lifted lookup_gt_with : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
-    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
-
-  @:CArgs 3
-  provides lifted lookup_geq_with : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
-    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
-
-  @:CArgs 3
-  provides lifted lookup_leq_with : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
-    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
-
-  // Range retrieval based on sort order.
-  provides lifted filter_lt : $[|mkRecord 'key|] -> self
-    with effects \key -> [R[self]; R[key]]
-
-  provides lifted filter_gt : $[|mkRecord 'key|] -> self
-    with effects \key -> [R[self]; R[key]]
-
-  provides lifted filter_geq : $[|mkRecord 'key|] -> self
-    with effects \key -> [R[self]; R[key]]
-
-  provides lifted filter_leq : $[|mkRecord 'key|] -> self
-    with effects \key -> [R[self]; R[key]]
-
-  provides lifted between : $[|mkRecord 'key|] -> (content -> self)
-    with effects \key -> [R[self]; R[key]]
-
-  // Range-based modification.
-
-  // Erases all elements less than, but not including, the given key.
-  provides lifted erase_prefix : $[|mkRecord 'key|] -> ()
-    with effects \key -> [R[self]; R[key]; W[self]]
-
-  // Erases all elements greater than the given key.
-  provides lifted erase_suffix : $[|mkRecord 'key|] -> ()
-    with effects \key -> [R[self]; R[key]; W[self]]
 }
 
