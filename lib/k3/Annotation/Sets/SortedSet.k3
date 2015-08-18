@@ -31,9 +31,6 @@ annotation SortedSet given type a, b
   provides lifted is_subset_of : self -> bool
     with effects \other -> [R[self]; R[other]]
 
-  provides lifted union : self -> self
-    with effects \other -> [R[self]; R[other]]
-
   provides lifted intersect : self -> self
     with effects \other -> [R[self]; R[other]]
 

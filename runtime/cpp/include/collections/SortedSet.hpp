@@ -101,18 +101,6 @@ class SortedSet {
     return true;
   }
 
-  // union is a reserved word
-  SortedSet<Elem> union1(const SortedSet<Elem>& other) const {
-    SortedSet<Elem> result;
-    for (const auto& x : getConstContainer()) {
-      result.insert(x);
-    }
-    for (const auto& x : other.getConstContainer()) {
-      result.insert(x);
-    }
-    return result;
-  }
-
   SortedSet<Elem> intersect(const SortedSet<Elem>& other) const {
     SortedSet<Elem> result;
     for (const auto& x : getConstContainer()) {

@@ -75,7 +75,7 @@ annotation MultiIndexMap given type a, b
     with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
 
   @:Transformer
-  provides lifted map : (content -> {key: a, value: b}) -> collection {key: a, value: b} @Map
+  provides lifted map : (content -> {key: a, value: b}) -> collection {key: a, value: b} @MultiIndexMap
     with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
 
   @:Transformer
@@ -87,27 +87,23 @@ annotation MultiIndexMap given type a, b
     with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
 
   @:{Transformer, CArgs 3}
-  provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
-                          -> collection { key : a, value : b } @Map
+  provides lifted group_by : (content -> a) -> (b -> content -> b) -> b
+                              -> collection { key : a, value : b } @MultiIndexMap
     with effects
       \gbF -> \gaccF -> \z ->
         [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:{Transformer, CArgs 4}
-  provides lifted groupByContiguous : (content -> a) -> (b -> content -> b) -> b -> int
-                                        -> collection { key : a, value : b } @Map
+  provides lifted group_by_contiguous : (content -> a) -> (b -> content -> b) -> b -> int
+                                          -> collection { key : a, value : b } @MultiIndexMap
     with effects
       \gbF -> \gaccF -> \z -> \s ->
         [R[self]; R[z]; R[s]; ([R[content]; gbF content; gaccF content])*]
 
   @:Transformer
-  provides lifted ext : (content -> collection {key : a, value: b} @Map)
-                      -> collection {key : a, value: b} @Map
+  provides lifted ext : (content -> collection {key : a, value: b} @MultiIndexMap)
+                      -> collection {key : a, value: b} @MultiIndexMap
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
-
-  @:{Transformer, CArgs 3}
-  provides lifted sample : (a -> content -> a) -> a -> int -> a
-    with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
 
 }
 

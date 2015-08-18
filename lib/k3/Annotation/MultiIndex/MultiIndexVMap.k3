@@ -104,7 +104,7 @@ annotation MultiIndexVMap given type a,b
     with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; (((foldF z) none) content)])*]
 
   // Non-inclusive modifications of all values before the given version.
-  provides lifted erase_prefix_all : int -> ()
+  provides lifted erase_all_before : int -> ()
     with effects \version -> [R[version]; R[self]; W[self]]
 
 
@@ -125,34 +125,34 @@ annotation MultiIndexVMap given type a,b
     with effects \version -> \iterF -> [R[version]; R[self]; ([R[content]; iterF content])*]
 
   @:CArgs 2
-  provides lifted map     : int -> (content -> {key: a, value: b}) -> collection {key: a, value: b} @VMap
+  provides lifted map : int -> (content -> {key: a, value: b}) -> collection {key: a, value: b} @MultiIndexVMap
     with effects \version -> \mapF -> [R[version]; R[self]; ([R[content]; mapF content])*]
 
   @:CArgs 2
-  provides lifted filter  : int -> (content -> bool) -> self
+  provides lifted filter : int -> (content -> bool) -> self
     with effects \version -> \filterF -> [R[version]; R[self]; ([R[content]; filterF content])*]
 
   @:CArgs 3
-  provides lifted fold    : int -> (a -> (content -> a)) -> a -> a
+  provides lifted fold : int -> (a -> (content -> a)) -> a -> a
     with effects \version -> \foldF -> \z -> [R[version]; R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
 
   @:CArgs 4
-  provides lifted groupBy : int -> (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @VMap
+  provides lifted group_by : int -> (content -> a) -> (b -> content -> b) -> b
+                             -> collection { key : a, value : b } @MultiIndexVMap
     with effects
       \version -> \gbF -> \gaccF -> \z ->
         [R[version]; R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:CArgs 5
-  provides lifted groupByContiguous : int -> (content -> a) -> (b -> content -> b) -> b -> int
-                                       -> collection { key : a, value : b } @VMap
+  provides lifted group_by_contiguous : int -> (content -> a) -> (b -> content -> b) -> b -> int
+                                       -> collection { key : a, value : b } @MultiIndexVMap
     with effects
       \version -> \gbF -> \gaccF -> \z -> \s ->
         [R[version]; R[self]; R[z]; R[s]; ([R[content]; gbF content; gaccF content])*]
 
   @:CArgs 2
-  provides lifted ext : int -> (content -> collection {key : a, value: b} @VMap)
-                         -> collection {key : a, value: b} @VMap
+  provides lifted ext : int -> (content -> collection {key : a, value: b} @MultiIndexVMap)
+                         -> collection {key : a, value: b} @MultiIndexVMap
     with effects \version -> \extF -> [R[version]; R[self]; ([R[content]; extF content])*]
 
 }

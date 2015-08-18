@@ -11,7 +11,7 @@
 namespace K3 {
 
 template <template <typename> class Derived, class Elem>
-using SetDS = STLDS<Derived, std::set, Elem>;
+using SetDS = STLDS<Derived, std::unordered_set, Elem>;
 
 template <class Elem>
 class Set : public SetDS<K3::Set, Elem> {
@@ -57,18 +57,6 @@ class Set : public SetDS<K3::Set, Elem> {
       }
     }
     return true;
-  }
-
-  // union is a reserved word
-  Set<Elem> union1(const Set<Elem>& other) const {
-    Set<Elem> result;
-    for (const auto& x : this->getConstContainer()) {
-      result.insert(x);
-    }
-    for (const auto& x : other.getConstContainer()) {
-      result.insert(x);
-    }
-    return result;
   }
 
   Set<Elem> intersect(const Set<Elem>& other) const {
