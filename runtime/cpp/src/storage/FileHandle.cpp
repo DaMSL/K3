@@ -49,17 +49,14 @@ SourceTextHandle::SourceTextHandle (std::string path, CodecFormat fmt) {
   fmt_ = fmt;
 }
 
-
 unique_ptr<PackedValue> SourceTextHandle::doRead()  {
   // allocate buffer
   std::string buf;
-
+  auto p = make_unique<StringPackedValue>(std::move(buf), fmt_);
   //Read next line
-  std::getline (file_, buf);
-
-  return make_unique<StringPackedValue>(std::move(buf), fmt_);
+  std::getline (file_, p->string_);
+  return std::move(p);
 }
-
 
 //  SINK FILE HANDLE (binary file access)
 SinkFileHandle::SinkFileHandle (std::string path, CodecFormat fmt) : FileHandle(fmt) {

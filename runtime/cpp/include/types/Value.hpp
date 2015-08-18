@@ -9,6 +9,7 @@
 #include <yas/buffers.hpp>
 
 #include "Common.hpp"
+#include "types/BaseString.hpp"
 
 namespace K3 {
 
@@ -87,8 +88,17 @@ class StringPackedValue : public PackedValue {
   virtual size_t length() const;
   string steal();
 
- protected:
-  std::unique_ptr<string> string_;
+  string string_;
+};
+
+class BaseStringRefPackedValue : public PackedValue {
+ public:
+  BaseStringRefPackedValue(const base_string& b, CodecFormat format);
+  CodecFormat format() const;
+  virtual const char* buf() const;
+  virtual size_t length() const;
+
+  const base_string& string_;
 };
 
 // YAS-shared-buffer-based
