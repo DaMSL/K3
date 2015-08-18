@@ -146,16 +146,19 @@ class StrMap {
     }
   }
 
-  template <class F>
-  unit_t lookup_key(const string_impl& key, F f) const {
+  template <class F, class G>
+  auto lookup_key(const string_impl& key, F f, G g) const {
     map_str* m = get_map_str();
-    if (m->size > 0) {
+    if (m->size == 0) {
+      return f(unit_t{});
+    } else {
       auto existing = map_str_find(m, key.begin());
-      if (existing != map_str_end(m)) {
-        return f(*map_str_get(m, existing));
+      if (existing == map_str_end(m)) {
+        return f(unit_t{});
+      } else {
+        return g(*map_str_get(m, existing));
       }
     }
-    return unit_t{};
   }
 
   size_t insert_aux(const R& q) {
@@ -193,22 +196,6 @@ class StrMap {
       }
     }
     return unit_t();
-  }
-
-  template <class F, class G>
-  unit_t update_key(const string_impl& key, F f, G g) {
-    map_str* m = get_map_str();
-    if (m->size == 0) {
-      insert(f(unit_t{}));
-    } else {
-      auto* existing = map_str_find(m, key.begin());
-      if (existing == map_str_end(m)) {
-        insert(f(unit_t{}));
-      } else {
-        *existing = g(std::move(*existing));
-      }
-    }
-    return unit_t{};
   }
 
   unit_t erase(const R& rec) {
@@ -266,6 +253,23 @@ class StrMap {
     return unit_t{};
   }
 
+  template <class F, class G>
+  unit_t upsert_with_key(const string_impl& key, F f, G g) {
+    map_str* m = get_map_str();
+    if (m->size == 0) {
+      insert(f(unit_t{}));
+    } else {
+      auto* existing = map_str_find(m, key.begin());
+      if (existing == map_str_end(m)) {
+        insert(f(unit_t{}));
+      } else {
+        *existing = g(std::move(*existing));
+      }
+    }
+    return unit_t{};
+  }
+
+
   //////////////////////////////////////////////////////////////
   // Bulk transformations.
 
@@ -321,6 +325,16 @@ class StrMap {
   }
 
   template <typename Fun>
+  auto map_generic(Fun f) const -> Map<RT<Fun, R>> {
+    map_str* m = get_map_str();
+    Map<RT<Fun, R>> result;
+    for (auto o = map_str_begin(m); o < map_str_end(m); o = map_str_next(m, o)) {
+      result.insert(f(*map_str_get(m, o)));
+    }
+    return result;
+  }
+
+  template <typename Fun>
   StrMap<R> filter(Fun predicate) const {
     map_str* m = get_map_str();
     StrMap<RT<Fun, R>> result;
@@ -344,7 +358,7 @@ class StrMap {
   }
 
   template <typename F1, typename F2, typename Z>
-  StrMap<R_key_value<RT<F1, R>, Z>> groupBy(F1 grouper, F2 folder, const Z& init) const
+  StrMap<R_key_value<RT<F1, R>, Z>> group_by(F1 grouper, F2 folder, const Z& init) const
   {
     // Create a map to hold partial results
     typedef RT<F1, R> K;
@@ -374,6 +388,31 @@ class StrMap {
     return result;
   }
 
+  template <typename F1, typename F2, typename Z>
+  Map<R_key_value<RT<F1, R>, Z>> group_by_generic(F1 grouper, F2 folder, const Z& init) const
+  {
+    // Create a map to hold partial results
+    typedef RT<F1, R> K;
+    std::unordered_map<K, Z> accs;
+
+    map_str* m = get_map_str();
+    for (auto o = map_str_begin(m); o < map_str_end(m); o = map_str_next(m, o)) {
+      R* v = static_cast<R*>(map_str_get(m, o));
+      K key = grouper(*v);
+      if (accs.find(key) == accs.end()) {
+        accs[key] = init;
+      }
+      accs[key] = folder(std::move(accs[key]), *v);
+    }
+
+    Map<R_key_value<K, Z>> result;
+    for (auto&& it : accs) {
+      result.insert(std::move(
+          R_key_value<K, Z>{std::move(it.first), std::move(it.second)}));
+    }
+    return result;
+  }
+
   template <class Fun>
   auto ext(Fun expand) const -> StrMap<typename RT<Fun, R>::ElemType> {
     typedef typename RT<Fun, R>::ElemType T;
@@ -386,6 +425,20 @@ class StrMap {
       for (auto it2 = map_str_begin(n); it2 < end2;
            it2 = map_str_next(n, it2)) {
         result.insert(*map_str_get(n, it2));
+      }
+    }
+    return result;
+  }
+
+  template <class Fun>
+  auto ext_generic(Fun expand) const -> Map<typename RT<Fun, R>::ElemType> {
+    typedef typename RT<Fun, R>::ElemType T;
+    Map<T> result;
+    map_str* m = get_map_str();
+    auto end = map_str_end(m);
+    for (auto it = map_str_begin(m); it < end; it = map_str_next(m, it)) {
+      for (T&& elem : expand(*it).container) {
+        result.insert(std::move(elem));
       }
     }
     return result;

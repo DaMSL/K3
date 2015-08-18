@@ -26,9 +26,10 @@ annotation StrMap given type a,b
   provides lifted lookup : content -> (() -> a) -> (content -> a) -> a
     with effects \elem -> \noneF -> \someF -> [R[self]; R[elem]; noneF content; someF content]
 
-  @:CArgs 2
-  provides lifted lookup_key : string -> (content -> ()) -> ()
-    with effects \elem -> \lookupF -> [R[self]; R[elem]; lookupF content]
+  @:CArgs 3
+  provides lifted lookup_key : string -> (() -> a) -> (content -> a) -> a
+    with effects \elem -> \noneF -> \someF -> [R[self]; R[elem]; noneF content; someF content]
+
 
   ///////////////////////////////////////////////////////
   // Map modification.
@@ -40,10 +41,6 @@ annotation StrMap given type a,b
   provides lifted update  : content -> (content -> ())
     with effects \oldElem -> \newElem -> [R[self]; R[oldElem]; R[newElem]; W[self]]
 
-  @:CArgs 3
-  provides lifted update_key: string -> (() -> content) -> (content -> content) -> ()
-    with effects \elem -> \f -> \g -> [R[self]; R[elem]; f none; g content; W[self]]
-
   provides lifted erase  : content -> ()
     with effects \elem -> [R[self]; R[elem]; W[self]]
 
@@ -54,6 +51,10 @@ annotation StrMap given type a,b
   @:CArgs 3
   provides lifted upsert_with: content -> (() -> content) -> (content -> content) -> ()
     with effects \elem -> \f -> \g -> [R[self]; R[elem]; f content; g content; W[self]]
+
+  @:CArgs 3
+  provides lifted upsert_with_key: string -> (() -> content) -> (content -> content) -> ()
+    with effects \elem -> \f -> \g -> [R[self]; R[elem]; f none; g content; W[self]]
 
   //////////////////////////////////////////////////////////////
   // Bulk transformations.
@@ -71,7 +72,11 @@ annotation StrMap given type a,b
     with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
 
   @:Transformer
-  provides lifted map : (content -> {key: a, value: b}) -> collection {key: a, value: b} @Map
+  provides lifted map : (content -> {key: string, value: a}) -> collection {key: string, value: a} @StrMap
+    with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
+
+  @:Transformer
+  provides lifted map_generic : (content -> {key: a, value: b}) -> collection {key: a, value: b} @Map
     with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
 
   @:Transformer
@@ -83,19 +88,27 @@ annotation StrMap given type a,b
     with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
 
   @:{Transformer, CArgs 3}
-  provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @Map
+  provides lifted group_by : (content -> string) -> (a -> content -> a) -> a
+                             -> collection { key : string, value : a } @StrMap
+    with effects
+      \gbF -> \gaccF -> \z ->
+        [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
+
+  @:{Transformer, CArgs 3}
+  provides lifted group_by_generic : (content -> a) -> (b -> content -> b) -> b
+                                      -> collection { key : a, value : b } @Map
     with effects
       \gbF -> \gaccF -> \z ->
         [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:Transformer
-  provides lifted ext : (content -> collection {key : a, value: b} @Map)
-                         -> collection {key : a, value: b} @Map
+  provides lifted ext : (content -> collection {key : string, value: b} @StrMap)
+                         -> collection {key : string, value: b} @StrMap
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
 
-  @:{Transformer, CArgs 3}
-  provides lifted sample : (a -> content -> a) -> a -> int -> a
-    with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
+  @:Transformer
+  provides lifted ext_generic : (content -> collection {key : a, value: b} @Map)
+                                 -> collection {key : a, value: b} @Map
+    with effects \extF -> [R[self]; ([R[content]; extF content])*]
 
 }

@@ -365,7 +365,7 @@ class SortedMap {
 
   template<typename F1, typename F2, typename Z>
   SortedMap<R_key_value<RT<F1, R>, Z>>
-  groupBy(F1 grouper, F2 folder, const Z& init) const
+  group_by(F1 grouper, F2 folder, const Z& init) const
   {
     // Create a map to hold partial results
     typedef RT<F1, R> K;
@@ -388,7 +388,7 @@ class SortedMap {
 
   template <class F1, class F2, class Z>
   SortedMap<R_key_value<RT<F1, R>, Z>>
-  groupByContiguous(F1 grouper, F2 folder, const Z& zero, const int& size) const
+  group_by_contiguous(F1 grouper, F2 folder, const Z& zero, const int& size) const
   {
     auto table = std::vector<Z>(size, zero);
     for (const auto& elem : container) {
@@ -409,8 +409,8 @@ class SortedMap {
     typedef typename RT<Fun, R>::ElemType T;
     SortedMap<T> result;
     for (const auto& it : container) {
-      for (auto& it2 : expand(it.second).container) {
-        result.insert(it2.second);
+      for (auto&& it2 : expand(it.second).container) {
+        result.insert(std::move(it2.second));
       }
     }
 

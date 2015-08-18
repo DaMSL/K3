@@ -23,9 +23,31 @@ class Sorted : public SortedDS<K3::Sorted, Elem> {
   Sorted() : Super() {}
   Sorted(const Container& con) : Super(con) {}
   Sorted(Container&& con) : Super(std::move(con)) {}
+
   template <typename Iterator>
-  Sorted(Iterator begin, Iterator end)
-      : Super(begin, end) {}
+  Sorted(Iterator begin, Iterator end) : Super(begin, end) {}
+
+  /////////////////////////////////////////////////
+  // Modifier overrides to exploit container type.
+
+  template <class T>
+  unit_t update(const Elem& v, T&& v2) {
+    auto& x = Super::getContainer();
+    iterator it = x.find(v);
+    if (it != x.end()) {
+      *it = std::forward<T>(v2);
+    }
+    return unit_t();
+  }
+
+  unit_t erase(const Elem& v) {
+    auto& x = Super::getContainer();
+    iterator it = x.find(v);
+    if (it != x.end()) {
+      x.erase(it);
+    }
+    return unit_t();
+  }
 
 
   //////////////////////////

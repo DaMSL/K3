@@ -84,6 +84,7 @@ class SortedSet {
     return unit_t();
   }
 
+
   ///////////////////////////////////////////////////
   // Set-specific methods.
 
@@ -91,7 +92,7 @@ class SortedSet {
     return container.find(e) != container.end();
   }
 
-  bool isSubsetOf(const SortedSet<Elem>& other) const {
+  bool is_subset_of(const SortedSet<Elem>& other) const {
     for (const auto& x : getConstContainer()) {
       if (!other.member(x)) {
         return false;
@@ -308,7 +309,7 @@ class SortedSet {
 
   // Group By
   template <typename F1, typename F2, typename Z>
-  SortedSet<R_key_value<RT<F1, Elem>, Z>> groupBy(F1 grouper, F2 folder, const Z& init) const
+  SortedSet<R_key_value<RT<F1, Elem>, Z>> group_by(F1 grouper, F2 folder, const Z& init) const
   {
     // Create a map to hold partial results
     typedef RT<F1, Elem> K;
@@ -333,7 +334,7 @@ class SortedSet {
 
   template <class G, class F, class Z>
   SortedSet<R_key_value<RT<G, Elem>, Z>>
-  groupByContiguous(G grouper, F folder, const Z& zero, const int& size) const
+  group_by_contiguous(G grouper, F folder, const Z& zero, const int& size) const
   {
     auto table = std::vector<Z>(size, zero);
     for (const auto& elem : container) {
@@ -354,7 +355,7 @@ class SortedSet {
     typedef typename RT<Fun, Elem>::ElemType T;
     SortedSet<T> result;
     for (const Elem& elem : container) {
-      for (T& elem2 : expand(elem).container) {
+      for (T&& elem2 : expand(elem).container) {
         result.insert(std::move(elem2));
       }
     }

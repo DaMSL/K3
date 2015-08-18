@@ -385,7 +385,7 @@ class VMap {
 
   template <typename F1, typename F2, typename Z>
   VMap<R_key_value<RT<F1, R>, Z>>
-  groupBy(const Version& v, F1 grouper, F2 folder, const Z& init) const
+  group_by(const Version& v, F1 grouper, F2 folder, const Z& init) const
   {
     // Create a map to hold partial results
     using K = RT<F1, R>;
@@ -416,7 +416,7 @@ class VMap {
 
   template <class F1, class F2, class Z>
   VMap<R_key_value<RT<F1, R>, Z>>
-  groupByContiguous(const Version& v, F1 grouper, F2 folder, const Z& zero, const int& size) const
+  group_by_contiguous(const Version& v, F1 grouper, F2 folder, const Z& zero, const int& size) const
   {
     auto table = std::vector<VContainer<Z>>(size);
     for (const auto& it : container) {

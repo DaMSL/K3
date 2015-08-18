@@ -64,17 +64,15 @@ class STLDS {
   }
 
   Elem at(int i) const {
-    auto& l = Super::getConstContainer();
-    auto it = l.begin();
+    auto it = container.begin();
     std::advance(it, i);
     return *it;
   }
 
   template<class F, class G>
   auto safe_at(int i, F f, G g) const {
-    auto& l = Super::getConstContainer();
-    if ( i < size() ) {
-      auto it = l.begin();
+    if ( i < container.size() ) {
+      auto it = container.begin();
       std::advance(it, i);
       return g(*it);
     } else {
@@ -90,8 +88,7 @@ class STLDS {
 
   template <class T>
   unit_t update(const Elem& v, T&& v2) {
-    iterator it;
-    it = std::find(container.begin(), container.end(), v);
+    iterator it = std::find(container.begin(), container.end(), v);
     if (it != container.end()) {
       *it = std::forward<T>(v2);
     }
@@ -99,13 +96,13 @@ class STLDS {
   }
 
   unit_t erase(const Elem& v) {
-    iterator it;
-    it = std::find(container.begin(), container.end(), v);
+    iterator it = std::find(container.begin(), container.end(), v);
     if (it != container.end()) {
       container.erase(it);
     }
     return unit_t();
   }
+
 
   ///////////////////////////////////////////////////
   // Bulk transformations.
@@ -169,7 +166,7 @@ class STLDS {
   }
 
   template<typename F1, typename F2, typename Z>
-  Derived<R_key_value<RT<F1, Elem>, Z>> groupBy(F1 grouper, F2 folder, const Z& init) const
+  Derived<R_key_value<RT<F1, Elem>, Z>> group_by(F1 grouper, F2 folder, const Z& init) const
   {
     // Create a map to hold partial results
     typedef RT<F1, Elem> K;
@@ -195,7 +192,7 @@ class STLDS {
 
   template <class G, class F, class Z>
   Derived<R_key_value<RT<G, Elem>, Z>>
-  groupByContiguous(G grouper, F folder, const Z& zero, const int& size) const
+  group_by_contiguous(G grouper, F folder, const Z& zero, const int& size) const
   {
     auto table = std::vector<Z>(size, zero);
     for (const auto& elem : container) {
@@ -249,12 +246,12 @@ class STLDS {
   }
 
   template<class Other, class F, class G>
-  Derived<R_elem<RT<G, Elem, Other>>> joinKV(Derived<Other> other, F f, G g) const {
+  Derived<R_elem<RT<G, Elem, Other>>> join_kv(Derived<Other> other, F f, G g) const {
     return join<Other,F,G>(other, f, g);
   }
 
   template<class Other, class F, class G, class H>
-  Derived<R_elem<RT<H, Elem, Other>>> equijoinKV(Derived<Other> other, F f, G g, H h) const {
+  Derived<R_elem<RT<H, Elem, Other>>> equijoin_kv(Derived<Other> other, F f, G g, H h) const {
     return equijoin<Other,F,G,H>(other, f, g, h);
   }
 
@@ -263,7 +260,7 @@ class STLDS {
     typedef typename RT<Fun, Elem>::ElemType T;
     Derived<T> result;
     for (const Elem& elem : container) {
-      for (T& elem2 : expand(elem).container) {
+      for (T&& elem2 : expand(elem).container) {
         result.insert(std::move(elem2));
       }
     }

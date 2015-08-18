@@ -85,6 +85,10 @@ annotation IntVector given type a, b
     with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
 
   @:Transformer
+  provides lifted map_generic : (content -> a) -> collection {elem : a} @Vector
+    with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
+
+  @:Transformer
   provides lifted filter : (content -> bool) -> self
     with effects \filterF -> [R[self]; ([R[content]; filterF content])*]
 
@@ -93,26 +97,31 @@ annotation IntVector given type a, b
     with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
 
   @:{Transformer, CArgs 3}
-  provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @Vector
+  provides lifted group_by : (content -> int) -> (int -> content -> int) -> int -> self
+    with effects
+      \gbF -> \gaccF -> \z ->
+        [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
+
+  @:{Transformer, CArgs 3}
+  provides lifted group_by_generic : (content -> a) -> (b -> content -> b) -> b
+                                      -> collection { key : a, value : b } @Vector
     with effects
       \gbF -> \gaccF -> \z ->
         [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:{Transformer, CArgs 4}
-  provides lifted groupByContiguous : (content -> a) -> (b -> content -> b) -> b -> int
-                                      -> collection { key : a, value : b } @Vector
+  provides lifted group_by_contiguous : (content -> int) -> (int -> content -> int) -> int -> int -> self
     with effects
       \gbF -> \gaccF -> \z -> \s ->
-        [R[self]; R[z]; R[s]; ([R[content]; gbF content; gaccF content])*]
+        [R[self]; R[z]; R[s]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:Transformer
-  provides lifted ext : (content -> collection {elem : a} @Vector)
-                         -> collection {elem : a} @Vector
+  provides lifted ext : (content -> self) -> self
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
 
-  @:{Transformer, CArgs 3}
-  provides lifted sample : (a -> content -> a) -> a -> int -> a
-    with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
+  @:Transformer
+  provides lifted ext_generic : (content -> collection {elem : a} @Vector)
+                                 -> collection {elem : a} @Vector
+    with effects \extF -> [R[self]; ([R[content]; extF content])*]
 
 }

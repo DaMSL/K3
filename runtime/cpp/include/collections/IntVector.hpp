@@ -189,6 +189,67 @@ class IntVector : public STLDS<K3::IntVector, std::vector, Elem> {
 
     return result;
   }
+
+  template <class G, class F, class Z>
+  IntVector<R_elem<Z>> group_by(G grouper, F folder, const Z& zero) const
+  {
+    auto table = std::vector<R_elem<Z>>();
+    for (const auto& elem : container) {
+      K key = grouper(elem);
+      if (table.size() < key) {
+        table.resize(key, init);
+      }
+      table[key] = folder(std::move(table[key]), elem);
+    }
+    return IntVector<R_elem<Z>>{ std::move(STLDS{std::move(table)}) };
+  }
+
+  template <typename F1, typename F2, typename Z>
+  Vector<R_key_value<RT<F1, Elem>, Z>> group_by_generic(F1 grouper, F2 folder, const Z& init) const
+  {
+    // Create a map to hold partial results
+    typedef RT<F1, Elem> K;
+    unordered_map<K, Z> accs;
+
+    for (const auto& elem : container) {
+      K key = grouper(elem);
+      if (accs.find(key) == accs.end()) {
+        accs[key] = init;
+      }
+      accs[key] = folder(std::move(accs[key]), elem);
+    }
+
+    Vector<R_key_value<RT<F1, Elem>, Z>> result;
+    for (auto& it : accs) {
+      // move out of the map as we iterate
+      result.insert(R_key_value<K, Z>{std::move(it.first), std::move(it.second)});
+    }
+    return result;
+  }
+
+  template <class G, class F, class Z>
+  IntVector<R_elem<Z>>
+  group_by_contiguous(G grouper, F folder, const Z& zero, const int& size) const
+  {
+    auto table = std::vector<R_elem<Z>>(size, R_elem<Z> { zero });
+    for (const auto& elem : container) {
+      auto key = grouper(elem);
+      table[key] = folder(std::move(table[key]), elem);
+    }
+    return IntVector<R_elem<Z>>{ std::move(STLDS{std::move(table)}) };
+  }
+
+  template <class Fun>
+  auto ext_generic(Fun expand) const -> Vector<typename RT<Fun, Elem>::ElemType> {
+    typedef typename RT<Fun, Elem>::ElemType T;
+    Vector<T> result;
+    for (const Elem& elem : container) {
+      for (T&& elem2 : expand(elem).container) {
+        result.insert(std::move(elem2));
+      }
+    }
+    return result;
+  }
 };
 
 }  // namespace K3

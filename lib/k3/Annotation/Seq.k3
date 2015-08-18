@@ -14,6 +14,10 @@ annotation Seq given type a, b, c, d
   provides lifted safe_at : int -> (() -> a) -> (content -> a) -> a
     with effects \i -> \f -> \g -> [R[i]; R[self]; f content; g content]
 
+
+  ///////////////////////////////////////////////////////
+  // Modifiers.
+
   provides lifted insert : content -> ()
     with effects \elem -> [R[self]; R[elem]; W[self]]
 
@@ -26,11 +30,10 @@ annotation Seq given type a, b, c, d
 
 
   //////////////////////////////////////////////////
-  // Sequence-specific methods.
+  // Sequence methods.
 
   provides lifted sort : (content -> content -> int) -> self
     with effects \sortF -> [R[self]; ([R[content]; ((sortF content) content)])*]
-
 
   ///////////////////////////////////////////////////
   // Bulk transformations.
@@ -60,15 +63,15 @@ annotation Seq given type a, b, c, d
     with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
 
   @:{Transformer, CArgs 3}
-  provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @Seq
+  provides lifted group_by : (content -> a) -> (b -> content -> b) -> b
+                              -> collection { key : a, value : b } @Seq
     with effects
       \gbF -> \gaccF -> \z ->
         [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:{Transformer, CArgs 4}
-  provides lifted groupByContiguous : (content -> a) -> (b -> content -> b) -> b -> int
-                                       -> collection { key : a, value : b } @Seq
+  provides lifted group_by_contiguous : (content -> int) -> (a -> content -> a) -> a -> int
+                                         -> collection { key : int, value : a } @Seq
     with effects
       \gbF -> \gaccF -> \z -> \s ->
         [R[self]; R[z]; R[s]; ([R[content]; gbF content; gaccF content])*]
@@ -88,16 +91,16 @@ annotation Seq given type a, b, c, d
                    [R[self]; ([R[other]; R[content]; matchLF content; matchRF none; outputF content none])*]
 
   @:{Transformer, CArgs 3}
-  provides lifted joinKV : collection {key: a, value: b} @Seq
+  provides lifted join_kv : collection {key: a, value: b} @Seq
                              -> (content -> {key: a, value: b} -> bool) -> (content -> {key: a, value: b} -> c)
                              -> collection {elem: c} @Seq
     with effects \other -> \matchF -> \outputF ->
                    [R[self]; ([R[other]; R[content]; matchF content none; outputF content none])*]
 
   @:{Transformer, CArgs 4}
-  provides lifted equijoinKV : collection {key: a, value: b} @Seq
-                                -> (content -> c) -> ({key: a, value: b} -> c) -> (content -> {key: a, value: b} -> d)
-                                -> collection {elem: d} @Seq
+  provides lifted equijoin_kv : collection {key: a, value: b} @Seq
+                                 -> (content -> c) -> ({key: a, value: b} -> c) -> (content -> {key: a, value: b} -> d)
+                                 -> collection {elem: d} @Seq
     with effects \other -> \matchLF -> \matchRF -> \outputF ->
                    [R[self]; ([R[other]; R[content]; matchLF content; matchRF none; outputF content none])*]
 
@@ -105,8 +108,4 @@ annotation Seq given type a, b, c, d
   provides lifted ext : (content -> collection {elem : a} @Seq)
                          -> collection {elem : a} @Seq
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
-
-  @:{Transformer, CArgs 3}
-  provides lifted sample : (a -> content -> a) -> a -> int -> a
-    with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
 }

@@ -27,7 +27,7 @@ annotation SortedMap given type a,b
     with effects \elem -> [R[self]; R[elem]; W[self]]
 
   @:CArgs 2
-  provides lifted update  : content -> (content -> ())
+  provides lifted update  : content -> content -> ()
     with effects \oldElem -> \newElem -> [R[self]; R[oldElem]; R[newElem]; W[self]]
 
   provides lifted erase  : content -> ()
@@ -135,15 +135,15 @@ annotation SortedMap given type a,b
     with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
 
   @:{Transformer, CArgs 3}
-  provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @SortedMap
+  provides lifted group_by : (content -> a) -> (b -> content -> b) -> b
+                              -> collection { key : a, value : b } @SortedMap
     with effects
       \gbF -> \gaccF -> \z ->
         [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:{Transformer, CArgs 4}
-  provides lifted groupByContiguous : (content -> a) -> (b -> content -> b) -> b -> int
-                                       -> collection { key : a, value : b } @SortedMap
+  provides lifted group_by_contiguous : (content -> int) -> (a -> content -> a) -> a -> int
+                                         -> collection { key : int, value : a } @SortedMap
     with effects
       \gbF -> \gaccF -> \z -> \s ->
         [R[self]; R[z]; R[s]; ([R[content]; gbF content; gaccF content])*]
@@ -152,9 +152,5 @@ annotation SortedMap given type a,b
   provides lifted ext : (content -> collection {key : a, value: b} @SortedMap)
                          -> collection {key : a, value: b} @SortedMap
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
-
-  @:{Transformer, CArgs 3}
-  provides lifted sample : (a -> content -> a) -> a -> int -> a
-    with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
 
 }

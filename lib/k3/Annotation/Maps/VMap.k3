@@ -128,15 +128,15 @@ annotation VMap given type a,b
     with effects \version -> \foldF -> \z -> [R[version]; R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
 
   @:CArgs 4
-  provides lifted groupBy : int -> (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @VMap
+  provides lifted group_by : int -> (content -> a) -> (b -> content -> b) -> b
+                              -> collection { key : a, value : b } @VMap
     with effects
       \version -> \gbF -> \gaccF -> \z ->
         [R[version]; R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:CArgs 5
-  provides lifted groupByContiguous : int -> (content -> a) -> (b -> content -> b) -> b -> int
-                                       -> collection { key : a, value : b } @VMap
+  provides lifted group_by_contiguous : int -> (content -> int) -> (a -> content -> a) -> a -> int
+                                         -> collection { key : int, value : a } @VMap
     with effects
       \version -> \gbF -> \gaccF -> \z -> \s ->
         [R[version]; R[self]; R[z]; R[s]; ([R[content]; gbF content; gaccF content])*]
@@ -145,6 +145,4 @@ annotation VMap given type a,b
   provides lifted ext : int -> (content -> collection {key : a, value: b} @VMap)
                          -> collection {key : a, value: b} @VMap
     with effects \version -> \extF -> [R[version]; R[self]; ([R[content]; extF content])*]
-
-
 }

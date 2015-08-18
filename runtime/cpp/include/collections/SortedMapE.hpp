@@ -348,8 +348,8 @@ class SortedMapE {
   }
 
   template<typename Fun>
-  auto map(Fun f) const -> SortedMapE< RT<Fun, R> > {
-    SortedMapE< RT<Fun,R> > result;
+  auto map_generic(Fun f) const -> SortedMap< RT<Fun, R> > {
+    SortedMap< RT<Fun,R> > result;
     for (const auto& p : container) {
       result.insert( f(p.second) );
     }
@@ -376,10 +376,12 @@ class SortedMapE {
   }
 
   template<typename F1, typename F2, typename Z>
-  SortedMapE< R_key_value< RT<F1, R>,Z >> groupBy(F1 grouper, F2 folder, const Z& init) const {
+  SortedMap< R_key_value< RT<F1, R>,Z >>
+  group_by_generic(F1 grouper, F2 folder, const Z& init) const
+  {
     // Create a map to hold partial results
     typedef RT<F1, R> K;
-    std::map<K, Z> accs;
+    std::unordered_map<K, Z> accs;
 
     for (const auto& it : container) {
       K key = grouper(it.second);
@@ -389,39 +391,20 @@ class SortedMapE {
       accs[key] = folder(std::move(accs[key]), it.second);
     }
 
-    // TODO more efficient implementation?
-    SortedMapE<R_key_value<K,Z>> result;
+    SortedMap<R_key_value<K,Z>> result;
     for (auto&& it : accs) {
       result.insert(std::move(R_key_value<K, Z> {std::move(it.first), std::move(it.second)}));
     }
     return result;
   }
 
-  template <class F1, class F2, class Z>
-  SortedMapE<R_key_value<RT<F1, R>, Z>>
-  groupByContiguous(F1 grouper, F2 folder, const Z& zero, const int& size) const
-  {
-    auto table = std::vector<Z>(size, zero);
-    for (const auto& elem : container) {
-      auto key = grouper(elem);
-      table[key] = folder(std::move(table[key]), elem);
-    }
-    // Build the R_key_value records and insert them into result
-    SortedMapE<R_key_value<RT<F1, R>, Z>> result;
-    for (auto i = 0; i < table.size(); ++i) {
-      // move out of the map as we iterate
-      result.insert(R_key_value<int, Z>{i, std::move(table[i])});
-    }
-    return result;
-  }
-
   template <class Fun>
-  auto ext(Fun expand) const -> SortedMapE < typename RT<Fun, R>::ElemType >  {
+  auto ext_generic(Fun expand) const -> SortedMap < typename RT<Fun, R>::ElemType >  {
     typedef typename RT<Fun, R>::ElemType T;
-    SortedMapE<T> result;
+    SortedMap<T> result;
     for (const auto& it : container) {
-      for (auto& it2 : expand(it.second).container) {
-        result.insert(it2.second);
+      for (auto&& it2 : expand(it.second).container) {
+        result.insert(std::move(it2.second));
       }
     }
 

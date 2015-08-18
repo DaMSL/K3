@@ -147,16 +147,19 @@ class IntMap {
     }
   }
 
-  template <class F>
-  unit_t lookup_key(int key, F f) const {
+  template <class F, class G>
+  auto lookup_key(int key, F f, G g) const {
     mapi* m = get_mapi();
-    if (m->size > 0) {
+    if (m->size == 0) {
+      return f(unit_t{});
+    } else {
       auto existing = mapi_find(m, key);
-      if (existing != nullptr) {
-        return f(*static_cast<R*>(existing));
+      if (existing == nullptr) {
+        return f(unit_t{});
+      } else {
+        return g(*static_cast<R*>(existing));
       }
     }
-    return unit_t{};
   }
 
   // TODO(yanif): Fix insert semantics to replace value if key exists.
@@ -182,26 +185,6 @@ class IntMap {
       }
     }
     return unit_t();
-  }
-
-  template <class F, class G>
-  unit_t update_key(int key, F f, G g) {
-    mapi* m = get_mapi();
-    if (m->size == 0) {
-      auto rec = f(unit_t{});
-      auto* placement = static_cast<R*>(
-          mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec))));
-    } else {
-      auto* existing = static_cast<R*>(mapi_find(m, key));
-      if (existing == nullptr) {
-        auto rec = f(unit_t{});
-        auto* placement = static_cast<R*>(
-            mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec))));
-      } else {
-        *existing = g(std::move(*existing));
-      }
-    }
-    return unit_t{};
   }
 
   unit_t erase(const R& rec) {
@@ -244,6 +227,22 @@ class IntMap {
         auto* placement = static_cast<R*>(
             mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec))));
         *placement = f(unit_t{});
+      } else {
+        *existing = g(std::move(*existing));
+      }
+    }
+    return unit_t{};
+  }
+
+  template <class F, class G>
+  unit_t upsert_with_key(int key, F f, G g) {
+    mapi* m = get_mapi();
+    if (m->size == 0) {
+      insert(f(unit_t{}));
+    } else {
+      auto* existing = static_cast<R*>(mapi_find(m, key));
+      if (existing == nullptr) {
+        insert(f(unit_t{}));
       } else {
         *existing = g(std::move(*existing));
       }
@@ -304,6 +303,16 @@ class IntMap {
   }
 
   template <typename Fun>
+  auto map_generic(Fun f) const -> Map<RT<Fun, R>> {
+    mapi* m = get_mapi();
+    Map<RT<Fun, R>> result;
+    for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
+      result.insert(f(*o));
+    }
+    return result;
+  }
+
+  template <typename Fun>
   IntMap<R> filter(Fun predicate) const {
     mapi* m = get_mapi();
     IntMap<R> result;
@@ -325,7 +334,7 @@ class IntMap {
   }
 
   template <typename F1, typename F2, typename Z>
-  IntMap<R_key_value<RT<F1, R>, Z>> groupBy(F1 grouper, F2 folder, const Z& init) const
+  IntMap<R_key_value<RT<F1, R>, Z>> group_by(F1 grouper, F2 folder, const Z& init) const
   {
     // Create a map to hold partial results
     typedef RT<F1, R> K;
@@ -351,7 +360,32 @@ class IntMap {
   }
 
   template <typename F1, typename F2, typename Z>
-  IntMap<R_key_value<RT<F1, R>, Z>> groupByContiguous(F1 grouper, F2 folder, const Z& init, const int& size) const
+  Map<R_key_value<RT<F1, R>, Z>> group_by_generic(F1 grouper, F2 folder, const Z& init) const
+  {
+    // Create a std::unordered_map to hold partial results
+    typedef RT<F1, R> K;
+    std::unordered_map<K, Z> accs;
+
+    mapi* m = get_mapi();
+    for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
+      K key = grouper(*o);
+      if (accs.find(key) == accs.end()) {
+        accs[key] = init;
+      }
+      accs[key] = folder(std::move(accs[key]), *o);
+    }
+
+    Map<R_key_value<K, Z>> result;
+    for (auto&& it : accs) {
+      result.insert(std::move(
+          R_key_value<K, Z>{std::move(it.first), std::move(it.second)}));
+    }
+    return result;
+  }
+
+  template <typename F1, typename F2, typename Z>
+  IntMap<R_key_value<RT<F1, R>, Z>>
+  group_by_contiguous(F1 grouper, F2 folder, const Z& init, const int& size) const
   {
     typedef RT<F1, R> K;
     IntMap<R_key_value<K, Z>> result;
@@ -389,6 +423,19 @@ class IntMap {
     return result;
   }
 
+  template <class Fun>
+  auto ext_generic(Fun expand) const -> Map<typename RT<Fun, R>::ElemType> {
+    typedef typename RT<Fun, R>::ElemType T;
+    Map<T> result;
+    mapi* m = get_mapi();
+    auto end = mapi_end(m);
+    for (auto it = mapi_begin(m); it < end; it = mapi_next(m, it)) {
+      for (T&& elem : expand(*it).container) {
+        result.insert(std::move(elem));
+      }
+    }
+    return result;
+  }
 
   bool operator==(const IntMap& other) const {
     return get_mapi() == other.get_mapi() ||

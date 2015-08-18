@@ -1,5 +1,3 @@
-include "Annotation/Sorted.k3"
-
 annotation Collection given type a, b, c, d
 {
   provides lifted size : () -> int
@@ -9,11 +7,15 @@ annotation Collection given type a, b, c, d
   provides lifted peek : (() -> a) -> (content -> a) -> a
     with effects \f -> \g -> [R[self]; f content; g content]
 
+
+  ///////////////////////////////////////////////////////
+  // Modifiers.
+
   provides lifted insert : content -> ()
     with effects \elem -> [R[self]; R[elem]; W[self]]
 
   @:CArgs 2
-  provides lifted update : content -> (content -> ())
+  provides lifted update : content -> content -> ()
     with effects \oldElem -> \newElem -> [R[self]; R[oldElem]; R[newElem]; W[self]]
 
   provides lifted erase : content -> ()
@@ -48,15 +50,15 @@ annotation Collection given type a, b, c, d
     with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
 
   @:{Transformer, CArgs 3}
-  provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @Collection
+  provides lifted group_by : (content -> a) -> (b -> content -> b) -> b
+                              -> collection { key : a, value : b } @Collection
     with effects
       \gbF -> \gaccF -> \z ->
         [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:{Transformer, CArgs 4}
-  provides lifted groupByContiguous : (content -> a) -> (b -> content -> b) -> b -> int
-                                      -> collection { key : a, value : b } @Collection
+  provides lifted group_by_contiguous : (content -> int) -> (a -> content -> a) -> a -> int
+                                         -> collection { key : int, value : a } @Collection
     with effects
       \gbF -> \gaccF -> \z -> \s ->
         [R[self]; R[z]; R[s]; ([R[content]; gbF content; gaccF content])*]
@@ -76,14 +78,14 @@ annotation Collection given type a, b, c, d
                    [R[self]; ([R[other]; R[content]; matchLF content; matchRF none; outputF content none])*]
 
   @:{Transformer, CArgs 3}
-  provides lifted joinKV : collection {key: a, value: b} @Collection
+  provides lifted join_kv : collection {key: a, value: b} @Collection
                             -> (content -> {key: a, value: b} -> bool) -> (content -> {key: a, value: b} -> c)
                             -> collection {elem: c} @Collection
     with effects \other -> \matchF -> \outputF ->
                    [R[self]; ([R[other]; R[content]; matchF content none; outputF content none])*]
 
   @:{Transformer, CArgs 4}
-  provides lifted equijoinKV : collection {key: a, value: b} @Collection
+  provides lifted equijoin_kv : collection {key: a, value: b} @Collection
                                 -> (content -> c) -> ({key: a, value: b} -> c) -> (content -> {key: a, value: b} -> d)
                                 -> collection {elem: d} @Collection
     with effects \other -> \matchLF -> \matchRF -> \outputF ->
@@ -93,8 +95,4 @@ annotation Collection given type a, b, c, d
   provides lifted ext : (content -> collection {elem : a} @Collection)
                          -> collection {elem : a} @Collection
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
-
-  @:{Transformer, CArgs 3}
-  provides lifted sample : (a -> content -> a) -> a -> int -> a
-    with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
 }

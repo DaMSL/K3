@@ -200,9 +200,9 @@ class Map {
   }
 
   template <typename F1, typename F2, typename Z>
-  Map<R_key_value<RT<F1, R>, Z>> groupBy(F1 grouper, F2 folder, const Z& init) const
+  Map<R_key_value<RT<F1, R>, Z>> group_by(F1 grouper, F2 folder, const Z& init) const
   {
-    // Create a std::map to hold partial results
+    // Create a std::unordered_map to hold partial results
     typedef RT<F1, R> K;
     std::unordered_map<K, Z> accs;
 
@@ -224,7 +224,7 @@ class Map {
 
   template <class F1, class F2, class Z>
   Map<R_key_value<RT<F1, R>, Z>>
-  groupByContiguous(F1 grouper, F2 folder, const Z& zero, const int& size) const
+  group_by_contiguous(F1 grouper, F2 folder, const Z& zero, const int& size) const
   {
     auto table = std::vector<Z>(size, zero);
     for (const auto& elem : container) {
@@ -245,8 +245,8 @@ class Map {
     typedef typename RT<Fun, R>::ElemType T;
     Map<T> result;
     for (const auto& it : container) {
-      for (auto& it2 : expand(it.second).container) {
-        result.insert(it2.second);
+      for (auto&& it2 : expand(it.second).container) {
+        result.insert(std::move(it2.second));
       }
     }
     return result;
