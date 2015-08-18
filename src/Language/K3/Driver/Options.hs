@@ -169,7 +169,9 @@ data QueryOptions = QueryOptions { qsargs :: Either [String] [Int] }
 data SQLOptions = SQLOptions { sqlPrintMode       :: PrintMode
                              , sqlPrintParse      :: Bool
                              , sqlUntyped         :: Bool
-                             , sqlDistributedPlan :: Bool }
+                             , sqlDistributedPlan :: Bool
+                             , sqlDoCompile       :: Bool
+                             , sqlCompile         :: Maybe CompileOptions }
                 deriving (Eq, Read, Show, Generic)
 
 -- | Verbosity levels.
@@ -769,7 +771,9 @@ allProgOpt = flag' (QueryOptions $ Right [])
 
 -- | SQL mode
 sqlOptions :: Parser Mode
-sqlOptions = SQL <$> ( SQLOptions <$> printModeOpt "" <*> sqlPrintParseOpt <*> sqlUntypedOpt <*> sqlDistributedOpt )
+sqlOptions = SQL <$> ( SQLOptions <$> printModeOpt "" <*> sqlPrintParseOpt <*> sqlUntypedOpt
+                                  <*> sqlDistributedOpt <*> sqlDoCompileOpt
+                                  <*> optional (compileOpts LocalCompiler) )
 
 sqlPrintParseOpt :: Parser Bool
 sqlPrintParseOpt = switch (   long "sqlast"
@@ -782,6 +786,11 @@ sqlUntypedOpt = switch (   long "sqluntyped"
 sqlDistributedOpt :: Parser Bool
 sqlDistributedOpt = switch (   long "sqldistributed"
                             <> help "Generated a distributed SQL query plan." )
+
+sqlDoCompileOpt :: Parser Bool
+sqlDoCompileOpt = switch (  long "sqlcompile"
+                           <> help "Compile SQL binary." )
+
 
 {- Top-level options -}
 
@@ -851,7 +860,7 @@ instance Pretty Mode where
   prettyLines (Interpret iOpts) = ["Interpret "] ++ (indent 2 $ prettyLines iOpts)
   prettyLines (Typecheck tOpts) = ["Typecheck " ++ show tOpts]
   prettyLines (Service   sOpts) = ["Service " ++ show sOpts]
-  prettyLines (SQL       sOpts) = ["SQL" ++ show sOpts]
+  prettyLines (SQL       sOpts) = ["SQL " ++ show sOpts]
 
 instance Pretty InterpretOptions where
   prettyLines (Batch net env expr par printConf console cstages) =

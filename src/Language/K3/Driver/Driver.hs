@@ -32,7 +32,7 @@ import Language.K3.Utils.Pretty.Syntax
 
 import Language.K3.Parser ( stitchK3Includes )
 import Language.K3.Parser.ProgramBuilder ( defaultRoleName )
-import Language.K3.Parser.SQL hiding ( liftEitherM, reasonM )
+import qualified Language.K3.Parser.SQL as SQL
 
 import Language.K3.Metaprogram.DataTypes
 import Language.K3.Metaprogram.Evaluation
@@ -274,7 +274,9 @@ initialize opts = liftIO $ do
 sql :: SQLOptions -> Options -> DriverM ()
 sql sqlopts opts = do
   stmtE <- liftIO $ parseStatementsFromFile path
-  either (liftIO . putStrLn . show) k3program stmtE
+  flip (either (liftIO . putStrLn . show)) stmtE $ \stmts -> do
+    (env, isg) <- sqlstmts stmts
+    sqlcg env isg
 
   where
     dependencies = map (\s -> "include \"" ++ s ++ "\"")
@@ -282,38 +284,46 @@ sql sqlopts opts = do
                      , "Core/Barrier.k3"
                      , "Distributed/SQLTransformers.k3" ]
 
-    path = inputProgram $ input opts
+    path         = inputProgram $ input opts
     includePaths = includes $ paths opts
-    nf = noFeed $ input opts
-    printParse = sqlPrintParse sqlopts
-    asSyntax = case sqlPrintMode sqlopts of
-                 PrintSyntax -> True
-                 _ -> False
+    nf           = noFeed $ input opts
 
-    k3program stmts = do
+    printParse = sqlPrintParse sqlopts
+    asSyntax   = case sqlPrintMode sqlopts of
+                   PrintSyntax -> True
+                   _ -> False
+
+    sqlstmts stmts = do
       void $ if printParse then printStmts stmts else return ()
-      (prog, psqlenv) <- liftEitherM $ runSQLParseEM sqlenv0 $ do
-          qstmts <- mapM sqlstmt stmts;
-          return $ DC.role defaultRoleName $ concat qstmts
+      ((rstmts, stggraph, pstr, gstrs), env) <- liftEitherM $ SQL.runSQLParseEM SQL.sqlenv0 $ do
+          nstmts <- SQL.sqloptimize stmts
+          if sqlDistributedPlan sqlopts
+            then do
+              (sstmts, stggraph) <- SQL.sqlstage nstmts
+              (\a b -> (sstmts, stggraph, unlines a, b)) <$> SQL.sqlstringify sstmts <*> SQL.sqldepgraph sstmts
+            else
+              (\a b -> (nstmts, [], unlines a, b)) <$> SQL.sqlstringify nstmts <*> SQL.sqldepgraph nstmts
+
+      liftIO $ putStrLn $ boxToString $ ["Program", pstr, "", "Dependency Graph"] %$ gstrs
+      return (env, (rstmts, stggraph))
+
+    sqlcg env sg = do
+      (prog, _) <- liftEitherM $ SQL.runSQLParseEM env $ SQL.sqlcodegen (sqlDistributedPlan sqlopts) sg
       if sqlUntyped sqlopts
         then liftIO $ putStrLn $ pretty prog
-        else stageprogram psqlenv prog
+        else sqlprog prog
 
-    stageprogram env prog = do
+    sqlprog prog = do
       sprog <- liftE $ stitchK3Includes nf includePaths dependencies prog
       mprog <- metaprogram opts sprog
-      (nprog, psqlenv) <- liftEitherM $ runSQLParseEM env $ sqlstages (sqlDistributedPlan sqlopts) mprog
-      smprog <- metaprogram opts nprog
-      encprog <- if asSyntax then liftEitherM $ programS smprog else return $ pretty smprog
-      liftIO $ putStrLn encprog
-      printState psqlenv
+      case (sqlDoCompile sqlopts, sqlCompile sqlopts) of
+        (True, Just cOpts) -> dispatch (opts {mode = Compile cOpts}) mprog
+
+        (_, _) -> do
+          encprog <- if asSyntax then liftEitherM $ programS mprog else return $ pretty mprog
+          liftIO $ putStrLn encprog
 
     printStmts stmts = liftIO $ do
       putStrLn $ replicate 40 '='
       void $ forM stmts $ \s -> putStrLn $ show s
       putStrLn $ replicate 40 '='
-
-    printState st = liftIO $ do
-      putStrLn $ replicate 40 '=' ++ " Dependency Graph"
-      forM_ (Map.toList $ adgraph st) $ \(p, node) ->
-        putStrLn $ unwords [show p, show $ adnn node, show $ adnr node, show $ adnch node ]

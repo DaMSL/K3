@@ -66,7 +66,7 @@ optimizeMaterialization (p, f) d = runExceptT $ inferMaterialization >>= solveMa
     Left (SError msg) -> throwError msg
     Right (_, SState mp) -> return mp
    where
-    solveAction = (mkDependencyList ct >>= traverse_ (\k -> solveForE (ct M.! k) >>= setMethod k))
+    solveAction = (mkDependencyList ct d >>= flip solveForAll ct)
 
   attachMaterialization k m = return $ attachD <$> k
    where
@@ -520,34 +520,57 @@ getMethod :: DKey -> SolverM Method
 getMethod k = gets assignments >>= maybe (throwError $ SError $ "Unconfirmed decision for " ++ show k) return . M.lookup k
 
 -- ** Sorting
-mkDependencyList :: M.Map DKey (K3 MExpr) -> SolverM [DKey]
-mkDependencyList m = mkDependencySets m >>= topoSortWithDependencySets
+mkDependencyList :: M.Map DKey (K3 MExpr) -> K3 Declaration -> SolverM [Either DKey DKey]
+mkDependencyList m p = return (buildHybridDepList graph)
+ where
+  graph = [(k, k, S.toList (findDependenciesE $ m M.! k)) | k <- M.keys m]
+  collapseSCCs scc = case scc of
+    G.AcyclicSCC (v, _, _) -> [Right v]
+    G.CyclicSCC vs -> let ((v', _, _):vs') = sortByProgramUID vs p
+                      in Left v' : (buildHybridDepList vs')
+  buildHybridDepList g = concatMap collapseSCCs (G.stronglyConnCompR g)
 
-mkDependencySets :: M.Map DKey (K3 MExpr) -> SolverM (M.Map DKey (S.Set DKey))
-mkDependencySets = traverse findDependenciesE
+  sortByProgramUID :: [(DKey, DKey, [DKey])] -> K3 Declaration -> [(DKey, DKey, [DKey])]
+  sortByProgramUID ks d = fst $ fst $ foldProgramUID' moveToFront ([], ks) d
 
-findDependenciesE :: K3 MExpr -> SolverM (S.Set DKey)
+  moveToFront (ns, os) u = let (ns', os') = L.partition (\(_, (Juncture k _, _), _) -> k == u) os in (ns' ++ ns, os')
+
+  foldProgramUID' :: (a -> UID -> a) -> a -> K3 Declaration -> (a, K3 Declaration)
+  foldProgramUID' uidF z d = runIdentity $ foldProgram onDecl onMem onExpr (Just onType) z d
+    where onDecl a n = return $ (dUID a n, n)
+          onExpr a n = foldTree' (\a' n' -> return $ eUID a' n') a n >>= return . (,n)
+          onType a n = foldTree' (\a' n' -> return $ tUID a' n') a n >>= return . (,n)
+
+          onMem a mem@(Lifted    _ _ _ _ anns) = return $ (dMemUID a anns, mem)
+          onMem a mem@(Attribute _ _ _ _ anns) = return $ (dMemUID a anns, mem)
+          onMem a mem@(MAnnotation   _ _ anns) = return $ (dMemUID a anns, mem)
+
+          dUID a n = maybe a (\case {DUID b -> uidF a b; _ -> a}) $ n @~ isDUID
+          eUID a n = maybe a (\case {EUID b -> uidF a b; _ -> a}) $ n @~ isEUID
+          tUID a n = maybe a (\case {TUID b -> uidF a b; _ -> a}) $ n @~ isTUID
+
+          dMemUID a anns = maybe a (\case {DUID b -> uidF a b; _ -> a}) $ find isDUID anns
+
+  foldTree' f x n@(Node _ []) = f x n
+  foldTree' f x n@(Node _ ch) = f x n >>= flip (foldM (foldTree' f)) ch
+
+findDependenciesE :: K3 MExpr -> S.Set DKey
 findDependenciesE e = case tag e of
-  MVar j d -> return [(j, d)]
-  MAtom _ -> return []
-  MIfThenElse p -> S.union <$> (S.unions <$> traverse findDependenciesE (children e)) <*> findDependenciesP p
+  MVar j d -> [(j, d)]
+  MAtom _ -> []
+  MIfThenElse p -> S.union (S.unions $ fmap findDependenciesE (children e)) (findDependenciesP p)
 
-findDependenciesP :: K3 MPred -> SolverM (S.Set DKey)
+findDependenciesP :: K3 MPred -> S.Set DKey
 findDependenciesP p = case tag p of
   MOneOf e _ -> findDependenciesE e
-  _ -> S.unions <$> traverse findDependenciesP (children p)
-
-topoSortWithDependencySets :: M.Map DKey (S.Set DKey) -> SolverM [DKey]
-topoSortWithDependencySets m
-  | M.null m = return []
-  | M.null rootSet = throwError $ SError $ "cycle in materialization dependencies." ++ show remaining ++ show missingVariables
-  | otherwise = (M.keys rootSet ++) <$> topoSortWithDependencySets reducedMap
- where
-  (rootSet, remaining) = M.partition S.null m
-  reducedMap = M.map (S.\\ (M.keysSet rootSet)) remaining
-  missingVariables = S.unions (M.elems m) S.\\ M.keysSet m
+  _ -> S.unions $ fmap findDependenciesP (children p)
 
 -- ** Solving
+solveForAll :: [Either DKey DKey] -> M.Map DKey (K3 MExpr) -> SolverM ()
+solveForAll eks m = for_ eks $ \case
+  Left fk -> setMethod fk Copied
+  Right rk -> solveForE (m M.! rk) >>= setMethod rk
+
 solveForE :: K3 MExpr -> SolverM Method
 solveForE m = case tag m of
   MVar j d -> getMethod (j, d)
