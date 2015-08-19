@@ -6,6 +6,7 @@
 #include <boost/thread/thread.hpp>
 
 #include "types/BaseString.hpp"
+#include "collections/Collection.hpp"
 #include "Common.hpp"
 #include "core/Engine.hpp"
 
@@ -35,9 +36,19 @@ class FileBuiltins {
     return __engine_.getStorageManager().hasRead(peer, id);
   }
 
-  template <class T>
-  T doRead(const Address& peer, const string_impl& id) {
-    return __engine_.getStorageManager().doRead<T>(peer, id);
+  // TODO(jbw) template instead of string?
+  string_impl doRead(const Address& peer, const string_impl& id) {
+    return string_impl(__engine_.getStorageManager().doRead<string>(peer, id));
+  }
+
+  Collection<R_elem<string_impl>> doBlockRead(const Address& peer, const string_impl& id, int block_size) {
+    Collection<R_elem<string_impl>> result;
+    auto block = __engine_.getStorageManager().doBlockRead<string>(peer, id, block_size);
+    result.getContainer().reserve(block.size());
+    for (string& elem : block) {
+      result.getContainer().push_back(R_elem<string_impl> {string_impl(std::move(elem))});
+    }
+    return std::move(result);
   }
 
   bool hasWrite(const Address& peer, const string_impl& id) {
@@ -50,7 +61,7 @@ class FileBuiltins {
     return unit_t{};
   }
 
-  // TODO(jbw) block versions
+  // TODO(jbw) block write
 
  protected:
   Engine& __engine_;

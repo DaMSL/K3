@@ -22,7 +22,7 @@ bool SourceFileHandle::hasRead() {
 }
 
 // TODO: Optimize using low-level c file I/O (if needed)
-shared_ptr<PackedValue> SourceFileHandle::doRead() {
+unique_ptr<PackedValue> SourceFileHandle::doRead() {
   // Get value size
   uint32_t len;
 
@@ -35,8 +35,7 @@ shared_ptr<PackedValue> SourceFileHandle::doRead() {
   // Read data from file to buffer
   file_.read((char *) buf.data(), len);
 
-  shared_ptr<PackedValue> result = make_shared<BufferPackedValue>(std::move(buf), fmt_);
-  return result;  
+  return make_unique<BufferPackedValue>(std::move(buf), fmt_);
 }
 
 SourceTextHandle::SourceTextHandle (std::string path, CodecFormat fmt) {
@@ -50,18 +49,14 @@ SourceTextHandle::SourceTextHandle (std::string path, CodecFormat fmt) {
   fmt_ = fmt;
 }
 
-
-shared_ptr<PackedValue> SourceTextHandle::doRead()  {
+unique_ptr<PackedValue> SourceTextHandle::doRead()  {
   // allocate buffer
   std::string buf;
-
+  auto p = make_unique<StringPackedValue>(std::move(buf), fmt_);
   //Read next line
-  std::getline (file_, buf);
-
-  shared_ptr<PackedValue> result = make_shared<StringPackedValue>(std::move(buf), fmt_);
-  return result;  
+  std::getline (file_, p->string_);
+  return std::move(p);
 }
-
 
 //  SINK FILE HANDLE (binary file access)
 SinkFileHandle::SinkFileHandle (std::string path, CodecFormat fmt) : FileHandle(fmt) {

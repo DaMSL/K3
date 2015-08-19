@@ -33,24 +33,29 @@ size_t BufferPackedValue::length() const {
 }
 
 StringPackedValue::StringPackedValue(string&& b, CodecFormat format)
-    : PackedValue(format) {
-  string_ = std::make_unique<string>(std::move(b));
-}
+    : PackedValue(format), string_(std::move(b)) { }
 
 const char* StringPackedValue::buf() const {
-  if (string_) {
-    return string_->c_str();
-  } else {
-    throw std::runtime_error("StringPackedValue buf(): string pointer null");
-  }
+  return string_.c_str();
 }
 
 size_t StringPackedValue::length() const {
-  if (string_) {
-    return string_->length();
-  } else {
-    throw std::runtime_error("StringPackedValue length(): string pointer null");
-  }
+  return string_.length();
+}
+
+string StringPackedValue::steal() {
+  return std::move(string_);
+}
+
+BaseStringRefPackedValue::BaseStringRefPackedValue(const base_string& b, CodecFormat format)
+    : PackedValue(format), string_(b) { }
+
+const char* BaseStringRefPackedValue::buf() const {
+  return string_.c_str();
+}
+
+size_t BaseStringRefPackedValue::length() const {
+  return string_.length();
 }
 
 YASPackedValue::YASPackedValue(yas::shared_buffer b, CodecFormat format)

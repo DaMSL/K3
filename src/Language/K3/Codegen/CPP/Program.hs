@@ -329,13 +329,13 @@ generateDispatchers isNative = do
                         then
                           R.Call (R.Project (R.Dereference $ (R.Variable $ R.Name "value_")) ( R.Specialized [argType] (R.Name "template as"))) []
                         else
-                          R.Call (R.Variable $ R.Specialized [argType] (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "value_", R.Call (R.Project (R.Dereference (R.Variable $ R.Name "value_")) (R.Name "format")) [] ]
+                          R.Call (R.Variable $ R.Specialized [argType] (R.Name "unpack")) [R.Move $ R.Variable $ R.Name "value_"]
 
        let call_op = R.FunctionDefn (R.Name $ "operator()") [] (Just $ R.Void) [] False
                       ([R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "context_") (R.Name tName)) [R.Move $ R.Dereference $ casted_val]])
 
        let jsonify = R.FunctionDefn (R.Name $ "jsonify") [] (Just $ R.Primitive $ R.PString) [] True
-                      ([R.Return $ R.Call (R.Variable $ R.Specialized [argType] (R.Qualified (R.Name "K3") (R.Qualified (R.Name "serialization") (R.Qualified (R.Name "json") (R.Name "encode"))))) [R.Dereference $ casted_val]])
+                      ([R.Return $ R.Call (R.Variable $ R.Specialized [argType] (R.Qualified (R.Name "K3") (R.Qualified (R.Name "serialization") (R.Qualified (R.Name "json") (R.Name "encode"))))) [if isNative then R.Dereference casted_val else R.Dereference $ R.Call (R.Variable $ R.Specialized [argType] (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "value_"]]])
        let methods = [constructor, call_op, jsonify]
        return $ R.TemplateDefn [("CONTEXT", Nothing)] (R.ClassDefn (R.Name $ tName ++ valName ++ "Dispatcher") [] [R.Named $ R.Name "Dispatcher"] methods [] members)
 
