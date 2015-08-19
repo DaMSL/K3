@@ -418,25 +418,23 @@ builtinLiftedAttribute annId n _ =
     "map"         -> wrapF mapFn
     "filter"      -> wrapF filterFn
     "fold"        -> wrapF foldFn
-    "groupBy"     -> wrapF groupByFn
+    "group_by"    -> wrapF groupByFn
     "ext"         -> wrapF extFn
 
     -- Sequential collection methods
     "sort"        -> wrapF sortFn
 
     -- Set collection methods
-    "member"      -> wrapF memberFn
-    "isSubsetOf"  -> wrapF isSubsetOfFn
-    "union"       -> wrapF unionFn
-    "intersect"   -> wrapF intersectFn
-    "difference"  -> wrapF differenceFn
+    "member"        -> wrapF memberFn
+    "is_subset_of"  -> wrapF isSubsetOfFn
+    "intersect"     -> wrapF intersectFn
+    "difference"    -> wrapF differenceFn
 
     -- Sorted collection methods
     "min"         -> wrapF minFn
     "max"         -> wrapF maxFn
     "lowerBound"  -> wrapF lowerBoundFn
     "upperBound"  -> wrapF upperBoundFn
-    "slice"       -> wrapF sliceFn
 
     _             -> providesError "lifted attribute" n
 

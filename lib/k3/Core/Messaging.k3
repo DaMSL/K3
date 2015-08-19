@@ -23,7 +23,7 @@ control PSendByKey[ dest_trg : expr, barrier_trg : expr, nodes : expr, send_extr
 control PartitionShuffleWithMissing[lbl: label, dest_trg: expr, nodes: expr, send_extra_fn: expr, send_ty: type] {
 
   (ignore (?e : collection ?t @IntMap )) => (
-    let partition_table = (((($.[e].groupBy @:HGroupBy)
+    let partition_table = (((($.[e].group_by @:HGroupBy)
                                      ((\v -> $[nodes].at_with (index_by_hash v.key) (\a -> a.addr)) @:Projection)
                                      ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
                                      empty $::[t] @IntMap) @:Fuse) @ManualFusion)
@@ -39,7 +39,7 @@ control PartitionShuffleWithMissing[lbl: label, dest_trg: expr, nodes: expr, sen
   }
 
   (ignore (?e : collection ?t @StrMap )) => (
-    let partition_table = (((($.[e].groupBy @:HGroupBy)
+    let partition_table = (((($.[e].group_by @:HGroupBy)
                                      ((\v -> $[nodes].at_with (index_by_hash v.key) (\a -> a.addr)) @:Projection)
                                      ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
                                      empty $::[t] @StrMap) @:Fuse) @ManualFusion)
@@ -56,7 +56,7 @@ control PartitionShuffleWithMissing[lbl: label, dest_trg: expr, nodes: expr, sen
 
 
   (ignore (?e : collection ?t @Map )) => (
-    let partition_table = (((($.[e].groupBy @:HGroupBy)
+    let partition_table = (((($.[e].group_by @:HGroupBy)
                                      ((\v -> $[nodes].at_with (index_by_hash v.key) (\a -> a.addr)) @:Projection)
                                      ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
                                      empty $::[t] @Map) @:Fuse) @ManualFusion)
@@ -74,12 +74,12 @@ control PartitionShuffleWithMissing[lbl: label, dest_trg: expr, nodes: expr, sen
 
 control PartitionByKey {
   ?e : collection ?t @Map
-      => ( ($.[e].groupBy @:HGroupBy) (\v -> index_by_hash v.key)
+      => ( ($.[e].group_by @:HGroupBy) (\v -> index_by_hash v.key)
                                       (\acc -> \v -> ((acc.insert v); acc))
                                       empty $::[t] @Map )
 
   ?e : collection ?t
-      => ( $.[e].groupBy (\v -> index_by_hash v.key)
+      => ( $.[e].group_by (\v -> index_by_hash v.key)
                          (\acc -> \v -> ((acc.insert v); acc))
                          empty $::[t] @Collection )
 }
@@ -87,13 +87,13 @@ control PartitionByKey {
 control PartitionRoundRobin [nodes : expr] {
   ?e : collection ?t @Map
     => ( let i = mut 0 in
-         ( ($.[e].groupBy @:HGroupBy) (\_ -> ((i = i + 1); (i % ($[nodes].size()))))
+         ( ($.[e].group_by @:HGroupBy) (\_ -> ((i = i + 1); (i % ($[nodes].size()))))
                                       (\acc -> \v -> ((acc.insert v); acc))
                                       empty $::[t] @Map ) )
 
   ?e : collection ?t
     => ( let i = mut 0 in
-         ( $.[e].groupBy (\_ -> ((i = i + 1); (i % ($[nodes].size()))))
+         ( $.[e].group_by (\_ -> ((i = i + 1); (i % ($[nodes].size()))))
                          (\acc -> \v -> ((acc.insert v); acc))
                          empty $::[t] @Collection ) )
 }
