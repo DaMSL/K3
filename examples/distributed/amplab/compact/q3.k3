@@ -35,38 +35,44 @@ trigger q3_local : () = \_ -> (
   user_visits.iterate (\uv ->
     if (valid_date uv.visitDate)
     then (
-      bind (uv.sourceIP, uv.destURL, index_by_hash uv.sourceIP) as (ip, url, a) in
-      case partial_aggs.lookup {key: a, value: empty_aggs_by_ip} of
-      { Some aggs ->
-        case rk_by_url.lookup {key: url, value: 0} of
-        {Some r ->
-          case (aggs.value.lookup {key: ip, value: empty_agg}) of
-          {Some pa_v ->
-             aggs.value.insert
-             {key: ip,
-              value: {prSum   : pa_v.value.prSum + r.value,
-                      prCount : pa_v.value.prCount + 1,
-                      arSum   : pa_v.value.arSum + uv.adRevenue } }
-          }
-          { None -> aggs.value.insert
-                      {key: ip, value: {prSum: r.value, prCount: 1, arSum: uv.adRevenue} }
-          };
-          partial_aggs.insert {key: a, value: aggs.value}
-        }
-        { None -> () }
-      }
-      { None ->
-        case rk_by_url.lookup {key: url, value: 0} of
-        {Some r ->
-          partial_aggs.insert
-          {key: a, value:
-            {|key: string, value: {prSum: int, prCount: int, arSum: real}|
-              {key: ip, value: {prSum: r.value, prCount: 1, arSum: uv.adRevenue} }
-            |} @ Map }
-        }
-        { None -> () }
-      }
-    )
+      bind (uv.sourceIP, uv.destURL, (index_by_hash uv.sourceIP)) as (ip, url, a) in (
+      partial_aggs.lookup
+        {key: a, value: empty_aggs_by_ip}
+        (\_ ->
+          rk_by_url.lookup
+            {key: url, value: 0}
+            (\_ -> () )
+            (\r ->
+              partial_aggs.insert
+              {key: a, value:
+                {|key: string, value: {prSum: int, prCount: int, arSum: real}|
+                  {key: ip, value: {prSum: r.value, prCount: 1, arSum: uv.adRevenue} }
+                |} @ Map }
+            )
+        )
+        (\aggs ->
+          rk_by_url.lookup
+            {key: url, value: 0}
+            (\_ -> () )
+            (\r -> (
+              (aggs.value.lookup
+                {key: ip, value: empty_agg}
+                (\_ ->
+                  aggs.value.insert
+                    {key: ip, value: {prSum: r.value, prCount: 1, arSum: uv.adRevenue} }
+                )
+                (\pa_v ->
+                   aggs.value.insert
+                   {key: ip,
+                    value: {prSum   : pa_v.value.prSum + r.value,
+                            prCount : pa_v.value.prCount + 1,
+                            arSum   : pa_v.value.arSum + uv.adRevenue } }
+                )
+              );
+              partial_aggs.insert {key: a, value: aggs.value}
+            ))
+        )
+    ))
     else ()
   );
   ignore (partial_aggs @PSendByKey(dest_trg=[$ merge], barrier_trg=[$ count_merges], nodes = [$ peers], send_extra_fn = [$ (\x -> x)]))
@@ -74,16 +80,18 @@ trigger q3_local : () = \_ -> (
 
 trigger merge : aggs_by_ip_map = \aggs_map -> (
   aggs_map.iterate (\kv ->
-    case merged_partials.lookup {key: kv.key, value: kv.value} of
-    {Some agg ->
-      merged_partials.insert
-        {key: kv.key,
-         value:
-          {prSum   : agg.value.prSum   + kv.value.prSum,
-           prCount : agg.value.prCount + kv.value.prCount,
-           arSum   : agg.value.arSum   + kv.value.arSum
-          } } }
-    {None -> merged_partials.insert kv}
+    merged_partials.lookup
+      {key: kv.key, value: kv.value}
+      (\_ -> merged_partials.insert kv)
+      (\agg ->
+        merged_partials.insert
+          {key: kv.key,
+           value:
+            {prSum   : agg.value.prSum   + kv.value.prSum,
+             prCount : agg.value.prCount + kv.value.prCount,
+             arSum   : agg.value.arSum   + kv.value.arSum
+            } }
+      )
   )
 )
 
