@@ -344,14 +344,15 @@ class IntMap {
     mapi* n = result.get_mapi();
 
     for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
-      K key = grouper(*o);
+      R* elem = static_cast<R*>(o);
+      K key = grouper(*elem);
       auto existing_acc = mapi_find(n, key);
       if (existing_acc == nullptr) {
-        R_key_value<K, Z> elem(key, std::move(folder(init, *o)));
+        R_key_value<K, Z> elem(key, std::move(folder(init, *elem)));
         mapi_insert(n, &elem);
       } else {
         R_key_value<K, Z> elem(
-            key, std::move(folder(std::move(existing_acc->value), *o)));
+            key, std::move(folder(std::move(existing_acc->value), *elem)));
         mapi_erase(n, key);
         mapi_insert(n, &elem);
       }
@@ -368,11 +369,12 @@ class IntMap {
 
     mapi* m = get_mapi();
     for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
-      K key = grouper(*o);
+      R* elem = static_cast<R*>(o);
+      K key = grouper(*elem);
       if (accs.find(key) == accs.end()) {
         accs[key] = init;
       }
-      accs[key] = folder(std::move(accs[key]), *o);
+      accs[key] = folder(std::move(accs[key]), *elem);
     }
 
     Map<R_key_value<K, Z>> result;

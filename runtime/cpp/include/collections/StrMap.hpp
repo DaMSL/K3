@@ -141,7 +141,7 @@ class StrMap {
       if (existing == map_str_end(m)) {
         return f(unit_t{});
       } else {
-        return g(*map_str_get(m, existing));
+        return g(*static_cast<R*>(map_str_get(m, existing)));
       }
     }
   }
@@ -156,7 +156,7 @@ class StrMap {
       if (existing == map_str_end(m)) {
         return f(unit_t{});
       } else {
-        return g(*map_str_get(m, existing));
+        return g(*static_cast<R*>(map_str_get(m, existing)));
       }
     }
   }

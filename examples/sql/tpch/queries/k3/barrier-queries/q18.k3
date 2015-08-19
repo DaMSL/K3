@@ -84,7 +84,7 @@ declare merge_q_by_ncodt_r : loc_q_by_ncodt_r -> loc_q_by_ncodt_r -> loc_q_by_nc
   = \a -> \b -> {key: a.key, value: a.value + b.value}
 
 trigger lineitem_having : () = \_ -> (
-  (ignore (lineitem.groupBy (\li -> li.l_orderkey)
+  (ignore (lineitem.group_by (\li -> li.l_orderkey)
                             (\acc -> \li -> acc + li.l_quantity)
                             0.0)
   ) @DistributedGroupBy(
@@ -107,7 +107,7 @@ trigger lineitem_having : () = \_ -> (
 // join as a distributed group-by on orders, with probes and intermediate
 // construction occurring in the merge trigger.
 trigger lineitem_orders : () = \_ -> (
-  (ignore (orders.groupBy (\o -> o.o_orderkey)
+  (ignore (orders.group_by (\o -> o.o_orderkey)
                           (\_ -> \o -> { o_custkey    : o.o_custkey
                                        , o_orderdate  : o.o_orderdate
                                        , o_totalprice : o.o_totalprice })
@@ -118,8 +118,9 @@ trigger lineitem_orders : () = \_ -> (
       peer_next   = [$ print "LI-OR shuffle done." ],
       next        = [$ (lineitem_orders_customer, me) <- () ],
       merge       = [$ (\o ->
-                          case li_having_result.lookup {key: o.key, value: 0.0} of
-                          {Some li -> lo_odtq_by_ck.insert_with
+                          li_having_result.lookup {key: o.key, value: 0.0}
+                            (\_ -> () )
+                            (\li ->  lo_odtq_by_ck.insert_with
                                         {key: o.value.o_custkey
                                         , value: {| key: {ok:int, od:int, tp:real}, value: real
                                                   | { key: { ok: o.key
@@ -129,8 +130,9 @@ trigger lineitem_orders : () = \_ -> (
                                                   |} @Map
                                         }
                                         merge_odtq_by_ck_r
-                          }
-                          {None -> ()})],
+                            )
+                       )
+                    ],
       coordinator = [$ master],
       nodes       = [$ peers],
       masters     = [$ masters ],
@@ -158,7 +160,7 @@ trigger lineitem_orders_customer : () = \_ -> (
 
         , lhs_query = [$ lo_odtq_by_ck]
         , lhs_query_clear = [$ () ]
-        , rhs_query = [$ (customer.groupBy (\c -> c.c_custkey)
+        , rhs_query = [$ (customer.group_by (\c -> c.c_custkey)
                                            (\_ -> \c -> c.c_name)
                                            "")
                                   .fold    (\acc -> \c -> ((acc.insert c); acc))
@@ -171,28 +173,28 @@ trigger lineitem_orders_customer : () = \_ -> (
       , rhs_ht_ty            = [: {key: int, value: string} ]
 
       , lhs_probe            = [$ (\lht -> \out -> \r ->
-                                    case lht.lookup {key: r.key, value: empty {key : {ok: int, od: int, tp: real}, value : real} @Map} of
-                                    { Some l ->
-                                      l.value.iterate (\kv ->
-                                          loc_q_by_ncodt.insert_with
-                                               { key: { nm: r.value, ck: r.key, ok: kv.key.ok, od: kv.key.od, tp: kv.key.tp }
-                                               , value: kv.value }
-                                               merge_q_by_ncodt_r )
-                                    }
-                                    { None   -> () }
+                                    lht.lookup {key: r.key, value: empty {key : {ok: int, od: int, tp: real}, value : real} @Map}
+                                      (\_ -> () )
+                                      (\l ->
+                                        l.value.iterate (\kv ->
+                                            loc_q_by_ncodt.insert_with
+                                                 { key: { nm: r.value, ck: r.key, ok: kv.key.ok, od: kv.key.od, tp: kv.key.tp }
+                                                 , value: kv.value }
+                                                 merge_q_by_ncodt_r )
+                                      )
                                   )
                                ]
 
       , rhs_probe            = [$ (\rht -> \out -> \l ->
-                                    case rht.lookup {key: l.key, value: ""} of
-                                    { Some r ->
-                                      l.value.iterate (\kv ->
-                                          loc_q_by_ncodt.insert_with
-                                               { key: { nm: r.value, ck: r.key, ok: kv.key.ok, od: kv.key.od, tp: kv.key.tp }
-                                               , value: kv.value }
-                                               merge_q_by_ncodt_r )
-                                    }
-                                    { None   -> () }
+                                    rht.lookup {key: l.key, value: ""}
+                                      (\_ -> () )
+                                      (\r ->
+                                        l.value.iterate (\kv ->
+                                            loc_q_by_ncodt.insert_with
+                                                 { key: { nm: r.value, ck: r.key, ok: kv.key.ok, od: kv.key.od, tp: kv.key.tp }
+                                                 , value: kv.value }
+                                                 merge_q_by_ncodt_r )
+                                      ) 
                                   )
                                ]
 
