@@ -53,19 +53,19 @@ annotation SortedMapE[key: [labeltype], value: [labeltype]] given type a,b
   // Sort-order methods.
 
   // Point retrieval
-  @CArgs 2
+  @:CArgs 2
   provides lifted min : (() -> a) -> (content -> a) -> a
     with effects \f -> \g -> [R[self]; f content; g content]
 
-  @CArgs 2
+  @:CArgs 2
   provides lifted max : (() -> a) -> (content -> a) -> a
     with effects \f -> \g -> [R[self]; f content; g content]
 
-  @CArgs 3
+  @:CArgs 3
   provides lifted lower_bound : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
     with effects \elem -> \f -> \g -> [R[self]; R[elem]; f content; g content]
 
-  @CArgs 3
+  @:CArgs 3
   provides lifted upper_bound : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
     with effects \elem -> \f -> \g -> [R[self]; R[elem]; f content; g content]
 

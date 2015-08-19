@@ -26,19 +26,19 @@ annotation Sorted given type a, b, c, d
   // Sort-order methods.
 
   // Point retrieval
-  @CArgs 2
+  @:CArgs 2
   provides lifted min : (() -> a) -> (content -> a) -> a
     with effects \f -> \g -> [R[self]; f content; g content]
 
-  @CArgs 2
+  @:CArgs 2
   provides lifted max : (() -> a) -> (content -> a) -> a
     with effects \f -> \g -> [R[self]; f content; g content]
 
-  @CArgs 3
+  @:CArgs 3
   provides lifted lower_bound : content -> (() -> a) -> (content -> a) -> a
     with effects \elem -> \f -> \g -> [R[self]; R[elem]; f content; g content]
 
-  @CArgs 3
+  @:CArgs 3
   provides lifted upper_bound : content -> (() -> a) -> (content -> a) -> a
     with effects \elem -> \f -> \g -> [R[self]; R[elem]; f content; g content]
 
@@ -55,7 +55,7 @@ annotation Sorted given type a, b, c, d
   provides lifted filter_leq : content -> self
     with effects \elem -> [R[self]; R[elem]]
 
-  @CArgs 2
+  @:CArgs 2
   provides lifted between : content -> content -> self
     with effects \elem -> [R[self]; R[elem]]
 
