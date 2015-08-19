@@ -193,15 +193,16 @@ class RealVector : public STLDS<K3::RealVector, std::vector, Elem> {
   template <class G, class F, class Z>
   RealVector<R_elem<Z>> group_by(G grouper, F folder, const Z& zero) const
   {
+    typedef RT<G, Elem> K;
     auto table = std::vector<R_elem<Z>>();
-    for (const auto& elem : container) {
+    for (const auto& elem : Super::getContainer()) {
       K key = grouper(elem);
       if (table.size() < key) {
-        table.resize(key, init);
+        table.resize(key, zero);
       }
       table[key] = folder(std::move(table[key]), elem);
     }
-    return RealVector<R_elem<Z>>{ std::move(STLDS{std::move(table)}) };
+    return RealVector<R_elem<Z>>{ std::move(Super(std::move(table))) };
   }
 
   template <typename F1, typename F2, typename Z>
@@ -212,7 +213,7 @@ class RealVector : public STLDS<K3::RealVector, std::vector, Elem> {
     typedef RT<F1, Elem> K;
     unordered_map<K, Z> accs;
 
-    for (const auto& elem : container) {
+    for (const auto& elem : Super::getContainer()) {
       K key = grouper(elem);
       if (accs.find(key) == accs.end()) {
         accs[key] = init;
@@ -233,18 +234,18 @@ class RealVector : public STLDS<K3::RealVector, std::vector, Elem> {
   group_by_contiguous(G grouper, F folder, const Z& zero, const int& size) const
   {
     auto table = std::vector<R_elem<Z>>(size, R_elem<Z> { zero });
-    for (const auto& elem : container) {
+    for (const auto& elem : Super::getContainer()) {
       auto key = grouper(elem);
       table[key] = folder(std::move(table[key]), elem);
     }
-    return RealVector<R_elem<Z>>{ std::move(STLDS{std::move(table)}) };
+    return RealVector<R_elem<Z>>{ std::move(Super(std::move(table))) };
   }
 
   template <class Fun>
   auto ext_generic(Fun expand) const -> Vector<typename RT<Fun, Elem>::ElemType> {
     typedef typename RT<Fun, Elem>::ElemType T;
     Vector<T> result;
-    for (const Elem& elem : container) {
+    for (const Elem& elem : Super::getContainer()) {
       for (T&& elem2 : expand(elem).container) {
         result.insert(std::move(elem2));
       }
@@ -263,7 +264,7 @@ struct convert<K3::RealVector<E>> {
     Node node;
     auto container = c.getConstContainer();
     if (container.size() > 0) {
-      for (auto i : container) {
+      for (auto i : c) {
         node.push_back(convert<E>::encode(i));
       }
     } else {

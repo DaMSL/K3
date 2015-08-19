@@ -588,7 +588,6 @@ class MultiIndexVMap
       const auto& vmap = std::get<1>(elem);
       auto vit = vmap.find(v);
       if ( vit != vmap.end() ) {
-        res = std::make_shared<R>(vit->second);
         return g(vit->second);
       }
     }

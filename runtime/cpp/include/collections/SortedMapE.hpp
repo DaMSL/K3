@@ -189,7 +189,7 @@ class SortedMapE {
 
   template <class K, class F, class G>
   auto lower_bound(const K& k, F f, G g) const {
-    const auto& x = Super::getConstContainer();
+    const auto& x = container;
     auto it = x.lower_bound(k.key);
     if (it == x.end()) {
       return f(unit_t{});
@@ -200,7 +200,7 @@ class SortedMapE {
 
   template <class K, class F, class G>
   auto upper_bound(const K& k, F f, G g) const {
-    const auto& x = Super::getConstContainer();
+    const auto& x = container;
     auto it = x.upper_bound(k.key);
     if (it == x.end()) {
       return f(unit_t{});

@@ -33,7 +33,7 @@ class Sorted : public SortedDS<K3::Sorted, Elem> {
   template <class T>
   unit_t update(const Elem& v, T&& v2) {
     auto& x = Super::getContainer();
-    iterator it = x.find(v);
+    auto it = x.find(v);
     if (it != x.end()) {
       *it = std::forward<T>(v2);
     }
@@ -42,7 +42,7 @@ class Sorted : public SortedDS<K3::Sorted, Elem> {
 
   unit_t erase(const Elem& v) {
     auto& x = Super::getContainer();
-    iterator it = x.find(v);
+    auto it = x.find(v);
     if (it != x.end()) {
       x.erase(it);
     }
@@ -99,33 +99,33 @@ class Sorted : public SortedDS<K3::Sorted, Elem> {
   }
 
   Sorted filter_lt(const Elem& bound) const {
-    const auto& x = getConstContainer();
+    const auto& x =Super::getConstContainer();
     auto it = x.lower_bound(bound);
     if (it != x.begin()) --it;
     return Sorted<Elem>(x.begin(), it);
   }
 
   Sorted filter_gt(const Elem& bound) const {
-    const auto& x = getConstContainer();
+    const auto& x =Super::getConstContainer();
     auto it = x.upper_bound(bound);
     return Sorted<Elem>(it, x.end());
   }
 
   Sorted filter_geq(const Elem& bound) const {
-    const auto& x = getConstContainer();
+    const auto& x =Super::getConstContainer();
     auto it = x.lower_bound(bound);
     return Sorted<Elem>(it, x.end());
   }
 
   Sorted filter_leq(const Elem& bound) const {
-    const auto& x = getConstContainer();
+    const auto& x =Super::getConstContainer();
     auto it = x.upper_bound(bound);
     if (it != x.begin()) --it;
     return Sorted<Elem>(x.begin(), it);
   }
 
   Sorted between(const Elem& a, const Elem& b) const {
-    const auto& x = getConstContainer();
+    const auto& x =Super::getConstContainer();
     auto it = x.lower_bound(a);
     auto end = x.upper_bound(b);
     if (it != x.end()) {
@@ -139,7 +139,7 @@ class Sorted : public SortedDS<K3::Sorted, Elem> {
   // Range-based modification.
 
   unit_t erase_before(const Elem& bound) {
-    auto& x = getContainer();
+    auto& x = Super::getContainer();
     auto it = x.lower_bound(bound);
     if (it != x.end()) {
       x.erase(x.cbegin(), it);
@@ -148,7 +148,7 @@ class Sorted : public SortedDS<K3::Sorted, Elem> {
   }
 
   unit_t erase_after(const Elem& bound) {
-    auto& x = getContainer();
+    auto& x = Super::getContainer();
     auto it = x.upper_bound(bound);
     if (it != x.end()) {
       x.erase(it, x.cend());

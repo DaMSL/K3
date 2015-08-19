@@ -29,7 +29,7 @@ class Set : public SetDS<K3::Set, Elem> {
   template <class T>
   unit_t update(const Elem& v, T&& v2) {
     auto& x = Super::getContainer();
-    iterator it = x.find(v);
+    auto it = x.find(v);
     if (it != x.end()) {
       *it = std::forward<T>(v2);
     }
@@ -38,7 +38,7 @@ class Set : public SetDS<K3::Set, Elem> {
 
   unit_t erase(const Elem& v) {
     auto& x = Super::getContainer();
-    iterator it = x.find(v);
+    auto it = x.find(v);
     if (it != x.end()) {
       x.erase(it);
     }

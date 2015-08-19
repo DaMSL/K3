@@ -392,11 +392,11 @@ class IntMap {
 
     mapi* m = get_mapi();
     mapi* n = result.get_mapi();
-    auto table = std::vector<Z>(size, zero);
+    auto table = std::vector<Z>(size, init);
 
     for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
       auto key = grouper(*o);
-      table[key] = folder(std::move(table[key]), elem);
+      table[key] = folder(std::move(table[key]), *o);
     }
 
     for (auto i = 0; i < table.size(); ++i) {

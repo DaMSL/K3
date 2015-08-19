@@ -5,7 +5,7 @@ declare local_peers  : collection {addr : address} @Collection
 declare peer_masters : collection {key: address, value: address} @Map
 
 control IfMachineMaster {
-  ?e => (peer_masters.lookup {key: me, value: me} ignore (\r -> ((if me == r.value then ((print (atos me)); $.[e]) else ()))))
+  ?e => (peer_masters.lookup {key: me, value: me} (\x -> ()) (\r -> ((if me == r.value then ((print (atos me)); $.[e]) else ()))))
      +> {}
 }
 

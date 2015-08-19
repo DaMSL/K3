@@ -127,7 +127,7 @@ class SortedSet {
   template <class F, class G>
   auto min(F f, G g) const {
     // begin is the smallest element
-    const auto& x = Super::getConstContainer();
+    const auto& x = container;
     auto it = x.begin();
     if (it == x.end()) {
       return f(unit_t{});
@@ -138,7 +138,7 @@ class SortedSet {
 
   template <class F, class G>
   auto max(F f, G g) const {
-    const auto& x = Super::getConstContainer();
+    const auto& x = container;
     auto it = x.rbegin();
     if (it == x.rend()) {
       return f(unit_t{});
@@ -149,7 +149,7 @@ class SortedSet {
 
   template <class F, class G>
   auto lower_bound(const Elem& e, F f, G g) const {
-    const auto& x = Super::getConstContainer();
+    const auto& x = container;
     auto it = x.lower_bound(e);
     if (it == x.end()) {
       return f(unit_t{});
@@ -160,7 +160,7 @@ class SortedSet {
 
   template <class F, class G>
   auto upper_bound(const Elem& e, F f, G g) const {
-    const auto& x = Super::getConstContainer();
+    const auto& x = container;
     auto it = x.upper_bound(e);
     if (it == x.end()) {
       return f(unit_t{});

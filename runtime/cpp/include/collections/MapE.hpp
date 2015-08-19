@@ -12,6 +12,7 @@
 #include <boost/serialization/string.hpp>
 #include <csvpp/csv.h>
 
+#include "collections/Map.hpp"
 namespace K3 {
 template <class R>
 class MapE {
@@ -193,8 +194,8 @@ class MapE {
   }
 
   template <typename Fun>
-  auto map_generic(Fun f) const -> Map<RT<Fun, R>> {
-    Map<RT<Fun, R>> result;
+  auto map_generic(Fun f) const -> K3::Map<RT<Fun, R>> {
+    K3::Map<RT<Fun, R>> result;
     for (const auto& p : container) {
       result.insert(f(p.second));
     }

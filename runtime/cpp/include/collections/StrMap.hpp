@@ -437,7 +437,7 @@ class StrMap {
     map_str* m = get_map_str();
     auto end = map_str_end(m);
     for (auto it = map_str_begin(m); it < end; it = map_str_next(m, it)) {
-      for (T&& elem : expand(*it).container) {
+      for (T&& elem : expand(*map_str_get(m, it)).getContainer()) {
         result.insert(std::move(elem));
       }
     }
