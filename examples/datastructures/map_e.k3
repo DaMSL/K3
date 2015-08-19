@@ -11,7 +11,7 @@ trigger t : () = \_ -> (
 
   (c.update       {key: 3} {value: 6});
   (c.upsert_with  {key: 5} (\_ -> {key:5, value: 5}) (\r -> {key: 5, value: r.value + 5}));
-  (c.lookup_with4 {key: 4} (\_ -> ()) (\r -> print ("Found @4: " ++ (itos r.value))))
+  (c.lookup       {key: 4} ignore (\r -> print ("Found @4: " ++ (itos r.value))))
 )
 
 source s1 : () = value ()
