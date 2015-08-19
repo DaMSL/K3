@@ -21,7 +21,7 @@ trigger q2_local : () = \_ -> (
   then ()
   else
     (ignore
-      ( local_uservisits.groupBy
+      ( local_uservisits.group_by
            (\r -> slice_string r.sourceIP 0 slice_length) //TODO index by 0 or 1?
            (\acc -> \r -> acc + r.adRevenue)
            0.0

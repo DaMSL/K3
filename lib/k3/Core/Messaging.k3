@@ -24,7 +24,7 @@ control PSendByKey[ dest_trg : expr, barrier_trg : expr, nodes : expr, send_extr
 control PartitionShuffleWithMissing[lbl: label, dest_trg: expr, nodes: expr, send_extra_fn: expr, send_ty: type] {
 
   (ignore (?e : collection ?t @IntMap )) => (
-    let partition_table = (((($.[e].group_by @:HGroupBy)
+    let partition_table = (((($.[e].group_by_generic @:HGroupBy)
                                      ((\v -> ($[nodes].at (index_by_hash v.key)).addr) @:Projection)
                                      ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
                                      empty $::[t] @IntMap) @:Fuse) @ManualFusion)
@@ -40,7 +40,7 @@ control PartitionShuffleWithMissing[lbl: label, dest_trg: expr, nodes: expr, sen
   }
 
   (ignore (?e : collection ?t @StrMap )) => (
-    let partition_table = (((($.[e].group_by @:HGroupBy)
+    let partition_table = (((($.[e].group_by_generic @:HGroupBy)
                                      ((\v -> ($[nodes].at (index_by_hash v.key)).addr) @:Projection)
                                      ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
                                      empty $::[t] @StrMap) @:Fuse) @ManualFusion)
