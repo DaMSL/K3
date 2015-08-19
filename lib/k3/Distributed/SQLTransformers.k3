@@ -125,7 +125,7 @@ control DistributedHashJoin2 [ lbl : label ]
     trigger $[lbl]_rhs_process_redistribute : $[|equijoinMapType 'RKeyT.typ 'RQueryT.typ|] = (\vals -> (
       // Probe LHS hash table, and insert matches into materialized result.
       ( vals.iterate (\rhs_ht_tuple ->
-          $[lbl]_lhs_ht.lookup_with4 {key: rhs_ht_tuple.key, value: $[lbl]_lhs_default_tuples}
+          $[lbl]_lhs_ht.lookup {key: rhs_ht_tuple.key, value: $[lbl]_lhs_default_tuples}
             (\_ -> ())
             (\lhs_ht_tuple -> lhs_ht_tuple.value.iterate (\le ->
                 rhs_ht_tuple.value.iterate (\re -> $#[var].insert {elem: $.[outputE] le re}))))
