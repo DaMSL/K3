@@ -1,4 +1,4 @@
-annotation SortedSet given type a, b
+annotation SortedSet given type a, b, c, d
 {
   provides lifted size : () -> int
     with effects \_ -> R[self]
