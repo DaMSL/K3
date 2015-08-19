@@ -58,9 +58,7 @@ declare compute_clusters_helper : Function = \c -> \init -> (
 
 // Wrapper / (Hack for zero-vector)
 declare compute_clusters : Function = \x -> (
-  case x.peek () of
-    { Some j -> compute_clusters_helper x (vector_sub j.value j.value) }
-    { None   -> () }
+  x.peek () ignore (\j -> compute_clusters_helper x (vector_sub j.value j.value))
 )
 
 // Given a collection of cluster prototypes, assign a point to the closest one
