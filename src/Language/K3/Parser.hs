@@ -100,7 +100,7 @@ stitchK3 includePaths s = do
 parseK3 :: Bool -> [FilePath] -> String -> IO (Either String (K3 Declaration))
 parseK3 noFeed includePaths s = do
   searchPaths   <- if null includePaths then getSearchPath else return includePaths
-  subFiles      <- processIncludes searchPaths (lines s) []
+  subFiles      <- processIncludes searchPaths (defaultIncludes ++ lines s) []
   subFileCtnts  <- trace (unwords ["subfiles:", show subFiles]) $ mapM readFile subFiles
   let fileContents = map (False,) subFileCtnts ++ [(True,s)]
   parseK3WithIncludes noFeed fileContents $ DC.role defaultRoleName []
@@ -128,7 +128,7 @@ parseK3WithIncludes noFeed fileContents initProg = do
 stitchK3Includes :: Bool -> [FilePath] -> [String] -> K3 Declaration -> IO (Either String (K3 Declaration))
 stitchK3Includes noFeed includePaths includes prog = do
   searchPaths   <- if null includePaths then getSearchPath else return includePaths
-  subFiles      <- processIncludes searchPaths includes []
+  subFiles      <- processIncludes searchPaths (defaultIncludes ++ includes) []
   subFileCtnts  <- trace (unwords ["subfiles:", show subFiles]) $ mapM readFile subFiles
   let fileContents = map (False,) subFileCtnts
   iprogE <- parseK3WithIncludes noFeed fileContents $ DC.role defaultRoleName []

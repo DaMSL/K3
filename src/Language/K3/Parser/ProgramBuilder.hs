@@ -4,6 +4,8 @@
 
 -- | K3 Program constructor
 module Language.K3.Parser.ProgramBuilder (
+  defaultIncludes,
+
   defaultRoleName,
   processInitsAndRoles,
   endpointMethods,
@@ -31,6 +33,14 @@ import qualified Language.K3.Core.Constructor.Declaration as DC
 
 -- | Type synonyms, copied from the parser.
 type EndpointInfo = (EndpointSpec, Maybe [Identifier], Identifier, Maybe (K3 Expression))
+
+{- Default includes required by the program builder. -}
+defaultIncludes :: [String]
+defaultIncludes = map (\s -> unwords ["include", show s])
+                    [ "Annotation/Collection.k3"
+                    , "Annotation/Set.k3"
+                    , "Annotation/Map.k3"
+                    , "Annotation/Maps/SortedMap.k3" ]
 
 {- Names -}
 defaultRoleName :: Identifier
