@@ -6,23 +6,23 @@ declare c2 : collection { x: int } @ { Collection }
 
 
 trigger foo1 : () = \_ -> (
-  let bar = c.groupBy (\e -> 1) (\acc -> \e -> acc) 0.0
+  let bar = c.group_by (\e -> 1) (\acc -> \e -> acc) 0.0
   in ()
 )
 
 
 trigger foo2 : () = \_ -> (
-  let bar = c.groupBy (\e -> 1) (\acc -> \e -> acc) {sum: 0.0}
+  let bar = c.group_by (\e -> 1) (\acc -> \e -> acc) {sum: 0.0}
   in ()
 )
 
 trigger foo3 : () = \_ -> (
-  let bar = c.groupBy (\e -> 1) (\acc -> \e -> acc) (empty {sum: real} @ {Collection })
+  let bar = c.group_by (\e -> 1) (\acc -> \e -> acc) (empty {sum: real} @ {Collection })
   in ()
 )
 
 trigger foo4 : () = \_ -> (
-  let bar = c.groupBy (\e -> 1) (\acc -> \e -> acc) (1,2)
+  let bar = c.group_by (\e -> 1) (\acc -> \e -> acc) (1,2)
   in ()
 )
 
