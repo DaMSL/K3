@@ -83,6 +83,8 @@ declare or_ok_by_ck    : mut collection {key: int, value: collection {o_orderkey
 declare co_nm_by_no  : mut collection {nationkey: int, orderkey: int} @Collection
 declare sl_epd_by_no : mut collection {key: {nationkey: int, orderkey: int}, value: real} @Map
 
+declare e_string: string = ""
+
 trigger q5_prep : () = \_ -> (
   ( r_asia_by_rk =
      ((region.filter  (\r -> r.r_name == "ASIA"))
@@ -96,7 +98,7 @@ trigger q5_prep : () = \_ -> (
       ((nation.filter  (\n -> r_asia_by_rk.member {key: n.n_regionkey, value: ()}))
               .group_by (\n -> n.n_nationkey)
                        (\_ -> \n -> n.n_name)
-                       "")
+                       e_string)
               .fold    ((\acc -> \n -> ((acc.insert n); acc)) @:Accumulate)
                        (empty {key: int, value: string} @IntMap) )
 )

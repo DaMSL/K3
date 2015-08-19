@@ -140,6 +140,7 @@ trigger lineitem_orders : () = \_ -> (
       profile     = [$ true] )
 )
 
+declare e_string: string = ""
 trigger lineitem_orders_customer : () = \_ -> (
   ( () @:NoPipeline )
     @JoinSelector(
@@ -162,7 +163,7 @@ trigger lineitem_orders_customer : () = \_ -> (
         , lhs_query_clear = [$ () ]
         , rhs_query = [$ (customer.group_by (\c -> c.c_custkey)
                                            (\_ -> \c -> c.c_name)
-                                           "")
+                                           e_string)
                                   .fold    (\acc -> \c -> ((acc.insert c); acc))
                                            (empty {key: int, value: string} @IntMap)
                       ]
@@ -186,7 +187,7 @@ trigger lineitem_orders_customer : () = \_ -> (
                                ]
 
       , rhs_probe            = [$ (\rht -> \out -> \l ->
-                                    rht.lookup {key: l.key, value: ""}
+                                    rht.lookup {key: l.key, value: e_string}
                                       (\_ -> () )
                                       (\r ->
                                         l.value.iterate (\kv ->
