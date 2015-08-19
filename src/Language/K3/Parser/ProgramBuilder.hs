@@ -222,9 +222,9 @@ endpointMethods isSource eSpec argE formatE n t =
       builtinGlobal (n++m) (qualifyT $ TC.function argT retT)
         $ maybe Nothing (Just . qualifyE) eOpt
 
-    mkInit  = ("Init",  TC.unit, TC.unit, Just $ EC.lambda "_" $ initE) 
-    mkStart = ("Start", TC.unit, TC.unit, Just $ EC.lambda "_" $ startE) 
-    mkFinal = ("Final", TC.unit, TC.unit, Just $ EC.lambda "_" $ closeE) 
+    mkInit  = ("Init",  TC.unit, TC.unit, Just $ EC.lambda "_" $ initE)
+    mkStart = ("Start", TC.unit, TC.unit, Just $ EC.lambda "_" $ startE)
+    mkFinal = ("Final", TC.unit, TC.unit, Just $ EC.lambda "_" $ closeE)
     mkCollection fields ctype = (TC.collection $ TC.record $ map (qualifyT <$>) fields) @+ TAnnotation ctype
 
     muxSeqLabel  = "order"
@@ -279,11 +279,11 @@ endpointMethods isSource eSpec argE formatE n t =
 
     openSeqNextFileE withTest withClose openFn txt = openSeqWithTest withTest $
       EC.block $
-        [ EC.applyMany (EC.project "at_with" argE) [EC.variable $ cfiName n, assignSeqPathE] ]
+        [ assignSeqPathE ]
         ++ (if withClose then [closeE] else [])
         ++ [ EC.applyMany openFn [EC.variable "me", sourceId n, EC.variable (cfpName n), formatE, EC.constant $ CBool txt, modeE] ]
 
-    assignSeqPathE = EC.lambda "r" $ EC.assign (cfpName n) (EC.project "path" $ EC.variable "r")
+    assignSeqPathE = EC.assign (cfpName n) $ EC.project "path" $ EC.applyMany (EC.project "at" argE) [EC.variable $ cfiName n]
 
     openSeqWithTest withTest openE =
       if withTest then EC.ifThenElse notLastFileIndexE openE EC.unit else openE
@@ -297,7 +297,7 @@ endpointMethods isSource eSpec argE formatE n t =
         EC.ifThenElse
           (EC.binop OLth (EC.constant $ CInt 0) $
              EC.applyMany (EC.project "size" $ EC.variable $ cfmpName n) [EC.unit])
-          (controlE $ EC.applyMany (EC.project "min_with" $ EC.variable $ cfmpName n)
+          (controlE $ EC.applyMany (EC.project "min" $ EC.variable $ cfmpName n)
                         [EC.lambda "_" EC.unit, EC.lambda muxid $ doMuxNext onFileDoneE])
           EC.unit
 
@@ -318,8 +318,9 @@ endpointMethods isSource eSpec argE formatE n t =
       EC.block [ muxNextFromChan, muxSafeRefreshChan True onFileDoneE muxidx ]
 
     muxNextFromChan =
-      EC.applyMany (EC.project "lookup_with" $ EC.variable $ cfmbName n)
+      EC.applyMany (EC.project "lookup" $ EC.variable $ cfmbName n)
         [ EC.record [("key", muxidx), ("value", EC.variable $ cfmdName n)]
+        , ignoreE
         , EC.lambda "x" $ EC.applyMany (EC.variable $ cfName n) [EC.project "value" $ EC.variable "x"] ]
 
     muxSafeRefreshChan withErase onFileDoneE muxIdE =
@@ -345,11 +346,13 @@ endpointMethods isSource eSpec argE formatE n t =
       , EC.applyMany (EC.project "erase" $ EC.variable $ cfmpName n) [muxvar]]
 
     muxSeqNextChan openFn txt =
-      EC.applyMany (EC.project "at_with" $ argE)
+      EC.applyMany (EC.project "safe_at" $ argE)
         [ muxidx
+        , ignoreE
         , EC.lambda "seqc" $
-            EC.applyMany (EC.project "lookup_with" $ EC.variable $ cfiName n)
+            EC.applyMany (EC.project "lookup" $ EC.variable $ cfiName n)
               [ muxSeqIdx $ EC.constant $ CInt 0
+              , ignoreE
               , EC.lambda "seqidx" $
                   EC.ifThenElse (muxSeqNotLastFileIndexE "seqc" "seqidx")
                     (EC.block [muxSeqNextFileE openFn "seqc" "seqidx" txt])
@@ -358,8 +361,9 @@ endpointMethods isSource eSpec argE formatE n t =
     muxSeqNextFileE openFn seqvar idxvar txt =
       EC.letIn "nextidx"
         (EC.binop OAdd (EC.project "value" $ EC.variable idxvar) $ EC.constant $ CInt 1)
-        (EC.applyMany (EC.project "at_with" $ EC.project "seq" $ EC.variable seqvar)
+        (EC.applyMany (EC.project "safe_at" $ EC.project "seq" $ EC.variable seqvar)
           [ EC.variable "nextidx"
+          , ignoreE
           , EC.lambda "f" $ EC.block
               [ EC.applyMany closeFn [EC.variable "me", cntrlrMuxChanIdE]
               , EC.applyMany (EC.project "insert" $ EC.variable $ cfiName n) [muxSeqIdx $ EC.variable "nextidx"]
@@ -422,8 +426,9 @@ endpointMethods isSource eSpec argE formatE n t =
     openFileMuxSeqChanFnE openFn txt =
       EC.applyMany (EC.project "iterate" argE)
         [ EC.lambda "seqc" $
-          EC.applyMany (EC.project "at_with" $ EC.project "seq" $ EC.variable "seqc")
+          EC.applyMany (EC.project "safe_at" $ EC.project "seq" $ EC.variable "seqc")
           [ EC.constant $ CInt 0
+          , ignoreE
           , EC.lambda "f" $ EC.block
             [ EC.applyMany (EC.project "insert" $ EC.variable $ cfiName n) [openMuxSeqIdx $ EC.constant $ CInt 0]
             , EC.applyMany (EC.project "insert" $ EC.variable $ cfpName n) [openMuxSeqIdx $ EC.project "path" $ EC.variable "f"]
@@ -465,6 +470,8 @@ endpointMethods isSource eSpec argE formatE n t =
     controlRcrE = EC.send (EC.variable $ ccName n) myAddr EC.unit
 
     sourceId n' = EC.constant $ CString n'
+
+    ignoreE = EC.applyMany (EC.variable "ignore") [EC.unit]
 
 
 -- | Rewrites a source declaration's process method to access and
