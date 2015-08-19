@@ -1,5 +1,5 @@
 include "Annotation/Collection.k3"
-include "Annotation/RealVector.k3"
+include "Annotation/Vectors/RealVector.k3"
 include "Annotation/Set.k3"
 include "Core/Builtins.k3"
 include "Core/CppBuiltins.k3"
@@ -59,12 +59,12 @@ declare svm_loss_avg : () -> real = \_ -> (
 // Update parameters based on a single point
 declare update_parameters: collection {elem: real} @RealVector  -> real -> () = \point -> \class_label -> (
   let flag = class_label * (parameters.dot point) in
-  let update =
+  let u =
     if flag > 1
-    then parameters.scalarMult lambda
-    else (parameters.scalarMult lambda).sub (point.scalarMult class_label)
+    then parameters.scale lambda
+    else (parameters.scale lambda).sub (point.scale class_label)
   in
-  parameters.inPlaceSub (update.scalarMult step_size)
+  parameters.sub_with (u.scale step_size)
 )
 
 // Print results
@@ -104,7 +104,7 @@ trigger aggregate : collection {elem: real} @RealVector  = \local_params -> (
 // consider inPlaceScalarMult
 // Average local parameters from each peer, then start a new iteration.
 trigger maximize : () = \_ -> (
-  parameters = (aggregates.sum).scalarMult (1.0 / aggregates.count);
+  parameters = (aggregates.sum).scale (1.0 / aggregates.count);
   print "Loss:";
   print (rtos (svm_loss_avg ()));
   aggregates = {count:0, sum: (zeroVector dimensionality)};
