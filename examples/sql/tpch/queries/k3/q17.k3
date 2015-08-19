@@ -26,7 +26,7 @@ declare aggs: mut collection {elem: real} @Collection
 // Compute avg extendedprice group by partkey
 trigger q17_stage1: () = \_ -> (
   (avgs =
-    (lineitem.groupBy
+    (lineitem.group_by
       (\le -> le.elem.l_partkey)
       (\a -> \le -> {count: a.count + 1, sum: a.sum + le.elem.l_extendedprice})
       {count: 0.0, sum: 0.0}
@@ -51,7 +51,7 @@ trigger q17_stage3: () = \_ -> ()
 //    (((lineitem_avgs.filter
 //                    (\le -> le.elem.quantity < (0.2 * le.elem.avg))
 //                  )
-//                  .groupBy
+//                  .group_by
 //                    (\le -> le.elem.partkey)
 //                    (\a -> \le -> a + le.elem.ep)
 //                    0.0

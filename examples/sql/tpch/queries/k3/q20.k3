@@ -45,7 +45,7 @@ trigger q20_stage1: () = \_ -> (
     ((lineitem.filter
                  valid_lineitem
                )
-               .groupBy
+               .group_by
                  (\l -> {partkey: l.l_partkey, suppkey: l.l_suppkey})
                  (\a -> \e -> a + (0.5 * e.l_quantity) )
                  0.0
@@ -76,7 +76,7 @@ trigger q20_stage2: () = \_ -> (
 // TODO is this DISTINCT necessary (alternatively, could it be applied to the last stage instead?)
 trigger q20_stage3: () = \_ -> (
   l_ps_p_distinct =
-    (l_ps_p.groupBy
+    (l_ps_p.group_by
              (\lpspe -> lpspe.elem)
              (\_ -> \_ -> () )
              ()
