@@ -7,6 +7,13 @@ annotation Collection given type a, b, c, d
   provides lifted peek : (() -> a) -> (content -> a) -> a
     with effects \f -> \g -> [R[self]; f content; g content]
 
+  provides lifted at : int -> content
+    with effects \i -> [R[i]; R[self]]
+
+  @:CArgs 3
+  provides lifted safe_at : int -> (() -> a) -> (content -> a) -> a
+    with effects \i -> \f -> \g -> [R[i]; R[self]; f content; g content]
+
 
   ///////////////////////////////////////////////////////
   // Modifiers.

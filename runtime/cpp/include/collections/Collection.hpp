@@ -21,6 +21,21 @@ class Collection : public VectorDS<K3::Collection, Elem> {
   Collection(const Super& c) : Super(c) {}
   Collection(Super&& c) : Super(std::move(c)) {}
 
+  Elem at(int i) const {
+    auto& vec = Super::getConstContainer();
+    return vec[i];
+  }
+
+  template<class F, class G>
+  auto safe_at(int i, F f, G g) const {
+    auto& vec = Super::getConstContainer();
+    if ( i < vec.size() ) {
+      return g(vec[i]);
+    } else {
+      return f(unit_t {});
+    }
+  }
+
   template<class Archive>
   void serialize(Archive &ar) {
     ar & yas::base_object<VectorDS<K3::Collection, Elem>>(*this);
