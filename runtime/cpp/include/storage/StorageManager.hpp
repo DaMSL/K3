@@ -29,7 +29,7 @@ class StorageManager {
     try {
       auto handle = files_->lookup(make_pair(peer, id));
       auto pval = handle->doRead();
-      return *unpack<T>(std::move(pval));
+      return std::move(*unpack<T>(std::move(pval)));
     }
     catch (std::ios_base::failure e) {
       logger_->error ("ERROR Reading from {}", id);

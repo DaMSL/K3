@@ -22,9 +22,15 @@ class StringBuiltins {
   S slice_string(const S& s, int x, int y);
   int strcomp(const string_impl& s1, const string_impl& s2);
   template <class T>
-  T parsePSVRow(const string_impl& s1) {
-    auto bs =BaseStringRefPackedValue(s1, CodecFormat::PSV);
+  T parsePSV(const string_impl& s1) {
+    auto bs = BaseStringRefPackedValue(s1, CodecFormat::PSV);
     return *unpack<T>(bs);
+  }
+  template <class T>
+  T parseYAS(const string_impl& s1) {
+    auto bs = BaseStringRefPackedValue(s1, CodecFormat::YASBinary);
+    T t = *unpack<T>(bs);
+    return t;
   }
 };
 

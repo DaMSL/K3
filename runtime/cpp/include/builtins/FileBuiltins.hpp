@@ -37,8 +37,9 @@ class FileBuiltins {
   }
 
   // TODO(jbw) template instead of string?
-  string_impl doRead(const Address& peer, const string_impl& id) {
-    return string_impl(__engine_.getStorageManager().doRead<string>(peer, id));
+  template <class T>
+  T doRead(const Address& peer, const string_impl& id) {
+    return __engine_.getStorageManager().doRead<T>(peer, id);
   }
 
   Collection<R_elem<string_impl>> doBlockRead(const Address& peer, const string_impl& id, int block_size) {

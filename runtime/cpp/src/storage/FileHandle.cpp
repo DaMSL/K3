@@ -24,18 +24,21 @@ bool SourceFileHandle::hasRead() {
 // TODO: Optimize using low-level c file I/O (if needed)
 unique_ptr<PackedValue> SourceFileHandle::doRead() {
   // Get value size
-  uint32_t len;
+  size_t len;
 
   file_ >> len;
   // file_.read( (char *) len, 4);
 
   // Allocate new value buffer
-  vector <char> buf = std::vector<char> (len);
-
-  // Read data from file to buffer
-  file_.read((char *) buf.data(), len);
-
-  return make_unique<BufferPackedValue>(std::move(buf), fmt_);
+  char* buf = new char[sizeof(len) + len + 1];
+  memcpy(buf, &len, sizeof(len));
+  file_.read(buf + sizeof(len), len);
+  buf[len + sizeof(len)] = '\0';
+  base_string b;
+  b.steal(buf);
+  b.set_header(true);
+  auto p  = make_unique<BaseStringPackedValue>(std::move(b), fmt_);
+  return std::move(p); 
 }
 
 SourceTextHandle::SourceTextHandle (std::string path, CodecFormat fmt) {
@@ -73,9 +76,8 @@ bool SinkFileHandle::hasWrite() {
   return (file_.good());  
 }
 
-// Note: value size limits are 32-bit ints (4GB per value)
 void SinkFileHandle::doWriteHelper(const PackedValue& val) {
-  file_ << static_cast<uint32_t>(val.length());
+  file_ << val.length();
   file_.write (val.buf(), val.length());
 }
 
