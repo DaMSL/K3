@@ -127,7 +127,10 @@ gMoveByE :: K3 Expression -> R.Expression -> R.Expression
 gMoveByE e x = fromMaybe x (getKTypeP e >>= \t -> return $ if move t e then R.Move x else x)
 
 gMoveByDE :: Method -> K3 Expression -> R.Expression -> R.Expression
-gMoveByDE m e x = if m == Moved then gMoveByE e x else x
+gMoveByDE m e x
+  | m == Moved = gMoveByE e x
+  | m == Forwarded = R.FMacro x
+  | otherwise = x
 
 -- | Realization of unary operators.
 unarySymbol :: Operator -> CPPGenM Identifier
@@ -265,6 +268,7 @@ inline e@(tag -> ELambda _) = do
           let reifyType = case if a == head (argNames) && isAccumulating then Referenced else (getInMethodFor a innerFExpr) of
                   ConstReferenced -> R.Reference $ R.Const R.Inferred
                   Referenced -> R.Reference R.Inferred
+                  Forwarded -> R.RValueReference R.Inferred
                   _ -> R.Inferred
           in [R.Forward $ R.ScalarDecl (R.Name a) reifyType
                (Just $ R.SForward (R.ConstExpr $ R.Call (R.Variable $ R.Name "decltype") [R.Variable $ R.Name g])
@@ -284,6 +288,8 @@ inline e@(tag -> ELambda _) = do
 inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [prj@(Fold c), f])), z])) = do
   let isAccumulating = prj @~ (\case { EProperty (ePropertyName -> "AccumulatingTransformer") -> True; _ -> False })
   let isAP = isJust isAccumulating
+
+  let eleMove = getInMethodFor anon prj == Moved
 
   (ce, cv) <- inline c
   (fe, fv) <- inline (maybe f (f @+) isAccumulating)
@@ -323,9 +329,10 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
   let loopInit = [R.Forward $ R.ScalarDecl (R.Name fg) (R.RValueReference R.Inferred) (Just fv), R.Forward $ R.ScalarDecl (R.Name acc) R.Inferred (Just pass)]
   let loopBody =
           [ (if isAP then R.Ignore else R.Assignment (R.Variable $ R.Name acc)) $
-              R.Call (R.Variable $ R.Name fg) [ (if isAP then id else R.Move) (R.Variable $ R.Name acc), R.Variable $ R.Name g]
+              R.Call (R.Variable $ R.Name fg)
+                [(if isAP then id else R.Move) (R.Variable $ R.Name acc), (if eleMove then R.Move else id) $ R.Variable $ R.Name g]
           ]
-  let loop = R.ForEach g (R.Reference $ R.Const $ R.Inferred) cv (R.Block loopBody)
+  let loop = R.ForEach g (R.Reference R.Inferred) cv (R.Block loopBody)
   return (ce ++ fe ++ ze ++ loopInit ++ loopPragmas ++ [loop], R.Move $ R.Variable $ R.Name acc)
 
 inline e@(tag -> EOperate OApp) = do
