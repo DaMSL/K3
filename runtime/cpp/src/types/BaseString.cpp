@@ -10,7 +10,7 @@ base_string::base_string() : buffer_(nullptr) {}
 base_string::base_string(const base_string& other)
     : buffer_(dupstr(other.buffer_)) {}
 
-base_string::base_string(base_string&& other) : base_string() {
+base_string::base_string(base_string&& other) noexcept : base_string() {
   swap(*this, other);
 }
 
