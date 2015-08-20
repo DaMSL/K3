@@ -35,6 +35,13 @@ base_string::~base_string() {
   buffer_ = 0;
 }
 
+void base_string::steal(char *p) {
+  if (bufferp_()) {
+    delete[] bufferp_();
+  }
+  buffer_ = p;
+}
+
 base_string& base_string::operator+=(const base_string& other) {
   bool new_header = has_header() || other.has_header();
   size_t len = length() + other.length() + (new_header? header_size : 0);
@@ -78,7 +85,8 @@ void swap(base_string& first, base_string& second) {
 
 // External string construction and storage tag management.
 bool base_string::has_header() const {
-  return (as_bits & header_mask) && header_flag;
+  bool b = (as_bits & header_mask) && header_flag;
+  return b;
 }
 
 void base_string::set_header(const bool& on) {
@@ -113,59 +121,95 @@ std::size_t base_string::raw_length() const {
 }
 
 const char* base_string::c_str() const {
-  if ( has_header() ) { return bufferp_(); }
+  if ( !has_header() ) { return bufferp_(); }
   else { return bufferp_() + header_size; }
+}
+
+// TODO (optimize comparators)
+size_t cmp(const base_string& b1, const base_string& b2) {
+  size_t len = b1.length();
+  size_t o_len = b2.length();
+  size_t min_len = len < o_len ? len : o_len;
+
+  auto val = memcmp(b1.bufferp_() ? b1.c_str() : "", b2.bufferp_() ? b2.c_str() : "", min_len);
+  if (val == 0) {
+    if (len == o_len) {
+      return 0;
+    } else if (len < o_len) {
+      return -1;
+    } else {
+      return 1;
+    }
+  }
+  return val;
+}
+
+size_t cmp(const base_string& b1, const char* other) {
+
+  size_t len = b1.length();
+  size_t o_len = other ? strlen(other) : 0;
+  size_t min_len = len < o_len ? len : o_len;
+
+  auto val = memcmp(b1.bufferp_() ? b1.c_str() : "", other ? other : "", min_len);
+  if (val == 0) {
+    if (len == o_len) {
+      return 0;
+    } else if (len < o_len) {
+      return -1;
+    } else {
+      return 1;
+    }
+  }
+  return val;
 }
 
 // Comparisons
 bool base_string::operator==(const base_string& other) const {
-  bool b = strcmp(bufferp_() ? c_str() : "", other.bufferp_() ? other.c_str() : "") == 0;
-  return b;
+  return cmp(*this, other) == 0;
 }
 
 bool base_string::operator==(const char* other) const {
-  bool b =  strcmp(bufferp_() ? c_str() : "", other ? other : "") == 0;
-  return b;
+  return cmp(*this, other) == 0;
 }
 
 bool base_string::operator!=(const base_string& other) const {
-  return strcmp(bufferp_() ? c_str() : "", other.bufferp_() ? other.c_str() : "") != 0;
+  return cmp(*this, other) != 0;
 }
 
 bool base_string::operator!=(const char* other) const {
-  return strcmp(bufferp_() ? c_str() : "", other ? other : "") != 0;
+  return cmp(*this, other) != 0;
 }
 
 bool base_string::operator<=(const base_string& other) const {
-  return strcmp(bufferp_() ? c_str() : "", other.bufferp_() ? other.c_str() : "") <= 0;
+  return cmp(*this, other) <= 0;
 }
 
 bool base_string::operator<=(const char* other) const {
-  return strcmp(bufferp_() ? c_str() : "", other ? other : "") <= 0;
+  return cmp(*this, other) <= 0;
 }
 
 bool base_string::operator<(const base_string& other) const {
-  return strcmp(bufferp_() ? c_str() : "", other.bufferp_() ? other.c_str() : "") < 0;
+  return cmp(*this, other) < 0;
 }
 
 bool base_string::operator<(const char* other) const {
-  return strcmp(bufferp_() ? c_str() : "", other ? other : "") < 0;
+  return cmp(*this, other) < 0;
 }
 
 bool base_string::operator>=(const base_string& other) const {
-  return strcmp(bufferp_() ? c_str() : "", other.bufferp_() ? other.c_str() : "") >= 0;
+  return cmp(*this, other) >= 0;
 }
 
 bool base_string::operator>=(const char* other) const {
-  return strcmp(bufferp_() ? c_str() : "", other ? other : "") >= 0;
+  return cmp(*this, other) >= 0;
 }
 
 bool base_string::operator>(const base_string& other) const {
-  return strcmp(bufferp_() ? c_str() : "", other.bufferp_() ? other.c_str() : "") > 0;
+  return cmp(*this, other) > 0;
 }
 
 bool base_string::operator>(const char* other) const {
-  return strcmp(bufferp_() ? c_str() : "", other ? other : "") > 0;
+  return cmp(*this, other) > 0;
 }
 
 // Operations
@@ -234,22 +278,22 @@ std::ostream& operator<<(std::ostream& out, const base_string& s) {
   return out;
 }
 
-char* base_string::begin() const { return c_str(); }
+char* base_string::begin() const { return const_cast<char*>(c_str()); }
 
-char* base_string::end() const { return c_str_() + length(); }
+char* base_string::end() const { return const_cast<char*>(c_str()) + length(); }
 
 // Utilities
 char* dupbuf(const base_string& b) throw() {
-  if (!b.bufferp()_) { return nullptr; }
+  if (!b.bufferp_()) { return nullptr; }
   auto n = b.raw_length();
   auto d = new char[n + 1];
-  return static_cast<char*>(memcpy(d, s, n + 1));
+  return static_cast<char*>(memcpy(d, b.bufferp_(), n + 1));
 }
 
 char* dupstr(const char* s) throw() {
   if (!s) { return nullptr; }
   auto n = strlen(s);
-  auto d = new char[n + 1];
+  char* d = new char[n + 1];
   return static_cast<char*>(memcpy(d, s, n + 1));
 }
 

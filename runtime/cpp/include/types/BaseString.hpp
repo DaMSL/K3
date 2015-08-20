@@ -17,6 +17,7 @@
 namespace K3 {
 
 char* dupstr(const char*) throw();
+char* dupbuf(const base_string& b) throw();
 
 class base_string {
  public:
@@ -29,10 +30,14 @@ class base_string {
   base_string(const char* from, std::size_t count);
   ~base_string();
 
+  void steal(char *p);
   base_string& operator+=(const base_string& other);
   base_string& operator+=(const char* other);
   base_string& operator=(const base_string& other);
   base_string& operator=(base_string&& other);
+  friend char* dupbuf(const base_string& b) throw();
+  friend size_t cmp(const base_string& b1, const base_string& b2);
+  friend size_t cmp(const base_string& b1, const char* other);
   friend void swap(base_string& first, base_string& second);
 
   // Header tag management
