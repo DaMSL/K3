@@ -35,11 +35,16 @@ class base_string {
   base_string& operator=(base_string&& other);
   friend void swap(base_string& first, base_string& second);
 
+  // Header tag management
+  bool has_header() const;
+  void set_header(const bool& on);
+
   // Conversions
   operator std::string() const;
 
   // Accessors
   std::size_t length() const;
+  std::size_t raw_length() const;
   const char* c_str() const;
 
   // Comparisons
@@ -72,12 +77,12 @@ class base_string {
   void serialize(archive& a, const unsigned int) {
     uint64_t len;
     if (archive::is_saving::value) {
-      len = length();
+      len = raw_length();
     }
     a& len;
     if (archive::is_loading::value) {
-      if (buffer_) {
-        delete[] buffer_;
+      if (bufferp_()) {
+        delete[] bufferp_();
         buffer_ = 0;
       }
 
@@ -88,17 +93,17 @@ class base_string {
         buffer_ = 0;
       }
     }
-    if (buffer_) {
-      a& boost::serialization::make_array(buffer_, len);
+    if (bufferp_()) {
+      a& boost::serialization::make_array(bufferp_(), len);
     }
   }
 
   template <class archive>
   void serialize(archive& a) const {
-    uint64_t len = length();
+    uint64_t len = raw_length();
     a& len;
-    if (buffer_) {
-      a.write(buffer_, len);
+    if (bufferp_()) {
+      a.write(bufferp_(), len);
     }
   }
 
@@ -106,8 +111,8 @@ class base_string {
   void serialize(archive& a) {
     uint64_t len;
     a& len;
-    if (buffer_) {
-      delete[] buffer_;
+    if (bufferp_()) {
+      delete[] bufferp_();
       buffer_ = 0;
     }
 
@@ -117,14 +122,24 @@ class base_string {
     } else {
       buffer_ = 0;
     }
-    if (buffer_) {
-      a.read(buffer_, len);
+    if (bufferp_()) {
+      a.read(bufferp_(), len);
     }
   }
-  
 
  private:
-  char* buffer_;
+  union {
+    char* buffer_;
+    intptr_t as_bits;
+  };
+
+  __attribute__((always_inline)) char* bufferp_() const {
+    return reinterpret_cast<char*>(as_bits & ~header_mask);
+  }
+
+  constexpr static intptr_t header_mask = alignof(char*) - 1;
+  constexpr static int header_flag = 0b1;
+  constexpr static size_t header_size = sizeof(size_t);
 };
 
 inline bool operator==(char const* s, base_string const& b) { return b == s; }
@@ -143,7 +158,7 @@ inline base_string operator+(base_string s, base_string const& t) {
   return s += t;
 }
 
-  
+
 // Specializations for CSV parsing/writing, skipping the length field.
 template <>
 void base_string::serialize(csv::parser& a, const unsigned int);

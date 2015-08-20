@@ -8,7 +8,10 @@ namespace K3 {
 base_string::base_string() : buffer_(nullptr) {}
 
 base_string::base_string(const base_string& other)
-    : buffer_(dupstr(other.buffer_)) {}
+    : buffer_(dupbuf(other))
+{
+  set_header(other.has_header());
+}
 
 base_string::base_string(base_string&& other) : base_string() {
   swap(*this, other);
@@ -26,25 +29,30 @@ base_string::base_string(const char* from, std::size_t count) : base_string() {
 }
 
 base_string::~base_string() {
-  if (buffer_) {
-    delete[] buffer_;
+  if (bufferp_()) {
+    delete[] bufferp_();
   }
   buffer_ = 0;
 }
 
 base_string& base_string::operator+=(const base_string& other) {
-  auto new_buffer_ = new char[length() + other.length() + 1];
+  bool new_header = has_header() || other.has_header();
+  size_t len = length() + other.length() + (new_header? header_size : 0);
+  auto new_buffer_ = new char[len + 1];
+  auto new_c_str_ = new_buffer_ + (new_header? header_size : 0);
 
-
-  std::strcpy(new_buffer_, (buffer_ ? buffer_ : ""));
-  std::strcat(new_buffer_, (other.buffer_ ? other.buffer_ : ""));
-
-  if (buffer_) {
-    delete[] buffer_;
+  set_header(new_header);
+  if ( new_header ) {
+    *reinterpret_cast<size_t*>(new_buffer_) = length() + other.length();
   }
 
-  buffer_ = new_buffer_;
+  std::strcpy(new_c_str_, (bufferp_() ? c_str() : ""));
+  std::strcat(new_c_str_, (other.bufferp_() ? other.c_str() : ""));
 
+  if (bufferp_()) {
+    delete[] bufferp_();
+  }
+  buffer_ = new_buffer_;
   return *this;
 }
 
@@ -68,94 +76,120 @@ void swap(base_string& first, base_string& second) {
   swap(first.buffer_, second.buffer_);
 }
 
+// External string construction and storage tag management.
+bool base_string::has_header() const {
+  return (as_bits & header_mask) && header_flag;
+}
+
+void base_string::set_header(const bool& on) {
+  if ( on ) { as_bits |= header_flag; }
+  else { as_bits &= ~header_flag; }
+}
+
 // Conversions
 base_string::operator std::string() const {
-  return std::string(buffer_ ? buffer_ : "");
+  return std::string(bufferp_() ? c_str() : "");
 }
 
 // Accessors
 std::size_t base_string::length() const {
-  if (buffer_) {
-    return strlen(buffer_);
+  if (bufferp_()) {
+    if (has_header()) {
+      return *reinterpret_cast<size_t*>(bufferp_());
+    }
+    else { return strlen(bufferp_()); }
   }
-
   return 0;
 }
 
-const char* base_string::c_str() const { return buffer_; }
+std::size_t base_string::raw_length() const {
+  if (bufferp_()) {
+    if (has_header()) {
+      return *reinterpret_cast<size_t*>(bufferp_()) + header_size;
+    }
+    else { return strlen(bufferp_()); }
+  }
+  return 0;
+}
+
+const char* base_string::c_str() const {
+  if ( has_header() ) { return bufferp_(); }
+  else { return bufferp_() + header_size; }
+}
 
 // Comparisons
 bool base_string::operator==(const base_string& other) const {
-  bool b = strcmp(buffer_ ? buffer_ : "", other.buffer_ ? other.buffer_ : "") ==
-         0;
+  bool b = strcmp(bufferp_() ? c_str() : "", other.bufferp_() ? other.c_str() : "") == 0;
   return b;
 }
 
 bool base_string::operator==(const char* other) const {
-  bool b =  strcmp(buffer_ ? buffer_ : "", other ? other : "") == 0;
+  bool b =  strcmp(bufferp_() ? c_str() : "", other ? other : "") == 0;
   return b;
 }
 
 bool base_string::operator!=(const base_string& other) const {
-  return strcmp(buffer_ ? buffer_ : "", other.buffer_ ? other.buffer_ : "") !=
-         0;
+  return strcmp(bufferp_() ? c_str() : "", other.bufferp_() ? other.c_str() : "") != 0;
 }
 
 bool base_string::operator!=(const char* other) const {
-  return strcmp(buffer_ ? buffer_ : "", other ? other : "") != 0;
+  return strcmp(bufferp_() ? c_str() : "", other ? other : "") != 0;
 }
 
 bool base_string::operator<=(const base_string& other) const {
-  return strcmp(buffer_ ? buffer_ : "", other.buffer_ ? other.buffer_ : "") <=
-         0;
+  return strcmp(bufferp_() ? c_str() : "", other.bufferp_() ? other.c_str() : "") <= 0;
 }
 
 bool base_string::operator<=(const char* other) const {
-  return strcmp(buffer_ ? buffer_ : "", other ? other : "") <= 0;
+  return strcmp(bufferp_() ? c_str() : "", other ? other : "") <= 0;
 }
 
 bool base_string::operator<(const base_string& other) const {
-  return strcmp(buffer_ ? buffer_ : "", other.buffer_ ? other.buffer_ : "") < 0;
+  return strcmp(bufferp_() ? c_str() : "", other.bufferp_() ? other.c_str() : "") < 0;
 }
 
 bool base_string::operator<(const char* other) const {
-  return strcmp(buffer_ ? buffer_ : "", other ? other : "") < 0;
+  return strcmp(bufferp_() ? c_str() : "", other ? other : "") < 0;
 }
 
 bool base_string::operator>=(const base_string& other) const {
-  return strcmp(buffer_ ? buffer_ : "", other.buffer_ ? other.buffer_ : "") >=
-         0;
+  return strcmp(bufferp_() ? c_str() : "", other.bufferp_() ? other.c_str() : "") >= 0;
 }
 
 bool base_string::operator>=(const char* other) const {
-  return strcmp(buffer_ ? buffer_ : "", other ? other : "") >= 0;
+  return strcmp(bufferp_() ? c_str() : "", other ? other : "") >= 0;
 }
 
 bool base_string::operator>(const base_string& other) const {
-  return strcmp(buffer_ ? buffer_ : "", other.buffer_ ? other.buffer_ : "") > 0;
+  return strcmp(bufferp_() ? c_str() : "", other.bufferp_() ? other.c_str() : "") > 0;
 }
 
 bool base_string::operator>(const char* other) const {
-  return strcmp(buffer_ ? buffer_ : "", other ? other : "") > 0;
+  return strcmp(bufferp_() ? c_str() : "", other ? other : "") > 0;
 }
 
 // Operations
 base_string base_string::substr(std::size_t from, std::size_t to) const {
-  if (!buffer_) {
+  if (!bufferp_()) {
     return base_string();
   }
 
   auto n = length();
+  if (from > n) { from = n; }
+  if (to > n) { to = n; }
 
-  if (from > n) {
-    from = n;
-  }
+  auto new_sz = to - from;
+  auto new_len = new_sz + (has_header()? header_size : 0);
 
-  if (to > n) {
-    to = n;
-  }
+  auto new_buffer_ = new char[new_len + 1];
+  auto new_c_str_ = new_buffer_ + (has_header()? header_size : 0);
+  new_buffer_[new_len] = 0;
 
-  return base_string(buffer_ + from, to - from);
+  strncpy(new_c_str_, c_str() + from, new_sz);
+  base_string result;
+  result.steal(new_buffer_);
+  result.set_header(has_header());
+  return result;
 }
 
 int base_string::strcomp(const base_string& other) const {
@@ -200,16 +234,20 @@ std::ostream& operator<<(std::ostream& out, const base_string& s) {
   return out;
 }
 
-char* base_string::begin() const { return buffer_; }
+char* base_string::begin() const { return c_str(); }
 
-char* base_string::end() const { return buffer_ + length(); }
+char* base_string::end() const { return c_str_() + length(); }
 
 // Utilities
-char* dupstr(const char* s) throw() {
-  if (!s) {
-    return nullptr;
-  }
+char* dupbuf(const base_string& b) throw() {
+  if (!b.bufferp()_) { return nullptr; }
+  auto n = b.raw_length();
+  auto d = new char[n + 1];
+  return static_cast<char*>(memcpy(d, s, n + 1));
+}
 
+char* dupstr(const char* s) throw() {
+  if (!s) { return nullptr; }
   auto n = strlen(s);
   auto d = new char[n + 1];
   return static_cast<char*>(memcpy(d, s, n + 1));
@@ -221,15 +259,15 @@ void base_string::serialize(csv::parser& a, const unsigned int) {
   std::string tmp;
   a& tmp;
 
-  if (buffer_) {
-    delete[] buffer_;
+  if (bufferp_()) {
+    delete[] bufferp_();
   }
   buffer_ = dupstr(tmp.c_str());
 }
 
 template <>
 void base_string::serialize(csv::writer& a, const unsigned int) {
-  std::string tmp = std::string(buffer_, length());
+  std::string tmp = std::string(bufferp_(), raw_length());
   a& tmp;
 }
 
