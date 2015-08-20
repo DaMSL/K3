@@ -182,6 +182,21 @@ materializeD d = case tag d of
 
 materializeE :: K3 Expression -> InferM ()
 materializeE e@(Node (t :@: _) cs) = case t of
+  EProject f -> do
+    let [super] = cs
+    materializeE super
+    moveableNow <- ePrv super >>= contextualizeNow >>= isMoveableNow
+    ownContext <- ePrv super >>= contextualizeNow >>= bindPoint >>= \case
+      Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied] -??- "Owned by containing context?"
+      Nothing -> return $ mBool True -??- "Temporary."
+
+
+    u <- eUID e
+
+    -- Need to be very careful here, semantics probably say that default method is copy, but we
+    -- treat it as reference almost everywhere. Check projection decisions carefully, usually on
+    -- collection transformers.
+    constrain u anon In $ mITE (moveableNow -&&- ownContext) (mAtom Moved) (mAtom Referenced)
   ERecord is -> do
     u <- eUID e
 
