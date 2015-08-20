@@ -269,12 +269,14 @@ materializeE e@(Node (t :@: _) cs) = case t of
 
     moveable <- ePrv x >>= contextualizeNow >>= isMoveableNow
 
-    ownContext <- ePrv x >>= contextualizeNow >>= bindPoint >>= \case
-      Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied] -??- "Owned by containing context?"
-      Nothing -> return $ mBool True -??- "Temporary"
+    (ownContext, fwdContext) <- ePrv x >>= contextualizeNow >>= bindPoint >>= \case
+      Just (Juncture u i) -> return $ ( mOneOf (mVar u i In) [Moved, Copied] -??- "Owned by containing context?"
+                                      , mOneOf (mVar u i In) [Forwarded] -??- "Forwarded by containing context?")
+      Nothing -> return $ (mBool True -??- "Temporary.", mBool True -??- "Temporary.")
 
     u <- eUID e
-    constrain u anon In $ mITE (moveable -&&- ownContext) (mAtom Moved) (mAtom Copied)
+    constrain u anon In $ mITE moveable (mITE ownContext (mAtom Moved) (mITE fwdContext (mAtom Forwarded) (mAtom Copied)))
+                            (mAtom Copied)
 
   EOperate OSnd -> do
     let [h, m] = cs
