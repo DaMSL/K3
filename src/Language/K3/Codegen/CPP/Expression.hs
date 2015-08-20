@@ -346,15 +346,13 @@ inline e@(tag -> EOperate OApp) = do
 
   gs <- mapM (const genSym) xs
 
-  let argDecl g x xv m = do
-        gs <- gets globals
-        return $ case x of
-          (tag -> EVariable i) | i `elem` map fst gs -> ([], xv)
-          _ -> ([R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just $ gMoveByDE (getInMethodFor "!" m) x xv)]
-               , R.Call (R.Variable $ R.Name "_F") [R.Variable $ R.Name g]
-               )
+  let argDecl g x xv m = case x of
+        -- (tag -> EVariable i) -> ([], xv)
+        _ -> ([R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just $ gMoveByDE (getInMethodFor "!" m) x xv)]
+              , R.Call (R.Variable $ R.Name "_F") [R.Variable $ R.Name g]
+             )
 
-  (argDecls, argPasses) <- unzip <$> sequence [argDecl g x xv m | g <- gs | xv <- xvs | x <- xs | m <- as]
+  let (argDecls, argPasses) = unzip [argDecl g x xv m | g <- gs | xv <- xvs | x <- xs | m <- as]
 
   let eName i = maybe (return i) (const $ getKType e >>= genCType >>= \rt -> return $ R.Specialized [rt] i)
                   (f @~ CArgs.isErrorFn)
