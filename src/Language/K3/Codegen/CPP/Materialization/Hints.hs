@@ -15,6 +15,7 @@ data Method
   | Referenced
   | Moved
   | Copied
+  | Forwarded
  deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 defaultMethod :: Method

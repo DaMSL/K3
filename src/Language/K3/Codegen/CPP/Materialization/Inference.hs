@@ -471,7 +471,7 @@ isGlobal p = case tag p of
   (PGlobal _) -> return (mBool True)
   (PBVar (PMatVar n u ptr)) -> do
     parent <- chasePPtr ptr >>= isGlobal
-    return $ mOneOf (mVar u n In) [Referenced, ConstReferenced] -&&- parent
+    return $ mOneOf (mVar u n In) [Referenced, ConstReferenced, Forwarded] -&&- parent
   (PProject _) -> isGlobal (head $ children p)
   PSet -> mOr <$> traverse isGlobal (children p)
   (PRecord _) -> mOr <$> traverse isGlobal (children p)
@@ -488,7 +488,7 @@ occursIn a@(Contextual pa ca) b@(Contextual pb cb) = case tag pb of
     PBVar (PMatVar n' u' _) | n' == n && u' == u -> return (mBool True)
     _ -> do
       pOccurs <- chasePPtr ptr >>= \p' -> occursIn a (Contextual p' cb)
-      return $ mOneOf (mVar u n In) [Referenced, ConstReferenced] -&&- pOccurs
+      return $ mOneOf (mVar u n In) [Referenced, ConstReferenced, Forwarded] -&&- pOccurs
   PSet -> mOr <$> traverse (\pb' -> occursIn a (Contextual pb' cb)) (children pb)
   PLambda _ _ -> mOr <$> traverse (\pb' -> occursIn a (Contextual pb' cb)) (children pb)
   PProject _ -> mOr <$> traverse (\pb' -> occursIn a (Contextual pb' cb)) (children pb)
