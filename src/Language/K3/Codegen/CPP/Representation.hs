@@ -29,6 +29,7 @@ module Language.K3.Codegen.CPP.Representation (
     pattern Throw,
     pattern ThrowRuntimeErr,
     pattern SForward,
+    pattern FMacro,
 
     bind,
     flattenFnType,
@@ -245,6 +246,7 @@ pattern ThrowRuntimeErr s = Call (Variable (Name "throw"))
                               [Call (Variable (Qualified (Name "std") (Name "runtime_error"))) [s]]
 
 pattern SForward t e = Call (Variable (Qualified (Name "std") (Specialized [t] (Name "forward")))) [e]
+pattern FMacro f = Call (Variable (Name "_F")) [f]
 
 bind :: Expression -> Expression -> Int -> Expression
 bind f a 1 = Call f [a]
