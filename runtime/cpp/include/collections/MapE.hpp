@@ -194,6 +194,15 @@ class MapE {
   }
 
   template <typename Fun>
+  auto map(Fun f) const -> K3::MapE<RT<Fun, R>> {
+    K3::MapE<RT<Fun, R>> result;
+    for (const auto& p : container) {
+      result.insert(f(p.second));
+    }
+    return result;
+  }
+
+  template <typename Fun>
   auto map_generic(Fun f) const -> K3::Map<RT<Fun, R>> {
     K3::Map<RT<Fun, R>> result;
     for (const auto& p : container) {
@@ -222,6 +231,30 @@ class MapE {
   }
 
   template <typename F1, typename F2, typename Z>
+  MapE<R_key_value<RT<F1, R>, Z>>
+  group_by(F1 grouper, F2 folder, const Z& init) const
+  {
+    // Create a map to hold partial results
+    typedef RT<F1, R> K;
+    std::unordered_map<K, Z> accs;
+
+    for (const auto& it : container) {
+      K key = grouper(it.second);
+      if (accs.find(key) == accs.end()) {
+        accs[key] = init;
+      }
+      accs[key] = folder(std::move(accs[key]), it.second);
+    }
+
+    MapE<R_key_value<K, Z>> result;
+    for (auto&& it : accs) {
+      result.insert(std::move(
+          R_key_value<K, Z>{std::move(it.first), std::move(it.second)}));
+    }
+    return result;
+  }
+
+  template <typename F1, typename F2, typename Z>
   Map<R_key_value<RT<F1, R>, Z>>
   group_by_generic(F1 grouper, F2 folder, const Z& init) const
   {
@@ -242,6 +275,19 @@ class MapE {
       result.insert(std::move(
           R_key_value<K, Z>{std::move(it.first), std::move(it.second)}));
     }
+    return result;
+  }
+
+  template <class Fun>
+  auto ext(Fun expand) const -> MapE<typename RT<Fun, R>::ElemType> {
+    typedef typename RT<Fun, R>::ElemType T;
+    MapE<T> result;
+    for (const auto& it : container) {
+      for (auto&& it2 : expand(it.second).container) {
+        result.insert(std::move(it2.second));
+      }
+    }
+
     return result;
   }
 

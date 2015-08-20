@@ -7,7 +7,7 @@ include "Annotation/Map.k3"
 // This variant requires parameters defining the key-value decomposition
 // of the content type, and exploits these parameters where suitable in its API.
 
-annotation MapE[key: [labeltype], value: [labeltype]] given type a,b
+annotation MapE[key: [labeltype], value: [labeltype]] given type a,b,c
 {
   provides lifted size : () -> int
     with effects \_ -> R[self]
@@ -86,6 +86,32 @@ annotation MapE[key: [labeltype], value: [labeltype]] given type a,b
   @:Transformer
   provides lifted ext_generic : (content -> collection {key : a, value: b} @Map)
                                  -> collection {key : a, value: b} @Map
+    with effects \extF -> [R[self]; ([R[content]; extF content])*]
+
+
+  // These signatures enable fully chained functionality, but do not allow
+  // assignment back into concretely declared MapE data types.
+  // This is because our annotation deduplication for MapE depends on the
+  // content type, resulting in two different nominal annotation types.
+  @:Transformer
+  provides lifted map : (content -> {key: a, value: b})
+                         -> collection {key: a, value: b}
+                              @MapE(key=[:> key=>a], value=[:> value=>b])
+    with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
+
+  @:{Transformer, CArgs 3}
+  provides lifted group_by : (content -> a) -> (b -> content -> b) -> b
+                              -> collection { key : a, value : b }
+                                   @MapE(key=[:> key=>a], value=[:> value=>b])
+    with effects
+      \gbF -> \gaccF -> \z ->
+        [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
+
+  @:Transformer
+  provides lifted ext : (content -> collection {key : a, value: b}
+                                      @MapE(key=[:> key=>a], value=[:> value=>b]))
+                         -> collection {key : a, value: b}
+                              @MapE(key=[:> key=>a], value=[:> value=>b])
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
 
 }
