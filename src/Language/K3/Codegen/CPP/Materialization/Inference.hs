@@ -9,6 +9,7 @@ module Language.K3.Codegen.CPP.Materialization.Inference (
   optimizeMaterialization
 ) where
 
+import qualified Data.Graph as G
 import qualified Data.List as L
 
 import Control.Arrow
@@ -30,6 +31,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 
 import Language.K3.Core.Common
+import Language.K3.Core.Utils
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
