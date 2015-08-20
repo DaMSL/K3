@@ -237,7 +237,7 @@ materializeE e@(Node (t :@: _) cs) = case t of
           Just (EType (tag &&& children -> (TFunction, [t, _]))) -> isNonScalarType t
           _ -> False
 
-    constrain u i In $ mITE (ehw -||- mBool (topL && argShouldBeMoved)) (mAtom Copied) (mAtom ConstReferenced)
+    constrain u i In $ mITE (ehw -||- mBool (topL && argShouldBeMoved)) (mAtom Copied) (mAtom Forwarded)
 
     cls <- ePrv e >>= \case
       (tag -> PLambda _ cls) -> return cls
