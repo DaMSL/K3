@@ -297,41 +297,50 @@ inline e@(tag -> ELambda _) = do
 
     return ([], R.Lambda captures argList True (if isAccumulating then Just R.Void else returnType) fullBody)
 
-inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [prj@(Fold c), f])), z])) = do
-  let isAccumulating = prj @~ (\case { EProperty (ePropertyName -> "AccumulatingTransformer") -> True; _ -> False })
-  let isAP = isJust isAccumulating
-
-  let eleMove = getInMethodFor anon prj == Moved
-
+inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [p@(Fold c), f])), z])) = do
   (ce, cv) <- inline c
-  (fe, fv) <- inline (maybe f (f @+) isAccumulating)
   (ze, zv) <- inline z
 
-  pass <- case if forceMoveP e then Moved else getInMethodFor "!" e of
-            Copied -> return zv
-            Moved -> return (gMoveByE z zv)
-            _ -> return zv
+  eleMove <- getKType c >>= \(tag &&& children -> (TCollection, [t])) -> return $ getInMethodFor anon p == Moved && isNonScalarType t
 
-  let isVectorizeProp  = \case { EProperty (ePropertyName -> "Vectorize")  -> True; _ -> False }
-  let isInterleaveProp = \case { EProperty (ePropertyName -> "Interleave") -> True; _ -> False }
+  let accMove = gMoveByDE (if forceMoveP e then Moved else getInMethodFor anon e) z zv
 
-  let vectorizePragma = case e @~ isVectorizeProp of
-                          Nothing -> []
-                          Just (EProperty (ePropertyValue -> Nothing)) -> [R.Pragma "clang vectorize(enable)"]
-                          Just (EProperty (ePropertyValue -> Just (tag -> LInt i))) ->
-                              [ R.Pragma "clang loop vectorize(enable)"
-                              , R.Pragma $ "clang loop vectorize_width(" ++ show i ++ ")"
-                              ]
+  accVar <- genSym
+  eleVar <- genSym
 
-  let interleavePragma = case e @~ isInterleaveProp of
-                           Nothing -> []
-                           Just (EProperty (ePropertyValue -> Nothing)) -> [R.Pragma "clang interleave(enable)"]
-                           Just (EProperty (ePropertyValue -> Just (tag -> LInt i))) ->
-                               [ R.Pragma "clang loop interleave(enable)"
-                               , R.Pragma $ "clang loop interleave_count(" ++ show i ++ ")"
-                               ]
+  let accDecl = R.Forward $ R.ScalarDecl (R.Name accVar) R.Inferred (Just accMove)
 
-  let loopPragmas = concat [vectorizePragma, interleavePragma]
+  (fe, fb) <- inlineApply (RName accVar Nothing) f [ R.Variable $ R.Name accVar
+                                                   , (if eleMove then R.Move else id) $ R.Variable $ R.Name eleVar
+                                                   ]
+
+  let loopBody = fb
+
+  let loop = R.ForEach eleVar (R.Reference R.Inferred) cv (R.Block loopBody)
+
+  let bb = if null fe then loop else R.Block (fe ++ [loop])
+
+  return ([accDecl] ++ ce ++ ze ++ [bb], R.Variable $ R.Name accVar)
+
+  -- Leaving this here for later.
+  -- let isVectorizeProp  = \case { EProperty (ePropertyName -> "Vectorize")  -> True; _ -> False }
+  -- let isInterleaveProp = \case { EProperty (ePropertyName -> "Interleave") -> True; _ -> False }
+
+  -- let vectorizePragma = case e @~ isVectorizeProp of
+  --                         Nothing -> []
+  --                         Just (EProperty (ePropertyValue -> Nothing)) -> [R.Pragma "clang vectorize(enable)"]
+  --                         Just (EProperty (ePropertyValue -> Just (tag -> LInt i))) ->
+  --                             [ R.Pragma "clang loop vectorize(enable)"
+  --                             , R.Pragma $ "clang loop vectorize_width(" ++ show i ++ ")"
+  --                             ]
+
+  -- let interleavePragma = case e @~ isInterleaveProp of
+  --                          Nothing -> []
+  --                          Just (EProperty (ePropertyValue -> Nothing)) -> [R.Pragma "clang interleave(enable)"]
+  --                          Just (EProperty (ePropertyValue -> Just (tag -> LInt i))) ->
+  --                              [ R.Pragma "clang loop interleave(enable)"
+  --                              , R.Pragma $ "clang loop interleave_count(" ++ show i ++ ")"
+  --                              ]
 
   g <- genSym
   acc <- genSym
