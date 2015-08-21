@@ -56,8 +56,8 @@ data RContext
 
     -- | Indicates that the calling context requires the callee's result to be stored in a variable
     -- of a pre-specified name.
-    | RName { target :: Identifier, maybeByMove :: Maybe Bool}
-    | RDecl { target :: Identifier, maybeByMove :: Maybe Bool}
+    | RName { targetN :: R.Expression, maybeByMove :: Maybe Bool}
+    | RDecl { targetD :: Identifier, maybeByMove :: Maybe Bool}
 
     -- | A free-form reification context, for special cases.
     | RSplice ([CPPGenR] -> CPPGenR)
@@ -65,15 +65,15 @@ data RContext
 instance Show RContext where
     show RForget = "RForget"
     show (RReturn b) = "RReturn " ++ show b
-    show (RName i b) = "RName \"" ++ i ++ "\"" ++ " " ++ show b
-    show (RDecl i b) = "RDecl \"" ++ i ++ "\"" ++ " " ++ show b
+    show (RName i b) = "RName \"" ++ (show i) ++ "\"" ++ " " ++ show b
+    show (RDecl i b) = "RDecl \"" ++ (show i) ++ "\"" ++ " " ++ show b
     show (RSplice _) = "RSplice <opaque>"
 
 -- Helper to default to forwarding when declaration pushdown is impossible.
 precludeRDecl i b x = do
   xt <- getKType x
   fd <- cDecl xt i
-  x' <- reify (RName i b) x
+  x' <- reify (RName (R.Variable $ R.Name i) b) x
   return (fd ++ x')
 
 -- | Template Patterns
@@ -311,9 +311,8 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
 
   let accDecl = R.Forward $ R.ScalarDecl (R.Name accVar) R.Inferred (Just accMove)
 
-  (fe, fb) <- inlineApply (RName accVar Nothing) f [ R.Variable $ R.Name accVar
-                                                   , (if eleMove then R.Move else id) $ R.Variable $ R.Name eleVar
-                                                   ]
+  (fe, fb) <- inlineApply (RName (R.Variable $ R.Name accVar) (Just True)) f
+                [R.Variable $ R.Name accVar, (if eleMove then R.Move else id) $ R.Variable $ R.Name eleVar]
 
   let loopBody = fb
 
@@ -361,16 +360,11 @@ inline e@(tag &&& children -> (EOperate OApp, [
                        (R.Variable $ R.Name existing)
                        (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uc])
 
-  g <- genSym
+  (nfe, nfb) <- inlineApply (RName (R.Subscript uc (R.Project kv (R.Name "key"))) (Just True)) n [R.Initialization R.Unit []]
+  (wfe, wfb) <- inlineApply (RName (R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")) (Just True)) w
+                  [R.Move $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")]
 
-  (nfe, nfb) <- inlineApply (RDecl g Nothing) n [R.Initialization R.Unit []]
-  (wfe, wfb) <- inlineApply (RDecl g Nothing) w [R.Move $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")]
-
-  let nfPushBack = R.Assignment (R.Subscript uc (R.Project kv (R.Name "key"))) (R.Move $ R.Variable $ R.Name g)
-  let wfPushBack = R.Assignment (R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second"))
-                                (R.Move $ R.Variable $ R.Name g)
-
-  return (ce ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb ++ [nfPushBack]) (wfe ++ wfb ++ [wfPushBack])]
+  return (ce ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
          , R.Initialization R.Unit [])
 
 
@@ -433,7 +427,8 @@ inline e@(tag &&& children -> (EProject v, [k])) = do
     (ke, kv) <- inline k
     return (ke, R.Project kv (R.Name v))
 
-inline (tag &&& children -> (EAssign x, [e])) = reify (RName x Nothing) e >>= \a -> return (a, R.Initialization R.Unit [])
+inline (tag &&& children -> (EAssign x, [e])) = reify (RName (R.Variable $ R.Name x) Nothing) e >>= \a ->
+                                                  return (a, R.Initialization R.Unit [])
 
 inline (tag &&& children -> (EAddress, [h, p])) = do
     (he, hv) <- inline h
@@ -492,7 +487,7 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
         EVariable k -> return (k, [])
         _ -> do
           g <- genSym
-          ee <- reify (RName g Nothing) e
+          ee <- reify (RName (R.Variable $ R.Name g) Nothing) e
           return (g, [R.Forward $ R.ScalarDecl (R.Name g) initCType Nothing] ++ ee)
 
     let initExpr = R.Dereference $ R.Variable $ R.Name initName
@@ -525,8 +520,8 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
           returnType <- getKType k >>= genCType
           let returnDecl = [R.Forward $ R.ScalarDecl (R.Name returnName) returnType Nothing]
           let returnStmt = if j then R.Move (R.Variable $ R.Name returnName) else (R.Variable $ R.Name returnName)
-          someE <- reify (RName returnName Nothing) s
-          noneE <- reify (RName returnName Nothing) n
+          someE <- reify (RName (R.Variable $ R.Name returnName) Nothing) s
+          noneE <- reify (RName (R.Variable $ R.Name returnName) Nothing) n
 
           return (someE, noneE, returnDecl, [R.Return returnStmt])
         _ -> do
@@ -555,7 +550,7 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
       EVariable v -> return (v, [])
       _ -> do
         g <- genSym
-        ee <- reify (RName g Nothing) a
+        ee <- reify (RName (R.Variable $ R.Name g) Nothing) a
         return (g, [R.Forward $ R.ScalarDecl (R.Name g) initCType Nothing] ++ ee)
 
   let initExpr = R.Variable (R.Name initName)
@@ -599,7 +594,7 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
         returnType <- getKType k >>= genCType
         let returnDecl = [R.Forward $ R.ScalarDecl (R.Name returnName) returnType Nothing]
         let returnExpr = if m then R.Move (R.Variable $ R.Name returnName) else (R.Variable $ R.Name returnName)
-        bindBody <- reify (RName returnName (Just m)) e
+        bindBody <- reify (RName (R.Variable $ R.Name returnName) (Just m)) e
         return (bindBody, returnDecl, [R.Return returnExpr])
       _ -> do
         bindBody <- reify r e
@@ -620,8 +615,7 @@ reify r e = do
     (effects, value) <- inline e
     reification <- case r of
         RForget -> return []
-        RName k b -> return [R.Assignment (R.Variable $ R.Name k)
-                             (if fromMaybe False b then gMoveByE e value else value)]
+        RName k b -> return [R.Assignment k (if fromMaybe False b then gMoveByE e value else value)]
         RDecl i b -> return [R.Forward $ R.ScalarDecl (R.Name i) (R.Inferred)
                              (Just $ if fromMaybe False b then gMoveByE e value else value)]
         RReturn b -> return $ [R.Return $ (if b then R.Move else id) value]
