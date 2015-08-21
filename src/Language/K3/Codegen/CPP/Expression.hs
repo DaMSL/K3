@@ -76,9 +76,10 @@ precludeRDecl i b x = do
   x' <- reify (RName i b) x
   return (fd ++ x')
 
--- | Patterns
+-- | Template Patterns
 -- TODO: Check for transformer property.
 pattern Fold c <- Node (EProject "fold" :@: _) [c]
+pattern UpsertWith c <- Node (EProject "upsert_with" :@: _) [c]
 
 hasMoveProperty :: Annotation Expression -> Bool
 hasMoveProperty ae = case ae of
@@ -342,19 +343,37 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
   --                              , R.Pragma $ "clang loop interleave_count(" ++ show i ++ ")"
   --                              ]
 
+inline e@(tag &&& children -> (EOperate OApp, [
+         (tag &&& children -> (EOperate OApp, [
+         (tag &&& children -> (EOperate OApp, [
+           p@(UpsertWith c),
+           k])),
+           n])),
+           w])) = do
+  (ce, cv) <- inline c
+  (ke, kv) <- inline k
+  let uc = R.Call (R.Project cv (R.Name "getContainer")) []
+
+  existing <- genSym
+  let existingFind = R.Call (R.Project uc (R.Name "find")) [R.Project kv (R.Name "key")]
+  let existingDecl = R.Forward $ R.ScalarDecl (R.Name existing) R.Inferred (Just $ existingFind)
+  let existingPred = R.Binary "=="
+                       (R.Variable $ R.Name existing)
+                       (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uc])
+
   g <- genSym
-  acc <- genSym
 
-  fg <- genSym
+  (nfe, nfb) <- inlineApply (RDecl g Nothing) n [R.Initialization R.Unit []]
+  (wfe, wfb) <- inlineApply (RDecl g Nothing) w [R.Move $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")]
 
-  let loopInit = [R.Forward $ R.ScalarDecl (R.Name fg) (R.RValueReference R.Inferred) (Just fv), R.Forward $ R.ScalarDecl (R.Name acc) R.Inferred (Just pass)]
-  let loopBody =
-          [ (if isAP then R.Ignore else R.Assignment (R.Variable $ R.Name acc)) $
-              R.Call (R.Variable $ R.Name fg)
-                [(if isAP then id else R.Move) (R.Variable $ R.Name acc), (if eleMove then R.Move else id) $ R.Variable $ R.Name g]
-          ]
-  let loop = R.ForEach g (R.Reference R.Inferred) cv (R.Block loopBody)
-  return (ce ++ fe ++ ze ++ loopInit ++ loopPragmas ++ [loop], R.Move $ R.Variable $ R.Name acc)
+  let nfPushBack = R.Assignment (R.Subscript uc (R.Project kv (R.Name "key"))) (R.Move $ R.Variable $ R.Name g)
+  let wfPushBack = R.Assignment (R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second"))
+                                (R.Move $ R.Variable $ R.Name g)
+
+  return (ce ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb ++ [nfPushBack]) (wfe ++ wfb ++ [wfPushBack])]
+         , R.Initialization R.Unit [])
+
+
 
 inline e@(tag -> EOperate OApp) = do
   -- Inline both function and argument for call.
