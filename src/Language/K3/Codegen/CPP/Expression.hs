@@ -16,6 +16,7 @@ import Data.List (nub, sortBy, (\\))
 import Data.Maybe
 import Data.Ord (comparing)
 import Data.Tree
+import Data.Traversable
 
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -259,7 +260,7 @@ inline e@(tag -> ELambda _) = do
 
     let getArg (tag -> ELambda i) = i
     let (outerFExpr, innerFExpr) = (head &&& last) fExprs
-    let (outerArg, innerArg) = (getArg outerFExpr, getArg innerFExpr)
+    let (outerArg, _) = (getArg outerFExpr, getArg innerFExpr)
 
     -- let nrvo = getExMethodFor anon innerFExpr == Moved
 
