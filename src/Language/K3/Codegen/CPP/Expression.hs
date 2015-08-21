@@ -129,8 +129,19 @@ gMoveByE e x = fromMaybe x (getKTypeP e >>= \t -> return $ if move t e then R.Mo
 gMoveByDE :: Method -> K3 Expression -> R.Expression -> R.Expression
 gMoveByDE m e x
   | m == Moved = gMoveByE e x
-  | m == Forwarded = R.FMacro x
   | otherwise = x
+
+forwardBy :: R.Expression -> R.Expression
+forwardBy x = case x of
+  R.Variable _ -> R.FMacro x
+  R.Project x' f -> R.Project (forwardBy x') f
+  _ -> x
+
+passBy :: Method -> K3 Expression -> R.Expression -> R.Expression
+passBy m e x = case m of
+  Moved -> gMoveByE e x
+  Forwarded -> forwardBy x
+  _ -> x
 
 -- | Realization of unary operators.
 unarySymbol :: Operator -> CPPGenM Identifier
@@ -348,7 +359,7 @@ inline e@(tag -> EOperate OApp) = do
 
   let argDecl g x xv m = case x of
         -- (tag -> EVariable i) -> ([], xv)
-        _ -> ([R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just $ gMoveByDE (getInMethodFor "!" m) x xv)]
+        _ -> ([R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just $ passBy (getInMethodFor "!" m) x xv)]
               , R.Call (R.Variable $ R.Name "_F") [R.Variable $ R.Name g]
              )
 
@@ -371,7 +382,7 @@ inline e@(tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [tri
     (te, _)  <- inline trig
     (ae, av)  <- inline addr
     (ve, vv)  <- inline val
-    let messageValue = gMoveByDE (getInMethodFor "!" e) val vv
+    let messageValue = passBy (getInMethodFor "!" e) val vv
     trigTypes <- getKType val >>= genCType
     let me = R.Variable $ R.Name "me"
     return (concat [te, ae, ve]
