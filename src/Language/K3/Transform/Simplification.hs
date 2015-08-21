@@ -1071,7 +1071,7 @@ encodeTransformers restChanged expr = do
 
     mkFold3 e@(PPrjApp3 cE fId fAs fArg1 fArg2 fArg3 app1As app2As app3As)
       = case fId of
-          "groupBy" -> do
+          "group_by" -> do
             (accE, valueT)  <- mkGBAccumE e
             rAccE           <- mkAccumE e
             (nfAs', nfArg1) <- mkGBAccumF valueT fAs fArg1 fArg2 fArg3
@@ -1137,7 +1137,7 @@ encodeTransformers restChanged expr = do
 
       in do
       defaultV <- defaultExpression valueT
-      return $ (fAs++[pFusionSpec (DCond2, IndepTr), pFusionLineage "groupBy"],
+      return $ (fAs++[pFusionSpec (DCond2, IndepTr), pFusionLineage "group_by"],
         EC.lambda aVarId $ EC.lambda eVarId $
           EC.letIn rVarId (entryE defaultV) $
           PSeq (EC.applyMany (EC.project "upsert_with" $ aVar) [rVar, missingE, presentE]) aVar [])
@@ -1169,7 +1169,7 @@ encodeTransformers restChanged expr = do
 
     unaryTransformer   fId = fId `elem` ["map", "filter", "iterate", "ext"]
     binaryTransformer  fId = fId `elem` ["fold", "sample"]
-    ternaryTransformer fId = fId `elem` ["groupBy"]
+    ternaryTransformer fId = fId `elem` ["group_by"]
 
     cleanAnns as = filter (not . isAnyETypeOrEffectAnn) as
 

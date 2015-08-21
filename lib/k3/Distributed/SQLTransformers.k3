@@ -19,13 +19,13 @@ control SQL {
 // Assumes: var is a global.
 control DistributedGroupBy2[lbl : label, merge : expr]
 {
-  ( (?var = ( (?e.groupBy ?groupF ?aggF ?accE) : collection ?T ) );
+  ( (?var = ( (?e.group_by ?groupF ?aggF ?accE) : collection ?T ) );
     (?dtrig, ?daddr) <- ()
   )
   => ( ($[lbl]_redistribute, me) <- () )
   +> { declare $[lbl]_next : () -> () = (\_ -> ($.[dtrig], $.[daddr]) <- ()) }
 
-  ( ?var = ( (?e.groupBy ?groupF ?aggF ?accE) : collection ?T ) )
+  ( ?var = ( (?e.group_by ?groupF ?aggF ?accE) : collection ?T ) )
   => ( ($[lbl]_redistribute, me) <- () )
   +> { declare $[lbl]_next : () -> () = (\_ -> ()) }
 
@@ -33,7 +33,7 @@ control DistributedGroupBy2[lbl : label, merge : expr]
     declare $[lbl]_partials : mut collection $::[T] @Map
 
     trigger $[lbl]_redistribute : () = \_ -> (
-    ( (ignore ( ($.[e].groupBy $.[groupF] $.[aggF] $.[accE])
+    ( (ignore ( ($.[e].group_by $.[groupF] $.[aggF] $.[accE])
                       .fold  ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
                              ($[|specializeMapEmptyByKV 'T.typ|])
        )) @PartitionShuffleWithMissing(
@@ -125,7 +125,7 @@ control DistributedHashJoin2 [ lbl : label ]
     trigger $[lbl]_rhs_process_redistribute : $[|equijoinMapType 'RKeyT.typ 'RQueryT.typ|] = (\vals -> (
       // Probe LHS hash table, and insert matches into materialized result.
       ( vals.iterate (\rhs_ht_tuple ->
-          $[lbl]_lhs_ht.lookup_with4 {key: rhs_ht_tuple.key, value: $[lbl]_lhs_default_tuples}
+          $[lbl]_lhs_ht.lookup {key: rhs_ht_tuple.key, value: $[lbl]_lhs_default_tuples}
             (\_ -> ())
             (\lhs_ht_tuple -> lhs_ht_tuple.value.iterate (\le ->
                 rhs_ht_tuple.value.iterate (\re -> $#[var].insert {elem: $.[outputE] le re}))))

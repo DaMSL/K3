@@ -109,30 +109,55 @@ class StrMap {
     return const_iterator(m, map_str_end(m));
   }
 
-  int size(unit_t) const { return map_str_size(get_map_str()); }
-
   R elemToRecord(const R& e) const { return e; }
 
-  // DS Operations:
-  // Maybe return the first element in the DS
-  shared_ptr<R> peek(const unit_t&) const {
-    shared_ptr<R> res(nullptr);
-    map_str* m = get_map_str();
-    auto it = map_str_begin(m);
-    if (it < map_str_end(m)) {
-      res = std::make_shared<R>(*map_str_get(m, it));
-    }
-    return res;
-  }
+  // Functionality
+  int size(unit_t) const { return map_str_size(get_map_str()); }
 
   template<typename F, typename G>
-  auto peek_with(F f, G g) const {
+  auto peek(F f, G g) const {
     map_str* m = get_map_str();
     auto it = map_str_begin(m);
     if (it < map_str_end(m) ) {
       return g(*map_str_get(m, it));
     } else {
       return f(unit_t {});
+    }
+  }
+
+  bool member(const R& r) const {
+    map_str* m = get_map_str();
+    return m->size == 0 ?
+      false : (map_str_find(m, r.key.begin()) != map_str_end(m));
+  }
+
+  template <class F, class G>
+  auto lookup(R const& r, F f, G g) const {
+    map_str* m = get_map_str();
+    if (m->size == 0) {
+      return f(unit_t{});
+    } else {
+      auto existing = map_str_find(m, r.key.begin());
+      if (existing == map_str_end(m)) {
+        return f(unit_t{});
+      } else {
+        return g(*static_cast<R*>(map_str_get(m, existing)));
+      }
+    }
+  }
+
+  template <class F, class G>
+  auto lookup_key(const string_impl& key, F f, G g) const {
+    map_str* m = get_map_str();
+    if (m->size == 0) {
+      return f(unit_t{});
+    } else {
+      auto existing = map_str_find(m, key.begin());
+      if (existing == map_str_end(m)) {
+        return f(unit_t{});
+      } else {
+        return g(*static_cast<R*>(map_str_get(m, existing)));
+      }
     }
   }
 
@@ -157,6 +182,33 @@ class StrMap {
     insert_aux(q);
     map_str_clone(get_map_str(), (CloneFn)&StrMap<R>::cloneElem);
     return unit_t{};
+  }
+
+  unit_t update(const R& rec1, R& rec2) {
+    map_str* m = get_map_str();
+    if (m->size > 0) {
+      auto existing = map_str_find(m, rec1.key.begin());
+      if (existing != map_str_end(m)) {
+        R* v = static_cast<R*>(map_str_get(m, existing));
+        map_str_erase(m, rec1.key.begin());
+        v->~R();
+        insert(rec2);
+      }
+    }
+    return unit_t();
+  }
+
+  unit_t erase(const R& rec) {
+    map_str* m = get_map_str();
+    if (m->size > 0) {
+      auto existing = map_str_find(m, rec.key.begin());
+      if (existing != map_str_end(m)) {
+        R* v = static_cast<R*>(map_str_get(m, existing));
+        map_str_erase(m, rec.key.begin());
+        v->~R();
+      }
+    }
+    return unit_t();
   }
 
   template <class F>
@@ -201,73 +253,34 @@ class StrMap {
     return unit_t{};
   }
 
-  unit_t erase(const R& rec) {
+  template <class F, class G>
+  unit_t upsert_with_key(const string_impl& key, F f, G g) {
     map_str* m = get_map_str();
-    if (m->size > 0) {
-      auto existing = map_str_find(m, rec.key.begin());
-      if (existing != map_str_end(m)) {
-        R* v = static_cast<R*>(map_str_get(m, existing));
-        map_str_erase(m, rec.key.begin());
-        v->~R();
+    if (m->size == 0) {
+      insert(f(unit_t{}));
+    } else {
+      auto* existing = map_str_find(m, key.begin());
+      if (existing == map_str_end(m)) {
+        insert(f(unit_t{}));
+      } else {
+        *existing = g(std::move(*existing));
       }
     }
-    return unit_t();
+    return unit_t{};
   }
 
-  unit_t update(const R& rec1, R& rec2) {
-    map_str* m = get_map_str();
-    if (m->size > 0) {
-      auto existing = map_str_find(m, rec1.key.begin());
-      if (existing != map_str_end(m)) {
-        R* v = static_cast<R*>(map_str_get(m, existing));
-        map_str_erase(m, rec1.key.begin());
-        v->~R();
-        insert(rec2);
-      }
-    }
-    return unit_t();
-  }
 
-  template <typename Fun, typename Acc>
-  Acc fold(Fun f, Acc acc) const {
-    map_str* m = get_map_str();
+  //////////////////////////////////////////////////////////////
+  // Bulk transformations.
+
+  StrMap combine(const StrMap& other) const {
+    // copy this DS
+    StrMap result = StrMap(*this);
+    // copy other DS
+    map_str* m = other.get_map_str();
     for (auto o = map_str_begin(m); o < map_str_end(m);
          o = map_str_next(m, o)) {
-      acc = f(std::move(acc))(*map_str_get(m, o));
-    }
-    return acc;
-  }
-
-  template <typename Fun>
-  auto map(Fun f) const -> StrMap<RT<Fun, R>> {
-    map_str* m = get_map_str();
-    StrMap<RT<Fun, R>> result;
-    for (auto o = map_str_begin(m); o < map_str_end(m);
-         o = map_str_next(m, o)) {
-      result.insert(f(*map_str_get(m, o)));
-    }
-    return result;
-  }
-
-  template <typename Fun>
-  unit_t iterate(Fun f) const {
-    map_str* m = get_map_str();
-    for (auto o = map_str_begin(m); o < map_str_end(m);
-         o = map_str_next(m, o)) {
-      f(*static_cast<R*>(map_str_get(m, o)));
-    }
-    return unit_t();
-  }
-
-  template <typename Fun>
-  StrMap<R> filter(Fun predicate) const {
-    map_str* m = get_map_str();
-    StrMap<RT<Fun, R>> result;
-    for (auto o = map_str_begin(m); o < map_str_end(m);
-         o = map_str_next(m, o)) {
-      if (predicate(*map_str_get(m, o))) {
-        result.insert(*map_str_get(m, o));
-      }
+      result.insert(*map_str_get(m, o));
     }
     return result;
   }
@@ -290,21 +303,63 @@ class StrMap {
                            StrMap(iterator(m, mid), end()));
   }
 
-  StrMap combine(const StrMap& other) const {
-    // copy this DS
-    StrMap result = StrMap(*this);
-    // copy other DS
-    map_str* m = other.get_map_str();
+  template <typename Fun>
+  unit_t iterate(Fun f) const {
+    map_str* m = get_map_str();
     for (auto o = map_str_begin(m); o < map_str_end(m);
          o = map_str_next(m, o)) {
-      result.insert(*map_str_get(m, o));
+      f(*static_cast<R*>(map_str_get(m, o)));
+    }
+    return unit_t();
+  }
+
+  template <typename Fun>
+  auto map(Fun f) const -> StrMap<RT<Fun, R>> {
+    map_str* m = get_map_str();
+    StrMap<RT<Fun, R>> result;
+    for (auto o = map_str_begin(m); o < map_str_end(m);
+         o = map_str_next(m, o)) {
+      result.insert(f(*map_str_get(m, o)));
     }
     return result;
   }
 
+  template <typename Fun>
+  auto map_generic(Fun f) const -> Map<RT<Fun, R>> {
+    map_str* m = get_map_str();
+    Map<RT<Fun, R>> result;
+    for (auto o = map_str_begin(m); o < map_str_end(m); o = map_str_next(m, o)) {
+      result.insert(f(*map_str_get(m, o)));
+    }
+    return result;
+  }
+
+  template <typename Fun>
+  StrMap<R> filter(Fun predicate) const {
+    map_str* m = get_map_str();
+    StrMap<RT<Fun, R>> result;
+    for (auto o = map_str_begin(m); o < map_str_end(m);
+         o = map_str_next(m, o)) {
+      if (predicate(*map_str_get(m, o))) {
+        result.insert(*map_str_get(m, o));
+      }
+    }
+    return result;
+  }
+
+  template <typename Fun, typename Acc>
+  Acc fold(Fun f, Acc acc) const {
+    map_str* m = get_map_str();
+    for (auto o = map_str_begin(m); o < map_str_end(m);
+         o = map_str_next(m, o)) {
+      acc = f(std::move(acc), *map_str_get(m, o));
+    }
+    return acc;
+  }
+
   template <typename F1, typename F2, typename Z>
-  StrMap<R_key_value<RT<F1, R>, Z>> groupBy(F1 grouper, F2 folder,
-                                            const Z& init) const {
+  StrMap<R_key_value<RT<F1, R>, Z>> group_by(F1 grouper, F2 folder, const Z& init) const
+  {
     // Create a map to hold partial results
     typedef RT<F1, R> K;
     StrMap<R_key_value<K, Z>> result;
@@ -319,17 +374,41 @@ class StrMap {
       auto existing_acc = map_str_find(n, key.begin());
       if (existing_acc == map_str_end(n)) {
         R_key_value<K, Z> elem(key,
-                               std::move(folder(init)(*map_str_get(m, o))));
+                               std::move(folder(init, *map_str_get(m, o))));
         insert(elem);
       } else {
         R* accv = static_cast<R*>(map_str_get(n, existing_acc));
-        R_key_value<K, Z> elem(key,
-                               std::move(folder(std::move(accv->value))(*v)));
+        R_key_value<K, Z> elem(key, std::move(folder(std::move(accv->value), *v)));
         map_str_erase(n, key);
         accv->~R_key_value<K, Z>();
         insert(elem);
         delete accv;
       }
+    }
+    return result;
+  }
+
+  template <typename F1, typename F2, typename Z>
+  Map<R_key_value<RT<F1, R>, Z>> group_by_generic(F1 grouper, F2 folder, const Z& init) const
+  {
+    // Create a map to hold partial results
+    typedef RT<F1, R> K;
+    std::unordered_map<K, Z> accs;
+
+    map_str* m = get_map_str();
+    for (auto o = map_str_begin(m); o < map_str_end(m); o = map_str_next(m, o)) {
+      R* v = static_cast<R*>(map_str_get(m, o));
+      K key = grouper(*v);
+      if (accs.find(key) == accs.end()) {
+        accs[key] = init;
+      }
+      accs[key] = folder(std::move(accs[key]), *v);
+    }
+
+    Map<R_key_value<K, Z>> result;
+    for (auto&& it : accs) {
+      result.insert(std::move(
+          R_key_value<K, Z>{std::move(it.first), std::move(it.second)}));
     }
     return result;
   }
@@ -351,64 +430,18 @@ class StrMap {
     return result;
   }
 
-  // lookup ignores the value of the argument
-  shared_ptr<R> lookup(const R& r) const {
+  template <class Fun>
+  auto ext_generic(Fun expand) const -> Map<typename RT<Fun, R>::ElemType> {
+    typedef typename RT<Fun, R>::ElemType T;
+    Map<T> result;
     map_str* m = get_map_str();
-    if (m->size == 0) {
-      return nullptr;
-    } else {
-      auto existing = map_str_find(m, r.key.begin());
-      if (existing == map_str_end(m)) {
-        return nullptr;
-      } else {
-        return std::make_shared<R>(*static_cast<R*>(map_str_get(m, existing)));
+    auto end = map_str_end(m);
+    for (auto it = map_str_begin(m); it < end; it = map_str_next(m, it)) {
+      for (T&& elem : expand(*map_str_get(m, it)).getContainer()) {
+        result.insert(std::move(elem));
       }
     }
-  }
-
-  bool member(const R& r) const {
-    map_str* m = get_map_str();
-    return m->size == 0 ? false
-                        : (map_str_find(m, r.key.begin()) != map_str_end(m));
-  }
-
-  template <class F>
-  unit_t lookup_with(R const& r, F f) const {
-    map_str* m = get_map_str();
-    if (m->size > 0) {
-      auto existing = map_str_find(m, r.key.begin());
-      if (existing != map_str_end(m)) {
-        return f(*map_str_get(m, existing));
-      }
-    }
-    return unit_t{};
-  }
-
-  template <class F, class G>
-  auto lookup_with2(R const& r, F f, G g) const {
-    map_str* m = get_map_str();
-    if (m->size == 0) {
-      return f(unit_t{});
-    } else {
-      auto existing = map_str_find(m, r.key.begin());
-      if (existing == map_str_end(m)) {
-        return f(unit_t{});
-      } else {
-        return g(*map_str_get(m, existing));
-      }
-    }
-  }
-
-  template <class F>
-  auto lookup_with3(R const& r, F f) const {
-    map_str* m = get_map_str();
-    if (m->size > 0) {
-      auto existing = map_str_find(m, r.key.begin());
-      if (existing != map_str_end(m)) {
-        return f(*map_str_get(m, existing));
-      }
-    }
-    throw std::runtime_error("No match on StrMap.lookup_with3");
+    return result;
   }
 
   bool operator==(const StrMap& other) const {

@@ -1,5 +1,5 @@
-#ifndef K3_REALVECTOR
-#define K3_REALVECTOR
+#ifndef K3_INTVECTOR
+#define K3_INTVECTOR
 
 #include <vector>
 #include <string>
@@ -16,13 +16,13 @@
 namespace K3 {
 
 template <class Elem>
-class RealVector : public STLDS<K3::RealVector, std::vector, Elem> {
-  using Super = STLDS<K3::RealVector, std::vector, Elem>;
+class IntVector : public STLDS<K3::IntVector, std::vector, Elem> {
+  using Super = STLDS<K3::IntVector, std::vector, Elem>;
 
  public:
-  RealVector() : Super() {}
-  RealVector(const Super& c) : Super(c) {}
-  RealVector(Super&& c) : Super(std::move(c)) {}
+  IntVector() : Super() {}
+  IntVector(const Super& c) : Super(c) {}
+  IntVector(Super&& c) : Super(std::move(c)) {}
 
   Elem at(int i) const {
     auto& vec = Super::getConstContainer();
@@ -55,11 +55,11 @@ class RealVector : public STLDS<K3::RealVector, std::vector, Elem> {
   ///////////////////////////////////////////////////
   // Vector-specific transformations.
 
-  unit_t add_with(const RealVector<Elem>& other) {
+  unit_t add_with(const IntVector<Elem>& other) {
     auto& vec = Super::getContainer();
     auto& other_vec = other.getConstContainer();
     if (vec.size() != other_vec.size()) {
-      throw std::runtime_error("RealVector add_with size mismatch");
+      throw std::runtime_error("IntVector add_with size mismatch");
     }
 
     #pragma clang loop vectorize(enable) interleave(enable)
@@ -70,22 +70,22 @@ class RealVector : public STLDS<K3::RealVector, std::vector, Elem> {
     return unit_t{};
   }
 
-  RealVector<Elem> add(const RealVector<Elem>& other) const {
-    auto copy = RealVector<Elem>(*this);
+  IntVector<Elem> add(const IntVector<Elem>& other) const {
+    auto copy = IntVector<Elem>(*this);
     copy.add_with(other);
     return copy;
   }
 
-  RealVector<Elem> add(RealVector<Elem>&& other) const {
+  IntVector<Elem> add(IntVector<Elem>&& other) const {
     other.add_with(*this);
     return other;
   }
 
-  unit_t sub_with(const RealVector<Elem>& other) {
+  unit_t sub_with(const IntVector<Elem>& other) {
     auto& vec = Super::getContainer();
     auto& other_vec = other.getConstContainer();
     if (vec.size() != other_vec.size()) {
-      throw std::runtime_error("RealVector sub_with size mismatch");
+      throw std::runtime_error("IntVector sub_with size mismatch");
     }
 
     #pragma clang loop vectorize(enable) interleave(enable)
@@ -96,11 +96,11 @@ class RealVector : public STLDS<K3::RealVector, std::vector, Elem> {
     return unit_t{};
   }
 
-  unit_t sub_from(const RealVector<Elem>& other) {
+  unit_t sub_from(const IntVector<Elem>& other) {
     auto& vec = Super::getContainer();
     auto& other_vec = other.getConstContainer();
     if (vec.size() != other_vec.size()) {
-      throw std::runtime_error("RealVector sub_with size mismatch");
+      throw std::runtime_error("IntVector sub_with size mismatch");
     }
 
     #pragma clang loop vectorize(enable) interleave(enable)
@@ -111,22 +111,22 @@ class RealVector : public STLDS<K3::RealVector, std::vector, Elem> {
     return unit_t{};
   }
 
-  RealVector<Elem> sub(const RealVector<Elem>& other) const {
-    auto copy = RealVector<Elem>(*this);
+  IntVector<Elem> sub(const IntVector<Elem>& other) const {
+    auto copy = IntVector<Elem>(*this);
     copy.sub_with(other);
     return copy;
   }
 
-  RealVector<Elem> sub(RealVector<Elem>&& other) const {
+  IntVector<Elem> sub(IntVector<Elem>&& other) const {
     other.sub_from(*this);
     return other;
   }
 
-  double dot(const RealVector<Elem>& other) const {
+  double dot(const IntVector<Elem>& other) const {
     auto& vec = Super::getConstContainer();
     auto& other_vec = other.getConstContainer();
     if (vec.size() != other_vec.size()) {
-      throw std::runtime_error("RealVector dot size mismatch");
+      throw std::runtime_error("IntVector dot size mismatch");
     }
 
     double d = 0;
@@ -138,12 +138,12 @@ class RealVector : public STLDS<K3::RealVector, std::vector, Elem> {
     return d;
   }
 
-  double distance(const RealVector<Elem>& other) const {
+  double distance(const IntVector<Elem>& other) const {
     double d = 0;
     auto& vec = Super::getConstContainer();
     auto& other_vec = other.getConstContainer();
     if (vec.size() != other_vec.size()) {
-      throw std::runtime_error("RealVector distance size mismatch");
+      throw std::runtime_error("IntVector distance size mismatch");
     }
 
     #pragma clang loop vectorize(enable) interleave(enable)
@@ -171,15 +171,15 @@ class RealVector : public STLDS<K3::RealVector, std::vector, Elem> {
   }
 
   // PERF: RealVectorize.
-  unit_t scale_with(double c) {
+  unit_t scale_with(int c) {
     #pragma clang loop vectorize(enable) interleave(enable)
     for (auto& i : this->getContainer()) {
       i.elem *= c;
     }
   }
 
-  RealVector<Elem> scale(double c) const {
-    auto result = RealVector<Elem>(*this);
+  IntVector<Elem> scale(int c) const {
+    auto result = IntVector<Elem>(*this);
     auto& vec = result.getContainer();
 
     #pragma clang loop vectorize(enable) interleave(enable)
@@ -191,7 +191,7 @@ class RealVector : public STLDS<K3::RealVector, std::vector, Elem> {
   }
 
   template <class G, class F, class Z>
-  RealVector<R_elem<Z>> group_by(G grouper, F folder, const Z& zero) const
+  IntVector<R_elem<Z>> group_by(G grouper, F folder, const Z& zero) const
   {
     typedef RT<G, Elem> K;
     auto table = std::vector<R_elem<Z>>();
@@ -202,12 +202,11 @@ class RealVector : public STLDS<K3::RealVector, std::vector, Elem> {
       }
       table[key] = folder(std::move(table[key]), elem);
     }
-    return RealVector<R_elem<Z>>{ std::move(Super(std::move(table))) };
+    return IntVector<R_elem<Z>>{ std::move(Super(std::move(table))) };
   }
 
   template <typename F1, typename F2, typename Z>
-  Vector<R_key_value<RT<F1, Elem>, Z>>
-  group_by_generic(F1 grouper, F2 folder, const Z& init) const
+  Vector<R_key_value<RT<F1, Elem>, Z>> group_by_generic(F1 grouper, F2 folder, const Z& init) const
   {
     // Create a map to hold partial results
     typedef RT<F1, Elem> K;
@@ -230,7 +229,7 @@ class RealVector : public STLDS<K3::RealVector, std::vector, Elem> {
   }
 
   template <class G, class F, class Z>
-  RealVector<R_elem<Z>>
+  IntVector<R_elem<Z>>
   group_by_contiguous(G grouper, F folder, const Z& zero, const int& size) const
   {
     auto table = std::vector<R_elem<Z>>(size, R_elem<Z> { zero });
@@ -238,7 +237,7 @@ class RealVector : public STLDS<K3::RealVector, std::vector, Elem> {
       auto key = grouper(elem);
       table[key] = folder(std::move(table[key]), elem);
     }
-    return RealVector<R_elem<Z>>{ std::move(Super(std::move(table))) };
+    return IntVector<R_elem<Z>>{ std::move(Super(std::move(table))) };
   }
 
   template <class Fun>
@@ -246,7 +245,7 @@ class RealVector : public STLDS<K3::RealVector, std::vector, Elem> {
     typedef typename RT<Fun, Elem>::ElemType T;
     Vector<T> result;
     for (const Elem& elem : Super::getContainer()) {
-      for (T&& elem2 : expand(elem).container) {
+      for (T&& elem2 : expand(elem).getContainer()) {
         result.insert(std::move(elem2));
       }
     }
@@ -259,12 +258,12 @@ class RealVector : public STLDS<K3::RealVector, std::vector, Elem> {
 namespace YAML {
 
 template <class E>
-struct convert<K3::RealVector<E>> {
-  static Node encode(const K3::RealVector<E>& c) {
+struct convert<K3::IntVector<E>> {
+  static Node encode(const K3::IntVector<E>& c) {
     Node node;
     auto container = c.getConstContainer();
     if (container.size() > 0) {
-      for (auto i : c) {
+      for (auto i : container) {
         node.push_back(convert<E>::encode(i));
       }
     } else {
@@ -273,7 +272,7 @@ struct convert<K3::RealVector<E>> {
     return node;
   }
 
-  static bool decode(const Node& node, K3::RealVector<E>& c) {
+  static bool decode(const Node& node, K3::IntVector<E>& c) {
     for (auto& i : node) {
       c.insert(i.as<E>());
     }
@@ -287,12 +286,12 @@ struct convert<K3::RealVector<E>> {
 namespace JSON {
 using namespace rapidjson;
 template <class E>
-struct convert<K3::RealVector<E>> {
+struct convert<K3::IntVector<E>> {
   template <class Allocator>
-  static Value encode(const K3::RealVector<E>& c, Allocator& al) {
+  static Value encode(const K3::IntVector<E>& c, Allocator& al) {
     Value v;
     v.SetObject();
-    v.AddMember("type", Value("RealVector"), al);
+    v.AddMember("type", Value("IntVector"), al);
     Value inner;
     inner.SetArray();
     for (const auto& e : c.getConstContainer()) {

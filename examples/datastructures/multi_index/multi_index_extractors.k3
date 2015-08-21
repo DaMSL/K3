@@ -31,7 +31,7 @@ trigger t1 : () = \_ -> (
 
     result1    = employeesC.lookup_by_name   {name: "John"};
     result2    = employeesC.lookup_by_agekey {age: 40, key: 2};
-    (employeesC.lookup_with_by_agekey        {age: 40, key: 2} (\_ -> ()) (\r -> result2w = r));
+    (employeesC.lookup_by_agekey             {age: 40, key: 2} ignore (\r -> result2w = r));
     employeesC = employeesC.range_by_name    {name: "a"} {name: "d"};
     employeesC = employeesC.slice_by_age     {age: 40}
 )
@@ -44,7 +44,7 @@ trigger t2 : () = \_ -> (
 
     result1    = employeesM.lookup_by_name   {name: "John"};
     result2    = employeesM.lookup_by_agekey {age: 40, key: 2};
-    (employeesM.lookup_with_by_agekey        {age: 40, key: 2} (\_ -> ()) (\r -> result2w = r));
+    (employeesM.lookup_by_agekey             {age: 40, key: 2} ignore (\r -> result2w = r));
     employeesM = employeesM.range_by_name    {name: "a"} {name: "d"};
     employeesM = employeesM.slice_by_age     {age: 40}
 )

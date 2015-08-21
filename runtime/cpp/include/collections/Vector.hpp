@@ -21,18 +21,32 @@ class Vector : public VectorDS<K3::Vector, Elem> {
   Vector(const Super& c) : Super(c) {}
   Vector(Super&& c) : Super(std::move(c)) {}
 
-  shared_ptr<Elem> at(int i) const {
-    auto& c = Super::getConstContainer();
-    if (i < c.size()) {
-      return std::make_shared<Elem>(c[i]);
+  Elem at(int i) const {
+    auto& vec = Super::getConstContainer();
+    return vec[i];
+  }
+
+  template<class F, class G>
+  auto safe_at(int i, F f, G g) const {
+    auto& vec = Super::getConstContainer();
+    if ( i < vec.size() ) {
+      return g(vec[i]);
     } else {
-      return nullptr;
+      return f(unit_t {});
     }
   }
 
-  template <class F>
-  auto at_with(int i, F f) const {
-    return f(Super::getConstContainer()[i]);
+  unit_t set(int i, Elem f) {
+    auto& vec = Super::getContainer();
+    vec[i] = f;
+    return unit_t();
+  }
+
+  Elem swap(int i, Elem n) {
+    auto& vec = Super::getContainer();
+    auto old = vec[i];
+    vec[i] = n;
+    return old;
   }
 
   template<class Archive>

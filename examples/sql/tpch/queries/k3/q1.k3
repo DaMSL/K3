@@ -69,10 +69,10 @@ declare order_agg : {elem : q1_result_r} -> {elem : q1_result_r} -> int =
 
 trigger q1 : () = \_ -> (
   (ignore
-    ((lineitem.filter  (\r -> r.l_shipdate <= 19980902))
-              .groupBy (\r -> (r.l_returnflag, r.l_linestatus))
-                       accum_agg
-                       init_agg)
+    ((lineitem.filter   (\r -> r.l_shipdate <= 19980902))
+              .group_by (\r -> (r.l_returnflag, r.l_linestatus))
+                        accum_agg
+                        init_agg)
   ) @DistributedGroupBy(
       lbl         = [# groupby],
       clear_expr  = [$ lineitem = empty q1_lineitem_r @Collection ],

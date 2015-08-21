@@ -48,7 +48,7 @@ trigger q12_stage1: () = \_ -> (
 // Distributed group-by on shipmode
 trigger q12_stage2: () = \_ -> (
   lo_aggs =
-    (lineitem_orders.groupBy
+    (lineitem_orders.group_by
       (\loe -> loe.elem.shipmode)
       (\a -> \loe ->
         if high_priority loe.elem.priority

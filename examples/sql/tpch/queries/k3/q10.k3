@@ -32,7 +32,7 @@ trigger q10_stage1: () = \_ -> (
   lo = 
     (((lineitem.filter 
       (\l -> l.l_returnflag == "R")
-    ).groupBy
+    ).group_by
       (\l -> l.l_orderkey)
       (\a -> \e -> a + (e.l_extendedprice * (1 - e.l_discount)))
       0.0
@@ -63,7 +63,7 @@ trigger q10_stage2: () = \_ -> (
 
 trigger q10_stage3: () = \_ -> (
   locn_agg = 
-    (locn.groupBy
+    (locn.group_by
       (\locne -> locne.elem.ckey)
       (\a -> \e -> a + e.elem.revenue)
       0.0);

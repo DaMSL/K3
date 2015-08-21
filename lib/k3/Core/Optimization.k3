@@ -1,9 +1,9 @@
 control ManualFusion {
 
-  ((((((( ?e ).filter  ?filterF)
-              .groupBy ?gbF1 ?accF1 (?z1 : ?accT1))
-              .fold    ((?foldF1) @:Accumulate) ?fz1)
-              .groupBy ((?gbF2) @:Projection) ((?accF2) @:Accumulate) ?z2)
+  ((((((( ?e ).filter   ?filterF)
+              .group_by ?gbF1 ?accF1 (?z1 : ?accT1))
+              .fold     ((?foldF1) @:Accumulate) ?fz1)
+              .group_by ((?gbF2) @:Projection) ((?accF2) @:Accumulate) ?z2)
   ) @:Fuse
   ) : collection ?t @IntMap
   => ( ($.[e].fold @:AccumulatingTransformer)
@@ -30,10 +30,10 @@ control ManualFusion {
       )
 
 
-  ((((((( ?e ).filter  ?filterF)
-              .groupBy ?gbF1 ?accF1 (?z1 : ?accT1))
-              .fold    ((?foldF1) @:Accumulate) ?fz1)
-              .groupBy ((?gbF2) @:Projection) ((?accF2) @:Accumulate) ?z2)
+  ((((((( ?e ).filter   ?filterF)
+              .group_by ?gbF1 ?accF1 (?z1 : ?accT1))
+              .fold     ((?foldF1) @:Accumulate) ?fz1)
+              .group_by ((?gbF2) @:Projection) ((?accF2) @:Accumulate) ?z2)
   ) @:Fuse
   ) : collection ?t @StrMap
   => ( ($.[e].fold @:AccumulatingTransformer)
@@ -60,10 +60,10 @@ control ManualFusion {
       )
 
 
-  ((((((( ?e ).filter  ?filterF)
-              .groupBy ?gbF1 ?accF1 (?z1 : ?accT1))
-              .fold    ((?foldF1) @:Accumulate) ?fz1)
-              .groupBy ((?gbF2) @:Projection) ((?accF2) @:Accumulate) ?z2)
+  ((((((( ?e ).filter   ?filterF)
+              .group_by ?gbF1 ?accF1 (?z1 : ?accT1))
+              .fold     ((?foldF1) @:Accumulate) ?fz1)
+              .group_by ((?gbF2) @:Projection) ((?accF2) @:Accumulate) ?z2)
   ) @:Fuse
   ) : collection ?t @Map
   => ( ($.[e].fold @:AccumulatingTransformer)

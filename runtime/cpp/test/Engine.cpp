@@ -328,6 +328,11 @@ void DummyContext::mainTrigger(unit_t) {
 }
 
 void DummyContext::stopTrigger(unit_t) { throw EndOfProgramException(); }
+TEST(BaseString, one) {
+  K3::base_string k = "hi test!";
+  std::cout << k << std::endl;
+}
+
 
 TEST(Map, base_string) {
   K3::base_string k = "hello!";

@@ -5,7 +5,7 @@ declare local_peers  : collection {addr : address} @Collection
 declare peer_masters : collection {key: address, value: address} @Map
 
 control IfMachineMaster {
-  ?e => (peer_masters.lookup_with {key: me, value: me} (\r -> ((if me == r.value then ((print (atos me)); $.[e]) else ()))))
+  ?e => (peer_masters.lookup {key: me, value: me} (\x -> ()) (\r -> ((if me == r.value then ((print (atos me)); $.[e]) else ()))))
      +> {}
 }
 
@@ -23,13 +23,13 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
             // ( print ("Peer " ++ (atos me) ++ " proxying bc " ++ (itos msg_id)) );
             ( let entry = {key: msg_id, value: $[lbl]_machvar_default} in
               if $[lbl]_machvar.member entry
-              then ( $[lbl]_machvar.lookup_with entry (\r -> (\$#[x] -> $.[b]) r.value) )
+              then ( $[lbl]_machvar.lookup entry (\x -> () ) (\r -> (\$#[x] -> $.[b]) r.value) )
               else ( error (print ("Invalid bc peer message " ++ (itos msg_id) ++ " at " ++ (atos me))) ) );
 
             // ( print ("Peer " ++ (atos me) ++ " responding to bc GC " ++ (itos msg_id)) );
             ( let aentry = {key:me, value:me} in
               if $[masters_map].member aentry
-              then ( $[masters_map].lookup_with aentry (\ms -> ($[lbl]_machvar_gc, ms.value) <- msg_id ) )
+              then ( $[masters_map].lookup aentry (\x -> () ) (\ms -> ($[lbl]_machvar_gc, ms.value) <- msg_id ) )
               else ( error (print ("Invalid bc peer master at " ++ (atos me))) ) )
           )
         }
@@ -85,7 +85,7 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
             let gcentry = {key: msg_id, value: 0} in
             if $[lbl]_machvar_gc_ids.member gcentry
             then
-            ( $[lbl]_machvar_gc_ids.lookup_with gcentry
+            ( $[lbl]_machvar_gc_ids.lookup gcentry (\_ -> () ) 
                 (\r -> if r.value == 1
                        then ( // ( print ("Machine " ++ (atos me) ++ " GCing bc " ++ (itos msg_id)) );
                               ($[lbl]_machvar_gc_ids.erase r);
@@ -108,18 +108,18 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
             // ( print ("Peer " ++ (atos me) ++ " proxying shf " ++ (itos msg_id)) );
             let oentry = {key: msg_id, value: $[lbl]_machvar_peer_default} in
             if $[lbl]_machvar.member oentry
-            then ( $[lbl]_machvar.lookup_with oentry
+            then ( $[lbl]_machvar.lookup oentry (\_ -> ()) 
                       (\r -> (
                         ( let ientry = {key: me, value: $[lbl]_machvar_default} in
                           if r.value.member ientry
-                          then ( r.value.lookup_with ientry (\v -> (\$#[x] -> $.[b]) v.value) )
+                          then ( r.value.lookup ientry (\_ -> ()) (\v -> (\$#[x] -> $.[b]) v.value) )
                           else () );
                           // else ( error (print ("Invalid shf inner peer message " ++ (itos msg_id) ++ " at " ++ (atos me))) ) );
 
                         // ( print ("Peer " ++ (atos me) ++ " responding to GC shf " ++ (itos msg_id)) );
                         ( let aentry = {key:me, value:me} in
                           if $[masters_map].member aentry
-                          then ( $[masters_map].lookup_with aentry (\ms -> ($[lbl]_machvar_gc, ms.value) <- msg_id) )
+                          then ( $[masters_map].lookup aentry (\_ -> () ) (\ms -> ($[lbl]_machvar_gc, ms.value) <- msg_id) )
                           else ( error (print ("Invalid shf peer master at " ++ (atos me))) ) )
                       ))
                   )
@@ -177,7 +177,7 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
           trigger $[lbl]_machvar_gc : int = \msg_id -> (
             let gcentry = {key: msg_id, value: 0} in
             if $[lbl]_machvar_gc_ids.member gcentry then
-            ( $[lbl]_machvar_gc_ids.lookup_with gcentry
+            ( $[lbl]_machvar_gc_ids.lookup gcentry (\_ -> () ) 
                 (\r -> if r.value == 1
                        then ( // ( print ("Machine " ++ (atos me) ++ " GCing shf " ++ (itos msg_id)) );
                               ($[lbl]_machvar_gc_ids.erase r);
@@ -225,12 +225,12 @@ control BroadcastByMachine[lbl : label, dest_trg : expr, masters : expr, masters
 // Partition a collection into a triply-nested map (machine address => peer address => data)
 // for sending as a batched shuffle.
 control PartitionByKeyMachine[masters_map : expr, nodes : expr] {
-  ( ((?e.groupBy ?groupF ?aggF ?z).fold @:Accumulate) ?accumulate (?zacc : collection ?zacct @Map)
+  ( ((?e.group_by ?groupF ?aggF ?z).fold @:Accumulate) ?accumulate (?zacc : collection ?zacct @Map)
   ) : collection ?t @Map
       => $.[e].fold
             (\acc3 -> \v ->
               let k  = $.[groupF] v in
-              let k2 = $[nodes].at_with (index_by_hash k) (\a -> a.addr)
+              let k2 = ($[nodes].at (index_by_hash k)).addr
               in
               let k3 = case $[masters_map].lookup {key: k2, value: me}
                        of { Some mstr -> mstr.value }
@@ -263,26 +263,26 @@ control PartitionByKeyMachine[masters_map : expr, nodes : expr] {
             (empty {key: address, value: collection {key: address, value: collection $::[t] @Map} @Map} @Map)
 
   ?e : collection ?t @Map
-      => ((( ($.[e].groupBy @:HGroupBy) (\v -> $[nodes].at_with (index_by_hash k) (\a -> a.addr))
-                                        (\acc -> \v -> ((acc.insert v); acc))
-                                        (empty $::[t] @Map) )
-                   .groupBy @:HGroupBy) (\v -> case $[masters_map].lookup {key: v.key, value: me}
-                                               of { Some mstr -> mstr.value }
-                                                  { None -> ((error (print ("No machine master found for " ++ (atos v.key)))); me) }
-                                        )
-                                        (\acc -> \v -> ((acc.insert v); acc))
-                                        (empty {key: address, value: collection $::[t] @Map} @Map))
+      => ((( ($.[e].group_by @:HGroupBy) (\v -> ($[nodes].at (index_by_hash k)).addr)
+                                         (\acc -> \v -> ((acc.insert v); acc))
+                                         (empty $::[t] @Map) )
+                   .group_by @:HGroupBy) (\v -> case $[masters_map].lookup {key: v.key, value: me}
+                                                of { Some mstr -> mstr.value }
+                                                   { None -> ((error (print ("No machine master found for " ++ (atos v.key)))); me) }
+                                         )
+                                         (\acc -> \v -> ((acc.insert v); acc))
+                                         (empty {key: address, value: collection $::[t] @Map} @Map))
 
   ?e : collection ?t
-      => (($.[e].groupBy (\v -> $[nodes].at_with (index_by_hash v.key) (\a -> a.addr))
-                         (\acc -> \v -> ((acc.insert v); acc))
-                         (empty $::[t] @Collection))
-                .groupBy (\v -> case $[masters_map].lookup {key: v.key, value: me}
-                                of { Some mstr -> mstr.value }
-                                   { None -> ((error (print ("No machine master found for " ++ (atos v.key)))); me) }
-                         )
-                         (\acc -> \v -> ((acc.insert v); acc))
-                         (empty {key: address, value: collection $::[t] @Collection} @Collection))
+      => (($.[e].group_by (\v -> ($[nodes].at (index_by_hash v.key)).addr)
+                          (\acc -> \v -> ((acc.insert v); acc))
+                          (empty $::[t] @Collection))
+                .group_by (\v -> case $[masters_map].lookup {key: v.key, value: me}
+                                 of { Some mstr -> mstr.value }
+                                    { None -> ((error (print ("No machine master found for " ++ (atos v.key)))); me) }
+                          )
+                          (\acc -> \v -> ((acc.insert v); acc))
+                          (empty {key: address, value: collection $::[t] @Collection} @Collection))
 }
 
 control ShuffleByMachine[ lbl : label, punclbl : label
