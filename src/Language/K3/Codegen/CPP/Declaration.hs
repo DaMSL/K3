@@ -90,6 +90,7 @@ declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children
     let argMtrlznType = case getInMethodFor x e of
                           ConstReferenced -> R.Reference (R.Const argumentType)
                           Referenced -> R.Reference argumentType
+                          Forwarded -> R.RValueReference argumentType
                           _ -> argumentType
 
     body' <- reify (RReturn False) body

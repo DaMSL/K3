@@ -62,7 +62,7 @@ optimizeMaterialization (p, f) d = runExceptT $ inferMaterialization >>= solveMa
     Left (IError msg) -> throwError msg
     Right ((_, IState ct), r) -> liftIO (formatIReport reportVerbosity r) >> return ct
    where defaultIState = IState { cTable = M.empty }
-         defaultIScope = IScope { downstreams = [], nearestBind = Nothing, pEnv = p, fEnv = f, topLevel = True }
+         defaultIScope = IScope { downstreams = [], nearestBind = Nothing, pEnv = p, fEnv = f, topLevel = False }
 
   solveMaterialization ct = case runSolverM solveAction defaultSState of
     Left (SError msg) -> throwError msg
@@ -177,7 +177,7 @@ materializeD :: K3 Declaration -> InferM ()
 materializeD d = case tag d of
   DGlobal i _ (Just e) -> materializeE e >> dUID d >>= \u -> constrain u i In (mAtom Referenced -??- "Hack")
   DGlobal i _ Nothing -> dUID d >>= \u -> constrain u i In (mAtom Referenced -??- "Hack")
-  DTrigger _ _ e -> materializeE e
+  DTrigger _ _ e -> withTopLevel True $ materializeE e
   _ -> traverse_ materializeD (children d)
 
 materializeE :: K3 Expression -> InferM ()
