@@ -302,6 +302,8 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
   (ce, cv) <- inline c
   (ze, zv) <- inline z
 
+  let isAccumulating = isJust $ p @~ (\case { EProperty (ePropertyName -> "AccumulatingTransformer") -> True; _ -> False })
+
   eleMove <- getKType c >>= \(tag &&& children -> (TCollection, [t])) -> return $ getInMethodFor anon p == Moved && isNonScalarType t
 
   let accMove = gMoveByDE (if forceMoveP e then Moved else getInMethodFor anon e) z zv
@@ -311,7 +313,7 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
 
   let accDecl = R.Forward $ R.ScalarDecl (R.Name accVar) R.Inferred (Just accMove)
 
-  (fe, fb) <- inlineApply (RName (R.Variable $ R.Name accVar) (Just True)) f
+  (fe, fb) <- inlineApply (if isAccumulating then RForget else RName (R.Variable $ R.Name accVar) (Just True)) f
                 [R.Variable $ R.Name accVar, (if eleMove then R.Move else id) $ R.Variable $ R.Name eleVar]
 
   let loopBody = fb
