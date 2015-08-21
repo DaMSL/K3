@@ -448,4 +448,5 @@ reservedAnnotations =
   [ "Collection", "External", "Seq", "Set", "Sorted", "Map", "Vector"
   , "IntMap", "StrMap", "VMap", "SortedMap", "SortedSet", "MapE", "SortedMapE"
   , "MultiIndexBag", "MultiIndexMap", "MultiIndexVMap", "RealVector"
+  , "BulkFlatCollection"
   ]

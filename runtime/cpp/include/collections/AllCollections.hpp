@@ -15,4 +15,5 @@
 #include "collections/SortedSet.hpp"
 #include "collections/MapE.hpp"
 #include "collections/SortedMapE.hpp"
+#include "collections/BulkFlatCollection.hpp"
 #include "HashCollections.hpp"
