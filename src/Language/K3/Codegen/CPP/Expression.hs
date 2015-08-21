@@ -358,9 +358,9 @@ inline e@(tag -> EOperate OApp) = do
   gs <- mapM (const genSym) xs
 
   let argDecl g x xv m = case x of
-        (tag -> EVariable i) -> ([], R.FMacro xv)
+        (tag -> EVariable i) -> ([], passBy (getInMethodFor anon m) x xv)
         _ -> ( [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just $ passBy (getInMethodFor "!" m) x xv)]
-             , R.FMacro [R.Variable $ R.Name g]
+             , R.FMacro (R.Variable $ R.Name g)
              )
 
   let (argDecls, argPasses) = unzip [argDecl g x xv m | g <- gs | xv <- xvs | x <- xs | m <- as]
