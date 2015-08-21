@@ -246,6 +246,16 @@ record (sort -> ids) = do
 
     let serializeStatements asYas = map (serializeMember asYas) ids
 
+    let x_alizeMember fun m = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "arg") (R.Name fun)) [R.Variable $ R.Name m]
+    let x_alizeStatements fun = map (x_alizeMember fun) ids
+    let x_alize fun = R.TemplateDefn [("T", Nothing)] $
+                      R.FunctionDefn (R.Name fun)
+                        [ (Just "arg", R.Reference $ (R.Parameter "T")) ]
+                        (Just $ R.Reference recordType)
+                        []
+                        False
+                        (x_alizeStatements fun ++ [R.Return $ R.Dereference $ R.Variable $ R.Name "this"])
+
     let serializeFn asYas =
           R.TemplateDefn [("archive", Nothing)]
             (R.FunctionDefn (R.Name "serialize")
@@ -260,7 +270,7 @@ record (sort -> ids) = do
 
     let constructors = (defaultConstructor:initConstructors)
     let comparators = [equalityOperator, logicOp "!=", logicOp "<", logicOp ">", logicOp "<=", logicOp ">="]
-    let members = typedefs ++ constructors ++ comparators ++ [serializeFn False, serializeFn True] ++ fieldDecls
+    let members = typedefs ++ constructors ++ comparators ++ [serializeFn False, serializeFn True] ++ fieldDecls ++ [x_alize "internalize", x_alize "externalize"]
 
     let recordStructDefn
             = R.GuardedDefn ("K3_" ++ recordName) $
