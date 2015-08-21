@@ -7,10 +7,10 @@
 
 #include "boost/program_options.hpp"
 
+namespace K3 {
+
 using std::string;
 using std::vector;
-
-namespace K3 {
 
 class JSONOptions {
  public:

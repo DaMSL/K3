@@ -5,10 +5,6 @@
 #include <tuple>
 
 #if HAS_LIBDYNAMIC
-extern "C" {
-#include <dynamic/buffer.h>
-#include <dynamic/vector.h>
-}
 
 #include <boost/serialization/array.hpp>
 #include <boost/serialization/string.hpp>
@@ -25,13 +21,22 @@ extern "C" {
 #include "collections/BulkFlatCollection.hpp"
 #include "storage/Page.hpp"
 
+namespace LibdynamicVector {
+extern "C" {
+#include <dynamic/buffer.h>
+#include <dynamic/vector.h>
+}
+};
+
 namespace K3 {
 namespace Libdynamic {
+
+using namespace LibdynamicVector;
 
 template<size_t PageSize>
 struct PageCollection
 {
-  using Container = ::vector;
+  using Container = LibdynamicVector::vector;
 
   PageCollection() : container(vector_new(PageSize)) {}
 
@@ -169,7 +174,7 @@ private:
 template<class Elem, size_t PageSize = 2 << 21>
 class BulkFlatCollection {
 public:
-  using FContainer = ::vector;
+  using FContainer = LibdynamicVector::vector;
   using VContainer = PageCollection<PageSize>;
 
   typedef struct {
@@ -411,6 +416,10 @@ private:
 };
 
 }; // end namespace Libdynamic
+
+template<class Elem>
+using BulkFlatCollection = Libdynamic::BulkFlatCollection<Elem>;
+
 }; // end namespace K3
 
 #endif // HAS_LIBDYNAMIC
