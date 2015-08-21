@@ -36,7 +36,7 @@ class MosaicBuiltins {
     if (s == "year" || s == "YEAR") {
       return (y / 10000);
     }
-    throw std::runtime_error("Unrecognized date part key: " + s);
+    throw std::runtime_error("Unrecognized date part key: " + std::string(s));
   }
 
   double real_of_int(int n) { return static_cast<double>(n); }
