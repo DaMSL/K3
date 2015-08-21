@@ -41,6 +41,7 @@ class base_string {
   friend void swap(base_string& first, base_string& second);
 
   // Header tag management
+  void unowned(char* p) { buffer_ = p; }
   bool has_header() const;
   void set_header(const bool& on);
 
@@ -51,6 +52,7 @@ class base_string {
   std::size_t length() const;
   std::size_t raw_length() const;
   const char* c_str() const;
+  const char* data() const;
 
   // Comparisons
   bool operator==(const base_string& other) const;

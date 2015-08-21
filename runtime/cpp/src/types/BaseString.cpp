@@ -85,7 +85,7 @@ void swap(base_string& first, base_string& second) {
 
 // External string construction and storage tag management.
 bool base_string::has_header() const {
-  bool b = (as_bits & header_mask) && header_flag;
+  bool b = (as_bits & header_flag) != 0;
   return b;
 }
 
@@ -113,7 +113,7 @@ std::size_t base_string::length() const {
 std::size_t base_string::raw_length() const {
   if (bufferp_()) {
     if (has_header()) {
-      return *reinterpret_cast<size_t*>(bufferp_()) + header_size;
+      return *(reinterpret_cast<size_t*>(bufferp_()) + header_size);
     }
     else { return strlen(bufferp_()); }
   }
@@ -124,6 +124,11 @@ const char* base_string::c_str() const {
   if ( !has_header() ) { return bufferp_(); }
   else { return bufferp_() + header_size; }
 }
+
+const char* base_string::data() const {
+  return bufferp_();
+}
+
 
 // TODO (optimize comparators)
 size_t cmp(const base_string& b1, const base_string& b2) {
