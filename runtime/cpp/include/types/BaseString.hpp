@@ -46,6 +46,7 @@ class base_string {
   void set_header(const bool& on);
 
   // Conversions
+  operator bool() const;
   operator std::string() const;
 
   // Accessors

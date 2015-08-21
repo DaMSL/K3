@@ -95,6 +95,10 @@ void base_string::set_header(const bool& on) {
 }
 
 // Conversions
+base_string::operator bool() const {
+  return bufferp_();
+}
+
 base_string::operator std::string() const {
   return std::string(bufferp_() ? c_str() : "");
 }
