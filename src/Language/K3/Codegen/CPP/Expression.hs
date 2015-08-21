@@ -599,3 +599,33 @@ reify r e = do
         RReturn b -> return $ [R.Return $ (if b then R.Move else id) value]
         RSplice _ -> throwE $ CPPGenE "Unsupported reification by splice."
     return $ effects ++ reification
+
+-- ** Template Helpers
+inlineApply :: RContext -> K3 Expression -> [R.Expression] -> CPPGenM ([R.Statement], [R.Statement])
+inlineApply r f xs = do
+  let (unzip -> (argNames, fExprs), body) = rollLambdaChain f
+  body' <- reify r body
+
+  let getArg (tag -> ELambda i) = i
+  let (outerFExpr, innerFExpr) = (head &&& last) fExprs
+  let (outerArg, _) = (getArg outerFExpr, getArg innerFExpr)
+
+  let argReifications = map reifyArgument $ filter (\(a, _, _) -> a /= "_") $ zip3 argNames xs fExprs
+  let trueCaptures = flip M.filterWithKey (getInDecisions outerFExpr) $ \k m -> k /= outerArg && (m == Copied || m == Moved)
+
+  -- TODO: Find a way around this ugly hack to trick shadowing.
+  captureReifications <- for (M.toList trueCaptures) $ \(k, m) -> do
+        g <- genSym
+        return $ [ R.Forward $ R.ScalarDecl (R.Name g) (R.Reference R.Inferred) (Just $ R.Variable $ R.Name k)
+                 , R.Forward $ R.ScalarDecl (R.Name k) R.Inferred (Just $ R.Variable $ R.Name g)
+                 ]
+
+  return (concat captureReifications, argReifications ++ body')
+ where
+  reifyArgument :: (Identifier, R.Expression, K3 Expression) -> R.Statement
+  reifyArgument (id &&& R.Name -> (i,  inside),  outside, getInMethodFor i -> m) = case m of
+    Referenced -> R.Forward $ R.ScalarDecl inside (R.Reference R.Inferred) (Just $ R.FMacro outside)
+    ConstReferenced -> R.Forward $ R.ScalarDecl inside (R.Const $ R.Reference $ R.Inferred) (Just $ R.FMacro outside)
+    Copied -> R.Forward $ R.ScalarDecl inside R.Inferred (Just $ R.FMacro outside)
+    Moved -> R.Forward $ R.ScalarDecl inside R.Inferred (Just $ R.Move outside)
+    Forwarded -> R.Forward $ R.ScalarDecl inside (R.RValueReference R.Inferred) (Just $ R.FMacro outside)
