@@ -437,71 +437,72 @@ genPrettify = do
 -- | Generate a C++  expression that represents a K3 expression of the given type as a string
 prettifyExpr :: K3 Type -> R.Expression -> CPPGenM R.Expression
 prettifyExpr base_t e =
- case base_t of
-   -- non-nested:
-   (tag -> TBool)     -> return $ call_prettify "bool" [e]
-   (tag -> TByte)     -> return $ call_prettify "byte" [e]
-   (tag -> TInt)      -> return $ call_prettify "int" [e]
-   (tag -> TReal)     -> return $ call_prettify "real" [e]
-   (tag -> TString)   -> return $ call_prettify "string" [e]
-   (tag -> TAddress)  -> return $ call_prettify "address" [e]
-   (tag -> TFunction) -> return $ call_prettify "function" [e]
-   -- nested:
-   ((tag &&& children) -> (TOption, [t]))      -> opt t
-   ((tag &&& children) -> (TIndirection, [t])) -> ind_to_string t
-   ((tag &&& children) -> (TTuple, ts))        -> tup_to_string ts
-   ((tag &&& children) -> (TRecord ids, ts))   -> rec_to_string ids ts
-   ((details) -> (TCollection, [et], as)) -> coll_to_string base_t et as
-   _                                           -> return $ lit_string "Cant Show!"
- where
-   -- Utils
-   call_prettify x args =  R.Call (R.Variable (R.Qualified (R.Name "K3") (R.Name $ "prettify_" ++ x))) args
-   wrap_inner t = do
-     cType <- genCType t
-     inner <- prettifyExpr t (R.Variable $ R.Name "x")
-     return $ R.Lambda [] [(Just "x", cType)] False Nothing [R.Return $ inner]
+ return $ R.Literal $ R.LString "disabled"
+ --case base_t of
+ --  -- non-nested:
+ --  (tag -> TBool)     -> return $ call_prettify "bool" [e]
+ --  (tag -> TByte)     -> return $ call_prettify "byte" [e]
+ --  (tag -> TInt)      -> return $ call_prettify "int" [e]
+ --  (tag -> TReal)     -> return $ call_prettify "real" [e]
+ --  (tag -> TString)   -> return $ call_prettify "string" [e]
+ --  (tag -> TAddress)  -> return $ call_prettify "address" [e]
+ --  (tag -> TFunction) -> return $ call_prettify "function" [e]
+ --  -- nested:
+ --  ((tag &&& children) -> (TOption, [t]))      -> opt t
+ --  ((tag &&& children) -> (TIndirection, [t])) -> ind_to_string t
+ --  ((tag &&& children) -> (TTuple, ts))        -> tup_to_string ts
+ --  ((tag &&& children) -> (TRecord ids, ts))   -> rec_to_string ids ts
+ --  ((details) -> (TCollection, [et], as)) -> coll_to_string base_t et as
+ --  _                                           -> return $ lit_string "Cant Show!"
+ --where
+ --  -- Utils
+ --  call_prettify x args =  R.Call (R.Variable (R.Qualified (R.Name "K3") (R.Name $ "prettify_" ++ x))) args
+ --  wrap_inner t = do
+ --    cType <- genCType t
+ --    inner <- prettifyExpr t (R.Variable $ R.Name "x")
+ --    return $ R.Lambda [] [(Just "x", cType)] False Nothing [R.Return $ inner]
 
-   oss_decl = R.Forward $ R.ScalarDecl (R.Name "oss") (R.Named $ R.Name "ostringstream") Nothing
-   oss_concat = R.Binary "<<"
-   oss = (R.Variable $ R.Name "oss")
+ --  oss_decl = R.Forward $ R.ScalarDecl (R.Name "oss") (R.Named $ R.Name "ostringstream") Nothing
+ --  oss_concat = R.Binary "<<"
+ --  oss = (R.Variable $ R.Name "oss")
 
-   lit_string  = R.Literal . R.LString
-   std_string s = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "string")) [lit_string s]
-   project field n = R.Project n (R.Name field)
+ --  lit_string  = R.Literal . R.LString
+ --  std_string s = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "string")) [lit_string s]
+ --  project field n = R.Project n (R.Name field)
 
-   -- Option
-   opt ct = do
-       f <- wrap_inner ct
-       return $ call_prettify "option" [e, f]
+ --  -- Option
+ --  opt ct = do
+ --      f <- wrap_inner ct
+ --      return $ call_prettify "option" [e, f]
 
-   -- Indirection
-   ind_to_string ct = do
-       f <- wrap_inner ct
-       return $ call_prettify "indirection" [e, f]
+ --  -- Indirection
+ --  ind_to_string ct = do
+ --      f <- wrap_inner ct
+ --      return $ call_prettify "indirection" [e, f]
 
-   -- Tuple (TODO)
-   tup_to_string cts = mapM wrap_inner cts >>= return . call_prettify "tuple" . (e:)
+ --  -- Tuple (TODO)
+ --  tup_to_string cts = mapM wrap_inner cts >>= return . call_prettify "tuple" . (e:)
 
-   -- Record
-   rec_to_string ids cts = do
-       cType  <- genCType base_t
-       let ct_ids = zip cts ids
-       let x = R.Variable $ R.Name "x"
-       cs     <- mapM (\(ct,field) -> prettifyExpr ct (project field x) >>= \v -> return $ (oss_concat oss (oss_concat (std_string $ field ++ ":") v ))) ct_ids
-       done   <- return $ map R.Ignore $ L.intersperse (oss_concat oss (lit_string  ",")) cs
-       let front = R.Ignore $ oss_concat oss (lit_string "{")
-       let end = R.Ignore $ oss_concat oss (lit_string "}")
-       let str = R.Call (R.Project oss (R.Name "str")) []
-       let ret = R.Return $ R.Call (R.Variable $ R.Name "string_impl") [str]
-       let body = [oss_decl, front] ++ done ++ [end, ret]
-       let f =  R.Lambda [] [(Just "x", cType)] False Nothing body
-       return $ call_prettify "record" [e, f]
+ --  -- Record
+ --  rec_to_string ids cts = do
+ --      cType  <- genCType base_t
+ --      let ct_ids = zip cts ids
+ --      let x = R.Variable $ R.Name "x"
+ --      cs     <- mapM (\(ct,field) -> prettifyExpr ct (project field x) >>= \v -> return $ (oss_concat oss (oss_concat (std_string $ field ++ ":") v ))) ct_ids
+ --      done   <- return $ map R.Ignore $ L.intersperse (oss_concat oss (lit_string  ",")) cs
+ --      let front = R.Ignore $ oss_concat oss (lit_string "{")
+ --      let end = R.Ignore $ oss_concat oss (lit_string "}")
+ --      let str = R.Call (R.Project oss (R.Name "str")) []
+ --      let ret = R.Return $ R.Call (R.Variable $ R.Name "string_impl") [str]
+ --      let body = [oss_decl, front] ++ done ++ [end, ret]
+ --      let f =  R.Lambda [] [(Just "x", cType)] False Nothing body
+ --      return $ call_prettify "record" [e, f]
 
-   -- Collection
-   coll_to_string t et as = do
-       f <- wrap_inner et
-       let str = maybe "collection" (const "vmap") (as @~ isVMap)
-       return $ call_prettify str [e, f]
+ --  -- Collection
+ --  coll_to_string t et as = do
+ --      f <- wrap_inner et
+ --      let str = maybe "collection" (const "vmap") (as @~ isVMap)
+ --      return $ call_prettify str [e, f]
 
-   isVMap (TAnnotation s) = "VMap" `L.isInfixOf` s
-   isVMap _ = False
+ --  isVMap (TAnnotation s) = "VMap" `L.isInfixOf` s
+ --  isVMap _ = False

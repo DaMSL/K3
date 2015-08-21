@@ -58,6 +58,21 @@ size_t BaseStringRefPackedValue::length() const {
   return string_.length();
 }
 
+BaseStringPackedValue::BaseStringPackedValue(base_string&& b, CodecFormat format)
+    : PackedValue(format), string_(std::move(b)) { }
+
+const char* BaseStringPackedValue::buf() const {
+  return string_.c_str();
+}
+
+size_t BaseStringPackedValue::length() const {
+  return string_.length();
+}
+
+base_string BaseStringPackedValue::steal() {
+  return std::move(string_);
+}
+
 YASPackedValue::YASPackedValue(yas::shared_buffer b, CodecFormat format)
     : PackedValue(format) {
   buf_ = b;

@@ -104,16 +104,19 @@ declare hasRead: address -> string ->  bool
 with effects \_ -> \_ -> io
 
 @:ErrorFn
-declare parsePSVRow: forall a. string -> a
+declare parseYAS: forall a. string -> a
+
+@:ErrorFn
+declare parseCSV: forall a. string -> a
 
 // doRead: address -> channel id -> string
-@:CArgs 2
-declare doRead: address -> string -> string
+@:{CArgs 2, ErrorFn}
+declare doRead: forall a. address -> string -> a
 with effects \_ -> \_ -> io
 
 // doRead: address -> channel id -> string
-@:CArgs 3
-declare doBlockRead: address -> string -> int -> collection { elem: string} @Collection
+@:{CArgs 3, ErrorFn}
+declare doBlockRead: forall a. address -> string -> int -> collection { elem: a} @Collection
 with effects \_ -> \_ -> \_ -> io
 
 //// doReadBlock: channel id -> block size -> block

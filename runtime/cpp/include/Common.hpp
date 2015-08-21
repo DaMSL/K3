@@ -141,7 +141,7 @@ inline std::string addressAsString(const Address& addr) {
   return addr.toString();
 }
 
-enum class CodecFormat { BoostBinary, CSV, PSV, YASBinary };
+enum class CodecFormat { BoostBinary, CSV, PSV, YASBinary, Raw };
 enum class StorageFormat { Binary, Text };
 enum class IOMode { Read, Write };
 

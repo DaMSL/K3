@@ -13,31 +13,36 @@ CodecFormat getFormat(const string& s) {
     return CodecFormat::PSV;
   } else if (s == "k3") {
     return CodecFormat::YASBinary;
-  } else {
+  }  else if (s == "raw") {
+    return CodecFormat::Raw;
+  }
+  else {
     throw std::runtime_error("Unrecognized codec format: " + s);
   }
 }
 }
 
 template <>
-unique_ptr<string> unpack(unique_ptr<PackedValue> t) {
+unique_ptr<base_string> unpack(unique_ptr<PackedValue> t) {
   switch (t->format()) {
     case CodecFormat::YASBinary:
-      return yas_ser::unpack<string>(*t);
+      return yas_ser::unpack<base_string>(*t);
     case CodecFormat::BoostBinary:
-      return boost_ser::unpack<string>(*t);
+      return boost_ser::unpack<base_string>(*t);
     case CodecFormat::CSV:
-      return steal(std::move(t));
+      return csvpp_ser::unpack<base_string, ','>(*t);
     case CodecFormat::PSV:
-      return steal(std::move(t));
+      return csvpp_ser::unpack<base_string, '|'>(*t);
+    case CodecFormat::Raw:
+      return steal_base_string(t.get()); 
     default:
       throw std::runtime_error("Unrecognized codec format");
   }
 }
 
-unique_ptr<string> steal(unique_ptr<PackedValue> t) {
-  StringPackedValue& s1 = dynamic_cast<StringPackedValue&>(*t); 
-  return make_unique<string>(s1.steal());
+unique_ptr<base_string> steal_base_string(PackedValue* t) {
+  BaseStringPackedValue* s1 = dynamic_cast<BaseStringPackedValue*>(t); 
+  return make_unique<base_string>(s1->steal());
 }
 
 }  // namespace K3

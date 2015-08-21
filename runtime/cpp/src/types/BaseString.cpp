@@ -14,6 +14,7 @@ base_string::base_string(const base_string& other)
 }
 
 base_string::base_string(base_string&& other) : base_string() {
+  set_header(other.has_header());
   swap(*this, other);
 }
 
@@ -126,7 +127,9 @@ std::size_t base_string::raw_length() const {
 
 const char* base_string::c_str() const {
   if ( !has_header() ) { return bufferp_(); }
-  else { return bufferp_() + header_size; }
+  else { 
+    return bufferp_() + header_size; 
+  }
 }
 
 const char* base_string::data() const {

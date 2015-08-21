@@ -57,9 +57,10 @@ Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
 #ifdef K3DEBUG
       logGlobals(true);
 #endif
-    } catch (const std::exception& e) {
-      logger_->error() << "Peer failed: " << e.what();
-    }
+    } 
+    //catch (const std::exception& e) {
+    //  logger_->error() << "Peer failed: " << e.what();
+    //}
   };
 
   // Execute in new thread

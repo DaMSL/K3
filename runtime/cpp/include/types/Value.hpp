@@ -91,6 +91,17 @@ class StringPackedValue : public PackedValue {
   string string_;
 };
 
+class BaseStringPackedValue : public PackedValue {
+ public:
+  BaseStringPackedValue(base_string&& b, CodecFormat format);
+  CodecFormat format() const;
+  virtual const char* buf() const;
+  virtual size_t length() const;
+  base_string steal();
+
+  base_string string_;
+};
+
 class BaseStringRefPackedValue : public PackedValue {
  public:
   BaseStringRefPackedValue(const base_string& b, CodecFormat format);

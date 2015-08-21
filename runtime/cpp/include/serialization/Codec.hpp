@@ -149,6 +149,8 @@ unique_ptr<T> unpack(unique_ptr<PackedValue> t) {
       return csvpp_ser::unpack<T, ','>(*t);
     case CodecFormat::PSV:
       return csvpp_ser::unpack<T, '|'>(*t);
+    case CodecFormat::Raw:
+      throw std::runtime_error("Raw format only supports base_strings");
     default:
       throw std::runtime_error("Unrecognized codec format");
   }
@@ -165,15 +167,17 @@ unique_ptr<T> unpack(const PackedValue& t) {
       return csvpp_ser::unpack<T, ','>(t);
     case CodecFormat::PSV:
       return csvpp_ser::unpack<T, '|'>(t);
+    case CodecFormat::Raw:
+      throw std::runtime_error("Raw format only supports base_strings");
     default:
       throw std::runtime_error("Unrecognized codec format");
   }
 }
 
-unique_ptr<string> steal(unique_ptr<PackedValue> t);
+unique_ptr<base_string> steal_base_string(PackedValue* t);
 
 template <>
-unique_ptr<string> unpack(unique_ptr<PackedValue> t);
+unique_ptr<base_string> unpack(unique_ptr<PackedValue> t);
 
 }  // namespace K3
 
