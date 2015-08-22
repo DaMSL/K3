@@ -31,6 +31,8 @@ class base_string {
   ~base_string();
 
   void steal(char *p);
+  void unowned(char* p) { buffer_ = p; }
+
   base_string& operator+=(const base_string& other);
   base_string& operator+=(const char* other);
   base_string& operator=(const base_string& other);
@@ -40,10 +42,11 @@ class base_string {
   friend size_t cmp(const base_string& b1, const char* other);
   friend void swap(base_string& first, base_string& second);
 
-  // Header tag management
-  void unowned(char* p) { buffer_ = p; }
+  // Tag management
   bool has_header() const;
   void set_header(const bool& on);
+  bool has_advance() const;
+  void set_advance(const bool& on);
 
   // Conversions
   operator bool() const;
@@ -145,9 +148,10 @@ class base_string {
     return reinterpret_cast<char*>(as_bits & ~header_mask);
   }
 
+  constexpr static size_t header_size = sizeof(size_t);
   constexpr static intptr_t header_mask = alignof(char*) - 1;
   constexpr static int header_flag = 0b1;
-  constexpr static size_t header_size = sizeof(size_t);
+  constexpr static int advance_flag = 0b10;
 };
 
 inline bool operator==(char const* s, base_string const& b) { return b == s; }

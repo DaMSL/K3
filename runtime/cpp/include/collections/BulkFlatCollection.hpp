@@ -33,6 +33,9 @@ namespace Libdynamic {
 
 using namespace LibdynamicVector;
 
+//////////////////////////////////////////////////////////
+// PageCollection: a directly addressable vector of pages.
+//
 template<size_t PageSize>
 struct PageCollection
 {
@@ -58,12 +61,13 @@ struct PageCollection
   void internalize(bool on) { internalized_ = !vector_empty(container) && on; }
 
   void rewind() { pos = 0; }
-  Page<PageSize>& operator*() { return at(pos); }
+  Page<PageSize>& operator*() { return *(at(pos)); }
+  Page<PageSize>* operator->() { return at(pos); }
   PageCollection& operator++() { pos++; return *this; }
 
-  Page<PageSize>& at(size_t i) {
+  Page<PageSize>* at(size_t i) {
     if ( i >= vector_size(container) ) { resize(i+1); }
-    return *reinterpret_cast<Page<PageSize>*>(vector_at(container, i));
+    return reinterpret_cast<Page<PageSize>*>(vector_at(container, i));
   }
 
   size_t size() const { return vector_size(container); }
@@ -83,10 +87,58 @@ struct PageCollection
     }
   }
 
+  /////////////////////////////////////////////
+  // Iterators
+  template <class I>
+  class page_iterator : public std::iterator<std::forward_iterator_tag, Page<PageSize>> {
+    using reference = typename std::iterator<std::forward_iterator_tag, Page<PageSize>>::reference;
+
+   public:
+    template <class _I>
+    page_iterator(Container* _m, _I&& _i)
+        : m(_m), i(std::forward<_I>(_i)) {}
+
+    page_iterator& operator++() {
+      ++i;
+      return *this;
+    }
+
+    page_iterator operator++(int) {
+      page_iterator t = *this;
+      *this++;
+      return t;
+    }
+
+    auto operator -> () const { return static_cast<Page<PageSize>*>(vector_at(m, i)); }
+    auto& operator*() const { return *static_cast<Page<PageSize>*>(vector_at(m, i)); }
+
+    bool operator==(const page_iterator& other) const { return i == other.i; }
+    bool operator!=(const page_iterator& other) const { return i != other.i; }
+
+   private:
+    Container* m;
+    I i;
+  };
+
+  using iterator       = page_iterator<size_t>;
+  using const_iterator = page_iterator<size_t>;
+
+  iterator begin() { return iterator(container, 0); }
+  iterator end() { return iterator(container, vector_size(container)); }
+
+  const_iterator begin() const { return const_iterator(container, 0); }
+  const_iterator end() const { return const_iterator(container, vector_size(container)); }
+
   Container* container;
   size_t pos;
   bool internalized_;
 };
+
+////////////////////////////////////////////////////
+// Externalizer and Internalizer.
+// These are support classes that hold externalization
+// and internalizaton metadata while traversing through
+// data structures to perform pointer switching.
 
 using IteratorProxy = std::tuple<bool, uint32_t>;
 
@@ -96,38 +148,71 @@ class Externalizer
   using VContainer = PageCollection<PageSize>;
 
 public:
-  Externalizer(VContainer& v) : vcon(v) {}
+  enum class ExternalizeOp { Create, Reuse };
+
+  Externalizer(VContainer& v, ExternalizeOp o) : vcon(v), vtraversal(vcon.begin()), op(o)
+  {
+    switch (op) {
+      case ExternalizeOp::Reuse:
+        reuse_slot_id = 0;
+      default:
+        break;
+    }
+  }
 
   template<typename T> struct type{};
 
-  template<class T> void externalize(T& t) {
-    externalize(t, type<T>{});
-  }
-
+  template<class T> void externalize(T& t) { externalize(t, type<T>{}); }
   template<class T> void externalize(T&, type<T>) {}
 
-  void externalize(base_string& str, type<base_string>) {
-    Page<PageSize>& pg = *vcon;
+  void externalize(base_string& str, type<base_string>)
+  {
     bool advanced = false;
-    if ( !pg.has_insert(str.length()) ) {
-      ++vcon;
-      advanced = true;
-    }
+    if ( op == ExternalizeOp::Create ) {
+      if ( !(vcon->has_insert(str.raw_length()+1)) ) {
+        ++vcon;
+        advanced = true;
+      }
+      Page<PageSize>& pg = *vcon;
 
-    auto slot_id = pg.insert(str.data(), str.raw_length()+1);
-    if ( slot_id == Page<PageSize>::null_slot ) {
-      throw std::runtime_error("Externalization failed on variable length field");
-    }
+      auto slot_id = pg.insert(str.data(), str.raw_length()+1);
+      if ( slot_id == Page<PageSize>::null_slot ) {
+        throw std::runtime_error("Externalization failed on variable length field");
+      }
 
-    auto buf = pg.get(slot_id);
-    intptr_t* p = reinterpret_cast<intptr_t*>(&str);
-    *p = static_cast<intptr_t>(slot_id & slot_mask);
-    if ( advanced ) { *p |= proxy_mask; } else { *p &= ~proxy_mask; }
+      auto buf = pg.get(slot_id);
+      intptr_t* p = reinterpret_cast<intptr_t*>(&str);
+      *p = static_cast<intptr_t>(slot_id & slot_mask);
+      if ( advanced ) { *p |= advance_mask; } else { *p &= ~advance_mask; }
+    }
+    else if ( op == ExternalizeOp::Reuse ) {
+      if ( str.has_advance() ) {
+        reuse_slot_id = 0;
+        advanced = true;
+      }
+
+      intptr_t* p = reinterpret_cast<intptr_t*>(&str);
+      *p = static_cast<intptr_t>(reuse_slot_id & slot_mask);
+      if ( advanced ) { *p |= advance_mask; } else { *p &= ~advance_mask; }
+      reuse_slot_id++;
+    }
+    else {
+      throw std::runtime_error("Invalid externalization mode");
+    }
   }
 
 private:
   VContainer& vcon;
-  constexpr static intptr_t proxy_mask = std::numeric_limits<uint32_t>::max() + 1;
+  typename VContainer::iterator vtraversal;
+
+  ExternalizeOp op;
+
+  // Externalization mode metadata.
+  union {
+    size_t reuse_slot_id;
+  };
+
+  constexpr static intptr_t advance_mask = static_cast<intptr_t>(std::numeric_limits<uint32_t>::max()) + 1;
   constexpr static intptr_t slot_mask = std::numeric_limits<uint32_t>::max();
 };
 
@@ -137,7 +222,8 @@ class Internalizer
   using VContainer = PageCollection<PageSize>;
 
 public:
-  Internalizer(VContainer& v) : vcon(v) {}
+  Internalizer(VContainer& v) : vcon(v), vtraversal(vcon.begin()) {}
+
   ~Internalizer() { vcon.internalize(true); }
 
   template<typename T> struct type{};
@@ -154,10 +240,13 @@ public:
       uint32_t slot_id = static_cast<uint32_t>(*p & slot_mask);
       bool advance = (*p & advance_mask) != 0;
 
-      if ( advance ) { ++vcon; }
-      Page<PageSize>& pg = *vcon;
+      if ( advance ) { ++vtraversal; }
+      Page<PageSize>& pg = *vtraversal;
       char* buf = pg.get(slot_id);
-      if ( buf != nullptr ) { str.unowned(buf); }
+      if ( buf != nullptr ) {
+        str.unowned(buf);
+        str.set_advance(advance);
+      }
       else {
         throw std::runtime_error("Internalization failed on variable length field");
       }
@@ -166,11 +255,17 @@ public:
 
 private:
   VContainer& vcon;
+  typename VContainer::iterator vtraversal;
 
-  constexpr static intptr_t advance_mask = std::numeric_limits<uint32_t>::max() + 1;
+  constexpr static intptr_t advance_mask = static_cast<intptr_t>(std::numeric_limits<uint32_t>::max()) + 1;
   constexpr static intptr_t slot_mask = std::numeric_limits<uint32_t>::max();
 };
 
+//////////////////////////////////////////////////////
+// BulkFlatCollection:
+// a contiguous bulk-oriented collection class, that
+// supports storage of flat (i.e., non-nested) elements.
+//
 template<class Elem, size_t PageSize = 2 << 21>
 class BulkFlatCollection {
 public:
@@ -195,6 +290,46 @@ public:
   BulkFlatCollection(const Container& con) : container(con) {}
   BulkFlatCollection(Container&& con) : container(std::move(con)) {}
 
+  template <class V, class I>
+  class bfc_iterator : public std::iterator<std::forward_iterator_tag, V> {
+    using reference = typename std::iterator<std::forward_iterator_tag, V>::reference;
+
+   public:
+    template <class _I>
+    bfc_iterator(FContainer* _m, _I&& _i)
+        : m(_m), i(std::forward<_I>(_i)) {}
+
+    bfc_iterator& operator++() {
+      ++i;
+      return *this;
+    }
+
+    bfc_iterator operator++(int) {
+      bfc_iterator t = *this;
+      *this++;
+      return t;
+    }
+
+    auto operator -> () const { return static_cast<V*>(vector_at(m, i)); }
+    auto& operator*() const { return *static_cast<V*>(vector_at(m, i)); }
+
+    bool operator==(const bfc_iterator& other) const { return i == other.i; }
+    bool operator!=(const bfc_iterator& other) const { return i != other.i; }
+
+   private:
+    FContainer* m;
+    I i;
+  };
+
+  using iterator = bfc_iterator<Elem, size_t>;
+  using const_iterator = bfc_iterator<const Elem, size_t>;
+
+  iterator begin() { return iterator(fixed(), 0); }
+  iterator end() { return iterator(fixed(), vector_size(fixed())); }
+
+  const_iterator begin() const { return const_iterator(fixedc(), 0); }
+  const_iterator end() const { return const_iterator(fixedc(), vector_size(const_cast<FContainer*>(fixedc()))); }
+
   // Sizing utilities.
   size_t fixseg_size()     const { return vector_size(const_cast<FContainer*>(fixedc())); }
   size_t fixseg_capacity() const { return vector_capacity(const_cast<FContainer*>(fixedc())); }
@@ -215,7 +350,7 @@ public:
       auto os = other.size(unit_t{});
       if ( fixseg_size() < os ) { reserve_fixed(os); }
 
-      Externalizer etl(*variable());
+      Externalizer etl(*variable(), Externalizer::ExternalizeOp::Create);
       for (auto& e : other) {
         vector_push_back(fixed(), const_cast<Elem*>(&(e.elem)));
         reinterpret_cast<Elem*>(vector_back(fixed()))->externalize(etl);
@@ -226,19 +361,29 @@ public:
     return unit_t {};
   }
 
-  base_string save(unit_t) const {
+  // Externalizes an existing collection, reusing the variable-length segment.
+  unit_t repack(unit_t) {
     FContainer* ncf = const_cast<FContainer*>(fixedc());
     VContainer* ncv = const_cast<VContainer*>(variablec());
 
-    /*
-    if ( variable()->internalized() ) {
-      Externalizer etl(*ncv);
+    if ( ncv->internalized() ) {
+      Externalizer etl(*ncv, Externalizer::ExternalizeOp::Reuse);
       auto sz = vector_size(ncf);
       for (size_t i = 0; i < sz; ++i) {
         reinterpret_cast<Elem*>(vector_at(ncf, i))->externalize(etl);
       }
+      ncv->internalize(false);
     }
-    */
+
+    return unit_t{};
+  }
+
+  base_string save(unit_t) {
+    FContainer* ncf = fixed();
+    VContainer* ncv = variable();
+
+    // Reset element pointers to slot ids as necessary.
+    repack(unit_t{});
 
     uint64_t fixed_count = fixseg_size();
     uint64_t page_count = varseg_size();
@@ -417,10 +562,58 @@ private:
 
 }; // end namespace Libdynamic
 
-template<class Elem>
-using BulkFlatCollection = Libdynamic::BulkFlatCollection<Elem>;
+template<class Elem, size_t PageSize = 2 << 21>
+using BulkFlatCollection = Libdynamic::BulkFlatCollection<Elem, PageSize>;
 
 }; // end namespace K3
+
+
+namespace YAML {
+template <class E>
+struct convert<K3::BulkFlatCollection<E>> {
+  static Node encode(const K3::BulkFlatCollection<E>& c) {
+    Node node;
+    if (c.size() > 0) {
+      for (auto i : c) {
+        node.push_back(convert<E>::encode(i));
+      }
+    } else {
+      node = YAML::Load("[]");
+    }
+    return node;
+  }
+
+  static bool decode(const Node& node, K3::BulkFlatCollection<E>& c) {
+    K3::Collection<R_elem<E>> tmp;
+    for (auto& i : node) {
+      tmp.insert(i.as<E>());
+    }
+    c.append(tmp);
+    return true;
+  }
+};
+}  // namespace YAML
+
+namespace JSON {
+using namespace rapidjson;
+template <class E>
+struct convert<K3::BulkFlatCollection<E>> {
+  template <class Allocator>
+  static Value encode(const K3::BulkFlatCollection<E>& c, Allocator& al) {
+    Value v;
+    v.SetObject();
+    v.AddMember("type", Value("BulkFlatCollection"), al);
+    Value inner;
+    inner.SetArray();
+    for (const auto& e : c) {
+      inner.PushBack(convert<E>::encode(e, al), al);
+    }
+    v.AddMember("value", inner.Move(), al);
+    return v;
+  }
+};
+}  // namespace JSON
+
 
 #endif // HAS_LIBDYNAMIC
 

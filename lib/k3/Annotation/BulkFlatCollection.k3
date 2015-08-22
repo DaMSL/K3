@@ -6,6 +6,9 @@ annotation BulkFlatCollection given type a, b, c, d
   provides lifted append : collection {elem: content} @Collection -> ()
     with effects \other -> [R[self]; R[other]; W[self]]
 
+  provides lifted repack : () -> ()
+    with effects \_ -> [R[self]; W[self]]
+
   provides lifted load : string -> ()
     with effects \data -> [R[self]; R[data]; W[self]]
 

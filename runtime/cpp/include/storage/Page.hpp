@@ -113,7 +113,7 @@ struct Page : public BasePage<PageSize>
   bool has_insert(size_t len) {
     bool slots_avail = Super::header_.current_slot < Super::header_.num_slots;
     size_t requested = len + (!slots_avail? Super::header_.slot_size() : 0);
-    return available() > requested;
+    return available() > align_sz(requested);
   }
 
   slot_id_t insert(const char* data, size_t len) {

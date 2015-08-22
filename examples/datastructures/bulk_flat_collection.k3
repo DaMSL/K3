@@ -1,0 +1,20 @@
+include "Annotation/Collection.k3"
+include "Annotation/BulkFlatCollection.k3"
+include "Core/Builtins.k3"
+
+typedef R = {a: int, b: int, c: string}
+
+declare c    : collection {elem : R} @Collection
+declare bcf  : collection R @BulkFlatCollection
+declare bcf2 : collection R @BulkFlatCollection
+
+trigger t : () = \_ -> (
+  ((range 10).iterate (\r -> c.insert {elem: {a:r.i, b:r.i*2, c: "foo" ++ (itos r.i)}}));
+  (bcf.append c);
+  (print ("BCF size" ++ (itos (bcf.size()))));
+  (bcf2.load (bcf.save ()));
+  (print ("BCF2 size" ++ (itos (bcf2.size()))))
+)
+
+source s1 : () = value ()
+feed s1 |> t

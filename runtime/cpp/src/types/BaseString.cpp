@@ -11,10 +11,12 @@ base_string::base_string(const base_string& other)
     : buffer_(dupbuf(other))
 {
   set_header(other.has_header());
+  set_advance(other.has_advance());
 }
 
 base_string::base_string(base_string&& other) : base_string() {
   set_header(other.has_header());
+  set_advance(other.has_advance());
   swap(*this, other);
 }
 
@@ -50,6 +52,7 @@ base_string& base_string::operator+=(const base_string& other) {
   auto new_c_str_ = new_buffer_ + (new_header? header_size : 0);
 
   set_header(new_header);
+  set_advance(false); // Derived strings do not need to carry a page's advance bit.
   if ( new_header ) {
     *reinterpret_cast<size_t*>(new_buffer_) = length() + other.length();
   }
@@ -84,15 +87,23 @@ void swap(base_string& first, base_string& second) {
   swap(first.buffer_, second.buffer_);
 }
 
-// External string construction and storage tag management.
+// Tag accessors.
 bool base_string::has_header() const {
-  bool b = (as_bits & header_flag) != 0;
-  return b;
+  return (as_bits & header_flag) != 0;
 }
 
 void base_string::set_header(const bool& on) {
   if ( on ) { as_bits |= header_flag; }
   else { as_bits &= ~header_flag; }
+}
+
+bool base_string::has_advance() const {
+  return (as_bits & advance_flag) != 0;
+}
+
+void base_string::set_advance(const bool& on) {
+  if ( on ) { as_bits |= advance_flag; }
+  else { as_bits &= ~advance_flag; }
 }
 
 // Conversions
@@ -127,8 +138,8 @@ std::size_t base_string::raw_length() const {
 
 const char* base_string::c_str() const {
   if ( !has_header() ) { return bufferp_(); }
-  else { 
-    return bufferp_() + header_size; 
+  else {
+    return bufferp_() + header_size;
   }
 }
 
