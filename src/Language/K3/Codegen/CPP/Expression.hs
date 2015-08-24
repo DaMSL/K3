@@ -453,6 +453,31 @@ inline e@(tag &&& children -> (EOperate OApp, [
   return (ce ++ ke ++ [resultDecl, existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
          , R.Variable $ R.Name result)
 
+inline e@(tag &&& children -> (EOperate OApp, [
+         (tag &&& children -> (EOperate OApp, [
+           p@(Peek c),
+           n])),
+           w])) | c `dataspaceIn` stlLinearDSs = do
+  (ce, cv) <- inline c
+  let uc = R.Call (R.Project cv (R.Name "getContainer")) []
+
+  first <- genSym
+  let firstCall = R.Call (R.Project uc (R.Name "begin")) []
+  let firstDecl = R.Forward $ R.ScalarDecl (R.Name first) R.Inferred (Just $ firstCall)
+  let firstPred = R.Binary "=="
+                    (R.Variable $ R.Name first)
+                    (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uc])
+
+  result <- genSym
+  resultType <- getKType e >>= genCType
+  let resultDecl = R.Forward $ R.ScalarDecl (R.Name result) resultType Nothing
+  (nfe, nfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) n [R.Initialization R.Unit []]
+  (wfe, wfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) w [R.Dereference $ R.Variable $ R.Name first]
+
+  return (ce ++ [resultDecl, firstDecl] ++ [R.IfThenElse firstPred (nfe ++ nfb) (wfe ++ wfb)]
+         , R.Variable $ R.Name result)
+
+
 
 inline e@(tag -> EOperate OApp) = do
   -- Inline both function and argument for call.
