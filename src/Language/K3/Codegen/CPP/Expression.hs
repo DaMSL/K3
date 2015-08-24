@@ -378,7 +378,7 @@ inline e@(tag &&& children -> (EOperate OApp, [
 
   let nfe = [R.Assignment (R.Subscript uc kv) (R.Variable $ R.Name kg)]
   (wfe, wfb) <- inlineApply (RName (R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")) (Just True)) w
-                  [R.Move $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")]
+                  [R.Move $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second"), (R.Variable $ R.Name kg)]
 
   return (ce ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred nfe (wfe ++ wfb)]
          , R.Initialization R.Unit [])
