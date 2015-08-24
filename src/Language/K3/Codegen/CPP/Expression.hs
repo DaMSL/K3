@@ -79,7 +79,20 @@ precludeRDecl i b x = do
 -- | Template Patterns
 -- TODO: Check for transformer property.
 pattern Fold c <- Node (EProject "fold" :@: _) [c]
+pattern InsertWith c <- Node (EProject "upsert_with" :@: _) [c]
 pattern UpsertWith c <- Node (EProject "upsert_with" :@: _) [c]
+pattern Lookup c <- Node (EProject "lookup" :@: _) [c]
+pattern Peek c <- Node (EProject "peek" :@: _) [c]
+pattern SafeAt c <- Node (EProject "safe_at" :@: _) [c]
+
+dataspaceIn :: K3 Expression -> [Identifier] -> Bool
+dataspaceIn e as = isJust $ getKTypeP e >>= \t -> t @~ \case { TAnnotation i -> i `elem` as; _ -> False }
+
+stlLinearDSs :: [Identifier]
+stlLinearDSs = ["Collection", "Set", "Vector", "Seq"]
+
+stlAssocDSs :: [Identifier]
+stlAssocDSs = ["Map"]
 
 hasMoveProperty :: Annotation Expression -> Bool
 hasMoveProperty ae = case ae of
@@ -350,7 +363,7 @@ inline e@(tag &&& children -> (EOperate OApp, [
            p@(UpsertWith c),
            k])),
            n])),
-           w])) = do
+           w])) | c `dataspaceIn` stlAssocDSs = do
   (ce, cv) <- inline c
 
   kg <- genSym
