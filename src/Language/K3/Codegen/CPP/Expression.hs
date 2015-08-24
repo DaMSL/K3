@@ -335,7 +335,7 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
 
   let bb = if null fe then loop else R.Block (fe ++ [loop])
 
-  return ([accDecl] ++ ce ++ ze ++ [bb], R.Variable $ R.Name accVar)
+  return (ze ++ [accDecl] ++ ce ++ [bb], R.Variable $ R.Name accVar)
 
   -- Leaving this here for later.
   -- let isVectorizeProp  = \case { EProperty (ePropertyName -> "Vectorize")  -> True; _ -> False }
