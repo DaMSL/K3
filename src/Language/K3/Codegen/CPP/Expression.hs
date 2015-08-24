@@ -477,7 +477,35 @@ inline e@(tag &&& children -> (EOperate OApp, [
   return (ce ++ [resultDecl, firstDecl] ++ [R.IfThenElse firstPred (nfe ++ nfb) (wfe ++ wfb)]
          , R.Variable $ R.Name result)
 
+inline e@(tag &&& children -> (EOperate OApp, [
+         (tag &&& children -> (EOperate OApp, [
+         (tag &&& children -> (EOperate OApp, [
+           p@(SafeAt c),
+           i])),
+           n])),
+           w])) | c `dataspaceIn` stlLinearDSs = do
+  (ce, cv) <- inline c
+  ig <- genSym
+  ie <- reify (RDecl ig Nothing) i
+  let iv = R.Variable $ R.Name ig
+  let uc = R.Call (R.Project cv (R.Name "getContainer")) []
 
+  let sizeCheck = R.Binary "<" iv (R.Call (R.Project uc (R.Name "size")) [])
+
+  iterator <- genSym
+  let advance = [ R.Forward $ R.ScalarDecl (R.Name iterator) R.Inferred (Just $ (R.Call (R.Project uc (R.Name "begin")) []))
+                , R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "advance")) [R.Variable (R.Name iterator), iv]
+                ]
+
+  result <- genSym
+  resultType <- getKType e >>= genCType
+  let resultDecl = R.Forward $ R.ScalarDecl (R.Name result) resultType Nothing
+
+  (nfe, nfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) n [R.Initialization R.Unit []]
+  (wfe, wfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) w [R.Dereference (R.Variable $ R.Name iterator)]
+
+  return (ce ++ ie ++ [resultDecl] ++ [R.IfThenElse sizeCheck (advance ++ wfe ++ wfb) (nfe ++ nfb)]
+         , R.Variable $ R.Name result)
 
 inline e@(tag -> EOperate OApp) = do
   -- Inline both function and argument for call.
