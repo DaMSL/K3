@@ -719,7 +719,7 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
 
   let bindWriteBack =
         case b of
-          BIndirection i -> wbByDecision (getExMethodFor i k) initExpr (R.Variable $ R.Name i)
+          BIndirection i -> wbByDecision (getExMethodFor i k) (R.Dereference initExpr) (R.Variable $ R.Name i)
           BTuple is ->
             concat [wbByDecision (getExMethodFor i k) (R.TGet initExpr n) (R.Variable $ R.Name i) | i <- is | n <- [0..]]
           BRecord iis ->
