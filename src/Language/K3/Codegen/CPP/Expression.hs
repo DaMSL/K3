@@ -441,11 +441,17 @@ inline e@(tag &&& children -> (EOperate OApp, [
   let existingPred = R.Binary "=="
                        (R.Variable $ R.Name existing)
                        (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uc])
-  (nfe, nfb) <- inlineApply RForget n [R.Initialization R.Unit []]
-  (wfe, wfb) <- inlineApply RForget w [R.Move $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")]
 
-  return (ce ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
-         , R.Initialization R.Unit [])
+  result <- genSym
+  resultType <- getKType e >>= genCType
+  let resultDecl = R.Forward $ R.ScalarDecl (R.Name result) resultType Nothing
+
+  (nfe, nfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) n [R.Initialization R.Unit []]
+  (wfe, wfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) w
+                  [R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")]
+
+  return (ce ++ ke ++ [resultDecl, existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
+         , R.Variable $ R.Name result)
 
 
 inline e@(tag -> EOperate OApp) = do
