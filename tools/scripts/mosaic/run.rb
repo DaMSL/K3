@@ -134,10 +134,15 @@ def check_status(status, success, process_nm)
 end
 
 # create the k3 cpp file locally
-def run_create_k3_local(k3_path, script_path)
+def run_create_k3_local(k3_cpp_name, k3_cpp_path, k3_root_path, k3_path, script_path)
   stage "[3] Creating K3 cpp file locally"
   compile = File.join(script_path, "..", "run", "compile.sh")
   res = run("time #{compile} -1 #{k3_path} +RTS -N -RTS")
+
+  src_path = File.join(k3_root_path, "__build")
+  # copy to work directory
+  FileUtils.copy_file(File.join(src_path, k3_cpp_name), k3_cpp_path)
+  # write out the result
   File.write(File.join($workdir, "k3.log"), res)
 end
 
@@ -855,7 +860,7 @@ def main()
   else
     if $options[:create_k3]
       if $options[:create_local]
-        run_create_k3_local(k3_path, script_path)
+        run_create_k3_local(k3_cpp_name, k3_cpp_path, k3_root_path, k3_path, script_path)
       else
         block_on_compile = $options[:compile_k3] || $options[:deploy_k3] || $options[:dots]
         run_create_k3_remote(server_url, block_on_compile, k3_cpp_name, k3_path, nice_name)
