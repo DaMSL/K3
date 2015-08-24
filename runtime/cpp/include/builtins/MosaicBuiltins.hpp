@@ -2,6 +2,7 @@
 #define K3_MOSAICBUILTINS
 
 #include <climits>
+#include <cmath>
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/thread.hpp>
 
@@ -24,6 +25,11 @@ class MosaicBuiltins {
   template <class A, class B>
   auto min(A a, B b) {
     return (a < b ? a : b);
+  }
+
+  template <class A>
+  auto abs(A a) {
+    return std::abs(a);
   }
 
   int date_part(const string_impl& s, int y) {
