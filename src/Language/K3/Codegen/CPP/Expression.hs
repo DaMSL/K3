@@ -390,6 +390,35 @@ inline e@(tag &&& children -> (EOperate OApp, [
   return (ce ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
          , R.Initialization R.Unit [])
 
+inline e@(tag &&& children -> (EOperate OApp, [
+         (tag &&& children -> (EOperate OApp, [
+         (tag &&& children -> (EOperate OApp, [
+           p@(Lookup c),
+           k])),
+           n])),
+           w])) | c `dataspaceIn` stlAssocDSs = do
+  (ce, cv) <- inline c
+  kg <- genSym
+  ke <- reify (RDecl kg Nothing) k
+  let kv = R.Project (R.Variable $ R.Name kg) (R.Name "key")
+  -- (ke, kv) <- case k of
+  --   (tag &&& children -> (ERecord fs, cs)) -> case lookup "key" (zip fs cs) of
+  --     Nothing -> throwE $ CPPGenE "Missing key field on record."
+  --     Just kc -> inline kc
+  --   _ -> inline k >>= \(ke', kv') -> return (ke', R.Project kv' (R.Name "key"))
+  let uc = R.Call (R.Project cv (R.Name "getContainer")) []
+
+  existing <- genSym
+  let existingFind = R.Call (R.Project uc (R.Name "find")) [kv]
+  let existingDecl = R.Forward $ R.ScalarDecl (R.Name existing) R.Inferred (Just $ existingFind)
+  let existingPred = R.Binary "=="
+                       (R.Variable $ R.Name existing)
+                       (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uc])
+  (nfe, nfb) <- inlineApply RForget n [R.Initialization R.Unit []]
+  (wfe, wfb) <- inlineApply RForget w [R.Move $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")]
+
+  return (ce ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
+         , R.Initialization R.Unit [])
 
 
 inline e@(tag -> EOperate OApp) = do
