@@ -79,7 +79,7 @@ precludeRDecl i b x = do
 -- | Template Patterns
 -- TODO: Check for transformer property.
 pattern Fold c <- Node (EProject "fold" :@: _) [c]
-pattern InsertWith c <- Node (EProject "upsert_with" :@: _) [c]
+pattern InsertWith c <- Node (EProject "insert_with" :@: _) [c]
 pattern UpsertWith c <- Node (EProject "upsert_with" :@: _) [c]
 pattern Lookup c <- Node (EProject "lookup" :@: _) [c]
 pattern Peek c <- Node (EProject "peek" :@: _) [c]
@@ -356,6 +356,33 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
   --                              [ R.Pragma "clang loop interleave(enable)"
   --                              , R.Pragma $ "clang loop interleave_count(" ++ show i ++ ")"
   --                              ]
+
+inline e@(tag &&& children -> (EOperate OApp, [
+         (tag &&& children -> (EOperate OApp, [
+           p@(InsertWith c),
+           k])),
+           w])) | c `dataspaceIn` stlAssocDSs = do
+  (ce, cv) <- inline c
+  kg <- genSym
+  ke <- reify (RDecl kg Nothing) k
+  let kv = R.Project (R.Variable $ R.Name kg) (R.Name "key")
+
+  let uc = R.Call (R.Project cv (R.Name "getContainer")) []
+
+  existing <- genSym
+  let existingFind = R.Call (R.Project uc (R.Name "find")) [kv]
+  let existingDecl = R.Forward $ R.ScalarDecl (R.Name existing) R.Inferred (Just $ existingFind)
+  let existingPred = R.Binary "=="
+                       (R.Variable $ R.Name existing)
+                       (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uc])
+
+  let nfe = [R.Assignment (R.Subscript uc kv) (R.Variable $ R.Name kg)]
+  (wfe, wfb) <- inlineApply (RName (R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")) (Just True)) w
+                  [R.Move $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")]
+
+  return (ce ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred nfe (wfe ++ wfb)]
+         , R.Initialization R.Unit [])
+
 
 inline e@(tag &&& children -> (EOperate OApp, [
          (tag &&& children -> (EOperate OApp, [
