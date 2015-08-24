@@ -762,7 +762,7 @@ reify r e = do
 
 -- ** Template Helpers
 inlineApply :: RContext -> K3 Expression -> [R.Expression] -> CPPGenM ([R.Statement], [R.Statement])
-inlineApply r f xs = do
+inlineApply r f@(tag -> ELambda _) xs = do
   let (unzip -> (argNames, fExprs), body) = rollLambdaChain f
   body' <- reify r body
 
@@ -789,3 +789,15 @@ inlineApply r f xs = do
     Copied -> R.Forward $ R.ScalarDecl inside R.Inferred (Just $ R.FMacro outside)
     Moved -> R.Forward $ R.ScalarDecl inside R.Inferred (Just $ R.Move outside)
     Forwarded -> R.Forward $ R.ScalarDecl inside (R.RValueReference R.Inferred) (Just $ R.FMacro outside)
+
+inlineApply r f xs = do
+  (fe, fv) <- inline f
+  let rValue = R.Call fv xs
+  reification <- case r of
+    RForget -> return [R.Ignore rValue]
+    RName k b -> return [R.Assignment k (if fromMaybe False b then R.Move rValue else rValue)]
+    RDecl i b -> return [R.Forward $ R.ScalarDecl (R.Name i) R.Inferred
+                           (Just $ if fromMaybe False b then R.Move rValue else rValue)]
+    RReturn b -> return [R.Return $ if b then R.Move rValue else rValue]
+    RSplice _ -> throwE $ CPPGenE "Unsupported reification by splice"
+  return (fe, reification)
