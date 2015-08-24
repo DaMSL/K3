@@ -12,6 +12,9 @@ trigger t : () = \_ -> (
   ((range 10).iterate (\r -> c.insert {elem: {a:r.i, b:r.i*2, c: "foo" ++ (itos r.i)}}));
   (bcf.append c);
   (print ("BCF size" ++ (itos (bcf.size()))));
+  (bcf.iterate (\x ->
+    print ((itos x.a) ++ "," ++ (itos x.b) ++ "," ++ x.c)
+  ));
   (bcf2.load (bcf.save ()));
   (print ("BCF2 size" ++ (itos (bcf2.size()))))
 )

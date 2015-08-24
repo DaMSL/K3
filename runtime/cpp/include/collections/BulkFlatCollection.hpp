@@ -52,8 +52,6 @@ struct PageCollection
     }
   }
 
-  PageCollection(PageCollection&& v) { std::swap(container, v.container); }
-
   ~PageCollection() { vector_free(container); }
 
   // Returns whether fixed segment associated with these pages uses absolute pointers.
@@ -277,8 +275,8 @@ public:
     VContainer cvariable;
   } Container;
 
-  using Externalizer = Externalizer<PageSize>;
-  using Internalizer = Internalizer<PageSize>;
+  using ExternalizerT = Externalizer<PageSize>;
+  using InternalizerT = Internalizer<PageSize>;
 
   BulkFlatCollection()
   {
@@ -287,7 +285,10 @@ public:
     variable()->rewind();
   }
 
+  // TODO(jbw) Shouldn't there be a deep copy in these 2?
+  BulkFlatCollection(const BulkFlatCollection& other) : container(other.container) { }
   BulkFlatCollection(const Container& con) : container(con) {}
+
   BulkFlatCollection(Container&& con) : container(std::move(con)) {}
 
   template <class V, class I>
@@ -327,8 +328,8 @@ public:
   iterator begin() { return iterator(fixed(), 0); }
   iterator end() { return iterator(fixed(), vector_size(fixed())); }
 
-  const_iterator begin() const { return const_iterator(fixedc(), 0); }
-  const_iterator end() const { return const_iterator(fixedc(), vector_size(const_cast<FContainer*>(fixedc()))); }
+  const_iterator begin() const { return const_iterator(const_cast<FContainer*>(fixedc()), 0); }
+  const_iterator end() const { return const_iterator(const_cast<FContainer*>(fixedc()), vector_size(const_cast<FContainer*>(fixedc()))); }
 
   // Sizing utilities.
   size_t fixseg_size()     const { return vector_size(const_cast<FContainer*>(fixedc())); }
@@ -350,7 +351,7 @@ public:
       auto os = other.size(unit_t{});
       if ( fixseg_size() < os ) { reserve_fixed(os); }
 
-      Externalizer etl(*variable(), Externalizer::ExternalizeOp::Create);
+      ExternalizerT etl(*variable(), ExternalizerT::ExternalizeOp::Create);
       for (auto& e : other) {
         vector_push_back(fixed(), const_cast<Elem*>(&(e.elem)));
         reinterpret_cast<Elem*>(vector_back(fixed()))->externalize(etl);
@@ -367,7 +368,7 @@ public:
     VContainer* ncv = const_cast<VContainer*>(variablec());
 
     if ( ncv->internalized() ) {
-      Externalizer etl(*ncv, Externalizer::ExternalizeOp::Reuse);
+      ExternalizerT etl(*ncv, ExternalizerT::ExternalizeOp::Reuse);
       auto sz = vector_size(ncf);
       for (size_t i = 0; i < sz; ++i) {
         reinterpret_cast<Elem*>(vector_at(ncf, i))->externalize(etl);
@@ -458,7 +459,7 @@ public:
   unit_t iterate(Fun f) const {
     FContainer* ncf = const_cast<FContainer*>(fixedc());
     VContainer* ncv = const_cast<VContainer*>(variablec());
-    Internalizer itl(*ncv);
+    InternalizerT itl(*ncv);
     auto sz = fixseg_size();
     for (size_t i = 0; i < sz; ++i) {
       auto& e = reinterpret_cast<Elem*>(vector_at(ncf, i))->internalize(itl);
@@ -473,7 +474,7 @@ public:
     FContainer* ncf = const_cast<FContainer*>(fixedc());
     VContainer* ncv = const_cast<VContainer*>(variablec());
     Collection<R_elem<RT<Fun, Elem>>> result;
-    Internalizer itl(*ncv);
+    InternalizerT itl(*ncv);
     auto sz = fixseg_size();
     for (size_t i = 0; i < sz; ++i) {
       auto& e = reinterpret_cast<Elem*>(vector_at(ncf, i))->internalize(itl);
@@ -488,7 +489,7 @@ public:
     FContainer* ncf = const_cast<FContainer*>(fixedc());
     VContainer* ncv = const_cast<VContainer*>(variablec());
     Collection<R_elem<Elem>> result;
-    Internalizer itl(*ncv);
+    InternalizerT itl(*ncv);
     auto sz = fixseg_size();
     for (size_t i = 0; i < sz; ++i) {
       auto& e = reinterpret_cast<Elem*>(vector_at(ncf, i))->internalize(itl);
@@ -504,7 +505,7 @@ public:
   Acc fold(Fun f, Acc acc) const {
     FContainer* ncf = const_cast<FContainer*>(fixedc());
     VContainer* ncv = const_cast<VContainer*>(variablec());
-    Internalizer itl(*ncv);
+    InternalizerT itl(*ncv);
     auto sz = fixseg_size();
     for (size_t i = 0; i < sz; ++i) {
       auto& e = reinterpret_cast<Elem*>(vector_at(ncf, i))->internalize(itl);
@@ -573,11 +574,12 @@ template <class E>
 struct convert<K3::BulkFlatCollection<E>> {
   static Node encode(const K3::BulkFlatCollection<E>& c) {
     Node node;
-    if (c.size() > 0) {
-      for (auto i : c) {
-        node.push_back(convert<E>::encode(i));
-      }
-    } else {
+    bool flag = true;
+    for (const auto& i : c) {
+      if (flag) { flag = false; }
+      node.push_back(convert<E>::encode(i));
+    }
+    if (flag) {
       node = YAML::Load("[]");
     }
     return node;
