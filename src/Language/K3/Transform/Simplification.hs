@@ -1225,7 +1225,14 @@ fuseFoldTransformers expr = do
       where cleanElemAnns as = filter (\a -> not $ isEIElemRec a) as
 
     fuse nch@(PApp _ _ (any isETAppChain -> True), _)   = return $ (False, uncurry replaceCh nch)
-    fuse nch@(PPrj _ _ (any isETransformer -> True), _) = return $ (False, uncurry replaceCh nch)
+    fuse nch@(PPrj _ _ (any isETransformer -> True), _) =
+      let spec = fst nch @~ isEFusionSpec in
+      case spec of
+	Just p@(getFusionSpec -> Just spec) ->
+	  let nann = updateFusionSpec (annotations $ fst nch) spec in
+          return $ (False, uncurry replaceCh nch @<- nann)
+        _ -> return $ (False, uncurry replaceCh nch)
+
     fuse nch = return $ (False, uncurry replaceCh nch)
 
     leftFusable fId = fId `elem` ["sample", "fold"]
