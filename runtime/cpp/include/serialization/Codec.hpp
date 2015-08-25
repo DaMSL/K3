@@ -133,6 +133,8 @@ unique_ptr<PackedValue> pack(const T& t, CodecFormat format) {
       return csvpp_ser::pack<T, ','>(t, format);
     case CodecFormat::PSV:
       return csvpp_ser::pack<T, '|'>(t, format);
+    case CodecFormat::Raw:
+      throw std::runtime_error("Raw format only supports base_strings");
     default:
       throw std::runtime_error("Unrecognized codec format");
   }
@@ -176,6 +178,8 @@ unique_ptr<T> unpack(const PackedValue& t) {
 
 unique_ptr<base_string> steal_base_string(PackedValue* t);
 
+template<>
+unique_ptr<PackedValue> pack(const base_string& t, CodecFormat format);
 template <>
 unique_ptr<base_string> unpack(unique_ptr<PackedValue> t);
 

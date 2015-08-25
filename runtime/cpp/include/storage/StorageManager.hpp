@@ -65,12 +65,11 @@ class StorageManager {
   template <class T>
   void doWrite(Address peer, Identifier id, const T& val) {
     try {
-      // TODO(jbw) avoid copies when creating the native-value wrappers
       auto file = files_->lookup(make_pair(peer, id));
       file->doWrite(val);
     }
     catch (std::ios_base::failure e) {
-      logger_->error ("ERROR Writing to {}", id);
+      logger_->error ("ERROR Writing to {}: {}", id, e.what());
       throw std::runtime_error ("File I/O Error. Program is Halting.");
     }
   }

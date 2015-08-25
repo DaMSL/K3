@@ -8,6 +8,7 @@ declare c    : collection {elem : R} @Collection
 declare bfc  : collection R @BulkFlatCollection
 
 declare bfc2 : collection R @BulkFlatCollection
+declare bfc3 : mut collection R @BulkFlatCollection
 
 trigger t : () = \_ -> (
   // Create regular collection, append to a BFC
@@ -26,7 +27,6 @@ trigger t : () = \_ -> (
   print "---------------------------";
 
 
-
   // Save/Load bfc into bfc2
   (bfc2.load (bfc.save ()));
   (print ("BCF2 size" ++ (itos (bfc2.size()))));
@@ -35,22 +35,34 @@ trigger t : () = \_ -> (
   ));
   print "-----------------------------";
 
-  haltEngine ()
+  // Copy Construct from BFC
+  print "Making copy now!";
+  bfc3 = bfc;
+  //(print ("BCF3 size" ++ (itos (bfc3.size()))));
+  //(bfc3.iterate (\x ->
+  //  print ((itos x.a) ++ "," ++ (itos x.b) ++ "," ++ x.c)
+  //));
+  print "-----------------------------";
+
   // Send over the wire
   //(s, me) <- bfc;
-  //(r, me) <- bfc2
+  (r, me) <- bfc2
 )
 
 trigger s: collection R @BulkFlatCollection = \c -> (
-  (c.iterate (\x ->
-    print ((itos x.a) ++ "," ++ (itos x.b) ++ "," ++ x.c)
-  ))
-)
-
-trigger r: collection R @BulkFlatCollection = \c -> (
+  print "Trigger s:";
   (c.iterate (\x ->
     print ((itos x.a) ++ "," ++ (itos x.b) ++ "," ++ x.c)
   ));
+  print "---------------------"
+)
+
+trigger r: collection R @BulkFlatCollection = \c -> (
+  print "Trigger R:";
+  (c.iterate (\x ->
+    print ((itos x.a) ++ "," ++ (itos x.b) ++ "," ++ x.c)
+  ));
+  print "---------------------";
   haltEngine()
 )
 

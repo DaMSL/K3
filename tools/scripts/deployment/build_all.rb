@@ -17,11 +17,11 @@ QUERIES = {
     },
     :queries => {
       "1" => "examples/sql/tpch/queries/k3/q1.k3",
-      "3" => "examples/sql/tpch/queries/k3/barrier-queries/q3.k3",
-      "5" => "examples/sql/tpch/queries/k3/barrier-queries/q5_bushy_broadcast_broj2.k3",
-      "6" => "examples/sql/tpch/queries/k3/q6.k3",
-      "18" => "examples/sql/tpch/queries/k3/barrier-queries/q18.k3",
-      "22" => "examples/sql/tpch/queries/k3/barrier-queries/q22.k3",
+      #"3" => "examples/sql/tpch/queries/k3/barrier-queries/q3.k3",
+      #"5" => "examples/sql/tpch/queries/k3/barrier-queries/q5_bushy_broadcast_broj2.k3",
+      #"6" => "examples/sql/tpch/queries/k3/q6.k3",
+      #"18" => "examples/sql/tpch/queries/k3/barrier-queries/q18.k3",
+      #"22" => "examples/sql/tpch/queries/k3/barrier-queries/q22.k3",
     }
   },
 

@@ -300,7 +300,7 @@ public:
     variable()->rewind();
   }
 
-  BulkFlatCollection(const BulkFlatCollection& other) : container() {
+  BulkFlatCollection(const BulkFlatCollection& other) : container(), buffer() {
     vector_init(fixed(), sizeof(Elem));
     variable()->internalize(false);
     variable()->rewind();
@@ -319,6 +319,30 @@ public:
     }
 
     variable()->internalize(true);
+  }
+
+  BulkFlatCollection& operator=(const BulkFlatCollection& other) {
+    freeContainer();
+
+    vector_init(fixed(), sizeof(Elem));
+    variable()->internalize(false);
+    variable()->rewind();
+
+    FContainer* me_fixed = fixed();
+    FContainer* other_fixed = const_cast<FContainer*>(other.fixedc());
+
+    auto os = vector_size(other_fixed);
+    if ( fixseg_size() < os ) { reserve_fixed(os); }
+
+    ExternalizerT etl(*variable(), ExternalizerT::ExternalizeOp::Create);
+    InternalizerT itl(*variable());
+    for (const auto& e : other) {
+      vector_push_back(fixed(), const_cast<Elem*>(&e));
+      reinterpret_cast<Elem*>(vector_back(fixed()))->externalize(etl).internalize(itl);
+    }
+
+    variable()->internalize(true);
+    return *this;
   }
 
   // TODO(jbw) Move constructors for BFC and PageCollection
