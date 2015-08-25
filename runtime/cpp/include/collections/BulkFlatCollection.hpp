@@ -58,6 +58,8 @@ struct PageCollection
   ~PageCollection() {
     if (!external_buffer) {
       vector_free(container);
+    } else {
+      free(container);
     }
   }
 
@@ -70,6 +72,9 @@ struct PageCollection
   Page<PageSize>* operator->() { return at(pos); }
   PageCollection& operator++() { pos++; return *this; }
   void externalBuffer(bool isExternal) {
+    if (isExternal && !external_buffer) {
+      buffer_clear(&container->buffer);
+    }
     external_buffer = isExternal;
   }
 
@@ -282,7 +287,7 @@ public:
   using VContainer = PageCollection<PageSize>;
 
   typedef struct {
-    FContainer* cfixed;
+    FContainer cfixed;
     VContainer cvariable;
   } Container;
 
@@ -290,13 +295,13 @@ public:
   using InternalizerT = Internalizer<PageSize>;
 
   BulkFlatCollection() : container() {
-    container.cfixed = vector_new(sizeof(Elem));
+    vector_init(fixed(), sizeof(Elem));
     variable()->internalize(false);
     variable()->rewind();
   }
 
   BulkFlatCollection(const BulkFlatCollection& other) : container() {
-    container.cfixed = vector_new(sizeof(Elem));
+    vector_init(fixed(), sizeof(Elem));
     variable()->internalize(false);
     variable()->rewind();
 
@@ -324,7 +329,7 @@ public:
 
   void freeContainer() {
     if (!buffer.data()) {
-      vector_free(fixed());
+      vector_clear(fixed());
     }
   }
 
@@ -480,6 +485,7 @@ public:
   unit_t load(base_string&& str) {
     assert( vector_empty(fixed()) );
     freeContainer();
+
     buffer = std::move(str);
     size_t offset = 0;
 
@@ -489,12 +495,13 @@ public:
     uint64_t page_count = *reinterpret_cast<uint64_t*>(buffer.begin() + offset);
     offset += sizeof(uint64_t);
 
+    variable()->externalBuffer(true);
+
     if (fixed_count > 0) {
       fixed()->buffer.data = buffer.begin() + offset;
       fixed()->buffer.size = fixed_count * sizeof(Elem);
       fixed()->buffer.capacity = fixed()->buffer.size;
       fixed()->object_size = sizeof(Elem);
-      vector_init(fixed(), sizeof(Elem));
       offset += fixed_count * sizeof(Elem);
     }
     if (page_count > 0) {
@@ -502,11 +509,10 @@ public:
       variable()->container->buffer.size = page_count * PageSize;
       variable()->container->buffer.capacity = variable()->container->buffer.size;
       variable()->container->object_size = PageSize;
-      vector_init(variable()->container, PageSize);
     }
 
-    variable()->externalBuffer(true);
-    return unpack(unit_t{});
+    unpack(unit_t{});
+    return unit_t{};
   }
 
   ///////////////////////////////////////////////////
@@ -656,10 +662,10 @@ public:
 private:
   // BulkFlatCollection is backed by either a base_string or a Container
   Container container;
-  FContainer* fixed()    { return container.cfixed; }
+  FContainer* fixed()    { return &(container.cfixed); }
   VContainer* variable() { return &(container.cvariable); }
 
-  const FContainer* fixedc()    const { return container.cfixed; }
+  const FContainer* fixedc()    const { return &(container.cfixed); }
   const VContainer* variablec() const { return &(container.cvariable); }
 
   base_string buffer;

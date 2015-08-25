@@ -20,6 +20,12 @@ trigger t : () = \_ -> (
     print ((itos x.a) ++ "," ++ (itos x.b) ++ "," ++ x.c)
   ));
   print "---------------------------";
+  (bfc.iterate (\x ->
+    print ((itos x.a) ++ "," ++ (itos x.b) ++ "," ++ x.c)
+  ));
+  print "---------------------------";
+
+
 
   // Save/Load bfc into bfc2
   (bfc2.load (bfc.save ()));
@@ -29,9 +35,10 @@ trigger t : () = \_ -> (
   ));
   print "-----------------------------";
 
+  haltEngine ()
   // Send over the wire
-  (s, me) <- bfc;
-  (r, me) <- bfc2
+  //(s, me) <- bfc;
+  //(r, me) <- bfc2
 )
 
 trigger s: collection R @BulkFlatCollection = \c -> (
