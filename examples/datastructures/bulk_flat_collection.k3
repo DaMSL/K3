@@ -5,18 +5,46 @@ include "Core/Builtins.k3"
 typedef R = {a: int, b: int, c: string}
 
 declare c    : collection {elem : R} @Collection
-declare bcf  : collection R @BulkFlatCollection
-declare bcf2 : collection R @BulkFlatCollection
+declare bfc  : collection R @BulkFlatCollection
+
+declare bfc2 : collection R @BulkFlatCollection
 
 trigger t : () = \_ -> (
+  // Create regular collection, append to a BFC
   ((range 10).iterate (\r -> c.insert {elem: {a:r.i, b:r.i*2, c: "foo" ++ (itos r.i)}}));
-  (bcf.append c);
-  (print ("BCF size" ++ (itos (bcf.size()))));
-  (bcf.iterate (\x ->
+  (bfc.append c);
+
+  // Play with BCF
+  (print ("BCF size" ++ (itos (bfc.size()))));
+  (bfc.iterate (\x ->
     print ((itos x.a) ++ "," ++ (itos x.b) ++ "," ++ x.c)
   ));
-  (bcf2.load (bcf.save ()));
-  (print ("BCF2 size" ++ (itos (bcf2.size()))))
+  print "---------------------------";
+
+  // Save/Load bfc into bfc2
+  (bfc2.load (bfc.save ()));
+  (print ("BCF2 size" ++ (itos (bfc2.size()))));
+  (bfc2.iterate (\x ->
+    print ((itos x.a) ++ "," ++ (itos x.b) ++ "," ++ x.c)
+  ));
+  print "-----------------------------";
+
+  // Send over the wire
+  (s, me) <- bfc;
+  (r, me) <- bfc2
+)
+
+trigger s: collection R @BulkFlatCollection = \c -> (
+  (c.iterate (\x ->
+    print ((itos x.a) ++ "," ++ (itos x.b) ++ "," ++ x.c)
+  ))
+)
+
+trigger r: collection R @BulkFlatCollection = \c -> (
+  (c.iterate (\x ->
+    print ((itos x.a) ++ "," ++ (itos x.b) ++ "," ++ x.c)
+  ));
+  haltEngine()
 )
 
 source s1 : () = value ()

@@ -41,7 +41,9 @@ struct PageCollection
 {
   using Container = LibdynamicVector::vector;
 
-  PageCollection() : container(vector_new(PageSize)) {}
+  PageCollection() : container(vector_new(PageSize)) {
+    external_buffer = false;
+  }
 
   PageCollection(const PageCollection& c) {
     container = vector_new(PageSize);
@@ -50,9 +52,14 @@ struct PageCollection
     for (int i = 0; i < c_size; ++i) {
       vector_push_back(container, vector_at(c.container, i));
     }
+    external_buffer = false;
   }
 
-  ~PageCollection() { vector_free(container); }
+  ~PageCollection() {
+    if (!external_buffer) {
+      vector_free(container);
+    }
+  }
 
   // Returns whether fixed segment associated with these pages uses absolute pointers.
   bool internalized() { return internalized_; }
@@ -62,6 +69,9 @@ struct PageCollection
   Page<PageSize>& operator*() { return *(at(pos)); }
   Page<PageSize>* operator->() { return at(pos); }
   PageCollection& operator++() { pos++; return *this; }
+  void externalBuffer(bool isExternal) {
+    external_buffer = isExternal;
+  }
 
   Page<PageSize>* at(size_t i) {
     if ( i >= vector_size(container) ) { resize(i+1); }
@@ -128,6 +138,7 @@ struct PageCollection
   const_iterator end() const { return const_iterator(container, vector_size(container)); }
 
   Container* container;
+  bool external_buffer;
   size_t pos;
   bool internalized_;
 };
@@ -271,25 +282,51 @@ public:
   using VContainer = PageCollection<PageSize>;
 
   typedef struct {
-    FContainer cfixed;
+    FContainer* cfixed;
     VContainer cvariable;
   } Container;
 
   using ExternalizerT = Externalizer<PageSize>;
   using InternalizerT = Internalizer<PageSize>;
 
-  BulkFlatCollection()
-  {
-    vector_init(fixed(), sizeof(Elem));
+  BulkFlatCollection() : container() {
+    container.cfixed = vector_new(sizeof(Elem));
     variable()->internalize(false);
     variable()->rewind();
   }
 
-  // TODO(jbw) Shouldn't there be a deep copy in these 2?
-  BulkFlatCollection(const BulkFlatCollection& other) : container(other.container) { }
-  BulkFlatCollection(const Container& con) : container(con) {}
+  BulkFlatCollection(const BulkFlatCollection& other) : container() {
+    container.cfixed = vector_new(sizeof(Elem));
+    variable()->internalize(false);
+    variable()->rewind();
 
-  BulkFlatCollection(Container&& con) : container(std::move(con)) {}
+    FContainer* me_fixed = fixed();
+    FContainer* other_fixed = const_cast<FContainer*>(other.fixedc());
+
+    auto os = vector_size(other_fixed);
+    if ( fixseg_size() < os ) { reserve_fixed(os); }
+
+    ExternalizerT etl(*variable(), ExternalizerT::ExternalizeOp::Create);
+    InternalizerT itl(*variable());
+    for (const auto& e : other) {
+      vector_push_back(fixed(), const_cast<Elem*>(&e));
+      reinterpret_cast<Elem*>(vector_back(fixed()))->externalize(etl).internalize(itl);
+    }
+
+    variable()->internalize(true);
+  }
+
+  // TODO(jbw) Move constructors for BFC and PageCollection
+
+  ~BulkFlatCollection() {
+    freeContainer();
+  }
+
+  void freeContainer() {
+    if (!buffer.data()) {
+      vector_free(fixed());
+    }
+  }
 
   template <class V, class I>
   class bfc_iterator : public std::iterator<std::forward_iterator_tag, V> {
@@ -352,13 +389,15 @@ public:
       if ( fixseg_size() < os ) { reserve_fixed(os); }
 
       ExternalizerT etl(*variable(), ExternalizerT::ExternalizeOp::Create);
+      InternalizerT itl(*variable());
       for (auto& e : other) {
         vector_push_back(fixed(), const_cast<Elem*>(&(e.elem)));
-        reinterpret_cast<Elem*>(vector_back(fixed()))->externalize(etl);
+        reinterpret_cast<Elem*>(vector_back(fixed()))->externalize(etl).internalize(itl);
       }
     } else {
       throw std::runtime_error("Invalid append on a BulkFlatCollection");
     }
+    variable()->internalize(true);
     return unit_t {};
   }
 
@@ -374,6 +413,22 @@ public:
         reinterpret_cast<Elem*>(vector_at(ncf, i))->externalize(etl);
       }
       ncv->internalize(false);
+    }
+
+    return unit_t{};
+  }
+
+  unit_t unpack(unit_t) {
+    FContainer* ncf = const_cast<FContainer*>(fixedc());
+    VContainer* ncv = const_cast<VContainer*>(variablec());
+
+    if ( !ncv->internalized() ) {
+      InternalizerT itl(*ncv);
+      auto sz = vector_size(ncf);
+      for (size_t i = 0; i < sz; ++i) {
+        reinterpret_cast<Elem*>(vector_at(ncf, i))->internalize(itl);
+      }
+      ncv->internalize(true);
     }
 
     return unit_t{};
@@ -413,6 +468,8 @@ public:
     memcpy(buffer_, &len, sizeof(size_t));
     str.steal(buffer_);
     str.set_header(true);
+
+    unpack(unit_t{});
     return str;
   }
 
@@ -422,6 +479,7 @@ public:
 
   unit_t load(base_string&& str) {
     assert( vector_empty(fixed()) );
+    freeContainer();
     buffer = std::move(str);
     size_t offset = 0;
 
@@ -436,6 +494,7 @@ public:
       fixed()->buffer.size = fixed_count * sizeof(Elem);
       fixed()->buffer.capacity = fixed()->buffer.size;
       fixed()->object_size = sizeof(Elem);
+      vector_init(fixed(), sizeof(Elem));
       offset += fixed_count * sizeof(Elem);
     }
     if (page_count > 0) {
@@ -443,8 +502,11 @@ public:
       variable()->container->buffer.size = page_count * PageSize;
       variable()->container->buffer.capacity = variable()->container->buffer.size;
       variable()->container->object_size = PageSize;
+      vector_init(variable()->container, PageSize);
     }
-    return unit_t {};
+
+    variable()->externalBuffer(true);
+    return unpack(unit_t{});
   }
 
   ///////////////////////////////////////////////////
@@ -459,10 +521,9 @@ public:
   unit_t iterate(Fun f) const {
     FContainer* ncf = const_cast<FContainer*>(fixedc());
     VContainer* ncv = const_cast<VContainer*>(variablec());
-    InternalizerT itl(*ncv);
     auto sz = fixseg_size();
     for (size_t i = 0; i < sz; ++i) {
-      auto& e = reinterpret_cast<Elem*>(vector_at(ncf, i))->internalize(itl);
+      auto& e = reinterpret_cast<Elem*>(vector_at(ncf, i));
       f(e);
     }
     return unit_t{};
@@ -474,10 +535,9 @@ public:
     FContainer* ncf = const_cast<FContainer*>(fixedc());
     VContainer* ncv = const_cast<VContainer*>(variablec());
     Collection<R_elem<RT<Fun, Elem>>> result;
-    InternalizerT itl(*ncv);
     auto sz = fixseg_size();
     for (size_t i = 0; i < sz; ++i) {
-      auto& e = reinterpret_cast<Elem*>(vector_at(ncf, i))->internalize(itl);
+      auto& e = reinterpret_cast<Elem*>(vector_at(ncf, i));
       result.insert(R_elem<RT<Fun, Elem>>{ f(e) });
     }
     return result;
@@ -489,10 +549,9 @@ public:
     FContainer* ncf = const_cast<FContainer*>(fixedc());
     VContainer* ncv = const_cast<VContainer*>(variablec());
     Collection<R_elem<Elem>> result;
-    InternalizerT itl(*ncv);
     auto sz = fixseg_size();
     for (size_t i = 0; i < sz; ++i) {
-      auto& e = reinterpret_cast<Elem*>(vector_at(ncf, i))->internalize(itl);
+      auto& e = reinterpret_cast<Elem*>(vector_at(ncf, i));
       if (predicate(e)) {
         result.insert(R_elem<Elem>{ e });
       }
@@ -505,10 +564,9 @@ public:
   Acc fold(Fun f, Acc acc) const {
     FContainer* ncf = const_cast<FContainer*>(fixedc());
     VContainer* ncv = const_cast<VContainer*>(variablec());
-    InternalizerT itl(*ncv);
     auto sz = fixseg_size();
     for (size_t i = 0; i < sz; ++i) {
-      auto& e = reinterpret_cast<Elem*>(vector_at(ncf, i))->internalize(itl);
+      auto& e = reinterpret_cast<Elem*>(vector_at(ncf, i));
       acc = f(std::move(acc), e);
     }
     return acc;
@@ -518,25 +576,68 @@ public:
   const Container& getConstContainer() const { return container; }
 
   template <class archive>
-  void serialize(archive& a) const {
+  void save(archive& a, const unsigned int) const {
+    auto p = const_cast<BulkFlatCollection*>(this);
+    p->repack(unit_t {});
+
     uint64_t fixed_count = fixseg_size();
     uint64_t page_count = varseg_size();
-    a.write(reinterpret_cast<const char*>(&fixed_count), sizeof(fixed_count));
-    a.write(reinterpret_cast<const char*>(&page_count), sizeof(page_count));
+    a.save_binary(&fixed_count, sizeof(fixed_count));
+    a.save_binary(&page_count, sizeof(page_count));
     if (fixed_count > 0) {
-      a.write(vector_data(fixed()), fixseg_size() * sizeof(Elem));
+      a.save_binary(vector_data(const_cast<FContainer*>(fixedc())), fixseg_size() * sizeof(Elem));
     }
     if (page_count > 0) {
-      a.write(variable()->data(), varseg_size() * PageSize);
+      a.save_binary(const_cast<VContainer*>(variablec())->data(), varseg_size() * PageSize);
     }
+
+    p->unpack(unit_t{});
+  }
+
+  template <class archive>
+  void load(archive& a, const unsigned int) {
+    uint64_t fixed_count;
+    uint64_t page_count;
+    a.load_binary(&fixed_count, sizeof(fixed_count));
+    a.load_binary(&page_count, sizeof(page_count));
+    if (fixed_count > 0) {
+      reserve_fixed(fixed_count);
+      fixed()->buffer.size = fixed_count * sizeof(Elem);
+      a.load_binary(vector_data(fixed()), fixed_count * sizeof(Elem));
+    }
+    if (page_count > 0) {
+      variable()->resize(page_count);
+      a.load_binary(variable()->data(), page_count * PageSize);
+    }
+
+    unpack(unit_t{});
+  }
+
+  template <class archive>
+  void serialize(archive& a) const {
+    auto p = const_cast<BulkFlatCollection*>(this);
+    p->repack(unit_t {});
+
+    uint64_t fixed_count = fixseg_size();
+    uint64_t page_count = varseg_size();
+    a.write(&fixed_count, sizeof(fixed_count));
+    a.write(&page_count, sizeof(page_count));
+    if (fixed_count > 0) {
+      a.write(vector_data(const_cast<FContainer*>(fixedc())), fixseg_size() * sizeof(Elem));
+    }
+    if (page_count > 0) {
+      a.write(const_cast<VContainer*>(variablec())->data(), varseg_size() * PageSize);
+    }
+
+    p->unpack(unit_t{});
   }
 
   template <class archive>
   void serialize(archive& a) {
     uint64_t fixed_count;
     uint64_t page_count;
-    a.read(reinterpret_cast<const char*>(&fixed_count), sizeof(fixed_count));
-    a.read(reinterpret_cast<const char*>(&page_count), sizeof(page_count));
+    a.read(&fixed_count, sizeof(fixed_count));
+    a.read(&page_count, sizeof(page_count));
     if (fixed_count > 0) {
       reserve_fixed(fixed_count);
       fixed()->buffer.size = fixed_count * sizeof(Elem);
@@ -546,16 +647,19 @@ public:
       variable()->resize(page_count);
       a.read(variable()->data(), page_count * PageSize);
     }
+
+    unpack(unit_t{});
   }
 
   BOOST_SERIALIZATION_SPLIT_MEMBER()
 
 private:
+  // BulkFlatCollection is backed by either a base_string or a Container
   Container container;
-  FContainer* fixed()    { return &(container.cfixed); }
+  FContainer* fixed()    { return container.cfixed; }
   VContainer* variable() { return &(container.cvariable); }
 
-  const FContainer* fixedc()    const { return &(container.cfixed); }
+  const FContainer* fixedc()    const { return container.cfixed; }
   const VContainer* variablec() const { return &(container.cvariable); }
 
   base_string buffer;
