@@ -232,7 +232,7 @@ applyDAnnGens mp = mapProgram applyDAnnDecl applyDAnnMemDecl applyDAnnExprTree (
           SGDecl decl ->
             case tag decl of
               DDataAnnotation n tvs mems -> do
-                nmems <- mapM applyDAnnMemDecl mems
+                nmems <- generateInSpliceCtxt sctxt $ mapM applyDAnnMemDecl mems
                 ndecl <- bindDAnnVars sctxt $ (DC.dataAnnotation n tvs nmems) @<- annotations decl
                 modifyGDeclsF_ (Right . addDGenDecl annId ndecl) >> return (aCtor n)
 
@@ -381,11 +381,17 @@ spliceDeclaration = mapProgram doSplice spliceAnnMem spliceExpression (Just spli
 
     newAnns d v = mapM spliceDAnnotation (annotations d) >>= return . (v,)
 
+
 spliceMPAnnMem :: MPAnnMemDecl -> GeneratorM [AnnMemDecl]
 spliceMPAnnMem (MPAnnMemDecl i c mems) = spliceWithValue c
   where
     spliceWithValue = \case
-      SVar  v   -> generatorWithSCtxt $ \sctxt -> maybe (lookupErr v) spliceWithValue $ lookupSCtxt v sctxt
+      SVar v -> generatorWithSCtxt $ \sctxt -> do
+                  sv <- expectEmbeddingSplicer v
+                  case sv of
+                    SLabel v' -> maybe (lookupErr v') spliceWithValue $ lookupSCtxt v' sctxt
+                    _ -> spliceWithValue sv
+
       SList svs -> mapM (\sv -> generateInExtendedSpliceEnv i sv $ mapM spliceAnnMem mems) svs >>= return . concat
       v -> throwG $ boxToString $ ["Invalid splice value in member generator "] %+ prettyLines v
 
@@ -461,6 +467,12 @@ expectExprSplicer i = generatorWithSCtxt $ \sctxt -> liftParser i exprEmbedding 
 expectLiteralSplicer :: String -> LiteralGenerator
 expectLiteralSplicer i = generatorWithSCtxt $ \sctxt -> liftParser i literalEmbedding >>= evalLiteralSplice sctxt
 
+expectEmbeddingSplicer :: Identifier -> GeneratorM SpliceValue
+expectEmbeddingSplicer i = generatorWithSCtxt $ \sctxt -> do
+    e <- liftParser i idFromParts
+    either (evalSumEmbedding i sctxt) (return . SLabel) e
+
+
 evalIdPartsSplice :: SpliceContext -> Either [MPEmbedding] Identifier -> GeneratorM Identifier
 evalIdPartsSplice sctxt (Left ml) = evalSumEmbedding "identifier" sctxt ml >>= \case
   SLabel i -> return i
@@ -479,6 +491,7 @@ evalTypeSplice _ (Right t) = return t
 evalExprSplice :: SpliceContext -> Either [MPEmbedding] (K3 Expression) -> ExprGenerator
 evalExprSplice sctxt (Left ml) = evalSumEmbedding "expr" sctxt ml >>= \case
     SExpr e  -> return e
+    SLiteral l -> either (const $ throwG "Invalid literal splice") return $ literalExpression l
     SLabel i -> return $ EC.variable i
     sv -> spliceFail $ boxToString $ ["Invalid splice expression value " ++ show ml] %$ prettyLines sv
 

@@ -1,0 +1,17 @@
+include "Annotation/Array.k3"
+include "Core/Builtins.k3"
+
+declare c : mut collection {elem : int} @Array(asize=[$# 10])
+
+declare d : mut int = 0
+
+trigger t : () = \_ -> (
+  (c.set 0 {elem : 5});
+  (c.set 1 {elem : 4});
+  (c.set 2 {elem : 3});
+  (d = (c.at(1)).elem);
+  print ("d " ++ itos(d))
+)
+
+source s1 : () = value ()
+feed s1 |> t

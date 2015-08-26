@@ -82,6 +82,19 @@ listTypes (SList vs) = maybe err SList $ mapM ltType vs
 
 listTypes _ = error "Invalid splice value container for listTypes"
 
+{- Conversions -}
+labelExpr :: SpliceValue -> SpliceValue
+labelExpr (SExpr (tag -> EConstant (CString i))) = SLabel i
+labelExpr (SExpr (tag -> EConstant (CInt i)))    = SLabel $ show i
+labelExpr (SExpr (tag -> EConstant (CBool b)))   = SLabel $ show b
+labelExpr _ = error "Invalid splice expression for labelExpr"
+
+labelLiteral :: SpliceValue -> SpliceValue
+labelLiteral (SLiteral (tag -> LString i)) = SLabel i
+labelLiteral (SLiteral (tag -> LInt i))    = SLabel $ show i
+labelLiteral (SLiteral (tag -> LBool b))   = SLabel $ show b
+labelLiteral _ = error "Invalid splice literal for labelLiteral"
+
 literalLabel :: SpliceValue -> SpliceValue
 literalLabel (SLabel i) = SLiteral $ LC.string i
 literalLabel _ = error "Invalid splice label for literalLabel"
@@ -171,3 +184,11 @@ broadcastjoinMaterialize (SLabel lbl) (SExpr e) = case tag e of
 
 broadcastjoinMaterialize _ _ = error "Invalid broadcast join materialization arguments"
 
+
+{- Column-store helpers -}
+columnJoinUpperBound :: Int
+columnJoinUpperBound = 14
+
+joinRange :: SpliceValue -> SpliceValue
+joinRange (SLiteral (tag -> LInt i)) = SList $ map (SLiteral . LC.int) [1..(columnJoinUpperBound - i)]
+joinRange _ = error "Invalid integer literal in joinRange"

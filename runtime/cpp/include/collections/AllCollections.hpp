@@ -7,6 +7,7 @@
 #include "collections/IntMap.hpp"
 #include "collections/StrMap.hpp"
 #include "collections/Vector.hpp"
+#include "collections/Array.hpp"
 #include "collections/IntVector.hpp"
 #include "collections/RealVector.hpp"
 #include "collections/MultiIndex.hpp"

@@ -60,6 +60,7 @@ module Language.K3.Core.Utils
 , foldMapReturnExpression
 , mapReturnExpression
 
+, literalExpression
 , defaultExpression
 
 , compareDAST
@@ -667,6 +668,16 @@ mapReturnExpression onReturnF nonReturnF expr =
 
 
 {- Expression utilities -}
+
+-- TODO: complete conversion for remaining literals.
+literalExpression :: K3 Literal -> Either String (K3 Expression)
+literalExpression l = case tag l of
+    LBool   b -> Right $ EC.constant $ CBool b
+    LInt    i -> Right $ EC.constant $ CInt i
+    LByte   w -> Right $ EC.constant $ CByte w
+    LReal   d -> Right $ EC.constant $ CReal d
+    LString s -> Right $ EC.constant $ CString s
+    _ -> Left "Unsupported literal conversion (not implemented)"
 
 defaultExpression :: K3 Type -> Either String (K3 Expression)
 defaultExpression typ = mapTree mkExpr typ
