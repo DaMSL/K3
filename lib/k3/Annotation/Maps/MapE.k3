@@ -23,7 +23,7 @@ annotation MapE[key: [labeltype], value: [labeltype]] given type a,b,c
     with effects \key -> [R[self]; R[key]]
 
   @:CArgs 3
-  provides lifted lookup : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+  provides lifted lookup : $[|mkRecord 'key|] -> (() -> c) -> (content -> c) -> c
     with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
 
 
