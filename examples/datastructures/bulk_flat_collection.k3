@@ -10,6 +10,11 @@ declare bfc  : collection R @BulkFlatCollection
 declare bfc2 : collection R @BulkFlatCollection
 declare bfc3 : mut collection R @BulkFlatCollection
 
+typedef R2 = {a: string, b: string}
+declare c2: collection {elem: R2} @Collection
+declare bfc4: collection R2 @BulkFlatCollection
+declare bfc5: collection R2 @BulkFlatCollection
+
 trigger t : () = \_ -> (
   // Create regular collection, append to a BFC
   ((range 10).iterate (\r -> c.insert {elem: {a:r.i, b:r.i*2, c: "foo" ++ (itos r.i)}}));
@@ -49,6 +54,27 @@ trigger t : () = \_ -> (
   (r, me) <- bfc2
 )
 
+trigger t2: () = \_ -> (
+  // Create regular collection, append to a BFC
+  ((range 10).iterate (\r -> c2.insert {elem: {a: "a" ++ (itos r.i), b: "b" ++ (itos r.i)}}));
+  (bfc4.append c2);
+
+  // Play with BCF
+  (print ("BCF4 size" ++ (itos (bfc4.size()))));
+  (bfc4.iterate (\x ->
+    print (x.a ++ "," ++ x.b)
+  ));
+  print "---------------------------";
+
+  bfc5.load ( bfc4.save() );
+  (print ("BCF5 size" ++ (itos (bfc5.size()))));
+  (bfc5.iterate (\x ->
+    print (x.a ++ "," ++ x.b)
+  ));
+  print "---------------------------";
+  haltEngine()
+)
+
 trigger s: collection R @BulkFlatCollection = \c -> (
   print "Trigger s:";
   (c.iterate (\x ->
@@ -63,8 +89,13 @@ trigger r: collection R @BulkFlatCollection = \c -> (
     print ((itos x.a) ++ "," ++ (itos x.b) ++ "," ++ x.c)
   ));
   print "---------------------";
+
+
   haltEngine()
 )
 
 source s1 : () = value ()
 feed s1 |> t
+
+source s2: () = value ()
+feed s2 |> t2
