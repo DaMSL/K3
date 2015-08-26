@@ -232,15 +232,28 @@ inline (tag &&& children -> (ETuple, cs)) = do
 inline e@(tag &&& children -> (ERecord is, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
     let reifyConstructorField (i, c, v) = do
+          let orderAgnosticP = R.isOrderAgnostic v
           if getInMethodFor i e == Moved
             then do
-              let needsMove = fromMaybe True (flip move c <$> getKTypeP c)
-              let reifyModifier = if needsMove then R.RValueReference else id
-              g <- genSym
-              return ( [R.Forward $ R.ScalarDecl (R.Name g) (reifyModifier R.Inferred) (Just $ if needsMove then R.Move v else v)]
-                     , R.Move $ R.Variable $ R.Name g)
-            else
-              return ([], v)
+              castMoveP <- needsMoveCast <$> (getKType c) <*> (pure v)
+              let moveCastModifier = if castMoveP then R.Move else id
+
+              if orderAgnosticP
+                then return ([], moveCastModifier v)
+                else do
+                  g <- genSym
+                  return ( [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just $ moveCastModifier v)]
+                         , R.FMacro $ R.Variable $ R.Name g
+                         )
+            else do
+              if orderAgnosticP
+                then return ([], v)
+                else do
+                  g <- genSym
+                  return ( [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just v)]
+                         , R.FMacro $ R.Variable $ R.Name g
+                         )
+
     (concat -> rs, vs') <- unzip <$> mapM reifyConstructorField (zip3 is cs vs)
     let vs'' = snd . unzip . sortBy (comparing fst) $ zip is vs'
     t <- getKType e
@@ -520,15 +533,34 @@ inline e@(tag -> EOperate OApp) = do
   let xs = map (last . children) as
   (unzip -> (xes, xvs)) <- mapM inline xs
 
-  gs <- mapM (const genSym) xs
+  let reifyArg (x, xv, m) = do
+        let orderAgnosticP = R.isOrderAgnostic xv
+        if getInMethodFor anon m `elem` [Moved, Forwarded]
+          then do
+            let castMoveP = maybe True (\m -> needsMoveCast m xv) (getKTypeP x)
 
-  let argDecl g x xv m = case x of
-        (tag -> EVariable i) -> ([], passBy (getInMethodFor anon m) x xv)
-        _ -> ( [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just $ passBy (getInMethodFor "!" m) x xv)]
-             , R.FMacro (R.Variable $ R.Name g)
-             )
+            let castModifier = case getInMethodFor anon m of
+                  Moved | castMoveP -> R.Move
+                  Forwarded -> R.FMacro
+                  _ -> id
 
-  let (argDecls, argPasses) = unzip [argDecl g x xv m | g <- gs | xv <- xvs | x <- xs | m <- as]
+            if orderAgnosticP
+              then return ([], castModifier xv)
+              else do
+                g <- genSym
+                return ( [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just $ castModifier xv)]
+                       , R.FMacro $ R.Variable $ R.Name g
+                       )
+          else do
+            if orderAgnosticP
+              then return ([], xv)
+              else do
+                g <- genSym
+                return ( [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just xv)]
+                       , R.FMacro $ R.Variable $ R.Name g
+                       )
+
+  (unzip -> (argDecls, argPasses)) <- mapM reifyArg $ zip3 xs xvs as
 
   let eName i = maybe (return i) (const $ getKType e >>= genCType >>= \rt -> return $ R.Specialized [rt] i)
                   (f @~ CArgs.isErrorFn)
