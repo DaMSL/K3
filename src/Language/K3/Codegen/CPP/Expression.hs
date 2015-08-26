@@ -123,6 +123,10 @@ getInMethodFor i e = getMethodFor i In e
 getExMethodFor :: Identifier -> K3 Expression -> Method
 getExMethodFor i e = getMethodFor i Ex e
 
+-- Heuristics
+needsMoveCast :: K3 Type -> R.Expression -> Bool
+needsMoveCast t e = isNonScalarType t && (not $ R.isMoveInferred e)
+
 -- Move heuristic to avoid code clutter.
 move :: K3 Type -> K3 Expression -> Bool
 move t e = isNonScalarType t && moveByExprForm e
