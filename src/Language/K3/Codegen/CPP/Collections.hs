@@ -32,7 +32,7 @@ import qualified Language.K3.Codegen.CPP.Representation as R
 --  - Serialization function, which should proxy the dataspace serialization.
 composite :: Identifier -> [(Identifier, [AnnMemDecl])] -> [K3 Type] -> CPPGenM [R.Definition]
 composite name ans content_ts = do
-    let overrideGeneratedName n = case find (`isInfixOf` n) ["Array", "MapE", "SortedMapE"] of
+    let overrideGeneratedName n = case find (`isInfixOf` n) ["Array", "MapE", "SortedMapE", "MapCE"] of
                                     Nothing -> n
                                     Just i -> i
 
@@ -470,7 +470,7 @@ record (sort -> ids) = do
 reservedAnnotations :: [Identifier]
 reservedAnnotations =
   [ "Collection", "External", "Seq", "Set", "Sorted", "Map", "Vector", "Array"
-  , "IntMap", "StrMap", "VMap", "SortedMap", "SortedSet", "MapE", "SortedMapE"
+  , "IntMap", "StrMap", "VMap", "SortedMap", "SortedSet", "MapE", "SortedMapE", "MapCE"
   , "MultiIndexBag", "MultiIndexMap", "MultiIndexVMap", "RealVector"
   , "BulkFlatCollection"
   ]

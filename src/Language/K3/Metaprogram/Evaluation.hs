@@ -348,7 +348,7 @@ annotationSplicer n spliceParams typeParams mems = Splicer $ \spliceEnv -> SRGen
   onGenerated _     (Left i)  = SGNamed $ concat [n, "_", show i]
   onGenerated nmems (Right i) = SGDecl $ DC.dataAnnotation (concat [n, "_", show i]) typeParams $ concat nmems
 
-  isContentDependent n' = "VMapIndex" `isInfixOf` n' || "MapE" `isInfixOf` n
+  isContentDependent n' = any (`isInfixOf` n) ["VMapIndex", "MapE", "SortedMapE", "MapCE"]
 
 
 exprSplicer :: K3 Expression -> K3Generator

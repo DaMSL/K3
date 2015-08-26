@@ -1,5 +1,5 @@
-#ifndef K3_MAPE
-#define K3_MAPE
+#ifndef K3_MAPCE
+#define K3_MAPCE
 
 #include <iterator>
 #include <map>
@@ -16,37 +16,32 @@
 
 namespace K3 {
 template <class R>
-class MapE {
-  using Key = typename R::KeyType;
-  using Value = typename R::ValueType;
-  using Container = std::unordered_map<Key, R>;
+class MapCE {
 
  public:
+  using Key   = typename R::KeyType;
+  using Value = typename R::ValueType;
+  using Container = std::unordered_map<Key, Value>;
+  using Elem  = typename Container::value_type;
+
   // Default Constructor
-  MapE() : container() {}
-  MapE(const std::unordered_map<Key, R>& con) : container(con) {}
-  MapE(std::unordered_map<Key, R>&& con) : container(std::move(con)) {}
+  MapCE() : container() {}
+  MapCE(const std::unordered_map<Key, Value>& con) : container(con) {}
+  MapCE(std::unordered_map<Key, Value>&& con) : container(std::move(con)) {}
 
   // Construct from (container) iterators
   template <typename Iterator>
-  MapE(Iterator begin, Iterator end)
+  MapCE(Iterator begin, Iterator end)
       : container(begin, end) {}
 
-  template <class Pair>
-  R elemToRecord(const Pair& e) const {
-    return e.second;
-  }
-
   template <class I>
-  class map_iterator : public std::iterator<std::forward_iterator_tag, R> {
-    using container = std::unordered_map<Key, R>;
-    using reference =
-        typename std::iterator<std::forward_iterator_tag, R>::reference;
+  class map_iterator : public std::iterator<std::forward_iterator_tag, Value> {
+    using container = std::unordered_map<Key, Value>;
+    using reference = typename std::iterator<std::forward_iterator_tag, Value>::reference;
 
    public:
     template <class _I>
-    map_iterator(_I&& _i)
-        : i(std::forward<_I>(_i)) {}
+    map_iterator(_I&& _i) : i(std::forward<_I>(_i)) {}
 
     map_iterator& operator++() {
       ++i;
@@ -71,17 +66,16 @@ class MapE {
     I i;
   };
 
-  using iterator = map_iterator<typename std::unordered_map<Key, R>::iterator>;
-  using const_iterator =
-      map_iterator<typename std::unordered_map<Key, R>::const_iterator>;
+  using iterator = map_iterator<typename std::unordered_map<Key, Value>::iterator>;
+  using const_iterator = map_iterator<typename std::unordered_map<Key, Value>::const_iterator>;
 
   iterator begin() { return iterator(container.begin()); }
-
   iterator end() { return iterator(container.end()); }
 
   const_iterator begin() const { return const_iterator(container.cbegin()); }
-
   const_iterator end() const { return const_iterator(container.cend()); }
+
+  R elemToRecord(const Elem& e) const { return R(e.first, e.second); }
 
   // Functionality
   int size(unit_t) const { return container.size(); }
@@ -92,22 +86,20 @@ class MapE {
     if (it == container.end()) {
       return f(unit_t{});
     } else {
-      return g(it->second);
+      return g(it->first, it->second);
     }
   }
 
   // Map retrieval.
-  // For a MapE, these methods expect a key argument instead of a key-value
-  // struct.
 
   template <typename K>
   bool member(const K& k) const {
-    return container.find(k.key) != container.end();
+    return container.find(k) != container.end();
   }
 
   template <typename K, class F, class G>
-  RT<G,R> lookup(K const& k, F f, G g) const {
-    auto it = container.find(k.key);
+  RT<G,Value> lookup(const K& k, F f, G g) const {
+    auto it = container.find(k);
     if (it == container.end()) {
       return f(unit_t{});
     } else {
@@ -117,55 +109,65 @@ class MapE {
 
   template <class Q>
   unit_t insert(Q&& q) {
-    container[q.key] = std::forward<Q>(q);
+    container[q.key] = std::forward<Q>(q.value);
     return unit_t();
   }
 
   template <typename K, typename V>
   unit_t update(const K& k, V&& val) {
-    auto it = container.find(k.key);
+    auto it = container.find(k);
     if (it != container.end()) {
-      container[k.key].value = std::move(val.value);
+      container[k] = std::move(val);
     }
     return unit_t();
   }
 
   template <typename K>
   unit_t erase(const K& k) {
-    container.erase(k.key);
+    container.erase(k);
     return unit_t();
   }
 
-  template <class F>
-  unit_t insert_with(const R& rec, F f) {
-    auto existing = container.find(rec.key);
+  template <typename K, typename V, class F>
+  unit_t insert_with(const K& k, V&& val, F f) {
+    auto existing = container.find(k);
     if (existing == std::end(container)) {
-      container[rec.key] = rec;
+      container[k] = std::move(val);
     } else {
-      container[rec.key] = f(std::move(existing->second), rec);
+      container[k] = f(std::move(existing->second), std::move(val));
     }
+    return unit_t{};
+  }
 
+
+  template <typename K, typename V, class F>
+  unit_t insert_with(const K& k, const V& val, F f) {
+    auto existing = container.find(k);
+    if (existing == std::end(container)) {
+      container[k] = val;
+    } else {
+      container[k] = f(std::move(existing->second), val);
+    }
     return unit_t{};
   }
 
   template <typename K, typename F, typename G>
   unit_t upsert_with(const K& k, F f, G g) {
-    auto existing = container.find(k.key);
+    auto existing = container.find(k);
     if (existing == std::end(container)) {
-      container[k.key] = f(unit_t{});
+      container[k] = f(unit_t{});
     } else {
-      container[k.key] = g(std::move(existing->second));
+      container[k] = g(std::move(existing->second));
     }
-
     return unit_t{};
   }
 
   ////////////////////////////////////////////////////////
   // Bulk transformations.
 
-  MapE combine(const MapE& other) const {
+  MapCE combine(const MapCE& other) const {
     // copy this DS
-    MapE result = MapE(*this);
+    MapCE result = MapCE(*this);
     // copy other DS
     for (const auto& p : other.container) {
       result.container[p.first] = p.second;
@@ -173,7 +175,7 @@ class MapE {
     return result;
   }
 
-  tuple<MapE, MapE> split(const unit_t&) const {
+  tuple<MapCE, MapCE> split(const unit_t&) const {
     // Find midpoint
     const size_t size = container.size();
     const size_t half = size / 2;
@@ -183,7 +185,7 @@ class MapE {
     std::advance(mid, half);
     auto end = container.end();
     // Construct DS from iterators
-    return std::make_tuple(MapE(beg, mid), MapE(mid, end));
+    return std::make_tuple(MapCE(beg, mid), MapCE(mid, end));
   }
 
   template <typename Fun>
@@ -195,29 +197,29 @@ class MapE {
   }
 
   template <typename Fun>
-  auto map(Fun f) const -> K3::MapE<RT<Fun, R>> {
-    K3::MapE<RT<Fun, R>> result;
+  auto map(Fun f) const -> K3::MapCE<RT<RT<Fun, Key>, Value>> {
+    K3::MapCE<RT<RT<Fun, Key>, Value>> result;
     for (const auto& p : container) {
-      result.insert(f(p.second));
+      result.insert(f(p.first, p.second));
     }
     return result;
   }
 
   template <typename Fun>
-  auto map_generic(Fun f) const -> K3::Map<RT<Fun, R>> {
-    K3::Map<RT<Fun, R>> result;
+  auto map_generic(Fun f) const -> K3::Map<RT<RT<Fun, Key>, Value>> {
+    K3::MapCE<RT<RT<Fun, Key>, Value>> result;
     for (const auto& p : container) {
-      result.insert(f(p.second));
+      result.insert(f(p.first, p.second));
     }
     return result;
   }
 
   template <typename Fun>
-  MapE<R> filter(Fun predicate) const {
-    MapE<R> result;
+  MapCE<R> filter(Fun predicate) const {
+    MapCE<R> result;
     for (const auto& p : container) {
-      if (predicate(p.second)) {
-        result.insert(p.second);
+      if (predicate(p.first, p.second)) {
+        result.insert(p.first, p.second);
       }
     }
     return result;
@@ -232,35 +234,29 @@ class MapE {
   }
 
   template <typename F1, typename F2, typename Z>
-  MapE<R_key_value<RT<F1, R>, Z>>
+  MapCE<R_key_value<RT<RT<F1, Key>, Value>, Z>>
   group_by(F1 grouper, F2 folder, const Z& init) const
   {
     // Create a map to hold partial results
-    typedef RT<F1, R> K;
-    std::unordered_map<K, Z> accs;
+    typedef RT<RT<F1, Key>, Value> K;
+    MapCE<R_key_value<K, Z>> result;
 
     for (const auto& it : container) {
-      K key = grouper(it.second);
-      if (accs.find(key) == accs.end()) {
-        accs[key] = init;
+      K key = grouper(it.first);
+      if (result.find(key) == result.end()) {
+        result[key] = init;
       }
-      accs[key] = folder(std::move(accs[key]), it.second);
-    }
-
-    MapE<R_key_value<K, Z>> result;
-    for (auto&& it : accs) {
-      result.insert(std::move(
-          R_key_value<K, Z>{std::move(it.first), std::move(it.second)}));
+      result[key] = folder(std::move(result[key]), it.first, it.second);
     }
     return result;
   }
 
   template <typename F1, typename F2, typename Z>
-  Map<R_key_value<RT<F1, R>, Z>>
+  Map<R_key_value<RT<RT<F1, Key>, Value>, Z>>
   group_by_generic(F1 grouper, F2 folder, const Z& init) const
   {
     // Create a map to hold partial results
-    typedef RT<F1, R> K;
+    typedef RT<RT<F1, Key>, Value> K;
     std::unordered_map<K, Z> accs;
 
     for (const auto& it : container) {
@@ -274,15 +270,15 @@ class MapE {
     Map<R_key_value<K, Z>> result;
     for (auto&& it : accs) {
       result.insert(std::move(
-          R_key_value<K, Z>{std::move(it.first), std::move(it.second)}));
+        R_key_value<K, Z>{ std::move(it.first), std::move(it.second) }));
     }
     return result;
   }
 
   template <class Fun>
-  auto ext(Fun expand) const -> MapE<typename RT<Fun, R>::ElemType> {
+  auto ext(Fun expand) const -> MapCE<typename RT<Fun, R>::ElemType> {
     typedef typename RT<Fun, R>::ElemType T;
-    MapE<T> result;
+    MapCE<T> result;
     for (const auto& it : container) {
       for (auto&& it2 : expand(it.second).container) {
         result.insert(std::move(it2.second));
@@ -305,19 +301,19 @@ class MapE {
     return result;
   }
 
-  bool operator==(const MapE& other) const {
+  bool operator==(const MapCE& other) const {
     return container == other.container;
   }
 
-  bool operator!=(const MapE& other) const {
+  bool operator!=(const MapCE& other) const {
     return container != other.container;
   }
 
-  bool operator<(const MapE& other) const {
+  bool operator<(const MapCE& other) const {
     return container < other.container;
   }
 
-  bool operator>(const MapE& other) const {
+  bool operator>(const MapCE& other) const {
     return container > other.container;
   }
 
@@ -332,7 +328,7 @@ class MapE {
 
   template <class Archive>
   void serialize(Archive& ar, const unsigned int) {
-    ar& boost::serialization::make_nvp("__K3MapE", container);
+    ar& boost::serialization::make_nvp("__K3MapCE", container);
   }
 
  protected:
@@ -340,19 +336,19 @@ class MapE {
 
  private:
   friend class boost::serialization::access;
-};  // class MapE
+};  // class MapCE
 
 }  // namespace K3
 
 namespace YAML {
 template <class R>
-struct convert<K3::MapE<R>> {
-  static Node encode(const K3::MapE<R>& c) {
+struct convert<K3::MapCE<R>> {
+  static Node encode(const K3::MapCE<R>& c) {
     Node node;
     auto container = c.getConstContainer();
     if (container.size() > 0) {
       for (auto i : container) {
-        node.push_back(convert<R>::encode(i.second));
+        node.push_back(convert<R>::encode(c.elemToRecord(i)));
       }
     } else {
       node = YAML::Load("[]");
@@ -360,9 +356,10 @@ struct convert<K3::MapE<R>> {
     return node;
   }
 
-  static bool decode(const Node& node, K3::MapE<R>& c) {
+  static bool decode(const Node& node, K3::MapCE<R>& c) {
     for (auto& i : node) {
-      c.insert(i.as<R>());
+      auto p = i.as<typename K3::MapCE<R>::Elem>();
+      c.insert(c.elemToRecord(p));
     }
     return true;
   }
@@ -371,16 +368,16 @@ struct convert<K3::MapE<R>> {
 
 namespace JSON {
 template <class E>
-struct convert<K3::MapE<E>> {
+struct convert<K3::MapCE<E>> {
   template <class Allocator>
-  static Value encode(const K3::MapE<E>& c, Allocator& al) {
+  static Value encode(const K3::MapCE<E>& c, Allocator& al) {
     Value v;
     v.SetObject();
-    v.AddMember("type", Value("MapE"), al);
+    v.AddMember("type", Value("MapCE"), al);
     Value inner;
     inner.SetArray();
     for (const auto& e : c.getConstContainer()) {
-      inner.PushBack(convert<E>::encode(e.second, al), al);
+      inner.PushBack(convert<E>::encode(c.elemToRecord(e), al), al);
     }
     v.AddMember("value", inner.Move(), al);
     return v;
