@@ -380,24 +380,27 @@ inline e@(tag &&& children -> (EOperate OApp, [
            k])),
            w])) | c `dataspaceIn` stlAssocDSs = do
   (ce, cv) <- inline c
-  kg <- genSym
-  ke <- reify (RDecl kg Nothing) k
-  let kv = R.Project (R.Variable $ R.Name kg) (R.Name "key")
+  (ke, kv) <- inline k
+  -- kg <- genSym
+  -- ke <- reify (RDecl kg Nothing) k
+  let kp = R.Project kv (R.Name "key")
 
-  let uc = R.Call (R.Project cv (R.Name "getContainer")) []
+  ug <- genSym
+  let ue = R.Forward $ R.ScalarDecl (R.Name ug) (R.Reference R.Inferred) (Just $  R.Call (R.Project cv (R.Name "getContainer")) [])
+  let uv = R.Variable $ R.Name ug
 
   existing <- genSym
-  let existingFind = R.Call (R.Project uc (R.Name "find")) [kv]
+  let existingFind = R.Call (R.Project uv (R.Name "find")) [kp]
   let existingDecl = R.Forward $ R.ScalarDecl (R.Name existing) R.Inferred (Just $ existingFind)
   let existingPred = R.Binary "=="
                        (R.Variable $ R.Name existing)
-                       (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uc])
+                       (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uv])
 
-  let nfe = [R.Assignment (R.Subscript uc kv) (R.Variable $ R.Name kg)]
+  let nfe = [R.Assignment (R.Subscript uv kp) kv]
   (wfe, wfb) <- inlineApply (RName (R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")) (Just True)) w
-                  [R.Move $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second"), (R.Variable $ R.Name kg)]
+                  [R.Move $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second"), kv]
 
-  return (ce ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred nfe (wfe ++ wfb)]
+  return (ce ++ [ue] ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred nfe (wfe ++ wfb)]
          , R.Initialization R.Unit [])
 
 
@@ -411,27 +414,35 @@ inline e@(tag &&& children -> (EOperate OApp, [
   (ce, cv) <- inline c
 
   kg <- genSym
-  ke <- reify (RDecl kg Nothing) k
-  let kv = R.Project (R.Variable $ R.Name kg) (R.Name "key")
-  -- (ke, kv) <- case k of
-  --   (tag &&& children -> (ERecord fs, cs)) -> case lookup "key" (zip fs cs) of
-  --     Nothing -> throwE $ CPPGenE "Missing key field on record."
-  --     Just kc -> inline kc
-  --   _ -> inline k >>= \(ke', kv') -> return (ke', R.Project kv' (R.Name "key"))
-  let uc = R.Call (R.Project cv (R.Name "getContainer")) []
+  (ke, kv) <- case k of
+    (tag &&& children -> (ERecord fs, cs)) -> do
+      (unzip -> (fes, catMaybes -> [fv])) <- for (zip fs cs) $ \(f, j) ->
+        if f == "key"
+          then do
+            (fe, fv) <- inline j
+            return (fe, Just fv)
+          else do
+            fe <- reify RForget j
+            return (fe, Nothing)
+      return (concat fes, fv)
+
+    _ -> inline k >>= \(ke', kv') -> return (ke', R.Project kv' (R.Name "key"))
+  ug <- genSym
+  let ue = R.Forward $ R.ScalarDecl (R.Name ug) (R.Reference R.Inferred) (Just $  R.Call (R.Project cv (R.Name "getContainer")) [])
+  let uv = R.Variable $ R.Name ug
 
   existing <- genSym
-  let existingFind = R.Call (R.Project uc (R.Name "find")) [kv]
+  let existingFind = R.Call (R.Project uv (R.Name "find")) [kv]
   let existingDecl = R.Forward $ R.ScalarDecl (R.Name existing) R.Inferred (Just $ existingFind)
   let existingPred = R.Binary "=="
                        (R.Variable $ R.Name existing)
-                       (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uc])
+                       (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uv])
 
-  (nfe, nfb) <- inlineApply (RName (R.Subscript uc kv) (Just True)) n [R.Initialization R.Unit []]
+  (nfe, nfb) <- inlineApply (RName (R.Subscript uv kv) (Just True)) n [R.Initialization R.Unit []]
   (wfe, wfb) <- inlineApply (RName (R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")) (Just True)) w
                   [R.Move $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")]
 
-  return (ce ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
+  return (ce ++ [ue] ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
          , R.Initialization R.Unit [])
 
 inline e@(tag &&& children -> (EOperate OApp, [
@@ -445,19 +456,28 @@ inline e@(tag &&& children -> (EOperate OApp, [
   kg <- genSym
   ke <- reify (RDecl kg Nothing) k
   let kv = R.Project (R.Variable $ R.Name kg) (R.Name "key")
-  -- (ke, kv) <- case k of
-  --   (tag &&& children -> (ERecord fs, cs)) -> case lookup "key" (zip fs cs) of
-  --     Nothing -> throwE $ CPPGenE "Missing key field on record."
-  --     Just kc -> inline kc
-  --   _ -> inline k >>= \(ke', kv') -> return (ke', R.Project kv' (R.Name "key"))
-  let uc = R.Call (R.Project cv (R.Name "getContainer")) []
+  (ke, kv) <- case k of
+    (tag &&& children -> (ERecord fs, cs)) -> do
+      (unzip -> (fes, catMaybes -> [fv])) <- for (zip fs cs) $ \(f, j) ->
+        if f == "key"
+          then do
+            (fe, fv) <- inline j
+            return (fe, Just fv)
+          else do
+            fe <- reify RForget j
+            return (fe, Nothing)
+      return (concat fes, fv)
+
+  ug <- genSym
+  let ue = R.Forward $ R.ScalarDecl (R.Name ug) (R.Reference R.Inferred) (Just $  R.Call (R.Project cv (R.Name "getContainer")) [])
+  let uv = R.Variable $ R.Name ug
 
   existing <- genSym
-  let existingFind = R.Call (R.Project uc (R.Name "find")) [kv]
+  let existingFind = R.Call (R.Project uv (R.Name "find")) [kv]
   let existingDecl = R.Forward $ R.ScalarDecl (R.Name existing) R.Inferred (Just $ existingFind)
   let existingPred = R.Binary "=="
                        (R.Variable $ R.Name existing)
-                       (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uc])
+                       (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uv])
 
   result <- genSym
   resultType <- getKType e >>= genCType
@@ -467,7 +487,7 @@ inline e@(tag &&& children -> (EOperate OApp, [
   (wfe, wfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) w
                   [R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")]
 
-  return (ce ++ ke ++ [resultDecl, existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
+  return (ce ++ [ue] ++ ke ++ [resultDecl, existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
          , R.Variable $ R.Name result)
 
 inline e@(tag &&& children -> (EOperate OApp, [
@@ -476,14 +496,17 @@ inline e@(tag &&& children -> (EOperate OApp, [
            n])),
            w])) | c `dataspaceIn` stlLinearDSs = do
   (ce, cv) <- inline c
-  let uc = R.Call (R.Project cv (R.Name "getContainer")) []
+
+  ug <- genSym
+  let ue = R.Forward $ R.ScalarDecl (R.Name ug) (R.Reference R.Inferred) (Just $  R.Call (R.Project cv (R.Name "getContainer")) [])
+  let uv = R.Variable $ R.Name ug
 
   first <- genSym
-  let firstCall = R.Call (R.Project uc (R.Name "begin")) []
+  let firstCall = R.Call (R.Project uv (R.Name "begin")) []
   let firstDecl = R.Forward $ R.ScalarDecl (R.Name first) R.Inferred (Just $ firstCall)
   let firstPred = R.Binary "=="
                     (R.Variable $ R.Name first)
-                    (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uc])
+                    (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uv])
 
   result <- genSym
   resultType <- getKType e >>= genCType
@@ -491,7 +514,7 @@ inline e@(tag &&& children -> (EOperate OApp, [
   (nfe, nfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) n [R.Initialization R.Unit []]
   (wfe, wfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) w [R.Dereference $ R.Variable $ R.Name first]
 
-  return (ce ++ [resultDecl, firstDecl] ++ [R.IfThenElse firstPred (nfe ++ nfb) (wfe ++ wfb)]
+  return (ce ++ [ue] ++ [resultDecl, firstDecl] ++ [R.IfThenElse firstPred (nfe ++ nfb) (wfe ++ wfb)]
          , R.Variable $ R.Name result)
 
 inline e@(tag &&& children -> (EOperate OApp, [
@@ -505,12 +528,15 @@ inline e@(tag &&& children -> (EOperate OApp, [
   ig <- genSym
   ie <- reify (RDecl ig Nothing) i
   let iv = R.Variable $ R.Name ig
-  let uc = R.Call (R.Project cv (R.Name "getContainer")) []
 
-  let sizeCheck = R.Binary "<" iv (R.Call (R.Project uc (R.Name "size")) [])
+  ug <- genSym
+  let ue = R.Forward $ R.ScalarDecl (R.Name ug) (R.Reference R.Inferred) (Just $  R.Call (R.Project cv (R.Name "getContainer")) [])
+  let uv = R.Variable $ R.Name ug
+
+  let sizeCheck = R.Binary "<" iv (R.Call (R.Project uv (R.Name "size")) [])
 
   iterator <- genSym
-  let advance = [ R.Forward $ R.ScalarDecl (R.Name iterator) R.Inferred (Just $ (R.Call (R.Project uc (R.Name "begin")) []))
+  let advance = [ R.Forward $ R.ScalarDecl (R.Name iterator) R.Inferred (Just $ (R.Call (R.Project uv (R.Name "begin")) []))
                 , R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "advance")) [R.Variable (R.Name iterator), iv]
                 ]
 
@@ -521,7 +547,7 @@ inline e@(tag &&& children -> (EOperate OApp, [
   (nfe, nfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) n [R.Initialization R.Unit []]
   (wfe, wfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) w [R.Dereference (R.Variable $ R.Name iterator)]
 
-  return (ce ++ ie ++ [resultDecl] ++ [R.IfThenElse sizeCheck (advance ++ wfe ++ wfb) (nfe ++ nfb)]
+  return (ce ++ [ue] ++ ie ++ [resultDecl] ++ [R.IfThenElse sizeCheck (advance ++ wfe ++ wfb) (nfe ++ nfb)]
          , R.Variable $ R.Name result)
 
 inline e@(tag -> EOperate OApp) = do
