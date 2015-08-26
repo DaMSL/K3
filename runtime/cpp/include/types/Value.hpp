@@ -45,7 +45,8 @@ class PackedValue {
 // Native Value Implementation
 template <class T>
 T* NativeValue::as() {
-  return static_cast<T*>(this->materialize());
+  auto p = static_cast<T*>(this->materialize());
+  return p;
 }
 
 template <class T>

@@ -473,7 +473,7 @@ public:
     uint64_t fixed_count = fixseg_size();
     uint64_t page_count = varseg_size();
 
-    auto len = sizeof(size_t) + 2 * sizeof(uint64_t) * byte_size();
+    auto len = sizeof(size_t) + 2 * sizeof(uint64_t) + byte_size();
     auto buffer_ = new char[len+1];
     buffer_[len] = 0;
 
