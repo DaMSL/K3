@@ -851,7 +851,7 @@ inlineApply isAP r f@(tag -> ELambda _) xs = do
   reifyArgument inner (id &&& R.Name -> (i,  inside),  outside, isAP') =
     let inCastType = case if isAP' then Referenced else getInMethodFor i inner of
          Referenced -> R.Reference R.Inferred
-         ConstReferenced -> R.Const $ R.Reference $ R.Inferred
+         ConstReferenced -> R.Reference $ R.Const $ R.Inferred
          Copied -> R.Inferred
          Moved -> R.Inferred
          Forwarded -> R.RValueReference R.Inferred
