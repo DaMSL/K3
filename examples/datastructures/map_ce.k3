@@ -1,0 +1,22 @@
+include "Annotation/Maps/MapCE.k3"
+include "Core/Builtins.k3"
+
+declare c : mut collection {key: int, value: int} @{MapCE(key=[: int], value=[: int])}
+declare d : mut collection {key: int, value: int} @{MapCE(key=[: int], value=[: int])}
+
+trigger t : () = \_ -> (
+  (c.insert {key: 1, value: 1});
+  (c.insert {key: 2, value: 2});
+  (c.insert {key: 3, value: 3});
+  (c.insert {key: 4, value: 4});
+
+  ((c.group_by (\k -> \_ -> k) (\acc -> \_ -> \v -> acc + v) 0)
+     .iterate  (\k -> \v -> d.insert {key: k, value: v}));
+
+  (c.update       3 6);
+  (c.upsert_with  5 (\_ -> 5)  (\v -> v + 5));
+  (c.lookup       4 (\_ -> ()) (\v -> print ("Found @4: " ++ (itos v))))
+)
+
+source s1 : () = value ()
+feed s1 |> t

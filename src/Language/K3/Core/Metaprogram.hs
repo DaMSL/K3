@@ -103,7 +103,7 @@ instance Pretty MPDeclaration where
           ++ if null svars then "" else ("[" ++ intercalate ", " (map show svars) ++ "]")
           ++ if null tvars then "" else ("[" ++ multiLineSep tvars ++ "]")
           , "|"]
-      ++ drawMPAnnotationMembers mpAnnMems
+      ++ drawMPAnnotationMembers (not $ null annMems) mpAnnMems
       ++ drawAnnotationMembers annMems
     where
       multiLineSep l = removeTrailingWhitespace . boxToString
@@ -152,11 +152,11 @@ instance Pretty SpliceEnv where
 instance Pretty SpliceContext where
   prettyLines ctxt = concatMap prettyLines ctxt
 
-drawMPAnnotationMembers :: [MPAnnMemDecl] -> [String]
-drawMPAnnotationMembers []  = []
-drawMPAnnotationMembers [x] = terminalShift x
-drawMPAnnotationMembers x   = concatMap (\y -> nonTerminalShift y ++ ["|"]) (init x)
-                              ++ terminalShift (last x)
+drawMPAnnotationMembers :: Bool -> [MPAnnMemDecl] -> [String]
+drawMPAnnotationMembers _ []  = []
+drawMPAnnotationMembers hasMems [x] = if hasMems then nonTerminalShift x else terminalShift x
+drawMPAnnotationMembers hasMems x   = concatMap (\y -> nonTerminalShift y ++ ["|"]) (init x)
+                                       ++ if hasMems then nonTerminalShift (last x) else terminalShift (last x)
 
 drawAnnotationMembers :: [AnnMemDecl] -> [String]
 drawAnnotationMembers []  = []

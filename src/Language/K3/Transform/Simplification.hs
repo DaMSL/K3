@@ -994,10 +994,19 @@ encodeTransformers restChanged expr = do
     rtt = return . (True,)
     rtf = return . (False,)
 
-    transformable as = any isETransformer as && (not $ any isEFusionSpec as)
+    transformable as cE = any isETransformer as && (not $ any isEFusionSpec as) && compatibleCollectionType cE
 
-    encode e@(PPrjApp _ fId fAs _ _)
-      | unaryTransformer fId && transformable fAs
+    compatibleCollectionType cE =
+      case cE @~ isEType of
+        Just (EType (details -> (TCollection, _, isMapCE -> True))) -> False
+        _ -> True
+
+      where isMapCE anns = case find isTAnnotation anns of
+                             Nothing -> False
+                             Just (TAnnotation i) -> "MapCE" `isInfixOf` i
+
+    encode e@(PPrjApp cE fId fAs _ _)
+      | unaryTransformer fId && transformable fAs cE
         = case fId of
             "filter"  -> mkFold1 e
             "map"     -> mkFold1 e
@@ -1006,12 +1015,12 @@ encodeTransformers restChanged expr = do
             _         -> rtf e
       | unaryTransformer fId = rtf $ debugEncode fId fAs e
 
-    encode e@(PPrjApp2 _ fId fAs _ _ _ _)
-      | binaryTransformer fId && transformable fAs = mkFold2 e
+    encode e@(PPrjApp2 cE fId fAs _ _ _ _)
+      | binaryTransformer fId && transformable fAs cE = mkFold2 e
       | binaryTransformer fId = rtf $ debugEncode fId fAs e
 
-    encode e@(PPrjApp3 _ fId fAs _ _ _ _ _ _)
-      | ternaryTransformer fId && transformable fAs = mkFold3 e
+    encode e@(PPrjApp3 cE fId fAs _ _ _ _ _ _)
+      | ternaryTransformer fId && transformable fAs cE = mkFold3 e
       | ternaryTransformer fId = rtf $ debugEncode fId fAs e
 
     encode e = rtf e

@@ -6,11 +6,12 @@
 module Language.K3.Codegen.CPP.Collections where
 
 import Data.Char
-import Data.List (elemIndex, intercalate, partition, sort, isInfixOf)
+import Data.List (elemIndex, find, intercalate, partition, sort, isInfixOf)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
+import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
 import Language.K3.Codegen.CPP.Types
@@ -31,9 +32,10 @@ import qualified Language.K3.Codegen.CPP.Representation as R
 --  - Serialization function, which should proxy the dataspace serialization.
 composite :: Identifier -> [(Identifier, [AnnMemDecl])] -> [K3 Type] -> CPPGenM [R.Definition]
 composite name ans content_ts = do
-    let overrideGeneratedName n = if "SortedMapE" `isInfixOf` n then "SortedMapE"
-                                  else if "MapE" `isInfixOf` n then "MapE"
-                                  else n
+    let overrideGeneratedName n = case find (`isInfixOf` n) ["Array", "MapE", "SortedMapE", "MapCE"] of
+                                    Nothing -> n
+                                    Just i -> i
+
     let isReserved (aname, _) = overrideGeneratedName aname `elem` reservedAnnotations
     let (ras, as) = partition isReserved ans
 
@@ -43,10 +45,22 @@ composite name ans content_ts = do
     -- Split data and method declarations, for access specifiers.
     -- let (dataDecls, methDecls) = partition isDataDecl positives
 
+    -- For arrays, extract the array size template parameter.
+    let arraySize mdecls = case mdecls of
+                             Nothing -> []
+                             Just l -> (\f -> foldl f [] l) $ \acc m ->
+                                         case m of
+                                           Lifted _ "array_size" _ (Just (tag -> EConstant (CInt i))) _ ->
+                                             acc ++ [R.Named $ R.Name $ show i]
+                                           _ -> acc
+
+
     -- When dealing with Indexes, we need to specialize the MultiIndex* classes on each index type
     (indexTypes, indexDefns) <- indexes name as content_ts
 
-    let addnSpecializations n = if "MultiIndex" `isInfixOf` n then indexTypes else []
+    let addnSpecializations n = if "Array" `isInfixOf` n then arraySize $ lookup n ans
+                                else if "MultiIndex" `isInfixOf` n then indexTypes
+                                else []
 
     let baseClass (n,_) = R.Qualified (R.Name "K3")
                            (R.Specialized ((R.Named $ R.Name "__CONTENT"): addnSpecializations n)
@@ -455,8 +469,8 @@ record (sort -> ids) = do
 
 reservedAnnotations :: [Identifier]
 reservedAnnotations =
-  [ "Collection", "External", "Seq", "Set", "Sorted", "Map", "Vector"
-  , "IntMap", "StrMap", "VMap", "SortedMap", "SortedSet", "MapE", "SortedMapE"
+  [ "Collection", "External", "Seq", "Set", "Sorted", "Map", "Vector", "Array"
+  , "IntMap", "StrMap", "VMap", "SortedMap", "SortedSet", "MapE", "SortedMapE", "MapCE"
   , "MultiIndexBag", "MultiIndexMap", "MultiIndexVMap", "RealVector"
   , "BulkFlatCollection"
   ]
