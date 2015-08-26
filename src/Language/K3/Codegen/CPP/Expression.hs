@@ -343,8 +343,10 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
 
   let accDecl = R.Forward $ R.ScalarDecl (R.Name accVar) R.Inferred (Just accMove)
 
-  (fe, fb) <- inlineApply (if isAccumulating then RForget else RName (R.Variable $ R.Name accVar) (Just True)) f
-                [R.Variable $ R.Name accVar, (if eleMove then R.Move else id) $ R.Variable $ R.Name eleVar]
+  (fe, fb) <- inlineApply isAccumulating (if isAccumulating then RForget else RName (R.Variable $ R.Name accVar) (Just True)) f
+                [ (if isAccumulating then id else R.Move) $ R.Variable $ R.Name accVar
+                , (if eleMove then R.Move else id) $ R.Variable $ R.Name eleVar
+                ]
 
   let loopBody = fb
 
@@ -397,7 +399,7 @@ inline e@(tag &&& children -> (EOperate OApp, [
                        (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uv])
 
   let nfe = [R.Assignment (R.Subscript uv kp) kv]
-  (wfe, wfb) <- inlineApply (RName (R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")) (Just True)) w
+  (wfe, wfb) <- inlineApply False (RName (R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")) (Just True)) w
                   [R.Move $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second"), kv]
 
   return (ce ++ [ue] ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred nfe (wfe ++ wfb)]
@@ -438,8 +440,8 @@ inline e@(tag &&& children -> (EOperate OApp, [
                        (R.Variable $ R.Name existing)
                        (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uv])
 
-  (nfe, nfb) <- inlineApply (RName (R.Subscript uv kv) (Just True)) n [R.Initialization R.Unit []]
-  (wfe, wfb) <- inlineApply (RName (R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")) (Just True)) w
+  (nfe, nfb) <- inlineApply False (RName (R.Subscript uv kv) (Just True)) n [R.Initialization R.Unit []]
+  (wfe, wfb) <- inlineApply False (RName (R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")) (Just True)) w
                   [R.Move $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")]
 
   return (ce ++ [ue] ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
@@ -484,8 +486,8 @@ inline e@(tag &&& children -> (EOperate OApp, [
   resultType <- getKType e >>= genCType
   let resultDecl = R.Forward $ R.ScalarDecl (R.Name result) resultType Nothing
 
-  (nfe, nfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) n [R.Initialization R.Unit []]
-  (wfe, wfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) w
+  (nfe, nfb) <- inlineApply False (RName (R.Variable $ R.Name result) Nothing) n [R.Initialization R.Unit []]
+  (wfe, wfb) <- inlineApply False (RName (R.Variable $ R.Name result) Nothing) w
                   [R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")]
 
   return (ce ++ [ue] ++ ke ++ [resultDecl, existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
@@ -512,8 +514,8 @@ inline e@(tag &&& children -> (EOperate OApp, [
   result <- genSym
   resultType <- getKType e >>= genCType
   let resultDecl = R.Forward $ R.ScalarDecl (R.Name result) resultType Nothing
-  (nfe, nfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) n [R.Initialization R.Unit []]
-  (wfe, wfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) w [R.Dereference $ R.Variable $ R.Name first]
+  (nfe, nfb) <- inlineApply False (RName (R.Variable $ R.Name result) Nothing) n [R.Initialization R.Unit []]
+  (wfe, wfb) <- inlineApply False (RName (R.Variable $ R.Name result) Nothing) w [R.Dereference $ R.Variable $ R.Name first]
 
   return (ce ++ [ue] ++ [resultDecl, firstDecl] ++ [R.IfThenElse firstPred (nfe ++ nfb) (wfe ++ wfb)]
          , R.Variable $ R.Name result)
@@ -545,8 +547,8 @@ inline e@(tag &&& children -> (EOperate OApp, [
   resultType <- getKType e >>= genCType
   let resultDecl = R.Forward $ R.ScalarDecl (R.Name result) resultType Nothing
 
-  (nfe, nfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) n [R.Initialization R.Unit []]
-  (wfe, wfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) w [R.Dereference (R.Variable $ R.Name iterator)]
+  (nfe, nfb) <- inlineApply False (RName (R.Variable $ R.Name result) Nothing) n [R.Initialization R.Unit []]
+  (wfe, wfb) <- inlineApply False (RName (R.Variable $ R.Name result) Nothing) w [R.Dereference (R.Variable $ R.Name iterator)]
 
   return (ce ++ [ue] ++ ie ++ [resultDecl] ++ [R.IfThenElse sizeCheck (advance ++ wfe ++ wfb) (nfe ++ nfb)]
          , R.Variable $ R.Name result)
@@ -824,8 +826,8 @@ reify r e = do
     return $ effects ++ reification
 
 -- ** Template Helpers
-inlineApply :: RContext -> K3 Expression -> [R.Expression] -> CPPGenM ([R.Statement], [R.Statement])
-inlineApply r f@(tag -> ELambda _) xs = do
+inlineApply :: Bool -> RContext -> K3 Expression -> [R.Expression] -> CPPGenM ([R.Statement], [R.Statement])
+inlineApply isAP r f@(tag -> ELambda _) xs = do
   let (unzip -> (argNames, fExprs), body) = rollLambdaChain f
   body' <- reify r body
 
@@ -833,7 +835,7 @@ inlineApply r f@(tag -> ELambda _) xs = do
   let (outerFExpr, innerFExpr) = (head &&& last) fExprs
   let (outerArg, _) = (getArg outerFExpr, getArg innerFExpr)
 
-  let argReifications = map reifyArgument $ filter (\(a, _, _) -> a /= "_") $ zip3 argNames xs fExprs
+  let argReifications = map (reifyArgument innerFExpr) $ filter (\(a, _, _) -> a /= "_") $ zip3 argNames xs (isAP: repeat False)
   let trueCaptures = flip M.filterWithKey (getInDecisions outerFExpr) $ \k m -> k /= outerArg && (m == Copied || m == Moved)
 
   -- TODO: Find a way around this ugly hack to trick shadowing.
@@ -845,15 +847,17 @@ inlineApply r f@(tag -> ELambda _) xs = do
 
   return (concat captureReifications, argReifications ++ body')
  where
-  reifyArgument :: (Identifier, R.Expression, K3 Expression) -> R.Statement
-  reifyArgument (id &&& R.Name -> (i,  inside),  outside, getInMethodFor i -> m) = case m of
-    Referenced -> R.Forward $ R.ScalarDecl inside (R.Reference R.Inferred) (Just $ R.FMacro outside)
-    ConstReferenced -> R.Forward $ R.ScalarDecl inside (R.Const $ R.Reference $ R.Inferred) (Just $ R.FMacro outside)
-    Copied -> R.Forward $ R.ScalarDecl inside R.Inferred (Just $ R.FMacro outside)
-    Moved -> R.Forward $ R.ScalarDecl inside R.Inferred (Just $ R.Move outside)
-    Forwarded -> R.Forward $ R.ScalarDecl inside (R.RValueReference R.Inferred) (Just $ R.FMacro outside)
+  reifyArgument :: K3 Expression -> (Identifier, R.Expression, Bool) -> R.Statement
+  reifyArgument inner (id &&& R.Name -> (i,  inside),  outside, isAP') =
+    let inCastType = case if isAP' then Referenced else getInMethodFor i inner of
+         Referenced -> R.Reference R.Inferred
+         ConstReferenced -> R.Const $ R.Reference $ R.Inferred
+         Copied -> R.Inferred
+         Moved -> R.Inferred
+         Forwarded -> R.RValueReference R.Inferred
+    in R.Forward $ R.ScalarDecl inside inCastType (Just outside)
 
-inlineApply r f xs = do
+inlineApply _ r f xs = do
   (fe, fv) <- inline f
   let rValue = R.Call fv xs
   reification <- case r of
