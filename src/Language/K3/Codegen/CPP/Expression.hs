@@ -425,8 +425,8 @@ inline e@(tag &&& children -> (EOperate OApp, [
             fe <- reify RForget j
             return (fe, Nothing)
       return (concat fes, fv)
-
     _ -> inline k >>= \(ke', kv') -> return (ke', R.Project kv' (R.Name "key"))
+
   ug <- genSym
   let ue = R.Forward $ R.ScalarDecl (R.Name ug) (R.Reference R.Inferred) (Just $  R.Call (R.Project cv (R.Name "getContainer")) [])
   let uv = R.Variable $ R.Name ug
@@ -467,6 +467,7 @@ inline e@(tag &&& children -> (EOperate OApp, [
             fe <- reify RForget j
             return (fe, Nothing)
       return (concat fes, fv)
+    _ -> inline k >>= \(ke', kv') -> return (ke', R.Project kv' (R.Name "key"))
 
   ug <- genSym
   let ue = R.Forward $ R.ScalarDecl (R.Name ug) (R.Reference R.Inferred) (Just $  R.Call (R.Project cv (R.Name "getContainer")) [])
