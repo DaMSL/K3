@@ -354,7 +354,7 @@ generateDispatchPopulation isNative = do
      value = if isNative then "NativeValue" else "PackedValue"
      genDispatch (tName, tType) = do
        let dispatchWrapper = R.Lambda
-                             [R.ValueCapture $ Just ("this", Nothing)]
+                             [R.ThisCapture]
                              [(Just "payload", R.UniquePointer $ R.Named $ R.Name value)]
                              False
                              Nothing

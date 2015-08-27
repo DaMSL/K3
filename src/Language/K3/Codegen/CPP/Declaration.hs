@@ -283,7 +283,7 @@ genLoader elemWrap fixedSize projectedLoader asReturn sep suf ft@(children -> [_
                       ++ (\(a,b,c) -> readField a b c True) (last ftsWSkip)
                       ++ [R.Return $ R.Variable $ R.Name "record"]
 
- let readRecordFn = R.Lambda [R.ValueCapture $ Just ("this", Nothing)]
+ let readRecordFn = R.Lambda [R.ThisCapture]
                     [ (Just "in", (R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "istream")))
                     , (Just "tmp_buffer", (R.Reference $ R.Named $ (R.Qualified (R.Name "std") (R.Name "string"))))
                     ] False Nothing recordGetLines

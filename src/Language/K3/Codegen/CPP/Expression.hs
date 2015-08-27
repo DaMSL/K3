@@ -303,7 +303,7 @@ inline e@(tag -> ELambda _) = do
           Moved -> R.ValueCapture (Just (i, Just $ R.Move $ R.Variable $ R.Name i))
           Copied -> R.ValueCapture (Just (i, Nothing))
 
-    let captures = [R.ValueCapture (Just ("this", Nothing))] ++
+    let captures = [R.ThisCapture] ++
                    (M.elems $ M.mapWithKey captureByMtrlzn $ M.filterWithKey (\k _ -> k /= outerArg)
                             $ getInDecisions outerFExpr)
 

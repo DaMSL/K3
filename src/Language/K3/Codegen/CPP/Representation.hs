@@ -184,6 +184,7 @@ instance Stringifiable Literal where
 data Capture
     = ValueCapture (Maybe (Identifier, Maybe Expression))
     | RefCapture (Maybe (Identifier, Maybe Expression))
+    | ThisCapture
   deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Capture where
@@ -193,6 +194,7 @@ instance Stringifiable Capture where
     stringify (RefCapture Nothing) = "&"
     stringify (RefCapture (Just (i, Nothing))) = "&" <> fromString i
     stringify (RefCapture (Just (i, Just e))) = "&" <> fromString i <+> equals <+> stringify e
+    stringify ThisCapture = "this"
 
 type IsMutable = Bool
 
