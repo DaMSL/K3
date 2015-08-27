@@ -24,7 +24,7 @@ class base_string {
   // Constructors/Destructors/Assignment.
   base_string();
   base_string(const base_string& other);
-  base_string(base_string&& other);
+  base_string(base_string&& other) noexcept;
   base_string(const char* b);
   base_string(const std::string& s);
   base_string(const char* from, std::size_t count);

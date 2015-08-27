@@ -14,7 +14,7 @@ base_string::base_string(const base_string& other)
   set_advance(other.has_advance());
 }
 
-base_string::base_string(base_string&& other) : base_string() {
+base_string::base_string(base_string&& other) noexcept : base_string() {
   set_header(other.has_header());
   set_advance(other.has_advance());
   swap(*this, other);

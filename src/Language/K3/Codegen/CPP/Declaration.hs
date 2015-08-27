@@ -90,6 +90,7 @@ declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children
     let argMtrlznType = case getInMethodFor x e of
                           ConstReferenced -> R.Reference (R.Const argumentType)
                           Referenced -> R.Reference argumentType
+                          Forwarded -> R.RValueReference argumentType
                           _ -> argumentType
 
     body' <- reify (RReturn False) body
@@ -111,7 +112,7 @@ declaration d@(tag -> DGlobal i t me) = do
     addStaticDeclaration staticGlobalDecl
 
     -- Initialize the variable.
-    let rName = RName (if pinned then "__global_context::" ++ i else i) Nothing
+    let rName = RName (R.Variable $ R.Name $ if pinned then "__global_context::" ++ i else i) Nothing
     globalInit <- maybe (return []) (liftM (addSetCheck pinned i) . reify rName) me
 
     -- Add to proper initialization list

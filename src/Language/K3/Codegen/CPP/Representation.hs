@@ -29,6 +29,7 @@ module Language.K3.Codegen.CPP.Representation (
     pattern Throw,
     pattern ThrowRuntimeErr,
     pattern SForward,
+    pattern FMacro,
 
     bind,
     flattenFnType,
@@ -37,6 +38,10 @@ module Language.K3.Codegen.CPP.Representation (
     Statement(..),
 
     Definition(..),
+
+    -- * Heuristics
+    isOrderAgnostic,
+    isMoveInferred
 ) where
 
 import Data.Maybe
@@ -245,6 +250,7 @@ pattern ThrowRuntimeErr s = Call (Variable (Name "throw"))
                               [Call (Variable (Qualified (Name "std") (Name "runtime_error"))) [s]]
 
 pattern SForward t e = Call (Variable (Qualified (Name "std") (Specialized [t] (Name "forward")))) [e]
+pattern FMacro f = Call (Variable (Name "_F")) [f]
 
 bind :: Expression -> Expression -> Int -> Expression
 bind f a 1 = Call f [a]
@@ -353,3 +359,32 @@ instance Stringifiable Definition where
         parameterize (i, Just t) = stringify t <+> fromString i
 
     stringify (TypeDefn t i) = "typedef " <+> stringify t <+> fromString i <> semi
+
+-- Heuristics
+isOrderAgnostic :: Expression -> Bool
+isOrderAgnostic e = case e of
+  Binary _ a b -> isOrderAgnostic a && isOrderAgnostic b
+  Call f xs -> isOrderAgnostic f && all isOrderAgnostic xs
+  Dereference p -> isOrderAgnostic p
+  TakeReference r -> isOrderAgnostic r
+  Initialization _ es -> all isOrderAgnostic es
+  Lambda _ _ _ _ _ -> False
+  Literal _ -> True
+  Project p _ -> isOrderAgnostic p
+  Subscript x s -> isOrderAgnostic x && isOrderAgnostic s
+  Unary _ x -> isOrderAgnostic x
+  Variable _ -> True
+
+isMoveInferred :: Expression -> Bool
+isMoveInferred e = case e of
+  Binary _ _ _ -> True
+  Call _ _ -> True
+  Dereference _ -> False
+  TakeReference _ -> False
+  Initialization _ _ -> True
+  Lambda _ _ _ _ _ -> True
+  Literal _ -> True
+  Project _ _ -> False
+  Subscript _ _ -> False
+  Unary _ _ -> True
+  Variable _ -> False

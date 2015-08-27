@@ -62,7 +62,7 @@ optimizeMaterialization (p, f) d = runExceptT $ inferMaterialization >>= solveMa
     Left (IError msg) -> throwError msg
     Right ((_, IState ct), r) -> liftIO (formatIReport reportVerbosity r) >> return ct
    where defaultIState = IState { cTable = M.empty }
-         defaultIScope = IScope { downstreams = [], nearestBind = Nothing, pEnv = p, fEnv = f, topLevel = True }
+         defaultIScope = IScope { downstreams = [], nearestBind = Nothing, pEnv = p, fEnv = f, topLevel = False }
 
   solveMaterialization ct = case runSolverM solveAction defaultSState of
     Left (SError msg) -> throwError msg
@@ -177,11 +177,26 @@ materializeD :: K3 Declaration -> InferM ()
 materializeD d = case tag d of
   DGlobal i _ (Just e) -> materializeE e >> dUID d >>= \u -> constrain u i In (mAtom Referenced -??- "Hack")
   DGlobal i _ Nothing -> dUID d >>= \u -> constrain u i In (mAtom Referenced -??- "Hack")
-  DTrigger _ _ e -> materializeE e
+  DTrigger _ _ e -> withTopLevel True $ materializeE e
   _ -> traverse_ materializeD (children d)
 
 materializeE :: K3 Expression -> InferM ()
 materializeE e@(Node (t :@: _) cs) = case t of
+  EProject f -> do
+    let [super] = cs
+    materializeE super
+    moveableNow <- ePrv super >>= contextualizeNow >>= isMoveableNow
+    ownContext <- ePrv super >>= contextualizeNow >>= bindPoint >>= \case
+      Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied] -??- "Owned by containing context?"
+      Nothing -> return $ mBool True -??- "Temporary."
+
+
+    u <- eUID e
+
+    -- Need to be very careful here, semantics probably say that default method is copy, but we
+    -- treat it as reference almost everywhere. Check projection decisions carefully, usually on
+    -- collection transformers.
+    constrain u anon In $ mITE (moveableNow -&&- ownContext) (mAtom Moved) (mAtom Referenced)
   ERecord is -> do
     u <- eUID e
 
@@ -222,7 +237,7 @@ materializeE e@(Node (t :@: _) cs) = case t of
           Just (EType (tag &&& children -> (TFunction, [t, _]))) -> isNonScalarType t
           _ -> False
 
-    constrain u i In $ mITE (ehw -||- mBool (topL && argShouldBeMoved)) (mAtom Copied) (mAtom ConstReferenced)
+    constrain u i In $ mITE (ehw -||- mBool (topL && argShouldBeMoved)) (mAtom Copied) (mAtom Forwarded)
 
     cls <- ePrv e >>= \case
       (tag -> PLambda _ cls) -> return cls
@@ -254,12 +269,14 @@ materializeE e@(Node (t :@: _) cs) = case t of
 
     moveable <- ePrv x >>= contextualizeNow >>= isMoveableNow
 
-    ownContext <- ePrv x >>= contextualizeNow >>= bindPoint >>= \case
-      Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied] -??- "Owned by containing context?"
-      Nothing -> return $ mBool True -??- "Temporary"
+    (ownContext, fwdContext) <- ePrv x >>= contextualizeNow >>= bindPoint >>= \case
+      Just (Juncture u i) -> return $ ( mOneOf (mVar u i In) [Moved, Copied] -??- "Owned by containing context?"
+                                      , mOneOf (mVar u i In) [Forwarded] -??- "Forwarded by containing context?")
+      Nothing -> return $ (mBool True -??- "Temporary.", mBool True -??- "Temporary.")
 
     u <- eUID e
-    constrain u anon In $ mITE (moveable -&&- ownContext) (mAtom Moved) (mAtom Copied)
+    constrain u anon In $ mITE moveable (mITE ownContext (mAtom Moved) (mITE fwdContext (mAtom Forwarded) (mAtom Copied)))
+                            (mAtom Copied)
 
   EOperate OSnd -> do
     let [h, m] = cs
@@ -456,7 +473,7 @@ isGlobal p = case tag p of
   (PGlobal _) -> return (mBool True)
   (PBVar (PMatVar n u ptr)) -> do
     parent <- chasePPtr ptr >>= isGlobal
-    return $ mOneOf (mVar u n In) [Referenced, ConstReferenced] -&&- parent
+    return $ mOneOf (mVar u n In) [Referenced, ConstReferenced, Forwarded] -&&- parent
   (PProject _) -> isGlobal (head $ children p)
   PSet -> mOr <$> traverse isGlobal (children p)
   (PRecord _) -> mOr <$> traverse isGlobal (children p)
@@ -473,7 +490,7 @@ occursIn a@(Contextual pa ca) b@(Contextual pb cb) = case tag pb of
     PBVar (PMatVar n' u' _) | n' == n && u' == u -> return (mBool True)
     _ -> do
       pOccurs <- chasePPtr ptr >>= \p' -> occursIn a (Contextual p' cb)
-      return $ mOneOf (mVar u n In) [Referenced, ConstReferenced] -&&- pOccurs
+      return $ mOneOf (mVar u n In) [Referenced, ConstReferenced, Forwarded] -&&- pOccurs
   PSet -> mOr <$> traverse (\pb' -> occursIn a (Contextual pb' cb)) (children pb)
   PLambda _ _ -> mOr <$> traverse (\pb' -> occursIn a (Contextual pb' cb)) (children pb)
   PProject _ -> mOr <$> traverse (\pb' -> occursIn a (Contextual pb' cb)) (children pb)

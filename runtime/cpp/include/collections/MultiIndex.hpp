@@ -753,7 +753,7 @@ class MultiIndexVMap
   }
 
   template <class F, class G>
-  unit_t upsert_with_before(const Version& v, const R& rec, F f, G g) {
+  unit_t upsert_before(const Version& v, const R& rec, F f, G g) {
     auto existing = container.find(rec.key);
     if ( existing == container.end() ) {
       Key k = rec.key;
