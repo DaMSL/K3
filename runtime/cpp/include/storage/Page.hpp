@@ -19,12 +19,12 @@ namespace K3 {
 template<size_t PageSize>
 struct PageHeader
 {
-  using slot_id_t = std::conditional<PageSize <= 2<<12, uint16_t, uint32_t>::type;
+  using slot_id_t = typename std::conditional<PageSize <= 1<<17, uint16_t, uint32_t>::type;
     // Invalid when equal to numeric_limits::max().
 
-  using page_offset_t = std::conditional<PageSize <= 2<<12, uint16_t, uint32_t>::type;
+  using page_offset_t = typename std::conditional<PageSize <= 1<<17, uint16_t, uint32_t>::type;
 
-  using slot_length_t = std::conditional<PageSize <= 2<<12, uint16_t, uint32_t>::type;
+  using slot_length_t = typename std::conditional<PageSize <= 1<<17, uint16_t, uint32_t>::type;
     // Invalid when 0.
 
   slot_id_t current_slot;
@@ -59,12 +59,12 @@ struct Page : public BasePage<PageSize>
 {
   using Super = BasePage<PageSize>;
 
-  using slot_id_t = std::conditional<PageSize <= 2<<12, uint16_t, uint32_t>::type;
+  using slot_id_t = typename std::conditional<PageSize <= 1<<17, uint16_t, uint32_t>::type;
     // Invalid when equal to numeric_limits::max().
 
-  using page_offset_t = std::conditional<PageSize <= 2<<12, uint16_t, uint32_t>::type;
+  using page_offset_t = typename std::conditional<PageSize <= 1<<17, uint16_t, uint32_t>::type;
 
-  using slot_length_t = std::conditional<PageSize <= 2<<12, uint16_t, uint32_t>::type;
+  using slot_length_t = typename std::conditional<PageSize <= 1<<17, uint16_t, uint32_t>::type;
     // Invalid when 0.
 
   ///////////////////////////////////
@@ -199,17 +199,17 @@ struct Page : public BasePage<PageSize>
     ar & Super::page_;
   }
 
-  constexpr static slot_id_t null_slot = std::numeric_limits<uint32_t>::max();
+  constexpr static slot_id_t null_slot = std::numeric_limits<slot_id_t>::max();
 };
 
 // Common typedefs.
-using Page4K  = Page<2<<12>;
-using Page8K  = Page<2<<13>;
-using Page16K = Page<2<<14>;
-using Page32K = Page<2<<15>;
-using Page64K = Page<2<<16>;
-using Page1M  = Page<2<<20>;
-using Page2M  = Page<2<<21>;
+using Page4K  = Page<1<<12>;
+using Page8K  = Page<1<<13>;
+using Page16K = Page<1<<14>;
+using Page32K = Page<1<<15>;
+using Page64K = Page<1<<16>;
+using Page1M  = Page<1<<20>;
+using Page2M  = Page<1<<21>;
 
 } // Namespace K3
 #endif
