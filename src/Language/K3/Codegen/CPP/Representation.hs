@@ -188,7 +188,7 @@ data Capture
 
 instance Stringifiable Capture where
     stringify (ValueCapture Nothing) = "="
-    stringify (ValueCapture (Just (i, Nothing))) = fromString i
+    stringify (ValueCapture (Just (i, Nothing))) = fromString i <+> equals <+> fromString i
     stringify (ValueCapture (Just (i, Just e))) = fromString i <+> equals <+> stringify e
     stringify (RefCapture Nothing) = "&"
     stringify (RefCapture (Just (i, Nothing))) = "&" <> fromString i
