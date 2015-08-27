@@ -2158,21 +2158,21 @@ mapArgumentReturns onRetVarF i expr = runIdentity $ do
     argumentReturn shadowed _ e@(tag -> EVariable j)
       | i == j && not shadowed = return (Left True, onRetVarF e)
 
-    argumentReturn _ (onReturnBranch [0]   -> isArgRet) e@(tag -> ELambda _)     = return (isArgRet, e)
-    argumentReturn _ (onReturnBranch [0]   -> isArgRet) e@(tag -> EOperate OApp) = return (isArgRet, e)
-    argumentReturn _ (onReturnBranch [1]   -> isArgRet) e@(tag -> EOperate OSeq) = return (isArgRet, e)
+    argumentReturn _ (onDirectReturnBranch [0]   -> isArgRet) e@(tag -> ELambda _)     = return (isArgRet, e)
+    argumentReturn _ (onDirectReturnBranch [0]   -> isArgRet) e@(tag -> EOperate OApp) = return (isArgRet, e)
+    argumentReturn _ (onDirectReturnBranch [1]   -> isArgRet) e@(tag -> EOperate OSeq) = return (isArgRet, e)
 
-    argumentReturn _ (onReturnBranch [1]   -> isArgRet) e@(tag -> ELetIn  _)     = return (isArgRet, e)
-    argumentReturn _ (onReturnBranch [1]   -> isArgRet) e@(tag -> EBindAs _)     = return (isArgRet, e)
-    argumentReturn _ (onReturnBranch [1,2] -> isArgRet) e@(tag -> ECaseOf _)     = return (isArgRet, e)
-    argumentReturn _ (onReturnBranch [1,2] -> isArgRet) e@(tag -> EIfThenElse)   = return (isArgRet, e)
+    argumentReturn _ (onDirectReturnBranch [1]   -> isArgRet) e@(tag -> ELetIn  _)     = return (isArgRet, e)
+    argumentReturn _ (onDirectReturnBranch [1]   -> isArgRet) e@(tag -> EBindAs _)     = return (isArgRet, e)
+    argumentReturn _ (onDirectReturnBranch [1,2] -> isArgRet) e@(tag -> ECaseOf _)     = return (isArgRet, e)
+    argumentReturn _ (onDirectReturnBranch [1,2] -> isArgRet) e@(tag -> EIfThenElse)   = return (isArgRet, e)
 
     argumentReturn _ _ e = return (Right False, e)
 
     onIndepR l = if any not $ rights l then Right False else Left False
 
-    onReturnBranch branchIds l =
-      if any not $ rights l then Right False
+    onDirectReturnBranch branchIds l =
+      if any not $ rights (map (l !!) branchIds) then Right False
       else ensureEither (map (l !!) branchIds)
 
     ensureEither l =
