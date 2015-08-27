@@ -2105,6 +2105,79 @@ rewriteStreamAccumulation i expr = mapAccumulation rewriteAccumE rewriteVarE i e
         rewriteVarE   _ = EC.constant $ CNone NoneImmut
 
 
+-- | Mark every lambda that returns its argument at all return points.
+markProgramSelfReturningLambdas :: K3 Declaration -> Either String (K3 Declaration)
+markProgramSelfReturningLambdas prog = mapExpression markSelfReturningLambdas prog
+
+markSelfReturningLambdas :: K3 Expression -> Either String (K3 Expression)
+markSelfReturningLambdas expr = modifyTree onLambda expr
+  where onLambda e@(tnc -> (ELambda i, [body])) =
+          case inferArgumentReturns i body of
+            (True, nbody) -> return $ (replaceCh e [nbody]) @+ inferredEProp "ReturnsArgument" Nothing
+            (False, _) -> return e
+        onLambda e = return e
+
+-- | Infer return points in lambdas that yield the argument variable, and annotate the lambda
+--   if every return expression is either:
+--     i.  the variable itself syntax-wise (for now we consider only the exact variable, not equivalent bnds)
+--     ii. a branching expression whose return points are themselves argument-returns.
+mapArgumentReturns :: (K3 Expression -> K3 Expression)
+                   -> Identifier -> K3 Expression -> (Bool, K3 Expression)
+mapArgumentReturns onRetVarF i expr = runIdentity $ do
+  (isAcc, e) <- doInference
+  return $ (either id id isAcc, e)
+
+  where
+    doInference = foldMapReturnExpression trackBindings argumentReturn independentF False (Left False) expr
+
+    trackBindings shadowed e = case tag e of
+        ELambda j -> return (shadowed, [onBinding shadowed j])
+        ELetIn  j -> return (shadowed, [shadowed, onBinding shadowed j])
+        ECaseOf j -> return (shadowed, [shadowed, onBinding shadowed j, shadowed])
+        EBindAs b -> return (shadowed, [shadowed, foldl onBinding shadowed $ bindingVariables b])
+        _ -> return (shadowed, replicate (length $ children e) shadowed)
+
+      where onBinding sh j = if i == j then True else sh
+
+    -- TODO: check effects and lineage rather than free variables.
+    independentF shadowed _ e
+      | EVariable j <- tag e , i == j && not shadowed = return (Right False, e)
+      | EAssign   j <- tag e , i == j && not shadowed = return (Right False, e)
+
+    independentF _ (onIndepR -> isArgReturn) e = return (isArgReturn, e)
+
+    -- TODO: using symbols as lineage here will provide better alias tracking.
+    -- TODO: test in-place modification property
+    argumentReturn shadowed _ e@(tag -> EVariable j)
+      | i == j && not shadowed = return (Left True, onRetVarF e)
+
+    argumentReturn _ (onReturnBranch [0]   -> isArgRet) e@(tag -> ELambda _)     = return (isArgRet, e)
+    argumentReturn _ (onReturnBranch [0]   -> isArgRet) e@(tag -> EOperate OApp) = return (isArgRet, e)
+    argumentReturn _ (onReturnBranch [1]   -> isArgRet) e@(tag -> EOperate OSeq) = return (isArgRet, e)
+
+    argumentReturn _ (onReturnBranch [1]   -> isArgRet) e@(tag -> ELetIn  _)     = return (isArgRet, e)
+    argumentReturn _ (onReturnBranch [1]   -> isArgRet) e@(tag -> EBindAs _)     = return (isArgRet, e)
+    argumentReturn _ (onReturnBranch [1,2] -> isArgRet) e@(tag -> ECaseOf _)     = return (isArgRet, e)
+    argumentReturn _ (onReturnBranch [1,2] -> isArgRet) e@(tag -> EIfThenElse)   = return (isArgRet, e)
+
+    argumentReturn _ _ e = return (Right False, e)
+
+    onIndepR l = if any not $ rights l then Right False else Left False
+
+    onReturnBranch branchIds l =
+      if any not $ rights l then Right False
+      else ensureEither (map (l !!) branchIds)
+
+    ensureEither l =
+      if all id (lefts l) && all id (rights l)
+        then (if null $ rights l then Left else Right) True
+        else Right False
+
+inferArgumentReturns :: Identifier -> K3 Expression -> (Bool, K3 Expression)
+inferArgumentReturns i expr = mapArgumentReturns annotateE i expr
+  where annotateE e = e @+ (inferredEProp "ArgReturn" Nothing)
+
+
 -- Helper patterns for fusion
 pattern PVar     i           iAs   = Node (EVariable i   :@: iAs)   []
 pattern PApp     fE  argE    appAs = Node (EOperate OApp :@: appAs) [fE, argE]

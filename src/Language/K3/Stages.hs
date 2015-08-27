@@ -517,7 +517,7 @@ inferFreshTypesAndEffects = inferTypesAndEffects . stripTypeAndEffectAnns
 
 -- | Recomputes a program's inferred properties, types and effects.
 refreshProgram :: ProgramTransform
-refreshProgram = runPasses [inferFreshTypesAndEffects, inferFreshProperties]
+refreshProgram prog = runPasses [inferFreshTypesAndEffects, inferFreshProperties] prog
 
 {- Whole program optimizations -}
 simplify :: ProgramTransform
@@ -557,11 +557,12 @@ optPasses = map prepareOpt [ (simplifyWCSE, "opt-simplify-prefuse")
   where prepareOpt (f,i) = runPasses [refreshProgram, withRepair i f]
 
 cgPasses :: [ProgramTransform]
-cgPasses = [ withRepair "TID" $ transformE triggerSymbols
+cgPasses = [ withRepair "TID" $ transformE $ triggerSymbols
            , \d -> (liftIO (SG.generateSendGraph d) >> return d)
            , \d -> return (mangleReservedNames d)
            , refreshProgram
            , transformF CArgs.runAnalysis
+           , transformE markProgramSelfReturningLambdas
            , \d -> get >>= \s -> liftIO (optimizeMaterialization (penv s, fenv s) d) >>= either throwE return
            ]
 
@@ -686,9 +687,10 @@ declTransforms stSpec extInfOpt n = topLevel
     topLevel  = (Map.fromList $ fPf fst $ [
         second mkFix $
         mkT $ mkSeqRep "Optimize" highLevel $ fPf fst $ prepend [ ("refreshI",      False) ]
-                                                        $ [ ("Decl-Simplify", True)
-                                                          , ("Decl-Fuse",     True)
-                                                          , ("Decl-Simplify", True) ]
+                                                              $ [ ("Decl-Simplify", True)
+                                                                , ("Decl-Fuse",     True)
+                                                                , ("Decl-Simplify", True) ]
+
       ]) `Map.union` highLevel
 
     highLevel = (Map.fromList $ fPf fst $ [
@@ -704,12 +706,12 @@ declTransforms stSpec extInfOpt n = topLevel
 
     -- TODO: CF,BR,DCE,CSE should be a local fixpoint.
     lowLevel = Map.fromList $ fPf fst $ [
-              mk  foldConstants        "Decl-CF"  False True False True  (Just [typEffI])
-      ,       mk  betaReduction        "Decl-BR"  False True False True  (Just [typEffI])
-      ,       mk  eliminateDeadCode    "Decl-DCE" False True False True  (Just [typEffI])
-      ,       mkW cseTransform         "Decl-CSE" False True False True  (Just [typEffI])
-      , mkT $ mkD encodeTransformers   "Decl-FE"  False True False True  (Just [typEffI])
-      , mkT $ mk  fuseFoldTransformers "Decl-FT"  False True False True  (Just fusionI)
+              mk  foldConstants            "Decl-CF"  False True False True  (Just [typEffI])
+      ,       mk  betaReduction            "Decl-BR"  False True False True  (Just [typEffI])
+      ,       mk  eliminateDeadCode        "Decl-DCE" False True False True  (Just [typEffI])
+      ,       mkW cseTransform             "Decl-CSE" False True False True  (Just [typEffI])
+      , mkT $ mkD encodeTransformers       "Decl-FE"  False True False True  (Just [typEffI])
+      , mkT $ mk  fuseFoldTransformers     "Decl-FT"  False True False True  (Just fusionI)
       , mkT $ mkDebug False $ fusionReduce
       , mkT $ mkDebug False $ ("typEffI",)  $ typEffI
       , mkT $ mkDebug False $ ("refreshI",) $ refreshI
