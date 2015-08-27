@@ -835,17 +835,19 @@ inlineApply isAP r f@(tag -> ELambda _) xs = do
   let (outerFExpr, innerFExpr) = (head &&& last) fExprs
   let (outerArg, _) = (getArg outerFExpr, getArg innerFExpr)
 
+  let reifyCapture (i, m) (rs, b) = do
+        g <- genSym
+        let outCast = if m == Moved then R.Move else id
+        return ( rs ++ [R.Forward $ R.ScalarDecl (R.Name g) R.Inferred (Just $ outCast $ R.Variable $ R.Name i)]
+               , R.subst g i <$> b
+               )
+
   let argReifications = map (reifyArgument innerFExpr) $ filter (\(a, _, _) -> a /= "_") $ zip3 argNames xs (isAP: repeat False)
   let trueCaptures = flip M.filterWithKey (getInDecisions outerFExpr) $ \k m -> k /= outerArg && (m == Copied || m == Moved)
 
-  -- TODO: Find a way around this ugly hack to trick shadowing.
-  captureReifications <- for (M.toList trueCaptures) $ \(k, m) -> do
-        g <- genSym
-        return $ [ R.Forward $ R.ScalarDecl (R.Name g) (R.Reference R.Inferred) (Just $ R.Variable $ R.Name k)
-                 , R.Forward $ R.ScalarDecl (R.Name k) R.Inferred (Just $ R.Variable $ R.Name g)
-                 ]
+  (captures, body'') <- foldrM reifyCapture ([], body') $ M.toList trueCaptures
 
-  return (concat captureReifications, argReifications ++ body')
+  return (captures, argReifications ++ body'')
  where
   reifyArgument :: K3 Expression -> (Identifier, R.Expression, Bool) -> R.Statement
   reifyArgument inner (id &&& R.Name -> (i,  inside),  outside, isAP') =
