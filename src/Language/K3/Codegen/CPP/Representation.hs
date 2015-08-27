@@ -2,46 +2,49 @@
 {-# LANGUAGE PatternSynonyms #-}
 
 module Language.K3.Codegen.CPP.Representation (
-    Stringifiable(..),
+  Stringifiable(..),
 
-    Name(..),
+  Name(..),
 
-    Primitive(..),
-    Type(..),
+  Primitive(..),
+  Type(..),
 
-    pattern Address,
-    pattern Collection,
-    pattern Byte,
-    pattern SharedPointer,
-    pattern UniquePointer,
-    pattern Unit,
-    pattern Tuple,
-    pattern Void,
+  pattern Address,
+  pattern Collection,
+  pattern Byte,
+  pattern SharedPointer,
+  pattern UniquePointer,
+  pattern Unit,
+  pattern Tuple,
+  pattern Void,
 
-    Literal(..),
-    Capture(..),
-    Expression(..),
+  Literal(..),
+  Capture(..),
+  Expression(..),
 
-    pattern WRef,
-    pattern CRef,
-    pattern Move,
-    pattern TGet,
-    pattern Throw,
-    pattern ThrowRuntimeErr,
-    pattern SForward,
-    pattern FMacro,
+  pattern WRef,
+  pattern CRef,
+  pattern Move,
+  pattern TGet,
+  pattern Throw,
+  pattern ThrowRuntimeErr,
+  pattern SForward,
+  pattern FMacro,
 
-    bind,
-    flattenFnType,
+  bind,
+  flattenFnType,
 
-    Declaration(..),
-    Statement(..),
+  Declaration(..),
+  Statement(..),
 
-    Definition(..),
+  Definition(..),
 
-    -- * Heuristics
-    isOrderAgnostic,
-    isMoveInferred
+  -- * Heuristics
+  isOrderAgnostic,
+  isMoveInferred,
+
+  -- * Transformations
+  Substitutable(..)
 ) where
 
 import Data.Maybe
@@ -184,15 +187,17 @@ instance Stringifiable Literal where
 data Capture
     = ValueCapture (Maybe (Identifier, Maybe Expression))
     | RefCapture (Maybe (Identifier, Maybe Expression))
+    | ThisCapture
   deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Capture where
     stringify (ValueCapture Nothing) = "="
-    stringify (ValueCapture (Just (i, Nothing))) = fromString i
+    stringify (ValueCapture (Just (i, Nothing))) = fromString i <+> equals <+> fromString i
     stringify (ValueCapture (Just (i, Just e))) = fromString i <+> equals <+> stringify e
     stringify (RefCapture Nothing) = "&"
     stringify (RefCapture (Just (i, Nothing))) = "&" <> fromString i
     stringify (RefCapture (Just (i, Just e))) = "&" <> fromString i <+> equals <+> stringify e
+    stringify ThisCapture = "this"
 
 type IsMutable = Bool
 
@@ -388,3 +393,59 @@ isMoveInferred e = case e of
   Subscript _ _ -> False
   Unary _ _ -> True
   Variable _ -> False
+
+-- Transformations
+class Substitutable a where
+  subst :: Identifier -> Identifier -> a -> a
+
+instance Substitutable Name where
+  subst new old name = case name of
+    Name i | i == old -> Name new
+    _ -> name
+
+instance Substitutable Type where
+  subst new old t = case t of
+    Named n -> Named (subst new old n)
+    ConstExpr e -> ConstExpr (subst new old e)
+    _ -> t
+
+instance Substitutable Capture where
+  subst new old capt = case capt of
+    ValueCapture (Just (i, me)) | i == old -> ValueCapture (Just (new, me))
+    RefCapture (Just (i, me)) | i == old -> RefCapture (Just (new, me))
+    _ -> capt
+
+instance Substitutable Expression where
+  subst new old expr = case expr of
+    Binary i x y -> Binary i (subst new old x) (subst new old y)
+    Call f xs -> Call (subst new old f) (map (subst new old) xs)
+    Dereference p -> Dereference (subst new old p)
+    TakeReference r -> TakeReference (subst new old r)
+    Initialization t xs -> Initialization t (map (subst new old) xs)
+    Lambda cs mits im mt bd -> Lambda (subst new old <$> cs) [(mi, subst new old t) | (mi, t) <- mits] im
+                                 (subst new old <$> mt) (subst new old <$> bd)
+    Literal l -> Literal l
+    Project p i -> Project (subst new old p) i
+    Subscript x s -> Subscript (subst new old x) (subst new old s)
+    Unary i a -> Unary i (subst new old a)
+    Variable n -> Variable (subst new old n)
+
+instance Substitutable Statement where
+  subst new old stmt = case stmt of
+    Assignment x y -> Assignment (subst new old x) (subst new old y)
+    Block ss -> Block (subst new old <$> ss)
+    Comment s -> Comment s
+    ForEach i t e s -> ForEach i (subst new old t) (subst new old e) (subst new old s)
+    Forward d -> Forward (subst new old d)
+    IfThenElse p ts es -> IfThenElse (subst new old p) (subst new old <$> ts) (subst new old <$> es)
+    Ignore e -> Ignore (subst new old e)
+    Pragma s -> Pragma s
+    Return e -> Return (subst new old e)
+
+instance Substitutable Declaration where
+  subst new old decl = case decl of
+    ClassDecl n -> ClassDecl (subst new old n)
+    FunctionDecl n ts t -> FunctionDecl (subst new old n) (subst new old <$> ts) (subst new old t)
+    ScalarDecl n t me -> ScalarDecl (subst new old n) (subst new old t) (subst new old <$> me)
+    TemplateDecl imts d -> TemplateDecl [(i, subst new old <$> mt) | (i, mt) <- imts] (subst new old d)
+    UsingDecl enn mn -> UsingDecl (subst new old <$> enn) (subst new old <$> mn)
