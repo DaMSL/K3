@@ -19,9 +19,13 @@ namespace K3 {
 template<size_t PageSize>
 struct PageHeader
 {
-  using slot_id_t     = uint32_t;  // Invalid when equal to numeric_limits::max().
-  using page_offset_t = uint32_t;
-  using slot_length_t = uint32_t;  // Invalid when 0.
+  using slot_id_t = std::conditional<PageSize <= 2<<12, uint16_t, uint32_t>::type;
+    // Invalid when equal to numeric_limits::max().
+
+  using page_offset_t = std::conditional<PageSize <= 2<<12, uint16_t, uint32_t>::type;
+
+  using slot_length_t = std::conditional<PageSize <= 2<<12, uint16_t, uint32_t>::type;
+    // Invalid when 0.
 
   slot_id_t current_slot;
   slot_id_t num_slots;
@@ -37,10 +41,7 @@ struct PageHeader
     return sizeof(page_offset_t) + sizeof(slot_length_t);
   }
 
-  constexpr slot_id_t default_slots() {
-    // Assume an average of 16 byte values.
-    return (PageSize - sizeof(PageHeader)) / (slot_size() + 16);
-  }
+  constexpr slot_id_t default_slots() { return 8; }
 };
 
 // Helper class to avoid reinterpret_casts for the header.
@@ -58,9 +59,13 @@ struct Page : public BasePage<PageSize>
 {
   using Super = BasePage<PageSize>;
 
-  using slot_id_t     = uint32_t;
-  using page_offset_t = uint32_t;
-  using slot_length_t = uint32_t;  // Invalid when 0.
+  using slot_id_t = std::conditional<PageSize <= 2<<12, uint16_t, uint32_t>::type;
+    // Invalid when equal to numeric_limits::max().
+
+  using page_offset_t = std::conditional<PageSize <= 2<<12, uint16_t, uint32_t>::type;
+
+  using slot_length_t = std::conditional<PageSize <= 2<<12, uint16_t, uint32_t>::type;
+    // Invalid when 0.
 
   ///////////////////////////////////
   // Initialization.
@@ -167,16 +172,6 @@ struct Page : public BasePage<PageSize>
   slot_id_t next_slot(size_t len) {
     bool slots_avail = Super::header_.current_slot < Super::header_.num_slots;
     size_t requested = len + (!slots_avail? Super::header_.slot_size() : 0);
-    /*
-    if ( available() > requested ) {
-      if ( !slots_avail ) { Super::header_.num_slots++; }
-      Super::header_.current_slot++;
-      auto s = Super::header_.current_slot - 1;
-      Super::header_.free_space_offset -= len;
-      set_slot(s, Super::header_.free_space_offset, len);
-      return s;
-    }
-    */
     size_t aligned = align_sz(requested);
     if ( available() > aligned ) {
       if ( !slots_avail ) { Super::header_.num_slots++; }
