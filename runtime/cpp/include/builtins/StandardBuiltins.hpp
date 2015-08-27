@@ -14,7 +14,7 @@ class Engine;
 class StandardBuiltins {
  public:
   StandardBuiltins(Engine& engine);
-  unit_t print(string_impl message);
+  unit_t print(const string_impl& message);
   unit_t sleep(int n);
   unit_t haltEngine(unit_t);
   template <class T>

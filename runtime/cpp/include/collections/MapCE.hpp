@@ -107,9 +107,13 @@ class MapCE {
     }
   }
 
-  template <class Q>
-  unit_t insert(Q&& q) {
-    container[q.key] = std::forward<Q>(q.value);
+  unit_t insert(const R& q) {
+    container[q.key] = q.value;
+    return unit_t();
+  }
+
+  unit_t insert(R&& q) {
+    container[std::move(q.key)] = std::move(q.value);
     return unit_t();
   }
 
@@ -191,14 +195,14 @@ class MapCE {
   template <typename Fun>
   unit_t iterate(Fun f) const {
     for (const auto& p : container) {
-      f(p.second);
+      f(p.first, p.second);
     }
     return unit_t();
   }
 
   template <typename Fun>
-  auto map(Fun f) const -> K3::MapCE<RT<RT<Fun, Key>, Value>> {
-    K3::MapCE<RT<RT<Fun, Key>, Value>> result;
+  auto map(Fun f) const -> K3::MapCE<RT<Fun, Key, Value>> {
+    K3::MapCE<RT<Fun, Key, Value>> result;
     for (const auto& p : container) {
       result.insert(f(p.first, p.second));
     }
@@ -206,7 +210,7 @@ class MapCE {
   }
 
   template <typename Fun>
-  auto map_generic(Fun f) const -> K3::Map<RT<RT<Fun, Key>, Value>> {
+  auto map_generic(Fun f) const -> K3::Map<RT<Fun, Key, Value>> {
     K3::MapCE<RT<RT<Fun, Key>, Value>> result;
     for (const auto& p : container) {
       result.insert(f(p.first, p.second));
@@ -234,29 +238,30 @@ class MapCE {
   }
 
   template <typename F1, typename F2, typename Z>
-  MapCE<R_key_value<RT<RT<F1, Key>, Value>, Z>>
+  MapCE<R_key_value<RT<F1, Key, Value>,  Z>>
   group_by(F1 grouper, F2 folder, const Z& init) const
   {
     // Create a map to hold partial results
-    typedef RT<RT<F1, Key>, Value> K;
+    typedef RT<F1, Key, Value> K;
     MapCE<R_key_value<K, Z>> result;
+    auto& result_con = result.getContainer();
 
     for (const auto& it : container) {
-      K key = grouper(it.first);
-      if (result.find(key) == result.end()) {
-        result[key] = init;
+      K key = grouper(it.first, it.second);
+      if (result_con.find(key) == result_con.end()) {
+        result_con[key] = init;
       }
-      result[key] = folder(std::move(result[key]), it.first, it.second);
+      result_con[key] = folder(std::move(result_con[key]), it.first, it.second);
     }
     return result;
   }
 
   template <typename F1, typename F2, typename Z>
-  Map<R_key_value<RT<RT<F1, Key>, Value>, Z>>
+  Map<R_key_value<RT<F1, Key, Value>, Z>>
   group_by_generic(F1 grouper, F2 folder, const Z& init) const
   {
     // Create a map to hold partial results
-    typedef RT<RT<F1, Key>, Value> K;
+    typedef RT<F1, Key, Value> K;
     std::unordered_map<K, Z> accs;
 
     for (const auto& it : container) {
@@ -358,8 +363,7 @@ struct convert<K3::MapCE<R>> {
 
   static bool decode(const Node& node, K3::MapCE<R>& c) {
     for (auto& i : node) {
-      auto p = i.as<typename K3::MapCE<R>::Elem>();
-      c.insert(c.elemToRecord(p));
+      c.insert(i.as<R>());
     }
     return true;
   }

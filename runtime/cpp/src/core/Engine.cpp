@@ -64,11 +64,13 @@ void Engine::join() {
   if (running_ && peers_) {
     for (auto& it : *peers_) {
       it.second->join();
-#ifdef K3DEBUG
-      it.second->printStatistics();
-#endif
     }
   }
+#ifdef K3DEBUG
+  for (auto& it : *peers_) {
+    it.second->printStatistics();
+  }
+#endif
   network_manager_.stop();
   network_manager_.join();
   running_ = false;

@@ -1,0 +1,80 @@
+include "Annotation/Collection.k3"
+include "Annotation/BulkFlatCollection.k3"
+include "Annotation/Maps/IntMap.k3"
+include "Annotation/Set.k3"
+include "Core/Builtins.k3"
+include "Core/Profile.k3"
+
+// TODO handle @:TPCHDate
+typedef lineitem_r = {
+      l_orderkey         : int,
+      l_partkey          : int,
+      l_suppkey          : int,
+      l_linenumber       : int,
+      l_quantity         : real,
+      l_extendedprice    : real,
+      l_discount         : real,
+      l_tax              : real,
+      l_returnflag       : string,
+      l_linestatus       : string,
+      l_shipdate         : string,
+      l_commitdate       : string,
+      l_receiptdate      : string,
+      l_shipinstruct     : string,
+      l_shipmode         : string,
+      l_comments         : string
+}
+
+// Globals and Loader
+declare lineitem_local: mut collection {elem: lineitem_r} @Collection
+declare lineitem_empty: collection {elem: lineitem_r} @Collection
+declare lineitemLoaderPE: collection {path: string} @Collection -> collection {elem: lineitem_r} @Collection -> ()
+declare files: collection {path: string} @Collection
+
+declare lineitem_bfc : mut collection lineitem_r @BulkFlatCollection
+declare lineitem_bfc2 : mut collection lineitem_r @BulkFlatCollection
+
+trigger convert: () = \_ -> (
+ lineitemLoaderPE files lineitem_local;
+ lineitem_bfc.append lineitem_local;
+ let s = lineitem_bfc.fold (\a -> \_ -> a + 1) 0
+ in (
+   print (itos (lineitem_local.size()));
+   print (itos s); 
+   (sink1, me) <- lineitem_bfc.save();
+   (stop, me) <- ()
+ )
+)
+
+trigger stop: () = \_ -> (
+  haltEngine()
+)
+
+declare read_start: mut int =0
+declare read_end: mut int = 0
+declare load_start: mut int = 0
+declare load_end: mut int = 0
+
+trigger load: () = \_ -> (
+  openFile me "input" "/local/data/test.in" "raw" false "r";
+  read_start = now_int();
+  let s = doRead me "input"
+  in (
+    read_end = now_int();
+    load_start = now_int();
+    lineitem_bfc.load(s);
+    load_end = now_int();
+    print (itos (lineitem_bfc.fold (\a -> \_ -> a + 1) 0));
+    print ("Read time: " ++ (itos (read_end - read_start)));
+    print ("Load time: " ++ (itos (load_end - load_start)));
+    haltEngine()
+  )
+)
+
+source s1: () = value ()
+feed s1 |> convert
+
+source s2: () = value ()
+feed s2 |> load
+
+sink sink1: string = file "/local/data/test.out" binary raw

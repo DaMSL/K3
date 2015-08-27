@@ -129,7 +129,7 @@ std::size_t base_string::length() const {
 std::size_t base_string::raw_length() const {
   if (bufferp_()) {
     if (has_header()) {
-      return *(reinterpret_cast<size_t*>(bufferp_()) + header_size);
+      return *reinterpret_cast<size_t*>(bufferp_()) + header_size;
     }
     else { return strlen(bufferp_()); }
   }
@@ -309,8 +309,9 @@ char* base_string::end() const { return const_cast<char*>(c_str()) + length(); }
 char* dupbuf(const base_string& b) throw() {
   if (!b.bufferp_()) { return nullptr; }
   auto n = b.raw_length();
-  auto d = new char[n + 1];
-  return static_cast<char*>(memcpy(d, b.bufferp_(), n + 1));
+  char* d = new char[n + 1];
+  memcpy(d, b.bufferp_(), n + 1);
+  return d;
 }
 
 char* dupstr(const char* s) throw() {
