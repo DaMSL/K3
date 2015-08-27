@@ -441,8 +441,14 @@ inline e@(tag &&& children -> (EOperate OApp, [
                        (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uv])
 
   (nfe, nfb) <- inlineApply False (RName (R.Subscript uv kv) (Just True)) n [R.Initialization R.Unit []]
-  (wfe, wfb) <- inlineApply False (RName (R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")) (Just True)) w
-                  [R.Move $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")]
+
+  let rArg = isJust $ w @~ (\case { EProperty (ePropertyName -> "ReturnsArgument") -> True; _ -> False })
+  let rContext = if rArg
+                   then RForget
+                   else RName (R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")) (Just True)
+
+  (wfe, wfb) <- inlineApply rArg rContext w
+                  [(if rArg then id else R.Move) $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")]
 
   return (ce ++ [ue] ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
          , R.Initialization R.Unit [])
