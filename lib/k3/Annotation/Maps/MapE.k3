@@ -7,7 +7,7 @@ include "Annotation/Map.k3"
 // This variant requires parameters defining the key-value decomposition
 // of the content type, and exploits these parameters where suitable in its API.
 
-annotation MapE[key: [labeltype], value: [labeltype]] given type a,b,c
+annotation MapE[key: [labeltype], value: [labeltype]] given type a,b,c,d
 {
   provides lifted size : () -> int
     with effects \_ -> R[self]
@@ -113,6 +113,19 @@ annotation MapE[key: [labeltype], value: [labeltype]] given type a,b,c
                          -> collection {key : a, value: b}
                               @MapE(key=[:> key=>a], value=[:> value=>b])
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
+
+
+  // Mosaic-specific functionality.
+
+  // A fused equi-join and fold, taking a RHS collection, a key extractor
+  // that must produce the same type as the map's key, and an accumulator
+  // and initial value.
+  @:{Transformer, CArgs 4}
+  provides lifted equijoinkf_kv : collection {key: a, value: b} @Collection
+                                -> ({key: a, value: b} -> c)
+                                -> (d -> content -> {key: a, value: b} -> d) -> d -> d
+    with effects \other -> \otherKeyF -> \foldF -> \z ->
+                   [R[self]; R[z]; ([R[other]; R[content]; otherKeyF none; ((foldF z) content) none])*]
 
 }
 

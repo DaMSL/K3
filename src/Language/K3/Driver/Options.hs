@@ -372,7 +372,6 @@ compileStagesOpt ct = extractStageAndSpec . keyValList "" <$> strOption (
 
     -- | Local compilation stages definitions.
     stageOf _     ("none",      read -> True) = []
-    stageOf _     ("opt",       read -> True) = [SBatchOpt]
     stageOf cSpec ("declopt",   read -> True) = [SDeclPrepare, SDeclOpt cSpec]
     stageOf cSpec ("cg",        read -> True) = [SDeclPrepare, SDeclOpt cSpec, SCodegen]
 

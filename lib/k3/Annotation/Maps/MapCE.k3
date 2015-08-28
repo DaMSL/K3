@@ -127,5 +127,17 @@ annotation MapCE[key: type, value: type] given type a,b,c,d
      -> collection {key : a, value : b} @MapCE(key=[: a], value=[: b])
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
 
+  // Mosaic-specific functionality.
+
+  // A fused equi-join and fold, taking a RHS collection, a key extractor
+  // that must produce the same type as the map's key, and an accumulator
+  // and initial value.
+  @:{Transformer, CArgs 4}
+  provides lifted equijoinkf_kv : collection {key: a, value: b} @Collection
+                                -> ({key: a, value: b} -> c)
+                                -> (d -> $[key] -> $[value] -> {key: a, value: b} -> d) -> d -> d
+    with effects \other -> \otherKeyF -> \foldF -> \z ->
+                   [R[self]; R[z]; ([R[other]; R[content]; otherKeyF none; ((foldF z) content) none])*]
+
 }
 

@@ -74,7 +74,6 @@ reasonM msg m = withExceptT (msg ++) m
 transformM :: CompileStages -> K3 Declaration -> TransformM (K3 Declaration, [String])
 transformM cstages prog = foldM processStage (prog, []) cstages
   where
-    processStage (p,lg) SBatchOpt        = chainLog   lg $ ST.runOptPassesM p
     processStage (p,lg) SDeclPrepare     = chainLog   lg $ ST.runDeclPreparePassesM p
     processStage (p,lg) (SDeclOpt cSpec) = wrapReport lg $ ST.runDeclOptPassesM cSpec Nothing p
     processStage (p,lg) SCodegen         = chainLog   lg $ ST.runCGPassesM p

@@ -22,6 +22,7 @@ import Data.Functor.Identity
 import Data.Binary ( Binary )
 import Data.Serialize ( Serialize )
 
+import Data.Either
 import Data.List
 import Data.Maybe
 import Data.Tree
@@ -48,7 +49,7 @@ import Language.K3.Analysis.Core
 
 import Language.K3.Analysis.Provenance.Core
 import Language.K3.Analysis.Provenance.Constructors
-import Language.K3.Analysis.Provenance.Inference()
+import Language.K3.Analysis.Provenance.Inference ( PIEnv, piBindings )
 
 import Language.K3.Analysis.SEffects.Core
 import Language.K3.Analysis.SEffects.Constructors
@@ -1571,6 +1572,12 @@ noWritesC (SymbolCategories _ w _) = null w
 noWritesOnProvenanceC :: K3 Provenance -> SymbolCategories -> Bool
 noWritesOnProvenanceC p (SymbolCategories _ w _) = p `notElem` w
 
+noWritesOnBinding :: PIEnv -> Identifier -> UID -> SymbolCategories -> Either Text Bool
+noWritesOnBinding env i u (SymbolCategories _ w _) = runExcept $ do
+  b <- mapM (piBindings env) w >>= return . nub . concat
+  return $ (i, u) `notElem` (rights b)
+
+
 -- | Returns whether the given expression has only read effects.
 --   The first argument indicates whether lambda effects should be considered in terms of their body's effects.
 readOnly :: Bool -> K3 Expression -> Either String Bool
@@ -1586,6 +1593,15 @@ noWrites True (tnc -> (ELambda _, [b])) = noWrites False b
 noWrites _ e = either (Left . T.unpack) Right $ do
   symcat <- categorizeExprEffects e
   return $ noWritesC symcat
+
+-- | Returns where the given expression has any writes on an identifier, UID pair.
+--   The first argument indicates whether lambda effects should be considered in terms of their body's effects.
+noWritesOn :: Bool -> PIEnv -> Identifier -> UID -> K3 Expression -> Either String Bool
+noWritesOn True env i u (tnc -> (ELambda _, [b])) = noWritesOn False env i u b
+noWritesOn _ env i u e = either (Left . T.unpack) Right $ do
+  symcat <- categorizeExprEffects e
+  noWritesOnBinding env i u symcat
+
 
 {- Pattern synonyms for inference -}
 pattern PTOption et <- Node (TOption :@: _) [et]
