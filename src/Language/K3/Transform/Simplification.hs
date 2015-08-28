@@ -42,8 +42,11 @@ import qualified Language.K3.Core.Constructor.Literal    as LC
 
 import Language.K3.Analysis.Core
 import Language.K3.Analysis.Provenance.Core
+import Language.K3.Analysis.Provenance.Inference ( PIEnv )
+
 import Language.K3.Analysis.SEffects.Core
-import Language.K3.Analysis.SEffects.Inference                ( readOnly, noWrites )
+import Language.K3.Analysis.SEffects.Inference                ( readOnly, noWrites, noWritesOn )
+
 import qualified Language.K3.Analysis.Provenance.Constructors as PC
 import qualified Language.K3.Analysis.SEffects.Constructors   as FC
 import qualified Language.K3.Analysis.SEffects.Inference      as SE
@@ -549,26 +552,26 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
 --   Furthermore, this only applies to direct lambda invocations, rather than
 --   on general function values (i.e., including applications through bnds
 --   and substructure). For the latter case, we must inline and defunctionalize first.
-betaReductionOnProgram :: K3 Declaration -> Either String (K3 Declaration)
-betaReductionOnProgram prog = mapExpression betaReduction prog
+betaReductionOnProgram :: PIEnv -> K3 Declaration -> Either String (K3 Declaration)
+betaReductionOnProgram env prog = mapExpression (betaReduction env) prog
 
 -- Effect-aware beta reduction of an expression.
 -- We strip UIDs, spans, types and effects present on the substitution.
 -- Thus, we cannot recursively invoke the simplification, and must iterate
 -- to a fixpoint externally.
-betaReduction :: K3 Expression -> Either String (K3 Expression)
-betaReduction expr = betaReductionDelta expr >>= return . fst
+betaReduction :: PIEnv -> K3 Expression -> Either String (K3 Expression)
+betaReduction env expr = betaReductionDelta env expr >>= return . fst
 
 -- Beta reduction with a boolean indicating if any substitutions were performed.
-betaReductionDelta :: K3 Expression -> Either String (K3 Expression, Bool)
-betaReductionDelta expr = foldMapTree reduce ([], False) expr >>= return . first head
+betaReductionDelta :: PIEnv -> K3 Expression -> Either String (K3 Expression, Bool)
+betaReductionDelta env expr = foldMapTree reduce ([], False) expr >>= return . first head
   where
     reduce (onSub -> (ch, True)) n = return $ ([replaceCh n ch], True)
     reduce (onSub -> (ch, False)) n =
       let n' = replaceCh n ch in
       case (skipBetaReduce n', n') of
-        (False, tag -> ELetIn i) -> reduceOnOccurrences n' i (head ch) (last ch)
-        (False, PAppLam i bodyE argE _ _) -> reduceOnOccurrences n' i argE bodyE
+        (False, tag -> ELetIn i) -> reduceOnOccurrences n' i (head ch) (last ch) (n' @~ isEUID)
+        (False, PAppLam i bodyE argE _ _) -> reduceOnOccurrences n' i argE bodyE (n' @~ isEUID)
         (_, _) -> return ([n'], False)
 
     reduce _ _ = Left "Invalid betaReductionDelta.reduce pattern match"
@@ -576,14 +579,16 @@ betaReductionDelta expr = foldMapTree reduce ([], False) expr >>= return . first
     -- This reduction is extremely conservative: we proceed only if both the target and
     -- substitution are read only. A more general form is if there are no writes to any
     -- variables in the substitution in the target, in the prefix of all substitution points.
-    reduceOnOccurrences n i ie e = do
+    reduceOnOccurrences n i ie e (Just (EUID u)) = do
       ieRO <- readOnly False ie
-      eRO  <- readOnly True e
+      eRO  <- noWritesOn True env i u e
       let numOccurs = length $ filter (== i) $ freeVariables e
       (simple, doReduce) <- reducibleTarget numOccurs ie
       if debugCondition ieRO eRO n $ (simple || (ieRO && eRO)) && doReduce
         then return ([substituteImmutBinding i (cleanExpr ie) e], True)
         else return ([n], False)
+
+    reduceOnOccurrences _ _ _ _ _ = Left "Invalid UID for reduceOnOccurrences"
 
     reducibleTarget numOccurs ie =
       case (tag ie, ie @~ isEType, ie @~ isEQualified) of
