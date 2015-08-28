@@ -603,3 +603,47 @@ solveForP p = case tag p of
   MOr -> or <$> traverse solveForP (children p)
   MOneOf e m -> flip elem m <$> solveForE e
   MBool b -> return b
+
+-- * Independent Simplification Routines
+-- | The following routines perform simplification on MExprs/MPreds independent of the binding
+--   values of MVars; it is in essence performing just the propagation stage of constraint solvers.
+--   The constraints still need to be "solved" as above, but hopefully they will be a _lot_ smaller,
+--   and will not include spurious dependencies.
+simplifyE :: K3 MExpr -> K3 MExpr
+simplifyE expr = case expr of
+  (tag &&& children -> (MIfThenElse p, [t, e])) -> case simplifyP p of
+    (tag -> MBool b) -> simplifyE $ if b then t else e
+    p' -> mITE p' t e
+  _ -> expr
+
+simplifyP :: K3 MPred -> K3 MPred
+simplifyP pred = case pred of
+  (tag &&& children -> (MNot, [p])) -> case simplifyP p of
+    (tag -> MBool b) -> mBool (not b)
+    p' -> mNot p'
+  (tag &&& children -> (MAnd, cs)) -> foldl andFold (mBool True) cs
+  (tag &&& children -> (MOr, cs)) -> foldl orFold (mBool False) cs
+  (tag -> (MOneOf e ms)) -> case simplifyE e of
+    (tag -> MAtom m) -> mBool (m `elem` ms)
+    e' -> mOneOf e' ms
+  (tag -> MBool b) -> mBool b
+ where
+  andFold :: K3 MPred -> K3 MPred -> K3 MPred
+  andFold acc p = case (acc, simplifyP p) of
+    (tag -> MBool b, a)
+      | b -> a
+      | otherwise -> mBool False
+    (a, tag -> MBool b)
+      | b -> a
+      | otherwise -> mBool False
+    (acc', p') -> acc' -&&- p'
+
+  orFold :: K3 MPred -> K3 MPred -> K3 MPred
+  orFold acc p = case (acc, simplifyP p) of
+    (tag -> MBool b, a)
+      | b -> mBool True
+      | otherwise -> a
+    (a, tag -> MBool b)
+      | b -> mBool True
+      | otherwise -> a
+    (acc', p') -> acc' -||- p'
