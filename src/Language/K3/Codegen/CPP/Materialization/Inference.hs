@@ -320,10 +320,14 @@ materializeE e@(Node (t :@: _) cs) = case t of
       cpBinding <- contextualizeNow (pbvar m)
       (ehw, _) <- hasWriteIn cpBinding cpBody
 
-      let bindNeedsOwn = ehw
-      constrain u name In $ mITE bindNeedsOwn (mITE sourceMoveable (mAtom Moved) (mAtom Copied)) (mAtom Referenced)
-      constrain u name Ex $ mITE (mOneOf (mVar u name In) [Copied, Moved]) (mAtom Moved) (mAtom Referenced)
+      cpBindSource <- chasePPtr ptr >>= contextualizeNow
+      (bsehw, _) <- hasWriteIn cpBindSource cpBody
+      (bsehr, _) <- hasReadIn cpBindSource cpBody
 
+      let bindNeedsOwn = ehw
+      let bindConflict = bsehr -||- bsehw
+      constrain u name In $ mITE bindConflict (mITE bindNeedsOwn (mAtom Copied) (mAtom Referenced)) (mAtom Referenced)
+      constrain u name Ex $ mITE (mOneOf (mVar u name In) [Copied, Moved]) (mAtom Moved) (mAtom Referenced)
 
   ELetIn i -> do
     let [initB, body] = cs
