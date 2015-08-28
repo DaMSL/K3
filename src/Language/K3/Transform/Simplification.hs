@@ -576,9 +576,11 @@ betaReductionDelta env expr = foldMapTree reduce ([], False) expr >>= return . f
 
     reduce _ _ = Left "Invalid betaReductionDelta.reduce pattern match"
 
-    -- This reduction is extremely conservative: we proceed only if both the target and
-    -- substitution are read only. A more general form is if there are no writes to any
-    -- variables in the substitution in the target, in the prefix of all substitution points.
+    -- We perform beta reduction if:
+    -- i. the substituted expression is read only. This ensures multiple substitutions do
+    --    not cause duplicated write effects.
+    -- ii. the target expression into which we are substituting does not perform any writes
+    --     on the identifier.
     reduceOnOccurrences n i ie e (Just (EUID u)) = do
       ieRO <- readOnly False ie
       eRO  <- noWritesOn True env i u e
