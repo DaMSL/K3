@@ -68,7 +68,7 @@ optimizeMaterialization (p, f) d = runExceptT $ inferMaterialization >>= solveMa
     Left (SError msg) -> throwError msg
     Right (_, SState mp) -> return mp
    where
-    solveAction = (mkDependencyList ct d >>= flip solveForAll ct)
+    solveAction = (let ct' = simplifyE <$> ct in mkDependencyList ct' d >>= flip solveForAll ct')
 
   attachMaterialization k m = return $ attachD <$> k
    where
@@ -135,7 +135,7 @@ formatIReport rv ir = do
   for_ ir $ \(IReport (Juncture u i) d m) -> case reportVerbosity of
     None -> return ()
     Short -> printf "J%d/%s/%s: %s\n" (gUID u) i (show d) (ppShortE m)
-    Long -> printf "--- Juncture %d/%s/%s:\n%s" (gUID u) i (show d) (pretty m)
+    Long -> printf "--- Juncture %d/%s/%s:\n%s" (gUID u) i (show d) (boxToString $ prettyLines m %+ prettyLines (simplifyE m))
   putStrLn "--- End Materialization Inference Report ---"
 
 -- ** Errors
