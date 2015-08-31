@@ -39,5 +39,11 @@ annotation BulkFlatCollection given type a, b, c, d
   @:{Transformer, CArgs 2}
   provides lifted fold : (a -> (content -> a)) -> a -> a
     with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
-
+  
+  @:{Transformer, CArgs 3}
+  provides lifted group_by : (content -> a) -> (b -> content -> b) -> b
+                              -> collection { key : a, value : b } @Collection
+    with effects
+      \gbF -> \gaccF -> \z ->
+        [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 }

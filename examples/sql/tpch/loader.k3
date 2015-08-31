@@ -37,6 +37,30 @@ declare regionLoaderP : collection {path: string} @Collection -> region_bag -> (
 declare tpchAgendaLoaderP : collection {path: string} @Collection -> tpch_agenda_bag -> ()
   with effects \_ -> \_ -> io
 
+@:CArgs 2
+declare lineitemLoaderPE : collection {path: string} @Collection -> lineitem_elem_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare customerLoaderPE : collection {path: string} @Collection -> customer_elem_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare ordersLoaderPE : collection {path: string} @Collection -> orders_elem_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare supplierLoaderPE : collection {path: string} @Collection -> supplier_elem_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare partsuppLoaderPE : collection {path: string} @Collection -> partsupp_elem_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare partLoaderPE : collection {path: string} @Collection -> part_elem_bag -> ()
+  with effects \_ -> \_ -> io
+
 
 /////////////////////////////
 //

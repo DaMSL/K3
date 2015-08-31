@@ -17,9 +17,9 @@ typedef lineitem_r = {
       l_tax              : real,
       l_returnflag       : string,
       l_linestatus       : string,
-      l_shipdate         : string,
-      l_commitdate       : string,
-      l_receiptdate      : string,
+      l_shipdate         : int @::TPCHDate,
+      l_commitdate       : int @::TPCHDate,
+      l_receiptdate      : int @::TPCHDate,
       l_shipinstruct     : string,
       l_shipmode         : string,
       l_comments         : string
