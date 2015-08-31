@@ -134,7 +134,7 @@ formatIReport rv ir = do
   putStrLn "--- Begin Materialization Inference Report ---"
   for_ ir $ \(IReport (Juncture u i) d m) -> case reportVerbosity of
     None -> return ()
-    Short -> printf "J%d/%s/%s: %s\n" (gUID u) i (show d) (ppShortE m)
+    Short -> printf "J%d/%s/%s: %s / %s\n" (gUID u) i (show d) (ppShortE m) (ppShortE $ simplifyE m)
     Long -> printf "--- Juncture %d/%s/%s:\n%s" (gUID u) i (show d) (boxToString $ prettyLines m %+ prettyLines (simplifyE m))
   putStrLn "--- End Materialization Inference Report ---"
 
