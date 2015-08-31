@@ -625,29 +625,37 @@ simplifyP pred = case pred of
   (tag &&& children -> (MNot, [p])) -> case simplifyP p of
     (tag -> MBool b) -> mBool (not b)
     p' -> mNot p'
-  (tag &&& children -> (MAnd, cs)) -> foldl andFold (mBool True) cs
-  (tag &&& children -> (MOr, cs)) -> foldl orFold (mBool False) cs
+  (tag &&& children -> (MAnd, cs)) -> case foldl andFold (Just []) cs of
+    Nothing -> mBool False
+    Just [] -> mBool True
+    Just xs -> case L.nub xs of
+      [x] -> x
+      xs' -> mAnd xs'
+  (tag &&& children -> (MOr, cs)) -> case foldl orFold (Just []) cs of
+    Nothing -> mBool True
+    Just [] -> mBool False
+    Just xs -> case L.nub xs of
+      [x] -> x
+      xs' -> mOr xs'
   (tag -> (MOneOf e ms)) -> case simplifyE e of
     (tag -> MAtom m) -> mBool (m `elem` ms)
     e' -> mOneOf e' ms
   (tag -> MBool b) -> mBool b
  where
-  andFold :: K3 MPred -> K3 MPred -> K3 MPred
+  andFold :: Maybe [K3 MPred] -> K3 MPred -> Maybe [K3 MPred]
   andFold acc p = case (acc, simplifyP p) of
-    (tag -> MBool b, a)
-      | b -> a
-      | otherwise -> mBool False
-    (a, tag -> MBool b)
-      | b -> a
-      | otherwise -> mBool False
-    (acc', p') -> acc' -&&- p'
+    (Nothing, _) -> Nothing
+    (Just as, tag -> MBool b)
+      | b -> Just as
+      | otherwise -> Nothing
+    (Just as, tag &&& children -> (MAnd, cs)) -> Just (as ++ cs)
+    (Just as, q) -> Just (as ++ [q])
 
-  orFold :: K3 MPred -> K3 MPred -> K3 MPred
+  orFold :: Maybe [K3 MPred] -> K3 MPred -> Maybe [K3 MPred]
   orFold acc p = case (acc, simplifyP p) of
-    (tag -> MBool b, a)
-      | b -> mBool True
-      | otherwise -> a
-    (a, tag -> MBool b)
-      | b -> mBool True
-      | otherwise -> a
-    (acc', p') -> acc' -||- p'
+    (Nothing, _) -> Nothing
+    (Just as, tag -> MBool b)
+      | b -> Nothing
+      | otherwise -> Just as
+    (Just as, tag &&& children -> (MOr, cs)) -> Just (as ++ cs)
+    (Just as, q) -> Just (as ++ [q])
