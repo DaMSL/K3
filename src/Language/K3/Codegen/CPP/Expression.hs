@@ -754,13 +754,17 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
   initKType <- getKType a
   initCType <- genCType initKType
 
-  (initName, initReify) <-
-    case tag a of
+  (initName, initReify) <- do
+    g <- genSym
+    (e, i) <- inline a
+    return (g, e ++ [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just i)])
+
+    {- case tag a of
       EVariable v -> return (v, [])
       _ -> do
         g <- genSym
         ee <- reify (RName (R.Variable $ R.Name g) Nothing) a
-        return (g, [R.Forward $ R.ScalarDecl (R.Name g) initCType Nothing] ++ ee)
+        return (g, [R.Forward $ R.ScalarDecl (R.Name g) initCType Nothing] ++ ee) -}
 
   let initExpr = R.Variable (R.Name initName)
 
