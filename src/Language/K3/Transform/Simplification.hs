@@ -19,10 +19,13 @@ import Data.Either
 import Data.Fixed
 import Data.Function
 import Data.List
+import Data.IntMap ( IntMap )
 import Data.Maybe
 import Data.Tree
 import Data.Word ( Word8 )
 import qualified Data.Map as Map
+import qualified Data.IntMap as IntMap
+
 import Debug.Trace
 
 import Language.K3.Core.Annotation
@@ -2114,27 +2117,39 @@ rewriteStreamAccumulation i expr = mapAccumulation rewriteAccumE rewriteVarE i e
 
 -- | Mark every lambda that returns its argument at all return points.
 markProgramSelfReturningLambdas :: K3 Declaration -> Either String (K3 Declaration)
-markProgramSelfReturningLambdas prog = mapExpression markSelfReturningLambdas prog
+markProgramSelfReturningLambdas prog = do
+  lcenv <- lambdaClosures prog
+  mapExpression (markSelfReturningLambdas lcenv) prog
 
-markSelfReturningLambdas :: K3 Expression -> Either String (K3 Expression)
-markSelfReturningLambdas expr = modifyTree onLambda expr
-  where onLambda e@(tnc -> (ELambda i, [body])) =
-          case inferArgumentReturns i body of
+markSelfReturningLambdas :: ClosureEnv -> K3 Expression -> Either String (K3 Expression)
+markSelfReturningLambdas lcenv expr = modifyTree onLambda expr
+  where onLambda e@(tnc -> (ELambda i, [body])) = do
+          u <- uidOf e
+          clvars <- maybe closureErr return $ IntMap.lookup u lcenv
+          case inferVariableReturns i clvars body of
             (True, nbody) -> return $ (replaceCh e [nbody]) @+ inferredEProp "ReturnsArgument" Nothing
             (False, _) -> return e
         onLambda e = return e
 
--- | Infer return points in lambdas that yield the argument variable, and annotate the lambda
---   if every return expression is either:
+        uidOf e   = maybe uidErr (\case {(EUID (UID u)) -> Right u ; _ -> uidErr}) $ e @~ isEUID
+
+        uidErr     = Left "Invalid UID when marking self-returning lambdas."
+        closureErr = Left "Invalid closure vars when marking self-returning lambdas."
+
+-- | Infer return points in lambdas that yield either the argument or a closure-captured variable.
+--   We annotate the lambda if every return expression is either:
 --     i.  the variable itself syntax-wise (for now we consider only the exact variable, not equivalent bnds)
 --     ii. a branching expression whose return points are themselves argument-returns.
-mapArgumentReturns :: (K3 Expression -> K3 Expression)
-                   -> Identifier -> K3 Expression -> (Bool, K3 Expression)
-mapArgumentReturns onRetVarF i expr = runIdentity $ do
+mapVariableReturns :: (K3 Expression -> K3 Expression)
+                   -> (K3 Expression -> K3 Expression)
+                   -> Identifier -> [Identifier] -> K3 Expression -> (Bool, K3 Expression)
+mapVariableReturns onRetArgF onRetCVarF i cl expr = runIdentity $ do
   (isAcc, e) <- doInference
   return $ (either id id isAcc, e)
 
   where
+    il = i:cl
+
     doInference = foldMapReturnExpression trackBindings argumentReturn independentF False (Left False) expr
 
     trackBindings shadowed e = case tag e of
@@ -2144,35 +2159,36 @@ mapArgumentReturns onRetVarF i expr = runIdentity $ do
         EBindAs b -> return (shadowed, [shadowed, foldl onBinding shadowed $ bindingVariables b])
         _ -> return (shadowed, replicate (length $ children e) shadowed)
 
-      where onBinding sh j = if i == j then True else sh
+      where onBinding sh j = if j `elem` il then True else sh
 
     -- TODO: check effects and lineage rather than free variables.
     independentF shadowed _ e
-      | EVariable j <- tag e , i == j && not shadowed = return (Right False, e)
-      | EAssign   j <- tag e , i == j && not shadowed = return (Right False, e)
+      | EVariable j <- tag e , j `elem` il && not shadowed = return (Right False, e)
+      | EAssign   j <- tag e , j `elem` il && not shadowed = return (Right False, e)
 
     independentF _ (onIndepR -> isArgReturn) e = return (isArgReturn, e)
 
     -- TODO: using symbols as lineage here will provide better alias tracking.
     -- TODO: test in-place modification property
     argumentReturn shadowed _ e@(tag -> EVariable j)
-      | i == j && not shadowed = return (Left True, onRetVarF e)
+      | i == j && not shadowed      = return (Left True, onRetArgF e)
+      | j `elem` cl && not shadowed = return (Left True, onRetCVarF e)
 
-    argumentReturn _ (onReturnBranch [0]   -> isArgRet) e@(tag -> ELambda _)     = return (isArgRet, e)
-    argumentReturn _ (onReturnBranch [0]   -> isArgRet) e@(tag -> EOperate OApp) = return (isArgRet, e)
-    argumentReturn _ (onReturnBranch [1]   -> isArgRet) e@(tag -> EOperate OSeq) = return (isArgRet, e)
+    argumentReturn _ (onDirectReturnBranch [0]   -> isArgRet) e@(tag -> ELambda _)     = return (isArgRet, e)
+    argumentReturn _ (onDirectReturnBranch [0]   -> isArgRet) e@(tag -> EOperate OApp) = return (isArgRet, e)
+    argumentReturn _ (onDirectReturnBranch [1]   -> isArgRet) e@(tag -> EOperate OSeq) = return (isArgRet, e)
 
-    argumentReturn _ (onReturnBranch [1]   -> isArgRet) e@(tag -> ELetIn  _)     = return (isArgRet, e)
-    argumentReturn _ (onReturnBranch [1]   -> isArgRet) e@(tag -> EBindAs _)     = return (isArgRet, e)
-    argumentReturn _ (onReturnBranch [1,2] -> isArgRet) e@(tag -> ECaseOf _)     = return (isArgRet, e)
-    argumentReturn _ (onReturnBranch [1,2] -> isArgRet) e@(tag -> EIfThenElse)   = return (isArgRet, e)
+    argumentReturn _ (onDirectReturnBranch [1]   -> isArgRet) e@(tag -> ELetIn  _)     = return (isArgRet, e)
+    argumentReturn _ (onDirectReturnBranch [1]   -> isArgRet) e@(tag -> EBindAs _)     = return (isArgRet, e)
+    argumentReturn _ (onDirectReturnBranch [1,2] -> isArgRet) e@(tag -> ECaseOf _)     = return (isArgRet, e)
+    argumentReturn _ (onDirectReturnBranch [1,2] -> isArgRet) e@(tag -> EIfThenElse)   = return (isArgRet, e)
 
     argumentReturn _ _ e = return (Right False, e)
 
     onIndepR l = if any not $ rights l then Right False else Left False
 
-    onReturnBranch branchIds l =
-      if any not $ rights l then Right False
+    onDirectReturnBranch branchIds l =
+      if any not $ rights (map (l !!) branchIds) then Right False
       else ensureEither (map (l !!) branchIds)
 
     ensureEither l =
@@ -2180,9 +2196,11 @@ mapArgumentReturns onRetVarF i expr = runIdentity $ do
         then (if null $ rights l then Left else Right) True
         else Right False
 
-inferArgumentReturns :: Identifier -> K3 Expression -> (Bool, K3 Expression)
-inferArgumentReturns i expr = mapArgumentReturns annotateE i expr
-  where annotateE e = e @+ (inferredEProp "ArgReturn" Nothing)
+
+inferVariableReturns :: Identifier -> [Identifier] -> K3 Expression -> (Bool, K3 Expression)
+inferVariableReturns i cl expr = mapVariableReturns annotateArgE annotateClosureE i cl expr
+  where annotateArgE     e = e @+ (inferredEProp "ArgReturn" Nothing)
+        annotateClosureE e = e @+ (inferredEProp "ClosureReturn" Nothing)
 
 
 -- Helper patterns for fusion
