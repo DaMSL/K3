@@ -1,6 +1,7 @@
 {-# LANGUAGE ViewPatterns #-}
 module Language.K3.Metaprogram.Primitives.Values where
 import Control.Monad.Identity
+import Control.Arrow ( (&&&) )
 
 import Data.List
 import Data.Maybe
@@ -206,3 +207,16 @@ baseTableBFC (SExpr e) var = runIdentity $ mapTree replaceNode e >>= return . SE
     hasProperty (EProperty (ePropertyName -> name)) = name == "BaseTable"
     hasProperty _ = False
 baseTableBFC _ _ = error "Invalid expression in baseTableBFC"
+
+extractPathBFC :: SpliceValue -> SpliceValue
+extractPathBFC (SExpr e) = maybe (error "No path found in BaseTable property") (SExpr . EC.variable) (runIdentity $ foldTree nodeFn Nothing e)
+  where
+    nodeFn :: Maybe (String) -> K3 Expression -> Identity (Maybe String)
+    nodeFn acc n@(annotations -> anns) = return $ case (foldl extract Nothing anns) of
+                                                    Nothing -> acc
+                                                    Just x -> Just x
+
+    extract :: Maybe String -> Annotation Expression -> Maybe String
+    extract acc (EProperty ( (ePropertyName &&& ePropertyValue) -> ("BaseTable", Just (tag -> LString s)) )) = Just s
+    extract acc _ = acc
+extractPathBFC _ = error "Invalid expression in extractPathBFC"

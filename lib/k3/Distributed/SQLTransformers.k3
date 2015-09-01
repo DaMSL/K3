@@ -77,20 +77,38 @@ control Barrier [ lbl: label, count: expr ] {
 }
 
 // TODO(jbw) figure out how to feed filepath into GroupBy Annotation
+// TODO(jbw) consider folding into a map after groupby
 // Requires: peers, master
 // Assumes: var is a global.
 control DistributedGroupBy2 [ lbl : label, merge : expr ]
 {
   // Block-based version. TODO(jbw) Property name
-  ( (?var = ( (((?Expr) : collection ?origT)).group_by ?groupF ?aggF ?accE) : collection ?KVT);
-    (?dtrig, ?daddr) <- (() @:Foo)
+  ( (?var = (( (((?Expr) : collection ?origT)).group_by ?groupF ?aggF ?accE) @:Stream) : collection ?KVT);
+    (?dtrig, ?daddr) <- ()
   )
   => () @StreamRawFromFile( lbl=[# $[lbl]_shuffle]
-                          , path=[$ "/data/lineitem_bfcs_100G"]
+                          , path=[$ $[lbl]_path]
                           , receive_trig=[$ $[lbl]_parse_redistribute]
                           , punc_trig=[$ $[lbl]_stream_punc]
                           )
-  +> { declare $[lbl]_next : () -> () = (\_ -> ($.[dtrig], $.[daddr]) <- ()) }
+  +> { declare $[lbl]_path : string = $[|extractPathBFC 'Expr.expr|]
+
+       declare $[lbl]_next : () -> () = (\_ -> ($.[dtrig], $.[daddr]) <- ())
+
+       // Given a raw string, load it into a BFC. Run the local group_by on the BFC instead of the provided expression.
+       trigger $[lbl]_parse_redistribute : string = \s -> (
+         let bfc = empty $::[origT] @BulkFlatCollection
+         in (
+           bfc.load s;
+           ignore (($[|baseTableBFC 'Expr.expr (EC.variable "bfc")|]).group_by $.[groupF] $.[aggF] $.[accE]) @ShuffleByKey(dest_trig=[$ $[lbl]_merge])
+         )
+       )
+
+       // Receive punctuation indicating that the input stream is exhausted
+       trigger $[lbl]_stream_punc: () = \_ -> (
+         workers.iterate (\p -> ($[lbl]_redist_punc, p.addr) <- () )
+       )
+     }
 
   // Batch version (Send punctuation immediately after a single group_by)
   ( (?var = ( ((?Expr : collection ?origT).group_by ?groupF ?aggF ?accE) : collection ?KVT ) );
@@ -110,15 +128,6 @@ control DistributedGroupBy2 [ lbl : label, merge : expr ]
   shared {
     declare $[lbl]_partials : mut collection $::[KVT] @Map
 
-    // Given a raw string, load it into a BFC. Run the local group_by on the BFC instead of the provided expression.
-    trigger $[lbl]_parse_redistribute : string = \s -> (
-      let bfc = empty $::[origT] @BulkFlatCollection
-      in (
-        bfc.load s;
-        ignore (($[|baseTableBFC 'Expr.expr (EC.variable "bfc")|]).group_by $.[groupF] $.[aggF] $.[accE]) @ShuffleByKey(dest_trig=[$ $[lbl]_merge])
-      )
-    )
-
     // Run a local group_by directly on the provided expression
     trigger $[lbl]_redistribute : () = \_ -> (
       ignore ($.[Expr].group_by $.[groupF] $.[aggF] $.[accE]) @ShuffleByKey(dest_trig=[$ $[lbl]_merge])
@@ -133,25 +142,12 @@ control DistributedGroupBy2 [ lbl : label, merge : expr ]
       )
     )
 
-    // Receive punctuation indicating that the input stream is exhausted
-    trigger $[lbl]_stream_punc: () = \_ -> (
-      workers.iterate (\p -> ($[lbl]_redist_punc, p.addr) <- () )
-    )
-
     // Receive punctuation indicating that a worker is done sending partial aggregates
     trigger $[lbl]_redist_punc: () = \_ -> (
       ( $#[var] = $[lbl]_partials.fold (\acc -> \e -> ((acc.insert e); acc)) empty $::[KVT] @Collection);
       ( print ($[|exprLabel 'lbl|] ++ " " ++ atos me ++ " worker group-by done") );
-      ( $[lbl]_next () );
-      ( $[lbl]_global_barrier, master ) <- ()
+      ( $[lbl]_next () )
     ) @Barrier(lbl=[# $[lbl]_punc], count=[$ workers.size() ])
-
-    // TODO(jbw) is this still needed?
-    // Receive punctuation indicating that a worker is done merging partial aggregates
-    trigger $[lbl]_global_barrier : () = \_ -> (
-      ( print ($[|exprLabel 'lbl|] ++ " group-by done")
-      ) @Barrier(lbl=[# $[lbl]_done], count=[$ workers.size() ])
-    )
   }
 }
 
