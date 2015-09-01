@@ -5,6 +5,7 @@ include "Core/Barrier.k3"
 include "Core/Builtins.k3"
 include "Core/MachineMessaging.k3"
 
+// TODO(jbw) find a good home for index_by_hash
 control SQL {
   () => ()
      +> {
@@ -16,37 +17,35 @@ control SQL {
      }
 }
 
-// TODO(jbw) exclude machine master when streaming blocks
-control StreamRawFromFile[lbl: label, path: expr, receive_trig: expr, punc_trig: expr] {
-  () => (peer_masters.lookup 
-                       {key: me, value: me} 
-                       (\_ -> error (print "Missing Peer Master")) 
-                       (\kv -> if kv.key == kv.value then ($[lbl]_read_start, me) <- () else () )
-        )
-  +> 
+// Read values from the file at the specified path, sending each value to one of the 'workers' by round-robin.
+// After the file is exhausted, send punctuation to the specified trigger.
+control StreamRawFromFile [ lbl: label, path: expr, receive_trig: expr, punc_trig: expr ] {
+  () => ( ($[lbl]_read_start, me) <- () )@IfMachineMaster
+  +>
   {
-    // TODO(jbw) useExprLabel to give a unique channel id to the file
+    declare $[lbl]_file_id: string = $[|exprLabel 'lbl|] ++ "_input"
+
     trigger $[lbl]_read_start: () = \_ -> (
-      openFile me "input" $[path] "raw" false "r";
+      print ((atos me) ++ ": Opening " ++ $[path]);
+      openFile me $[lbl]_file_id $[path] "raw" false "r";
       ($[lbl]_read_loop, me) <- 0
-    ) 
+    )
 
     trigger $[lbl]_read_loop: int = \i -> (
-      if hasRead me "input"
+      if hasRead me $[lbl]_file_id
       then (
-        let a = (local_workers.at i).addr in (
-          ($[receive_trig], a) <- doRead me "input";
-          ($[lbl]_read_loop, me) <- if i+1 < local_workers.size() then i+1 else 0
-        )
+        ($[receive_trig], (local_workers.at i).addr) <- doRead me $[lbl]_file_id;
+        ($[lbl]_read_loop, me) <- if i+1 < local_workers.size() then i+1 else 0
       )
       else (
+        print ((atos me) ++ ": Done reading " ++ $[path]);
         local_workers.iterate (\p -> ($[punc_trig], p.addr) <- () )
       )
     )
   }
 }
 
-// TODO(jbw) (do we need @:Accumulate?, @:HGroupBy
+// TODO(jbw) Solve name conflicts: remove the 2.
 control PartitionByKey2 {
   ?e : collection ?content_t
     => ( ($.[e].group_by)
@@ -68,8 +67,8 @@ control ShuffleByKey [ dest_trig: expr ] {
   +> { }
 }
 
-control Barrier [lbl: label, count: expr] {
-  ?e => $[lbl]_count = $[lbl]_count + 1; 
+control Barrier [ lbl: label, count: expr ] {
+  ?e => $[lbl]_count = $[lbl]_count + 1;
         if $[lbl]_count == $[count]
         then ($[lbl]_count = 0; $.[e])
         else ()
@@ -80,69 +79,75 @@ control Barrier [lbl: label, count: expr] {
 // TODO(jbw) figure out how to feed filepath into GroupBy Annotation
 // Requires: peers, master
 // Assumes: var is a global.
-control DistributedGroupBy2[lbl : label, merge : expr]
+control DistributedGroupBy2 [ lbl : label, merge : expr ]
 {
-  // Stream version 
-  ( (?var = ( ((?e : collection ?origT) @:BaseTable).group_by ?groupF ?aggF ?accE) : collection ?T);
-    (?dtrig, ?daddr) <- ()
+  // Block-based version. TODO(jbw) Property name
+  ( (?var = ( (((?Expr) : collection ?origT)).group_by ?groupF ?aggF ?accE) : collection ?KVT);
+    (?dtrig, ?daddr) <- (() @:Foo)
   )
-  => () @StreamRawFromFile(lbl=[# $[lbl]_shuffle], path=[$ "/local/data/batches.in"], receive_trig=[$ $[lbl]_parse_redistribute], punc_trig=[$ $[lbl]_stream_punc])
+  => () @StreamRawFromFile( lbl=[# $[lbl]_shuffle]
+                          , path=[$ "/data/lineitem_bfcs_100G"]
+                          , receive_trig=[$ $[lbl]_parse_redistribute]
+                          , punc_trig=[$ $[lbl]_stream_punc]
+                          )
   +> { declare $[lbl]_next : () -> () = (\_ -> ($.[dtrig], $.[daddr]) <- ()) }
- 
-  // Batch versions send punctuation immediately after redistrubte
-  ( (?var = ( (?e.group_by ?groupF ?aggF ?accE) : collection ?T ) );
+
+  // Batch version (Send punctuation immediately after a single group_by)
+  ( (?var = ( ((?Expr : collection ?origT).group_by ?groupF ?aggF ?accE) : collection ?KVT ) );
     (?dtrig, ?daddr) <- ()
   )
   => ( ($[lbl]_redistribute, me) <- ();
-       workers.iterate (\p -> ($[lbl]_punc, p.addr) <- ()) 
+       workers.iterate (\p -> ($[lbl]_redist_punc, p.addr) <- ())
      )
   +> { declare $[lbl]_next : () -> () = (\_ -> ($.[dtrig], $.[daddr]) <- ()) }
 
-  ( ?var = ( (?e.group_by ?groupF ?aggF ?accE) : collection ?T ) )
+  ( ?var = ( ((?Expr : collection ?origT).group_by ?groupF ?aggF ?accE) : collection ?KVT ) )
   => ( ($[lbl]_redistribute, me) <- ();
-       workers.iterate (\p -> ($[lbl]_redist_punc, p.addr) <- ()) 
+       workers.iterate (\p -> ($[lbl]_redist_punc, p.addr) <- ())
      )
   +> { declare $[lbl]_next : () -> () = (\_ -> ()) }
 
   shared {
-    declare $[lbl]_index_by_hash : forall a. a -> int = (\s -> (
-        let n = workers.size() in
-        let h = (hash s) in
-        ((h % n) + n) % n
-      ))
-    declare $[lbl]_partials : mut collection $::[T] @Map
+    declare $[lbl]_partials : mut collection $::[KVT] @Map
 
+    // Given a raw string, load it into a BFC. Run the local group_by on the BFC instead of the provided expression.
     trigger $[lbl]_parse_redistribute : string = \s -> (
       let bfc = empty $::[origT] @BulkFlatCollection
       in (
         bfc.load s;
-        ignore (bfc.group_by $.[groupF] $.[aggF] $.[accE]) @ShuffleByKey(dest_trig=[$ $[lbl]_merge])
+        ignore (($[|baseTableBFC 'Expr.expr (EC.variable "bfc")|]).group_by $.[groupF] $.[aggF] $.[accE]) @ShuffleByKey(dest_trig=[$ $[lbl]_merge])
       )
     )
 
+    // Run a local group_by directly on the provided expression
     trigger $[lbl]_redistribute : () = \_ -> (
-      ignore ($.[e].group_by $.[groupF] $.[aggF] $.[accE]) @ShuffleByKey(dest_trig=[$ $[lbl]_merge])
+      ignore ($.[Expr].group_by $.[groupF] $.[aggF] $.[accE]) @ShuffleByKey(dest_trig=[$ $[lbl]_merge])
     )
 
-    trigger $[lbl]_merge : collection $::[T] @Collection = \partials -> (
-      partials.iterate (\kv -> 
+    // Merge partial aggregates into global state
+    trigger $[lbl]_merge : collection $::[KVT] @Collection = \partials -> (
+      partials.iterate (\kv ->
         $[lbl]_partials.insert_with
                          kv
                          (\a -> \b -> {key: a.key, value: $[merge] a.value b.value})
       )
-    )  
-    
+    )
+
+    // Receive punctuation indicating that the input stream is exhausted
     trigger $[lbl]_stream_punc: () = \_ -> (
       workers.iterate (\p -> ($[lbl]_redist_punc, p.addr) <- () )
     )
 
+    // Receive punctuation indicating that a worker is done sending partial aggregates
     trigger $[lbl]_redist_punc: () = \_ -> (
-      ( $#[var] = $[lbl]_partials.fold (\acc -> \e -> ((acc.insert e); acc)) empty $::[T] @Collection);
-      ( print ($[|exprLabel 'lbl|] ++ " " ++ atos me ++ " peer group-by done") );
+      ( $#[var] = $[lbl]_partials.fold (\acc -> \e -> ((acc.insert e); acc)) empty $::[KVT] @Collection);
+      ( print ($[|exprLabel 'lbl|] ++ " " ++ atos me ++ " worker group-by done") );
       ( $[lbl]_next () );
       ( $[lbl]_global_barrier, master ) <- ()
     ) @Barrier(lbl=[# $[lbl]_punc], count=[$ workers.size() ])
 
+    // TODO(jbw) is this still needed?
+    // Receive punctuation indicating that a worker is done merging partial aggregates
     trigger $[lbl]_global_barrier : () = \_ -> (
       ( print ($[|exprLabel 'lbl|] ++ " group-by done")
       ) @Barrier(lbl=[# $[lbl]_done], count=[$ workers.size() ])

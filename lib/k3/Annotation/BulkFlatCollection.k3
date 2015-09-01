@@ -33,13 +33,14 @@ annotation BulkFlatCollection given type a, b, c, d
     with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
 
   @:Transformer
-  provides lifted filter_generic : (content -> bool) -> collection {elem : content} @Collection
+  provides lifted filter_generic : (content -> bool) -> collection {elem: content} @Collection
     with effects \filterF -> [R[self]; ([R[content]; filterF content])*]
 
   @:{Transformer, CArgs 2}
   provides lifted fold : (a -> (content -> a)) -> a -> a
     with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
-  
+
+  // TODO(jbw) this should be _generic, once fusion can handle generic versions
   @:{Transformer, CArgs 3}
   provides lifted group_by : (content -> a) -> (b -> content -> b) -> b
                               -> collection { key : a, value : b } @Collection

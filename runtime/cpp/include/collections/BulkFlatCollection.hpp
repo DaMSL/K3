@@ -154,11 +154,12 @@ struct PageCollection
 // and internalizaton metadata while traversing through
 // data structures to perform pointer switching.
 
+using IteratorProxy = std::tuple<bool, uint32_t>;
+
 template<size_t PageSize>
 class Externalizer
 {
   using VContainer = PageCollection<PageSize>;
-  using slot_id_t = typename Page<PageSize>::slot_id_t;
 
 public:
   enum class ExternalizeOp { Create, Reuse };
@@ -225,15 +226,14 @@ private:
     size_t reuse_slot_id;
   };
 
-  constexpr static intptr_t advance_mask = static_cast<intptr_t>(std::numeric_limits<slot_id_t>::max()) + 1;
-  constexpr static intptr_t slot_mask = static_cast<intptr_t>(std::numeric_limits<slot_id_t>::max());
+  constexpr static intptr_t advance_mask = static_cast<intptr_t>(std::numeric_limits<uint32_t>::max()) + 1;
+  constexpr static intptr_t slot_mask = std::numeric_limits<uint32_t>::max();
 };
 
 template<size_t PageSize>
 class Internalizer
 {
   using VContainer = PageCollection<PageSize>;
-  using slot_id_t = typename Page<PageSize>::slot_id_t;
 
 public:
   Internalizer(VContainer& v) : vcon(v), vtraversal(vcon.begin()) {}
@@ -251,7 +251,7 @@ public:
   void internalize(base_string& str) {
     if ( !vcon.internalized() ) {
       intptr_t* p = reinterpret_cast<intptr_t*>(&str);
-      slot_id_t slot_id = static_cast<slot_id_t>(*p & slot_mask);
+      uint32_t slot_id = static_cast<uint32_t>(*p & slot_mask);
       bool advance = (*p & advance_mask) != 0;
 
       if ( advance ) { ++vtraversal; }
@@ -271,8 +271,8 @@ private:
   VContainer& vcon;
   typename VContainer::iterator vtraversal;
 
-  constexpr static intptr_t advance_mask = static_cast<intptr_t>(std::numeric_limits<slot_id_t>::max()) + 1;
-  constexpr static intptr_t slot_mask = static_cast<intptr_t>(std::numeric_limits<slot_id_t>::max());
+  constexpr static intptr_t advance_mask = static_cast<intptr_t>(std::numeric_limits<uint32_t>::max()) + 1;
+  constexpr static intptr_t slot_mask = std::numeric_limits<uint32_t>::max();
 };
 
 //////////////////////////////////////////////////////
@@ -280,7 +280,7 @@ private:
 // a contiguous bulk-oriented collection class, that
 // supports storage of flat (i.e., non-nested) elements.
 //
-template<class Elem, size_t PageSize = 1 << 16>
+template<class Elem, size_t PageSize = 2 << 21>
 class BulkFlatCollection {
 public:
   using FContainer = LibdynamicVector::vector;
@@ -492,14 +492,6 @@ public:
       memcpy(buffer_ + offset, ncv->data(), varseg_size() * PageSize);
     }
 
-    int i = 0;
-    for (auto& page: *variable()) {
-      if (i % 100 == 0) {
-        std::cout << "Overhead: " << page.overhead() << ". Used: " << page.used() << ". Availabile: " << page.available() << std::endl;
-      }
-      i++;
-    }
-
     base_string str;
     len -= sizeof(size_t);
     memcpy(buffer_, &len, sizeof(size_t));
@@ -589,7 +581,7 @@ public:
     Collection<R_elem<Elem>> result;
     auto sz = fixseg_size();
     for (size_t i = 0; i < sz; ++i) {
-      auto& e = reinterpret_cast<Elem*>(vector_at(ncf, i));
+      auto& e = *reinterpret_cast<Elem*>(vector_at(ncf, i));
       if (predicate(e)) {
         result.insert(R_elem<Elem>{ e });
       }
@@ -705,7 +697,7 @@ private:
 
 }; // end namespace Libdynamic
 
-template<class Elem, size_t PageSize = 1 << 16>
+template<class Elem, size_t PageSize = 2 << 21>
 using BulkFlatCollection = Libdynamic::BulkFlatCollection<Elem, PageSize>;
 
 }; // end namespace K3

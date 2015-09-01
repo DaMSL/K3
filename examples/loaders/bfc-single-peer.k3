@@ -34,8 +34,13 @@ declare files: collection {path: string} @Collection
 declare lineitem_bfc : mut collection lineitem_r @BulkFlatCollection
 declare lineitem_bfc2 : mut collection lineitem_r @BulkFlatCollection
 
+declare start: mut int = 0
+declare end: mut int = 0
 trigger convert: () = \_ -> (
+ start = now_int();
  lineitemLoaderPE files lineitem_local;
+ end = now_int();
+ print ("Loader time: " ++ (itos (end - start)));
  lineitem_bfc.append lineitem_local;
  let s = lineitem_bfc.fold (\a -> \_ -> a + 1) 0
  in (

@@ -1,5 +1,6 @@
 {-# LANGUAGE ViewPatterns #-}
 module Language.K3.Metaprogram.Primitives.Values where
+import Control.Monad.Identity
 
 import Data.List
 import Data.Maybe
@@ -10,6 +11,7 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
 import Language.K3.Core.Literal
+import Language.K3.Core.Utils
 
 import Language.K3.Core.Constructor.Type       as TC
 import Language.K3.Core.Constructor.Literal    as LC
@@ -192,3 +194,15 @@ columnJoinUpperBound = 14
 joinRange :: SpliceValue -> SpliceValue
 joinRange (SLiteral (tag -> LInt i)) = SList $ map (SLiteral . LC.int) [1..(columnJoinUpperBound - i)]
 joinRange _ = error "Invalid integer literal in joinRange"
+
+{- BulkFlatCollection helpers -}
+baseTableBFC :: SpliceValue -> K3 Expression -> SpliceValue
+baseTableBFC (SExpr e) var = runIdentity $ mapTree replaceNode e >>= return . SExpr
+  where
+    replaceNode :: [K3 Expression] -> K3 Expression -> Identity (K3 Expression)
+    replaceNode cs n@(annotations -> anns) = return . ((flip replaceCh) cs) $ if any hasProperty anns then var else n
+
+    hasProperty :: Annotation Expression -> Bool
+    hasProperty (EProperty (ePropertyName -> name)) = name == "BaseTable"
+    hasProperty _ = False
+baseTableBFC _ _ = error "Invalid expression in baseTableBFC"

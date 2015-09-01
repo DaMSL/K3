@@ -24,7 +24,6 @@ declare partsuppLoaderP : collection {path: string} @Collection -> partsupp_bag 
 declare partLoaderP : collection {path: string} @Collection -> part_bag -> ()
   with effects \_ -> \_ -> io
 
-// Fixed size not needed for nation or region
 @:CArgs 2
 declare nationLoaderP : collection {path: string} @Collection -> nation_bag -> ()
   with effects \_ -> \_ -> io
@@ -36,6 +35,12 @@ declare regionLoaderP : collection {path: string} @Collection -> region_bag -> (
 @:CArgs 2
 declare tpchAgendaLoaderP : collection {path: string} @Collection -> tpch_agenda_bag -> ()
   with effects \_ -> \_ -> io
+
+/////////////////////////////
+//
+// 'elem' wrapped loaders 
+//
+//
 
 @:CArgs 2
 declare lineitemLoaderPE : collection {path: string} @Collection -> lineitem_elem_bag -> ()
@@ -61,6 +66,13 @@ declare partsuppLoaderPE : collection {path: string} @Collection -> partsupp_ele
 declare partLoaderPE : collection {path: string} @Collection -> part_elem_bag -> ()
   with effects \_ -> \_ -> io
 
+@:CArgs 2
+declare nationLoaderPE : collection {path: string} @Collection -> nation_elem_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare regionLoaderPE : collection {path: string} @Collection -> region_elem_bag -> ()
+  with effects \_ -> \_ -> io
 
 /////////////////////////////
 //
@@ -147,3 +159,41 @@ declare q22_customerLoaderPC : collection {path: string} @Collection -> q22_cust
 @:CArgs 3
 declare q22_ordersLoaderPC : collection {path: string} @Collection -> q22_orders_bag -> orders_r -> ()
   with effects \_ -> \_ -> \_ -> io
+
+
+control ConvertPSVToBFC [batch_size: expr, sink_trig: expr, next_trig: expr] {
+ ?loader ?files (?col : collection {elem: ?t}) 
+ => print "Loading a file"; 
+    $.[loader] $.[files] $.[col];
+    print ("Loaded: " ++ (itos ($.[col].size())));
+    print "Converting to bfc";
+    let last_batch = 
+      $.[col].fold 
+        (\acc -> \e -> (
+          if acc.size() < $[batch_size]
+          then acc.insert e; acc
+          else (
+            let bfc = empty $::[t] @BulkFlatCollection
+            in (
+              bfc.append acc;
+              local_count = local_count + (acc.size());
+              ($[sink_trig], me) <- bfc.save();
+              ({|elem: $::[t]| e.elem |} @Collection)
+            )
+           )
+        )) empty {elem: $::[t]} @Collection
+    in (
+      let bfc = empty $::[t] @BulkFlatCollection
+      in (
+        local_count = local_count + (last_batch.size());
+        print ("Saved: " ++ (itos local_count));
+        bfc.append last_batch;
+        ($[sink_trig], me) <- bfc.save();
+        ($[next_trig], me) <- ()
+      )
+    )
+ +> { 
+    declare local_count: mut int = 0 
+ }
+}
+

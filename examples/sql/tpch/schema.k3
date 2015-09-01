@@ -147,6 +147,8 @@ typedef orders_elem_bag      = collection {elem: orders_r  }    @Collection
 typedef supplier_elem_bag    = collection {elem: supplier_r}    @Collection
 typedef partsupp_elem_bag    = collection {elem: partsupp_r}    @Collection
 typedef part_elem_bag        = collection {elem: part_r    }    @Collection
+typedef nation_elem_bag      = collection {elem: nation_r  }    @Collection
+typedef region_elem_bag      = collection {elem: region_r  }    @Collection
 
 typedef lineitem_seq    = collection lineitem_r    @Seq
 typedef customer_seq    = collection customer_r    @Seq

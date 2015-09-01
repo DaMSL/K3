@@ -125,7 +125,6 @@ void Engine::send(const Address& src, const Address& dst, TriggerID trig,
 #endif
     it->second->getQueue().enqueue(std::move(d));
   } else {
-    std::cout << "Sending network message" << std::endl;
     // Serialize and send over the network, otherwise
     unique_ptr<PackedValue> pv = pack<T>(value, K3_INTERNAL_FORMAT);
     shared_ptr<NetworkMessage> m =

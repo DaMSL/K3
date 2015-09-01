@@ -10,20 +10,23 @@ XP = Pathname.new(Dir.pwd).realpath
 K3 = "/k3/K3"
 
 QUERIES = {
-  "tpch" => {
-    :roles => {
-      "10g" => "tpch_10g.yml",
-      #"100g" => "tpch_100g.yml",
-    },
-    :queries => {
-      "1" => "examples/sql/tpch/queries/k3/q1.k3",
-      #"3" => "examples/sql/tpch/queries/k3/barrier-queries/q3.k3",
-      #"5" => "examples/sql/tpch/queries/k3/barrier-queries/q5_bushy_broadcast_broj2.k3",
-      #"6" => "examples/sql/tpch/queries/k3/q6.k3",
-      #"18" => "examples/sql/tpch/queries/k3/barrier-queries/q18.k3",
-      #"22" => "examples/sql/tpch/queries/k3/barrier-queries/q22.k3",
-    }
-  },
+  #"tpch" => {
+  #  :roles => {
+  #    "10g" => "tpch_10g.yml",
+  #    #"100g" => "tpch_100g.yml",
+  #  },
+  #  :queries => {
+  #    #"1" => "examples/sql/tpch/queries/k3/q1.k3",
+  #    #"3" => "examples/sql/tpch/queries/k3/barrier-queries/q3.k3",
+  #    #"5" => "examples/sql/tpch/queries/k3/barrier-queries/q5_bushy_broadcast_broj2.k3",
+  #    #"6" => "examples/sql/tpch/queries/k3/q6.k3",
+  #    #"18" => "examples/sql/tpch/queries/k3/barrier-queries/q18.k3",
+  #    #"22" => "examples/sql/tpch/queries/k3/barrier-queries/q22.k3",
+  #
+  #    "10" => "examples/sql/tpch/queries/k3/q10.k3",
+  #    #"11" => "examples/sql/tpch/queries/k3/q11.k3",
+  #  }
+  #},
 
   #"amplab" => {
   #  :roles => {
@@ -52,7 +55,30 @@ QUERIES = {
   #   :queries => {
   #     "page_rank" => "examples/distributed/graph/page_rank.k3",
   #   }
-  # }
+  # },
+  #
+  #
+
+  #"conversion" => {
+  #  :roles => {
+  #    #"10g" => "convert_10g.yml",
+  #    "100g" => "convert_100g.yml",
+  #  },
+
+  #  :queries => {
+  #    "convert" => "examples/sql/tpch/convert.k3"
+  #  }
+  #},
+
+  "test" => {
+    :roles => {
+      "test" => "test.yml"
+    },
+
+    :queries => {
+      "test" => "test.k3"
+    }
+  }
 }
 
 def slugify(experiment, query)

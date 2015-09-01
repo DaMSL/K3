@@ -37,8 +37,10 @@ declare lineitem_bfc2 : mut collection lineitem_r @BulkFlatCollection
 declare receivers: collection {addr: address} @Collection
 declare batch_size: int = 100000
 
+declare total_count: mut int = 0
 trigger convert: () = \_ -> (
  lineitemLoaderPE files lineitem_local;
+ print ("Lineitem: " ++ (itos (lineitem_local.size())));
  let last_batch =
    lineitem_local.fold (\acc -> \e -> (
      if acc.size() < batch_size
@@ -49,15 +51,19 @@ trigger convert: () = \_ -> (
      else (
        let bfc = empty lineitem_r @BulkFlatCollection
        in (
+         total_count = total_count + acc.size();
          bfc.append acc;
          (sink1, me) <- bfc.save();
-         lineitem_empty  
+         (let emp = empty {elem: lineitem_r} @Collection
+           in emp.insert e; emp
+        )
        )
      )
    )) lineitem_empty
   in (
     let bfc = empty lineitem_r @BulkFlatCollection
     in (
+      total_count = total_count + last_batch.size();
       bfc.append last_batch;
       (sink1, me) <- bfc.save();
       (stop, me) <- ()
@@ -66,6 +72,7 @@ trigger convert: () = \_ -> (
 )
 
 trigger stop: () = \_ -> (
+  print ("Total : " ++ (itos total_count));
   haltEngine()
 )
 
@@ -81,8 +88,7 @@ trigger read_loop: int = \i -> (
     (read_loop, me) <- if i+1 < receivers.size() then i+1 else 0
   )
   else (
-    receivers.iterate (\p -> (stop, p.addr) <- () );
-    (stop, me) <- ()
+    receivers.iterate (\p -> (punc, p.addr) <- () )
   )
 )
 
@@ -93,6 +99,20 @@ trigger receive: string = \s -> (
     bfc.load(s);
     local_rows = local_rows + (bfc.fold (\a -> \_ -> a + 1) 0)
   )
+)
+
+declare master: address = 127.0.0.1:30000
+trigger punc: () = \_ -> (
+  (done, master) <- local_rows 
+)
+
+declare total: mut int = 0
+trigger done: int = \i -> (
+  total = total + i;
+  (
+    print ("Total: " ++ (itos total));
+    peers.iterate (\p -> (stop, p.addr) <- ())
+  ) @OnCounter(id=[# done], eq=[$ receivers.size ()], reset=[$ false], profile=[$ false])
 )
 
 source s1: () = value ()
