@@ -332,7 +332,14 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
   (ce, cv) <- inline c
   (ze, zv) <- inline z
 
-  let isAccumulating = isJust $ p @~ (\case { EProperty (ePropertyName -> "AccumulatingTransformer") -> True; _ -> False })
+  let isAP = isJust $ p @~ (\case { EProperty (ePropertyName -> "AccumulatingTransformer") -> True
+                                  ; _ -> False
+                                  })
+      isRA = isJust $ f @~ (\case { EProperty (ePropertyName -> "ReturnsArgument") -> True
+                                  ; _ -> False
+                                  })
+
+      isSM = isAP || isRA
 
   eleMove <- getKType c >>= \(tag &&& children -> (TCollection, [t])) -> return $ getInMethodFor anon p == Moved && isNonScalarType t
 
@@ -343,8 +350,8 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
 
   let accDecl = R.Forward $ R.ScalarDecl (R.Name accVar) R.Inferred (Just accMove)
 
-  (fe, fb) <- inlineApply isAccumulating (if isAccumulating then RForget else RName (R.Variable $ R.Name accVar) (Just True)) f
-                [ (if isAccumulating then id else R.Move) $ R.Variable $ R.Name accVar
+  (fe, fb) <- inlineApply isSM (if isSM then RForget else RName (R.Variable $ R.Name accVar) (Just True)) f
+                [ (if isSM then id else R.Move) $ R.Variable $ R.Name accVar
                 , (if eleMove then R.Move else id) $ R.Variable $ R.Name eleVar
                 ]
 
