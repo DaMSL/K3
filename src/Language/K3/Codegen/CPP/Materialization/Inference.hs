@@ -604,7 +604,11 @@ findDependenciesP p = case tag p of
 -- ** Solving
 solveForAll :: [Either DKey DKey] -> M.Map DKey (K3 MExpr) -> SolverM ()
 solveForAll eks m = for_ eks $ \case
-  Left fk -> setMethod fk Copied
+  Left fk -> do
+    progress <- gets (M.keysSet . assignments)
+    if progress S.\\ (findDependenciesE (m M.! fk)) == [fk]
+      then tryResolveSelfCycle fk (m M.! fk) >>= setMethod fk . fromMaybe Copied
+      else setMethod fk Copied
   Right rk -> solveForE (m M.! rk) >>= setMethod rk
 
 solveForE :: K3 MExpr -> SolverM Method
@@ -620,6 +624,18 @@ solveForP p = case tag p of
   MOr -> or <$> traverse solveForP (children p)
   MOneOf e m -> flip elem m <$> solveForE e
   MBool b -> return b
+
+tryResolveSelfCycle :: DKey -> K3 MExpr -> SolverM (Maybe Method)
+tryResolveSelfCycle k e = do
+  g <- get
+  mms <- forM [ConstReferenced, Referenced, Moved, Copied] $ \m -> do
+    setMethod k m
+    m' <- solveForE e
+    if m' == m
+      then return (First $ Just m)
+      else return (First Nothing)
+  put g
+  return $ getFirst $ mconcat mms
 
 -- * Independent Simplification Routines
 -- | The following routines perform simplification on MExprs/MPreds independent of the binding
