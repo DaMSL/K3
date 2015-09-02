@@ -4,6 +4,7 @@ include "Annotation/BulkFlatCollection.k3"
 include "Core/Barrier.k3"
 include "Core/Builtins.k3"
 include "Core/MachineMessaging.k3"
+include "Core/Optimization.k3"
 
 // TODO(jbw) find a good home for index_by_hash
 control SQL {
@@ -47,17 +48,17 @@ control StreamRawFromFile [ lbl: label, path: expr, receive_trig: expr, punc_tri
 
 // TODO(jbw) Solve name conflicts: remove the 2.
 control PartitionByKey2 {
-  ?e : collection ?content_t
-    => ( ($.[e].group_by)
-                 (\v -> index_by_hash v.key)
-                 (\acc -> \v -> ((acc.insert v); acc))
-                 empty $::[content_t] @Collection )
+  ?e : collection ?t @Map
+  => (((($.[e].group_by @:HGroupBy)
+                ((\v -> (workers.at (index_by_hash v.key)).addr) @:Projection)
+                ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
+                empty $::[t] @Map) @:Fuse) @ManualFusion)
   +> { }
 }
 
 control Shuffle [ dest_trig: expr ] {
   ?e : collection ?content_t
-    => $.[e].iterate (\kv -> ($[dest_trig], (workers.at kv.key).addr) <- kv.value)
+    => $.[e].iterate (\kv -> ($[dest_trig], kv.key) <- kv.value)
   +> { }
 }
 
@@ -100,7 +101,10 @@ control DistributedGroupBy2 [ lbl : label, merge : expr ]
          let bfc = empty $::[origT] @BulkFlatCollection
          in (
            bfc.load s;
-           ignore (($[|baseTableBFC 'Expr.expr (EC.variable "bfc")|]).group_by $.[groupF] $.[aggF] $.[accE]) @ShuffleByKey(dest_trig=[$ $[lbl]_merge])
+           ignore ((($[|baseTableBFC 'Expr.expr (EC.variable "bfc")|])
+                    .group_by $.[groupF] $.[aggF] $.[accE])
+                    .fold ((\a -> \e -> (a.insert e; a)) @:Accumulate) (empty $::[KVT] @Map)
+                  ) @ShuffleByKey(dest_trig=[$ $[lbl]_merge])
          )
        )
 
@@ -130,11 +134,13 @@ control DistributedGroupBy2 [ lbl : label, merge : expr ]
 
     // Run a local group_by directly on the provided expression
     trigger $[lbl]_redistribute : () = \_ -> (
-      ignore ($.[Expr].group_by $.[groupF] $.[aggF] $.[accE]) @ShuffleByKey(dest_trig=[$ $[lbl]_merge])
+      ignore (($.[Expr].group_by $.[groupF] $.[aggF] $.[accE])
+                       .fold (\a -> \e -> (a.insert e; a)) (empty $::[KVT] @Map)
+              )@ShuffleByKey(dest_trig=[$ $[lbl]_merge])
     )
 
     // Merge partial aggregates into global state
-    trigger $[lbl]_merge : collection $::[KVT] @Collection = \partials -> (
+    trigger $[lbl]_merge : collection $::[KVT] @Map = \partials -> (
       partials.iterate (\kv ->
         $[lbl]_partials.insert_with
                          kv

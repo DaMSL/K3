@@ -94,8 +94,21 @@ trigger r: collection R @BulkFlatCollection = \c -> (
   haltEngine()
 )
 
+trigger q: () = \_ -> (
+  bfc.insert {a: 1, b: 1, c: "one"};
+  bfc.insert {a: 2, b: 2, c: "two"};
+  bfc.insert {a: 3, b: 3, c: "three"};
+  (bfc.iterate (\x ->
+    print ((itos x.a) ++ "," ++ (itos x.b) ++ "," ++ x.c)
+  ));
+  haltEngine()
+)
+
 source s1 : () = value ()
 feed s1 |> t
 
 source s2: () = value ()
 feed s2 |> t2
+
+source s3: () = value ()
+feed s3 |> q

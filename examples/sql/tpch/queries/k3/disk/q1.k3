@@ -78,15 +78,14 @@ trigger ready: () = \_ -> (
   peers.iterate (\p -> (t, p.addr) <- ())
 ) @Barrier(lbl=[# ready], count=[$ peers.size() ])
 
-declare lineitem_path: string = "/local/data/tpch10g/lineitem_bfcs"
+declare lineitem_path: string = "/data/lineitem_bfcs_100G"
 
 // Local Trigger
 // TODO(jbw) Can we handle filter instead of manual fold encoding
 trigger t: () = \_ -> (
   result = ((((lineitem @:BaseTable "lineitem_path")
-             .fold
-               (\a -> \e -> if e.l_shipdate <= 19980902 then (a.insert e; a) else a)
-               (empty lineitem_r @Collection))
+             .filter
+               (\e -> e.l_shipdate <= 19980902))
              .group_by
                (\e -> (e.l_returnflag, e.l_linestatus) )
                accum_agg

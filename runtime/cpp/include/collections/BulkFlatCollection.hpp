@@ -351,6 +351,18 @@ public:
     freeContainer();
   }
 
+  void insert(const Elem& elem) {
+    if (buffer.data()) {
+      throw std::runtime_error("Invalid insert on a BFC: backed by a base_string");
+    }
+    variable()->internalize(false);
+    ExternalizerT etl(*variable(), ExternalizerT::ExternalizeOp::Create);
+    InternalizerT itl(*variable());
+    vector_push_back(fixed(), const_cast<Elem*>(&elem));
+    reinterpret_cast<Elem*>(vector_back(fixed()))->externalize(etl).internalize(itl);
+    variable()->internalize(true);
+  }
+
   void freeContainer() {
     if (!buffer.data()) {
       vector_clear(fixed());
@@ -561,10 +573,10 @@ public:
 
   // Produce a new collection by mapping a function over this external collection.
   template <typename Fun>
-  auto map_generic(Fun f) const -> Collection<R_elem<RT<Fun, Elem>>> {
+  auto map(Fun f) const -> BulkFlatCollection<R_elem<RT<Fun, Elem>>> {
     FContainer* ncf = const_cast<FContainer*>(fixedc());
     VContainer* ncv = const_cast<VContainer*>(variablec());
-    Collection<R_elem<RT<Fun, Elem>>> result;
+    BulkFlatCollection<R_elem<RT<Fun, Elem>>> result;
     auto sz = fixseg_size();
     for (size_t i = 0; i < sz; ++i) {
       auto& e = reinterpret_cast<Elem*>(vector_at(ncf, i));
@@ -575,13 +587,13 @@ public:
 
   // Create a new collection consisting of elements from this set that satisfy the predicate.
   template <typename Fun>
-  Collection<R_elem<Elem>> filter_generic(Fun predicate) const {
+  BulkFlatCollection<R_elem<Elem>> filter(Fun predicate) const {
     FContainer* ncf = const_cast<FContainer*>(fixedc());
     VContainer* ncv = const_cast<VContainer*>(variablec());
-    Collection<R_elem<Elem>> result;
+    BulkFlatCollection<R_elem<Elem>> result;
     auto sz = fixseg_size();
     for (size_t i = 0; i < sz; ++i) {
-      auto& e = *reinterpret_cast<Elem*>(vector_at(ncf, i));
+      auto& e = reinterpret_cast<Elem*>(vector_at(ncf, i));
       if (predicate(e)) {
         result.insert(R_elem<Elem>{ e });
       }
@@ -601,6 +613,8 @@ public:
     }
     return acc;
   }
+
+  // TODO(jbw) group_by
 
   Container& getContainer() { return container; }
   const Container& getConstContainer() const { return container; }
