@@ -15,6 +15,7 @@ import qualified Data.List as L
 import Control.Arrow
 
 import Data.Foldable
+import Data.Maybe (fromMaybe)
 import Data.Traversable
 import Data.Tree
 
@@ -98,7 +99,8 @@ data IState = IState { cTable :: M.Map DKey (K3 MExpr) }
 type DKey = (Juncture, Direction)
 
 constrain :: UID -> Identifier -> Direction -> K3 MExpr -> InferM ()
-constrain u i d m = let j = (Juncture u i) in logR j d m >> modify (\s -> s { cTable = M.insert (j, d) m (cTable s) })
+constrain u i d m = let j = (Juncture u i) in
+  logR j d m >> modify (\s -> s { cTable = M.insertWith (flip const) (j, d) m (cTable s) })
 
 -- ** Scoping state
 data IScope = IScope { downstreams :: [Downstream], nearestBind :: Maybe UID, pEnv :: PIEnv, fEnv :: FIEnv, topLevel :: Bool }
