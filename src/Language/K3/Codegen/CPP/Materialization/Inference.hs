@@ -330,12 +330,25 @@ materializeE e@(Node (t :@: _) cs) = case t of
       constrain u name Ex $ mITE (mOneOf (mVar u name In) [Copied, Moved]) (mAtom Moved) (mAtom Referenced)
 
   ELetIn i -> do
-    let [initB, body] = cs
-    contextualizeNow body >>= \body' -> withDownstreams [body'] (materializeE initB)
+    let [initL, body] = cs
+
+    (imn, ico) <- do
+      body' <- contextualizeNow body
+
+      withDownstreams [body'] $ do
+        materializeE initL
+        imn <- ePrv initL >>= contextualizeNow >>= isMoveableNow
+        ico <- ePrv initL >>= contextualizeNow >>= bindPoint >>= \case
+          Nothing -> return $ mBool True -??- "Temporary."
+          Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied] -??- "Owned by containing context?"
+
+        return (imn, ico)
+
     materializeE body
 
     u <- eUID e
-    constrain u i In $ mAtom Referenced -??- "Default let materialization strategy."
+    let moveable = imn -&&- ico
+    constrain u i In $ mITE moveable (mAtom Moved) (mAtom Copied)
 
   ECaseOf i -> do
     let [initB, some, none] = cs
