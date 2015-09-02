@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y \
   bzip2 unzip autoconf Libtool \
   gcc g++ make cmake git curl wget \
   libyaml-cpp-dev \
-  subversion 
+  subversion
 
 # Install Boost v1.57.0
 RUN wget http://sourceforge.net/projects/boost/files/boost/1.57.0/boost_1_57_0.tar.bz2/download && \
@@ -69,6 +69,18 @@ RUN wget https://github.com/google/protobuf/releases/download/v2.5.0/protobuf-2.
   cd .. && \
   rm -Rf /protobuf-2.5.0
 
+# Install jemalloc
+RUN wget https://github.com/jemalloc/jemalloc/releases/download/$JEMALLOC_VER/jemalloc-$JEMALLOC_VER.tar.bz2 && \
+  tar -xvf jemalloc-$JEMALLOC_VER.tar.bz2 && \
+  rm jemalloc-$JEMALLOC_VER.tar.bz2 && \
+  cd jemalloc-$JEMALLOC_VER && \
+  ./autogen.sh && \
+  ./configure --prefix=/user && \
+  make && \
+  make install && \
+  cd .. && \
+  rm -Rf /jemalloc-$JEMALLOC_VER
+
 # Copy in Mesos v0.22.1 libs
 ADD assets/libmesos-0.22.1.so /usr/lib/
 ADD assets/libmesos.la /usr/lib/
@@ -91,4 +103,4 @@ RUN ln -s /usr/lib/libmesos-0.22.1.so /usr/lib/libmesos.so && \
     rm -rf /var/cache/* && \
     rm -rf /var/log/* && \
     rm -rf /usr/include/*
-    
+

@@ -13,6 +13,7 @@ ENV BOOST_VER 1.57.0
 ENV BOOST_DIR boost_1_57_0
 
 ENV PROTO_VER 2.5.0
+ENV JEMALLOC_VER 4.0.0
 
 ENV MESOS_VER 0.22.1
 ENV MESOS_INT_VER 0.22.1.1
@@ -24,7 +25,7 @@ ENV ALEX_VER 3.1.4
 
 ENV OPAMYES 1
 
-ENV LD_LIBRARY_PATH /usr/local/lib
+ENV LD_LIBRARY_PATH /usr/local/lib:/usr/lib
 
 ENV PGHOST qp2
 ENV PGHOSTADDR 192.168.0.11
@@ -40,7 +41,8 @@ RUN apt-get update && apt-get install -y \
                        opam \
                        ruby2.2 ruby2.2-dev python python-dev python-pip \
                        postgresql-client-9.4 libpq-dev \
-                       libyaml-cpp-dev libzmq3-dev libre2-dev numactl && \
+                       libyaml-cpp-dev libzmq3-dev libre2-dev numactl \
+                       libgoogle-perftools4 libgoogle-perftools-dev google-perftools && \
     update-alternatives \
       --install /usr/bin/ruby ruby /usr/bin/ruby2.2 50 \
       --slave /usr/bin/irb irb /usr/bin/irb2.2 \
@@ -113,6 +115,18 @@ RUN wget https://github.com/google/protobuf/releases/download/v$PROTO_VER/protob
   protoc --proto_path=/usr/include/mesos --cpp_out=/usr/include/mesos/ /usr/include/mesos/mesos.proto && \
   cd .. && \
   rm -Rf /protobuf-$PROTO_VER
+
+# Install jemalloc
+RUN wget https://github.com/jemalloc/jemalloc/releases/download/$JEMALLOC_VER/jemalloc-$JEMALLOC_VER.tar.bz2 && \
+  tar -xvf jemalloc-$JEMALLOC_VER.tar.bz2 && \
+  rm jemalloc-$JEMALLOC_VER.tar.bz2 && \
+  cd jemalloc-$JEMALLOC_VER && \
+  ./autogen.sh && \
+  ./configure --prefix=/user && \
+  make && \
+  make install && \
+  cd .. && \
+  rm -Rf /jemalloc-$JEMALLOC_VER
 
 # Install Mesos Eggs
 RUN ln -s /usr/lib/libmesos-$MESOS_VER.so /usr/lib/libmesos.so && \
