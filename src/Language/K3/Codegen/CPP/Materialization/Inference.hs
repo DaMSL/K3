@@ -266,6 +266,14 @@ materializeE e@(Node (t :@: _) cs) = case t of
 
   EOperate OApp -> do
     let [f, x] = cs
+    case (f, x) of
+      (tag -> EProject "fold", tag &&& children -> (ELambda i, [il])) -> do
+        xu <- eUID x
+        ilu <- eUID il
+        constrain xu i In (mAtom Moved -??- "Fold Override")
+        constrain ilu i In (mAtom Moved -??- "Fold Override")
+      _ -> return ()
+
     contextualizeNow x >>= \x' -> withDownstreams [x'] $ materializeE f
     materializeE x
 
