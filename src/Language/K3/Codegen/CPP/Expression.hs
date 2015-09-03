@@ -332,7 +332,14 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
   (ce, cv) <- inline c
   (ze, zv) <- inline z
 
-  let isAccumulating = isJust $ p @~ (\case { EProperty (ePropertyName -> "AccumulatingTransformer") -> True; _ -> False })
+  let isAP = isJust $ p @~ (\case { EProperty (ePropertyName -> "AccumulatingTransformer") -> True
+                                  ; _ -> False
+                                  })
+      isRA = isJust $ f @~ (\case { EProperty (ePropertyName -> "ReturnsArgument") -> True
+                                  ; _ -> False
+                                  })
+
+      isSM = isAP || isRA
 
   eleMove <- getKType c >>= \(tag &&& children -> (TCollection, [t])) -> return $ getInMethodFor anon p == Moved && isNonScalarType t
 
@@ -343,8 +350,8 @@ inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OA
 
   let accDecl = R.Forward $ R.ScalarDecl (R.Name accVar) R.Inferred (Just accMove)
 
-  (fe, fb) <- inlineApply isAccumulating (if isAccumulating then RForget else RName (R.Variable $ R.Name accVar) (Just True)) f
-                [ (if isAccumulating then id else R.Move) $ R.Variable $ R.Name accVar
+  (fe, fb) <- inlineApply isSM (if isSM then RForget else RName (R.Variable $ R.Name accVar) (Just True)) f
+                [ (if isSM then id else R.Move) $ R.Variable $ R.Name accVar
                 , (if eleMove then R.Move else id) $ R.Variable $ R.Name eleVar
                 ]
 
@@ -441,8 +448,14 @@ inline e@(tag &&& children -> (EOperate OApp, [
                        (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uv])
 
   (nfe, nfb) <- inlineApply False (RName (R.Subscript uv kv) (Just True)) n [R.Initialization R.Unit []]
-  (wfe, wfb) <- inlineApply False (RName (R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")) (Just True)) w
-                  [R.Move $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")]
+
+  let rArg = isJust $ w @~ (\case { EProperty (ePropertyName -> "ReturnsArgument") -> True; _ -> False })
+  let rContext = if rArg
+                   then RForget
+                   else RName (R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")) (Just True)
+
+  (wfe, wfb) <- inlineApply rArg rContext w
+                  [(if rArg then id else R.Move) $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")]
 
   return (ce ++ [ue] ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
          , R.Initialization R.Unit [])
@@ -748,13 +761,17 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
   initKType <- getKType a
   initCType <- genCType initKType
 
-  (initName, initReify) <-
-    case tag a of
+  (initName, initReify) <- do
+    g <- genSym
+    (e, i) <- inline a
+    return (g, e ++ [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just i)])
+
+    {- case tag a of
       EVariable v -> return (v, [])
       _ -> do
         g <- genSym
         ee <- reify (RName (R.Variable $ R.Name g) Nothing) a
-        return (g, [R.Forward $ R.ScalarDecl (R.Name g) initCType Nothing] ++ ee)
+        return (g, [R.Forward $ R.ScalarDecl (R.Name g) initCType Nothing] ++ ee) -}
 
   let initExpr = R.Variable (R.Name initName)
 

@@ -20,7 +20,7 @@
 #include "boost/functional/hash.hpp"
 #include "serialization/YAS.hpp"
 
-#define _F(X) (std::forward<decltype(X)>(X))
+#define _F(X) (std::forward<decltype((X))>(X))
 
 namespace K3 {
 

@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 dist/*
 tmp
 .ghci
@@ -20,7 +19,6 @@ cabal.sandbox.config
 *~
 
 _DATA
-=======
 *.ipch
 *.suo
 *.user
@@ -42,4 +40,3 @@ tests/CDSChecker/model-checker/
 tests/relacy/freelist.exe
 tests/relacy/spmchash.exe
 tests/relacy/log.txt
->>>>>>> 317a67b28ac82b73b0c136ecf5db7f46c954457f
