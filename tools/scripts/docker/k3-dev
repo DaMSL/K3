@@ -158,7 +158,7 @@ RUN mkdir -p /root/.vim/autoload && mkdir -p /root/.vim/bundle \
     cd /root/.vim/bundle && \
     git clone https://github.com/tpope/vim-sensible.git; \
     git clone https://github.com/tmhedberg/matchit.git; \
-    git clone https://github.com/kien/ctrlp.git; \
+    git clone https://github.com/kien/ctrlp.vim.git; \
     git clone https://github.com/tpope/vim-surround.git; \
     git clone https://github.com/tpope/vim-unimpaired.git; \
     git clone https://github.com/tpope/vim-repeat.git; \
@@ -168,7 +168,7 @@ RUN mkdir -p /root/.vim/autoload && mkdir -p /root/.vim/bundle \
     git clone https://github.com/scrooloose/nerdtree.git; \
     git clone https://github.com/scrooloose/syntastic.git; \
     git clone https://github.com/godlygeek/tabular.git; \
-    git clone https://github.com/bling/airline.git; \
+    git clone https://github.com/bling/vim-airline.git; \
     git clone https://github.com/bronson/vim-visual-star-search.git; \
     git clone https://github.com/justinmk/vim-sneak.git; \
     echo 'execute pathogen#infect() | syntax on | filetype plugin indent on' > /root/.vimrc; \
