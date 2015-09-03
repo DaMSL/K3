@@ -75,7 +75,7 @@ RUN wget https://github.com/jemalloc/jemalloc/releases/download/$JEMALLOC_VER/je
   rm jemalloc-$JEMALLOC_VER.tar.bz2 && \
   cd jemalloc-$JEMALLOC_VER && \
   ./autogen.sh && \
-  ./configure --prefix=/user && \
+  ./configure --prefix=/usr && \
   make && \
   make install && \
   cd .. && \
