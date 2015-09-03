@@ -23,7 +23,9 @@ module Language.K3.Analysis.Provenance.Inference (
   pienv0,
   mergePIEnv,
   inferProgramProvenance,
-  reinferProgDeclProvenance
+  reinferProgDeclProvenance,
+
+  piBindings
 ) where
 
 import Control.Applicative
@@ -41,7 +43,9 @@ import Data.Tree
 import Data.Monoid
 
 import Data.IntMap ( IntMap )
+import Data.Set    ( Set )
 import qualified Data.IntMap         as IntMap
+import qualified Data.Set            as Set
 import qualified Data.Vector.Unboxed as Vector
 
 import Debug.Trace
@@ -492,6 +496,23 @@ piIndexChase env mask ti p@(tag -> PBVar pmv) = chasePtr [] ti pmv
 
 piIndexChase _ _ _ p = throwE $ PT.boxToString
                               $ [T.pack "Invalid index chase pointer "] %+ PT.prettyLines p
+
+-- | Retrieves all PMatVar bindings and global bindings by chasing through a provenance tree.
+piBindings :: PIEnv -> K3 Provenance -> Except Text [Either Identifier (Identifier, UID)]
+piBindings env p = rcr Set.empty p >>= return . Set.toList
+  where
+    rcr acc p = foldMapTree extract acc p
+    extract (Set.unions -> bacc) (tag -> PBVar pmv) =
+      let r = Right (pmvn pmv, pmvloc pmv) in
+      if Set.member r bacc
+        then return bacc
+        else do
+          np <- pilkupp env $ pmvptr pmv
+          rb <- rcr bacc np
+          return $ Set.insert r $ bacc `mappend` rb
+
+    extract bacc (tag -> PGlobal n) = return $ Set.insert (Left n) $ Set.unions bacc
+    extract bacc _ = return $ Set.unions bacc
 
 -- Capture-avoiding substitution of any free variable with the given identifier.
 pisub :: PIEnv -> Identifier -> K3 Provenance -> K3 Provenance -> K3 Provenance -> TrIndex -> TrIndex

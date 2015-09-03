@@ -28,8 +28,7 @@ data CompilerType = LocalCompiler
                   deriving (Eq, Read, Show, Generic)
 
 -- | Coarse-grained compilation stages.
-data CompileStage = SBatchOpt
-                  | SDeclPrepare
+data CompileStage = SDeclPrepare
                   | SDeclOpt CompilerSpec
                   | SCodegen
                   deriving (Eq, Ord, Read, Show, Generic)

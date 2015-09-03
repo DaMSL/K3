@@ -12,6 +12,7 @@
 #include <boost/serialization/string.hpp>
 #include <csvpp/csv.h>
 
+#include "collections/Collection.hpp"
 #include "collections/Map.hpp"
 
 namespace K3 {
@@ -305,6 +306,23 @@ class MapE {
     return result;
   }
 
+  // Mosaic-specific functionality.
+
+  template<class Other, class OtherKeyFun, class Folder, class Acc>
+  Acc equijoinkf_kv(Collection<Other> other, OtherKeyFun keyf, Folder f, Acc acc) const
+  {
+    // Probe and accumulate.
+    for (const auto& otherelem : other.getConstContainer()) {
+      RT<OtherKeyFun, Other> key(keyf(otherelem));
+      auto it = container.find(key);
+      if ( it != container.end() ) {
+        acc = f(std::move(acc), it->second, otherelem);
+      }
+    }
+    return acc;
+  }
+
+  // Comparators.
   bool operator==(const MapE& other) const {
     return container == other.container;
   }
