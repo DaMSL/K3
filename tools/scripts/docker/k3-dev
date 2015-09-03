@@ -131,15 +131,15 @@ RUN wget https://github.com/jemalloc/jemalloc/releases/download/$JEMALLOC_VER/je
   rm -Rf /jemalloc-$JEMALLOC_VER
 
 # Install gperftools
-RUN wget https://github.com/gperftools/gperftools/releases/download/gperftools-$PERFTOOLS_VER/gperftools-$PERFTOOLS_VER.tar.bz2 && \
-  tar -xvf perftools-$PERFTOOLS_VER.tar.bz2 && \
-  rm perftools-$PERFTOOLS_VER.tar.bz2 && \
-  cd perftools-$PERFTOOLS_VER && \
+RUN wget https://github.com/gperftools/gperftools/releases/download/gperftools-$PERFTOOLS_VER/gperftools-$PERFTOOLS_VER.tar.gz && \
+  tar -xvf gperftools-$PERFTOOLS_VER.tar.gz && \
+  rm gperftools-$PERFTOOLS_VER.tar.gz && \
+  cd gperftools-$PERFTOOLS_VER && \
   ./configure --prefix=/usr && \
   make && \
   make install && \
   cd .. && \
-  rm -Rf /perftools-$PERFTOOLS_VER
+  rm -Rf /gperftools-$PERFTOOLS_VER
 
 # Install yaml-cpp
 RUN wget https://github.com/jbeder/yaml-cpp/archive/release-$YAML_CPP_VER.tar.gz && \
