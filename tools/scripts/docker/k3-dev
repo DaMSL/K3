@@ -152,10 +152,10 @@ RUN echo 'deb http://ppa.launchpad.net/hvr/ghc/ubuntu trusty main' > /etc/apt/so
     cabal install cabal-install -j
 
 # Install decent vim configuration
-RUN mkdir /root/.vim && \
+RUN mkdir -p /root/.vim/autoload && mkdir -p /root/.vim/bundle \
     cd /root/.vim && \
-    git clone https://github.com/tpope/vim-pathogen.git && \
-    mkdir bundle && \ cd bundle && \
+    curl -LSso /root/.vim/autoload/pathogen.vim https://raw.githubusercontent.com/tpope/vim-pathogen/master/autoload/pathogen.vim && \
+    cd /root/.vim/bundle && \
     git clone https://github.com/tpope/vim-sensible.git; \
     git clone https://github.com/tmhedberg/matchit.git; \
     git clone https://github.com/kien/ctrlp.git; \
