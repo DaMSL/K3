@@ -133,11 +133,11 @@ RUN wget https://github.com/jemalloc/jemalloc/releases/download/$JEMALLOC_VER/je
 # Install yaml-cpp
 RUN wget https://github.com/jbeder/yaml-cpp/archive/release-$YAML_CPP_VER.tar.gz && \
   tar -xvzf release-$YAML_CPP_VER.tar.gz && \
-  rm release-$YAML_CPP_VER.tar.gz && \
-  cd release-$YAML_CPP_VER && \
+  rm yaml-cpp-release-$YAML_CPP_VER.tar.gz && \
+  cd yaml-cpp-release-$YAML_CPP_VER && \
   mkdir build && cd build && \
-  cmake .. && make && make install && cd / && \
-  rm -Rf /release-$YAML_CPP_VER
+  cmake .. && make && make install && \
+  cd / && rm -Rf /yaml-cpp-release-$YAML_CPP_VER
 
 # Install Mesos Eggs
 RUN ln -s /usr/lib/libmesos-$MESOS_VER.so /usr/lib/libmesos.so && \
