@@ -43,8 +43,7 @@ RUN apt-get update && apt-get install -y \
                        opam \
                        ruby2.2 ruby2.2-dev python python-dev python-pip \
                        postgresql-client-9.4 libpq-dev \
-                       libzmq3-dev libre2-dev numactl \
-                       libgoogle-perftools4 libgoogle-perftools-dev google-perftools && \
+                       libzmq3-dev libre2-dev numactl && \
     update-alternatives \
       --install /usr/bin/ruby ruby /usr/bin/ruby2.2 50 \
       --slave /usr/bin/irb irb /usr/bin/irb2.2 \
@@ -124,11 +123,22 @@ RUN wget https://github.com/jemalloc/jemalloc/releases/download/$JEMALLOC_VER/je
   rm jemalloc-$JEMALLOC_VER.tar.bz2 && \
   cd jemalloc-$JEMALLOC_VER && \
   ./autogen.sh && \
-  ./configure --prefix=/user && \
+  ./configure --prefix=/usr && \
   make && \
   make install && \
   cd .. && \
   rm -Rf /jemalloc-$JEMALLOC_VER
+
+# Install gperftools
+RUN wget https://github.com/gperftools/gperftools/releases/download/gperftools-$PERFTOOLS_VER/gperftools-$PERFTOOLS_VER.tar.bz2 && \
+  tar -xvf perftools-$PERFTOOLS_VER.tar.bz2 && \
+  rm perftools-$PERFTOOLS_VER.tar.bz2 && \
+  cd perftools-$PERFTOOLS_VER && \
+  ./configure --prefix=/usr && \
+  make && \
+  make install && \
+  cd .. && \
+  rm -Rf /perftools-$PERFTOOLS_VER
 
 # Install yaml-cpp
 RUN wget https://github.com/jbeder/yaml-cpp/archive/release-$YAML_CPP_VER.tar.gz && \
