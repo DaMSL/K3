@@ -42,8 +42,11 @@ import qualified Language.K3.Core.Constructor.Literal    as LC
 
 import Language.K3.Analysis.Core
 import Language.K3.Analysis.Provenance.Core
+import Language.K3.Analysis.Provenance.Inference ( PIEnv )
+
 import Language.K3.Analysis.SEffects.Core
-import Language.K3.Analysis.SEffects.Inference                ( readOnly, noWrites )
+import Language.K3.Analysis.SEffects.Inference                ( readOnly, noWrites, noWritesOn )
+
 import qualified Language.K3.Analysis.Provenance.Constructors as PC
 import qualified Language.K3.Analysis.SEffects.Constructors   as FC
 import qualified Language.K3.Analysis.SEffects.Inference      as SE
@@ -237,6 +240,14 @@ isEMonoidGroupBy _ = False
 isENoBetaReduce :: Annotation Expression -> Bool
 isENoBetaReduce (EProperty (ePropertyName -> "NoBetaReduce")) = True
 isENoBetaReduce _ = False
+
+isEReturnsArgLambda :: Annotation Expression -> Bool
+isEReturnsArgLambda (EProperty (ePropertyName -> "ReturnsArgument")) = True
+isEReturnsArgLambda _ = False
+
+isEThreadsArgLambda :: Annotation Expression -> Bool
+isEThreadsArgLambda (EProperty (ePropertyName -> "ThreadsArgument")) = True
+isEThreadsArgLambda _ = False
 
 
 -- | Constant folding
@@ -549,41 +560,45 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
 --   Furthermore, this only applies to direct lambda invocations, rather than
 --   on general function values (i.e., including applications through bnds
 --   and substructure). For the latter case, we must inline and defunctionalize first.
-betaReductionOnProgram :: K3 Declaration -> Either String (K3 Declaration)
-betaReductionOnProgram prog = mapExpression betaReduction prog
+betaReductionOnProgram :: PIEnv -> K3 Declaration -> Either String (K3 Declaration)
+betaReductionOnProgram env prog = mapExpression (betaReduction env) prog
 
 -- Effect-aware beta reduction of an expression.
 -- We strip UIDs, spans, types and effects present on the substitution.
 -- Thus, we cannot recursively invoke the simplification, and must iterate
 -- to a fixpoint externally.
-betaReduction :: K3 Expression -> Either String (K3 Expression)
-betaReduction expr = betaReductionDelta expr >>= return . fst
+betaReduction :: PIEnv -> K3 Expression -> Either String (K3 Expression)
+betaReduction env expr = betaReductionDelta env expr >>= return . fst
 
 -- Beta reduction with a boolean indicating if any substitutions were performed.
-betaReductionDelta :: K3 Expression -> Either String (K3 Expression, Bool)
-betaReductionDelta expr = foldMapTree reduce ([], False) expr >>= return . first head
+betaReductionDelta :: PIEnv -> K3 Expression -> Either String (K3 Expression, Bool)
+betaReductionDelta env expr = foldMapTree reduce ([], False) expr >>= return . first head
   where
     reduce (onSub -> (ch, True)) n = return $ ([replaceCh n ch], True)
     reduce (onSub -> (ch, False)) n =
       let n' = replaceCh n ch in
       case (skipBetaReduce n', n') of
-        (False, tag -> ELetIn i) -> reduceOnOccurrences n' i (head ch) (last ch)
-        (False, PAppLam i bodyE argE _ _) -> reduceOnOccurrences n' i argE bodyE
+        (False, tag -> ELetIn i) -> reduceOnOccurrences n' i (head ch) (last ch) (n' @~ isEUID)
+        (False, PAppLam i bodyE argE _ _) -> reduceOnOccurrences n' i argE bodyE (n' @~ isEUID)
         (_, _) -> return ([n'], False)
 
     reduce _ _ = Left "Invalid betaReductionDelta.reduce pattern match"
 
-    -- This reduction is extremely conservative: we proceed only if both the target and
-    -- substitution are read only. A more general form is if there are no writes to any
-    -- variables in the substitution in the target, in the prefix of all substitution points.
-    reduceOnOccurrences n i ie e = do
+    -- We perform beta reduction if:
+    -- i. the substituted expression is read only. This ensures multiple substitutions do
+    --    not cause duplicated write effects.
+    -- ii. the target expression into which we are substituting does not perform any writes
+    --     on the identifier.
+    reduceOnOccurrences n i ie e (Just (EUID u)) = do
       ieRO <- readOnly False ie
-      eRO  <- readOnly True e
+      eRO  <- noWritesOn True env i u e
       let numOccurs = length $ filter (== i) $ freeVariables e
       (simple, doReduce) <- reducibleTarget numOccurs ie
       if debugCondition ieRO eRO n $ (simple || (ieRO && eRO)) && doReduce
         then return ([substituteImmutBinding i (cleanExpr ie) e], True)
         else return ([n], False)
+
+    reduceOnOccurrences _ _ _ _ _ = Left "Invalid UID for reduceOnOccurrences"
 
     reducibleTarget numOccurs ie =
       case (tag ie, ie @~ isEType, ie @~ isEQualified) of
@@ -2115,21 +2130,41 @@ rewriteStreamAccumulation i expr = mapAccumulation rewriteAccumE rewriteVarE i e
         rewriteVarE   _ = EC.constant $ CNone NoneImmut
 
 
--- | Mark every lambda that returns its argument at all return points.
-markProgramSelfReturningLambdas :: K3 Declaration -> Either String (K3 Declaration)
-markProgramSelfReturningLambdas prog = do
+-- | Mark every lambda that either returns or threads its argument.
+markProgramLambdas :: K3 Declaration -> Either String (K3 Declaration)
+markProgramLambdas prog = do
   lcenv <- lambdaClosures prog
-  mapExpression (markSelfReturningLambdas lcenv) prog
+  mapExpression (markLambdas lcenv) prog
 
-markSelfReturningLambdas :: ClosureEnv -> K3 Expression -> Either String (K3 Expression)
-markSelfReturningLambdas lcenv expr = modifyTree onLambda expr
-  where onLambda e@(tnc -> (ELambda i, [body])) = do
+markLambdas :: ClosureEnv -> K3 Expression -> Either String (K3 Expression)
+markLambdas lcenv expr = modifyTree doMark expr
+  where doMark e@(tnc -> (ELambda i, [body])) = do
           u <- uidOf e
           clvars <- maybe closureErr return $ IntMap.lookup u lcenv
-          case inferVariableReturns i clvars body of
-            (True, nbody) -> return $ (replaceCh e [nbody]) @+ inferredEProp "ReturnsArgument" Nothing
-            (False, _) -> return e
-        onLambda e = return e
+          (ra, nbody) <- case inferVariableReturns i clvars body of
+                           (False, _) -> return (False, body)
+                           (x,y) -> return (x,y)
+
+          (ta, nbody2) <- case inferThreadReturns i nbody of
+                            (False, _) -> return (False, nbody)
+                            (x,y) -> return (x,y)
+
+          if ta || ra
+            then
+              let r  = replaceCh e [nbody2]
+                  r2 = if ra then r  @+ inferredEProp "ReturnsArgument" Nothing else r
+                  r3 = if ta then r2 @+ inferredEProp "ThreadsArgument" Nothing else r2
+              in return r3
+            else return e
+
+        -- Mark folds that are threading transformers.
+        doMark e@(PPrjApp2 cE "fold" fAs fLam fAcc app1As app2As) =
+          case fLam @~ isEThreadsArgLambda of
+            Nothing -> return e
+            _ -> let prje = (PPrj cE "fold" fAs) @+ inferredEProp "ThreadingTransformer" Nothing
+                 in return $ PApp (PApp prje fLam app1As) fAcc app2As
+
+        doMark e = return e
 
         uidOf e   = maybe uidErr (\case {(EUID (UID u)) -> Right u ; _ -> uidErr}) $ e @~ isEUID
 
@@ -2201,6 +2236,65 @@ inferVariableReturns :: Identifier -> [Identifier] -> K3 Expression -> (Bool, K3
 inferVariableReturns i cl expr = mapVariableReturns annotateArgE annotateClosureE i cl expr
   where annotateArgE     e = e @+ (inferredEProp "ArgReturn" Nothing)
         annotateClosureE e = e @+ (inferredEProp "ClosureReturn" Nothing)
+
+
+-- | Apply a function to every return expression that is a fold accepting a variable named as the given identifier.
+mapThreadReturns :: (K3 Expression -> K3 Expression) -> Identifier -> K3 Expression -> (Bool, K3 Expression)
+mapThreadReturns onFoldRetF i expr = runIdentity $ do
+  (isAcc, e) <- doInference
+  return $ (either id id isAcc, e)
+
+  where
+    doInference = foldMapReturnExpression trackBindings threadReturn independentF False (Left False) expr
+
+    trackBindings shadowed e = case tag e of
+        ELambda j -> return (shadowed, [onBinding shadowed j])
+        ELetIn  j -> return (shadowed, [shadowed, onBinding shadowed j])
+        ECaseOf j -> return (shadowed, [shadowed, onBinding shadowed j, shadowed])
+        EBindAs b -> return (shadowed, [shadowed, foldl onBinding shadowed $ bindingVariables b])
+        _ -> return (shadowed, replicate (length $ children e) shadowed)
+
+      where onBinding sh j = if i == j then True else sh
+
+    independentF shadowed _ e
+      | EVariable j <- tag e , i == j && not shadowed = return (Right False, e)
+      | EAssign   j <- tag e , i == j && not shadowed = return (Right False, e)
+
+    independentF _ (onIndepR -> isFoldReturn) e = return (isFoldReturn, e)
+
+    threadReturn shadowed _ e@(PPrjApp2 cE "fold" fAs fLam (PVar j jAs) app1As app2As)
+      | i == j && not shadowed =
+        case (fLam @~ isEReturnsArgLambda, fLam @~ isEThreadsArgLambda) of
+          (Nothing, Nothing) -> return (Right False, e)
+          (_, _) -> let re = PApp (PApp (onFoldRetF $ PPrj cE "fold" fAs) fLam app1As) (PVar j jAs) app2As
+                    in return (Left True, re)
+
+    threadReturn _ (onDirectReturnBranch [0]   -> isThreadRet) e@(tag -> ELambda _)     = return (isThreadRet, e)
+    threadReturn _ (onDirectReturnBranch [0]   -> isThreadRet) e@(tag -> EOperate OApp) = return (isThreadRet, e)
+    threadReturn _ (onDirectReturnBranch [1]   -> isThreadRet) e@(tag -> EOperate OSeq) = return (isThreadRet, e)
+
+    threadReturn _ (onDirectReturnBranch [1]   -> isThreadRet) e@(tag -> ELetIn  _)     = return (isThreadRet, e)
+    threadReturn _ (onDirectReturnBranch [1]   -> isThreadRet) e@(tag -> EBindAs _)     = return (isThreadRet, e)
+    threadReturn _ (onDirectReturnBranch [1,2] -> isThreadRet) e@(tag -> ECaseOf _)     = return (isThreadRet, e)
+    threadReturn _ (onDirectReturnBranch [1,2] -> isThreadRet) e@(tag -> EIfThenElse)   = return (isThreadRet, e)
+
+    threadReturn _ _ e = return (Right False, e)
+
+    onIndepR l = if any not $ rights l then Right False else Left False
+
+    onDirectReturnBranch branchIds l =
+      if any not $ rights (map (l !!) branchIds) then Right False
+      else ensureEither (map (l !!) branchIds)
+
+    ensureEither l =
+      if all id (lefts l) && all id (rights l)
+        then (if null $ rights l then Left else Right) True
+        else Right False
+
+
+inferThreadReturns :: Identifier -> K3 Expression -> (Bool, K3 Expression)
+inferThreadReturns i expr = mapThreadReturns annotateFoldE i expr
+  where annotateFoldE e = e @+ (inferredEProp "ThreadFoldReturn" Nothing)
 
 
 -- Helper patterns for fusion

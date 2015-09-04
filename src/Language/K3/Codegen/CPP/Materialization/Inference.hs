@@ -15,6 +15,7 @@ import qualified Data.List as L
 import Control.Arrow
 
 import Data.Foldable
+import Data.Maybe (fromMaybe)
 import Data.Traversable
 import Data.Tree
 
@@ -68,7 +69,7 @@ optimizeMaterialization (p, f) d = runExceptT $ inferMaterialization >>= solveMa
     Left (SError msg) -> throwError msg
     Right (_, SState mp) -> return mp
    where
-    solveAction = (mkDependencyList ct d >>= flip solveForAll ct)
+    solveAction = (let ct' = simplifyE <$> ct in mkDependencyList ct' d >>= flip solveForAll ct')
 
   attachMaterialization k m = return $ attachD <$> k
    where
@@ -98,7 +99,8 @@ data IState = IState { cTable :: M.Map DKey (K3 MExpr) }
 type DKey = (Juncture, Direction)
 
 constrain :: UID -> Identifier -> Direction -> K3 MExpr -> InferM ()
-constrain u i d m = let j = (Juncture u i) in logR j d m >> modify (\s -> s { cTable = M.insert (j, d) m (cTable s) })
+constrain u i d m = let j = (Juncture u i) in
+  logR j d m >> modify (\s -> s { cTable = M.insertWith (flip const) (j, d) m (cTable s) })
 
 -- ** Scoping state
 data IScope = IScope { downstreams :: [Downstream], nearestBind :: Maybe UID, pEnv :: PIEnv, fEnv :: FIEnv, topLevel :: Bool }
@@ -134,8 +136,8 @@ formatIReport rv ir = do
   putStrLn "--- Begin Materialization Inference Report ---"
   for_ ir $ \(IReport (Juncture u i) d m) -> case reportVerbosity of
     None -> return ()
-    Short -> printf "J%d/%s/%s: %s\n" (gUID u) i (show d) (ppShortE m)
-    Long -> printf "--- Juncture %d/%s/%s:\n%s" (gUID u) i (show d) (pretty m)
+    Short -> printf "J%d/%s/%s: %s / %s\n" (gUID u) i (show d) (ppShortE m) (ppShortE $ simplifyE m)
+    Long -> printf "--- Juncture %d/%s/%s:\n%s" (gUID u) i (show d) (boxToString $ prettyLines m %+ prettyLines (simplifyE m))
   putStrLn "--- End Materialization Inference Report ---"
 
 -- ** Errors
@@ -264,6 +266,14 @@ materializeE e@(Node (t :@: _) cs) = case t of
 
   EOperate OApp -> do
     let [f, x] = cs
+    case (f, x) of
+      (tag -> EProject "fold", tag &&& children -> (ELambda i, [il])) -> do
+        xu <- eUID x
+        ilu <- eUID il
+        constrain xu i In (mAtom Moved -??- "Fold Override")
+        constrain ilu i In (mAtom Moved -??- "Fold Override")
+      _ -> return ()
+
     contextualizeNow x >>= \x' -> withDownstreams [x'] $ materializeE f
     materializeE x
 
@@ -320,18 +330,35 @@ materializeE e@(Node (t :@: _) cs) = case t of
       cpBinding <- contextualizeNow (pbvar m)
       (ehw, _) <- hasWriteIn cpBinding cpBody
 
+      cpBindSource <- chasePPtr ptr >>= contextualizeNow
+      (bsehw, _) <- hasWriteIn cpBindSource cpBody
+      (bsehr, _) <- hasReadIn cpBindSource cpBody
+
       let bindNeedsOwn = ehw
-      constrain u name In $ mITE bindNeedsOwn (mITE sourceMoveable (mAtom Moved) (mAtom Copied)) (mAtom Referenced)
+      let bindConflict = bsehr -||- bsehw
+      constrain u name In $ mITE bindConflict (mITE bindNeedsOwn (mAtom Copied) (mAtom Referenced)) (mAtom Referenced)
       constrain u name Ex $ mITE (mOneOf (mVar u name In) [Copied, Moved]) (mAtom Moved) (mAtom Referenced)
 
-
   ELetIn i -> do
-    let [initB, body] = cs
-    contextualizeNow body >>= \body' -> withDownstreams [body'] (materializeE initB)
+    let [initL, body] = cs
+
+    (imn, ico) <- do
+      body' <- contextualizeNow body
+
+      withDownstreams [body'] $ do
+        materializeE initL
+        imn <- ePrv initL >>= contextualizeNow >>= isMoveableNow
+        ico <- ePrv initL >>= contextualizeNow >>= bindPoint >>= \case
+          Nothing -> return $ mBool True -??- "Temporary."
+          Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied] -??- "Owned by containing context?"
+
+        return (imn, ico)
+
     materializeE body
 
     u <- eUID e
-    constrain u i In $ mAtom Referenced -??- "Default let materialization strategy."
+    let moveable = imn -&&- ico
+    constrain u i In $ mITE moveable (mAtom Moved) (mAtom Copied)
 
   ECaseOf i -> do
     let [initB, some, none] = cs
@@ -587,7 +614,11 @@ findDependenciesP p = case tag p of
 -- ** Solving
 solveForAll :: [Either DKey DKey] -> M.Map DKey (K3 MExpr) -> SolverM ()
 solveForAll eks m = for_ eks $ \case
-  Left fk -> setMethod fk Copied
+  Left fk -> do
+    progress <- gets (M.keysSet . assignments)
+    if progress S.\\ (findDependenciesE (m M.! fk)) == [fk]
+      then tryResolveSelfCycle fk (m M.! fk) >>= setMethod fk . fromMaybe Copied
+      else setMethod fk Copied
   Right rk -> solveForE (m M.! rk) >>= setMethod rk
 
 solveForE :: K3 MExpr -> SolverM Method
@@ -603,3 +634,67 @@ solveForP p = case tag p of
   MOr -> or <$> traverse solveForP (children p)
   MOneOf e m -> flip elem m <$> solveForE e
   MBool b -> return b
+
+tryResolveSelfCycle :: DKey -> K3 MExpr -> SolverM (Maybe Method)
+tryResolveSelfCycle k e = do
+  g <- get
+  mms <- forM [ConstReferenced, Referenced, Moved, Copied] $ \m -> do
+    setMethod k m
+    m' <- solveForE e
+    if m' == m
+      then return (First $ Just m)
+      else return (First Nothing)
+  put g
+  return $ getFirst $ mconcat mms
+
+-- * Independent Simplification Routines
+-- | The following routines perform simplification on MExprs/MPreds independent of the binding
+--   values of MVars; it is in essence performing just the propagation stage of constraint solvers.
+--   The constraints still need to be "solved" as above, but hopefully they will be a _lot_ smaller,
+--   and will not include spurious dependencies.
+simplifyE :: K3 MExpr -> K3 MExpr
+simplifyE expr = case expr of
+  (tag &&& children -> (MIfThenElse p, [t, e])) -> case simplifyP p of
+    (tag -> MBool b) -> simplifyE $ if b then t else e
+    p' -> mITE p' t e
+  _ -> expr
+
+simplifyP :: K3 MPred -> K3 MPred
+simplifyP pred = case pred of
+  (tag &&& children -> (MNot, [p])) -> case simplifyP p of
+    (tag -> MBool b) -> mBool (not b)
+    p' -> mNot p'
+  (tag &&& children -> (MAnd, cs)) -> case foldl andFold (Just []) cs of
+    Nothing -> mBool False
+    Just [] -> mBool True
+    Just xs -> case L.nub xs of
+      [x] -> x
+      xs' -> mAnd xs'
+  (tag &&& children -> (MOr, cs)) -> case foldl orFold (Just []) cs of
+    Nothing -> mBool True
+    Just [] -> mBool False
+    Just xs -> case L.nub xs of
+      [x] -> x
+      xs' -> mOr xs'
+  (tag -> (MOneOf e ms)) -> case simplifyE e of
+    (tag -> MAtom m) -> mBool (m `elem` ms)
+    e' -> mOneOf e' ms
+  (tag -> MBool b) -> mBool b
+ where
+  andFold :: Maybe [K3 MPred] -> K3 MPred -> Maybe [K3 MPred]
+  andFold acc p = case (acc, simplifyP p) of
+    (Nothing, _) -> Nothing
+    (Just as, tag -> MBool b)
+      | b -> Just as
+      | otherwise -> Nothing
+    (Just as, tag &&& children -> (MAnd, cs)) -> Just (as ++ cs)
+    (Just as, q) -> Just (as ++ [q])
+
+  orFold :: Maybe [K3 MPred] -> K3 MPred -> Maybe [K3 MPred]
+  orFold acc p = case (acc, simplifyP p) of
+    (Nothing, _) -> Nothing
+    (Just as, tag -> MBool b)
+      | b -> Nothing
+      | otherwise -> Just as
+    (Just as, tag &&& children -> (MOr, cs)) -> Just (as ++ cs)
+    (Just as, q) -> Just (as ++ [q])

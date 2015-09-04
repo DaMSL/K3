@@ -13,6 +13,8 @@ ENV BOOST_VER 1.57.0
 ENV BOOST_DIR boost_1_57_0
 
 ENV PROTO_VER 2.5.0
+ENV JEMALLOC_VER 4.0.0
+ENV PERFTOOLS_VER 2.4
 
 ENV MESOS_VER 0.22.1
 ENV MESOS_INT_VER 0.22.1.1
@@ -22,9 +24,11 @@ ENV GHC_VER 7.10.1
 ENV HAPPY_VER 1.19.5
 ENV ALEX_VER 3.1.4
 
+ENV YAML_CPP_VER 0.5.1
+
 ENV OPAMYES 1
 
-ENV LD_LIBRARY_PATH /usr/local/lib
+ENV LD_LIBRARY_PATH /usr/local/lib:/usr/lib
 
 ENV PGHOST qp2
 ENV PGHOSTADDR 192.168.0.11
@@ -40,7 +44,7 @@ RUN apt-get update && apt-get install -y \
                        opam \
                        ruby2.2 ruby2.2-dev python python-dev python-pip \
                        postgresql-client-9.4 libpq-dev \
-                       libyaml-cpp-dev libzmq3-dev libre2-dev numactl && \
+                       libzmq3-dev libre2-dev numactl && \
     update-alternatives \
       --install /usr/bin/ruby ruby /usr/bin/ruby2.2 50 \
       --slave /usr/bin/irb irb /usr/bin/irb2.2 \
@@ -114,6 +118,38 @@ RUN wget https://github.com/google/protobuf/releases/download/v$PROTO_VER/protob
   cd .. && \
   rm -Rf /protobuf-$PROTO_VER
 
+# Install jemalloc
+RUN wget https://github.com/jemalloc/jemalloc/releases/download/$JEMALLOC_VER/jemalloc-$JEMALLOC_VER.tar.bz2 && \
+  tar -xvf jemalloc-$JEMALLOC_VER.tar.bz2 && \
+  rm jemalloc-$JEMALLOC_VER.tar.bz2 && \
+  cd jemalloc-$JEMALLOC_VER && \
+  ./autogen.sh && \
+  ./configure --prefix=/usr && \
+  make && \
+  make install && \
+  cd .. && \
+  rm -Rf /jemalloc-$JEMALLOC_VER
+
+# Install gperftools
+RUN wget https://github.com/gperftools/gperftools/releases/download/gperftools-$PERFTOOLS_VER/gperftools-$PERFTOOLS_VER.tar.gz && \
+  tar -xvf gperftools-$PERFTOOLS_VER.tar.gz && \
+  rm gperftools-$PERFTOOLS_VER.tar.gz && \
+  cd gperftools-$PERFTOOLS_VER && \
+  ./configure --prefix=/usr && \
+  make && \
+  make install && \
+  cd .. && \
+  rm -Rf /gperftools-$PERFTOOLS_VER
+
+# Install yaml-cpp
+RUN wget https://github.com/jbeder/yaml-cpp/archive/release-$YAML_CPP_VER.tar.gz && \
+  tar -xvzf release-$YAML_CPP_VER.tar.gz && \
+  rm release-$YAML_CPP_VER.tar.gz && \
+  cd yaml-cpp-release-$YAML_CPP_VER && \
+  mkdir build && cd build && \
+  cmake .. && make && make install && \
+  cd / && rm -Rf /yaml-cpp-release-$YAML_CPP_VER
+
 # Install Mesos Eggs
 RUN ln -s /usr/lib/libmesos-$MESOS_VER.so /usr/lib/libmesos.so && \
     wget http://downloads.mesosphere.io/master/ubuntu/14.04/mesos-$MESOS_VER-py2.7-linux-x86_64.egg && \
@@ -138,24 +174,27 @@ RUN echo 'deb http://ppa.launchpad.net/hvr/ghc/ubuntu trusty main' > /etc/apt/so
     cabal install cabal-install -j
 
 # Install decent vim configuration
-RUN mkdir /root/.vim && \
-    git clone https://github.com/tpope/vim-pathogen.git /root/.vim; \
-    git clone https://github.com/tpope/vim-sensible.git /root/.vim/bundle; \
-    git clone https://github.com/tmhedberg/matchit.git /root/.vim/bundle; \
-    git clone https://github.com/kien/ctrlp.git /root/.vim/bundle; \
-    git clone https://github.com/tpope/vim-surround.git /root/.vim/bundle; \
-    git clone https://github.com/tpope/vim-unimpaired.git /root/.vim/bundle; \
-    git clone https://github.com/tpope/vim-repeat.git /root/.vim/bundle; \
-    git clone https://github.com/tpope/vim-fugitive.git /root/.vim/bundle; \
-    git clone https://github.com/tpope/vim-vinegar.git /root/.vim/bundle; \
-    git clone https://github.com/tpope/vim-eunuch.git /root/.vim/bundle; \
-    git clone https://github.com/scrooloose/nerdtree.git /root/.vim/bundle; \
-    git clone https://github.com/scrooloose/syntastic.git /root/.vim/bundle; \
-    git clone https://github.com/godlygeek/tabular.git /root/.vim/bundle; \
-    git clone https://github.com/bling/airline.git /root/.vim/bundle; \
-    git clone https://github.com/bronson/vim-visual-star-search.git /root/.vim/bundle; \
-    git clone https://github.com/justinmk/vim-sneak.git /root/.vim/bundle; \
-    echo 'execute pathogen#infect() | syntax on | filetype plugin indent on' > /root/.vimrc
+RUN mkdir -p /root/.vim/autoload && mkdir -p /root/.vim/bundle \
+    cd /root/.vim && \
+    curl -LSso /root/.vim/autoload/pathogen.vim https://raw.githubusercontent.com/tpope/vim-pathogen/master/autoload/pathogen.vim && \
+    cd /root/.vim/bundle && \
+    git clone https://github.com/tpope/vim-sensible.git; \
+    git clone https://github.com/tmhedberg/matchit.git; \
+    git clone https://github.com/kien/ctrlp.vim.git; \
+    git clone https://github.com/tpope/vim-surround.git; \
+    git clone https://github.com/tpope/vim-unimpaired.git; \
+    git clone https://github.com/tpope/vim-repeat.git; \
+    git clone https://github.com/tpope/vim-fugitive.git; \
+    git clone https://github.com/tpope/vim-vinegar.git; \
+    git clone https://github.com/tpope/vim-eunuch.git; \
+    git clone https://github.com/scrooloose/nerdtree.git; \
+    git clone https://github.com/scrooloose/syntastic.git; \
+    git clone https://github.com/godlygeek/tabular.git; \
+    git clone https://github.com/bling/vim-airline.git; \
+    git clone https://github.com/bronson/vim-visual-star-search.git; \
+    git clone https://github.com/justinmk/vim-sneak.git; \
+    echo 'execute pathogen#infect() | syntax on | filetype plugin indent on' > /root/.vimrc; \
+    cd /
 
 # Clone Repo
 RUN mkdir -p /k3/K3 && \
