@@ -10,6 +10,8 @@
 # Debian: Sid
 FROM debian:sid
 
+ENV JEMALLOC_VER 4.0.0
+
 # Install basic packages to build the image
 RUN apt-get update && apt-get install -y \
   bzip2 unzip autoconf Libtool \

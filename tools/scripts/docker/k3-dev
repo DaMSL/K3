@@ -130,6 +130,17 @@ RUN wget https://github.com/jemalloc/jemalloc/releases/download/$JEMALLOC_VER/je
   cd .. && \
   rm -Rf /jemalloc-$JEMALLOC_VER
 
+# Install libunwind (a specific version for gperftools)
+RUN wget http://download.savannah.gnu.org/releases/libunwind/libunwind-0.99-beta.tar.gz && \
+  tar -xvf libunwind-0.99-beta.tar.gz && \
+  rm libunwind-0.99-beta.tar.gz && \
+  cd libunwind-0.99-beta && \
+  ./configure --prefix=/usr && \
+  make && \
+  make install && \
+  cd / && \
+  rm -Rf libunwind-0.99-beta
+
 # Install gperftools
 RUN wget https://github.com/gperftools/gperftools/releases/download/gperftools-$PERFTOOLS_VER/gperftools-$PERFTOOLS_VER.tar.gz && \
   tar -xvf gperftools-$PERFTOOLS_VER.tar.gz && \
