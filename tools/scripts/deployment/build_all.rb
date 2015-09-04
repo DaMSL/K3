@@ -59,26 +59,26 @@ QUERIES = {
   #
   #
 
-  #"conversion" => {
-  #  :roles => {
-  #    #"10g" => "convert_10g.yml",
-  #    "100g" => "convert_100g.yml",
-  #  },
-
-  #  :queries => {
-  #    "convert" => "examples/sql/tpch/convert.k3"
-  #  }
-  #},
-
-  "test" => {
+  "conversion" => {
     :roles => {
-      "test" => "test.yml"
+      "10g" => "convert_10g.yml",
+      #"100g" => "convert_100g.yml",
     },
 
     :queries => {
-      "test" => "test.k3"
+      "convert" => "examples/sql/tpch/convert.k3"
     }
-  }
+  },
+
+  #"test" => {
+  #  :roles => {
+  #    "test" => "test.yml"
+  #  },
+
+  #  :queries => {
+  #    "test" => "test.k3"
+  #  }
+  #}
 }
 
 def slugify(experiment, query)

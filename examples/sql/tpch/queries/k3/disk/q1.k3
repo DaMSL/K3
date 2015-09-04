@@ -8,7 +8,7 @@ include "tpch/loader.k3"
 
 // Force generation of _BFC class (Codegen Bug)
 declare dummy: collection lineitem_r @BulkFlatCollection
-declare lineitem: lineitem_bag
+declare lineitem: lineitem_elem_bag
 
 declare master: address
 declare workers: mut collection {addr: address} @Collection
@@ -38,14 +38,14 @@ typedef q1_result_r = { l_returnflag   : string
 declare result: mut collection {key: (string, string), value: q1_agg} @Collection
 
 declare init_agg    : q1_agg
-declare accum_agg : q1_agg -> lineitem_r -> q1_agg = \acc -> \r ->
-  { sum_qty        : acc.sum_qty        + r.l_quantity
-  , sum_base_price : acc.sum_base_price + r.l_extendedprice
-  , sum_disc_price : acc.sum_disc_price + (r.l_extendedprice * (1 - r.l_discount))
-  , sum_charge     : acc.sum_charge     + (r.l_extendedprice * (1 - r.l_discount) * (1 + r.l_tax))
-  , avg_qty_sum    : acc.avg_qty_sum    + r.l_quantity
-  , avg_price_sum  : acc.avg_price_sum  + r.l_extendedprice
-  , avg_disc_sum   : acc.avg_disc_sum   + r.l_discount
+declare accum_agg : q1_agg -> {elem: lineitem_r} -> q1_agg = \acc -> \r ->
+  { sum_qty        : acc.sum_qty        + r.elem.l_quantity
+  , sum_base_price : acc.sum_base_price + r.elem.l_extendedprice
+  , sum_disc_price : acc.sum_disc_price + (r.elem.l_extendedprice * (1 - r.elem.l_discount))
+  , sum_charge     : acc.sum_charge     + (r.elem.l_extendedprice * (1 - r.elem.l_discount) * (1 + r.elem.l_tax))
+  , avg_qty_sum    : acc.avg_qty_sum    + r.elem.l_quantity
+  , avg_price_sum  : acc.avg_price_sum  + r.elem.l_extendedprice
+  , avg_disc_sum   : acc.avg_disc_sum   + r.elem.l_discount
   , count_order    : acc.count_order    + 1
   }
 
@@ -78,20 +78,34 @@ trigger ready: () = \_ -> (
   peers.iterate (\p -> (t, p.addr) <- ())
 ) @Barrier(lbl=[# ready], count=[$ peers.size() ])
 
-declare lineitem_path: string = "/data/lineitem_bfcs_100G"
+declare lineitem_path: string = "/local/data/tpch10g/lineitem_bfcs"
 
 // Local Trigger
-// TODO(jbw) Can we handle filter instead of manual fold encoding
 trigger t: () = \_ -> (
   result = ((((lineitem @:BaseTable "lineitem_path")
              .filter
-               (\e -> e.l_shipdate <= 19980902))
+               (\e -> e.elem.l_shipdate <= 19980902))
              .group_by
-               (\e -> (e.l_returnflag, e.l_linestatus) )
+               (\e -> (e.elem.l_returnflag, e.elem.l_linestatus) )
                accum_agg
                init_agg) @:Stream);
   (done, master) <- ()
 ) @DistributedGroupBy2(lbl=[# gb1], merge=[$ merge_agg ])
+
+declare lineitem_e: mut collection {elem: lineitem_r} @Collection
+declare result2: mut collection {elem: int} @Collection
+
+trigger t2: () = \_ -> (
+  result2 = ((((lineitem @:BaseTable "lineitem_path")
+             .filter
+               (\e -> e.elem.l_shipdate <= 19980902)) @:Stream)
+             .equijoin
+               ((lineitem @:BaseTable "lineitem_path") @:Stream)
+               (\e -> e.elem.l_orderkey)
+               (\e -> e.elem.l_orderkey)
+               (\_ -> \_ -> 1));
+  (done, master) <- ()
+) @DistributedHashJoin2(lbl=[# join1])
 
 // Final barrier
 trigger done: () = \_ -> (

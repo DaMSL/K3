@@ -177,7 +177,12 @@ public:
   template<typename T> struct type{};
 
   template<class T> void externalize(T& t) { externalize(t, type<T>{}); }
-  template<class T> void externalize(T&, type<T>) {}
+  template<class T> void externalize(T& t, type<T>) {
+    t.externalize(*this);
+  }
+
+  void externalize(int&, type<int>) { }
+  void externalize(double&, type<double>) { }
 
   void externalize(base_string& str, type<base_string>)
   {
@@ -246,7 +251,12 @@ public:
     internalize(t, type<T>{});
   }
 
-  template<class T> void internalize(T&, type<T>) {}
+  template<class T> void internalize(T& t, type<T>) {
+    t.internalize(*this);
+  }
+
+  void internalize(int&, type<int>) { }
+  void internalize(double&, type<double>) { }
 
   void internalize(base_string& str) {
     if ( !vcon.internalized() ) {

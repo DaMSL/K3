@@ -38,7 +38,7 @@ declare tpchAgendaLoaderP : collection {path: string} @Collection -> tpch_agenda
 
 /////////////////////////////
 //
-// 'elem' wrapped loaders 
+// 'elem' wrapped loaders
 //
 //
 
@@ -160,30 +160,30 @@ declare q22_customerLoaderPC : collection {path: string} @Collection -> q22_cust
 declare q22_ordersLoaderPC : collection {path: string} @Collection -> q22_orders_bag -> orders_r -> ()
   with effects \_ -> \_ -> \_ -> io
 
-
-control ConvertPSVToBFC [batch_size: expr, sink_trig: expr, next_trig: expr] {
- ?loader ?files (?col : collection {elem: ?t}) 
- => print "Loading a file"; 
+control ConvertPSVToBFC [lbl: label, batch_size: expr, sink_trig: expr, next_trig: expr] {
+ ?loader ?files (?col : collection {elem: ?t})
+ => print "Loading a file";
     $.[loader] $.[files] $.[col];
     print ("Loaded: " ++ (itos ($.[col].size())));
     print "Converting to bfc";
-    let last_batch = 
-      $.[col].fold 
+    let last_batch =
+      $.[col].fold
         (\acc -> \e -> (
           if acc.size() < $[batch_size]
-          then acc.insert e; acc
+          then acc.insert {elem: e}; acc
           else (
-            let bfc = empty $::[t] @BulkFlatCollection
+            let bfc = empty {elem: $::[t]} @BulkFlatCollection
             in (
               bfc.append acc;
               local_count = local_count + (acc.size());
               ($[sink_trig], me) <- bfc.save();
-              ({|elem: $::[t]| e.elem |} @Collection)
+              let emp = empty {elem: {elem: $::[t]}} @Collection in
+              (emp.insert {elem: e}; emp)
             )
-           )
-        )) empty {elem: $::[t]} @Collection
+          )
+        )) empty {elem: {elem: $::[t]}} @Collection
     in (
-      let bfc = empty $::[t] @BulkFlatCollection
+      let bfc = empty {elem: $::[t]} @BulkFlatCollection
       in (
         local_count = local_count + (last_batch.size());
         print ("Saved: " ++ (itos local_count));
@@ -192,8 +192,8 @@ control ConvertPSVToBFC [batch_size: expr, sink_trig: expr, next_trig: expr] {
         ($[next_trig], me) <- ()
       )
     )
- +> { 
-    declare local_count: mut int = 0 
+ +> {
+    declare local_count: mut int = 0
  }
 }
 

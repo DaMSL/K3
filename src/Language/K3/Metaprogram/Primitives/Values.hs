@@ -220,3 +220,7 @@ extractPathBFC (SExpr e) = maybe (error "No path found in BaseTable property") (
     extract acc (EProperty ( (ePropertyName &&& ePropertyValue) -> ("BaseTable", Just (tag -> LString s)) )) = Just s
     extract acc _ = acc
 extractPathBFC _ = error "Invalid expression in extractPathBFC"
+
+collectionContentType :: SpliceValue -> SpliceValue
+collectionContentType (SType (tag &&& children -> (TCollection , (t:_) ))) = SType t
+collectionContentType _ = error "Invalid type in collectionContentType"
