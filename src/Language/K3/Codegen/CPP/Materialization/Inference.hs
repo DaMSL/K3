@@ -188,17 +188,13 @@ materializeE e@(Node (t :@: _) cs) = case t of
     let [super] = cs
     materializeE super
     moveableNow <- ePrv super >>= contextualizeNow >>= isMoveableNow
-    ownContext <- ePrv super >>= contextualizeNow >>= bindPoint >>= \case
-      Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied] -??- "Owned by containing context?"
-      Nothing -> return $ mBool True -??- "Temporary."
-
 
     u <- eUID e
 
     -- Need to be very careful here, semantics probably say that default method is copy, but we
     -- treat it as reference almost everywhere. Check projection decisions carefully, usually on
     -- collection transformers.
-    constrain u anon In $ mITE (moveableNow -&&- ownContext) (mAtom Moved) (mAtom Referenced)
+    constrain u anon In $ mITE moveableNow (mAtom Moved) (mAtom Referenced)
   ERecord is -> do
     u <- eUID e
 
@@ -212,11 +208,7 @@ materializeE e@(Node (t :@: _) cs) = case t of
         -- Determine if the field argument is moveable within the current expression.
         moveableNow <- ePrv c >>= contextualizeNow >>= isMoveableNow
 
-        ownContext <- ePrv c >>= contextualizeNow >>= bindPoint >>= \case
-          Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied] -??- "Owned by containing context?"
-          Nothing -> return $ mBool True -??- "Temporary."
-
-        constrain u i In $ mITE (moveableNow -&&- ownContext) (mAtom Moved) (mAtom Copied)
+        constrain u i In $ mITE moveableNow (mAtom Moved) (mAtom Copied)
 
   ELambda i -> do
     let [body] = cs
@@ -254,11 +246,9 @@ materializeE e@(Node (t :@: _) cs) = case t of
         return $ ehw -??- printf "Lambda needs ownership of closure variable %s?" name
 
       outerP <- chasePPtr ptr
-      ownContext <- contextualizeNow outerP >>= bindPoint >>= \case
-        Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied] -??- "Owned by containing context?"
-        Nothing -> return $ mBool True -??- "Temporary."
+      moveable <- contextualizeNow outerP >>= isMoveableNow
 
-      constrain u name In $ mITE needsOwn (mITE ownContext (mAtom Moved) (mAtom Copied)) (mAtom ConstReferenced)
+      constrain u name In $ mITE needsOwn (mITE moveable (mAtom Moved) (mAtom Copied)) (mAtom ConstReferenced)
 
     clps <- sequence [withNearestBind u (contextualizeNow $ pbvar m) | m <- cls]
     nrvo <- mOr <$> traverse (`occursIn` fProv) (ci:clps)
@@ -279,13 +269,12 @@ materializeE e@(Node (t :@: _) cs) = case t of
 
     moveable <- ePrv x >>= contextualizeNow >>= isMoveableNow
 
-    (ownContext, fwdContext) <- ePrv x >>= contextualizeNow >>= bindPoint >>= \case
-      Just (Juncture u i) -> return $ ( mOneOf (mVar u i In) [Moved, Copied] -??- "Owned by containing context?"
-                                      , mOneOf (mVar u i In) [Forwarded] -??- "Forwarded by containing context?")
-      Nothing -> return $ (mBool True -??- "Temporary.", mBool True -??- "Temporary.")
+    fwdContext <- ePrv x >>= contextualizeNow >>= bindPoint >>= \case
+      Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Forwarded] -??- "Forwarded by containing context?"
+      Nothing -> return $ mBool True -??- "Temporary."
 
     u <- eUID e
-    constrain u anon In $ mITE moveable (mITE ownContext (mAtom Moved) (mITE fwdContext (mAtom Forwarded) (mAtom Copied)))
+    constrain u anon In $ mITE moveable (mITE moveable (mAtom Moved) (mITE fwdContext (mAtom Forwarded) (mAtom Copied)))
                             (mAtom Copied)
 
   EOperate OSnd -> do
@@ -294,12 +283,9 @@ materializeE e@(Node (t :@: _) cs) = case t of
     materializeE m
 
     moveable <- ePrv m >>= contextualizeNow >>= isMoveableNow
-    ownContext <- ePrv m >>= contextualizeNow >>= bindPoint >>= \case
-      Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied]
-      Nothing -> return $ mBool True
 
     u <- eUID e
-    constrain u anon In $ mITE (moveable -&&- ownContext) (mAtom Moved) (mAtom Copied)
+    constrain u anon In $ mITE moveable (mAtom Moved) (mAtom Copied)
 
   EOperate _ -> case cs of
     [x] -> materializeE x
@@ -317,11 +303,8 @@ materializeE e@(Node (t :@: _) cs) = case t of
       _ -> throwError $ IError "Unknown provenance form on EBindAs."
 
     sourceMoveableNow <- ePrv initB >>= contextualizeNow >>= isMoveableNow
-    sourceOwnContext <- ePrv initB >>= contextualizeNow >>= bindPoint >>= \case
-      Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied] -??- "Owned by containing context?"
-      Nothing -> return $ mBool True -??- "Temporary."
 
-    let sourceMoveable = sourceMoveableNow -&&- sourceOwnContext
+    let sourceMoveable = sourceMoveableNow
 
     u <- eUID e
 
@@ -370,14 +353,11 @@ materializeE e@(Node (t :@: _) cs) = case t of
     materializeE none
 
     sourceMoveableNow <- ePrv initB >>= contextualizeNow >>= isMoveableNow
-    sourceOwnContext <- ePrv initB >>= contextualizeNow >>= bindPoint >>= \case
-      Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Moved, Copied] -??- "Owned by containing context?"
-      Nothing -> return $ mBool True -??- "Temporary."
 
     u <- eUID e
     ip <- contextualizeNow (pbvar $ PMatVar i u (-1))
 
-    let sourceMoveable = sourceMoveableNow -&&- sourceOwnContext
+    let sourceMoveable = sourceMoveableNow
 
     (ehw, _) <- hasWriteIn ip some'
     let caseNeedsOwn = ehw
@@ -523,6 +503,15 @@ occursIn a@(Contextual pa ca) b@(Contextual pb cb) = case tag pb of
   PProject _ -> mOr <$> traverse (\pb' -> occursIn a (Contextual pb' cb)) (children pb)
   _ -> return (mBool False)
 
+ownedByContext :: Contextual (K3 Provenance) -> InferM (K3 MPred)
+ownedByContext (Contextual p c) = case tag p of
+  PFVar i | Just u' <- c -> return $ mOneOf (mVar u' i In) [Copied, Moved]
+  PBVar (PMatVar i u' ptr) -> do
+    transitive <- chasePPtr ptr >>= \p' -> ownedByContext (Contextual p' c)
+    return $ mOneOf (mVar u' i In) [Copied, Moved] -||- (mOneOf (mVar u' i In) [Referenced] -&&- transitive)
+  PProject _ -> ownedByContext (Contextual (head $ children p) c)
+  _ -> return (mBool True)
+
 isMoveable :: Contextual (K3 Provenance) -> InferM (K3 MPred)
 isMoveable (Contextual p _) = mNot <$> isGlobal p
 
@@ -543,7 +532,12 @@ isMoveableNow cp = do
   ds <- asks downstreams
   isMoveable1 <- isMoveable cp
   allMoveable <- foldr (-&&-) (mBool True) <$> traverse (isMoveableIn cp) ds
-  return $ (isMoveable1 -??- "Global?" -&&- allMoveable -??- "Moveable in all downstreams?") -??- "Moveable?"
+  let noDownstreamConflicts = (isMoveable1 -??- "Global?" -&&- allMoveable -??- "Moveable in all downstreams?") -??- "Moveable?"
+
+  ownedInContext <- ownedByContext cp
+
+  return $ noDownstreamConflicts -&&- ownedInContext
+
 
 -- * Solver
 
