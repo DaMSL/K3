@@ -154,11 +154,12 @@ struct PageCollection
 // and internalizaton metadata while traversing through
 // data structures to perform pointer switching.
 
+using IteratorProxy = std::tuple<bool, uint32_t>;
+
 template<size_t PageSize>
 class Externalizer
 {
   using VContainer = PageCollection<PageSize>;
-  using slot_id_t = typename Page<PageSize>::slot_id_t;
 
 public:
   enum class ExternalizeOp { Create, Reuse };
@@ -176,7 +177,12 @@ public:
   template<typename T> struct type{};
 
   template<class T> void externalize(T& t) { externalize(t, type<T>{}); }
-  template<class T> void externalize(T&, type<T>) {}
+  template<class T> void externalize(T& t, type<T>) {
+    t.externalize(*this);
+  }
+
+  void externalize(int&, type<int>) { }
+  void externalize(double&, type<double>) { }
 
   void externalize(base_string& str, type<base_string>)
   {
@@ -225,15 +231,14 @@ private:
     size_t reuse_slot_id;
   };
 
-  constexpr static intptr_t advance_mask = static_cast<intptr_t>(std::numeric_limits<slot_id_t>::max()) + 1;
-  constexpr static intptr_t slot_mask = static_cast<intptr_t>(std::numeric_limits<slot_id_t>::max());
+  constexpr static intptr_t advance_mask = static_cast<intptr_t>(std::numeric_limits<uint32_t>::max()) + 1;
+  constexpr static intptr_t slot_mask = std::numeric_limits<uint32_t>::max();
 };
 
 template<size_t PageSize>
 class Internalizer
 {
   using VContainer = PageCollection<PageSize>;
-  using slot_id_t = typename Page<PageSize>::slot_id_t;
 
 public:
   Internalizer(VContainer& v) : vcon(v), vtraversal(vcon.begin()) {}
@@ -246,12 +251,17 @@ public:
     internalize(t, type<T>{});
   }
 
-  template<class T> void internalize(T&, type<T>) {}
+  template<class T> void internalize(T& t, type<T>) {
+    t.internalize(*this);
+  }
+
+  void internalize(int&, type<int>) { }
+  void internalize(double&, type<double>) { }
 
   void internalize(base_string& str) {
     if ( !vcon.internalized() ) {
       intptr_t* p = reinterpret_cast<intptr_t*>(&str);
-      slot_id_t slot_id = static_cast<slot_id_t>(*p & slot_mask);
+      uint32_t slot_id = static_cast<uint32_t>(*p & slot_mask);
       bool advance = (*p & advance_mask) != 0;
 
       if ( advance ) { ++vtraversal; }
@@ -271,8 +281,8 @@ private:
   VContainer& vcon;
   typename VContainer::iterator vtraversal;
 
-  constexpr static intptr_t advance_mask = static_cast<intptr_t>(std::numeric_limits<slot_id_t>::max()) + 1;
-  constexpr static intptr_t slot_mask = static_cast<intptr_t>(std::numeric_limits<slot_id_t>::max());
+  constexpr static intptr_t advance_mask = static_cast<intptr_t>(std::numeric_limits<uint32_t>::max()) + 1;
+  constexpr static intptr_t slot_mask = std::numeric_limits<uint32_t>::max();
 };
 
 //////////////////////////////////////////////////////
@@ -280,7 +290,7 @@ private:
 // a contiguous bulk-oriented collection class, that
 // supports storage of flat (i.e., non-nested) elements.
 //
-template<class Elem, size_t PageSize = 1 << 16>
+template<class Elem, size_t PageSize = 2 << 21>
 class BulkFlatCollection {
 public:
   using FContainer = LibdynamicVector::vector;
@@ -349,6 +359,18 @@ public:
 
   ~BulkFlatCollection() {
     freeContainer();
+  }
+
+  void insert(const Elem& elem) {
+    if (buffer.data()) {
+      throw std::runtime_error("Invalid insert on a BFC: backed by a base_string");
+    }
+    variable()->internalize(false);
+    ExternalizerT etl(*variable(), ExternalizerT::ExternalizeOp::Create);
+    InternalizerT itl(*variable());
+    vector_push_back(fixed(), const_cast<Elem*>(&elem));
+    reinterpret_cast<Elem*>(vector_back(fixed()))->externalize(etl).internalize(itl);
+    variable()->internalize(true);
   }
 
   void freeContainer() {
@@ -492,14 +514,6 @@ public:
       memcpy(buffer_ + offset, ncv->data(), varseg_size() * PageSize);
     }
 
-    int i = 0;
-    for (auto& page: *variable()) {
-      if (i % 100 == 0) {
-        std::cout << "Overhead: " << page.overhead() << ". Used: " << page.used() << ". Availabile: " << page.available() << std::endl;
-      }
-      i++;
-    }
-
     base_string str;
     len -= sizeof(size_t);
     memcpy(buffer_, &len, sizeof(size_t));
@@ -569,10 +583,10 @@ public:
 
   // Produce a new collection by mapping a function over this external collection.
   template <typename Fun>
-  auto map_generic(Fun f) const -> Collection<R_elem<RT<Fun, Elem>>> {
+  auto map(Fun f) const -> BulkFlatCollection<R_elem<RT<Fun, Elem>>> {
     FContainer* ncf = const_cast<FContainer*>(fixedc());
     VContainer* ncv = const_cast<VContainer*>(variablec());
-    Collection<R_elem<RT<Fun, Elem>>> result;
+    BulkFlatCollection<R_elem<RT<Fun, Elem>>> result;
     auto sz = fixseg_size();
     for (size_t i = 0; i < sz; ++i) {
       auto& e = reinterpret_cast<Elem*>(vector_at(ncf, i));
@@ -583,10 +597,10 @@ public:
 
   // Create a new collection consisting of elements from this set that satisfy the predicate.
   template <typename Fun>
-  Collection<R_elem<Elem>> filter_generic(Fun predicate) const {
+  BulkFlatCollection<R_elem<Elem>> filter(Fun predicate) const {
     FContainer* ncf = const_cast<FContainer*>(fixedc());
     VContainer* ncv = const_cast<VContainer*>(variablec());
-    Collection<R_elem<Elem>> result;
+    BulkFlatCollection<R_elem<Elem>> result;
     auto sz = fixseg_size();
     for (size_t i = 0; i < sz; ++i) {
       auto& e = reinterpret_cast<Elem*>(vector_at(ncf, i));
@@ -609,6 +623,8 @@ public:
     }
     return acc;
   }
+
+  // TODO(jbw) group_by
 
   Container& getContainer() { return container; }
   const Container& getConstContainer() const { return container; }
@@ -705,7 +721,7 @@ private:
 
 }; // end namespace Libdynamic
 
-template<class Elem, size_t PageSize = 1 << 16>
+template<class Elem, size_t PageSize = 2 << 21>
 using BulkFlatCollection = Libdynamic::BulkFlatCollection<Elem, PageSize>;
 
 }; // end namespace K3

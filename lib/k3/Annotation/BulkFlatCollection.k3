@@ -1,5 +1,8 @@
 annotation BulkFlatCollection given type a, b, c, d
 {
+  provides lifted insert : content -> ()
+    with effects \e -> [R[e]; W[self]]
+
   ///////////////////////////////////////////////////////
   // Bulk construction and externalization.
 
@@ -29,15 +32,22 @@ annotation BulkFlatCollection given type a, b, c, d
     with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
 
   @:Transformer
-  provides lifted map_generic : (content -> a) -> collection {elem : a} @Collection
+  provides lifted map: (content -> a) -> self
     with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
 
   @:Transformer
-  provides lifted filter_generic : (content -> bool) -> collection {elem : content} @Collection
+  provides lifted filter: (content -> bool) -> self
     with effects \filterF -> [R[self]; ([R[content]; filterF content])*]
 
   @:{Transformer, CArgs 2}
   provides lifted fold : (a -> (content -> a)) -> a -> a
     with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
 
+  // TODO(jbw) this should be _generic, once fusion can handle generic versions
+  @:{Transformer, CArgs 3}
+  provides lifted group_by : (content -> a) -> (b -> content -> b) -> b
+                              -> collection { key : a, value : b } @BulkFlatCollection
+    with effects
+      \gbF -> \gaccF -> \z ->
+        [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 }

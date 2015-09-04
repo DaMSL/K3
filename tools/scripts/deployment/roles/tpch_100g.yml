@@ -12,5 +12,7 @@ k3_data:
   - {var: customerFiles, path: /local/data/tpch100g/customer, policy: global}  
   - {var: ordersFiles, path: /local/data/tpch100g/orders, policy: global}  
   - {var: supplierFiles, path: /local/data/tpch100g/supplier, policy: global}  
+  - {var: partsuppFiles, path: /local/data/tpch100g/partsupp, policy: global}  
+  - {var: partFiles, path: /local/data/tpch100g/part, policy: global}  
   - {var: regionFiles, path: /local/data/tpch100g/region, policy: replicate}
   - {var: nationFiles, path: /local/data/tpch100g/nation, policy: replicate}

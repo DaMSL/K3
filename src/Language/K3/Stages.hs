@@ -527,7 +527,7 @@ cgPasses = [ withRepair "TID" $ transformE $ triggerSymbols
            , \d -> return (mangleReservedNames d)
            , refreshProgram
            , transformF CArgs.runAnalysis
-           , transformE markProgramSelfReturningLambdas
+           , transformE markProgramLambdas
            , \d -> get >>= \s -> liftIO (optimizeMaterialization (penv s, fenv s) d) >>= either throwE return
            ]
 

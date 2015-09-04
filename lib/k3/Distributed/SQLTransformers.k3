@@ -1,63 +1,165 @@
 include "Annotation/Collection.k3"
 include "Annotation/Map.k3"
+include "Annotation/BulkFlatCollection.k3"
 include "Core/Barrier.k3"
 include "Core/Builtins.k3"
 include "Core/MachineMessaging.k3"
+include "Core/Optimization.k3"
 
+// TODO(jbw) find a good home for index_by_hash
 control SQL {
   () => ()
      +> {
       declare index_by_hash : forall a. a -> int = (\s -> (
-        let n = peers.size () in
+        let n = workers.size() in
         let h = (hash s) in
         ((h % n) + n) % n
       ))
      }
 }
 
+// Read values from the file at the specified path, sending each value to one of the 'workers' by round-robin.
+// After the file is exhausted, send punctuation to the specified trigger.
+control StreamRawFromFile [ lbl: label, path: expr, receive_trig: expr, punc_trig: expr ] {
+  () => ( ($[lbl]_read_start, me) <- () )@IfMachineMaster
+  +>
+  {
+    declare $[lbl]_file_id: string = $[|exprLabel 'lbl|] ++ "_input"
+
+    trigger $[lbl]_read_start: () = \_ -> (
+      print ((atos me) ++ ": Opening " ++ $[path]);
+      openFile me $[lbl]_file_id $[path] "raw" false "r";
+      ($[lbl]_read_loop, me) <- 0
+    )
+
+    trigger $[lbl]_read_loop: int = \i -> (
+      if hasRead me $[lbl]_file_id
+      then (
+        ($[receive_trig], (local_workers.at i).addr) <- doRead me $[lbl]_file_id;
+        ($[lbl]_read_loop, me) <- if i+1 < local_workers.size() then i+1 else 0
+      )
+      else (
+        print ((atos me) ++ ": Done reading " ++ $[path]);
+        local_workers.iterate (\p -> ($[punc_trig], p.addr) <- () )
+      )
+    )
+  }
+}
+
+// TODO(jbw) Solve name conflicts: remove the 2.
+control PartitionByKey2 {
+  ?e : collection ?t @Map
+  => (((($.[e].group_by @:HGroupBy)
+                ((\v -> (workers.at (index_by_hash v.key)).addr) @:Projection)
+                ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
+                empty $::[t] @Map) @:Fuse) @ManualFusion)
+  +> { }
+
+  ?e : collection ?t @IntMap
+  => (((($.[e].group_by @:HGroupBy)
+                ((\v -> (workers.at (index_by_hash v.key)).addr) @:Projection)
+                ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
+                empty $::[t] @IntMap) @:Fuse) @ManualFusion)
+  +> { }
+
+  ?e : collection ?t @StrMap
+  => (((($.[e].group_by @:HGroupBy)
+                ((\v -> (workers.at (index_by_hash v.key)).addr) @:Projection)
+                ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
+                empty $::[t] @StrMap) @:Fuse) @ManualFusion)
+  +> { }
+}
+
+control Shuffle [ dest_trig: expr ] {
+  ?e : collection ?content_t
+    => $.[e].iterate (\kv -> ($[dest_trig], kv.key) <- kv.value)
+  +> { }
+}
+
+control ShuffleByKey [ dest_trig: expr ] {
+  ?e : collection ?content_t
+    => ($.[e] @PartitionByKey2) @Shuffle(dest_trig=[$ $[dest_trig]])
+  +> { }
+}
+
+control Barrier [ lbl: label, count: expr ] {
+  ?e => $[lbl]_count = $[lbl]_count + 1;
+        if $[lbl]_count == $[count]
+        then ($[lbl]_count = 0; $.[e])
+        else ()
+
+  +> { declare $[lbl]_count : mut int = 0 }
+}
+
+// TODO(jbw) extract origT from a helper function, this is incorrect currently
 // Requires: peers, master
 // Assumes: var is a global.
-control DistributedGroupBy2[lbl : label, merge : expr]
+control DistributedGroupBy2 [ lbl : label, merge : expr ]
 {
-  ( (?var = ( (?e.group_by ?groupF ?aggF ?accE) : collection ?T ) );
+  ( (?var = (( (((?Expr) : collection ?origT)).group_by ?groupF ?aggF ?accE) @:Stream) : collection ?KVT);
+    (?dtrig, ?daddr) <- ()
+  )
+  => () @StreamRawFromFile( lbl=[# $[lbl]_shuffle]
+                          , path=[$ $[lbl]_path]
+                          , receive_trig=[$ $[lbl]_parse_redistribute]
+                          , punc_trig=[$ $[lbl]_stream_punc]
+                          )
+  +> { declare $[lbl]_path : string = $[|extractPathBFC 'Expr.expr|]
+
+       declare $[lbl]_next : () -> () = (\_ -> ($.[dtrig], $.[daddr]) <- ())
+
+       // Given a raw string, load it into a BFC. Run the local group_by on the BFC instead of the provided expression.
+       trigger $[lbl]_parse_redistribute : string = \s -> (
+         let bfc = empty $::[origT] @BulkFlatCollection
+         in (
+           bfc.load s;
+           ignore ((($[|baseTableBFC 'Expr.expr (EC.variable "bfc")|])
+                    .group_by $.[groupF] $.[aggF] $.[accE])
+                    .fold ((\a -> \e -> (a.insert e; a)) @:Accumulate) (empty $::[KVT] @Map)
+                  ) @ShuffleByKey(dest_trig=[$ $[lbl]_merge])
+         )
+       )
+
+       // Receive punctuation indicating that the input stream is exhausted
+       trigger $[lbl]_stream_punc: () = \_ -> (
+         workers.iterate (\p -> ($[lbl]_redist_punc, p.addr) <- () )
+       )
+     }
+
+  // Batch version (Send punctuation immediately after a single group_by)
+  ( (?var = ( ((?Expr : collection ?origT).group_by ?groupF ?aggF ?accE) : collection ?KVT ) );
     (?dtrig, ?daddr) <- ()
   )
   => ( ($[lbl]_redistribute, me) <- () )
   +> { declare $[lbl]_next : () -> () = (\_ -> ($.[dtrig], $.[daddr]) <- ()) }
 
-  ( ?var = ( (?e.group_by ?groupF ?aggF ?accE) : collection ?T ) )
-  => ( ($[lbl]_redistribute, me) <- () )
-  +> { declare $[lbl]_next : () -> () = (\_ -> ()) }
-
   shared {
-    declare $[lbl]_partials : mut collection $::[T] @Map
+    declare $[lbl]_partials : mut collection $::[KVT] @Map
 
+    // Run a local group_by directly on the provided expression
     trigger $[lbl]_redistribute : () = \_ -> (
-    ( (ignore ( ($.[e].group_by $.[groupF] $.[aggF] $.[accE])
-                      .fold  ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
-                             ($[|specializeMapEmptyByKV 'T.typ|])
-       )) @PartitionShuffleWithMissing(
-            lbl           = lbl
-          , dest_trg      = [$ $[lbl]_merge ]
-          , nodes         = [$ peers ]
-          , send_extra_fn = [$ \x -> x]
-          , send_ty       = [: $[|specializeMapTypeByKV 'T.typ|] ]
-          )
-    ))
-
-    trigger $[lbl]_merge : $[|specializeMapTypeByKV 'T.typ|] = (\partials ->
-      ((partials.iterate (\kv -> $[lbl]_partials.insert_with kv (\a -> \b -> {key: a.key, value: $[merge] a.value b.value})));
-        ( ( $#[var] = $[lbl]_partials.fold (\acc -> \e -> ((acc.insert e); acc)) ($[|mkEmptyByElem "Collection" 'T.typ|]) );
-          ( print ($[|exprLabel 'lbl|] ++ " " ++ atos me ++ " peer group-by done") );
-          ( $[lbl]_next () );
-          ( $[lbl]_global_barrier, master ) <- ()
-        ) @OnCounter(id=[# $[lbl]_peer_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
-      ))
-
-    trigger $[lbl]_global_barrier : () = \_ -> (
-      ( print ($[|exprLabel 'lbl|] ++ " group-by done")
-      ) @OnCounter(id=[# $[lbl]_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+      (ignore (($.[Expr].group_by $.[groupF] $.[aggF] $.[accE])
+                       .fold (\a -> \e -> (a.insert e; a)) (empty $::[KVT] @Map)
+              )@ShuffleByKey(dest_trig=[$ $[lbl]_merge])
+      );
+      workers.iterate (\p -> ($[lbl]_redist_punc, p.addr) <- ())
     )
+
+    // Merge partial aggregates into global state
+    trigger $[lbl]_merge : collection $::[KVT] @Map = \partials -> (
+      partials.iterate (\kv ->
+        $[lbl]_partials.insert_with
+                         kv
+                         (\a -> \b -> {key: a.key, value: $[merge] a.value b.value})
+      )
+    )
+
+    // Receive punctuation indicating that a worker is done sending partial aggregates
+    trigger $[lbl]_redist_punc: () = \_ -> (
+      ( $#[var] = $[lbl]_partials.fold (\acc -> \e -> ((acc.insert e); acc)) empty $::[KVT] @Collection);
+      ( print ($[|exprLabel 'lbl|] ++ " " ++ atos me ++ " worker group-by done") );
+      ( $[lbl]_next () )
+    ) @Barrier(lbl=[# $[lbl]_punc], count=[$ workers.size() ])
   }
 }
 
@@ -65,15 +167,108 @@ control DistributedGroupBy2[lbl : label, merge : expr]
 // Assumes: var is a global.
 control DistributedHashJoin2 [ lbl : label ]
 {
-  ( (?var = (( ?lqueryE : ?LQueryT ).equijoin ( ?rqueryE : ?RQueryT ) ( ?lkeyE : ?LKeyT ) ( ?rkeyE : ?RKeyT ) ?outputE));
+  ( (?var = (((( ?LQueryE : ?LQueryT ) @:Stream).equijoin (( ?RQueryE : ?RQueryT )@:Stream) ( ?lkeyE : ?LKeyT ) ( ?rkeyE : ?RKeyT ) ?outputE) ));
+    (?dtrig, ?daddr) <- ()
+  )
+  => () @StreamRawFromFile( lbl=[# $[lbl]_lhs]
+                          , path=[$ $[lbl]_lhs_path]
+                          , receive_trig=[$ $[lbl]_lhs_parse_redistribute]
+                          , punc_trig=[$ $[lbl]_lhs_stream_punc]
+                          )
+  +> { declare $[lbl]_lhs_path : string = $[|extractPathBFC 'LQueryE.expr|]
+       declare $[lbl]_rhs_path : string = $[|extractPathBFC 'RQueryE.expr|]
+       declare $[lbl]_next : () -> () = (\_ -> ($.[dtrig], $.[daddr]) <- ())
+
+       trigger $[lbl]_lhs_parse_redistribute : string = \s -> (
+         let bfc = empty $[|collectionContentType 'LQueryT.typ|] @BulkFlatCollection
+         in (
+           bfc.load s;
+           (ignore ( $[|baseTableBFC 'LQueryE.expr (EC.variable "bfc")|].fold (\acc -> \e ->
+                                        ((acc.upsert_with {key: $.[lkeyE] e, value: $[lbl]_lhs_default_tuples}
+                                            (\_ -> (let r = $[|mkEmpty 'LQueryT.typ|] in (r.insert e; {key: $.[lkeyE] e, value: r})))
+                                            (\c -> ((c.value.insert e); c));
+                                          acc)))
+                                      ($[|equijoinEmptyMap 'LKeyT.typ 'LQueryT.typ|]) )@ShuffleByKey(dest_trig=[$ $[lbl]_lhs_process_redistribute ])
+         )
+       ))
+
+       // Receive punctuation indicating that the input stream is exhausted
+       trigger $[lbl]_lhs_stream_punc: () = \_ -> (
+         workers.iterate (\p -> ($[lbl]_lhs_punc, p.addr) <- () )
+       )
+
+       trigger $[lbl]_lhs_punc: () = \_ -> (
+         peer_masters.lookup
+           {key: me, value: me}
+           (\_ -> error (print "Missing Peer Master") )
+           (\kv -> ($[lbl]_rhs_stream, kv.value) <- () )
+       ) @OnCounter(id=[# $[lbl]_peer_build_done], eq=[$ workers.size()], reset=[$ false], profile=[$ false])
+
+       declare $[lbl]_rhs_started: mut bool = false
+       trigger $[lbl]_rhs_stream: () = \_ -> (
+         if $[lbl]_rhs_started
+         then ()
+         else (
+           $[lbl]_rhs_started = true;
+           () @StreamRawFromFile( lbl=[# $[lbl]_rhs]
+                               , path=[$ $[lbl]_rhs_path]
+                               , receive_trig=[$ $[lbl]_rhs_parse_redistribute]
+                               , punc_trig=[$ $[lbl]_rhs_stream_punc]
+                               )
+         )
+       )
+
+       trigger $[lbl]_rhs_parse_redistribute : string = \s -> (
+         let bfc = empty $[|collectionContentType 'RQueryT.typ|] @BulkFlatCollection
+         in (
+           bfc.load s;
+           ignore ( $.[|baseTableBFC 'RQueryE.expr (EC.variable "bfc")|].fold (\acc -> \e ->
+                                      ((acc.upsert_with {key: $.[rkeyE] e, value: $[lbl]_rhs_default_tuples}
+                                          (\_ -> (let r = $[|mkEmpty 'RQueryT.typ|] in (r.insert e; {key: $.[rkeyE] e, value: r})))
+                                          (\c -> ((c.value.insert e); c));
+                                        acc)))
+                                    ($[|equijoinEmptyMap 'RKeyT.typ 'RQueryT.typ|]) )@ShuffleByKey(dest_trig=[$ $[lbl]_rhs_process_redistribute])
+         )
+       )
+
+        // Receive punctuation indicating that the input stream is exhausted
+        trigger $[lbl]_rhs_stream_punc: () = \_ -> (
+          workers.iterate (\p -> ($[lbl]_rhs_punc, p.addr) <- () )
+        )
+     }
+
+  ( (?var = (( ?LQueryE : ?LQueryT ).equijoin ( ?RQueryE : ?RQueryT ) ( ?lkeyE : ?LKeyT ) ( ?rkeyE : ?RKeyT ) ?outputE));
     (?dtrig, ?daddr) <- ()
   )
   => ( ($[lbl]_lhs_redistribute, me) <- () )
-  +> { declare $[lbl]_next : () -> () = (\_ -> ($.[dtrig], $.[daddr]) <- ()) }
+  +> { declare $[lbl]_next : () -> () = (\_ -> ($.[dtrig], $.[daddr]) <- ())
 
-  ( ?var = (( ?lqueryE : ?LQueryT ).equijoin ( ?rqueryE : ?RQueryT ) ( ?lkeyE : ?LKeyT ) ( ?rkeyE : ?RKeyT ) ?outputE) )
-  => ( ($[lbl]_lhs_redistribute, me) <- () )
-  +> { declare $[lbl]_next : () -> () = (\_ -> ()) }
+       trigger $[lbl]_lhs_redistribute : () = \_ -> (
+         (ignore ( $.[LQueryE].fold (\acc -> \e ->
+                                      ((acc.upsert_with {key: $.[lkeyE] e, value: $[lbl]_lhs_default_tuples}
+                                          (\_ -> (let r = $[|mkEmpty 'LQueryT.typ|] in (r.insert e; {key: $.[lkeyE] e, value: r})))
+                                          (\c -> ((c.value.insert e); c));
+                                        acc)))
+                                    ($[|equijoinEmptyMap 'LKeyT.typ 'LQueryT.typ|]) )@ShuffleByKey(dest_trig=[$ $[lbl]_lhs_process_redistribute ])
+         );
+         workers.iterate (\p -> ($[lbl]_lhs_punc, p.addr) <- () )
+       )
+
+       trigger $[lbl]_lhs_punc: () = \_ -> (
+         ($[lbl]_rhs_redistribute, me) <- ()
+       ) @OnCounter(id=[# $[lbl]_peer_build_done], eq=[$ workers.size()], reset=[$ false], profile=[$ false])
+
+       trigger $[lbl]_rhs_redistribute : () = \_ -> (
+         (ignore ( $.[RQueryE].fold (\acc -> \e ->
+                                      ((acc.upsert_with {key: $.[rkeyE] e, value: $[lbl]_rhs_default_tuples}
+                                          (\_ -> (let r = $[|mkEmpty 'RQueryT.typ|] in (r.insert e; {key: $.[rkeyE] e, value: r})))
+                                          (\c -> ((c.value.insert e); c));
+                                        acc)))
+                                    ($[|equijoinEmptyMap 'RKeyT.typ 'RQueryT.typ|]) )@ShuffleByKey(dest_trig=[$ $[lbl]_rhs_process_redistribute])
+          );
+          workers.iterate (\w -> ($[lbl]_rhs_punc, w.addr) <- () )
+       )
+     }
 
   shared {
     declare $[lbl]_lhs_default_tuples : $::[LQueryT]
@@ -81,66 +276,29 @@ control DistributedHashJoin2 [ lbl : label ]
 
     declare $[lbl]_lhs_ht : mut $[| equijoinMapType 'LKeyT.typ 'LQueryT.typ |]
 
-    trigger $[lbl]_lhs_redistribute : () = \_ -> (
-      (( ignore ( $.[lqueryE].fold (\acc -> \e ->
-                                     ((acc.upsert_with {key: $.[lkeyE] e, value: $[lbl]_lhs_default_tuples}
-                                         (\_ -> (let r = $[|mkEmpty 'LQueryT.typ|] in (r.insert e; {key: $.[lkeyE] e, value: r})))
-                                         (\c -> ((c.value.insert e); {key: c.key, value: c.value}));
-                                       acc)))
-                                   ($[|equijoinEmptyMap 'LKeyT.typ 'LQueryT.typ|]) ))
-         @PartitionShuffleWithMissing(
-           lbl           = [# $[lbl]_lhs]
-         , dest_trg      = [$ $[lbl]_lhs_process_redistribute]
-         , nodes         = [$ peers ]
-         , send_extra_fn = [$ \x -> x]
-         , send_ty       = [: $[|equijoinMapType 'LKeyT.typ 'LQueryT.typ|] ]
-         ))
+    trigger $[lbl]_lhs_process_redistribute : $[|equijoinMapType 'LKeyT.typ 'LQueryT.typ|] = \vals -> (
+      vals.iterate (\lhs_ht_tuple ->
+        $[lbl]_lhs_ht.insert_with
+                       lhs_ht_tuple
+                       (\old -> \new -> (old.value.extend new.value; old)))
     )
 
-    trigger $[lbl]_lhs_process_redistribute : $[|equijoinMapType 'LKeyT.typ 'LQueryT.typ|] = (\vals ->
-    ((vals.iterate (\lhs_ht_tuple ->
-        $[lbl]_lhs_ht.insert_with lhs_ht_tuple
-          (\old -> (\new -> {key: old.key, value: old.value.combine new.value}))));
-      ( peers.iterate (\p -> ($[lbl]_rhs_redistribute, p.addr) <- ())
-      ) @OnCounter(id=[# $[lbl]_peer_build_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false]))
-    )
 
-    trigger $[lbl]_rhs_redistribute : () = \_ -> (
-      (( ignore ( $.[rqueryE].fold (\acc -> \e ->
-                                     ((acc.upsert_with {key: $.[rkeyE] e, value: $[lbl]_rhs_default_tuples}
-                                         (\_ -> (let r = $[|mkEmpty 'RQueryT.typ|] in (r.insert e; {key: $.[rkeyE] e, value: r})))
-                                         (\c -> ((c.value.insert e); {key: c.key, value: c.value}));
-                                       acc)))
-                                   ($[|equijoinEmptyMap 'RKeyT.typ 'RQueryT.typ|]) ))
-         @PartitionShuffleWithMissing(
-           lbl           = [# $[lbl]_rhs]
-         , dest_trg      = [$ $[lbl]_rhs_process_redistribute]
-         , nodes         = [$ peers]
-         , send_extra_fn = [$ \x -> x]
-         , send_ty       = [: $[|equijoinMapType 'RKeyT.typ 'RQueryT.typ|] ]
-         )
-      ) @OnCounter(id=[# $[lbl]_lhs_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
-    )
 
-    trigger $[lbl]_rhs_process_redistribute : $[|equijoinMapType 'RKeyT.typ 'RQueryT.typ|] = (\vals -> (
+    trigger $[lbl]_rhs_process_redistribute : $[|equijoinMapType 'RKeyT.typ 'RQueryT.typ|] = \vals -> (
       // Probe LHS hash table, and insert matches into materialized result.
-      ( vals.iterate (\rhs_ht_tuple ->
-          $[lbl]_lhs_ht.lookup {key: rhs_ht_tuple.key, value: $[lbl]_lhs_default_tuples}
-            (\_ -> ())
-            (\lhs_ht_tuple -> lhs_ht_tuple.value.iterate (\le ->
-                rhs_ht_tuple.value.iterate (\re -> $#[var].insert {elem: $.[outputE] le re}))))
-      );
-      ( ( print ($[|exprLabel 'lbl|] ++ " " ++ atos me ++ " peer equijoin done") );
-        ( $[lbl]_lhs_ht = $[|equijoinEmptyMap 'LKeyT.typ 'LQueryT.typ|]);
-        ( $[lbl]_next () );
-        ( $[lbl]_global_barrier, master ) <- ()
-      ) @OnCounter(id=[# $[lbl]_rhs_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
-      ))
-
-    trigger $[lbl]_global_barrier : () = \_ -> (
-      ( print ($[|exprLabel 'lbl|] ++ " equijoin done")
-      ) @OnCounter(id=[# $[lbl]_join_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+      vals.iterate (\rhs_ht_tuple ->
+        $[lbl]_lhs_ht.lookup {key: rhs_ht_tuple.key, value: $[lbl]_lhs_default_tuples}
+          (\_ -> ())
+          (\lhs_ht_tuple -> lhs_ht_tuple.value.iterate (\le ->
+              rhs_ht_tuple.value.iterate (\re -> $#[var].insert {elem: $.[outputE] le re}))))
     )
+
+    trigger $[lbl]_rhs_punc: () = \_ -> (
+      ( print ($[|exprLabel 'lbl|] ++ " " ++ atos me ++ " peer equijoin done") );
+      ( $[lbl]_lhs_ht = $[|equijoinEmptyMap 'LKeyT.typ 'LQueryT.typ|]);
+      ( $[lbl]_next () )
+    ) @OnCounter(id=[# $[lbl]_rhs_done], eq=[$ workers.size()], reset=[$ false], profile=[$ false])
   }
 }
 

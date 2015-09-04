@@ -19,13 +19,9 @@ namespace K3 {
 template<size_t PageSize>
 struct PageHeader
 {
-  using slot_id_t = typename std::conditional<PageSize <= 1<<17, uint16_t, uint32_t>::type;
-    // Invalid when equal to numeric_limits::max().
-
-  using page_offset_t = typename std::conditional<PageSize <= 1<<17, uint16_t, uint32_t>::type;
-
-  using slot_length_t = typename std::conditional<PageSize <= 1<<17, uint16_t, uint32_t>::type;
-    // Invalid when 0.
+  using slot_id_t     = uint32_t;  // Invalid when equal to numeric_limits::max().
+  using page_offset_t = uint32_t;
+  using slot_length_t = uint32_t;  // Invalid when 0.
 
   slot_id_t current_slot;
   slot_id_t num_slots;
@@ -41,7 +37,10 @@ struct PageHeader
     return sizeof(page_offset_t) + sizeof(slot_length_t);
   }
 
-  constexpr slot_id_t default_slots() { return 8; }
+  constexpr slot_id_t default_slots() {
+    // Assume an average of 16 byte values.
+    return (PageSize - sizeof(PageHeader)) / (slot_size() + 16);
+  }
 };
 
 // Helper class to avoid reinterpret_casts for the header.
@@ -59,13 +58,9 @@ struct Page : public BasePage<PageSize>
 {
   using Super = BasePage<PageSize>;
 
-  using slot_id_t = typename std::conditional<PageSize <= 1<<17, uint16_t, uint32_t>::type;
-    // Invalid when equal to numeric_limits::max().
-
-  using page_offset_t = typename std::conditional<PageSize <= 1<<17, uint16_t, uint32_t>::type;
-
-  using slot_length_t = typename std::conditional<PageSize <= 1<<17, uint16_t, uint32_t>::type;
-    // Invalid when 0.
+  using slot_id_t     = uint32_t;
+  using page_offset_t = uint32_t;
+  using slot_length_t = uint32_t;  // Invalid when 0.
 
   ///////////////////////////////////
   // Initialization.
@@ -172,6 +167,16 @@ struct Page : public BasePage<PageSize>
   slot_id_t next_slot(size_t len) {
     bool slots_avail = Super::header_.current_slot < Super::header_.num_slots;
     size_t requested = len + (!slots_avail? Super::header_.slot_size() : 0);
+    /*
+    if ( available() > requested ) {
+      if ( !slots_avail ) { Super::header_.num_slots++; }
+      Super::header_.current_slot++;
+      auto s = Super::header_.current_slot - 1;
+      Super::header_.free_space_offset -= len;
+      set_slot(s, Super::header_.free_space_offset, len);
+      return s;
+    }
+    */
     size_t aligned = align_sz(requested);
     if ( available() > aligned ) {
       if ( !slots_avail ) { Super::header_.num_slots++; }
@@ -199,17 +204,17 @@ struct Page : public BasePage<PageSize>
     ar & Super::page_;
   }
 
-  constexpr static slot_id_t null_slot = std::numeric_limits<slot_id_t>::max();
+  constexpr static slot_id_t null_slot = std::numeric_limits<uint32_t>::max();
 };
 
 // Common typedefs.
-using Page4K  = Page<1<<12>;
-using Page8K  = Page<1<<13>;
-using Page16K = Page<1<<14>;
-using Page32K = Page<1<<15>;
-using Page64K = Page<1<<16>;
-using Page1M  = Page<1<<20>;
-using Page2M  = Page<1<<21>;
+using Page4K  = Page<2<<12>;
+using Page8K  = Page<2<<13>;
+using Page16K = Page<2<<14>;
+using Page32K = Page<2<<15>;
+using Page64K = Page<2<<16>;
+using Page1M  = Page<2<<20>;
+using Page2M  = Page<2<<21>;
 
 } // Namespace K3
 #endif

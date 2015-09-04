@@ -470,7 +470,8 @@ record (sort -> ids) = do
 reservedAnnotations :: [Identifier]
 reservedAnnotations =
   [ "Collection", "External", "Seq", "Set", "Sorted", "Map", "Vector", "Array"
-  , "IntMap", "StrMap", "VMap", "SortedMap", "SortedSet", "MapE", "SortedMapE", "MapCE"
+  , "IntSet", "SortedSet"
+  , "IntMap", "StrMap", "VMap", "SortedMap", "MapE", "SortedMapE", "MapCE"
   , "MultiIndexBag", "MultiIndexMap", "MultiIndexVMap", "RealVector"
   , "BulkFlatCollection"
   ]

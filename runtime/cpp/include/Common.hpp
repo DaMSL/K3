@@ -237,6 +237,16 @@ class R_elem {
     _archive& elem;
   }
   _T0 elem;
+  template <class T>
+  R_elem<_T0>& internalize(T& arg)  {
+    arg.internalize(elem);
+    return *this;
+  }
+  template <class T>
+  R_elem<_T0>& externalize(T& arg)  {
+    arg.externalize(elem);
+    return *this;
+  }
 };
 #endif  // K3_R_elem
 
