@@ -28,7 +28,7 @@ class Vector : public VectorDS<K3::Vector, Elem> {
 
   template<class F, class G>
   auto safe_at(int i, F f, G g) const {
-    auto& vec = getConstContainer();
+    auto& vec = Super::getConstContainer();
     if (i < vec.size()) {
       return g(vec[i]);
     } else {
@@ -38,14 +38,14 @@ class Vector : public VectorDS<K3::Vector, Elem> {
 
   template <class Q>
   unit_t set(int i, Q&& q) {
-    auto& vec = getContainer();
+    auto& vec = Super::getContainer();
     vec[i] = std::forward<Q>(q);
     return unit_t();
   }
 
   template <class Q>
   unit_t insert_at(int i, Q&& q) {
-    auto& vec = getContainer();
+    auto& vec = Super::getContainer();
     if (i >= vec.size()) {
       vec.resize(i + 1);
     }
