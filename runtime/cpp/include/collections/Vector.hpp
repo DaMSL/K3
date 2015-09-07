@@ -28,24 +28,36 @@ class Vector : public VectorDS<K3::Vector, Elem> {
 
   template<class F, class G>
   auto safe_at(int i, F f, G g) const {
-    auto& vec = Super::getConstContainer();
-    if ( i < vec.size() ) {
+    auto& vec = getConstContainer();
+    if (i < vec.size()) {
       return g(vec[i]);
     } else {
       return f(unit_t {});
     }
   }
 
-  unit_t set(int i, Elem f) {
-    auto& vec = Super::getContainer();
-    vec[i] = f;
+  template <class Q>
+  unit_t set(int i, Q&& q) {
+    auto& vec = getContainer();
+    vec[i] = std::forward<Q>(q);
     return unit_t();
   }
 
-  Elem swap(int i, Elem n) {
+  template <class Q>
+  unit_t insert_at(int i, Q&& q) {
+    auto& vec = getContainer();
+    if (i >= vec.size()) {
+      vec.resize(i + 1);
+    }
+    vec[i] = std::forward<Q>(q);
+    return unit_t();
+  }
+
+  template <class Q>
+  Elem swap(int i, Q&& q) {
     auto& vec = Super::getContainer();
-    auto old = vec[i];
-    vec[i] = n;
+    auto old = std::move(vec[i]);
+    vec[i] = std::forward<Q>(q);
     return old;
   }
 
