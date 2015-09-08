@@ -89,7 +89,7 @@ def select?(experiment, query, role = nil)
   end
 
   included = $options[:includes].any? do |pattern|
-    check_filter(pattern, experiment, query)
+    check_filter(pattern, experiment, query, role)
   end
 
   return !excluded || included
