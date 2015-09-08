@@ -10,59 +10,57 @@ XP = Pathname.new(Dir.pwd).realpath
 K3 = "/k3/K3"
 
 QUERIES = {
-  #"tpch" => {
-  #  :roles => {
-  #    "10g" => "tpch_10g.yml",
-  #    #"100g" => "tpch_100g.yml",
-  #  },
-  #  :queries => {
-  #    #"1" => "examples/sql/tpch/queries/k3/q1.k3",
-  #    #"3" => "examples/sql/tpch/queries/k3/barrier-queries/q3.k3",
-  #    #"5" => "examples/sql/tpch/queries/k3/barrier-queries/q5_bushy_broadcast_broj2.k3",
-  #    #"6" => "examples/sql/tpch/queries/k3/q6.k3",
-  #    #"18" => "examples/sql/tpch/queries/k3/barrier-queries/q18.k3",
-  #    #"22" => "examples/sql/tpch/queries/k3/barrier-queries/q22.k3",
-  #
-  #    "10" => "examples/sql/tpch/queries/k3/q10.k3",
-  #    #"11" => "examples/sql/tpch/queries/k3/q11.k3",
-  #  }
-  #},
+  "tpch" => {
+    :roles => {
+      "10g" => "tpch_10g.yml",
+      "100g" => "tpch_100g.yml",
+    },
+    :queries => {
+      "1" => "examples/sql/tpch/queries/k3/q1.k3",
+      "3" => "examples/sql/tpch/queries/k3/barrier-queries/q3.k3",
+      "5" => "examples/sql/tpch/queries/k3/barrier-queries/q5_bushy_broadcast_broj2.k3",
+      "6" => "examples/sql/tpch/queries/k3/q6.k3",
+      "18" => "examples/sql/tpch/queries/k3/barrier-queries/q18.k3",
+      "22" => "examples/sql/tpch/queries/k3/barrier-queries/q22.k3",
 
-  #"amplab" => {
-  #  :roles => {
-  #    "sf5" => "amplab_sf5.yml",
-  #  },
-  #  :queries => {
-  #    "1" => "examples/distributed/amplab/compact/q1.k3",
-  #    "2" => "examples/distributed/amplab/compact/q2.k3",
-  #    "3" => "examples/distributed/amplab/compact/q3.k3",
-  #  }
-  #},
+      "10" => "examples/sql/tpch/queries/k3/q10.k3",
+      "11" => "examples/sql/tpch/queries/k3/q11.k3",
+    }
+  },
 
-  #"ml" => {
-  #  :roles => {
-  #   "10g" => "ml_10g.yml",
-  #   "100g" => "ml_100g.yml",
-  #  },
-  #  :queries => {
-  #   "k_means" => "examples/distributed/ml/k_means.k3",
-  #   "sgd" => "examples/distributed/ml/sgd.k3",
-  #  }
-  #},
+  "amplab" => {
+    :roles => {
+      "sf5" => "amplab_sf5.yml",
+    },
+    :queries => {
+      "1" => "examples/distributed/amplab/compact/q1.k3",
+      "2" => "examples/distributed/amplab/compact/q2.k3",
+      "3" => "examples/distributed/amplab/compact/q3.k3",
+    }
+  },
 
-  # "graph" => {
-  #   :roles => {},
-  #   :queries => {
-  #     "page_rank" => "examples/distributed/graph/page_rank.k3",
-  #   }
-  # },
-  #
-  #
+  "ml" => {
+   :roles => {
+    "10g" => "ml_10g.yml",
+    "100g" => "ml_100g.yml",
+   },
+   :queries => {
+    "k_means" => "examples/distributed/ml/k_means.k3",
+    "sgd" => "examples/distributed/ml/sgd.k3",
+   }
+  },
+
+  "graph" => {
+    :roles => {},
+    :queries => {
+      "page_rank" => "examples/distributed/graph/page_rank.k3",
+    }
+  },
 
   "conversion" => {
     :roles => {
       "10g" => "convert_10g.yml",
-      #"100g" => "convert_100g.yml",
+      "100g" => "convert_100g.yml",
     },
 
     :queries => {
@@ -70,25 +68,50 @@ QUERIES = {
     }
   },
 
-  #"test" => {
-  #  :roles => {
-  #    "test" => "test.yml"
-  #  },
+  "test" => {
+   :roles => {
+     "test" => "test.yml"
+   },
 
-  #  :queries => {
-  #    "test" => "test.k3"
-  #  }
-  #}
+   :queries => {
+     "test" => "test.k3"
+   }
+  }
 }
 
 def slugify(experiment, query)
   return "#{experiment}-#{query}"
 end
 
+def select?(experiment, query, role = nil)
+  excluded = $options[:excludes].any? do |pattern|
+    check_filter(pattern, experiment, query)
+  end
+
+  included = $options[:includes].any? do |pattern|
+    check_filter(pattern, experiment, query)
+  end
+
+  return !excluded || included
+end
+
+def list()
+  for experiment, description in QUERIES do
+    for query, path in description[:queries] do
+      if select?(experiment, query)
+        p [experiment, query]
+      end
+    end
+  end
+end
+
 def build(name)
   target = "#{XP}/#{name}"
   for (experiment, description) in QUERIES do
     for query, path in description[:queries] do
+      if !select?(experiment, query)
+        next
+      end
       Dir.chdir(K3) do
         puts "Cleaning build directory..."
         `tools/scripts/run/clean.sh`
@@ -107,6 +130,9 @@ end
 def submit(name)
   for experiment, description in QUERIES do
     for query, _ in description[:queries] do
+      if !select?(experiment, query)
+        next
+      end
       puts "Submitting #{name}/#{slugify(experiment, query)}"
       response = RC.post(
         "http://qp2:5000/apps",
@@ -124,6 +150,9 @@ def run(name)
   for experiment, description in QUERIES do
     for query, _ in description[:queries] do
       for role, yml in description[:roles] do
+        if !select?(experiment, query, role)
+          next
+        end
         for i in 1..($options[:trials]) do
           puts "\tSubmitting #{role} for #{experiment}/#{query} trial #{i}"
           response = RC.post(
@@ -249,9 +278,16 @@ def postprocess()
   end
 end
 
+def check_filter(pattern, experiment, query, role = nil)
+  (expected_experiment, expected_query, expected_role) = pattern.split("/")
+  return (expected_experiment == "*" || expected_experiment == experiment) &&
+         (expected_query == "*" || expected_query == query) &&
+         (expected_role == "*" || expected_role == role)
+end
+
 def main()
   STDOUT.sync = true
-  $options = { :workdir => ".", :trials => 1, :correctdir => "/local/correct/correct/" }
+  $options = { :workdir => ".", :trials => 1, :correctdir => "/local/correct/correct/", :includes => [], :excludes => [] }
   $stats = {}
   usage = "Usage: #{$PROGRAM_NAME} options"
 
@@ -266,9 +302,13 @@ def main()
 
     opts.on("-c", "--check",                      "Check correctness") {     $options[:check]        = true }
     opts.on("-s", "--submit",                     "Submit binary")     {     $options[:submit]       = true }
+    opts.on("-l", "--list", "List matching workloads") { $options[:list] = true }
     opts.on("-w", "--workdir [PATH]",    String,  "Working Directory") { |s| $options[:workdir]      = s    }
     opts.on("-t", "--trials [NUM]",      Integer, "Number of Trials")  { |i| $options[:trials]       = i    }
     opts.on("-d", "--correctdir [PATH]", Integer, "Number of Trials")  { |s| $options[:correctdir]   = s    }
+
+    opts.on("-i", "--include pat1,pat2,pat3", Array, "Patterns to Include") { |is| $options[:includes] = is }
+    opts.on("-e", "--exclude pat1,pat2,pat3", Array, "Patterns to Exclude") { |es| $options[:excludes] = es }
   end
   parser.parse!
 
@@ -281,17 +321,20 @@ def main()
     submit(workdir)
   end
 
-  if not $options[:run]
-    return
+  if $options[:run]
+    jobs = run(workdir)
+    statuses = poll(jobs, "Polling until complete")
+    folders = harvest(statuses, workdir)
+    postprocess()
   end
 
-  jobs = run(workdir)
-  statuses = poll(jobs, "Polling until complete")
-  folders = harvest(statuses, workdir)
   if $options[:check]
     check(folders)
   end
-  postprocess()
+
+  if $options[:list]
+    list()
+  end
 end
 
 if __FILE__ == $0
