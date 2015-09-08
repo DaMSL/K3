@@ -233,9 +233,11 @@ RUN git checkout development && \
     apt-get install -y libtinfo-dev && \
     cabal build -j --ghc-options="-O2"
 
-# Clone K3, K3-Mosaic from Git
+# Clone K3-Mosaic from Git and build
 RUN mkdir -p /k3/K3-Mosaic && \
-    git clone https://github.com/DaMSL/K3-Mosaic.git /k3/K3-Mosaic
+    git clone https://github.com/DaMSL/K3-Mosaic.git /k3/K3-Mosaic && \
+    cd /k3/K3-Mosaic && \
+    ./build_opt.sh && ./build_utils.sh && cd /
 
 # Clean up
 RUN apt-get autoremove -y && \
