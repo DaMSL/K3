@@ -85,7 +85,7 @@ end
 
 def select?(experiment, query, role = nil)
   excluded = $options[:excludes].any? do |pattern|
-    check_filter(pattern, experiment, query)
+    check_filter(pattern, experiment, query, role)
   end
 
   included = $options[:includes].any? do |pattern|
@@ -97,7 +97,7 @@ end
 
 def list()
   for experiment, description in QUERIES do
-    for query, path in description[:queries] do
+    for query, _ in description[:queries] do
       if select?(experiment, query)
         p [experiment, query]
       end
@@ -190,7 +190,7 @@ end
 def poll(jobs, message)
   print(message)
   statuses = statusAll(jobs)
-  for key, val in statuses
+  for _, val in statuses
     status = val['status']
     #TODO add "KILLED" to this list after bug is fixed: jobs are reported as KILLED before they run
     if status != "FINISHED" and status != "FAILED"
