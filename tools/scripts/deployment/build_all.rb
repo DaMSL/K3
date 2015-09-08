@@ -282,7 +282,7 @@ def check_filter(pattern, experiment, query, role = nil)
   (expected_experiment, expected_query, expected_role) = pattern.split("/")
   return ((Regexp.new expected_experiment) =~ experiment) &&
          ((Regexp.new expected_query) =~  query) &&
-         ((Regexp.new expected_role) =~ role)
+         (role.nil? || (Regexp.new expected_role) =~ role)
 end
 
 def main()
