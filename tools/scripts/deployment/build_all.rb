@@ -300,9 +300,11 @@ def main()
     opts.on("-1", "--build", "Build/Submit stage")  { $options[:build] = true }
     opts.on("-2", "--run",   "Run stage")           { $options[:run]   = true }
 
-    opts.on("-c", "--check",                      "Check correctness") {     $options[:check]        = true }
-    opts.on("-s", "--submit",                     "Submit binary")     {     $options[:submit]       = true }
+    opts.on("-c", "--check", "Check correctness") { $options[:check] = true }
+    opts.on("-s", "--submit", "Submit binary") { $options[:submit] = true }
+    opts.on("-g", "--gather", "Gather results from remote server") { $options[:gather] = true }
     opts.on("-l", "--list", "List matching workloads") { $options[:list] = true }
+
     opts.on("-w", "--workdir [PATH]",    String,  "Working Directory") { |s| $options[:workdir]      = s    }
     opts.on("-t", "--trials [NUM]",      Integer, "Number of Trials")  { |i| $options[:trials]       = i    }
     opts.on("-d", "--correctdir [PATH]", Integer, "Number of Trials")  { |s| $options[:correctdir]   = s    }
@@ -323,7 +325,15 @@ def main()
 
   if $options[:run]
     jobs = run(workdir)
-    statuses = poll(jobs, "Polling until complete")
+    File.open("#{workdir}/jobs.json", "w") do |f|
+      f.write(jobs.to_json)
+    end
+  elsif File.exists("#{workdir}/jobs.json")
+    jobs = JSON.parse(File.read("#{workdir}/jobs.json", "w"))
+  end
+
+  if $options[:gather]
+    statuses = poll(jobs, "Getting status of previously submitted jobs.")
     folders = harvest(statuses, workdir)
     postprocess()
   end
