@@ -353,7 +353,7 @@ def main()
     File.open("#{workdir}/jobs.json", "w") do |f|
       f.write(jobs.to_json)
     end
-  elsif File.exists("#{workdir}/jobs.json")
+  elsif File.exists?("#{workdir}/jobs.json")
     jobs = JSON.parse(File.read("#{workdir}/jobs.json", "r"))
   end
 
