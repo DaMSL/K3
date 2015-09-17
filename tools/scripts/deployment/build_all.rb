@@ -168,8 +168,8 @@ def run(name)
           )
           json = JSON.parse response
           job_id = json['jobId']
-          key = {:role => role, :name => slugify(experiment, query), :trial => i}
-          jobs[key] = job_id
+          info = {"role" => role, "name" => slugify(experiment, query), "trial" => i}
+          jobs[job_id] = info
         end
       end
     end
@@ -179,7 +179,7 @@ end
 
 def statusAll(jobs)
   results = {}
-  for (key, job_id) in jobs do
+  for (job_id, info) in jobs do
     response = RC.get(
       "http://qp2:5000/job/#{job_id}",
       :accept => :json
@@ -187,8 +187,8 @@ def statusAll(jobs)
     json = JSON.parse response
     val = {'status' => json['status']}
     val['sandbox'] = json['sandbox']
-    val['job_id'] = job_id
-    results[key] = val
+    val.merge!(info)
+    results[job_id] = val
   end
   return results
 end
@@ -196,30 +196,48 @@ end
 def poll(jobs, message)
   print(message)
   statuses = statusAll(jobs)
-  for _, val in statuses
-    status = val['status']
-    #TODO add "KILLED" to this list after bug is fixed: jobs are reported as KILLED before they run
-    if status != "FINISHED" and status != "FAILED"
-      sleep(4)
-      return poll(jobs, ".")
+  processing = true
+  total = statuses.length
+  progress = 0
+  while processing
+    incomplete = 0
+    for _, val in statuses
+      status = val['status']
+      #TODO add "KILLED" to this list after bug is fixed: jobs are reported as KILLED before they run
+      if status != "FINISHED" and status != "FAILED"
+        incomplete += 1
+      end
+      done = total - incomplete
+      if done > progress
+        progress = done
+        print "Progress: #{progress}/#{total}\n"
+      else
+        print "."
+      end
+
+      if progress == total
+        processing = false
+      else
+        sleep 4
+      end
     end
   end
-  puts("")
+
   return statuses
 end
 
 def harvest(statuses, out_folder)
   puts("Harvesting results")
   results = {}
-  for key, val in statuses
-    if val['status'] == "FINISHED"
-      run_folder = "#{out_folder}/#{key[:role]}_#{key[:name]}"
+  for job_id, info in statuses
+    if info['status'] == "FINISHED"
+      run_folder = "#{out_folder}/#{info["role"]}_#{info["name"]}"
       `mkdir -p #{run_folder}`
 
       # GET tar from each node
-      tars = val['sandbox'].select { |x| x =~ /.*.tar/}
+      tars = info['sandbox'].select { |x| x =~ /.*.tar/}
       for tar in tars
-        url = "http://qp2:5000/fs/jobs/#{key[:name]}/#{val['job_id']}/#{tar}"
+        url = "http://qp2:5000/fs/jobs/#{info["name"]}/#{job_id}/#{tar}"
         name = File.basename(tar, ".tar")
         `mkdir -p #{run_folder}/#{name}`
         response = RC.get(url)
@@ -232,20 +250,21 @@ def harvest(statuses, out_folder)
       master_tar = tars.select { |x| x =~ /.*\.0_.*/}[0]
       name = File.basename(master_tar, ".tar")
       master_folder = "#{run_folder}/#{name}/"
-      results[key] = {"status" => "RAN", "output" => master_folder}
+      results[job_id] = info
+      results[job_id].merge!({"status" => "RAN", "output" => master_folder})
       time_file = "#{master_folder}/time.csv"
       file = File.open(time_file, "rb")
       time_ms = file.read.strip.to_i
-      puts "\t#{key} Ran in #{time_ms} ms."
-      group_key = {:role => key[:role], :name => key[:name]}
+      puts "\t#{info} Ran in #{time_ms} ms."
+      group_key = {:role => info["role"], :name => info["name"]}
       if not $stats.has_key?(group_key)
         $stats[group_key] = [time_ms]
       else
         $stats[group_key] << time_ms
       end
     else
-      results[key] = {"status" => "FAILED"}
-      puts "\t#{key} FAILED."
+      results[job_id]["status"] = "FAILED"
+      puts "\t#{job_id} FAILED."
     end
   end
   return results
@@ -256,16 +275,16 @@ def check(folders)
   ktrace_dir = "#{K3}/tools/ktrace/"
   correct_dir = "/local/correct/correct/"
   diff = "#{ktrace_dir}/csv_diff.py"
-  for key, val in folders
-    if val["status"] == "RAN"
-      run_id = "#{key[:role]}-#{key[:name]}"
+  for job_id, info in folders
+    if info["status"] == "RAN"
+      run_id = "#{info["role"]}-#{info["name"]}"
       correct = "#{correct_dir}/#{run_id}.out"
-      actual = "#{val["output"]}/results.csv"
+      actual = "#{info["output"]}/results.csv"
       output = `python2 #{diff} #{correct} #{actual}`
       if $?.to_i == 0
-        puts("\t#{key} => CORRECT RESULTS.")
+        puts("\t#{job_id} => CORRECT RESULTS.")
       else
-        puts("\t#{key} => INCORRECT RESULTS")
+        puts("\t#{job_id} => INCORRECT RESULTS")
         puts(output)
       end
     end
@@ -280,7 +299,7 @@ def postprocess()
     avg = 1.0 * sum / cnt
     var = val.map{|x| (x - avg) * (x - avg)}.reduce(:+) / (1.0 * cnt)
     dev = Math.sqrt(var)
-    puts "\t#{key} => Succesful Trials: #{cnt}/#{$options[:trials]}. Avg: #{avg}. StdDev: #{dev}"
+    puts "\t#{key} => Successful Trials: #{cnt}/#{$options[:trials]}. Avg: #{avg}. StdDev: #{dev}"
   end
 end
 
