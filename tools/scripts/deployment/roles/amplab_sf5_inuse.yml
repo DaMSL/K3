@@ -14,5 +14,5 @@ k3_data:
   - {var: rankingsFiles, path: /local/data/amplab/1024/rankings, policy: global}
   - {var: uservisitsFiles, path: /local/data/amplab/1024/uservisits, policy: global}
 envars:
-  - {name: LD_PRELOAD, value: /usr/local/lib/libjemalloc.so}
+  - {name: LD_PRELOAD, value: /usr/lib/libjemalloc.so}
   - {name: MALLOC_CONF, value: "prof:true,prof_final:true,prof_accum:false,prof_prefix:K3,prof_active:false"}
