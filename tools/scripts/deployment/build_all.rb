@@ -14,6 +14,10 @@ QUERIES = {
     :roles => {
       "10g" => "tpch_10g.yml",
       "100g" => "tpch_100g.yml",
+      "10g_inuse" => "tpch_10g_inuse.yml",
+      "10g_accum" => "tpch_10g_accum.yml",
+      "100g_inuse" => "tpch_100g_inuse.yml",
+      "100g_accum" => "tpch_100g_accum.yml",
     },
     :queries => {
       "1" => "examples/sql/tpch/queries/k3/q1.k3",
@@ -31,6 +35,8 @@ QUERIES = {
   "amplab" => {
     :roles => {
       "sf5" => "amplab_sf5.yml",
+      "sf5_inuse" => "amplab_sf5_inuse.yml",
+      "sf5_accum" => "amplab_sf5_accum.yml",
     },
     :queries => {
       "1" => "examples/distributed/amplab/compact/q1.k3",

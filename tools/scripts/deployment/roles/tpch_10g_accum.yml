@@ -1,0 +1,23 @@
+name: role 1
+peers: 128
+hostmask: ".*hm.*"
+privileged: False
+k3_globals:
+  role: [{i: rows}]
+        #role: rows
+  master: auto
+volumes:
+  - {host: /local, container: /local}
+k3_data:
+  - {var: dataFiles, path: /local/data/tpch10g/lineitem, policy: global}
+  - {var: lineitemFiles, path: /local/data/tpch10g/lineitem, policy: global}
+  - {var: customerFiles, path: /local/data/tpch10g/customer, policy: global}  
+  - {var: ordersFiles, path: /local/data/tpch10g/orders, policy: global}  
+  - {var: supplierFiles, path: /local/data/tpch10g/supplier, policy: global}  
+  - {var: partsuppFiles, path: /local/data/tpch10g/partsupp, policy: global}  
+  - {var: partFiles, path: /local/data/tpch10g/part, policy: global}  
+  - {var: regionFiles, path: /local/data/tpch10g/region, policy: replicate}
+  - {var: nationFiles, path: /local/data/tpch10g/nation, policy: replicate}
+envars:
+  - {name: LD_PRELOAD, value: /usr/local/lib/libjemalloc.so}
+  - {name: MALLOC_CONF, value: "prof:true,prof_final:true,prof_accum:true,prof_prefix:K3,prof_active:false"}
