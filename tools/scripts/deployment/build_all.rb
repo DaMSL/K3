@@ -329,7 +329,7 @@ def main()
       f.write(jobs.to_json)
     end
   elsif File.exists("#{workdir}/jobs.json")
-    jobs = JSON.parse(File.read("#{workdir}/jobs.json", "w"))
+    jobs = JSON.parse(File.read("#{workdir}/jobs.json", "r"))
   end
 
   if $options[:gather]
