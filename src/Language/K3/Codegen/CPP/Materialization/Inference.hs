@@ -390,7 +390,7 @@ hasReadIn (Contextual p cp) (Contextual e ce) = case tag e of
     -- either a copy or a move.
     closurePs <- for cls $ \m@(PMatVar n u _) -> do
       occurs <- occursIn (Contextual p cp) (Contextual (pbvar m) ce)
-      return $ occurs -&&- mOneOf (mVar u n In) [Copied, Moved] -??- "Owned by closure?"
+      return $ occurs -??- "Captured by Lambda?"
     return (mBool False, foldr (-||-) (mBool False) closurePs)
 
   EOperate OApp -> do
