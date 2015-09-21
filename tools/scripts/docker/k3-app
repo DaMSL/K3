@@ -16,7 +16,7 @@ ENV JEMALLOC_VER 4.0.0
 RUN apt-get update && apt-get install -y \
   bzip2 unzip autoconf Libtool \
   gcc g++ make cmake git curl wget \
-  libyaml-cpp-dev \
+  libyaml-cpp-dev libunwind-dev\
   subversion
 
 # Install Boost v1.57.0
@@ -77,11 +77,21 @@ RUN wget https://github.com/jemalloc/jemalloc/releases/download/$JEMALLOC_VER/je
   rm jemalloc-$JEMALLOC_VER.tar.bz2 && \
   cd jemalloc-$JEMALLOC_VER && \
   ./autogen.sh && \
-  ./configure --prefix=/usr && \
+  ./configure --enable-prof --enable-prof-libunwind --prefix=/usr && \
   make && \
   make install && \
   cd .. && \
   rm -Rf /jemalloc-$JEMALLOC_VER
+
+# Intall perf for kernel 3.13
+# Also uses libunwind
+RUN apt-get install -y flex bison libelf-dev libaudit-dev libdw-dev binutils-dev && \
+  wget https://github.com/torvalds/linux/archive/v3.13.tar.gz && \
+  tar -xvzf v3.13.tar.gz && rm v3.13.tar.gz && \
+  cd linux-3.13/tools/perf && make && make install && \
+  cp perf /usr/bin && \
+  cp libperf.a /usr/lib && \
+  cd / && rm -Rf /linux-3.13
 
 # Copy in Mesos v0.22.1 libs
 ADD assets/libmesos-0.22.1.so /usr/lib/
