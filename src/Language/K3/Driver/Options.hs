@@ -30,6 +30,8 @@ import Language.K3.Utils.Logger.Config
 
 import Language.K3.Driver.Common
 
+import Language.K3.Codegen.CPP.Types (CPPCGFlags(..))
+
 import Language.K3.Utils.Pretty (
     Pretty(..), PrintConfig(..),
     indent, defaultPrintConfig, tersePrintConfig, simplePrintConfig
@@ -82,6 +84,8 @@ data TypecheckOptions = TypecheckOptions { noQuickTypes    :: Bool
                                          , printQuickTypes :: Bool }
                       deriving (Eq, Read, Show)
 
+data CPPOptions = CPPOptions { cppFlags :: String, cppCGFlags :: CPPCGFlags } deriving (Eq, Generic, Read, Show)
+
 -- | Compilation options datatypes.
 data CompileOptions = CompileOptions
                       { outLanguage        :: String
@@ -92,7 +96,7 @@ data CompileOptions = CompileOptions
                       , buildJobs          :: Int
                       , ccCmd              :: CPPCompiler
                       , ccStage            :: CPPStages
-                      , cppOptions         :: String
+                      , cppOptions         :: CPPOptions
                       , kTraceOptions      :: [(String, String)]
                       , coStages           :: CompileStages
                       , useSubTypes        :: Bool
@@ -184,6 +188,7 @@ data Verbosity
 -- | Automatically generated serialization instances.
 instance Binary RemoteJobOptions
 instance Binary CompileOptions
+instance Binary CPPOptions
 instance Binary CompileStage
 instance Binary CPPCompiler
 instance Binary CPPStages
@@ -191,6 +196,7 @@ instance Binary PrintMode
 
 instance Serialize RemoteJobOptions
 instance Serialize CompileOptions
+instance Serialize CPPOptions
 instance Serialize CompileStage
 instance Serialize CPPCompiler
 instance Serialize CPPStages
@@ -482,8 +488,14 @@ stage2Flag = flag' Stage2 ( short '2' <> long "stage2" <> help "Only run stage 2
 allStagesFlag :: Parser CPPStages
 allStagesFlag = flag' AllStages (long "allstages" <> help "Compile all stages")
 
-cppOpt :: Parser String
-cppOpt = strOption $ long "cpp-flags" <> help "Specify CPP Flags" <> metavar "CPPFLAGS" <> value ""
+cppOpt :: Parser CPPOptions
+cppOpt = CPPOptions <$> strOption (long "cpp-flags" <> help "Specify CPP Flags" <> metavar "CPPFLAGS" <> value "")
+                    <*> (CPPCGFlags <$> (fromMaybe False . fmap read . lookup "isolateLoopIndex" . keyValList ""
+                                           <$> strOption (
+                                               long "cg-options"
+                                            <> value ""
+                                            <> help "Code Generation Options"
+                                            <> metavar "CGOptions")))
 
 ktraceOpt :: Parser [(String, String)]
 ktraceOpt = keyValList "" <$> strOption (
@@ -825,7 +837,6 @@ verbosityOptions = toEnum . roundVerbosity <$> option auto (
         | n < 0 = 0
         | n > 2 = 2
         | otherwise = n
-
 
 -- | Metaprogram option parsing.
 metaprogramOptions :: Parser (Maybe MetaprogramOptions)

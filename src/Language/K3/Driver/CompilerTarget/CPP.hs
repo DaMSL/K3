@@ -54,7 +54,8 @@ cppCodegenStage opts copts (cont, prog) = genCPP irRes
 
     genCPPCont p = do
       saveASTOutputs p
-      outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt) (CPP.stringifyProgram p)
+      outputCPP $ fst $ CPP.runCPPGenM ((CPP.transitionCPPGenS initSt) { CPP.flags = cppCGFlags (cppOptions copts) })
+                           (CPP.stringifyProgram p)
 
     saveASTOutputs p = do
       when (saveAST    $ input opts) (outputAST P.pretty "k3ast" (astPrintMode copts) p)
@@ -105,12 +106,13 @@ cppBinaryStage _ copts sourceFiles =
                   allFiles = runtimeFiles' ++ sourceFiles
                   objects = [bDir </> src -<.> "o" | src <- allFiles]
               need objects
-              cmd cc ["-o"] [out] objects (filterLinkOptions $ words $ cppOptions copts)
+              cmd cc ["-o"] [out] objects (filterLinkOptions $ words $ cppFlags $ cppOptions copts)
 
             bDir ++ "//*.o" *> \out -> do
               let source = fixRuntime $ dropDirectory1 $ out -<.> "cpp"
               let deps   = out -<.> "m"
-              () <- cmd cc ["-std=c++1y"] ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps] (filterCompileOptions $ words $ cppOptions copts)
+              () <- cmd cc ["-std=c++1y"] ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps]
+                      (filterCompileOptions $ words $ cppFlags $ cppOptions copts)
               needMakefileDependencies deps
 
         fixRuntime x   = if isRuntime x then substRuntime x else x
