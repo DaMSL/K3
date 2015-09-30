@@ -1,13 +1,20 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Codegen.CPP.Materialization.Inference (
-  optimizeMaterialization
+  optimizeMaterialization,
+  MZFlags(..)
 ) where
+
+import GHC.Generics (Generic)
+import Data.Binary (Binary)
+import Data.Serialize (Serialize)
 
 import qualified Data.Graph as G
 import qualified Data.List as L
@@ -55,6 +62,11 @@ import Language.K3.Codegen.CPP.Materialization.Common
 import Language.K3.Utils.Pretty
 
 -- * Entry-Point
+
+data MZFlags = MZFlags deriving (Eq, Generic, Ord, Read, Show)
+
+instance Binary MZFlags
+instance Serialize MZFlags
 
 optimizeMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> IO (Either String (K3 Declaration))
 optimizeMaterialization (p, f) d = runExceptT $ inferMaterialization >>= solveMaterialization >>= attachMaterialization d
