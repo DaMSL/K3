@@ -12,7 +12,6 @@ import Control.Monad.State
 
 import Data.Char
 import Data.Maybe
-import qualified Data.Map as Map
 
 import Criterion.Measurement
 import Database.HsSqlPpp.Parser

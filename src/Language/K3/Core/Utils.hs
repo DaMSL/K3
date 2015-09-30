@@ -124,8 +124,6 @@ import Data.Tree
 import Data.Map ( Map )
 import qualified Data.Map as Map
 
-import Debug.Trace
-
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration

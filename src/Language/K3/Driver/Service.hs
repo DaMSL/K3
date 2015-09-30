@@ -21,10 +21,8 @@ import Control.Monad.Trans.State.Strict
 import Data.Binary ( Binary )
 import Data.Serialize ( Serialize )
 import Data.ByteString.Char8 ( ByteString )
-import qualified Data.Binary as SB
 import qualified Data.Serialize as SC
 import qualified Data.ByteString.Char8 as BC
-import qualified Data.ByteString.Lazy.Char8 as LBC
 
 import Data.Time.Format
 import Data.Time.Clock
@@ -36,7 +34,6 @@ import Data.Ord
 import Data.Function
 import Data.List
 import Data.List.Split
-import Data.Heap ( Heap )
 import Data.Map ( Map )
 import Data.Set ( Set )
 import qualified Data.Heap as Heap
@@ -53,7 +50,6 @@ import System.Random
 import System.ZMQ4.Monadic
 
 import System.IO ( Handle, stdout, stderr )
-import System.IO.Error ( userError )
 import qualified System.Log.Logger         as Log
 import qualified System.Log.Formatter      as LogF
 import qualified System.Log.Handler        as LogH
@@ -849,7 +845,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     --   using a greedy heuristic to balance work across each worker (the k-partition problem).
     --   This returns final worker weights, new compile block assignments, and the job costs per worker.
     partitionProgram wConfig wWeights (tnc -> (DRole _, ch)) = do
-      (totalCost, sCostAndCh) <- sortByCost ch
+      (_, sCostAndCh) <- sortByCost ch
       (nwWeights, newAssigns) <- greedyPartition wConfig wWeights sCostAndCh
       (wcBlocks, wcosts) <- foldMapKeyM (return (Map.empty, Map.empty)) newAssigns $ chunkAssigns wConfig
       return (nwWeights, Map.map reverse wcBlocks, wcosts)
@@ -1185,7 +1181,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
 
 
 processWorkerConn :: ServiceOptions -> ServiceWSTVar -> Int -> Socket z Dealer -> ZMQ z ()
-processWorkerConn sOpts@(serviceId -> wid) sv wtid wworker = do
+processWorkerConn (serviceId -> wid) sv wtid wworker = do
     msg <- receive wworker
     logmHandler msg
 
