@@ -516,7 +516,7 @@ inline e@(tag &&& children -> (EOperate OApp, [
   (ce, cv) <- inline c
 
   ug <- genSym
-  let ue = R.Forward $ R.ScalarDecl (R.Name ug) (R.Reference R.Inferred) (Just $  R.Call (R.Project cv (R.Name "getContainer")) [])
+  let ue = R.Forward $ R.ScalarDecl (R.Name ug) (R.Reference R.Inferred) (Just $  R.Call (R.Project cv (R.Name "getConstContainer")) [])
   let uv = R.Variable $ R.Name ug
 
   first <- genSym
