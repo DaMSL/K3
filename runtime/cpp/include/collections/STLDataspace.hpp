@@ -94,7 +94,11 @@ class STLDS {
   }
 
   unit_t extend(const STLDS& other) {
-    return extend(STLDS(other));
+    auto &c = other.getConstContainer();
+    for (auto& e : c) {
+      insert(e);
+    }
+    return unit_t();
   }
 
   template <class T>
