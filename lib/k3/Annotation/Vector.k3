@@ -37,6 +37,10 @@ annotation Vector given type a, b, c, d
   provides lifted update : content -> (content -> ())
     with effects \oldElem -> \newElem -> [R[self]; R[oldElem]; R[newElem]; W[self]]
 
+  @:CArgs 3
+  provides lifted update_at : int -> content -> (content -> ())
+    with effects \oldElem -> \newElem -> [R[self]; R[oldElem]; R[newElem]; W[self]]
+
   provides lifted erase : content -> ()
     with effects \elem -> [R[self]; R[elem]; W[self]]
 
