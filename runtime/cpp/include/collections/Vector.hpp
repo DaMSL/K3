@@ -56,7 +56,7 @@ class Vector : public VectorDS<K3::Vector, Elem> {
   template <class F>
   unit_t update_at(int i, F f) {
     auto& vec = Super::getContainer();
-    vec[i] = f(std::move(vec[i]);
+    vec[i] = f(std::move(vec[i]));
     return unit_t();
   }
 
@@ -83,4 +83,5 @@ class Vector : public VectorDS<K3::Vector, Elem> {
   friend class boost::serialization::access;
 };
 
+}
 #endif
