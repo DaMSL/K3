@@ -26,7 +26,7 @@ class Collection : public VectorDS<K3::Collection, Elem> {
     return vec[i];
   }
 
-  unit_t clear(const unit_t&) const {
+  unit_t clear(const unit_t&) {
     Super::getContainer().clear();
     return unit_t();
   }
