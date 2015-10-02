@@ -33,7 +33,7 @@ class Engine {
   void send(const Address& src, const Address& dst, TriggerID trig,
             T&& value);
   // Accessors
-  shared_ptr<ProgramContext> getContext(const Address& addr);
+  ProgramContext& getContext(const Address& addr);
   NetworkManager& getNetworkManager();
   StorageManager& getStorageManager();
 

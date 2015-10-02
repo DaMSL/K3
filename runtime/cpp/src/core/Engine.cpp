@@ -77,7 +77,7 @@ void Engine::join() {
   logger_->info("The Engine has Joined.");
 }
 
-shared_ptr<ProgramContext> Engine::getContext(const Address& addr) {
+ProgramContext& Engine::getContext(const Address& addr) {
   auto it = peers_->find(addr);
   if (it != peers_->end()) {
     return it->second->getContext();
@@ -91,7 +91,7 @@ NetworkManager& Engine::getNetworkManager() { return network_manager_; }
 StorageManager& Engine::getStorageManager() { return storage_manager_; }
 
 unique_ptr<Dispatcher> getDispatcher(shared_ptr<Peer> p, unique_ptr<NativeValue> nv, TriggerID trig) {
- return p->getContext()->__getDispatcher(std::move(nv), trig);
+ return p->getContext().__getDispatcher(std::move(nv), trig);
 }
 
 string getTriggerName(int trig) {
