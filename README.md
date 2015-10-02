@@ -38,15 +38,15 @@ https://registry.hub.docker.com/u/damsl/k3-dev/
 <pre>
     ---
     me: [127.0.0.1, 40000]
-    role: go
+    role: [{i: go}]
     peers: [{addr: [127.0.0.1, 40000]}, {addr: [127.0.0.1, 40001]}, {addr: [127.0.0.1, 40002]}]
     ---
     me: [127.0.0.1, 40001]
-    role: go
+    role: [{i: go}]
     peers: [{addr: [127.0.0.1, 40000]}, {addr: [127.0.0.1, 40001]}, {addr: [127.0.0.1, 40002]}]
     ---
     me: [127.0.0.1, 40002]
-    role: go
+    role: [{i: go}]
     peers: [{addr: [127.0.0.1, 40000]}, {addr: [127.0.0.1, 40001]}, {addr: [127.0.0.1, 40002]}]</pre>
  
 `me` (the peer's ip/port address) and `role` (the source to start the peer) are mandatory. The `peers` field is required for any distributed program with 2 or more peers. Optionally, you may add any global variables from your program; include global vars to initialize each peer to a unique value instead of the default value. Also, note the formatting for an address data type (a 2-element sequence) and for the peers list (a sequence of mappings).
