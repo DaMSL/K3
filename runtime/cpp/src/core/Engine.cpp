@@ -90,8 +90,8 @@ NetworkManager& Engine::getNetworkManager() { return network_manager_; }
 
 StorageManager& Engine::getStorageManager() { return storage_manager_; }
 
-unique_ptr<Dispatcher> getDispatcher(shared_ptr<Peer> p, unique_ptr<NativeValue> nv, TriggerID trig) {
- return p->getContext().__getDispatcher(std::move(nv), trig);
+unique_ptr<Dispatcher> getDispatcher(Peer& p, unique_ptr<NativeValue> nv, TriggerID trig) {
+ return p.getContext().__getDispatcher(std::move(nv), trig);
 }
 
 string getTriggerName(int trig) {

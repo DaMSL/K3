@@ -32,7 +32,9 @@ class Peer {
   // Utilities
   bool finished();
   Address address();
-  ProgramContext& getContext();
+  ProgramContext& getContext() {
+    return *context_;
+  }
   void printStatistics();
 
  protected:

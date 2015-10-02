@@ -3,11 +3,12 @@
 
 #include <atomic>
 #include <vector>
-#include <map>
+#include <unordered_map>
 
 #include <spdlog/spdlog.h>
 
 #include "Common.hpp"
+#include "Hash.hpp"
 #include "Options.hpp"
 #include "network/NetworkManager.hpp"
 #include "storage/StorageManager.hpp"
@@ -42,7 +43,7 @@ class Engine {
   shared_ptr<spdlog::logger> logger_;
   NetworkManager network_manager_;
   StorageManager storage_manager_;
-  shared_ptr<const map<Address, shared_ptr<Peer>>> peers_;
+  shared_ptr<const std::unordered_map<Address, shared_ptr<Peer>>> peers_;
 
   // Configuration
   Options options_;
@@ -65,7 +66,7 @@ void Engine::run() {
       [this]() { return make_shared<Context>(*this); });
   auto rdy_callback = [this]() { ready_peers_++; };
 
-  auto tmp_peers = make_shared<map<Address, shared_ptr<Peer>>>();
+  auto tmp_peers = make_shared<std::unordered_map<Address, shared_ptr<Peer>>>();
   vector<YAML::Node> nodes =
       serialization::yaml::parsePeers(options_.peer_strs_);
   for (auto node : nodes) {
@@ -98,7 +99,7 @@ void Engine::run() {
   return;
 }
 
-unique_ptr<Dispatcher> getDispatcher(shared_ptr<Peer>, unique_ptr<NativeValue>, TriggerID trig);
+unique_ptr<Dispatcher> getDispatcher(Peer& p, unique_ptr<NativeValue>, TriggerID trig);
 string getTriggerName(int);
 
 template <class T>
@@ -117,7 +118,7 @@ void Engine::send(const Address& src, const Address& dst, TriggerID trig,
   if (options_.local_sends_enabled_ && it != peers_->end()) {
     // Direct enqueue for local messages
     unique_ptr<NativeValue> nv = std::make_unique<TNativeValue<T>>(std::move(value));
-    auto d = getDispatcher(it->second, std::move(nv), trig);
+    auto d = getDispatcher(*it->second, std::move(nv), trig);
 #ifdef K3DEBUG
     d->trigger_ = trig;
     d->source_ = src;

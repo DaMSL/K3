@@ -90,7 +90,6 @@ bool Peer::finished() { return finished_.load(); }
 
 Address Peer::address() { return address_; }
 
-ProgramContext& Peer::getContext() { return *context_; }
 
 void Peer::processBatch() {
   size_t num = queue_->dequeueBulk(batch_);

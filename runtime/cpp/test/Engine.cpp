@@ -350,13 +350,13 @@ TEST_F(EngineTest, LocalSends) {
   engine_.run<DummyContext>();
   engine_.join();
 
-  auto c1 = engine_.getContext(addr1_);
-  auto c2 = engine_.getContext(addr2_);
-  auto dc1 = std::dynamic_pointer_cast<DummyContext>(c1);
-  auto dc2 = std::dynamic_pointer_cast<DummyContext>(c2);
+  auto& c1 = engine_.getContext(addr1_);
+  auto& c2 = engine_.getContext(addr2_);
+  auto& dc1 = dynamic_cast<DummyContext&>(c1);
+  auto& dc2 = dynamic_cast<DummyContext&>(c2);
 
-  ASSERT_EQ(99, dc1->my_int_);
-  ASSERT_EQ(99, dc2->my_int_);
+  ASSERT_EQ(99, dc1.my_int_);
+  ASSERT_EQ(99, dc2.my_int_);
 }
 
 TEST_F(EngineTest, NetworkSends) {
@@ -365,13 +365,13 @@ TEST_F(EngineTest, NetworkSends) {
   std::cout << "Running" << std::endl;
   engine_.join();
 
-  auto dc1 =
-      std::dynamic_pointer_cast<DummyContext>(engine_.getContext(addr1_));
-  auto dc2 =
-      std::dynamic_pointer_cast<DummyContext>(engine_.getContext(addr2_));
+  auto& dc1 =
+      dynamic_cast<DummyContext&>(engine_.getContext(addr1_));
+  auto& dc2 =
+      dynamic_cast<DummyContext&>(engine_.getContext(addr2_));
 
-  ASSERT_EQ(99, dc1->my_int_);
-  ASSERT_EQ(99, dc2->my_int_);
+  ASSERT_EQ(99, dc1.my_int_);
+  ASSERT_EQ(99, dc2.my_int_);
 }
 
 //
