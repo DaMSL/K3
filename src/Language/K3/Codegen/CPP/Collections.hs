@@ -15,7 +15,7 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
 import Language.K3.Codegen.CPP.Types
-import Language.K3.Codegen.CPP.MultiIndex (indexes)
+import Language.K3.Codegen.CPP.Datastructures (indexes,polybuffer)
 
 import qualified Language.K3.Codegen.CPP.Representation as R
 
@@ -55,8 +55,12 @@ composite name ans content_ts = do
                                            _ -> acc
 
 
+    -- MultiIndex member generation.
     -- When dealing with Indexes, we need to specialize the MultiIndex* classes on each index type
     (indexTypes, indexDefns) <- indexes name as content_ts
+
+    -- FlatPolyBuffer member generation.
+    pbufDefns <- polybuffer name as content_ts
 
     let addnSpecializations n = if "Array" `isInfixOf` n then arraySize $ lookup n ans
                                 else if "MultiIndex" `isInfixOf` n then indexTypes
@@ -121,7 +125,9 @@ composite name ans content_ts = do
              (Just $ R.Named $ R.Name "void")
              [] False $ serializeStatements asYas)
 
-    let methods = [defaultConstructor, superConstructor, superMoveConstructor, serializeFn False, serializeFn True] ++ indexDefns
+    let methods = [defaultConstructor, superConstructor, superMoveConstructor]
+                    ++ [serializeFn False, serializeFn True]
+                    ++ indexDefns ++ pbufDefns
 
     let collectionClassDefn = R.TemplateDefn [("__CONTENT", Nothing)]
              (R.ClassDefn (R.Name name) [] (map R.Named baseClasses) methods [] [])
@@ -473,5 +479,5 @@ reservedAnnotations =
   , "IntSet", "SortedSet"
   , "IntMap", "StrMap", "VMap", "SortedMap", "MapE", "SortedMapE", "MapCE"
   , "MultiIndexBag", "MultiIndexMap", "MultiIndexVMap", "RealVector"
-  , "BulkFlatCollection"
+  , "BulkFlatCollection", "FlatPolyBuffer"
   ]

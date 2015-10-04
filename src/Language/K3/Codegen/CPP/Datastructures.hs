@@ -1,7 +1,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Language.K3.Codegen.CPP.MultiIndex where
+module Language.K3.Codegen.CPP.Datastructures where
 
 import Control.Monad
 
@@ -387,6 +387,10 @@ indexes name ans content_ts = do
 
     fold_slice_vid_fn _ = return Nothing
 
+
+-- Returns member definitions for a FlatPolyBuffer
+polybuffer :: Identifier -> [(Identifier, [AnnMemDecl])] -> [K3 Type] -> CPPGenM [R.Definition]
+polybuffer name ans content_ts = undefined
 
 {- Pattern synonyms for index functions. -}
 

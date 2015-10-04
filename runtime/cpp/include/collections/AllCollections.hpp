@@ -19,4 +19,5 @@
 #include "collections/MapCE.hpp"
 #include "collections/SortedMapE.hpp"
 #include "collections/BulkFlatCollection.hpp"
+#include "collections/FlatPolyBuffer.hpp"
 #include "HashCollections.hpp"

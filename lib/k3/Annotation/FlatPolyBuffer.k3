@@ -1,0 +1,39 @@
+annotation FlatPolyBuffer[variants: [labeltype]] given type a
+{
+  provides lifted size : () -> int
+    with effects \_ -> R[self]
+
+  provides lifted tag_at : int -> int
+    with effects \_ -> R[self]
+
+  provides lifted iterate : (int -> int -> ()) -> ()
+    with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
+
+  provides lifted fold : (a -> (int -> int -> a)) -> a -> a
+    with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; (((foldF z) none) none)])*]
+
+  provides lifted clear : () -> ()
+    with effects \_ -> [R[self]; W[self]]
+
+  // Externalization/internalization methods.
+  provides lifted repack : () -> ()
+    with effects \_ -> [R[self]; W[self]]
+
+  provides lifted unpack : () -> ()
+    with effects \_ -> [R[self]; W[self]]
+
+  provides lifted load : string -> ()
+    with effects \data -> [R[self]; R[data]; W[self]]
+
+  provides lifted save : () -> string
+    with effects \data -> [R[self]; R[data]]
+
+  // Generated methods.
+  for v in variants:
+    provides lifted $#[i]_at : int -> int -> $::[i]
+
+    provides lifted $#[i]_safe_at : int -> int -> ($::[i] -> a) -> (() -> a) -> a
+
+    provides lifted append_$#[i] : $::[i] -> ()
+
+}

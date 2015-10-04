@@ -193,7 +193,6 @@ public:
         throw std::runtime_error("Externalization failed on variable length field");
       }
 
-      auto buf = pg.get(slot_id);
       intptr_t* p = reinterpret_cast<intptr_t*>(&str);
       *p = static_cast<intptr_t>(slot_id & slot_mask);
       if ( advanced ) { *p |= advance_mask; } else { *p &= ~advance_mask; }
