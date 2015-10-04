@@ -279,16 +279,28 @@ class FlatPolyBuffer {
     }
   }
 
-  // Apply a function with the element index and offset.
+  // Apply a function on the tag and offset.
   template<typename Fun>
   unit_t iterate(Fun f) {
-    size_f foffset = 0;
+    size_t foffset = 0;
     for (int i = 0; i < size(); ++i) {
       Tag tg = tag_at(i);
       f(tg, foffset);
       foffset += elemsize(tg);
     }
     return unit_t {};
+  }
+
+  // Accumulate with the tag and offset.
+  template <typename Fun, typename Acc>
+  Acc fold(Fun f, Acc acc) const {
+    size_t foffset = 0;
+    for (int i = 0; i < size(); ++i) {
+      Tag tg = tag_at(i);
+      acc = f(std::move(acc), tg, foffset);
+      foffset += elemsize(tg);
+    }
+    return acc;
   }
 
   template<typename T>
@@ -318,7 +330,7 @@ class FlatPolyBuffer {
 
   // Externalizes an existing buffer, reusing the variable-length segment.
   unit_t repack(unit_t) {
-    size_f foffset = 0;
+    size_t foffset = 0;
     FContainer* ncf = const_cast<FContainer*>(fixedc());
     VContainer* ncv = const_cast<VContainer*>(variablec());
     ExternalizerT etl(ncv, ExternalizerT::ExternalizeOp::Reuse);
@@ -335,7 +347,7 @@ class FlatPolyBuffer {
   // Internalizes an existing buffer if it is not already internalized.
   unit_t unpack(unit_t) {
     if ( !internalized ) {
-      size_f foffset = 0;
+      size_t foffset = 0;
       FContainer* ncf = const_cast<FContainer*>(fixedc());
       VContainer* ncv = const_cast<VContainer*>(variablec());
       InternalizerT itl(ncv);
