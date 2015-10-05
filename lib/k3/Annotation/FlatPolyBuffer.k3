@@ -1,19 +1,20 @@
-annotation FlatPolyBuffer[variants: [labeltype]] given type a
+annotation FlatPolyBuffer[variants: [labeltylit]] given type a
 {
   provides lifted size : () -> int
     with effects \_ -> R[self]
 
+  provides lifted clear : () -> ()
+    with effects \_ -> [R[self]; W[self]]
+
   provides lifted tag_at : int -> int
     with effects \_ -> R[self]
 
-  provides lifted iterate : (int -> int -> ()) -> ()
-    with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
+  // Iterate and fold functions arguments are: tag, tuple index, tuple offset.
+  provides lifted iterate : (int -> int -> int -> ()) -> ()
+    with effects \iterF -> [R[self]; ([R[content]; (((iterF none) none) none)])*]
 
-  provides lifted fold : (a -> (int -> int -> a)) -> a -> a
-    with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; (((foldF z) none) none)])*]
-
-  provides lifted clear : () -> ()
-    with effects \_ -> [R[self]; W[self]]
+  provides lifted fold : (a -> (int -> int -> int -> a)) -> a -> a
+    with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((((foldF z) none) none) none)])*]
 
   // Externalization/internalization methods.
   provides lifted repack : () -> ()
@@ -30,10 +31,14 @@ annotation FlatPolyBuffer[variants: [labeltype]] given type a
 
   // Generated methods.
   for v in variants:
-    provides lifted $#[i]_at : int -> int -> $::[i]
+    provides lifted $#[v]_at : int -> int -> $::[v]
+      with effects \idx -> \offset -> [R[self]; R[idx]; R[offset]]
 
-    provides lifted $#[i]_safe_at : int -> int -> ($::[i] -> a) -> (() -> a) -> a
+    provides lifted $#[v]_safe_at : int -> int -> ($::[v] -> a) -> (() -> a) -> a
+      with effects \idx -> \offset -> \someF -> \noneF -> [R[self]; R[idx]; R[offset]; f none; g none]
 
-    provides lifted append_$#[i] : $::[i] -> ()
+    @:{Tag "$![v]"}
+    provides lifted append_$#[v] : $::[v] -> ()
+      with effects \elem -> [R[self]; R[elem]; W[self]]
 
 }
