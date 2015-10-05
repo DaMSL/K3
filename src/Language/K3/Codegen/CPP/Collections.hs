@@ -60,7 +60,7 @@ composite name ans content_ts = do
     (indexTypes, indexDefns) <- indexes name as content_ts
 
     -- FlatPolyBuffer member generation.
-    pbufDefns <- polybuffer name as content_ts
+    pbufDefns <- polybuffer as
 
     let addnSpecializations n = if "Array" `isInfixOf` n then arraySize $ lookup n ans
                                 else if "MultiIndex" `isInfixOf` n then indexTypes

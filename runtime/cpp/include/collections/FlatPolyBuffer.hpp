@@ -271,7 +271,7 @@ class FlatPolyBuffer {
   }
 
   template<typename T, typename F, typename G>
-  auto safe_at(int i, size_t offset, F f, G f) {
+  auto safe_at(int i, size_t offset, F f, G g) {
     if ( i < size() ) {
       return f(*static_cast<T*>(buffer_data() + offset));
     } else {
@@ -285,7 +285,7 @@ class FlatPolyBuffer {
     size_t foffset = 0;
     for (int i = 0; i < size(); ++i) {
       Tag tg = tag_at(i);
-      f(tg, foffset);
+      f(tg, i, foffset);
       foffset += elemsize(tg);
     }
     return unit_t {};
@@ -297,14 +297,14 @@ class FlatPolyBuffer {
     size_t foffset = 0;
     for (int i = 0; i < size(); ++i) {
       Tag tg = tag_at(i);
-      acc = f(std::move(acc), tg, foffset);
+      acc = f(std::move(acc), tg, i, foffset);
       foffset += elemsize(tg);
     }
     return acc;
   }
 
   template<typename T>
-  void append(Tag tg, T& t) {
+  unit_t append(Tag tg, T& t) {
     if (buffer.data()) {
       throw std::runtime_error("Invalid append on a FPB: backed by a base_string");
     }
@@ -323,6 +323,7 @@ class FlatPolyBuffer {
     } else {
       throw std::runtime_error("Append failed on a FPB");
     }
+    return unit_t {};
   }
 
   // Clears a container provided it is not backed by a string buffer.

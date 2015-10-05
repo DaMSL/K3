@@ -214,6 +214,7 @@ data Expression
     | Subscript Expression Expression
     | Unary Identifier Expression
     | Variable Name
+    | ExprOnType Type
   deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Expression where
@@ -245,6 +246,7 @@ instance Stringifiable Expression where
             _ -> unaryParens a <> brackets (stringify b)
     stringify (Unary op e) = fromString op <> unaryParens e
     stringify (Variable n) = stringify n
+    stringify (ExprOnType t) = stringify t
 
 pattern WRef e = Call (Variable (Qualified (Name "std") (Name "ref"))) [e]
 pattern CRef e = Call (Variable (Qualified (Name "std") (Name "cref"))) [e]
@@ -379,6 +381,7 @@ isOrderAgnostic e = case e of
   Subscript x s -> isOrderAgnostic x && isOrderAgnostic s
   Unary _ x -> isOrderAgnostic x
   Variable _ -> True
+  ExprOnType _ -> True
 
 isMoveInferred :: Expression -> Bool
 isMoveInferred e = case e of
@@ -393,6 +396,7 @@ isMoveInferred e = case e of
   Subscript _ _ -> False
   Unary _ _ -> True
   Variable _ -> False
+  ExprOnType _ -> False
 
 -- Transformations
 class Substitutable a where
@@ -429,6 +433,7 @@ instance Substitutable Expression where
     Subscript x s -> Subscript (subst new old x) (subst new old s)
     Unary i a -> Unary i (subst new old a)
     Variable n -> Variable (subst new old n)
+    ExprOnType t -> ExprOnType t
 
 instance Substitutable Statement where
   subst new old stmt = case stmt of
