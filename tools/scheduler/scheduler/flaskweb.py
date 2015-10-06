@@ -156,7 +156,7 @@ def initWeb(port, **kwargs):
     webapp.config['COMPILELOG'] = compileFile
 
     compile_fmt = ServiceFormatter(u'[%(asctime)s] %(message)s'.encode("utf8", errors='ignore'))
-    compile_file = logging.handlers.RotatingFileHandler(compileFile, maxBytes=1024*1024, backupCount=5, mode='w')
+    compile_file = logging.handlers.RotatingFileHandler(compileFile, maxBytes=5*1024*1024, backupCount=20, mode='w')
     compile_file.setFormatter(compile_fmt)
     compileLogger.addHandler(compile_file)
 
@@ -1051,18 +1051,33 @@ def compServiceUp():
     logger.debug ("[FLASKWEB] User CABAL BUILD Request (?): %s" % str(settings['cabalbuild']))
 
     # TODO: Set Worker Nodes here (dynamic allocation of workers)
-    if 'numworkers' not in request.form or request.form['numworkers'] == '':
-      settings['numworkers'] = len(workerNodes)
-    else:
-      settings['numworkers'] = int(request.form['numworkers'])
+
+
+
+    # if 'numworkers' not in request.form or request.form['numworkers'] == '':
+    #   settings['numworkers'] = len(workerNodes)
+    # else:
+    #   settings['numworkers'] = int(request.form['numworkers'])
+
+    nodelist = {n : [] for n in ['master', 'worker', 'client', 'none']}
+    for host in compileService.getAllNodes()['all']:
+      logger.debug(' Host added as ' + host)
+      if host in request.form:
+        logger.debug("    -->Recevied host val as: " + request.form[host])
+        nodelist[request.form[host].lower()].append(host)
+        logger.debug(' %s added as %s ' % (host, request.form[host].lower()))
+    compileService.setNodes(nodelist)
+
 
     compileService.update(settings)
-    compileService.goUp(settings['numworkers'])
+    compileService.goUp()
+
+
 
   if request.headers['Accept'] == 'application/json':
     return jsonify(compileService.getItems()), 200
   else:
-    return render_template("compile.html", status=compileService.state.name)    
+    return render_template("compile.html", status=compileService.state.name, hostlist=compileService.getAllNodes())    
 
 
 
@@ -1082,7 +1097,7 @@ def compServiceStop():
   if request.headers['Accept'] == 'application/json':
     return jsonify(compileService.getItems()), 200
   else:
-    return render_template("compile.html", status=compileService.state.name)    
+    return render_template("compile.html", status=compileService.state.name, hostlist=compileService.getAllNodes())    
 
 
 @webapp.route('/compileservice/down')
@@ -1101,7 +1116,7 @@ def compServiceDown():
   if request.headers['Accept'] == 'application/json':
     return jsonify(compileService.getItems()), 200
   else:
-    return render_template("compile.html", status=compileService.state.name)
+    return render_template("compile.html", status=compileService.state.name, hostlist=compileService.getAllNodes())
 
 
 
@@ -1248,7 +1263,8 @@ http://<host>:<port>/compile' if compileService.isUp()
           else 'START THE SERVICE: curl -i -H "Accept: application/json" http://<host>:<port>/compileservice/up')
 
       else:
-        return render_template("compile.html", status=compileService.state.name)
+        hostlist = dict(master=compileService.masterNodes, worker=compileService.workerNodes, client=compileService.clientNodes)
+        return render_template("compile.html", status=compileService.state.name, hostlist=compileService.getAllNodes())
 
 
 def getCompilerOutput(uname):

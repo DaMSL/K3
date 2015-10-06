@@ -5,7 +5,7 @@ import math
 import time
 import threading
 import socket
-from collections import deque
+from collections import deque, OrderedDict
 
 from common import *
 from core import *
@@ -46,6 +46,7 @@ class Dispatcher(mesos.interface.Scheduler):
     self.idle = 0
     self.gc = time.time()
     self.offerRelease = 0
+    self.currentDir = 1        # 1 or -1. Choose from beginning or end of port range
 
     self.offerHold = {}
 
@@ -103,7 +104,8 @@ class Dispatcher(mesos.interface.Scheduler):
     committedResources = {}
     availableCPU = {i: float(getResource(o.resources, "cpus")) for i, o in self.offers.items()}
     availableMEM = {i: getResource(o.resources, "mem") for i, o in self.offers.items()}
-    availablePorts = {i: PortList(getResource(o.resources, "ports")) for i, o in self.offers.items()}
+    availablePorts = {i: PortList(getResource(o.resources, "ports"), dir=self.currentDir) for i, o in self.offers.items()}
+    # self.currentDir *= -1
     committed = {i: False for i in self.offers}
 
     # Try to satisy each role, sequentially
@@ -134,9 +136,9 @@ class Dispatcher(mesos.interface.Scheduler):
         host = self.offers[offerId].hostname.encode('utf8','ignore')
         r = re.compile(hostmask)
         if not r.match(host):
-          logging.debug("  Offer from %s does not match hostmask. DECLINING offer" % host)
+          logging.debug("  Offer from %s does not match hostmask %s. DECLINING offer" % (host, hostmask))
           continue
-        logging.debug("Offer %s MATCHES hostmask. Checking offer against role requirements" % host)
+        logging.debug("Offer %s MATCHES hostmask %s. Checking offer against role requirements" % (host, hostmask))
 
         # Allocate CPU Resource
         cpuPerPeer = nextJob.roles[roleId].params.get('cpu', 1)
@@ -225,22 +227,21 @@ class Dispatcher(mesos.interface.Scheduler):
     #  Iterate through the reservations for each role / offer: create peers & tasks
     allPeers = []
 
-
-    # for offerId, offer in role.items():
-
-
     for roleId, role in reservation.items():
       logging.debug("[DISPATCHER] Preparing role, %s" % roleId)
       
       defaultVars = nextJob.roles[roleId].variables
       peerVars = nextJob.roles[roleId].getPeerVarIter()
       
-      for offerId, offer in role.items():
+      # Sort offers for this role by hostname, to ensure deterministic allocation of resources:
+      offersheet = OrderedDict(sorted(role.items(), key=lambda r: self.offers[r[0]].hostname))
+      for offerId, offer in offersheet.items():
         peers = []
         host = self.offers[offerId].hostname.encode('utf8','ignore')
         ip = socket.gethostbyname(host)
         if len(allPeers) == 0:
           nextJob.master = host
+        offer['ports'].randomize()
         for n in range(offer['peers']):
           nextPort = offer['ports'].getNext()
 

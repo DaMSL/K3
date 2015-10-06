@@ -2,6 +2,7 @@
 import os, re, yaml
 import tarfile
 import logging
+from random import shuffle
 from common import *
 
 class K3JobError(Exception):
@@ -156,10 +157,16 @@ class Job:
 
 
 class PortList():
-   def __init__(self, ranges=[]):
+   def __init__(self, ranges=[], dir=1):
        self.index = 0
        self.offset = 0
+       self.dir = dir
        self.ports = [] if ranges == 0 else ranges
+
+   def randomize(self):
+       print("Before: %s" % (self.ports, ))
+       shuffle(self.ports)
+       print("After: %s" % (self.ports, ))
        
    def addRange(self, r):
        ports.append(r)
@@ -179,8 +186,8 @@ class PortList():
    def getNext(self):
      if len(self.ports) == 0 or self.index >= len(self.ports):
        return None
-     result = self.ports[self.index][0] + self.offset
-     if result == self.ports[self.index][1]:
+     result = self.ports[self.index][0 if self.dir == 1 else 1] + self.dir * self.offset
+     if result == self.ports[self.index][1 if self.dir == 1 else 0]:
          self.index += 1
          self.offset = 0
      else:

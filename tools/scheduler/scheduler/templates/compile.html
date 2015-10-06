@@ -17,10 +17,11 @@
             <span class="lead text-right"><button type=submit class="btn btn-success btn-md">  START COMPILER SERVICE</button>
             </div>
 
-            <div class="row">
+<!--            <div class="row">
                 <div class="col-md-4"><h4># of Worker Nodes:</h4></div>
                 <div class="col-md-8"><input type=text name=numworkers size="80"></div>
             </div>
+ -->
             <div class="row">
                 <div class="col-md-4"><h4>Force Git Pull:</h4></div>
                 <div class="col-md-8"><input type=text name=gitpull value=True></div>
@@ -46,6 +47,25 @@
                 <div class="col-md-8"><input type=text name=heartbeat value="300" size="80"></div>
             </div> 
 
+            <div class="row">
+                <div class="col-md-4" style="vertical-align: top"><h4>Node Selection:</h4></div>
+            </div>
+            <div class="row">
+                <div class="col-md-2" style="vertical-align: top">&nbsp</div>
+                <div class="col-md-10">
+                {% for host in hostlist.all %}
+                  <div class="row">
+                    <div class="col-md-3">{{host}}</div>
+                    <div class="col-md-2"><label class="radio-inline"><input type="radio" value="master" {% if host in hostlist.master %}checked{%endif%} name="{{host}}">Master</label></div>
+                    <div class="col-md-2"><label class="radio-inline"><input type="radio" value="worker" {% if host in hostlist.worker %}checked{%endif%} name="{{host}}">Worker</label></div>
+                    <div class="col-md-2"><label class="radio-inline"><input type="radio" value="client" {% if host in hostlist.client %}checked{%endif%} name="{{host}}">Client</label></div>
+                    <div class="col-md-2"><label class="radio-inline"><input type="radio" value="none" {% if host in hostlist.none %}checked{%endif%} name="{{host}}">None</label></div>
+                  </div>
+                {% endfor %}
+                </div>
+            </div> 
+
+
          </form>
       
       {% elif status == "UP" %}
@@ -60,6 +80,30 @@
       </div>
 
       <h2>Compile a New K3 Application from source</h2>
+          <div class="row">
+              <div class="col-md-2"><strong>Master Node:</strong></div>
+              <div class="col-md-8"><ul class='list-inline'>
+                {% for node in hostlist.master %}
+                  <li>{{ node }}</li>
+                {% endfor %}
+              </div>
+          </div>
+          <div class="row">
+              <div class="col-md-2"><strong>Workers Nodes:</strong></div>
+              <div class="col-md-8"><ul class='list-inline'>
+                {% for node in hostlist.worker %}
+                  <li>{{ node }}</li>
+                {% endfor %}
+              </div>
+          </div>
+          <div class="row">
+              <div class="col-md-2"><strong>Client Node(s):</strong></div>
+              <div class="col-md-8"><ul class='list-inline'>
+                {% for node in hostlist.client %}
+                  <li>{{ node }}</li>
+                {% endfor %}
+              </div>
+          </div>
         <form action="compile" method=post enctype=multipart/form-data>
             <div class="row">
                 <div class="col-md-2"><h4>Application Name: </h4></div>
