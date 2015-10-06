@@ -121,8 +121,8 @@ def build(name)
       Dir.chdir(K3) do
         puts "Cleaning build directory..."
         `tools/scripts/run/clean.sh`
-        puts "Compiling K3 -> C++ ..."
-        `tools/scripts/run/compile.sh #{path}`
+        puts "Compiling K3 -> C++ with options: #{ENV["K3_BUILDOPTS"]}"
+        `tools/scripts/run/compile.sh #{ENV["K3_BUILDOPTS"]} #{path}`
         puts "Copying artifacts..."
         `mkdir -p #{target}`
         `mv __build/#{File.basename(path, ".k3")}.cpp #{target}/#{slugify(experiment, query)}.cpp`
