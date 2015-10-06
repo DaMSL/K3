@@ -81,20 +81,21 @@ class Task:
 class Job:
   def __init__(self, **kwargs):
     # self.archive    = kwargs.get("archive", None)
-    self.binary_url = kwargs.get("binary", None)
+    self.binary_url  = kwargs.get("binary", None)
     self.appName     = kwargs.get("appName", 'None')
     self.appUID      = kwargs.get("appUID", 'None')
-    self.jobId      = kwargs.get("jobId", '1000')
-    roleFile        = kwargs.get("rolefile", None)
-    self.logging    = kwargs.get("logging", False)
-    self.jsonlog    = kwargs.get("jsonlog", False)
-    self.jsonfinal    = kwargs.get("jsonfinal", False)
-    self.stdout     = kwargs.get("stdout", False)
-    self.roles      = {}
-    self.tasks      = []
-    self.status     = None
-    self.all_peers  = None
-    self.master     = None
+    self.jobId       = kwargs.get("jobId", '1000')
+    roleFile         = kwargs.get("rolefile", None)
+    self.logging     = kwargs.get("logging", False)
+    self.jsonlog     = kwargs.get("jsonlog", False)
+    self.jsonfinal   = kwargs.get("jsonfinal", False)
+    self.perfprofile = kwargs.get("perfprofile", False)
+    self.stdout      = kwargs.get("stdout", False)
+    self.roles       = {}
+    self.tasks       = []
+    self.status      = None
+    self.all_peers   = None
+    self.master      = None
 
     if self.binary_url == None:
       logging.error("[FLASKWEB] Error. No binary provided to Job")
