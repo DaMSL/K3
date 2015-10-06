@@ -1,7 +1,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Language.K3.Codegen.CPP.Datastructures where
+module Language.K3.Codegen.CPP.CollectionMembers where
 
 import Control.Monad
 
@@ -389,17 +389,21 @@ indexes name ans content_ts = do
 
 
 -- Returns member definitions for a FlatPolyBuffer
-polybuffer :: [(Identifier, [AnnMemDecl])] -> CPPGenM [R.Definition]
-polybuffer ans = do
+polybuffer :: Identifier -> [(Identifier, [AnnMemDecl])] -> CPPGenM [R.Definition]
+polybuffer name ans = do
   let indexed   = zip [1..] $ filter is_polybuffer ans
   let flattened = concatMap (\(i, (n, mems)) -> zip (repeat (i,n)) mems) indexed
   at_defns                   <- catMaybes <$> mapM at_fn flattened
   safe_at_defns              <- catMaybes <$> mapM safe_at_fn flattened
   (tgs, types, append_defns) <- unzip3 . catMaybes <$> mapM append_fn flattened
   extra_defns                <- extra_fns tgs types
-  return $ at_defns ++ safe_at_defns ++ append_defns ++ extra_defns
+  return $ super_defn ++ at_defns ++ safe_at_defns ++ append_defns ++ extra_defns
 
   where
+    super_defn = [R.GlobalDefn $ R.Forward $ R.UsingDecl
+                   (Right $ R.Name "Super")
+                   (Just $ R.Qualified (R.Name "K3") $ R.Specialized [elem_type] $ R.Name "FlatPolyBuffer")]
+
     at_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
     at_fn (_, Lifted _ fname _ _ _) | "_safe_at" `isSuffixOf` fname = return Nothing
     at_fn (_, Lifted _ fname t _ _) | "_at" `isSuffixOf` fname = do
@@ -407,7 +411,7 @@ polybuffer ans = do
       let int_t = R.Primitive R.PInt
       let at_rt = get_at_return_type t
       let typed_at ct = R.Call
-                          (R.Variable $ R.Specialized [ct] $ R.Name "at")
+                          (R.Variable $ suqualnm $ R.Specialized [ct] $ R.Name "template at")
                           [R.Variable $ R.Name arg1, R.Variable $ R.Name arg2]
 
       let defn ct = R.FunctionDefn (R.Name fname)
@@ -430,7 +434,7 @@ polybuffer ans = do
       let g_t   = R.Named $ R.Name "G"
       let safe_at_t = get_safe_at_type t
       let typed_safe_at ct = R.Call
-                              (R.Variable $ R.Specialized [ct, f_t, g_t] $ R.Name "safe_at")
+                              (R.Variable $ suqualnm $ R.Specialized [ct, f_t, g_t] $ R.Name "template safe_at")
                               (map (R.Variable . R.Name) [arg1, arg2, arg3, arg4])
 
       let defn ct = R.TemplateDefn [("F", Nothing), ("G", Nothing)] $
@@ -450,7 +454,7 @@ polybuffer ans = do
     append_fn (_, Lifted _ fname t _ danns) | "append_" `isPrefixOf` fname = do
       let val_t = get_append_type t
       let typed_append ct_tag ct = R.Call
-                                     (R.Variable $ R.Specialized [ct] $ R.Name "append")
+                                     (R.Variable $ suqualnm $ R.Specialized [ct] $ R.Name "template append")
                                      [R.Literal $ R.LInt ct_tag, R.Variable $ R.Name "elem"]
 
       let defn ct_tag ct = R.FunctionDefn (R.Name fname)
@@ -467,15 +471,17 @@ polybuffer ans = do
     append_fn _ = return Nothing
 
     extra_fns :: [Int] -> [R.Type] -> CPPGenM [R.Definition]
-    extra_fns tags types = catMaybes <$> mapM (\f -> f tags types) [elemsize_fn, externalize_fn, internalize_fn]
+    extra_fns [] [] = return []
+    extra_fns tags types = catMaybes <$> mapM (\f -> f tags types)
+      [elemsize_fn, externalize_fn, internalize_fn, yamlencode_fn, yamldecode_fn, jsonencode_fn]
 
     elemsize_fn :: [Int] -> [R.Type] -> CPPGenM (Maybe R.Definition)
     elemsize_fn tags types =
       return $ Just $ R.FunctionDefn (R.Name "elemsize")
-                        [(Just "tag", R.Primitive R.PInt)]
+                        [(Just "tag", tag_t)]
                         (Just $ R.Named $ R.Name "size_t")
                         []
-                        False
+                        True
                         [branch_chain "tag" tags types elseStmt elemStmt]
 
       where elemStmt _ ty = R.Return $ R.Call (R.Variable $ R.Name "sizeof") [R.ExprOnType ty]
@@ -485,7 +491,7 @@ polybuffer ans = do
     externalize_fn tags types =
       return $ Just $ R.FunctionDefn (R.Name "externalize")
                         [(Just "e", R.Reference externalizer_t),
-                         (Just "tag", R.Primitive R.PInt),
+                         (Just "tag", tag_t),
                          (Just "data", char_ptr_t)]
                         (Just $ R.Void)
                         []
@@ -493,7 +499,7 @@ polybuffer ans = do
                         [branch_chain "tag" tags types elseStmt elemStmt]
 
       where elemStmt _ ty = R.Ignore $ R.Call (R.Project (castExpr $ R.Pointer ty) $ R.Name "externalize") [R.Variable $ R.Name "e"]
-            castExpr ty = R.Dereference $ R.Call (static_cast_expr ty) [R.Variable $ R.Name "data"]
+            castExpr ty = R.Dereference $ R.Call (reinterpret_cast_expr ty) [R.Variable $ R.Name "data"]
             elseStmt = R.Ignore $  R.ThrowRuntimeErr $ R.Literal $ R.LString "Invalid poly buffer tag"
 
 
@@ -501,7 +507,7 @@ polybuffer ans = do
     internalize_fn tags types =
       return $ Just $ R.FunctionDefn (R.Name "internalize")
                         [(Just "i", R.Reference internalizer_t),
-                         (Just "tag", R.Primitive R.PInt),
+                         (Just "tag", tag_t),
                          (Just "data", char_ptr_t)]
                         (Just $ R.Void)
                         []
@@ -509,15 +515,97 @@ polybuffer ans = do
                         [branch_chain "tag" tags types elseStmt elemStmt]
 
       where elemStmt _ ty = R.Ignore $ R.Call (R.Project (castExpr $ R.Pointer ty) $ R.Name "internalize") [R.Variable $ R.Name "i"]
-            castExpr ty = R.Dereference $ R.Call (static_cast_expr ty) [R.Variable $ R.Name "data"]
+            castExpr ty = R.Dereference $ R.Call (reinterpret_cast_expr ty) [R.Variable $ R.Name "data"]
             elseStmt = R.Ignore $  R.ThrowRuntimeErr $ R.Literal $ R.LString "Invalid poly buffer tag"
 
+    yamlencode_fn tags types =
+      return $ Just $ R.FunctionDefn (R.Name "yamlencode")
+                        [(Just "tag", tag_t), (Just "idx", R.Primitive R.PInt), (Just "offset", size_type)]
+                        (Just yaml_node_type)
+                        []
+                        True
+                        [R.Forward $ R.ScalarDecl (R.Name "node") yaml_node_type Nothing,
+                         yaml_map_insert [R.Literal $ R.LString "tag", R.Variable $ R.Name "tag"],
+                         branch_chain "tag" tags types elseStmt elemStmt,
+                         R.Return $ R.Variable $ R.Name "node"]
 
-    externalizer_t = R.Named $ R.Name "ExternalizerT"
-    internalizer_t = R.Named $ R.Name "InternalizerT"
+      where elemStmt _ ty = yaml_map_insert [R.Literal $ R.LString "elem", typed_at ty]
+
+            elseStmt = R.Ignore $ R.ThrowRuntimeErr $ R.Literal $ R.LString "Invalid poly buffer tag"
+
+            typed_at ty = R.Call
+                            (R.Variable $ suqualnm $ R.Specialized [ty] $ R.Name "template at")
+                            [R.Variable $ R.Name "idx", R.Variable $ R.Name "offset"]
+
+
+    yamldecode_fn tags types =
+      return $ Just $ R.FunctionDefn (R.Name "yamldecode")
+                        [(Just "node", R.Reference yaml_node_type)]
+                        (Just $ R.Void)
+                        []
+                        False
+                        [R.Forward $ R.ScalarDecl (R.Name "tag") tag_t $ Just $
+                           R.Call (R.Project (R.Variable $ R.Name "node[\"tag\"]") $ R.Specialized [tag_t] $ R.Name "as") [],
+                         branch_chain "tag" tags types elseStmt elemStmt]
+
+      where elemStmt _ ty = R.Ignore $ R.Call
+                              (R.Variable $ suqualnm $ R.Specialized [ty] $ R.Name "template append")
+                              [R.Variable $ R.Name "tag", typed_elem ty]
+
+            typed_elem ty = R.Call (R.Project (R.Variable $ R.Name "node[\"elem\"]") $ R.Specialized [ty] $ R.Name "as") []
+
+            elseStmt = R.Ignore $ R.ThrowRuntimeErr $ R.Literal $ R.LString "Invalid poly buffer tag"
+
+
+    jsonencode_fn tags types =
+      return $ Just $ R.FunctionDefn (R.Name "jsonencode")
+                  [(Just "tag", tag_t), (Just "idx", R.Primitive R.PInt), (Just "offset", size_type), (Just "al", R.Reference json_alloc_type)]
+                  (Just json_node_type)
+                  []
+                  True
+                  [R.Forward $ R.ScalarDecl (R.Name "node") json_node_type Nothing,
+                   json_set_object "node",
+                   json_add_member "node"
+                      (R.Literal $ R.LString "tag")
+                      (R.Variable $ R.Name "tag")
+                      (R.Variable $ R.Name "al"),
+                   branch_chain "tag" tags types elseStmt elemStmt,
+                   R.Return $ R.Variable $ R.Name "node"]
+
+      where elemStmt _ ty = json_add_member "node"
+                              (R.Literal $ R.LString "elem")
+                              (R.Call (json_convert_fn ty) [typed_at ty, R.Variable $ R.Name "al"])
+                              (R.Variable $ R.Name "al")
+
+            elseStmt = R.Ignore $ R.ThrowRuntimeErr $ R.Literal $ R.LString "Invalid poly buffer tag"
+
+            typed_at ty = R.Call
+                            (R.Variable $ suqualnm $ R.Specialized [ty] $ R.Name "template at")
+                            [R.Variable $ R.Name "idx", R.Variable $ R.Name "offset"]
+
+
+    elem_type = R.Named $ R.Name "__CONTENT"
+    size_type = R.Named $ R.Name "size_t"
+
+    ldqualnm n     = R.Qualified (R.Name "K3") $ R.Qualified (R.Name "Libdynamic") n
+    suqualnm n     = R.Qualified (R.Name "Super") n
+
+    tag_t          = R.Named $ R.Name "uint16_t" -- R.Named $ pbqualnm $ R.Name "Tag"
+    externalizer_t = R.Named $ ldqualnm $ R.Name "BufferExternalizer" -- R.Named $ pbqualnm $ R.Name "ExternalizerT"
+    internalizer_t = R.Named $ ldqualnm $ R.Name "BufferInternalizer" -- R.Named $ pbqualnm $ R.Name "InternalizerT"
     char_ptr_t = R.Pointer $ R.Named $ R.Name "char"
 
-    static_cast_expr t = R.Variable $ R.Specialized [t] $ R.Name "static_cast"
+    reinterpret_cast_expr t = R.Variable $ R.Specialized [t] $ R.Name "reinterpret_cast"
+
+    yaml_node_type = R.Named $ R.Qualified (R.Name "YAML") $ R.Name "Node"
+    json_node_type = R.Named $ R.Qualified (R.Name "rapidjson") $ R.Name "Value"
+    json_alloc_type = R.Named $ R.Qualified (R.Name "rapidjson") $ R.Qualified (R.Name "Value") $ R.Name "AllocatorType"
+
+    yaml_map_insert args = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "node") $ R.Name "force_insert") args
+
+    json_convert_fn ty = R.Variable $ R.Qualified (R.Name "JSON") $ R.Qualified (R.Specialized [ty] $ R.Name "convert") $ R.Name "encode"
+    json_set_object n = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name n) $ R.Name "SetObject") []
+    json_add_member n k v a = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name n) $ R.Name "AddMember") [k, v, a]
 
     branch_chain n tags types elseStmt f = (\foldF -> foldl foldF elseStmt $ zip tags types) $
       \accStmt (tg,ty) -> R.IfThenElse (R.Binary "==" (R.Variable $ R.Name n) (R.Literal $ R.LInt tg)) [f tg ty] [accStmt]

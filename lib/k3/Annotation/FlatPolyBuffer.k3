@@ -13,7 +13,8 @@ annotation FlatPolyBuffer[variants: [labeltylit]] given type a
   provides lifted iterate : (int -> int -> int -> ()) -> ()
     with effects \iterF -> [R[self]; ([R[content]; (((iterF none) none) none)])*]
 
-  provides lifted fold : (a -> (int -> int -> int -> a)) -> a -> a
+  // TODO: code generator attempts to turn this into a for loop if named 'fold'
+  provides lifted foldl : (a -> (int -> int -> int -> a)) -> a -> a
     with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((((foldF z) none) none) none)])*]
 
   // Externalization/internalization methods.

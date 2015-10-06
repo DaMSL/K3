@@ -61,7 +61,7 @@ public:
   {
     if ( op == ExternalizeOp::Create ) {
       size_t offset = buffer_size(vcon);
-      int status = buffer_insert(vcon, offset, str.data(), str.raw_length()+1);
+      int status = buffer_insert(vcon, offset, const_cast<char*>(str.data()), str.raw_length()+1);
       if ( status == 0 ) {
         intptr_t* p = reinterpret_cast<intptr_t*>(&str);
         *p = offset;
@@ -127,6 +127,7 @@ private:
 // FlatPolyBuffer
 template<class Ignore>
 class FlatPolyBuffer {
+public:
   using Buf = LibdynamicVector::buffer;
   using Vec = LibdynamicVector::vector;
   using Tag = uint16_t;
@@ -151,19 +152,18 @@ class FlatPolyBuffer {
   FlatPolyBuffer(const FlatPolyBuffer& other) : container(), buffer() {
     internalized = other.internalized;
     initContainer();
-    copyContainer(other.container);
+    copyPolyBuffer(other);
   }
 
   FlatPolyBuffer(FlatPolyBuffer&& other) : container(), buffer() {
-    swapContainer(other);
-    if ( other.buffer.data ) { buffer.swap(buffer, other.buffer); }
+    swapPolyBuffer(std::forward<FlatPolyBuffer>(other));
   }
 
   FlatPolyBuffer& operator=(const FlatPolyBuffer& other) {
     freeContainer();
     internalized = other.internalized;
     initContainer();
-    copyContainer(other.container);
+    copyPolyBuffer(other);
   }
 
   ~FlatPolyBuffer() {
@@ -173,7 +173,7 @@ class FlatPolyBuffer {
   void initContainer() {
     buffer_init(fixed());
     buffer_init(variable());
-    vector_init(tags(), sizeof(Tag))
+    vector_init(tags(), sizeof(Tag));
   }
 
   void freeContainer() {
@@ -184,39 +184,42 @@ class FlatPolyBuffer {
     }
   }
 
-  void copyContainer(const Container& other) {
+  void copyPolyBuffer(const FlatPolyBuffer& other) {
     bool otherModified = false;
+    auto p = const_cast<FlatPolyBuffer*>(&other);
 
     // Ensure the other container is externalized so that pointers are stored as offsets.
     if ( other.internalized ) {
       otherModified = true;
-      other.repack(unit_t{});
+      p->repack(unit_t{});
     }
 
     // Copy the container.
-    copyBuffer(fixed(), other.fixed());
-    copyBuffer(variable(), other.variable());
-    copyVector(tags(), other.tags());
+    copyBuffer(fixed(), p->fixed());
+    copyBuffer(variable(), p->variable());
+    copyVector(tags(), p->tags());
 
     // Internalize this container to ensure its pointers are self-contained.
     unpack(unit_t{});
-    if ( otherModified ) { other.unpack(unit_t{}); }
+    if ( otherModified ) { p->unpack(unit_t{}); }
   }
 
-  void swapContainer(Container&& other) {
-    container.cfixed.size     = other.cfixed.size;
-    container.cfixed.capacity = other.cfixed.capacity;
-    std::swap(container.cfixed.data, other.cfixed.data);
+  void swapPolyBuffer(FlatPolyBuffer&& other) {
+    if ( other.buffer.data() != nullptr ) { swap(buffer, other.buffer); }
 
-    container.cvariable.size     = other.cvariable.size;
-    container.cvariable.capacity = other.cvariable.capacity;
-    std::swap(container.cvariable.data, other.cvariable.data);
+    container.cfixed.size     = other.container.cfixed.size;
+    container.cfixed.capacity = other.container.cfixed.capacity;
+    std::swap(container.cfixed.data, other.container.cfixed.data);
 
-    container.ctags.buffer.size     = other.ctags.buffer.size;
-    container.ctags.buffer.capacity = other.ctags.buffer.capacity;
-    container.ctags.object_size     = other.ctags.object_size;
-    container.ctags.release         = other.ctags.release;
-    std::swap(container.ctags.buffer.data, other.ctags.buffer.data);
+    container.cvariable.size     = other.container.cvariable.size;
+    container.cvariable.capacity = other.container.cvariable.capacity;
+    std::swap(container.cvariable.data, other.container.cvariable.data);
+
+    container.ctags.buffer.size     = other.container.ctags.buffer.size;
+    container.ctags.buffer.capacity = other.container.ctags.buffer.capacity;
+    container.ctags.object_size     = other.container.ctags.object_size;
+    container.ctags.release         = other.container.ctags.release;
+    std::swap(container.ctags.buffer.data, other.container.ctags.buffer.data);
   }
 
   void copyBuffer(Buf* a, Buf* b) {
@@ -249,31 +252,46 @@ class FlatPolyBuffer {
   size_t byte_size()     const { return fixseg_size() + varseg_size() + tags_size * sizeof(Tag); }
   size_t byte_capacity() const { return fixseg_capacity() + varseg_capacity() + tags_capacity() * sizeof(Tag); }
 
+  void reserve_fixed(size_t sz) { buffer_reserve(fixed(), sz); }
+  void reserve_var(size_t sz)   { buffer_reserve(variable(), sz); }
+  void reserve_tags(size_t sz)  { vector_reserve(tags(), sz); }
+
 
   // Virtual methods to be implemented by instances.
-  virtual size_t elemsize(Tag t) = 0;
+  virtual size_t elemsize(Tag t) const = 0;
   virtual void externalize(ExternalizerT& e, Tag t, char* data) = 0;
   virtual void internalize(InternalizerT& i, Tag t, char* data) = 0;
 
+  virtual YAML::Node yamlencode(Tag t, int idx, size_t offset) const = 0;
+  virtual void yamldecode(YAML::Node& n) = 0;
+  virtual rapidjson::Value jsonencode(Tag t, int idx, size_t offset, rapidjson::Value::AllocatorType& al) const = 0;
 
   // Accessors.
-  int size(const unit_t&) const { return vector_size(tagsc()); }
+  int size(const unit_t&) const {
+    auto p = const_cast<FlatPolyBuffer*>(this);
+    return vector_size(p->tags());
+  }
 
-  Tag tag_at(int i) const { return *static_cast<Tag*>(vector_at(tagsc(), i)); }
+  Tag tag_at(size_t i) const {
+    auto p = const_cast<FlatPolyBuffer*>(this);
+    return *static_cast<Tag*>(vector_at(p->tags(), i));
+  }
 
   template<typename T>
-  T at(int i, size_t offset) {
-    if ( i < size() ) {
-      return *static_cast<T*>(buffer_data() + offset);
+  T at(int i, size_t offset) const {
+    if ( i < size(unit_t{}) ) {
+      auto p = const_cast<FlatPolyBuffer*>(this);
+      return *reinterpret_cast<T*>(buffer_data(p->fixed()) + offset);
     } else {
       throw std::runtime_error("Invalid element access");
     }
   }
 
   template<typename T, typename F, typename G>
-  auto safe_at(int i, size_t offset, F f, G g) {
-    if ( i < size() ) {
-      return f(*static_cast<T*>(buffer_data() + offset));
+  auto safe_at(int i, size_t offset, F f, G g) const {
+    if ( i < size(unit_t{}) ) {
+      auto p = const_cast<FlatPolyBuffer*>(this);
+      return f(*reinterpret_cast<T*>(buffer_data(p->fixed()) + offset));
     } else {
       return g(unit_t {});
     }
@@ -281,9 +299,10 @@ class FlatPolyBuffer {
 
   // Apply a function on the tag and offset.
   template<typename Fun>
-  unit_t iterate(Fun f) {
+  unit_t iterate(Fun f) const {
     size_t foffset = 0;
-    for (int i = 0; i < size(); ++i) {
+    size_t sz = size(unit_t{});
+    for (size_t i = 0; i < sz; ++i) {
       Tag tg = tag_at(i);
       f(tg, i, foffset);
       foffset += elemsize(tg);
@@ -293,9 +312,10 @@ class FlatPolyBuffer {
 
   // Accumulate with the tag and offset.
   template <typename Fun, typename Acc>
-  Acc fold(Fun f, Acc acc) const {
+  Acc foldl(Fun f, Acc acc) const {
     size_t foffset = 0;
-    for (int i = 0; i < size(); ++i) {
+    size_t sz = size(unit_t{});
+    for (size_t i = 0; i < sz; ++i) {
       Tag tg = tag_at(i);
       acc = f(std::move(acc), tg, i, foffset);
       foffset += elemsize(tg);
@@ -304,7 +324,7 @@ class FlatPolyBuffer {
   }
 
   template<typename T>
-  unit_t append(Tag tg, T& t) {
+  unit_t append(Tag tg, const T& t) {
     if (buffer.data()) {
       throw std::runtime_error("Invalid append on a FPB: backed by a base_string");
     }
@@ -316,7 +336,7 @@ class FlatPolyBuffer {
     InternalizerT itl(ncv);
 
     size_t offset = buffer_size(ncf);
-    int status = buffer_insert(ncf, offset, const_cast<T*>(&t), sizeof(t));
+    int status = buffer_insert(ncf, offset, reinterpret_cast<char*>(const_cast<T*>(&t)), sizeof(t));
     if ( status == 0 ) {
       reinterpret_cast<T*>(buffer_data(ncf)+offset)->externalize(etl).internalize(itl);
       vector_push_back(tags(), const_cast<Tag*>(&tg));
@@ -327,7 +347,7 @@ class FlatPolyBuffer {
   }
 
   // Clears a container provided it is not backed by a string buffer.
-  void clear() { freeContainer() }
+  void clear() { freeContainer(); }
 
   // Externalizes an existing buffer, reusing the variable-length segment.
   unit_t repack(unit_t) {
@@ -336,7 +356,8 @@ class FlatPolyBuffer {
     VContainer* ncv = const_cast<VContainer*>(variablec());
     ExternalizerT etl(ncv, ExternalizerT::ExternalizeOp::Reuse);
 
-    for (int i = 0; i < size(); ++i) {
+    size_t sz = size(unit_t{});
+    for (size_t i = 0; i < sz; ++i) {
       Tag tg = tag_at(i);
       externalize(etl, tg, buffer_data(ncf) + foffset);
       foffset += elemsize(tg);
@@ -353,7 +374,8 @@ class FlatPolyBuffer {
       VContainer* ncv = const_cast<VContainer*>(variablec());
       InternalizerT itl(ncv);
 
-      for (int i = 0; i < size(); ++i) {
+      size_t sz = size(unit_t{});
+      for (size_t i = 0; i < sz; ++i) {
         Tag tg = tag_at(i);
         internalize(itl, tg, buffer_data(ncf) + foffset);
         foffset += elemsize(tg);
@@ -392,7 +414,7 @@ class FlatPolyBuffer {
       memcpy(buffer_ + offset, buffer_data(ncv), var_sz);
       offset += var_sz;
     }
-    if (tag_sz > 0) {
+    if (tags_sz > 0) {
       memcpy(buffer_ + offset, vector_data(nct), tags_sz * sizeof(Tag));
     }
 
@@ -437,9 +459,9 @@ class FlatPolyBuffer {
       variable()->capacity = var_sz;
       offset += var_sz;
     }
-    if (tag_sz > 0) {
+    if (tags_sz > 0) {
       tags()->buffer.data     = buffer.begin() + offset;
-      tags()->buffer.size     = tag_sz * sizeof(Tag);
+      tags()->buffer.size     = tags_sz * sizeof(Tag);
       tags()->buffer.capacity = tags()->buffer.size;
       tags()->object_size     = sizeof(Tag);
     }
@@ -447,6 +469,67 @@ class FlatPolyBuffer {
     unpack(unit_t{});
     return unit_t{};
   }
+
+  template <class archive>
+  void serialize(archive& a) const {
+    auto p = const_cast<FlatPolyBuffer*>(this);
+    p->repack(unit_t {});
+
+    FContainer* ncf = fixed();
+    VContainer* ncv = variable();
+    TContainer* nct = tags();
+
+    size_t fixed_sz = fixseg_size();
+    size_t var_sz   = varseg_size();
+    size_t tags_sz  = tags_size();
+
+    a.write(&fixed_sz, sizeof(fixed_sz));
+    a.write(&var_sz, sizeof(var_sz));
+    a.write(&tags_sz, sizeof(tags_sz));
+
+    if (fixed_sz > 0) {
+      a.write(buffer_data(ncf), fixed_sz);
+    }
+    if (var_sz > 0) {
+      a.write(buffer_data(ncv), var_sz);
+    }
+    if (tags_sz > 0) {
+      a.write(vector_data(nct), tags_sz * sizeof(Tag));
+    }
+
+    p->unpack(unit_t{});
+  }
+
+  template <class archive>
+  void serialize(archive& a) {
+    size_t fixed_sz;
+    size_t var_sz;
+    size_t tags_sz;
+
+    a.read(&fixed_sz, sizeof(fixed_sz));
+    a.read(&var_sz, sizeof(var_sz));
+    a.read(&tags_sz, sizeof(tags_sz));
+
+    if (fixed_sz > 0) {
+      reserve_fixed(fixed_sz);
+      fixed()->size = fixed_sz;
+      a.read(buffer_data(fixed()), fixed_sz);
+    }
+    if (var_sz > 0) {
+      reserve_var(var_sz);
+      variable()->size = var_sz;
+      a.read(buffer_data(variable()), var_sz);
+    }
+    if (tags_sz > 0) {
+      reserve_tags(tags_sz);
+      tags()->buffer.size = tags_sz * sizeof(Tag);
+      a.read(vector_data(tags()), tags_sz * sizeof(Tag));
+    }
+
+    unpack(unit_t{});
+  }
+
+  BOOST_SERIALIZATION_SPLIT_MEMBER()
 
 private:
   // FlatPolyBuffer is backed by either a base_string or a Container
@@ -464,7 +547,59 @@ private:
 };
 
 }; // end namespace Libdynamic
+
+template<class Ignored>
+using FlatPolyBuffer = Libdynamic::FlatPolyBuffer<Ignored>;
+
 }; // end namespace K3
+
+
+namespace YAML {
+template <class E>
+struct convert<K3::FlatPolyBuffer<E>> {
+  using Tag = typename K3::FlatPolyBuffer<E>::Tag;
+  static Node encode(const K3::FlatPolyBuffer<E>& c) {
+    Node node;
+    bool flag = true;
+    c.iterate([&c, &node, &flag](Tag tg, size_t idx, size_t offset){
+      if (flag) { flag = false; }
+      node.push_back(c.yamlencode(tg, idx, offset));
+    });
+    if (flag) {
+      node = YAML::Load("[]");
+    }
+    return node;
+  }
+
+  static bool decode(const Node& node, K3::FlatPolyBuffer<E>& c) {
+    for (auto i : node) {
+      c.yamldecode(i);
+    }
+    return true;
+  }
+};
+}  // namespace YAML
+
+namespace JSON {
+using namespace rapidjson;
+template <class E>
+struct convert<K3::FlatPolyBuffer<E>> {
+  using Tag = typename K3::FlatPolyBuffer<E>::Tag;
+  template <class Allocator>
+  static Value encode(const K3::FlatPolyBuffer<E>& c, Allocator& al) {
+    Value v;
+    v.SetObject();
+    v.AddMember("type", Value("FlatPolyBuffer"), al);
+    Value inner;
+    inner.SetArray();
+    c.iterate([&c, &inner, &al](Tag tg, size_t idx, size_t offset){
+      inner.PushBack(c.jsonencode(tg, idx, offset, al), al);
+    });
+    v.AddMember("value", inner.Move(), al);
+    return v;
+  }
+};
+}  // namespace JSON
 
 #endif // HAS_LIBDYNAMIC
 

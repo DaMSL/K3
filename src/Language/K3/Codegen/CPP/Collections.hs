@@ -15,7 +15,7 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
 import Language.K3.Codegen.CPP.Types
-import Language.K3.Codegen.CPP.Datastructures (indexes,polybuffer)
+import Language.K3.Codegen.CPP.CollectionMembers (indexes,polybuffer)
 
 import qualified Language.K3.Codegen.CPP.Representation as R
 
@@ -32,7 +32,7 @@ import qualified Language.K3.Codegen.CPP.Representation as R
 --  - Serialization function, which should proxy the dataspace serialization.
 composite :: Identifier -> [(Identifier, [AnnMemDecl])] -> [K3 Type] -> CPPGenM [R.Definition]
 composite name ans content_ts = do
-    let overrideGeneratedName n = case find (`isInfixOf` n) ["Array", "SortedMapE", "MapE", "MapCE"] of
+    let overrideGeneratedName n = case find (`isInfixOf` n) reservedGeneratedAnnotations of
                                     Nothing -> n
                                     Just i -> i
 
@@ -60,7 +60,7 @@ composite name ans content_ts = do
     (indexTypes, indexDefns) <- indexes name as content_ts
 
     -- FlatPolyBuffer member generation.
-    pbufDefns <- polybuffer as
+    pbufDefns <- polybuffer name ras
 
     let addnSpecializations n = if "Array" `isInfixOf` n then arraySize $ lookup n ans
                                 else if "MultiIndex" `isInfixOf` n then indexTypes
@@ -481,3 +481,6 @@ reservedAnnotations =
   , "MultiIndexBag", "MultiIndexMap", "MultiIndexVMap", "RealVector"
   , "BulkFlatCollection", "FlatPolyBuffer"
   ]
+
+reservedGeneratedAnnotations :: [Identifier]
+reservedGeneratedAnnotations = ["Array", "SortedMapE", "MapE", "MapCE", "FlatPolyBuffer"]
