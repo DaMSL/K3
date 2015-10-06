@@ -17,13 +17,14 @@ Dir.glob("#{GROUP_ROOT}/*/") do |f|
   binary = File.basename(f)[/_([^_]*)$/, 1]
   scale_factor = File.basename(f)[/^(.*?)_/, 1]
   profile_type = if f =~ /accum/ then "alloc_space" else "inuse_space" end
-  p "query,sf,prof_type,peer_id,seq_num,value"
+  job_id = File.basename(f)[/[^_]*_([0-9]*)/, 1]
+  puts "job,query,sf,prof_type,peer_id,seq_num,value"
   Dir.glob("#{f}*/") do |m|
     host = File.basename(m)[/\.([0-9]*)_(.*)$/, 1]
     Dir.glob("#{m}*.t[0-9]*.heap") do |h|
       sequence_number = h[/\.t([0-9]*)\./, 1]
       total = get_profile_total(profile_type, "#{GROUP_ROOT}/#{binary}", h)
-      p "#{binary},#{scale_factor},#{profile_type},#{host},#{sequence_number},#{total}"
+      puts "#{job_id},#{binary},#{scale_factor},#{profile_type},#{host},#{sequence_number},#{total}"
     end
   end
 end
