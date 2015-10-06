@@ -17,13 +17,13 @@ template <class R>
 class MapE {
   using Key = typename R::KeyType;
   using Value = typename R::ValueType;
-  using Container = unordered_map<Key, R>;
+  using Container = std::unordered_map<Key, R>;
 
  public:
   // Default Constructor
   MapE() : container() {}
-  MapE(const unordered_map<Key, R>& con) : container(con) {}
-  MapE(unordered_map<Key, R>&& con) : container(std::move(con)) {}
+  MapE(const std::unordered_map<Key, R>& con) : container(con) {}
+  MapE(std::unordered_map<Key, R>&& con) : container(std::move(con)) {}
 
   // Construct from (container) iterators
   template <typename Iterator>
@@ -37,7 +37,7 @@ class MapE {
 
   template <class I>
   class map_iterator : public std::iterator<std::forward_iterator_tag, R> {
-    using container = unordered_map<Key, R>;
+    using container = std::unordered_map<Key, R>;
     using reference =
         typename std::iterator<std::forward_iterator_tag, R>::reference;
 
@@ -69,9 +69,9 @@ class MapE {
     I i;
   };
 
-  using iterator = map_iterator<typename unordered_map<Key, R>::iterator>;
+  using iterator = map_iterator<typename std::unordered_map<Key, R>::iterator>;
   using const_iterator =
-      map_iterator<typename unordered_map<Key, R>::const_iterator>;
+      map_iterator<typename std::unordered_map<Key, R>::const_iterator>;
 
   iterator begin() { return iterator(container.begin()); }
 
@@ -211,7 +211,7 @@ class MapE {
                                           const Z& init) const {
     // Create a map to hold partial results
     typedef RT<F1, R> K;
-    unordered_map<K, Z> accs;
+    std::unordered_map<K, Z> accs;
 
     for (const auto& it : container) {
       K key = grouper(it.second);

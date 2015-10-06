@@ -1,36 +1,36 @@
-include "Annotation/Vector.k3"
+include "Annotation/RealVector.k3"
 include "Core/Builtins.k3"
 
 declare master: address = 127.0.0.1:40000
 
-declare totalError : mut real 
-declare topology : collection {elem : int} @Vector
+declare totalError : mut real
+declare topology : collection {elem : int} @RealVector
 
-declare inputValues : mut collection {elem : real } @Vector
-declare targetValue : mut collection {elem : real } @Vector
-declare outputValue : collection {elem : real } @Vector // l layers * n neurons_per_layer
-declare zValue      : collection {elem : real } @Vector // l layers * n neurons_per_layer
-declare deltaValue  : collection {elem : real } @Vector // l layers * n neurons_per_layer
-declare gradient    : collection {elem : real } @Vector // l layers * n neurons_per_layer
+declare inputValues : mut collection {elem : real } @RealVector
+declare targetValue : mut collection {elem : real } @RealVector
+declare outputValue : collection {elem : real } @RealVector // l layers * n neurons_per_layer
+declare zValue      : collection {elem : real } @RealVector // l layers * n neurons_per_layer
+declare deltaValue  : collection {elem : real } @RealVector // l layers * n neurons_per_layer
+declare gradient    : collection {elem : real } @RealVector // l layers * n neurons_per_layer
 
-// declare eta         : mut real = 0.50
+//declare eta         : mut real = 0.50
 declare alpha       : mut real = 0.30
 declare lambda      : mut real = 0.20
 
-declare weight      : collection {elem : real } @Vector // l layers * n neurons_per_layer * n neurons_per_next_layer
-declare deltaWeight : collection {elem : real } @Vector // l layers * n neurons_per_layer * n neurons_per_next_layer
+declare weight      : collection {elem : real } @RealVector // l layers * n neurons_per_layer * n neurons_per_next_layer
+declare deltaWeight : collection {elem : real } @RealVector // l layers * n neurons_per_layer * n neurons_per_next_layer
 
-declare weightUpdateBroadcast : mut collection {elem : real } @Vector // l layers * n neurons_per_layer * n neurons_per_next_layer
-declare weightsLastUpdated    : mut collection {elem : real } @Vector // l layers * n neurons_per_layer * n neurons_per_next_layer
+declare weightUpdateBroadcast : mut collection {elem : real } @RealVector // l layers * n neurons_per_layer * n neurons_per_next_layer
+declare weightsLastUpdated    : mut collection {elem : real } @RealVector // l layers * n neurons_per_layer * n neurons_per_next_layer
 
 declare row_number           : mut int = -1
 declare epochSize            : int = 8
-declare peerMessagesReceived : mut int 
+declare peerMessagesReceived : mut int
 declare rows : mut int = 0
 
 declare s : mut int 
 
-declare allData : collection {elem : {i: real , j : real , k : real} } @Vector
+declare allData : collection {elem : {i: real , j : real , k : real} } @RealVector
 
 // Access all neruons for previous layer
 declare accessPrev : int -> int = \layerNum -> (
@@ -107,7 +107,7 @@ declare calculateError : int -> real = \i -> (
 
 declare neuronIdAccess : int -> int = \index -> (
 	bind (
-		topology.fold(\acc -> \t -> (
+		topology.fold(\acc -> \t -> ( 
 		if (acc.flag) 
 			then (
 				if (acc.nid < t.elem ) 
@@ -205,7 +205,7 @@ declare slaveFeedForward : () -> () = \_ ->(
 			let a1 = (access1LayerNeuron layerId.i neuronId.i) in (
 				(outputValue.set (a1) {elem:(neuronFeedForward layerId.i neuronId.i)});		
 				(zValue.set (a1) {elem:(neuronCalculateZValue layerId.i neuronId.i)})		
-			)	
+			)
 		))
 	))
 )
@@ -257,7 +257,7 @@ declare slaveBackPropagation : () -> () = \_ -> (
     //zValue.iterate(\zv -> print (rtos zv.elem));
     //print ("\\n");
 
-    //calculate the hidden layer deltas
+    //Calculate the hidden layer deltas
 	((xrange 2 (topology.size ()+1) ).iterate (\i -> (
 		let presentLayerId = (  (topology.size ()) - i.i) in
 		let numNeuronsPresentLayer = ((topology.at presentLayerId).elem) in 
@@ -373,13 +373,13 @@ trigger startSlave : () = \_ -> (
     //print "Starting a new iteration";
 	allData.iterate( \csvData -> (
     //print "Reading a new frame";
-    inputValues = empty {elem : real} @Vector;
+    inputValues = empty {elem : real} @RealVector;
 		//Create the input and output values
 		inputValues.insert {elem : csvData.elem.i};
 		inputValues.insert {elem : csvData.elem.j};
 		inputValues.insert {elem : 1.0};
 	
-    	targetValue = empty {elem : real} @Vector;
+    	targetValue = empty {elem : real} @RealVector;
 		targetValue.insert {elem : csvData.elem.k};
 		targetValue.insert {elem : 1.0};
 
@@ -387,7 +387,8 @@ trigger startSlave : () = \_ -> (
 		(if (row_number == -1) then (initialize ()) else ());
 		row_number = row_number + 1;
 
-    print (itos row_number);		
+    print (itos row_number);
+    print ("\\n");
     /*
 		(if (row_number % epochSize == 0) 
 		then (
@@ -417,7 +418,7 @@ trigger startSlave : () = \_ -> (
 	))
 )
 
-trigger receiveAtMaster : collection {elem : real} @Vector = \updateOnWeights -> (
+trigger receiveAtMaster : collection {elem : real} @RealVector = \updateOnWeights -> (
 	print ("Receives from Master");	
 	(weight.inPlaceAdd (updateOnWeights.sub weightUpdateBroadcast));
 	if (peerMessagesReceived == peers.size ())
@@ -434,22 +435,29 @@ trigger receiveAtMaster : collection {elem : real} @Vector = \updateOnWeights ->
 	)	
 )
 
-trigger receiveAtSlave : collection {elem : real} @Vector = \updateOnWeights -> (
+trigger receiveAtSlave : collection {elem : real} @RealVector = \updateOnWeights -> (
 	print ("Receives from Slave");
 	weight.inPlaceAdd (updateOnWeights)
 )
 
 trigger storeData :  {i: real, j: real, k : real} = \csvData -> (
 	allData.insert {elem : {i: csvData.i, j: csvData.j, k: csvData.k} };
-	rows = rows + 1; // Wait until number of rows equals to 8 for input values.
-    (if (rows == 8) then ((startSlave, me) <- ()) else ())
+
+	// Wait until number of rows equals to 8 for input values
+	rows = rows + 1; 
+    (if (rows == 8) 
+    	then ((startSlave, me) <- ()) 
+    else ())
 )
 
 //sink results_sink : real = stdout csv
 //sink results_sink : {addr : address, iter: int , totalError : real} = stdout csv
 
+// sink results_sink : (real) = file "out.csv" psv
+// sink results_sink : (real) = file "out.csv" text psv
+
 source masterSource : () = value ()
 feed masterSource |> startMaster
 
-source slaveSource1 : {i: real, j: real, k: real} = file "f1.csv" csv 
+source slaveSource1 : {i: real, j: real, k: real} = file "f1.csv" text csv 
 feed slaveSource1 |> storeData

@@ -132,7 +132,7 @@ stitchK3Includes noFeed includePaths includes prog = do
   subFileCtnts  <- trace (unwords ["subfiles:", show subFiles]) $ mapM readFile subFiles
   let fileContents = map (False,) subFileCtnts
   iprogE <- parseK3WithIncludes noFeed fileContents $ DC.role defaultRoleName []
-  return (iprogE >>= \p -> concatProgram p prog)
+  return (iprogE >>= \p -> concatProgram p $ declareBuiltins prog)
 
 
 {- K3 grammar parsers -}

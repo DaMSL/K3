@@ -27,7 +27,7 @@ class StandardBuiltins {
   int hash(const T& t);
  protected:
   Engine& __engine_;
-  boost::mutex __mutex_;
+  static boost::mutex __mutex_;
 };
 
 template <class T>
@@ -55,6 +55,9 @@ int StandardBuiltins::hash(const T& t) {
   std::hash<T> hasher;
   return hasher(t);
 }
+
+template<>
+int StandardBuiltins::hash(const int&);
 
 }  // namespace K3
 

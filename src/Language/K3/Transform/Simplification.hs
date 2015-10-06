@@ -66,6 +66,9 @@ localLogAction :: (Functor m, Monad m) => (Maybe a -> Maybe String) -> m a -> m 
 localLogAction = logAction traceLogging
 
 -- | Property construction helper
+persistentEProp :: Identifier -> Maybe (K3 Literal) -> Annotation Expression
+persistentEProp n lopt = EProperty $ Left (n,lopt)
+
 inferredEProp :: Identifier -> Maybe (K3 Literal) -> Annotation Expression
 inferredEProp n lopt = EProperty $ Right (n,lopt)
 
@@ -109,6 +112,7 @@ data FusionAccFClass = UCondVal -- Direct return of accumulator value (e.g., ite
                      | ICond1   -- Accumulation in one accumulator-independent condition branch
                      | ICondN   -- Accumulation in many accumulator-independent condition branches
                      | DCond2   -- Accumulation in two accumulator-dependent condition branches
+                     | Halt     -- An explicit class to prevent further fusion.
                      | Open     -- General accumulation function with unknown structure
                      deriving (Enum, Eq, Ord, Read, Show)
 
@@ -131,6 +135,9 @@ pHierarchicalGroupBy = inferredEProp "HGroupBy" Nothing
 
 pMonoidGroupBy :: Annotation Expression
 pMonoidGroupBy = inferredEProp "MGroupBy" Nothing
+
+pAccumulatingTransformer :: Annotation Expression
+pAccumulatingTransformer = persistentEProp "AccumulatingTransformer" Nothing
 
 isEPure :: Annotation Expression -> Bool
 isEPure (EProperty (ePropertyName -> "Pure")) = True
@@ -600,10 +607,12 @@ betaReductionDelta expr = foldMapTree reduce ([], False) expr >>= return . first
     debugCondition ieRO eRO n' r = if True then r else
       flip trace r $ (boxToString $ [unwords ["BR-COND", show ieRO, show eRO]] %$ prettyLines n')
 
+    {-
     debugROC sube deste r@(re,_) = if True then return r else
       flip trace (return r) (boxToString $ ["BR-ROC"] %$ prettyLines sube
                                                       %$ prettyLines deste
                                                       %$ prettyLines (head re))
+    -}
 
 -- Beta reduction of variable applications, i.e., (\x -> ...) var
 simpleBetaReduction :: K3 Expression -> K3 Expression
@@ -1201,7 +1210,7 @@ fuseFoldTransformers expr = do
       else fuse (n,ch) >>= return . second Just
 
     fuse nch@(PPrjApp2ChainCh cE fId1@(leftFusable -> True) "fold"
-                              fArg1 fArg2@((@~ isEType) -> Just (EType fAccT))
+                              fArg1 ((@~ isEType) -> Just (EType fAccT))
                               gArg1 gArg2@((@~ isEType) -> Just (EType gAccT))
                               fAs _ _ gAs oApp1As oApp2As)
       | fusableChain fAs gAs
@@ -1619,12 +1628,12 @@ fuseFoldTransformers expr = do
 
                     nf  = PChainLambda1 li lj nfE [] []
                 in
-                return $ Just (updateFusionSpec rAs (Open, DepTr), nf)
+                return $ Just (updateFusionSpec rAs (Halt, DepTr), nf)
                   -- ^ TODO: for now, we pick a restrictive fusion spec that disallows further
                   --   fusion with downstream operations.
 
               (PSDCond2 li lj _ loi ldlK ldlV lmvE lpvE, PDCond2 _ _ _ _ _ rgbF _ rzE) ->
-                let (liV, ljV) = (EC.variable li, EC.variable lj)
+                let liV = EC.variable li
 
                     ientryE   = stripEUIDSpan $ mkKVRec ldlK ldlV
                     oentryE   = stripEUIDSpan $ mkKVRec (EC.applyMany rgbF [ientryE]) rzE
@@ -1654,12 +1663,12 @@ fuseFoldTransformers expr = do
 
                     nf  = PChainLambda1 li lj nfE [] []
                 in
-                return $ Just (updateFusionSpec rAs (Open, DepTr), nf)
+                return $ Just (updateFusionSpec rAs (Halt, DepTr), nf)
                   -- ^ TODO: for now, we pick a restrictive fusion spec that disallows further
                   --   fusion with downstream operations.
 
               (PSDCond2 li lj _ loi ldlK ldlV lmvE lpvE, PSDCond2 _ rj _ _ rdlK rdlV rmvE _) ->
-                let (liV, ljV) = (EC.variable li, EC.variable lj)
+                let liV = EC.variable li
 
                     ientryE   = stripEUIDSpan $ mkKVRec ldlK ldlV
                     oentryE   = stripEUIDSpan $ mkKVRec (EC.applyMany (EC.lambda rj rdlK) [ientryE]) rdlV
@@ -1687,7 +1696,7 @@ fuseFoldTransformers expr = do
 
                     nf  = PChainLambda1 li lj nfE [] []
                 in
-                return $ Just (updateFusionSpec rAs (Open, DepTr), nf)
+                return $ Just (updateFusionSpec rAs (Halt, DepTr), nf)
                   -- ^ TODO: for now, we pick a restrictive fusion spec that disallows further
                   --   fusion with downstream operations.
 
@@ -1738,12 +1747,12 @@ fuseFoldTransformers expr = do
 
                     nf  = PChainLambda1 li lj nfE [] []
                 in
-                return $ Just (updateFusionSpec rAs (Open, DepTr), nf)
+                return $ Just (updateFusionSpec rAs (Halt, DepTr), nf)
                   -- ^ TODO: for now, we pick a restrictive fusion spec that disallows further
                   --   fusion with downstream operations.
 
               (PSDCond2 li lj _ loi ldlK ldlV lmvE lpvE, PSDCond2 _ rj _ _ rdlK rdlV rmvE _) ->
-                let (liV, ljV) = (EC.variable li, EC.variable lj)
+                let liV = EC.variable li
 
                     entryE     = mkKVRec (EC.applyMany (EC.lambda rj rdlK) [mkKVRec ldlK ldlV]) rdlV
 
@@ -1761,7 +1770,7 @@ fuseFoldTransformers expr = do
 
                     nf  = PChainLambda1 li lj nfE [] []
                 in
-                return $ Just (updateFusionSpec rAs (Open, DepTr), nf)
+                return $ Just (updateFusionSpec rAs (Halt, DepTr), nf)
 
               (_, _) -> Right Nothing
 
@@ -1918,7 +1927,7 @@ fuseFoldTransformers expr = do
     --    (True, True)   -> Right True
     --    (_, _)         -> Right False
 
-    promoteRecType lAs rAs = Right False
+    promoteRecType _ _ = Right False
 
     mkAccE accE eE = PSeq (PPrjApp accE "insert" [] eE []) accE []
 
@@ -1972,7 +1981,9 @@ fuseFoldTransformers expr = do
     cleanAnns a = isEUID a || isESpan a || isAnyETypeOrEffectAnn a
 
     -- Fusion spec helpers
-    updateFusionSpec as spec = filter (not . isEFusionSpec) as ++ [pFusionSpec spec]
+    updateFusionSpec as spec = nub $ filter (not . isEFusionSpec) as
+                                  ++ [pFusionSpec spec]
+                                  ++ (case fst spec of {Open -> []; _ -> [pAccumulatingTransformer]})
 
     promoteTCls a b = toEnum $ max (fromEnum a) (fromEnum b)
 

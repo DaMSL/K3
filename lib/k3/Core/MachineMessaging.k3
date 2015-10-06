@@ -66,14 +66,19 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
               )
             );
             // ( print ("Machine " ++ (atos me) ++ " proxying bc " ++ (itos $[lbl]_machvar_cnt)) );
-            ( $[lbl]_machvar.insert_with {key: $[lbl]_machvar_cnt, value: m}
+            ( $[lbl]_machvar.insert_with {key: $[lbl]_machvar_cnt, value: $[lbl]_machvar_default}
                                          (\_ -> \_ -> {key: $[lbl]_machvar_cnt, value: m})
             );
             ( $[lbl]_machvar_gc_ids.insert {key: $[lbl]_machvar_cnt, value: local_peers.size()} );
-            ( local_peers.iterate (\a ->
-                ( // ( print ("Machine " ++ (atos me) ++ " proxying bc " ++ (itos $[lbl]_machvar_cnt) ++ " to peer " ++ (atos a.addr)) );
-                 ($[lbl]_peerproxy, a.addr) <- $[lbl]_machvar_cnt)) );
-            $[lbl]_machvar_cnt = $[lbl]_machvar_cnt + 1
+            $[lbl]_machvar_cnt = $[lbl]_machvar_cnt + 1;
+            if $[lbl]_machvar_cnt == $[masters_map].size() then
+            ( (range ($[masters_map].size())).iterate (\i ->
+                local_peers.iterate (\a ->
+                 ($[lbl]_peerproxy, a.addr) <- i.i
+                )
+              )
+            )
+            else ()
           )
 
           trigger $[lbl]_machvar_gc : int = \msg_id -> (

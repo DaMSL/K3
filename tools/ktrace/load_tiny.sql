@@ -14,8 +14,11 @@
 
 .import tools/ktrace/data/tpch/region.tbl region
 
-.import tools/ktrace/data/tpch/partsupp0 partsupp 
-.import tools/ktrace/data/tpch/partsupp1 partsupp 
+.import tools/ktrace/data/tpch/partsupp0 partsupp
+.import tools/ktrace/data/tpch/partsupp1 partsupp
+
+.import tools/ktrace/data/tpch/part0 part
+.import tools/ktrace/data/tpch/part1 part
 
 .separator ","
 .import tools/ktrace/data/rankings1 rankings

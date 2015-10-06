@@ -4,8 +4,8 @@ select
 from
         orders
 where
-        o_orderdate >= date '1993-07-01'
-        and o_orderdate < date '1993-10-01'
+        o_orderdate >=  '1993-07-01'
+        and o_orderdate < '1993-10-01'
         and exists (
                 select
                         *
@@ -16,6 +16,4 @@ where
                         and l_commitdate < l_receiptdate
         )
 group by
-        o_orderpriority
-order by
-        o_orderpriority
+        o_orderpriority;

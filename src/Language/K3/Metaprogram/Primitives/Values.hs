@@ -62,6 +62,14 @@ mkTuple (SList vs) = maybe err (SType . TC.tuple) $ mapM asType vs
 
 mkTuple _ = error "Invalid splice value container for mkTuple"
 
+mkEmpty :: SpliceValue -> SpliceValue
+mkEmpty (SType ct@(tnc -> (TCollection, [t]))) = SExpr $ EC.empty t @<- (map EAnnotation $ namedTAnnotations $ annotations ct)
+mkEmpty _ = error "Invalid container type for constructing an empty collection."
+
+mkEmptyByElem :: Identifier -> SpliceValue -> SpliceValue
+mkEmptyByElem n (SType t) = SExpr $ EC.empty t @+ EAnnotation n
+mkEmptyByElem _ _ = error "Invalid element type for constructing an empty collection."
+
 listLabels :: SpliceValue -> SpliceValue
 listLabels (SList vs) = maybe err SList $ mapM ltLabel vs
   where err = error "Invalid splice container elements for listLabels"
@@ -138,3 +146,28 @@ mkIndexExtractor (SList keyLT) (SList specLL) =
             (_, _) -> error "Invalid index key"
 
 mkIndexExtractor _ _ = error "Invalid index extraction arguments"
+
+{- Distributed join constructors -}
+
+equijoinMapType :: SpliceValue -> SpliceValue -> SpliceValue
+equijoinMapType (SType (tnc -> (TFunction, [_, kt]))) (SType vt) = SType $ (TC.collection $ TC.record [("key", kt), ("value", vt)]) @+ TAnnotation "Map"
+equijoinMapType _ _ = error "Invalid key/value types for equijoin map type"
+
+equijoinEmptyMap :: SpliceValue -> SpliceValue -> SpliceValue
+equijoinEmptyMap (SType (tnc -> (TFunction, [_, kt]))) (SType vt) = SExpr $ (EC.empty $ TC.record [("key", kt), ("value", vt)]) @+ EAnnotation "Map"
+equijoinEmptyMap _ _ = error "Invalid key/value types for equijoin empty map"
+
+broadcastJoinLHSVar :: SpliceValue -> SpliceValue -> SpliceValue
+broadcastJoinLHSVar (SLabel lbl) (SExpr e) = case tag e of
+    EVariable _ -> SExpr e
+    _ -> SExpr $ EC.variable $ lbl ++ "_lhs"
+
+broadcastJoinLHSVar _ _ = error "Invalid broadcast join lhsvar arguments"
+
+broadcastjoinMaterialize :: SpliceValue -> SpliceValue -> SpliceValue
+broadcastjoinMaterialize (SLabel lbl) (SExpr e) = case tag e of
+    EVariable _ -> SExpr $ EC.unit
+    _ -> SExpr $ EC.assign (lbl ++ "_lhs") e
+
+broadcastjoinMaterialize _ _ = error "Invalid broadcast join materialization arguments"
+

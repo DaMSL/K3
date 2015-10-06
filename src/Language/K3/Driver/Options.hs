@@ -166,8 +166,12 @@ data QueryOptions = QueryOptions { qsargs :: Either [String] [Int] }
                     deriving (Eq, Read, Show, Generic)
 
 -- | SQL frontend options.
-data SQLOptions = SQLOptions { sqlPrintMode  :: PrintMode
-                             , sqlPrintParse :: Bool }
+data SQLOptions = SQLOptions { sqlPrintMode       :: PrintMode
+                             , sqlPrintParse      :: Bool
+                             , sqlUntyped         :: Bool
+                             , sqlDistributedPlan :: Bool
+                             , sqlDoCompile       :: Bool
+                             , sqlCompile         :: Maybe CompileOptions }
                 deriving (Eq, Read, Show, Generic)
 
 -- | Verbosity levels.
@@ -767,11 +771,26 @@ allProgOpt = flag' (QueryOptions $ Right [])
 
 -- | SQL mode
 sqlOptions :: Parser Mode
-sqlOptions = SQL <$> ( SQLOptions <$> printModeOpt "" <*> sqlPrintParseOpt )
+sqlOptions = SQL <$> ( SQLOptions <$> printModeOpt "" <*> sqlPrintParseOpt <*> sqlUntypedOpt
+                                  <*> sqlDistributedOpt <*> sqlDoCompileOpt
+                                  <*> optional (compileOpts LocalCompiler) )
 
 sqlPrintParseOpt :: Parser Bool
 sqlPrintParseOpt = switch (   long "sqlast"
                            <> help "Print SQL AST parsed." )
+
+sqlUntypedOpt :: Parser Bool
+sqlUntypedOpt = switch (   long "sqluntyped"
+                        <> help "Print untyped SQL AST." )
+
+sqlDistributedOpt :: Parser Bool
+sqlDistributedOpt = switch (   long "sqldistributed"
+                            <> help "Generated a distributed SQL query plan." )
+
+sqlDoCompileOpt :: Parser Bool
+sqlDoCompileOpt = switch (  long "sqlcompile"
+                           <> help "Compile SQL binary." )
+
 
 {- Top-level options -}
 
@@ -841,7 +860,7 @@ instance Pretty Mode where
   prettyLines (Interpret iOpts) = ["Interpret "] ++ (indent 2 $ prettyLines iOpts)
   prettyLines (Typecheck tOpts) = ["Typecheck " ++ show tOpts]
   prettyLines (Service   sOpts) = ["Service " ++ show sOpts]
-  prettyLines (SQL       sOpts) = ["SQL" ++ show sOpts]
+  prettyLines (SQL       sOpts) = ["SQL " ++ show sOpts]
 
 instance Pretty InterpretOptions where
   prettyLines (Batch net env expr par printConf console cstages) =

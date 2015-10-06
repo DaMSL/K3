@@ -66,7 +66,7 @@ class implementation_level<std::multiset<_T0>> {
   BOOST_STATIC_CONSTANT(int, value = implementation_level::type::value);
 };
 
-template <uint N>
+template <unsigned int N>
 struct tuple_serializer {
   template <class archive, class... args>
   static void serialize(archive& a, std::tuple<args...>& t,

@@ -482,7 +482,7 @@ piIndexChase env mask ti p@(tag -> PBVar pmv) = chasePtr [] ti pmv
             (_,_) -> throwE $ PT.boxToString $ [T.pack "Inconsistent index and provenance "]
                            %$ PT.prettyLines p'
 
-        chaseTree path ti p = {-debugChaseTree ti p $-} indexMapRebuildTree (chaseProv path) mask ti p
+        chaseTree path ti p = {- debugChaseTree ti p $ -} indexMapRebuildTree (chaseProv path) mask ti p
         chaseProv path _ _ ti p@(tag -> PBVar pmv) = chasePtr path ti pmv
         chaseProv _ tich ch _ p = return (orti tich, replaceCh p ch)
 
@@ -547,7 +547,7 @@ pisub pienv i dp dip sp dti sti = do
     -- This method is not tail-recursive.
     subPtrIfDifferent env subs path mv ti p = do
       (nenv, nsubs, np, nip, nti) <- acyclicSub env subs path ti p
-      if p == np then return (nenv, nsubs, pbvar mv, nip, ti)
+      if p == np then return (nenv, nsubs, pbvar mv, nip, nti)
                  else addPtrSub nenv nsubs mv np nip nti
 
     -- Pointer substitutions, as a map of old PPtr => new PMatVar
@@ -1211,7 +1211,7 @@ inferProvenance expr = do
     freshM i u ti p = pifreshM i u p >>= \sp -> piexttM ti sp p
 
     pruneEscapes :: BVector -> TrIndex -> K3 Provenance -> PInfM (TrIndex, K3 Provenance)
-    pruneEscapes mask ti p = {-debugPrune ti p $-} indexMapRebuildTree prune mask ti p
+    pruneEscapes mask ti p = {- debugPrune ti p $ -} indexMapRebuildTree prune mask ti p
       where prune _ _ ti p@(tag -> PBVar pmv) = piIndexChaseM mask ti p
             prune tich ch _ p = return (orti tich, replaceCh p ch)
             debugPrune ti p v = flip trace v $ T.unpack $ PT.boxToString

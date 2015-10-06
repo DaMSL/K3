@@ -36,7 +36,7 @@ import Language.K3.Utils.Pretty
 -- Builtin names to explicitly skip.
 skip_builtins :: [String]
 skip_builtins = ["hasRead", "doRead", "doReadBlock", "hasWrite", "doWrite"]
-    
+
 declaration :: K3 Declaration -> CPPGenM [R.Definition]
 declaration (tna -> ((DGlobal n (tnc -> (TSource, [t])) _), as)) = return []
 
@@ -167,15 +167,17 @@ source_builtin_map = [("MuxHasRead", genHasRead True),
                      ++ extraSuffixes
 
         -- These suffixes are for data loading hacks.
-  where extraSuffixes = [("Loader",    genLoader False False False "," ),
-                         ("LoaderC",   genLoader False True  False "," ),
-                         ("LoaderF",   genLoader True  False False ","),
-                         ("LoaderFC",  genLoader True  True  False "," ),
-                         ("LoaderP",   genLoader False False False "|" ),
-                         ("LoaderPC",  genLoader False True  False "|" ),
-                         ("LoaderPF",  genLoader True  False False "|"),
-                         ("LoaderPFC", genLoader True  True  False "|" ),
-                         ("LoaderRP",  genLoader False False True  "|" ),
+  where extraSuffixes = [("Loader",    genLoader False False False False ","),
+                         ("LoaderC",   genLoader False False True  False ","),
+                         ("LoaderF",   genLoader False True  False False ","),
+                         ("LoaderFC",  genLoader False True  True  False ","),
+                         ("LoaderE",   genLoader True  False False False ","),
+                         ("LoaderP",   genLoader False False False False "|"),
+                         ("LoaderPC",  genLoader False False True  False "|"),
+                         ("LoaderPF",  genLoader False True  False False "|"),
+                         ("LoaderPFC", genLoader False True  True  False "|"),
+                         ("LoaderRP",  genLoader False False False True  "|"),
+                         ("LoaderPE",  genLoader True  False False False "|"),
                          ("Logger",    genLogger)]
 
 source_builtins :: [String]
@@ -203,7 +205,7 @@ genHasRead asMux suf _ name = do
     let e_has_r = R.Variable $ R.Name "hasRead"
     let source_e = R.Literal $ R.LString $ source_name ++ if asMux then "_" else ""
     concatId <- binarySymbol OConcat
-    let call_args = [R.Variable $ R.Name "me"] ++ 
+    let call_args = [R.Variable $ R.Name "me"] ++
                     if asMux then [R.Binary concatId source_e $
                                    R.Call (R.Variable $ R.Name "itos") [R.Variable $ R.Name "muxid"]]
                              else [source_e]
@@ -219,7 +221,7 @@ genDoRead asMux suf typ name = do
     let source_name =  stripSuffix suf name
     let source_e = R.Literal $ R.LString $ source_name ++ if asMux then "_" else ""
     concatId <- binarySymbol OConcat
-    let call_args = [R.Variable $ R.Name "me"] ++  
+    let call_args = [R.Variable $ R.Name "me"] ++
                     if asMux then [R.Binary concatId source_e $
                                    R.Call (R.Variable $ R.Name "itos") [R.Variable $ R.Name "muxid"]]
                              else [source_e]
@@ -250,8 +252,8 @@ genDoWrite suf typ name = do
 
 -- TODO: Loader is not quite valid K3. The collection should be passed by indirection so we are not working with a copy
 -- (since the collection is technically passed-by-value)
-genLoader :: Bool -> Bool -> Bool -> String -> String -> K3 Type -> String -> CPPGenM R.Definition
-genLoader fixedSize projectedLoader asReturn sep suf ft@(children -> [_,f]) name = do
+genLoader :: Bool -> Bool -> Bool -> Bool -> String -> String -> K3 Type -> String -> CPPGenM R.Definition
+genLoader elemWrap fixedSize projectedLoader asReturn sep suf ft@(children -> [_,f]) name = do
  void (genCType ft) -- Force full type to generate potential record/collection variants.
  (colType, recType, fullRecTypeOpt) <- return $ getColType f
  cColType      <- genCType colType
@@ -355,15 +357,19 @@ genLoader fixedSize projectedLoader asReturn sep suf ft@(children -> [_,f]) name
    fnArgs acc t@(tnc -> (TFunction, [a,r])) = fnArgs (acc++[a]) r
    fnArgs acc _ = acc
 
-   colRecOfType c@(tnc -> (TCollection, [r])) = return (c, r)
+   colRecOfType c@(tnc -> (TCollection, [r])) | elemWrap  = return (c, removeElem r)
+   colRecOfType c@(tnc -> (TCollection, [r])) | otherwise = return (c, r)
    colRecOfType _ = type_mismatch
+
+   removeElem (tag &&& children -> (TRecord [_], [inner])) = inner
+   removeElem _ = error "Invalid record structure for elemLoader"
 
    getRecFields (tag &&& children -> (TRecord ids, cs))  = return (ids, cs)
    getRecFields _ = error "Cannot get fields for non-record type"
 
    type_mismatch = error "Invalid type for Loader function. Should Be String -> Collection R -> ()"
 
-genLoader _ _ _ _ _ _ _ =  error "Invalid type for Loader function."
+genLoader _ _ _ _ _ _ _ _ =  error "Invalid type for Loader function."
 
 genLogger :: String -> K3 Type -> String -> CPPGenM R.Definition
 genLogger _ (children -> [_,f]) name = do

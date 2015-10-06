@@ -1,4 +1,5 @@
 include "Annotation/Collection.k3"
+include "Annotation/Set.k3"
 include "Annotation/Map.k3"
 include "Core/Builtins.k3"
 
@@ -218,6 +219,14 @@ trigger groupByMGroupBy : () = \_ -> (
                      (\r -> (hash r.key) % peers.size())
                      (\acc -> (\r -> acc + r.value))
                      0)
+)
+
+trigger nonEncodableFold : () = \_ -> (
+  ((c.fold (\acc -> \r ->
+             if r.a > 5 then (acc.insert {a:r.a+1}; acc)
+             else empty {a:int} @Collection)
+           (empty {a:int} @Collection))
+     .iterate (\r -> e = r.a))
 )
 
 trigger result    : {elem : int}                                    = \_ -> ()

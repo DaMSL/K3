@@ -8,7 +8,9 @@
 namespace K3 {
 
 StandardBuiltins::StandardBuiltins(Engine& engine)
-    : __engine_(engine), __mutex_() {}
+    : __engine_(engine) {}
+
+boost::mutex StandardBuiltins::__mutex_;
 
 unit_t StandardBuiltins::print(string_impl message) {
   boost::lock_guard<boost::mutex> lock(__mutex_);
@@ -28,14 +30,14 @@ unit_t StandardBuiltins::haltEngine(unit_t) {
 
 template <>
 int StandardBuiltins::hash(const int& b) {
- const unsigned int fnv_prime = 0x811C9DC5;
- unsigned int hash = 0;
- const char* p = (const char *) &b;
- for(std::size_t i = 0; i < sizeof(int); i++) {
-   hash *= fnv_prime;
-   hash ^= p[i];
- }
- return hash;
+  const unsigned int fnv_prime = 0x811C9DC5;
+  unsigned int hash = 0;
+  const char* p = (const char*)&b;
+  for (std::size_t i = 0; i < sizeof(int); i++) {
+    hash *= fnv_prime;
+    hash ^= p[i];
+  }
+  return hash;
 }
 
 }  // namespace K3
