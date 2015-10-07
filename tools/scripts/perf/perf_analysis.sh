@@ -1,15 +1,16 @@
 #!/bin/bash
 
-if [ "$#" -lt 4 ]; then
-    echo "Usage: $0 <k3 binary> <cluster perf binary path> <output name> <perf.data input ...>"
+if [ "$#" -lt 5 ]; then
+    echo "Usage: $0 <strip unknown stacks=0|1> <k3 binary> <cluster perf binary path> <output name> <perf.data input ...>"
     exit 1
 fi
 
-BINARY_PATH=$1
-SHADOW_PERF_PATH=$2
-OUTPUT_DIR=`dirname $3`
-OUTPUT_NAME=`basename $3`
-PERF_INPUTS=${@:4}
+STRIP_STACKS=$1
+BINARY_PATH=$2
+SHADOW_PERF_PATH=$3
+OUTPUT_DIR=`dirname $4`
+OUTPUT_NAME=`basename $4`
+PERF_INPUTS=${@:5}
 
 BINARY=`basename $BINARY_PATH`
 
@@ -38,10 +39,18 @@ for pfile in $PERF_INPUTS; do
 
     for i in `cat docker_aufs_paths-$PERF_ID.txt | sort | uniq`; do ln -s / $DOCKER_BASE_DIR/$i; done
 
-    perf script -i $pfile > $OUTPUT_DIR/$OUTPUT_NAME-$PERF_ID.perf
+    perf script -i $pfile | bzip2 > $OUTPUT_DIR/$OUTPUT_NAME-$PERF_ID.perf.bz2
 
-    $FLAMEGRAPH_DIR/stackcollapse-perf.pl $OUTPUT_DIR/$OUTPUT_NAME-$PERF_ID.perf > $OUTPUT_DIR/$OUTPUT_NAME-$PERF_ID.folded
-    $FLAMEGRAPH_DIR/flamegraph.pl $OUTPUT_DIR/$OUTPUT_NAME-$PERF_ID.folded > $OUTPUT_DIR/$OUTPUT_NAME-$PERF_ID.svg
+    if [ "X$STRIP_STACKS" -eq "X1" ]; then
+        bzcat $OUTPUT_DIR/$OUTPUT_NAME-$PERF_ID.perf.bz2 | \
+            $FLAMEGRAPH_DIR/stackcollapse-perf.pl | \
+            sed 's/\[unknown\];//g' | \
+            $FLAMEGRAPH_DIR/flamegraph.pl > $OUTPUT_DIR/$OUTPUT_NAME-$PERF_ID.svg
+    else
+        bzcat $OUTPUT_DIR/$OUTPUT_NAME-$PERF_ID.perf.bz2 | \
+            $FLAMEGRAPH_DIR/stackcollapse-perf.pl | \
+            $FLAMEGRAPH_DIR/flamegraph.pl > $OUTPUT_DIR/$OUTPUT_NAME-$PERF_ID.svg
+    fi
 
     ((PERF_ID+=1))
 done
