@@ -429,6 +429,7 @@ hasReadInF p (Contextual f cf) = case f of
   (tag -> FScope _) -> foldr (-||-) (mBool False) <$> traverse (hasReadInF p) (map (flip Contextual cf) $ children f)
   (tag -> FSeq) -> foldr (-||-) (mBool False) <$> traverse (hasReadInF p) (map (flip Contextual cf) $ children f)
   (tag -> FSet) -> foldr (-||-) (mBool False) <$> traverse (hasReadInF p) (map (flip Contextual cf) $ children f)
+  (tag -> FLoop) -> foldr (-||-) (mBool False) <$> traverse (hasReadInF p) (map (flip Contextual cf) $ children f)
   _ -> return (mBool False)
 
 hasWriteIn :: Contextual (K3 Provenance) -> Contextual (K3 Expression) -> InferM (K3 MPred, K3 MPred)
@@ -485,6 +486,7 @@ hasWriteInF p (Contextual f cf) = case f of
   (tag -> FScope _) -> foldr (-||-) (mBool False) <$> traverse (hasWriteInF p) (map (flip Contextual cf) $ children f)
   (tag -> FSeq) -> foldr (-||-) (mBool False) <$> traverse (hasWriteInF p) (map (flip Contextual cf) $ children f)
   (tag -> FSet) -> foldr (-||-) (mBool False) <$> traverse (hasWriteInF p) (map (flip Contextual cf) $ children f)
+  (tag -> FLoop) -> foldr (-||-) (mBool False) <$> traverse (hasWriteInF p) (map (flip Contextual cf) $ children f)
   _ -> return (mBool False)
 
 isGlobal :: K3 Provenance -> InferM (K3 MPred)
