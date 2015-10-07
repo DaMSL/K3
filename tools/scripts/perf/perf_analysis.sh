@@ -41,7 +41,7 @@ for pfile in $PERF_INPUTS; do
 
     perf script -i $pfile | bzip2 > $OUTPUT_DIR/$OUTPUT_NAME-$PERF_ID.perf.bz2
 
-    if [ "X$STRIP_STACKS" -eq "X1" ]; then
+    if [ "X$STRIP_STACKS" = "X1" ]; then
         bzcat $OUTPUT_DIR/$OUTPUT_NAME-$PERF_ID.perf.bz2 | \
             $FLAMEGRAPH_DIR/stackcollapse-perf.pl | \
             sed 's/\[unknown\];//g' | \
