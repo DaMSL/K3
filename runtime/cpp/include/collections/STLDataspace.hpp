@@ -94,21 +94,6 @@ class STLDS {
   }
 
   unit_t extend(const STLDS& other) {
-    auto &c = other.getConstContainer();
-    for (auto& e : c) {
-      insert(e);
-    }
-    return unit_t();
-  }
-
-  unit_t extend(STLDS&& other) {
-    for (auto& e : other.container) {
-      insert(std::move(e));
-    }
-    return unit_t();
-  }
-
-  unit_t extend(const STLDS& other) {
     for (auto& e : other.getConstContainer()) {
       insert(e);
     }
