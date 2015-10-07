@@ -8,6 +8,7 @@ fi
 PERF_INPUT=$1
 BINARY_PATH=$2
 SHADOW_PERF_PATH=$3
+OUTPUT_DIR=`dirname $4`
 OUTPUT_NAME=`basename $4`
 BINARY=`basename $BINARY_PATH`
 
@@ -16,6 +17,7 @@ DOCKER_BASE_DIR=/var/lib/docker/aufs/diff
 PERF_DIR=/usr/bin
 FLAMEGRAPH_DIR=./FlameGraph
 
+test -d $OUTPUT_DIR || mkdir -p $OUTPUT_DIR
 test -d $SHADOW_BINARY_DIR || mkdir -p $SHADOW_BINARY_DIR
 test -f $SHADOW_BINARY_DIR/$BINARY || cp $BINARY_PATH $SHADOW_BINARY_DIR/$BINARY
 test -d $DOCKER_BASE_DIR || mkdir -p $DOCKER_BASE_DIR
@@ -31,8 +33,8 @@ for i in `cat docker_aufs_paths.txt | sort | uniq`; do ln -s / $DOCKER_BASE_DIR/
 
 cp $PERF_DIR/perf $PERF_DIR/perf.bak
 cp $SHADOW_PERF_PATH $PERF_DIR/perf
-perf script -i $PERF_INPUT > $OUTPUT_NAME.perf
+perf script -i $PERF_INPUT > $OUTPUT_DIR/$OUTPUT_NAME.perf
 mv $PERF_DIR/perf.bak $PERF_DIR/perf
 
-$FLAMEGRAPH_DIR/stackcollapse-perf.pl $OUTPUT_NAME.perf > $OUTPUT_NAME.folded
-$FLAMEGRAPH_DIR/flamegraph.pl $OUTPUT_NAME.folded > $OUTPUT_NAME.svg
+$FLAMEGRAPH_DIR/stackcollapse-perf.pl $OUTPUT_DIR/$OUTPUT_NAME.perf > $OUTPUT_DIR/$OUTPUT_NAME.folded
+$FLAMEGRAPH_DIR/flamegraph.pl $OUTPUT_DIR/$OUTPUT_NAME.folded > $OUTPUT_DIR/$OUTPUT_NAME.svg
