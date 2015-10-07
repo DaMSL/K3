@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if [ "$#" -ne 4 ]; then
+if [ "$#" -lt 4 ]; then
     echo "Usage: $0 <k3 binary> <cluster perf binary path> <output name> <perf.data input ...>"
     exit 1
 fi
@@ -29,14 +29,14 @@ cp $SHADOW_PERF_PATH $PERF_DIR/perf
 PERF_ID=0
 
 for pfile in $PERF_INPUTS; do
-    perf report -i $pfile > perf_symbol_test.txt 2>&1
+    perf report -i $pfile > psyms-$PERF_ID.txt 2>&1
 
-    cat perf_symbol_test.txt | grep Failed | grep docker | \
+    cat psyms-$PERF_ID.txt | grep Failed | grep docker | \
         sed 's/Failed to open \([^,]*\),.*/\1/' | \
         sed 's/\/var\/lib\/docker\/aufs\/diff\///; s/\([0-9a-z]*\)\/.*/\1/' \
-        > docker_aufs_paths.txt && \
+        > docker_aufs_paths-$PERF_ID.txt && \
 
-    for i in `cat docker_aufs_paths.txt | sort | uniq`; do ln -s / $DOCKER_BASE_DIR/$i; done
+    for i in `cat docker_aufs_paths-$PERF_ID.txt | sort | uniq`; do ln -s / $DOCKER_BASE_DIR/$i; done
 
     perf script -i $pfile > $OUTPUT_DIR/$OUTPUT_NAME-$PERF_ID.perf
 
