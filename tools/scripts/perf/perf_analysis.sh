@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if [ "$#" -ne 5 ]; then
+if [ "$#" -ne 4 ]; then
 	echo "Usage: $0 <perf.data input> <k3 binary> <cluster perf binary path> <output name>"
 	exit 1
 fi
