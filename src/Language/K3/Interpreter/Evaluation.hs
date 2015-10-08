@@ -11,7 +11,6 @@
 
 module Language.K3.Interpreter.Evaluation where
 
-import Control.Applicative
 import Control.Arrow hiding ( (+++) )
 import Control.Concurrent.MVar
 import Control.Monad.Reader
@@ -30,6 +29,8 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Literal
 import Language.K3.Core.Type
 import Language.K3.Core.Utils
+
+import Language.K3.Analysis.Core
 
 import Language.K3.Interpreter.Data.Types
 import Language.K3.Interpreter.Data.Accessors

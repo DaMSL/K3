@@ -21,6 +21,29 @@ control OnProfile[f : expr] {
           result
 }
 
+control ProfileMany[lbl : label] {
+  ?e @:Time  => (let start = now_int() in
+                let result = $.[e] in
+                let end = now_int()
+                in (
+                  ($[lbl]_time_sum = $[lbl]_time_sum + (end - start));
+                  ($[lbl]_time_count = $[lbl]_time_count + 1);
+                  result
+                ))
+
+  ?e @:Print => let tag = $[|(exprLabel 'lbl)|] in
+                let avg = (1.0 * $[lbl]_time_sum) / $[lbl]_time_count
+                in (
+                   (print (tag ++ " total:" ++ itos($[lbl]_time_sum)));
+                   (print (tag ++ " calls:" ++ itos($[lbl]_time_count)));
+                   (print (tag ++ " avg:" ++ (rtos(avg))));
+                   $.[e]
+                 )
+
+  shared { declare $[lbl]_time_sum : mut int = 0
+           declare $[lbl]_time_count : mut int = 0 }
+}
+
 control Time[lbl : label, tag : expr] {
   ?e @:StartTimer => $[lbl]_start_ms = now_int(); $.[e]
   ?e @:StopTimer  => let result        = $.[e] in
@@ -42,7 +65,8 @@ control TimeSink[lbl : label, tag : expr, sink_expr: expr] {
                      let tag           = $[tag] ++ $[|(exprLabel 'lbl)|] ++ ":" in
                      $[lbl]_end_ms     = now_int();
                      $[lbl]_elapsed_ms = $[lbl]_end_ms - $[lbl]_start_ms;
-                     ( ($[sink_expr], me) <- (tag ++ (itos $[lbl]_elapsed_ms )));
+                     ( ($[sink_expr], me) <- $[lbl]_elapsed_ms );
+                     ( print (tag ++ (itos $[lbl]_elapsed_ms)) );
                      result
 
   shared { declare $[lbl]_start_ms   : mut int = 0

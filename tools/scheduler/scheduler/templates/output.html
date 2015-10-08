@@ -1,0 +1,21 @@
+{% extends "layout/base.html" %}
+
+{% block content %}
+  <div class="container">
+    <div class="starter-template">
+      <p>
+        {% if output %}
+              <pre>
+            {{output.decode('utf-8')}}
+              </pre>
+        {% else %}
+        <h5>Program has no output to display</h5>
+        {% endif %}
+      </p>
+    </div>
+  </div>
+{% endblock %}
+
+{% block footer %}
+  {% include "include/footer.html" %}
+{% endblock %}

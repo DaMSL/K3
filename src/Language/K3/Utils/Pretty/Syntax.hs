@@ -31,6 +31,8 @@ import qualified Data.Map as Map
 import Data.Maybe
 import Data.List hiding ( group )
 
+import Debug.Trace
+
 import Language.K3.Core.Common
 import Language.K3.Core.Annotation
 import Language.K3.Core.Annotation.Syntax
@@ -40,6 +42,8 @@ import Language.K3.Core.Literal
 import Language.K3.Core.Type
 import Language.K3.Core.Metaprogram hiding ( mpAnnMemDecl )
 
+import qualified Language.K3.Utils.Pretty as P
+
 import Text.PrettyPrint.ANSI.Leijen
 
 data SyntaxError = SyntaxError String deriving (Eq, Show)
@@ -48,14 +52,21 @@ data SyntaxError = SyntaxError String deriving (Eq, Show)
 type Printer a     = Either SyntaxError a
 type SyntaxPrinter = Printer Doc
 
+-- | Hard-coded printer configuration
+showImmut :: Bool
+showImmut = False
+
 runSyntaxPrinter :: SyntaxPrinter -> Either String Doc
 runSyntaxPrinter = either (\(SyntaxError s) -> Left s) Right
+
+reasonM :: String -> Printer a -> Printer a
+reasonM msg m = either (\(SyntaxError s) -> Left . SyntaxError $ s ++ msg) return m
 
 throwSP :: String -> Printer a
 throwSP = Left . SyntaxError
 
 programS :: K3 Declaration -> Either String String
-programS p = program p >>= \doc -> return $ displayS (renderPretty 0.8 100 doc) ""
+programS p = program p >>= \doc -> return $ displayS (renderSmart 0.6 100 doc) ""
 
 declS :: K3 Declaration -> Either String String
 declS d = show C.<$> runSyntaxPrinter (decl d)
@@ -93,11 +104,11 @@ decl' (details -> (DGlobal n t eOpt, cs, anns)) =
 
     declGType = case tag t of
       TForall _ -> (Nothing,) C.<$> typ t
-      _         -> (\(q,dt) -> (Just q, dt)) C.<$> qualifierAndType t
+      _         -> qualifierAndType t
 
     globalDecl (qualTOpt, t') eqeOpt =
-      hang 2 $ text "declare" <+> text n <+> colon <+> maybe (align t') (<+> (align t')) qualTOpt
-                                         <+> declInitializer eqeOpt <> line
+      hang 2 $ text "declare" <+> text n </> colon <+> maybe (align t') (<+> (align t')) qualTOpt
+                                         </> declInitializer eqeOpt <> line
 
     endpoint' kw = endpoint kw n C.<$> endpointSpec anns <*> typ t <*> optionalPrinter expr eOpt
 
@@ -136,8 +147,8 @@ decl' (details -> (DTypeDef tn t, cs, _)) = do
 
 decl' _ = throwSP "Invalid declaration"
 
-declInitializer :: Maybe (Doc, Doc) -> Doc
-declInitializer = maybe empty (\(qualE, e') -> equals <+> qualE <$> e')
+declInitializer :: Maybe (Maybe Doc, Doc) -> Doc
+declInitializer = maybe empty (\(qualEOpt, e') -> equals </> (maybe e' (<+> e') qualEOpt))
 
 -- TODO: generate syntax for member property annotations.
 annMemDecl :: AnnMemDecl -> SyntaxPrinter
@@ -152,10 +163,10 @@ annMemDecl (Attribute pol i t eOpt _) =
 annMemDecl (MAnnotation pol i _) =
   return $ polarity pol <+> text "annotation" <+> text i
 
-attrDecl :: Polarity -> String -> Identifier -> (Doc, Doc) -> Maybe (Doc, Doc) -> Doc
-attrDecl pol kw j (qualT, t') eqeOpt =
+attrDecl :: Polarity -> String -> Identifier -> (Maybe Doc, Doc) -> Maybe (Maybe Doc, Doc) -> Doc
+attrDecl pol kw j (qualTOpt, t') eqeOpt =
   hang 2 $ polarity pol <+> (if null kw then text j else text kw <+> text j)
-                        <+> colon <+> qualT <+> (align t') <+> declInitializer eqeOpt
+                        <+> maybe colon (colon <+>) qualTOpt <+> (align t') <+> declInitializer eqeOpt
 
 polarity :: Polarity -> Doc
 polarity Provides = text "provides"
@@ -221,18 +232,25 @@ spliceType = \case
 spliceValue :: SpliceValue -> SyntaxPrinter
 spliceValue = \case
     SVar     i    -> return $ text i
-    SLabel   i    -> return $ text i
-    SType    t    -> typ  t
-    SExpr    e    -> expr e
-    SDecl    d    -> decl d
-    SLiteral l    -> literal l
-    SRecord  nsvs -> mapM spliceField (recordElemsAsList nsvs) >>= return . braces . cat . punctuate comma
-    SList    svs  -> mapM spliceValue svs >>= return . brackets . cat . punctuate comma
+    SLabel   i    -> return $ brackets $ text "#" <+> text i
+    SType    t    -> typ t >>= \td -> return $ brackets $ colon <+> td
+    SExpr    e    -> expr e >>= \ed -> return $ brackets $ text "$" <+> ed
+    SDecl    d    -> decl d >>= \dd -> return $ brackets $ text "$^" <+> dd
+    SLiteral l    -> literal l >>= \ld -> return $ brackets $ text "$#" <+> ld
+    SRecord  nsvs -> mapM spliceField (recordElemsAsList nsvs) >>= \fdl -> return $ brackets $ text "%" <+> (cat $ punctuate comma fdl)
+    SList    svs  -> mapM spliceValue svs >>= \fdl -> return $ brackets $ text "*" <+> (cat $ punctuate comma fdl)
 
   where spliceField (i,v) = spliceValue v >>= return . ((text i <+> colon) <+>)
 
 typedSpliceVar :: TypedSpliceVar -> SyntaxPrinter
 typedSpliceVar (t, i) = spliceType t >>= return . ((text i <+> colon) <+>)
+
+spliceEnv :: SpliceEnv -> SyntaxPrinter
+spliceEnv env = do
+    entriesD <- mapM spliceEnvEntry $ Map.toList env
+    return $ cat $ punctuate comma entriesD
+  where
+    spliceEnvEntry (i, sv) = spliceValue sv >>= \svd -> return $ text i <> equals <> svd
 
 subDecls :: [K3 Declaration] -> Printer [Doc]
 subDecls d = mapM decl {-$ filter (not . generatedDecl)-} d
@@ -274,8 +292,15 @@ endpoint kw n specOpt t' eOpt' = case specOpt of
   Nothing                   -> common Nothing
   Just ValueEP              -> common $ maybe Nothing (Just . (text "value" <+>)) eOpt'
   Just (BuiltinEP kind fmt) -> common . Just $ text kind <+> text fmt
-  Just (FileEP path fmt)    -> common . Just $ text "file" <+> text path <+> text fmt
-  Just (NetworkEP addr fmt) -> common . Just $ text "network" <+> text addr <+> text fmt
+  Just (FileEP path txt fmt)    -> common . Just $ text "file" <+> text path  <+> text (txtOrBin txt) <+> text fmt
+  Just (NetworkEP addr txt fmt) -> common . Just $ text "network" <+> text addr <+> text (txtOrBin txt) <+> text fmt
+  Just (FileSeqEP pathcol txt fmt) -> common . Just $ text "fileseq" <+> text pathcol <+> text (txtOrBin txt) <+> text fmt
+
+  Just (FileMuxEP pathcol txt fmt) ->
+    common . Just $ text "filemux" <+> text pathcol <+> text (txtOrBin txt) <+> text fmt
+
+  Just (FileMuxseqEP seqcol txt fmt) ->
+    common . Just $ text "filemxsq" <+> text seqcol <+> text (txtOrBin txt) <+> text fmt
 
   where
     common initializer =
@@ -283,103 +308,171 @@ endpoint kw n specOpt t' eOpt' = case specOpt of
                        <+> colon <+> (align t')
                        <+> maybe empty (equals <$>) initializer <> line
 
+    txtOrBin t = if t then "text" else "binary"
+
 
 -- | Expression syntax printing.
 expr :: K3 Expression -> SyntaxPrinter
-expr e@(details -> (_,_,anns)) = attachComments (commentE anns) $ expr' e
+expr e@(details -> (_,_,anns)) = attachComments (commentE anns) $ (expr' e >>= return . exdoc)
 
-expr' :: K3 Expression -> SyntaxPrinter
+type OperatorChainDoc = ([Either Doc Doc], [[Annotation Expression]], Operator)
+
+exrs :: [Annotation Expression] -> Doc -> Printer (Either OperatorChainDoc Doc)
+exrs anns d = do
+  dl <- mapM applyAnns anns
+  let anndl = (map text $ concatMap annIds anns) ++ concat dl
+  return $ Right $ if null anndl then d else parens d </> annotated anndl
+  where
+    annIds (EAnnotation n) = [n]
+    annIds _ = []
+
+    applyAnns (EApplyGen True n env) = spliceEnv env >>= \envD -> return [text n <> parens envD]
+    applyAnns _ = return []
+
+
+exdoc :: Either OperatorChainDoc Doc -> Doc
+exdoc (Left (l, _, op)) = align $ fillCatArgs $ punctuateArgs lsep l
+  where lsep = case op of
+                 OApp -> space
+                 OSeq -> semi <> space
+                 _ -> error "Invalid exdoc operator"
+
+        fillCatArgs :: [Either Doc Doc] -> Doc
+        fillCatArgs [] = empty
+        fillCatArgs [h] = either id (\d -> hardline <> d) h
+        fillCatArgs (h:t) = (either (\d -> (d <//>)) (\d -> ((hardline <> d) <//>)) h) $ fillCatArgs t
+
+        punctuateArgs :: Doc -> [Either Doc Doc] -> [Either Doc Doc]
+        punctuateArgs _ []      = []
+        punctuateArgs _ [dE]    = [dE]
+        punctuateArgs p (dE:ds) = (either (\d -> Left $ d <> p) (\d -> Right $ d <> p) dE) : punctuateArgs p ds
+
+
+exdoc (Right d) = d
+
+expr' :: K3 Expression -> Printer (Either OperatorChainDoc Doc)
 expr' (details -> (EConstant c, _, anns)) =
   case c of
-    CBool b   -> return . text $ if b then "true" else "false"
-    CInt i    -> return $ int i
-    CByte w   -> return . integer $ toInteger w
-    CReal r   -> return $ double r
-    CString s -> return . dquotes $ text s
-    CNone q   -> return $ text "None" <+> nQualifier q
-    CEmpty t  -> typ t >>= return . emptyCollection (namedEAnnotations anns)
+    CBool b   -> exrs anns . text $ if b then "true" else "false"
+    CInt i    -> exrs anns $ int i
+    CByte w   -> exrs anns $ integer $ toInteger w
+    CReal r   -> exrs anns $ double r
+    CString s -> exrs anns $ dquotes $ text s
+    CNone q   -> exrs anns $ text "None" <+> nQualifier q
+    CEmpty t  -> typ t >>= exrs (filter (not . isEAnnotation) anns) . emptyCollection (namedEAnnotations anns)
 
   where
-    emptyCollection annIds t =
-      text "empty" <+> t <+> text "@" <+> commaBrace (map text annIds)
+    emptyCollection annIds t = text "empty" </> t <+> annotated (map text annIds)
 
     nQualifier NoneMut   = text "mut"
     nQualifier NoneImmut = text "immut"
 
-expr' (tag -> EVariable i) = return $ text i
+expr' (tna -> (EVariable i, anns)) = exrs anns $ text i
 
-expr' (details -> (ESome, [x], _)) = qualifierAndExpr x >>= return . uncurry someExpr
-expr' (tag -> ESome)               = exprError "some"
+expr' (details -> (ESome, [x], anns)) = qualifierAndExpr x >>= exrs anns . uncurry someExpr
+expr' (tag -> ESome)                  = exprError "some"
 
-expr' (details -> (EIndirect, [x], _)) = qualifierAndExpr x >>= return . uncurry indirectionExpr
-expr' (tag -> EIndirect)               = exprError "indirection"
+expr' (details -> (EIndirect, [x], anns)) = qualifierAndExpr x >>= exrs anns . uncurry indirectionExpr
+expr' (tag -> EIndirect)                  = exprError "indirection"
 
-expr' (details -> (ETuple, cs, _)) = mapM qualifierAndExpr cs >>= return . tupleExpr
-expr' (tag -> ETuple)              = exprError "tuple"
+expr' (details -> (ETuple, cs, anns)) = mapM qualifierAndExpr cs >>= exrs anns . tupleExpr
+expr' (tag -> ETuple)                 = exprError "tuple"
 
-expr' (details -> (ERecord is, cs, _)) = mapM qualifierAndExpr cs >>= return . recordExpr is
-expr' (tag -> ERecord _)               = exprError "record"
+expr' (details -> (ERecord is, cs, anns)) = mapM qualifierAndExpr cs >>= exrs anns . recordExpr is
+expr' (tag -> ERecord _)                  = exprError "record"
 
-expr' (details -> (ELambda i, [b], _)) = expr b >>= return . lambdaExpr i
-expr' (tag -> ELambda _)               = exprError "lambda"
+expr' (details -> (ELambda i, [b], anns)) = expr b >>= exrs anns .lambdaExpr i
+expr' (tag -> ELambda _)                  = exprError "lambda"
 
-expr' (details -> (EOperate otag, cs, _))
-    | otag `elem` [ONeg, ONot], [a] <- cs = expr a >>= unary otag
-    | otherwise, [a, b] <- cs             = uncurry (binary otag) =<< ((,) C.<$> expr a <*> expr b)
-    | otherwise                           = exprError "operator"
+expr' (details -> (EOperate otag, cs, anns))
+    | otag `elem` [ONeg, ONot], [a] <- cs    = expr a >>= unary otag anns
+    {- | otag `elem` [OApp, OSeq], [a, b] <- cs = uncurry (binarychain a b otag anns) =<< ((,) C.<$> expr' a <*> expr' b) -}
+    | otherwise, [a, b] <- cs                = uncurry (binary otag anns $ isELambda b) =<< ((,) C.<$> expr a <*> expr b)
+    | otherwise                              = exprError "operator"
 
-expr' (details -> (EProject i, [r], _)) = expr r >>= return . projectExpr i
-expr' (tag -> EProject _)               = exprError "project"
+expr' (details -> (EProject i, [r], anns)) = expr r >>= exrs anns . projectExpr i
+expr' (tag -> EProject _)                  = exprError "project"
 
-expr' (details -> (ELetIn i, [e, b], _)) = letExpr i C.<$> qualifierAndExpr e <*> expr b
-expr' (tag -> ELetIn _)                  = exprError "let"
+expr' (details -> (ELetIn i, [e, b], anns)) = (letExpr i C.<$> qualifierAndExpr e <*> expr b) >>= exrs anns
+expr' (tag -> ELetIn _)                     = exprError "let"
 
-expr' (details -> (EAssign i, [e], _)) = expr e >>= return . assignExpr i
-expr' (tag -> EAssign _)               = exprError "assign"
+expr' (details -> (EAssign i, [e], anns)) = expr e >>= exrs anns . assignExpr i
+expr' (tag -> EAssign _)                  = exprError "assign"
 
-expr' (details -> (ECaseOf i, [e, s, n], _)) = caseExpr i C.<$> expr e <*> expr s <*> expr n
-expr' (tag -> ECaseOf _)                     = exprError "case-of"
+expr' (details -> (ECaseOf i, [e, s, n], anns)) = (caseExpr i C.<$> expr e <*> expr s <*> expr n) >>= exrs anns
+expr' (tag -> ECaseOf _)                        = exprError "case-of"
 
-expr' (details -> (EBindAs b, [e, f], _)) = bindExpr b C.<$> expr e <*> expr f
-expr' (tag -> EBindAs _)                  = exprError "bind-as"
+expr' (details -> (EBindAs b, [e, f], anns)) = (bindExpr b C.<$> expr e <*> expr f) >>= exrs anns
+expr' (tag -> EBindAs _)                     = exprError "bind-as"
 
-expr' (details -> (EIfThenElse, [p, t, e], _)) = branchExpr C.<$> expr p <*> expr t <*> expr e
-expr' (tag -> EIfThenElse)                     = exprError "if-then-else"
+expr' (details -> (EIfThenElse, [p, t, e], anns)) = (branchExpr C.<$> expr p <*> expr t <*> expr e) >>= exrs anns
+expr' (tag -> EIfThenElse)                        = exprError "if-then-else"
 
-expr' (details -> (EAddress, [h, p], _)) = address h p
-expr' (tag -> EAddress)                  = exprError "address"
+expr' (details -> (EAddress, [h, p], anns)) = address h p >>= exrs anns
+expr' (tag -> EAddress)                     = exprError "address"
 
-expr' (tag -> ESelf) = return $ keyword "self"
+expr' (tna -> (ESelf, anns)) = exrs anns $ keyword "self"
 
 expr' _ = exprError "unknown"
 
-unary :: Operator -> Doc -> SyntaxPrinter
-unary ONeg e = return $ text "-" <//> e
-unary ONot e = return $ text "not" <+> e
-unary op _   = throwSP $ "Invalid unary operator '" ++ show op ++ "'"
+isELambda :: K3 Expression -> Bool
+isELambda (tag -> ELambda _) = True
+isELambda _ = False
 
-binary :: Operator -> Doc -> Doc -> SyntaxPrinter
-binary op e e' =
+unary :: Operator -> [Annotation Expression] -> Doc -> Printer (Either OperatorChainDoc Doc)
+unary ONeg anns e = exrs anns $ text "-" <> e
+unary ONot anns e = exrs anns $ text "not" <+> e
+unary op _ _      = throwSP $ "Invalid unary operator '" ++ show op ++ "'"
+
+bccomments :: K3 Expression -> Either OperatorChainDoc Doc -> Doc
+bccomments e d = attachCommentsD (commentE $ annotations e) $ exdoc d
+
+bccommentsL :: K3 Expression -> [Either Doc Doc] -> [Either Doc Doc]
+bccommentsL e dl = attachCommentsL (commentE $ annotations e) dl
+
+binarychain :: K3 Expression -> K3 Expression -> Operator -> [Annotation Expression]
+            -> Either OperatorChainDoc Doc
+            -> Either OperatorChainDoc Doc
+            -> Printer (Either OperatorChainDoc Doc)
+binarychain e1 e2 OSeq anns (Left (l1, anns1, OSeq)) (Left (l2, anns2, OSeq)) =
+  return $ Left ((bccommentsL e1 l1) ++ (bccommentsL e2 l2), anns1 ++ anns2 ++ [anns], OSeq)
+
+binarychain e1 e2@(tag -> ELambda _) op anns (Left (l1, anns1, op1)) r | op == op1 =
+  return $ Left (bccommentsL e1 l1 ++ [Right $ bccomments e2 r], anns1 ++ [anns], op)
+
+binarychain e1 e2 op anns (Left (l1, anns1, op1)) r | op == op1 =
+  return $ Left (bccommentsL e1 l1 ++ [Left $ bccomments e2 r], anns1 ++ [anns], op)
+
+binarychain le re op anns l r = binary op anns (isELambda re) (bccomments le l) (bccomments re r)
+
+binary :: Operator -> [Annotation Expression] -> Bool -> Doc -> Doc
+       -> Printer (Either OperatorChainDoc Doc)
+binary op anns rLambda e e' =
   case op of
-    OAdd -> infixOp "+"
-    OSub -> infixOp "-"
-    OMul -> infixOp "*"
-    ODiv -> infixOp "/"
-    OMod -> infixOp "%"
-    OAnd -> infixOp "&&"
-    OOr  -> infixOp "||"
-    OEqu -> infixOp "=="
-    ONeq -> infixOp "/="
-    OLth -> infixOp "<"
-    OLeq -> infixOp "<="
-    OGth -> infixOp ">"
-    OGeq -> infixOp ">="
-    OSeq -> return . align $ e <> semi <$> e'
-    OApp -> return $ e <+> e'
-    OSnd -> infixOp "<-"
-    _    -> throwSP $ "Invalid binary operator '" ++ show op ++ "'"
+    OAdd    -> infixOp "+"
+    OSub    -> infixOp "-"
+    OMul    -> infixOp "*"
+    ODiv    -> infixOp "/"
+    OMod    -> infixOp "%"
+    OAnd    -> infixOp "&&"
+    OOr     -> infixOp "||"
+    OEqu    -> infixOp "=="
+    ONeq    -> infixOp "/="
+    OLth    -> infixOp "<"
+    OLeq    -> infixOp "<="
+    OGth    -> infixOp ">"
+    OGeq    -> infixOp ">="
+    OConcat -> infixOp "++"
+    OSeq    -> exrs anns $ e <> semi <$> e'
+    OApp    -> exrs anns $ e <+> e'
+    -- OSeq    -> return $ Left ([Left e, Left e'], [anns], op)
+    -- OApp    -> return $ Left ([Left e, if rLambda then Right e' else Left e'], [anns], op)
+    OSnd    -> infixOpSL "<-"
+    _       -> throwSP $ "Invalid binary operator '" ++ show op ++ "'"
 
-  where infixOp opStr = return $ e <+> text opStr <+> e'
+
+  where infixOp   opStr = exrs anns $ e <+> text opStr <+> e'
+        infixOpSL opStr = exrs anns $ e <+> text opStr </> e'
 
 address :: K3 Expression -> K3 Expression -> SyntaxPrinter
 address h p
@@ -390,17 +483,19 @@ symbol :: K3 Expression -> SyntaxPrinter
 symbol (tag -> EConstant (CString s)) = return $ text s
 symbol _ = throwSP "Invalid symbol expression"
 
-qualifierAndExpr :: K3 Expression -> Printer (Doc, Doc)
-qualifierAndExpr e@(annotations -> anns) = (,) C.<$> eQualifier anns <*> expr e
+qualifierAndExpr :: K3 Expression -> Printer (Maybe Doc, Doc)
+qualifierAndExpr e@(annotations -> anns) =
+  reasonM (P.boxToString $ ["", "on expr:"] ++ P.prettyLines e)
+    $ (,) C.<$> eQualifier anns <*> expr e
 
-eQualifier :: [Annotation Expression] -> SyntaxPrinter
+eQualifier :: [Annotation Expression] -> Printer (Maybe Doc)
 eQualifier = qualifier "expr mutability" isEQualified eqSyntax
   where
-    eqSyntax EImmutable = return $ text "immut"
-    eqSyntax EMutable   = return $ text "mut"
+    eqSyntax EImmutable = return $ if showImmut then Just $ text "immut" else Nothing
+    eqSyntax EMutable   = return $ Just $ text "mut"
     eqSyntax _          = throwSP "Invalid expression qualifier"
 
-exprError :: String -> SyntaxPrinter
+exprError :: String -> Printer (Either OperatorChainDoc Doc)
 exprError msg = throwSP $ "Invalid " ++ msg ++ " expression"
 
 -- | Type expression syntax printing.
@@ -428,7 +523,10 @@ typ' (details -> (TRecord ids, ch, _))
   | length ids == length ch  = mapM qualifierAndType ch >>= return . recordType ids
   | otherwise                = throwSP "Invalid record type"
 
-typ' (details -> (TFunction, [a,r], _)) = mapM typ [a,r] >>= \chT -> return $ funType (head chT) (last chT)
+typ' (details -> (TFunction, [a,r], _)) =
+  mapM typ [a,r] >>= \chT -> return $ funType (onArg $ head chT) (last chT)
+  where onArg = if isTFunction a then parens else id
+
 typ' (tag -> TFunction)                 = throwSP "Invalid function type"
 
 typ' (details -> (TSource, [x], _)) = typ x
@@ -457,14 +555,16 @@ typ' (tag -> TDeclaredVar n) = return $ keyword n
 
 typ' _ = throwSP "Invalid type syntax"
 
-qualifierAndType :: K3 Type -> Printer (Doc, Doc)
-qualifierAndType t@(annotations -> anns) = (,) C.<$> tQualifier anns <*> typ t
+qualifierAndType :: K3 Type -> Printer (Maybe Doc, Doc)
+qualifierAndType t@(annotations -> anns) =
+  reasonM (P.boxToString $ ["", "on type:"] ++ P.prettyLines t)
+    $ (,) C.<$> tQualifier anns <*> typ t
 
-tQualifier :: [Annotation Type] -> SyntaxPrinter
+tQualifier :: [Annotation Type] -> Printer (Maybe Doc)
 tQualifier anns = qualifier "type mutability" isTQualified tqSyntax anns
   where
-    tqSyntax TImmutable = return $ text "immut"
-    tqSyntax TMutable   = return $ text "mut"
+    tqSyntax TImmutable = return $ if showImmut then Just $ text "immut" else Nothing
+    tqSyntax TMutable   = return $ Just $ text "mut"
     tqSyntax _          = throwSP "Invalid type qualifier"
 
 typeVarDecl :: TypeVarDecl -> SyntaxPrinter
@@ -506,9 +606,9 @@ literal' (details -> (LCollection t, elems, anns)) =
         elemVal (tag -> TRecord _) v = literal' v
         elemVal _ _ = throwSP "Invalid collection literal element value"
 
-        tSingleElem n (qual,t') = text n <+> colon <+> qual <+> t'
+        tSingleElem n (qualTOpt,t') = text n <+> maybe colon (colon <+>) qualTOpt <+> t'
         tMultiElem ids qualC = cat $ punctuate comma $ map (\(a,b) -> text a <+> colon <+> b)
-                            $ zip ids $ map (uncurry (<+>)) qualC
+                                   $ zip ids $ map (\(qOpt,t') -> maybe t' (<+> t') qOpt) qualC
 
 literal' (details -> (LAddress, [h,p], _))
   | LString s <- tag h = literal' p >>= return . addressLiteral (text s)
@@ -522,33 +622,32 @@ qualifierAndLiteral l@(annotations -> anns) = (,) C.<$> lQualifier anns <*> lite
 lQualifier :: [Annotation Literal] -> SyntaxPrinter
 lQualifier anns = qualifier "lit mutability" isLQualified lqSyntax anns
   where
-    lqSyntax LImmutable = return $ text "immut"
+    lqSyntax LImmutable = return $ if showImmut then text "immut" else empty
     lqSyntax LMutable   = return $ text "mut"
     lqSyntax _          = throwSP "Invalid literal qualifier"
 
 
 {- Syntax constructors -}
 
-optionType :: Doc -> Doc -> Doc
-optionType qual t = text "option" <+> qual <+> t
+optionType :: Maybe Doc -> Doc -> Doc
+optionType qual t = text "option" <+> maybe t (<+> t) qual
 
-indirectionType :: Doc -> Doc -> Doc
-indirectionType qual t = text "ind" <+> qual <+> t
+indirectionType :: Maybe Doc -> Doc -> Doc
+indirectionType qual t = text "ind" <+> maybe t (<+> t) qual
 
-tupleType :: [(Doc, Doc)] -> Doc
-tupleType qualC = tupled $ map (uncurry (<+>)) qualC
+tupleType :: [(Maybe Doc, Doc)] -> Doc
+tupleType qualC = stupled $ map (\(q,t) -> maybe t (<+> t) q) qualC
 
-recordType :: [Identifier] -> [(Doc, Doc)] -> Doc
+recordType :: [Identifier] -> [(Maybe Doc, Doc)] -> Doc
 recordType ids qualC =
   commaBrace $ map (\(a,b) -> text a <+> colon <+> b)
-             $ zip ids $ map (uncurry (<+>)) qualC
+             $ zip ids $ map (\(q,t) -> maybe t (<+> t) q) qualC
 
 collectionType :: [Doc] -> Doc -> Doc
-collectionType namedAnns t =
-  text "collection" <+> t <+> text "@" <+> commaBrace namedAnns
+collectionType namedAnns t = text "collection" <+> t <+> annotated namedAnns
 
 funType :: Doc -> Doc -> Doc
-funType arg ret = parens $ arg </> text "->" <+> ret
+funType arg ret = arg </> text "->" <+> ret
 
 triggerType :: Doc -> Doc
 triggerType t = text "trigger" <+> t
@@ -557,46 +656,46 @@ polymorphicType :: [Doc] -> Doc -> Doc
 polymorphicType [] t    = t
 polymorphicType tvars t = text "forall" <+> (foldl1 (<+>) tvars) <+> dot <+> t
 
-someExpr :: Doc -> Doc -> Doc
-someExpr qual e = text "Some" <+> qual <+> e
+someExpr :: Maybe Doc -> Doc -> Doc
+someExpr qualEOpt e = text "Some" <+> (maybe e (<+> e) qualEOpt)
 
-indirectionExpr :: Doc -> Doc -> Doc
-indirectionExpr qual e = text "ind" <+> qual <+> e
+indirectionExpr :: Maybe Doc -> Doc -> Doc
+indirectionExpr qualEOpt e = text "ind" <+> (maybe e (<+> e) qualEOpt)
 
-tupleExpr :: [(Doc, Doc)] -> Doc
-tupleExpr qualC = tupled $ map (uncurry (<+>)) qualC
+tupleExpr :: [(Maybe Doc, Doc)] -> Doc
+tupleExpr qualC = stupled $ map (\(qOpt, e) -> maybe e (<+> e) qOpt) qualC
 
-recordExpr :: [Identifier] -> [(Doc, Doc)] -> Doc
+recordExpr :: [Identifier] -> [(Maybe Doc, Doc)] -> Doc
 recordExpr ids qualC =
   commaBrace $ map (\(a,b) -> text a <+> colon <+> b)
-             $ zip ids $ map (uncurry (<+>)) qualC
+             $ zip ids $ map (\(qOpt, e) -> maybe e (<+> e) qOpt) qualC
 
 lambdaExpr :: Identifier -> Doc -> Doc
-lambdaExpr n b = parens $ backslash <> text n <+> text "->" <+> b
+lambdaExpr n b = parens $ (backslash <> text n </> text "->") </> b
 
 projectExpr :: Identifier -> Doc -> Doc
-projectExpr n r = r <> dot <> text n
+projectExpr n r = r <//> dot <> text n
 
-letExpr :: Identifier -> (Doc, Doc) -> Doc -> Doc
-letExpr n (qual,e) b =
-  text "let" <+> align (text n <+> equals <+> qual </> e) <$> text "in" </> b
+letExpr :: Identifier -> (Maybe Doc, Doc) -> Doc -> Doc
+letExpr n (qOpt, e) b =
+  (text "let" <+> align (text n </> (maybe equals (equals <+>) qOpt) </> e) </> text "in") <$> b
 
 assignExpr :: Identifier -> Doc -> Doc
-assignExpr n e = text n <+> equals <+> e
+assignExpr n e = hang 2 $ (text n <+> equals) </> e
 
 caseExpr :: Identifier -> Doc -> Doc -> Doc -> Doc
-caseExpr i e s n = text "case" </> hang 2 e </> text "of"
-                               </> indent 2 sCase </> indent 2 nCase
+caseExpr i e s n = (text "case" </> hang 2 e </> text "of")
+                                <$> indent 2 sCase <$> indent 2 nCase
   where sCase = braces $ text "Some" <+> text i <+> text "->" </> s
         nCase = braces $ text "None" <+> text "->" </> n
 
 bindExpr :: Binder -> Doc -> Doc -> Doc
-bindExpr b e e' = text "bind" </> hang 2 e </> text "as"
-                              </> (hang 2 $ binder b)
-                              </> text "in" <$> indent 2 e'
+bindExpr b e e' = (text "bind" </> hang 2 e </> text "as"
+                               </> (hang 2 $ binder b)
+                               </> text "in") <$> indent 2 e'
   where
     binder (BIndirection i) = text "ind" <+> text i
-    binder (BTuple ids)     = tupled $ map text ids
+    binder (BTuple ids)     = stupled $ map text ids
     binder (BRecord idMap)  = commaBrace $ map (\(s,t) -> text s <+> colon <+> text t) idMap
 
 branchExpr :: Doc -> Doc -> Doc -> Doc
@@ -614,7 +713,7 @@ indirectionLiteral :: Doc -> Doc -> Doc
 indirectionLiteral qual l = text "ind" <+> qual <+> l
 
 tupleLiteral :: [(Doc, Doc)] -> Doc
-tupleLiteral qualC = tupled $ map (uncurry (<+>)) qualC
+tupleLiteral qualC = stupled $ map (uncurry (<+>)) qualC
 
 recordLiteral :: [Identifier] -> [(Doc, Doc)] -> Doc
 recordLiteral ids qualC =
@@ -622,12 +721,12 @@ recordLiteral ids qualC =
              $ zip ids $ map (uncurry (<+>)) qualC
 
 emptyLiteral :: [Identifier] -> Doc -> Doc
-emptyLiteral annIds t = text "empty" <+> t <+> text "@" <+> commaBrace (map text annIds)
+emptyLiteral annIds t = text "empty" <+> t <+> annotated (map text annIds)
 
 collectionLiteral :: [Identifier] -> Doc -> [Doc] -> Doc
 collectionLiteral annIds t elems =
   text "collection" <+> text "{|" <+> t <+> text "|" <+> (cat $ punctuate comma elems) <+> text "|}"
-                    <+> text "@" <+> commaBrace (map text annIds)
+                    <+> annotated (map text annIds)
 
 addressLiteral :: Doc -> Doc -> Doc
 addressLiteral h p = h <> colon <> p
@@ -636,7 +735,7 @@ addressLiteral h p = h <> colon <> p
 {- Source comments -}
 comment :: SyntaxAnnotation -> Maybe (Doc, Bool)
 comment (SourceComment post multi _ contents) = Just (string $ prefix ++ contents ++ suffix, post)
-  where prefix = if multi then "/* " else "// "
+  where prefix = if multi then "/* " else "//"
         suffix = if multi then "*/" else "\n"
 
 comment _ = Nothing
@@ -669,18 +768,45 @@ commentT anns = annotatedComments anns extractSyntax
         extractSyntax _ = Nothing
 
 attachComments :: (Maybe Doc, Maybe Doc) -> SyntaxPrinter -> SyntaxPrinter
-attachComments (Nothing, Nothing)    body = body
-attachComments (Just pre, Nothing)   body = (pre <+>)  C.<$> body
-attachComments (Nothing, Just post)  body = (<+> post) C.<$> body
-attachComments (Just pre, Just post) body = (\doc -> pre <+> doc <+> post) C.<$> body
+attachComments prePostOpt body = attachCommentsD prePostOpt C.<$> body
+
+attachCommentsD :: (Maybe Doc, Maybe Doc) -> Doc -> Doc
+attachCommentsD (Nothing, Nothing)    body = body
+attachCommentsD (Just pre, Nothing)   body = pre <> body
+attachCommentsD (Nothing, Just post)  body = body <+> post
+attachCommentsD (Just pre, Just post) body = pre <> body <+> post
+
+attachCommentsL :: (Maybe Doc, Maybe Doc) -> [Either Doc Doc] -> [Either Doc Doc]
+attachCommentsL _ [] = []
+attachCommentsL (Nothing, Nothing)    dl = dl
+attachCommentsL (Just pre, Nothing)   (h:t) = (either (Left . (pre <>)) (Right . (pre <>)) h):t
+attachCommentsL (Nothing, Just post)  dl    = init dl ++ [either (Left . (<+> post)) (Right . (<+> post)) $ last dl]
+attachCommentsL (Just pre, Just post) (h:t) = [either (Left . (pre <>)) (Right . (pre <>)) h]
+                                                ++ init t
+                                                ++ [either (Left . (<+> post)) (Right . (<+> post)) $ last t]
 
 {- Helpers -}
 
 keyword :: String -> Doc
 keyword = text
 
+sencloseSep :: Doc -> Doc -> Doc -> [Doc] -> Doc
+sencloseSep left right sp ds
+    = case ds of
+        []  -> left <> right
+        [d] -> left <> d <> right
+        _   -> align (fillCat (zipWith (<>) (left : repeat sp) ds) <> right)
+
 commaBrace :: [Doc] -> Doc
-commaBrace = encloseSep lbrace rbrace comma
+commaBrace = sencloseSep lbrace rbrace (comma <> text " ")
+
+stupled :: [Doc] -> Doc
+stupled = sencloseSep lparen rparen (comma <> text " ")
+
+annotated :: [Doc] -> Doc
+annotated []   = empty
+annotated [x]  = text "@" <> x
+annotated anns = text "@" <> commaBrace anns
 
 matchAnnotation :: (Eq (Annotation a), HasUID (Annotation a))
                 => String -> (Annotation a -> Bool) -> (Annotation a -> Printer b)
@@ -695,8 +821,8 @@ matchAnnotation desc matchF mapF anns =
   where same l = 1 == length (nub l)
 
 qualifier :: (Eq (Annotation a), HasUID (Annotation a))
-          => String -> (Annotation a -> Bool) -> (Annotation a -> SyntaxPrinter)
-          -> [Annotation a] -> SyntaxPrinter
+          => String -> (Annotation a -> Bool) -> (Annotation a -> Printer b)
+          -> [Annotation a] -> Printer b
 qualifier = matchAnnotation
 
 optionalPrinter :: (a -> Printer b) -> Maybe a -> Printer (Maybe b)

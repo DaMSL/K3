@@ -1,6 +1,0 @@
-declare my_peers : collection { _r1_ : address, _r2_ : string, _r3_ : string} @ {Set} 
-
- = {|_r1_:address,_r2_:string,_r3_:string| 
-    {_r1_:127.0.0.1:40000, _r2_: "switch", _r3_:""},
-    {_r1_:127.0.0.1:50000, _r2_: "node",   _r3_:""}
-  |} @ {Set}

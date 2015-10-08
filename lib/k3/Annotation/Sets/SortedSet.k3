@@ -1,0 +1,163 @@
+annotation SortedSet given type a, b, c, d
+{
+  provides lifted size : () -> int
+    with effects \_ -> R[self]
+
+  @:CArgs 2
+  provides lifted peek : (() -> a) -> (content -> a) -> a
+    with effects \f -> \g -> [R[self]; f content; g content]
+
+
+  ///////////////////////////////////////////////////////
+  // Set modification.
+
+  provides lifted insert : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
+  @:CArgs 2
+  provides lifted update : content -> content -> ()
+    with effects \oldElem -> \newElem -> [R[self]; R[oldElem]; R[newElem]; W[self]]
+
+  provides lifted erase : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
+
+  ///////////////////////////////////////////////////
+  // Set-specific methods.
+
+  provides lifted member : content -> bool
+    with effects \elem -> [R[self]; R[elem]]
+
+  provides lifted is_subset_of : self -> bool
+    with effects \other -> [R[self]; R[other]]
+
+  provides lifted intersect : self -> self
+    with effects \other -> [R[self]; R[other]]
+
+  provides lifted difference : self -> self
+    with effects \other -> [R[self]; R[other]]
+
+
+  //////////////////////////////////////////////////////////
+  // Sort-order methods.
+
+  // Point retrieval
+  @:CArgs 2
+  provides lifted min : (() -> a) -> (content -> a) -> a
+    with effects \f -> \g -> [R[self]; f content; g content]
+
+  @:CArgs 2
+  provides lifted max : (() -> a) -> (content -> a) -> a
+    with effects \f -> \g -> [R[self]; f content; g content]
+
+  @:CArgs 3
+  provides lifted lower_bound : content -> (() -> a) -> (content -> a) -> a
+    with effects \elem -> \f -> \g -> [R[self]; R[elem]; f content; g content]
+
+  @:CArgs 3
+  provides lifted upper_bound : content -> (() -> a) -> (content -> a) -> a
+    with effects \elem -> \f -> \g -> [R[self]; R[elem]; f content; g content]
+
+  // Range retrieval.
+  provides lifted filter_lt : content -> self
+    with effects \elem -> [R[self]; R[elem]]
+
+  provides lifted filter_gt : content -> self
+    with effects \elem -> [R[self]; R[elem]]
+
+  provides lifted filter_geq : content -> self
+    with effects \elem -> [R[self]; R[elem]]
+
+  provides lifted filter_leq : content -> self
+    with effects \elem -> [R[self]; R[elem]]
+
+  @:CArgs 2
+  provides lifted between : content -> content -> self
+    with effects \elem -> [R[self]; R[elem]]
+
+  // Range-based modification.
+
+  // Erases all elements less than, but not including, the given key.
+  provides lifted erase_before : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
+  // Erases all elements greater than the given key.
+  provides lifted erase_after : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
+
+  ///////////////////////////////////////////////////
+  // Bulk transformations.
+
+  @:Transformer
+  provides lifted combine : self -> self
+    with effects \other -> [R[self]; R[other]]
+
+  @:Transformer
+  provides lifted split : () -> (self, self)
+    with effects \_ -> R[self]
+
+  @:Transformer
+  provides lifted iterate : (content -> ()) -> ()
+    with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
+
+  @:Transformer
+  provides lifted map : (content -> a) -> collection {elem : a} @SortedSet
+    with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
+
+  @:Transformer
+  provides lifted filter : (content -> bool) -> self
+    with effects \filterF -> [R[self]; ([R[content]; filterF content])*]
+
+  @:{Transformer, CArgs 2}
+  provides lifted fold : (a -> (content -> a)) -> a -> a
+    with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+  @:{Transformer, CArgs 3}
+  provides lifted group_by : (content -> a) -> (b -> content -> b) -> b
+                              -> collection { key : a, value : b } @SortedSet
+    with effects
+      \gbF -> \gaccF -> \z ->
+        [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
+
+  @:{Transformer, CArgs 4}
+  provides lifted group_by_contiguous : (content -> int) -> (a -> content -> a) -> a -> int
+                                         -> collection { key : int, value : a } @SortedSet
+    with effects
+      \gbF -> \gaccF -> \z -> \s ->
+        [R[self]; R[z]; R[s]; ([R[content]; gbF content; gaccF content])*]
+
+  @:{Transformer, CArgs 3}
+  provides lifted join : collection {elem: a} @SortedSet
+                          -> (content -> {elem: a} -> bool) -> (content -> {elem: a} -> c)
+                          -> collection {elem: c} @SortedSet
+    with effects \other -> \matchF -> \outputF ->
+                   [R[self]; ([R[other]; R[content]; matchF content none; outputF content none])*]
+
+  @:{Transformer, CArgs 4}
+  provides lifted equijoin : collection {elem: a} @SortedSet
+                              -> (content -> b) -> ({elem:a} -> b) -> (content -> {elem: a} -> c)
+                              -> collection {elem: c} @SortedSet
+    with effects \other -> \matchLF -> \matchRF -> \outputF ->
+                   [R[self]; ([R[other]; R[content]; matchLF content; matchRF none; outputF content none])*]
+
+  @:{Transformer, CArgs 3}
+  provides lifted join_kv : collection {key: a, value: b} @SortedSet
+                             -> (content -> {key: a, value: b} -> bool) -> (content -> {key: a, value: b} -> c)
+                             -> collection {elem: c} @SortedSet
+    with effects \other -> \matchF -> \outputF ->
+                   [R[self]; ([R[other]; R[content]; matchF content none; outputF content none])*]
+
+  @:{Transformer, CArgs 4}
+  provides lifted equijoin_kv : collection {key: a, value: b} @SortedSet
+                                 -> (content -> c) -> ({key: a, value: b} -> c) -> (content -> {key: a, value: b} -> d)
+                                 -> collection {elem: d} @SortedSet
+    with effects \other -> \matchLF -> \matchRF -> \outputF ->
+                   [R[self]; ([R[other]; R[content]; matchLF content; matchRF none; outputF content none])*]
+
+  @:Transformer
+  provides lifted ext : (content -> collection {elem : a} @SortedSet)
+                         -> collection {elem : a} @SortedSet
+    with effects \extF -> [R[self]; ([R[content]; extF content])*]
+
+}

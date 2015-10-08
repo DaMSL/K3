@@ -4,6 +4,8 @@ module Language.K3.Driver.CompilerTarget.CPP (compile) where
 
 import Prelude hiding ((*>))
 
+import Control.Monad
+
 import qualified Data.List as L
 import Data.Maybe
 
@@ -33,7 +35,7 @@ type CompileContinuation = (K3 Declaration -> IO ()) -> K3 Declaration -> IO ()
 buildOutputFilePath :: String -> Options -> CompileOptions -> Either String (FilePath, FilePath)
 buildOutputFilePath ext opts copts = case buildDir copts of
     Nothing   -> Left "Error: no build directory specified."
-    Just path -> Right $ outputFilePath path (input opts) ext
+    Just path -> Right $ outputFilePath path (inputProgram $ input opts) ext
 
 cppOutFile :: Options -> CompileOptions -> Either String [FilePath]
 cppOutFile opts copts = either Left (\(_,f) -> Right [f]) $ buildOutputFilePath "cpp" opts copts
@@ -51,17 +53,22 @@ cppCodegenStage opts copts (cont, prog) = genCPP irRes
     genCPP (Left _)      = putStrLn "Error in Imperative Transformation."
 
     genCPPCont p = do
-      (if saveAST opts then outputAST P.pretty "k3ast" p else return ())
-      (if saveRawAST opts then outputAST show "k3ar" p else return ())
-      outputCPP $ fst $ CPP.runCPPGenM (CPP.transitionCPPGenS initSt) (CPP.stringifyProgram p)
+      saveASTOutputs p
+      outputCPP $ fst $ CPP.runCPPGenM ((CPP.transitionCPPGenS initSt) { CPP.flags = cppCGFlags (cppOptions copts) })
+                           (CPP.stringifyProgram p)
+
+    saveASTOutputs p = do
+      when (saveAST    $ input opts) (outputAST P.pretty "k3ast" (astPrintMode copts) p)
+      when (saveRawAST $ input opts) (outputAST show     "k3ar"  (astPrintMode copts) p)
+      when (saveSyntax $ input opts) (outputAST show     "k3s"   PrintSyntax          p)
 
     outputCPP (Right doc) =
       either putStrLn (outputDoc doc) $ buildOutputFilePath "cpp" opts copts
 
     outputCPP (Left (CPP.CPPGenE e)) = putStrLn e
 
-    outputAST toStr ext p =
-      either putStrLn (outputStrFile $ formatAST toStr (astPrintMode copts) p)
+    outputAST toStr ext printMode p =
+      either putStrLn (outputStrFile $ formatAST toStr printMode p)
         $ buildOutputFilePath ext opts copts
 
     -- Print out the program
@@ -99,12 +106,13 @@ cppBinaryStage _ copts sourceFiles =
                   allFiles = runtimeFiles' ++ sourceFiles
                   objects = [bDir </> src -<.> "o" | src <- allFiles]
               need objects
-              cmd cc ["-o"] [out] objects (filterLinkOptions $ words $ cppOptions copts)
+              cmd cc ["-o"] [out] objects (filterLinkOptions $ words $ cppFlags $ cppOptions copts)
 
             bDir ++ "//*.o" *> \out -> do
               let source = fixRuntime $ dropDirectory1 $ out -<.> "cpp"
               let deps   = out -<.> "m"
-              () <- cmd cc ["-std=c++1y"] ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps] (filterCompileOptions $ words $ cppOptions copts)
+              () <- cmd cc ["-std=c++1y"] ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps]
+                      (filterCompileOptions $ words $ cppFlags $ cppOptions copts)
               needMakefileDependencies deps
 
         fixRuntime x   = if isRuntime x then substRuntime x else x

@@ -4,7 +4,6 @@
 module Language.K3.Codegen.CPP.Primitives where
 
 import Data.Char
-import Data.Functor
 import Data.List (sort)
 import Data.Maybe (maybeToList)
 
@@ -68,7 +67,7 @@ genCType t@(tag -> TRecord ids) = do
 genCType (tag -> TDeclaredVar t) = return $ R.Named (R.Name t)
 genCType (tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
     ct <- genCType et
-    addComposite (namedTAnnotations as)
+    addComposite (namedTAnnotations as) et
     case annotationComboIdT as of
         Nothing -> return $ R.Named (R.Specialized [ct] $ R.Name "Collection")
         Just i' -> return $ R.Named (R.Specialized [ct] $ R.Name i')
@@ -95,6 +94,8 @@ genCInferredType t = genCType t
 -- | Get the K3 Type of an expression. Relies on type-manifestation to have attached an EType
 -- annotation to the expression ahead of time.
 getKType :: K3 Expression -> CPPGenM (K3 Type)
-getKType e = case e @~ \case { EType _ -> True; _ -> False } of
-    Just (EType t) -> return t
-    _ -> throwE $ CPPGenE $ "Absent type at " ++ show e
+getKType e = maybe (throwE $ CPPGenE $ "Absent type at " ++ show e) return (getKTypeP e)
+
+getKTypeP :: K3 Expression -> Maybe (K3 Type)
+getKTypeP e = case e @~ \case { EType _ -> True; _ -> False } of { Just (EType t) -> Just t; Nothing -> Nothing }
+

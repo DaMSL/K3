@@ -1,4 +1,5 @@
 include "tpch/benchmark.k3"
+include "Annotation/Set.k3"
 
 /**********************
 * SQL query
@@ -59,8 +60,9 @@ typedef c_nt_by_cc_r   = {key: string, value: {nc:int, tab:real}}
 typedef c_nt_by_cc_map = collection c_nt_by_cc_r @StrMap
 
 declare q22_result : c_nt_by_cc_map
-declare results    : collection { cntrycode: string, numcust: int, totacctbal: real} @Collection
+typedef q22_result = collection { cntrycode: string, numcust: int, totacctbal: real} @Collection
 
+declare results : q22_result
 declare merge_c_nt_by_cc : c_nt_by_cc_r -> c_nt_by_cc_r -> c_nt_by_cc_r
   = \a -> \b -> {key: a.key, value: {nc:a.value.nc + b.value.nc, tab:a.value.tab + b.value.tab}}
 
@@ -74,9 +76,9 @@ trigger customer_set_avg_acctbal : real = \avg_acctbal -> (
 
 trigger customer_subagg_local : () = \_ -> (
   let c_acctbal_agg =
-    (customer.filter (\c -> case c_valid_phone.lookup {key: (slice_string c.c_phone 0 2), value:()}
-                            of {Some x -> c.c_acctbal > 0.0}
-                               {None -> false}
+    (customer.filter (\c -> c_valid_phone.lookup {key: (slice_string c.c_phone 0 2), value:()}
+                              (\_ -> false)
+                              (\x -> c.c_acctbal > 0)
                      ))
              .fold   (\acc -> \c -> {sum:acc.sum+c.c_acctbal, cnt:acc.cnt+1})
                      {sum: 0.0, cnt: 0}
@@ -103,11 +105,11 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
           , rhs_sample_query     = [$ empty {key: int, value: int} @IntMap ]
           , frequency_threshold  = [$ 1000.0 ]
 
-          , lhs_query = [$ ((customer.filter  (\c -> case c_valid_phone.lookup
+          , lhs_query = [$ ((customer.filter  (\c -> c_valid_phone.lookup
                                                             {key: (slice_string c.c_phone 0 2), value:()}
-                                                     of {Some x -> c.c_acctbal > c_avg_acctbal}
-                                                        {None -> false}))
-                                     .groupBy (\c -> c.c_custkey)
+                                                            (\_ -> false)
+                                                            (\x -> c.c_acctbal > c_avg_acctbal)))
+                                     .group_by (\c -> c.c_custkey)
                                               (\_ -> \c -> { cntrycode : (slice_string c.c_phone 0 2)
                                                                           , c_acctbal : c.c_acctbal }
                                                                )
@@ -117,7 +119,7 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
                         ]
           , lhs_query_clear = [$ customer = empty q22_customer_r @Collection ]
 
-          , rhs_query = [$ (orders.groupBy (\o -> o.o_custkey) (\_ -> \_ -> ()) ())
+          , rhs_query = [$ (orders.group_by (\o -> o.o_custkey) (\_ -> \_ -> ()) ())
                                   .fold    (\acc -> \o -> ((acc.insert o); acc))
                                            (empty {key:int, value: ()} @IntMap)
                         ]
@@ -146,7 +148,7 @@ trigger customer_subagg_final : {sum:real, cnt:int} = \partial ->
         , peer_next            = [$ ( print "OR-CS join finished customer probe." );
 
                                     ( (q22_final_aggregate, master) <-
-                                      ( (oc_lhs_ht.groupBy (\r -> r.value.cntrycode)
+                                      ( (oc_lhs_ht.group_by_generic (\r -> r.value.cntrycode)
                                                            (\acc -> \r -> {nc: acc.nc + 1, tab: acc.tab + r.value.c_acctbal})
                                                            {nc: 0, tab: 0.0})
                                                   .fold    ((\acc -> \r -> ((acc.insert r); acc)) @:Accumulate)
@@ -178,33 +180,39 @@ trigger q22_final_peer_barrier : () = \_ -> (
   ) @OnCounter(id=[# q22_aggregate_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 )
 
+
+declare finalize : collection {key: address, value: q22_result} @Map -> () = \x -> (
+  (x.iterate (\t ->
+    t.value.iterate (\v ->
+      (results_sink, me) <- (v.cntrycode,
+			     v.numcust,
+			     v.totacctbal)
+    )
+   ))
+)
+
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes                = [$ peers ],
-  loadExpr             = [$ ( ordersLineCountFiles.iterate   (\e -> ordersRows = ordersRows + (lineCountFile e.path));
-                              customerLineCountFiles.iterate (\e -> customerRows = customerRows + (lineCountFile e.path));
-
-			                        print ("Orders rows: " ++ (itos ordersRows));
-			                        print ("Customer rows: " ++ (itos customerRows));
-                              q22_ordersLoaderPFC   ordersFiles   orders   orders_r   ordersRows;
-                              q22_customerLoaderPFC customerFiles customer customer_r customerRows
-                            ) ],
+  loadExpr             = [$ q22_ordersLoaderPC   ordersFiles   orders   orders_r;
+                            q22_customerLoaderPC customerFiles customer customer_r 
+                         ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],
   onReadyExpr          = [$ (customer_subagg, me) <- ()],
   finishArgT           = [: ()],
   preTestFinishExpr    = [$ (\_ -> ())],
   preFinishExpr        = [$ (q22_result.iterate (\r -> results.insert {cntrycode: r.key, numcust: r.value.nc, totacctbal: r.value.tab} ));
-                            () @GatherResultsAsCSV(
-                                    query_cl = [* [% ci: [# results], csink: [$ results_sink]] ]
+                            (ignore results) @GatherCollection(
+                                    lbl      = [# result]
                                   , nodes    = [$ peers]
-                                  , next     = [$ peers.iterate (\p -> (shutdown, p.addr) <- ())])
+                                  , next     = [$ (\a -> ( finalize a; peers.iterate (\p -> (shutdown, p.addr) <- ())))])
                          ],
   preShutdownExpr      = [$ () ],
   finishAsShutdownExpr = [$ false]
 )
 
-sink results_sink : { cntrycode: string, numcust: int, totacctbal: real} = file "results.csv" csv
-sink query_time_sink : string = stdout csv
+sink results_sink : (string, int, real) = file "results.csv" text psv
+sink query_time_sink : int = file "time.csv" text csv
 
 source rows : () = value ()
 feed rows |> start

@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -8,12 +9,18 @@ module Language.K3.Analysis.Properties where
 import Control.Monad.State
 import Control.Monad.Trans.Either
 
+import Data.Binary ( Binary )
+import Data.Serialize ( Serialize )
+
 import Data.List
 import Data.Maybe
 import Data.Tree
+import Data.Monoid
 
 import Data.Map              ( Map )
 import qualified Data.Map    as Map
+
+import GHC.Generics ( Generic )
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -28,8 +35,18 @@ type NamedEnv a = Map Identifier [a]
 type PList = [(Identifier, Maybe (K3 Literal))]
 type PEnv  = NamedEnv PList
 type PAEnv = NamedEnv PEnv
+
 data PIEnv = PIEnv { penv :: PEnv, paenv :: PAEnv }
+             deriving (Eq, Read, Show, Generic)
+
 type PInfM = EitherT String (State PIEnv)
+
+instance Monoid PIEnv where
+  mempty = PIEnv mempty mempty
+  mappend (PIEnv e a) (PIEnv e' a') = PIEnv (e <> e') (a <> a')
+
+instance Binary    PIEnv
+instance Serialize PIEnv
 
 {- NamedEnv helpers -}
 neenv0 :: NamedEnv a

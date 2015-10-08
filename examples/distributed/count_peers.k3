@@ -8,15 +8,11 @@
 // 'rendezvous' address. The 'register' trigger simply counts the number of peers sending
 // a message in the 'nodeCounter' variable.
 //
-// The '<-' operator is our message passing primitive, where '(trg, addr) <- e' sends
+// The '<-' operator is the  message passing primitive, where '(trg, addr) <- e' sends
 // the result of the expression 'e' to the 'trg' trigger at the peer referenced by 'addr'.
 //
-// Interpreter run instructions for a three node network:
-// k3 interpret -b -p 127.0.0.1:40000:role=\"go\" \
-//                 -p 127.0.0.1:41000:role=\"go\" \
-//                 -p 127.0.0.1:42000:role=\"go\"
-//
-// Above, each '-p' flag specifies a new peer to simulate or virtualize in the interpreter.
+// To build and run this program, see the Getting Started section on the github README file:
+//     https://github.com/DaMSL/K3
 //
 
 declare nodeCounter : mut int = 0

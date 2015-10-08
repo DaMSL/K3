@@ -19,6 +19,8 @@ import qualified Data.Map as Map
 import Data.Maybe
 import Data.Tree
 
+import Debug.Trace
+
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
@@ -39,6 +41,7 @@ import Language.K3.Metaprogram.MetaHK3 hiding ( localLog, localLogAction )
 import Language.K3.Parser.ProgramBuilder ( defaultRoleName )
 import Language.K3.Parser.DataTypes
 
+import Language.K3.Analysis.Core
 import Language.K3.Analysis.HMTypes.Inference hiding ( localLog, localLogAction )
 
 import Language.K3.Utils.Logger
@@ -111,6 +114,7 @@ defaultMetaRepair p = return $ snd $ repairProgram "metaprogram" Nothing p
 nullMetaAnalysis :: K3 Declaration -> GeneratorM (K3 Declaration)
 nullMetaAnalysis p = return p
 
+-- | Adds parametric annotations as generator functions in the generator state.
 runMpGenerators :: K3 Declaration -> GeneratorM (K3 Declaration)
 runMpGenerators mp = mapTree evalMPDecl mp
   where
@@ -146,31 +150,41 @@ applyDAnnGens mp = mapProgram applyDAnnDecl applyDAnnMemDecl applyDAnnExprTree (
 
     applyDAnnDecl d = mapM dApplyAnn (annotations d) >>= rebuildNodeWithAnns d
 
-    applyDAnnMemDecl (Lifted      p n t eOpt anns) = mapM dApplyAnn anns >>= return . Lifted    p n t eOpt
-    applyDAnnMemDecl (Attribute   p n t eOpt anns) = mapM dApplyAnn anns >>= return . Attribute p n t eOpt
-    applyDAnnMemDecl (MAnnotation p n anns)        = mapM dApplyAnn anns >>= return . MAnnotation p n
+    applyDAnnMemDecl (Lifted p n t eOpt anns) = do
+      nanns <- mapM dApplyAnn anns
+      nt <- applyDAnnTypeTree t
+      neOpt <- maybe (return Nothing) (\e -> applyDAnnExprTree e >>= return . Just) eOpt
+      return $ Lifted p n nt neOpt nanns
+
+    applyDAnnMemDecl (Attribute p n t eOpt anns) = do
+      nanns <- mapM dApplyAnn anns
+      nt <- applyDAnnTypeTree t
+      neOpt <- maybe (return Nothing) (\e -> applyDAnnExprTree e >>= return . Just) eOpt
+      return $ Attribute p n nt neOpt nanns
+
+    applyDAnnMemDecl (MAnnotation p n anns) = mapM dApplyAnn anns >>= return . MAnnotation p n
 
     applyDAnnExpr ch n@(tag -> EConstant (CEmpty t)) = do
       nt    <- applyDAnnTypeTree t
-      nanns <- mapM eApplyAnn $ annotations n
+      nanns <- mapM (eApplyAnn t) $ annotations n
       rebuildNode (EC.constant $ CEmpty nt) (Just nanns) ch
 
     applyDAnnExpr ch n = rebuildNode n Nothing ch
 
     applyDAnnType ch n@(tag -> TCollection) = do
-      nanns <- mapM tApplyAnn $ annotations n
+      nanns <- mapM (tApplyAnn $ head $ children n) $ annotations n
       rebuildNode (TC.collection $ head $ children n) (Just nanns) ch
 
     applyDAnnType ch n = rebuildNode n Nothing ch
 
     applyDAnnLiteral ch n@(tag -> LEmpty t) = do
       nt    <- applyDAnnTypeTree t
-      nanns <- mapM lApplyAnn $ annotations n
+      nanns <- mapM (lApplyAnn t) $ annotations n
       rebuildNode (LC.empty nt) (Just nanns) ch
 
     applyDAnnLiteral ch n@(tag -> LCollection t) = do
       nt    <- applyDAnnTypeTree t
-      nanns <- mapM lApplyAnn $ annotations n
+      nanns <- mapM (lApplyAnn t) $ annotations n
       rebuildNode (LC.collection nt $ children n) (Just nanns) ch
 
     applyDAnnLiteral ch n = rebuildNode n Nothing ch
@@ -179,44 +193,54 @@ applyDAnnGens mp = mapProgram applyDAnnDecl applyDAnnMemDecl applyDAnnExprTree (
     dApplyAnn (DProperty (Right (n, Just l))) = applyDAnnLitTree l >>= return . DProperty . Right . (n,) . Just
     dApplyAnn x = return x
 
-    eApplyAnn (EApplyGen False n senv) = applyDAnnotation EAnnotation n senv
-    eApplyAnn (EProperty (Left  (n, Just l))) = applyDAnnLitTree l >>= return . EProperty . Left  . (n,) . Just
-    eApplyAnn (EProperty (Right (n, Just l))) = applyDAnnLitTree l >>= return . EProperty . Right . (n,) . Just
-    eApplyAnn x = return x
+    eApplyAnn t (EApplyGen False n senv) = applyDAnnotation EAnnotation n senv t
+    eApplyAnn _ (EProperty (Left  (n, Just l))) = applyDAnnLitTree l >>= return . EProperty . Left  . (n,) . Just
+    eApplyAnn _ (EProperty (Right (n, Just l))) = applyDAnnLitTree l >>= return . EProperty . Right . (n,) . Just
+    eApplyAnn _ x = return x
 
-    tApplyAnn (TApplyGen n senv) = applyDAnnotation TAnnotation n senv
-    tApplyAnn x = return x
+    tApplyAnn t (TApplyGen n senv) = applyDAnnotation TAnnotation n senv t
+    tApplyAnn _ x = return x
 
-    lApplyAnn (LApplyGen n senv) = applyDAnnotation LAnnotation n senv
-    lApplyAnn x = return x
+    lApplyAnn t (LApplyGen n senv) = applyDAnnotation LAnnotation n senv t
+    lApplyAnn _ x = return x
 
     rebuildNode (Node (t :@: anns) _) Nothing      ch = return $ Node (t :@: anns) ch
     rebuildNode (Node (t :@: anns) _) (Just nanns) ch = return $ Node (t :@: (nub $ anns ++ nanns)) ch
 
     rebuildNodeWithAnns (Node (t :@: _) ch) anns = return $ Node (t :@: anns) ch
 
-applyDAnnotation :: AnnotationCtor a -> Identifier -> SpliceEnv -> GeneratorM (Annotation a)
-applyDAnnotation aCtor annId sEnv = do
-    (gEnv, sCtxt) <- get >>= return . (getGeneratorEnv &&& getSpliceContext)
-    nsEnv         <- evalBindings sCtxt sEnv
-    let postSCtxt = pushSCtxt nsEnv sCtxt
-    maybe (spliceLookupErr annId)
-          (expectSpliceAnnotation postSCtxt . ($ nsEnv))
-          $ lookupDSPGenE annId gEnv
+    applyDAnnotation :: AnnotationCtor a -> Identifier -> SpliceEnv -> K3 Type -> GeneratorM (Annotation a)
+    applyDAnnotation aCtor annId sEnv t = do
+        (gEnv, sCtxt) <- get >>= return . (getGeneratorEnv &&& getSpliceContext)
+        nsEnv         <- evalBindings sCtxt sEnv
+        let postSCtxt = pushSCtxt nsEnv sCtxt
+        maybe (spliceLookupErr annId)
+              (expectSpliceAnnotation postSCtxt . ($ nsEnv))
+              $ lookupDSPGenE annId gEnv
 
-  where
-    expectSpliceAnnotation sctxt (SRDecl p) = do
-      decl <- p
-      case tag decl of
-        DDataAnnotation n _ _ -> do
-          ndecl <- bindDAnnVars sctxt decl
-          modifyGDeclsF_ (Right . addDGenDecl annId ndecl) >> return (aCtor n)
+      where
+        expectSpliceAnnotation sctxt (SRGenDecl p) = do
+          declGen <- p
+          case declGen of
+            SGContentDependent contentF -> contentF t >>= processSpliceDGen sctxt
+            _ -> processSpliceDGen sctxt declGen
 
-        _ -> throwG $ boxToString $ ["Invalid data annotation splice"] %+ prettyLines decl
+        expectSpliceAnnotation _ _ = throwG "Invalid data annotation splice"
 
-    expectSpliceAnnotation _ _ = throwG "Invalid data annotation splice"
+        processSpliceDGen sctxt declGen = case declGen of
+          SGNamed n -> return $ aCtor n
+          SGDecl decl ->
+            case tag decl of
+              DDataAnnotation n tvs mems -> do
+                nmems <- generateInSpliceCtxt sctxt $ mapM applyDAnnMemDecl mems
+                ndecl <- bindDAnnVars sctxt $ (DC.dataAnnotation n tvs nmems) @<- annotations decl
+                modifyGDeclsF_ (Right . addDGenDecl annId ndecl) >> return (aCtor n)
 
-    spliceLookupErr n = throwG $ unwords ["Could not find data macro", n]
+              _ -> throwG $ boxToString $ ["Invalid data annotation splice"] %+ prettyLines decl
+
+          _ -> throwG $ boxToString $ ["Invalid splice data generator"]
+
+        spliceLookupErr n = throwG $ unwords ["Could not find data macro", n]
 
 
 applyCAnnGens :: K3 Declaration -> GeneratorM (K3 Declaration)
@@ -313,10 +337,19 @@ globalSplicer n t eOpt = Splicer $ \spliceEnv -> SRDecl $ do
   return $ DC.global n nt neOpt
 
 annotationSplicer :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> [Either MPAnnMemDecl AnnMemDecl] -> K3Generator
-annotationSplicer n spliceParams typeParams mems = Splicer $ \spliceEnv -> SRDecl $ do
+annotationSplicer n spliceParams typeParams mems = Splicer $ \spliceEnv -> SRGenDecl $ do
   let vspliceEnv = validateSplice spliceParams spliceEnv
   nmems <- generateInSpliceEnv vspliceEnv $ mapM (either spliceMPAnnMem (\m -> spliceAnnMem m >>= return . (:[]))) mems
-  withGUID $ \i -> DC.dataAnnotation (concat [n, "_", show i]) typeParams $ concat nmems
+  if isContentDependent n
+    then return $ SGContentDependent $ \t -> withGUID n vspliceEnv (Just t) $ onGenerated nmems
+    else withGUID n vspliceEnv Nothing $ onGenerated nmems
+
+  where
+  onGenerated _     (Left i)  = SGNamed $ concat [n, "_", show i]
+  onGenerated nmems (Right i) = SGDecl $ DC.dataAnnotation (concat [n, "_", show i]) typeParams $ concat nmems
+
+  isContentDependent n' = any (`isInfixOf` n) ["VMapIndex", "MapE", "SortedMapE", "MapCE"]
+
 
 exprSplicer :: K3 Expression -> K3Generator
 exprSplicer e = Splicer $ \spliceEnv -> SRExpr $ generateInSpliceEnv spliceEnv $ spliceExpression e
@@ -348,11 +381,17 @@ spliceDeclaration = mapProgram doSplice spliceAnnMem spliceExpression (Just spli
 
     newAnns d v = mapM spliceDAnnotation (annotations d) >>= return . (v,)
 
+
 spliceMPAnnMem :: MPAnnMemDecl -> GeneratorM [AnnMemDecl]
 spliceMPAnnMem (MPAnnMemDecl i c mems) = spliceWithValue c
   where
     spliceWithValue = \case
-      SVar  v   -> generatorWithSCtxt $ \sctxt -> maybe (lookupErr v) spliceWithValue $ lookupSCtxt v sctxt
+      SVar v -> generatorWithSCtxt $ \sctxt -> do
+                  sv <- expectEmbeddingSplicer v
+                  case sv of
+                    SLabel v' -> maybe (lookupErr v') spliceWithValue $ lookupSCtxt v' sctxt
+                    _ -> spliceWithValue sv
+
       SList svs -> mapM (\sv -> generateInExtendedSpliceEnv i sv $ mapM spliceAnnMem mems) svs >>= return . concat
       v -> throwG $ boxToString $ ["Invalid splice value in member generator "] %+ prettyLines v
 
@@ -428,6 +467,12 @@ expectExprSplicer i = generatorWithSCtxt $ \sctxt -> liftParser i exprEmbedding 
 expectLiteralSplicer :: String -> LiteralGenerator
 expectLiteralSplicer i = generatorWithSCtxt $ \sctxt -> liftParser i literalEmbedding >>= evalLiteralSplice sctxt
 
+expectEmbeddingSplicer :: Identifier -> GeneratorM SpliceValue
+expectEmbeddingSplicer i = generatorWithSCtxt $ \sctxt -> do
+    e <- liftParser i idFromParts
+    either (evalSumEmbedding i sctxt) (return . SLabel) e
+
+
 evalIdPartsSplice :: SpliceContext -> Either [MPEmbedding] Identifier -> GeneratorM Identifier
 evalIdPartsSplice sctxt (Left ml) = evalSumEmbedding "identifier" sctxt ml >>= \case
   SLabel i -> return i
@@ -446,8 +491,9 @@ evalTypeSplice _ (Right t) = return t
 evalExprSplice :: SpliceContext -> Either [MPEmbedding] (K3 Expression) -> ExprGenerator
 evalExprSplice sctxt (Left ml) = evalSumEmbedding "expr" sctxt ml >>= \case
     SExpr e  -> return e
+    SLiteral l -> either (const $ throwG "Invalid literal splice") return $ literalExpression l
     SLabel i -> return $ EC.variable i
-    _ -> spliceFail $ "Invalid splice expression value " ++ show ml
+    sv -> spliceFail $ boxToString $ ["Invalid splice expression value " ++ show ml] %$ prettyLines sv
 
 evalExprSplice _ (Right e) = return e
 
@@ -461,15 +507,15 @@ evalLiteralSplice _ (Right l) = return l
 evalSumEmbedding :: String -> SpliceContext -> [MPEmbedding] -> GeneratorM SpliceValue
 evalSumEmbedding tg sctxt l = maybe sumError return =<< foldM concatSpliceVal Nothing l
   where
-        sumError :: GeneratorM a
-        sumError = spliceFail $ "Inconsistent " ++ tg ++ " splice parts " ++ show l ++ " " ++ show sctxt
+    sumError :: GeneratorM a
+    sumError = spliceFail $ "Inconsistent " ++ tg ++ " splice parts " ++ show l ++ " " ++ show sctxt
 
-        concatSpliceVal Nothing se           = evalEmbedding sctxt se >>= return . Just
-        concatSpliceVal (Just (SLabel i)) se = evalEmbedding sctxt se >>= doConcat (SLabel i)
-        concatSpliceVal (Just _) _           = sumError
+    concatSpliceVal Nothing se           = evalEmbedding sctxt se >>= return . Just
+    concatSpliceVal (Just (SLabel i)) se = evalEmbedding sctxt se >>= doConcat (SLabel i)
+    concatSpliceVal (Just _) _           = sumError
 
-        doConcat (SLabel i) (SLabel j) = return . Just . SLabel $ i ++ j
-        doConcat _ _ = sumError
+    doConcat (SLabel i) (SLabel j) = return . Just . SLabel $ i ++ j
+    doConcat _ _ = sumError
 
 evalEmbedding :: SpliceContext -> MPEmbedding -> GeneratorM SpliceValue
 evalEmbedding _ (MPENull i) = return $ SLabel i

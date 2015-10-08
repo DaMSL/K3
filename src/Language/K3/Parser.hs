@@ -27,6 +27,7 @@ module Language.K3.Parser {-(
   parseDeclaration,
   parseSimpleK3,
   parseK3,
+  stitchK3,
   ensureUIDs
 )-} where
 
@@ -34,10 +35,7 @@ import Control.Applicative
 import Control.Arrow
 import Control.Monad
 
-import Data.Function
-import Data.List
 import Data.Maybe
-import Data.Traversable hiding ( mapM )
 import Data.Tree
 
 import Debug.Trace
@@ -92,13 +90,24 @@ parseDeclaration s = either (const Nothing) mkRole $ runK3Parser Nothing (head <
 parseSimpleK3 :: String -> Maybe (K3 Declaration)
 parseSimpleK3 s = either (const Nothing) Just $ runK3Parser Nothing (program True) s
 
-parseK3 :: Bool -> [FilePath] -> String -> IO (Either String (K3 Declaration))
-parseK3 noFeed includePaths s = do
+stitchK3 :: [FilePath] -> String -> IO [String]
+stitchK3 includePaths s = do
   searchPaths   <- if null includePaths then getSearchPath else return includePaths
   subFiles      <- processIncludes searchPaths (lines s) []
   subFileCtnts  <- trace (unwords ["subfiles:", show subFiles]) $ mapM readFile subFiles
+  return $ subFileCtnts ++ [s]
+
+parseK3 :: Bool -> [FilePath] -> String -> IO (Either String (K3 Declaration))
+parseK3 noFeed includePaths s = do
+  searchPaths   <- if null includePaths then getSearchPath else return includePaths
+  subFiles      <- processIncludes searchPaths (defaultIncludes ++ lines s) []
+  subFileCtnts  <- trace (unwords ["subfiles:", show subFiles]) $ mapM readFile subFiles
   let fileContents = map (False,) subFileCtnts ++ [(True,s)]
-  let parseE       = foldl chainValidParse (return (DC.role defaultRoleName [], Nothing)) fileContents
+  parseK3WithIncludes noFeed fileContents $ DC.role defaultRoleName []
+
+parseK3WithIncludes :: Bool -> [(Bool, String)] -> K3 Declaration -> IO (Either String (K3 Declaration))
+parseK3WithIncludes noFeed fileContents initProg = do
+  let parseE = foldl chainValidParse (return (initProg, Nothing)) fileContents
   case parseE of
     Left msg -> return $ Left msg
     Right (prog, _) -> return $ Right prog
@@ -107,11 +116,8 @@ parseK3 noFeed includePaths s = do
 
     parseAndCompose src asDriver (prog, parseEnvOpt) = do
       (prog', nEnv) <- parseAtLevel asDriver parseEnvOpt src
-      let (ptnc, ptnc') = ((,) `on` (tag &&& children)) prog prog'
-      case (ptnc, ptnc') of
-        ((DRole n, ch), (DRole n2, ch2))
-          | n == defaultRoleName && n == n2 -> return (DC.role n $ ch++ch2, Just $ nEnv)
-        _                                   -> programError
+      nprog <- concatProgram prog prog'
+      return (nprog, Just $ nEnv)
 
     parseAtLevel asDriver parseEnvOpt src =
       stringifyError $ flip (runK3Parser parseEnvOpt) src $ do
@@ -119,7 +125,14 @@ parseK3 noFeed includePaths s = do
         env  <- P.getState
         return (decl, env)
 
-    programError = Left "Invalid program, expected top-level role."
+stitchK3Includes :: Bool -> [FilePath] -> [String] -> K3 Declaration -> IO (Either String (K3 Declaration))
+stitchK3Includes noFeed includePaths includes prog = do
+  searchPaths   <- if null includePaths then getSearchPath else return includePaths
+  subFiles      <- processIncludes searchPaths (defaultIncludes ++ includes) []
+  subFileCtnts  <- trace (unwords ["subfiles:", show subFiles]) $ mapM readFile subFiles
+  let fileContents = map (False,) subFileCtnts
+  iprogE <- parseK3WithIncludes noFeed fileContents $ DC.role defaultRoleName []
+  return (iprogE >>= \p -> concatProgram p $ declareBuiltins prog)
 
 
 {- K3 grammar parsers -}
@@ -127,7 +140,7 @@ parseK3 noFeed includePaths s = do
 -- TODO: inline testing
 program :: Bool -> DeclParser
 program noDriver = DSpan <-> (rule >>= selfContainedProgram)
-  where rule = (DC.role defaultRoleName) . concat <$> (spaces *> endBy1 (roleBody noDriver "") eof)
+  where rule = (DC.role defaultRoleName) . concat <$> (spaces *> endBy1 (roleBody noDriver) eof)
 
         selfContainedProgram d =
           if noDriver then return d
@@ -138,17 +151,17 @@ program noDriver = DSpan <-> (rule >>= selfContainedProgram)
               withBuilderDecls $ \decls -> Node (tag d :@: annotations d) (children d ++ decls)
           | otherwise = return d
 
-        mkEntryPoints d = withEnv $ (uncurry $ processInitsAndRoles d) . fst . safePopFrame
+        mkEntryPoints d = withEnv $ processInitsAndRoles d . fst . safePopFrame
         mkBuiltins = ensureUIDs . declareBuiltins
 
 
-roleBody :: Bool -> Identifier -> K3Parser [K3 Declaration]
-roleBody noDriver n =
-    pushBindings >> rule >>= popBindings
-      >>= \df -> if noDriver then return $ fst df else postProcessRole n df
+roleBody :: Bool -> K3Parser [K3 Declaration]
+roleBody noDriver = do
+    pushFrame
+    decls <- rule
+    frame <- popFrame
+    if noDriver then return decls else postProcessRole decls frame
   where rule = some declaration >>= return . concat
-        pushBindings = modifyEnv_ addFrame
-        popBindings dl = modifyEnv (\env -> (removeFrame env, (dl, currentFrame env)))
 
 
 {- Declarations -}
@@ -157,12 +170,12 @@ declaration = (//) attachComment <$> comment False <*>
               choice [ignores >> return [], k3Decls, edgeDecls, driverDecls >> return []]
 
   where k3Decls     = choice $ map normalizeDeclAsList
-                        [Right dGlobal, Right dTrigger, Right dRole,
+                        [Right dGlobal, Right dTrigger,
                          Right dDataAnnotation, Right dControlAnnotation,
                          Left dTypeAlias]
 
         edgeDecls   = mapM ((DUID #) . return) =<< choice [dSource, dSink]
-        driverDecls = choice [dSelector, dFeed]
+        driverDecls = dFeed
         ignores     = pInclude >> return ()
 
         props    p = DUID # withProperties "" True dProperties p
@@ -198,14 +211,12 @@ dEndpoint kind name isSource =
   where rule x      = ruleError =<< (x <*> (colon *> typeExpr) <*> (symbol "=" *> (endpoint isSource)))
         ruleError x = either unexpected pure x
 
-        (typeCstr, stateModifier) =
-          (if isSource then TC.source else TC.sink, trackEndpoint)
-
         mkEndpoint n t endpointCstr = either Left (Right . mkDecls n t) $ endpointCstr n t
+        mkEndpointT t = qualifyT $ if isSource then TC.source t else TC.sink t
 
-        mkDecls n t (spec, eOpt, subDecls) = do
-          epDecl <- stateModifier spec $ DC.endpoint n (qualifyT $ typeCstr t) eOpt []
-          return $ epDecl:subDecls
+        mkDecls n t (spec, eOpt, subdecls) = do
+          epDecl <- trackEndpoint spec $ DC.endpoint n (mkEndpointT t) eOpt []
+          return $ epDecl:subdecls
 
         qualifyT t = if null $ filter isTQualified $ annotations t then t @+ TImmutable else t
 
@@ -224,13 +235,6 @@ dFeed = track $ mkFeed <$> (feedSym *> identifier) <*> bidirectional <*> identif
         bidirectional       = choice [symbol "|>" >> return True, symbol "<|" >> return False]
         mkFeed id1 lSrc id2 = if lSrc then (id1, id2) else (id2, id1)
         track p             = (trackBindings =<<) $ declError "feed" $ p
-
-dRole :: DeclParser
-dRole = chainedNamedBraceDecl n n (roleBody False) DC.role
-  where n = "role"
-
-dSelector :: K3Parser ()
-dSelector = namedIdentifier "selector" "default" (id <$>) >>= trackDefault
 
 -- | Data annotation parsing.
 --   This covers metaprogramming for data annotations when an annotation defines splice parameters.
@@ -830,7 +834,9 @@ tProperties = nproperties $ TProperty . Left
 
 {- Metaprogramming -}
 stTerm :: K3Parser SpliceType
-stTerm = choice $ map try [stLabel, stType, stExpr, stDecl, stLiteral, stLabelType, stRecord, stList]
+stTerm = choice $ map try [ stLabel, stType, stExpr, stDecl, stLiteral
+                          , stLabelType, stLabelExpr, stLabelLit, stLTL
+                          , stRecord, stList ]
   where
     stLabel     = STLabel     <$ keyword "label"
     stType      = STType      <$ keyword "type"
@@ -838,10 +844,16 @@ stTerm = choice $ map try [stLabel, stType, stExpr, stDecl, stLiteral, stLabelTy
     stDecl      = STDecl      <$ keyword "decl"
     stLiteral   = STLiteral   <$ keyword "literal"
     stLabelType = mkLabelType <$ keyword "labeltype"
+    stLabelExpr = mkLabelExpr <$ keyword "labelexpr"
+    stLabelLit  = mkLabelLit  <$ keyword "labellit"
+    stLTL       = mkLTL       <$ keyword "labeltylit"
     stList      = spliceListT   <$> brackets stTerm
     stRecord    = spliceRecordT <$> braces (commaSep1 stField)
     stField     = (,) <$> identifier <* colon <*> stTerm
     mkLabelType = spliceRecordT [(spliceVIdSym, STLabel), (spliceVTSym, STType)]
+    mkLabelExpr = spliceRecordT [(spliceVIdSym, STLabel), (spliceVESym, STExpr)]
+    mkLabelLit  = spliceRecordT [(spliceVIdSym, STLabel), (spliceVLSym, STLiteral)]
+    mkLTL       = spliceRecordT [(spliceVIdSym, STLabel), (spliceVTSym, STType), (spliceVLSym, STLiteral)]
 
 stVar :: K3Parser TypedSpliceVar
 stVar = try (flip (,) <$> identifier <* colon <*> stTerm)
@@ -851,24 +863,84 @@ spliceParameterDecls = brackets (commaSep stVar)
 
 -- TODO: strip literal uid/span
 svTerm :: K3Parser SpliceValue
-svTerm = choice $ map try [sVar, sLabel, sType, sExpr, sDecl, sLiteral, sLabelType, sRecord, sList]
+svTerm = choice $ map try [ sVar
+                          , svTypeDict, svExprDict, svLiteralDict, svTylitDict
+                          , svNamedTypeDict, svNamedExprDict, svNamedLiteralDict, svNamedTermDict
+                          , sLabel, sType, sExpr, sDecl, sLiteral, sLabelType, sRecord, sList, sLitRange ]
   where
     sVar        = SVar                  <$> identifier
-    sLabel      = SLabel                <$> wrap "[#"  "]" identifier
-    sType       = SType . stripTUIDSpan <$> wrap "[:"  "]" typeExpr
-    sExpr       = SExpr . stripEUIDSpan <$> wrap "[$"  "]" expr
-    sLiteral    = SLiteral              <$> wrap "[$#" "]" literal
-    sDecl       = mkDecl                =<< wrap "[$^" "]" declaration
-    sLabelType  = mkLabelType           <$> wrap "[&" "]" ((,) <$> identifier <* colon <*> typeExpr)
-    sRecord     = spliceRecord          <$> wrap "[%" "]" (commaSep1 ((,) <$> identifier <* colon <*> svTerm))
-    sList       = spliceList            <$> wrap "[*" "]" (commaSep1 svTerm)
+    sLabel      = SLabel                <$> wrap "[#"  "]"  identifier
+    sType       = SType . stripTUIDSpan <$> wrap "[:"  "]"  typeExpr
+    sExpr       = SExpr . stripEUIDSpan <$> wrap "[$"  "]"  expr
+    sLiteral    = SLiteral              <$> wrap "[$#" "]"  literal
+    sDecl       = mkDecl                =<< wrap "[$^" "]"  declaration
+    sLabelType  = mkLabelType           <$> wrap "[&"  "]"  ((,) <$> identifier <* colon <*> typeExpr)
+    sRecord     = spliceRecord          <$> wrap "[%"  "]"  (commaSep1 ((,) <$> identifier <* colon <*> svTerm))
+    sList       = spliceList            <$> wrap "[*"  "]"  (commaSep1 svTerm)
+    sLitRange   = mkLitRange            =<< wrap "[~"  "]"  ((,) <$> literal <* symbol ".." <*> literal)
 
     mkLabelType (n,st) = spliceRecord [(spliceVIdSym, SLabel n), (spliceVTSym, SType $ stripTUIDSpan st)]
 
     mkDecl [x] = return $ SDecl $ stripDUIDSpan x
     mkDecl _   = P.parserFail "Invalid splice declaration"
 
+    mkLitRange ((tag -> LInt i), (tag -> LInt j)) | j > i = return $ spliceList [SLiteral (LC.int x) | x <- [i..j]]
+    mkLitRange _ = P.parserFail "Invalid splice range"
+
     wrap l r p = between (symbol l) (symbol r) p
+
+svDict :: String -> Identifier -> K3Parser SpliceValue -> K3Parser SpliceValue
+svDict bracketSuffix valRecId valParser =
+  mkDict <$> wrap ("[" ++ bracketSuffix) "]"
+    (commaSep1 ((,) <$> identifier <* symbol "=>" <*> valParser))
+
+  where mkDict nl = SList $ map recCtor nl
+        recCtor (n, v) = spliceRecord [(spliceVIdSym, SLabel n), (valRecId, v)]
+        wrap l r p = between (symbol l) (symbol r) p
+
+svDictP :: String -> K3Parser (Identifier, [(Identifier, SpliceValue)]) -> K3Parser SpliceValue
+svDictP bracketSuffix idvalParser =
+  mkDict <$> wrap ("[" ++ bracketSuffix) "]" (commaSep1 idvalParser)
+
+  where mkDict nvl = SList $ map recCtor nvl
+        recCtor (n, vl) = spliceRecord $ [(spliceVIdSym, SLabel n)] ++ vl
+        wrap l r p = between (symbol l) (symbol r) p
+
+svNamedDict :: String -> K3Parser SpliceValue -> K3Parser SpliceValue
+svNamedDict nameSuffix valParser =
+  mkDict <$> wrap "[" "]"
+         ((,) <$> (identifier <* symbol nameSuffix)
+              <*> (commaSep1 ((,) <$> identifier <* symbol "=>" <*> valParser)))
+
+  where mkDict (recId, nl) = SList $ map (recCtor recId) nl
+        recCtor i (n, v) = spliceRecord [(spliceVIdSym, SLabel n), (i, v)]
+        wrap l r p = between (symbol l) (symbol r) p
+
+svTypeDict :: K3Parser SpliceValue
+svTypeDict = svDict ":>" spliceVTSym (SType . stripTUIDSpan <$> typeExpr)
+
+svExprDict :: K3Parser SpliceValue
+svExprDict = svDict "$>" spliceVESym (SExpr . stripEUIDSpan <$> expr)
+
+svLiteralDict :: K3Parser SpliceValue
+svLiteralDict = svDict "$#>" spliceVLSym (SLiteral <$> literal)
+
+svTylitDict :: K3Parser SpliceValue
+svTylitDict = svDictP ":#>" ((,) <$> identifier <* symbol "=>" <*> tylitP)
+  where tylitP = mkTyLit <$> (SType . stripTUIDSpan <$> typeExpr) <* colon <*> (SLiteral <$> literal)
+        mkTyLit a b = [(spliceVTSym, a), (spliceVLSym, b)]
+
+svNamedTypeDict :: K3Parser SpliceValue
+svNamedTypeDict = svNamedDict ":>" (SType . stripTUIDSpan <$> typeExpr)
+
+svNamedExprDict :: K3Parser SpliceValue
+svNamedExprDict = svNamedDict "$>" (SExpr . stripEUIDSpan <$> expr)
+
+svNamedLiteralDict :: K3Parser SpliceValue
+svNamedLiteralDict = svNamedDict "$#>" (SLiteral <$> literal)
+
+svNamedTermDict :: K3Parser SpliceValue
+svNamedTermDict = svNamedDict ">" svTerm
 
 spliceParameter :: K3Parser (Maybe (Identifier, SpliceValue))
 spliceParameter = try ((\a b -> Just (a,b)) <$> identifier <* symbol "=" <*> parseInMode Splice svTerm)
@@ -900,7 +972,7 @@ effectSignature asAttrMem = mkSigAnn =<< (keyword "with" *> keyword "effects" *>
     mkSigAnn (f, rOpt) = return $
       [DEffect $ Left f] ++ maybe [DProvenance $ Left $ provOfEffect [] f] (\p -> [DProvenance $ Left p]) rOpt
 
-    provOfEffect args (tnc -> (FS.FLambda i, [_, _, sf])) = PC.plambda i $ provOfEffect (args++[i]) sf
+    provOfEffect args (tnc -> (FS.FLambda i, [_, _, sf])) = PC.plambda i [] $ provOfEffect (args++[i]) sf
     provOfEffect args _ = PC.pderived $ map PC.pfvar args
 
 effTerm :: Bool -> K3Parser (K3 FS.Effect)
@@ -953,7 +1025,7 @@ provTerm =  pApply pTerm <?> "provenance term"
 
     pInd = mkInd <$> (symbol "!" *> provTerm)
     pDerived = PC.pderived <$> (symbol "~" *> choice [provTerm >>= return . (:[]), parens (commaSep1 provTerm)])
-    pLambda  = PC.plambda <$> choice [iArrow "fun", iArrowS "\\"] <*> provTerm
+    pLambda  = (\a b -> PC.plambda a [] b) <$> choice [iArrow "fun", iArrowS "\\"] <*> provTerm
 
     pPrj = flip mkPrj <$> (dot        *> identifier)
     pRec = flip mkRec <$> (colon      *> identifier)
@@ -1034,8 +1106,13 @@ equateQExpr = symbol "=" *> qualifiedExpr
 {- Endpoints -}
 
 endpoint :: Bool -> K3Parser EndpointBuilder
-endpoint isSource = if isSource then choice $ [value]++common else choice common
-  where common = [builtin isSource, file isSource, network isSource]
+endpoint isSource = if isSource
+                      then choice $ [ value
+                                    , try $ filemux
+                                    , try $ file True "fileseq" FileSeqEP eVariable
+                                    ] ++ common
+                      else choice common
+  where common = [builtin isSource, file isSource "file" FileEP eTerminal, network isSource]
 
 value :: K3Parser EndpointBuilder
 value = mkValueStream <$> (symbol "value" *> expr)
@@ -1047,27 +1124,45 @@ builtin isSource = mkBuiltin <$> builtinChannels <*> format
           builtinSpec idE formatE >>= \s -> return $ endpointMethods isSource s idE formatE n t
         builtinSpec idE formatE = BuiltinEP <$> S.symbolS idE <*> S.symbolS formatE
 
-file :: Bool -> K3Parser EndpointBuilder
-file isSource = mkFile <$> (symbol "file" *> eCString) <*> format
-  where mkFile argE formatE n t =
-          fileSpec argE formatE >>= \s -> return $ endpointMethods isSource s argE formatE n t
-        fileSpec argE formatE = FileEP <$> S.exprS argE <*> S.symbolS formatE
+file :: Bool -> String -> (String -> Bool -> String -> EndpointSpec) -> ExpressionParser
+     -> K3Parser EndpointBuilder
+file isSource sym ctor prsr = mkFileSrc <$> (symbol sym *> prsr) <*> textOrBinary <*> format
+  where mkFileSrc argE asTxt formatE n t = do
+          spec argE asTxt formatE >>= \s -> return $ endpointMethods isSource s argE formatE n t
+        spec argE asTxt formatE = (\a f -> ctor a asTxt f) <$> S.exprS argE <*> S.symbolS formatE
+        textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
+
+filemux :: K3Parser EndpointBuilder
+filemux = mkFMuxSrc <$> syms ["filemxsq", "filemux"] <*> eVariable <*> textOrBinary <*> format
+  where
+    textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
+    syms l = choice $ map (try . symbol) l
+
+    mkFMuxSrc sym argE asTxt formatE n t = do
+      s <- fMuxSpec (ctorOfSym sym) argE asTxt formatE
+      return $ endpointMethods True s argE formatE n t
+
+    fMuxSpec ctor argE asTxt formatE = (\a f -> ctor a asTxt f) <$> S.exprS argE <*> S.symbolS formatE
+
+    ctorOfSym s =
+      if s == "filemux" then FileMuxEP
+      else if s == "filemxsq" then FileMuxseqEP
+      else fail "Invalid file mux kind"
 
 network :: Bool -> K3Parser EndpointBuilder
-network isSource = mkNetwork <$> (symbol "network" *> eAddress) <*> format
-  where mkNetwork addrE formatE n t =
-          networkSpec addrE formatE >>= \s -> return $ endpointMethods isSource s addrE formatE n t
-        networkSpec addrE formatE = NetworkEP <$> S.exprS addrE <*> S.symbolS formatE
+network isSource = mkNetwork <$> (symbol "network" *> eTerminal) <*> textOrBinary <*> format
+  where textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
+        mkNetwork addrE asText formatE n t =
+          networkSpec addrE asText formatE >>= \s -> return $ endpointMethods isSource s addrE formatE n t
+        networkSpec addrE asText formatE = (\a f -> NetworkEP a asText f) <$> S.exprS addrE <*> S.symbolS formatE
 
 builtinChannels :: ExpressionParser
 builtinChannels = choice [ch "stdin", ch "stdout", ch "stderr"]
   where ch s = try (symbol s >> return (EC.constant $ CString s))
 
 format :: ExpressionParser
-format = choice [fmt "k3", fmt "k3b", fmt "k3yb", fmt "k3ybt", fmt "csv", fmt "psv", fmt "k3x"]
+format = choice [fmt "k3", fmt "k3b", fmt "k3yb", fmt "k3ybt", fmt "csv", fmt "psv", fmt "k3x", fmt "raw"]
   where fmt s = try (symbol s >> return (EC.constant $ CString s))
-
-
 
 {- Declaration helpers -}
 namedIdentifier :: String -> String -> (K3Parser Identifier -> K3Parser a) -> K3Parser a
@@ -1097,9 +1192,9 @@ chainedNamedBraceDecl k n namedRule cstr =
 --   A parsing error is raised on an attempt to bind to anything other than a source.
 trackBindings :: (Identifier, Identifier) -> K3Parser ()
 trackBindings (src, dest) = modifyEnvF_ $ updateBindings
-  where updateBindings (safePopFrame -> ((s,d), env)) =
+  where updateBindings (safePopFrame -> (s, env)) =
           case lookup src s of
-            Just (es, Just b, q, g) -> Right $ (replaceAssoc s src (es, Just (dest:b), q, g), d):env
+            Just (es, Just b, q, g) -> Right $ (replaceAssoc s src (es, Just (dest:b), q, g)):env
             Just (_, Nothing, _, _) -> Left  $ "Invalid binding for endpoint " ++ src
             Nothing                 -> Left  $ "Invalid binding, no source " ++ src
 
@@ -1107,68 +1202,44 @@ trackBindings (src, dest) = modifyEnvF_ $ updateBindings
 -- | Records endpoint identifiers and initializer expressions in a K3 parsing environment
 trackEndpoint :: EndpointSpec -> K3 Declaration -> DeclParser
 trackEndpoint eSpec d
-  | DGlobal n t eOpt <- tag d, TSource <- tag t = track True n eOpt >> return d
-  | DGlobal n t eOpt <- tag d, TSink <- tag t   = track False n eOpt >> return d
+  | DGlobal n t eOpt <- tag d, TSource <- tag t = track True  n eOpt >> return d
+  | DGlobal n t eOpt <- tag d, TSink   <- tag t = track False n eOpt >> return d
   | otherwise = return d
 
   where
     track isSource n eOpt = modifyEnvF_ $ addEndpointGoExpr isSource n eOpt
 
-    addEndpointGoExpr isSource n eOpt (safePopFrame -> ((fs,fd), env)) =
+    addEndpointGoExpr isSource n eOpt (safePopFrame -> (fs, env)) =
       case (eOpt, isSource) of
-        (Just _, True)   -> Right $ refresh n fs fd env (Just [], n, Nothing)
-        (Nothing, True)  -> Right $ refresh n fs fd env (Just [], n, Just $ mkRunSourceE n)
-        (Just _, False)  -> Right $ refresh n fs fd env (Nothing, n, Just $ mkRunSinkE n)
+        (Just _, True)   -> Right $ refresh n fs env (Just [], n, Nothing)
+        (Nothing, True)  -> Right $ refresh n fs env (Just [], n, Just $ mkRunSourceE n)
+        (Just _, False)  -> Right $ refresh n fs env (Nothing, n, Just $ mkRunSinkE n)
         (_,_)            -> Left  $ "Invalid endpoint initializer"
 
-    refresh n fs fd env (a,b,c) = (replaceAssoc fs n (eSpec, a, b, c), fd):env
-
-
--- | Records defaults in a K3 parsing environment
-trackDefault :: Identifier -> K3Parser ()
-trackDefault n = modifyEnv_ $ updateState
-  where updateState (safePopFrame -> ((s,d), env)) = (s,replaceAssoc d "" n):env
+    refresh n fs env (a,b,c) = (replaceAssoc fs n (eSpec, a, b, c)):env
 
 
 -- | Completes any stateful processing needed for the role.
 --   This includes handling 'feed' clauses, and checking and qualifying role defaults.
-postProcessRole :: Identifier -> ([K3 Declaration], EnvFrame) -> K3Parser [K3 Declaration]
-postProcessRole n (dl, frame) =
-  modifyEnvF_ (ensureQualified frame) >> processEndpoints frame
+postProcessRole :: [K3 Declaration] -> EnvFrame -> K3Parser [K3 Declaration]
+postProcessRole decls frame =
+  mergeFrame frame >> processEndpoints frame
 
-  where processEndpoints (s,_) = addBuilderDecls $ map (annotateEndpoint s . attachSource s) dl
+  where processEndpoints s = addBuilderDecls $ map (annotateEndpoint s . attachSource s) decls
 
         addBuilderDecls dAndExtras =
           let (ndl, extrasl) = unzip dAndExtras
           in modifyBuilderDeclsF_ (Right . ((concat extrasl) ++)) >> return ndl
 
-        attachSource s = bindSource $ sourceBindings s
+        attachSource s = bindSource (sourceEndpointSpecs s) $ sourceBindings s
         annotateEndpoint s (d, extraDecls)
           | DGlobal en t _ <- tag d, TSource <- tag t = (maybe d (d @+) $ syntaxAnnotation en s, extraDecls)
           | DGlobal en t _ <- tag d, TSink   <- tag t = (maybe d (d @+) $ syntaxAnnotation en s, extraDecls)
           | otherwise = (d, extraDecls)
 
-        syntaxAnnotation en s =
-          lookup en s
-            >>= (\(enSpec,bindingsOpt,_,_) -> return (enSpec, maybe [] id bindingsOpt))
-            >>= return . DSyntax . uncurry EndpointDeclaration
-
-        ensureQualified poppedFrame (safePopFrame -> (frame', env)) =
-          case validateDefaults poppedFrame of
-            (_, [])     -> Right $ (qualifyRole' poppedFrame frame'):env
-            (_, failed) -> Left  $ "Invalid defaults\n" ++ qualifyError poppedFrame failed
-
-        validateDefaults (s,d)     = partition ((flip elem $ qualifiedSources s) . snd) d
-        qualifyRole' (s,d) (s2,d2) = (map qualifySource s ++ s2, qualifyDefaults d ++ d2)
-
-        qualifySource (eid, (es, Just b, q, g)) = (eid, (es, Just b, prefix' "." n q, g))
-        qualifySource x = x
-
-        qualifyDefaults = map $ uncurry $ flip (,) . prefix' "." n
-
-        qualifyError frame' failed = "Frame: " ++ show frame' ++ "\nFailed: " ++ show failed
-
-        prefix' sep x z = if x == "" then z else x ++ sep ++ z
+        syntaxAnnotation en s = do
+          (enSpec,bindingsOpt,_,_) <- lookup en s
+          return . DSyntax . EndpointDeclaration enSpec $ maybe [] id bindingsOpt
 
 
 -- | Adds UIDs to nodes that do not already have one.

@@ -1,0 +1,113 @@
+include "Core/Builtins.k3"
+include "Annotation/Vector.k3"
+
+// Globals:
+declare limit: int = 1 // Set to number of records to be maintained in working set.
+
+// Unified TPCH record schema, copied from K3-Mosaic:tests/queries/tpch/schemas.sql
+typedef TPCH = {
+  _R00: string,
+  _R01: int,
+  _R02: real,
+  _R03: string,
+  _R04: int,
+  _R05: string,
+  _R06: string,
+  _R07: string,
+  _R08: string,
+  _R09: string,
+  _R10: int,
+  _R11: real,
+  _R12: real,
+  _R13: int,
+  _R14: string,
+  _R15: string,
+  _R16: string,
+  _R17: string,
+  _R18: int,
+  _R19: string,
+  _R20: int,
+  _R21: string,
+  _R22: string,
+  _R23: int,
+  _R24: string,
+  _R25: real,
+  _R26: string,
+  _R27: int,
+  _R28: real,
+  _R29: string,
+  _R30: string,
+  _R31: string,
+  _R32: string,
+  _R33: int,
+  _R34: int,
+  _R35: int,
+  _R36: real,
+  _R37: real,
+  _R38: real,
+  _R39: string
+}
+
+declare toggle_delete: TPCH -> TPCH = \r -> {
+  _R00: r._R00,
+  _R01: 0,
+  _R02: r._R02,
+  _R03: r._R03,
+  _R04: r._R04,
+  _R05: r._R05,
+  _R06: r._R06,
+  _R07: r._R07,
+  _R08: r._R08,
+  _R09: r._R09,
+  _R10: r._R10,
+  _R11: r._R11,
+  _R12: r._R12,
+  _R13: r._R13,
+  _R14: r._R14,
+  _R15: r._R15,
+  _R16: r._R16,
+  _R17: r._R17,
+  _R18: r._R18,
+  _R19: r._R19,
+  _R20: r._R20,
+  _R21: r._R21,
+  _R22: r._R22,
+  _R23: r._R23,
+  _R24: r._R24,
+  _R25: r._R25,
+  _R26: r._R26,
+  _R27: r._R27,
+  _R28: r._R28,
+  _R29: r._R29,
+  _R30: r._R30,
+  _R31: r._R31,
+  _R32: r._R32,
+  _R33: r._R33,
+  _R34: r._R34,
+  _R35: r._R35,
+  _R36: r._R36,
+  _R37: r._R37,
+  _R38: r._R38,
+  _R39: r._R39
+}
+
+declare in_file: string = "/local/data/insertion_agenda.tbl"
+declare out_file: string = "/local/data/deletion_agenda.tbl"
+
+source input: TPCH = file in_file psv
+sink output: TPCH = file out_file psv
+
+declare stash: collection TPCH @ { Vector }
+
+trigger process: TPCH = \i -> (
+  (output, me) <- i;
+  if stash.size () < limit
+    then (stash.insert i)
+    else
+      let index = random limit in
+        let deletion = stash.update_at index i in (
+          (output, me) <- toggle_delete deletion
+        )
+)
+
+feed input |> process

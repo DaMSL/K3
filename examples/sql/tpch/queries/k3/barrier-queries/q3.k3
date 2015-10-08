@@ -1,4 +1,5 @@
 include "tpch/benchmark.k3"
+include "Annotation/Set.k3"
 
 /**********************
 * SQL query
@@ -97,20 +98,20 @@ trigger lineitem_orders : () = \_ -> (
       , frequency_threshold  = [$ 1000.0 ]
 
       , lhs_query = [$  ((lineitem.filter  (\l -> l.l_shipdate > 19950315 ))
-                                  .groupBy (\l -> l.l_orderkey)
-                                           (\acc -> \l -> acc + (l.l_extendedprice * (1 - l.l_discount)))
-                                           0.0)
+                                  .group_by (\l -> l.l_orderkey)
+                                            (\acc -> \l -> acc + (l.l_extendedprice * (1 - l.l_discount)))
+                                            0.0)
                                   .fold    ((\acc -> \l -> ((acc.insert l); acc)) @:Accumulate)
                                            (empty {key:int, value:real} @IntMap)
                     ]
       , lhs_query_clear = [$ lineitem = empty q3_lineitem_r @Collection ]
 
       , rhs_query = [$ ((orders.filter  (\o -> o.o_orderdate < 19950315 ))
-                               .groupBy (\o -> o.o_orderkey)
-                                        (\_ -> \o -> { od : o.o_orderdate
-                                                     , ck : o.o_custkey
-                                                     , sp : o.o_shippriority})
-                                        { od: 0, ck: 0, sp: 0 })
+                               .group_by (\o -> o.o_orderkey)
+                                         (\_ -> \o -> { od : o.o_orderdate
+                                                      , ck : o.o_custkey
+                                                      , sp : o.o_shippriority})
+                                         { od: 0, ck: 0, sp: 0 })
                                .fold    ((\acc -> \o -> ((acc.insert o); acc)) @:Accumulate)
                                         (empty {key : int, value : {od:int, ck:int, sp:int}} @IntMap)
                     ]
@@ -121,32 +122,32 @@ trigger lineitem_orders : () = \_ -> (
       , rhs_ht_ty            = [: {key:int, value: {od:int, ck:int, sp:int} } ]
 
       , lhs_probe            = [$ (\lht -> \_ -> \o ->
-                                    case lht.lookup {key: o.key, value: 0.0}
-                                    of
-                                      { Some li -> lior_epdods_map.insert_with
-                                                    { key: o.value.ck
-                                                    , value: {|key : {ok: int, od: int, sp: int}, value: real
-                                                              | { key   : {ok: o.key, od: o.value.od, sp: o.value.sp }
-                                                                , value : li.value }
-                                                              |} @Map }
-                                                    merge_lior_r
-                                      }
-                                      { None   -> ()  }
+                                    lht.lookup {key: o.key, value: 0.0}
+                                    (\_ -> () )
+                                    (\li ->
+                                        lior_epdods_map.insert_with
+                                                 { key: o.value.ck
+                                                 , value: {|key : {ok: int, od: int, sp: int}, value: real
+                                                           | { key   : {ok: o.key, od: o.value.od, sp: o.value.sp }
+                                                             , value : li.value }
+                                                           |} @Map }
+                                                 merge_lior_r
+                                    )
                                   )
                                ]
 
       , rhs_probe            = [$ (\rht -> \_ -> \l ->
-                                    case rht.lookup {key: l.key, value: {od:0, ck:0, sp:0}}
-                                    of
-                                      { Some ord -> lior_epdods_map.insert_with
-                                                     { key: ord.value.ck
-                                                     , value: {|key : {ok: int, od: int, sp: int}, value: real
-                                                               | { key   : {ok: l.key, od: ord.value.od, sp: ord.value.sp }
-                                                                 , value : l.value }
-                                                               |} @Map }
-                                                     merge_lior_r
-                                      }
-                                      { None   -> ()  }
+                                    rht.lookup {key: l.key, value: {od:0, ck:0, sp:0}}
+                                      (\_ -> () ) 
+                                      (\ord ->
+                                         lior_epdods_map.insert_with
+                                                  { key: ord.value.ck
+                                                  , value: {|key : {ok: int, od: int, sp: int}, value: real
+                                                            | { key   : {ok: l.key, od: ord.value.od, sp: ord.value.sp }
+                                                              , value : l.value }
+                                                            |} @Map }
+                                                  merge_lior_r
+                                      )
                                   )
                                ]
 
@@ -192,10 +193,10 @@ trigger lineitem_orders_customer : () = \_ -> (
 // TODO: sort and limit on q3_peer_result
 trigger loc_probe_rhs : cs_ck_bag = ((\vals -> (
   ( vals.iterate (\v ->
-      case lior_epdods_map.lookup {key: v.elem.c_custkey, value: empty lior_epd_by_ods_r @Map}
-      of
-      { Some lo_r -> lo_r.value.iterate (\kv -> q3_peer_result.insert_with kv merge_lior_epd_by_ods) }
-      { None -> () } )
+      lior_epdods_map.lookup {key: v.elem.c_custkey, value: empty lior_epd_by_ods_r @Map}
+        (\_ -> () )
+        (\lo_r -> lo_r.value.iterate (\kv -> q3_peer_result.insert_with kv merge_lior_epd_by_ods) )
+    )
   ) ;
   ( ( (() @:Result) @TPCHBenchmarkWithoutMaster );
     if master == me then ( ( () @:StopTimer); finalizeResult ()) @Time(lbl=[# loc_JOIN], tag=[$ "Time "]) else (finalizeResult ())
@@ -217,41 +218,39 @@ declare finalizeResult: () -> () = \_ -> (
                      , shippriority: r.key.sp })
 )
 
+typedef q3_result = collection {orderkey: int, revenue: real, orderdate: string, shippriority: int} @Collection
+declare finalize : collection {key: address, value: q3_result} @Map -> () = \x -> (
+  (x.iterate (\t ->
+    t.value.iterate (\v ->
+      (results_sink, me) <- (v.orderkey, v.revenue, v.orderdate, v.shippriority)
+   )))
+)
+
 // For ktrace:
-declare results: collection {orderkey: int, revenue: real, orderdate: string, shippriority: int} @Collection
+declare results: q3_result
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes                = [$ peers ],
-  loadExpr             = [$ ( // Read line counts for each data file
-                              lineitemLineCountFiles.iterate (\e -> lineitemRows = lineitemRows + (lineCountFile e.path));
-                              ordersLineCountFiles.iterate   (\e -> ordersRows = ordersRows + (lineCountFile e.path));
-                              customerLineCountFiles.iterate (\e -> customerRows = customerRows + (lineCountFile e.path));
-
-                  			      print ("Lineitem rows: " ++ (itos lineitemRows));
-                  			      print ("Orders rows: " ++ (itos ordersRows));
-                  			      print ("Customer rows: " ++ (itos customerRows));
-
-                              // Load data using the fixed size loaders which resize the container before loading
-                              q3_lineitemLoaderPFC lineitemFiles lineitem lineitem_r lineitemRows;
-                              q3_ordersLoaderPFC   ordersFiles   orders   orders_r   ordersRows;
-                              q3_customerLoaderPFC customerFiles customer customer_r customerRows
-                            ) ],
+  loadExpr             = [$ q3_lineitemLoaderPC lineitemFiles lineitem lineitem_r;
+                            q3_ordersLoaderPC   ordersFiles   orders   orders_r;
+                            q3_customerLoaderPC customerFiles customer customer_r
+                         ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],
   onReadyExpr          = [$ (lineitem_orders, me) <- ()],
   finishArgT           = [: ()],
   preTestFinishExpr    = [$ (\_ -> ())],
-  preFinishExpr        = [$ ( () @GatherResultsAsCSV(
-                                    query_cl = [* [% ci: [# results], csink: [$ results_sink]] ]
-                                  , nodes    = [$ peers]
-                                  , next     = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ]) )
+  preFinishExpr        = [$ (ignore results) @GatherCollection(
+                                                  lbl   = [# groupby],
+                                                  nodes = [$ peers],
+                                                  next  = [$ (\a -> (finalize a; peers.iterate (\p -> (shutdown, p.addr) <- ()) ))])
                          ],
   preShutdownExpr      = [$ () ],
   finishAsShutdownExpr = [$ false]
 )
 
-sink results_sink : {orderkey: int, revenue: real, orderdate: string, shippriority: int} = file "results.csv" csv
-sink query_time_sink : string = stdout csv
+sink results_sink: (int, real, string, int) = file "results.csv" text psv
+sink query_time_sink : int = file "time.csv" text csv
 
 source rows : () = value ()
 feed rows |> start

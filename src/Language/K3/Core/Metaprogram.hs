@@ -9,6 +9,9 @@ module Language.K3.Core.Metaprogram where
 
 import Control.DeepSeq
 
+import Data.Binary
+import Data.Serialize
+
 import Data.Either
 import Data.List
 import qualified Data.Map as Map
@@ -57,9 +60,14 @@ type NamedSpliceValues = Map Identifier SpliceValue
 type NamedSpliceTypes  = Map Identifier SpliceType
 type TypedSpliceVar    = (SpliceType, Identifier)
 
+data SpliceDeclGenerator m = SGNamed            Identifier
+                           | SGDecl             (K3 Declaration)
+                           | SGContentDependent (K3 Type -> m (SpliceDeclGenerator m))
+
 data SpliceResult m = SRType    (m (K3 Type))
                     | SRExpr    (m (K3 Expression))
                     | SRDecl    (m (K3 Declaration))
+                    | SRGenDecl (m (SpliceDeclGenerator m))
                     | SRLiteral (m (K3 Literal))
                     | SRRewrite (m (K3 Expression, [K3 Declaration]), SpliceEnv)
 
@@ -79,13 +87,23 @@ instance NFData SpliceValue
 instance NFData MPDeclaration
 instance NFData MPAnnMemDecl
 
+instance Binary SpliceType
+instance Binary SpliceValue
+instance Binary MPDeclaration
+instance Binary MPAnnMemDecl
+
+instance Serialize SpliceType
+instance Serialize SpliceValue
+instance Serialize MPDeclaration
+instance Serialize MPAnnMemDecl
+
 instance Pretty MPDeclaration where
   prettyLines (MPDataAnnotation i svars tvars (partitionEithers -> (mpAnnMems, annMems))) =
       ["MPDataAnnotation " ++ i
           ++ if null svars then "" else ("[" ++ intercalate ", " (map show svars) ++ "]")
           ++ if null tvars then "" else ("[" ++ multiLineSep tvars ++ "]")
           , "|"]
-      ++ drawMPAnnotationMembers mpAnnMems
+      ++ drawMPAnnotationMembers (not $ null annMems) mpAnnMems
       ++ drawAnnotationMembers annMems
     where
       multiLineSep l = removeTrailingWhitespace . boxToString
@@ -134,11 +152,11 @@ instance Pretty SpliceEnv where
 instance Pretty SpliceContext where
   prettyLines ctxt = concatMap prettyLines ctxt
 
-drawMPAnnotationMembers :: [MPAnnMemDecl] -> [String]
-drawMPAnnotationMembers []  = []
-drawMPAnnotationMembers [x] = terminalShift x
-drawMPAnnotationMembers x   = concatMap (\y -> nonTerminalShift y ++ ["|"]) (init x)
-                              ++ terminalShift (last x)
+drawMPAnnotationMembers :: Bool -> [MPAnnMemDecl] -> [String]
+drawMPAnnotationMembers _ []  = []
+drawMPAnnotationMembers hasMems [x] = if hasMems then nonTerminalShift x else terminalShift x
+drawMPAnnotationMembers hasMems x   = concatMap (\y -> nonTerminalShift y ++ ["|"]) (init x)
+                                       ++ if hasMems then nonTerminalShift (last x) else terminalShift (last x)
 
 drawAnnotationMembers :: [AnnMemDecl] -> [String]
 drawAnnotationMembers []  = []
@@ -186,7 +204,7 @@ lookupSCtxt :: Identifier -> SpliceContext -> Maybe SpliceValue
 lookupSCtxt n ctxt = find (Map.member n) ctxt >>= Map.lookup n
 
 lookupSCtxtPath :: [Identifier] -> SpliceContext -> Maybe SpliceValue
-lookupSCtxtPath [] ctxt = Nothing
+lookupSCtxtPath [] _ = Nothing
 lookupSCtxtPath (var:path) ctxt = lookupSCtxt var ctxt >>= flip matchPath path
   where matchPath v [] = return v
         matchPath v (h:t) = spliceRecordField v h >>= flip matchPath t
@@ -222,6 +240,9 @@ spliceVTSym  = "typ"
 
 spliceVESym :: Identifier
 spliceVESym  = "expr"
+
+spliceVLSym :: Identifier
+spliceVLSym  = "lit"
 
 lookupSpliceE :: Identifier -> SpliceEnv -> Maybe SpliceValue
 lookupSpliceE n senv = Map.lookup n senv

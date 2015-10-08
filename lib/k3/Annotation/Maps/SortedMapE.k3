@@ -1,0 +1,157 @@
+include "Annotation/Maps/SortedMap.k3"
+
+/////////////////////////////////////////////////////////////////////////
+// An associative container annotation.
+//
+// Maps are expected to contain only records with fields key and value
+// This variant requires parameters defining the key-value decomposition
+// of the content type, and exploits these parameters where suitable in its API.
+
+annotation SortedMapE[key: [labeltype], value: [labeltype]] given type a,b
+{
+  provides lifted size : () -> int
+    with effects \_ -> R[self]
+
+  //////////////////////////////////////////////////////////
+  // Map retrieval, with explicit keys.
+
+  @:CArgs 2
+  provides lifted peek : (() -> a) -> (content -> a) -> a
+    with effects \f -> \g -> [R[self]; f content; g content]
+
+  provides lifted member: $[|mkRecord 'key|] -> bool
+    with effects \key -> [R[self]; R[key]]
+
+  @:CArgs 3
+  provides lifted lookup : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
+
+
+  ///////////////////////////////////////////////////////
+  // Map modification.
+
+  provides lifted insert : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
+  @:CArgs 2
+  provides lifted update : $[|mkRecord 'key|] -> $[|mkRecord 'value|] -> ()
+    with effects \key -> \value -> [R[self]; R[key]; R[value]; W[self]]
+
+  provides lifted erase : $[|mkRecord 'key|] -> ()
+    with effects \key -> [R[self]; R[key]; W[self]]
+
+  @:CArgs 2
+  provides lifted insert_with : content -> (content -> content -> content) -> ()
+    with effects \elem -> \f -> [R[self]; R[elem]; ((f content) content); W[self]]
+
+  @:CArgs 3
+  provides lifted upsert_with : $[|mkRecord 'key|] -> (() -> content) -> (content -> content) -> ()
+    with effects \key -> \f -> \g -> [R[self]; R[key]; f content; g content; W[self]]
+
+
+  //////////////////////////////////////////////////////////
+  // Sort-order methods.
+
+  // Point retrieval
+  @:CArgs 2
+  provides lifted min : (() -> a) -> (content -> a) -> a
+    with effects \f -> \g -> [R[self]; f content; g content]
+
+  @:CArgs 2
+  provides lifted max : (() -> a) -> (content -> a) -> a
+    with effects \f -> \g -> [R[self]; f content; g content]
+
+  @:CArgs 3
+  provides lifted lower_bound : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \elem -> \f -> \g -> [R[self]; R[elem]; f content; g content]
+
+  @:CArgs 3
+  provides lifted upper_bound : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \elem -> \f -> \g -> [R[self]; R[elem]; f content; g content]
+
+  @:CArgs 3
+  provides lifted lookup_lt : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
+
+  @:CArgs 3
+  provides lifted lookup_gt : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
+
+  @:CArgs 3
+  provides lifted lookup_geq : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
+
+  @:CArgs 3
+  provides lifted lookup_leq : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; noneF content; someF content]
+
+
+  // Range retrieval.
+  provides lifted filter_lt : $[|mkRecord 'key|] -> self
+    with effects \key -> [R[self]; R[key]]
+
+  provides lifted filter_gt : $[|mkRecord 'key|] -> self
+    with effects \key -> [R[self]; R[key]]
+
+  provides lifted filter_geq : $[|mkRecord 'key|] -> self
+    with effects \key -> [R[self]; R[key]]
+
+  provides lifted filter_leq : $[|mkRecord 'key|] -> self
+    with effects \key -> [R[self]; R[key]]
+
+  @:CArgs 2
+  provides lifted between : $[|mkRecord 'key|] -> $[|mkRecord 'key|] -> self
+    with effects \key -> [R[self]; R[key]]
+
+  // Range-based modification.
+
+  // Erases all elements less than, but not including, the given key.
+  provides lifted erase_before : $[|mkRecord 'key|] -> ()
+    with effects \key -> [R[self]; R[key]; W[self]]
+
+  // Erases all elements greater than the given key.
+  provides lifted erase_after : $[|mkRecord 'key|] -> ()
+    with effects \key -> [R[self]; R[key]; W[self]]
+
+
+  //////////////////////////////////////////////////////////////
+  // Bulk transformations.
+
+  @:Transformer
+  provides lifted combine : self -> self
+    with effects \other -> [R[self]; R[other]]
+
+  @:Transformer
+  provides lifted split : () -> (self, self)
+    with effects \_ -> R[self]
+
+  @:Transformer
+  provides lifted iterate : (content -> ()) -> ()
+    with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
+
+  @:Transformer
+  provides lifted map_generic : (content -> {key: a, value: b}) -> collection {key: a, value: b} @SortedMap
+    with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
+
+  @:Transformer
+  provides lifted filter  : (content -> bool) -> self
+    with effects \filterF -> [R[self]; ([R[content]; filterF content])*]
+
+  @:{Transformer, CArgs 2}
+  provides lifted fold    : (a -> (content -> a)) -> a -> a
+    with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+  @:{Transformer, CArgs 3}
+  provides lifted group_by_generic : (content -> a) -> (b -> content -> b) -> b
+                                      -> collection { key : a, value : b } @SortedMap
+    with effects
+      \gbF -> \gaccF -> \z ->
+        [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
+
+  @:Transformer
+  provides lifted ext_generic : (content -> collection {key : a, value: b} @SortedMap)
+                                 -> collection {key : a, value: b} @SortedMap
+    with effects \extF -> [R[self]; ([R[content]; extF content])*]
+
+}
+

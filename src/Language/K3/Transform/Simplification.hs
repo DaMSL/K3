@@ -19,10 +19,13 @@ import Data.Either
 import Data.Fixed
 import Data.Function
 import Data.List
+import Data.IntMap ( IntMap )
 import Data.Maybe
 import Data.Tree
 import Data.Word ( Word8 )
 import qualified Data.Map as Map
+import qualified Data.IntMap as IntMap
+
 import Debug.Trace
 
 import Language.K3.Core.Annotation
@@ -37,14 +40,19 @@ import qualified Language.K3.Core.Constructor.Expression as EC
 import qualified Language.K3.Core.Constructor.Type       as TC
 import qualified Language.K3.Core.Constructor.Literal    as LC
 
+import Language.K3.Analysis.Core
 import Language.K3.Analysis.Provenance.Core
+import Language.K3.Analysis.Provenance.Inference ( PIEnv )
+
 import Language.K3.Analysis.SEffects.Core
+import Language.K3.Analysis.SEffects.Inference                ( readOnly, noWrites, noWritesOn )
+
 import qualified Language.K3.Analysis.Provenance.Constructors as PC
 import qualified Language.K3.Analysis.SEffects.Constructors   as FC
 import qualified Language.K3.Analysis.SEffects.Inference      as SE
 
 import Language.K3.Transform.Common
-import Language.K3.Interpreter.Data.Accessors
+import Language.K3.Interpreter.Data.Accessors hiding ( elemE )
 import Language.K3.Interpreter.Data.Types
 
 import Language.K3.Utils.Logger
@@ -64,6 +72,9 @@ localLogAction :: (Functor m, Monad m) => (Maybe a -> Maybe String) -> m a -> m 
 localLogAction = logAction traceLogging
 
 -- | Property construction helper
+persistentEProp :: Identifier -> Maybe (K3 Literal) -> Annotation Expression
+persistentEProp n lopt = EProperty $ Left (n,lopt)
+
 inferredEProp :: Identifier -> Maybe (K3 Literal) -> Annotation Expression
 inferredEProp n lopt = EProperty $ Right (n,lopt)
 
@@ -107,6 +118,7 @@ data FusionAccFClass = UCondVal -- Direct return of accumulator value (e.g., ite
                      | ICond1   -- Accumulation in one accumulator-independent condition branch
                      | ICondN   -- Accumulation in many accumulator-independent condition branches
                      | DCond2   -- Accumulation in two accumulator-dependent condition branches
+                     | Halt     -- An explicit class to prevent further fusion.
                      | Open     -- General accumulation function with unknown structure
                      deriving (Enum, Eq, Ord, Read, Show)
 
@@ -129,6 +141,9 @@ pHierarchicalGroupBy = inferredEProp "HGroupBy" Nothing
 
 pMonoidGroupBy :: Annotation Expression
 pMonoidGroupBy = inferredEProp "MGroupBy" Nothing
+
+pAccumulatingTransformer :: Annotation Expression
+pAccumulatingTransformer = persistentEProp "AccumulatingTransformer" Nothing
 
 isEPure :: Annotation Expression -> Bool
 isEPure (EProperty (ePropertyName -> "Pure")) = True
@@ -226,18 +241,13 @@ isENoBetaReduce :: Annotation Expression -> Bool
 isENoBetaReduce (EProperty (ePropertyName -> "NoBetaReduce")) = True
 isENoBetaReduce _ = False
 
--- Effect queries
-readOnly :: Bool -> K3 Expression -> Either String Bool
-readOnly True (tnc -> (ELambda _, [b])) = readOnly False b
-readOnly _ e = either (Left . T.unpack) Right $ do
-  SE.SymbolCategories _ w io <- SE.categorizeExprEffects e
-  return $ null w && not io
+isEReturnsArgLambda :: Annotation Expression -> Bool
+isEReturnsArgLambda (EProperty (ePropertyName -> "ReturnsArgument")) = True
+isEReturnsArgLambda _ = False
 
-noWrites :: Bool -> K3 Expression -> Either String Bool
-noWrites True (tnc -> (ELambda _, [b])) = noWrites False b
-noWrites _ e = either (Left . T.unpack) Right $ do
-  SE.SymbolCategories _ w _ <- SE.categorizeExprEffects e
-  return $ null w
+isEThreadsArgLambda :: Annotation Expression -> Bool
+isEThreadsArgLambda (EProperty (ePropertyName -> "ThreadsArgument")) = True
+isEThreadsArgLambda _ = False
 
 
 -- | Constant folding
@@ -349,7 +359,7 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
     -- Projection simplification on a constant record.
     -- Since we do not simplify collections, VCollections cannot appear
     -- as the source of the projection expression.
-    simplifyConstants ch n@(tag -> EProject i) = rebuildNode n ch
+    simplifyConstants ch n@(tag -> EProject _) = rebuildNode n ch
     {-
     simplifyConstants ch n@(tag -> EProject i) =
         case head ch of
@@ -550,39 +560,45 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
 --   Furthermore, this only applies to direct lambda invocations, rather than
 --   on general function values (i.e., including applications through bnds
 --   and substructure). For the latter case, we must inline and defunctionalize first.
-betaReductionOnProgram :: K3 Declaration -> Either String (K3 Declaration)
-betaReductionOnProgram prog = mapExpression betaReduction prog
+betaReductionOnProgram :: PIEnv -> K3 Declaration -> Either String (K3 Declaration)
+betaReductionOnProgram env prog = mapExpression (betaReduction env) prog
 
 -- Effect-aware beta reduction of an expression.
 -- We strip UIDs, spans, types and effects present on the substitution.
 -- Thus, we cannot recursively invoke the simplification, and must iterate
 -- to a fixpoint externally.
-betaReduction :: K3 Expression -> Either String (K3 Expression)
-betaReduction expr = betaReductionDelta expr >>= return . fst
+betaReduction :: PIEnv -> K3 Expression -> Either String (K3 Expression)
+betaReduction env expr = betaReductionDelta env expr >>= return . fst
 
 -- Beta reduction with a boolean indicating if any substitutions were performed.
-betaReductionDelta :: K3 Expression -> Either String (K3 Expression, Bool)
-betaReductionDelta expr = foldMapTree reduce ([], False) expr >>= return . first head
+betaReductionDelta :: PIEnv -> K3 Expression -> Either String (K3 Expression, Bool)
+betaReductionDelta env expr = foldMapTree reduce ([], False) expr >>= return . first head
   where
     reduce (onSub -> (ch, True)) n = return $ ([replaceCh n ch], True)
     reduce (onSub -> (ch, False)) n =
       let n' = replaceCh n ch in
       case (skipBetaReduce n', n') of
-        (False, tag -> ELetIn i) -> reduceOnOccurrences n' i (head ch) (last ch)
-        (False, PAppLam i bodyE argE _ _) -> reduceOnOccurrences n' i argE bodyE
+        (False, tag -> ELetIn i) -> reduceOnOccurrences n' i (head ch) (last ch) (n' @~ isEUID)
+        (False, PAppLam i bodyE argE _ _) -> reduceOnOccurrences n' i argE bodyE (n' @~ isEUID)
         (_, _) -> return ([n'], False)
 
-    -- This reduction is extremely conservative: we proceed only if both the target and
-    -- substitution are read only. A more general form is if there are no writes to any
-    -- variables in the substitution in the target, in the prefix of all substitution points.
-    reduceOnOccurrences n i ie e = do
+    reduce _ _ = Left "Invalid betaReductionDelta.reduce pattern match"
+
+    -- We perform beta reduction if:
+    -- i. the substituted expression is read only. This ensures multiple substitutions do
+    --    not cause duplicated write effects.
+    -- ii. the target expression into which we are substituting does not perform any writes
+    --     on the identifier.
+    reduceOnOccurrences n i ie e (Just (EUID u)) = do
       ieRO <- readOnly False ie
-      eRO  <- readOnly True e
+      eRO  <- noWritesOn True env i u e
       let numOccurs = length $ filter (== i) $ freeVariables e
       (simple, doReduce) <- reducibleTarget numOccurs ie
       if debugCondition ieRO eRO n $ (simple || (ieRO && eRO)) && doReduce
         then return ([substituteImmutBinding i (cleanExpr ie) e], True)
         else return ([n], False)
+
+    reduceOnOccurrences _ _ _ _ _ = Left "Invalid UID for reduceOnOccurrences"
 
     reducibleTarget numOccurs ie =
       case (tag ie, ie @~ isEType, ie @~ isEQualified) of
@@ -609,17 +625,19 @@ betaReductionDelta expr = foldMapTree reduce ([], False) expr >>= return . first
     debugCondition ieRO eRO n' r = if True then r else
       flip trace r $ (boxToString $ [unwords ["BR-COND", show ieRO, show eRO]] %$ prettyLines n')
 
+    {-
     debugROC sube deste r@(re,_) = if True then return r else
       flip trace (return r) (boxToString $ ["BR-ROC"] %$ prettyLines sube
                                                       %$ prettyLines deste
                                                       %$ prettyLines (head re))
+    -}
 
 -- Beta reduction of variable applications, i.e., (\x -> ...) var
 simpleBetaReduction :: K3 Expression -> K3 Expression
 simpleBetaReduction expr = let r = runIdentity $ modifyTree reduce expr
                            in if compareEAST r expr then r else simpleBetaReduction r
   where
-    reduce n@(PAppLam i bodyE argE@(tag -> EVariable _) _ _) = return $ substituteImmutBinding i (cleanExpr argE) bodyE
+    reduce (PAppLam i bodyE argE@(tag -> EVariable _) _ _) = return $ substituteImmutBinding i (cleanExpr argE) bodyE
     reduce n = return n
 
     cleanExpr e = stripExprAnnotations cleanAnns (const False) e
@@ -664,7 +682,7 @@ eliminateDeadCodeDelta expr = foldMapTree pruneExpr ([],False) expr >>= return .
             if restRO then rtt $ fieldsE !! i else rtf n'
 
         -- Immediate structure binding, preserving effect ordering of bound substructure expressions.
-        (PBindInd i iE bodyE iAs bAs) -> rtt $ (EC.letIn i (PInd iE iAs) bodyE) @<- bAs
+        (PBindInd i iE bodyE _ bAs) -> rtt $ (EC.letIn i iE bodyE) @<- bAs
 
         (PBindTup ids fieldsE bodyE _ _) -> do
           let vars          = freeVariables bodyE
@@ -740,6 +758,8 @@ eliminateDeadCodeDelta expr = foldMapTree pruneExpr ([],False) expr >>= return .
 
         _ -> rtf n'
 
+    pruneExpr _ _ = Left "Invalid eliminateDeadCodeDelta.pruneExpr pattern match"
+
     onSub ch = (concat *** any id) $ unzip ch
     rtt e = return ([e], True)
     rtf e = return ([e], False)
@@ -804,16 +824,16 @@ instance Pretty CandidateTree where
 
     where prettyCandidates (e, cnt) = [show cnt ++ " "] %+ prettyLines e
 
-commonProgramSubexprElim :: Maybe Int -> K3 Declaration -> Either String (Maybe Int, K3 Declaration)
+commonProgramSubexprElim :: Maybe ParGenSymS -> K3 Declaration -> Either String (Maybe ParGenSymS, K3 Declaration)
 commonProgramSubexprElim cseCntOpt prog = foldExpression commonSubexprElim cseCntOpt prog
 
-commonSubexprElim :: Maybe Int -> K3 Expression -> Either String (Maybe Int, K3 Expression)
+commonSubexprElim :: Maybe ParGenSymS -> K3 Expression -> Either String (Maybe ParGenSymS, K3 Expression)
 commonSubexprElim cseCntOpt expr = do
     cTree <- buildCandidateTree expr
     -- TODO: log candidates for debugging
     pTree <- debugCTree "CTree" cTree $ pruneCandidateTree cTree
     -- TODO: log pruned candidates for debugging
-    substituteCandidates (maybe 0 id cseCntOpt) (debugCTree "PTree" pTree pTree) >>= return . first Just
+    substituteCandidates (maybe contigsymS id cseCntOpt) (debugCTree "PTree" pTree pTree) >>= return . first Just
 
   where
     debugCTree tg ct r = if True then r else trace (boxToString $ [tg] ++ prettyLines ct) r
@@ -852,12 +872,12 @@ commonSubexprElim cseCntOpt expr = do
               candTreeNode  = Node (uid, localCands) $ concat ctCh
               nStrippedExpr = Node (tag t :@: cseValidAnnotations t) $ concat sExprCh
               nCands        = case (tag t, n @~ isEType) of
-                                (EProject _, _) -> []
+                                (EProject _, _) -> filteredCands ++ []
                                 (_, Just (EType (isTFunction -> True))) -> []
-                                (_, _) -> [nStrippedExpr]
+                                (_, _) -> filteredCands ++ [nStrippedExpr]
           in do
             nRO <- readOnly False n
-            let propagatedExprs = if nRO then filteredCands ++ nCands else []
+            let propagatedExprs = if nRO then nCands else []
             return $ ([candTreeNode], [nStrippedExpr], propagatedExprs)
 
         _ -> uidError n
@@ -913,27 +933,26 @@ commonSubexprElim cseCntOpt expr = do
           let nUid = if null used then UID $ -1 else uid
           return $ Node (nUid, used) ch
 
-    substituteCandidates :: Int -> CandidateTree -> Either String (Int, K3 Expression)
-    substituteCandidates cnt prunedTree = do
-        substitutions           <- foldMapTree concatCandidates [] prunedTree
-        (ncnt, ncSubstitutions) <- foldSubstitutions cnt substitutions
-        nExpr                   <- foldM substituteAtUID expr ncSubstitutions
-        return (ncnt, nExpr)
+    substituteCandidates :: ParGenSymS -> CandidateTree -> Either String (ParGenSymS, K3 Expression)
+    substituteCandidates symS prunedTree = do
+        substitutions            <- foldMapTree concatCandidates [] prunedTree
+        (nsymS, ncSubstitutions) <- foldSubstitutions symS substitutions
+        nExpr                    <- foldM substituteAtUID expr ncSubstitutions
+        return (nsymS, nExpr)
 
       where
         concatCandidates candAcc (Node (uid, cands) _) =
           return $ (map (\(e,i) -> (uid,e,i)) cands) ++ (concat candAcc)
 
-        foldSubstitutions :: Int -> [Substitution] -> Either String (Int, [NamedSubstitution])
-        foldSubstitutions startcnt subs = do
-          (ncnt,namedSubs) <- foldM nameSubstitution (startcnt,[]) subs
+        foldSubstitutions :: ParGenSymS -> [Substitution] -> Either String (ParGenSymS, [NamedSubstitution])
+        foldSubstitutions startsymS subs = do
+          (nsymS,namedSubs) <- foldM nameSubstitution (startsymS, []) subs
           nnsubs <- foldM (\subAcc sub -> mapM (closeOverSubstitution sub) subAcc) namedSubs namedSubs
-          return (ncnt, nnsubs)
+          return (nsymS, nnsubs)
 
-        nameSubstitution :: (Int, [NamedSubstitution]) -> Substitution
-                         -> Either String (Int, [NamedSubstitution])
-        nameSubstitution (cnt', acc) (uid, e, i) =
-          return (cnt'+1, acc++[(uid, ("__cse"++show cnt'), e, i)])
+        nameSubstitution :: (ParGenSymS, [NamedSubstitution]) -> Substitution -> Either String (ParGenSymS, [NamedSubstitution])
+        nameSubstitution (symS', acc) (uid, e, i) = return (nsymS', acc++[(uid, ("__cse"++show c), e, i)])
+          where (nsymS', c) = gensym symS'
 
         closeOverSubstitution :: NamedSubstitution -> NamedSubstitution -> Either String NamedSubstitution
         closeOverSubstitution (uid, n, e, _) (uid2, n2, e2, i2)
@@ -962,6 +981,7 @@ commonSubexprElim cseCntOpt expr = do
         doSub compareE newE n = return $ if compareEAST compareE n then qualifySub n newE else n
         qualifySub ((@~ isEQualified) -> Nothing)   n = n
         qualifySub ((@~ isEQualified) -> Just qAnn) n = n @+ qAnn
+        qualifySub _ _ = error "Invalid commonSubexprElim.qualifySub pattern match"
 
     uidError e = Left $ "No UID found on " ++ show e
 
@@ -992,10 +1012,19 @@ encodeTransformers restChanged expr = do
     rtt = return . (True,)
     rtf = return . (False,)
 
-    transformable as = any isETransformer as && (not $ any isEFusionSpec as)
+    transformable as cE = any isETransformer as && (not $ any isEFusionSpec as) && compatibleCollectionType cE
 
-    encode e@(PPrjApp _ fId fAs _ _)
-      | unaryTransformer fId && transformable fAs
+    compatibleCollectionType cE =
+      case cE @~ isEType of
+        Just (EType (details -> (TCollection, _, isMapCE -> True))) -> False
+        _ -> True
+
+      where isMapCE anns = case find isTAnnotation anns of
+                             Nothing -> False
+                             Just (TAnnotation i) -> "MapCE" `isInfixOf` i
+
+    encode e@(PPrjApp cE fId fAs _ _)
+      | unaryTransformer fId && transformable fAs cE
         = case fId of
             "filter"  -> mkFold1 e
             "map"     -> mkFold1 e
@@ -1004,12 +1033,12 @@ encodeTransformers restChanged expr = do
             _         -> rtf e
       | unaryTransformer fId = rtf $ debugEncode fId fAs e
 
-    encode e@(PPrjApp2 _ fId fAs _ _ _ _)
-      | binaryTransformer fId && transformable fAs = mkFold2 e
+    encode e@(PPrjApp2 cE fId fAs _ _ _ _)
+      | binaryTransformer fId && transformable fAs cE = mkFold2 e
       | binaryTransformer fId = rtf $ debugEncode fId fAs e
 
-    encode e@(PPrjApp3 _ fId fAs _ _ _ _ _ _)
-      | ternaryTransformer fId && transformable fAs = mkFold3 e
+    encode e@(PPrjApp3 cE fId fAs _ _ _ _ _ _)
+      | ternaryTransformer fId && transformable fAs cE = mkFold3 e
       | ternaryTransformer fId = rtf $ debugEncode fId fAs e
 
     encode e = rtf e
@@ -1018,6 +1047,7 @@ encodeTransformers restChanged expr = do
       let uid = case filter isEUID as of
                   [] -> -1
                   (head -> EUID (UID u)) -> u
+                  _ -> error "Invalid encodeTransformers.debugEncode pattern match"
 
           str = unwords [ "debugEncode", trid, "UID", show uid, ":"
                         , show $ any isETransformer as
@@ -1068,7 +1098,7 @@ encodeTransformers restChanged expr = do
 
     mkFold3 e@(PPrjApp3 cE fId fAs fArg1 fArg2 fArg3 app1As app2As app3As)
       = case fId of
-          "groupBy" -> do
+          "group_by" -> do
             (accE, valueT)  <- mkGBAccumE e
             rAccE           <- mkAccumE e
             (nfAs', nfArg1) <- mkGBAccumF valueT fAs fArg1 fArg2 fArg3
@@ -1134,7 +1164,7 @@ encodeTransformers restChanged expr = do
 
       in do
       defaultV <- defaultExpression valueT
-      return $ (fAs++[pFusionSpec (DCond2, IndepTr), pFusionLineage "groupBy"],
+      return $ (fAs++[pFusionSpec (DCond2, IndepTr), pFusionLineage "group_by"],
         EC.lambda aVarId $ EC.lambda eVarId $
           EC.letIn rVarId (entryE defaultV) $
           PSeq (EC.applyMany (EC.project "upsert_with" $ aVar) [rVar, missingE, presentE]) aVar [])
@@ -1166,7 +1196,7 @@ encodeTransformers restChanged expr = do
 
     unaryTransformer   fId = fId `elem` ["map", "filter", "iterate", "ext"]
     binaryTransformer  fId = fId `elem` ["fold", "sample"]
-    ternaryTransformer fId = fId `elem` ["groupBy"]
+    ternaryTransformer fId = fId `elem` ["group_by"]
 
     cleanAnns as = filter (not . isAnyETypeOrEffectAnn) as
 
@@ -1207,7 +1237,7 @@ fuseFoldTransformers expr = do
       else fuse (n,ch) >>= return . second Just
 
     fuse nch@(PPrjApp2ChainCh cE fId1@(leftFusable -> True) "fold"
-                              fArg1 fArg2@((@~ isEType) -> Just (EType fAccT))
+                              fArg1 ((@~ isEType) -> Just (EType fAccT))
                               gArg1 gArg2@((@~ isEType) -> Just (EType gAccT))
                               fAs _ _ gAs oApp1As oApp2As)
       | fusableChain fAs gAs
@@ -1222,7 +1252,14 @@ fuseFoldTransformers expr = do
       where cleanElemAnns as = filter (\a -> not $ isEIElemRec a) as
 
     fuse nch@(PApp _ _ (any isETAppChain -> True), _)   = return $ (False, uncurry replaceCh nch)
-    fuse nch@(PPrj _ _ (any isETransformer -> True), _) = return $ (False, uncurry replaceCh nch)
+    fuse nch@(PPrj _ _ (any isETransformer -> True), _) =
+      let spec = fst nch @~ isEFusionSpec in
+      case spec of
+	Just p@(getFusionSpec -> Just spec) ->
+	  let nann = updateFusionSpec (annotations $ fst nch) spec in
+          return $ (False, uncurry replaceCh nch @<- nann)
+        _ -> return $ (False, uncurry replaceCh nch)
+
     fuse nch = return $ (False, uncurry replaceCh nch)
 
     leftFusable fId = fId `elem` ["sample", "fold"]
@@ -1625,12 +1662,12 @@ fuseFoldTransformers expr = do
 
                     nf  = PChainLambda1 li lj nfE [] []
                 in
-                return $ Just (updateFusionSpec rAs (Open, DepTr), nf)
+                return $ Just (updateFusionSpec rAs (Halt, DepTr), nf)
                   -- ^ TODO: for now, we pick a restrictive fusion spec that disallows further
                   --   fusion with downstream operations.
 
               (PSDCond2 li lj _ loi ldlK ldlV lmvE lpvE, PDCond2 _ _ _ _ _ rgbF _ rzE) ->
-                let (liV, ljV) = (EC.variable li, EC.variable lj)
+                let liV = EC.variable li
 
                     ientryE   = stripEUIDSpan $ mkKVRec ldlK ldlV
                     oentryE   = stripEUIDSpan $ mkKVRec (EC.applyMany rgbF [ientryE]) rzE
@@ -1660,12 +1697,12 @@ fuseFoldTransformers expr = do
 
                     nf  = PChainLambda1 li lj nfE [] []
                 in
-                return $ Just (updateFusionSpec rAs (Open, DepTr), nf)
+                return $ Just (updateFusionSpec rAs (Halt, DepTr), nf)
                   -- ^ TODO: for now, we pick a restrictive fusion spec that disallows further
                   --   fusion with downstream operations.
 
               (PSDCond2 li lj _ loi ldlK ldlV lmvE lpvE, PSDCond2 _ rj _ _ rdlK rdlV rmvE _) ->
-                let (liV, ljV) = (EC.variable li, EC.variable lj)
+                let liV = EC.variable li
 
                     ientryE   = stripEUIDSpan $ mkKVRec ldlK ldlV
                     oentryE   = stripEUIDSpan $ mkKVRec (EC.applyMany (EC.lambda rj rdlK) [ientryE]) rdlV
@@ -1693,7 +1730,7 @@ fuseFoldTransformers expr = do
 
                     nf  = PChainLambda1 li lj nfE [] []
                 in
-                return $ Just (updateFusionSpec rAs (Open, DepTr), nf)
+                return $ Just (updateFusionSpec rAs (Halt, DepTr), nf)
                   -- ^ TODO: for now, we pick a restrictive fusion spec that disallows further
                   --   fusion with downstream operations.
 
@@ -1744,12 +1781,12 @@ fuseFoldTransformers expr = do
 
                     nf  = PChainLambda1 li lj nfE [] []
                 in
-                return $ Just (updateFusionSpec rAs (Open, DepTr), nf)
+                return $ Just (updateFusionSpec rAs (Halt, DepTr), nf)
                   -- ^ TODO: for now, we pick a restrictive fusion spec that disallows further
                   --   fusion with downstream operations.
 
               (PSDCond2 li lj _ loi ldlK ldlV lmvE lpvE, PSDCond2 _ rj _ _ rdlK rdlV rmvE _) ->
-                let (liV, ljV) = (EC.variable li, EC.variable lj)
+                let liV = EC.variable li
 
                     entryE     = mkKVRec (EC.applyMany (EC.lambda rj rdlK) [mkKVRec ldlK ldlV]) rdlV
 
@@ -1767,7 +1804,7 @@ fuseFoldTransformers expr = do
 
                     nf  = PChainLambda1 li lj nfE [] []
                 in
-                return $ Just (updateFusionSpec rAs (Open, DepTr), nf)
+                return $ Just (updateFusionSpec rAs (Halt, DepTr), nf)
 
               (_, _) -> Right Nothing
 
@@ -1924,7 +1961,7 @@ fuseFoldTransformers expr = do
     --    (True, True)   -> Right True
     --    (_, _)         -> Right False
 
-    promoteRecType lAs rAs = Right False
+    promoteRecType _ _ = Right False
 
     mkAccE accE eE = PSeq (PPrjApp accE "insert" [] eE []) accE []
 
@@ -1955,9 +1992,9 @@ fuseFoldTransformers expr = do
                   nmissE       = EC.lambda "_" $ EC.record [("key", EC.project "key" $ EC.variable leti), ("value", EC.applyMany missingAccFE [zE, jV])]
               in (rleti, rentryE, nmissE, npresE)
 
-          seqApp entryE =
+          seqApp entryE' =
             PSeq (EC.applyMany (EC.project "upsert_with" iV)
-                               [entryE, missingE, presentE])
+                               [entryE', missingE, presentE])
               iV []
       in
       return $ EC.lambda i $ EC.lambda j $ EC.letIn leti entryE $ seqApp $ EC.variable leti
@@ -1978,7 +2015,9 @@ fuseFoldTransformers expr = do
     cleanAnns a = isEUID a || isESpan a || isAnyETypeOrEffectAnn a
 
     -- Fusion spec helpers
-    updateFusionSpec as spec = filter (not . isEFusionSpec) as ++ [pFusionSpec spec]
+    updateFusionSpec as spec = nub $ filter (not . isEFusionSpec) as
+                                  ++ [pFusionSpec spec]
+                                  ++ (case fst spec of {Open -> []; _ -> [pAccumulatingTransformer]})
 
     promoteTCls a b = toEnum $ max (fromEnum a) (fromEnum b)
 
@@ -2089,6 +2128,173 @@ rewriteStreamAccumulation i expr = mapAccumulation rewriteAccumE rewriteVarE i e
   where rewriteAccumE (PPrjAppVarSeq _ "insert" v) = EC.some v
         rewriteAccumE e = e
         rewriteVarE   _ = EC.constant $ CNone NoneImmut
+
+
+-- | Mark every lambda that either returns or threads its argument.
+markProgramLambdas :: K3 Declaration -> Either String (K3 Declaration)
+markProgramLambdas prog = do
+  lcenv <- lambdaClosures prog
+  mapExpression (markLambdas lcenv) prog
+
+markLambdas :: ClosureEnv -> K3 Expression -> Either String (K3 Expression)
+markLambdas lcenv expr = modifyTree doMark expr
+  where doMark e@(tnc -> (ELambda i, [body])) = do
+          u <- uidOf e
+          clvars <- maybe closureErr return $ IntMap.lookup u lcenv
+          (ra, nbody) <- case inferVariableReturns i clvars body of
+                           (False, _) -> return (False, body)
+                           (x,y) -> return (x,y)
+
+          (ta, nbody2) <- case inferThreadReturns i nbody of
+                            (False, _) -> return (False, nbody)
+                            (x,y) -> return (x,y)
+
+          if ta || ra
+            then
+              let r  = replaceCh e [nbody2]
+                  r2 = if ra then r  @+ inferredEProp "ReturnsArgument" Nothing else r
+                  r3 = if ta then r2 @+ inferredEProp "ThreadsArgument" Nothing else r2
+              in return r3
+            else return e
+
+        -- Mark folds that are threading transformers.
+        doMark e@(PPrjApp2 cE "fold" fAs fLam fAcc app1As app2As) =
+          case fLam @~ isEThreadsArgLambda of
+            Nothing -> return e
+            _ -> let prje = (PPrj cE "fold" fAs) @+ inferredEProp "ThreadingTransformer" Nothing
+                 in return $ PApp (PApp prje fLam app1As) fAcc app2As
+
+        doMark e = return e
+
+        uidOf e   = maybe uidErr (\case {(EUID (UID u)) -> Right u ; _ -> uidErr}) $ e @~ isEUID
+
+        uidErr     = Left "Invalid UID when marking self-returning lambdas."
+        closureErr = Left "Invalid closure vars when marking self-returning lambdas."
+
+-- | Infer return points in lambdas that yield either the argument or a closure-captured variable.
+--   We annotate the lambda if every return expression is either:
+--     i.  the variable itself syntax-wise (for now we consider only the exact variable, not equivalent bnds)
+--     ii. a branching expression whose return points are themselves argument-returns.
+mapVariableReturns :: (K3 Expression -> K3 Expression)
+                   -> (K3 Expression -> K3 Expression)
+                   -> Identifier -> [Identifier] -> K3 Expression -> (Bool, K3 Expression)
+mapVariableReturns onRetArgF onRetCVarF i cl expr = runIdentity $ do
+  (isAcc, e) <- doInference
+  return $ (either id id isAcc, e)
+
+  where
+    il = i:cl
+
+    doInference = foldMapReturnExpression trackBindings argumentReturn independentF False (Left False) expr
+
+    trackBindings shadowed e = case tag e of
+        ELambda j -> return (shadowed, [onBinding shadowed j])
+        ELetIn  j -> return (shadowed, [shadowed, onBinding shadowed j])
+        ECaseOf j -> return (shadowed, [shadowed, onBinding shadowed j, shadowed])
+        EBindAs b -> return (shadowed, [shadowed, foldl onBinding shadowed $ bindingVariables b])
+        _ -> return (shadowed, replicate (length $ children e) shadowed)
+
+      where onBinding sh j = if j `elem` il then True else sh
+
+    -- TODO: check effects and lineage rather than free variables.
+    independentF shadowed _ e
+      | EVariable j <- tag e , j `elem` il && not shadowed = return (Right False, e)
+      | EAssign   j <- tag e , j `elem` il && not shadowed = return (Right False, e)
+
+    independentF _ (onIndepR -> isArgReturn) e = return (isArgReturn, e)
+
+    -- TODO: using symbols as lineage here will provide better alias tracking.
+    -- TODO: test in-place modification property
+    argumentReturn shadowed _ e@(tag -> EVariable j)
+      | i == j && not shadowed      = return (Left True, onRetArgF e)
+      | j `elem` cl && not shadowed = return (Left True, onRetCVarF e)
+
+    argumentReturn _ (onDirectReturnBranch [0]   -> isArgRet) e@(tag -> ELambda _)     = return (isArgRet, e)
+    argumentReturn _ (onDirectReturnBranch [0]   -> isArgRet) e@(tag -> EOperate OApp) = return (isArgRet, e)
+    argumentReturn _ (onDirectReturnBranch [1]   -> isArgRet) e@(tag -> EOperate OSeq) = return (isArgRet, e)
+
+    argumentReturn _ (onDirectReturnBranch [1]   -> isArgRet) e@(tag -> ELetIn  _)     = return (isArgRet, e)
+    argumentReturn _ (onDirectReturnBranch [1]   -> isArgRet) e@(tag -> EBindAs _)     = return (isArgRet, e)
+    argumentReturn _ (onDirectReturnBranch [1,2] -> isArgRet) e@(tag -> ECaseOf _)     = return (isArgRet, e)
+    argumentReturn _ (onDirectReturnBranch [1,2] -> isArgRet) e@(tag -> EIfThenElse)   = return (isArgRet, e)
+
+    argumentReturn _ _ e = return (Right False, e)
+
+    onIndepR l = if any not $ rights l then Right False else Left False
+
+    onDirectReturnBranch branchIds l =
+      if any not $ rights (map (l !!) branchIds) then Right False
+      else ensureEither (map (l !!) branchIds)
+
+    ensureEither l =
+      if all id (lefts l) && all id (rights l)
+        then (if null $ rights l then Left else Right) True
+        else Right False
+
+
+inferVariableReturns :: Identifier -> [Identifier] -> K3 Expression -> (Bool, K3 Expression)
+inferVariableReturns i cl expr = mapVariableReturns annotateArgE annotateClosureE i cl expr
+  where annotateArgE     e = e @+ (inferredEProp "ArgReturn" Nothing)
+        annotateClosureE e = e @+ (inferredEProp "ClosureReturn" Nothing)
+
+
+-- | Apply a function to every return expression that is a fold accepting a variable named as the given identifier.
+mapThreadReturns :: (K3 Expression -> K3 Expression) -> Identifier -> K3 Expression -> (Bool, K3 Expression)
+mapThreadReturns onFoldRetF i expr = runIdentity $ do
+  (isAcc, e) <- doInference
+  return $ (either id id isAcc, e)
+
+  where
+    doInference = foldMapReturnExpression trackBindings threadReturn independentF False (Left False) expr
+
+    trackBindings shadowed e = case tag e of
+        ELambda j -> return (shadowed, [onBinding shadowed j])
+        ELetIn  j -> return (shadowed, [shadowed, onBinding shadowed j])
+        ECaseOf j -> return (shadowed, [shadowed, onBinding shadowed j, shadowed])
+        EBindAs b -> return (shadowed, [shadowed, foldl onBinding shadowed $ bindingVariables b])
+        _ -> return (shadowed, replicate (length $ children e) shadowed)
+
+      where onBinding sh j = if i == j then True else sh
+
+    independentF shadowed _ e
+      | EVariable j <- tag e , i == j && not shadowed = return (Right False, e)
+      | EAssign   j <- tag e , i == j && not shadowed = return (Right False, e)
+
+    independentF _ (onIndepR -> isFoldReturn) e = return (isFoldReturn, e)
+
+    threadReturn shadowed _ e@(PPrjApp2 cE "fold" fAs fLam (PVar j jAs) app1As app2As)
+      | i == j && not shadowed =
+        case (fLam @~ isEReturnsArgLambda, fLam @~ isEThreadsArgLambda) of
+          (Nothing, Nothing) -> return (Right False, e)
+          (_, _) -> let re = PApp (PApp (onFoldRetF $ PPrj cE "fold" fAs) fLam app1As) (PVar j jAs) app2As
+                    in return (Left True, re)
+
+    threadReturn _ (onDirectReturnBranch [0]   -> isThreadRet) e@(tag -> ELambda _)     = return (isThreadRet, e)
+    threadReturn _ (onDirectReturnBranch [0]   -> isThreadRet) e@(tag -> EOperate OApp) = return (isThreadRet, e)
+    threadReturn _ (onDirectReturnBranch [1]   -> isThreadRet) e@(tag -> EOperate OSeq) = return (isThreadRet, e)
+
+    threadReturn _ (onDirectReturnBranch [1]   -> isThreadRet) e@(tag -> ELetIn  _)     = return (isThreadRet, e)
+    threadReturn _ (onDirectReturnBranch [1]   -> isThreadRet) e@(tag -> EBindAs _)     = return (isThreadRet, e)
+    threadReturn _ (onDirectReturnBranch [1,2] -> isThreadRet) e@(tag -> ECaseOf _)     = return (isThreadRet, e)
+    threadReturn _ (onDirectReturnBranch [1,2] -> isThreadRet) e@(tag -> EIfThenElse)   = return (isThreadRet, e)
+
+    threadReturn _ _ e = return (Right False, e)
+
+    onIndepR l = if any not $ rights l then Right False else Left False
+
+    onDirectReturnBranch branchIds l =
+      if any not $ rights (map (l !!) branchIds) then Right False
+      else ensureEither (map (l !!) branchIds)
+
+    ensureEither l =
+      if all id (lefts l) && all id (rights l)
+        then (if null $ rights l then Left else Right) True
+        else Right False
+
+
+inferThreadReturns :: Identifier -> K3 Expression -> (Bool, K3 Expression)
+inferThreadReturns i expr = mapThreadReturns annotateFoldE i expr
+  where annotateFoldE e = e @+ (inferredEProp "ThreadFoldReturn" Nothing)
 
 
 -- Helper patterns for fusion

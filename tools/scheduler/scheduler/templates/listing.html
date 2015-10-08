@@ -1,0 +1,24 @@
+{% extends "layout/base.html" %}
+
+{% block content %}
+  <div class="container">
+    <div class="starter-template">
+      <h1>Directory Listing</h1>
+      <p class="lead">
+        /{{cwd}}
+        </p>
+      <p>
+            <ul class="list-group">
+              {% for entry in listing %}
+                <li class="list-group-item"><a href="/fs/{{cwd}}/{{entry}}">{{entry}}</a></li>
+              {% endfor %}
+            </ul>
+      </p>
+    </div>
+  </div>
+{% endblock %}
+
+{% block footer %}
+  {% include "include/footer.html" %}
+{% endblock %}
+

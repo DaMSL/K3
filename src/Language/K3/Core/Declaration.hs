@@ -15,6 +15,7 @@ module Language.K3.Core.Declaration (
     UnorderedConflict(..),
     PropertyD
 
+    , declName
     , getTriggerIds
 
     , onDProperty
@@ -38,6 +39,9 @@ module Language.K3.Core.Declaration (
 ) where
 
 import Control.DeepSeq
+
+import Data.Binary
+import Data.Serialize
 
 import Data.List
 import Data.Tree
@@ -134,6 +138,18 @@ instance NFData Polarity
 instance NFData (Annotation Declaration)
 instance NFData UnorderedConflict
 
+instance Binary Declaration
+instance Binary AnnMemDecl
+instance Binary Polarity
+instance Binary (Annotation Declaration)
+instance Binary UnorderedConflict
+
+instance Serialize Declaration
+instance Serialize AnnMemDecl
+instance Serialize Polarity
+instance Serialize (Annotation Declaration)
+instance Serialize UnorderedConflict
+
 {- HasUID instances -}
 instance HasUID (Annotation Declaration) where
   getUID (DUID u) = Just u
@@ -143,6 +159,15 @@ instance HasSpan (Annotation Declaration) where
   getSpan (DSpan s) = Just s
   getSpan _         = Nothing
 
+
+declName :: K3 Declaration -> Maybe Identifier
+declName d = case tag d of
+               DGlobal i _ _ -> Just i
+               DTrigger i _ _ -> Just i
+               DDataAnnotation i _ _ -> Just i
+               DRole i -> Just i
+               DTypeDef i _ -> Just i
+               DGenerator _ -> Nothing
 
 -- | Property helpers
 type PropertyV = (Identifier, Maybe (K3 Literal))

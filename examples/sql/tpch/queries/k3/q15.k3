@@ -1,0 +1,89 @@
+include "tpch/benchmark.k3"
+include "Annotation/Set.k3"
+include "Distributed/SQLTransformers.k3"
+
+// Relations / Loaders
+declare master: address
+declare lineitem: mut lineitem_bag
+declare supplier: mut collection {elem: supplier_r} @Collection
+@:CArgs 2
+declare supplierLoaderPE: collection {path: string} @Collection -> collection {elem: supplier_r} @Collection -> ()
+
+// Intermediates
+declare aggs: mut collection {key: int, value: real} @Collection // Local aggregates (per-peer)
+declare global_max: mut {key: int, value: real}
+declare local_results: collection {elem: (int, string, string, string, real)} @Collection
+
+// Local group by on-lineitem, followed by distributed hash join.
+trigger q15_stage1: () = \_ -> (
+  aggs =
+    ((lineitem.filter
+                 (\e -> 19960101 <= e.l_shipdate and e.l_shipdate < 19960401)
+               )
+               .group_by
+                 (\l -> l.l_suppkey)
+                 (\a -> \e -> a + (e.l_extendedprice * (1.0 - e.l_discount)))
+                 0.0
+               );
+  (q15_stage2, me) <- ()
+) @DistributedGroupBy2(lbl=[# lineitem_groupby], merge=[$ \a -> \b -> a + b])
+
+trigger q15_stage2: () = \_ -> (
+  let first = aggs.at 0
+  in
+  let local_max = aggs.fold (\a -> \e -> if e.value > a.value then e else a) first
+  in (q15_stage3, master) <- local_max
+)
+
+trigger q15_stage3: {key:int, value: real} = \lm -> (
+  (if lm.value > global_max.value
+  then global_max = lm
+  else ());
+  (
+  peers.iterate
+    (\p -> (q15_stage4, p.addr) <- global_max)
+  )@OnCounter(id=[# max], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+)
+
+trigger q15_stage4: {key: int, value: real} = \gm -> (
+  ((supplier.filter (\s -> s.elem.s_suppkey == gm.key))
+          .iterate (\s -> local_results.insert {elem: (s.elem.s_suppkey, s.elem.s_name, s.elem.s_address, s.elem.s_phone, gm.value)} ));
+  ( () @:Result) @TPCHBenchmarkWithoutMaster
+)
+
+declare post_process: collection {key: address, value: collection {elem: (int, string, string, string, real)} @Collection
+} @Map -> () = \x -> (
+  x.iterate (\kv1 ->
+    kv1.value.iterate (\e ->
+      (results_sink, me) <- e.elem
+    )
+  )
+)
+
+// TODO loaders with pushdown
+trigger start: () = \_ -> (
+  (() @:Start) @TPCHBenchmarkWithoutMaster(
+    nodes                = [$ peers],
+    loadExpr             = [$ lineitemLoaderP lineitemFiles lineitem;
+                              supplierLoaderPE supplierFiles supplier
+                           ],
+    preLoadExpr          = [$ ()],
+    preReadyExpr         = [$ ()],
+    onReadyExpr          = [$ peers.iterate (\p -> (q15_stage1, p.addr) <- () )],
+    finishArgT           = [: () ],
+    preTestFinishExpr    = [$ (\_ -> ())],
+    preFinishExpr        = [$ (ignore local_results) @GatherCollection(
+                                                    lbl   = [# groupby],
+                                                    nodes = [$ peers],
+                                                    next  = [$ (\a -> (post_process a; peers.iterate (\p -> (shutdown, p.addr) <- ()) ))])
+                           ],
+    preShutdownExpr      = [$ ()],
+    finishAsShutdownExpr = [$ false]
+  )
+)
+
+sink results_sink: (int, string, string, string, real) = file "results.csv" text psv
+sink query_time_sink: int = file "time.csv" text csv
+
+source rows : () = value ()
+feed rows |> start

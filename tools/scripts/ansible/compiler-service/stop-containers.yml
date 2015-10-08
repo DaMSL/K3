@@ -1,0 +1,16 @@
+---
+- hosts: '{{ hosts }}'
+  sudo: yes
+
+  vars_files:
+   - "config.yml"
+
+  tasks:
+   - name: Stop docker container
+     docker:
+       name: '{{ cname }}'
+       image: damsl/k3-vanilla
+       state: stopped
+     register: container
+
+   - debug: var=container.stdout_lines

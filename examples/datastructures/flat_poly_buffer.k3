@@ -1,0 +1,49 @@
+include "Annotation/Collection.k3"
+include "Annotation/FlatPolyBuffer.k3"
+include "Core/Builtins.k3"
+
+declare c : collection {ignored:()} @FlatPolyBuffer(
+  variants=[:#>
+    foo => {a:int, b:int} : 0,
+    bar => {c:int, d:int} : 1,
+    baz => {e:int, f:int} : 2
+  ])
+
+declare d : mut int = 0
+
+trigger t : () = \_ -> (
+  (c.append_foo {a:1, b:2});
+  (c.append_baz {e:10, f:20});
+  (c.append_bar {c:100, d:200});
+
+  (print ("Size " ++ (itos (c.size()))));
+  (c.iterate (\tag -> \idx -> \offset ->
+    if tag == 0 then
+      c.foo_safe_at idx offset
+        (\x -> print ("Foo a: " ++ (itos x.a) ++ " b: " ++ (itos x.b)))
+        (\_ -> print "No foo found")
+
+    else if tag == 1 then
+      c.bar_safe_at idx offset
+        (\x -> print ("Bar c: " ++ (itos x.c) ++ " d: " ++ (itos x.d)))
+        (\_ -> print "No bar found")
+
+    else if tag == 2 then
+      c.baz_safe_at idx offset
+        (\x -> print ("Baz e: " ++ (itos x.e) ++ " f: " ++ (itos x.f)))
+        (\_ -> print "No baz found")
+
+    else print "Invalid element tag"));
+
+  (d = (c.foldl
+         (\acc -> \tag -> \idx -> \offset ->
+           if      tag == 0 then c.foo_safe_at idx offset (\x -> acc + x.a) (\_ -> acc)
+           else if tag == 1 then c.bar_safe_at idx offset (\x -> acc + x.c) (\_ -> acc)
+           else if tag == 2 then c.baz_safe_at idx offset (\x -> acc + x.e) (\_ -> acc)
+           else acc)
+         0));
+  print ("Fold result, d: " ++ (itos d))
+)
+
+source s1 : () = value ()
+feed s1 |> t

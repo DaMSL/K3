@@ -22,6 +22,9 @@ module Language.K3.Core.Utils
 , check8Children
 , prependToRole
 
+, declarationName
+, declarationExpr
+
 , mapTree
 , modifyTree
 , foldMapTree
@@ -34,7 +37,7 @@ module Language.K3.Core.Utils
 , biFoldMapRebuildTree
 , mapIn1RebuildTree
 , foldIn1RebuildTree
-, foldMapIn1RebuildTree
+, biFoldMapIn1RebuildTree
 
 , foldProgramWithDecl
 , foldProgram
@@ -57,13 +60,8 @@ module Language.K3.Core.Utils
 , foldMapReturnExpression
 , mapReturnExpression
 
+, literalExpression
 , defaultExpression
-, freeVariables
-, bindingVariables
-, modifiedVariables
-
-, lambdaClosures
-, lambdaClosuresDecl
 
 , compareDAST
 , compareEAST
@@ -76,9 +74,11 @@ module Language.K3.Core.Utils
 , stripNamedDeclAnnotations
 , stripExprAnnotations
 , stripTypeAnnotations
+, stripLiteralAnnotations
 , stripAllDeclAnnotations
 , stripAllExprAnnotations
 , stripAllTypeAnnotations
+, stripAllLiteralAnnotations
 
 , repairProgram
 , foldProgramUID
@@ -89,6 +89,9 @@ module Language.K3.Core.Utils
 
 , stripDCompare
 , stripECompare
+, stripTCompare
+, stripLCompare
+, stripSCompare
 , stripComments
 , stripDUIDSpan
 , stripEUIDSpan
@@ -105,28 +108,32 @@ module Language.K3.Core.Utils
 , stripDeclTypeAndEffectAnns
 , stripAllTypeAndEffectAnns
 
+, concatProgram
+, indexProgramDecls
 ) where
 
 import Control.Applicative
 import Control.Arrow
 import Control.Monad
+
 import Data.Functor.Identity
 import Data.List
 import Data.Maybe
 import Data.Tree
 
-import Data.IntMap ( IntMap )
-import qualified Data.IntMap as IntMap
-
-import Debug.Trace
+import Data.Map ( Map )
+import qualified Data.Map as Map
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
+import Language.K3.Core.Literal
+import Language.K3.Core.Metaprogram
 
 import qualified Language.K3.Core.Constructor.Expression as EC
+import qualified Language.K3.Core.Constructor.Declaration as DC
 
 import Language.K3.Utils.Pretty hiding ( wrap )
 
@@ -162,6 +169,18 @@ $(
   concat <$> mapM mkCheckChildren [0::Int .. 8]
  )
 
+-- Returns the name of a declaration if available.
+declarationName :: K3 Declaration -> Maybe Identifier
+declarationName (tag -> DGlobal  n _ _) = Just n
+declarationName (tag -> DTrigger n _ _) = Just n
+declarationName _ = Nothing
+
+-- Returns the initializer expression for a declaration if available.
+declarationExpr :: K3 Declaration -> Maybe (K3 Expression)
+declarationExpr (tag -> DGlobal  _ _ eOpt) = eOpt
+declarationExpr (tag -> DTrigger _ _ e) = Just e
+declarationExpr _ = Nothing
+
 -- Prepend declarations to the beginning of a role
 prependToRole :: K3 Declaration -> [K3 Declaration] -> K3 Declaration
 prependToRole (Node r@(DRole _ :@: _) sub) ds = Node r (ds++sub)
@@ -178,9 +197,7 @@ mapTree f n@(Node _ ch) = mapM (mapTree f) ch >>= flip f n
 --   The children of a node are pre-transformed recursively
 modifyTree :: (Monad m) => (Tree a -> m (Tree a)) -> Tree a -> m (Tree a)
 modifyTree f n@(Node _ []) = f n
-modifyTree f   (Node x ch) = do
-   ch' <- mapM (modifyTree f) ch
-   f (Node x ch')
+modifyTree f n@(Node _ ch) = mapM (modifyTree f) ch >>= f . replaceCh n
 
 -- | Map an accumulator over a tree, recurring independently over each child.
 --   The result is produced by transforming independent subresults in bottom-up fashion.
@@ -354,23 +371,23 @@ foldIn1RebuildTree preCh1F postCh1F mergeF allChF acc n@(Node _ ch) = do
 --           over the other children.
 -- allChF:   The all-child function takes the post child's single accumulator, the processed children,
 --           and the node, and returns a new tree.
-foldMapIn1RebuildTree :: (Monad m)
+biFoldMapIn1RebuildTree :: (Monad m)
                   => (c -> Tree a -> Tree a -> m c)
                   -> (c -> d -> Tree b -> Tree a -> m (c, [c]))
                   -> (c -> [d] -> [Tree b] -> Tree a -> m (d, Tree b))
                   -> c -> d -> Tree a -> m (d, Tree b)
-foldMapIn1RebuildTree _ _ allChF tdAcc buAcc n@(Node _ []) = allChF tdAcc [buAcc] [] n
-foldMapIn1RebuildTree preCh1F postCh1F allChF tdAcc buAcc n@(Node _ ch) = do
+biFoldMapIn1RebuildTree _ _ allChF tdAcc buAcc n@(Node _ []) = allChF tdAcc [buAcc] [] n
+biFoldMapIn1RebuildTree preCh1F postCh1F allChF tdAcc buAcc n@(Node _ ch) = do
     nCh1Acc          <- preCh1F tdAcc (head ch) n
     (nCh1BuAcc, nc1) <- rcr nCh1Acc $ head ch
     (nAcc, chAccs)   <- postCh1F nCh1Acc nCh1BuAcc nc1 n
     if length chAccs /= (length $ tail ch)
-      then fail "Invalid foldMapIn1RebuildTree accumulation"
+      then fail "Invalid biFoldMapIn1RebuildTree accumulation"
       else do
         (chBuAcc, nRestCh) <- zipWithM rcr chAccs (tail ch) >>= return . unzip
         allChF nAcc (nCh1BuAcc:chBuAcc) (nc1:nRestCh) n
 
-  where rcr a b = foldMapIn1RebuildTree preCh1F postCh1F allChF a buAcc b
+  where rcr a b = biFoldMapIn1RebuildTree preCh1F postCh1F allChF a buAcc b
 
 -- | Fold a declaration and expression reducer and accumulator over the given program.
 foldProgramWithDecl :: (Monad m)
@@ -650,6 +667,16 @@ mapReturnExpression onReturnF nonReturnF expr =
 
 {- Expression utilities -}
 
+-- TODO: complete conversion for remaining literals.
+literalExpression :: K3 Literal -> Either String (K3 Expression)
+literalExpression l = case tag l of
+    LBool   b -> Right $ EC.constant $ CBool b
+    LInt    i -> Right $ EC.constant $ CInt i
+    LByte   w -> Right $ EC.constant $ CByte w
+    LReal   d -> Right $ EC.constant $ CReal d
+    LString s -> Right $ EC.constant $ CString s
+    _ -> Left "Unsupported literal conversion (not implemented)"
+
 defaultExpression :: K3 Type -> Either String (K3 Expression)
 defaultExpression typ = mapTree mkExpr typ
   where mkExpr _ t@(tag -> TBool)   = withQualifier t $ EC.constant $ CBool False
@@ -687,79 +714,8 @@ defaultExpression typ = mapTree mkExpr typ
                              Just TImmutable -> return $ EC.immut e
                              _ -> return $ e
 
--- | Retrieves all free variables in an expression.
-freeVariables :: K3 Expression -> [Identifier]
-freeVariables expr = either (const []) id $ foldMapTree extractVariable [] expr
-  where
-    extractVariable chAcc (tag -> EVariable n) = return $ concat chAcc ++ [n]
-    extractVariable chAcc (tag -> EAssign i)   = return $ concat chAcc ++ [i]
-    extractVariable chAcc (tag -> ELambda n)   = return $ filter (/= n) $ concat chAcc
-    extractVariable chAcc (tag -> EBindAs b)   = return $ (chAcc !! 0) ++ (filter (`notElem` bindingVariables b) $ chAcc !! 1)
-    extractVariable chAcc (tag -> ELetIn i)    = return $ (chAcc !! 0) ++ (filter (/= i) $ chAcc !! 1)
-    extractVariable chAcc (tag -> ECaseOf i)   = return $ let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
-    extractVariable chAcc _                    = return $ concat chAcc
 
--- | Retrieves all variables introduced by a binder
-bindingVariables :: Binder -> [Identifier]
-bindingVariables (BIndirection i) = [i]
-bindingVariables (BTuple is)      = is
-bindingVariables (BRecord ivs)    = snd (unzip ivs)
-
--- | Retrieves all variables modified in an expression.
-modifiedVariables :: K3 Expression -> [Identifier]
-modifiedVariables expr = either (const []) id $ foldMapTree extractVariable [] expr
-  where
-    extractVariable chAcc (tag -> EAssign n)   = return $ concat chAcc ++ [n]
-    extractVariable chAcc (tag -> ELambda n)   = return $ filter (/= n) $ concat chAcc
-    extractVariable chAcc (tag -> EBindAs b)   = return $ (chAcc !! 0) ++ (filter (`notElem` bindingVariables b) $ chAcc !! 1)
-    extractVariable chAcc (tag -> ELetIn i)    = return $ (chAcc !! 0) ++ (filter (/= i) $ chAcc !! 1)
-    extractVariable chAcc (tag -> ECaseOf i)   = return $ let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
-    extractVariable chAcc _                    = return $ concat chAcc
-
--- | Computes the closure variables captured at lambda expressions.
---   This is a one-pass bottom-up implementation.
-type ClosureEnv = IntMap [Identifier]
-
-lambdaClosures :: K3 Declaration -> Either String ClosureEnv
-lambdaClosures p = foldExpression lambdaClosuresExpr IntMap.empty p >>= return . fst
-
-lambdaClosuresDecl :: Identifier -> ClosureEnv -> K3 Declaration -> Either String (ClosureEnv, K3 Declaration)
-lambdaClosuresDecl n lc p = foldNamedDeclExpression n lambdaClosuresExpr lc p
-
-lambdaClosuresExpr :: ClosureEnv -> K3 Expression -> Either String (ClosureEnv, K3 Expression)
-lambdaClosuresExpr lc expr = do
-  (lcenv,_) <- biFoldMapTree bind extract [] (IntMap.empty, []) expr
-  return $ (IntMap.union lcenv lc, expr)
-
-  where
-    bind :: [Identifier] -> K3 Expression -> Either String ([Identifier], [[Identifier]])
-    bind l (tag -> ELambda i) = return (l, [i:l])
-    bind l (tag -> ELetIn  i) = return (l, [l, i:l])
-    bind l (tag -> EBindAs b) = return (l, [l, bindingVariables b ++ l])
-    bind l (tag -> ECaseOf i) = return (l, [l, i:l, l])
-    bind l (children -> ch)   = return (l, replicate (length ch) l)
-
-    extract :: [Identifier] -> [(ClosureEnv, [Identifier])] -> K3 Expression -> Either String (ClosureEnv, [Identifier])
-    extract _ chAcc (tag -> EVariable i) = rt chAcc (++[i])
-    extract _ chAcc (tag -> EAssign i)   = rt chAcc (++[i])
-    extract l (concatLc -> (lcAcc,chAcc)) e@(tag -> ELambda n) = extendLc lcAcc e $ filter (onlyLocals n l) $ concat chAcc
-    extract _ (concatLc -> (lcAcc,chAcc))   (tag -> EBindAs b) = return . (lcAcc,) $ (chAcc !! 0) ++ (filter (`notElem` bindingVariables b) $ chAcc !! 1)
-    extract _ (concatLc -> (lcAcc,chAcc))   (tag -> ELetIn i)  = return . (lcAcc,) $ (chAcc !! 0) ++ (filter (/= i) $ chAcc !! 1)
-    extract _ (concatLc -> (lcAcc,chAcc))   (tag -> ECaseOf i) = return . (lcAcc,) $ let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
-    extract _ chAcc _ = rt chAcc id
-
-    onlyLocals n l i = i /= n && i `elem` l
-
-    concatLc :: [(ClosureEnv, [Identifier])] -> (ClosureEnv, [[Identifier]])
-    concatLc subAcc = let (x,y) = unzip subAcc in (IntMap.unions x, y)
-
-    extendLc :: ClosureEnv -> K3 Expression -> [Identifier] -> Either String (ClosureEnv, [Identifier])
-    extendLc lcenv e ids = case e @~ isEUID of
-      Just (EUID (UID i)) -> return $ (IntMap.insert i (nub ids) lcenv, ids)
-      _ -> Left $ boxToString $ ["No UID found on lambda"] %$ prettyLines e
-
-    rt subAcc f = return $ second (f . concat) $ concatLc subAcc
-
+{- AST comparators -}
 
 -- | Compares declarations and expressions for identical AST structures
 --  while ignoring annotations and properties (such as UIDs, spans, etc.)
@@ -844,6 +800,21 @@ stripTypeAnnotations :: (Annotation Type -> Bool) -> K3 Type -> K3 Type
 stripTypeAnnotations tStripF t = runIdentity $ mapTree strip t
   where strip ch n = return $ Node (tag n :@: (filter (not . tStripF) $ annotations n)) ch
 
+-- | Strips all annotations from a literal given annotation filtering functions.
+stripLiteralAnnotations :: (Annotation Literal -> Bool) -> (Annotation Type -> Bool)
+                        -> K3 Literal -> K3 Literal
+stripLiteralAnnotations lStripF tStripF l = runIdentity $ mapTree strip l
+  where
+    strip ch n@(tag -> LEmpty t) =
+      return $ Node (LEmpty (stripTypeAnnotations tStripF t) :@: stripLAnns n) ch
+
+    strip ch n@(tag -> LCollection t) =
+      return $ Node (LCollection (stripTypeAnnotations tStripF t) :@: stripLAnns n) ch
+
+    strip ch n = return $ Node (tag n :@: (filter (not . lStripF) $ annotations n)) ch
+
+    stripLAnns n = filter (not . lStripF) $ annotations n
+
 -- | Strips all annotations from a declaration deeply.
 stripAllDeclAnnotations :: K3 Declaration -> K3 Declaration
 stripAllDeclAnnotations = stripDeclAnnotations (const True) (const True) (const True)
@@ -855,6 +826,10 @@ stripAllExprAnnotations = stripExprAnnotations (const True) (const True)
 -- | Strips all annotations from a type deeply.
 stripAllTypeAnnotations :: K3 Type -> K3 Type
 stripAllTypeAnnotations = stripTypeAnnotations (const True)
+
+-- | Strips all annotations from a literal deeply.
+stripAllLiteralAnnotations :: K3 Literal -> K3 Literal
+stripAllLiteralAnnotations = stripLiteralAnnotations (const True) (const True)
 
 
 {- Annotation removal -}
@@ -871,6 +846,21 @@ stripECompare = stripExprAnnotations cleanExpr cleanType
 
 stripTCompare :: K3 Type -> K3 Type
 stripTCompare = stripTypeAnnotations (not . isTAnnotation)
+
+stripLCompare :: K3 Literal -> K3 Literal
+stripLCompare = stripLiteralAnnotations cleanLiteral cleanType
+  where cleanLiteral a = not (isLQualified a || isLAnnotation a)
+        cleanType    a = not (isTAnnotation a || isTUserProperty a)
+
+stripSCompare :: SpliceValue -> SpliceValue
+stripSCompare s = case s of
+                    SType t -> SType $ stripTCompare t
+                    SExpr e -> SExpr $ stripECompare e
+                    SDecl d -> SDecl $ stripDCompare d
+                    SLiteral l -> SLiteral $ stripLCompare l
+                    SRecord nsmap -> SRecord $ Map.map stripSCompare nsmap
+                    SList sl -> SList $ map stripSCompare sl
+                    _ -> s
 
 stripComments :: K3 Declaration -> K3 Declaration
 stripComments = stripDeclAnnotations isDSyntax isESyntax (const False)
@@ -933,81 +923,83 @@ stripAllTypeAndEffectAnns = stripDeclAnnotations isAnyDEffectAnn isAnyETypeOrEff
 
 -- | Ensures every node has a valid UID and Span.
 --   This currently does not handle literals.
-repairProgram :: String -> Maybe Int -> K3 Declaration -> (Int, K3 Declaration)
-repairProgram repairMsg nextUIDOpt p =
-    let nextUID = maybe (let UID maxUID = maxProgramUID p in maxUID + 1) id nextUIDOpt
-    in runIdentity $ foldProgram repairDecl repairMem repairExpr (Just repairType) nextUID p
+repairProgram :: String -> Maybe ParGenSymS -> K3 Declaration -> (ParGenSymS, K3 Declaration)
+repairProgram repairMsg symSOpt p =
+    let UID maxUID = maxProgramUID p
+        symS       = maybe (contigsymAtS $ maxUID + 1) id symSOpt
+    in runIdentity $ foldProgram repairDecl repairMem repairExpr (Just repairType) symS p
 
   where
-        repairDecl :: Int -> K3 Declaration -> Identity (Int, K3 Declaration)
-        repairDecl uid n = validateD uid (children n) n
+    repairDecl :: ParGenSymS -> K3 Declaration -> Identity (ParGenSymS, K3 Declaration)
+    repairDecl symS n = validateD symS (children n) n
 
-        repairExpr :: Int -> K3 Expression -> Identity (Int, K3 Expression)
-        repairExpr uid n = foldRebuildTree validateE uid n
+    repairExpr :: ParGenSymS -> K3 Expression -> Identity (ParGenSymS, K3 Expression)
+    repairExpr symS n = foldRebuildTree validateE symS n
 
-        repairType :: Int -> K3 Type -> Identity (Int, K3 Type)
-        repairType uid n = foldRebuildTree validateT uid n
+    repairType :: ParGenSymS -> K3 Type -> Identity (ParGenSymS, K3 Type)
+    repairType symS n = foldRebuildTree validateT symS n
 
-        repairMem uid (Lifted      pol n t eOpt anns) = rebuildMem uid anns $ Lifted      pol n (repairTQualifier t) eOpt
-        repairMem uid (Attribute   pol n t eOpt anns) = rebuildMem uid anns $ Attribute   pol n (repairTQualifier t) eOpt
-        repairMem uid (MAnnotation pol n anns)        = rebuildMem uid anns $ MAnnotation pol n
+    repairMem symS (Lifted      pol n t eOpt anns) = rebuildMem symS anns $ Lifted      pol n (repairTQualifier t) eOpt
+    repairMem symS (Attribute   pol n t eOpt anns) = rebuildMem symS anns $ Attribute   pol n (repairTQualifier t) eOpt
+    repairMem symS (MAnnotation pol n anns)        = rebuildMem symS anns $ MAnnotation pol n
 
-        validateD :: Int -> [K3 Declaration] -> K3 Declaration -> Identity (Int, K3 Declaration)
-        validateD uid ch n = ensureUIDSpan uid DUID isDUID DSpan isDSpan ch n >>= return . second repairDQualifier
+    validateD :: ParGenSymS -> [K3 Declaration] -> K3 Declaration -> Identity (ParGenSymS, K3 Declaration)
+    validateD symS ch n = ensureUIDSpan symS DUID isDUID DSpan isDSpan ch n >>= return . second repairDQualifier
 
-        validateE :: Int -> [K3 Expression] -> K3 Expression -> Identity (Int, K3 Expression)
-        validateE uid ch n = ensureUIDSpan uid EUID isEUID ESpan isESpan ch n >>= return . second repairEQualifier
+    validateE :: ParGenSymS -> [K3 Expression] -> K3 Expression -> Identity (ParGenSymS, K3 Expression)
+    validateE symS ch n = ensureUIDSpan symS EUID isEUID ESpan isESpan ch n >>= return . second repairEQualifier
 
-        validateT :: Int -> [K3 Type] -> K3 Type -> Identity (Int, K3 Type)
-        validateT uid ch n = ensureUIDSpan uid TUID isTUID TSpan isTSpan ch n >>= return . second repairTQualifier
+    validateT :: ParGenSymS -> [K3 Type] -> K3 Type -> Identity (ParGenSymS, K3 Type)
+    validateT symS ch n = ensureUIDSpan symS TUID isTUID TSpan isTSpan ch n >>= return . second repairTQualifier
 
-        repairDQualifier d = case tag d of
-          DGlobal  n t eOpt -> replaceTag d (DGlobal n (repairTQualifier t) eOpt)
-          DTrigger n t e    -> replaceTag d (DTrigger n (repairTQualifier t) e)
-          _ -> d
+    repairDQualifier d = case tag d of
+      DGlobal  n t eOpt -> replaceTag d (DGlobal  n (repairTQualifier t) eOpt)
+      DTrigger n t e    -> replaceTag d (DTrigger n (repairTQualifier t) e)
+      _ -> d
 
-        repairEQualifier :: K3 Expression -> K3 Expression
-        repairEQualifier n = case tnc n of
-          (EConstant (CEmpty t), _) -> let nt = runIdentity $ modifyTree (return . repairTQualifier) t
-                                       in replaceTag n $ EConstant $ CEmpty nt
-          (ELetIn _, [t, b]) -> replaceCh n [repairEQAnn t, b]
-          (ESome,     ch)    -> replaceCh n $ map repairEQAnn ch
-          (EIndirect, ch)    -> replaceCh n $ map repairEQAnn ch
-          (ETuple,    ch)    -> replaceCh n $ map repairEQAnn ch
-          (ERecord _, ch)    -> replaceCh n $ map repairEQAnn ch
-          _ -> n
+    repairEQualifier :: K3 Expression -> K3 Expression
+    repairEQualifier n = case tnc n of
+      (EConstant (CEmpty t), _) -> let nt = runIdentity $ modifyTree (return . repairTQualifier) t
+                                   in replaceTag n $ EConstant $ CEmpty nt
+      (ELetIn _, [t, b]) -> replaceCh n [repairEQAnn t, b]
+      (ESome,     ch)    -> replaceCh n $ map repairEQAnn ch
+      (EIndirect, ch)    -> replaceCh n $ map repairEQAnn ch
+      (ETuple,    ch)    -> replaceCh n $ map repairEQAnn ch
+      (ERecord _, ch)    -> replaceCh n $ map repairEQAnn ch
+      _ -> n
 
-        repairEQAnn n@((@~ isEQualified) -> Nothing) = n @+ EImmutable
-        repairEQAnn n = n
+    repairEQAnn n@((@~ isEQualified) -> Nothing) = n @+ EImmutable
+    repairEQAnn n = n
 
-        repairTQualifier n = case tnc n of
-          (TOption,      ch) -> replaceCh n $ map repairTQAnn ch
-          (TIndirection, ch) -> replaceCh n $ map repairTQAnn ch
-          (TTuple,       ch) -> replaceCh n $ map repairTQAnn ch
-          (TRecord _,    ch) -> replaceCh n $ map repairTQAnn ch
-          _ -> n
+    repairTQualifier n = case tnc n of
+      (TOption,      ch) -> replaceCh n $ map repairTQAnn ch
+      (TIndirection, ch) -> replaceCh n $ map repairTQAnn ch
+      (TTuple,       ch) -> replaceCh n $ map repairTQAnn ch
+      (TRecord _,    ch) -> replaceCh n $ map repairTQAnn ch
+      _ -> n
 
-        repairTQAnn n@((@~ isTQualified) -> Nothing) = n @+ TImmutable
-        repairTQAnn n = n
+    repairTQAnn n@((@~ isTQualified) -> Nothing) = n @+ TImmutable
+    repairTQAnn n = n
 
-        rebuildMem uid anns ctor = return $ (\(nuid, nanns) -> (nuid, ctor nanns)) $ validateMem uid anns
+    rebuildMem symS anns ctor = return $ (\(nsymS, nanns) -> (nsymS, ctor nanns)) $ validateMem symS anns
 
-        validateMem uid anns =
-          let (nuid, extraAnns) =
-                (\spa -> maybe (uid+1, [DUID $ UID uid]++spa) (const (uid, spa)) $ find isDUID anns)
-                  $ maybe ([DSpan $ GeneratedSpan repairMsg]) (const []) $ find isDSpan anns
-          in (nuid, anns ++ extraAnns)
+    validateMem symS anns =
+      let spa               = maybe ([DSpan $ GeneratedSpan repairMsg]) (const []) $ find isDSpan anns
+          (nsymS, u)         = gensym symS
+          (rsymS, extraAnns) = maybe (nsymS, [DUID $ UID u]++spa) (const (symS, spa)) $ find isDUID anns
+      in (rsymS, anns ++ extraAnns)
 
-        ensureUIDSpan uid uCtor uT sCtor sT ch (Node tg _) =
-          return $ ensureUID uid uCtor uT $ snd $ ensureSpan sCtor sT $ Node tg ch
+    ensureUIDSpan symS uCtor uT sCtor sT ch (Node tg _) =
+      return $ ensureUID symS uCtor uT $ snd $ ensureSpan sCtor sT $ Node tg ch
 
-        ensureSpan :: (Eq (Annotation a)) => (Span -> Annotation a) -> (Annotation a -> Bool) -> K3 a -> ((), K3 a)
-        ensureSpan    ctor t n = addAnn () () (ctor $ GeneratedSpan repairMsg) t n
+    ensureSpan :: (Eq (Annotation a)) => (Span -> Annotation a) -> (Annotation a -> Bool) -> K3 a -> ((), K3 a)
+    ensureSpan ctor t n = addAnn () () (ctor $ GeneratedSpan repairMsg) t n
 
-        ensureUID :: (Eq (Annotation a)) => Int -> (UID -> Annotation a) -> (Annotation a -> Bool) -> (K3 a) -> (Int, K3 a)
-        ensureUID uid ctor t n = addAnn (uid+1) uid (ctor $ UID uid) t n
+    ensureUID :: (Eq (Annotation a)) => ParGenSymS -> (UID -> Annotation a) -> (Annotation a -> Bool) -> (K3 a) -> (ParGenSymS, K3 a)
+    ensureUID symS ctor t n = addAnn nsymS symS (ctor $ UID uid) t n
+      where (nsymS, uid) = gensym symS
 
-        addAnn rUsed rNotUsed a t n = maybe (rUsed, n @+ a) (const (rNotUsed, n)) (n @~ t)
+    addAnn rUsed rNotUsed a t n = maybe (rUsed, n @+ a) (const (rNotUsed, n)) (n @~ t)
 
 
 -- | Fold an accumulator over all program UIDs.
@@ -1040,3 +1032,15 @@ collectProgramUIDs d = fst $ foldProgramUID (flip (:)) [] d
 
 duplicateProgramUIDs :: K3 Declaration -> [UID]
 duplicateProgramUIDs d = let uids = collectProgramUIDs d in uids \\ nub uids
+
+concatProgram :: K3 Declaration -> K3 Declaration -> Either String (K3 Declaration)
+concatProgram (tnc -> ptnc) (tnc -> ptnc') =
+  case (ptnc, ptnc') of
+    ((DRole n, ch), (DRole n2, ch2)) | n == n2 -> return $ DC.role n $ ch++ch2
+    _ -> programError
+
+  where programError = Left "Invalid program, expected top-level role."
+
+indexProgramDecls :: (Monad m) => K3 Declaration -> m (Map Int (K3 Declaration))
+indexProgramDecls prog = foldTree indexDecl Map.empty prog
+  where indexDecl idx d = return $ maybe idx (\case {DUID (UID i) -> Map.insert i d idx; _ -> idx}) $ d @~ isDUID

@@ -18,11 +18,11 @@ executable k3
     hs-source-dirs:
         src
 
-    main-is: Language/K3/Driver.hs
+    main-is: Language/K3/Driver/Main.hs
 
     other-extensions: TemplateHaskell
 
-    ghc-options: -Wall -fno-warn-orphans -O2
+    ghc-options: -Wall -fno-warn-orphans -O2 -threaded
 
     extensions:
       FlexibleContexts,
@@ -33,10 +33,15 @@ executable k3
 
     build-depends:
         ansi-wl-pprint,
+        async,
         attoparsec,
         base,
+        binary,
+        bits,
         bytestring,
         Cabal,
+        cereal,
+        cereal-vector,
         clock,
         containers,
         criterion >= 1.0.2.0,
@@ -45,7 +50,7 @@ executable k3
         deepseq-generics,
         directory,
         either,
-        errors,
+        exceptions,
         filemanip,
         filepath,
         hashable,
@@ -54,6 +59,7 @@ executable k3
         haskeline,
         haskell-src-exts,
         haskell-src-exts-qq,
+        heaps,
         hint,
         hslogger,
         hssqlppp,
@@ -76,7 +82,10 @@ executable k3
         text,
         time,
         transformers,
-        unordered-containers
+        unordered-containers,
+        vector,
+        vector-binary-instances,
+        zeromq4-haskell
 
 test-suite all
     type: exitcode-stdio-1.0

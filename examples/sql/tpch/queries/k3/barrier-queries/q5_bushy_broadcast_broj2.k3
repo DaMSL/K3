@@ -1,4 +1,5 @@
 include "tpch/benchmark.k3"
+include "Annotation/Set.k3"
 
 /**********************
 * SQL query
@@ -82,10 +83,12 @@ declare or_ok_by_ck    : mut collection {key: int, value: collection {o_orderkey
 declare co_nm_by_no  : mut collection {nationkey: int, orderkey: int} @Collection
 declare sl_epd_by_no : mut collection {key: {nationkey: int, orderkey: int}, value: real} @Map
 
+declare e_string: string = ""
+
 trigger q5_prep : () = \_ -> (
   ( r_asia_by_rk =
      ((region.filter  (\r -> r.r_name == "ASIA"))
-             .groupBy (\r -> r.r_regionkey)
+             .group_by (\r -> r.r_regionkey)
                       (\_ -> \_ -> ())
                       ())
              .fold    ((\acc -> \r -> ((acc.insert r); acc)) @:Accumulate)
@@ -93,9 +96,9 @@ trigger q5_prep : () = \_ -> (
 
   ( n_asia_by_nk =
       ((nation.filter  (\n -> r_asia_by_rk.member {key: n.n_regionkey, value: ()}))
-              .groupBy (\n -> n.n_nationkey)
+              .group_by (\n -> n.n_nationkey)
                        (\_ -> \n -> n.n_name)
-                       "")
+                       e_string)
               .fold    ((\acc -> \n -> ((acc.insert n); acc)) @:Accumulate)
                        (empty {key: int, value: string} @IntMap) )
 )
@@ -107,7 +110,7 @@ trigger q5_sl_start : () = \_ -> (
       , lhs_query        = [$ () ]
       , lhs_query_clear  = [$ () ]
       , rhs_query        = [$ ((supplier.filter  (\s -> n_asia_by_nk.member {key: s.s_nationkey, value:""}))
-                                        .groupBy (\s -> s.s_suppkey)
+                                        .group_by (\s -> s.s_suppkey)
                                                  (\_ -> \s -> s.s_nationkey)
                                                  0)
                                         .fold    ((\acc -> \s -> ((acc.insert s); acc)) @:Accumulate)
@@ -121,7 +124,8 @@ trigger q5_sl_start : () = \_ -> (
       , pipeline_next    = [$ (\_ -> ()) ]
       , peer_next        = [$ ( sl_epd_by_no =
                                   ((lineitem.filter  (\li -> s_nk_by_sk.member {key: li.l_suppkey, value: 0}))
-                                            .groupBy (\li -> s_nk_by_sk.lookup_with3 {key: li.l_suppkey, value: 0}
+                                            .group_by (\li -> s_nk_by_sk.lookup {key: li.l_suppkey, value: 0}
+                                                               (\_ -> error (print "s_nk_by_sk lookup failed") )
                                                                (\s -> {nationkey: s.value, orderkey: li.l_orderkey}))
                                                      (\acc -> \li -> acc + (li.l_extendedprice * (1 - li.l_discount)))
                                                      0.0)
@@ -145,7 +149,7 @@ trigger q5_co_start : () = \_ -> (
       , lhs_query = [$ or_ok_by_ck =
                          ((orders.filter  (\o ->     o.o_orderdate >= 19940101
                                                  and o.o_orderdate <  19950101 ))
-                                 .groupBy (\o -> o.o_custkey)
+                                 .group_by (\o -> o.o_custkey)
                                           (\acc -> \o -> ((acc.insert {o_orderkey: o.o_orderkey}); acc))
                                           (empty {o_orderkey: int} @Collection))
                                  .fold    ((\acc -> \o -> ((acc.insert o); acc)) @:Accumulate)
@@ -154,7 +158,7 @@ trigger q5_co_start : () = \_ -> (
       , lhs_query_clear = [$ if clear_enabled then (orders = empty q5_orders_r @Collection) else () ]
 
       , rhs_query = [$ (((customer.filter  (\c -> n_asia_by_nk.member { key: c.c_nationkey, value: "" }))
-                                  .groupBy (\c -> c.c_custkey)
+                                  .group_by (\c -> c.c_custkey)
                                            (\acc -> \c -> c.c_nationkey)
                                            0)
                                   .fold    ((\acc -> \c -> ((acc.insert c); acc)) @:Accumulate)
@@ -163,7 +167,8 @@ trigger q5_co_start : () = \_ -> (
       , rhs_query_clear = [$ if clear_enabled then (customer = empty q5_customer_r @Collection) else () ]
 
       , lhs_probe            = [$ (\_ -> \c ->
-                                    or_ok_by_ck.lookup_with {key: c.key, value: empty {o_orderkey:int} @Collection}
+                                    or_ok_by_ck.lookup {key: c.key, value: empty {o_orderkey:int} @Collection}
+                                      (\_ -> () )
                                       (\o -> o.value.iterate (\ok ->
                                                co_nm_by_no.insert { nationkey: c.value
                                                                   , orderkey: ok.o_orderkey })
@@ -202,8 +207,10 @@ trigger q5_cosl_start : () = \_ -> (
   () @ReceiveBroadcastJoin(
         lbl              = [# cosl ]
       , lhs_probe        = [$ (\_ -> \co ->
-                                sl_epd_by_no.lookup_with {key: co, value: 0.0}
-                                  (\sl -> n_asia_by_nk.lookup_with {key: co.nationkey, value: ""}
+                                sl_epd_by_no.lookup {key: co, value: 0.0}
+                                  (\_ -> () )
+                                  (\sl -> n_asia_by_nk.lookup {key: co.nationkey, value: ""}
+                                            (\_ -> () )
                                             (\nkn -> q5_result.insert_with {key: nkn.value, value:sl.value} merge_epd_by_n)
                                   )
                               )
@@ -231,19 +238,14 @@ trigger q5_result_aggregate : q5_r_by_n_map = \vals -> (
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes               = [$ peers],
-  loadExpr            = [$ ( lineitemLineCountFiles.iterate (\e -> lineitemRows = lineitemRows + (lineCountFile e.path));
-                             ordersLineCountFiles.iterate   (\e -> ordersRows = ordersRows + (lineCountFile e.path));
-                             customerLineCountFiles.iterate (\e -> customerRows = customerRows + (lineCountFile e.path));
-                             supplierLineCountFiles.iterate (\e -> supplierRows = supplierRows + (lineCountFile e.path));
-
-                             q5_lineitemLoaderPFC lineitemFiles lineitem lineitem_r lineitemRows;
-                             q5_ordersLoaderPFC   ordersFiles   orders   orders_r   ordersRows;
-                             q5_customerLoaderPFC customerFiles customer customer_r customerRows;
-                             q5_supplierLoaderPFC supplierFiles supplier supplier_r supplierRows;
-                             q5_nationLoaderPC    nationFiles   nation   nation_r;
-                             q5_regionLoaderPC    regionFiles   region   region_r;
+  loadExpr            = [$ q5_lineitemLoaderPC lineitemFiles lineitem lineitem_r;
+                           q5_ordersLoaderPC   ordersFiles   orders   orders_r ;
+                           q5_customerLoaderPC customerFiles customer customer_r;
+                           q5_supplierLoaderPC supplierFiles supplier supplier_r;
+                           q5_nationLoaderPC    nationFiles   nation   nation_r;
+                           q5_regionLoaderPC    regionFiles   region   region_r;
                              ( (q5_prep, me) <- () )
-                           ) ],
+                        ],
   preLoadExpr         = [$ ()],
   preReadyExpr        = [$ ()],
   onReadyExpr         = [$ (( (q5_sl_start, me) <- () );
@@ -251,16 +253,17 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                         ],
   finishArgT          = [: ()],
   preTestFinishExpr   = [$ (\_ -> ())],
-  preFinishExpr       = [$ (print ("Q5 num results:" ++ (itos (q5_result.size()))));
-                           (q5_result.iterate (\r -> ((results.insert r); ((results_sink, me) <- r ))));
+  preFinishExpr       = [$ (q5_result.iterate (\r -> ((results.insert r);
+                                                     ((results_sink, me) <- (r.key, r.value) ))
+                           ));
                            peers.iterate (\p -> (shutdown, p.addr) <- ())
                         ],
   preShutdownExpr     = [$ ()],
-  finishAsShutdownExpr = [$ false]
+  finishAsShutdownExpr = [$ true]
 )
 
-sink results_sink : {key: string, value: real} = file "results.csv" csv
-sink query_time_sink : string = stdout csv
+sink results_sink : (string, real) = file "results.csv" text psv
+sink query_time_sink : int = file "time.csv" text csv
 
 source rows : () = value ()
 feed rows |> start

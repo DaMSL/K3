@@ -89,7 +89,7 @@ control DistributedGroupByGeneric [ lbl             : label
                                   , masters_map     : expr
                                   , profile         : expr ]
 {
-  ignore ( (?e.groupBy ?groupF ?aggF ?accE) : collection ?T )
+  ignore ( (?e.group_by ?groupF ?aggF ?accE) : collection ?T )
      => (if $[profile]
           then (() @:StartTimer) @Time(lbl=[# $[lbl]_GROUPBY], tag=[$ "Time "])
           else ()
@@ -97,9 +97,9 @@ control DistributedGroupByGeneric [ lbl             : label
         $[nodes].iterate (\p -> ($[lbl]_redistribute, p.addr) <- ())
      +> {
           trigger $[lbl]_redistribute : () = \_ -> (
-           ( (ignore ( ($.[e].groupBy $.[groupF] $.[aggF] $.[accE])
-                            .fold  ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
-                                   ($[|specializeMapEmptyByKV 'T.typ|])
+           ( (ignore ( ($.[e].group_by $.[groupF] $.[aggF] $.[accE])
+                             .fold  ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
+                                    ($[|specializeMapEmptyByKV 'T.typ|])
             )) @PartitionShuffleWithMissing(
                   lbl           = lbl
                 , dest_trg      = [$ $[lbl]_merge ]
@@ -141,8 +141,8 @@ control DistributedGroupBy [ lbl             : label
                            , masters_map     : expr
                            , profile         : expr ]
 {
-  ignore ( (?e.groupBy ?groupF ?aggF ?accE) : collection ?t )
-     => (ignore ($.[e].groupBy $.[groupF] $.[aggF] $.[accE]))
+  ignore ( (?e.group_by ?groupF ?aggF ?accE) : collection ?t )
+     => (ignore ($.[e].group_by $.[groupF] $.[aggF] $.[accE]))
           @DistributedGroupByGeneric(
               lbl         = lbl
             , clear_expr  = clear_expr

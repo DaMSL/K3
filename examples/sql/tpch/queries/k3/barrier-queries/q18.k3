@@ -1,4 +1,5 @@
 include "tpch/benchmark.k3"
+include "Annotation/Set.k3"
 
 /**********************
 * SQL query
@@ -56,8 +57,8 @@ typedef loc_q_by_ncodt_r   = { key: {nm:string, ck:int, ok:int, od:int, tp:real}
 typedef loc_q_by_ncodt_map = collection loc_q_by_ncodt_r @Map
 
 declare q18_peer_result : loc_q_by_ncodt_map
-declare results : collection {name: string, custkey: int, orderkey: int, orderdate:string, totalprice: real, sum: real} @Collection
-
+typedef q18_result = collection {name: string, custkey: int, orderkey: int, orderdate:string, totalprice: real, sum: real} @Collection
+declare results : q18_result
 
 // Q18 intermediates.
 typedef o_cdt_by_ok_r = {key : int, value : { o_custkey    : int
@@ -83,7 +84,7 @@ declare merge_q_by_ncodt_r : loc_q_by_ncodt_r -> loc_q_by_ncodt_r -> loc_q_by_nc
   = \a -> \b -> {key: a.key, value: a.value + b.value}
 
 trigger lineitem_having : () = \_ -> (
-  (ignore (lineitem.groupBy (\li -> li.l_orderkey)
+  (ignore (lineitem.group_by (\li -> li.l_orderkey)
                             (\acc -> \li -> acc + li.l_quantity)
                             0.0)
   ) @DistributedGroupBy(
@@ -106,7 +107,7 @@ trigger lineitem_having : () = \_ -> (
 // join as a distributed group-by on orders, with probes and intermediate
 // construction occurring in the merge trigger.
 trigger lineitem_orders : () = \_ -> (
-  (ignore (orders.groupBy (\o -> o.o_orderkey)
+  (ignore (orders.group_by (\o -> o.o_orderkey)
                           (\_ -> \o -> { o_custkey    : o.o_custkey
                                        , o_orderdate  : o.o_orderdate
                                        , o_totalprice : o.o_totalprice })
@@ -117,8 +118,9 @@ trigger lineitem_orders : () = \_ -> (
       peer_next   = [$ print "LI-OR shuffle done." ],
       next        = [$ (lineitem_orders_customer, me) <- () ],
       merge       = [$ (\o ->
-                          case li_having_result.lookup {key: o.key, value: 0.0} of
-                          {Some li -> lo_odtq_by_ck.insert_with
+                          li_having_result.lookup {key: o.key, value: 0.0}
+                            (\_ -> () )
+                            (\li ->  lo_odtq_by_ck.insert_with
                                         {key: o.value.o_custkey
                                         , value: {| key: {ok:int, od:int, tp:real}, value: real
                                                   | { key: { ok: o.key
@@ -128,8 +130,9 @@ trigger lineitem_orders : () = \_ -> (
                                                   |} @Map
                                         }
                                         merge_odtq_by_ck_r
-                          }
-                          {None -> ()})],
+                            )
+                       )
+                    ],
       coordinator = [$ master],
       nodes       = [$ peers],
       masters     = [$ masters ],
@@ -137,6 +140,7 @@ trigger lineitem_orders : () = \_ -> (
       profile     = [$ true] )
 )
 
+declare e_string: string = ""
 trigger lineitem_orders_customer : () = \_ -> (
   ( () @:NoPipeline )
     @JoinSelector(
@@ -157,9 +161,9 @@ trigger lineitem_orders_customer : () = \_ -> (
 
         , lhs_query = [$ lo_odtq_by_ck]
         , lhs_query_clear = [$ () ]
-        , rhs_query = [$ (customer.groupBy (\c -> c.c_custkey)
+        , rhs_query = [$ (customer.group_by (\c -> c.c_custkey)
                                            (\_ -> \c -> c.c_name)
-                                           "")
+                                           e_string)
                                   .fold    (\acc -> \c -> ((acc.insert c); acc))
                                            (empty {key: int, value: string} @IntMap)
                       ]
@@ -170,28 +174,28 @@ trigger lineitem_orders_customer : () = \_ -> (
       , rhs_ht_ty            = [: {key: int, value: string} ]
 
       , lhs_probe            = [$ (\lht -> \out -> \r ->
-                                    case lht.lookup {key: r.key, value: empty {key : {ok: int, od: int, tp: real}, value : real} @Map} of
-                                    { Some l ->
-                                      l.value.iterate (\kv ->
-                                          loc_q_by_ncodt.insert_with
-                                               { key: { nm: r.value, ck: r.key, ok: kv.key.ok, od: kv.key.od, tp: kv.key.tp }
-                                               , value: kv.value }
-                                               merge_q_by_ncodt_r )
-                                    }
-                                    { None   -> () }
+                                    lht.lookup {key: r.key, value: empty {key : {ok: int, od: int, tp: real}, value : real} @Map}
+                                      (\_ -> () )
+                                      (\l ->
+                                        l.value.iterate (\kv ->
+                                            loc_q_by_ncodt.insert_with
+                                                 { key: { nm: r.value, ck: r.key, ok: kv.key.ok, od: kv.key.od, tp: kv.key.tp }
+                                                 , value: kv.value }
+                                                 merge_q_by_ncodt_r )
+                                      )
                                   )
                                ]
 
       , rhs_probe            = [$ (\rht -> \out -> \l ->
-                                    case rht.lookup {key: l.key, value: ""} of
-                                    { Some r ->
-                                      l.value.iterate (\kv ->
-                                          loc_q_by_ncodt.insert_with
-                                               { key: { nm: r.value, ck: r.key, ok: kv.key.ok, od: kv.key.od, tp: kv.key.tp }
-                                               , value: kv.value }
-                                               merge_q_by_ncodt_r )
-                                    }
-                                    { None   -> () }
+                                    rht.lookup {key: l.key, value: e_string}
+                                      (\_ -> () )
+                                      (\r ->
+                                        l.value.iterate (\kv ->
+                                            loc_q_by_ncodt.insert_with
+                                                 { key: { nm: r.value, ck: r.key, ok: kv.key.ok, od: kv.key.od, tp: kv.key.tp }
+                                                 , value: kv.value }
+                                                 merge_q_by_ncodt_r )
+                                      ) 
                                   )
                                ]
 
@@ -254,21 +258,25 @@ trigger loc_aggregate : loc_q_by_ncodt_map = \vals -> (
   ) @OnCounter(id=[# loc_aggregate_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 )
 
+typedef q18_result = collection {name: string, custkey: int, orderkey: int, orderdate:string, totalprice: real, sum: real} @Collection
+declare finalize : collection {key: address, value: q18_result} @Map -> () = \x -> (
+  (x.iterate (\t ->
+    t.value.iterate (\v ->
+      (results_sink, me) <- (v.name,
+                             v.custkey,
+                             v.orderkey,
+                             v.orderdate,
+                             v.totalprice,
+                             v.sum)
+    )
+   ))
+)
+
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes                = [$ peers ],
-  loadExpr             = [$ ( // Read line counts for each data file
-                              lineitemLineCountFiles.iterate (\e -> lineitemRows = lineitemRows + (lineCountFile e.path));
-                              ordersLineCountFiles.iterate   (\e -> ordersRows = ordersRows + (lineCountFile e.path));
-                              customerLineCountFiles.iterate (\e -> customerRows = customerRows + (lineCountFile e.path));
-
-			                        print ("Lineitem rows: " ++ (itos lineitemRows));
-			                        print ("Orders rows: "   ++ (itos ordersRows));
-			                        print ("Customer rows: " ++ (itos customerRows));
-
-                              // Load data using the fixed size loaders which resize the container before loading
-                  			      q18_lineitemLoaderPFC lineitemFiles lineitem lineitem_r lineitemRows;
-                              q18_ordersLoaderPFC   ordersFiles   orders   orders_r   ordersRows;
-                              q18_customerLoaderPFC customerFiles customer customer_r customerRows
+  loadExpr             = [$ ( q18_lineitemLoaderPC lineitemFiles lineitem lineitem_r;
+                              q18_ordersLoaderPC   ordersFiles   orders   orders_r;
+                              q18_customerLoaderPC customerFiles customer customer_r
                             ) ],
   preLoadExpr          = [$ ()],
   preReadyExpr         = [$ ()],
@@ -279,18 +287,18 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                               results.insert { name: r.key.nm, custkey: r.key.ck, orderkey: r.key.ok
                                              , orderdate: tpch_date_to_string r.key.od, totalprice: r.key.tp, sum: r.value} )
                             ); (
-                            () @GatherResultsAsCSV(
-                                    query_cl = [* [% ci: [# results], csink: [$ results_sink]] ]
+                            (ignore results) @GatherCollection(
+                                   lbl       = [# result]
                                   , nodes    = [$ peers]
-                                  , next     = [$ peers.iterate (\p -> (shutdown, p.addr) <- ()) ])
+                                  , next     = [$ (\a -> (finalize a; peers.iterate (\p -> (shutdown, p.addr) <- ()))) ])
                             )
                          ],
   preShutdownExpr      = [$ () ],
   finishAsShutdownExpr = [$ false]
 )
 
-sink results_sink : {name: string, custkey: int, orderkey: int, orderdate: string, totalprice: real, sum: real} = file "results.csv" csv
-sink query_time_sink : string = stdout csv
+sink results_sink: (string, int, int, string, real, real) = file "results.csv" text psv
+sink query_time_sink : int = file "time.csv" text csv
 
 source rows : () = value ()
 feed rows |> start

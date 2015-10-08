@@ -1,0 +1,5 @@
+include "Core/Builtins.k3"
+
+control Log[tag: expr] {
+  ?e => let v = $.[e] in (print ($[tag] ++ ": " ++ toJson v); v)
+}

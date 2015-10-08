@@ -20,11 +20,13 @@ int main(int argc, char** argv) {
 
   std::ifstream infile(inpath);
  
-  int vertex;
-  std::string rest;
-  while (infile >> vertex >> rest) {
-    int index = vertex % num_partitions;
-    *out_files[index] << vertex << rest << std::endl; 
+  std::string line;
+  while (std::getline(infile, line)) {
+    int start = 0;
+    int end = line.find(",", start);
+    int i = std::atoi(line.substr(start, end - start).c_str());
+    int index = i % num_partitions;
+    *out_files[index] << line << std::endl; 
   }
   
   for(auto f : out_files) {

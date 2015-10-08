@@ -11,6 +11,9 @@ module Language.K3.Analysis.HMTypes.DataTypes where
 import Control.DeepSeq
 import GHC.Generics (Generic)
 
+import Data.Binary
+import Data.Serialize
+
 import Data.List
 import Data.Tree
 import Data.Typeable
@@ -18,6 +21,9 @@ import Data.Typeable
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Utils.Pretty
+
+import qualified Data.Text as T
+import qualified Language.K3.Utils.PrettyText as PT
 
 type QTVarId = Int
 
@@ -32,7 +38,7 @@ data QType
         | QTOperator  QTOp
         | QTContent
         | QTFinal
-        | QTSelf
+        | QTSelf      (Maybe QTVarId)
         | QTTop
       deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
@@ -78,6 +84,20 @@ instance NFData QTData
 instance NFData QTOp
 instance NFData (Annotation QType)
 
+instance Binary QPType
+instance Binary QType
+instance Binary QTBase
+instance Binary QTData
+instance Binary QTOp
+instance Binary (Annotation QType)
+
+instance Serialize QPType
+instance Serialize QType
+instance Serialize QTBase
+instance Serialize QTData
+instance Serialize QTOp
+instance Serialize (Annotation QType)
+
 -- | Type constructors
 tleaf :: QType -> K3 QType
 tleaf t = Node (t :@: []) []
@@ -103,8 +123,8 @@ tcontent = tleaf QTContent
 tfinal :: K3 QType
 tfinal = tleaf QTFinal
 
-tself :: K3 QType
-tself = tleaf QTSelf
+tself :: Maybe QTVarId -> K3 QType
+tself i = tleaf $ QTSelf i
 
 
 -- | Datatype constructors
@@ -165,7 +185,9 @@ tunit = ttup []
 
 -- | Operator constructors
 tlower :: [K3 QType] -> K3 QType
-tlower ch = Node (QTOperator QTLower :@: []) $ nub ch
+tlower ch = Node (QTOperator QTLower :@: []) $ nub $ concatMap simplify ch
+  where simplify qt@(tag -> QTOperator QTLower) = children qt
+        simplify qt = [qt]
 
 
 -- | Annotation predicates
@@ -187,6 +209,10 @@ isQTLower :: K3 QType -> Bool
 isQTLower (tag -> QTOperator QTLower) = True
 isQTLower _ = False
 
+isQTRecord :: K3 QType -> Bool
+isQTRecord (tag -> QTCon (QTRecord _)) = True
+isQTRecord _ = False
+
 instance Pretty QTVarId where
   prettyLines x = [show x]
 
@@ -201,3 +227,18 @@ instance Pretty (K3 QType) where
 
 instance Pretty QPType where
   prettyLines (QPType tvars qt) = [unwords ["QPT", show tvars] ++ " "] %+ (prettyLines qt)
+
+instance PT.Pretty QTVarId where
+  prettyLines x = [T.pack $ show x]
+
+instance PT.Pretty QTBase where
+  prettyLines x = [T.pack $ show x]
+
+instance PT.Pretty QTData where
+  prettyLines x = [T.pack $ show x]
+
+instance PT.Pretty (K3 QType) where
+  prettyLines (Node (t :@: as) ts) = (T.append (T.pack $ show t) $ PT.drawAnnotations as) : PT.drawSubTrees ts
+
+instance PT.Pretty QPType where
+  prettyLines (QPType tvars qt) = [T.pack $ unwords ["QPT", show tvars] ++ " "] PT.%+ (PT.prettyLines qt)

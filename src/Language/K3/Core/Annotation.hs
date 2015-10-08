@@ -16,6 +16,7 @@ module Language.K3.Core.Annotation (
     (:@:)(..),
     K3,
 
+    treesize,
     children,
     replaceCh,
     replaceTag,
@@ -29,11 +30,16 @@ module Language.K3.Core.Annotation (
 import Control.Arrow ( (&&&) )
 import Control.DeepSeq
 
+import Data.Binary ( Binary )
+import Data.Serialize ( Serialize )
+import qualified Data.Binary as B
+import qualified Data.Serialize as S
+
 import Data.List (delete, find)
 import Data.Tree
 import Data.Typeable
 
-import GHC.Generics (Generic)
+import GHC.Generics
 
 -- | Every tag type defines the set of annotations that can be associated with that tag.
 data family Annotation t :: *
@@ -114,7 +120,9 @@ instance AContainer a => AContainer (Tree a) where
 -- | A convenience form for attachment, structurally equivalent to tupling.
 data a :@: b = a :@: b deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
-instance (NFData a, NFData b) => NFData (a :@: b)
+instance (NFData a,     NFData b)    => NFData    (a :@: b)
+instance (Binary a,     Binary b)    => Binary    (a :@: b)
+instance (Serialize a,  Serialize b) => Serialize (a :@: b)
 
 -- | A pair can act as a proxy to the container it contains as its second element.
 instance AContainer a => AContainer (b :@: a) where
@@ -154,6 +162,18 @@ type K3 a = Tree (a :@: [Annotation a])
 
 instance (Ord a, Eq (Annotation a), Ord (Annotation a)) => Ord (K3 a) where
   compare a b = compare (flatten a) (flatten b)
+
+instance {-# OVERLAPPING #-} (Binary a, Binary (Annotation a)) => Binary (K3 a) where
+  put (Node (tg :@: anns) ch) = B.put tg >> B.put anns >> B.put ch
+  get = (\tg anns ch -> Node (tg :@: anns) ch) <$> B.get <*> B.get <*> B.get
+
+instance {-# OVERLAPPING #-} (Serialize a, Serialize (Annotation a)) => Serialize (K3 a) where
+  put (Node (tg :@: anns) ch) = S.put tg >> S.put anns >> S.put ch
+  get = (\tg anns ch -> Node (tg :@: anns) ch) <$> S.get <*> S.get <*> S.get
+
+-- | Tree size
+treesize :: Tree a -> Int
+treesize (Node _ ch) = sum $ (1 : map treesize ch)
 
 -- | Subtree extraction
 children :: Tree a -> Forest a

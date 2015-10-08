@@ -210,7 +210,7 @@ mapGroupByProg = "\
   \ declare d : MyC                                                 \
   \ trigger t : () = \\_ -> (                                       \
   \   let x = ((c.map     (\\r -> r.a + 1))                         \
-  \              .groupBy (\\r -> r.elem + 2)                       \
+  \              .group_by (\\r -> r.elem + 2)                      \
   \                       (\\acc -> \\r -> acc + 1)                 \
   \                       0)                                        \
   \   in                                                            \
@@ -226,7 +226,7 @@ mapMapGroupByProg = "\
   \ trigger t : () = \\_ -> (                                       \
   \   let x = (((c.map     (\\r -> r.a + 1))                        \
   \               .map     (\\r -> r.elem + 2))                     \
-  \               .groupBy (\\r -> r.elem + 3)                      \
+  \               .group_by (\\r -> r.elem + 3)                     \
   \                        (\\acc -> \\r -> acc + 1)                \
   \                        0)                                       \
   \   in                                                            \
@@ -240,7 +240,7 @@ groupByMapMapProg = "\
   \ declare c : MyC                                                 \
   \ declare d : MyC                                                 \
   \ trigger t : () = \\_ -> (                                       \
-  \   let x = (((c.groupBy (\\r -> r.a + 3)                         \
+  \   let x = (((c.group_by (\\r -> r.a + 3)                        \
   \                        (\\acc -> \\r -> acc + 1)                \
   \                        0)                                       \
   \               .map     (\\r -> r.value + 1))                    \
@@ -258,7 +258,7 @@ foldGroupByProg = "\
   \ trigger t : () = \\_ -> (                                           \
   \   let x = ((c.fold    (\\acc -> \\r -> (acc.insert {a:r.a+1}; acc)) \
   \                       (empty {a:int} @Collection))                  \
-  \              .groupBy (\\r -> r.a + 2)                              \
+  \              .group_by (\\r -> r.a + 2)                             \
   \                       (\\acc -> \\r -> acc + 1)                     \
   \                       0)                                            \
   \   in                                                                \
@@ -272,7 +272,7 @@ groupByFoldProg = "\
   \ declare c : MyC                                                         \
   \ declare d : MyC                                                         \
   \ trigger t : () = \\_ -> (                                               \
-  \   let x = ((c.groupBy (\\r -> r.a + 2)                                  \
+  \   let x = ((c.group_by (\\r -> r.a + 2)                                 \
   \                       (\\acc -> \\r -> acc + 1)                         \
   \                       0)                                                \
   \              .fold    (\\acc -> \\r -> (acc.insert {a:r.value+1}; acc)) \
@@ -288,7 +288,7 @@ groupByFoldMapProg = "\
   \ declare c : MyC                                                         \
   \ declare d : MyC                                                         \
   \ trigger t : () = \\_ -> (                                               \
-  \   let x = ((c.groupBy (\\r -> r.a + 2)                                  \
+  \   let x = ((c.group_by (\\r -> r.a + 2)                                 \
   \                       (\\acc -> \\r -> acc + 1)                         \
   \                       0)                                                \
   \              .fold    (\\acc -> \\r -> (acc.insert {a:r.value+1}; acc)) \
@@ -305,7 +305,7 @@ groupByFoldMapMapProg = "\
   \ declare c : MyC                                                  \
   \ declare d : MyC                                                  \
   \ trigger t : () = \\_ -> (                                        \
-  \ (((((c.groupBy (\\r -> r.a + 2)                                  \
+  \ (((((c.group_by (\\r -> r.a + 2)                                 \
   \                (\\acc -> \\r -> acc + 1)                         \
   \                0)                                                \
   \       .fold    (\\acc -> \\r -> (acc.insert {a:r.value+1}; acc)) \

@@ -8,17 +8,15 @@
 module Language.K3.Codegen.CPP.Expression where
 
 import Prelude hiding (any, concat)
-import Control.Arrow ((&&&))
+import Control.Arrow ((&&&), (***), (>>>))
 import Control.Monad.State
 
 import Data.Foldable
-import Data.Functor
 import Data.List (nub, sortBy, (\\))
 import Data.Maybe
 import Data.Ord (comparing)
 import Data.Tree
-
-import Safe
+import Data.Traversable
 
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -31,6 +29,7 @@ import Language.K3.Core.Type
 import Language.K3.Core.Utils
 
 import Language.K3.Codegen.Common
+import Language.K3.Codegen.CPP.Materialization.Common
 import Language.K3.Codegen.CPP.Materialization.Hints
 import Language.K3.Codegen.CPP.Preprocessing
 import Language.K3.Codegen.CPP.Primitives
@@ -38,6 +37,7 @@ import Language.K3.Codegen.CPP.Types
 
 import qualified Language.K3.Codegen.CPP.Representation as R
 
+import Language.K3.Analysis.Core
 import qualified Language.K3.Analysis.CArgs as CArgs
 
 -- | The reification context passed to an expression determines how the result of that expression
@@ -52,11 +52,12 @@ data RContext
     -- | Indicates that the calling context is a C++ function, in which case the result may be
     -- 'returned' from the callee. A true payload indicates that the return value needs to be
     -- manually move wrapped
-    | RReturn { moveReturn :: Bool }
+    | RReturn { byMove :: Bool }
 
     -- | Indicates that the calling context requires the callee's result to be stored in a variable
     -- of a pre-specified name.
-    | RName Identifier
+    | RName { targetN :: R.Expression, maybeByMove :: Maybe Bool}
+    | RDecl { targetD :: Identifier, maybeByMove :: Maybe Bool}
 
     -- | A free-form reification context, for special cases.
     | RSplice ([CPPGenR] -> CPPGenR)
@@ -64,12 +65,102 @@ data RContext
 instance Show RContext where
     show RForget = "RForget"
     show (RReturn b) = "RReturn " ++ show b
-    show (RName i) = "RName \"" ++ i ++ "\""
+    show (RName i b) = "RName \"" ++ (show i) ++ "\"" ++ " " ++ show b
+    show (RDecl i b) = "RDecl \"" ++ (show i) ++ "\"" ++ " " ++ show b
     show (RSplice _) = "RSplice <opaque>"
 
--- | Patterns
+-- Helper to default to forwarding when declaration pushdown is impossible.
+precludeRDecl i b x = do
+  xt <- getKType x
+  fd <- cDecl xt i
+  x' <- reify (RName (R.Variable $ R.Name i) b) x
+  return (fd ++ x')
+
+-- | Template Patterns
 -- TODO: Check for transformer property.
 pattern Fold c <- Node (EProject "fold" :@: _) [c]
+pattern InsertWith c <- Node (EProject "insert_with" :@: _) [c]
+pattern UpsertWith c <- Node (EProject "upsert_with" :@: _) [c]
+pattern Lookup c <- Node (EProject "lookup" :@: _) [c]
+pattern Peek c <- Node (EProject "peek" :@: _) [c]
+pattern SafeAt c <- Node (EProject "safe_at" :@: _) [c]
+
+dataspaceIn :: K3 Expression -> [Identifier] -> Bool
+dataspaceIn e as = isJust $ getKTypeP e >>= \t -> t @~ \case { TAnnotation i -> i `elem` as; _ -> False }
+
+stlLinearDSs :: [Identifier]
+stlLinearDSs = ["Collection", "Set", "Vector", "Seq"]
+
+stlAssocDSs :: [Identifier]
+stlAssocDSs = ["Map"]
+
+hasMoveProperty :: Annotation Expression -> Bool
+hasMoveProperty ae = case ae of
+                       (EProperty s) -> ePropertyName s == "Move"
+                       _ -> False
+
+forceMoveP :: K3 Expression -> Bool
+forceMoveP e = isJust (e @~ hasMoveProperty)
+
+-- Get the materializaitons of a given expression
+getMDecisions :: K3 Expression -> M.Map (Identifier, Direction) Method
+getMDecisions e = case e @~ isEMaterialization of
+                   Just (EMaterialization ms) -> ms
+                   Nothing -> M.empty
+
+getInDecisions :: K3 Expression -> M.Map Identifier Method
+getInDecisions e = M.fromList [(i, m) | ((i, r), m) <- M.toList (getMDecisions e), r == In]
+
+getExDecisions :: K3 Expression -> M.Map Identifier Method
+getExDecisions e = M.fromList [(i, m) | ((i, r), m) <- M.toList (getMDecisions e), r == Ex]
+
+getMethodFor :: Identifier -> Direction -> K3 Expression -> Method
+getMethodFor i d e = M.findWithDefault defaultMethod (i, d) (getMDecisions e)
+
+getInMethodFor :: Identifier -> K3 Expression -> Method
+getInMethodFor i e = getMethodFor i In e
+
+getExMethodFor :: Identifier -> K3 Expression -> Method
+getExMethodFor i e = getMethodFor i Ex e
+
+-- Heuristics
+needsMoveCast :: K3 Type -> R.Expression -> Bool
+needsMoveCast t e = isNonScalarType t && (not $ R.isMoveInferred e)
+
+-- Move heuristic to avoid code clutter.
+move :: K3 Type -> K3 Expression -> Bool
+move t e = isNonScalarType t && moveByExprForm e
+ where
+  moveByExprForm :: K3 Expression -> Bool
+  moveByExprForm e =
+    case e of
+      (tag -> EVariable _) -> True
+      (tag -> EProject _) -> True
+      (tag -> ELetIn _) -> True
+      (tag -> EBindAs _) -> True
+      (tag -> ECaseOf _) -> True
+      (tag -> EIfThenElse) -> True
+      _ -> False
+
+gMoveByE :: K3 Expression -> R.Expression -> R.Expression
+gMoveByE e x = fromMaybe x (getKTypeP e >>= \t -> return $ if move t e then R.Move x else x)
+
+gMoveByDE :: Method -> K3 Expression -> R.Expression -> R.Expression
+gMoveByDE m e x
+  | m == Moved = gMoveByE e x
+  | otherwise = x
+
+forwardBy :: R.Expression -> R.Expression
+forwardBy x = case x of
+  R.Variable _ -> R.FMacro x
+  R.Project x' f -> R.Project (forwardBy x') f
+  _ -> x
+
+passBy :: Method -> K3 Expression -> R.Expression -> R.Expression
+passBy m e x = case m of
+  Moved -> gMoveByE e x
+  Forwarded -> forwardBy x
+  _ -> x
 
 -- | Realization of unary operators.
 unarySymbol :: Operator -> CPPGenM Identifier
@@ -120,18 +211,11 @@ inline (tag -> EConstant c) = constant c >>= \c' -> return ([], R.Literal c')
 --
 -- Add this binding to global functions.
 inline e@(tag -> EVariable v) = do
-  env <- get
-  resetApplyLevel
-  let cargs = CArgs.eCArgs e
-  -- Check if we have a function, and not a builtin
-  case lookup v (globals env) of
-    Just (tag -> TFunction, False) | applyLevel env < cargs -> return ([], addBind v cargs)
-    Just (tag -> TForall _, False) | applyLevel env < cargs -> return ([], addBind v cargs)
-    _                              -> return ([], R.Variable defVar)
-  where
-    defVar = R.Name v
-    addBind x n = R.Bind (R.TakeReference $ R.Variable $ R.Qualified (R.Name "__global_context") defVar)
-                  [R.WRef $ R.Dereference $ R.Variable $ R.Name "this"] n
+  gEnv <- gets globals
+  case lookup v gEnv of
+    Just (tag -> TFunction, _) -> return ([], R.Project (R.Dereference $ R.Variable $ R.Name "this") (R.Name v))
+    Just (tag -> TForall _, _) -> return ([], R.Project (R.Dereference $ R.Variable $ R.Name "this") (R.Name v))
+    _ -> return ([], R.Variable (R.Name v))
 
 inline (tag &&& children -> (t', [c])) | t' == ESome || t' == EIndirect = do
     (e, v) <- inline c
@@ -147,12 +231,36 @@ inline (tag &&& children -> (ETuple, cs)) = do
 
 inline e@(tag &&& children -> (ERecord is, cs)) = do
     (es, vs) <- unzip <$> mapM inline cs
-    let vs' = snd . unzip . sortBy (comparing fst) $ zip is vs
+    let reifyConstructorField (i, c, v) = do
+          let orderAgnosticP = R.isOrderAgnostic v
+          if getInMethodFor i e == Moved
+            then do
+              castMoveP <- needsMoveCast <$> (getKType c) <*> (pure v)
+              let moveCastModifier = if castMoveP then R.Move else id
+
+              if orderAgnosticP
+                then return ([], moveCastModifier v)
+                else do
+                  g <- genSym
+                  return ( [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just $ moveCastModifier v)]
+                         , R.FMacro $ R.Variable $ R.Name g
+                         )
+            else do
+              if orderAgnosticP
+                then return ([], v)
+                else do
+                  g <- genSym
+                  return ( [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just v)]
+                         , R.FMacro $ R.Variable $ R.Name g
+                         )
+
+    (concat -> rs, vs') <- unzip <$> mapM reifyConstructorField (zip3 is cs vs)
+    let vs'' = snd . unzip . sortBy (comparing fst) $ zip is vs'
     t <- getKType e
     case t of
         (tag &&& children -> (TRecord _, _)) -> do
             sig <- genCType t
-            return (concat es, R.Initialization sig vs')
+            return (concat es ++ rs, R.Initialization sig vs'')
         _ -> throwE $ CPPGenE $ "Invalid Record Type " ++ show t
 
 inline (tag &&& children -> (EOperate uop, [c])) = do
@@ -165,115 +273,349 @@ inline (tag &&& children -> (EOperate OSeq, [a, b])) = do
     (be, bv) <- inline b
     return (ae ++ be, bv)
 
-inline e@(tag &&& children -> (ELambda arg, [body])) = do
+inline e@(tag -> ELambda _) = do
     resetApplyLevel
+    let isAccumulating = isJust $ e @~ (\case { EProperty (ePropertyName -> "AccumulatingTransformer") -> True; _ -> False })
 
-    mtrlzns <- case e @~ isEMaterialization of
-                 Just (EMaterialization ms) -> return ms
-                 Nothing -> do
-                   globVals <- fst . unzip . globals <$> get
-                   let fvs = (nub $ filter (/= arg) $ freeVariables body) \\ globVals
-                   return $ M.fromList [(i, defaultDecision) | i <- (arg:fvs)]
+    let (unzip -> (argNames, fExprs), b) = rollLambdaChain e
 
-    ta <- getKType e >>= \case
-          (tag &&& children -> (TFunction, [ta, tr])) -> genCInferredType ta
-          _ -> throwE $ CPPGenE "Invalid Function Form"
+    let formalArgNames = ["_A" ++ show i | i <- [0..] | _ <- argNames]
 
-    let thisCapture = R.ValueCapture (Just ("this", Nothing))
+    -- TODO: Need return types, or allow inferral? Need it iff multiple branches return different
+    -- but coercible types.
+    -- formalArgTypes <- forM_ fExprs $ \f -> getKType f >>= \case
+    --   (tag &&& children -> (TFunction, [ta, _])) -> return ta
+    --   _ -> throwE $ CPPGenE "Invalid Function Form"
 
-    let captureByMtrlzn i d = case inD d of
-                                ConstReferenced -> R.ValueCapture (Just (i, Just $ R.CRef $ R.Variable $ R.Name i))
-                                Referenced -> R.RefCapture (Just (i, Nothing))
-                                Moved -> R.ValueCapture (Just (i, Just $ R.Move $ R.Variable $ R.Name i))
-                                Copied -> R.ValueCapture (Just (i, Nothing))
+    returnType <- sequence $ fmap (genCType . last . children) (getKTypeP $ last fExprs)
 
-    let captures = [R.ValueCapture (Just ("this", Nothing))] ++
-                   (M.elems $ M.mapWithKey captureByMtrlzn $ M.filterWithKey (\k _ -> k /= arg) mtrlzns)
+    let getArg (tag -> ELambda i) = i
+    let (outerFExpr, innerFExpr) = (head &&& last) fExprs
+    let (outerArg, _) = (getArg outerFExpr, getArg innerFExpr)
 
-    let argMtrlznType = case inD (mtrlzns M.! arg) of
-                          ConstReferenced -> R.Const (R.Reference ta)
-                          Referenced -> R.Reference ta
-                          _ -> ta
+    -- let nrvo = getExMethodFor anon innerFExpr == Moved
 
-    let nrvo = outD (mtrlzns M.! arg) == Moved
+    body <- reify (if isAccumulating then RForget else RReturn False) b
 
-    body' <- reify (RReturn nrvo) body
+    let captureByMtrlzn i m = case m of
+          ConstReferenced -> R.RefCapture (Just (i, Nothing))
+          Referenced -> R.RefCapture (Just (i, Nothing))
+          Moved -> R.ValueCapture (Just (i, Just $ R.Move $ R.Variable $ R.Name i))
+          Copied -> R.ValueCapture (Just (i, Nothing))
 
-    return ([], R.Lambda captures [(arg, argMtrlznType)] True Nothing body')
+    let captures = [R.ThisCapture] ++
+                   (M.elems $ M.mapWithKey captureByMtrlzn $ M.filterWithKey (\k _ -> k /= outerArg)
+                            $ getInDecisions outerFExpr)
 
-inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [Fold c, f])), z])) = do
+    let reifyArg a g = if a == "_" then [] else
+          let reifyType = case if a == head (argNames) && isAccumulating then Referenced else (getInMethodFor a innerFExpr) of
+                  ConstReferenced -> R.Reference $ R.Const R.Inferred
+                  Referenced -> R.Reference R.Inferred
+                  Forwarded -> R.RValueReference R.Inferred
+                  _ -> R.Inferred
+          in [R.Forward $ R.ScalarDecl (R.Name a) reifyType
+               (Just $ R.SForward (R.ConstExpr $ R.Call (R.Variable $ R.Name "decltype") [R.Variable $ R.Name g])
+                         (R.Variable $ R.Name g))]
+
+    let argReifications = concat [reifyArg a g | a <- argNames | g <- formalArgNames]
+
+    let fullBody = argReifications ++ body
+
+    let argList = [ (if fi == "_" then Nothing else Just ai, R.RValueReference R.Inferred)
+                  | ai <- formalArgNames
+                  | fi <- argNames
+                  ]
+
+    return ([], R.Lambda captures argList True (if isAccumulating then Just R.Void else returnType) fullBody)
+
+inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [p@(Fold c), f])), z])) = do
   (ce, cv) <- inline c
-  (fe, fv) <- inline f
   (ze, zv) <- inline z
 
-  let isVectorizeProp  = \case { EProperty (ePropertyName -> "Vectorize")  -> True; _ -> False }
-  let isInterleaveProp = \case { EProperty (ePropertyName -> "Interleave") -> True; _ -> False }
+  let isAP = isJust $ p @~ (\case { EProperty (ePropertyName -> "AccumulatingTransformer") -> True
+                                  ; _ -> False
+                                  })
+      isRA = isJust $ f @~ (\case { EProperty (ePropertyName -> "ReturnsArgument") -> True
+                                  ; _ -> False
+                                  })
 
-  let vectorizePragma = case e @~ isVectorizeProp of
-                          Nothing -> []
-                          Just (EProperty (ePropertyValue -> Nothing)) -> [R.Pragma "clang vectorize(enable)"]
-                          Just (EProperty (ePropertyValue -> Just (tag -> LInt i))) ->
-                              [ R.Pragma "clang loop vectorize(enable)"
-                              , R.Pragma $ "clang loop vectorize_width(" ++ show i ++ ")"
-                              ]
+      isSM = isAP || isRA
 
-  let interleavePragma = case e @~ isInterleaveProp of
-                           Nothing -> []
-                           Just (EProperty (ePropertyValue -> Nothing)) -> [R.Pragma "clang interleave(enable)"]
-                           Just (EProperty (ePropertyValue -> Just (tag -> LInt i))) ->
-                               [ R.Pragma "clang loop interleave(enable)"
-                               , R.Pragma $ "clang loop interleave_count(" ++ show i ++ ")"
-                               ]
+  eleMove <- getKType c >>= \(tag &&& children -> (TCollection, [t])) -> return $ getInMethodFor anon p == Moved && isNonScalarType t
 
-  let loopPragmas = concat [vectorizePragma, interleavePragma]
+  let accMove = gMoveByDE (if forceMoveP e then Moved else getInMethodFor anon e) z zv
 
-  g <- genSym
-  acc <- genSym
+  accVar <- genSym
+  eleVar <- genSym
 
-  let loopInit = [R.Forward $ R.ScalarDecl (R.Name acc) R.Inferred (Just zv)]
-  let loopBody =
-          [ R.Assignment (R.Variable $ R.Name acc) $
-              R.Call (R.Call fv [ R.Move (R.Variable $ R.Name acc)]) [R.Variable $ R.Name g]
-          ]
-  let loop = R.ForEach g (R.Const $ R.Reference $ R.Inferred) cv (R.Block loopBody)
-  return (ce ++ fe ++ ze ++ loopInit ++ loopPragmas ++ [loop], R.Move $ R.Variable $ R.Name acc)
+  let accDecl = R.Forward $ R.ScalarDecl (R.Name accVar) R.Inferred (Just accMove)
 
-inline e@(tag &&& children -> (EOperate OApp, [f, a])) = do
-    -- Inline both function and argument for call.
-    incApplyLevel
-    let cargs = CArgs.eCArgs f
-    (fe, fv) <- inline f
-    (ae, av) <- inline a
+  (fe, fb) <- inlineApply isSM (if isSM then RForget else RName (R.Variable $ R.Name accVar) (Just True)) f
+                [ (if isSM then id else R.Move) $ R.Variable $ R.Name accVar
+                , (if eleMove then R.Move else id) $ R.Variable $ R.Name eleVar
+                ]
 
-    mtrlzns <- case e @~ isEMaterialization of
-                 Just (EMaterialization ms) -> return ms
-                 Nothing -> return $ M.fromList [("", defaultDecision)]
+  let loopBody = fb
 
-    pass <- case inD (fromJust (M.lookup "" mtrlzns)) of
-              Copied -> return av
-              Moved -> return (move a av)
+  loopIndexIsIsolated <- gets (isolateLoopIndex . flags)
 
-    c <- call fv pass cargs
-    return (fe ++ ae, c)
-  where
-    call fn@(R.Variable i) arg n =
-      if isJust $ f @~ CArgs.isErrorFn
-        then do
-          kType <- getKType e
-          returnType <- genCType kType
-          return $ R.Call (R.Variable $ R.Specialized [returnType] i) [arg]
-        else return $ R.Bind fn [arg] (n - 1)
-    call fn arg n = return $ R.Bind fn [arg] (n - 1)
+  let loop = R.ForEach eleVar ((if loopIndexIsIsolated then id else R.Reference) $ R.Inferred) cv (R.Block loopBody)
 
-    move e a =
-      case e of
-        (tag -> EConstant _) -> a
-        (tag -> EOperate _) -> a
-        (tag -> ETuple) -> a
-        (tag -> ERecord _) -> a
-        _ -> R.Move a
+  let bb = if null fe then loop else R.Block (fe ++ [loop])
 
-inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
+  return (ze ++ [accDecl] ++ ce ++ [bb], R.Move $ R.Variable $ R.Name accVar)
+
+  -- Leaving this here for later.
+  -- let isVectorizeProp  = \case { EProperty (ePropertyName -> "Vectorize")  -> True; _ -> False }
+  -- let isInterleaveProp = \case { EProperty (ePropertyName -> "Interleave") -> True; _ -> False }
+
+  -- let vectorizePragma = case e @~ isVectorizeProp of
+  --                         Nothing -> []
+  --                         Just (EProperty (ePropertyValue -> Nothing)) -> [R.Pragma "clang vectorize(enable)"]
+  --                         Just (EProperty (ePropertyValue -> Just (tag -> LInt i))) ->
+  --                             [ R.Pragma "clang loop vectorize(enable)"
+  --                             , R.Pragma $ "clang loop vectorize_width(" ++ show i ++ ")"
+  --                             ]
+
+  -- let interleavePragma = case e @~ isInterleaveProp of
+  --                          Nothing -> []
+  --                          Just (EProperty (ePropertyValue -> Nothing)) -> [R.Pragma "clang interleave(enable)"]
+  --                          Just (EProperty (ePropertyValue -> Just (tag -> LInt i))) ->
+  --                              [ R.Pragma "clang loop interleave(enable)"
+  --                              , R.Pragma $ "clang loop interleave_count(" ++ show i ++ ")"
+  --                              ]
+
+inline e@(tag &&& children -> (EOperate OApp, [
+         (tag &&& children -> (EOperate OApp, [
+           p@(InsertWith c),
+           k])),
+           w])) | c `dataspaceIn` stlAssocDSs = do
+  (ce, cv) <- inline c
+  (ke, kv) <- inline k
+  -- kg <- genSym
+  -- ke <- reify (RDecl kg Nothing) k
+  let kp = R.Project kv (R.Name "key")
+
+  ug <- genSym
+  let ue = R.Forward $ R.ScalarDecl (R.Name ug) (R.Reference R.Inferred) (Just $  R.Call (R.Project cv (R.Name "getContainer")) [])
+  let uv = R.Variable $ R.Name ug
+
+  existing <- genSym
+  let existingFind = R.Call (R.Project uv (R.Name "find")) [kp]
+  let existingDecl = R.Forward $ R.ScalarDecl (R.Name existing) R.Inferred (Just $ existingFind)
+  let existingPred = R.Binary "=="
+                       (R.Variable $ R.Name existing)
+                       (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uv])
+
+  let nfe = [R.Assignment (R.Subscript uv kp) kv]
+  (wfe, wfb) <- inlineApply False (RName (R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")) (Just True)) w
+                  [R.Move $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second"), kv]
+
+  return (ce ++ [ue] ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred nfe (wfe ++ wfb)]
+         , R.Initialization R.Unit [])
+
+
+inline e@(tag &&& children -> (EOperate OApp, [
+         (tag &&& children -> (EOperate OApp, [
+         (tag &&& children -> (EOperate OApp, [
+           p@(UpsertWith c),
+           k])),
+           n])),
+           w])) | c `dataspaceIn` stlAssocDSs = do
+  (ce, cv) <- inline c
+
+  kg <- genSym
+  (ke, kv) <- case k of
+    (tag &&& children -> (ERecord fs, cs)) -> do
+      (unzip -> (fes, catMaybes -> [fv])) <- for (zip fs cs) $ \(f, j) ->
+        if f == "key"
+          then do
+            (fe, fv) <- inline j
+            return (fe, Just fv)
+          else do
+            fe <- reify RForget j
+            return (fe, Nothing)
+      return (concat fes, fv)
+    _ -> inline k >>= \(ke', kv') -> return (ke', R.Project kv' (R.Name "key"))
+
+  ug <- genSym
+  let ue = R.Forward $ R.ScalarDecl (R.Name ug) (R.Reference R.Inferred) (Just $  R.Call (R.Project cv (R.Name "getContainer")) [])
+  let uv = R.Variable $ R.Name ug
+
+  existing <- genSym
+  let existingFind = R.Call (R.Project uv (R.Name "find")) [kv]
+  let existingDecl = R.Forward $ R.ScalarDecl (R.Name existing) R.Inferred (Just $ existingFind)
+  let existingPred = R.Binary "=="
+                       (R.Variable $ R.Name existing)
+                       (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uv])
+
+  (nfe, nfb) <- inlineApply False (RName (R.Subscript uv kv) (Just True)) n [R.Initialization R.Unit []]
+
+  let rArg = isJust $ w @~ (\case { EProperty (ePropertyName -> "ReturnsArgument") -> True; _ -> False })
+  let rContext = if rArg
+                   then RForget
+                   else RName (R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")) (Just True)
+
+  (wfe, wfb) <- inlineApply rArg rContext w
+                  [(if rArg then id else R.Move) $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")]
+
+  return (ce ++ [ue] ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
+         , R.Initialization R.Unit [])
+
+inline e@(tag &&& children -> (EOperate OApp, [
+         (tag &&& children -> (EOperate OApp, [
+         (tag &&& children -> (EOperate OApp, [
+           p@(Lookup c),
+           k])),
+           n])),
+           w])) | c `dataspaceIn` stlAssocDSs = do
+  (ce, cv) <- inline c
+  kg <- genSym
+  ke <- reify (RDecl kg Nothing) k
+  let kv = R.Project (R.Variable $ R.Name kg) (R.Name "key")
+  (ke, kv) <- case k of
+    (tag &&& children -> (ERecord fs, cs)) -> do
+      (unzip -> (fes, catMaybes -> [fv])) <- for (zip fs cs) $ \(f, j) ->
+        if f == "key"
+          then do
+            (fe, fv) <- inline j
+            return (fe, Just fv)
+          else do
+            fe <- reify RForget j
+            return (fe, Nothing)
+      return (concat fes, fv)
+    _ -> inline k >>= \(ke', kv') -> return (ke', R.Project kv' (R.Name "key"))
+
+  ug <- genSym
+  let ue = R.Forward $ R.ScalarDecl (R.Name ug) (R.Reference R.Inferred) (Just $  R.Call (R.Project cv (R.Name "getContainer")) [])
+  let uv = R.Variable $ R.Name ug
+
+  existing <- genSym
+  let existingFind = R.Call (R.Project uv (R.Name "find")) [kv]
+  let existingDecl = R.Forward $ R.ScalarDecl (R.Name existing) R.Inferred (Just $ existingFind)
+  let existingPred = R.Binary "=="
+                       (R.Variable $ R.Name existing)
+                       (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uv])
+
+  result <- genSym
+  resultType <- getKType e >>= genCType
+  let resultDecl = R.Forward $ R.ScalarDecl (R.Name result) resultType Nothing
+
+  (nfe, nfb) <- inlineApply False (RName (R.Variable $ R.Name result) Nothing) n [R.Initialization R.Unit []]
+  (wfe, wfb) <- inlineApply False (RName (R.Variable $ R.Name result) Nothing) w
+                  [R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")]
+
+  return (ce ++ [ue] ++ ke ++ [resultDecl, existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
+         , R.Variable $ R.Name result)
+
+inline e@(tag &&& children -> (EOperate OApp, [
+         (tag &&& children -> (EOperate OApp, [
+           p@(Peek c),
+           n])),
+           w])) | c `dataspaceIn` stlLinearDSs = do
+  (ce, cv) <- inline c
+
+  ug <- genSym
+  let ue = R.Forward $ R.ScalarDecl (R.Name ug) (R.Reference R.Inferred) (Just $  R.Call (R.Project cv (R.Name "getConstContainer")) [])
+  let uv = R.Variable $ R.Name ug
+
+  first <- genSym
+  let firstCall = R.Call (R.Project uv (R.Name "begin")) []
+  let firstDecl = R.Forward $ R.ScalarDecl (R.Name first) R.Inferred (Just $ firstCall)
+  let firstPred = R.Binary "=="
+                    (R.Variable $ R.Name first)
+                    (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uv])
+
+  result <- genSym
+  resultType <- getKType e >>= genCType
+  let resultDecl = R.Forward $ R.ScalarDecl (R.Name result) resultType Nothing
+  (nfe, nfb) <- inlineApply False (RName (R.Variable $ R.Name result) Nothing) n [R.Initialization R.Unit []]
+  (wfe, wfb) <- inlineApply False (RName (R.Variable $ R.Name result) Nothing) w [R.Dereference $ R.Variable $ R.Name first]
+
+  return (ce ++ [ue] ++ [resultDecl, firstDecl] ++ [R.IfThenElse firstPred (nfe ++ nfb) (wfe ++ wfb)]
+         , R.Variable $ R.Name result)
+
+inline e@(tag &&& children -> (EOperate OApp, [
+         (tag &&& children -> (EOperate OApp, [
+         (tag &&& children -> (EOperate OApp, [
+           p@(SafeAt c),
+           i])),
+           n])),
+           w])) | c `dataspaceIn` stlLinearDSs = do
+  (ce, cv) <- inline c
+  ig <- genSym
+  ie <- reify (RDecl ig Nothing) i
+  let iv = R.Variable $ R.Name ig
+
+  ug <- genSym
+  let ue = R.Forward $ R.ScalarDecl (R.Name ug) (R.Reference R.Inferred) (Just $  R.Call (R.Project cv (R.Name "getConstContainer")) [])
+  let uv = R.Variable $ R.Name ug
+
+  let sizeCheck = R.Binary "<" iv (R.Call (R.Project uv (R.Name "size")) [])
+
+  iterator <- genSym
+  let advance = [ R.Forward $ R.ScalarDecl (R.Name iterator) R.Inferred (Just $ (R.Call (R.Project uv (R.Name "begin")) []))
+                , R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "advance")) [R.Variable (R.Name iterator), iv]
+                ]
+
+  result <- genSym
+  resultType <- getKType e >>= genCType
+  let resultDecl = R.Forward $ R.ScalarDecl (R.Name result) resultType Nothing
+
+  (nfe, nfb) <- inlineApply False (RName (R.Variable $ R.Name result) Nothing) n [R.Initialization R.Unit []]
+  (wfe, wfb) <- inlineApply False (RName (R.Variable $ R.Name result) Nothing) w [R.Dereference (R.Variable $ R.Name iterator)]
+
+  return (ce ++ [ue] ++ ie ++ [resultDecl] ++ [R.IfThenElse sizeCheck (advance ++ wfe ++ wfb) (nfe ++ nfb)]
+         , R.Variable $ R.Name result)
+
+inline e@(tag -> EOperate OApp) = do
+  -- Inline both function and argument for call.
+  incApplyLevel
+
+  let (f, as) = rollAppChain e
+  (fe, fv) <- inline f
+  let xs = map (last . children) as
+  (unzip -> (xes, xvs)) <- mapM inline xs
+
+  let reifyArg (x, xv, m) = do
+        let orderAgnosticP = R.isOrderAgnostic xv
+        if getInMethodFor anon m `elem` [Moved, Forwarded]
+          then do
+            let castMoveP = maybe True (\m -> needsMoveCast m xv) (getKTypeP x)
+
+            let castModifier = case getInMethodFor anon m of
+                  Moved | castMoveP -> R.Move
+                  Forwarded -> R.FMacro
+                  _ -> id
+
+            if orderAgnosticP
+              then return ([], castModifier xv)
+              else do
+                g <- genSym
+                return ( [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just $ castModifier xv)]
+                       , R.FMacro $ R.Variable $ R.Name g
+                       )
+          else do
+            if orderAgnosticP
+              then return ([], xv)
+              else do
+                g <- genSym
+                return ( [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just xv)]
+                       , R.FMacro $ R.Variable $ R.Name g
+                       )
+
+  (unzip -> (argDecls, argPasses)) <- mapM reifyArg $ zip3 xs xvs as
+
+  let eName i = maybe (return i) (const $ getKType e >>= genCType >>= \rt -> return $ R.Specialized [rt] i)
+                  (f @~ CArgs.isErrorFn)
+  fv' <- case fv of
+           R.Project s i -> R.Project s <$> eName i
+           R.Variable i -> R.Variable <$> eName i
+           _ -> return fv
+
+  return (fe ++ concat xes ++ concat argDecls , R.Call fv' argPasses)
+
+inline e@(tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@(tag -> EVariable tName), addr]), val])) = do
     d <- genSym
     tIdName <- case trig @~ isEProperty of
                  Just (EProperty (ePropertyValue -> Just (tag -> LString nm))) -> return nm
@@ -281,17 +623,12 @@ inline (tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [trig@
     (te, _)  <- inline trig
     (ae, av)  <- inline addr
     (ve, vv)  <- inline val
-    trigList  <- triggers <$> get
+    let messageValue = passBy (getInMethodFor "!" e) val vv
     trigTypes <- getKType val >>= genCType
-    let className = R.Specialized [trigTypes] (R.Qualified (R.Name "K3" ) $ R.Name "ValDispatcher")
-        classInst = R.Forward $ R.ScalarDecl (R.Name d) R.Inferred
-                      (Just $ R.Call (R.Variable $ R.Specialized [R.Named className]
-                                           (R.Qualified (R.Name "std" ) $ R.Name "make_shared")) [vv])
+    let me = R.Variable $ R.Name "me"
     return (concat [te, ae, ve]
-                 ++ [ classInst
-                    , R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine") (R.Name "send")) [
-                                    av, R.Variable (R.Name $ tIdName), R.Variable (R.Name d), R.Variable (R.Name "me")
-                                   ]
+                 ++ [ R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Specialized [trigTypes] (R.Name "send")))
+                                    [me, av, R.Variable $ R.Name tIdName, messageValue]
                     ]
              , R.Initialization R.Unit [])
     where
@@ -308,7 +645,8 @@ inline e@(tag &&& children -> (EProject v, [k])) = do
     (ke, kv) <- inline k
     return (ke, R.Project kv (R.Name v))
 
-inline (tag &&& children -> (EAssign x, [e])) = reify (RName x) e >>= \a -> return (a, R.Initialization R.Unit [])
+inline (tag &&& children -> (EAssign x, [e])) = reify (RName (R.Variable $ R.Name x) Nothing) e >>= \a ->
+                                                  return (a, R.Initialization R.Unit [])
 
 inline (tag &&& children -> (EAddress, [h, p])) = do
     (he, hv) <- inline h
@@ -317,14 +655,16 @@ inline (tag &&& children -> (EAddress, [h, p])) = do
 
 inline e = do
     k <- genSym
-    ct <- getKType e
-    decl <- cDecl ct k
-    effects <- reify (RName k) e
-    return (decl ++ effects, R.Variable $ R.Name k)
+    effects <- reify (RDecl k Nothing) e
+    return (effects, R.Variable $ R.Name k)
 
 -- | The generic function to generate code for an expression whose result is to be reified. The
 -- method of reification is indicated by the @RContext@ argument.
 reify :: RContext -> K3 Expression -> CPPGenM [R.Statement]
+
+reify RForget e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [Fold _, _])), _])) = do
+  (ee, _) <- inline e
+  return ee
 
 -- TODO: Is this the fix we need for the unnecessary reification issues?
 reify RForget e@(tag -> EOperate OApp) = do
@@ -336,21 +676,20 @@ reify r (tag &&& children -> (EOperate OSeq, [a, b])) = do
     be <- reify r b
     return $ ae ++ be
 
-reify r (tag &&& children -> (ELetIn x, [e, b])) = do
-    -- TODO: Push declaration into reification.
-    ct <- getKType e
-    g <- genSym
-    d <- cDecl ct g
-    ee <- reify (RName g) e
-    let d' = [R.Forward $ R.ScalarDecl (R.Name x) (R.Reference R.Inferred) (Just $ R.Variable $ R.Name g)]
-    be <- reify r b
-    return [R.Block $ d ++ ee ++ d' ++ be]
+reify (RDecl i b) x@(tag -> ELetIn _) = precludeRDecl i b x
+
+reify r lt@(tag &&& children -> (ELetIn x, [e, b])) = do
+  ct <- getKType e
+  let initD = getInMethodFor x lt
+  ee <- reify (RDecl x (Just $ initD == Moved)) e
+  be <- reify r b
+  return [R.Block $ ee ++ be]
+
+reify (RDecl i b) x@(tag -> ECaseOf _) = precludeRDecl i b x
 
 -- case `e' of { some `x' -> `s' } { none -> `n' }
 reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
-    mtrlzn <- case k @~ isEMaterialization of
-                Just (EMaterialization ms) -> return $ ms M.! x
-                Nothing -> return defaultDecision
+    let m = getInMethodFor x k
 
     initKType <- getKType e
     initCType <- genCType initKType
@@ -366,7 +705,7 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
         EVariable k -> return (k, [])
         _ -> do
           g <- genSym
-          ee <- reify (RName g) e
+          ee <- reify (RName (R.Variable $ R.Name g) Nothing) e
           return (g, [R.Forward $ R.ScalarDecl (R.Name g) initCType Nothing] ++ ee)
 
     let initExpr = R.Dereference $ R.Variable $ R.Name initName
@@ -374,18 +713,18 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
     let cx = R.Name x
 
     let initSome =
-          case inD mtrlzn of
+          case m of
             Copied -> [R.Forward $ R.ScalarDecl cx innerCType (Just initExpr)]
             Moved -> [R.Forward $ R.ScalarDecl cx innerCType (Just $ R.Move initExpr)]
             Referenced -> [R.Forward $ R.ScalarDecl cx (R.Reference innerCType) (Just initExpr)]
-            ConstReferenced -> [R.Forward $ R.ScalarDecl cx (R.Const $ R.Reference innerCType) (Just initExpr)]
+            ConstReferenced -> [R.Forward $ R.ScalarDecl cx (R.Reference $ R.Const innerCType) (Just initExpr)]
 
-    let writeBackSome = case outD mtrlzn of
+    let writeBackSome = case m of
                           Copied -> [R.Assignment (R.Variable $ R.Name initName) (R.Variable $ R.Name x)]
                           Moved -> [R.Assignment (R.Variable $ R.Name initName) (R.Move $ R.Variable $ R.Name x)]
                           _ -> []
 
-    let writeBackNone = case outD mtrlzn of
+    let writeBackNone = case m of
                           Copied -> [R.Assignment (R.Variable $ R.Name initName) (R.Literal R.LNullptr)]
                           Moved -> [R.Assignment (R.Variable $ R.Name initName) (R.Literal R.LNullptr)]
                           _ -> []
@@ -394,13 +733,13 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
     -- writeback must happen before the return takes place.
     (someE, noneE, returnDecl, returnStmt) <-
       case r of
-        RReturn m | outD mtrlzn == Copied || outD mtrlzn == Moved -> do
+        RReturn j | m == Copied || m == Moved -> do
           returnName <- genSym
           returnType <- getKType k >>= genCType
           let returnDecl = [R.Forward $ R.ScalarDecl (R.Name returnName) returnType Nothing]
-          let returnStmt = if m then R.Move (R.Variable $ R.Name returnName) else (R.Variable $ R.Name returnName)
-          someE <- reify (RName returnName) s
-          noneE <- reify (RName returnName) n
+          let returnStmt = if j then R.Move (R.Variable $ R.Name returnName) else (R.Variable $ R.Name returnName)
+          someE <- reify (RName (R.Variable $ R.Name returnName) Nothing) s
+          noneE <- reify (RName (R.Variable $ R.Name returnName) Nothing) n
 
           return (someE, noneE, returnDecl, [R.Return returnStmt])
         _ -> do
@@ -412,6 +751,8 @@ reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
                               (returnDecl ++ initSome ++ someE ++ writeBackSome ++ returnStmt)
                               (returnDecl ++ noneE ++ writeBackNone ++ returnStmt)]
 
+reify (RDecl i b) x@(tag -> EBindAs _) = precludeRDecl i b x
+
 reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
   let newNames =
         case b of
@@ -419,20 +760,20 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
           BTuple is -> is
           BRecord iis -> snd (unzip iis)
 
-  mtrlzns <- case k @~ isEMaterialization of
-                 Just (EMaterialization ms) -> return ms
-                 Nothing -> return $ M.fromList (zip newNames $ repeat defaultDecision)
-
   initKType <- getKType a
   initCType <- genCType initKType
 
-  (initName, initReify) <-
-    case tag a of
+  (initName, initReify) <- do
+    g <- genSym
+    (e, i) <- inline a
+    return (g, e ++ [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just i)])
+
+    {- case tag a of
       EVariable v -> return (v, [])
       _ -> do
         g <- genSym
-        ee <- reify (RName g) a
-        return (g, [R.Forward $ R.ScalarDecl (R.Name g) initCType Nothing] ++ ee)
+        ee <- reify (RName (R.Variable $ R.Name g) Nothing) a
+        return (g, [R.Forward $ R.ScalarDecl (R.Name g) initCType Nothing] ++ ee) -}
 
   let initExpr = R.Variable (R.Name initName)
 
@@ -447,41 +788,43 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
 
   let bindInit =
         case b of
-          BIndirection i -> initByDecision (inD $ mtrlzns M.! i) i (R.Dereference initExpr)
+          BIndirection i -> initByDecision (getInMethodFor i k) i (R.Dereference initExpr)
           BTuple is ->
-            concat [initByDecision (inD $ mtrlzns M.! i) i (R.TGet initExpr n) | i <- is | n <- [0..]]
+            concat [initByDecision (getInMethodFor i k) i (R.TGet initExpr n) | i <- is | n <- [0..]]
           BRecord iis ->
-            concat [initByDecision (inD $ mtrlzns M.! i) i (R.Project initExpr (R.Name f)) | (f, i) <- iis]
+            concat [initByDecision (getInMethodFor i k) i (R.Project initExpr (R.Name f)) | (f, i) <- iis]
 
   let wbByDecision d old new =
         case d of
           Referenced -> []
           ConstReferenced -> []
-          Moved -> [R.Assignment (R.Variable $ R.Name old) (R.Move new)]
-          Copied -> [R.Assignment (R.Variable $ R.Name old) new]
+          Moved -> [R.Assignment old (R.Move new)]
+          Copied -> [R.Assignment old new]
 
   let bindWriteBack =
         case b of
-          BIndirection i -> wbByDecision (outD $ mtrlzns M.! i) i initExpr
+          BIndirection i -> wbByDecision (getExMethodFor i k) (R.Dereference initExpr) (R.Variable $ R.Name i)
           BTuple is ->
-            concat [wbByDecision (outD $ mtrlzns M.! i) i (R.TGet initExpr n) | i <- is | n <- [0..]]
+            concat [wbByDecision (getExMethodFor i k) (R.TGet initExpr n) (R.Variable $ R.Name i) | i <- is | n <- [0..]]
           BRecord iis ->
-            concat [wbByDecision (outD $ mtrlzns M.! i) i (R.Project initExpr (R.Name f)) | (f, i) <- iis]
+            concat [wbByDecision (getExMethodFor i k) (R.Project initExpr (R.Name f)) (R.Variable $ R.Name i) | (f, i) <- iis]
 
   (bindBody, returnDecl, returnStmt) <-
     case r of
-      RReturn m | any (\d -> outD d == Moved || outD d == Copied) mtrlzns -> do
+      RReturn m | any (\d -> d == Moved || d == Copied) (getExDecisions k) -> do
         returnName <- genSym
         returnType <- getKType k >>= genCType
         let returnDecl = [R.Forward $ R.ScalarDecl (R.Name returnName) returnType Nothing]
         let returnExpr = if m then R.Move (R.Variable $ R.Name returnName) else (R.Variable $ R.Name returnName)
-        bindBody <- reify (RName returnName) e
+        bindBody <- reify (RName (R.Variable $ R.Name returnName) (Just m)) e
         return (bindBody, returnDecl, [R.Return returnExpr])
       _ -> do
         bindBody <- reify r e
         return (bindBody, [], [])
 
   return $ initReify ++ [R.Block $ bindInit ++ returnDecl ++ bindBody ++ bindWriteBack ++ returnStmt]
+
+reify (RDecl i mb) x@(tag -> EIfThenElse) = precludeRDecl i mb x
 
 reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
     (pe, pv) <- inline p
@@ -494,7 +837,55 @@ reify r e = do
     (effects, value) <- inline e
     reification <- case r of
         RForget -> return []
-        RName k -> return [R.Assignment (R.Variable $ R.Name k) value]
+        RName k b -> return [R.Assignment k (if fromMaybe False b then gMoveByE e value else value)]
+        RDecl i b -> return [R.Forward $ R.ScalarDecl (R.Name i) (R.Inferred)
+                             (Just $ if fromMaybe False b then gMoveByE e value else value)]
         RReturn b -> return $ [R.Return $ (if b then R.Move else id) value]
         RSplice _ -> throwE $ CPPGenE "Unsupported reification by splice."
     return $ effects ++ reification
+
+-- ** Template Helpers
+inlineApply :: Bool -> RContext -> K3 Expression -> [R.Expression] -> CPPGenM ([R.Statement], [R.Statement])
+inlineApply isAP r f@(tag -> ELambda _) xs = do
+  let (unzip -> (argNames, fExprs), body) = rollLambdaChain f
+  body' <- reify r body
+
+  let getArg (tag -> ELambda i) = i
+  let (outerFExpr, innerFExpr) = (head &&& last) fExprs
+  let (outerArg, _) = (getArg outerFExpr, getArg innerFExpr)
+
+  let reifyCapture (i, m) (rs, b) = do
+        g <- genSym
+        let outCast = if m == Moved then R.Move else id
+        return ( rs ++ [R.Forward $ R.ScalarDecl (R.Name g) R.Inferred (Just $ outCast $ R.Variable $ R.Name i)]
+               , R.subst g i <$> b
+               )
+
+  let argReifications = map (reifyArgument innerFExpr) $ filter (\(a, _, _) -> a /= "_") $ zip3 argNames xs (isAP: repeat False)
+  let trueCaptures = flip M.filterWithKey (getInDecisions outerFExpr) $ \k m -> k /= outerArg && (m == Copied || m == Moved)
+
+  (captures, body'') <- foldrM reifyCapture ([], body') $ M.toList trueCaptures
+
+  return (captures, argReifications ++ body'')
+ where
+  reifyArgument :: K3 Expression -> (Identifier, R.Expression, Bool) -> R.Statement
+  reifyArgument inner (id &&& R.Name -> (i,  inside),  outside, isAP') =
+    let inCastType = case if isAP' then Referenced else getInMethodFor i inner of
+         Referenced -> R.Reference R.Inferred
+         ConstReferenced -> R.Reference $ R.Const $ R.Inferred
+         Copied -> R.Inferred
+         Moved -> R.Inferred
+         Forwarded -> R.RValueReference R.Inferred
+    in R.Forward $ R.ScalarDecl inside inCastType (Just outside)
+
+inlineApply _ r f xs = do
+  (fe, fv) <- inline f
+  let rValue = R.Call fv xs
+  reification <- case r of
+    RForget -> return [R.Ignore rValue]
+    RName k b -> return [R.Assignment k (if fromMaybe False b then R.Move rValue else rValue)]
+    RDecl i b -> return [R.Forward $ R.ScalarDecl (R.Name i) R.Inferred
+                           (Just $ if fromMaybe False b then R.Move rValue else rValue)]
+    RReturn b -> return [R.Return $ if b then R.Move rValue else rValue]
+    RSplice _ -> throwE $ CPPGenE "Unsupported reification by splice"
+  return (fe, reification)

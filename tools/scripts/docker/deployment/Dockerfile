@@ -18,3 +18,9 @@ RUN pip install pyyaml
 RUN git clone https://github.com/3rdparty/stout.git && mv stout/include/stout /usr/include/
 ENV LD_LIBRARY_PATH /usr/local/lib/:/usr/lib/x86_64-linux-gnu/
 RUN ulimit -c unlimited
+
+RUN wget https://github.com/jemalloc/jemalloc/archive/3.6.0.tar.gz && tar -xvf 3.6.0.tar.gz
+WORKDIR /software/jemalloc-3.6.0
+RUN ./autogen.sh --enable-prof --enable-prof-libunwind 
+RUN make  
+RUN make install || true

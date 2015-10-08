@@ -1,0 +1,21 @@
+include "Annotation/Sets/IntSet.k3"
+include "Core/Builtins.k3"
+
+declare c :     collection {elem : int} @IntSet
+declare d : mut collection {elem : int} @IntSet
+
+trigger t : () = \_ -> (
+  ((range 10).iterate (\r -> c.insert {elem : r.i + 100}));
+
+  // Print total size.
+  (print ("IntSet size: " ++ (itos (c.size ())) ++ "\\n"));
+
+  // Filter up to, but not including the item with key 4.
+  (d = c.filter (\r -> r.elem < 4));
+
+  // Items with keys 1,2,3 should be present in d.
+  (d.iterate (\r -> print ("Remaining in d; elem: " ++ (itos r.elem) ++ "\\n")))
+)
+
+source s1 : () = value ()
+feed s1 |> t
