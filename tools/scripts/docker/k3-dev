@@ -28,6 +28,7 @@ ENV YAML_CPP_VER 0.5.1
 
 ENV OPAMYES 1
 
+ENV JAVA_HOME /usr/lib/jvm/java-8-openjdk-amd64/
 ENV LD_LIBRARY_PATH /usr/local/lib:/usr/lib
 
 ENV PGHOST qp2
@@ -37,8 +38,8 @@ ENV PGUSER postgres
 # Install basic packages to build the image
 RUN apt-get update && apt-get install -y \
                        bzip2 unzip autoconf Libtool \
-                       gcc g++ clang-3.5 make cmake git curl wget subversion pkgconf \
-                       aptitude vim tmux time && \
+                       gcc g++ clang-3.5 openjdk-8-jdk make cmake git curl wget subversion pkgconf \
+                       aptitude sudo vim tmux time && \
     apt-get update && \
     apt-get install -y software-properties-common python-software-properties python-setuptools \
                        opam \
@@ -143,7 +144,7 @@ RUN wget https://github.com/gperftools/gperftools/releases/download/gperftools-$
   cd .. && \
   rm -Rf /gperftools-$PERFTOOLS_VER
 
-# Intall perf for kernel 3.13
+# Intall perf for kernel 3.13, and perfj
 # Also uses libunwind
 RUN apt-get install -y flex bison libelf-dev libaudit-dev libdw-dev binutils-dev && \
   wget https://github.com/torvalds/linux/archive/v3.13.tar.gz && \
@@ -151,7 +152,13 @@ RUN apt-get install -y flex bison libelf-dev libaudit-dev libdw-dev binutils-dev
   cd linux-3.13/tools/perf && make && make install && \
   cp perf /usr/bin && \
   cp libperf.a /usr/lib && \
-  cd / && rm -Rf /linux-3.13
+  cd / && rm -Rf /linux-3.13 && \
+  mkdir -p /software && \
+  cd /software && \
+  git clone https://github.com/coderplay/perfj.git && \
+  cd perfj && \
+  ./gradlew releaseTarGz && \
+  cp build/libs/perfj-1.0.jar . 
 
 # Install yaml-cpp
 RUN wget https://github.com/jbeder/yaml-cpp/archive/release-$YAML_CPP_VER.tar.gz && \
