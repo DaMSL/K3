@@ -465,7 +465,7 @@ endpointMethods isSource eSpec argE formatE n t =
       _ -> EC.applyMany closeFn [EC.variable "me", sourceId n]
 
     closeMuxE = EC.applyMany (EC.project "iterate" $ EC.applyMany (EC.variable "range") [EC.variable $ cmcName n])
-                  [EC.lambda "r" $ EC.applyMany closeFn [EC.variable "me", muxChanIdE $ EC.project "i" $ EC.variable "r"]]
+                  [EC.lambda "r" $ EC.applyMany closeFn [EC.variable "me", muxChanIdE $ EC.project "elem" $ EC.variable "r"]]
 
     controlE processE = case eSpec of
       BuiltinEP    _ _ -> fileControlE processE

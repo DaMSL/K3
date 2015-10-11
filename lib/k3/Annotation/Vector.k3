@@ -14,6 +14,9 @@ annotation Vector given type a, b, c, d
   provides lifted safe_at : int -> (() -> a) -> (content -> a) -> a
     with effects \i -> \f -> \g -> [R[i]; R[self]; f content; g content]
 
+  @:CArgs 2
+  provides lifted unsafe_at : int -> (content -> a) -> a
+    with effects \i -> \f -> [R[i]; R[self]; f content]
 
   ///////////////////////////////////////////////////////
   // Modifiers.
@@ -33,19 +36,23 @@ annotation Vector given type a, b, c, d
     with effects \col -> [R[self]; R[col]; W[self]]
 
   @:CArgs 2
-  provides lifted insert_at : int -> content -> ()
-    with effects \i -> \c -> [R[i]; R[c]; W[self]]
-
-  @:CArgs 2
   provides lifted update : content -> (content -> ())
     with effects \oldElem -> \newElem -> [R[self]; R[oldElem]; R[newElem]; W[self]]
+
+  provides lifted erase : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
+  @:CArgs 2
+  provides lifted insert_at : int -> content -> ()
+    with effects \i -> \c -> [R[i]; R[c]; W[self]]
 
   @:CArgs 3
   provides lifted update_at : int -> (content -> content) -> ()
     with effects \idx -> \newElem -> [R[self]; R[idx]; R[newElem]; W[self]]
 
-  provides lifted erase : content -> ()
-    with effects \elem -> [R[self]; R[elem]; W[self]]
+  @:CArgs 2
+  provides lifted erase_at : int -> content
+    with effects \i -> \c -> [R[i]; R[c]; W[self]]
 
 
   ///////////////////////////////////////////////////

@@ -193,7 +193,7 @@ declare sqrt : real -> real
 
 // Collection enumeration [0,1,..n-1]
 @:ErrorFn
-declare range : int -> collection {i : int} @ { Seq }
+declare range : int -> collection {elem : int} @Seq
   with effects \x -> R[x]
 
 ///////////////////////
