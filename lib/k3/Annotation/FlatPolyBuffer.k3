@@ -14,7 +14,7 @@ annotation FlatPolyBuffer[variants: [labeltylit]] given type a
     with effects \iterF -> [R[self]; ([R[content]; (((iterF none) none) none)])*]
 
   // TODO: code generator attempts to turn this into a for loop if named 'fold'
-  provides lifted foldl : (a -> (int -> int -> int -> a)) -> a -> a
+  provides lifted foldl : (a -> int -> int -> int -> a) -> a -> a
     with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((((foldF z) none) none) none)])*]
 
   // Externalization/internalization methods.
@@ -41,5 +41,15 @@ annotation FlatPolyBuffer[variants: [labeltylit]] given type a
     @:{Tag "$![v]"}
     provides lifted append_$#[v] : $::[v] -> ()
       with effects \elem -> [R[self]; R[elem]; W[self]]
+
+    @:{Tag "$![v]"}
+    provides lifted iterate_$#[v] : int -> int -> (int -> int -> $::[v] -> ()) -> ()
+      with effects \idx -> \offset -> \iterF ->
+              [R[self]; R[idx]; R[offset]; ([R[content]; (((iterF none) none) none)])*]
+
+    @:{Tag "$![v]"}
+    provides lifted foldl_$#[v] : int -> int -> (a -> int -> int -> $::[v] -> a) -> a -> a
+      with effects \idx -> \offset -> \foldF -> \z ->
+              [R[self]; R[idx]; R[offset]; R[z]; ([R[content]; ((((foldF z) none) none) none)])*]
 
 }

@@ -10,11 +10,18 @@ declare c : collection {ignored:()} @FlatPolyBuffer(
   ])
 
 declare d : mut int = 0
+declare e : mut int = 0
 
 trigger t : () = \_ -> (
   (c.append_foo {a:1, b:2});
+  (c.append_foo {a:2, b:3});
+  (c.append_foo {a:3, b:4});
   (c.append_baz {e:10, f:20});
+  (c.append_baz {e:11, f:21});
+  (c.append_baz {e:12, f:22});
   (c.append_bar {c:100, d:200});
+  (c.append_bar {c:101, d:201});
+  (c.append_bar {c:102, d:202});
 
   (print ("Size " ++ (itos (c.size()))));
   (c.iterate (\tag -> \idx -> \offset ->
@@ -42,7 +49,10 @@ trigger t : () = \_ -> (
            else if tag == 2 then c.baz_safe_at idx offset (\x -> acc + x.e) (\_ -> acc)
            else acc)
          0));
-  print ("Fold result, d: " ++ (itos d))
+  print ("Fold result, d: " ++ (itos d));
+
+  (e = (c.foldl_foo 0 0 (\acc -> \idx -> \offset -> \foo -> acc + foo.a) 0));
+  print ("Fold result, e: " ++ (itos e))
 )
 
 source s1 : () = value ()

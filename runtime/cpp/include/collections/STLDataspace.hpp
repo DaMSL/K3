@@ -101,20 +101,6 @@ class STLDS {
     return unit_t();
   }
 
-  unit_t extend(STLDS&& other) {
-    for (auto& e : other.container) {
-      insert(std::move(e));
-    }
-    return unit_t();
-  }
-
-  unit_t extend(const STLDS& other) {
-    for (auto& e : other.getConstContainer()) {
-      insert(e);
-    }
-    return unit_t();
-  }
-
   template <class T>
   unit_t update(const Elem& v, T&& v2) {
     iterator it = std::find(container.begin(), container.end(), v);

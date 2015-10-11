@@ -323,6 +323,30 @@ public:
     return acc;
   }
 
+  template<typename T, typename Fun>
+  unit_t iterate_tag(Tag t, int i, size_t offset, Fun f) const {
+    auto p = buffer_data(const_cast<FlatPolyBuffer*>(this)->fixed());
+    size_t foffset = offset;
+    size_t sz = size(unit_t{});
+    for (size_t j = i; j < sz && t == tag_at(j); ++j) {
+      f(j, foffset, *reinterpret_cast<T*>(p + foffset));
+      foffset += elemsize(t);
+    }
+    return unit_t {};
+  }
+
+  template <typename T, typename Fun, typename Acc>
+  Acc foldl_tag(Tag t, int i, size_t offset, Fun f, Acc acc) const {
+    auto p = buffer_data(const_cast<FlatPolyBuffer*>(this)->fixed());
+    size_t foffset = offset;
+    size_t sz = size(unit_t{});
+    for (size_t j = i; j < sz && t == tag_at(j); ++j) {
+      acc = f(std::move(acc), j, foffset, *reinterpret_cast<T*>(p + foffset));
+      foffset += elemsize(t);
+    }
+    return acc;
+  }
+
   template<typename T>
   unit_t append(Tag tg, const T& t) {
     if (buffer.data()) {

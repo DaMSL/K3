@@ -395,9 +395,11 @@ polybuffer name ans = do
   let flattened = concatMap (\(i, (n, mems)) -> zip (repeat (i,n)) mems) indexed
   at_defns                   <- catMaybes <$> mapM at_fn flattened
   safe_at_defns              <- catMaybes <$> mapM safe_at_fn flattened
+  iterate_tag_defns          <- catMaybes <$> mapM iterate_tag_fn flattened
+  fold_tag_defns             <- catMaybes <$> mapM fold_tag_fn flattened
   (tgs, types, append_defns) <- unzip3 . catMaybes <$> mapM append_fn flattened
   extra_defns                <- extra_fns tgs types
-  return $ super_defn ++ at_defns ++ safe_at_defns ++ append_defns ++ extra_defns
+  return $ super_defn ++ at_defns ++ safe_at_defns ++ append_defns ++ iterate_tag_defns ++ fold_tag_defns ++ extra_defns
 
   where
     super_defn = [R.GlobalDefn $ R.Forward $ R.UsingDecl
@@ -469,6 +471,60 @@ polybuffer name ans = do
       return $ (\tg ty -> (tg, ty, defn tg ty)) <$> t_tag <*> c_val_t
 
     append_fn _ = return Nothing
+
+    iterate_tag_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
+    iterate_tag_fn (_, Lifted _ fname t _ danns) | "iterate_" `isPrefixOf` fname = do
+      let int_t = R.Primitive R.PInt
+      let val_t = get_iterate_type t
+      let f_t   = R.Named $ R.Name "F"
+      let typed_iterate ct_tag ct = R.Call
+                                     (R.Variable $ suqualnm $ R.Specialized [ct, f_t] $ R.Name "template iterate_tag")
+                                     [R.Literal $ R.LInt ct_tag,
+                                      R.Variable $ R.Name "idx",
+                                      R.Variable $ R.Name "offset",
+                                      R.Variable $ R.Name "f"]
+
+      let defn ct_tag ct = R.TemplateDefn [("F", Nothing)] $
+                           R.FunctionDefn (R.Name fname)
+                             [(Just "idx", int_t), (Just "offset", int_t), (Just "f", f_t)]
+                             (Just R.Unit)
+                             []
+                             False
+                             [R.Return $ typed_iterate ct_tag ct]
+
+      c_val_t <- maybe (return Nothing) (\x -> genCType x >>= return . Just) val_t
+      t_tag <- maybe (return Nothing) (return . tag_value) $ find is_tag danns
+      return $ defn <$> t_tag <*> c_val_t
+
+    iterate_tag_fn _ = return Nothing
+
+    fold_tag_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
+    fold_tag_fn (_, Lifted _ fname t _ danns) | "foldl_" `isPrefixOf` fname = do
+      let int_t = R.Primitive R.PInt
+      let val_t = get_fold_type t
+      let f_t   = R.Named $ R.Name "Fun"
+      let acc_t = R.Named $ R.Name "Acc"
+      let typed_fold ct_tag ct = R.Call
+                                     (R.Variable $ suqualnm $ R.Specialized [ct, f_t] $ R.Name "template foldl_tag")
+                                     [R.Literal $ R.LInt ct_tag,
+                                      R.Variable $ R.Name "idx",
+                                      R.Variable $ R.Name "offset",
+                                      R.Variable $ R.Name "f",
+                                      R.Variable $ R.Name "acc"]
+
+      let defn ct_tag ct = R.TemplateDefn [("Fun", Nothing), ("Acc", Nothing)] $
+                           R.FunctionDefn (R.Name fname)
+                             [(Just "idx", int_t), (Just "offset", int_t), (Just "f", f_t), (Just "acc", acc_t)]
+                             (Just acc_t)
+                             []
+                             False
+                             [R.Return $ typed_fold ct_tag ct]
+
+      c_val_t <- maybe (return Nothing) (\x -> genCType x >>= return . Just) val_t
+      t_tag <- maybe (return Nothing) (return . tag_value) $ find is_tag danns
+      return $ defn <$> t_tag <*> c_val_t
+
+    fold_tag_fn _ = return Nothing
 
     extra_fns :: [Int] -> [R.Type] -> CPPGenM [R.Definition]
     extra_fns [] [] = return []
@@ -623,15 +679,26 @@ polybuffer name ans = do
     get_at_return_type _ = Nothing
 
     get_safe_at_type :: K3 Type -> Maybe (K3 Type)
-    get_safe_at_type (PTFunction _ (PTFunction _ (PTFunction (PTFunction rt _ _) _ _) _) _) = Just rt
+    get_safe_at_type (PTFun3 _ _ (PTFunction rt _ _) _ _ _ _) = Just rt
     get_safe_at_type _ = Nothing
 
     get_append_type :: K3 Type -> Maybe (K3 Type)
     get_append_type (PTFunction vt _ _) = Just vt
     get_append_type _ = Nothing
 
+    get_iterate_type :: K3 Type -> Maybe (K3 Type)
+    get_iterate_type (PTFun3 _ _ (PTFun3 _ _ rt _ _ _ _) _ _ _ _) = Just rt
+    get_iterate_type _ = Nothing
+
+    get_fold_type :: K3 Type -> Maybe (K3 Type)
+    get_fold_type (PTFun3 _ _ (PTFun4 _ _ _ rt _ _ _ _ _) _ _ _ _) = Just rt
+    get_fold_type _ = Nothing
+
 
 {- Pattern synonyms for index functions. -}
 
 pattern PTRecord ids ch anns = Node (TRecord ids :@: anns) ch
 pattern PTFunction arg rt anns = Node (TFunction :@: anns) [arg, rt]
+pattern PTFun2 arg1 arg2 rt anns1 anns2 = PTFunction arg1 (PTFunction arg2 rt anns2) anns1
+pattern PTFun3 arg1 arg2 arg3 rt anns1 anns2 anns3 = PTFunction arg1 (PTFun2 arg2 arg3 rt anns2 anns3) anns1
+pattern PTFun4 arg1 arg2 arg3 arg4 rt anns1 anns2 anns3 anns4 = PTFunction arg1 (PTFun3 arg2 arg3 arg4 rt anns2 anns3 anns4) anns1
