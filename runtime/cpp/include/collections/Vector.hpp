@@ -52,7 +52,7 @@ class Vector : public VectorDS<K3::Vector, Elem> {
   template <class Q>
   unit_t set_all(Q&& q) {
     auto& vec = Super::getContainer();
-    for (auto i = vec.begin(); i != vec.end; ++i) {
+    for (auto i = vec.begin(); i != vec.end(); ++i) {
       *i = std::forward<Q>(q);
     }
     return unit_t();
@@ -202,26 +202,26 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
     return f(RElem{ vec[i] });
   }
 
-  unit_t set(int i, RElem&& v) {
+  unit_t set(int i, const RElem& v) {
     auto& vec = Super::getContainer();
     vec[i] = v.elem;
     return unit_t();
   }
 
-  unit_t set_all(RElem&& q) {
+  unit_t set_all(const RElem& q) {
     auto& vec = Super::getContainer();
-    for (auto i = vec.begin(); i != vec.end; ++i) {
+    for (auto i = vec.begin(); i != vec.end(); ++i) {
       *i = q.elem;
     }
     return unit_t();
   }
 
-  unit_t insert(RElem &&e) {
+  unit_t insert(RElem &e) {
     container.insert(container.end(), e.elem);
     return unit_t();
   }
 
-  unit_t update(const RElem& v, RElem&& v2) {
+  unit_t update(const RElem& v, const RElem& v2) {
     auto it = std::find(container.begin(), container.end(), v.elem);
     if (it != container.end()) {
       *it = v2.elem;
@@ -237,7 +237,7 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
     return unit_t();
   }
 
-  unit_t insert_at(int i, RElem&& v) {
+  unit_t insert_at(int i, const RElem& v) {
     auto& vec = Super::getContainer();
     if (i >= vec.size()) {
       vec.resize(i + 1);
