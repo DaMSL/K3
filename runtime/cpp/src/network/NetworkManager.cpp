@@ -174,18 +174,21 @@ NetworkManager::timerKey(const TimerType& ty, const Address& src, const Address&
   return key;
 }
 
-// TODO: cancel based on existing timers with the given timer key.
-void NetworkManager::addTimer(const TimerKey& k, const Delay& delay)
+void NetworkManager::addTimer(std::unique_ptr<TimerKey> k, const Delay& delay)
 {
-  Timer t = std::make_unique<boost::asio::deadline_timer>(*io_service_, delay);
-  timers_->insert(k, std::move(t));
+  auto mk = k->clone();
+  auto& ios = *io_service_;
+
+  timers_->upsert_with(std::move(mk),
+    [&delay](const Timer& t){ t->expires_from_now(delay); },
+    [&ios, &delay](){ return std::make_unique<boost::asio::deadline_timer>(ios, delay); });
 }
 
-void NetworkManager::asyncWaitTimer(const TimerKey& k, TimerHandler handler) {
+void NetworkManager::asyncWaitTimer(std::unique_ptr<TimerKey> k, TimerHandler handler) {
   timers_->apply(k, [handler](const Timer& t) { t->async_wait(handler); });
 }
 
-void NetworkManager::removeTimer(const TimerKey& k) {
+void NetworkManager::removeTimer(std::unique_ptr<TimerKey> k) {
   timers_->erase(k);
 }
 

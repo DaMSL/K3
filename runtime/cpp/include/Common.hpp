@@ -177,6 +177,11 @@ class ConcurrentMap : public boost::basic_lockable_adapter<boost::mutex> {
     map_.get(lock)[key] = std::move(v);
   }
 
+  void insert(Key&& key, Val&& v) {
+    boost::strict_lock<ConcurrentMap<Key, Val>> lock(*this);
+    map_.get(lock)[std::move(key)] = std::move(v);
+  }
+
   Val lookup(const Key& key) {
     boost::strict_lock<ConcurrentMap<Key, Val>> lock(*this);
     Val result;
@@ -185,6 +190,17 @@ class ConcurrentMap : public boost::basic_lockable_adapter<boost::mutex> {
       result = it->second;
     }
     return result;
+  }
+
+  template<typename F, typename G>
+  void upsert_with(Key&& key, F f, G g) {
+    boost::strict_lock<ConcurrentMap<Key, Val>> lock(*this);
+    auto it = map_.get(lock).find(key);
+    if (it != map_.get(lock).end()) {
+      f(it->second);
+    } else {
+      map_.get(lock)[std::move(key)] = std::move(g());
+    }
   }
 
   template<typename F>
@@ -228,6 +244,11 @@ class ConcurrentHashMap : public boost::basic_lockable_adapter<boost::mutex> {
     map_.get(lock)[key] = std::move(v);
   }
 
+  void insert(Key&& key, Val&& v) {
+    boost::strict_lock<ConcurrentHashMap<Key, Val>> lock(*this);
+    map_.get(lock)[std::move(key)] = std::move(v);
+  }
+
   Val lookup(const Key& key) {
     boost::strict_lock<ConcurrentHashMap<Key, Val>> lock(*this);
     Val result;
@@ -236,6 +257,17 @@ class ConcurrentHashMap : public boost::basic_lockable_adapter<boost::mutex> {
       result = it->second;
     }
     return result;
+  }
+
+  template<typename F, typename G>
+  void upsert_with(Key&& key, F f, G g) {
+    boost::strict_lock<ConcurrentHashMap<Key, Val>> lock(*this);
+    auto it = map_.get(lock).find(key);
+    if (it != map_.get(lock).end()) {
+      f(it->second);
+    } else {
+      map_.get(lock)[std::move(key)] = std::move(g());
+    }
   }
 
   template<typename F>

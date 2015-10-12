@@ -12,6 +12,7 @@ namespace K3 {
 enum class TimerType { Delay, DelayOverride, DelayOverrideEdge };
 
 struct TimerKey {
+  virtual std::unique_ptr<TimerKey> clone() const { return std::make_unique<TimerKey>(); }
   virtual size_t hash() const { return 0; }
   bool operator==(const TimerKey& other) const { return this->tkCompare(other); }
   virtual bool tkCompare(const TimerKey& other) const { return true; }
@@ -20,6 +21,10 @@ struct TimerKey {
 struct DelayTimerT : public TimerKey {
   unsigned long id;
   DelayTimerT(unsigned long i) : id(i) {}
+
+  virtual std::unique_ptr<TimerKey> clone() const {
+    return std::unique_ptr<TimerKey>(new DelayTimerT(id));
+  }
 
   virtual size_t hash() const {
     std::hash<unsigned long> uh;
@@ -38,6 +43,10 @@ struct DelayOverrideT : public TimerKey {
   Address dst;
   TriggerID trig;
   DelayOverrideT(const Address& d, const TriggerID& t) : dst(d), trig(t) {}
+
+  virtual std::unique_ptr<TimerKey> clone() const {
+    return std::unique_ptr<TimerKey>(new DelayOverrideT(dst, trig));
+  }
 
   virtual size_t hash() const {
     std::hash<K3::Address> ah;
@@ -58,6 +67,10 @@ struct DelayOverrideEdgeT : public DelayOverrideT {
   Address src;
   DelayOverrideEdgeT(const Address& s, const Address& d, const TriggerID& t) : DelayOverrideT(d, t), src(s)  {}
 
+  virtual std::unique_ptr<TimerKey> clone() const {
+    return std::unique_ptr<TimerKey>(new DelayOverrideEdgeT(src, dst, trig));
+  }
+
   virtual size_t hash() const {
     size_t seed = DelayOverrideT::hash();
     hash_combine(seed, src);
@@ -75,7 +88,7 @@ struct DelayOverrideEdgeT : public DelayOverrideT {
 typedef boost::asio::deadline_timer::duration_type Delay;
 typedef std::unique_ptr<boost::asio::deadline_timer> Timer;
 typedef std::function<void(const boost::system::error_code&)> TimerHandler;
-typedef ConcurrentHashMap<TimerKey, Timer> TimerMap;
+typedef ConcurrentHashMap<std::unique_ptr<TimerKey>, Timer> TimerMap;
 
 } // end namespace K3
 

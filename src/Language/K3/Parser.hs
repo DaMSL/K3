@@ -556,14 +556,23 @@ eTuplePrefix = choice [try unit, try eNested, eTupleOrSend]
         sendSuffix    = (,) <$> (symbol "<-" *> nonSeqExpr) <*> optional delay
 
         delay             = try [delayOverrideEdge, delayOverride, delayOnly]
-        delayOnly         = Left          <$> keyword "delay" *> lNumber
-        delayOverride     = Right . Left  <$> (keyword "delay" *> keyword "override") *> lNumber
-        delayOverrideEdge = Right . Right <$> (keyword "delay" *> keyword "override" *> keyword "edge") *> lNumber
+        delayOnly         = Left          <$> keyword "delay" *> delayValue
+        delayOverride     = Right . Left  <$> (keyword "delay" *> keyword "override") *> delayValue
+        delayOverrideEdge = Right . Right <$> (keyword "delay" *> keyword "override" *> keyword "edge") *> delayValue
 
         mkTupOrSend [e] Nothing              = return $ stripSpan <$> e
         mkTupOrSend [e] (Just (arg, delayO)) = mkDelay (EC.binop OSnd e arg) delayO
         mkTupOrSend l Nothing                = return $ EC.tuple l
         mkTupOrSend l (Just (arg, delayO))   = (EC.binop OSnd <$> (EUID # return (EC.tuple l)) <*> pure arg) >>= \e -> mkDelay e delayO
+
+        delayValue = mkNumber <$> integerOrDouble <*> try [symbol "s", symbol "ms", symbol "us"]
+          where mkNumber x units = case x of
+                                     Left i  -> LC.int $ scale units $ fromIntegral i
+                                     Right d -> LC.int $ scale units $ round d
+                scale u i = case u of
+                              "s" -> i * 1000000
+                              "ms" -> i * 1000
+                              _ -> i
 
         mkDelay e Nothing = return e
         mkDelay e (Just (Left l@(tag -> LInt i))           = return (e @+ (EProperty $ Left ("Delay", l)))

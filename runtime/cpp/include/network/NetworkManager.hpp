@@ -67,9 +67,9 @@ class NetworkManager {
   std::unique_ptr<TimerKey>
   timerKey(const TimerType& ty, const Address& src, const Address& dst, const TriggerID& trig);
 
-  void addTimer(const TimerKey& k, const Delay& delay);
-  void removeTimer(const TimerKey& k);
-  void asyncWaitTimer(const TimerKey& k, TimerHandler handler);
+  void addTimer(std::unique_ptr<TimerKey> k, const Delay& delay);
+  void removeTimer(std::unique_ptr<TimerKey> k);
+  void asyncWaitTimer(std::unique_ptr<TimerKey> k, TimerHandler handler);
 
  protected:
   shared_ptr<InternalOutgoingConnection> connectInternal(const Address& a);
