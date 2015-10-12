@@ -50,6 +50,15 @@ class Vector : public VectorDS<K3::Vector, Elem> {
   }
 
   template <class Q>
+  unit_t set_all(Q&& q) {
+    auto& vec = Super::getContainer();
+    for (auto i = vec.begin(); i != vec.end; ++i) {
+      *i = std::forward<Q>(q);
+    }
+    return unit_t();
+  }
+
+  template <class Q>
   unit_t insert_at(int i, Q&& q) {
     auto& vec = Super::getContainer();
     if (i >= vec.size()) {
@@ -196,6 +205,14 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
   unit_t set(int i, RElem&& v) {
     auto& vec = Super::getContainer();
     vec[i] = v.elem;
+    return unit_t();
+  }
+
+  unit_t set_all(RElem&& q) {
+    auto& vec = Super::getContainer();
+    for (auto i = vec.begin(); i != vec.end; ++i) {
+      *i = q.elem;
+    }
     return unit_t();
   }
 
