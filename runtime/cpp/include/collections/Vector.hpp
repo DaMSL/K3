@@ -113,10 +113,10 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
   {
    public:
     template <class _I>
-    bool_iterator(Container& _c, _I&& _i) : c(_c), i(static_cast<I>(std::forward<_I>(_i))) {}
+    bool_iterator(_I&& _i) : i(static_cast<I>(std::forward<_I>(_i))) {}
 
-    bool_iterator& operator++() { i++; return *this; }
-    bool_iterator operator++(int) { bool_iterator t = *this; i++; return t; }
+    bool_iterator& operator++() { ++i; return *this; }
+    bool_iterator operator++(int) { bool_iterator t = *this; ++i; return t; }
 
     auto operator -> () const {
       current = RElem(*i);
@@ -132,7 +132,6 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
     bool operator!=(const bool_iterator& other) const { return i != other.i; }
 
    private:
-    Container& c;
     I i;
     RElem current;
   };
@@ -142,22 +141,22 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
 
   iterator begin() {
     auto c = Super::getContainer();
-    return iterator(c, c.begin());
+    return iterator(c.begin());
   }
 
   iterator end() {
     auto c = Super::getContainer();
-    return iterator(c, c.end());
+    return iterator(c.end());
   }
 
   const_iterator begin() const {
     auto c = Super::getConstContainer();
-    return const_iterator(c, c.begin());
+    return const_iterator(c.begin());
   }
 
   const_iterator end() const {
     auto c = Super::getConstContainer();
-    return const_iterator(c, c.end());
+    return const_iterator(c.end());
   }
 
   ////////////////////////////////////
