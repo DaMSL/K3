@@ -44,6 +44,7 @@ import Language.K3.Core.Utils
 import Language.K3.Core.Annotation
 import Language.K3.Core.Declaration
 import Language.K3.Core.Expression
+import Language.K3.Core.Literal
 import Language.K3.Core.Type
 
 import Language.K3.Analysis.Provenance.Core (Provenance(..), PMatVar(..), PPtr)
@@ -71,11 +72,30 @@ instance Serialize MZFlags
 optimizeMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> IO (Either String (K3 Declaration))
 optimizeMaterialization (p, f) d = runExceptT $ inferMaterialization >>= solveMaterialization >>= attachMaterialization d
  where
-  inferMaterialization = case runInferM (materializeD d) defaultIState defaultIScope of
+  inferMaterialization = case runInferM (preprocessD d >> materializeD d) defaultIState defaultIScope of
     Left (IError msg) -> throwError msg
-    Right ((_, IState ct), r) -> liftIO (formatIReport reportVerbosity r) >> return ct
-   where defaultIState = IState { cTable = M.empty }
-         defaultIScope = IScope { downstreams = [], nearestBind = Nothing, pEnv = p, fEnv = f, topLevel = False }
+    Right ((_, IState ct _), r) -> liftIO (formatIReport reportVerbosity r) >> return ct
+   where defaultIState = IState { cTable = M.empty, globalPhaseBoundaries = M.empty }
+         defaultIScope = IScope { downstreams = []
+                                , nearestBind = Nothing
+                                , pEnv = p
+                                , fEnv = f
+                                , topLevel = False
+                                , currentTrigger = Nothing
+                                }
+
+         hasPhaseBoundary :: K3 Declaration -> Maybe Identifier
+         hasPhaseBoundary x = case x @~ isDProperty of
+           Just (DProperty dp) -> flip onDProperty dp $ \case
+             ("ExpiresAt", Just (tag -> LString mt)) -> Just mt
+             _ -> Nothing
+           _ -> Nothing
+
+         preprocessD :: K3 Declaration -> InferM ()
+         preprocessD x = case tag x of
+           DGlobal i _ _ -> maybe (return ()) (addGlobalPhaseBoundary i) (hasPhaseBoundary x)
+           DRole _ -> traverse_ preprocessD (children x)
+           _ -> return ()
 
   solveMaterialization ct = case runSolverM solveAction defaultSState of
     Left (SError msg) -> throwError msg
@@ -106,7 +126,9 @@ runInferM :: InferM a -> IState -> IScope -> Either IError ((a, IState), [IRepor
 runInferM m st sc = runIdentity $ runExceptT $ runWriterT $ flip runReaderT sc $ runStateT m st
 
 -- ** Non-scoping State
-data IState = IState { cTable :: M.Map DKey (K3 MExpr) }
+data IState = IState { cTable :: M.Map DKey (K3 MExpr)
+                     , globalPhaseBoundaries :: M.Map Identifier (S.Set Identifier)
+                     }
 
 type DKey = (Juncture, Direction)
 
@@ -114,8 +136,25 @@ constrain :: UID -> Identifier -> Direction -> K3 MExpr -> InferM ()
 constrain u i d m = let j = (Juncture u i) in
   logR j d m >> modify (\s -> s { cTable = M.insertWith (flip const) (j, d) m (cTable s) })
 
+addGlobalPhaseBoundary :: Identifier -> Identifier -> InferM ()
+addGlobalPhaseBoundary gName tName = modify $ \s -> s {
+    globalPhaseBoundaries = M.insertWith S.union tName [gName] (globalPhaseBoundaries s)
+  }
+
+isPseudoLocalInContext :: Identifier -> InferM Bool
+isPseudoLocalInContext i = do
+  ct <- asks currentTrigger
+  tm <- gets globalPhaseBoundaries
+  return $ maybe False (\tn -> i `S.member` (M.findWithDefault S.empty tn tm)) ct
+
 -- ** Scoping state
-data IScope = IScope { downstreams :: [Downstream], nearestBind :: Maybe UID, pEnv :: PIEnv, fEnv :: FIEnv, topLevel :: Bool }
+data IScope = IScope { downstreams :: [Downstream]
+                     , nearestBind :: Maybe UID
+                     , pEnv :: PIEnv
+                     , fEnv :: FIEnv
+                     , topLevel :: Bool
+                     , currentTrigger :: Maybe Identifier
+                     }
 
 data Contextual a = Contextual a (Maybe UID) deriving (Eq, Ord, Read, Show)
 type Downstream = Contextual (K3 Expression)
@@ -131,6 +170,9 @@ withNearestBind u = local (\s -> s { nearestBind = Just u })
 
 withTopLevel :: Bool -> InferM a -> InferM a
 withTopLevel b = local (\s -> s { topLevel = b })
+
+withCurrentTrigger :: Identifier -> InferM a -> InferM a
+withCurrentTrigger ct = local (\s -> s { currentTrigger = Just ct })
 
 -- ** Reporting
 data IReport = IReport { juncture :: Juncture, direction :: Direction, constraint :: K3 MExpr }
@@ -191,12 +233,12 @@ materializeD :: K3 Declaration -> InferM ()
 materializeD d = case tag d of
   DGlobal i _ (Just e) -> materializeE e >> dUID d >>= \u -> constrain u i In (mAtom Referenced -??- "Hack")
   DGlobal i _ Nothing -> dUID d >>= \u -> constrain u i In (mAtom Referenced -??- "Hack")
-  DTrigger _ _ e -> withTopLevel True $ materializeE e
+  DTrigger i _ e -> withCurrentTrigger i $ withTopLevel True $ materializeE e
   _ -> traverse_ materializeD (children d)
 
 materializeE :: K3 Expression -> InferM ()
 materializeE e@(Node (t :@: _) cs) = case t of
-  EProject f -> do
+  EProject _ -> do
     let [super] = cs
     materializeE super
     moveableNow <- ePrv super >>= contextualizeNow >>= isMoveableNow
@@ -489,17 +531,17 @@ hasWriteInF p (Contextual f cf) = case f of
   (tag -> FLoop) -> foldr (-||-) (mBool False) <$> traverse (hasWriteInF p) (map (flip Contextual cf) $ children f)
   _ -> return (mBool False)
 
-isGlobal :: K3 Provenance -> InferM (K3 MPred)
-isGlobal p = case tag p of
-  (PGlobal _) -> return (mBool True)
+isPseudoGlobal :: K3 Provenance -> InferM (K3 MPred)
+isPseudoGlobal p = case tag p of
+  (PGlobal n) -> isPseudoLocalInContext n >>= \pl -> return (mBool (not pl) -??- "Is Pseudo Local?")
   (PBVar (PMatVar n u ptr)) -> do
-    parent <- chasePPtr ptr >>= isGlobal
+    parent <- chasePPtr ptr >>= isPseudoGlobal
     return $ mOneOf (mVar u n In) [Referenced, ConstReferenced, Forwarded] -&&- parent
-  (PProject _) -> isGlobal (head $ children p)
-  PSet -> mOr <$> traverse isGlobal (children p)
-  (PRecord _) -> mOr <$> traverse isGlobal (children p)
-  (PTuple _) -> mOr <$> traverse isGlobal (children p)
-  POption -> mOr <$> traverse isGlobal (children p)
+  (PProject _) -> isPseudoGlobal (head $ children p)
+  PSet -> mOr <$> traverse isPseudoGlobal (children p)
+  (PRecord _) -> mOr <$> traverse isPseudoGlobal (children p)
+  (PTuple _) -> mOr <$> traverse isPseudoGlobal (children p)
+  POption -> mOr <$> traverse isPseudoGlobal (children p)
   _ -> return $ mBool False
 
 occursIn :: Contextual (K3 Provenance) -> Contextual (K3 Provenance) -> InferM (K3 MPred)
@@ -527,7 +569,7 @@ ownedByContext (Contextual p c) = case tag p of
   _ -> return (mBool True)
 
 isMoveable :: Contextual (K3 Provenance) -> InferM (K3 MPred)
-isMoveable (Contextual p _) = mNot <$> isGlobal p
+isMoveable (Contextual p _) = mNot <$> isPseudoGlobal p
 
 isMoveableIn :: Contextual (K3 Provenance) -> Contextual (K3 Expression) -> InferM (K3 MPred)
 isMoveableIn cp ce = do
