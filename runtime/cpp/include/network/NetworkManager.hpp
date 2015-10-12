@@ -64,12 +64,14 @@ class NetworkManager {
   CodecFormat internalFormat();
 
   // Timers.
-  std::unique_ptr<TimerKey>
+  std::shared_ptr<TimerKey>
   timerKey(const TimerType& ty, const Address& src, const Address& dst, const TriggerID& trig);
 
-  void addTimer(std::unique_ptr<TimerKey> k, const Delay& delay);
-  void removeTimer(std::unique_ptr<TimerKey> k);
-  void asyncWaitTimer(std::unique_ptr<TimerKey> k, TimerHandler handler);
+  void addTimer(std::shared_ptr<TimerKey> k, const Delay& delay);
+  void removeTimer(std::shared_ptr<TimerKey> k);
+
+  template<typename F>
+  void asyncWaitTimer(std::shared_ptr<TimerKey> k, F handler);
 
  protected:
   shared_ptr<InternalOutgoingConnection> connectInternal(const Address& a);
@@ -99,6 +101,13 @@ class NetworkManager {
   shared_ptr<TimerMap> timers_;
   static std::atomic<unsigned long> timer_cnt_;
 };
+
+template<typename F>
+void NetworkManager::asyncWaitTimer(std::shared_ptr<TimerKey> k, F handler) {
+  timers_->apply(k, [handler = std::forward<F>(handler)](std::unique_ptr<Timer>& t) mutable {
+    t->async_wait(handler);
+  });
+}
 
 }  // namespace K3
 

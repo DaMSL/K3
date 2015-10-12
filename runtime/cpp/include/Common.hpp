@@ -192,15 +192,11 @@ class ConcurrentMap : public boost::basic_lockable_adapter<boost::mutex> {
     return result;
   }
 
-  template<typename F, typename G>
-  void upsert_with(Key&& key, F f, G g) {
+  template<typename F>
+  void apply(F f) {
     boost::strict_lock<ConcurrentMap<Key, Val>> lock(*this);
-    auto it = map_.get(lock).find(key);
-    if (it != map_.get(lock).end()) {
-      f(it->second);
-    } else {
-      map_.get(lock)[std::move(key)] = std::move(g());
-    }
+    auto& map = map_.get(lock);
+    f(map);
   }
 
   template<typename F>
@@ -259,15 +255,11 @@ class ConcurrentHashMap : public boost::basic_lockable_adapter<boost::mutex> {
     return result;
   }
 
-  template<typename F, typename G>
-  void upsert_with(Key&& key, F f, G g) {
+  template<typename F>
+  void apply(F f) {
     boost::strict_lock<ConcurrentHashMap<Key, Val>> lock(*this);
-    auto it = map_.get(lock).find(key);
-    if (it != map_.get(lock).end()) {
-      f(it->second);
-    } else {
-      map_.get(lock)[std::move(key)] = std::move(g());
-    }
+    auto& map = map_.get(lock);
+    f(map);
   }
 
   template<typename F>

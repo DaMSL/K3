@@ -243,6 +243,7 @@ requiredAliases = return
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "TNativeValue"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "PackedValue"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Options"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "TimerType"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "string_impl"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "unit_t"), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "make_tuple" ), Nothing)
@@ -281,6 +282,7 @@ requiredIncludes = return
                    , "serialization/Yaml.hpp"
                    , "types/BaseString.hpp"
                    , "types/Dispatcher.hpp"
+                   , "types/Timers.hpp"
 
                    , "collections/AllCollections.hpp"
 

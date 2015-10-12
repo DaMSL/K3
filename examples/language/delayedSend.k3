@@ -1,0 +1,13 @@
+include "Core/Builtins.k3"
+
+trigger t : () = \_ -> (
+  (print ("Send " ++ itos (now_int ())));
+  (t2, me) <- () delay 1s
+)
+
+trigger t2 : () = \_ -> (
+  (print ("Receive " ++ itos (now_int ())))
+)
+
+source s1 : () = value ()
+feed s1 |> t

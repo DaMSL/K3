@@ -631,15 +631,15 @@ inline e@(tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [tri
     (sName, sArgs) <- case (e @~ isEDelay, e @~ isEDelayOverride, e @~ isEDelayOverrideEdge) of
                        (Just (EProperty (ePropertyValue -> Just (tag -> LInt delay))), Nothing, Nothing) ->
                         return ("delayedSend",
-                          commonSArgs ++ [R.Variable "TimerType::Delay", R.Literal $ R.LInt delay])
+                          commonSArgs ++ [R.Variable $ R.Name "TimerType::Delay", R.Literal $ R.LInt delay])
 
                        (Nothing, Just (EProperty (ePropertyValue -> Just (tag -> LInt delay))), Nothing) ->
                         return ("delayedSend",
-                          commonSArgs ++ [R.Variable "TimerType::DelayOverride", R.Literal $ R.LInt delay])
+                          commonSArgs ++ [R.Variable $ R.Name "TimerType::DelayOverride", R.Literal $ R.LInt delay])
 
                        (Nothing, Nothing, Just (EProperty (ePropertyValue -> Just (tag -> LInt delay)))) ->
                         return ("delayedSend",
-                          commonSArgs ++ [R.Variable "TimerType::DelayOverrideEdge", R.Literal $ R.LInt delay])
+                          commonSArgs ++ [R.Variable $ R.Name "TimerType::DelayOverrideEdge", R.Literal $ R.LInt delay])
 
                        (Nothing, Nothing, Nothing) -> return ("send", commonSArgs)
 

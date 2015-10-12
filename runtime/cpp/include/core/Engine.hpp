@@ -175,21 +175,19 @@ void Engine::delayedSend(const Address& src, const Address& dst, TriggerID trig,
                      << getTriggerName(trig);
   }
 
-  std::unique_ptr<NativeValue> nv = std::make_unique<TNativeValue<T>>(std::move(value));
-
   auto timer_key = network_manager_.timerKey(tmty, src, dst, trig);
-  auto wait_key = timer_key->clone();
   network_manager_.addTimer(timer_key, boost::posix_time::microseconds(delay));
 
-  auto cb = [this, timer_key = std::move(timer_key), src, dst, trig, nv = std::move(nv)]
-            (const boost::system::error_code& error)
+  auto cb = [this, timer_key, src, dst, trig, value = std::move(value)]
+            (const boost::system::error_code& error) mutable
   {
     if ( !error ) {
       this->network_manager_.removeTimer(timer_key);
-      this->send(src, dst, trig, T(nv->as<T>()));
+      this->send(src, dst, trig, std::move(value));
     }
   };
-  network_manager_.asyncWaitTimer(wait_key, cb);
+
+  network_manager_.asyncWaitTimer(timer_key, cb);
 }
 
 template <class T>

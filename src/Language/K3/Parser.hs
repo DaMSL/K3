@@ -553,19 +553,29 @@ eTuplePrefix = choice [try unit, try eNested, eTupleOrSend]
                           elements <- parens $ commaSep1 qualifiedExpr
                           msuffix <- optional sendSuffix
                           mkTupOrSend elements msuffix
-        sendSuffix    = (,) <$> (symbol "<-" *> nonSeqExpr) <*> optional delay
 
-        delay             = try [delayOverrideEdge, delayOverride, delayOnly]
-        delayOnly         = Left          <$> keyword "delay" *> delayValue
-        delayOverride     = Right . Left  <$> (keyword "delay" *> keyword "override") *> delayValue
-        delayOverrideEdge = Right . Right <$> (keyword "delay" *> keyword "override" *> keyword "edge") *> delayValue
+        sendSuffix :: K3Parser (K3 Expression, Maybe (Either (K3 Literal) (Either (K3 Literal) (K3 Literal))))
+        sendSuffix = (,) <$> (symbol "<-" *> nonSeqExpr) <*> optional delay
+
+        delay :: K3Parser (Either (K3 Literal) (Either (K3 Literal) (K3 Literal)))
+        delay = choice $ map try [delayOverrideEdge, delayOverride, delayOnly]
+
+        delayOnly :: K3Parser (Either (K3 Literal) (Either (K3 Literal) (K3 Literal)))
+        delayOnly = Left <$> (keyword "delay" *> delayValue)
+
+        delayOverride :: K3Parser (Either (K3 Literal) (Either (K3 Literal) (K3 Literal)))
+        delayOverride = Right . Left  <$> ((keyword "delay" *> keyword "override") *> delayValue)
+
+        delayOverrideEdge :: K3Parser (Either (K3 Literal) (Either (K3 Literal) (K3 Literal)))
+        delayOverrideEdge = Right . Right <$> ((keyword "delay" *> keyword "override" *> keyword "edge") *> delayValue)
 
         mkTupOrSend [e] Nothing              = return $ stripSpan <$> e
         mkTupOrSend [e] (Just (arg, delayO)) = mkDelay (EC.binop OSnd e arg) delayO
         mkTupOrSend l Nothing                = return $ EC.tuple l
         mkTupOrSend l (Just (arg, delayO))   = (EC.binop OSnd <$> (EUID # return (EC.tuple l)) <*> pure arg) >>= \e -> mkDelay e delayO
 
-        delayValue = mkNumber <$> integerOrDouble <*> try [symbol "s", symbol "ms", symbol "us"]
+        delayValue :: K3Parser (K3 Literal)
+        delayValue = mkNumber <$> integerOrDouble <*> (choice $ map try $ [symbol "s", symbol "ms", symbol "us"])
           where mkNumber x units = case x of
                                      Left i  -> LC.int $ scale units $ fromIntegral i
                                      Right d -> LC.int $ scale units $ round d
@@ -574,11 +584,12 @@ eTuplePrefix = choice [try unit, try eNested, eTupleOrSend]
                               "ms" -> i * 1000
                               _ -> i
 
+        mkDelay :: K3 Expression -> Maybe (Either (K3 Literal) (Either (K3 Literal) (K3 Literal))) -> ExpressionParser
         mkDelay e Nothing = return e
-        mkDelay e (Just (Left l@(tag -> LInt i))           = return (e @+ (EProperty $ Left ("Delay", l)))
-        mkDelay e (Just (Right (Left l@(tag -> LInt i))))  = return (e @+ (EProperty $ Left ("DelayOverride", l)))
-        mkDelay e (Just (Right (Right l@(tag -> LInt i)))) = return (e @+ (EProperty $ Left ("DelayOverrideEdge", l)))
-        mkDelay e (Just _)                                 = fail "Invalid send delay constant"
+        mkDelay e (Just (Left l@(tag -> LInt _)))          = return (e @+ (EProperty $ Left ("Delay", Just l)))
+        mkDelay e (Just (Right (Left l@(tag -> LInt _))))  = return (e @+ (EProperty $ Left ("DelayOverride", Just l)))
+        mkDelay e (Just (Right (Right l@(tag -> LInt _)))) = return (e @+ (EProperty $ Left ("DelayOverrideEdge", Just l)))
+        mkDelay _ (Just _)                                 = fail "Invalid send delay constant"
 
         stripSpan e = maybe e (e @-) $ e @~ isESpan
 

@@ -152,19 +152,19 @@ void NetworkManager::addThread() {
   threads_->create_thread([this]() { io_service_->run(); });
 }
 
-std::unique_ptr<TimerKey>
+std::shared_ptr<TimerKey>
 NetworkManager::timerKey(const TimerType& ty, const Address& src, const Address& dst, const TriggerID& trig)
 {
-  std::unique_ptr<TimerKey> key;
+  std::shared_ptr<TimerKey> key;
   switch (ty) {
     case TimerType::Delay:
-      key = std::make_unique<DelayTimerT>(timer_cnt_.fetch_add(1UL));
+      key = std::make_shared<DelayTimerT>(timer_cnt_.fetch_add(1UL));
 
     case TimerType::DelayOverride:
-      key = std::make_unique<DelayOverrideT>(dst, trig);
+      key = std::make_shared<DelayOverrideT>(dst, trig);
 
     case TimerType::DelayOverrideEdge:
-      key = std::make_unique<DelayOverrideEdgeT>(src, dst, trig);
+      key = std::make_shared<DelayOverrideEdgeT>(src, dst, trig);
 
     default:
       break;
@@ -174,21 +174,20 @@ NetworkManager::timerKey(const TimerType& ty, const Address& src, const Address&
   return key;
 }
 
-void NetworkManager::addTimer(std::unique_ptr<TimerKey> k, const Delay& delay)
+void NetworkManager::addTimer(std::shared_ptr<TimerKey> k, const Delay& delay)
 {
-  auto mk = k->clone();
   auto& ios = *io_service_;
-
-  timers_->upsert_with(std::move(mk),
-    [&delay](const Timer& t){ t->expires_from_now(delay); },
-    [&ios, &delay](){ return std::make_unique<boost::asio::deadline_timer>(ios, delay); });
+  timers_->apply([k, &ios, &delay](auto& map) mutable {
+    auto it = map.find(k);
+    if ( it == map.end() ) {
+      map[k] = std::move(std::make_unique<Timer>(ios, delay));
+    } else {
+      it->second->expires_from_now(delay);
+    }
+  });
 }
 
-void NetworkManager::asyncWaitTimer(std::unique_ptr<TimerKey> k, TimerHandler handler) {
-  timers_->apply(k, [handler](const Timer& t) { t->async_wait(handler); });
-}
-
-void NetworkManager::removeTimer(std::unique_ptr<TimerKey> k) {
+void NetworkManager::removeTimer(std::shared_ptr<TimerKey> k) {
   timers_->erase(k);
 }
 
