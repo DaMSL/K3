@@ -7,8 +7,8 @@
 #include <boost/thread.hpp>
 
 #include "Common.hpp"
-#include "types/Dispatcher.hpp"
 #include "types/Message.hpp"
+#include "types/Timers.hpp"
 #include "spdlog/spdlog.h"
 
 namespace K3 {
@@ -46,10 +46,6 @@ typedef ConcurrentMap<Address, shared_ptr<IncomingConnection>> IncomingConnectio
 typedef std::function<void(std::unique_ptr<Message>)> MessageHandler;
 typedef std::function<void(boost_error)> ErrorHandler;
 
-typedef boost::asio::deadline_timer::duration_type Delay;
-typedef std::pair<unsigned long, std::unique_ptr<boost::asio::deadline_timer>> Timer;
-typedef std::function<void(const boost::system::error_code&)> TimerHandler;
-typedef ConcurrentMap<unsigned int, Timer> TimerMap;
 
 class NetworkManager {
  public:
@@ -68,9 +64,12 @@ class NetworkManager {
   CodecFormat internalFormat();
 
   // Timers.
-  unsigned long addTimer(const Delay& delay);
-  void asyncWaitTimer(unsigned long timer_id, TimerHandler handler);
-  void removeTimer(unsigned long timer_id);
+  std::unique_ptr<TimerKey>
+  timerKey(const TimerType& ty, const Address& src, const Address& dst, const TriggerID& trig);
+
+  void addTimer(const TimerKey& k, const Delay& delay);
+  void removeTimer(const TimerKey& k);
+  void asyncWaitTimer(const TimerKey& k, TimerHandler handler);
 
  protected:
   shared_ptr<InternalOutgoingConnection> connectInternal(const Address& a);

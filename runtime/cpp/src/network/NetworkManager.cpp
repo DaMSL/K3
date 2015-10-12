@@ -152,22 +152,41 @@ void NetworkManager::addThread() {
   threads_->create_thread([this]() { io_service_->run(); });
 }
 
-unsigned long NetworkManager::addTimer(const Delay& delay)
+std::unique_ptr<TimerKey>
+NetworkManager::timerKey(const TimerType& ty, const Address& src, const Address& dst, const TriggerID& trig)
 {
-  unsigned long id = timer_cnt_.fetch_add(1UL);
-  std::unique_ptr<boost::asio::deadline_timer> t =
-    std::make_unique<boost::asio::deadline_timer>(*io_service_, delay);
+  std::unique_ptr<TimerKey> key;
+  switch (ty) {
+    case TimerType::Delay:
+      key = std::make_unique<DelayTimerT>(timer_cnt_.fetch_add(1UL));
 
-  timers_->insert(id, std::move(Timer { id, std::move(t) }));
-  return id;
+    case TimerType::DelayOverride:
+      key = std::make_unique<DelayOverrideT>(dst, trig);
+
+    case TimerType::DelayOverrideEdge:
+      key = std::make_unique<DelayOverrideEdgeT>(src, dst, trig);
+
+    default:
+      break;
+  }
+
+  if ( !key ) { throw std::runtime_error("Invalid timer type"); }
+  return key;
 }
 
-void NetworkManager::asyncWaitTimer(unsigned long timer_id, TimerHandler handler) {
-  timers_->apply(timer_id, [handler](const Timer& t) { t.second->async_wait(handler); });
+// TODO: cancel based on existing timers with the given timer key.
+void NetworkManager::addTimer(const TimerKey& k, const Delay& delay)
+{
+  Timer t = std::make_unique<boost::asio::deadline_timer>(*io_service_, delay);
+  timers_->insert(k, std::move(t));
 }
 
-void NetworkManager::removeTimer(unsigned long timer_id) {
-  timers_->erase(timer_id);
+void NetworkManager::asyncWaitTimer(const TimerKey& k, TimerHandler handler) {
+  timers_->apply(k, [handler](const Timer& t) { t->async_wait(handler); });
+}
+
+void NetworkManager::removeTimer(const TimerKey& k) {
+  timers_->erase(k);
 }
 
 }  // namespace K3

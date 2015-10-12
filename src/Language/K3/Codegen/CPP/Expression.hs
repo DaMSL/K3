@@ -626,14 +626,41 @@ inline e@(tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [tri
     let messageValue = passBy (getInMethodFor "!" e) val vv
     trigTypes <- getKType val >>= genCType
     let me = R.Variable $ R.Name "me"
+    let commonSArgs = [me, av, R.Variable $ R.Name tIdName, messageValue]
+
+    (sName, sArgs) <- case (e @~ isEDelay, e @~ isEDelayOverride, e @~ isEDelayOverrideEdge) of
+                       (Just (EProperty (ePropertyValue -> Just (tag -> LInt delay))), Nothing, Nothing) ->
+                        return ("delayedSend",
+                          commonSArgs ++ [R.Variable "TimerType::Delay", R.Literal $ R.LInt delay])
+
+                       (Nothing, Just (EProperty (ePropertyValue -> Just (tag -> LInt delay))), Nothing) ->
+                        return ("delayedSend",
+                          commonSArgs ++ [R.Variable "TimerType::DelayOverride", R.Literal $ R.LInt delay])
+
+                       (Nothing, Nothing, Just (EProperty (ePropertyValue -> Just (tag -> LInt delay)))) ->
+                        return ("delayedSend",
+                          commonSArgs ++ [R.Variable "TimerType::DelayOverrideEdge", R.Literal $ R.LInt delay])
+
+                       (Nothing, Nothing, Nothing) -> return ("send", commonSArgs)
+
+                       _ -> throwE $ CPPGenE $ "Invalid delay send properties"
+
     return (concat [te, ae, ve]
-                 ++ [ R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Specialized [trigTypes] (R.Name "send")))
-                                    [me, av, R.Variable $ R.Name tIdName, messageValue]
-                    ]
+                 ++ [ R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Specialized [trigTypes] (R.Name sName))) sArgs ]
              , R.Initialization R.Unit [])
     where
       isETriggerId (EProperty (ePropertyName -> "TriggerId")) = True
       isETriggerId _ = False
+
+      isEDelay (EProperty (ePropertyName -> "Delay")) = True
+      isEDelay _ = False
+
+      isEDelayOverride (EProperty (ePropertyName -> "DelayOverride")) = True
+      isEDelayOverride _ = False
+
+      isEDelayOverrideEdge (EProperty (ePropertyName -> "DelayOverrideEdge")) = True
+      isEDelayOverrideEdge _ = False
+
 
 inline (tag &&& children -> (EOperate bop, [a, b])) = do
     (ae, av) <- inline a

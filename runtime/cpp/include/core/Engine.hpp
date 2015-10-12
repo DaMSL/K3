@@ -42,10 +42,10 @@ class Engine {
   // Delayed sends, in microseconds from now.
   template <class T>
   void delayedSend(const Address& src, const Address& dst, TriggerID trig,
-                   const T& value, int delay);
+                   const T& value, const TimerType& tmty, int delay);
   template <class T>
   void delayedSend(const Address& src, const Address& dst, TriggerID trig,
-                   T&& value, int delay);
+                   T&& value, const TimerType& tmty, int delay);
 
   // Accessors
   ProgramContext& getContext(const Address& addr);
@@ -163,7 +163,7 @@ void Engine::send(const Address& src, const Address& dst, TriggerID trig,
 // Delayed sends, based on timers.
 template <class T>
 void Engine::delayedSend(const Address& src, const Address& dst, TriggerID trig,
-                         T&& value, int delay)
+                         T&& value, const TimerType& tmty, int delay)
 {
   if (!peers_) {
     throw std::runtime_error(
@@ -176,21 +176,25 @@ void Engine::delayedSend(const Address& src, const Address& dst, TriggerID trig,
   }
 
   std::unique_ptr<NativeValue> nv = std::make_unique<TNativeValue<T>>(std::move(value));
-  auto timer_id = network_manager_.addTimer(boost::posix_time::microseconds(delay));
-  auto cb = [this, timer_id, src, dst, trig, nv = std::move(nv)](const boost::system::error_code& error){
+
+  auto p = network_manager_.timerKey(tmty, src, dst, trig);
+  auto timer_key = *p;
+  network_manager_.addTimer(timer_key, boost::posix_time::microseconds(delay));
+
+  auto cb = [this, timer_key, src, dst, trig, nv = std::move(nv)](const boost::system::error_code& error){
     if ( !error ) {
-      this->network_manager_.removeTimer(timer_id);
+      this->network_manager_.removeTimer(timer_key);
       this->send(src, dst, trig, T(nv->as<T>()));
     }
   };
-  network_manager_.asyncWaitTimer(timer_id, cb);
+  network_manager_.asyncWaitTimer(timer_key, cb);
 }
 
 template <class T>
 void Engine::delayedSend(const Address& src, const Address& dst, TriggerID trig,
-                         const T& value, int delay)
+                         const T& value, const TimerType& tmty, int delay)
 {
-  delayedSend(src, dst, trig, T(value), delay);
+  delayedSend(src, dst, trig, T(value), tmty, delay);
 }
 
 }  // namespace K3

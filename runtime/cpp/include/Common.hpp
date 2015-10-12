@@ -211,6 +211,57 @@ class ConcurrentMap : public boost::basic_lockable_adapter<boost::mutex> {
   boost::externally_locked<std::map<Key, Val>, ConcurrentMap<Key, Val>> map_;
 };
 
+// A hashtable-backed concurrent map.
+template <class Key, class Val>
+class ConcurrentHashMap : public boost::basic_lockable_adapter<boost::mutex> {
+ public:
+  ConcurrentHashMap()
+      : boost::basic_lockable_adapter<boost::mutex>(), map_(*this) {}
+
+  void insert(const Key& key, const Val& v) {
+    boost::strict_lock<ConcurrentHashMap<Key, Val>> lock(*this);
+    map_.get(lock)[key] = v;
+  }
+
+  void insert(const Key& key, Val&& v) {
+    boost::strict_lock<ConcurrentHashMap<Key, Val>> lock(*this);
+    map_.get(lock)[key] = std::move(v);
+  }
+
+  Val lookup(const Key& key) {
+    boost::strict_lock<ConcurrentHashMap<Key, Val>> lock(*this);
+    Val result;
+    auto it = map_.get(lock).find(key);
+    if (it != map_.get(lock).end()) {
+      result = it->second;
+    }
+    return result;
+  }
+
+  template<typename F>
+  void apply(const Key& key, F f) {
+    boost::strict_lock<ConcurrentHashMap<Key, Val>> lock(*this);
+    auto it = map_.get(lock).find(key);
+    if (it != map_.get(lock).end()) {
+      f(it->second);
+    }
+  }
+
+  void erase(const Key& key) {
+    boost::strict_lock<ConcurrentHashMap<Key, Val>> lock(*this);
+    map_.get(lock).erase(key);
+    return;
+  }
+
+  int size() {
+    boost::strict_lock<ConcurrentHashMap<Key, Val>> lock(*this);
+    return map_.get(lock).size();
+  }
+
+ protected:
+  boost::externally_locked<std::unordered_map<Key, Val>, ConcurrentHashMap<Key, Val>> map_;
+};
+
 class base_string;
 typedef base_string string_impl;  // Toggle string implementations
 

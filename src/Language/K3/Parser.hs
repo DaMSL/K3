@@ -553,14 +553,25 @@ eTuplePrefix = choice [try unit, try eNested, eTupleOrSend]
                           elements <- parens $ commaSep1 qualifiedExpr
                           msuffix <- optional sendSuffix
                           mkTupOrSend elements msuffix
-        sendSuffix    = symbol "<-" *> nonSeqExpr
+        sendSuffix    = (,) <$> (symbol "<-" *> nonSeqExpr) <*> optional delay
 
-        mkTupOrSend [e] Nothing    = return $ stripSpan <$> e
-        mkTupOrSend [e] (Just arg) = return $ EC.binop OSnd e arg
-        mkTupOrSend l Nothing      = return $ EC.tuple l
-        mkTupOrSend l (Just arg)   = EC.binop OSnd <$> (EUID # return (EC.tuple l)) <*> pure arg
+        delay             = try [delayOverrideEdge, delayOverride, delayOnly]
+        delayOnly         = Left          <$> keyword "delay" *> lNumber
+        delayOverride     = Right . Left  <$> (keyword "delay" *> keyword "override") *> lNumber
+        delayOverrideEdge = Right . Right <$> (keyword "delay" *> keyword "override" *> keyword "edge") *> lNumber
 
-        stripSpan e               = maybe e (e @-) $ e @~ isESpan
+        mkTupOrSend [e] Nothing              = return $ stripSpan <$> e
+        mkTupOrSend [e] (Just (arg, delayO)) = mkDelay (EC.binop OSnd e arg) delayO
+        mkTupOrSend l Nothing                = return $ EC.tuple l
+        mkTupOrSend l (Just (arg, delayO))   = (EC.binop OSnd <$> (EUID # return (EC.tuple l)) <*> pure arg) >>= \e -> mkDelay e delayO
+
+        mkDelay e Nothing = return e
+        mkDelay e (Just (Left l@(tag -> LInt i))           = return (e @+ (EProperty $ Left ("Delay", l)))
+        mkDelay e (Just (Right (Left l@(tag -> LInt i))))  = return (e @+ (EProperty $ Left ("DelayOverride", l)))
+        mkDelay e (Just (Right (Right l@(tag -> LInt i)))) = return (e @+ (EProperty $ Left ("DelayOverrideEdge", l)))
+        mkDelay e (Just _)                                 = fail "Invalid send delay constant"
+
+        stripSpan e = maybe e (e @-) $ e @~ isESpan
 
 eRecord :: ExpressionParser
 eRecord = exprError "record" $ EC.record <$> braces idQExprList
