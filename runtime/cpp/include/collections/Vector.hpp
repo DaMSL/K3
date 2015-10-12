@@ -127,12 +127,12 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
     bool_iterator& operator++() { ++i; return *this; }
     bool_iterator operator++(int) { bool_iterator t = *this; ++i; return t; }
 
-    auto operator -> () const {
+    auto operator -> () {
       current = RElem(*i);
       return &current;
     }
 
-    auto& operator*() const {
+    auto& operator*() {
       current = RElem(*i);
       return current;
     }
@@ -216,7 +216,7 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
     return unit_t();
   }
 
-  unit_t insert(RElem &e) {
+  unit_t insert(const RElem &e) {
     container.insert(container.end(), e.elem);
     return unit_t();
   }
