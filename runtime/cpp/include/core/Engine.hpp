@@ -10,6 +10,8 @@
 #endif //_WIN32
 #include <spdlog/spdlog.h>
 
+#include <boost/date_time/posix_time/posix_time.hpp>
+
 #include "Common.hpp"
 #include "Hash.hpp"
 #include "Options.hpp"
@@ -36,6 +38,15 @@ class Engine {
   template <class T>
   void send(const Address& src, const Address& dst, TriggerID trig,
             T&& value);
+
+  // Delayed sends, in microseconds from now.
+  template <class T>
+  void delayedSend(const Address& src, const Address& dst, TriggerID trig,
+                   const T& value, int delay);
+  template <class T>
+  void delayedSend(const Address& src, const Address& dst, TriggerID trig,
+                   T&& value, int delay);
+
   // Accessors
   ProgramContext& getContext(const Address& addr);
   NetworkManager& getNetworkManager();
@@ -143,8 +154,43 @@ void Engine::send(const Address& src, const Address& dst, TriggerID trig,
 
 template <class T>
 void Engine::send(const Address& src, const Address& dst, TriggerID trig,
-                  const T& value) {
+                  const T& value)
+{
   send(src, dst, trig, T(value));
+}
+
+
+// Delayed sends, based on timers.
+template <class T>
+void Engine::delayedSend(const Address& src, const Address& dst, TriggerID trig,
+                         T&& value, int delay)
+{
+  if (!peers_) {
+    throw std::runtime_error(
+        "Engine send(): Can't send before peers_ is initialized");
+  }
+  if (logger_->level() <= spdlog::level::debug) {
+    logger_->debug() << "Delayed Message: " << src.toString() << " --> "
+                     << dst.toString() << " @"
+                     << getTriggerName(trig);
+  }
+
+  std::unique_ptr<NativeValue> nv = std::make_unique<TNativeValue<T>>(std::move(value));
+  auto timer_id = network_manager_.addTimer(boost::posix_time::microseconds(delay));
+  auto cb = [this, timer_id, src, dst, trig, nv = std::move(nv)](const boost::system::error_code& error){
+    if ( !error ) {
+      this->network_manager_.removeTimer(timer_id);
+      this->send(src, dst, trig, T(nv->as<T>()));
+    }
+  };
+  network_manager_.asyncWaitTimer(timer_id, cb);
+}
+
+template <class T>
+void Engine::delayedSend(const Address& src, const Address& dst, TriggerID trig,
+                         const T& value, int delay)
+{
+  delayedSend(src, dst, trig, T(value), delay);
 }
 
 }  // namespace K3

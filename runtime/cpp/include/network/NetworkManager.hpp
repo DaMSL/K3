@@ -3,9 +3,11 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/read.hpp>
+#include <boost/asio/deadline_timer.hpp>
 #include <boost/thread.hpp>
 
 #include "Common.hpp"
+#include "types/Dispatcher.hpp"
 #include "types/Message.hpp"
 #include "spdlog/spdlog.h"
 
@@ -40,10 +42,14 @@ class ConnectionMap : public ConcurrentMap<Address, shared_ptr<Connection>> {
 typedef ConcurrentMap<Address, shared_ptr<Listener>> ListenerMap;
 typedef ConnectionMap<InternalOutgoingConnection> InternalConnectionMap;
 typedef ConnectionMap<ExternalOutgoingConnection> ExternalConnectionMap;
-typedef ConcurrentMap<Address, shared_ptr<IncomingConnection>>
-    IncomingConnectionMap;
+typedef ConcurrentMap<Address, shared_ptr<IncomingConnection>> IncomingConnectionMap;
 typedef std::function<void(std::unique_ptr<Message>)> MessageHandler;
 typedef std::function<void(boost_error)> ErrorHandler;
+
+typedef boost::asio::deadline_timer::duration_type Delay;
+typedef std::pair<unsigned long, std::unique_ptr<boost::asio::deadline_timer>> Timer;
+typedef std::function<void(const boost::system::error_code&)> TimerHandler;
+typedef ConcurrentMap<unsigned int, Timer> TimerMap;
 
 class NetworkManager {
  public:
@@ -53,14 +59,18 @@ class NetworkManager {
   void stop();
   void join();
   void listenInternal(shared_ptr<Peer> p);
-  void listenExternal(shared_ptr<Peer> p, Address listen_addr, TriggerID trig,
-                      CodecFormat format);
+  void listenExternal(shared_ptr<Peer> p, Address listen_addr, TriggerID trig, CodecFormat format);
   void sendInternal(const Address& dst, shared_ptr<NetworkMessage> pm);
   void sendExternal(const Address& a, shared_ptr<PackedValue> pv);
 
   // Utilities
   shared_ptr<Listener> getListener(const Address& addr);
   CodecFormat internalFormat();
+
+  // Timers.
+  unsigned long addTimer(const Delay& delay);
+  void asyncWaitTimer(unsigned long timer_id, TimerHandler handler);
+  void removeTimer(unsigned long timer_id);
 
  protected:
   shared_ptr<InternalOutgoingConnection> connectInternal(const Address& a);
@@ -85,6 +95,10 @@ class NetworkManager {
 
   // State
   std::atomic<bool> running_;
+
+  // Timers
+  shared_ptr<TimerMap> timers_;
+  static std::atomic<unsigned long> timer_cnt_;
 };
 
 }  // namespace K3

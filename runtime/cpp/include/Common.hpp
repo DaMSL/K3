@@ -167,9 +167,14 @@ class ConcurrentMap : public boost::basic_lockable_adapter<boost::mutex> {
   ConcurrentMap()
       : boost::basic_lockable_adapter<boost::mutex>(), map_(*this) {}
 
-  void insert(const Key& key, Val v) {
+  void insert(const Key& key, const Val& v) {
     boost::strict_lock<ConcurrentMap<Key, Val>> lock(*this);
     map_.get(lock)[key] = v;
+  }
+
+  void insert(const Key& key, Val&& v) {
+    boost::strict_lock<ConcurrentMap<Key, Val>> lock(*this);
+    map_.get(lock)[key] = std::move(v);
   }
 
   Val lookup(const Key& key) {
@@ -180,6 +185,15 @@ class ConcurrentMap : public boost::basic_lockable_adapter<boost::mutex> {
       result = it->second;
     }
     return result;
+  }
+
+  template<typename F>
+  void apply(const Key& key, F f) {
+    boost::strict_lock<ConcurrentMap<Key, Val>> lock(*this);
+    auto it = map_.get(lock).find(key);
+    if (it != map_.get(lock).end()) {
+      f(it->second);
+    }
   }
 
   void erase(const Key& key) {

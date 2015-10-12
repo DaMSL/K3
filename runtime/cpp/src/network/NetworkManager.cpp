@@ -7,6 +7,8 @@
 
 namespace K3 {
 
+std::atomic<unsigned long> NetworkManager::timer_cnt_(0);
+
 NetworkManager::NetworkManager() {
   logger_ = spdlog::get("engine");
   if (!logger_) {
@@ -21,6 +23,7 @@ NetworkManager::NetworkManager() {
   external_out_conns_ = make_shared<ExternalConnectionMap>();
   internal_format_ = K3_INTERNAL_FORMAT;
   running_ = true;
+  timers_ = make_shared<TimerMap>();
   for (int i = 0; i < 4; i ++) {
     addThread();
   }
@@ -147,6 +150,24 @@ shared_ptr<ExternalOutgoingConnection> NetworkManager::connectExternal(
 
 void NetworkManager::addThread() {
   threads_->create_thread([this]() { io_service_->run(); });
+}
+
+unsigned long NetworkManager::addTimer(const Delay& delay)
+{
+  unsigned long id = timer_cnt_.fetch_add(1UL);
+  std::unique_ptr<boost::asio::deadline_timer> t =
+    std::make_unique<boost::asio::deadline_timer>(*io_service_, delay);
+
+  timers_->insert(id, std::move(Timer { id, std::move(t) }));
+  return id;
+}
+
+void NetworkManager::asyncWaitTimer(unsigned long timer_id, TimerHandler handler) {
+  timers_->apply(timer_id, [handler](const Timer& t) { t.second->async_wait(handler); });
+}
+
+void NetworkManager::removeTimer(unsigned long timer_id) {
+  timers_->erase(timer_id);
 }
 
 }  // namespace K3
