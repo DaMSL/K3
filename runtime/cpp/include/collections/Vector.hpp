@@ -116,17 +116,15 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
     bool_iterator(Container& _c, _I&& _i) : c(_c), i(static_cast<I>(std::forward<_I>(_i))) {}
 
     bool_iterator& operator++() { i++; return *this; }
-    bool_iterator operator++(int) { bool_iterator t = *this; *this++; return t; }
+    bool_iterator operator++(int) { bool_iterator t = *this; i++; return t; }
 
     auto operator -> () const {
-      auto c = const_cast<RElem*>(&current);
-      *c = RElem{ *i };
+      current = RElem(*i);
       return &current;
     }
 
     auto& operator*() const {
-      auto c = const_cast<RElem*>(&current);
-      *c = RElem{ *i };
+      current = RElem(*i);
       return current;
     }
 
