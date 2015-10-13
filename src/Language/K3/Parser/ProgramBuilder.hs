@@ -20,6 +20,8 @@ module Language.K3.Parser.ProgramBuilder (
 import Data.List
 import Data.Tree
 
+import Debug.Trace
+
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
@@ -30,6 +32,8 @@ import Language.K3.Core.Utils
 import qualified Language.K3.Core.Constructor.Type        as TC
 import qualified Language.K3.Core.Constructor.Expression  as EC
 import qualified Language.K3.Core.Constructor.Declaration as DC
+
+import Language.K3.Utils.Pretty
 
 -- | Type synonyms, copied from the parser.
 type EndpointInfo = (EndpointSpec, Maybe [Identifier], Identifier, Maybe (K3 Expression))
@@ -273,9 +277,9 @@ endpointMethods isSource eSpec argE formatE n t =
     pmuxDoneMap = mkCollection [("key", TC.int), ("value", TC.bool)] "Map"
 
     sourceController = case eSpec of
-      FileSeqEP    _ txt _ -> seqSrcController txt
-      FileMuxEP    _ txt _ -> muxSrcController
-      FileMuxseqEP _ txt _ -> muxSeqSrcController txt
+      FileSeqEP    _ txt _  -> seqSrcController txt
+      FileMuxEP    _ _ _    -> muxSrcController
+      FileMuxseqEP _ txt _  -> muxSeqSrcController txt
       PolyFileMuxEP _ _ _ _ -> pmuxSrcController
       _ -> singleSrcController
 
@@ -452,7 +456,7 @@ endpointMethods isSource eSpec argE formatE n t =
           (EC.applyMany (EC.variable $ cpdhrName n) [pmuxvar])
           (EC.applyMany
             (EC.lambda pmuxnext $
-              EC.letIn "buffer" (either error id $ defaultExpression cleanT) $
+              EC.letIn "buffer" defaultBuffer $
                 EC.block
                 [ EC.applyMany (EC.project "load" $ EC.variable "buffer") [pmuxnextvar]
                 , EC.applyMany (EC.variable $ cfName n) [EC.variable "buffer"] ])
@@ -460,6 +464,10 @@ endpointMethods isSource eSpec argE formatE n t =
           (EC.applyMany (EC.project "insert" $ EC.variable $ cfpcompleteName n)
             [EC.record [("key", pmuxvar), ("value", EC.constant $ CBool True)]]))
 
+      where defaultBuffer = either error debugDefault $ defaultExpression cleanT
+            debugDefault dt = if True then dt else trace (boxToString $
+              ["Default buffer expr: "] ++ prettyLines dt ++
+              ["CleanT: "] ++ prettyLines cleanT) dt
 
     -- External functions
     cleanT = stripTUIDSpan $ case eSpec of

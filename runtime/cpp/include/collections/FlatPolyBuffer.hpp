@@ -502,6 +502,69 @@ public:
     return unit_t{};
   }
 
+  Container& getContainer() { return container; }
+  const Container& getConstContainer() const { return container; }
+
+  template <class archive>
+  void save(archive& a, const unsigned int) const {
+    FContainer* ncf = fixed();
+    VContainer* ncv = variable();
+    TContainer* nct = tags();
+
+    // Reset element pointers to slot ids as necessary.
+    auto p = const_cast<FlatPolyBuffer*>(this);
+    p->repack(unit_t{});
+
+    size_t fixed_sz = fixseg_size();
+    size_t var_sz   = varseg_size();
+    size_t tags_sz  = tags_size();
+
+    a.save_binary(&fixed_sz, sizeof(fixed_sz));
+    a.save_binary(&var_sz,   sizeof(var_sz));
+    a.save_binary(&tags_sz,  sizeof(tags_sz));
+
+    if (fixed_sz > 0) {
+      a.save_binary(buffer_data(ncf), fixed_sz);
+    }
+    if (var_sz > 0) {
+      a.save_binary(buffer_data(ncv), var_sz);
+    }
+    if (tags_sz > 0) {
+      a.save_binary(vector_data(nct), tags_sz * sizeof(Tag));
+    }
+
+    p->unpack(unit_t{});
+  }
+
+  template <class archive>
+  void load(archive& a, const unsigned int) {
+    size_t fixed_sz;
+    size_t var_sz;
+    size_t tags_sz;
+
+    a.load_binary(&fixed_sz, sizeof(fixed_sz));
+    a.load_binary(&var_sz,   sizeof(var_sz));
+    a.load_binary(&tags_sz,  sizeof(tags_sz));
+
+    if (fixed_sz > 0) {
+      reserve_fixed(fixed_sz);
+      fixed()->size = fixed_sz;
+      a.load_binary(buffer_data(fixed()), fixed_sz);
+    }
+    if (var_sz > 0) {
+      reserve_var(var_sz);
+      variable()->size = var_sz;
+      a.load_binary(buffer_data(variable()), var_sz);
+    }
+    if (tags_sz > 0) {
+      reserve_tags(tags_sz);
+      tags()->buffer.size = tags_sz * sizeof(Tag);
+      a.load_binary(vector_data(tags()), tags_sz * sizeof(Tag));
+    }
+
+    unpack(unit_t{});
+  }
+
   template <class archive>
   void serialize(archive& a) const {
     auto p = const_cast<FlatPolyBuffer*>(this);
