@@ -149,12 +149,16 @@ declaration _ = return []
 -- Map special builtin suffix to a function that will generate the builtin.
 -- These suffixes are taken from L.K3.Parser.ProgramBuilder.hs
 source_builtin_map :: [(String, (String -> K3 Type -> String -> CPPGenM R.Definition))]
-source_builtin_map = [("MuxHasRead", genHasRead True),
-                      ("MuxRead",    genDoRead True),
-                      ("HasRead",    genHasRead False),
-                      ("Read",       genDoRead False),
-                      ("HasWrite",   genHasWrite),
-                      ("Write",      genDoWrite)]
+source_builtin_map = [("MuxHasRead",   genHasRead True     Nothing),
+                      ("MuxRead",      genDoRead  True     Nothing),
+                      ("PDataHasRead", genHasRead True     Nothing),
+                      ("PDataRead",    genDoRead  True     Nothing),
+                      ("POrdHasRead",  genHasRead False  $ Just "_order"),
+                      ("POrdRead",     genDoRead  False  $ Just "_order"),
+                      ("HasRead",      genHasRead False    Nothing),
+                      ("Read",         genDoRead  False    Nothing),
+                      ("HasWrite",     genHasWrite),
+                      ("Write",        genDoWrite)]
                      ++ extraSuffixes
 
         -- These suffixes are for data loading hacks.
@@ -190,38 +194,51 @@ getSourceBuiltin k =
         []         -> error $ "Could not find builtin with name" ++ k
         ((_,f):_) -> f k
 
-genHasRead :: Bool -> String -> K3 Type -> String -> CPPGenM R.Definition
-genHasRead asMux suf _ name = do
+genHasRead :: Bool -> Maybe String -> String -> K3 Type -> String -> CPPGenM R.Definition
+genHasRead asMux chanIdSuffixOpt suf _ name = do
+    concatOp        <- binarySymbol OConcat
     let source_name = stripSuffix suf name
-    let e_has_r = R.Variable $ R.Name "hasRead"
-    let source_e = R.Literal $ R.LString $ source_name ++ if asMux then "_" else ""
-    concatId <- binarySymbol OConcat
-    let call_args = [R.Variable $ R.Name "me"] ++
-                    if asMux then [R.Binary concatId source_e $
-                                   R.Call (R.Variable $ R.Name "itos") [R.Variable $ R.Name "muxid"]]
-                             else [source_e]
-    let body = R.Return $ R.Call e_has_r call_args
-    let args = if asMux then [(Just "muxid", R.Primitive R.PInt)]
-                        else [(Just "_", R.Named $ R.Name "unit_t")]
-    return $ R.FunctionDefn (R.Name $ source_name ++ suf) args
-      (Just $ R.Primitive R.PBool) [] False [body]
+    let e_has_r     = R.Variable $ R.Name "hasRead"
+    let source_pfx  = source_name ++ if asMux || isJust chanIdSuffixOpt then "_" else ""
 
-genDoRead :: Bool -> String -> K3 Type -> String -> CPPGenM R.Definition
-genDoRead asMux suf typ name = do
-    ret_type    <- genCType $ last $ children typ
-    let source_name =  stripSuffix suf name
-    let source_e = R.Literal $ R.LString $ source_name ++ if asMux then "_" else ""
-    concatId <- binarySymbol OConcat
-    let call_args = [R.Variable $ R.Name "me"] ++
-                    if asMux then [R.Binary concatId source_e $
-                                   R.Call (R.Variable $ R.Name "itos") [R.Variable $ R.Name "muxid"]]
-                             else [source_e]
-    let return_stmt = R.Return $ (R.Call (R.Variable (R.Specialized [ret_type] $ R.Name "doRead"))
-                               call_args)
+    let chan_id_e   = case (chanIdSuffixOpt, asMux) of
+                        (Just chan_suf, _) -> R.Literal $ R.LString $ source_pfx ++ chan_suf
+
+                        (Nothing, True) -> R.Binary concatOp (R.Literal $ R.LString source_pfx) $
+                                             R.Call (R.Variable $ R.Name "itos")
+                                               [R.Variable $ R.Name "muxid"]
+
+                        (_, _) -> R.Literal $ R.LString source_pfx
+
+    let body = R.Return $ R.Call e_has_r [R.Variable $ R.Name "me", chan_id_e]
     let args = if asMux then [(Just "muxid", R.Primitive R.PInt)]
                         else [(Just "_", R.Named $ R.Name "unit_t")]
-    return $ R.FunctionDefn (R.Name $ source_name ++ suf) args
-      (Just ret_type) [] False ([return_stmt])
+
+    return $ R.FunctionDefn (R.Name name) args (Just $ R.Primitive R.PBool) [] False [body]
+
+genDoRead :: Bool -> Maybe String -> String -> K3 Type -> String -> CPPGenM R.Definition
+genDoRead asMux chanIdSuffixOpt suf typ name = do
+    concatOp <- binarySymbol OConcat
+    ret_type <- genCType $ last $ children typ
+    let source_name = stripSuffix suf name
+    let source_pfx  = source_name ++ if asMux || isJust chanIdSuffixOpt then "_" else ""
+
+    let chan_id_e   = case (chanIdSuffixOpt, asMux) of
+                        (Just chan_suf, _) -> R.Literal $ R.LString $ source_pfx ++ chan_suf
+
+                        (Nothing, True) -> R.Binary concatOp (R.Literal $ R.LString source_pfx) $
+                                             R.Call (R.Variable $ R.Name "itos")
+                                               [R.Variable $ R.Name "muxid"]
+
+                        (_, _) -> R.Literal $ R.LString source_pfx
+
+    let body = R.Return $ (R.Call (R.Variable (R.Specialized [ret_type] $ R.Name "doRead"))
+                            [R.Variable $ R.Name "me", chan_id_e])
+
+    let args = if asMux then [(Just "muxid", R.Primitive R.PInt)]
+                        else [(Just "_", R.Named $ R.Name "unit_t")]
+
+    return $ R.FunctionDefn (R.Name name) args (Just ret_type) [] False [body]
 
 genHasWrite :: String -> K3 Type -> String -> CPPGenM R.Definition
 genHasWrite suf _ name = do

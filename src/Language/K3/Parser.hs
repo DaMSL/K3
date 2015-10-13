@@ -1139,8 +1139,9 @@ equateQExpr = symbol "=" *> qualifiedExpr
 endpoint :: Bool -> K3Parser EndpointBuilder
 endpoint isSource = if isSource
                       then choice $ [ value
-                                    , try $ filemux
+                                    , try filemux
                                     , try $ file True "fileseq" FileSeqEP eVariable
+                                    , try polyfile
                                     ] ++ common
                       else choice common
   where common = [builtin isSource, file isSource "file" FileEP eTerminal, network isSource]
@@ -1159,7 +1160,9 @@ file :: Bool -> String -> (String -> Bool -> String -> EndpointSpec) -> Expressi
      -> K3Parser EndpointBuilder
 file isSource sym ctor prsr = mkFileSrc <$> (symbol sym *> prsr) <*> textOrBinary <*> format
   where mkFileSrc argE asTxt formatE n t = do
-          spec argE asTxt formatE >>= \s -> return $ endpointMethods isSource s argE formatE n t
+          s <- spec argE asTxt formatE
+          return $ endpointMethods isSource s argE formatE n t
+
         spec argE asTxt formatE = (\a f -> ctor a asTxt f) <$> S.exprS argE <*> S.symbolS formatE
         textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
 
@@ -1180,11 +1183,22 @@ filemux = mkFMuxSrc <$> syms ["filemxsq", "filemux"] <*> eVariable <*> textOrBin
       else if s == "filemxsq" then FileMuxseqEP
       else fail "Invalid file mux kind"
 
+polyfile :: K3Parser EndpointBuilder
+polyfile = mkPFSrc <$> try (symbol "polyfile") <*> eVariable <*> textOrBinary <*> format <*> eVariable
+  where
+    textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
+    mkPFSrc sym argE asTxt formatE orderE n t = do
+      s <- (\a f o -> PolyFileMuxEP a asTxt f o) <$> S.exprS argE <*> S.symbolS formatE <*> S.exprS orderE
+      return $ endpointMethods True s argE formatE n t
+
+
 network :: Bool -> K3Parser EndpointBuilder
 network isSource = mkNetwork <$> (symbol "network" *> eTerminal) <*> textOrBinary <*> format
   where textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
-        mkNetwork addrE asText formatE n t =
-          networkSpec addrE asText formatE >>= \s -> return $ endpointMethods isSource s addrE formatE n t
+        mkNetwork addrE asText formatE n t = do
+          s <- networkSpec addrE asText formatE
+          return $ endpointMethods isSource s addrE formatE n t
+
         networkSpec addrE asText formatE = (\a f -> NetworkEP a asText f) <$> S.exprS addrE <*> S.symbolS formatE
 
 builtinChannels :: ExpressionParser

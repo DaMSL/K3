@@ -169,6 +169,9 @@ data EndpointSpec
   | FileMuxseqEP String Bool String
     -- ^ File sequence collection (as expression), text/binary, format
 
+  | PolyFileMuxEP String Bool String String
+    -- ^ File path collection, text/binary, format, order file
+
   | NetworkEP String Bool String
     -- ^ Address, text/binary, format
   deriving (Eq, Ord, Read, Show, Typeable, Generic)

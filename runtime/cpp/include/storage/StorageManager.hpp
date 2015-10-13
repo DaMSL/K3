@@ -24,6 +24,7 @@ class StorageManager {
 
   // Reading
   bool hasRead(Address peer, Identifier id);
+
   template <class T>
   T doRead(Address peer, Identifier id) {
     try {

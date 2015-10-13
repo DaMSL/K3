@@ -160,7 +160,7 @@ public:
   }
 
   FlatPolyBuffer& operator=(const FlatPolyBuffer& other) {
-    freeContainer();
+    clear(unit_t{});
     internalized = other.internalized;
     initContainer();
     copyPolyBuffer(other);
@@ -182,6 +182,10 @@ public:
       buffer_clear(variable());
       vector_clear(tags());
     }
+  }
+
+  void freeBackingBuffer() {
+    buffer = std::move(base_string {});
   }
 
   void copyPolyBuffer(const FlatPolyBuffer& other) {
@@ -370,8 +374,12 @@ public:
     return unit_t {};
   }
 
-  // Clears a container provided it is not backed by a string buffer.
-  void clear() { freeContainer(); }
+  // Clears a container, deleting any backing buffer.
+  unit_t clear(unit_t) {
+    if ( buffer.data() ) { freeBackingBuffer(); }
+    else { freeContainer(); }
+    return unit_t{};
+  }
 
   // Externalizes an existing buffer, reusing the variable-length segment.
   unit_t repack(unit_t) {
