@@ -452,7 +452,7 @@ endpointMethods isSource eSpec argE formatE n t =
           (EC.applyMany (EC.variable $ cpdhrName n) [pmuxvar])
           (EC.applyMany
             (EC.lambda pmuxnext $
-              EC.letIn "buffer" (defaultExpression cleanT) $
+              EC.letIn "buffer" (either error id $ defaultExpression cleanT) $
                 EC.block
                 [ EC.applyMany (EC.project "load" $ EC.variable "buffer") [pmuxnextvar]
                 , EC.applyMany (EC.variable $ cfName n) [EC.variable "buffer"] ])
