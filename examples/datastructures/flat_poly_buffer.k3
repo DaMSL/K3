@@ -27,26 +27,26 @@ trigger t : () = \_ -> (
   (c.iterate (\tag -> \idx -> \offset ->
     if tag == 0 then
       c.foo_safe_at idx offset
-        (\x -> print ("Foo a: " ++ (itos x.a) ++ " b: " ++ (itos x.b)))
         (\_ -> print "No foo found")
+        (\x -> print ("Foo a: " ++ (itos x.a) ++ " b: " ++ (itos x.b)))
 
     else if tag == 1 then
       c.bar_safe_at idx offset
-        (\x -> print ("Bar c: " ++ (itos x.c) ++ " d: " ++ (itos x.d)))
         (\_ -> print "No bar found")
+        (\x -> print ("Bar c: " ++ (itos x.c) ++ " d: " ++ (itos x.d)))
 
     else if tag == 2 then
       c.baz_safe_at idx offset
-        (\x -> print ("Baz e: " ++ (itos x.e) ++ " f: " ++ (itos x.f)))
         (\_ -> print "No baz found")
+        (\x -> print ("Baz e: " ++ (itos x.e) ++ " f: " ++ (itos x.f)))
 
     else print "Invalid element tag"));
 
   (d = (c.foldl
          (\acc -> \tag -> \idx -> \offset ->
-           if      tag == 0 then c.foo_safe_at idx offset (\x -> acc + x.a) (\_ -> acc)
-           else if tag == 1 then c.bar_safe_at idx offset (\x -> acc + x.c) (\_ -> acc)
-           else if tag == 2 then c.baz_safe_at idx offset (\x -> acc + x.e) (\_ -> acc)
+           if      tag == 0 then c.foo_safe_at idx offset (\_ -> acc) (\x -> acc + x.a)
+           else if tag == 1 then c.bar_safe_at idx offset (\_ -> acc) (\x -> acc + x.c)
+           else if tag == 2 then c.baz_safe_at idx offset (\_ -> acc) (\x -> acc + x.c)
            else acc)
          0));
   print ("Fold result, d: " ++ (itos d));

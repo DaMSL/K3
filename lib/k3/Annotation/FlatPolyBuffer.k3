@@ -35,8 +35,8 @@ annotation FlatPolyBuffer[variants: [labeltylit]] given type a
     provides lifted $#[v]_at : int -> int -> $::[v]
       with effects \idx -> \offset -> [R[self]; R[idx]; R[offset]]
 
-    provides lifted $#[v]_safe_at : int -> int -> ($::[v] -> a) -> (() -> a) -> a
-      with effects \idx -> \offset -> \someF -> \noneF -> [R[self]; R[idx]; R[offset]; f none; g none]
+    provides lifted $#[v]_safe_at : int -> int -> (() -> a) -> ($::[v] -> a) -> a
+      with effects \idx -> \offset -> \f -> \g -> [R[self]; R[idx]; R[offset]; f none; g content]
 
     @:{Tag "$![v]"}
     provides lifted append_$#[v] : $::[v] -> ()
