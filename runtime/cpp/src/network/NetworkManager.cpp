@@ -182,7 +182,7 @@ void NetworkManager::addTimer(std::shared_ptr<TimerKey> k, const Delay& delay)
     if ( it == map.end() ) {
       map[k] = std::move(std::make_unique<Timer>(ios, delay));
     } else {
-      it->second->expires_from_now(delay);
+      size_t num_expired = it->second->expires_from_now(delay);
     }
   });
 }

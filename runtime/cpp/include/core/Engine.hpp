@@ -186,7 +186,6 @@ void Engine::delayedSend(const Address& src, const Address& dst, TriggerID trig,
       this->send(src, dst, trig, std::move(value));
     }
   };
-
   network_manager_.asyncWaitTimer(timer_key, cb);
 }
 

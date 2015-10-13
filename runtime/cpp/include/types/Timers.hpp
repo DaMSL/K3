@@ -16,6 +16,7 @@ struct TimerKey {
   virtual size_t hash() const { return 0; }
   bool operator==(const TimerKey& other) const { return this->tkCompare(other); }
   virtual bool tkCompare(const TimerKey& other) const { return true; }
+  virtual std::string toString() { return "TimerKey"; }
 };
 
 struct DelayTimerT : public TimerKey {
@@ -37,6 +38,8 @@ struct DelayTimerT : public TimerKey {
     if ( t ) { r = id == t->id; }
     return r;
   }
+
+  virtual std::string toString() { return std::string("DelayTimerT ") + std::to_string(id); }
 };
 
 struct DelayOverrideT : public TimerKey {
@@ -61,6 +64,10 @@ struct DelayOverrideT : public TimerKey {
     if ( t ) { r = dst == t->dst && trig == t->trig; }
     return r;
   }
+
+  virtual std::string toString() {
+    return std::string("DelayOverrideT ") + dst.toString() + " " + std::to_string(trig);
+  }
 };
 
 struct DelayOverrideEdgeT : public DelayOverrideT {
@@ -83,11 +90,31 @@ struct DelayOverrideEdgeT : public DelayOverrideT {
     if ( t ) { r = DelayOverrideT::tkCompare(other) && src == t->src; }
     return r;
   }
+
+  virtual std::string toString() {
+    return std::string("DelayOverrideEdgeT ")
+              + src.toString() + " " + dst.toString() + " " + std::to_string(trig);
+  }
+
+};
+
+struct TimerKeyPtrEquality {
+  bool operator()(const shared_ptr<TimerKey>& t1, const shared_ptr<TimerKey>& t2) const {
+    if ( t1 && t2 ) { return *t1 == *t2; }
+    return t1 == t2;
+  }
+};
+
+struct TimerKeyPtrHash {
+  size_t operator()(const shared_ptr<TimerKey>& t) const {
+    if ( t ) { return t->hash(); }
+    return std::hash<shared_ptr<TimerKey>>()(t);
+  }
 };
 
 typedef boost::asio::deadline_timer::duration_type Delay;
 typedef boost::asio::deadline_timer Timer;
-typedef ConcurrentHashMap<std::shared_ptr<TimerKey>, std::unique_ptr<Timer>> TimerMap;
+typedef ConcurrentHashMap<std::shared_ptr<TimerKey>, std::unique_ptr<Timer>, TimerKeyPtrHash, TimerKeyPtrEquality> TimerMap;
 
 } // end namespace K3
 

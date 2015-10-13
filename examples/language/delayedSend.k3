@@ -2,11 +2,22 @@ include "Core/Builtins.k3"
 
 trigger t : () = \_ -> (
   (print ("Send " ++ itos (now_int ())));
-  (t2, me) <- () delay 1s
+  ((t2, me) <- () delay 1s);
+  ((t3, me) <- () delay override 3s);
+  ((t4, me) <- () delay 1s)
 )
 
 trigger t2 : () = \_ -> (
-  (print ("Receive " ++ itos (now_int ())))
+  (print ("Receive t2 " ++ itos (now_int ())))
+)
+
+trigger t3 : () = \_ -> (
+  (print ("Receive t3 " ++ itos (now_int ())))
+)
+
+trigger t4 : () = \_ -> (
+  (print ("Receive t4 " ++ itos (now_int ())));
+  (t3, me) <- () delay override 6s
 )
 
 source s1 : () = value ()
