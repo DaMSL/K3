@@ -253,7 +253,7 @@ public:
   size_t tags_size()     const { return vector_size(const_cast<TContainer*>(tagsc())); }
   size_t tags_capacity() const { return vector_capacity(const_cast<TContainer*>(tagsc())); }
 
-  size_t byte_size()     const { return fixseg_size() + varseg_size() + tags_size * sizeof(Tag); }
+  size_t byte_size()     const { return fixseg_size() + varseg_size() + tags_size() * sizeof(Tag); }
   size_t byte_capacity() const { return fixseg_capacity() + varseg_capacity() + tags_capacity() * sizeof(Tag); }
 
   void reserve_fixed(size_t sz) { buffer_reserve(fixed(), sz); }
@@ -471,13 +471,13 @@ public:
     size_t offset = 0;
 
     size_t fixed_sz = *reinterpret_cast<size_t*>(buffer.begin());
-    offset += sizeof(size_t);
+    offset += sizeof(fixed_sz);
 
     size_t var_sz = *reinterpret_cast<size_t*>(buffer.begin() + offset);
-    offset += sizeof(size_t);
+    offset += sizeof(var_sz);
 
     size_t tags_sz = *reinterpret_cast<size_t*>(buffer.begin() + offset);
-    offset += sizeof(size_t);
+    offset += sizeof(tags_sz);
 
     if (fixed_sz > 0) {
       fixed()->data     = buffer.begin() + offset;
@@ -629,9 +629,9 @@ public:
 private:
   // FlatPolyBuffer is backed by either a base_string or a Container
   Container container;
-  FContainer* fixed()    { return &(container.cfixed); }
-  VContainer* variable() { return &(container.cvariable); }
-  TContainer* tags()     { return &(container.ctags); }
+  FContainer* fixed()    const { return const_cast<FContainer*>(&(container.cfixed)); }
+  VContainer* variable() const { return const_cast<VContainer*>(&(container.cvariable)); }
+  TContainer* tags()     const { return const_cast<TContainer*>(&(container.ctags)); }
 
   const FContainer* fixedc()    const { return &(container.cfixed); }
   const VContainer* variablec() const { return &(container.cvariable); }

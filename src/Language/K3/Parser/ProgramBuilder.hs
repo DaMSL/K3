@@ -17,6 +17,7 @@ module Language.K3.Parser.ProgramBuilder (
   resolveFn
 ) where
 
+import Data.Char ( isPunctuation )
 import Data.List
 import Data.Tree
 
@@ -439,7 +440,8 @@ endpointMethods isSource eSpec argE formatE n t =
     pmuxSrcController = builtinTrigger (ccName n) TC.unit $
       EC.lambda "_" $
         EC.ifThenElse
-          (EC.binop OLth (EC.constant $ CInt 0) $
+          (EC.binop OGth
+            (EC.applyMany (EC.project "size" argE) [EC.unit]) $
              EC.applyMany (EC.project "size" $ EC.variable $ cfpcompleteName n) [EC.unit])
           (EC.ifThenElse
               (EC.applyMany (EC.variable $ cpohrName n) [EC.unit])
@@ -535,7 +537,9 @@ endpointMethods isSource eSpec argE formatE n t =
             [ EC.applyMany openFn [EC.variable "me", globalMuxChanIdE, EC.project "path" $ EC.variable "f", formatE, EC.constant $ CBool txt, modeE]
             , EC.assign (cmcName n) $ EC.binop OAdd (EC.variable $ cmcName n) (EC.constant $ CInt 1) ]]]
 
-      where orderPathE   = EC.constant $ CString orderpath
+      where orderPathE   = if (not $ null orderpath) && (isPunctuation $ head orderpath)
+                              then EC.constant $ CString orderpath
+                              else EC.variable orderpath
             orderFormatE = EC.constant $ CString "csv"
             orderTxtE    = EC.constant $ CBool True
 

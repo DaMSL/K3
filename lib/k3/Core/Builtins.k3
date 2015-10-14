@@ -246,6 +246,6 @@ declare haltEngine : () -> ()
 // Terminate engine once queues are empty
 declare drainEngine : () -> ()
 
-// Sleep the engine (microseconds)
+// Sleep the engine (milliseconds)
 declare sleep : int -> ()
 with effects  \_ -> io
