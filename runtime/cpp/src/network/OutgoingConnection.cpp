@@ -17,12 +17,12 @@ OutgoingConnection::OutgoingConnection(const Address& addr,
   asio::ip::address_v4 ip(addr.ip);
   asio::ip::tcp::endpoint ep(ip, addr.port);
   boost::system::error_code error;
-  for (int retries = 600; !connected_ && retries > 0; retries--) {
+  for (int retries = 12000; !connected_ && retries > 0; retries--) {
     socket_->connect(ep, error);
     if (!error) {
       connected_ = true;
     } else {
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
       socket_ = make_shared<asio::ip::tcp::socket>(service);
     }
   }
