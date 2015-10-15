@@ -1,4 +1,6 @@
 #include <string>
+#include <thread>
+#include <chrono>
 
 #include "core/Peer.hpp"
 #include "core/ProgramContext.hpp"
@@ -12,19 +14,32 @@ Listener::Listener(asio::io_service& service, const Address& address,
                    shared_ptr<IncomingConnectionFactory> in_factory) {
   address_ = address;
   peer_ = peer;
-  acceptor_ = make_shared<boost::asio::ip::tcp::acceptor>(service);
   format_ = format;
   in_conns_ = make_shared<IncomingConnectionMap>();
   conn_factory_ = in_factory;
 
   // Prepare to accept connections
-  auto ip = boost::asio::ip::address_v4(address_.ip);
-  boost::asio::ip::tcp::endpoint ep(ip, address_.port);
-  acceptor_->open(ep.protocol());
-  boost::asio::socket_base::reuse_address option(true);
-  acceptor_->set_option(option);
-  acceptor_->bind(ep);
-  acceptor_->listen();
+  for (int tries = 24; tries > 0; tries--) {
+    try {
+      acceptor_ = make_shared<boost::asio::ip::tcp::acceptor>(service);
+      auto ip = boost::asio::ip::address_v4(address_.ip);
+      boost::asio::ip::tcp::endpoint ep(ip, address_.port);
+      acceptor_->open(ep.protocol());
+      boost::asio::socket_base::reuse_address option(true);
+      acceptor_->set_option(option);
+      acceptor_->bind(ep);
+      acceptor_->listen();
+    }
+    catch (std::exception& e) {
+      std::cout << "Failed to bind to port: " << address.port
+                << ". Retrying in 5 seconds" << std::endl;
+      if (tries > 0) {
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+      } else {
+        throw e;
+      }
+    }
+  }
 }
 
 void Listener::acceptConnection(shared_ptr<ErrorHandler> acpt_e_handler) {
