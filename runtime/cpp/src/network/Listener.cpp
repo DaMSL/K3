@@ -29,6 +29,7 @@ Listener::Listener(asio::io_service& service, const Address& address,
       acceptor_->set_option(option);
       acceptor_->bind(ep);
       acceptor_->listen();
+      break;
     }
     catch (std::exception& e) {
       std::cout << "Failed to bind to port: " << address.port
