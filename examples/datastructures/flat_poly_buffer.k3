@@ -46,7 +46,7 @@ trigger t : () = \_ -> (
          (\acc -> \tag -> \idx -> \offset ->
            if      tag == 0 then c.foo_safe_at idx offset (\_ -> acc) (\x -> acc + x.a)
            else if tag == 1 then c.bar_safe_at idx offset (\_ -> acc) (\x -> acc + x.c)
-           else if tag == 2 then c.baz_safe_at idx offset (\_ -> acc) (\x -> acc + x.c)
+           else if tag == 2 then c.baz_safe_at idx offset (\_ -> acc) (\x -> acc + x.e)
            else acc)
          0));
   print ("Fold result, d: " ++ (itos d));

@@ -293,19 +293,18 @@ public:
 
   template<typename T, typename F, typename G>
   auto safe_at(int i, size_t offset, F f, G g) const {
-    if ( i < size(unit_t{}) ) {
-      auto p = const_cast<FlatPolyBuffer*>(this);
-      return f(*reinterpret_cast<T*>(buffer_data(p->fixed()) + offset));
+    if ( i >= size(unit_t{}) ) {
+      return f(unit_t {});
     } else {
-      return g(unit_t {});
+      auto p = const_cast<FlatPolyBuffer*>(this);
+      return g(*reinterpret_cast<T*>(buffer_data(p->fixed()) + offset));
     }
   }
 
   // Apply a function on the tag and offset.
   template<typename Fun>
   unit_t iterate(Fun f) const {
-    size_t foffset = 0;
-    size_t sz = size(unit_t{});
+    size_t foffset = 0, sz = size(unit_t{});
     for (size_t i = 0; i < sz; ++i) {
       Tag tg = tag_at(i);
       f(tg, i, foffset);
@@ -317,8 +316,7 @@ public:
   // Accumulate with the tag and offset.
   template <typename Fun, typename Acc>
   Acc foldl(Fun f, Acc acc) const {
-    size_t foffset = 0;
-    size_t sz = size(unit_t{});
+    size_t foffset = 0, sz = size(unit_t{});
     for (size_t i = 0; i < sz; ++i) {
       Tag tg = tag_at(i);
       acc = f(std::move(acc), tg, i, foffset);
@@ -326,6 +324,24 @@ public:
     }
     return acc;
   }
+
+  template<typename Fun>
+  unit_t traverse(Fun f) const {
+    size_t foffset = 0, sz = size(unit_t{});
+    for (size_t i = 0; i < sz; i++) {
+      Tag tg = tag_at(i);
+      R_key_value<int, size_t> next = f(tg, i, foffset);
+      i = next.key;
+      foffset = next.value;
+      if ( i < sz ) { foffset += elemsize(tag_at(i)); }
+    }
+    return unit_t {};
+  }
+
+
+  //////////////////////////////////
+  //
+  // Tag-specific accessors.
 
   template<typename T, typename Fun>
   unit_t iterate_tag(Tag t, int i, size_t offset, Fun f) const {
@@ -372,6 +388,24 @@ public:
       throw std::runtime_error("Append failed on a FPB");
     }
     return unit_t {};
+  }
+
+  R_key_value<int, size_t> skip_tag(Tag t, int i, size_t offset) const {
+    size_t sz = size(unit_t{});
+    if ( i < sz && tag_at(i) == t ) {
+      return R_key_value<int, size_t> { i+1, offset + elemsize(t) };
+    }
+    return R_key_value<int, size_t>{ i, offset };
+  }
+
+  R_key_value<int, size_t> skip_all_tag(Tag t, int i, size_t offset) const {
+    size_t j = i;
+    size_t foffset = offset;
+    size_t sz = size(unit_t{});
+    for (; j < sz && t == tag_at(j); ++j) {
+      foffset += elemsize(t);
+    }
+    return R_key_value<int, size_t> { j, foffset };
   }
 
   // Clears a container, deleting any backing buffer.

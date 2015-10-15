@@ -398,8 +398,11 @@ polybuffer name ans = do
   iterate_tag_defns          <- catMaybes <$> mapM iterate_tag_fn flattened
   fold_tag_defns             <- catMaybes <$> mapM fold_tag_fn flattened
   (tgs, types, append_defns) <- unzip3 . catMaybes <$> mapM append_fn flattened
+  skip_tag_defns             <- catMaybes <$> mapM skip_fn flattened
+  skip_all_tag_defns         <- catMaybes <$> mapM skip_all_fn flattened
   extra_defns                <- extra_fns tgs types
-  return $ super_defn ++ at_defns ++ safe_at_defns ++ append_defns ++ iterate_tag_defns ++ fold_tag_defns ++ extra_defns
+  return $ super_defn ++ at_defns ++ safe_at_defns ++ append_defns
+            ++ iterate_tag_defns ++ fold_tag_defns ++ skip_tag_defns ++ skip_all_tag_defns ++ extra_defns
 
   where
     super_defn = [R.GlobalDefn $ R.Forward $ R.UsingDecl
@@ -525,6 +528,34 @@ polybuffer name ans = do
       return $ defn <$> t_tag <*> c_val_t
 
     fold_tag_fn _ = return Nothing
+
+    skip_common fname danns call_name = do
+      let (arg1, arg2) = ("idx", "offset")
+      let int_t = R.Primitive R.PInt
+      let skip_rt = R.Named $ R.Specialized [int_t, int_t] $ R.Name "R_key_value"
+      let skip_call ct_tag = R.Call (R.Variable $ suqualnm $ R.Name call_name)
+                               [R.Literal $ R.LInt ct_tag,
+                                R.Variable $ R.Name arg1,
+                                R.Variable $ R.Name arg2]
+
+      let defn ct_tag = R.FunctionDefn (R.Name fname)
+                          [(Just arg1, int_t), (Just arg2, int_t)]
+                          (Just $ skip_rt)
+                          []
+                          False
+                          [R.Return $ skip_call ct_tag]
+
+      t_tag <- maybe (return Nothing) (return . tag_value) $ find is_tag danns
+      return $ defn <$> t_tag
+
+    skip_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
+    skip_fn (_, Lifted _ fname _ _ _) | "skip_all_" `isPrefixOf` fname = return Nothing
+    skip_fn (_, Lifted _ fname _ _ danns) | "skip_" `isPrefixOf` fname = skip_common fname danns "skip_tag"
+    skip_fn _ = return Nothing
+
+    skip_all_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
+    skip_all_fn (_, Lifted _ fname _ _ danns) | "skip_all_" `isPrefixOf` fname = skip_common fname danns "skip_all_tag"
+    skip_all_fn _ = return Nothing
 
     extra_fns :: [Int] -> [R.Type] -> CPPGenM [R.Definition]
     extra_fns [] [] = return []
@@ -679,7 +710,7 @@ polybuffer name ans = do
     get_at_return_type _ = Nothing
 
     get_safe_at_type :: K3 Type -> Maybe (K3 Type)
-    get_safe_at_type (PTFun3 _ _ (PTFunction rt _ _) _ _ _ _) = Just rt
+    get_safe_at_type (PTFun4 _ _ _ (PTFunction rt _ _) _ _ _ _ _) = Just rt
     get_safe_at_type _ = Nothing
 
     get_append_type :: K3 Type -> Maybe (K3 Type)
