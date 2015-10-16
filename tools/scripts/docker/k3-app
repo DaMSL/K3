@@ -31,6 +31,16 @@ RUN wget http://sourceforge.net/projects/boost/files/boost/1.57.0/boost_1_57_0.t
   cd .. && \
   rm -Rf boost_1_57_0
 
+# Install Bloomberg BSL and BDL
+RUN mkdir -p /software && cd /software                   && \
+    git clone https://github.com/bloomberg/bde-tools.git && \
+    git clone https://github.com/bloomberg/bde.git       && \
+    cd bde                                               && \
+    waf configure --targets=bsl,bdl --build-type=release && \
+    waf build --targets=bsl,bdl --build-type=release     && \
+    waf install --targets=bsl,bdl                        && \
+    rm -Rf bde-tools bde
+
 # Install Google Regex (re2) lib
 RUN git clone https://github.com/google/re2.git && \
   cd re2  && \
