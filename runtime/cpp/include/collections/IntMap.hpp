@@ -441,7 +441,7 @@ class IntMap {
 
   bool operator==(const IntMap& other) const {
     return get_mapi() == other.get_mapi() ||
-           (size() == other.size() &&
+           (size(unit_t{}) == other.size(unit_t{}) &&
             std::is_permutation(begin(), end(), other.begin(), other.end()));
   }
 
