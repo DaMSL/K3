@@ -12,6 +12,7 @@ FROM debian:sid
 
 ENV JEMALLOC_VER 4.0.0
 ENV JAVA_HOME /usr/lib/jvm/java-8-openjdk-amd64
+ENV PATH /software/bde-tools/bin:$PATH
 
 # Install basic packages to build the image
 RUN apt-get update && apt-get install -y \
