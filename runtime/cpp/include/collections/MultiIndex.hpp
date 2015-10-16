@@ -2,7 +2,9 @@
 #define K3_MULTIINDEX
 
 #include <math.h>
+#include <memory>
 #include <random>
+#include <scoped_allocator>
 
 #include <boost/serialization/base_object.hpp>
 #include <boost/multi_index_container.hpp>
@@ -25,6 +27,15 @@
 #include <yas/binary_oarchive.hpp>
 #include <yas/serializers/std_types_serializers.hpp>
 #include <yas/serializers/boost_types_serializers.hpp>
+
+#ifdef BSL_ALLOC
+#include <bsl_memory.h>
+#include <bsls_blockgrowth.h>
+#include <bdlma_multipoolallocator.h>
+#include <bdlma_sequentialallocator.h>
+#include <bdlma_localsequentialallocator.h>
+#endif
+
 
 namespace K3 {
 template <class F, typename... Args> using RT = typename std::result_of<F(Args...)>::type;
@@ -497,8 +508,26 @@ class MultiIndexMap : public MultiIndexDS<K3::MultiIndexMap, R, HashUniqueIndex<
 };
 
 
+#ifdef BSL_ALLOC
+  template <typename... T>
+  using s_alloc = std::scoped_allocator_adaptor<bsl::allocator<T>...>;
+#else
+  template <typename... T>
+  using s_alloc = std::scoped_allocator_adaptor<std::allocator<T>...>;
+#endif
+
+template <typename Version, typename V>
+using vmap_alloc = s_alloc<std::pair<Version, V>>;
+
+template<typename Version, typename V>
+using VMContainer = std::map<Version, V, std::greater<Version>, vmap_alloc<Version, V>>;
+
 template<typename R, typename Version> using VElem
-  = std::tuple<typename R::KeyType, std::map<Version, R, std::greater<Version>>>;
+  = std::tuple<typename R::KeyType, VMContainer<Version, R>>;
+
+template<typename R, typename Version>
+using midx_alloc = s_alloc<VElem<R, Version>, vmap_alloc<Version, R>>;
+
 
 // MultiIndexVMap tags and extractors.
 struct vmapkey {};
@@ -507,7 +536,7 @@ template<typename R, typename Version>
 struct VKeyExtractor
 {
 public:
-  typedef typename R::KeyType result_type;
+  typedef const typename R::KeyType& result_type;
 
   VKeyExtractor() {}
 
@@ -523,11 +552,11 @@ class MultiIndexVMap
   using Version = int;
 
  protected:
-  using Key     = typename R::KeyType;
-  using Elem    = VElem<R, Version>;
+  using Key  = typename R::KeyType;
+  using Elem = VElem<R, Version>;
 
   template<typename E>
-  using VContainer = std::map<Version, E, std::greater<Version>>;
+  using VContainer = VMContainer<Version, E>;
   using VMap = VContainer<R>;
 
   using HashUniqueVKeyIndex =
@@ -536,23 +565,64 @@ class MultiIndexVMap
 
   typedef boost::multi_index_container<
     Elem,
-    boost::multi_index::indexed_by<
-      HashUniqueVKeyIndex,
-      Indexes...>
+    boost::multi_index::indexed_by<HashUniqueVKeyIndex, Indexes...>,
+    midx_alloc<R, Version>
   > Container;
 
   typedef typename Container::iterator iterator;
 
   Container container;
 
+  // Allocators.
+  #ifdef BSL_ALLOC
+    #ifdef BSEQ
+    bdlma::SequentialAllocator mpool;
+    #elif BPOOLSEQ
+    bdlma::SequentialAllocator seqpool;
+    bdlma::MultipoolAllocator mpool;
+    #elif BLOCAL
+    constexpr size_t lsz = 2<<14;
+    bdlma::LocalSequentialAllocator<lsz> mpool;
+    #else
+    bdlma::MultipoolAllocator mpool;
+    #endif
+
+    bsl::allocator<VElem<R, Version>> oalloc;
+    bsl::allocator<std::pair<Version, R>> ialloc;
+  #else
+    std::allocator<VElem<R, Version>> oalloc;
+    std::allocator<std::pair<Version, R>> ialloc;
+  #endif
+
+  vmap_alloc<Version, R> scialloc;
+  midx_alloc<R, Version> scoalloc;
+
  public:
-  MultiIndexVMap(): container() {}
+  MultiIndexVMap() :
+    #ifdef BSL_ALLOC
+      #if BSEQ
+      mpool(),
+      #elif BPOOLSEQ
+      mpool(8, seqpool),
+      #elif BLOCAL
+      mpool(),
+      #else
+      mpool(8),
+      #endif
+      oalloc(&mpool),
+      ialloc(&mpool)
+    #endif
+    scialloc(ialloc),
+    scoalloc(oalloc, scialloc),
+    container(scoalloc)
+  {}
+
   MultiIndexVMap(const Container& con): container(con) {}
   MultiIndexVMap(Container&& con): container(std::move(con)) {}
 
   // Construct from (container) iterators
   template<typename Iterator>
-  MultiIndexVMap(Iterator begin, Iterator end): container(begin,end) {}
+  MultiIndexVMap(Iterator begin, Iterator end): container(begin,end,scoalloc) {}
 
   R elemToRecord(const Elem& e) const {
     auto& vmap = std::get<1>(e);
@@ -620,7 +690,8 @@ class MultiIndexVMap
     auto existing = container.find(q.key);
     if ( existing == container.end() ) {
       Key k = q.key;
-      VMap vmap; vmap[v] = std::forward<Q>(q);
+      VMap vmap(scialloc);
+      vmap[v] = std::forward<Q>(q);
       container.emplace(std::move(std::make_tuple(std::move(k), std::move(vmap))));
     } else {
       container.modify(existing, [&](auto& elem){
@@ -673,7 +744,8 @@ class MultiIndexVMap
     auto existing = container.find(rec.key);
     if ( existing == container.end() ) {
       Key k = rec.key;
-      VMap vmap; vmap[v] = rec;
+      VMap vmap(scialloc);
+      vmap[v] = rec;
       container.emplace(std::move(std::make_tuple(std::move(k), std::move(vmap))));
     } else {
       container.modify(existing, [&](auto& elem){
@@ -694,7 +766,8 @@ class MultiIndexVMap
     auto existing = container.find(rec.key);
     if ( existing == container.end() ) {
       Key k = rec.key;
-      VMap vmap; vmap[v] = f(unit_t {});
+      VMap vmap(scialloc);
+      vmap[v] = f(unit_t {});
       container.emplace(std::move(std::make_tuple(std::move(k), std::move(vmap))));
     } else {
       container.modify(existing, [&](auto& elem){
@@ -757,7 +830,8 @@ class MultiIndexVMap
     auto existing = container.find(rec.key);
     if ( existing == container.end() ) {
       Key k = rec.key;
-      VMap vmap; vmap[v] = f(unit_t {});
+      VMap vmap(scialloc);
+      vmap[v] = f(unit_t {});
       container.emplace(std::move(std::make_tuple(std::move(k), std::move(vmap))));
     } else {
       container.modify(existing, [&](auto& elem){
@@ -830,17 +904,16 @@ class MultiIndexVMap
   //////////////////////////////////
   // Most-recent version methods.
 
-  shared_ptr<R> peek_now(const unit_t&) const {
-    shared_ptr<R> res(nullptr);
+  template<typename F, typename G>
+  auto peek_now(F f, G g) const {
     for (const auto& elem : container) {
       auto& vmap = std::get<1>(elem);
       auto vit = vmap.begin();
       if ( vit != vmap.end() ) {
-        res = std::make_shared<R>(vit->second);
-        break;
+        return g(vit->second);
       }
     }
-    return res;
+    return f(unit_t {});
   }
 
 
