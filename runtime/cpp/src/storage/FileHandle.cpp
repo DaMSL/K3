@@ -22,7 +22,7 @@ bool SourceFileHandle::hasRead() {
 }
 
 // TODO: Optimize using low-level c file I/O (if needed)
-unique_ptr<PackedValue> SourceFileHandle::doRead() {
+Pool::unique_ptr<PackedValue> SourceFileHandle::doRead() {
   // Get value size
   size_t len;
 
@@ -37,7 +37,7 @@ unique_ptr<PackedValue> SourceFileHandle::doRead() {
   base_string b;
   b.steal(buf);
   b.set_header(true);
-  auto p  = make_unique<BaseStringPackedValue>(std::move(b), fmt_);
+  auto p  = Pool::getInstance().make_unique_subclass<PackedValue, BaseStringPackedValue>(std::move(b), fmt_);
   return std::move(p);
 }
 
@@ -53,13 +53,13 @@ SourceTextHandle::SourceTextHandle (std::string path, CodecFormat fmt)
   fmt_ = fmt;
 }
 
-unique_ptr<PackedValue> SourceTextHandle::doRead()
+Pool::unique_ptr<PackedValue> SourceTextHandle::doRead()
 {
   // allocate buffer
   std::string buf;
-  auto p = make_unique<StringPackedValue>(std::move(buf), fmt_);
+  auto p = Pool::getInstance().make_unique_subclass<PackedValue, StringPackedValue>(std::move(buf), fmt_);
   //Read next line
-  std::getline (file_, p->string_);
+  std::getline (file_, dynamic_cast<StringPackedValue*>(p.get())->string_);
   return std::move(p);
 }
 

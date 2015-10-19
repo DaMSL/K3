@@ -93,10 +93,10 @@ program (tag &&& children -> (DRole name, decls)) = do
     let tableName isNative = if isNative then "native_dispatch_table" else "packed_dispatch_table"
 
     let dispatchDecl isNative = R.FunctionDefn (R.Name "__getDispatcher")
-                       [ (Just "payload", R.UniquePointer $ R.Named $ R.Name $ valType isNative)
+                       [ (Just "payload", R.PoolUniquePointer $ R.Named $ R.Name $ valType isNative)
                        , (Just "trigger_id", R.Primitive R.PInt)
                        ]
-                       (Just $ R.UniquePointer $ R.Named $ R.Name "Dispatcher") [] False
+                       (Just $ R.PoolUniquePointer $ R.Named $ R.Name "Dispatcher") [] False
                        [R.Return $ R.Call
                          (R.Subscript (R.Variable $ R.Name $ tableName isNative) (R.Variable $ R.Name "trigger_id")) [R.Move $ R.Variable $ R.Name "payload"]
                        ]
@@ -104,8 +104,8 @@ program (tag &&& children -> (DRole name, decls)) = do
                      (R.Name $ tableName isNative)
                      (R.Named $ R.Qualified (R.Name "std") $ R.Specialized
                            [ R.Function
-                               [R.UniquePointer $ R.Named $ R.Name $ valType isNative]
-                            (R.UniquePointer $ R.Named $ R.Name "Dispatcher")] (R.Name "vector"))
+                               [R.PoolUniquePointer $ R.Named $ R.Name $ valType isNative]
+                            (R.PoolUniquePointer $ R.Named $ R.Name "Dispatcher")] (R.Name "vector"))
                      Nothing
 
     let patchFn = R.FunctionDefn (R.Qualified contextName (R.Name "__patch"))
@@ -237,6 +237,7 @@ requiredAliases = return
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "CodecFormat"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "unpack"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Engine"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "Pool"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "make_address"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Dispatcher"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "NativeValue"), Nothing)
@@ -319,10 +320,10 @@ generateDispatchers isNative = do
        argType <- genCType tType
        let valName = if isNative then "Native" else "Packed"
        let members = [ R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name "context_") (R.Reference $ R.Named $ R.Name "CONTEXT") Nothing,
-                       R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name "value_") (R.UniquePointer $ R.Named $ R.Name $ valName ++ "Value") Nothing
+                       R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name "value_") (R.PoolUniquePointer $ R.Named $ R.Name $ valName ++ "Value") Nothing
                      ]
        let constructor = R.FunctionDefn (R.Name $ tName ++ valName ++ "Dispatcher")
-                           [(Just "ctxt", R.Reference $ R.Named $ R.Name  "CONTEXT"), (Just "val", R.UniquePointer $ R.Named $ R.Name $ valName ++ "Value")]
+                           [(Just "ctxt", R.Reference $ R.Named $ R.Name  "CONTEXT"), (Just "val", R.PoolUniquePointer $ R.Named $ R.Name $ valName ++ "Value")]
                            Nothing
                            [R.Call (R.Variable $ R.Name "context_") [R.Variable $ R.Name "ctxt"], R.Call (R.Variable $ R.Name "value_") [R.Move $ R.Variable $ R.Name "val"]]
                            False
@@ -357,11 +358,16 @@ generateDispatchPopulation isNative = do
      genDispatch (tName, tType) = do
        let dispatchWrapper = R.Lambda
                              [R.ThisCapture]
-                             [(Just "payload", R.UniquePointer $ R.Named $ R.Name value)]
+                             [(Just "payload", R.PoolUniquePointer $ R.Named $ R.Name value)]
                              False
                              Nothing
                              [
-                             R.Return $ R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Specialized [dispatcher tName] (R.Name "make_unique"))) ([R.Dereference $ R.Variable $ R.Name "this", R.Move $ R.Variable $ R.Name "payload"])
+                             R.Return $ R.Call
+                               (R.Project
+                                 (R.Call (R.Variable $ R.Qualified (R.Name "Pool") (R.Name "getInstance")) [])
+                                 (R.Specialized [R.Named $ R.Name "Dispatcher", dispatcher tName] (R.Name "make_unique_subclass"))
+                               )
+                               [R.Dereference $ R.Variable $ R.Name "this", R.Move $ R.Variable $ R.Name "payload"]
                              ]
        let i = R.Variable $ R.Name (idOfTrigger tName)
        return $ R.Assignment (R.Subscript table i) dispatchWrapper

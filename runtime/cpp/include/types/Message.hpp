@@ -6,6 +6,7 @@
 
 #include "Common.hpp"
 #include "types/Value.hpp"
+#include "types/Pool.hpp"
 
 namespace K3 {
 
@@ -14,9 +15,9 @@ class Message {
  public:
   Message();
   virtual ~Message() { }
-  Message(TriggerID, unique_ptr<PackedValue>);
+  Message(TriggerID, Pool::unique_ptr<PackedValue>);
 
-  unique_ptr<PackedValue> value_;
+  Pool::unique_ptr<PackedValue> value_;
   TriggerID trigger_;
   #ifdef K3DEBUG
   Address source_;
@@ -37,10 +38,10 @@ class NetworkMessage : public Message {
     destination_ = std::move(other.destination_);
     #endif
   }
-  NetworkMessage(TriggerID trig, unique_ptr<PackedValue> v);
+  NetworkMessage(TriggerID trig, Pool::unique_ptr<PackedValue> v);
   shared_ptr<std::vector<boost::asio::const_buffer>> outputBuffers() const;
   shared_ptr<std::vector<boost::asio::mutable_buffer>> inputBuffers();
-  void setValue(unique_ptr<PackedValue> v);
+  void setValue(Pool::unique_ptr<PackedValue> v);
   size_t networkHeaderSize();
 
   size_t payload_length_;

@@ -23,7 +23,7 @@ CodecFormat getFormat(const string& s) {
 }
 
 template<>
-unique_ptr<PackedValue> pack(const base_string& t, CodecFormat format) {
+Pool::unique_ptr<PackedValue> pack(const base_string& t, CodecFormat format) {
   switch (format) {
     case CodecFormat::YASBinary:
       return yas_ser::pack<base_string>(t, format);
@@ -34,14 +34,14 @@ unique_ptr<PackedValue> pack(const base_string& t, CodecFormat format) {
     case CodecFormat::PSV:
       return csvpp_ser::pack<base_string, '|'>(t, format);
     case CodecFormat::Raw:
-      return make_unique<BaseStringPackedValue>(base_string(t), format); 
+      return Pool::getInstance().make_unique_subclass<PackedValue, BaseStringPackedValue>(base_string(t), format); 
     default:
       throw std::runtime_error("Unrecognized codec format");
   }
 }
 
 template <>
-unique_ptr<base_string> unpack(unique_ptr<PackedValue> t) {
+Pool::unique_ptr<base_string> unpack(Pool::unique_ptr<PackedValue> t) {
   switch (t->format()) {
     case CodecFormat::YASBinary:
       return yas_ser::unpack<base_string>(*t);
@@ -58,9 +58,9 @@ unique_ptr<base_string> unpack(unique_ptr<PackedValue> t) {
   }
 }
 
-unique_ptr<base_string> steal_base_string(PackedValue* t) {
+Pool::unique_ptr<base_string> steal_base_string(PackedValue* t) {
   BaseStringPackedValue* s1 = dynamic_cast<BaseStringPackedValue*>(t); 
-  return make_unique<base_string>(s1->steal());
+  return Pool::getInstance().make_unique<base_string>(s1->steal());
 }
 
 }  // namespace K3

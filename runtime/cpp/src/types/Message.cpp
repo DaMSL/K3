@@ -8,7 +8,7 @@ namespace K3 {
 Message::Message() {}
 
 Message::Message(TriggerID trig,
-                 unique_ptr<PackedValue> val) {
+                 Pool::unique_ptr<PackedValue> val) {
   trigger_ = trig;
   value_ = std::move(val);
 }
@@ -18,7 +18,7 @@ NetworkMessage::NetworkMessage() : Message() {
 }
 
 NetworkMessage::NetworkMessage(TriggerID t,
-                               unique_ptr<PackedValue> v)
+                               Pool::unique_ptr<PackedValue> v)
     : Message(t, std::move(v)) {
   payload_length_ = value_->length();
 }
@@ -103,6 +103,6 @@ size_t NetworkMessage::networkHeaderSize() {
   return size;
 }
 
-void NetworkMessage::setValue(unique_ptr<PackedValue> v) { value_ = std::move(v); }
+void NetworkMessage::setValue(Pool::unique_ptr<PackedValue> v) { value_ = std::move(v); }
 
 }  // namespace K3

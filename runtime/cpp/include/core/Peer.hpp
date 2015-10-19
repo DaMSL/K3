@@ -61,7 +61,7 @@ class Peer {
   Address address_;
   std::atomic<bool> start_processing_;
   std::atomic<bool> finished_;
-  vector<unique_ptr<Dispatcher>> batch_;
+  vector<Pool::unique_ptr<Dispatcher>> batch_;
 
   // Statistics
   std::vector<TriggerStatistics> statistics_;

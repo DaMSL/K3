@@ -55,7 +55,7 @@ class StorageManager {
         if (file->hasRead()) {
           auto val = file->doRead();
           auto t = unpack<T>(std::move(val));
-          vals.push_back(std::move(*t));
+          vals.push_back(std::move(*t.get()));
         } else {
           break;
         }

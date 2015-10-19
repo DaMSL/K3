@@ -7,6 +7,7 @@
 
 #include "Common.hpp"
 #include "types/Value.hpp"
+#include "types/Pool.hpp"
 #include "serialization/Codec.hpp"
 
 namespace K3 {
@@ -22,7 +23,7 @@ class FileHandle {
     virtual bool hasRead()   {return false;}
     virtual bool hasWrite()  {return false;}
 
-    virtual unique_ptr<PackedValue> doRead() = 0;
+    virtual Pool::unique_ptr<PackedValue> doRead() = 0;
     template<class T>
     void doWrite(const T& val) {
       auto pv = pack<T>(val, fmt_);
@@ -44,7 +45,7 @@ public:
   SourceFileHandle (std::string path, CodecFormat codec);
 
   virtual bool hasRead();
-  virtual unique_ptr<PackedValue> doRead();
+  virtual Pool::unique_ptr<PackedValue> doRead();
 
   virtual void doWriteHelper(const PackedValue& val) {
     throw std::ios_base::failure ("ERROR trying to write to source.");
@@ -63,7 +64,7 @@ protected:
 class SourceTextHandle : public SourceFileHandle  {
 public:
   SourceTextHandle (std::string path, CodecFormat codec);
-  virtual unique_ptr<PackedValue> doRead();
+  virtual Pool::unique_ptr<PackedValue> doRead();
 };
 
 
@@ -76,7 +77,7 @@ public:
   virtual bool hasWrite();
   virtual void doWriteHelper(const PackedValue& val);
 
-  virtual unique_ptr<PackedValue> doRead() {
+  virtual Pool::unique_ptr<PackedValue> doRead() {
     throw std::ios_base::failure ("ERROR trying to read from sink.");
   }
 

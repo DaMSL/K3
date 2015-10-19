@@ -16,6 +16,7 @@
 #include "serialization/Codec.hpp"
 #include "collections/Map.hpp"
 #include "types/BaseString.hpp"
+#include "types/Pool.hpp"
 #include "Hash.hpp"
 
 using std::shared_ptr;
@@ -30,6 +31,7 @@ using K3::CodecFormat;
 using K3::Address;
 using K3::make_address;
 using K3::Peer;
+using K3::Pool;
 using K3::unpack;
 using K3::pack;
 using K3::Listener;
@@ -85,9 +87,9 @@ class EngineTest : public ::testing::Test {
 class DummyContext : public ProgramContext {
  public:
   explicit DummyContext(Engine& e);
-  unique_ptr<Dispatcher> __getDispatcher(unique_ptr<NativeValue>,
+  Pool::unique_ptr<Dispatcher> __getDispatcher(Pool::unique_ptr<NativeValue>,
                                                  TriggerID trig);
-  unique_ptr<Dispatcher> __getDispatcher(unique_ptr<PackedValue>,
+  Pool::unique_ptr<Dispatcher> __getDispatcher(Pool::unique_ptr<PackedValue>,
                                                  TriggerID trig);
   virtual void __patch(const YAML::Node& node);
   unit_t processRole(const unit_t&) const;
@@ -146,7 +148,7 @@ struct convert<DummyContext> {
 // Dummy Context Implementation:
 class MainTriggerNativeDispatcher : public Dispatcher {
  public:
-  MainTriggerNativeDispatcher(DummyContext& c, unique_ptr<NativeValue> val)
+  MainTriggerNativeDispatcher(DummyContext& c, Pool::unique_ptr<NativeValue> val)
       : context_(c) {
     value_ = std::move(val);
   }
@@ -154,12 +156,12 @@ class MainTriggerNativeDispatcher : public Dispatcher {
 
  protected:
   DummyContext& context_;
-  unique_ptr<NativeValue> value_;
+  Pool::unique_ptr<NativeValue> value_;
 };
 
 class MainTriggerPackedDispatcher : public Dispatcher {
  public:
-  MainTriggerPackedDispatcher(DummyContext& c, unique_ptr<PackedValue> val)
+  MainTriggerPackedDispatcher(DummyContext& c, Pool::unique_ptr<PackedValue> val)
       : context_(c) {
     value_ = std::move(val);
   }
@@ -171,12 +173,12 @@ class MainTriggerPackedDispatcher : public Dispatcher {
 
  protected:
   DummyContext& context_;
-  unique_ptr<PackedValue> value_;
+  Pool::unique_ptr<PackedValue> value_;
 };
 
 class StopTriggerNativeDispatcher : public Dispatcher {
  public:
-  StopTriggerNativeDispatcher(DummyContext& c, unique_ptr<NativeValue> val)
+  StopTriggerNativeDispatcher(DummyContext& c, Pool::unique_ptr<NativeValue> val)
       : context_(c) {
     value_ = std::move(val);
   }
@@ -184,12 +186,12 @@ class StopTriggerNativeDispatcher : public Dispatcher {
 
  protected:
   DummyContext& context_;
-  unique_ptr<NativeValue> value_;
+  Pool::unique_ptr<NativeValue> value_;
 };
 
 class StopTriggerPackedDispatcher : public Dispatcher {
  public:
-  StopTriggerPackedDispatcher(DummyContext& c, unique_ptr<PackedValue> val)
+  StopTriggerPackedDispatcher(DummyContext& c, Pool::unique_ptr<PackedValue> val)
       : context_(c) {
     value_ = std::move(val);
   }
@@ -201,12 +203,12 @@ class StopTriggerPackedDispatcher : public Dispatcher {
 
  protected:
   DummyContext& context_;
-  unique_ptr<PackedValue> value_;
+  Pool::unique_ptr<PackedValue> value_;
 };
 
 class IntTriggerNativeDispatcher : public Dispatcher {
  public:
-  IntTriggerNativeDispatcher(DummyContext& c, unique_ptr<NativeValue> val)
+  IntTriggerNativeDispatcher(DummyContext& c, Pool::unique_ptr<NativeValue> val)
       : context_(c) {
     value_ = std::move(val);
   }
@@ -215,12 +217,12 @@ class IntTriggerNativeDispatcher : public Dispatcher {
 
  protected:
   DummyContext& context_;
-  unique_ptr<NativeValue> value_;
+  Pool::unique_ptr<NativeValue> value_;
 };
 
 class IntTriggerPackedDispatcher : public Dispatcher {
  public:
-  IntTriggerPackedDispatcher(DummyContext& c, unique_ptr<PackedValue> val)
+  IntTriggerPackedDispatcher(DummyContext& c, Pool::unique_ptr<PackedValue> val)
       : context_(c) {
     value_ = std::move(val);
   }
@@ -232,12 +234,12 @@ class IntTriggerPackedDispatcher : public Dispatcher {
 
  protected:
   DummyContext& context_;
-  unique_ptr<PackedValue> value_;
+  Pool::unique_ptr<PackedValue> value_;
 };
 
 class StringTriggerNativeDispatcher : public Dispatcher {
  public:
-  StringTriggerNativeDispatcher(DummyContext& c, unique_ptr<NativeValue> val)
+  StringTriggerNativeDispatcher(DummyContext& c, Pool::unique_ptr<NativeValue> val)
       : context_(c) {
     value_ = std::move(val);
   }
@@ -246,12 +248,12 @@ class StringTriggerNativeDispatcher : public Dispatcher {
 
  protected:
   DummyContext& context_;
-  unique_ptr<NativeValue> value_;
+  Pool::unique_ptr<NativeValue> value_;
 };
 
 class StringTriggerPackedDispatcher : public Dispatcher {
  public:
-  StringTriggerPackedDispatcher(DummyContext& c, unique_ptr<PackedValue> val)
+  StringTriggerPackedDispatcher(DummyContext& c, Pool::unique_ptr<PackedValue> val)
       : context_(c) {
     value_ = std::move(val);
   }
@@ -263,36 +265,36 @@ class StringTriggerPackedDispatcher : public Dispatcher {
 
  protected:
   DummyContext& context_;
-  unique_ptr<PackedValue> value_;
+  Pool::unique_ptr<PackedValue> value_;
 };
 
 DummyContext::DummyContext(Engine& e) : ProgramContext(e) {}
 
-unique_ptr<Dispatcher> DummyContext::__getDispatcher(unique_ptr<NativeValue> nv,
+Pool::unique_ptr<Dispatcher> DummyContext::__getDispatcher(Pool::unique_ptr<NativeValue> nv,
                                                      TriggerID t) {
   if (t == 1) {
-    return make_unique<IntTriggerNativeDispatcher>(*this, std::move(nv));
+    return Pool::getInstance().make_unique_subclass<Dispatcher, IntTriggerNativeDispatcher>(*this, std::move(nv));
   } else if (t == 2) {
-    return make_unique<StringTriggerNativeDispatcher>(*this, std::move(nv));
+    return Pool::getInstance().make_unique_subclass<Dispatcher, StringTriggerNativeDispatcher>(*this, std::move(nv));
   } else if (t == 3) {
-    return make_unique<MainTriggerNativeDispatcher>(*this, std::move(nv));
+    return Pool::getInstance().make_unique_subclass<Dispatcher, MainTriggerNativeDispatcher>(*this, std::move(nv));
   } else if (t == 4) {
-    return make_unique<StopTriggerNativeDispatcher>(*this, std::move(nv));
+    return Pool::getInstance().make_unique_subclass<Dispatcher, StopTriggerNativeDispatcher>(*this, std::move(nv));
   } else {
     throw std::runtime_error("Invalid trigger ID");
   }
 }
 
-unique_ptr<Dispatcher> DummyContext::__getDispatcher(unique_ptr<PackedValue> pv,
+Pool::unique_ptr<Dispatcher> DummyContext::__getDispatcher(Pool::unique_ptr<PackedValue> pv,
                                                      TriggerID t) {
   if (t == 1) {
-    return make_unique<IntTriggerPackedDispatcher>(*this, std::move(pv));
+    return Pool::getInstance().make_unique_subclass<Dispatcher, IntTriggerPackedDispatcher>(*this, std::move(pv));
   } else if (t == 2) {
-    return make_unique<StringTriggerPackedDispatcher>(*this, std::move(pv));
+    return Pool::getInstance().make_unique_subclass<Dispatcher, StringTriggerPackedDispatcher>(*this, std::move(pv));
   } else if (t == 3) {
-    return make_unique<MainTriggerPackedDispatcher>(*this, std::move(pv));
+    return Pool::getInstance().make_unique_subclass<Dispatcher, MainTriggerPackedDispatcher>(*this, std::move(pv));
   } else if (t == 4) {
-    return make_unique<StopTriggerPackedDispatcher>(*this, std::move(pv));
+    return Pool::getInstance().make_unique_subclass<Dispatcher, StopTriggerPackedDispatcher>(*this, std::move(pv));
   } else {
     throw std::runtime_error("Invalid trigger ID");
   }
@@ -331,6 +333,11 @@ void DummyContext::stopTrigger(unit_t) { throw EndOfProgramException(); }
 TEST(BaseString, one) {
   K3::base_string k = "hi test!";
   std::cout << k << std::endl;
+}
+
+TEST(Pool, Pointer) {
+  K3::Pool::unique_ptr<NativeValue> nv;
+  nv = K3::Pool::getInstance().make_unique_subclass<NativeValue, TNativeValue<int>>(5);
 }
 
 

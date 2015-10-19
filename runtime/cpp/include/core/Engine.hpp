@@ -20,6 +20,7 @@
 #include "serialization/Yaml.hpp"
 #include "serialization/Codec.hpp"
 #include "Peer.hpp"
+#include "types/Pool.hpp"
 
 namespace K3 {
 class ProgramContext;
@@ -113,7 +114,7 @@ void Engine::run() {
   return;
 }
 
-unique_ptr<Dispatcher> getDispatcher(Peer& p, unique_ptr<NativeValue>, TriggerID trig);
+Pool::unique_ptr<Dispatcher> getDispatcher(Peer& p, Pool::unique_ptr<NativeValue>, TriggerID trig);
 string getTriggerName(int);
 
 template <class T>
@@ -131,7 +132,7 @@ void Engine::send(const Address& src, const Address& dst, TriggerID trig,
   auto it = peers_->find(dst);
   if (options_.local_sends_enabled_ && it != peers_->end()) {
     // Direct enqueue for local messages
-    unique_ptr<NativeValue> nv = std::make_unique<TNativeValue<T>>(std::move(value));
+    Pool::unique_ptr<NativeValue> nv = Pool::getInstance().make_unique_subclass<NativeValue, TNativeValue<T>>(std::move(value));
     auto d = getDispatcher(*it->second, std::move(nv), trig);
 #ifdef K3DEBUG
     d->trigger_ = trig;
@@ -141,7 +142,7 @@ void Engine::send(const Address& src, const Address& dst, TriggerID trig,
     it->second->getQueue().enqueue(std::move(d));
   } else {
     // Serialize and send over the network, otherwise
-    unique_ptr<PackedValue> pv = pack<T>(value, K3_INTERNAL_FORMAT);
+    Pool::unique_ptr<PackedValue> pv = pack<T>(value, K3_INTERNAL_FORMAT);
     shared_ptr<NetworkMessage> m =
         make_shared<NetworkMessage>(trig, std::move(pv));
 #ifdef K3DEBUG

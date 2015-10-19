@@ -33,8 +33,8 @@ class ProgramContext : public StandardBuiltins,
   explicit ProgramContext(Engine& e);
   virtual ~ProgramContext() { }
 
-  virtual unique_ptr<Dispatcher> __getDispatcher(unique_ptr<NativeValue>, TriggerID trig) = 0;
-  virtual unique_ptr<Dispatcher> __getDispatcher(unique_ptr<PackedValue>, TriggerID trig) = 0;
+  virtual Pool::unique_ptr<Dispatcher> __getDispatcher(Pool::unique_ptr<NativeValue>, TriggerID trig) = 0;
+  virtual Pool::unique_ptr<Dispatcher> __getDispatcher(Pool::unique_ptr<PackedValue>, TriggerID trig) = 0;
 
   // Program initialization
   virtual void __patch(const YAML::Node& node);

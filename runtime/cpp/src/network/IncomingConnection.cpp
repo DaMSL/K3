@@ -47,10 +47,11 @@ void InternalIncomingConnection::receiveMessages(
             if (bytes == m->payload_length_) {
               // Create a PackedValue from the buffer, and call the message
               // handler
-              unique_ptr<PackedValue> pv;
-              pv = make_unique<BufferPackedValue>(std::move(*payload_buf),
+              Pool::unique_ptr<PackedValue> pv;
+              pv = Pool::getInstance().make_unique_subclass<PackedValue, BufferPackedValue>(std::move(*payload_buf),
                                                   this_shared->format_);
               m->setValue(std::move(pv));
+              // TODO(jbw) handlers should just take references, this is wasteful allocation
               (*m_handler)(std::make_unique<NetworkMessage>(std::move(*m)));
 
               // Recurse to receive the next message
@@ -96,7 +97,7 @@ void ExternalIncomingConnection::receiveMessages(
                 if (bytes == *header_int) {
                   // Create a PackedValue from the buffer, and call the message
                   // handler
-                  auto pv = make_unique<BufferPackedValue>(std::move(*payload_buf),
+                  auto pv = Pool::getInstance().make_unique_subclass<PackedValue, BufferPackedValue>(std::move(*payload_buf),
                                                       this_shared->format_);
                   auto m = std::make_unique<Message>(this_shared->trigger_, std::move(pv));
                   #ifdef K3DEBUG

@@ -53,7 +53,7 @@ Engine::~Engine() {
 void Engine::stop() {
   // Place a Sentintel on each Peer's queue
   for (auto& it : *peers_) {
-    auto d = make_unique<SentinelDispatcher>();
+    Pool::unique_ptr<Dispatcher> d = Pool::getInstance().make_unique_subclass<Dispatcher, SentinelDispatcher>();
     it.second->getQueue().enqueue(std::move(d));
   }
   network_manager_.stop();
@@ -90,7 +90,7 @@ NetworkManager& Engine::getNetworkManager() { return network_manager_; }
 
 StorageManager& Engine::getStorageManager() { return storage_manager_; }
 
-unique_ptr<Dispatcher> getDispatcher(Peer& p, unique_ptr<NativeValue> nv, TriggerID trig) {
+Pool::unique_ptr<Dispatcher> getDispatcher(Peer& p, Pool::unique_ptr<NativeValue> nv, TriggerID trig) {
  return p.getContext().__getDispatcher(std::move(nv), trig);
 }
 

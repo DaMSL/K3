@@ -25,6 +25,8 @@ find_library(YAMLCPP_LIBRARY
 find_library(CSVPP_LIBRARY
              NAMES libcsvpp.dylib csvpp)
 
+find_library(CSVPP_LIBRARY
+             NAMES libcsvpp.dylib csvpp)
 add_subdirectory(include/external/gtest-1.7.0)
 enable_testing()
 
@@ -53,7 +55,7 @@ set (srcs src/core/Engine.cpp
           src/Common.cpp
     )
 
-set (link_libs k3 ${Boost_LIBRARIES} ${YAMLCPP_LIBRARY} ${CSVPP_LIBRARY} dynamic)
+set (link_libs k3 ${Boost_LIBRARIES} ${YAMLCPP_LIBRARY} ${CSVPP_LIBRARY} dynamic bdl bsl)
 set (test_link_libs ${link_libs} gtest gtest_main)
 
 include_directories    (include include/external ${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR})
