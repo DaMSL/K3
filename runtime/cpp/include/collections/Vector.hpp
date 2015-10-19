@@ -104,6 +104,7 @@ class Vector : public VectorDS<K3::Vector, Elem> {
 };
 
 
+#ifdef USE_BITVECTOR
 // Specialization for a vector of bools.
 template <>
 class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
@@ -316,6 +317,7 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
  private:
   friend class boost::serialization::access;
 };
+#endif
 
 }  // namespace K3
 
@@ -344,6 +346,7 @@ struct convert<K3::Vector<E>> {
   }
 };
 
+#ifdef USE_BITVECTOR
 // Specialization for a vector of bools.
 template <>
 struct convert<K3::Vector<R_elem<bool>>> {
@@ -368,6 +371,8 @@ struct convert<K3::Vector<R_elem<bool>>> {
     return true;
   }
 };
+#endif
+
 }  // namespace YAML
 
 namespace JSON {
@@ -389,6 +394,7 @@ struct convert<K3::Vector<E>> {
   }
 };
 
+#ifdef USE_BITVECTOR
 template <>
 struct convert<K3::Vector<R_elem<bool>>> {
   template <class Allocator>
@@ -405,6 +411,7 @@ struct convert<K3::Vector<R_elem<bool>>> {
     return v;
   }
 };
+#endif
 }  // namespace JSON
 
 #endif
