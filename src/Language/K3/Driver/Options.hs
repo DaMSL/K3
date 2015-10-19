@@ -490,12 +490,17 @@ allStagesFlag = flag' AllStages (long "allstages" <> help "Compile all stages")
 
 cppOpt :: Parser CPPOptions
 cppOpt = CPPOptions <$> strOption (long "cpp-flags" <> help "Specify CPP Flags" <> metavar "CPPFLAGS" <> value "")
-                    <*> (CPPCGFlags <$> (fromMaybe False . fmap read . lookup "isolateLoopIndex" . keyValList ""
-                                           <$> strOption (
-                                               long "cg-options"
-                                            <> value ""
-                                            <> help "Code Generation Options"
-                                            <> metavar "CGOptions")))
+                    <*> (extractCPPCGFlags <$> strOption (
+                               long "cg-options"
+                               <> value ""
+                               <> help "Code Generation Options"
+                               <> metavar "CGOptions"))
+ where
+   extractCPPCGFlags stropt = CPPCGFlags ili elp
+    where
+      ili = fromMaybe False $ fmap read $ lookup "isolateLoopIndex" kvs
+      elp = fromMaybe False $ fmap read $ lookup "enableLifetimeProfiling" kvs
+      kvs = keyValList "" stropt
 
 ktraceOpt :: Parser [(String, String)]
 ktraceOpt = keyValList "" <$> strOption (
