@@ -53,7 +53,7 @@ class Dispatcher(mesos.interface.Scheduler):
 
 
 
- 
+
   def submit(self, job):
     logging.info("[DISPATCHER] Received new Job for Application %s, Job ID= %d" % (job.appName, job.jobId))
     self.pending.append(job)
@@ -145,12 +145,12 @@ class Dispatcher(mesos.interface.Scheduler):
 
         if 'peers_per_host' in nextJob.roles[roleId].params:
           explicitPeerRequest = nextJob.roles[roleId].params['peers_per_host']
-          explicitCPURequest = explicitPeerRequest * cpuPerPeer 
+          explicitCPURequest = explicitPeerRequest * cpuPerPeer
           if explicitCPURequest > availableCPU[offerId]:
             # Cannot satisfy specific peers-to-host requirement
             continue
           else:
-            requestedCPU = explicitCPURequest 
+            requestedCPU = explicitCPURequest
             requestedPeers = explicitPeerRequest
 
 
@@ -208,11 +208,11 @@ class Dispatcher(mesos.interface.Scheduler):
     if len(self.pending) == 0:
       logging.info("[DISPATCHER] No pending jobs to prepare")
       return None
-  
+
     index = 0
     nextJob = self.pending[0]
     reservation = self.allocateResources(nextJob)
-    
+
     #  If no resources were allocated and jobs are waiting, try to launch each in succession
     while nextJob and reservation == None:
       index += 1
@@ -221,16 +221,16 @@ class Dispatcher(mesos.interface.Scheduler):
         return None
       nextJob = self.pending[index]
       reservation = self.allocateResources(nextJob)
-      
+
     #  Iterate through the reservations for each role / offer: create peers & tasks
     allPeers = []
 
     for roleId, role in reservation.items():
       logging.debug("[DISPATCHER] Preparing role, %s" % roleId)
-      
+
       defaultVars = nextJob.roles[roleId].variables
       peerVars = nextJob.roles[roleId].getPeerVarIter()
-      
+
       # Sort offers for this role by hostname, to ensure deterministic allocation of resources:
       offersheet = OrderedDict(sorted(role.items(), key=lambda r: self.offers[r[0]].hostname))
       for offerId, offer in offersheet.items():
@@ -270,13 +270,14 @@ class Dispatcher(mesos.interface.Scheduler):
 
   def launchJob(self, nextJob, driver):
     #jobId = self.genJobId()
+
     logging.info("[DISPATCHER] Launching job %d" % nextJob.jobId)
     self.active[nextJob.jobId] = nextJob
     self.jobsCreated += 1
     nextJob.status = "RUNNING"
     db.updateJob(nextJob.jobId, status=nextJob.status)
 
-    # Group tasks by offer 
+    # Group tasks by offer
     offerTasks = {}
     for taskNum, k3task in enumerate(nextJob.tasks):
       if k3task.offerid not in offerTasks:
@@ -292,7 +293,7 @@ class Dispatcher(mesos.interface.Scheduler):
     #   logging.debug ("  OFFER ID ========> " + k3task.offerid)
     #   task = taskInfo(nextJob, taskNum, self.webaddr, self.offers[k3task.offerid].slave_id)
 
-    for offerid, tasklist in offerTasks.items():    
+    for offerid, tasklist in offerTasks.items():
       oid = mesos_pb2.OfferID()
       oid.value = offerid
       driver.launchTasks(oid, tasklist)
@@ -447,7 +448,7 @@ but is neither pending nor active. Killing it now." % job)
     logging.warning("[DISPATCHER] Previous offer '%d' invalidated" % offer.id.value)
     if offer.id in self.offers:
       del self.offers[offer.id.value]
-   
+
 
   def kill(self, driver):
     for jobId in self.active.keys() + self.pending.keys():
@@ -455,5 +456,3 @@ but is neither pending nor active. Killing it now." % job)
       self.cancelJob(jobId, driver)
     self.terminate = True
     logging.info("[DISPATCHER] Terminating")
-
-

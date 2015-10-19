@@ -129,8 +129,17 @@ composite name ans content_ts = do
                     ++ [serializeFn False, serializeFn True]
                     ++ indexDefns ++ pbufDefns
 
+    sentinelDefn <- withLifetimeProfiling [] $ return [
+      R.GlobalDefn $
+        R.Forward $
+          R.ScalarDecl (R.Name "__lifetime_sentinel")
+            (R.Named $ R.Qualified (R.Name "K3") $ R.Qualified (R.Name "lifetime") (R.Name "sentinel")) Nothing
+
+      ]
+    let members = sentinelDefn
+
     let collectionClassDefn = R.TemplateDefn [("__CONTENT", Nothing)]
-             (R.ClassDefn (R.Name name) [] (map R.Named baseClasses) methods [] [])
+             (R.ClassDefn (R.Name name) [] (map R.Named baseClasses) (members ++ methods) [] [])
 
     let parent = head baseClasses
 
@@ -290,7 +299,16 @@ record (sort -> ids) = do
 
     let constructors = (defaultConstructor:initConstructors)
     let comparators = [equalityOperator, logicOp "!=", logicOp "<", logicOp ">", logicOp "<=", logicOp ">="]
-    let members = typedefs ++ constructors ++ comparators ++ [serializeFn False, serializeFn True] ++ fieldDecls ++ [x_alize "internalize", x_alize "externalize"]
+    sentinelDefn <- withLifetimeProfiling [] $ return [
+      R.GlobalDefn $
+        R.Forward $
+          R.ScalarDecl (R.Name "__lifetime_sentinel")
+            (R.Named $ R.Qualified (R.Name "K3") $ R.Qualified (R.Name "lifetime") (R.Name "sentinel")) Nothing
+
+      ]
+
+    let members = sentinelDefn ++ typedefs ++ constructors ++ comparators ++
+                  [serializeFn False, serializeFn True] ++ fieldDecls ++ [x_alize "internalize", x_alize "externalize"]
 
     let recordStructDefn
             = R.GuardedDefn ("K3_" ++ recordName) $

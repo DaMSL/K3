@@ -101,6 +101,7 @@ data CPPGenS = CPPGenS {
 data CPPCGFlags
   = CPPCGFlags
     { isolateLoopIndex :: Bool
+    , enableLifetimeProfiling :: Bool
     } deriving (Eq, Generic, Ord, Read, Show)
 
 instance Binary CPPCGFlags
@@ -110,6 +111,7 @@ defaultCPPCGFlags :: CPPCGFlags
 defaultCPPCGFlags
   = CPPCGFlags
     { isolateLoopIndex = True
+    , enableLifetimeProfiling = False
     }
 
 -- | The default code generation state.
@@ -166,3 +168,21 @@ incApplyLevel = modify (\env -> env {applyLevel = applyLevel env + 1})
 
 resetApplyLevel :: CPPGenM ()
 resetApplyLevel = modify (\env -> env {applyLevel = 0})
+
+withLifetimeProfiling :: a -> CPPGenM a -> CPPGenM a
+withLifetimeProfiling def action = gets (enableLifetimeProfiling . flags) >>= \b -> if b then action else return def
+
+genLTGuardFor :: Identifier -> CPPGenM R.Statement
+genLTGuardFor i = do
+  let guardName = R.Name $ "__lt_guard_" ++ i
+  let guardedSize = R.Call (R.Variable $ R.Name "sizeof") [R.Variable $ R.Name i]
+  let guardedStack = R.Qualified (R.Name "lifetime") (R.Qualified (R.Name "allocation_t") (R.Name "STACK"))
+  let guardInit = R.Initialization (R.Named $ R.Specialized [R.ConstExpr guardedSize, R.Named guardedStack]
+                                    (R.Qualified (R.Name "lifetime") (R.Name "sentinel"))) []
+
+  return $ R.Forward $ R.ScalarDecl guardName R.Inferred (Just guardInit)
+
+instrumentWithLifetimeFor :: Identifier -> [R.Statement] -> CPPGenM [R.Statement]
+instrumentWithLifetimeFor i s = withLifetimeProfiling s $ do
+  guard <- genLTGuardFor i
+  return $ (guard:s)
