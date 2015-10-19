@@ -111,11 +111,11 @@ printTransformReport rp = do
   putStrLn $ boxToString rp
   where sep = replicate 20 '='
 
-printMinimal :: IOOptions -> ParseOptions -> ([String], [(String, K3 Declaration)]) -> IO ()
+printMinimal :: IOOptions -> ParseOptions -> ([String], [(String, (String, K3 Declaration))]) -> IO ()
 printMinimal ioOpts pOpts (userdecls, reqdecls) = do
   putStrLn $ unwords $ ["Declarations needed for:"] ++ userdecls
   putStrLn $ unlines $ map fst reqdecls
-  k3outIO ioOpts pOpts $ DC.role defaultRoleName $ map snd reqdecls
+  k3outIO ioOpts pOpts $ DC.role defaultRoleName $ map (snd . snd) reqdecls
 
 
 -- | AST formatting.
@@ -195,7 +195,7 @@ parse ioOpts pOpts prog = do
 
 -- | Program minimization.
 minimize :: ParseOptions -> (K3 Declaration, [String])
-         -> DriverM (Either (K3 Declaration, [String]) ([String], [(String, K3 Declaration)]))
+         -> DriverM (Either (K3 Declaration, [String]) ([String], [(String, (String, K3 Declaration))]))
 minimize (poMinimize -> userdecls) (p,rp) =
   if null userdecls
     then return $ Left (p,rp)
