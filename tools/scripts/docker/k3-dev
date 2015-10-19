@@ -255,4 +255,6 @@ RUN mkdir -p /k3/K3-Mosaic && \
 RUN apt-get autoremove -y && \
     apt-get autoclean -y
 
+# Add env variables for bloomberg
+ENV CPLUS_INCLUDE_PATH=/usr/local/include/bsl:/usr/local/include/bdl
 

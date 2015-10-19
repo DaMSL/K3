@@ -130,3 +130,5 @@ RUN ln -s /usr/lib/libmesos-0.22.1.so /usr/lib/libmesos.so && \
     rm -rf /var/log/* && \
     rm -rf /usr/include/*
 
+# Add env variables for bloomberg
+ENV CPLUS_INCLUDE_PATH=/usr/local/include/bsl:/usr/local/include/bdl
