@@ -52,8 +52,9 @@ class Vector : public VectorDS<K3::Vector, Elem> {
   template <class Q>
   unit_t set_all(Q&& q) {
     auto& vec = Super::getContainer();
-    for (auto i = vec.begin(); i != vec.end; ++i) {
-      *i = std::forward<Q>(q);
+    auto sz = vec.size();
+    for (auto i = 0; i < sz; ++i) {
+      vec[i] = std::forward<Q>(q);
     }
     return unit_t();
   }
