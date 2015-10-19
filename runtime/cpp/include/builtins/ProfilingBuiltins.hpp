@@ -4,6 +4,7 @@
 #include <string>
 #include <chrono>
 #include <atomic>
+#include <cstdint>
 
 #ifdef K3_PCM
 #include <cpucounters.h>
@@ -84,6 +85,48 @@ class ProfilingBuiltins: public __heap_profiler {
 #endif
 };
 
+  namespace lifetime {
+    using lifetime_t = uint32_t;
+
+    class sampler {
+     public:
+      void push() {
+        ++object_counter;
+      }
+
+      void dump() {
+        std::cout << "Object count: " << object_counter << std::endl;
+        return;
+      }
+
+      uint64_t object_counter;
+    };
+
+    class histogram {
+     public:
+      void push() {
+        return;
+      }
+
+      void dump() {
+        return;
+      }
+    };
+
+    #ifdef K3_LT_SAMPLE
+    extern __thread sampler __active_lt_profiler;
+    #endif
+
+    #ifdef K3_LT_HISTOGRAM
+    extern __thread histogram __active_lt_profiler;
+    #endif
+
+    class sentinel {
+     public:
+      sentinel() {}
+      ~sentinel();
+    };
+  }
 }  // namespace K3
 
 #endif
