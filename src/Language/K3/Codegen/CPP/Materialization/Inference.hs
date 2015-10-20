@@ -81,7 +81,7 @@ optimizeMaterialization (p, f) d = runExceptT $ inferMaterialization >>= solveMa
     Left (SError msg) -> throwError msg
     Right (_, SState mp) -> return mp
    where
-    solveAction = (let ct' = simplifyE <$> ct in mkDependencyList ct' d >>= flip solveForAll ct')
+    solveAction = (mkDependencyList ct d >>= flip solveForAll ct)
 
   attachMaterialization k m = return $ attachD <$> k
    where
@@ -112,7 +112,7 @@ type DKey = (Juncture, Direction)
 
 constrain :: UID -> Identifier -> Direction -> K3 MExpr -> InferM ()
 constrain u i d m = let j = (Juncture u i) in
-  logR j d m >> modify (\s -> s { cTable = M.insertWith (flip const) (j, d) m (cTable s) })
+  logR j d m >> modify (\s -> s { cTable = M.insertWith (flip const) (j, d) (simplifyE m) (cTable s) })
 
 -- ** Scoping state
 data IScope = IScope { downstreams :: [Downstream], nearestBind :: Maybe UID, pEnv :: PIEnv, fEnv :: FIEnv, topLevel :: Bool }
