@@ -388,7 +388,7 @@ indexes name ans content_ts = do
     fold_slice_vid_fn _ = return Nothing
 
 
--- Returns member definitions for a FlatPolyBuffer
+-- Returns member definitions for a FlatPolyBuffer or UniquePolyBuffer
 polybuffer :: Identifier -> [(Identifier, [AnnMemDecl])] -> CPPGenM [R.Definition]
 polybuffer name ans = do
   let indexed   = zip [1..] $ filter is_polybuffer ans
@@ -405,9 +405,18 @@ polybuffer name ans = do
             ++ iterate_tag_defns ++ fold_tag_defns ++ skip_tag_defns ++ skip_all_tag_defns ++ extra_defns
 
   where
-    super_defn = [R.GlobalDefn $ R.Forward $ R.UsingDecl
-                   (Right $ R.Name "Super")
-                   (Just $ R.Qualified (R.Name "K3") $ R.Specialized [elem_type] $ R.Name "FlatPolyBuffer")]
+    is_polybuffer (n,_) = any (`isInfixOf` n) ["FlatPolyBuffer", "UniquePolyBuffer"]
+    is_flat_polybuffer = "FlatPolyBuffer" `isInfixOf` name
+
+    super_type = if is_flat_polybuffer
+                  then R.Specialized [elem_type] $ R.Name "FlatPolyBuffer"
+                  else R.Specialized [elem_type, R.Named $ R.Name name] $ R.Name "UniquePolyBuffer"
+
+    super_defn = if is_polybuffer (name, []) then
+                  [R.GlobalDefn $ R.Forward $ R.UsingDecl
+                    (Right $ R.Name "Super")
+                    (Just $ R.Qualified (R.Name "K3") super_type)]
+                 else []
 
     at_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
     at_fn (_, Lifted _ fname _ _ _) | "_safe_at" `isSuffixOf` fname = return Nothing
@@ -560,7 +569,24 @@ polybuffer name ans = do
     extra_fns :: [Int] -> [R.Type] -> CPPGenM [R.Definition]
     extra_fns [] [] = return []
     extra_fns tags types = catMaybes <$> mapM (\f -> f tags types)
-      [elemsize_fn, externalize_fn, internalize_fn, yamlencode_fn, yamldecode_fn, jsonencode_fn]
+      [hashelem_fn, elemsize_fn, externalize_fn, internalize_fn, yamlencode_fn, yamldecode_fn, jsonencode_fn]
+
+    hashelem_fn :: [Int] -> [R.Type] -> CPPGenM (Maybe R.Definition)
+    hashelem_fn tags types = do
+      let void_ptr_t = R.Pointer $ R.Void
+      return $ Just $ R.FunctionDefn (R.Name "hashelem")
+                        [(Just "tag", tag_t), (Just "elem", void_ptr_t)]
+                        (Just $ R.Named $ R.Name "static size_t")
+                        []
+                        False
+                        [branch_chain "tag" tags types elseStmt elemStmt]
+
+      where elemStmt _ ty = R.Return $ R.Call (R.Variable $ R.Name "hash_value")
+                              [R.Dereference $
+                                R.Call (R.Variable $ R.Specialized [R.Pointer ty] $ R.Name "reinterpret_cast")
+                                  [R.Variable $ R.Name "elem"]]
+
+            elseStmt = R.Ignore $  R.ThrowRuntimeErr $ R.Literal $ R.LString "Invalid poly buffer tag"
 
     elemsize_fn :: [Int] -> [R.Type] -> CPPGenM (Maybe R.Definition)
     elemsize_fn tags types =
@@ -697,7 +723,6 @@ polybuffer name ans = do
     branch_chain n tags types elseStmt f = (\foldF -> foldl foldF elseStmt $ zip tags types) $
       \accStmt (tg,ty) -> R.IfThenElse (R.Binary "==" (R.Variable $ R.Name n) (R.Literal $ R.LInt tg)) [f tg ty] [accStmt]
 
-    is_polybuffer (n,_) = "FlatPolyBuffer" `isInfixOf` n
 
     is_tag (DProperty (dPropertyName -> "Tag")) = True
     is_tag _ = False

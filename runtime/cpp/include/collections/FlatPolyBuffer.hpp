@@ -660,7 +660,7 @@ public:
 
   BOOST_SERIALIZATION_SPLIT_MEMBER()
 
-private:
+protected:
   // FlatPolyBuffer is backed by either a base_string or a Container
   Container container;
   FContainer* fixed()    const { return const_cast<FContainer*>(&(container.cfixed)); }
