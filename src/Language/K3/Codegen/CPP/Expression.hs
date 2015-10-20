@@ -594,7 +594,7 @@ inline e@(tag &&& children -> (EOperate OApp, [
 
   (wfe, wfb) <- inlineApply False (RName (R.Variable $ R.Name result) Nothing) w [R.Dereference (R.Variable $ R.Name iterator)]
 
-  return (ce ++ [ue] ++ ie ++ [resultDecl] ++ [(advance ++ wfe ++ wfb)]
+  return (ce ++ [ue] ++ ie ++ [resultDecl] ++ [R.Block (advance ++ wfe ++ wfb)]
          , R.Variable $ R.Name result)
 
 inline e@(tag -> EOperate OApp) = do
