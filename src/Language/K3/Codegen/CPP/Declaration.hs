@@ -63,7 +63,7 @@ declaration (tag -> DGlobal i t@(tag &&& children -> (TFunction, [ta, tr]))
                       (Just e@(tag &&& children -> (ELambda x, [body]))))
   | i == "processRole" = do
       ([], R.Lambda _ mits _ _ body) <- inline e
-      return $ [R.FunctionDefn (R.Name i) [(Nothing, R.Reference $ R.Const $ R.Unit)] (Just R.Unit) [] True body]
+      return $ [R.FunctionDefn (R.Name i) [(Nothing, R.Reference $ R.Const $ R.Unit)] (Just R.Unit) [] False body]
   | otherwise = do
       ([], e') <- inline e
       ct <- R.flattenFnType <$> genCType t

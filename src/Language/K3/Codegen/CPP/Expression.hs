@@ -627,7 +627,7 @@ inline e@(tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [tri
     trigTypes <- getKType val >>= genCType
     let me = R.Variable $ R.Name "me"
     let outbox = R.Call (R.Project (R.Variable $ R.Name "__peer_") (R.Name "getOutbox")) []
-    let commonSArgs = [me, av, R.Variable $ R.Name tIdName, messageValue, outbox]
+    let commonSArgs = [me, av, R.Variable $ R.Name tIdName, messageValue, outbox, R.Dereference $ R.Variable $ R.Name "this"]
 
     (sName, sArgs) <- case (e @~ isEDelay, e @~ isEDelayOverride, e @~ isEDelayOverrideEdge) of
                        (Just (EProperty (ePropertyValue -> Just (tag -> LInt delay))), Nothing, Nothing) ->
@@ -647,7 +647,7 @@ inline e@(tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [tri
                        _ -> throwE $ CPPGenE $ "Invalid delay send properties"
 
     return (concat [te, ae, ve]
-                 ++ [ R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Specialized [trigTypes] (R.Name sName))) sArgs ]
+                 ++ [ R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "__engine_") (R.Specialized [trigTypes, R.Named $ R.Specialized [R.Named $ R.Name "__global_context"] (R.Name $ tName ++ "NativeDispatcher"), R.Named $ R.Name "__global_context"] (R.Name sName))) sArgs ]
              , R.Initialization R.Unit [])
     where
       isETriggerId (EProperty (ePropertyName -> "TriggerId")) = True

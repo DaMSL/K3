@@ -92,21 +92,21 @@ program (tag &&& children -> (DRole name, decls)) = do
     let valType   isNative = if isNative then "NativeValue" else "PackedValue"
     let tableName isNative = if isNative then "native_dispatch_table" else "packed_dispatch_table"
 
-    let dispatchDecl isNative = R.FunctionDefn (R.Name "__getDispatcher")
-                       [ (Just "payload", R.PoolUniquePointer $ R.Named $ R.Name $ valType isNative)
-                       , (Just "trigger_id", R.Primitive R.PInt)
-                       ]
-                       (Just $ R.PoolUniquePointer $ R.Named $ R.Name "Dispatcher") [] False
-                       [R.Return $ R.Call
-                         (R.Subscript (R.Variable $ R.Name $ tableName isNative) (R.Variable $ R.Name "trigger_id")) [R.Move $ R.Variable $ R.Name "payload"]
-                       ]
-    let dispatchTableDecl isNative = R.GlobalDefn $ R.Forward $ R.ScalarDecl
-                     (R.Name $ tableName isNative)
-                     (R.Named $ R.Qualified (R.Name "std") $ R.Specialized
-                           [ R.Function
-                               [R.PoolUniquePointer $ R.Named $ R.Name $ valType isNative]
-                            (R.PoolUniquePointer $ R.Named $ R.Name "Dispatcher")] (R.Name "vector"))
-                     Nothing
+    --let dispatchDecl isNative = R.FunctionDefn (R.Name "__getDispatcher")
+    --                   [ (Just "payload", R.PoolUniquePointer $ R.Named $ R.Name $ valType isNative)
+    --                   , (Just "trigger_id", R.Primitive R.PInt)
+    --                   ]
+    --                   (Just $ R.PoolUniquePointer $ R.Named $ R.Name "Dispatcher") [] False
+    --                   [R.Return $ R.Call
+    --                     (R.Subscript (R.Variable $ R.Name $ tableName isNative) (R.Variable $ R.Name "trigger_id")) [R.Move $ R.Variable $ R.Name "payload"]
+    --                   ]
+    --let dispatchTableDecl isNative = R.GlobalDefn $ R.Forward $ R.ScalarDecl
+    --                 (R.Name $ tableName isNative)
+    --                 (R.Named $ R.Qualified (R.Name "std") $ R.Specialized
+    --                       [ R.Function
+    --                           [R.PoolUniquePointer $ R.Named $ R.Name $ valType isNative]
+    --                        (R.PoolUniquePointer $ R.Named $ R.Name "Dispatcher")] (R.Name "vector"))
+    --                 Nothing
 
     let patchFn = R.FunctionDefn (R.Qualified contextName (R.Name "__patch"))
                   [(Just "node", R.Reference $ R.Const $ R.Named $ R.Qualified (R.Name "YAML") (R.Name "Node"))]
@@ -123,12 +123,12 @@ program (tag &&& children -> (DRole name, decls)) = do
                       [R.Reference $ R.Const $ R.Named $ R.Qualified (R.Name "YAML") (R.Name "Node")] R.Void
 
     let contextDefns = [contextConstructor] ++ programDefns  ++ [initDeclDefn] ++
-                       [patchFnDecl, globalNames, prettify, jsonify, dispatchDecl True, dispatchDecl False]
+                       [patchFnDecl, globalNames, prettify, jsonify] --dispatchDecl True, dispatchDecl False]
 
     let contextClassDefn = R.ClassDefn contextName []
                              [ R.Named $ R.Qualified (R.Name "K3") $ R.Name "ProgramContext"
                              ]
-                             contextDefns [] [dispatchTableDecl True, dispatchTableDecl False]
+                             contextDefns [] [] --[dispatchTableDecl True, dispatchTableDecl False]
 
     pinned <- (map R.GlobalDefn) <$> definePinnedGlobals
     mainFn <- main

@@ -70,7 +70,7 @@ Peer::Peer(PeerMap& peers, shared_ptr<ContextFactory> fac, const YAML::Node& con
       int count = 0;
       while (true) {
         processBatch();
-        if (++count == 10) {
+        if (++count == 20) {
           outbox_.flushAll(peers_);
           count = 0;
         }

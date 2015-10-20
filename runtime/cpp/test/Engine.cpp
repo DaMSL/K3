@@ -92,7 +92,7 @@ class DummyContext : public ProgramContext {
   Pool::unique_ptr<Dispatcher> __getDispatcher(Pool::unique_ptr<PackedValue>,
                                                  TriggerID trig);
   virtual void __patch(const YAML::Node& node);
-  unit_t processRole(const unit_t&) const;
+  unit_t processRole(const unit_t&);
   void stopTrigger(unit_t);
   void mainTrigger(unit_t);
   void intTrigger(int i);
@@ -304,9 +304,9 @@ void DummyContext::__patch(const YAML::Node& node) {
   YAML::convert<DummyContext>::decode(node, *this);
 }
 
-unit_t DummyContext::processRole(const unit_t&) const {
+unit_t DummyContext::processRole(const unit_t&) {
   if (role == "main") {
-    __engine_.send<unit_t>(me, me, 3, unit_t{}, __peer_.getOutbox());
+    __engine_.send<unit_t, MainTriggerNativeDispatcher, DummyContext>(me, me, 3, unit_t{}, __peer_.getOutbox(), *this);
   }
   return unit_t{};
 }
@@ -323,9 +323,9 @@ void DummyContext::stringTrigger(std::string s) {
 
 void DummyContext::mainTrigger(unit_t) {
   for (int i = 0; i < 100; i++) {
-    __engine_.send<int>(me, me, 1, i, __peer_.getOutbox());
+    __engine_.send<int, IntTriggerNativeDispatcher, DummyContext>(me, me, 1, i, __peer_.getOutbox(), *this);
   }
-  __engine_.send<unit_t>(me, me, 4, unit_t{}, __peer_.getOutbox());
+  __engine_.send<unit_t, StopTriggerNativeDispatcher, DummyContext>(me, me, 4, unit_t{}, __peer_.getOutbox(), *this);
   return;
 }
 

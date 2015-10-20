@@ -160,8 +160,7 @@ class EndOfProgramException : public std::runtime_error {
   EndOfProgramException() : runtime_error("Peer terminated.") {}
 };
 
-
-using PeerMap = std::unordered_map<Address, shared_ptr<Peer>>;
+using PeerMap = std::map<Address, shared_ptr<Peer>>;
 
 // Thread-safe map from Key to Val.
 // Val should be a pointer type.

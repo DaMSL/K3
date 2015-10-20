@@ -33,20 +33,20 @@ class Engine {
   void run();
   void stop();
   void join();
-  template <class T>
+  template <class T, class TrigDispatcher, class Context>
   void send(const Address& src, const Address& dst, TriggerID trig,
-            const T& value, Outbox& outbox);
-  template <class T>
+            const T& value, Outbox& outbox, Context& context);
+  template <class T, class TrigDispatcher, class Context>
   void send(const Address& src, const Address& dst, TriggerID trig,
-            T&& value, Outbox& outbox);
+            T&& value, Outbox& outbox, Context& context);
 
   // Delayed sends, in microseconds from now.
-  template <class T>
+  template <class T, class TrigDispatcher, class Context>
   void delayedSend(const Address& src, const Address& dst, TriggerID trig,
-                   const T& value, Outbox& outbox, const TimerType& tmty, int delay);
-  template <class T>
+                   const T& value, Outbox& outbox, Context& context, const TimerType& tmty, int delay);
+  template <class T, class TrigDispatcher, class Context>
   void delayedSend(const Address& src, const Address& dst, TriggerID trig,
-                   T&& value, Outbox& outbox, const TimerType& tmty, int delay);
+                   T&& value, Outbox& outbox, Context& context, const TimerType& tmty, int delay);
 
   // Accessors
   ProgramContext& getContext(const Address& addr);
@@ -81,7 +81,7 @@ void Engine::run() {
       [this](Peer& p) { return make_shared<Context>(*this, p); });
   auto rdy_callback = [this]() { ready_peers_++; };
 
-  auto tmp_peers = new std::unordered_map<Address, shared_ptr<Peer>>();
+  auto tmp_peers = new std::map<Address, shared_ptr<Peer>>();
   vector<YAML::Node> nodes =
       serialization::yaml::parsePeers(options_.peer_strs_);
   for (auto node : nodes) {
@@ -117,23 +117,24 @@ void Engine::run() {
 Pool::unique_ptr<Dispatcher> getDispatcher(Peer& p, Pool::unique_ptr<NativeValue>, TriggerID trig);
 string getTriggerName(int);
 
-template <class T>
+template <class T, class TrigDispatcher, class Context>
 void Engine::send(const Address& src, const Address& dst, TriggerID trig,
-                  T&& value, Outbox& outbox) {
-  if (!peers_) {
-    throw std::runtime_error(
-        "Engine send(): Can't send before peers_ is initialized");
-  }
-  if (logger_->level() <= spdlog::level::debug) {
-    logger_->debug() << "Message: " << src.toString() << " --> "
-                    << dst.toString() << " @"
-                    << getTriggerName(trig);
-  }
+                  T&& value, Outbox& outbox, Context& context) {
+  //if (!peers_) {
+  //  throw std::runtime_error(
+  //      "Engine send(): Can't send before peers_ is initialized");
+  //}
+  //if (logger_->level() <= spdlog::level::debug) {
+  //  logger_->debug() << "Message: " << src.toString() << " --> "
+  //                  << dst.toString() << " @"
+  //                  << getTriggerName(trig);
+  //}
   auto it = peers_->find(dst);
   if (options_.local_sends_enabled_ && it != peers_->end()) {
     // Stash in outbox local messages
     Pool::unique_ptr<NativeValue> nv = Pool::getInstance().make_unique_subclass<NativeValue, TNativeValue<T>>(std::move(value));
-    auto d = getDispatcher(*it->second, std::move(nv), trig);
+    auto d = Pool::getInstance().make_unique_subclass<Dispatcher, TrigDispatcher>(dynamic_cast<Context&>(it->second->getContext()), std::move(nv)); 
+    //auto d = getDispatcher(*it->second, std::move(nv), trig);
 #ifdef K3DEBUG
     d->trigger_ = trig;
     d->source_ = src;
@@ -154,18 +155,18 @@ void Engine::send(const Address& src, const Address& dst, TriggerID trig,
   }
 }
 
-template <class T>
+template <class T, class TrigDispatcher, class Context>
 void Engine::send(const Address& src, const Address& dst, TriggerID trig,
-                  const T& value, Outbox& outbox)
+                  const T& value, Outbox& outbox, Context& c)
 {
-  send(src, dst, trig, T(value), outbox);
+  send<T, TrigDispatcher>(src, dst, trig, T(value), outbox, c);
 }
 
 
 // Delayed sends, based on timers.
-template <class T>
+template <class T, class TrigDispatcher, class Context>
 void Engine::delayedSend(const Address& src, const Address& dst, TriggerID trig,
-                         T&& value, Outbox& outbox, const TimerType& tmty, int delay)
+                         T&& value, Outbox& outbox, Context& context, const TimerType& tmty, int delay)
 {
   if (!peers_) {
     throw std::runtime_error(
@@ -180,22 +181,22 @@ void Engine::delayedSend(const Address& src, const Address& dst, TriggerID trig,
   auto timer_key = network_manager_.timerKey(tmty, src, dst, trig);
   network_manager_.addTimer(timer_key, boost::posix_time::microseconds(delay));
 
-  auto cb = [this, timer_key, src, dst, trig, value = std::move(value), &outbox]
+  auto cb = [this, timer_key, src, dst, trig, value = std::move(value), &outbox, &context]
             (const boost::system::error_code& error) mutable
   {
     if ( !error ) {
       this->network_manager_.removeTimer(timer_key);
-      this->send(src, dst, trig, std::move(value), outbox);
+      this->send<T, TrigDispatcher, Context>(src, dst, trig, std::move(value), outbox, context);
     }
   };
   network_manager_.asyncWaitTimer(timer_key, cb);
 }
 
-template <class T>
+template <class T, class TrigDispatcher, class Context>
 void Engine::delayedSend(const Address& src, const Address& dst, TriggerID trig,
-                         const T& value, Outbox& outbox, const TimerType& tmty, int delay)
+                         const T& value, Outbox& outbox, Context& context, const TimerType& tmty, int delay)
 {
-  delayedSend(src, dst, trig, T(value), outbox, tmty, delay);
+  delayedSend<T, TrigDispatcher, Context>(src, dst, trig, T(value), outbox, tmty, delay, context);
 }
 
 }  // namespace K3

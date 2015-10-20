@@ -4,6 +4,8 @@
 #include <memory>
 #include <string>
 #include <map>
+#include <vector>
+#include <functional>
 #include <list>
 
 #include <boost/asio.hpp>
@@ -14,6 +16,7 @@
 #include "types/Message.hpp"
 #include "serialization/Yaml.hpp"
 #include "serialization/Json.hpp"
+#include "types/Pool.hpp"
 
 namespace K3 {
 
@@ -33,13 +36,17 @@ class ProgramContext : public StandardBuiltins,
   explicit ProgramContext(Engine& e, Peer& p);
   virtual ~ProgramContext() { }
 
-  virtual Pool::unique_ptr<Dispatcher> __getDispatcher(Pool::unique_ptr<NativeValue>, TriggerID trig) = 0;
-  virtual Pool::unique_ptr<Dispatcher> __getDispatcher(Pool::unique_ptr<PackedValue>, TriggerID trig) = 0;
+  __attribute__((always_inline)) Pool::unique_ptr<Dispatcher> __getDispatcher(Pool::unique_ptr<NativeValue> payload, TriggerID trig) {
+      return native_dispatch_table[trig](std::move(payload));
+  }
+  __attribute__((always_inline)) Pool::unique_ptr<Dispatcher> __getDispatcher(Pool::unique_ptr<PackedValue> payload, TriggerID trig) {
+      return packed_dispatch_table[trig](std::move(payload));
+  }
 
   // Program initialization
   virtual void __patch(const YAML::Node& node);
   virtual unit_t initDecls(unit_t) = 0;
-  virtual unit_t processRole(const unit_t&) const = 0;
+  virtual unit_t processRole(const unit_t&) = 0;
 
   // Logging Helper Function
   virtual map<string, string> __prettify();
@@ -51,6 +58,8 @@ class ProgramContext : public StandardBuiltins,
 
   static map<TriggerID, string> __trigger_names_;
  protected:
+  std::vector<std::function<Pool::unique_ptr<Dispatcher>(Pool::unique_ptr<NativeValue>)>> native_dispatch_table;
+  std::vector<std::function<Pool::unique_ptr<Dispatcher>(Pool::unique_ptr<PackedValue>)>> packed_dispatch_table;
   CodecFormat __internal_format_ = K3_INTERNAL_FORMAT;
   Engine& __engine_;
   Peer& __peer_;
