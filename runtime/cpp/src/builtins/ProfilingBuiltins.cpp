@@ -135,9 +135,10 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
     __thread histogram __active_lt_profiler;
     #endif
 
-    sentinel::~sentinel() {
+    template<size_t object_size>
+    sentinel<object_size>::~sentinel() {
 #if defined(K3_LT_SAMPLE) || defined(K3_LT_HISTOGRAM)
-      __active_lt_profiler.push(lifetime.count());
+      __active_lt_profiler.push(lifetime.count(), object_size);
 #endif
     }
   }

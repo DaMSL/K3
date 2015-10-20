@@ -25,6 +25,7 @@
 #include "boost/thread/thread.hpp"
 
 #include "Common.hpp"
+#include "types/BaseString.hpp"
 
 namespace K3 {
 
@@ -91,24 +92,11 @@ class ProfilingBuiltins: public __heap_profiler {
   namespace lifetime {
     using lifetime_t = uint32_t;
 
-    class sampler {
+    class counter {
      public:
-      void push() {
-        ++object_counter;
-      }
-
-      void dump() {
-        std::cout << "Object count: " << object_counter << std::endl;
-        return;
-      }
-
+      void push() { ++object_counter; }
+      void dump() { std::cout << "Object count: " << object_counter << std::endl; }
       uint64_t object_counter;
-    };
-
-    class histogram {
-     public:
-      void push(const lifetime_t& l, const size_t& sz) { return; }
-      void dump() { return; }
     };
 
     // A reservoir sampling implementation using Algorithm L from:
@@ -116,10 +104,10 @@ class ProfilingBuiltins: public __heap_profiler {
     using LOSample = std::pair<lifetime_t, size_t>;
 
     template<size_t n = 1 << 10>
-    class reservoir_sampler {
+    class sampler {
     public:
-      reservoir_sampler(const base_string& path)
-        : out(static_cast<std::string>(path)), gen(rd), u(), sz(0)
+      sampler(const base_string& path)
+        : out(path.c_str()), gen(rd), u(), sz(0)
       {
         // Initialize w, S for use in the first instance that the reservoir is full.
         step(true);
@@ -140,11 +128,12 @@ class ProfilingBuiltins: public __heap_profiler {
       }
 
       void dump() {
-        for (auto i : reservoir) {
+        for (auto i : x) {
           out << i.first << "," << i.second << std::endl;
         }
       }
 
+     protected:
       std::ofstream out;
 
       std::random_device rd;
@@ -157,16 +146,16 @@ class ProfilingBuiltins: public __heap_profiler {
       std::array<LOSample, n> x;
     };
 
-    class equi_width_histogram {
+    class histogram {
      public:
-      template<T>
+      template<typename T>
       using HSpec = std::pair<T, T>; // Left as max value, right as bucket width.
       using Frequency = uint64_t;
 
       histogram(const base_string& path, HSpec<lifetime_t> lspec, HSpec<size_t> ospec)
-        : out(static_cast<std::string>(path)),
+        : out(path.c_str()),
           lifetime_spec(lspec), objsize_spec(ospec),
-          lbuckets(num_buckets(lifetime_spec)), obuckets(num_buckets(objsize_spec))
+          lbuckets(num_buckets(lifetime_spec)), obuckets(num_buckets(objsize_spec)),
           hdata(lbuckets * obuckets)
       {}
 
@@ -186,12 +175,13 @@ class ProfilingBuiltins: public __heap_profiler {
         return static_cast<size_t>(spec.first / spec.second);
       }
 
-      template<typename T> size_t bucket_index(const lifetime_t& l, const size_t& o) {
+      size_t bucket_index(const lifetime_t& l, const size_t& o) {
         auto lidx = (lifetime_spec.first - l) / lifetime_spec.second;
         auto sidx = (objsize_spec.first - o) / objsize_spec.second;
         return lidx * lbuckets + sidx;
       }
 
+     protected:
       std::ofstream out;
 
       HSpec<lifetime_t> lifetime_spec;
@@ -210,6 +200,7 @@ class ProfilingBuiltins: public __heap_profiler {
     extern __thread histogram __active_lt_profiler;
     #endif
 
+    template<size_t object_size>
     class sentinel {
      public:
       sentinel() {}
