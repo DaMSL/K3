@@ -65,6 +65,9 @@ $(loggingFunctions)
 hmtcTraceLogging :: Bool
 hmtcTraceLogging = False
 
+reasonWithEnv :: Bool
+reasonWithEnv = False
+
 localLog :: (Functor m, Monad m) => Text -> m ()
 localLog t = logVoid hmtcTraceLogging $ T.unpack t
 
@@ -411,8 +414,14 @@ runTInfES e m = either (Left . T.unpack) Right $ runTInfE e m
 
 reasonM :: (Text -> Text) -> TInfM a -> TInfM a
 reasonM errf = mapExceptT $ \m -> m >>= \case
-  Left  err -> get >>= \env -> (return . Left $ errf $ T.unlines [err, T.pack "Type environment:", PT.pretty env])
+  Left  err -> get >>= \env -> (return . Left $ errf $ reasonMsg err env)
   Right r   -> return $ Right r
+
+  where
+    reasonMsg err env =
+      if reasonWithEnv
+        then T.unlines [err, T.pack "Type environment:", PT.pretty env]
+        else err
 
 errorM :: Text -> TInfM a
 errorM msg = reasonM id $ throwE msg
