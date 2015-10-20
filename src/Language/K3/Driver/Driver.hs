@@ -13,6 +13,8 @@ import Control.Monad.State
 import Data.Char
 import Data.Maybe
 
+import Debug.Trace
+
 import Criterion.Measurement
 import Database.HsSqlPpp.Parser
 import GHC.IO.Encoding
@@ -73,9 +75,9 @@ reasonM msg m = withExceptT (msg ++) m
 transformM :: CompileStages -> K3 Declaration -> TransformM (K3 Declaration, [String])
 transformM cstages prog = foldM processStage (prog, []) cstages
   where
-    processStage (p,lg) SDeclPrepare     = chainLog   lg $ ST.runDeclPreparePassesM p
+    processStage (p,lg) SDeclPrepare     = trace "Running SDeclPrepare stage." $ chainLog   lg $ ST.runDeclPreparePassesM p
+    processStage (p,lg) SCodegen         = trace "Running SCodegen stage."     $ chainLog   lg $ ST.runCGPassesM p
     processStage (p,lg) (SDeclOpt cSpec) = wrapReport lg $ ST.runDeclOptPassesM cSpec Nothing p
-    processStage (p,lg) SCodegen         = chainLog   lg $ ST.runCGPassesM p
 
     chainLog   lg m = m >>= return . (,lg)
     wrapReport lg m = m >>= \np -> get >>= \st -> return (np, lg ++ (prettyLines $ ST.report st))
