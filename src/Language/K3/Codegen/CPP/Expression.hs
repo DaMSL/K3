@@ -626,7 +626,8 @@ inline e@(tag &&& children -> (EOperate OSnd, [tag &&& children -> (ETuple, [tri
     let messageValue = passBy (getInMethodFor "!" e) val vv
     trigTypes <- getKType val >>= genCType
     let me = R.Variable $ R.Name "me"
-    let commonSArgs = [me, av, R.Variable $ R.Name tIdName, messageValue]
+    let outbox = R.Call (R.Project (R.Variable $ R.Name "__peer_") (R.Name "getOutbox")) []
+    let commonSArgs = [me, av, R.Variable $ R.Name tIdName, messageValue, outbox]
 
     (sName, sArgs) <- case (e @~ isEDelay, e @~ isEDelayOverride, e @~ isEDelayOverrideEdge) of
                        (Just (EProperty (ePropertyValue -> Just (tag -> LInt delay))), Nothing, Nothing) ->

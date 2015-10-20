@@ -3,8 +3,7 @@
 
 #include <queue>
 
-
-#include <concurrentqueue/blockingconcurrentqueue.h>
+#include <concurrentqueue/concurrentqueue.h>
 
 #include "types/Pool.hpp"
 
@@ -16,12 +15,13 @@ class Queue {
   Queue();
   void enqueue(Pool::unique_ptr<Dispatcher> m);
   void enqueue(shared_ptr<moodycamel::ProducerToken> token, Pool::unique_ptr<Dispatcher> m);
+  void enqueueBulk(vector<Pool::unique_ptr<Dispatcher>>& ms);
   Pool::unique_ptr<Dispatcher> dequeue();
   size_t dequeueBulk(vector<Pool::unique_ptr<Dispatcher>>& ms);
   shared_ptr<moodycamel::ProducerToken> newProducerToken();
 
  protected:
-  moodycamel::BlockingConcurrentQueue<Pool::unique_ptr<Dispatcher>> queue_;
+  moodycamel::ConcurrentQueue<Pool::unique_ptr<Dispatcher>> queue_;
 };
 
 }  // namespace K3

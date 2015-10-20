@@ -16,6 +16,21 @@
 
 namespace K3 {
 
+void Outbox::flushOne(const Address& addr, vector<Pool::unique_ptr<Dispatcher>>& batch, const PeerMap& peers) {
+    auto addr_queue = peers.find(addr);
+    if (addr_queue == peers.end()) {
+      throw std::runtime_error("Unknown queue for addresss: " + addr.toString());
+    }
+    addr_queue->second->getQueue().enqueueBulk(batch);
+    batch.clear();
+}
+  
+void Outbox::flushAll(const PeerMap& peers) {
+  for (auto& addr_batch : pending_) {
+    flushOne(addr_batch.first, addr_batch.second, peers);
+  }
+}
+
 Peer::Peer(PeerMap& peers, shared_ptr<ContextFactory> fac, const YAML::Node& config,
            std::function<void()> callback, const JSONOptions& opts) : peers_(peers) {
   // Initialization
@@ -52,8 +67,13 @@ Peer::Peer(PeerMap& peers, shared_ptr<ContextFactory> fac, const YAML::Node& con
     callback();
     while (!start_processing_) continue;
     try {
+      int count = 0;
       while (true) {
         processBatch();
+        if (++count == 10) {
+          outbox_.flushAll(peers_);
+          count = 0;
+        }
       }
     } catch (EndOfProgramException e) {
       finished_ = true;
@@ -203,4 +223,5 @@ void Peer::printStatistics() {
   }
   std::cout << "Total time in all triggers: " << total << std::endl;
 }
+
 }  // namespace K3

@@ -139,7 +139,7 @@ void Engine::send(const Address& src, const Address& dst, TriggerID trig,
     d->source_ = src;
     d->destination_ = dst;
 #endif
-    outbox.stash(dst, std::move(d));
+    outbox.stash(dst, std::move(d), *peers_);
     //it->second->getQueue().enqueue(std::move(d));
   } else {
     // Serialize and send over the network, otherwise

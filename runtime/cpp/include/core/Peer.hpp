@@ -28,11 +28,16 @@ class ProgramContext;
 class Outbox {
   public:
     Outbox () { }
-    void stash(const Address& a, Pool::unique_ptr<Dispatcher> d) {
-      pending_[a].push_back(std::move(d));
+    void stash(const Address& a, Pool::unique_ptr<Dispatcher> d, const PeerMap& peers) {
+      auto& ref = pending_[a];
+      ref.push_back(std::move(d));
+      if (ref.size() >= 1000) {
+        flushOne(a, ref, peers);
+      }
     }
-
-  protected:
+    void flushOne(const Address& addr, vector<Pool::unique_ptr<Dispatcher>>& batch, const PeerMap& peers);
+    void flushAll(const PeerMap& peers);
+ protected:
     std::map<Address, std::vector<Pool::unique_ptr<Dispatcher>>> pending_;
 };
 

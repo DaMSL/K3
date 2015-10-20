@@ -139,11 +139,11 @@ program (tag &&& children -> (DRole name, decls)) = do
 
   where
     mkContextConstructor contextName body =
-      R.FunctionDefn contextName [(Just "__engine", R.Reference $ R.Named (R.Name "Engine"))]
+      R.FunctionDefn contextName [(Just "__engine", R.Reference $ R.Named (R.Name "Engine")), (Just "__peer", R.Reference $ R.Named (R.Name "Peer"))]
         Nothing
         [ R.Call
             (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "ProgramContext")
-            [R.Variable $ R.Name "__engine"]
+            [R.Variable $ R.Name "__engine", R.Variable $ R.Name "__peer"]
         ]
         False
         body
@@ -241,6 +241,7 @@ requiredAliases = return
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "make_address"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Dispatcher"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "NativeValue"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "Peer"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "TNativeValue"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "PackedValue"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Options"), Nothing)
