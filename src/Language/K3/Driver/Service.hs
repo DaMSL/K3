@@ -1066,7 +1066,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
 
     -- | Abort compilation.
     abortProgram pidOpt rid rq reason = do
-      mlogM $ unwords ["Aborting program", rq, maybe "" show pidOpt]
+      mlogM $ unwords ["Aborting program", rq, maybe "" show pidOpt, take 100 reason ++ "..."]
       cid <- zm $ getMR rid >>= maybe (requestError rid) return
       abortRequest pidOpt cid rid rq reason
 
