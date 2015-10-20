@@ -1,10 +1,13 @@
 #ifndef K3_PROFILINGBUILTINS
 #define K3_PROFILINGBUILTINS
 
+#include <cstdint>
+#include <cmath>
 #include <string>
+#include <fstream>
 #include <chrono>
 #include <atomic>
-#include <cstdint>
+#include <random>
 
 #ifdef K3_PCM
 #include <cpucounters.h>
@@ -104,13 +107,99 @@ class ProfilingBuiltins: public __heap_profiler {
 
     class histogram {
      public:
-      void push() {
-        return;
+      void push(const lifetime_t& l, const size_t& sz) { return; }
+      void dump() { return; }
+    };
+
+    // A reservoir sampling implementation using Algorithm L from:
+    // http://dl.acm.org/citation.cfm?id=198435
+    using LOSample = std::pair<lifetime_t, size_t>;
+
+    template<size_t n = 1 << 10>
+    class reservoir_sampler {
+    public:
+      reservoir_sampler(const base_string& path)
+        : out(static_cast<std::string>(path)), gen(rd), u(), sz(0)
+      {
+        // Initialize w, S for use in the first instance that the reservoir is full.
+        step(true);
+      }
+
+      void step(bool initial = false) {
+        w = (initial? 1 : w) * exp(log(u(gen))/static_cast<double>(n));
+        S = std::floor( log(u(gen)) / log(1-w) );
+      }
+
+      void push(const lifetime_t& l, const size_t& o) {
+        if ( sz < n ) { x[sz] = std::make_pair(l,o); sz++; }
+        else if ( S > 0 ) { S--; }
+        else {
+          x[std::floor(n*u(gen))] = std::make_pair(l, o);
+          step();
+        }
       }
 
       void dump() {
-        return;
+        for (auto i : reservoir) {
+          out << i.first << "," << i.second << std::endl;
+        }
       }
+
+      std::ofstream out;
+
+      std::random_device rd;
+      std::mt19937 gen;
+      std::uniform_real_distribution<> u;
+
+      uint64_t S;
+      uint32_t sz;
+      double w;
+      std::array<LOSample, n> x;
+    };
+
+    class equi_width_histogram {
+     public:
+      template<T>
+      using HSpec = std::pair<T, T>; // Left as max value, right as bucket width.
+      using Frequency = uint64_t;
+
+      histogram(const base_string& path, HSpec<lifetime_t> lspec, HSpec<size_t> ospec)
+        : out(static_cast<std::string>(path)),
+          lifetime_spec(lspec), objsize_spec(ospec),
+          lbuckets(num_buckets(lifetime_spec)), obuckets(num_buckets(objsize_spec))
+          hdata(lbuckets * obuckets)
+      {}
+
+      void push(const lifetime_t& l, const size_t& o) {
+        hdata[bucket_index(l, o)] += 1;
+      }
+
+      void dump() {
+        for (size_t i = 0; i < lbuckets; ++i) {
+          for (size_t j = 0; j < obuckets; ++j) {
+            out << i << "," << j << "," << hdata[i*lbuckets+j] << std::endl;
+          }
+        }
+      }
+
+      template<typename T> size_t num_buckets(const HSpec<T>& spec) {
+        return static_cast<size_t>(spec.first / spec.second);
+      }
+
+      template<typename T> size_t bucket_index(const lifetime_t& l, const size_t& o) {
+        auto lidx = (lifetime_spec.first - l) / lifetime_spec.second;
+        auto sidx = (objsize_spec.first - o) / objsize_spec.second;
+        return lidx * lbuckets + sidx;
+      }
+
+      std::ofstream out;
+
+      HSpec<lifetime_t> lifetime_spec;
+      HSpec<size_t> objsize_spec;
+      size_t lbuckets;
+      size_t obuckets;
+
+      vector<Frequency> hdata;
     };
 
     #ifdef K3_LT_SAMPLE
