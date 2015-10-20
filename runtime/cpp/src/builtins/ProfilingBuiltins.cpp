@@ -136,9 +136,6 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
     #endif
 
     sentinel::~sentinel() {
-      auto end = std::chrono::high_resolution_clock::now();
-      auto lifetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
-
 #if defined(K3_LT_SAMPLE) || defined(K3_LT_HISTOGRAM)
       __active_lt_profiler.push(lifetime.count());
 #endif
