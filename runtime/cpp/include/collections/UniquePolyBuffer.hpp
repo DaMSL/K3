@@ -32,7 +32,7 @@ using UPBKey = std::pair<Tag, void*>;
 template<class T, typename Tag>
 struct UPBEqual : std::binary_function<UPBKey<Tag>, UPBKey<Tag>, bool> {
   bool operator()(const UPBKey<Tag>& left, const UPBKey<Tag>& right) const {
-    return T::hashelem(left.first, left.second) == T::hashelem(right.first, right.second);
+    return T::equalelem(left.first, left.second, right.first, right.second);
   }
 };
 

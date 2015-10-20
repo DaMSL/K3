@@ -569,7 +569,31 @@ polybuffer name ans = do
     extra_fns :: [Int] -> [R.Type] -> CPPGenM [R.Definition]
     extra_fns [] [] = return []
     extra_fns tags types = catMaybes <$> mapM (\f -> f tags types)
-      [hashelem_fn, elemsize_fn, externalize_fn, internalize_fn, yamlencode_fn, yamldecode_fn, jsonencode_fn]
+      [equalelem_fn, hashelem_fn, elemsize_fn,
+       externalize_fn, internalize_fn,
+       yamlencode_fn, yamldecode_fn, jsonencode_fn]
+
+    equalelem_fn :: [Int] -> [R.Type] -> CPPGenM (Maybe R.Definition)
+    equalelem_fn tags types = do
+      let void_ptr_t = R.Pointer $ R.Void
+      return $ Just $ R.FunctionDefn (R.Name "equalelem")
+                        [(Just "ltag", tag_t), (Just "lelem", void_ptr_t),
+                         (Just "rtag", tag_t), (Just "relem", void_ptr_t)]
+                        (Just $ R.Named $ R.Name "static bool")
+                        []
+                        False
+                        [R.IfThenElse (R.Binary "==" (R.Variable $ R.Name "ltag") (R.Variable $ R.Name "rtag"))
+                          [branch_chain "ltag" tags types elseStmt elemStmt]
+                          [R.Return $ R.Literal $ R.LBool False]]
+
+      where
+        elemStmt _ ty = R.Return $ R.Binary "==" (deref "lelem" ty) (deref "relem" ty)
+
+        deref n ty = R.Dereference $
+                       R.Call (R.Variable $ R.Specialized [R.Pointer ty] $ R.Name "reinterpret_cast")
+                         [R.Variable $ R.Name n]
+
+        elseStmt = R.Ignore $ R.ThrowRuntimeErr $ R.Literal $ R.LString "Invalid poly buffer tag"
 
     hashelem_fn :: [Int] -> [R.Type] -> CPPGenM (Maybe R.Definition)
     hashelem_fn tags types = do
