@@ -29,19 +29,10 @@ namespace Libdynamic {
 template<typename Tag>
 using UPBKey = std::pair<Tag, void*>;
 
-template<class T>
-struct UPBEqual : std::binary_function<T, T, bool> {
-  bool operator()(T const& left, T const& right) const {
-    std::equal_to<T> equal;
-    return equal(left, right);
-  }
-};
-
-template<class T>
-struct UPBEqual<T*> : std::binary_function<T*, T*, bool> {
-  bool operator()(T* const & left, T* const & right) const {
-    UPBEqual<T> equal;
-    return equal(*left, *right);
+template<class T, typename Tag>
+struct UPBEqual : std::binary_function<UPBKey<Tag>, UPBKey<Tag>, bool> {
+  bool operator()(const UPBKey<Tag>& left, const UPBKey<Tag>& right) const {
+    return T::hashelem(left.first, left.second) == T::hashelem(right.first, right.second);
   }
 };
 
@@ -151,7 +142,7 @@ public:
   BOOST_SERIALIZATION_SPLIT_MEMBER()
 
 private:
-  std::unordered_set<UPBKey<Tag>, UPBHash<Derived, Tag>, UPBEqual<UPBKey<Tag>>> keys;
+  std::unordered_set<UPBKey<Tag>, UPBHash<Derived, Tag>, UPBEqual<Derived, Tag>> keys;
 };
 
 }; // end namespace Libdynamic
