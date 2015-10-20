@@ -40,6 +40,10 @@ annotation MapE[key: [labeltype], value: [labeltype]] given type a,b,c,d
   provides lifted erase : $[|mkRecord 'key|] -> ()
     with effects \key -> [R[self]; R[key]; W[self]]
 
+  @:CArgs 3
+  provides lifted erase_with : $[|mkRecord 'key|] -> (() -> a) -> (content -> a) -> a
+    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; W[self]; noneF none; someF content]
+
   @:CArgs 2
   provides lifted insert_with : content -> (content -> content -> content) -> ()
     with effects \elem -> \f -> [R[self]; R[elem]; ((f content) content); W[self]]
