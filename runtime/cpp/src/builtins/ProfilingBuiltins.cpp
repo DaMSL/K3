@@ -136,7 +136,9 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
     #endif
 
     sentinel::~sentinel() {
-       __active_lt_profiler.push();
+#if defined(K3_LT_SAMPLE) || defined(K3_LT_HISTOGRAM)
+      __active_lt_profiler.push(lifetime.count());
+#endif
     }
   }
 
