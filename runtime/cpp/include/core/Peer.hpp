@@ -6,6 +6,7 @@
 #include <memory>
 #include <thread>
 #include <chrono>
+#include <map>
 #include <vector>
 
 #ifdef _WIN32
@@ -15,22 +16,37 @@
 #include <yaml-cpp/yaml.h>
 
 #include "Options.hpp"
+#include "Common.hpp"
 #include "types/Dispatcher.hpp"
 #include "types/Queue.hpp"
+#include "types/Pool.hpp"
 
 namespace K3 {
 
 class ProgramContext;
+
+class Outbox {
+  public:
+    Outbox () { }
+    void stash(const Address& a, Pool::unique_ptr<Dispatcher> d) {
+      pending_[a].push_back(std::move(d));
+    }
+
+  protected:
+    std::map<Address, std::vector<Pool::unique_ptr<Dispatcher>>> pending_;
+};
+
 class Peer {
  public:
   // Core Interface
-  Peer(shared_ptr<ContextFactory> fac, const YAML::Node& peer_config,
+  Peer(PeerMap& peers, shared_ptr<ContextFactory> fac, const YAML::Node& peer_config,
        std::function<void()> ready_callback, const JSONOptions& json);
   void start();
   void processRole();
   void join();
 
-  Queue& getQueue();
+  Queue& getQueue() { return *queue_; }
+  Outbox& getOutbox() { return outbox_; }
 
   // Utilities
   bool finished();
@@ -51,6 +67,8 @@ class Peer {
   shared_ptr<spdlog::logger> logger_;
   shared_ptr<std::thread> thread_;
   shared_ptr<Queue> queue_;
+  Outbox outbox_;
+  const PeerMap& peers_;
 
   // Configuration
   JSONOptions json_opts_;

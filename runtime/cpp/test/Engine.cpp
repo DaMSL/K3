@@ -86,7 +86,7 @@ class EngineTest : public ::testing::Test {
 
 class DummyContext : public ProgramContext {
  public:
-  explicit DummyContext(Engine& e);
+  explicit DummyContext(Engine& e, Peer& p);
   Pool::unique_ptr<Dispatcher> __getDispatcher(Pool::unique_ptr<NativeValue>,
                                                  TriggerID trig);
   Pool::unique_ptr<Dispatcher> __getDispatcher(Pool::unique_ptr<PackedValue>,
@@ -268,7 +268,7 @@ class StringTriggerPackedDispatcher : public Dispatcher {
   Pool::unique_ptr<PackedValue> value_;
 };
 
-DummyContext::DummyContext(Engine& e) : ProgramContext(e) {}
+DummyContext::DummyContext(Engine& e, Peer& p) : ProgramContext(e, p) {}
 
 Pool::unique_ptr<Dispatcher> DummyContext::__getDispatcher(Pool::unique_ptr<NativeValue> nv,
                                                      TriggerID t) {
@@ -306,7 +306,7 @@ void DummyContext::__patch(const YAML::Node& node) {
 
 unit_t DummyContext::processRole(const unit_t&) const {
   if (role == "main") {
-    __engine_.send<unit_t>(me, me, 3, unit_t{});
+    __engine_.send<unit_t>(me, me, 3, unit_t{}, __peer_.getOutbox());
   }
   return unit_t{};
 }
@@ -323,9 +323,9 @@ void DummyContext::stringTrigger(std::string s) {
 
 void DummyContext::mainTrigger(unit_t) {
   for (int i = 0; i < 100; i++) {
-    __engine_.send<int>(me, me, 1, i);
+    __engine_.send<int>(me, me, 1, i, __peer_.getOutbox());
   }
-  __engine_.send<unit_t>(me, me, 4, unit_t{});
+  __engine_.send<unit_t>(me, me, 4, unit_t{}, __peer_.getOutbox());
   return;
 }
 

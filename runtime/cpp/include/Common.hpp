@@ -54,7 +54,8 @@ typedef const boost::system::error_code& boost_error;
 typedef int TriggerID;
 typedef std::vector<char> Buffer;
 class ProgramContext;
-typedef std::function<shared_ptr<ProgramContext>()> ContextFactory;
+class Peer;
+typedef std::function<shared_ptr<ProgramContext>(Peer&)> ContextFactory;
 
 struct Address {
  public:
@@ -158,6 +159,9 @@ class EndOfProgramException : public std::runtime_error {
  public:
   EndOfProgramException() : runtime_error("Peer terminated.") {}
 };
+
+
+using PeerMap = std::unordered_map<Address, shared_ptr<Peer>>;
 
 // Thread-safe map from Key to Val.
 // Val should be a pointer type.

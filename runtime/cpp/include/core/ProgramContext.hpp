@@ -30,7 +30,7 @@ class ProgramContext : public StandardBuiltins,
                        public VectorBuiltins,
                        public AmplabLoaders {
  public:
-  explicit ProgramContext(Engine& e);
+  explicit ProgramContext(Engine& e, Peer& p);
   virtual ~ProgramContext() { }
 
   virtual Pool::unique_ptr<Dispatcher> __getDispatcher(Pool::unique_ptr<NativeValue>, TriggerID trig) = 0;
@@ -53,6 +53,7 @@ class ProgramContext : public StandardBuiltins,
  protected:
   CodecFormat __internal_format_ = K3_INTERNAL_FORMAT;
   Engine& __engine_;
+  Peer& __peer_;
 };
 
 
