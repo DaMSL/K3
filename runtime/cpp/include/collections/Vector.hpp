@@ -52,8 +52,9 @@ class Vector : public VectorDS<K3::Vector, Elem> {
   template <class Q>
   unit_t set_all(Q&& q) {
     auto& vec = Super::getContainer();
-    for (auto i = vec.begin(); i != vec.end(); ++i) {
-      *i = std::forward<Q>(q);
+    auto sz = vec.size();
+    for (auto i = 0; i < sz; ++i) {
+      vec[i] = std::forward<Q>(q);
     }
     return unit_t();
   }
@@ -104,6 +105,7 @@ class Vector : public VectorDS<K3::Vector, Elem> {
 };
 
 
+#ifdef USE_BITVECTOR
 // Specialization for a vector of bools.
 template <>
 class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
@@ -127,12 +129,12 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
     bool_iterator& operator++() { ++i; return *this; }
     bool_iterator operator++(int) { bool_iterator t = *this; ++i; return t; }
 
-    auto operator -> () {
+    auto operator -> () const {
       current = RElem(*i);
       return &current;
     }
 
-    auto& operator*() {
+    auto& operator*() const {
       current = RElem(*i);
       return current;
     }
@@ -202,26 +204,26 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
     return f(RElem{ vec[i] });
   }
 
-  unit_t set(int i, const RElem& v) {
+  unit_t set(int i, RElem&& v) {
     auto& vec = Super::getContainer();
     vec[i] = v.elem;
     return unit_t();
   }
 
-  unit_t set_all(const RElem& q) {
+  unit_t set_all(RElem&& q) {
     auto& vec = Super::getContainer();
-    for (auto i = vec.begin(); i != vec.end(); ++i) {
+    for (auto i = vec.begin(); i != vec.end; ++i) {
       *i = q.elem;
     }
     return unit_t();
   }
 
-  unit_t insert(const RElem &e) {
+  unit_t insert(RElem &&e) {
     container.insert(container.end(), e.elem);
     return unit_t();
   }
 
-  unit_t update(const RElem& v, const RElem& v2) {
+  unit_t update(const RElem& v, RElem&& v2) {
     auto it = std::find(container.begin(), container.end(), v.elem);
     if (it != container.end()) {
       *it = v2.elem;
@@ -237,7 +239,7 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
     return unit_t();
   }
 
-  unit_t insert_at(int i, const RElem& v) {
+  unit_t insert_at(int i, RElem&& v) {
     auto& vec = Super::getContainer();
     if (i >= vec.size()) {
       vec.resize(i + 1);
@@ -316,6 +318,7 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
  private:
   friend class boost::serialization::access;
 };
+#endif
 
 }  // namespace K3
 
@@ -344,6 +347,7 @@ struct convert<K3::Vector<E>> {
   }
 };
 
+#ifdef USE_BITVECTOR
 // Specialization for a vector of bools.
 template <>
 struct convert<K3::Vector<R_elem<bool>>> {
@@ -368,6 +372,8 @@ struct convert<K3::Vector<R_elem<bool>>> {
     return true;
   }
 };
+#endif
+
 }  // namespace YAML
 
 namespace JSON {
@@ -389,6 +395,7 @@ struct convert<K3::Vector<E>> {
   }
 };
 
+#ifdef USE_BITVECTOR
 template <>
 struct convert<K3::Vector<R_elem<bool>>> {
   template <class Allocator>
@@ -405,6 +412,7 @@ struct convert<K3::Vector<R_elem<bool>>> {
     return v;
   }
 };
+#endif
 }  // namespace JSON
 
 #endif
