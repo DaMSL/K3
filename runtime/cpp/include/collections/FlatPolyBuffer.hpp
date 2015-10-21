@@ -152,7 +152,7 @@ public:
   using ExternalizerT = BufferExternalizer;
   using InternalizerT = BufferInternalizer;
 
-  FlatPolyBuffer() : container(), buffer(), internalized(true) {
+  FlatPolyBuffer() : container(), buffer(), internalized(false) {
     initContainer();
   }
 
@@ -279,7 +279,12 @@ public:
   virtual void yamldecode(YAML::Node& n) = 0;
   virtual rapidjson::Value jsonencode(Tag t, int idx, size_t offset, rapidjson::Value::AllocatorType& al) const = 0;
 
+  /////////////////////////////
+  //
   // Accessors.
+  // These must work on an internalized collection, and we leave
+  // it to the application to ensure internalization has happened.
+
   int size(const unit_t&) const {
     auto p = const_cast<FlatPolyBuffer*>(this);
     return vector_size(p->tags());
@@ -386,12 +391,11 @@ public:
     VContainer* ncv = const_cast<VContainer*>(variablec());
 
     ExternalizerT etl(ncv, ExternalizerT::ExternalizeOp::Create);
-    InternalizerT itl(ncv);
 
     size_t offset = buffer_size(ncf);
     int status = buffer_insert(ncf, offset, reinterpret_cast<char*>(const_cast<T*>(&t)), sizeof(t));
     if ( status == 0 ) {
-      reinterpret_cast<T*>(buffer_data(ncf)+offset)->externalize(etl).internalize(itl);
+      reinterpret_cast<T*>(buffer_data(ncf)+offset)->externalize(etl);
       vector_push_back(tags(), const_cast<Tag*>(&tg));
     } else {
       throw std::runtime_error("Append failed on a FPB");
@@ -473,7 +477,7 @@ public:
     TContainer* nct = tags();
 
     // Reset element pointers to slot ids as necessary.
-    repack(unit_t{});
+    if ( internalized ) { repack(unit_t{}); }
 
     size_t fixed_sz = fixseg_size();
     size_t var_sz   = varseg_size();
@@ -562,7 +566,7 @@ public:
 
     // Reset element pointers to slot ids as necessary.
     auto p = const_cast<FlatPolyBuffer*>(this);
-    p->repack(unit_t{});
+    if ( p->internalized ) { p->repack(unit_t{}); }
 
     size_t fixed_sz = fixseg_size();
     size_t var_sz   = varseg_size();
@@ -618,7 +622,7 @@ public:
   template <class archive>
   void serialize(archive& a) const {
     auto p = const_cast<FlatPolyBuffer*>(this);
-    p->repack(unit_t {});
+    if ( p->internalized ) { p->repack(unit_t {}); }
 
     FContainer* ncf = fixed();
     VContainer* ncv = variable();
