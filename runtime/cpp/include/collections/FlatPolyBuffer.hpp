@@ -61,7 +61,14 @@ public:
   {
     if ( op == ExternalizeOp::Create ) {
       size_t offset = buffer_size(vcon);
-      int status = buffer_insert(vcon, offset, const_cast<char*>(str.data()), str.raw_length()+1);
+      size_t len = str.raw_length() + 1;
+      size_t gap = 8 - ((offset + len) % 8);
+      char filler[gap] = { 0 };
+
+      int status = buffer_insert(vcon, offset, const_cast<char*>(str.data()), len);
+      if ( status == 0 ) {
+        status = buffer_insert(vcon, offset+len, &(gap_data[0]), gap);
+      }
       if ( status == 0 ) {
         intptr_t* p = reinterpret_cast<intptr_t*>(&str);
         *p = offset;
