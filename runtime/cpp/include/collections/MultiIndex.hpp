@@ -147,7 +147,7 @@ class MultiIndexDS {
   }
 
   // Split the ds at its midpoint
-  tuple<Derived<Elem, Indexes...>, Derived<Elem, Indexes...>> split(const unit_t&) const {
+  std::tuple<Derived<Elem, Indexes...>, Derived<Elem, Indexes...>> split(const unit_t&) const {
     // Find midpoint
     const size_t size = container.size();
     const size_t half = size / 2;
@@ -203,7 +203,7 @@ class MultiIndexDS {
   Derived<R_key_value<RT<F1, Elem>,Z>> group_by(F1 grouper, F2 folder, const Z& init) const {
     // Create a map to hold partial results
     typedef RT<F1, Elem> K;
-    unordered_map<K, Z> accs;
+    std::unordered_map<K, Z> accs;
 
     for (const auto& elem : container) {
        K key = grouper(elem);
@@ -544,6 +544,21 @@ public:
   }
 };
 
+// Allocators.
+#ifdef BSL_ALLOC
+#ifdef BSEQ
+extern BloombergLP::bdlma::SequentialAllocator mpool;
+#elif BPOOLSEQ
+extern BloombergLP::bdlma::SequentialAllocator seqpool;
+extern BloombergLP::bdlma::MultipoolAllocator mpool;
+#elif BLOCAL
+constexpr size_t lsz = 2<<14;
+extern BloombergLP::bdlma::LocalSequentialAllocator<lsz> mpool;
+#else
+extern BloombergLP::bdlma::MultipoolAllocator mpool;
+#endif
+#endif
+
 template <typename R, typename... Indexes>
 class MultiIndexVMap
 {
@@ -574,20 +589,8 @@ class MultiIndexVMap
 
   // Allocators.
   #ifdef BSL_ALLOC
-    #ifdef BSEQ
-    BloombergLP::bdlma::SequentialAllocator mpool;
-    #elif BPOOLSEQ
-    BloombergLP::bdlma::SequentialAllocator seqpool;
-    BloombergLP::bdlma::MultipoolAllocator mpool;
-    #elif BLOCAL
-    constexpr size_t lsz = 2<<14;
-    BloombergLP::bdlma::LocalSequentialAllocator<lsz> mpool;
-    #else
-    BloombergLP::bdlma::MultipoolAllocator mpool;
-    #endif
-
-    BloombergLP::bsl::allocator<VElem<R, Version>> oalloc;
-    BloombergLP::bsl::allocator<std::pair<Version, R>> ialloc;
+    bsl::allocator<VElem<R, Version>> oalloc;
+    bsl::allocator<std::pair<Version, R>> ialloc;
   #else
     std::allocator<VElem<R, Version>> oalloc;
     std::allocator<std::pair<Version, R>> ialloc;
@@ -599,15 +602,6 @@ class MultiIndexVMap
  public:
   MultiIndexVMap() :
     #ifdef BSL_ALLOC
-      #if BSEQ
-      mpool(),
-      #elif BPOOLSEQ
-      mpool(8, seqpool),
-      #elif BLOCAL
-      mpool(),
-      #else
-      mpool(8),
-      #endif
       oalloc(&mpool),
       ialloc(&mpool),
     #endif
@@ -984,7 +978,7 @@ class MultiIndexVMap
     return result;
   }
 
-  tuple<MultiIndexVMap, MultiIndexVMap> split(const unit_t&) const {
+  std::tuple<MultiIndexVMap, MultiIndexVMap> split(const unit_t&) const {
     // Find midpoint
     const size_t size = container.size();
     const size_t half = size / 2;
@@ -1053,7 +1047,7 @@ class MultiIndexVMap
   {
     // Create a map to hold partial results
     using K = RT<F1, R>;
-    unordered_map<K, VContainer<Z>> accs;
+    std::unordered_map<K, VContainer<Z>> accs;
 
     for (const auto& elem : container) {
       auto& vmap = std::get<1>(elem);

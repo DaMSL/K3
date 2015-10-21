@@ -51,6 +51,7 @@ set (srcs src/core/Engine.cpp
           src/Options.cpp
           src/Prettify.cpp
           src/Common.cpp
+	  src/collections/MultiIndex.cpp
     )
 
 set (link_libs k3 ${Boost_LIBRARIES} ${YAMLCPP_LIBRARY} ${CSVPP_LIBRARY} dynamic)
