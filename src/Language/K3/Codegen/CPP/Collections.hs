@@ -59,8 +59,6 @@ composite name ans content_ts = do
     -- When dealing with Indexes, we need to specialize the MultiIndex* classes on each index type
     (indexTypes, indexDefns) <- indexes name as content_ts
 
-    -- FlatPolyBuffer member generation.
-    pbufDefns <- polybuffer name ras
 
     let selfType = R.Named $ R.Specialized [R.Named $ R.Name "__CONTENT"] $ R.Name name
 
@@ -74,6 +72,9 @@ composite name ans content_ts = do
                            (R.Name $ overrideGeneratedName n))
 
     let baseClasses = map baseClass ras
+
+    -- FlatPolyBuffer member generation.
+    pbufDefns <- polybuffer name ras
 
     let defaultConstructor
             = R.FunctionDefn (R.Name name) [] Nothing [R.Call (R.Variable b) [] | b <- baseClasses] False []

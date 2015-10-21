@@ -145,17 +145,15 @@ public:
   using ExternalizerT = BufferExternalizer;
   using InternalizerT = BufferInternalizer;
 
-  FlatPolyBuffer() : container(), internalized(false) {
+  FlatPolyBuffer() : container(), buffer(), internalized(true) {
     initContainer();
   }
 
-  FlatPolyBuffer(const FlatPolyBuffer& other) : container(), buffer() {
-    internalized = other.internalized;
-    initContainer();
+  FlatPolyBuffer(const FlatPolyBuffer& other) : FlatPolyBuffer() {
     copyPolyBuffer(other);
   }
 
-  FlatPolyBuffer(FlatPolyBuffer&& other) : container(), buffer() {
+  FlatPolyBuffer(FlatPolyBuffer&& other) : FlatPolyBuffer() {
     swapPolyBuffer(std::forward<FlatPolyBuffer>(other));
   }
 
@@ -203,8 +201,12 @@ public:
     copyBuffer(variable(), p->variable());
     copyVector(tags(), p->tags());
 
-    // Internalize this container to ensure its pointers are self-contained.
-    unpack(unit_t{});
+    // This container is left externalized.
+    // We expect the child class constructor to unpack()
+    // or alternatively, unpack() on demand (before iterate, etc)
+    internalized = false;
+
+    // Return other container to original state
     if ( otherModified ) { p->unpack(unit_t{}); }
   }
 
@@ -417,6 +419,10 @@ public:
 
   // Externalizes an existing buffer, reusing the variable-length segment.
   unit_t repack(unit_t) {
+    if ( !internalized ) {
+      throw std::runtime_error("FlatPolyBuffer: Attempt to repack failed: already externalized");
+    }
+
     size_t foffset = 0;
     FContainer* ncf = const_cast<FContainer*>(fixedc());
     VContainer* ncv = const_cast<VContainer*>(variablec());
@@ -434,20 +440,22 @@ public:
 
   // Internalizes an existing buffer if it is not already internalized.
   unit_t unpack(unit_t) {
-    if ( !internalized ) {
-      size_t foffset = 0;
-      FContainer* ncf = const_cast<FContainer*>(fixedc());
-      VContainer* ncv = const_cast<VContainer*>(variablec());
-      InternalizerT itl(ncv);
-
-      size_t sz = size(unit_t{});
-      for (size_t i = 0; i < sz; ++i) {
-        Tag tg = tag_at(i);
-        internalize(itl, tg, buffer_data(ncf) + foffset);
-        foffset += elemsize(tg);
-      }
-      internalized = true;
+    if ( internalized ) {
+      throw std::runtime_error("FlatPolyBuffer: Attempt to unpack failed: already internalized");
     }
+
+    size_t foffset = 0;
+    FContainer* ncf = const_cast<FContainer*>(fixedc());
+    VContainer* ncv = const_cast<VContainer*>(variablec());
+    InternalizerT itl(ncv);
+
+    size_t sz = size(unit_t{});
+    for (size_t i = 0; i < sz; ++i) {
+      Tag tg = tag_at(i);
+      internalize(itl, tg, buffer_data(ncf) + foffset);
+      foffset += elemsize(tg);
+    }
+    internalized = true;
     return unit_t{};
   }
 
@@ -596,6 +604,7 @@ public:
       a.load_binary(vector_data(tags()), tags_sz * sizeof(Tag));
     }
 
+    internalized = false;
     unpack(unit_t{});
   }
 
@@ -655,6 +664,7 @@ public:
       a.read(vector_data(tags()), tags_sz * sizeof(Tag));
     }
 
+    internalized = false;
     unpack(unit_t{});
   }
 
