@@ -546,17 +546,17 @@ public:
 
 // Allocators.
 #ifdef BSL_ALLOC
-#ifdef BSEQ
-extern BloombergLP::bdlma::SequentialAllocator mpool;
-#elif BPOOLSEQ
-extern BloombergLP::bdlma::SequentialAllocator seqpool;
-extern BloombergLP::bdlma::MultipoolAllocator mpool;
-#elif BLOCAL
-constexpr size_t lsz = 2<<14;
-extern BloombergLP::bdlma::LocalSequentialAllocator<lsz> mpool;
-#else
-extern BloombergLP::bdlma::MultipoolAllocator mpool;
-#endif
+  #ifdef BSEQ
+  extern BloombergLP::bdlma::SequentialAllocator mpool;
+  #elif BPOOLSEQ
+  extern BloombergLP::bdlma::SequentialAllocator seqpool;
+  extern BloombergLP::bdlma::MultipoolAllocator mpool;
+  #elif BLOCAL
+  constexpr size_t lsz = 2<<14;
+  extern BloombergLP::bdlma::LocalSequentialAllocator<lsz> mpool;
+  #else
+  extern BloombergLP::bdlma::MultipoolAllocator mpool;
+  #endif
 #endif
 
 template <typename R, typename... Indexes>
