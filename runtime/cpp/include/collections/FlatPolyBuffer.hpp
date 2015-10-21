@@ -67,7 +67,7 @@ public:
 
       int status = buffer_insert(vcon, offset, const_cast<char*>(str.data()), len);
       if ( status == 0 ) {
-        status = buffer_insert(vcon, offset+len, &(gap_data[0]), gap);
+        status = buffer_insert(vcon, offset+len, &(filler[0]), gap);
       }
       if ( status == 0 ) {
         intptr_t* p = reinterpret_cast<intptr_t*>(&str);
