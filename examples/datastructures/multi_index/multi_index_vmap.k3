@@ -25,10 +25,10 @@ trigger t : () = \_ -> (
   		(\r -> print ("VMap at 5: " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
 
   // Lower-bound lookup test on a non-existing version. This should print the entry at version 4.
-  (c.lookup_before 5 {key: 7, value: 0} ignore (\r -> print ("VMap before 5: " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
+  (c.lookup_before 5 {key: 7, value: 0} (\_ -> ()) (\r -> print ("VMap before 5: " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
 
   // Lower-bound lookup test on an existing version. This should also print the entry at version 4.
-  (c.lookup_before 6 {key: 7, value: 0} ignore (\r -> print ("VMap before 6: " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
+  (c.lookup_before 6 {key: 7, value: 0} (\_ -> ()) (\r -> print ("VMap before 6: " ++ (itos r.key) ++ " " ++ (itos r.value) ++ "\\n")));
 
   // Print the frontier at version 7, which should print all values at version 6 in this instance.
   ((c.filter  7 (\_ -> true))
