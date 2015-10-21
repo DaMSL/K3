@@ -154,7 +154,7 @@ public:
   }
 
   FlatPolyBuffer(FlatPolyBuffer&& other) : FlatPolyBuffer() {
-    swapPolyBuffer(std::forward<FlatPolyBuffer>(other));
+    swapPolyBuffer(std::move(other));
   }
 
   FlatPolyBuffer& operator=(const FlatPolyBuffer& other) {
