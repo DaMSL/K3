@@ -34,8 +34,8 @@
 #include <bdlma_multipoolallocator.h>
 #include <bdlma_sequentialallocator.h>
 #include <bdlma_localsequentialallocator.h>
+//using namespace BloombergLP;
 #endif
-
 
 namespace K3 {
 template <class F, typename... Args> using RT = typename std::result_of<F(Args...)>::type;
@@ -576,15 +576,15 @@ class MultiIndexVMap
   // Allocators.
   #ifdef BSL_ALLOC
     #ifdef BSEQ
-    bdlma::SequentialAllocator mpool;
+    BloombergLP::bdlma::SequentialAllocator mpool;
     #elif BPOOLSEQ
-    bdlma::SequentialAllocator seqpool;
-    bdlma::MultipoolAllocator mpool;
+    BloombergLP::bdlma::SequentialAllocator seqpool;
+    BloombergLP::bdlma::MultipoolAllocator mpool;
     #elif BLOCAL
     constexpr size_t lsz = 2<<14;
-    bdlma::LocalSequentialAllocator<lsz> mpool;
+    BloombergLP::bdlma::LocalSequentialAllocator<lsz> mpool;
     #else
-    bdlma::MultipoolAllocator mpool;
+    BloombergLP::bdlma::MultipoolAllocator mpool;
     #endif
 
     bsl::allocator<VElem<R, Version>> oalloc;
@@ -610,7 +610,7 @@ class MultiIndexVMap
       mpool(8),
       #endif
       oalloc(&mpool),
-      ialloc(&mpool)
+      ialloc(&mpool),
     #endif
     scialloc(ialloc),
     scoalloc(oalloc, scialloc),
