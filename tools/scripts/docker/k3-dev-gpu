@@ -1,0 +1,32 @@
+#  Dockerfile:  k3-dev
+#
+#  Description:  Full development image for K3 and Mosaic
+#
+#  Version:   NVIDIA-DRIVER(352.55) CUDA(7.0) Thrust(1.8.1)
+#
+#  Requirements:  From k3-dev, host nvidia driver version = 352.55
+
+# Debian: Sid
+FROM damsl/k3-dev
+
+ENV NVIDIA_DRIVER http://us.download.nvidia.com/XFree86/Linux-x86_64/352.55/NVIDIA-Linux-x86_64-352.55.run
+ENV CUDA_RUN http://developer.download.nvidia.com/compute/cuda/7_0/Prod/local_installers/cuda_7.0.28_linux.run 
+
+ENV NVIDIA_DRIVER_VERSION 352.55
+ENV CUDA_TOOLKIT_VERSION 7.0
+ENV THRUST_VERSION 1.8.1
+
+ENV CUDA_DIR cuda_7_0
+ENV THRUST_DIR thrust_1_8_1
+
+# kmod for installing insmod, modprobe
+RUN apt-get update && apt-get install kmod
+
+# install nvidia-driver and cuda
+RUN cd /software && \
+    mkdir -p $CUDA_DIR && \
+    wget $NVIDIA_DRIVER && \
+    wget $CUDA_RUN && \
+    chmod +x *.run && \
+    ./NVIDIA-Linux-x86_64-352.55.run -s -N --no-kernel-module
+
