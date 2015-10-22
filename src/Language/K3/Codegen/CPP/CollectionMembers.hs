@@ -445,7 +445,7 @@ polybuffer name ans  = do
                       [(Just arg1, int_t), (Just arg2, int_t)]
                       (Just $ ct)
                       []
-                      False
+                      True
                       [R.Return $ typed_at ct]
 
       c_at_rt <- maybe (return Nothing) (\x -> genCType x >>= return . Just) at_rt
@@ -469,7 +469,7 @@ polybuffer name ans  = do
                       [(Just arg1, int_t), (Just arg2, int_t), (Just arg3, f_t), (Just arg4, g_t)]
                       (Just $ R.Named $ R.Name "auto")
                       []
-                      False
+                      True
                       [R.Return $ typed_safe_at ct]
 
       c_safe_at_t <- maybe (return Nothing) (\x -> genCType x >>= return . Just) safe_at_t
@@ -514,7 +514,7 @@ polybuffer name ans  = do
                              [(Just "idx", int_t), (Just "offset", int_t), (Just "f", f_t)]
                              (Just R.Unit)
                              []
-                             False
+                             True
                              [R.Return $ typed_iterate ct_tag ct]
 
       c_val_t <- maybe (return Nothing) (\x -> genCType x >>= return . Just) val_t
@@ -542,7 +542,7 @@ polybuffer name ans  = do
                              [(Just "idx", int_t), (Just "offset", int_t), (Just "f", f_t), (Just "acc", acc_t)]
                              (Just acc_t)
                              []
-                             False
+                             True
                              [R.Return $ typed_fold ct_tag ct]
 
       c_val_t <- maybe (return Nothing) (\x -> genCType x >>= return . Just) val_t
@@ -564,7 +564,7 @@ polybuffer name ans  = do
                           [(Just arg1, int_t), (Just arg2, int_t)]
                           (Just $ skip_rt)
                           []
-                          False
+                          True
                           [R.Return $ skip_call ct_tag]
 
       t_tag <- maybe (return Nothing) (return . tag_value) $ find is_tag danns
@@ -594,7 +594,7 @@ polybuffer name ans  = do
                          (Just "rtag", tag_t), (Just "relem", void_ptr_t)]
                         (Just $ R.Named $ R.Name "static bool")
                         []
-                        False
+                        True
                         [R.IfThenElse (R.Binary "==" (R.Variable $ R.Name "ltag") (R.Variable $ R.Name "rtag"))
                           [branch_chain "ltag" tags types elseStmt elemStmt]
                           [R.Return $ R.Literal $ R.LBool False]]
@@ -615,7 +615,7 @@ polybuffer name ans  = do
                         [(Just "tag", tag_t), (Just "elem", void_ptr_t)]
                         (Just $ R.Named $ R.Name "static size_t")
                         []
-                        False
+                        True
                         [branch_chain "tag" tags types elseStmt elemStmt]
 
       where elemStmt _ ty = R.Return $ R.Call (R.Variable $ R.Name "hash_value")
