@@ -137,9 +137,12 @@ withTopLevel b = local (\s -> s { topLevel = b })
 data IReport = IReport { juncture :: Juncture, direction :: Direction, constraint :: K3 MExpr }
 
 logR :: Juncture -> Direction -> K3 MExpr -> InferM ()
-logR j d m = tell [IReport { juncture = j, direction = d, constraint = m }]
+logR j d m = if reportVerbosity == None
+               then return ()
+               else tell [IReport { juncture = j, direction = d, constraint = m }]
 
 data ReportVerbosity = None | Short | Long
+                     deriving (Eq, Read, Show)
 
 reportVerbosity :: ReportVerbosity
 reportVerbosity = None
