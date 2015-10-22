@@ -1,0 +1,14 @@
+include "Annotation/Seq.k3"
+include "Core/Builtins.k3"
+
+declare c : collection {a:int, b:int} @Seq
+
+trigger t : () = \_ -> (
+  ((range 10).iterate (\r -> c.insert {a: r.elem, b: r.elem + 1}));
+  (print ("Size before pop: " ++ (itos (c.size()))));
+  (c.pop ());
+  (print ("Size after pop: " ++ (itos (c.size()))))
+)
+
+source s1 : () = value ()
+feed s1 |> t
