@@ -162,6 +162,7 @@ public:
 
   FlatPolyBuffer(const FlatPolyBuffer& other) : FlatPolyBuffer() {
     copyPolyBuffer(other);
+    // Leave it to the child classes to internalize, if necessary
   }
 
   FlatPolyBuffer(FlatPolyBuffer&& other) : FlatPolyBuffer() {
@@ -170,9 +171,16 @@ public:
 
   FlatPolyBuffer& operator=(const FlatPolyBuffer& other) {
     clear(unit_t{});
-    internalized = other.internalized;
     initContainer();
     copyPolyBuffer(other);
+    if (other.internalized) {
+      unpack(unit_t{});
+    }
+  }
+
+  FlatPolyBuffer& operator=(FlatPolyBuffer&& other) {
+    swapPolyBuffer(std::move(other));
+    return *this;
   }
 
   ~FlatPolyBuffer() {
@@ -213,8 +221,7 @@ public:
     copyVector(tags(), p->tags());
 
     // This container is left externalized.
-    // We expect the child class constructor to unpack()
-    // or alternatively, unpack() on demand (before iterate, etc)
+    // We expect the callsite to internalize if necessary
     internalized = false;
 
     // Return other container to original state
@@ -237,6 +244,8 @@ public:
     container.ctags.object_size     = other.container.ctags.object_size;
     container.ctags.release         = other.container.ctags.release;
     std::swap(container.ctags.buffer.data, other.container.ctags.buffer.data);
+
+    std::swap(internalized, other.internalized);
   }
 
   void copyBuffer(Buf* a, Buf* b) {
@@ -301,6 +310,7 @@ public:
 
   template<typename T>
   T at(int i, int offset) const {
+    if (!internalized) { throw std::runtime_error ("Invalid at on externalized poly buffer"); }
     if ( i < size(unit_t{}) ) {
       auto p = const_cast<FlatPolyBuffer*>(this);
       return *reinterpret_cast<T*>(buffer_data(p->fixed()) + static_cast<size_t>(offset));
@@ -311,6 +321,7 @@ public:
 
   template<typename T, typename F, typename G>
   auto safe_at(int i, int offset, F f, G g) const {
+    if (!internalized) { throw std::runtime_error ("Invalid safe_at on externalized poly buffer"); }
     if ( i >= size(unit_t{}) ) {
       return f(unit_t {});
     } else {
@@ -322,6 +333,7 @@ public:
   // Apply a function on the tag and offset.
   template<typename Fun>
   unit_t iterate(Fun f) const {
+    if (!internalized) { throw std::runtime_error ("Invalid iterate on externalized poly buffer"); }
     size_t foffset = 0, sz = size(unit_t{});
     for (size_t i = 0; i < sz; ++i) {
       Tag tg = tag_at(static_cast<int>(i));
@@ -334,6 +346,7 @@ public:
   // Accumulate with the tag and offset.
   template <typename Fun, typename Acc>
   Acc foldl(Fun f, Acc acc) const {
+    if (!internalized) { throw std::runtime_error ("Invalid foldl on externalized poly buffer"); }
     size_t foffset = 0, sz = size(unit_t{});
     for (size_t i = 0; i < sz; ++i) {
       Tag tg = tag_at(static_cast<int>(i));
@@ -345,6 +358,7 @@ public:
 
   template<typename Fun>
   unit_t traverse(Fun f) const {
+    if (!internalized) { throw std::runtime_error ("Invalid traverse on externalized poly buffer"); }
     size_t foffset = 0, sz = size(unit_t{});
     for (size_t i = 0; i < sz; i++) {
       Tag tg = tag_at(static_cast<int>(i));
@@ -363,6 +377,7 @@ public:
 
   template<typename T, typename Fun>
   unit_t iterate_tag(Tag t, int i, int offset, Fun f) const {
+    if (!internalized) { throw std::runtime_error ("Invalid iterate_tag on externalized poly buffer"); }
     auto p = buffer_data(const_cast<FlatPolyBuffer*>(this)->fixed());
     size_t foffset = static_cast<size_t>(offset);
     size_t sz = size(unit_t{});
@@ -375,6 +390,7 @@ public:
 
   template <typename T, typename Fun, typename Acc>
   Acc foldl_tag(Tag t, int i, int offset, Fun f, Acc acc) const {
+    if (!internalized) { throw std::runtime_error ("Invalid foldl_tag on externalized poly buffer"); }
     auto p = buffer_data(const_cast<FlatPolyBuffer*>(this)->fixed());
     size_t foffset = static_cast<size_t>(offset);
     size_t sz = size(unit_t{});
@@ -390,6 +406,7 @@ public:
     if (buffer.data()) {
       throw std::runtime_error("Invalid append on a FPB: backed by a base_string");
     }
+    if (internalized) { throw std::runtime_error ("Invalid append on internalized poly buffer"); }
 
     FContainer* ncf = const_cast<FContainer*>(fixedc());
     VContainer* ncv = const_cast<VContainer*>(variablec());
@@ -481,7 +498,11 @@ public:
     TContainer* nct = tags();
 
     // Reset element pointers to slot ids as necessary.
-    if ( internalized ) { repack(unit_t{}); }
+    bool modified = false;
+    if ( internalized ) {
+      repack(unit_t{});
+      modified = true;
+    }
 
     size_t fixed_sz = fixseg_size();
     size_t var_sz   = varseg_size();
@@ -511,7 +532,9 @@ public:
     str.steal(buffer_);
     str.set_header(true);
 
-    unpack(unit_t{});
+    if (modified) {
+      unpack(unit_t{});
+    }
     return str;
   }
 
@@ -555,7 +578,7 @@ public:
       tags()->object_size     = sizeof(Tag);
     }
 
-    unpack(unit_t{});
+    internalized = false;
     return unit_t{};
   }
 
@@ -570,7 +593,11 @@ public:
 
     // Reset element pointers to slot ids as necessary.
     auto p = const_cast<FlatPolyBuffer*>(this);
-    if ( p->internalized ) { p->repack(unit_t{}); }
+    bool modified = false;
+    if ( p->internalized ) {
+      p->repack(unit_t{});
+      modified = true;
+    }
 
     size_t fixed_sz = fixseg_size();
     size_t var_sz   = varseg_size();
@@ -590,7 +617,9 @@ public:
       a.save_binary(vector_data(nct), tags_sz * sizeof(Tag));
     }
 
-    p->unpack(unit_t{});
+    if (modified) {
+      p->unpack(unit_t{});
+    }
   }
 
   template <class archive>
@@ -620,13 +649,16 @@ public:
     }
 
     internalized = false;
-    unpack(unit_t{});
   }
 
   template <class archive>
   void serialize(archive& a) const {
     auto p = const_cast<FlatPolyBuffer*>(this);
-    if ( p->internalized ) { p->repack(unit_t {}); }
+    bool modified = false;
+    if ( p->internalized ) {
+      p->repack(unit_t {});
+      modified = true;
+    }
 
     FContainer* ncf = fixed();
     VContainer* ncv = variable();
@@ -650,7 +682,9 @@ public:
       a.write(vector_data(nct), tags_sz * sizeof(Tag));
     }
 
-    p->unpack(unit_t{});
+    if (modified) {
+      p->unpack(unit_t{});
+    }
   }
 
   template <class archive>
@@ -680,7 +714,6 @@ public:
     }
 
     internalized = false;
-    unpack(unit_t{});
   }
 
   BOOST_SERIALIZATION_SPLIT_MEMBER()

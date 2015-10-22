@@ -231,7 +231,7 @@ def gen_yaml(k3_data_path, role_file, script_path)
   cmd << "--nodes " << $options[:num_nodes].to_s << " " if $options[:num_nodes]
   cmd << "--nmask " << $options[:nmask] << " " if $options[:nmask]
   cmd << "--perhost " << $options[:perhost].to_s << " " if $options[:perhost]
-  cmd << "--csv-data" if $options[:csv_data]
+  cmd << "--csv-data " if $options[:csv_data]
   cmd << "--file " << k3_data_path << " "
 
   cmd << "--multicore" if $options[:run_mode] == :multicore
