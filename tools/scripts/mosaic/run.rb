@@ -231,6 +231,7 @@ def gen_yaml(k3_data_path, role_file, script_path)
   cmd << "--nodes " << $options[:num_nodes].to_s << " " if $options[:num_nodes]
   cmd << "--nmask " << $options[:nmask] << " " if $options[:nmask]
   cmd << "--perhost " << $options[:perhost].to_s << " " if $options[:perhost]
+  cmd << "--csv-data" if $options[:csv_data]
   cmd << "--file " << k3_data_path << " "
 
   cmd << "--multicore" if $options[:run_mode] == :multicore
@@ -713,6 +714,7 @@ def main()
     opts.on("--msg-delay [MS]", "Set switch message delay (ms)") { |i| $options[:msg_delay] = i }
     opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
     opts.on("--no-correctives", "Run in no-corrective mode") { $options[:no_corrective] = true }
+    opts.on("--csv-data", "Use the old data format (csv)") {$options[:csv_data] = true }
 
     # Stages.
     # Ktrace is not run by default.
