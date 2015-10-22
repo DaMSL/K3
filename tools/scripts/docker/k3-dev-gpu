@@ -6,11 +6,11 @@
 #
 #  Requirements:  From k3-dev, host nvidia driver version = 352.55
 
-# Debian: Sid
+# damsl/k3-dev
 FROM damsl/k3-dev
 
 ENV NVIDIA_DRIVER http://us.download.nvidia.com/XFree86/Linux-x86_64/352.55/NVIDIA-Linux-x86_64-352.55.run
-ENV CUDA_RUN http://developer.download.nvidia.com/compute/cuda/7_0/Prod/local_installers/cuda_7.0.28_linux.run 
+ENV CUDA_RUN http://developer.download.nvidia.com/compute/cuda/7.5/Prod/local_installers/cuda_7.5.18_linux.run
 
 ENV NVIDIA_DRIVER_VERSION 352.55
 ENV CUDA_TOOLKIT_VERSION 7.0
@@ -20,13 +20,36 @@ ENV CUDA_DIR cuda_7_0
 ENV THRUST_DIR thrust_1_8_1
 
 # kmod for installing insmod, modprobe
-RUN apt-get update && apt-get install kmod
+RUN apt-get update && apt-get install -q -y kmod
 
 # install nvidia-driver and cuda
 RUN cd /software && \
     mkdir -p $CUDA_DIR && \
-    wget $NVIDIA_DRIVER && \
+    cd $CUDA_DIR && \
     wget $CUDA_RUN && \
     chmod +x *.run && \
-    ./NVIDIA-Linux-x86_64-352.55.run -s -N --no-kernel-module
+    ./cuda_7.5.18_linux.run -extract=`pwd`/cuda_toolkits && \
+    cd cuda_toolkits && \
+    ./NVIDIA-Linux-x86_64-*.run -s -N --no-kernel-module && \
+    ./cuda-linux64-rel-7.5.18-*.run -noprompt
+
+# hack on the host_config.h since currently
+# nvidia cuda toolkit doesn't support gcc >= 4.9
+RUN cd /usr/local/cuda-7.5/include/ && \
+    sed -i -e 's/4/5/g' host_config.h
+
+# set environment variables
+ENV LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda-7.5/lib64
+ENV PATH=$PATH:/usr/local/cuda-7.5/bin
+
+RUN cd /software/$CUDA_DIR/cuda_toolkits && \
+    ./cuda-samples-linux-7.5.18*.run -noprompt && \
+    cd .. && rm -rf cuda_toolkits \
+    rm *.run
+
+
+
+
+
+
 
