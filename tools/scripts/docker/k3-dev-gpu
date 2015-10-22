@@ -2,22 +2,20 @@
 #
 #  Description:  Full development image for K3 and Mosaic
 #
-#  Version:   NVIDIA-DRIVER(352.39) CUDA(7.5) Thrust(1.8.1)
+#  Version:   NVIDIA-DRIVER(352.39) CUDA(7.5) Thrust(1.8.2)
 #
 #  Requirements:  From k3-dev, host nvidia driver version = 352.39
 
 # damsl/k3-dev
 FROM damsl/k3-dev
 
-ENV NVIDIA_DRIVER http://us.download.nvidia.com/XFree86/Linux-x86_64/352.55/NVIDIA-Linux-x86_64-352.55.run
 ENV CUDA_RUN http://developer.download.nvidia.com/compute/cuda/7.5/Prod/local_installers/cuda_7.5.18_linux.run
 
-ENV NVIDIA_DRIVER_VERSION 352.55
-ENV CUDA_TOOLKIT_VERSION 7.0
-ENV THRUST_VERSION 1.8.1
+ENV NVIDIA_DRIVER_VERSION 352.39
+ENV CUDA_TOOLKIT_VERSION 7.5
+ENV THRUST_VERSION 1.8.2
 
-ENV CUDA_DIR cuda_7_0
-ENV THRUST_DIR thrust_1_8_1
+ENV CUDA_DIR cuda_7_5
 
 # kmod for installing insmod, modprobe
 RUN apt-get update && apt-get install -q -y kmod
@@ -47,9 +45,7 @@ RUN cd /software/$CUDA_DIR/cuda_toolkits && \
     cd .. && rm -rf cuda_toolkits \
     rm *.run
 
-
-
-
-
-
+# clean up
+RUN cd /software && \
+    rm -rf $CUDA_DIR
 
