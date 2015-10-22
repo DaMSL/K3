@@ -2,9 +2,9 @@
 #
 #  Description:  Full development image for K3 and Mosaic
 #
-#  Version:   NVIDIA-DRIVER(352.55) CUDA(7.0) Thrust(1.8.1)
+#  Version:   NVIDIA-DRIVER(352.39) CUDA(7.5) Thrust(1.8.1)
 #
-#  Requirements:  From k3-dev, host nvidia driver version = 352.55
+#  Requirements:  From k3-dev, host nvidia driver version = 352.39
 
 # damsl/k3-dev
 FROM damsl/k3-dev
