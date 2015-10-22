@@ -54,8 +54,10 @@ public:
   template<class T> void externalize(T& t) { externalize(t, type<T>{}); }
   template<class T> void externalize(T& t, type<T>) { t.externalize(*this); }
 
-  void externalize(int&, type<int>) { }
-  void externalize(double&, type<double>) { }
+  void externalize(unit_t&, type<unit_t>) {}
+  void externalize(bool&, type<bool>) {}
+  void externalize(int&, type<int>) {}
+  void externalize(double&, type<double>) {}
 
   void externalize(base_string& str, type<base_string>)
   {
@@ -108,8 +110,10 @@ public:
     t.internalize(*this);
   }
 
-  void internalize(int&, type<int>) { }
-  void internalize(double&, type<double>) { }
+  void internalize(unit_t&, type<unit_t>) {}
+  void internalize(bool&, type<bool>) {}
+  void internalize(int&, type<int>) {}
+  void internalize(double&, type<double>) {}
 
   void internalize(base_string& str) {
     intptr_t* p = reinterpret_cast<intptr_t*>(&str);
@@ -287,31 +291,31 @@ public:
 
   int size(const unit_t&) const {
     auto p = const_cast<FlatPolyBuffer*>(this);
-    return vector_size(p->tags());
+    return static_cast<int>(vector_size(p->tags()));
   }
 
-  Tag tag_at(size_t i) const {
+  Tag tag_at(int i) const {
     auto p = const_cast<FlatPolyBuffer*>(this);
-    return *static_cast<Tag*>(vector_at(p->tags(), i));
+    return *static_cast<Tag*>(vector_at(p->tags(), static_cast<size_t>(i)));
   }
 
   template<typename T>
-  T at(int i, size_t offset) const {
+  T at(int i, int offset) const {
     if ( i < size(unit_t{}) ) {
       auto p = const_cast<FlatPolyBuffer*>(this);
-      return *reinterpret_cast<T*>(buffer_data(p->fixed()) + offset);
+      return *reinterpret_cast<T*>(buffer_data(p->fixed()) + static_cast<size_t>(offset));
     } else {
       throw std::runtime_error("Invalid element access");
     }
   }
 
   template<typename T, typename F, typename G>
-  auto safe_at(int i, size_t offset, F f, G g) const {
+  auto safe_at(int i, int offset, F f, G g) const {
     if ( i >= size(unit_t{}) ) {
       return f(unit_t {});
     } else {
       auto p = const_cast<FlatPolyBuffer*>(this);
-      return g(*reinterpret_cast<T*>(buffer_data(p->fixed()) + offset));
+      return g(*reinterpret_cast<T*>(buffer_data(p->fixed()) + static_cast<size_t>(offset)));
     }
   }
 
@@ -320,8 +324,8 @@ public:
   unit_t iterate(Fun f) const {
     size_t foffset = 0, sz = size(unit_t{});
     for (size_t i = 0; i < sz; ++i) {
-      Tag tg = tag_at(i);
-      f(tg, i, foffset);
+      Tag tg = tag_at(static_cast<int>(i));
+      f(tg, i, static_cast<int>(foffset));
       foffset += elemsize(tg);
     }
     return unit_t {};
@@ -332,8 +336,8 @@ public:
   Acc foldl(Fun f, Acc acc) const {
     size_t foffset = 0, sz = size(unit_t{});
     for (size_t i = 0; i < sz; ++i) {
-      Tag tg = tag_at(i);
-      acc = f(std::move(acc), tg, i, foffset);
+      Tag tg = tag_at(static_cast<int>(i));
+      acc = f(std::move(acc), tg, i, static_cast<int>(foffset));
       foffset += elemsize(tg);
     }
     return acc;
@@ -343,11 +347,11 @@ public:
   unit_t traverse(Fun f) const {
     size_t foffset = 0, sz = size(unit_t{});
     for (size_t i = 0; i < sz; i++) {
-      Tag tg = tag_at(i);
-      R_key_value<int, size_t> next = f(tg, i, foffset);
-      i = next.key;
-      foffset = next.value;
-      if ( i < sz ) { foffset += elemsize(tag_at(i)); }
+      Tag tg = tag_at(static_cast<int>(i));
+      R_key_value<int, int> next = f(tg, i, static_cast<int>(foffset));
+      i = static_cast<size_t>(next.key);
+      foffset = static_cast<size_t>(next.value);
+      if ( i < sz ) { foffset += elemsize(tag_at(static_cast<int>(i))); }
     }
     return unit_t {};
   }
@@ -358,24 +362,24 @@ public:
   // Tag-specific accessors.
 
   template<typename T, typename Fun>
-  unit_t iterate_tag(Tag t, int i, size_t offset, Fun f) const {
+  unit_t iterate_tag(Tag t, int i, int offset, Fun f) const {
     auto p = buffer_data(const_cast<FlatPolyBuffer*>(this)->fixed());
-    size_t foffset = offset;
+    size_t foffset = static_cast<size_t>(offset);
     size_t sz = size(unit_t{});
-    for (size_t j = i; j < sz && t == tag_at(j); ++j) {
-      f(j, foffset, *reinterpret_cast<T*>(p + foffset));
+    for (size_t j = i; j < sz && t == tag_at(static_cast<int>(j)); ++j) {
+      f(static_cast<int>(j), static_cast<int>(foffset), *reinterpret_cast<T*>(p + foffset));
       foffset += elemsize(t);
     }
     return unit_t {};
   }
 
   template <typename T, typename Fun, typename Acc>
-  Acc foldl_tag(Tag t, int i, size_t offset, Fun f, Acc acc) const {
+  Acc foldl_tag(Tag t, int i, int offset, Fun f, Acc acc) const {
     auto p = buffer_data(const_cast<FlatPolyBuffer*>(this)->fixed());
-    size_t foffset = offset;
+    size_t foffset = static_cast<size_t>(offset);
     size_t sz = size(unit_t{});
-    for (size_t j = i; j < sz && t == tag_at(j); ++j) {
-      acc = f(std::move(acc), j, foffset, *reinterpret_cast<T*>(p + foffset));
+    for (size_t j = i; j < sz && t == tag_at(static_cast<int>(j)); ++j) {
+      acc = f(std::move(acc), static_cast<int>(j), static_cast<int>(foffset), *reinterpret_cast<T*>(p + foffset));
       foffset += elemsize(t);
     }
     return acc;
@@ -403,22 +407,22 @@ public:
     return unit_t {};
   }
 
-  R_key_value<int, size_t> skip_tag(Tag t, int i, size_t offset) const {
+  R_key_value<int, int> skip_tag(Tag t, int i, int offset) const {
     size_t sz = size(unit_t{});
     if ( i < sz && tag_at(i) == t ) {
-      return R_key_value<int, size_t> { i+1, offset + elemsize(t) };
+      return R_key_value<int, int> { i+1, static_cast<int>(static_cast<size_t>(offset) + elemsize(t)) };
     }
-    return R_key_value<int, size_t>{ i, offset };
+    return R_key_value<int, int>{ i, offset };
   }
 
-  R_key_value<int, size_t> skip_all_tag(Tag t, int i, size_t offset) const {
-    size_t j = i;
-    size_t foffset = offset;
+  R_key_value<int, int> skip_all_tag(Tag t, int i, int offset) const {
+    size_t j = static_cast<size_t>(i);
+    size_t foffset = static_cast<size_t>(offset);
     size_t sz = size(unit_t{});
-    for (; j < sz && t == tag_at(j); ++j) {
+    for (; j < sz && t == tag_at(static_cast<int>(j)); ++j) {
       foffset += elemsize(t);
     }
-    return R_key_value<int, size_t> { j, foffset };
+    return R_key_value<int, int> { j, static_cast<int>(foffset) };
   }
 
   // Clears a container, deleting any backing buffer.
@@ -441,7 +445,7 @@ public:
 
     size_t sz = size(unit_t{});
     for (size_t i = 0; i < sz; ++i) {
-      Tag tg = tag_at(i);
+      Tag tg = tag_at(static_cast<int>(i));
       externalize(etl, tg, buffer_data(ncf) + foffset);
       foffset += elemsize(tg);
     }
@@ -462,7 +466,7 @@ public:
 
     size_t sz = size(unit_t{});
     for (size_t i = 0; i < sz; ++i) {
-      Tag tg = tag_at(i);
+      Tag tg = tag_at(static_cast<int>(i));
       internalize(itl, tg, buffer_data(ncf) + foffset);
       foffset += elemsize(tg);
     }

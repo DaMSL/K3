@@ -23,6 +23,11 @@ class Seq : public ListDS<K3::Seq, Elem> {
   Seq(Super&& c) : Super(std::move(c)) {}
 
   // Seq specific functions
+  unit_t pop(unit_t) {
+    Super::getContainer().pop_front();
+    return unit_t{};
+  }
+
   template <class F>
   Seq sort(F comp) const {
     auto l(Super::getConstContainer());
