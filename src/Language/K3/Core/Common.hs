@@ -98,6 +98,8 @@ data Span
 -- | Unique identifiers for AST nodes.
 data UID = UID Int deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
+instance Hashable UID
+
 gUID :: UID -> Int
 gUID (UID i) = i
 

@@ -35,7 +35,8 @@ import Control.Monad.Writer
 import Text.Printf
 
 import qualified Data.IntMap as I
-import qualified Data.Map as M
+import qualified Data.HashMap.Strict as M
+import qualified Data.Map as MM
 import qualified Data.Set as S
 
 import Language.K3.Core.Common
@@ -94,7 +95,7 @@ optimizeMaterialization (p, f) d = runExceptT $ inferMaterialization >>= solveMa
        (t :@: as) -> (t :@: (EMaterialization as' : as))
       where
         Just u = e @~ isEUID >>= getUID
-        as' = M.fromList [((i, r), q) | ((Juncture u' i, r), q) <- M.toList m, u' == u]
+        as' = MM.fromList [((i, r), q) | ((Juncture u' i, r), q) <- M.toList m, u' == u]
 
 -- * Types
 
@@ -106,7 +107,7 @@ runInferM :: InferM a -> IState -> IScope -> Either IError ((a, IState), [IRepor
 runInferM m st sc = runIdentity $ runExceptT $ runWriterT $ flip runReaderT sc $ runStateT m st
 
 -- ** Non-scoping State
-data IState = IState { cTable :: M.Map DKey (K3 MExpr) }
+data IState = IState { cTable :: M.HashMap DKey (K3 MExpr) }
 
 type DKey = (Juncture, Direction)
 
@@ -558,7 +559,7 @@ isMoveableNow cp = do
 type SolverT m = StateT SState (ExceptT SError m)
 type SolverM a = SolverT Identity a
 
-data SState = SState { assignments :: M.Map DKey Method }
+data SState = SState { assignments :: M.HashMap DKey Method }
 newtype SError = SError String
 
 defaultSState :: SState
@@ -574,7 +575,7 @@ getMethod :: DKey -> SolverM Method
 getMethod k = gets assignments >>= maybe (throwError $ SError $ "Unconfirmed decision for " ++ show k) return . M.lookup k
 
 -- ** Sorting
-mkDependencyList :: M.Map DKey (K3 MExpr) -> K3 Declaration -> SolverM [Either DKey DKey]
+mkDependencyList :: M.HashMap DKey (K3 MExpr) -> K3 Declaration -> SolverM [Either DKey DKey]
 mkDependencyList m p = return (buildHybridDepList graph)
  where
   graph = [(k, k, S.toList (findDependenciesE $ m M.! k)) | k <- M.keys m]
@@ -620,10 +621,10 @@ findDependenciesP p = case tag p of
   _ -> S.unions $ fmap findDependenciesP (children p)
 
 -- ** Solving
-solveForAll :: [Either DKey DKey] -> M.Map DKey (K3 MExpr) -> SolverM ()
+solveForAll :: [Either DKey DKey] -> M.HashMap DKey (K3 MExpr) -> SolverM ()
 solveForAll eks m = for_ eks $ \case
   Left fk -> do
-    progress <- gets (M.keysSet . assignments)
+    progress <- gets (S.fromList . M.keys . assignments)
     if progress S.\\ (findDependenciesE (m M.! fk)) == [fk]
       then tryResolveSelfCycle fk (m M.! fk) >>= setMethod fk . fromMaybe Copied
       else setMethod fk Copied
