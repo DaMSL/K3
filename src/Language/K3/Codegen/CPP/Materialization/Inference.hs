@@ -572,11 +572,11 @@ setMethod :: DKey -> Method -> SolverM ()
 setMethod k m = modify $ \s -> s { assignments = M.insert k m (assignments s) }
 
 getMethod :: DKey -> SolverM Method
-getMethod k = gets assignments >>= maybe (throwError $ SError $ "Unconfirmed decision for " ++ show k) return . M.lookup k
+getMethod k = gets assignments >>= maybe (return Copied) return . M.lookup k
 
 -- ** Sorting
 mkDependencyList :: M.HashMap DKey (K3 MExpr) -> K3 Declaration -> SolverM [Either DKey DKey]
-mkDependencyList m p = return (buildHybridDepList graph)
+mkDependencyList m p = return $ map Right (M.keys m)
  where
   graph = [(k, k, S.toList (findDependenciesE $ m M.! k)) | k <- M.keys m]
   collapseSCCs scc = case scc of
