@@ -8,6 +8,9 @@
 
 # Debian: Sid
 FROM debian:sid
+ENV LD_LIBRARY_PATH /usr/local/lib:/usr/lib
+ENV PATH /software/bde-tools/bin:$PATH
+
 
 # Install basic packages to build the image
 RUN apt-get update && apt-get install -y \
