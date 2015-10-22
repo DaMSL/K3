@@ -84,13 +84,13 @@ RUN wget http://sourceforge.net/projects/boost/files/boost/$BOOST_VER/$BOOST_DIR
   rm -Rf $BOOST_DIR
 
 # Install Bloomberg BSL and BDL
-RUN mkdir -p /software && cd /software                   && \
-    git clone https://github.com/bloomberg/bde-tools.git && \
-    git clone https://github.com/bloomberg/bde.git       && \
-    cd bde                                               && \
-    waf configure --targets=bsl,bdl --build-type=release && \
-    waf build --targets=bsl,bdl --build-type=release     && \
-    waf install --targets=bsl,bdl                        && \
+RUN mkdir -p /software && cd /software                                         && \
+    git clone https://github.com/bloomberg/bde-tools.git                       && \
+    git clone https://github.com/bloomberg/bde.git                             && \
+    cd bde                                                                     && \
+    waf configure --targets=bsl,bdl --build-type=release --library-type=shared && \
+    waf build --targets=bsl,bdl --build-type=release --library-type=shared     && \
+    waf install --targets=bsl,bdl                                              && \
     rm -Rf bde-tools bde
 
 # Install CSV++
