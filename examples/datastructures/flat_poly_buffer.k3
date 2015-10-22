@@ -4,7 +4,7 @@ include "Core/Builtins.k3"
 
 typedef PType = collection {ignored:()} @FlatPolyBuffer(
   variants=[:#>
-    foo => {a:int, b:int} : 0,
+    foo => {a:int, b:int, c: string, d: string} : 0,
     bar => {c:int, d:int} : 1,
     baz => {e:int, f:int} : 2
   ])
@@ -16,9 +16,9 @@ declare d : mut int = 0
 declare e : mut int = 0
 
 trigger t : () = \_ -> (
-  (c.append_foo {a:1, b:2});
-  (c.append_foo {a:2, b:3});
-  (c.append_foo {a:3, b:4});
+  (c.append_foo {a:1, b:2, c: "one", d: "hi1"});
+  (c.append_foo {a:2, b:3, c: "two", d: "hi2"});
+  (c.append_foo {a:3, b:4, c: "three", d: "hi3"});
   (c.append_baz {e:10, f:20});
   (c.append_baz {e:11, f:21});
   (c.append_baz {e:12, f:22});
@@ -34,7 +34,7 @@ trigger t : () = \_ -> (
     if tag == 0 then
       c.foo_safe_at idx offset
         (\_ -> print "No foo found")
-        (\x -> print ("Foo a: " ++ (itos x.a) ++ " b: " ++ (itos x.b)))
+        (\x -> print ("Foo a: " ++ (itos x.a) ++ " b: " ++ (itos x.b) ++ " . c: " ++ x.c ++ ". d: " ++ x.d ))
 
     else if tag == 1 then
       c.bar_safe_at idx offset
@@ -60,16 +60,52 @@ trigger t : () = \_ -> (
   (e = (c.foldl_foo 0 0 (\acc -> \idx -> \offset -> \foo -> acc + foo.a) 0));
   (print ("Fold result, e: " ++ (itos e)));
   ((t2, me) <- c);
+   c.repack();
    (t3, me) <- c.save()
 )
 
 trigger t2 : PType = \x -> (
-  print ("Size in t2: " ++ (itos (x.size())))
+  print ("Size in t2: " ++ (itos (x.size())));
+  (x.iterate (\tag -> \idx -> \offset ->
+    if tag == 0 then
+      x.foo_safe_at idx offset
+        (\_ -> print "No foo found")
+        (\x -> print ("Foo a: " ++ (itos x.a) ++ " b: " ++ (itos x.b) ++ " . c: " ++ x.c ++ ". d: " ++ x.d))
+
+    else if tag == 1 then
+      x.bar_safe_at idx offset
+        (\_ -> print "No bar found")
+        (\x -> print ("Bar c: " ++ (itos x.c) ++ " d: " ++ (itos x.d)))
+
+    else if tag == 2 then
+      x.baz_safe_at idx offset
+        (\_ -> print "No baz found")
+        (\x -> print ("Baz e: " ++ (itos x.e) ++ " f: " ++ (itos x.f)))
+
+    else print "Invalid element tag"))
 )
 
 trigger t3 : string = \y -> (
   (c2.load y);
-  print ("Size in t3: " ++ (itos (c2.size())))
+  c2.unpack();
+  print ("Size in t3: " ++ (itos (c2.size())));
+  (c2.iterate (\tag -> \idx -> \offset ->
+    if tag == 0 then
+      c2.foo_safe_at idx offset
+        (\_ -> print "No foo found")
+        (\x -> print ("Foo a: " ++ (itos x.a) ++ " b: " ++ (itos x.b) ++ " . c: " ++ x.c ++ ". d: " ++ x.d))
+
+    else if tag == 1 then
+      c2.bar_safe_at idx offset
+        (\_ -> print "No bar found")
+        (\x -> print ("Bar c: " ++ (itos x.c) ++ " d: " ++ (itos x.d)))
+
+    else if tag == 2 then
+      c2.baz_safe_at idx offset
+        (\_ -> print "No baz found")
+        (\x -> print ("Baz e: " ++ (itos x.e) ++ " f: " ++ (itos x.f)))
+
+    else print "Invalid element tag"))
 )
 
 source s1 : () = value ()

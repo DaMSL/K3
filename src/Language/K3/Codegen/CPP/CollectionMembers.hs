@@ -387,11 +387,10 @@ indexes name ans content_ts = do
 
     fold_slice_vid_fn _ = return Nothing
 
-
 -- Returns member definitions for a FlatPolyBuffer or UniquePolyBuffer
 polybuffer :: Identifier -> [(Identifier, [AnnMemDecl])] -> CPPGenM [R.Definition]
 polybuffer name ans  = do
-  let indexed   = zip [1..] $ filter is_polybuffer ans
+  let indexed   = zip [1..] $ filter (is_polybuffer . fst) ans
   let flattened = concatMap (\(i, (n, mems)) -> zip (repeat (i,n)) mems) indexed
   at_defns                   <- catMaybes <$> mapM at_fn flattened
   safe_at_defns              <- catMaybes <$> mapM safe_at_fn flattened
@@ -401,11 +400,12 @@ polybuffer name ans  = do
   skip_tag_defns             <- catMaybes <$> mapM skip_fn flattened
   skip_all_tag_defns         <- catMaybes <$> mapM skip_all_fn flattened
   extra_defns                <- extra_fns tgs types
-  return $ super_defn ++ copy_ctor ++ at_defns ++ safe_at_defns ++ append_defns
-            ++ iterate_tag_defns ++ fold_tag_defns ++ skip_tag_defns ++ skip_all_tag_defns ++ extra_defns
+  return $ super_defn ++ copy_ctor ++ move_ctor ++ copy_assign ++ move_assign ++ dtor
+           ++ at_defns ++ safe_at_defns ++ append_defns
+          ++ iterate_tag_defns ++ fold_tag_defns ++ skip_tag_defns ++ skip_all_tag_defns ++ extra_defns
 
   where
-    is_polybuffer (n,_) = any (`isInfixOf` n) ["FlatPolyBuffer", "UniquePolyBuffer"]
+    is_polybuffer n = any (`isInfixOf` n) ["FlatPolyBuffer", "UniquePolyBuffer"]
     is_flat_polybuffer = "FlatPolyBuffer" `isInfixOf` name
 
     super_type = R.Qualified (R.Name "K3") $
@@ -413,23 +413,79 @@ polybuffer name ans  = do
                   then R.Specialized [elem_type] $ R.Name "FlatPolyBuffer"
                   else R.Specialized [elem_type, R.Named $ R.Name name] $ R.Name "UniquePolyBuffer"
 
-    super_defn = if is_polybuffer (name, []) then
+    super_defn = if is_polybuffer name then
                   [R.GlobalDefn $ R.Forward $ R.UsingDecl
                     (Right $ R.Name "Super")
                     (Just $ super_type)]
+
                  else []
 
     -- TODO we need to complete the rule of 5 (move, copyAssign, moveAssign, destructor)
     copy_ctor :: [R.Definition]
-    copy_ctor = if not (is_polybuffer (name, [])) then [] else
-      [R.FunctionDefn
-         (R.Name name)
-         [(Just "other", R.Reference $ R.Const $ R.Named $ R.Name name)]
-         Nothing
-         [R.Call (R.Variable super_type) [R.Variable $ R.Name "other"]]
-         False
-         [ R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "Super") (R.Name "unpack")) [R.Initialization R.Unit []] ]
-      ]
+    copy_ctor = if not (is_polybuffer name) then [] else
+      [ R.FunctionDefn
+          (R.Name name)
+          [(Just "other", R.Reference $ R.Const $ R.Named $ R.Name name)]
+          Nothing
+          [R.Call (R.Variable super_type) [R.Variable $ R.Name "other"]]
+          False
+          [ R.IfThenElse
+              (R.Project (R.Variable $ R.Name "other") (R.Name "internalized"))
+              [R.Ignore $ R.Call
+                (R.Variable $ R.Qualified (R.Name "Super") (R.Name "unpack"))
+                [R.Initialization R.Unit []]
+              ]
+              []
+          ]
+       ]
+
+    move_ctor :: [R.Definition]
+    move_ctor = if not (is_polybuffer name) then [] else
+      [ R.FunctionDefn
+          (R.Name name)
+          [(Just "other", R.RValueReference $ R.Named $ R.Name name)]
+          Nothing
+          [R.Call (R.Variable super_type) [R.Move $ R.Variable $ R.Name "other"]]
+          False
+          []
+       ]
+
+    copy_assign :: [R.Definition]
+    copy_assign = if not (is_polybuffer name) then [] else
+      [ R.FunctionDefn
+          (R.Name "operator=")
+          [(Just "other", R.Reference $ R.Const $ R.Named $ R.Name name)]
+          (Just $ R.Reference $ R.Named $ R.Name name)
+          []
+          False
+          [ R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "Super") (R.Name "operator=")) [R.Variable $ R.Name "other"],
+            R.Return $ R.Dereference $ R.Variable $ R.Name "this"
+          ]
+       ]
+
+    move_assign :: [R.Definition]
+    move_assign = if not (is_polybuffer name) then [] else
+      [ R.FunctionDefn
+          (R.Name "operator=")
+          [(Just "other", R.RValueReference $ R.Named $ R.Name name)]
+          (Just $ R.Reference $ R.Named $ R.Name name)
+          []
+          False
+          [ R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "Super") (R.Name "operator=")) [R.Move $ R.Variable $ R.Name "other"],
+            R.Return $ R.Dereference $ R.Variable $ R.Name "this"
+          ]
+       ]
+
+    dtor :: [R.Definition]
+    dtor = if not (is_polybuffer name) then [] else
+      [ R.FunctionDefn
+          (R.Name $ "~" ++ name)
+          []
+          Nothing
+          []
+          False
+          []
+       ]
 
     at_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
     at_fn (_, Lifted _ fname _ _ _) | "_safe_at" `isSuffixOf` fname = return Nothing
