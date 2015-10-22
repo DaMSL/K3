@@ -332,17 +332,20 @@ class R_elem {
   void serialize(archive& _archive) {
     _archive& elem;
   }
-  _T0 elem;
+
   template <class T>
   R_elem<_T0>& internalize(T& arg)  {
     arg.internalize(elem);
     return *this;
   }
+
   template <class T>
   R_elem<_T0>& externalize(T& arg)  {
     arg.externalize(elem);
     return *this;
   }
+
+  _T0 elem;
 };
 #endif  // K3_R_elem
 
@@ -379,6 +382,16 @@ class R_i {
       template <class archive>
       void serialize(archive& _archive)  {
         _archive & i;
+      }
+      template <class T>
+      R_i<_T0>& internalize(T& arg)  {
+        arg.internalize(i);
+        return *this;
+      }
+      template <class T>
+      R_i<_T0>& externalize(T& arg)  {
+        arg.externalize(i);
+        return *this;
       }
       _T0 i;
 };
@@ -423,6 +436,18 @@ class R_key_value {
   }
   bool operator>=(const R_key_value<_T0, _T1>& __other) const {
     return std::tie(key, value) >= std::tie(__other.key, __other.value);
+  }
+  template <class T>
+  R_key_value<_T0, _T1>& internalize(T& arg)  {
+    arg.internalize(key);
+    arg.internalize(value);
+    return *this;
+  }
+  template <class T>
+  R_key_value<_T0, _T1>& externalize(T& arg)  {
+    arg.externalize(key);
+    arg.externalize(value);
+    return *this;
   }
   _T0 key;
   _T1 value;
