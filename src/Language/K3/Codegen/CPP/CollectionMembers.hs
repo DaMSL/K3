@@ -594,7 +594,7 @@ polybuffer name ans  = do
                          (Just "rtag", tag_t), (Just "relem", void_ptr_t)]
                         (Just $ R.Named $ R.Name "static bool")
                         []
-                        True
+                        False
                         [R.IfThenElse (R.Binary "==" (R.Variable $ R.Name "ltag") (R.Variable $ R.Name "rtag"))
                           [branch_chain "ltag" tags types elseStmt elemStmt]
                           [R.Return $ R.Literal $ R.LBool False]]
@@ -615,7 +615,7 @@ polybuffer name ans  = do
                         [(Just "tag", tag_t), (Just "elem", void_ptr_t)]
                         (Just $ R.Named $ R.Name "static size_t")
                         []
-                        True
+                        False
                         [branch_chain "tag" tags types elseStmt elemStmt]
 
       where elemStmt _ ty = R.Return $ R.Call (R.Variable $ R.Name "hash_value")
