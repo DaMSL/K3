@@ -59,13 +59,19 @@ trigger t : () = \_ -> (
 
   (e = (c.foldl_foo 0 0 (\acc -> \idx -> \offset -> \foo -> acc + foo.a) 0));
   (print ("Fold result, e: " ++ (itos e)));
+
+  // Send an internalized FPB to t2
   ((t2, me) <- c);
+
+  // Send an externalized FPB to t3
    c.repack();
    (t3, me) <- c.save()
 )
 
 trigger t2 : PType = \x -> (
   print ("Size in t2: " ++ (itos (x.size())));
+
+  // No need to unpack -- x was sent in internalized form
   (x.iterate (\tag -> \idx -> \offset ->
     if tag == 0 then
       x.foo_safe_at idx offset
@@ -87,6 +93,8 @@ trigger t2 : PType = \x -> (
 
 trigger t3 : string = \y -> (
   (c2.load y);
+
+  // Need to unpack -- y was sent in externalized form
   c2.unpack();
   print ("Size in t3: " ++ (itos (c2.size())));
   (c2.iterate (\tag -> \idx -> \offset ->
