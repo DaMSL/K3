@@ -70,19 +70,22 @@ public:
       int status = buffer_insert(vcon, offset, const_cast<char*>(str.data()), len);
       if ( status == 0 ) {
         status = buffer_insert(vcon, offset+len, &(filler[0]), gap);
+      } else {
+        throw std::runtime_error("Invalid externalization operation1");
       }
       if ( status == 0 ) {
-        intptr_t* p = reinterpret_cast<intptr_t*>(&str);
-        *p = offset;
+        // The base_str we made inside the buffer does not own the external buffer. That will be freed
+        // by the real base_str that exists out in the world
+        str.set_borrowing(true);
+        str.unowned((char *)offset);
       }
       else {
-        throw std::runtime_error("Invalid externalization operation");
+        throw std::runtime_error("Invalid externalization operation2");
       }
     }
     else if ( op == ExternalizeOp::Reuse ) {
       size_t offset = str.data() - buffer_data(vcon);
-      intptr_t* p = reinterpret_cast<intptr_t*>(&str);
-      *p = offset;
+      str.unowned((char *)offset);
     }
   }
 
@@ -116,8 +119,8 @@ public:
   void internalize(double&, type<double>) {}
 
   void internalize(base_string& str) {
-    intptr_t* p = reinterpret_cast<intptr_t*>(&str);
-    size_t offset = static_cast<size_t>(*p);
+    char *p = str.bufferp_();
+    size_t offset = (size_t)(p);
     char* buf = buffer_data(vcon) + offset;
     if ( buf != nullptr ) {
       str.unowned(buf);
