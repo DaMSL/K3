@@ -93,7 +93,7 @@ data CProtocol = Register       String
                | R1BlockAborted WorkerID ProgramID [BlockID] String
 
                -- Round 2: distributed materialization
-               | R2Block        ProgramID BlockCompileSpec CompileBlockU (K3 Declaration) [(MatI.DKey, K3 MExpr)]
+               | R2Block        ProgramID BlockCompileSpec CompileBlockU (K3 Declaration)
                | R2BlockDone    WorkerID ProgramID CompileBlockD TransformReport
                | R2BlockAborted WorkerID ProgramID [BlockID] String
 
@@ -532,7 +532,7 @@ cshow = \case
           R1BlockDone wid pid bids _    -> unwords ["R1BlockDone", show wid, show pid, intercalate "," $ map (show . fst) bids]
           R1BlockAborted wid pid bids _ -> unwords ["R1BlockAborted", show wid, show pid, intercalate "," $ map show bids]
 
-          R2Block pid _ bids _ _        -> unwords ["R2Block", show pid, intercalate "," $ map (show . fst) bids]
+          R2Block pid _ bids _          -> unwords ["R2Block", show pid, intercalate "," $ map (show . fst) bids]
           R2BlockDone wid pid bids _    -> unwords ["R2BlockDone", show wid, show pid, intercalate "," $ map (show . fst) bids]
           R2BlockAborted wid pid bids _ -> unwords ["R2BlockAborted", show wid, show pid, intercalate "," $ map show bids]
 
@@ -1101,11 +1101,10 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     round2 prog jobOpts rq rid profile = do
         ((r2P, _), r2Prof) <- liftMeasured $ evalTransform Nothing (sRound1Stages $ smOpts) prog
         let cleanP = stripProperties $ stripTypeAndEffectAnns r2P
-        let mst =  HashMap.toList $ MatI.cTable $ MatI.prepareInitialIState cleanP
         let ppRep = mkReport "Master R2 preprocessing" [r2Prof]
         (pid, blocksByWID, wConfig) <- assignBlocks rid rq jobOpts cleanP $ Right (profile, ppRep)
         (_, sProf) <- ST.profile $ const $ do
-          msgs <- mkMessages bcStages wConfig blocksByWID $ \bcs cb -> R2Block pid bcs cb cleanP mst
+          msgs <- mkMessages bcStages wConfig blocksByWID $ \bcs cb -> R2Block pid bcs cb cleanP
           liftZ $ sendCIs mworker msgs
         let sRep = mkReport "Master R2 distribution" [sProf]
         modifyMJ_ $ \jbs -> Map.adjust (adjustProfile sRep) pid jbs
@@ -1276,7 +1275,7 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
 
     -- | Worker message processing.
     mHandler (R1Block pid bcSpec ublocksByBID prog) = processR1Block pid bcSpec ublocksByBID prog
-    mHandler (R2Block pid bcSpec ublocksByBID prog mst) = processR2Block pid bcSpec ublocksByBID prog mst
+    mHandler (R2Block pid bcSpec ublocksByBID prog) = processR2Block pid bcSpec ublocksByBID prog
 
     mHandler (RegisterAck cOpts) = zm $ do
       wlogM $ unwords ["Registered", show cOpts]
@@ -1308,18 +1307,19 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
 
     processR1Block pid _ ublocksByBID _ = abortBlock R1BlockAborted pid ublocksByBID $ "Invalid worker compile stages"
 
-    processR2Block pid (BlockCompileSpec prepStages [SMaterialization] wForkFactor wOffset) ublocksByBID prog mst =
+    processR2Block pid (BlockCompileSpec prepStages [SMaterialization] wForkFactor wOffset) ublocksByBID prog =
       abortcatch R2BlockAborted pid ublocksByBID $ do
         start <- liftIO getTime
         startP <- liftIO getPOSIXTime
         wlogM $ boxToString $ ["Worker R2 blocks start"] %$ (indent 2 [show startP])
+        let mst = MatI.prepareInitialIState prog
         (cBlocksByBID, finalSt) <- zm $ compileAllBlocks prepStages wForkFactor wOffset ublocksByBID prog
                                       $ compileR2Block mst pid
         end <- liftIO getTime
         wlogM $ boxToString $ ["Worker R2 local time"] %$ (indent 2 [secs $ end - start])
         sendC wworker $ R2BlockDone wid pid cBlocksByBID $ ST.report finalSt
 
-    processR2Block pid _ ublocksByBID _ _ = abortBlock R2BlockAborted pid ublocksByBID $ "Invalid worker compile stages"
+    processR2Block pid _ ublocksByBID _ = abortBlock R2BlockAborted pid ublocksByBID $ "Invalid worker compile stages"
 
     abortcatch ctor pid ublocksByBID m = m `catches`
       [Handler (\(e :: IOException)      -> abortBlock ctor pid ublocksByBID $ show e),
@@ -1343,7 +1343,7 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
     compileR2Block mst pid (blacc, st) (bid, unzip -> (ids, block)) = do
       (nblock, nst) <- debugCompileBlock pid bid (unwords [show $ length block])
                         $ liftIE $ ST.runTransformM st
-                        $ mapM (ST.materializationPass (MatI.IState $ HashMap.fromList mst)) block
+                        $ mapM (ST.materializationPass mst) block
       return (blacc ++ [(bid, zip ids nblock)], ST.mergeTransformStReport st nst)
 
     extractBlocksByUID prog ublocksByBID = do
