@@ -1100,7 +1100,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
 
     round2 prog jobOpts rq rid profile = do
         ((r2P, _), r2Prof) <- liftMeasured $ evalTransform Nothing (sRound1Stages $ smOpts) prog
-        let cleanP = stripProperties $ stripTypesAndEffects r2P
+        let cleanP = stripProperties $ stripTypeAndEffectAnns r2P
         let mst =  HashMap.toList $ MatI.cTable $ MatI.prepareInitialIState cleanP
         let ppRep = mkReport "Master R2 preprocessing" [r2Prof]
         (pid, blocksByWID, wConfig) <- assignBlocks rid rq jobOpts cleanP $ Right (profile, ppRep)
