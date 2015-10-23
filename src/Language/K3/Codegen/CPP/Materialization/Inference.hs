@@ -591,7 +591,8 @@ setMethod :: DKey -> Method -> SolverM ()
 setMethod k m = modify $ \s -> s { assignments = M.insert k m (assignments s) }
 
 getMethod :: DKey -> SolverM Method
-getMethod k = gets assignments >>= maybe (return Copied) return . M.lookup k
+getMethod k = gets assignments >>= maybe (err k) return . M.lookup k
+  where err k' = throwError $ SError $ "Materialization lookup failed on " ++ show k'
 
 -- ** Sorting
 mkDependencyList :: M.HashMap DKey (K3 MExpr) -> K3 Declaration -> SolverM [Either DKey DKey]

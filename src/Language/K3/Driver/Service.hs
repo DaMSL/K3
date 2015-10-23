@@ -1101,12 +1101,10 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
         let ppRep = mkReport "Master R2 preprocessing" [r2Prof]
         (pid, blocksByWID, wConfig) <- assignBlocks rid rq jobOpts r2P $ Right (profile, ppRep)
         (_, sProf) <- ST.profile $ const $ do
-          msgs <- mkMessages bcStages wConfig blocksByWID $ \bcs cb -> R2Block pid bcs cb r2P mst
+          msgs <- mkMessages ([], []) wConfig blocksByWID $ \bcs cb -> R2Block pid bcs cb r2P mst
           liftZ $ sendCIs mworker msgs
         let sRep = mkReport "Master R2 distribution" [sProf]
         modifyMJ_ $ \jbs -> Map.adjust (adjustProfile sRep) pid jbs
-
-      where bcStages = (coStages $ scompileOpts $ sOpts, rcStages jobOpts)
 
 
     {------------------------------
@@ -1296,24 +1294,24 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
         start <- liftIO getTime
         startP <- liftIO getPOSIXTime
         wlogM $ boxToString $ ["Worker R1 blocks start"] %$ (indent 2 [show startP])
-        (cBlocksByBID, finalSt) <- zm $ compileAllBlocks pid prepSpec cSpec wForkFactor wOffset ublocksByBID prog compileR1Block
+        (cBlocksByBID, finalSt) <- zm $ compileAllBlocks prepSpec wForkFactor wOffset ublocksByBID prog
+                                      $ compileR1Block pid cSpec
         end <- liftIO getTime
         wlogM $ boxToString $ ["Worker R1 local time"] %$ (indent 2 [secs $ end - start])
         sendC wworker $ R1BlockDone wid pid cBlocksByBID $ ST.report finalSt
 
     processR1Block pid _ ublocksByBID _ = abortBlock pid ublocksByBID $ "Invalid worker compile stages"
 
-    processR2Block pid (BlockCompileSpec prepSpec [SDeclOpt cSpec] wForkFactor wOffset) ublocksByBID prog mst =
+    processR2Block pid (BlockCompileSpec _ _ wForkFactor wOffset) ublocksByBID prog mst =
       abortcatch pid ublocksByBID $ do
         start <- liftIO getTime
         startP <- liftIO getPOSIXTime
         wlogM $ boxToString $ ["Worker R2 blocks start"] %$ (indent 2 [show startP])
-        (cBlocksByBID, finalSt) <- zm $ compileAllBlocks pid prepSpec cSpec wForkFactor wOffset ublocksByBID prog $ compileR2Block mst
+        (cBlocksByBID, finalSt) <- zm $ compileAllBlocks [] wForkFactor wOffset ublocksByBID prog
+                                      $ compileR2Block mst pid
         end <- liftIO getTime
         wlogM $ boxToString $ ["Worker R2 local time"] %$ (indent 2 [secs $ end - start])
         sendC wworker $ R1BlockDone wid pid cBlocksByBID $ ST.report finalSt
-
-    processR2Block pid _ ublocksByBID _ _ = abortBlock pid ublocksByBID $ "Invalid worker compile stages"
 
     abortcatch pid ublocksByBID m = m `catches`
       [Handler (\(e :: IOException)      -> abortBlock pid ublocksByBID $ show e),
@@ -1323,18 +1321,18 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
     abortBlock pid ublocksByBID reason =
       sendC wworker $ R1BlockAborted wid pid (map fst ublocksByBID) reason
 
-    compileAllBlocks pid prepSpec cSpec wForkFactor wOffset ublocksByBID prog compileF = do
+    compileAllBlocks prepSpec wForkFactor wOffset ublocksByBID prog compileF = do
       ((initP, _), initSt) <- liftIE $ runTransform Nothing prepSpec prog
       workerSt <- maybe wstateErr return $ ST.partitionTransformStSyms wForkFactor wOffset initSt
       dblocksByBID <- extractBlocksByUID initP ublocksByBID
-      foldM (compileF pid cSpec) ([], workerSt) dblocksByBID
+      foldM compileF ([], workerSt) dblocksByBID
 
     compileR1Block pid cSpec (blacc, st) (bid, unzip -> (ids, block)) = do
       (nblock, nst) <- debugCompileBlock pid bid (unwords [show $ length block])
                         $ liftIE $ ST.runTransformM st $ ST.runDeclOptPassesBLM cSpec Nothing block
       return (blacc ++ [(bid, zip ids nblock)], ST.mergeTransformStReport st nst)
 
-    compileR2Block mst pid _ (blacc, st) (bid, unzip -> (ids, block)) = do
+    compileR2Block mst pid (blacc, st) (bid, unzip -> (ids, block)) = do
       (nblock, nst) <- debugCompileBlock pid bid (unwords [show $ length block])
                         $ liftIE $ ST.runTransformM st
                         $ mapM (ST.materializationPass (MatI.IState $ HashMap.fromList mst)) block
