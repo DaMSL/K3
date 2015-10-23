@@ -174,7 +174,6 @@ public:
 
   FlatPolyBuffer& operator=(const FlatPolyBuffer& other) {
     clear(unit_t{});
-    initContainer();
     copyPolyBuffer(other);
     if (other.internalized) {
       unpack(unit_t{});
@@ -363,12 +362,13 @@ public:
   unit_t traverse(Fun f) const {
     if (!internalized) { throw std::runtime_error ("Invalid traverse on externalized poly buffer"); }
     size_t foffset = 0, sz = size(unit_t{});
-    for (size_t i = 0; i < sz; i++) {
+    size_t i = 0;
+    // warning: could loop infinitely
+    while (i < sz) {
       Tag tg = tag_at(static_cast<int>(i));
       R_key_value<int, int> next = f(tg, i, static_cast<int>(foffset));
       i = static_cast<size_t>(next.key);
       foffset = static_cast<size_t>(next.value);
-      if ( i < sz ) { foffset += elemsize(tag_at(static_cast<int>(i))); }
     }
     return unit_t {};
   }
@@ -448,7 +448,11 @@ public:
   // Clears a container, deleting any backing buffer.
   unit_t clear(unit_t) {
     if ( buffer.data() ) { freeBackingBuffer(); }
-    else { freeContainer(); }
+    else {
+      freeContainer();
+      initContainer();
+      internalized=false;
+    }
     return unit_t{};
   }
 
