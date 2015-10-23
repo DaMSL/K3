@@ -76,6 +76,7 @@ transformM :: CompileStages -> K3 Declaration -> TransformM (K3 Declaration, [St
 transformM cstages prog = foldM processStage (prog, []) cstages
   where
     processStage (p,lg) SDeclPrepare     = trace "Running SDeclPrepare stage." $ chainLog   lg $ ST.runDeclPreparePassesM p
+    processStage (p,lg) SCGPrepare       = trace "Running SCGPrepare stage."   $ chainLog   lg $ ST.runCGPreparePassesM p
     processStage (p,lg) SCodegen         = trace "Running SCodegen stage."     $ chainLog   lg $ ST.runCGPassesM p
     processStage (p,lg) (SDeclOpt cSpec) = wrapReport lg $ ST.runDeclOptPassesM cSpec Nothing p
 

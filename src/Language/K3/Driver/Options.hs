@@ -156,7 +156,8 @@ data ServiceOptions = ServiceOptions { serviceId       :: String
                     deriving (Eq, Read, Show, Generic)
 
 data ServiceMasterOptions
-        = ServiceMasterOptions { sfinalStages  :: CompileStages }
+        = ServiceMasterOptions { sRound1Stages  :: CompileStages
+                               , sFinalStages   :: CompileStages }
         deriving (Eq, Read, Show)
 
 data RemoteJobOptions = RemoteJobOptions { workerFactor     :: Map String Int
@@ -351,7 +352,8 @@ defaultCompileStages ct cSpec = case ct of
     LocalCompiler       -> [SDeclPrepare, SDeclOpt cSpec, SCodegen]
     ServicePrepare      -> [SDeclPrepare]
     ServiceParallel     -> [SDeclOpt cSpec]
-    ServiceFinal        -> [SDeclPrepare, SCodegen]
+    ServiceRound1       -> [SDeclPrepare, SCGPrepare]
+    ServiceFinal        -> []
     ServiceClient       -> []
     ServiceClientRemote -> [SDeclOpt cSpec]
 
@@ -367,6 +369,7 @@ compileStagesOpt ct = extractStageAndSpec . keyValList "" <$> strOption (
                   LocalCompiler       -> "fstage"
                   ServicePrepare      -> "sprepstage"
                   ServiceParallel     -> "sparstage"
+                  ServiceRound1       -> "sr1stage"
                   ServiceFinal        -> "sfinstage"
                   ServiceClient       -> "scstage"
                   ServiceClientRemote -> "srstage"
@@ -384,7 +387,7 @@ compileStagesOpt ct = extractStageAndSpec . keyValList "" <$> strOption (
     -- | Compiler service stages definitions.
     stageOf _     ("sprepare",  read -> True) = [SDeclPrepare]
     stageOf cSpec ("sparallel", read -> True) = [SDeclOpt cSpec]
-    stageOf _     ("sfinal",    read -> True) = [SDeclPrepare, SCodegen]
+    stageOf _     ("sfinal",    read -> True) = [SDeclPrepare, SCGPrepare]
 
     -- | Optimizer stage specification.
     stageOf cSpec ("oinclude", (splitOn "," ->  psl)) = [SDeclPrepare] ++ include cSpec psl
@@ -663,7 +666,8 @@ serviceOpts ct = ServiceOptions <$> serviceIdOpt
                                 <*> compileOpts ct
 
 serviceMasterOpts :: Parser ServiceMasterOptions
-serviceMasterOpts = ServiceMasterOptions <$> compileStagesOpt ServiceFinal
+serviceMasterOpts = ServiceMasterOptions <$> compileStagesOpt ServiceRound1
+                                         <*> compileStagesOpt ServiceFinal
 
 serviceIdOpt :: Parser String
 serviceIdOpt = strOption (   long    "svid"

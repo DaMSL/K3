@@ -8,8 +8,11 @@
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Codegen.CPP.Materialization.Inference (
+  prepareInitialIState,
   optimizeMaterialization,
   MZFlags(..),
+  IState(..),
+  DKey,
   defaultIState
 ) where
 
@@ -118,6 +121,7 @@ runInferM m st sc = runIdentity $ runExceptT $ runWriterT $ flip runReaderT sc $
 
 -- ** Non-scoping State
 data IState = IState { cTable :: M.HashMap DKey (K3 MExpr) }
+              deriving (Eq, Read, Show, Generic)
 
 defaultIState :: IState
 defaultIState = IState  M.empty

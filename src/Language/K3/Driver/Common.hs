@@ -22,6 +22,7 @@ import Language.K3.Utils.Pretty.Syntax
 data CompilerType = LocalCompiler
                   | ServicePrepare
                   | ServiceParallel
+                  | ServiceRound1
                   | ServiceFinal
                   | ServiceClient
                   | ServiceClientRemote
@@ -30,6 +31,7 @@ data CompilerType = LocalCompiler
 -- | Coarse-grained compilation stages.
 data CompileStage = SDeclPrepare
                   | SDeclOpt CompilerSpec
+                  | SCGPrepare
                   | SCodegen
                   deriving (Eq, Ord, Read, Show, Generic)
 
