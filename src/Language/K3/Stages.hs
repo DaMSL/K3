@@ -532,7 +532,7 @@ cgPasses = [ withRepair "TID" $ transformE $ triggerSymbols
            , refreshProgram
            , transformF CArgs.runAnalysis
            , transformE markProgramLambdas
-           , \d -> get >>= \s -> liftIO (optimizeMaterialization (penv s, fenv s) d) >>= either throwE return
+           , \d -> get >>= \s -> liftIO (optimizeMaterialization defaultIState (penv s, fenv s) d) >>= either throwE return
            ]
 
 runCGPassesM :: ProgramTransform

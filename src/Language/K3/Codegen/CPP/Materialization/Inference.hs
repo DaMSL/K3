@@ -9,7 +9,8 @@
 
 module Language.K3.Codegen.CPP.Materialization.Inference (
   optimizeMaterialization,
-  MZFlags(..)
+  MZFlags(..),
+  defaultIState
 ) where
 
 import GHC.Generics (Generic)
@@ -22,7 +23,7 @@ import qualified Data.List as L
 import Control.Arrow
 
 import Data.Foldable
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Traversable
 import Data.Tree
 
@@ -69,13 +70,22 @@ data MZFlags = MZFlags deriving (Eq, Generic, Ord, Read, Show)
 instance Binary MZFlags
 instance Serialize MZFlags
 
-optimizeMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> IO (Either String (K3 Declaration))
-optimizeMaterialization (p, f) d = runExceptT $ inferMaterialization >>= solveMaterialization >>= attachMaterialization d
+prepareInitialIState :: K3 Declaration -> IState
+prepareInitialIState dr = IState $ M.fromList $ mapMaybe genHack (children dr)
+ where
+  genHack :: K3 Declaration -> Maybe (DKey, K3 MExpr)
+  genHack d@(tag -> DGlobal i _ _) = Just ((Juncture (gUID d) i, In), (mAtom Referenced -??- "Hack"))
+  genHack _ = Nothing
+
+  gUID d = let Just (DUID u) = d @~ isDUID in u
+
+optimizeMaterialization :: IState -> (PIEnv, FIEnv) -> K3 Declaration -> IO (Either String (K3 Declaration))
+optimizeMaterialization is (p, f) d = runExceptT $ inferMaterialization >>= solveMaterialization >>= attachMaterialization d
  where
   inferMaterialization = case runInferM (materializeD d) defaultIState defaultIScope of
     Left (IError msg) -> throwError msg
     Right ((_, IState ct), r) -> liftIO (formatIReport reportVerbosity r) >> return ct
-   where defaultIState = IState { cTable = M.empty }
+   where defaultIState = is
          defaultIScope = IScope { downstreams = [], nearestBind = Nothing, pEnv = p, fEnv = f, topLevel = False }
 
   solveMaterialization ct = case runSolverM solveAction defaultSState of
@@ -108,6 +118,9 @@ runInferM m st sc = runIdentity $ runExceptT $ runWriterT $ flip runReaderT sc $
 
 -- ** Non-scoping State
 data IState = IState { cTable :: M.HashMap DKey (K3 MExpr) }
+
+defaultIState :: IState
+defaultIState = IState  M.empty
 
 type DKey = (Juncture, Direction)
 
@@ -193,8 +206,7 @@ bindPoint (Contextual p u) = case tag p of
 -- TODO: Add constraint between decision for declaration and root expression of initializer.
 materializeD :: K3 Declaration -> InferM ()
 materializeD d = case tag d of
-  DGlobal i _ (Just e) -> materializeE e >> dUID d >>= \u -> constrain u i In (mAtom Referenced -??- "Hack")
-  DGlobal i _ Nothing -> dUID d >>= \u -> constrain u i In (mAtom Referenced -??- "Hack")
+  DGlobal i _ (Just e) -> materializeE e
   DTrigger _ _ e -> withTopLevel True $ materializeE e
   _ -> traverse_ materializeD (children d)
 
@@ -579,7 +591,7 @@ getMethod k = gets assignments >>= maybe (return Copied) return . M.lookup k
 
 -- ** Sorting
 mkDependencyList :: M.HashMap DKey (K3 MExpr) -> K3 Declaration -> SolverM [Either DKey DKey]
-mkDependencyList m p = return $ map Right (M.keys m)
+mkDependencyList m p = return (buildHybridDepList graph)
  where
   graph = [(k, k, S.toList (findDependenciesE $ m M.! k)) | k <- M.keys m]
   collapseSCCs scc = case scc of
