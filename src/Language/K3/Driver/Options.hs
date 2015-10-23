@@ -164,7 +164,8 @@ data RemoteJobOptions = RemoteJobOptions { workerFactor     :: Map String Int
                                          , workerBlockSize  :: Map String Int
                                          , defaultBlockSize :: Int
                                          , reportSize       :: Int
-                                         , rcStages         :: CompileStages }
+                                         , rcStages         :: CompileStages
+                                         , rc2Stages        :: CompileStages }
                       deriving (Eq, Read, Show, Generic)
 
 data QueryOptions = QueryOptions { qsargs :: Either [String] [Int] }
@@ -351,7 +352,8 @@ defaultCompileStages :: CompilerType -> CompilerSpec -> CompileStages
 defaultCompileStages ct cSpec = case ct of
     LocalCompiler       -> [SDeclPrepare, SDeclOpt cSpec, SCodegen]
     ServicePrepare      -> [SDeclPrepare]
-    ServiceParallel     -> [SDeclOpt cSpec]
+    ServiceParallel1    -> [SDeclOpt cSpec]
+    ServiceParallel2    -> [SMaterialization]
     ServiceRound1       -> [SDeclPrepare, SCGPrepare]
     ServiceFinal        -> []
     ServiceClient       -> []
@@ -368,7 +370,8 @@ compileStagesOpt ct = extractStageAndSpec . keyValList "" <$> strOption (
     flagName = case ct of
                   LocalCompiler       -> "fstage"
                   ServicePrepare      -> "sprepstage"
-                  ServiceParallel     -> "sparstage"
+                  ServiceParallel1    -> "spar1stage"
+                  ServiceParallel2    -> "spar2stage"
                   ServiceRound1       -> "sr1stage"
                   ServiceFinal        -> "sfinstage"
                   ServiceClient       -> "scstage"
@@ -385,9 +388,11 @@ compileStagesOpt ct = extractStageAndSpec . keyValList "" <$> strOption (
     stageOf cSpec ("cg",        read -> True) = [SDeclPrepare, SDeclOpt cSpec, SCodegen]
 
     -- | Compiler service stages definitions.
-    stageOf _     ("sprepare",  read -> True) = [SDeclPrepare]
-    stageOf cSpec ("sparallel", read -> True) = [SDeclOpt cSpec]
-    stageOf _     ("sfinal",    read -> True) = [SDeclPrepare, SCGPrepare]
+    stageOf _     ("sprepare",     read -> True) = [SDeclPrepare]
+    stageOf cSpec ("sparallel",    read -> True) = [SDeclOpt cSpec]
+    stageOf _     ("smaterialize", read -> True) = [SMaterialization]
+    stageOf _     ("sround1",      read -> True) = [SDeclPrepare, SCGPrepare]
+    stageOf _     ("sfinal",       read -> True) = [SDeclPrepare, SCodegen]
 
     -- | Optimizer stage specification.
     stageOf cSpec ("oinclude", (splitOn "," ->  psl)) = [SDeclPrepare] ++ include cSpec psl
@@ -644,7 +649,7 @@ serviceOperOpt = helper <*> subparser (
       <> command "halt"   (info shaltOpt    $ progDesc shaltDesc)
     )
   where smasterOpt = RunMaster    <$> serviceOpts ServicePrepare <*> serviceMasterOpts
-        sworkerOpt = RunWorker    <$> serviceOpts ServiceParallel
+        sworkerOpt = RunWorker    <$> serviceOpts ServiceParallel1
         sjobOpt    = SubmitJob    <$> serviceOpts ServiceClient <*> remoteJobOpt
         squeryOpt  = QueryService <$> serviceOpts ServiceClient <*> querySOpt
         shaltOpt   = Shutdown     <$> serviceOpts ServiceClient
@@ -720,7 +725,8 @@ remoteJobOpt = RemoteJobOptions <$> workerFactorOpt
                                 <*> workerBlockSizeOpt
                                 <*> jobBlockSizeOpt
                                 <*> reportSizeOpt
-                                <*> compileStagesOpt ServiceClientRemote
+                                <*> compileStagesOpt ServiceParallel1
+                                <*> compileStagesOpt ServiceParallel2
 
 jobBlockSizeOpt :: Parser Int
 jobBlockSizeOpt = option auto (

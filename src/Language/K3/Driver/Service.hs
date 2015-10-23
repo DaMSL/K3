@@ -1085,9 +1085,12 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     completeRound1 pid (rid, rq, aborts, profile, sources, jobOpts) = abortcatch rid rq $ do
       case aborts of
         h:t -> abortProgram (Just pid) rid rq $ concat $ h:t
-        _ -> do
-          let prog = DC.role "__global" $ map snd $ sortOn fst $ concatMap snd $ Map.toAscList sources
-          finalizeRound1 rq rid pid prog jobOpts profile
+        _ ->
+          if null $ rc2Stages jobOpts
+            then completeProgram pid (rid, rq, aborts, profile, sources, jobOpts)
+            else do
+              let prog = DC.role "__global" $ map snd $ sortOn fst $ concatMap snd $ Map.toAscList sources
+              finalizeRound1 rq rid pid prog jobOpts profile
 
     finalizeRound1 rq rid pid prog jobOpts profile = do
       mlogM $ unwords ["Completed request", show rid, "round 1", show pid]
@@ -1101,10 +1104,12 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
         let ppRep = mkReport "Master R2 preprocessing" [r2Prof]
         (pid, blocksByWID, wConfig) <- assignBlocks rid rq jobOpts r2P $ Right (profile, ppRep)
         (_, sProf) <- ST.profile $ const $ do
-          msgs <- mkMessages ([], []) wConfig blocksByWID $ \bcs cb -> R2Block pid bcs cb r2P mst
+          msgs <- mkMessages bcStages wConfig blocksByWID $ \bcs cb -> R2Block pid bcs cb r2P mst
           liftZ $ sendCIs mworker msgs
         let sRep = mkReport "Master R2 distribution" [sProf]
         modifyMJ_ $ \jbs -> Map.adjust (adjustProfile sRep) pid jbs
+
+      where bcStages = (coStages $ scompileOpts $ sOpts, rc2Stages jobOpts)
 
 
     {------------------------------
@@ -1289,40 +1294,42 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
                                             , optimizationLevel = optimizationLevel $ mcopts }
 
     -- | Block compilation functions.
-    processR1Block pid (BlockCompileSpec prepSpec [SDeclOpt cSpec] wForkFactor wOffset) ublocksByBID prog =
-      abortcatch pid ublocksByBID $ do
+    processR1Block pid (BlockCompileSpec prepStages [SDeclOpt cSpec] wForkFactor wOffset) ublocksByBID prog =
+      abortcatch R1BlockAborted pid ublocksByBID $ do
         start <- liftIO getTime
         startP <- liftIO getPOSIXTime
         wlogM $ boxToString $ ["Worker R1 blocks start"] %$ (indent 2 [show startP])
-        (cBlocksByBID, finalSt) <- zm $ compileAllBlocks prepSpec wForkFactor wOffset ublocksByBID prog
+        (cBlocksByBID, finalSt) <- zm $ compileAllBlocks prepStages wForkFactor wOffset ublocksByBID prog
                                       $ compileR1Block pid cSpec
         end <- liftIO getTime
         wlogM $ boxToString $ ["Worker R1 local time"] %$ (indent 2 [secs $ end - start])
         sendC wworker $ R1BlockDone wid pid cBlocksByBID $ ST.report finalSt
 
-    processR1Block pid _ ublocksByBID _ = abortBlock pid ublocksByBID $ "Invalid worker compile stages"
+    processR1Block pid _ ublocksByBID _ = abortBlock R1BlockAborted pid ublocksByBID $ "Invalid worker compile stages"
 
-    processR2Block pid (BlockCompileSpec _ _ wForkFactor wOffset) ublocksByBID prog mst =
-      abortcatch pid ublocksByBID $ do
+    processR2Block pid (BlockCompileSpec prepStages [SMaterialization] wForkFactor wOffset) ublocksByBID prog mst =
+      abortcatch R2BlockAborted pid ublocksByBID $ do
         start <- liftIO getTime
         startP <- liftIO getPOSIXTime
         wlogM $ boxToString $ ["Worker R2 blocks start"] %$ (indent 2 [show startP])
-        (cBlocksByBID, finalSt) <- zm $ compileAllBlocks [] wForkFactor wOffset ublocksByBID prog
+        (cBlocksByBID, finalSt) <- zm $ compileAllBlocks prepStages wForkFactor wOffset ublocksByBID prog
                                       $ compileR2Block mst pid
         end <- liftIO getTime
         wlogM $ boxToString $ ["Worker R2 local time"] %$ (indent 2 [secs $ end - start])
         sendC wworker $ R1BlockDone wid pid cBlocksByBID $ ST.report finalSt
 
-    abortcatch pid ublocksByBID m = m `catches`
-      [Handler (\(e :: IOException)      -> abortBlock pid ublocksByBID $ show e),
-       Handler (\(e :: PatternMatchFail) -> abortBlock pid ublocksByBID $ show e),
-       Handler (\(e :: ErrorCall)        -> abortBlock pid ublocksByBID $ show e)]
+    processR2Block pid _ ublocksByBID _ _ = abortBlock R2BlockAborted pid ublocksByBID $ "Invalid worker compile stages"
 
-    abortBlock pid ublocksByBID reason =
-      sendC wworker $ R1BlockAborted wid pid (map fst ublocksByBID) reason
+    abortcatch ctor pid ublocksByBID m = m `catches`
+      [Handler (\(e :: IOException)      -> abortBlock ctor pid ublocksByBID $ show e),
+       Handler (\(e :: PatternMatchFail) -> abortBlock ctor pid ublocksByBID $ show e),
+       Handler (\(e :: ErrorCall)        -> abortBlock ctor pid ublocksByBID $ show e)]
 
-    compileAllBlocks prepSpec wForkFactor wOffset ublocksByBID prog compileF = do
-      ((initP, _), initSt) <- liftIE $ runTransform Nothing prepSpec prog
+    abortBlock ctor pid ublocksByBID reason =
+      sendC wworker $ ctor wid pid (map fst ublocksByBID) reason
+
+    compileAllBlocks prepStages wForkFactor wOffset ublocksByBID prog compileF = do
+      ((initP, _), initSt) <- liftIE $ runTransform Nothing prepStages prog
       workerSt <- maybe wstateErr return $ ST.partitionTransformStSyms wForkFactor wOffset initSt
       dblocksByBID <- extractBlocksByUID initP ublocksByBID
       foldM compileF ([], workerSt) dblocksByBID
