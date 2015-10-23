@@ -58,6 +58,8 @@ public:
   void externalize(bool&, type<bool>) {}
   void externalize(int&, type<int>) {}
   void externalize(double&, type<double>) {}
+  void externalize(unsigned long&, type<unsigned long>) {}
+  void externalize(unsigned short&, type<unsigned short>) {}
 
   void externalize(base_string& str, type<base_string>)
   {
@@ -117,6 +119,8 @@ public:
   void internalize(bool&, type<bool>) {}
   void internalize(int&, type<int>) {}
   void internalize(double&, type<double>) {}
+  void internalize(unsigned long&, type<unsigned long>) {}
+  void internalize(unsigned short&, type<unsigned short>) {}
 
   void internalize(base_string& str) {
     char *p = str.bufferp_();
@@ -505,6 +509,7 @@ public:
     TContainer* nct = tags();
 
     // Reset element pointers to slot ids as necessary.
+    bool internal = internalized;
     bool modified = false;
     if ( internalized ) {
       repack(unit_t{});
@@ -515,14 +520,19 @@ public:
     size_t var_sz   = varseg_size();
     size_t tags_sz  = tags_size();
 
-    auto len = 4 * sizeof(size_t) + byte_size();
+    // 4 lengths + a bool (with gap to preserve alignment, see below)
+    auto len = 5 * sizeof(size_t) + byte_size();
     auto buffer_ = new char[len+1];
     buffer_[len] = 0;
 
     size_t offsets[4] = { len - sizeof(size_t), fixed_sz, var_sz, tags_sz };
     memcpy(buffer_, &(offsets[0]), 4*sizeof(size_t));
-
     size_t offset = 4 * sizeof(size_t);
+
+    // Stashing a bool (internal) messes up the 8-byte alignment of the pointers. Be sure to align next size_t at 8 byte offset.
+    memcpy(buffer_ + offset, &internal, sizeof(bool));
+    offset += sizeof(size_t); // We don't need to explicitly write 0's, we can leave the 'junk' as is.`
+
     if (fixed_sz > 0) {
       memcpy(buffer_ + offset, buffer_data(ncf), fixed_sz);
       offset += fixed_sz;
@@ -557,7 +567,7 @@ public:
     buffer = std::move(str);
     size_t offset = 0;
 
-    size_t fixed_sz = *reinterpret_cast<size_t*>(buffer.begin());
+    size_t fixed_sz = *reinterpret_cast<size_t*>(buffer.begin() + offset);
     offset += sizeof(fixed_sz);
 
     size_t var_sz = *reinterpret_cast<size_t*>(buffer.begin() + offset);
@@ -565,6 +575,9 @@ public:
 
     size_t tags_sz = *reinterpret_cast<size_t*>(buffer.begin() + offset);
     offset += sizeof(tags_sz);
+
+    bool make_internal = *reinterpret_cast<bool*>(buffer.begin() + offset);
+    offset += sizeof(size_t); // Padding to preserve 8-byte alignment. See save().
 
     if (fixed_sz > 0) {
       fixed()->data     = buffer.begin() + offset;
@@ -585,7 +598,9 @@ public:
       tags()->object_size     = sizeof(Tag);
     }
 
-    internalized = false;
+    if (make_internal) {
+      unpack(unit_t {});
+    }
     return unit_t{};
   }
 
@@ -597,6 +612,8 @@ public:
     FContainer* ncf = fixed();
     VContainer* ncv = variable();
     TContainer* nct = tags();
+
+    a.save_binary(&internalized, sizeof(internalized));
 
     // Reset element pointers to slot ids as necessary.
     auto p = const_cast<FlatPolyBuffer*>(this);
@@ -634,7 +651,9 @@ public:
     size_t fixed_sz;
     size_t var_sz;
     size_t tags_sz;
+    bool should_internalize;
 
+    a.load_binary(&should_internalize, sizeof(should_internalize));
     a.load_binary(&fixed_sz, sizeof(fixed_sz));
     a.load_binary(&var_sz,   sizeof(var_sz));
     a.load_binary(&tags_sz,  sizeof(tags_sz));
@@ -655,13 +674,18 @@ public:
       a.load_binary(vector_data(tags()), tags_sz * sizeof(Tag));
     }
 
-    internalized = false;
+    if (should_internalize) {
+      unpack(unit_t{});
+    }
   }
 
   template <class archive>
   void serialize(archive& a) const {
     auto p = const_cast<FlatPolyBuffer*>(this);
     bool modified = false;
+
+    a.write(&internalized, sizeof(internalized));
+
     if ( p->internalized ) {
       p->repack(unit_t {});
       modified = true;
@@ -699,7 +723,9 @@ public:
     size_t fixed_sz;
     size_t var_sz;
     size_t tags_sz;
+    bool should_internalize;
 
+    a.read(&should_internalize, sizeof(should_internalize));
     a.read(&fixed_sz, sizeof(fixed_sz));
     a.read(&var_sz, sizeof(var_sz));
     a.read(&tags_sz, sizeof(tags_sz));
@@ -720,7 +746,9 @@ public:
       a.read(vector_data(tags()), tags_sz * sizeof(Tag));
     }
 
-    internalized = false;
+    if (should_internalize) {
+      unpack(unit_t{});
+    }
   }
 
   BOOST_SERIALIZATION_SPLIT_MEMBER()

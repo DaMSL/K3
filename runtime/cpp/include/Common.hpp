@@ -107,6 +107,18 @@ struct Address {
     ar& port;
   }
 
+  template <class T>
+  Address& internalize(T& internalizer) {
+    internalizer.internalize(ip);
+    internalizer.internalize(port);
+  }
+
+  template <class T>
+  Address& externalize(T& externalizer) {
+    externalizer.externalize(ip);
+    externalizer.externalize(port);
+  }
+
   unsigned long ip;
   unsigned short port;
 };

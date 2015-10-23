@@ -8,7 +8,11 @@ namespace K3 {
 // By default, with every constructor we'll own our own buffer
 
 base_string& base_string::operator+=(const base_string& other) {
-  bool new_header = has_header() || other.has_header();
+  if (has_header() != other.has_header()) {
+    throw std::runtime_error("BaseString +=: invalid concat");
+  }
+
+  bool new_header = has_header();
   size_t len = length() + other.length() + (new_header? header_size : 0);
   auto new_buffer_ = new char[len + 1];
   auto new_c_str_ = new_buffer_ + (new_header? header_size : 0);
@@ -30,7 +34,7 @@ base_string& base_string::operator+=(const base_string& other) {
 }
 
 base_string& base_string::operator+=(const char* other) {
-  return * this += base_string(other);
+  return *this += base_string(other);
 }
 
 base_string& base_string::operator=(const base_string& other) {
