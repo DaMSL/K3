@@ -310,7 +310,7 @@ indexes name ans content_ts = do
 
       let slice k_t = R.Call (R.Project this $ R.Name "fold_slice_by_index")
                         $ call_args n index [ tuple (R.Name "key") k_t
-                                            , R.Variable $ R.Name "f", R.Variable $ R.Name "acc" ]
+                                            , R.Variable $ R.Name "f", R.Move $ R.Move $ R.Variable $ R.Name "acc" ]
 
       let defn k_t c_t = R.TemplateDefn [("Fun", Nothing), ("Acc", Nothing)] $
                          R.FunctionDefn (R.Name fname)
@@ -341,7 +341,7 @@ indexes name ans content_ts = do
 
       let range k_t = R.Call (R.Project this $ R.Name "fold_range_by_index")
                         $ call_args n index [ tuple (R.Name "a") k_t, tuple (R.Name "b") k_t
-                                            , R.Variable $ R.Name "f", R.Variable $ R.Name "acc" ]
+                                            , R.Variable $ R.Name "f", R.Move $ R.Variable $ R.Name "acc" ]
 
       let defn k_t c_t = R.TemplateDefn [("Fun", Nothing), ("Acc", Nothing)] $
                          R.FunctionDefn (R.Name fname)
@@ -371,7 +371,7 @@ indexes name ans content_ts = do
 
       let slice k_t = R.Call (R.Project this $ R.Name "fold_slice_vid_by_index")
                         $ call_args n index [ tuple (R.Name "key") k_t
-                                            , R.Variable $ R.Name "f", R.Variable $ R.Name "acc" ]
+                                            , R.Variable $ R.Name "f", R.Move $ R.Variable $ R.Name "acc" ]
 
       let defn k_t c_t = R.TemplateDefn [("Fun", Nothing), ("Acc", Nothing)] $
                          R.FunctionDefn (R.Name fname)
@@ -541,7 +541,7 @@ polybuffer name ans  = do
                                      [R.Literal $ R.LInt ct_tag, R.Variable $ R.Name "elem"]
 
       let defn ct_tag ct = R.FunctionDefn (R.Name fname)
-                             [(Just "elem", ct)]
+                             [(Just "elem", R.Reference $ R.Const ct)]
                              (Just $ R.Unit)
                              []
                              False
@@ -591,7 +591,7 @@ polybuffer name ans  = do
                                       R.Variable $ R.Name "idx",
                                       R.Variable $ R.Name "offset",
                                       R.Variable $ R.Name "f",
-                                      R.Variable $ R.Name "acc"]
+                                      R.Move $ R.Variable $ R.Name "acc"]
 
       let defn ct_tag ct = R.TemplateDefn [("Fun", Nothing), ("Acc", Nothing)] $
                            R.FunctionDefn (R.Name fname)
