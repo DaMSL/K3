@@ -1100,11 +1100,12 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
 
     round2 prog jobOpts rq rid profile = do
         ((r2P, _), r2Prof) <- liftMeasured $ evalTransform Nothing (sRound1Stages $ smOpts) prog
-        let mst =  HashMap.toList $ MatI.cTable $ MatI.prepareInitialIState r2P
+        let cleanP = stripProperties $ stripTypesAndEffects r2P
+        let mst =  HashMap.toList $ MatI.cTable $ MatI.prepareInitialIState cleanP
         let ppRep = mkReport "Master R2 preprocessing" [r2Prof]
-        (pid, blocksByWID, wConfig) <- assignBlocks rid rq jobOpts r2P $ Right (profile, ppRep)
+        (pid, blocksByWID, wConfig) <- assignBlocks rid rq jobOpts cleanP $ Right (profile, ppRep)
         (_, sProf) <- ST.profile $ const $ do
-          msgs <- mkMessages bcStages wConfig blocksByWID $ \bcs cb -> R2Block pid bcs cb r2P mst
+          msgs <- mkMessages bcStages wConfig blocksByWID $ \bcs cb -> R2Block pid bcs cb cleanP mst
           liftZ $ sendCIs mworker msgs
         let sRep = mkReport "Master R2 distribution" [sProf]
         modifyMJ_ $ \jbs -> Map.adjust (adjustProfile sRep) pid jbs
@@ -1316,7 +1317,7 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
                                       $ compileR2Block mst pid
         end <- liftIO getTime
         wlogM $ boxToString $ ["Worker R2 local time"] %$ (indent 2 [secs $ end - start])
-        sendC wworker $ R1BlockDone wid pid cBlocksByBID $ ST.report finalSt
+        sendC wworker $ R2BlockDone wid pid cBlocksByBID $ ST.report finalSt
 
     processR2Block pid _ ublocksByBID _ _ = abortBlock R2BlockAborted pid ublocksByBID $ "Invalid worker compile stages"
 
