@@ -76,11 +76,11 @@ reasonM msg m = withExceptT (msg ++) m
 transformM :: CompileStages -> K3 Declaration -> TransformM (K3 Declaration, [String])
 transformM cstages prog = foldM processStage (prog, []) cstages
   where
-    processStage (p,lg) SDeclPrepare     = trace "Running SDeclPrepare stage."     $ chainLog   lg $ ST.runDeclPreparePassesM p
-    processStage (p,lg) SCGPrepare       = trace "Running SCGPrepare stage."       $ chainLog   lg $ ST.runCGPreparePassesM p
-    processStage (p,lg) SMaterialization = trace "Running SMaterialization stage." $ chainLog   lg $ ST.materializationPass (MatI.prepareInitialIState p) p
-    processStage (p,lg) SCodegen         = trace "Running SCodegen stage."         $ chainLog   lg $ ST.runCGPassesM p
-    processStage (p,lg) (SDeclOpt cSpec) = wrapReport lg $ ST.runDeclOptPassesM cSpec Nothing p
+    processStage (p,lg) SDeclPrepare           = trace "Running SDeclPrepare stage."     $ chainLog   lg $ ST.runDeclPreparePassesM p
+    processStage (p,lg) SCGPrepare             = trace "Running SCGPrepare stage."       $ chainLog   lg $ ST.runCGPreparePassesM p
+    processStage (p,lg) (SMaterialization dbg) = trace "Running SMaterialization stage." $ chainLog   lg $ ST.materializationPass dbg (MatI.prepareInitialIState dbg p) p
+    processStage (p,lg) SCodegen               = trace "Running SCodegen stage."         $ chainLog   lg $ ST.runCGPassesM p
+    processStage (p,lg) (SDeclOpt cSpec)       = wrapReport lg $ ST.runDeclOptPassesM cSpec Nothing p
 
     chainLog   lg m = m >>= return . (,lg)
     wrapReport lg m = m >>= \np -> get >>= \st -> return (np, lg ++ (prettyLines $ ST.report st))

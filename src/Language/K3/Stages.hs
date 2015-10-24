@@ -535,14 +535,14 @@ cgPreparePasses = [ withRepair "TID" $ transformE $ triggerSymbols
                   , transformF CArgs.runAnalysis
                   , transformE markProgramLambdas ]
 
-materializationPass :: Mat.IState -> ProgramTransform
-materializationPass mst d = do
+materializationPass :: Bool -> Mat.IState -> ProgramTransform
+materializationPass dbg mst d = do
   s  <- get
-  rE <- liftIO (Mat.optimizeMaterialization mst (penv s, fenv s) d)
+  rE <- liftIO (Mat.optimizeMaterialization dbg mst (penv s, fenv s) d)
   either throwE return rE
 
 cgPasses :: [ProgramTransform]
-cgPasses = cgPreparePasses ++ [materializationPass Mat.defaultIState]
+cgPasses = cgPreparePasses ++ [materializationPass False Mat.defaultIState]
 
 runCGPassesM :: ProgramTransform
 runCGPassesM prog = runPasses cgPasses prog

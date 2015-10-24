@@ -81,7 +81,7 @@ data CProtocol = Register       String
                | RegisterAck    CompileOptions
                | Heartbeat      Integer
                | HeartbeatAck   Integer
-               | Program        Request String RemoteJobOptions
+               | Program        Request String DistributedCompileOptions
                | ProgramDone    Request (K3 Declaration) String
                | ProgramAborted Request String
 
@@ -133,7 +133,7 @@ instance Serialize BlockCompileSpec
 
 data JobRound = JobRound { jpending   :: BlockSet
                          , jcompleted :: BlockSourceMap
-                         , jaborted   :: [String]}
+                         , jaborted   :: [(WorkerID, String)]}
               deriving (Eq, Read, Show)
 
 -- | Compilation progress state per program.
@@ -142,7 +142,7 @@ data JobState = JobState { jrid           :: RequestID
                          , jprofile       :: JobProfile
                          , jround1        :: JobRound
                          , jround2        :: JobRound
-                         , jjobOpts       :: RemoteJobOptions }
+                         , jjobOpts       :: DistributedCompileOptions }
                 deriving (Eq, Read, Show)
 
 -- | Profiling information per worker and block.
@@ -548,14 +548,14 @@ initService sOpts m = initializeTime >> slog (serviceLog sOpts) >> m
         slog (Right path)    = fileLogging path $ serviceLogLevel sOpts
 
 -- | Compiler service master.
-runServiceMaster :: ServiceOptions -> ServiceMasterOptions -> Options -> IO ()
-runServiceMaster sOpts smOpts opts = initService sOpts $ runZMQ $ do
+runServiceMaster :: ServiceOptions -> Options -> IO ()
+runServiceMaster sOpts opts = initService sOpts $ runZMQ $ do
     let bqid = "mbackend"
     sv <- liftIO $ svm0 (scompileOpts sOpts)
 
     frontend <- socket Router
     bind frontend mconn
-    backend <- workqueue sv nworkers bqid Nothing $ processMasterConn sOpts smOpts opts sv
+    backend <- workqueue sv nworkers bqid Nothing $ processMasterConn sOpts opts sv
     as <- async $ proxy frontend backend Nothing
     noticeM $ unwords ["Service Master", show $ asyncThreadId as, mconn]
 
@@ -713,8 +713,8 @@ requestreply t sOpts req replyF = runClient t sOpts $ \client -> do
 
 
 -- | Compiler service protocol handlers.
-processMasterConn :: ServiceOptions -> ServiceMasterOptions -> Options -> ServiceMSTVar -> Int -> Socket z Dealer -> ZMQ z ()
-processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
+processMasterConn :: ServiceOptions -> Options -> ServiceMSTVar -> Int -> Socket z Dealer -> ZMQ z ()
+processMasterConn (serviceId -> msid) opts sv wtid mworker = do
     sid <- receive mworker
     msg <- receive mworker
     logmHandler sid msg
@@ -798,7 +798,10 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
         let sRep = mkReport "Master R1 distribution" [sProf]
         modifyMJ_ $ \jbs -> Map.adjust (adjustProfile sRep) pid jbs
 
-      where bcStages = (coStages $ scompileOpts $ sOpts, rcStages jobOpts)
+      where bcStages = (dcWorkerPrepStages wst, dcWorkerExecStages wst)
+            wst = case dcompileSpec jobOpts of
+                    DistributedOpt r1 -> r1
+                    DistributedOptMat r1 _ -> r1
 
     liftMeasured :: IO (Either String a) -> ServiceMM z (a, Measured)
     liftMeasured m = liftIE $ do
@@ -1029,7 +1032,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
           (r, bcontrib) <- modifyMJ $ \sjobs -> tryAbortJS time wid pid bid reason sjobs $ Map.lookup pid sjobs
           modifyMA_ $ \assigns -> Map.adjust (decrWorkerAssignments bid bcontrib) wid assigns
           return r
-        maybe (return ()) (\(rid,rq,aborts) -> abortProgram (Just pid) rid rq $ concat aborts) psOpt
+        maybe (return ()) (\(rid,rq,aborts) -> abortProgram (Just pid) rid rq $ formatAborts aborts) psOpt
 
     tryCompleteJS time wid pid bid iblock sjobs jsOpt =
       maybe (sjobs, (Nothing, 0.0)) id $ jsOpt >>= \js ->
@@ -1060,7 +1063,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     abortJobBlock time wid bid reason js =
       let npend             = Set.delete bid $ jpending $ jround1 js
           (nprof, bcontrib) = updateProfile time wid bid $ jprofile js
-          nround1           = (jround1 js) { jpending = npend, jaborted = (jaborted $ jround1 js) ++ [reason] }
+          nround1           = (jround1 js) { jpending = npend, jaborted = (jaborted $ jround1 js) ++ [(wid, reason)] }
       in if Set.null npend
             then Left  ((jrid js, jrq js, jaborted $ jround1 js), bcontrib)
             else Right (js { jround1 = nround1, jprofile = nprof }, bcontrib)
@@ -1076,38 +1079,37 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     appendProfileReport report js@(jprofile -> jprof) =
       js { jprofile = jprof { jreports = (jreports jprof) ++ [report] } }
 
+    formatAborts l = boxToString $ flip concatMap l $ \(w,r) -> [unwords ["Worker", w]] ++ (indent 2 $ lines r)
 
     {------------------------------
      - Round 1 completion handling.
      -----------------------------}
     completeRound1 pid (rid, rq, aborts, profile, sources, jobOpts) = abortcatch rid rq $ do
-      case aborts of
-        h:t -> abortProgram (Just pid) rid rq $ concat $ h:t
-        _ ->
-          if null $ rc2Stages jobOpts
-            then completeProgram pid (rid, rq, aborts, profile, sources, jobOpts)
-            else do
-              let prog = DC.role "__global" $ map snd $ sortOn fst $ concatMap snd $ Map.toAscList sources
-              finalizeRound1 rq rid pid prog jobOpts profile
+      case (aborts, dcompileSpec jobOpts) of
+        (h:t, _) -> abortProgram (Just pid) rid rq $ formatAborts $ h:t
+        ([], DistributedOpt _) -> completeProgram pid (rid, rq, aborts, profile, sources, jobOpts)
+        ([], DistributedOptMat r1Spec r2Spec) -> do
+            let prog = DC.role "__global" $ map snd $ sortOn fst $ concatMap snd $ Map.toAscList sources
+            finalizeRound1 rq rid pid prog jobOpts profile
+              (dcMasterFinalStages r1Spec)
+              (dcWorkerPrepStages r2Spec, dcWorkerExecStages r2Spec)
 
-    finalizeRound1 rq rid pid prog jobOpts profile = do
+    finalizeRound1 rq rid pid prog jobOpts profile mfinalStages wStages = do
       mlogM $ unwords ["Completed request", show rid, "round 1", show pid]
       void $ zm $ do
         modifyMJ_ $ \sjobs -> Map.delete pid sjobs
-        round2 prog jobOpts rq rid profile
+        round2 prog jobOpts rq rid profile mfinalStages wStages
 
-    round2 prog jobOpts rq rid profile = do
-        ((r2P, _), r2Prof) <- liftMeasured $ evalTransform Nothing (sRound1Stages $ smOpts) prog
+    round2 prog jobOpts rq rid profile mfinalStages wStages = do
+        ((r2P, _), r2Prof) <- liftMeasured $ evalTransform Nothing mfinalStages prog
         let cleanP = stripProperties $ stripTypeAndEffectAnns r2P
         let ppRep = mkReport "Master R2 preprocessing" [r2Prof]
         (pid, blocksByWID, wConfig) <- assignBlocks rid rq jobOpts cleanP $ Right (profile, ppRep)
         (_, sProf) <- ST.profile $ const $ do
-          msgs <- mkMessages bcStages wConfig blocksByWID $ \bcs cb -> R2Block pid bcs cb cleanP
+          msgs <- mkMessages wStages wConfig blocksByWID $ \bcs cb -> R2Block pid bcs cb cleanP
           liftZ $ sendCIs mworker msgs
         let sRep = mkReport "Master R2 distribution" [sProf]
         modifyMJ_ $ \jbs -> Map.adjust (adjustProfile sRep) pid jbs
-
-      where bcStages = (coStages $ scompileOpts $ sOpts, rc2Stages jobOpts)
 
 
     {------------------------------
@@ -1117,10 +1119,15 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     -- | Program completion processing. This garbage collects client request state.
     completeProgram pid (rid, rq, aborts, profile, sources, jobOpts) = abortcatch rid rq $ do
       let prog = DC.role "__global" $ map snd $ sortOn fst $ concatMap snd $ Map.toAscList sources
-      (nprogrpE, fpProf) <- liftIO $ ST.profile $ const $ evalTransform Nothing (sFinalStages $ smOpts) prog
+
+      let finalStages = case dcompileSpec jobOpts of
+                          DistributedOpt r1      -> dcMasterFinalStages r1
+                          DistributedOptMat _ r2 -> dcMasterFinalStages r2
+
+      (nprogrpE, fpProf) <- liftIO $ ST.profile $ const $ evalTransform Nothing finalStages prog
       case (aborts, nprogrpE) of
         (_, Left err) -> abortProgram (Just pid) rid rq err
-        (h:t, _)      -> abortProgram (Just pid) rid rq $ concat $ h:t
+        (h:t, _)      -> abortProgram (Just pid) rid rq $ formatAborts $ h:t
         ([], Right (nprog, _)) -> do
             clOpt <- zm $ getMR rid
             case clOpt of
@@ -1305,14 +1312,14 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
 
     processR1Block pid _ ublocksByBID _ = abortBlock R1BlockAborted pid ublocksByBID $ "Invalid worker compile stages"
 
-    processR2Block pid (BlockCompileSpec prepStages [SMaterialization] wForkFactor wOffset) ublocksByBID prog =
+    processR2Block pid (BlockCompileSpec prepStages [SMaterialization matDebug] wForkFactor wOffset) ublocksByBID prog =
       abortcatch R2BlockAborted pid ublocksByBID $ do
         start <- liftIO getTime
         startP <- liftIO getPOSIXTime
         wlogM $ boxToString $ ["Worker R2 blocks start"] %$ (indent 2 [show startP])
-        let mst = MatI.prepareInitialIState prog
+        let mst = MatI.prepareInitialIState matDebug prog
         (cBlocksByBID, finalSt) <- zm $ compileAllBlocks prepStages wForkFactor wOffset ublocksByBID prog
-                                      $ compileR2Block mst pid
+                                      $ compileR2Block mst pid matDebug
         end <- liftIO getTime
         wlogM $ boxToString $ ["Worker R2 local time"] %$ (indent 2 [secs $ end - start])
         sendC wworker $ R2BlockDone wid pid cBlocksByBID $ ST.report finalSt
@@ -1334,14 +1341,14 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
       foldM compileF ([], workerSt) dblocksByBID
 
     compileR1Block pid cSpec (blacc, st) (bid, unzip -> (ids, block)) = do
-      (nblock, nst) <- debugCompileBlock pid bid (unwords [show $ length block])
+      (nblock, nst) <- debugCompileBlock pid bid block False
                         $ liftIE $ ST.runTransformM st $ ST.runDeclOptPassesBLM cSpec Nothing block
       return (blacc ++ [(bid, zip ids nblock)], ST.mergeTransformStReport st nst)
 
-    compileR2Block mst pid (blacc, st) (bid, unzip -> (ids, block)) = do
-      (nblock, nst) <- debugCompileBlock pid bid (unwords [show $ length block])
+    compileR2Block mst pid dbg (blacc, st) (bid, unzip -> (ids, block)) = do
+      (nblock, nst) <- debugCompileBlock pid bid block dbg
                         $ liftIE $ ST.runTransformM st
-                        $ mapM (ST.materializationPass mst) block
+                        $ mapM (ST.materializationPass dbg mst) block
       return (blacc ++ [(bid, zip ids nblock)], ST.mergeTransformStReport st nst)
 
     extractBlocksByUID prog ublocksByBID = do
@@ -1350,8 +1357,9 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
         iddl <- forM idul $ \(i, UID j) -> maybe (uidErr j) (return . (i,)) $ Map.lookup j declsByUID
         return (bid, iddl)
 
-    debugCompileBlock pid bid str m = do
-      wlogM $ unwords ["got block", show pid, show bid, str]
+    debugCompileBlock pid bid block dbg m = do
+      wlogM $ boxToString $ [unwords ["got block", show pid, show bid, show $ length block]]
+                              ++ (if dbg then concatMap prettyLines block else [])
       result <- m
       wlogM $ unwords ["finished block", show pid, show bid]
       return result
@@ -1360,8 +1368,8 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
     wstateErr   = throwE $ "Could not create a worker symbol state."
 
 -- | One-shot connection to submit a remote job and wait for compilation to complete.
-submitJob :: ServiceOptions -> RemoteJobOptions -> Options -> IO ()
-submitJob sOpts@(serviceId -> rq) rjOpts opts = do
+submitJob :: ServiceOptions -> DistributedCompileOptions -> Options -> IO ()
+submitJob sOpts@(serviceId -> rq) dcOpts opts = do
     start <- getTime
     progE <- runDriverM $ k3read opts
     either putStrLn (\p -> runClient Dealer sOpts $ processClientConn start $ concat p) progE
@@ -1370,7 +1378,7 @@ submitJob sOpts@(serviceId -> rq) rjOpts opts = do
     processClientConn :: Double -> String -> (forall z. Socket z Dealer -> ZMQ z ())
     processClientConn start prog client = do
       noticeM $ "Client submitting compilation job " ++ rq
-      sendC client $ Program rq prog rjOpts
+      sendC client $ Program rq prog dcOpts
       msg <- receive client
       either errorM (mHandler start) $ SC.decode msg
 

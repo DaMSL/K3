@@ -24,7 +24,8 @@ data CompilerType = LocalCompiler
                   | ServiceParallel1
                   | ServiceParallel2
                   | ServiceRound1
-                  | ServiceFinal
+                  | ServiceFinal1
+                  | ServiceFinal2
                   | ServiceClient
                   | ServiceClientRemote
                   deriving (Eq, Read, Show, Generic)
@@ -33,7 +34,7 @@ data CompilerType = LocalCompiler
 data CompileStage = SDeclPrepare
                   | SDeclOpt CompilerSpec
                   | SCGPrepare
-                  | SMaterialization
+                  | SMaterialization Bool
                   | SCodegen
                   deriving (Eq, Ord, Read, Show, Generic)
 
