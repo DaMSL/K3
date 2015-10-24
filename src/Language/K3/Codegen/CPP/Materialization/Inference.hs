@@ -79,13 +79,21 @@ prepareInitialIState :: Bool -> K3 Declaration -> IState
 prepareInitialIState dbg dr = IState $ M.fromList $ mapMaybe genHack (children dr)
  where
   genHack :: K3 Declaration -> Maybe (DKey, K3 MExpr)
-  genHack d@(tag -> DGlobal i _ _) = debugHack $ Just ((Juncture (gUID d) i, In), (mAtom Referenced -??- "Hack"))
+  genHack d@(tag -> DGlobal i _ _) = debugHack d $ Just ((Juncture (gUID d) i, In), (mAtom Referenced -??- "Hack"))
   genHack _ = Nothing
 
   gUID d = let Just (DUID u) = d @~ isDUID in u
+  gPrv d = let Just (DProvenance provE) = d @~ isDProvenance
+           in either (("U"),) (("I"),) provE
 
-  debugHack r@(Just ((j, _), _)) = if dbg then flip trace r $ "Init IState global " ++ show j else r
-  debugHack r = r
+  debugHack d r@(Just ((j, _), _)) =
+    if dbg
+      then let (a,p) = gPrv d
+           in flip trace r $ boxToString $ ["Init IState " ++ a ++ " global " ++ show j]
+                          %$ prettyLines p
+      else r
+
+  debugHack _ r = r
 
 optimizeMaterialization :: Bool -> IState -> (PIEnv, FIEnv) -> K3 Declaration -> IO (Either String (K3 Declaration))
 optimizeMaterialization dbg is (p, f) d = runExceptT $ inferMaterialization >>= solveMaterialization >>= attachMaterialization d
@@ -191,16 +199,16 @@ newtype IError = IError String
 -- * Helpers
 
 dUID :: K3 Declaration -> InferM UID
-dUID d = maybe (throwError $ IError "Invalid UID") (\(DUID u) -> return u) (d @~ isDUID)
+dUID d = maybe (throwError $ IError "Invalid DUID") (\(DUID u) -> return u) (d @~ isDUID)
 
 eUID :: K3 Expression -> InferM UID
-eUID e = maybe (throwError $ IError "Invalid UID") (\(EUID u) -> return u) (e @~ isEUID)
+eUID e = maybe (throwError $ IError "Invalid EUID") (\(EUID u) -> return u) (e @~ isEUID)
 
 ePrv :: K3 Expression -> InferM (K3 Provenance)
-ePrv e = maybe (throwError $ IError "Invalid Provenance") (\(EProvenance p) -> return p) (e @~ isEProvenance)
+ePrv e = maybe (throwError $ IError "Invalid EProvenance") (\(EProvenance p) -> return p) (e @~ isEProvenance)
 
 eEff :: K3 Expression -> InferM (K3 Effect)
-eEff e = maybe (throwError $ IError "Invalid Provenance") (\(ESEffect f) -> return f) (e @~ isESEffect)
+eEff e = maybe (throwError $ IError "Invalid ESEffect") (\(ESEffect f) -> return f) (e @~ isESEffect)
 
 chasePPtr :: PPtr -> InferM (K3 Provenance)
 chasePPtr p = do
