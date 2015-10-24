@@ -76,7 +76,7 @@ optimizeMaterialization (p, f) d = runExceptT $ inferMaterialization >>= solveMa
   inferMaterialization = case runInferM (preprocessD d >> materializeD d) defaultIState defaultIScope of
     Left (IError msg) -> throwError msg
     Right ((_, IState ct _), r) -> liftIO (formatIReport reportVerbosity r) >> return ct
-   where defaultIState = IState { cTable = M.empty, globalPhaseBoundaries = M.empty }
+   where defaultIState = IState { cTable = M.empty, globalPhaseBoundaries = MM.empty }
          defaultIScope = IScope { downstreams = []
                                 , nearestBind = Nothing
                                 , pEnv = p
@@ -128,7 +128,7 @@ runInferM m st sc = runIdentity $ runExceptT $ runWriterT $ flip runReaderT sc $
 
 -- ** Non-scoping State
 data IState = IState { cTable :: M.HashMap DKey (K3 MExpr)
-                     , globalPhaseBoundaries :: M.Map Identifier (S.Set Identifier)
+                     , globalPhaseBoundaries :: MM.Map Identifier (S.Set Identifier)
                      }
 
 type DKey = (Juncture, Direction)
@@ -139,14 +139,14 @@ constrain u i d m = let j = (Juncture u i) in
 
 addGlobalPhaseBoundary :: Identifier -> Identifier -> InferM ()
 addGlobalPhaseBoundary gName tName = modify $ \s -> s {
-    globalPhaseBoundaries = M.insertWith S.union tName [gName] (globalPhaseBoundaries s)
+    globalPhaseBoundaries = MM.insertWith S.union tName [gName] (globalPhaseBoundaries s)
   }
 
 isPseudoLocalInContext :: Identifier -> InferM Bool
 isPseudoLocalInContext i = do
   ct <- asks currentTrigger
   tm <- gets globalPhaseBoundaries
-  return $ maybe False (\tn -> i `S.member` (M.findWithDefault S.empty tn tm)) ct
+  return $ maybe False (\tn -> i `S.member` (MM.findWithDefault S.empty tn tm)) ct
 
 -- ** Scoping state
 data IScope = IScope { downstreams :: [Downstream]
