@@ -174,8 +174,11 @@ end
 # do both creation and compilation remotely (returns uid)
 def run_create_compile_k3_remote(server_url, bin_file, block_on_compile, k3_cpp_name, k3_path, nice_name)
   stage "[3-4] Remote creating && compiling K3 file to binary"
-  res = curl(server_url, "/compile", file: k3_path, post: true, json: true,
-            args:{ "compilestage" => "both", "workload" => $options[:skew].to_s})
+  args = { "compilestage" => "both",
+           "workload" => $options[:skew].to_s}
+  args["compileargs"] = $options[:compileargs] if $options[:compileargs]
+
+  res = curl(server_url, "/compile", file: k3_path, post: true, json: true, args:args)
   uid = res["uid"]
   $options[:uid] = uid
   persist_options()
