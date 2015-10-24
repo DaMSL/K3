@@ -1358,13 +1358,6 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
       wlogM $ unwords ["finished block", show pid, show bid]
       return result
 
-    debugCompileBlock2 pid bid block m = do
-      wlogM $ boxToString $ [unwords ["got block", show pid, show bid, show $ length block]]
-                         %$ concatMap prettyLines block
-      result <- m
-      wlogM $ unwords ["finished block", show pid, show bid]
-      return result
-
     uidErr duid = throwE $ "Could not find declaration " ++ show duid
     wstateErr   = throwE $ "Could not create a worker symbol state."
 
