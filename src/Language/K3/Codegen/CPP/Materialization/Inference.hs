@@ -85,7 +85,7 @@ prepareInitialIState dr = IState $ M.fromList $ mapMaybe genHack (children dr)
   gUID d = let Just (DUID u) = d @~ isDUID in u
 
   debugHack r@(Just ((j, _), _)) = if True
-                                     then return r
+                                     then r
                                      else flip trace r $ "Init IState global " ++ show j
   debugHack r = r
 
@@ -100,7 +100,7 @@ optimizeMaterialization is (p, f) d = runExceptT $ inferMaterialization >>= solv
          defaultIScope = IScope { downstreams = [], nearestBind = Nothing, pEnv = p, fEnv = f, topLevel = False }
 
          debugInfer ct r = if True
-                            then return r
+                            then r
                             else flip trace r $ boxToString $ M.foldlWithKey' debugCTEntry ["Mat CT"] ct
 
          debugCTEntry acc k v = acc ++ [show k ++ " => "] %$ (indent 2 $ prettyLines v)
