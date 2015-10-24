@@ -150,8 +150,10 @@ k3Keywords = [
     "with", "symbol", "effects", "return", "fresh", "none", "io",
 
     {- Syntactic sugar keywords -}
-    "typedef"
+    "typedef",
 
+    {- Delayed messages. -}
+    "delay", "override", "edge"
   ]
 
 {- Style definitions for parsers library -}

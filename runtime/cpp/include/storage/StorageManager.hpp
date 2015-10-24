@@ -18,12 +18,21 @@ class StorageManager {
       files_ = make_shared<ConcurrentMap<pair<Address, Identifier>, shared_ptr<FileHandle>>> ();
       logger_ = spdlog::get("engine");
   }
+
+  ~StorageManager() {
+      files_->apply([](auto& filemap){
+        for (auto elem : filemap) { elem.second->close(); }
+      });
+  }
+
   void openFile(Address peer, Identifier id, std::string path,
-                      StorageFormat fmt, CodecFormat codec, IOMode io);
+                StorageFormat fmt, CodecFormat codec, IOMode io);
+
   void closeFile(Address peer, Identifier id);
 
   // Reading
   bool hasRead(Address peer, Identifier id);
+
   template <class T>
   T doRead(Address peer, Identifier id) {
     try {

@@ -6,15 +6,15 @@ namespace K3 {
 using std::ios_base;
 
 //  SOURCE FILE HANDLE (binary file access)
-SourceFileHandle::SourceFileHandle (std::string path, CodecFormat fmt) : FileHandle(fmt) {
-
-    file_.exceptions (ios_base::failbit | std::ios_base::badbit );
-    try {
-      file_.open (path, std::ios::in | std::ios::binary); 
-    }
-    catch (ios_base::failure e) {
-      throw e;
-    }
+SourceFileHandle::SourceFileHandle (std::string path, CodecFormat fmt) : FileHandle(fmt)
+{
+  file_.exceptions (ios_base::failbit | std::ios_base::badbit );
+  try {
+    file_.open (path, std::ios::in | std::ios::binary);
+  }
+  catch (ios_base::failure e) {
+    throw e;
+  }
 }
 
 bool SourceFileHandle::hasRead() {
@@ -38,21 +38,23 @@ unique_ptr<PackedValue> SourceFileHandle::doRead() {
   b.steal(buf);
   b.set_header(true);
   auto p  = make_unique<BaseStringPackedValue>(std::move(b), fmt_);
-  return std::move(p); 
+  return std::move(p);
 }
 
-SourceTextHandle::SourceTextHandle (std::string path, CodecFormat fmt) {
-    file_.exceptions (std::ifstream::failbit | std::ifstream::badbit );
-    try {
-      file_.open (path, std::ios::in); 
-    }
-    catch (std::ifstream::failure e) {
-      throw e;
-    }
+SourceTextHandle::SourceTextHandle (std::string path, CodecFormat fmt)
+{
+  file_.exceptions (std::ifstream::failbit | std::ifstream::badbit );
+  try {
+    file_.open (path, std::ios::in);
+  }
+  catch (std::ifstream::failure e) {
+    throw e;
+  }
   fmt_ = fmt;
 }
 
-unique_ptr<PackedValue> SourceTextHandle::doRead()  {
+unique_ptr<PackedValue> SourceTextHandle::doRead()
+{
   // allocate buffer
   std::string buf;
   auto p = make_unique<StringPackedValue>(std::move(buf), fmt_);
@@ -62,23 +64,36 @@ unique_ptr<PackedValue> SourceTextHandle::doRead()  {
 }
 
 //  SINK FILE HANDLE (binary file access)
-SinkFileHandle::SinkFileHandle (std::string path, CodecFormat fmt) : FileHandle(fmt) {
-    file_.exceptions (std::ofstream::failbit | std::ofstream::badbit );
-    try {
-      file_.open (path);
-    }
-    catch (std::ofstream::failure e) {
-      throw e;
-    }
+SinkFileHandle::SinkFileHandle (std::string path, CodecFormat fmt) : FileHandle(fmt)
+{
+  file_.exceptions (std::ofstream::failbit | std::ofstream::badbit );
+  try {
+    file_.open (path, std::ios::out | std::ios::binary );
+  }
+  catch (std::ofstream::failure e) {
+    throw e;
+  }
 }
 
 bool SinkFileHandle::hasWrite() {
-  return (file_.good());  
+  return (file_.good());
 }
 
 void SinkFileHandle::doWriteHelper(const PackedValue& val) {
   file_ << val.length();
   file_.write (val.buf(), val.length());
+}
+
+SinkTextHandle::SinkTextHandle (std::string path, CodecFormat fmt)
+{
+  file_.exceptions (std::ofstream::failbit | std::ofstream::badbit );
+  try {
+    file_.open (path, std::ios::out);
+  }
+  catch (std::ofstream::failure e) {
+    throw e;
+  }
+  fmt_ = fmt;
 }
 
 void SinkTextHandle::doWriteHelper(const PackedValue& val) {

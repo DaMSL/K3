@@ -137,6 +137,16 @@ class MapE {
     return unit_t();
   }
 
+  template <typename K, typename F, typename G>
+  RT<G,R> erase_with(const K& k, F f, G g) {
+    auto existing = container.find(k.key);
+    if (existing == std::end(container)) {
+      return f(unit_t{});
+    } else {
+      return g(std::move(existing->second));
+    }
+  }
+
   template <class F>
   unit_t insert_with(const R& rec, F f) {
     auto existing = container.find(rec.key);

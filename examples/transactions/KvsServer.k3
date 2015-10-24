@@ -1,0 +1,12 @@
+// Key-Value Data
+declare kvs: collection {key: string, value: string} @StrMap
+
+// Key-Value API
+trigger kvs_get_request: get_request_r = \request -> (
+  (kvs_get_response, request.client) <- {tid: request.tid, value: kvs.lookup_key request.key (\_ -> None mut) (\kv -> Some kv.value)}
+)
+
+trigger kvs_put_request: put_request_r = \request -> (
+  kvs.insert {key: request.key, value: request.value};
+  (kvs_put_response, request.client) <- {tid: request.tid, value: true}
+)

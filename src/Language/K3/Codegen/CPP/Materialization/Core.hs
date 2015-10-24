@@ -1,9 +1,13 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
 module Language.K3.Codegen.CPP.Materialization.Core where
 
+import Data.Hashable
 import Data.Tree
+
+import GHC.Generics (Generic)
 
 import Text.Printf
 
@@ -80,7 +84,9 @@ ppShortP p = case (tag p, children p) of
   (MOneOf m ms, _) -> printf "%s ∈ %s" (ppShortE m) (show ms)
   (MBool b, _) -> show b
 
-data Juncture = Juncture UID Identifier deriving (Eq, Ord, Read, Show)
+data Juncture = Juncture UID Identifier deriving (Eq, Ord, Read, Show, Generic)
+
+instance Hashable Juncture
 
 class Explainable a where
   (-??-) :: a -> String -> a

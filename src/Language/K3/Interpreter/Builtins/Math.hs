@@ -30,7 +30,7 @@ genMathBuiltin "hash" _ = Just $ vfun $ \v -> valueHash v
 genMathBuiltin "range" _ =
   Just $ vfun $ \(VInt upper) ->
     initialAnnotatedCollection "Collection"
-      $ map (\i -> VRecord (insertMember "i" (VInt i, MemImmut) $ emptyMembers)) [0..(upper-1)]
+      $ map (\i -> VRecord (insertMember "elem" (VInt i, MemImmut) $ emptyMembers)) [0..(upper-1)]
 
 -- truncate :: int -> real
 genMathBuiltin "truncate" _ = Just $ vfun $ \x -> case x of

@@ -59,11 +59,12 @@ composite name ans content_ts = do
     -- When dealing with Indexes, we need to specialize the MultiIndex* classes on each index type
     (indexTypes, indexDefns) <- indexes name as content_ts
 
-    -- FlatPolyBuffer member generation.
-    pbufDefns <- polybuffer name ras
+
+    let selfType = R.Named $ R.Specialized [R.Named $ R.Name "__CONTENT"] $ R.Name name
 
     let addnSpecializations n = if "Array" `isInfixOf` n then arraySize $ lookup n ans
                                 else if "MultiIndex" `isInfixOf` n then indexTypes
+                                else if "UniquePolyBuffer" `isInfixOf` n then [selfType]
                                 else []
 
     let baseClass (n,_) = R.Qualified (R.Name "K3")
@@ -72,7 +73,8 @@ composite name ans content_ts = do
 
     let baseClasses = map baseClass ras
 
-    let selfType = R.Named $ R.Specialized [R.Named $ R.Name "__CONTENT"] $ R.Name name
+    -- FlatPolyBuffer member generation.
+    pbufDefns <- polybuffer name ras
 
     let defaultConstructor
             = R.FunctionDefn (R.Name name) [] Nothing [R.Call (R.Variable b) [] | b <- baseClasses] False []
@@ -497,8 +499,8 @@ reservedAnnotations =
   , "IntSet", "SortedSet"
   , "IntMap", "StrMap", "VMap", "SortedMap", "MapE", "SortedMapE", "MapCE"
   , "MultiIndexBag", "MultiIndexMap", "MultiIndexVMap", "RealVector"
-  , "BulkFlatCollection", "FlatPolyBuffer"
+  , "BulkFlatCollection", "FlatPolyBuffer", "UniquePolyBuffer"
   ]
 
 reservedGeneratedAnnotations :: [Identifier]
-reservedGeneratedAnnotations = ["Array", "SortedMapE", "MapE", "MapCE", "FlatPolyBuffer"]
+reservedGeneratedAnnotations = ["Array", "SortedMapE", "MapE", "MapCE", "FlatPolyBuffer", "UniquePolyBuffer"]

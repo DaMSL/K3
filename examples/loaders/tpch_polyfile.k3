@@ -1,0 +1,224 @@
+include "Annotation/FlatPolyBuffer.k3"
+include "Core/Builtins.k3"
+include "tpch/loader.k3"
+
+typedef poly_tpch = collection {ignored : ()} @FlatPolyBuffer(
+  variants=[:#>
+    lineitem => lineitem_r : 0,
+    customer => customer_r : 1,
+    orders   => orders_r   : 2,
+    supplier => supplier_r : 3,
+    partsupp => partsupp_r : 4,
+    part     => part_r     : 5,
+    nation   => nation_r   : 6,
+    region   => region_r   : 7
+  ])
+
+declare files    : collection {path: string} @Collection
+declare batch_sz : mut int = 100
+declare buffer   : poly_tpch
+
+declare lineitem : lineitem_bag
+declare customer : customer_bag
+declare orders   : orders_bag
+declare supplier : supplier_bag
+declare partsupp : partsupp_bag
+declare part     : part_bag
+declare nation   : nation_bag
+declare region   : region_bag
+
+declare lineitem_fpb : lineitem_bag -> () = \c -> (
+  c.iterate (\r -> buffer.append_lineitem r)
+)
+
+declare customer_fpb : customer_bag -> () = \c -> (
+  c.iterate (\r -> buffer.append_customer r)
+)
+
+declare orders_fpb : orders_bag -> () = \c -> (
+  c.iterate (\r -> buffer.append_orders r)
+)
+
+declare supplier_fpb : supplier_bag -> () = \c -> (
+  c.iterate (\r -> buffer.append_supplier r)
+)
+
+declare partsupp_fpb : partsupp_bag -> () = \c -> (
+  c.iterate (\r -> buffer.append_partsupp r)
+)
+
+declare part_fpb : part_bag -> () = \c -> (
+  c.iterate (\r -> buffer.append_part r)
+)
+
+declare nation_fpb : nation_bag -> () = \c -> (
+  c.iterate (\r -> buffer.append_nation r)
+)
+
+declare region_fpb : region_bag -> () = \c -> (
+  c.iterate (\r -> buffer.append_region r)
+)
+
+trigger convert_lineitem : () = \_ -> (
+  ( lineitemLoaderP files lineitem
+  ) @ConvertPSVToFPB(
+      on_batch_fn  = [$ lineitem_fpb ],
+      batch_size   = [$ batch_sz ],
+      batch_buffer = [$ buffer ],
+      sink_trig    = [$ lsink ]
+  );
+  (halt, me) <- () delay 2s
+)
+
+trigger convert_customer : () = \_ -> (
+  ( customerLoaderP files customer
+  ) @ConvertPSVToFPB(
+      on_batch_fn  = [$ customer_fpb ],
+      batch_size   = [$ batch_sz ],
+      batch_buffer = [$ buffer ],
+      sink_trig    = [$ csink ]
+  );
+  (halt, me) <- () delay 2s
+)
+
+trigger convert_orders : () = \_ -> (
+  ( ordersLoaderP files orders
+  ) @ConvertPSVToFPB(
+      on_batch_fn  = [$ orders_fpb ],
+      batch_size   = [$ batch_sz ],
+      batch_buffer = [$ buffer ],
+      sink_trig    = [$ osink ]
+  );
+  (halt, me) <- () delay 2s
+)
+
+
+trigger convert_supplier : () = \_ -> (
+  ( supplierLoaderP files supplier
+  ) @ConvertPSVToFPB(
+      on_batch_fn  = [$ supplier_fpb ],
+      batch_size   = [$ batch_sz ],
+      batch_buffer = [$ buffer ],
+      sink_trig    = [$ ssink ]
+  );
+  (halt, me) <- () delay 2s
+)
+
+trigger convert_partsupp : () = \_ -> (
+  ( partsuppLoaderP files partsupp
+  ) @ConvertPSVToFPB(
+      on_batch_fn  = [$ partsupp_fpb ],
+      batch_size   = [$ batch_sz ],
+      batch_buffer = [$ buffer ],
+      sink_trig    = [$ pssink ]
+  );
+  (halt, me) <- () delay 2s
+)
+
+trigger convert_part : () = \_ -> (
+  ( partLoaderP files part
+  ) @ConvertPSVToFPB(
+      on_batch_fn  = [$ part_fpb ],
+      batch_size   = [$ batch_sz ],
+      batch_buffer = [$ buffer ],
+      sink_trig    = [$ psink ]
+  );
+  (halt, me) <- () delay 2s
+)
+
+trigger convert_nation : () = \_ -> (
+  ( nationLoaderP files nation
+  ) @ConvertPSVToFPB(
+      on_batch_fn  = [$ nation_fpb ],
+      batch_size   = [$ batch_sz ],
+      batch_buffer = [$ buffer ],
+      sink_trig    = [$ nsink ]
+  );
+  (halt, me) <- () delay 2s
+)
+
+trigger convert_region : () = \_ -> (
+  ( regionLoaderP files region
+  ) @ConvertPSVToFPB(
+      on_batch_fn  = [$ region_fpb ],
+      batch_size   = [$ batch_sz ],
+      batch_buffer = [$ buffer ],
+      sink_trig    = [$ rsink ]
+  );
+  (halt, me) <- () delay 2s
+)
+
+declare inorder : mut string = "in_order.csv"
+
+declare numli : mut int = 0
+declare numcs : mut int = 0
+declare numor : mut int = 0
+declare numsu : mut int = 0
+declare numps : mut int = 0
+declare numpt : mut int = 0
+declare numnt : mut int = 0
+declare numrg : mut int = 0
+
+trigger load_tpch : poly_tpch = \buf -> (
+  (buf.iterate (\tg -> \idx -> \offset ->
+      if tg == 0 then (numli = numli + 1)
+      else if tg == 1 then (numcs = numcs + 1)
+      else if tg == 2 then (numor = numor + 1)
+      else if tg == 3 then (numsu = numsu + 1)
+      else if tg == 4 then (numps = numps + 1)
+      else if tg == 5 then (numpt = numpt + 1)
+      else if tg == 6 then (numnt = numnt + 1)
+      else if tg == 7 then (numrg = numrg + 1)
+      else ( print ("Unknown tag " ++ (itos tg)) )
+    ))
+)
+
+trigger halt : () = \_ -> (
+  (print ("Loaded " ++
+          "  numli: " ++ (itos numli) ++ "\\n" ++
+          "  numcs: " ++ (itos numcs) ++ "\\n" ++
+          "  numor: " ++ (itos numor) ++ "\\n" ++
+          "  numsu: " ++ (itos numsu) ++ "\\n" ++
+          "  numps: " ++ (itos numps) ++ "\\n" ++
+          "  numpt: " ++ (itos numpt) ++ "\\n" ++
+          "  numnt: " ++ (itos numnt) ++ "\\n" ++
+          "  numrg: " ++ (itos numrg) ++ "\\n"
+    ));
+  haltEngine()
+)
+
+sink lsink  : string = file "plineitem.out" binary raw
+sink csink  : string = file "pcustomer.out" binary raw
+sink osink  : string = file "porders.out"   binary raw
+sink ssink  : string = file "psupplier.out" binary raw
+sink pssink : string = file "ppartsupp.out" binary raw
+sink psink  : string = file "ppart.out"     binary raw
+sink nsink  : string = file "pnation.out"   binary raw
+sink rsink  : string = file "pregion.out"   binary raw
+
+source go_lineitem : () = value ()
+feed go_lineitem |> convert_lineitem
+
+source go_customer : () = value ()
+feed go_customer |> convert_customer
+
+source go_orders : () = value ()
+feed go_orders |> convert_orders
+
+source go_supplier : () = value ()
+feed go_supplier |> convert_supplier
+
+source go_partsupp : () = value ()
+feed go_partsupp |> convert_partsupp
+
+source go_part : () = value ()
+feed go_part |> convert_part
+
+source go_nation : () = value ()
+feed go_nation |> convert_nation
+
+source go_region : () = value ()
+feed go_region |> convert_region
+
+source load : poly_tpch = polyfile files binary raw inorder
+feed load |> load_tpch

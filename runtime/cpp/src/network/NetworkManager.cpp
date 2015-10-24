@@ -7,6 +7,8 @@
 
 namespace K3 {
 
+std::atomic<unsigned long> NetworkManager::timer_cnt_(0);
+
 NetworkManager::NetworkManager() {
   logger_ = spdlog::get("engine");
   if (!logger_) {
@@ -21,6 +23,7 @@ NetworkManager::NetworkManager() {
   external_out_conns_ = make_shared<ExternalConnectionMap>();
   internal_format_ = K3_INTERNAL_FORMAT;
   running_ = true;
+  timers_ = make_shared<TimerMap>();
   for (int i = 0; i < 4; i ++) {
     addThread();
   }
@@ -147,6 +150,45 @@ shared_ptr<ExternalOutgoingConnection> NetworkManager::connectExternal(
 
 void NetworkManager::addThread() {
   threads_->create_thread([this]() { io_service_->run(); });
+}
+
+std::shared_ptr<TimerKey>
+NetworkManager::timerKey(const TimerType& ty, const Address& src, const Address& dst, const TriggerID& trig)
+{
+  std::shared_ptr<TimerKey> key;
+  switch (ty) {
+    case TimerType::Delay:
+      key = std::make_shared<DelayTimerT>(timer_cnt_.fetch_add(1UL));
+
+    case TimerType::DelayOverride:
+      key = std::make_shared<DelayOverrideT>(dst, trig);
+
+    case TimerType::DelayOverrideEdge:
+      key = std::make_shared<DelayOverrideEdgeT>(src, dst, trig);
+
+    default:
+      break;
+  }
+
+  if ( !key ) { throw std::runtime_error("Invalid timer type"); }
+  return key;
+}
+
+void NetworkManager::addTimer(std::shared_ptr<TimerKey> k, const Delay& delay)
+{
+  auto& ios = *io_service_;
+  timers_->apply([k, &ios, &delay](auto& map) mutable {
+    auto it = map.find(k);
+    if ( it == map.end() ) {
+      map[k] = std::move(std::make_unique<Timer>(ios, delay));
+    } else {
+      size_t num_expired = it->second->expires_from_now(delay);
+    }
+  });
+}
+
+void NetworkManager::removeTimer(std::shared_ptr<TimerKey> k) {
+  timers_->erase(k);
 }
 
 }  // namespace K3

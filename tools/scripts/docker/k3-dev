@@ -35,6 +35,8 @@ ENV PGHOST qp2
 ENV PGHOSTADDR 192.168.0.11
 ENV PGUSER postgres
 
+ENV PATH /software/bde-tools/bin:$PATH
+
 # Install basic packages to build the image
 RUN apt-get update && apt-get install -y \
                        bzip2 unzip autoconf Libtool \
@@ -72,33 +74,44 @@ RUN apt-get update && apt-get install -y \
 
 # Install Boost
 RUN wget http://sourceforge.net/projects/boost/files/boost/$BOOST_VER/$BOOST_DIR.tar.bz2/download && \
-  tar --bzip2 -xvf ./download && \
-  rm download && \
-  cd $BOOST_DIR &&  \
+  tar --bzip2 -xvf ./download                                                                     && \
+  rm download                                                                                     && \
+  cd $BOOST_DIR                                                                                   && \
   ./bootstrap.sh --with-libraries=serialization,system,thread,log,program_options,filesystem --prefix=/usr/local libdir=/usr/local/lib && \
-  ./b2 stage threading=multi link=shared &&  \
+  ./b2 stage threading=multi link=shared   && \
   ./b2 install threading=multi link=shared && \
-  cd .. && \
+  cd ..                                    && \
   rm -Rf $BOOST_DIR
 
+# Install Bloomberg BSL and BDL
+RUN mkdir -p /software && cd /software                                         && \
+    git clone https://github.com/bloomberg/bde-tools.git                       && \
+    git clone https://github.com/bloomberg/bde.git                             && \
+    cd bde                                                                     && \
+    waf configure --targets=bsl,bdl --build-type=release --library-type=shared && \
+    waf build --targets=bsl,bdl --build-type=release --library-type=shared     && \
+    waf install --targets=bsl,bdl                                              && \
+    rm -Rf bde-tools bde
+
 # Install CSV++
-RUN git clone https://git01.codeplex.com/forks/wjjt/csvpp && \
-  cd csvpp && \
-  cmake . && \
-  make && \
-  mv libcsvpp.so /usr/lib/ && \
-  cd .. && \
-  rm -Rf csvpp
+RUN cd /software                                          && \
+    git clone https://git01.codeplex.com/forks/wjjt/csvpp && \
+    cd csvpp                                              && \
+    cmake .                                               && \
+    make                                                  && \
+    mv libcsvpp.so /usr/lib/                              && \
+    cd ..                                                 && \
+    rm -Rf csvpp
 
 # Install libdynamic
 RUN git clone https://github.com/DaMSL/libdynamic && \
-  cd libdynamic &&  \
-  ./autogen.sh && \
-  ./configure --prefix=/usr && \
-  make && \
-  make install && \
-  cd .. && \
-  rm -Rf libdynamic
+    cd libdynamic                                 && \
+    ./autogen.sh                                  && \
+    ./configure --prefix=/usr                     && \
+    make                                          && \
+    make install                                  && \
+    cd ..                                         && \
+    rm -Rf libdynamic
 
 # Copy in Mesos libs & include files
 ADD assets/libmesos-$MESOS_VER.so /usr/lib/
@@ -158,7 +171,7 @@ RUN apt-get install -y flex bison libelf-dev libaudit-dev libdw-dev binutils-dev
   git clone https://github.com/coderplay/perfj.git && \
   cd perfj && \
   ./gradlew releaseTarGz && \
-  cp build/libs/perfj-1.0.jar . 
+  cp build/libs/perfj-1.0.jar .
 
 # Install yaml-cpp
 RUN wget https://github.com/jbeder/yaml-cpp/archive/release-$YAML_CPP_VER.tar.gz && \
@@ -242,4 +255,6 @@ RUN mkdir -p /k3/K3-Mosaic && \
 RUN apt-get autoremove -y && \
     apt-get autoclean -y
 
+# Add env variables for bloomberg
+ENV CPLUS_INCLUDE_PATH=/usr/local/include/bsl:/usr/local/include/bdl
 
