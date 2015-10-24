@@ -61,6 +61,8 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Utils
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
+import qualified Language.K3.Codegen.CPP.Materialization.Inference as MatI
+
 import Language.K3.Parser ( parseK3 )
 
 import Language.K3.Stages ( TransformReport(..) )
@@ -82,9 +84,17 @@ data CProtocol = Register       String
                | Program        Request String RemoteJobOptions
                | ProgramDone    Request (K3 Declaration) String
                | ProgramAborted Request String
-               | Block          ProgramID BlockCompileSpec CompileBlockU (K3 Declaration)
-               | BlockDone      WorkerID ProgramID CompileBlockD TransformReport
-               | BlockAborted   WorkerID ProgramID [BlockID] String
+
+               -- Round 1: distributed K3 optimization
+               | R1Block        ProgramID BlockCompileSpec CompileBlockU (K3 Declaration)
+               | R1BlockDone    WorkerID ProgramID CompileBlockD TransformReport
+               | R1BlockAborted WorkerID ProgramID [BlockID] String
+
+               -- Round 2: distributed materialization
+               | R2Block        ProgramID BlockCompileSpec CompileBlockU (K3 Declaration)
+               | R2BlockDone    WorkerID ProgramID CompileBlockD TransformReport
+               | R2BlockAborted WorkerID ProgramID [BlockID] String
+
                | Query          ServiceQuery
                | QueryResponse  ServiceResponse
                | Quit
@@ -121,14 +131,18 @@ type CompileBlockD = CompileBlock (K3 Declaration)
 instance Binary    BlockCompileSpec
 instance Serialize BlockCompileSpec
 
+data JobRound = JobRound { jpending   :: BlockSet
+                         , jcompleted :: BlockSourceMap
+                         , jaborted   :: [String]}
+              deriving (Eq, Read, Show)
+
 -- | Compilation progress state per program.
-data JobState = JobState { jrid         :: RequestID
-                         , jrq          :: Request
-                         , jprofile     :: JobProfile
-                         , jpending     :: BlockSet
-                         , jcompleted   :: BlockSourceMap
-                         , jaborted     :: [String]
-                         , jreportsize  :: Int }
+data JobState = JobState { jrid           :: RequestID
+                         , jrq            :: Request
+                         , jprofile       :: JobProfile
+                         , jround1        :: JobRound
+                         , jround2        :: JobRound
+                         , jjobOpts       :: RemoteJobOptions }
                 deriving (Eq, Read, Show)
 
 -- | Profiling information per worker and block.
@@ -504,19 +518,25 @@ errorM = liftIO . Log.errorM logN
 
 cshow :: CProtocol -> String
 cshow = \case
-          Register wid                -> "Register " ++ wid
-          RegisterAck _               -> "RegisterAck"
-          Heartbeat hbid              -> "Heartbeat " ++ show hbid
-          HeartbeatAck hbid           -> "HeartbeatAck " ++ show hbid
-          Program rq _ _              -> "Program " ++ rq
-          ProgramDone rq _ _          -> "ProgramDone " ++ rq
-          ProgramAborted rq _         -> "ProgramAborted " ++ rq
-          Block pid _ bids _          -> unwords ["Block", show pid, intercalate "," $ map (show . fst) bids]
-          BlockDone wid pid bids _    -> unwords ["BlockDone", show wid, show pid, intercalate "," $ map (show . fst) bids]
-          BlockAborted wid pid bids _ -> unwords ["BlockAborted", show wid, show pid, intercalate "," $ map show bids]
-          Query sq                    -> unwords ["Query", show sq]
-          QueryResponse sr            -> unwords ["QueryResponse", show sr]
-          Quit                        -> "Quit"
+          Register wid                  -> "Register " ++ wid
+          RegisterAck _                 -> "RegisterAck"
+          Heartbeat hbid                -> "Heartbeat " ++ show hbid
+          HeartbeatAck hbid             -> "HeartbeatAck " ++ show hbid
+          Program rq _ _                -> "Program " ++ rq
+          ProgramDone rq _ _            -> "ProgramDone " ++ rq
+          ProgramAborted rq _           -> "ProgramAborted " ++ rq
+
+          R1Block pid _ bids _          -> unwords ["R1Block", show pid, intercalate "," $ map (show . fst) bids]
+          R1BlockDone wid pid bids _    -> unwords ["R1BlockDone", show wid, show pid, intercalate "," $ map (show . fst) bids]
+          R1BlockAborted wid pid bids _ -> unwords ["R1BlockAborted", show wid, show pid, intercalate "," $ map show bids]
+
+          R2Block pid _ bids _          -> unwords ["R2Block", show pid, intercalate "," $ map (show . fst) bids]
+          R2BlockDone wid pid bids _    -> unwords ["R2BlockDone", show wid, show pid, intercalate "," $ map (show . fst) bids]
+          R2BlockAborted wid pid bids _ -> unwords ["R2BlockAborted", show wid, show pid, intercalate "," $ map show bids]
+
+          Query sq                      -> unwords ["Query", show sq]
+          QueryResponse sr              -> unwords ["QueryResponse", show sr]
+          Quit                          -> "Quit"
 
 
 -- | Service utilities.
@@ -721,8 +741,11 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
         putMC sid (Set.singleton rid) >> putMR rid sid >> return rid
       process prog jobOpts rq rid'
 
-    mHandler _ (BlockDone wid pid blocksByBID report) = completeBlocks wid pid blocksByBID report
-    mHandler _ (BlockAborted wid pid bids reason)     = abortBlocks wid pid bids reason
+    mHandler _ (R1BlockDone wid pid blocksByBID report) = completeBlocks completeRound1 wid pid blocksByBID report
+    mHandler _ (R1BlockAborted wid pid bids reason)     = abortBlocks wid pid bids reason
+
+    mHandler _ (R2BlockDone wid pid blocksByBID report) = completeBlocks completeProgram wid pid blocksByBID report
+    mHandler _ (R2BlockAborted wid pid bids reason)     = abortBlocks wid pid bids reason
 
     mHandler sid (Register wid) = do
       mlogM $ unwords ["Registering worker", wid]
@@ -752,16 +775,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     process prog jobOpts rq rid = abortcatch rid rq $ do
       void $ zm $ do
         mlogM $ unwords ["Processing program", rq, "(", show rid, ")"]
-        (initP, ppProfs) <- preprocess prog
-        let ppRep = mkReport "Master preprocessing" ppProfs
-        (pid, blocksByWID, wConfig) <- assignBlocks rid rq jobOpts initP ppRep
-        (_, sProf) <- ST.profile $ const $ do
-          msgs <- mkMessages pid bcStages wConfig blocksByWID initP
-          liftZ $ sendCIs mworker msgs
-        let sRep = mkReport "Master distribution" [sProf]
-        modifyMJ_ $ \jbs -> Map.adjust (adjustProfile sRep) pid jbs
-
-      where bcStages = (coStages $ scompileOpts $ sOpts, rcStages jobOpts)
+        round1 prog jobOpts rq rid
 
     adjustProfile rep js@(jprofile -> jprof@(jppreport -> jpp)) =
       js {jprofile = jprof {jppreport = jpp `mappend` rep}}
@@ -773,17 +787,31 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       (mP, mProf) <- liftMeasured $ runDriverM $ metaprogram opts pP
       return (mP, [pProf, mProf])
 
+    -- | Compilation round 1: distribute blocks for optimization.
+    round1 prog jobOpts rq rid = do
+        (initP, ppProfs) <- preprocess prog
+        let ppRep = mkReport "Master R1 preprocessing" ppProfs
+        (pid, blocksByWID, wConfig) <- assignBlocks rid rq jobOpts initP $ Left ppRep
+        (_, sProf) <- ST.profile $ const $ do
+          msgs <- mkMessages bcStages wConfig blocksByWID $ \bcs cb -> R1Block pid bcs cb initP
+          liftZ $ sendCIs mworker msgs
+        let sRep = mkReport "Master R1 distribution" [sProf]
+        modifyMJ_ $ \jbs -> Map.adjust (adjustProfile sRep) pid jbs
+
+      where bcStages = (coStages $ scompileOpts $ sOpts, rcStages jobOpts)
+
     liftMeasured :: IO (Either String a) -> ServiceMM z (a, Measured)
     liftMeasured m = liftIE $ do
       (rE, p) <- ST.profile $ const m
       return $ either Left (\a -> Right (a,p)) rE
+
 
     {------------------------
       - Job assignment.
       -----------------------}
 
     -- | Cost-based compile block assignment.
-    assignBlocks rid rq jobOpts initP ppRep = do
+    assignBlocks rid rq jobOpts initP repE = do
       pid <- progIDM
 
       -- Get the current worker weights, and use them to partition the program.
@@ -805,7 +833,10 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
         return (wConfig, wBlocks, nassigns, pending, wjs)
 
       let aRep = mkReport "Master assignment" [aProf]
-      js <- js0 rid rq pending' wjs' (reportSize jobOpts) $ ppRep <> aRep
+      js <- case repE of
+              Left ppRep -> js0 rid rq pending' wjs' jobOpts (ppRep <> aRep) []
+              Right (prof, ppRep) -> js0Prof rid rq pending' jobOpts ppRep prof
+
       modifyMJ_ $ \jbs -> Map.insert pid js jbs
       modifyMA_ $ \assigns -> Map.unionWith incrWorkerAssignments assigns nassigns'
 
@@ -918,14 +949,14 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
                , Map.insertWith mergeBlockCosts wid wblockcosts wcm )
 
     -- | Compile block messages construction.
-    mkMessages pid (prepStages, cStages) wConfig cBlocksByWID initP = do
+    mkMessages (prepStages, cStages) wConfig cBlocksByWID ctor = do
       forkFactor <- foldMapKeyM (return 0) cBlocksByWID $ \m wid _ -> (+) <$> m <*> wcBlock wid wConfig
       liftM fst $ foldMapKeyM (return ([], 0)) cBlocksByWID $ \m wid cb -> do
         wDelta <- wcBlock wid wConfig
         (msgacc, wOffset) <- m
         let bcSpec = BlockCompileSpec prepStages cStages forkFactor wOffset
         wsockid <- getMWI wid >>= maybe (workerError wid) return
-        return $ (msgacc ++ [(wsockid, Block pid bcSpec cb initP)], wOffset + wDelta)
+        return $ (msgacc ++ [(wsockid, ctor bcSpec cb)], wOffset + wDelta)
 
 
     -- Map helpers to supply fold function as last argument.
@@ -943,11 +974,17 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
       WorkerAssignment (Set.delete bid blocks) (weight - dw)
 
     -- | Job state constructors.
-    jprof0 workerjs pprep =
-      liftIO getTime >>= \start -> return $ JobProfile start Map.empty workerjs pprep []
+    jprof0 workerjs pprep wreps =
+      liftIO getTime >>= \start -> return $ JobProfile start Map.empty workerjs pprep wreps
 
-    js0 rid rq pending workerjs reportsz pprep =
-      jprof0 workerjs pprep >>= \prof -> return $ JobState rid rq prof pending Map.empty [] reportsz
+    jr0 = JobRound Set.empty Map.empty []
+
+    js0 rid rq pending workerjs jobOpts pprep wreps = do
+      prof <- jprof0 workerjs pprep wreps
+      return $ JobState rid rq prof (JobRound pending Map.empty []) jr0 jobOpts
+
+    js0Prof rid rq pending jobOpts pprep prof = do
+      return $ JobState rid rq (prof {jppreport = jppreport prof <> pprep}) (JobRound pending Map.empty []) jr0 jobOpts
 
     logAssignment pid wConfig nassigns js =
       let wk wid s = wid ++ ":" ++ s
@@ -972,7 +1009,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
      -----------------------------}
 
     -- | Block completion processing. This garbage collects jobs and assignment state.
-    completeBlocks wid pid cblocksByBID report = do
+    completeBlocks completeF wid pid cblocksByBID report = do
       time <- liftIO $ getTime
       forM_ cblocksByBID $ \(bid, iblock) -> do
         psOpt <- zm $ do
@@ -980,7 +1017,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
           modifyMA_ $ \assigns -> Map.adjust (decrWorkerAssignments bid bcontrib) wid assigns
           return r
         zm $ modifyMJ_ $ \sjobs -> Map.adjust (appendProfileReport report) pid sjobs
-        maybe (return ()) (completeProgram pid) psOpt
+        maybe (return ()) (completeF pid) psOpt
 
     -- | Block abort processing. This aborts the given block ids, cleaning up state, but
     --   does not affect any other in-flight blocks.
@@ -1008,23 +1045,25 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
     incompleteJS pid sjobs (partials, contrib) = (Map.insert pid partials sjobs, (Nothing, contrib))
 
     completeJobBlock time wid bid iblock js =
-      let ncomp             = if null $ jaborted js
-                                then Map.insertWith (++) bid iblock $ jcompleted js
+      let ncomp             = if null $ jaborted $ jround1 js
+                                then Map.insertWith (++) bid iblock $ jcompleted $ jround1 js
                                 else Map.empty
 
-          npend             = Set.delete bid $ jpending js
+          npend             = Set.delete bid $ jpending $ jround1 js
           (nprof, bcontrib) = updateProfile time wid bid $ jprofile js
+          nround1           = (jround1 js) { jpending = npend, jcompleted = ncomp }
 
       in if Set.null npend
-            then Left $ ((jrid js, jrq js, jaborted js, nprof, ncomp, jreportsize js), bcontrib)
-            else Right $ (js { jpending = npend, jcompleted = ncomp, jprofile = nprof }, bcontrib)
+            then Left $ ((jrid js, jrq js, jaborted $ jround1 js, nprof, ncomp, jjobOpts js), bcontrib)
+            else Right $ (js { jround1 = nround1, jprofile = nprof }, bcontrib)
 
     abortJobBlock time wid bid reason js =
-      let npend             = Set.delete bid $ jpending js
+      let npend             = Set.delete bid $ jpending $ jround1 js
           (nprof, bcontrib) = updateProfile time wid bid $ jprofile js
+          nround1           = (jround1 js) { jpending = npend, jaborted = (jaborted $ jround1 js) ++ [reason] }
       in if Set.null npend
-            then Left  ((jrid js, jrq js, jaborted js), bcontrib)
-            else Right (js { jpending = npend, jaborted = jaborted js ++ [reason], jprofile = nprof }, bcontrib)
+            then Left  ((jrid js, jrq js, jaborted $ jround1 js), bcontrib)
+            else Right (js { jround1 = nround1, jprofile = nprof }, bcontrib)
 
     -- | Profile maintenance.
     updateProfile time wid bid jprof@(jendTimes &&& jworkerst -> (jends, jws)) =
@@ -1039,13 +1078,46 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
 
 
     {------------------------------
+     - Round 1 completion handling.
+     -----------------------------}
+    completeRound1 pid (rid, rq, aborts, profile, sources, jobOpts) = abortcatch rid rq $ do
+      case aborts of
+        h:t -> abortProgram (Just pid) rid rq $ concat $ h:t
+        _ ->
+          if null $ rc2Stages jobOpts
+            then completeProgram pid (rid, rq, aborts, profile, sources, jobOpts)
+            else do
+              let prog = DC.role "__global" $ map snd $ sortOn fst $ concatMap snd $ Map.toAscList sources
+              finalizeRound1 rq rid pid prog jobOpts profile
+
+    finalizeRound1 rq rid pid prog jobOpts profile = do
+      mlogM $ unwords ["Completed request", show rid, "round 1", show pid]
+      void $ zm $ do
+        modifyMJ_ $ \sjobs -> Map.delete pid sjobs
+        round2 prog jobOpts rq rid profile
+
+    round2 prog jobOpts rq rid profile = do
+        ((r2P, _), r2Prof) <- liftMeasured $ evalTransform Nothing (sRound1Stages $ smOpts) prog
+        let cleanP = stripProperties $ stripTypeAndEffectAnns r2P
+        let ppRep = mkReport "Master R2 preprocessing" [r2Prof]
+        (pid, blocksByWID, wConfig) <- assignBlocks rid rq jobOpts cleanP $ Right (profile, ppRep)
+        (_, sProf) <- ST.profile $ const $ do
+          msgs <- mkMessages bcStages wConfig blocksByWID $ \bcs cb -> R2Block pid bcs cb cleanP
+          liftZ $ sendCIs mworker msgs
+        let sRep = mkReport "Master R2 distribution" [sProf]
+        modifyMJ_ $ \jbs -> Map.adjust (adjustProfile sRep) pid jbs
+
+      where bcStages = (coStages $ scompileOpts $ sOpts, rc2Stages jobOpts)
+
+
+    {------------------------------
      - Program completion handling.
      -----------------------------}
 
     -- | Program completion processing. This garbage collects client request state.
-    completeProgram pid (rid, rq, aborts, profile, sources, reportsz) = abortcatch rid rq $ do
+    completeProgram pid (rid, rq, aborts, profile, sources, jobOpts) = abortcatch rid rq $ do
       let prog = DC.role "__global" $ map snd $ sortOn fst $ concatMap snd $ Map.toAscList sources
-      (nprogrpE, fpProf) <- liftIO $ ST.profile $ const $ evalTransform Nothing (sfinalStages $ smOpts) prog
+      (nprogrpE, fpProf) <- liftIO $ ST.profile $ const $ evalTransform Nothing (sFinalStages $ smOpts) prog
       case (aborts, nprogrpE) of
         (_, Left err) -> abortProgram (Just pid) rid rq err
         (h:t, _)      -> abortProgram (Just pid) rid rq $ concat $ h:t
@@ -1054,7 +1126,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
             case clOpt of
               Nothing -> zm $ requestError rid
               Just cid -> let fpRep = TransformReport (Map.singleton "Master finalization" [fpProf]) Map.empty
-                          in completeRequest pid cid rid rq nprog $ generateReport reportsz profile fpRep
+                          in completeRequest pid cid rid rq nprog $ generateReport (reportSize jobOpts) profile fpRep
 
     completeRequest pid cid rid rq prog report = do
       mlogM $ unwords ["Completed program", show pid]
@@ -1104,7 +1176,7 @@ processMasterConn sOpts@(serviceId -> msid) smOpts opts sv wtid mworker = do
 
     summarizeJob jm resultAcc pid = adjustMap resultAcc pid $ do
       js <- Map.lookup pid jm
-      return $ SJobStatus (jpending js) (Map.keysSet $ jcompleted js)
+      return $ SJobStatus (jpending $ jround1 js) (Map.keysSet $ jcompleted $ jround1 js)
 
     pqueryWorkers wrkIds wam =
       let workers = if null wrkIds then Map.keys wam else wrkIds
@@ -1200,7 +1272,8 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
     logmHandler (SC.decode -> msgE) = either werrM (\msg -> wlogM (cshow msg) >> mHandler msg) msgE
 
     -- | Worker message processing.
-    mHandler (Block pid bcSpec ublocksByBID prog) = processBlock pid bcSpec ublocksByBID prog
+    mHandler (R1Block pid bcSpec ublocksByBID prog) = processR1Block pid bcSpec ublocksByBID prog
+    mHandler (R2Block pid bcSpec ublocksByBID prog) = processR2Block pid bcSpec ublocksByBID prog
 
     mHandler (RegisterAck cOpts) = zm $ do
       wlogM $ unwords ["Registered", show cOpts]
@@ -1219,35 +1292,56 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
                                             , optimizationLevel = optimizationLevel $ mcopts }
 
     -- | Block compilation functions.
-    processBlock pid (BlockCompileSpec prepSpec [SDeclOpt cSpec] wForkFactor wOffset) ublocksByBID prog =
-      abortcatch pid ublocksByBID $ do
+    processR1Block pid (BlockCompileSpec prepStages [SDeclOpt cSpec] wForkFactor wOffset) ublocksByBID prog =
+      abortcatch R1BlockAborted pid ublocksByBID $ do
         start <- liftIO getTime
         startP <- liftIO getPOSIXTime
-        wlogM $ boxToString $ ["Worker blocks start"] %$ (indent 2 [show startP])
-        (cBlocksByBID, finalSt) <- zm $ compileAllBlocks pid prepSpec cSpec wForkFactor wOffset ublocksByBID prog
+        wlogM $ boxToString $ ["Worker R1 blocks start"] %$ (indent 2 [show startP])
+        (cBlocksByBID, finalSt) <- zm $ compileAllBlocks prepStages wForkFactor wOffset ublocksByBID prog
+                                      $ compileR1Block pid cSpec
         end <- liftIO getTime
-        wlogM $ boxToString $ ["Worker local time"] %$ (indent 2 [secs $ end - start])
-        sendC wworker $ BlockDone wid pid cBlocksByBID $ ST.report finalSt
+        wlogM $ boxToString $ ["Worker R1 local time"] %$ (indent 2 [secs $ end - start])
+        sendC wworker $ R1BlockDone wid pid cBlocksByBID $ ST.report finalSt
 
-    processBlock pid _ ublocksByBID _ = abortBlock pid ublocksByBID $ "Invalid worker compile stages"
+    processR1Block pid _ ublocksByBID _ = abortBlock R1BlockAborted pid ublocksByBID $ "Invalid worker compile stages"
 
-    abortcatch pid ublocksByBID m = m `catches`
-      [Handler (\(e :: IOException)      -> abortBlock pid ublocksByBID $ show e),
-       Handler (\(e :: PatternMatchFail) -> abortBlock pid ublocksByBID $ show e),
-       Handler (\(e :: ErrorCall)        -> abortBlock pid ublocksByBID $ show e)]
+    processR2Block pid (BlockCompileSpec prepStages [SMaterialization] wForkFactor wOffset) ublocksByBID prog =
+      abortcatch R2BlockAborted pid ublocksByBID $ do
+        start <- liftIO getTime
+        startP <- liftIO getPOSIXTime
+        wlogM $ boxToString $ ["Worker R2 blocks start"] %$ (indent 2 [show startP])
+        let mst = MatI.prepareInitialIState prog
+        (cBlocksByBID, finalSt) <- zm $ compileAllBlocks prepStages wForkFactor wOffset ublocksByBID prog
+                                      $ compileR2Block mst pid
+        end <- liftIO getTime
+        wlogM $ boxToString $ ["Worker R2 local time"] %$ (indent 2 [secs $ end - start])
+        sendC wworker $ R2BlockDone wid pid cBlocksByBID $ ST.report finalSt
 
-    abortBlock pid ublocksByBID reason =
-      sendC wworker $ BlockAborted wid pid (map fst ublocksByBID) reason
+    processR2Block pid _ ublocksByBID _ = abortBlock R2BlockAborted pid ublocksByBID $ "Invalid worker compile stages"
 
-    compileAllBlocks pid prepSpec cSpec wForkFactor wOffset ublocksByBID prog = do
-      ((initP, _), initSt) <- liftIE $ runTransform Nothing prepSpec prog
+    abortcatch ctor pid ublocksByBID m = m `catches`
+      [Handler (\(e :: IOException)      -> abortBlock ctor pid ublocksByBID $ show e),
+       Handler (\(e :: PatternMatchFail) -> abortBlock ctor pid ublocksByBID $ show e),
+       Handler (\(e :: ErrorCall)        -> abortBlock ctor pid ublocksByBID $ show e)]
+
+    abortBlock ctor pid ublocksByBID reason =
+      sendC wworker $ ctor wid pid (map fst ublocksByBID) reason
+
+    compileAllBlocks prepStages wForkFactor wOffset ublocksByBID prog compileF = do
+      ((initP, _), initSt) <- liftIE $ runTransform Nothing prepStages prog
       workerSt <- maybe wstateErr return $ ST.partitionTransformStSyms wForkFactor wOffset initSt
       dblocksByBID <- extractBlocksByUID initP ublocksByBID
-      foldM (compileBlock pid cSpec) ([], workerSt) dblocksByBID
+      foldM compileF ([], workerSt) dblocksByBID
 
-    compileBlock pid cSpec (blacc, st) (bid, unzip -> (ids, block)) = do
+    compileR1Block pid cSpec (blacc, st) (bid, unzip -> (ids, block)) = do
       (nblock, nst) <- debugCompileBlock pid bid (unwords [show $ length block])
                         $ liftIE $ ST.runTransformM st $ ST.runDeclOptPassesBLM cSpec Nothing block
+      return (blacc ++ [(bid, zip ids nblock)], ST.mergeTransformStReport st nst)
+
+    compileR2Block mst pid (blacc, st) (bid, unzip -> (ids, block)) = do
+      (nblock, nst) <- debugCompileBlock pid bid (unwords [show $ length block])
+                        $ liftIE $ ST.runTransformM st
+                        $ mapM (ST.materializationPass mst) block
       return (blacc ++ [(bid, zip ids nblock)], ST.mergeTransformStReport st nst)
 
     extractBlocksByUID prog ublocksByBID = do

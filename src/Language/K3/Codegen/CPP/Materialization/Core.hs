@@ -1,8 +1,14 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
 module Language.K3.Codegen.CPP.Materialization.Core where
+
+import Control.DeepSeq
+
+import Data.Binary
+import Data.Serialize
 
 import Data.Hashable
 import Data.Tree
@@ -22,13 +28,18 @@ data MExpr
   = MVar Juncture Direction
   | MAtom Method
   | MIfThenElse (K3 MPred)
- deriving (Eq, Read, Show)
+ deriving (Eq, Read, Show, Generic)
 
 data instance Annotation MExpr = MEReason String
+  deriving (Eq, Ord, Read, Show, Generic)
 
-deriving instance Eq (Annotation MExpr)
-deriving instance Read (Annotation MExpr)
-deriving instance Show (Annotation MExpr)
+instance NFData    MExpr
+instance Binary    MExpr
+instance Serialize MExpr
+
+instance NFData    (Annotation MExpr)
+instance Binary    (Annotation MExpr)
+instance Serialize (Annotation MExpr)
 
 isMEReason :: Annotation MExpr -> Bool
 isMEReason (MEReason _) = True
@@ -56,13 +67,18 @@ data MPred
   | MOr
   | MOneOf (K3 MExpr) [Method]
   | MBool Bool
- deriving (Eq, Read, Show)
+ deriving (Eq, Read, Show, Generic)
 
 data instance Annotation MPred = MPReason String
+  deriving (Eq, Ord, Read, Show, Generic)
 
-deriving instance Eq (Annotation MPred)
-deriving instance Read (Annotation MPred)
-deriving instance Show (Annotation MPred)
+instance NFData    MPred
+instance Binary    MPred
+instance Serialize MPred
+
+instance NFData    (Annotation MPred)
+instance Binary    (Annotation MPred)
+instance Serialize (Annotation MPred)
 
 isMPReason :: Annotation MPred -> Bool
 isMPReason (MPReason _) = True
@@ -86,7 +102,10 @@ ppShortP p = case (tag p, children p) of
 
 data Juncture = Juncture UID Identifier deriving (Eq, Ord, Read, Show, Generic)
 
-instance Hashable Juncture
+instance NFData    Juncture
+instance Binary    Juncture
+instance Serialize Juncture
+instance Hashable  Juncture
 
 class Explainable a where
   (-??-) :: a -> String -> a

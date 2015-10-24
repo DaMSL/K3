@@ -21,7 +21,9 @@ import Language.K3.Utils.Pretty.Syntax
 -- | Variant type used to define compilation stages.
 data CompilerType = LocalCompiler
                   | ServicePrepare
-                  | ServiceParallel
+                  | ServiceParallel1
+                  | ServiceParallel2
+                  | ServiceRound1
                   | ServiceFinal
                   | ServiceClient
                   | ServiceClientRemote
@@ -30,6 +32,8 @@ data CompilerType = LocalCompiler
 -- | Coarse-grained compilation stages.
 data CompileStage = SDeclPrepare
                   | SDeclOpt CompilerSpec
+                  | SCGPrepare
+                  | SMaterialization
                   | SCodegen
                   deriving (Eq, Ord, Read, Show, Generic)
 
