@@ -694,7 +694,7 @@ simplifyE :: K3 MExpr -> K3 MExpr
 simplifyE expr = case expr of
   (tag &&& children -> (MIfThenElse p, [t, e])) -> case simplifyP p of
     (tag -> MBool b) -> simplifyE $ if b then t else e
-    p' -> mITE p' t e
+    p' -> mITE p' (simplifyE t) (simplifyE e)
   _ -> expr
 
 simplifyP :: K3 MPred -> K3 MPred

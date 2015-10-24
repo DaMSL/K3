@@ -1341,7 +1341,7 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
       return (blacc ++ [(bid, zip ids nblock)], ST.mergeTransformStReport st nst)
 
     compileR2Block mst pid (blacc, st) (bid, unzip -> (ids, block)) = do
-      (nblock, nst) <- debugCompileBlock pid bid (unwords [show $ length block])
+      (nblock, nst) <- debugCompileBlock2 pid bid block
                         $ liftIE $ ST.runTransformM st
                         $ mapM (ST.materializationPass mst) block
       return (blacc ++ [(bid, zip ids nblock)], ST.mergeTransformStReport st nst)
@@ -1354,6 +1354,13 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
 
     debugCompileBlock pid bid str m = do
       wlogM $ unwords ["got block", show pid, show bid, str]
+      result <- m
+      wlogM $ unwords ["finished block", show pid, show bid]
+      return result
+
+    debugCompileBlock2 pid bid block m = do
+      wlogM $ boxToString $ [unwords ["got block", show pid, show bid, show $ length block]]
+                         %$ concatMap prettyLines block
       result <- m
       wlogM $ unwords ["finished block", show pid, show bid]
       return result
