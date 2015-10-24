@@ -38,7 +38,6 @@ import Data.Map ( Map )
 import Data.Set ( Set )
 import qualified Data.Heap as Heap
 import qualified Data.Map as Map
-import qualified Data.HashMap.Strict as HashMap
 import qualified Data.Set as Set
 
 import Criterion.Types ( Measured(..) )
@@ -62,7 +61,6 @@ import Language.K3.Core.Declaration
 import Language.K3.Core.Utils
 import qualified Language.K3.Core.Constructor.Declaration as DC
 
-import Language.K3.Codegen.CPP.Materialization.Core ( MExpr )
 import qualified Language.K3.Codegen.CPP.Materialization.Inference as MatI
 
 import Language.K3.Parser ( parseK3 )
