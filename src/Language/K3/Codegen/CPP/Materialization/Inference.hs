@@ -54,7 +54,7 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
 import Language.K3.Analysis.Provenance.Core (Provenance(..), PMatVar(..), PPtr)
-import Language.K3.Analysis.Provenance.Constructors (pbvar, pfvar)
+import Language.K3.Analysis.Provenance.Constructors (pbvar, pfvar, ptemp)
 
 import Language.K3.Analysis.SEffects.Core (Effect(..))
 
@@ -83,8 +83,7 @@ prepareInitialIState dbg dr = IState $ M.fromList $ mapMaybe genHack (children d
   genHack _ = Nothing
 
   gUID d = let Just (DUID u) = d @~ isDUID in u
-  gPrv d = let Just (DProvenance provE) = d @~ isDProvenance
-           in either (("U"),) (("I"),) provE
+  gPrv d = maybe ("N",ptemp) (\(DProvenance provE) -> either (("U"),) (("I"),) provE) $ d @~ isDProvenance
 
   debugHack d r@(Just ((j, _), _)) =
     if dbg
