@@ -718,12 +718,20 @@ def main()
     opts.on("--no-correctives", "Run in no-corrective mode") { $options[:no_corrective] = true }
     opts.on("--csv-data", "Use the old data format (csv)") {$options[:csv_data] = true }
 
-    # Compile args, and forwarded compile args
+    # Compile args synonyms
     opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
-    opts.on("--sparallel2stage [STRING]", "Staging argument") { |s| $options[:compileargs] += "--sparallel2stage=" + s }
-    opts.on("--wmoderate", "Skew argument")  { $options[:compileargs] += "--workerfactor hm=3 --workerblocks hd=4:qp3=4:qp4=4:qp5=4:qp6=4" }
-    opts.on("--wmoderate2", "Skew argument") { $options[:compileargs] += "--workerfactor hm=3 --workerblocks hd=2:qp3=2:qp4=2:qp5=2:qp6=2" }
-    opts.on("--wextreem", "Skew argument")   { $options[:compileargs] += "--workerfactor hm=4 --workerblocks hd=1:qp3=1:qp4=1:qp5=1:qp6=1" }
+
+    opts.on("--debug-materialization", "Debug distrubteed materialization")
+            { $options[:compileargs] = "#{$options[:compileargs]} --sparallel2stage sparallel2-debug=True" }
+
+    opts.on("--wmoderate", "Skew argument")
+            { $options[:compileargs] = "#{$options[:compileargs]} --workerfactor hm=3 --workerblocks hd=4:qp3=4:qp4=4:qp5=4:qp6=4" }
+
+    opts.on("--wmoderate2", "Skew argument")
+            { $options[:compileargs] = "#{$options[:compileargs]} --workerfactor hm=3 --workerblocks hd=2:qp3=2:qp4=2:qp5=2:qp6=2" }
+
+    opts.on("--wextreme", "Skew argument")
+            { $options[:compileargs] = "#{$options[:compileargs]} --workerfactor hm=4 --workerblocks hd=1:qp3=1:qp4=1:qp5=1:qp6=1" }
 
     # Stages.
     # Ktrace is not run by default.
