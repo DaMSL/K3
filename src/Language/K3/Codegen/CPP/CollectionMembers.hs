@@ -310,7 +310,7 @@ indexes name ans content_ts = do
 
       let slice k_t = R.Call (R.Project this $ R.Name "fold_slice_by_index")
                         $ call_args n index [ tuple (R.Name "key") k_t
-                                            , R.Variable $ R.Name "f", R.Move $ R.Move $ R.Variable $ R.Name "acc" ]
+                                            , R.Variable $ R.Name "f", R.Move $ R.Variable $ R.Name "acc" ]
 
       let defn k_t c_t = R.TemplateDefn [("Fun", Nothing), ("Acc", Nothing)] $
                          R.FunctionDefn (R.Name fname)
