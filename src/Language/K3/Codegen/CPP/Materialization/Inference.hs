@@ -30,6 +30,8 @@ import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Traversable
 import Data.Tree
 
+import Debug.Trace
+
 import Control.Monad.Except
 import Control.Monad.Identity
 import Control.Monad.Reader
@@ -77,19 +79,26 @@ prepareInitialIState :: K3 Declaration -> IState
 prepareInitialIState dr = IState $ M.fromList $ mapMaybe genHack (children dr)
  where
   genHack :: K3 Declaration -> Maybe (DKey, K3 MExpr)
-  genHack d@(tag -> DGlobal i _ _) = Just ((Juncture (gUID d) i, In), (mAtom Referenced -??- "Hack"))
+  genHack d@(tag -> DGlobal i _ _) = debugHack $ Just ((Juncture (gUID d) i, In), (mAtom Referenced -??- "Hack"))
   genHack _ = Nothing
 
   gUID d = let Just (DUID u) = d @~ isDUID in u
+
+  debugHack r@(Just ((j, _), _)) = flip trace r $ "Init IState global " ++ show j
+  debugHack r = r
 
 optimizeMaterialization :: IState -> (PIEnv, FIEnv) -> K3 Declaration -> IO (Either String (K3 Declaration))
 optimizeMaterialization is (p, f) d = runExceptT $ inferMaterialization >>= solveMaterialization >>= attachMaterialization d
  where
   inferMaterialization = case runInferM (materializeD d) defaultIState defaultIScope of
     Left (IError msg) -> throwError msg
-    Right ((_, IState ct), r) -> liftIO (formatIReport reportVerbosity r) >> return ct
+    Right ((_, IState ct), r) -> liftIO (formatIReport reportVerbosity r) >> (debugInfer ct $ return ct)
+
    where defaultIState = is
          defaultIScope = IScope { downstreams = [], nearestBind = Nothing, pEnv = p, fEnv = f, topLevel = False }
+
+         debugInfer ct r = flip trace r $ boxToString $ M.foldlWithKey' debugCTEntry ["Mat CT"] ct
+         debugCTEntry acc k v = acc ++ [show k ++ " => "] %$ (indent 2 $ prettyLines v)
 
   solveMaterialization ct = case runSolverM solveAction defaultSState of
     Left (SError msg) -> throwError msg
@@ -162,7 +171,7 @@ data ReportVerbosity = None | Short | Long
                      deriving (Eq, Read, Show)
 
 reportVerbosity :: ReportVerbosity
-reportVerbosity = None
+reportVerbosity = Long
 
 formatIReport :: ReportVerbosity -> [IReport] -> IO ()
 formatIReport rv ir = do
