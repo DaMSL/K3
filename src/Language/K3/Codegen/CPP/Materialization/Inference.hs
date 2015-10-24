@@ -84,7 +84,9 @@ prepareInitialIState dr = IState $ M.fromList $ mapMaybe genHack (children dr)
 
   gUID d = let Just (DUID u) = d @~ isDUID in u
 
-  debugHack r@(Just ((j, _), _)) = flip trace r $ "Init IState global " ++ show j
+  debugHack r@(Just ((j, _), _)) = if True
+                                     then return r
+                                     else flip trace r $ "Init IState global " ++ show j
   debugHack r = r
 
 optimizeMaterialization :: IState -> (PIEnv, FIEnv) -> K3 Declaration -> IO (Either String (K3 Declaration))
@@ -97,7 +99,10 @@ optimizeMaterialization is (p, f) d = runExceptT $ inferMaterialization >>= solv
    where defaultIState = is
          defaultIScope = IScope { downstreams = [], nearestBind = Nothing, pEnv = p, fEnv = f, topLevel = False }
 
-         debugInfer ct r = flip trace r $ boxToString $ M.foldlWithKey' debugCTEntry ["Mat CT"] ct
+         debugInfer ct r = if True
+                            then return r
+                            else flip trace r $ boxToString $ M.foldlWithKey' debugCTEntry ["Mat CT"] ct
+
          debugCTEntry acc k v = acc ++ [show k ++ " => "] %$ (indent 2 $ prettyLines v)
 
   solveMaterialization ct = case runSolverM solveAction defaultSState of
@@ -171,7 +176,7 @@ data ReportVerbosity = None | Short | Long
                      deriving (Eq, Read, Show)
 
 reportVerbosity :: ReportVerbosity
-reportVerbosity = Long
+reportVerbosity = None
 
 formatIReport :: ReportVerbosity -> [IReport] -> IO ()
 formatIReport rv ir = do
