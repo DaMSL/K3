@@ -663,11 +663,13 @@ findDependenciesP p = case tag p of
 solveForAll :: [Either DKey DKey] -> M.HashMap DKey (K3 MExpr) -> SolverM ()
 solveForAll eks m = for_ eks $ \case
   Left fk -> do
-    progress <- gets (S.fromList . M.keys . assignments)
+    progress <- trace (unwords ["SCYC", show fk]) $ gets (S.fromList . M.keys . assignments)
     if progress S.\\ (findDependenciesE (m M.! fk)) == [fk]
       then tryResolveSelfCycle fk (m M.! fk) >>= setMethod fk . fromMaybe Copied
       else setMethod fk Copied
-  Right rk -> solveForE (m M.! rk) >>= setMethod rk
+  Right rk -> let mexpr = m M.! rk
+                  debugConstraint r = flip trace r $ boxToString $ ["ACYC " ++ show rk] ++ prettyLines mexpr
+              in solveForE (debugConstraint mexpr) >>= setMethod rk
 
 solveForE :: K3 MExpr -> SolverM Method
 solveForE m = case tag m of
