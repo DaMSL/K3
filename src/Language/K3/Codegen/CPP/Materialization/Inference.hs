@@ -104,7 +104,7 @@ optimizeMaterialization dbg is (p, f) d = runExceptT $ inferMaterialization >>= 
    where defaultIState = is
          defaultIScope = IScope { downstreams = [], nearestBind = Nothing, pEnv = p, fEnv = f, topLevel = False }
 
-         debugInfer ct r = if dbg
+         debugInfer ct r = if False
                             then flip trace r $ boxToString $ M.foldlWithKey' debugCTEntry ["Mat CT"] ct
                             else r
 
@@ -149,7 +149,7 @@ type DKey = (Juncture, Direction)
 
 constrain :: UID -> Identifier -> Direction -> K3 MExpr -> InferM ()
 constrain u i d m = let j = (Juncture u i) in
-  logR j d m >> modify (\s -> s { cTable = M.insertWith (flip const) (j, d) (simplifyE m) (cTable s) })
+  logR j d m >> modify (\s -> s { cTable = M.insertWith (flip const) (j, d) m (cTable s) })
 
 -- ** Scoping state
 data IScope = IScope { downstreams :: [Downstream], nearestBind :: Maybe UID, pEnv :: PIEnv, fEnv :: FIEnv, topLevel :: Bool }
@@ -661,15 +661,27 @@ findDependenciesP p = case tag p of
 
 -- ** Solving
 solveForAll :: [Either DKey DKey] -> M.HashMap DKey (K3 MExpr) -> SolverM ()
-solveForAll eks m = for_ eks $ \case
-  Left fk -> do
-    progress <- trace (unwords ["SCYC", show fk]) $ gets (S.fromList . M.keys . assignments)
-    if progress S.\\ (findDependenciesE (m M.! fk)) == [fk]
-      then tryResolveSelfCycle fk (m M.! fk) >>= setMethod fk . fromMaybe Copied
-      else setMethod fk Copied
-  Right rk -> let mexpr = m M.! rk
-                  debugConstraint r = flip trace r $ boxToString $ ["ACYC " ++ show rk] ++ prettyLines mexpr
-              in solveForE (debugConstraint mexpr) >>= setMethod rk
+solveForAll eks m =
+  let debugConstraint dtg origE simpleE m = flip trace m $ boxToString
+                                              $ [dtg] ++
+                                              ["Unsimplified:"]
+                                              ++ (indent 2 $ prettyLines origE)
+                                              ++ ["Simplified:"]
+                                              ++ (indent 2 $ prettyLines simpleE)
+      onFail dtg mexpr smexpr (SError msg) = debugConstraint dtg mexpr smexpr $ throwError $ SError msg
+  in for_ eks $ \case
+      Left fk -> do
+        progress <- gets (S.fromList . M.keys . assignments)
+        let mexpr  = m M.! fk
+        let smexpr = simplifyE mexpr
+        if progress S.\\ (findDependenciesE mexpr) == [fk]
+          then (tryResolveSelfCycle fk smexpr) `catchError` (onFail (unwords ["SCYC", show fk]) mexpr smexpr)
+                  >>= setMethod fk . fromMaybe Copied
+          else setMethod fk Copied
+
+      Right rk -> let mexpr  = m M.! rk
+                      smexpr = simplifyE mexpr
+                  in (solveForE smexpr) `catchError` (onFail (unwords ["ACYC", show rk]) mexpr smexpr) >>= setMethod rk
 
 solveForE :: K3 MExpr -> SolverM Method
 solveForE m = case tag m of
