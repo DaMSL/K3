@@ -1,6 +1,7 @@
 include "Annotation/FlatPolyBuffer.k3"
 include "Core/Builtins.k3"
 
+
 control ConvertPSVToFPB [on_batch_fn: expr, batch_size: expr, batch_buffer: expr, sink_trig: expr]
 {
  ?loader ?files (?col : collection ?t)
@@ -36,13 +37,23 @@ control ConvertPSVToFPB [on_batch_fn: expr, batch_size: expr, batch_buffer: expr
  }
 }
 
-typedef customer_r = { ra:bool, rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string, ri:string }
-typedef lineitem_r = { ra:bool, rb:int, rc:int, rd:int, re:int, rf:real, rg:real, rh:real, ri:real, rj:string,
+// Types with booleans
+typedef customer_rb = { ra:bool, rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string, ri:string }
+typedef lineitem_rb = { ra:bool, rb:int, rc:int, rd:int, re:int, rf:real, rg:real, rh:real, ri:real, rj:string,
                         rk:string, rl:int, rm:int, rn:int, ro:string, rp:string, rq:string }
-typedef orders_r = { ra:bool, rb:int, rc:int, rd:string, re:real, rf:int, rg:string, rh:string, ri:int, rj:string }
-typedef part_r = { ra:bool, rb:int, rc:string, rd:string, re:string, rf:string, rg:int, rh:string, ri:real, rj:string }
-typedef partsupp_r = { ra:bool, rb:int, rc:int, rd:int, re:real, rf:string }
-typedef supplier_r = { ra:bool, rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string }
+typedef orders_rb = { ra:bool, rb:int, rc:int, rd:string, re:real, rf:int, rg:string, rh:string, ri:int, rj:string }
+typedef part_rb = { ra:bool, rb:int, rc:string, rd:string, re:string, rf:string, rg:int, rh:string, ri:real, rj:string }
+typedef partsupp_rb = { ra:bool, rb:int, rc:int, rd:int, re:real, rf:string }
+typedef supplier_rb = { ra:bool, rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string }
+
+
+typedef customer_r = { rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string, ri:string }
+typedef lineitem_r = { rb:int, rc:int, rd:int, re:int, rf:real, rg:real, rh:real, ri:real, rj:string,
+                        rk:string, rl:int, rm:int, rn:int, ro:string, rp:string, rq:string }
+typedef orders_r = {  rb:int, rc:int, rd:string, re:real, rf:int, rg:string, rh:string, ri:int, rj:string }
+typedef part_r = {  rb:int, rc:string, rd:string, re:string, rf:string, rg:int, rh:string, ri:real, rj:string }
+typedef partsupp_r = { rb:int, rc:int, rd:int, re:real, rf:string }
+typedef supplier_r = { rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string }
 
 typedef lineitem_bag    = collection lineitem_r    @Collection
 typedef customer_bag    = collection customer_r    @Collection
@@ -50,9 +61,32 @@ typedef orders_bag      = collection orders_r      @Collection
 typedef supplier_bag    = collection supplier_r    @Collection
 typedef partsupp_bag    = collection partsupp_r    @Collection
 typedef part_bag        = collection part_r        @Collection
-typedef nation_bag      = collection nation_r      @Collection
-typedef region_bag      = collection region_r      @Collection
 typedef tpch_agenda_bag = collection tpch_agenda_r @Collection
+
+@:CArgs 2
+declare lineitemLoaderP : collection {path: string} @Collection -> lineitem_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare customerLoaderP : collection {path: string} @Collection -> customer_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare ordersLoaderP : collection {path: string} @Collection -> orders_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare supplierLoaderP : collection {path: string} @Collection -> supplier_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare partsuppLoaderP : collection {path: string} @Collection -> partsupp_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare partLoaderP : collection {path: string} @Collection -> part_bag -> ()
+  with effects \_ -> \_ -> io
+
 
 declare sentinel_tag : int = 0
 declare customer_tag : int = 1
@@ -65,12 +99,12 @@ declare supplier_tag : int = 6
 typedef poly_tpch = collection {elem : ()} @FlatPolyBuffer(
   variants=[:#>
     sentinel => { elem:() } : 0,
-    CUSTOMER => customer_r  : 1,
-    LINEITEM => lineitem_r  : 2, 
-    ORDERS   =>  orders_r   : 3,
-    PART     =>  part_r     : 4, 
-    PARTSUPP => partsupp_r  : 5, 
-    SUPPLIER => supplier_r  : 6
+    customer => customer_rb  : 1,
+    lineitem => lineitem_rb  : 2, 
+    orders   =>  orders_rb   : 3,
+    part     =>  part_rb     : 4, 
+    partsupp => partsupp_rb  : 5, 
+    supplier => supplier_rb  : 6
   ])
 
 declare files    : collection {path: string} @Collection
@@ -83,31 +117,35 @@ declare orders   : orders_bag
 declare supplier : supplier_bag
 declare partsupp : partsupp_bag
 declare part     : part_bag
-declare nation   : nation_bag
-declare region   : region_bag
 
 declare lineitem_fpb : lineitem_bag -> () = \c -> (
-  c.iterate (\r -> buffer.append_lineitem r)
+  c.iterate (\r -> buffer.append_lineitem
+    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri,rj:r.rj,rk:r.rk,rl:r.rl,rm:r.rm,rn:r.rn,ro:r.ro,rp:r.rp,rq:r.rq})
 )
 
 declare customer_fpb : customer_bag -> () = \c -> (
-  c.iterate (\r -> buffer.append_customer r)
+  c.iterate (\r -> buffer.append_customer 
+    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri})
 )
 
 declare orders_fpb : orders_bag -> () = \c -> (
-  c.iterate (\r -> buffer.append_orders r)
+  c.iterate (\r -> buffer.append_orders
+    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri,rj:r.rj})
 )
 
 declare supplier_fpb : supplier_bag -> () = \c -> (
-  c.iterate (\r -> buffer.append_supplier r)
+  c.iterate (\r -> buffer.append_supplier
+    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh})
 )
 
 declare partsupp_fpb : partsupp_bag -> () = \c -> (
-  c.iterate (\r -> buffer.append_partsupp r)
+  c.iterate (\r -> buffer.append_partsupp
+    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf})
 )
 
 declare part_fpb : part_bag -> () = \c -> (
-  c.iterate (\r -> buffer.append_part r)
+  c.iterate (\r -> buffer.append_part
+    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri,rj:r.rj})
 )
 
 trigger convert_lineitem : () = \_ -> (
@@ -234,12 +272,6 @@ feed go_partsupp |> convert_partsupp
 
 source go_part : () = value ()
 feed go_part |> convert_part
-
-source go_nation : () = value ()
-feed go_nation |> convert_nation
-
-source go_region : () = value ()
-feed go_region |> convert_region
 
 source load : poly_tpch = polyfile files binary raw inorder
 feed load |> load_tpch
