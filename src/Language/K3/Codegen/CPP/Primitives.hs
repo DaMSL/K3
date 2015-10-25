@@ -5,7 +5,7 @@ module Language.K3.Codegen.CPP.Primitives where
 
 import Data.Char
 import Data.List (sort)
-import Data.Maybe (maybeToList)
+import Data.Maybe (maybeToList, isJust)
 
 import Control.Arrow ((&&&))
 
@@ -73,7 +73,8 @@ genCType (tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
         Just i' -> return $ R.Named (R.Specialized [ct] $ R.Name i')
 genCType (tag -> TAddress) = return R.Address
 genCType (tag &&& children -> (TFunction, [ta, tr])) = do
-  cta <- genCType ta
+  let crefModifier = isJust $ ta @~ (\case { TProperty (tPropertyName -> "CRef") -> True; _ -> False})
+  cta <- (if crefModifier then R.Reference . R.Const else id) <$> genCType ta
   ctr <- genCType tr
   return $ R.Function [cta] ctr
 
