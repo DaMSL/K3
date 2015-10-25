@@ -542,7 +542,7 @@ materializationPass dbg mst d = do
   either throwE return rE
 
 cgPasses :: [ProgramTransform]
-cgPasses = cgPreparePasses ++ [\p -> materializationPass False $ Mat.prepareInitialIState False p]
+cgPasses = cgPreparePasses ++ [\p -> materializationPass False (Mat.prepareInitialIState False p) p]
 
 runCGPassesM :: ProgramTransform
 runCGPassesM prog = runPasses cgPasses prog
