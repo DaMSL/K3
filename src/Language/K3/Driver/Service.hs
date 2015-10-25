@@ -1318,7 +1318,7 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
         startP <- liftIO getPOSIXTime
         wlogM $ boxToString $ ["Worker R2 blocks start"] %$ (indent 2 [show startP])
         (cBlocksByBID, finalSt) <- zm $ compileAllBlocks prepStages wForkFactor wOffset ublocksByBID prog
-                                      $ compileR2Block prog pid matDebug
+                                      $ compileR2Block pid matDebug
         end <- liftIO getTime
         wlogM $ boxToString $ ["Worker R2 local time"] %$ (indent 2 [secs $ end - start])
         sendC wworker $ R2BlockDone wid pid cBlocksByBID $ ST.report finalSt
@@ -1337,14 +1337,14 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
       ((initP, _), initSt) <- liftIE $ runTransform Nothing prepStages prog
       workerSt <- maybe wstateErr return $ ST.partitionTransformStSyms wForkFactor wOffset initSt
       dblocksByBID <- extractBlocksByUID initP ublocksByBID
-      foldM compileF ([], workerSt) dblocksByBID
+      foldM (compileF initP) ([], workerSt) dblocksByBID
 
-    compileR1Block pid cSpec (blacc, st) (bid, unzip -> (ids, block)) = do
+    compileR1Block pid cSpec _ (blacc, st) (bid, unzip -> (ids, block)) = do
       (nblock, nst) <- debugCompileBlock pid bid block False
                         $ liftIE $ ST.runTransformM st $ ST.runDeclOptPassesBLM cSpec Nothing block
       return (blacc ++ [(bid, zip ids nblock)], ST.mergeTransformStReport st nst)
 
-    compileR2Block prog pid dbg (blacc, st) (bid, unzip -> (ids, block)) = do
+    compileR2Block pid dbg prog (blacc, st) (bid, unzip -> (ids, block)) = do
       let mst = MatI.prepareInitialIState dbg prog
       (nblock, nst) <- debugCompileBlock pid bid block dbg
                         $ liftIE $ ST.runTransformM st
