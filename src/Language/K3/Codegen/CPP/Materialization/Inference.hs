@@ -218,7 +218,7 @@ chasePPtr p = do
 
 bindPoint :: Contextual (K3 Provenance) -> InferM (Maybe Juncture)
 bindPoint (Contextual p u) = case tag p of
-  PFVar i | Just u' <- u -> return $ Just $ Juncture u' i
+  PFVar i _ | Just u' <- u -> return $ Just $ Juncture u' i
   PBVar (PMatVar i u' _) -> return $ Just $ Juncture u' i
   PProject _ -> bindPoint (Contextual (head $ children p) u)
   _ -> return Nothing
@@ -268,7 +268,7 @@ materializeE e@(Node (t :@: _) cs) = case t of
 
     (ci, cb) <- withNearestBind u $ do
       withTopLevel False $ materializeE body
-      ci' <- contextualizeNow (pfvar i)
+      ci' <- contextualizeNow (pfvar i $ Just u)
       cb' <- contextualizeNow body
       return (ci', cb')
 
@@ -427,7 +427,7 @@ materializeE e@(Node (t :@: _) cs) = case t of
 
 -- * Queries
 hasReadIn :: Contextual (K3 Provenance) -> Contextual (K3 Expression) -> InferM (K3 MPred, K3 MPred)
-hasReadIn (Contextual (tag -> PFVar _) cp) (Contextual _ ce) | cp /= ce = return (mBool False, mBool False)
+hasReadIn (Contextual (tag -> PFVar _ _) cp) (Contextual _ ce) | cp /= ce = return (mBool False, mBool False)
 hasReadIn (Contextual p cp) (Contextual e ce) = case tag e of
   ELambda _ -> do
     cls <- ePrv e >>= \case
@@ -472,7 +472,7 @@ hasReadInF p (Contextual f cf) = case f of
   _ -> return (mBool False)
 
 hasWriteIn :: Contextual (K3 Provenance) -> Contextual (K3 Expression) -> InferM (K3 MPred, K3 MPred)
-hasWriteIn (Contextual (tag -> PFVar _) cp) (Contextual _ ce) | cp /= ce = return (mBool False, mBool False)
+hasWriteIn (Contextual (tag -> PFVar _ _) cp) (Contextual _ ce) | cp /= ce = return (mBool False, mBool False)
 hasWriteIn (Contextual p cp) (Contextual e ce) = case tag e of
   ELambda _ -> do
     cls <- ePrv e >>= \case
@@ -545,8 +545,8 @@ isGlobal p = case tag p of
 
 occursIn :: Contextual (K3 Provenance) -> Contextual (K3 Provenance) -> InferM (K3 MPred)
 occursIn a@(Contextual pa ca) b@(Contextual pb cb) = case tag pb of
-  PFVar i -> case tag pa of
-    PFVar j | i == j && ca == cb -> return (mBool True)
+  PFVar i _ -> case tag pa of
+    PFVar j _ | i == j && ca == cb -> return (mBool True)
     _ -> return (mBool False)
   PBVar (PMatVar n u ptr) -> case tag pa of
     PBVar (PMatVar n' u' _) | n' == n && u' == u -> return (mBool True)
@@ -562,7 +562,7 @@ occursIn a@(Contextual pa ca) b@(Contextual pb cb) = case tag pb of
 
 ownedByContext :: Contextual (K3 Provenance) -> InferM (K3 MPred)
 ownedByContext (Contextual p c) = case tag p of
-  PFVar i | Just u' <- c -> return $ mOneOf (mVar u' i In) [Copied, Moved]
+  PFVar i _ | Just u' <- c -> return $ mOneOf (mVar u' i In) [Copied, Moved]
   PBVar (PMatVar i u' ptr) -> do
     transitive <- chasePPtr ptr >>= \p' -> ownedByContext (Contextual p' c)
     return $ mOneOf (mVar u' i In) [Copied, Moved] -||- (mOneOf (mVar u' i In) [Referenced] -&&- transitive)

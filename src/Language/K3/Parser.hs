@@ -1004,7 +1004,7 @@ effectSignature asAttrMem = mkSigAnn =<< (keyword "with" *> keyword "effects" *>
       [DEffect $ Left f] ++ maybe [DProvenance $ Left $ provOfEffect [] f] (\p -> [DProvenance $ Left p]) rOpt
 
     provOfEffect args (tnc -> (FS.FLambda i, [_, _, sf])) = PC.plambda i [] $ provOfEffect (args++[i]) sf
-    provOfEffect args _ = PC.pderived $ map PC.pfvar args
+    provOfEffect args _ = PC.pderived $ map (\i -> PC.pfvar i Nothing) args
 
 effTerm :: Bool -> K3Parser (K3 FS.Effect)
 effTerm asAttrMem = effApply fTerm <?> "effect term"
@@ -1064,8 +1064,8 @@ provTerm =  pApply pTerm <?> "provenance term"
 
     mkTerm p psfxOpt = maybe p ($ p) psfxOpt
 
-    mkVar "fresh" = withEffectID $ \eid -> PC.pfvar ("fresh"++ show eid)
-    mkVar       i = return $ PC.pfvar i
+    mkVar "fresh" = withEffectID $ \eid -> PC.pfvar ("fresh"++ show eid) Nothing
+    mkVar       i = return $ PC.pfvar i Nothing
 
     mkPrj    p n = PC.pproject n p Nothing
     mkRec    p n = PC.precord n p
