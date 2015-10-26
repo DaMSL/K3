@@ -319,7 +319,7 @@ class MapE {
   // Mosaic-specific functionality.
 
   template<class Other, class OtherKeyFun, class Folder, class Acc>
-  Acc equijoinkf_kv(Collection<Other> other, OtherKeyFun keyf, Folder f, Acc acc) const
+  Acc equijoinkf_kv(const Collection<Other>& other, OtherKeyFun keyf, Folder f, Acc acc) const
   {
     // Probe and accumulate.
     for (const auto& otherelem : other.getConstContainer()) {
