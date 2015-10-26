@@ -201,9 +201,10 @@ public:
 
   void freeContainer() {
     if (!buffer.data()) {
+      // buffer clear just deallocates. vector clear zeroes out the vector, which we don't need
       buffer_clear(fixed());
       buffer_clear(variable());
-      vector_clear(tags());
+      buffer_clear(&(tags()->buffer));
     }
   }
 
@@ -452,12 +453,14 @@ public:
     return R_key_value<int, int> { j, static_cast<int>(foffset) };
   }
 
-  // Clears a container, deleting any backing buffer.
+  // Clears a container
   unit_t clear(unit_t) {
-    if ( buffer.data() ) { freeBackingBuffer(); }
+    if (buffer.data()) { freeBackingBuffer(); }
     else {
-      freeContainer();
-      initContainer();
+      // keep the inner containers ie. no deallocation
+      fixed()->size = 0;
+      variable()->size = 0;
+      tags()->buffer.size = 0;
       internalized=false;
     }
     return unit_t{};
