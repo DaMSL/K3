@@ -303,6 +303,9 @@ public:
   // Accessors.
   // These must work on an internalized collection, and we leave
   // it to the application to ensure internalization has happened.
+  bool isInternalized() const {
+    return internalized;
+  }
 
   int size(const unit_t&) const {
     auto p = const_cast<FlatPolyBuffer*>(this);
@@ -809,6 +812,13 @@ struct convert<K3::FlatPolyBuffer<E>> {
   using Tag = typename K3::FlatPolyBuffer<E>::Tag;
   template <class Allocator>
   static Value encode(const K3::FlatPolyBuffer<E>& c, Allocator& al) {
+    bool modified = false;
+    K3::FlatPolyBuffer<E>& non_const = const_cast<K3::FlatPolyBuffer<E>&>(c);
+    if (!c.isInternalized()) {
+      non_const.unpack(K3::unit_t {});
+      modified = true;
+    }
+
     Value v;
     v.SetObject();
     v.AddMember("type", Value("FlatPolyBuffer"), al);
@@ -818,6 +828,10 @@ struct convert<K3::FlatPolyBuffer<E>> {
       inner.PushBack(c.jsonencode(tg, idx, offset, al), al);
     });
     v.AddMember("value", inner.Move(), al);
+
+    if (modified) {
+      non_const.repack(K3::unit_t {});
+    }
     return v;
   }
 };
