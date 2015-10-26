@@ -324,16 +324,27 @@ template <class _T0>
 class R_elem {
  public:
   R_elem() {}
-  R_elem(_T0 _elem) : elem(_elem) {}
+  R_elem(_T0 const& _elem): elem(_elem)  {}
+  R_elem(_T0&& _elem): elem(std::move(_elem))  {}
 
-  bool operator==(const R_elem& _r) const {
-    if (elem == _r.elem) return true;
-    return false;
+  bool operator==(R_elem<_T0> const& __other) const {
+    return elem == __other.elem;
   }
-
-  bool operator!=(const R_elem& _r) const { return !(*this == _r); }
-
-  bool operator<(const R_elem& _r) const { return elem < _r.elem; }
+  bool operator!=(R_elem<_T0> const& __other) const {
+    return std::tie(elem) != std::tie(__other.elem);
+  }
+  bool operator<(R_elem<_T0> const& __other) const {
+    return std::tie(elem) < std::tie(__other.elem);
+  }
+  bool operator>(R_elem<_T0> const& __other) const {
+    return std::tie(elem) > std::tie(__other.elem);
+  }
+  bool operator<=(R_elem<_T0> const& __other) const {
+    return std::tie(elem) <= std::tie(__other.elem);
+  }
+  bool operator>=(R_elem<_T0> const& __other) const {
+    return std::tie(elem) >= std::tie(__other.elem);
+  }
 
   template <class archive>
   void serialize(archive& _archive, const unsigned int) {
